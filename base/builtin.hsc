@@ -42,5 +42,11 @@ bool  :: b8
 int   :: i64
 float :: f32
 
+// Strings
+string  :: string
+cstring :: cstring
+
 // Pointers
-ptr :: ptr
+ptr    :: ptr
+rawptr :: rawptr
+
