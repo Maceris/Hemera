@@ -1,6 +1,6 @@
-package hello_world;
+package hello_world
 
-fn main() {
+main :: () {
 	// Alias for std::io::stdout::println
-	println("Hello World!");
+	println("Hello World!")
 }
