@@ -1,52 +1,54 @@
 package builtin
 
+// Constants
 null  :: null
-false :: false
-true  :: true
+false :: 0!=0
+true  :: 0==0
 
 // Booleans
-b8   :: b8
-b16  :: b16
-b32  :: b32
-b64  :: b64
+b8   :: alias b8
+b16  :: alias b16
+b32  :: alias b32
+b64  :: alias b64
+bool :: alias b8
 
 // Signed integers
-i8   :: i8
-i16  :: i16
-i32  :: i32
-i64  :: i64
+i8  :: alias i8
+i16 :: alias i16
+i32 :: alias i32
+i64 :: alias i64
+int :: alias int
 
 // Unsigned integers
-u8   :: u8
-u16  :: u16
-u32  :: u32
-u64  :: u64
+u8      :: alias u8
+u16     :: alias u16
+u32     :: alias u32
+u64     :: alias u64
+uint    :: alias uint
+uintptr :: alias uintptr
 
 // Floating points
-f16  :: f16
-f32  :: f32
-f64  :: f64
+f16   :: alias f16
+f32   :: alias f32
+f64   :: alias f64
 
 // Complex numbers
-c16  :: c16
-c32  :: c32
-c64  :: c64
+c16  :: alias c16
+c32  :: alias c32
+c64  :: alias c64
+c128 :: alias c128
 
 // Quaternions
-q16  :: q16
-q32  :: q32
-q64  :: q64
-
-// General types
-bool  :: b8
-int   :: i64
-float :: f32
+q32  :: alias q32
+q64  :: alias q64
+q128 :: alias q128
+q256 :: alias q256
 
 // Strings
-string  :: string
-cstring :: cstring
+string  :: alias string
+cstring :: alias cstring
 
 // Pointers
-ptr    :: ptr
-rawptr :: rawptr
+ptr    :: alias ptr
+rawptr :: alias rawptr
 
