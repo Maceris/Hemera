@@ -49,6 +49,19 @@ string  :: alias string
 cstring :: alias cstring
 
 // Pointers
-ptr    :: alias ptr
+ptr<T> :: alias ptr<T>
 rawptr :: alias rawptr
+
+// Type info
+any  :: alias any
+type :: alias type
+
+// Functions
+panic :: fn(str: string) #foreign
+
+align_of :: fn($T: type) -> int #foreign
+size_of  :: fn($T: type) -> int #foreign
+
+type_of :: fn(x: expr) -> type #foreign
+type_info_of :: fn($T: type) -> TypeInfo #foreign
 
