@@ -22,7 +22,7 @@ is_some :: fn(optional : Optional<T>) -> bool {
 unwrap :: fn(optional: Optional<T>) -> T {
     match optional {
         Some(T) => return T,
-        None => panic!,
+        None => panic("Provided a `None` Optional to `unwrap(Optional)`"),
     }
 }
 
