@@ -28,5 +28,6 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `switch` - For switch statements
 * `true` - The true boolean value
 * `union` - For defining tagged unions
+* `using` - For including fields into scope
 * `void` - Indicates a lack of return values
 * `while` - For while loops
