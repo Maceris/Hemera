@@ -57,11 +57,10 @@ any  :: alias any
 type :: alias type
 
 // Functions
-panic :: fn(str: string) #foreign
+panic :: fn(str: string) ---
 
-align_of :: fn($T: type) -> int #foreign
-size_of  :: fn($T: type) -> int #foreign
+align_of :: fn($T: type) -> int ---
+size_of  :: fn($T: type) -> int ---
 
-type_of :: fn(x: expr) -> type #foreign
-type_info_of :: fn($T: type) -> TypeInfo #foreign
-
+type_of :: fn(x: expr) -> type ---
+type_info_of :: fn($T: type) -> TypeInfo ---
