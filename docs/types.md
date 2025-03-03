@@ -5,7 +5,7 @@ Hemera has several built in primitive types.
 
 | Type    | Description                                                                                                                                  |
 |---------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| any     | References a data type, includes a pointer and its typeid                                                                                    |
+| any     | References a data type, includes a pointer and its type                                                                                      |
 | b8      | 8-bit boolean                                                                                                                                |
 | b16     | 16-bit boolean                                                                                                                               |
 | b32     | 32-bit boolean                                                                                                                               |
@@ -31,7 +31,7 @@ Hemera has several built in primitive types.
 | q256    | 256-bit quaternion, composed of 4 i64 values                                                                                                 |
 | rawptr  | Pointer to an arbitrary type, equivalent to C's void *                                                                                       |
 | string  | String that includes a length, not null-terminated                                                                                           |
-| typeid  | Information about a type                                                                                                                     |
+| type    | Information about a type                                                                                                                     |
 | u8      | 8-bit unsigned integer                                                                                                                       |
 | u16     | 16-bit unsigned integer                                                                                                                      |
 | u32     | 32-bit unsigned integer                                                                                                                      |
