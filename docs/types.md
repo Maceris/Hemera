@@ -17,12 +17,29 @@ Hemera has several built in primitive types.
 | c128    | 128-bit complex number, composed of 2 i128 values                                                                                            |
 | cstring | C-style null-terminated string                                                                                                               |
 | f16     | 16-bit (half-precision) IEEE-754 floating point number                                                                                       |
+| f16be   | 16-bit (half-precision) IEEE-754 floating point number, big-endian                                                                           |
+| f16le   | 16-bit (half-precision) IEEE-754 floating point number, little-endian                                                                        |
 | f32     | 32-bit (single-precision) IEEE-754 floating point number                                                                                     |
+| f32be   | 32-bit (single-precision) IEEE-754 floating point number, big-endian                                                                         |
+| f32le   | 32-bit (single-precision) IEEE-754 floating point number, little-endian                                                                      |
 | f64     | 64-bit (double-precision) IEEE-754 floating point number                                                                                     |
+| f64be   | 64-bit (double-precision) IEEE-754 floating point number, big-endian                                                                         |
+| f64le   | 64-bit (double-precision) IEEE-754 floating point number, little-endian                                                                      |
 | i8      | 8-bit signed integer                                                                                                                         |
+| i8be    | 8-bit signed integer, big-endian                                                                                                             |
+| i8le    | 8-bit signed integer, little-endian                                                                                                          |
 | i16     | 16-bit signed integer                                                                                                                        |
+| i16be   | 16-bit signed integer, big-endian                                                                                                            |
+| i16le   | 16-bit signed integer, little-endian                                                                                                         |
 | i32     | 32-bit signed integer                                                                                                                        |
+| i32be   | 32-bit signed integer, big-endian                                                                                                            |
+| i32le   | 32-bit signed integer, little-endian                                                                                                         |
 | i64     | 64-bit signed integer                                                                                                                        |
+| i64be   | 64-bit signed integer, big-endian                                                                                                            |
+| i64le   | 64-bit signed integer, little-endian                                                                                                         |
+| i128    | 128-bit signed integer                                                                                                                       |
+| i128be  | 128-bit signed integer, big-endian                                                                                                           |
+| i128le  | 128-bit signed integer, little-endian                                                                                                        |
 | int     | Signed integer that is the standard size of a register on the system, guaranteed that size_of(int) >= size_of(uintptr). Same size as uint.   |
 | ptr     | A typed pointer                                                                                                                              |
 | q32     | 32-bit quaternion, composed of 4 i8 values                                                                                                   |
@@ -33,9 +50,20 @@ Hemera has several built in primitive types.
 | string  | String that includes a length, not null-terminated                                                                                           |
 | type    | Information about a type                                                                                                                     |
 | u8      | 8-bit unsigned integer                                                                                                                       |
+| u8be    | 8-bit unsigned integer, big-endian                                                                                                           |
+| u8le    | 8-bit unsigned integer, little-endian                                                                                                        |
 | u16     | 16-bit unsigned integer                                                                                                                      |
+| u16be   | 16-bit unsigned integer, big-endian                                                                                                          |
+| u16le   | 16-bit unsigned integer, little-endian                                                                                                       |
 | u32     | 32-bit unsigned integer                                                                                                                      |
+| u32be   | 32-bit unsigned integer, big-endian                                                                                                          |
+| u32le   | 32-bit unsigned integer, little-endian                                                                                                       |
 | u64     | 64-bit unsigned integer                                                                                                                      |
+| u64be   | 64-bit unsigned integer, big-endian                                                                                                          |
+| u64le   | 64-bit unsigned integer, little-endian                                                                                                       |
+| u128    | 128-bit unsigned integer                                                                                                                     |
+| u128be  | 128-bit unsigned integer, big-endian                                                                                                         |
+| u128le  | 128-bit unsigned integer, little-endian                                                                                                      |
 | uint    | Unsigned integer that is the standard size of a register on the system, guaranteed that size_of(uint) >= size_of(uintptr). Same size as int. |
 | uintptr | Unsigned integer that is large enough to hold the bit pattern of any pointer                                                                 |
 
