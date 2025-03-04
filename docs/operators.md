@@ -21,11 +21,36 @@ Unary:
 ```
 +                      +x is equivalent to 0 + x
 -  negation            -x is equivalent to 0 - x
-~  bitwise complement  inverts all the bits of the number
+~  bitwise complement  ~x is equivalent to m ~ x where m is "all bits set to 1" for unsigned x
+                                                 and m = -1 for signed x
 ```
 
 Binary:
+```
++   addition        integers, enums, floats, complex values, quaternions, vectors, matrices, constant strings
+-   subtraction     integers, enums, floats, complex values, quaternions, vectors, matrices
+*   multiplication  integers, floats, complex values, quaternions, vectors, matrices
+/   division        integers, floats, complex values, quaternions, vectors
+%   modulus         integers
 
+|   bitwise OR      integers, enums
+&   bitwise AND     integers, enums
+~   bitwise XOR     integers, enums
+>>  right shift     integer >> integer >= 0
+<<  left shift      integer << integer >= 0
+```
+
+Except for shift operations, if one operand is an untyped constant
+and the other operand is not, the constant is implicitly converted to
+the type of the other operand (if possible).
+
+In a shift expression, the right operand must have an unsigned integer type
+or be an untyped constant that will be implicitly converted to
+an unsigned integer.
+
+If the left operand of a non-constant shift expression is an
+untyped constant, it is first implicitly converted to the type it would
+assume if the shift expression were replaced by the left operand alone.
 
 ## Assignment operators
 
