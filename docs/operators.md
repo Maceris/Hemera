@@ -27,17 +27,19 @@ Unary:
 
 Binary:
 ```
-+   addition        integers, enums, floats, complex values, quaternions, vectors, matrices, constant strings
--   subtraction     integers, enums, floats, complex values, quaternions, vectors, matrices
-*   multiplication  integers, floats, complex values, quaternions, vectors, matrices
-/   division        integers, floats, complex values, quaternions, vectors
-%   modulus         integers
++   addition                 integers, enums, floats, complex values, quaternions, vectors, matrices, constant strings
+-   subtraction              integers, enums, floats, complex values, quaternions, vectors, matrices
+*   multiplication           integers, floats, complex values, quaternions, vectors, matrices
+/   division                 integers, floats, complex values, quaternions, vectors
+%   modulus (truncated)      integers
+%%  remainder (floored)      integers
 
-|   bitwise OR      integers, enums
-&   bitwise AND     integers, enums
-~   bitwise XOR     integers, enums
->>  right shift     integer >> integer >= 0
-<<  left shift      integer << integer >= 0
+|   bitwise OR               integers, enums
+&   bitwise AND              integers, enums
+~   bitwise XOR              integers, enums
+>>  right shift (arithmetic) integer >> integer >= 0
+<<  left shift               integer << integer >= 0
+>>>  right shift (logical)   signed integer >> integer >= 0
 ```
 
 Except for shift operations, if one operand is an untyped constant
@@ -52,6 +54,10 @@ If the left operand of a non-constant shift expression is an
 untyped constant, it is first implicitly converted to the type it would
 assume if the shift expression were replaced by the left operand alone.
 
+Normal right-shifts (`>>`) for signed integers will fill displaced bits with the current sign bit.
+In order to have signed integers always fill the displaced bits with 0 when shifting right, the
+`>>>` operator must be used.
+
 ## Assignment operators
 
 ## Comparison operators
@@ -64,7 +70,7 @@ assume if the shift expression were replaced by the left operand alone.
 
 The pipe operator takes output from one function and provides it as input for another.
 
-By default it will provide all output, in order, at the start of the next functions arguments. Additional arguments will have to be provided.
+By default it will provide all output, in order, at the start of the next functions arguments.
 
 ```
 get_string :: fn() -> string {/* ... */}
@@ -74,11 +80,39 @@ append     :: fn(a: string, b: string) -> string {/* ... */}
 example :: fn() {
     get_string()
     |> uppercase() // Provided the output from get_string()
-    |> append("This is the second argument")
+    |> append("Second argument")
 }
 ```
 
-If you are fine with the order, but want to specify a more complex pattern, you can use "_" placeholders. Anything not used will be ignored.
+Any additional arguments to functions must be provided explicitly if it has more arguments than will be supplied
+by the previous function.
+
+If any arguments are explicitly provided, they are considered to come after any inputs from the previous function.
+Additionally, all arguments from the previous function must be used.
+
+```
+get_1_string  :: fn() -> string {/* ... */}
+get_2_strings :: fn() -> string, string {/* ... */}
+append     :: fn(a: string, b: string) -> string {/* ... */}
+
+example :: fn() {
+    get_1_string()
+    |> append() // Error: needs a second argument
+
+    get_1_string()
+    |> append("2nd arg") // Fine
+
+    get_2_strings()
+    |> append()          // Fine
+
+    get_2_strings()
+    |> append("Last argument?") // Error: too many arguments (attempting to provide 3)
+}
+```
+
+In order to specify a more complex pattern or use fewer results, the "_" placeholders can be used to indicate positions to fill.
+These placeholders will be filled out using the results of the previous function, in order. Anything not used will be ignored.
+If there are N placeholders, there must be at least N results from the previous function to use or it is an error.
 
 ```
 foo :: fn() -> int, bool, string {/* ... */}
@@ -86,11 +120,18 @@ bar :: fn(a: int, b: string, c: bool) {/* ... */}
 
 example :: fn() {
     foo()
-    |> bar(_, "Example", _) // Provided only the first 2 outputs
+    |> bar(_, "Example", _)      // Provided only the first 2 outputs
+
+    foo()
+    |> bar(_, "Example", false)  // Provided only the first output
+
+    foo()
+    |> bar($1, "Example", false) // Equivalent to the previous example
 }
 ```
 
-Should you need more granular control over the ordering or usage, you will need to refer to them by number with a $ prefix. `$1` would be the first return value from the previous function, `$2` the second, and so on.
+Should more granular control over the ordering or usage be required, outputs are referred by number with a $ prefix.
+`$1` would be the first return value from the previous function, `$2` the second, and so on.
 
 ```
 foo :: fn() -> int, bool {/* ... */}
