@@ -20,12 +20,13 @@ Identifiers may not be the same as reserved keywords or builtin types.
 The official recommended file structure as below:
 
 1. Optional beginning comments
-1. Package statement
-2. Imports
-3. Constants
-4. Functions
+2. Package statement (first non-comment non-empty line)
+3. Imports
+4. Constants
+5. Functions
 
-No particular order is required to compile, but the official order is strongly encouraged for standardization.
+No particular order of constants and functions is required to compile, 
+but the official order is encouraged for standardization.
 
 For example:
 
