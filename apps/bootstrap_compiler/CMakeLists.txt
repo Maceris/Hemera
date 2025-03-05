@@ -1,0 +1,102 @@
+# Hemera compiler
+
+# CMake settings
+
+CMAKE_MINIMUM_REQUIRED(VERSION 3.13...3.31.4)
+
+PROJECT(Hemera VERSION 1.0.0) # Decoupled from actual version, which are tracked in source
+
+SET(CMAKE_CXX_STANDARD 20)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(CMAKE_C_STANDARD 99)
+
+# Modules
+
+LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules")
+
+INCLUDE(PrecompiledHeader)
+
+SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON) # Use solution folders.
+
+# Operating system settings
+
+IF(WIN32)
+  ADD_DEFINITIONS(-DWIN32_LEAN_AND_MEAN)
+  ADD_DEFINITIONS(-DNOMINMAX)
+ELSEIF(UNIX)
+
+ENDIF()
+
+ADD_DEFINITIONS(-Wall)
+
+
+# Compiler settings
+
+IF ((CMAKE_C_COMPILER_ID MATCHES "GNU") AND NOT MINGW AND NOT HAIKU)
+  ADD_DEFINITIONS(-pedantic)
+  ADD_DEFINITIONS(-Wextra -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=5 -Wswitch-default -Wundef -Wno-unused)
+  ADD_DEFINITIONS(-Werror)
+  ADD_DEFINITIONS(-fsanitize=undefined,shift,shift-exponent,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr,pointer-overflow,builtin)
+  ADD_DEFINITIONS(-fno-sanitize-recover=all)
+  
+ELSEIF(MSVC)
+  ADD_COMPILE_OPTIONS(
+    $<$<CONFIG:>:/MT>
+    $<$<CONFIG:Debug>:/MTd>
+    $<$<CONFIG:Release>:/MT>
+  )
+  ADD_COMPILE_OPTIONS(/MP /bigobj)
+  ADD_DEFINITIONS(/WX)
+  ADD_DEFINITIONS(/wd5045) # /Qspectre mitigation location warning, we don't use that flag
+  
+ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # clang-cl
+  ADD_COMPILE_OPTIONS(/bigobj)
+  IF(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 14)
+    ADD_DEFINITIONS(-ffp-contract=off)
+  ENDIF()
+
+ENDIF()
+
+# Directories
+
+IF(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+  SET(HEMERA_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "Path for runtime output files")
+  SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${HEMERA_RUNTIME_OUTPUT_DIRECTORY})
+ELSE()
+  SET(HEMERA_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" CACHE STRING "Path for runtime output files")
+ENDIF()
+
+IF(NOT DEFINED CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+  SET(HEMERA_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "Path for library output files")
+  SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${HEMERA_LIBRARY_OUTPUT_DIRECTORY})
+ELSE()
+  SET(HEMERA_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" CACHE STRING "Path for library output files")
+ENDIF()
+
+IF(NOT DEFINED CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
+  SET(HEMERA_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "Path for archive output files")
+  SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${HEMERA_ARCHIVE_OUTPUT_DIRECTORY})
+ELSE()
+  SET(HEMERA_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}" CACHE STRING "Path for archive output files")
+ENDIF()
+
+MACRO(TARGET_USE_COMMON_OUTPUT_DIRECTORY target)
+  SET_TARGET_PROPERTIES(${target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}
+	  LIBRARY_OUTPUT_DIRECTORY ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}
+      ARCHIVE_OUTPUT_DIRECTORY ${HEMERA_ARCHIVE_OUTPUT_DIRECTORY}
+  )
+ENDMACRO()
+
+SET(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+SET(THIRD_PARTY_DIR ${ROOT_DIR}/third_party)
+SET(SOURCE_DIR ${ROOT_DIR}/src)
+SET(INCLUDE_DIR ${ROOT_DIR}/include)
+SET(CONFIGURATION_BINARY_DIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}/$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>)
+
+# Project code
+ADD_SUBDIRECTORY(src)
+
+SET_PROPERTY(DIRECTORY ${ROOT_DIR} PROPERTY VS_STARTUP_PROJECT Hemera)
+SET_PROPERTY(TARGET Hemera PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CONFIGURATION_BINARY_DIR})
