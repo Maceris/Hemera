@@ -7,18 +7,16 @@ namespace hemera::arg_parse {
 
 	struct FindResult {
 		bool found;
-		char _padding[7];
+		char _padding[7] = { 0 };
 		size_t location;
 		
 		FindResult() 
 			: found(false)
-			, _padding{0}
 			, location(0)
 		{}
 		
 		FindResult(size_t loc)
 			: found(true)
-			, _padding{ 0 }
 			, location(loc)
 		{}
 
@@ -37,7 +35,7 @@ namespace hemera::arg_parse {
 			}
 		}
 
-		return FindResult{};
+		return {};
 	}
 
 	static void split_on_char(const char* str, const char value,
@@ -71,16 +69,15 @@ namespace hemera::arg_parse {
 
 			const char* raw_arg = argv[i];
 			FindResult found_equals = find_char(raw_arg, '=');
-			std::vector<std::string> values;
 
 			ArgumentInfo& new_arg = results->emplace_back();
 
 			if (found_equals.found) {
-				new_arg.option = std::string(raw_arg, found_equals.location);
+				new_arg.option = MyString(raw_arg, found_equals.location);
 				split_on_char(raw_arg + found_equals.location + 1, ',', new_arg.values);
 			}
 			else {
-				new_arg.option = std::string(raw_arg);
+				new_arg.option = MyString(raw_arg);
 			}
 
 		}

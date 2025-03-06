@@ -10,7 +10,7 @@ namespace hemera {
 	namespace arg_parse {
 
 		struct ArgumentInfo {
-			std::string option;
+			MyString option;
 			MyVector<MyString> values;
 		};
 
