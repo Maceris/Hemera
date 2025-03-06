@@ -3,6 +3,7 @@
 
 #include "version.h"
 #include "cmd_line/arg_parsing.h"
+#include "cmd_line/options.h"
 
 namespace hemera {
 	int main(int argc, char* argv[])

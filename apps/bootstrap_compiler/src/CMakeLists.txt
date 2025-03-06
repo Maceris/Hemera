@@ -5,13 +5,16 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.13...3.31.4)
 SET(HEADER_FILES
   ${INCLUDE_DIR}/version.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
-  ${INCLUDE_DIR}/cmd_line/argument.h
+  ${INCLUDE_DIR}/cmd_line/options.h
   ${INCLUDE_DIR}/memory/allocator.h
+  ${INCLUDE_DIR}/util/logger.h
 )
 
 SET(SOURCE_FILES
   ${SOURCE_DIR}/main.cpp
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
+  ${SOURCE_DIR}/cmd_line/options.cpp
+  ${SOURCE_DIR}/util/logger.cpp
 )
 
 SET(THIRD_PARTY_HEADER_FILES
