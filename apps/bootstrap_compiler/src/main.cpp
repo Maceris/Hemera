@@ -3,28 +3,52 @@
 
 #include "version.h"
 #include "cmd_line/arg_parsing.h"
-#include "cmd_line/options.h"
 
 namespace hemera {
+
+	static void print_list(const MyVector<MyString>& list) {
+		for (size_t i = 0; i < list.size(); ++i) {
+			std::cout << list[i];
+			if (i + 1 < list.size()) {
+				std::cout << ", ";
+			}
+		}
+	}
+
 	int main(int argc, char* argv[])
 	{
 		Allocator<> allocator;
 
-		MyVector<arg_parse::ArgumentInfo>* args =
-			arg_parse::parse_arguments(argc, argv, allocator);
+		using std::cout;
+		using std::endl;
 
-		std::cout << "Options:";
-		for (auto arg : *args) {
-			std::cout << "{ Option : " << arg.option << ", args: ";
-			for (size_t i = 0; i < arg.values.size(); ++i) {
-				std::cout << '\'' << arg.values[i] << '\'';
-				if (i + 1 < arg.values.size()) {
-					std::cout << ", ";
-				}
+		arg_parse::Options* options =
+			allocator.new_object<arg_parse::Options>();
+
+		arg_parse::parse_arguments(argc, argv, *options);
+
+		cout << "Options:" << endl;
+
+		cout << "Input: ";
+		print_list(options->input);
+		cout << endl;
+		cout << "Output: " << options->output << endl;
+
+		cout << "Flags: ";
+		print_list(options->options);
+		cout << endl;
+
+		cout << "Flags with options: ";
+		for (size_t i = 0; i < options->options_with_values.size(); ++i) {
+			cout << "{ " << options->options_with_values[i].option << " | ";
+			print_list(options->options_with_values[i].values);
+			cout << " }";
+			if (i + 1 < options->options_with_values.size()) {
+				std::cout << ", ";
 			}
-			std::cout << " }";
 		}
-		std::cout << std::endl;
+		cout << endl;
+
 		return 0;
 	}
 }

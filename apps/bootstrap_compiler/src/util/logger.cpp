@@ -17,6 +17,11 @@
 #elif defined(UNIX)
 #endif
 #include <iostream>
+#include <signal.h>
+
+#ifndef SIGTRAP
+#define SIGTRAP 5
+#endif
 
 static const char* ERROR_LOG_FILENAME = "log.txt";
 
@@ -270,28 +275,10 @@ LogManager::ErrorDialogResult LogManager::error(
 			output_buffer_to_logs(buffer, result->second);
 		}
 	}
-
-#if defined(WIN32)
-	// Show a dialog box, with an error icon, defaulting to abort
-	int response = MessageBoxA(nullptr, buffer.c_str(), tag.c_str(), 
-		MB_ABORTRETRYIGNORE | MB_ICONERROR | MB_DEFBUTTON1);
-
-	switch (response)
-	{
-	case IDABORT: 
-		__debugbreak();// breaks into the debugger
-		return LogManager::LOG_MANAGER_ERROR_RETRY;
-	case IDIGNORE:
-		return LogManager::LOG_MANAGER_ERROR_IGNORE;
-	case IDRETRY:
-	default:
-		return LogManager::LOG_MANAGER_ERROR_RETRY;
-	}
-#elif defined(UNIX)
-	//TODO(ches) figure out how to ask the user what to do
-	
-	abort();//NOTE(ches) just hard crash I guess
+#ifdef _DEBUG
+	raise(SIGTRAP);
 #endif
+	exit(1);
 }
 
 void LogManager::output_buffer_to_logs(std::string_view final_buffer,

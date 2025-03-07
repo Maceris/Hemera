@@ -60,27 +60,24 @@ namespace hemera::arg_parse {
 		}
 	}
 
-	MyVector<ArgumentInfo>* parse_arguments(int argc, char* argv[],
-		Allocator<> alloc) {
+	void parse_arguments(int argc, char* argv[], Options& output) {
 
-		MyVector<ArgumentInfo>* results = alloc.new_object<MyVector<ArgumentInfo>>();
-
-		for (int i = 0; i < argc; ++i) {
-
+		//NOTE(ches) Skip the first argument, hoping it's the program name
+		for (int i = 1; i < argc; ++i) {
 			const char* raw_arg = argv[i];
 			FindResult found_equals = find_char(raw_arg, '=');
 
-			ArgumentInfo& new_arg = results->emplace_back();
-
 			if (found_equals.found) {
-				new_arg.option = MyString(raw_arg, found_equals.location);
-				split_on_char(raw_arg + found_equals.location + 1, ',', new_arg.values);
+				OptionWithValue& option =
+					output.options_with_values.emplace_back();
+				option.option = MyString(raw_arg, found_equals.location);
+				split_on_char(raw_arg + found_equals.location + 1, ',', 
+					option.values);
 			}
 			else {
-				new_arg.option = MyString(raw_arg);
+				output.options.emplace_back(raw_arg);
 			}
 
 		}
-		return results;
 	}
 }
