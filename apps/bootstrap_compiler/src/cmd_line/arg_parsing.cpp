@@ -1,7 +1,9 @@
 
 #include <algorithm>
+#include <format>
 
 #include "cmd_line/arg_parsing.h"
+#include "util/logger.h"
 
 namespace hemera::arg_parse {
 
@@ -60,24 +62,91 @@ namespace hemera::arg_parse {
 		}
 	}
 
-	void parse_arguments(int argc, char* argv[], Options& output) {
+	bool parse_arguments(int argc, char* argv[], Options& output, 
+		Allocator<> alloc) {
+
+		bool all_fine = true;
 
 		//NOTE(ches) Skip the first argument, hoping it's the program name
 		for (int i = 1; i < argc; ++i) {
 			const char* raw_arg = argv[i];
+			LOG_VERBOSE(raw_arg);
 			FindResult found_equals = find_char(raw_arg, '=');
 
-			if (found_equals.found) {
-				OptionWithValue& option =
-					output.options_with_values.emplace_back();
-				option.option = MyString(raw_arg, found_equals.location);
-				split_on_char(raw_arg + found_equals.location + 1, ',', 
-					option.values);
-			}
-			else {
-				output.options.emplace_back(raw_arg);
+			if (found_equals.found && found_equals.location == 0) {
+				// There is nothing on the left of the equals, so ignore it
+				all_fine = false;
+				continue;
 			}
 
+			if (found_equals.found) {
+				size_t option_size = found_equals.location;
+
+				char* just_option = static_cast<char*>(alloc.allocate_bytes(option_size + 1));
+				memcpy_s(just_option, option_size, raw_arg, option_size);
+				just_option[option_size] = 0;
+
+				std::optional<const OptionDescription*> maybe_option = find_option(just_option);
+				alloc.deallocate_bytes(just_option, option_size + 1);
+				just_option = nullptr;
+
+				if (!maybe_option) {
+					LOG_WARNING(std::format("Unrecognized option {}", raw_arg));
+					all_fine = false;
+					continue;
+				}
+
+				const Option& option = maybe_option.value()->option;
+
+				if (!maybe_option.value()->has_args) {
+					LOG_WARNING(std::format("Unexpected arguments provided in option {}", raw_arg));
+					all_fine = false;
+					continue;
+				}
+
+				OptionWithValue& option_with_value =
+					output.options_with_values.emplace_back();
+				option_with_value.option = option;
+				split_on_char(raw_arg + found_equals.location + 1, ',',
+					option_with_value.values);
+
+			}
+			else {
+				std::optional<const OptionDescription*> maybe_option = find_option(raw_arg);
+
+				if (!maybe_option) {
+					//TODO(ches) source files
+					LOG_WARNING(std::format("Unrecognized option {}", raw_arg));
+					all_fine = false;
+					continue;
+				}
+
+				const Option& option = maybe_option.value()->option;
+
+				if (maybe_option.value()->has_args) {
+					LOG_WARNING(std::format("Expected arguments for option {}", raw_arg));
+					all_fine = false;
+					continue;
+				}
+
+				output.options.emplace_back(option);
+			}
 		}
+		return all_fine;
 	}
+
+	std::optional<const OptionDescription*> find_option(const char* option) {
+		const size_t option_length = constexpr_strlen(option);
+
+		for (const auto& value : NAMED_OPTIONS) {
+			const size_t smaller_length = std::min(option_length, value.name_length);
+
+			if (strncmp(option, value.name, smaller_length) == 0) {
+				return { &value };
+			}
+		}
+
+		return {};
+	}
+
 }

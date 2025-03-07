@@ -3,6 +3,7 @@
 
 #include "version.h"
 #include "cmd_line/arg_parsing.h"
+#include "util/logger.h"
 
 namespace hemera {
 
@@ -17,28 +18,33 @@ namespace hemera {
 
 	int main(int argc, char* argv[])
 	{
-		Allocator<> allocator;
+		Logger::init();
+		Allocator<> arg_alloc;
 
 		using std::cout;
 		using std::endl;
 
 		arg_parse::Options* options =
-			allocator.new_object<arg_parse::Options>();
+			arg_alloc.new_object<arg_parse::Options>();
 
-		arg_parse::parse_arguments(argc, argv, *options);
+		bool all_fine = arg_parse::parse_arguments(argc, argv, *options, arg_alloc);
 
 		cout << "Options:" << endl;
 
 		cout << "Input: ";
 		print_list(options->input);
 		cout << endl;
-		cout << "Output: " << options->output << endl;
 
-		cout << "Flags: ";
-		print_list(options->options);
+		cout << "Options: ";
+		for (size_t i = 0; i < options->options.size(); ++i) {
+			std::cout << options->options[i];
+			if (i + 1 < options->options.size()) {
+				std::cout << ", ";
+			}
+		}
 		cout << endl;
-
-		cout << "Flags with options: ";
+		
+		cout << "Options with values: ";
 		for (size_t i = 0; i < options->options_with_values.size(); ++i) {
 			cout << "{ " << options->options_with_values[i].option << " | ";
 			print_list(options->options_with_values[i].values);
@@ -48,6 +54,12 @@ namespace hemera {
 			}
 		}
 		cout << endl;
+
+		if (!all_fine) {
+			//TODO(ches) print help text
+			cout << "Not all arguments could be parsed!" << endl;
+			return 1;
+		}
 
 		return 0;
 	}
