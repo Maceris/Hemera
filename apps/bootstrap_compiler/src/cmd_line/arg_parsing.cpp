@@ -123,10 +123,16 @@ namespace hemera::arg_parse {
 				std::optional<const OptionDescription*> maybe_option = find_option(raw_arg);
 
 				if (!maybe_option) {
+					if (raw_arg[0] == '-') {
+						LOG_WARNING("Flags after input, something is probably wrong");
+						all_fine = false;
+						continue;
+					}
 					started_input = true;
 					output.input.emplace_back(raw_arg);
 					continue;
 				}
+
 				if (started_input) {
 					LOG_WARNING("Flags after input, something is probably wrong");
 					all_fine = false;
@@ -151,9 +157,10 @@ namespace hemera::arg_parse {
 		const size_t option_length = constexpr_strlen(option);
 
 		for (const auto& value : NAMED_OPTIONS) {
-			const size_t smaller_length = std::min(option_length, value.name_length);
-
-			if (strncmp(option, value.name, smaller_length) == 0) {
+			if (option_length != value.name_length) {
+				continue;
+			}
+			if (strncmp(option, value.name, option_length) == 0) {
 				return { &value };
 			}
 		}
