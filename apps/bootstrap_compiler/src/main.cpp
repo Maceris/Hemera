@@ -7,13 +7,31 @@
 
 namespace hemera {
 
-	static void print_list(const MyVector<MyString>& list) {
-		for (size_t i = 0; i < list.size(); ++i) {
-			std::cout << list[i];
-			if (i + 1 < list.size()) {
-				std::cout << ", ";
-			}
+	static void print_help() {
+		using std::cout;
+		using std::endl;
+
+		cout << "Usage: hemera [-c | -S ] [-g] [-d] [-o=output_name] inputs..." << endl;
+		cout << "Flags:" << endl;
+
+		size_t longest_flag = 0;
+		for (const auto& arg : arg_parse::NAMED_OPTIONS) {
+			longest_flag = std::max(arg.name_length, longest_flag);
 		}
+
+		const size_t total_space = longest_flag + 1;
+
+		for (const auto& arg : arg_parse::NAMED_OPTIONS) {
+			cout << arg.name;
+			cout << std::string(total_space - arg.name_length, ' ');
+			cout << arg.summary;
+			cout << endl;
+		}
+	}
+
+	static void print_version() {
+		std::cout << "Hemera compiler version " << VERSION_STR << std::endl;
+		std::cout << VERSION_COPYRIGHT_STR << std::endl;
 	}
 
 	int main(int argc, char* argv[])
@@ -21,44 +39,28 @@ namespace hemera {
 		Logger::init();
 		Allocator<> arg_alloc;
 
-		using std::cout;
-		using std::endl;
-
 		arg_parse::Options* options =
 			arg_alloc.new_object<arg_parse::Options>();
 
 		bool all_fine = arg_parse::parse_arguments(argc, argv, *options, arg_alloc);
 
-		cout << "Options:" << endl;
-
-		cout << "Input: ";
-		print_list(options->input);
-		cout << endl;
-
-		cout << "Options: ";
-		for (size_t i = 0; i < options->options.size(); ++i) {
-			std::cout << options->options[i];
-			if (i + 1 < options->options.size()) {
-				std::cout << ", ";
-			}
-		}
-		cout << endl;
-		
-		cout << "Options with values: ";
-		for (size_t i = 0; i < options->options_with_values.size(); ++i) {
-			cout << "{ " << options->options_with_values[i].option << " | ";
-			print_list(options->options_with_values[i].values);
-			cout << " }";
-			if (i + 1 < options->options_with_values.size()) {
-				std::cout << ", ";
-			}
-		}
-		cout << endl;
-
 		if (!all_fine) {
-			//TODO(ches) print help text
-			cout << "Not all arguments could be parsed!" << endl;
+			std::cout << "Error parsing arguments!" << std::endl;
+
+			print_help();
 			return 1;
+		}
+
+		for (const auto& option : options->options) {
+			if (option == arg_parse::Option::HELP) {
+				print_help();
+				return 0;
+			}
+
+			if (option == arg_parse::Option::VERSION) {
+				print_version();
+				return 0;
+			}
 		}
 
 		return 0;

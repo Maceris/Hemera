@@ -20,7 +20,7 @@ constexpr auto VERSION_STR = HV_TO_LITERAL(MAJOR_VERSION.MINOR_VERSION.PATCH_VER
 
 HV_VERSION(0, 0, 1)
 
-constexpr auto VERSION_COPYRIGHT_STR = "\xA9 2025";
+constexpr auto VERSION_COPYRIGHT_STR = "Copyright 2025";
 
 #undef HV_VALUE
 #undef HV_TO_LITERAL
