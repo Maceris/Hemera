@@ -18,12 +18,19 @@ namespace hemera {
 		for (const auto& arg : arg_parse::NAMED_OPTIONS) {
 			longest_flag = std::max(arg.name_length, longest_flag);
 		}
+		static const char* ARGS_STRING = "=arg1,arg2...";
+		static const size_t ARGS_STRING_LEN = strlen(ARGS_STRING);
 
-		const size_t total_space = longest_flag + 1;
+		const size_t total_space = longest_flag + ARGS_STRING_LEN + 1;
 
 		for (const auto& arg : arg_parse::NAMED_OPTIONS) {
 			cout << arg.name;
-			cout << std::string(total_space - arg.name_length, ' ');
+			size_t length_used = arg.name_length;
+			if (arg.has_args) {
+				cout << ARGS_STRING;
+				length_used += ARGS_STRING_LEN;
+			}
+			cout << std::string(total_space - length_used, ' ');
 			cout << arg.summary;
 			cout << endl;
 		}
