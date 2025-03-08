@@ -67,6 +67,8 @@ namespace hemera::arg_parse {
 
 		bool all_fine = true;
 
+		bool started_input = false;
+
 		//NOTE(ches) Skip the first argument, hoping it's the program name
 		for (int i = 1; i < argc; ++i) {
 			const char* raw_arg = argv[i];
@@ -80,6 +82,12 @@ namespace hemera::arg_parse {
 			}
 
 			if (found_equals.found) {
+				if (started_input) {
+					LOG_WARNING("Flags with values after input, something is probably wrong");
+					all_fine = false;
+					continue;
+				}
+
 				size_t option_size = found_equals.location;
 
 				char* just_option = static_cast<char*>(alloc.allocate_bytes(option_size + 1));
@@ -115,8 +123,12 @@ namespace hemera::arg_parse {
 				std::optional<const OptionDescription*> maybe_option = find_option(raw_arg);
 
 				if (!maybe_option) {
-					//TODO(ches) source files
-					LOG_WARNING(std::format("Unrecognized option {}", raw_arg));
+					started_input = true;
+					output.input.emplace_back(raw_arg);
+					continue;
+				}
+				if (started_input) {
+					LOG_WARNING("Flags after input, something is probably wrong");
 					all_fine = false;
 					continue;
 				}
