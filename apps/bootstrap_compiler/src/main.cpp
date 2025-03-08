@@ -1,9 +1,12 @@
 
 #include <iostream>
 
+#include "job.h"
 #include "version.h"
 #include "cmd_line/arg_parsing.h"
+#include "memory/thread_safe_queue.h"
 #include "util/logger.h"
+#include "util/thread_pool.h"
 
 namespace hemera {
 
@@ -69,6 +72,10 @@ namespace hemera {
 				return 0;
 			}
 		}
+
+		ThreadSafeQueue<Job> work_queue = ThreadSafeQueue<Job>();
+
+		ThreadPool threads = ThreadPool();
 
 		return 0;
 	}
