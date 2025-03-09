@@ -12,4 +12,12 @@ namespace hemera {
 
 	}
 
+	void ThreadPool::start() {
+
+	}
+
+	void ThreadPool::stop() {
+
+	}
+
 }
