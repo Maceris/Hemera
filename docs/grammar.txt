@@ -1,0 +1,84 @@
+# Hemera grammar
+
+# Tokens
+
+letter = "A" | "B" | "C" | "D" | "E" | "F" | "G"
+       | "H" | "I" | "J" | "K" | "L" | "M" | "N"
+       | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
+       | "V" | "W" | "X" | "Y" | "Z" | "a" | "b"
+       | "c" | "d" | "e" | "f" | "g" | "h" | "i"
+       | "j" | "k" | "l" | "m" | "n" | "o" | "p"
+       | "q" | "r" | "s" | "t" | "u" | "v" | "w"
+       | "x" | "y" | "z" ;
+
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+
+identifier = letter , { letter | digit | "_" } ;
+
+S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
+
+KEYWORD_underscore = "_" ;
+KEYWORD_alias = "alias" ;
+KEYWORD_all = "all" ;
+KEYWORD_break = "break" ;
+KEYWORD_case = "case" ;
+KEYWORD_const = "const" ;
+KEYWORD_context = "context" ;
+KEYWORD_continue = "continue" ;
+KEYWORD_distinct = "distinct" ;
+KEYWORD_do = "do" ;
+KEYWORD_else = "else" ;
+KEYWORD_enum = "enum" ;
+KEYWORD_false = "false" ;
+KEYWORD_for = "for" ;
+KEYWORD_fn = "fn" ;
+KEYWORD_if = "if" ;
+KEYWORD_import = "import" ;
+KEYWORD_match = "match" ;
+KEYWORD_mut = "mut" ;
+KEYWORD_null = "null" ;
+KEYWORD_package = "package" ;
+KEYWORD_return = "return" ;
+KEYWORD_struct = "struct" ;
+KEYWORD_switch = "switch" ;
+KEYWORD_true = "true" ;
+KEYWORD_union = "union" ;
+KEYWORD_using = "using" ;
+KEYWORD_void = "void" ;
+KEYWORD_while = "while" ;
+
+operator_type_indicator = ":" ;
+operator_constant_decl = ":" ;
+operator_mutable_assignment = "=" ;
+
+# Definitions
+
+file = package_statement , imports , definitions ;
+
+package_statement = KEYWORD_package , identifier ;
+
+imports = import , [ imports ] ;
+import = KEYWORD_import , [ identifier ] , relative_package_name ;
+relative_package_name = '"' , [ identifier , ":"  ] , package_path , '"' ;
+package_path = directory_path , "/", identifier ;
+directory_path = ( directory_name , directory_path ) | directory_name ;
+directory_name = directory_character , { directory_character } ;
+directory_character = letter | digit | "_" | "-" ;
+
+definitions = definition , { definitions } ;
+#TODO(ches) can const and func just be one thing? or all of these??
+definition = constant_decl | function_decl | struct_decl | union_decl | enum_decl ;
+
+constant_decl = identifier , operator_type_indicator , [ type_decl ] , operator_constant_decl , expression ;
+
+function_decl = identifier , operator_type_indicator , [ type_decl ] , operator_constant_decl , function_signature , function_body ;
+struct_decl = ; #TODO(ches)
+union_decl = ; #TODO(ches)
+enum_decl = ; #TODO(ches)
+
+type_decl = ; #TODO(ches)
+
+expression = ; #TODO(ches)
+function_signature = ; #TODO(ches)
+function_body = ; #TODO(ches)
+

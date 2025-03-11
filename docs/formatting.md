@@ -12,7 +12,7 @@
 | Union Member | PascalCase           | ArgumentList, LeafNode          |
 | Variable     | snake_case           | first_item, cached_width        |
 
-The only valid characters for identifiers are alphanumeric characters ([a-z], [A-Z], [0-9]) and underscore ('_').
+The only valid characters for identifiers are alphanumeric characters ([a-z], [A-Z], [0-9]) and underscore ('_'), and must start with a letter.
 Identifiers may not be the same as reserved keywords or builtin types.
 
 # File Structure
@@ -22,11 +22,7 @@ The official recommended file structure as below:
 1. Optional beginning comments
 2. Package statement (first non-comment non-empty line)
 3. Imports
-4. Constants
-5. Functions
-
-No particular order of constants and functions is required to compile, 
-but the official order is encouraged for standardization.
+4. Declarations
 
 For example:
 
@@ -43,6 +39,11 @@ EXAMPLE_CONSTANT :: 43
 
 example_function :: fn(x: int) {
     return EXAMPLE_CONSTANT + x
+}
+
+ExampleStruct :: struct {
+    x : f32,
+    y : f32,
 }
 ```
 
