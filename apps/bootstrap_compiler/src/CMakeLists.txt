@@ -10,6 +10,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/lexer/token.h
   ${INCLUDE_DIR}/memory/allocator.h
   ${INCLUDE_DIR}/memory/thread_safe_queue.h
+  ${INCLUDE_DIR}/types/primitives.h
   ${INCLUDE_DIR}/util/logger.h
   ${INCLUDE_DIR}/util/thread_pool.h
 )
