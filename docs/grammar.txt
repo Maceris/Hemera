@@ -17,6 +17,9 @@ identifier = letter , { letter | digit | "_" } ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
+block_start = "{" ;
+block_end = "}" ;
+
 KEYWORD_underscore = "_" ;
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
@@ -47,9 +50,24 @@ KEYWORD_using = "using" ;
 KEYWORD_void = "void" ;
 KEYWORD_while = "while" ;
 
-operator_type_indicator = ":" ;
-operator_constant_decl = ":" ;
-operator_mutable_decl = "=" ;
+OPERATOR_type_indicator = ":" ;
+OPERATOR_constant_decl = ":" ;
+OPERATOR_mutable_decl = "=" ;
+
+OPERATOR_plus = "+" ;
+OPERATOR_minus = "-" ;
+OPERATOR_divide = "/" ;
+OPERATOR_multiply = "*" ;
+OPERATOR_modulus = "%" ;
+OPERATOR_remainder = "%%" ;
+OPERATOR_bitwise_or = "|" ;
+OPERATOR_bitwise_and = "&" ;
+OPERATOR_bitwise_xor = "~" ;
+OPERATOR_left_shift = "<<" ;
+OPERATOR_right_shift_arithmetic = ">>" ;
+OPERATOR_right_shift_logical = ">>>" ;
+
+OPERATOR_pipe = "|>" ;
 
 # Definitions
 
@@ -66,14 +84,14 @@ directory_name = directory_character , { directory_character } ;
 directory_character = letter | digit | "_" | "-" ;
 
 const_definitions = const_definition , { const_definitions } ;
-const_definition = operator_type_indicator , [ type ] , operator_constant_decl ;
+const_definition = OPERATOR_type_indicator , [ type ] , OPERATOR_constant_decl ;
 
 decl_rhs = expression | function_decl | struct_decl | union_decl | enum_decl ;
 
 function_decl = function_signature , function_body ;
-struct_decl = ; #TODO(ches)
-union_decl = ; #TODO(ches)
-enum_decl = ; #TODO(ches)
+struct_decl = KEYWORD_struct , block_start , struct_body , block_end ;
+union_decl = KEYWORD_union , block_start , union_body , block_end ;
+enum_decl = KEYWORD_enum , block_start , enum_body , block_end ;
 
 type = ; #TODO(ches)
 
@@ -81,3 +99,6 @@ expression = ; #TODO(ches)
 function_signature = ; #TODO(ches)
 function_body = ; #TODO(ches)
 
+struct_body = ; #TODO(ches)
+union_body = ; #TODO(ches)
+enum_body = ; #TODO(ches)
