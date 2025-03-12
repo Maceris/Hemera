@@ -3,17 +3,19 @@
 # Tokens
 
 letter = "A" | "B" | "C" | "D" | "E" | "F" | "G"
-       | "H" | "I" | "J" | "K" | "L" | "M" | "N"
-       | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
-       | "V" | "W" | "X" | "Y" | "Z" | "a" | "b"
-       | "c" | "d" | "e" | "f" | "g" | "h" | "i"
-       | "j" | "k" | "l" | "m" | "n" | "o" | "p"
-       | "q" | "r" | "s" | "t" | "u" | "v" | "w"
-       | "x" | "y" | "z" ;
+    | "H" | "I" | "J" | "K" | "L" | "M" | "N"
+    | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
+    | "V" | "W" | "X" | "Y" | "Z" | "a" | "b"
+    | "c" | "d" | "e" | "f" | "g" | "h" | "i"
+    | "j" | "k" | "l" | "m" | "n" | "o" | "p"
+    | "q" | "r" | "s" | "t" | "u" | "v" | "w"
+    | "x" | "y" | "z" ;
 
 digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 
 identifier = letter , { letter | digit | "_" } ;
+
+directory_character = letter | digit | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
@@ -79,26 +81,47 @@ imports = import , [ imports ] ;
 import = KEYWORD_import , relative_package_name, [ identifier ] ;
 relative_package_name = '"' , [ identifier , ":"  ] , package_path , '"' ;
 package_path = directory_path , "/", identifier ;
-directory_path = ( directory_name , directory_path ) | directory_name ;
+directory_path = ( directory_name , directory_path ) 
+    | directory_name
+    ;
 directory_name = directory_character , { directory_character } ;
-directory_character = letter | digit | "_" | "-" ;
 
 const_definitions = const_definition , { const_definitions } ;
 const_definition = OPERATOR_type_indicator , [ type ] , OPERATOR_constant_decl ;
 
-decl_rhs = expression | function_decl | struct_decl | union_decl | enum_decl ;
+decl_rhs = expression
+    | function_decl
+    | struct_decl
+    | union_decl
+    | enum_decl
+    ;
 
 function_decl = function_signature , function_body ;
-struct_decl = KEYWORD_struct , block_start , struct_body , block_end ;
-union_decl = KEYWORD_union , block_start , union_body , block_end ;
+struct_decl = KEYWORD_struct , [ generic_tag ] , block_start , struct_body , block_end ;
+union_decl = KEYWORD_union , [ generic_tag ] , block_start , union_body , block_end ;
 enum_decl = KEYWORD_enum , block_start , enum_body , block_end ;
 
 type = ; #TODO(ches)
 
 expression = ; #TODO(ches)
-function_signature = ; #TODO(ches)
+function_signature = KEYWORD_fn , [ generic_tag ], "(" , [ function_parameter_list ] , ")" , [ "->" , function_output_list ];
+function_parameter_list = ( function_parameter , { "," , function_parameter } )
+    | ( "(" , function_parameter , { "," , function_parameter }, ")" )
+    ;
+function_output_list = KEYWORD_void 
+    | ( type , { "," , type } )
+    | ( "(" , identifier , ":", type , { "," , identifier , ":", type }, ")" )
+    ;
+function_parameter = ( identifier , ":", type )
+    | ( identifier , ":=", default_value )
+    ;
 function_body = ; #TODO(ches)
+default_value = ; #TODO(ches)
 
 struct_body = ; #TODO(ches)
 union_body = ; #TODO(ches)
 enum_body = ; #TODO(ches)
+
+generic_tag = "<" , identifier , { "," , identifier } , ">" ;
+
+pointer_type = "ptr" , "<" , type , ">" ;
