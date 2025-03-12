@@ -6,11 +6,11 @@ SharedPtr :: struct<T> {
 	destructor: fn(value: ptr<T>),
 }
 
-increment :: fn(pointer: SharedPtr<T>) {
+increment :: fn<T>(pointer: SharedPtr<T>) {
 	pointer.count += 1
 }
 
-decrement :: fn(pointer: SharedPtr<T>) {
+decrement :: fn<T>(pointer: SharedPtr<T>) {
 	assert(count > 0)
 	
 	count -= 1

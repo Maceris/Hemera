@@ -81,8 +81,8 @@ type :: alias type
 // Functions
 panic :: fn(str: string) ---
 
-align_of :: fn($T: type) -> int ---
-size_of  :: fn($T: type) -> int ---
+align_of :: fn<T>(T: type) -> int ---
+size_of  :: fn<T>(T: type) -> int ---
 
 type_of :: fn(x: expr) -> type ---
-type_info_of :: fn($T: type) -> TypeInfo ---
+type_info_of :: fn<T>(T: type) -> TypeInfo ---
