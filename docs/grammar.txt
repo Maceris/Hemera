@@ -49,34 +49,33 @@ KEYWORD_while = "while" ;
 
 operator_type_indicator = ":" ;
 operator_constant_decl = ":" ;
-operator_mutable_assignment = "=" ;
+operator_mutable_decl = "=" ;
 
 # Definitions
 
-file = package_statement , imports , definitions ;
+file = package_statement , imports , const_definitions ;
 
 package_statement = KEYWORD_package , identifier ;
 
 imports = import , [ imports ] ;
-import = KEYWORD_import , [ identifier ] , relative_package_name ;
+import = KEYWORD_import , relative_package_name, [ identifier ] ;
 relative_package_name = '"' , [ identifier , ":"  ] , package_path , '"' ;
 package_path = directory_path , "/", identifier ;
 directory_path = ( directory_name , directory_path ) | directory_name ;
 directory_name = directory_character , { directory_character } ;
 directory_character = letter | digit | "_" | "-" ;
 
-definitions = definition , { definitions } ;
-#TODO(ches) can const and func just be one thing? or all of these??
-definition = constant_decl | function_decl | struct_decl | union_decl | enum_decl ;
+const_definitions = const_definition , { const_definitions } ;
+const_definition = operator_type_indicator , [ type ] , operator_constant_decl ;
 
-constant_decl = identifier , operator_type_indicator , [ type_decl ] , operator_constant_decl , expression ;
+decl_rhs = expression | function_decl | struct_decl | union_decl | enum_decl ;
 
-function_decl = identifier , operator_type_indicator , [ type_decl ] , operator_constant_decl , function_signature , function_body ;
+function_decl = function_signature , function_body ;
 struct_decl = ; #TODO(ches)
 union_decl = ; #TODO(ches)
 enum_decl = ; #TODO(ches)
 
-type_decl = ; #TODO(ches)
+type = ; #TODO(ches)
 
 expression = ; #TODO(ches)
 function_signature = ; #TODO(ches)
