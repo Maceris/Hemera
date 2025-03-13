@@ -52,7 +52,7 @@ KEYWORD_using = "using" ;
 KEYWORD_void = "void" ;
 KEYWORD_while = "while" ;
 
-OPERATOR_type_indicator = ":" ;
+OPERATOR_type_indicator = ":" ; #TODO(ches) should we just have one : token for everything?
 OPERATOR_constant_decl = ":" ;
 OPERATOR_mutable_decl = "=" ;
 
@@ -87,9 +87,10 @@ directory_path = ( directory_name , directory_path )
 directory_name = directory_character , { directory_character } ;
 
 const_definitions = const_definition , { const_definitions } ;
-const_definition = OPERATOR_type_indicator , [ type ] , OPERATOR_constant_decl ;
+const_definition = identifier, OPERATOR_type_indicator , [ type ] , OPERATOR_constant_decl , decl_rhs ;
+const_or_mut_definition = identifier, OPERATOR_type_indicator , [ type ] , ( OPERATOR_constant_decl | OPERATOR_mutable_decl ) , decl_rhs ;
 
-decl_rhs = expression
+decl_rhs = expression_with_result
     | function_decl
     | struct_decl
     | union_decl
@@ -103,7 +104,6 @@ enum_decl = KEYWORD_enum , block_start , enum_body , block_end ;
 
 type = ; #TODO(ches)
 
-expression = ; #TODO(ches)
 function_signature = KEYWORD_fn , [ generic_tag ], "(" , [ function_parameter_list ] , ")" , [ "->" , function_output_list ];
 function_parameter_list = ( function_parameter , { "," , function_parameter } )
     | ( "(" , function_parameter , { "," , function_parameter }, ")" )
@@ -115,13 +115,35 @@ function_output_list = KEYWORD_void
 function_parameter = ( identifier , ":", type )
     | ( identifier , ":=", default_value )
     ;
-function_body = ; #TODO(ches)
-default_value = ; #TODO(ches)
+function_body = block_start, { expression } , block_end ;
+default_value = literal
+    | "#caller_location"
+    ;
 
-struct_body = ; #TODO(ches)
-union_body = ; #TODO(ches)
-enum_body = ; #TODO(ches)
+struct_body = block_start , [ struct_member ] { "," , struct_member } , [ "," ] , block_end ;
+union_body = block_start , [ union_member ] { "," , union_member } , [ "," ] , block_end ;
+enum_body = block_start , [ enum_member ] { "," , enum_member } , [ "," ] , block_end;
 
 generic_tag = "<" , identifier , { "," , identifier } , ">" ;
 
 pointer_type = "ptr" , "<" , type , ">" ;
+
+struct_member = ; #TODO(ches)
+union_member = ; #TODO(ches)
+enum_member = ; #TODO(ches)
+
+expression = expression_with_result
+    | expression_with_void_result
+    ;
+
+expression_with_result = literal
+    | arithmetic_expression
+    | block
+    | const_or_mut_definition
+    ;
+expression_with_void_result = for_loop
+    ;
+
+literal = ; #TODO(ches)
+arithmetic_expression = ; #TODO(ches)
+
