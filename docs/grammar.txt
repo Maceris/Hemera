@@ -19,7 +19,6 @@ directory_character = letter | digit | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
-KEYWORD_underscore = "_" ;
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
 KEYWORD_break = "break" ;
@@ -32,8 +31,8 @@ KEYWORD_do = "do" ;
 KEYWORD_else = "else" ;
 KEYWORD_enum = "enum" ;
 KEYWORD_false = "false" ;
-KEYWORD_for = "for" ;
 KEYWORD_fn = "fn" ;
+KEYWORD_for = "for" ;
 KEYWORD_if = "if" ;
 KEYWORD_import = "import" ;
 KEYWORD_match = "match" ;
@@ -44,37 +43,37 @@ KEYWORD_return = "return" ;
 KEYWORD_struct = "struct" ;
 KEYWORD_switch = "switch" ;
 KEYWORD_true = "true" ;
+KEYWORD_underscore = "_" ;
 KEYWORD_union = "union" ;
 KEYWORD_using = "using" ;
 KEYWORD_void = "void" ;
 KEYWORD_while = "while" ;
 
-SYM_LPAREN = "(" ;
-SYM_RPAREN = ")" ;
-SYM_LBRACE = "{" ;
-SYM_RBRACE = "}" ;
+SYM_ARROW = "->" ;
 SYM_COLON = ":" ;
 SYM_COMMA = "," ;
-SYM_ARROW = "->" ;
-SYM_QUOTE = '"' ;
 SYM_EQ = "=" ;
-SYM_LT = "<" ;
 SYM_GT = ">" ;
+SYM_LBRACE = "{" ;
+SYM_LPAREN = "(" ;
+SYM_LT = "<" ;
+SYM_QUOTE = '"' ;
+SYM_RBRACE = "}" ;
+SYM_RPAREN = ")" ;
 
-OPERATOR_plus = "+" ;
-OPERATOR_minus = "-" ;
-OPERATOR_divide = "/" ;
-OPERATOR_multiply = "*" ;
-OPERATOR_modulus = "%" ;
-OPERATOR_remainder = "%%" ;
-OPERATOR_bitwise_or = "|" ;
 OPERATOR_bitwise_and = "&" ;
+OPERATOR_bitwise_or = "|" ;
 OPERATOR_bitwise_xor = "~" ;
+OPERATOR_divide = "/" ;
 OPERATOR_left_shift = "<<" ;
+OPERATOR_minus = "-" ;
+OPERATOR_modulus = "%" ;
+OPERATOR_multiply = "*" ;
+OPERATOR_pipe = "|>" ;
+OPERATOR_plus = "+" ;
+OPERATOR_remainder = "%%" ;
 OPERATOR_right_shift_arithmetic = ">>" ;
 OPERATOR_right_shift_logical = ">>>" ;
-
-OPERATOR_pipe = "|>" ;
 
 # Definitions
 
@@ -118,7 +117,7 @@ function_output_list = KEYWORD_void
     | ( SYM_LPAREN , identifier , SYM_COLON, type , { SYM_COMMA , identifier , SYM_COLON, type }, SYM_RPAREN )
     ;
 function_parameter = ( identifier , SYM_COLON, type )
-    | ( identifier , SYM_COLON , SYM_EQ , default_value )
+    | ( identifier , SYM_COLON , [ type ] , SYM_EQ , default_value )
     ;
 function_body = SYM_LBRACE, { expression } , SYM_RBRACE ;
 default_value = literal
