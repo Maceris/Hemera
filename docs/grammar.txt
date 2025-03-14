@@ -19,9 +19,6 @@ directory_character = letter | digit | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
-block_start = "{" ;
-block_end = "}" ;
-
 KEYWORD_underscore = "_" ;
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
@@ -52,9 +49,17 @@ KEYWORD_using = "using" ;
 KEYWORD_void = "void" ;
 KEYWORD_while = "while" ;
 
-OPERATOR_type_indicator = ":" ; #TODO(ches) should we just have one : token for everything?
-OPERATOR_constant_decl = ":" ;
-OPERATOR_mutable_decl = "=" ;
+SYM_LPAREN = "(" ;
+SYM_RPAREN = ")" ;
+SYM_LBRACE = "{" ;
+SYM_RBRACE = "}" ;
+SYM_COLON = ":" ;
+SYM_COMMA = "," ;
+SYM_ARROW = "->" ;
+SYM_QUOTE = '"' ;
+SYM_EQ = "=" ;
+SYM_LT = "<" ;
+SYM_GT = ">" ;
 
 OPERATOR_plus = "+" ;
 OPERATOR_minus = "-" ;
@@ -79,16 +84,16 @@ package_statement = KEYWORD_package , identifier ;
 
 imports = import , [ imports ] ;
 import = KEYWORD_import , relative_package_name, [ identifier ] ;
-relative_package_name = '"' , [ identifier , ":"  ] , package_path , '"' ;
-package_path = directory_path , "/", identifier ;
+relative_package_name = SYM_QUOTE , [ identifier , SYM_COLON  ] , package_path , SYM_QUOTE ;
+package_path = directory_path , OPERATOR_divide , identifier ;
 directory_path = ( directory_name , directory_path ) 
     | directory_name
     ;
 directory_name = directory_character , { directory_character } ;
 
 const_definitions = const_definition , { const_definitions } ;
-const_definition = identifier, OPERATOR_type_indicator , [ type ] , OPERATOR_constant_decl , decl_rhs ;
-const_or_mut_definition = identifier, OPERATOR_type_indicator , [ type ] , ( OPERATOR_constant_decl | OPERATOR_mutable_decl ) , decl_rhs ;
+const_definition = identifier, SYM_COLON , [ type ] , SYM_COLON , decl_rhs ;
+const_or_mut_definition = identifier, SYM_COLON , [ type ] , ( SYM_COLON | SYM_EQ ) , decl_rhs ;
 
 decl_rhs = expression_with_result
     | function_decl
@@ -98,35 +103,35 @@ decl_rhs = expression_with_result
     ;
 
 function_decl = function_signature , function_body ;
-struct_decl = KEYWORD_struct , [ generic_tag ] , block_start , struct_body , block_end ;
-union_decl = KEYWORD_union , [ generic_tag ] , block_start , union_body , block_end ;
-enum_decl = KEYWORD_enum , block_start , enum_body , block_end ;
+struct_decl = KEYWORD_struct , [ generic_tag ] , SYM_LBRACE , struct_body , SYM_RBRACE ;
+union_decl = KEYWORD_union , [ generic_tag ] , SYM_LBRACE , union_body , SYM_RBRACE ;
+enum_decl = KEYWORD_enum , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
 type = ; #TODO(ches)
 
-function_signature = KEYWORD_fn , [ generic_tag ], "(" , [ function_parameter_list ] , ")" , [ "->" , function_output_list ];
-function_parameter_list = ( function_parameter , { "," , function_parameter } )
-    | ( "(" , function_parameter , { "," , function_parameter }, ")" )
+function_signature = KEYWORD_fn , [ generic_tag ], SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
+function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } )
+    | ( SYM_LPAREN , function_parameter , { SYM_COMMA , function_parameter }, SYM_RPAREN )
     ;
 function_output_list = KEYWORD_void 
-    | ( type , { "," , type } )
-    | ( "(" , identifier , ":", type , { "," , identifier , ":", type }, ")" )
+    | ( type , { SYM_COMMA , type } )
+    | ( SYM_LPAREN , identifier , SYM_COLON, type , { SYM_COMMA , identifier , SYM_COLON, type }, SYM_RPAREN )
     ;
-function_parameter = ( identifier , ":", type )
-    | ( identifier , ":=", default_value )
+function_parameter = ( identifier , SYM_COLON, type )
+    | ( identifier , SYM_COLON , SYM_EQ , default_value )
     ;
-function_body = block_start, { expression } , block_end ;
+function_body = SYM_LBRACE, { expression } , SYM_RBRACE ;
 default_value = literal
     | "#caller_location"
     ;
 
-struct_body = block_start , [ struct_member ] { "," , struct_member } , [ "," ] , block_end ;
-union_body = block_start , [ union_member ] { "," , union_member } , [ "," ] , block_end ;
-enum_body = block_start , [ enum_member ] { "," , enum_member } , [ "," ] , block_end;
+struct_body = SYM_LBRACE , [ struct_member ] { SYM_COMMA , struct_member } , [ SYM_COMMA ] , SYM_RBRACE ;
+union_body = SYM_LBRACE , [ union_member ] { SYM_COMMA , union_member } , [ SYM_COMMA ] , SYM_RBRACE ;
+enum_body = SYM_LBRACE , [ enum_member ] { SYM_COMMA , enum_member } , [ SYM_COMMA ] , SYM_RBRACE;
 
-generic_tag = "<" , identifier , { "," , identifier } , ">" ;
+generic_tag = SYM_LT , identifier , { SYM_COMMA , identifier } , SYM_GT ;
 
-pointer_type = "ptr" , "<" , type , ">" ;
+pointer_type = "ptr" , SYM_LT , type , SYM_GT ;
 
 struct_member = ; #TODO(ches)
 union_member = ; #TODO(ches)
