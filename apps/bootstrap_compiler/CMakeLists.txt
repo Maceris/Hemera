@@ -21,39 +21,61 @@ SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON) # Use solution folders.
 # Operating system settings
 
 IF(WIN32)
-  ADD_DEFINITIONS(-DWIN32_LEAN_AND_MEAN)
-  ADD_DEFINITIONS(-DNOMINMAX)
+  SET(HEMERA_DEFINITIONS "${HEMERA_DEFINITIONS};-DWIN32_LEAN_AND_MEAN;-DNOMINMAX")
 ELSEIF(UNIX)
 
 ENDIF()
 
-ADD_DEFINITIONS(-Wall)
-
-
 # Compiler settings
 
 IF ((CMAKE_C_COMPILER_ID MATCHES "GNU") AND NOT MINGW AND NOT HAIKU)
-  ADD_DEFINITIONS(-pedantic)
-  ADD_DEFINITIONS(-Wextra -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=5 -Wswitch-default -Wundef -Wno-unused)
-  ADD_DEFINITIONS(-Werror)
-  ADD_DEFINITIONS(-fsanitize=undefined,shift,shift-exponent,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr,pointer-overflow,builtin)
-  ADD_DEFINITIONS(-fno-sanitize-recover=all)
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wall")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-pedantic")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wextra")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wcast-align")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wcast-qual")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wctor-dtor-privacy")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wdisabled-optimization")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wformat=2")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Winit-self")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wlogical-op")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wmissing-declarations")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wmissing-include-dirs")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wnoexcept")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wold-style-cast")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Woverloaded-virtual")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wredundant-decls")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wshadow")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wsign-conversion")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wsign-promo")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wstrict-null-sentinel")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wstrict-overflow=5")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wswitch-default")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wundef")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Wno-unused")
+  
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-Werror")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fsanitize=undefined,shift,shift-exponent,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr,pointer-overflow,builtin")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fno-sanitize-recover=all")
   
 ELSEIF(MSVC)
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/Wall")
   ADD_COMPILE_OPTIONS(
     $<$<CONFIG:>:/MT>
     $<$<CONFIG:Debug>:/MTd>
     $<$<CONFIG:Release>:/MT>
   )
-  ADD_COMPILE_OPTIONS(/MP /bigobj)
-  ADD_DEFINITIONS(/WX)
-  ADD_DEFINITIONS(/wd5045) # /Qspectre mitigation location warning, we don't use that flag
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/MP")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/WX")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/wd5045") # /Qspectre mitigation location warning, we don't use that flag
   
 ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # clang-cl
-  ADD_COMPILE_OPTIONS(/bigobj)
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")
+  
   IF(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 14)
-    ADD_DEFINITIONS(-ffp-contract=off)
+    SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-ffp-contract=off")
   ENDIF()
 
 ENDIF()
@@ -90,10 +112,20 @@ MACRO(TARGET_USE_COMMON_OUTPUT_DIRECTORY target)
 ENDMACRO()
 
 SET(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-SET(THIRD_PARTY_DIR ${ROOT_DIR}/third_party)
+SET(THIRD_PARTY_DIR ${ROOT_DIR}/third-party)
 SET(SOURCE_DIR ${ROOT_DIR}/src)
 SET(INCLUDE_DIR ${ROOT_DIR}/include)
+SET(TEST_DIR ${ROOT_DIR}/test)
 SET(CONFIGURATION_BINARY_DIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}/$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>)
+
+# Third party
+
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+SET(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+SET(BUILD_GMOCK OFF)
+#SET(INSTALL_GTEST OFF)
+ADD_SUBDIRECTORY(${THIRD_PARTY_DIR}/googletest)
+INCLUDE(GoogleTest)
 
 # Project code
 ADD_SUBDIRECTORY(src)

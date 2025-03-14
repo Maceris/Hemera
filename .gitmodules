@@ -1,0 +1,3 @@
+[submodule "apps/bootstrap_compiler/third-party/googletest"]
+	path = apps/bootstrap_compiler/third-party/googletest
+	url = https://github.com/google/googletest.git
