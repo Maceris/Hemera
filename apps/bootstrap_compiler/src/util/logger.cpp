@@ -397,10 +397,7 @@ namespace Logger
 	{
 		if (log_manager)
 		{
-			if (log_manager)
-			{
-				delete log_manager;
-			}
+			delete log_manager;
 			log_manager = nullptr;
 		}
 	}
