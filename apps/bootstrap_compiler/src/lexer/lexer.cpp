@@ -6,10 +6,20 @@
 
 namespace hemera::lexer {
 
-	void lex_line(const std::string& line, MyVector<Token> output) {
+	void lex_line(const std::string& line, const uint32_t line_number,
+		MyVector<Token> output) {
 		if (line.empty()) {//TODO(ches) actually lex things
 			return;
 		}
+		
+		const size_t line_length = line.length();
+
+		if (line_number == 0) return; //TODO(ches) remove this, working around C4100
+
+		for (size_t i = 0; i < line_length; ++i) {
+
+		}
+
 	}
 
 	void lex(const std::string& file_path, MyVector<Token> output) {
@@ -23,9 +33,11 @@ namespace hemera::lexer {
 		}
 
 		std::string line;
-		//TODO(ches) eh
+		uint32_t line_number = 1;
+
 		while (std::getline(input, line)) {
-			lex_line(line, output);
+			lex_line(line, line_number, output);
+			line_number += 1;
 		}
 	}
 }
