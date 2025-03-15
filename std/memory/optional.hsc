@@ -19,13 +19,6 @@ is_some :: fn<T>(optional: Optional<T>) -> bool {
     }
 }
 
-unwrap :: fn<T>(optional: Optional<T>) -> T {
-    match optional {
-        Some(T) => return T,
-        None => panic("Provided a `None` Optional to `unwrap(Optional)`"),
-    }
-}
-
 unwrap_or :: fn<T>(optional: Optional<T>, def: T) -> T {
     match optional {
         Some(T) => return T,
