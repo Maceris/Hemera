@@ -13,9 +13,9 @@ namespace hemera {
 	void report_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
 
-		auto it = ERRORS.find(error);
+		auto it = ErrorInfoMap.find(error);
 
-		ErrorInfo info = (it != ERRORS.end()) 
+		ErrorInfo info = (it != ErrorInfoMap.end())
 			? info = it->second 
 			: ErrorInfo("E0000", "Unknown error");
 		
@@ -29,9 +29,9 @@ namespace hemera {
 
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
-		auto it = WARNINGS.find(warning);
+		auto it = WarningInfoMap.find(warning);
 
-		WarningInfo info = (it != WARNINGS.end())
+		WarningInfo info = (it != WarningInfoMap.end())
 			? info = it->second
 			: WarningInfo("W0000", "Unknown warning");
 

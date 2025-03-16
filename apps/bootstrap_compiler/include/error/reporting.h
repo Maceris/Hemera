@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
-#include "error/error.h"
-#include "error/warning.h"
+#include "errors.h"
+#include "warnings.h"
 
 namespace hemera {
 	void report_error(ErrorCode error, std::string_view file,

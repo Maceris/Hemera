@@ -118,6 +118,32 @@ SET(INCLUDE_DIR ${ROOT_DIR}/include)
 SET(TEST_DIR ${ROOT_DIR}/test)
 SET(CONFIGURATION_BINARY_DIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}/$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>)
 
+# Custom commands
+ADD_EXECUTABLE(generate_errors ${SOURCE_DIR}/error/generate_errors.cpp)
+TARGET_USE_COMMON_OUTPUT_DIRECTORY(generate_errors)
+
+TARGET_COMPILE_DEFINITIONS(generate_errors PRIVATE ${HEMERA_DEFINITIONS})
+TARGET_COMPILE_OPTIONS(generate_errors PRIVATE ${HEMERA_OPTIONS})
+
+SET_TARGET_PROPERTIES(generate_errors PROPERTIES OUTPUT_NAME generate_errors)
+
+ADD_CUSTOM_COMMAND(
+  OUTPUT ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h
+  COMMAND generate_errors error ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h
+  DEPENDS generate_errors ${ROOT_DIR}/include/error/errors.list
+)
+SET(HEMERA_GENERATED ${HEMERA_GENERATED} ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h)
+
+ADD_CUSTOM_COMMAND(
+  OUTPUT ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
+  COMMAND generate_errors warning ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
+  DEPENDS generate_errors ${ROOT_DIR}/include/error/warnings.list
+)
+
+SET(HEMERA_GENERATED ${HEMERA_GENERATED} ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h)
+
+ADD_CUSTOM_TARGET(HemeraGenerated DEPENDS ${HEMERA_GENERATED})
+
 # Third party
 
 # For Windows: Prevent overriding the parent project's compiler/linker settings
