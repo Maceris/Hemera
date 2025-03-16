@@ -1,6 +1,7 @@
 #include <format>
 #include <fstream>
 
+#include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "util/logger.h"
 
@@ -29,6 +30,7 @@ namespace hemera::lexer {
 		if (!input.is_open()) {
 			LOG_ERROR(std::format("Cannot find file ", file_path));
 			//TODO(ches) I think this is a compiler error
+			report_error(ErrorCode::E1000, file_path, 0, 0);
 			return;
 		}
 

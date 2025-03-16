@@ -6,6 +6,9 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/job.h
   ${INCLUDE_DIR}/version.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
+  ${INCLUDE_DIR}/error/error.h
+  ${INCLUDE_DIR}/error/reporting.h
+  ${INCLUDE_DIR}/error/warning.h
   ${INCLUDE_DIR}/lexer/lexer.h
   ${INCLUDE_DIR}/lexer/token.h
   ${INCLUDE_DIR}/memory/allocator.h
@@ -17,6 +20,7 @@ SET(HEADER_FILES
 
 SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
+  ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/lexer/lexer.cpp
   ${SOURCE_DIR}/util/logger.cpp
   ${SOURCE_DIR}/util/thread_pool.cpp
