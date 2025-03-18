@@ -6,16 +6,14 @@
 #include <vector>
 
 static std::string format_enum(std::string_view name, std::string_view description) {
-	return std::format(R"(
-		// {}
+	return std::format(R"(		// {}
 		{},
 )", description, name);
 }
 
 static std::string format_struct(std::string_view type, std::string_view name,
 	std::string_view description) {
-	return std::format(R"(
-		{{ {0}Code::{1}, {{ "{1}", "{2}" }} }},
+	return std::format(R"(		{{ {0}Code::{1}, {{ "{1}", "{2}" }} }},
 )", type, name, description);
 }
 
