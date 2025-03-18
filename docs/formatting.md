@@ -13,7 +13,7 @@
 | Variable     | snake_case           | first_item, cached_width        |
 
 The only valid characters for identifiers are alphanumeric characters ([a-z], [A-Z], [0-9]) and underscore ('_'), and must start with a letter.
-Identifiers may not be the same as reserved keywords (see [[keywords]]) or builtin types (see [[types]]).
+Identifiers may not be the same as reserved keywords (see [keywords](keywords.md)) or builtin types (see [types](types.md)).
 
 # File Structure
 
