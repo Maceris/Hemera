@@ -1,5 +1,7 @@
+#include <concepts>
 #include <format>
 #include <fstream>
+#include <limits>
 
 #include "error/reporting.h"
 #include "lexer/lexer.h"
@@ -38,24 +40,27 @@ namespace hemera::lexer {
 
 	void lex_line(const std::string& line, const uint32_t line_number,
 		MyVector<Token> output) {
-		if (line.empty()) {//TODO(ches) actually lex things
+		if (line.empty()) {
 			return;
 		}
 		
 		const size_t line_length = line.length();
 
-		if (line_number == 0) return; //TODO(ches) remove this, working around C4100
-
 		for (size_t i = 0; i < line_length; ++i) {
 			Tokenizer line_tokenizer{ line };
 			
-			while (true) {
+			for (size_t safety_net = 0; ; ++safety_net) {
+				if (safety_net > std::numeric_limits<decltype(Token::column_number)>::max()) {
+					LOG_ERROR("Too many tokens on one line");
+					break;
+				}
 				Token next_token = next(line_tokenizer, line_number);
 				if (next_token.type == TokenType::END_OF_FILE) {
 					break;
 				}
 				output.push_back(next_token);
 			}
+
 		}
 
 	}
