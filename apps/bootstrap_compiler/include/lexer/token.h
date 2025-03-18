@@ -6,8 +6,10 @@
 
 namespace hemera {
 
-	enum TokenType : uint16_t {
+	enum class TokenType : uint16_t {
+		END_OF_FILE,
 		IDENTIFIER,
+		INVALID,
 		KEYWORD_ALIAS,
 		KEYWORD_ALL,
 		KEYWORD_BREAK,
@@ -85,7 +87,13 @@ namespace hemera {
 		uint32_t line_number;
 		MyString value;
 
-		Token() = default;
+		Token(TokenType type, uint16_t column_number, uint32_t line_number,
+			MyString value = "")
+			: type{ type }
+			, column_number{ column_number }
+			, line_number{ line_number }
+			, value{ value }
+		{}
 		Token(const Token&) = default;
 		Token(Token&&) = default;
 		~Token() = default;
