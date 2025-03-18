@@ -105,8 +105,7 @@ namespace Logger
 	while (0)\
 
 /// <summary>
-/// Log an error that is potentially fatal, ask the user what to do about it.
-/// Ignored in release mode.
+/// Log an error that is potentially fatal.
 /// </summary>
 #define LOG_ERROR(str) \
 	do \
