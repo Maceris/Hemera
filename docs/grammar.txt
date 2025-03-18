@@ -26,6 +26,7 @@ KEYWORD_case = "case" ;
 KEYWORD_const = "const" ;
 KEYWORD_context = "context" ;
 KEYWORD_continue = "continue" ;
+KEYWORD_defer = "defer" ;
 KEYWORD_distinct = "distinct" ;
 KEYWORD_do = "do" ;
 KEYWORD_else = "else" ;

@@ -11,6 +11,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `const` - For constant values
 * `context` - A special value implicit to any scope used for passing around certain common info
 * `continue` - For continuing with loops
+* `defer` - Used to defer statemetns until the end of scope
 * `distinct` - For type aliases that are treated as distinct
 * `do` - For do-while loops
 * `else` - For conditional statements
