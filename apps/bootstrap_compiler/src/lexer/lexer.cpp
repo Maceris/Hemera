@@ -38,8 +38,8 @@ namespace hemera::lexer {
 		return Token{ TokenType::END_OF_FILE, tokenizer.index, line_number };
 	}
 
-	void lex_line(const std::string& line, const uint32_t line_number,
-		MyVector<Token> output) {
+	void lex_line(const std::string& file_path, const std::string& line,
+		const uint32_t line_number, MyVector<Token> output) {
 		if (line.empty()) {
 			return;
 		}
@@ -51,7 +51,8 @@ namespace hemera::lexer {
 			
 			for (size_t safety_net = 0; ; ++safety_net) {
 				if (safety_net > std::numeric_limits<decltype(Token::column_number)>::max()) {
-					LOG_ERROR("Too many tokens on one line");
+					report_error(ErrorCode::E1001, file_path, line_number, 
+						std::numeric_limits<uint16_t>::max());
 					break;
 				}
 				Token next_token = next(line_tokenizer, line_number);
@@ -78,7 +79,7 @@ namespace hemera::lexer {
 		uint32_t line_number = 1;
 
 		while (std::getline(input, line)) {
-			lex_line(line, line_number, output);
+			lex_line(file_path, line, line_number, output);
 			line_number += 1;
 		}
 	}
