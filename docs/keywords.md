@@ -5,6 +5,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `_` - Used as a wildcard in pattern matching, and indicating ignored values in destructuring assignment
 * `alias` - For type aliasing
 * `all` - For use with break, to exit out of all loops
+* `as` - For giving an alias to imports
 * `break` - For breaking out of loops
 * `case` - For switch cases
 * `const` - For constant values

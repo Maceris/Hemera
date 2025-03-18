@@ -21,6 +21,7 @@ S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
+KEYWORD_as = "as" ;
 KEYWORD_break = "break" ;
 KEYWORD_case = "case" ;
 KEYWORD_const = "const" ;
