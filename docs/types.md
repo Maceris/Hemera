@@ -1,6 +1,43 @@
 # Types
 
-Hemera has several built in primitive types.
+Hemera has quite a few built-in primitive types.
+
+```
+// Boolean types
+b8 b16 b32 b64 bool
+
+// Integers
+i8 i16 i32 i64 i128 int // Signed
+u8 u16 u32 u64 u128 uint uintptr // Unsigned
+
+// Floating point numbers
+f16 f32 f64
+
+// Complex numbers
+c16 c32 c64 c128
+
+// Quaternions
+q32 q64 q128 q256
+
+// Endian specific integers
+i16be i32be i64be i128be u16be u32be u64be u128be // big endian
+i16le i32le i64le i128le u16le u32le u64le u128le // little endian
+
+// Endian specific floating point numbers
+f16be f32be f64be // big endian
+f16le f32le f64le // little endian
+
+// Strings
+string cstring
+
+// Pointers
+ptr rawptr
+
+// Type related
+any type
+```
+
+More details:
 
 | Type    | Description                                                                                                                                  |
 |---------|----------------------------------------------------------------------------------------------------------------------------------------------|
@@ -61,40 +98,3 @@ Hemera has several built in primitive types.
 | u128le  | 128-bit unsigned integer, little endian                                                                                                      |
 | uint    | Unsigned integer that is the standard size of a register on the system, guaranteed that size_of(uint) >= size_of(uintptr). Same size as int. |
 | uintptr | Unsigned integer that is large enough to hold the bit pattern of any pointer                                                                 |
-
-Grouped for easier reading:
-
-```
-// Boolean types
-b8 b16 b32 b64 bool
-
-// Integers
-i8 i16 i32 i64 i128 int // Signed
-u8 u16 u32 u64 u128 uint uintptr // Unsigned
-
-// Floating point numbers
-f16 f32 f64
-
-// Complex numbers
-c16 c32 c64 c128
-
-// Quaternions
-q32 q64 q128 q256
-
-// Endian specific integers
-i16be i32be i64be i128be u16be u32be u64be u128be // big endian
-i16le i32le i64le i128le u16le u32le u64le u128le // little endian
-
-// Endian specific floating point numbers
-f16be f32be f64be // big endian
-f16le f32le f64le // little endian
-
-// Strings
-string cstring
-
-// Pointers
-ptr rawptr
-
-// Type related
-any type
-```
