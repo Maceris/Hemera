@@ -49,16 +49,13 @@ namespace hemera::lexer {
 		for (size_t i = 0; i < line_length; ++i) {
 			Tokenizer line_tokenizer{ line };
 			
-			//NOTE(ches) I just want to assign and check in a while, please C++
-		nearly_a_while:
-			Token next_token = next(line_tokenizer, line_number);
-			if (next_token.type == TokenType::END_OF_FILE) {
-				goto after_a_while;
+			while (true) {
+				Token next_token = next(line_tokenizer, line_number);
+				if (next_token.type == TokenType::END_OF_FILE) {
+					break;
+				}
+				output.push_back(next_token);
 			}
-			output.push_back(next_token);
-			goto nearly_a_while;
-		after_a_while:;
-			
 		}
 
 	}
