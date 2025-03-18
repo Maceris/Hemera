@@ -1,6 +1,5 @@
 # Reserved Keywords
 
-
 Any primitive type name is a reserved keyword. In addition, these are reserved:
 
 * `_` - Used as a wildcard in pattern matching, and indicating ignored values in destructuring assignment

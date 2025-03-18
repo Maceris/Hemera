@@ -1,7 +1,9 @@
 # Operators
+
 Operators combine operands into expressions. For binary operations, the operand types must either be identical or implicitly convertible, unless the operand involves shifts or untyped constants.
 
 ## Address operators
+
 For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr<T>` to `x`.
 
 For an operand `x` of type `ptr<T>`, the dereference operation `x^` will result in the variable of type `T` pointed to by `x`. If x is an invalid address, such as `null`, dereferencing the pointer will result in platform specific behavior, likely a segmentation fault.
