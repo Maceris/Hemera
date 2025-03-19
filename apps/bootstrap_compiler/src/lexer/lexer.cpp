@@ -14,13 +14,17 @@ namespace hemera::lexer {
 	};
 
 	struct Tokenizer {
-		const std::string& buffer;
-		uint16_t index;
+		std::string current_line;
+		uint32_t line_number;
+		State state;
+		uint16_t column_number;
 		const char _padding[6] = { 0 };
 
-		Tokenizer(const std::string& buffer)
-			: buffer{ buffer }
-			, index{ 0 }
+		Tokenizer()
+			: current_line{}
+			, line_number{ 1 }
+			, state{ State::start }
+			, column_number{ 0 }
 		{}
 		Tokenizer(const Tokenizer&) = delete;
 		Tokenizer(Tokenizer&&) = default;
@@ -28,42 +32,18 @@ namespace hemera::lexer {
 		Tokenizer& operator=(Tokenizer&&) = delete;
 	};
 
-	static Token next(Tokenizer& tokenizer, const uint32_t line_number) {
-		//State state = State::start;
-
-		if (tokenizer.index >= tokenizer.buffer.length()) {
-			return Token{ TokenType::END_OF_FILE, tokenizer.index, line_number};
-		}
-		//TODO(ches) tokenize
-		return Token{ TokenType::END_OF_FILE, tokenizer.index, line_number };
-	}
-
-	void lex_line(const std::string& file_path, const std::string& line,
-		const uint32_t line_number, MyVector<Token> output) {
-		if (line.empty()) {
-			return;
-		}
-		
-		const size_t line_length = line.length();
-
-		for (size_t i = 0; i < line_length; ++i) {
-			Tokenizer line_tokenizer{ line };
-			
-			for (size_t safety_net = 0; ; ++safety_net) {
-				if (safety_net > std::numeric_limits<decltype(Token::column_number)>::max()) {
-					report_error(ErrorCode::E1001, file_path, line_number, 
-						std::numeric_limits<uint16_t>::max());
-					break;
-				}
-				Token next_token = next(line_tokenizer, line_number);
-				if (next_token.type == TokenType::END_OF_FILE) {
-					break;
-				}
-				output.push_back(next_token);
+	static Token next(Tokenizer& tokenizer, std::ifstream& input_stream) {
+		if (tokenizer.column_number >= tokenizer.current_line.length()) {
+			if (!std::getline(input_stream, tokenizer.current_line)) {
+				return Token{ TokenType::END_OF_FILE, tokenizer.column_number,
+					tokenizer.line_number };
 			}
-
+			tokenizer.column_number = 0;
+			tokenizer.line_number += 1;
 		}
 
+		//TODO(ches) tokenize
+		return Token{ TokenType::END_OF_FILE, tokenizer.column_number, tokenizer.line_number };
 	}
 
 	void lex(const std::string& file_path, MyVector<Token> output) {
@@ -75,12 +55,16 @@ namespace hemera::lexer {
 			return;
 		}
 
-		std::string line;
-		uint32_t line_number = 1;
+		Tokenizer tokenizer{};
+		std::getline(input, tokenizer.current_line);
 
-		while (std::getline(input, line)) {
-			lex_line(file_path, line, line_number, output);
-			line_number += 1;
+		while (true) {
+			Token next_token = next(tokenizer, input);
+			if (next_token.type == TokenType::END_OF_FILE) {
+				break;
+			}
+			output.push_back(next_token);
 		}
+
 	}
 }
