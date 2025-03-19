@@ -19,6 +19,19 @@ is_ok :: fn<T, E>(result: Result<T, E>) -> bool {
     }
 }
 
+unwrap_list :: fn<T, E>(results: Result<T, E>[..]) -> Result<T[..], E> {
+    new_results: T[..]
+
+    for result in results {
+        match result {
+            Error(E) => return Result::Error(E),
+            Ok(T) => array_add(&new_results, T),
+        }
+    }
+    
+    return Result::Ok(new_results)
+}
+
 unwrap_or :: fn<T, E>(result: Result<T, E>, def: T) -> T {
     match optional {
         Ok(T) => return T,
