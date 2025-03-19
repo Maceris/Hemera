@@ -37,6 +37,7 @@ KEYWORD_fn = "fn" ;
 KEYWORD_for = "for" ;
 KEYWORD_if = "if" ;
 KEYWORD_import = "import" ;
+KEYWORD_in = "in" ;
 KEYWORD_match = "match" ;
 KEYWORD_mut = "mut" ;
 KEYWORD_null = "null" ;

@@ -21,6 +21,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `fn` - For defining functions
 * `if` - For conditional statements
 * `import` - For importing other packages
+* `in` - For range-based for loops
 * `match` - For pattern matching
 * `mut` - For mutable values
 * `null` - The null pointer value
