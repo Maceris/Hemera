@@ -14,7 +14,7 @@ y : ptr<int> = &x
 z : int = y^
 
 y = null
-y^ // segfaults
+y^ // segfaults, probably
 ```
 
 ## Arithmetic operators
@@ -67,9 +67,10 @@ In order to have signed integers always fill the displaced bits with 0 when shif
 ## Function operators
 ```
 |> pipe operator for function chaining
-
+?  try operator
 ```
 
+### Pipe operator
 The pipe operator takes output from one function and provides it as input for another.
 
 By default it will provide all output, in order, at the start of the next functions arguments.
@@ -144,6 +145,52 @@ example :: fn() {
     result: string = foo()
     |> bar()                  // Passed two arguments
     |> baz($2, "Example", $1) // Reorders output, ignores third result
+}
+```
+### Try operator
+
+[//]: # (TODO are we removing this in favor of a macro?)
+
+In functions that 
+
+* Return a `Result<T1, E>` which call another function that returns a `Result<T2, E>` where the `E` types match (`T1` and `T2` may or may not)
+* Return a `Option<T>` which call a function that returns an `Option<T>` where the `T` types match
+
+the try operator (`?`) can be appended to propagate error values up.
+
+```
+foo :: fn() -> Result<i32, ExampleError> {
+    example1 : f32 = bar()?
+    
+    // The above is equivalent to something like this
+    example2 : f32 = match bar() {
+        Ok(value) => value,
+        Error(e) => return Error(e),
+    }
+    // ...
+}
+
+bar :: fn() -> Result<f32, ExampleError> {
+    // ...
+}
+```
+
+Or, for options
+
+```
+foo :: fn() -> Option<i32> {
+    example1 : f32 = bar()?
+    
+    // The above is equivalent to something like this
+    example2 : f32 = match bar() {
+        Some(value) => value,
+        None() => return None(),
+    }
+    // ...
+}
+
+bar :: fn() -> Option<f32> {
+    // ...
 }
 ```
 
