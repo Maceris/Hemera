@@ -36,12 +36,12 @@ Binary:
 %   modulus (truncated)      integers
 %%  remainder (floored)      integers
 
-|   bitwise OR               integers, enums
 &   bitwise AND              integers, enums
+|   bitwise OR               integers, enums
 ~   bitwise XOR              integers, enums
->>  right shift (arithmetic) integer >> integer >= 0
 <<  left shift               integer << integer >= 0
->>>  right shift (logical)   signed integer >> integer >= 0
+>>  right shift (arithmetic) integer >> integer >= 0
+>>> right shift (logical)    signed integer >>> integer >= 0
 ```
 
 Except for shift operations, if one operand is an untyped constant
@@ -62,7 +62,36 @@ In order to have signed integers always fill the displaced bits with 0 when shif
 
 ## Assignment operators
 
+```
+=    assignment                a = b assigns a to the value of b
++=   addition                  a += b is a = a + b
+-=   subtraction               a -= b is a = a - b
+*=   multiplication            a *= b is a = a * b
+/=   division                  a /= b is a = a / b
+%=   modulus (truncated)       a %= b is a = a % b
+%%=  remainder (floored)       a %%= b is a = a %% b
+
+&=   bitwise AND               a &= b is a = a & b
+|=   bitwise OR                a |= b is a = a | b
+~=   bitwise XOR               a ~= b is a = a ~ b
+<<=  left shift                a <<= b is a = a << b
+>>=  right shift (arithmetic)  a >>= b is a = a >> b
+>>>= right shift(logical)      a >>>= b is a = a >>> b
+
+&&=  logical AND               a &&= b is a = a && b
+||=  logical OR                a ||= b is a = a || b
+```
+
 ## Comparison operators
+
+```
+== equal
+!= not equal
+>  greater than
+>= greater than or equal to
+<  less than
+<= less than or equal to
+```
 
 ## Function operators
 ```
@@ -147,7 +176,7 @@ example :: fn() {
     |> baz($2, "Example", $1) // Reorders output, ignores third result
 }
 ```
-### Try operator
+### Try operator (subject to change)
 
 [//]: # (TODO are we removing this in favor of a macro?)
 
@@ -195,6 +224,12 @@ bar :: fn() -> Option<f32> {
 ```
 
 ## Logical operators
+
+```
+&&  logical AND
+||  logical OR
+!   logical NOT
+```
 
 ## Ternary Operators
 
