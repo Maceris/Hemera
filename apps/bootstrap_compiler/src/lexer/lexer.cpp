@@ -2,13 +2,114 @@
 #include <format>
 #include <fstream>
 #include <limits>
+#include <optional>
 
 #include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "util/logger.h"
 
 namespace hemera::lexer {
-
+#if 0
+	static std::optional<TokenType> get_reserved_identifier(std::string_view identifier) {
+		if (identifier.compare("alias") == 0) {
+			return TokenType::KEYWORD_ALIAS;
+		}
+		if (identifier.compare("all") == 0) {
+			return TokenType::KEYWORD_ALL;
+		}
+		if (identifier.compare("as") == 0) {
+			return TokenType::KEYWORD_AS;
+		}
+		if (identifier.compare("break") == 0) {
+			return TokenType::KEYWORD_BREAK;
+		}
+		if (identifier.compare("case") == 0) {
+			return TokenType::KEYWORD_CASE;
+		}
+		if (identifier.compare("const") == 0) {
+			return TokenType::KEYWORD_CONST;
+		}
+		if (identifier.compare("context") == 0) {
+			return TokenType::KEYWORD_CONTEXT;
+		}
+		if (identifier.compare("continue") == 0) {
+			return TokenType::KEYWORD_CONTINUE;
+		}
+		if (identifier.compare("defer") == 0) {
+			return TokenType::KEYWORD_DEFER;
+		}
+		if (identifier.compare("distinct") == 0) {
+			return TokenType::KEYWORD_DISTINCT;
+		}
+		if (identifier.compare("do") == 0) {
+			return TokenType::KEYWORD_DO;
+		}
+		if (identifier.compare("else") == 0) {
+			return TokenType::KEYWORD_ELSE;
+		}
+		if (identifier.compare("enum") == 0) {
+			return TokenType::KEYWORD_ENUM;
+		}
+		if (identifier.compare("false") == 0) {
+			return TokenType::KEYWORD_FALSE;
+		}
+		if (identifier.compare("fn") == 0) {
+			return TokenType::KEYWORD_FN;
+		}
+		if (identifier.compare("for") == 0) {
+			return TokenType::KEYWORD_FOR;
+		}
+		if (identifier.compare("if") == 0) {
+			return TokenType::KEYWORD_IF;
+		}
+		if (identifier.compare("import") == 0) {
+			return TokenType::KEYWORD_IMPORT;
+		}
+		if (identifier.compare("in") == 0) {
+			return TokenType::KEYWORD_IN;
+		}
+		if (identifier.compare("match") == 0) {
+			return TokenType::KEYWORD_MATCH;
+		}
+		if (identifier.compare("mut") == 0) {
+			return TokenType::KEYWORD_MUT;
+		}
+		if (identifier.compare("null") == 0) {
+			return TokenType::KEYWORD_NULL;
+		}
+		if (identifier.compare("package") == 0) {
+			return TokenType::KEYWORD_PACKAGE;
+		}
+		if (identifier.compare("return") == 0) {
+			return TokenType::KEYWORD_RETURN;
+		}
+		if (identifier.compare("struct") == 0) {
+			return TokenType::KEYWORD_STRUCT;
+		}
+		if (identifier.compare("switch") == 0) {
+			return TokenType::KEYWORD_SWITCH;
+		}
+		if (identifier.compare("true") == 0) {
+			return TokenType::KEYWORD_TRUE;
+		}
+		if (identifier.compare("_") == 0) {
+			return TokenType::KEYWORD_UNDERSCORE;
+		}
+		if (identifier.compare("union") == 0) {
+			return TokenType::KEYWORD_UNION;
+		}
+		if (identifier.compare("using") == 0) {
+			return TokenType::KEYWORD_USING;
+		}
+		if (identifier.compare("void") == 0) {
+			return TokenType::KEYWORD_VOID;
+		}
+		if (identifier.compare("while") == 0) {
+			return TokenType::KEYWORD_WHILE;
+		}
+		return {};
+	}
+#endif
 	enum class State {
 		start,
 		end,
