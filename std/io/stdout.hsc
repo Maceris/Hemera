@@ -1,6 +1,5 @@
 package io
 
-
-println :: (str: string) {
+println :: fn(str: string) {
     //TODO(ches) print line
 }
