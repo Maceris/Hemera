@@ -180,7 +180,7 @@ example :: fn() {
 
 [//]: # (TODO are we removing this in favor of a macro?)
 
-In functions that 
+In functions that
 
 * Return a `Result<T1, E>` which call another function that returns a `Result<T2, E>` where the `E` types match (`T1` and `T2` may or may not)
 * Return a `Option<T>` which call a function that returns an `Option<T>` where the `T` types match
@@ -232,6 +232,10 @@ bar :: fn() -> Option<f32> {
 ```
 
 ## Ternary Operators
+
+```
+x if cond else y  // ternary runtime conditional expression
+```
 
 ## Other operators
 
