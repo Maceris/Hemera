@@ -4,7 +4,9 @@
 
 ## Control
 
-`#reverse` indicates a loop should be done in reverse
+`#at_least_once` causes a loop operation to occur at least once, skipping the first condition check. This is equivalent to turning a C while loop into a do-while loop.
+
+`#reverse` indicates a loop over a range should be done in reverse
 
 ```
 for i in 0..=10 #reverse {

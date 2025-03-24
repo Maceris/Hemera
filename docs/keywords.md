@@ -22,6 +22,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `if` - For conditional statements
 * `import` - For importing other packages
 * `in` - For range-based for loops
+* `loop` - For creating a loop
 * `match` - For pattern matching
 * `mut` - For mutable values
 * `null` - The null pointer value
@@ -33,4 +34,5 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `union` - For defining tagged unions
 * `using` - For including fields into scope
 * `void` - Indicates a lack of return values
-* `while` - For while loops
+* `while` - For specifying a condition in loops
+* `with` - For specifying resources for loops

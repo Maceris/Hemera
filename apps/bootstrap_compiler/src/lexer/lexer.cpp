@@ -68,6 +68,9 @@ namespace hemera::lexer {
 		if (identifier.compare("in") == 0) {
 			return TokenType::KEYWORD_IN;
 		}
+		if (identifier.compare("loop") == 0) {
+			return TokenType::KEYWORD_LOOP;
+		}
 		if (identifier.compare("match") == 0) {
 			return TokenType::KEYWORD_MATCH;
 		}
@@ -106,6 +109,9 @@ namespace hemera::lexer {
 		}
 		if (identifier.compare("while") == 0) {
 			return TokenType::KEYWORD_WHILE;
+		}
+		if (identifier.compare("with") == 0) {
+			return TokenType::KEYWORD_WITH;
 		}
 		return {};
 	}
@@ -158,7 +164,6 @@ namespace hemera::lexer {
 		tokenizer.column_number += 1;
 		return result;
 	}
-
 
 	static Token next(Tokenizer& tokenizer, std::ifstream& input_stream) {
 		switch (tokenizer.state) {
