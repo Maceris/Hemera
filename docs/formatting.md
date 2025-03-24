@@ -37,7 +37,7 @@ import "other_package"
 
 EXAMPLE_CONSTANT :: 43
 
-example_function :: fn(x: int) {
+example_function :: fn(x: int) -> int {
     return EXAMPLE_CONSTANT + x
 }
 
