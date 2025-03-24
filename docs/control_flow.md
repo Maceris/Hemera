@@ -2,6 +2,17 @@
 
 ## Loops
 
+### Loop control statements
+
+`break` can be used to break out of the current loop.
+
+A positive integer can also be provided to break out of multiple loops like `break 2` 
+will break out of 2 layers of loops (or similar structures where `break` applies).
+
+Finally, `break all` will break out of all loops (or similar structures where `break` applies).
+
+`continue` will skip the rest of the current iteration of a loop, and continue again at the beginning.
+
 ### Range-based for
 ```
 // 0 to 10, excluding 10
