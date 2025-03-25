@@ -51,11 +51,33 @@ Note that the `::` is actually 2 operators, a type could be provided instead of 
 Below is an example that defines a type which might communicate more intent.
 
 ```
-BinaryIntFunc :: alias fn(int, int) -> int
+BinaryIntFunc :: fn(int, int) -> int
+// equivalent to:
+// BinaryIntFunc : type : fn(int, int) -> int
 
 add_numbers : BinaryIntFunc : fn(x, y : int) -> int {
     return x + y
 }
+```
+
+## Named Parameters
+
+```
+create_rectangle :: fn(x, y: int, width, height: int) -> Rectangle {/* ... */}
+
+example :: fn() {
+    // These are all equivalent
+    create_rectangle(1, 2, 50, 75)
+    create_rectangle(x=1, y=2, 50, 75)
+    create_rectangle(x=1, y=2, width=50, height=75)
+}
+```
+
+Positional and named arguments can be mixed, but named arguments must always be provided after the named ones.
+
+```
+example :: fn(a: int, b: string, c: bool, d: f32, e := 0) {/* ... */}
+example(123, "test", c=true, d=1.23)
 ```
 
 ## Nesting Functions

@@ -2,6 +2,14 @@
 
 ## Compilation
 
+`#compile_time` - indicates code should be executed at compile time, valid for
+
+* if-else statements
+* function calls
+
+`#if` used to conditionally include sections of code, evaluated at compile time. Intended more for things like includes, definitions, and scope members rather than optionally executing blocks of code.
+Also used with `#else_if` and `#else`.
+
 ## Control
 
 `#at_least_once` causes a loop operation to occur at least once, skipping the first condition check. This is equivalent to turning a C while loop into a do-while loop.
