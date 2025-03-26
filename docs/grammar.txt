@@ -19,6 +19,10 @@ directory_character = letter | digit | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
+string_literal = '"' , { [^\\\"] | \\. } , '"' ;
+
+integer_literal = digit , { digit } ; #TODO(ches) decimals, e, bases
+
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
 KEYWORD_as = "as" ;

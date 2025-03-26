@@ -116,7 +116,9 @@ namespace hemera::lexer {
 		start,
 		end,
 		identifier,
+		integer,
 		invalid,
+		string_literal,
 	};
 
 	struct Tokenizer {
@@ -202,8 +204,16 @@ namespace hemera::lexer {
 			case '0': case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8': case '9':
 				result_type = TokenType::LITERAL_NUMBER;
+				tokenizer.state = State::integer;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case '_':
+				result_type = TokenType::SYM_UNDERSCORE;
 				break;
-
+			case '"':
+				tokenizer.state = State::string_literal;
+				result_type = TokenType::LITERAL_STRING;
+				goto switch_start;
 			default:
 				tokenizer.state = State::invalid;
 			}
