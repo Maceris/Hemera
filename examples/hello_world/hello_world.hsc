@@ -1,6 +1,7 @@
 package hello_world
 
+import "std:io"
+
 main :: fn() {
-	// Alias for std::io::stdout::println
 	println("Hello World!")
 }
