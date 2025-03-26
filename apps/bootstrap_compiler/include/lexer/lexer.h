@@ -7,6 +7,7 @@
 
 namespace hemera {
 	namespace lexer {
-		void lex(const std::string& file_path, MyVector<Token> output);
+		void lex(const std::string& file_path, MyVector<Token> output,
+			Allocator<> string_alloc);
 	}
 }

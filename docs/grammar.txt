@@ -46,7 +46,6 @@ KEYWORD_return = "return" ;
 KEYWORD_struct = "struct" ;
 KEYWORD_switch = "switch" ;
 KEYWORD_true = "true" ;
-KEYWORD_underscore = "_" ;
 KEYWORD_union = "union" ;
 KEYWORD_using = "using" ;
 KEYWORD_void = "void" ;
@@ -67,6 +66,7 @@ SYM_RBRACE = "}" ;
 SYM_RBRACK = "]" ;
 SYM_RPAREN = ")" ;
 SYM_SINGLE_QUOTE = "'" ;
+SYM_UNDERSCORE = "_" ;
 
 OPERATOR_and = "&&" ;
 OPERATOR_assign_add = "+=" ;
