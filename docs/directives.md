@@ -2,13 +2,16 @@
 
 ## Compilation
 
-`#compile_time` - indicates code should be executed at compile time, valid for
-
-* if-else statements
-* function calls
-
-`#if` used to conditionally include sections of code, evaluated at compile time. Intended more for things like includes, definitions, and scope members rather than optionally executing blocks of code.
+`#if` used to conditionally include sections of code, evaluated at compile time.
 Also used with `#else_if` and `#else`.
+
+```
+foo :: fn() {
+    #if OS == .WINDOWS {
+        init_socket() 
+    }
+}
+```
 
 ## Control
 
