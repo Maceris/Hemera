@@ -29,18 +29,18 @@ get_one_number :: fn() -> int {
     return 4
 }
 
-get_two_numbers :: fn() -> int, int {
+get_two_numbers :: fn() -> (int, int) {
     return 2, 3
 }
 
-get_coordinates :: fn() -> x, y: int {
+get_coordinates :: fn() -> (x, y: int) {
     // Outputs act like variables in scope
     x = 4
     y = 5
     return x, y
 }
 
-is_even :: fn(x: int) -> result: bool, mod: int {
+is_even :: fn(x: int) -> (result: bool, mod: int) {
     mod = x % 2
     result = mod == 0
     return // allowed, but not encouraged, if all results are assigned
@@ -125,4 +125,39 @@ main :: fn() {
     c = my_function(a, b)
     println(c) // Prints 5
 }
+```
+
+## Compllicated Function Return Types
+
+Functions need to have parenthesis around the return type(s) if
+
+* There is more than one value
+* Any results are named
+* The result is a function
+
+The parenthesis are to ensure an unambiguous definition, but do not represent tuples.
+Functions are always wrapped in parenthesis, even if in a list of types.
+
+```
+implicitly_no_return    :: fn() {/* ... */}
+explicitly_no_return    :: fn() -> void {/* ... */}
+one_result              :: fn() -> int {/* ... */}
+one_result_still_same   :: fn() -> (int) {/* ... */}
+ptr_result              :: fn() -> ptr<Walrus> {/* ... */}
+named_result            :: fn() -> (x: int) {/* ... */}
+two_results             :: fn() -> (int, int) {/* ... */}
+two_named_results       :: fn() -> (x, y: int) {/* ... */}
+three_named_results     :: fn() -> (a: u16, b, c: f32) {/* ... */}
+returning_pure_fn       :: fn() -> (fn()) {/* ... */}
+returning_a_fn          :: fn() -> (fn() -> int) {/* ... */}
+ret_a_fn_with_2_returns :: fn() -> (fn() -> (int, int)) {/* ... */}
+returning_int_and_fn    :: fn() -> (int, (fn() -> int)) {/* ... */}
+returning_fn_and_int    :: fn() -> ((fn() -> int), int) {/* ... */}
+```
+
+Some higher order function definitions can (should) be simplifed quite a bit using type aliases.
+
+```
+AbsurdFnType : type : fn(fn(int) -> int) -> (fn(int) -> (result, error: int))
+nicer_definition :: fn() -> AbsurdFnType {/* ... */}
 ```

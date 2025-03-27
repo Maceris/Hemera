@@ -133,20 +133,29 @@ struct_decl = KEYWORD_struct , [ generic_tag ] , SYM_LBRACE , struct_body , SYM_
 union_decl = KEYWORD_union , [ generic_tag ] , SYM_LBRACE , union_body , SYM_RBRACE ;
 enum_decl = KEYWORD_enum , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
-type = identifier
+type = simple_type
+    | complicated_type
+    ;
+
+simple_type = identifier
     | pointer_type
-    | function_signature
     ; #TODO(ches)
+
+# Confusing without parentheses in a function return type list
+complicated_type = function_signature
+    ;
 
 function_signature = KEYWORD_fn , [ generic_tag ], SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } )
     | ( SYM_LPAREN , function_parameter , { SYM_COMMA , function_parameter } , SYM_RPAREN )
     ;
 function_output_list = KEYWORD_void 
-    | ( SYM_LPAREN , function_output , { SYM_COMMA , function_output } , SYM_RPAREN )
+    | simple_type
+    | ( SYM_LPAREN , function_output_in_paren , { SYM_COMMA , function_output_in_paren } , SYM_RPAREN )
     ;
-function_output = ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type )
-    | ( type )
+function_output_in_paren = simple_type
+    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type )
+    | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
 function_parameter = ( identifier , SYM_COLON, type )

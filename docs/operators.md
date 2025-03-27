@@ -124,7 +124,7 @@ Additionally, all arguments from the previous function must be used.
 
 ```
 get_1_string  :: fn() -> string {/* ... */}
-get_2_strings :: fn() -> string, string {/* ... */}
+get_2_strings :: fn() -> (string, string) {/* ... */}
 append     :: fn(a: string, b: string) -> string {/* ... */}
 
 example :: fn() {
@@ -147,7 +147,7 @@ These placeholders will be filled out using the results of the previous function
 If there are N placeholders, there must be at least N results from the previous function to use or it is an error.
 
 ```
-foo :: fn() -> int, bool, string {/* ... */}
+foo :: fn() -> (int, bool, string) {/* ... */}
 bar :: fn(a: int, b: string, c: bool) {/* ... */}
 
 example :: fn() {
@@ -166,8 +166,8 @@ Should more granular control over the ordering or usage be required, outputs are
 `$1` would be the first return value from the previous function, `$2` the second, and so on.
 
 ```
-foo :: fn() -> int, bool {/* ... */}
-bar :: fn(a: int, b: bool) -> int, bool, string {/* ... */}
+foo :: fn() -> (int, bool) {/* ... */}
+bar :: fn(a: int, b: bool) -> (int, bool, string) {/* ... */}
 baz :: fn(a: bool, b: string, c: int) -> string {/* ... */}
 
 example :: fn() {
