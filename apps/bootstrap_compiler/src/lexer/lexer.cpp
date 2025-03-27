@@ -113,12 +113,46 @@ namespace hemera::lexer {
 	}
 
 	enum class State {
-		start,
+		ampersand,
+		asterisk,
+		at_sign,
+		backslash,
+		caret,
+		colon,
+		comma,
+		comment,
 		end,
+		equal,
+		exclamation,
 		identifier,
 		integer,
+		integer_exponent,
+		integer_period,
 		invalid,
-		string_literal,
+		l_angle_bracket,
+		l_angle_bracket_2,
+		l_bracket,
+		l_paren,
+		literal_char,
+		literal_char_backslash,
+		literal_float,
+		literal_float_exponent,
+		literal_string,
+		literal_string_backslash,
+		minus,
+		percent,
+		period,
+		period_2,
+		pipe,
+		plus,
+		question_mark,
+		r_angle_bracket,
+		r_angle_bracket_2,
+		r_bracket,
+		r_paren,
+		semicolon,
+		slash,
+		start,
 	};
 
 	struct Tokenizer {
@@ -175,6 +209,84 @@ namespace hemera::lexer {
 
 		switch_start:
 		switch (tokenizer.state) {
+		case State::ampersand:
+			break;
+		case State::asterisk:
+			break;
+		case State::at_sign:
+			break;
+		case State::backslash:
+			break;
+		case State::caret:
+			break;
+		case State::colon:
+			break;
+		case State::comma:
+			break;
+		case State::comment:
+			break;
+		case State::end:
+			break;
+		case State::equal:
+			break;
+		case State::exclamation:
+			break;
+		case State::identifier:
+			break;
+		case State::integer:
+			break;
+		case State::integer_exponent:
+			break;
+		case State::integer_period:
+			break;
+		case State::invalid:
+			break;
+		case State::l_angle_bracket:
+			break;
+		case State::l_angle_bracket_2:
+			break;
+		case State::l_bracket:
+			break;
+		case State::l_paren:
+			break;
+		case State::literal_char:
+			break;
+		case State::literal_char_backslash:
+			break;
+		case State::literal_float:
+			break;
+		case State::literal_float_exponent:
+			break;
+		case State::literal_string:
+			break;
+		case State::literal_string_backslash:
+			break;
+		case State::minus:
+			break;
+		case State::percent:
+			break;
+		case State::period:
+			break;
+		case State::period_2:
+			break;
+		case State::pipe:
+			break;
+		case State::plus:
+			break;
+		case State::question_mark:
+			break;
+		case State::r_angle_bracket:
+			break;
+		case State::r_angle_bracket_2:
+			break;
+		case State::r_bracket:
+			break;
+		case State::r_paren:
+			break;
+		case State::semicolon:
+			break;
+		case State::slash:
+			break;
 		case State::start:
 			switch (next_char(tokenizer, input_stream)) {
 			case 0:
@@ -211,18 +323,68 @@ namespace hemera::lexer {
 				result_type = TokenType::SYM_UNDERSCORE;
 				break;
 			case '"':
-				tokenizer.state = State::string_literal;
+				tokenizer.state = State::literal_string;
 				result_type = TokenType::LITERAL_STRING;
+				goto switch_start;
+			case '\'':
+				tokenizer.state = State::literal_char;
+				result_type = TokenType::LITERAL_CHAR;
+				goto switch_start;
+			case '@':
+				tokenizer.state = State::at_sign;
+				goto switch_start;
+			case '=':
+				tokenizer.state = State::equal;
+				goto switch_start;
+			case '!':
+				tokenizer.state = State::exclamation;
+				goto switch_start;
+			case '|':
+				tokenizer.state = State::pipe;
+				goto switch_start;
+			case '(':
+				tokenizer.state = State::l_paren;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case ')':
+				tokenizer.state = State::r_paren;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case '[':
+				tokenizer.state = State::l_bracket;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case ']':
+				tokenizer.state = State::r_bracket;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case '<':
+				tokenizer.state = State::l_angle_bracket;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case '>':
+				tokenizer.state = State::r_angle_bracket;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case ';':
+				tokenizer.state = State::semicolon;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case ',':
+				tokenizer.state = State::comma;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case ':':
+				tokenizer.state = State::colon;
+				tokenizer.column_number += 1;
+				goto switch_start;
+			case '?':
+				tokenizer.state = State::question_mark;
+				tokenizer.column_number += 1;
 				goto switch_start;
 			default:
 				tokenizer.state = State::invalid;
 			}
-			break;
-		case State::end:
-			break;
-		case State::invalid:
-			break;
-		case State::identifier:
 			break;
 		}
 
@@ -231,7 +393,9 @@ namespace hemera::lexer {
 		MyString* result_string;
 		switch (result_type) {
 		case TokenType::IDENTIFIER:
+		case TokenType::LITERAL_CHAR:
 		case TokenType::LITERAL_NUMBER:
+		case TokenType::LITERAL_STRING:
 			result_string = string_alloc.new_object<MyString>("generate a string here");
 			break;
 		
