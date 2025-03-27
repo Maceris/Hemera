@@ -12,18 +12,16 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `continue` - For continuing with loops
 * `defer` - Used to defer statemetns until the end of scope
 * `distinct` - For type aliases that are treated as distinct
-* `do` - For do-while loops
 * `else` - For conditional statements
 * `enum` - For defining enums
 * `false` - The false boolean value
-* `for` - For "for" loops
 * `fn` - For defining functions
+* `for` - For "for" loops
 * `if` - For conditional statements
 * `import` - For importing other packages
 * `in` - For range-based for loops
 * `loop` - For creating a loop
 * `match` - For pattern matching
-* `mut` - For mutable values
 * `null` - The null pointer value
 * `package` - For defining the pacakge
 * `return` - For returning a value from a function
