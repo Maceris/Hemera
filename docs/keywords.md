@@ -7,7 +7,6 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `as` - For giving an alias to imports
 * `break` - For breaking out of loops
 * `case` - For switch cases
-* `const` - For constant values
 * `context` - A special value implicit to any scope used for passing around certain common info
 * `continue` - For continuing with loops
 * `defer` - Used to defer statemetns until the end of scope
@@ -22,6 +21,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `in` - For range-based for loops
 * `loop` - For creating a loop
 * `match` - For pattern matching
+* `mut` - For mutable values
 * `null` - The null pointer value
 * `package` - For defining the pacakge
 * `return` - For returning a value from a function

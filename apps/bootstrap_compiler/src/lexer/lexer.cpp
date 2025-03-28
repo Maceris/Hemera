@@ -25,9 +25,6 @@ namespace hemera::lexer {
 		if (identifier.compare("case") == 0) {
 			return TokenType::KEYWORD_CASE;
 		}
-		if (identifier.compare("const") == 0) {
-			return TokenType::KEYWORD_CONST;
-		}
 		if (identifier.compare("context") == 0) {
 			return TokenType::KEYWORD_CONTEXT;
 		}
@@ -406,7 +403,6 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_AS:
 		case TokenType::KEYWORD_BREAK:
 		case TokenType::KEYWORD_CASE:
-		case TokenType::KEYWORD_CONST:
 		case TokenType::KEYWORD_CONTEXT:
 		case TokenType::KEYWORD_CONTINUE:
 		case TokenType::KEYWORD_DEFER:
