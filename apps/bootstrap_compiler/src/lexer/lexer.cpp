@@ -128,6 +128,7 @@ namespace hemera::lexer {
 		invalid,
 		l_angle_bracket,
 		l_angle_bracket_2,
+		l_brace,
 		l_bracket,
 		l_paren,
 		literal_char,
@@ -145,6 +146,7 @@ namespace hemera::lexer {
 		question_mark,
 		r_angle_bracket,
 		r_angle_bracket_2,
+		r_brace,
 		r_bracket,
 		r_paren,
 		semicolon,
@@ -242,6 +244,8 @@ namespace hemera::lexer {
 			break;
 		case State::l_angle_bracket_2:
 			break;
+		case State::l_brace:
+			break;
 		case State::l_bracket:
 			break;
 		case State::l_paren:
@@ -275,6 +279,8 @@ namespace hemera::lexer {
 		case State::r_angle_bracket:
 			break;
 		case State::r_angle_bracket_2:
+			break;
+		case State::r_brace:
 			break;
 		case State::r_bracket:
 			break;
@@ -339,6 +345,39 @@ namespace hemera::lexer {
 			case '|':
 				tokenizer.state = State::pipe;
 				goto switch_start;
+			case '%':
+				tokenizer.state = State::percent;
+				goto switch_start;
+			case '*':
+				tokenizer.state = State::asterisk;
+				goto switch_start;
+			case '+':
+				tokenizer.state = State::plus;
+				goto switch_start;
+			case '<':
+				tokenizer.state = State::l_angle_bracket;
+				goto switch_start;
+			case '>':
+				tokenizer.state = State::r_angle_bracket;
+				goto switch_start;
+			case '^':
+				tokenizer.state = State::caret;
+				goto switch_start;
+			case '.':
+				tokenizer.state = State::period;
+				goto switch_start;
+			case '-':
+				tokenizer.state = State::minus;
+				goto switch_start;
+			case '/':
+				tokenizer.state = State::slash;
+				goto switch_start;
+			case '&':
+				tokenizer.state = State::ampersand;
+				goto switch_start;
+			case '\\':
+				tokenizer.state = State::backslash;
+				goto switch_start;
 			case '(':
 				tokenizer.state = State::l_paren;
 				tokenizer.column_number += 1;
@@ -355,12 +394,12 @@ namespace hemera::lexer {
 				tokenizer.state = State::r_bracket;
 				tokenizer.column_number += 1;
 				goto switch_start;
-			case '<':
-				tokenizer.state = State::l_angle_bracket;
+			case '{':
+				tokenizer.state = State::l_brace;
 				tokenizer.column_number += 1;
 				goto switch_start;
-			case '>':
-				tokenizer.state = State::r_angle_bracket;
+			case '}':
+				tokenizer.state = State::r_brace;
 				tokenizer.column_number += 1;
 				goto switch_start;
 			case ';':
