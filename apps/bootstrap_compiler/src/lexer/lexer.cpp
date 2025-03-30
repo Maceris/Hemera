@@ -155,7 +155,7 @@ namespace hemera::lexer {
 	};
 
 	struct Tokenizer {
-		std::string current_line;
+		MyString current_line;
 		uint32_t line_number;
 		State state;
 		uint16_t column_number;
@@ -183,8 +183,11 @@ namespace hemera::lexer {
 		return true;
 	}
 
-	static char next_char(Tokenizer& tokenizer, std::ifstream& input_stream) {
+	static char next_char(Tokenizer& tokenizer, std::ifstream& input_stream, 
+		MyString& token_contents) {
 		if (tokenizer.column_number >= tokenizer.current_line.length()) {
+			token_contents += tokenizer.current_line;
+
 			if (!next_line(tokenizer, input_stream)) {
 				return 0;
 			}
@@ -203,6 +206,7 @@ namespace hemera::lexer {
 		uint32_t start_line = tokenizer.line_number;
 		uint16_t start_column = tokenizer.column_number;
 		TokenType result_type = TokenType::END_OF_FILE;
+		MyString* token_contents = string_alloc.new_object<MyString>();
 
 		//TODO(ches) finish tokenizing
 
@@ -231,6 +235,27 @@ namespace hemera::lexer {
 		case State::exclamation:
 			break;
 		case State::identifier:
+			tokenizer.column_number += 1;
+			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			case 'a': case 'b': case 'c': case 'd': case 'e':
+			case 'f': case 'g': case 'h': case 'i': case 'j':
+			case 'k': case 'l': case 'm': case 'n': case 'o':
+			case 'p': case 'q': case 'r': case 's': case 't':
+			case 'u': case 'v': case 'w': case 'x': case 'y':
+			case 'z':
+			case 'A': case 'B': case 'C': case 'D': case 'E':
+			case 'F': case 'G': case 'H': case 'I': case 'J':
+			case 'K': case 'L': case 'M': case 'N': case 'O':
+			case 'P': case 'Q': case 'R': case 'S': case 'T':
+			case 'U': case 'V': case 'W': case 'X': case 'Y':
+			case 'Z':
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+			case '_':
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::integer:
 			break;
@@ -291,7 +316,7 @@ namespace hemera::lexer {
 		case State::slash:
 			break;
 		case State::start:
-			switch (next_char(tokenizer, input_stream)) {
+			switch (next_char(tokenizer, input_stream, *token_contents)) {
 			case 0:
 				tokenizer.state = State::end;
 				return Token{ TokenType::END_OF_FILE, start_column, start_line };
@@ -426,13 +451,19 @@ namespace hemera::lexer {
 
 		//TODO(ches) get string form when relevant
 
-		MyString* result_string;
 		switch (result_type) {
 		case TokenType::IDENTIFIER:
 		case TokenType::LITERAL_CHAR:
 		case TokenType::LITERAL_NUMBER:
 		case TokenType::LITERAL_STRING:
-			result_string = string_alloc.new_object<MyString>("generate a string here");
+		{
+			size_t first_position = 0;
+			if (start_line == tokenizer.line_number) {
+				first_position = start_column;
+			}
+			size_t remainder_count = static_cast<size_t>(tokenizer.column_number) - first_position;
+			*token_contents += tokenizer.current_line.substr(first_position, remainder_count);
+		}
 			break;
 		
 		case TokenType::END_OF_FILE:
@@ -511,19 +542,21 @@ namespace hemera::lexer {
 		case TokenType::SYM_SINGLE_QUOTE:
 		case TokenType::SYM_UNDERSCORE:
 		default:
-			result_string = nullptr;
+			string_alloc.delete_object(token_contents);
+			token_contents = nullptr;
 			break;
 		}
 
-		if (result_type == TokenType::IDENTIFIER) {
-			std::optional<TokenType> maybe_token = get_reserved_identifier(*result_string);
+		if (result_type == TokenType::IDENTIFIER && token_contents) {
+			std::optional<TokenType> maybe_token = get_reserved_identifier(*token_contents);
 			if (maybe_token) {
 				result_type = *maybe_token;
-				result_string = nullptr;
+				string_alloc.delete_object(token_contents);
+				token_contents = nullptr;
 			}
 		}
 
-		return Token{ result_type, start_column, start_line };
+		return Token{ result_type, start_column, start_line, token_contents };
 	}
 
 	void lex(const std::string& file_path, MyVector<Token> output,
