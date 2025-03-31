@@ -213,6 +213,16 @@ namespace hemera::lexer {
 		switch_start:
 		switch (tokenizer.state) {
 		case State::ampersand:
+			tokenizer.column_number += 1;
+			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_BITWISE_AND;
+				tokenizer.column_number += 1;
+				break;
+			default:
+				result_type = TokenType::OPERATOR_BITWISE_AND;
+				break;
+			}
 			break;
 		case State::asterisk:
 			break;
@@ -449,8 +459,6 @@ namespace hemera::lexer {
 			break;
 		}
 
-		//TODO(ches) get string form when relevant
-
 		switch (result_type) {
 		case TokenType::IDENTIFIER:
 		case TokenType::LITERAL_CHAR:
@@ -502,9 +510,18 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_WITH:
 		case TokenType::OPERATOR_AND:
 		case TokenType::OPERATOR_ASSIGN_ADD:
+		case TokenType::OPERATOR_ASSIGN_AND:
+		case TokenType::OPERATOR_ASSIGN_BITWISE_AND:
+		case TokenType::OPERATOR_ASSIGN_BITWISE_OR:
+		case TokenType::OPERATOR_ASSIGN_BITWISE_XOR:
 		case TokenType::OPERATOR_ASSIGN_DIV:
+		case TokenType::OPERATOR_ASSIGN_LEFT_SHIFT:
 		case TokenType::OPERATOR_ASSIGN_MOD:
 		case TokenType::OPERATOR_ASSIGN_MUL:
+		case TokenType::OPERATOR_ASSIGN_OR:
+		case TokenType::OPERATOR_ASSIGN_REMAINDER:
+		case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC:
+		case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL:
 		case TokenType::OPERATOR_ASSIGN_SUB:
 		case TokenType::OPERATOR_BITWISE_AND:
 		case TokenType::OPERATOR_BITWISE_OR:

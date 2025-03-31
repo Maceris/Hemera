@@ -76,7 +76,7 @@ In order to have signed integers always fill the displaced bits with 0 when shif
 ~=   bitwise XOR               a ~= b is a = a ~ b
 <<=  left shift                a <<= b is a = a << b
 >>=  right shift (arithmetic)  a >>= b is a = a >> b
->>>= right shift(logical)      a >>>= b is a = a >>> b
+>>>= right shift (logical)     a >>>= b is a = a >>> b
 
 &&=  logical AND               a &&= b is a = a && b
 ||=  logical OR                a ||= b is a = a || b
