@@ -98,3 +98,7 @@ More details:
 | u128le  | 128-bit unsigned integer, little endian                                                                                                      |
 | uint    | Unsigned integer that is the standard size of a register on the system, guaranteed that size_of(uint) >= size_of(uintptr). Same size as int. |
 | uintptr | Unsigned integer that is large enough to hold the bit pattern of any pointer                                                                 |
+
+## Notes On Types
+
+For boolean values, `true` is stored as `1`, and `false` is stored as `0`.

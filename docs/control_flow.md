@@ -1,5 +1,73 @@
 # Control Flow
 
+## Defer
+
+The `defer` keyword is used to defer a statement until the end of a block. It will be executed before leaving the block,
+whether that is by reaching the end, having a `return`, `break`, `continue`, or anything else.
+
+
+```
+foo :: fn() {
+    defer println("This prints last")
+    defer println("This prints second")
+    println("This prints first")
+}
+```
+
+When there are multiple `defer` statements, they will execute in reverse order from how they appear, as if being pushed onto a stack.
+The reason for this is we usually want to clean up resources in the reverse order of their creation, and this allows
+sub-resources to be cleaned up before parent resources which were used to create them.
+
+```
+foo :: fn() {
+    a := new A()
+    defer delete a
+
+    b := new B(a)
+    defer delete b
+
+    // b is cleaned up here
+    // a is cleaned up here
+}
+```
+
+This works in any block and whole expressions can be provided. Here is a more complex example involving loops:
+
+```
+foo :: fn() {
+    with {
+        i : int = 0
+        matched : bool = false
+    }
+    loop {
+        defer i += 1
+        defer matched = false
+        defer println()
+        defer if !matched { print(i) }
+
+        if i % 3 == 0 {
+            print("fizz")
+            matched = true
+        }
+        if i % 5 == 0 {
+            println("buzz")
+            matched = true
+        }
+
+        if i % 8 == 0 {
+            // be careful, defers all run here too
+            break
+        }
+
+        // "if !matched { print(i) }" runs here
+        // "println()" runs here
+        // "matched = false" runs here
+        // "i += 1" runs here
+    }
+    while(i <= 10)
+}
+```
+
 ## Loops
 
 ### Loop control statements
