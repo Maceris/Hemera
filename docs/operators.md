@@ -60,6 +60,24 @@ Normal right-shifts (`>>`) for signed integers will fill displaced bits with the
 In order to have signed integers always fill the displaced bits with 0 when shifting right, the
 `>>>` operator must be used.
 
+For two integers `x` and `y`, the integer quotient `q = x/y` (truncated towards zero) and modulus 
+`m = x%y` satisfies the following relationship
+
+```
+x = q * y + m    and |q| < |y|
+``` 
+
+For two integers `x` and `y`, the integer quotient `q = x/y` and remainder `r = x %% y` satisfies the following relationship:
+
+```
+r = x - y * floor(x / y)
+```
+
+The exception is when `x` is the largest non-negative value, and the quotient `q = x/-1` is equal to `x` due to 
+two's complement integer overflow.
+
+The divisor for division, modulus, and remainder must not be zero if constant. If zero at runtime, there will be a runtime panic.
+
 ## Assignment operators
 
 ```
@@ -239,12 +257,28 @@ x if cond else y  // ternary runtime conditional expression
 
 ## Other operators
 
+```
+..=         inclusive range
+..<         half-open range
+```
 
 # Operator Details
 
 ## Operator precedence
 
-## Integer operators
+```
+Precedence   Operator
+     7       *  /  %  %%  &  <<  >>
+     6       +  -  |  ~
+     5       ==  !=  <  >  <=  >=
+     4       &&
+     3       ||
+     2       ..=  ..<
+     1       if
+```
+
+Binary operators of the same precedence are evaluated left to right.
+For example, `a / b * c` is evaluated as `(a / b) * c`.
 
 ## Integer overflow
 
