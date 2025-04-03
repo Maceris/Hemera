@@ -282,5 +282,23 @@ For example, `a / b * c` is evaluated as `(a / b) * c`.
 
 ## Integer overflow
 
+For unsigned integers, the operators `+`, `-`, `*`, and `<<` are computed modulo 2^n, where n is the 
+bit width of the unsigned integer's type. This means that the high bit are discarded upon overflow, 
+and integer values will wrap around.
+
+For signed integers, the operators `+`, `-`, `*`, `/`, and `<<` are computed as determined by the
+two`s compliment binary representation of the integer value. Overflow will not cause a runtime panic.
+For example, `x < x + 1` cannot be assumed to always be true.
+
 ## Floating-point operators
 
+For floating-point, complex, quaternion, or other floating-point embedded types:
+
+* `+x` is the same as `x`
+* `-x` is the negation of `x`
+
+Division by zero on floating point operates as defined in IEEE-754, a runtime panic may occur.
+
+Implementations may use fused operations that combine multiple floating-point operations into a single one,
+even if that produces a different result from the value obtained from individually executing and 
+rounding results from instructions.
