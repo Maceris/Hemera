@@ -7,6 +7,7 @@
 namespace hemera {
 
 	enum class TokenType : uint16_t {
+		ANNOTATION,
 		END_OF_FILE,
 		IDENTIFIER,
 		INVALID,
