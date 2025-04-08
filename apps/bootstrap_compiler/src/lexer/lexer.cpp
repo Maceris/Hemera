@@ -121,6 +121,7 @@ namespace hemera::lexer {
 		end,
 		equal,
 		exclamation,
+		expect_newline,
 		identifier,
 		integer,
 		integer_exponent,
@@ -138,6 +139,7 @@ namespace hemera::lexer {
 		literal_string,
 		literal_string_backslash,
 		minus,
+		multiline_string_line,
 		percent,
 		period,
 		period_2,
@@ -183,6 +185,14 @@ namespace hemera::lexer {
 		return true;
 	}
 
+	static char peek_char(Tokenizer& tokenizer) {
+		size_t next_index = static_cast<size_t>(tokenizer.column_number) + 1;
+		if (next_index >= tokenizer.current_line.length()) {
+			return 0;
+		}
+		return tokenizer.current_line[next_index];
+	}
+
 	static char next_char(Tokenizer& tokenizer, std::ifstream& input_stream, 
 		MyString& token_contents) {
 		if (tokenizer.column_number >= tokenizer.current_line.length()) {
@@ -213,11 +223,10 @@ namespace hemera::lexer {
 		switch_start:
 		switch (tokenizer.state) {
 		case State::ampersand:
-			tokenizer.column_number += 1;
-			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			switch (peek_char(tokenizer)) {
 			case '=':
 				result_type = TokenType::OPERATOR_ASSIGN_BITWISE_AND;
-				tokenizer.column_number += 1;
+				next_char(tokenizer, input_stream, *token_contents);
 				break;
 			default:
 				result_type = TokenType::OPERATOR_BITWISE_AND;
@@ -225,11 +234,10 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::asterisk:
-			tokenizer.column_number += 1;
-			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			switch (peek_char(tokenizer)) {
 			case '=':
 				result_type = TokenType::OPERATOR_ASSIGN_MUL;
-				tokenizer.column_number += 1;
+				next_char(tokenizer, input_stream, *token_contents);
 				break;
 			default:
 				result_type = TokenType::OPERATOR_MULTIPLY;
@@ -237,8 +245,7 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::annotation:
-			tokenizer.column_number += 1;
-			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			switch (peek_char(tokenizer)) {
 			case 'a': case 'b': case 'c': case 'd': case 'e':
 			case 'f': case 'g': case 'h': case 'i': case 'j':
 			case 'k': case 'l': case 'm': case 'n': case 'o':
@@ -254,14 +261,37 @@ namespace hemera::lexer {
 			case '0': case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8': case '9':
 			case '_':
+				next_char(tokenizer, input_stream, *token_contents);
 				goto switch_start;
 			default:
 				break;
 			}
 			break;
 		case State::backslash:
+			switch (peek_char(tokenizer)) {
+			case '\\':
+				tokenizer.state = State::multiline_string_line;
+				next_char(tokenizer, input_stream, *token_contents);
+				goto switch_start;
+			case 0:
+			case '\n':
+			default:
+				result_type = TokenType::INVALID;
+				break;
+			}
 			break;
 		case State::caret:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				tokenizer.state = State::multiline_string_line;
+				next_char(tokenizer, input_stream, *token_contents);
+				break;
+			case 0:
+			case '\n':
+			default:
+				result_type = TokenType::INVALID;
+				break;
+			}
 			break;
 		case State::colon:
 			break;
@@ -275,9 +305,10 @@ namespace hemera::lexer {
 			break;
 		case State::exclamation:
 			break;
+		case State::expect_newline:
+			break;
 		case State::identifier:
-			tokenizer.column_number += 1;
-			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			switch (peek_char(tokenizer)) {
 			case 'a': case 'b': case 'c': case 'd': case 'e':
 			case 'f': case 'g': case 'h': case 'i': case 'j':
 			case 'k': case 'l': case 'm': case 'n': case 'o':
@@ -293,6 +324,7 @@ namespace hemera::lexer {
 			case '0': case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8': case '9':
 			case '_':
+				next_char(tokenizer, input_stream, *token_contents);
 				goto switch_start;
 			default:
 				break;
@@ -305,6 +337,7 @@ namespace hemera::lexer {
 		case State::integer_period:
 			break;
 		case State::invalid:
+			result_type = TokenType::INVALID;
 			break;
 		case State::l_angle_bracket:
 			break;
@@ -329,6 +362,8 @@ namespace hemera::lexer {
 		case State::literal_string_backslash:
 			break;
 		case State::minus:
+			break;
+		case State::multiline_string_line:
 			break;
 		case State::percent:
 			break;
@@ -365,7 +400,6 @@ namespace hemera::lexer {
 			case '\n':
 			case '\r':
 			case '\t':
-				tokenizer.column_number += 1;
 				start_column += 1;
 				goto switch_start;
 			case 'a': case 'b': case 'c': case 'd': case 'e':
@@ -386,7 +420,6 @@ namespace hemera::lexer {
 			case '5': case '6': case '7': case '8': case '9':
 				result_type = TokenType::LITERAL_NUMBER;
 				tokenizer.state = State::integer;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case '_':
 				result_type = TokenType::SYM_UNDERSCORE;
@@ -446,43 +479,33 @@ namespace hemera::lexer {
 				goto switch_start;
 			case '(':
 				tokenizer.state = State::l_paren;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case ')':
 				tokenizer.state = State::r_paren;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case '[':
 				tokenizer.state = State::l_bracket;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case ']':
 				tokenizer.state = State::r_bracket;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case '{':
 				tokenizer.state = State::l_brace;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case '}':
 				tokenizer.state = State::r_brace;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case ';':
 				tokenizer.state = State::semicolon;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case ',':
 				tokenizer.state = State::comma;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case ':':
 				tokenizer.state = State::colon;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			case '?':
 				tokenizer.state = State::question_mark;
-				tokenizer.column_number += 1;
 				goto switch_start;
 			default:
 				tokenizer.state = State::invalid;
@@ -624,6 +647,7 @@ namespace hemera::lexer {
 
 		while (true) {
 			Token next_token = next(tokenizer, input, string_alloc);
+			//TODO(ches) if invalid token, probably bail on the file
 			if (next_token.type == TokenType::END_OF_FILE) {
 				break;
 			}
