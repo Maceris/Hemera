@@ -114,10 +114,10 @@ namespace hemera::lexer {
 		annotation,
 		asterisk,
 		backslash,
+		block_comment,
 		caret,
 		colon,
 		comma,
-		comment,
 		end,
 		equal,
 		exclamation,
@@ -132,6 +132,7 @@ namespace hemera::lexer {
 		l_brace,
 		l_bracket,
 		l_paren,
+		line_comment,
 		literal_char,
 		literal_char_backslash,
 		literal_float,
@@ -161,13 +162,15 @@ namespace hemera::lexer {
 		uint32_t line_number;
 		State state;
 		uint16_t column_number;
-		const char _padding[6] = { 0 };
+		uint8_t comment_depth;
+		const char _padding[5] = { 0 };
 
 		Tokenizer()
 			: current_line{}
 			, line_number{ 1 }
 			, state{ State::start }
 			, column_number{ 0 }
+			, comment_depth{ 0 }
 		{}
 		Tokenizer(const Tokenizer&) = delete;
 		Tokenizer(Tokenizer&&) = default;
@@ -280,6 +283,21 @@ namespace hemera::lexer {
 				break;
 			}
 			break;
+		case State::block_comment://TODO(ches)
+			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			case '*':
+				if (peek_char(tokenizer) == '/') {
+					next_char(tokenizer, input_stream, *token_contents);
+					tokenizer.comment_depth -= 1;
+				}
+				if (tokenizer.comment_depth > 0) {
+					goto switch_start;
+				}
+				break;
+			default:
+				goto switch_start;
+			}
+			break;
 		case State::caret:
 			switch (peek_char(tokenizer)) {
 			case '=':
@@ -294,10 +312,10 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::colon:
+			result_type = TokenType::SYM_COLON;
 			break;
 		case State::comma:
-			break;
-		case State::comment:
+			result_type = TokenType::SYM_COMMA;
 			break;
 		case State::end:
 			break;
@@ -348,6 +366,8 @@ namespace hemera::lexer {
 		case State::l_bracket:
 			break;
 		case State::l_paren:
+			break;
+		case State::line_comment://TODO(ches)
 			break;
 		case State::literal_char:
 			break;
