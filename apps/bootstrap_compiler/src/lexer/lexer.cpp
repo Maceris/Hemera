@@ -294,6 +294,12 @@ namespace hemera::lexer {
 					goto switch_start;
 				}
 				break;
+			case '/':
+				if (peek_char(tokenizer) == '*') {
+					next_char(tokenizer, input_stream, *token_contents);
+					tokenizer.comment_depth += 1;
+				}
+				break;
 			default:
 				goto switch_start;
 			}
@@ -318,6 +324,7 @@ namespace hemera::lexer {
 			result_type = TokenType::SYM_COMMA;
 			break;
 		case State::end:
+			result_type = TokenType::END_OF_FILE;
 			break;
 		case State::equal:
 			break;
