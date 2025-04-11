@@ -327,6 +327,15 @@ namespace hemera::lexer {
 			result_type = TokenType::END_OF_FILE;
 			break;
 		case State::equal:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_EQUAL;
+				next_char(tokenizer, input_stream, *token_contents);
+				break;
+			default:
+				result_type = TokenType::SYM_EQ;
+				break;
+			}
 			break;
 		case State::exclamation:
 			break;
