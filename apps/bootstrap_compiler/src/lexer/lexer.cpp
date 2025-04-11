@@ -283,7 +283,7 @@ namespace hemera::lexer {
 				break;
 			}
 			break;
-		case State::block_comment://TODO(ches)
+		case State::block_comment:
 			switch (next_char(tokenizer, input_stream, *token_contents)) {
 			case '*':
 				if (peek_char(tokenizer) == '/') {
@@ -299,7 +299,7 @@ namespace hemera::lexer {
 					next_char(tokenizer, input_stream, *token_contents);
 					tokenizer.comment_depth += 1;
 				}
-				break;
+				goto switch_start;
 			default:
 				goto switch_start;
 			}
@@ -338,6 +338,15 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::exclamation:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_NOT_EQUAL;
+				next_char(tokenizer, input_stream, *token_contents);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_NOT;
+				break;
+			}
 			break;
 		case State::expect_newline:
 			break;
@@ -625,6 +634,7 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_MINUS:
 		case TokenType::OPERATOR_MODULUS:
 		case TokenType::OPERATOR_MULTIPLY:
+		case TokenType::OPERATOR_NOT:
 		case TokenType::OPERATOR_NOT_EQUAL:
 		case TokenType::OPERATOR_OR:
 		case TokenType::OPERATOR_PIPE:
