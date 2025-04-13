@@ -197,9 +197,11 @@ namespace hemera::lexer {
 	}
 
 	static char next_char(Tokenizer& tokenizer, std::ifstream& input_stream, 
-		MyString& token_contents) {
+		MyString* token_contents = nullptr) {
 		if (tokenizer.column_number >= tokenizer.current_line.length()) {
-			token_contents += tokenizer.current_line;
+			if (token_contents) {
+				*token_contents += tokenizer.current_line;
+			}
 
 			if (!next_line(tokenizer, input_stream)) {
 				return 0;
@@ -229,7 +231,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '=':
 				result_type = TokenType::OPERATOR_ASSIGN_BITWISE_AND;
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream);
 				break;
 			default:
 				result_type = TokenType::OPERATOR_BITWISE_AND;
@@ -240,7 +242,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '=':
 				result_type = TokenType::OPERATOR_ASSIGN_MUL;
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream);
 				break;
 			default:
 				result_type = TokenType::OPERATOR_MULTIPLY;
@@ -264,7 +266,7 @@ namespace hemera::lexer {
 			case '0': case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8': case '9':
 			case '_':
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream, token_contents);
 				goto switch_start;
 			default:
 				break;
@@ -274,7 +276,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '\\':
 				tokenizer.state = State::multiline_string_line;
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream, token_contents);
 				goto switch_start;
 			case 0:
 			case '\n':
@@ -284,10 +286,10 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::block_comment:
-			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			switch (next_char(tokenizer, input_stream, token_contents)) {
 			case '*':
 				if (peek_char(tokenizer) == '/') {
-					next_char(tokenizer, input_stream, *token_contents);
+					next_char(tokenizer, input_stream, token_contents);
 					tokenizer.comment_depth -= 1;
 				}
 				if (tokenizer.comment_depth > 0) {
@@ -296,7 +298,7 @@ namespace hemera::lexer {
 				break;
 			case '/':
 				if (peek_char(tokenizer) == '*') {
-					next_char(tokenizer, input_stream, *token_contents);
+					next_char(tokenizer, input_stream, token_contents);
 					tokenizer.comment_depth += 1;
 				}
 				goto switch_start;
@@ -308,7 +310,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '=':
 				tokenizer.state = State::multiline_string_line;
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream);
 				break;
 			case 0:
 			case '\n':
@@ -330,7 +332,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '=':
 				result_type = TokenType::OPERATOR_EQUAL;
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream);
 				break;
 			default:
 				result_type = TokenType::SYM_EQ;
@@ -341,7 +343,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '=':
 				result_type = TokenType::OPERATOR_NOT_EQUAL;
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream);
 				break;
 			default:
 				result_type = TokenType::OPERATOR_NOT;
@@ -349,6 +351,17 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::expect_newline:
+			switch (peek_char(tokenizer)) {
+			case '\n':
+				tokenizer.state = State::start;
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case 0:
+				[[fallthrough]];
+			default:
+				tokenizer.state = State::invalid;
+				goto switch_start;
+			}
 			break;
 		case State::identifier:
 			switch (peek_char(tokenizer)) {
@@ -367,7 +380,7 @@ namespace hemera::lexer {
 			case '0': case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8': case '9':
 			case '_':
-				next_char(tokenizer, input_stream, *token_contents);
+				next_char(tokenizer, input_stream, token_contents);
 				goto switch_start;
 			default:
 				break;
@@ -437,7 +450,7 @@ namespace hemera::lexer {
 		case State::slash:
 			break;
 		case State::start:
-			switch (next_char(tokenizer, input_stream, *token_contents)) {
+			switch (next_char(tokenizer, input_stream, token_contents)) {
 			case 0:
 				tokenizer.state = State::end;
 				return Token{ TokenType::END_OF_FILE, start_column, start_line };
