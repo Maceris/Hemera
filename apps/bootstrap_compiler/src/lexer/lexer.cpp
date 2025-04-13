@@ -122,7 +122,6 @@ namespace hemera::lexer {
 		equal,
 		exclamation,
 		expect_newline,
-		floating_point,
 		identifier,
 		integer,
 		integer_binary,
@@ -136,8 +135,6 @@ namespace hemera::lexer {
 		line_comment,
 		literal_char,
 		literal_char_backslash,
-		literal_float,
-		literal_float_exponent,
 		literal_string,
 		literal_string_backslash,
 		minus,
@@ -354,13 +351,10 @@ namespace hemera::lexer {
 				next_char(tokenizer, input_stream, token_contents);
 				goto switch_start;
 			case 0:
-				[[fallthrough]];
 			default:
 				tokenizer.state = State::invalid;
 				goto switch_start;
 			}
-			break;
-		case State::floating_point://TODO(ches) floats
 			break;
 		case State::identifier:
 			switch (peek_char(tokenizer)) {
@@ -386,16 +380,113 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::integer:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case '_':
+				//NOTE(ches) just pretend underscore isn't there
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			case '.':
+				tokenizer.state = State::integer_period;
+				result_type = TokenType::LITERAL_FLOATING_POINT;
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case 'e':
+			case 'E':
+				tokenizer.state = State::integer_exponent;
+				result_type = TokenType::LITERAL_FLOATING_POINT;
+				next_char(tokenizer, input_stream, token_contents);
+				if (peek_char(tokenizer) == '-') {
+					next_char(tokenizer, input_stream, token_contents);
+				}
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::integer_binary:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case '_':
+				//NOTE(ches) just pretend underscore isn't there
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::integer_exponent:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case '_':
+				//NOTE(ches) just pretend underscore isn't there
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::integer_hex:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+			case 'a': case 'A': case 'b': case 'B':
+			case 'c': case 'C': case 'd': case 'D':
+			case 'e': case 'E': case 'f': case 'F':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case '_':
+				//NOTE(ches) just pretend underscore isn't there
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::integer_octal:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case '_':
+				//NOTE(ches) just pretend underscore isn't there
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::integer_period:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			case '_':
+				//NOTE(ches) just pretend underscore isn't there
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			case 'e':
+			case 'E':
+				tokenizer.state = State::integer_exponent;
+				LOG_ASSERT(result_type == TokenType::LITERAL_FLOATING_POINT);
+				next_char(tokenizer, input_stream, token_contents);
+				if (peek_char(tokenizer) == '-') {
+					next_char(tokenizer, input_stream, token_contents);
+				}
+				goto switch_start;
+			default:
+				break;
+			}
 			break;
 		case State::invalid:
 			result_type = TokenType::INVALID;
@@ -409,10 +500,6 @@ namespace hemera::lexer {
 		case State::literal_char:
 			break;
 		case State::literal_char_backslash:
-			break;
-		case State::literal_float:
-			break;
-		case State::literal_float_exponent:
 			break;
 		case State::literal_string:
 			break;
