@@ -122,6 +122,7 @@ namespace hemera::lexer {
 		equal,
 		exclamation,
 		expect_newline,
+		floating_point,
 		identifier,
 		integer,
 		integer_binary,
@@ -132,9 +133,6 @@ namespace hemera::lexer {
 		invalid,
 		l_angle_bracket,
 		l_angle_bracket_2,
-		l_brace,
-		l_bracket,
-		l_paren,
 		line_comment,
 		literal_char,
 		literal_char_backslash,
@@ -152,10 +150,6 @@ namespace hemera::lexer {
 		question_mark,
 		r_angle_bracket,
 		r_angle_bracket_2,
-		r_brace,
-		r_bracket,
-		r_paren,
-		semicolon,
 		slash,
 		start,
 	};
@@ -366,6 +360,8 @@ namespace hemera::lexer {
 				goto switch_start;
 			}
 			break;
+		case State::floating_point://TODO(ches) floats
+			break;
 		case State::identifier:
 			switch (peek_char(tokenizer)) {
 			case 'a': case 'b': case 'c': case 'd': case 'e':
@@ -408,12 +404,6 @@ namespace hemera::lexer {
 			break;
 		case State::l_angle_bracket_2:
 			break;
-		case State::l_brace:
-			break;
-		case State::l_bracket:
-			break;
-		case State::l_paren:
-			break;
 		case State::line_comment://TODO(ches)
 			break;
 		case State::literal_char:
@@ -447,14 +437,6 @@ namespace hemera::lexer {
 		case State::r_angle_bracket:
 			break;
 		case State::r_angle_bracket_2:
-			break;
-		case State::r_brace:
-			break;
-		case State::r_bracket:
-			break;
-		case State::r_paren:
-			break;
-		case State::semicolon:
 			break;
 		case State::slash:
 			break;
@@ -563,26 +545,23 @@ namespace hemera::lexer {
 				tokenizer.state = State::backslash;
 				goto switch_start;
 			case '(':
-				tokenizer.state = State::l_paren;
-				goto switch_start;
+				result_type = TokenType::SYM_LPAREN;
+				break;
 			case ')':
-				tokenizer.state = State::r_paren;
-				goto switch_start;
+				result_type = TokenType::SYM_RPAREN;
+				break;
 			case '[':
-				tokenizer.state = State::l_bracket;
-				goto switch_start;
+				result_type = TokenType::SYM_LBRACK;
+				break;
 			case ']':
-				tokenizer.state = State::r_bracket;
-				goto switch_start;
+				result_type = TokenType::SYM_RBRACK;
+				break;
 			case '{':
-				tokenizer.state = State::l_brace;
-				goto switch_start;
+				result_type = TokenType::SYM_LBRACE;
+				break;
 			case '}':
-				tokenizer.state = State::r_brace;
-				goto switch_start;
-			case ';':
-				tokenizer.state = State::semicolon;
-				goto switch_start;
+				result_type = TokenType::SYM_RBRACE;
+				break;
 			case ',':
 				tokenizer.state = State::comma;
 				goto switch_start;
