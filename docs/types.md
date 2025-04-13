@@ -102,3 +102,15 @@ More details:
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
+
+
+## Number Formats
+
+Integers can be written as 
+
+* Decimal format, using the digits (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+* Hex format, with the prefix `0x` followed by  one or more hex digits (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, a, A, b, B, c, C, d, D, e, E, f, F)
+* Octal format, with the prefix `0o` followed by one or more octal digits (0, 1, 2, 3, 4, 5, 6, 7)
+* Binary format, with the prefix `0b` followed by one or more binary digits (0, 1)
+
+Any format can use underscores (`_`) freely between digits, they are ignored.

@@ -124,7 +124,10 @@ namespace hemera::lexer {
 		expect_newline,
 		identifier,
 		integer,
+		integer_binary,
 		integer_exponent,
+		integer_hex,
+		integer_octal,
 		integer_period,
 		invalid,
 		l_angle_bracket,
@@ -388,7 +391,13 @@ namespace hemera::lexer {
 			break;
 		case State::integer:
 			break;
+		case State::integer_binary:
+			break;
 		case State::integer_exponent:
+			break;
+		case State::integer_hex:
+			break;
+		case State::integer_octal:
 			break;
 		case State::integer_period:
 			break;
@@ -474,10 +483,28 @@ namespace hemera::lexer {
 			case 'Z':
 				tokenizer.state = State::identifier;
 				goto switch_start;
-			case '0': case '1': case '2': case '3': case '4':
-			case '5': case '6': case '7': case '8': case '9':
-				result_type = TokenType::LITERAL_NUMBER;
+			case '1': case '2': case '3': case '4': case '5':
+			case '6': case '7': case '8': case '9':
+				result_type = TokenType::LITERAL_INTEGER;
 				tokenizer.state = State::integer;
+				goto switch_start;
+			case '0':
+				result_type = TokenType::LITERAL_INTEGER;
+				tokenizer.state = State::integer;
+				switch (peek_char(tokenizer)) {
+				case 'x':
+					tokenizer.state = State::integer_hex;
+					next_char(tokenizer, input_stream, token_contents);
+					break;
+				case 'o':
+					tokenizer.state = State::integer_octal;
+					next_char(tokenizer, input_stream, token_contents);
+					break;
+				case 'b':
+					tokenizer.state = State::integer_binary;
+					next_char(tokenizer, input_stream, token_contents);
+					break;
+				}
 				goto switch_start;
 			case '_':
 				result_type = TokenType::SYM_UNDERSCORE;
@@ -575,7 +602,8 @@ namespace hemera::lexer {
 		case TokenType::ANNOTATION:
 		case TokenType::IDENTIFIER:
 		case TokenType::LITERAL_CHAR:
-		case TokenType::LITERAL_NUMBER:
+		case TokenType::LITERAL_INTEGER:
+		case TokenType::LITERAL_FLOATING_POINT:
 		case TokenType::LITERAL_STRING:
 		{
 			size_t first_position = 0;
