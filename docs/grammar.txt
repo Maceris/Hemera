@@ -11,17 +11,38 @@ letter = "A" | "B" | "C" | "D" | "E" | "F" | "G"
     | "q" | "r" | "s" | "t" | "u" | "v" | "w"
     | "x" | "y" | "z" ;
 
-digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+digit_decimal = "0" | digit_decimal_nonzero ;
+digit_decimal_nonzero = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 
-identifier = letter , { letter | digit | "_" } ;
+digit_hex = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+    | "a" | "A" | "b" | "B" | "c" | "C" | "d" | "D" | "e" | "E" | "f" | "F" ;
+digit_octal = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" ;
+digit_binary = "0" | "1" ;
 
-directory_character = letter | digit | "_" | "-" ;
+identifier = letter , { letter | digit_decimal | "_" } ;
+
+directory_character = letter | digit_decimal | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
 string_literal = '"' , { [^\\\"] | \\. } , '"' ;
 
-integer_literal = digit , { digit } ; #TODO(ches) decimals, e, bases
+number_literal = integer_literal | float_literal ;
+
+integer_literal = integer_decimal
+    | integer_hex
+    | integer_binary
+    | integer_octal
+    ;
+
+integer_decimal = digit_decimal_nonzero , { { "_" } , digit_decimal } ;
+integer_hex = "0x" , digit_hex, { { "_" } , digit_hex } ;
+integer_binary = "0b" , digit_binary, { { "_" } , digit_binary } ;
+integer_octal = "0o" , digit_octal, { { "_" } , digit_octal } ;
+
+float_literal = ( "0" | integer_decimal ) , [ float_decimal ] , [ float_exponent ] ;
+float_decimal = "." , integer_decimal ;
+float_exponent = ( "e" | "E" ) , [ "-" ] , integer_decimal ;
 
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
