@@ -492,8 +492,30 @@ namespace hemera::lexer {
 			result_type = TokenType::INVALID;
 			break;
 		case State::l_angle_bracket:
+			switch (peek_char(tokenizer)) {
+			case '<':
+				tokenizer.state = State::l_angle_bracket_2;
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			case '=':
+				result_type = TokenType::OPERATOR_LESS_THAN_OR_EQUAL;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::SYM_LT;
+				break;
+			}
 			break;
 		case State::l_angle_bracket_2:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_LEFT_SHIFT;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_LEFT_SHIFT;
+				break;
+			}
 			break;
 		case State::line_comment://TODO(ches)
 			break;
