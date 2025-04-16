@@ -517,7 +517,17 @@ namespace hemera::lexer {
 				break;
 			}
 			break;
-		case State::line_comment://TODO(ches)
+		case State::line_comment:
+			switch (next_char(tokenizer, input_stream, token_contents)) {
+			case 0:
+			case '\n':
+				break;
+			case '\r':
+				tokenizer.state = State::expect_newline;
+				goto switch_start;
+			default:
+				goto switch_start;
+			}
 			break;
 		case State::literal_char:
 			break;
