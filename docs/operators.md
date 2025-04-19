@@ -117,6 +117,48 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ?  try operator
 ```
 
+### Optional operators
+
+There are built in operators for optional types (`T?`).
+
+```
+is_none    a is_none      evaluates to false if the optional does not have a value, or false if it does
+is_some    a is_some      evaluates to true if the optional value a is some value, or false if it is not
+or_else    a or_else b    evaluates to an optionals value if present, or the provided default if not
+or_return  a or_return b  evaluates to an optionals value if present, or returns a default value if not
+```
+
+Some examples of usage:
+```
+example :: fn() -> i32 {
+    foo : i32? = some_function()
+    
+    if foo is_some {
+        println("Foo exists")
+    }
+
+    if foo is_none {
+        println("This should have been an else")
+    }
+    
+    // Will be the value of foo if the value is present, or 5 if not
+    bar : i32 = foo or_else 5
+
+    // Will result in the value of foo if there is one, or return 10 immediately if not
+    baz :: foo or_return 10
+
+    //...
+}
+
+example_2 :: fn() {
+    option : i32? : some_function()
+    
+    // If a function does not have a return value, it is omitted
+    bar :: option or_return
+    //...
+}
+```
+
 ### Pipe operator
 The pipe operator takes output from one function and provides it as input for another.
 
@@ -194,52 +236,6 @@ example :: fn() {
     |> baz($2, "Example", $1) // Reorders output, ignores third result
 }
 ```
-### Try operator (subject to change)
-
-[//]: # (TODO are we removing this in favor of a macro?)
-
-In functions that
-
-* Return a `Result<T1, E>` which call another function that returns a `Result<T2, E>` where the `E` types match (`T1` and `T2` may or may not)
-* Return a `Option<T>` which call a function that returns an `Option<T>` where the `T` types match
-
-the try operator (`?`) can be appended to propagate error values up.
-
-```
-foo :: fn() -> Result<i32, ExampleError> {
-    example1 : f32 = bar()?
-    
-    // The above is equivalent to something like this
-    example2 : f32 = match bar() {
-        Ok(value) => value,
-        Error(e) => return Error(e),
-    }
-    // ...
-}
-
-bar :: fn() -> Result<f32, ExampleError> {
-    // ...
-}
-```
-
-Or, for options
-
-```
-foo :: fn() -> Option<i32> {
-    example1 : f32 = bar()?
-    
-    // The above is equivalent to something like this
-    example2 : f32 = match bar() {
-        Some(value) => value,
-        None() => return None(),
-    }
-    // ...
-}
-
-bar :: fn() -> Option<f32> {
-    // ...
-}
-```
 
 ## Logical operators
 
@@ -274,7 +270,7 @@ Precedence   Operator
      4       &&
      3       ||
      2       ..=  ..<
-     1       if
+     1       if  is_none  is_some  or_else  or_return
 ```
 
 Binary operators of the same precedence are evaluated left to right.

@@ -64,6 +64,12 @@ namespace hemera::lexer {
 		if (identifier.compare("in") == 0) {
 			return TokenType::KEYWORD_IN;
 		}
+		if (identifier.compare("is_none") == 0) {
+			return TokenType::KEYWORD_IS_NONE;
+		}
+		if (identifier.compare("is_some") == 0) {
+			return TokenType::KEYWORD_IS_SOME;
+		}
 		if (identifier.compare("loop") == 0) {
 			return TokenType::KEYWORD_LOOP;
 		}
@@ -75,6 +81,12 @@ namespace hemera::lexer {
 		}
 		if (identifier.compare("null") == 0) {
 			return TokenType::KEYWORD_NULL;
+		}
+		if (identifier.compare("or_else") == 0) {
+			return TokenType::KEYWORD_OR_ELSE;
+		}
+		if (identifier.compare("or_return") == 0) {
+			return TokenType::KEYWORD_OR_RETURN;
 		}
 		if (identifier.compare("package") == 0) {
 			return TokenType::KEYWORD_PACKAGE;
@@ -887,10 +899,14 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_IF:
 		case TokenType::KEYWORD_IMPORT:
 		case TokenType::KEYWORD_IN:
+		case TokenType::KEYWORD_IS_NONE:
+		case TokenType::KEYWORD_IS_SOME:
 		case TokenType::KEYWORD_LOOP:
 		case TokenType::KEYWORD_MATCH:
 		case TokenType::KEYWORD_MUT:
 		case TokenType::KEYWORD_NULL:
+		case TokenType::KEYWORD_OR_ELSE:
+		case TokenType::KEYWORD_OR_RETURN:
 		case TokenType::KEYWORD_PACKAGE:
 		case TokenType::KEYWORD_RETURN:
 		case TokenType::KEYWORD_STRUCT:

@@ -103,7 +103,6 @@ More details:
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
 
-
 ## Number Formats
 
 Integers can be written as 
@@ -114,3 +113,23 @@ Integers can be written as
 * Binary format, with the prefix `0b` followed by one or more binary digits (0, 1)
 
 Any format can use underscores (`_`) freely between digits, they are ignored.
+
+## Optional Types
+
+Any type can be represented as an optional by appending a `?` to the type name.
+This is only equivalent to a nullable type, albeit `null` still exists for `rawptr`'s.
+
+For example `i32?` is a type that either contains an `i32`, or does not.
+This works for any built-in or user-defined type.
+
+This is a built-in union type similar to this structure, where `Optional<Foo>` is equivalent to `Foo?`:
+
+```
+Optional :: union<T> {
+    None,
+    Some(T),
+}
+```
+
+There are a few operators built in to make life easier when dealing with optional values.
+
