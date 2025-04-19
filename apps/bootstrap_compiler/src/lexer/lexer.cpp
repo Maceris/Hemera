@@ -603,6 +603,19 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::minus:
+			switch (peek_char(tokenizer)) {
+			case '>':
+				result_type = TokenType::SYM_ARROW;
+				next_char(tokenizer, input_stream);
+				break;
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_SUB;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_MINUS;
+				break;
+			}
 			break;
 		case State::multiline_string_line:
 			break;
