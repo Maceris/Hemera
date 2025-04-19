@@ -122,10 +122,12 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 There are built in operators for optional types (`T?`).
 
 ```
-is_none    a is_none      evaluates to false if the optional does not have a value, or false if it does
-is_some    a is_some      evaluates to true if the optional value a is some value, or false if it is not
-or_else    a or_else b    evaluates to an optionals value if present, or the provided default if not
-or_return  a or_return b  evaluates to an optionals value if present, or returns a default value if not
+is_none      a is_none      evaluates to false if the optional does not have a value, or false if it does
+is_some      a is_some      evaluates to true if the optional value a is some value, or false if it is not
+or_break     a or_break     breaks if an optional is not present, otherwise evaluates to the value
+or_continue  a or_continue  continues if an optional is not present, otherwise evaluates to the value
+or_else      a or_else b    evaluates to an optionals value if present, or the provided default if not
+or_return    a or_return b  evaluates to an optionals value if present, or returns a default value if not
 ```
 
 Some examples of usage:
@@ -156,6 +158,16 @@ example_2 :: fn() {
     // If a function does not have a return value, it is omitted
     bar :: option or_return
     //...
+
+    loop {
+        if some_function() or_continue == 3 {
+            println("These can be used in expressions")
+        }
+
+        foo : ExampleType : another_function() or_break
+
+        // ...
+    }
 }
 ```
 
@@ -254,8 +266,9 @@ x if cond else y  // ternary runtime conditional expression
 ## Other operators
 
 ```
-..=         inclusive range
-..<         half-open range
+..=  inclusive range
+..<  half-open range
+in   for use in looping over values
 ```
 
 # Operator Details
@@ -265,13 +278,15 @@ x if cond else y  // ternary runtime conditional expression
 ```
 Precedence   Operator
      7       *  /  %  %%  &  <<  >>
-     6       +  -  |  ~
+     6       +  -  |  ~  in
      5       ==  !=  <  >  <=  >=
      4       &&
      3       ||
      2       ..=  ..<
-     1       if  is_none  is_some  or_else  or_return
+     1       if  is_none  is_some  or_break  or_continue  or_else  or_return
 ```
+
+Unary operators have the highest precedence.
 
 Binary operators of the same precedence are evaluated left to right.
 For example, `a / b * c` is evaluated as `(a / b) * c`.

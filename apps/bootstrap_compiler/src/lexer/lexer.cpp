@@ -82,6 +82,12 @@ namespace hemera::lexer {
 		if (identifier.compare("null") == 0) {
 			return TokenType::KEYWORD_NULL;
 		}
+		if (identifier.compare("or_break") == 0) {
+			return TokenType::KEYWORD_OR_BREAK;
+		}
+		if (identifier.compare("or_continue") == 0) {
+			return TokenType::KEYWORD_OR_CONTINUE;
+		}
 		if (identifier.compare("or_else") == 0) {
 			return TokenType::KEYWORD_OR_ELSE;
 		}
@@ -905,6 +911,8 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_MATCH:
 		case TokenType::KEYWORD_MUT:
 		case TokenType::KEYWORD_NULL:
+		case TokenType::KEYWORD_OR_BREAK:
+		case TokenType::KEYWORD_OR_CONTINUE:
 		case TokenType::KEYWORD_OR_ELSE:
 		case TokenType::KEYWORD_OR_RETURN:
 		case TokenType::KEYWORD_PACKAGE:
