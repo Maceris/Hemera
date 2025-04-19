@@ -140,9 +140,11 @@ namespace hemera::lexer {
 		minus,
 		multiline_string_line,
 		percent,
+		percent_2,
 		period,
 		period_2,
 		pipe,
+		pipe_2,
 		plus,
 		question_mark,
 		r_angle_bracket,
@@ -618,14 +620,88 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::multiline_string_line:
+			switch (next_char(tokenizer, input_stream, token_contents)) {
+			case 0:
+				tokenizer.state = State::invalid;
+				goto switch_start;
+			case '\n':
+				break;
+			case '\r':
+				if (peek_char(tokenizer) != '\n') {
+					tokenizer.state = State::invalid;
+					goto switch_start;
+				}
+				goto switch_start;
+			case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
+			case 0x06: case 0x07: case 0x08: case 0x09: case 0x0b:
+			case 0x0c: case 0x0e: case 0x0f: case 0x10: case 0x11:
+			case 0x12: case 0x13: case 0x14: case 0x15: case 0x16:
+			case 0x17: case 0x18: case 0x19: case 0x1a: case 0x1b:
+			case 0x1c: case 0x1d: case 0x1e: case 0x1f: case 0x7f:
+				tokenizer.state = State::invalid;
+				goto switch_start;
+			default:
+				goto switch_start;
+			}
 			break;
 		case State::percent:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_MOD;
+				next_char(tokenizer, input_stream);
+				break;
+			case '%':
+				tokenizer.state = State::percent_2;
+				goto switch_start;
+			default:
+				result_type = TokenType::OPERATOR_MODULUS;
+				break;
+			}
+			break;
+		case State::percent_2:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_REMAINDER;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_REMAINDER;
+				break;
+			}
 			break;
 		case State::period:
+			switch (peek_char(tokenizer)) {
+			case '.':
+				tokenizer.state = State::period_2;
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			default:
+				result_type = TokenType::SYM_DOT;
+				break;
+			}
 			break;
 		case State::period_2:
+			switch (peek_char(tokenizer)) {
+			case '.':
+				result_type = TokenType::SYM_ELLIPSIS;
+				next_char(tokenizer, input_stream);
+				break;
+			case '<':
+				result_type = TokenType::OPERATOR_RANGE_EXCLUSIVE;
+				next_char(tokenizer, input_stream);
+				break;
+			case '=':
+				result_type = TokenType::OPERATOR_RANGE_INCLUSIVE;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::SYM_DOT;
+				break;
+			}
 			break;
 		case State::pipe:
+			break;
+		case State::pipe_2:
 			break;
 		case State::plus:
 			break;
@@ -857,6 +933,8 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_PIPE:
 		case TokenType::OPERATOR_PLUS:
 		case TokenType::OPERATOR_QUESTION:
+		case TokenType::OPERATOR_RANGE_EXCLUSIVE:
+		case TokenType::OPERATOR_RANGE_INCLUSIVE:
 		case TokenType::OPERATOR_REMAINDER:
 		case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
 		case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
@@ -864,6 +942,7 @@ namespace hemera::lexer {
 		case TokenType::SYM_COLON:
 		case TokenType::SYM_COMMA:
 		case TokenType::SYM_DOT:
+		case TokenType::SYM_ELLIPSIS:
 		case TokenType::SYM_EQ:
 		case TokenType::SYM_GT:
 		case TokenType::SYM_LBRACE:
