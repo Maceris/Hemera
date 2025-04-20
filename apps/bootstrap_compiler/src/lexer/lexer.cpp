@@ -718,8 +718,34 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::pipe:
+			switch (peek_char(tokenizer)) {
+			case '|':
+				tokenizer.state = State::pipe_2;
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_BITWISE_OR;
+				next_char(tokenizer, input_stream);
+				break;
+			case '>':
+				result_type = TokenType::OPERATOR_PIPE;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_BITWISE_OR;
+				break;
+			}
 			break;
 		case State::pipe_2:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_OR;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_OR;
+				break;
+			}
 			break;
 		case State::plus:
 			break;
