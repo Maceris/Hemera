@@ -134,8 +134,6 @@ namespace hemera::lexer {
 		backslash,
 		block_comment,
 		caret,
-		colon,
-		comma,
 		end,
 		equal,
 		exclamation,
@@ -164,9 +162,9 @@ namespace hemera::lexer {
 		pipe,
 		pipe_2,
 		plus,
-		question_mark,
 		r_angle_bracket,
 		r_angle_bracket_2,
+		r_angle_bracket_3,
 		slash,
 		start,
 	};
@@ -332,12 +330,6 @@ namespace hemera::lexer {
 				result_type = TokenType::INVALID;
 				break;
 			}
-			break;
-		case State::colon:
-			result_type = TokenType::SYM_COLON;
-			break;
-		case State::comma:
-			result_type = TokenType::SYM_COMMA;
 			break;
 		case State::end:
 			result_type = TokenType::END_OF_FILE;
@@ -748,14 +740,69 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::plus:
-			break;
-		case State::question_mark:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_ADD;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_PLUS;
+				break;
+			}
 			break;
 		case State::r_angle_bracket:
+			switch (peek_char(tokenizer)) {
+			case '>':
+				tokenizer.state = State::r_angle_bracket_2;
+				next_char(tokenizer, input_stream);
+				goto switch_start;
+			case '=':
+				result_type = TokenType::OPERATOR_GREATER_THAN_OR_EQUAL;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::SYM_GT;
+				break;
+			}
 			break;
 		case State::r_angle_bracket_2:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC;
+				next_char(tokenizer, input_stream);
+				break;
+			case '>':
+				tokenizer.state = State::r_angle_bracket_3;
+				goto switch_start;
+			default:
+				result_type = TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC;
+				break;
+			}
+			break;
+		case State::r_angle_bracket_3:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL;
+				break;
+			}
 			break;
 		case State::slash:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_DIV;
+				next_char(tokenizer, input_stream);
+				break;
+			case '/':
+				tokenizer.state = State::line_comment;
+				goto switch_start;
+			default:
+				result_type = TokenType::OPERATOR_DIVIDE;
+				break;
+			}
 			break;
 		case State::start:
 			switch (next_char(tokenizer, input_stream, token_contents)) {
@@ -879,15 +926,15 @@ namespace hemera::lexer {
 			case '}':
 				result_type = TokenType::SYM_RBRACE;
 				break;
-			case ',':
-				tokenizer.state = State::comma;
-				goto switch_start;
-			case ':':
-				tokenizer.state = State::colon;
-				goto switch_start;
 			case '?':
-				tokenizer.state = State::question_mark;
-				goto switch_start;
+				result_type = TokenType::SYM_QUESTION;
+				break;
+			case ',':
+				result_type = TokenType::SYM_COMMA;
+				break;
+			case ':':
+				result_type = TokenType::SYM_COLON;
+				break;
 			default:
 				tokenizer.state = State::invalid;
 			}
@@ -982,7 +1029,6 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_OR:
 		case TokenType::OPERATOR_PIPE:
 		case TokenType::OPERATOR_PLUS:
-		case TokenType::OPERATOR_QUESTION:
 		case TokenType::OPERATOR_RANGE_EXCLUSIVE:
 		case TokenType::OPERATOR_RANGE_INCLUSIVE:
 		case TokenType::OPERATOR_REMAINDER:
@@ -999,11 +1045,10 @@ namespace hemera::lexer {
 		case TokenType::SYM_LBRACK:
 		case TokenType::SYM_LPAREN:
 		case TokenType::SYM_LT:
-		case TokenType::SYM_QUOTE:
+		case TokenType::SYM_QUESTION:
 		case TokenType::SYM_RBRACE:
 		case TokenType::SYM_RBRACK:
 		case TokenType::SYM_RPAREN:
-		case TokenType::SYM_SINGLE_QUOTE:
 		case TokenType::SYM_UNDERSCORE:
 		default:
 			string_alloc.delete_object(token_contents);
