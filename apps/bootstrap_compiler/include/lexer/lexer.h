@@ -15,7 +15,6 @@ namespace hemera {
 			asterisk,
 			backslash,
 			block_comment,
-			caret,
 			end,
 			equal,
 			exclamation,
@@ -49,6 +48,7 @@ namespace hemera {
 			r_angle_bracket_3,
 			slash,
 			start,
+			tilde,
 		};
 
 		struct Tokenizer {

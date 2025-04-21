@@ -253,19 +253,6 @@ namespace hemera::lexer {
 				goto switch_start;
 			}
 			break;
-		case State::caret:
-			switch (peek_char(tokenizer)) {
-			case '=':
-				state = State::multiline_string_line;
-				next_char(tokenizer, input_stream);
-				break;
-			case 0:
-			case '\n':
-			default:
-				result_type = TokenType::INVALID;
-				break;
-			}
-			break;
 		case State::end:
 			result_type = TokenType::END_OF_FILE;
 			break;
@@ -825,8 +812,8 @@ namespace hemera::lexer {
 			case '>':
 				state = State::r_angle_bracket;
 				goto switch_start;
-			case '^':
-				state = State::caret;
+			case '~':
+				state = State::tilde;
 				goto switch_start;
 			case '.':
 				state = State::period;
@@ -843,6 +830,9 @@ namespace hemera::lexer {
 			case '\\':
 				state = State::backslash;
 				goto switch_start;
+			case '^':
+				result_type = TokenType::OPERATOR_DEREFERENCE;
+				break;
 			case '(':
 				result_type = TokenType::SYM_LPAREN;
 				break;
@@ -872,6 +862,17 @@ namespace hemera::lexer {
 				break;
 			default:
 				state = State::invalid;
+			}
+			break;
+		case State::tilde:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_BITWISE_XOR;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_BITWISE_XOR;
+				break;
 			}
 			break;
 		}
@@ -952,6 +953,7 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_BITWISE_OR:
 		case TokenType::OPERATOR_BITWISE_XOR:
 		case TokenType::OPERATOR_DIVIDE:
+		case TokenType::OPERATOR_DEREFERENCE:
 		case TokenType::OPERATOR_EQUAL:
 		case TokenType::OPERATOR_GREATER_THAN_OR_EQUAL:
 		case TokenType::OPERATOR_LEFT_SHIFT:
