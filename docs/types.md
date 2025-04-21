@@ -51,6 +51,7 @@ More details:
 | c32     | 32-bit complex number, composed of 2 i16 values                                                                                              |
 | c64     | 64-bit complex number, composed of 2 i32 values                                                                                              |
 | c128    | 128-bit complex number, composed of 2 i128 values                                                                                            |
+| char    | Single character, in utf-8                                                                                                                   |
 | cstring | C-style null-terminated string                                                                                                               |
 | f16     | 16-bit (half-precision) IEEE-754 floating point number                                                                                       |
 | f16be   | 16-bit (half-precision) IEEE-754 floating point number, big endian                                                                           |
@@ -81,7 +82,7 @@ More details:
 | q128    | 128-bit quaternion, composed of 4 i32 values                                                                                                 |
 | q256    | 256-bit quaternion, composed of 4 i64 values                                                                                                 |
 | rawptr  | Pointer to an arbitrary type, equivalent to C's void *                                                                                       |
-| string  | String that includes a length, not null-terminated                                                                                           |
+| string  | String that includes a length, not null-terminated, in utf-8                                                                                 |
 | type    | Information about a type                                                                                                                     |
 | u8      | 8-bit unsigned integer                                                                                                                       |
 | u16     | 16-bit unsigned integer                                                                                                                      |
@@ -133,3 +134,16 @@ Optional :: union<T> {
 
 There are a few operators built in to make life easier when dealing with optional values.
 
+## Strings
+
+There are 2 formats for strings. Strings can be enclosed in quotes like `"This is a string"`, or may be multiline strings.
+
+For multiline strings, each line starts with a double-backslash (`\\`)
+
+```
+example : string : 
+    \\ this is a multiline string
+    \\ each line of the string maintains indentation after
+    \\ the backslashes, but ignores any indentation before them
+    \\ so these won't mess up function indentation
+```
