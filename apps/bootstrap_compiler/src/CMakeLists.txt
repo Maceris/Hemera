@@ -31,6 +31,7 @@ SET(THIRD_PARTY_HEADER_FILES
 SET(TEST_FILES
   ${TEST_DIR}/main.cpp
   ${TEST_DIR}/cmd_line/arg_parsing_test.cpp
+  ${TEST_DIR}/lexer/lexer_test.cpp
 )
 
 ADD_LIBRARY(HemeraLib
