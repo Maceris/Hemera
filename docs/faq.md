@@ -56,9 +56,9 @@ Less concisely, this language is designed with a few biases against Object Orien
 A few hot takes from the creator:
 
 * Inheritance, certainly beyond one level and possibly at all, is harmful. `extends` is evil, though `implements` gets a pass if (and only if) there are multiple implementations.
-* Trying to build programs by granularly modeling the real world as objects (`Cat extends Animal`) is counterproductive at best, and a nightmare at worst
+* Trying to build programs by granularly modeling a real world taxonomy as objects (`Cat extends Animal`) is counterproductive at best, and a nightmare at worst
 * Encapsulation is frequently incorrectly used (as terminology), naked getters and setters is neither encapsulating anything nor a good idea
-* Encapsulation is pointless when building programs around the data being operated on and operations that are performed on data, instead of designing in terms of Objects communicating via message-passing
+* Encapsulation is usually done at the wrong level, rendering it pointless by forcing details to leak out anyway. Microservices are significantly more OOP than `getX()` is.
 
 ### Operator overloading
 
@@ -73,3 +73,7 @@ With the math being built in, there are few cases for operator overloading, and 
 These operators add more confusion than they solve when saving one character over something like `i += 1`.
 
 These operators are primarily used in for loops, which have ranged-based alternatives in this language that are even shorter and safer.
+
+## Why am I like this?
+
+Why is winter cold?
