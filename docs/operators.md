@@ -114,7 +114,6 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ## Function operators
 ```
 |> pipe operator for function chaining
-?  try operator
 ```
 
 ### Optional operators

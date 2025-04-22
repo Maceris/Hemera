@@ -136,7 +136,7 @@ namespace hemera::lexer {
 	}
 
 	static char peek_char(Tokenizer& tokenizer) {
-		size_t next_index = static_cast<size_t>(tokenizer.column_number) + 1;
+		size_t next_index = static_cast<size_t>(tokenizer.column_number);
 		if (next_index >= tokenizer.current_line.length()) {
 			return 0;
 		}
@@ -180,8 +180,23 @@ namespace hemera::lexer {
 				result_type = TokenType::OPERATOR_ASSIGN_BITWISE_AND;
 				next_char(tokenizer, input_stream);
 				break;
+			case '&':
+				state = State::ampersand_2;
+				next_char(tokenizer, input_stream);
+				goto switch_start;
 			default:
 				result_type = TokenType::OPERATOR_BITWISE_AND;
+				break;
+			}
+			break;
+		case State::ampersand_2:
+			switch (peek_char(tokenizer)) {
+			case '=':
+				result_type = TokenType::OPERATOR_ASSIGN_AND;
+				next_char(tokenizer, input_stream);
+				break;
+			default:
+				result_type = TokenType::OPERATOR_AND;
 				break;
 			}
 			break;
@@ -229,7 +244,7 @@ namespace hemera::lexer {
 			case '\n':
 			default:
 				result_type = TokenType::INVALID;
-				break;
+				goto switch_start;
 			}
 			break;
 		case State::block_comment:
@@ -253,6 +268,17 @@ namespace hemera::lexer {
 				goto switch_start;
 			}
 			break;
+		case State::dollar_sign:
+			switch (peek_char(tokenizer)) {
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
+			default:
+				state = State::invalid;
+				goto switch_start;
+			}
+			break;
 		case State::end:
 			result_type = TokenType::END_OF_FILE;
 			break;
@@ -262,8 +288,12 @@ namespace hemera::lexer {
 				result_type = TokenType::OPERATOR_EQUAL;
 				next_char(tokenizer, input_stream);
 				break;
+			case '>':
+				result_type = TokenType::SYM_ARROW_DOUBLE;
+				next_char(tokenizer, input_stream);
+				break;
 			default:
-				result_type = TokenType::SYM_EQ;
+				result_type = TokenType::OPERATOR_ASSIGN;
 				break;
 			}
 			break;
@@ -539,7 +569,7 @@ namespace hemera::lexer {
 		case State::minus:
 			switch (peek_char(tokenizer)) {
 			case '>':
-				result_type = TokenType::SYM_ARROW;
+				result_type = TokenType::SYM_ARROW_SINGLE;
 				next_char(tokenizer, input_stream);
 				break;
 			case '=':
@@ -584,6 +614,7 @@ namespace hemera::lexer {
 				break;
 			case '%':
 				state = State::percent_2;
+				next_char(tokenizer, input_stream);
 				goto switch_start;
 			default:
 				result_type = TokenType::OPERATOR_MODULUS;
@@ -695,6 +726,7 @@ namespace hemera::lexer {
 				break;
 			case '>':
 				state = State::r_angle_bracket_3;
+				next_char(tokenizer, input_stream);
 				goto switch_start;
 			default:
 				result_type = TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC;
@@ -830,6 +862,9 @@ namespace hemera::lexer {
 			case '\\':
 				state = State::backslash;
 				goto switch_start;
+			case '$':
+				state = State::dollar_sign;
+				goto switch_start;
 			case '^':
 				result_type = TokenType::OPERATOR_DEREFERENCE;
 				break;
@@ -884,6 +919,7 @@ namespace hemera::lexer {
 		case TokenType::LITERAL_INTEGER:
 		case TokenType::LITERAL_FLOATING_POINT:
 		case TokenType::LITERAL_STRING:
+		case TokenType::PIPE_REORDER_IDENTIFIER:
 		{
 			size_t first_position = 0;
 			if (start_line == tokenizer.line_number) {
@@ -935,6 +971,7 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_WHILE:
 		case TokenType::KEYWORD_WITH:
 		case TokenType::OPERATOR_AND:
+		case TokenType::OPERATOR_ASSIGN:
 		case TokenType::OPERATOR_ASSIGN_ADD:
 		case TokenType::OPERATOR_ASSIGN_AND:
 		case TokenType::OPERATOR_ASSIGN_BITWISE_AND:
@@ -971,12 +1008,12 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_REMAINDER:
 		case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
 		case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
-		case TokenType::SYM_ARROW:
+		case TokenType::SYM_ARROW_DOUBLE:
+		case TokenType::SYM_ARROW_SINGLE:
 		case TokenType::SYM_COLON:
 		case TokenType::SYM_COMMA:
 		case TokenType::SYM_DOT:
 		case TokenType::SYM_ELLIPSIS:
-		case TokenType::SYM_EQ:
 		case TokenType::SYM_GT:
 		case TokenType::SYM_LBRACE:
 		case TokenType::SYM_LBRACK:

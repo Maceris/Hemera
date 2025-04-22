@@ -11,10 +11,12 @@ namespace hemera {
 	namespace lexer {
 		enum class State {
 			ampersand,
+			ampersand_2,
 			annotation,
 			asterisk,
 			backslash,
 			block_comment,
+			dollar_sign,
 			end,
 			equal,
 			exclamation,
