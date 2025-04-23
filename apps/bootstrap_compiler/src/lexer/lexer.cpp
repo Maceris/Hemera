@@ -275,8 +275,7 @@ namespace hemera::lexer {
 				next_char(tokenizer, input_stream, token_contents);
 				goto switch_start;
 			default:
-				state = State::invalid;
-				goto switch_start;
+				break;
 			}
 			break;
 		case State::end:
@@ -782,6 +781,7 @@ namespace hemera::lexer {
 			case 'U': case 'V': case 'W': case 'X': case 'Y':
 			case 'Z':
 				state = State::identifier;
+				result_type = TokenType::IDENTIFIER;
 				goto switch_start;
 			case '1': case '2': case '3': case '4': case '5':
 			case '6': case '7': case '8': case '9':
@@ -819,6 +819,7 @@ namespace hemera::lexer {
 				goto switch_start;
 			case '@':
 				state = State::annotation;
+				result_type = TokenType::ANNOTATION;
 				goto switch_start;
 			case '=':
 				state = State::equal;
@@ -864,6 +865,7 @@ namespace hemera::lexer {
 				goto switch_start;
 			case '$':
 				state = State::dollar_sign;
+				result_type = TokenType::PIPE_REORDER_IDENTIFIER;
 				goto switch_start;
 			case '^':
 				result_type = TokenType::OPERATOR_DEREFERENCE;

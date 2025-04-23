@@ -104,3 +104,55 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	}
 	
 }
+
+TEST(SingleComplexTokenTest, OptionsWithoutArgs)
+{
+	Allocator<> alloc;
+	MyVector<Token> output;
+
+	std::vector<std::tuple<std::string, TokenType>> inputs;
+
+	inputs.push_back(std::make_tuple("@example", TokenType::ANNOTATION));
+	inputs.push_back(std::make_tuple("example", TokenType::IDENTIFIER));
+	inputs.push_back(std::make_tuple("'a'", TokenType::LITERAL_CHAR));
+	inputs.push_back(std::make_tuple("\"foo bar\"", TokenType::LITERAL_STRING));
+	inputs.push_back(std::make_tuple("$1", TokenType::PIPE_REORDER_IDENTIFIER));
+	inputs.push_back(std::make_tuple("1234", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("1234.456", TokenType::LITERAL_FLOATING_POINT));
+	inputs.push_back(std::make_tuple("1e-5", TokenType::LITERAL_FLOATING_POINT));
+
+	for (const auto& input : inputs) {
+
+		const std::string& text = std::get<0>(input);
+
+		std::istringstream input_stream(text);
+
+		hemera::lexer::lex(input_stream, output, alloc);
+
+		EXPECT_EQ(output.size(), 2)
+			<< std::format("Incorrect number of tokens for {}", text);
+		EXPECT_EQ(output[0].type, std::get<1>(input))
+			<< std::format("Incorrect type for {}", text);
+		EXPECT_EQ(output[0].line_number, 1)
+			<< std::format("Incorrect line number for {}", text);
+		EXPECT_EQ(output[0].column_number, 0)
+			<< std::format("Incorrect column number for {}", text);
+		EXPECT_NE(output[0].value, nullptr) 
+			<< std::format("Incorrect string contents for {}", text);
+		EXPECT_EQ(strncmp(output[0].value->c_str(), text.c_str(),
+			strlen(text.c_str())), 0
+		) << std::format("Incorrect string contents for {}", text);
+
+		EXPECT_EQ(output[1].type, TokenType::END_OF_FILE)
+			<< std::format("Incorrect type of EOF for {}", text);
+		EXPECT_EQ(output[1].line_number, 1)
+			<< std::format("Incorrect line number of EOF for {}", text);
+		EXPECT_EQ(output[1].column_number, text.size())
+			<< std::format("Incorrect column number of EOF for {}", text);
+		EXPECT_EQ(output[1].value, nullptr)
+			<< std::format("Incorrect string contents of EOF for {}", text);
+
+		alloc.delete_object(output[0].value);
+		output.clear();
+	}
+}
