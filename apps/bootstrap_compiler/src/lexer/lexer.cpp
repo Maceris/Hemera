@@ -637,6 +637,12 @@ namespace hemera::lexer {
 				state = State::period_2;
 				next_char(tokenizer, input_stream);
 				goto switch_start;
+			case '0': case '1': case '2': case '3': case '4':
+			case '5': case '6': case '7': case '8': case '9':
+				state = State::integer_period;
+				result_type = TokenType::LITERAL_FLOATING_POINT;
+				next_char(tokenizer, input_stream, token_contents);
+				goto switch_start;
 			default:
 				result_type = TokenType::SYM_DOT;
 				break;
