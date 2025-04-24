@@ -73,6 +73,45 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("..=", TokenType::OPERATOR_RANGE_INCLUSIVE));
 	inputs.push_back(std::make_tuple("...", TokenType::SYM_ELLIPSIS));
 
+	inputs.push_back(std::make_tuple("alias", TokenType::KEYWORD_ALIAS));
+	inputs.push_back(std::make_tuple("all", TokenType::KEYWORD_ALL));
+	inputs.push_back(std::make_tuple("as", TokenType::KEYWORD_AS));
+	inputs.push_back(std::make_tuple("break", TokenType::KEYWORD_BREAK));
+	inputs.push_back(std::make_tuple("case", TokenType::KEYWORD_CASE));
+	inputs.push_back(std::make_tuple("context", TokenType::KEYWORD_CONTEXT));
+	inputs.push_back(std::make_tuple("continue", TokenType::KEYWORD_CONTINUE));
+	inputs.push_back(std::make_tuple("defer", TokenType::KEYWORD_DEFER));
+	inputs.push_back(std::make_tuple("distinct", TokenType::KEYWORD_DISTINCT));
+	inputs.push_back(std::make_tuple("do", TokenType::KEYWORD_DO));
+	inputs.push_back(std::make_tuple("else", TokenType::KEYWORD_ELSE));
+	inputs.push_back(std::make_tuple("enum", TokenType::KEYWORD_ENUM));
+	inputs.push_back(std::make_tuple("false", TokenType::KEYWORD_FALSE));
+	inputs.push_back(std::make_tuple("fn", TokenType::KEYWORD_FN));
+	inputs.push_back(std::make_tuple("for", TokenType::KEYWORD_FOR));
+	inputs.push_back(std::make_tuple("if", TokenType::KEYWORD_IF));
+	inputs.push_back(std::make_tuple("import", TokenType::KEYWORD_IMPORT));
+	inputs.push_back(std::make_tuple("in", TokenType::KEYWORD_IN));
+	inputs.push_back(std::make_tuple("is_none", TokenType::KEYWORD_IS_NONE));
+	inputs.push_back(std::make_tuple("is_some", TokenType::KEYWORD_IS_SOME));
+	inputs.push_back(std::make_tuple("loop", TokenType::KEYWORD_LOOP));
+	inputs.push_back(std::make_tuple("match", TokenType::KEYWORD_MATCH));
+	inputs.push_back(std::make_tuple("mut", TokenType::KEYWORD_MUT));
+	inputs.push_back(std::make_tuple("null", TokenType::KEYWORD_NULL));
+	inputs.push_back(std::make_tuple("or_break", TokenType::KEYWORD_OR_BREAK));
+	inputs.push_back(std::make_tuple("or_continue", TokenType::KEYWORD_OR_CONTINUE));
+	inputs.push_back(std::make_tuple("or_else", TokenType::KEYWORD_OR_ELSE));
+	inputs.push_back(std::make_tuple("or_return", TokenType::KEYWORD_OR_RETURN));
+	inputs.push_back(std::make_tuple("package", TokenType::KEYWORD_PACKAGE));
+	inputs.push_back(std::make_tuple("return", TokenType::KEYWORD_RETURN));
+	inputs.push_back(std::make_tuple("struct", TokenType::KEYWORD_STRUCT));
+	inputs.push_back(std::make_tuple("switch", TokenType::KEYWORD_SWITCH));
+	inputs.push_back(std::make_tuple("true", TokenType::KEYWORD_TRUE));
+	inputs.push_back(std::make_tuple("union", TokenType::KEYWORD_UNION));
+	inputs.push_back(std::make_tuple("using", TokenType::KEYWORD_USING));
+	inputs.push_back(std::make_tuple("void", TokenType::KEYWORD_VOID));
+	inputs.push_back(std::make_tuple("while", TokenType::KEYWORD_WHILE));
+	inputs.push_back(std::make_tuple("with", TokenType::KEYWORD_WITH));
+
 	for (const auto& input : inputs) {
 		output.clear();
 
