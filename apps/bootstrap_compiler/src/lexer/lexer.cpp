@@ -157,10 +157,16 @@ namespace hemera::lexer {
 	/// multi-line.</param>
 	/// <returns></returns>
 	static char next_char(Tokenizer& tokenizer, std::istream& input_stream, 
-		uint16_t start_column = 0, MyString* token_contents = nullptr) {
+		uint32_t start_line = 0, uint16_t start_column = 0,
+		MyString* token_contents = nullptr) {
 		if (tokenizer.column_number >= tokenizer.current_line.length()) {
 			if (token_contents) {
-				*token_contents += tokenizer.current_line.substr(start_column);
+				size_t first_position = 0;
+				if (start_line == tokenizer.line_number) {
+					first_position = start_column;
+				}
+				*token_contents += tokenizer.current_line.substr(first_position);
+				*token_contents += '\n';
 			}
 
 			if (!next_line(tokenizer, input_stream)) {
@@ -254,7 +260,7 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '\\':
 				state = State::multiline_string_line;
-				next_char(tokenizer, input_stream, start_column, token_contents);
+				next_char(tokenizer, input_stream, start_line, start_column, token_contents);
 				goto switch_start;
 			case 0:
 			case '\n':
@@ -264,10 +270,10 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::block_comment:
-			switch (next_char(tokenizer, input_stream, start_column, token_contents)) {
+			switch (next_char(tokenizer, input_stream, start_line, start_column, token_contents)) {
 			case '*':
 				if (peek_char(tokenizer) == '/') {
-					next_char(tokenizer, input_stream, start_column, token_contents);
+					next_char(tokenizer, input_stream, start_line, start_column, token_contents);
 					tokenizer.comment_depth -= 1;
 				}
 				if (tokenizer.comment_depth > 0) {
@@ -276,7 +282,7 @@ namespace hemera::lexer {
 				break;
 			case '/':
 				if (peek_char(tokenizer) == '*') {
-					next_char(tokenizer, input_stream, start_column, token_contents);
+					next_char(tokenizer, input_stream, start_line, start_column, token_contents);
 					tokenizer.comment_depth += 1;
 				}
 				goto switch_start;
@@ -496,7 +502,7 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::line_comment:
-			switch (next_char(tokenizer, input_stream, start_column, token_contents)) {
+			switch (next_char(tokenizer, input_stream, start_line, start_column, token_contents)) {
 			case 0:
 			case '\n':
 				break;
@@ -596,7 +602,7 @@ namespace hemera::lexer {
 			}
 			break;
 		case State::multiline_string_line:
-			switch (next_char(tokenizer, input_stream, start_column, token_contents)) {
+			switch (next_char(tokenizer, input_stream, start_line, start_column, token_contents)) {
 			case 0:
 				state = State::invalid;
 				goto switch_start;
@@ -773,12 +779,13 @@ namespace hemera::lexer {
 			case '*':
 				state = State::block_comment;
 				result_type = TokenType::COMMENT_BLOCK;
-				next_char(tokenizer, input_stream, start_column, token_contents);
+				tokenizer.comment_depth += 1;
+				next_char(tokenizer, input_stream, start_line, start_column, token_contents);
 				goto switch_start;
 			case '/':
 				state = State::line_comment;
 				result_type = TokenType::COMMENT_LINE;
-				next_char(tokenizer, input_stream, start_column, token_contents);
+				next_char(tokenizer, input_stream, start_line, start_column, token_contents);
 				goto switch_start;
 			default:
 				result_type = TokenType::OPERATOR_DIVIDE;

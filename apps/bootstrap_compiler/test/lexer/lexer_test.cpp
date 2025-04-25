@@ -209,6 +209,13 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 	MyVector<Token> output;
 
 	const char* code = R"CONTENTS(
+	/*
+	 * This is a nested comment
+	 * /* example
+	 *  * of a comment
+	 *  */
+     * isn't that neat?
+     */
 	foo :: fn(x: int, y: u32) -> ptr<f32>? {
 		bar : f32 = 4.3
 		// This is a comment
@@ -220,6 +227,14 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 	)CONTENTS";
 
 	std::vector<std::tuple<TokenType, const char*>> expected_tokens;
+	expected_tokens.push_back(std::make_tuple(TokenType::COMMENT_BLOCK, 
+		R"CONTENTS(/*
+	 * This is a nested comment
+	 * /* example
+	 *  * of a comment
+	 *  */
+     * isn't that neat?
+     */)CONTENTS"));
 	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "foo"));
 	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
