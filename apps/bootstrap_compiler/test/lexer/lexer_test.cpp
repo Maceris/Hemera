@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <format>
 #include <tuple>
 #include <vector>
@@ -24,7 +25,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("*", TokenType::OPERATOR_MULTIPLY));
 	inputs.push_back(std::make_tuple("/", TokenType::OPERATOR_DIVIDE));
 	inputs.push_back(std::make_tuple("%", TokenType::OPERATOR_MODULUS));
-	inputs.push_back(std::make_tuple("&", TokenType::OPERATOR_BITWISE_AND));
+	inputs.push_back(std::make_tuple("&", TokenType::SYM_AMPERSAND));
 	inputs.push_back(std::make_tuple("|", TokenType::OPERATOR_BITWISE_OR));
 	inputs.push_back(std::make_tuple("~", TokenType::OPERATOR_BITWISE_XOR));
 	inputs.push_back(std::make_tuple("!", TokenType::OPERATOR_NOT));
@@ -200,4 +201,93 @@ TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 		alloc.delete_object(output[0].value);
 		output.clear();
 	}
+}
+
+TEST(ManyTokenTest, OptionsWithoutArgs)
+{
+	Allocator<> alloc;
+	MyVector<Token> output;
+
+	const char* code = R"CONTENTS(
+	foo :: fn(x: int, y: u32) -> ptr<f32>? {
+		bar : f32 = 4.3
+		// This is a comment
+		if bar <= 3.0 && bar > 0.1 {
+			return null
+		}
+		return &bar
+	}
+	)CONTENTS";
+
+	std::vector<std::tuple<TokenType, const char*>> expected_tokens;
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "foo"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::KEYWORD_FN, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LPAREN, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "x"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "int"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COMMA, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "y"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "u32"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_RPAREN, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_ARROW_SINGLE, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "ptr"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LT, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "f32"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_GT, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_QUESTION, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LBRACE, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "bar"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_COLON, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "f32"));
+	expected_tokens.push_back(std::make_tuple(TokenType::OPERATOR_ASSIGN, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::LITERAL_FLOATING_POINT, "4.3"));
+	expected_tokens.push_back(std::make_tuple(TokenType::COMMENT_LINE, "// This is a comment"));
+	expected_tokens.push_back(std::make_tuple(TokenType::KEYWORD_IF, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "bar"));
+	expected_tokens.push_back(std::make_tuple(TokenType::OPERATOR_LESS_THAN_OR_EQUAL, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::LITERAL_FLOATING_POINT, "3.0"));
+	expected_tokens.push_back(std::make_tuple(TokenType::OPERATOR_AND, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "bar"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_GT, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::LITERAL_FLOATING_POINT, "0.1"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LBRACE, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::KEYWORD_RETURN, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::KEYWORD_NULL, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_RBRACE, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::KEYWORD_RETURN, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_AMPERSAND, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "bar"));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_RBRACE, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::END_OF_FILE, nullptr));
+
+	std::istringstream input_stream(code);
+
+	hemera::lexer::lex(input_stream, output, alloc);
+
+	ASSERT_EQ(output.size(), expected_tokens.size());
+
+	for (size_t i = 0; i < output.size(); ++i) {
+		ASSERT_EQ(output[i].type, std::get<0>(expected_tokens[i]));
+
+		const char* expected = std::get<1>(expected_tokens[i]);
+
+		if (expected) {
+			ASSERT_EQ(strncmp(output[i].value->c_str(), expected,
+				strlen(expected)), 0)
+				<< std::format("Failed to find string '{}' in '{}'", expected, 
+					output[i].value->c_str());
+		} else {
+			EXPECT_EQ(output[i].value, nullptr);
+		}
+
+		if (output[i].value) {
+			delete output[i].value;
+			output[i].value = nullptr;
+		}
+	}
+
 }
