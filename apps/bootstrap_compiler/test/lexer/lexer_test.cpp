@@ -158,6 +158,13 @@ TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("\"foo bar\"", TokenType::LITERAL_STRING));
 	inputs.push_back(std::make_tuple("$1", TokenType::PIPE_REORDER_IDENTIFIER));
 	inputs.push_back(std::make_tuple("1234", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0xa", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0xfedc_ba09_8765_4321", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0xFEDC_BA09_8765_4321", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0b1", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0b0101_0001", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0o7", TokenType::LITERAL_INTEGER));
+	inputs.push_back(std::make_tuple("0o1234_5607", TokenType::LITERAL_INTEGER));
 	inputs.push_back(std::make_tuple("1_234", TokenType::LITERAL_INTEGER));
 	inputs.push_back(std::make_tuple("1.", TokenType::LITERAL_FLOATING_POINT));
 	inputs.push_back(std::make_tuple(".5", TokenType::LITERAL_FLOATING_POINT));
