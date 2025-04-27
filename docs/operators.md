@@ -100,6 +100,16 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ||=  logical OR                a ||= b is a = a || b
 ```
 
+## Casting operators
+
+```
+cast<T>(value)      converts a value to a compatable type T
+bit_cast<T>(value)  does a bit cast conversion from value to type T of the same size
+auto_cast(value)    automatically converts the value to the necessary type, if possible
+```
+
+Note that `auto_cast` is intended for prototypes, and generally discouraged. But we aren't the casting police.
+
 ## Comparison operators
 
 ```

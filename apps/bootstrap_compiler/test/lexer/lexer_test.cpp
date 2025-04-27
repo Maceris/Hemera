@@ -77,8 +77,11 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("alias", TokenType::KEYWORD_ALIAS));
 	inputs.push_back(std::make_tuple("all", TokenType::KEYWORD_ALL));
 	inputs.push_back(std::make_tuple("as", TokenType::KEYWORD_AS));
+	inputs.push_back(std::make_tuple("auto_cast", TokenType::KEYWORD_AUTO_CAST));
+	inputs.push_back(std::make_tuple("bit_cast", TokenType::KEYWORD_BIT_CAST));
 	inputs.push_back(std::make_tuple("break", TokenType::KEYWORD_BREAK));
 	inputs.push_back(std::make_tuple("case", TokenType::KEYWORD_CASE));
+	inputs.push_back(std::make_tuple("cast", TokenType::KEYWORD_CAST));
 	inputs.push_back(std::make_tuple("context", TokenType::KEYWORD_CONTEXT));
 	inputs.push_back(std::make_tuple("continue", TokenType::KEYWORD_CONTINUE));
 	inputs.push_back(std::make_tuple("defer", TokenType::KEYWORD_DEFER));

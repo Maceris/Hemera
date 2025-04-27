@@ -18,11 +18,20 @@ namespace hemera::lexer {
 		if (identifier.compare("as") == 0) {
 			return TokenType::KEYWORD_AS;
 		}
+		if (identifier.compare("auto_cast") == 0) {
+			return TokenType::KEYWORD_AUTO_CAST;
+		}
+		if (identifier.compare("bit_cast") == 0) {
+			return TokenType::KEYWORD_BIT_CAST;
+		}
 		if (identifier.compare("break") == 0) {
 			return TokenType::KEYWORD_BREAK;
 		}
 		if (identifier.compare("case") == 0) {
 			return TokenType::KEYWORD_CASE;
+		}
+		if (identifier.compare("cast") == 0) {
+			return TokenType::KEYWORD_CAST;
 		}
 		if (identifier.compare("context") == 0) {
 			return TokenType::KEYWORD_CONTEXT;
@@ -1014,8 +1023,11 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_ALIAS:
 		case TokenType::KEYWORD_ALL:
 		case TokenType::KEYWORD_AS:
+		case TokenType::KEYWORD_AUTO_CAST:
+		case TokenType::KEYWORD_BIT_CAST:
 		case TokenType::KEYWORD_BREAK:
 		case TokenType::KEYWORD_CASE:
+		case TokenType::KEYWORD_CAST:
 		case TokenType::KEYWORD_CONTEXT:
 		case TokenType::KEYWORD_CONTINUE:
 		case TokenType::KEYWORD_DEFER:
