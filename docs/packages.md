@@ -15,6 +15,28 @@ with the other package's name or alias in order to use that version.
 
 This means that if a package gets imported into a project that defines the same function names, it will continue to work without modification.
 
+Here are a few code snippits that demonstrate import prefixes.
+
+```
+package library1
+
+foo :: fn(x: int) -> int {
+    return x + 1
+}
+```
+
+```
+package library2
+
+foo :: fn(x: int) -> int {
+    return x * 2
+}
+
+bar :: fn(x: int) -> int {
+    return x
+}
+```
+
 ```
 package example
 
@@ -22,12 +44,16 @@ import "vendor:library1"
 import "vendor:library2" as lib2
 
 foo :: fn(x: int) -> int {
-    // also exists in library1 and library2
+    return x
 }
 
 collision :: fn() {
     foo(5)          // Calls the foo from this package
     library1.foo(5) // Calls library1's foo
     lib2.foo(5)     // Calls library2's foo
+
+    // When there are no conflicts, prefixes are optional
+    lib2.bar(5)     // Calls library2's bar
+    bar(5)          // Still calls library2's bar
 }
 ```
