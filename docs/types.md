@@ -137,7 +137,21 @@ Optional :: union<T> {
 }
 ```
 
-There are a few operators built in to make life easier when dealing with optional values.
+There are a few [operators built in](operators.md#optional-operators) to make life easier when dealing with optional values.
+
+## Pointers
+
+Pointer types (besides `rawptr`) refer to the type they point to in angle brackets. For example, `ptr<int>` is a pointer to an int.
+
+```
+ptr<ptr<int>> pointer to a pointer to an int
+ptr<int[3]>   pointer to an array of 3 ints
+ptr<int>[3]   array of 3 pointers to ints
+relptr8<int>  8-bit relative pointer to an int
+```
+
+Relative pointers refer to an address relative to their own, and have different sizes.
+An 8-bit relative pointer is quite small, but can only refer to things 128 bytes below and 127 bytes above their own address.
 
 ## Strings
 
