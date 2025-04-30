@@ -693,7 +693,7 @@ namespace hemera::lexer {
 				next_char(tokenizer, input_stream);
 				break;
 			default:
-				result_type = TokenType::SYM_DOT;
+				result_type = TokenType::OPERATOR_RANGE_ARRAY;
 				break;
 			}
 			break;
@@ -1093,6 +1093,7 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_OR:
 		case TokenType::OPERATOR_PIPE:
 		case TokenType::OPERATOR_PLUS:
+		case TokenType::OPERATOR_RANGE_ARRAY:
 		case TokenType::OPERATOR_RANGE_EXCLUSIVE:
 		case TokenType::OPERATOR_RANGE_INCLUSIVE:
 		case TokenType::OPERATOR_REMAINDER:

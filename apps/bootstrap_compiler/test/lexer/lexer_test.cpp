@@ -70,6 +70,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple(">>>=", TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL));
 	inputs.push_back(std::make_tuple("-=", TokenType::OPERATOR_ASSIGN_SUB));
 	inputs.push_back(std::make_tuple("|>", TokenType::OPERATOR_PIPE));
+	inputs.push_back(std::make_tuple("..", TokenType::OPERATOR_RANGE_ARRAY));
 	inputs.push_back(std::make_tuple("..<", TokenType::OPERATOR_RANGE_EXCLUSIVE));
 	inputs.push_back(std::make_tuple("..=", TokenType::OPERATOR_RANGE_INCLUSIVE));
 	inputs.push_back(std::make_tuple("...", TokenType::SYM_ELLIPSIS));

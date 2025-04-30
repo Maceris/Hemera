@@ -275,6 +275,7 @@ x if cond else y  // ternary runtime conditional expression
 ## Other operators
 
 ```
+..   for use in defining resizable arrays, and creating array views
 ..=  inclusive range
 ..<  half-open range
 in   for use in looping over values

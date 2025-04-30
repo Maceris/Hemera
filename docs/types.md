@@ -144,6 +144,24 @@ a : int[]
 Both static and dynamic arrays will be cautocast to array views if 
 provided to a function with an array view parameter.
 
+The range operators can be used to grab a view from indexes in an array.
+
+```
+a : int[10]
+b : int[] : a        // Works fine, view over the whole array
+c : int[] : a[2..<5] // View over the indices 2, 3, and 4 (as it excludes 5)
+d : int[] : a[2..=4] // View over the indices 2, 3, and 4 (as it includes 4)
+
+e : int[] : a[5..]   // View over the index 5, and everything after
+e2: int[] : a[5..<a.count] // Equivalent to e
+
+f : int[] : a[..<5]  // View over everything up to index 5, exclusive
+f2 : int[] : a[0..<5]  // Equivalent to f
+
+g : int[] : a[..=5]  // View over everything up to index 5, inclusive
+g2 : int[] : a[0..=5]  // Equivalent to g
+```
+
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
