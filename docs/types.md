@@ -105,6 +105,45 @@ More details:
 | uint     | Unsigned integer that is the standard size of a register on the system, guaranteed that size_of(uint) >= size_of(uintptr). Same size as int. |
 | uintptr  | Unsigned integer that is large enough to hold the bit pattern of any pointer                                                                 |
 
+## Arrays
+
+There are a few types of arrays.
+
+### Static arrays
+
+Static arrays have a fixed size. They are accessed using `[]` subscript syntax.
+
+```
+a : int[5]    // Array of 5 ints
+b : f64[2]    // Array of 2 f64s
+c : i8[10][5] // 2D array of i8s
+```
+
+Arrays know their size, and you can access it with `array.count`.
+
+### Dynamic arrays
+
+Dynamic arrays are resizable, allocating more memory as needed. It behaves
+similarly to the C++ `std::vector`, but using the current context's allocator.
+
+```
+a : int[..]    // Dynamic array of ints
+b : string[..] // Dynamic array of strings
+```
+
+Dynmaic arrays know their size, and also have a capacity that can be accessed with `array.capacity`.
+
+### Array views
+
+Array views represent a view into data stored in an array, or a subsection of one.
+
+```
+a : int[]
+```
+
+Both static and dynamic arrays will be cautocast to array views if 
+provided to a function with an array view parameter.
+
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
