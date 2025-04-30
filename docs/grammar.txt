@@ -25,11 +25,15 @@ directory_character = letter | digit_decimal | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
-string_literal = '"' , { [^\\\"] | \\. } , '"' ;
+annotation = "@" , [ letter | digit_decimal | "_" ] ,  { letter | digit_decimal | "_" } ;
+directive = "#" , [ letter | digit_decimal | "_" ] , { letter | digit_decimal | "_" } ;
+comment_block = ; #TODO(ches)
+comment_line = ; #TODO(ches)
 
-number_literal = integer_literal | float_literal ;
+literal_string = '"' , { [^\\"\x01-\x09\x0b-\x1f\x7f] | \\[^n] } , '"' ;
+literal_char = "'" , { [^\\'\x01-\x09\x0b-\x1f\x7f] | \\[^n\x01-\x09\x0b-\x1f\x7f] } , "'" ;
 
-integer_literal = integer_decimal
+literal_integer = integer_decimal
     | integer_hex
     | integer_binary
     | integer_octal
@@ -40,15 +44,20 @@ integer_hex = "0x" , digit_hex, { { "_" } , digit_hex } ;
 integer_binary = "0b" , digit_binary, { { "_" } , digit_binary } ;
 integer_octal = "0o" , digit_octal, { { "_" } , digit_octal } ;
 
-float_literal = ( "0" | integer_decimal ) , [ float_decimal ] , [ float_exponent ] ;
+literal_floating_point = ( "0" | integer_decimal ) , [ float_decimal ] , [ float_exponent ] ;
 float_decimal = "." , integer_decimal ;
 float_exponent = ( "e" | "E" ) , [ "-" ] , integer_decimal ;
+
+pipe_reorder_identifier = "$" , integer_decimal ;
 
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
 KEYWORD_as = "as" ;
+KEYWORD_auto_cast = "auto_cast" ;
+KEYWORD_bit_cast = "bit_cast" ;
 KEYWORD_break = "break" ;
 KEYWORD_case = "case" ;
+KEYWORD_cast = "cast" ;
 KEYWORD_context = "context" ;
 KEYWORD_continue = "continue" ;
 KEYWORD_defer = "defer" ;
@@ -61,10 +70,16 @@ KEYWORD_for = "for" ;
 KEYWORD_if = "if" ;
 KEYWORD_import = "import" ;
 KEYWORD_in = "in" ;
+KEYWORD_is_none = "is_none" ;
+KEYWORD_is_some = "is_some" ;
 KEYWORD_loop = "loop" ;
 KEYWORD_match = "match" ;
 KEYWORD_mut = "mut" ;
 KEYWORD_null = "null" ;
+KEYWORD_or_break = "or_break" ;
+KEYWORD_or_continue = "or_continue" ;
+KEYWORD_or_else = "or_else" ;
+KEYWORD_or_return = "or_return" ;
 KEYWORD_package = "package" ;
 KEYWORD_return = "return" ;
 KEYWORD_struct = "struct" ;
@@ -73,36 +88,29 @@ KEYWORD_true = "true" ;
 KEYWORD_union = "union" ;
 KEYWORD_using = "using" ;
 KEYWORD_void = "void" ;
-KEYWORD_with = "with" ;
 KEYWORD_while = "while" ;
-
-SYM_ARROW = "->" ;
-SYM_COLON = ":" ;
-SYM_COMMA = "," ;
-SYM_DOT = "." ;
-SYM_EQ = "=" ;
-SYM_GT = ">" ;
-SYM_LBRACE = "{" ;
-SYM_LBRACK = "[" ;
-SYM_LPAREN = "(" ;
-SYM_LT = "<" ;
-SYM_QUOTE = '"' ;
-SYM_RBRACE = "}" ;
-SYM_RBRACK = "]" ;
-SYM_RPAREN = ")" ;
-SYM_SINGLE_QUOTE = "'" ;
-SYM_UNDERSCORE = "_" ;
+KEYWORD_with = "with" ;
 
 OPERATOR_and = "&&" ;
+OPERATOR_assign = "=" ;
 OPERATOR_assign_add = "+=" ;
+OPERATOR_assign_and = "&&=" ;
+OPERATOR_assign_bitwise_and = "&=" ;
+OPERATOR_assign_bitwise_or = "|=" ;
+OPERATOR_assign_bitwise_xor = "~=" ;
 OPERATOR_assign_div = "/=" ;
+OPERATOR_assign_left_shift = "<<=" ;
 OPERATOR_assign_mod = "%=" ;
 OPERATOR_assign_mul = "*=" ;
+OPERATOR_assign_or = "||=" ;
+OPERATOR_assign_remainder = "%%=" ;
+OPERATOR_assign_right_shift_arithmetic = ">>=" ;
+OPERATOR_assign_right_shift_logical = ">>>=" ;
 OPERATOR_assign_sub = "-=" ;
-OPERATOR_bitwise_and = "&" ;
 OPERATOR_bitwise_or = "|" ;
 OPERATOR_bitwise_xor = "~" ;
 OPERATOR_divide = "/" ;
+OPERATOR_dereference = "^" ;
 OPERATOR_equal = "==" ;
 OPERATOR_greater_than_or_equal = ">=" ;
 OPERATOR_left_shift = "<<" ;
@@ -110,14 +118,35 @@ OPERATOR_less_than_or_equal = "<=" ;
 OPERATOR_minus = "-" ;
 OPERATOR_modulus = "%" ;
 OPERATOR_multiply = "*" ;
+OPERATOR_not = "!" ;
 OPERATOR_not_equal = "!=" ;
 OPERATOR_or = "||" ;
 OPERATOR_pipe = "|>" ;
 OPERATOR_plus = "+" ;
-OPERATOR_question = "?" ;
+OPERATOR_range_array = ".." ;
+OPERATOR_range_exclusive = "..<" ;
+OPERATOR_range_inclusive = "..=" ;
 OPERATOR_remainder = "%%" ;
 OPERATOR_right_shift_arithmetic = ">>" ;
 OPERATOR_right_shift_logical = ">>>" ;
+
+SYM_AMPERSAND = "&" ;
+SYM_ARROW_SINGLE = "->" ;
+SYM_ARROW_DOUBLE = "=>" ;
+SYM_COLON = ":" ;
+SYM_COMMA = "," ;
+SYM_DOT = "." ;
+SYM_ELLIPSIS = "..." ;
+SYM_GT = ">" ;
+SYM_LBRACE = "{" ;
+SYM_LBRACK = "[" ;
+SYM_LPAREN = "(" ;
+SYM_LT = "<" ;
+SYM_QUESTION = "?" ;
+SYM_RBRACE = "}" ;
+SYM_RBRACK = "]" ;
+SYM_RPAREN = ")" ;
+SYM_UNDERSCORE = "_" ;
 
 BUILTIN_T_PTR = "ptr" ;
 
@@ -129,7 +158,7 @@ package_statement = KEYWORD_package , identifier ;
 
 imports = import , [ imports ] ;
 import = KEYWORD_import , relative_package_name, [ identifier ] ;
-relative_package_name = SYM_QUOTE , [ identifier , SYM_COLON  ] , package_path , SYM_QUOTE ;
+relative_package_name = '"' , [ identifier , SYM_COLON  ] , package_path , '"' ; #TODO(ches) should this be just a string?
 package_path = directory_path , OPERATOR_divide , identifier ;
 directory_path = ( directory_name , directory_path ) 
     | directory_name
@@ -184,7 +213,7 @@ function_parameter = ( identifier , SYM_COLON, type )
     ;
 function_body = SYM_LBRACE, { expression } , SYM_RBRACE ;
 default_value = literal
-    | "#caller_location"
+    | directive
     ;
 
 struct_body = SYM_LBRACE , [ struct_member ] { SYM_COMMA , struct_member } , [ SYM_COMMA ] , SYM_RBRACE ;
