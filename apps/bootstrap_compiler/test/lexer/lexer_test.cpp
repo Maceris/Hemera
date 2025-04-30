@@ -87,7 +87,6 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("continue", TokenType::KEYWORD_CONTINUE));
 	inputs.push_back(std::make_tuple("defer", TokenType::KEYWORD_DEFER));
 	inputs.push_back(std::make_tuple("distinct", TokenType::KEYWORD_DISTINCT));
-	inputs.push_back(std::make_tuple("do", TokenType::KEYWORD_DO));
 	inputs.push_back(std::make_tuple("else", TokenType::KEYWORD_ELSE));
 	inputs.push_back(std::make_tuple("enum", TokenType::KEYWORD_ENUM));
 	inputs.push_back(std::make_tuple("false", TokenType::KEYWORD_FALSE));

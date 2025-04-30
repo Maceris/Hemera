@@ -45,9 +45,6 @@ namespace hemera::lexer {
 		if (identifier.compare("distinct") == 0) {
 			return TokenType::KEYWORD_DISTINCT;
 		}
-		if (identifier.compare("do") == 0) {
-			return TokenType::KEYWORD_DO;
-		}
 		if (identifier.compare("else") == 0) {
 			return TokenType::KEYWORD_ELSE;
 		}
@@ -1032,7 +1029,6 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_CONTINUE:
 		case TokenType::KEYWORD_DEFER:
 		case TokenType::KEYWORD_DISTINCT:
-		case TokenType::KEYWORD_DO:
 		case TokenType::KEYWORD_ELSE:
 		case TokenType::KEYWORD_ENUM:
 		case TokenType::KEYWORD_FALSE:
