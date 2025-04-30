@@ -73,6 +73,10 @@ cstring :: alias cstring
 // Pointers
 ptr<T> :: alias ptr<T>
 rawptr :: alias rawptr
+relptr8 :: alias relptr8
+relptr16 :: alias relptr16
+relptr32 :: alias relptr32
+relptr64 :: alias relptr64
 
 // Type info
 any  :: alias any
