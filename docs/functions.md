@@ -97,6 +97,19 @@ main :: fn() {
 }
 ```
 
+Nested functions cannot access local variables from the outer function.
+It's like the inner function being hoisted out into the global scope, but without the name being defined.
+
+```
+foo :: fn() {
+    x : int = 5
+
+    bar :: fn() {
+        // x = 2 // This would not work, it cannot access the scope of foo
+    }
+}
+```
+
 ## First Class Functions
 
 Functions are first class objects, and can be passed around just like any other type.
