@@ -21,6 +21,7 @@ namespace hemera {
 			equal,
 			exclamation,
 			expect_newline,
+			hash,
 			identifier,
 			integer,
 			integer_binary,

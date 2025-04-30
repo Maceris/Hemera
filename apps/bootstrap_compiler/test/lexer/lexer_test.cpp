@@ -156,6 +156,8 @@ TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 	std::vector<std::tuple<std::string, TokenType>> inputs;
 
 	inputs.push_back(std::make_tuple("@example", TokenType::ANNOTATION));
+	inputs.push_back(std::make_tuple("#if", TokenType::DIRECTIVE));
+	inputs.push_back(std::make_tuple("#at_least_once", TokenType::DIRECTIVE));
 	inputs.push_back(std::make_tuple("example", TokenType::IDENTIFIER));
 	inputs.push_back(std::make_tuple("'a'", TokenType::LITERAL_CHAR));
 	inputs.push_back(std::make_tuple("\"foo bar\"", TokenType::LITERAL_STRING));
