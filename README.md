@@ -1,6 +1,6 @@
 # Hemera
 
-A programming language intended as an alternative to C++.
+A programming language designed to be nice to use for building software that is nice to use.
 
 For more specific information [about the language](/docs/about.md), please see the docs directory.
 
