@@ -25,13 +25,33 @@ directory_character = letter | digit_decimal | "_" | "-" ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
-annotation = "@" , [ letter | digit_decimal | "_" ] ,  { letter | digit_decimal | "_" } ;
-directive = "#" , [ letter | digit_decimal | "_" ] , { letter | digit_decimal | "_" } ;
-comment_block = ; #TODO(ches)
-comment_line = ; #TODO(ches)
+any_character = ? all characters ? ;
+illegal_string_characters = "\x01" |"\x02" |"\x03" |"\x04" |"\x05"
+    |"\x06" |"\x07" |"\x08" |"\x09" |"\x0b"
+    |"\x0c" |"\x0d" |"\x0e" |"\x0f" |"\x10"
+    |"\x11" |"\x12" |"\x13" |"\x14" |"\x15"
+    |"\x16" |"\x17" |"\x18" |"\x19" |"\x1a"
+    |"\x1b" |"\x1c" |"\x1d" |"\x1e" |"\x1f"
+    |"\x7f" | "\n"
+    ;
 
-literal_string = '"' , { [^\\"\x01-\x09\x0b-\x1f\x7f] | \\[^n] } , '"' ;
-literal_char = "'" , { [^\\'\x01-\x09\x0b-\x1f\x7f] | \\[^n\x01-\x09\x0b-\x1f\x7f] } , "'" ;
+annotation = "@" , [ letter | digit_decimal | "_" ]+ ;
+directive = "#" , [ letter | digit_decimal | "_" ]+ ;
+
+comment_block = "/*" , { comment_block_body } , "*/" ;
+comment_block_body = comment_block_body_not_nested
+    | comment_block
+    ;
+comment_block_body_not_nested = { any_character - ( "*" | "/" ) }
+    | ("/" , any_character - "*" , comment_block_body_not_nested)
+    | ("*" , any_character - "/" , comment_block_body_not_nested)
+    ;
+comment_line = "//" , { any_character - "\n" } , "\n" ;
+
+comment_any = comment_block | comment_line ;
+
+literal_string = '"' , { any_character - ( "\" | '"' | illegal_string_characters ) | ( "\" , any_character - "n" ) } , '"' ;
+literal_char = "'" , { any_character - ( "\" | "'" | illegal_string_characters ) | ("\" , any_character - ( "n" | illegal_string_characters ) ) } , "'" ;
 
 literal_integer = integer_decimal
     | integer_hex
