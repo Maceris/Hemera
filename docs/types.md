@@ -223,3 +223,28 @@ example : string :
     \\ the backslashes, but ignores any indentation before them
     \\ so these won't mess up function indentation
 ```
+
+## Type Aliases
+
+Any type can be given an alias using the `alias` keyword.
+Adding the `distinct` keyword tells the compiler to treat this as an entirely different type.
+
+```
+feet   :: distinct alias f32
+meters :: distinct alias f32
+
+meters_to_feet :: fn(m: meters) -> feet {
+    // this wouldn't compile, cannot convert implicitly
+    // example : feet : m
+
+    // But this works fine, compiler knows the backing types
+    return auto_cast(m * 3.28084)
+}
+```
+
+If the type is not distinct, `alias` is not required, for example these are fine:
+
+```
+my_int :: i32
+more_verbose : type : i32
+```
