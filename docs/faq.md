@@ -2,9 +2,9 @@
 
 ## Why are they called functions?
 
-Other langauges use terms like procedures, methods, subroutines, routines, or subprograms. Some distinguish based on whether they return a value, or whether they are inside a class.
+Other languages use terms like procedures, methods, subroutines, routines, or subprograms. Some distinguish based on whether they return a value, or whether they are inside a class.
 
-Ultimately function was decied on for two reasons. First, "function" and "function pointer" are familiar terms from C++, which this is intended to replace. Second, "fn" is less typing than "proc", "function", etc.
+Ultimately function was decided on for two reasons. First, "function" and "function pointer" are familiar terms from C++, which this is intended to replace. Second, "fn" is less typing than "proc", "function", etc.
 
 ## Why does Hemera not have feature X?
 
@@ -16,7 +16,7 @@ In order to enforce error handling, there are no thrown exceptions. Error states
 
 ### Mutable global variables/state
 
-Global variables are somewhat ubiquitous in other programming langauges. Java has `public static` variables, C++ has all sorts of variables and macros that can be hanging around in various scopes.
+Global variables are somewhat ubiquitous in other programming languages. Java has `public static` variables, C++ has all sorts of variables and macros that can be hanging around in various scopes.
 
 These are used for a variety of things, with common examples being
 

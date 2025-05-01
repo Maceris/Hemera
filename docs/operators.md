@@ -103,7 +103,7 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ## Casting operators
 
 ```
-cast<T>(value)      converts a value to a compatable type T
+cast<T>(value)      converts a value to a compatible type T
 bit_cast<T>(value)  does a bit cast conversion from value to type T of the same size
 auto_cast(value)    automatically converts the value to the necessary type, if possible
 ```

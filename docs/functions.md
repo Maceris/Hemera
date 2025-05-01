@@ -140,7 +140,7 @@ main :: fn() {
 }
 ```
 
-## Compllicated Function Return Types
+## Complicated Function Return Types
 
 Functions need to have parenthesis around the return type(s) if
 
@@ -168,7 +168,7 @@ returning_int_and_fn    :: fn() -> (int, (fn() -> int)) {/* ... */}
 returning_fn_and_int    :: fn() -> ((fn() -> int), int) {/* ... */}
 ```
 
-Some higher order function definitions can (should) be simplifed quite a bit using type aliases.
+Some higher order function definitions can (should) be simplified quite a bit using type aliases.
 
 ```
 AbsurdFnType : type : fn(fn(int) -> int) -> (fn(int) -> (result, error: int))

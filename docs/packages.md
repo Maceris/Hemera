@@ -8,14 +8,14 @@ symlinks, case-insensitivity, or problematic characters in the folder name.
 
 ## Name collision
 
-Since most things like functions and structs are global in the langauge, there is a risk of name collision when importing other libraries.
+Since most things like functions and structs are global in the language, there is a risk of name collision when importing other libraries.
 Names must be unique within a package, but there are no guarantees when importing other code or when a package gets imported. In 
-the case of a collision, the function/struct/etc. will refer to the current package's verison if unqualified, and must be qualified
+the case of a collision, the function/struct/etc. will refer to the current package's version if unqualified, and must be qualified
 with the other package's name or alias in order to use that version.
 
 This means that if a package gets imported into a project that defines the same function names, it will continue to work without modification.
 
-Here are a few code snippits that demonstrate import prefixes.
+Here are a few code snippets that demonstrate import prefixes.
 
 ```
 package library1

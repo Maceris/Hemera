@@ -131,7 +131,7 @@ a : int[..]    // Dynamic array of ints
 b : string[..] // Dynamic array of strings
 ```
 
-Dynmaic arrays know their size, and also have a capacity that can be accessed with `array.capacity`.
+Dynamic arrays know their size, and also have a capacity that can be accessed with `array.capacity`.
 
 ### Array views
 
@@ -141,7 +141,7 @@ Array views represent a view into data stored in an array, or a subsection of on
 a : int[]
 ```
 
-Both static and dynamic arrays will be cautocast to array views if 
+Both static and dynamic arrays will be autocast to array views if 
 provided to a function with an array view parameter.
 
 The range operators can be used to grab a view from indexes in an array.

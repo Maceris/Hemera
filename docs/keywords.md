@@ -9,7 +9,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `case` - For switch cases
 * `context` - A special value implicit to any scope used for passing around certain common info
 * `continue` - For continuing with loops
-* `defer` - Used to defer statemetns until the end of scope
+* `defer` - Used to defer statements until the end of scope
 * `distinct` - For type aliases that are treated as distinct
 * `else` - For conditional statements
 * `enum` - For defining enums
@@ -23,7 +23,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `match` - For pattern matching
 * `mut` - For mutable values
 * `null` - The null pointer value
-* `package` - For defining the pacakge
+* `package` - For defining the package
 * `return` - For returning a value from a function
 * `struct` - For defining data structures
 * `switch` - For switch statements

@@ -25,7 +25,7 @@ for i in 0..=10 #reverse {
 }
 ```
 
-## Procedure Paremeters
+## Procedure Parameters
 
 ### `#caller_location`
 
