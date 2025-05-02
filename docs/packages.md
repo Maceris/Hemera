@@ -6,6 +6,30 @@ of the package.
 The package statement is required to standardize the character sets and name scheme, since directory names would be problematic due to things like
 symlinks, case-insensitivity, or problematic characters in the folder name.
 
+## Imports
+
+Files import other packages using the `import` keyword.
+
+They may (and usually do) have a prefix like `core:`, specifying the type of package. The prefixes are:
+
+* `base` - Part of the language itself, which must be implemented by all compilers
+* `std` - The standard library
+* `user` - User supplied packages, like anything downloaded by the package manager
+* `vendor` - Officially supported bindings and ports for third party libraries
+
+Below are a few examples of imports
+
+```
+// Imports are relative to the current file if no prefix is specified
+import "../foo"
+import "base:builtin"
+import "std:io"
+import "std:test" // I am not apologizing
+// You can give packages an alias
+import "user:pandas" as pd 
+import "vendor:vulkan"
+```
+
 ## Name collision
 
 Since most things like functions and structs are global in the language, there is a risk of name collision when importing other libraries.
