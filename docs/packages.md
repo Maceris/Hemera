@@ -85,3 +85,14 @@ collision :: fn() {
     bar(5)          // Still calls library2's bar
 }
 ```
+
+## Structure
+
+* `bin/` - Output from builds, should be ignored by source control
+* `docs/` - Documentation related to the package
+* `src/` - Source code for the package
+* `test/` - Tests for the package
+* `user/` - Dependencies, used by package manager
+* `LICENSE.txt`
+* `NOTICE.txt` - Notices and attributions required by dependencies
+* `README.txt` / `README.md` 

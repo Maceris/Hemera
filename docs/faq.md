@@ -1,5 +1,14 @@
 # Frequently Asked Questions
 
+## What languages inspired this?
+
+* C++ - Hate for build systems, template errors, headers, and macros
+* Go - Defer syntax, multiple return values
+* Jai - Syntax, lack of exceptions, compile-time execution, allocator/context pattern
+* Java - Streams, method references, RxJava, distaste for inheritance and globals
+* Odin - Primitive types, import style, Struct of Arrays (SOA) types
+* Rust - Tagged unions, Result and Option types, immutability by default, pattern matching
+
 ## Why are they called functions?
 
 Other languages use terms like procedures, methods, subroutines, routines, or subprograms. Some distinguish based on whether they return a value, or whether they are inside a class.
