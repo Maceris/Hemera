@@ -57,15 +57,19 @@ foo :: fn(x: int) -> int {
 }
 
 bar :: fn(x: int) -> int {
-    return x
+    /*
+     * Does not break when imported by example,
+     * always refers to the library2 foo.
+     */
+    return foo(x) + 5
 }
 ```
 
 ```
 package example
 
-import "vendor:library1"
-import "vendor:library2" as lib2
+import "user:library1"
+import "user:library2" as lib2
 
 foo :: fn(x: int) -> int {
     return x
