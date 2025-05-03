@@ -318,3 +318,85 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 	}
 
 }
+
+static std::string sanitize(const std::string& input) {
+	std::string output;
+	for (char c : input) {
+		if (c >= 32 && c <= 126) {
+			output += c;
+		}
+		else {
+			output += std::format("{:#0x}", c);
+		}
+	}
+	return output;
+}
+
+TEST(InvalidTokenTest, OptionsWithoutArgs)
+{
+	Allocator<> alloc;
+	MyVector<Token> output;
+
+	std::vector<std::tuple<std::string, std::vector<TokenType>>> inputs;
+
+	int invalid_chars[] = {
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0b, 0x0c,
+		0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x7f
+	};
+
+	inputs.push_back(std::make_tuple("私", 
+		std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
+	inputs.push_back(std::make_tuple("'\n", 
+		std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+	inputs.push_back(std::make_tuple("\"\n", 
+		std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+	inputs.push_back(std::make_tuple("\\\\\r", 
+		std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+	for (int invalid : invalid_chars) {
+		inputs.push_back(std::make_tuple(std::format("'{}'", (char)invalid),
+			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
+		inputs.push_back(std::make_tuple(std::format("\"{}\"", (char)invalid),
+			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
+		inputs.push_back(std::make_tuple(std::format("'\\{}'", (char)invalid),
+			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
+		inputs.push_back(std::make_tuple(std::format("\"\\{}\"", (char)invalid),
+			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
+		inputs.push_back(std::make_tuple(std::format("\\\\{}", (char)invalid),
+			std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+	}
+	
+	inputs.push_back(std::make_tuple("\\\n", std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+	inputs.push_back(std::make_tuple("\\", std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+	inputs.push_back(std::make_tuple("\r", std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
+
+	int entry = 0;
+	for (const auto& input : inputs) {
+		output.clear();
+
+		const auto& text = std::get<0>(input);
+
+		std::istringstream input_stream(text);
+
+		hemera::lexer::lex(input_stream, output, alloc);
+
+		const std::vector<TokenType>& expected = std::get<1>(input);
+
+		EXPECT_EQ(output.size(), expected.size())
+			<< std::format("Incorrect number of tokens for {:}", sanitize(text));
+		
+		if (output.size() != expected.size()) {
+			entry++;
+			continue;
+		}
+
+		for (size_t i = 0; i < output.size(); ++i) {
+			EXPECT_EQ(output[i].type, expected[i])
+				<< std::format("Incorrect type for {:}", sanitize(text));
+			EXPECT_EQ(output[i].value, nullptr)
+				<< std::format("Incorrect string contents for {:}", sanitize(text));
+		}
+		entry++;
+	}
+
+}

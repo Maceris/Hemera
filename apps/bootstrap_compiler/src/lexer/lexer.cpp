@@ -271,7 +271,7 @@ namespace hemera::lexer {
 			case 0:
 			case '\n':
 			default:
-				result_type = TokenType::INVALID;
+				state = State::invalid;
 				goto switch_start;
 			}
 			break;
@@ -548,7 +548,7 @@ namespace hemera::lexer {
 				break;
 			case '\\':
 				state = State::literal_char_backslash;
-				break;
+				goto switch_start;
 			case 0:
 			case '\n':
 			case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
@@ -588,7 +588,7 @@ namespace hemera::lexer {
 				break;
 			case '\\':
 				state = State::literal_string_backslash;
-				break;
+				goto switch_start;
 			case 0:
 			case '\n':
 			case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
@@ -608,6 +608,13 @@ namespace hemera::lexer {
 			switch (next_char(tokenizer, input_stream)) {
 			case 0:
 			case '\n':
+			case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
+			case 0x06: case 0x07: case 0x08: case 0x09: case 0x0b:
+			case 0x0c: case 0x0d: case 0x0e: case 0x0f: case 0x10:
+			case 0x11: case 0x12: case 0x13: case 0x14: case 0x15:
+			case 0x16: case 0x17: case 0x18: case 0x19: case 0x1a:
+			case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
+			case 0x7f:
 				state = State::invalid;
 				goto switch_start;
 			default:
@@ -830,13 +837,16 @@ namespace hemera::lexer {
 					goto switch_start;
 				}
 				state = State::end;
-				break;
+				goto switch_start;
 			case ' ':
 			case '\n':
-			case '\r':
 			case '\t':
 				next_char(tokenizer, input_stream);
 				start_column += 1;
+				goto switch_start;
+			case '\r':
+				next_char(tokenizer, input_stream);
+				state = State::expect_newline;
 				goto switch_start;
 			case 'a': case 'b': case 'c': case 'd': case 'e':
 			case 'f': case 'g': case 'h': case 'i': case 'j':
@@ -1007,7 +1017,7 @@ namespace hemera::lexer {
 			default:
 				state = State::invalid;
 				next_char(tokenizer, input_stream);
-				break;
+				goto switch_start;
 			}
 			break;
 		case State::tilde:
@@ -1183,9 +1193,6 @@ namespace hemera::lexer {
 			Token next_token = next(tokenizer, input_stream, string_alloc);
 			output.push_back(next_token);
 			if (next_token.type == TokenType::END_OF_FILE) {
-				break;
-			}
-			if (next_token.type == TokenType::INVALID) {
 				break;
 			}
 		}
