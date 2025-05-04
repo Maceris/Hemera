@@ -262,6 +262,12 @@ expression_with_result = literal
 expression_with_void_result = for_loop
     ;
 
-literal = ; #TODO(ches)
+literal = literal_integer
+    | literal_floating_point
+    | literal_string
+    | literal_char
+    | type
+    ;
+
 arithmetic_expression = ; #TODO(ches)
 
