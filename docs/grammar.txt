@@ -236,17 +236,17 @@ default_value = literal
     | directive
     ;
 
-struct_body = SYM_LBRACE , [ struct_member ] { SYM_COMMA , struct_member } , [ SYM_COMMA ] , SYM_RBRACE ;
-union_body = SYM_LBRACE , [ union_member ] { SYM_COMMA , union_member } , [ SYM_COMMA ] , SYM_RBRACE ;
-enum_body = SYM_LBRACE , [ enum_member ] { SYM_COMMA , enum_member } , [ SYM_COMMA ] , SYM_RBRACE;
+struct_body = SYM_LBRACE , [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] , SYM_RBRACE ;
+union_body = SYM_LBRACE , [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] , SYM_RBRACE ;
+enum_body = SYM_LBRACE , [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] , SYM_RBRACE;
 
 generic_tag = SYM_LT , identifier , { SYM_COMMA , identifier } , SYM_GT ;
 
 pointer_type =  BUILTIN_T_PTR , SYM_LT , type , SYM_GT ;
 
-struct_member = ; #TODO(ches)
-union_member = ; #TODO(ches)
-enum_member = ; #TODO(ches)
+struct_member = declaration ;
+union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
+enum_member = identifier ;
 
 expression = expression_with_result
     | expression_with_void_result
