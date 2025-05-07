@@ -248,12 +248,19 @@ struct_member = declaration ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;
 
-expression = expression_with_result
+expression = expression_with_result , [ expression_continuation ]
     | expression_with_void_result
+    ;
+
+expression_continuation = KEYWORD_or_break
+    | KEYWORD_or_continue
+    | ( KEYWORD_or_else , expression )
+    | ( KEYWORD_or_return , [ expression ] )
     ;
 
 expression_with_result = literal
     | arithmetic_expression
+    | boolean_expression
     | block
     | const_definition
     | mut_definition
@@ -269,5 +276,32 @@ literal = literal_integer
     | type
     ;
 
+boolean_expression = KEYWORD_if , boolean_expr_lvl_3 , [ KEYWORD_else , boolean_expr_lvl_3 ]
+    | boolean_expr_lvl_3 , [ KEYWORD_is_none | KEYWORD_is_some ]
+    ; #TODO(ches) parens
+
+boolean_expr_lvl_3 = boolean_expr_lvl_3 , [ OPERATOR_or , boolean_expr_lvl_3 ] ;
+
+boolean_expr_lvl_4 = boolean_expr_lvl_5 , [ OPERATOR_and , boolean_expr_lvl_5 ] ;
+
+boolean_expr_lvl_5 = boolean_expr_lvl_6 , 
+    [ ( OPERATOR_equal , boolean_expr_lvl_6 )
+    | ( OPERATOR_not_equal , boolean_expr_lvl_6 )
+    | ( SYM_LT , boolean_expr_lvl_6 )
+    | ( OPERATOR_less_than_or_equal , boolean_expr_lvl_6 )
+    | ( SYM_GT , boolean_expr_lvl_6 )
+    | ( OPERATOR_greater_than_or_equal , boolean_expr_lvl_6 )
+    ] ;
+
+boolean_expr_lvl_6 = boolean_expr_lvl_7 
+    | OPERATOR_not , boolean_expr_lvl_7
+    ;
+
+boolean_expr_lvl_7 = identifier
+    | KEYWORD_true
+    | KEYWORD_false
+    ;
+
 arithmetic_expression = ; #TODO(ches)
+
 
