@@ -188,6 +188,7 @@ directory_name = directory_character , { directory_character } ;
 const_definitions = const_definition , { const_definitions } ;
 const_definition = declaration , SYM_COLON , decl_rhs ;
 mut_definition = declaration , SYM_EQ , decl_rhs ;
+any_definition = const_definition | mut_definition ;
 
 declaration = identifier , SYM_COLON , [ type ]
 
@@ -265,8 +266,10 @@ expression_with_result = literal
     | const_definition
     | mut_definition
     | declaration
+    | if_expression
     ;
 expression_with_void_result = for_loop
+    | loop
     ;
 
 literal = literal_integer
@@ -333,3 +336,17 @@ arithmetic_expr_lvl_8 = identifier
     | literal_floating_point
     | literal_integer
     ;
+
+if_expression = KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
+else_if_extension = KEYWORD_else , KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block ;
+
+for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , ( identifier | range_expression ) , block ;
+
+range_expression = literal_integer , ( OPERATOR_range_exclusive | OPERATOR_range_inclusive ) , literal_integer ;
+
+loop = [ KEYWORD_with with_block ] 
+    , KEYWORD_loop , [ directive ] , block 
+    , [ KEYWORD_while , SYM_LPAREN, boolean_expression , SYM_RPAREN ]
+    ;
+
+with_block = { any_definition } ;
