@@ -302,6 +302,34 @@ boolean_expr_lvl_7 = identifier
     | KEYWORD_false
     ;
 
-arithmetic_expression = ; #TODO(ches)
+arithmetic_expression =  arithmetic_expr_lvl_6_unary
+    | arithmetic_expr_lvl_6_binary
+    | arithmetic_expr_lvl_7
+    ;
 
+arithmetic_expr_lvl_6_unary = ( OPERATOR_plus , arithmetic_expr_lvl_7 )
+    | ( OPERATOR_minus , arithmetic_expr_lvl_7 )
+    | ( OPERATOR_assign_bitwise_xor , arithmetic_expr_lvl_7 )
+    ;
 
+arithmetic_expr_lvl_6_binary = ( arithmetic_expr_lvl_7 , OPERATOR_plus , arithmetic_expr_lvl_7 )
+    | ( arithmetic_expr_lvl_7 , OPERATOR_minus , arithmetic_expr_lvl_7 )
+    | ( arithmetic_expr_lvl_7 , OPERATOR_bitwise_or , arithmetic_expr_lvl_7 )
+    | ( arithmetic_expr_lvl_7 , OPERATOR_assign_bitwise_xor , arithmetic_expr_lvl_7 )
+    ;
+
+arithmetic_expr_lvl_7 = arithmetic_expr_lvl_8
+    | ( arithmetic_expr_lvl_8 , OPERATOR_multiply , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_divide , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_modulus , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_remainder , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_assign_bitwise_and , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_left_shift , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_right_shift_arithmetic , arithmetic_expr_lvl_8 )
+    | ( arithmetic_expr_lvl_8 , OPERATOR_right_shift_logical , arithmetic_expr_lvl_8 )
+    ;
+
+arithmetic_expr_lvl_8 = identifier
+    | literal_floating_point
+    | literal_integer
+    ;

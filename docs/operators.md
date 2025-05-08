@@ -287,8 +287,8 @@ in   for use in looping over values
 
 ```
 Precedence   Operator
-     7       *  /  %  %%  &  <<  >>
-     6       +  -  |  ~  in
+     7       *  /  %  %%  &  <<  >>  >>>
+     6       +  -  |  ~  !  in
      5       ==  !=  <  >  <=  >=
      4       &&
      3       ||
