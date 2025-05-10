@@ -11,6 +11,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/lexer/token.h
   ${INCLUDE_DIR}/memory/allocator.h
   ${INCLUDE_DIR}/memory/thread_safe_queue.h
+  ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/types/primitives.h
   ${INCLUDE_DIR}/util/logger.h
   ${INCLUDE_DIR}/util/thread_pool.h
@@ -20,6 +21,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/lexer/lexer.cpp
+  ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/util/logger.cpp
   ${SOURCE_DIR}/util/thread_pool.cpp
 )
