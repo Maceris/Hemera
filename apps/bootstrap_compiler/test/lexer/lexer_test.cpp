@@ -7,6 +7,7 @@
 
 #include "lexer/lexer.h"
 #include "lexer/token.h"
+#include "error/reporting.h"
 
 using hemera::Allocator;
 using hemera::MyVector;
@@ -15,6 +16,8 @@ using hemera::TokenType;
 
 TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 {
+	auto reporting = hemera::DisableReportingForBlock();
+
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -123,7 +126,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 
 		std::istringstream input_stream(text);
 
-		hemera::lexer::lex(input_stream, output, alloc);
+		hemera::lexer::lex(input_stream, output, alloc, __FILE__);
 
 		EXPECT_EQ(output.size(), 2)
 			<< std::format("Incorrect number of tokens for {}", text);
@@ -150,6 +153,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 
 TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 {
+	auto reporting = hemera::DisableReportingForBlock();
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -185,7 +189,7 @@ TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 
 		std::istringstream input_stream(text);
 
-		hemera::lexer::lex(input_stream, output, alloc);
+		hemera::lexer::lex(input_stream, output, alloc, __FILE__);
 
 		EXPECT_EQ(output.size(), 2)
 			<< std::format("Incorrect number of tokens for {}", text);
@@ -217,6 +221,7 @@ TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 
 TEST(ManyTokenTest, OptionsWithoutArgs)
 {
+	auto reporting = hemera::DisableReportingForBlock();
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -293,7 +298,7 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 
 	std::istringstream input_stream(code);
 
-	hemera::lexer::lex(input_stream, output, alloc);
+	hemera::lexer::lex(input_stream, output, alloc, __FILE__);
 
 	ASSERT_EQ(output.size(), expected_tokens.size());
 
@@ -334,6 +339,7 @@ static std::string sanitize(const std::string& input) {
 
 TEST(InvalidTokenTest, OptionsWithoutArgs)
 {
+	auto reporting = hemera::DisableReportingForBlock();
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -378,7 +384,7 @@ TEST(InvalidTokenTest, OptionsWithoutArgs)
 
 		std::istringstream input_stream(text);
 
-		hemera::lexer::lex(input_stream, output, alloc);
+		hemera::lexer::lex(input_stream, output, alloc, __FILE__);
 
 		const std::vector<TokenType>& expected = std::get<1>(input);
 

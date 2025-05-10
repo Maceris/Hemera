@@ -191,7 +191,7 @@ namespace hemera::lexer {
 	}
 
 	Token next(Tokenizer& tokenizer, std::istream& input_stream,
-		Allocator<> string_alloc) {
+		Allocator<> string_alloc, std::string_view file_path) {
 
 		uint32_t start_line = tokenizer.line_number;
 		uint16_t start_column = tokenizer.column_number;
@@ -272,6 +272,7 @@ namespace hemera::lexer {
 			case '\n':
 			default:
 				state = State::invalid;
+				report_error(ErrorCode::E2001, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			}
 			break;
@@ -343,6 +344,7 @@ namespace hemera::lexer {
 			case 0:
 			default:
 				state = State::invalid;
+				report_error(ErrorCode::E2002, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			}
 			break;
@@ -559,6 +561,7 @@ namespace hemera::lexer {
 			case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
 			case 0x7f:
 				state = State::invalid;
+				report_error(ErrorCode::E2003, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			default:
 				goto switch_start;
@@ -576,6 +579,7 @@ namespace hemera::lexer {
 			case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
 			case 0x7f:
 				state = State::invalid;
+				report_error(ErrorCode::E2003, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			default:
 				state = State::literal_char;
@@ -599,6 +603,7 @@ namespace hemera::lexer {
 			case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
 			case 0x7f:
 				state = State::invalid;
+				report_error(ErrorCode::E2004, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			default:
 				goto switch_start;
@@ -616,6 +621,7 @@ namespace hemera::lexer {
 			case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
 			case 0x7f:
 				state = State::invalid;
+				report_error(ErrorCode::E2004, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			default:
 				state = State::literal_string;
@@ -641,12 +647,14 @@ namespace hemera::lexer {
 			switch (next_char(tokenizer, input_stream, start_line, start_column, token_contents)) {
 			case 0:
 				state = State::invalid;
+				report_error(ErrorCode::E2005, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			case '\n':
 				break;
 			case '\r':
 				if (peek_char(tokenizer) != '\n') {
 					state = State::invalid;
+					report_error(ErrorCode::E2002, file_path, tokenizer.line_number, tokenizer.column_number);
 					goto switch_start;
 				}
 				goto switch_start;
@@ -657,6 +665,7 @@ namespace hemera::lexer {
 			case 0x17: case 0x18: case 0x19: case 0x1a: case 0x1b:
 			case 0x1c: case 0x1d: case 0x1e: case 0x1f: case 0x7f:
 				state = State::invalid;
+				report_error(ErrorCode::E2004, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			default:
 				goto switch_start;
@@ -1017,6 +1026,7 @@ namespace hemera::lexer {
 			default:
 				state = State::invalid;
 				next_char(tokenizer, input_stream);
+				report_error(ErrorCode::E2006, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			}
 			break;
@@ -1180,17 +1190,17 @@ namespace hemera::lexer {
 			return;
 		}
 
-		lex(input, output, string_alloc);
+		lex(input, output, string_alloc, file_path);
 	}
 
 	void lex(std::istream& input_stream, MyVector<Token>& output,
-		Allocator<> string_alloc) {
+		Allocator<> string_alloc, std::string_view file_path) {
 
 		Tokenizer tokenizer{};
 		std::getline(input_stream, tokenizer.current_line);
 
 		while (true) {
-			Token next_token = next(tokenizer, input_stream, string_alloc);
+			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);
 			output.push_back(next_token);
 			if (next_token.type == TokenType::END_OF_FILE) {
 				break;

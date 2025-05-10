@@ -1,1 +1,7 @@
 E1000,Failed to open file
+E2001,Backslash at end of input
+E2002,Carriage return without a newline
+E2003,Invalid character in character literal
+E2004,Invalid character in string literal
+E2005,Unexpected end of file
+E2006,Unrecognized character

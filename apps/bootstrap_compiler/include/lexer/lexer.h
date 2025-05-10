@@ -78,9 +78,9 @@ namespace hemera {
 			Allocator<> string_alloc);
 
 		void lex(std::istream& input_stream, MyVector<Token>& output,
-			Allocator<> string_alloc);
+			Allocator<> string_alloc, std::string_view file_path);
 
 		Token next(Tokenizer& tokenizer, std::istream& input_stream,
-			Allocator<> string_alloc);
+			Allocator<> string_alloc, std::string_view file_path);
 	}
 }

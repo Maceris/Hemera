@@ -9,9 +9,30 @@
 namespace hemera {
 
 	static std::mutex cout_mutex;
+	static bool reporting_enabled = true;
+
+	DisableReportingForBlock::DisableReportingForBlock() {
+		disable_reporting();
+	}
+
+	DisableReportingForBlock::~DisableReportingForBlock() {
+		enable_reporting();
+	}
+
+	void disable_reporting() {
+		reporting_enabled = false;
+	}
+
+	void enable_reporting() {
+		reporting_enabled = true;
+	}
 
 	void report_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
+
+		if (!reporting_enabled) {
+			return;
+		}
 
 		auto it = ErrorInfoMap.find(error);
 
@@ -29,6 +50,11 @@ namespace hemera {
 
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
+
+		if (!reporting_enabled) {
+			return;
+		}
+
 		auto it = WarningInfoMap.find(warning);
 
 		WarningInfo info = (it != WarningInfoMap.end())
