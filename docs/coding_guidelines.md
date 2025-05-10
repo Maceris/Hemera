@@ -28,7 +28,7 @@ A function should do exactly 1 thing, with thing meaning one of the below (examp
     * Validate a set of data
 4. Decide on which task(s) to perform
     * Select the right event handler for an event
-    * Call the appropriate function based on a value
+    * Call the appropriate functions based on a value
     * Dispatch a virtual call (or similar) to the right function
 
 They should not do 2 or more tasks, such as:
@@ -36,6 +36,7 @@ They should not do 2 or more tasks, such as:
 * Read command line arguments and also parse them into a struct
 * Map one data structure to another, while validating it is correct
 * Handle the logic for both the formatting of a string and the physical writing of the result an output stream
+* Decide on an action to take based on input, and also map actions to associated functions
 
 Additionally, they should not do less than the entire task, or be broken up into smaller functions, unless at least one of the following is true:
 
