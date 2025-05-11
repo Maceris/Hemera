@@ -123,26 +123,11 @@ namespace hemera {
 		MyString* value;
 
 		Token(TokenType type, uint16_t column_number, uint32_t line_number,
-			MyString* value = nullptr)
-			: type{ type }
-			, column_number{ column_number }
-			, line_number{ line_number }
-			, value{ value }
-		{}
-		Token(const Token& other)
-			: type{ other.type }
-			, column_number{ other.column_number }
-			, line_number{ other.line_number }
-			, value{ other.value }
-		{};
-		Token(Token&& other) noexcept
-			: type{ std::move(other.type) }
-			, column_number{ std::move(other.column_number) }
-			, line_number{ std::move(other.line_number) }
-			, value{ std::move(other.value) }
-		{};
-		~Token() = default;
-		Token& operator=(const Token&) = default;
-		Token& operator=(Token&&) = default;
+			MyString* value = nullptr);
+		Token(const Token& other);
+		Token(Token&& other) noexcept;
+		~Token();
+		Token& operator=(const Token&);
+		Token& operator=(Token&&);
 	};
 }
