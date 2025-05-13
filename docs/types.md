@@ -162,6 +162,67 @@ g : int[] : a[..=5]  // View over everything up to index 5, inclusive
 g2 : int[] : a[0..=5]  // Equivalent to g
 ```
 
+### Bounds checking
+
+When directly indexing into arrays, the index must be proven to be within the bounds of the array.
+
+```
+foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: u64) {
+    known : u64 = 4
+    over :: 5
+    result : i8
+
+    // invalid
+    // result = resizable[known] // Didn't check the bounds
+    // result = resizable[unknown] // Unknown bounds, and didn't check
+    // result = fixed[over] // Provably outside the bounds
+    
+    // fine
+    if (known <= resizable.count) { // don't know the count
+        result = resizable[known] // Checked the bounds
+    }
+    result = fixed[known] // Provably in bounds
+    if (unknown >= fixed.count) {
+        return
+    }
+    result = fixed[unknown] // Can't reach here if it would go out of bounds
+
+    // All automatically fine, loops know the bounds
+    for i in resizable {
+        print(i)
+    }
+    for i, index in view {
+        print(i)
+        print(index)
+    }
+    for i in fixed {
+        print(i)
+    }
+}
+```
+
+When providing bounds for slices, they must not extend outside the bounds of the array, or it is a compile-time error.
+
+```
+foo :: fn(resizable: i8[..], fixed: i8[10]) {
+    result : i8[]
+    a :: 2
+    b :: 5
+
+    // invalid
+    // result = resizable[2..<5] // Don't know the size
+
+    // fine
+    result = resizable[0..<resizable.count] // But same as result = resizable
+    result = fixed[2..<5] // Known to be in bounds
+    result = fixed[a..=b] // Known to be in bounds
+
+    if (a < resizable.count && b < resizable.count) {
+        result = resizable[a..<b] // We checked that it's fine
+    }
+}
+```
+
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
@@ -209,6 +270,8 @@ relptr8<int>  8-bit relative pointer to an int
 
 Relative pointers refer to an address relative to their own, and have different sizes.
 An 8-bit relative pointer is quite small, but can only refer to things 128 bytes below and 127 bytes above their own address.
+
+There is no pointer arithmetic on regular pointers, though raw pointers and relative pointers (being closer to integers) do allow it.
 
 ## Strings
 
