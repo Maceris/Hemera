@@ -47,15 +47,28 @@ namespace hemera::parser {
 	}
 
 	bool accept(ParserState* state, TokenType token) {
-		
 		if (current_token(state).type == token) {
 			next(state);
 			return true;
 		}
 		return false;
 	}
+
 	bool expect(ParserState* state, TokenType token) {
 		return current_token(state).type == token;
+	}
+
+	bool skip(ParserState* state, std::initializer_list<TokenType> tokens) {
+		Token current = current_token(state);
+
+		for (auto& token : tokens) {
+			if (current_token(state).type == token) {
+				state->current += 1;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	void file(std::string_view file_path, MyVector<Token>& tokens,
@@ -67,8 +80,10 @@ namespace hemera::parser {
 	}
 
 	void package_statement(ParserState* state) {
+		// File comments, legal statements
+		while (skip(state, { TokenType::COMMENT_BLOCK, TokenType::COMMENT_LINE })) {}
+
 		if (!accept(state, TokenType::KEYWORD_PACKAGE)) {
-			//TODO(ches) log error
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return;
 		}

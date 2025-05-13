@@ -1,5 +1,6 @@
 #pragma once
 
+#include <initializer_list>
 #include <string_view>
 
 #include "lexer/token.h"
@@ -27,6 +28,14 @@ namespace hemera::parser {
 	void next(ParserState* state);
 	bool accept(ParserState* state, TokenType token);
 	bool expect(ParserState* state, TokenType token);
+	/// <summary>
+	/// Skip a token if present.
+	/// </summary>
+	/// <param name="state">The token state.</param>
+	/// <param name="tokens">The tokens we want to skip.</param>
+	/// <returns>true if the token was skipped, false if there is a different
+	/// token.</returns>
+	bool skip(ParserState* state, std::initializer_list<TokenType> tokens);
 
 	void file(std::string_view file_path, MyVector<Token>& tokens, MyVector<ast::Node>& output);
 	void package_statement(ParserState* state);
