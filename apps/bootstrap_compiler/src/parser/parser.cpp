@@ -6,6 +6,17 @@
 
 namespace hemera::parser {
 
+	ParserState::ParserState(std::string_view file_path, 
+		MyVector<Token>& tokens, MyVector<ast::Node>& output)
+		: current{ 0 }
+		, tokens{ tokens }
+		, output{ output }
+		, file_path{ file_path }
+		, has_errors{ false }
+	{}
+	ParserState::ParserState(const ParserState&) = default;
+	ParserState::~ParserState() = default;
+
 	static inline size_t clamp_index(size_t index, size_t size) {
 		static const size_t ZERO = 0;
 		return std::max(ZERO, std::min(size - 1, index));
@@ -15,6 +26,19 @@ namespace hemera::parser {
 		size_t index = clamp_index(state->current, state->tokens.size());
 		return state->tokens[index];
 	}
+
+	static inline void report_error_on_last_token(ParserState* state, ErrorCode code) {
+		Token token = current_token(state);
+		report_error(code, state->file_path, token.line_number, token.column_number);
+		state->has_errors = true;
+		//TODO(ches) opportunity for showing the line, or printing the token, other text
+	}
+
+	//static inline void report_warning_on_last_token(ParserState* state, WarningCode code) {
+	//	Token token = current_token(state);
+	//	report_warning(code, state->file_path, token.line_number, token.column_number);
+	//	//TODO(ches) opportunity for showing the line, or printing the token, other text
+	//}
 
 	void next(ParserState* state) {
 		Token current = current_token(state);
@@ -34,8 +58,10 @@ namespace hemera::parser {
 		return current_token(state).type == token;
 	}
 
-	void file(MyVector<Token>& tokens, MyVector<ast::Node>& output) {
-		ParserState state(tokens, output);
+	void file(std::string_view file_path, MyVector<Token>& tokens,
+		MyVector<ast::Node>& output)
+	{
+		ParserState state(file_path, tokens, output);
 
 		package_statement(&state);
 	}
@@ -43,6 +69,7 @@ namespace hemera::parser {
 	void package_statement(ParserState* state) {
 		if (!accept(state, TokenType::KEYWORD_PACKAGE)) {
 			//TODO(ches) log error
+			report_error_on_last_token(state, ErrorCode::E3001);
 			return;
 		}
 	}
