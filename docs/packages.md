@@ -29,8 +29,8 @@ import builtin from "base"
 import io // from "std"
 import test from "std"
 // You can give packages an alias
-import pandas from "user" as pd 
-import vulkan from "vendor" as vk
+import pandas as pd from "user"
+import vulkan as vk from "vendor"
 ```
 
 If, for some reason, trying to import from a folder in the local folder with a name exactly the same as a built-in location,
@@ -75,7 +75,7 @@ bar :: fn(x: int) -> int {
 package example
 
 import library1 from "user"
-import library2 from "user" as lib2
+import library2 as lib2 from "user"
 
 foo :: fn(x: int) -> int {
     return x
