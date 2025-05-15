@@ -6,3 +6,6 @@ E2004,Invalid character in string literal
 E2005,Unexpected end of file
 E2006,Unrecognized character
 E3001,Missing package statement
+E3002,Missing package name
+E3003,Missing import name
+E3004,Missing alias name

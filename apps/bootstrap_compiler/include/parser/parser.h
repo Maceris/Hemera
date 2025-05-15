@@ -39,4 +39,6 @@ namespace hemera::parser {
 
 	void file(std::string_view file_path, MyVector<Token>& tokens, MyVector<ast::Node>& output);
 	void package_statement(ParserState* state);
+	void imports(ParserState* state);
+	void import(ParserState* state);
 }

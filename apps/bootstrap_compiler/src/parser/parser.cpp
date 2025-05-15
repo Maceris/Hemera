@@ -76,16 +76,43 @@ namespace hemera::parser {
 	{
 		ParserState state(file_path, tokens, output);
 
+		// File comments, legal statements
+		while (skip(&state, { TokenType::COMMENT_BLOCK, TokenType::COMMENT_LINE })) {}
+
 		package_statement(&state);
+		imports(&state);
 	}
 
 	void package_statement(ParserState* state) {
-		// File comments, legal statements
-		while (skip(state, { TokenType::COMMENT_BLOCK, TokenType::COMMENT_LINE })) {}
-
 		if (!accept(state, TokenType::KEYWORD_PACKAGE)) {
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return;
+		}
+
+		if (!accept(state, TokenType::IDENTIFIER)) {
+			report_error_on_last_token(state, ErrorCode::E3002);
+			return;
+		}
+	}
+
+	void imports(ParserState* state) {
+		while (expect(state, TokenType::KEYWORD_IMPORT)) {
+			import(state);
+		}
+	}
+
+	void import(ParserState* state) {
+		accept(state, TokenType::KEYWORD_IMPORT);
+
+		if (!accept(state, TokenType::LITERAL_STRING)) {
+			report_error_on_last_token(state, ErrorCode::E3003);
+		}
+
+		if (expect(state, TokenType::KEYWORD_AS)) {
+			accept(state, TokenType::KEYWORD_AS);
+			if (!accept(state, TokenType::IDENTIFIER)) {
+				report_error_on_last_token(state, ErrorCode::E3004);
+			}
 		}
 	}
 
