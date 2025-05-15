@@ -1,6 +1,6 @@
 package memory
 
-import "base:runtime"
+import runtime from "base"
 
 new :: fn<T>(
     T: type, 

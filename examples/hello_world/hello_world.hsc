@@ -1,6 +1,6 @@
 package hello_world
 
-import "std:io"
+import io
 
 main :: fn() {
 	println("Hello World!")
