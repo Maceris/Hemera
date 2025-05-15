@@ -6,7 +6,7 @@
 * Go - Defer syntax, multiple return values
 * Jai - Syntax, lack of exceptions, compile-time execution, allocator/context pattern
 * Java - Streams, method references, RxJava, distaste for inheritance and globals
-* Odin - Primitive types, import style, Struct of Arrays (SOA) types
+* Odin - Primitive types, library collections, Struct of Arrays (SOA) types
 * Rust - Tagged unions, Result and Option types, immutability by default, pattern matching
 
 ## Why are they called functions?

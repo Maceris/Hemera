@@ -95,6 +95,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("false", TokenType::KEYWORD_FALSE));
 	inputs.push_back(std::make_tuple("fn", TokenType::KEYWORD_FN));
 	inputs.push_back(std::make_tuple("for", TokenType::KEYWORD_FOR));
+	inputs.push_back(std::make_tuple("from", TokenType::KEYWORD_FROM));
 	inputs.push_back(std::make_tuple("if", TokenType::KEYWORD_IF));
 	inputs.push_back(std::make_tuple("import", TokenType::KEYWORD_IMPORT));
 	inputs.push_back(std::make_tuple("in", TokenType::KEYWORD_IN));

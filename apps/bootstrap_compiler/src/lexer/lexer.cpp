@@ -60,6 +60,9 @@ namespace hemera::lexer {
 		if (identifier.compare("for") == 0) {
 			return TokenType::KEYWORD_FOR;
 		}
+		if (identifier.compare("from") == 0) {
+			return TokenType::KEYWORD_FROM;
+		}
 		if (identifier.compare("if") == 0) {
 			return TokenType::KEYWORD_IF;
 		}
@@ -1083,6 +1086,7 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_FALSE:
 		case TokenType::KEYWORD_FN:
 		case TokenType::KEYWORD_FOR:
+		case TokenType::KEYWORD_FROM:
 		case TokenType::KEYWORD_IF:
 		case TokenType::KEYWORD_IMPORT:
 		case TokenType::KEYWORD_IN:

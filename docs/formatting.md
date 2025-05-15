@@ -33,7 +33,7 @@ For example:
 
 package name_goes_here
 
-import "other_package"
+import other_package
 
 EXAMPLE_CONSTANT :: 43
 

@@ -19,6 +19,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `false` - The false boolean value
 * `fn` - For defining functions
 * `for` - For "for" loops
+* `from` - For specifying import locations
 * `if` - For conditional statements
 * `import` - For importing other packages
 * `in` - For range-based for loops

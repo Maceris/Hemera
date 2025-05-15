@@ -8,4 +8,5 @@ E2006,Unrecognized character
 E3001,Missing package statement
 E3002,Missing package name
 E3003,Missing import name
-E3004,Missing alias name
+E3004,Missing import location after from
+E3005,Missing alias name after as

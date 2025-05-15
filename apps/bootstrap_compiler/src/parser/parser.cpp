@@ -104,14 +104,21 @@ namespace hemera::parser {
 	void import(ParserState* state) {
 		accept(state, TokenType::KEYWORD_IMPORT);
 
-		if (!accept(state, TokenType::LITERAL_STRING)) {
+		if (!accept(state, TokenType::IDENTIFIER)) {
 			report_error_on_last_token(state, ErrorCode::E3003);
+		}
+
+		if (expect(state, TokenType::KEYWORD_FROM)) {
+			accept(state, TokenType::KEYWORD_FROM);
+			if (!accept(state, TokenType::LITERAL_STRING)) {
+				report_error_on_last_token(state, ErrorCode::E3004);
+			}
 		}
 
 		if (expect(state, TokenType::KEYWORD_AS)) {
 			accept(state, TokenType::KEYWORD_AS);
 			if (!accept(state, TokenType::IDENTIFIER)) {
-				report_error_on_last_token(state, ErrorCode::E3004);
+				report_error_on_last_token(state, ErrorCode::E3005);
 			}
 		}
 	}

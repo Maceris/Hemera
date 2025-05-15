@@ -21,8 +21,6 @@ digit_binary = "0" | "1" ;
 
 identifier = letter , { letter | digit_decimal | "_" } ;
 
-directory_character = letter | digit_decimal | "_" | "-" ;
-
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
 any_character = ? all characters ? ;
@@ -87,6 +85,7 @@ KEYWORD_enum = "enum" ;
 KEYWORD_false = "false" ;
 KEYWORD_fn = "fn" ;
 KEYWORD_for = "for" ;
+KEYWORD_from = "from" ;
 KEYWORD_if = "if" ;
 KEYWORD_import = "import" ;
 KEYWORD_in = "in" ;
@@ -177,13 +176,7 @@ file = package_statement , imports , const_definitions ;
 package_statement = KEYWORD_package , identifier ;
 
 imports = import , [ imports ] ;
-import = KEYWORD_import , relative_package_name, [ KEYWORD_as , identifier ] ;
-relative_package_name = literal_string ;
-package_path = directory_path , OPERATOR_divide , identifier ;
-directory_path = ( directory_name , directory_path ) 
-    | directory_name
-    ;
-directory_name = directory_character , { directory_character } ;
+import = KEYWORD_import , identifier , [ KEYWORD_from, literal_string ] , [ KEYWORD_as , identifier ] ;
 
 const_definitions = const_definition , { const_definitions } ;
 const_definition = declaration , SYM_COLON , decl_rhs ;

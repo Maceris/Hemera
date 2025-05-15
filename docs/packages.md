@@ -10,7 +10,10 @@ symlinks, case-insensitivity, or problematic characters in the folder name.
 
 Files import other packages using the `import` keyword.
 
-They may (and usually do) have a prefix like `core:`, specifying the type of package. The prefixes are:
+They may (and usually do) have a pre-specified `from` part, specifying where the package is from, in the format `from "name"`.
+These can be left off for `base` and `std`.
+
+The built in locations are:
 
 * `base` - Part of the language itself, which must be implemented by all compilers
 * `std` - The standard library
@@ -21,14 +24,17 @@ Below are a few examples of imports
 
 ```
 // Imports are relative to the current file if no prefix is specified
-import "../foo"
-import "base:builtin"
-import "std:io"
-import "std:test" // I am not apologizing
+import foo from "../"
+import builtin from "base"
+import io // from "std"
+import test from "std"
 // You can give packages an alias
-import "user:pandas" as pd 
-import "vendor:vulkan"
+import pandas from "user" as pd 
+import vulkan from "vendor" as vk
 ```
+
+If, for some reason, trying to import from a folder in the local folder with a name exactly the same as a built-in location,
+a relative path is used: `import example from "./base"`.
 
 ## Name collision
 
@@ -68,8 +74,8 @@ bar :: fn(x: int) -> int {
 ```
 package example
 
-import "user:library1"
-import "user:library2" as lib2
+import library1 from "user"
+import library2 from "user" as lib2
 
 foo :: fn(x: int) -> int {
     return x
