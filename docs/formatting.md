@@ -17,12 +17,12 @@ Identifiers may not be the same as [reserved keywords](keywords.md) or [builtin 
 
 # File Structure
 
-The official recommended file structure as below:
+The code file structure as below:
 
 1. Optional beginning comments
 2. Package statement (first non-comment non-empty line)
 3. Imports
-4. Declarations
+4. Declarations / definitions
 
 For example:
 

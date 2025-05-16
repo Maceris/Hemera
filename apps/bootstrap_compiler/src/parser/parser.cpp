@@ -40,6 +40,14 @@ namespace hemera::parser {
 	//	//TODO(ches) opportunity for showing the line, or printing the token, other text
 	//}
 
+	static void skip_comments(ParserState* state) {
+		TokenType current = current_token(state).type;
+		while (current == TokenType::COMMENT_BLOCK || current == TokenType::COMMENT_LINE) {
+			state->current += 1;
+			current = current_token(state).type;
+		}
+	}
+
 	void next(ParserState* state) {
 		Token current = current_token(state);
 		state->output.emplace_back(ast::NodeType::LEAF, current);
@@ -47,6 +55,7 @@ namespace hemera::parser {
 	}
 
 	bool accept(ParserState* state, TokenType token) {
+		skip_comments(state);
 		if (current_token(state).type == token) {
 			next(state);
 			return true;
@@ -54,13 +63,23 @@ namespace hemera::parser {
 		return false;
 	}
 
+	void accept_backtracked(ParserState* state, std::initializer_list<TokenType> tokens) {
+		size_t index = clamp_index(state->current - 1, state->tokens.size());
+		Token token = state->tokens[index];
+		for (auto& expected : tokens) {
+			if (token.type == expected) {
+				state->output.emplace_back(ast::NodeType::LEAF, token);
+				return;
+			}
+		}
+	}
+
 	bool expect(ParserState* state, TokenType token) {
+		skip_comments(state);
 		return current_token(state).type == token;
 	}
 
 	bool skip(ParserState* state, std::initializer_list<TokenType> tokens) {
-		Token current = current_token(state);
-
 		for (auto& token : tokens) {
 			if (current_token(state).type == token) {
 				state->current += 1;
@@ -76,11 +95,14 @@ namespace hemera::parser {
 	{
 		ParserState state(file_path, tokens, output);
 
-		// File comments, legal statements
-		while (skip(&state, { TokenType::COMMENT_BLOCK, TokenType::COMMENT_LINE })) {}
-
 		package_statement(&state);
 		imports(&state);
+		const_definitions(&state);
+	}
+
+	void comments(ParserState* state) {
+		while (accept(state, TokenType::COMMENT_BLOCK) 
+			|| accept(state, TokenType::COMMENT_LINE)) {}
 	}
 
 	void package_statement(ParserState* state) {
@@ -121,7 +143,61 @@ namespace hemera::parser {
 				report_error_on_last_token(state, ErrorCode::E3004);
 			}
 		}
-		
+	}
+
+	void const_definitions(ParserState* state) {
+		while (expect(state, TokenType::IDENTIFIER)) {
+			declaration(state);
+			const_definition_rhs(state);
+		}
+	}
+
+	void any_definition(ParserState* state) {
+		declaration(state);
+
+		if (expect(state, TokenType::SYM_COLON)) {
+			const_definition_rhs(state);
+		}
+		else if (expect(state, TokenType::OPERATOR_ASSIGN)) {
+			mut_definition_rhs(state);
+		}
+		else {
+			//TODO(ches) error
+		}
+	}
+
+	void const_definition_rhs(ParserState* state) {
+		if (!accept(state, TokenType::SYM_COLON)) {
+			//TODO(ches) error
+			return;
+		}
+		decl_rhs(state);
+	}
+
+	void mut_definition_rhs(ParserState* state) {
+		if (!accept(state, TokenType::OPERATOR_ASSIGN)) {
+			//TODO(ches) error
+			return;
+		}
+		decl_rhs(state);
+	}
+
+	void declaration(ParserState* state) {
+		accept_backtracked(state, { TokenType::COMMENT_BLOCK, TokenType::COMMENT_LINE });
+		if (!accept(state, TokenType::IDENTIFIER)) {
+			//TODO(ches) error
+			return;
+		}
+		if (!accept(state, TokenType::SYM_COLON)) {
+			//TODO(ches) error
+			return;
+		}
+		//TODO(ches) type
+	}
+
+	void decl_rhs(ParserState* state) {
+		//TODO(ches) decls
+		if (state == nullptr) {} //TODO(ches) remove this
 	}
 
 }

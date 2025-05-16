@@ -178,12 +178,12 @@ package_statement = KEYWORD_package , identifier ;
 imports = import , [ imports ] ;
 import = KEYWORD_import , identifier , [ KEYWORD_as , identifier ] , [ KEYWORD_from, literal_string ] ;
 
-const_definitions = const_definition , { const_definitions } ;
-const_definition = declaration , SYM_COLON , decl_rhs ;
-mut_definition = declaration , SYM_EQ , decl_rhs ;
-any_definition = const_definition | mut_definition ;
+const_definitions = ( declaration , const_definition_rhs )+ ;
+const_definition_rhs = SYM_COLON , decl_rhs ;
+mut_definition_rhs = SYM_EQ , decl_rhs ;
+any_definition = declaration , ( const_definition | mut_definition ) ;
 
-declaration = identifier , SYM_COLON , [ type ]
+declaration = { comment_any } , identifier , SYM_COLON , [ type ]
 
 decl_rhs = expression_with_result
     | function_decl
@@ -256,9 +256,7 @@ expression_with_result = literal
     | arithmetic_expression
     | boolean_expression
     | block
-    | const_definition
-    | mut_definition
-    | declaration
+    | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
     | if_expression
     ;
 expression_with_void_result = for_loop
