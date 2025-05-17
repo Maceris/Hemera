@@ -26,6 +26,7 @@ namespace hemera::parser {
 	};
 
 	void next(ParserState* state);
+	ast::Node& next_non_terminal(ParserState* state, ast::NodeType type);
 	bool accept(ParserState* state, TokenType token);
 	/// <summary>
 	/// Accept the token just before the previous token, if it matches the
@@ -35,6 +36,9 @@ namespace hemera::parser {
 	/// <param name="tokens">The types of token we want to accept.</param>
 	void accept_backtracked(ParserState* state, std::initializer_list<TokenType> tokens);
 	bool expect(ParserState* state, TokenType token);
+	
+	bool skip(ParserState* state, TokenType token);
+
 	/// <summary>
 	/// Skip a token if present.
 	/// </summary>
@@ -42,7 +46,7 @@ namespace hemera::parser {
 	/// <param name="tokens">The tokens we want to skip.</param>
 	/// <returns>true if the token was skipped, false if there is a different
 	/// token.</returns>
-	bool skip(ParserState* state, std::initializer_list<TokenType> tokens);
+	bool skip_any(ParserState* state, std::initializer_list<TokenType> tokens);
 
 	void file(std::string_view file_path, MyVector<Token>& tokens, MyVector<ast::Node>& output);
 	void comments(ParserState* state);

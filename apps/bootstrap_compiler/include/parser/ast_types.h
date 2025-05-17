@@ -7,7 +7,10 @@
 
 namespace hemera::ast {
 	enum class NodeType {
-		LEAF
+		DEFINITION,
+		IMPORT,
+		LEAF,
+		PACKAGE,
 	};
 
 	using offset = int16_t;

@@ -54,6 +54,13 @@ namespace hemera::parser {
 		state->current += 1;
 	}
 
+	ast::Node& next_non_terminal(ParserState* state, ast::NodeType type) {
+		Token current = current_token(state);
+		ast::Node& result = state->output.emplace_back(type, current);
+		state->current += 1;
+		return result;
+	}
+
 	bool accept(ParserState* state, TokenType token) {
 		skip_comments(state);
 		if (current_token(state).type == token) {
@@ -79,7 +86,17 @@ namespace hemera::parser {
 		return current_token(state).type == token;
 	}
 
-	bool skip(ParserState* state, std::initializer_list<TokenType> tokens) {
+	bool skip(ParserState* state, TokenType token) {
+		skip_comments(state);
+		if (current_token(state).type == token) {
+			state->current += 1;
+			return true;
+		}
+		return false;
+	}
+
+	bool skip_any(ParserState* state, std::initializer_list<TokenType> tokens) {
+		skip_comments(state);
 		for (auto& token : tokens) {
 			if (current_token(state).type == token) {
 				state->current += 1;
@@ -106,15 +123,17 @@ namespace hemera::parser {
 	}
 
 	void package_statement(ParserState* state) {
-		if (!accept(state, TokenType::KEYWORD_PACKAGE)) {
+		if (!skip(state, TokenType::KEYWORD_PACKAGE)) {
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return;
 		}
+		ast::Node& node = next_non_terminal(state, ast::NodeType::PACKAGE);
 
 		if (!accept(state, TokenType::IDENTIFIER)) {
 			report_error_on_last_token(state, ErrorCode::E3002);
 			return;
 		}
+		node.children.push_back(1);
 	}
 
 	void imports(ParserState* state) {
@@ -124,24 +143,42 @@ namespace hemera::parser {
 	}
 
 	void import(ParserState* state) {
-		accept(state, TokenType::KEYWORD_IMPORT);
+		ast::Node& node = next_non_terminal(state, ast::NodeType::IMPORT);
+
+		skip(state, TokenType::KEYWORD_IMPORT);
 
 		if (!accept(state, TokenType::IDENTIFIER)) {
 			report_error_on_last_token(state, ErrorCode::E3003);
+			return;
 		}
+
+		ast::offset children = 1;
+		node.children.push_back(children);//NOTE(ches) identifier
 
 		if (expect(state, TokenType::KEYWORD_AS)) {
 			accept(state, TokenType::KEYWORD_AS);
 			if (!accept(state, TokenType::IDENTIFIER)) {
 				report_error_on_last_token(state, ErrorCode::E3005);
+				return;
 			}
+			//NOTE(ches) as, so we know it's an alias
+			children += 1;
+			node.children.push_back(children);
+			children += 1;
+			node.children.push_back(children);//NOTE(ches) alias
 		}
 
 		if (expect(state, TokenType::KEYWORD_FROM)) {
 			accept(state, TokenType::KEYWORD_FROM);
 			if (!accept(state, TokenType::LITERAL_STRING)) {
 				report_error_on_last_token(state, ErrorCode::E3004);
+				return;
 			}
+			//NOTE(ches) from, so we know it's not an alias
+			children += 1;
+			node.children.push_back(children);
+			children += 1;
+			node.children.push_back(children);//NOTE(ches) source of import
 		}
 	}
 
