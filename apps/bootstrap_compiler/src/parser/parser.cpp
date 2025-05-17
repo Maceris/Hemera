@@ -40,7 +40,6 @@ namespace hemera::parser {
 		ast::offset to_child = parent.total_children + 1;
 		ast::offset to_parent = -to_child;
 
-		parent.children.push_back(to_child);
 		child.parent = to_parent;
 
 		ast::Node* next_parent = &parent;
@@ -88,17 +87,6 @@ namespace hemera::parser {
 			return true;
 		}
 		return false;
-	}
-
-	void accept_backtracked(ParserState* state, std::initializer_list<TokenType> tokens) {
-		size_t index = clamp_index(state->current - 1, state->tokens.size());
-		Token token = state->tokens[index];
-		for (auto& expected : tokens) {
-			if (token.type == expected) {
-				state->output.emplace_back(ast::NodeType::LEAF, token);
-				return;
-			}
-		}
 	}
 
 	bool expect(ParserState* state, TokenType token) {
@@ -158,8 +146,10 @@ namespace hemera::parser {
 	}
 
 	void imports(ParserState* state, ast::Node& parent) {
+		comments(state, parent);
 		while (expect(state, TokenType::KEYWORD_IMPORT)) {
 			import(state, parent);
+			comments(state, parent);
 		}
 	}
 
@@ -192,9 +182,11 @@ namespace hemera::parser {
 	}
 
 	void const_definitions(ParserState* state, ast::Node& parent) {
+		comments(state, parent);
 		while (expect(state, TokenType::IDENTIFIER)) {
 			declaration(state, parent);
 			const_definition_rhs(state, parent);
+			comments(state, parent);
 		}
 	}
 
@@ -208,13 +200,13 @@ namespace hemera::parser {
 			mut_definition_rhs(state, parent);
 		}
 		else {
-			//TODO(ches) error
+			report_error_on_last_token(state, ErrorCode::E3006);
 		}
 	}
 
 	void const_definition_rhs(ParserState* state, ast::Node& parent) {
 		if (!accept(state, TokenType::SYM_COLON, parent)) {
-			//TODO(ches) error
+			report_error_on_last_token(state, ErrorCode::E3007);
 			return;
 		}
 		decl_rhs(state, parent);
@@ -222,22 +214,22 @@ namespace hemera::parser {
 
 	void mut_definition_rhs(ParserState* state, ast::Node& parent) {
 		if (!accept(state, TokenType::OPERATOR_ASSIGN, parent)) {
-			//TODO(ches) error
+			report_error_on_last_token(state, ErrorCode::E3008);
 			return;
 		}
 		decl_rhs(state, parent);
 	}
 
 	void declaration(ParserState* state, ast::Node& parent) {
-		accept_backtracked(state, { TokenType::COMMENT_BLOCK, TokenType::COMMENT_LINE });
 		if (!accept(state, TokenType::IDENTIFIER, parent)) {
-			//TODO(ches) error
+			report_error_on_last_token(state, ErrorCode::E3009);
 			return;
 		}
 		if (!accept(state, TokenType::SYM_COLON, parent)) {
-			//TODO(ches) error
+			report_error_on_last_token(state, ErrorCode::E3010);
 			return;
 		}
+		comments(state, parent);
 		//TODO(ches) type
 	}
 

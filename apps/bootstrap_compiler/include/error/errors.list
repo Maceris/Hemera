@@ -10,3 +10,8 @@ E3002,Missing package name
 E3003,Missing import name
 E3004,Missing import location after from
 E3005,Missing alias name after as
+E3006,Expected a value for definition
+E3007,Expected a constant definition
+E3008,Expected a mutable definition
+E3009,Expected an identifier to startn a declaration
+E3010,Expected an a semicolon after identifier

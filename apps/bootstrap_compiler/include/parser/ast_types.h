@@ -17,7 +17,6 @@ namespace hemera::ast {
 	using offset = int64_t;
 
 	struct Node {
-		MyVector<offset> children;
 		Token value;
 		offset parent;
 		offset total_children;
