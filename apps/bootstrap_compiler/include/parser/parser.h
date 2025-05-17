@@ -25,9 +25,9 @@ namespace hemera::parser {
 		~ParserState();
 	};
 
-	void next(ParserState* state);
-	ast::Node& next_non_terminal(ParserState* state, ast::NodeType type);
-	bool accept(ParserState* state, TokenType token);
+	void next(ParserState* state, ast::Node& parent);
+	ast::Node& next_as_node(ParserState* state, ast::NodeType type, ast::Node& parent);
+	bool accept(ParserState* state, TokenType token, ast::Node& parent);
 	/// <summary>
 	/// Accept the token just before the previous token, if it matches the
 	/// specified token type. Otherwise does nothing.
@@ -49,14 +49,14 @@ namespace hemera::parser {
 	bool skip_any(ParserState* state, std::initializer_list<TokenType> tokens);
 
 	void file(std::string_view file_path, MyVector<Token>& tokens, MyVector<ast::Node>& output);
-	void comments(ParserState* state);
-	void package_statement(ParserState* state);
-	void imports(ParserState* state);
-	void import(ParserState* state);
-	void const_definitions(ParserState* state);
-	void any_definition(ParserState* state);
-	void const_definition_rhs(ParserState* state);
-	void mut_definition_rhs(ParserState* state);
-	void declaration(ParserState* state);
-	void decl_rhs(ParserState* state);
+	void comments(ParserState* state, ast::Node& parent);
+	void package_statement(ParserState* state, ast::Node& parent);
+	void imports(ParserState* state, ast::Node& parent);
+	void import(ParserState* state, ast::Node& parent);
+	void const_definitions(ParserState* state, ast::Node& parent);
+	void any_definition(ParserState* state, ast::Node& parent);
+	void const_definition_rhs(ParserState* state, ast::Node& parent);
+	void mut_definition_rhs(ParserState* state, ast::Node& parent);
+	void declaration(ParserState* state, ast::Node& parent);
+	void decl_rhs(ParserState* state, ast::Node& parent);
 }
