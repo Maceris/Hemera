@@ -242,25 +242,28 @@ namespace hemera::parser {
 	void type(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, parent);
 		if (expect(state, TokenType::IDENTIFIER)) {
-			accept(state, TokenType::IDENTIFIER, node);
-			if (expect(state, TokenType::SYM_LT)) {
-				generic_tag(state, node);
-			}
+			simple_type(state, node);
 			return;
 		}
-		//TODO(ches) pointer_type
 		if (expect(state, TokenType::KEYWORD_FN)) {
-			//TODO(ches) complicated type
+			complicated_type(state, node);
+			return;
 		}
 	}
 
 	void simple_type(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (expect(state, TokenType::IDENTIFIER)) {
+			accept(state, TokenType::IDENTIFIER, parent);
+			if (expect(state, TokenType::SYM_LT)) {
+				generic_tag(state, parent);
+			}
+			return;
+		}
 	}
 	void complicated_type(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 	}
-	void pointer_type(ParserState* state, ast::Node& parent) {
+	void generic_tag(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 	}
 

@@ -28,13 +28,6 @@ namespace hemera::parser {
 	void next(ParserState* state, ast::Node& parent);
 	ast::Node& next_as_node(ParserState* state, ast::NodeType type, ast::Node& parent);
 	bool accept(ParserState* state, TokenType token, ast::Node& parent);
-	/// <summary>
-	/// Accept the token just before the previous token, if it matches the
-	/// specified token type. Otherwise does nothing.
-	/// </summary>
-	/// <param name="state">The parser state.</param>
-	/// <param name="tokens">The types of token we want to accept.</param>
-	void accept_backtracked(ParserState* state, std::initializer_list<TokenType> tokens);
 	bool expect(ParserState* state, TokenType token);
 	
 	bool skip(ParserState* state, TokenType token);
@@ -62,7 +55,6 @@ namespace hemera::parser {
 	void type(ParserState* state, ast::Node& parent);
 	void simple_type(ParserState* state, ast::Node& parent);
 	void complicated_type(ParserState* state, ast::Node& parent);
-	void pointer_type(ParserState* state, ast::Node& parent);
 	void generic_tag(ParserState* state, ast::Node& parent);
 
 }
