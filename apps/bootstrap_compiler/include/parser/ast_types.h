@@ -12,6 +12,7 @@ namespace hemera::ast {
 		IMPORT,
 		LEAF,
 		PACKAGE,
+		TYPE,
 	};
 
 	using offset = int64_t;

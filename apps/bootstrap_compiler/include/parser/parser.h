@@ -59,4 +59,10 @@ namespace hemera::parser {
 	void mut_definition_rhs(ParserState* state, ast::Node& parent);
 	void declaration(ParserState* state, ast::Node& parent);
 	void decl_rhs(ParserState* state, ast::Node& parent);
+	void type(ParserState* state, ast::Node& parent);
+	void simple_type(ParserState* state, ast::Node& parent);
+	void complicated_type(ParserState* state, ast::Node& parent);
+	void pointer_type(ParserState* state, ast::Node& parent);
+	void generic_tag(ParserState* state, ast::Node& parent);
+
 }

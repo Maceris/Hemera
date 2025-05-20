@@ -201,7 +201,7 @@ type = simple_type
     | complicated_type
     ;
 
-simple_type = identifier
+simple_type = ( identifier , [ generic_tag ] )
     | pointer_type
     ; #TODO(ches)
 
@@ -236,7 +236,7 @@ enum_body = SYM_LBRACE , [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_C
 
 generic_tag = SYM_LT , identifier , { SYM_COMMA , identifier } , SYM_GT ;
 
-pointer_type =  BUILTIN_T_PTR , SYM_LT , type , SYM_GT ;
+pointer_type =  BUILTIN_T_PTR , SYM_LT , type , SYM_GT ; //TODO(ches) get rid of, or codify, the pointer identifier
 
 struct_member = declaration ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
