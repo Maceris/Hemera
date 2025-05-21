@@ -260,10 +260,32 @@ namespace hemera::parser {
 			return;
 		}
 	}
+
 	void complicated_type(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (expect(state, TokenType::KEYWORD_FN)) {
+			function_signature(state, parent);
+		}
 	}
+
 	void generic_tag(ParserState* state, ast::Node& parent) {
+		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, parent);
+		if (!skip(state, TokenType::SYM_LT)) {
+			// TODO(ches) error??
+		}
+
+		while (!expect(state, TokenType::SYM_GT)) {
+			type(state, node);
+			if (expect(state, TokenType::SYM_COMMA)) {
+				skip(state, TokenType::SYM_COMMA);
+			}
+		}
+		if (!skip(state, TokenType::SYM_GT)) {
+			// TODO(ches) error??
+		}
+
+	}
+
+	void function_signature(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 	}
 

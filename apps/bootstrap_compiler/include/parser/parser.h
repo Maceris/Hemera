@@ -56,5 +56,6 @@ namespace hemera::parser {
 	void simple_type(ParserState* state, ast::Node& parent);
 	void complicated_type(ParserState* state, ast::Node& parent);
 	void generic_tag(ParserState* state, ast::Node& parent);
+	void function_signature(ParserState* state, ast::Node& parent);
 
 }
