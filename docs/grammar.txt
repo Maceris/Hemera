@@ -208,7 +208,6 @@ complicated_type = function_signature
 
 function_signature = KEYWORD_fn , [ generic_tag ], SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } )
-    | ( SYM_LPAREN , function_parameter , { SYM_COMMA , function_parameter } , SYM_RPAREN )
     ;
 function_output_list = KEYWORD_void 
     | simple_type
@@ -219,9 +218,7 @@ function_output_in_paren = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = ( identifier , SYM_COLON, type )
-    | ( identifier , SYM_COLON , [ type ] , SYM_EQ , default_value )
-    ;
+function_parameter = identifier , SYM_COLON , type , [ SYM_EQ , default_value ] ;
 function_body = SYM_LBRACE, { expression } , SYM_RBRACE ;
 default_value = literal
     | directive

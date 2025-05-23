@@ -287,7 +287,47 @@ namespace hemera::parser {
 
 	void function_signature(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION, parent);
+		if (!accept(state, TokenType::KEYWORD_FN, node)) {
+			// TODO(ches) error??
+		}
+		if (expect(state, TokenType::SYM_LT)) {
+			generic_tag(state, node);
+		}
+		if (!skip(state, TokenType::SYM_LPAREN)) {
+			// TODO(ches) error??
+		}
+		if (expect(state, TokenType::IDENTIFIER)) {
+			function_parameter_list(state, node);
+		}
+		if (!skip(state, TokenType::SYM_RPAREN)) {
+			// TODO(ches) error??
+		}
+		if (expect(state, TokenType::SYM_ARROW_SINGLE)) {
+			function_output_list(state, node);
+		}
 	}
 
+	void function_parameter_list(ParserState* state, ast::Node& parent) {
+		ast::Node& node = next_as_node(state, ast::NodeType::LIST, parent);
+
+		while (accept(state, TokenType::IDENTIFIER, node)) {
+			if (!skip(state, TokenType::SYM_COLON)) {
+				// TODO(ches) error??
+			}
+			type(state, node);
+			if (expect(state, TokenType::OPERATOR_EQUAL)) {
+				skip(state, TokenType::OPERATOR_EQUAL);
+				default_value(state, node);
+			}
+		}
+	}
+
+	void default_value(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	}
+	void function_output_list(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	}
 
 }

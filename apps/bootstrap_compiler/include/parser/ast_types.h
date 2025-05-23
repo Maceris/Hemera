@@ -9,9 +9,11 @@ namespace hemera::ast {
 	enum class NodeType {
 		DEFINITION,
 		FILE,
+		FUNCTION,
 		GENERIC_TAG,
 		IMPORT,
 		LEAF,
+		LIST,
 		PACKAGE,
 		TYPE,
 	};
