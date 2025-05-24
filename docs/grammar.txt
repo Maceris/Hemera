@@ -198,9 +198,12 @@ enum_decl = KEYWORD_enum , SYM_LBRACE , enum_body , SYM_RBRACE ;
 type = simple_type
     | complicated_type
     ;
+type_in_list = simple_type
+    | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
+    :
 
 simple_type = ( identifier , [ generic_tag ] )
-    ; #TODO(ches)
+    ;
 
 # Confusing without parentheses in a function return type list
 complicated_type = function_signature
@@ -211,14 +214,16 @@ function_parameter_list = ( function_parameter , { SYM_COMMA , function_paramete
     ;
 function_output_list = KEYWORD_void 
     | simple_type
+    | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     | ( SYM_LPAREN , function_output_in_paren , { SYM_COMMA , function_output_in_paren } , SYM_RPAREN )
     ;
+
 function_output_in_paren = simple_type
-    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type )
+    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list ) )
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = identifier , SYM_COLON , type , [ SYM_EQ , default_value ] ;
+function_parameter = identifier , SYM_COLON , type_in_list ) , [ SYM_EQ , default_value ] ;
 function_body = SYM_LBRACE, { expression } , SYM_RBRACE ;
 default_value = literal
     | directive
@@ -228,7 +233,7 @@ struct_body = SYM_LBRACE , [ struct_member , { SYM_COMMA , struct_member } ] , [
 union_body = SYM_LBRACE , [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] , SYM_RBRACE ;
 enum_body = SYM_LBRACE , [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] , SYM_RBRACE;
 
-generic_tag = SYM_LT , type , { SYM_COMMA , type } , SYM_GT ;
+generic_tag = SYM_LT , type_in_list , { SYM_COMMA , type_in_list } , SYM_GT ;
 
 struct_member = declaration ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;

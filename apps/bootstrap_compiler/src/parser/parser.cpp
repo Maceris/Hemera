@@ -44,6 +44,7 @@ namespace hemera::parser {
 
 		ast::Node* next_parent = &parent;
 
+		//TODO(ches) instead of this, aggregate and update the parent once
 		while (to_parent != 0) {
 			next_parent->total_children += 1;
 			// Recurse up the parents, updating child counts
@@ -322,10 +323,80 @@ namespace hemera::parser {
 	}
 
 	void default_value(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (expect(state, TokenType::DIRECTIVE)) {
+			accept(state, TokenType::DIRECTIVE, parent);
+		}
+		else {
+			literal(state, parent);
+		}
 	}
+
 	void function_output_list(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (expect(state, TokenType::KEYWORD_VOID)) {
+			accept(state, TokenType::KEYWORD_VOID, parent);
+			return;
+		}
+		if (expect(state, TokenType::IDENTIFIER)) {
+			simple_type(state, parent);
+			return;
+		}
+		if (skip(state, TokenType::SYM_LPAREN)) {
+
+			if (expect(state, TokenType::KEYWORD_FN)) {
+				function_signature(state, parent);
+				if (!skip(state, TokenType::SYM_RPAREN)) {
+					report_error_on_last_token(state, ErrorCode::E3015);
+				}
+			}
+			else {
+				ast::Node& node = next_as_node(state, ast::NodeType::LIST, parent);
+
+				while (!expect(state, TokenType::SYM_RPAREN)) {
+					if (skip(state, TokenType::SYM_LPAREN)) {
+						function_signature(state, node);
+						if (!skip(state, TokenType::SYM_RPAREN)) {
+							report_error_on_last_token(state, ErrorCode::E3015);
+						}
+						skip(state, TokenType::SYM_COMMA);
+						continue;
+					}
+					if (expect(state, TokenType::IDENTIFIER)) {
+						simple_type(state, node);
+					}
+					skip(state, TokenType::SYM_COMMA);
+					if (accept(state, TokenType::SYM_COLON, node)) {
+						if (!accept(state, TokenType::IDENTIFIER, node)) {
+							report_error_on_last_token(state, ErrorCode::E3016);
+						}
+						skip(state, TokenType::SYM_COMMA);
+					}
+				}
+
+				if (!skip(state, TokenType::SYM_RPAREN)) {
+					report_error_on_last_token(state, ErrorCode::E3015);
+				}
+			}
+		}
+	}
+
+	void literal(ParserState* state, ast::Node& parent) {
+		if (expect(state, TokenType::LITERAL_CHAR)) {
+			accept(state, TokenType::LITERAL_CHAR, parent);
+			return;
+		}
+		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
+			accept(state, TokenType::LITERAL_FLOATING_POINT, parent);
+			return;
+		}
+		if (expect(state, TokenType::LITERAL_INTEGER)) {
+			accept(state, TokenType::LITERAL_INTEGER, parent);
+			return;
+		}
+		if (expect(state, TokenType::LITERAL_STRING)) {
+			accept(state, TokenType::LITERAL_STRING, parent);
+			return;
+		}
+		type(state, parent);
 	}
 
 }

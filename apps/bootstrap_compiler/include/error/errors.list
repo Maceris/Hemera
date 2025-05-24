@@ -19,5 +19,5 @@ E3011,Expected start of generic tag
 E3012,Expected end of generic tag
 E3013,Expected function keyword
 E3014,Expected function parameter list
-E3015,Expected end of function parameter list
+E3015,Expected closing parenthesis
 E3016,Expected a type
