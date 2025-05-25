@@ -235,8 +235,22 @@ namespace hemera::parser {
 	}
 
 	void decl_rhs(ParserState* state, ast::Node& parent) {
-		//TODO(ches) decls
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (expect(state, TokenType::KEYWORD_FN)) {
+			function_decl(state, parent);
+		}
+		else if (expect(state, TokenType::KEYWORD_STRUCT)) {
+			struct_decl(state, parent);
+		}
+		else if (expect(state, TokenType::KEYWORD_UNION)) {
+			union_decl(state, parent);
+		}
+		else if (expect(state, TokenType::KEYWORD_ENUM)) {
+			enum_decl(state, parent);
+		}
+		else {
+			//TODO(ches) check this worked
+			expression_with_result(state, parent);
+		}
 	}
 
 	void type(ParserState* state, ast::Node& parent) {
@@ -397,6 +411,26 @@ namespace hemera::parser {
 			return;
 		}
 		type(state, parent);
+	}
+
+	void expression_with_result(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	}
+
+	void function_decl(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	}
+
+	void struct_decl(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	}
+
+	void union_decl(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	}
+
+	void enum_decl(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 	}
 
 }

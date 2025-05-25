@@ -61,5 +61,10 @@ namespace hemera::parser {
 	void default_value(ParserState* state, ast::Node& parent);
 	void function_output_list(ParserState* state, ast::Node& parent);
 	void literal(ParserState* state, ast::Node& parent);
+	void expression_with_result(ParserState* state, ast::Node& parent);
+	void function_decl(ParserState* state, ast::Node& parent);
+	void struct_decl(ParserState* state, ast::Node& parent);
+	void union_decl(ParserState* state, ast::Node& parent);
+	void enum_decl(ParserState* state, ast::Node& parent);
 
 }
