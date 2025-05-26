@@ -121,8 +121,14 @@ namespace hemera::parser {
 		Token current(TokenType::END_OF_FILE, 0, 0);//TODO(ches) ???
 		ast::Node& node = state.output.emplace_back(ast::NodeType::FILE, current);
 
-		package_statement(&state, node);
-		imports(&state, node);
+		if (!package_statement(&state, node)) {
+			//TODO(ches) log this?
+			return;
+		}
+		if (!imports(&state, node)) {
+			//TODO(ches) log this?
+			return;
+		}
 		const_definitions(&state, node);
 	}
 
@@ -131,45 +137,49 @@ namespace hemera::parser {
 			|| accept(state, TokenType::COMMENT_LINE, parent)) {}
 	}
 
-	void package_statement(ParserState* state, ast::Node& parent) {
+	bool package_statement(ParserState* state, ast::Node& parent) {
 		comments(state, parent);
 
 		if (!skip(state, TokenType::KEYWORD_PACKAGE)) {
 			report_error_on_last_token(state, ErrorCode::E3001);
-			return;
+			return false;
 		}
 		ast::Node& node = next_as_node(state, ast::NodeType::PACKAGE, parent);
 
 		if (!accept(state, TokenType::IDENTIFIER, node)) {
 			report_error_on_last_token(state, ErrorCode::E3002);
-			return;
+			return false;
 		}
+		return true;
 	}
 
-	void imports(ParserState* state, ast::Node& parent) {
+	bool imports(ParserState* state, ast::Node& parent) {
 		comments(state, parent);
 		while (expect(state, TokenType::KEYWORD_IMPORT)) {
-			import(state, parent);
+			if (!import(state, parent)) {
+				//TODO(ches) log this?
+				return false;
+			}
 			comments(state, parent);
 		}
+		return true;
 	}
 
-	void import(ParserState* state, ast::Node& parent) {
+	bool import(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::IMPORT, parent);
 
 		skip(state, TokenType::KEYWORD_IMPORT);
 
 		if (!accept(state, TokenType::IDENTIFIER, node)) {
 			report_error_on_last_token(state, ErrorCode::E3003);
-			return;
+			return false;
 		}
-
 
 		if (expect(state, TokenType::KEYWORD_AS)) {
 			accept(state, TokenType::KEYWORD_AS, node);
 			if (!accept(state, TokenType::IDENTIFIER, node)) {
 				report_error_on_last_token(state, ErrorCode::E3005);
-				return;
+				return false;
 			}
 		}
 
@@ -177,189 +187,232 @@ namespace hemera::parser {
 			accept(state, TokenType::KEYWORD_FROM, node);
 			if (!accept(state, TokenType::LITERAL_STRING, node)) {
 				report_error_on_last_token(state, ErrorCode::E3004);
-				return;
+				return false;
 			}
 		}
+
+		return true;
 	}
 
 	void const_definitions(ParserState* state, ast::Node& parent) {
 		comments(state, parent);
 		while (expect(state, TokenType::IDENTIFIER)) {
-			declaration(state, parent);
-			const_definition_rhs(state, parent);
+			if (!declaration(state, parent)) {
+				//TODO(ches) log this?
+				return;
+			}
+			if (!const_definition_rhs(state, parent)) {
+				//TODO(ches) log this?
+				return;
+			}
 			comments(state, parent);
 		}
 	}
 
-	void any_definition(ParserState* state, ast::Node& parent) {
-		declaration(state, parent);
+	bool any_definition(ParserState* state, ast::Node& parent) {
+		if (!declaration(state, parent)) {
+			return false;
+		}
 
 		if (expect(state, TokenType::SYM_COLON)) {
-			const_definition_rhs(state, parent);
+			return const_definition_rhs(state, parent);
 		}
 		else if (expect(state, TokenType::OPERATOR_ASSIGN)) {
-			mut_definition_rhs(state, parent);
+			return mut_definition_rhs(state, parent);
 		}
 		else {
 			report_error_on_last_token(state, ErrorCode::E3006);
+			return false;
 		}
 	}
 
-	void const_definition_rhs(ParserState* state, ast::Node& parent) {
+	bool const_definition_rhs(ParserState* state, ast::Node& parent) {
 		if (!accept(state, TokenType::SYM_COLON, parent)) {
 			report_error_on_last_token(state, ErrorCode::E3007);
-			return;
+			return false;
 		}
-		decl_rhs(state, parent);
+		return decl_rhs(state, parent);
 	}
 
-	void mut_definition_rhs(ParserState* state, ast::Node& parent) {
+	bool mut_definition_rhs(ParserState* state, ast::Node& parent) {
 		if (!accept(state, TokenType::OPERATOR_ASSIGN, parent)) {
 			report_error_on_last_token(state, ErrorCode::E3008);
-			return;
+			return false;
 		}
-		decl_rhs(state, parent);
+		return decl_rhs(state, parent);
 	}
 
-	void declaration(ParserState* state, ast::Node& parent) {
+	bool declaration(ParserState* state, ast::Node& parent) {
 		if (!accept(state, TokenType::IDENTIFIER, parent)) {
 			report_error_on_last_token(state, ErrorCode::E3009);
-			return;
+			return false;
 		}
 		if (!accept(state, TokenType::SYM_COLON, parent)) {
 			report_error_on_last_token(state, ErrorCode::E3010);
-			return;
+			return false;
 		}
 		comments(state, parent);
-		type(state, parent);
+		return type(state, parent);
 	}
 
-	void decl_rhs(ParserState* state, ast::Node& parent) {
+	bool decl_rhs(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::KEYWORD_FN)) {
-			function_decl(state, parent);
+			return function_decl(state, parent);
 		}
 		else if (expect(state, TokenType::KEYWORD_STRUCT)) {
-			struct_decl(state, parent);
+			return struct_decl(state, parent);
 		}
 		else if (expect(state, TokenType::KEYWORD_UNION)) {
-			union_decl(state, parent);
+			return union_decl(state, parent);
 		}
 		else if (expect(state, TokenType::KEYWORD_ENUM)) {
-			enum_decl(state, parent);
+			return enum_decl(state, parent);
 		}
 		else {
-			//TODO(ches) check this worked
-			expression_with_result(state, parent);
+			return expression_with_result(state, parent);
 		}
 	}
 
-	void type(ParserState* state, ast::Node& parent) {
+	bool type(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, parent);
 		if (expect(state, TokenType::IDENTIFIER)) {
-			simple_type(state, node);
-			return;
+			return simple_type(state, node);
 		}
-		if (expect(state, TokenType::KEYWORD_FN)) {
-			complicated_type(state, node);
-			return;
+		else if (expect(state, TokenType::KEYWORD_FN)) {
+			return complicated_type(state, node);
+		}
+		else {
+			//TODO(ches) error for unexpected token
+			return false;
 		}
 	}
 
-	void simple_type(ParserState* state, ast::Node& parent) {
+	bool simple_type(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::IDENTIFIER)) {
 			accept(state, TokenType::IDENTIFIER, parent);
 			if (expect(state, TokenType::SYM_LT)) {
-				generic_tag(state, parent);
+				if (!generic_tag(state, parent)) {
+					return false;
+				}
 			}
-			return;
+			return true;
+		}
+		else {
+			//TODO(ches) error for unexpected token
+			return false;
 		}
 	}
 
-	void complicated_type(ParserState* state, ast::Node& parent) {
+	bool complicated_type(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::KEYWORD_FN)) {
-			function_signature(state, parent);
+			return function_signature(state, parent);
+		}
+		else {
+			//TODO(ches) error for unexpected token
+			return false;
 		}
 	}
 
-	void generic_tag(ParserState* state, ast::Node& parent) {
+	bool generic_tag(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, parent);
 		if (!skip(state, TokenType::SYM_LT)) {
 			report_error_on_last_token(state, ErrorCode::E3011);
+			return false;
 		}
 
 		while (!expect(state, TokenType::SYM_GT)) {
-			type(state, node);
+			if (!type(state, node)) {
+				return false;
+			}
 			if (expect(state, TokenType::SYM_COMMA)) {
 				skip(state, TokenType::SYM_COMMA);
 			}
 		}
 		if (!skip(state, TokenType::SYM_GT)) {
 			report_error_on_last_token(state, ErrorCode::E3012);
+			return false;
 		}
-
+		return true;
 	}
 
-	void function_signature(ParserState* state, ast::Node& parent) {
+	bool function_signature(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION, parent);
 		if (!accept(state, TokenType::KEYWORD_FN, node)) {
 			report_error_on_last_token(state, ErrorCode::E3013);
+			return false;
 		}
 		if (expect(state, TokenType::SYM_LT)) {
-			generic_tag(state, node);
+			if (!generic_tag(state, node)) {
+				return false;
+			}
 		}
 		if (!skip(state, TokenType::SYM_LPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3014);
+			return false;
 		}
 		if (expect(state, TokenType::IDENTIFIER)) {
-			function_parameter_list(state, node);
+			if (!function_parameter_list(state, node)) {
+				return false;
+			}
 		}
 		if (!skip(state, TokenType::SYM_RPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3015);
+			return false;
 		}
 		if (expect(state, TokenType::SYM_ARROW_SINGLE)) {
-			function_output_list(state, node);
+			if (!function_output_list(state, node)) {
+				return false;
+			}
 		}
+		return true;
 	}
 
-	void function_parameter_list(ParserState* state, ast::Node& parent) {
+	bool function_parameter_list(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::LIST, parent);
 
 		while (accept(state, TokenType::IDENTIFIER, node)) {
 			if (!skip(state, TokenType::SYM_COLON)) {
 				report_error_on_last_token(state, ErrorCode::E3016);
+				return false;
 			}
 			type(state, node);
 			if (expect(state, TokenType::OPERATOR_EQUAL)) {
 				skip(state, TokenType::OPERATOR_EQUAL);
-				default_value(state, node);
+				if (!default_value(state, node)) {
+					return false;
+				}
 			}
 		}
+		return true;
 	}
 
-	void default_value(ParserState* state, ast::Node& parent) {
+	bool default_value(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::DIRECTIVE)) {
 			accept(state, TokenType::DIRECTIVE, parent);
+			return true;
 		}
 		else {
-			literal(state, parent);
+			return literal(state, parent);
 		}
 	}
 
-	void function_output_list(ParserState* state, ast::Node& parent) {
+	bool function_output_list(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::KEYWORD_VOID)) {
 			accept(state, TokenType::KEYWORD_VOID, parent);
-			return;
+			return true;
 		}
 		if (expect(state, TokenType::IDENTIFIER)) {
-			simple_type(state, parent);
-			return;
+			return simple_type(state, parent);
 		}
 		if (skip(state, TokenType::SYM_LPAREN)) {
 
 			if (expect(state, TokenType::KEYWORD_FN)) {
-				function_signature(state, parent);
+				if (!function_signature(state, parent)) {
+					return false;
+				}
 				if (!skip(state, TokenType::SYM_RPAREN)) {
 					report_error_on_last_token(state, ErrorCode::E3015);
+					return false;
 				}
 			}
 			else {
@@ -367,20 +420,26 @@ namespace hemera::parser {
 
 				while (!expect(state, TokenType::SYM_RPAREN)) {
 					if (skip(state, TokenType::SYM_LPAREN)) {
-						function_signature(state, node);
+						if (!function_signature(state, node)) {
+							return false;
+						}
 						if (!skip(state, TokenType::SYM_RPAREN)) {
 							report_error_on_last_token(state, ErrorCode::E3015);
+							return false;
 						}
 						skip(state, TokenType::SYM_COMMA);
 						continue;
 					}
 					if (expect(state, TokenType::IDENTIFIER)) {
-						simple_type(state, node);
+						if (!simple_type(state, node)) {
+							return false;
+						}
 					}
 					skip(state, TokenType::SYM_COMMA);
 					if (accept(state, TokenType::SYM_COLON, node)) {
 						if (!accept(state, TokenType::IDENTIFIER, node)) {
 							report_error_on_last_token(state, ErrorCode::E3016);
+							return false;
 						}
 						skip(state, TokenType::SYM_COMMA);
 					}
@@ -388,49 +447,56 @@ namespace hemera::parser {
 
 				if (!skip(state, TokenType::SYM_RPAREN)) {
 					report_error_on_last_token(state, ErrorCode::E3015);
+					return false;
 				}
 			}
 		}
+		return true;
 	}
 
-	void literal(ParserState* state, ast::Node& parent) {
+	bool literal(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::LITERAL_CHAR)) {
 			accept(state, TokenType::LITERAL_CHAR, parent);
-			return;
+			return true;
 		}
 		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
 			accept(state, TokenType::LITERAL_FLOATING_POINT, parent);
-			return;
+			return true;
 		}
 		if (expect(state, TokenType::LITERAL_INTEGER)) {
 			accept(state, TokenType::LITERAL_INTEGER, parent);
-			return;
+			return true;
 		}
 		if (expect(state, TokenType::LITERAL_STRING)) {
 			accept(state, TokenType::LITERAL_STRING, parent);
-			return;
+			return true;
 		}
-		type(state, parent);
+		return type(state, parent);
 	}
 
-	void expression_with_result(ParserState* state, ast::Node& parent) {
+	bool expression_with_result(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
 	}
 
-	void function_decl(ParserState* state, ast::Node& parent) {
+	bool function_decl(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
 	}
 
-	void struct_decl(ParserState* state, ast::Node& parent) {
+	bool struct_decl(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
 	}
 
-	void union_decl(ParserState* state, ast::Node& parent) {
+	bool union_decl(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
 	}
 
-	void enum_decl(ParserState* state, ast::Node& parent) {
+	bool enum_decl(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
 	}
 
 }
