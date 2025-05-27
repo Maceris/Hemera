@@ -21,3 +21,4 @@ E3013,Expected function keyword
 E3014,Expected function parameter list
 E3015,Expected closing parenthesis
 E3016,Expected a type
+E3017,Unexpected token

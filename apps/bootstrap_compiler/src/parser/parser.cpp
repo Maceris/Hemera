@@ -131,10 +131,10 @@ namespace hemera::parser {
 		}
 		const_definitions(&state, node);
 	}
-
 	void comments(ParserState* state, ast::Node& parent) {
-		while (accept(state, TokenType::COMMENT_BLOCK, parent) 
-			|| accept(state, TokenType::COMMENT_LINE, parent)) {}
+		while (accept(state, TokenType::COMMENT_BLOCK, parent)
+			|| accept(state, TokenType::COMMENT_LINE, parent)) {
+		}
 	}
 
 	bool package_statement(ParserState* state, ast::Node& parent) {
@@ -195,12 +195,12 @@ namespace hemera::parser {
 	}
 
 	void const_definitions(ParserState* state, ast::Node& parent) {
-		comments(state, parent);
 		while (expect(state, TokenType::IDENTIFIER)) {
 			if (!declaration(state, parent)) {
 				//TODO(ches) log this?
 				return;
 			}
+
 			if (!const_definition_rhs(state, parent)) {
 				//TODO(ches) log this?
 				return;
@@ -243,6 +243,7 @@ namespace hemera::parser {
 	}
 
 	bool declaration(ParserState* state, ast::Node& parent) {
+		comments(state, parent);
 		if (!accept(state, TokenType::IDENTIFIER, parent)) {
 			report_error_on_last_token(state, ErrorCode::E3009);
 			return false;
@@ -251,7 +252,6 @@ namespace hemera::parser {
 			report_error_on_last_token(state, ErrorCode::E3010);
 			return false;
 		}
-		comments(state, parent);
 		return type(state, parent);
 	}
 
@@ -274,6 +274,7 @@ namespace hemera::parser {
 	}
 
 	bool type(ParserState* state, ast::Node& parent) {
+		comments(state, parent);
 		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, parent);
 		if (expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state, node);
@@ -282,7 +283,7 @@ namespace hemera::parser {
 			return complicated_type(state, node);
 		}
 		else {
-			//TODO(ches) error for unexpected token
+			report_error_on_last_token(state, ErrorCode::E3017);
 			return false;
 		}
 	}
@@ -298,7 +299,7 @@ namespace hemera::parser {
 			return true;
 		}
 		else {
-			//TODO(ches) error for unexpected token
+			report_error_on_last_token(state, ErrorCode::E3017);
 			return false;
 		}
 	}
@@ -308,7 +309,7 @@ namespace hemera::parser {
 			return function_signature(state, parent);
 		}
 		else {
-			//TODO(ches) error for unexpected token
+			report_error_on_last_token(state, ErrorCode::E3017);
 			return false;
 		}
 	}
