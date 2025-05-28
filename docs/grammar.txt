@@ -224,7 +224,7 @@ function_output_in_paren = simple_type
     ;
 
 function_parameter = identifier , SYM_COLON , type_in_list ) , [ SYM_EQ , default_value ] ;
-function_body = SYM_LBRACE, { expression } , SYM_RBRACE ;
+function_body = SYM_LBRACE, [ expression ]+ , SYM_RBRACE ;
 default_value = literal
     | directive
     ;

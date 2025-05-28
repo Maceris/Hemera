@@ -481,8 +481,10 @@ namespace hemera::parser {
 	}
 
 	bool function_decl(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		if (!function_signature(state, parent)) {
+			return false;
+		}
+		return function_body(state, parent);
 	}
 
 	bool struct_decl(ParserState* state, ast::Node& parent) {
@@ -496,6 +498,11 @@ namespace hemera::parser {
 	}
 
 	bool enum_decl(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool function_body(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
