@@ -67,5 +67,9 @@ namespace hemera::parser {
 	bool union_decl(ParserState* state, ast::Node& parent);
 	bool enum_decl(ParserState* state, ast::Node& parent);
 	bool function_body(ParserState* state, ast::Node& parent);
+	bool struct_body(ParserState* state, ast::Node& parent);
+	bool union_body(ParserState* state, ast::Node& parent);
+	bool enum_body(ParserState* state, ast::Node& parent);
+
 
 }

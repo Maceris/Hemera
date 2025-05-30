@@ -503,8 +503,33 @@ namespace hemera::parser {
 	}
 
 	bool function_body(ParserState* state, ast::Node& parent) {
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+
+		//TODO(ches) 0 or more expressions here
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
+		return true;
+	}
+
+	bool struct_body(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
+	bool union_body(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool enum_body(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
 }
