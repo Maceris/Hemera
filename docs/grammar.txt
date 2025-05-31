@@ -240,7 +240,7 @@ union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifie
 enum_member = identifier ;
 
 expression = expression_with_result , [ expression_continuation ]
-    | expression_with_void_result
+    | expression_without_result
     ;
 
 expression_continuation = KEYWORD_or_break
@@ -256,7 +256,7 @@ expression_with_result = literal
     | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
     | if_expression
     ;
-expression_with_void_result = for_loop
+expression_without_result = for_loop
     | loop
     ;
 
@@ -271,9 +271,11 @@ boolean_expression = KEYWORD_if , boolean_expr_lvl_3 , [ KEYWORD_else , boolean_
     | boolean_expr_lvl_3 , [ KEYWORD_is_none | KEYWORD_is_some ]
     ; #TODO(ches) parens
 
-boolean_expr_lvl_3 = boolean_expr_lvl_3 , [ OPERATOR_or , boolean_expr_lvl_3 ] ;
+boolean_expr_lvl_3 = boolean_expr_lvl_4
+    | boolean_expr_lvl_3 , [ OPERATOR_or , boolean_expr_lvl_4 ] ;
 
-boolean_expr_lvl_4 = boolean_expr_lvl_5 , [ OPERATOR_and , boolean_expr_lvl_5 ] ;
+boolean_expr_lvl_4 = boolean_expr_lvl_5
+    | boolean_expr_lvl_4 , [ OPERATOR_and , boolean_expr_lvl_5 ] ;
 
 boolean_expr_lvl_5 = boolean_expr_lvl_6 , 
     [ ( OPERATOR_equal , boolean_expr_lvl_6 )
@@ -317,7 +319,7 @@ arithmetic_expr_lvl_7 = arithmetic_expr_lvl_8
 arithmetic_expr_lvl_8 = arithmetic_expr_lvl_9
     | ( OPERATOR_plus , arithmetic_expr_lvl_9 )
     | ( OPERATOR_minus , arithmetic_expr_lvl_9 )
-    | ( OPERATOR_assign_bitwise_xor , arithmetic_expr_lvl_9 )
+    | ( OPERATOR_bitwise_xor , arithmetic_expr_lvl_9 )
     ;
 
 arithmetic_expr_lvl_9 = identifier

@@ -113,6 +113,67 @@ namespace hemera::parser {
 		return false;
 	}
 
+	bool could_be_expression(ParserState* state) {
+		return could_be_expression_with_result(state) 
+			|| could_be_expression_without_result(state);
+	}
+
+	bool could_be_expression_with_result(ParserState* state) {
+		if (expect(state, TokenType::LITERAL_CHAR)) {
+			return true;
+		}
+		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
+			return true;
+		}
+		if (expect(state, TokenType::LITERAL_INTEGER)) {
+			return true;
+		}
+		if (expect(state, TokenType::LITERAL_STRING)) {
+			return true;
+		}
+		if (expect(state, TokenType::IDENTIFIER)) {
+			return true;
+		}
+		if (expect(state, TokenType::OPERATOR_PLUS)) {
+			return true;
+		}
+		if (expect(state, TokenType::OPERATOR_MINUS)) {
+			return true;
+		}
+		if (expect(state, TokenType::OPERATOR_BITWISE_XOR)) {
+			return true;
+		}
+		if (expect(state, TokenType::KEYWORD_IF)) {
+			return true;
+		}
+		if (expect(state, TokenType::OPERATOR_NOT)) {
+			return true;
+		}
+		if (expect(state, TokenType::KEYWORD_TRUE)) {
+			return true;
+		}
+		if (expect(state, TokenType::KEYWORD_FALSE)) {
+			return true;
+		}
+		if (expect(state, TokenType::SYM_LBRACE)) {
+			return true;
+		}
+		return false;
+	}
+
+	bool could_be_expression_without_result(ParserState* state) {
+		if (expect(state, TokenType::KEYWORD_FOR)) {
+			return true;
+		}
+		if (expect(state, TokenType::KEYWORD_WITH)) {
+			return true;
+		}
+		if (expect(state, TokenType::KEYWORD_LOOP)) {
+			return true;
+		}
+		return false;
+	}
+
 	void file(std::string_view file_path, MyVector<Token>& tokens,
 		MyVector<ast::Node>& output)
 	{
@@ -475,7 +536,17 @@ namespace hemera::parser {
 		return type(state, parent);
 	}
 
+	bool expression(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
 	bool expression_with_result(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool expression_without_result(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
@@ -508,10 +579,11 @@ namespace hemera::parser {
 			return false;
 		}
 
-		//TODO(ches) 0 or more expressions here
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		while (could_be_expression(state)) {
+			expression(state, parent);
+		}
 
-		if (!skip(state, TokenType::SYM_LBRACE)) {
+		if (!skip(state, TokenType::SYM_RBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3019);
 			return false;
 		}
