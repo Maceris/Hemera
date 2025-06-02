@@ -15,6 +15,7 @@ namespace hemera::ast {
 		LEAF,
 		LIST,
 		PACKAGE,
+		STRUCT,
 		TYPE,
 	};
 

@@ -559,7 +559,27 @@ namespace hemera::parser {
 	}
 
 	bool struct_decl(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		skip(state, TokenType::KEYWORD_STRUCT);
+		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
+		comments(state, node);
+		accept(state, TokenType::IDENTIFIER, node);
+		if (expect(state, TokenType::SYM_LT)) {
+			if (!generic_tag(state, node)) {
+				return false;
+			}
+		}
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		if (!struct_body(state, node)) {
+			report_error_on_last_token(state, ErrorCode::E3020);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
 		return true;
 	}
 
@@ -578,6 +598,8 @@ namespace hemera::parser {
 			report_error_on_last_token(state, ErrorCode::E3018);
 			return false;
 		}
+
+		comments(state, parent);
 
 		while (could_be_expression(state)) {
 			expression(state, parent);
