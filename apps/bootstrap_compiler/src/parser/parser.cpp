@@ -591,7 +591,15 @@ namespace hemera::parser {
 	}
 
 	bool struct_body(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		comments(state, parent);
+		while (expect(state, TokenType::IDENTIFIER)) {
+			any_definition(state, parent);
+			comments(state, parent);
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
 		return true;
 	}
 

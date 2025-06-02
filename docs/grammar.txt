@@ -235,7 +235,7 @@ enum_body = SYM_LBRACE , [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_C
 
 generic_tag = SYM_LT , type_in_list , { SYM_COMMA , type_in_list } , SYM_GT ;
 
-struct_member = declaration ;
+struct_member = any_definition ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;
 
