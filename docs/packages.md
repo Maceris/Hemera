@@ -41,7 +41,7 @@ a relative path is used: `import example from "./base"`.
 Since most things like functions and structs are global in the language, there is a risk of name collision when importing other libraries.
 Names must be unique within a package, but there are no guarantees when importing other code or when a package gets imported. In 
 the case of a collision, the function/struct/etc. will refer to the current package's version if unqualified, and must be qualified
-with the other package's name or alias in order to use that version.
+with the other package's name or alias in order to use a different packages version.
 
 This means that if a package gets imported into a project that defines the same function names, it will continue to work without modification.
 
@@ -83,6 +83,10 @@ foo :: fn(x: int) -> int {
 
 collision :: fn() {
     foo(5)          // Calls the foo from this package
+    /*
+     * Since foo is ambiguous, we would have to specify the library
+     * even if it was not defined in this package
+     */
     library1.foo(5) // Calls library1's foo
     lib2.foo(5)     // Calls library2's foo
 
@@ -93,6 +97,8 @@ collision :: fn() {
 ```
 
 ## Structure
+
+The following is the standard structure of a package intended to be built/distributed.
 
 * `bin/` - Output from builds, should be ignored by source control
 * `docs/` - Documentation related to the package
