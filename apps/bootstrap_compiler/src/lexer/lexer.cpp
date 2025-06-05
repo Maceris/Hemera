@@ -1184,7 +1184,7 @@ namespace hemera::lexer {
 	}
 
 	void lex_file(const std::string& file_path, MyVector<Token>& output,
-		Allocator<> string_alloc) {
+		Allocator<> string_alloc, bool include_comments) {
 
 		std::ifstream input;
 		input.open(file_path);
@@ -1194,17 +1194,22 @@ namespace hemera::lexer {
 			return;
 		}
 
-		lex(input, output, string_alloc, file_path);
+		lex(input, output, string_alloc, file_path, include_comments);
 	}
 
 	void lex(std::istream& input_stream, MyVector<Token>& output,
-		Allocator<> string_alloc, std::string_view file_path) {
+		Allocator<> string_alloc, std::string_view file_path,
+		bool include_comments) {
 
 		Tokenizer tokenizer{};
 		std::getline(input_stream, tokenizer.current_line);
 
 		while (true) {
 			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);
+			if (!include_comments && (next_token.type == TokenType::COMMENT_BLOCK
+				|| next_token.type == TokenType::COMMENT_LINE)) {
+				continue;
+			}
 			output.push_back(next_token);
 			if (next_token.type == TokenType::END_OF_FILE) {
 				break;

@@ -75,10 +75,11 @@ namespace hemera {
 		};
 
 		void lex_file(const std::string& file_path, MyVector<Token>& output,
-			Allocator<> string_alloc);
+			Allocator<> string_alloc, bool include_comments = false);
 
 		void lex(std::istream& input_stream, MyVector<Token>& output,
-			Allocator<> string_alloc, std::string_view file_path);
+			Allocator<> string_alloc, std::string_view file_path,
+			bool include_comments = false);
 
 		Token next(Tokenizer& tokenizer, std::istream& input_stream,
 			Allocator<> string_alloc, std::string_view file_path);

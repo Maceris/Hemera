@@ -299,7 +299,7 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 
 	std::istringstream input_stream(code);
 
-	hemera::lexer::lex(input_stream, output, alloc, __FILE__);
+	hemera::lexer::lex(input_stream, output, alloc, __FILE__, true);
 
 	ASSERT_EQ(output.size(), expected_tokens.size());
 

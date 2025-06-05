@@ -192,15 +192,8 @@ namespace hemera::parser {
 		}
 		const_definitions(&state, node);
 	}
-	void comments(ParserState* state, ast::Node& parent) {
-		while (accept(state, TokenType::COMMENT_BLOCK, parent)
-			|| accept(state, TokenType::COMMENT_LINE, parent)) {
-		}
-	}
 
 	bool package_statement(ParserState* state, ast::Node& parent) {
-		comments(state, parent);
-
 		if (!skip(state, TokenType::KEYWORD_PACKAGE)) {
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return false;
@@ -215,13 +208,11 @@ namespace hemera::parser {
 	}
 
 	bool imports(ParserState* state, ast::Node& parent) {
-		comments(state, parent);
 		while (expect(state, TokenType::KEYWORD_IMPORT)) {
 			if (!import(state, parent)) {
 				//TODO(ches) log this?
 				return false;
 			}
-			comments(state, parent);
 		}
 		return true;
 	}
@@ -266,7 +257,6 @@ namespace hemera::parser {
 				//TODO(ches) log this?
 				return;
 			}
-			comments(state, parent);
 		}
 	}
 
@@ -304,7 +294,6 @@ namespace hemera::parser {
 	}
 
 	bool declaration(ParserState* state, ast::Node& parent) {
-		comments(state, parent);
 		if (!accept(state, TokenType::IDENTIFIER, parent)) {
 			report_error_on_last_token(state, ErrorCode::E3009);
 			return false;
@@ -335,7 +324,6 @@ namespace hemera::parser {
 	}
 
 	bool type(ParserState* state, ast::Node& parent) {
-		comments(state, parent);
 		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, parent);
 		if (expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state, node);
@@ -561,7 +549,6 @@ namespace hemera::parser {
 	bool struct_decl(ParserState* state, ast::Node& parent) {
 		skip(state, TokenType::KEYWORD_STRUCT);
 		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
-		comments(state, node);
 		accept(state, TokenType::IDENTIFIER, node);
 		if (expect(state, TokenType::SYM_LT)) {
 			if (!generic_tag(state, node)) {
@@ -599,8 +586,6 @@ namespace hemera::parser {
 			return false;
 		}
 
-		comments(state, parent);
-
 		while (could_be_expression(state)) {
 			expression(state, parent);
 		}
@@ -613,10 +598,8 @@ namespace hemera::parser {
 	}
 
 	bool struct_body(ParserState* state, ast::Node& parent) {
-		comments(state, parent);
 		while (expect(state, TokenType::IDENTIFIER)) {
 			any_definition(state, parent);
-			comments(state, parent);
 		}
 		if (!skip(state, TokenType::SYM_RBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3019);
