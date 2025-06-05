@@ -13,7 +13,7 @@ E3005,Missing alias name after as
 E3006,Expected a value for definition
 E3007,Expected a constant definition
 E3008,Expected a mutable definition
-E3009,Expected an identifier at the start of a declaration
+E3009,Expected an identifier
 E3010,Expected an a semicolon after identifier
 E3011,Expected start of generic tag
 E3012,Expected end of generic tag

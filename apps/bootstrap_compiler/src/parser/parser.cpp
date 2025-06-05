@@ -549,7 +549,10 @@ namespace hemera::parser {
 	bool struct_decl(ParserState* state, ast::Node& parent) {
 		skip(state, TokenType::KEYWORD_STRUCT);
 		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
-		accept(state, TokenType::IDENTIFIER, node);
+		if (!accept(state, TokenType::IDENTIFIER, node)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
 		if (expect(state, TokenType::SYM_LT)) {
 			if (!generic_tag(state, node)) {
 				return false;
@@ -576,7 +579,24 @@ namespace hemera::parser {
 	}
 
 	bool enum_decl(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		skip(state, TokenType::KEYWORD_ENUM);
+		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, parent);
+		if (!accept(state, TokenType::IDENTIFIER, node)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		if (!enum_body(state, node)) {
+			report_error_on_last_token(state, ErrorCode::E3020);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
 		return true;
 	}
 

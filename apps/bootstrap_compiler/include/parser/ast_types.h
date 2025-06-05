@@ -8,6 +8,7 @@
 namespace hemera::ast {
 	enum class NodeType {
 		DEFINITION,
+		ENUM,
 		FILE,
 		FUNCTION,
 		GENERIC_TAG,
