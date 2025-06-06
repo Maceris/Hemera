@@ -18,6 +18,7 @@ namespace hemera::ast {
 		PACKAGE,
 		STRUCT,
 		TYPE,
+		UNION,
 	};
 
 	using offset = int64_t;

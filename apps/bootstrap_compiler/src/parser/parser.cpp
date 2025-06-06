@@ -574,7 +574,29 @@ namespace hemera::parser {
 	}
 
 	bool union_decl(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		skip(state, TokenType::KEYWORD_UNION);
+		ast::Node& node = next_as_node(state, ast::NodeType::UNION, parent);
+		if (!accept(state, TokenType::IDENTIFIER, node)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
+		if (expect(state, TokenType::SYM_LT)) {
+			if (!generic_tag(state, node)) {
+				return false;
+			}
+		}
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		if (!union_body(state, node)) {
+			report_error_on_last_token(state, ErrorCode::E3020);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
 		return true;
 	}
 
