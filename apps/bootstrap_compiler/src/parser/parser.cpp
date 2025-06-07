@@ -656,7 +656,9 @@ namespace hemera::parser {
 	}
 
 	bool enum_body(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		while (accept(state, TokenType::IDENTIFIER, parent)) {
+			skip(state, TokenType::SYM_COMMA);
+		}
 		return true;
 	}
 }
