@@ -229,9 +229,9 @@ default_value = literal
     | directive
     ;
 
-struct_body = SYM_LBRACE , [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] , SYM_RBRACE ;
-union_body = SYM_LBRACE , [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] , SYM_RBRACE ;
-enum_body = SYM_LBRACE , [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] , SYM_RBRACE;
+struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] ;
+union_body = [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] ;
+enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
 
 generic_tag = SYM_LT , type_in_list , { SYM_COMMA , type_in_list } , SYM_GT ;
 
