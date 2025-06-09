@@ -651,7 +651,31 @@ namespace hemera::parser {
 	}
 
 	bool union_body(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		while (accept(state, TokenType::IDENTIFIER, parent)) {
+			//NOTE(ches) this is all one entry in the union
+			if (accept(state, TokenType::SYM_LPAREN, parent)) {
+				//NOTE(ches) will simply exit when we hit the rparen
+				while (accept(state, TokenType::IDENTIFIER, parent)) {
+					//TODO(ches) do we need generics syntax here?
+					if (!accept(state, TokenType::SYM_COMMA, parent)) {
+						if (!expect(state, TokenType::SYM_RPAREN)) {
+							/*
+							 * NOTE(ches) if we have something besides comma,
+							 * then it had better be the closing parenthesis
+							 */
+							report_error_on_last_token(state, ErrorCode::E3009);
+							return false;
+						}
+					}
+				}
+				if (!accept(state, TokenType::SYM_RPAREN, parent)) {
+					report_error_on_last_token(state, ErrorCode::E3015);
+					return false;
+				}
+			}
+			
+			skip(state, TokenType::SYM_COMMA);
+		}
 		return true;
 	}
 
