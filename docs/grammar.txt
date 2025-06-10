@@ -246,7 +246,7 @@ expression = expression_with_result , [ expression_continuation ]
 expression_continuation = KEYWORD_or_break
     | KEYWORD_or_continue
     | ( KEYWORD_or_else , expression )
-    | ( KEYWORD_or_return , [ expression ] )
+    | ( KEYWORD_or_return , [ expression_with_result, [ expression_continuation ] ] )
     ;
 
 expression_with_result = literal

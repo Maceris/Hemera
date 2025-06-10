@@ -525,7 +525,41 @@ namespace hemera::parser {
 	}
 
 	bool expression(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (could_be_expression_with_result(state)) {
+			if (!expression_with_result(state, parent)) {
+				return false;
+			}
+			return expression_continuation(state, parent);
+		}
+		if (!could_be_expression_without_result(state)) {
+			LOG_ERROR("Trying to parse an expression at an invalid time");
+			return false;
+		}
+		return expression_with_result(state, parent);
+	}
+	
+	bool expression_continuation(ParserState* state, ast::Node& parent) {
+		if (expect(state, TokenType::KEYWORD_OR_BREAK)) {
+			return accept(state, TokenType::KEYWORD_OR_BREAK, parent);
+		}
+		if (expect(state, TokenType::KEYWORD_OR_CONTINUE)) {
+			return accept(state, TokenType::KEYWORD_OR_CONTINUE, parent);
+		}
+		if (expect(state, TokenType::KEYWORD_OR_ELSE)) {
+			accept(state, TokenType::KEYWORD_OR_ELSE, parent);
+			return expression(state, parent);
+		}
+		if (expect(state, TokenType::KEYWORD_OR_RETURN)) {
+			accept(state, TokenType::KEYWORD_OR_RETURN, parent);
+			if (could_be_expression_with_result(state)) {
+				if (!expression_with_result(state, parent)) {
+					return false;
+				}
+				//NOTE(ches) we can keep chaining these
+				return expression_continuation(state, parent);
+			}
+		}
+		//NOTE(ches) indicates nothing broke, not that we found a continuation
 		return true;
 	}
 
