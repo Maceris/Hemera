@@ -16,6 +16,18 @@ import library2 from "../../foo/bar/baz"
 import library3 as lib3 from "user"
 
 //-----------------------------------------------------------------------------
+//                                  Types
+//-----------------------------------------------------------------------------
+
+CONSTANT_INTEGER : int : 5
+OTHER_INTEGER :: 1
+int_fn :: fn(int) -> int
+my_float :: alias f32
+my_float2 :: f32
+my_float3 : type : float
+meters :: distinct alias int
+
+//-----------------------------------------------------------------------------
 //                                 Structs
 //-----------------------------------------------------------------------------
 
@@ -77,7 +89,7 @@ implicitly_no_return    :: fn() {/* ... */}
 explicitly_no_return    :: fn() -> void {/* ... */}
 one_result              :: fn() -> int { return 1 }
 one_result_still_same   :: fn() -> (int) { return 1 }
-ptr_result              :: fn() -> ptr<int> { return &some_number }
+ptr_result              :: fn() -> ptr<int> { return &CONSTANT_INTEGER }
 named_result            :: fn() -> (x: int) { return 4 }
 two_results             :: fn() -> (int, int) { return 2, 3 }
 two_named_results       :: fn() -> (x, y: int) { return 4, 5 }
@@ -99,6 +111,42 @@ function_in_a_function :: fn() {
 //                           Arithmetic Expressions
 //-----------------------------------------------------------------------------
 
+arithmetic_expressions :: fn() {
+	result: int
+
+	result = +3
+	result = -3
+	result = ~0x1f
+	result = 1 + 2
+	result = 2 * 4
+	result = 5 - 3
+	result = 10 / 3
+	result = 17 % 5
+	result = 17 %% 5
+	result = 0b0000_1111 & 0b0101_0101
+	result = 0b0000_1111 | 0b0101_0101
+	result = 0b0000_1111 ~ 0b0101_0101
+	result = 1 >> 4
+	result = -42 >>> 4
+	result = 1024 << 2
+	result = 0o71
+
+	result += 4
+	result -= 5
+	result *= 22
+	result /= 3
+	result %= 4
+	result %%= 30
+	result &= 0b1111_1001
+	result |= 0b0000_0110
+	result ~= 4256
+	result <<= 4
+	result >>= 3
+	result >>>= 2
+
+	result = 1 + 2 * 4 + 5
+	result += 9 / 3 + 4 - 5 * 2 - 1 + (4 * 3 - (5 / 2))
+}
 //-----------------------------------------------------------------------------
 //                            Boolean Expressions
 //-----------------------------------------------------------------------------
