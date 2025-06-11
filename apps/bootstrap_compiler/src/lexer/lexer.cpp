@@ -1208,6 +1208,8 @@ namespace hemera::lexer {
 			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);
 			if (!include_comments && (next_token.type == TokenType::COMMENT_BLOCK
 				|| next_token.type == TokenType::COMMENT_LINE)) {
+				string_alloc.delete_object(next_token.value);
+				next_token.value = nullptr;
 				continue;
 			}
 			output.push_back(next_token);
