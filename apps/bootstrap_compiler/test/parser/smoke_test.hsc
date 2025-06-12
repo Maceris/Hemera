@@ -106,6 +106,7 @@ function_in_a_function :: fn() {
 	}
 }
 
+default_values :: fn(x: int = 3, y: int = 4) -> int { return x + y }
 
 //-----------------------------------------------------------------------------
 //                           Arithmetic Expressions
@@ -146,10 +147,41 @@ arithmetic_expressions :: fn() {
 
 	result = 1 + 2 * 4 + 5
 	result += 9 / 3 + 4 - 5 * 2 - 1 + (4 * 3 - (5 / 2))
+
+	optional_result :: fn() -> int? {
+		return 4
+	}
+
+	result = one_result() + one_result() * 2
+	result = (optional_result() or_else 4) + 3
 }
+
 //-----------------------------------------------------------------------------
 //                            Boolean Expressions
 //-----------------------------------------------------------------------------
+
+boolean_expressions :: fn() {
+	result : bool
+	a := true
+	b := false
+	x : = 4
+	y : = 5
+
+	optional_result :: fn() -> int? {
+		return 4
+	}
+
+	result = true || false
+	result = true && false
+	result = a && !b || false && a
+	result = a != b || x <= 5 && y <= 5
+	result = x > y || x < 4
+	result = optional_result() is_none
+	result = optional_result() is_some
+	result = if a { b } else { a || !b }
+	result &&= a
+	result ||= b
+}
 
 //-----------------------------------------------------------------------------
 //                              Branching Logic
