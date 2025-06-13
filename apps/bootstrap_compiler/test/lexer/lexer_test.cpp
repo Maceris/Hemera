@@ -110,6 +110,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("or_else", TokenType::KEYWORD_OR_ELSE));
 	inputs.push_back(std::make_tuple("or_return", TokenType::KEYWORD_OR_RETURN));
 	inputs.push_back(std::make_tuple("package", TokenType::KEYWORD_PACKAGE));
+	inputs.push_back(std::make_tuple("push_context", TokenType::KEYWORD_PUSH_CONTEXT));
 	inputs.push_back(std::make_tuple("return", TokenType::KEYWORD_RETURN));
 	inputs.push_back(std::make_tuple("struct", TokenType::KEYWORD_STRUCT));
 	inputs.push_back(std::make_tuple("switch", TokenType::KEYWORD_SWITCH));

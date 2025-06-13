@@ -100,6 +100,7 @@ KEYWORD_or_continue = "or_continue" ;
 KEYWORD_or_else = "or_else" ;
 KEYWORD_or_return = "or_return" ;
 KEYWORD_package = "package" ;
+KEYWORD_push_context = "push_context" ;
 KEYWORD_return = "return" ;
 KEYWORD_struct = "struct" ;
 KEYWORD_switch = "switch" ;
@@ -258,6 +259,7 @@ expression_with_result = literal
     ;
 expression_without_result = for_loop
     | loop
+    | push_context
     ;
 
 literal = literal_integer
@@ -340,3 +342,5 @@ loop = [ KEYWORD_with with_block ]
     ;
 
 with_block = { any_definition } ;
+
+push_context = KEYWORD_push_context , identifier , block ;

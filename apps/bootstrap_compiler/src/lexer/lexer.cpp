@@ -105,6 +105,9 @@ namespace hemera::lexer {
 		if (identifier.compare("package") == 0) {
 			return TokenType::KEYWORD_PACKAGE;
 		}
+		if (identifier.compare("push_context") == 0) {
+			return TokenType::KEYWORD_PUSH_CONTEXT;
+		}
 		if (identifier.compare("return") == 0) {
 			return TokenType::KEYWORD_RETURN;
 		}
@@ -1101,6 +1104,7 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_OR_ELSE:
 		case TokenType::KEYWORD_OR_RETURN:
 		case TokenType::KEYWORD_PACKAGE:
+		case TokenType::KEYWORD_PUSH_CONTEXT:
 		case TokenType::KEYWORD_RETURN:
 		case TokenType::KEYWORD_STRUCT:
 		case TokenType::KEYWORD_SWITCH:

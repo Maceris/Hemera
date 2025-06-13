@@ -34,6 +34,7 @@ Any primitive type name is a reserved keyword. In addition, these are reserved:
 * `or_else` - Evaluates to an optionals value if present, or the provided default if not
 * `or_return` - Evaluates to an optionals value if present, or returns a default value if not
 * `package` - For defining the package
+* `push_context` - For using a different context within a scope
 * `return` - For returning a value from a function
 * `struct` - For defining data structures
 * `switch` - For switch statements
