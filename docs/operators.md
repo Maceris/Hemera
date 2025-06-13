@@ -266,12 +266,6 @@ example :: fn() {
 !   logical NOT
 ```
 
-## Ternary Operators
-
-```
-x if cond else y  // ternary runtime conditional expression
-```
-
 ## Other operators
 
 ```
