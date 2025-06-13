@@ -26,6 +26,7 @@ my_float :: alias f32
 my_float2 :: f32
 my_float3 : type : float
 meters :: distinct alias int
+BinaryIntFunc :: fn(int, int) -> int
 
 //-----------------------------------------------------------------------------
 //                                 Structs
@@ -99,6 +100,18 @@ returning_a_fn          :: fn() -> (fn() -> int) { return one_result }
 ret_a_fn_with_2_returns :: fn() -> (fn() -> (int, int)) { return two_results }
 returning_int_and_fn    :: fn() -> (int, (fn() -> int)) { return 1, one_result }
 returning_fn_and_int    :: fn() -> ((fn() -> int), int) { return one_result, 2 }
+print_something         :: fn(text: string) {}
+print_something2        :: fn(text: string = "hello") {}
+
+is_even :: fn(x: int) -> (result: bool, mod: int) {
+    mod = x % 2
+    result = mod == 0
+    return // allowed, but not encouraged, if all results are assigned
+}
+
+add_numbers : BinaryIntFunc : fn(x, y : int) -> int {
+    return x + y
+}
 
 function_in_a_function :: fn() {
 	just_a_dude_playing_a_dude :: fn(x: int) -> int {
@@ -112,10 +125,16 @@ default_values :: fn(x: int = 3, y: int = 4) -> int { return x + y }
 //                              Function calls
 //-----------------------------------------------------------------------------
 
-//TODO(ches) add examples
-
 function_calls :: fn() {
+	a : int = one_result()
+	b : int
+	is_even_result : bool
+	mod : int
+	is_even_result, mod = one_result() |> is_even()
 
+	b = one_result() |> add_numbers(a, _)
+	b = one_result() |> add_numbers(_, a)
+	b = one_result() |> add_numbers(a, $1)
 }
 
 //-----------------------------------------------------------------------------
@@ -214,6 +233,15 @@ branching_logic :: fn() {
 		result = -1	
 	}
 
+	if x < 5 && y == 5 {
+		result = 43
+	}
+	if a || !b {
+		result = 3
+	}
+	else {
+		result = -result
+	}
 }
 
 //-----------------------------------------------------------------------------
