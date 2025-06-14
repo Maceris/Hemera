@@ -189,6 +189,7 @@ decl_rhs = expression_with_result
     | struct_decl
     | union_decl
     | enum_decl
+    | ( [ KEYWORD_distinct ] , [ KEYWORD_alias ] , type )
     ;
 
 function_decl = function_signature , function_body ;

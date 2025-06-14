@@ -309,18 +309,26 @@ namespace hemera::parser {
 		if (expect(state, TokenType::KEYWORD_FN)) {
 			return function_decl(state, parent);
 		}
-		else if (expect(state, TokenType::KEYWORD_STRUCT)) {
+		if (expect(state, TokenType::KEYWORD_STRUCT)) {
 			return struct_decl(state, parent);
 		}
-		else if (expect(state, TokenType::KEYWORD_UNION)) {
+		if (expect(state, TokenType::KEYWORD_UNION)) {
 			return union_decl(state, parent);
 		}
-		else if (expect(state, TokenType::KEYWORD_ENUM)) {
+		if (expect(state, TokenType::KEYWORD_ENUM)) {
 			return enum_decl(state, parent);
 		}
-		else {
-			return expression_with_result(state, parent);
+		if (expect(state, TokenType::KEYWORD_DISTINCT) 
+			|| expect(state, TokenType::KEYWORD_ALIAS)
+			|| expect(state, TokenType::IDENTIFIER)
+			|| expect(state, TokenType::KEYWORD_FN)
+			) {
+			// Might or might not find these
+			accept(state, TokenType::KEYWORD_DISTINCT, parent);
+			accept(state, TokenType::KEYWORD_ALIAS , parent);
+			return type(state, parent);
 		}
+		return expression_with_result(state, parent);
 	}
 
 	bool type(ParserState* state, ast::Node& parent) {
