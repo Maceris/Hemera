@@ -568,6 +568,11 @@ namespace hemera::parser {
 		return true;
 	}
 
+	bool expression_with_result_before_continuation(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
 	bool expression_without_result(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;

@@ -281,6 +281,8 @@ in   for use in looping over values
 
 ```
 Precedence   Operator
+     9       +  -  ~  (unary versions)
+     8       ()
      7       *  /  %  %%  &  <<  >>  >>>
      6       +  -  |  ~  !  in
      5       ==  !=  <  >  <=  >=

@@ -240,23 +240,26 @@ struct_member = any_definition ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;
 
-expression = expression_with_result , [ expression_continuation ]
+expression = expression_with_result 
     | expression_without_result
     ;
 
 expression_continuation = KEYWORD_or_break
     | KEYWORD_or_continue
     | ( KEYWORD_or_else , expression )
-    | ( KEYWORD_or_return , [ expression_with_result, [ expression_continuation ] ] )
+    | ( KEYWORD_or_return , [ expression_with_result ] ] )
     ;
 
-expression_with_result = literal
+expression_with_result = expression_with_result_before_continuation , [ expression_continuation ] ;
+
+expression_with_result_before_continuation = literal
     | arithmetic_expression
     | boolean_expression
     | block
     | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
     | if_expression
     ;
+
 expression_without_result = for_loop
     | loop
     | push_context
@@ -271,7 +274,7 @@ literal = literal_integer
 
 boolean_expression = KEYWORD_if , boolean_expr_lvl_3 , [ KEYWORD_else , boolean_expr_lvl_3 ]
     | boolean_expr_lvl_3 , [ KEYWORD_is_none | KEYWORD_is_some ]
-    ; #TODO(ches) parens
+    ;
 
 boolean_expr_lvl_3 = boolean_expr_lvl_4
     | boolean_expr_lvl_3 , [ OPERATOR_or , boolean_expr_lvl_4 ] ;
@@ -288,13 +291,18 @@ boolean_expr_lvl_5 = boolean_expr_lvl_6 ,
     | ( OPERATOR_greater_than_or_equal , boolean_expr_lvl_6 )
     ] ;
 
-boolean_expr_lvl_6 = boolean_expr_lvl_7 
-    | OPERATOR_not , boolean_expr_lvl_7
+boolean_expr_lvl_6 = boolean_expr_lvl_8 
+    | OPERATOR_not , boolean_expr_lvl_8
     ;
 
-boolean_expr_lvl_7 = identifier
+boolean_expr_lvl_8 = boolean_expr_lvl_10
+    | ( SYM_LPAREN , boolean_expression , SYM_RPAREN )
+    ;
+
+boolean_expr_lvl_10 = identifier
     | KEYWORD_true
     | KEYWORD_false
+    | cast_expression
     ;
 
 arithmetic_expression = arithmetic_expr_lvl_6_binary
@@ -319,14 +327,24 @@ arithmetic_expr_lvl_7 = arithmetic_expr_lvl_8
     ;
 
 arithmetic_expr_lvl_8 = arithmetic_expr_lvl_9
-    | ( OPERATOR_plus , arithmetic_expr_lvl_9 )
-    | ( OPERATOR_minus , arithmetic_expr_lvl_9 )
-    | ( OPERATOR_bitwise_xor , arithmetic_expr_lvl_9 )
+    | ( SYM_LPAREN , arithmetic_expression , SYM_RPAREN )
     ;
 
-arithmetic_expr_lvl_9 = identifier
+arithmetic_expr_lvl_9 = arithmetic_expr_lvl_10
+    | ( OPERATOR_plus , arithmetic_expr_lvl_10 )
+    | ( OPERATOR_minus , arithmetic_expr_lvl_10 )
+    | ( OPERATOR_bitwise_xor , arithmetic_expr_lvl_10 )
+    ;
+
+arithmetic_expr_lvl_10 = identifier
     | literal_floating_point
     | literal_integer
+    | cast_expression
+    ;
+
+cast_expression = ( KEYWORD_cast , SYM_LT , identifier , SYM_GT , SYM_LPAREN , expression_with_result , SYM_RPAREN )
+    | ( KEYWORD_bit_cast , SYM_LT , identifier , SYM_GT , SYM_LPAREN , expression_with_result , SYM_RPAREN )
+    | ( KEYWORD_auto_cast , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     ;
 
 if_expression = KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
