@@ -4,6 +4,14 @@
  */
 package smoketest
 
+/*
+ * Double checking that this:
+ * /*
+ *  * // example
+ *  */
+ * won't break anything
+ */
+
 //-----------------------------------------------------------------------------
 //                                 Imports
 //-----------------------------------------------------------------------------
@@ -268,19 +276,46 @@ branching_logic :: fn() {
 //                                  Context
 //-----------------------------------------------------------------------------
 
-//TODO(ches) add examples
+context_example :: fn() {
+	my_context: Context
+	push_context my_context {
+		// context here is referring to my_context
+		context.allocator = memory.ArenaAllocator
+		print_something("You can do whatever you want here")
+	}
+	// my_context would no longer be the context once we leave the block
+}
 
 //-----------------------------------------------------------------------------
 //                                 Pointers
 //-----------------------------------------------------------------------------
 
-//TODO(ches) add examples
+pointer_example :: fn() {
+	x : int = 4
+	my_x : ptr<int> = &x
+	my_x^ = 2
+
+	rect : ptr<Rectangle> = new(Rectangle)
+	defer delete(rect)
+	rect.x = 4
+	rect.y = 5
+}
 
 //-----------------------------------------------------------------------------
 //                                  Casting
 //-----------------------------------------------------------------------------
 
-//TODO(ches) add examples
+casting_example :: fn() {
+	my_uint8 : u8 = 1
+	my_uint16 : u16 = 2
+	my_uint32 : u32 = 3
+	my_uint : uint = 4
+	my_float32 : f32 = 2e-2
+
+	my_uint = cast<uint>(my_uint8)
+	my_uint = auto_cast(my_uint8)
+	my_float32 = bit_cast<f32>(my_uint32)
+}
 
 //-----------------------------------------------------------------------------
 //                                   Loops
