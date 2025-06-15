@@ -117,6 +117,7 @@ returning_int_and_fn    :: fn() -> (int, (fn() -> int)) { return 1, one_result }
 returning_fn_and_int    :: fn() -> ((fn() -> int), int) { return one_result, 2 }
 print_something         :: fn(text: string) {}
 print_something2        :: fn(text: string = "hello") {}
+log_something           :: fn(text: string, location := #caller_location) {}
 
 is_even :: fn(x: int) -> (result: bool, mod: int) {
     mod = x % 2
@@ -321,7 +322,107 @@ casting_example :: fn() {
 //                                   Loops
 //-----------------------------------------------------------------------------
 
-//TODO(ches) add examples
+loops_example :: fn() {
+	for i in 0..<10 {
+		is_even(i)
+	}
+
+	for i in 1..=10 {
+		is_even(i)
+	}
+
+	for i in one_result() ..< (one_result() + 10) {
+		is_even(i)
+	}
+
+	some_array : int[3] : {1, 3, 19}
+
+	for value in some_array {
+		is_even(value)
+	}
+
+	for value, index in some_array {
+		is_even(value + index)
+	}
+
+	for &value in some_array {
+		is_even(value)
+	}
+
+	for &value, index in some_array {
+		is_even(value + index)
+	}
+
+	for i in 0..=10 #reverse {
+		is_even(i)
+	}
+
+	loop {
+		break
+	}
+
+	loop {
+		loop {
+			break 2
+		}
+		loop {
+			loop {
+				break all
+			}
+		}
+	}
+
+	with {
+		i : int = 0
+	}
+	loop {
+		is_even(i)
+		i += 1
+	}
+	while (i <= 10)
+
+	loop #at_least_once {
+		is_even(i)
+	}
+	while(false)
+
+	loop {
+		// This will not run
+	}
+	while(false)
+
+}
+
+deferring_example :: fn() {
+	defer println("This prints last")
+    defer println("This prints second")
+    println("This prints first")
+
+    with {
+        i : int = 0
+        matched : bool = false
+    }
+    loop {
+        defer i += 1
+        defer matched = false
+        defer println()
+        defer if !matched { print(i) }
+
+        if i % 3 == 0 {
+            print("fizz")
+            matched = true
+        }
+        if i % 5 == 0 {
+            println("buzz")
+            matched = true
+        }
+
+        if i % 8 == 0 {
+            break
+        }
+    }
+    while(i <= 10)
+}
 
 //-----------------------------------------------------------------------------
 //                                Annotations
@@ -334,4 +435,21 @@ this_has_an_annotation :: fn() {}
 //                                Directives
 //-----------------------------------------------------------------------------
 
-//TODO(ches) add examples
+#if OS == .WINDOWS {
+	EXAMPLE_CONSTANT : int = 1	
+}
+#else_if OS == .LINUX {
+	EXAMPLE_CONSTANT : int = 2
+}
+#else {
+	EXAMPLE_CONSTANT : int = 3	
+}
+
+inside_function :: fn() {
+	#if OS == .WINDOWS {
+		println("This is Windows")
+	}
+	#else {
+		println("This is not windows")
+	}
+}

@@ -204,12 +204,14 @@ type_in_list = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     :
 
-simple_type = ( identifier , [ generic_tag ] )
+simple_type = ( identifier , [ generic_tag ] , [ array_dimension ]+ )
     ;
 
 # Confusing without parentheses in a function return type list
 complicated_type = function_signature
     ;
+
+array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK
 
 function_signature = KEYWORD_fn , [ generic_tag ], SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } )

@@ -2,7 +2,8 @@
 
 ## Compilation
 
-`#if` used to conditionally include sections of code, evaluated at compile time.
+`#if` used to conditionally include sections of code, evaluated (as in chosen, not executed) at compile time.
+The boolean expression is executed at compile time, but the block is either included in the code or not. 
 Also used with `#else_if` and `#else`.
 
 ```

@@ -85,12 +85,12 @@ Finally, `break all` will break out of all loops (or similar structures where `b
 ```
 // 0 to 10, excluding 10
 for i in 0..<10 {
-    println(value)
+    println(i)
 }
 
 // 0 to 10, including 10
 for i in 0..=10 {
-    println(value)
+    println(i)
 }
 
 // The bounds can be variables, expressions
@@ -127,7 +127,7 @@ The `#reverse` directive indicates a loop should be done in reverse
 
 ```
 for i in 0..=10 #reverse {
-    println(value)
+    println(i)
 }
 ```
 
