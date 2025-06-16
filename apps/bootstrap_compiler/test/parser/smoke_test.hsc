@@ -16,7 +16,6 @@ package smoketest
 //                                 Imports
 //-----------------------------------------------------------------------------
 
-
 import io
 import memory as mem
 import library1 from "user"
@@ -35,6 +34,28 @@ my_float2 :: f32
 my_float3 : type : float
 meters :: distinct alias int
 BinaryIntFunc :: fn(int, int) -> int
+
+//-----------------------------------------------------------------------------
+//                                 Literals
+//-----------------------------------------------------------------------------
+
+decimal_int : int : 12345
+negative_int : int : -12345
+decimal_with_underscores : int : 1_234_567
+hex_int : int : 0xabcd_ef01_2345
+octal_int : int : 0o12_345_670
+binary_int : int : 0b0110_1101_0001
+plain_float : f32 : 1
+decimal_float : f32 : 1.02
+power_float : f32 : 4.02e3
+power_capital_float : f32 : 4.0203E3
+power_negative_float : f32 : 4.02e-3
+string_literal :: "foobar"
+multiline_string :: \\ This is a multline string
+	\\ we can have these on several lines
+	\\ if we really want to I guess
+char_literal :: 'x'
+bool_literal :: true
 
 //-----------------------------------------------------------------------------
 //                                 Structs
@@ -212,6 +233,28 @@ arithmetic_expressions :: fn() {
 
 	result = one_result() + one_result() * 2
 	result = (optional_result() or_else 4) + 3
+}
+
+//-----------------------------------------------------------------------------
+//                                  Arrays
+//-----------------------------------------------------------------------------
+
+arrays_example :: fn() {
+	a : int[10]
+	b : int[] : a
+	c : int[] : a[2..<5]
+	d : int[] : a[2..=4]
+	e : int[] : a[5..]
+	e2: int[] : a[5..<a.count]
+	f : int[] : a[..<5]
+	f2 : int[] : a[0..<5]
+	g : int[] : a[..=5]
+	g2 : int[] : a[0..=5]
+
+	h : f64[2]
+	i : i8[10][5]
+	j : u32[..]
+	k : string[..]
 }
 
 //-----------------------------------------------------------------------------
