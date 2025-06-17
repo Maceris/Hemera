@@ -15,6 +15,29 @@ Other languages use terms like procedures, methods, subroutines, routines, or su
 
 Ultimately function was decided on for two reasons. First, "function" and "function pointer" are familiar terms from C++, which this is intended to replace. Second, "fn" is less typing than "proc", "function", etc.
 
+## Why the square bracket notation for generics/pointers?
+
+Quite a few options were considered
+
+* Angle brackets (e.g. `fn<T>(x, y: T) -> T`), like Java, C++, Rust
+    * This introduces parser and/or lexer ambiguity or requires arbitrary lookahead, due to the multi-character lexemes `>>`, `>>>`, `>>=`, `>>>=`
+* Dollar signs (e.g. `fn(x, y: $T) -> $T`), like Jai
+    * This might work fine for structs, unions, and functions but then requires a different format for pointers and casting
+    * It is slightly harder to see at a glance whether there are generic parameters, and if so then how many
+    * This complicates variadic type arguments
+    * On the positive side this is easier to search for, ignoring the fact dollar signs are used in pattern matching
+* Parenthesis (e.g. `fn(T)(x, y: T) -> T`), like Crystal
+    * This is visually more ambiguous, since function calls imply code execution we want it to be very clear visually when they are happening
+* Curly braces (e.g. `fn{T}(x, y: T) -> T`), like Julia
+    * This causes issues parsing structs and unions
+* Exclamation marks (e.g. `fn!T(x, y: T) -> T` or `fn!(T, U)(x: T, y: U) -> T`), like D
+    * If we are going to use a delimiter anyway for nested or lists of values, this does not add much value
+* No symbols (e.g. `string list`), like ML
+    * This was dismissed out of hand, as it would not stand up to more complex or nested situations
+* Square brackets (e.g. `fn[T](x, y: T) -> T`), like Scala, Go
+    * Ultimately this was chosen because it is not ambiguous in the grammar or when lexing
+    * It works in a consistent way for structs/unions (`stuct[X, Y]{...}`), functions (`fn[X, Y](...)`), casting (`cast[X](y)`), and pointers (`ptr[X]`)
+
 ## Why does Hemera not have feature X?
 
 ### Exceptions
