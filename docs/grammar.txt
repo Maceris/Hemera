@@ -202,7 +202,7 @@ type = simple_type
     ;
 type_in_list = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
-    :
+    ;
 
 simple_type = ( identifier , [ generic_tag ] , [ array_dimension ]+ )
     ;
@@ -237,7 +237,7 @@ struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] 
 union_body = [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] ;
 enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
 
-generic_tag = SYM_LT , type_in_list , { SYM_COMMA , type_in_list } , SYM_GT ;
+generic_tag = SYM_LBRACK , type_in_list , { SYM_COMMA , type_in_list } , SYM_RBRACK ;
 
 struct_member = any_definition ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
@@ -302,7 +302,7 @@ boolean_expr_lvl_8 = boolean_expr_lvl_10
     | ( SYM_LPAREN , boolean_expression , SYM_RPAREN )
     ;
 
-boolean_expr_lvl_10 = identifier
+boolean_expr_lvl_10 = ( identifier , [ array_dimension ]+ )
     | KEYWORD_true
     | KEYWORD_false
     | cast_expression
@@ -339,21 +339,21 @@ arithmetic_expr_lvl_9 = arithmetic_expr_lvl_10
     | ( OPERATOR_bitwise_xor , arithmetic_expr_lvl_10 )
     ;
 
-arithmetic_expr_lvl_10 = identifier
+arithmetic_expr_lvl_10 = ( identifier , [ array_dimension ]+ )
     | literal_floating_point
     | literal_integer
     | cast_expression
     ;
 
-cast_expression = ( KEYWORD_cast , SYM_LT , identifier , SYM_GT , SYM_LPAREN , expression_with_result , SYM_RPAREN )
-    | ( KEYWORD_bit_cast , SYM_LT , identifier , SYM_GT , SYM_LPAREN , expression_with_result , SYM_RPAREN )
+cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
+    | ( KEYWORD_bit_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     | ( KEYWORD_auto_cast , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     ;
 
 if_expression = KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
 else_if_extension = KEYWORD_else , KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block ;
 
-for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , ( identifier | range_expression ) , block ;
+for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , ( ( identifier , [ array_dimension ]+ ) | range_expression ) , block ;
 
 range_expression = literal_integer , ( OPERATOR_range_exclusive | OPERATOR_range_inclusive ) , literal_integer ;
 

@@ -156,7 +156,7 @@ implicitly_no_return    :: fn() {/* ... */}
 explicitly_no_return    :: fn() -> void {/* ... */}
 one_result              :: fn() -> int {/* ... */}
 one_result_still_same   :: fn() -> (int) {/* ... */}
-ptr_result              :: fn() -> ptr<Walrus> {/* ... */}
+ptr_result              :: fn() -> ptr[Walrus] {/* ... */}
 named_result            :: fn() -> (x: int) {/* ... */}
 two_results             :: fn() -> (int, int) {/* ... */}
 two_named_results       :: fn() -> (x, y: int) {/* ... */}

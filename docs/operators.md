@@ -4,13 +4,13 @@ Operators combine operands into expressions. For binary operations, the operand 
 
 ## Address operators
 
-For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr<T>` to `x`.
+For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr[T]` to `x`.
 
-For an operand `x` of type `ptr<T>`, the dereference operation `x^` will result in the variable of type `T` pointed to by `x`. If x is an invalid address, such as `null`, dereferencing the pointer will result in platform specific behavior, likely a segmentation fault.
+For an operand `x` of type `ptr[T]`, the dereference operation `x^` will result in the variable of type `T` pointed to by `x`. If x is an invalid address, such as `null`, dereferencing the pointer will result in platform specific behavior, likely a segmentation fault.
 
 ```
 x : int = 1
-y : ptr<int> = &x
+y : ptr[int] = &x
 z : int = y^
 
 y = null
@@ -103,8 +103,8 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ## Casting operators
 
 ```
-cast<T>(value)      converts a value to a compatible type T
-bit_cast<T>(value)  does a bit cast conversion from value to type T of the same size
+cast[T](value)      converts a value to a compatible type T
+bit_cast[T](value)  does a bit cast conversion from value to type T of the same size
 auto_cast(value)    automatically converts the value to the necessary type, if possible
 ```
 

@@ -71,7 +71,7 @@ string  :: alias string
 cstring :: alias cstring
 
 // Pointers
-ptr<T> :: alias ptr<T>
+ptr[T] :: alias ptr[T]
 rawptr :: alias rawptr
 relptr8 :: alias relptr8
 relptr16 :: alias relptr16
@@ -85,8 +85,8 @@ type :: alias type
 // Functions
 panic :: fn(str: string) ---
 
-align_of :: fn<T>(T: type) -> int ---
-size_of  :: fn<T>(T: type) -> int ---
+align_of :: fn[T](T: type) -> int ---
+size_of  :: fn[T](T: type) -> int ---
 
 type_of :: fn(x: expr) -> type ---
-type_info_of :: fn<T>(T: type) -> TypeInfo ---
+type_info_of :: fn[T](T: type) -> TypeInfo ---

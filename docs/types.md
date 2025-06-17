@@ -246,10 +246,10 @@ This is only equivalent to a nullable type, albeit `null` still exists for `rawp
 For example `i32?` is a type that either contains an `i32`, or does not.
 This works for any built-in or user-defined type.
 
-This is a built-in union type similar to this structure, where `Optional<Foo>` is equivalent to `Foo?`:
+This is a built-in union type similar to this structure, where `Optional[Foo]` is equivalent to `Foo?`:
 
 ```
-Optional :: union<T> {
+Optional :: union[T] {
     None,
     Some(T),
 }
@@ -259,13 +259,13 @@ There are a few [operators built in](operators.md#optional-operators) to make li
 
 ## Pointers
 
-Pointer types (besides `rawptr`) refer to the type they point to in angle brackets. For example, `ptr<int>` is a pointer to an int.
+Pointer types (besides `rawptr`) refer to the type they point to in square brackets. For example, `ptr[int]` is a pointer to an int.
 
 ```
-ptr<ptr<int>> pointer to a pointer to an int
-ptr<int[3]>   pointer to an array of 3 ints
-ptr<int>[3]   array of 3 pointers to ints
-relptr8<int>  8-bit relative pointer to an int
+ptr[ptr[int]] pointer to a pointer to an int
+ptr[int[3]]   pointer to an array of 3 ints
+ptr[int][3]   array of 3 pointers to ints
+relptr8[int]  8-bit relative pointer to an int
 ```
 
 Relative pointers refer to an address relative to their own, and have different sizes.

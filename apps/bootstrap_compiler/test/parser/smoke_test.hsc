@@ -56,6 +56,9 @@ multiline_string :: \\ This is a multline string
 	\\ if we really want to I guess
 char_literal :: 'x'
 bool_literal :: true
+double_nested_ptr_type :: ptr[ptr[int]]
+triple_nested_ptr_type :: ptr[ptr[ptr[int]]]
+array_of_nested_ptrs :: ptr[ptr[u8]][..]
 
 //-----------------------------------------------------------------------------
 //                                 Structs
@@ -69,7 +72,7 @@ struct2 :: struct {
 struct3 :: struct {
 	x: f32,
 }
-struct4 :: struct<X, Y> {
+struct4 :: struct[X, Y] {
 	foo1: fn(X) -> Y
 }
 
@@ -88,11 +91,11 @@ union1 :: union { // Should parse, but not really reasonable
 	yes,
 	no
 }
-union2 :: union<T> {
+union2 :: union[T] {
 	Some(T),
 	None,
 }
-union3 :: union<X, Y> {
+union3 :: union[X, Y]{
 	just_x(X),
 	just_y(Y),
 	both(X, Y),
@@ -126,7 +129,7 @@ implicitly_no_return    :: fn() {/* ... */}
 explicitly_no_return    :: fn() -> void {/* ... */}
 one_result              :: fn() -> int { return 1 }
 one_result_still_same   :: fn() -> (int) { return 1 }
-ptr_result              :: fn() -> ptr<int> { return &CONSTANT_INTEGER }
+ptr_result              :: fn() -> ptr[int] { return &CONSTANT_INTEGER }
 named_result            :: fn() -> (x: int) { return 4 }
 two_results             :: fn() -> (int, int) { return 2, 3 }
 two_named_results       :: fn() -> (x, y: int) { return 4, 5 }
@@ -139,6 +142,7 @@ returning_fn_and_int    :: fn() -> ((fn() -> int), int) { return one_result, 2 }
 print_something         :: fn(text: string) {}
 print_something2        :: fn(text: string = "hello") {}
 log_something           :: fn(text: string, location := #caller_location) {}
+mutable_parameters      :: fn(rect: ptr[mut Rectangle], mut rawptr) {}
 
 is_even :: fn(x: int) -> (result: bool, mod: int) {
     mod = x % 2
@@ -336,10 +340,10 @@ context_example :: fn() {
 
 pointer_example :: fn() {
 	x : int = 4
-	my_x : ptr<int> = &x
+	my_x : ptr[int] = &x
 	my_x^ = 2
 
-	rect : ptr<Rectangle> = new(Rectangle)
+	rect : ptr[Rectangle] = new(Rectangle)
 	defer delete(rect)
 	rect.x = 4
 	rect.y = 5
@@ -356,9 +360,9 @@ casting_example :: fn() {
 	my_uint : uint = 4
 	my_float32 : f32 = 2e-2
 
-	my_uint = cast<uint>(my_uint8)
+	my_uint = cast[uint](my_uint8)
 	my_uint = auto_cast(my_uint8)
-	my_float32 = bit_cast<f32>(my_uint32)
+	my_float32 = bit_cast[f32](my_uint32)
 }
 
 //-----------------------------------------------------------------------------

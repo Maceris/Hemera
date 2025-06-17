@@ -1,16 +1,16 @@
 package memory
 
-SharedPtr :: struct<T> {
+SharedPtr :: struct[T] {
 	count : u16,
-	value : ptr<T>,
-	destructor: fn(value: ptr<T>),
+	value : ptr[T],
+	destructor: fn(value: ptr[T]),
 }
 
-increment :: fn<T>(pointer: SharedPtr<T>) {
+increment :: fn[T](pointer: SharedPtr[T]) {
 	pointer.count += 1
 }
 
-decrement :: fn<T>(pointer: SharedPtr<T>) {
+decrement :: fn[T](pointer: SharedPtr[T]) {
 	assert(count > 0)
 	
 	count -= 1

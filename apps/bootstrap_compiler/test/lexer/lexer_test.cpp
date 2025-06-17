@@ -235,7 +235,7 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 	 *  */
      * isn't that neat?
      */
-	foo :: fn(x: int, y: u32) -> ptr<f32>? {
+	foo :: fn(x: int, y: u32) -> ptr[f32]? {
 		bar : f32 = 4.3
 		// This is a comment
 		if bar <= 3.0 && bar > 0.1 {
@@ -269,9 +269,9 @@ TEST(ManyTokenTest, OptionsWithoutArgs)
 	expected_tokens.push_back(std::make_tuple(TokenType::SYM_RPAREN, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::SYM_ARROW_SINGLE, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "ptr"));
-	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LT, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LBRACK, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "f32"));
-	expected_tokens.push_back(std::make_tuple(TokenType::SYM_GT, nullptr));
+	expected_tokens.push_back(std::make_tuple(TokenType::SYM_RBRACK, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::SYM_QUESTION, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::SYM_LBRACE, nullptr));
 	expected_tokens.push_back(std::make_tuple(TokenType::IDENTIFIER, "bar"));
