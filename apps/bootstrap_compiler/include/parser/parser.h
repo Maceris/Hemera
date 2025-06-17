@@ -78,6 +78,25 @@ namespace hemera::parser {
 	bool struct_body(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
-
+	bool boolean_expression(ParserState* state, ast::Node& parent);
+	bool boolean_expr_lvl_3(ParserState* state, ast::Node& parent);
+	bool boolean_expr_lvl_4(ParserState* state, ast::Node& parent);
+	bool boolean_expr_lvl_5(ParserState* state, ast::Node& parent);
+	bool boolean_expr_lvl_6(ParserState* state, ast::Node& parent);
+	bool boolean_expr_lvl_8(ParserState* state, ast::Node& parent);
+	bool boolean_expr_lvl_10(ParserState* state, ast::Node& parent);
+	bool arithmetic_expression(ParserState* state, ast::Node& parent);
+	bool arithmetic_expr_lvl_6_binary(ParserState* state, ast::Node& parent);
+	bool arithmetic_expr_lvl_7(ParserState* state, ast::Node& parent);
+	bool arithmetic_expr_lvl_8(ParserState* state, ast::Node& parent);
+	bool arithmetic_expr_lvl_9(ParserState* state, ast::Node& parent);
+	bool arithmetic_expr_lvl_10(ParserState* state, ast::Node& parent);
+	bool cast_expression(ParserState* state, ast::Node& parent);
+	bool if_expression(ParserState* state, ast::Node& parent);
+	bool else_if_extension(ParserState* state, ast::Node& parent);
+	bool for_loop(ParserState* state, ast::Node& parent);
+	bool range_expression(ParserState* state, ast::Node& parent);
+	bool loop(ParserState* state, ast::Node& parent);
+	bool push_context(ParserState* state, ast::Node& parent);
 
 }

@@ -213,7 +213,7 @@ complicated_type = function_signature
 
 array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK
 
-function_signature = KEYWORD_fn , [ generic_tag ], SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
+function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } )
     ;
 function_output_list = KEYWORD_void 
@@ -227,7 +227,7 @@ function_output_in_paren = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = identifier , SYM_COLON , type_in_list ) , [ SYM_EQ , default_value ] ;
+function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list ) , [ SYM_EQ , default_value ] ;
 function_body = SYM_LBRACE, [ expression ]+ , SYM_RBRACE ;
 default_value = literal
     | directive
@@ -357,11 +357,9 @@ for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , 
 
 range_expression = literal_integer , ( OPERATOR_range_exclusive | OPERATOR_range_inclusive ) , literal_integer ;
 
-loop = [ KEYWORD_with with_block ] 
+loop = [ KEYWORD_with { any_definition } ] 
     , KEYWORD_loop , [ directive ] , block 
     , [ KEYWORD_while , SYM_LPAREN, boolean_expression , SYM_RPAREN ]
     ;
-
-with_block = { any_definition } ;
 
 push_context = KEYWORD_push_context , identifier , block ;
