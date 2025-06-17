@@ -348,11 +348,12 @@ namespace hemera::parser {
 	bool simple_type(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::IDENTIFIER)) {
 			accept(state, TokenType::IDENTIFIER, parent);
-			if (expect(state, TokenType::SYM_LT)) {
+			if (expect(state, TokenType::SYM_LBRACK)) {
 				if (!generic_tag(state, parent)) {
 					return false;
 				}
 			}
+			//TODO(ches) array indices
 			return true;
 		}
 		else {
@@ -373,12 +374,12 @@ namespace hemera::parser {
 
 	bool generic_tag(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, parent);
-		if (!skip(state, TokenType::SYM_LT)) {
+		if (!skip(state, TokenType::SYM_LBRACK)) {
 			report_error_on_last_token(state, ErrorCode::E3011);
 			return false;
 		}
 
-		while (!expect(state, TokenType::SYM_GT)) {
+		while (!expect(state, TokenType::SYM_RBRACK)) {
 			if (!type(state, node)) {
 				return false;
 			}
@@ -386,7 +387,7 @@ namespace hemera::parser {
 				skip(state, TokenType::SYM_COMMA);
 			}
 		}
-		if (!skip(state, TokenType::SYM_GT)) {
+		if (!skip(state, TokenType::SYM_RBRACK)) {
 			report_error_on_last_token(state, ErrorCode::E3012);
 			return false;
 		}
@@ -399,7 +400,7 @@ namespace hemera::parser {
 			report_error_on_last_token(state, ErrorCode::E3013);
 			return false;
 		}
-		if (expect(state, TokenType::SYM_LT)) {
+		if (expect(state, TokenType::SYM_LBRACK)) {
 			if (!generic_tag(state, node)) {
 				return false;
 			}
@@ -597,7 +598,7 @@ namespace hemera::parser {
 		skip(state, TokenType::KEYWORD_STRUCT);
 		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
 		
-		if (expect(state, TokenType::SYM_LT)) {
+		if (expect(state, TokenType::SYM_LBRACK)) {
 			if (!generic_tag(state, node)) {
 				return false;
 			}
@@ -621,7 +622,7 @@ namespace hemera::parser {
 		skip(state, TokenType::KEYWORD_UNION);
 		ast::Node& node = next_as_node(state, ast::NodeType::UNION, parent);
 		
-		if (expect(state, TokenType::SYM_LT)) {
+		if (expect(state, TokenType::SYM_LBRACK)) {
 			if (!generic_tag(state, node)) {
 				return false;
 			}
