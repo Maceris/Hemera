@@ -726,8 +726,14 @@ namespace hemera::parser {
 	}
 
 	bool boolean_expression(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		bool result = boolean_expr_lvl_3(state, parent);
+		if (expect(state, TokenType::KEYWORD_IS_NONE)) {
+			result = accept(state, TokenType::KEYWORD_IS_NONE, parent) && result;
+		}
+		else if (expect(state, TokenType::KEYWORD_IS_SOME)) {
+			result = accept(state, TokenType::KEYWORD_IS_SOME, parent) && result;
+		}
+		return result;
 	}
 
 	bool boolean_expr_lvl_3(ParserState* state, ast::Node& parent) {
