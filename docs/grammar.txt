@@ -275,8 +275,7 @@ literal = literal_integer
     | type
     ;
 
-boolean_expression = KEYWORD_if , boolean_expr_lvl_3 , [ KEYWORD_else , boolean_expr_lvl_3 ]
-    | boolean_expr_lvl_3 , [ KEYWORD_is_none | KEYWORD_is_some ]
+boolean_expression = boolean_expr_lvl_3 , [ KEYWORD_is_none | KEYWORD_is_some ]
     ;
 
 boolean_expr_lvl_3 = boolean_expr_lvl_4
