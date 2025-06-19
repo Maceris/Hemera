@@ -233,6 +233,8 @@ default_value = literal
     | directive
     ;
 
+function_call = ; #TODO(ches) function calls
+
 struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] ;
 union_body = [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] ;
 enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
@@ -247,110 +249,103 @@ expression = expression_with_result
     | expression_without_result
     ;
 
-expression_continuation = KEYWORD_or_break
-    | KEYWORD_or_continue
-    | ( KEYWORD_or_else , expression )
-    | ( KEYWORD_or_return , [ expression_with_result ] ] )
-    ;
-
-expression_with_result = expression_with_result_before_continuation , [ expression_continuation ] ;
-
-expression_with_result_before_continuation = literal
-    | arithmetic_expression
-    | boolean_expression
+expression_with_result = expr_lvl_1
     | block
-    | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
-    | if_expression
     ;
 
 expression_without_result = for_loop
     | loop
     | push_context
+    | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
+    | assignment
     ;
+
+assignment = identifier
+    ;#TODO(ches) add assignments
 
 literal = literal_integer
     | literal_floating_point
     | literal_string
     | literal_char
     | type
-    ;
-
-boolean_expression = boolean_expr_lvl_3 , [ KEYWORD_is_none | KEYWORD_is_some ]
-    ;
-
-boolean_expr_lvl_3 = boolean_expr_lvl_4
-    | boolean_expr_lvl_3 , [ OPERATOR_or , boolean_expr_lvl_4 ] ;
-
-boolean_expr_lvl_4 = boolean_expr_lvl_5
-    | boolean_expr_lvl_4 , [ OPERATOR_and , boolean_expr_lvl_5 ] ;
-
-boolean_expr_lvl_5 = boolean_expr_lvl_6 , 
-    [ ( OPERATOR_equal , boolean_expr_lvl_6 )
-    | ( OPERATOR_not_equal , boolean_expr_lvl_6 )
-    | ( SYM_LT , boolean_expr_lvl_6 )
-    | ( OPERATOR_less_than_or_equal , boolean_expr_lvl_6 )
-    | ( SYM_GT , boolean_expr_lvl_6 )
-    | ( OPERATOR_greater_than_or_equal , boolean_expr_lvl_6 )
-    ] ;
-
-boolean_expr_lvl_6 = boolean_expr_lvl_8 
-    | OPERATOR_not , boolean_expr_lvl_8
-    ;
-
-boolean_expr_lvl_8 = boolean_expr_lvl_10
-    | ( SYM_LPAREN , boolean_expression , SYM_RPAREN )
-    ;
-
-boolean_expr_lvl_10 = ( identifier , [ array_dimension ]+ )
     | KEYWORD_true
     | KEYWORD_false
+    ;
+
+expr_lvl_1 = if_expression
+    | ( expr_lvl_1 , KEYWORD_is_none )
+    | ( expr_lvl_1 , KEYWORD_is_some )
+    | ( expr_lvl_1 , KEYWORD_or_break )
+    | ( expr_lvl_1 , KEYWORD_or_continue )
+    | ( expr_lvl_1 , KEYWORD_or_else , expression_with_result )
+    | ( expr_lvl_1 , KEYWORD_or_return , [ expression_with_result ] )
+    | expr_lvl_2
+    ;
+
+expr_lvl_2 = expr_lvl_3 , [ ( OPERATOR_range_exclusive | OPERATOR_range_inclusive ) , expr_lvl_3 ];
+    ;
+
+expr_lvl_3 = ( expr_lvl_3 , OPERATOR_or , expr_lvl_4 )
+    | expr_lvl_4
+    ;
+
+expr_lvl_4 = ( expr_lvl_4 , OPERATOR_and , expr_lvl_5 )
+    | expr_lvl_5
+    ;
+
+expr_lvl_5 = expr_lvl_6 , 
+    [ ( OPERATOR_equal , expr_lvl_6 )
+    | ( OPERATOR_not_equal , expr_lvl_6 )
+    | ( SYM_LT , expr_lvl_6 )
+    | ( SYM_GT , expr_lvl_6 )
+    | ( OPERATOR_less_than_or_equal , expr_lvl_6 )
+    | ( OPERATOR_greater_than_or_equal , expr_lvl_6 )
+    ]
+    ;
+
+expr_lvl_6 = 
+    | ( expr_lvl_6 , OPERATOR_plus , expr_lvl_7 )
+    | ( expr_lvl_6 , OPERATOR_minus , expr_lvl_7 )
+    | ( expr_lvl_6 , OPERATOR_bitwise_or , expr_lvl_7 )
+    | ( expr_lvl_6 , OPERATOR_assign_bitwise_xor , expr_lvl_7 )
+    | expr_lvl_7
+    ;
+
+expr_lvl_7 = ( expr_lvl_7 , OPERATOR_multiply , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_divide , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_modulus , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_remainder , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_assign_bitwise_and , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_left_shift , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_right_shift_arithmetic , expr_lvl_8 )
+    | ( expr_lvl_7 , OPERATOR_right_shift_logical , expr_lvl_8 )
+    | expr_lvl_8
+    ;
+
+expr_lvl_8 = ( SYM_LPAREN , expression_with_result , SYM_RPAREN )
+    | expr_lvl_9
+    ;
+
+expr_lvl_9 = ( OPERATOR_plus , expr_lvl_10 )
+    | ( OPERATOR_minus , expr_lvl_10 )
+    | ( OPERATOR_bitwise_xor , expr_lvl_10 )
+    | ( OPERATOR_not , expr_lvl_10 )
+    | expr_lvl_10
+    ;
+
+expr_lvl_10 = literal
+    | ( identifier , [ array_dimension ]+ )
     | cast_expression
-    ;
-
-arithmetic_expression = arithmetic_expr_lvl_6_binary
-    ;
-
-arithmetic_expr_lvl_6_binary = arithmetic_expr_lvl_7
-    | ( arithmetic_expr_lvl_6_binary , OPERATOR_plus , arithmetic_expr_lvl_7 )
-    | ( arithmetic_expr_lvl_6_binary , OPERATOR_minus , arithmetic_expr_lvl_7 )
-    | ( arithmetic_expr_lvl_6_binary , OPERATOR_bitwise_or , arithmetic_expr_lvl_7 )
-    | ( arithmetic_expr_lvl_6_binary , OPERATOR_assign_bitwise_xor , arithmetic_expr_lvl_7 )
-    ;
-
-arithmetic_expr_lvl_7 = arithmetic_expr_lvl_8
-    | ( arithmetic_expr_lvl_7 , OPERATOR_multiply , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_divide , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_modulus , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_remainder , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_assign_bitwise_and , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_left_shift , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_right_shift_arithmetic , arithmetic_expr_lvl_8 )
-    | ( arithmetic_expr_lvl_7 , OPERATOR_right_shift_logical , arithmetic_expr_lvl_8 )
-    ;
-
-arithmetic_expr_lvl_8 = arithmetic_expr_lvl_9
-    | ( SYM_LPAREN , arithmetic_expression , SYM_RPAREN )
-    ;
-
-arithmetic_expr_lvl_9 = arithmetic_expr_lvl_10
-    | ( OPERATOR_plus , arithmetic_expr_lvl_10 )
-    | ( OPERATOR_minus , arithmetic_expr_lvl_10 )
-    | ( OPERATOR_bitwise_xor , arithmetic_expr_lvl_10 )
-    ;
-
-arithmetic_expr_lvl_10 = ( identifier , [ array_dimension ]+ )
-    | literal_floating_point
-    | literal_integer
-    | cast_expression
-    ;
+    | function_call
+    ; #TODO(ches) function pipe operator
 
 cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     | ( KEYWORD_bit_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     | ( KEYWORD_auto_cast , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     ;
 
-if_expression = KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
-else_if_extension = KEYWORD_else , KEYWORD_if , SYM_LPAREN, boolean_expression , SYM_RPAREN , block ;
+if_expression = KEYWORD_if , SYM_LPAREN, expression_with_result , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
+else_if_extension = KEYWORD_else , KEYWORD_if , SYM_LPAREN, expression_with_result , SYM_RPAREN , block ;
 
 for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , ( ( identifier , [ array_dimension ]+ ) | range_expression ) , block ;
 
@@ -358,7 +353,7 @@ range_expression = literal_integer , ( OPERATOR_range_exclusive | OPERATOR_range
 
 loop = [ KEYWORD_with { any_definition } ] 
     , KEYWORD_loop , [ directive ] , block 
-    , [ KEYWORD_while , SYM_LPAREN, boolean_expression , SYM_RPAREN ]
+    , [ KEYWORD_while , SYM_LPAREN, expression_with_result , SYM_RPAREN ]
     ;
 
 push_context = KEYWORD_push_context , identifier , block ;
