@@ -173,3 +173,52 @@ loop {
 }
 while(false)
 ```
+
+## Match
+
+Match expressions evaluate to a value using pattern matching.
+
+The cases can be any of these types:
+
+* Integer (including ranges)
+* Character (including ranges)
+* String
+* Enums
+* Unions
+
+Example:
+```
+result : string : match foo {
+    1 => "a"
+    2, 3 => "b"
+    4..=10 => "c"
+    _ => "x"
+}
+
+result2 : int = match bar {
+    Ok(foo, _) => foo + 1
+    Fail(_) => 0
+    _ => -1
+}
+```
+
+## Switch
+
+Switch statements work similar to C's, except they never fall through except where a directive is explicitly provided to do so.
+
+The cases can be any of these types:
+* Integer (including ranges)
+* Character (including ranges)
+* String
+* Enums
+
+Example:
+```
+switch foo {
+    case 1: print("a")
+    #fall_through
+    case 2, 3: print("b")
+    case 4..=10: print("c")
+    case _: print("x")
+}
+```

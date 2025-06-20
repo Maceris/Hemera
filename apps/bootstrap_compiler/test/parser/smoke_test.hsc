@@ -259,6 +259,9 @@ arrays_example :: fn() {
 	i : i8[10][5]
 	j : u32[..]
 	k : string[..]
+
+	l : int : nested_array.foo.bar[3].foo[2][3].bar
+	l = nested_array[2][4].nested_array[3].foo.bar[3].foo[2][3].bar[1]
 }
 
 //-----------------------------------------------------------------------------
@@ -469,6 +472,76 @@ deferring_example :: fn() {
         }
     }
     while(i <= 10)
+}
+
+//-----------------------------------------------------------------------------
+//                                 Switches
+//-----------------------------------------------------------------------------
+
+switch_example :: fn() {
+	switch x {
+		case 1: print("one")
+		case 2, 3: print("two")
+		#fall_through
+		case 4..<6: print("three")
+		case 6..=30,32,44: print("four")
+		case _: print("default")
+	}
+
+	switch y {
+		case .FOO: print("fooo")
+		case example_enum.BAR: print("bar")
+		case .BAZ, .CAZ: print("baz")
+	}
+
+	switch z {
+		case "foo": print("1")
+		case "bar", "Baz": print("2")
+		case _: print("4")
+	}
+
+	switch a {
+		case 'a': print("3")
+		case 'b'..='m', 'o'..<'y': print("4")
+		case _: print("45")
+	}
+}
+
+//-----------------------------------------------------------------------------
+//                                  Matches
+//-----------------------------------------------------------------------------
+
+match_example :: fn() {
+	foo : string : match x {
+		1 => "one"
+		2, 3 => "two"
+		4..<6 => "three"
+		6..=30, 32, 44 => "four"
+		_ => "default"
+	}
+
+	bar : int = match y {
+		.FOO => 3
+		example_enum.BAR => 43
+		.BAZ, .CAZ => 2
+	}
+
+	baz : f32 = match z {
+		"foo" => 4.3
+		"bar", "Baz" => 2.1
+		_ => 9.0
+	}
+
+	caz : example_enum : switch a {
+		'a' => .FOO
+		'b'..='m', 'o'..<'y' => .BAR
+		_ => .UNKNOWN
+	}
+
+	match a {
+		Ok(foo) => x = 5
+		Fail(_) => return 5
+	}
 }
 
 //-----------------------------------------------------------------------------

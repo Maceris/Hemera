@@ -416,6 +416,7 @@ switch_statement = KEYWORD_switch , identifier , SYM_LBRACE ,
 switch_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )
     | ( literal_char , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_char ] )
     | literal_string
+    | ( [ identifier ] , SYM_DOT , identifier )
     ;
 
 match_expression = KEYWORD_match , identifier SYM_LBRACE ,
