@@ -8,7 +8,7 @@ say_hello :: fn() {
 }
 ```
 
-Inputs to functions can be provided in the parenthesis.
+Inputs to functions can be provided in the parenthesis. Arguments with default values must all come after any that do not have default arguments.
 
 ```
 // text is a parameter, with a type of string
@@ -68,12 +68,12 @@ create_rectangle :: fn(x, y: int, width, height: int) -> Rectangle {/* ... */}
 example :: fn() {
     // These are all equivalent
     create_rectangle(1, 2, 50, 75)
-    create_rectangle(x=1, y=2, 50, 75)
+    create_rectangle(1, 2, width=50, height=75)
     create_rectangle(x=1, y=2, width=50, height=75)
 }
 ```
 
-Positional and named arguments can be mixed, but named arguments must always be provided after the named ones.
+Positional and named arguments can be mixed, but named arguments must always be provided after the positional ones.
 
 ```
 example :: fn(a: int, b: string, c: bool, d: f32, e := 0) {/* ... */}

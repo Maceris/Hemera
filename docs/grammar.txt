@@ -214,7 +214,8 @@ complicated_type = function_signature
 array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
-function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } )
+function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter_default } )
+    | ( function_parameter_default , { SYM_COMMA , function_parameter_default } )
     ;
 function_output_list = KEYWORD_void 
     | simple_type
@@ -223,17 +224,28 @@ function_output_list = KEYWORD_void
     ;
 
 function_output_in_paren = simple_type
-    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list ) )
+    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list )
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list ) , [ SYM_EQ , default_value ] ;
+function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list  ;
+function_parameter_default = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , SYM_EQ , default_value ;
 function_body = SYM_LBRACE, [ expression ]+ , SYM_RBRACE ;
 default_value = literal
     | directive
     ;
 
-function_call = ; #TODO(ches) function calls
+function_call = identifier , SYM_LPAREN , [ function_call_input_list ] , SYM_RPAREN
+    ;
+
+function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_input } , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
+    | ( identifier , SYM_EQ , function_call_input , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
+    ;
+
+function_call_input = expression_with_result
+    | SYM_UNDERSCORE
+    | pipe_reorder_identifier
+    ;
 
 struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] ;
 union_body = [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] ;
@@ -337,6 +349,7 @@ expr_lvl_10 = literal
     | ( identifier , [ array_dimension ]+ )
     | cast_expression
     | function_call
+    | field_access
     ; #TODO(ches) function pipe operator
 
 cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
@@ -357,3 +370,5 @@ loop = [ KEYWORD_with { any_definition } ]
     ;
 
 push_context = KEYWORD_push_context , identifier , block ;
+
+field_access = ; #TODO(ches)
