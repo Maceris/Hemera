@@ -202,8 +202,13 @@ type = simple_type
 type_in_list = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
+type_for_parameter = simple_type_for_parameter
+    | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
+    ;
 
 simple_type = ( identifier , [ generic_tag ] , [ array_dimension ]+ )
+    ;
+simple_type_for_parameter = ( [ KEYWORD_mut ] , identifier , [ generic_tag ] , [ array_dimension ]+ )
     ;
 
 # Confusing without parentheses in a function return type list
@@ -213,8 +218,8 @@ complicated_type = function_signature
 array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK ;
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
-function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter_default } )
-    | ( function_parameter_default , { SYM_COMMA , function_parameter_default } )
+function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter , SYM_EQ , default_value } )
+    | ( function_parameter , SYM_EQ , default_value , { SYM_COMMA , function_parameter , SYM_EQ , default_value } )
     ;
 function_output_list = KEYWORD_void 
     | simple_type
@@ -227,8 +232,7 @@ function_output_in_paren = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list  ;
-function_parameter_default = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , SYM_EQ , default_value ;
+function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_for_parameter  ;
 
 default_value = literal
     | directive
@@ -252,7 +256,7 @@ enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
 
 generic_tag = SYM_LBRACK , type_in_list , { SYM_COMMA , type_in_list } , SYM_RBRACK ;
 
-struct_member = any_definition ;
+struct_member = any_definition | ( KEYWORD_using , identifier , [ SYM_DOT , identifier ] );
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;
 
@@ -308,6 +312,7 @@ literal = literal_integer
     | type
     | KEYWORD_true
     | KEYWORD_false
+    | KEYWORD_null
     ;
 
 expr_lvl_1 = if_expression

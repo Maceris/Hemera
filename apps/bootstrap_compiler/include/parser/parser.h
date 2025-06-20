@@ -65,8 +65,8 @@ namespace hemera::parser {
 	bool generic_tag(ParserState* state, ast::Node& parent);
 	bool function_signature(ParserState* state, ast::Node& parent);
 	bool function_parameter_list(ParserState* state, ast::Node& parent);
-	bool default_value(ParserState* state, ast::Node& parent);
 	bool function_output_list(ParserState* state, ast::Node& parent);
+	bool default_value(ParserState* state, ast::Node& parent);
 	bool block(ParserState* state, ast::Node& parent);
 	bool expression(ParserState* state, ast::Node& parent);
 	bool expression_with_result(ParserState* state, ast::Node& parent);

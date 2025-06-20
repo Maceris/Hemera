@@ -519,16 +519,6 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool default_value(ParserState* state, ast::Node& parent) {
-		if (expect(state, TokenType::DIRECTIVE)) {
-			accept(state, TokenType::DIRECTIVE, parent);
-			return true;
-		}
-		else {
-			return literal(state, parent);
-		}
-	}
-
 	bool function_output_list(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::KEYWORD_VOID)) {
 			accept(state, TokenType::KEYWORD_VOID, parent);
@@ -585,6 +575,16 @@ namespace hemera::parser {
 			}
 		}
 		return true;
+	}
+
+	bool default_value(ParserState* state, ast::Node& parent) {
+		if (expect(state, TokenType::DIRECTIVE)) {
+			accept(state, TokenType::DIRECTIVE, parent);
+			return true;
+		}
+		else {
+			return literal(state, parent);
+		}
 	}
 
 	bool block(ParserState* state, ast::Node& parent) {
