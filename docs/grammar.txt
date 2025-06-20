@@ -407,9 +407,7 @@ field_access_extension = SYM_DOT , identifier ;
 enum_shorthand = SYM_DOT , identifier ;
 
 switch_statement = KEYWORD_switch , identifier , SYM_LBRACE , 
-    ( KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry }
-     , SYM_COLON , expression , [ directive ]
-    )+
+    ( KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry } , SYM_COLON , expression , [ directive ] )+
     [ SYM_UNDERSCORE , SYM_COLON , expression ]
     , SYM_RBRACE
     ;
@@ -419,10 +417,10 @@ switch_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_
     | ( [ identifier ] , SYM_DOT , identifier )
     ;
 
-match_expression = KEYWORD_match , identifier SYM_LBRACE ,
-    ( match_entry , { SYM_COMMA , match_entry } , SYM_ARROW_DOUBLE , expression
-    )+
-    [ SYM_UNDERSCORE , SYM_ARROW_DOUBLE , expression ]
+match_expression = KEYWORD_match , identifier SYM_LBRACE
+    , { match_entry , { SYM_COMMA , match_entry } , SYM_ARROW_DOUBLE , expression , SYM_COMMA }
+    , ( match_entry , { SYM_COMMA , match_entry } , SYM_ARROW_DOUBLE , expression , [ SYM_COMMA ] )
+    , [ SYM_UNDERSCORE , SYM_ARROW_DOUBLE , expression , [ SYM_COMMA ] ]
     , SYM_RBRACE
     ;
 match_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )
@@ -430,4 +428,5 @@ match_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_i
     | literal_string
     | ( [ identifier ] , SYM_DOT , identifier )
     | ( identifier , SYM_LPAREN , [ ( identifier | SYM_UNDERSCORE ) , { SYM_COMMA , ( identifier | SYM_UNDERSCORE ) } ] , SYM_RPAREN )
+    | ( KEYWORD_true | KEYWORD_false )
     ;

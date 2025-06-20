@@ -185,6 +185,7 @@ The cases can be any of these types:
 * String
 * Enums
 * Unions
+* Boolean
 
 Example:
 ```
