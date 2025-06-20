@@ -46,7 +46,6 @@ namespace hemera::parser {
 	bool could_be_expression_without_result(ParserState* state);
 
 	void file(std::string_view file_path, MyVector<Token>& tokens, MyVector<ast::Node>& output);
-	void comments(ParserState* state, ast::Node& parent);
 	bool package_statement(ParserState* state, ast::Node& parent);
 	bool imports(ParserState* state, ast::Node& parent);
 	bool import(ParserState* state, ast::Node& parent);
@@ -68,6 +67,7 @@ namespace hemera::parser {
 	bool expression(ParserState* state, ast::Node& parent);
 	bool expression_with_result(ParserState* state, ast::Node& parent);
 	bool expression_without_result(ParserState* state, ast::Node& parent);
+	bool assignment(ParserState* state, ast::Node& parent);
 	bool function_decl(ParserState* state, ast::Node& parent);
 	bool struct_decl(ParserState* state, ast::Node& parent);
 	bool union_decl(ParserState* state, ast::Node& parent);
@@ -86,6 +86,7 @@ namespace hemera::parser {
 	bool expr_lvl_8(ParserState* state, ast::Node& parent);
 	bool expr_lvl_9(ParserState* state, ast::Node& parent);
 	bool expr_lvl_10(ParserState* state, ast::Node& parent);
+	bool function_call_chain(ParserState* state, ast::Node& parent);
 	bool cast_expression(ParserState* state, ast::Node& parent);
 	bool if_expression(ParserState* state, ast::Node& parent);
 	bool else_if_extension(ParserState* state, ast::Node& parent);

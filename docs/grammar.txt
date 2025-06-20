@@ -272,8 +272,23 @@ expression_without_result = for_loop
     | assignment
     ;
 
-assignment = identifier
-    ;#TODO(ches) add assignments
+assignment = identifier , ( OPERATOR_assign
+    | OPERATOR_assign_add
+    | OPERATOR_assign_and
+    | OPERATOR_assign_bitwise_and
+    | OPERATOR_assign_bitwise_or
+    | OPERATOR_assign_bitwise_xor
+    | OPERATOR_assign_div
+    | OPERATOR_assign_left_shift
+    | OPERATOR_assign_mod
+    | OPERATOR_assign_mul
+    | OPERATOR_assign_or
+    | OPERATOR_assign_remainder
+    | OPERATOR_assign_right_shift_arithmetic
+    | OPERATOR_assign_right_shift_logical
+    | OPERATOR_assign_sub
+    ) , expression_with_result
+    ;
 
 literal = literal_integer
     | literal_floating_point
@@ -348,9 +363,11 @@ expr_lvl_9 = ( OPERATOR_plus , expr_lvl_10 )
 expr_lvl_10 = literal
     | ( identifier , [ array_dimension ]+ )
     | cast_expression
-    | function_call
+    | function_call_chain
     | field_access
     ; #TODO(ches) function pipe operator
+
+function_call_chain = function_call , { OPERATOR_pipe , function_call } ;
 
 cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     | ( KEYWORD_bit_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN , expression_with_result , SYM_RPAREN )
@@ -360,9 +377,7 @@ cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN ,
 if_expression = KEYWORD_if , SYM_LPAREN, expression_with_result , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
 else_if_extension = KEYWORD_else , KEYWORD_if , SYM_LPAREN, expression_with_result , SYM_RPAREN , block ;
 
-for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , ( ( identifier , [ array_dimension ]+ ) | range_expression ) , block ;
-
-range_expression = literal_integer , ( OPERATOR_range_exclusive | OPERATOR_range_inclusive ) , literal_integer ;
+for_loop = KEYWORD_for , identifier , { SYM_COMMA , identifier } , KEYWORD_in , expression_with_result , block ;
 
 loop = [ KEYWORD_with { any_definition } ] 
     , KEYWORD_loop , [ directive ] , block 

@@ -556,6 +556,11 @@ namespace hemera::parser {
 		return true;
 	}
 
+	bool assignment(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
 	bool function_decl(ParserState* state, ast::Node& parent) {
 		if (!function_signature(state, parent)) {
 			return false;
@@ -740,6 +745,11 @@ namespace hemera::parser {
 	}
 
 	bool expr_lvl_10(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool function_call_chain(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
