@@ -86,7 +86,6 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("break", TokenType::KEYWORD_BREAK));
 	inputs.push_back(std::make_tuple("case", TokenType::KEYWORD_CASE));
 	inputs.push_back(std::make_tuple("cast", TokenType::KEYWORD_CAST));
-	inputs.push_back(std::make_tuple("context", TokenType::KEYWORD_CONTEXT));
 	inputs.push_back(std::make_tuple("continue", TokenType::KEYWORD_CONTINUE));
 	inputs.push_back(std::make_tuple("defer", TokenType::KEYWORD_DEFER));
 	inputs.push_back(std::make_tuple("distinct", TokenType::KEYWORD_DISTINCT));

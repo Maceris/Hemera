@@ -76,7 +76,6 @@ KEYWORD_bit_cast = "bit_cast" ;
 KEYWORD_break = "break" ;
 KEYWORD_case = "case" ;
 KEYWORD_cast = "cast" ;
-KEYWORD_context = "context" ;
 KEYWORD_continue = "continue" ;
 KEYWORD_defer = "defer" ;
 KEYWORD_distinct = "distinct" ;
