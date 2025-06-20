@@ -211,7 +211,7 @@ simple_type = ( identifier , [ generic_tag ] , [ array_dimension ]+ )
 complicated_type = function_signature
     ;
 
-array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK
+array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK ;
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter_default } )
@@ -361,11 +361,10 @@ expr_lvl_9 = ( OPERATOR_plus , expr_lvl_10 )
     ;
 
 expr_lvl_10 = literal
-    | ( identifier , [ array_dimension ]+ )
+    | ( identifier , { array_access_extension | field_access_extension } )
     | cast_expression
     | function_call_chain
-    | field_access
-    ; #TODO(ches) function pipe operator
+    ;
 
 function_call_chain = function_call , { OPERATOR_pipe , function_call } ;
 
@@ -386,4 +385,5 @@ loop = [ KEYWORD_with { any_definition } ]
 
 push_context = KEYWORD_push_context , identifier , block ;
 
-field_access = ; #TODO(ches)
+array_access_extension = SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ;
+field_access_extension = SYM_DOT , identifier ;

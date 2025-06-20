@@ -783,4 +783,14 @@ namespace hemera::parser {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
+
+	bool array_access_extension(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool field_access_extension(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
 }
