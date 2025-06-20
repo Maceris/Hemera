@@ -538,7 +538,6 @@ namespace hemera::parser {
 			if (!expression_with_result(state, parent)) {
 				return false;
 			}
-			return expression_continuation(state, parent);
 		}
 		if (!could_be_expression_without_result(state)) {
 			LOG_ERROR("Trying to parse an expression at an invalid time");
@@ -547,37 +546,7 @@ namespace hemera::parser {
 		return expression_with_result(state, parent);
 	}
 	
-	bool expression_continuation(ParserState* state, ast::Node& parent) {
-		if (expect(state, TokenType::KEYWORD_OR_BREAK)) {
-			return accept(state, TokenType::KEYWORD_OR_BREAK, parent);
-		}
-		if (expect(state, TokenType::KEYWORD_OR_CONTINUE)) {
-			return accept(state, TokenType::KEYWORD_OR_CONTINUE, parent);
-		}
-		if (expect(state, TokenType::KEYWORD_OR_ELSE)) {
-			accept(state, TokenType::KEYWORD_OR_ELSE, parent);
-			return expression(state, parent);
-		}
-		if (expect(state, TokenType::KEYWORD_OR_RETURN)) {
-			accept(state, TokenType::KEYWORD_OR_RETURN, parent);
-			if (could_be_expression_with_result(state)) {
-				if (!expression_with_result(state, parent)) {
-					return false;
-				}
-				//NOTE(ches) we can keep chaining these
-				return expression_continuation(state, parent);
-			}
-		}
-		//NOTE(ches) indicates nothing broke, not that we found a continuation
-		return true;
-	}
-
 	bool expression_with_result(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
-	}
-
-	bool expression_with_result_before_continuation(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
@@ -725,77 +694,56 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool boolean_expression(ParserState* state, ast::Node& parent) {
-		bool result = boolean_expr_lvl_3(state, parent);
-		if (expect(state, TokenType::KEYWORD_IS_NONE)) {
-			result = accept(state, TokenType::KEYWORD_IS_NONE, parent) && result;
-		}
-		else if (expect(state, TokenType::KEYWORD_IS_SOME)) {
-			result = accept(state, TokenType::KEYWORD_IS_SOME, parent) && result;
-		}
-		return result;
-	}
-
-	bool boolean_expr_lvl_3(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_1(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool boolean_expr_lvl_4(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_2(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool boolean_expr_lvl_5(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_3(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool boolean_expr_lvl_6(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_4(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool boolean_expr_lvl_8(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_5(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool boolean_expr_lvl_10(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_6(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool arithmetic_expression(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_7(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool arithmetic_expr_lvl_6_binary(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_8(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool arithmetic_expr_lvl_7(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_9(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
 
-	bool arithmetic_expr_lvl_8(ParserState* state, ast::Node& parent) {
+	bool expr_lvl_10(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
-
-	bool arithmetic_expr_lvl_9(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
-	}
-
-	bool arithmetic_expr_lvl_10(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
-	}
-
+	
 	bool cast_expression(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
@@ -812,11 +760,6 @@ namespace hemera::parser {
 	}
 
 	bool for_loop(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
-	}
-
-	bool range_expression(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}
