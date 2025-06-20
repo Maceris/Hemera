@@ -192,7 +192,7 @@ decl_rhs = expression_with_result
     | ( [ KEYWORD_distinct ] , [ KEYWORD_alias ] , type )
     ;
 
-function_decl = function_signature , function_body ;
+function_decl = function_signature , block ;
 struct_decl = KEYWORD_struct , [ generic_tag ] , SYM_LBRACE , struct_body , SYM_RBRACE ;
 union_decl = KEYWORD_union , [ generic_tag ] , SYM_LBRACE , union_body , SYM_RBRACE ;
 enum_decl = KEYWORD_enum , SYM_LBRACE , enum_body , SYM_RBRACE ;
@@ -230,7 +230,7 @@ function_output_in_paren = simple_type
 
 function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list  ;
 function_parameter_default = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , SYM_EQ , default_value ;
-function_body = SYM_LBRACE, [ expression ]+ , SYM_RBRACE ;
+
 default_value = literal
     | directive
     ;
@@ -257,12 +257,23 @@ struct_member = any_definition ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;
 
+block = SYM_LBRACE , 
+    ( expression
+    | ( KEYWORD_return , expression )
+    | ( KEYWORD_defer , expression )
+    | ( KEYWORD_break , [ integer_decimal | KEYWORD_all ] )
+    | KEYWORD_continue
+    )+
+    , SYM_RBRACE
+    ; 
+
 expression = expression_with_result 
     | expression_without_result
     ;
 
 expression_with_result = expr_lvl_1
     | block
+    | match_expression
     ;
 
 expression_without_result = for_loop
@@ -270,6 +281,7 @@ expression_without_result = for_loop
     | push_context
     | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
     | assignment
+    | switch_statement
     ;
 
 assignment = identifier , ( OPERATOR_assign
@@ -364,6 +376,7 @@ expr_lvl_10 = literal
     | ( identifier , { array_access_extension | field_access_extension } )
     | cast_expression
     | function_call_chain
+    | enum_shorthand
     ;
 
 function_call_chain = function_call , { OPERATOR_pipe , function_call } ;
@@ -387,3 +400,29 @@ push_context = KEYWORD_push_context , identifier , block ;
 
 array_access_extension = SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ;
 field_access_extension = SYM_DOT , identifier ;
+enum_shorthand = SYM_DOT , identifier ;
+
+switch_statement = KEYWORD_switch , identifier , SYM_LBRACE , 
+    ( KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry }
+     , SYM_COLON , expression , [ directive ]
+    )+
+    [ SYM_UNDERSCORE , SYM_COLON , expression ]
+    , SYM_RBRACE
+    ;
+switch_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )
+    | ( literal_char , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_char ] )
+    | literal_string
+    ;
+
+match_expression = KEYWORD_match , identifier SYM_LBRACE ,
+    ( match_entry , { SYM_COMMA , match_entry } , SYM_ARROW_DOUBLE , expression
+    )+
+    [ SYM_UNDERSCORE , SYM_ARROW_DOUBLE , expression ]
+    , SYM_RBRACE
+    ;
+match_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )
+    | ( literal_char , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_char ] )
+    | literal_string
+    | ( [ identifier ] , SYM_DOT , identifier )
+    | ( identifier , SYM_LPAREN , [ ( identifier | SYM_UNDERSCORE ) , { SYM_COMMA , ( identifier | SYM_UNDERSCORE ) } ] , SYM_RPAREN )
+    ;

@@ -331,6 +331,80 @@ namespace hemera::parser {
 		return expression_with_result(state, parent);
 	}
 
+	bool function_decl(ParserState* state, ast::Node& parent) {
+		if (!function_signature(state, parent)) {
+			return false;
+		}
+		return block(state, parent);
+	}
+
+	bool struct_decl(ParserState* state, ast::Node& parent) {
+		skip(state, TokenType::KEYWORD_STRUCT);
+		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
+
+		if (expect(state, TokenType::SYM_LBRACK)) {
+			if (!generic_tag(state, node)) {
+				return false;
+			}
+		}
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		if (!struct_body(state, node)) {
+			report_error_on_last_token(state, ErrorCode::E3020);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
+		return true;
+	}
+
+	bool union_decl(ParserState* state, ast::Node& parent) {
+		skip(state, TokenType::KEYWORD_UNION);
+		ast::Node& node = next_as_node(state, ast::NodeType::UNION, parent);
+
+		if (expect(state, TokenType::SYM_LBRACK)) {
+			if (!generic_tag(state, node)) {
+				return false;
+			}
+		}
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		if (!union_body(state, node)) {
+			report_error_on_last_token(state, ErrorCode::E3020);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
+		return true;
+	}
+
+	bool enum_decl(ParserState* state, ast::Node& parent) {
+		skip(state, TokenType::KEYWORD_ENUM);
+		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, parent);
+
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		if (!enum_body(state, node)) {
+			report_error_on_last_token(state, ErrorCode::E3020);
+			return false;
+		}
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
+		return true;
+	}
+
 	bool type(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, parent);
 		if (expect(state, TokenType::IDENTIFIER)) {
@@ -513,24 +587,22 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool literal(ParserState* state, ast::Node& parent) {
-		if (expect(state, TokenType::LITERAL_CHAR)) {
-			accept(state, TokenType::LITERAL_CHAR, parent);
-			return true;
+	bool block(ParserState* state, ast::Node& parent) {
+		if (!skip(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
 		}
-		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
-			accept(state, TokenType::LITERAL_FLOATING_POINT, parent);
-			return true;
+
+		//TODO(ches) other scenarios
+		while (could_be_expression(state)) {
+			expression(state, parent);
 		}
-		if (expect(state, TokenType::LITERAL_INTEGER)) {
-			accept(state, TokenType::LITERAL_INTEGER, parent);
-			return true;
+
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
 		}
-		if (expect(state, TokenType::LITERAL_STRING)) {
-			accept(state, TokenType::LITERAL_STRING, parent);
-			return true;
-		}
-		return type(state, parent);
+		return true;
 	}
 
 	bool expression(ParserState* state, ast::Node& parent) {
@@ -561,95 +633,24 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool function_decl(ParserState* state, ast::Node& parent) {
-		if (!function_signature(state, parent)) {
-			return false;
+	bool literal(ParserState* state, ast::Node& parent) {
+		if (expect(state, TokenType::LITERAL_CHAR)) {
+			accept(state, TokenType::LITERAL_CHAR, parent);
+			return true;
 		}
-		return function_body(state, parent);
-	}
-
-	bool struct_decl(ParserState* state, ast::Node& parent) {
-		skip(state, TokenType::KEYWORD_STRUCT);
-		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
-		
-		if (expect(state, TokenType::SYM_LBRACK)) {
-			if (!generic_tag(state, node)) {
-				return false;
-			}
+		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
+			accept(state, TokenType::LITERAL_FLOATING_POINT, parent);
+			return true;
 		}
-		if (!skip(state, TokenType::SYM_LBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3018);
-			return false;
+		if (expect(state, TokenType::LITERAL_INTEGER)) {
+			accept(state, TokenType::LITERAL_INTEGER, parent);
+			return true;
 		}
-		if (!struct_body(state, node)) {
-			report_error_on_last_token(state, ErrorCode::E3020);
-			return false;
+		if (expect(state, TokenType::LITERAL_STRING)) {
+			accept(state, TokenType::LITERAL_STRING, parent);
+			return true;
 		}
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
-			return false;
-		}
-		return true;
-	}
-
-	bool union_decl(ParserState* state, ast::Node& parent) {
-		skip(state, TokenType::KEYWORD_UNION);
-		ast::Node& node = next_as_node(state, ast::NodeType::UNION, parent);
-		
-		if (expect(state, TokenType::SYM_LBRACK)) {
-			if (!generic_tag(state, node)) {
-				return false;
-			}
-		}
-		if (!skip(state, TokenType::SYM_LBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3018);
-			return false;
-		}
-		if (!union_body(state, node)) {
-			report_error_on_last_token(state, ErrorCode::E3020);
-			return false;
-		}
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
-			return false;
-		}
-		return true;
-	}
-
-	bool enum_decl(ParserState* state, ast::Node& parent) {
-		skip(state, TokenType::KEYWORD_ENUM);
-		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, parent);
-		
-		if (!skip(state, TokenType::SYM_LBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3018);
-			return false;
-		}
-		if (!enum_body(state, node)) {
-			report_error_on_last_token(state, ErrorCode::E3020);
-			return false;
-		}
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
-			return false;
-		}
-		return true;
-	}
-
-	bool function_body(ParserState* state, ast::Node& parent) {
-		if (!skip(state, TokenType::SYM_LBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3018);
-			return false;
-		}
-
-		while (could_be_expression(state)) {
-			expression(state, parent);
-		}
-
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
-			return false;
-		}
-		return true;
+		return type(state, parent);
 	}
 
 	bool struct_body(ParserState* state, ast::Node& parent) {
@@ -790,6 +791,31 @@ namespace hemera::parser {
 	}
 
 	bool field_access_extension(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool enum_shorthand(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool switch_statement(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool switch_entry(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool match_expression(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return true;
+	}
+
+	bool match_entry(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}

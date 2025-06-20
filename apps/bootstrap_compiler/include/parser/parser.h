@@ -55,6 +55,10 @@ namespace hemera::parser {
 	bool mut_definition_rhs(ParserState* state, ast::Node& parent);
 	bool declaration(ParserState* state, ast::Node& parent);
 	bool decl_rhs(ParserState* state, ast::Node& parent);
+	bool function_decl(ParserState* state, ast::Node& parent);
+	bool struct_decl(ParserState* state, ast::Node& parent);
+	bool union_decl(ParserState* state, ast::Node& parent);
+	bool enum_decl(ParserState* state, ast::Node& parent);
 	bool type(ParserState* state, ast::Node& parent);
 	bool simple_type(ParserState* state, ast::Node& parent);
 	bool complicated_type(ParserState* state, ast::Node& parent);
@@ -63,16 +67,12 @@ namespace hemera::parser {
 	bool function_parameter_list(ParserState* state, ast::Node& parent);
 	bool default_value(ParserState* state, ast::Node& parent);
 	bool function_output_list(ParserState* state, ast::Node& parent);
-	bool literal(ParserState* state, ast::Node& parent);
+	bool block(ParserState* state, ast::Node& parent);
 	bool expression(ParserState* state, ast::Node& parent);
 	bool expression_with_result(ParserState* state, ast::Node& parent);
 	bool expression_without_result(ParserState* state, ast::Node& parent);
 	bool assignment(ParserState* state, ast::Node& parent);
-	bool function_decl(ParserState* state, ast::Node& parent);
-	bool struct_decl(ParserState* state, ast::Node& parent);
-	bool union_decl(ParserState* state, ast::Node& parent);
-	bool enum_decl(ParserState* state, ast::Node& parent);
-	bool function_body(ParserState* state, ast::Node& parent);
+	bool literal(ParserState* state, ast::Node& parent);
 	bool struct_body(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
@@ -95,5 +95,10 @@ namespace hemera::parser {
 	bool push_context(ParserState* state, ast::Node& parent);
 	bool array_access_extension(ParserState* state, ast::Node& parent);
 	bool field_access_extension(ParserState* state, ast::Node& parent);
+	bool enum_shorthand(ParserState* state, ast::Node& parent);
+	bool switch_statement(ParserState* state, ast::Node& parent);
+	bool switch_entry(ParserState* state, ast::Node& parent);
+	bool match_expression(ParserState* state, ast::Node& parent);
+	bool match_entry(ParserState* state, ast::Node& parent);
 
 }
