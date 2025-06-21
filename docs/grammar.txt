@@ -33,8 +33,8 @@ illegal_string_characters = "\x01" |"\x02" |"\x03" |"\x04" |"\x05"
     |"\x7f" | "\n"
     ;
 
-annotation = "@" , [ letter | digit_decimal | "_" ]+ ;
-directive = "#" , [ letter | digit_decimal | "_" ]+ ;
+annotation = "@" , ( letter | digit_decimal | "_" )+ ;
+directive = "#" , ( letter | digit_decimal | "_" )+ ;
 
 comment_block = "/*" , { comment_block_body } , "*/" ;
 comment_block_body = comment_block_body_not_nested
@@ -252,6 +252,7 @@ function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_i
 function_call_input = expression_with_result
     | SYM_UNDERSCORE
     | pipe_reorder_identifier
+    | directive
     ;
 
 struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] ;
@@ -386,6 +387,7 @@ expr_lvl_10 = literal
     | cast_expression
     | function_call_chain
     | enum_shorthand
+    | directive
     ;
 
 function_call_chain = function_call , { OPERATOR_pipe , function_call } ;
