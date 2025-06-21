@@ -113,67 +113,6 @@ namespace hemera::parser {
 		return false;
 	}
 
-	bool could_be_expression(ParserState* state) {
-		return could_be_expression_with_result(state) 
-			|| could_be_expression_without_result(state);
-	}
-
-	bool could_be_expression_with_result(ParserState* state) {
-		if (expect(state, TokenType::LITERAL_CHAR)) {
-			return true;
-		}
-		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
-			return true;
-		}
-		if (expect(state, TokenType::LITERAL_INTEGER)) {
-			return true;
-		}
-		if (expect(state, TokenType::LITERAL_STRING)) {
-			return true;
-		}
-		if (expect(state, TokenType::IDENTIFIER)) {
-			return true;
-		}
-		if (expect(state, TokenType::OPERATOR_PLUS)) {
-			return true;
-		}
-		if (expect(state, TokenType::OPERATOR_MINUS)) {
-			return true;
-		}
-		if (expect(state, TokenType::OPERATOR_BITWISE_XOR)) {
-			return true;
-		}
-		if (expect(state, TokenType::KEYWORD_IF)) {
-			return true;
-		}
-		if (expect(state, TokenType::OPERATOR_NOT)) {
-			return true;
-		}
-		if (expect(state, TokenType::KEYWORD_TRUE)) {
-			return true;
-		}
-		if (expect(state, TokenType::KEYWORD_FALSE)) {
-			return true;
-		}
-		if (expect(state, TokenType::SYM_LBRACE)) {
-			return true;
-		}
-		return false;
-	}
-
-	bool could_be_expression_without_result(ParserState* state) {
-		if (expect(state, TokenType::KEYWORD_FOR)) {
-			return true;
-		}
-		if (expect(state, TokenType::KEYWORD_WITH)) {
-			return true;
-		}
-		if (expect(state, TokenType::KEYWORD_LOOP)) {
-			return true;
-		}
-		return false;
-	}
-
 	void file(std::string_view file_path, MyVector<Token>& tokens,
 		MyVector<ast::Node>& output)
 	{
@@ -593,9 +532,132 @@ namespace hemera::parser {
 			return false;
 		}
 
-		//TODO(ches) other scenarios
-		while (could_be_expression(state)) {
-			expression(state, parent);
+		while (!expect(state, TokenType::SYM_RBRACE)) {
+			switch (current_token(state).type) {
+			case TokenType::LITERAL_CHAR:
+			case TokenType::LITERAL_FLOATING_POINT:
+			case TokenType::LITERAL_INTEGER:
+			case TokenType::LITERAL_STRING:
+			case TokenType::IDENTIFIER:
+			case TokenType::OPERATOR_PLUS:
+			case TokenType::OPERATOR_MINUS:
+			case TokenType::OPERATOR_BITWISE_XOR:
+			case TokenType::KEYWORD_IF:
+			case TokenType::OPERATOR_NOT:
+			case TokenType::KEYWORD_TRUE:
+			case TokenType::KEYWORD_FALSE:
+			case TokenType::SYM_LBRACE:
+			case TokenType::KEYWORD_FOR:
+			case TokenType::KEYWORD_WITH:
+			case TokenType::KEYWORD_LOOP:
+				expression(state, parent);
+				break;
+			case TokenType::KEYWORD_RETURN:
+				//TODO(ches) return
+				break;
+			case TokenType::KEYWORD_DEFER:
+				//TODO(ches) defer
+				break;
+			case TokenType::KEYWORD_BREAK:
+				//TODO(ches) break
+				break;
+			case TokenType::KEYWORD_CONTINUE:
+				//TODO(ches) continue
+				break;
+			case TokenType::DIRECTIVE:
+				//TODO(ches) directive
+				break;
+			case TokenType::ANNOTATION:
+			case TokenType::COMMENT_BLOCK:
+			case TokenType::COMMENT_LINE:
+			case TokenType::END_OF_FILE:
+			case TokenType::INVALID:
+			case TokenType::KEYWORD_ALIAS:
+			case TokenType::KEYWORD_ALL:
+			case TokenType::KEYWORD_AS:
+			case TokenType::KEYWORD_AUTO_CAST:
+			case TokenType::KEYWORD_BIT_CAST:
+			case TokenType::KEYWORD_CASE:
+			case TokenType::KEYWORD_CAST:
+			case TokenType::KEYWORD_DISTINCT:
+			case TokenType::KEYWORD_ELSE:
+			case TokenType::KEYWORD_ENUM:
+			case TokenType::KEYWORD_FN:
+			case TokenType::KEYWORD_FROM:
+			case TokenType::KEYWORD_IMPORT:
+			case TokenType::KEYWORD_IN:
+			case TokenType::KEYWORD_IS_NONE:
+			case TokenType::KEYWORD_IS_SOME:
+			case TokenType::KEYWORD_MATCH:
+			case TokenType::KEYWORD_MUT:
+			case TokenType::KEYWORD_NULL:
+			case TokenType::KEYWORD_OR_BREAK:
+			case TokenType::KEYWORD_OR_CONTINUE:
+			case TokenType::KEYWORD_OR_ELSE:
+			case TokenType::KEYWORD_OR_RETURN:
+			case TokenType::KEYWORD_PACKAGE:
+			case TokenType::KEYWORD_PUSH_CONTEXT:
+			case TokenType::KEYWORD_STRUCT:
+			case TokenType::KEYWORD_SWITCH:
+			case TokenType::KEYWORD_UNION:
+			case TokenType::KEYWORD_USING:
+			case TokenType::KEYWORD_VOID:
+			case TokenType::KEYWORD_WHILE:
+			case TokenType::OPERATOR_AND:
+			case TokenType::OPERATOR_ASSIGN:
+			case TokenType::OPERATOR_ASSIGN_ADD:
+			case TokenType::OPERATOR_ASSIGN_AND:
+			case TokenType::OPERATOR_ASSIGN_BITWISE_AND:
+			case TokenType::OPERATOR_ASSIGN_BITWISE_OR:
+			case TokenType::OPERATOR_ASSIGN_BITWISE_XOR:
+			case TokenType::OPERATOR_ASSIGN_DIV:
+			case TokenType::OPERATOR_ASSIGN_LEFT_SHIFT:
+			case TokenType::OPERATOR_ASSIGN_MOD:
+			case TokenType::OPERATOR_ASSIGN_MUL:
+			case TokenType::OPERATOR_ASSIGN_OR:
+			case TokenType::OPERATOR_ASSIGN_REMAINDER:
+			case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC:
+			case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL:
+			case TokenType::OPERATOR_ASSIGN_SUB:
+			case TokenType::OPERATOR_BITWISE_OR:
+			case TokenType::OPERATOR_DIVIDE:
+			case TokenType::OPERATOR_DEREFERENCE:
+			case TokenType::OPERATOR_EQUAL:
+			case TokenType::OPERATOR_GREATER_THAN_OR_EQUAL:
+			case TokenType::OPERATOR_LEFT_SHIFT:
+			case TokenType::OPERATOR_LESS_THAN_OR_EQUAL:
+			case TokenType::OPERATOR_MODULUS:
+			case TokenType::OPERATOR_MULTIPLY:
+			case TokenType::OPERATOR_NOT_EQUAL:
+			case TokenType::OPERATOR_OR:
+			case TokenType::OPERATOR_PIPE:
+			case TokenType::OPERATOR_RANGE_ARRAY:
+			case TokenType::OPERATOR_RANGE_EXCLUSIVE:
+			case TokenType::OPERATOR_RANGE_INCLUSIVE:
+			case TokenType::OPERATOR_REMAINDER:
+			case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
+			case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
+			case TokenType::PIPE_REORDER_IDENTIFIER:
+			case TokenType::SYM_AMPERSAND:
+			case TokenType::SYM_ARROW_DOUBLE:
+			case TokenType::SYM_ARROW_SINGLE:
+			case TokenType::SYM_COLON:
+			case TokenType::SYM_COMMA:
+			case TokenType::SYM_DOT:
+			case TokenType::SYM_ELLIPSIS:
+			case TokenType::SYM_GT:
+			case TokenType::SYM_LBRACK:
+			case TokenType::SYM_LPAREN:
+			case TokenType::SYM_LT:
+			case TokenType::SYM_QUESTION:
+			case TokenType::SYM_RBRACE:
+			case TokenType::SYM_RBRACK:
+			case TokenType::SYM_RPAREN:
+			case TokenType::SYM_UNDERSCORE:
+			case TokenType::SYM_UNINITIALIZED:
+				report_error_on_last_token(state, ErrorCode::E3017);
+				return false;
+			}
 		}
 
 		if (!skip(state, TokenType::SYM_RBRACE)) {
@@ -606,16 +668,125 @@ namespace hemera::parser {
 	}
 
 	bool expression(ParserState* state, ast::Node& parent) {
-		if (could_be_expression_with_result(state)) {
-			if (!expression_with_result(state, parent)) {
-				return false;
-			}
-		}
-		if (!could_be_expression_without_result(state)) {
-			LOG_ERROR("Trying to parse an expression at an invalid time");
+		//TODO(ches) disambiguate on identifier case
+
+		switch (current_token(state).type) {
+		case TokenType::LITERAL_CHAR:
+		case TokenType::LITERAL_FLOATING_POINT:
+		case TokenType::LITERAL_INTEGER:
+		case TokenType::LITERAL_STRING:
+		case TokenType::IDENTIFIER:
+		case TokenType::OPERATOR_PLUS:
+		case TokenType::OPERATOR_MINUS:
+		case TokenType::OPERATOR_BITWISE_XOR:
+		case TokenType::KEYWORD_IF:
+		case TokenType::OPERATOR_NOT:
+		case TokenType::KEYWORD_TRUE:
+		case TokenType::KEYWORD_FALSE:
+		case TokenType::SYM_LBRACE:
+			return expression_with_result(state, parent);
+		case TokenType::KEYWORD_FOR:
+		case TokenType::KEYWORD_WITH:
+		case TokenType::KEYWORD_LOOP:
+			return expression_without_result(state, parent);
+		case TokenType::ANNOTATION:
+		case TokenType::COMMENT_BLOCK:
+		case TokenType::COMMENT_LINE:
+		case TokenType::DIRECTIVE:
+		case TokenType::END_OF_FILE:
+		case TokenType::INVALID:
+		case TokenType::KEYWORD_ALIAS:
+		case TokenType::KEYWORD_ALL:
+		case TokenType::KEYWORD_AS:
+		case TokenType::KEYWORD_AUTO_CAST:
+		case TokenType::KEYWORD_BIT_CAST:
+		case TokenType::KEYWORD_BREAK:
+		case TokenType::KEYWORD_CASE:
+		case TokenType::KEYWORD_CAST:
+		case TokenType::KEYWORD_CONTINUE:
+		case TokenType::KEYWORD_DEFER:
+		case TokenType::KEYWORD_DISTINCT:
+		case TokenType::KEYWORD_ELSE:
+		case TokenType::KEYWORD_ENUM:
+		case TokenType::KEYWORD_FN:
+		case TokenType::KEYWORD_FROM:
+		case TokenType::KEYWORD_IMPORT:
+		case TokenType::KEYWORD_IN:
+		case TokenType::KEYWORD_IS_NONE:
+		case TokenType::KEYWORD_IS_SOME:
+		case TokenType::KEYWORD_MATCH:
+		case TokenType::KEYWORD_MUT:
+		case TokenType::KEYWORD_NULL:
+		case TokenType::KEYWORD_OR_BREAK:
+		case TokenType::KEYWORD_OR_CONTINUE:
+		case TokenType::KEYWORD_OR_ELSE:
+		case TokenType::KEYWORD_OR_RETURN:
+		case TokenType::KEYWORD_PACKAGE:
+		case TokenType::KEYWORD_PUSH_CONTEXT:
+		case TokenType::KEYWORD_RETURN:
+		case TokenType::KEYWORD_STRUCT:
+		case TokenType::KEYWORD_SWITCH:
+		case TokenType::KEYWORD_UNION:
+		case TokenType::KEYWORD_USING:
+		case TokenType::KEYWORD_VOID:
+		case TokenType::KEYWORD_WHILE:
+		case TokenType::OPERATOR_AND:
+		case TokenType::OPERATOR_ASSIGN:
+		case TokenType::OPERATOR_ASSIGN_ADD:
+		case TokenType::OPERATOR_ASSIGN_AND:
+		case TokenType::OPERATOR_ASSIGN_BITWISE_AND:
+		case TokenType::OPERATOR_ASSIGN_BITWISE_OR:
+		case TokenType::OPERATOR_ASSIGN_BITWISE_XOR:
+		case TokenType::OPERATOR_ASSIGN_DIV:
+		case TokenType::OPERATOR_ASSIGN_LEFT_SHIFT:
+		case TokenType::OPERATOR_ASSIGN_MOD:
+		case TokenType::OPERATOR_ASSIGN_MUL:
+		case TokenType::OPERATOR_ASSIGN_OR:
+		case TokenType::OPERATOR_ASSIGN_REMAINDER:
+		case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC:
+		case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL:
+		case TokenType::OPERATOR_ASSIGN_SUB:
+		case TokenType::OPERATOR_BITWISE_OR:
+		case TokenType::OPERATOR_DIVIDE:
+		case TokenType::OPERATOR_DEREFERENCE:
+		case TokenType::OPERATOR_EQUAL:
+		case TokenType::OPERATOR_GREATER_THAN_OR_EQUAL:
+		case TokenType::OPERATOR_LEFT_SHIFT:
+		case TokenType::OPERATOR_LESS_THAN_OR_EQUAL:
+		case TokenType::OPERATOR_MODULUS:
+		case TokenType::OPERATOR_MULTIPLY:
+		case TokenType::OPERATOR_NOT_EQUAL:
+		case TokenType::OPERATOR_OR:
+		case TokenType::OPERATOR_PIPE:
+		case TokenType::OPERATOR_RANGE_ARRAY:
+		case TokenType::OPERATOR_RANGE_EXCLUSIVE:
+		case TokenType::OPERATOR_RANGE_INCLUSIVE:
+		case TokenType::OPERATOR_REMAINDER:
+		case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
+		case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
+		case TokenType::PIPE_REORDER_IDENTIFIER:
+		case TokenType::SYM_AMPERSAND:
+		case TokenType::SYM_ARROW_DOUBLE:
+		case TokenType::SYM_ARROW_SINGLE:
+		case TokenType::SYM_COLON:
+		case TokenType::SYM_COMMA:
+		case TokenType::SYM_DOT:
+		case TokenType::SYM_ELLIPSIS:
+		case TokenType::SYM_GT:
+		case TokenType::SYM_LBRACK:
+		case TokenType::SYM_LPAREN:
+		case TokenType::SYM_LT:
+		case TokenType::SYM_QUESTION:
+		case TokenType::SYM_RBRACE:
+		case TokenType::SYM_RBRACK:
+		case TokenType::SYM_RPAREN:
+		case TokenType::SYM_UNDERSCORE:
+		case TokenType::SYM_UNINITIALIZED:
+			report_error_on_last_token(state, ErrorCode::E3017);
 			return false;
 		}
-		return expression_with_result(state, parent);
+		LOG_ERROR("We should have parsed an expression");
+		return false;
 	}
 	
 	bool expression_with_result(ParserState* state, ast::Node& parent) {
