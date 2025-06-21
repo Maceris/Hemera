@@ -166,6 +166,7 @@ SYM_RBRACE = "}" ;
 SYM_RBRACK = "]" ;
 SYM_RPAREN = ")" ;
 SYM_UNDERSCORE = "_" ;
+SYM_UNINITIALIZED = "---" ;
 
 # Definitions
 
@@ -193,6 +194,7 @@ decl_rhs = expression_with_result
     | union_decl
     | enum_decl
     | ( [ KEYWORD_distinct ] , [ KEYWORD_alias ] , type )
+    | SYM_UNINITIALIZED
     ;
 
 function_decl = function_signature , block ;

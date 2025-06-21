@@ -115,6 +115,7 @@ namespace hemera {
 		SYM_RBRACK,
 		SYM_RPAREN,
 		SYM_UNDERSCORE,
+		SYM_UNINITIALIZED,
 	};
 
 	struct Token {

@@ -141,7 +141,7 @@ Array views represent a view into data stored in an array, or a subsection of on
 a : int[]
 ```
 
-Both static and dynamic arrays will be autocast to array views if 
+Both static and dynamic arrays will be auto-cast to array views if 
 provided to a function with an array view parameter.
 
 The range operators can be used to grab a view from indexes in an array.
@@ -226,6 +226,8 @@ foo :: fn(resizable: i8[..], fixed: i8[10]) {
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
+
+All types are initialized to zero, unless the symbol `---` is used, which indicates that a value should remain uninitialized. For example, `x : ComplicatedType[100] = ---`.
 
 ## Number Formats
 

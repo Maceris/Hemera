@@ -272,7 +272,6 @@ example :: fn() {
 ..   for use in defining resizable arrays, and creating array views
 ..=  inclusive range
 ..<  half-open range
-in   for use in looping over values
 ```
 
 # Operator Details

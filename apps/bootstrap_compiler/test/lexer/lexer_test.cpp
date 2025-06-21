@@ -77,6 +77,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	inputs.push_back(std::make_tuple("..<", TokenType::OPERATOR_RANGE_EXCLUSIVE));
 	inputs.push_back(std::make_tuple("..=", TokenType::OPERATOR_RANGE_INCLUSIVE));
 	inputs.push_back(std::make_tuple("...", TokenType::SYM_ELLIPSIS));
+	inputs.push_back(std::make_tuple("---", TokenType::SYM_UNINITIALIZED));
 
 	inputs.push_back(std::make_tuple("alias", TokenType::KEYWORD_ALIAS));
 	inputs.push_back(std::make_tuple("all", TokenType::KEYWORD_ALL));

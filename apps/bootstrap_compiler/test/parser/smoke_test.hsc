@@ -163,7 +163,7 @@ function_in_a_function :: fn() {
 default_values :: fn(x: int = 3, y: int = 4) -> int { return x + y }
 
 create_rectangle :: fn(x, y: int, width, height: uint) -> Rectangle {
-	result : Rectangle
+	result : Rectangle = ---
 	result.x = x
 	result.y = y
 	result.width = width

@@ -144,8 +144,8 @@ namespace hemera::lexer {
 		return true;
 	}
 
-	static char peek_char(Tokenizer& tokenizer) {
-		size_t next_index = static_cast<size_t>(tokenizer.column_number);
+	static char peek_char(Tokenizer& tokenizer, int extra_ahead = 0) {
+		size_t next_index = static_cast<size_t>(tokenizer.column_number + extra_ahead);
 		if (next_index >= tokenizer.current_line.length()) {
 			return 0;
 		}
@@ -640,6 +640,16 @@ namespace hemera::lexer {
 			case '=':
 				result_type = TokenType::OPERATOR_ASSIGN_SUB;
 				next_char(tokenizer, input_stream);
+				break;
+			case '-':
+				if (peek_char(tokenizer, 1) == '-') {
+					result_type = TokenType::SYM_UNINITIALIZED;
+					next_char(tokenizer, input_stream);
+					next_char(tokenizer, input_stream);
+				}
+				else {
+					result_type = TokenType::OPERATOR_MINUS;
+				}
 				break;
 			default:
 				result_type = TokenType::OPERATOR_MINUS;
@@ -1165,6 +1175,7 @@ namespace hemera::lexer {
 		case TokenType::SYM_RBRACK:
 		case TokenType::SYM_RPAREN:
 		case TokenType::SYM_UNDERSCORE:
+		case TokenType::SYM_UNINITIALIZED:
 		default:
 			string_alloc.delete_object(token_contents);
 			token_contents = nullptr;
