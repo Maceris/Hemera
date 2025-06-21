@@ -186,7 +186,7 @@ const_definition_rhs = SYM_COLON , decl_rhs ;
 mut_definition_rhs = SYM_EQ , decl_rhs ;
 any_definition = declaration , ( const_definition | mut_definition ) ;
 
-declaration = { comment_any } , identifier , SYM_COLON , [ type ]
+declaration = identifier , SYM_COLON , [ type ]
 
 decl_rhs = expression_with_result
     | function_decl
