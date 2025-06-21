@@ -176,7 +176,11 @@ package_statement = KEYWORD_package , identifier ;
 imports = import , [ imports ] ;
 import = KEYWORD_import , identifier , [ KEYWORD_as , identifier ] , [ KEYWORD_from, literal_string ] ;
 
-const_definitions = ( declaration , const_definition_rhs )+ ;
+const_definitions = { 
+    ( declaration , const_definition_rhs )
+    | ( directive , SYM_LBRACE , { declaration , const_definition_rhs } , SYM_RBRACE )
+    }
+    ;
 const_definition_rhs = SYM_COLON , decl_rhs ;
 mut_definition_rhs = SYM_EQ , decl_rhs ;
 any_definition = declaration , ( const_definition | mut_definition ) ;
@@ -261,14 +265,15 @@ union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifie
 enum_member = identifier ;
 
 block = SYM_LBRACE , 
-    ( expression
+    { ( expression
     | ( KEYWORD_return , expression )
     | ( KEYWORD_defer , expression )
     | ( KEYWORD_break , [ integer_decimal | KEYWORD_all ] )
     | KEYWORD_continue
-    )+
-    , SYM_RBRACE
-    ; 
+    )
+    | ( directive , block )
+    } , SYM_RBRACE
+    ;
 
 expression = expression_with_result 
     | expression_without_result
