@@ -913,8 +913,13 @@ namespace hemera::parser {
 	}
 	
 	bool expression_with_result(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		if (expect(state, TokenType::SYM_LBRACE)) {
+			return block(state, parent);
+		}
+		if (expect(state, TokenType::KEYWORD_MATCH)) {
+			return match_expression(state, parent);
+		}
+		return expr_lvl_1(state, parent);
 	}
 
 	bool expression_without_result(ParserState* state, ast::Node& parent) {
