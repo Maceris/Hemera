@@ -7,15 +7,26 @@
 namespace hemera::parser {
 
 	ParserState::ParserState(std::string_view file_path, 
-		MyVector<Token>& tokens, MyVector<ast::Node>& output)
+		MyVector<Token>& tokens, Allocator<ast::Node> node_alloc)
 		: current{ 0 }
 		, tokens{ tokens }
-		, output{ output }
+		, node_alloc{ node_alloc }
 		, file_path{ file_path }
 		, has_errors{ false }
 	{}
 	ParserState::ParserState(const ParserState&) = default;
 	ParserState::~ParserState() = default;
+
+
+	ExprResult::ExprResult(bool success, ast::Node* result)
+		: success{ success }
+		, result{ result }
+	{}
+	ExprResult::ExprResult(const ExprResult&) = default;
+	ExprResult::ExprResult(ExprResult&&) = default;
+	ExprResult& ExprResult::operator=(const ExprResult&) = default;
+	ExprResult& ExprResult::operator=(ExprResult&&) = default;
+	ExprResult::~ExprResult() = default;
 
 	static inline size_t clamp_index(size_t index, size_t size) {
 		static const size_t ZERO = 0;
@@ -30,33 +41,6 @@ namespace hemera::parser {
 	static inline Token next_token(ParserState* state) {
 		size_t index = clamp_index(state->current + 1, state->tokens.size());
 		return state->tokens[index];
-	}
-
-	/*
-	 * Presumes 
-	 * 1. the child is the last node added to the vector
-	 * 2. we add nodes in pre-order traversal order
-	 * 3. the state's current position hasn't been updated (thus is 
-	 *    at size - 1 for the vector, where our child node is)
-	 */
-	static inline void add_child(ParserState* state, ast::Node& parent,
-		ast::Node& child) {
-		size_t child_position = state->current;
-		ast::offset to_child = parent.total_children + 1;
-		ast::offset to_parent = -to_child;
-
-		child.parent = to_parent;
-
-		ast::Node* next_parent = &parent;
-
-		//TODO(ches) instead of this, aggregate and update the parent once
-		while (to_parent != 0) {
-			next_parent->total_children += 1;
-			// Recurse up the parents, updating child counts
-			child_position += to_parent; // becomes its parents, to_parent is negative
-			to_parent = next_parent->parent;
-			next_parent = &state->output[child_position];
-		}
 	}
 
 	static inline void report_error_on_last_token(ParserState* state, ErrorCode code) {
@@ -74,17 +58,19 @@ namespace hemera::parser {
 
 	void next(ParserState* state, ast::Node& parent) {
 		Token current = current_token(state);
-		ast::Node& child = state->output.emplace_back(ast::NodeType::LEAF, current);
-		add_child(state, parent, child);
+		ast::Node* child = state->node_alloc.new_object<ast::Node>(ast::NodeType::LEAF, current);
+		parent.children.push_back(child);
 		state->current += 1;
 	}
 
-	ast::Node& next_as_node(ParserState* state, ast::NodeType type, ast::Node& parent) {
+	ast::Node& next_as_node(ParserState* state, ast::NodeType type, ast::Node* parent) {
 		Token current = current_token(state);
-		ast::Node& result = state->output.emplace_back(type, current);
-		add_child(state, parent, result);
+		ast::Node* result = state->node_alloc.new_object<ast::Node>(type, current);
+		if (parent != nullptr) {
+			parent->children.push_back(result);
+		}
 		state->current += 1;
-		return result;
+		return *result;
 	}
 
 	bool accept(ParserState* state, TokenType token, ast::Node& parent) {
@@ -119,22 +105,24 @@ namespace hemera::parser {
 	}
 
 	void file(std::string_view file_path, MyVector<Token>& tokens,
-		MyVector<ast::Node>& output)
+		Allocator<ast::Node> node_alloc)
 	{
-		ParserState state(file_path, tokens, output);
+		ParserState state(file_path, tokens, node_alloc);
 
 		Token current(TokenType::END_OF_FILE, 0, 0);//TODO(ches) ???
-		ast::Node& node = state.output.emplace_back(ast::NodeType::FILE, current);
+		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
 
-		if (!package_statement(&state, node)) {
+		if (!package_statement(&state, *node)) {
 			//TODO(ches) log this?
 			return;
 		}
-		if (!imports(&state, node)) {
+		if (!imports(&state, *node)) {
 			//TODO(ches) log this?
 			return;
 		}
-		const_definitions(&state, node);
+		const_definitions(&state, *node);
+
+		//TODO(ches) flatten tree into array at the end
 	}
 
 	bool package_statement(ParserState* state, ast::Node& parent) {
@@ -142,7 +130,7 @@ namespace hemera::parser {
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return false;
 		}
-		ast::Node& node = next_as_node(state, ast::NodeType::PACKAGE, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::PACKAGE, &parent);
 
 		if (!accept(state, TokenType::IDENTIFIER, node)) {
 			report_error_on_last_token(state, ErrorCode::E3002);
@@ -162,7 +150,7 @@ namespace hemera::parser {
 	}
 
 	bool import(ParserState* state, ast::Node& parent) {
-		ast::Node& node = next_as_node(state, ast::NodeType::IMPORT, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::IMPORT, &parent);
 
 		skip(state, TokenType::KEYWORD_IMPORT);
 
@@ -272,19 +260,29 @@ namespace hemera::parser {
 			accept(state, TokenType::KEYWORD_ALIAS , parent);
 			return type(state, parent);
 		}
-		return expression_with_result(state, parent);
+		ExprResult rhs = expression_with_result(state, parent);
+		if (!rhs.success) {
+			return false;
+		}
+		parent.children.push_back(rhs.result);
+		return true;
 	}
 
 	bool function_decl(ParserState* state, ast::Node& parent) {
 		if (!function_signature(state, parent)) {
 			return false;
 		}
-		return block(state, parent);
+		ExprResult result = block(state, parent);
+		if (!result.success) {
+			return false;
+		}
+		parent.children.push_back(result.result);
+		return true;
 	}
 
 	bool struct_decl(ParserState* state, ast::Node& parent) {
 		skip(state, TokenType::KEYWORD_STRUCT);
-		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, &parent);
 
 		if (expect(state, TokenType::SYM_LBRACK)) {
 			if (!generic_tag(state, node)) {
@@ -308,7 +306,7 @@ namespace hemera::parser {
 
 	bool union_decl(ParserState* state, ast::Node& parent) {
 		skip(state, TokenType::KEYWORD_UNION);
-		ast::Node& node = next_as_node(state, ast::NodeType::UNION, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::UNION, &parent);
 
 		if (expect(state, TokenType::SYM_LBRACK)) {
 			if (!generic_tag(state, node)) {
@@ -332,7 +330,7 @@ namespace hemera::parser {
 
 	bool enum_decl(ParserState* state, ast::Node& parent) {
 		skip(state, TokenType::KEYWORD_ENUM);
-		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, &parent);
 
 		if (!skip(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
@@ -350,7 +348,7 @@ namespace hemera::parser {
 	}
 
 	bool type(ParserState* state, ast::Node& parent) {
-		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, &parent);
 		if (expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state, node);
 		}
@@ -391,7 +389,7 @@ namespace hemera::parser {
 	}
 
 	bool generic_tag(ParserState* state, ast::Node& parent) {
-		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, &parent);
 		if (!skip(state, TokenType::SYM_LBRACK)) {
 			report_error_on_last_token(state, ErrorCode::E3011);
 			return false;
@@ -413,7 +411,7 @@ namespace hemera::parser {
 	}
 
 	bool function_signature(ParserState* state, ast::Node& parent) {
-		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION, &parent);
 		if (!accept(state, TokenType::KEYWORD_FN, node)) {
 			report_error_on_last_token(state, ErrorCode::E3013);
 			return false;
@@ -445,7 +443,7 @@ namespace hemera::parser {
 	}
 
 	bool function_parameter_list(ParserState* state, ast::Node& parent) {
-		ast::Node& node = next_as_node(state, ast::NodeType::LIST, parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::LIST, &parent);
 
 		while (accept(state, TokenType::IDENTIFIER, node)) {
 			if (!skip(state, TokenType::SYM_COLON)) {
@@ -483,7 +481,7 @@ namespace hemera::parser {
 				}
 			}
 			else {
-				ast::Node& node = next_as_node(state, ast::NodeType::LIST, parent);
+				ast::Node& node = next_as_node(state, ast::NodeType::LIST, &parent);
 
 				while (!expect(state, TokenType::SYM_RPAREN)) {
 					if (skip(state, TokenType::SYM_LPAREN)) {
@@ -531,11 +529,13 @@ namespace hemera::parser {
 		}
 	}
 
-	bool block(ParserState* state, ast::Node& parent) {
-		if (!skip(state, TokenType::SYM_LBRACE)) {
+	ExprResult block(ParserState* state, ast::Node& parent) {
+		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
-			return false;
+			return ExprResult{ false };
 		}
+
+		ast::Node& block_node = next_as_node(state, ast::NodeType::BLOCK, &parent);
 
 		while (!expect(state, TokenType::SYM_RBRACE)) {
 			switch (current_token(state).type) {
@@ -555,7 +555,9 @@ namespace hemera::parser {
 			case TokenType::OPERATOR_BITWISE_XOR:
 			case TokenType::OPERATOR_NOT:
 			case TokenType::SYM_LBRACE:
-				return expression(state, parent);
+				if (!expression(state, block_node)) {
+					return ExprResult{ false };
+				}
 			case TokenType::KEYWORD_RETURN:
 				//TODO(ches) return
 				break;
@@ -686,7 +688,10 @@ namespace hemera::parser {
 		case TokenType::KEYWORD_TRUE:
 		case TokenType::KEYWORD_FALSE:
 		case TokenType::SYM_LBRACE:
-			return expression_with_result(state, parent);
+		{
+			ExprResult result = expression_with_result(state, parent);
+			return result.success;
+		}
 		case TokenType::KEYWORD_FOR:
 		case TokenType::KEYWORD_WITH:
 		case TokenType::KEYWORD_LOOP:
@@ -752,7 +757,10 @@ namespace hemera::parser {
 			case TokenType::SYM_GT:
 			case TokenType::SYM_LT:
 			case TokenType::SYM_LPAREN:
-				return expression_with_result(state, parent);
+			{
+				ExprResult result = expression_with_result(state, parent);
+				return result.success;
+			}
 			// Definitely not valid right after an identifier
 			case TokenType::ANNOTATION:
 			case TokenType::COMMENT_BLOCK:
@@ -912,14 +920,14 @@ namespace hemera::parser {
 		return false;
 	}
 	
-	bool expression_with_result(ParserState* state, ast::Node& parent) {
+	ExprResult expression_with_result(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::SYM_LBRACE)) {
 			return block(state, parent);
 		}
 		if (expect(state, TokenType::KEYWORD_MATCH)) {
 			return match_expression(state, parent);
 		}
-		return expr_lvl_1(state, parent);
+		return expr_lvl_1(state);
 	}
 
 	bool expression_without_result(ParserState* state, ast::Node& parent) {
@@ -999,118 +1007,172 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool expr_lvl_1(ParserState* state, ast::Node& parent) {
-		//TODO(ches) this definitely won't work as a tree
+	ExprResult expr_lvl_1(ParserState* state) {
 		if (expect(state, TokenType::KEYWORD_IF)) {
-			return if_expression(state, parent);
-		}
-		if (!expr_lvl_2(state, parent)) {
-			return false;
-		}
-		if (accept(state, TokenType::KEYWORD_IS_NONE, parent)) {
-			return true;
-		}
-		if (accept(state, TokenType::KEYWORD_IS_SOME, parent)) {
-			return true;
-		}
-		if (accept(state, TokenType::KEYWORD_OR_BREAK, parent)) {
-			return true;
-		}
-		if (accept(state, TokenType::KEYWORD_OR_CONTINUE, parent)) {
-			return true;
-		}
-		if (accept(state, TokenType::KEYWORD_OR_ELSE, parent)) {
-			return expression_with_result(state, parent);
-		}
-		if (accept(state, TokenType::KEYWORD_OR_RETURN, parent)) {
-			return expression_with_result(state, parent);
+			return if_expression(state);
 		}
 
-		return true;
+		ExprResult lhs = expr_lvl_2(state);
+
+		if (!lhs.result) {
+			return lhs;
+		}
+
+		if (expect(state, TokenType::KEYWORD_IS_NONE)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			result.children.push_back(lhs.result);
+			accept(state, TokenType::KEYWORD_IS_NONE, result);
+			return ExprResult{ true, &result };
+		}
+		if (expect(state, TokenType::KEYWORD_IS_SOME)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			result.children.push_back(lhs.result);
+			accept(state, TokenType::KEYWORD_IS_SOME, result);
+			return ExprResult{ true, &result };
+		}
+		if (expect(state, TokenType::KEYWORD_OR_BREAK)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			result.children.push_back(lhs.result);
+			accept(state, TokenType::KEYWORD_OR_BREAK, result);
+			return ExprResult{ true, &result };
+		}
+		if (expect(state, TokenType::KEYWORD_OR_CONTINUE)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			result.children.push_back(lhs.result);
+			accept(state, TokenType::KEYWORD_OR_CONTINUE, result);
+			return ExprResult{ true, &result };
+		}
+		if (expect(state, TokenType::KEYWORD_OR_ELSE)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::KEYWORD_OR_ELSE, result);
+
+			ExprResult rhs = expression_with_result(state, result);
+			if (!rhs.success) {
+				//TODO(ches) cleanup memory??
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		if (expect(state, TokenType::KEYWORD_OR_RETURN)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::KEYWORD_OR_RETURN, result);
+
+			ExprResult rhs = expression_with_result(state, result);
+			if (!rhs.success) {
+				//TODO(ches) cleanup memory??
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		report_error_on_last_token(state, ErrorCode::E3017);
+		return ExprResult{ false };
 	}
 
-	bool expr_lvl_2(ParserState* state, ast::Node& parent) {
-		if (!expr_lvl_3(state, parent)) {
-			return false;
-		}
-		if (expect(state, TokenType::OPERATOR_RANGE_EXCLUSIVE)) {
+	ExprResult expr_lvl_2(ParserState* state) {
+		ExprResult lhs = expr_lvl_3(state);
 
-			accept(state, TokenType::OPERATOR_RANGE_EXCLUSIVE, parent);
-			if (!expr_lvl_3(state, parent)) {
-				return false;
+		if (!lhs.success) {
+			return { false };
+		}
+
+		if (expect(state, TokenType::OPERATOR_RANGE_EXCLUSIVE)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+			
+			accept(state, TokenType::OPERATOR_RANGE_EXCLUSIVE, result);
+
+			ExprResult rhs = expr_lvl_3(state);
+			if (!rhs.success) {
+				//TODO(ches) cleanup memory??
+				return ExprResult{ false };
 			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
 		}
 		else if (expect(state, TokenType::OPERATOR_RANGE_INCLUSIVE)) {
-			accept(state, TokenType::OPERATOR_RANGE_INCLUSIVE, parent);
-			if (!expr_lvl_3(state, parent)) {
-				return false;
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_RANGE_INCLUSIVE, result);
+
+			ExprResult rhs = expr_lvl_3(state);
+			if (!rhs.success) {
+				//TODO(ches) cleanup memory??
+				return ExprResult{ false };
 			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
 		}
-		return true;
+
+		report_error_on_last_token(state, ErrorCode::E3017);
+		return ExprResult{ false };
 	}
 
-	bool expr_lvl_3(ParserState* state, ast::Node& parent) {
-
-
-
-
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_3(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_4(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_4(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_5(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_5(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_6(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_6(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_7(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_7(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_8(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_8(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_9(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_9(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool expr_lvl_10(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult expr_lvl_10(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool function_call_chain(ParserState* state, ast::Node& parent) {
+	ExprResult function_call_chain(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		return ExprResult{ true, nullptr };
 	}
 	
-	bool cast_expression(ParserState* state, ast::Node& parent) {
+	ExprResult cast_expression(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		return ExprResult{ true, nullptr };
 	}
 
-	bool if_expression(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult if_expression(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
-	bool else_if_extension(ParserState* state, ast::Node& parent) {
+	ExprResult else_if_extension(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		return ExprResult{ true, nullptr };
 	}
 
 	bool for_loop(ParserState* state, ast::Node& parent) {
@@ -1153,9 +1215,9 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool match_expression(ParserState* state, ast::Node& parent) {
+	ExprResult match_expression(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		return ExprResult{ true, nullptr };
 	}
 
 	bool match_entry(ParserState* state, ast::Node& parent) {

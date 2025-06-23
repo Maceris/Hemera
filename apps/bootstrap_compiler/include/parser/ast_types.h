@@ -8,6 +8,7 @@
 namespace hemera::ast {
 	enum class NodeType {
 		BINARY_OPERATOR,
+		BLOCK,
 		DEFINITION,
 		ENUM,
 		FILE,
@@ -27,15 +28,30 @@ namespace hemera::ast {
 
 	struct Node {
 		Token value;
+		Node* parent;
+		MyVector<Node*> children;
+		NodeType type;
+		const char padding[4] = { 0 };
+
+		Node(NodeType type, Token value);
+		Node(const Node&) = delete;
+		Node(Node&&) = delete;
+		Node& operator=(const Node&) = delete;
+		Node& operator=(Node&&) = delete;
+		~Node();
+	};
+
+	struct FlatNode {
+		Token value;
 		offset parent;
 		offset total_children;
 		NodeType type;
 		const char padding[4] = { 0 };
-		Node(NodeType type, Token value);
-		Node(const Node&);
-		Node(Node&&);
-		Node& operator=(const Node&) = delete;
-		Node& operator=(Node&&) = delete;
-		~Node();
+		FlatNode(NodeType type, Token value);
+		FlatNode(const FlatNode&);
+		FlatNode(FlatNode&&);
+		FlatNode& operator=(const FlatNode&) = delete;
+		FlatNode& operator=(FlatNode&&) = delete;
+		~FlatNode();
 	};
 }
