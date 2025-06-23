@@ -1000,16 +1000,60 @@ namespace hemera::parser {
 	}
 
 	bool expr_lvl_1(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		//TODO(ches) this definitely won't work as a tree
+		if (expect(state, TokenType::KEYWORD_IF)) {
+			return if_expression(state, parent);
+		}
+		if (!expr_lvl_2(state, parent)) {
+			return false;
+		}
+		if (accept(state, TokenType::KEYWORD_IS_NONE, parent)) {
+			return true;
+		}
+		if (accept(state, TokenType::KEYWORD_IS_SOME, parent)) {
+			return true;
+		}
+		if (accept(state, TokenType::KEYWORD_OR_BREAK, parent)) {
+			return true;
+		}
+		if (accept(state, TokenType::KEYWORD_OR_CONTINUE, parent)) {
+			return true;
+		}
+		if (accept(state, TokenType::KEYWORD_OR_ELSE, parent)) {
+			return expression_with_result(state, parent);
+		}
+		if (accept(state, TokenType::KEYWORD_OR_RETURN, parent)) {
+			return expression_with_result(state, parent);
+		}
+
 		return true;
 	}
 
 	bool expr_lvl_2(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		if (!expr_lvl_3(state, parent)) {
+			return false;
+		}
+		if (expect(state, TokenType::OPERATOR_RANGE_EXCLUSIVE)) {
+
+			accept(state, TokenType::OPERATOR_RANGE_EXCLUSIVE, parent);
+			if (!expr_lvl_3(state, parent)) {
+				return false;
+			}
+		}
+		else if (expect(state, TokenType::OPERATOR_RANGE_INCLUSIVE)) {
+			accept(state, TokenType::OPERATOR_RANGE_INCLUSIVE, parent);
+			if (!expr_lvl_3(state, parent)) {
+				return false;
+			}
+		}
 		return true;
 	}
 
 	bool expr_lvl_3(ParserState* state, ast::Node& parent) {
+
+
+
+
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
 		return true;
 	}

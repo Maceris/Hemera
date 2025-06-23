@@ -7,6 +7,7 @@
 
 namespace hemera::ast {
 	enum class NodeType {
+		BINARY_OPERATOR,
 		DEFINITION,
 		ENUM,
 		FILE,
@@ -18,6 +19,7 @@ namespace hemera::ast {
 		PACKAGE,
 		STRUCT,
 		TYPE,
+		UNARY_OPERATOR,
 		UNION,
 	};
 
