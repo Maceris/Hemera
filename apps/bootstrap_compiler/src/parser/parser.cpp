@@ -569,6 +569,7 @@ namespace hemera::parser {
 				if (!expression(state, block_node)) {
 					return ExprResult{ false };
 				}
+				return ExprResult{ true, &block_node };
 			case TokenType::KEYWORD_RETURN:
 				//TODO(ches) return
 				break;
@@ -1133,38 +1134,382 @@ namespace hemera::parser {
 	}
 
 	ExprResult expr_lvl_3(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		ExprResult lhs = expr_lvl_4(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		if (expect(state, TokenType::OPERATOR_OR)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_OR, result);
+
+			ExprResult rhs = expr_lvl_3(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
 	}
 
 	ExprResult expr_lvl_4(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		ExprResult lhs = expr_lvl_5(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		if (expect(state, TokenType::OPERATOR_AND)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_AND, result);
+
+			ExprResult rhs = expr_lvl_4(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
 	}
 
 	ExprResult expr_lvl_5(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		ExprResult lhs = expr_lvl_6(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		if (expect(state, TokenType::OPERATOR_EQUAL)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_EQUAL, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_NOT_EQUAL)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_NOT_EQUAL, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::SYM_LT)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::SYM_LT, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::SYM_GT)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::SYM_GT, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_LESS_THAN_OR_EQUAL)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_LESS_THAN_OR_EQUAL, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_GREATER_THAN_OR_EQUAL)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_GREATER_THAN_OR_EQUAL, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
 	}
 
 	ExprResult expr_lvl_6(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		ExprResult lhs = expr_lvl_7(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		if (expect(state, TokenType::OPERATOR_PLUS)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_PLUS, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_MINUS)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_MINUS, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_BITWISE_OR)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_BITWISE_OR, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_BITWISE_XOR)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_BITWISE_XOR, result);
+
+			ExprResult rhs = expr_lvl_6(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
 	}
 
 	ExprResult expr_lvl_7(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		ExprResult lhs = expr_lvl_8(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		if (expect(state, TokenType::OPERATOR_MULTIPLY)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_MULTIPLY, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_DIVIDE)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_DIVIDE, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_MODULUS)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_MODULUS, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_REMAINDER)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_REMAINDER, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::SYM_AMPERSAND)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::SYM_AMPERSAND, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_LEFT_SHIFT)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_LEFT_SHIFT, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		else if (expect(state, TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			accept(state, TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL, result);
+
+			ExprResult rhs = expr_lvl_7(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
 	}
 
 	ExprResult expr_lvl_8(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		if (expect(state, TokenType::SYM_LPAREN)) {
+			ast::Node& result = next_as_node(state, ast::NodeType::PAREN_GROUP);
+			
+			ExprResult child = expression_with_result(state, result);
+
+			if (!child.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(child.result);
+
+			if (!skip(state, TokenType::SYM_RPAREN)) {
+				report_error_on_last_token(state, ErrorCode::E3015);
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			return ExprResult{ true, &result };
+		}
+		else {
+			return expr_lvl_9(state);
+		}
 	}
 
 	ExprResult expr_lvl_9(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		if (expect(state, TokenType::OPERATOR_PLUS)) {
+
+			ast::Node& result = next_as_node(state, ast::NodeType::PAREN_GROUP);
+		}
+		else if (expect(state, TokenType::OPERATOR_MINUS)) {
+
+		}
+		else if (expect(state, TokenType::OPERATOR_BITWISE_XOR)) {
+
+		}
+		else if (expect(state, TokenType::OPERATOR_NOT)) {
+
+		}
+		else {
+			return expr_lvl_10;
+		}
+
 	}
 
 	ExprResult expr_lvl_10(ParserState* state) {

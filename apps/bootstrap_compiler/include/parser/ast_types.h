@@ -18,6 +18,7 @@ namespace hemera::ast {
 		LEAF,
 		LIST,
 		PACKAGE,
+		PAREN_GROUP,
 		STRUCT,
 		TYPE,
 		UNARY_OPERATOR,

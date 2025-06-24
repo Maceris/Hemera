@@ -349,23 +349,24 @@ expr_lvl_5 = expr_lvl_6 ,
     ]
     ;
 
-expr_lvl_6 = 
-    | ( expr_lvl_7 , OPERATOR_plus , expr_lvl_6 )
-    | ( expr_lvl_7 , OPERATOR_minus , expr_lvl_6 )
-    | ( expr_lvl_7 , OPERATOR_bitwise_or , expr_lvl_6 )
-    | ( expr_lvl_7 , OPERATOR_assign_bitwise_xor , expr_lvl_6 )
-    | expr_lvl_7
+expr_lvl_6 = expr_lvl_7 ,
+    [ ( OPERATOR_plus , expr_lvl_6 )
+    | ( OPERATOR_minus , expr_lvl_6 )
+    | ( OPERATOR_bitwise_or , expr_lvl_6 )
+    | ( OPERATOR_bitwise_xor , expr_lvl_6 )
+    ]
     ;
 
-expr_lvl_7 = ( expr_lvl_8 , OPERATOR_multiply , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_divide , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_modulus , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_remainder , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_assign_bitwise_and , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_left_shift , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_right_shift_arithmetic , expr_lvl_7 )
-    | ( expr_lvl_8 , OPERATOR_right_shift_logical , expr_lvl_7 )
-    | expr_lvl_8
+expr_lvl_7 = expr_lvl_8 , 
+    [ ( OPERATOR_multiply , expr_lvl_7 )
+    | ( OPERATOR_divide , expr_lvl_7 )
+    | ( OPERATOR_modulus , expr_lvl_7 )
+    | ( OPERATOR_remainder , expr_lvl_7 )
+    | ( SYM_AMPERSAND , expr_lvl_7 )
+    | ( OPERATOR_left_shift , expr_lvl_7 )
+    | ( OPERATOR_right_shift_arithmetic , expr_lvl_7 )
+    | ( OPERATOR_right_shift_logical , expr_lvl_7 )
+    ]
     ;
 
 expr_lvl_8 = ( SYM_LPAREN , expression_with_result , SYM_RPAREN )
