@@ -50,6 +50,17 @@ namespace hemera::parser {
 		//TODO(ches) opportunity for showing the line, or printing the token, other text
 	}
 
+	static void delete_node(Allocator<ast::Node>& node_alloc, ast::Node* node) {
+		if (node == nullptr) {
+			return;
+		}
+		for (ast::Node* child : node->children) {
+			delete_node(node_alloc, child);
+			node->children.clear();
+		}
+		node_alloc.delete_object<ast::Node>(node);
+	}
+
 	//static inline void report_warning_on_last_token(ParserState* state, WarningCode code) {
 	//	Token token = current_token(state);
 	//	report_warning(code, state->file_path, token.line_number, token.column_number);
@@ -690,7 +701,11 @@ namespace hemera::parser {
 		case TokenType::SYM_LBRACE:
 		{
 			ExprResult result = expression_with_result(state, parent);
-			return result.success;
+			if (!result.success) {
+				return false;
+			}
+			parent.children.push_back(result.result);
+			return true;
 		}
 		case TokenType::KEYWORD_FOR:
 		case TokenType::KEYWORD_WITH:
@@ -759,7 +774,11 @@ namespace hemera::parser {
 			case TokenType::SYM_LPAREN:
 			{
 				ExprResult result = expression_with_result(state, parent);
-				return result.success;
+				if (!result.success) {
+					return false;
+				}
+				parent.children.push_back(result.result);
+				return true;
 			}
 			// Definitely not valid right after an identifier
 			case TokenType::ANNOTATION:
@@ -1014,8 +1033,8 @@ namespace hemera::parser {
 
 		ExprResult lhs = expr_lvl_2(state);
 
-		if (!lhs.result) {
-			return lhs;
+		if (!lhs.success) {
+			return ExprResult{ false };
 		}
 
 		if (expect(state, TokenType::KEYWORD_IS_NONE)) {
@@ -1024,25 +1043,25 @@ namespace hemera::parser {
 			accept(state, TokenType::KEYWORD_IS_NONE, result);
 			return ExprResult{ true, &result };
 		}
-		if (expect(state, TokenType::KEYWORD_IS_SOME)) {
+		else if (expect(state, TokenType::KEYWORD_IS_SOME)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 			result.children.push_back(lhs.result);
 			accept(state, TokenType::KEYWORD_IS_SOME, result);
 			return ExprResult{ true, &result };
 		}
-		if (expect(state, TokenType::KEYWORD_OR_BREAK)) {
+		else if (expect(state, TokenType::KEYWORD_OR_BREAK)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 			result.children.push_back(lhs.result);
 			accept(state, TokenType::KEYWORD_OR_BREAK, result);
 			return ExprResult{ true, &result };
 		}
-		if (expect(state, TokenType::KEYWORD_OR_CONTINUE)) {
+		else if (expect(state, TokenType::KEYWORD_OR_CONTINUE)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 			result.children.push_back(lhs.result);
 			accept(state, TokenType::KEYWORD_OR_CONTINUE, result);
 			return ExprResult{ true, &result };
 		}
-		if (expect(state, TokenType::KEYWORD_OR_ELSE)) {
+		else if (expect(state, TokenType::KEYWORD_OR_ELSE)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
@@ -1050,13 +1069,13 @@ namespace hemera::parser {
 
 			ExprResult rhs = expression_with_result(state, result);
 			if (!rhs.success) {
-				//TODO(ches) cleanup memory??
+				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
 			return ExprResult{ true, &result };
 		}
-		if (expect(state, TokenType::KEYWORD_OR_RETURN)) {
+		else if (expect(state, TokenType::KEYWORD_OR_RETURN)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
@@ -1064,15 +1083,14 @@ namespace hemera::parser {
 
 			ExprResult rhs = expression_with_result(state, result);
 			if (!rhs.success) {
-				//TODO(ches) cleanup memory??
+				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
 			return ExprResult{ true, &result };
 		}
 
-		report_error_on_last_token(state, ErrorCode::E3017);
-		return ExprResult{ false };
+		return lhs;
 	}
 
 	ExprResult expr_lvl_2(ParserState* state) {
@@ -1090,7 +1108,7 @@ namespace hemera::parser {
 
 			ExprResult rhs = expr_lvl_3(state);
 			if (!rhs.success) {
-				//TODO(ches) cleanup memory??
+				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
@@ -1104,15 +1122,14 @@ namespace hemera::parser {
 
 			ExprResult rhs = expr_lvl_3(state);
 			if (!rhs.success) {
-				//TODO(ches) cleanup memory??
+				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
 			return ExprResult{ true, &result };
 		}
 
-		report_error_on_last_token(state, ErrorCode::E3017);
-		return ExprResult{ false };
+		return lhs;
 	}
 
 	ExprResult expr_lvl_3(ParserState* state) {
