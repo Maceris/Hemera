@@ -151,11 +151,29 @@ namespace hemera::parser {
 	}
 
 	bool imports(ParserState* state, ast::Node& parent) {
-		while (expect(state, TokenType::KEYWORD_IMPORT)) {
-			if (!import(state, parent)) {
-				//TODO(ches) log this?
+
+		TokenType next_type = next_token(state).type;
+		while (next_type == TokenType::KEYWORD_IMPORT 
+			|| next_type == TokenType::DIRECTIVE
+		) {
+			if (next_type == TokenType::DIRECTIVE) {
+				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+				if (!skip(state, TokenType::SYM_LBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3018);
+					return false;
+				}
+				if (!imports(state, directive)) {
+					return false;
+				}
+				if (!skip(state, TokenType::SYM_RBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3019);
+					return false;
+				}
+			}
+			else if (!import(state, parent)) {
 				return false;
 			}
+			next_type = next_token(state).type;
 		}
 		return true;
 	}

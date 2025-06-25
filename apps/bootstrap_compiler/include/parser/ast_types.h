@@ -10,6 +10,7 @@ namespace hemera::ast {
 		BINARY_OPERATOR,
 		BLOCK,
 		DEFINITION,
+		DIRECTIVE,
 		ENUM,
 		FILE,
 		FUNCTION,
