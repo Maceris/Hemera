@@ -14,6 +14,7 @@ namespace hemera::ast {
 		FILE,
 		FUNCTION,
 		GENERIC_TAG,
+		IDENTIFIER,
 		IMPORT,
 		LEAF,
 		LIST,

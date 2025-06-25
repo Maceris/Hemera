@@ -25,3 +25,4 @@ E3017,Unexpected token
 E3018,Expected an opening brace
 E3019,Expected a closing brace
 E3020,Invalid struct body
+E3021,Expected a closing brace

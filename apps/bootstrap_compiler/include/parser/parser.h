@@ -99,8 +99,9 @@ namespace hemera::parser {
 	ExprResult expr_lvl_8(ParserState* state);
 	ExprResult expr_lvl_9(ParserState* state);
 	ExprResult expr_lvl_10(ParserState* state);
-	ExprResult function_call_chain(ParserState* state, ast::Node& parent);
-	ExprResult cast_expression(ParserState* state, ast::Node& parent);
+	bool function_call(ParserState* state, ast::Node& parent);
+	bool function_call_input_list(ParserState* state, ast::Node& parent);
+	ExprResult cast_expression(ParserState* state);
 	ExprResult if_expression(ParserState* state);
 	ExprResult else_if_extension(ParserState* state, ast::Node& parent);
 	bool for_loop(ParserState* state, ast::Node& parent);
@@ -108,7 +109,7 @@ namespace hemera::parser {
 	bool push_context(ParserState* state, ast::Node& parent);
 	bool array_access_extension(ParserState* state, ast::Node& parent);
 	bool field_access_extension(ParserState* state, ast::Node& parent);
-	bool enum_shorthand(ParserState* state, ast::Node& parent);
+	ExprResult enum_shorthand(ParserState* state);
 	bool switch_statement(ParserState* state, ast::Node& parent);
 	bool switch_entry(ParserState* state, ast::Node& parent);
 	ExprResult match_expression(ParserState* state, ast::Node& parent);

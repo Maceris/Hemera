@@ -961,23 +961,19 @@ namespace hemera::parser {
 	}
 
 	bool literal(ParserState* state, ast::Node& parent) {
-		if (expect(state, TokenType::LITERAL_CHAR)) {
-			accept(state, TokenType::LITERAL_CHAR, parent);
-			return true;
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::LITERAL_CHAR
+			|| current == TokenType::LITERAL_FLOATING_POINT
+			|| current == TokenType::LITERAL_INTEGER
+			|| current == TokenType::LITERAL_STRING
+			|| current == TokenType::KEYWORD_TRUE
+			|| current == TokenType::KEYWORD_FALSE
+			|| current == TokenType::KEYWORD_NULL
+			) {
+			return accept(state, current, parent);
 		}
-		if (expect(state, TokenType::LITERAL_FLOATING_POINT)) {
-			accept(state, TokenType::LITERAL_FLOATING_POINT, parent);
-			return true;
-		}
-		if (expect(state, TokenType::LITERAL_INTEGER)) {
-			accept(state, TokenType::LITERAL_INTEGER, parent);
-			return true;
-		}
-		if (expect(state, TokenType::LITERAL_STRING)) {
-			accept(state, TokenType::LITERAL_STRING, parent);
-			return true;
-		}
-		return type(state, parent);
+		
+		return false;
 	}
 
 	bool struct_body(ParserState* state, ast::Node& parent) {
@@ -1351,7 +1347,7 @@ namespace hemera::parser {
 		if (!lhs.success) {
 			return { false };
 		}
-
+		//TODO(ches) fix this, it sucks
 		if (expect(state, TokenType::OPERATOR_MULTIPLY)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
@@ -1493,37 +1489,144 @@ namespace hemera::parser {
 	}
 
 	ExprResult expr_lvl_9(ParserState* state) {
-		if (expect(state, TokenType::OPERATOR_PLUS)) {
+		ast::Node* result = nullptr;
 
-			ast::Node& result = next_as_node(state, ast::NodeType::PAREN_GROUP);
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::OPERATOR_PLUS
+			|| current == TokenType::OPERATOR_MINUS
+			|| current == TokenType::OPERATOR_BITWISE_XOR
+			|| current == TokenType::OPERATOR_NOT) {
+			result = &next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 		}
-		else if (expect(state, TokenType::OPERATOR_MINUS)) {
+		
+		ExprResult expr = expr_lvl_10(state);
+		
+		if (!expr.success) {
 
+			if (result != nullptr) {
+				delete_node(state->node_alloc, result);
+				result = nullptr;
+			}
+			return ExprResult{ false };
 		}
-		else if (expect(state, TokenType::OPERATOR_BITWISE_XOR)) {
 
-		}
-		else if (expect(state, TokenType::OPERATOR_NOT)) {
-
+		if (result == nullptr) {
+			result = expr.result;
 		}
 		else {
-			return expr_lvl_10;
+			result->children.push_back(expr.result);
 		}
-
+		return ExprResult{ true, result };
 	}
 
 	ExprResult expr_lvl_10(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		const TokenType current = current_token(state).type;
+
+		if (current == TokenType::KEYWORD_CAST
+			|| current == TokenType::KEYWORD_BIT_CAST
+			|| current == TokenType::KEYWORD_AUTO_CAST) {
+			return cast_expression(state);
+		}
+		if (current == TokenType::SYM_DOT) {
+			return enum_shorthand(state);
+		}
+		if (current == TokenType::DIRECTIVE) {
+			ast::Node& result = next_as_node(state, ast::NodeType::LEAF);
+			return ExprResult{ true , &result };
+		}
+		
+		if (current == TokenType::LITERAL_CHAR
+			|| current == TokenType::LITERAL_FLOATING_POINT
+			|| current == TokenType::LITERAL_INTEGER
+			|| current == TokenType::LITERAL_STRING
+			|| current == TokenType::KEYWORD_TRUE
+			|| current == TokenType::KEYWORD_FALSE
+			|| current == TokenType::KEYWORD_NULL)
+		{
+			ast::Node& result = next_as_node(state, ast::NodeType::LEAF);
+			return ExprResult{ true , &result };
+		}
+		if (current == TokenType::IDENTIFIER) {
+
+			ast::Node& identifier = next_as_node(state, ast::NodeType::IDENTIFIER);
+			
+			while (expect(state, TokenType::SYM_LBRACK) 
+				|| expect(state, TokenType::SYM_DOT)
+				|| expect(state, TokenType::SYM_LPAREN)) {
+
+				if (accept(state, TokenType::SYM_LBRACK, identifier)) {
+
+					if (!expect(state, TokenType::SYM_RBRACK)) {
+						ExprResult index = expression_with_result(state, identifier);
+						if (!index.success) {
+							delete_node(state->node_alloc, &identifier);
+							return ExprResult{ false };
+						}
+						identifier.children.push_back(index.result);
+					}
+					if (!accept(state, TokenType::SYM_RBRACK, identifier)) {
+						report_error_on_last_token(state, ErrorCode::E3021);
+						delete_node(state->node_alloc, &identifier);
+						return ExprResult{ false };
+					}
+					continue;
+				}
+				if (accept(state, TokenType::SYM_DOT, identifier)) {
+					if (!accept(state, TokenType::IDENTIFIER, identifier)) {
+						report_error_on_last_token(state, ErrorCode::E3009);
+						delete_node(state->node_alloc, &identifier);
+						return ExprResult{ false };
+					}
+					continue;
+				}
+				if (accept(state, TokenType::SYM_LPAREN, identifier)) {
+					if (!expect(state, TokenType::IDENTIFIER)) {
+						if (!function_call_input_list(state, identifier)) {
+							report_error_on_last_token(state, ErrorCode::E3021);
+							delete_node(state->node_alloc, &identifier);
+							return ExprResult{ false };
+						}
+					}
+					if (!accept(state, TokenType::SYM_RPAREN, identifier)) {
+						report_error_on_last_token(state, ErrorCode::E3021);
+						delete_node(state->node_alloc, &identifier);
+						return ExprResult{ false };
+					}
+				}
+			}
+
+			ast::Node* current_parent = &identifier;
+			while (expect(state, TokenType::OPERATOR_PIPE)) {
+				ast::Node& chain = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+				chain.children.push_back(current_parent);
+
+				if (!function_call(state, chain)) {
+					report_error_on_last_token(state, ErrorCode::E3009);
+					delete_node(state->node_alloc, &chain);
+					return ExprResult{ false };
+				}
+
+				current_parent = &chain;
+			}
+
+			return ExprResult{ true , current_parent };
+		}
+
+		return ExprResult{ false };
 	}
 
-	ExprResult function_call_chain(ParserState* state, ast::Node& parent) {
+	bool function_call(ParserState* state, ast::Node& parent) {
 		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		return false;
+	}
+
+	bool function_call_input_list(ParserState* state, ast::Node& parent) {
+		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		return false;
 	}
 	
-	ExprResult cast_expression(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+	ExprResult cast_expression(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
 		return ExprResult{ true, nullptr };
 	}
 
@@ -1562,9 +1665,9 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool enum_shorthand(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+	ExprResult enum_shorthand(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return ExprResult{ true, nullptr };
 	}
 
 	bool switch_statement(ParserState* state, ast::Node& parent) {

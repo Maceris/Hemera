@@ -241,19 +241,7 @@ function_output_in_paren = simple_type
 function_parameter = identifier , { SYM_COMMA , identifier } , SYM_COLON , type_for_parameter  ;
 
 default_value = literal
-    | directive
-    ;
-
-function_call = identifier , SYM_LPAREN , [ function_call_input_list ] , SYM_RPAREN
-    ;
-
-function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_input } , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
-    | ( identifier , SYM_EQ , function_call_input , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
-    ;
-
-function_call_input = expression_with_result
-    | SYM_UNDERSCORE
-    | pipe_reorder_identifier
+    | type
     | directive
     ;
 
@@ -317,7 +305,6 @@ literal = literal_integer
     | literal_floating_point
     | literal_string
     | literal_char
-    | type
     | KEYWORD_true
     | KEYWORD_false
     | KEYWORD_null
@@ -381,9 +368,8 @@ expr_lvl_9 = ( OPERATOR_plus , expr_lvl_10 )
     ;
 
 expr_lvl_10 = literal
-    | ( identifier , { array_access_extension | field_access_extension } )
+    | ( identifier , { array_access_extension | field_access_extension | function_call_parens } , { OPERATOR_pipe , function_call } )
     | cast_expression
-    | function_call_chain
     | enum_shorthand
     | directive
     ;
@@ -410,6 +396,21 @@ push_context = KEYWORD_push_context , identifier , block ;
 array_access_extension = SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ;
 field_access_extension = SYM_DOT , identifier ;
 enum_shorthand = SYM_DOT , identifier ;
+
+function_call = identifier , function_call_parens ;
+
+function_call_parens = SYM_LPAREN , [ function_call_input_list ] , SYM_RPAREN
+    ;
+
+function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_input } , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
+    | ( identifier , SYM_EQ , function_call_input , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
+    ;
+
+function_call_input = expression_with_result
+    | SYM_UNDERSCORE
+    | pipe_reorder_identifier
+    | directive
+    ;
 
 switch_statement = KEYWORD_switch , identifier , SYM_LBRACE , 
     ( KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry } , SYM_COLON , expression , [ directive ] )+

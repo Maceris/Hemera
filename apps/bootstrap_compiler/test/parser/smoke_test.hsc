@@ -189,6 +189,21 @@ function_calls :: fn() {
 	create_rectangle(1, 2, 50, 75)
     create_rectangle(x=1, y=2, 50, 75)
     create_rectangle(x=1, y=2, width=50, height=75)
+
+	foo()
+	foos[1+45-44]()
+	foos.bar()
+	// First class functions can be used for typecrimes
+	cattle.dattle[4].asdf().foo[3][12].ghkl()(2)[2].baz()
+	// dattle is an array of functions
+	// asdf returns foo, a 2d array
+	// foo is a 2d array of structs
+	/* 
+	 * ghkl returns a function - ()
+	 * that returns a function - (2)
+	 * that returns an array of structs - [2]
+	 * that have a function stored in them - .baz()
+	 */
 }
 
 //-----------------------------------------------------------------------------
