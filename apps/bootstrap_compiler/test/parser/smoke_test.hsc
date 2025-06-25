@@ -22,6 +22,16 @@ import library1 from "user"
 import library2 from "../../foo/bar/baz"
 import library3 as lib3 from "user"
 
+#if OS == .WINDOWS {
+	import windows_io from "user"
+	#if PLATFORM == .X86 {
+		import more_specific_windows_io from "user"
+	}
+	#else {
+		import less_specific_windows_io from "user"
+	}
+}
+
 //-----------------------------------------------------------------------------
 //                                  Types
 //-----------------------------------------------------------------------------
