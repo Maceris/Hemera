@@ -183,7 +183,7 @@ const_definitions = {
     }
     ;
 const_definition_rhs = SYM_COLON , decl_rhs ;
-mut_definition_rhs = SYM_EQ , decl_rhs ;
+mut_definition_rhs = OPERATOR_assign , decl_rhs ;
 any_definition = declaration , ( const_definition | mut_definition ) ;
 
 declaration = identifier , SYM_COLON , [ type ]
@@ -224,8 +224,8 @@ complicated_type = function_signature
 array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK ;
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
-function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter , SYM_EQ , default_value } )
-    | ( function_parameter , SYM_EQ , default_value , { SYM_COMMA , function_parameter , SYM_EQ , default_value } )
+function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter , OPERATOR_assign , default_value } )
+    | ( function_parameter , OPERATOR_assign , default_value , { SYM_COMMA , function_parameter , OPERATOR_assign , default_value } )
     ;
 function_output_list = KEYWORD_void 
     | simple_type
@@ -402,8 +402,8 @@ function_call = identifier , function_call_parens ;
 function_call_parens = SYM_LPAREN , [ function_call_input_list ] , SYM_RPAREN
     ;
 
-function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_input } , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
-    | ( identifier , SYM_EQ , function_call_input , { SYM_COMMA , identifier , SYM_EQ , function_call_input } )
+function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_input } , { SYM_COMMA , identifier , OPERATOR_assign , function_call_input } )
+    | ( identifier , OPERATOR_assign , function_call_input , { SYM_COMMA , identifier , OPERATOR_assign , function_call_input } )
     ;
 
 function_call_input = expression_with_result

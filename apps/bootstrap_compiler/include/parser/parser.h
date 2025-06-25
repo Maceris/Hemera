@@ -80,9 +80,9 @@ namespace hemera::parser {
 	bool function_parameter_list(ParserState* state, ast::Node& parent);
 	bool function_output_list(ParserState* state, ast::Node& parent);
 	bool default_value(ParserState* state, ast::Node& parent);
-	ExprResult block(ParserState* state, ast::Node& parent);
+	ExprResult block(ParserState* state);
 	bool expression(ParserState* state, ast::Node& parent);
-	ExprResult expression_with_result(ParserState* state, ast::Node& parent);
+	ExprResult expression_with_result(ParserState* state);
 	bool expression_without_result(ParserState* state, ast::Node& parent);
 	bool assignment(ParserState* state, ast::Node& parent);
 	bool literal(ParserState* state, ast::Node& parent);
@@ -103,7 +103,7 @@ namespace hemera::parser {
 	bool function_call_input_list(ParserState* state, ast::Node& parent);
 	ExprResult cast_expression(ParserState* state);
 	ExprResult if_expression(ParserState* state);
-	ExprResult else_if_extension(ParserState* state, ast::Node& parent);
+	ExprResult else_if_extension(ParserState* state);
 	bool for_loop(ParserState* state, ast::Node& parent);
 	bool loop(ParserState* state, ast::Node& parent);
 	bool push_context(ParserState* state, ast::Node& parent);
@@ -112,7 +112,7 @@ namespace hemera::parser {
 	ExprResult enum_shorthand(ParserState* state);
 	bool switch_statement(ParserState* state, ast::Node& parent);
 	bool switch_entry(ParserState* state, ast::Node& parent);
-	ExprResult match_expression(ParserState* state, ast::Node& parent);
+	ExprResult match_expression(ParserState* state);
 	bool match_entry(ParserState* state, ast::Node& parent);
 
 }
