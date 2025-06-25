@@ -61,14 +61,9 @@ namespace hemera::parser {
 		node_alloc.delete_object<ast::Node>(node);
 	}
 
-	//static inline void report_warning_on_last_token(ParserState* state, WarningCode code) {
-	//	Token token = current_token(state);
-	//	report_warning(code, state->file_path, token.line_number, token.column_number);
-	//	//TODO(ches) opportunity for showing the line, or printing the token, other text
-	//}
-
 	void next(ParserState* state, ast::Node& parent) {
 		Token current = current_token(state);
+		//TODO(ches) get rid of LEAF and use more accurate node types
 		ast::Node* child = state->node_alloc.new_object<ast::Node>(ast::NodeType::LEAF, current);
 		parent.children.push_back(child);
 		state->current += 1;
