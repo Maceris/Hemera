@@ -1696,18 +1696,104 @@ namespace hemera::parser {
 	}
 	
 	ExprResult cast_expression(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		const TokenType current_token_type = current_token(state).type;
+		
+		ast::Node* root;
+
+		if (current_token_type == TokenType::KEYWORD_CAST
+			|| current_token_type == TokenType::KEYWORD_BIT_CAST) {
+			root = &next_as_node(state, ast::NodeType::CAST);
+
+			if (!skip(state, TokenType::SYM_LBRACK)) {
+				report_error_on_last_token(state, ErrorCode::E3011);
+				delete_node(state->node_alloc, root);
+				return ExprResult{ false };
+			}
+			if (!type(state, *root)) {
+				delete_node(state->node_alloc, root);
+				return ExprResult{ false };
+			}
+			if (!skip(state, TokenType::SYM_RBRACK)) {
+				report_error_on_last_token(state, ErrorCode::E3012);
+				delete_node(state->node_alloc, root);
+				return ExprResult{ false };
+			}
+		}
+		else {
+			if (current_token_type != TokenType::KEYWORD_AUTO_CAST) {
+				LOG_ERROR("Invalid state for casts");
+				return ExprResult{ false };
+			}
+			root = &next_as_node(state, ast::NodeType::CAST);
+		}
+		if (!skip(state, TokenType::SYM_LPAREN)) {
+			report_error_on_last_token(state, ErrorCode::E3014);
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+
+		ExprResult expr = expression_with_result(state);
+
+		if (!expr.success) {
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+		else {
+			root->children.push_back(expr.result);
+		}
+
+		if (!skip(state, TokenType::SYM_RPAREN)) {
+			report_error_on_last_token(state, ErrorCode::E3015);
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+		return ExprResult{ true, root };
 	}
 
 	ExprResult if_expression(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
-	}
+		if (!expect(state, TokenType::KEYWORD_IF)) {
+			return ExprResult{ false };
+		}
+		ast::Node& if_node = next_as_node(state, ast::NodeType::IF);
 
-	ExprResult else_if_extension(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		ExprResult condition = expression_with_result(state);
+		if (!condition.success) {
+			delete_node(state->node_alloc, &if_node);
+			return ExprResult{ false };
+		}
+		if_node.children.push_back(condition.result);
+
+		ExprResult block_node = block(state);
+		if (!block_node.success) {
+			delete_node(state->node_alloc, &if_node);
+			return ExprResult{ false };
+		}
+		if_node.children.push_back(block_node.result);
+
+		while (expect(state, TokenType::KEYWORD_ELSE)) {
+			ast::Node& else_node = next_as_node(state, ast::NodeType::ELSE, &if_node);
+			if (expect(state, TokenType::KEYWORD_IF)) {
+				next_as_node(state, ast::NodeType::IF, &else_node);
+
+				ExprResult else_block_node = block(state);
+				if (!else_block_node.success) {
+					delete_node(state->node_alloc, &if_node);
+					return ExprResult{ false };
+				}
+				else_node.children.push_back(else_block_node.result);
+			}
+			else {
+				// Final else block
+				ExprResult else_block_node = block(state);
+				if (!else_block_node.success) {
+					delete_node(state->node_alloc, &if_node);
+					return ExprResult{ false };
+				}
+				else_node.children.push_back(else_block_node.result);
+				break;
+			}
+		}
+		return ExprResult{ true, &if_node };
 	}
 
 	bool for_loop(ParserState* state, ast::Node& parent) {

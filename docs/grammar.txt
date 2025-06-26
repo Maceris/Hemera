@@ -381,8 +381,7 @@ cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN ,
     | ( KEYWORD_auto_cast , SYM_LPAREN , expression_with_result , SYM_RPAREN )
     ;
 
-if_expression = KEYWORD_if , SYM_LPAREN, expression_with_result , SYM_RPAREN , block , { else_if_extension } , [ KEYWORD_else , block ] ;
-else_if_extension = KEYWORD_else , KEYWORD_if , SYM_LPAREN, expression_with_result , SYM_RPAREN , block ;
+if_expression = KEYWORD_if , expression_with_result , block , { KEYWORD_else , KEYWORD_if , expression_with_result , block } , [ KEYWORD_else , block ] ;
 
 for_loop = KEYWORD_for , identifier , [ SYM_COMMA , identifier ] , KEYWORD_in , expression_with_result , block ;
 

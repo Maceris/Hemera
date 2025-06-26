@@ -15,8 +15,8 @@ E3007,Expected a constant definition
 E3008,Expected a mutable definition
 E3009,Expected an identifier
 E3010,Expected an a semicolon after identifier
-E3011,Expected start of generic tag
-E3012,Expected end of generic tag
+E3011,Expected opening bracket
+E3012,Expected closing bracket
 E3013,Expected function keyword
 E3014,Expected opening parenthesis
 E3015,Expected closing parenthesis

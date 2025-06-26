@@ -54,10 +54,6 @@ namespace hemera::parser {
 	/// token.</returns>
 	bool skip_any(ParserState* state, std::initializer_list<TokenType> tokens);
 
-	bool could_be_expression(ParserState* state);
-	bool could_be_expression_with_result(ParserState* state);
-	bool could_be_expression_without_result(ParserState* state);
-
 	void file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc);
 	bool package_statement(ParserState* state, ast::Node& parent);
 	bool imports(ParserState* state, ast::Node& parent);
@@ -103,7 +99,6 @@ namespace hemera::parser {
 	bool function_call_input_list(ParserState* state, ast::Node& parent);
 	ExprResult cast_expression(ParserState* state);
 	ExprResult if_expression(ParserState* state);
-	ExprResult else_if_extension(ParserState* state);
 	bool for_loop(ParserState* state, ast::Node& parent);
 	bool loop(ParserState* state, ast::Node& parent);
 	bool push_context(ParserState* state, ast::Node& parent);
