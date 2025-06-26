@@ -1811,16 +1811,6 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool array_access_extension(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
-	}
-
-	bool field_access_extension(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
-	}
-
 	ExprResult enum_shorthand(ParserState* state) {
 		if (state == nullptr) { } //TODO(ches) remove this
 		return ExprResult{ true, nullptr };

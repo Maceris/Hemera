@@ -102,8 +102,6 @@ namespace hemera::parser {
 	bool for_loop(ParserState* state, ast::Node& parent);
 	bool loop(ParserState* state, ast::Node& parent);
 	bool push_context(ParserState* state, ast::Node& parent);
-	bool array_access_extension(ParserState* state, ast::Node& parent);
-	bool field_access_extension(ParserState* state, ast::Node& parent);
 	ExprResult enum_shorthand(ParserState* state);
 	bool switch_statement(ParserState* state, ast::Node& parent);
 	bool switch_entry(ParserState* state, ast::Node& parent);

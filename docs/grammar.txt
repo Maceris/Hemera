@@ -368,7 +368,7 @@ expr_lvl_9 = ( OPERATOR_plus , expr_lvl_10 )
     ;
 
 expr_lvl_10 = literal
-    | ( identifier , { array_access_extension | field_access_extension | function_call_parens } , { OPERATOR_pipe , function_call } )
+    | ( identifier , { ( SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ) | ( SYM_DOT , identifier ) | function_call_parens } , { OPERATOR_pipe , function_call } )
     | cast_expression
     | enum_shorthand
     | directive
@@ -392,8 +392,6 @@ loop = [ KEYWORD_with { any_definition } ]
 
 push_context = KEYWORD_push_context , identifier , block ;
 
-array_access_extension = SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ;
-field_access_extension = SYM_DOT , identifier ;
 enum_shorthand = SYM_DOT , identifier ;
 
 function_call = identifier , function_call_parens ;
