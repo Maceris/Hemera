@@ -1,5 +1,27 @@
 # Control Flow
 
+## Conditionals
+
+The `if` and `else` keywords are used for conditional branching. If is directly followed by any expression that evaluates to a boolean. All if's and else's require curly braces.
+
+If/else statements can be chained, as in `if ... else if ... else if ... else ...`.
+
+```
+foo :: fn() {
+    bool b = is_it_tuesday()
+
+    if b {
+        println("b is true")
+    }
+    else if 5 >= 3 + bar() {
+        println("I'm not sure what this is supposed to be for")
+    }
+    else {
+        println("b is false")
+    }
+}
+```
+
 ## Defer
 
 The `defer` keyword is used to defer a statement until the end of a block. It will be executed before leaving the block,
