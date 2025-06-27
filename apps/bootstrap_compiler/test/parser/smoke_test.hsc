@@ -270,6 +270,19 @@ arithmetic_expressions :: fn() {
 	result >>= 3
 	result >>>= 2
 
+	result += 4 + 1 * 2
+	result -= 5 + 1 * 2
+	result *= 22 + 1 * 2
+	result /= 3 + 1 * 2
+	result %= 4 + 1 * 2
+	result %%= 30 + 1 * 2
+	result &= 0b1111_1001 + 1 * 2
+	result |= 0b0000_0110 + 1 * 2
+	result ~= 4256 + 1 * 2
+	result <<= 4 + 1 * 2
+	result >>= 3 + 1 * 2
+	result >>>= 2 + 1 * 2
+
 	result = 1 + 2 * 4 + 5
 	result = 1 * 2 - 4 * 5
 	result += 9 / 3 + 4 - 5 * 2 - 1 + (4 * 3 - (5 / 2))
