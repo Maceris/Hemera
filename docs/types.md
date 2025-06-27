@@ -417,6 +417,7 @@ MoreComplex :: struct #union {
 Below is a breakdown of the locations that each variable would refer to in MoreComplex.
 
 ```
+|            bits              |
 | 0-15 | 16-31 | 32-47 | 48-63 |
 |------|-------|-------|-------|
 |      a       |======N/A======|
