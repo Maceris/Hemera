@@ -320,6 +320,20 @@ Rectangle :: struct {
 }
 ```
 
+Structs can be created on the stack as a literal, or on the heap using `new`. The literal is the struct's type, followed by `.{}`.
+
+```
+r: Rectangle
+r = Rectangle.{} // Zero/default values
+r = Rectangle.{1, 2, 10, 10} // All values must be provided, in order, if any are provided
+// Subsets of fields can be used, others are left with their default values
+// Order is not important here
+r = Rectangle.{y=2, x=1}
+
+r2 : ptr[Rectangle] = new(Rectangle)
+r2^ = r
+```
+
 Structs can also be included in other structs, including all the fields and allowing implicit casting.
 
 ```
@@ -343,6 +357,7 @@ foo :: fn() {
     vec_length(vec3)
 }
 ```
+
 
 
 ## Type Aliases

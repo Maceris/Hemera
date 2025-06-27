@@ -89,8 +89,17 @@ struct4 :: struct[X, Y] {
 Rectangle :: struct {
 	x : int,
 	y : int,
-	width : uint,
-	height : uint,
+	width : uint = 10,
+	height : uint = 10,
+}
+
+struct_creation :: fn() {
+	r1 := Rectangle.{}
+	r2 : Rectangle = Rectangle.{1, 2, 3, 4}
+	r3 := Rectangle.{y=1, x=2}
+	r4 := new(Rectangle)
+	defer delete r4
+	r4^ = r3 
 }
 
 //-----------------------------------------------------------------------------
@@ -406,6 +415,8 @@ pointer_example :: fn() {
 	defer delete(rect)
 	rect.x = 4
 	rect.y = 5
+	rect2 := new(Rectangle)
+	rect2^ = rect^
 }
 
 //-----------------------------------------------------------------------------
