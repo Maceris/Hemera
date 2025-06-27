@@ -275,6 +275,7 @@ expression = expression_with_result
 expression_with_result = expr_lvl_1
     | block
     | match_expression
+    | struct_literal
     ;
 
 expression_without_result = for_loop
@@ -285,7 +286,7 @@ expression_without_result = for_loop
     | switch_statement
     ;
 
-assignment = identifier , ( OPERATOR_assign
+assignment = location , ( OPERATOR_assign
     | OPERATOR_assign_add
     | OPERATOR_assign_and
     | OPERATOR_assign_bitwise_and
@@ -370,10 +371,24 @@ expr_lvl_9 = ( OPERATOR_plus , expr_lvl_10 )
     ;
 
 expr_lvl_10 = literal
-    | ( identifier , { ( SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ) | ( SYM_DOT , identifier ) | function_call_parens } , { OPERATOR_pipe , function_call } )
+    | ( location , { OPERATOR_pipe , function_call } )
     | cast_expression
     | enum_shorthand
     | directive
+    ;
+
+location = { SYM_AMPERSAND } , identifier , 
+    { ( SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ) 
+    | ( SYM_DOT , identifier ) 
+    | function_call_parens 
+    | OPERATOR_dereference
+    }
+    ;
+
+struct_literal = identifier , SYM_DOT , SYM_LBRACE , [ 
+    ( expression_with_result , { SYM_COMMA , expression_with_result } )
+    | ( identifier , OPERATOR_assign , expression_with_result , { SYM_COMMA , identifier , OPERATOR_assign , expression_with_result } , [ SYM_COMMA ] )
+    ] , SYM_RBRACE
     ;
 
 function_call_chain = function_call , { OPERATOR_pipe , function_call } ;
