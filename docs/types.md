@@ -223,6 +223,21 @@ foo :: fn(resizable: i8[..], fixed: i8[10]) {
 }
 ```
 
+## Enums
+
+Enums represent a set of distinct values.
+
+```
+Suit :: enum {
+    Clubs,
+    Hearts,
+    Spades,
+    Diamonds,
+}
+```
+
+Enum values can be accessed in an abbreviated way if the type can be inferred, using a syntax like `.EnumValue`. For example, `suit : Suit = .Clubs`.
+
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
@@ -289,6 +304,47 @@ example : string :
     \\ so these won't mess up function indentation
 ```
 
+## Structs
+
+Structs are user defined groups of data. Structs cannot have any "private" fields, everything is public. 
+They also do not have any methods or member functions, though they can store functions as a member since they are first-class entities.
+
+All values are initialized to zero, except where default values are provided for a field.
+
+```
+Rectangle :: struct {
+	x : int,
+	y : int,
+	width : uint = 10,
+	height : uint = 10,
+}
+```
+
+Structs can also be included in other structs, including all the fields and allowing implicit casting.
+
+```
+MyVec2 :: struct {
+    x : f32,
+    y : f32,
+}
+
+MyVec3 :: struct {
+    using MyVec2, // Includes x, and y
+    z : f32,
+}
+
+vec_length :: fn(v : MyVec2) -> f32 {
+    return sqrt(v.x * v.x + v.y * v.y)
+}
+
+foo :: fn() {
+    vec3 : MyVec3 = Vec3.{1, 2, 3}
+    // Works fine, since it contains the vec2 fields explicitly
+    vec_length(vec3)
+}
+```
+
+
 ## Type Aliases
 
 Any type can be given an alias using the `alias` keyword.
@@ -313,3 +369,28 @@ If the type is not distinct, `alias` is not required, for example these are fine
 my_int :: i32
 more_verbose : type : i32
 ```
+
+## Unions
+
+Unions are tagged/discriminated unions (although c-style unions are possible). They are be one of a set of values, and know which variant they are. 
+These are intended to store values, unlike enums.
+
+Here are some examples of normal unions:
+
+```
+Option :: union[T] {
+    None,
+    Some(T),
+}
+
+Result :: union[T, E] {
+    Ok(T),
+    Error(E),
+}
+
+TechnicallyFine :: union {
+    IGuess,
+    ThisWorks
+}
+```
+

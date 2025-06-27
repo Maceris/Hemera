@@ -15,6 +15,10 @@
 The only valid characters for identifiers are alphanumeric characters ([a-z], [A-Z], [0-9]) and underscore ('_'), and must start with a letter.
 Identifiers may not be the same as [reserved keywords](keywords.md) or [builtin types](types.md).
 
+## Lists
+
+Commas at the ends of lists in curly braces like structs, enums, unions, matches, etc. are optional. They can be there, or they could be left off.
+
 # File Structure
 
 The code file structure as below:
