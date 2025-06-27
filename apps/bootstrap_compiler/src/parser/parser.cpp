@@ -964,12 +964,68 @@ namespace hemera::parser {
 	}
 
 	bool expression_without_result(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::KEYWORD_FOR) {
+			return for_loop(state, parent);
+		}
+		if (current == TokenType::KEYWORD_WITH
+			|| current == TokenType::KEYWORD_LOOP) {
+			return loop(state, parent);
+		}
+		if (current == TokenType::KEYWORD_PUSH_CONTEXT) {
+			return push_context(state, parent);
+		}
+		if (current == TokenType::KEYWORD_SWITCH) {
+			return switch_statement(state, parent);
+		}
+		if (current == TokenType::IDENTIFIER) {
+			const TokenType next_type = next_token(state).type;
+
+			if (next_type == TokenType::SYM_COLON) {
+				if (!declaration(state, parent)) {
+					return false;
+				}
+				if (expect(state, TokenType::SYM_COLON)) {
+					return const_definition_rhs(state, parent);
+				}
+				if (expect(state, TokenType::OPERATOR_ASSIGN)) {
+					return mut_definition_rhs(state, parent);
+				}
+			}
+			else if (next_type == TokenType::OPERATOR_ASSIGN
+				|| next_type == TokenType::OPERATOR_ASSIGN_ADD
+				|| next_type == TokenType::OPERATOR_ASSIGN_AND
+				|| next_type == TokenType::OPERATOR_ASSIGN_BITWISE_AND
+				|| next_type == TokenType::OPERATOR_ASSIGN_BITWISE_OR
+				|| next_type == TokenType::OPERATOR_ASSIGN_BITWISE_XOR
+				|| next_type == TokenType::OPERATOR_ASSIGN_DIV
+				|| next_type == TokenType::OPERATOR_ASSIGN_LEFT_SHIFT
+				|| next_type == TokenType::OPERATOR_ASSIGN_MOD
+				|| next_type == TokenType::OPERATOR_ASSIGN_MUL
+				|| next_type == TokenType::OPERATOR_ASSIGN_OR
+				|| next_type == TokenType::OPERATOR_ASSIGN_REMAINDER
+				|| next_type == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC
+				|| next_type == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL
+				|| next_type == TokenType::OPERATOR_ASSIGN_SUB
+				) {
+				return assignment(state, parent);
+			}
+		}
+		return false;
 	}
 
 	bool assignment(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		ast::Node& id = next_as_node(state, ast::NodeType::IDENTIFIER);
+		ast::Node& assign = next_as_node(state, ast::NodeType::BINARY_OPERATOR, &parent);
+
+		assign.children.push_back(&id);
+
+		ExprResult expr = expression_with_result(state);
+		if (!expr.success) {
+			return false;
+		}
+		assign.children.push_back(expr.result);
+
 		return true;
 	}
 
