@@ -17,7 +17,15 @@ Identifiers may not be the same as [reserved keywords](keywords.md) or [builtin 
 
 ## Lists
 
-Commas at the ends of lists in curly braces like structs, enums, unions, matches, etc. are optional. They can be there, or they could be left off.
+Commas at the ends of lists (below) are optional. They can be there, or they could be left off.
+
+* structs
+* enums
+* unions
+* match expressions
+* struct literals that specify fields by name
+
+This is to enable definitions of things to be reordered or modified without having to fiddle with adding or removing commas.
 
 # File Structure
 
