@@ -398,6 +398,39 @@ v1.x = 5 // r and s are now also 5, they share the same offset
 v1.y = 2 // g and t are now also 2
 ```
 
+The `using` directive works as well if structs are already defined.
+
+```
+Floats :: struct #packed { 
+    f1, f2 : f32
+}
+
+MoreComplex :: struct #union {
+    a : i32,
+    _ : struct #packed { b1, b2 : i16 }
+    c : Floats,
+    using Floats,
+    d : u64,
+}
+```
+
+Below is a breakdown of the locations that each variable would refer to in MoreComplex.
+
+```
+| 0-15 | 16-31 | 32-47 | 48-63 |
+|------|-------|-------|-------|
+|      a       |======N/A======|
+|------|-------|-------|-------|
+|  b1  |  b2   |======N/A======|
+|------|-------|-------|-------|
+|              c               |
+|------|-------|-------|-------|
+|     f1       |      f2       |
+|------|-------|-------|-------|
+|              d               |
+|------|-------|-------|-------|
+```
+
 ## Type Aliases
 
 Any type can be given an alias using the `alias` keyword.
