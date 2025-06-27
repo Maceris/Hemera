@@ -960,6 +960,7 @@ namespace hemera::parser {
 		if (expect(state, TokenType::KEYWORD_MATCH)) {
 			return match_expression(state);
 		}
+		//TODO(ches) struct literals
 		return expr_lvl_1(state);
 	}
 
@@ -1015,6 +1016,7 @@ namespace hemera::parser {
 	}
 
 	bool assignment(ParserState* state, ast::Node& parent) {
+		//TODO(ches) location instead of identifier
 		ast::Node& id = next_as_node(state, ast::NodeType::IDENTIFIER);
 		ast::Node& assign = next_as_node(state, ast::NodeType::BINARY_OPERATOR, &parent);
 
@@ -1053,6 +1055,7 @@ namespace hemera::parser {
 			report_error_on_last_token(state, ErrorCode::E3019);
 			return false;
 		}
+		//TODO(ches) anonymous unions
 		return true;
 	}
 
@@ -1616,6 +1619,7 @@ namespace hemera::parser {
 			return ExprResult{ true , &result };
 		}
 		if (current == TokenType::IDENTIFIER) {
+			//TODO(ches) location instead of identifier parsing here
 
 			ast::Node& identifier = next_as_node(state, ast::NodeType::IDENTIFIER);
 			
