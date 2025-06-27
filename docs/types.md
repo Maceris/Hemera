@@ -306,8 +306,9 @@ example : string :
 
 ## Structs
 
-Structs are user defined groups of data. Structs cannot have any "private" fields, everything is public. 
-They also do not have any methods or member functions, though they can store functions as a member since they are first-class entities.
+Structs are user defined groups of data. Structs cannot have any "private" fields, everything is public. Members are accessed using the `.` operator.
+
+Structs do not have any methods or member functions, though they can store functions as a member since they are first-class entities.
 
 All values are initialized to zero, except where default values are provided for a field.
 
@@ -358,7 +359,44 @@ foo :: fn() {
 }
 ```
 
+Anonymous structs can be defined in another struct by defining them with the `_` name/operator:
 
+```
+Foo :: struct {
+    // x, y, and z are fields of Foo now
+    _ : struct { x, y, z : f32 }
+    w : f32,
+}
+
+// The above is equivalent to this
+
+Bar :: struct {
+    x, y, z : f32
+}
+
+Foo :: struct {
+    using Bar,
+    w : f32,
+}
+```
+
+This is most useful if you want to manipulate things like padding and alignment for just a few fields, or for C-style unions.
+
+To use structs as C-style unions, the `#union` directive can be used.
+
+```
+Vector3 :: struct #union {
+    _ : struct { x, y, z: f32 },
+    _ : struct { r, g, b: f32 },
+    _ : struct { s, t, p: f32 },
+}
+
+// Vector3 is now the size of one struct containing 3 f32's, but there are 3 different names for each float.
+
+v1 := Vector3.{}
+v1.x = 5 // r and s are now also 5, they share the same offset
+v1.y = 2 // g and t are now also 2
+```
 
 ## Type Aliases
 
@@ -387,8 +425,10 @@ more_verbose : type : i32
 
 ## Unions
 
-Unions are tagged/discriminated unions (although c-style unions are possible). They are be one of a set of values, and know which variant they are. 
+Unions are tagged/discriminated unions. They are be one of a set of values, and know which variant they are. 
 These are intended to store values, unlike enums.
+
+For untagged or C-style unions, structs with the `#union` directive can be used instead.
 
 Here are some examples of normal unions:
 

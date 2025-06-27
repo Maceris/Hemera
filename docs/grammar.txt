@@ -198,7 +198,7 @@ decl_rhs = expression_with_result
     ;
 
 function_decl = function_signature , block ;
-struct_decl = KEYWORD_struct , [ generic_tag ] , SYM_LBRACE , struct_body , SYM_RBRACE ;
+struct_decl = KEYWORD_struct , [ generic_tag ] , { directive } , SYM_LBRACE , struct_body , SYM_RBRACE ;
 union_decl = KEYWORD_union , [ generic_tag ] , SYM_LBRACE , union_body , SYM_RBRACE ;
 enum_decl = KEYWORD_enum , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
@@ -253,6 +253,7 @@ generic_tag = SYM_LBRACK , type_in_list , { SYM_COMMA , type_in_list } , SYM_RBR
 
 struct_member = ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , [ mut_definition_rhs ] ) 
     | ( KEYWORD_using , identifier , [ SYM_DOT , identifier ] )
+    | ( SYM_UNDERSCORE , SYM_COLON , struct_decl )
     ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;

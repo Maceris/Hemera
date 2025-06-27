@@ -86,7 +86,7 @@ struct4 :: struct[X, Y] {
 	foo1: fn(X) -> Y
 }
 
-Rectangle :: struct {
+Rectangle :: #packed #align(8) struct {
 	x : int,
 	y : int,
 	width : uint = 10,
@@ -100,6 +100,12 @@ struct_creation :: fn() {
 	r4 := new(Rectangle)
 	defer delete r4
 	r4^ = r3 
+}
+
+c_style_union :: struct #union {
+	f : f32,
+	i : i32,
+	_ : struct { b1, b2, b3, b4 : i8 },
 }
 
 //-----------------------------------------------------------------------------

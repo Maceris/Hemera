@@ -34,6 +34,12 @@ for i in 0..=10 #reverse {
 
 `#caller_location` is (only) used to set a function parameter's default value to the location of the code calling the function.
 
+## Structs
+
+`#align(n)` is used to align to `n` bytes, for example `struct #align(8) {...}` aligns the struct to 8 bytes.
+`#packed` is used to remove padding between fields in a struct
+`#union` turns the struct into a c-style union, where every field is located at the same offset and share memory
+
 ## Values
 
 `#file_path` is the path to the file in which this directive appears.
