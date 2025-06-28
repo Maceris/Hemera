@@ -7,6 +7,7 @@
 
 namespace hemera::ast {
 	enum class NodeType {
+		ARRAY_DIMENSION,
 		BINARY_OPERATOR,
 		BLOCK,
 		CAST,

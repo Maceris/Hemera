@@ -58,7 +58,7 @@ namespace hemera::parser {
 	bool package_statement(ParserState* state, ast::Node& parent);
 	bool imports(ParserState* state, ast::Node& parent);
 	bool import(ParserState* state, ast::Node& parent);
-	void const_definitions(ParserState* state, ast::Node& parent);
+	bool const_definitions(ParserState* state, ast::Node& parent);
 	bool any_definition(ParserState* state, ast::Node& parent);
 	bool const_definition_rhs(ParserState* state, ast::Node& parent);
 	bool mut_definition_rhs(ParserState* state, ast::Node& parent);
@@ -71,7 +71,7 @@ namespace hemera::parser {
 	bool type(ParserState* state, ast::Node& parent);
 	bool simple_type(ParserState* state, ast::Node& parent);
 	bool complicated_type(ParserState* state, ast::Node& parent);
-	bool generic_tag(ParserState* state, ast::Node& parent);
+	bool array_dimension(ParserState* state, ast::Node& parent);
 	bool function_signature(ParserState* state, ast::Node& parent);
 	bool function_parameter_list(ParserState* state, ast::Node& parent);
 	bool function_output_list(ParserState* state, ast::Node& parent);
@@ -85,6 +85,7 @@ namespace hemera::parser {
 	bool struct_body(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
+	bool generic_tag(ParserState* state, ast::Node& parent);
 	ExprResult expr_lvl_1(ParserState* state);
 	ExprResult expr_lvl_2(ParserState* state);
 	ExprResult expr_lvl_3(ParserState* state);

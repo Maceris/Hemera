@@ -221,7 +221,7 @@ simple_type_for_parameter = ( [ KEYWORD_mut ] , identifier , [ generic_tag ] , [
 complicated_type = function_signature
     ;
 
-array_dimension = SYM_LBRACK , [ integer_decimal | OPERATOR_range_array ] , SYM_RBRACK ;
+array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array ] , SYM_RBRACK ;
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter , OPERATOR_assign , default_value } )
