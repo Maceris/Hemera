@@ -40,10 +40,12 @@ get_coordinates :: fn() -> (x, y: int) {
     return x, y
 }
 
-is_even :: fn(x: int) -> (result: bool, mod: int) {
-    mod = x % 2
-    result = mod == 0
-    return // allowed, but not encouraged, if all results are assigned
+no_return_value :: fn(x: int, y: ptr[int]) {
+    if (x < 0) {
+        // if returning in a function that does not have any return values, return void is used
+        return void
+    }
+    y^ = x + 5
 }
 ```
 

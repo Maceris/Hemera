@@ -429,6 +429,7 @@ namespace hemera::parser {
 			report_error_on_last_token(state, ErrorCode::E3012);
 			return false;
 		}
+		return true;
 	}
 
 	bool function_signature(ParserState* state, ast::Node& parent) {
@@ -561,40 +562,84 @@ namespace hemera::parser {
 		while (!expect(state, TokenType::SYM_RBRACE)) {
 			switch (current_token(state).type) {
 			case TokenType::IDENTIFIER:
-			case TokenType::KEYWORD_IF:
-			case TokenType::KEYWORD_TRUE:
 			case TokenType::KEYWORD_FALSE:
 			case TokenType::KEYWORD_FOR:
-			case TokenType::KEYWORD_WITH:
+			case TokenType::KEYWORD_IF:
 			case TokenType::KEYWORD_LOOP:
+			case TokenType::KEYWORD_TRUE:
+			case TokenType::KEYWORD_WHILE:
+			case TokenType::KEYWORD_WITH:
 			case TokenType::LITERAL_CHAR:
 			case TokenType::LITERAL_FLOATING_POINT:
 			case TokenType::LITERAL_INTEGER:
 			case TokenType::LITERAL_STRING:
-			case TokenType::OPERATOR_PLUS:
-			case TokenType::OPERATOR_MINUS:
 			case TokenType::OPERATOR_BITWISE_XOR:
+			case TokenType::OPERATOR_MINUS:
 			case TokenType::OPERATOR_NOT:
+			case TokenType::OPERATOR_PLUS:
 			case TokenType::SYM_LBRACE:
+			{
 				if (!expression(state, block_node)) {
 					return ExprResult{ false };
 				}
-				return ExprResult{ true, &block_node };
+				continue;
+			}
 			case TokenType::KEYWORD_RETURN:
-				//TODO(ches) return
-				break;
+			{
+				ast::Node& ret = next_as_node(state, ast::NodeType::RETURN, &block_node);
+				if (expect(state, TokenType::KEYWORD_VOID)) {
+					accept(state, TokenType::KEYWORD_VOID, ret);
+				}
+				else {
+					ExprResult expr = expression_with_result(state);
+					if (!expr.success) {
+						return ExprResult{ false };
+					}
+					ret.children.push_back(expr.result);
+					while (expect(state, TokenType::SYM_COMMA)) {
+						accept(state, TokenType::SYM_COMMA, ret);
+						ExprResult another_expr = expression_with_result(state);
+						if (!another_expr.success) {
+							return ExprResult{ false };
+						}
+						ret.children.push_back(another_expr.result);
+					}
+				}
+				continue;
+			}
 			case TokenType::KEYWORD_DEFER:
-				//TODO(ches) defer
-				break;
+			{
+				ast::Node& defer = next_as_node(state, ast::NodeType::DEFER, &block_node);
+				if (!expression(state, defer)) {
+					return ExprResult{ false };
+				}
+			}
 			case TokenType::KEYWORD_BREAK:
-				//TODO(ches) break
-				break;
+			{
+				ast::Node& break_node = next_as_node(state, ast::NodeType::BREAK, &block_node);
+				if (expect(state, TokenType::LITERAL_INTEGER)) {
+					next_as_node(state, ast::NodeType::LITERAL, &break_node);
+				}
+				else if (expect(state, TokenType::KEYWORD_ALL)) {
+					next_as_node(state, ast::NodeType::KEYWORD_ALL, &break_node);
+				}
+				continue;
+			}
 			case TokenType::KEYWORD_CONTINUE:
-				//TODO(ches) continue
-				break;
+			{
+				next_as_node(state, ast::NodeType::CONTINUE, &block_node);
+				continue;
+			}
 			case TokenType::DIRECTIVE:
-				//TODO(ches) directive
-				break;
+			{
+				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &block_node);
+				ExprResult sub_block = block(state);
+				if (!sub_block.result) {
+					return ExprResult{ false };
+				}
+				directive.children.push_back(sub_block.result);
+				continue;
+			}
 			case TokenType::ANNOTATION:
 			case TokenType::COMMENT_BLOCK:
 			case TokenType::COMMENT_LINE:
@@ -630,7 +675,6 @@ namespace hemera::parser {
 			case TokenType::KEYWORD_UNION:
 			case TokenType::KEYWORD_USING:
 			case TokenType::KEYWORD_VOID:
-			case TokenType::KEYWORD_WHILE:
 			case TokenType::OPERATOR_AND:
 			case TokenType::OPERATOR_ASSIGN:
 			case TokenType::OPERATOR_ASSIGN_ADD:
@@ -684,15 +728,15 @@ namespace hemera::parser {
 			case TokenType::SYM_UNDERSCORE:
 			case TokenType::SYM_UNINITIALIZED:
 				report_error_on_last_token(state, ErrorCode::E3017);
-				return false;
+				return ExprResult{ false };
 			}
 		}
 
 		if (!skip(state, TokenType::SYM_RBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3019);
-			return false;
+			return ExprResult{ false };
 		}
-		return true;
+		return ExprResult{ true, &block_node };
 	}
 
 	bool expression(ParserState* state, ast::Node& parent) {

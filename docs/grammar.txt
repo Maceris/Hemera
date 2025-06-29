@@ -259,12 +259,11 @@ union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifie
 enum_member = identifier ;
 
 block = SYM_LBRACE , 
-    { ( expression
-    | ( KEYWORD_return , expression )
+    { expression
+    | ( KEYWORD_return , ( KEYWORD_void | ( expression_with_result , { SYM_COMMA , expression_with_result } ) ) )
     | ( KEYWORD_defer , expression )
-    | ( KEYWORD_break , [ integer_decimal | KEYWORD_all ] )
+    | ( KEYWORD_break , [ literal_integer | KEYWORD_all ] )
     | KEYWORD_continue
-    )
     | ( directive , block )
     } , SYM_RBRACE
     ;
