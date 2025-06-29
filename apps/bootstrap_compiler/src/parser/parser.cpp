@@ -303,7 +303,6 @@ namespace hemera::parser {
 	}
 
 	bool struct_decl(ParserState* state, ast::Node& parent) {
-		skip(state, TokenType::KEYWORD_STRUCT);
 		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, &parent);
 
 		if (expect(state, TokenType::SYM_LBRACK)) {
@@ -1094,14 +1093,52 @@ namespace hemera::parser {
 	}
 
 	bool struct_body(ParserState* state, ast::Node& parent) {
-		while (expect(state, TokenType::IDENTIFIER)) {
-			any_definition(state, parent);
+		const TokenType current = current_token(state).type;
+
+		while (current == TokenType::IDENTIFIER
+			|| current == TokenType::KEYWORD_USING
+			|| current == TokenType::SYM_UNDERSCORE) {
+			
+			if (current == TokenType::IDENTIFIER) {
+				if (!any_definition(state, parent)) {
+					return false;
+				}
+
+			}
+			else if (current == TokenType::KEYWORD_USING) {
+				ast::Node& using_node = next_as_node(state, ast::NodeType::USING, &parent);
+				if (!expect(state, TokenType::IDENTIFIER)) {
+					report_error_on_last_token(state, ErrorCode::E3009);
+					return false;
+				}
+				next_as_node(state, ast::NodeType::IDENTIFIER, &using_node);
+			}
+			else if (current == TokenType::SYM_UNDERSCORE) {
+				// Would just do else, but might need to add more to the loop
+				ast::Node& underscore = next_as_node(state, ast::NodeType::IDENTIFIER);
+
+				if (!expect(state, TokenType::SYM_COLON)) {
+					report_error_on_last_token(state, ErrorCode::E3010);
+					return false;
+				}
+				ast::Node& colon = next_as_node(state, ast::NodeType::DEFINITION, &parent);
+				colon.children.push_back(&underscore);
+
+				if (!expect(state, TokenType::KEYWORD_STRUCT)) {
+					report_error_on_last_token(state, ErrorCode::E3023);
+					return false;
+				}
+				if (!struct_decl(state, colon)) {
+					return false;
+				}
+			}
+
+			skip(state, TokenType::SYM_COMMA);
 		}
 		if (!skip(state, TokenType::SYM_RBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3019);
 			return false;
 		}
-		//TODO(ches) anonymous unions
 		return true;
 	}
 

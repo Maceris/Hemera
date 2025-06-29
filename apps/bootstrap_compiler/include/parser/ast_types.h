@@ -35,6 +35,7 @@ namespace hemera::ast {
 		TYPE,
 		UNARY_OPERATOR,
 		UNION,
+		USING,
 	};
 
 	using offset = int64_t;
