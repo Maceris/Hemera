@@ -38,8 +38,8 @@ namespace hemera::parser {
 		return state->tokens[index];
 	}
 
-	static inline Token next_token(ParserState* state) {
-		size_t index = clamp_index(state->current + 1, state->tokens.size());
+	static inline Token next_token(ParserState* state, size_t offset = 1) {
+		size_t index = clamp_index(state->current + offset, state->tokens.size());
 		return state->tokens[index];
 	}
 
@@ -118,11 +118,9 @@ namespace hemera::parser {
 		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
 
 		if (!package_statement(&state, *node)) {
-			//TODO(ches) log this?
 			return;
 		}
 		if (!imports(&state, *node)) {
-			//TODO(ches) log this?
 			return;
 		}
 		if (!const_definitions(&state, *node)) {
@@ -386,25 +384,23 @@ namespace hemera::parser {
 	}
 
 	bool simple_type(ParserState* state, ast::Node& parent) {
-		//TODO(ches) make this a node
-		if (expect(state, TokenType::IDENTIFIER)) {
-			accept(state, TokenType::IDENTIFIER, parent);
-			if (expect(state, TokenType::SYM_LBRACK)) {
-				if (!generic_tag(state, parent)) {
-					return false;
-				}
-			}
-			while (expect(state, TokenType::SYM_LBRACK)) {
-				if (!array_dimension(state, parent)) {
-					return false;
-				}
-			}
-			return true;
-		}
-		else {
+		if (!expect(state, TokenType::IDENTIFIER)) {
 			report_error_on_last_token(state, ErrorCode::E3017);
 			return false;
 		}
+		ast::Node& type = next_as_node(state, ast::NodeType::TYPE, &parent);
+		if (expect(state, TokenType::SYM_LBRACK)) {
+			if (!generic_tag(state, type)) {
+				return false;
+			}
+		}
+		while (expect(state, TokenType::SYM_LBRACK)) {
+			if (!array_dimension(state, type)) {
+				return false;
+			}
+		}
+		return true;
+		
 	}
 
 	bool complicated_type(ParserState* state, ast::Node& parent) {
@@ -1001,7 +997,12 @@ namespace hemera::parser {
 		if (expect(state, TokenType::KEYWORD_MATCH)) {
 			return match_expression(state);
 		}
-		//TODO(ches) struct literals
+		if (expect(state, TokenType::IDENTIFIER) &&
+			TokenType::SYM_DOT == next_token(state, 1).type
+			&& TokenType::SYM_LBRACE == next_token(state, 2).type
+			) {
+			return struct_literal(state);
+		}
 		return expr_lvl_1(state);
 	}
 
@@ -1057,11 +1058,15 @@ namespace hemera::parser {
 	}
 
 	bool assignment(ParserState* state, ast::Node& parent) {
-		//TODO(ches) location instead of identifier
-		ast::Node& id = next_as_node(state, ast::NodeType::IDENTIFIER);
+		ExprResult loc_result = location(state);
+		if (!loc_result.success) {
+			return false;
+		}
+		ast::Node* loc = loc_result.result;
+
 		ast::Node& assign = next_as_node(state, ast::NodeType::BINARY_OPERATOR, &parent);
 
-		assign.children.push_back(&id);
+		assign.children.push_back(loc);
 
 		ExprResult expr = expression_with_result(state);
 		if (!expr.success) {
@@ -1681,57 +1686,15 @@ namespace hemera::parser {
 			ast::Node& result = next_as_node(state, ast::NodeType::LEAF);
 			return ExprResult{ true , &result };
 		}
-		if (current == TokenType::IDENTIFIER) {
-			//TODO(ches) location instead of identifier parsing here
+		if (current == TokenType::IDENTIFIER || current == TokenType::SYM_AMPERSAND) {
 
-			ast::Node& identifier = next_as_node(state, ast::NodeType::IDENTIFIER);
-			
-			while (expect(state, TokenType::SYM_LBRACK) 
-				|| expect(state, TokenType::SYM_DOT)
-				|| expect(state, TokenType::SYM_LPAREN)) {
+			ExprResult loc = location(state);
 
-				if (accept(state, TokenType::SYM_LBRACK, identifier)) {
-
-					if (!expect(state, TokenType::SYM_RBRACK)) {
-						ExprResult index = expression_with_result(state);
-						if (!index.success) {
-							delete_node(state->node_alloc, &identifier);
-							return ExprResult{ false };
-						}
-						identifier.children.push_back(index.result);
-					}
-					if (!accept(state, TokenType::SYM_RBRACK, identifier)) {
-						report_error_on_last_token(state, ErrorCode::E3021);
-						delete_node(state->node_alloc, &identifier);
-						return ExprResult{ false };
-					}
-					continue;
-				}
-				if (accept(state, TokenType::SYM_DOT, identifier)) {
-					if (!accept(state, TokenType::IDENTIFIER, identifier)) {
-						report_error_on_last_token(state, ErrorCode::E3009);
-						delete_node(state->node_alloc, &identifier);
-						return ExprResult{ false };
-					}
-					continue;
-				}
-				if (accept(state, TokenType::SYM_LPAREN, identifier)) {
-					if (!expect(state, TokenType::IDENTIFIER)) {
-						if (!function_call_input_list(state, identifier)) {
-							report_error_on_last_token(state, ErrorCode::E3021);
-							delete_node(state->node_alloc, &identifier);
-							return ExprResult{ false };
-						}
-					}
-					if (!accept(state, TokenType::SYM_RPAREN, identifier)) {
-						report_error_on_last_token(state, ErrorCode::E3021);
-						delete_node(state->node_alloc, &identifier);
-						return ExprResult{ false };
-					}
-				}
+			if (!loc.success) {
+				return ExprResult{ false };
 			}
 
-			ast::Node* current_parent = &identifier;
+			ast::Node* current_parent = loc.result;
 			while (expect(state, TokenType::OPERATOR_PIPE)) {
 				ast::Node& chain = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 				chain.children.push_back(current_parent);
@@ -1749,6 +1712,76 @@ namespace hemera::parser {
 		}
 
 		return ExprResult{ false };
+	}
+
+	ExprResult location(ParserState* state) {
+		// We are relying on nullptr being ignored in next_as_node
+		ast::Node* root = nullptr;
+		ast::Node* latest = nullptr;
+
+		while (expect(state, TokenType::SYM_AMPERSAND)) {
+			latest = &next_as_node(state, ast::NodeType::UNARY_OPERATOR, latest);
+
+			if (root == nullptr) {
+				root = latest;
+			}
+		}
+
+		ast::Node& identifier = next_as_node(state, ast::NodeType::IDENTIFIER, latest);
+		if (root == nullptr) {
+			root = &identifier;
+		}
+
+		while (expect(state, TokenType::SYM_LBRACK)
+			|| expect(state, TokenType::SYM_DOT)
+			|| expect(state, TokenType::SYM_LPAREN)) {
+
+			if (accept(state, TokenType::SYM_LBRACK, identifier)) {
+
+				if (!expect(state, TokenType::SYM_RBRACK)) {
+					ExprResult index = expression_with_result(state);
+					if (!index.success) {
+						delete_node(state->node_alloc, &identifier);
+						return ExprResult{ false };
+					}
+					identifier.children.push_back(index.result);
+				}
+				if (!accept(state, TokenType::SYM_RBRACK, identifier)) {
+					report_error_on_last_token(state, ErrorCode::E3021);
+					delete_node(state->node_alloc, &identifier);
+					return ExprResult{ false };
+				}
+				continue;
+			}
+			if (accept(state, TokenType::SYM_DOT, identifier)) {
+				if (!accept(state, TokenType::IDENTIFIER, identifier)) {
+					report_error_on_last_token(state, ErrorCode::E3009);
+					delete_node(state->node_alloc, &identifier);
+					return ExprResult{ false };
+				}
+				continue;
+			}
+			if (accept(state, TokenType::SYM_LPAREN, identifier)) {
+				if (!expect(state, TokenType::IDENTIFIER)) {
+					if (!function_call_input_list(state, identifier)) {
+						report_error_on_last_token(state, ErrorCode::E3021);
+						delete_node(state->node_alloc, &identifier);
+						return ExprResult{ false };
+					}
+				}
+				if (!accept(state, TokenType::SYM_RPAREN, identifier)) {
+					report_error_on_last_token(state, ErrorCode::E3021);
+					delete_node(state->node_alloc, &identifier);
+					return ExprResult{ false };
+				}
+			}
+		}
+		return ExprResult{ true, root };
+	}
+
+	ExprResult struct_literal(ParserState* state) {
+		if (state == nullptr) { } //TODO(ches) remove this
+		return true;
 	}
 
 	bool function_call(ParserState* state, ast::Node& parent) {
