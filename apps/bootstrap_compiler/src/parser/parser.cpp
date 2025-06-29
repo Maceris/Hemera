@@ -1148,7 +1148,6 @@ namespace hemera::parser {
 			if (accept(state, TokenType::SYM_LPAREN, parent)) {
 				//NOTE(ches) will simply exit when we hit the rparen
 				while (accept(state, TokenType::IDENTIFIER, parent)) {
-					//TODO(ches) do we need generics syntax here?
 					if (!accept(state, TokenType::SYM_COMMA, parent)) {
 						if (!expect(state, TokenType::SYM_RPAREN)) {
 							/*
@@ -1363,81 +1362,16 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		if (expect(state, TokenType::OPERATOR_EQUAL)) {
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::OPERATOR_EQUAL
+			|| current == TokenType::OPERATOR_NOT_EQUAL
+			|| current == TokenType::SYM_LT
+			|| current == TokenType::SYM_GT
+			|| current == TokenType::OPERATOR_LESS_THAN_OR_EQUAL
+			|| current == TokenType::OPERATOR_GREATER_THAN_OR_EQUAL
+			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_EQUAL, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_NOT_EQUAL)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_NOT_EQUAL, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::SYM_LT)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::SYM_LT, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::SYM_GT)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::SYM_GT, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_LESS_THAN_OR_EQUAL)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_LESS_THAN_OR_EQUAL, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_GREATER_THAN_OR_EQUAL)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_GREATER_THAN_OR_EQUAL, result);
 
 			ExprResult rhs = expr_lvl_6(state);
 			if (!rhs.success) {
@@ -1458,53 +1392,14 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		if (expect(state, TokenType::OPERATOR_PLUS)) {
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::OPERATOR_PLUS
+			|| current == TokenType::OPERATOR_MINUS
+			|| current == TokenType::OPERATOR_BITWISE_OR
+			|| current == TokenType::OPERATOR_BITWISE_XOR
+			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_PLUS, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_MINUS)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_MINUS, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_BITWISE_OR)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_BITWISE_OR, result);
-
-			ExprResult rhs = expr_lvl_6(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_BITWISE_XOR)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_BITWISE_XOR, result);
 
 			ExprResult rhs = expr_lvl_6(state);
 			if (!rhs.success) {
@@ -1524,110 +1419,19 @@ namespace hemera::parser {
 		if (!lhs.success) {
 			return { false };
 		}
-		//TODO(ches) fix this, it sucks
-		if (expect(state, TokenType::OPERATOR_MULTIPLY)) {
+
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::OPERATOR_MULTIPLY
+			|| current == TokenType::OPERATOR_DIVIDE
+			|| current == TokenType::OPERATOR_MODULUS
+			|| current == TokenType::OPERATOR_REMAINDER
+			|| current == TokenType::SYM_AMPERSAND
+			|| current == TokenType::OPERATOR_LEFT_SHIFT
+			|| current == TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC
+			|| current == TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL
+			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_MULTIPLY, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_DIVIDE)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_DIVIDE, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_MODULUS)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_MODULUS, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_REMAINDER)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_REMAINDER, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::SYM_AMPERSAND)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::SYM_AMPERSAND, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_LEFT_SHIFT)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_LEFT_SHIFT, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC, result);
-
-			ExprResult rhs = expr_lvl_7(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL, result);
 
 			ExprResult rhs = expr_lvl_7(state);
 			if (!rhs.success) {
