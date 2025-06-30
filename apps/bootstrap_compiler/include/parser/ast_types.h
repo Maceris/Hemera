@@ -32,6 +32,7 @@ namespace hemera::ast {
 		PAREN_GROUP,
 		RETURN,
 		STRUCT,
+		STRUCT_LITERAL,
 		TYPE,
 		UNARY_OPERATOR,
 		UNION,

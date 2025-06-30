@@ -28,3 +28,4 @@ E3020,Invalid struct body
 E3021,Expected a closing brace
 E3022,Expected a comma
 E3023,Expected a struct definition
+E3024,Expected assignment

@@ -1621,8 +1621,69 @@ namespace hemera::parser {
 	}
 
 	ExprResult struct_literal(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return true;
+		//NOTE(ches) assumes we already checked for identifier, dot, lbrace
+		ast::Node& id = next_as_node(state, ast::NodeType::STRUCT_LITERAL);
+		skip(state, TokenType::SYM_DOT);
+		ast::Node& braces = next_as_node(state, ast::NodeType::LIST, &id);
+
+		if (skip(state, TokenType::SYM_RBRACE)) {
+			return ExprResult{ true, &id };
+		}
+		
+		if (TokenType::IDENTIFIER == current_token(state).type
+			&& TokenType::OPERATOR_ASSIGN == next_token(state).type) {
+			//NOTE(ches) named inputs	
+			while (expect(state, TokenType::IDENTIFIER)) {
+				ast::Node& target = next_as_node(state, ast::NodeType::IDENTIFIER);
+
+				if (!expect(state, TokenType::OPERATOR_ASSIGN)) {
+					report_error_on_last_token(state, ErrorCode::E3024);
+					delete_node(state->node_alloc, &id);
+					return ExprResult{ false };
+				}
+				ast::Node& assign = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+				assign.children.push_back(&target);
+
+				ExprResult value = expression_with_result(state);
+				if (!value.result) {
+					delete_node(state->node_alloc, &id);
+					return ExprResult{ false };
+				}
+				assign.children.push_back(value.result);
+				braces.children.push_back(&assign);
+				if (!skip(state, TokenType::SYM_COMMA) 
+					&& !expect(state, TokenType::SYM_RBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3022);
+					delete_node(state->node_alloc, &id);
+					return ExprResult{ false };
+				}
+			}
+		}
+		else {
+			//NOTE(ches) positional inputs
+			while (!expect(state, TokenType::SYM_RBRACE)) {
+				ExprResult value = expression_with_result(state);
+				if (!value.result) {
+					delete_node(state->node_alloc, &id);
+					return ExprResult{ false };
+				}
+				braces.children.push_back(value.result);
+				if (!skip(state, TokenType::SYM_COMMA)
+					&& !expect(state, TokenType::SYM_RBRACE)) {
+					report_error_on_last_token(state, ErrorCode::E3022);
+					delete_node(state->node_alloc, &id);
+					return ExprResult{ false };
+				}
+			}
+		}
+
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			delete_node(state->node_alloc, &id);
+			return ExprResult{ false };
+		}
+
+		return ExprResult{ true, &id };
 	}
 
 	bool function_call(ParserState* state, ast::Node& parent) {
