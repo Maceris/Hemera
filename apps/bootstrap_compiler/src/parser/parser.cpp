@@ -384,7 +384,7 @@ namespace hemera::parser {
 
 	bool simple_type(ParserState* state, ast::Node& parent) {
 		if (!expect(state, TokenType::IDENTIFIER)) {
-			report_error_on_last_token(state, ErrorCode::E3017);
+			report_error_on_last_token(state, ErrorCode::E3009);
 			return false;
 		}
 		ast::Node& type = next_as_node(state, ast::NodeType::TYPE, &parent);
@@ -1914,7 +1914,7 @@ namespace hemera::parser {
 			}
 		}
 		if (!expect(state, TokenType::KEYWORD_LOOP)) {
-			report_error_on_last_token(state, ErrorCode::E3017);
+			report_error_on_last_token(state, ErrorCode::E3026);
 			if (with_part != nullptr) {
 				delete_node(state->node_alloc, with_part);
 			}

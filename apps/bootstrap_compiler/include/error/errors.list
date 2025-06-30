@@ -30,3 +30,4 @@ E3022,Expected a comma
 E3023,Expected a struct definition
 E3024,Expected assignment
 E3025,Expected the keyword in
+E3026,Expected a loop
