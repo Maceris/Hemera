@@ -19,15 +19,18 @@ namespace hemera::ast {
 		ELSE,
 		ENUM,
 		FILE,
+		FOR_LOOP,
 		FUNCTION,
 		GENERIC_TAG,
 		IDENTIFIER,
 		IF,
+		IN,
 		IMPORT,
 		KEYWORD_ALL,
 		LEAF,
 		LIST,
 		LITERAL,
+		LOOP,
 		PACKAGE,
 		PAREN_GROUP,
 		RETURN,
@@ -37,6 +40,8 @@ namespace hemera::ast {
 		UNARY_OPERATOR,
 		UNION,
 		USING,
+		WHILE_CLAUSE,
+		WITH_CLAUSE,
 	};
 
 	using offset = int64_t;

@@ -402,7 +402,7 @@ if_expression = KEYWORD_if , expression_with_result , block , { KEYWORD_else , K
 
 for_loop = KEYWORD_for , identifier , [ SYM_COMMA , identifier ] , KEYWORD_in , expression_with_result , block ;
 
-loop = [ KEYWORD_with { any_definition } ] 
+loop = [ KEYWORD_with , SYM_LBRACE , { any_definition } , SYM_RBRACE ] 
     , KEYWORD_loop , [ directive ] , block 
     , [ KEYWORD_while , SYM_LPAREN, expression_with_result , SYM_RPAREN ]
     ;

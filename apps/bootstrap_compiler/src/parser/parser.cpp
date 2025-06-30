@@ -1855,12 +1855,103 @@ namespace hemera::parser {
 	}
 
 	bool for_loop(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		ast::Node& for_node = next_as_node(state, ast::NodeType::FOR_LOOP, &parent);
+
+		if (!accept(state, TokenType::IDENTIFIER, for_node)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
+		if (skip(state, TokenType::SYM_COMMA)
+			&& !accept(state, TokenType::IDENTIFIER, for_node)) {
+			//NOTE(ches) loop iterator value, if there's a comma
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
+
+		if (!accept(state, TokenType::KEYWORD_IN, for_node)) {
+			report_error_on_last_token(state, ErrorCode::E3025);
+			return false;
+		}
+
+		ExprResult expr = expression_with_result(state);
+		if (!expr.success) {
+			return false;
+		}
+		for_node.children.push_back(expr.result);
+
+		ExprResult block_node = block(state);
+		if (!block_node.success) {
+			return false;
+		}
+		for_node.children.push_back(block_node.result);
+
 		return true;
 	}
 
 	bool loop(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		
+		ast::Node* with_part = nullptr;
+
+		if (expect(state, TokenType::KEYWORD_WITH)) {
+			with_part = &next_as_node(state, ast::NodeType::WITH_CLAUSE);
+			if (!expect(state, TokenType::SYM_LBRACE)) {
+				report_error_on_last_token(state, ErrorCode::E3018);
+				delete_node(state->node_alloc, with_part);
+				return false;
+			}
+			ast::Node& with_block = next_as_node(state, ast::NodeType::LIST, with_part);
+
+			while (expect(state, TokenType::IDENTIFIER)) {
+				if (!any_definition(state, with_block)) {
+					delete_node(state->node_alloc, with_part);
+					return false;
+				}
+			}
+			if (!skip(state, TokenType::SYM_RBRACE)) {
+				report_error_on_last_token(state, ErrorCode::E3019);
+				delete_node(state->node_alloc, with_part);
+				return false;
+			}
+		}
+		if (!expect(state, TokenType::KEYWORD_LOOP)) {
+			report_error_on_last_token(state, ErrorCode::E3017);
+			if (with_part != nullptr) {
+				delete_node(state->node_alloc, with_part);
+			}
+			return false;
+		}
+		ast::Node* loop_node = &next_as_node(state, ast::NodeType::LOOP, &parent);
+
+		if (with_part != nullptr) {
+			loop_node->children.push_back(with_part);
+		}
+		
+		//NOTE(ches) just grab a directive, or not, don't care
+		accept(state, TokenType::DIRECTIVE, *loop_node);
+
+		ExprResult block_node = block(state);
+		if (!block_node.success) {
+			return false;
+		}
+		loop_node->children.push_back(block_node.result);
+
+		if (expect(state, TokenType::KEYWORD_WHILE)) {
+			ast::Node& while_node = next_as_node(state, ast::NodeType::WHILE_CLAUSE, loop_node);
+			if (!skip(state, TokenType::SYM_LPAREN)) {
+				report_error_on_last_token(state, ErrorCode::E3014);
+				return false;
+			}
+			ExprResult expr = expression_with_result(state);
+			if (!expr.success) {
+				return false;
+			}
+			while_node.children.push_back(expr.result);
+			if (!skip(state, TokenType::SYM_RPAREN)) {
+				report_error_on_last_token(state, ErrorCode::E3015);
+				return false;
+			}
+		}
+
 		return true;
 	}
 
