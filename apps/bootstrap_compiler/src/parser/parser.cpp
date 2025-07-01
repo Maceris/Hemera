@@ -1975,13 +1975,36 @@ namespace hemera::parser {
 	}
 
 	bool push_context(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		ast::Node& push = next_as_node(state, ast::NodeType::PUSH_CONTEXT, &parent);
+		if (!expect(state, TokenType::IDENTIFIER)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
+		next_as_node(state, ast::NodeType::IDENTIFIER, &push);
+		if (!expect(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		ExprResult block_node = block(state);
+		if (!block_node.success) {
+			return false;
+		}
+		push.children.push_back(block_node.result);
 		return true;
 	}
 
 	ExprResult enum_shorthand(ParserState* state) {
-		if (state == nullptr) { } //TODO(ches) remove this
-		return ExprResult{ true, nullptr };
+		if (!skip(state, TokenType::SYM_DOT)) {
+			return ExprResult{ false };
+		}
+		if (!expect(state, TokenType::IDENTIFIER)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return ExprResult{ false };
+		}
+
+		ast::Node& result = next_as_node(state, ast::NodeType::ENUM_SHORTHAND);
+
+		return ExprResult{ true, &result };
 	}
 
 	bool switch_statement(ParserState* state, ast::Node& parent) {
