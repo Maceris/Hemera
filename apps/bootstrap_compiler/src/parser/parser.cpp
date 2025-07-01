@@ -369,8 +369,11 @@ namespace hemera::parser {
 	}
 
 	bool type(ParserState* state, ast::Node& parent) {
+		
 		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, &parent);
-		if (expect(state, TokenType::IDENTIFIER)) {
+
+		if (expect(state, TokenType::KEYWORD_MUT) || 
+			expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state, node);
 		}
 		else if (expect(state, TokenType::KEYWORD_FN)) {
@@ -383,13 +386,28 @@ namespace hemera::parser {
 	}
 
 	bool simple_type(ParserState* state, ast::Node& parent) {
+		ast::Node* mut = nullptr;
+
+		if (expect(state, TokenType::KEYWORD_MUT)) {
+			mut = &next_as_node(state, ast::NodeType::MUTABLE);
+		}
+
 		if (!expect(state, TokenType::IDENTIFIER)) {
 			report_error_on_last_token(state, ErrorCode::E3009);
 			return false;
 		}
 		ast::Node& type = next_as_node(state, ast::NodeType::TYPE, &parent);
+		if (mut != nullptr) {
+			type.children.push_back(mut);
+		}
+
 		if (expect(state, TokenType::SYM_LBRACK)) {
-			if (!generic_tag(state, type)) {
+			const TokenType next = next_token(state).type;
+			const bool is_dimension = next == TokenType::LITERAL_INTEGER
+				|| next == TokenType::OPERATOR_RANGE_ARRAY
+				|| next == TokenType::SYM_RBRACK
+				;
+			if (!is_dimension && !generic_tag(state, type)) {
 				return false;
 			}
 		}
@@ -512,7 +530,8 @@ namespace hemera::parser {
 						skip(state, TokenType::SYM_COMMA);
 						continue;
 					}
-					if (expect(state, TokenType::IDENTIFIER)) {
+					if (expect(state, TokenType::KEYWORD_MUT) 
+						|| expect(state, TokenType::IDENTIFIER)) {
 						if (!simple_type(state, node)) {
 							return false;
 						}
