@@ -14,7 +14,7 @@ E3006,Expected a value for definition
 E3007,Expected a constant definition
 E3008,Expected a mutable definition
 E3009,Expected an identifier
-E3010,Expected an a colon after identifier
+E3010,Expected a colon after identifier
 E3011,Expected opening bracket
 E3012,Expected closing bracket
 E3013,Expected function keyword
@@ -31,3 +31,8 @@ E3023,Expected a struct definition
 E3024,Expected assignment
 E3025,Expected the keyword in
 E3026,Expected a loop
+E3027,Expected a colon after switch case value(s)
+E3028,Expected a value for start of range
+E3029,Expected a value for end of range
+E3030,Expected a dot before or after identifier, plain identifiers are not allowed in switches
+

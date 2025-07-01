@@ -1134,7 +1134,7 @@ namespace hemera::parser {
 			}
 			else if (current == TokenType::SYM_UNDERSCORE) {
 				// Would just do else, but might need to add more to the loop
-				ast::Node& underscore = next_as_node(state, ast::NodeType::IDENTIFIER);
+				ast::Node& underscore = next_as_node(state, ast::NodeType::UNDERSCORE);
 
 				if (!expect(state, TokenType::SYM_COLON)) {
 					report_error_on_last_token(state, ErrorCode::E3010);
@@ -1908,7 +1908,6 @@ namespace hemera::parser {
 	}
 
 	bool loop(ParserState* state, ast::Node& parent) {
-		
 		ast::Node* with_part = nullptr;
 
 		if (expect(state, TokenType::KEYWORD_WITH)) {
@@ -2008,13 +2007,129 @@ namespace hemera::parser {
 	}
 
 	bool switch_statement(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
+		ast::Node& switch_node = next_as_node(state, ast::NodeType::SWITCH, &parent);
+
+		if (!expect(state, TokenType::IDENTIFIER)) {
+			report_error_on_last_token(state, ErrorCode::E3009);
+			return false;
+		}
+		next_as_node(state, ast::NodeType::IDENTIFIER, &switch_node);
+
+		if (!expect(state, TokenType::SYM_LBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3018);
+			return false;
+		}
+		
+		ast::Node& cases = next_as_node(state, ast::NodeType::LIST, &switch_node);
+
+		//TODO(ches) finish
+
+		while (expect(state, TokenType::KEYWORD_CASE)) {
+			ast::Node& current_case = next_as_node(state, ast::NodeType::SWITCH_CASE, &cases);
+
+			if (!switch_entry(state, current_case)) {
+				return false;
+			}
+			while (expect(state, TokenType::SYM_COMMA)) {
+				skip(state, TokenType::SYM_COMMA);
+				if (!switch_entry(state, current_case)) {
+					return false;
+				}
+			}
+
+			if (!expect(state, TokenType::SYM_COLON)) {
+				report_error_on_last_token(state, ErrorCode::E3027);
+				return false;
+			}
+			skip(state, TokenType::SYM_COLON);
+
+			if (!expression(state, current_case)) {
+				return false;
+			}
+
+			if (expect(state, TokenType::DIRECTIVE)) {
+				next_as_node(state, ast::NodeType::DIRECTIVE, &cases);
+			}
+		}
+
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019);
+			return false;
+		}
+
 		return true;
 	}
 
 	bool switch_entry(ParserState* state, ast::Node& parent) {
-		if (state == nullptr) { parent.type; } //TODO(ches) remove this
-		return true;
+		const TokenType current_token_type = current_token(state).type;
+
+		if (TokenType::OPERATOR_RANGE_EXCLUSIVE == current_token_type
+			|| TokenType::OPERATOR_RANGE_INCLUSIVE == current_token_type) {
+			report_error_on_last_token(state, ErrorCode::E3028);
+			return false;
+		}
+
+		if (TokenType::LITERAL_INTEGER == current_token_type
+			|| TokenType::LITERAL_CHAR == current_token_type) {
+
+			ast::Node& lhs = next_as_node(state, ast::NodeType::LITERAL);
+			const TokenType probably_range = current_token(state).type;
+			if (TokenType::OPERATOR_RANGE_EXCLUSIVE == probably_range
+				|| TokenType::OPERATOR_RANGE_INCLUSIVE == probably_range) {
+				
+				const TokenType next_token_type = next_token(state).type;
+
+				if (next_token_type != current_token_type) {
+					report_error_on_last_token(state, ErrorCode::E3029);
+					parent.children.push_back(&lhs);
+					return false;
+				}
+				//NOTE(ches) it's a range operator, we haven't accepted it yet
+				ast::Node& op = next_as_node(state, ast::NodeType::BINARY_OPERATOR, &parent);
+				op.children.push_back(&lhs);
+				//NOTE(ches) rhs
+				next_as_node(state, ast::NodeType::LITERAL, &op);
+			}
+			else {
+				//NOTE(ches) just a plain literal, no range
+				parent.children.push_back(&lhs);
+			}
+			return true;
+		}
+		if (TokenType::LITERAL_STRING == current_token_type) {
+			next_as_node(state, ast::NodeType::LITERAL, &parent);
+			return true;
+		}
+		if (TokenType::IDENTIFIER == current_token_type) {
+			ast::Node& lhs = next_as_node(state, ast::NodeType::IDENTIFIER);
+			if (!expect(state, TokenType::SYM_DOT)) {
+				report_error_on_last_token(state, ErrorCode::E3030);
+				return false;
+			}
+			ast::Node& dot = next_as_node(state, ast::NodeType::DOT_ACCESS, &parent);
+			dot.children.push_back(&lhs);
+			if (!expect(state, TokenType::IDENTIFIER)) {
+				report_error_on_last_token(state, ErrorCode::E3009);
+				return false;
+			}
+			next_as_node(state, ast::NodeType::IDENTIFIER, &dot);
+			return true;
+		}
+		if (TokenType::SYM_DOT == current_token_type) {
+			ExprResult shorthand = enum_shorthand(state);
+			if (!shorthand.success) {
+				return false;
+			}
+			parent.children.push_back(shorthand.result);
+			return true;
+		}
+		if (TokenType::SYM_UNDERSCORE == current_token_type) {
+			next_as_node(state, ast::NodeType::UNDERSCORE, &parent);
+			return true;
+		}
+		
+		report_error_on_last_token(state, ErrorCode::E3017);
+		return false;
 	}
 
 	ExprResult match_expression(ParserState* state) {

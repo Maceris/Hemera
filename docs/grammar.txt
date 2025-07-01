@@ -427,14 +427,16 @@ function_call_input = expression_with_result
     ;
 
 switch_statement = KEYWORD_switch , identifier , SYM_LBRACE , 
-    ( KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry } , SYM_COLON , expression , [ directive ] )+
-    [ SYM_UNDERSCORE , SYM_COLON , expression ]
+    ( switch_case , [ directive ] )+
     , SYM_RBRACE
     ;
+switch_case = KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry } , SYM_COLON , expression ;
 switch_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )
     | ( literal_char , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_char ] )
     | literal_string
-    | ( [ identifier ] , SYM_DOT , identifier )
+    | ( identifier , SYM_DOT , identifier )
+    | ( enum_shorthand )
+    | SYM_UNDERSCORE
     ;
 
 match_expression = KEYWORD_match , identifier SYM_LBRACE
