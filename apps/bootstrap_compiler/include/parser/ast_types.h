@@ -31,6 +31,7 @@ namespace hemera::ast {
 		LIST,
 		LITERAL,
 		LOOP,
+		MUTABLE,
 		PACKAGE,
 		PAREN_GROUP,
 		RETURN,
