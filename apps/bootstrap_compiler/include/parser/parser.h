@@ -38,9 +38,8 @@ namespace hemera::parser {
 		~ExprResult();
 	};
 
-	void next(ParserState* state, ast::Node& parent);
 	ast::Node& next_as_node(ParserState* state, ast::NodeType type, ast::Node* parent = nullptr);
-	bool accept(ParserState* state, TokenType token, ast::Node& parent);
+	bool accept(ParserState* state, TokenType token, ast::NodeType type, ast::Node& parent);
 	bool expect(ParserState* state, TokenType token);
 	
 	bool skip(ParserState* state, TokenType token);
@@ -62,7 +61,7 @@ namespace hemera::parser {
 	bool any_definition(ParserState* state, ast::Node& parent);
 	bool const_definition_rhs(ParserState* state, ast::Node& parent);
 	bool mut_definition_rhs(ParserState* state, ast::Node& parent);
-	bool declaration(ParserState* state, ast::Node& parent);
+	ExprResult declaration(ParserState* state, ast::Node& parent);
 	bool decl_rhs(ParserState* state, ast::Node& parent);
 	bool function_decl(ParserState* state, ast::Node& parent);
 	bool struct_decl(ParserState* state, ast::Node& parent);

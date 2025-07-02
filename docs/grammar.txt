@@ -416,8 +416,7 @@ function_call = identifier , function_call_parens ;
 function_call_parens = SYM_LPAREN , [ function_call_input_list ] , SYM_RPAREN
     ;
 
-function_call_input_list = ( function_call_input , { SYM_COMMA , function_call_input } , { SYM_COMMA , identifier , OPERATOR_assign , function_call_input } )
-    | ( identifier , OPERATOR_assign , function_call_input , { SYM_COMMA , identifier , OPERATOR_assign , function_call_input } )
+function_call_input_list = [ identifier , OPERATOR_assign ] , function_call_input , { SYM_COMMA , [ identifier , OPERATOR_assign ] ,  function_call_input } 
     ;
 
 function_call_input = expression_with_result
