@@ -33,6 +33,8 @@ namespace hemera::ast {
 		LIST,
 		LITERAL,
 		LOOP,
+		MATCH,
+		MATCH_CASE,
 		MUTABLE,
 		PACKAGE,
 		PAREN_GROUP,

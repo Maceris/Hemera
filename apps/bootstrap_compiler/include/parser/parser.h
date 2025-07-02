@@ -109,6 +109,6 @@ namespace hemera::parser {
 	bool switch_statement(ParserState* state, ast::Node& parent);
 	bool switch_entry(ParserState* state, ast::Node& parent);
 	ExprResult match_expression(ParserState* state);
-	bool match_entry(ParserState* state, ast::Node& parent);
+	ExprResult match_entry(ParserState* state);
 
 }

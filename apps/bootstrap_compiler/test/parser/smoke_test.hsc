@@ -588,38 +588,38 @@ switch_example :: fn() {
 
 match_example :: fn() {
 	foo : string : match x {
-		1 => "one",
-		2, 3 => "two",
-		4..<6 => "three",
-		6..=30, 32, 44 => "four",
-		_ => "default",
+		1 => "one"
+		2, 3 => "two"
+		4..<6 => "three"
+		6..=30, 32, 44 => "four"
+		_ => "default"
 	}
 
 	bar : int = match y {
-		.FOO => 3,
-		example_enum.BAR => 43,
-		.BAZ, .CAZ => 2,
+		.FOO => 3
+		example_enum.BAR => 43
+		.BAZ, .CAZ => 2
 	}
 
 	baz : f32 = match z {
-		"foo" => 4.3,
-		"bar", "Baz" => 2.1,
-		_ => 9.0,
+		"foo" => 4.3
+		"bar", "Baz" => 2.1
+		_ => 9.0
 	}
 
 	caz : example_enum : switch a {
-		'a' => .FOO,
-		'b'..='m', 'o'..<'y' => .BAR,
-		_ => .UNKNOWN,
+		'a' => .FOO
+		'b'..='m', 'o'..<'y' => .BAR
+		_ => .UNKNOWN
 	}
 
 	match a {
-		Ok(foo) => print(foo),
-		Fail(_) => return 5,
+		Ok(foo) => print(foo)
+		Fail(_) => return 5
 	}
 
 	daf : i64be = switch x {
-		true => 0xABCD_0123_FFFE_2398_0001_2223_DAF3_CAFB,
+		true => 0xABCD_0123_FFFE_2398_0001_2223_DAF3_CAFB
 		false => 0x0000_0000_0001_0000_1111_BBB7_00FF_CAFE
 	}
 }
