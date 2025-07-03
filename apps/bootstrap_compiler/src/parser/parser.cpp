@@ -247,7 +247,6 @@ namespace hemera::parser {
 
 	bool mut_definition_rhs(ParserState* state, ast::Node& parent) {
 		if (!accept(state, TokenType::OPERATOR_ASSIGN, ast::NodeType::IDENTIFIER, parent)) {
-			report_error_on_last_token(state, ErrorCode::E3008);
 			return false;
 		}
 		return decl_rhs(state, parent);
@@ -551,7 +550,7 @@ namespace hemera::parser {
 				ast::Node& node = next_as_node(state, ast::NodeType::LIST, &parent);
 
 				while (!expect(state, TokenType::SYM_RPAREN)) {
-					if (skip(state, TokenType::SYM_LPAREN)) {
+					if (expect(state, TokenType::KEYWORD_FN)) {
 						if (!function_signature(state, node)) {
 							return false;
 						}
@@ -1212,7 +1211,7 @@ namespace hemera::parser {
 							 * NOTE(ches) if we have something besides comma,
 							 * then it had better be the closing parenthesis
 							 */
-							report_error_on_last_token(state, ErrorCode::E3009);
+							report_error_on_last_token(state, ErrorCode::E3015);
 							return false;
 						}
 					}
@@ -1238,10 +1237,6 @@ namespace hemera::parser {
 
 	bool generic_tag(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, &parent);
-		if (!skip(state, TokenType::SYM_LBRACK)) {
-			report_error_on_last_token(state, ErrorCode::E3011);
-			return false;
-		}
 
 		while (!expect(state, TokenType::SYM_RBRACK)) {
 			if (!type(state, node)) {
@@ -2013,19 +2008,13 @@ namespace hemera::parser {
 		if (expect(state, TokenType::KEYWORD_WHILE)) {
 			ast::Node& while_node = next_as_node(state, 
 				ast::NodeType::WHILE_CLAUSE, loop_node);
-			if (!skip(state, TokenType::SYM_LPAREN)) {
-				report_error_on_last_token(state, ErrorCode::E3014);
-				return false;
-			}
+			
 			ExprResult expr = expression_with_result(state);
 			if (!expr.success) {
 				return false;
 			}
 			while_node.children.push_back(expr.result);
-			if (!skip(state, TokenType::SYM_RPAREN)) {
-				report_error_on_last_token(state, ErrorCode::E3015);
-				return false;
-			}
+			
 		}
 
 		return true;

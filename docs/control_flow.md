@@ -179,7 +179,7 @@ loop {
     println(i)
     i += 1
 }
-while(i <= 10)
+while i <= 10
 ```
 
 `#at_least_once` causes a loop operation to occur at least once, skipping the first condition check. This is equivalent to turning a C while loop into a do-while loop.
@@ -188,12 +188,12 @@ while(i <= 10)
 loop #at_least_once {
     println("This will run")
 }
-while(false)
+while false
 
 loop {
     println("This will not run")
 }
-while(false)
+while false
 ```
 
 ## Match
@@ -222,6 +222,20 @@ result2 : int = match bar {
     Ok(foo, _) => foo + 1
     Fail(_) => 0
     _ => -1
+}
+```
+
+## Push Context
+
+In order to use a new context, the `push_context` keyword is used. Within the block that is part of this context,
+the new context is used, and then popped at the end of the block (returning to what it was before).
+
+```
+my_context: Context
+push_context my_context {
+    // context in this block, and any function calls in it, is referring to my_context
+    context.allocator = memory.ArenaAllocator
+    print_something("You can do whatever you want here")
 }
 ```
 

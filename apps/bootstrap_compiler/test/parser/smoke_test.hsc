@@ -502,17 +502,17 @@ loops_example :: fn() {
 		is_even(i)
 		i += 1
 	}
-	while (i <= 10)
+	while i <= 10
 
 	loop #at_least_once {
 		is_even(i)
 	}
-	while(false)
+	while false
 
 	loop {
 		// This will not run
 	}
-	while(false)
+	while false
 
 }
 
@@ -544,7 +544,7 @@ deferring_example :: fn() {
             break
         }
     }
-    while(i <= 10)
+    while i <= 10
 }
 
 //-----------------------------------------------------------------------------
