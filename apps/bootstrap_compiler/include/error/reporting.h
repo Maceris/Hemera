@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "errors.h"
 #include "warnings.h"
@@ -18,7 +19,7 @@ namespace hemera {
 	/// </summary>
 	void enable_reporting();
 
-	void reset_reporting_counts();
+	void reset_reporting_storage();
 
 	/// <summary>
 	/// When constructed, turns off error reporting globally. Re-enables
@@ -41,6 +42,9 @@ namespace hemera {
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number);
 
-	uint32_t error_count();
-	uint32_t warning_count();
+	size_t error_count();
+	std::vector<ErrorCode> error_list();
+	size_t warning_count();
+	std::vector<WarningCode> warning_list();
+
 }

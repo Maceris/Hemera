@@ -9,9 +9,10 @@
 namespace hemera {
 
 	static std::mutex cout_mutex;
+	static std::mutex storage_mutex;
 	static bool reporting_enabled = true;
-	static std::atomic_uint32_t total_error_count = { 0 };
-	static std::atomic_uint32_t total_warning_count = { 0 };
+	static std::vector<ErrorCode> error_list_storage{};
+	static std::vector<WarningCode> warning_list_storage{};
 
 	DisableReportingForBlock::DisableReportingForBlock() {
 		disable_reporting();
@@ -29,9 +30,11 @@ namespace hemera {
 		reporting_enabled = true;
 	}
 
-	void reset_reporting_counts() {
-		total_error_count = 0;
-		total_warning_count = 0;
+	void reset_reporting_storage() {
+		std::lock_guard<std::mutex> lock(cout_mutex);
+
+		error_list_storage.clear();
+		warning_list_storage.clear();
 	}
 
 	void report_error(ErrorCode error, std::string_view file,
@@ -41,7 +44,10 @@ namespace hemera {
 			return;
 		}
 
-		++total_error_count;
+		{
+			std::lock_guard<std::mutex> lock(storage_mutex);
+			error_list_storage.push_back(error);
+		}
 
 		auto it = ErrorInfoMap.find(error);
 
@@ -64,7 +70,10 @@ namespace hemera {
 			return;
 		}
 
-		++total_warning_count;
+		{
+			std::lock_guard<std::mutex> lock(storage_mutex);
+			warning_list_storage.push_back(warning);
+		}
 
 		auto it = WarningInfoMap.find(warning);
 
@@ -80,11 +89,24 @@ namespace hemera {
 		std::cout << result << std::endl;
 	}
 
-	uint32_t error_count() {
-		return total_error_count;
+	size_t error_count() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		return error_list_storage.size();
+	}
+	
+	std::vector<ErrorCode> error_list() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		return error_list_storage;
 	}
 
-	uint32_t warning_count() {
-		return total_warning_count;
+	size_t warning_count() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		return warning_list_storage.size();
 	}
+
+	std::vector<WarningCode> warning_list() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		return warning_list_storage;
+	}
+
 }
