@@ -14,7 +14,7 @@ using hemera::MyVector;
 using hemera::Token;
 using hemera::TokenType;
 
-TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
+TEST(LexerTests, SingleSimpleTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
 
@@ -153,7 +153,7 @@ TEST(SingleSimpleTokenTest, OptionsWithoutArgs)
 	
 }
 
-TEST(SingleComplexTokenTest, OptionsWithoutArgs)
+TEST(LexerTests, SingleComplexTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
 	Allocator<> alloc;
@@ -221,7 +221,7 @@ TEST(SingleComplexTokenTest, OptionsWithoutArgs)
 	}
 }
 
-TEST(ManyTokenTest, OptionsWithoutArgs)
+TEST(LexerTests, ManyTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
 	Allocator<> alloc;
@@ -339,7 +339,7 @@ static std::string sanitize(const std::string& input) {
 	return output;
 }
 
-TEST(InvalidTokenTest, OptionsWithoutArgs)
+TEST(LexerTests, InvalidTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
 	Allocator<> alloc;

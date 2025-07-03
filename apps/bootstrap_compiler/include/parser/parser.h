@@ -44,16 +44,7 @@ namespace hemera::parser {
 	
 	bool skip(ParserState* state, TokenType token);
 
-	/// <summary>
-	/// Skip a token if present.
-	/// </summary>
-	/// <param name="state">The parser state.</param>
-	/// <param name="tokens">The tokens we want to skip.</param>
-	/// <returns>true if the token was skipped, false if there is a different
-	/// token.</returns>
-	bool skip_any(ParserState* state, std::initializer_list<TokenType> tokens);
-
-	void file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc);
+	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc);
 	bool package_statement(ParserState* state, ast::Node& parent);
 	bool imports(ParserState* state, ast::Node& parent);
 	bool import(ParserState* state, ast::Node& parent);

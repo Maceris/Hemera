@@ -1,4 +1,4 @@
-
+#include <atomic>
 #include <format>
 #include <iostream>
 #include <mutex>
@@ -10,6 +10,8 @@ namespace hemera {
 
 	static std::mutex cout_mutex;
 	static bool reporting_enabled = true;
+	static std::atomic_uint32_t total_error_count = { 0 };
+	static std::atomic_uint32_t total_warning_count = { 0 };
 
 	DisableReportingForBlock::DisableReportingForBlock() {
 		disable_reporting();
@@ -27,12 +29,19 @@ namespace hemera {
 		reporting_enabled = true;
 	}
 
+	void reset_reporting_counts() {
+		total_error_count = 0;
+		total_warning_count = 0;
+	}
+
 	void report_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
 
 		if (!reporting_enabled) {
 			return;
 		}
+
+		++total_error_count;
 
 		auto it = ErrorInfoMap.find(error);
 
@@ -55,6 +64,8 @@ namespace hemera {
 			return;
 		}
 
+		++total_warning_count;
+
 		auto it = WarningInfoMap.find(warning);
 
 		WarningInfo info = (it != WarningInfoMap.end())
@@ -67,5 +78,13 @@ namespace hemera {
 
 		std::lock_guard<std::mutex> lock(cout_mutex);
 		std::cout << result << std::endl;
+	}
+
+	uint32_t error_count() {
+		return total_error_count;
+	}
+
+	uint32_t warning_count() {
+		return total_warning_count;
 	}
 }

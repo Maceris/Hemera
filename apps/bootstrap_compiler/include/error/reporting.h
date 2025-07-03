@@ -18,6 +18,8 @@ namespace hemera {
 	/// </summary>
 	void enable_reporting();
 
+	void reset_reporting_counts();
+
 	/// <summary>
 	/// When constructed, turns off error reporting globally. Re-enables
 	/// reporting globally when destructed.
@@ -38,4 +40,7 @@ namespace hemera {
 
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number);
+
+	uint32_t error_count();
+	uint32_t warning_count();
 }

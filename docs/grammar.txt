@@ -174,7 +174,7 @@ file = package_statement , [ imports ] , [ const_definitions ] ;
 
 package_statement = KEYWORD_package , identifier ;
 
-imports = ( import | ( directive , SYM_LBRACE , imports , SYM_RBRACE ) ) , [ imports ] ;
+imports = ( import | ( directive , [ expression_with_result ] , SYM_LBRACE , imports , SYM_RBRACE ) ) , [ imports ] ;
 import = KEYWORD_import , identifier , [ KEYWORD_as , identifier ] , [ KEYWORD_from, literal_string ] ;
 
 const_definitions = { 

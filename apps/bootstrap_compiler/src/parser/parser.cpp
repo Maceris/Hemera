@@ -94,18 +94,7 @@ namespace hemera::parser {
 		return false;
 	}
 
-	bool skip_any(ParserState* state, std::initializer_list<TokenType> tokens) {
-		for (auto& token : tokens) {
-			if (current_token(state).type == token) {
-				state->current += 1;
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	void file(std::string_view file_path, MyVector<Token>& tokens,
+	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens,
 		Allocator<ast::Node> node_alloc)
 	{
 		ParserState state(file_path, tokens, node_alloc);
@@ -113,21 +102,23 @@ namespace hemera::parser {
 		Token current(TokenType::END_OF_FILE, 0, 0);//TODO(ches) ???
 		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
 
+		//TODO(ches) stop bailing early and attempt to recover from errors
 		if (!package_statement(&state, *node)) {
-			return;
+			return node;
 		}
 		if (!imports(&state, *node)) {
-			return;
+			return node;
 		}
 		if (!const_definitions(&state, *node)) {
-			return;
+			return node;
 		}
 
 		//TODO(ches) flatten tree into array at the end
+		return node;
 	}
 
 	bool package_statement(ParserState* state, ast::Node& parent) {
-		if (!skip(state, TokenType::KEYWORD_PACKAGE)) {
+		if (!expect(state, TokenType::KEYWORD_PACKAGE)) {
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return false;
 		}
@@ -149,6 +140,15 @@ namespace hemera::parser {
 		) {
 			if (current_type == TokenType::DIRECTIVE) {
 				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+				
+				if (!expect(state, TokenType::SYM_LBRACE)) {
+					ExprResult conditional = expression_with_result(state);
+					if (!conditional.success) {
+						return false;
+					}
+					directive.children.push_back(conditional.result);
+				}
+
 				if (!skip(state, TokenType::SYM_LBRACE)) {
 					report_error_on_last_token(state, ErrorCode::E3018);
 					return false;
@@ -269,7 +269,8 @@ namespace hemera::parser {
 		ast::Node& colon = next_as_node(state, ast::NodeType::DEFINITION, &parent);
 		colon.children.push_back(&lhs);
 		
-		if (!type(state, colon)) {
+		if (!expect(state, TokenType::SYM_COLON) 
+			&& !type(state, colon)) {
 			return ExprResult{ false };
 		}
 
@@ -313,6 +314,9 @@ namespace hemera::parser {
 		if (!function_signature(state, parent)) {
 			return false;
 		}
+		if (!expect(state, TokenType::SYM_LBRACE)) {
+			return true;
+		}
 		ExprResult result = block(state);
 		if (!result.success) {
 			return false;
@@ -345,7 +349,9 @@ namespace hemera::parser {
 	}
 
 	bool union_decl(ParserState* state, ast::Node& parent) {
-		skip(state, TokenType::KEYWORD_UNION);
+		if (!expect(state, TokenType::KEYWORD_UNION)) {
+			return false;
+		}
 		ast::Node& node = next_as_node(state, ast::NodeType::UNION, &parent);
 
 		if (expect(state, TokenType::SYM_LBRACK)) {
@@ -369,7 +375,9 @@ namespace hemera::parser {
 	}
 
 	bool enum_decl(ParserState* state, ast::Node& parent) {
-		skip(state, TokenType::KEYWORD_ENUM);
+		if (!expect(state, TokenType::KEYWORD_ENUM)) {
+			return false;
+		}
 		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, &parent);
 
 		if (!skip(state, TokenType::SYM_LBRACE)) {
@@ -388,14 +396,13 @@ namespace hemera::parser {
 	}
 
 	bool type(ParserState* state, ast::Node& parent) {
-		ast::Node& node = next_as_node(state, ast::NodeType::TYPE, &parent);
 
 		if (expect(state, TokenType::KEYWORD_MUT) || 
 			expect(state, TokenType::IDENTIFIER)) {
-			return simple_type(state, node);
+			return simple_type(state, parent);
 		}
 		else if (expect(state, TokenType::KEYWORD_FN)) {
-			return complicated_type(state, node);
+			return complicated_type(state, parent);
 		}
 		else {
 			report_error_on_last_token(state, ErrorCode::E3017);
@@ -528,9 +535,10 @@ namespace hemera::parser {
 		if (expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state, parent);
 		}
-		if (skip(state, TokenType::SYM_LPAREN)) {
+		if (expect(state, TokenType::SYM_LPAREN)) {
 
-			if (expect(state, TokenType::KEYWORD_FN)) {
+			if (TokenType::KEYWORD_FN == next_token(state).type) {
+				skip(state, TokenType::SYM_LPAREN);
 				if (!function_signature(state, parent)) {
 					return false;
 				}
@@ -654,6 +662,7 @@ namespace hemera::parser {
 				if (!expression(state, defer)) {
 					return ExprResult{ false };
 				}
+				continue;
 			}
 			case TokenType::KEYWORD_BREAK:
 			{
