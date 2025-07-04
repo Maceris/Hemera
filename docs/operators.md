@@ -116,6 +116,9 @@ x, y += y, x
 If there are multiple values being assigned, the number of values on the right must either be equal to the number on the left, or 1. For example,
 `a = b, c` is NOT valid, but `a, b = c` and `a, b = c, d` are valid.
 
+Functions that return multiple values count as that number of values.
+Things like `a, b, c = get_two_values(), 3` are fine.
+
 Assignment operators can be chained, and will be evaluated from right to left.
 
 Here is an somewhat unhinged example:
