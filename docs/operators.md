@@ -100,6 +100,47 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ||=  logical OR                a ||= b is a = a || b
 ```
 
+Multiple values can be assigned in one expression, for example `a, b, c = 1` will set all of the values to 1, and `a, b = b, a` will swap the 2 values. 
+
+These evaluate independently/concurrently, as explained in this example:
+
+```
+x : int = 2
+y : int = 3
+
+x, y += y, x
+// both values are 5 here.
+// It does NOT do x += y and then y += x, which would give x = 5 and y = 8
+```
+
+If there are multiple values being assigned, the number of values on the right must either be equal to the number on the left, or 1. For example,
+`a = b, c` is NOT valid, but `a, b = c` and `a, b = c, d` are valid.
+
+Assignment operators can be chained, and will be evaluated from right to left.
+
+Here is an somewhat unhinged example:
+
+```
+x : int = 3
+y : int = 2
+z : int = 1
+
+x, y = y, x = z, y
+// Assigns y to z(which is 1), and x to y(which is 2)
+// Then swaps x and y, so here x = 1 and y = 2
+
+x, y <<= y, x += 3 * 1 - 1
+// Adds 2 to both x and y, so x = 3 and y = 4
+// Then shifts x(3) left by y(4), and y(4) left by x(3)
+// So here x = 48 and y = 32.
+
+// I'm begging you to not write code like this
+// The compiler will satisfy your dark desires but I am not happy about it
+```
+
+As an expression, the result is considered to be the final value after
+being assigned to the left-most side.
+
 ## Casting operators
 
 ```
@@ -280,15 +321,17 @@ example :: fn() {
 
 ```
 Precedence   Operator
-     9       +  -  ~  ! (unary versions)
-     8       ()
-     7       *  /  %  %%  &  <<  >>  >>>
-     6       +  -  |  ~
-     5       ==  !=  <  >  <=  >=
-     4       &&
-     3       ||
-     2       ..=  ..<
-     1       if  is_none  is_some  or_break  or_continue  or_else  or_return
+    11       cast  auto_cast  bit_cast  |>  .  []
+    10       +  -  ~  ! (unary versions)
+     9       ()
+     8       *  /  %  %%  &  <<  >>  >>>
+     7       +  -  |  ~
+     6       ==  !=  <  >  <=  >=
+     5       &&
+     4       ||
+     3       ..=  ..<
+     2       if  is_none  is_some  or_break  or_continue  or_else  or_return
+     1       = += &&= &= |= ~= /= <<= %= *= ||= %%= >>= >>>= -=
 ```
 
 Unary operators have the highest precedence.

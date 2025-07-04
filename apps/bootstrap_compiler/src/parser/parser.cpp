@@ -785,7 +785,6 @@ namespace hemera::parser {
 	}
 
 	bool expression(ParserState* state, ast::Node& parent) {
-
 		switch (current_token(state).type) {
 		case TokenType::KEYWORD_MATCH:
 		case TokenType::LITERAL_CHAR:
@@ -816,24 +815,6 @@ namespace hemera::parser {
 			return expression_without_result(state, parent);
 		case TokenType::IDENTIFIER:
 			switch (next_token(state).type) {
-			//Assignment
-			case TokenType::OPERATOR_ASSIGN:
-			case TokenType::OPERATOR_ASSIGN_ADD:
-			case TokenType::OPERATOR_ASSIGN_AND:
-			case TokenType::OPERATOR_ASSIGN_BITWISE_AND:
-			case TokenType::OPERATOR_ASSIGN_BITWISE_OR:
-			case TokenType::OPERATOR_ASSIGN_BITWISE_XOR:
-			case TokenType::OPERATOR_ASSIGN_DIV:
-			case TokenType::OPERATOR_ASSIGN_LEFT_SHIFT:
-			case TokenType::OPERATOR_ASSIGN_MOD:
-			case TokenType::OPERATOR_ASSIGN_MUL:
-			case TokenType::OPERATOR_ASSIGN_OR:
-			case TokenType::OPERATOR_ASSIGN_REMAINDER:
-			case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC:
-			case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL:
-			case TokenType::OPERATOR_ASSIGN_SUB:
-			case TokenType::SYM_COMMA:
-			case TokenType::SYM_LBRACK:
 			// Declaration
 			case TokenType::SYM_COLON:
 				return expression_without_result(state, parent);
@@ -849,6 +830,21 @@ namespace hemera::parser {
 			case TokenType::KEYWORD_OR_ELSE:
 			case TokenType::KEYWORD_OR_RETURN:
 			case TokenType::OPERATOR_AND:
+			case TokenType::OPERATOR_ASSIGN:
+			case TokenType::OPERATOR_ASSIGN_ADD:
+			case TokenType::OPERATOR_ASSIGN_AND:
+			case TokenType::OPERATOR_ASSIGN_BITWISE_AND:
+			case TokenType::OPERATOR_ASSIGN_BITWISE_OR:
+			case TokenType::OPERATOR_ASSIGN_BITWISE_XOR:
+			case TokenType::OPERATOR_ASSIGN_DIV:
+			case TokenType::OPERATOR_ASSIGN_LEFT_SHIFT:
+			case TokenType::OPERATOR_ASSIGN_MOD:
+			case TokenType::OPERATOR_ASSIGN_MUL:
+			case TokenType::OPERATOR_ASSIGN_OR:
+			case TokenType::OPERATOR_ASSIGN_REMAINDER:
+			case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC:
+			case TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL:
+			case TokenType::OPERATOR_ASSIGN_SUB:
 			case TokenType::OPERATOR_BITWISE_OR:
 			case TokenType::OPERATOR_BITWISE_XOR:
 			case TokenType::OPERATOR_DIVIDE:
@@ -871,9 +867,11 @@ namespace hemera::parser {
 			case TokenType::OPERATOR_REMAINDER:
 			case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
 			case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
+			case TokenType::SYM_COMMA:
 			case TokenType::SYM_DOT:
 			case TokenType::SYM_GT:
 			case TokenType::SYM_LT:
+			case TokenType::SYM_LBRACK:
 			case TokenType::SYM_LPAREN:
 			{
 				ExprResult result = expression_with_result(state);
@@ -1088,47 +1086,8 @@ namespace hemera::parser {
 				}
 				return true;
 			}
-			else if (next_type == TokenType::OPERATOR_ASSIGN
-				|| next_type == TokenType::OPERATOR_ASSIGN_ADD
-				|| next_type == TokenType::OPERATOR_ASSIGN_AND
-				|| next_type == TokenType::OPERATOR_ASSIGN_BITWISE_AND
-				|| next_type == TokenType::OPERATOR_ASSIGN_BITWISE_OR
-				|| next_type == TokenType::OPERATOR_ASSIGN_BITWISE_XOR
-				|| next_type == TokenType::OPERATOR_ASSIGN_DIV
-				|| next_type == TokenType::OPERATOR_ASSIGN_LEFT_SHIFT
-				|| next_type == TokenType::OPERATOR_ASSIGN_MOD
-				|| next_type == TokenType::OPERATOR_ASSIGN_MUL
-				|| next_type == TokenType::OPERATOR_ASSIGN_OR
-				|| next_type == TokenType::OPERATOR_ASSIGN_REMAINDER
-				|| next_type == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC
-				|| next_type == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL
-				|| next_type == TokenType::OPERATOR_ASSIGN_SUB
-				) {
-				//TODO(ches) this is ambiguous in the grammar, probably needs to be considered expression with result
-				return assignment(state, parent);
-			}
 		}
 		return false;
-	}
-
-	bool assignment(ParserState* state, ast::Node& parent) {
-		ExprResult loc_result = location(state);
-		if (!loc_result.success) {
-			return false;
-		}
-		ast::Node* loc = loc_result.result;
-
-		ast::Node& assign = next_as_node(state, ast::NodeType::BINARY_OPERATOR, &parent);
-
-		assign.children.push_back(loc);
-
-		ExprResult expr = expression_with_result(state);
-		if (!expr.success) {
-			return false;
-		}
-		assign.children.push_back(expr.result);
-
-		return true;
 	}
 
 	bool literal(ParserState* state, ast::Node& parent) {
@@ -1258,11 +1217,75 @@ namespace hemera::parser {
 	}
 
 	ExprResult expr_lvl_1(ParserState* state) {
+		ExprResult lhs = expr_lvl_2(state);
+
+		if (!lhs.success) {
+			return ExprResult{ false };
+		}
+
+		ast::Node* list = nullptr;
+
+		while (expect(state, TokenType::SYM_COMMA)) {
+			if (list == nullptr) {
+				list = &next_as_node(state, ast::NodeType::LIST);
+				list->children.push_back(lhs.result);
+			}
+			else {
+				skip(state, TokenType::SYM_COMMA);
+			}
+			ExprResult next_expr = expr_lvl_2(state);
+
+			if (!next_expr.success) {
+				delete_node(state->node_alloc, list);
+				return ExprResult{ false };
+			}
+			list->children.push_back(next_expr.result);
+		}
+
+		if (list == nullptr) {
+			list = lhs.result;
+		}
+
+		ast::Node* result = list;
+
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::OPERATOR_ASSIGN
+			|| current == TokenType::OPERATOR_ASSIGN_ADD
+			|| current == TokenType::OPERATOR_ASSIGN_AND
+			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_AND
+			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_OR
+			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_XOR
+			|| current == TokenType::OPERATOR_ASSIGN_DIV
+			|| current == TokenType::OPERATOR_ASSIGN_LEFT_SHIFT
+			|| current == TokenType::OPERATOR_ASSIGN_MOD
+			|| current == TokenType::OPERATOR_ASSIGN_MUL
+			|| current == TokenType::OPERATOR_ASSIGN_OR
+			|| current == TokenType::OPERATOR_ASSIGN_REMAINDER
+			|| current == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC
+			|| current == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL
+			|| current == TokenType::OPERATOR_ASSIGN_SUB
+			) {
+
+			result = &next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result->children.push_back(list);
+
+			ExprResult rhs = expr_lvl_1(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, result);
+				return ExprResult{ false };
+			}
+			result->children.push_back(rhs.result);
+		}
+
+		return ExprResult{ true, result };
+	}
+
+	ExprResult expr_lvl_2(ParserState* state) {
 		if (expect(state, TokenType::KEYWORD_IF)) {
 			return if_expression(state);
 		}
 
-		ExprResult lhs = expr_lvl_2(state);
+		ExprResult lhs = expr_lvl_3(state);
 
 		if (!lhs.success) {
 			return ExprResult{ false };
@@ -1330,8 +1353,8 @@ namespace hemera::parser {
 		return lhs;
 	}
 
-	ExprResult expr_lvl_2(ParserState* state) {
-		ExprResult lhs = expr_lvl_3(state);
+	ExprResult expr_lvl_3(ParserState* state) {
+		ExprResult lhs = expr_lvl_4(state);
 
 		if (!lhs.success) {
 			return { false };
@@ -1341,7 +1364,7 @@ namespace hemera::parser {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 			
-			ExprResult rhs = expr_lvl_3(state);
+			ExprResult rhs = expr_lvl_4(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
@@ -1353,30 +1376,7 @@ namespace hemera::parser {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
-			ExprResult rhs = expr_lvl_3(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-
-		return lhs;
-	}
-
-	ExprResult expr_lvl_3(ParserState* state) {
-		ExprResult lhs = expr_lvl_4(state);
-
-		if (!lhs.success) {
-			return { false };
-		}
-
-		if (expect(state, TokenType::OPERATOR_OR)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			ExprResult rhs = expr_lvl_3(state);
+			ExprResult rhs = expr_lvl_4(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
@@ -1395,7 +1395,7 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		if (expect(state, TokenType::OPERATOR_AND)) {
+		if (expect(state, TokenType::OPERATOR_OR)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
@@ -1418,18 +1418,11 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		const TokenType current = current_token(state).type;
-		if (current == TokenType::OPERATOR_EQUAL
-			|| current == TokenType::OPERATOR_NOT_EQUAL
-			|| current == TokenType::SYM_LT
-			|| current == TokenType::SYM_GT
-			|| current == TokenType::OPERATOR_LESS_THAN_OR_EQUAL
-			|| current == TokenType::OPERATOR_GREATER_THAN_OR_EQUAL
-			) {
+		if (expect(state, TokenType::OPERATOR_AND)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
-			ExprResult rhs = expr_lvl_6(state);
+			ExprResult rhs = expr_lvl_5(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
@@ -1449,15 +1442,17 @@ namespace hemera::parser {
 		}
 
 		const TokenType current = current_token(state).type;
-		if (current == TokenType::OPERATOR_PLUS
-			|| current == TokenType::OPERATOR_MINUS
-			|| current == TokenType::OPERATOR_BITWISE_OR
-			|| current == TokenType::OPERATOR_BITWISE_XOR
+		if (current == TokenType::OPERATOR_EQUAL
+			|| current == TokenType::OPERATOR_NOT_EQUAL
+			|| current == TokenType::SYM_LT
+			|| current == TokenType::SYM_GT
+			|| current == TokenType::OPERATOR_LESS_THAN_OR_EQUAL
+			|| current == TokenType::OPERATOR_GREATER_THAN_OR_EQUAL
 			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
-			ExprResult rhs = expr_lvl_6(state);
+			ExprResult rhs = expr_lvl_7(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
@@ -1477,14 +1472,10 @@ namespace hemera::parser {
 		}
 
 		const TokenType current = current_token(state).type;
-		if (current == TokenType::OPERATOR_MULTIPLY
-			|| current == TokenType::OPERATOR_DIVIDE
-			|| current == TokenType::OPERATOR_MODULUS
-			|| current == TokenType::OPERATOR_REMAINDER
-			|| current == TokenType::SYM_AMPERSAND
-			|| current == TokenType::OPERATOR_LEFT_SHIFT
-			|| current == TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC
-			|| current == TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL
+		if (current == TokenType::OPERATOR_PLUS
+			|| current == TokenType::OPERATOR_MINUS
+			|| current == TokenType::OPERATOR_BITWISE_OR
+			|| current == TokenType::OPERATOR_BITWISE_XOR
 			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
@@ -1502,6 +1493,38 @@ namespace hemera::parser {
 	}
 
 	ExprResult expr_lvl_8(ParserState* state) {
+		ExprResult lhs = expr_lvl_9(state);
+
+		if (!lhs.success) {
+			return { false };
+		}
+
+		const TokenType current = current_token(state).type;
+		if (current == TokenType::OPERATOR_MULTIPLY
+			|| current == TokenType::OPERATOR_DIVIDE
+			|| current == TokenType::OPERATOR_MODULUS
+			|| current == TokenType::OPERATOR_REMAINDER
+			|| current == TokenType::SYM_AMPERSAND
+			|| current == TokenType::OPERATOR_LEFT_SHIFT
+			|| current == TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC
+			|| current == TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL
+			) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			ExprResult rhs = expr_lvl_8(state);
+			if (!rhs.success) {
+				delete_node(state->node_alloc, &result);
+				return ExprResult{ false };
+			}
+			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+
+		return lhs;
+	}
+
+	ExprResult expr_lvl_9(ParserState* state) {
 		if (expect(state, TokenType::SYM_LPAREN)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::PAREN_GROUP);
 			
@@ -1521,11 +1544,11 @@ namespace hemera::parser {
 			return ExprResult{ true, &result };
 		}
 		else {
-			return expr_lvl_9(state);
+			return expr_lvl_10(state);
 		}
 	}
 
-	ExprResult expr_lvl_9(ParserState* state) {
+	ExprResult expr_lvl_10(ParserState* state) {
 		ast::Node* result = nullptr;
 
 		const TokenType current = current_token(state).type;
@@ -1536,7 +1559,7 @@ namespace hemera::parser {
 			result = &next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 		}
 		
-		ExprResult expr = expr_lvl_10(state);
+		ExprResult expr = expr_lvl_11(state);
 		
 		if (!expr.success) {
 
@@ -1556,7 +1579,7 @@ namespace hemera::parser {
 		return ExprResult{ true, result };
 	}
 
-	ExprResult expr_lvl_10(ParserState* state) {
+	ExprResult expr_lvl_11(ParserState* state) {
 		const TokenType current = current_token(state).type;
 
 		if (current == TokenType::KEYWORD_CAST

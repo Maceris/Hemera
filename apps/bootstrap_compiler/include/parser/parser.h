@@ -70,7 +70,6 @@ namespace hemera::parser {
 	bool expression(ParserState* state, ast::Node& parent);
 	ExprResult expression_with_result(ParserState* state);
 	bool expression_without_result(ParserState* state, ast::Node& parent);
-	bool assignment(ParserState* state, ast::Node& parent);
 	bool literal(ParserState* state, ast::Node& parent);
 	bool struct_body(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
@@ -86,6 +85,7 @@ namespace hemera::parser {
 	ExprResult expr_lvl_8(ParserState* state);
 	ExprResult expr_lvl_9(ParserState* state);
 	ExprResult expr_lvl_10(ParserState* state);
+	ExprResult expr_lvl_11(ParserState* state);
 	ExprResult location(ParserState* state);
 	ExprResult struct_literal(ParserState* state);
 	bool function_call(ParserState* state, ast::Node& parent);

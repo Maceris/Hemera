@@ -96,7 +96,6 @@ TEST(ParserSmoke, ErrorScenarios)
 		}
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3012_04.hsc - need to fix grammar ambiguity around assignment
 		//TODO(ches) E3015_08.hsc - should get an error when we start a function call and include nothing
 		//TODO(ches) E3015_10.hsc - needs investigating
 		//TODO(ches) E3015_11.hsc - needs investigating
