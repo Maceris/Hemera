@@ -14,10 +14,13 @@ namespace hemera {
 	/// </summary>
 	void disable_reporting();
 
+	void disable_reporting_printing();
+
 	/// <summary>
 	/// Enables error reporting globally, which is on by default.
 	/// </summary>
 	void enable_reporting();
+	void enable_reporting_printing();
 
 	void reset_reporting_storage();
 

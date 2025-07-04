@@ -11,6 +11,7 @@ namespace hemera {
 	static std::mutex cout_mutex;
 	static std::mutex storage_mutex;
 	static bool reporting_enabled = true;
+	static bool printing_enabled = true;
 	static std::vector<ErrorCode> error_list_storage{};
 	static std::vector<WarningCode> warning_list_storage{};
 
@@ -23,11 +24,23 @@ namespace hemera {
 	}
 
 	void disable_reporting() {
+		std::lock_guard<std::mutex> lock(cout_mutex);
 		reporting_enabled = false;
 	}
 
+	void disable_reporting_printing() {
+		std::lock_guard<std::mutex> lock(cout_mutex);
+		printing_enabled = false;
+	}
+
 	void enable_reporting() {
+		std::lock_guard<std::mutex> lock(cout_mutex);
 		reporting_enabled = true;
+	}
+
+	void enable_reporting_printing() {
+		std::lock_guard<std::mutex> lock(cout_mutex);
+		printing_enabled = true;
 	}
 
 	void reset_reporting_storage() {
@@ -60,6 +73,11 @@ namespace hemera {
 			info.message);
 
 		std::lock_guard<std::mutex> lock(cout_mutex);
+
+		if (!printing_enabled) {
+			return;
+		}
+
 		std::cout << result << std::endl;
 	}
 
@@ -86,6 +104,11 @@ namespace hemera {
 			info.message);
 
 		std::lock_guard<std::mutex> lock(cout_mutex);
+
+		if (!printing_enabled) {
+			return;
+		}
+
 		std::cout << result << std::endl;
 	}
 

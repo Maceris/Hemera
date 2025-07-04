@@ -12,7 +12,7 @@ E3004,Missing import location after from
 E3005,Missing alias name after as
 E3006,Expected a value for definition
 E3007,Expected a constant definition
-E3008,Expected a mutable definition
+E3008,Unused error
 E3009,Expected an identifier
 E3010,Expected a colon after identifier
 E3011,Expected opening bracket
@@ -24,8 +24,8 @@ E3016,Expected a type
 E3017,Unexpected token
 E3018,Expected an opening brace
 E3019,Expected a closing brace
-E3020,Invalid struct body
-E3021,Expected a closing brace
+E3020,Unused error
+E3021,Unused error
 E3022,Expected a comma
 E3023,Expected a struct definition
 E3024,Expected assignment
