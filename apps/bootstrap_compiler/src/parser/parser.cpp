@@ -268,9 +268,14 @@ namespace hemera::parser {
 		ast::Node& colon = next_as_node(state, ast::NodeType::DEFINITION, &parent);
 		colon.children.push_back(&lhs);
 		
-		if (!expect(state, TokenType::SYM_COLON) 
-			&& !type(state, colon)) {
-			return ExprResult{ false };
+		if (!expect(state, TokenType::SYM_COLON)) {
+			// we aren't deducing the type, there's something here
+
+			ExprResult rhs = type(state);
+			if (!rhs.success) {
+				return ExprResult{ false };
+			}
+			colon.children.push_back(rhs.result);
 		}
 
 		return ExprResult{ true, &colon };
@@ -299,7 +304,13 @@ namespace hemera::parser {
 			// Might or might not find these
 			accept(state, TokenType::KEYWORD_DISTINCT, ast::NodeType::KEYWORD_DISTINCT, parent);
 			accept(state, TokenType::KEYWORD_ALIAS, ast::NodeType::KEYWORD_ALIAS, parent);
-			return type(state, parent);
+			
+			ExprResult rhs = type(state);
+			if (!rhs.success) {
+				return false;
+			}
+			parent.children.push_back(rhs.result);
+			return true;
 		}
 		ExprResult rhs = expression_with_result(state);
 		if (!rhs.success) {
@@ -310,10 +321,14 @@ namespace hemera::parser {
 	}
 
 	bool function_decl(ParserState* state, ast::Node& parent) {
-		if (!function_signature(state, parent)) {
+		ExprResult sig = function_signature(state);
+		if (!sig.success) {
 			return false;
 		}
+		parent.children.push_back(sig.result);
+
 		if (!expect(state, TokenType::SYM_LBRACE)) {
+			// We don't have a function body, can just stop now
 			return true;
 		}
 		ExprResult result = block(state);
@@ -391,22 +406,22 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool type(ParserState* state, ast::Node& parent) {
+	ExprResult type(ParserState* state) {
 
 		if (expect(state, TokenType::KEYWORD_MUT) || 
 			expect(state, TokenType::IDENTIFIER)) {
-			return simple_type(state, parent);
+			return simple_type(state);
 		}
 		else if (expect(state, TokenType::KEYWORD_FN)) {
-			return complicated_type(state, parent);
+			return complicated_type(state);
 		}
 		else {
 			report_error_on_last_token(state, ErrorCode::E3017);
-			return false;
+			return ExprResult{ false };
 		}
 	}
 
-	bool simple_type(ParserState* state, ast::Node& parent) {
+	ExprResult simple_type(ParserState* state) {
 		ast::Node* mut = nullptr;
 
 		if (expect(state, TokenType::KEYWORD_MUT)) {
@@ -415,9 +430,12 @@ namespace hemera::parser {
 
 		if (!expect(state, TokenType::IDENTIFIER)) {
 			report_error_on_last_token(state, ErrorCode::E3009);
-			return false;
+			if (mut != nullptr) {
+				delete_node(state->node_alloc, mut);
+			}
+			return ExprResult{ false };
 		}
-		ast::Node& type = next_as_node(state, ast::NodeType::TYPE, &parent);
+		ast::Node& type = next_as_node(state, ast::NodeType::TYPE);
 		if (mut != nullptr) {
 			type.children.push_back(mut);
 		}
@@ -429,24 +447,26 @@ namespace hemera::parser {
 				|| next == TokenType::SYM_RBRACK
 				;
 			if (!is_dimension && !generic_tag(state, type)) {
-				return false;
+				delete_node(state->node_alloc, &type);
+				return ExprResult{ false };
 			}
 		}
 		while (expect(state, TokenType::SYM_LBRACK)) {
 			if (!array_dimension(state, type)) {
-				return false;
+				delete_node(state->node_alloc, &type);
+				return ExprResult{ false };
 			}
 		}
-		return true;
+		return ExprResult{ true, &type };
 	}
 
-	bool complicated_type(ParserState* state, ast::Node& parent) {
+	ExprResult complicated_type(ParserState* state) {
 		if (expect(state, TokenType::KEYWORD_FN)) {
-			return function_signature(state, parent);
+			return function_signature(state);
 		}
 		else {
 			report_error_on_last_token(state, ErrorCode::E3017);
-			return false;
+			return ExprResult{ false };
 		}
 	}
 
@@ -468,38 +488,43 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool function_signature(ParserState* state, ast::Node& parent) {
+	ExprResult function_signature(ParserState* state) {
 		if (!expect(state, TokenType::KEYWORD_FN)) {
 			report_error_on_last_token(state, ErrorCode::E3013);
-			return false;
+			return ExprResult{ false };
 		}
 
-		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION, &parent);
+		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION);
 		
 		if (expect(state, TokenType::SYM_LBRACK)) {
 			if (!generic_tag(state, node)) {
-				return false;
+				delete_node(state->node_alloc, &node);
+				return ExprResult{ false };
 			}
 		}
 		if (!expect(state, TokenType::SYM_LPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3014);
-			return false;
+			delete_node(state->node_alloc, &node);
+			return ExprResult{ false };
 		}
 		if (!expect(state, TokenType::SYM_RPAREN)) {
 			if (!function_parameter_list(state, node)) {
-				return false;
+				delete_node(state->node_alloc, &node);
+				return ExprResult{ false };
 			}
 		}
 		if (!skip(state, TokenType::SYM_RPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3015);
-			return false;
+			delete_node(state->node_alloc, &node);
+			return ExprResult{ false };
 		}
 		if (skip(state, TokenType::SYM_ARROW_SINGLE)) {
 			if (!function_output_list(state, node)) {
-				return false;
+				delete_node(state->node_alloc, &node);
+				return ExprResult{ false };
 			}
 		}
-		return true;
+		return ExprResult{ true, &node };
 	}
 
 	bool function_parameter_list(ParserState* state, ast::Node& parent) {
@@ -510,8 +535,15 @@ namespace hemera::parser {
 		while (TokenType::IDENTIFIER == token_type
 			|| TokenType::KEYWORD_MUT == token_type
 			|| TokenType::SYM_LPAREN == token_type
+			|| TokenType::KEYWORD_FN == token_type
 			) {
-			//TODO(ches) do we want a nice error if there is a fn missing a lparen here?
+
+			if (expect(state, TokenType::KEYWORD_FN)) {
+				// Missing paren for a function without an identifier
+				//TODO(ches) add a test for this
+				report_error_on_last_token(state, ErrorCode::E3008);
+				return false;
+			}
 
 			ast::Node* param = nullptr;
 
@@ -589,9 +621,12 @@ namespace hemera::parser {
 						report_error_on_last_token(state, ErrorCode::E3008);
 						return false;
 					}
-					if (!type(state, *param)) {
+					ExprResult type_part = type(state);
+
+					if (!type_part.success) {
 						return false;
 					}
+					param->children.push_back(type_part.result);
 					if (was_a_fn) {
 						if (!skip(state, TokenType::SYM_RPAREN)) {
 							//TODO(ches) make sure we have a test for this
@@ -604,20 +639,12 @@ namespace hemera::parser {
 					if (its_complicated) {
 						skip(state, TokenType::SYM_LPAREN);
 					}
-					//TODO(ches) make this suck less
-					ast::Node* dummy = state->node_alloc.new_object<ast::Node>(
-						ast::NodeType::VOID, current_token(state)
-					);
 
-					if (!type(state, *dummy)) {
-						delete_node(state->node_alloc, dummy);
+					ExprResult type_part = type(state);
+					if (!type_part.success) {
 						return false;
 					}
-					LOG_ASSERT(dummy->children.size() == 1);
-					
-					param = dummy->children[0];
-					dummy->children.clear();
-					state->node_alloc.delete_object<ast::Node>(dummy);
+					param = type_part.result;
 
 					if (its_complicated) {
 						if (!skip(state, TokenType::SYM_RPAREN)) {
@@ -661,14 +688,21 @@ namespace hemera::parser {
 			return true;
 		}
 		if (expect(state, TokenType::IDENTIFIER)) {
-			return simple_type(state, parent);
+			ExprResult id = simple_type(state);
+			if (!id.success) {
+				return false;
+			}
+			parent.children.push_back(id.result);
+			return true;
 		}
 		if (expect(state, TokenType::SYM_LPAREN)) {
 			if (TokenType::KEYWORD_FN == next_token(state).type) {
 				skip(state, TokenType::SYM_LPAREN);
-				if (!function_signature(state, parent)) {
+				ExprResult fn = function_signature(state);
+				if (!fn.success) {
 					return false;
 				}
+				parent.children.push_back(fn.result);
 			}
 			else {
 				ast::Node& node = next_as_node(state, ast::NodeType::LIST, &parent);
@@ -679,9 +713,12 @@ namespace hemera::parser {
 					) {
 					
 					if (skip(state, TokenType::KEYWORD_FN)) {
-						if (!function_signature(state, node)) {
+						ExprResult fn = function_signature(state);
+						if (!fn.success) {
 							return false;
 						}
+						node.children.push_back(fn.result);
+
 						if (!skip(state, TokenType::SYM_RPAREN)) {
 							report_error_on_last_token(state, ErrorCode::E3015);
 							return false;
@@ -691,9 +728,11 @@ namespace hemera::parser {
 					}
 					if (expect(state, TokenType::KEYWORD_MUT) 
 						|| expect(state, TokenType::IDENTIFIER)) {
-						if (!simple_type(state, node)) {
+						ExprResult type = simple_type(state);
+						if (!type.success) {
 							return false;
 						}
+						node.children.push_back(type.result);
 					}
 					skip(state, TokenType::SYM_COMMA);
 					if (accept(state, TokenType::SYM_COLON,
@@ -1333,9 +1372,12 @@ namespace hemera::parser {
 			if (expect(state, TokenType::SYM_LBRACE)) {
 				break;
 			}
-			if (!type(state, node)) {
+			ExprResult type_result = type(state);
+			if (!type_result.success) {
 				return false;
 			}
+			node.children.push_back(type_result.result);
+
 			if (expect(state, TokenType::SYM_COMMA)) {
 				skip(state, TokenType::SYM_COMMA);
 			}
@@ -1992,10 +2034,13 @@ namespace hemera::parser {
 				delete_node(state->node_alloc, root);
 				return ExprResult{ false };
 			}
-			if (!type(state, *root)) {
+			ExprResult type_result = type(state);
+			if (!type_result.success) {
 				delete_node(state->node_alloc, root);
 				return ExprResult{ false };
 			}
+			root->children.push_back(type_result.result);
+			
 			if (!skip(state, TokenType::SYM_RBRACK)) {
 				report_error_on_last_token(state, ErrorCode::E3012);
 				delete_node(state->node_alloc, root);

@@ -58,11 +58,11 @@ namespace hemera::parser {
 	bool struct_decl(ParserState* state, ast::Node& parent);
 	bool union_decl(ParserState* state, ast::Node& parent);
 	bool enum_decl(ParserState* state, ast::Node& parent);
-	bool type(ParserState* state, ast::Node& parent);
-	bool simple_type(ParserState* state, ast::Node& parent);
-	bool complicated_type(ParserState* state, ast::Node& parent);
+	ExprResult type(ParserState* state);
+	ExprResult simple_type(ParserState* state);
+	ExprResult complicated_type(ParserState* state);
 	bool array_dimension(ParserState* state, ast::Node& parent);
-	bool function_signature(ParserState* state, ast::Node& parent);
+	ExprResult function_signature(ParserState* state);
 	bool function_parameter_list(ParserState* state, ast::Node& parent);
 	bool function_output_list(ParserState* state, ast::Node& parent);
 	bool default_value(ParserState* state, ast::Node& parent);
