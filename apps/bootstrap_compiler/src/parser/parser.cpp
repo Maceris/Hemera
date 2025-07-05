@@ -1803,6 +1803,7 @@ namespace hemera::parser {
 			return ExprResult{ true , current_parent };
 		}
 
+		report_error_on_last_token(state, ErrorCode::E3017);
 		return ExprResult{ false };
 	}
 
@@ -1858,7 +1859,25 @@ namespace hemera::parser {
 			}
 			if (accept(state, TokenType::SYM_LPAREN,
 				ast::NodeType::PAREN_GROUP, identifier)) {
-				if (!expect(state, TokenType::IDENTIFIER)) {
+
+				const TokenType next_token = current_token(state).type;
+
+				if (TokenType::IDENTIFIER == next_token
+					|| TokenType::SYM_AMPERSAND == next_token
+					|| TokenType::SYM_UNDERSCORE == next_token
+					|| TokenType::PIPE_REORDER_IDENTIFIER == next_token
+					|| TokenType::DIRECTIVE == next_token
+					|| TokenType::KEYWORD_MATCH == next_token
+					|| TokenType::OPERATOR_PLUS == next_token
+					|| TokenType::OPERATOR_MINUS == next_token
+					|| TokenType::OPERATOR_BITWISE_XOR == next_token
+					|| TokenType::OPERATOR_NOT == next_token
+					|| TokenType::SYM_DOT == next_token
+					|| TokenType::SYM_LPAREN == next_token
+					|| TokenType::KEYWORD_AUTO_CAST == next_token
+					|| TokenType::KEYWORD_BIT_CAST == next_token
+					|| TokenType::KEYWORD_CAST == next_token
+					) {
 					if (!function_call_input_list(state, identifier)) {
 						delete_node(state->node_alloc, &identifier);
 						return ExprResult{ false };
