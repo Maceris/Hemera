@@ -47,7 +47,6 @@ TEST(ParserSmoke, SmokeTest)
 	Allocator<> node_alloc;
 
 	hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
-	//TODO(ches) need to fix grammar to allow function signatures without names for variables
 
 	EXPECT_NE(ast, nullptr);
 	EXPECT_EQ(hemera::error_count(), 0);
@@ -96,22 +95,20 @@ TEST(ParserSmoke, ErrorScenarios)
 		}
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3015_08.hsc - should get an error when we start a function call and include nothing
-		//TODO(ches) E3015_10.hsc - needs investigating
-		//TODO(ches) E3015_11.hsc - needs investigating
-		//TODO(ches) E3016_01.hsc - needs investigating
-		//TODO(ches) E3017_01.hsc - needs investigating
-		//TODO(ches) E3019_05.hsc - needs investigating
-		//TODO(ches) E3019_06.hsc - needs investigating
-		//TODO(ches) E3019_07.hsc - needs investigating
-		//TODO(ches) E3019_08.hsc - needs investigating
-		//TODO(ches) E3019_09.hsc - needs investigating
-		//TODO(ches) E3022_01.hsc - needs investigating
-		//TODO(ches) E3022_02.hsc - needs investigating
-		//TODO(ches) E3023_01.hsc - needs investigating
-		//TODO(ches) E3024_01.hsc - needs investigating
-		//TODO(ches) E3029_01.hsc - needs investigating
-		//TODO(ches) E3029_02.hsc - needs investigating
+		//TODO(ches) E3015_10.hsc - got E3017: Unexpected token
+		//TODO(ches) E3015_11.hsc - got E3017: Unexpected token
+		//TODO(ches) E3016_01.hsc - got E3017: Unexpected token
+		//TODO(ches) E3019_05.hsc - got E3017: Unexpected token
+		//TODO(ches) E3019_06.hsc - got E3017: Unexpected token
+		//TODO(ches) E3019_07.hsc - got E3017: Unexpected token
+		//TODO(ches) E3019_08.hsc - got E3015: Expected closing parenthesis
+		//TODO(ches) E3019_09.hsc - got E3031: Expected a double arrow after match value(s)
+		//TODO(ches) E3022_01.hsc - got E3017: Unexpected token
+		//TODO(ches) E3022_02.hsc - got E3017: Unexpected token
+		//TODO(ches) E3023_01.hsc - got E3018: Expected an opening brace
+		//TODO(ches) E3024_01.hsc - got E3017: Unexpected token
+		//TODO(ches) E3029_01.hsc - got E3017: Unexpected token
+		//TODO(ches) E3029_02.hsc - got E3017: Unexpected token
 
 		EXPECT_EQ(hemera::error_count(), 1) 
 			<< std::format("Incorrect number of errors for {}", file_name);

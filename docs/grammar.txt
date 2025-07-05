@@ -208,13 +208,8 @@ type = simple_type
 type_in_list = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
-type_for_parameter = simple_type_for_parameter
-    | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
-    ;
 
-simple_type = ( identifier , [ generic_tag ] , [ array_dimension ]+ )
-    ;
-simple_type_for_parameter = ( [ KEYWORD_mut ] , identifier , [ generic_tag ] , [ array_dimension ]+ )
+simple_type = ( [ KEYWORD_mut ] , identifier , [ generic_tag ] , [ array_dimension ]+ )
     ;
 
 # Confusing without parentheses in a function return type list
@@ -224,8 +219,7 @@ complicated_type = function_signature
 array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array ] , SYM_RBRACK ;
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
-function_parameter_list = ( function_parameter , { SYM_COMMA , function_parameter } , { SYM_COMMA , function_parameter , OPERATOR_assign , default_value } )
-    | ( function_parameter , OPERATOR_assign , default_value , { SYM_COMMA , function_parameter , OPERATOR_assign , default_value } )
+function_parameter_list = function_parameter , [ OPERATOR_assign , default_value ] , { SYM_COMMA , function_parameter , [ OPERATOR_assign , default_value ] }
     ;
 function_output_list = KEYWORD_void 
     | simple_type
@@ -238,7 +232,7 @@ function_output_in_paren = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = [ identifier , { SYM_COMMA , identifier } , SYM_COLON ] , type_for_parameter  ;
+function_parameter = [ identifier , { SYM_COMMA , identifier } , SYM_COLON ] , type_in_list  ;
 
 default_value = literal
     | type

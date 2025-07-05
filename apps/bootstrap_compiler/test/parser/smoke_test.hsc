@@ -45,6 +45,11 @@ my_float3 : type : float
 meters :: distinct alias int
 BinaryIntFunc :: fn(int, int) -> int
 
+MultipleNames :: fn(a, b, c : int)
+MultipleNamesWithDefault :: fn(a, b, c : int = 1)
+MultipleNamesComplex :: fn(a, b: int, c, d: float, e : int, f, g : float)
+FuncAsArg :: fn(a, b: (fn()), c : (fn(int, int, int)) = MultipleNames)
+
 //-----------------------------------------------------------------------------
 //                                 Literals
 //-----------------------------------------------------------------------------

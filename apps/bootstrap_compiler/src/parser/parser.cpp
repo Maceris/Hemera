@@ -438,7 +438,6 @@ namespace hemera::parser {
 			}
 		}
 		return true;
-		
 	}
 
 	bool complicated_type(ParserState* state, ast::Node& parent) {
@@ -482,11 +481,11 @@ namespace hemera::parser {
 				return false;
 			}
 		}
-		if (!skip(state, TokenType::SYM_LPAREN)) {
+		if (!expect(state, TokenType::SYM_LPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3014);
 			return false;
 		}
-		if (expect(state, TokenType::IDENTIFIER)) {
+		if (!expect(state, TokenType::SYM_RPAREN)) {
 			if (!function_parameter_list(state, node)) {
 				return false;
 			}
@@ -506,21 +505,153 @@ namespace hemera::parser {
 	bool function_parameter_list(ParserState* state, ast::Node& parent) {
 		ast::Node& node = next_as_node(state, ast::NodeType::LIST, &parent);
 
-		//TODO(ches) make names and colon before types optional
-		while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER,
-			node)) {
-			if (!skip(state, TokenType::SYM_COLON)) {
-				report_error_on_last_token(state, ErrorCode::E3016);
-				return false;
+		TokenType token_type = current_token(state).type;
+
+		while (TokenType::IDENTIFIER == token_type
+			|| TokenType::KEYWORD_MUT == token_type
+			|| TokenType::SYM_LPAREN == token_type
+			) {
+			//TODO(ches) do we want a nice error if there is a fn missing a lparen here?
+
+			ast::Node* param = nullptr;
+
+			bool its_a_name = false;
+			bool its_complicated = false;
+
+			if (TokenType::SYM_LPAREN == token_type) {
+				// fn type
+				its_complicated = true;
 			}
-			type(state, node);
-			if (expect(state, TokenType::OPERATOR_EQUAL)) {
-				skip(state, TokenType::OPERATOR_EQUAL);
-				if (!default_value(state, node)) {
+			else {
+				// identifier, ambiguous
+				const TokenType next_type = next_token(state).type;
+
+				if (TokenType::SYM_COLON == next_type) {
+					its_a_name = true;
+				}
+				else if (TokenType::SYM_COMMA == next_type) {
+					// list, still ambiguous
+
+					// Scan ahead a while until we can tell what it is
+					for (size_t i = 1; i < 1024; ++i) {
+						const TokenType future_type = next_token(state, i).type;
+						if (TokenType::SYM_RPAREN == future_type
+							|| TokenType::SYM_LBRACE == future_type
+							|| TokenType::OPERATOR_EQUAL == future_type) {
+							break;
+						}
+						if (TokenType::SYM_COLON == future_type) {
+							its_a_name = true;
+							break;
+						}
+					}
+				}
+				if (its_a_name) {
+					// identifier, possibly a list of them
+					ast::Node& name = next_as_node(state, ast::NodeType::IDENTIFIER);
+
+					ast::Node* name_part = nullptr;
+					ast::Node* list_part = nullptr;
+
+					while (expect(state, TokenType::SYM_COMMA)) {
+						if (list_part == nullptr) {
+							list_part = &next_as_node(state, ast::NodeType::LIST);
+							list_part->children.push_back(&name);
+						}
+						else {
+							skip(state, TokenType::SYM_COMMA);
+						}
+						if (!accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, *list_part)) {
+							//TODO(ches) make sure we have a test for this
+							report_error_on_last_token(state, ErrorCode::E3009);
+							return false;
+						}
+					}
+					if (list_part == nullptr) {
+						name_part = &name;
+					}
+					else {
+						name_part = list_part;
+					}
+
+					if (!expect(state, TokenType::SYM_COLON)) {
+						//TODO(ches) make sure we have a test for this
+						report_error_on_last_token(state, ErrorCode::E3010);
+						return false;
+					}
+
+					param = &next_as_node(state, ast::NodeType::COLON);
+					param->children.push_back(name_part);
+
+					const bool was_a_fn = skip(state, TokenType::SYM_LPAREN);
+					if (!was_a_fn && expect(state, TokenType::KEYWORD_FN)) {
+						//TODO(ches) add a test for this
+						report_error_on_last_token(state, ErrorCode::E3008);
+						return false;
+					}
+					if (!type(state, *param)) {
+						return false;
+					}
+					if (was_a_fn) {
+						if (!skip(state, TokenType::SYM_RPAREN)) {
+							//TODO(ches) make sure we have a test for this
+							report_error_on_last_token(state, ErrorCode::E3015);
+							return false;
+						}
+					}
+				}
+				else {
+					if (its_complicated) {
+						skip(state, TokenType::SYM_LPAREN);
+					}
+					//TODO(ches) make this suck less
+					ast::Node* dummy = state->node_alloc.new_object<ast::Node>(
+						ast::NodeType::VOID, current_token(state)
+					);
+
+					if (!type(state, *dummy)) {
+						delete_node(state->node_alloc, dummy);
+						return false;
+					}
+					LOG_ASSERT(dummy->children.size() == 1);
+					
+					param = dummy->children[0];
+					dummy->children.clear();
+					state->node_alloc.delete_object<ast::Node>(dummy);
+
+					if (its_complicated) {
+						if (!skip(state, TokenType::SYM_RPAREN)) {
+							//TODO(ches) make sure we have a test for this
+							report_error_on_last_token(state, ErrorCode::E3015);
+							return false;
+						}
+					}
+				}
+
+			}
+			// param is now either the type node, or a colon
+
+			ast::Node* node_to_add = nullptr;
+
+			if (expect(state, TokenType::OPERATOR_ASSIGN)) {
+				node_to_add = &next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+				node_to_add->children.push_back(param);
+
+				if (!default_value(state, *node_to_add)) {
+					delete_node(state->node_alloc, node_to_add);
 					return false;
 				}
 			}
+			else {
+				node_to_add = param;
+			}
+			node.children.push_back(node_to_add);
+
+			skip(state, TokenType::SYM_COMMA);
+
+			token_type = current_token(state).type;
 		}
+
 		return true;
 	}
 
