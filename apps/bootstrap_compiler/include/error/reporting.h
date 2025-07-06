@@ -42,8 +42,16 @@ namespace hemera {
 	void report_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number);
 
+	void report_error(ErrorCode error, std::string_view file,
+		uint32_t line_number, uint16_t column_number,
+		std::string_view additional_info);
+
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number);
+
+	void report_warning(WarningCode warning, std::string_view file,
+		uint32_t line_number, uint16_t column_number,
+		std::string_view additional_info);
 
 	size_t error_count();
 	std::vector<ErrorCode> error_list();

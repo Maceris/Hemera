@@ -90,7 +90,7 @@ TEST(ParserSmoke, ErrorScenarios)
 		EXPECT_FALSE(tokens.empty());
 		
 		Allocator<> node_alloc;
-		if (file_name.compare("E3015_02.hsc") == 0) {
+		if (file_name.compare("E3015_10.hsc") == 0) {
 			std::cout << "this one";
 		}
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);

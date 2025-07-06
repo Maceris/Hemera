@@ -1,3 +1,4 @@
+#include <format>
 
 #include "error/reporting.h"
 
@@ -16,7 +17,6 @@ namespace hemera::parser {
 	{}
 	ParserState::ParserState(const ParserState&) = default;
 	ParserState::~ParserState() = default;
-
 
 	ExprResult::ExprResult(bool success, ast::Node* result)
 		: success{ success }
@@ -39,13 +39,24 @@ namespace hemera::parser {
 	}
 
 	static inline Token next_token(ParserState* state, size_t offset = 1) {
-		size_t index = clamp_index(state->current + offset, state->tokens.size());
+		size_t index = clamp_index(state->current + offset,
+			state->tokens.size());
 		return state->tokens[index];
 	}
 
-	static inline void report_error_on_last_token(ParserState* state, ErrorCode code) {
+	static inline void report_error_on_last_token(ParserState* state,
+		ErrorCode code) {
 		Token token = current_token(state);
-		report_error(code, state->file_path, token.line_number, token.column_number);
+		report_error(code, state->file_path, token.line_number,
+			token.column_number);
+		state->has_errors = true;
+	}
+
+	static inline void report_error_on_last_token(ParserState* state,
+		ErrorCode code, std::string_view additional_info) {
+		Token token = current_token(state);
+		report_error(code, state->file_path, token.line_number, 
+			token.column_number, additional_info);
 		state->has_errors = true;
 	}
 
@@ -60,7 +71,8 @@ namespace hemera::parser {
 		node_alloc.delete_object<ast::Node>(node);
 	}
 
-	ast::Node& next_as_node(ParserState* state, ast::NodeType type, ast::Node* parent) {
+	ast::Node& next_as_node(ParserState* state, ast::NodeType type,
+		ast::Node* parent) {
 		Token current = current_token(state);
 		ast::Node* result = state->node_alloc.new_object<ast::Node>(type, current);
 		if (parent != nullptr) {
@@ -149,15 +161,20 @@ namespace hemera::parser {
 					directive.children.push_back(conditional.result);
 				}
 
-				if (!skip(state, TokenType::SYM_LBRACE)) {
+				if (!expect(state, TokenType::SYM_LBRACE)) {
 					report_error_on_last_token(state, ErrorCode::E3018);
 					return false;
 				}
+				const Token& lbrace = current_token(state);
+				skip(state, TokenType::SYM_LBRACE);
 				if (!imports(state, directive)) {
 					return false;
 				}
 				if (!skip(state, TokenType::SYM_RBRACE)) {
-					report_error_on_last_token(state, ErrorCode::E3019);
+					report_error_on_last_token(state, ErrorCode::E3019,
+						std::format("Opening brace was at ({},{})",
+							lbrace.line_number,
+							lbrace.column_number));
 					return false;
 				}
 			}
@@ -347,15 +364,20 @@ namespace hemera::parser {
 				return false;
 			}
 		}
-		if (!skip(state, TokenType::SYM_LBRACE)) {
+		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
 			return false;
 		}
+		const Token& lbrace = current_token(state);
+		skip(state, TokenType::SYM_LBRACE);
 		if (!struct_body(state, node)) {
 			return false;
 		}
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					lbrace.line_number,
+					lbrace.column_number));
 			return false;
 		}
 		return true;
@@ -372,15 +394,21 @@ namespace hemera::parser {
 				return false;
 			}
 		}
-		if (!skip(state, TokenType::SYM_LBRACE)) {
+		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
 			return false;
 		}
+		const Token& lbrace = current_token(state);
+		skip(state, TokenType::SYM_LBRACE);
+
 		if (!union_body(state, node)) {
 			return false;
 		}
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					lbrace.line_number,
+					lbrace.column_number));
 			return false;
 		}
 		return true;
@@ -392,15 +420,20 @@ namespace hemera::parser {
 		}
 		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, &parent);
 
-		if (!skip(state, TokenType::SYM_LBRACE)) {
+		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
 			return false;
 		}
+		const Token& lbrace = current_token(state);
+		skip(state, TokenType::SYM_LBRACE);
 		if (!enum_body(state, node)) {
 			return false;
 		}
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					lbrace.line_number,
+					lbrace.column_number));
 			return false;
 		}
 		return true;
@@ -482,7 +515,9 @@ namespace hemera::parser {
 				ast::NodeType::RANGE_ARRAY, dims);
 		}
 		if (!skip(state, TokenType::SYM_RBRACK)) {
-			report_error_on_last_token(state, ErrorCode::E3012);
+			report_error_on_last_token(state, ErrorCode::E3012, 
+				std::format("Opening bracket was at ({},{})", 
+					dims.value.line_number, dims.value.column_number));
 			return false;
 		}
 		return true;
@@ -507,6 +542,7 @@ namespace hemera::parser {
 			delete_node(state->node_alloc, &node);
 			return ExprResult{ false };
 		}
+		const Token& lparen = current_token(state);
 		if (!expect(state, TokenType::SYM_RPAREN)) {
 			if (!function_parameter_list(state, node)) {
 				delete_node(state->node_alloc, &node);
@@ -514,7 +550,10 @@ namespace hemera::parser {
 			}
 		}
 		if (!skip(state, TokenType::SYM_RPAREN)) {
-			report_error_on_last_token(state, ErrorCode::E3015);
+			report_error_on_last_token(state, ErrorCode::E3015,
+				std::format("Opening parenthesis was at ({},{})",
+					lparen.line_number,
+					lparen.column_number));
 			delete_node(state->node_alloc, &node);
 			return ExprResult{ false };
 		}
@@ -615,6 +654,7 @@ namespace hemera::parser {
 					param = &next_as_node(state, ast::NodeType::COLON);
 					param->children.push_back(name_part);
 
+					const Token& lparen = current_token(state);
 					const bool was_a_fn = skip(state, TokenType::SYM_LPAREN);
 					if (!was_a_fn && expect(state, TokenType::KEYWORD_FN)) {
 						//TODO(ches) add a test for this
@@ -630,12 +670,16 @@ namespace hemera::parser {
 					if (was_a_fn) {
 						if (!skip(state, TokenType::SYM_RPAREN)) {
 							//TODO(ches) make sure we have a test for this
-							report_error_on_last_token(state, ErrorCode::E3015);
+							report_error_on_last_token(state, ErrorCode::E3015,
+								std::format("Opening parenthesis was at ({},{})",
+									lparen.line_number,
+									lparen.column_number));
 							return false;
 						}
 					}
 				}
 				else {
+					const Token& lparen = current_token(state);
 					if (its_complicated) {
 						skip(state, TokenType::SYM_LPAREN);
 					}
@@ -649,7 +693,10 @@ namespace hemera::parser {
 					if (its_complicated) {
 						if (!skip(state, TokenType::SYM_RPAREN)) {
 							//TODO(ches) make sure we have a test for this
-							report_error_on_last_token(state, ErrorCode::E3015);
+							report_error_on_last_token(state, ErrorCode::E3015,
+								std::format("Opening parenthesis was at ({},{})",
+									lparen.line_number,
+									lparen.column_number));
 							return false;
 						}
 					}
@@ -696,6 +743,7 @@ namespace hemera::parser {
 			return true;
 		}
 		if (expect(state, TokenType::SYM_LPAREN)) {
+			const Token& lparen = current_token(state);
 			if (TokenType::KEYWORD_FN == next_token(state).type) {
 				skip(state, TokenType::SYM_LPAREN);
 				ExprResult fn = function_signature(state);
@@ -712,7 +760,8 @@ namespace hemera::parser {
 					|| expect(state, TokenType::IDENTIFIER)
 					) {
 					
-					if (skip(state, TokenType::KEYWORD_FN)) {
+					const Token& next_lparen = current_token(state);
+					if (skip(state, TokenType::SYM_LPAREN)) {
 						ExprResult fn = function_signature(state);
 						if (!fn.success) {
 							return false;
@@ -720,7 +769,10 @@ namespace hemera::parser {
 						node.children.push_back(fn.result);
 
 						if (!skip(state, TokenType::SYM_RPAREN)) {
-							report_error_on_last_token(state, ErrorCode::E3015);
+							report_error_on_last_token(state, ErrorCode::E3015,
+								std::format("Opening parenthesis was at ({},{})",
+									next_lparen.line_number,
+									next_lparen.column_number));
 							return false;
 						}
 						skip(state, TokenType::SYM_COMMA);
@@ -747,11 +799,17 @@ namespace hemera::parser {
 				}
 			}
 			if (!skip(state, TokenType::SYM_RPAREN)) {
-				report_error_on_last_token(state, ErrorCode::E3015);
+				report_error_on_last_token(state, ErrorCode::E3015,
+					std::format("Opening parenthesis was at ({},{})",
+						lparen.line_number,
+						lparen.column_number));
 				return false;
 			}
+			return true;
 		}
-		return true;
+		//TODO(ches) write a test for this
+		report_error_on_last_token(state, ErrorCode::E3017);
+		return false;
 	}
 
 	bool default_value(ParserState* state, ast::Node& parent) {
@@ -948,7 +1006,10 @@ namespace hemera::parser {
 		}
 
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					block_node.value.line_number,
+					block_node.value.column_number));
 			return ExprResult{ false };
 		}
 		return ExprResult{ true, &block_node };
@@ -1319,17 +1380,15 @@ namespace hemera::parser {
 
 			skip(state, TokenType::SYM_COMMA);
 		}
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
-			return false;
-		}
+
 		return true;
 	}
 
 	bool union_body(ParserState* state, ast::Node& parent) {
 		while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, parent)) {
 			//NOTE(ches) this is all one entry in the union
-			if (accept(state, TokenType::SYM_LPAREN, ast::NodeType::PAREN_GROUP, parent)) {
+			if (expect(state, TokenType::SYM_LPAREN)) {
+				const Token& lparen = next_as_node(state, ast::NodeType::PAREN_GROUP, &parent).value;
 				//NOTE(ches) will simply exit when we hit the rparen
 				while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, parent)) {
 					if (!skip(state, TokenType::SYM_COMMA)) {
@@ -1338,13 +1397,19 @@ namespace hemera::parser {
 							 * NOTE(ches) if we have something besides comma,
 							 * then it had better be the closing parenthesis
 							 */
-							report_error_on_last_token(state, ErrorCode::E3015);
+							report_error_on_last_token(state, ErrorCode::E3015,
+								std::format("Opening parenthesis was at ({},{})",
+									lparen.line_number,
+									lparen.column_number));
 							return false;
 						}
 					}
 				}
 				if (!skip(state, TokenType::SYM_RPAREN)) {
-					report_error_on_last_token(state, ErrorCode::E3015);
+					report_error_on_last_token(state, ErrorCode::E3015,
+						std::format("Opening parenthesis was at ({},{})",
+							lparen.line_number,
+							lparen.column_number));
 					return false;
 				}
 			}
@@ -1383,7 +1448,9 @@ namespace hemera::parser {
 			}
 		}
 		if (!skip(state, TokenType::SYM_RBRACK)) {
-			report_error_on_last_token(state, ErrorCode::E3012);
+			report_error_on_last_token(state, ErrorCode::E3012,
+				std::format("Opening bracket was at ({},{})",
+					node.value.line_number, node.value.column_number));
 			return false;
 		}
 		return true;
@@ -1710,7 +1777,10 @@ namespace hemera::parser {
 			result.children.push_back(child.result);
 
 			if (!skip(state, TokenType::SYM_RPAREN)) {
-				report_error_on_last_token(state, ErrorCode::E3015);
+				report_error_on_last_token(state, ErrorCode::E3015,
+					std::format("Opening parenthesis was at ({},{})",
+						result.value.line_number,
+						result.value.column_number));
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
@@ -1829,9 +1899,10 @@ namespace hemera::parser {
 			|| expect(state, TokenType::SYM_DOT)
 			|| expect(state, TokenType::SYM_LPAREN)) {
 
-			if (accept(state, TokenType::SYM_LBRACK,
-				ast::NodeType::ARRAY_DIMENSION, identifier)) {
-
+			if (expect(state, TokenType::SYM_LBRACK)) {
+				ast::Node& lbrack = next_as_node(state, 
+					ast::NodeType::ARRAY_DIMENSION, &identifier);
+			
 				if (!expect(state, TokenType::SYM_RBRACK)) {
 					ExprResult index = expression_with_result(state);
 					if (!index.success) {
@@ -1841,7 +1912,10 @@ namespace hemera::parser {
 					identifier.children.push_back(index.result);
 				}
 				if (!skip(state, TokenType::SYM_RBRACK)) {
-					report_error_on_last_token(state, ErrorCode::E3012);
+					report_error_on_last_token(state, ErrorCode::E3012,
+						std::format("Opening bracket was at ({},{})",
+							lbrack.value.line_number, 
+							lbrack.value.column_number));
 					delete_node(state->node_alloc, &identifier);
 					return ExprResult{ false };
 				}
@@ -1857,8 +1931,11 @@ namespace hemera::parser {
 				}
 				continue;
 			}
-			if (accept(state, TokenType::SYM_LPAREN,
-				ast::NodeType::PAREN_GROUP, identifier)) {
+			if (expect(state, TokenType::SYM_LPAREN)) {
+
+				const Token& lparen = current_token(state);
+				accept(state, TokenType::SYM_LPAREN,
+					ast::NodeType::PAREN_GROUP, identifier);
 
 				const TokenType next_token = current_token(state).type;
 
@@ -1884,7 +1961,10 @@ namespace hemera::parser {
 					}
 				}
 				if (!skip(state, TokenType::SYM_RPAREN)) {
-					report_error_on_last_token(state, ErrorCode::E3015);
+					report_error_on_last_token(state, ErrorCode::E3015,
+						std::format("Opening parenthesis was at ({},{})",
+							lparen.line_number,
+							lparen.column_number));
 					delete_node(state->node_alloc, &identifier);
 					return ExprResult{ false };
 				}
@@ -1954,7 +2034,10 @@ namespace hemera::parser {
 		}
 
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					braces.value.line_number,
+					braces.value.column_number));
 			delete_node(state->node_alloc, &id);
 			return ExprResult{ false };
 		}
@@ -1983,7 +2066,10 @@ namespace hemera::parser {
 		}
 
 		if (!skip(state, TokenType::SYM_RPAREN)) {
-			report_error_on_last_token(state, ErrorCode::E3015);
+			report_error_on_last_token(state, ErrorCode::E3015,
+				std::format("Opening parenthesis was at ({},{})",
+					parens.value.line_number,
+					parens.value.column_number));
 			return false;
 		}
 
@@ -2048,6 +2134,7 @@ namespace hemera::parser {
 			|| current_token_type == TokenType::KEYWORD_BIT_CAST) {
 			root = &next_as_node(state, ast::NodeType::CAST);
 
+			const Token& lbrack = current_token(state);
 			if (!skip(state, TokenType::SYM_LBRACK)) {
 				report_error_on_last_token(state, ErrorCode::E3011);
 				delete_node(state->node_alloc, root);
@@ -2061,7 +2148,10 @@ namespace hemera::parser {
 			root->children.push_back(type_result.result);
 			
 			if (!skip(state, TokenType::SYM_RBRACK)) {
-				report_error_on_last_token(state, ErrorCode::E3012);
+				report_error_on_last_token(state, ErrorCode::E3012,
+					std::format("Opening bracket was at ({},{})",
+						lbrack.line_number,
+						lbrack.column_number));
 				delete_node(state->node_alloc, root);
 				return ExprResult{ false };
 			}
@@ -2073,11 +2163,14 @@ namespace hemera::parser {
 			}
 			root = &next_as_node(state, ast::NodeType::CAST);
 		}
-		if (!skip(state, TokenType::SYM_LPAREN)) {
+		if (!expect(state, TokenType::SYM_LPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3014);
 			delete_node(state->node_alloc, root);
 			return ExprResult{ false };
 		}
+
+		const Token& lparen = current_token(state);
+		skip(state, TokenType::SYM_LPAREN);
 
 		ExprResult expr = expression_with_result(state);
 
@@ -2090,7 +2183,10 @@ namespace hemera::parser {
 		}
 
 		if (!skip(state, TokenType::SYM_RPAREN)) {
-			report_error_on_last_token(state, ErrorCode::E3015);
+			report_error_on_last_token(state, ErrorCode::E3015,
+				std::format("Opening parenthesis was at ({},{})",
+					lparen.line_number,
+					lparen.column_number));
 			delete_node(state->node_alloc, root);
 			return ExprResult{ false };
 		}
@@ -2201,7 +2297,10 @@ namespace hemera::parser {
 				}
 			}
 			if (!skip(state, TokenType::SYM_RBRACE)) {
-				report_error_on_last_token(state, ErrorCode::E3019);
+				report_error_on_last_token(state, ErrorCode::E3019,
+					std::format("Opening brace was at ({},{})",
+						with_block.value.line_number,
+						with_block.value.column_number));
 				delete_node(state->node_alloc, with_part);
 				return false;
 			}
@@ -2326,7 +2425,10 @@ namespace hemera::parser {
 		}
 
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					cases.value.line_number,
+					cases.value.column_number));
 			return false;
 		}
 
@@ -2471,7 +2573,10 @@ namespace hemera::parser {
 		}
 
 		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019);
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					cases.value.line_number,
+					cases.value.column_number));
 			delete_node(state->node_alloc, &match_node);
 			return ExprResult{ false };
 		}
@@ -2552,7 +2657,10 @@ namespace hemera::parser {
 				}
 
 				if (!skip(state, TokenType::SYM_RPAREN)) {
-					report_error_on_last_token(state, ErrorCode::E3015);
+					report_error_on_last_token(state, ErrorCode::E3015,
+						std::format("Opening parenthesis was at ({},{})",
+							type_list.value.line_number,
+							type_list.value.column_number));
 					delete_node(state->node_alloc, &identifier);
 					return ExprResult{ false };
 				}
