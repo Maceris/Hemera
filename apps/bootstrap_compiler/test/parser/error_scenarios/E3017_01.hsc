@@ -1,5 +1,3 @@
 package error_scenarios
 
-main :: fn(x: <<) {
-
-}
+foo : << : 4

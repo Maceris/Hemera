@@ -926,7 +926,6 @@ namespace hemera::parser {
 			case TokenType::ANNOTATION:
 			case TokenType::COMMENT_BLOCK:
 			case TokenType::COMMENT_LINE:
-			case TokenType::END_OF_FILE:
 			case TokenType::INVALID:
 			case TokenType::KEYWORD_ALIAS:
 			case TokenType::KEYWORD_ALL:
@@ -1008,6 +1007,17 @@ namespace hemera::parser {
 			case TokenType::SYM_UNDERSCORE:
 			case TokenType::SYM_UNINITIALIZED:
 				report_error_on_last_token(state, ErrorCode::E3017);
+				return ExprResult{ false };
+			case TokenType::END_OF_FILE:
+				/*
+				 * NOTE(ches) we can't tell that further definitions shouldn't
+				 * be inside a block so... EOF is the first time we can tell a
+				 * brace was missing for sure.
+				 */ 
+				report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					block_node.value.line_number,
+					block_node.value.column_number));
 				return ExprResult{ false };
 			}
 		}

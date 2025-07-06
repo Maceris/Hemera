@@ -93,7 +93,6 @@ TEST(ParserSmoke, ErrorScenarios)
 		
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3019_05.hsc - got E3017: Unexpected token
 		//TODO(ches) E3019_06.hsc - got E3017: Unexpected token
 		//TODO(ches) E3019_07.hsc - got E3017: Unexpected token
 		//TODO(ches) E3019_08.hsc - got E3015: Expected closing parenthesis
