@@ -661,6 +661,13 @@ namespace hemera::parser {
 						report_error_on_last_token(state, ErrorCode::E3008);
 						return false;
 					}
+					if (!expect(state, TokenType::KEYWORD_MUT)
+						&& !expect(state, TokenType::IDENTIFIER)
+						&& !expect(state, TokenType::KEYWORD_FN)
+						) {
+						report_error_on_last_token(state, ErrorCode::E3016);
+						return false;
+					}
 					ExprResult type_part = type(state);
 
 					if (!type_part.success) {
@@ -2647,6 +2654,14 @@ namespace hemera::parser {
 					else if (TokenType::SYM_UNDERSCORE == next_token_type) {
 						next_as_node(state, ast::NodeType::UNDERSCORE,
 							&type_list);
+					}
+					else if (TokenType::SYM_ARROW_DOUBLE == next_token_type) {
+						report_error_on_last_token(state, ErrorCode::E3015,
+							std::format("Opening parenthesis was at ({},{})",
+								type_list.value.line_number,
+								type_list.value.column_number));
+						delete_node(state->node_alloc, &identifier);
+						return ExprResult{ false };
 					}
 					else {
 						report_error_on_last_token(state, ErrorCode::E3017);

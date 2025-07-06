@@ -90,14 +90,9 @@ TEST(ParserSmoke, ErrorScenarios)
 		EXPECT_FALSE(tokens.empty());
 		
 		Allocator<> node_alloc;
-		if (file_name.compare("E3015_10.hsc") == 0) {
-			std::cout << "this one";
-		}
+		
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3015_10.hsc - got E3017: Unexpected token
-		//TODO(ches) E3015_11.hsc - got E3017: Unexpected token
-		//TODO(ches) E3016_01.hsc - got E3017: Unexpected token
 		//TODO(ches) E3019_05.hsc - got E3017: Unexpected token
 		//TODO(ches) E3019_06.hsc - got E3017: Unexpected token
 		//TODO(ches) E3019_07.hsc - got E3017: Unexpected token
