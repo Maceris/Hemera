@@ -315,8 +315,12 @@ namespace hemera::parser {
 		}
 		if (TokenType::KEYWORD_DISTINCT == current_type
 			|| TokenType::KEYWORD_ALIAS == current_type
-			|| TokenType::IDENTIFIER == current_type
 			|| TokenType::KEYWORD_FN == current_type
+			|| (TokenType::IDENTIFIER == current_type
+				// NOTE(ches) struct literals are expressions
+				&& (TokenType::SYM_DOT != next_token(state, 1).type
+				|| TokenType::SYM_LBRACE != next_token(state, 2).type
+			))
 			) {
 			// Might or might not find these
 			accept(state, TokenType::KEYWORD_DISTINCT, ast::NodeType::KEYWORD_DISTINCT, parent);
@@ -849,7 +853,6 @@ namespace hemera::parser {
 			case TokenType::KEYWORD_PUSH_CONTEXT:
 			case TokenType::KEYWORD_SWITCH:
 			case TokenType::KEYWORD_TRUE:
-			case TokenType::KEYWORD_WHILE:
 			case TokenType::KEYWORD_WITH:
 			case TokenType::LITERAL_CHAR:
 			case TokenType::LITERAL_FLOATING_POINT:
@@ -1008,12 +1011,8 @@ namespace hemera::parser {
 			case TokenType::SYM_UNINITIALIZED:
 				report_error_on_last_token(state, ErrorCode::E3017);
 				return ExprResult{ false };
+			case TokenType::KEYWORD_WHILE:
 			case TokenType::END_OF_FILE:
-				/*
-				 * NOTE(ches) we can't tell that further definitions shouldn't
-				 * be inside a block so... EOF is the first time we can tell a
-				 * brace was missing for sure.
-				 */ 
 				report_error_on_last_token(state, ErrorCode::E3019,
 				std::format("Opening brace was at ({},{})",
 					block_node.value.line_number,
@@ -1548,55 +1547,21 @@ namespace hemera::parser {
 			return ExprResult{ false };
 		}
 
-		if (expect(state, TokenType::KEYWORD_IS_NONE)) {
+		const TokenType current = current_token(state).type;
+		if (TokenType::KEYWORD_IS_NONE == current
+			|| TokenType::KEYWORD_IS_SOME == current
+			|| TokenType::KEYWORD_OR_BREAK == current
+			|| TokenType::KEYWORD_OR_CONTINUE == current
+			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 			result.children.push_back(lhs.result);
-			accept(state, TokenType::KEYWORD_IS_NONE,
-				ast::NodeType::KEYWORD_IS_NONE, result);
 			return ExprResult{ true, &result };
 		}
-		else if (expect(state, TokenType::KEYWORD_IS_SOME)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
-			result.children.push_back(lhs.result);
-			accept(state, TokenType::KEYWORD_IS_SOME,
-				ast::NodeType::KEYWORD_IS_SOME, result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::KEYWORD_OR_BREAK)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
-			result.children.push_back(lhs.result);
-			accept(state, TokenType::KEYWORD_OR_BREAK,
-				ast::NodeType::KEYWORD_OR_BREAK, result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::KEYWORD_OR_CONTINUE)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
-			result.children.push_back(lhs.result);
-			accept(state, TokenType::KEYWORD_OR_CONTINUE,
-				ast::NodeType::KEYWORD_OR_CONTINUE, result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::KEYWORD_OR_ELSE)) {
+		if (TokenType::KEYWORD_OR_ELSE == current
+			|| TokenType::KEYWORD_OR_RETURN == current
+			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::KEYWORD_OR_ELSE,
-				ast::NodeType::KEYWORD_OR_ELSE, result);
-
-			ExprResult rhs = expression_with_result(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::KEYWORD_OR_RETURN)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
-			accept(state, TokenType::KEYWORD_OR_RETURN,
-				ast::NodeType::KEYWORD_OR_RETURN, result);
 
 			ExprResult rhs = expression_with_result(state);
 			if (!rhs.success) {
@@ -1617,22 +1582,14 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		if (expect(state, TokenType::OPERATOR_RANGE_EXCLUSIVE)) {
+		const TokenType current = current_token(state).type;
+
+		if (TokenType::OPERATOR_RANGE_EXCLUSIVE == current
+			|| TokenType::OPERATOR_RANGE_INCLUSIVE == current
+			) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 			
-			ExprResult rhs = expr_lvl_4(state);
-			if (!rhs.success) {
-				delete_node(state->node_alloc, &result);
-				return ExprResult{ false };
-			}
-			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
-		}
-		else if (expect(state, TokenType::OPERATOR_RANGE_INCLUSIVE)) {
-			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
-			result.children.push_back(lhs.result);
-
 			ExprResult rhs = expr_lvl_4(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
@@ -1822,7 +1779,6 @@ namespace hemera::parser {
 		ExprResult expr = expr_lvl_11(state);
 		
 		if (!expr.success) {
-
 			if (result != nullptr) {
 				delete_node(state->node_alloc, result);
 				result = nullptr;
@@ -2132,9 +2088,12 @@ namespace hemera::parser {
 			}
 			
 			if (!skip(state, TokenType::SYM_COMMA)) {
-				if (!skip(state, TokenType::SYM_RPAREN)) {
+				if (!expect(state, TokenType::SYM_RPAREN)) {
 					report_error_on_last_token(state, ErrorCode::E3022);
 					return false;
+				}
+				else {
+					break;
 				}
 			}
 		}

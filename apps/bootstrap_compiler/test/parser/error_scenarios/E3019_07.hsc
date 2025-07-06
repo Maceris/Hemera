@@ -1,7 +1,7 @@
 package error_scenarios
 
 main :: fn() {
-    loop {
-
-    while true
+    switch x {
+        case _: println(x)
+    y : f32
 }

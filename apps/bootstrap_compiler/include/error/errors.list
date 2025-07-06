@@ -26,7 +26,7 @@ E3018,Expected an opening brace
 E3019,Expected a closing brace
 E3020,Unused error
 E3021,Unused error
-E3022,Expected a comma
+E3022,Expected a comma or end of list
 E3023,Expected a struct definition
 E3024,Expected assignment
 E3025,Expected the keyword in
