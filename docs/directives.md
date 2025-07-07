@@ -14,6 +14,10 @@ foo :: fn() {
 }
 ```
 
+`#is_compile_time` evaluates to `true` during compile time and `false` during run time.
+
+`#run` specifies code should be run during compile time. It is followed by an expression to execute.
+
 ## Control
 
 `#at_least_once` causes a loop operation to occur at least once, skipping the first condition check. This is equivalent to turning a C while loop into a do-while loop.
