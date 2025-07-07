@@ -2504,6 +2504,24 @@ namespace hemera::parser {
 			&match_node);
 
 		while (!expect(state, TokenType::SYM_RBRACE)) {
+			TokenType current = current_token(state).type;
+
+			if (TokenType::END_OF_FILE == current) {
+				break;
+			}
+
+			if (TokenType::LITERAL_INTEGER != current
+				&& TokenType::LITERAL_CHAR != current
+				&& TokenType::LITERAL_STRING != current
+				&& TokenType::IDENTIFIER != current
+				&& TokenType::SYM_DOT != current
+				&& TokenType::KEYWORD_TRUE != current
+				&& TokenType::KEYWORD_FALSE != current
+				&& TokenType::SYM_UNDERSCORE != current) {
+				report_error_on_last_token(state, ErrorCode::E3017);
+				delete_node(state->node_alloc, &match_node);
+				return ExprResult{ false };
+			}
 			ExprResult entry = match_entry(state);
 
 			MyVector<ast::Node*> entries{};
