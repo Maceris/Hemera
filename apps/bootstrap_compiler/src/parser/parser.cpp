@@ -285,7 +285,8 @@ namespace hemera::parser {
 		ast::Node& colon = next_as_node(state, ast::NodeType::DEFINITION, &parent);
 		colon.children.push_back(&lhs);
 		
-		if (!expect(state, TokenType::SYM_COLON)) {
+		if (!expect(state, TokenType::SYM_COLON) 
+			&& !expect(state, TokenType::OPERATOR_ASSIGN)) {
 			// we aren't deducing the type, there's something here
 
 			ExprResult rhs = type(state);
