@@ -180,7 +180,7 @@ namespace hemera::parser {
 				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
 				
 				if (!expect(state, TokenType::SYM_LBRACE)) {
-					ExprResult conditional = expression_with_result(state);
+					ExprResult conditional = expression_with_result(state, true);
 					if (!conditional.success) {
 						return false;
 					}
@@ -362,7 +362,7 @@ namespace hemera::parser {
 			parent.children.push_back(rhs.result);
 			return true;
 		}
-		ExprResult rhs = expression_with_result(state);
+		ExprResult rhs = expression_with_result(state, true);
 		if (!rhs.success) {
 			return false;
 		}
@@ -911,13 +911,13 @@ namespace hemera::parser {
 						ret);
 				}
 				else {
-					ExprResult expr = expression_with_result(state);
+					ExprResult expr = expression_with_result(state, true);
 					if (!expr.success) {
 						return ExprResult{ false };
 					}
 					ret.children.push_back(expr.result);
 					while (expect(state, TokenType::SYM_COMMA)) {
-						ExprResult another_expr = expression_with_result(state);
+						ExprResult another_expr = expression_with_result(state, true);
 						if (!another_expr.success) {
 							return ExprResult{ false };
 						}
@@ -1081,7 +1081,7 @@ namespace hemera::parser {
 		case TokenType::KEYWORD_FALSE:
 		case TokenType::SYM_LBRACE:
 		{
-			ExprResult result = expression_with_result(state);
+			ExprResult result = expression_with_result(state, false);
 			if (!result.success) {
 				return false;
 			}
@@ -1155,7 +1155,7 @@ namespace hemera::parser {
 			case TokenType::SYM_LBRACK:
 			case TokenType::SYM_LPAREN:
 			{
-				ExprResult result = expression_with_result(state);
+				ExprResult result = expression_with_result(state, false);
 				if (!result.success) {
 					return false;
 				}
@@ -1318,7 +1318,7 @@ namespace hemera::parser {
 		return false;
 	}
 	
-	ExprResult expression_with_result(ParserState* state) {
+	ExprResult expression_with_result(ParserState* state, bool ignore_lists) {
 		if (expect(state, TokenType::SYM_LBRACE)) {
 			return block(state);
 		}
@@ -1331,7 +1331,7 @@ namespace hemera::parser {
 			) {
 			return struct_literal(state);
 		}
-		return expr_lvl_1(state);
+		return expr_lvl_1(state, ignore_lists);
 	}
 
 	bool expression_without_result(ParserState* state, ast::Node& parent) {
@@ -1506,8 +1506,8 @@ namespace hemera::parser {
 		return true;
 	}
 
-	ExprResult expr_lvl_1(ParserState* state) {
-		ExprResult lhs = expr_lvl_2(state);
+	ExprResult expr_lvl_1(ParserState* state, bool ignore_lists) {
+		ExprResult lhs = expr_lvl_2(state, ignore_lists);
 
 		if (!lhs.success) {
 			return ExprResult{ false };
@@ -1515,7 +1515,7 @@ namespace hemera::parser {
 
 		ast::Node* list = nullptr;
 
-		while (expect(state, TokenType::SYM_COMMA)) {
+		while (!ignore_lists && expect(state, TokenType::SYM_COMMA)) {
 			if (list == nullptr) {
 				list = &next_as_node(state, ast::NodeType::LIST);
 				list->children.push_back(lhs.result);
@@ -1523,7 +1523,7 @@ namespace hemera::parser {
 			else {
 				skip(state, TokenType::SYM_COMMA);
 			}
-			ExprResult next_expr = expr_lvl_2(state);
+			ExprResult next_expr = expr_lvl_2(state, ignore_lists);
 
 			if (!next_expr.success) {
 				delete_node(state->node_alloc, list);
@@ -1559,7 +1559,7 @@ namespace hemera::parser {
 			result = &next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result->children.push_back(list);
 
-			ExprResult rhs = expr_lvl_1(state);
+			ExprResult rhs = expr_lvl_1(state, ignore_lists);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, result);
 				return ExprResult{ false };
@@ -1570,7 +1570,7 @@ namespace hemera::parser {
 		return ExprResult{ true, result };
 	}
 
-	ExprResult expr_lvl_2(ParserState* state) {
+	ExprResult expr_lvl_2(ParserState* state, bool ignore_lists) {
 		if (expect(state, TokenType::KEYWORD_IF)) {
 			return if_expression(state);
 		}
@@ -1597,7 +1597,7 @@ namespace hemera::parser {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
-			ExprResult rhs = expression_with_result(state);
+			ExprResult rhs = expression_with_result(state, ignore_lists);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
@@ -1776,7 +1776,7 @@ namespace hemera::parser {
 		if (expect(state, TokenType::SYM_LPAREN)) {
 			ast::Node& result = next_as_node(state, ast::NodeType::PAREN_GROUP);
 			
-			ExprResult child = expression_with_result(state);
+			ExprResult child = expression_with_result(state, true);
 
 			if (!child.success) {
 				delete_node(state->node_alloc, &result);
@@ -1911,7 +1911,7 @@ namespace hemera::parser {
 					ast::NodeType::ARRAY_DIMENSION, &identifier);
 			
 				if (!expect(state, TokenType::SYM_RBRACK)) {
-					ExprResult index = expression_with_result(state);
+					ExprResult index = expression_with_result(state, true);
 					if (!index.success) {
 						delete_node(state->node_alloc, &identifier);
 						return ExprResult{ false };
@@ -1990,7 +1990,7 @@ namespace hemera::parser {
 				ast::Node& assign = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 				assign.children.push_back(&target);
 
-				ExprResult value = expression_with_result(state);
+				ExprResult value = expression_with_result(state, true);
 				if (!value.result) {
 					delete_node(state->node_alloc, &id);
 					return ExprResult{ false };
@@ -2011,7 +2011,7 @@ namespace hemera::parser {
 				if (expect(state, TokenType::END_OF_FILE)) {
 					break;
 				}
-				ExprResult value = expression_with_result(state);
+				ExprResult value = expression_with_result(state, true);
 				if (!value.result) {
 					delete_node(state->node_alloc, &id);
 					return ExprResult{ false };
@@ -2103,7 +2103,7 @@ namespace hemera::parser {
 					*to_add_to);
 			}
 			else {
-				ExprResult expr = expression_with_result(state);
+				ExprResult expr = expression_with_result(state, true);
 
 				if (!expr.success) {
 					delete_node(state->node_alloc, expr.result);
@@ -2173,7 +2173,7 @@ namespace hemera::parser {
 		const Token& lparen = current_token(state);
 		skip(state, TokenType::SYM_LPAREN);
 
-		ExprResult expr = expression_with_result(state);
+		ExprResult expr = expression_with_result(state, true);
 
 		if (!expr.success) {
 			delete_node(state->node_alloc, root);
@@ -2200,7 +2200,7 @@ namespace hemera::parser {
 		}
 		ast::Node& if_node = next_as_node(state, ast::NodeType::IF);
 
-		ExprResult condition = expression_with_result(state);
+		ExprResult condition = expression_with_result(state, true);
 		if (!condition.success) {
 			delete_node(state->node_alloc, &if_node);
 			return ExprResult{ false };
@@ -2263,7 +2263,7 @@ namespace hemera::parser {
 			return false;
 		}
 
-		ExprResult expr = expression_with_result(state);
+		ExprResult expr = expression_with_result(state, true);
 		if (!expr.success) {
 			return false;
 		}
@@ -2333,7 +2333,7 @@ namespace hemera::parser {
 			ast::Node& while_node = next_as_node(state, 
 				ast::NodeType::WHILE_CLAUSE, loop_node);
 			
-			ExprResult expr = expression_with_result(state);
+			ExprResult expr = expression_with_result(state, true);
 			if (!expr.success) {
 				return false;
 			}

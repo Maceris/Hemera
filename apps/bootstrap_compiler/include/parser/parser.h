@@ -68,15 +68,15 @@ namespace hemera::parser {
 	bool default_value(ParserState* state, ast::Node& parent);
 	ExprResult block(ParserState* state);
 	bool expression(ParserState* state, ast::Node& parent);
-	ExprResult expression_with_result(ParserState* state);
+	ExprResult expression_with_result(ParserState* state, bool ignore_lists);
 	bool expression_without_result(ParserState* state, ast::Node& parent);
 	bool literal(ParserState* state, ast::Node& parent);
 	bool struct_body(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
 	bool generic_tag(ParserState* state, ast::Node& parent);
-	ExprResult expr_lvl_1(ParserState* state);
-	ExprResult expr_lvl_2(ParserState* state);
+	ExprResult expr_lvl_1(ParserState* state, bool ignore_lists);
+	ExprResult expr_lvl_2(ParserState* state, bool ignore_lists);
 	ExprResult expr_lvl_3(ParserState* state);
 	ExprResult expr_lvl_4(ParserState* state);
 	ExprResult expr_lvl_5(ParserState* state);
