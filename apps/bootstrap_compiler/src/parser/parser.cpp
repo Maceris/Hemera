@@ -397,6 +397,11 @@ namespace hemera::parser {
 				return false;
 			}
 		}
+
+		while (expect(state, TokenType::DIRECTIVE)) {
+			next_as_node(state, ast::NodeType::DIRECTIVE, &node);
+		}
+
 		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
 			return false;
