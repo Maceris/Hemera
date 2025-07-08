@@ -90,10 +90,9 @@ TEST(ParserSmoke, ErrorScenarios)
 		EXPECT_FALSE(tokens.empty());
 		
 		Allocator<> node_alloc;
-
+		
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3022_03.hsc - got E3015: Expected closing parenthesis
 		//TODO(ches) E3023_01.hsc - got E3018: Expected an opening brace
 		//TODO(ches) E3024_01.hsc - did not get an error
 		//TODO(ches) E3028_02.hsc - got E3017: Unexpected token

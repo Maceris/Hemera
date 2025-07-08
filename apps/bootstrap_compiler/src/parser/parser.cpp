@@ -106,6 +106,32 @@ namespace hemera::parser {
 		return false;
 	}
 
+	static bool could_be_function_input(const TokenType& type) {
+		return TokenType::IDENTIFIER == type
+			|| TokenType::SYM_AMPERSAND == type
+			|| TokenType::SYM_UNDERSCORE == type
+			|| TokenType::PIPE_REORDER_IDENTIFIER == type
+			|| TokenType::DIRECTIVE == type
+			|| TokenType::KEYWORD_MATCH == type
+			|| TokenType::OPERATOR_PLUS == type
+			|| TokenType::OPERATOR_MINUS == type
+			|| TokenType::OPERATOR_BITWISE_XOR == type
+			|| TokenType::OPERATOR_NOT == type
+			|| TokenType::SYM_DOT == type
+			|| TokenType::SYM_LPAREN == type
+			|| TokenType::KEYWORD_AUTO_CAST == type
+			|| TokenType::KEYWORD_BIT_CAST == type
+			|| TokenType::KEYWORD_CAST == type
+			|| TokenType::LITERAL_CHAR == type
+			|| TokenType::LITERAL_FLOATING_POINT == type
+			|| TokenType::LITERAL_INTEGER == type
+			|| TokenType::LITERAL_STRING == type
+			|| TokenType::KEYWORD_TRUE == type
+			|| TokenType::KEYWORD_FALSE == type
+			|| TokenType::KEYWORD_NULL == type
+			;
+	}
+
 	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens,
 		Allocator<ast::Node> node_alloc)
 	{
@@ -318,10 +344,12 @@ namespace hemera::parser {
 			|| TokenType::KEYWORD_ALIAS == current_type
 			|| TokenType::KEYWORD_FN == current_type
 			|| (TokenType::IDENTIFIER == current_type
-				// NOTE(ches) struct literals are expressions
-				&& (TokenType::SYM_DOT != next_token(state, 1).type
-				|| TokenType::SYM_LBRACE != next_token(state, 2).type
-			))
+				&& (// NOTE(ches) struct literals are expressions
+				TokenType::SYM_DOT != next_token(state, 1).type
+				|| TokenType::SYM_LBRACE != next_token(state, 2).type)
+				&& // NOTE(ches) function calls are expressions
+				TokenType::SYM_LPAREN != next_token(state, 1).type
+				)
 			) {
 			// Might or might not find these
 			accept(state, TokenType::KEYWORD_DISTINCT, ast::NodeType::KEYWORD_DISTINCT, parent);
@@ -1913,27 +1941,13 @@ namespace hemera::parser {
 
 				const TokenType next_token = current_token(state).type;
 
-				if (TokenType::IDENTIFIER == next_token
-					|| TokenType::SYM_AMPERSAND == next_token
-					|| TokenType::SYM_UNDERSCORE == next_token
-					|| TokenType::PIPE_REORDER_IDENTIFIER == next_token
-					|| TokenType::DIRECTIVE == next_token
-					|| TokenType::KEYWORD_MATCH == next_token
-					|| TokenType::OPERATOR_PLUS == next_token
-					|| TokenType::OPERATOR_MINUS == next_token
-					|| TokenType::OPERATOR_BITWISE_XOR == next_token
-					|| TokenType::OPERATOR_NOT == next_token
-					|| TokenType::SYM_DOT == next_token
-					|| TokenType::SYM_LPAREN == next_token
-					|| TokenType::KEYWORD_AUTO_CAST == next_token
-					|| TokenType::KEYWORD_BIT_CAST == next_token
-					|| TokenType::KEYWORD_CAST == next_token
-					) {
+				if (could_be_function_input(next_token)) {
 					if (!function_call_input_list(state, identifier)) {
 						delete_node(state->node_alloc, &identifier);
 						return ExprResult{ false };
 					}
 				}
+
 				if (!skip(state, TokenType::SYM_RPAREN)) {
 					report_error_on_last_token(state, ErrorCode::E3015,
 						std::format("Opening parenthesis was at ({},{})",
@@ -2034,8 +2048,13 @@ namespace hemera::parser {
 
 		ast::Node& parens = next_as_node(state, ast::NodeType::PAREN_GROUP, &parent);
 
-		//TODO(ches) check that we have something that goes here first
-		if (!function_call_input_list(state, parens)) {
+		if (could_be_function_input(current_token(state).type)) {
+			if (!function_call_input_list(state, parens)) {
+				return false;
+			}
+		}
+		else if (!expect(state, TokenType::SYM_RPAREN)) {
+			report_error_on_last_token(state, ErrorCode::E3017);
 			return false;
 		}
 
