@@ -3,7 +3,7 @@
 
 namespace hemera {
 	Token::Token(TokenType type, uint16_t column_number, uint32_t line_number,
-		MyString* value)
+		InternedString value)
 		: type{ type }
 		, column_number{ column_number }
 		, line_number{ line_number }

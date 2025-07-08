@@ -1,4 +1,3 @@
-#include <atomic>
 #include <format>
 #include <iostream>
 #include <mutex>

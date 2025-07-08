@@ -122,10 +122,10 @@ namespace hemera {
 		TokenType type;
 		uint16_t column_number;
 		uint32_t line_number;
-		MyString* value;
+		InternedString value;
 
 		Token(TokenType type, uint16_t column_number, uint32_t line_number,
-			MyString* value = nullptr);
+			InternedString value = nullptr);
 		Token(const Token& other);
 		Token(Token&& other) noexcept;
 		~Token();

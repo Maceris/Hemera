@@ -5,9 +5,10 @@
 
 #include "gtest/gtest.h"
 
+#include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
-#include "error/reporting.h"
+#include "memory/allocator.h"
 
 using hemera::Allocator;
 using hemera::MyVector;
@@ -150,7 +151,8 @@ TEST(LexerTests, SingleSimpleTokenTest)
 		EXPECT_EQ(output[1].value, nullptr)
 			<< std::format("Incorrect string contents of EOF for {}", text);
 	}
-	
+
+	hemera::purge_interned_string_cache();
 }
 
 TEST(LexerTests, SingleComplexTokenTest)
@@ -216,9 +218,9 @@ TEST(LexerTests, SingleComplexTokenTest)
 		EXPECT_EQ(output[1].value, nullptr)
 			<< std::format("Incorrect string contents of EOF for {}", text);
 
-		alloc.delete_object(output[0].value);
 		output.clear();
 	}
+	hemera::purge_interned_string_cache();
 }
 
 TEST(LexerTests, ManyTokenTest)
@@ -317,13 +319,9 @@ TEST(LexerTests, ManyTokenTest)
 		} else {
 			EXPECT_EQ(output[i].value, nullptr);
 		}
-
-		if (output[i].value) {
-			delete output[i].value;
-			output[i].value = nullptr;
-		}
+		
 	}
-
+	hemera::purge_interned_string_cache();
 }
 
 TEST(LexerTests, RangeLexingTest)
@@ -349,6 +347,8 @@ TEST(LexerTests, RangeLexingTest)
 		<< std::format("Incorrect type for {}", text);
 	EXPECT_EQ(output[3].type, TokenType::END_OF_FILE)
 		<< std::format("Incorrect type for {}", text);
+
+	hemera::purge_interned_string_cache();
 }
 
 static std::string sanitize(const std::string& input) {
@@ -432,4 +432,5 @@ TEST(LexerTests, InvalidTokenTest)
 		entry++;
 	}
 
+	hemera::purge_interned_string_cache();
 }

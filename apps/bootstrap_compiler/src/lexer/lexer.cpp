@@ -1194,7 +1194,14 @@ namespace hemera::lexer {
 			}
 		}
 
-		return Token{ result_type, start_column, start_line, token_contents };
+		InternedString interned_contents = intern(token_contents);
+		
+		if (token_contents != nullptr) {
+			string_alloc.delete_object(token_contents);
+			token_contents = nullptr;
+		}
+
+		return Token{ result_type, start_column, start_line, interned_contents };
 	}
 
 	void lex_file(const std::string& file_path, MyVector<Token>& output,
@@ -1222,7 +1229,7 @@ namespace hemera::lexer {
 			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);
 			if (!include_comments && (next_token.type == TokenType::COMMENT_BLOCK
 				|| next_token.type == TokenType::COMMENT_LINE)) {
-				string_alloc.delete_object(next_token.value);
+				delete_interned_string(next_token.value);
 				next_token.value = nullptr;
 				continue;
 			}
