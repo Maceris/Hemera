@@ -90,10 +90,9 @@ TEST(ParserSmoke, ErrorScenarios)
 		EXPECT_FALSE(tokens.empty());
 		
 		Allocator<> node_alloc;
-		
+
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3028_02.hsc - got E3017: Unexpected token
 		//TODO(ches) E3029_01.hsc - got E3017: Unexpected token
 		//TODO(ches) E3029_02.hsc - got E3017: Unexpected token
 

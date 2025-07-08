@@ -2542,7 +2542,10 @@ namespace hemera::parser {
 				&& TokenType::SYM_DOT != current
 				&& TokenType::KEYWORD_TRUE != current
 				&& TokenType::KEYWORD_FALSE != current
-				&& TokenType::SYM_UNDERSCORE != current) {
+				&& TokenType::SYM_UNDERSCORE != current
+				&& TokenType::OPERATOR_RANGE_EXCLUSIVE != current
+				&& TokenType::OPERATOR_RANGE_INCLUSIVE != current
+				) {
 				report_error_on_last_token(state, ErrorCode::E3017);
 				delete_node(state->node_alloc, &match_node);
 				return ExprResult{ false };
