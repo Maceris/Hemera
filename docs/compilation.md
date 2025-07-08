@@ -13,10 +13,31 @@ calculate values should be avoided, or opened in a safe mode which avoids such o
 1. Lexing
 2. Parsing
 3. Type Checking
-4. Compile-Time Execution
-5. Intermediate Language 1 Generation
+4. Intermediate Language 1 Generation
+5. Compile-Time Execution
 6. Optimization
 7. Intermediate Language 2 Generation
 8. Optimization
 9. Executable Generation
 
+```
+File Import --> Parse --> Type Check <--\
+    /|\/|\                     |        |
+     |  \--------+-------------+        |
+     |           |            \|/       |
+     |           |     Type Deduction --/
+     |          \|/
+ Execution <--- IL1 Generation 
+                 |
+                \|/
+            Optimization
+                 |
+                \|/
+           IL2 Generation
+                 |
+                \|/
+            Optimization
+                 |
+                \|/
+        Executable Generation
+```
