@@ -238,6 +238,17 @@ Suit :: enum {
 
 Enum values can be accessed in an abbreviated way if the type can be inferred, using a syntax like `.EnumValue`. For example, `suit : Suit = .Clubs`.
 
+Enums are backed by a `uint` by default, but `#backed_by(x)` can be used used to specify the backing type, where `x` must be one of the unsigned integer types (u8, u16, u32, u64, u128). For example:
+
+```
+Suit :: enum #backed_by(u8) {
+    Clubs,
+    Hearts,
+    Spades,
+    Diamonds,
+}
+```
+
 ## Notes On Types
 
 For boolean values, `true` is stored as `1`, and `false` is stored as `0`.

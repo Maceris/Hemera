@@ -32,6 +32,10 @@ for i in 0..=10 #reverse {
 }
 ```
 
+## Enums
+
+`#backed_by(x)` is used to specify `x` as the backing type, which must be one of the unsigned integer types (u8, u16, u32, u64, u128). By default enums are backed by uint.
+
 ## Function Parameters
 
 ### `#caller_location`

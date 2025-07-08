@@ -458,6 +458,9 @@ namespace hemera::parser {
 		}
 		ast::Node& node = next_as_node(state, ast::NodeType::ENUM, &parent);
 
+		//NOTE(ches) might not be there.
+		accept(state, TokenType::DIRECTIVE, ast::NodeType::DIRECTIVE, node);
+
 		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
 			return false;
