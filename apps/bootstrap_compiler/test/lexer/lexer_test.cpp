@@ -326,6 +326,31 @@ TEST(LexerTests, ManyTokenTest)
 
 }
 
+TEST(LexerTests, RangeLexingTest)
+{
+	auto reporting = hemera::DisableReportingForBlock();
+
+	Allocator<> alloc;
+	MyVector<Token> output;
+
+	const std::string& text = "1..<4";
+
+	std::istringstream input_stream(text);
+
+	hemera::lexer::lex(input_stream, output, alloc, __FILE__);
+
+	EXPECT_EQ(output.size(), 4)
+		<< std::format("Incorrect number of tokens for {}", text);
+	EXPECT_EQ(output[0].type, TokenType::LITERAL_INTEGER)
+		<< std::format("Incorrect type for {}", text);
+	EXPECT_EQ(output[1].type, TokenType::OPERATOR_RANGE_EXCLUSIVE)
+		<< std::format("Incorrect type for {}", text);
+	EXPECT_EQ(output[2].type, TokenType::LITERAL_INTEGER)
+		<< std::format("Incorrect type for {}", text);
+	EXPECT_EQ(output[3].type, TokenType::END_OF_FILE)
+		<< std::format("Incorrect type for {}", text);
+}
+
 static std::string sanitize(const std::string& input) {
 	std::string output;
 	for (char c : input) {

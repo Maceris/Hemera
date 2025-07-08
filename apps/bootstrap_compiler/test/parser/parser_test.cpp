@@ -93,9 +93,6 @@ TEST(ParserSmoke, ErrorScenarios)
 
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
 
-		//TODO(ches) E3029_01.hsc - got E3017: Unexpected token
-		//TODO(ches) E3029_02.hsc - got E3017: Unexpected token
-
 		EXPECT_EQ(hemera::error_count(), 1) 
 			<< std::format("Incorrect number of errors for {}", file_name);
 		if (hemera::error_count() == 0) {
@@ -107,7 +104,5 @@ TEST(ParserSmoke, ErrorScenarios)
 		EXPECT_EQ(hemera::error_list()[0], actual_code)
 			<< std::format("Incorrect error code for {}, got {}: {}", file_name, actual_info.string_value, actual_info.message);
 	}
-
-	
 
 }

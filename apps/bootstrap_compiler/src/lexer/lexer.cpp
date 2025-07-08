@@ -408,6 +408,9 @@ namespace hemera::lexer {
 				next_char(tokenizer, input_stream);
 				goto switch_start;
 			case '.':
+				if (peek_char(tokenizer, 1) == '.') {
+					break;
+				}
 				state = State::integer_period;
 				result_type = TokenType::LITERAL_FLOATING_POINT;
 				next_char(tokenizer, input_stream);
