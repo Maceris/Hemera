@@ -232,7 +232,7 @@ function_output_in_paren = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = [ identifier , { SYM_COMMA , identifier } , SYM_COLON ] , type_in_list  ;
+function_parameter = [ identifier , { SYM_COMMA , identifier } , SYM_COLON ] , type_in_list , [ SYM_ELLIPSIS ]  ;
 
 default_value = literal
     | type

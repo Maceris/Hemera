@@ -361,6 +361,10 @@ create_rectangle :: fn(x, y: int, width, height: uint) -> Rectangle {
 	return result
 }
 
+format :: fn(format: string, args: any...) -> string {
+	return "I forgot how to format strings"
+}
+
 //-----------------------------------------------------------------------------
 //                              Function calls
 //-----------------------------------------------------------------------------

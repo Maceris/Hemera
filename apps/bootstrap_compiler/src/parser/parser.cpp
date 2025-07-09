@@ -816,6 +816,10 @@ namespace hemera::parser {
 			}
 			// param is now either the type node, or a colon
 
+			if (expect(state, TokenType::SYM_ELLIPSIS)) {
+				next_as_node(state, ast::NodeType::ELLIIPSIS, param);
+			}
+
 			ast::Node* node_to_add = nullptr;
 
 			if (expect(state, TokenType::OPERATOR_ASSIGN)) {

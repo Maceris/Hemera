@@ -18,6 +18,7 @@ namespace hemera::ast {
 		DEFINITION,
 		DIRECTIVE,
 		DOT_ACCESS,
+		ELLIIPSIS,
 		ELSE,
 		ENUM,
 		ENUM_SHORTHAND,
