@@ -73,18 +73,16 @@ cstring :: alias cstring
 // Pointers
 ptr[T] :: alias ptr[T]
 rawptr :: alias rawptr
-relptr8 :: alias relptr8
-relptr16 :: alias relptr16
-relptr32 :: alias relptr32
-relptr64 :: alias relptr64
+relptr8[T] :: alias relptr8[T]
+relptr16[T] :: alias relptr16[T]
+relptr32[T] :: alias relptr32[T]
+relptr64[T] :: alias relptr64[T]
 
 // Type info
 any  :: alias any
 type :: alias type
 
 // Functions
-panic :: fn(str: string) ---
-
 align_of :: fn[T](T: type) -> int ---
 size_of  :: fn[T](T: type) -> int ---
 
