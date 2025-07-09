@@ -278,8 +278,8 @@ This is a built-in union type similar to this structure, where `Optional[Foo]` i
 
 ```
 Optional :: union[T] {
-    None,
     Some(T),
+    None,
 }
 ```
 
@@ -300,6 +300,19 @@ Relative pointers refer to an address relative to their own, and have different 
 An 8-bit relative pointer is quite small, but can only refer to things 128 bytes below and 127 bytes above their own address.
 
 There is no pointer arithmetic on regular pointers, though raw pointers and relative pointers (being closer to integers) do allow it.
+
+## Result Types
+
+Results are built in, defined like this:
+
+```
+Result :: union[T, E] {
+    Ok(T),
+    Error(E),
+}
+```
+
+There are a few [operators built in](operators.md#result-operators) to make life easier when dealing with result values.
 
 ## Strings
 

@@ -1594,9 +1594,7 @@ namespace hemera::parser {
 			result.children.push_back(lhs.result);
 			return ExprResult{ true, &result };
 		}
-		if (TokenType::KEYWORD_OR_ELSE == current
-			|| TokenType::KEYWORD_OR_RETURN == current
-			) {
+		if (TokenType::KEYWORD_OR_ELSE == current) {
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
@@ -1606,6 +1604,23 @@ namespace hemera::parser {
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
+			return ExprResult{ true, &result };
+		}
+		if (TokenType::KEYWORD_OR_RETURN == current) {
+			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
+			result.children.push_back(lhs.result);
+
+			if (TokenType::KEYWORD_VOID == current_token(state).type) {
+				next_as_node(state, ast::NodeType::VOID, &result);
+			}
+			else {
+				ExprResult rhs = expression_with_result(state, ignore_lists);
+				if (!rhs.success) {
+					delete_node(state->node_alloc, &result);
+					return ExprResult{ false };
+				}
+				result.children.push_back(rhs.result);
+			}
 			return ExprResult{ true, &result };
 		}
 

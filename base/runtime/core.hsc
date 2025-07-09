@@ -14,10 +14,15 @@ AllocatorFn :: alias fn(
     location:= #caller_location
     )-> (u8[], AllocatorError?)
 
-AllocatorError :: enum u8 {
+AllocatorError :: enum #backed_by(u8) {
     OutOfMemory,
     InvalidPointer,
     InvalidArgument,
+}
+
+Optional :: union[T] {
+    Some(T),
+    None,
 }
 
 SourceCodeLocation :: struct {
@@ -25,4 +30,9 @@ SourceCodeLocation :: struct {
     function: string,
     line: u32,
     column: u16,
+}
+
+Result :: union[T, E] {
+    Ok(T),
+    Error(E),
 }

@@ -321,6 +321,8 @@ print_something         :: fn(text: string) {}
 print_something2        :: fn(text: string = "hello") {}
 log_something           :: fn(text: string, location := #caller_location) {}
 mutable_parameters      :: fn(rect: ptr[mut Rectangle], mut rawptr) {}
+maybe_a_bool            :: fn() -> bool? { return .None() }
+result_return           :: fn() -> Result[u16, string] { return .Ok(3) }
 
 is_even :: fn(x: int) -> (result: bool, mod: int) {
     mod = x % 2
@@ -558,6 +560,35 @@ match_example :: fn() {
 }
 
 //-----------------------------------------------------------------------------
+//                                 Optionals
+//-----------------------------------------------------------------------------
+
+optionals :: fn() -> string? {
+	possible : bool? : maybe_a_bool()
+
+	if possible is_none {
+		return .Some("foo")
+	}
+	else if possible is_some {
+		return .Some("bar")
+	}
+
+	improbable : bool = maybe_a_bool() or_else false
+	improbable = possible or_return .Some("I decided I don't care")
+	improbable = maybe_a_bool()?
+
+	loop {
+		mission_maybe :: maybe_a_bool() or_break
+		mission_not :: maybe_a_bool() or_continue
+	}
+	while false
+}
+
+optionals_without_result :: fn() {
+	possible : bool : maybe_a_bool() or_return void
+}
+
+//-----------------------------------------------------------------------------
 //                                 Pointers
 //-----------------------------------------------------------------------------
 
@@ -572,6 +603,22 @@ pointer_example :: fn() {
 	rect.y = 5
 	rect2 := new(Rectangle)
 	rect2^ = rect^
+}
+
+//-----------------------------------------------------------------------------
+//                                 Results
+//-----------------------------------------------------------------------------
+
+results :: fn() -> Result[f32, string] {
+	value : u16 = result_return() ?
+	value = result_return() or_else 5
+	value = result_return() or_return .Ok(54)
+
+	loop {
+		age :: result_return() or_break
+		age2 :: result_return() or_continue
+	}
+	while false
 }
 
 //-----------------------------------------------------------------------------

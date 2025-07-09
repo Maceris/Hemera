@@ -170,60 +170,6 @@ Note that `auto_cast` is intended for prototypes, and generally discouraged. But
 |> pipe operator for function chaining
 ```
 
-### Optional operators
-
-There are built in operators for optional types (`T?`).
-
-```
-is_none      a is_none      evaluates to false if the optional does not have a value, or false if it does
-is_some      a is_some      evaluates to true if the optional value a is some value, or false if it is not
-or_break     a or_break     breaks if an optional is not present, otherwise evaluates to the value
-or_continue  a or_continue  continues if an optional is not present, otherwise evaluates to the value
-or_else      a or_else b    evaluates to an optionals value if present, or the provided default if not
-or_return    a or_return b  evaluates to an optionals value if present, or returns a default value if not
-```
-
-Some examples of usage:
-```
-example :: fn() -> i32 {
-    foo : i32? = some_function()
-    
-    if foo is_some {
-        println("Foo exists")
-    }
-
-    if foo is_none {
-        println("This should have been an else")
-    }
-    
-    // Will be the value of foo if the value is present, or 5 if not
-    bar : i32 = foo or_else 5
-
-    // Will result in the value of foo if there is one, or return 10 immediately if not
-    baz :: foo or_return 10
-
-    //...
-}
-
-example_2 :: fn() {
-    option : i32? : some_function()
-    
-    // If a function does not have a return value, it is omitted
-    bar :: option or_return
-    //...
-
-    loop {
-        if some_function() or_continue == 3 {
-            println("These can be used in expressions")
-        }
-
-        foo : ExampleType : another_function() or_break
-
-        // ...
-    }
-}
-```
-
 ### Pipe operator
 The pipe operator takes output from one function and provides it as input for another.
 
@@ -310,12 +256,99 @@ example :: fn() {
 !   logical NOT
 ```
 
+## Optional operators
+
+There are built in operators for optional types (`T?`).
+
+```
+is_none      a is_none      evaluates to false if the optional does not have a value, or false if it does
+is_some      a is_some      evaluates to true if the optional value a is some value, or false if it is not
+or_break     a or_break     breaks if an optional is not present, otherwise evaluates to the value
+or_continue  a or_continue  continues if an optional is not present, otherwise evaluates to the value
+?            a?             evaluates to an optionals value if present, or returns an empty optional if not
+or_else      a or_else b    evaluates to an optionals value if present, or the provided default if not
+or_return    a or_return b  evaluates to an optionals value if present, or returns a default value if not
+```
+
+Some examples of usage:
+```
+example :: fn() -> i32 {
+    foo : i32? = some_function()
+    
+    if foo is_some {
+        println("Foo exists")
+    }
+
+    if foo is_none {
+        println("This should have been an else")
+    }
+    
+    // Will be the value of foo if the value is present, or 5 if not
+    bar : i32 = foo or_else 5
+
+    // Will result in the value of foo if there is one, or return 10 immediately if not
+    baz :: foo or_return 10
+
+    //...
+}
+
+example_2 :: fn() {
+    option : i32? : some_function()
+    
+    // If a function does not have a return value, void is used (like a normal return would have)
+    bar :: option or_return void
+    //...
+
+    loop {
+        if some_function() or_continue == 3 {
+            println("These can be used in expressions")
+        }
+
+        foo : ExampleType : another_function() or_break
+
+        // ...
+    }
+}
+```
+
 ## Other operators
 
 ```
 ..   for use in defining resizable arrays, and creating array views
 ..=  inclusive range
 ..<  half-open range
+```
+
+## Result operators
+
+There are built in operators for result types.
+
+```
+or_break     a or_break     breaks if the result is an error, otherwise evaluates to the value
+or_continue  a or_continue  continues if the result is an error, otherwise evaluates to the value
+?            a?             evaluates to the Ok value if present, or returns the error value if not
+or_else      a or_else b    evaluates to the Ok value if present, or the provided default if it was an error
+or_return    a or_return b  evaluates to the Ok value if present, or returns a default value if was an error
+```
+
+```
+MyError :: enum {
+    OutOfCheese,
+    BreadBurnt,
+    TooManyWasps,
+}
+
+f1 :: fn() -> Result[bool, MyError] {
+    //... return a bool or error
+}
+
+f2 :: fn() -> Result[string, MyError] {
+    result : bool : f1()? // could return here
+    if result {
+        return .Ok("test")
+    }
+    return .Ok("value")
+}
 ```
 
 # Operator Details
