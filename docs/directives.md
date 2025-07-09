@@ -18,6 +18,22 @@ foo :: fn() {
 
 `#run` specifies code should be run during compile time. It is followed by an expression to execute.
 
+When the `#run` directive appears at the top level of a file, it is executed when that file gets processed (each unique file should be processed once).
+When included in the body of a function, it is executed when that function is processed.
+When included in places like the right-hand side of an expression, function arguments, etc. it will be evaluated as an expression and the result used as if it were
+a constant value.
+
+```
+#run println("I am processing a file")
+
+example :: fn() {
+    #run println("I am processing example()")
+
+    // equivalent to writing some_fn(21), assuming fibonacci() behaves as expected
+    some_fn(#run fibonacci(8))
+}
+```
+
 ## Control
 
 `#at_least_once` causes a loop operation to occur at least once, skipping the first condition check. This is equivalent to turning a C while loop into a do-while loop.
