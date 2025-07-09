@@ -33,103 +33,243 @@ import library3 as lib3 from "user"
 }
 
 //-----------------------------------------------------------------------------
-//                                  Types
+//                                Annotations
 //-----------------------------------------------------------------------------
 
-CONSTANT_INTEGER : int : 5
-OTHER_INTEGER :: 1
-int_fn :: fn(int) -> int
-my_float :: alias f32
-my_float2 :: f32
-my_float3 : type : float
-meters :: distinct alias int
-BinaryIntFunc :: fn(int, int) -> int
-
-MultipleNames :: fn(a, b, c : int)
-MultipleNamesWithDefault :: fn(a, b, c : int = 1)
-MultipleNamesComplex :: fn(a, b: int, c, d: float, e : int, f, g : float)
-FuncResult :: fn() -> (fn())
-FuncsAsArg :: fn(a, b: (fn()), c : (fn(int, int, int)) = MultipleNames)
+@Deprecated
+this_has_an_annotation :: fn() {}
 
 //-----------------------------------------------------------------------------
-//                                 Literals
+//                           Arithmetic Expressions
 //-----------------------------------------------------------------------------
 
-decimal_int : int : 12345
-negative_int : int : -12345
-decimal_with_underscores : int : 1_234_567
-hex_int : int : 0xabcd_ef01_2345
-octal_int : int : 0o12_345_670
-binary_int : int : 0b0110_1101_0001
-plain_float : f32 : 1
-decimal_float : f32 : 1.02
-power_float : f32 : 4.02e3
-power_capital_float : f32 : 4.0203E3
-power_negative_float : f32 : 4.02e-3
-string_literal :: "foobar"
-multiline_string :: \\ This is a multline string
-	\\ we can have these on several lines
-	\\ if we really want to I guess
-char_literal :: 'x'
-bool_literal :: true
-double_nested_ptr_type :: ptr[ptr[int]]
-triple_nested_ptr_type :: ptr[ptr[ptr[int]]]
-array_of_nested_ptrs :: ptr[ptr[u8]][..]
+arithmetic_expressions :: fn() {
+	result: int
+
+	result = +3
+	result = -3
+	result = ~0x1f
+	result = 1 + 2
+	result = 2 * 4
+	result = 5 - 3
+	result = 10 / 3
+	result = 17 % 5
+	result = 17 %% 5
+	result = 0b0000_1111 & 0b0101_0101
+	result = 0b0000_1111 | 0b0101_0101
+	result = 0b0000_1111 ~ 0b0101_0101
+	result = 1 >> 4
+	result = -42 >>> 4
+	result = 1024 << 2
+	result = 0o71
+
+	result = +3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = -3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = ~0x1f * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 1 + 2 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 2 * 4 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 5 - 3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 10 / 3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 17 % 5 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 17 %% 5 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 0b0000_1111 & 0b0101_0101 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 0b0000_1111 | 0b0101_0101 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 0b0000_1111 ~ 0b0101_0101 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 1 >> 4 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = -42 >>> 4 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 1024 << 2 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+	result = 0o71 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
+
+	result += 4
+	result -= 5
+	result *= 22
+	result /= 3
+	result %= 4
+	result %%= 30
+	result &= 0b1111_1001
+	result |= 0b0000_0110
+	result ~= 4256
+	result <<= 4
+	result >>= 3
+	result >>>= 2
+
+	result += 4 + 1 * 2
+	result -= 5 + 1 * 2
+	result *= 22 + 1 * 2
+	result /= 3 + 1 * 2
+	result %= 4 + 1 * 2
+	result %%= 30 + 1 * 2
+	result &= 0b1111_1001 + 1 * 2
+	result |= 0b0000_0110 + 1 * 2
+	result ~= 4256 + 1 * 2
+	result <<= 4 + 1 * 2
+	result >>= 3 + 1 * 2
+	result >>>= 2 + 1 * 2
+
+	result = 1 + 2 * 4 + 5
+	result = 1 * 2 - 4 * 5
+	result += 9 / 3 + 4 - 5 * 2 - 1 + (4 * 3 - (5 / 2))
+
+	optional_result :: fn() -> int? {
+		return 4
+	}
+
+	result = one_result() + one_result() * 2
+	result = (optional_result() or_else 4) + 3
+}
 
 //-----------------------------------------------------------------------------
-//                                 Structs
+//                                  Arrays
 //-----------------------------------------------------------------------------
 
-struct1 :: struct {}
-struct2 :: struct {
-	x: int,
-	y: int
-}
-struct3 :: struct {
-	x: f32,
-}
-struct4 :: struct[X, Y] {
-	foo1: fn(X) -> Y
-}
+arrays_example :: fn() {
+	a : int[10]
+	b : int[] : a
+	c : int[] : a[2..<5]
+	d : int[] : a[2..=4]
+	e : int[] : a[5..]
+	e2: int[] : a[5..<a.count]
+	f : int[] : a[..<5]
+	f2 : int[] : a[0..<5]
+	g : int[] : a[..=5]
+	g2 : int[] : a[0..=5]
 
-Rectangle :: #packed #align(8) struct {
-	x : int,
-	y : int,
-	width : uint = 10,
-	height : uint = 10,
-}
+	h : f64[2]
+	i : i8[10][5]
+	j : u32[..]
+	k : string[..]
 
-struct_creation :: fn() {
-	r1 := Rectangle.{}
-	r2 : Rectangle = Rectangle.{1, 2, 3, 4}
-	r3 := Rectangle.{y=1, x=2}
-	r4 := new(Rectangle)
-	defer delete r4
-	r4^ = r3 
-}
-
-c_style_union :: struct #union {
-	f : f32,
-	i : i32,
-	_ : struct { b1, b2, b3, b4 : i8 },
+	l : int : nested_array.foo.bar[3].foo[2][3].bar
+	l = nested_array[2][4].nested_array[3].foo.bar[3].foo[2][3].bar[1]
 }
 
 //-----------------------------------------------------------------------------
-//                                  Unions
+//                                Assignment
 //-----------------------------------------------------------------------------
 
-union1 :: union { // Should parse, but not really reasonable
-	yes,
-	no
+assignment_example :: fn() {
+	x : int = 3
+	y : int = 2
+	z : int = 1
+
+	x, y = y, x = z, y
+	// By the way here x = 1, y = 2
+	x, y <<= y, x += 3 * 1 - 1
+	// and here x = 48, y = 32. Don't write code like this.
+
+	x, y = 1
 }
-union2 :: union[T] {
-	Some(T),
-	None,
+
+//-----------------------------------------------------------------------------
+//                            Boolean Expressions
+//-----------------------------------------------------------------------------
+
+boolean_expressions :: fn() {
+	result : bool
+	a := true
+	b := false
+	x : = 4
+	y : = 5
+
+	optional_result :: fn() -> int? {
+		return 4
+	}
+
+	result = true || false
+	result = true && false
+	result = a && !b || false && a
+	result = a != b || x <= 5 && y >= 5
+	result = x > y || x < 4 || x == 5
+	result = optional_result() is_none
+	result = optional_result() is_some
+	result = if a { b } else { a || !b }
+	result &&= a
+	result ||= b
 }
-union3 :: union[X, Y]{
-	just_x(X),
-	just_y(Y),
-	both(X, Y),
+
+//-----------------------------------------------------------------------------
+//                              Branching Logic
+//-----------------------------------------------------------------------------
+
+branching_logic :: fn() {
+	result : int
+	a := true
+	b := false
+	x : = 4
+	y : = 5
+
+	if x > 4 {
+		result = x + 4
+	}
+	else if x < 2 {
+		result = x - 1
+	}
+	else {
+		result = -1	
+	}
+
+	if x < 5 && y == 5 {
+		result = 43
+	}
+	if a || !b {
+		result = 3
+	}
+	else {
+		result = -result
+	}
+}
+
+//-----------------------------------------------------------------------------
+//                                  Casting
+//-----------------------------------------------------------------------------
+
+casting_example :: fn() {
+	my_uint8 : u8 = 1
+	my_uint16 : u16 = 2
+	my_uint32 : u32 = 3
+	my_uint : uint = 4
+	my_float32 : f32 = 2e-2
+
+	my_uint = cast[uint](my_uint8)
+	my_uint = auto_cast(my_uint8)
+	my_float32 = bit_cast[f32](my_uint32)
+}
+
+//-----------------------------------------------------------------------------
+//                                  Context
+//-----------------------------------------------------------------------------
+
+context_example :: fn() {
+	my_context: Context
+	push_context my_context {
+		// context here is referring to my_context
+		context.allocator = memory.ArenaAllocator
+		print_something("You can do whatever you want here")
+	}
+	// my_context would no longer be the context once we leave the block
+}
+
+//-----------------------------------------------------------------------------
+//                                Directives
+//-----------------------------------------------------------------------------
+
+#if OS == .WINDOWS {
+	EXAMPLE_CONSTANT : int = 1	
+}
+#else_if OS == .LINUX {
+	EXAMPLE_CONSTANT : int = 2
+}
+#else {
+	EXAMPLE_CONSTANT : int = 3	
+}
+
+inside_function :: fn() {
+	#if OS == .WINDOWS {
+		println("This is Windows")
+	}
+	#else {
+		println("This is not windows")
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -245,232 +385,29 @@ function_calls :: fn() {
 }
 
 //-----------------------------------------------------------------------------
-//                           Arithmetic Expressions
+//                                 Literals
 //-----------------------------------------------------------------------------
 
-arithmetic_expressions :: fn() {
-	result: int
-
-	result = +3
-	result = -3
-	result = ~0x1f
-	result = 1 + 2
-	result = 2 * 4
-	result = 5 - 3
-	result = 10 / 3
-	result = 17 % 5
-	result = 17 %% 5
-	result = 0b0000_1111 & 0b0101_0101
-	result = 0b0000_1111 | 0b0101_0101
-	result = 0b0000_1111 ~ 0b0101_0101
-	result = 1 >> 4
-	result = -42 >>> 4
-	result = 1024 << 2
-	result = 0o71
-
-	result = +3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = -3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = ~0x1f * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 1 + 2 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 2 * 4 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 5 - 3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 10 / 3 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 17 % 5 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 17 %% 5 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 0b0000_1111 & 0b0101_0101 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 0b0000_1111 | 0b0101_0101 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 0b0000_1111 ~ 0b0101_0101 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 1 >> 4 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = -42 >>> 4 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 1024 << 2 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-	result = 0o71 * 3 * 2 + 1 * 5 + 1 + 1 + 2 / 2
-
-	result += 4
-	result -= 5
-	result *= 22
-	result /= 3
-	result %= 4
-	result %%= 30
-	result &= 0b1111_1001
-	result |= 0b0000_0110
-	result ~= 4256
-	result <<= 4
-	result >>= 3
-	result >>>= 2
-
-	result += 4 + 1 * 2
-	result -= 5 + 1 * 2
-	result *= 22 + 1 * 2
-	result /= 3 + 1 * 2
-	result %= 4 + 1 * 2
-	result %%= 30 + 1 * 2
-	result &= 0b1111_1001 + 1 * 2
-	result |= 0b0000_0110 + 1 * 2
-	result ~= 4256 + 1 * 2
-	result <<= 4 + 1 * 2
-	result >>= 3 + 1 * 2
-	result >>>= 2 + 1 * 2
-
-	result = 1 + 2 * 4 + 5
-	result = 1 * 2 - 4 * 5
-	result += 9 / 3 + 4 - 5 * 2 - 1 + (4 * 3 - (5 / 2))
-
-	optional_result :: fn() -> int? {
-		return 4
-	}
-
-	result = one_result() + one_result() * 2
-	result = (optional_result() or_else 4) + 3
-}
-
-
-//-----------------------------------------------------------------------------
-//                                Assignment
-//-----------------------------------------------------------------------------
-
-assignment_example :: fn() {
-	x : int = 3
-	y : int = 2
-	z : int = 1
-
-	x, y = y, x = z, y
-	// By the way here x = 1, y = 2
-	x, y <<= y, x += 3 * 1 - 1
-	// and here x = 48, y = 32. Don't write code like this.
-
-	x, y = 1
-}
-
-//-----------------------------------------------------------------------------
-//                                  Arrays
-//-----------------------------------------------------------------------------
-
-arrays_example :: fn() {
-	a : int[10]
-	b : int[] : a
-	c : int[] : a[2..<5]
-	d : int[] : a[2..=4]
-	e : int[] : a[5..]
-	e2: int[] : a[5..<a.count]
-	f : int[] : a[..<5]
-	f2 : int[] : a[0..<5]
-	g : int[] : a[..=5]
-	g2 : int[] : a[0..=5]
-
-	h : f64[2]
-	i : i8[10][5]
-	j : u32[..]
-	k : string[..]
-
-	l : int : nested_array.foo.bar[3].foo[2][3].bar
-	l = nested_array[2][4].nested_array[3].foo.bar[3].foo[2][3].bar[1]
-}
-
-//-----------------------------------------------------------------------------
-//                            Boolean Expressions
-//-----------------------------------------------------------------------------
-
-boolean_expressions :: fn() {
-	result : bool
-	a := true
-	b := false
-	x : = 4
-	y : = 5
-
-	optional_result :: fn() -> int? {
-		return 4
-	}
-
-	result = true || false
-	result = true && false
-	result = a && !b || false && a
-	result = a != b || x <= 5 && y >= 5
-	result = x > y || x < 4 || x == 5
-	result = optional_result() is_none
-	result = optional_result() is_some
-	result = if a { b } else { a || !b }
-	result &&= a
-	result ||= b
-}
-
-//-----------------------------------------------------------------------------
-//                              Branching Logic
-//-----------------------------------------------------------------------------
-
-branching_logic :: fn() {
-	result : int
-	a := true
-	b := false
-	x : = 4
-	y : = 5
-
-	if x > 4 {
-		result = x + 4
-	}
-	else if x < 2 {
-		result = x - 1
-	}
-	else {
-		result = -1	
-	}
-
-	if x < 5 && y == 5 {
-		result = 43
-	}
-	if a || !b {
-		result = 3
-	}
-	else {
-		result = -result
-	}
-}
-
-//-----------------------------------------------------------------------------
-//                                  Context
-//-----------------------------------------------------------------------------
-
-context_example :: fn() {
-	my_context: Context
-	push_context my_context {
-		// context here is referring to my_context
-		context.allocator = memory.ArenaAllocator
-		print_something("You can do whatever you want here")
-	}
-	// my_context would no longer be the context once we leave the block
-}
-
-//-----------------------------------------------------------------------------
-//                                 Pointers
-//-----------------------------------------------------------------------------
-
-pointer_example :: fn() {
-	x : int = 4
-	my_x : ptr[int] = &x
-	my_x^ = 2
-
-	rect : ptr[Rectangle] = new(Rectangle)
-	defer delete(rect)
-	rect.x = 4
-	rect.y = 5
-	rect2 := new(Rectangle)
-	rect2^ = rect^
-}
-
-//-----------------------------------------------------------------------------
-//                                  Casting
-//-----------------------------------------------------------------------------
-
-casting_example :: fn() {
-	my_uint8 : u8 = 1
-	my_uint16 : u16 = 2
-	my_uint32 : u32 = 3
-	my_uint : uint = 4
-	my_float32 : f32 = 2e-2
-
-	my_uint = cast[uint](my_uint8)
-	my_uint = auto_cast(my_uint8)
-	my_float32 = bit_cast[f32](my_uint32)
-}
+decimal_int : int : 12345
+negative_int : int : -12345
+decimal_with_underscores : int : 1_234_567
+hex_int : int : 0xabcd_ef01_2345
+octal_int : int : 0o12_345_670
+binary_int : int : 0b0110_1101_0001
+plain_float : f32 : 1
+decimal_float : f32 : 1.02
+power_float : f32 : 4.02e3
+power_capital_float : f32 : 4.0203E3
+power_negative_float : f32 : 4.02e-3
+string_literal :: "foobar"
+multiline_string :: \\ This is a multline string
+	\\ we can have these on several lines
+	\\ if we really want to I guess
+char_literal :: 'x'
+bool_literal :: true
+double_nested_ptr_type :: ptr[ptr[int]]
+triple_nested_ptr_type :: ptr[ptr[ptr[int]]]
+array_of_nested_ptrs :: ptr[ptr[u8]][..]
 
 //-----------------------------------------------------------------------------
 //                                   Loops
@@ -579,41 +516,6 @@ deferring_example :: fn() {
 }
 
 //-----------------------------------------------------------------------------
-//                                 Switches
-//-----------------------------------------------------------------------------
-
-switch_example :: fn() {
-	switch x {
-		case 1: print("one")
-		case 2, 3: print("two")
-		#fall_through
-		case 4..<6: print("three")
-		case 6..=30, 32, 44: print("four")
-		case _: {
-			print("default")
-		}
-	}
-
-	switch y {
-		case .FOO: print("fooo")
-		case example_enum.BAR: print("bar")
-		case .BAZ, .CAZ: print("baz")
-	}
-
-	switch z {
-		case "foo": print("1")
-		case "bar", "Baz": print("2")
-		case _: print("4")
-	}
-
-	switch a {
-		case 'a': print("3")
-		case 'b'..='m', 'o'..<'y': print("4")
-		case _: print("45")
-	}
-}
-
-//-----------------------------------------------------------------------------
 //                                  Matches
 //-----------------------------------------------------------------------------
 
@@ -656,31 +558,128 @@ match_example :: fn() {
 }
 
 //-----------------------------------------------------------------------------
-//                                Annotations
+//                                 Pointers
 //-----------------------------------------------------------------------------
 
-@Deprecated
-this_has_an_annotation :: fn() {}
+pointer_example :: fn() {
+	x : int = 4
+	my_x : ptr[int] = &x
+	my_x^ = 2
+
+	rect : ptr[Rectangle] = new(Rectangle)
+	defer delete(rect)
+	rect.x = 4
+	rect.y = 5
+	rect2 := new(Rectangle)
+	rect2^ = rect^
+}
 
 //-----------------------------------------------------------------------------
-//                                Directives
+//                                 Structs
 //-----------------------------------------------------------------------------
 
-#if OS == .WINDOWS {
-	EXAMPLE_CONSTANT : int = 1	
+struct1 :: struct {}
+struct2 :: struct {
+	x: int,
+	y: int
 }
-#else_if OS == .LINUX {
-	EXAMPLE_CONSTANT : int = 2
+struct3 :: struct {
+	x: f32,
 }
-#else {
-	EXAMPLE_CONSTANT : int = 3	
+struct4 :: struct[X, Y] {
+	foo1: fn(X) -> Y
 }
 
-inside_function :: fn() {
-	#if OS == .WINDOWS {
-		println("This is Windows")
+Rectangle :: #packed #align(8) struct {
+	x : int,
+	y : int,
+	width : uint = 10,
+	height : uint = 10,
+}
+
+struct_creation :: fn() {
+	r1 := Rectangle.{}
+	r2 : Rectangle = Rectangle.{1, 2, 3, 4}
+	r3 := Rectangle.{y=1, x=2}
+	r4 := new(Rectangle)
+	defer delete r4
+	r4^ = r3 
+}
+
+c_style_union :: struct #union {
+	f : f32,
+	i : i32,
+	_ : struct { b1, b2, b3, b4 : i8 },
+}
+
+//-----------------------------------------------------------------------------
+//                                 Switches
+//-----------------------------------------------------------------------------
+
+switch_example :: fn() {
+	switch x {
+		case 1: print("one")
+		case 2, 3: print("two")
+		#fall_through
+		case 4..<6: print("three")
+		case 6..=30, 32, 44: print("four")
+		case _: {
+			print("default")
+		}
 	}
-	#else {
-		println("This is not windows")
+
+	switch y {
+		case .FOO: print("fooo")
+		case example_enum.BAR: print("bar")
+		case .BAZ, .CAZ: print("baz")
 	}
+
+	switch z {
+		case "foo": print("1")
+		case "bar", "Baz": print("2")
+		case _: print("4")
+	}
+
+	switch a {
+		case 'a': print("3")
+		case 'b'..='m', 'o'..<'y': print("4")
+		case _: print("45")
+	}
+}
+
+//-----------------------------------------------------------------------------
+//                                  Types
+//-----------------------------------------------------------------------------
+
+CONSTANT_INTEGER : int : 5
+OTHER_INTEGER :: 1
+int_fn :: fn(int) -> int
+my_float :: alias f32
+my_float2 :: f32
+my_float3 : type : float
+meters :: distinct alias int
+BinaryIntFunc :: fn(int, int) -> int
+
+MultipleNames :: fn(a, b, c : int)
+MultipleNamesWithDefault :: fn(a, b, c : int = 1)
+MultipleNamesComplex :: fn(a, b: int, c, d: float, e : int, f, g : float)
+FuncResult :: fn() -> (fn())
+FuncsAsArg :: fn(a, b: (fn()), c : (fn(int, int, int)) = MultipleNames)
+
+//-----------------------------------------------------------------------------
+//                                  Unions
+//-----------------------------------------------------------------------------
+
+union1 :: union { // Should parse, but not really reasonable
+	yes,
+	no
+}
+union2 :: union[T] {
+	Some(T),
+	None,
+}
+union3 :: union[X, Y]{
+	just_x(X),
+	just_y(Y),
+	both(X, Y),
 }
