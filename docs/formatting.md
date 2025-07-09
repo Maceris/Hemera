@@ -27,6 +27,20 @@ Commas at the ends of lists (below) are optional. They can be there, or they cou
 
 This is to enable definitions of things to be reordered or modified without having to fiddle with adding or removing commas.
 
+# File Contents
+
+The source files are utf-8 encoded text files. There are restrictions on the size of the files, both in terms of line width and number of lines (and consequently, the total size).
+
+These are:
+
+* Lines may not be longer than 65,535 (u16 max) characters
+* There may not be more than 4,294,967,295 (u32 max) lines in a single file
+
+Brief rationalizations for these limits:
+
+Most editors and developers have soft line limits at around 80 to 120 characters, so if you have lines longer than 65,000... don't.
+Most files should not be longer than a couple thousand lines, but situations might call for a large amount of text in one file so the limits on total lines are higher.
+
 # File Structure
 
 The code file structure as below:
@@ -34,7 +48,7 @@ The code file structure as below:
 1. Optional beginning comments
 2. Package statement (first non-comment non-empty line)
 3. Imports
-4. Declarations / definitions
+4. Declarations / definitions (all immutable)
 
 For example:
 
