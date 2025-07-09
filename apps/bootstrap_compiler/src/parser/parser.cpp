@@ -1844,6 +1844,13 @@ namespace hemera::parser {
 		else {
 			result->children.push_back(expr.result);
 		}
+
+		if (expect(state, TokenType::SYM_QUESTION)) {
+			ast::Node* unwrap = &next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			unwrap->children.push_back(result);
+			result = unwrap;
+		}
+
 		return ExprResult{ true, result };
 	}
 

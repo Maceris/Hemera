@@ -361,6 +361,7 @@ expr_lvl_10 = ( OPERATOR_plus , expr_lvl_11 )
     | ( OPERATOR_bitwise_xor , expr_lvl_11 )
     | ( OPERATOR_not , expr_lvl_11 )
     | expr_lvl_11
+    , [ SYM_QUESTION ]
     ;
 
 expr_lvl_11 = literal

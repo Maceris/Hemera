@@ -321,8 +321,8 @@ print_something         :: fn(text: string) {}
 print_something2        :: fn(text: string = "hello") {}
 log_something           :: fn(text: string, location := #caller_location) {}
 mutable_parameters      :: fn(rect: ptr[mut Rectangle], mut rawptr) {}
-maybe_a_bool            :: fn() -> bool? { return .None() }
-result_return           :: fn() -> Result[u16, string] { return .Ok(3) }
+maybe_a_bool            :: fn() -> bool? { return None() }
+result_return           :: fn() -> Result[u16, string] { return Ok(3) }
 
 is_even :: fn(x: int) -> (result: bool, mod: int) {
     mod = x % 2
@@ -612,7 +612,7 @@ pointer_example :: fn() {
 results :: fn() -> Result[f32, string] {
 	value : u16 = result_return() ?
 	value = result_return() or_else 5
-	value = result_return() or_return .Ok(54)
+	value = result_return() or_return Ok(54)
 
 	loop {
 		age :: result_return() or_break

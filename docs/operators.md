@@ -358,7 +358,7 @@ f2 :: fn() -> Result[string, MyError] {
 ```
 Precedence   Operator
     11       cast  auto_cast  bit_cast  |>  .  []
-    10       +  -  ~  ! (unary versions)
+    10       +  -  ~  !  ?  (unary versions)
      9       ()
      8       *  /  %  %%  &  <<  >>  >>>
      7       +  -  |  ~
