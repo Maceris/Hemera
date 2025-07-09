@@ -179,30 +179,46 @@ namespace hemera::parser {
 			if (current_type == TokenType::DIRECTIVE) {
 				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
 				
-				if (!expect(state, TokenType::SYM_LBRACE)) {
+				bool is_an_if = false;
+
+				if (directive.value.value->compare("#if") == 0
+					|| directive.value.value->compare("#else_if") == 0) {
+					is_an_if = true;
+
 					ExprResult conditional = expression_with_result(state, true);
 					if (!conditional.success) {
 						return false;
 					}
 					directive.children.push_back(conditional.result);
 				}
+		
+				if (is_an_if || directive.value.value->compare("#else") == 0) {
+					if (!expect(state, TokenType::SYM_LBRACE)) {
+						report_error_on_last_token(state, ErrorCode::E3018);
+						return false;
+					}
+					const Token& lbrace = current_token(state);
+					skip(state, TokenType::SYM_LBRACE);
+					if (!imports(state, directive)) {
+						return false;
+					}
+					if (!skip(state, TokenType::SYM_RBRACE)) {
+						report_error_on_last_token(state, ErrorCode::E3019,
+							std::format("Opening brace was at ({},{})",
+								lbrace.line_number,
+								lbrace.column_number));
+						return false;
+					}
+				}
 
-				if (!expect(state, TokenType::SYM_LBRACE)) {
-					report_error_on_last_token(state, ErrorCode::E3018);
-					return false;
+				if (directive.value.value->compare("#run") == 0) {
+					ExprResult expr = expression_with_result(state, true);
+					if (!expr.success) {
+						return false;
+					}
+					directive.children.push_back(expr.result);
 				}
-				const Token& lbrace = current_token(state);
-				skip(state, TokenType::SYM_LBRACE);
-				if (!imports(state, directive)) {
-					return false;
-				}
-				if (!skip(state, TokenType::SYM_RBRACE)) {
-					report_error_on_last_token(state, ErrorCode::E3019,
-						std::format("Opening brace was at ({},{})",
-							lbrace.line_number,
-							lbrace.column_number));
-					return false;
-				}
+
 			}
 			else if (!import(state, parent)) {
 				return false;
@@ -247,7 +263,54 @@ namespace hemera::parser {
 	}
 
 	bool const_definitions(ParserState* state, ast::Node& parent) {
-		while (expect(state, TokenType::IDENTIFIER)) {
+		while (expect(state, TokenType::IDENTIFIER) 
+			|| expect(state, TokenType::DIRECTIVE)) {
+
+			if (expect(state, TokenType::DIRECTIVE)) {
+				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+
+				bool is_an_if = false;
+
+				if (directive.value.value->compare("#if") == 0
+					|| directive.value.value->compare("#else_if") == 0) {
+					is_an_if = true;
+
+					ExprResult conditional = expression_with_result(state, true);
+					if (!conditional.success) {
+						return false;
+					}
+					directive.children.push_back(conditional.result);
+				}
+
+				if (is_an_if || directive.value.value->compare("#else") == 0) {
+					if (!expect(state, TokenType::SYM_LBRACE)) {
+						report_error_on_last_token(state, ErrorCode::E3018);
+						return false;
+					}
+					const Token& lbrace = current_token(state);
+					skip(state, TokenType::SYM_LBRACE);
+					if (!const_definitions(state, directive)) {
+						return false;
+					}
+					if (!skip(state, TokenType::SYM_RBRACE)) {
+						report_error_on_last_token(state, ErrorCode::E3019,
+							std::format("Opening brace was at ({},{})",
+								lbrace.line_number,
+								lbrace.column_number));
+						return false;
+					}
+				}
+
+				if (directive.value.value->compare("#run") == 0) {
+					ExprResult expr = expression_with_result(state, true);
+					if (!expr.success) {
+						return false;
+					}
+					directive.children.push_back(expr.result);
+				}
+
+			}
+
 			ExprResult decl = declaration(state, parent);
 
 			if (!decl.success) {
@@ -862,8 +925,15 @@ namespace hemera::parser {
 
 	bool default_value(ParserState* state, ast::Node& parent) {
 		if (expect(state, TokenType::DIRECTIVE)) {
-			accept(state, TokenType::DIRECTIVE, ast::NodeType::DIRECTIVE,
-				parent);
+			ast::Node& directive = next_as_node(state, 
+				ast::NodeType::DIRECTIVE, &parent);
+			if (directive.value.value->compare("#run") == 0) {
+				ExprResult expr = expression_with_result(state, true);
+				if (!expr.success) {
+					return false;
+				}
+				directive.children.push_back(expr.result);
+			}
 			return true;
 		}
 		else {
@@ -956,11 +1026,39 @@ namespace hemera::parser {
 			case TokenType::DIRECTIVE:
 			{
 				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &block_node);
-				ExprResult sub_block = block(state);
-				if (!sub_block.result) {
-					return ExprResult{ false };
+				
+				bool is_an_if = false;
+
+				if (directive.value.value->compare("#if") == 0
+					|| directive.value.value->compare("#else_if") == 0) {
+					is_an_if = true;
+
+					ExprResult conditional = expression_with_result(state, true);
+					if (!conditional.success) {
+						return false;
+					}
+					directive.children.push_back(conditional.result);
 				}
-				directive.children.push_back(sub_block.result);
+
+				if (is_an_if || directive.value.value->compare("#else") == 0) {
+					if (!expect(state, TokenType::SYM_LBRACE)) {
+						report_error_on_last_token(state, ErrorCode::E3018);
+						return false;
+					}
+					ExprResult block_contents = block(state);
+					if (!block_contents.success) {
+						return false;
+					}
+					directive.children.push_back(block_contents.result);
+				}
+
+				if (directive.value.value->compare("#run") == 0) {
+					ExprResult expr = expression_with_result(state, true);
+					if (!expr.success) {
+						return false;
+					}
+					directive.children.push_back(expr.result);
+				}
 				continue;
 			}
 			case TokenType::ANNOTATION:

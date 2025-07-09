@@ -174,12 +174,12 @@ file = package_statement , [ imports ] , [ const_definitions ] ;
 
 package_statement = KEYWORD_package , identifier ;
 
-imports = ( import | ( directive , [ expression_with_result ] , SYM_LBRACE , imports , SYM_RBRACE ) ) , [ imports ] ;
+imports = ( import | ( directive , [ expression_with_result ] , [ SYM_LBRACE , imports , SYM_RBRACE ] ) ) , [ imports ] ;
 import = KEYWORD_import , identifier , [ KEYWORD_as , identifier ] , [ KEYWORD_from, literal_string ] ;
 
 const_definitions = { 
     ( declaration , const_definition_rhs )
-    | ( directive , SYM_LBRACE , { declaration , const_definition_rhs } , SYM_RBRACE )
+    | ( directive , [ expression_with_result ] , [ SYM_LBRACE , const_definitions , SYM_RBRACE ] )
     }
     ;
 const_definition_rhs = SYM_COLON , decl_rhs ;
@@ -236,7 +236,7 @@ function_parameter = [ identifier , { SYM_COMMA , identifier } , SYM_COLON ] , t
 
 default_value = literal
     | type
-    | directive
+    | ( directive , [ expression_with_result ] )
     ;
 
 struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] ;
@@ -252,14 +252,15 @@ struct_member = ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
 enum_member = identifier ;
 
-block = SYM_LBRACE , 
+block = SYM_LBRACE ,
     { expression
     | ( KEYWORD_return , ( KEYWORD_void | ( expression_with_result , { SYM_COMMA , expression_with_result } ) ) )
     | ( KEYWORD_defer , expression )
     | ( KEYWORD_break , [ literal_integer | KEYWORD_all ] )
     | KEYWORD_continue
-    | ( directive , block )
-    } , SYM_RBRACE
+    | ( directive , [ expression_with_result ] , [ block ] )
+    } 
+    , SYM_RBRACE
     ;
 
 expression = expression_with_result 
@@ -368,7 +369,7 @@ expr_lvl_11 = literal
     | ( location , { OPERATOR_pipe , function_call } )
     | cast_expression
     | enum_shorthand
-    | directive
+    | ( directive , [ expression_with_result ] )
     ;
 
 location = { SYM_AMPERSAND } , identifier , 

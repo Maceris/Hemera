@@ -254,22 +254,32 @@ context_example :: fn() {
 //-----------------------------------------------------------------------------
 
 #if OS == .WINDOWS {
-	EXAMPLE_CONSTANT : int = 1	
+	EXAMPLE_CONSTANT : int : 1	
 }
 #else_if OS == .LINUX {
-	EXAMPLE_CONSTANT : int = 2
+	EXAMPLE_CONSTANT : int : 2
 }
 #else {
-	EXAMPLE_CONSTANT : int = 3	
+	EXAMPLE_CONSTANT : int : 3	
 }
 
+#run println("Processing the smoke_test file")
+
 inside_function :: fn() {
+	#run println("Processing a function inside smoke_test")
+
 	#if OS == .WINDOWS {
 		println("This is Windows")
 	}
 	#else {
 		println("This is not windows")
 	}
+
+	square :: fn(x : int) -> int {
+		return x * x
+	}
+
+	even : bool = is_even(#run square(13))
 }
 
 //-----------------------------------------------------------------------------
@@ -327,7 +337,7 @@ result_return           :: fn() -> Result[u16, string] { return Ok(3) }
 is_even :: fn(x: int) -> (result: bool, mod: int) {
     mod = x % 2
     result = mod == 0
-    return // allowed, but not encouraged, if all results are assigned
+    return result, mod
 }
 
 add_numbers : BinaryIntFunc : fn(x, y : int) -> int {
