@@ -41,49 +41,155 @@ namespace hemera {
 	};
 
 	namespace builtin {
-		struct _any {}; // TODO(ches) create/complete this
-		struct _b8 {}; // TODO(ches) create/complete this
-		struct _b16 {}; // TODO(ches) create/complete this
-		struct _b32 {}; // TODO(ches) create/complete this
-		struct _b64 {}; // TODO(ches) create/complete this
-		struct _bool {}; // TODO(ches) create/complete this
-		struct _c16 {}; // TODO(ches) create/complete this
-		struct _c32 {}; // TODO(ches) create/complete this
-		struct _c64 {}; // TODO(ches) create/complete this
-		struct _c128 {}; // TODO(ches) create/complete this
-		struct _char {}; // TODO(ches) create/complete this
-		struct _cstring {}; // TODO(ches) create/complete this
+		struct _any {
+			TypeID pointing_to_type;
+			void* pointer;//TODO(ches) should this be a value instead?
+		};
+		using _b8 = uint8_t;
+		using _b16 = uint16_t;
+		using _b32 = uint32_t;
+		using _b64 = uint64_t;
+		using _bool = bool;
+		struct _c16 {
+			uint8_t real;
+			uint8_t imaginary;
+		};
+		struct _c32 {
+			uint16_t real;
+			uint16_t imaginary;
+		};
+		struct _c64 {
+			uint32_t real;
+			uint32_t imaginary;
+		};
+		struct _c128 {
+			uint64_t real;
+			uint64_t imaginary;
+		};
+		using _char = char8_t;
+		using _cstring = char*;
 		struct _f16 {}; // TODO(ches) create/complete this
 		struct _f16be {}; // TODO(ches) create/complete this
 		struct _f16le {}; // TODO(ches) create/complete this
+		static_assert(sizeof(float) == 4);
 		using _f32 = float;
 		struct _f32be {}; // TODO(ches) create/complete this
 		struct _f32le {}; // TODO(ches) create/complete this
+		static_assert(sizeof(double) == 8);
 		using _f64 = double;
 		struct _f64be {}; // TODO(ches) create/complete this
 		struct _f64le {}; // TODO(ches) create/complete this
 		using _i8 = int8_t;
 		using _i16 = int16_t;
-		struct _i16be {}; // TODO(ches) create/complete this
-		struct _i16le {}; // TODO(ches) create/complete this
+		struct _i16be {
+			int8_t byte_1;
+			uint8_t byte_2;
+		};
+		struct _i16le {
+			uint8_t byte_2;
+			int8_t byte_1;
+		};
 		using _i32 = int32_t;
-		struct _i32be {}; // TODO(ches) create/complete this
-		struct _i32le {}; // TODO(ches) create/complete this
+		struct _i32be {
+			int8_t byte_1;
+			uint8_t byte_2;
+			uint8_t byte_3;
+			uint8_t byte_4;
+		};
+		struct _i32le {
+			uint8_t byte_4;
+			uint8_t byte_3;
+			uint8_t byte_2;
+			int8_t byte_1;
+		};
 		using _i64 = int64_t;
-		struct _i64be {}; // TODO(ches) create/complete this
-		struct _i64le {}; // TODO(ches) create/complete this
-		struct _i128 {}; // TODO(ches) create/complete this
-		struct _i128be {}; // TODO(ches) create/complete this
-		struct _i128le {}; // TODO(ches) create/complete this
-		using _int = long long;
+		struct _i64be {
+			int8_t byte_1;
+			uint8_t byte_2;
+			uint8_t byte_3;
+			uint8_t byte_4;
+			uint8_t byte_5;
+			uint8_t byte_6;
+			uint8_t byte_7;
+			uint8_t byte_8;
+		};
+		struct _i64le {
+			uint8_t byte_8;
+			uint8_t byte_7;
+			uint8_t byte_6;
+			uint8_t byte_5;
+			uint8_t byte_4;
+			uint8_t byte_3;
+			uint8_t byte_2;
+			int8_t byte_1;
+		};
+		struct _i128be {
+			int8_t byte_1;
+			uint8_t byte_2;
+			uint8_t byte_3;
+			uint8_t byte_4;
+			uint8_t byte_5;
+			uint8_t byte_6;
+			uint8_t byte_7;
+			uint8_t byte_8;
+			uint8_t byte_9;
+			uint8_t byte_10;
+			uint8_t byte_11;
+			uint8_t byte_12;
+			uint8_t byte_13;
+			uint8_t byte_14;
+			uint8_t byte_15;
+			uint8_t byte_16;
+		};
+		struct _i128le {
+			uint8_t byte_16;
+			uint8_t byte_15;
+			uint8_t byte_14;
+			uint8_t byte_13;
+			uint8_t byte_12;
+			uint8_t byte_11;
+			uint8_t byte_10;
+			uint8_t byte_9;
+			uint8_t byte_8;
+			uint8_t byte_7;
+			uint8_t byte_6;
+			uint8_t byte_5;
+			uint8_t byte_4;
+			uint8_t byte_3;
+			uint8_t byte_2;
+			int8_t byte_1;
+		};
+		using _i128 = _i128le; // TODO(ches) is this right?
+		static_assert(sizeof(int64_t) == sizeof(uintptr_t));
+		using _int = int64_t;
 		struct _ptr {
 			TypeID pointing_to_type;
 			void* pointer;
 		};
-		struct _q32 {}; // TODO(ches) create/complete this
-		struct _q64 {}; // TODO(ches) create/complete this
-		struct _q128 {}; // TODO(ches) create/complete this
-		struct _q256 {}; // TODO(ches) create/complete this
+		struct _q32 {
+			uint8_t a;
+			uint8_t b;
+			uint8_t c;
+			uint8_t d;
+		};
+		struct _q64 {
+			uint16_t a;
+			uint16_t b;
+			uint16_t c;
+			uint16_t d;
+		};
+		struct _q128 {
+			uint32_t a;
+			uint32_t b;
+			uint32_t c;
+			uint32_t d;
+		};
+		struct _q256 {
+			uint64_t a;
+			uint64_t b;
+			uint64_t c;
+			uint64_t d;
+		};
 		using _rawptr = void*;
 		struct _relptr8 {}; // TODO(ches) create/complete this
 		struct _relptr16 {}; // TODO(ches) create/complete this
@@ -93,17 +199,85 @@ namespace hemera {
 		using _type = Type;
 		using _u8 = uint8_t;
 		using _u16 = uint16_t;
-		struct _u16be {}; // TODO(ches) create/complete this
-		struct _u16le {}; // TODO(ches) create/complete this
+		struct _u16be {
+			uint8_t byte_1;
+			uint8_t byte_2;
+		};
+		struct _u16le {
+			uint8_t byte_2;
+			uint8_t byte_1;
+		};
 		using _u32 = uint32_t;
-		struct _u32be {}; // TODO(ches) create/complete this
-		struct _u32le {}; // TODO(ches) create/complete this
+		struct _u32be {
+			uint8_t byte_1;
+			uint8_t byte_2;
+			uint8_t byte_3;
+			uint8_t byte_4;
+		};
+		struct _u32le {
+			uint8_t byte_4;
+			uint8_t byte_3;
+			uint8_t byte_2;
+			uint8_t byte_1;
+		};
 		using _u64 = uint64_t;
-		struct _u64be {}; // TODO(ches) create/complete this
-		struct _u64le {}; // TODO(ches) create/complete this
-		struct _u128 {}; // TODO(ches) create/complete this
-		struct _u128be {}; // TODO(ches) create/complete this
-		struct _u128le {}; // TODO(ches) create/complete this
+		struct _u64be {
+			uint8_t byte_1;
+			uint8_t byte_2;
+			uint8_t byte_3;
+			uint8_t byte_4;
+			uint8_t byte_5;
+			uint8_t byte_6;
+			uint8_t byte_7;
+			uint8_t byte_8;
+		};
+		struct _u64le {
+			uint8_t byte_8;
+			uint8_t byte_7;
+			uint8_t byte_6;
+			uint8_t byte_5;
+			uint8_t byte_4;
+			uint8_t byte_3;
+			uint8_t byte_2;
+			uint8_t byte_1;
+		};
+		struct _u128be {
+			uint8_t byte_1;
+			uint8_t byte_2;
+			uint8_t byte_3;
+			uint8_t byte_4;
+			uint8_t byte_5;
+			uint8_t byte_6;
+			uint8_t byte_7;
+			uint8_t byte_8;
+			uint8_t byte_9;
+			uint8_t byte_10;
+			uint8_t byte_11;
+			uint8_t byte_12;
+			uint8_t byte_13;
+			uint8_t byte_14;
+			uint8_t byte_15;
+			uint8_t byte_16;
+		};
+		struct _u128le {
+			uint8_t byte_16;
+			uint8_t byte_15;
+			uint8_t byte_14;
+			uint8_t byte_13;
+			uint8_t byte_12;
+			uint8_t byte_11;
+			uint8_t byte_10;
+			uint8_t byte_9;
+			uint8_t byte_8;
+			uint8_t byte_7;
+			uint8_t byte_6;
+			uint8_t byte_5;
+			uint8_t byte_4;
+			uint8_t byte_3;
+			uint8_t byte_2;
+			uint8_t byte_1;
+		};
+		using _u128 = _u128le; // TODO(ches) is this right?
 		using _uint = uintptr_t;
 		using _uintptr = uintptr_t;
 	}
