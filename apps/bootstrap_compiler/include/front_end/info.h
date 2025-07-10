@@ -78,8 +78,8 @@ namespace hemera {
 	};
 
 	struct Pointer {
-		TypeID pointing_to_type;
-		void* pointer;
+		TypeID type;
+		void* value;
 	};
 
 	struct TypeAlias {
