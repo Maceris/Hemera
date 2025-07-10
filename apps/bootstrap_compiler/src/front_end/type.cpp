@@ -2,11 +2,12 @@
 
 namespace hemera {
 	Type::Type(Type* base_type, MyVector<ArrayDimension>&& dims,
-		bool is_mutable, bool is_pointer)
+		bool is_mutable, bool is_pointer, bool is_varargs)
 		: base_type{ base_type }
 		, dims{ std::move(dims) }
 		, is_mutable{ is_mutable }
 		, is_pointer{ is_pointer }
+		, is_varargs{ is_varargs }
 	{}
 	Type::~Type() = default;
 

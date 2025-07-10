@@ -9,7 +9,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/front_end/info.h
   ${INCLUDE_DIR}/front_end/type.h
-  ${INCLUDE_DIR}/front_end/type_info.h
+  ${INCLUDE_DIR}/front_end/type_id.h
   ${INCLUDE_DIR}/front_end/work.h
   ${INCLUDE_DIR}/lexer/lexer.h
   ${INCLUDE_DIR}/lexer/token.h

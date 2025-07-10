@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+
+#include "front_end/type_id.h"
 #include "memory/allocator.h"
 
 namespace hemera {
@@ -24,16 +27,86 @@ namespace hemera {
 		const MyVector<ArrayDimension> dims;
 		const bool is_mutable;
 		const bool is_pointer;
-		const char padding[6] = { 0 };
+		const bool is_varargs;
+		const char padding[5] = { 0 };
 
 		Type(Type* base_type = nullptr, MyVector<ArrayDimension>&& dims = {},
-			bool is_mutable = false, bool is_pointer = false);
+			bool is_mutable = false, bool is_pointer = false, 
+			bool is_varargs = false);
 		Type(const Type&) = delete;
 		Type(Type&&) = delete;
 		Type& operator=(const Type&) = delete;
 		Type& operator=(Type&&) = delete;
 		~Type();
 	};
+
+	namespace builtin {
+		struct _any {}; // TODO(ches) create/complete this
+		struct _b8 {}; // TODO(ches) create/complete this
+		struct _b16 {}; // TODO(ches) create/complete this
+		struct _b32 {}; // TODO(ches) create/complete this
+		struct _b64 {}; // TODO(ches) create/complete this
+		struct _bool {}; // TODO(ches) create/complete this
+		struct _c16 {}; // TODO(ches) create/complete this
+		struct _c32 {}; // TODO(ches) create/complete this
+		struct _c64 {}; // TODO(ches) create/complete this
+		struct _c128 {}; // TODO(ches) create/complete this
+		struct _char {}; // TODO(ches) create/complete this
+		struct _cstring {}; // TODO(ches) create/complete this
+		struct _f16 {}; // TODO(ches) create/complete this
+		struct _f16be {}; // TODO(ches) create/complete this
+		struct _f16le {}; // TODO(ches) create/complete this
+		using _f32 = float;
+		struct _f32be {}; // TODO(ches) create/complete this
+		struct _f32le {}; // TODO(ches) create/complete this
+		using _f64 = double;
+		struct _f64be {}; // TODO(ches) create/complete this
+		struct _f64le {}; // TODO(ches) create/complete this
+		using _i8 = int8_t;
+		using _i16 = int16_t;
+		struct _i16be {}; // TODO(ches) create/complete this
+		struct _i16le {}; // TODO(ches) create/complete this
+		using _i32 = int32_t;
+		struct _i32be {}; // TODO(ches) create/complete this
+		struct _i32le {}; // TODO(ches) create/complete this
+		using _i64 = int64_t;
+		struct _i64be {}; // TODO(ches) create/complete this
+		struct _i64le {}; // TODO(ches) create/complete this
+		struct _i128 {}; // TODO(ches) create/complete this
+		struct _i128be {}; // TODO(ches) create/complete this
+		struct _i128le {}; // TODO(ches) create/complete this
+		using _int = long long;
+		struct _ptr {
+			TypeID pointing_to_type;
+			void* pointer;
+		};
+		struct _q32 {}; // TODO(ches) create/complete this
+		struct _q64 {}; // TODO(ches) create/complete this
+		struct _q128 {}; // TODO(ches) create/complete this
+		struct _q256 {}; // TODO(ches) create/complete this
+		using _rawptr = void*;
+		struct _relptr8 {}; // TODO(ches) create/complete this
+		struct _relptr16 {}; // TODO(ches) create/complete this
+		struct _relptr32 {}; // TODO(ches) create/complete this
+		struct _relptr64 {}; // TODO(ches) create/complete this
+		struct _string {}; // TODO(ches) create/complete this
+		using _type = Type;
+		using _u8 = uint8_t;
+		using _u16 = uint16_t;
+		struct _u16be {}; // TODO(ches) create/complete this
+		struct _u16le {}; // TODO(ches) create/complete this
+		using _u32 = uint32_t;
+		struct _u32be {}; // TODO(ches) create/complete this
+		struct _u32le {}; // TODO(ches) create/complete this
+		using _u64 = uint64_t;
+		struct _u64be {}; // TODO(ches) create/complete this
+		struct _u64le {}; // TODO(ches) create/complete this
+		struct _u128 {}; // TODO(ches) create/complete this
+		struct _u128be {}; // TODO(ches) create/complete this
+		struct _u128le {}; // TODO(ches) create/complete this
+		using _uint = uintptr_t;
+		using _uintptr = uintptr_t;
+	}
 
 	extern Type* BUILTIN_any;
 	extern Type* BUILTIN_b8;
