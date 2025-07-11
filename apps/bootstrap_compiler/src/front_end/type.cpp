@@ -9,6 +9,7 @@ namespace hemera {
 	
 	TypeInfo::~TypeInfo() = default;
 
+
 	TypeInfoArray::TypeInfoArray(TypeID base_type,
 		MyVector<ArrayDimension>&& dims)
 		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(size_t) } //TODO(ches) what is the size here??
@@ -18,16 +19,25 @@ namespace hemera {
 	TypeInfoArray::~TypeInfoArray() = default;
 
 
+	TypeInfoEnum::TypeInfoEnum(size_t size)
+		: TypeInfo{ TypeInfoVariant::ENUM, size }
+	{
+	}
+	TypeInfoEnum::~TypeInfoEnum() = default;
+
+
 	TypeInfoFloat::TypeInfoFloat(Endianness endianness, size_t size)
 		: TypeInfo{ TypeInfoVariant::FLOAT, size }
 		, endianness{ endianness }
 	{}
 	TypeInfoFloat::~TypeInfoFloat() = default;
 
+
 	TypeInfoFunction::TypeInfoFunction()
 		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(builtin::_ptr) } //TODO(ches) what is the size here??
 	{};
 	TypeInfoFunction::~TypeInfoFunction() = default;
+
 
 	TypeInfoInteger::TypeInfoInteger(bool is_signed, Endianness endianness,
 		size_t size)
@@ -36,6 +46,7 @@ namespace hemera {
 		, endianness{ endianness }
 	{}
 	TypeInfoInteger::~TypeInfoInteger() = default;
+
 
 	TypeInfoPointer::TypeInfoPointer(TypeID base_type, bool relative,
 		bool is_mutable, size_t size)
@@ -46,6 +57,7 @@ namespace hemera {
 	{}
 	TypeInfoPointer::~TypeInfoPointer() = default;
 
+
 	TypeInfoString::TypeInfoString(bool raw)
 		: TypeInfo{ TypeInfoVariant::STRING
 		, raw ? sizeof(BUILTIN_rawptr) : sizeof(BUILTIN_string)
@@ -54,15 +66,18 @@ namespace hemera {
 	{}
 	TypeInfoString::~TypeInfoString() = default;
 
+
 	TypeInfoStruct::TypeInfoStruct(size_t size)
 		: TypeInfo{ TypeInfoVariant::STRUCT, size }
 	{}
 	TypeInfoStruct::~TypeInfoStruct() = default;
-		
+	
+
 	TypeInfoUnion::TypeInfoUnion(size_t size)
 		: TypeInfo{ TypeInfoVariant::STRUCT, size }
 	{}
 	TypeInfoUnion::~TypeInfoUnion() = default;
+
 
 	TypeInfo* BUILTIN_any      = new TypeInfo(TypeInfoVariant::ANY,        sizeof(builtin::_any));
 	TypeInfo* BUILTIN_b8       = new TypeInfo(TypeInfoVariant::BOOLEAN,    8);

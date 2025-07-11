@@ -59,6 +59,13 @@ namespace hemera {
 		TypeInfoArray(TypeID base_type, MyVector<ArrayDimension>&& dims);
 		~TypeInfoArray();
 	};
+
+	struct TypeInfoEnum : public TypeInfo {
+		//TODO(ches) members
+
+		TypeInfoEnum(size_t size);
+		~TypeInfoEnum();
+	};
 	
 	struct TypeInfoFloat : public TypeInfo {
 		Endianness endianness;
