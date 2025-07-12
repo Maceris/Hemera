@@ -6,123 +6,6 @@
 #include "memory/allocator.h"
 
 namespace hemera {
-	
-	enum class ArrayType {
-		STATIC,
-		DYNAMIC,
-		VIEW,
-	};
-
-	enum class Endianness : uint8_t {
-		BIG,
-		LITTLE,
-		SYSTEM,
-	};
-
-	struct ArrayDimension {
-		ArrayType type;
-		int count;
-	};
-
-	enum class TypeInfoVariant {
-		ANY,
-		ARRAY,
-		BOOLEAN,
-		CHAR,
-		COMPLEX,
-		ENUM,
-		FLOAT,
-		FUNCTION,
-		INTEGER,
-		POINTER,
-		QUATERNION,
-		STRING,
-		STRUCT,
-		TYPE,
-		UNION,
-		VOID,
-	};
-
-	struct TypeInfo {
-		TypeInfoVariant type;
-		char _padding[4] = { 0 };
-		size_t size;
-
-		TypeInfo(TypeInfoVariant type, size_t size);
-		~TypeInfo();
-	};
-
-	struct TypeInfoArray : public TypeInfo {
-		TypeID base_type;
-		MyVector<ArrayDimension> dims;
-
-		TypeInfoArray(TypeID base_type, MyVector<ArrayDimension>&& dims);
-		~TypeInfoArray();
-	};
-
-	struct TypeInfoEnum : public TypeInfo {
-		//TODO(ches) members
-
-		TypeInfoEnum(size_t size);
-		~TypeInfoEnum();
-	};
-	
-	struct TypeInfoFloat : public TypeInfo {
-		Endianness endianness;
-		char _padding[7] = { 0 };
-
-		TypeInfoFloat(Endianness endianness, size_t size);
-		~TypeInfoFloat();
-	};
-
-	struct TypeInfoFunction : public TypeInfo {
-		//TODO(ches) function inputs/outputs
-
-		TypeInfoFunction();
-		~TypeInfoFunction();
-	};
-
-	struct TypeInfoInteger : public TypeInfo {
-		bool is_signed;
-		Endianness endianness;
-		char _padding[6] = { 0 };
-
-		TypeInfoInteger(bool is_signed, Endianness endianness, size_t size);
-		~TypeInfoInteger();
-	};
-
-	struct TypeInfoPointer : public TypeInfo {
-		TypeID base_type;
-		bool relative;
-		bool is_mutable;
-		char _padding[6] = { 0 };
-
-		TypeInfoPointer(TypeID base_type, bool relative, bool is_mutable,
-			size_t size);
-		~TypeInfoPointer();
-	};
-
-	struct TypeInfoString : public TypeInfo {
-		bool raw;
-		char _padding[7] = { 0 };
-
-		TypeInfoString(bool raw);
-		~TypeInfoString();
-	};
-
-	struct TypeInfoStruct : public TypeInfo {
-		//TODO(ches) members
-
-		TypeInfoStruct(size_t size);
-		~TypeInfoStruct();
-	};
-
-	struct TypeInfoUnion : public TypeInfo {
-		//TODO(ches) members
-
-		TypeInfoUnion(size_t size);
-		~TypeInfoUnion();
-	};
 
 	namespace builtin {
 		struct _any {
@@ -275,11 +158,16 @@ namespace hemera {
 			uint64_t d;
 		};
 		using _rawptr = void*;
-		struct _relptr8 {}; // TODO(ches) create/complete this
+		struct _relptr8 {
+
+		}; // TODO(ches) create/complete this
 		struct _relptr16 {}; // TODO(ches) create/complete this
 		struct _relptr32 {}; // TODO(ches) create/complete this
 		struct _relptr64 {}; // TODO(ches) create/complete this
-		struct _string {}; // TODO(ches) create/complete this
+		struct _string {
+			_int size;
+			_char* data;
+		};
 		using _type = TypeID;
 		using _u8 = uint8_t;
 		using _u16 = uint16_t;
@@ -365,6 +253,144 @@ namespace hemera {
 		using _uint = uintptr_t;
 		using _uintptr = uintptr_t;
 	}
+	
+	enum class ArrayType {
+		STATIC,
+		DYNAMIC,
+		VIEW,
+	};
+
+	enum class Endianness : uint8_t {
+		BIG,
+		LITTLE,
+		SYSTEM,
+	};
+
+	struct ArrayDimension {
+		ArrayType type;
+		int count;
+	};
+
+	enum class TypeInfoVariant {
+		ANY,
+		ARRAY,
+		BOOLEAN,
+		CHAR,
+		COMPLEX,
+		ENUM,
+		FLOAT,
+		FUNCTION,
+		INTEGER,
+		POINTER,
+		QUATERNION,
+		STRING,
+		STRUCT,
+		TYPE,
+		UNION,
+		VOID,
+	};
+
+	struct TypeInfo {
+		TypeInfoVariant type;
+		char _padding[4] = { 0 };
+		size_t size;
+
+		TypeInfo(TypeInfoVariant type, size_t size);
+		~TypeInfo();
+	};
+
+	struct TypeInfoArray : public TypeInfo {
+		TypeID base_type;
+		MyVector<ArrayDimension> dims;
+
+		TypeInfoArray(TypeID base_type, MyVector<ArrayDimension>&& dims);
+		~TypeInfoArray();
+	};
+
+	struct TypeInfoEnum : public TypeInfo {
+		MyVector<InternedString> members;
+
+		TypeInfoEnum(size_t size);
+		~TypeInfoEnum();
+	};
+	
+	struct TypeInfoFloat : public TypeInfo {
+		Endianness endianness;
+		char _padding[7] = { 0 };
+
+		TypeInfoFloat(Endianness endianness, size_t size);
+		~TypeInfoFloat();
+	};
+
+	struct FunctionInput {
+		TypeID type;
+		InternedString name;
+		bool is_varargs;
+		char _padding[7] = { 0 };
+	};
+
+	struct FunctionOutput {
+		TypeID type;
+	};
+
+	struct TypeInfoFunction : public TypeInfo {
+		MyVector<FunctionInput> input;
+		MyVector<FunctionOutput> output;
+
+		TypeInfoFunction();
+		~TypeInfoFunction();
+	};
+
+	struct TypeInfoInteger : public TypeInfo {
+		bool is_signed;
+		Endianness endianness;
+		char _padding[6] = { 0 };
+
+		TypeInfoInteger(bool is_signed, Endianness endianness, size_t size);
+		~TypeInfoInteger();
+	};
+
+	struct TypeInfoPointer : public TypeInfo {
+		TypeID base_type;
+		bool relative;
+		bool is_mutable;
+		char _padding[6] = { 0 };
+
+		TypeInfoPointer(TypeID base_type, bool relative, bool is_mutable,
+			size_t size);
+		~TypeInfoPointer();
+	};
+
+	struct TypeInfoString : public TypeInfo {
+		bool raw;
+		char _padding[7] = { 0 };
+
+		TypeInfoString(bool raw);
+		~TypeInfoString();
+	};
+
+	struct StructMember {
+		InternedString name;
+		TypeID type;
+		builtin::_any value;
+		bool has_value;
+		bool is_using;
+		char _padding[6] = { 0 };
+	};
+
+	struct TypeInfoStruct : public TypeInfo {
+		MyVector<StructMember> members;
+
+		TypeInfoStruct(size_t size);
+		~TypeInfoStruct();
+	};
+	
+	struct TypeInfoUnion : public TypeInfo {
+		MyMap<InternedString, MyVector<InternedString>> variants;
+
+		TypeInfoUnion(size_t size);
+		~TypeInfoUnion();
+	};
 
 	extern TypeInfo* BUILTIN_any;
 	extern TypeInfo* BUILTIN_b8;
