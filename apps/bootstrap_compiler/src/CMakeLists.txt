@@ -7,6 +7,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/version.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
   ${INCLUDE_DIR}/error/reporting.h
+  ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/info.h
   ${INCLUDE_DIR}/front_end/type.h
   ${INCLUDE_DIR}/front_end/type_id.h

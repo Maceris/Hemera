@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-#include "front_end/type_id.h"
 #include "front_end/type.h"
 #include "memory/allocator.h"
+#include "parser/ast_types.h"
 
 namespace hemera {
 
@@ -14,17 +14,40 @@ namespace hemera {
 		bool has_value;
 	};
 
+	struct ImportInfo {
+		InternedString name;
+		InternedString alias;
+	};
+
+	struct FunctionInfo {
+		InternedString name;
+		InternedString package;
+		ast::FlatNode* node;
+	};
+
+	struct ExpressionInfo {
+		ast::FlatNode* node;
+	};
+
 	struct FileInfo {
 		MyMap<InternedString, IdentifierInfo> identifiers;
+		MyVector<ImportInfo> imports;
 	};
 
 	struct PackageInfo {
-		const InternedString full_path;
+		InternedString full_path;
 		MyMap<InternedString, FileInfo> files;
+		/// <summary>
+		/// Filled out later, after files are processed, by combining
+		/// all their info.
+		/// </summary>
+		MyMap<InternedString, IdentifierInfo> identifiers;
 	};
 
 	struct Info {
-		MyMap<InternedString, PackageInfo> packages;
 		MyMap<TypeID, TypeInfo> all_types;
+		MyMap<InternedString, PackageInfo> packages;
+		MyMap<ExpressionID, ExpressionInfo> expressions;
+		MyMap<FunctionID, FunctionInfo> functions;
 	};
 }
