@@ -25,6 +25,7 @@ namespace hemera {
 
 	struct WorkTarget {
 		WorkTargetType type;
+		char _padding[4] = { 0 };
 		WorkTargetValue value;
 	};
 
@@ -48,6 +49,11 @@ namespace hemera {
 		std::atomic_int32_t dependency_count;
 		WorkType type;
 		WorkTarget work_target;
+
+		Work(const Work&) = delete;
+		Work(Work&&) = delete;
+		Work& operator=(const Work&) = delete;
+		Work& operator=(Work&&) = delete;
 	};
 
 	enum class DependencyType {

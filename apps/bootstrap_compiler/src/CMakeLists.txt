@@ -8,6 +8,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/front_end/event.h
+  ${INCLUDE_DIR}/front_end/front_end.h
   ${INCLUDE_DIR}/front_end/info.h
   ${INCLUDE_DIR}/front_end/type.h
   ${INCLUDE_DIR}/front_end/type_id.h
@@ -26,6 +27,7 @@ SET(HEADER_FILES
 SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
   ${SOURCE_DIR}/error/reporting.cpp
+  ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/type.cpp
   ${SOURCE_DIR}/lexer/lexer.cpp
   ${SOURCE_DIR}/lexer/token.cpp
