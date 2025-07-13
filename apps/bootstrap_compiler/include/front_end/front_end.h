@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <thread>
 
 #include "front_end/work.h"
@@ -19,19 +20,30 @@ namespace hemera {
 		std::atomic_uint32_t tail;
 		size_t mask;
 		Work* buffer[LOCAL_QUEUE_SIZE];
+		MyVector<int> sibling_indices;
 
+		Queue();
+		~Queue();
 		Queue(const Queue&) = delete;
 		Queue(Queue&&) = delete;
 		Queue& operator=(const Queue&) = delete;
 		Queue& operator=(Queue&&) = delete;
 	};
 
+	struct GlobalThreadData;
+
 	struct WorkThreadData {
-		ThreadSafeQueue<Work*>* shared_queue;
+		GlobalThreadData* global_data;
 		Work* run_next;
 		Queue local_queue;
 		std::mutex queue_mutex;
+		std::condition_variable sleep_condition;
+		std::mutex sleep_mutex;
+		std::atomic_bool interrupt_flag;
+		char _padding[7] = { 0 };
 
+		WorkThreadData(GlobalThreadData& global_data);
+		~WorkThreadData();
 		WorkThreadData(const WorkThreadData&) = delete;
 		WorkThreadData(WorkThreadData&&) = delete;
 		WorkThreadData& operator=(const WorkThreadData&) = delete;
@@ -40,10 +52,12 @@ namespace hemera {
 
 	struct GlobalThreadData {
 		ThreadSafeQueue<Work*> shared_queue;
-		MyVector<Queue*> queue_list;
+		MyVector<WorkThreadData*> thread_data;
 		std::atomic_uint32_t threads_searching;
-		char _padding[4] = { 0 };
+		std::atomic_uint32_t threads_running;
 
+		GlobalThreadData();
+		~GlobalThreadData();
 		GlobalThreadData(const GlobalThreadData&) = delete;
 		GlobalThreadData(GlobalThreadData&&) = delete;
 		GlobalThreadData& operator=(const GlobalThreadData&) = delete;
@@ -51,6 +65,10 @@ namespace hemera {
 	};
 
 	void kick_off_processing();
+	void sleep_thread(WorkThreadData& data);
+	void notify_thread(WorkThreadData& data, int target_thread_index);
+	void enqueue_work(WorkThreadData& data, Work* work);
+	Work* dequeue_work(WorkThreadData& data);
 	void steal_work(WorkThreadData* source, WorkThreadData* destination);
 
 }
