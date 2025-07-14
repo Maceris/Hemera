@@ -6,7 +6,7 @@ namespace hemera {
 	const unsigned int THREAD_COUNT =
 		std::max(1u, std::thread::hardware_concurrency());
 
-	const int MAX_SEARCHERS = std::max(1, (int) THREAD_COUNT / 2);
+	const int MAX_SEARCHERS = std::max(1, (int)THREAD_COUNT / 2);
 
 	Queue::Queue()
 		: head{ 0 }
@@ -14,7 +14,8 @@ namespace hemera {
 		, mask{ 0 }
 		, buffer{}
 		, sibling_indices{}
-	{}
+	{
+	}
 	Queue::~Queue() = default;
 
 	GlobalThreadData::GlobalThreadData()
@@ -22,7 +23,8 @@ namespace hemera {
 		, thread_data{}
 		, threads_searching{ 0 }
 		, threads_running{ 0 }
-	{}
+	{
+	}
 	GlobalThreadData::~GlobalThreadData() = default;
 
 	WorkThreadData::WorkThreadData(GlobalThreadData& global_data)
@@ -32,7 +34,8 @@ namespace hemera {
 		, queue_mutex{}
 		, sleep_condition{}
 		, sleep_mutex{}
-		, interrupt_flag{false}
+		, interrupt_flag{ false }
+		, tasks_since_last_global_pull{ 0 }
 	{}
 	WorkThreadData::~WorkThreadData() = default;
 
@@ -51,14 +54,47 @@ namespace hemera {
 		}
 	}
 
+	Work* dequeue_work_local(WorkThreadData& data) {
+		Work* to_do = nullptr;
+
+		if (data.run_next != nullptr) {
+			to_do = data.run_next;
+			data.run_next = nullptr;
+			return to_do;
+		}
+		//TODO(ches) dequeue from our queue and return that, or nullptr if empty
+		
+		return nullptr;
+	}
+
+	Work* dequeue_work_global(WorkThreadData& data) {
+		return data.global_data->shared_queue.dequeue();
+	}
+
 	static void do_work(WorkThreadData& data) {
 		data.global_data->threads_running++;
 
 		while (true) {
+			Work* to_do = nullptr;
 
-			// try to pull from local queue
-			// if it's been a while, pull from global
-			// if if we have nothing, steal from another queue
+			if (data.tasks_since_last_global_pull < GLOBAL_QUEUE_INTERVAL) {
+				to_do = dequeue_work_local(data);
+				data.tasks_since_last_global_pull += 1;
+			}
+			
+			if (to_do == nullptr) {
+				to_do = dequeue_work_global(data);
+				data.tasks_since_last_global_pull = 0;
+
+				if (to_do == nullptr) {
+					to_do = dequeue_work_local(data);
+				}
+			}
+
+			if (to_do == nullptr) {
+				// nothing in local or global, need to steal from another thread
+			}
+
 			// if there are too many searching, sleep
 
 			break;

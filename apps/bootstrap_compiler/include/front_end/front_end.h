@@ -11,7 +11,7 @@
 namespace hemera {
 
 	constexpr size_t LOCAL_QUEUE_SIZE = 255;
-	constexpr size_t GLOBAL_QUEUE_INTERVAL = 31;
+	constexpr uint8_t GLOBAL_QUEUE_INTERVAL = 31;
 
 	extern const unsigned int THREAD_COUNT;
 
@@ -40,7 +40,8 @@ namespace hemera {
 		std::condition_variable sleep_condition;
 		std::mutex sleep_mutex;
 		std::atomic_bool interrupt_flag;
-		char _padding[7] = { 0 };
+		uint8_t tasks_since_last_global_pull;
+		char _padding[6] = { 0 };
 
 		WorkThreadData(GlobalThreadData& global_data);
 		~WorkThreadData();
@@ -68,7 +69,8 @@ namespace hemera {
 	void sleep_thread(WorkThreadData& data);
 	void notify_thread(WorkThreadData& data, int target_thread_index);
 	void enqueue_work(WorkThreadData& data, Work* work);
-	Work* dequeue_work(WorkThreadData& data);
+	Work* dequeue_work_local(WorkThreadData& data);
+	Work* dequeue_work_global(WorkThreadData& data);
 	void steal_work(WorkThreadData* source, WorkThreadData* destination);
 
 }
