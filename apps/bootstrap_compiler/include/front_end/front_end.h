@@ -10,17 +10,22 @@
 
 namespace hemera {
 
-	constexpr size_t LOCAL_QUEUE_SIZE = 255;
+	constexpr uint32_t LOCAL_QUEUE_CAPACITY = 255;
 	constexpr uint8_t GLOBAL_QUEUE_INTERVAL = 31;
+	constexpr uint8_t RUN_NEXT_CAP = 3;
 
-	extern const unsigned int THREAD_COUNT;
+	extern const uint32_t THREAD_COUNT;
 
 	struct Queue {
+		/// <summary>
+		/// Where values are popped from.
+		/// </summary>
 		std::atomic_uint32_t head;
+		/// <summary>
+		/// Where values are pushed to.
+		/// </summary>
 		std::atomic_uint32_t tail;
-		size_t mask;
-		Work* buffer[LOCAL_QUEUE_SIZE];
-		MyVector<int> sibling_indices;
+		Work* buffer[LOCAL_QUEUE_CAPACITY];
 
 		Queue();
 		~Queue();
@@ -28,6 +33,9 @@ namespace hemera {
 		Queue(Queue&&) = delete;
 		Queue& operator=(const Queue&) = delete;
 		Queue& operator=(Queue&&) = delete;
+		uint32_t count() const;
+		uint32_t free() const;
+		bool is_empty() const;
 	};
 
 	struct GlobalThreadData;
@@ -41,7 +49,9 @@ namespace hemera {
 		std::mutex sleep_mutex;
 		std::atomic_bool interrupt_flag;
 		uint8_t tasks_since_last_global_pull;
-		char _padding[6] = { 0 };
+		uint8_t run_next_count;
+		char _padding[1] = { 0 };
+		uint32_t index;
 
 		WorkThreadData(GlobalThreadData& global_data);
 		~WorkThreadData();
@@ -68,9 +78,10 @@ namespace hemera {
 	void kick_off_processing();
 	void sleep_thread(WorkThreadData& data);
 	void notify_thread(WorkThreadData& data, int target_thread_index);
+	// Expected to be called while a lock is held
 	void enqueue_work(WorkThreadData& data, Work* work);
 	Work* dequeue_work_local(WorkThreadData& data);
 	Work* dequeue_work_global(WorkThreadData& data);
-	void steal_work(WorkThreadData* source, WorkThreadData* destination);
+	bool steal_work(WorkThreadData& stealer);
 
 }
