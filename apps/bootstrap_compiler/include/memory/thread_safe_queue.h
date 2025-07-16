@@ -28,6 +28,10 @@ namespace hemera {
 			queue.pop();
 			return result;
 		}
+		
+		bool empty() const {
+			return queue.empty();
+		}
 
 	private:
 		std::queue<T> queue;

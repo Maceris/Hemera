@@ -52,7 +52,7 @@ namespace hemera {
 		std::atomic_bool interrupt_flag;
 		uint8_t tasks_since_last_global_pull;
 		uint8_t run_next_count;
-		char _padding[1] = { 0 };
+		bool currently_running;
 		uint32_t index;
 
 		WorkThreadData(GlobalThreadData& global_data);
@@ -61,6 +61,8 @@ namespace hemera {
 		WorkThreadData(WorkThreadData&&) = delete;
 		WorkThreadData& operator=(const WorkThreadData&) = delete;
 		WorkThreadData& operator=(WorkThreadData&&) = delete;
+
+		bool doing_any_work() const;
 	};
 
 	struct GlobalThreadData {
@@ -68,6 +70,8 @@ namespace hemera {
 		MyVector<WorkThreadData*> thread_data;
 		std::atomic_uint32_t threads_searching;
 		std::atomic_uint32_t threads_running;
+		std::atomic_bool shutdown_flag;
+		char _padding[7] = { 0 };
 
 		GlobalThreadData();
 		~GlobalThreadData();
@@ -79,7 +83,7 @@ namespace hemera {
 
 	void kick_off_processing();
 	void sleep_thread(WorkThreadData& data);
-	void notify_thread(WorkThreadData& data, int target_thread_index);
+	void notify_thread(WorkThreadData& data, size_t target_thread_index);
 	// Expected to be called while a lock is held
 	void enqueue_work(WorkThreadData& data, Work* work);
 	Work* dequeue_work_local(WorkThreadData& data);

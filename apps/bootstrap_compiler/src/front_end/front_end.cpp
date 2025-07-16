@@ -18,7 +18,8 @@ namespace hemera {
 	std::uniform_int_distribution<> distribution(0, 
 		static_cast<int>(THREAD_COUNT) - 2);
 
-	static void increment_with_wrap(std::atomic_uint32_t& value) {
+	template <typename T>
+	static void increment_with_wrap(T& value) {
 		value = (value + 1u) % LOCAL_QUEUE_CAPACITY;
 	}
 
@@ -47,8 +48,8 @@ namespace hemera {
 		, thread_data{}
 		, threads_searching{ 0 }
 		, threads_running{ 0 }
-	{
-	}
+		, shutdown_flag{ false }
+	{}
 	GlobalThreadData::~GlobalThreadData() = default;
 
 	WorkThreadData::WorkThreadData(GlobalThreadData& global_data)
@@ -60,9 +61,21 @@ namespace hemera {
 		, sleep_mutex{}
 		, interrupt_flag{ false }
 		, tasks_since_last_global_pull{ 0 }
+		, run_next_count{ 0 }
+		, currently_running{ false }
 		, index{ 0 }
 	{}
 	WorkThreadData::~WorkThreadData() = default;
+
+	bool WorkThreadData::doing_any_work() const {
+		if (run_next != nullptr) {
+			return true;
+		}
+		if (!local_queue.is_empty()) {
+			return true;
+		}
+		return currently_running;
+	}
 
 	static void init_thread_data(GlobalThreadData& data) {
 		for (uint32_t i = 0; i < (int) THREAD_COUNT; ++i) {
@@ -102,7 +115,28 @@ namespace hemera {
 	Work* dequeue_work_global(WorkThreadData& data) {
 		Work* result = data.global_data->shared_queue.dequeue();
 		data.tasks_since_last_global_pull = 0;
+		if (result != nullptr
+			&& 0 == data.global_data->threads_searching
+			) {
+			size_t to_notify = static_cast<size_t>(distribution(rng));
+			if (to_notify == data.index) {
+				increment_with_wrap(to_notify);
+			}
+			notify_thread(data, to_notify);
+		}
 		return result;
+	}
+
+	static bool we_ran_out_of_tasks(GlobalThreadData& data) {
+		for (const auto& thread : data.thread_data) {
+			if (thread->doing_any_work()) {
+				return false;
+			}
+		}
+		if (!data.shared_queue.empty()) {
+			return false;
+		}
+		return true;
 	}
 
 	static void do_work(WorkThreadData& data) {
@@ -122,6 +156,10 @@ namespace hemera {
 
 			if (to_do == nullptr) {
 				// no work, need to steal from another thread
+				if (we_ran_out_of_tasks(*data.global_data)) {
+					data.global_data->shutdown_flag = true;
+					break;
+				}
 				data.global_data->threads_searching += 1;
 
 				if (data.global_data->threads_searching >= MAX_SEARCHERS 
@@ -130,11 +168,18 @@ namespace hemera {
 					// sleep
 					data.global_data->threads_searching -= 1;
 					sleep_thread(data);
+					if (data.global_data->shutdown_flag) {
+						break;
+					}
 				}
-				//TODO(ches) check if we ran out of tasks everywhere??
+			}
+			else {
+				data.currently_running = true;
+				//TODO(ches) run the task
+				data.currently_running = false;
 			}
 		}
-
+		data.global_data->threads_running--;
 	}
 
 	void kick_off_processing() {
@@ -157,6 +202,15 @@ namespace hemera {
 			data.global_data->threads_searching += 1;
 			data.interrupt_flag = false;
 		}
+	}
+
+	void notify_thread(WorkThreadData& data, size_t target_thread_index) {
+		WorkThreadData& target = *data.global_data->thread_data[target_thread_index];
+		{
+			std::lock_guard<std::mutex> lock(target.sleep_mutex);
+			target.interrupt_flag = true;
+		}
+		target.sleep_condition.notify_one();
 	}
 
 	void enqueue_work(WorkThreadData& data, Work* work) {
