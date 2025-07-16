@@ -1,3 +1,4 @@
+#include <chrono>
 #include <random>
 #include <thread>
 
@@ -10,12 +11,14 @@ namespace hemera {
 
 	const uint32_t MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
 
+	constexpr auto SLEEP_DURATION = std::chrono::milliseconds(100);
+
 	std::random_device rand_device;
 	std::mt19937 rng(rand_device());
 	std::uniform_int_distribution<> distribution(0, 
 		static_cast<int>(THREAD_COUNT) - 2);
 
-	static void add_with_wrap(std::atomic_uint32_t& value) {
+	static void increment_with_wrap(std::atomic_uint32_t& value) {
 		value = (value + 1u) % LOCAL_QUEUE_CAPACITY;
 	}
 
@@ -82,14 +85,15 @@ namespace hemera {
 		}
 
 		Queue& queue = data.local_queue;
-		std::lock_guard<std::mutex> lock(data.queue_mutex);
 
 		if (queue.head == queue.tail) {
 			return nullptr;
 		}
 
+		std::lock_guard<std::mutex> lock(data.queue_mutex);
+
 		to_do = queue.buffer[queue.head];
-		add_with_wrap(queue.head);
+		increment_with_wrap(queue.head);
 		data.run_next_count = 0;
 		
 		return to_do;
@@ -129,8 +133,6 @@ namespace hemera {
 				}
 				//TODO(ches) check if we ran out of tasks everywhere??
 			}
-
-			break;
 		}
 
 	}
@@ -145,15 +147,24 @@ namespace hemera {
 	}
 
 	void sleep_thread(WorkThreadData& data) {
-		//TODO(ches) sleep thread
-		if (data.index) {  }
+		std::unique_lock<std::mutex> lock(data.sleep_mutex);
+
+		bool interrupted = data.sleep_condition.wait_for(lock, SLEEP_DURATION, 
+			[&flag = data.interrupt_flag]{ return flag.load(); });
+
+		if (interrupted) {
+			// interrupted, there's tasks to be stolen, so we move to searching
+			data.global_data->threads_searching += 1;
+			data.interrupt_flag = false;
+		}
 	}
 
 	void enqueue_work(WorkThreadData& data, Work* work) {
 		Queue& queue = data.local_queue;
 
 		queue.buffer[queue.tail] = work;
-		add_with_wrap(queue.tail);
+		increment_with_wrap(queue.tail);
+		//TODO(ches) if we are full, dump half the queue into the global queue
 	}
 
 	static bool steal_work(WorkThreadData& stealer, WorkThreadData& target) {
@@ -173,7 +184,9 @@ namespace hemera {
 		}
 
 		for (uint32_t i = 0; i < to_steal; ++i) {
-			Work* work = target.local_queue.buffer[(target.local_queue.head + i) % LOCAL_QUEUE_CAPACITY];
+			Work* work = target.local_queue.buffer[
+				(target.local_queue.head + i) % LOCAL_QUEUE_CAPACITY
+			];
 			enqueue_work(stealer, work);
 		}
 		target.local_queue.head += to_steal;
