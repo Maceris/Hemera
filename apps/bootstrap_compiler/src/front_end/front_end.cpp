@@ -175,6 +175,29 @@ namespace hemera {
 			}
 			else {
 				data.currently_running = true;
+				switch (to_do->type) {
+					case WorkType::EXECUTION:
+						work_execution(data, to_do->work_target);
+						break;
+					case WorkType::IF_ELSE:
+						work_if_else(data, to_do->work_target);
+						break;
+					case WorkType::IL1_GENERATION:
+						work_il1_generation(data, to_do->work_target);
+						break;
+					case WorkType::IMPORT:
+						work_import(data, to_do->work_target);
+						break;
+					case WorkType::PARSE:
+						work_parse(data, to_do->work_target);
+						break;
+					case WorkType::TYPE_DEDUCTION:
+						work_type_deduction(data, to_do->work_target);
+						break;
+					case WorkType::TYPE_CHECK:
+						work_type_check(data, to_do->work_target);
+						break;
+				}
 				//TODO(ches) run the task
 				data.currently_running = false;
 			}

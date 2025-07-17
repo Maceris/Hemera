@@ -29,6 +29,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/type.cpp
+  ${SOURCE_DIR}/front_end/work.cpp
   ${SOURCE_DIR}/lexer/lexer.cpp
   ${SOURCE_DIR}/lexer/token.cpp
   ${SOURCE_DIR}/memory/allocator.cpp

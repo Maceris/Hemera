@@ -90,4 +90,13 @@ namespace hemera {
 	Work* dequeue_work_global(WorkThreadData& data);
 	bool steal_work(WorkThreadData& stealer);
 
+	// Handled in work.cpp, but defined here for convenience
+	void work_execution(WorkThreadData& executor, WorkTarget& target);
+	void work_if_else(WorkThreadData& executor, WorkTarget& target);
+	void work_il1_generation(WorkThreadData& executor, WorkTarget& target);
+	void work_import(WorkThreadData& executor, WorkTarget& target);
+	void work_parse(WorkThreadData& executor, WorkTarget& target);
+	void work_type_deduction(WorkThreadData& executor, WorkTarget& target);
+	void work_type_check(WorkThreadData& executor, WorkTarget& target);
+
 }

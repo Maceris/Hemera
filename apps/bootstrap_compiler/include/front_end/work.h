@@ -38,7 +38,6 @@ namespace hemera {
 		IF_ELSE,
 		IL1_GENERATION,
 		IMPORT,
-		LEX,
 		PARSE,
 		TYPE_DEDUCTION,
 		TYPE_CHECK,
