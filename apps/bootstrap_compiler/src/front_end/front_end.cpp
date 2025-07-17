@@ -214,11 +214,23 @@ namespace hemera {
 	}
 
 	void enqueue_work(WorkThreadData& data, Work* work) {
+		// Expected to be called while a lock is held
+
 		Queue& queue = data.local_queue;
 
-		queue.buffer[queue.tail] = work;
-		increment_with_wrap(queue.tail);
-		//TODO(ches) if we are full, dump half the queue into the global queue
+		if (queue.count() < LOCAL_QUEUE_CAPACITY) {
+			queue.buffer[queue.tail] = work;
+			increment_with_wrap(queue.tail);
+			return;
+		}
+		
+		// We are full, dump half the queue into the global queue
+		size_t to_dump = queue.count() / 2;
+		
+		data.global_data->shared_queue.enqueue_array(
+			&queue.buffer[queue.head], to_dump);
+
+		queue.head = (queue.head + to_dump) % LOCAL_QUEUE_CAPACITY;
 	}
 
 	static bool steal_work(WorkThreadData& stealer, WorkThreadData& target) {

@@ -19,6 +19,14 @@ namespace hemera {
 			condition.notify_one();
 		}
 
+		void enqueue_array(T* data, size_t count) {
+			std::lock_guard<std::mutex> lock(mutex);
+			for (size_t i = 0; i < count; ++i) {
+				queue.push(*(data + i));
+			}
+			condition.notify_one();
+		}
+
 		T dequeue() {
 			std::unique_lock<std::mutex> lock(mutex);
 			while (queue.empty()) {
