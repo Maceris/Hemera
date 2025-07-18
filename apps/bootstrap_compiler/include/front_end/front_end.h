@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <thread>
 
+#include "front_end/info.h"
 #include "front_end/work.h"
 #include "memory/allocator.h"
 #include "memory/thread_safe_queue.h"
@@ -54,6 +55,7 @@ namespace hemera {
 		uint8_t run_next_count;
 		bool currently_running;
 		uint32_t index;
+		Info* info;
 
 		WorkThreadData(GlobalThreadData& global_data);
 		~WorkThreadData();
@@ -72,6 +74,7 @@ namespace hemera {
 		std::atomic_uint32_t threads_running;
 		std::atomic_bool shutdown_flag;
 		char _padding[7] = { 0 };
+		Info* info;
 
 		GlobalThreadData();
 		~GlobalThreadData();

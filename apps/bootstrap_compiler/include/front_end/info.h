@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 
 #include "front_end/type.h"
 #include "memory/allocator.h"
@@ -12,6 +13,7 @@ namespace hemera {
 		TypeID type;
 		builtin::_any value;
 		bool has_value;
+		char _padding[7] = { 0 };
 	};
 
 	struct ImportInfo {
@@ -32,6 +34,16 @@ namespace hemera {
 	struct FileInfo {
 		MyMap<InternedString, IdentifierInfo> identifiers;
 		MyVector<ImportInfo> imports;
+
+		std::mutex imports_mutex;
+		std::mutex identifiers_mutex;
+
+		FileInfo();
+		~FileInfo();
+		FileInfo(const FileInfo&) = delete;
+		FileInfo(FileInfo&&) = delete;
+		FileInfo& operator=(const FileInfo&) = delete;
+		FileInfo& operator=(FileInfo&&) = delete;
 	};
 
 	struct PackageInfo {
@@ -42,6 +54,16 @@ namespace hemera {
 		/// all their info.
 		/// </summary>
 		MyMap<InternedString, IdentifierInfo> identifiers;
+
+		std::mutex files_mutex;
+		std::mutex identifiers_mutex;
+
+		PackageInfo();
+		~PackageInfo();
+		PackageInfo(const PackageInfo&) = delete;
+		PackageInfo(PackageInfo&&) = delete;
+		PackageInfo& operator=(const PackageInfo&) = delete;
+		PackageInfo& operator=(PackageInfo&&) = delete;
 	};
 
 	struct Info {
@@ -49,5 +71,17 @@ namespace hemera {
 		MyMap<InternedString, PackageInfo> packages;
 		MyMap<ExpressionID, ExpressionInfo> expressions;
 		MyMap<FunctionID, FunctionInfo> functions;
+
+		std::mutex types_mutex;
+		std::mutex packages_mutex;
+		std::mutex expressions_mutex;
+		std::mutex functions_mutex;
+
+		Info();
+		~Info();
+		Info(const Info&) = delete;
+		Info(Info&&) = delete;
+		Info& operator=(const Info&) = delete;
+		Info& operator=(Info&&) = delete;
 	};
 }

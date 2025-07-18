@@ -49,6 +49,7 @@ namespace hemera {
 		, threads_searching{ 0 }
 		, threads_running{ 0 }
 		, shutdown_flag{ false }
+		, info{ nullptr }
 	{}
 	GlobalThreadData::~GlobalThreadData() = default;
 
@@ -64,6 +65,7 @@ namespace hemera {
 		, run_next_count{ 0 }
 		, currently_running{ false }
 		, index{ 0 }
+		, info{ global_data.info }
 	{}
 	WorkThreadData::~WorkThreadData() = default;
 
@@ -75,15 +77,6 @@ namespace hemera {
 			return true;
 		}
 		return currently_running;
-	}
-
-	static void init_thread_data(GlobalThreadData& data) {
-		for (uint32_t i = 0; i < (int) THREAD_COUNT; ++i) {
-			WorkThreadData* new_thread = new WorkThreadData(data);
-			new_thread->index = i;
-			
-			data.thread_data.push_back(new_thread);
-		}
 	}
 
 	Work* dequeue_work_local(WorkThreadData& data) {
@@ -206,11 +199,19 @@ namespace hemera {
 	}
 
 	void kick_off_processing() {
-		GlobalThreadData thread_data;
-		init_thread_data(thread_data);
+		//TODO(ches) we need to create info somewhere where we care about it
+		Info* info = new Info();
+
+		GlobalThreadData global_data;
+		global_data.info = info;
+		for (uint32_t i = 0; i < (int)THREAD_COUNT; ++i) {
+			WorkThreadData* new_thread = new WorkThreadData(global_data);
+			new_thread->index = i;
+			global_data.thread_data.push_back(new_thread);
+		}
 
 		for (size_t i = 0; i < (size_t)THREAD_COUNT; ++i) {
-			std::jthread new_thread(do_work, std::ref(*thread_data.thread_data[i]));
+			std::jthread new_thread(do_work, std::ref(*global_data.thread_data[i]));
 		}
 	}
 
