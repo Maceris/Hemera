@@ -61,13 +61,7 @@ namespace hemera {
 			uint8_t comment_depth;
 			const char _padding[1] = { 0 };
 
-			Tokenizer()
-				: current_line{}
-				, line_number{ 1 }
-				, column_number{ 0 }
-				, comment_depth{ 0 }
-			{
-			}
+			Tokenizer();
 			Tokenizer(const Tokenizer&) = delete;
 			Tokenizer(Tokenizer&&) = default;
 			Tokenizer& operator=(const Tokenizer&) = delete;

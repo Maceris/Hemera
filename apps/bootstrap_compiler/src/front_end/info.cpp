@@ -5,6 +5,8 @@ namespace hemera {
 	FileInfo::FileInfo()
 		: identifiers{}
 		, imports{}
+		, tokens{}
+		, ast_root{ nullptr }
 		, imports_mutex{}
 		, identifiers_mutex{}
 	{}
@@ -24,6 +26,7 @@ namespace hemera {
 		, packages{}
 		, expressions{}
 		, functions{}
+		, node_alloc{}
 		, types_mutex{}
 		, packages_mutex{}
 		, expressions_mutex{}

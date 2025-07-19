@@ -18,7 +18,7 @@ namespace hemera {
 	using MyString = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
 
 	template <typename K, typename V>
-	using MyMap = std::map<K, V, Allocator<std::pair<const K, V>>>;
+	using MyMap = std::map<K, V, std::less<const K>, Allocator<std::pair<const K, V>>>;
 
 	/// <summary>
 	/// A cheap const pointer to an interned string.

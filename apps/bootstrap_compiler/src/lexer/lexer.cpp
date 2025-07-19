@@ -8,6 +8,14 @@
 #include "util/logger.h"
 
 namespace hemera::lexer {
+
+	Tokenizer::Tokenizer()
+		: current_line{}
+		, line_number{ 1 }
+		, column_number{ 0 }
+		, comment_depth{ 0 }
+	{}
+
 	static std::optional<TokenType> get_reserved_identifier(std::string_view identifier) {
 		if (identifier.compare("alias") == 0) {
 			return TokenType::KEYWORD_ALIAS;

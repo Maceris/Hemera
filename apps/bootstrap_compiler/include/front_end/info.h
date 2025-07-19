@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "front_end/type.h"
+#include "lexer/token.h"
 #include "memory/allocator.h"
 #include "parser/ast_types.h"
 
@@ -32,8 +33,10 @@ namespace hemera {
 	};
 
 	struct FileInfo {
-		MyMap<InternedString, IdentifierInfo> identifiers;
-		MyVector<ImportInfo> imports;
+		MyMap<InternedString, IdentifierInfo*> identifiers;
+		MyVector<ImportInfo*> imports;
+		MyVector<Token> tokens;
+		ast::Node* ast_root;
 
 		std::mutex imports_mutex;
 		std::mutex identifiers_mutex;
@@ -48,7 +51,7 @@ namespace hemera {
 
 	struct PackageInfo {
 		InternedString full_path;
-		MyMap<InternedString, FileInfo> files;
+		MyMap<InternedString, FileInfo*> files;
 		/// <summary>
 		/// Filled out later, after files are processed, by combining
 		/// all their info.
@@ -67,10 +70,11 @@ namespace hemera {
 	};
 
 	struct Info {
-		MyMap<TypeID, TypeInfo> all_types;
-		MyMap<InternedString, PackageInfo> packages;
-		MyMap<ExpressionID, ExpressionInfo> expressions;
-		MyMap<FunctionID, FunctionInfo> functions;
+		MyMap<TypeID, TypeInfo*> all_types;
+		MyMap<InternedString, PackageInfo*> packages;
+		MyMap<ExpressionID, ExpressionInfo*> expressions;
+		MyMap<FunctionID, FunctionInfo*> functions;
+		Allocator<> node_alloc;
 
 		std::mutex types_mutex;
 		std::mutex packages_mutex;

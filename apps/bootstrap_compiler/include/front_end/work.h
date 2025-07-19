@@ -18,9 +18,15 @@ namespace hemera {
 		PACKAGE,
 	};
 
+	struct FileLocation {
+		InternedString package_name;
+		InternedString file_name;
+	};
+
 	union WorkTargetValue {
 		InternedString name;
-		ast::FlatNode* node;
+		FileLocation file_location;
+		ast::Node* node;
 	};
 
 	struct WorkTarget {
