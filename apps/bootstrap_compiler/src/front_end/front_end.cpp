@@ -25,8 +25,10 @@ namespace hemera {
 	/// </summary>
 	/// <param name="value">The value to add to.</param>
 	/// <returns>The original value.</returns>
-	static uint32_t wrapping_add(std::atomic_uint32_t& value) {
-		uint32_t old_value = value.fetch_add(1);
+	static uint32_t wrapping_add(std::atomic_uint32_t& value, 
+		const std::memory_order order = std::memory_order_seq_cst)
+	{
+		uint32_t old_value = value.fetch_add(1, order);
 		value = value % LOCAL_QUEUE_CAPACITY;
 		return old_value;
 	}
@@ -242,14 +244,16 @@ namespace hemera {
 
 	void enqueue_work(WorkThreadData& data, Work* work) {
 		Queue& queue = data.local_queue;
+		uint32_t head = queue.head.load(std::memory_order_acquire);
+		uint32_t tail = queue.tail.load(std::memory_order_relaxed);
 
-		if (queue.count() < LOCAL_QUEUE_CAPACITY) {
-			queue.buffer[wrapping_add(queue.tail)] = work;
+		if (queue_count(head, tail) < LOCAL_QUEUE_CAPACITY) {
+			queue.buffer[wrapping_add(queue.tail, std::memory_order_release)] = work;
 			return;
 		}
 		
 		// We are full, dump half the queue into the global queue
-		size_t to_dump = queue.count() / 2;
+		const size_t to_dump = queue.count() / 2;
 		
 		auto& global_queue = data.global_data->shared_queue;
 
@@ -271,7 +275,7 @@ namespace hemera {
 			return false;
 		}
 
-		uint32_t to_steal = queue_count(head, tail) / 2;
+		const uint32_t to_steal = queue_count(head, tail) / 2;
 
 		/*
 		 * NOTE(ches) trying to dequeue up to to_steal, but bailing out early
