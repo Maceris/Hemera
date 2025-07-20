@@ -53,7 +53,11 @@ namespace hemera {
 		std::atomic_bool interrupt_flag;
 		uint8_t tasks_since_last_global_pull;
 		uint8_t run_next_count;
-		bool currently_running;
+		/// <summary>
+		/// If this thread has anything queued or running.
+		/// False if it ran out of tasks and can't find or steal any work.
+		/// </summary>
+		bool doing_work;
 		uint32_t index;
 		Info* info;
 
@@ -63,8 +67,6 @@ namespace hemera {
 		WorkThreadData(WorkThreadData&&) = delete;
 		WorkThreadData& operator=(const WorkThreadData&) = delete;
 		WorkThreadData& operator=(WorkThreadData&&) = delete;
-
-		bool doing_any_work() const;
 	};
 
 	struct GlobalThreadData {

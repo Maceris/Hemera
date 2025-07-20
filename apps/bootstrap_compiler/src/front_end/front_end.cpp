@@ -63,21 +63,11 @@ namespace hemera {
 		, interrupt_flag{ false }
 		, tasks_since_last_global_pull{ 0 }
 		, run_next_count{ 0 }
-		, currently_running{ false }
+		, doing_work{ false }
 		, index{ 0 }
 		, info{ global_data.info }
 	{}
 	WorkThreadData::~WorkThreadData() = default;
-
-	bool WorkThreadData::doing_any_work() const {
-		if (run_next != nullptr) {
-			return true;
-		}
-		if (!local_queue.is_empty()) {
-			return true;
-		}
-		return currently_running;
-	}
 
 	Work* dequeue_work_local(WorkThreadData& data) {
 		Work* to_do = nullptr;
@@ -108,6 +98,9 @@ namespace hemera {
 	Work* dequeue_work_global(WorkThreadData& data) {
 		Work* result = data.global_data->shared_queue.dequeue();
 		data.tasks_since_last_global_pull = 0;
+		if (result != nullptr) {
+			data.doing_work = true;
+		}
 		if (result != nullptr
 			&& 0 == data.global_data->threads_searching
 			) {
@@ -122,7 +115,7 @@ namespace hemera {
 
 	static bool we_ran_out_of_tasks(GlobalThreadData& data) {
 		for (const auto& thread : data.thread_data) {
-			if (thread->doing_any_work()) {
+			if (thread->doing_work) {
 				return false;
 			}
 		}
@@ -158,6 +151,7 @@ namespace hemera {
 				if (data.global_data->threads_searching >= MAX_SEARCHERS 
 					|| !steal_work(data)
 					){
+					data.doing_work = false;
 					// sleep
 					data.global_data->threads_searching -= 1;
 					sleep_thread(data);
@@ -167,7 +161,6 @@ namespace hemera {
 				}
 			}
 			else {
-				data.currently_running = true;
 				switch (to_do->type) {
 					case WorkType::EXECUTION:
 						work_execution(data, to_do->work_target);
@@ -191,7 +184,6 @@ namespace hemera {
 						work_type_check(data, to_do->work_target);
 						break;
 				}
-				data.currently_running = false;
 			}
 		}
 		data.global_data->threads_running--;
@@ -225,6 +217,7 @@ namespace hemera {
 			// interrupted, there's tasks to be stolen, so we move to searching
 			data.global_data->threads_searching += 1;
 			data.interrupt_flag = false;
+			data.doing_work = true;
 		}
 	}
 
@@ -295,6 +288,7 @@ namespace hemera {
 			}
 			
 			if (steal_work(stealer, *stealer.global_data->thread_data[index])) {
+				stealer.doing_work = true;
 				return true;
 			}
 		}
