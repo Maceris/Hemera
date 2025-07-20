@@ -1,49 +1,52 @@
 #pragma once
 
+#include <concepts>
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+#include <utility>
 
 namespace hemera {
 
 	template <typename T>
 	struct ThreadSafeQueue {
+		std::mutex mutex;
+
 		ThreadSafeQueue() = default;
 		ThreadSafeQueue(const ThreadSafeQueue&) = delete;
 		ThreadSafeQueue& operator=(const ThreadSafeQueue&) = delete;
 		~ThreadSafeQueue() = default;
 
+		template <typename T>
 		void enqueue(T&& data) {
-			std::lock_guard<std::mutex> lock(mutex);
-			queue.push(std::forward(data));
-			condition.notify_one();
+			std::scoped_lock<std::mutex> lock(mutex);
+			queue.push(std::forward<T>(data));
 		}
 
-		void enqueue_array(T* data, size_t count) {
-			std::lock_guard<std::mutex> lock(mutex);
-			for (size_t i = 0; i < count; ++i) {
-				queue.push(*(data + i));
-			}
-			condition.notify_one();
+		template <typename T>
+		void enqueue_unsafe(T&& data) {
+			queue.push(std::forward<T>(data));
 		}
 
-		T dequeue() {
-			std::unique_lock<std::mutex> lock(mutex);
-			while (queue.empty()) {
-				condition.wait(lock);
+		template <typename T>
+		T dequeue_or_else(T or_else) {
+			std::scoped_lock<std::mutex> lock(mutex);
+
+			if (queue.empty()) {
+				return or_else;
 			}
+
 			T result = queue.front();
 			queue.pop();
 			return result;
 		}
 		
-		bool empty() const {
+		bool empty() {
+			std::scoped_lock<std::mutex> lock(mutex);
 			return queue.empty();
 		}
 
 	private:
 		std::queue<T> queue;
-		std::mutex mutex;
-		std::condition_variable condition;
 	};
 }

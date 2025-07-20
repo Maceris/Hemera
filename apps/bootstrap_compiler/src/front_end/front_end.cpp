@@ -18,6 +18,19 @@ namespace hemera {
 	std::uniform_int_distribution<> distribution(0, 
 		static_cast<int>(THREAD_COUNT) - 2);
 
+	/// <summary>
+	/// Does a wrapping add to the specified value, and returns the original
+	/// value. This is not atomic, but there's not a whole lot we can do about
+	/// that.
+	/// </summary>
+	/// <param name="value">The value to add to.</param>
+	/// <returns>The original value.</returns>
+	static uint32_t wrapping_add(std::atomic_uint32_t& value) {
+		uint32_t old_value = value.fetch_add(1);
+		value = value % LOCAL_QUEUE_CAPACITY;
+		return old_value;
+	}
+
 	Queue::Queue()
 		: head{ 0 }
 		, tail{ 0 }
@@ -86,14 +99,14 @@ namespace hemera {
 			return nullptr;
 		}
 
-		to_do = queue.buffer[queue.head.fetch_add(1) % LOCAL_QUEUE_CAPACITY];
+		to_do = queue.buffer[wrapping_add(queue.head)];
 		data.run_next_count = 0;
 		
 		return to_do;
 	}
 
 	Work* dequeue_work_global(WorkThreadData& data) {
-		Work* result = data.global_data->shared_queue.dequeue();
+		Work* result = data.global_data->shared_queue.dequeue_or_else(static_cast<Work*>(nullptr));
 		data.tasks_since_last_global_pull = 0;
 		if (result != nullptr) {
 			data.doing_work = true;
@@ -221,29 +234,33 @@ namespace hemera {
 	void notify_thread(WorkThreadData& data, size_t target_thread_index) {
 		WorkThreadData& target = *data.global_data->thread_data[target_thread_index];
 		{
-			std::lock_guard<std::mutex> lock(target.sleep_mutex);
+			std::scoped_lock<std::mutex> lock(target.sleep_mutex);
 			target.interrupt_flag = true;
 		}
 		target.sleep_condition.notify_one();
 	}
 
 	void enqueue_work(WorkThreadData& data, Work* work) {
-		// Expected to be called while a lock is held
-
 		Queue& queue = data.local_queue;
 
 		if (queue.count() < LOCAL_QUEUE_CAPACITY) {
-			queue.buffer[queue.tail.fetch_add(1) % LOCAL_QUEUE_CAPACITY] = work;
+			queue.buffer[wrapping_add(queue.tail)] = work;
 			return;
 		}
 		
 		// We are full, dump half the queue into the global queue
 		size_t to_dump = queue.count() / 2;
 		
-		data.global_data->shared_queue.enqueue_array(
-			&queue.buffer[queue.head], to_dump);
+		auto& global_queue = data.global_data->shared_queue;
 
-		queue.head = (queue.head + to_dump) % LOCAL_QUEUE_CAPACITY;
+		std::scoped_lock<std::mutex> lock(global_queue.mutex);
+		for (uint32_t i = 0; i < to_dump; ++i) {
+			if (queue.is_empty()) {
+				break;
+			}
+			Work* dumped = queue.buffer[wrapping_add(queue.head)];
+			global_queue.enqueue_unsafe(dumped);
+		}
 	}
 
 	static bool steal_work(WorkThreadData& stealer, WorkThreadData& target) {
@@ -265,7 +282,7 @@ namespace hemera {
 				break;
 			}
 			Work* work = target.local_queue.buffer[
-				target.local_queue.head.fetch_add(1) % LOCAL_QUEUE_CAPACITY
+				wrapping_add(target.local_queue.head)
 			];
 			enqueue_work(stealer, work);
 			//NOTE(ches) enqueue work will dump half its work if it fills up
