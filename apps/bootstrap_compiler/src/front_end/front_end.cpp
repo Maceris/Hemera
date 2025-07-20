@@ -18,11 +18,6 @@ namespace hemera {
 	std::uniform_int_distribution<> distribution(0, 
 		static_cast<int>(THREAD_COUNT) - 2);
 
-	template <typename T>
-	static void increment_with_wrap(T& value) {
-		value = (value + 1u) % LOCAL_QUEUE_CAPACITY;
-	}
-
 	Queue::Queue()
 		: head{ 0 }
 		, tail{ 0 }
@@ -30,11 +25,17 @@ namespace hemera {
 	{
 	}
 	Queue::~Queue() = default;
-	
-	uint32_t Queue::count() const {
+
+	static inline uint32_t queue_count(uint32_t head, uint32_t tail) {
 		return head > tail
 			? (LOCAL_QUEUE_CAPACITY - head + tail + 1)
 			: (tail - head + 1);
+	}
+	
+	uint32_t Queue::count() const {
+		uint32_t h = head.load(std::memory_order_relaxed);
+		uint32_t t = tail.load(std::memory_order_relaxed);
+		return queue_count(h, t);
 	}
 	uint32_t Queue::free() const {
 		return LOCAL_QUEUE_CAPACITY - count();
@@ -57,7 +58,6 @@ namespace hemera {
 		: global_data{ &global_data }
 		, run_next{ nullptr }
 		, local_queue{}
-		, queue_mutex{}
 		, sleep_condition{}
 		, sleep_mutex{}
 		, interrupt_flag{ false }
@@ -86,10 +86,7 @@ namespace hemera {
 			return nullptr;
 		}
 
-		std::lock_guard<std::mutex> lock(data.queue_mutex);
-
-		to_do = queue.buffer[queue.head];
-		increment_with_wrap(queue.head);
+		to_do = queue.buffer[queue.head.fetch_add(1) % LOCAL_QUEUE_CAPACITY];
 		data.run_next_count = 0;
 		
 		return to_do;
@@ -106,7 +103,7 @@ namespace hemera {
 			) {
 			size_t to_notify = static_cast<size_t>(distribution(rng));
 			if (to_notify == data.index) {
-				increment_with_wrap(to_notify);
+				to_notify = (to_notify + 1u) % LOCAL_QUEUE_CAPACITY;
 			}
 			notify_thread(data, to_notify);
 		}
@@ -236,8 +233,7 @@ namespace hemera {
 		Queue& queue = data.local_queue;
 
 		if (queue.count() < LOCAL_QUEUE_CAPACITY) {
-			queue.buffer[queue.tail] = work;
-			increment_with_wrap(queue.tail);
+			queue.buffer[queue.tail.fetch_add(1) % LOCAL_QUEUE_CAPACITY] = work;
 			return;
 		}
 		
@@ -251,29 +247,29 @@ namespace hemera {
 	}
 
 	static bool steal_work(WorkThreadData& stealer, WorkThreadData& target) {
-		if (target.local_queue.head == target.local_queue.tail) {
-			//NOTE(ches) not synchronized but close enough to empty
+		uint32_t head = target.local_queue.head.load(std::memory_order_acquire);
+		uint32_t tail = target.local_queue.tail.load(std::memory_order_relaxed);
+
+		if (head == tail) {
 			return false;
 		}
 
-		std::lock_guard<std::mutex> target_lock(target.queue_mutex);
+		uint32_t to_steal = queue_count(head, tail) / 2;
 
-		uint32_t to_steal = target.local_queue.count() / 2;
-
-		//TODO(ches) can we just steal roughly half, without a lock?
-		std::lock_guard<std::mutex> stealer_lock(stealer.queue_mutex);
-		if (stealer.local_queue.free() < to_steal) {
-			LOG_ERROR("We tried to steal work but didn't have room for it");
-			return false;
-		}
-
+		/*
+		 * NOTE(ches) trying to dequeue up to to_steal, but bailing out early
+		 * if the target somehow emptied itself in the background.
+		 */
 		for (uint32_t i = 0; i < to_steal; ++i) {
+			if (target.local_queue.is_empty()) {
+				break;
+			}
 			Work* work = target.local_queue.buffer[
-				(target.local_queue.head + i) % LOCAL_QUEUE_CAPACITY
+				target.local_queue.head.fetch_add(1) % LOCAL_QUEUE_CAPACITY
 			];
 			enqueue_work(stealer, work);
+			//NOTE(ches) enqueue work will dump half its work if it fills up
 		}
-		target.local_queue.head += to_steal;
 		return true;
 	}
 

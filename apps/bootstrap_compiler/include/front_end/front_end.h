@@ -45,9 +45,6 @@ namespace hemera {
 		GlobalThreadData* global_data;
 		Work* run_next;
 		Queue local_queue;
-		//TODO(ches) I would really like to eliminate this mutex entirely
-		// Stealing half the work atomically needs some thinking though
-		std::mutex queue_mutex;
 		std::condition_variable sleep_condition;
 		std::mutex sleep_mutex;
 		std::atomic_bool interrupt_flag;
