@@ -191,7 +191,6 @@ namespace hemera {
 						work_type_check(data, to_do->work_target);
 						break;
 				}
-				//TODO(ches) run the task
 				data.currently_running = false;
 			}
 		}
@@ -218,6 +217,7 @@ namespace hemera {
 	void sleep_thread(WorkThreadData& data) {
 		std::unique_lock<std::mutex> lock(data.sleep_mutex);
 
+		//TODO(ches) can we use an atomic spinlock instead?
 		bool interrupted = data.sleep_condition.wait_for(lock, SLEEP_DURATION, 
 			[&flag = data.interrupt_flag]{ return flag.load(); });
 
@@ -267,6 +267,7 @@ namespace hemera {
 
 		uint32_t to_steal = target.local_queue.count() / 2;
 
+		//TODO(ches) can we just steal roughly half, without a lock?
 		std::lock_guard<std::mutex> stealer_lock(stealer.queue_mutex);
 		if (stealer.local_queue.free() < to_steal) {
 			LOG_ERROR("We tried to steal work but didn't have room for it");

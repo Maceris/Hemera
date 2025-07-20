@@ -68,7 +68,7 @@ namespace hemera {
 	};
 
 	struct GlobalThreadData {
-		ThreadSafeQueue<Work*> shared_queue;
+		ThreadSafeQueue<Work*> shared_queue;//TODO(ches) can we replace with the same type of Queue threads use?
 		MyVector<WorkThreadData*> thread_data;
 		std::atomic_uint32_t threads_searching;
 		std::atomic_uint32_t threads_running;
