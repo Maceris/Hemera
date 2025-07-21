@@ -1,10 +1,13 @@
 #include <filesystem>
+#include <format>
 #include <fstream>
 
+#include "error/reporting.h"
 #include "front_end/work.h"
 #include "front_end/front_end.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include "util/logger.h"
 
 namespace hemera {
 	void work_execution(WorkThreadData& executor, WorkTarget& target) {
@@ -42,7 +45,13 @@ namespace hemera {
 
 			auto iter = executor.info->packages.find(location.package_name);
 			if (iter == executor.info->packages.end()) {
-				//TODO(ches) error handling
+				LOG_ASSERT(location.file_name != nullptr);
+				LOG_ASSERT(location.package_name != nullptr);
+
+				std::string details = std::format("Unknown package {}",
+					*location.package_name);
+				report_error(ErrorCode::E4000, *location.file_name, 0, 0,
+					details);
 				return;
 			}
 			package_info = iter->second;
@@ -50,7 +59,13 @@ namespace hemera {
 
 		InternedString package_path = package_info->full_path;
 		if (package_path == nullptr) {
-			//TODO(ches) error handling
+			LOG_ASSERT(location.file_name != nullptr);
+			LOG_ASSERT(location.package_name != nullptr);
+
+			std::string details = std::format("Missing package path for {}",
+				*location.package_name);
+			report_error(ErrorCode::E4000, *location.file_name, 0, 0,
+				details);
 			return;
 		}
 		FileInfo* file_info = nullptr;
@@ -60,7 +75,14 @@ namespace hemera {
 
 			auto iter = package_info->files.find(location.file_name);
 			if (iter == package_info->files.end()) {
-				//TODO(ches) error handling
+				LOG_ASSERT(location.file_name != nullptr);
+				LOG_ASSERT(location.package_name != nullptr);
+
+				std::string details = std::format(
+					"Missing files entr for {}.{}", *location.package_name,
+					*location.file_name);
+				report_error(ErrorCode::E4000, *location.file_name, 0, 0,
+					details);
 				return;
 			}
 			file_info = iter->second;
@@ -69,7 +91,11 @@ namespace hemera {
 		std::filesystem::path dir_path = std::filesystem::path(*package_path);
 		if (!std::filesystem::exists(dir_path) 
 			|| !std::filesystem::is_directory(dir_path)) {
-			//TODO(ches) error handling
+			std::string details = std::format(
+				"Pacakge {}'s path '{}' is not a valid directory",
+				*location.package_name, dir_path.generic_string());
+			report_error(ErrorCode::E4000, *location.file_name, 0, 0,
+				details);
 			return;
 		}
 
@@ -77,7 +103,7 @@ namespace hemera {
 		std::ifstream file(file_path);
 
 		if (!file.is_open()) {
-			//TODO(ches) error handling
+			report_error(ErrorCode::E4000, file_path, 0, 0);
 			return;
 		}
 
