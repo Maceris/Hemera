@@ -86,8 +86,26 @@ namespace hemera {
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
 			executor.info->node_alloc);
-
-		//TODO(ches) do initial scan of file, or queue up work for said scan
+		
+		for (ast::Node* child : file_info->ast_root->children) {
+			if (child->type == ast::NodeType::PACKAGE) {
+				//TODO(ches) check it matches the pacakge
+				continue;
+			}
+			if (child->type == ast::NodeType::IMPORT) {
+				//TODO(ches) Add import
+				continue;
+			}
+			if (child->type == ast::NodeType::DEFINITION) {
+				//TODO(ches) type check the definition
+				continue;
+			}
+			if (child->type == ast::NodeType::DIRECTIVE) {
+				//TODO(ches) run or evaluate the directive
+				continue;
+			}
+			//TODO(ches) report error with unknown node type
+		}
 	}
 	
 	void work_type_deduction(WorkThreadData& executor, WorkTarget& target) {
