@@ -27,6 +27,7 @@ namespace hemera {
 		, expressions{}
 		, functions{}
 		, node_alloc{}
+		, info_alloc{}
 		, types_mutex{}
 		, packages_mutex{}
 		, expressions_mutex{}

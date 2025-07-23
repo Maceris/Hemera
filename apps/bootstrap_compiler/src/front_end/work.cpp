@@ -112,6 +112,8 @@ namespace hemera {
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
 			executor.info->node_alloc);
+
+		Info* info = executor.global_data->info;
 		
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->type == ast::NodeType::PACKAGE) {
@@ -119,7 +121,30 @@ namespace hemera {
 				continue;
 			}
 			if (child->type == ast::NodeType::IMPORT) {
-				//TODO(ches) Add import
+				LOG_ASSERT(child->children.size() % 2 == 1);
+				
+				ImportInfo* import = info->info_alloc.new_object<ImportInfo>();
+				
+				{
+					std::scoped_lock<std::mutex> lock(file_info->imports_mutex);
+					file_info->imports.push_back(import);
+				}
+
+				import->name = child->children[0]->value.value;
+
+				for (size_t i = 1; i < child->children.size(); ++i) {
+					if (ast::NodeType::KEYWORD_AS == child->children[i]->type) {
+						++i;
+						import->alias = child->children[i]->value.value;
+						continue;
+					}
+					if (ast::NodeType::KEYWORD_FROM == child->children[i]->type) {
+						++i;
+						import->location = child->children[i]->value.value;
+						continue;
+					}
+				}
+
 				continue;
 			}
 			if (child->type == ast::NodeType::DEFINITION) {

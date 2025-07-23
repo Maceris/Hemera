@@ -20,6 +20,7 @@ namespace hemera {
 	struct ImportInfo {
 		InternedString name;
 		InternedString alias;
+		InternedString location;
 	};
 
 	struct FunctionInfo {
@@ -75,6 +76,7 @@ namespace hemera {
 		MyMap<ExpressionID, ExpressionInfo*> expressions;
 		MyMap<FunctionID, FunctionInfo*> functions;
 		Allocator<> node_alloc;
+		Allocator<> info_alloc;
 
 		std::mutex types_mutex;
 		std::mutex packages_mutex;
