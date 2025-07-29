@@ -128,19 +128,25 @@ TARGET_COMPILE_OPTIONS(generate_errors PRIVATE ${HEMERA_OPTIONS})
 SET_TARGET_PROPERTIES(generate_errors PROPERTIES OUTPUT_NAME generate_errors)
 
 ADD_CUSTOM_COMMAND(
-  OUTPUT ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h
-  COMMAND generate_errors error ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h
+  OUTPUT
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h 
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.cpp
+  COMMAND generate_errors errors hpp ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h
+  COMMAND generate_errors errors cpp ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.cpp
   DEPENDS generate_errors ${ROOT_DIR}/include/error/errors.list
 )
-SET(HEMERA_GENERATED ${HEMERA_GENERATED} ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h)
+SET(HEMERA_GENERATED ${HEMERA_GENERATED} ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.cpp)
 
 ADD_CUSTOM_COMMAND(
-  OUTPUT ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
-  COMMAND generate_errors warning ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
+  OUTPUT
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.cpp
+  COMMAND generate_errors warnings hpp ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
+  COMMAND generate_errors warnings cpp ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.cpp
   DEPENDS generate_errors ${ROOT_DIR}/include/error/warnings.list
 )
 
-SET(HEMERA_GENERATED ${HEMERA_GENERATED} ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h)
+SET(HEMERA_GENERATED ${HEMERA_GENERATED} ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.cpp)
 
 ADD_CUSTOM_TARGET(HemeraGenerated DEPENDS ${HEMERA_GENERATED})
 
