@@ -9,7 +9,9 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
+  ${INCLUDE_DIR}/front_end/hlir.h
   ${INCLUDE_DIR}/front_end/info.h
+  ${INCLUDE_DIR}/front_end/mlir.h
   ${INCLUDE_DIR}/front_end/type.h
   ${INCLUDE_DIR}/front_end/type_id.h
   ${INCLUDE_DIR}/front_end/work.h

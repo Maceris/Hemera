@@ -6,4 +6,5 @@ namespace hemera {
 	using ExpressionID = UniqueID;
 	using FunctionID = UniqueID;
 	using TypeID = UniqueID;
+	using ValueID = UniqueID;
 }
