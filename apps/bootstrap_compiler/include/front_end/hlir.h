@@ -1,13 +1,27 @@
 #pragma once
 
+#include <cstdint>
 #include <map>
 
 #include "type_id.h"
 
 namespace hemera {
 	
-	enum class HLInstrType {
-
+	enum class HLInstrType : uint64_t {
+		ADD,
+		DIV,
+		EQ,
+		GT,
+		JEQ,
+		JMP,
+		JNE,
+		LT,
+		MOD,
+		MOV,
+		MUL,
+		NE,
+		REMAINDER,
+		SUB,
 	};
 	
 	struct HLInstruction {
@@ -18,10 +32,19 @@ namespace hemera {
 	};
 
 	struct HLInstrSpec {
-		HLInstrType type;
-		char* name;
-		bool has_target;
-		int source_count;
+		const HLInstrType type;
+		const char* name;
+		const int source_count;
+		const bool has_target;
+		const char _padding[3] = { 0 };
+
+		HLInstrSpec(HLInstrType type, const char* name, int source_count,
+			bool has_target);
+		~HLInstrSpec();
+		HLInstrSpec(const HLInstrSpec&);
+		HLInstrSpec(HLInstrSpec&&);
+		HLInstrSpec& operator=(const HLInstrSpec&) = delete;
+		HLInstrSpec& operator=(HLInstrSpec&&) = delete;
 	};
 
 	extern std::map<HLInstrType, HLInstrSpec> instructions;

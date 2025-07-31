@@ -30,7 +30,9 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
+  ${SOURCE_DIR}/front_end/hlir.cpp
   ${SOURCE_DIR}/front_end/info.cpp
+  ${SOURCE_DIR}/front_end/mlir.cpp
   ${SOURCE_DIR}/front_end/type.cpp
   ${SOURCE_DIR}/front_end/work.cpp
   ${SOURCE_DIR}/lexer/lexer.cpp 
