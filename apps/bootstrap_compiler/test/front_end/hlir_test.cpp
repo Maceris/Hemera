@@ -14,6 +14,7 @@ TEST(HLIRTests, AllInstructionsHaveSpecs)
 	const BaseType end = static_cast<BaseType>(HLInstrType::_COUNT);
 	for (BaseType v = 0; v < end; ++v) {
 		HLInstrType type = static_cast<HLInstrType>(v);
-		ASSERT_TRUE(hemera::HLIR_instructions.contains(type));
+		ASSERT_TRUE(hemera::HLIR_instructions.contains(type))
+			<< std::format("HLIR_Instructions does not contain instruction with index {}", v);
 	}
 }
