@@ -1,13 +1,11 @@
+#include <format>
+#include <type_traits>
 #include <utility>
 
 #include "front_end/hlir.h"
+#include "util/logger.h"
 
 namespace hemera {
-
-#ifdef HLIR_INSTR
-	static_assert(false && "We are breaking some macro by defining HLIR_INSTR");
-#endif
-#define HLIR_INSTR(type, source_count, has_target) {HLInstrType::type, HLInstrSpec{HLInstrType::type, #type, source_count, has_target}}
 
 	HLInstrSpec::HLInstrSpec(HLInstrType type, const char* name, int source_count,
 		bool has_target)
@@ -21,8 +19,14 @@ namespace hemera {
 	HLInstrSpec::HLInstrSpec(const HLInstrSpec&) = default;
 	HLInstrSpec::HLInstrSpec(HLInstrSpec&&) = default;
 
-	std::map<HLInstrType, HLInstrSpec> instructions = {
+#ifdef HLIR_INSTR
+	static_assert(false && "We are breaking some macro by defining HLIR_INSTR");
+#endif
+#define HLIR_INSTR(type, source_count, has_target) {HLInstrType::type, HLInstrSpec{HLInstrType::type, #type, source_count, has_target}}
+
+	std::map<HLInstrType, HLInstrSpec> HLIR_instructions = {
 		HLIR_INSTR(ADD, 2, true),
+		HLIR_INSTR(AND, 2, true),
 		HLIR_INSTR(DIV, 2, true),
 		HLIR_INSTR(EQ, 2, true),
 		HLIR_INSTR(GT, 2, true),
@@ -37,7 +41,6 @@ namespace hemera {
 		HLIR_INSTR(REMAINDER, 2, true),
 		HLIR_INSTR(SUB, 2, true),
 	};
-
 #undef HLIR_INSTR
 
 }

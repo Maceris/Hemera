@@ -4,6 +4,7 @@
 
 #include "util/logger.h"
 #include "front_end/front_end.h"
+#include "front_end/hlir.h"
 
 namespace hemera {
 	const uint32_t THREAD_COUNT =

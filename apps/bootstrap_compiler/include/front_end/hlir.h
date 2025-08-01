@@ -9,6 +9,7 @@ namespace hemera {
 	
 	enum class HLInstrType : uint64_t {
 		ADD,
+		AND,
 		DIV,
 		EQ,
 		GT,
@@ -22,6 +23,10 @@ namespace hemera {
 		NE,
 		REMAINDER,
 		SUB,
+		/// <summary>
+		/// Not used, only for iterating.
+		/// </summary>
+		_COUNT,
 	};
 	
 	struct HLInstruction {
@@ -47,5 +52,6 @@ namespace hemera {
 		HLInstrSpec& operator=(HLInstrSpec&&) = delete;
 	};
 
-	extern std::map<HLInstrType, HLInstrSpec> instructions;
+	extern std::map<HLInstrType, HLInstrSpec> HLIR_instructions;
+
 }
