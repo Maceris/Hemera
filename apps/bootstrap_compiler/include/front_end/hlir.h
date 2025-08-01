@@ -10,19 +10,48 @@ namespace hemera {
 	enum class HLInstrType : uint64_t {
 		ADD,
 		AND,
+		/// <summary>
+		/// Logical AND, only for boolean values.
+		/// </summary>
+		ANDL,
 		DIV,
 		EQ,
 		GT,
+		GTE,
 		JEQ,
 		JMP,
 		JNE,
 		LT,
+		LTE,
 		MOD,
 		MOV,
 		MUL,
 		NE,
+		/// <summary>
+		/// Negate, replacing a value iwth it's two's complement.
+		/// </summary>
+		NEG,
+		NOT,
+		OR,
+		/// <summary>
+		/// Logical OR, only for boolean values.
+		/// </summary>
+		ORL,
 		REMAINDER,
+		/// <summary>
+		/// Shift right (arithmetic).
+		/// </summary>
+		SAR,
+		/// <summary>
+		/// Shift left.
+		/// </summary>
+		SHL,
+		/// <summary>
+		/// Shift right (logical).
+		/// </summary>
+		SHR,
 		SUB,
+		XOR,
 		/// <summary>
 		/// Not used, only for iterating.
 		/// </summary>
