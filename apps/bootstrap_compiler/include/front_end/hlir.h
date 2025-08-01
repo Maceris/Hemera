@@ -2,18 +2,20 @@
 
 #include <cstdint>
 #include <map>
+#include <vector>
 
 #include "type_id.h"
 
-namespace hemera {
+namespace hemera::hlir {
 	
-	enum class HLInstrType : uint64_t {
+	enum class InstructionMnemonic : uint64_t {
 		ADD,
 		AND,
 		/// <summary>
 		/// Logical AND, only for boolean values.
 		/// </summary>
 		ANDL,
+		CALL,
 		DIV,
 		EQ,
 		GT,
@@ -38,6 +40,7 @@ namespace hemera {
 		/// </summary>
 		ORL,
 		REMAINDER,
+		RET,
 		/// <summary>
 		/// Shift right (arithmetic).
 		/// </summary>
@@ -58,29 +61,115 @@ namespace hemera {
 		_COUNT,
 	};
 	
-	struct HLInstruction {
-		HLInstrType type;
-		ValueID target;
-		ValueID source1;
-		ValueID source2;
+	enum class ValueType { 
+		ARGUMENT,
+		BASIC_BLOCK,
+		USER,
 	};
 
-	struct HLInstrSpec {
-		const HLInstrType type;
+	struct Value {
+		ValueType value_type;
+		char _padding[4] = { 0 };
+		TypeID type;
+	};
+
+	enum class UserType {
+		CONSTANT,
+		INSTRUCTION,
+	};
+
+	struct User : public Value {
+		UserType user_type;
+		char _padding[4] = { 0 };
+	};
+
+	enum class ConstantType {
+		INTEGER,
+		FLOATING_POINT,
+	};
+
+	struct Constant : public User {
+		ConstantType constant_type;
+		uint32_t size;
+	};
+
+	enum class InstructionType {
+		BINARY,
+		BRANCH,
+		CALL,
+		RETURN,
+		UNARY,
+	};
+
+	struct Instruction : public User {
+		InstructionType instruction_type;
+		char _padding[4] = { 0 };
+	};
+
+	struct BinaryInstruction : public Instruction {
+		Value* operand1;
+		Value* operand2;
+		Value* destination;
+	};
+
+	struct Branch : public Instruction {
+		Value* operand1;
+		Value* operand2;
+	};
+
+	enum class CallType {
+		CALL,
+		CALL_BRANCH,
+	};
+
+	struct CallBase : public Instruction {
+		CallType call_type;
+		char _padding[4] = { 0 };
+	};
+
+	struct Call : public CallBase {
+		Value* operand;
+	};
+
+	struct CallBranch : public CallBase {
+		Value* operand;
+	};
+
+	struct Return : public Instruction {
+		Value* operand;
+		Value* destination;
+	};
+
+	struct UnaryInstruction : public Instruction {
+		Value* operand;
+		Value* destination;
+	};
+
+	//TODO(ches) we can probably just delete this struct and the map of them
+	struct InstrSpec {
+		const InstructionMnemonic type;
 		const char* name;
 		const int source_count;
 		const bool has_target;
 		const char _padding[3] = { 0 };
 
-		HLInstrSpec(HLInstrType type, const char* name, int source_count,
+		InstrSpec(InstructionMnemonic type, const char* name, int source_count,
 			bool has_target);
-		~HLInstrSpec();
-		HLInstrSpec(const HLInstrSpec&);
-		HLInstrSpec(HLInstrSpec&&);
-		HLInstrSpec& operator=(const HLInstrSpec&) = delete;
-		HLInstrSpec& operator=(HLInstrSpec&&) = delete;
+		~InstrSpec();
+		InstrSpec(const InstrSpec&);
+		InstrSpec(InstrSpec&&);
+		InstrSpec& operator=(const InstrSpec&) = delete;
+		InstrSpec& operator=(InstrSpec&&) = delete;
 	};
 
-	extern std::map<HLInstrType, HLInstrSpec> HLIR_instructions;
+	extern std::map<InstructionMnemonic, InstrSpec> instructions;
+
+	struct BasicBlock {
+		std::vector<Instruction> instructions;
+	};
+
+	struct Function {
+		std::vector<BasicBlock> basic_blocks;
+	};
 
 }

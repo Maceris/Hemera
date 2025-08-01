@@ -5,9 +5,9 @@
 #include "front_end/hlir.h"
 #include "util/logger.h"
 
-namespace hemera {
+namespace hemera::hlir {
 
-	HLInstrSpec::HLInstrSpec(HLInstrType type, const char* name, int source_count,
+	InstrSpec::InstrSpec(InstructionMnemonic type, const char* name, int source_count,
 		bool has_target)
 		: type{ type }
 		, name{ name }
@@ -15,19 +15,20 @@ namespace hemera {
 		, has_target{ has_target }
 	{}
 
-	HLInstrSpec::~HLInstrSpec() = default;
-	HLInstrSpec::HLInstrSpec(const HLInstrSpec&) = default;
-	HLInstrSpec::HLInstrSpec(HLInstrSpec&&) = default;
+	InstrSpec::~InstrSpec() = default;
+	InstrSpec::InstrSpec(const InstrSpec&) = default;
+	InstrSpec::InstrSpec(InstrSpec&&) = default;
 
 #ifdef HLIR_INSTR
 	static_assert(false && "We are breaking some macro by defining HLIR_INSTR");
 #endif
-#define HLIR_INSTR(type, source_count, has_target) {HLInstrType::type, HLInstrSpec{HLInstrType::type, #type, source_count, has_target}}
+#define HLIR_INSTR(type, source_count, has_target) {InstructionMnemonic::type, InstrSpec{InstructionMnemonic::type, #type, source_count, has_target}}
 
-	std::map<HLInstrType, HLInstrSpec> HLIR_instructions = {
+	std::map<InstructionMnemonic, InstrSpec> instructions = {
 		HLIR_INSTR(ADD, 2, true),
 		HLIR_INSTR(AND, 2, true),
 		HLIR_INSTR(ANDL, 2, true),
+		HLIR_INSTR(CALL, 1, false),
 		HLIR_INSTR(DIV, 2, true),
 		HLIR_INSTR(EQ, 2, true),
 		HLIR_INSTR(GT, 2, true),
@@ -46,6 +47,7 @@ namespace hemera {
 		HLIR_INSTR(OR, 2, true),
 		HLIR_INSTR(ORL, 2, true),
 		HLIR_INSTR(REMAINDER, 2, true),
+		HLIR_INSTR(RET, 1, false),
 		HLIR_INSTR(SAR, 2, true),
 		HLIR_INSTR(SHL, 2, true),
 		HLIR_INSTR(SHR, 2, true),

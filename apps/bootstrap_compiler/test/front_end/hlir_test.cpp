@@ -4,17 +4,17 @@
 
 #include "front_end/hlir.h"
 
-using hemera::HLInstruction;
-using hemera::HLInstrType;
-using hemera::HLInstrSpec;
+using hemera::hlir::Instruction;
+using hemera::hlir::InstructionMnemonic;
+using hemera::hlir::InstrSpec;
 
 TEST(HLIRTests, AllInstructionsHaveSpecs)
 {
-	using BaseType = std::underlying_type_t<HLInstrType>;
-	const BaseType end = static_cast<BaseType>(HLInstrType::_COUNT);
+	using BaseType = std::underlying_type_t<InstructionMnemonic>;
+	const BaseType end = static_cast<BaseType>(InstructionMnemonic::_COUNT);
 	for (BaseType v = 0; v < end; ++v) {
-		HLInstrType type = static_cast<HLInstrType>(v);
-		ASSERT_TRUE(hemera::HLIR_instructions.contains(type))
+		InstructionMnemonic type = static_cast<InstructionMnemonic>(v);
+		ASSERT_TRUE(hemera::hlir::instructions.contains(type))
 			<< std::format("HLIR_Instructions does not contain instruction with index {}", v);
 	}
 }

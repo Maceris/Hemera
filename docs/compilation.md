@@ -2,7 +2,7 @@
 
 An important note is that we have arbitrary compile-time execution.
 This means that it ***is not safe*** to compile untrusted code,
-much like it would not be safe to build with untrusted arbitrary makefiles.
+just like it would not be safe to build with untrusted makefiles.
 
 If dealing with potentially untrusted code, any IDE that will
 automatically compile the code or do something like request that a language server
@@ -13,12 +13,12 @@ calculate values should be avoided, or opened in a safe mode which avoids such o
 1. Lexing
 2. Parsing
 3. Type Checking
-4. Intermediate Language 1 Generation
+4. High Level Intermediate Representation Generation (See the [HLIR page](hlir.md))
 5. Compile-Time Execution
 6. Optimization
-7. Intermediate Language 2 Generation
+7. Medium Level Intermediate Representation Generation
 8. Optimization
-9. Executable Generation
+9. Executable Generation (backend)
 
 ```
 File Import --> Parse --> Type Check <--\
@@ -27,13 +27,13 @@ File Import --> Parse --> Type Check <--\
      |           |            \|/       |
      |           |     Type Deduction --/
      |          \|/
- Execution <--- IL1 Generation 
+ Execution <--- HLIR Generation 
                  |
                 \|/
             Optimization
                  |
                 \|/
-           IL2 Generation
+           MLIR Generation
                  |
                 \|/
             Optimization
