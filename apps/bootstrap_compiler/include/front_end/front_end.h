@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <memory_resource>
 #include <thread>
 
 #include "front_end/info.h"
@@ -69,13 +70,16 @@ namespace hemera {
 	struct GlobalThreadData {
 		ThreadSafeQueue<Work*> shared_queue;
 		MyVector<WorkThreadData*> thread_data;
+		std::atomic_uint32_t parked_work;
 		std::atomic_uint32_t threads_searching;
 		std::atomic_uint32_t threads_running;
 		std::atomic_bool shutdown_flag;
-		char _padding[7] = { 0 };
+		char _padding[3] = { 0 };
 		Info* info;
+		std::pmr::monotonic_buffer_resource* work_allocator;
 
-		GlobalThreadData();
+		GlobalThreadData(Info* info, 
+			std::pmr::monotonic_buffer_resource* work_allocator);
 		~GlobalThreadData();
 		GlobalThreadData(const GlobalThreadData&) = delete;
 		GlobalThreadData(GlobalThreadData&&) = delete;

@@ -60,13 +60,16 @@ namespace hemera {
 		return head == tail;
 	}
 
-	GlobalThreadData::GlobalThreadData()
+	GlobalThreadData::GlobalThreadData(Info* info,
+		std::pmr::monotonic_buffer_resource* work_allocator)
 		: shared_queue{}
 		, thread_data{}
+		, parked_work{ 0 }
 		, threads_searching{ 0 }
 		, threads_running{ 0 }
 		, shutdown_flag{ false }
-		, info{ nullptr }
+		, info{ info}
+		, work_allocator{ work_allocator }
 	{}
 	GlobalThreadData::~GlobalThreadData() = default;
 
@@ -205,9 +208,9 @@ namespace hemera {
 	void kick_off_processing() {
 		//TODO(ches) we need to create info somewhere where we care about it
 		Info* info = new Info();
+		std::pmr::monotonic_buffer_resource work_allocator{};
 
-		GlobalThreadData global_data;
-		global_data.info = info;
+		GlobalThreadData global_data{ info, &work_allocator };
 		for (uint32_t i = 0; i < (int)THREAD_COUNT; ++i) {
 			WorkThreadData* new_thread = new WorkThreadData(global_data);
 			new_thread->index = i;
@@ -217,6 +220,8 @@ namespace hemera {
 		for (size_t i = 0; i < (size_t)THREAD_COUNT; ++i) {
 			std::jthread new_thread(do_work, std::ref(*global_data.thread_data[i]));
 		}
+
+		//TODO(ches) wait for threads to finish and/or fail
 	}
 
 	void sleep_thread(WorkThreadData& data) {

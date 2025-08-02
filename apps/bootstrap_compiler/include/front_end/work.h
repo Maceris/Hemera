@@ -54,6 +54,7 @@ namespace hemera {
 		std::atomic_int32_t dependency_count;
 		WorkType type;
 		WorkTarget work_target;
+		Work* parent;
 
 		Work(const Work&) = delete;
 		Work(Work&&) = delete;
@@ -61,23 +62,21 @@ namespace hemera {
 		Work& operator=(Work&&) = delete;
 	};
 
-	enum class DependencyType {
-		DISCOVERY,
-		EVALUTAION,
-		TYPE_CHECKING,
-		TYPE_DEDUCTION,
+	struct Dependency {
+		WorkTarget dependency;
+		Work* owner;
 	};
 
-	struct Dependency {
-		WorkTargetValue dependency;
-		WorkID owner;
+	struct Dependencies {
+		MyVector<Dependency> discovery;
+		MyVector<Dependency> evaluation;
+		MyVector<Dependency> type_checking;
+		MyVector<Dependency> type_deduction;
 	};
 
 	struct WorkTracking {
 		MyMap<WorkID, Work*> active_work;
-		MyVector<WorkID> queued;
 		MyVector<WorkID> blocked;
-		MyMap<DependencyType, MyVector<Dependency>> dependencies;
 	};
 
 }
