@@ -54,7 +54,6 @@ namespace hemera {
 		std::atomic_int32_t dependency_count;
 		WorkType type;
 		WorkTarget work_target;
-		Work* parent;
 
 		Work(const Work&) = delete;
 		Work(Work&&) = delete;
