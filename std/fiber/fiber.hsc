@@ -1,0 +1,6 @@
+package fiber
+
+Fiber :: struct {
+
+}
+
