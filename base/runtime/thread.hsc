@@ -3,12 +3,31 @@ package runtime
 ThreadIndex :: alias u32
 ThreadFunction :: fn(rawptr) -> void
 
+#if OS == .Windows {
+    ThreadSpecificOS :: struct {
+
+    }
+}
+#elif OS == .Mac {
+    ThreadSpecificOS :: struct {
+
+    }
+}
+#elif OS == .Linux {
+    ThreadSpecificOS :: struct {
+
+    }
+}
+#else {
+    //TODO(ches) error, unsupported
+}
+
 Thread :: struct {
     index : ThreadIndex,
     function : ThreadFunction,
     data : rawptr,
     starting_context : Context,
-    //TODO(ches) using OS-specific thread info
+    using ThreadSpecificOS,
 }
 
 thread_create :: fn(function: ThreadFunction, data: rawptr = null) -> ptr[Thread] {
