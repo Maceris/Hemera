@@ -39,6 +39,12 @@ thread_create :: fn(function: ThreadFunction, data: rawptr = null) -> ptr[Thread
     return result
 }
 
-thread_start(thread: ptr[Thread]) {
+thread_start :: fn(thread: ptr[Thread]) {
     //TODO(ches) start running the thread
+}
+
+fiber_yield :: fn() {
+    //TODO(ches) I would like this to be a macro
+    yield_function :: context.fiber_yield_function or_return
+    yield_function()
 }

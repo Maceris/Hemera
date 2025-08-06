@@ -17,10 +17,20 @@ start_fiber_scheduler :: fn() {
 
     new_context : Context
     new_context.is_running_on_a_fiber = true
+    new_context.fiber_yield_function = yield
 
     push_context new_context {
 
     }
+}
+
+thaw_one_stack_frame :: fn() {
+    //TODO(ches) if we are out of stack frames, consider the task done
+    //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
+    //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
+    //TODO(ches) then load one stack frame from the current coroutine on top of new buffer, or fiber_base_pointer if no return
+    //TODO(ches) set the return pointer from this function to the start of that new stack frame
+    //TODO(ches) update the return pointer of that new frame to this function
 }
 
 yield :: fn() {
