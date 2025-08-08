@@ -3,11 +3,14 @@
 #include <fstream>
 
 #include "error/reporting.h"
-#include "front_end/work.h"
 #include "front_end/front_end.h"
+#include "front_end/work.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "util/logger.h"
+
+//TODO(ches) remove this, shuts up unused warnings while we work
+#define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
 
 namespace hemera {
 	void work_execution(WorkThreadData& executor, WorkTarget& target) {
@@ -20,9 +23,30 @@ namespace hemera {
 		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
 	}
 	
-	void work_il1_generation(WorkThreadData& executor, WorkTarget& target) {
+	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
 		//TODO(ches) do this
-		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
+
+		function->ir = executor.info->info_alloc.allocate_object<hlir::Function>();
+
+		ast::Node* fn_root = function->node;
+		
+		// Decl (colon), colon/equals, signature, block
+		LOG_ASSERT(fn_root->children.size() == 4);
+
+		ast::Node* decl = fn_root->children[0];
+		ast::Node* identifier = decl->children[0];
+		ast::Node* explicit_type = decl->children.size() > 1 
+			? decl->children[1] 
+			: nullptr;
+		ast::Node* colon_or_equals = fn_root->children[1];
+		ast::Node* signature = fn_root->children[2];
+		ast::Node* block = fn_root->children[3];
+
+		IGNORE_UNUSED(signature);
+		IGNORE_UNUSED(identifier);
+		IGNORE_UNUSED(explicit_type);
+		IGNORE_UNUSED(colon_or_equals);
+		IGNORE_UNUSED(block);
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {

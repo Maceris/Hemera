@@ -98,7 +98,7 @@ namespace hemera {
 	// Handled in work.cpp, but defined here for convenience
 	void work_execution(WorkThreadData& executor, WorkTarget& target);
 	void work_if_else(WorkThreadData& executor, WorkTarget& target);
-	void work_il1_generation(WorkThreadData& executor, WorkTarget& target);
+	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function);
 	void work_import(WorkThreadData& executor, WorkTarget& target);
 	void work_parse(WorkThreadData& executor, WorkTarget& target);
 	void work_type_deduction(WorkThreadData& executor, WorkTarget& target);

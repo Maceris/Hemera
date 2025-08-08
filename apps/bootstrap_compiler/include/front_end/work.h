@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 
+#include "front_end/hlir.h"
 #include "front_end/type_id.h"
 #include "memory/allocator.h"
 #include "parser/ast_types.h"
@@ -27,6 +28,7 @@ namespace hemera {
 		InternedString name;
 		FileLocation file_location;
 		ast::Node* node;
+		FunctionInfo* function;
 	};
 
 	struct WorkTarget {
@@ -42,7 +44,7 @@ namespace hemera {
 		/// and actually doing so.
 		/// </summary>
 		IF_ELSE,
-		IL1_GENERATION,
+		FUNCTION_HLIR_GENERATION,
 		IMPORT,
 		PARSE,
 		TYPE_DEDUCTION,

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <mutex>
 
+#include "front_end/hlir.h"
 #include "front_end/type.h"
 #include "lexer/token.h"
 #include "memory/allocator.h"
@@ -26,11 +27,12 @@ namespace hemera {
 	struct FunctionInfo {
 		InternedString name;
 		InternedString package;
-		ast::FlatNode* node;
+		ast::Node* node;
+		hlir::Function* ir;
 	};
 
 	struct ExpressionInfo {
-		ast::FlatNode* node;
+		ast::Node* node;
 	};
 
 	struct FileInfo {
