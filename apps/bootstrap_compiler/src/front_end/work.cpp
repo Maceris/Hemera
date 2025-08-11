@@ -42,11 +42,63 @@ namespace hemera {
 		ast::Node* signature = fn_root->children[2];
 		ast::Node* block = fn_root->children[3];
 
-		IGNORE_UNUSED(signature);
+		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(identifier);
+		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(explicit_type);
+		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(colon_or_equals);
-		IGNORE_UNUSED(block);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(signature);
+		
+		for (size_t i = 0; i < block->children.size(); ++i) {
+			ast::Node* child = block->children[i];
+			if (ast::NodeType::RETURN == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::DEFER == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::BREAK == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::CONTINUE == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::DIRECTIVE == child->type) {
+				//TODO(ches) handle this
+			}
+			// Expressions without results
+			if (ast::NodeType::WITH_CLAUSE == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::LOOP == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::FOR_LOOP == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::PUSH_CONTEXT == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::SWITCH == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::DEFINITION == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::BLOCK == child->type) {
+				//TODO(ches) handle this
+			}
+			// Expressions with results
+			if (ast::NodeType::MATCH == child->type) {
+				//TODO(ches) handle this
+			}
+			if (ast::NodeType::BINARY_OPERATOR == child->type) {
+				//TODO(ches) handle this
+			}
+
+		}
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {
