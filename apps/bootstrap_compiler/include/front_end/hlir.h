@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "type_id.h"
+#include "memory/allocator.h"
 
 namespace hemera::hlir {
 	
@@ -145,6 +146,18 @@ namespace hemera::hlir {
 		Value* destination;
 	};
 
+	struct BasicBlock : public Value {
+		Allocator<>& allocator;
+		MyVector<Instruction*> instructions;
+
+		BasicBlock(Allocator<>& allocator);
+		BasicBlock(const BasicBlock&) = delete;
+		BasicBlock(BasicBlock&&) = delete;
+		~BasicBlock();
+		BasicBlock& operator=(const BasicBlock&) = delete;
+		BasicBlock& operator=(BasicBlock&&) = delete;
+	};
+
 	//TODO(ches) we can probably just delete this struct and the map of them
 	struct InstrSpec {
 		const InstructionMnemonic type;
@@ -164,12 +177,18 @@ namespace hemera::hlir {
 
 	extern std::map<InstructionMnemonic, InstrSpec> instructions;
 
-	struct BasicBlock {
-		std::vector<Instruction> instructions;
-	};
+	
 
 	struct Function {
-		std::vector<BasicBlock> basic_blocks;
+		Allocator<>& allocator;
+		MyVector<BasicBlock*> basic_blocks;
+
+		Function(Allocator<>& allocator);
+		Function(const Function&) = delete;
+		Function(Function&&) = delete;
+		~Function();
+		Function& operator=(const Function&) = delete;
+		Function& operator=(Function&&) = delete;
 	};
 
 }

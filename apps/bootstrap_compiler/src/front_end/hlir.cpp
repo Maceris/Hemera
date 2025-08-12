@@ -56,4 +56,19 @@ namespace hemera::hlir {
 	};
 #undef HLIR_INSTR
 
+
+	BasicBlock::BasicBlock(Allocator<>& allocator)
+		: allocator{ allocator }
+		, instructions{ allocator }
+	{}
+
+	BasicBlock::~BasicBlock() = default;
+
+	Function::Function(Allocator<>& allocator)
+		: allocator{ allocator }
+		, basic_blocks{ allocator }
+	{}
+
+	Function::~Function() = default;
+
 }

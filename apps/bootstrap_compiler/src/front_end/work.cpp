@@ -22,11 +22,14 @@ namespace hemera {
 		//TODO(ches) do this
 		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
 	}
-	
+
 	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
 		//TODO(ches) do this
 
-		function->ir = executor.info->info_alloc.allocate_object<hlir::Function>();
+		Allocator<>& alloc = executor.info->info_alloc;
+		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
+		alloc.construct(fn, alloc);
+		function->ir = fn;
 
 		ast::Node* fn_root = function->node;
 		
@@ -89,6 +92,7 @@ namespace hemera {
 			}
 			if (ast::NodeType::BLOCK == child->type) {
 				//TODO(ches) handle this
+
 			}
 			// Expressions with results
 			if (ast::NodeType::MATCH == child->type) {
