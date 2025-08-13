@@ -21,4 +21,11 @@ namespace hemera::hlir {
 
 	Function::~Function() = default;
 
+	BasicBlock* Function::create_basic_block() {
+		BasicBlock* result = allocator.allocate_object<BasicBlock>();
+		allocator.construct<BasicBlock>(result, allocator);
+		basic_blocks.emplace_back(result);
+		return result;
+	}
+
 }

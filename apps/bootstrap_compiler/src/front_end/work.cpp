@@ -23,39 +23,17 @@ namespace hemera {
 		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
 	}
 
-	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
-		//TODO(ches) do this
-
-		Allocator<>& alloc = executor.info->info_alloc;
-		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
-		alloc.construct(fn, alloc);
-		function->ir = fn;
-
-		ast::Node* fn_root = function->node;
+	/// <summary>
+	/// Process a block into HLIR.
+	/// </summary>
+	/// <param name="node">The AST node representing/starting the block.</param>
+	/// <param name="fn">The function we are processing.</param>
+	/// <returns>The first basic block in the block.</returns>
+	static hlir::BasicBlock* hlir_process_block(ast::Node* node, hlir::Function* fn) {
+		hlir::BasicBlock* block = fn->create_basic_block();
 		
-		// Decl (colon), colon/equals, signature, block
-		LOG_ASSERT(fn_root->children.size() == 4);
-
-		ast::Node* decl = fn_root->children[0];
-		ast::Node* identifier = decl->children[0];
-		ast::Node* explicit_type = decl->children.size() > 1 
-			? decl->children[1] 
-			: nullptr;
-		ast::Node* colon_or_equals = fn_root->children[1];
-		ast::Node* signature = fn_root->children[2];
-		ast::Node* block = fn_root->children[3];
-
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(identifier);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(explicit_type);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(colon_or_equals);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(signature);
-		
-		for (size_t i = 0; i < block->children.size(); ++i) {
-			ast::Node* child = block->children[i];
+		for (size_t i = 0; i < node->children.size(); ++i) {
+			ast::Node* child = node->children[i];
 			if (ast::NodeType::RETURN == child->type) {
 				//TODO(ches) handle this
 			}
@@ -91,8 +69,7 @@ namespace hemera {
 				//TODO(ches) handle this
 			}
 			if (ast::NodeType::BLOCK == child->type) {
-				//TODO(ches) handle this
-
+				hlir_process_block(child, fn);
 			}
 			// Expressions with results
 			if (ast::NodeType::MATCH == child->type) {
@@ -103,6 +80,41 @@ namespace hemera {
 			}
 
 		}
+		return block;
+	}
+
+	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
+		//TODO(ches) do this
+
+		Allocator<>& alloc = executor.info->info_alloc;
+		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
+		alloc.construct(fn, alloc);
+		function->ir = fn;
+
+		ast::Node* fn_root = function->node;
+		
+		// Decl (colon), colon/equals, signature, block
+		LOG_ASSERT(fn_root->children.size() == 4);
+
+		ast::Node* decl = fn_root->children[0];
+		ast::Node* identifier = decl->children[0];
+		ast::Node* explicit_type = decl->children.size() > 1 
+			? decl->children[1] 
+			: nullptr;
+		ast::Node* colon_or_equals = fn_root->children[1];
+		ast::Node* signature = fn_root->children[2];
+		ast::Node* body = fn_root->children[3];
+
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(identifier);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(explicit_type);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(colon_or_equals);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(signature);
+
+		hlir_process_block(body, fn);
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {

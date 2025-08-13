@@ -168,6 +168,9 @@ namespace hemera::hlir {
 		~Function();
 		Function& operator=(const Function&) = delete;
 		Function& operator=(Function&&) = delete;
+
+		BasicBlock* create_basic_block();
+
 	};
 
 }
