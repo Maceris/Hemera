@@ -9,10 +9,10 @@ FiberState :: enum {
 }
 
 FiberScheduler :: struct {
-    preemptive : bool,
+    active_fibers : ptr[mut Fiber][..]
 }
 
-start_fiber_scheduler :: fn() {
+start_fiber_scheduler :: fn(scheduler: ptr[mut FiberScheduler]) {
     //TODO(ches) do the scheduler stuff
 
     new_context : Context
@@ -20,11 +20,13 @@ start_fiber_scheduler :: fn() {
     new_context.fiber_yield_function = yield
 
     push_context new_context {
-
+        
     }
 }
 
-thaw_one_stack_frame :: fn() {
+thaw_one_stack_frame :: fn(fiber: Fiber) {
+    frame_size : u32
+
     //TODO(ches) if we are out of stack frames, consider the task done
     //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
     //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
