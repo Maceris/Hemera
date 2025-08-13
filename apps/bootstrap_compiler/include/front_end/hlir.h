@@ -158,27 +158,6 @@ namespace hemera::hlir {
 		BasicBlock& operator=(BasicBlock&&) = delete;
 	};
 
-	//TODO(ches) we can probably just delete this struct and the map of them
-	struct InstrSpec {
-		const InstructionMnemonic type;
-		const char* name;
-		const int source_count;
-		const bool has_target;
-		const char _padding[3] = { 0 };
-
-		InstrSpec(InstructionMnemonic type, const char* name, int source_count,
-			bool has_target);
-		~InstrSpec();
-		InstrSpec(const InstrSpec&);
-		InstrSpec(InstrSpec&&);
-		InstrSpec& operator=(const InstrSpec&) = delete;
-		InstrSpec& operator=(InstrSpec&&) = delete;
-	};
-
-	extern std::map<InstructionMnemonic, InstrSpec> instructions;
-
-	
-
 	struct Function {
 		Allocator<>& allocator;
 		MyVector<BasicBlock*> basic_blocks;
