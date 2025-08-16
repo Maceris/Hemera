@@ -1,6 +1,11 @@
 package fiber
 
+import array from "base"
 import intrinsics from "base"
+
+FIBER_LOCAL_QUEUE_SIZE :: 255
+FIBER_GLOBAL_QUEUE_INTERVAL :: 31
+FIBER_RUN_NEXT_CAP :: 3
 
 FiberState :: enum {
     Blocked,
@@ -8,12 +13,47 @@ FiberState :: enum {
     Waiting,
 }
 
-FiberScheduler :: struct {
-    active_fibers : ptr[mut Fiber][..]
+FiberSchedulerGlobalData :: struct {
+    global_queue : ptr[Fiber][..],
+    thread_data : ptr[FiberSchedulerLocalData][..],
 }
 
-start_fiber_scheduler :: fn(scheduler: ptr[mut FiberScheduler]) {
+FiberSchedulerLocalData :: struct {
+    global_data : ptr[FiberSchedulerGlobalData],
+    local_queue : FiberQueue,
+    run_next : ptr[Fiber]?,
+    index : u8,
+    tasks_since_last_global_pull : u8,
+    run_next_count : u8,
+}
+
+create_fiber() :: ptr[Fiber] {
+    result := new(Fiber)
+    result.frozen_stack = null
+    result.state = .NotStarted
+}
+
+create_fiber_scheduler :: fn() -> ptr[FiberSchedulerGlobalData] {
+    result :: new(FiberSchedulerGlobalData)
+}
+
+run_fiber_scheduler : ThreadFunction : fn(data: any) {
     //TODO(ches) do the scheduler stuff
+    
+    if data.type != ptr[FiberSchedulerGlobalData] {
+        //TODO(ches) do something about this
+    }
+    global_data : ptr[FiberSchedulerGlobalData] : data.value
+
+    local_data : new(FiberSchedulerLocalData)
+
+    {
+        //TODO(ches) synchronize access with a lock
+        new_index : u8 : cast[u8](global_data.thread_data.count)
+        array_add(global_data.thread_data, local_data)
+        local_data.index = new_index
+    }
+    local_data.global_data = global_data
 
     new_context : Context
     new_context.is_running_on_a_fiber = true
@@ -26,6 +66,12 @@ start_fiber_scheduler :: fn(scheduler: ptr[mut FiberScheduler]) {
 
 thaw_one_stack_frame :: fn(fiber: Fiber) {
     frame_size : u32
+
+    frozen_stack :: fiber.frozen_stack or_return void
+
+    if frozen_stack.size == 0 {
+
+    }
 
     //TODO(ches) if we are out of stack frames, consider the task done
     //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
