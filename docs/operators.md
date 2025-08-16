@@ -4,17 +4,17 @@ Operators combine operands into expressions. For binary operations, the operand 
 
 ## Address operators
 
-For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr[T]` to `x`.
+For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr[T]` to `x`. This cannot be done on stack variables.
 
 For an operand `x` of type `ptr[T]`, the dereference operation `x^` will result in the variable of type `T` pointed to by `x`. If x is an invalid address, such as `null`, dereferencing the pointer will result in platform specific behavior, likely a segmentation fault.
 
 ```
 x : int = 1
-y : ptr[int] = &x
+y : ptr[int] = new(int)
 z : int = y^
 
-y = null
-y^ // segfaults, probably
+w : rawptr = null
+w^ // segfaults, probably
 ```
 
 ## Arithmetic operators
