@@ -1,7 +1,7 @@
 package runtime
 
 ThreadIndex :: alias u32
-ThreadFunction :: fn(rawptr) -> void
+ThreadFunction :: fn(any) -> void
 
 #if OS == .Windows {
     ThreadSpecificOS :: struct {
@@ -25,12 +25,12 @@ ThreadFunction :: fn(rawptr) -> void
 Thread :: struct {
     index : ThreadIndex,
     function : ThreadFunction,
-    data : rawptr,
+    data : any,
     starting_context : Context,
     using ThreadSpecificOS,
 }
 
-thread_create :: fn(function: ThreadFunction, data: rawptr = null) -> ptr[Thread] {
+thread_create :: fn(function: ThreadFunction, data: any = null) -> ptr[Thread] {
     result : ptr[Thread] = new(Thread)
     result.function = function
     result.data = data
