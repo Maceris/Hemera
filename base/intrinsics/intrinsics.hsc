@@ -147,3 +147,84 @@ interlocked_xor_i128 : fn(target: ptr[mut i128]) -> i128 : ---
 interlocked_xor_i128_acquire : fn(target: ptr[mut i128]) -> i128 : ---
 interlocked_xor_i128_no_fence : fn(target: ptr[mut i128]) -> i128 : ---
 interlocked_xor_i128_release : fn(target: ptr[mut i128]) -> i128 : ---
+
+interlocked_and_int : fn(target: ptr[mut int]) -> int : ---
+interlocked_and_int_acquire : fn(target: ptr[mut int]) -> int : ---
+interlocked_and_int_no_fence : fn(target: ptr[mut int]) -> int : ---
+interlocked_and_int_release : fn(target: ptr[mut int]) -> int : ---
+interlocked_compare_exchange_int : fn(target: ptr[mut int], exchange: int, expected: int) -> int : ---
+interlocked_compare_exchange_int_acquire : fn(target: ptr[mut int], exchange: int, expected: int) -> int : ---
+interlocked_compare_exchange_int_no_fence : fn(target: ptr[mut int], exchange: int, expected: int) -> int : ---
+interlocked_compare_exchange_int_release : fn(target: ptr[mut int], exchange: int, expected: int) -> int : ---
+interlocked_decrement_int : fn(target: ptr[mut int]) -> int : ---
+interlocked_exchange_int : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_int_acquire : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_int_no_fence : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_int_release : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_add_int : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_add_int_acquire : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_add_int_no_fence : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_exchange_add_int_release : fn(target: ptr[mut int], value: int) -> int : ---
+interlocked_increment_int : fn(target: ptr[mut int]) -> int : ---
+interlocked_or_int : fn(target: ptr[mut int]) -> int : ---
+interlocked_or_int_acquire : fn(target: ptr[mut int]) -> int : ---
+interlocked_or_int_no_fence : fn(target: ptr[mut int]) -> int : ---
+interlocked_or_int_release : fn(target: ptr[mut int]) -> int : ---
+interlocked_xor_int : fn(target: ptr[mut int]) -> int : ---
+interlocked_xor_int_acquire : fn(target: ptr[mut int]) -> int : ---
+interlocked_xor_int_no_fence : fn(target: ptr[mut int]) -> int : ---
+interlocked_xor_int_release : fn(target: ptr[mut int]) -> int : ---
+
+interlocked_and_uint : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_and_uint_acquire : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_and_uint_no_fence : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_and_uint_release : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_compare_exchange_uint : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> uint : ---
+interlocked_compare_exchange_uint_acquire : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> uint : ---
+interlocked_compare_exchange_uint_no_fence : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> uint : ---
+interlocked_compare_exchange_uint_release : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> uint : ---
+interlocked_decrement_uint : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_exchange_uint : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_uint_acquire : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_uint_no_fence : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_uint_release : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_add_uint : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_add_uint_acquire : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_add_uint_no_fence : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_exchange_add_uint_release : fn(target: ptr[mut uint], value: uint) -> uint : ---
+interlocked_increment_uint : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_or_uint : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_or_uint_acquire : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_or_uint_no_fence : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_or_uint_release : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_xor_uint : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_xor_uint_acquire : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_xor_uint_no_fence : fn(target: ptr[mut uint]) -> uint : ---
+interlocked_xor_uint_release : fn(target: ptr[mut uint]) -> uint : ---
+
+interlocked_and_uintptr : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_and_uintptr_acquire : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_and_uintptr_no_fence : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_and_uintptr_release : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_compare_exchange_uintptr : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> uintptr : ---
+interlocked_compare_exchange_uintptr_acquire : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> uintptr : ---
+interlocked_compare_exchange_uintptr_no_fence : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> uintptr : ---
+interlocked_compare_exchange_uintptr_release : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> uintptr : ---
+interlocked_decrement_uintptr : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_exchange_uintptr : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_uintptr_acquire : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_uintptr_no_fence : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_uintptr_release : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_add_uintptr : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_add_uintptr_acquire : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_add_uintptr_no_fence : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_exchange_add_uintptr_release : fn(target: ptr[mut uintptr], value: uintptr) -> uintptr : ---
+interlocked_increment_uintptr : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_or_uintptr : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_or_uintptr_acquire : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_or_uintptr_no_fence : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_or_uintptr_release : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_xor_uintptr : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_xor_uintptr_acquire : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_xor_uintptr_no_fence : fn(target: ptr[mut uintptr]) -> uintptr : ---
+interlocked_xor_uintptr_release : fn(target: ptr[mut uintptr]) -> uintptr : ---
