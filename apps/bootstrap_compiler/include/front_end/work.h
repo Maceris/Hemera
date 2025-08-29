@@ -10,9 +10,8 @@
 
 namespace hemera {
 
-	using WorkID = UniqueID;
-
 	enum class WorkTargetType {
+		DEFINITION,
 		EXPRESSION,
 		FILE,
 		FUNCTION,
@@ -35,6 +34,12 @@ namespace hemera {
 		WorkTargetType type;
 		char _padding[4] = { 0 };
 		WorkTargetValue value;
+
+		WorkTarget(WorkTargetType type, WorkTargetValue value);
+		WorkTarget(const WorkTarget&);
+		WorkTarget(WorkTarget&&);
+		WorkTarget& operator=(const WorkTarget&);
+		WorkTarget& operator=(WorkTarget&&);
 	};
 
 	enum class WorkType {
@@ -51,11 +56,11 @@ namespace hemera {
 	};
 
 	struct Work {
-		WorkID id;
 		std::atomic_int32_t dependency_count;
 		WorkType type;
 		WorkTarget work_target;
 
+		Work(WorkType type, WorkTarget&& target);
 		Work(const Work&) = delete;
 		Work(Work&&) = delete;
 		Work& operator=(const Work&) = delete;
@@ -65,6 +70,12 @@ namespace hemera {
 	struct Dependency {
 		WorkTarget dependency;
 		Work* owner;
+
+		Dependency(WorkTarget&& dependency, Work* owner);
+		Dependency(const Dependency&);
+		Dependency(Dependency&&);
+		Dependency& operator=(const Dependency&);
+		Dependency& operator=(Dependency&&);
 	};
 
 	struct Dependencies {
@@ -74,8 +85,7 @@ namespace hemera {
 	};
 
 	struct WorkTracking {
-		MyMap<WorkID, Work*> active_work;
-		MyVector<WorkID> blocked;
+		MyVector<Work*> blocked;
 	};
 
 }

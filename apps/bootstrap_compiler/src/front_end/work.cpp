@@ -13,6 +13,31 @@
 #define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
 
 namespace hemera {
+
+	WorkTarget::WorkTarget(WorkTargetType type, WorkTargetValue value)
+		: type{ type }
+		, value{ value }
+	{}
+	WorkTarget::WorkTarget(const WorkTarget&) = default;
+	WorkTarget::WorkTarget(WorkTarget&&) = default;
+	WorkTarget& WorkTarget::operator=(const WorkTarget&) = default;
+	WorkTarget& WorkTarget::operator=(WorkTarget&&) = default;
+
+	Work::Work(WorkType type, WorkTarget&& target)
+		: dependency_count{ 0 }
+		, type{ type }
+		, work_target{ std::move(target) }
+	{}
+
+	Dependency::Dependency(WorkTarget&& dependency, Work* owner)
+		: dependency{ std::move(dependency) }
+		, owner{ owner }
+	{}
+	Dependency::Dependency(const Dependency&) = default;
+	Dependency::Dependency(Dependency&&) = default;
+	Dependency& Dependency::operator=(const Dependency&) = default;
+	Dependency& Dependency::operator=(Dependency&&) = default;
+
 	void work_execution(WorkThreadData& executor, WorkTarget& target) {
 		//TODO(ches) do this
 		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
@@ -240,19 +265,45 @@ namespace hemera {
 				continue;
 			}
 			if (child->type == ast::NodeType::DEFINITION) {
-				//TODO(ches) type check the definition
+				executor.create_work(WorkType::TYPE_CHECK,
+					WorkTarget(WorkTargetType::DEFINITION, { .node = child })
+				);
 				continue;
 			}
 			if (child->type == ast::NodeType::DIRECTIVE) {
 				//TODO(ches) run or evaluate the directive
+
 				continue;
 			}
-			//TODO(ches) report error with unknown node type
+
+			std::string details = std::format("Did not expect {}",
+				*child->value.value);
+
+			report_error(ErrorCode::E4001, *location.file_name, 
+				child->value.line_number, 
+				child->value.column_number,
+				details);
 		}
 	}
 
 	void work_type_check(WorkThreadData& executor, WorkTarget& target) {
-		//TODO(ches) do this
-		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
+		if (executor.doing_work) {
+			//TODO(ches) remove this, just referencing parameter
+		}
+
+		switch (target.type) {
+			case WorkTargetType::DEFINITION:
+				break;
+			case WorkTargetType::EXPRESSION:
+				break;
+			case WorkTargetType::FILE:
+				LOG_ERROR("Trying to type check a package");
+				break;
+			case WorkTargetType::FUNCTION:
+				break;
+			case WorkTargetType::PACKAGE:
+				LOG_ERROR("Trying to type check a package");
+				break;
+		}
 	}
 }

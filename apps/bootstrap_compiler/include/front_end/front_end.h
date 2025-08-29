@@ -65,6 +65,12 @@ namespace hemera {
 		WorkThreadData(WorkThreadData&&) = delete;
 		WorkThreadData& operator=(const WorkThreadData&) = delete;
 		WorkThreadData& operator=(WorkThreadData&&) = delete;
+
+		/// <summary>
+		/// Creates and enqueues work. The work is returned for reference.
+		/// </summary>
+		/// <returns>The work that was created.</returns>
+		Work* create_work(WorkType type, WorkTarget&& target);
 	};
 
 	struct GlobalThreadData {
