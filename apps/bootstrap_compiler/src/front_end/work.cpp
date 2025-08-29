@@ -4,13 +4,12 @@
 
 #include "error/reporting.h"
 #include "front_end/front_end.h"
+#include "front_end/hlir_generation.h"
+#include "front_end/type_checking.h"
 #include "front_end/work.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "util/logger.h"
-
-//TODO(ches) remove this, shuts up unused warnings while we work
-#define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
 
 namespace hemera {
 
@@ -48,98 +47,8 @@ namespace hemera {
 		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
 	}
 
-	/// <summary>
-	/// Process a block into HLIR.
-	/// </summary>
-	/// <param name="node">The AST node representing/starting the block.</param>
-	/// <param name="fn">The function we are processing.</param>
-	/// <returns>The first basic block in the block.</returns>
-	static hlir::BasicBlock* hlir_process_block(ast::Node* node, hlir::Function* fn) {
-		hlir::BasicBlock* block = fn->create_basic_block();
-		
-		for (size_t i = 0; i < node->children.size(); ++i) {
-			ast::Node* child = node->children[i];
-			if (ast::NodeType::RETURN == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::DEFER == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::BREAK == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::CONTINUE == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::DIRECTIVE == child->type) {
-				//TODO(ches) handle this
-			}
-			// Expressions without results
-			if (ast::NodeType::WITH_CLAUSE == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::LOOP == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::FOR_LOOP == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::PUSH_CONTEXT == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::SWITCH == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::DEFINITION == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::BLOCK == child->type) {
-				hlir_process_block(child, fn);
-			}
-			// Expressions with results
-			if (ast::NodeType::MATCH == child->type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::BINARY_OPERATOR == child->type) {
-				//TODO(ches) handle this
-			}
-
-		}
-		return block;
-	}
-
 	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
-		//TODO(ches) do this
-
-		Allocator<>& alloc = executor.info->info_alloc;
-		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
-		alloc.construct(fn, alloc);
-		function->ir = fn;
-
-		ast::Node* fn_root = function->node;
-		
-		// Decl (colon), colon/equals, signature, block
-		LOG_ASSERT(fn_root->children.size() == 4);
-
-		ast::Node* decl = fn_root->children[0];
-		ast::Node* identifier = decl->children[0];
-		ast::Node* explicit_type = decl->children.size() > 1 
-			? decl->children[1] 
-			: nullptr;
-		ast::Node* colon_or_equals = fn_root->children[1];
-		ast::Node* signature = fn_root->children[2];
-		ast::Node* body = fn_root->children[3];
-
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(identifier);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(explicit_type);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(colon_or_equals);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(signature);
-
-		hlir_process_block(body, fn);
+		hlir_process_function(executor, function);
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {
@@ -287,19 +196,18 @@ namespace hemera {
 	}
 
 	void work_type_check(WorkThreadData& executor, WorkTarget& target) {
-		if (executor.doing_work) {
-			//TODO(ches) remove this, just referencing parameter
-		}
-
 		switch (target.type) {
 			case WorkTargetType::DEFINITION:
+				type_check_definition(executor, target.value.node);
 				break;
 			case WorkTargetType::EXPRESSION:
+				type_check_expression(executor, target.value.node);
 				break;
 			case WorkTargetType::FILE:
 				LOG_ERROR("Trying to type check a package");
 				break;
 			case WorkTargetType::FUNCTION:
+				type_check_function(executor, target.value.function);
 				break;
 			case WorkTargetType::PACKAGE:
 				LOG_ERROR("Trying to type check a package");

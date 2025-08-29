@@ -10,9 +10,11 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
   ${INCLUDE_DIR}/front_end/hlir.h
+  ${INCLUDE_DIR}/front_end/hlir_generation.h
   ${INCLUDE_DIR}/front_end/info.h
   ${INCLUDE_DIR}/front_end/mlir.h
   ${INCLUDE_DIR}/front_end/type.h
+  ${INCLUDE_DIR}/front_end/type_checking.h
   ${INCLUDE_DIR}/front_end/type_id.h
   ${INCLUDE_DIR}/front_end/work.h
   ${INCLUDE_DIR}/lexer/lexer.h
@@ -31,9 +33,11 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/hlir.cpp
+  ${SOURCE_DIR}/front_end/hlir_generation.cpp
   ${SOURCE_DIR}/front_end/info.cpp
   ${SOURCE_DIR}/front_end/mlir.cpp
   ${SOURCE_DIR}/front_end/type.cpp
+  ${SOURCE_DIR}/front_end/type_checking.cpp
   ${SOURCE_DIR}/front_end/work.cpp
   ${SOURCE_DIR}/lexer/lexer.cpp 
   ${SOURCE_DIR}/lexer/token.cpp
