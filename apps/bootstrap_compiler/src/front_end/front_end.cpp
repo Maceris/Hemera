@@ -194,9 +194,6 @@ namespace hemera {
 					case WorkType::PARSE:
 						work_parse(data, to_do->work_target);
 						break;
-					case WorkType::TYPE_DEDUCTION:
-						work_type_deduction(data, to_do->work_target);
-						break;
 					case WorkType::TYPE_CHECK:
 						work_type_check(data, to_do->work_target);
 						break;

@@ -47,7 +47,6 @@ namespace hemera {
 		FUNCTION_HLIR_GENERATION,
 		IMPORT,
 		PARSE,
-		TYPE_DEDUCTION,
 		TYPE_CHECK,
 	};
 
@@ -72,7 +71,6 @@ namespace hemera {
 		MyVector<Dependency> discovery;
 		MyVector<Dependency> evaluation;
 		MyVector<Dependency> type_checking;
-		MyVector<Dependency> type_deduction;
 	};
 
 	struct WorkTracking {

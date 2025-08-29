@@ -101,7 +101,6 @@ namespace hemera {
 	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function);
 	void work_import(WorkThreadData& executor, WorkTarget& target);
 	void work_parse(WorkThreadData& executor, WorkTarget& target);
-	void work_type_deduction(WorkThreadData& executor, WorkTarget& target);
 	void work_type_check(WorkThreadData& executor, WorkTarget& target);
 
 }

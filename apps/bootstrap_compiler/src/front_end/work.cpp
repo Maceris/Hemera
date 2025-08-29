@@ -250,11 +250,6 @@ namespace hemera {
 			//TODO(ches) report error with unknown node type
 		}
 	}
-	
-	void work_type_deduction(WorkThreadData& executor, WorkTarget& target) {
-		//TODO(ches) do this
-		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
-	}
 
 	void work_type_check(WorkThreadData& executor, WorkTarget& target) {
 		//TODO(ches) do this
