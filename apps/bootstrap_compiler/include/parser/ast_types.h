@@ -85,17 +85,4 @@ namespace hemera::ast {
 		~Node();
 	};
 
-	struct FlatNode {
-		Token value;
-		offset parent;
-		offset total_children;
-		NodeType type;
-		const char padding[4] = { 0 };
-		FlatNode(NodeType type, Token value);
-		FlatNode(const FlatNode&);
-		FlatNode(FlatNode&&);
-		FlatNode& operator=(const FlatNode&) = delete;
-		FlatNode& operator=(FlatNode&&) = delete;
-		~FlatNode();
-	};
 }

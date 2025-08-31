@@ -11,13 +11,4 @@ namespace hemera::ast {
 	}
 	Node::~Node() = default;
 
-	FlatNode::FlatNode(NodeType type, Token value)
-		: value{ value }
-		, parent{ 0 }
-		, total_children{ 0 }
-		, type{ type }
-	{}
-	FlatNode::FlatNode(const FlatNode&) = default;
-	FlatNode::FlatNode(FlatNode&&) = default;
-	FlatNode::~FlatNode() = default;
 }
