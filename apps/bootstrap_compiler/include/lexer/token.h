@@ -98,6 +98,11 @@ namespace hemera {
 		OPERATOR_RIGHT_SHIFT_ARITHMETIC,
 		OPERATOR_RIGHT_SHIFT_LOGICAL,
 		PIPE_REORDER_IDENTIFIER,
+		/// <summary>
+		/// We had to have something to call the root node of a file, does not
+		/// really represent a physical character being consumed.
+		/// </summary>
+		START_OF_FILE,
 		SYM_AMPERSAND,
 		SYM_ARROW_DOUBLE,
 		SYM_ARROW_SINGLE,

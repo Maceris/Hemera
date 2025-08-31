@@ -454,4 +454,7 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_u128le;
 	extern TypeInfo* BUILTIN_uint;
 	extern TypeInfo* BUILTIN_uintptr;
+
+	extern TypeInfo* BUILTIN_void;
+	extern TypeInfo* BUILTIN_poisoned_value;
 }

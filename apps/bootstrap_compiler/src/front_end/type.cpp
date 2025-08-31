@@ -137,4 +137,7 @@ namespace hemera {
 	TypeInfo* BUILTIN_u128le   = new TypeInfoInteger(false, Endianness::LITTLE, 128);
 	TypeInfo* BUILTIN_uint     = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uint));
 	TypeInfo* BUILTIN_uintptr  = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uintptr));
+	
+	TypeInfo* BUILTIN_void  = new TypeInfo(TypeInfoVariant::VOID, 0);
+	TypeInfo* BUILTIN_poisoned_value  = new TypeInfo(TypeInfoVariant::VOID, 0);
 }

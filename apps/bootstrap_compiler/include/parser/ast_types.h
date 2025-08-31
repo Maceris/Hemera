@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "front_end/type.h"
 #include "lexer/token.h"
 #include "memory/allocator.h"
 
@@ -74,7 +75,8 @@ namespace hemera::ast {
 		Token value;
 		Node* parent;
 		MyVector<Node*> children;
-		NodeType type;
+		TypeInfo* type;
+		NodeType node_type;
 		const char padding[4] = { 0 };
 
 		Node(NodeType type, Token value);

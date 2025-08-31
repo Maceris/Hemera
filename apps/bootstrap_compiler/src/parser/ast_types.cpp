@@ -2,11 +2,12 @@
 
 namespace hemera::ast {
 
-	Node::Node(NodeType type, Token value)
+	Node::Node(NodeType node_type, Token value)
 		: value{ value }
 		, parent{ nullptr }
 		, children{}
-		, type{ type }
+		, type { nullptr }
+		, node_type{ node_type }
 	{
 	}
 	Node::~Node() = default;

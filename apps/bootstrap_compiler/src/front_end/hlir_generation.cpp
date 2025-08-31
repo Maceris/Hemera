@@ -17,48 +17,48 @@ namespace hemera {
 
 		for (size_t i = 0; i < node->children.size(); ++i) {
 			ast::Node* child = node->children[i];
-			if (ast::NodeType::RETURN == child->type) {
+			if (ast::NodeType::RETURN == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::DEFER == child->type) {
+			if (ast::NodeType::DEFER == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::BREAK == child->type) {
+			if (ast::NodeType::BREAK == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::CONTINUE == child->type) {
+			if (ast::NodeType::CONTINUE == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::DIRECTIVE == child->type) {
+			if (ast::NodeType::DIRECTIVE == child->node_type) {
 				//TODO(ches) handle this
 			}
 			// Expressions without results
-			if (ast::NodeType::WITH_CLAUSE == child->type) {
+			if (ast::NodeType::WITH_CLAUSE == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::LOOP == child->type) {
+			if (ast::NodeType::LOOP == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::FOR_LOOP == child->type) {
+			if (ast::NodeType::FOR_LOOP == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::PUSH_CONTEXT == child->type) {
+			if (ast::NodeType::PUSH_CONTEXT == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::SWITCH == child->type) {
+			if (ast::NodeType::SWITCH == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::DEFINITION == child->type) {
+			if (ast::NodeType::DEFINITION == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::BLOCK == child->type) {
+			if (ast::NodeType::BLOCK == child->node_type) {
 				hlir_process_block(child, fn);
 			}
 			// Expressions with results
-			if (ast::NodeType::MATCH == child->type) {
+			if (ast::NodeType::MATCH == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::BINARY_OPERATOR == child->type) {
+			if (ast::NodeType::BINARY_OPERATOR == child->node_type) {
 				//TODO(ches) handle this
 			}
 

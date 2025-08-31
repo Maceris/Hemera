@@ -1169,6 +1169,7 @@ namespace hemera::lexer {
 		case TokenType::OPERATOR_REMAINDER:
 		case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
 		case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
+		case TokenType::START_OF_FILE:
 		case TokenType::SYM_AMPERSAND:
 		case TokenType::SYM_ARROW_DOUBLE:
 		case TokenType::SYM_ARROW_SINGLE:

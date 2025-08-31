@@ -142,11 +142,11 @@ namespace hemera {
 		Info* info = executor.global_data->info;
 		
 		for (ast::Node* child : file_info->ast_root->children) {
-			if (child->type == ast::NodeType::PACKAGE) {
+			if (child->node_type == ast::NodeType::PACKAGE) {
 				//TODO(ches) check it matches the pacakge
 				continue;
 			}
-			if (child->type == ast::NodeType::IMPORT) {
+			if (child->node_type == ast::NodeType::IMPORT) {
 				LOG_ASSERT(child->children.size() % 2 == 1);
 				
 				ImportInfo* import = info->info_alloc.new_object<ImportInfo>();
@@ -159,12 +159,12 @@ namespace hemera {
 				import->name = child->children[0]->value.value;
 
 				for (size_t i = 1; i < child->children.size(); ++i) {
-					if (ast::NodeType::KEYWORD_AS == child->children[i]->type) {
+					if (ast::NodeType::KEYWORD_AS == child->children[i]->node_type) {
 						++i;
 						import->alias = child->children[i]->value.value;
 						continue;
 					}
-					if (ast::NodeType::KEYWORD_FROM == child->children[i]->type) {
+					if (ast::NodeType::KEYWORD_FROM == child->children[i]->node_type) {
 						++i;
 						import->location = child->children[i]->value.value;
 						continue;
@@ -173,13 +173,13 @@ namespace hemera {
 
 				continue;
 			}
-			if (child->type == ast::NodeType::DEFINITION) {
+			if (child->node_type == ast::NodeType::DEFINITION) {
 				executor.create_work(WorkType::TYPE_CHECK,
 					WorkTarget(WorkTargetType::DEFINITION, { .node = child })
 				);
 				continue;
 			}
-			if (child->type == ast::NodeType::DIRECTIVE) {
+			if (child->node_type == ast::NodeType::DIRECTIVE) {
 				//TODO(ches) run or evaluate the directive
 
 				continue;

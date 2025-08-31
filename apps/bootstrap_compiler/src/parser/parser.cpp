@@ -71,6 +71,45 @@ namespace hemera::parser {
 		node_alloc.delete_object<ast::Node>(node);
 	}
 
+	/// <summary>
+	/// Quick type deduction for obvious types.
+	/// </summary>
+	/// <param name="node">The node to check.</param>
+	static void type_check_node(ast::Node* node) {
+		LOG_ASSERT(node != nullptr);
+		if (node == nullptr) {
+			return;
+		}
+
+		ast::NodeType type = node->node_type;
+		TokenType token_type = node->value.type;
+
+		if (type == ast::NodeType::LITERAL) {
+			if (token_type == TokenType::LITERAL_CHAR) {
+				node->type = BUILTIN_char;
+			}
+			if (token_type == TokenType::LITERAL_FLOATING_POINT) {
+				node->type = BUILTIN_f64;
+			}
+			if (token_type == TokenType::LITERAL_INTEGER) {
+				node->type = BUILTIN_int;
+			}
+			if (token_type == TokenType::LITERAL_STRING) {
+				node->type = BUILTIN_string;
+			}
+			if (token_type == TokenType::KEYWORD_TRUE) {
+				node->type = BUILTIN_bool;
+			}
+			if (token_type == TokenType::KEYWORD_FALSE) {
+				node->type = BUILTIN_bool;
+			}
+			if (token_type == TokenType::KEYWORD_NULL) {
+				node->type = BUILTIN_void;
+			}
+		}
+		//TODO(ches) handle more types here
+	}
+
 	ast::Node& next_as_node(ParserState* state, ast::NodeType type,
 		ast::Node* parent) {
 		Token current = current_token(state);
@@ -79,6 +118,7 @@ namespace hemera::parser {
 			parent->children.push_back(result);
 		}
 		state->current += 1;
+		type_check_node(result);
 		return *result;
 	}
 
@@ -89,6 +129,8 @@ namespace hemera::parser {
 			ast::Node* child = state->node_alloc.new_object<ast::Node>(type, current);
 			parent.children.push_back(child);
 			state->current += 1;
+
+			type_check_node(child);
 			return true;
 		}
 		return false;
@@ -137,7 +179,7 @@ namespace hemera::parser {
 	{
 		ParserState state(file_path, tokens, node_alloc);
 
-		Token current(TokenType::END_OF_FILE, 0, 0);//TODO(ches) ???
+		Token current(TokenType::START_OF_FILE, 0, 0);
 		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
 
 		//TODO(ches) stop bailing early and attempt to recover from errors
@@ -151,7 +193,6 @@ namespace hemera::parser {
 			return node;
 		}
 
-		//TODO(ches) flatten tree into array at the end
 		return node;
 	}
 
@@ -1131,6 +1172,7 @@ namespace hemera::parser {
 			case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
 			case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
 			case TokenType::PIPE_REORDER_IDENTIFIER:
+			case TokenType::START_OF_FILE:
 			case TokenType::SYM_AMPERSAND:
 			case TokenType::SYM_ARROW_DOUBLE:
 			case TokenType::SYM_ARROW_SINGLE:
@@ -1311,6 +1353,7 @@ namespace hemera::parser {
 			case TokenType::LITERAL_INTEGER:
 			case TokenType::LITERAL_STRING:
 			case TokenType::PIPE_REORDER_IDENTIFIER:
+			case TokenType::START_OF_FILE:
 			case TokenType::SYM_AMPERSAND:
 			case TokenType::SYM_ARROW_DOUBLE:
 			case TokenType::SYM_ARROW_SINGLE:
@@ -1399,6 +1442,7 @@ namespace hemera::parser {
 		case TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC:
 		case TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL:
 		case TokenType::PIPE_REORDER_IDENTIFIER:
+		case TokenType::START_OF_FILE:
 		case TokenType::SYM_AMPERSAND:
 		case TokenType::SYM_ARROW_DOUBLE:
 		case TokenType::SYM_ARROW_SINGLE:
