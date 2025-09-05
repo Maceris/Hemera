@@ -38,3 +38,4 @@ E3030,Expected a dot before or after identifier, plain identifiers are not allow
 E3031,Expected a double arrow after match value(s)
 E4000,Failed to open file
 E4001,Unexpected node type
+E4002,Unexpected directive

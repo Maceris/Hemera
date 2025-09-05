@@ -180,7 +180,29 @@ namespace hemera {
 				continue;
 			}
 			if (child->node_type == ast::NodeType::DIRECTIVE) {
-				//TODO(ches) run or evaluate the directive
+				InternedString value = child->value.value;
+				if (value->compare("#if") || value->compare("#else_if")) {
+					// TODO(ches) check for else
+				}
+				else if (value->compare("#else")) {
+					// TODO(ches) error on a loose else
+				}
+				else if (value->compare("#run")) {
+					ast::Node* expr = child->children[0];
+
+					executor.create_work(WorkType::EXECUTION,
+						WorkTarget(WorkTargetType::EXPRESSION, { .node = expr })
+					);
+					continue;
+				}
+				else {
+					std::string details = std::string(*value);
+
+					report_error(ErrorCode::E4002, *location.file_name,
+						child->value.line_number,
+						child->value.column_number,
+						details);
+				}
 
 				continue;
 			}
