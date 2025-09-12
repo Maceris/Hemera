@@ -182,10 +182,17 @@ namespace hemera {
 			if (child->node_type == ast::NodeType::DIRECTIVE) {
 				InternedString value = child->value.value;
 				if (value->compare("#if") || value->compare("#else_if")) {
-					// TODO(ches) check for else
+					// TODO(ches) check for else_if and else clause(s)
 				}
 				else if (value->compare("#else")) {
-					// TODO(ches) error on a loose else
+					std::string details = "#else without an #if";
+
+					report_error(ErrorCode::E4002, *location.file_name,
+						child->value.line_number,
+						child->value.column_number,
+						details);
+
+					continue;
 				}
 				else if (value->compare("#run")) {
 					ast::Node* expr = child->children[0];
