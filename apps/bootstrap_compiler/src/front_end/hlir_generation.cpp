@@ -18,7 +18,25 @@ namespace hemera {
 		for (size_t i = 0; i < node->children.size(); ++i) {
 			ast::Node* child = node->children[i];
 			if (ast::NodeType::RETURN == child->node_type) {
-				//TODO(ches) handle this
+
+				hlir::Return* instr = block->create_instruction<hlir::Return>();
+
+				LOG_ASSERT(child->children.size() > 0);
+
+				//TODO(ches) expressions
+				if (child->children.size() == 1) {
+					ast::Node* value = child->children[0];
+					if (ast::NodeType::VOID != value->node_type) {
+						// expression
+						IGNORE_UNUSED(instr);
+					}
+				}
+				else if (child->children.size() > 1) {
+					// multiple expressions
+				}
+
+				//TODO(ches) operand, destination
+				continue;
 			}
 			if (ast::NodeType::DEFER == child->node_type) {
 				//TODO(ches) handle this
