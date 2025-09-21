@@ -5,7 +5,10 @@
 #include "parser/ast_types.h"
 
 namespace hemera {
-	void type_check_definition(WorkThreadData& executor, ast::Node* node);
-	void type_check_expression(WorkThreadData& executor, ast::Node* node);
-	void type_check_function(WorkThreadData& executor, FunctionInfo* function);
+	void type_check_definition(WorkThreadData& executor, 
+		FileLocation file_location, ast::Node* node);
+	void type_check_expression(WorkThreadData& executor, 
+		FileLocation file_location, ast::Node* node);
+	void type_check_function(WorkThreadData& executor, 
+		FileLocation file_location, FunctionInfo* function);
 }

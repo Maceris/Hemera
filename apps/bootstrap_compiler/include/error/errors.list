@@ -39,3 +39,4 @@ E3031,Expected a double arrow after match value(s)
 E4000,Failed to open file
 E4001,Unexpected node type
 E4002,Unexpected directive
+E4003,Invalid function definition
