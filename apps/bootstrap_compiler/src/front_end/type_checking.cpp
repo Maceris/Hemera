@@ -7,8 +7,18 @@
 //TODO(ches) remove this, shuts up unused warnings while we work
 #define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
 
-
 namespace hemera {
+
+	void type_check_block(WorkThreadData& executor,
+		FileLocation file_location, FunctionInfo* function,
+		ast::Node* parent_block) {
+
+		IGNORE_UNUSED(executor);
+		IGNORE_UNUSED(file_location);
+		IGNORE_UNUSED(function);
+		IGNORE_UNUSED(parent_block);
+	}
+
 	void type_check_definition(WorkThreadData& executor, 
 		FileLocation file_location, ast::Node* node) {
 
@@ -34,6 +44,9 @@ namespace hemera {
 		IGNORE_UNUSED(executor);
 
 		LOG_ASSERT(function != nullptr);
+		if (function == nullptr) {
+			return;
+		}
 
 		ast::Node* fn_root = function->node;
 
@@ -64,7 +77,7 @@ namespace hemera {
 			//TODO(ches) deduce type
 		}
 		if (body != nullptr) {
-			//TODO(ches) type check body
+			type_check_block(executor, file_location, function, nullptr);
 		}
 
 		//TODO(ches) complete this
