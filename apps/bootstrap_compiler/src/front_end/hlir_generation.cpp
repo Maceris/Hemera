@@ -6,6 +6,20 @@
 
 namespace hemera {
 
+	struct DeferredExpression {
+		ast::Node* expression = nullptr;
+		DeferredExpression* next = nullptr;
+	};
+
+	static void free_deferred_expressions(DeferredExpression* expr) {
+		if (nullptr == expr) {
+			return;
+		}
+		DeferredExpression* next = expr->next;
+		delete expr;
+		free_deferred_expressions(next);
+	}
+
 	/// <summary>
 	/// Process a block into HLIR.
 	/// </summary>
@@ -15,9 +29,12 @@ namespace hemera {
 	hlir::BasicBlock* hlir_process_block(ast::Node* node, hlir::Function* fn) {
 		hlir::BasicBlock* block = fn->create_basic_block();
 
+		DeferredExpression* deferred = nullptr;
+
 		for (size_t i = 0; i < node->children.size(); ++i) {
 			ast::Node* child = node->children[i];
 			if (ast::NodeType::RETURN == child->node_type) {
+				//TODO(ches) deferred expression(s)
 
 				hlir::Return* instr = block->create_instruction<hlir::Return>();
 
@@ -39,12 +56,18 @@ namespace hemera {
 				continue;
 			}
 			if (ast::NodeType::DEFER == child->node_type) {
-				//TODO(ches) handle this
+				//NTOE(ches) slap it onto the stack of deferred expressions
+				DeferredExpression* next = new DeferredExpression();
+				next->expression = child->children[0];
+				next->next = deferred;
+				deferred = next;
 			}
 			if (ast::NodeType::BREAK == child->node_type) {
+				//TODO(ches) deferred expression(s)
 				//TODO(ches) handle this
 			}
 			if (ast::NodeType::CONTINUE == child->node_type) {
+				//TODO(ches) deferred expression(s)
 				//TODO(ches) handle this
 			}
 			if (ast::NodeType::DIRECTIVE == child->node_type) {
@@ -81,6 +104,11 @@ namespace hemera {
 			}
 
 		}
+
+		//TODO(ches) deferred expression(s)
+
+		free_deferred_expressions(deferred);
+
 		return block;
 	}
 
