@@ -55,51 +55,52 @@ namespace hemera {
 				//TODO(ches) operand, destination
 				continue;
 			}
-			if (ast::NodeType::DEFER == child->node_type) {
+			else if (ast::NodeType::DEFER == child->node_type) {
 				//NTOE(ches) slap it onto the stack of deferred expressions
 				DeferredExpression* next = new DeferredExpression();
 				next->expression = child->children[0];
 				next->next = deferred;
 				deferred = next;
 			}
-			if (ast::NodeType::BREAK == child->node_type) {
+			else if (ast::NodeType::BREAK == child->node_type) {
 				//TODO(ches) deferred expression(s)
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::CONTINUE == child->node_type) {
+			else if (ast::NodeType::CONTINUE == child->node_type) {
 				//TODO(ches) deferred expression(s)
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::DIRECTIVE == child->node_type) {
 				//TODO(ches) handle this
 			}
 			// Expressions without results
-			if (ast::NodeType::WITH_CLAUSE == child->node_type) {
+			else if (ast::NodeType::WITH_CLAUSE == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::LOOP == child->node_type) {
+			else if (ast::NodeType::LOOP == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::FOR_LOOP == child->node_type) {
+			else if (ast::NodeType::FOR_LOOP == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::PUSH_CONTEXT == child->node_type) {
+			else if (ast::NodeType::PUSH_CONTEXT == child->node_type) {
+				//TODO(ches) store current context
+				InternedString context_name = child->children[0]->value.value;
+				IGNORE_UNUSED(context_name);
+				hlir_process_block(child->children[1], fn);
+				//TODO(ches) restore old context
+			}
+			else if (ast::NodeType::SWITCH == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::SWITCH == child->node_type) {
+			else if (ast::NodeType::DEFINITION == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::DEFINITION == child->node_type) {
-				//TODO(ches) handle this
-			}
-			if (ast::NodeType::BLOCK == child->node_type) {
+			else if (ast::NodeType::BLOCK == child->node_type) {
 				hlir_process_block(child, fn);
 			}
 			// Expressions with results
-			if (ast::NodeType::MATCH == child->node_type) {
+			else if (ast::NodeType::MATCH == child->node_type) {
 				//TODO(ches) handle this
 			}
-			if (ast::NodeType::BINARY_OPERATOR == child->node_type) {
+			else if (ast::NodeType::BINARY_OPERATOR == child->node_type) {
 				//TODO(ches) handle this
 			}
 
