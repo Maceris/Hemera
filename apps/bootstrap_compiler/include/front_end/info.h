@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 
@@ -79,6 +80,8 @@ namespace hemera {
 		MyMap<FunctionID, FunctionInfo*> functions;
 		Allocator<> node_alloc;
 		Allocator<> info_alloc;
+
+		std::atomic_size_t next_location_id;
 
 		std::mutex types_mutex;
 		std::mutex packages_mutex;

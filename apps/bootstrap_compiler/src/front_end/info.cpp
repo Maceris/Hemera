@@ -28,6 +28,7 @@ namespace hemera {
 		, functions{}
 		, node_alloc{}
 		, info_alloc{}
+		, next_location_id{}
 		, types_mutex{}
 		, packages_mutex{}
 		, expressions_mutex{}
