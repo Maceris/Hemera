@@ -40,20 +40,14 @@ namespace hemera {
 
 				LOG_ASSERT(child->children.size() > 0);
 
-				//TODO(ches) expressions
-				if (child->children.size() == 1) {
-					ast::Node* value = child->children[0];
-					if (ast::NodeType::VOID != value->node_type) {
-						// expression
-						IGNORE_UNUSED(instr);
+				//TODO(ches) handle the actual return part
+				if (ast::NodeType::VOID != child->children[0]->node_type) {
+					for (size_t j = 0; j < child->children.size(); ++j) {
+						ast::Node* value = child->children[i];
+						hlir_process_expression(value, block);
 					}
 				}
-				else if (child->children.size() > 1) {
-					// multiple expressions
-				}
-
-				//TODO(ches) operand, destination
-				continue;
+				block->instructions.push_back(instr);
 			}
 			else if (ast::NodeType::DEFER == child->node_type) {
 				//NTOE(ches) slap it onto the stack of deferred expressions
@@ -111,6 +105,12 @@ namespace hemera {
 		free_deferred_expressions(deferred);
 
 		return block;
+	}
+
+	void hlir_process_expression(ast::Node* node, hlir::BasicBlock* containing_block) {
+		//TODO(ches) finish this
+		IGNORE_UNUSED(node);
+		IGNORE_UNUSED(containing_block);
 	}
 
 	void hlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
