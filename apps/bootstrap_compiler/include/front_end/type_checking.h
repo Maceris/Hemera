@@ -7,7 +7,7 @@
 namespace hemera {
 	void type_check_block(WorkThreadData& executor,
 		FileLocation file_location, FunctionInfo* function,
-		ast::Node* parent_block);
+		ast::Node* parent_block, ast::Node* node);
 	void type_check_definition(WorkThreadData& executor, 
 		FileLocation file_location, ast::Node* node);
 	void type_check_expression(WorkThreadData& executor, 
