@@ -228,18 +228,18 @@ namespace hemera {
 		switch (target.type) {
 			case WorkTargetType::DEFINITION:
 				type_check_definition(executor, target.value.file_location, 
-					target.value.node);
+					nullptr, target.value.node);
 				break;
 			case WorkTargetType::EXPRESSION:
 				type_check_expression(executor, target.value.file_location,
-					target.value.node);
+					nullptr, target.value.node);
 				break;
 			case WorkTargetType::FILE:
-				LOG_ERROR("Trying to type check a package");
+				LOG_ERROR("Trying to type check a file");
 				break;
 			case WorkTargetType::FUNCTION:
 				type_check_function(executor, target.value.file_location,
-					target.value.function);
+					nullptr, target.value.function);
 				break;
 			case WorkTargetType::PACKAGE:
 				LOG_ERROR("Trying to type check a package");

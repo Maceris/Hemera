@@ -13,9 +13,6 @@ namespace hemera {
 		FileLocation file_location, FunctionInfo* function,
 		ast::Node* parent_block, ast::Node* node) {
 
-		IGNORE_UNUSED(executor);
-		IGNORE_UNUSED(file_location);
-		IGNORE_UNUSED(function);
 		IGNORE_UNUSED(parent_block);
 
 		for (size_t i = 0; i < node->children.size(); ++i) {
@@ -52,7 +49,7 @@ namespace hemera {
 				//TODO(ches) handle this
 			}
 			else if (ast::NodeType::BLOCK == child->node_type) {
-				//TODO(ches) handle this
+				type_check_block(executor, file_location, function, node, child);
 			}
 			// Expressions with results
 			else if (ast::NodeType::MATCH == child->node_type) {
@@ -65,27 +62,31 @@ namespace hemera {
 	}
 
 	void type_check_definition(WorkThreadData& executor, 
-		FileLocation file_location, ast::Node* node) {
+		FileLocation file_location, ast::Node* parent_block, ast::Node* node) {
 
 		IGNORE_UNUSED(executor);
 		IGNORE_UNUSED(file_location);
+		IGNORE_UNUSED(parent_block);
 		IGNORE_UNUSED(node);
 
 		//TODO(ches) complete this
 	}
 
 	void type_check_expression(WorkThreadData& executor, 
-		FileLocation file_location, ast::Node* node) {
+		FileLocation file_location, ast::Node* parent_block, ast::Node* node) {
 
 		IGNORE_UNUSED(executor);
 		IGNORE_UNUSED(file_location);
+		IGNORE_UNUSED(parent_block);
 		IGNORE_UNUSED(node);
 		//TODO(ches) complete this
 	}
 
 	void type_check_function(WorkThreadData& executor, 
-		FileLocation file_location, FunctionInfo* function) {
+		FileLocation file_location, ast::Node* parent_block, 
+		FunctionInfo* function) {
 
+		IGNORE_UNUSED(parent_block);
 		IGNORE_UNUSED(executor);
 
 		LOG_ASSERT(function != nullptr);
