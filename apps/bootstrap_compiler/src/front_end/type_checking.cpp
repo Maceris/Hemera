@@ -19,6 +19,33 @@ namespace hemera {
 			ast::Node* child = node->children[i];
 			if (ast::NodeType::RETURN == child->node_type) {
 				//TODO(ches) handle this
+				
+				const size_t expected_output_count = function->type_info.output.size();
+				const size_t actual_output_count = child->children.size();
+
+				if (expected_output_count != actual_output_count) {
+					std::string expected = "";
+					std::string found = "";
+
+					for (size_t j = 0; j < expected_output_count; j++) {
+						const FunctionOutput& output = function->type_info.output[j];
+						TypeInfo* type = output.type;
+
+						expected += to_string(type);
+						if (j < expected_output_count - 1) {
+							expected += ", ";
+						}
+					}
+					//TODO(ches) figure out the types of the return values
+
+					std::string details = std::format("Expected: {}. Found: {}.",
+						expected, found);
+
+					report_error(ErrorCode::E4004, *file_location.file_name,
+						child->value.line_number,
+						child->value.column_number,
+						details);
+				}
 			}
 			else if (ast::NodeType::DEFER == child->node_type) {
 				//TODO(ches) handle this

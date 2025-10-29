@@ -14,7 +14,7 @@ namespace hemera {
 
 	struct IdentifierInfo {
 		TypeID type;
-		builtin::_any value;
+		builtin::_any default_value;
 		bool has_value;
 		char _padding[7] = { 0 };
 	};
@@ -30,6 +30,7 @@ namespace hemera {
 		InternedString package;
 		ast::Node* node;
 		hlir::Function* ir;
+		TypeInfoFunction type_info;
 	};
 
 	struct ExpressionInfo {
@@ -74,7 +75,6 @@ namespace hemera {
 	};
 
 	struct Info {
-		MyMap<TypeID, TypeInfo*> all_types;
 		MyMap<InternedString, PackageInfo*> packages;
 		MyMap<ExpressionID, ExpressionInfo*> expressions;
 		MyMap<FunctionID, FunctionInfo*> functions;

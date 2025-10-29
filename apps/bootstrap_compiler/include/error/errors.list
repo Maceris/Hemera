@@ -40,3 +40,4 @@ E4000,Failed to open file
 E4001,Unexpected node type
 E4002,Unexpected directive
 E4003,Invalid function definition
+E4004,Incorrect number of return values

@@ -2,14 +2,15 @@
 
 #include <cstdint>
 
-#include "front_end/type_id.h"
 #include "memory/allocator.h"
 
 namespace hemera {
 
+	struct TypeInfo;
+
 	namespace builtin {
 		struct _any {
-			TypeID type;
+			TypeInfo* type;
 			void* value;
 		};
 		using _b8 = uint8_t;
@@ -130,7 +131,7 @@ namespace hemera {
 		static_assert(sizeof(int64_t) == sizeof(uintptr_t));
 		using _int = int64_t;
 		struct _ptr {
-			TypeID pointing_to_type;
+			TypeInfo* pointing_to_type;
 			void* pointer;
 		};
 		struct _q32 {
@@ -168,7 +169,7 @@ namespace hemera {
 			_int size;
 			_char* data;
 		};
-		using _type = TypeID;
+		using _type = TypeInfo*;
 		using _u8 = uint8_t;
 		using _u16 = uint16_t;
 		struct _u16be {
@@ -271,6 +272,7 @@ namespace hemera {
 		int count;
 	};
 
+	//TODO(ches) handle aliases, so they can have different names
 	enum class TypeInfoVariant {
 		ANY,
 		ARRAY,
@@ -300,14 +302,15 @@ namespace hemera {
 	};
 
 	struct TypeInfoArray : public TypeInfo {
-		TypeID base_type;
+		TypeInfo* base_type;
 		MyVector<ArrayDimension> dims;
 
-		TypeInfoArray(TypeID base_type, MyVector<ArrayDimension>&& dims);
+		TypeInfoArray(TypeInfo* base_type, MyVector<ArrayDimension>&& dims);
 		~TypeInfoArray();
 	};
 
 	struct TypeInfoEnum : public TypeInfo {
+		InternedString name;
 		MyVector<InternedString> members;
 
 		TypeInfoEnum(size_t size);
@@ -323,14 +326,14 @@ namespace hemera {
 	};
 
 	struct FunctionInput {
-		TypeID type;
+		TypeInfo* type;
 		InternedString name;
 		bool is_varargs;
 		char _padding[7] = { 0 };
 	};
 
 	struct FunctionOutput {
-		TypeID type;
+		TypeInfo* type;
 	};
 
 	struct TypeInfoFunction : public TypeInfo {
@@ -351,12 +354,12 @@ namespace hemera {
 	};
 
 	struct TypeInfoPointer : public TypeInfo {
-		TypeID base_type;
+		TypeInfo* base_type;
 		bool relative;
 		bool is_mutable;
 		char _padding[6] = { 0 };
 
-		TypeInfoPointer(TypeID base_type, bool relative, bool is_mutable,
+		TypeInfoPointer(TypeInfo* base_type, bool relative, bool is_mutable,
 			size_t size);
 		~TypeInfoPointer();
 	};
@@ -371,7 +374,7 @@ namespace hemera {
 
 	struct StructMember {
 		InternedString name;
-		TypeID type;
+		TypeInfo* type;
 		builtin::_any value;
 		bool has_value;
 		bool is_using;
@@ -379,6 +382,7 @@ namespace hemera {
 	};
 
 	struct TypeInfoStruct : public TypeInfo {
+		InternedString name;
 		MyVector<StructMember> members;
 
 		TypeInfoStruct(size_t size);
@@ -386,6 +390,7 @@ namespace hemera {
 	};
 	
 	struct TypeInfoUnion : public TypeInfo {
+		InternedString name;
 		MyMap<InternedString, MyVector<InternedString>> variants;
 
 		TypeInfoUnion(size_t size);
@@ -457,4 +462,6 @@ namespace hemera {
 
 	extern TypeInfo* BUILTIN_void;
 	extern TypeInfo* BUILTIN_poisoned_value;
+
+	std::string to_string(TypeInfo* type);
 }

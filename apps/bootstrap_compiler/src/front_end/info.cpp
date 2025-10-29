@@ -22,8 +22,7 @@ namespace hemera {
 	PackageInfo::~PackageInfo() = default;
 
 	Info::Info()
-		: all_types{}
-		, packages{}
+		: packages{}
 		, expressions{}
 		, functions{}
 		, node_alloc{}
