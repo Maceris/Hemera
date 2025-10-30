@@ -52,11 +52,11 @@ namespace hemera {
 	TypeInfoInteger::~TypeInfoInteger() = default;
 
 
-	TypeInfoPointer::TypeInfoPointer(TypeInfo* base_type, bool relative,
+	TypeInfoPointer::TypeInfoPointer(TypeInfo* base_type, bool is_relative,
 		bool is_mutable, size_t size)
 		: TypeInfo{ TypeInfoVariant::POINTER, size }
 		, base_type{ base_type }
-		, relative{ relative }
+		, is_relative{ is_relative }
 		, is_mutable{ is_mutable }
 	{}
 	TypeInfoPointer::~TypeInfoPointer() = default;
@@ -151,6 +151,9 @@ namespace hemera {
 		}
 
 		// Primitives
+		if (BUILTIN_any == type) {
+			return "any";
+		}
 		if (BUILTIN_b8 == type) {
 			return "b8";
 		}
@@ -271,6 +274,9 @@ namespace hemera {
 		if (BUILTIN_string == type) {
 			return "string";
 		}
+		if (BUILTIN_type == type) {
+			return "type";
+		}
 		if (BUILTIN_u8 == type) {
 			return "u8";
 		}
@@ -317,32 +323,31 @@ namespace hemera {
 			return "uintptr";
 		}
 		if (BUILTIN_void == type) {
-			//TODO(ches) give the actual type info
 			return "void";
 		}
 		
 		// Special types
 		if (BUILTIN_poisoned_value == type) {
-			//TODO(ches) give the actual type info
 			return "$POISONED$";
 		}
 
 		// More complicated builtin types
-		if (BUILTIN_any == type) {
-			//TODO(ches) give the actual type info
-			return "any";
-		}
-		if (BUILTIN_type == type) {
-			//TODO(ches) give the actual type info
-			return "type";
-		}
 		if (BUILTIN_ptr == type) {
-			//TODO(ches) give the actual type info
-			return "ptr";
+			TypeInfoPointer* specific_type = static_cast<TypeInfoPointer*>(type);
+
+			std::string result = specific_type->is_relative ? "relptr" : "ptr";
+
+			result += "[";
+			if (specific_type->is_mutable) {
+				result += "mut ";
+			}
+			result += to_string(specific_type->base_type);
+			result += "]";
+
+			return result;
 		}
 
 		// User created type
-
 		if (TypeInfoVariant::ANY == type->type
 			|| TypeInfoVariant::BOOLEAN == type->type
 			|| TypeInfoVariant::CHAR == type->type
@@ -351,6 +356,7 @@ namespace hemera {
 			|| TypeInfoVariant::INTEGER == type->type
 			|| TypeInfoVariant::QUATERNION == type->type
 			|| TypeInfoVariant::STRING == type->type
+			|| TypeInfoVariant::TYPE == type->type
 			|| TypeInfoVariant::POINTER == type->type
 			|| TypeInfoVariant::VOID == type->type
 			) {
@@ -359,7 +365,6 @@ namespace hemera {
 		}
 		else if (TypeInfoVariant::ARRAY == type->type) {
 			TypeInfoArray* specific_type = static_cast<TypeInfoArray*>(type);
-
 
 			std::string result = to_string(specific_type->base_type);
 
@@ -385,7 +390,6 @@ namespace hemera {
 			return result;
 		}
 		else if (TypeInfoVariant::FUNCTION == type->type) {
-			//TODO(ches) give the function signature
 			TypeInfoFunction* specific_type = static_cast<TypeInfoFunction*>(type);
 			
 			std::string result = "fn(";
@@ -399,20 +403,29 @@ namespace hemera {
 			}
 			result += ") -> ";
 
-			//TODO(ches) skip parens for single simple types
 			const size_t OUTPUT_COUNT = specific_type->output.size();
 			if (OUTPUT_COUNT == 0) {
 				result += "void";
 			}
 			else {
-				result += "(";
+				TypeInfoVariant first_output_variant 
+					= specific_type->output[0].type->type;
+
+				const bool complex = OUTPUT_COUNT > 1 
+					|| TypeInfoVariant::FUNCTION == first_output_variant;
+
+				if (complex) {
+					result += "(";
+				}
 				for (size_t i = 0; i < OUTPUT_COUNT; i++) {
 					result += to_string(specific_type->output[i].type);
 					if (i < OUTPUT_COUNT - 1) {
 						result += ", ";
 					}
 				}
-				result += ")";
+				if (complex) {
+					result += ")";
+				}
 			}
 
 			return result;
@@ -422,11 +435,6 @@ namespace hemera {
 
 			std::string result = std::format("{}", *specific_type->name);
 			return result;
-		}
-		else if (TypeInfoVariant::TYPE == type->type) {
-			//TODO(ches) do we need this? What do we use it for?
-			LOG_FATAL("Weird type variant");
-			return "$ERROR$";
 		}
 		else if (TypeInfoVariant::UNION == type->type) {
 			TypeInfoStruct* specific_type = static_cast<TypeInfoStruct*>(type);

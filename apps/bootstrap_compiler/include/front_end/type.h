@@ -355,11 +355,11 @@ namespace hemera {
 
 	struct TypeInfoPointer : public TypeInfo {
 		TypeInfo* base_type;
-		bool relative;
+		bool is_relative;
 		bool is_mutable;
 		char _padding[6] = { 0 };
 
-		TypeInfoPointer(TypeInfo* base_type, bool relative, bool is_mutable,
+		TypeInfoPointer(TypeInfo* base_type, bool is_relative, bool is_mutable,
 			size_t size);
 		~TypeInfoPointer();
 	};
