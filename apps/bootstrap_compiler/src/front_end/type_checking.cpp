@@ -13,8 +13,6 @@ namespace hemera {
 		FileLocation file_location, FunctionInfo* function,
 		ast::Node* parent_block, ast::Node* node) {
 
-		IGNORE_UNUSED(parent_block);
-
 		for (size_t i = 0; i < node->children.size(); ++i) {
 			ast::Node* child = node->children[i];
 			if (ast::NodeType::RETURN == child->node_type) {
@@ -23,9 +21,16 @@ namespace hemera {
 				const size_t expected_output_count = function->type_info.output.size();
 				const size_t actual_output_count = child->children.size();
 
+				for (size_t j = 0; j < actual_output_count; j++) {
+					ast::Node* return_value = child->children[j];
+
+					type_check_expression(executor, file_location,
+						parent_block, return_value);
+				}
+
 				if (expected_output_count != actual_output_count) {
 					std::string expected = "";
-					std::string found = "";
+					std::string actual = "";
 
 					for (size_t j = 0; j < expected_output_count; j++) {
 						const FunctionOutput& output = function->type_info.output[j];
@@ -36,10 +41,18 @@ namespace hemera {
 							expected += ", ";
 						}
 					}
-					//TODO(ches) figure out the types of the return values
+
+					for (size_t j = 0; j < actual_output_count; j++) {
+						TypeInfo* type = child->children[j]->type;
+
+						actual += to_string(type);
+						if (j < actual_output_count - 1) {
+							actual += ", ";
+						}
+					}
 
 					std::string details = std::format("Expected: {}. Found: {}.",
-						expected, found);
+						expected, actual);
 
 					report_error(ErrorCode::E4004, *file_location.file_name,
 						child->value.line_number,
