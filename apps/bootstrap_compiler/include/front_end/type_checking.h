@@ -15,7 +15,7 @@ namespace hemera {
 	/// <param name="node">Node we are type checking.</param>
 	void type_check_block(WorkThreadData& executor,
 		FileLocation file_location, FunctionInfo* function,
-		ast::Node* node);
+		ast::Node* parent_block, ast::Node* node);
 	
 	/// <summary>
 	/// Check the definition.

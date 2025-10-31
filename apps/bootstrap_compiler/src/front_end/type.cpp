@@ -23,10 +23,10 @@ namespace hemera {
 	TypeInfoArray::~TypeInfoArray() = default;
 
 
-	TypeInfoEnum::TypeInfoEnum(size_t size)
+	TypeInfoEnum::TypeInfoEnum(InternedString name, size_t size)
 		: TypeInfo{ TypeInfoVariant::ENUM, size }
-	{
-	}
+		, name{ name }
+	{}
 	TypeInfoEnum::~TypeInfoEnum() = default;
 
 
@@ -71,14 +71,16 @@ namespace hemera {
 	TypeInfoString::~TypeInfoString() = default;
 
 
-	TypeInfoStruct::TypeInfoStruct(size_t size)
+	TypeInfoStruct::TypeInfoStruct(InternedString name, size_t size)
 		: TypeInfo{ TypeInfoVariant::STRUCT, size }
+		, name{ name }
 	{}
 	TypeInfoStruct::~TypeInfoStruct() = default;
 	
 
-	TypeInfoUnion::TypeInfoUnion(size_t size)
+	TypeInfoUnion::TypeInfoUnion(InternedString name, size_t size)
 		: TypeInfo{ TypeInfoVariant::STRUCT, size }
+		, name{ name }
 	{}
 	TypeInfoUnion::~TypeInfoUnion() = default;
 

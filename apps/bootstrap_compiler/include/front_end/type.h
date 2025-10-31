@@ -313,7 +313,7 @@ namespace hemera {
 		InternedString name;
 		MyVector<InternedString> members;
 
-		TypeInfoEnum(size_t size);
+		TypeInfoEnum(InternedString name, size_t size);
 		~TypeInfoEnum();
 	};
 	
@@ -385,7 +385,7 @@ namespace hemera {
 		InternedString name;
 		MyVector<StructMember> members;
 
-		TypeInfoStruct(size_t size);
+		TypeInfoStruct(InternedString name, size_t size);
 		~TypeInfoStruct();
 	};
 	
@@ -393,7 +393,7 @@ namespace hemera {
 		InternedString name;
 		MyMap<InternedString, MyVector<InternedString>> variants;
 
-		TypeInfoUnion(size_t size);
+		TypeInfoUnion(InternedString name, size_t size);
 		~TypeInfoUnion();
 	};
 
