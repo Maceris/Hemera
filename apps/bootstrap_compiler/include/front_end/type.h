@@ -293,19 +293,19 @@ namespace hemera {
 	};
 
 	struct TypeInfo {
-		TypeInfoVariant type;
+		TypeInfoVariant variant;
 		char _padding[4] = { 0 };
 		size_t size;
 
-		TypeInfo(TypeInfoVariant type, size_t size);
+		TypeInfo(TypeInfoVariant variant, size_t size);
 		~TypeInfo();
 	};
 
 	struct TypeInfoArray : public TypeInfo {
 		TypeInfo* base_type;
-		MyVector<ArrayDimension> dims;
+		MyVector<ArrayDimension> dimensions;
 
-		TypeInfoArray(TypeInfo* base_type, MyVector<ArrayDimension>&& dims);
+		TypeInfoArray(TypeInfo* base_type, MyVector<ArrayDimension>&& dimensions);
 		~TypeInfoArray();
 	};
 
@@ -463,5 +463,35 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_void;
 	extern TypeInfo* BUILTIN_poisoned_value;
 
-	std::string to_string(TypeInfo* type);
+	std::string to_string(TypeInfo const* type);
+
+	/// <summary>
+	/// Check if two types are the same.
+	/// 
+	/// A few notes about the comparison:
+	/// 
+	/// Null pointers are never equal to anything, even other null pointers.
+	/// </summary>
+	/// <param name="a">The first type.</param>
+	/// <param name="b">The second type.</param>
+	/// <returns>If the types are the same.</returns>
+	bool same_type(TypeInfo const* a, TypeInfo const* b);
+
+	/// <summary>
+	/// Check if the first type can be implicitly converted to the second 
+	/// type.
+	/// 
+	/// A few notes about the comparison:
+	/// 
+	/// Null pointers can be converted, even from/to other null pointers.
+	/// A type can convert to itself, since saying that it can't would be more
+	/// confusing.
+	/// Primitive types can convert to the same type (floating point to 
+	/// floating point, signed integer to signed integer) of a larger size.
+	/// 
+	/// </summary>
+	/// <param name="from">The type we are converting from.</param>
+	/// <param name="to">The type we are converting to.</param>
+	/// <returns>Whether implicit conversion is possible.</returns>
+	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to);
 }

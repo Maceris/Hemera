@@ -6,8 +6,8 @@
 
 namespace hemera {
 
-	TypeInfo::TypeInfo(TypeInfoVariant type, size_t size)
-		: type{ type }
+	TypeInfo::TypeInfo(TypeInfoVariant variant, size_t size)
+		: variant{ variant }
 		, size{ size }
 	{}
 	
@@ -15,10 +15,10 @@ namespace hemera {
 
 
 	TypeInfoArray::TypeInfoArray(TypeInfo* base_type,
-		MyVector<ArrayDimension>&& dims)
+		MyVector<ArrayDimension>&& dimensions)
 		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(size_t) } //TODO(ches) what is the size here??
 		, base_type{ base_type }
-		, dims{ dims }
+		, dimensions{ dimensions }
 	{}
 	TypeInfoArray::~TypeInfoArray() = default;
 
@@ -147,7 +147,7 @@ namespace hemera {
 	TypeInfo* BUILTIN_void  = new TypeInfo(TypeInfoVariant::VOID, 0);
 	TypeInfo* BUILTIN_poisoned_value  = new TypeInfo(TypeInfoVariant::VOID, 0);
 
-	std::string to_string(TypeInfo* type) {
+	std::string to_string(TypeInfo const* type) {
 		if (type == nullptr) {
 			return "null";
 		}
@@ -335,7 +335,8 @@ namespace hemera {
 
 		// More complicated builtin types
 		if (BUILTIN_ptr == type) {
-			TypeInfoPointer* specific_type = static_cast<TypeInfoPointer*>(type);
+			TypeInfoPointer const* specific_type = 
+				static_cast<TypeInfoPointer const*>(type);
 
 			std::string result = specific_type->is_relative ? "relptr" : "ptr";
 
@@ -350,27 +351,28 @@ namespace hemera {
 		}
 
 		// User created type
-		if (TypeInfoVariant::ANY == type->type
-			|| TypeInfoVariant::BOOLEAN == type->type
-			|| TypeInfoVariant::CHAR == type->type
-			|| TypeInfoVariant::COMPLEX == type->type
-			|| TypeInfoVariant::FLOAT == type->type
-			|| TypeInfoVariant::INTEGER == type->type
-			|| TypeInfoVariant::QUATERNION == type->type
-			|| TypeInfoVariant::STRING == type->type
-			|| TypeInfoVariant::TYPE == type->type
-			|| TypeInfoVariant::POINTER == type->type
-			|| TypeInfoVariant::VOID == type->type
+		if (TypeInfoVariant::ANY == type->variant
+			|| TypeInfoVariant::BOOLEAN == type->variant
+			|| TypeInfoVariant::CHAR == type->variant
+			|| TypeInfoVariant::COMPLEX == type->variant
+			|| TypeInfoVariant::FLOAT == type->variant
+			|| TypeInfoVariant::INTEGER == type->variant
+			|| TypeInfoVariant::QUATERNION == type->variant
+			|| TypeInfoVariant::STRING == type->variant
+			|| TypeInfoVariant::TYPE == type->variant
+			|| TypeInfoVariant::POINTER == type->variant
+			|| TypeInfoVariant::VOID == type->variant
 			) {
 			LOG_FATAL("Should have used an existing primitive type");
 			return "$ERROR$";
 		}
-		else if (TypeInfoVariant::ARRAY == type->type) {
-			TypeInfoArray* specific_type = static_cast<TypeInfoArray*>(type);
+		else if (TypeInfoVariant::ARRAY == type->variant) {
+			TypeInfoArray const* specific_type = 
+				static_cast<TypeInfoArray const*>(type);
 
 			std::string result = to_string(specific_type->base_type);
 
-			for (const ArrayDimension& dim : specific_type->dims) {
+			for (const ArrayDimension& dim : specific_type->dimensions) {
 				switch (dim.type) {
 				case ArrayType::STATIC:
 					result += std::format("[{}]", dim.count);
@@ -385,14 +387,16 @@ namespace hemera {
 			}
 			return result;
 		}
-		else if (TypeInfoVariant::ENUM == type->type) {
-			TypeInfoEnum* specific_type = static_cast<TypeInfoEnum*>(type);
+		else if (TypeInfoVariant::ENUM == type->variant) {
+			TypeInfoEnum const* specific_type =
+				static_cast<TypeInfoEnum const*>(type);
 
 			std::string result = std::format("{}", *specific_type->name);
 			return result;
 		}
-		else if (TypeInfoVariant::FUNCTION == type->type) {
-			TypeInfoFunction* specific_type = static_cast<TypeInfoFunction*>(type);
+		else if (TypeInfoVariant::FUNCTION == type->variant) {
+			TypeInfoFunction const* specific_type = 
+				static_cast<TypeInfoFunction const*>(type);
 			
 			std::string result = "fn(";
 
@@ -411,7 +415,7 @@ namespace hemera {
 			}
 			else {
 				TypeInfoVariant first_output_variant 
-					= specific_type->output[0].type->type;
+					= specific_type->output[0].type->variant;
 
 				const bool complex = OUTPUT_COUNT > 1 
 					|| TypeInfoVariant::FUNCTION == first_output_variant;
@@ -432,14 +436,16 @@ namespace hemera {
 
 			return result;
 		}
-		else if (TypeInfoVariant::STRUCT == type->type) {
-			TypeInfoStruct* specific_type = static_cast<TypeInfoStruct*>(type);
+		else if (TypeInfoVariant::STRUCT == type->variant) {
+			TypeInfoStruct const* specific_type = 
+				static_cast<TypeInfoStruct const*>(type);
 
 			std::string result = std::format("{}", *specific_type->name);
 			return result;
 		}
-		else if (TypeInfoVariant::UNION == type->type) {
-			TypeInfoStruct* specific_type = static_cast<TypeInfoStruct*>(type);
+		else if (TypeInfoVariant::UNION == type->variant) {
+			TypeInfoStruct const* specific_type =
+				static_cast<TypeInfoStruct const*>(type);
 
 			std::string result = std::format("{}", *specific_type->name);
 			return result;
@@ -448,5 +454,129 @@ namespace hemera {
 			LOG_FATAL("Unknown type variant");
 			return "$ERROR$";
 		}
+	}
+
+	bool same_type(TypeInfo const* a, TypeInfo const* b) {
+		if (a == nullptr || b == nullptr) {
+			return false;
+		}
+
+		return a == b;
+	}
+
+	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to) {
+		if (from == nullptr || to == nullptr) {
+			return false;
+		}
+
+		if (from == to) {
+			return true;
+		}
+
+		if (from->variant != to->variant) {
+			return false;
+		}
+
+		switch (from->variant) {
+			// There's only one variant, they would have been equal
+		case TypeInfoVariant::ANY:
+		case TypeInfoVariant::CHAR:
+		case TypeInfoVariant::VOID:
+			LOG_WARNING(std::format(
+				"We should have had equal type pointers, from={}, to={}", 
+				to_string(from), to_string(to))
+			);
+			return false;
+			// We just can't convert it
+		case TypeInfoVariant::ENUM:
+		case TypeInfoVariant::FUNCTION:
+		case TypeInfoVariant::POINTER:
+		case TypeInfoVariant::STRUCT:
+		case TypeInfoVariant::UNION:
+		case TypeInfoVariant::TYPE:
+			return false;
+		case TypeInfoVariant::BOOLEAN:
+		case TypeInfoVariant::COMPLEX:
+		case TypeInfoVariant::FLOAT:
+		case TypeInfoVariant::INTEGER:
+		case TypeInfoVariant::QUATERNION:
+			return to->size >= from->size;
+		case TypeInfoVariant::ARRAY:
+		{
+			TypeInfoArray const* from_specific =
+				static_cast<TypeInfoArray const*>(from);
+			TypeInfoArray const* to_specific =
+				static_cast<TypeInfoArray const*>(to);
+			
+			size_t from_dimension_count = from_specific->dimensions.size();
+			size_t to_dimension_count = to_specific->dimensions.size();
+
+			if (from_dimension_count != to_dimension_count) {
+				return false;
+			}
+
+			for (size_t i = 0; i < from_dimension_count; i++) {
+				const ArrayDimension& from_dimension = from_specific->dimensions[i];
+				const ArrayDimension& to_dimension = to_specific->dimensions[i];
+
+				switch (from_dimension.type) {
+				case ArrayType::STATIC:
+					switch (to_dimension.type) {
+					case ArrayType::STATIC:
+						if (from_dimension.count != to_dimension.count) {
+							return false;
+						}
+						break;
+					case ArrayType::DYNAMIC:
+					case ArrayType::VIEW:
+						// Fine
+						break;
+					}
+					break;
+				case ArrayType::DYNAMIC:
+					switch (to_dimension.type) {
+					case ArrayType::STATIC:
+						// Runtime info, we can't convert
+						return false;
+					case ArrayType::DYNAMIC:
+					case ArrayType::VIEW:
+						// Fine
+						break;
+					}
+					break;
+				case ArrayType::VIEW:
+					switch (to_dimension.type) {
+					case ArrayType::STATIC:
+						// Runtime info, we can't convert
+					case ArrayType::DYNAMIC:
+						// Doens't make sense to resize the middle of an array
+						return false;
+					case ArrayType::VIEW:
+						// Fine
+						break;
+					}
+					break;
+				}
+			}
+			// We couldn't rule out conversion
+			return true;
+		}
+			break;
+		case TypeInfoVariant::STRING:
+		{
+			TypeInfoString const* from_specific =
+				static_cast<TypeInfoString const*>(from);
+			TypeInfoString const* to_specific =
+				static_cast<TypeInfoString const*>(to);
+
+			return from_specific->raw == to_specific->raw;
+		}
+		}
+
+		LOG_WARNING(std::format(
+			"We probably should have decided if types could convert by now, from={}, to={}",
+			to_string(from), to_string(to))
+		);
+		return false;
 	}
 }
