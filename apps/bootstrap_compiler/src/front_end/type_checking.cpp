@@ -126,8 +126,10 @@ namespace hemera {
 		FileLocation file_location, ast::Node* parent_block, 
 		FunctionInfo* function) {
 
-		IGNORE_UNUSED(parent_block);
-		IGNORE_UNUSED(executor);
+		if (parent_block != nullptr) {
+			// We are in another function, will need to hoist this out
+			//TODO(ches) generate a new unique name for the function
+		}
 
 		LOG_ASSERT(function != nullptr);
 		if (function == nullptr) {
