@@ -272,8 +272,8 @@ namespace hemera {
 		int count;
 	};
 
-	//TODO(ches) handle aliases, so they can have different names
 	enum class TypeInfoVariant {
+		ALIAS,
 		ANY,
 		ARRAY,
 		BOOLEAN,
@@ -299,6 +299,23 @@ namespace hemera {
 
 		TypeInfo(TypeInfoVariant variant, size_t size);
 		~TypeInfo();
+	};
+
+	struct TypeInfoAlias : public TypeInfo {
+		TypeInfo* base_type;
+		InternedString name;
+		bool distinct;
+		char _padding[7] = { 0 };
+		
+		/// <summary>
+		/// Create a new type alias.
+		/// </summary>
+		/// <param name="base_type">The type this is an alias of, must be a
+		/// valid type info pointer.</param>
+		/// <param name="name">The name of the alias.</param>
+		/// <param name="distinct">Whether this is a distinct type.</param>
+		TypeInfoAlias(TypeInfo* base_type, InternedString name, bool distinct);
+		~TypeInfoAlias();
 	};
 
 	struct TypeInfoArray : public TypeInfo {

@@ -14,6 +14,17 @@ namespace hemera {
 	TypeInfo::~TypeInfo() = default;
 
 
+	TypeInfoAlias::TypeInfoAlias(TypeInfo* base_type, InternedString name,
+		bool distinct)
+		: TypeInfo{ TypeInfoVariant::ALIAS, base_type->size }
+		, base_type{ base_type }
+		, name{ name }
+		, distinct{ distinct }
+	{
+	}
+	TypeInfoAlias::~TypeInfoAlias() = default;
+
+
 	TypeInfoArray::TypeInfoArray(TypeInfo* base_type,
 		MyVector<ArrayDimension>&& dimensions)
 		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(size_t) } //TODO(ches) what is the size here??
@@ -148,6 +159,7 @@ namespace hemera {
 	TypeInfo* BUILTIN_poisoned_value  = new TypeInfo(TypeInfoVariant::VOID, 0);
 
 	std::string to_string(TypeInfo const* type) {
+		//TODO(ches) handle aliases
 		if (type == nullptr) {
 			return "null";
 		}
@@ -457,6 +469,7 @@ namespace hemera {
 	}
 
 	bool same_type(TypeInfo const* a, TypeInfo const* b) {
+		//TODO(ches) handle aliases
 		if (a == nullptr || b == nullptr) {
 			return false;
 		}
@@ -465,29 +478,55 @@ namespace hemera {
 	}
 
 	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to) {
-		if (from == nullptr || to == nullptr) {
+		TypeInfo const* actual_from = from;
+		TypeInfo const* actual_to = to;
+
+		// Look up aliases until we reach the base type or a distinct alias
+		while (actual_from != nullptr 
+			&& TypeInfoVariant::ALIAS == actual_from->variant) {
+			TypeInfoAlias const* real = static_cast<TypeInfoAlias const*>(actual_from);
+			if (real->distinct) {
+				break;
+			}
+			else {
+				actual_from = real->base_type;
+			}
+		}
+		while (actual_to != nullptr
+			&& TypeInfoVariant::ALIAS == actual_to->variant) {
+			TypeInfoAlias const* real = static_cast<TypeInfoAlias const*>(actual_to);
+			if (real->distinct) {
+				break;
+			}
+			else {
+				actual_to = real->base_type;
+			}
+		}
+		
+		if (actual_from == nullptr || actual_to == nullptr) {
 			return false;
 		}
 
-		if (from == to) {
+		if (actual_from == actual_to) {
 			return true;
 		}
 
-		if (from->variant != to->variant) {
+		if (actual_from->variant != actual_to->variant) {
 			return false;
 		}
 
-		switch (from->variant) {
+		switch (actual_from->variant) {
 			// There's only one variant, they would have been equal
 		case TypeInfoVariant::ANY:
 		case TypeInfoVariant::CHAR:
 		case TypeInfoVariant::VOID:
 			LOG_WARNING(std::format(
 				"We should have had equal type pointers, from={}, to={}", 
-				to_string(from), to_string(to))
+				to_string(actual_from), to_string(actual_to))
 			);
 			return false;
 			// We just can't convert it
+		case TypeInfoVariant::ALIAS:
 		case TypeInfoVariant::ENUM:
 		case TypeInfoVariant::FUNCTION:
 		case TypeInfoVariant::POINTER:
@@ -500,13 +539,13 @@ namespace hemera {
 		case TypeInfoVariant::FLOAT:
 		case TypeInfoVariant::INTEGER:
 		case TypeInfoVariant::QUATERNION:
-			return to->size >= from->size;
+			return actual_to->size >= actual_from->size;
 		case TypeInfoVariant::ARRAY:
 		{
 			TypeInfoArray const* from_specific =
-				static_cast<TypeInfoArray const*>(from);
+				static_cast<TypeInfoArray const*>(actual_from);
 			TypeInfoArray const* to_specific =
-				static_cast<TypeInfoArray const*>(to);
+				static_cast<TypeInfoArray const*>(actual_to);
 			
 			size_t from_dimension_count = from_specific->dimensions.size();
 			size_t to_dimension_count = to_specific->dimensions.size();
@@ -565,9 +604,9 @@ namespace hemera {
 		case TypeInfoVariant::STRING:
 		{
 			TypeInfoString const* from_specific =
-				static_cast<TypeInfoString const*>(from);
+				static_cast<TypeInfoString const*>(actual_from);
 			TypeInfoString const* to_specific =
-				static_cast<TypeInfoString const*>(to);
+				static_cast<TypeInfoString const*>(actual_to);
 
 			return from_specific->raw == to_specific->raw;
 		}
@@ -575,7 +614,7 @@ namespace hemera {
 
 		LOG_WARNING(std::format(
 			"We probably should have decided if types could convert by now, from={}, to={}",
-			to_string(from), to_string(to))
+			to_string(actual_from), to_string(actual_to))
 		);
 		return false;
 	}
