@@ -28,6 +28,9 @@ VK_MAX_EXTENSION_NAME_SIZE       : uint : 256
 VK_MAX_DESCRIPTION_SIZE          : uint : 256
 VK_MAX_MEMORY_HEAPS              : uint : 16
 
+VK_NULL_HANDLE                   : VkHandle : cast[VkHandle](null)
+VK_NULL_NON_DISPATCHABLE_HANDLE  : VkNonDispatchableHandle : cast[VkNonDispatchableHandle](0)
+
 // TODO(ches) Add more Vulkan constants
 
 // Aliases
