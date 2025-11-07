@@ -105,7 +105,7 @@ VkPipelineCacheHeaderVersionOne :: struct {
     headerVersion : VkPipelineCacheHeaderVersion,
     vendorID : u32,
     deviceID : u32,
-    pipelineCacheUUID[VK_UUID_SIZE] : u8,
+    pipelineCacheUUID : u8[VK_UUID_SIZE],
 }
 
 VkAllocationCallbacks :: struct {
@@ -120,9 +120,9 @@ VkAllocationCallbacks :: struct {
 VkApplicationInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pApplicationName : ptr[char],
+    applicationName : string,
     applicationVersion : u32,
-    pEngineName : ptr[char],
+    engineName : string,
     engineVersion : u32,
     apiVersion : u32,
 }
@@ -146,10 +146,8 @@ VkInstanceCreateInfo :: struct {
     pNext : rawptr,
     flags : VkInstanceCreateFlags,
     pApplicationInfo : ptr[VkApplicationInfo],
-    enabledLayerCount : u32,
-    ppEnabledLayerNames : ptr[cstring],
-    enabledExtensionCount : u32,
-    ppEnabledExtensionNames : ptr[cstring],
+    enabledLayerNames : string[..],
+    enabledExtensionNames : string[..],
 }
 
 VkMemoryHeap :: struct {
@@ -163,61 +161,61 @@ VkMemoryType :: struct {
 }
 
 VkPhysicalDeviceFeatures :: struct {
-    robustBufferAccess : VkBool32,
-    fullDrawIndexUint32 : VkBool32,
-    imageCubeArray : VkBool32,
-    independentBlend : VkBool32,
-    geometryShader : VkBool32,
-    tessellationShader : VkBool32,
-    sampleRateShading : VkBool32,
-    dualSrcBlend : VkBool32,
-    logicOp : VkBool32,
-    multiDrawIndirect : VkBool32,
-    drawIndirectFirstInstance : VkBool32,
-    depthClamp : VkBool32,
-    depthBiasClamp : VkBool32,
-    fillModeNonSolid : VkBool32,
-    depthBounds : VkBool32,
-    wideLines : VkBool32,
-    largePoints : VkBool32,
-    alphaToOne : VkBool32,
-    multiViewport : VkBool32,
-    samplerAnisotropy : VkBool32,
-    textureCompressionETC2 : VkBool32,
-    textureCompressionASTC_LDR : VkBool32,
-    textureCompressionBC : VkBool32,
-    occlusionQueryPrecise : VkBool32,
-    pipelineStatisticsQuery : VkBool32,
-    vertexPipelineStoresAndAtomics : VkBool32,
-    fragmentStoresAndAtomics : VkBool32,
-    shaderTessellationAndGeometryPointSize : VkBool32,
-    shaderImageGatherExtended : VkBool32,
-    shaderStorageImageExtendedFormats : VkBool32,
-    shaderStorageImageMultisample : VkBool32,
-    shaderStorageImageReadWithoutFormat : VkBool32,
-    shaderStorageImageWriteWithoutFormat : VkBool32,
-    shaderUniformBufferArrayDynamicIndexing : VkBool32,
-    shaderSampledImageArrayDynamicIndexing : VkBool32,
-    shaderStorageBufferArrayDynamicIndexing : VkBool32,
-    shaderStorageImageArrayDynamicIndexing : VkBool32,
-    shaderClipDistance : VkBool32,
-    shaderCullDistance : VkBool32,
-    shaderFloat64 : VkBool32,
-    shaderInt64 : VkBool32,
-    shaderInt16 : VkBool32,
-    shaderResourceResidency : VkBool32,
-    shaderResourceMinLod : VkBool32,
-    sparseBinding : VkBool32,
-    sparseResidencyBuffer : VkBool32,
-    sparseResidencyImage2D : VkBool32,
-    sparseResidencyImage3D : VkBool32,
-    sparseResidency2Samples : VkBool32,
-    sparseResidency4Samples : VkBool32,
-    sparseResidency8Samples : VkBool32,
-    sparseResidency16Samples : VkBool32,
-    sparseResidencyAliased : VkBool32,
-    variableMultisampleRate : VkBool32,
-    inheritedQueries : VkBool32,
+    robustBufferAccess : b32,
+    fullDrawIndexUint32 : b32,
+    imageCubeArray : b32,
+    independentBlend : b32,
+    geometryShader : b32,
+    tessellationShader : b32,
+    sampleRateShading : b32,
+    dualSrcBlend : b32,
+    logicOp : b32,
+    multiDrawIndirect : b32,
+    drawIndirectFirstInstance : b32,
+    depthClamp : b32,
+    depthBiasClamp : b32,
+    fillModeNonSolid : b32,
+    depthBounds : b32,
+    wideLines : b32,
+    largePoints : b32,
+    alphaToOne : b32,
+    multiViewport : b32,
+    samplerAnisotropy : b32,
+    textureCompressionETC2 : b32,
+    textureCompressionASTC_LDR : b32,
+    textureCompressionBC : b32,
+    occlusionQueryPrecise : b32,
+    pipelineStatisticsQuery : b32,
+    vertexPipelineStoresAndAtomics : b32,
+    fragmentStoresAndAtomics : b32,
+    shaderTessellationAndGeometryPointSize : b32,
+    shaderImageGatherExtended : b32,
+    shaderStorageImageExtendedFormats : b32,
+    shaderStorageImageMultisample : b32,
+    shaderStorageImageReadWithoutFormat : b32,
+    shaderStorageImageWriteWithoutFormat : b32,
+    shaderUniformBufferArrayDynamicIndexing : b32,
+    shaderSampledImageArrayDynamicIndexing : b32,
+    shaderStorageBufferArrayDynamicIndexing : b32,
+    shaderStorageImageArrayDynamicIndexing : b32,
+    shaderClipDistance : b32,
+    shaderCullDistance : b32,
+    shaderFloat64 : b32,
+    shaderInt64 : b32,
+    shaderInt16 : b32,
+    shaderResourceResidency : b32,
+    shaderResourceMinLod : b32,
+    sparseBinding : b32,
+    sparseResidencyBuffer : b32,
+    sparseResidencyImage2D : b32,
+    sparseResidencyImage3D : b32,
+    sparseResidency2Samples : b32,
+    sparseResidency4Samples : b32,
+    sparseResidency8Samples : b32,
+    sparseResidency16Samples : b32,
+    sparseResidencyAliased : b32,
+    variableMultisampleRate : b32,
+    inheritedQueries : b32,
 }
 
 VkPhysicalDeviceLimits :: struct {
@@ -273,9 +271,9 @@ VkPhysicalDeviceLimits :: struct {
     maxFragmentDualSrcAttachments : u32,
     maxFragmentCombinedOutputResources : u32,
     maxComputeSharedMemorySize : u32,
-    maxComputeWorkGroupCount[3] : u32,
+    maxComputeWorkGroupCount : u32[3],
     maxComputeWorkGroupInvocations : u32,
-    maxComputeWorkGroupSize[3] : u32,
+    maxComputeWorkGroupSize : u32[3],
     subPixelPrecisionBits : u32,
     subTexelPrecisionBits : u32,
     mipmapPrecisionBits : u32,
@@ -284,10 +282,10 @@ VkPhysicalDeviceLimits :: struct {
     maxSamplerLodBias : f32,
     maxSamplerAnisotropy : f32,
     maxViewports : u32,
-    maxViewportDimensions[2] : u32,
+    maxViewportDimensions : u32[2],
     viewportBoundsRange : f32[2],
     viewportSubPixelBits : u32,
-    minMemoryMapAlignment : size_t,
+    minMemoryMapAlignment : u64,
     minTexelBufferOffsetAlignment : VkDeviceSize,
     minUniformBufferOffsetAlignment : VkDeviceSize,
     minStorageBufferOffsetAlignment : VkDeviceSize,
@@ -312,7 +310,7 @@ VkPhysicalDeviceLimits :: struct {
     sampledImageStencilSampleCounts : VkSampleCountFlags,
     storageImageSampleCounts : VkSampleCountFlags,
     maxSampleMaskWords : u32,
-    timestampComputeAndGraphics : VkBool32,
+    timestampComputeAndGraphics : b32,
     timestampPeriod : f32,
     maxClipDistances : u32,
     maxCullDistances : u32,
@@ -322,8 +320,8 @@ VkPhysicalDeviceLimits :: struct {
     lineWidthRange : f32[2],
     pointSizeGranularity : f32,
     lineWidthGranularity : f32,
-    strictLines : VkBool32,
-    standardSampleLocations : VkBool32,
+    strictLines : b32,
+    standardSampleLocations : b32,
     optimalBufferCopyOffsetAlignment : VkDeviceSize,
     optimalBufferCopyRowPitchAlignment : VkDeviceSize,
     nonCoherentAtomSize : VkDeviceSize,
@@ -337,11 +335,11 @@ VkPhysicalDeviceMemoryProperties :: struct {
 }
 
 VkPhysicalDeviceSparseProperties :: struct {
-    residencyStandard2DBlockShape : VkBool32,
-    residencyStandard2DMultisampleBlockShape : VkBool32,
-    residencyStandard3DBlockShape : VkBool32,
-    residencyAlignedMipSize : VkBool32,
-    residencyNonResidentStrict : VkBool32,
+    residencyStandard2DBlockShape : b32,
+    residencyStandard2DMultisampleBlockShape : b32,
+    residencyStandard3DBlockShape : b32,
+    residencyAlignedMipSize : b32,
+    residencyNonResidentStrict : b32,
 }
 
 VkPhysicalDeviceProperties :: struct {
@@ -350,7 +348,7 @@ VkPhysicalDeviceProperties :: struct {
     vendorID : u32,
     deviceID : u32,
     deviceType : VkPhysicalDeviceType,
-    deviceName : char[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE],
+    deviceName : string,
     pipelineCacheUUID[VK_UUID_SIZE] : u8,
     limits : VkPhysicalDeviceLimits,
     sparseProperties : VkPhysicalDeviceSparseProperties,
@@ -369,44 +367,38 @@ VkDeviceQueueCreateInfo :: struct {
     flags : VkDeviceQueueCreateFlags,
     queueFamilyIndex : u32,
     queueCount : u32,
-    pQueuePriorities : ptr[f32],
+    queuePriorities : f32[..],
 }
 
 VkDeviceCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDeviceCreateFlags,
-    queueCreateInfoCount : u32,
-    pQueueCreateInfos : ptr[VkDeviceQueueCreateInfo],
-    enabledLayerCount : u32,
-    ppEnabledLayerNames : ptr[cstring],
-    enabledExtensionCount : u32,
-    ppEnabledExtensionNames : ptr[cstring],
-    pEnabledFeatures : ptr[VkPhysicalDeviceFeatures],
+    queueCreateInfos : VkDeviceQueueCreateInfo[..],
+    enabledLayerNames : string[..],
+    enabledExtensionNames : string[..],
+    enabledFeatures : VkPhysicalDeviceFeatures[..],
 }
 
 VkExtensionProperties :: struct {
-    extensionName : char[VK_MAX_EXTENSION_NAME_SIZE],
+    extensionName : string,
     specVersion : u32,
 }
 
 VkLayerProperties :: struct {
-    layerName : char[VK_MAX_EXTENSION_NAME_SIZE],
+    layerName : string,
     specVersion : u32,
     implementationVersion : u32,
-    description : char[VK_MAX_DESCRIPTION_SIZE],
+    description : string,
 }
 
 VkSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreCount : u32,
-    pWaitSemaphores : ptr[VkSemaphore],
+    waitSemaphores : VkSemaphore[..],
     pWaitDstStageMask : ptr[VkPipelineStageFlags],
-    commandBufferCount : u32,
-    pCommandBuffers : ptr[VkCommandBuffer],
-    signalSemaphoreCount : u32,
-    pSignalSemaphores : ptr[VkSemaphore],
+    commandBuffers : VkCommandBuffer[..],
+    signalSemaphores : VkSemaphore[..],
 }
 
 VkMappedMemoryRange :: struct {
@@ -440,14 +432,12 @@ VkSparseMemoryBind :: struct {
 
 VkSparseBufferMemoryBindInfo :: struct {
     buffer : VkBuffer,
-    bindCount : u32,
-    pBinds : ptr[VkSparseMemoryBind],
+    binds : VkSparseMemoryBind[..],
 }
 
 VkSparseImageOpaqueMemoryBindInfo :: struct {
     image : VkImage,
-    bindCount : u32,
-    pBinds : ptr[VkSparseMemoryBind],
+    binds : VkSparseMemoryBind[..],
 }
 
 VkImageSubresource :: struct {
@@ -467,23 +457,17 @@ VkSparseImageMemoryBind :: struct {
 
 VkSparseImageMemoryBindInfo :: struct {
     image : VkImage,
-    bindCount : u32,
-    pBinds : ptr[VkSparseImageMemoryBind],
+    binds : VkSparseImageMemoryBind[..],
 }
 
 VkBindSparseInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreCount : u32,
-    pWaitSemaphores : ptr[VkSemaphore],
-    bufferBindCount : u32,
-    pBufferBinds : ptr[VkSparseBufferMemoryBindInfo],
-    imageOpaqueBindCount : u32,
-    pImageOpaqueBinds : ptr[VkSparseImageOpaqueMemoryBindInfo],
-    imageBindCount : u32,
-    pImageBinds : ptr[VkSparseImageMemoryBindInfo],
-    signalSemaphoreCount : u32,
-    pSignalSemaphores : ptr[VkSemaphore],
+    waitSemaphores : VkSemaphore[..],
+    bufferBinds : VkSparseBufferMemoryBindInfo[..],
+    imageOpaqueBinds : VkSparseImageOpaqueMemoryBindInfo[..],
+    imageBinds : VkSparseImageMemoryBindInfo[..],
+    signalSemaphores : VkSemaphore[..],
 }
 
 VkSparseImageFormatProperties :: struct {
@@ -534,8 +518,7 @@ VkBufferCreateInfo :: struct {
     size : VkDeviceSize,
     usage : VkBufferUsageFlags,
     sharingMode : VkSharingMode,
-    queueFamilyIndexCount : u32,
-    pQueueFamilyIndices : ptr[u32],
+    queueFamilyIndices : u32[..],
 }
 
 VkBufferViewCreateInfo :: struct {
@@ -561,8 +544,7 @@ VkImageCreateInfo :: struct {
     tiling : VkImageTiling,
     usage : VkImageUsageFlags,
     sharingMode : VkSharingMode,
-    queueFamilyIndexCount : u32,
-    pQueueFamilyIndices : ptr[u32],
+    queueFamilyIndices : u32[..],
     initialLayout : VkImageLayout,
 }
 
@@ -596,7 +578,7 @@ VkShaderModuleCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkShaderModuleCreateFlags,
-    codeSize : size_t,
+    codeSize : u64,
     pCode : ptr[u32],
 }
 
@@ -604,20 +586,19 @@ VkPipelineCacheCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCacheCreateFlags,
-    initialDataSize : size_t,
+    initialDataSize : u64,
     pInitialData : rawptr,
 }
 
 VkSpecializationMapEntry :: struct {
     constantID : u32,
     offset : u32,
-    size : size_t,
+    size : u64,
 }
 
 VkSpecializationInfo :: struct {
-    mapEntryCount : u32,
-    pMapEntries : ptr[VkSpecializationMapEntry],
-    dataSize : size_t,
+    mapEntries : VkSpecializationMapEntry[..],
+    dataSize : u64,
     pData : rawptr,
 }
 
@@ -627,7 +608,7 @@ VkPipelineShaderStageCreateInfo :: struct {
     flags : VkPipelineShaderStageCreateFlags,
     stage : VkShaderStageFlagBits,
     module : VkShaderModule,
-    pName : ptr[char],
+    name : string,
     pSpecializationInfo : ptr[VkSpecializationInfo],
 }
 
@@ -658,10 +639,8 @@ VkPipelineVertexInputStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineVertexInputStateCreateFlags,
-    vertexBindingDescriptionCount : u32,
-    pVertexBindingDescriptions : ptr[VkVertexInputBindingDescription],
-    vertexAttributeDescriptionCount : u32,
-    pVertexAttributeDescriptions : ptr[VkVertexInputAttributeDescription],
+    vertexBindingDescriptions : VkVertexInputBindingDescription[..],
+    vertexAttributeDescriptions : VkVertexInputAttributeDescription[..],
 }
 
 VkPipelineInputAssemblyStateCreateInfo :: struct {
@@ -669,7 +648,7 @@ VkPipelineInputAssemblyStateCreateInfo :: struct {
     pNext : rawptr,
     flags : VkPipelineInputAssemblyStateCreateFlags,
     topology : VkPrimitiveTopology,
-    primitiveRestartEnable : VkBool32,
+    primitiveRestartEnable : b32,
 }
 
 VkPipelineTessellationStateCreateInfo :: struct {
@@ -692,22 +671,20 @@ VkPipelineViewportStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineViewportStateCreateFlags,
-    viewportCount : u32,
-    pViewports : ptr[VkViewport],
-    scissorCount : u32,
-    pScissors : ptr[VkRect2D],
+    viewports : VkViewport[..],
+    scissors : VkRect2D[..],
 }
 
 VkPipelineRasterizationStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineRasterizationStateCreateFlags,
-    depthClampEnable : VkBool32,
-    rasterizerDiscardEnable : VkBool32,
+    depthClampEnable : b32,
+    rasterizerDiscardEnable : b32,
     polygonMode : VkPolygonMode,
     cullMode : VkCullModeFlags,
     frontFace : VkFrontFace,
-    depthBiasEnable : VkBool32,
+    depthBiasEnable : b32,
     depthBiasConstantFactor : f32,
     depthBiasClamp : f32,
     depthBiasSlopeFactor : f32,
@@ -719,11 +696,11 @@ VkPipelineMultisampleStateCreateInfo :: struct {
     pNext : rawptr,
     flags : VkPipelineMultisampleStateCreateFlags,
     rasterizationSamples : VkSampleCountFlagBits,
-    sampleShadingEnable : VkBool32,
+    sampleShadingEnable : b32,
     minSampleShading : f32,
     pSampleMask : ptr[VkSampleMask],
-    alphaToCoverageEnable : VkBool32,
-    alphaToOneEnable : VkBool32,
+    alphaToCoverageEnable : b32,
+    alphaToOneEnable : b32,
 }
 
 VkStencilOpState :: struct {
@@ -740,11 +717,11 @@ VkPipelineDepthStencilStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineDepthStencilStateCreateFlags,
-    depthTestEnable : VkBool32,
-    depthWriteEnable : VkBool32,
+    depthTestEnable : b32,
+    depthWriteEnable : b32,
     depthCompareOp : VkCompareOp,
-    depthBoundsTestEnable : VkBool32,
-    stencilTestEnable : VkBool32,
+    depthBoundsTestEnable : b32,
+    stencilTestEnable : b32,
     front : VkStencilOpState,
     back : VkStencilOpState,
     minDepthBounds : f32,
@@ -752,7 +729,7 @@ VkPipelineDepthStencilStateCreateInfo :: struct {
 }
 
 VkPipelineColorBlendAttachmentState :: struct {
-    blendEnable : VkBool32,
+    blendEnable : b32,
     srcColorBlendFactor : VkBlendFactor,
     dstColorBlendFactor : VkBlendFactor,
     colorBlendOp : VkBlendOp,
@@ -766,10 +743,9 @@ VkPipelineColorBlendStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineColorBlendStateCreateFlags,
-    logicOpEnable : VkBool32,
+    logicOpEnable : b32,
     logicOp : VkLogicOp,
-    attachmentCount : u32,
-    pAttachments : ptr[VkPipelineColorBlendAttachmentState],
+    attachments : VkPipelineColorBlendAttachmentState[..],
     blendConstants : f32[4],
 }
 
@@ -777,16 +753,14 @@ VkPipelineDynamicStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineDynamicStateCreateFlags,
-    dynamicStateCount : u32,
-    pDynamicStates : ptr[VkDynamicState],
+    dynamicStates : VkDynamicState[..],
 }
 
 VkGraphicsPipelineCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCreateFlags,
-    stageCount : u32,
-    pStages : ptr[VkPipelineShaderStageCreateInfo],
+    stages : VkPipelineShaderStageCreateInfo[..],
     pVertexInputState : ptr[VkPipelineVertexInputStateCreateInfo],
     pInputAssemblyState : ptr[VkPipelineInputAssemblyStateCreateInfo],
     pTessellationState : ptr[VkPipelineTessellationStateCreateInfo],
@@ -813,10 +787,8 @@ VkPipelineLayoutCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineLayoutCreateFlags,
-    setLayoutCount : u32,
-    pSetLayouts : ptr[VkDescriptorSetLayout],
-    pushConstantRangeCount : u32,
-    pPushConstantRanges : ptr[VkPushConstantRange],
+    setLayouts : VkDescriptorSetLayout[..],
+    pushConstantRanges : VkPushConstantRange[..],
 }
 
 VkSamplerCreateInfo :: struct {
@@ -830,14 +802,14 @@ VkSamplerCreateInfo :: struct {
     addressModeV : VkSamplerAddressMode,
     addressModeW : VkSamplerAddressMode,
     mipLodBias : f32,
-    anisotropyEnable : VkBool32,
+    anisotropyEnable : b32,
     maxAnisotropy : f32,
-    compareEnable : VkBool32,
+    compareEnable : b32,
     compareOp : VkCompareOp,
     minLod : f32,
     maxLod : f32,
     borderColor : VkBorderColor,
-    unnormalizedCoordinates : VkBool32,
+    unnormalizedCoordinates : b32,
 }
 
 VkCopyDescriptorSet :: struct {
@@ -874,8 +846,7 @@ VkDescriptorPoolCreateInfo :: struct {
     pNext : rawptr,
     flags : VkDescriptorPoolCreateFlags,
     maxSets : u32,
-    poolSizeCount : u32,
-    pPoolSizes : ptr[VkDescriptorPoolSize],
+    poolSizes : VkDescriptorPoolSize[..],
 }
 
 VkDescriptorSetAllocateInfo :: struct {
@@ -883,7 +854,7 @@ VkDescriptorSetAllocateInfo :: struct {
     pNext : rawptr,
     descriptorPool : VkDescriptorPool,
     descriptorSetCount : u32,
-    pSetLayouts : ptr[VkDescriptorSetLayout],
+    setLayouts : VkDescriptorSetLayout[..],
 }
 
 VkDescriptorSetLayoutBinding :: struct {
@@ -891,15 +862,14 @@ VkDescriptorSetLayoutBinding :: struct {
     descriptorType : VkDescriptorType,
     descriptorCount : u32,
     stageFlags : VkShaderStageFlags,
-    pImmutableSamplers : ptr[VkSampler],
+    immutableSamplers : VkSampler[..],
 }
 
 VkDescriptorSetLayoutCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDescriptorSetLayoutCreateFlags,
-    bindingCount : u32,
-    pBindings : ptr[VkDescriptorSetLayoutBinding],
+    bindings : VkDescriptorSetLayoutBinding[..],
 }
 
 VkWriteDescriptorSet :: struct {
@@ -937,8 +907,7 @@ VkFramebufferCreateInfo :: struct {
     pNext : rawptr,
     flags : VkFramebufferCreateFlags,
     renderPass : VkRenderPass,
-    attachmentCount : u32,
-    pAttachments : ptr[VkImageView],
+    attachments : VkImageView[..],
     width : u32,
     height : u32,
     layers : u32,
@@ -947,14 +916,11 @@ VkFramebufferCreateInfo :: struct {
 VkSubpassDescription :: struct {
     flags : VkSubpassDescriptionFlags,
     pipelineBindPoint : VkPipelineBindPoint,
-    inputAttachmentCount : u32,
-    pInputAttachments : ptr[VkAttachmentReference],
-    colorAttachmentCount : u32,
-    pColorAttachments : ptr[VkAttachmentReference],
-    pResolveAttachments : ptr[VkAttachmentReference],
+    inputAttachments : VkAttachmentReference[..],
+    colorAttachments : VkAttachmentReference[..],
+    resolveAttachments : VkAttachmentReference[..],
     pDepthStencilAttachment : ptr[VkAttachmentReference],
-    preserveAttachmentCount : u32,
-    pPreserveAttachments : ptr[u32],
+    preserveAttachments : u32[..],
 }
 
 VkSubpassDependency :: struct {
@@ -971,12 +937,9 @@ VkRenderPassCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkRenderPassCreateFlags,
-    attachmentCount : u32,
-    pAttachments : ptr[VkAttachmentDescription],
-    subpassCount : u32,
-    pSubpasses : ptr[VkSubpassDescription],
-    dependencyCount : u32,
-    pDependencies : ptr[VkSubpassDependency],
+    attachments : VkAttachmentDescription[..],
+    subpasses : VkSubpassDescription[..],
+    dependencies : VkSubpassDependency[..],
 }
 
 VkCommandPoolCreateInfo :: struct {
@@ -1000,7 +963,7 @@ VkCommandBufferInheritanceInfo :: struct {
     renderPass : VkRenderPass,
     subpass : u32,
     framebuffer : VkFramebuffer,
-    occlusionQueryEnable : VkBool32,
+    occlusionQueryEnable : b32,
     queryFlags : VkQueryControlFlags,
     pipelineStatistics : VkQueryPipelineStatisticFlags,
 }
@@ -1080,8 +1043,7 @@ VkRenderPassBeginInfo :: struct {
     renderPass : VkRenderPass,
     framebuffer : VkFramebuffer,
     renderArea : VkRect2D,
-    clearValueCount : u32,
-    pClearValues : ptr[VkClearValue],
+    clearValues : VkClearValue[..],
 }
 
 VkPhysicalDeviceSubgroupProperties :: struct {
@@ -1090,7 +1052,7 @@ VkPhysicalDeviceSubgroupProperties :: struct {
     subgroupSize : u32,
     supportedStages : VkShaderStageFlags,
     supportedOperations : VkSubgroupFeatureFlags,
-    quadOperationsInAllStages : VkBool32,
+    quadOperationsInAllStages : b32,
 }
 
 VkBindBufferMemoryInfo :: struct {
@@ -1112,17 +1074,17 @@ VkBindImageMemoryInfo :: struct {
 VkPhysicalDevice16BitStorageFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    storageBuffer16BitAccess : VkBool32,
-    uniformAndStorageBuffer16BitAccess : VkBool32,
-    storagePushConstant16 : VkBool32,
-    storageInputOutput16 : VkBool32,
+    storageBuffer16BitAccess : b32,
+    uniformAndStorageBuffer16BitAccess : b32,
+    storagePushConstant16 : b32,
+    storageInputOutput16 : b32,
 }
 
 VkMemoryDedicatedRequirements :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    prefersDedicatedAllocation : VkBool32,
-    requiresDedicatedAllocation : VkBool32,
+    prefersDedicatedAllocation : b32,
+    requiresDedicatedAllocation : b32,
 }
 
 VkMemoryDedicatedAllocateInfo :: struct {
@@ -1143,8 +1105,7 @@ VkDeviceGroupRenderPassBeginInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     deviceMask : u32,
-    deviceRenderAreaCount : u32,
-    pDeviceRenderAreas : ptr[VkRect2D],
+    deviceRenderAreas : VkRect2D[..],
 }
 
 VkDeviceGroupCommandBufferBeginInfo :: struct {
@@ -1156,12 +1117,9 @@ VkDeviceGroupCommandBufferBeginInfo :: struct {
 VkDeviceGroupSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreCount : u32,
-    pWaitSemaphoreDeviceIndices : ptr[u32],
-    commandBufferCount : u32,
-    pCommandBufferDeviceMasks : ptr[u32],
-    signalSemaphoreCount : u32,
-    pSignalSemaphoreDeviceIndices : ptr[u32],
+    waitSemaphoreDeviceIndices : u32[..],
+    commandBufferDeviceMasks : u32[..],
+    signalSemaphoreDeviceIndices : u32[..],
 }
 
 VkDeviceGroupBindSparseInfo :: struct {
@@ -1174,32 +1132,27 @@ VkDeviceGroupBindSparseInfo :: struct {
 VkBindBufferMemoryDeviceGroupInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceIndexCount : u32,
-    pDeviceIndices : ptr[u32],
+    deviceIndices : u32[..],
 }
 
 VkBindImageMemoryDeviceGroupInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceIndexCount : u32,
-    pDeviceIndices : ptr[u32],
-    splitInstanceBindRegionCount : u32,
-    pSplitInstanceBindRegions : ptr[VkRect2D],
+    deviceIndices : u32[..],
+    splitInstanceBindRegions : VkRect2D[..],
 }
 
 VkPhysicalDeviceGroupProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    physicalDeviceCount : u32,
-    physicalDevices : VkPhysicalDevice[VK_MAX_DEVICE_GROUP_SIZE],
-    subsetAllocation : VkBool32,
+    physicalDevices : VkPhysicalDevice[..],
+    subsetAllocation : b32,
 }
 
 VkDeviceGroupDeviceCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    physicalDeviceCount : u32,
-    pPhysicalDevices : ptr[VkPhysicalDevice],
+    physicalDevices : VkPhysicalDevice[..],
 }
 
 VkBufferMemoryRequirementsInfo2 :: struct {
@@ -1309,8 +1262,7 @@ VkInputAttachmentAspectReference :: struct {
 VkRenderPassInputAttachmentAspectCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    aspectReferenceCount : u32,
-    pAspectReferences : ptr[VkInputAttachmentAspectReference],
+    aspectReferences : VkInputAttachmentAspectReference[..],
 }
 
 VkImageViewUsageCreateInfo :: struct {
@@ -1329,19 +1281,19 @@ VkRenderPassMultiviewCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     subpassCount : u32,
-    pViewMasks : ptr[u32],
+    viewMasks : u32[..],
     dependencyCount : u32,
-    pViewOffsets : ptr[i32],
+    viewOffsets : i32[..],
     correlationMaskCount : u32,
-    pCorrelationMasks : ptr[u32],
+    correlationMasks : u32[..],
 }
 
 VkPhysicalDeviceMultiviewFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    multiview : VkBool32,
-    multiviewGeometryShader : VkBool32,
-    multiviewTessellationShader : VkBool32,
+    multiview : b32,
+    multiviewGeometryShader : b32,
+    multiviewTessellationShader : b32,
 }
 
 VkPhysicalDeviceMultiviewProperties :: struct {
@@ -1354,20 +1306,20 @@ VkPhysicalDeviceMultiviewProperties :: struct {
 VkPhysicalDeviceVariablePointersFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    variablePointersStorageBuffer : VkBool32,
-    variablePointers : VkBool32,
+    variablePointersStorageBuffer : b32,
+    variablePointers : b32,
 }
 
 VkPhysicalDeviceProtectedMemoryFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    protectedMemory : VkBool32,
+    protectedMemory : b32,
 }
 
 VkPhysicalDeviceProtectedMemoryProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    protectedNoFault : VkBool32,
+    protectedNoFault : b32,
 }
 
 VkDeviceQueueInfo2 :: struct {
@@ -1381,7 +1333,7 @@ VkDeviceQueueInfo2 :: struct {
 VkProtectedSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    protectedSubmit : VkBool32,
+    protectedSubmit : b32,
 }
 
 VkSamplerYcbcrConversionCreateInfo :: struct {
@@ -1394,7 +1346,7 @@ VkSamplerYcbcrConversionCreateInfo :: struct {
     xChromaOffset : VkChromaLocation,
     yChromaOffset : VkChromaLocation,
     chromaFilter : VkFilter,
-    forceExplicitReconstruction : VkBool32,
+    forceExplicitReconstruction : b32,
 }
 
 VkSamplerYcbcrConversionInfo :: struct {
@@ -1418,7 +1370,7 @@ VkImagePlaneMemoryRequirementsInfo :: struct {
 VkPhysicalDeviceSamplerYcbcrConversionFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    samplerYcbcrConversion : VkBool32,
+    samplerYcbcrConversion : b32,
 }
 
 VkSamplerYcbcrConversionImageFormatProperties :: struct {
@@ -1432,16 +1384,15 @@ VkDescriptorUpdateTemplateEntry :: struct {
     dstArrayElement : u32,
     descriptorCount : u32,
     descriptorType : VkDescriptorType,
-    offset : size_t,
-    stride : size_t,
+    offset : u64,
+    stride : u64,
 }
 
 VkDescriptorUpdateTemplateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDescriptorUpdateTemplateCreateFlags,
-    descriptorUpdateEntryCount : u32,
-    pDescriptorUpdateEntries : ptr[VkDescriptorUpdateTemplateEntry],
+    descriptorUpdateEntries : VkDescriptorUpdateTemplateEntry[..],
     templateType : VkDescriptorUpdateTemplateType,
     descriptorSetLayout : VkDescriptorSetLayout,
     pipelineBindPoint : VkPipelineBindPoint,
@@ -1488,7 +1439,7 @@ VkPhysicalDeviceIDProperties :: struct {
     driverUUID[VK_UUID_SIZE] : u8,
     deviceLUID[VK_LUID_SIZE] : u8,
     deviceNodeMask : u32,
-    deviceLUIDValid : VkBool32,
+    deviceLUIDValid : b32,
 }
 
 VkExternalMemoryImageCreateInfo :: struct {
@@ -1559,30 +1510,30 @@ VkPhysicalDeviceMaintenance3Properties :: struct {
 VkDescriptorSetLayoutSupport :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    supported : VkBool32,
+    supported : b32,
 }
 
 VkPhysicalDeviceShaderDrawParametersFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderDrawParameters : VkBool32,
+    shaderDrawParameters : b32,
 }
 
 VkPhysicalDeviceVulkan11Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    storageBuffer16BitAccess : VkBool32,
-    uniformAndStorageBuffer16BitAccess : VkBool32,
-    storagePushConstant16 : VkBool32,
-    storageInputOutput16 : VkBool32,
-    multiview : VkBool32,
-    multiviewGeometryShader : VkBool32,
-    multiviewTessellationShader : VkBool32,
-    variablePointersStorageBuffer : VkBool32,
-    variablePointers : VkBool32,
-    protectedMemory : VkBool32,
-    samplerYcbcrConversion : VkBool32,
-    shaderDrawParameters : VkBool32,
+    storageBuffer16BitAccess : b32,
+    uniformAndStorageBuffer16BitAccess : b32,
+    storagePushConstant16 : b32,
+    storageInputOutput16 : b32,
+    multiview : b32,
+    multiviewGeometryShader : b32,
+    multiviewTessellationShader : b32,
+    variablePointersStorageBuffer : b32,
+    variablePointers : b32,
+    protectedMemory : b32,
+    samplerYcbcrConversion : b32,
+    shaderDrawParameters : b32,
 }
 
 VkPhysicalDeviceVulkan11Properties :: struct {
@@ -1592,15 +1543,15 @@ VkPhysicalDeviceVulkan11Properties :: struct {
     driverUUID[VK_UUID_SIZE] : u8,
     deviceLUID[VK_LUID_SIZE] : u8,
     deviceNodeMask : u32,
-    deviceLUIDValid : VkBool32,
+    deviceLUIDValid : b32,
     subgroupSize : u32,
     subgroupSupportedStages : VkShaderStageFlags,
     subgroupSupportedOperations : VkSubgroupFeatureFlags,
-    subgroupQuadOperationsInAllStages : VkBool32,
+    subgroupQuadOperationsInAllStages : b32,
     pointClippingBehavior : VkPointClippingBehavior,
     maxMultiviewViewCount : u32,
     maxMultiviewInstanceIndex : u32,
-    protectedNoFault : VkBool32,
+    protectedNoFault : b32,
     maxPerSetDescriptors : u32,
     maxMemoryAllocationSize : VkDeviceSize,
 }
@@ -1608,53 +1559,53 @@ VkPhysicalDeviceVulkan11Properties :: struct {
 VkPhysicalDeviceVulkan12Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    samplerMirrorClampToEdge : VkBool32,
-    drawIndirectCount : VkBool32,
-    storageBuffer8BitAccess : VkBool32,
-    uniformAndStorageBuffer8BitAccess : VkBool32,
-    storagePushConstant8 : VkBool32,
-    shaderBufferInt64Atomics : VkBool32,
-    shaderSharedInt64Atomics : VkBool32,
-    shaderFloat16 : VkBool32,
-    shaderInt8 : VkBool32,
-    descriptorIndexing : VkBool32,
-    shaderInputAttachmentArrayDynamicIndexing : VkBool32,
-    shaderUniformTexelBufferArrayDynamicIndexing : VkBool32,
-    shaderStorageTexelBufferArrayDynamicIndexing : VkBool32,
-    shaderUniformBufferArrayNonUniformIndexing : VkBool32,
-    shaderSampledImageArrayNonUniformIndexing : VkBool32,
-    shaderStorageBufferArrayNonUniformIndexing : VkBool32,
-    shaderStorageImageArrayNonUniformIndexing : VkBool32,
-    shaderInputAttachmentArrayNonUniformIndexing : VkBool32,
-    shaderUniformTexelBufferArrayNonUniformIndexing : VkBool32,
-    shaderStorageTexelBufferArrayNonUniformIndexing : VkBool32,
-    descriptorBindingUniformBufferUpdateAfterBind : VkBool32,
-    descriptorBindingSampledImageUpdateAfterBind : VkBool32,
-    descriptorBindingStorageImageUpdateAfterBind : VkBool32,
-    descriptorBindingStorageBufferUpdateAfterBind : VkBool32,
-    descriptorBindingUniformTexelBufferUpdateAfterBind : VkBool32,
-    descriptorBindingStorageTexelBufferUpdateAfterBind : VkBool32,
-    descriptorBindingUpdateUnusedWhilePending : VkBool32,
-    descriptorBindingPartiallyBound : VkBool32,
-    descriptorBindingVariableDescriptorCount : VkBool32,
-    runtimeDescriptorArray : VkBool32,
-    samplerFilterMinmax : VkBool32,
-    scalarBlockLayout : VkBool32,
-    imagelessFramebuffer : VkBool32,
-    uniformBufferStandardLayout : VkBool32,
-    shaderSubgroupExtendedTypes : VkBool32,
-    separateDepthStencilLayouts : VkBool32,
-    hostQueryReset : VkBool32,
-    timelineSemaphore : VkBool32,
-    bufferDeviceAddress : VkBool32,
-    bufferDeviceAddressCaptureReplay : VkBool32,
-    bufferDeviceAddressMultiDevice : VkBool32,
-    vulkanMemoryModel : VkBool32,
-    vulkanMemoryModelDeviceScope : VkBool32,
-    vulkanMemoryModelAvailabilityVisibilityChains : VkBool32,
-    shaderOutputViewportIndex : VkBool32,
-    shaderOutputLayer : VkBool32,
-    subgroupBroadcastDynamicId : VkBool32,
+    samplerMirrorClampToEdge : b32,
+    drawIndirectCount : b32,
+    storageBuffer8BitAccess : b32,
+    uniformAndStorageBuffer8BitAccess : b32,
+    storagePushConstant8 : b32,
+    shaderBufferInt64Atomics : b32,
+    shaderSharedInt64Atomics : b32,
+    shaderFloat16 : b32,
+    shaderInt8 : b32,
+    descriptorIndexing : b32,
+    shaderInputAttachmentArrayDynamicIndexing : b32,
+    shaderUniformTexelBufferArrayDynamicIndexing : b32,
+    shaderStorageTexelBufferArrayDynamicIndexing : b32,
+    shaderUniformBufferArrayNonUniformIndexing : b32,
+    shaderSampledImageArrayNonUniformIndexing : b32,
+    shaderStorageBufferArrayNonUniformIndexing : b32,
+    shaderStorageImageArrayNonUniformIndexing : b32,
+    shaderInputAttachmentArrayNonUniformIndexing : b32,
+    shaderUniformTexelBufferArrayNonUniformIndexing : b32,
+    shaderStorageTexelBufferArrayNonUniformIndexing : b32,
+    descriptorBindingUniformBufferUpdateAfterBind : b32,
+    descriptorBindingSampledImageUpdateAfterBind : b32,
+    descriptorBindingStorageImageUpdateAfterBind : b32,
+    descriptorBindingStorageBufferUpdateAfterBind : b32,
+    descriptorBindingUniformTexelBufferUpdateAfterBind : b32,
+    descriptorBindingStorageTexelBufferUpdateAfterBind : b32,
+    descriptorBindingUpdateUnusedWhilePending : b32,
+    descriptorBindingPartiallyBound : b32,
+    descriptorBindingVariableDescriptorCount : b32,
+    runtimeDescriptorArray : b32,
+    samplerFilterMinmax : b32,
+    scalarBlockLayout : b32,
+    imagelessFramebuffer : b32,
+    uniformBufferStandardLayout : b32,
+    shaderSubgroupExtendedTypes : b32,
+    separateDepthStencilLayouts : b32,
+    hostQueryReset : b32,
+    timelineSemaphore : b32,
+    bufferDeviceAddress : b32,
+    bufferDeviceAddressCaptureReplay : b32,
+    bufferDeviceAddressMultiDevice : b32,
+    vulkanMemoryModel : b32,
+    vulkanMemoryModelDeviceScope : b32,
+    vulkanMemoryModelAvailabilityVisibilityChains : b32,
+    shaderOutputViewportIndex : b32,
+    shaderOutputLayer : b32,
+    subgroupBroadcastDynamicId : b32,
 }
 
 VkConformanceVersion :: struct {
@@ -1668,34 +1619,34 @@ VkPhysicalDeviceVulkan12Properties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     driverID : VkDriverId,
-    driverName : char[VK_MAX_DRIVER_NAME_SIZE],
-    driverInfo : char[VK_MAX_DRIVER_INFO_SIZE],
+    driverName : string,
+    driverInfo : string,
     conformanceVersion : VkConformanceVersion,
     denormBehaviorIndependence : VkShaderFloatControlsIndependence,
     roundingModeIndependence : VkShaderFloatControlsIndependence,
-    shaderSignedZeroInfNanPreserveFloat16 : VkBool32,
-    shaderSignedZeroInfNanPreserveFloat32 : VkBool32,
-    shaderSignedZeroInfNanPreserveFloat64 : VkBool32,
-    shaderDenormPreserveFloat16 : VkBool32,
-    shaderDenormPreserveFloat32 : VkBool32,
-    shaderDenormPreserveFloat64 : VkBool32,
-    shaderDenormFlushToZeroFloat16 : VkBool32,
-    shaderDenormFlushToZeroFloat32 : VkBool32,
-    shaderDenormFlushToZeroFloat64 : VkBool32,
-    shaderRoundingModeRTEFloat16 : VkBool32,
-    shaderRoundingModeRTEFloat32 : VkBool32,
-    shaderRoundingModeRTEFloat64 : VkBool32,
-    shaderRoundingModeRTZFloat16 : VkBool32,
-    shaderRoundingModeRTZFloat32 : VkBool32,
-    shaderRoundingModeRTZFloat64 : VkBool32,
+    shaderSignedZeroInfNanPreserveFloat16 : b32,
+    shaderSignedZeroInfNanPreserveFloat32 : b32,
+    shaderSignedZeroInfNanPreserveFloat64 : b32,
+    shaderDenormPreserveFloat16 : b32,
+    shaderDenormPreserveFloat32 : b32,
+    shaderDenormPreserveFloat64 : b32,
+    shaderDenormFlushToZeroFloat16 : b32,
+    shaderDenormFlushToZeroFloat32 : b32,
+    shaderDenormFlushToZeroFloat64 : b32,
+    shaderRoundingModeRTEFloat16 : b32,
+    shaderRoundingModeRTEFloat32 : b32,
+    shaderRoundingModeRTEFloat64 : b32,
+    shaderRoundingModeRTZFloat16 : b32,
+    shaderRoundingModeRTZFloat32 : b32,
+    shaderRoundingModeRTZFloat64 : b32,
     maxUpdateAfterBindDescriptorsInAllPools : u32,
-    shaderUniformBufferArrayNonUniformIndexingNative : VkBool32,
-    shaderSampledImageArrayNonUniformIndexingNative : VkBool32,
-    shaderStorageBufferArrayNonUniformIndexingNative : VkBool32,
-    shaderStorageImageArrayNonUniformIndexingNative : VkBool32,
-    shaderInputAttachmentArrayNonUniformIndexingNative : VkBool32,
-    robustBufferAccessUpdateAfterBind : VkBool32,
-    quadDivergentImplicitLod : VkBool32,
+    shaderUniformBufferArrayNonUniformIndexingNative : b32,
+    shaderSampledImageArrayNonUniformIndexingNative : b32,
+    shaderStorageBufferArrayNonUniformIndexingNative : b32,
+    shaderStorageImageArrayNonUniformIndexingNative : b32,
+    shaderInputAttachmentArrayNonUniformIndexingNative : b32,
+    robustBufferAccessUpdateAfterBind : b32,
+    quadDivergentImplicitLod : b32,
     maxPerStageDescriptorUpdateAfterBindSamplers : u32,
     maxPerStageDescriptorUpdateAfterBindUniformBuffers : u32,
     maxPerStageDescriptorUpdateAfterBindStorageBuffers : u32,
@@ -1713,10 +1664,10 @@ VkPhysicalDeviceVulkan12Properties :: struct {
     maxDescriptorSetUpdateAfterBindInputAttachments : u32,
     supportedDepthResolveModes : VkResolveModeFlags,
     supportedStencilResolveModes : VkResolveModeFlags,
-    independentResolveNone : VkBool32,
-    independentResolve : VkBool32,
-    filterMinmaxSingleComponentFormats : VkBool32,
-    filterMinmaxImageComponentMapping : VkBool32,
+    independentResolveNone : b32,
+    independentResolve : b32,
+    filterMinmaxSingleComponentFormats : b32,
+    filterMinmaxImageComponentMapping : b32,
     maxTimelineSemaphoreValueDifference : u64,
     framebufferIntegerColorSampleCounts : VkSampleCountFlags,
 }
@@ -1724,8 +1675,7 @@ VkPhysicalDeviceVulkan12Properties :: struct {
 VkImageFormatListCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    viewFormatCount : u32,
-    pViewFormats : ptr[VkFormat],
+    viewFormats : VkFormat[..],
 }
 
 VkAttachmentDescription2 :: struct {
@@ -1756,14 +1706,11 @@ VkSubpassDescription2 :: struct {
     flags : VkSubpassDescriptionFlags,
     pipelineBindPoint : VkPipelineBindPoint,
     viewMask : u32,
-    inputAttachmentCount : u32,
-    pInputAttachments : ptr[VkAttachmentReference2],
-    colorAttachmentCount : u32,
-    pColorAttachments : ptr[VkAttachmentReference2],
-    pResolveAttachments : ptr[VkAttachmentReference2],
+    inputAttachments : VkAttachmentReference2[..],
+    colorAttachments : VkAttachmentReference2[..],
+    resolveAttachments : VkAttachmentReference2[..],
     pDepthStencilAttachment : ptr[VkAttachmentReference2],
-    preserveAttachmentCount : u32,
-    pPreserveAttachments : ptr[u32],
+    preserveAttachments : u32[..],
 }
 
 VkSubpassDependency2 :: struct {
@@ -1783,14 +1730,10 @@ VkRenderPassCreateInfo2 :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkRenderPassCreateFlags,
-    attachmentCount : u32,
-    pAttachments : ptr[VkAttachmentDescription2],
-    subpassCount : u32,
-    pSubpasses : ptr[VkSubpassDescription2],
-    dependencyCount : u32,
-    pDependencies : ptr[VkSubpassDependency2],
-    correlatedViewMaskCount : u32,
-    pCorrelatedViewMasks : ptr[u32],
+    attachments : VkAttachmentDescription2[..],
+    subpasses : VkSubpassDescription2[..],
+    dependencies : VkSubpassDependency2[..],
+    correlatedViewMasks : u32[..],
 }
 
 VkSubpassBeginInfo :: struct {
@@ -1807,32 +1750,32 @@ VkSubpassEndInfo :: struct {
 VkPhysicalDevice8BitStorageFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    storageBuffer8BitAccess : VkBool32,
-    uniformAndStorageBuffer8BitAccess : VkBool32,
-    storagePushConstant8 : VkBool32,
+    storageBuffer8BitAccess : b32,
+    uniformAndStorageBuffer8BitAccess : b32,
+    storagePushConstant8 : b32,
 }
 
 VkPhysicalDeviceDriverProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     driverID : VkDriverId,
-    driverName : char[VK_MAX_DRIVER_NAME_SIZE],
-    driverInfo : char[VK_MAX_DRIVER_INFO_SIZE],
+    driverName : string,
+    driverInfo : string,
     conformanceVersion : VkConformanceVersion,
 }
 
 VkPhysicalDeviceShaderAtomicInt64Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderBufferInt64Atomics : VkBool32,
-    shaderSharedInt64Atomics : VkBool32,
+    shaderBufferInt64Atomics : b32,
+    shaderSharedInt64Atomics : b32,
 }
 
 VkPhysicalDeviceShaderFloat16Int8Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderFloat16 : VkBool32,
-    shaderInt8 : VkBool32,
+    shaderFloat16 : b32,
+    shaderInt8 : b32,
 }
 
 VkPhysicalDeviceFloatControlsProperties :: struct {
@@ -1840,66 +1783,65 @@ VkPhysicalDeviceFloatControlsProperties :: struct {
     pNext : rawptr,
     denormBehaviorIndependence : VkShaderFloatControlsIndependence,
     roundingModeIndependence : VkShaderFloatControlsIndependence,
-    shaderSignedZeroInfNanPreserveFloat16 : VkBool32,
-    shaderSignedZeroInfNanPreserveFloat32 : VkBool32,
-    shaderSignedZeroInfNanPreserveFloat64 : VkBool32,
-    shaderDenormPreserveFloat16 : VkBool32,
-    shaderDenormPreserveFloat32 : VkBool32,
-    shaderDenormPreserveFloat64 : VkBool32,
-    shaderDenormFlushToZeroFloat16 : VkBool32,
-    shaderDenormFlushToZeroFloat32 : VkBool32,
-    shaderDenormFlushToZeroFloat64 : VkBool32,
-    shaderRoundingModeRTEFloat16 : VkBool32,
-    shaderRoundingModeRTEFloat32 : VkBool32,
-    shaderRoundingModeRTEFloat64 : VkBool32,
-    shaderRoundingModeRTZFloat16 : VkBool32,
-    shaderRoundingModeRTZFloat32 : VkBool32,
-    shaderRoundingModeRTZFloat64 : VkBool32,
+    shaderSignedZeroInfNanPreserveFloat16 : b32,
+    shaderSignedZeroInfNanPreserveFloat32 : b32,
+    shaderSignedZeroInfNanPreserveFloat64 : b32,
+    shaderDenormPreserveFloat16 : b32,
+    shaderDenormPreserveFloat32 : b32,
+    shaderDenormPreserveFloat64 : b32,
+    shaderDenormFlushToZeroFloat16 : b32,
+    shaderDenormFlushToZeroFloat32 : b32,
+    shaderDenormFlushToZeroFloat64 : b32,
+    shaderRoundingModeRTEFloat16 : b32,
+    shaderRoundingModeRTEFloat32 : b32,
+    shaderRoundingModeRTEFloat64 : b32,
+    shaderRoundingModeRTZFloat16 : b32,
+    shaderRoundingModeRTZFloat32 : b32,
+    shaderRoundingModeRTZFloat64 : b32,
 }
 
 VkDescriptorSetLayoutBindingFlagsCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    bindingCount : u32,
-    pBindingFlags : ptr[VkDescriptorBindingFlags],
+    bindingFlags : VkDescriptorBindingFlags[..],
 }
 
 VkPhysicalDeviceDescriptorIndexingFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderInputAttachmentArrayDynamicIndexing : VkBool32,
-    shaderUniformTexelBufferArrayDynamicIndexing : VkBool32,
-    shaderStorageTexelBufferArrayDynamicIndexing : VkBool32,
-    shaderUniformBufferArrayNonUniformIndexing : VkBool32,
-    shaderSampledImageArrayNonUniformIndexing : VkBool32,
-    shaderStorageBufferArrayNonUniformIndexing : VkBool32,
-    shaderStorageImageArrayNonUniformIndexing : VkBool32,
-    shaderInputAttachmentArrayNonUniformIndexing : VkBool32,
-    shaderUniformTexelBufferArrayNonUniformIndexing : VkBool32,
-    shaderStorageTexelBufferArrayNonUniformIndexing : VkBool32,
-    descriptorBindingUniformBufferUpdateAfterBind : VkBool32,
-    descriptorBindingSampledImageUpdateAfterBind : VkBool32,
-    descriptorBindingStorageImageUpdateAfterBind : VkBool32,
-    descriptorBindingStorageBufferUpdateAfterBind : VkBool32,
-    descriptorBindingUniformTexelBufferUpdateAfterBind : VkBool32,
-    descriptorBindingStorageTexelBufferUpdateAfterBind : VkBool32,
-    descriptorBindingUpdateUnusedWhilePending : VkBool32,
-    descriptorBindingPartiallyBound : VkBool32,
-    descriptorBindingVariableDescriptorCount : VkBool32,
-    runtimeDescriptorArray : VkBool32,
+    shaderInputAttachmentArrayDynamicIndexing : b32,
+    shaderUniformTexelBufferArrayDynamicIndexing : b32,
+    shaderStorageTexelBufferArrayDynamicIndexing : b32,
+    shaderUniformBufferArrayNonUniformIndexing : b32,
+    shaderSampledImageArrayNonUniformIndexing : b32,
+    shaderStorageBufferArrayNonUniformIndexing : b32,
+    shaderStorageImageArrayNonUniformIndexing : b32,
+    shaderInputAttachmentArrayNonUniformIndexing : b32,
+    shaderUniformTexelBufferArrayNonUniformIndexing : b32,
+    shaderStorageTexelBufferArrayNonUniformIndexing : b32,
+    descriptorBindingUniformBufferUpdateAfterBind : b32,
+    descriptorBindingSampledImageUpdateAfterBind : b32,
+    descriptorBindingStorageImageUpdateAfterBind : b32,
+    descriptorBindingStorageBufferUpdateAfterBind : b32,
+    descriptorBindingUniformTexelBufferUpdateAfterBind : b32,
+    descriptorBindingStorageTexelBufferUpdateAfterBind : b32,
+    descriptorBindingUpdateUnusedWhilePending : b32,
+    descriptorBindingPartiallyBound : b32,
+    descriptorBindingVariableDescriptorCount : b32,
+    runtimeDescriptorArray : b32,
 }
 
 VkPhysicalDeviceDescriptorIndexingProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     maxUpdateAfterBindDescriptorsInAllPools : u32,
-    shaderUniformBufferArrayNonUniformIndexingNative : VkBool32,
-    shaderSampledImageArrayNonUniformIndexingNative : VkBool32,
-    shaderStorageBufferArrayNonUniformIndexingNative : VkBool32,
-    shaderStorageImageArrayNonUniformIndexingNative : VkBool32,
-    shaderInputAttachmentArrayNonUniformIndexingNative : VkBool32,
-    robustBufferAccessUpdateAfterBind : VkBool32,
-    quadDivergentImplicitLod : VkBool32,
+    shaderUniformBufferArrayNonUniformIndexingNative : b32,
+    shaderSampledImageArrayNonUniformIndexingNative : b32,
+    shaderStorageBufferArrayNonUniformIndexingNative : b32,
+    shaderStorageImageArrayNonUniformIndexingNative : b32,
+    shaderInputAttachmentArrayNonUniformIndexingNative : b32,
+    robustBufferAccessUpdateAfterBind : b32,
+    quadDivergentImplicitLod : b32,
     maxPerStageDescriptorUpdateAfterBindSamplers : u32,
     maxPerStageDescriptorUpdateAfterBindUniformBuffers : u32,
     maxPerStageDescriptorUpdateAfterBindStorageBuffers : u32,
@@ -1920,8 +1862,7 @@ VkPhysicalDeviceDescriptorIndexingProperties :: struct {
 VkDescriptorSetVariableDescriptorCountAllocateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    descriptorSetCount : u32,
-    pDescriptorCounts : ptr[u32],
+    descriptorCounts : u32[..],
 }
 
 VkDescriptorSetVariableDescriptorCountLayoutSupport :: struct {
@@ -1943,14 +1884,14 @@ VkPhysicalDeviceDepthStencilResolveProperties :: struct {
     pNext : rawptr,
     supportedDepthResolveModes : VkResolveModeFlags,
     supportedStencilResolveModes : VkResolveModeFlags,
-    independentResolveNone : VkBool32,
-    independentResolve : VkBool32,
+    independentResolveNone : b32,
+    independentResolve : b32,
 }
 
 VkPhysicalDeviceScalarBlockLayoutFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    scalarBlockLayout : VkBool32,
+    scalarBlockLayout : b32,
 }
 
 VkImageStencilUsageCreateInfo :: struct {
@@ -1968,22 +1909,22 @@ VkSamplerReductionModeCreateInfo :: struct {
 VkPhysicalDeviceSamplerFilterMinmaxProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    filterMinmaxSingleComponentFormats : VkBool32,
-    filterMinmaxImageComponentMapping : VkBool32,
+    filterMinmaxSingleComponentFormats : b32,
+    filterMinmaxImageComponentMapping : b32,
 }
 
 VkPhysicalDeviceVulkanMemoryModelFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    vulkanMemoryModel : VkBool32,
-    vulkanMemoryModelDeviceScope : VkBool32,
-    vulkanMemoryModelAvailabilityVisibilityChains : VkBool32,
+    vulkanMemoryModel : b32,
+    vulkanMemoryModelDeviceScope : b32,
+    vulkanMemoryModelAvailabilityVisibilityChains : b32,
 }
 
 VkPhysicalDeviceImagelessFramebufferFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    imagelessFramebuffer : VkBool32,
+    imagelessFramebuffer : b32,
 }
 
 VkFramebufferAttachmentImageInfo :: struct {
@@ -1994,40 +1935,37 @@ VkFramebufferAttachmentImageInfo :: struct {
     width : u32,
     height : u32,
     layerCount : u32,
-    viewFormatCount : u32,
-    pViewFormats : ptr[VkFormat],
+    viewFormats : VkFormat[..],
 }
 
 VkFramebufferAttachmentsCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentImageInfoCount : u32,
-    pAttachmentImageInfos : ptr[VkFramebufferAttachmentImageInfo],
+    attachmentImageInfos : VkFramebufferAttachmentImageInfo[..],
 }
 
 VkRenderPassAttachmentBeginInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentCount : u32,
-    pAttachments : ptr[VkImageView],
+    attachments : VkImageView[..],
 }
 
 VkPhysicalDeviceUniformBufferStandardLayoutFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    uniformBufferStandardLayout : VkBool32,
+    uniformBufferStandardLayout : b32,
 }
 
 VkPhysicalDeviceShaderSubgroupExtendedTypesFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderSubgroupExtendedTypes : VkBool32,
+    shaderSubgroupExtendedTypes : b32,
 }
 
 VkPhysicalDeviceSeparateDepthStencilLayoutsFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    separateDepthStencilLayouts : VkBool32,
+    separateDepthStencilLayouts : b32,
 }
 
 VkAttachmentReferenceStencilLayout :: struct {
@@ -2046,13 +1984,13 @@ VkAttachmentDescriptionStencilLayout :: struct {
 VkPhysicalDeviceHostQueryResetFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    hostQueryReset : VkBool32,
+    hostQueryReset : b32,
 }
 
 VkPhysicalDeviceTimelineSemaphoreFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    timelineSemaphore : VkBool32,
+    timelineSemaphore : b32,
 }
 
 VkPhysicalDeviceTimelineSemaphoreProperties :: struct {
@@ -2071,19 +2009,16 @@ VkSemaphoreTypeCreateInfo :: struct {
 VkTimelineSemaphoreSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreValueCount : u32,
-    pWaitSemaphoreValues : ptr[u64],
-    signalSemaphoreValueCount : u32,
-    pSignalSemaphoreValues : ptr[u64],
+    waitSemaphoreValues : u64[..],
+    signalSemaphoreValues : u64[..],
 }
 
 VkSemaphoreWaitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkSemaphoreWaitFlags,
-    semaphoreCount : u32,
-    pSemaphores : ptr[VkSemaphore],
-    pValues : ptr[u64],
+    semaphores : VkSemaphore[..],
+    values : u64[..],
 }
 
 VkSemaphoreSignalInfo :: struct {
@@ -2096,9 +2031,9 @@ VkSemaphoreSignalInfo :: struct {
 VkPhysicalDeviceBufferDeviceAddressFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    bufferDeviceAddress : VkBool32,
-    bufferDeviceAddressCaptureReplay : VkBool32,
-    bufferDeviceAddressMultiDevice : VkBool32,
+    bufferDeviceAddress : b32,
+    bufferDeviceAddressCaptureReplay : b32,
+    bufferDeviceAddressMultiDevice : b32,
 }
 
 VkBufferDeviceAddressInfo :: struct {
@@ -2128,21 +2063,21 @@ VkDeviceMemoryOpaqueCaptureAddressInfo :: struct {
 VkPhysicalDeviceVulkan13Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    robustImageAccess : VkBool32,
-    inlineUniformBlock : VkBool32,
-    descriptorBindingInlineUniformBlockUpdateAfterBind : VkBool32,
-    pipelineCreationCacheControl : VkBool32,
-    privateData : VkBool32,
-    shaderDemoteToHelperInvocation : VkBool32,
-    shaderTerminateInvocation : VkBool32,
-    subgroupSizeControl : VkBool32,
-    computeFullSubgroups : VkBool32,
-    synchronization2 : VkBool32,
-    textureCompressionASTC_HDR : VkBool32,
-    shaderZeroInitializeWorkgroupMemory : VkBool32,
-    dynamicRendering : VkBool32,
-    shaderIntegerDotProduct : VkBool32,
-    maintenance4 : VkBool32,
+    robustImageAccess : b32,
+    inlineUniformBlock : b32,
+    descriptorBindingInlineUniformBlockUpdateAfterBind : b32,
+    pipelineCreationCacheControl : b32,
+    privateData : b32,
+    shaderDemoteToHelperInvocation : b32,
+    shaderTerminateInvocation : b32,
+    subgroupSizeControl : b32,
+    computeFullSubgroups : b32,
+    synchronization2 : b32,
+    textureCompressionASTC_HDR : b32,
+    shaderZeroInitializeWorkgroupMemory : b32,
+    dynamicRendering : b32,
+    shaderIntegerDotProduct : b32,
+    maintenance4 : b32,
 }
 
 VkPhysicalDeviceVulkan13Properties :: struct {
@@ -2158,40 +2093,40 @@ VkPhysicalDeviceVulkan13Properties :: struct {
     maxDescriptorSetInlineUniformBlocks : u32,
     maxDescriptorSetUpdateAfterBindInlineUniformBlocks : u32,
     maxInlineUniformTotalSize : u32,
-    integerDotProduct8BitUnsignedAccelerated : VkBool32,
-    integerDotProduct8BitSignedAccelerated : VkBool32,
-    integerDotProduct8BitMixedSignednessAccelerated : VkBool32,
-    integerDotProduct4x8BitPackedUnsignedAccelerated : VkBool32,
-    integerDotProduct4x8BitPackedSignedAccelerated : VkBool32,
-    integerDotProduct4x8BitPackedMixedSignednessAccelerated : VkBool32,
-    integerDotProduct16BitUnsignedAccelerated : VkBool32,
-    integerDotProduct16BitSignedAccelerated : VkBool32,
-    integerDotProduct16BitMixedSignednessAccelerated : VkBool32,
-    integerDotProduct32BitUnsignedAccelerated : VkBool32,
-    integerDotProduct32BitSignedAccelerated : VkBool32,
-    integerDotProduct32BitMixedSignednessAccelerated : VkBool32,
-    integerDotProduct64BitUnsignedAccelerated : VkBool32,
-    integerDotProduct64BitSignedAccelerated : VkBool32,
-    integerDotProduct64BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating8BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating8BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating16BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating16BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating32BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating32BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating64BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating64BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated : VkBool32,
+    integerDotProduct8BitUnsignedAccelerated : b32,
+    integerDotProduct8BitSignedAccelerated : b32,
+    integerDotProduct8BitMixedSignednessAccelerated : b32,
+    integerDotProduct4x8BitPackedUnsignedAccelerated : b32,
+    integerDotProduct4x8BitPackedSignedAccelerated : b32,
+    integerDotProduct4x8BitPackedMixedSignednessAccelerated : b32,
+    integerDotProduct16BitUnsignedAccelerated : b32,
+    integerDotProduct16BitSignedAccelerated : b32,
+    integerDotProduct16BitMixedSignednessAccelerated : b32,
+    integerDotProduct32BitUnsignedAccelerated : b32,
+    integerDotProduct32BitSignedAccelerated : b32,
+    integerDotProduct32BitMixedSignednessAccelerated : b32,
+    integerDotProduct64BitUnsignedAccelerated : b32,
+    integerDotProduct64BitSignedAccelerated : b32,
+    integerDotProduct64BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating8BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating8BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating16BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating16BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating32BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating32BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating64BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating64BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated : b32,
     storageTexelBufferOffsetAlignmentBytes : VkDeviceSize,
-    storageTexelBufferOffsetSingleTexelAlignment : VkBool32,
+    storageTexelBufferOffsetSingleTexelAlignment : b32,
     uniformTexelBufferOffsetAlignmentBytes : VkDeviceSize,
-    uniformTexelBufferOffsetSingleTexelAlignment : VkBool32,
+    uniformTexelBufferOffsetSingleTexelAlignment : b32,
     maxBufferSize : VkDeviceSize,
 }
 
@@ -2204,36 +2139,35 @@ VkPipelineCreationFeedbackCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pPipelineCreationFeedback : ptr[VkPipelineCreationFeedback],
-    pipelineStageCreationFeedbackCount : u32,
-    pPipelineStageCreationFeedbacks : ptr[VkPipelineCreationFeedback],
+    pipelineStageCreationFeedbacks : VkPipelineCreationFeedback[..],
 }
 
 VkPhysicalDeviceShaderTerminateInvocationFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderTerminateInvocation : VkBool32,
+    shaderTerminateInvocation : b32,
 }
 
 VkPhysicalDeviceToolProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    name : char[VK_MAX_EXTENSION_NAME_SIZE],
-    version : char[VK_MAX_EXTENSION_NAME_SIZE],
+    name : string,
+    version : string,
     purposes : VkToolPurposeFlags,
-    description : char[VK_MAX_DESCRIPTION_SIZE],
-    layer : char[VK_MAX_EXTENSION_NAME_SIZE],
+    description : string,
+    layer : string,
 }
 
 VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderDemoteToHelperInvocation : VkBool32,
+    shaderDemoteToHelperInvocation : b32,
 }
 
 VkPhysicalDevicePrivateDataFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    privateData : VkBool32,
+    privateData : b32,
 }
 
 VkDevicePrivateDataCreateInfo :: struct {
@@ -2251,7 +2185,7 @@ VkPrivateDataSlotCreateInfo :: struct {
 VkPhysicalDevicePipelineCreationCacheControlFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineCreationCacheControl : VkBool32,
+    pipelineCreationCacheControl : b32,
 }
 
 VkMemoryBarrier2 :: struct {
@@ -2296,12 +2230,9 @@ VkDependencyInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     dependencyFlags : VkDependencyFlags,
-    memoryBarrierCount : u32,
-    pMemoryBarriers : ptr[VkMemoryBarrier2],
-    bufferMemoryBarrierCount : u32,
-    pBufferMemoryBarriers : ptr[VkBufferMemoryBarrier2],
-    imageMemoryBarrierCount : u32,
-    pImageMemoryBarriers : ptr[VkImageMemoryBarrier2],
+    memoryBarriers : VkMemoryBarrier2[..],
+    bufferMemoryBarriers : VkBufferMemoryBarrier2[..],
+    imageMemoryBarriers : VkImageMemoryBarrier2[..],
 }
 
 VkSemaphoreSubmitInfo :: struct {
@@ -2324,30 +2255,27 @@ VkSubmitInfo2 :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkSubmitFlags,
-    waitSemaphoreInfoCount : u32,
-    pWaitSemaphoreInfos : ptr[VkSemaphoreSubmitInfo],
-    commandBufferInfoCount : u32,
-    pCommandBufferInfos : ptr[VkCommandBufferSubmitInfo],
-    signalSemaphoreInfoCount : u32,
-    pSignalSemaphoreInfos : ptr[VkSemaphoreSubmitInfo],
+    waitSemaphoreInfos : VkSemaphoreSubmitInfo[..],
+    commandBufferInfos : VkCommandBufferSubmitInfo[..],
+    signalSemaphoreInfos : VkSemaphoreSubmitInfo[..],
 }
 
 VkPhysicalDeviceSynchronization2Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    synchronization2 : VkBool32,
+    synchronization2 : b32,
 }
 
 VkPhysicalDeviceZeroInitializeWorkgroupMemoryFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderZeroInitializeWorkgroupMemory : VkBool32,
+    shaderZeroInitializeWorkgroupMemory : b32,
 }
 
 VkPhysicalDeviceImageRobustnessFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    robustImageAccess : VkBool32,
+    robustImageAccess : b32,
 }
 
 VkBufferCopy2 :: struct {
@@ -2363,8 +2291,7 @@ VkCopyBufferInfo2 :: struct {
     pNext : rawptr,
     srcBuffer : VkBuffer,
     dstBuffer : VkBuffer,
-    regionCount : u32,
-    pRegions : ptr[VkBufferCopy2],
+    regions : VkBufferCopy2[..],
 }
 
 VkImageCopy2 :: struct {
@@ -2384,8 +2311,7 @@ VkCopyImageInfo2 :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkImageCopy2],
+    regions : VkImageCopy2[..],
 }
 
 VkBufferImageCopy2 :: struct {
@@ -2405,8 +2331,7 @@ VkCopyBufferToImageInfo2 :: struct {
     srcBuffer : VkBuffer,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkBufferImageCopy2],
+    regions : VkBufferImageCopy2[..],
 }
 
 VkCopyImageToBufferInfo2 :: struct {
@@ -2415,8 +2340,7 @@ VkCopyImageToBufferInfo2 :: struct {
     srcImage : VkImage,
     srcImageLayout : VkImageLayout,
     dstBuffer : VkBuffer,
-    regionCount : u32,
-    pRegions : ptr[VkBufferImageCopy2],
+    regions : VkBufferImageCopy2[..],
 }
 
 VkImageBlit2 :: struct {
@@ -2435,8 +2359,7 @@ VkBlitImageInfo2 :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkImageBlit2],
+    regions : VkImageBlit2[..],
     filter : VkFilter,
 }
 
@@ -2457,15 +2380,14 @@ VkResolveImageInfo2 :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkImageResolve2],
+    regions : VkImageResolve2[..],
 }
 
 VkPhysicalDeviceSubgroupSizeControlFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    subgroupSizeControl : VkBool32,
-    computeFullSubgroups : VkBool32,
+    subgroupSizeControl : b32,
+    computeFullSubgroups : b32,
 }
 
 VkPhysicalDeviceSubgroupSizeControlProperties :: struct {
@@ -2486,8 +2408,8 @@ VkPipelineShaderStageRequiredSubgroupSizeCreateInfo :: struct {
 VkPhysicalDeviceInlineUniformBlockFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    inlineUniformBlock : VkBool32,
-    descriptorBindingInlineUniformBlockUpdateAfterBind : VkBool32,
+    inlineUniformBlock : b32,
+    descriptorBindingInlineUniformBlockUpdateAfterBind : b32,
 }
 
 VkPhysicalDeviceInlineUniformBlockProperties :: struct {
@@ -2516,7 +2438,7 @@ VkDescriptorPoolInlineUniformBlockCreateInfo :: struct {
 VkPhysicalDeviceTextureCompressionASTCHDRFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    textureCompressionASTC_HDR : VkBool32,
+    textureCompressionASTC_HDR : b32,
 }
 
 VkRenderingAttachmentInfo :: struct {
@@ -2540,7 +2462,7 @@ VkRenderingInfo :: struct {
     layerCount : u32,
     viewMask : u32,
     colorAttachmentCount : u32,
-    pColorAttachments : ptr[VkRenderingAttachmentInfo],
+    colorAttachments : VkRenderingAttachmentInfo[..],
     pDepthAttachment : ptr[VkRenderingAttachmentInfo],
     pStencilAttachment : ptr[VkRenderingAttachmentInfo],
 }
@@ -2550,7 +2472,7 @@ VkPipelineRenderingCreateInfo :: struct {
     pNext : rawptr,
     viewMask : u32,
     colorAttachmentCount : u32,
-    pColorAttachmentFormats : ptr[VkFormat],
+    colorAttachmentFormats : VkFormat[..],
     depthAttachmentFormat : VkFormat,
     stencilAttachmentFormat : VkFormat,
 }
@@ -2558,7 +2480,7 @@ VkPipelineRenderingCreateInfo :: struct {
 VkPhysicalDeviceDynamicRenderingFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dynamicRendering : VkBool32,
+    dynamicRendering : b32,
 }
 
 VkCommandBufferInheritanceRenderingInfo :: struct {
@@ -2566,8 +2488,7 @@ VkCommandBufferInheritanceRenderingInfo :: struct {
     pNext : rawptr,
     flags : VkRenderingFlags,
     viewMask : u32,
-    colorAttachmentCount : u32,
-    pColorAttachmentFormats : ptr[VkFormat],
+    colorAttachmentFormats : VkFormat[..],
     depthAttachmentFormat : VkFormat,
     stencilAttachmentFormat : VkFormat,
     rasterizationSamples : VkSampleCountFlagBits,
@@ -2576,51 +2497,51 @@ VkCommandBufferInheritanceRenderingInfo :: struct {
 VkPhysicalDeviceShaderIntegerDotProductFeatures :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderIntegerDotProduct : VkBool32,
+    shaderIntegerDotProduct : b32,
 }
 
 VkPhysicalDeviceShaderIntegerDotProductProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    integerDotProduct8BitUnsignedAccelerated : VkBool32,
-    integerDotProduct8BitSignedAccelerated : VkBool32,
-    integerDotProduct8BitMixedSignednessAccelerated : VkBool32,
-    integerDotProduct4x8BitPackedUnsignedAccelerated : VkBool32,
-    integerDotProduct4x8BitPackedSignedAccelerated : VkBool32,
-    integerDotProduct4x8BitPackedMixedSignednessAccelerated : VkBool32,
-    integerDotProduct16BitUnsignedAccelerated : VkBool32,
-    integerDotProduct16BitSignedAccelerated : VkBool32,
-    integerDotProduct16BitMixedSignednessAccelerated : VkBool32,
-    integerDotProduct32BitUnsignedAccelerated : VkBool32,
-    integerDotProduct32BitSignedAccelerated : VkBool32,
-    integerDotProduct32BitMixedSignednessAccelerated : VkBool32,
-    integerDotProduct64BitUnsignedAccelerated : VkBool32,
-    integerDotProduct64BitSignedAccelerated : VkBool32,
-    integerDotProduct64BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating8BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating8BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating16BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating16BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating32BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating32BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating64BitUnsignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating64BitSignedAccelerated : VkBool32,
-    integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated : VkBool32,
+    integerDotProduct8BitUnsignedAccelerated : b32,
+    integerDotProduct8BitSignedAccelerated : b32,
+    integerDotProduct8BitMixedSignednessAccelerated : b32,
+    integerDotProduct4x8BitPackedUnsignedAccelerated : b32,
+    integerDotProduct4x8BitPackedSignedAccelerated : b32,
+    integerDotProduct4x8BitPackedMixedSignednessAccelerated : b32,
+    integerDotProduct16BitUnsignedAccelerated : b32,
+    integerDotProduct16BitSignedAccelerated : b32,
+    integerDotProduct16BitMixedSignednessAccelerated : b32,
+    integerDotProduct32BitUnsignedAccelerated : b32,
+    integerDotProduct32BitSignedAccelerated : b32,
+    integerDotProduct32BitMixedSignednessAccelerated : b32,
+    integerDotProduct64BitUnsignedAccelerated : b32,
+    integerDotProduct64BitSignedAccelerated : b32,
+    integerDotProduct64BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating8BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating8BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating16BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating16BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating32BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating32BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated : b32,
+    integerDotProductAccumulatingSaturating64BitUnsignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating64BitSignedAccelerated : b32,
+    integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated : b32,
 }
 
 VkPhysicalDeviceTexelBufferAlignmentProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     storageTexelBufferOffsetAlignmentBytes : VkDeviceSize,
-    storageTexelBufferOffsetSingleTexelAlignment : VkBool32,
+    storageTexelBufferOffsetSingleTexelAlignment : b32,
     uniformTexelBufferOffsetAlignmentBytes : VkDeviceSize,
-    uniformTexelBufferOffsetSingleTexelAlignment : VkBool32,
+    uniformTexelBufferOffsetSingleTexelAlignment : b32,
 }
 
 VkFormatProperties3 :: struct {
@@ -2634,7 +2555,7 @@ VkFormatProperties3 :: struct {
 VkPhysicalDeviceMaintenance4Features :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    maintenance4 : VkBool32,
+    maintenance4 : b32,
 }
 
 VkPhysicalDeviceMaintenance4Properties :: struct {
@@ -2686,24 +2607,21 @@ VkSwapchainCreateInfoKHR :: struct {
     imageArrayLayers : u32,
     imageUsage : VkImageUsageFlags,
     imageSharingMode : VkSharingMode,
-    queueFamilyIndexCount : u32,
-    pQueueFamilyIndices : ptr[u32],
+    queueFamilyIndices : u32[..],
     preTransform : VkSurfaceTransformFlagBitsKHR,
     compositeAlpha : VkCompositeAlphaFlagBitsKHR,
     presentMode : VkPresentModeKHR,
-    clipped : VkBool32,
+    clipped : b32,
     oldSwapchain : VkSwapchainKHR,
 }
 
 VkPresentInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreCount : u32,
-    pWaitSemaphores : ptr[VkSemaphore],
-    swapchainCount : u32,
-    pSwapchains : ptr[VkSwapchainKHR],
-    pImageIndices : ptr[u32],
-    pResults : ptr[VkResult],
+    waitSemaphores : VkSemaphore[..],
+    swapchains : VkSwapchainKHR[..],
+    imageIndices : u32[..],
+    results : ptr[VkResult][..],
 }
 
 VkImageSwapchainCreateInfoKHR :: struct {
@@ -2740,7 +2658,7 @@ VkDeviceGroupPresentInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    pDeviceMasks : ptr[u32],
+    deviceMasks : u32[..],
     mode : VkDeviceGroupPresentModeFlagBitsKHR,
 }
 
@@ -2786,12 +2704,12 @@ VkDisplayPlanePropertiesKHR :: struct {
 
 VkDisplayPropertiesKHR :: struct {
     display : VkDisplayKHR,
-    displayName : ptr[char],
+    displayName : string,
     physicalDimensions : VkExtent2D,
     physicalResolution : VkExtent2D,
     supportedTransforms : VkSurfaceTransformFlagsKHR,
-    planeReorderPossible : VkBool32,
-    persistentContent : VkBool32,
+    planeReorderPossible : b32,
+    persistentContent : b32,
 }
 
 VkDisplaySurfaceCreateInfoKHR :: struct {
@@ -2812,13 +2730,13 @@ VkDisplayPresentInfoKHR :: struct {
     pNext : rawptr,
     srcRect : VkRect2D,
     dstRect : VkRect2D,
-    persistent : VkBool32,
+    persistent : b32,
 }
 
 VkQueueFamilyQueryResultStatusPropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    queryResultStatusSupport : VkBool32,
+    queryResultStatusSupport : b32,
 }
 
 VkQueueFamilyVideoPropertiesKHR :: struct {
@@ -2839,8 +2757,7 @@ VkVideoProfileInfoKHR :: struct {
 VkVideoProfileListInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    profileCount : u32,
-    pProfiles : ptr[VkVideoProfileInfoKHR],
+    profiles : VkVideoProfileInfoKHR[..],
 }
 
 VkVideoCapabilitiesKHR :: struct {
@@ -2940,8 +2857,7 @@ VkVideoBeginCodingInfoKHR :: struct {
     flags : VkVideoBeginCodingFlagsKHR,
     videoSession : VkVideoSessionKHR,
     videoSessionParameters : VkVideoSessionParametersKHR,
-    referenceSlotCount : u32,
-    pReferenceSlots : ptr[VkVideoReferenceSlotInfoKHR],
+    referenceSlots : VkVideoReferenceSlotInfoKHR[..],
 }
 
 VkVideoEndCodingInfoKHR :: struct {
@@ -2977,8 +2893,7 @@ VkVideoDecodeInfoKHR :: struct {
     srcBufferRange : VkDeviceSize,
     dstPictureResource : VkVideoPictureResourceInfoKHR,
     pSetupReferenceSlot : ptr[VkVideoReferenceSlotInfoKHR],
-    referenceSlotCount : u32,
-    pReferenceSlots : ptr[VkVideoReferenceSlotInfoKHR],
+    referenceSlots : VkVideoReferenceSlotInfoKHR[..],
 }
 
 VkVideoEncodeH264CapabilitiesKHR :: struct {
@@ -2991,11 +2906,11 @@ VkVideoEncodeH264CapabilitiesKHR :: struct {
     maxBPictureL0ReferenceCount : u32,
     maxL1ReferenceCount : u32,
     maxTemporalLayerCount : u32,
-    expectDyadicTemporalLayerPattern : VkBool32,
+    expectDyadicTemporalLayerPattern : b32,
     minQp : i32,
     maxQp : i32,
-    prefersGopRemainingFrames : VkBool32,
-    requiresGopRemainingFrames : VkBool32,
+    prefersGopRemainingFrames : b32,
+    requiresGopRemainingFrames : b32,
     stdSyntaxFlags : VkVideoEncodeH264StdFlagsKHR,
 }
 
@@ -3016,23 +2931,21 @@ VkVideoEncodeH264QualityLevelPropertiesKHR :: struct {
     preferredConstantQp : VkVideoEncodeH264QpKHR,
     preferredMaxL0ReferenceCount : u32,
     preferredMaxL1ReferenceCount : u32,
-    preferredStdEntropyCodingModeFlag : VkBool32,
+    preferredStdEntropyCodingModeFlag : b32,
 }
 
 VkVideoEncodeH264SessionCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    useMaxLevelIdc : VkBool32,
+    useMaxLevelIdc : b32,
     maxLevelIdc : StdVideoH264LevelIdc,
 }
 
 VkVideoEncodeH264SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdSPSCount : u32,
-    pStdSPSs : ptr[StdVideoH264SequenceParameterSet],
-    stdPPSCount : u32,
-    pStdPPSs : ptr[StdVideoH264PictureParameterSet],
+    stdSPSs : StdVideoH264SequenceParameterSet[..],
+    stdPPSs : StdVideoH264PictureParameterSet[..],
 }
 
 VkVideoEncodeH264SessionParametersCreateInfoKHR :: struct {
@@ -3046,8 +2959,8 @@ VkVideoEncodeH264SessionParametersCreateInfoKHR :: struct {
 VkVideoEncodeH264SessionParametersGetInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    writeStdSPS : VkBool32,
-    writeStdPPS : VkBool32,
+    writeStdSPS : b32,
+    writeStdPPS : b32,
     stdSPSId : u32,
     stdPPSId : u32,
 }
@@ -3055,8 +2968,8 @@ VkVideoEncodeH264SessionParametersGetInfoKHR :: struct {
 VkVideoEncodeH264SessionParametersFeedbackInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    hasStdSPSOverrides : VkBool32,
-    hasStdPPSOverrides : VkBool32,
+    hasStdSPSOverrides : b32,
+    hasStdPPSOverrides : b32,
 }
 
 VkVideoEncodeH264NaluSliceInfoKHR :: struct {
@@ -3069,10 +2982,9 @@ VkVideoEncodeH264NaluSliceInfoKHR :: struct {
 VkVideoEncodeH264PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    naluSliceEntryCount : u32,
-    pNaluSliceEntries : ptr[VkVideoEncodeH264NaluSliceInfoKHR],
+    naluSliceEntries : VkVideoEncodeH264NaluSliceInfoKHR[..],
     pStdPictureInfo : ptr[StdVideoEncodeH264PictureInfo],
-    generatePrefixNalu : VkBool32,
+    generatePrefixNalu : b32,
 }
 
 VkVideoEncodeH264DpbSlotInfoKHR :: struct {
@@ -3106,18 +3018,18 @@ VkVideoEncodeH264FrameSizeKHR :: struct {
 VkVideoEncodeH264RateControlLayerInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    useMinQp : VkBool32,
+    useMinQp : b32,
     minQp : VkVideoEncodeH264QpKHR,
-    useMaxQp : VkBool32,
+    useMaxQp : b32,
     maxQp : VkVideoEncodeH264QpKHR,
-    useMaxFrameSize : VkBool32,
+    useMaxFrameSize : b32,
     maxFrameSize : VkVideoEncodeH264FrameSizeKHR,
 }
 
 VkVideoEncodeH264GopRemainingFrameInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    useGopRemainingFrames : VkBool32,
+    useGopRemainingFrames : b32,
     gopRemainingI : u32,
     gopRemainingP : u32,
     gopRemainingB : u32,
@@ -3136,18 +3048,18 @@ VkVideoEncodeH265CapabilitiesKHR :: struct {
     maxBPictureL0ReferenceCount : u32,
     maxL1ReferenceCount : u32,
     maxSubLayerCount : u32,
-    expectDyadicTemporalSubLayerPattern : VkBool32,
+    expectDyadicTemporalSubLayerPattern : b32,
     minQp : i32,
     maxQp : i32,
-    prefersGopRemainingFrames : VkBool32,
-    requiresGopRemainingFrames : VkBool32,
+    prefersGopRemainingFrames : b32,
+    requiresGopRemainingFrames : b32,
     stdSyntaxFlags : VkVideoEncodeH265StdFlagsKHR,
 }
 
 VkVideoEncodeH265SessionCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    useMaxLevelIdc : VkBool32,
+    useMaxLevelIdc : b32,
     maxLevelIdc : StdVideoH265LevelIdc,
 }
 
@@ -3173,12 +3085,9 @@ VkVideoEncodeH265QualityLevelPropertiesKHR :: struct {
 VkVideoEncodeH265SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdVPSCount : u32,
-    pStdVPSs : ptr[StdVideoH265VideoParameterSet],
-    stdSPSCount : u32,
-    pStdSPSs : ptr[StdVideoH265SequenceParameterSet],
-    stdPPSCount : u32,
-    pStdPPSs : ptr[StdVideoH265PictureParameterSet],
+    stdVPSs : StdVideoH265VideoParameterSet[..],
+    stdSPSs : StdVideoH265SequenceParameterSet[..],
+    stdPPSs : StdVideoH265PictureParameterSet[..],
 }
 
 VkVideoEncodeH265SessionParametersCreateInfoKHR :: struct {
@@ -3193,9 +3102,9 @@ VkVideoEncodeH265SessionParametersCreateInfoKHR :: struct {
 VkVideoEncodeH265SessionParametersGetInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    writeStdVPS : VkBool32,
-    writeStdSPS : VkBool32,
-    writeStdPPS : VkBool32,
+    writeStdVPS : b32,
+    writeStdSPS : b32,
+    writeStdPPS : b32,
     stdVPSId : u32,
     stdSPSId : u32,
     stdPPSId : u32,
@@ -3204,9 +3113,9 @@ VkVideoEncodeH265SessionParametersGetInfoKHR :: struct {
 VkVideoEncodeH265SessionParametersFeedbackInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    hasStdVPSOverrides : VkBool32,
-    hasStdSPSOverrides : VkBool32,
-    hasStdPPSOverrides : VkBool32,
+    hasStdVPSOverrides : b32,
+    hasStdSPSOverrides : b32,
+    hasStdPPSOverrides : b32,
 }
 
 VkVideoEncodeH265NaluSliceSegmentInfoKHR :: struct {
@@ -3219,8 +3128,7 @@ VkVideoEncodeH265NaluSliceSegmentInfoKHR :: struct {
 VkVideoEncodeH265PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    naluSliceSegmentEntryCount : u32,
-    pNaluSliceSegmentEntries : ptr[VkVideoEncodeH265NaluSliceSegmentInfoKHR],
+    naluSliceSegmentEntries : VkVideoEncodeH265NaluSliceSegmentInfoKHR[..],
     pStdPictureInfo : ptr[StdVideoEncodeH265PictureInfo],
 }
 
@@ -3255,18 +3163,18 @@ VkVideoEncodeH265FrameSizeKHR :: struct {
 VkVideoEncodeH265RateControlLayerInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    useMinQp : VkBool32,
+    useMinQp : b32,
     minQp : VkVideoEncodeH265QpKHR,
-    useMaxQp : VkBool32,
+    useMaxQp : b32,
     maxQp : VkVideoEncodeH265QpKHR,
-    useMaxFrameSize : VkBool32,
+    useMaxFrameSize : b32,
     maxFrameSize : VkVideoEncodeH265FrameSizeKHR,
 }
 
 VkVideoEncodeH265GopRemainingFrameInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    useGopRemainingFrames : VkBool32,
+    useGopRemainingFrames : b32,
     gopRemainingI : u32,
     gopRemainingP : u32,
     gopRemainingB : u32,
@@ -3289,10 +3197,8 @@ VkVideoDecodeH264CapabilitiesKHR :: struct {
 VkVideoDecodeH264SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdSPSCount : u32,
-    pStdSPSs : ptr[StdVideoH264SequenceParameterSet],
-    stdPPSCount : u32,
-    pStdPPSs : ptr[StdVideoH264PictureParameterSet],
+    stdSPSs : StdVideoH264SequenceParameterSet[..],
+    stdPPSs : StdVideoH264PictureParameterSet[..],
 }
 
 VkVideoDecodeH264SessionParametersCreateInfoKHR :: struct {
@@ -3307,8 +3213,7 @@ VkVideoDecodeH264PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pStdPictureInfo : ptr[StdVideoDecodeH264PictureInfo],
-    sliceCount : u32,
-    pSliceOffsets : ptr[u32],
+    sliceOffsets : u32[..],
 }
 
 VkVideoDecodeH264DpbSlotInfoKHR :: struct {
@@ -3335,16 +3240,15 @@ VkRenderingFragmentDensityMapAttachmentInfoEXT :: struct {
 VkAttachmentSampleCountInfoAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorAttachmentCount : u32,
-    pColorAttachmentSamples : ptr[VkSampleCountFlagBits],
+    colorAttachmentSamples : VkSampleCountFlagBits[..],
     depthStencilAttachmentSamples : VkSampleCountFlagBits,
 }
 
 VkMultiviewPerViewAttributesInfoNVX :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    perViewAttributes : VkBool32,
-    perViewAttributesPositionXOnly : VkBool32,
+    perViewAttributes : b32,
+    perViewAttributesPositionXOnly : b32,
 }
 
 VkImportMemoryFdInfoKHR :: struct {
@@ -3396,15 +3300,14 @@ VkRectLayerKHR :: struct {
 }
 
 VkPresentRegionKHR :: struct {
-    rectangleCount : u32,
-    pRectangles : ptr[VkRectLayerKHR],
+    rectangles : VkRectLayerKHR[..],
 }
 
 VkPresentRegionsKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    pRegions : ptr[VkPresentRegionKHR],
+    regions : VkPresentRegionKHR[..],
 }
 
 VkSharedPresentSurfaceCapabilitiesKHR :: struct {
@@ -3432,14 +3335,14 @@ VkFenceGetFdInfoKHR :: struct {
 VkPhysicalDevicePerformanceQueryFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    performanceCounterQueryPools : VkBool32,
-    performanceCounterMultipleQueryPools : VkBool32,
+    performanceCounterQueryPools : b32,
+    performanceCounterMultipleQueryPools : b32,
 }
 
 VkPhysicalDevicePerformanceQueryPropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    allowCommandBufferQueryCopies : VkBool32,
+    allowCommandBufferQueryCopies : b32,
 }
 
 VkPerformanceCounterKHR :: struct {
@@ -3455,17 +3358,16 @@ VkPerformanceCounterDescriptionKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPerformanceCounterDescriptionFlagsKHR,
-    name : char[VK_MAX_DESCRIPTION_SIZE],
-    category : char[VK_MAX_DESCRIPTION_SIZE],
-    description : char[VK_MAX_DESCRIPTION_SIZE],
+    name : string,
+    category : string,
+    description : string,
 }
 
 VkQueryPoolPerformanceCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     queueFamilyIndex : u32,
-    counterIndexCount : u32,
-    pCounterIndices : ptr[u32],
+    counterIndices : u32[..],
 }
 
 VkAcquireProfilingLockInfoKHR :: struct {
@@ -3533,8 +3435,8 @@ VkDisplayPlaneCapabilities2KHR :: struct {
 VkPhysicalDeviceShaderClockFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderSubgroupClock : VkBool32,
-    shaderDeviceClock : VkBool32,
+    shaderSubgroupClock : b32,
+    shaderDeviceClock : b32,
 }
 
 VkVideoDecodeH265ProfileInfoKHR :: struct {
@@ -3552,12 +3454,9 @@ VkVideoDecodeH265CapabilitiesKHR :: struct {
 VkVideoDecodeH265SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdVPSCount : u32,
-    pStdVPSs : ptr[StdVideoH265VideoParameterSet],
-    stdSPSCount : u32,
-    pStdSPSs : ptr[StdVideoH265SequenceParameterSet],
-    stdPPSCount : u32,
-    pStdPPSs : ptr[StdVideoH265PictureParameterSet],
+    stdVPSs : StdVideoH265VideoParameterSet[..],
+    stdSPSs : StdVideoH265SequenceParameterSet[..],
+    stdPPSs : StdVideoH265PictureParameterSet[..],
 }
 
 VkVideoDecodeH265SessionParametersCreateInfoKHR :: struct {
@@ -3573,8 +3472,7 @@ VkVideoDecodeH265PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pStdPictureInfo : ptr[StdVideoDecodeH265PictureInfo],
-    sliceSegmentCount : u32,
-    pSliceSegmentOffsets : ptr[u32],
+    sliceSegmentOffsets : u32[..],
 }
 
 VkVideoDecodeH265DpbSlotInfoKHR :: struct {
@@ -3592,14 +3490,13 @@ VkDeviceQueueGlobalPriorityCreateInfoKHR :: struct {
 VkPhysicalDeviceGlobalPriorityQueryFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    globalPriorityQuery : VkBool32,
+    globalPriorityQuery : b32,
 }
 
 VkQueueFamilyGlobalPriorityPropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    priorityCount : u32,
-    priorities : VkQueueGlobalPriorityKHR[VK_MAX_GLOBAL_PRIORITY_SIZE_KHR],
+    priorities : VkQueueGlobalPriorityKHR[],
 }
 
 VkFragmentShadingRateAttachmentInfoKHR :: struct {
@@ -3619,9 +3516,9 @@ VkPipelineFragmentShadingRateStateCreateInfoKHR :: struct {
 VkPhysicalDeviceFragmentShadingRateFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineFragmentShadingRate : VkBool32,
-    primitiveFragmentShadingRate : VkBool32,
-    attachmentFragmentShadingRate : VkBool32,
+    pipelineFragmentShadingRate : b32,
+    primitiveFragmentShadingRate : b32,
+    attachmentFragmentShadingRate : b32,
 }
 
 VkPhysicalDeviceFragmentShadingRatePropertiesKHR :: struct {
@@ -3630,20 +3527,20 @@ VkPhysicalDeviceFragmentShadingRatePropertiesKHR :: struct {
     minFragmentShadingRateAttachmentTexelSize : VkExtent2D,
     maxFragmentShadingRateAttachmentTexelSize : VkExtent2D,
     maxFragmentShadingRateAttachmentTexelSizeAspectRatio : u32,
-    primitiveFragmentShadingRateWithMultipleViewports : VkBool32,
-    layeredShadingRateAttachments : VkBool32,
-    fragmentShadingRateNonTrivialCombinerOps : VkBool32,
+    primitiveFragmentShadingRateWithMultipleViewports : b32,
+    layeredShadingRateAttachments : b32,
+    fragmentShadingRateNonTrivialCombinerOps : b32,
     maxFragmentSize : VkExtent2D,
     maxFragmentSizeAspectRatio : u32,
     maxFragmentShadingRateCoverageSamples : u32,
     maxFragmentShadingRateRasterizationSamples : VkSampleCountFlagBits,
-    fragmentShadingRateWithShaderDepthStencilWrites : VkBool32,
-    fragmentShadingRateWithSampleMask : VkBool32,
-    fragmentShadingRateWithShaderSampleMask : VkBool32,
-    fragmentShadingRateWithConservativeRasterization : VkBool32,
-    fragmentShadingRateWithFragmentShaderInterlock : VkBool32,
-    fragmentShadingRateWithCustomSampleLocations : VkBool32,
-    fragmentShadingRateStrictMultiplyCombiner : VkBool32,
+    fragmentShadingRateWithShaderDepthStencilWrites : b32,
+    fragmentShadingRateWithSampleMask : b32,
+    fragmentShadingRateWithShaderSampleMask : b32,
+    fragmentShadingRateWithConservativeRasterization : b32,
+    fragmentShadingRateWithFragmentShaderInterlock : b32,
+    fragmentShadingRateWithCustomSampleLocations : b32,
+    fragmentShadingRateStrictMultiplyCombiner : b32,
 }
 
 VkPhysicalDeviceFragmentShadingRateKHR :: struct {
@@ -3656,21 +3553,19 @@ VkPhysicalDeviceFragmentShadingRateKHR :: struct {
 VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dynamicRenderingLocalRead : VkBool32,
+    dynamicRenderingLocalRead : b32,
 }
 
 VkRenderingAttachmentLocationInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorAttachmentCount : u32,
-    pColorAttachmentLocations : ptr[u32],
+    colorAttachmentLocations : u32[..],
 }
 
 VkRenderingInputAttachmentIndexInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorAttachmentCount : u32,
-    pColorAttachmentInputIndices : ptr[u32],
+    colorAttachmentInputIndices : u32[..],
     pDepthInputAttachmentIndex : ptr[u32],
     pStencilInputAttachmentIndex : ptr[u32],
 }
@@ -3678,25 +3573,25 @@ VkRenderingInputAttachmentIndexInfoKHR :: struct {
 VkPhysicalDeviceShaderQuadControlFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderQuadControl : VkBool32,
+    shaderQuadControl : b32,
 }
 
 VkSurfaceProtectedCapabilitiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    supportsProtected : VkBool32,
+    supportsProtected : b32,
 }
 
 VkPhysicalDevicePresentWaitFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentWait : VkBool32,
+    presentWait : b32,
 }
 
 VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineExecutableInfo : VkBool32,
+    pipelineExecutableInfo : b32,
 }
 
 VkPipelineInfoKHR :: struct {
@@ -3709,8 +3604,8 @@ VkPipelineExecutablePropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     stages : VkShaderStageFlags,
-    name : char[VK_MAX_DESCRIPTION_SIZE],
-    description : char[VK_MAX_DESCRIPTION_SIZE],
+    name : string,
+    description : string,
     subgroupSize : u32,
 }
 
@@ -3724,8 +3619,8 @@ VkPipelineExecutableInfoKHR :: struct {
 VkPipelineExecutableStatisticKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    name : char[VK_MAX_DESCRIPTION_SIZE],
-    description : char[VK_MAX_DESCRIPTION_SIZE],
+    name : string,
+    description : string,
     format : VkPipelineExecutableStatisticFormatKHR,
     value : VkPipelineExecutableStatisticValueKHR,
 }
@@ -3733,10 +3628,10 @@ VkPipelineExecutableStatisticKHR :: struct {
 VkPipelineExecutableInternalRepresentationKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    name : char[VK_MAX_DESCRIPTION_SIZE],
-    description : char[VK_MAX_DESCRIPTION_SIZE],
-    isText : VkBool32,
-    dataSize : size_t,
+    name : string,
+    description : string,
+    isText : b32,
+    dataSize : u64,
     pData : rawptr,
 }
 
@@ -3759,21 +3654,20 @@ VkMemoryUnmapInfoKHR :: struct {
 VkPipelineLibraryCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    libraryCount : u32,
-    pLibraries : ptr[VkPipeline],
+    libraries : VkPipeline[..],
 }
 
 VkPresentIdKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    pPresentIds : ptr[u64],
+    presentIds : u64[..],
 }
 
 VkPhysicalDevicePresentIdFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentId : VkBool32,
+    presentId : b32,
 }
 
 VkVideoEncodeInfoKHR :: struct {
@@ -3785,8 +3679,7 @@ VkVideoEncodeInfoKHR :: struct {
     dstBufferRange : VkDeviceSize,
     srcPictureResource : VkVideoPictureResourceInfoKHR,
     pSetupReferenceSlot : ptr[VkVideoReferenceSlotInfoKHR],
-    referenceSlotCount : u32,
-    pReferenceSlots : ptr[VkVideoReferenceSlotInfoKHR],
+    referenceSlots : VkVideoReferenceSlotInfoKHR[..],
     precedingExternallyEncodedBytes : u32,
 }
 
@@ -3830,8 +3723,7 @@ VkVideoEncodeRateControlInfoKHR :: struct {
     pNext : rawptr,
     flags : VkVideoEncodeRateControlFlagsKHR,
     rateControlMode : VkVideoEncodeRateControlModeFlagBitsKHR,
-    layerCount : u32,
-    pLayers : ptr[VkVideoEncodeRateControlLayerInfoKHR],
+    layers : VkVideoEncodeRateControlLayerInfoKHR[..],
     virtualBufferSizeInMs : u32,
     initialVirtualBufferSizeInMs : u32,
 }
@@ -3865,7 +3757,7 @@ VkVideoEncodeSessionParametersGetInfoKHR :: struct {
 VkVideoEncodeSessionParametersFeedbackInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    hasOverrides : VkBool32,
+    hasOverrides : b32,
 }
 
 VkQueueFamilyCheckpointProperties2NV :: struct {
@@ -3884,35 +3776,35 @@ VkCheckpointData2NV :: struct {
 VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentShaderBarycentric : VkBool32,
+    fragmentShaderBarycentric : b32,
 }
 
 VkPhysicalDeviceFragmentShaderBarycentricPropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    triStripVertexOrderIndependentOfProvokingVertex : VkBool32,
+    triStripVertexOrderIndependentOfProvokingVertex : b32,
 }
 
 VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderSubgroupUniformControlFlow : VkBool32,
+    shaderSubgroupUniformControlFlow : b32,
 }
 
 VkPhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    workgroupMemoryExplicitLayout : VkBool32,
-    workgroupMemoryExplicitLayoutScalarBlockLayout : VkBool32,
-    workgroupMemoryExplicitLayout8BitAccess : VkBool32,
-    workgroupMemoryExplicitLayout16BitAccess : VkBool32,
+    workgroupMemoryExplicitLayout : b32,
+    workgroupMemoryExplicitLayoutScalarBlockLayout : b32,
+    workgroupMemoryExplicitLayout8BitAccess : b32,
+    workgroupMemoryExplicitLayout16BitAccess : b32,
 }
 
 VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rayTracingMaintenance1 : VkBool32,
-    rayTracingPipelineTraceRaysIndirect2 : VkBool32,
+    rayTracingMaintenance1 : b32,
+    rayTracingPipelineTraceRaysIndirect2 : b32,
 }
 
 VkTraceRaysIndirectCommand2KHR :: struct {
@@ -3935,39 +3827,38 @@ VkTraceRaysIndirectCommand2KHR :: struct {
 VkPhysicalDeviceShaderSubgroupRotateFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderSubgroupRotate : VkBool32,
-    shaderSubgroupRotateClustered : VkBool32,
+    shaderSubgroupRotate : b32,
+    shaderSubgroupRotateClustered : b32,
 }
 
 VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderMaximalReconvergence : VkBool32,
+    shaderMaximalReconvergence : b32,
 }
 
 VkPhysicalDeviceMaintenance5FeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    maintenance5 : VkBool32,
+    maintenance5 : b32,
 }
 
 VkPhysicalDeviceMaintenance5PropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    earlyFragmentMultisampleCoverageAfterSampleCounting : VkBool32,
-    earlyFragmentSampleMaskTestBeforeSampleCounting : VkBool32,
-    depthStencilSwizzleOneSupport : VkBool32,
-    polygonModePointSize : VkBool32,
-    nonStrictSinglePixelWideLinesUseParallelogram : VkBool32,
-    nonStrictWideLinesUseParallelogram : VkBool32,
+    earlyFragmentMultisampleCoverageAfterSampleCounting : b32,
+    earlyFragmentSampleMaskTestBeforeSampleCounting : b32,
+    depthStencilSwizzleOneSupport : b32,
+    polygonModePointSize : b32,
+    nonStrictSinglePixelWideLinesUseParallelogram : b32,
+    nonStrictWideLinesUseParallelogram : b32,
 }
 
 VkRenderingAreaInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     viewMask : u32,
-    colorAttachmentCount : u32,
-    pColorAttachmentFormats : ptr[VkFormat],
+    colorAttachmentFormats : VkFormat[..],
     depthAttachmentFormat : VkFormat,
     stencilAttachmentFormat : VkFormat,
 }
@@ -4006,7 +3897,7 @@ VkBufferUsageFlags2CreateInfoKHR :: struct {
 VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rayTracingPositionFetch : VkBool32,
+    rayTracingPositionFetch : b32,
 }
 
 VkCooperativeMatrixPropertiesKHR :: struct {
@@ -4019,15 +3910,15 @@ VkCooperativeMatrixPropertiesKHR :: struct {
     BType : VkComponentTypeKHR,
     CType : VkComponentTypeKHR,
     ResultType : VkComponentTypeKHR,
-    saturatingAccumulation : VkBool32,
+    saturatingAccumulation : b32,
     scope : VkScopeKHR,
 }
 
 VkPhysicalDeviceCooperativeMatrixFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    cooperativeMatrix : VkBool32,
-    cooperativeMatrixRobustBufferAccess : VkBool32,
+    cooperativeMatrix : b32,
+    cooperativeMatrixRobustBufferAccess : b32,
 }
 
 VkPhysicalDeviceCooperativeMatrixPropertiesKHR :: struct {
@@ -4040,7 +3931,7 @@ VkVideoDecodeAV1ProfileInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     stdProfile : StdVideoAV1Profile,
-    filmGrainSupport : VkBool32,
+    filmGrainSupport : b32,
 }
 
 VkVideoDecodeAV1CapabilitiesKHR :: struct {
@@ -4062,8 +3953,8 @@ VkVideoDecodeAV1PictureInfoKHR :: struct {
     referenceNameSlotIndices[VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR] : i32,
     frameHeaderOffset : u32,
     tileCount : u32,
-    pTileOffsets : ptr[u32],
-    pTileSizes : ptr[u32],
+    tileOffsets : u32[..],
+    tileSizes : u32[..],
 }
 
 VkVideoDecodeAV1DpbSlotInfoKHR :: struct {
@@ -4075,7 +3966,7 @@ VkVideoDecodeAV1DpbSlotInfoKHR :: struct {
 VkPhysicalDeviceVideoMaintenance1FeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    videoMaintenance1 : VkBool32,
+    videoMaintenance1 : b32,
 }
 
 VkVideoInlineQueryInfoKHR :: struct {
@@ -4090,7 +3981,7 @@ VkPhysicalDeviceVertexAttributeDivisorPropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     maxVertexAttribDivisor : u32,
-    supportsNonZeroFirstInstance : VkBool32,
+    supportsNonZeroFirstInstance : b32,
 }
 
 VkVertexInputBindingDivisorDescriptionKHR :: struct {
@@ -4101,38 +3992,37 @@ VkVertexInputBindingDivisorDescriptionKHR :: struct {
 VkPipelineVertexInputDivisorStateCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    vertexBindingDivisorCount : u32,
-    pVertexBindingDivisors : ptr[VkVertexInputBindingDivisorDescriptionKHR],
+    vertexBindingDivisors : VkVertexInputBindingDivisorDescriptionKHR[..],
 }
 
 VkPhysicalDeviceVertexAttributeDivisorFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    vertexAttributeInstanceRateDivisor : VkBool32,
-    vertexAttributeInstanceRateZeroDivisor : VkBool32,
+    vertexAttributeInstanceRateDivisor : b32,
+    vertexAttributeInstanceRateZeroDivisor : b32,
 }
 
 VkPhysicalDeviceShaderFloatControls2FeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderFloatControls2 : VkBool32,
+    shaderFloatControls2 : b32,
 }
 
 VkPhysicalDeviceIndexTypeUint8FeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    indexTypeUint8 : VkBool32,
+    indexTypeUint8 : b32,
 }
 
 VkPhysicalDeviceLineRasterizationFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rectangularLines : VkBool32,
-    bresenhamLines : VkBool32,
-    smoothLines : VkBool32,
-    stippledRectangularLines : VkBool32,
-    stippledBresenhamLines : VkBool32,
-    stippledSmoothLines : VkBool32,
+    rectangularLines : b32,
+    bresenhamLines : b32,
+    smoothLines : b32,
+    stippledRectangularLines : b32,
+    stippledBresenhamLines : b32,
+    stippledSmoothLines : b32,
 }
 
 VkPhysicalDeviceLineRasterizationPropertiesKHR :: struct {
@@ -4145,7 +4035,7 @@ VkPipelineRasterizationLineStateCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     lineRasterizationMode : VkLineRasterizationModeKHR,
-    stippledLineEnable : VkBool32,
+    stippledLineEnable : b32,
     lineStippleFactor : u32,
     lineStipplePattern : u16,
 }
@@ -4159,21 +4049,21 @@ VkCalibratedTimestampInfoKHR :: struct {
 VkPhysicalDeviceShaderExpectAssumeFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderExpectAssume : VkBool32,
+    shaderExpectAssume : b32,
 }
 
 VkPhysicalDeviceMaintenance6FeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    maintenance6 : VkBool32,
+    maintenance6 : b32,
 }
 
 VkPhysicalDeviceMaintenance6PropertiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    blockTexelViewCompatibleMultipleLayers : VkBool32,
+    blockTexelViewCompatibleMultipleLayers : b32,
     maxCombinedImageSamplerDescriptorCount : u32,
-    fragmentShadingRateClampCombinerInputs : VkBool32,
+    fragmentShadingRateClampCombinerInputs : b32,
 }
 
 VkBindMemoryStatusKHR :: struct {
@@ -4188,10 +4078,8 @@ VkBindDescriptorSetsInfoKHR :: struct {
     stageFlags : VkShaderStageFlags,
     layout : VkPipelineLayout,
     firstSet : u32,
-    descriptorSetCount : u32,
-    pDescriptorSets : ptr[VkDescriptorSet],
-    dynamicOffsetCount : u32,
-    pDynamicOffsets : ptr[u32],
+    descriptorSets : VkDescriptorSet[..],
+    dynamicOffsets : u32[..],
 }
 
 VkPushConstantsInfoKHR :: struct {
@@ -4210,8 +4098,7 @@ VkPushDescriptorSetInfoKHR :: struct {
     stageFlags : VkShaderStageFlags,
     layout : VkPipelineLayout,
     set : u32,
-    descriptorWriteCount : u32,
-    pDescriptorWrites : ptr[VkWriteDescriptorSet],
+    descriptorWrites : VkWriteDescriptorSet[..],
 }
 
 VkPushDescriptorSetWithTemplateInfoKHR :: struct {
@@ -4230,8 +4117,8 @@ VkSetDescriptorBufferOffsetsInfoEXT :: struct {
     layout : VkPipelineLayout,
     firstSet : u32,
     setCount : u32,
-    pBufferIndices : ptr[u32],
-    pOffsets : ptr[VkDeviceSize],
+    bufferIndices : u32[..],
+    offsets : VkDeviceSize[..],
 }
 
 VkBindDescriptorBufferEmbeddedSamplersInfoEXT :: struct {
@@ -4261,7 +4148,7 @@ VkDebugMarkerObjectNameInfoEXT :: struct {
     pNext : rawptr,
     objectType : VkDebugReportObjectTypeEXT,
     object : u64,
-    pObjectName : ptr[char],
+    objectName : string,
 }
 
 VkDebugMarkerObjectTagInfoEXT :: struct {
@@ -4270,27 +4157,27 @@ VkDebugMarkerObjectTagInfoEXT :: struct {
     objectType : VkDebugReportObjectTypeEXT,
     object : u64,
     tagName : u64,
-    tagSize : size_t,
+    tagSize : u64,
     pTag : rawptr,
 }
 
 VkDebugMarkerMarkerInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pMarkerName : ptr[char],
+    markerName : string,
     color : f32[4],
 }
 
 VkDedicatedAllocationImageCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dedicatedAllocation : VkBool32,
+    dedicatedAllocation : b32,
 }
 
 VkDedicatedAllocationBufferCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dedicatedAllocation : VkBool32,
+    dedicatedAllocation : b32,
 }
 
 VkDedicatedAllocationMemoryAllocateInfoNV :: struct {
@@ -4303,8 +4190,8 @@ VkDedicatedAllocationMemoryAllocateInfoNV :: struct {
 VkPhysicalDeviceTransformFeedbackFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    transformFeedback : VkBool32,
-    geometryStreams : VkBool32,
+    transformFeedback : b32,
+    geometryStreams : b32,
 }
 
 VkPhysicalDeviceTransformFeedbackPropertiesEXT :: struct {
@@ -4316,10 +4203,10 @@ VkPhysicalDeviceTransformFeedbackPropertiesEXT :: struct {
     maxTransformFeedbackStreamDataSize : u32,
     maxTransformFeedbackBufferDataSize : u32,
     maxTransformFeedbackBufferDataStride : u32,
-    transformFeedbackQueries : VkBool32,
-    transformFeedbackStreamsLinesTriangles : VkBool32,
-    transformFeedbackRasterizationStreamSelect : VkBool32,
-    transformFeedbackDraw : VkBool32,
+    transformFeedbackQueries : b32,
+    transformFeedbackStreamsLinesTriangles : b32,
+    transformFeedbackRasterizationStreamSelect : b32,
+    transformFeedbackDraw : b32,
 }
 
 VkPipelineRasterizationStateStreamCreateInfoEXT :: struct {
@@ -4332,7 +4219,7 @@ VkPipelineRasterizationStateStreamCreateInfoEXT :: struct {
 VkCuModuleCreateInfoNVX :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dataSize : size_t,
+    dataSize : u64,
     pData : rawptr,
 }
 
@@ -4340,7 +4227,7 @@ VkCuFunctionCreateInfoNVX :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     module : VkCuModuleNVX,
-    pName : ptr[char],
+    pName : string,
 }
 
 VkCuLaunchInfoNVX :: struct {
@@ -4354,10 +4241,8 @@ VkCuLaunchInfoNVX :: struct {
     blockDimY : u32,
     blockDimZ : u32,
     sharedMemBytes : u32,
-    paramCount : size_t,
-    pParams : ptr[rawptr],
-    extraCount : size_t,
-    pExtras : ptr[rawptr],
+    params : rawptr[..],
+    extras : rawptr[..],
 }
 
 VkImageViewHandleInfoNVX :: struct {
@@ -4378,15 +4263,15 @@ VkImageViewAddressPropertiesNVX :: struct {
 VkTextureLODGatherFormatPropertiesAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    supportsTextureGatherLODBiasAMD : VkBool32,
+    supportsTextureGatherLODBiasAMD : b32,
 }
 
 VkShaderResourceUsageAMD :: struct {
     numUsedVgprs : u32,
     numUsedSgprs : u32,
     ldsSizePerLocalWorkGroup : u32,
-    ldsUsageSizeInBytes : size_t,
-    scratchMemUsageInBytes : size_t,
+    ldsUsageSizeInBytes : u64,
+    scratchMemUsageInBytes : u64,
 }
 
 VkShaderStatisticsInfoAMD :: struct {
@@ -4396,13 +4281,13 @@ VkShaderStatisticsInfoAMD :: struct {
     numPhysicalSgprs : u32,
     numAvailableVgprs : u32,
     numAvailableSgprs : u32,
-    computeWorkGroupSize[3] : u32,
+    computeWorkGroupSize : u32[3],
 }
 
 VkPhysicalDeviceCornerSampledImageFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    cornerSampledImage : VkBool32,
+    cornerSampledImage : b32,
 }
 
 VkExternalImageFormatPropertiesNV :: struct {
@@ -4427,8 +4312,7 @@ VkExportMemoryAllocateInfoNV :: struct {
 VkValidationFlagsEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    disabledValidationCheckCount : u32,
-    pDisabledValidationChecks : ptr[VkValidationCheckEXT],
+    disabledValidationChecks : VkValidationCheckEXT[..],
 }
 
 VkImageViewASTCDecodeModeEXT :: struct {
@@ -4440,13 +4324,13 @@ VkImageViewASTCDecodeModeEXT :: struct {
 VkPhysicalDeviceASTCDecodeFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    decodeModeSharedExponent : VkBool32,
+    decodeModeSharedExponent : b32,
 }
 
 VkPhysicalDevicePipelineRobustnessFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineRobustness : VkBool32,
+    pipelineRobustness : b32,
 }
 
 VkPhysicalDevicePipelineRobustnessPropertiesEXT :: struct {
@@ -4478,14 +4362,14 @@ VkConditionalRenderingBeginInfoEXT :: struct {
 VkPhysicalDeviceConditionalRenderingFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    conditionalRendering : VkBool32,
-    inheritedConditionalRendering : VkBool32,
+    conditionalRendering : b32,
+    inheritedConditionalRendering : b32,
 }
 
 VkCommandBufferInheritanceConditionalRenderingInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    conditionalRenderingEnable : VkBool32,
+    conditionalRenderingEnable : b32,
 }
 
 VkViewportWScalingNV :: struct {
@@ -4496,9 +4380,8 @@ VkViewportWScalingNV :: struct {
 VkPipelineViewportWScalingStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    viewportWScalingEnable : VkBool32,
-    viewportCount : u32,
-    pViewportWScalings : ptr[VkViewportWScalingNV],
+    viewportWScalingEnable : b32,
+    viewportWScalings : VkViewportWScalingNV[..],
 }
 
 VkSurfaceCapabilities2EXT :: struct {
@@ -4562,13 +4445,13 @@ VkPresentTimesInfoGOOGLE :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    pTimes : ptr[VkPresentTimeGOOGLE],
+    times : VkPresentTimeGOOGLE[..],
 }
 
 VkPhysicalDeviceMultiviewPerViewAttributesPropertiesNVX :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    perViewPositionAllComponents : VkBool32,
+    perViewPositionAllComponents : b32,
 }
 
 VkViewportSwizzleNV :: struct {
@@ -4582,8 +4465,7 @@ VkPipelineViewportSwizzleStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineViewportSwizzleStateCreateFlagsNV,
-    viewportCount : u32,
-    pViewportSwizzles : ptr[VkViewportSwizzleNV],
+    viewportSwizzles : VkViewportSwizzleNV[..],
 }
 
 VkPhysicalDeviceDiscardRectanglePropertiesEXT :: struct {
@@ -4597,8 +4479,7 @@ VkPipelineDiscardRectangleStateCreateInfoEXT :: struct {
     pNext : rawptr,
     flags : VkPipelineDiscardRectangleStateCreateFlagsEXT,
     discardRectangleMode : VkDiscardRectangleModeEXT,
-    discardRectangleCount : u32,
-    pDiscardRectangles : ptr[VkRect2D],
+    discardRectangles : VkRect2D[..],
 }
 
 VkPhysicalDeviceConservativeRasterizationPropertiesEXT :: struct {
@@ -4607,12 +4488,12 @@ VkPhysicalDeviceConservativeRasterizationPropertiesEXT :: struct {
     primitiveOverestimationSize : f32,
     maxExtraPrimitiveOverestimationSize : f32,
     extraPrimitiveOverestimationSizeGranularity : f32,
-    primitiveUnderestimation : VkBool32,
-    conservativePointAndLineRasterization : VkBool32,
-    degenerateTrianglesRasterized : VkBool32,
-    degenerateLinesRasterized : VkBool32,
-    fullyCoveredFragmentShaderInputVariable : VkBool32,
-    conservativeRasterizationPostDepthCoverage : VkBool32,
+    primitiveUnderestimation : b32,
+    conservativePointAndLineRasterization : b32,
+    degenerateTrianglesRasterized : b32,
+    degenerateLinesRasterized : b32,
+    fullyCoveredFragmentShaderInputVariable : b32,
+    conservativeRasterizationPostDepthCoverage : b32,
 }
 
 VkPipelineRasterizationConservativeStateCreateInfoEXT :: struct {
@@ -4626,14 +4507,14 @@ VkPipelineRasterizationConservativeStateCreateInfoEXT :: struct {
 VkPhysicalDeviceDepthClipEnableFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    depthClipEnable : VkBool32,
+    depthClipEnable : b32,
 }
 
 VkPipelineRasterizationDepthClipStateCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineRasterizationDepthClipStateCreateFlagsEXT,
-    depthClipEnable : VkBool32,
+    depthClipEnable : b32,
 }
 
 VkXYColorEXT :: struct {
@@ -4657,13 +4538,13 @@ VkHdrMetadataEXT :: struct {
 VkPhysicalDeviceRelaxedLineRasterizationFeaturesIMG :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    relaxedLineRasterization : VkBool32,
+    relaxedLineRasterization : b32,
 }
 
 VkDebugUtilsLabelEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pLabelName : ptr[char],
+    labelName : string,
     color : f32[4],
 }
 
@@ -4672,22 +4553,19 @@ VkDebugUtilsObjectNameInfoEXT :: struct {
     pNext : rawptr,
     objectType : VkObjectType,
     objectHandle : u64,
-    pObjectName : ptr[char],
+    objectName : string,
 }
 
 VkDebugUtilsMessengerCallbackDataEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDebugUtilsMessengerCallbackDataFlagsEXT,
-    pMessageIdName : ptr[char],
+    messageIdName : string,
     messageIdNumber : i32,
-    pMessage : ptr[char],
-    queueLabelCount : u32,
-    pQueueLabels : ptr[VkDebugUtilsLabelEXT],
-    cmdBufLabelCount : u32,
-    pCmdBufLabels : ptr[VkDebugUtilsLabelEXT],
-    objectCount : u32,
-    pObjects : ptr[VkDebugUtilsObjectNameInfoEXT],
+    message : string,
+    queueLabels : VkDebugUtilsLabelEXT[..],
+    cmdBufLabels : VkDebugUtilsLabelEXT[..],
+    objects : VkDebugUtilsObjectNameInfoEXT[..],
 }
 
 VkDebugUtilsMessengerCreateInfoEXT :: struct {
@@ -4706,7 +4584,7 @@ VkDebugUtilsObjectTagInfoEXT :: struct {
     objectType : VkObjectType,
     objectHandle : u64,
     tagName : u64,
-    tagSize : size_t,
+    tagSize : u64,
     pTag : rawptr,
 }
 
@@ -4720,8 +4598,7 @@ VkSampleLocationsInfoEXT :: struct {
     pNext : rawptr,
     sampleLocationsPerPixel : VkSampleCountFlagBits,
     sampleLocationGridSize : VkExtent2D,
-    sampleLocationsCount : u32,
-    pSampleLocations : ptr[VkSampleLocationEXT],
+    sampleLocations : VkSampleLocationEXT[..],
 }
 
 VkAttachmentSampleLocationsEXT :: struct {
@@ -4737,16 +4614,14 @@ VkSubpassSampleLocationsEXT :: struct {
 VkRenderPassSampleLocationsBeginInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentInitialSampleLocationsCount : u32,
-    pAttachmentInitialSampleLocations : ptr[VkAttachmentSampleLocationsEXT],
-    postSubpassSampleLocationsCount : u32,
-    pPostSubpassSampleLocations : ptr[VkSubpassSampleLocationsEXT],
+    attachmentInitialSampleLocations : VkAttachmentSampleLocationsEXT[..],
+    postSubpassSampleLocations : VkSubpassSampleLocationsEXT[..],
 }
 
 VkPipelineSampleLocationsStateCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    sampleLocationsEnable : VkBool32,
+    sampleLocationsEnable : b32,
     sampleLocationsInfo : VkSampleLocationsInfoEXT,
 }
 
@@ -4757,7 +4632,7 @@ VkPhysicalDeviceSampleLocationsPropertiesEXT :: struct {
     maxSampleLocationGridSize : VkExtent2D,
     sampleLocationCoordinateRange : f32[2],
     sampleLocationSubPixelBits : u32,
-    variableSampleLocations : VkBool32,
+    variableSampleLocations : b32,
 }
 
 VkMultisamplePropertiesEXT :: struct {
@@ -4769,25 +4644,25 @@ VkMultisamplePropertiesEXT :: struct {
 VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    advancedBlendCoherentOperations : VkBool32,
+    advancedBlendCoherentOperations : b32,
 }
 
 VkPhysicalDeviceBlendOperationAdvancedPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     advancedBlendMaxColorAttachments : u32,
-    advancedBlendIndependentBlend : VkBool32,
-    advancedBlendNonPremultipliedSrcColor : VkBool32,
-    advancedBlendNonPremultipliedDstColor : VkBool32,
-    advancedBlendCorrelatedOverlap : VkBool32,
-    advancedBlendAllOperations : VkBool32,
+    advancedBlendIndependentBlend : b32,
+    advancedBlendNonPremultipliedSrcColor : b32,
+    advancedBlendNonPremultipliedDstColor : b32,
+    advancedBlendCorrelatedOverlap : b32,
+    advancedBlendAllOperations : b32,
 }
 
 VkPipelineColorBlendAdvancedStateCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    srcPremultiplied : VkBool32,
-    dstPremultiplied : VkBool32,
+    srcPremultiplied : b32,
+    dstPremultiplied : b32,
     blendOverlap : VkBlendOverlapEXT,
 }
 
@@ -4795,7 +4670,7 @@ VkPipelineCoverageToColorStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCoverageToColorStateCreateFlagsNV,
-    coverageToColorEnable : VkBool32,
+    coverageToColorEnable : b32,
     coverageToColorLocation : u32,
 }
 
@@ -4804,9 +4679,8 @@ VkPipelineCoverageModulationStateCreateInfoNV :: struct {
     pNext : rawptr,
     flags : VkPipelineCoverageModulationStateCreateFlagsNV,
     coverageModulationMode : VkCoverageModulationModeNV,
-    coverageModulationTableEnable : VkBool32,
-    coverageModulationTableCount : u32,
-    pCoverageModulationTable : ptr[f32],
+    coverageModulationTableEnable : b32,
+    coverageModulationTable : ptr[f32],
 }
 
 VkPhysicalDeviceShaderSMBuiltinsPropertiesNV :: struct {
@@ -4819,7 +4693,7 @@ VkPhysicalDeviceShaderSMBuiltinsPropertiesNV :: struct {
 VkPhysicalDeviceShaderSMBuiltinsFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderSMBuiltins : VkBool32,
+    shaderSMBuiltins : b32,
 }
 
 VkDrmFormatModifierPropertiesEXT :: struct {
@@ -4831,8 +4705,7 @@ VkDrmFormatModifierPropertiesEXT :: struct {
 VkDrmFormatModifierPropertiesListEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    drmFormatModifierCount : u32,
-    pDrmFormatModifierProperties : ptr[VkDrmFormatModifierPropertiesEXT],
+    drmFormatModifierProperties : VkDrmFormatModifierPropertiesEXT[..],
 }
 
 VkPhysicalDeviceImageDrmFormatModifierInfoEXT :: struct {
@@ -4840,15 +4713,13 @@ VkPhysicalDeviceImageDrmFormatModifierInfoEXT :: struct {
     pNext : rawptr,
     drmFormatModifier : u64,
     sharingMode : VkSharingMode,
-    queueFamilyIndexCount : u32,
-    pQueueFamilyIndices : ptr[u32],
+    queueFamilyIndices : u32[..],
 }
 
 VkImageDrmFormatModifierListCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    drmFormatModifierCount : u32,
-    pDrmFormatModifiers : ptr[u64],
+    drmFormatModifiers : u64[..],
 }
 
 VkImageDrmFormatModifierExplicitCreateInfoEXT :: struct {
@@ -4856,7 +4727,7 @@ VkImageDrmFormatModifierExplicitCreateInfoEXT :: struct {
     pNext : rawptr,
     drmFormatModifier : u64,
     drmFormatModifierPlaneCount : u32,
-    pPlaneLayouts : ptr[VkSubresourceLayout],
+    planeLayouts : VkSubresourceLayout[..],
 }
 
 VkImageDrmFormatModifierPropertiesEXT :: struct {
@@ -4874,15 +4745,14 @@ VkDrmFormatModifierProperties2EXT :: struct {
 VkDrmFormatModifierPropertiesList2EXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    drmFormatModifierCount : u32,
-    pDrmFormatModifierProperties : ptr[VkDrmFormatModifierProperties2EXT],
+    drmFormatModifierProperties : VkDrmFormatModifierProperties2EXT[..],
 }
 
 VkValidationCacheCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkValidationCacheCreateFlagsEXT,
-    initialDataSize : size_t,
+    initialDataSize : u64,
     pInitialData : rawptr,
 }
 
@@ -4893,23 +4763,21 @@ VkShaderModuleValidationCacheCreateInfoEXT :: struct {
 }
 
 VkShadingRatePaletteNV :: struct {
-    shadingRatePaletteEntryCount : u32,
-    pShadingRatePaletteEntries : ptr[VkShadingRatePaletteEntryNV],
+    shadingRatePaletteEntries : VkShadingRatePaletteEntryNV[..],
 }
 
 VkPipelineViewportShadingRateImageStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shadingRateImageEnable : VkBool32,
-    viewportCount : u32,
-    pShadingRatePalettes : ptr[VkShadingRatePaletteNV],
+    shadingRateImageEnable : b32,
+    shadingRatePalettes : VkShadingRatePaletteNV[..],
 }
 
 VkPhysicalDeviceShadingRateImageFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shadingRateImage : VkBool32,
-    shadingRateCoarseSampleOrder : VkBool32,
+    shadingRateImage : b32,
+    shadingRateCoarseSampleOrder : b32,
 }
 
 VkPhysicalDeviceShadingRateImagePropertiesNV :: struct {
@@ -4929,16 +4797,14 @@ VkCoarseSampleLocationNV :: struct {
 VkCoarseSampleOrderCustomNV :: struct {
     shadingRate : VkShadingRatePaletteEntryNV,
     sampleCount : u32,
-    sampleLocationCount : u32,
-    pSampleLocations : ptr[VkCoarseSampleLocationNV],
+    sampleLocations : VkCoarseSampleLocationNV[..],
 }
 
 VkPipelineViewportCoarseSampleOrderStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     sampleOrderType : VkCoarseSampleOrderTypeNV,
-    customSampleOrderCount : u32,
-    pCustomSampleOrders : ptr[VkCoarseSampleOrderCustomNV],
+    customSampleOrders : VkCoarseSampleOrderCustomNV[..],
 }
 
 VkRayTracingShaderGroupCreateInfoNV :: struct {
@@ -4955,10 +4821,8 @@ VkRayTracingPipelineCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCreateFlags,
-    stageCount : u32,
-    pStages : ptr[VkPipelineShaderStageCreateInfo],
-    groupCount : u32,
-    pGroups : ptr[VkRayTracingShaderGroupCreateInfoNV],
+    stages : VkPipelineShaderStageCreateInfo[..],
+    groups : VkRayTracingShaderGroupCreateInfoNV[..],
     maxRecursionDepth : u32,
     layout : VkPipelineLayout,
     basePipelineHandle : VkPipeline,
@@ -5009,8 +4873,7 @@ VkAccelerationStructureInfoNV :: struct {
     type : VkAccelerationStructureTypeNV,
     flags : VkBuildAccelerationStructureFlagsNV,
     instanceCount : u32,
-    geometryCount : u32,
-    pGeometries : ptr[VkGeometryNV],
+    geometries : VkGeometryNV[..],
 }
 
 VkAccelerationStructureCreateInfoNV :: struct {
@@ -5026,15 +4889,13 @@ VkBindAccelerationStructureMemoryInfoNV :: struct {
     accelerationStructure : VkAccelerationStructureNV,
     memory : VkDeviceMemory,
     memoryOffset : VkDeviceSize,
-    deviceIndexCount : u32,
-    pDeviceIndices : ptr[u32],
+    deviceIndices : u32[..],
 }
 
 VkWriteDescriptorSetAccelerationStructureNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    accelerationStructureCount : u32,
-    pAccelerationStructures : ptr[VkAccelerationStructureNV],
+    accelerationStructures : VkAccelerationStructureNV[..],
 }
 
 VkAccelerationStructureMemoryRequirementsInfoNV :: struct {
@@ -5082,13 +4943,13 @@ VkAccelerationStructureInstanceKHR :: struct {
 VkPhysicalDeviceRepresentativeFragmentTestFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    representativeFragmentTest : VkBool32,
+    representativeFragmentTest : b32,
 }
 
 VkPipelineRepresentativeFragmentTestStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    representativeFragmentTestEnable : VkBool32,
+    representativeFragmentTestEnable : b32,
 }
 
 VkPhysicalDeviceImageViewImageFormatInfoEXT :: struct {
@@ -5100,8 +4961,8 @@ VkPhysicalDeviceImageViewImageFormatInfoEXT :: struct {
 VkFilterCubicImageViewImageFormatPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    filterCubic : VkBool32,
-    filterCubicMinmax : VkBool32,
+    filterCubic : b32,
+    filterCubicMinmax : b32,
 }
 
 VkImportMemoryHostPointerInfoEXT :: struct {
@@ -5163,15 +5024,15 @@ VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT :: struct {
 VkPhysicalDeviceComputeShaderDerivativesFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    computeDerivativeGroupQuads : VkBool32,
-    computeDerivativeGroupLinear : VkBool32,
+    computeDerivativeGroupQuads : b32,
+    computeDerivativeGroupLinear : b32,
 }
 
 VkPhysicalDeviceMeshShaderFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    taskShader : VkBool32,
-    meshShader : VkBool32,
+    taskShader : b32,
+    meshShader : b32,
 }
 
 VkPhysicalDeviceMeshShaderPropertiesNV :: struct {
@@ -5179,11 +5040,11 @@ VkPhysicalDeviceMeshShaderPropertiesNV :: struct {
     pNext : rawptr,
     maxDrawMeshTasksCount : u32,
     maxTaskWorkGroupInvocations : u32,
-    maxTaskWorkGroupSize[3] : u32,
+    maxTaskWorkGroupSize : u32[3],
     maxTaskTotalMemorySize : u32,
     maxTaskOutputCount : u32,
     maxMeshWorkGroupInvocations : u32,
-    maxMeshWorkGroupSize[3] : u32,
+    maxMeshWorkGroupSize : u32[3],
     maxMeshTotalMemorySize : u32,
     maxMeshOutputVertices : u32,
     maxMeshOutputPrimitives : u32,
@@ -5200,20 +5061,19 @@ VkDrawMeshTasksIndirectCommandNV :: struct {
 VkPhysicalDeviceShaderImageFootprintFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    imageFootprint : VkBool32,
+    imageFootprint : b32,
 }
 
 VkPipelineViewportExclusiveScissorStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    exclusiveScissorCount : u32,
-    pExclusiveScissors : ptr[VkRect2D],
+    exclusiveScissors : VkRect2D[..],
 }
 
 VkPhysicalDeviceExclusiveScissorFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    exclusiveScissor : VkBool32,
+    exclusiveScissor : b32,
 }
 
 VkQueueFamilyCheckpointPropertiesNV :: struct {
@@ -5232,7 +5092,7 @@ VkCheckpointDataNV :: struct {
 VkPhysicalDeviceShaderIntegerFunctions2FeaturesINTEL :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderIntegerFunctions2 : VkBool32,
+    shaderIntegerFunctions2 : b32,
 }
 
 VkPerformanceValueINTEL :: struct {
@@ -5268,7 +5128,7 @@ VkPerformanceOverrideInfoINTEL :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     type : VkPerformanceOverrideTypeINTEL,
-    enable : VkBool32,
+    enable : b32,
     parameter : u64,
 }
 
@@ -5290,21 +5150,21 @@ VkPhysicalDevicePCIBusInfoPropertiesEXT :: struct {
 VkDisplayNativeHdrSurfaceCapabilitiesAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    localDimmingSupport : VkBool32,
+    localDimmingSupport : b32,
 }
 
 VkSwapchainDisplayNativeHdrCreateInfoAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    localDimmingEnable : VkBool32,
+    localDimmingEnable : b32,
 }
 
 VkPhysicalDeviceFragmentDensityMapFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentDensityMap : VkBool32,
-    fragmentDensityMapDynamic : VkBool32,
-    fragmentDensityMapNonSubsampledImages : VkBool32,
+    fragmentDensityMap : b32,
+    fragmentDensityMapDynamic : b32,
+    fragmentDensityMapNonSubsampledImages : b32,
 }
 
 VkPhysicalDeviceFragmentDensityMapPropertiesEXT :: struct {
@@ -5312,7 +5172,7 @@ VkPhysicalDeviceFragmentDensityMapPropertiesEXT :: struct {
     pNext : rawptr,
     minFragmentDensityTexelSize : VkExtent2D,
     maxFragmentDensityTexelSize : VkExtent2D,
-    fragmentDensityInvocations : VkBool32,
+    fragmentDensityInvocations : b32,
 }
 
 VkRenderPassFragmentDensityMapCreateInfoEXT :: struct {
@@ -5331,14 +5191,14 @@ VkPhysicalDeviceShaderCoreProperties2AMD :: struct {
 VkPhysicalDeviceCoherentMemoryFeaturesAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceCoherentMemory : VkBool32,
+    deviceCoherentMemory : b32,
 }
 
 VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderImageInt64Atomics : VkBool32,
-    sparseImageInt64Atomics : VkBool32,
+    shaderImageInt64Atomics : b32,
+    sparseImageInt64Atomics : b32,
 }
 
 VkPhysicalDeviceMemoryBudgetPropertiesEXT :: struct {
@@ -5351,7 +5211,7 @@ VkPhysicalDeviceMemoryBudgetPropertiesEXT :: struct {
 VkPhysicalDeviceMemoryPriorityFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    memoryPriority : VkBool32,
+    memoryPriority : b32,
 }
 
 VkMemoryPriorityAllocateInfoEXT :: struct {
@@ -5363,15 +5223,15 @@ VkMemoryPriorityAllocateInfoEXT :: struct {
 VkPhysicalDeviceDedicatedAllocationImageAliasingFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dedicatedAllocationImageAliasing : VkBool32,
+    dedicatedAllocationImageAliasing : b32,
 }
 
 VkPhysicalDeviceBufferDeviceAddressFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    bufferDeviceAddress : VkBool32,
-    bufferDeviceAddressCaptureReplay : VkBool32,
-    bufferDeviceAddressMultiDevice : VkBool32,
+    bufferDeviceAddress : b32,
+    bufferDeviceAddressCaptureReplay : b32,
+    bufferDeviceAddressMultiDevice : b32,
 }
 
 VkBufferDeviceAddressCreateInfoEXT :: struct {
@@ -5383,10 +5243,8 @@ VkBufferDeviceAddressCreateInfoEXT :: struct {
 VkValidationFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    enabledValidationFeatureCount : u32,
-    pEnabledValidationFeatures : ptr[VkValidationFeatureEnableEXT],
-    disabledValidationFeatureCount : u32,
-    pDisabledValidationFeatures : ptr[VkValidationFeatureDisableEXT],
+    enabledValidationFeatures : VkValidationFeatureEnableEXT[..],
+    disabledValidationFeatures : VkValidationFeatureDisableEXT[..],
 }
 
 VkCooperativeMatrixPropertiesNV :: struct {
@@ -5405,8 +5263,8 @@ VkCooperativeMatrixPropertiesNV :: struct {
 VkPhysicalDeviceCooperativeMatrixFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    cooperativeMatrix : VkBool32,
-    cooperativeMatrixRobustBufferAccess : VkBool32,
+    cooperativeMatrix : b32,
+    cooperativeMatrixRobustBufferAccess : b32,
 }
 
 VkPhysicalDeviceCooperativeMatrixPropertiesNV :: struct {
@@ -5418,7 +5276,7 @@ VkPhysicalDeviceCooperativeMatrixPropertiesNV :: struct {
 VkPhysicalDeviceCoverageReductionModeFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    coverageReductionMode : VkBool32,
+    coverageReductionMode : b32,
 }
 
 VkPipelineCoverageReductionStateCreateInfoNV :: struct {
@@ -5440,29 +5298,29 @@ VkFramebufferMixedSamplesCombinationNV :: struct {
 VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentShaderSampleInterlock : VkBool32,
-    fragmentShaderPixelInterlock : VkBool32,
-    fragmentShaderShadingRateInterlock : VkBool32,
+    fragmentShaderSampleInterlock : b32,
+    fragmentShaderPixelInterlock : b32,
+    fragmentShaderShadingRateInterlock : b32,
 }
 
 VkPhysicalDeviceYcbcrImageArraysFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    ycbcrImageArrays : VkBool32,
+    ycbcrImageArrays : b32,
 }
 
 VkPhysicalDeviceProvokingVertexFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    provokingVertexLast : VkBool32,
-    transformFeedbackPreservesProvokingVertex : VkBool32,
+    provokingVertexLast : b32,
+    transformFeedbackPreservesProvokingVertex : b32,
 }
 
 VkPhysicalDeviceProvokingVertexPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    provokingVertexModePerPipeline : VkBool32,
-    transformFeedbackPreservesTriangleFanProvokingVertex : VkBool32,
+    provokingVertexModePerPipeline : b32,
+    transformFeedbackPreservesTriangleFanProvokingVertex : b32,
 }
 
 VkPipelineRasterizationProvokingVertexStateCreateInfoEXT :: struct {
@@ -5480,41 +5338,39 @@ VkHeadlessSurfaceCreateInfoEXT :: struct {
 VkPhysicalDeviceShaderAtomicFloatFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderBufferFloat32Atomics : VkBool32,
-    shaderBufferFloat32AtomicAdd : VkBool32,
-    shaderBufferFloat64Atomics : VkBool32,
-    shaderBufferFloat64AtomicAdd : VkBool32,
-    shaderSharedFloat32Atomics : VkBool32,
-    shaderSharedFloat32AtomicAdd : VkBool32,
-    shaderSharedFloat64Atomics : VkBool32,
-    shaderSharedFloat64AtomicAdd : VkBool32,
-    shaderImageFloat32Atomics : VkBool32,
-    shaderImageFloat32AtomicAdd : VkBool32,
-    sparseImageFloat32Atomics : VkBool32,
-    sparseImageFloat32AtomicAdd : VkBool32,
+    shaderBufferFloat32Atomics : b32,
+    shaderBufferFloat32AtomicAdd : b32,
+    shaderBufferFloat64Atomics : b32,
+    shaderBufferFloat64AtomicAdd : b32,
+    shaderSharedFloat32Atomics : b32,
+    shaderSharedFloat32AtomicAdd : b32,
+    shaderSharedFloat64Atomics : b32,
+    shaderSharedFloat64AtomicAdd : b32,
+    shaderImageFloat32Atomics : b32,
+    shaderImageFloat32AtomicAdd : b32,
+    sparseImageFloat32Atomics : b32,
+    sparseImageFloat32AtomicAdd : b32,
 }
 
 VkPhysicalDeviceExtendedDynamicStateFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    extendedDynamicState : VkBool32,
+    extendedDynamicState : b32,
 }
 
 VkPhysicalDeviceHostImageCopyFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    hostImageCopy : VkBool32,
+    hostImageCopy : b32,
 }
 
 VkPhysicalDeviceHostImageCopyPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    copySrcLayoutCount : u32,
-    pCopySrcLayouts : ptr[VkImageLayout],
-    copyDstLayoutCount : u32,
-    pCopyDstLayouts : ptr[VkImageLayout],
+    copySrcLayouts : VkImageLayout[..],
+    copyDstLayouts : VkImageLayout[..],
     optimalTilingLayoutUUID[VK_UUID_SIZE] : u8,
-    identicalMemoryTypeRequirements : VkBool32,
+    identicalMemoryTypeRequirements : b32,
 }
 
 VkMemoryToImageCopyEXT :: struct {
@@ -5545,8 +5401,7 @@ VkCopyMemoryToImageInfoEXT :: struct {
     flags : VkHostImageCopyFlagsEXT,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkMemoryToImageCopyEXT],
+    regions : VkMemoryToImageCopyEXT[..],
 }
 
 VkCopyImageToMemoryInfoEXT :: struct {
@@ -5555,8 +5410,7 @@ VkCopyImageToMemoryInfoEXT :: struct {
     flags : VkHostImageCopyFlagsEXT,
     srcImage : VkImage,
     srcImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkImageToMemoryCopyEXT],
+    regions : VkImageToMemoryCopyEXT[..],
 }
 
 VkCopyImageToImageInfoEXT :: struct {
@@ -5567,8 +5421,7 @@ VkCopyImageToImageInfoEXT :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regionCount : u32,
-    pRegions : ptr[VkImageCopy2],
+    regions : VkImageCopy2[..],
 }
 
 VkHostImageLayoutTransitionInfoEXT :: struct {
@@ -5589,16 +5442,16 @@ VkSubresourceHostMemcpySizeEXT :: struct {
 VkHostImageCopyDevicePerformanceQueryEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    optimalDeviceAccess : VkBool32,
-    identicalMemoryLayout : VkBool32,
+    optimalDeviceAccess : b32,
+    identicalMemoryLayout : b32,
 }
 
 VkPhysicalDeviceMapMemoryPlacedFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    memoryMapPlaced : VkBool32,
-    memoryMapRangePlaced : VkBool32,
-    memoryUnmapReserve : VkBool32,
+    memoryMapPlaced : b32,
+    memoryMapRangePlaced : b32,
+    memoryUnmapReserve : b32,
 }
 
 VkPhysicalDeviceMapMemoryPlacedPropertiesEXT :: struct {
@@ -5616,18 +5469,18 @@ VkMemoryMapPlacedInfoEXT :: struct {
 VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderBufferFloat16Atomics : VkBool32,
-    shaderBufferFloat16AtomicAdd : VkBool32,
-    shaderBufferFloat16AtomicMinMax : VkBool32,
-    shaderBufferFloat32AtomicMinMax : VkBool32,
-    shaderBufferFloat64AtomicMinMax : VkBool32,
-    shaderSharedFloat16Atomics : VkBool32,
-    shaderSharedFloat16AtomicAdd : VkBool32,
-    shaderSharedFloat16AtomicMinMax : VkBool32,
-    shaderSharedFloat32AtomicMinMax : VkBool32,
-    shaderSharedFloat64AtomicMinMax : VkBool32,
-    shaderImageFloat32AtomicMinMax : VkBool32,
-    sparseImageFloat32AtomicMinMax : VkBool32,
+    shaderBufferFloat16Atomics : b32,
+    shaderBufferFloat16AtomicAdd : b32,
+    shaderBufferFloat16AtomicMinMax : b32,
+    shaderBufferFloat32AtomicMinMax : b32,
+    shaderBufferFloat64AtomicMinMax : b32,
+    shaderSharedFloat16Atomics : b32,
+    shaderSharedFloat16AtomicAdd : b32,
+    shaderSharedFloat16AtomicMinMax : b32,
+    shaderSharedFloat32AtomicMinMax : b32,
+    shaderSharedFloat64AtomicMinMax : b32,
+    shaderImageFloat32AtomicMinMax : b32,
+    sparseImageFloat32AtomicMinMax : b32,
 }
 
 VkSurfacePresentModeEXT :: struct {
@@ -5649,35 +5502,31 @@ VkSurfacePresentScalingCapabilitiesEXT :: struct {
 VkSurfacePresentModeCompatibilityEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModeCount : u32,
-    pPresentModes : ptr[VkPresentModeKHR],
+    presentModes : VkPresentModeKHR[..],
 }
 
 VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    swapchainMaintenance1 : VkBool32,
+    swapchainMaintenance1 : b32,
 }
 
 VkSwapchainPresentFenceInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    swapchainCount : u32,
-    pFences : ptr[VkFence],
+    fences : VkFence[..],
 }
 
 VkSwapchainPresentModesCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModeCount : u32,
-    pPresentModes : ptr[VkPresentModeKHR],
+    presentModes : VkPresentModeKHR[..],
 }
 
 VkSwapchainPresentModeInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    swapchainCount : u32,
-    pPresentModes : ptr[VkPresentModeKHR],
+    presentModes : VkPresentModeKHR[..],
 }
 
 VkSwapchainPresentScalingCreateInfoEXT :: struct {
@@ -5692,8 +5541,7 @@ VkReleaseSwapchainImagesInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchain : VkSwapchainKHR,
-    imageIndexCount : u32,
-    pImageIndices : ptr[u32],
+    imageIndices : u32[..],
 }
 
 VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV :: struct {
@@ -5713,14 +5561,13 @@ VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV :: struct {
 VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceGeneratedCommands : VkBool32,
+    deviceGeneratedCommands : b32,
 }
 
 VkGraphicsShaderGroupCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stageCount : u32,
-    pStages : ptr[VkPipelineShaderStageCreateInfo],
+    stages : VkPipelineShaderStageCreateInfo[..],
     pVertexInputState : ptr[VkPipelineVertexInputStateCreateInfo],
     pTessellationState : ptr[VkPipelineTessellationStateCreateInfo],
 }
@@ -5728,10 +5575,8 @@ VkGraphicsShaderGroupCreateInfoNV :: struct {
 VkGraphicsPipelineShaderGroupsCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    groupCount : u32,
-    pGroups : ptr[VkGraphicsShaderGroupCreateInfoNV],
-    pipelineCount : u32,
-    pPipelines : ptr[VkPipeline],
+    groups : VkGraphicsShaderGroupCreateInfoNV[..],
+    pipelines : VkPipeline[..],
 }
 
 VkBindShaderGroupIndirectCommandNV :: struct {
@@ -5766,15 +5611,14 @@ VkIndirectCommandsLayoutTokenNV :: struct {
     stream : u32,
     offset : u32,
     vertexBindingUnit : u32,
-    vertexDynamicStride : VkBool32,
+    vertexDynamicStride : b32,
     pushconstantPipelineLayout : VkPipelineLayout,
     pushconstantShaderStageFlags : VkShaderStageFlags,
     pushconstantOffset : u32,
     pushconstantSize : u32,
     indirectStateFlags : VkIndirectStateFlagsNV,
-    indexTypeCount : u32,
-    pIndexTypes : ptr[VkIndexType],
-    pIndexTypeValues : ptr[u32],
+    indexTypes : VkIndexType[..],
+    indexTypeValues : u32[..],
 }
 
 VkIndirectCommandsLayoutCreateInfoNV :: struct {
@@ -5782,10 +5626,8 @@ VkIndirectCommandsLayoutCreateInfoNV :: struct {
     pNext : rawptr,
     flags : VkIndirectCommandsLayoutUsageFlagsNV,
     pipelineBindPoint : VkPipelineBindPoint,
-    tokenCount : u32,
-    pTokens : ptr[VkIndirectCommandsLayoutTokenNV],
-    streamCount : u32,
-    pStreamStrides : ptr[u32],
+    tokens : VkIndirectCommandsLayoutTokenNV[..],
+    streamStrides : u32[..],
 }
 
 VkGeneratedCommandsInfoNV :: struct {
@@ -5794,8 +5636,7 @@ VkGeneratedCommandsInfoNV :: struct {
     pipelineBindPoint : VkPipelineBindPoint,
     pipeline : VkPipeline,
     indirectCommandsLayout : VkIndirectCommandsLayoutNV,
-    streamCount : u32,
-    pStreams : ptr[VkIndirectCommandsStreamNV],
+    streams : VkIndirectCommandsStreamNV[..],
     sequencesCount : u32,
     preprocessBuffer : VkBuffer,
     preprocessOffset : VkDeviceSize,
@@ -5818,21 +5659,20 @@ VkGeneratedCommandsMemoryRequirementsInfoNV :: struct {
 VkPhysicalDeviceInheritedViewportScissorFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    inheritedViewportScissor2D : VkBool32,
+    inheritedViewportScissor2D : b32,
 }
 
 VkCommandBufferInheritanceViewportScissorInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    viewportScissor2D : VkBool32,
-    viewportDepthCount : u32,
-    pViewportDepths : ptr[VkViewport],
+    viewportScissor2D : b32,
+    viewportDepths : VkViewport[..],
 }
 
 VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    texelBufferAlignment : VkBool32,
+    texelBufferAlignment : b32,
 }
 
 VkRenderPassTransformBeginInfoQCOM :: struct {
@@ -5851,10 +5691,10 @@ VkCommandBufferInheritanceRenderPassTransformInfoQCOM :: struct {
 VkPhysicalDeviceDepthBiasControlFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    depthBiasControl : VkBool32,
-    leastRepresentableValueForceUnormRepresentation : VkBool32,
-    floatRepresentation : VkBool32,
-    depthBiasExact : VkBool32,
+    depthBiasControl : b32,
+    leastRepresentableValueForceUnormRepresentation : b32,
+    floatRepresentation : b32,
+    depthBiasExact : b32,
 }
 
 VkDepthBiasInfoEXT :: struct {
@@ -5869,13 +5709,13 @@ VkDepthBiasRepresentationInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     depthBiasRepresentation : VkDepthBiasRepresentationEXT,
-    depthBiasExact : VkBool32,
+    depthBiasExact : b32,
 }
 
 VkPhysicalDeviceDeviceMemoryReportFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceMemoryReport : VkBool32,
+    deviceMemoryReport : b32,
 }
 
 VkDeviceMemoryReportCallbackDataEXT :: struct {
@@ -5901,9 +5741,9 @@ VkDeviceDeviceMemoryReportCreateInfoEXT :: struct {
 VkPhysicalDeviceRobustness2FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    robustBufferAccess2 : VkBool32,
-    robustImageAccess2 : VkBool32,
-    nullDescriptor : VkBool32,
+    robustBufferAccess2 : b32,
+    robustImageAccess2 : b32,
+    nullDescriptor : b32,
 }
 
 VkPhysicalDeviceRobustness2PropertiesEXT :: struct {
@@ -5929,32 +5769,32 @@ VkPhysicalDeviceCustomBorderColorPropertiesEXT :: struct {
 VkPhysicalDeviceCustomBorderColorFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    customBorderColors : VkBool32,
-    customBorderColorWithoutFormat : VkBool32,
+    customBorderColors : b32,
+    customBorderColorWithoutFormat : b32,
 }
 
 VkPhysicalDevicePresentBarrierFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentBarrier : VkBool32,
+    presentBarrier : b32,
 }
 
 VkSurfaceCapabilitiesPresentBarrierNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentBarrierSupported : VkBool32,
+    presentBarrierSupported : b32,
 }
 
 VkSwapchainPresentBarrierCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentBarrierEnable : VkBool32,
+    presentBarrierEnable : b32,
 }
 
 VkPhysicalDeviceDiagnosticsConfigFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    diagnosticsConfig : VkBool32,
+    diagnosticsConfig : b32,
 }
 
 VkDeviceDiagnosticsConfigCreateInfoNV :: struct {
@@ -5966,7 +5806,7 @@ VkDeviceDiagnosticsConfigCreateInfoNV :: struct {
 VkCudaModuleCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dataSize : size_t,
+    dataSize : u64,
     pData : rawptr,
 }
 
@@ -5974,7 +5814,7 @@ VkCudaFunctionCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     module : VkCudaModuleNV,
-    pName : ptr[char],
+    name : string,
 }
 
 VkCudaLaunchInfoNV :: struct {
@@ -5988,16 +5828,14 @@ VkCudaLaunchInfoNV :: struct {
     blockDimY : u32,
     blockDimZ : u32,
     sharedMemBytes : u32,
-    paramCount : size_t,
-    pParams : ptr[rawptr],
-    extraCount : size_t,
-    pExtras : ptr[rawptr],
+    params : rawptr[..],
+    extras : rawptr[..],
 }
 
 VkPhysicalDeviceCudaKernelLaunchFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    cudaKernelLaunchFeatures : VkBool32,
+    cudaKernelLaunchFeatures : b32,
 }
 
 VkPhysicalDeviceCudaKernelLaunchPropertiesNV :: struct {
@@ -6016,34 +5854,34 @@ VkQueryLowLatencySupportNV :: struct {
 VkPhysicalDeviceDescriptorBufferPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    combinedImageSamplerDescriptorSingleArray : VkBool32,
-    bufferlessPushDescriptors : VkBool32,
-    allowSamplerImageViewPostSubmitCreation : VkBool32,
+    combinedImageSamplerDescriptorSingleArray : b32,
+    bufferlessPushDescriptors : b32,
+    allowSamplerImageViewPostSubmitCreation : b32,
     descriptorBufferOffsetAlignment : VkDeviceSize,
     maxDescriptorBufferBindings : u32,
     maxResourceDescriptorBufferBindings : u32,
     maxSamplerDescriptorBufferBindings : u32,
     maxEmbeddedImmutableSamplerBindings : u32,
     maxEmbeddedImmutableSamplers : u32,
-    bufferCaptureReplayDescriptorDataSize : size_t,
-    imageCaptureReplayDescriptorDataSize : size_t,
-    imageViewCaptureReplayDescriptorDataSize : size_t,
-    samplerCaptureReplayDescriptorDataSize : size_t,
-    accelerationStructureCaptureReplayDescriptorDataSize : size_t,
-    samplerDescriptorSize : size_t,
-    combinedImageSamplerDescriptorSize : size_t,
-    sampledImageDescriptorSize : size_t,
-    storageImageDescriptorSize : size_t,
-    uniformTexelBufferDescriptorSize : size_t,
-    robustUniformTexelBufferDescriptorSize : size_t,
-    storageTexelBufferDescriptorSize : size_t,
-    robustStorageTexelBufferDescriptorSize : size_t,
-    uniformBufferDescriptorSize : size_t,
-    robustUniformBufferDescriptorSize : size_t,
-    storageBufferDescriptorSize : size_t,
-    robustStorageBufferDescriptorSize : size_t,
-    inputAttachmentDescriptorSize : size_t,
-    accelerationStructureDescriptorSize : size_t,
+    bufferCaptureReplayDescriptorDataSize : u64,
+    imageCaptureReplayDescriptorDataSize : u64,
+    imageViewCaptureReplayDescriptorDataSize : u64,
+    samplerCaptureReplayDescriptorDataSize : u64,
+    accelerationStructureCaptureReplayDescriptorDataSize : u64,
+    samplerDescriptorSize : u64,
+    combinedImageSamplerDescriptorSize : u64,
+    sampledImageDescriptorSize : u64,
+    storageImageDescriptorSize : u64,
+    uniformTexelBufferDescriptorSize : u64,
+    robustUniformTexelBufferDescriptorSize : u64,
+    storageTexelBufferDescriptorSize : u64,
+    robustStorageTexelBufferDescriptorSize : u64,
+    uniformBufferDescriptorSize : u64,
+    robustUniformBufferDescriptorSize : u64,
+    storageBufferDescriptorSize : u64,
+    robustStorageBufferDescriptorSize : u64,
+    inputAttachmentDescriptorSize : u64,
+    accelerationStructureDescriptorSize : u64,
     maxSamplerDescriptorBufferRange : VkDeviceSize,
     maxResourceDescriptorBufferRange : VkDeviceSize,
     samplerDescriptorBufferAddressSpaceSize : VkDeviceSize,
@@ -6054,16 +5892,16 @@ VkPhysicalDeviceDescriptorBufferPropertiesEXT :: struct {
 VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    combinedImageSamplerDensityMapDescriptorSize : size_t,
+    combinedImageSamplerDensityMapDescriptorSize : u64,
 }
 
 VkPhysicalDeviceDescriptorBufferFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    descriptorBuffer : VkBool32,
-    descriptorBufferCaptureReplay : VkBool32,
-    descriptorBufferImageLayoutIgnored : VkBool32,
-    descriptorBufferPushDescriptors : VkBool32,
+    descriptorBuffer : b32,
+    descriptorBufferCaptureReplay : b32,
+    descriptorBufferImageLayoutIgnored : b32,
+    descriptorBufferPushDescriptors : b32,
 }
 
 VkDescriptorAddressInfoEXT :: struct {
@@ -6134,14 +5972,14 @@ VkAccelerationStructureCaptureDescriptorDataInfoEXT :: struct {
 VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    graphicsPipelineLibrary : VkBool32,
+    graphicsPipelineLibrary : b32,
 }
 
 VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    graphicsPipelineLibraryFastLinking : VkBool32,
-    graphicsPipelineLibraryIndependentInterpolationDecoration : VkBool32,
+    graphicsPipelineLibraryFastLinking : b32,
+    graphicsPipelineLibraryIndependentInterpolationDecoration : b32,
 }
 
 VkGraphicsPipelineLibraryCreateInfoEXT :: struct {
@@ -6153,15 +5991,15 @@ VkGraphicsPipelineLibraryCreateInfoEXT :: struct {
 VkPhysicalDeviceShaderEarlyAndLateFragmentTestsFeaturesAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderEarlyAndLateFragmentTests : VkBool32,
+    shaderEarlyAndLateFragmentTests : b32,
 }
 
 VkPhysicalDeviceFragmentShadingRateEnumsFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentShadingRateEnums : VkBool32,
-    supersampleFragmentShadingRates : VkBool32,
-    noInvocationFragmentShadingRates : VkBool32,
+    fragmentShadingRateEnums : b32,
+    supersampleFragmentShadingRates : b32,
+    noInvocationFragmentShadingRates : b32,
 }
 
 VkPhysicalDeviceFragmentShadingRateEnumsPropertiesNV :: struct {
@@ -6239,27 +6077,27 @@ VkAccelerationStructureMotionInstanceNV :: struct {
 VkPhysicalDeviceRayTracingMotionBlurFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rayTracingMotionBlur : VkBool32,
-    rayTracingMotionBlurPipelineTraceRaysIndirect : VkBool32,
+    rayTracingMotionBlur : b32,
+    rayTracingMotionBlurPipelineTraceRaysIndirect : b32,
 }
 
 VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    ycbcr2plane444Formats : VkBool32,
+    ycbcr2plane444Formats : b32,
 }
 
 VkPhysicalDeviceFragmentDensityMap2FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentDensityMapDeferred : VkBool32,
+    fragmentDensityMapDeferred : b32,
 }
 
 VkPhysicalDeviceFragmentDensityMap2PropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    subsampledLoads : VkBool32,
-    subsampledCoarseReconstructionEarlyAccess : VkBool32,
+    subsampledLoads : b32,
+    subsampledCoarseReconstructionEarlyAccess : b32,
     maxSubsampledArrayLayers : u32,
     maxDescriptorSetSubsampledSamplers : u32,
 }
@@ -6273,15 +6111,14 @@ VkCopyCommandTransformInfoQCOM :: struct {
 VkPhysicalDeviceImageCompressionControlFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    imageCompressionControl : VkBool32,
+    imageCompressionControl : b32,
 }
 
 VkImageCompressionControlEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkImageCompressionFlagsEXT,
-    compressionControlPlaneCount : u32,
-    pFixedRateFlags : ptr[VkImageCompressionFixedRateFlagsEXT],
+    fixedRateFlags : VkImageCompressionFixedRateFlagsEXT[..],
 }
 
 VkImageCompressionPropertiesEXT :: struct {
@@ -6294,21 +6131,21 @@ VkImageCompressionPropertiesEXT :: struct {
 VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentFeedbackLoopLayout : VkBool32,
+    attachmentFeedbackLoopLayout : b32,
 }
 
 VkPhysicalDevice4444FormatsFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    formatA4R4G4B4 : VkBool32,
-    formatA4B4G4R4 : VkBool32,
+    formatA4R4G4B4 : b32,
+    formatA4B4G4R4 : b32,
 }
 
 VkPhysicalDeviceFaultFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceFault : VkBool32,
-    deviceFaultVendorBinary : VkBool32,
+    deviceFault : b32,
+    deviceFaultVendorBinary : b32,
 }
 
 VkDeviceFaultCountsEXT :: struct {
@@ -6326,7 +6163,7 @@ VkDeviceFaultAddressInfoEXT :: struct {
 }
 
 VkDeviceFaultVendorInfoEXT :: struct {
-    description : char[VK_MAX_DESCRIPTION_SIZE],
+    description : string,
     vendorFaultCode : u64,
     vendorFaultData : u64,
 }
@@ -6334,9 +6171,9 @@ VkDeviceFaultVendorInfoEXT :: struct {
 VkDeviceFaultInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    description : char[VK_MAX_DESCRIPTION_SIZE],
-    pAddressInfos : ptr[VkDeviceFaultAddressInfoEXT],
-    pVendorInfos : ptr[VkDeviceFaultVendorInfoEXT],
+    description : string,
+    addressInfos : VkDeviceFaultAddressInfoEXT[..],
+    vendorInfos : VkDeviceFaultVendorInfoEXT[..],
     pVendorBinaryData : rawptr,
 }
 
@@ -6357,39 +6194,37 @@ VkDeviceFaultVendorBinaryHeaderVersionOneEXT :: struct {
 VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rasterizationOrderColorAttachmentAccess : VkBool32,
-    rasterizationOrderDepthAttachmentAccess : VkBool32,
-    rasterizationOrderStencilAttachmentAccess : VkBool32,
+    rasterizationOrderColorAttachmentAccess : b32,
+    rasterizationOrderDepthAttachmentAccess : b32,
+    rasterizationOrderStencilAttachmentAccess : b32,
 }
 
 VkPhysicalDeviceRGBA10X6FormatsFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    formatRgba10x6WithoutYCbCrSampler : VkBool32,
+    formatRgba10x6WithoutYCbCrSampler : b32,
 }
 
 VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    mutableDescriptorType : VkBool32,
+    mutableDescriptorType : b32,
 }
 
 VkMutableDescriptorTypeListEXT :: struct {
-    descriptorTypeCount : u32,
-    pDescriptorTypes : ptr[VkDescriptorType],
+    descriptorTypes : VkDescriptorType[..],
 }
 
 VkMutableDescriptorTypeCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    mutableDescriptorTypeListCount : u32,
-    pMutableDescriptorTypeLists : ptr[VkMutableDescriptorTypeListEXT],
+    mutableDescriptorTypeLists : VkMutableDescriptorTypeListEXT[..],
 }
 
 VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    vertexInputDynamicState : VkBool32,
+    vertexInputDynamicState : b32,
 }
 
 VkVertexInputBindingDescription2EXT :: struct {
@@ -6413,8 +6248,8 @@ VkVertexInputAttributeDescription2EXT :: struct {
 VkPhysicalDeviceDrmPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    hasPrimary : VkBool32,
-    hasRender : VkBool32,
+    hasPrimary : b32,
+    hasRender : b32,
     primaryMajor : i64,
     primaryMinor : i64,
     renderMajor : i64,
@@ -6424,7 +6259,7 @@ VkPhysicalDeviceDrmPropertiesEXT :: struct {
 VkPhysicalDeviceAddressBindingReportFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    reportAddressBinding : VkBool32,
+    reportAddressBinding : b32,
 }
 
 VkDeviceAddressBindingCallbackDataEXT :: struct {
@@ -6439,20 +6274,20 @@ VkDeviceAddressBindingCallbackDataEXT :: struct {
 VkPhysicalDeviceDepthClipControlFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    depthClipControl : VkBool32,
+    depthClipControl : b32,
 }
 
 VkPipelineViewportDepthClipControlCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    negativeOneToOne : VkBool32,
+    negativeOneToOne : b32,
 }
 
 VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    primitiveTopologyListRestart : VkBool32,
-    primitiveTopologyPatchListRestart : VkBool32,
+    primitiveTopologyListRestart : b32,
+    primitiveTopologyPatchListRestart : b32,
 }
 
 VkSubpassShadingPipelineCreateInfoHUAWEI :: struct {
@@ -6465,7 +6300,7 @@ VkSubpassShadingPipelineCreateInfoHUAWEI :: struct {
 VkPhysicalDeviceSubpassShadingFeaturesHUAWEI :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    subpassShading : VkBool32,
+    subpassShading : b32,
 }
 
 VkPhysicalDeviceSubpassShadingPropertiesHUAWEI :: struct {
@@ -6477,7 +6312,7 @@ VkPhysicalDeviceSubpassShadingPropertiesHUAWEI :: struct {
 VkPhysicalDeviceInvocationMaskFeaturesHUAWEI :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    invocationMask : VkBool32,
+    invocationMask : b32,
 }
 
 VkMemoryGetRemoteAddressInfoNV :: struct {
@@ -6490,7 +6325,7 @@ VkMemoryGetRemoteAddressInfoNV :: struct {
 VkPhysicalDeviceExternalMemoryRDMAFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    externalMemoryRDMA : VkBool32,
+    externalMemoryRDMA : b32,
 }
 
 VkPipelinePropertiesIdentifierEXT :: struct {
@@ -6502,13 +6337,13 @@ VkPipelinePropertiesIdentifierEXT :: struct {
 VkPhysicalDevicePipelinePropertiesFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelinePropertiesIdentifier : VkBool32,
+    pipelinePropertiesIdentifier : b32,
 }
 
 VkPhysicalDeviceFrameBoundaryFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    frameBoundary : VkBool32,
+    frameBoundary : b32,
 }
 
 VkFrameBoundaryEXT :: struct {
@@ -6516,67 +6351,65 @@ VkFrameBoundaryEXT :: struct {
     pNext : rawptr,
     flags : VkFrameBoundaryFlagsEXT,
     frameID : u64,
-    imageCount : u32,
-    pImages : ptr[VkImage],
-    bufferCount : u32,
-    pBuffers : ptr[VkBuffer],
+    images : VkImage[..],
+    buffers : VkBuffer[..],
     tagName : u64,
-    tagSize : size_t,
+    tagSize : u64,
     pTag : rawptr,
 }
 
 VkPhysicalDeviceMultisampledRenderToSingleSampledFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    multisampledRenderToSingleSampled : VkBool32,
+    multisampledRenderToSingleSampled : b32,
 }
 
 VkSubpassResolvePerformanceQueryEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    optimal : VkBool32,
+    optimal : b32,
 }
 
 VkMultisampledRenderToSingleSampledInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    multisampledRenderToSingleSampledEnable : VkBool32,
+    multisampledRenderToSingleSampledEnable : b32,
     rasterizationSamples : VkSampleCountFlagBits,
 }
 
 VkPhysicalDeviceExtendedDynamicState2FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    extendedDynamicState2 : VkBool32,
-    extendedDynamicState2LogicOp : VkBool32,
-    extendedDynamicState2PatchControlPoints : VkBool32,
+    extendedDynamicState2 : b32,
+    extendedDynamicState2LogicOp : b32,
+    extendedDynamicState2PatchControlPoints : b32,
 }
 
 VkPhysicalDeviceColorWriteEnableFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorWriteEnable : VkBool32,
+    colorWriteEnable : b32,
 }
 
 VkPipelineColorWriteCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     attachmentCount : u32,
-    pColorWriteEnables : ptr[VkBool32],
+    colorWriteEnables : b32[..],
 }
 
 VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    primitivesGeneratedQuery : VkBool32,
-    primitivesGeneratedQueryWithRasterizerDiscard : VkBool32,
-    primitivesGeneratedQueryWithNonZeroStreams : VkBool32,
+    primitivesGeneratedQuery : b32,
+    primitivesGeneratedQueryWithRasterizerDiscard : b32,
+    primitivesGeneratedQueryWithNonZeroStreams : b32,
 }
 
 VkPhysicalDeviceImageViewMinLodFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    minLod : VkBool32,
+    minLod : b32,
 }
 
 VkImageViewMinLodCreateInfoEXT :: struct {
@@ -6588,7 +6421,7 @@ VkImageViewMinLodCreateInfoEXT :: struct {
 VkPhysicalDeviceMultiDrawFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    multiDraw : VkBool32,
+    multiDraw : b32,
 }
 
 VkPhysicalDeviceMultiDrawPropertiesEXT :: struct {
@@ -6611,24 +6444,24 @@ VkMultiDrawIndexedInfoEXT :: struct {
 VkPhysicalDeviceImage2DViewOf3DFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    image2DViewOf3D : VkBool32,
-    sampler2DViewOf3D : VkBool32,
+    image2DViewOf3D : b32,
+    sampler2DViewOf3D : b32,
 }
 
 VkPhysicalDeviceShaderTileImageFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderTileImageColorReadAccess : VkBool32,
-    shaderTileImageDepthReadAccess : VkBool32,
-    shaderTileImageStencilReadAccess : VkBool32,
+    shaderTileImageColorReadAccess : b32,
+    shaderTileImageDepthReadAccess : b32,
+    shaderTileImageStencilReadAccess : b32,
 }
 
 VkPhysicalDeviceShaderTileImagePropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderTileImageCoherentReadAccelerated : VkBool32,
-    shaderTileImageReadSampleFromPixelRateInvocation : VkBool32,
-    shaderTileImageReadFromHelperInvocation : VkBool32,
+    shaderTileImageCoherentReadAccelerated : b32,
+    shaderTileImageReadSampleFromPixelRateInvocation : b32,
+    shaderTileImageReadFromHelperInvocation : b32,
 }
 
 VkMicromapUsageEXT :: struct {
@@ -6644,9 +6477,8 @@ VkMicromapBuildInfoEXT :: struct {
     flags : VkBuildMicromapFlagsEXT,
     mode : VkBuildMicromapModeEXT,
     dstMicromap : VkMicromapEXT,
-    usageCountsCount : u32,
-    pUsageCounts : ptr[VkMicromapUsageEXT],
-    ppUsageCounts : ptr[ptr[VkMicromapUsageEXT]],
+    usageCounts : VkMicromapUsageEXT[..],
+    ppUsageCounts : ptr[VkMicromapUsageEXT][..],
     data : VkDeviceOrHostAddressConstKHR,
     scratchData : VkDeviceOrHostAddressKHR,
     triangleArray : VkDeviceOrHostAddressConstKHR,
@@ -6667,9 +6499,9 @@ VkMicromapCreateInfoEXT :: struct {
 VkPhysicalDeviceOpacityMicromapFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    micromap : VkBool32,
-    micromapCaptureReplay : VkBool32,
-    micromapHostCommands : VkBool32,
+    micromap : b32,
+    micromapCaptureReplay : b32,
+    micromapHostCommands : b32,
 }
 
 VkPhysicalDeviceOpacityMicromapPropertiesEXT :: struct {
@@ -6714,7 +6546,7 @@ VkMicromapBuildSizesInfoEXT :: struct {
     pNext : rawptr,
     micromapSize : VkDeviceSize,
     buildScratchSize : VkDeviceSize,
-    discardable : VkBool32,
+    discardable : b32,
 }
 
 VkAccelerationStructureTrianglesOpacityMicromapEXT :: struct {
@@ -6724,9 +6556,8 @@ VkAccelerationStructureTrianglesOpacityMicromapEXT :: struct {
     indexBuffer : VkDeviceOrHostAddressConstKHR,
     indexStride : VkDeviceSize,
     baseTriangle : u32,
-    usageCountsCount : u32,
-    pUsageCounts : ptr[VkMicromapUsageEXT],
-    ppUsageCounts : ptr[ptr[VkMicromapUsageEXT]],
+    usageCounts : VkMicromapUsageEXT[..],
+    ppUsageCounts : ptr[VkMicromapUsageEXT][..],
     micromap : VkMicromapEXT,
 }
 
@@ -6739,15 +6570,15 @@ VkMicromapTriangleEXT :: struct {
 VkPhysicalDeviceClusterCullingShaderFeaturesHUAWEI :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    clustercullingShader : VkBool32,
-    multiviewClusterCullingShader : VkBool32,
+    clustercullingShader : b32,
+    multiviewClusterCullingShader : b32,
 }
 
 VkPhysicalDeviceClusterCullingShaderPropertiesHUAWEI :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    maxWorkGroupCount[3] : u32,
-    maxWorkGroupSize[3] : u32,
+    maxWorkGroupCount : u32[3],
+    maxWorkGroupSize : u32[3],
     maxOutputClusterCount : u32,
     indirectBufferOffsetAlignment : VkDeviceSize,
 }
@@ -6755,27 +6586,27 @@ VkPhysicalDeviceClusterCullingShaderPropertiesHUAWEI :: struct {
 VkPhysicalDeviceClusterCullingShaderVrsFeaturesHUAWEI :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    clusterShadingRate : VkBool32,
+    clusterShadingRate : b32,
 }
 
 VkPhysicalDeviceBorderColorSwizzleFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    borderColorSwizzle : VkBool32,
-    borderColorSwizzleFromImage : VkBool32,
+    borderColorSwizzle : b32,
+    borderColorSwizzleFromImage : b32,
 }
 
 VkSamplerBorderColorComponentMappingCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     components : VkComponentMapping,
-    srgb : VkBool32,
+    srgb : b32,
 }
 
 VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pageableDeviceLocalMemory : VkBool32,
+    pageableDeviceLocalMemory : b32,
 }
 
 VkPhysicalDeviceShaderCorePropertiesARM :: struct {
@@ -6795,7 +6626,7 @@ VkDeviceQueueShaderCoreControlCreateInfoARM :: struct {
 VkPhysicalDeviceSchedulingControlsFeaturesARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    schedulingControls : VkBool32,
+    schedulingControls : b32,
 }
 
 VkPhysicalDeviceSchedulingControlsPropertiesARM :: struct {
@@ -6807,7 +6638,7 @@ VkPhysicalDeviceSchedulingControlsPropertiesARM :: struct {
 VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    imageSlicedViewOf3D : VkBool32,
+    imageSlicedViewOf3D : b32,
 }
 
 VkImageViewSlicedCreateInfoEXT :: struct {
@@ -6820,7 +6651,7 @@ VkImageViewSlicedCreateInfoEXT :: struct {
 VkPhysicalDeviceDescriptorSetHostMappingFeaturesVALVE :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    descriptorSetHostMapping : VkBool32,
+    descriptorSetHostMapping : b32,
 }
 
 VkDescriptorSetBindingReferenceVALVE :: struct {
@@ -6833,26 +6664,26 @@ VkDescriptorSetBindingReferenceVALVE :: struct {
 VkDescriptorSetLayoutHostMappingInfoVALVE :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    descriptorOffset : size_t,
+    descriptorOffset : u64,
     descriptorSize : u32,
 }
 
 VkPhysicalDeviceDepthClampZeroOneFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    depthClampZeroOne : VkBool32,
+    depthClampZeroOne : b32,
 }
 
 VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    nonSeamlessCubeMap : VkBool32,
+    nonSeamlessCubeMap : b32,
 }
 
 VkPhysicalDeviceRenderPassStripedFeaturesARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    renderPassStriped : VkBool32,
+    renderPassStriped : b32,
 }
 
 VkPhysicalDeviceRenderPassStripedPropertiesARM :: struct {
@@ -6871,21 +6702,19 @@ VkRenderPassStripeInfoARM :: struct {
 VkRenderPassStripeBeginInfoARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stripeInfoCount : u32,
-    pStripeInfos : ptr[VkRenderPassStripeInfoARM],
+    stripeInfos : VkRenderPassStripeInfoARM[..],
 }
 
 VkRenderPassStripeSubmitInfoARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stripeSemaphoreInfoCount : u32,
-    pStripeSemaphoreInfos : ptr[VkSemaphoreSubmitInfo],
+    stripeSemaphoreInfos : VkSemaphoreSubmitInfo[..],
 }
 
 VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentDensityMapOffset : VkBool32,
+    fragmentDensityMapOffset : b32,
 }
 
 VkPhysicalDeviceFragmentDensityMapOffsetPropertiesQCOM :: struct {
@@ -6897,8 +6726,7 @@ VkPhysicalDeviceFragmentDensityMapOffsetPropertiesQCOM :: struct {
 VkSubpassFragmentDensityMapOffsetEndInfoQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentDensityOffsetCount : u32,
-    pFragmentDensityOffsets : ptr[VkOffset2D],
+    fragmentDensityOffsets : VkOffset2D[..],
 }
 
 VkCopyMemoryIndirectCommandNV :: struct {
@@ -6919,7 +6747,7 @@ VkCopyMemoryToImageIndirectCommandNV :: struct {
 VkPhysicalDeviceCopyMemoryIndirectFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    indirectCopy : VkBool32,
+    indirectCopy : b32,
 }
 
 VkPhysicalDeviceCopyMemoryIndirectPropertiesNV :: struct {
@@ -6939,7 +6767,7 @@ VkDecompressMemoryRegionNV :: struct {
 VkPhysicalDeviceMemoryDecompressionFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    memoryDecompression : VkBool32,
+    memoryDecompression : b32,
 }
 
 VkPhysicalDeviceMemoryDecompressionPropertiesNV :: struct {
@@ -6952,9 +6780,9 @@ VkPhysicalDeviceMemoryDecompressionPropertiesNV :: struct {
 VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceGeneratedCompute : VkBool32,
-    deviceGeneratedComputePipelines : VkBool32,
-    deviceGeneratedComputeCaptureReplay : VkBool32,
+    deviceGeneratedCompute : b32,
+    deviceGeneratedComputePipelines : b32,
+    deviceGeneratedComputeCaptureReplay : b32,
 }
 
 VkComputePipelineIndirectBufferInfoNV :: struct {
@@ -6979,13 +6807,13 @@ VkBindPipelineIndirectCommandNV :: struct {
 VkPhysicalDeviceLinearColorAttachmentFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    linearColorAttachment : VkBool32,
+    linearColorAttachment : b32,
 }
 
 VkPhysicalDeviceImageCompressionControlSwapchainFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    imageCompressionControlSwapchain : VkBool32,
+    imageCompressionControlSwapchain : b32,
 }
 
 VkImageViewSampleWeightCreateInfoQCOM :: struct {
@@ -6999,9 +6827,9 @@ VkImageViewSampleWeightCreateInfoQCOM :: struct {
 VkPhysicalDeviceImageProcessingFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    textureSampleWeighted : VkBool32,
-    textureBoxFilter : VkBool32,
-    textureBlockMatch : VkBool32,
+    textureSampleWeighted : b32,
+    textureBoxFilter : b32,
+    textureBlockMatch : b32,
 }
 
 VkPhysicalDeviceImageProcessingPropertiesQCOM :: struct {
@@ -7016,9 +6844,9 @@ VkPhysicalDeviceImageProcessingPropertiesQCOM :: struct {
 VkPhysicalDeviceNestedCommandBufferFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    nestedCommandBuffer : VkBool32,
-    nestedCommandBufferRendering : VkBool32,
-    nestedCommandBufferSimultaneousUse : VkBool32,
+    nestedCommandBuffer : b32,
+    nestedCommandBufferRendering : b32,
+    nestedCommandBufferSimultaneousUse : b32,
 }
 
 VkPhysicalDeviceNestedCommandBufferPropertiesEXT :: struct {
@@ -7030,49 +6858,49 @@ VkPhysicalDeviceNestedCommandBufferPropertiesEXT :: struct {
 VkExternalMemoryAcquireUnmodifiedEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    acquireUnmodifiedMemory : VkBool32,
+    acquireUnmodifiedMemory : b32,
 }
 
 VkPhysicalDeviceExtendedDynamicState3FeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    extendedDynamicState3TessellationDomainOrigin : VkBool32,
-    extendedDynamicState3DepthClampEnable : VkBool32,
-    extendedDynamicState3PolygonMode : VkBool32,
-    extendedDynamicState3RasterizationSamples : VkBool32,
-    extendedDynamicState3SampleMask : VkBool32,
-    extendedDynamicState3AlphaToCoverageEnable : VkBool32,
-    extendedDynamicState3AlphaToOneEnable : VkBool32,
-    extendedDynamicState3LogicOpEnable : VkBool32,
-    extendedDynamicState3ColorBlendEnable : VkBool32,
-    extendedDynamicState3ColorBlendEquation : VkBool32,
-    extendedDynamicState3ColorWriteMask : VkBool32,
-    extendedDynamicState3RasterizationStream : VkBool32,
-    extendedDynamicState3ConservativeRasterizationMode : VkBool32,
-    extendedDynamicState3ExtraPrimitiveOverestimationSize : VkBool32,
-    extendedDynamicState3DepthClipEnable : VkBool32,
-    extendedDynamicState3SampleLocationsEnable : VkBool32,
-    extendedDynamicState3ColorBlendAdvanced : VkBool32,
-    extendedDynamicState3ProvokingVertexMode : VkBool32,
-    extendedDynamicState3LineRasterizationMode : VkBool32,
-    extendedDynamicState3LineStippleEnable : VkBool32,
-    extendedDynamicState3DepthClipNegativeOneToOne : VkBool32,
-    extendedDynamicState3ViewportWScalingEnable : VkBool32,
-    extendedDynamicState3ViewportSwizzle : VkBool32,
-    extendedDynamicState3CoverageToColorEnable : VkBool32,
-    extendedDynamicState3CoverageToColorLocation : VkBool32,
-    extendedDynamicState3CoverageModulationMode : VkBool32,
-    extendedDynamicState3CoverageModulationTableEnable : VkBool32,
-    extendedDynamicState3CoverageModulationTable : VkBool32,
-    extendedDynamicState3CoverageReductionMode : VkBool32,
-    extendedDynamicState3RepresentativeFragmentTestEnable : VkBool32,
-    extendedDynamicState3ShadingRateImageEnable : VkBool32,
+    extendedDynamicState3TessellationDomainOrigin : b32,
+    extendedDynamicState3DepthClampEnable : b32,
+    extendedDynamicState3PolygonMode : b32,
+    extendedDynamicState3RasterizationSamples : b32,
+    extendedDynamicState3SampleMask : b32,
+    extendedDynamicState3AlphaToCoverageEnable : b32,
+    extendedDynamicState3AlphaToOneEnable : b32,
+    extendedDynamicState3LogicOpEnable : b32,
+    extendedDynamicState3ColorBlendEnable : b32,
+    extendedDynamicState3ColorBlendEquation : b32,
+    extendedDynamicState3ColorWriteMask : b32,
+    extendedDynamicState3RasterizationStream : b32,
+    extendedDynamicState3ConservativeRasterizationMode : b32,
+    extendedDynamicState3ExtraPrimitiveOverestimationSize : b32,
+    extendedDynamicState3DepthClipEnable : b32,
+    extendedDynamicState3SampleLocationsEnable : b32,
+    extendedDynamicState3ColorBlendAdvanced : b32,
+    extendedDynamicState3ProvokingVertexMode : b32,
+    extendedDynamicState3LineRasterizationMode : b32,
+    extendedDynamicState3LineStippleEnable : b32,
+    extendedDynamicState3DepthClipNegativeOneToOne : b32,
+    extendedDynamicState3ViewportWScalingEnable : b32,
+    extendedDynamicState3ViewportSwizzle : b32,
+    extendedDynamicState3CoverageToColorEnable : b32,
+    extendedDynamicState3CoverageToColorLocation : b32,
+    extendedDynamicState3CoverageModulationMode : b32,
+    extendedDynamicState3CoverageModulationTableEnable : b32,
+    extendedDynamicState3CoverageModulationTable : b32,
+    extendedDynamicState3CoverageReductionMode : b32,
+    extendedDynamicState3RepresentativeFragmentTestEnable : b32,
+    extendedDynamicState3ShadingRateImageEnable : b32,
 }
 
 VkPhysicalDeviceExtendedDynamicState3PropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dynamicPrimitiveTopologyUnrestricted : VkBool32,
+    dynamicPrimitiveTopologyUnrestricted : b32,
 }
 
 VkColorBlendEquationEXT :: struct {
@@ -7086,22 +6914,22 @@ VkColorBlendEquationEXT :: struct {
 
 VkColorBlendAdvancedEXT :: struct {
     advancedBlendOp : VkBlendOp,
-    srcPremultiplied : VkBool32,
-    dstPremultiplied : VkBool32,
+    srcPremultiplied : b32,
+    dstPremultiplied : b32,
     blendOverlap : VkBlendOverlapEXT,
-    clampResults : VkBool32,
+    clampResults : b32,
 }
 
 VkPhysicalDeviceSubpassMergeFeedbackFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    subpassMergeFeedback : VkBool32,
+    subpassMergeFeedback : b32,
 }
 
 VkRenderPassCreationControlEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    disallowMerging : VkBool32,
+    disallowMerging : b32,
 }
 
 VkRenderPassCreationFeedbackInfoEXT :: struct {
@@ -7116,7 +6944,7 @@ VkRenderPassCreationFeedbackCreateInfoEXT :: struct {
 
 VkRenderPassSubpassFeedbackInfoEXT :: struct {
     subpassMergeStatus : VkSubpassMergeStatusEXT,
-    description : char[VK_MAX_DESCRIPTION_SIZE],
+    description : string,
     postMergeIndex : u32,
 }
 
@@ -7137,14 +6965,13 @@ VkDirectDriverLoadingListLUNARG :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     mode : VkDirectDriverLoadingModeLUNARG,
-    driverCount : u32,
-    pDrivers : ptr[VkDirectDriverLoadingInfoLUNARG],
+    drivers : VkDirectDriverLoadingInfoLUNARG[..],
 }
 
 VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderModuleIdentifier : VkBool32,
+    shaderModuleIdentifier : b32,
 }
 
 VkPhysicalDeviceShaderModuleIdentifierPropertiesEXT :: struct {
@@ -7170,7 +6997,7 @@ VkShaderModuleIdentifierEXT :: struct {
 VkPhysicalDeviceOpticalFlowFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    opticalFlow : VkBool32,
+    opticalFlow : b32,
 }
 
 VkPhysicalDeviceOpticalFlowPropertiesNV :: struct {
@@ -7178,10 +7005,10 @@ VkPhysicalDeviceOpticalFlowPropertiesNV :: struct {
     pNext : rawptr,
     supportedOutputGridSizes : VkOpticalFlowGridSizeFlagsNV,
     supportedHintGridSizes : VkOpticalFlowGridSizeFlagsNV,
-    hintSupported : VkBool32,
-    costSupported : VkBool32,
-    bidirectionalFlowSupported : VkBool32,
-    globalFlowSupported : VkBool32,
+    hintSupported : b32,
+    costSupported : b32,
+    bidirectionalFlowSupported : b32,
+    globalFlowSupported : b32,
     minWidth : u32,
     minHeight : u32,
     maxWidth : u32,
@@ -7227,26 +7054,25 @@ VkOpticalFlowExecuteInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkOpticalFlowExecuteFlagsNV,
-    regionCount : u32,
-    pRegions : ptr[VkRect2D],
+    regions : VkRect2D[..],
 }
 
 VkPhysicalDeviceLegacyDitheringFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    legacyDithering : VkBool32,
+    legacyDithering : b32,
 }
 
 VkPhysicalDevicePipelineProtectedAccessFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineProtectedAccess : VkBool32,
+    pipelineProtectedAccess : b32,
 }
 
 VkPhysicalDeviceShaderObjectFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderObject : VkBool32,
+    shaderObject : b32,
 }
 
 VkPhysicalDeviceShaderObjectPropertiesEXT :: struct {
@@ -7263,20 +7089,18 @@ VkShaderCreateInfoEXT :: struct {
     stage : VkShaderStageFlagBits,
     nextStage : VkShaderStageFlags,
     codeType : VkShaderCodeTypeEXT,
-    codeSize : size_t,
+    codeSize : u64,
     pCode : rawptr,
-    pName : ptr[char],
-    setLayoutCount : u32,
-    pSetLayouts : ptr[VkDescriptorSetLayout],
-    pushConstantRangeCount : u32,
-    pPushConstantRanges : ptr[VkPushConstantRange],
+    name : string,
+    setLayouts : VkDescriptorSetLayout[..],
+    pushConstantRanges : VkPushConstantRange[..],
     pSpecializationInfo : ptr[VkSpecializationInfo],
 }
 
 VkPhysicalDeviceTilePropertiesFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    tileProperties : VkBool32,
+    tileProperties : b32,
 }
 
 VkTilePropertiesQCOM :: struct {
@@ -7290,7 +7114,7 @@ VkTilePropertiesQCOM :: struct {
 VkPhysicalDeviceAmigoProfilingFeaturesSEC :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    amigoProfiling : VkBool32,
+    amigoProfiling : b32,
 }
 
 VkAmigoProfilingSubmitInfoSEC :: struct {
@@ -7303,7 +7127,7 @@ VkAmigoProfilingSubmitInfoSEC :: struct {
 VkPhysicalDeviceMultiviewPerViewViewportsFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    multiviewPerViewViewports : VkBool32,
+    multiviewPerViewViewports : b32,
 }
 
 VkPhysicalDeviceRayTracingInvocationReorderPropertiesNV :: struct {
@@ -7315,13 +7139,13 @@ VkPhysicalDeviceRayTracingInvocationReorderPropertiesNV :: struct {
 VkPhysicalDeviceRayTracingInvocationReorderFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rayTracingInvocationReorder : VkBool32,
+    rayTracingInvocationReorder : b32,
 }
 
 VkPhysicalDeviceExtendedSparseAddressSpaceFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    extendedSparseAddressSpace : VkBool32,
+    extendedSparseAddressSpace : b32,
 }
 
 VkPhysicalDeviceExtendedSparseAddressSpacePropertiesNV :: struct {
@@ -7333,24 +7157,22 @@ VkPhysicalDeviceExtendedSparseAddressSpacePropertiesNV :: struct {
 }
 
 VkLayerSettingEXT :: struct {
-    pLayerName : ptr[char],
-    pSettingName : ptr[char],
+    layerName : string,
+    settingName : string,
     type : VkLayerSettingTypeEXT,
-    valueCount : u32,
-    pValues : rawptr,
+    values : rawptr,
 }
 
 VkLayerSettingsCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    settingCount : u32,
-    pSettings : ptr[VkLayerSettingEXT],
+    settings : VkLayerSettingEXT[..],
 }
 
 VkPhysicalDeviceShaderCoreBuiltinsFeaturesARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderCoreBuiltins : VkBool32,
+    shaderCoreBuiltins : b32,
 }
 
 VkPhysicalDeviceShaderCoreBuiltinsPropertiesARM :: struct {
@@ -7364,20 +7186,20 @@ VkPhysicalDeviceShaderCoreBuiltinsPropertiesARM :: struct {
 VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineLibraryGroupHandles : VkBool32,
+    pipelineLibraryGroupHandles : b32,
 }
 
 VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    dynamicRenderingUnusedAttachments : VkBool32,
+    dynamicRenderingUnusedAttachments : b32,
 }
 
 VkLatencySleepModeInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    lowLatencyMode : VkBool32,
-    lowLatencyBoost : VkBool32,
+    lowLatencyMode : b32,
+    lowLatencyBoost : b32,
     minimumIntervalUs : u32,
 }
 
@@ -7417,8 +7239,7 @@ VkLatencyTimingsFrameReportNV :: struct {
 VkGetLatencyMarkerInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    timingCount : u32,
-    pTimings : ptr[VkLatencyTimingsFrameReportNV],
+    timings : VkLatencyTimingsFrameReportNV[..],
 }
 
 VkLatencySubmissionPresentIdNV :: struct {
@@ -7430,7 +7251,7 @@ VkLatencySubmissionPresentIdNV :: struct {
 VkSwapchainLatencyCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    latencyModeEnable : VkBool32,
+    latencyModeEnable : b32,
 }
 
 VkOutOfBandQueueTypeInfoNV :: struct {
@@ -7442,34 +7263,32 @@ VkOutOfBandQueueTypeInfoNV :: struct {
 VkLatencySurfaceCapabilitiesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModeCount : u32,
-    pPresentModes : ptr[VkPresentModeKHR],
+    presentModes : VkPresentModeKHR[..],
 }
 
 VkPhysicalDeviceMultiviewPerViewRenderAreasFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    multiviewPerViewRenderAreas : VkBool32,
+    multiviewPerViewRenderAreas : b32,
 }
 
 VkMultiviewPerViewRenderAreasRenderPassBeginInfoQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    perViewRenderAreaCount : u32,
-    pPerViewRenderAreas : ptr[VkRect2D],
+    perViewRenderAreas : VkRect2D[..],
 }
 
 VkPhysicalDevicePerStageDescriptorSetFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    perStageDescriptorSet : VkBool32,
-    dynamicPipelineLayout : VkBool32,
+    perStageDescriptorSet : b32,
+    dynamicPipelineLayout : b32,
 }
 
 VkPhysicalDeviceImageProcessing2FeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    textureBlockMatch2 : VkBool32,
+    textureBlockMatch2 : b32,
 }
 
 VkPhysicalDeviceImageProcessing2PropertiesQCOM :: struct {
@@ -7488,7 +7307,7 @@ VkSamplerBlockMatchWindowCreateInfoQCOM :: struct {
 VkPhysicalDeviceCubicWeightsFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    selectableCubicWeights : VkBool32,
+    selectableCubicWeights : b32,
 }
 
 VkSamplerCubicWeightsCreateInfoQCOM :: struct {
@@ -7506,26 +7325,26 @@ VkBlitImageCubicWeightsInfoQCOM :: struct {
 VkPhysicalDeviceYcbcrDegammaFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    ycbcrDegamma : VkBool32,
+    ycbcrDegamma : b32,
 }
 
 VkSamplerYcbcrConversionYcbcrDegammaCreateInfoQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    enableYDegamma : VkBool32,
-    enableCbCrDegamma : VkBool32,
+    enableYDegamma : b32,
+    enableCbCrDegamma : b32,
 }
 
 VkPhysicalDeviceCubicClampFeaturesQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    cubicRangeClamp : VkBool32,
+    cubicRangeClamp : b32,
 }
 
 VkPhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentFeedbackLoopDynamicState : VkBool32,
+    attachmentFeedbackLoopDynamicState : b32,
 }
 
 VkPhysicalDeviceLayeredDriverPropertiesMSFT :: struct {
@@ -7537,13 +7356,13 @@ VkPhysicalDeviceLayeredDriverPropertiesMSFT :: struct {
 VkPhysicalDeviceDescriptorPoolOverallocationFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    descriptorPoolOverallocation : VkBool32,
+    descriptorPoolOverallocation : b32,
 }
 
 VkPhysicalDeviceShaderAtomicFloat16VectorFeaturesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderFloat16VectorAtomics : VkBool32,
+    shaderFloat16VectorAtomics : b32,
 }
 
 VkAccelerationStructureBuildRangeInfoKHR :: struct {
@@ -7575,7 +7394,7 @@ VkAccelerationStructureGeometryAabbsDataKHR :: struct {
 VkAccelerationStructureGeometryInstancesDataKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    arrayOfPointers : VkBool32,
+    arrayOfPointers : b32,
     data : VkDeviceOrHostAddressConstKHR,
 }
 
@@ -7595,9 +7414,8 @@ VkAccelerationStructureBuildGeometryInfoKHR :: struct {
     mode : VkBuildAccelerationStructureModeKHR,
     srcAccelerationStructure : VkAccelerationStructureKHR,
     dstAccelerationStructure : VkAccelerationStructureKHR,
-    geometryCount : u32,
-    pGeometries : ptr[VkAccelerationStructureGeometryKHR],
-    ppGeometries : ptr[ptr[VkAccelerationStructureGeometryKHR]],
+    geometries : VkAccelerationStructureGeometryKHR[..],
+    ppGeometries : ptr[VkAccelerationStructureGeometryKHR][..],
     scratchData : VkDeviceOrHostAddressKHR,
 }
 
@@ -7615,18 +7433,17 @@ VkAccelerationStructureCreateInfoKHR :: struct {
 VkWriteDescriptorSetAccelerationStructureKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    accelerationStructureCount : u32,
-    pAccelerationStructures : ptr[VkAccelerationStructureKHR],
+    accelerationStructures : VkAccelerationStructureKHR[..],
 }
 
 VkPhysicalDeviceAccelerationStructureFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    accelerationStructure : VkBool32,
-    accelerationStructureCaptureReplay : VkBool32,
-    accelerationStructureIndirectBuild : VkBool32,
-    accelerationStructureHostCommands : VkBool32,
-    descriptorBindingAccelerationStructureUpdateAfterBind : VkBool32,
+    accelerationStructure : b32,
+    accelerationStructureCaptureReplay : b32,
+    accelerationStructureIndirectBuild : b32,
+    accelerationStructureHostCommands : b32,
+    descriptorBindingAccelerationStructureUpdateAfterBind : b32,
 }
 
 VkPhysicalDeviceAccelerationStructurePropertiesKHR :: struct {
@@ -7708,10 +7525,8 @@ VkRayTracingPipelineCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCreateFlags,
-    stageCount : u32,
-    pStages : ptr[VkPipelineShaderStageCreateInfo],
-    groupCount : u32,
-    pGroups : ptr[VkRayTracingShaderGroupCreateInfoKHR],
+    stages : VkPipelineShaderStageCreateInfo[..],
+    groups : VkRayTracingShaderGroupCreateInfoKHR[..],
     maxPipelineRayRecursionDepth : u32,
     pLibraryInfo : ptr[VkPipelineLibraryCreateInfoKHR],
     pLibraryInterface : ptr[VkRayTracingPipelineInterfaceCreateInfoKHR],
@@ -7724,11 +7539,11 @@ VkRayTracingPipelineCreateInfoKHR :: struct {
 VkPhysicalDeviceRayTracingPipelineFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rayTracingPipeline : VkBool32,
-    rayTracingPipelineShaderGroupHandleCaptureReplay : VkBool32,
-    rayTracingPipelineShaderGroupHandleCaptureReplayMixed : VkBool32,
-    rayTracingPipelineTraceRaysIndirect : VkBool32,
-    rayTraversalPrimitiveCulling : VkBool32,
+    rayTracingPipeline : b32,
+    rayTracingPipelineShaderGroupHandleCaptureReplay : b32,
+    rayTracingPipelineShaderGroupHandleCaptureReplayMixed : b32,
+    rayTracingPipelineTraceRaysIndirect : b32,
+    rayTraversalPrimitiveCulling : b32,
 }
 
 VkPhysicalDeviceRayTracingPipelinePropertiesKHR :: struct {
@@ -7759,33 +7574,33 @@ VkTraceRaysIndirectCommandKHR :: struct {
 VkPhysicalDeviceRayQueryFeaturesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    rayQuery : VkBool32,
+    rayQuery : b32,
 }
 
 VkPhysicalDeviceMeshShaderFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    taskShader : VkBool32,
-    meshShader : VkBool32,
-    multiviewMeshShader : VkBool32,
-    primitiveFragmentShadingRateMeshShader : VkBool32,
-    meshShaderQueries : VkBool32,
+    taskShader : b32,
+    meshShader : b32,
+    multiviewMeshShader : b32,
+    primitiveFragmentShadingRateMeshShader : b32,
+    meshShaderQueries : b32,
 }
 
 VkPhysicalDeviceMeshShaderPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     maxTaskWorkGroupTotalCount : u32,
-    maxTaskWorkGroupCount[3] : u32,
+    maxTaskWorkGroupCount : u32[3],
     maxTaskWorkGroupInvocations : u32,
-    maxTaskWorkGroupSize[3] : u32,
+    maxTaskWorkGroupSize : u32[3],
     maxTaskPayloadSize : u32,
     maxTaskSharedMemorySize : u32,
     maxTaskPayloadAndSharedMemorySize : u32,
     maxMeshWorkGroupTotalCount : u32,
-    maxMeshWorkGroupCount[3] : u32,
+    maxMeshWorkGroupCount : u32[3],
     maxMeshWorkGroupInvocations : u32,
-    maxMeshWorkGroupSize[3] : u32,
+    maxMeshWorkGroupSize : u32[3],
     maxMeshSharedMemorySize : u32,
     maxMeshPayloadAndSharedMemorySize : u32,
     maxMeshOutputMemorySize : u32,
@@ -7799,10 +7614,10 @@ VkPhysicalDeviceMeshShaderPropertiesEXT :: struct {
     meshOutputPerPrimitiveGranularity : u32,
     maxPreferredTaskWorkGroupInvocations : u32,
     maxPreferredMeshWorkGroupInvocations : u32,
-    prefersLocalInvocationVertexOutput : VkBool32,
-    prefersLocalInvocationPrimitiveOutput : VkBool32,
-    prefersCompactVertexOutput : VkBool32,
-    prefersCompactPrimitiveOutput : VkBool32,
+    prefersLocalInvocationVertexOutput : b32,
+    prefersLocalInvocationPrimitiveOutput : b32,
+    prefersCompactVertexOutput : b32,
+    prefersCompactPrimitiveOutput : b32,
 }
 
 VkDrawMeshTasksIndirectCommandEXT :: struct {
