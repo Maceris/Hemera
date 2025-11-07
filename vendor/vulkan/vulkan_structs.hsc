@@ -1,7 +1,5 @@
 package vulkan
 
-//TODO(ches) check these over
-
 VkExtent2D :: struct {
     width : u32,
     height : u32,
@@ -146,8 +144,8 @@ VkInstanceCreateInfo :: struct {
     pNext : rawptr,
     flags : VkInstanceCreateFlags,
     pApplicationInfo : ptr[VkApplicationInfo],
-    enabledLayerNames : string[..],
-    enabledExtensionNames : string[..],
+    enabledLayerNames : string[],
+    enabledExtensionNames : string[],
 }
 
 VkMemoryHeap :: struct {
@@ -328,10 +326,8 @@ VkPhysicalDeviceLimits :: struct {
 }
 
 VkPhysicalDeviceMemoryProperties :: struct {
-    memoryTypeCount : u32,
-    memoryTypes : VkMemoryType[VK_MAX_MEMORY_TYPES],
-    memoryHeapCount : u32,
-    memoryHeaps : VkMemoryHeap[VK_MAX_MEMORY_HEAPS],
+    memoryTypes : VkMemoryType[],
+    memoryHeaps : VkMemoryHeap[],
 }
 
 VkPhysicalDeviceSparseProperties :: struct {
@@ -349,7 +345,7 @@ VkPhysicalDeviceProperties :: struct {
     deviceID : u32,
     deviceType : VkPhysicalDeviceType,
     deviceName : string,
-    pipelineCacheUUID[VK_UUID_SIZE] : u8,
+    pipelineCacheUUID : u8[VK_UUID_SIZE],
     limits : VkPhysicalDeviceLimits,
     sparseProperties : VkPhysicalDeviceSparseProperties,
 }
@@ -367,17 +363,17 @@ VkDeviceQueueCreateInfo :: struct {
     flags : VkDeviceQueueCreateFlags,
     queueFamilyIndex : u32,
     queueCount : u32,
-    queuePriorities : f32[..],
+    queuePriorities : f32[],
 }
 
 VkDeviceCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDeviceCreateFlags,
-    queueCreateInfos : VkDeviceQueueCreateInfo[..],
-    enabledLayerNames : string[..],
-    enabledExtensionNames : string[..],
-    enabledFeatures : VkPhysicalDeviceFeatures[..],
+    queueCreateInfos : VkDeviceQueueCreateInfo[],
+    enabledLayerNames : string[],
+    enabledExtensionNames : string[],
+    enabledFeatures : VkPhysicalDeviceFeatures[],
 }
 
 VkExtensionProperties :: struct {
@@ -395,10 +391,10 @@ VkLayerProperties :: struct {
 VkSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphores : VkSemaphore[..],
+    waitSemaphores : VkSemaphore[],
     pWaitDstStageMask : ptr[VkPipelineStageFlags],
-    commandBuffers : VkCommandBuffer[..],
-    signalSemaphores : VkSemaphore[..],
+    commandBuffers : VkCommandBuffer[],
+    signalSemaphores : VkSemaphore[],
 }
 
 VkMappedMemoryRange :: struct {
@@ -432,12 +428,12 @@ VkSparseMemoryBind :: struct {
 
 VkSparseBufferMemoryBindInfo :: struct {
     buffer : VkBuffer,
-    binds : VkSparseMemoryBind[..],
+    binds : VkSparseMemoryBind[],
 }
 
 VkSparseImageOpaqueMemoryBindInfo :: struct {
     image : VkImage,
-    binds : VkSparseMemoryBind[..],
+    binds : VkSparseMemoryBind[],
 }
 
 VkImageSubresource :: struct {
@@ -457,17 +453,17 @@ VkSparseImageMemoryBind :: struct {
 
 VkSparseImageMemoryBindInfo :: struct {
     image : VkImage,
-    binds : VkSparseImageMemoryBind[..],
+    binds : VkSparseImageMemoryBind[],
 }
 
 VkBindSparseInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphores : VkSemaphore[..],
-    bufferBinds : VkSparseBufferMemoryBindInfo[..],
-    imageOpaqueBinds : VkSparseImageOpaqueMemoryBindInfo[..],
-    imageBinds : VkSparseImageMemoryBindInfo[..],
-    signalSemaphores : VkSemaphore[..],
+    waitSemaphores : VkSemaphore[],
+    bufferBinds : VkSparseBufferMemoryBindInfo[],
+    imageOpaqueBinds : VkSparseImageOpaqueMemoryBindInfo[],
+    imageBinds : VkSparseImageMemoryBindInfo[],
+    signalSemaphores : VkSemaphore[],
 }
 
 VkSparseImageFormatProperties :: struct {
@@ -518,7 +514,7 @@ VkBufferCreateInfo :: struct {
     size : VkDeviceSize,
     usage : VkBufferUsageFlags,
     sharingMode : VkSharingMode,
-    queueFamilyIndices : u32[..],
+    queueFamilyIndices : u32[],
 }
 
 VkBufferViewCreateInfo :: struct {
@@ -544,7 +540,7 @@ VkImageCreateInfo :: struct {
     tiling : VkImageTiling,
     usage : VkImageUsageFlags,
     sharingMode : VkSharingMode,
-    queueFamilyIndices : u32[..],
+    queueFamilyIndices : u32[],
     initialLayout : VkImageLayout,
 }
 
@@ -597,7 +593,7 @@ VkSpecializationMapEntry :: struct {
 }
 
 VkSpecializationInfo :: struct {
-    mapEntries : VkSpecializationMapEntry[..],
+    mapEntries : VkSpecializationMapEntry[],
     dataSize : u64,
     pData : rawptr,
 }
@@ -639,8 +635,8 @@ VkPipelineVertexInputStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineVertexInputStateCreateFlags,
-    vertexBindingDescriptions : VkVertexInputBindingDescription[..],
-    vertexAttributeDescriptions : VkVertexInputAttributeDescription[..],
+    vertexBindingDescriptions : VkVertexInputBindingDescription[],
+    vertexAttributeDescriptions : VkVertexInputAttributeDescription[],
 }
 
 VkPipelineInputAssemblyStateCreateInfo :: struct {
@@ -671,8 +667,8 @@ VkPipelineViewportStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineViewportStateCreateFlags,
-    viewports : VkViewport[..],
-    scissors : VkRect2D[..],
+    viewports : VkViewport[],
+    scissors : VkRect2D[],
 }
 
 VkPipelineRasterizationStateCreateInfo :: struct {
@@ -745,7 +741,7 @@ VkPipelineColorBlendStateCreateInfo :: struct {
     flags : VkPipelineColorBlendStateCreateFlags,
     logicOpEnable : b32,
     logicOp : VkLogicOp,
-    attachments : VkPipelineColorBlendAttachmentState[..],
+    attachments : VkPipelineColorBlendAttachmentState[],
     blendConstants : f32[4],
 }
 
@@ -753,14 +749,14 @@ VkPipelineDynamicStateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineDynamicStateCreateFlags,
-    dynamicStates : VkDynamicState[..],
+    dynamicStates : VkDynamicState[],
 }
 
 VkGraphicsPipelineCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCreateFlags,
-    stages : VkPipelineShaderStageCreateInfo[..],
+    stages : VkPipelineShaderStageCreateInfo[],
     pVertexInputState : ptr[VkPipelineVertexInputStateCreateInfo],
     pInputAssemblyState : ptr[VkPipelineInputAssemblyStateCreateInfo],
     pTessellationState : ptr[VkPipelineTessellationStateCreateInfo],
@@ -787,8 +783,8 @@ VkPipelineLayoutCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineLayoutCreateFlags,
-    setLayouts : VkDescriptorSetLayout[..],
-    pushConstantRanges : VkPushConstantRange[..],
+    setLayouts : VkDescriptorSetLayout[],
+    pushConstantRanges : VkPushConstantRange[],
 }
 
 VkSamplerCreateInfo :: struct {
@@ -846,7 +842,7 @@ VkDescriptorPoolCreateInfo :: struct {
     pNext : rawptr,
     flags : VkDescriptorPoolCreateFlags,
     maxSets : u32,
-    poolSizes : VkDescriptorPoolSize[..],
+    poolSizes : VkDescriptorPoolSize[],
 }
 
 VkDescriptorSetAllocateInfo :: struct {
@@ -854,7 +850,7 @@ VkDescriptorSetAllocateInfo :: struct {
     pNext : rawptr,
     descriptorPool : VkDescriptorPool,
     descriptorSetCount : u32,
-    setLayouts : VkDescriptorSetLayout[..],
+    setLayouts : VkDescriptorSetLayout[],
 }
 
 VkDescriptorSetLayoutBinding :: struct {
@@ -862,14 +858,14 @@ VkDescriptorSetLayoutBinding :: struct {
     descriptorType : VkDescriptorType,
     descriptorCount : u32,
     stageFlags : VkShaderStageFlags,
-    immutableSamplers : VkSampler[..],
+    immutableSamplers : VkSampler[],
 }
 
 VkDescriptorSetLayoutCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDescriptorSetLayoutCreateFlags,
-    bindings : VkDescriptorSetLayoutBinding[..],
+    bindings : VkDescriptorSetLayoutBinding[],
 }
 
 VkWriteDescriptorSet :: struct {
@@ -907,7 +903,7 @@ VkFramebufferCreateInfo :: struct {
     pNext : rawptr,
     flags : VkFramebufferCreateFlags,
     renderPass : VkRenderPass,
-    attachments : VkImageView[..],
+    attachments : VkImageView[],
     width : u32,
     height : u32,
     layers : u32,
@@ -916,11 +912,11 @@ VkFramebufferCreateInfo :: struct {
 VkSubpassDescription :: struct {
     flags : VkSubpassDescriptionFlags,
     pipelineBindPoint : VkPipelineBindPoint,
-    inputAttachments : VkAttachmentReference[..],
-    colorAttachments : VkAttachmentReference[..],
-    resolveAttachments : VkAttachmentReference[..],
+    inputAttachments : VkAttachmentReference[],
+    colorAttachments : VkAttachmentReference[],
+    resolveAttachments : VkAttachmentReference[],
     pDepthStencilAttachment : ptr[VkAttachmentReference],
-    preserveAttachments : u32[..],
+    preserveAttachments : u32[],
 }
 
 VkSubpassDependency :: struct {
@@ -937,9 +933,9 @@ VkRenderPassCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkRenderPassCreateFlags,
-    attachments : VkAttachmentDescription[..],
-    subpasses : VkSubpassDescription[..],
-    dependencies : VkSubpassDependency[..],
+    attachments : VkAttachmentDescription[],
+    subpasses : VkSubpassDescription[],
+    dependencies : VkSubpassDependency[],
 }
 
 VkCommandPoolCreateInfo :: struct {
@@ -1043,7 +1039,7 @@ VkRenderPassBeginInfo :: struct {
     renderPass : VkRenderPass,
     framebuffer : VkFramebuffer,
     renderArea : VkRect2D,
-    clearValues : VkClearValue[..],
+    clearValues : VkClearValue[],
 }
 
 VkPhysicalDeviceSubgroupProperties :: struct {
@@ -1105,7 +1101,7 @@ VkDeviceGroupRenderPassBeginInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     deviceMask : u32,
-    deviceRenderAreas : VkRect2D[..],
+    deviceRenderAreas : VkRect2D[],
 }
 
 VkDeviceGroupCommandBufferBeginInfo :: struct {
@@ -1117,9 +1113,9 @@ VkDeviceGroupCommandBufferBeginInfo :: struct {
 VkDeviceGroupSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreDeviceIndices : u32[..],
-    commandBufferDeviceMasks : u32[..],
-    signalSemaphoreDeviceIndices : u32[..],
+    waitSemaphoreDeviceIndices : u32[],
+    commandBufferDeviceMasks : u32[],
+    signalSemaphoreDeviceIndices : u32[],
 }
 
 VkDeviceGroupBindSparseInfo :: struct {
@@ -1132,27 +1128,27 @@ VkDeviceGroupBindSparseInfo :: struct {
 VkBindBufferMemoryDeviceGroupInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceIndices : u32[..],
+    deviceIndices : u32[],
 }
 
 VkBindImageMemoryDeviceGroupInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceIndices : u32[..],
-    splitInstanceBindRegions : VkRect2D[..],
+    deviceIndices : u32[],
+    splitInstanceBindRegions : VkRect2D[],
 }
 
 VkPhysicalDeviceGroupProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    physicalDevices : VkPhysicalDevice[..],
+    physicalDevices : VkPhysicalDevice[],
     subsetAllocation : b32,
 }
 
 VkDeviceGroupDeviceCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    physicalDevices : VkPhysicalDevice[..],
+    physicalDevices : VkPhysicalDevice[],
 }
 
 VkBufferMemoryRequirementsInfo2 :: struct {
@@ -1262,7 +1258,7 @@ VkInputAttachmentAspectReference :: struct {
 VkRenderPassInputAttachmentAspectCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    aspectReferences : VkInputAttachmentAspectReference[..],
+    aspectReferences : VkInputAttachmentAspectReference[],
 }
 
 VkImageViewUsageCreateInfo :: struct {
@@ -1281,11 +1277,11 @@ VkRenderPassMultiviewCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     subpassCount : u32,
-    viewMasks : u32[..],
+    viewMasks : u32[],
     dependencyCount : u32,
-    viewOffsets : i32[..],
+    viewOffsets : i32[],
     correlationMaskCount : u32,
-    correlationMasks : u32[..],
+    correlationMasks : u32[],
 }
 
 VkPhysicalDeviceMultiviewFeatures :: struct {
@@ -1392,7 +1388,7 @@ VkDescriptorUpdateTemplateCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkDescriptorUpdateTemplateCreateFlags,
-    descriptorUpdateEntries : VkDescriptorUpdateTemplateEntry[..],
+    descriptorUpdateEntries : VkDescriptorUpdateTemplateEntry[],
     templateType : VkDescriptorUpdateTemplateType,
     descriptorSetLayout : VkDescriptorSetLayout,
     pipelineBindPoint : VkPipelineBindPoint,
@@ -1435,9 +1431,9 @@ VkExternalBufferProperties :: struct {
 VkPhysicalDeviceIDProperties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceUUID[VK_UUID_SIZE] : u8,
-    driverUUID[VK_UUID_SIZE] : u8,
-    deviceLUID[VK_LUID_SIZE] : u8,
+    deviceUUID : u8[VK_UUID_SIZE],
+    driverUUID : u8[VK_UUID_SIZE],
+    deviceLUID : u8[VK_LUID_SIZE],
     deviceNodeMask : u32,
     deviceLUIDValid : b32,
 }
@@ -1539,9 +1535,9 @@ VkPhysicalDeviceVulkan11Features :: struct {
 VkPhysicalDeviceVulkan11Properties :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    deviceUUID[VK_UUID_SIZE] : u8,
-    driverUUID[VK_UUID_SIZE] : u8,
-    deviceLUID[VK_LUID_SIZE] : u8,
+    deviceUUID : u8[VK_UUID_SIZE],
+    driverUUID : u8[VK_UUID_SIZE],
+    deviceLUID : u8[VK_LUID_SIZE],
     deviceNodeMask : u32,
     deviceLUIDValid : b32,
     subgroupSize : u32,
@@ -1675,7 +1671,7 @@ VkPhysicalDeviceVulkan12Properties :: struct {
 VkImageFormatListCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    viewFormats : VkFormat[..],
+    viewFormats : VkFormat[],
 }
 
 VkAttachmentDescription2 :: struct {
@@ -1706,11 +1702,11 @@ VkSubpassDescription2 :: struct {
     flags : VkSubpassDescriptionFlags,
     pipelineBindPoint : VkPipelineBindPoint,
     viewMask : u32,
-    inputAttachments : VkAttachmentReference2[..],
-    colorAttachments : VkAttachmentReference2[..],
-    resolveAttachments : VkAttachmentReference2[..],
+    inputAttachments : VkAttachmentReference2[],
+    colorAttachments : VkAttachmentReference2[],
+    resolveAttachments : VkAttachmentReference2[],
     pDepthStencilAttachment : ptr[VkAttachmentReference2],
-    preserveAttachments : u32[..],
+    preserveAttachments : u32[],
 }
 
 VkSubpassDependency2 :: struct {
@@ -1730,10 +1726,10 @@ VkRenderPassCreateInfo2 :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkRenderPassCreateFlags,
-    attachments : VkAttachmentDescription2[..],
-    subpasses : VkSubpassDescription2[..],
-    dependencies : VkSubpassDependency2[..],
-    correlatedViewMasks : u32[..],
+    attachments : VkAttachmentDescription2[],
+    subpasses : VkSubpassDescription2[],
+    dependencies : VkSubpassDependency2[],
+    correlatedViewMasks : u32[],
 }
 
 VkSubpassBeginInfo :: struct {
@@ -1803,7 +1799,7 @@ VkPhysicalDeviceFloatControlsProperties :: struct {
 VkDescriptorSetLayoutBindingFlagsCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    bindingFlags : VkDescriptorBindingFlags[..],
+    bindingFlags : VkDescriptorBindingFlags[],
 }
 
 VkPhysicalDeviceDescriptorIndexingFeatures :: struct {
@@ -1862,7 +1858,7 @@ VkPhysicalDeviceDescriptorIndexingProperties :: struct {
 VkDescriptorSetVariableDescriptorCountAllocateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    descriptorCounts : u32[..],
+    descriptorCounts : u32[],
 }
 
 VkDescriptorSetVariableDescriptorCountLayoutSupport :: struct {
@@ -1935,19 +1931,19 @@ VkFramebufferAttachmentImageInfo :: struct {
     width : u32,
     height : u32,
     layerCount : u32,
-    viewFormats : VkFormat[..],
+    viewFormats : VkFormat[],
 }
 
 VkFramebufferAttachmentsCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentImageInfos : VkFramebufferAttachmentImageInfo[..],
+    attachmentImageInfos : VkFramebufferAttachmentImageInfo[],
 }
 
 VkRenderPassAttachmentBeginInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachments : VkImageView[..],
+    attachments : VkImageView[],
 }
 
 VkPhysicalDeviceUniformBufferStandardLayoutFeatures :: struct {
@@ -2009,16 +2005,16 @@ VkSemaphoreTypeCreateInfo :: struct {
 VkTimelineSemaphoreSubmitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphoreValues : u64[..],
-    signalSemaphoreValues : u64[..],
+    waitSemaphoreValues : u64[],
+    signalSemaphoreValues : u64[],
 }
 
 VkSemaphoreWaitInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkSemaphoreWaitFlags,
-    semaphores : VkSemaphore[..],
-    values : u64[..],
+    semaphores : VkSemaphore[],
+    values : u64[],
 }
 
 VkSemaphoreSignalInfo :: struct {
@@ -2139,7 +2135,7 @@ VkPipelineCreationFeedbackCreateInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pPipelineCreationFeedback : ptr[VkPipelineCreationFeedback],
-    pipelineStageCreationFeedbacks : VkPipelineCreationFeedback[..],
+    pipelineStageCreationFeedbacks : VkPipelineCreationFeedback[],
 }
 
 VkPhysicalDeviceShaderTerminateInvocationFeatures :: struct {
@@ -2230,9 +2226,9 @@ VkDependencyInfo :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     dependencyFlags : VkDependencyFlags,
-    memoryBarriers : VkMemoryBarrier2[..],
-    bufferMemoryBarriers : VkBufferMemoryBarrier2[..],
-    imageMemoryBarriers : VkImageMemoryBarrier2[..],
+    memoryBarriers : VkMemoryBarrier2[],
+    bufferMemoryBarriers : VkBufferMemoryBarrier2[],
+    imageMemoryBarriers : VkImageMemoryBarrier2[],
 }
 
 VkSemaphoreSubmitInfo :: struct {
@@ -2255,9 +2251,9 @@ VkSubmitInfo2 :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkSubmitFlags,
-    waitSemaphoreInfos : VkSemaphoreSubmitInfo[..],
-    commandBufferInfos : VkCommandBufferSubmitInfo[..],
-    signalSemaphoreInfos : VkSemaphoreSubmitInfo[..],
+    waitSemaphoreInfos : VkSemaphoreSubmitInfo[],
+    commandBufferInfos : VkCommandBufferSubmitInfo[],
+    signalSemaphoreInfos : VkSemaphoreSubmitInfo[],
 }
 
 VkPhysicalDeviceSynchronization2Features :: struct {
@@ -2291,7 +2287,7 @@ VkCopyBufferInfo2 :: struct {
     pNext : rawptr,
     srcBuffer : VkBuffer,
     dstBuffer : VkBuffer,
-    regions : VkBufferCopy2[..],
+    regions : VkBufferCopy2[],
 }
 
 VkImageCopy2 :: struct {
@@ -2311,7 +2307,7 @@ VkCopyImageInfo2 :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regions : VkImageCopy2[..],
+    regions : VkImageCopy2[],
 }
 
 VkBufferImageCopy2 :: struct {
@@ -2331,7 +2327,7 @@ VkCopyBufferToImageInfo2 :: struct {
     srcBuffer : VkBuffer,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regions : VkBufferImageCopy2[..],
+    regions : VkBufferImageCopy2[],
 }
 
 VkCopyImageToBufferInfo2 :: struct {
@@ -2340,7 +2336,7 @@ VkCopyImageToBufferInfo2 :: struct {
     srcImage : VkImage,
     srcImageLayout : VkImageLayout,
     dstBuffer : VkBuffer,
-    regions : VkBufferImageCopy2[..],
+    regions : VkBufferImageCopy2[],
 }
 
 VkImageBlit2 :: struct {
@@ -2359,7 +2355,7 @@ VkBlitImageInfo2 :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regions : VkImageBlit2[..],
+    regions : VkImageBlit2[],
     filter : VkFilter,
 }
 
@@ -2380,7 +2376,7 @@ VkResolveImageInfo2 :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regions : VkImageResolve2[..],
+    regions : VkImageResolve2[],
 }
 
 VkPhysicalDeviceSubgroupSizeControlFeatures :: struct {
@@ -2462,7 +2458,7 @@ VkRenderingInfo :: struct {
     layerCount : u32,
     viewMask : u32,
     colorAttachmentCount : u32,
-    colorAttachments : VkRenderingAttachmentInfo[..],
+    colorAttachments : VkRenderingAttachmentInfo[],
     pDepthAttachment : ptr[VkRenderingAttachmentInfo],
     pStencilAttachment : ptr[VkRenderingAttachmentInfo],
 }
@@ -2472,7 +2468,7 @@ VkPipelineRenderingCreateInfo :: struct {
     pNext : rawptr,
     viewMask : u32,
     colorAttachmentCount : u32,
-    colorAttachmentFormats : VkFormat[..],
+    colorAttachmentFormats : VkFormat[],
     depthAttachmentFormat : VkFormat,
     stencilAttachmentFormat : VkFormat,
 }
@@ -2488,7 +2484,7 @@ VkCommandBufferInheritanceRenderingInfo :: struct {
     pNext : rawptr,
     flags : VkRenderingFlags,
     viewMask : u32,
-    colorAttachmentFormats : VkFormat[..],
+    colorAttachmentFormats : VkFormat[],
     depthAttachmentFormat : VkFormat,
     stencilAttachmentFormat : VkFormat,
     rasterizationSamples : VkSampleCountFlagBits,
@@ -2607,7 +2603,7 @@ VkSwapchainCreateInfoKHR :: struct {
     imageArrayLayers : u32,
     imageUsage : VkImageUsageFlags,
     imageSharingMode : VkSharingMode,
-    queueFamilyIndices : u32[..],
+    queueFamilyIndices : u32[],
     preTransform : VkSurfaceTransformFlagBitsKHR,
     compositeAlpha : VkCompositeAlphaFlagBitsKHR,
     presentMode : VkPresentModeKHR,
@@ -2618,10 +2614,10 @@ VkSwapchainCreateInfoKHR :: struct {
 VkPresentInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    waitSemaphores : VkSemaphore[..],
-    swapchains : VkSwapchainKHR[..],
-    imageIndices : u32[..],
-    results : ptr[VkResult][..],
+    waitSemaphores : VkSemaphore[],
+    swapchains : VkSwapchainKHR[],
+    imageIndices : u32[],
+    results : ptr[VkResult][],
 }
 
 VkImageSwapchainCreateInfoKHR :: struct {
@@ -2650,7 +2646,7 @@ VkAcquireNextImageInfoKHR :: struct {
 VkDeviceGroupPresentCapabilitiesKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentMask[VK_MAX_DEVICE_GROUP_SIZE] : u32,
+    presentMask : u32[VK_MAX_DEVICE_GROUP_SIZE],
     modes : VkDeviceGroupPresentModeFlagsKHR,
 }
 
@@ -2658,7 +2654,7 @@ VkDeviceGroupPresentInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    deviceMasks : u32[..],
+    deviceMasks : u32[],
     mode : VkDeviceGroupPresentModeFlagBitsKHR,
 }
 
@@ -2757,7 +2753,7 @@ VkVideoProfileInfoKHR :: struct {
 VkVideoProfileListInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    profiles : VkVideoProfileInfoKHR[..],
+    profiles : VkVideoProfileInfoKHR[],
 }
 
 VkVideoCapabilitiesKHR :: struct {
@@ -2857,7 +2853,7 @@ VkVideoBeginCodingInfoKHR :: struct {
     flags : VkVideoBeginCodingFlagsKHR,
     videoSession : VkVideoSessionKHR,
     videoSessionParameters : VkVideoSessionParametersKHR,
-    referenceSlots : VkVideoReferenceSlotInfoKHR[..],
+    referenceSlots : VkVideoReferenceSlotInfoKHR[],
 }
 
 VkVideoEndCodingInfoKHR :: struct {
@@ -2893,7 +2889,7 @@ VkVideoDecodeInfoKHR :: struct {
     srcBufferRange : VkDeviceSize,
     dstPictureResource : VkVideoPictureResourceInfoKHR,
     pSetupReferenceSlot : ptr[VkVideoReferenceSlotInfoKHR],
-    referenceSlots : VkVideoReferenceSlotInfoKHR[..],
+    referenceSlots : VkVideoReferenceSlotInfoKHR[],
 }
 
 VkVideoEncodeH264CapabilitiesKHR :: struct {
@@ -2944,8 +2940,8 @@ VkVideoEncodeH264SessionCreateInfoKHR :: struct {
 VkVideoEncodeH264SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdSPSs : StdVideoH264SequenceParameterSet[..],
-    stdPPSs : StdVideoH264PictureParameterSet[..],
+    stdSPSs : StdVideoH264SequenceParameterSet[],
+    stdPPSs : StdVideoH264PictureParameterSet[],
 }
 
 VkVideoEncodeH264SessionParametersCreateInfoKHR :: struct {
@@ -2982,7 +2978,7 @@ VkVideoEncodeH264NaluSliceInfoKHR :: struct {
 VkVideoEncodeH264PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    naluSliceEntries : VkVideoEncodeH264NaluSliceInfoKHR[..],
+    naluSliceEntries : VkVideoEncodeH264NaluSliceInfoKHR[],
     pStdPictureInfo : ptr[StdVideoEncodeH264PictureInfo],
     generatePrefixNalu : b32,
 }
@@ -3085,9 +3081,9 @@ VkVideoEncodeH265QualityLevelPropertiesKHR :: struct {
 VkVideoEncodeH265SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdVPSs : StdVideoH265VideoParameterSet[..],
-    stdSPSs : StdVideoH265SequenceParameterSet[..],
-    stdPPSs : StdVideoH265PictureParameterSet[..],
+    stdVPSs : StdVideoH265VideoParameterSet[],
+    stdSPSs : StdVideoH265SequenceParameterSet[],
+    stdPPSs : StdVideoH265PictureParameterSet[],
 }
 
 VkVideoEncodeH265SessionParametersCreateInfoKHR :: struct {
@@ -3128,7 +3124,7 @@ VkVideoEncodeH265NaluSliceSegmentInfoKHR :: struct {
 VkVideoEncodeH265PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    naluSliceSegmentEntries : VkVideoEncodeH265NaluSliceSegmentInfoKHR[..],
+    naluSliceSegmentEntries : VkVideoEncodeH265NaluSliceSegmentInfoKHR[],
     pStdPictureInfo : ptr[StdVideoEncodeH265PictureInfo],
 }
 
@@ -3197,8 +3193,8 @@ VkVideoDecodeH264CapabilitiesKHR :: struct {
 VkVideoDecodeH264SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdSPSs : StdVideoH264SequenceParameterSet[..],
-    stdPPSs : StdVideoH264PictureParameterSet[..],
+    stdSPSs : StdVideoH264SequenceParameterSet[],
+    stdPPSs : StdVideoH264PictureParameterSet[],
 }
 
 VkVideoDecodeH264SessionParametersCreateInfoKHR :: struct {
@@ -3213,7 +3209,7 @@ VkVideoDecodeH264PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pStdPictureInfo : ptr[StdVideoDecodeH264PictureInfo],
-    sliceOffsets : u32[..],
+    sliceOffsets : u32[],
 }
 
 VkVideoDecodeH264DpbSlotInfoKHR :: struct {
@@ -3240,7 +3236,7 @@ VkRenderingFragmentDensityMapAttachmentInfoEXT :: struct {
 VkAttachmentSampleCountInfoAMD :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorAttachmentSamples : VkSampleCountFlagBits[..],
+    colorAttachmentSamples : VkSampleCountFlagBits[],
     depthStencilAttachmentSamples : VkSampleCountFlagBits,
 }
 
@@ -3300,14 +3296,14 @@ VkRectLayerKHR :: struct {
 }
 
 VkPresentRegionKHR :: struct {
-    rectangles : VkRectLayerKHR[..],
+    rectangles : VkRectLayerKHR[],
 }
 
 VkPresentRegionsKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    regions : VkPresentRegionKHR[..],
+    regions : VkPresentRegionKHR[],
 }
 
 VkSharedPresentSurfaceCapabilitiesKHR :: struct {
@@ -3351,7 +3347,7 @@ VkPerformanceCounterKHR :: struct {
     unit : VkPerformanceCounterUnitKHR,
     scope : VkPerformanceCounterScopeKHR,
     storage : VkPerformanceCounterStorageKHR,
-    uuid[VK_UUID_SIZE] : u8,
+    uuid : u8[VK_UUID_SIZE],
 }
 
 VkPerformanceCounterDescriptionKHR :: struct {
@@ -3367,7 +3363,7 @@ VkQueryPoolPerformanceCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     queueFamilyIndex : u32,
-    counterIndices : u32[..],
+    counterIndices : u32[],
 }
 
 VkAcquireProfilingLockInfoKHR :: struct {
@@ -3454,9 +3450,9 @@ VkVideoDecodeH265CapabilitiesKHR :: struct {
 VkVideoDecodeH265SessionParametersAddInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stdVPSs : StdVideoH265VideoParameterSet[..],
-    stdSPSs : StdVideoH265SequenceParameterSet[..],
-    stdPPSs : StdVideoH265PictureParameterSet[..],
+    stdVPSs : StdVideoH265VideoParameterSet[],
+    stdSPSs : StdVideoH265SequenceParameterSet[],
+    stdPPSs : StdVideoH265PictureParameterSet[],
 }
 
 VkVideoDecodeH265SessionParametersCreateInfoKHR :: struct {
@@ -3472,7 +3468,7 @@ VkVideoDecodeH265PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pStdPictureInfo : ptr[StdVideoDecodeH265PictureInfo],
-    sliceSegmentOffsets : u32[..],
+    sliceSegmentOffsets : u32[],
 }
 
 VkVideoDecodeH265DpbSlotInfoKHR :: struct {
@@ -3559,13 +3555,13 @@ VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR :: struct {
 VkRenderingAttachmentLocationInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorAttachmentLocations : u32[..],
+    colorAttachmentLocations : u32[],
 }
 
 VkRenderingInputAttachmentIndexInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    colorAttachmentInputIndices : u32[..],
+    colorAttachmentInputIndices : u32[],
     pDepthInputAttachmentIndex : ptr[u32],
     pStencilInputAttachmentIndex : ptr[u32],
 }
@@ -3654,14 +3650,14 @@ VkMemoryUnmapInfoKHR :: struct {
 VkPipelineLibraryCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    libraries : VkPipeline[..],
+    libraries : VkPipeline[],
 }
 
 VkPresentIdKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    presentIds : u64[..],
+    presentIds : u64[],
 }
 
 VkPhysicalDevicePresentIdFeaturesKHR :: struct {
@@ -3679,7 +3675,7 @@ VkVideoEncodeInfoKHR :: struct {
     dstBufferRange : VkDeviceSize,
     srcPictureResource : VkVideoPictureResourceInfoKHR,
     pSetupReferenceSlot : ptr[VkVideoReferenceSlotInfoKHR],
-    referenceSlots : VkVideoReferenceSlotInfoKHR[..],
+    referenceSlots : VkVideoReferenceSlotInfoKHR[],
     precedingExternallyEncodedBytes : u32,
 }
 
@@ -3723,7 +3719,7 @@ VkVideoEncodeRateControlInfoKHR :: struct {
     pNext : rawptr,
     flags : VkVideoEncodeRateControlFlagsKHR,
     rateControlMode : VkVideoEncodeRateControlModeFlagBitsKHR,
-    layers : VkVideoEncodeRateControlLayerInfoKHR[..],
+    layers : VkVideoEncodeRateControlLayerInfoKHR[],
     virtualBufferSizeInMs : u32,
     initialVirtualBufferSizeInMs : u32,
 }
@@ -3858,7 +3854,7 @@ VkRenderingAreaInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     viewMask : u32,
-    colorAttachmentFormats : VkFormat[..],
+    colorAttachmentFormats : VkFormat[],
     depthAttachmentFormat : VkFormat,
     stencilAttachmentFormat : VkFormat,
 }
@@ -3950,11 +3946,11 @@ VkVideoDecodeAV1PictureInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     pStdPictureInfo : ptr[StdVideoDecodeAV1PictureInfo],
-    referenceNameSlotIndices[VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR] : i32,
+    referenceNameSlotIndices : i32[VK_MAX_VIDEO_AV1_REFERENCES_PER_FRAME_KHR],
     frameHeaderOffset : u32,
     tileCount : u32,
-    tileOffsets : u32[..],
-    tileSizes : u32[..],
+    tileOffsets : u32[],
+    tileSizes : u32[],
 }
 
 VkVideoDecodeAV1DpbSlotInfoKHR :: struct {
@@ -3992,7 +3988,7 @@ VkVertexInputBindingDivisorDescriptionKHR :: struct {
 VkPipelineVertexInputDivisorStateCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    vertexBindingDivisors : VkVertexInputBindingDivisorDescriptionKHR[..],
+    vertexBindingDivisors : VkVertexInputBindingDivisorDescriptionKHR[],
 }
 
 VkPhysicalDeviceVertexAttributeDivisorFeaturesKHR :: struct {
@@ -4078,8 +4074,8 @@ VkBindDescriptorSetsInfoKHR :: struct {
     stageFlags : VkShaderStageFlags,
     layout : VkPipelineLayout,
     firstSet : u32,
-    descriptorSets : VkDescriptorSet[..],
-    dynamicOffsets : u32[..],
+    descriptorSets : VkDescriptorSet[],
+    dynamicOffsets : u32[],
 }
 
 VkPushConstantsInfoKHR :: struct {
@@ -4098,7 +4094,7 @@ VkPushDescriptorSetInfoKHR :: struct {
     stageFlags : VkShaderStageFlags,
     layout : VkPipelineLayout,
     set : u32,
-    descriptorWrites : VkWriteDescriptorSet[..],
+    descriptorWrites : VkWriteDescriptorSet[],
 }
 
 VkPushDescriptorSetWithTemplateInfoKHR :: struct {
@@ -4117,8 +4113,8 @@ VkSetDescriptorBufferOffsetsInfoEXT :: struct {
     layout : VkPipelineLayout,
     firstSet : u32,
     setCount : u32,
-    bufferIndices : u32[..],
-    offsets : VkDeviceSize[..],
+    bufferIndices : u32[],
+    offsets : VkDeviceSize[],
 }
 
 VkBindDescriptorBufferEmbeddedSamplersInfoEXT :: struct {
@@ -4241,8 +4237,8 @@ VkCuLaunchInfoNVX :: struct {
     blockDimY : u32,
     blockDimZ : u32,
     sharedMemBytes : u32,
-    params : rawptr[..],
-    extras : rawptr[..],
+    params : rawptr[],
+    extras : rawptr[],
 }
 
 VkImageViewHandleInfoNVX :: struct {
@@ -4312,7 +4308,7 @@ VkExportMemoryAllocateInfoNV :: struct {
 VkValidationFlagsEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    disabledValidationChecks : VkValidationCheckEXT[..],
+    disabledValidationChecks : VkValidationCheckEXT[],
 }
 
 VkImageViewASTCDecodeModeEXT :: struct {
@@ -4381,7 +4377,7 @@ VkPipelineViewportWScalingStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     viewportWScalingEnable : b32,
-    viewportWScalings : VkViewportWScalingNV[..],
+    viewportWScalings : VkViewportWScalingNV[],
 }
 
 VkSurfaceCapabilities2EXT :: struct {
@@ -4445,7 +4441,7 @@ VkPresentTimesInfoGOOGLE :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchainCount : u32,
-    times : VkPresentTimeGOOGLE[..],
+    times : VkPresentTimeGOOGLE[],
 }
 
 VkPhysicalDeviceMultiviewPerViewAttributesPropertiesNVX :: struct {
@@ -4465,7 +4461,7 @@ VkPipelineViewportSwizzleStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineViewportSwizzleStateCreateFlagsNV,
-    viewportSwizzles : VkViewportSwizzleNV[..],
+    viewportSwizzles : VkViewportSwizzleNV[],
 }
 
 VkPhysicalDeviceDiscardRectanglePropertiesEXT :: struct {
@@ -4479,7 +4475,7 @@ VkPipelineDiscardRectangleStateCreateInfoEXT :: struct {
     pNext : rawptr,
     flags : VkPipelineDiscardRectangleStateCreateFlagsEXT,
     discardRectangleMode : VkDiscardRectangleModeEXT,
-    discardRectangles : VkRect2D[..],
+    discardRectangles : VkRect2D[],
 }
 
 VkPhysicalDeviceConservativeRasterizationPropertiesEXT :: struct {
@@ -4563,9 +4559,9 @@ VkDebugUtilsMessengerCallbackDataEXT :: struct {
     messageIdName : string,
     messageIdNumber : i32,
     message : string,
-    queueLabels : VkDebugUtilsLabelEXT[..],
-    cmdBufLabels : VkDebugUtilsLabelEXT[..],
-    objects : VkDebugUtilsObjectNameInfoEXT[..],
+    queueLabels : VkDebugUtilsLabelEXT[],
+    cmdBufLabels : VkDebugUtilsLabelEXT[],
+    objects : VkDebugUtilsObjectNameInfoEXT[],
 }
 
 VkDebugUtilsMessengerCreateInfoEXT :: struct {
@@ -4598,7 +4594,7 @@ VkSampleLocationsInfoEXT :: struct {
     pNext : rawptr,
     sampleLocationsPerPixel : VkSampleCountFlagBits,
     sampleLocationGridSize : VkExtent2D,
-    sampleLocations : VkSampleLocationEXT[..],
+    sampleLocations : VkSampleLocationEXT[],
 }
 
 VkAttachmentSampleLocationsEXT :: struct {
@@ -4614,8 +4610,8 @@ VkSubpassSampleLocationsEXT :: struct {
 VkRenderPassSampleLocationsBeginInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    attachmentInitialSampleLocations : VkAttachmentSampleLocationsEXT[..],
-    postSubpassSampleLocations : VkSubpassSampleLocationsEXT[..],
+    attachmentInitialSampleLocations : VkAttachmentSampleLocationsEXT[],
+    postSubpassSampleLocations : VkSubpassSampleLocationsEXT[],
 }
 
 VkPipelineSampleLocationsStateCreateInfoEXT :: struct {
@@ -4705,7 +4701,7 @@ VkDrmFormatModifierPropertiesEXT :: struct {
 VkDrmFormatModifierPropertiesListEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    drmFormatModifierProperties : VkDrmFormatModifierPropertiesEXT[..],
+    drmFormatModifierProperties : VkDrmFormatModifierPropertiesEXT[],
 }
 
 VkPhysicalDeviceImageDrmFormatModifierInfoEXT :: struct {
@@ -4713,13 +4709,13 @@ VkPhysicalDeviceImageDrmFormatModifierInfoEXT :: struct {
     pNext : rawptr,
     drmFormatModifier : u64,
     sharingMode : VkSharingMode,
-    queueFamilyIndices : u32[..],
+    queueFamilyIndices : u32[],
 }
 
 VkImageDrmFormatModifierListCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    drmFormatModifiers : u64[..],
+    drmFormatModifiers : u64[],
 }
 
 VkImageDrmFormatModifierExplicitCreateInfoEXT :: struct {
@@ -4727,7 +4723,7 @@ VkImageDrmFormatModifierExplicitCreateInfoEXT :: struct {
     pNext : rawptr,
     drmFormatModifier : u64,
     drmFormatModifierPlaneCount : u32,
-    planeLayouts : VkSubresourceLayout[..],
+    planeLayouts : VkSubresourceLayout[],
 }
 
 VkImageDrmFormatModifierPropertiesEXT :: struct {
@@ -4745,7 +4741,7 @@ VkDrmFormatModifierProperties2EXT :: struct {
 VkDrmFormatModifierPropertiesList2EXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    drmFormatModifierProperties : VkDrmFormatModifierProperties2EXT[..],
+    drmFormatModifierProperties : VkDrmFormatModifierProperties2EXT[],
 }
 
 VkValidationCacheCreateInfoEXT :: struct {
@@ -4763,14 +4759,14 @@ VkShaderModuleValidationCacheCreateInfoEXT :: struct {
 }
 
 VkShadingRatePaletteNV :: struct {
-    shadingRatePaletteEntries : VkShadingRatePaletteEntryNV[..],
+    shadingRatePaletteEntries : VkShadingRatePaletteEntryNV[],
 }
 
 VkPipelineViewportShadingRateImageStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     shadingRateImageEnable : b32,
-    shadingRatePalettes : VkShadingRatePaletteNV[..],
+    shadingRatePalettes : VkShadingRatePaletteNV[],
 }
 
 VkPhysicalDeviceShadingRateImageFeaturesNV :: struct {
@@ -4797,14 +4793,14 @@ VkCoarseSampleLocationNV :: struct {
 VkCoarseSampleOrderCustomNV :: struct {
     shadingRate : VkShadingRatePaletteEntryNV,
     sampleCount : u32,
-    sampleLocations : VkCoarseSampleLocationNV[..],
+    sampleLocations : VkCoarseSampleLocationNV[],
 }
 
 VkPipelineViewportCoarseSampleOrderStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     sampleOrderType : VkCoarseSampleOrderTypeNV,
-    customSampleOrders : VkCoarseSampleOrderCustomNV[..],
+    customSampleOrders : VkCoarseSampleOrderCustomNV[],
 }
 
 VkRayTracingShaderGroupCreateInfoNV :: struct {
@@ -4821,8 +4817,8 @@ VkRayTracingPipelineCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCreateFlags,
-    stages : VkPipelineShaderStageCreateInfo[..],
-    groups : VkRayTracingShaderGroupCreateInfoNV[..],
+    stages : VkPipelineShaderStageCreateInfo[],
+    groups : VkRayTracingShaderGroupCreateInfoNV[],
     maxRecursionDepth : u32,
     layout : VkPipelineLayout,
     basePipelineHandle : VkPipeline,
@@ -4873,7 +4869,7 @@ VkAccelerationStructureInfoNV :: struct {
     type : VkAccelerationStructureTypeNV,
     flags : VkBuildAccelerationStructureFlagsNV,
     instanceCount : u32,
-    geometries : VkGeometryNV[..],
+    geometries : VkGeometryNV[],
 }
 
 VkAccelerationStructureCreateInfoNV :: struct {
@@ -4889,13 +4885,13 @@ VkBindAccelerationStructureMemoryInfoNV :: struct {
     accelerationStructure : VkAccelerationStructureNV,
     memory : VkDeviceMemory,
     memoryOffset : VkDeviceSize,
-    deviceIndices : u32[..],
+    deviceIndices : u32[],
 }
 
 VkWriteDescriptorSetAccelerationStructureNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    accelerationStructures : VkAccelerationStructureNV[..],
+    accelerationStructures : VkAccelerationStructureNV[],
 }
 
 VkAccelerationStructureMemoryRequirementsInfoNV :: struct {
@@ -4933,10 +4929,10 @@ VkAabbPositionsKHR :: struct {
 
 VkAccelerationStructureInstanceKHR :: struct {
     transform : VkTransformMatrixKHR,
-    instanceCustomIndex : u32, // TODO(ches) make this 24 bits
-    mask : u32, //TODO(ches) make this 8 bits
-    instanceShaderBindingTableRecordOffset:24 : u32, // TODO(ches) make this 24 bits
-    flags : VkGeometryInstanceFlagsKHR, //TODO(ches) make this 8 bits
+    // Most significant 8 bits is the mask
+    instanceCustomIndexAndMask : u32,
+    // Most significant 8 bits is the VkGeometryInstanceFlagsKHR
+    instanceShaderBindingTableRecordOffsetAndFlags : u32,
     accelerationStructureReference : u64,
 }
 
@@ -5067,7 +5063,7 @@ VkPhysicalDeviceShaderImageFootprintFeaturesNV :: struct {
 VkPipelineViewportExclusiveScissorStateCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    exclusiveScissors : VkRect2D[..],
+    exclusiveScissors : VkRect2D[],
 }
 
 VkPhysicalDeviceExclusiveScissorFeaturesNV :: struct {
@@ -5243,8 +5239,8 @@ VkBufferDeviceAddressCreateInfoEXT :: struct {
 VkValidationFeaturesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    enabledValidationFeatures : VkValidationFeatureEnableEXT[..],
-    disabledValidationFeatures : VkValidationFeatureDisableEXT[..],
+    enabledValidationFeatures : VkValidationFeatureEnableEXT[],
+    disabledValidationFeatures : VkValidationFeatureDisableEXT[],
 }
 
 VkCooperativeMatrixPropertiesNV :: struct {
@@ -5367,9 +5363,9 @@ VkPhysicalDeviceHostImageCopyFeaturesEXT :: struct {
 VkPhysicalDeviceHostImageCopyPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    copySrcLayouts : VkImageLayout[..],
-    copyDstLayouts : VkImageLayout[..],
-    optimalTilingLayoutUUID[VK_UUID_SIZE] : u8,
+    copySrcLayouts : VkImageLayout[],
+    copyDstLayouts : VkImageLayout[],
+    optimalTilingLayoutUUID : u8[VK_UUID_SIZE],
     identicalMemoryTypeRequirements : b32,
 }
 
@@ -5401,7 +5397,7 @@ VkCopyMemoryToImageInfoEXT :: struct {
     flags : VkHostImageCopyFlagsEXT,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regions : VkMemoryToImageCopyEXT[..],
+    regions : VkMemoryToImageCopyEXT[],
 }
 
 VkCopyImageToMemoryInfoEXT :: struct {
@@ -5410,7 +5406,7 @@ VkCopyImageToMemoryInfoEXT :: struct {
     flags : VkHostImageCopyFlagsEXT,
     srcImage : VkImage,
     srcImageLayout : VkImageLayout,
-    regions : VkImageToMemoryCopyEXT[..],
+    regions : VkImageToMemoryCopyEXT[],
 }
 
 VkCopyImageToImageInfoEXT :: struct {
@@ -5421,7 +5417,7 @@ VkCopyImageToImageInfoEXT :: struct {
     srcImageLayout : VkImageLayout,
     dstImage : VkImage,
     dstImageLayout : VkImageLayout,
-    regions : VkImageCopy2[..],
+    regions : VkImageCopy2[],
 }
 
 VkHostImageLayoutTransitionInfoEXT :: struct {
@@ -5502,7 +5498,7 @@ VkSurfacePresentScalingCapabilitiesEXT :: struct {
 VkSurfacePresentModeCompatibilityEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModes : VkPresentModeKHR[..],
+    presentModes : VkPresentModeKHR[],
 }
 
 VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT :: struct {
@@ -5514,19 +5510,19 @@ VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT :: struct {
 VkSwapchainPresentFenceInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fences : VkFence[..],
+    fences : VkFence[],
 }
 
 VkSwapchainPresentModesCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModes : VkPresentModeKHR[..],
+    presentModes : VkPresentModeKHR[],
 }
 
 VkSwapchainPresentModeInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModes : VkPresentModeKHR[..],
+    presentModes : VkPresentModeKHR[],
 }
 
 VkSwapchainPresentScalingCreateInfoEXT :: struct {
@@ -5541,7 +5537,7 @@ VkReleaseSwapchainImagesInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     swapchain : VkSwapchainKHR,
-    imageIndices : u32[..],
+    imageIndices : u32[],
 }
 
 VkPhysicalDeviceDeviceGeneratedCommandsPropertiesNV :: struct {
@@ -5567,7 +5563,7 @@ VkPhysicalDeviceDeviceGeneratedCommandsFeaturesNV :: struct {
 VkGraphicsShaderGroupCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stages : VkPipelineShaderStageCreateInfo[..],
+    stages : VkPipelineShaderStageCreateInfo[],
     pVertexInputState : ptr[VkPipelineVertexInputStateCreateInfo],
     pTessellationState : ptr[VkPipelineTessellationStateCreateInfo],
 }
@@ -5575,8 +5571,8 @@ VkGraphicsShaderGroupCreateInfoNV :: struct {
 VkGraphicsPipelineShaderGroupsCreateInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    groups : VkGraphicsShaderGroupCreateInfoNV[..],
-    pipelines : VkPipeline[..],
+    groups : VkGraphicsShaderGroupCreateInfoNV[],
+    pipelines : VkPipeline[],
 }
 
 VkBindShaderGroupIndirectCommandNV :: struct {
@@ -5617,8 +5613,8 @@ VkIndirectCommandsLayoutTokenNV :: struct {
     pushconstantOffset : u32,
     pushconstantSize : u32,
     indirectStateFlags : VkIndirectStateFlagsNV,
-    indexTypes : VkIndexType[..],
-    indexTypeValues : u32[..],
+    indexTypes : VkIndexType[],
+    indexTypeValues : u32[],
 }
 
 VkIndirectCommandsLayoutCreateInfoNV :: struct {
@@ -5626,8 +5622,8 @@ VkIndirectCommandsLayoutCreateInfoNV :: struct {
     pNext : rawptr,
     flags : VkIndirectCommandsLayoutUsageFlagsNV,
     pipelineBindPoint : VkPipelineBindPoint,
-    tokens : VkIndirectCommandsLayoutTokenNV[..],
-    streamStrides : u32[..],
+    tokens : VkIndirectCommandsLayoutTokenNV[],
+    streamStrides : u32[],
 }
 
 VkGeneratedCommandsInfoNV :: struct {
@@ -5636,7 +5632,7 @@ VkGeneratedCommandsInfoNV :: struct {
     pipelineBindPoint : VkPipelineBindPoint,
     pipeline : VkPipeline,
     indirectCommandsLayout : VkIndirectCommandsLayoutNV,
-    streams : VkIndirectCommandsStreamNV[..],
+    streams : VkIndirectCommandsStreamNV[],
     sequencesCount : u32,
     preprocessBuffer : VkBuffer,
     preprocessOffset : VkDeviceSize,
@@ -5666,7 +5662,7 @@ VkCommandBufferInheritanceViewportScissorInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     viewportScissor2D : b32,
-    viewportDepths : VkViewport[..],
+    viewportDepths : VkViewport[],
 }
 
 VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT :: struct {
@@ -5828,8 +5824,8 @@ VkCudaLaunchInfoNV :: struct {
     blockDimY : u32,
     blockDimZ : u32,
     sharedMemBytes : u32,
-    params : rawptr[..],
-    extras : rawptr[..],
+    params : rawptr[],
+    extras : rawptr[],
 }
 
 VkPhysicalDeviceCudaKernelLaunchFeaturesNV :: struct {
@@ -6032,10 +6028,10 @@ VkAccelerationStructureMotionInfoNV :: struct {
 VkAccelerationStructureMatrixMotionInstanceNV :: struct {
     transformT0 : VkTransformMatrixKHR,
     transformT1 : VkTransformMatrixKHR,
-    instanceCustomIndex : u32, //TODO(ches) make this 24 bits
-    mask : u32, //TODO(ches) make this 8 bits
-    instanceShaderBindingTableRecordOffset : u32, //TODO(ches) make this 24 bits
-    flags : VkGeometryInstanceFlagsKHR, //TODO(ches) make this 8 bits
+    // Most significant 8 bits is the mask
+    instanceCustomIndexAndMask : u32,
+    // Most significant 8 bits is the VkGeometryInstanceFlagsKHR
+    instanceShaderBindingTableRecordOffset : u32,
     accelerationStructureReference : u64,
 }
 
@@ -6061,10 +6057,10 @@ VkSRTDataNV :: struct {
 VkAccelerationStructureSRTMotionInstanceNV :: struct {
     transformT0 : VkSRTDataNV,
     transformT1 : VkSRTDataNV,
-    instanceCustomIndex : u32, //TODO(ches) make this 24 bits
-    mask : u32, //TODO(ches) make this 8 bits
-    instanceShaderBindingTableRecordOffset : u32, //TODO(ches) make this 24 bits
-    flags : VkGeometryInstanceFlagsKHR, //TODO(ches) make this 8 bits
+    // Most significant 8 bits is the mask
+    instanceCustomIndexAndMask : u32,
+    // Most significant 8 bits is the VkGeometryInstanceFlagsKHR
+    instanceShaderBindingTableRecordOffsetAndFlags : u32,
     accelerationStructureReference : u64,
 }
 
@@ -6118,7 +6114,7 @@ VkImageCompressionControlEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkImageCompressionFlagsEXT,
-    fixedRateFlags : VkImageCompressionFixedRateFlagsEXT[..],
+    fixedRateFlags : VkImageCompressionFixedRateFlagsEXT[],
 }
 
 VkImageCompressionPropertiesEXT :: struct {
@@ -6172,8 +6168,8 @@ VkDeviceFaultInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     description : string,
-    addressInfos : VkDeviceFaultAddressInfoEXT[..],
-    vendorInfos : VkDeviceFaultVendorInfoEXT[..],
+    addressInfos : VkDeviceFaultAddressInfoEXT[],
+    vendorInfos : VkDeviceFaultVendorInfoEXT[],
     pVendorBinaryData : rawptr,
 }
 
@@ -6183,7 +6179,7 @@ VkDeviceFaultVendorBinaryHeaderVersionOneEXT :: struct {
     vendorID : u32,
     deviceID : u32,
     driverVersion : u32,
-    pipelineCacheUUID[VK_UUID_SIZE] : u8,
+    pipelineCacheUUID : u8[VK_UUID_SIZE],
     applicationNameOffset : u32,
     applicationVersion : u32,
     engineNameOffset : u32,
@@ -6212,13 +6208,13 @@ VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT :: struct {
 }
 
 VkMutableDescriptorTypeListEXT :: struct {
-    descriptorTypes : VkDescriptorType[..],
+    descriptorTypes : VkDescriptorType[],
 }
 
 VkMutableDescriptorTypeCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    mutableDescriptorTypeLists : VkMutableDescriptorTypeListEXT[..],
+    mutableDescriptorTypeLists : VkMutableDescriptorTypeListEXT[],
 }
 
 VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT :: struct {
@@ -6331,7 +6327,7 @@ VkPhysicalDeviceExternalMemoryRDMAFeaturesNV :: struct {
 VkPipelinePropertiesIdentifierEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pipelineIdentifier[VK_UUID_SIZE] : u8,
+    pipelineIdentifier : u8[VK_UUID_SIZE],
 }
 
 VkPhysicalDevicePipelinePropertiesFeaturesEXT :: struct {
@@ -6351,8 +6347,8 @@ VkFrameBoundaryEXT :: struct {
     pNext : rawptr,
     flags : VkFrameBoundaryFlagsEXT,
     frameID : u64,
-    images : VkImage[..],
-    buffers : VkBuffer[..],
+    images : VkImage[],
+    buffers : VkBuffer[],
     tagName : u64,
     tagSize : u64,
     pTag : rawptr,
@@ -6395,7 +6391,7 @@ VkPipelineColorWriteCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     attachmentCount : u32,
-    colorWriteEnables : b32[..],
+    colorWriteEnables : b32[],
 }
 
 VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT :: struct {
@@ -6477,8 +6473,8 @@ VkMicromapBuildInfoEXT :: struct {
     flags : VkBuildMicromapFlagsEXT,
     mode : VkBuildMicromapModeEXT,
     dstMicromap : VkMicromapEXT,
-    usageCounts : VkMicromapUsageEXT[..],
-    ppUsageCounts : ptr[VkMicromapUsageEXT][..],
+    usageCounts : VkMicromapUsageEXT[],
+    ppUsageCounts : ptr[VkMicromapUsageEXT][],
     data : VkDeviceOrHostAddressConstKHR,
     scratchData : VkDeviceOrHostAddressKHR,
     triangleArray : VkDeviceOrHostAddressConstKHR,
@@ -6514,7 +6510,7 @@ VkPhysicalDeviceOpacityMicromapPropertiesEXT :: struct {
 VkMicromapVersionInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pVersionData : ptr[u8],
+    pVersionData : rawptr,
 }
 
 VkCopyMicromapToMemoryInfoEXT :: struct {
@@ -6556,8 +6552,8 @@ VkAccelerationStructureTrianglesOpacityMicromapEXT :: struct {
     indexBuffer : VkDeviceOrHostAddressConstKHR,
     indexStride : VkDeviceSize,
     baseTriangle : u32,
-    usageCounts : VkMicromapUsageEXT[..],
-    ppUsageCounts : ptr[VkMicromapUsageEXT][..],
+    usageCounts : VkMicromapUsageEXT[],
+    ppUsageCounts : ptr[VkMicromapUsageEXT][],
     micromap : VkMicromapEXT,
 }
 
@@ -6702,13 +6698,13 @@ VkRenderPassStripeInfoARM :: struct {
 VkRenderPassStripeBeginInfoARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stripeInfos : VkRenderPassStripeInfoARM[..],
+    stripeInfos : VkRenderPassStripeInfoARM[],
 }
 
 VkRenderPassStripeSubmitInfoARM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    stripeSemaphoreInfos : VkSemaphoreSubmitInfo[..],
+    stripeSemaphoreInfos : VkSemaphoreSubmitInfo[],
 }
 
 VkPhysicalDeviceFragmentDensityMapOffsetFeaturesQCOM :: struct {
@@ -6726,7 +6722,7 @@ VkPhysicalDeviceFragmentDensityMapOffsetPropertiesQCOM :: struct {
 VkSubpassFragmentDensityMapOffsetEndInfoQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    fragmentDensityOffsets : VkOffset2D[..],
+    fragmentDensityOffsets : VkOffset2D[],
 }
 
 VkCopyMemoryIndirectCommandNV :: struct {
@@ -6965,7 +6961,7 @@ VkDirectDriverLoadingListLUNARG :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     mode : VkDirectDriverLoadingModeLUNARG,
-    drivers : VkDirectDriverLoadingInfoLUNARG[..],
+    drivers : VkDirectDriverLoadingInfoLUNARG[],
 }
 
 VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT :: struct {
@@ -6977,21 +6973,19 @@ VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT :: struct {
 VkPhysicalDeviceShaderModuleIdentifierPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderModuleIdentifierAlgorithmUUID[VK_UUID_SIZE] : u8,
+    shaderModuleIdentifierAlgorithmUUID : u8[VK_UUID_SIZE],
 }
 
 VkPipelineShaderStageModuleIdentifierCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    identifierSize : u32,
-    pIdentifier : ptr[u8],
+    identifier : u8[],
 }
 
 VkShaderModuleIdentifierEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    identifierSize : u32,
-    identifier[VK_MAX_SHADER_MODULE_IDENTIFIER_SIZE_EXT] : u8,
+    identifier : u8[],
 }
 
 VkPhysicalDeviceOpticalFlowFeaturesNV :: struct {
@@ -7054,7 +7048,7 @@ VkOpticalFlowExecuteInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkOpticalFlowExecuteFlagsNV,
-    regions : VkRect2D[..],
+    regions : VkRect2D[],
 }
 
 VkPhysicalDeviceLegacyDitheringFeaturesEXT :: struct {
@@ -7078,7 +7072,7 @@ VkPhysicalDeviceShaderObjectFeaturesEXT :: struct {
 VkPhysicalDeviceShaderObjectPropertiesEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    shaderBinaryUUID[VK_UUID_SIZE] : u8,
+    shaderBinaryUUID : u8[VK_UUID_SIZE],
     shaderBinaryVersion : u32,
 }
 
@@ -7092,8 +7086,8 @@ VkShaderCreateInfoEXT :: struct {
     codeSize : u64,
     pCode : rawptr,
     name : string,
-    setLayouts : VkDescriptorSetLayout[..],
-    pushConstantRanges : VkPushConstantRange[..],
+    setLayouts : VkDescriptorSetLayout[],
+    pushConstantRanges : VkPushConstantRange[],
     pSpecializationInfo : ptr[VkSpecializationInfo],
 }
 
@@ -7166,7 +7160,7 @@ VkLayerSettingEXT :: struct {
 VkLayerSettingsCreateInfoEXT :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    settings : VkLayerSettingEXT[..],
+    settings : VkLayerSettingEXT[],
 }
 
 VkPhysicalDeviceShaderCoreBuiltinsFeaturesARM :: struct {
@@ -7239,7 +7233,7 @@ VkLatencyTimingsFrameReportNV :: struct {
 VkGetLatencyMarkerInfoNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    timings : VkLatencyTimingsFrameReportNV[..],
+    timings : VkLatencyTimingsFrameReportNV[],
 }
 
 VkLatencySubmissionPresentIdNV :: struct {
@@ -7263,7 +7257,7 @@ VkOutOfBandQueueTypeInfoNV :: struct {
 VkLatencySurfaceCapabilitiesNV :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    presentModes : VkPresentModeKHR[..],
+    presentModes : VkPresentModeKHR[],
 }
 
 VkPhysicalDeviceMultiviewPerViewRenderAreasFeaturesQCOM :: struct {
@@ -7275,7 +7269,7 @@ VkPhysicalDeviceMultiviewPerViewRenderAreasFeaturesQCOM :: struct {
 VkMultiviewPerViewRenderAreasRenderPassBeginInfoQCOM :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    perViewRenderAreas : VkRect2D[..],
+    perViewRenderAreas : VkRect2D[],
 }
 
 VkPhysicalDevicePerStageDescriptorSetFeaturesNV :: struct {
@@ -7414,8 +7408,8 @@ VkAccelerationStructureBuildGeometryInfoKHR :: struct {
     mode : VkBuildAccelerationStructureModeKHR,
     srcAccelerationStructure : VkAccelerationStructureKHR,
     dstAccelerationStructure : VkAccelerationStructureKHR,
-    geometries : VkAccelerationStructureGeometryKHR[..],
-    ppGeometries : ptr[VkAccelerationStructureGeometryKHR][..],
+    geometries : VkAccelerationStructureGeometryKHR[],
+    ppGeometries : ptr[VkAccelerationStructureGeometryKHR][],
     scratchData : VkDeviceOrHostAddressKHR,
 }
 
@@ -7433,7 +7427,7 @@ VkAccelerationStructureCreateInfoKHR :: struct {
 VkWriteDescriptorSetAccelerationStructureKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    accelerationStructures : VkAccelerationStructureKHR[..],
+    accelerationStructures : VkAccelerationStructureKHR[],
 }
 
 VkPhysicalDeviceAccelerationStructureFeaturesKHR :: struct {
@@ -7468,7 +7462,7 @@ VkAccelerationStructureDeviceAddressInfoKHR :: struct {
 VkAccelerationStructureVersionInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
-    pVersionData : ptr[u8],
+    pVersionData : rawptr,
 }
 
 VkCopyAccelerationStructureToMemoryInfoKHR :: struct {
@@ -7525,8 +7519,8 @@ VkRayTracingPipelineCreateInfoKHR :: struct {
     sType : VkStructureType,
     pNext : rawptr,
     flags : VkPipelineCreateFlags,
-    stages : VkPipelineShaderStageCreateInfo[..],
-    groups : VkRayTracingShaderGroupCreateInfoKHR[..],
+    stages : VkPipelineShaderStageCreateInfo[],
+    groups : VkRayTracingShaderGroupCreateInfoKHR[],
     maxPipelineRayRecursionDepth : u32,
     pLibraryInfo : ptr[VkPipelineLibraryCreateInfoKHR],
     pLibraryInterface : ptr[VkRayTracingPipelineInterfaceCreateInfoKHR],
