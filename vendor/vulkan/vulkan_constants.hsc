@@ -1,14 +1,10 @@
 package vulkan
 
-API_VERSION_1_0 :: MAKE_VERSION(0, 1, 0, 0)
-API_VERSION_1_1 :: MAKE_VERSION(0, 1, 1, 0)
-API_VERSION_1_2 :: MAKE_VERSION(0, 1, 2, 0)
-API_VERSION_1_3 :: MAKE_VERSION(0, 1, 3, 0)
-API_VERSION_1_4 :: MAKE_VERSION(0, 1, 4, 0)
-
-MAKE_VERSION :: fn(variant, major, minor, patch: u32) -> u32 {
-    return (variant << 29) | (major << 22) | (minor << 12) | patch
-}
+API_VERSION_1_0 :: VK_MAKE_API_VERSION(0, 1, 0, 0)
+API_VERSION_1_1 :: VK_MAKE_API_VERSION(0, 1, 1, 0)
+API_VERSION_1_2 :: VK_MAKE_API_VERSION(0, 1, 2, 0)
+API_VERSION_1_3 :: VK_MAKE_API_VERSION(0, 1, 3, 0)
+API_VERSION_1_4 :: VK_MAKE_API_VERSION(0, 1, 4, 0)
 
 VK_ATTACHMENT_UNUSED             : uint : ~0
 VK_FALSE                         : uint : 0
