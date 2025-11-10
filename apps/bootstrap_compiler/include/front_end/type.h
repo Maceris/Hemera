@@ -382,16 +382,16 @@ namespace hemera {
 	};
 
 	struct TypeInfoString : public TypeInfo {
-		bool raw;
+		bool is_raw;
 		char _padding[7] = { 0 };
 
-		TypeInfoString(bool raw);
+		TypeInfoString(bool is_raw);
 		~TypeInfoString();
 	};
 
 	struct StructMember {
 		InternedString name;
-		TypeInfo* type;
+		TypeInfo* member_type;
 		builtin::_any value;
 		bool has_value;
 		bool is_using;

@@ -73,11 +73,11 @@ namespace hemera {
 	TypeInfoPointer::~TypeInfoPointer() = default;
 
 
-	TypeInfoString::TypeInfoString(bool raw)
+	TypeInfoString::TypeInfoString(bool is_raw)
 		: TypeInfo{ TypeInfoVariant::STRING
-		, raw ? sizeof(BUILTIN_rawptr) : sizeof(BUILTIN_string)
+		, is_raw ? sizeof(BUILTIN_rawptr) : sizeof(BUILTIN_string)
 		}
-		, raw{ raw }
+		, is_raw{ is_raw }
 	{}
 	TypeInfoString::~TypeInfoString() = default;
 
@@ -608,7 +608,7 @@ namespace hemera {
 			TypeInfoString const* to_specific =
 				static_cast<TypeInfoString const*>(actual_to);
 
-			return from_specific->raw == to_specific->raw;
+			return from_specific->is_raw == to_specific->is_raw;
 		}
 		}
 
