@@ -88,3 +88,4 @@ size_of  : fn[T](T: type) -> int : ---
 
 type_of : fn(x: expr) -> type : ---
 type_info_of : fn[T](T: type) -> TypeInfo : ---
+types_are_aliases : fn(a, b: type) -> bool : ---
