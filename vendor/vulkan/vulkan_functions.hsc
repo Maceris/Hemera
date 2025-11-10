@@ -22,7 +22,7 @@ VK_API_VERSION_PATCH :: fn(version: u32) -> u32 {
 
 vkCreateInstance(
     pCreateInfo: ptr[VkInstanceCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pInstance: ptr[VkInstance]) -> VkResult
 {
     //TODO(ches) do this
@@ -31,7 +31,7 @@ vkCreateInstance(
 
 vkDestroyInstance(
     instance: VkInstance,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -112,7 +112,7 @@ vkGetDeviceProcAddr(
 vkCreateDevice(
     physicalDevice: VkPhysicalDevice,
     pCreateInfo: ptr[VkDeviceCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pDevice: ptr[VkDevice]) -> VkResult
 {
     //TODO(ches) do this
@@ -121,7 +121,7 @@ vkCreateDevice(
 
 vkDestroyDevice(
     device: VkDevice,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -198,7 +198,7 @@ vkDeviceWaitIdle(
 vkAllocateMemory(
     device: VkDevice,
     pAllocateInfo: ptr[VkMemoryAllocateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pMemory: ptr[VkDeviceMemory]) -> VkResult
 {
     //TODO(ches) do this
@@ -208,7 +208,7 @@ vkAllocateMemory(
 vkFreeMemory(
     device: VkDevice,
     memory: VkDeviceMemory,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -329,7 +329,7 @@ vkQueueBindSparse(
 vkCreateFence(
     device: VkDevice,
     pCreateInfo: ptr[VkFenceCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pFence: ptr[VkFence]) -> VkResult
 {
     //TODO(ches) do this
@@ -339,7 +339,7 @@ vkCreateFence(
 vkDestroyFence(
     device: VkDevice,
     fence: VkFence,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -375,7 +375,7 @@ vkWaitForFences(
 vkCreateSemaphore(
     device: VkDevice,
     pCreateInfo: ptr[VkSemaphoreCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSemaphore: ptr[VkSemaphore]) -> VkResult
 {
     //TODO(ches) do this
@@ -385,7 +385,7 @@ vkCreateSemaphore(
 vkDestroySemaphore(
     device: VkDevice,
     semaphore: VkSemaphore,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -393,7 +393,7 @@ vkDestroySemaphore(
 vkCreateEvent(
     device: VkDevice,
     pCreateInfo: ptr[VkEventCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pEvent: ptr[VkEvent]) -> VkResult
 {
     //TODO(ches) do this
@@ -403,7 +403,7 @@ vkCreateEvent(
 vkDestroyEvent(
     device: VkDevice,
     event: VkEvent,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -435,7 +435,7 @@ vkResetEvent(
 vkCreateQueryPool(
     device: VkDevice,
     pCreateInfo: ptr[VkQueryPoolCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pQueryPool: ptr[VkQueryPool]) -> VkResult
 {
     //TODO(ches) do this
@@ -445,7 +445,7 @@ vkCreateQueryPool(
 vkDestroyQueryPool(
     device: VkDevice,
     queryPool: VkQueryPool,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -467,7 +467,7 @@ vkGetQueryPoolResults(
 vkCreateBuffer(
     device: VkDevice,
     pCreateInfo: ptr[VkBufferCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pBuffer: ptr[VkBuffer]) -> VkResult
 {
     //TODO(ches) do this
@@ -477,7 +477,7 @@ vkCreateBuffer(
 vkDestroyBuffer(
     device: VkDevice,
     buffer: VkBuffer,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -485,7 +485,7 @@ vkDestroyBuffer(
 vkCreateBufferView(
     device: VkDevice,
     pCreateInfo: ptr[VkBufferViewCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pView: ptr[VkBufferView]) -> VkResult
 {
     //TODO(ches) do this
@@ -495,7 +495,7 @@ vkCreateBufferView(
 vkDestroyBufferView(
     device: VkDevice,
     bufferView: VkBufferView,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -503,7 +503,7 @@ vkDestroyBufferView(
 vkCreateImage(
     device: VkDevice,
     pCreateInfo: ptr[VkImageCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pImage: ptr[VkImage]) -> VkResult
 {
     //TODO(ches) do this
@@ -513,7 +513,7 @@ vkCreateImage(
 vkDestroyImage(
     device: VkDevice,
     image: VkImage,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -530,7 +530,7 @@ vkGetImageSubresourceLayout(
 vkCreateImageView(
     device: VkDevice,
     pCreateInfo: ptr[VkImageViewCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pView: ptr[VkImageView]) -> VkResult
 {
     //TODO(ches) do this
@@ -540,7 +540,7 @@ vkCreateImageView(
 vkDestroyImageView(
     device: VkDevice,
     imageView: VkImageView,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -548,7 +548,7 @@ vkDestroyImageView(
 vkCreateShaderModule(
     device: VkDevice,
     pCreateInfo: ptr[VkShaderModuleCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pShaderModule: ptr[VkShaderModule]) -> VkResult
 {
     //TODO(ches) do this
@@ -558,7 +558,7 @@ vkCreateShaderModule(
 vkDestroyShaderModule(
     device: VkDevice,
     shaderModule: VkShaderModule,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -566,7 +566,7 @@ vkDestroyShaderModule(
 vkCreatePipelineCache(
     device: VkDevice,
     pCreateInfo: ptr[VkPipelineCacheCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPipelineCache: ptr[VkPipelineCache]) -> VkResult
 {
     //TODO(ches) do this
@@ -576,7 +576,7 @@ vkCreatePipelineCache(
 vkDestroyPipelineCache(
     device: VkDevice,
     pipelineCache: VkPipelineCache,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -606,7 +606,7 @@ vkCreateGraphicsPipelines(
     pipelineCache: VkPipelineCache,
     createInfoCount: u32,
     pCreateInfos: ptr[VkGraphicsPipelineCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPipelines: ptr[VkPipeline]) -> VkResult
 {
     //TODO(ches) do this
@@ -618,7 +618,7 @@ vkCreateComputePipelines(
     pipelineCache: VkPipelineCache,
     createInfoCount: u32,
     pCreateInfos: ptr[VkComputePipelineCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPipelines: ptr[VkPipeline]) -> VkResult
 {
     //TODO(ches) do this
@@ -628,7 +628,7 @@ vkCreateComputePipelines(
 vkDestroyPipeline(
     device: VkDevice,
     pipeline: VkPipeline,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -636,7 +636,7 @@ vkDestroyPipeline(
 vkCreatePipelineLayout(
     device: VkDevice,
     pCreateInfo: ptr[VkPipelineLayoutCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPipelineLayout: ptr[VkPipelineLayout]) -> VkResult
 {
     //TODO(ches) do this
@@ -646,7 +646,7 @@ vkCreatePipelineLayout(
 vkDestroyPipelineLayout(
     device: VkDevice,
     pipelineLayout: VkPipelineLayout,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -654,7 +654,7 @@ vkDestroyPipelineLayout(
 vkCreateSampler(
     device: VkDevice,
     pCreateInfo: ptr[VkSamplerCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSampler: ptr[VkSampler]) -> VkResult
 {
     //TODO(ches) do this
@@ -664,7 +664,7 @@ vkCreateSampler(
 vkDestroySampler(
     device: VkDevice,
     sampler: VkSampler,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -672,7 +672,7 @@ vkDestroySampler(
 vkCreateDescriptorSetLayout(
     device: VkDevice,
     pCreateInfo: ptr[VkDescriptorSetLayoutCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSetLayout: ptr[VkDescriptorSetLayout]) -> VkResult
 {
     //TODO(ches) do this
@@ -682,7 +682,7 @@ vkCreateDescriptorSetLayout(
 vkDestroyDescriptorSetLayout(
     device: VkDevice,
     descriptorSetLayout: VkDescriptorSetLayout,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -690,7 +690,7 @@ vkDestroyDescriptorSetLayout(
 vkCreateDescriptorPool(
     device: VkDevice,
     pCreateInfo: ptr[VkDescriptorPoolCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pDescriptorPool: ptr[VkDescriptorPool]) -> VkResult
 {
     //TODO(ches) do this
@@ -700,7 +700,7 @@ vkCreateDescriptorPool(
 vkDestroyDescriptorPool(
     device: VkDevice,
     descriptorPool: VkDescriptorPool,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -746,7 +746,7 @@ vkUpdateDescriptorSets(
 vkCreateFramebuffer(
     device: VkDevice,
     pCreateInfo: ptr[VkFramebufferCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pFramebuffer: ptr[VkFramebuffer]) -> VkResult
 {
     //TODO(ches) do this
@@ -756,7 +756,7 @@ vkCreateFramebuffer(
 vkDestroyFramebuffer(
     device: VkDevice,
     framebuffer: VkFramebuffer,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -764,7 +764,7 @@ vkDestroyFramebuffer(
 vkCreateRenderPass(
     device: VkDevice,
     pCreateInfo: ptr[VkRenderPassCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pRenderPass: ptr[VkRenderPass]) -> VkResult
 {
     //TODO(ches) do this
@@ -774,7 +774,7 @@ vkCreateRenderPass(
 vkDestroyRenderPass(
     device: VkDevice,
     renderPass: VkRenderPass,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -790,7 +790,7 @@ vkGetRenderAreaGranularity(
 vkCreateCommandPool(
     device: VkDevice,
     pCreateInfo: ptr[VkCommandPoolCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pCommandPool: ptr[VkCommandPool]) -> VkResult
 {
     //TODO(ches) do this
@@ -800,7 +800,7 @@ vkCreateCommandPool(
 vkDestroyCommandPool(
     device: VkDevice,
     commandPool: VkCommandPool,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1444,7 +1444,7 @@ vkGetDeviceQueue2(
 vkCreateSamplerYcbcrConversion(
     device: VkDevice,
     pCreateInfo: ptr[VkSamplerYcbcrConversionCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pYcbcrConversion: ptr[VkSamplerYcbcrConversion]) -> VkResult
 {
     //TODO(ches) do this
@@ -1454,7 +1454,7 @@ vkCreateSamplerYcbcrConversion(
 vkDestroySamplerYcbcrConversion(
     device: VkDevice,
     ycbcrConversion: VkSamplerYcbcrConversion,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1462,7 +1462,7 @@ vkDestroySamplerYcbcrConversion(
 vkCreateDescriptorUpdateTemplate(
     device: VkDevice,
     pCreateInfo: ptr[VkDescriptorUpdateTemplateCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pDescriptorUpdateTemplate: ptr[VkDescriptorUpdateTemplate]) -> VkResult
 {
     //TODO(ches) do this
@@ -1472,7 +1472,7 @@ vkCreateDescriptorUpdateTemplate(
 vkDestroyDescriptorUpdateTemplate(
     device: VkDevice,
     descriptorUpdateTemplate: VkDescriptorUpdateTemplate,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1547,7 +1547,7 @@ vkCmdDrawIndexedIndirectCount(
 vkCreateRenderPass2(
     device: VkDevice,
     pCreateInfo: ptr[VkRenderPassCreateInfo2],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pRenderPass: ptr[VkRenderPass]) -> VkResult
 {
     //TODO(ches) do this
@@ -1645,7 +1645,7 @@ vkGetPhysicalDeviceToolProperties(
 vkCreatePrivateDataSlot(
     device: VkDevice,
     pCreateInfo: ptr[VkPrivateDataSlotCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPrivateDataSlot: ptr[VkPrivateDataSlot]) -> VkResult
 {
     //TODO(ches) do this
@@ -1655,7 +1655,7 @@ vkCreatePrivateDataSlot(
 vkDestroyPrivateDataSlot(
     device: VkDevice,
     privateDataSlot: VkPrivateDataSlot,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1931,7 +1931,7 @@ vkGetDeviceImageSparseMemoryRequirements(
 vkDestroySurfaceKHR(
     instance: VkInstance,
     surface: VkSurfaceKHR,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1978,7 +1978,7 @@ vkGetPhysicalDeviceSurfacePresentModesKHR(
 vkCreateSwapchainKHR(
     device: VkDevice,
     pCreateInfo: ptr[VkSwapchainCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSwapchain: ptr[VkSwapchainKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -1988,7 +1988,7 @@ vkCreateSwapchainKHR(
 vkDestroySwapchainKHR(
     device: VkDevice,
     swapchain: VkSwapchainKHR,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2101,7 +2101,7 @@ vkCreateDisplayModeKHR(
     physicalDevice: VkPhysicalDevice,
     display: VkDisplayKHR,
     pCreateInfo: ptr[VkDisplayModeCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pMode: ptr[VkDisplayModeKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -2121,7 +2121,7 @@ vkGetDisplayPlaneCapabilitiesKHR(
 vkCreateDisplayPlaneSurfaceKHR(
     instance: VkInstance,
     pCreateInfo: ptr[VkDisplaySurfaceCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSurface: ptr[VkSurfaceKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -2132,7 +2132,7 @@ vkCreateSharedSwapchainsKHR(
     device: VkDevice,
     swapchainCount: u32,
     pCreateInfos: ptr[VkSwapchainCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSwapchains: ptr[VkSwapchainKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -2161,7 +2161,7 @@ vkGetPhysicalDeviceVideoFormatPropertiesKHR(
 vkCreateVideoSessionKHR(
     device: VkDevice,
     pCreateInfo: ptr[VkVideoSessionCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pVideoSession: ptr[VkVideoSessionKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -2171,7 +2171,7 @@ vkCreateVideoSessionKHR(
 vkDestroyVideoSessionKHR(
     device: VkDevice,
     videoSession: VkVideoSessionKHR,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2199,7 +2199,7 @@ vkBindVideoSessionMemoryKHR(
 vkCreateVideoSessionParametersKHR(
     device: VkDevice,
     pCreateInfo: ptr[VkVideoSessionParametersCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pVideoSessionParameters: ptr[VkVideoSessionParametersKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -2218,7 +2218,7 @@ vkUpdateVideoSessionParametersKHR(
 vkDestroyVideoSessionParametersKHR(
     device: VkDevice,
     videoSessionParameters: VkVideoSessionParametersKHR,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2441,7 +2441,7 @@ vkCmdPushDescriptorSetWithTemplateKHR(
 vkCreateDescriptorUpdateTemplateKHR(
     device: VkDevice,
     pCreateInfo: ptr[VkDescriptorUpdateTemplateCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pDescriptorUpdateTemplate: ptr[VkDescriptorUpdateTemplate]) -> VkResult
 {
     //TODO(ches) do this
@@ -2451,7 +2451,7 @@ vkCreateDescriptorUpdateTemplateKHR(
 vkDestroyDescriptorUpdateTemplateKHR(
     device: VkDevice,
     descriptorUpdateTemplate: VkDescriptorUpdateTemplate,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2468,7 +2468,7 @@ vkUpdateDescriptorSetWithTemplateKHR(
 vkCreateRenderPass2KHR(
     device: VkDevice,
     pCreateInfo: ptr[VkRenderPassCreateInfo2],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pRenderPass: ptr[VkRenderPass]) -> VkResult
 {
     //TODO(ches) do this
@@ -2648,7 +2648,7 @@ vkGetImageSparseMemoryRequirements2KHR(
 vkCreateSamplerYcbcrConversionKHR(
     device: VkDevice,
     pCreateInfo: ptr[VkSamplerYcbcrConversionCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pYcbcrConversion: ptr[VkSamplerYcbcrConversion]) -> VkResult
 {
     //TODO(ches) do this
@@ -2658,7 +2658,7 @@ vkCreateSamplerYcbcrConversionKHR(
 vkDestroySamplerYcbcrConversionKHR(
     device: VkDevice,
     ycbcrConversion: VkSamplerYcbcrConversion,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2803,7 +2803,7 @@ vkGetDeviceMemoryOpaqueCaptureAddressKHR(
 
 vkCreateDeferredOperationKHR(
     device: VkDevice,
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pDeferredOperation: ptr[VkDeferredOperationKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -2813,7 +2813,7 @@ vkCreateDeferredOperationKHR(
 vkDestroyDeferredOperationKHR(
     device: VkDevice,
     operation: VkDeferredOperationKHR,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3175,7 +3175,7 @@ vkCmdBindDescriptorBufferEmbeddedSamplers2EXT(
 vkCreateDebugReportCallbackEXT(
     instance: VkInstance,
     pCreateInfo: ptr[VkDebugReportCallbackCreateInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pCallback: ptr[VkDebugReportCallbackEXT]) -> VkResult
 {
     //TODO(ches) do this
@@ -3185,7 +3185,7 @@ vkCreateDebugReportCallbackEXT(
 vkDestroyDebugReportCallbackEXT(
     instance: VkInstance,
     callback: VkDebugReportCallbackEXT,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3304,7 +3304,7 @@ vkCmdDrawIndirectByteCountEXT(
 vkCreateCuModuleNVX(
     device: VkDevice,
     pCreateInfo: ptr[VkCuModuleCreateInfoNVX],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pModule: ptr[VkCuModuleNVX]) -> VkResult
 {
     //TODO(ches) do this
@@ -3314,7 +3314,7 @@ vkCreateCuModuleNVX(
 vkCreateCuFunctionNVX(
     device: VkDevice,
     pCreateInfo: ptr[VkCuFunctionCreateInfoNVX],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pFunction: ptr[VkCuFunctionNVX]) -> VkResult
 {
     //TODO(ches) do this
@@ -3324,7 +3324,7 @@ vkCreateCuFunctionNVX(
 vkDestroyCuModuleNVX(
     device: VkDevice,
     module: VkCuModuleNVX,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3332,7 +3332,7 @@ vkDestroyCuModuleNVX(
 vkDestroyCuFunctionNVX(
     device: VkDevice,
     function: VkCuFunctionNVX,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3461,7 +3461,7 @@ vkDisplayPowerControlEXT(
 vkRegisterDeviceEventEXT(
     device: VkDevice,
     pDeviceEventInfo: ptr[VkDeviceEventInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pFence: ptr[VkFence]) -> VkResult
 {
     //TODO(ches) do this
@@ -3472,7 +3472,7 @@ vkRegisterDisplayEventEXT(
     device: VkDevice,
     display: VkDisplayKHR,
     pDisplayEventInfo: ptr[VkDisplayEventInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pFence: ptr[VkFence]) -> VkResult
 {
     //TODO(ches) do this
@@ -3599,7 +3599,7 @@ vkCmdInsertDebugUtilsLabelEXT(
 vkCreateDebugUtilsMessengerEXT(
     instance: VkInstance,
     pCreateInfo: ptr[VkDebugUtilsMessengerCreateInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pMessenger: ptr[VkDebugUtilsMessengerEXT]) -> VkResult
 {
     //TODO(ches) do this
@@ -3609,7 +3609,7 @@ vkCreateDebugUtilsMessengerEXT(
 vkDestroyDebugUtilsMessengerEXT(
     instance: VkInstance,
     messenger: VkDebugUtilsMessengerEXT,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3650,7 +3650,7 @@ vkGetImageDrmFormatModifierPropertiesEXT(
 vkCreateValidationCacheEXT(
     device: VkDevice,
     pCreateInfo: ptr[VkValidationCacheCreateInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pValidationCache: ptr[VkValidationCacheEXT]) -> VkResult
 {
     //TODO(ches) do this
@@ -3660,7 +3660,7 @@ vkCreateValidationCacheEXT(
 vkDestroyValidationCacheEXT(
     device: VkDevice,
     validationCache: VkValidationCacheEXT,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3714,7 +3714,7 @@ vkCmdSetCoarseSampleOrderNV(
 vkCreateAccelerationStructureNV(
     device: VkDevice,
     pCreateInfo: ptr[VkAccelerationStructureCreateInfoNV],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pAccelerationStructure: ptr[VkAccelerationStructureNV]) -> VkResult
 {
     //TODO(ches) do this
@@ -3724,7 +3724,7 @@ vkCreateAccelerationStructureNV(
 vkDestroyAccelerationStructureNV(
     device: VkDevice,
     accelerationStructure: VkAccelerationStructureNV,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3794,7 +3794,7 @@ vkCreateRayTracingPipelinesNV(
     pipelineCache: VkPipelineCache,
     createInfoCount: u32,
     pCreateInfos: ptr[VkRayTracingPipelineCreateInfoNV],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPipelines: ptr[VkPipeline]) -> VkResult
 {
     //TODO(ches) do this
@@ -4075,7 +4075,7 @@ vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV(
 vkCreateHeadlessSurfaceEXT(
     instance: VkInstance,
     pCreateInfo: ptr[VkHeadlessSurfaceCreateInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSurface: ptr[VkSurfaceKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -4279,7 +4279,7 @@ vkCmdBindPipelineShaderGroupNV(
 vkCreateIndirectCommandsLayoutNV(
     device: VkDevice,
     pCreateInfo: ptr[VkIndirectCommandsLayoutCreateInfoNV],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pIndirectCommandsLayout: ptr[VkIndirectCommandsLayoutNV]) -> VkResult
 {
     //TODO(ches) do this
@@ -4289,7 +4289,7 @@ vkCreateIndirectCommandsLayoutNV(
 vkDestroyIndirectCommandsLayoutNV(
     device: VkDevice,
     indirectCommandsLayout: VkIndirectCommandsLayoutNV,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -4323,7 +4323,7 @@ vkGetDrmDisplayEXT(
 vkCreatePrivateDataSlotEXT(
     device: VkDevice,
     pCreateInfo: ptr[VkPrivateDataSlotCreateInfo],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPrivateDataSlot: ptr[VkPrivateDataSlot]) -> VkResult
 {
     //TODO(ches) do this
@@ -4333,7 +4333,7 @@ vkCreatePrivateDataSlotEXT(
 vkDestroyPrivateDataSlotEXT(
     device: VkDevice,
     privateDataSlot: VkPrivateDataSlot,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -4362,7 +4362,7 @@ vkGetPrivateDataEXT(
 vkCreateCudaModuleNV(
     device: VkDevice,
     pCreateInfo: ptr[VkCudaModuleCreateInfoNV],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pModule: ptr[VkCudaModuleNV]) -> VkResult
 {
     //TODO(ches) do this
@@ -4382,7 +4382,7 @@ vkGetCudaModuleCacheNV(
 vkCreateCudaFunctionNV(
     device: VkDevice,
     pCreateInfo: ptr[VkCudaFunctionCreateInfoNV],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pFunction: ptr[VkCudaFunctionNV]) -> VkResult
 {
     //TODO(ches) do this
@@ -4392,7 +4392,7 @@ vkCreateCudaFunctionNV(
 vkDestroyCudaModuleNV(
     device: VkDevice,
     module: VkCudaModuleNV,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -4400,7 +4400,7 @@ vkDestroyCudaModuleNV(
 vkDestroyCudaFunctionNV(
     device: VkDevice,
     function: VkCudaFunctionNV,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -4649,7 +4649,7 @@ vkCmdDrawMultiIndexedEXT(
 vkCreateMicromapEXT(
     device: VkDevice,
     pCreateInfo: ptr[VkMicromapCreateInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pMicromap: ptr[VkMicromapEXT]) -> VkResult
 {
     //TODO(ches) do this
@@ -4659,7 +4659,7 @@ vkCreateMicromapEXT(
 vkDestroyMicromapEXT(
     device: VkDevice,
     micromap: VkMicromapEXT,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -5131,7 +5131,7 @@ vkGetPhysicalDeviceOpticalFlowImageFormatsNV(
 vkCreateOpticalFlowSessionNV(
     device: VkDevice,
     pCreateInfo: ptr[VkOpticalFlowSessionCreateInfoNV],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pSession: ptr[VkOpticalFlowSessionNV]) -> VkResult
 {
     //TODO(ches) do this
@@ -5141,7 +5141,7 @@ vkCreateOpticalFlowSessionNV(
 vkDestroyOpticalFlowSessionNV(
     device: VkDevice,
     session: VkOpticalFlowSessionNV,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -5169,7 +5169,7 @@ vkCreateShadersEXT(
     device: VkDevice,
     createInfoCount: u32,
     pCreateInfos: ptr[VkShaderCreateInfoEXT],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pShaders: ptr[VkShaderEXT]) -> VkResult
 {
     //TODO(ches) do this
@@ -5179,7 +5179,7 @@ vkCreateShadersEXT(
 vkDestroyShaderEXT(
     device: VkDevice,
     shader: VkShaderEXT,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -5273,7 +5273,7 @@ vkCmdSetAttachmentFeedbackLoopEnableEXT(
 vkCreateAccelerationStructureKHR(
     device: VkDevice,
     pCreateInfo: ptr[VkAccelerationStructureCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pAccelerationStructure: ptr[VkAccelerationStructureKHR]) -> VkResult
 {
     //TODO(ches) do this
@@ -5283,7 +5283,7 @@ vkCreateAccelerationStructureKHR(
 vkDestroyAccelerationStructureKHR(
     device: VkDevice,
     accelerationStructure: VkAccelerationStructureKHR,
-    pAllocator: ptr[VkAllocationCallbacks]) -> void
+    pAllocator: ptr[VkAllocationCallbacks]?) -> void
 {
     //TODO(ches) do this
 }
@@ -5435,7 +5435,7 @@ vkCreateRayTracingPipelinesKHR(
     pipelineCache: VkPipelineCache,
     createInfoCount: u32,
     pCreateInfos: ptr[VkRayTracingPipelineCreateInfoKHR],
-    pAllocator: ptr[VkAllocationCallbacks],
+    pAllocator: ptr[VkAllocationCallbacks]?,
     pPipelines: ptr[VkPipeline]) -> VkResult
 {
     //TODO(ches) do this
