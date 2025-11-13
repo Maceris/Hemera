@@ -39,7 +39,7 @@ vkDestroyInstance(
 vkEnumeratePhysicalDevices(
     instance: VkInstance,
     pPhysicalDeviceCount: ptr[mut u32],
-    pPhysicalDevices: ptr[mut VkPhysicalDevice]) -> VkResult
+    pPhysicalDevices: ptr[mut VkPhysicalDevice]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -83,7 +83,7 @@ vkGetPhysicalDeviceProperties(
 vkGetPhysicalDeviceQueueFamilyProperties(
     physicalDevice: VkPhysicalDevice,
     pQueueFamilyPropertyCount: ptr[mut u32],
-    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties]) -> void
+    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties]?) -> void
 {
     //TODO(ches) do this
 }
@@ -129,7 +129,7 @@ vkDestroyDevice(
 vkEnumerateInstanceExtensionProperties(
     pLayerName: ptr[mut char],
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkExtensionProperties]) -> VkResult
+    pProperties: ptr[mut VkExtensionProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -139,7 +139,7 @@ vkEnumerateDeviceExtensionProperties(
     physicalDevice: VkPhysicalDevice,
     pLayerName: ptr[mut char],
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkExtensionProperties]) -> VkResult
+    pProperties: ptr[mut VkExtensionProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -147,7 +147,7 @@ vkEnumerateDeviceExtensionProperties(
 
 vkEnumerateInstanceLayerProperties(
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkLayerProperties]) -> VkResult
+    pProperties: ptr[mut VkLayerProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -156,7 +156,7 @@ vkEnumerateInstanceLayerProperties(
 vkEnumerateDeviceLayerProperties(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkLayerProperties]) -> VkResult
+    pProperties: ptr[mut VkLayerProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -298,7 +298,7 @@ vkGetImageSparseMemoryRequirements(
     device: VkDevice,
     image: VkImage,
     pSparseMemoryRequirementCount: ptr[mut u32],
-    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements]) -> void
+    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements]?) -> void
 {
     //TODO(ches) do this
 }
@@ -311,7 +311,7 @@ vkGetPhysicalDeviceSparseImageFormatProperties(
     usage: VkImageUsageFlags,
     tiling: VkImageTiling,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkSparseImageFormatProperties]) -> void
+    pProperties: ptr[mut VkSparseImageFormatProperties]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1339,7 +1339,7 @@ vkCmdDispatchBase(
 vkEnumeratePhysicalDeviceGroups(
     instance: VkInstance,
     pPhysicalDeviceGroupCount: ptr[mut u32],
-    pPhysicalDeviceGroupProperties: ptr[mut VkPhysicalDeviceGroupProperties]) -> VkResult
+    pPhysicalDeviceGroupProperties: ptr[mut VkPhysicalDeviceGroupProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -1365,7 +1365,7 @@ vkGetImageSparseMemoryRequirements2(
     device: VkDevice,
     pInfo: ptr[mut VkImageSparseMemoryRequirementsInfo2],
     pSparseMemoryRequirementCount: ptr[mut u32],
-    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]) -> void
+    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1404,7 +1404,7 @@ vkGetPhysicalDeviceImageFormatProperties2(
 vkGetPhysicalDeviceQueueFamilyProperties2(
     physicalDevice: VkPhysicalDevice,
     pQueueFamilyPropertyCount: ptr[mut u32],
-    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties2]) -> void
+    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1420,7 +1420,7 @@ vkGetPhysicalDeviceSparseImageFormatProperties2(
     physicalDevice: VkPhysicalDevice,
     pFormatInfo: ptr[mut VkPhysicalDeviceSparseImageFormatInfo2],
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkSparseImageFormatProperties2]) -> void
+    pProperties: ptr[mut VkSparseImageFormatProperties2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1636,7 +1636,7 @@ vkGetDeviceMemoryOpaqueCaptureAddress(
 vkGetPhysicalDeviceToolProperties(
     physicalDevice: VkPhysicalDevice,
     pToolCount: ptr[mut u32],
-    pToolProperties: ptr[mut VkPhysicalDeviceToolProperties]) -> VkResult
+    pToolProperties: ptr[mut VkPhysicalDeviceToolProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -1923,7 +1923,7 @@ vkGetDeviceImageSparseMemoryRequirements(
     device: VkDevice,
     pInfo: ptr[mut VkDeviceImageMemoryRequirements],
     pSparseMemoryRequirementCount: ptr[mut u32],
-    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]) -> void
+    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -1959,7 +1959,7 @@ vkGetPhysicalDeviceSurfaceFormatsKHR(
     physicalDevice: VkPhysicalDevice,
     surface: VkSurfaceKHR,
     pSurfaceFormatCount: ptr[mut u32],
-    pSurfaceFormats: ptr[mut VkSurfaceFormatKHR]) -> VkResult
+    pSurfaceFormats: ptr[mut VkSurfaceFormatKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -1969,7 +1969,7 @@ vkGetPhysicalDeviceSurfacePresentModesKHR(
     physicalDevice: VkPhysicalDevice,
     surface: VkSurfaceKHR,
     pPresentModeCount: ptr[mut u32],
-    pPresentModes: ptr[mut VkPresentModeKHR]) -> VkResult
+    pPresentModes: ptr[mut VkPresentModeKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -1997,7 +1997,7 @@ vkGetSwapchainImagesKHR(
     device: VkDevice,
     swapchain: VkSwapchainKHR,
     pSwapchainImageCount: ptr[mut u32],
-    pSwapchainImages: ptr[mut VkImage]) -> VkResult
+    pSwapchainImages: ptr[mut VkImage]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2044,7 +2044,7 @@ vkGetPhysicalDevicePresentRectanglesKHR(
     physicalDevice: VkPhysicalDevice,
     surface: VkSurfaceKHR,
     pRectCount: ptr[mut u32],
-    pRects: ptr[mut VkRect2D]) -> VkResult
+    pRects: ptr[mut VkRect2D]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2062,7 +2062,7 @@ vkAcquireNextImage2KHR(
 vkGetPhysicalDeviceDisplayPropertiesKHR(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkDisplayPropertiesKHR]) -> VkResult
+    pProperties: ptr[mut VkDisplayPropertiesKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2071,7 +2071,7 @@ vkGetPhysicalDeviceDisplayPropertiesKHR(
 vkGetPhysicalDeviceDisplayPlanePropertiesKHR(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkDisplayPlanePropertiesKHR]) -> VkResult
+    pProperties: ptr[mut VkDisplayPlanePropertiesKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2081,7 +2081,7 @@ vkGetDisplayPlaneSupportedDisplaysKHR(
     physicalDevice: VkPhysicalDevice,
     planeIndex: u32,
     pDisplayCount: ptr[mut u32],
-    pDisplays: ptr[mut VkDisplayKHR]) -> VkResult
+    pDisplays: ptr[mut VkDisplayKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2091,7 +2091,7 @@ vkGetDisplayModePropertiesKHR(
     physicalDevice: VkPhysicalDevice,
     display: VkDisplayKHR,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkDisplayModePropertiesKHR]) -> VkResult
+    pProperties: ptr[mut VkDisplayModePropertiesKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2152,7 +2152,7 @@ vkGetPhysicalDeviceVideoFormatPropertiesKHR(
     physicalDevice: VkPhysicalDevice,
     pVideoFormatInfo: ptr[mut VkPhysicalDeviceVideoFormatInfoKHR],
     pVideoFormatPropertyCount: ptr[mut u32],
-    pVideoFormatProperties: ptr[mut VkVideoFormatPropertiesKHR]) -> VkResult
+    pVideoFormatProperties: ptr[mut VkVideoFormatPropertiesKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2180,7 +2180,7 @@ vkGetVideoSessionMemoryRequirementsKHR(
     device: VkDevice,
     videoSession: VkVideoSessionKHR,
     pMemoryRequirementsCount: ptr[mut u32],
-    pMemoryRequirements: ptr[mut VkVideoSessionMemoryRequirementsKHR]) -> VkResult
+    pMemoryRequirements: ptr[mut VkVideoSessionMemoryRequirementsKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2298,7 +2298,7 @@ vkGetPhysicalDeviceImageFormatProperties2KHR(
 vkGetPhysicalDeviceQueueFamilyProperties2KHR(
     physicalDevice: VkPhysicalDevice,
     pQueueFamilyPropertyCount: ptr[mut u32],
-    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties2]) -> void
+    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2314,7 +2314,7 @@ vkGetPhysicalDeviceSparseImageFormatProperties2KHR(
     physicalDevice: VkPhysicalDevice,
     pFormatInfo: ptr[mut VkPhysicalDeviceSparseImageFormatInfo2],
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkSparseImageFormatProperties2]) -> void
+    pProperties: ptr[mut VkSparseImageFormatProperties2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2359,7 +2359,7 @@ vkTrimCommandPoolKHR(
 vkEnumeratePhysicalDeviceGroupsKHR(
     instance: VkInstance,
     pPhysicalDeviceGroupCount: ptr[mut u32],
-    pPhysicalDeviceGroupProperties: ptr[mut VkPhysicalDeviceGroupProperties]) -> VkResult
+    pPhysicalDeviceGroupProperties: ptr[mut VkPhysicalDeviceGroupProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2577,7 +2577,7 @@ vkGetPhysicalDeviceSurfaceFormats2KHR(
     physicalDevice: VkPhysicalDevice,
     pSurfaceInfo: ptr[mut VkPhysicalDeviceSurfaceInfo2KHR],
     pSurfaceFormatCount: ptr[mut u32],
-    pSurfaceFormats: ptr[mut VkSurfaceFormat2KHR]) -> VkResult
+    pSurfaceFormats: ptr[mut VkSurfaceFormat2KHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2586,7 +2586,7 @@ vkGetPhysicalDeviceSurfaceFormats2KHR(
 vkGetPhysicalDeviceDisplayProperties2KHR(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkDisplayProperties2KHR]) -> VkResult
+    pProperties: ptr[mut VkDisplayProperties2KHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2595,7 +2595,7 @@ vkGetPhysicalDeviceDisplayProperties2KHR(
 vkGetPhysicalDeviceDisplayPlaneProperties2KHR(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkDisplayPlaneProperties2KHR]) -> VkResult
+    pProperties: ptr[mut VkDisplayPlaneProperties2KHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2605,7 +2605,7 @@ vkGetDisplayModeProperties2KHR(
     physicalDevice: VkPhysicalDevice,
     display: VkDisplayKHR,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkDisplayModeProperties2KHR]) -> VkResult
+    pProperties: ptr[mut VkDisplayModeProperties2KHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2640,7 +2640,7 @@ vkGetImageSparseMemoryRequirements2KHR(
     device: VkDevice,
     pInfo: ptr[mut VkImageSparseMemoryRequirementsInfo2],
     pSparseMemoryRequirementCount: ptr[mut u32],
-    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]) -> void
+    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -2742,7 +2742,7 @@ vkSignalSemaphoreKHR(
 vkGetPhysicalDeviceFragmentShadingRatesKHR(
     physicalDevice: VkPhysicalDevice,
     pFragmentShadingRateCount: ptr[mut u32],
-    pFragmentShadingRates: ptr[mut VkPhysicalDeviceFragmentShadingRateKHR]) -> VkResult
+    pFragmentShadingRates: ptr[mut VkPhysicalDeviceFragmentShadingRateKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2845,7 +2845,7 @@ vkGetPipelineExecutablePropertiesKHR(
     device: VkDevice,
     pPipelineInfo: ptr[mut VkPipelineInfoKHR],
     pExecutableCount: ptr[mut u32],
-    pProperties: ptr[mut VkPipelineExecutablePropertiesKHR]) -> VkResult
+    pProperties: ptr[mut VkPipelineExecutablePropertiesKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2855,7 +2855,7 @@ vkGetPipelineExecutableStatisticsKHR(
     device: VkDevice,
     pExecutableInfo: ptr[mut VkPipelineExecutableInfoKHR],
     pStatisticCount: ptr[mut u32],
-    pStatistics: ptr[mut VkPipelineExecutableStatisticKHR]) -> VkResult
+    pStatistics: ptr[mut VkPipelineExecutableStatisticKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2865,7 +2865,7 @@ vkGetPipelineExecutableInternalRepresentationsKHR(
     device: VkDevice,
     pExecutableInfo: ptr[mut VkPipelineExecutableInfoKHR],
     pInternalRepresentationCount: ptr[mut u32],
-    pInternalRepresentations: ptr[mut VkPipelineExecutableInternalRepresentationKHR]) -> VkResult
+    pInternalRepresentations: ptr[mut VkPipelineExecutableInternalRepresentationKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -2979,7 +2979,7 @@ vkCmdWriteBufferMarker2AMD(
 vkGetQueueCheckpointData2NV(
     queue: VkQueue,
     pCheckpointDataCount: ptr[mut u32],
-    pCheckpointData: ptr[mut VkCheckpointData2NV]) -> void
+    pCheckpointData: ptr[mut VkCheckpointData2NV]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3053,7 +3053,7 @@ vkGetDeviceImageSparseMemoryRequirementsKHR(
     device: VkDevice,
     pInfo: ptr[mut VkDeviceImageMemoryRequirements],
     pSparseMemoryRequirementCount: ptr[mut u32],
-    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]) -> void
+    pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]?) -> void
 {
     //TODO(ches) do this
 }
@@ -3096,7 +3096,7 @@ vkGetImageSubresourceLayout2KHR(
 vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkCooperativeMatrixPropertiesKHR]) -> VkResult
+    pProperties: ptr[mut VkCooperativeMatrixPropertiesKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -3113,7 +3113,7 @@ vkCmdSetLineStippleKHR(
 vkGetPhysicalDeviceCalibrateableTimeDomainsKHR(
     physicalDevice: VkPhysicalDevice,
     pTimeDomainCount: ptr[mut u32],
-    pTimeDomains: ptr[mut VkTimeDomainKHR]) -> VkResult
+    pTimeDomains: ptr[mut VkTimeDomainKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -3502,7 +3502,7 @@ vkGetPastPresentationTimingGOOGLE(
     device: VkDevice,
     swapchain: VkSwapchainKHR,
     pPresentationTimingCount: ptr[mut u32],
-    pPresentationTimings: ptr[mut VkPastPresentationTimingGOOGLE]) -> VkResult
+    pPresentationTimings: ptr[mut VkPastPresentationTimingGOOGLE]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -3878,7 +3878,7 @@ vkCmdWriteBufferMarkerAMD(
 vkGetPhysicalDeviceCalibrateableTimeDomainsEXT(
     physicalDevice: VkPhysicalDevice,
     pTimeDomainCount: ptr[mut u32],
-    pTimeDomains: ptr[mut VkTimeDomainKHR]) -> VkResult
+    pTimeDomains: ptr[mut VkTimeDomainKHR]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -3953,7 +3953,7 @@ vkCmdSetCheckpointNV(
 vkGetQueueCheckpointDataNV(
     queue: VkQueue,
     pCheckpointDataCount: ptr[mut u32],
-    pCheckpointData: ptr[mut VkCheckpointDataNV]) -> void
+    pCheckpointData: ptr[mut VkCheckpointDataNV]?) -> void
 {
     //TODO(ches) do this
 }
@@ -4048,7 +4048,7 @@ vkGetBufferDeviceAddressEXT(
 vkGetPhysicalDeviceToolPropertiesEXT(
     physicalDevice: VkPhysicalDevice,
     pToolCount: ptr[mut u32],
-    pToolProperties: ptr[mut VkPhysicalDeviceToolProperties]) -> VkResult
+    pToolProperties: ptr[mut VkPhysicalDeviceToolProperties]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -4057,7 +4057,7 @@ vkGetPhysicalDeviceToolPropertiesEXT(
 vkGetPhysicalDeviceCooperativeMatrixPropertiesNV(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkCooperativeMatrixPropertiesNV]) -> VkResult
+    pProperties: ptr[mut VkCooperativeMatrixPropertiesNV]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -4066,7 +4066,7 @@ vkGetPhysicalDeviceCooperativeMatrixPropertiesNV(
 vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV(
     physicalDevice: VkPhysicalDevice,
     pCombinationCount: ptr[mut u32],
-    pCombinations: ptr[mut VkFramebufferMixedSamplesCombinationNV]) -> VkResult
+    pCombinations: ptr[mut VkFramebufferMixedSamplesCombinationNV]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -5207,7 +5207,7 @@ vkGetFramebufferTilePropertiesQCOM(
     device: VkDevice,
     framebuffer: VkFramebuffer,
     pPropertiesCount: ptr[mut u32],
-    pProperties: ptr[mut VkTilePropertiesQCOM]) -> VkResult
+    pProperties: ptr[mut VkTilePropertiesQCOM]?) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -5292,7 +5292,7 @@ vkCmdBuildAccelerationStructuresKHR(
     commandBuffer: VkCommandBuffer,
     infoCount: u32,
     pInfos: ptr[mut VkAccelerationStructureBuildGeometryInfoKHR],
-    ptr[mut VkAccelerationStructureBuildRangeInfoKHR] ppBuildRangeInfos: ptr[const]) -> void
+    ppBuildRangeInfos: ptr[ptr[mut VkAccelerationStructureBuildRangeInfoKHR]]) -> void
 {
     //TODO(ches) do this
 }
@@ -5303,7 +5303,7 @@ vkCmdBuildAccelerationStructuresIndirectKHR(
     pInfos: ptr[mut VkAccelerationStructureBuildGeometryInfoKHR],
     pIndirectDeviceAddresses: ptr[mut VkDeviceAddress],
     pIndirectStrides: ptr[mut u32],
-    ptr[mut u32] ppMaxPrimitiveCounts: ptr[const]) -> void
+    ppMaxPrimitiveCounts: ptr[ptr[mut u32]]) -> void
 {
     //TODO(ches) do this
 }
@@ -5313,7 +5313,7 @@ vkBuildAccelerationStructuresKHR(
     deferredOperation: VkDeferredOperationKHR,
     infoCount: u32,
     pInfos: ptr[mut VkAccelerationStructureBuildGeometryInfoKHR],
-    ptr[mut VkAccelerationStructureBuildRangeInfoKHR] ppBuildRangeInfos: ptr[const]) -> VkResult
+    ppBuildRangeInfos: ptr[ptr[mut VkAccelerationStructureBuildRangeInfoKHR]]) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
