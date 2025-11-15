@@ -83,7 +83,7 @@ vkGetPhysicalDeviceProperties(
 vkGetPhysicalDeviceQueueFamilyProperties(
     physicalDevice: VkPhysicalDevice,
     pQueueFamilyPropertyCount: ptr[mut u32],
-    pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties]?) -> void
+    queueFamilyProperties: mut VkQueueFamilyProperties[]?) -> void
 {
     //TODO(ches) do this
 }
@@ -365,7 +365,7 @@ vkWaitForFences(
     device: VkDevice,
     fenceCount: u32,
     pFences: ptr[mut VkFence],
-    waitAll: VkBool32,
+    waitAll: b32,
     timeout: u64) -> VkResult
 {
     //TODO(ches) do this
@@ -1838,14 +1838,14 @@ vkCmdBindVertexBuffers2(
 
 vkCmdSetDepthTestEnable(
     commandBuffer: VkCommandBuffer,
-    depthTestEnable: VkBool32) -> void
+    depthTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetDepthWriteEnable(
     commandBuffer: VkCommandBuffer,
-    depthWriteEnable: VkBool32) -> void
+    depthWriteEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -1859,14 +1859,14 @@ vkCmdSetDepthCompareOp(
 
 vkCmdSetDepthBoundsTestEnable(
     commandBuffer: VkCommandBuffer,
-    depthBoundsTestEnable: VkBool32) -> void
+    depthBoundsTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetStencilTestEnable(
     commandBuffer: VkCommandBuffer,
-    stencilTestEnable: VkBool32) -> void
+    stencilTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -1884,21 +1884,21 @@ vkCmdSetStencilOp(
 
 vkCmdSetRasterizerDiscardEnable(
     commandBuffer: VkCommandBuffer,
-    rasterizerDiscardEnable: VkBool32) -> void
+    rasterizerDiscardEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetDepthBiasEnable(
     commandBuffer: VkCommandBuffer,
-    depthBiasEnable: VkBool32) -> void
+    depthBiasEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetPrimitiveRestartEnable(
     commandBuffer: VkCommandBuffer,
-    primitiveRestartEnable: VkBool32) -> void
+    primitiveRestartEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -1940,7 +1940,7 @@ vkGetPhysicalDeviceSurfaceSupportKHR(
     physicalDevice: VkPhysicalDevice,
     queueFamilyIndex: u32,
     surface: VkSurfaceKHR,
-    pSupported: ptr[mut VkBool32]) -> VkResult
+    pSupported: ptr[mut b32]) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -3519,7 +3519,7 @@ vkCmdSetDiscardRectangleEXT(
 
 vkCmdSetDiscardRectangleEnableEXT(
     commandBuffer: VkCommandBuffer,
-    discardRectangleEnable: VkBool32) -> void
+    discardRectangleEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -3751,7 +3751,7 @@ vkCmdBuildAccelerationStructureNV(
     pInfo: ptr[mut VkAccelerationStructureInfoNV],
     instanceData: VkBuffer,
     instanceOffset: VkDeviceSize,
-    update: VkBool32,
+    update: b32,
     dst: VkAccelerationStructureNV,
     src: VkAccelerationStructureNV,
     scratch: VkBuffer,
@@ -3929,7 +3929,7 @@ vkCmdSetExclusiveScissorEnableNV(
     commandBuffer: VkCommandBuffer,
     firstExclusiveScissor: u32,
     exclusiveScissorCount: u32,
-    pExclusiveScissorEnables: ptr[mut VkBool32]) -> void
+    pExclusiveScissorEnables: ptr[mut b32]) -> void
 {
     //TODO(ches) do this
 }
@@ -4033,7 +4033,7 @@ vkGetPerformanceParameterINTEL(
 vkSetLocalDimmingAMD(
     device: VkDevice,
     swapChain: VkSwapchainKHR,
-    localDimmingEnable: VkBool32) -> void
+    localDimmingEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4150,14 +4150,14 @@ vkCmdBindVertexBuffers2EXT(
 
 vkCmdSetDepthTestEnableEXT(
     commandBuffer: VkCommandBuffer,
-    depthTestEnable: VkBool32) -> void
+    depthTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetDepthWriteEnableEXT(
     commandBuffer: VkCommandBuffer,
-    depthWriteEnable: VkBool32) -> void
+    depthWriteEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4171,14 +4171,14 @@ vkCmdSetDepthCompareOpEXT(
 
 vkCmdSetDepthBoundsTestEnableEXT(
     commandBuffer: VkCommandBuffer,
-    depthBoundsTestEnable: VkBool32) -> void
+    depthBoundsTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetStencilTestEnableEXT(
     commandBuffer: VkCommandBuffer,
-    stencilTestEnable: VkBool32) -> void
+    stencilTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4261,7 +4261,7 @@ vkCmdPreprocessGeneratedCommandsNV(
 
 vkCmdExecuteGeneratedCommandsNV(
     commandBuffer: VkCommandBuffer,
-    isPreprocessed: VkBool32,
+    isPreprocessed: b32,
     pGeneratedCommandsInfo: ptr[mut VkGeneratedCommandsInfoNV]) -> void
 {
     //TODO(ches) do this
@@ -4589,14 +4589,14 @@ vkCmdSetPatchControlPointsEXT(
 
 vkCmdSetRasterizerDiscardEnableEXT(
     commandBuffer: VkCommandBuffer,
-    rasterizerDiscardEnable: VkBool32) -> void
+    rasterizerDiscardEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetDepthBiasEnableEXT(
     commandBuffer: VkCommandBuffer,
-    depthBiasEnable: VkBool32) -> void
+    depthBiasEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4610,7 +4610,7 @@ vkCmdSetLogicOpEXT(
 
 vkCmdSetPrimitiveRestartEnableEXT(
     commandBuffer: VkCommandBuffer,
-    primitiveRestartEnable: VkBool32) -> void
+    primitiveRestartEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4618,7 +4618,7 @@ vkCmdSetPrimitiveRestartEnableEXT(
 vkCmdSetColorWriteEnableEXT(
     commandBuffer: VkCommandBuffer,
     attachmentCount: u32,
-    pColorWriteEnables: ptr[mut VkBool32]) -> void
+    pColorWriteEnables: ptr[mut b32]) -> void
 {
     //TODO(ches) do this
 }
@@ -4875,7 +4875,7 @@ vkGetPipelineIndirectDeviceAddressNV(
 
 vkCmdSetDepthClampEnableEXT(
     commandBuffer: VkCommandBuffer,
-    depthClampEnable: VkBool32) -> void
+    depthClampEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4904,21 +4904,21 @@ vkCmdSetSampleMaskEXT(
 
 vkCmdSetAlphaToCoverageEnableEXT(
     commandBuffer: VkCommandBuffer,
-    alphaToCoverageEnable: VkBool32) -> void
+    alphaToCoverageEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetAlphaToOneEnableEXT(
     commandBuffer: VkCommandBuffer,
-    alphaToOneEnable: VkBool32) -> void
+    alphaToOneEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetLogicOpEnableEXT(
     commandBuffer: VkCommandBuffer,
-    logicOpEnable: VkBool32) -> void
+    logicOpEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -4927,7 +4927,7 @@ vkCmdSetColorBlendEnableEXT(
     commandBuffer: VkCommandBuffer,
     firstAttachment: u32,
     attachmentCount: u32,
-    pColorBlendEnables: ptr[mut VkBool32]) -> void
+    pColorBlendEnables: ptr[mut b32]) -> void
 {
     //TODO(ches) do this
 }
@@ -4980,14 +4980,14 @@ vkCmdSetExtraPrimitiveOverestimationSizeEXT(
 
 vkCmdSetDepthClipEnableEXT(
     commandBuffer: VkCommandBuffer,
-    depthClipEnable: VkBool32) -> void
+    depthClipEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetSampleLocationsEnableEXT(
     commandBuffer: VkCommandBuffer,
-    sampleLocationsEnable: VkBool32) -> void
+    sampleLocationsEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -5017,21 +5017,21 @@ vkCmdSetLineRasterizationModeEXT(
 
 vkCmdSetLineStippleEnableEXT(
     commandBuffer: VkCommandBuffer,
-    stippledLineEnable: VkBool32) -> void
+    stippledLineEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetDepthClipNegativeOneToOneEXT(
     commandBuffer: VkCommandBuffer,
-    negativeOneToOne: VkBool32) -> void
+    negativeOneToOne: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetViewportWScalingEnableNV(
     commandBuffer: VkCommandBuffer,
-    viewportWScalingEnable: VkBool32) -> void
+    viewportWScalingEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -5047,7 +5047,7 @@ vkCmdSetViewportSwizzleNV(
 
 vkCmdSetCoverageToColorEnableNV(
     commandBuffer: VkCommandBuffer,
-    coverageToColorEnable: VkBool32) -> void
+    coverageToColorEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -5068,7 +5068,7 @@ vkCmdSetCoverageModulationModeNV(
 
 vkCmdSetCoverageModulationTableEnableNV(
     commandBuffer: VkCommandBuffer,
-    coverageModulationTableEnable: VkBool32) -> void
+    coverageModulationTableEnable: b32) -> void
 {
     //TODO(ches) do this
 }
@@ -5083,14 +5083,14 @@ vkCmdSetCoverageModulationTableNV(
 
 vkCmdSetShadingRateImageEnableNV(
     commandBuffer: VkCommandBuffer,
-    shadingRateImageEnable: VkBool32) -> void
+    shadingRateImageEnable: b32) -> void
 {
     //TODO(ches) do this
 }
 
 vkCmdSetRepresentativeFragmentTestEnableNV(
     commandBuffer: VkCommandBuffer,
-    representativeFragmentTestEnable: VkBool32) -> void
+    representativeFragmentTestEnable: b32) -> void
 {
     //TODO(ches) do this
 }
