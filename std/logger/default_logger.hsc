@@ -1,5 +1,6 @@
 package logger
 
+import string from "std"
 import formatting from "std"
 
 create_default_logger :: fn() -> ptr[Logger] {
