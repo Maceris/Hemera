@@ -228,3 +228,7 @@ interlocked_xor_uintptr : fn(target: ptr[mut uintptr]) -> uintptr : ---
 interlocked_xor_uintptr_acquire : fn(target: ptr[mut uintptr]) -> uintptr : ---
 interlocked_xor_uintptr_no_fence : fn(target: ptr[mut uintptr]) -> uintptr : ---
 interlocked_xor_uintptr_release : fn(target: ptr[mut uintptr]) -> uintptr : ---
+
+mem_copy : fn(dest, source: rawptr, len: uint) : ---
+mem_copy_non_overlapping : fn(dest, source: rawptr, len: uint) : ---
+mem_zero : fn(target: rawptr, len: uint) : ---
