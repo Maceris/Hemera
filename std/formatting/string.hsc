@@ -22,6 +22,8 @@ format :: fn(format: string, args: any...) -> string {
     defer array_free(format_locations)
     array_reserve(format_locations, 8)
 
+    has_positional : bool = false
+    has_unspecified : bool = false
     with {
         index : u64 = 0
         character : char
@@ -68,10 +70,12 @@ format :: fn(format: string, args: any...) -> string {
 
                     array_add(format_locations, FormatLocation.{original_index, value})
                     found_placeholder = false
+                    has_positional = true
                 }
                 else {
                     // It was just a single placeholder, no number or escaped version
                     array_add(format_locations, FormatLocation.{index, 0})
+                    has_unspecified = true
                 }
             }
             // is not, and was not just, a placeholder. Keep going.
@@ -79,14 +83,43 @@ format :: fn(format: string, args: any...) -> string {
     }
     while index < format.count
 
-    with {
-        input_index : u64 = 0
-        output_index : u64 = 0
-        placeholder_index : u64 = 0
+    if has_positional && has_unspecified {
+        // TODO(ches) Error, handle this
     }
-    loop {
-        //TODO(ches) do the replacements
+
+    for match, index in format_locations {
+        if match <= 0 {
+            continue
+        }
+        if match > args.count {
+            // TODO(ches) Error, handle this
+        }
     }
-    while input_index < format.count
+    input_index : u64 = 0
+    output_index : u64 = 0
+    arg_index : u64 = 0
+
+    for match in format_locations {
+        if match.location > 0 {
+            // Everything before the match, after the start / last match
+            before_match : u64 : match.location - input_index
+        }
+        // And now the actual match
+        if match.argument_number == -1 {
+            // Just need a placeholder
+        }
+        else if match.argument_number == 0 {
+            // unspecified
+        }
+        else {
+            // numbered
+        }
+    }
+    
+    // Everything after final match
+    if input_index < format.count {
+
+    }
+
     
 }
