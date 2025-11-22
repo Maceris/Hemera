@@ -1,6 +1,10 @@
 package string_builder
 
-append :: fn(builder: ptr[mut StringBuilder], s: ptr[char], length: s64) {
+append :: fn(builder: ptr[mut StringBuilder], s: ptr[char], length: i64) {
+    //TODO(ches) implement this
+}
+
+append :: fn(builder: ptr[mut StringBuilder], s: string, start: i64, length: i64) {
     //TODO(ches) implement this
 }
 
