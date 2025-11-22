@@ -11,17 +11,7 @@ FormatLocation :: struct {
     argument_number : i32,
 }
 
-format :: fn(format: string, args: any...) -> string {
-    //TODO(ches) format string
-    
-    log_builder := new(StringBuilder)
-    defer delete(log_builder)
-    init_string_builder(log_builder)
-
-    format_locations : FormatLocation[..]
-    defer array_free(format_locations)
-    array_reserve(format_locations, 8)
-
+find_format_locations :: fn(format: string, format_locations : mut FormatLocation[..], arg_count: u64) -> bool {
     has_positional : bool = false
     has_unspecified : bool = false
     with {
@@ -84,17 +74,41 @@ format :: fn(format: string, args: any...) -> string {
     while index < format.count
 
     if has_positional && has_unspecified {
-        // TODO(ches) Error, handle this
+        // TODO(ches) Error, log this
+        return false
     }
 
     for match, index in format_locations {
         if match <= 0 {
             continue
         }
-        if match > args.count {
-            // TODO(ches) Error, handle this
+        if match > arg_count {
+            // TODO(ches) Error, log this
+            return false
         }
     }
+
+    return true
+}
+
+format :: fn(format: string, args: any...) -> string {
+    //TODO(ches) format string
+    
+    log_builder := new(StringBuilder)
+    defer delete(log_builder)
+    init_string_builder(log_builder)
+
+    format_locations : FormatLocation[..]
+    defer array_free(format_locations)
+    array_reserve(format_locations, 8)
+
+    valid: bool = find_format_locations(format, format_locations, args.count)
+
+    //TODO(ches) we should check the validity of this at compile time where possible
+    if !valid {
+        //TODO(ches) bail
+    }
+
     input_index : u64 = 0
     output_index : u64 = 0
     arg_index : u64 = 0
@@ -102,7 +116,10 @@ format :: fn(format: string, args: any...) -> string {
     for match in format_locations {
         if match.location > 0 {
             // Everything before the match, after the start / last match
-            before_match : u64 : match.location - input_index
+            before_match :: match.location - input_index
+            append(log_builder, input_index, before_match)
+            input_index += before_match
+            output_index += before_match
         }
         // And now the actual match
         if match.argument_number == -1 {
