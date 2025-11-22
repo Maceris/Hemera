@@ -176,3 +176,13 @@ Some higher order function definitions can (should) be simplified quite a bit us
 AbsurdFnType : type : fn(fn(int) -> int) -> (fn(int) -> (result, error: int))
 nicer_definition :: fn() -> AbsurdFnType {/* ... */}
 ```
+
+## Variable Arguments
+
+Variable number of arguments can be provided using `...`, after the type of argument.
+
+```
+format :: fn(format: string, args: any...) -> string {/* ... */}
+```
+
+Within the function the arguments will be treated as if it were an array view.
