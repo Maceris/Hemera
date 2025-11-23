@@ -9,7 +9,7 @@ ResizableArray :: struct {
     count : usize,
     data : rawptr,
     capacity : usize,
-    allocator : ptr[Allocator],
+    allocator : Allocator,
 }
 
 array_add :: fn[T](array: mut T[..], value: T) ---

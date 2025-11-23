@@ -1,7 +1,7 @@
 package runtime
 
 Context :: struct {
-    allocator : ptr[Allocator],
+    allocator : Allocator,
     logger : ptr[Logger],
     log_level : LogLevel,
     stack_trace : ptr[StackTraceNode],
