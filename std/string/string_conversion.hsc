@@ -33,7 +33,7 @@ c128_to_string :: fn(value: c128) -> string {
 char_to_string :: fn(value: char) -> string {
     //TODO(ches) implement this
 }
-cstring_to_string :: fn(value: cstring) ->(string, bool) \{
+cstring_to_string :: fn(value: cstring) -> (string, bool) {
     //TODO(ches) implement this
 }
 f16_to_string :: fn(value: f16) -> string {
@@ -197,189 +197,189 @@ union_to_string :: fn[T](value: T) -> string {
 }
 
 
-string_to_any :: fn(str: string) ->(any, bool) \{
+string_to_any :: fn(str: string) -> (any, bool) {
     //TODO(ches) implement this
 }
-string_to_b8 :: fn(str: string) ->(b8, bool) \{
+string_to_b8 :: fn(str: string) -> (b8, bool) {
     //TODO(ches) implement this
 }
-string_to_b16 :: fn(str: string) ->(b16, bool) \{
+string_to_b16 :: fn(str: string) -> (b16, bool) {
     //TODO(ches) implement this
 }
-string_to_b32 :: fn(str: string) ->(b32, bool) \{
+string_to_b32 :: fn(str: string) -> (b32, bool) {
     //TODO(ches) implement this
 }
-string_to_b64 :: fn(str: string) ->(b64, bool) \{
+string_to_b64 :: fn(str: string) -> (b64, bool) {
     //TODO(ches) implement this
 }
-string_to_bool :: fn(str: string) ->(bool, bool) \{
+string_to_bool :: fn(str: string) -> (bool, bool) {
     //TODO(ches) implement this
 }
-string_to_c16 :: fn(str: string) ->(c16, bool) \{
+string_to_c16 :: fn(str: string) -> (c16, bool) {
     //TODO(ches) implement this
 }
-string_to_c32 :: fn(str: string) ->(c32, bool) \{
+string_to_c32 :: fn(str: string) -> (c32, bool) {
     //TODO(ches) implement this
 }
-string_to_c64 :: fn(str: string) ->(c64, bool) \{
+string_to_c64 :: fn(str: string) -> (c64, bool) {
     //TODO(ches) implement this
 }
-string_to_c128 :: fn(str: string) ->(c128, bool) \{
+string_to_c128 :: fn(str: string) -> (c128, bool) {
     //TODO(ches) implement this
 }
-string_to_char :: fn(str: string) ->(char, bool) \{
+string_to_char :: fn(str: string) -> (char, bool) {
     //TODO(ches) implement this
 }
-string_to_cstring :: fn(str: string) ->(cstring, bool) \{
+string_to_cstring :: fn(str: string) -> (cstring, bool) {
     //TODO(ches) implement this
 }
-string_to_f16 :: fn(str: string) ->(f16, bool) \{
+string_to_f16 :: fn(str: string) -> (f16, bool) {
     //TODO(ches) implement this
 }
-string_to_f16be :: fn(str: string) ->(f16be, bool) \{
+string_to_f16be :: fn(str: string) -> (f16be, bool) {
     //TODO(ches) implement this
 }
-string_to_f16le :: fn(str: string) ->(f16le, bool) \{
+string_to_f16le :: fn(str: string) -> (f16le, bool) {
     //TODO(ches) implement this
 }
-string_to_f32 :: fn(str: string) ->(f32, bool) \{
+string_to_f32 :: fn(str: string) -> (f32, bool) {
     //TODO(ches) implement this
 }
-string_to_f32be :: fn(str: string) ->(f32be, bool) \{
+string_to_f32be :: fn(str: string) -> (f32be, bool) {
     //TODO(ches) implement this
 }
-string_to_f32le :: fn(str: string) ->(f32le, bool) \{
+string_to_f32le :: fn(str: string) -> (f32le, bool) {
     //TODO(ches) implement this
 }
-string_to_f64 :: fn(str: string) ->(f64, bool) \{
+string_to_f64 :: fn(str: string) -> (f64, bool) {
     //TODO(ches) implement this
 }
-string_to_f64be :: fn(str: string) ->(f64be, bool) \{
+string_to_f64be :: fn(str: string) -> (f64be, bool) {
     //TODO(ches) implement this
 }
-string_to_f64le :: fn(str: string) ->(f64le, bool) \{
+string_to_f64le :: fn(str: string) -> (f64le, bool) {
     //TODO(ches) implement this
 }
-string_to_i8 :: fn(str: string) ->(i8, bool) \{
+string_to_i8 :: fn(str: string) -> (i8, bool) {
     //TODO(ches) implement this
 }
-string_to_i16 :: fn(str: string) ->(i16, bool) \{
+string_to_i16 :: fn(str: string) -> (i16, bool) {
     //TODO(ches) implement this
 }
-string_to_i16be :: fn(str: string) ->(i16be, bool) \{
+string_to_i16be :: fn(str: string) -> (i16be, bool) {
     //TODO(ches) implement this
 }
-string_to_i16le :: fn(str: string) ->(i16le, bool) \{
+string_to_i16le :: fn(str: string) -> (i16le, bool) {
     //TODO(ches) implement this
 }
-string_to_i32 :: fn(str: string) ->(i32, bool) \{
+string_to_i32 :: fn(str: string) -> (i32, bool) {
     //TODO(ches) implement this
 }
-string_to_i32be :: fn(str: string) ->(i32be, bool) \{
+string_to_i32be :: fn(str: string) -> (i32be, bool) {
     //TODO(ches) implement this
 }
-string_to_i32le :: fn(str: string) ->(i32le, bool) \{
+string_to_i32le :: fn(str: string) -> (i32le, bool) {
     //TODO(ches) implement this
 }
-string_to_i64 :: fn(str: string) ->(i64, bool) \{
+string_to_i64 :: fn(str: string) -> (i64, bool) {
     //TODO(ches) implement this
 }
-string_to_i64be :: fn(str: string) ->(i64be, bool) \{
+string_to_i64be :: fn(str: string) -> (i64be, bool) {
     //TODO(ches) implement this
 }
-string_to_i64le :: fn(str: string) ->(i64le, bool) \{
+string_to_i64le :: fn(str: string) -> (i64le, bool) {
     //TODO(ches) implement this
 }
-string_to_i128 :: fn(str: string) ->(i128, bool) \{
+string_to_i128 :: fn(str: string) -> (i128, bool) {
     //TODO(ches) implement this
 }
-string_to_i128be :: fn(str: string) ->(i128be, bool) \{
+string_to_i128be :: fn(str: string) -> (i128be, bool) {
     //TODO(ches) implement this
 }
-string_to_i128le :: fn(str: string) ->(i128le, bool) \{
+string_to_i128le :: fn(str: string) -> (i128le, bool) {
     //TODO(ches) implement this
 }
-string_to_int :: fn(str: string) ->(int, bool) \{
+string_to_int :: fn(str: string) -> (int, bool) {
     //TODO(ches) implement this
 }
-string_to_ptr :: fn(str: string) ->(ptr, bool) \{
+string_to_ptr :: fn(str: string) -> (ptr, bool) {
     //TODO(ches) implement this
 }
-string_to_q32 :: fn(str: string) ->(q32, bool) \{
+string_to_q32 :: fn(str: string) -> (q32, bool) {
     //TODO(ches) implement this
 }
-string_to_q64 :: fn(str: string) ->(q64, bool) \{
+string_to_q64 :: fn(str: string) -> (q64, bool) {
     //TODO(ches) implement this
 }
-string_to_q128 :: fn(str: string) ->(q128, bool) \{
+string_to_q128 :: fn(str: string) -> (q128, bool) {
     //TODO(ches) implement this
 }
-string_to_q256 :: fn(str: string) ->(q256, bool) \{
+string_to_q256 :: fn(str: string) -> (q256, bool) {
     //TODO(ches) implement this
 }
-string_to_rawptr :: fn(str: string) ->(rawptr, bool) \{
+string_to_rawptr :: fn(str: string) -> (rawptr, bool) {
     //TODO(ches) implement this
 }
-string_to_relptr8 :: fn(str: string) ->(relptr8, bool) \{
+string_to_relptr8 :: fn(str: string) -> (relptr8, bool) {
     //TODO(ches) implement this
 }
-string_to_relptr16 :: fn(str: string) ->(relptr16, bool) \{
+string_to_relptr16 :: fn(str: string) -> (relptr16, bool) {
     //TODO(ches) implement this
 }
-string_to_relptr32 :: fn(str: string) ->(relptr32, bool) \{
+string_to_relptr32 :: fn(str: string) -> (relptr32, bool) {
     //TODO(ches) implement this
 }
-string_to_relptr64 :: fn(str: string) ->(relptr64, bool) \{
+string_to_relptr64 :: fn(str: string) -> (relptr64, bool) {
     //TODO(ches) implement this
 }
-string_to_type :: fn(str: string) ->(type, bool) \{
+string_to_type :: fn(str: string) -> (type, bool) {
     //TODO(ches) implement this
 }
-string_to_u8 :: fn(str: string) ->(u8, bool) \{
+string_to_u8 :: fn(str: string) -> (u8, bool) {
     //TODO(ches) implement this
 }
-string_to_u16 :: fn(str: string) ->(u16, bool) \{
+string_to_u16 :: fn(str: string) -> (u16, bool) {
     //TODO(ches) implement this
 }
-string_to_u16be :: fn(str: string) ->(u16be, bool) \{
+string_to_u16be :: fn(str: string) -> (u16be, bool) {
     //TODO(ches) implement this
 }
-string_to_u16le :: fn(str: string) ->(u16le, bool) \{
+string_to_u16le :: fn(str: string) -> (u16le, bool) {
     //TODO(ches) implement this
 }
-string_to_u32 :: fn(str: string) ->(u32, bool) \{
+string_to_u32 :: fn(str: string) -> (u32, bool) {
     //TODO(ches) implement this
 }
-string_to_u32be :: fn(str: string) ->(u32be, bool) \{
+string_to_u32be :: fn(str: string) -> (u32be, bool) {
     //TODO(ches) implement this
 }
-string_to_u32le :: fn(str: string) ->(u32le, bool) \{
+string_to_u32le :: fn(str: string) -> (u32le, bool) {
     //TODO(ches) implement this
 }
-string_to_u64 :: fn(str: string) ->(u64, bool) \{
+string_to_u64 :: fn(str: string) -> (u64, bool) {
     //TODO(ches) implement this
 }
-string_to_u64be :: fn(str: string) ->(u64be, bool) \{
+string_to_u64be :: fn(str: string) -> (u64be, bool) {
     //TODO(ches) implement this
 }
-string_to_u64le :: fn(str: string) ->(u64le, bool) \{
+string_to_u64le :: fn(str: string) -> (u64le, bool) {
     //TODO(ches) implement this
 }
-string_to_u128 :: fn(str: string) ->(u128, bool) \{
+string_to_u128 :: fn(str: string) -> (u128, bool) {
     //TODO(ches) implement this
 }
-string_to_u128be :: fn(str: string) ->(u128be, bool) \{
+string_to_u128be :: fn(str: string) -> (u128be, bool) {
     //TODO(ches) implement this
 }
-string_to_u128le :: fn(str: string) ->(u128le, bool) \{
+string_to_u128le :: fn(str: string) -> (u128le, bool) {
     //TODO(ches) implement this
 }
-string_to_uint :: fn(str: string) ->(uint, bool) \{
+string_to_uint :: fn(str: string) -> (uint, bool) {
     //TODO(ches) implement this
 }
-string_to_uintptr :: fn(str: string) ->(uintptr, bool) \{
+string_to_uintptr :: fn(str: string) -> (uintptr, bool) {
     //TODO(ches) implement this
 }
-string_to_usize :: fn(str: string) ->(usize, bool) \{
+string_to_usize :: fn(str: string) -> (usize, bool) {
     //TODO(ches) implement this
 }
