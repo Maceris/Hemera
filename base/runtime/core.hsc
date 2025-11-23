@@ -7,10 +7,10 @@ Allocator :: struct {
 
 AllocatorFn :: alias fn(
     allocator_data: rawptr,
-    size: int,
+    size: usize,
     alignment: int,
     old_memory: rawptr,
-    old_size: int,
+    old_size: usize,
     location:= #caller_location
     )-> (u8[], AllocatorError?)
 

@@ -42,6 +42,7 @@ u64be   :: alias u64be
 u64le   :: alias u64le
 uint    :: alias uint
 uintptr :: alias uintptr
+usize   :: alias usize
 
 // Floating points
 f16   :: alias f16

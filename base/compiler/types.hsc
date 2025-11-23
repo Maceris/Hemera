@@ -2,7 +2,7 @@ package compiler
 
 ArrayDimensions :: struct {
     type: ArrayType,
-    count: u64,
+    count: usize,
 }
 
 ArrayType :: enum {
@@ -57,7 +57,7 @@ TypeInfoVariant :: enum {
 
 TypeInfo :: struct {
     variant : TypeInfoVariant,
-    size: u64,
+    size: usize,
 }
 
 TypeInfoAlias :: struct {

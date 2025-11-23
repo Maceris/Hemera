@@ -183,6 +183,9 @@ uint_to_string :: fn(value: uint) -> string {
 uintptr_to_string :: fn(value: uintptr) -> string {
     //TODO(ches) implement this
 }
+usize_to_string :: fn(value: usize) -> string {
+    //TODO(ches) implement this
+}
 struct_to_string :: fn[T](value: T) -> string {
     //TODO(ches) implement this
 }
@@ -375,5 +378,8 @@ string_to_uint :: fn(str: string) ->(uint, bool) \{
     //TODO(ches) implement this
 }
 string_to_uintptr :: fn(str: string) ->(uintptr, bool) \{
+    //TODO(ches) implement this
+}
+string_to_usize :: fn(str: string) ->(usize, bool) \{
     //TODO(ches) implement this
 }

@@ -1,10 +1,10 @@
 package string_builder
 
-append :: fn(builder: ptr[mut StringBuilder], s: ptr[char], length: u64) {
+append :: fn(builder: ptr[mut StringBuilder], s: ptr[char], length: usize) {
     //TODO(ches) implement this
 }
 
-append :: fn(builder: ptr[mut StringBuilder], s: string, start: u64, length: u64) {
+append :: fn(builder: ptr[mut StringBuilder], s: string, start: usize, length: usize) {
     //TODO(ches) implement this
 }
 
@@ -30,6 +30,6 @@ init_string_builder :: fn(builder: ptr[mut StringBuilder], buffer_size := -1) {
 
 StringBuilder :: struct {
     data: ptr[char],
-    capacity: u64,
-    size: u64,
+    capacity: usize,
+    size: usize,
 }

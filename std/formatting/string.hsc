@@ -6,16 +6,16 @@ FORMAT_PLACEHOLDER : char : '%'
 
 FormatLocation :: struct {
     // Position in the input string
-    location : u64,
+    location : usize,
     // -1 for an escaped placeholder, 0 for unspecified, 1/2/3... for first, second, etc. argument
     argument_number : i32,
 }
 
-find_format_locations :: fn(format: string, format_locations : mut FormatLocation[..], arg_count: u64) -> bool {
+find_format_locations :: fn(format: string, format_locations : mut FormatLocation[..], arg_count: usize) -> bool {
     has_positional : bool = false
     has_unspecified : bool = false
     with {
-        index : u64 = 0
+        index : usize = 0
         character : char
         found_placeholder : bool = false
     }
@@ -109,9 +109,9 @@ format :: fn(format: string, args: any...) -> string {
         //TODO(ches) bail
     }
 
-    input_index : u64 = 0
-    output_index : u64 = 0
-    arg_index : u64 = 0
+    input_index : usize = 0
+    output_index : usize = 0
+    arg_index : usize = 0
 
     for match in format_locations {
         if match.location > 0 {

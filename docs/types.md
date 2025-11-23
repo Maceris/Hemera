@@ -8,7 +8,7 @@ b8 b16 b32 b64 bool
 
 // Integers
 i8 i16 i32 i64 i128 int // Signed
-u8 u16 u32 u64 u128 uint uintptr // Unsigned
+u8 u16 u32 u64 u128 uint uintptr usize // Unsigned
 
 // Floating point numbers
 f16 f32 f64
@@ -103,7 +103,8 @@ More details:
 | u128be   | 128-bit unsigned integer, big endian                                                                                                         |
 | u128le   | 128-bit unsigned integer, little endian                                                                                                      |
 | uint     | Unsigned integer that is the standard size of a register on the system, guaranteed that size_of(uint) >= size_of(uintptr). Same size as int. |
-| uintptr  | Unsigned integer that is large enough to hold the bit pattern of any pointer                                                                 |
+| uintptr  | Unsigned integer that is large enough to hold the bit pattern of any pointer, the same size as a standard pointer on that system.            |
+| usize    | Unsigned integer that is the same size as uintptr, used for sizes and counts.                                                                |
 
 ## Arrays
 
@@ -167,8 +168,8 @@ g2 : int[] : a[0..=5]  // Equivalent to g
 When directly indexing into arrays, the index must be proven to be within the bounds of the array.
 
 ```
-foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: u64) {
-    known : u64 = 4
+foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: usize) {
+    known : usize = 4
     over :: 5
     result : i8
 
@@ -248,6 +249,30 @@ Suit :: enum #backed_by(u8) {
     Diamonds,
 }
 ```
+
+## Implicit Casting
+
+Some types will implicitly (automatically) cast to each other, without having to manually add in casts.
+Generally speaking, widening conversion are fine and narrowing ones are not.
+
+Will implicitly cast:
+
+* i8, i16, i32, i64 will cast up to signed integers of a larger size, or int
+* u8, u16, u32, u64 will cast up to unsigned integers of a larger size, or uint
+* The endian-specific versions of integers will cast up to larger fixed sizes of the same endianness and signed-ness
+* Floating point types will cast to larger versions
+* The endian-specific versions of floating point types will cast up to larger versions of the same endianness
+* b8, b16, b32, b64 will cast up to booleans of a larger size
+* uintptr and usize will cast to uint
+* Structs will implicitly cast to any structs included inside with the `using` keyword
+
+Will not implicitly cast:
+
+* i128 won't implicitly cast to int, other than on a hypothetical 128-bit platform
+* u128 won't implicitly cast to uint, other than on a hypothetical 128-bit platform
+* uintptr will not implicitly cast to or from usize
+* Complex numbers will not implicitly cast between sizes
+* Quaternions will not implicitly cast between sizes
 
 ## Notes On Types
 
