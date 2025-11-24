@@ -85,7 +85,7 @@ default_log_print :: fn(log_string: string, level : LogLevel, location : SourceC
 
     current_time := 0
 
-    if flags & DEFAULT_LOGGER_FLAG_DATE || flags & DEFAULT_LOGGER_FLAG_TIME {
+    if flags & (DEFAULT_LOGGER_FLAG_DATE | DEFAULT_LOGGER_FLAG_TIME) != 0 {
         current_time = now()
     }
 
@@ -113,20 +113,29 @@ default_log_print :: fn(log_string: string, level : LogLevel, location : SourceC
 
     if flags & DEFAULT_LOGGER_FLAG_FILE_NAME != 0 {
         append(log_builder, location.file_path)
+        if flags & DEFAULT_LOGGER_FLAG_LINE != 0 {
+            append(log_builder, ':')
+        }
+        else {
+            append(log_builder, ' ')
+        }
     }
 
     if flags & DEFAULT_LOGGER_FLAG_LINE != 0 {
         append(log_builder, u32_to_string(location.line))
+        append(log_builder, ' ')
     }
 
     if flags & DEFAULT_LOGGER_FLAG_FUNCTION != 0 {
         append(log_builder, location.function)
+        append(log_builder, ' ')
     }
 
     if flags & DEFAULT_LOGGER_FLAG_THREAD_ID != 0 {
         append(log_builder, '[')
         append(log_builder, usize_to_string(context.thread_index))
         append(log_builder, ']')
+        append(log_builder, ' ')
     }
 
     append(log_builder, log_string)
