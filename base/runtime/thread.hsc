@@ -1,6 +1,5 @@
 package runtime
 
-ThreadIndex :: alias u32
 ThreadFunction :: fn(any) -> void
 
 #if OS == .Windows {
@@ -23,7 +22,7 @@ ThreadFunction :: fn(any) -> void
 }
 
 Thread :: struct {
-    index : ThreadIndex,
+    index : usize,
     function : ThreadFunction,
     data : any,
     starting_context : Context,

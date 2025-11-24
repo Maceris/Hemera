@@ -5,7 +5,7 @@ Context :: struct {
     logger : ptr[Logger],
     log_level : LogLevel,
     stack_trace : ptr[StackTraceNode],
-    thread_index : ThreadIndex,
+    thread_index : usize,
     /* 
      * Specifies the function to call for yielding from a fiber.
      * Only has a value when running on a fiber.

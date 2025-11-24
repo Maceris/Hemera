@@ -49,6 +49,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
 
     {
         //TODO(ches) synchronize access with a lock
+        //TODO(ches) shouldn't this just be a usize?
         new_index : u8 : cast[u8](global_data.thread_data.count)
         array_add(global_data.thread_data, local_data)
         local_data.index = new_index
