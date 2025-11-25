@@ -186,3 +186,15 @@ format :: fn(format: string, args: any...) -> string {/* ... */}
 ```
 
 Within the function the arguments will be treated as if it were an array view.
+
+The variable argument can be passed to another function's variable arguments of the same type.
+
+```
+foo :: fn(format: string, numbers: int...) {
+    bar(true, numbers, 0.4)
+}
+
+bar :: fn(fiz: bool, some_numbers: int..., fuzz: f32) {
+    // ...
+}
+```
