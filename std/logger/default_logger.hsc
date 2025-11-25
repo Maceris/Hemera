@@ -70,10 +70,6 @@ default_log_fatal : LogFunction : fn(format_string: string, params: any..., loca
     default_log_print(log_string, .FATAL, location)
 }
 
-default_log_formatter :: fn(level : LogLevel, log_string: string, location : SourceCodeLocation) {
-    format_string : string : "{}"
-}
-
 default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCodeLocation) {
     if context.logger.name != DEFAULT_LOGGER_NAME {
         return void
@@ -146,7 +142,7 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
     append(log_builder, log_string)
 
     log_value := builder_to_string(log_builder)
-    
+
     //TODO(ches) we should probably support log files too
     io.println(log_value)
 }
