@@ -1,5 +1,7 @@
 package logger
 
+import io from "std"
+import reflection from "std"
 import string from "std"
 import time from "std"
 import formatting from "std"
@@ -72,7 +74,7 @@ default_log_formatter :: fn(level : LogLevel, log_string: string, location : Sou
     format_string : string : "{}"
 }
 
-default_log_print :: fn(log_string: string, level : LogLevel, location : SourceCodeLocation) {
+default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCodeLocation) {
     if context.logger.name != DEFAULT_LOGGER_NAME {
         return void
     }
@@ -83,7 +85,7 @@ default_log_print :: fn(log_string: string, level : LogLevel, location : SourceC
     defer delete(log_builder)
     init_string_builder(log_builder)
 
-    current_time := 0
+    current_time := Time.{0}
 
     if flags & (DEFAULT_LOGGER_FLAG_DATE | DEFAULT_LOGGER_FLAG_TIME) != 0 {
         current_time = now()
@@ -110,6 +112,9 @@ default_log_print :: fn(log_string: string, level : LogLevel, location : SourceC
         append(log_builder, int_to_string(nanosecond))
         append(log_builder, ' ')
     }
+
+    append(log_builder, reflection.as_string(level))
+    append(log_builder, ' ')
 
     if flags & DEFAULT_LOGGER_FLAG_FILE_NAME != 0 {
         append(log_builder, location.file_path)
@@ -141,7 +146,7 @@ default_log_print :: fn(log_string: string, level : LogLevel, location : SourceC
     append(log_builder, log_string)
 
     log_value := builder_to_string(log_builder)
-
-    //TODO(ches) actually print/write out the log
-
+    
+    //TODO(ches) we should probably support log files too
+    io.println(log_value)
 }
