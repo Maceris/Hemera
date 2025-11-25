@@ -26,7 +26,15 @@ default_log_trace : LogFunction : fn(format_string: string, params: any..., loca
     if context.log_level > .TRACE {
         return void
     }
-    log_string :: format(format_string, params)
+
+    log_string : string
+    if params.count > 0 {
+        log_string = format(format_string, params)
+    }
+    else {
+        log_string = format_string
+    }
+
     default_log_print(log_string, .FATAL, location)
 }
 
@@ -34,7 +42,13 @@ default_log_debug : LogFunction : fn(format_string: string, params: any..., loca
     if context.log_level > .DEBUG {
         return void
     }
-    log_string :: format(format_string, params)
+    log_string : string
+    if params.count > 0 {
+        log_string = format(format_string, params)
+    }
+    else {
+        log_string = format_string
+    }
     default_log_print(log_string, .FATAL, location)
 }
 
@@ -42,7 +56,13 @@ default_log_info : LogFunction : fn(format_string: string, params: any..., locat
     if context.log_level > .INFO {
         return void
     }
-    log_string :: format(format_string, params)
+    log_string : string
+    if params.count > 0 {
+        log_string = format(format_string, params)
+    }
+    else {
+        log_string = format_string
+    }
     default_log_print(log_string, .FATAL, location)
 }
 
@@ -50,7 +70,13 @@ default_log_warn : LogFunction : fn(format_string: string, params: any..., locat
     if context.log_level > .WARN {
         return void
     }
-    log_string :: format(format_string, params)
+    log_string : string
+    if params.count > 0 {
+        log_string = format(format_string, params)
+    }
+    else {
+        log_string = format_string
+    }
     default_log_print(log_string, .FATAL, location)
 }
 
@@ -58,7 +84,13 @@ default_log_error : LogFunction : fn(format_string: string, params: any..., loca
     if context.log_level > .ERROR {
         return void
     }
-    log_string :: format(format_string, params)
+    log_string : string
+    if params.count > 0 {
+        log_string = format(format_string, params)
+    }
+    else {
+        log_string = format_string
+    }
     default_log_print(log_string, .FATAL, location)
 }
 
@@ -66,7 +98,13 @@ default_log_fatal : LogFunction : fn(format_string: string, params: any..., loca
     if context.log_level > .FATAL {
         return void
     }
-    log_string :: format(format_string, params)
+    log_string : string
+    if params.count > 0 {
+        log_string = format(format_string, params)
+    }
+    else {
+        log_string = format_string
+    }
     default_log_print(log_string, .FATAL, location)
 }
 
