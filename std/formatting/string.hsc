@@ -74,7 +74,7 @@ find_format_locations :: fn(format: string, format_locations : mut FormatLocatio
     while index < format.count
 
     if has_positional && has_unspecified {
-        // TODO(ches) Error, log this
+        log_error("Cannot mix positional (%%1) and unspecified (%%) formats")
         return false
     }
 
@@ -83,7 +83,7 @@ find_format_locations :: fn(format: string, format_locations : mut FormatLocatio
             continue
         }
         if match > arg_count {
-            // TODO(ches) Error, log this
+            log_error("Tried to log %'th argument but only had % arguments", match, arg_count)
             return false
         }
     }
@@ -106,37 +106,78 @@ format :: fn(format: string, args: any...) -> string {
 
     //TODO(ches) we should check the validity of this at compile time where possible
     if !valid {
-        //TODO(ches) bail
+        append(log_builder, "Invalid format string: \"")
+        append(log_builder, format)
+        append(log_builder, '"')
+
+        error_message :: builder_to_string(log_builder)
+        log_warn(error_message)
+
+        return format
     }
 
     input_index : usize = 0
-    output_index : usize = 0
     arg_index : usize = 0
 
     for match in format_locations {
         if match.location > 0 {
             // Everything before the match, after the start / last match
             before_match :: match.location - input_index
-            append(log_builder, input_index, before_match)
+            append(log_builder, format, input_index, before_match)
             input_index += before_match
-            output_index += before_match
         }
         // And now the actual match
         if match.argument_number == -1 {
             // Just need a placeholder
+            append(log_builder, FORMAT_PLACEHOLDER)
+            input_index += 2
         }
         else if match.argument_number == 0 {
             // unspecified
+            if arg_index >= args.count {
+                log_error("Invalid argument count slipped past our checks")
+                break
+            }
+            arg_string :: any_to_string(args[arg_index])
+            append(log_builder, arg_string)
+
+            input_index += 1
+            arg_index += 1
         }
         else {
             // numbered
+            if match.argument_number < 0 || match.argument_number >= args.count {
+                log_error("Invalid argument number slipped past our checks")
+                continue
+            }
+            arg_string :: any_to_string(args[match.argument_number])
+            append(log_builder, arg_string)
+
+            input_index += 1
+            loop {
+                if input_index > format.count {
+                    break 2
+                }
+                current :: format[input_index]
+                if char_is_number(current) {
+                    input_index += 1
+                }
+                else {
+                    break
+                }
+            }
         }
     }
     
     // Everything after final match
     if input_index < format.count {
-
+        before_match :: format.count - input_index
+        append(log_builder, format, input_index, before_match)
+        input_index += before_match
     }
 
+    result :: builder_to_string(log_builder)
+
+    return result
     
 }
