@@ -179,5 +179,4 @@ format :: fn(format: string, args: any...) -> string {
     result :: builder_to_string(log_builder)
 
     return result
-    
 }
