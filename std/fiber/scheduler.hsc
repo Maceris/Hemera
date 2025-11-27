@@ -22,7 +22,7 @@ FiberSchedulerLocalData :: struct {
     global_data : ptr[FiberSchedulerGlobalData],
     local_queue : FiberQueue,
     run_next : ptr[Fiber]?,
-    index : u8,
+    index : usize,
     tasks_since_last_global_pull : u8,
     run_next_count : u8,
 }
@@ -41,16 +41,15 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
     //TODO(ches) do the scheduler stuff
     
     if data.type != ptr[FiberSchedulerGlobalData] {
-        //TODO(ches) do something about this
+        log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type)
+        return void
     }
     global_data : ptr[FiberSchedulerGlobalData] : data.value
 
     local_data : new(FiberSchedulerLocalData)
-
     {
         //TODO(ches) synchronize access with a lock
-        //TODO(ches) shouldn't this just be a usize?
-        new_index : u8 : cast[u8](global_data.thread_data.count)
+        new_index :: global_data.thread_data.count
         array_add(global_data.thread_data, local_data)
         local_data.index = new_index
     }
