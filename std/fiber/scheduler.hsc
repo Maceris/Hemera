@@ -91,9 +91,6 @@ yield :: fn() {
     stack_size : uintptr : cast[uintptr](stack_max) - cast[uintptr](stack_min)
     //TODO(ches) store the stack frame contents and size
 
-    //TODO(ches) how do the stacks return locations work now that we may have moved the stack?
-    //TODO(ches) can we copy over just one frame at a time, with room for return values? How much room?
-
     set_return_address(stack_min)
     /*
      * Returns to where the fiber function was run from, not what called yield.
