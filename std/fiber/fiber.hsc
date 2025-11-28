@@ -1,6 +1,10 @@
 package fiber
 
+import runtime from "base"
+
 Fiber :: struct {
+    function : ThreadFunction,
+    data : any?,
     frozen_stack : ptr[FiberStack]?,
     state : FiberState,
 }

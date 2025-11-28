@@ -7,12 +7,6 @@ FIBER_LOCAL_QUEUE_SIZE :: 255
 FIBER_GLOBAL_QUEUE_INTERVAL :: 31
 FIBER_RUN_NEXT_CAP :: 3
 
-FiberState :: enum {
-    Blocked,
-    Running,
-    Waiting,
-}
-
 FiberSchedulerGlobalData :: struct {
     global_queue : ptr[Fiber][..],
     thread_data : ptr[FiberSchedulerLocalData][..],
@@ -27,8 +21,10 @@ FiberSchedulerLocalData :: struct {
     run_next_count : u8,
 }
 
-create_fiber() :: ptr[Fiber] {
+create_fiber :: fn(function: ThreadFunction, data: any? = null) -> ptr[Fiber] {
     result := new(Fiber)
+    result.function = function
+    result.data = data
     result.frozen_stack = null
     result.state = .NotStarted
 }
@@ -70,10 +66,13 @@ thaw_one_stack_frame :: fn(fiber: Fiber) {
     frozen_stack :: fiber.frozen_stack or_return void
 
     if frozen_stack.size == 0 {
-
+        //TODO(ches) we are out of stack frames, consider the task done
+        return void
     }
 
-    //TODO(ches) if we are out of stack frames, consider the task done
+    //TODO(ches) figure out where this location actually should be
+    end_of_actual_stack : rawptr : null
+    
     //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
     //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
     //TODO(ches) then load one stack frame from the current coroutine on top of new buffer, or fiber_base_pointer if no return

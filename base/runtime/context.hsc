@@ -11,6 +11,7 @@ Context :: struct {
      * Only has a value when running on a fiber.
      */
     fiber_yield_function : fn()?,
+    //TODO(ches) should fiber_base_pointer go in the FiberSchedulerLocalData?
     /*
      * When running a fiber, stores the currently executing fiber functions
      * stack frame, so that we know where to drop the stack back to when
