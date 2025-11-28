@@ -24,12 +24,12 @@ ThreadFunction :: fn(any) -> void
 Thread :: struct {
     index : usize,
     function : ThreadFunction,
-    data : any,
+    data : any?,
     starting_context : Context,
     using ThreadSpecificOS,
 }
 
-thread_create :: fn(function: ThreadFunction, data: any = null) -> ptr[Thread] {
+thread_create :: fn(function: ThreadFunction, data: any? = null) -> ptr[Thread] {
     result : ptr[Thread] = new(Thread)
     result.function = function
     result.data = data
