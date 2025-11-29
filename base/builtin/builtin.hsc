@@ -84,8 +84,8 @@ any  :: alias any
 type :: alias type
 
 // Functions
-align_of : fn[T](T: type) -> int : ---
-size_of  : fn[T](T: type) -> int : ---
+align_of : fn[T](T: type) -> usize : ---
+size_of  : fn[T](T: type) -> usize : ---
 
 type_of : fn(x: expr) -> type : ---
 type_info_of : fn[T](T: type) -> TypeInfo : ---

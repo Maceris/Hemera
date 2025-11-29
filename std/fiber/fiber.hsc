@@ -5,13 +5,8 @@ import runtime from "base"
 Fiber :: struct {
     function : ThreadFunction,
     data : any?,
-    frozen_stack : ptr[FiberStack]?,
+    frozen_stack : u8[]?,
     state : FiberState,
-}
-
-FiberStack :: struct {
-    location : rawptr,
-    size : uintptr,
 }
 
 FiberState :: enum {

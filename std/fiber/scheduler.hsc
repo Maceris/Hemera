@@ -10,6 +10,7 @@ FIBER_RUN_NEXT_CAP :: 3
 FiberSchedulerGlobalData :: struct {
     global_queue : ptr[Fiber][..],
     thread_data : ptr[FiberSchedulerLocalData][..],
+    should_stop : bool,
 }
 
 FiberSchedulerLocalData :: struct {
@@ -56,8 +57,20 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
     new_context.fiber_yield_function = yield
 
     push_context new_context {
+        // No messing with the current stack frame after we do this
+        context.fiber_base_pointer = scheduler_get_current_stack_pointer()
         
+        loop {
+            //TODO(ches) pick up a task and run it
+            // Maybe sleep if empty?
+        }
+        while !global_data.should_stop
     }
+}
+
+// Needs to be a function we call so we leave the current stack frame
+scheduler_get_current_stack_pointer :: fn() -> rawptr {
+    return get_return_address()
 }
 
 thaw_one_stack_frame :: fn(fiber: Fiber) {
@@ -71,7 +84,7 @@ thaw_one_stack_frame :: fn(fiber: Fiber) {
     }
 
     //TODO(ches) figure out where this location actually should be
-    end_of_actual_stack : rawptr : null
+    end_of_this_stack_frame : rawptr : scheduler_get_current_stack_pointer()
     
     //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
     //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
@@ -88,7 +101,10 @@ yield :: fn() {
     stack_max : rawptr : get_return_address()
     stack_min : rawptr : context.fiber_base_pointer
     stack_size : uintptr : cast[uintptr](stack_max) - cast[uintptr](stack_min)
-    //TODO(ches) store the stack frame contents and size
+    stack_bytes : usize : cast[usize](stack_size) / size_of(u8)
+
+    frozen_stack_space : u8[] = new_array(u8, stack_bytes)
+    mem_copy_non_overlapping(&frozen_stack_space, stack_min, stack_bytes)
 
     set_return_address(stack_min)
     /*
