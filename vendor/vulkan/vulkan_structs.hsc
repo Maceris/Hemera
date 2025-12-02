@@ -373,7 +373,7 @@ VkDeviceCreateInfo :: struct {
     queueCreateInfos : VkDeviceQueueCreateInfo[],
     enabledLayerNames : string[],
     enabledExtensionNames : string[],
-    enabledFeatures : VkPhysicalDeviceFeatures[],
+    enabledFeatures : VkPhysicalDeviceFeatures?,
 }
 
 VkExtensionProperties :: struct {
