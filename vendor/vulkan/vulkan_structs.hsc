@@ -1,5 +1,7 @@
 package vulkan
 
+//TODO(ches) pre-populate all the structure types, pNext values
+
 VkExtent2D :: struct {
     width : u32,
     height : u32,
@@ -373,7 +375,7 @@ VkDeviceCreateInfo :: struct {
     queueCreateInfos : VkDeviceQueueCreateInfo[],
     enabledLayerNames : string[],
     enabledExtensionNames : string[],
-    enabledFeatures : VkPhysicalDeviceFeatures?,
+    enabledFeatures : ptr[VkPhysicalDeviceFeatures]?,
 }
 
 VkExtensionProperties :: struct {
