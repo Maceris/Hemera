@@ -39,7 +39,7 @@ vkDestroyInstance(
 vkEnumeratePhysicalDevices(
     instance: VkInstance,
     pPhysicalDeviceCount: ptr[mut u32],
-    pPhysicalDevices: ptr[mut VkPhysicalDevice]?) -> VkResult
+    physicalDevices: mut VkPhysicalDevice[]? = null) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
