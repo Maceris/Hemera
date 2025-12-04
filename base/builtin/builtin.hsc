@@ -90,3 +90,6 @@ size_of  : fn[T](T: type) -> usize : ---
 type_of : fn(x: expr) -> type : ---
 type_info_of : fn[T](T: type) -> TypeInfo : ---
 types_are_aliases : fn(a, b: type) -> bool : ---
+
+max_value : fn[T](T: type) -> T : ---
+min_value : fn[T](T: type) -> T : ---
