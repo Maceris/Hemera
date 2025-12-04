@@ -127,9 +127,9 @@ vkDestroyDevice(
 }
 
 vkEnumerateInstanceExtensionProperties(
-    pLayerName: ptr[mut char],
+    layerName: string,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkExtensionProperties]?) -> VkResult
+    properties: mut VkExtensionProperties[]? = null) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -137,9 +137,9 @@ vkEnumerateInstanceExtensionProperties(
 
 vkEnumerateDeviceExtensionProperties(
     physicalDevice: VkPhysicalDevice,
-    pLayerName: ptr[mut char],
+    layerName: string?,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkExtensionProperties]?) -> VkResult
+    properties: mut VkExtensionProperties[]? = null) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -147,7 +147,7 @@ vkEnumerateDeviceExtensionProperties(
 
 vkEnumerateInstanceLayerProperties(
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkLayerProperties]?) -> VkResult
+    properties: mut VkLayerProperties[]? = null) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
@@ -156,7 +156,7 @@ vkEnumerateInstanceLayerProperties(
 vkEnumerateDeviceLayerProperties(
     physicalDevice: VkPhysicalDevice,
     pPropertyCount: ptr[mut u32],
-    pProperties: ptr[mut VkLayerProperties]?) -> VkResult
+    properties: mut VkLayerProperties[]? = null) -> VkResult
 {
     //TODO(ches) do this
     return .VK_SUCCESS
