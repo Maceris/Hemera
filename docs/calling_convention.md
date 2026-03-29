@@ -71,8 +71,42 @@ bar :: fn(d: LargeStruct) -> BigStruct { // 0xBABE
 ### cdecl
 Used for calling functions in C.
 
+When calling a function:
+* Push parameters onto the stack, from right to left
+* Push one byte after EIP (instruction pointer) (well, one after the call instruction) onto the stack, then call the function
+* Push the current EBP (base pointer) (the previous functions base) onto the stack, update EBP to the current ESP (stack pointer).
+* Save CPU registers we want to keep to the stack
+* Allocate space for local variables if they are required.
+
+Then the function executes.
+
+An example stack frame might look like this:
+
+| Location  | Value                     |
+|-----------|---------------------------|
+| %ebp + 16 | third function parameter  |
+| %ebp + 12 | second function parameter |
+| %ebp + 8  | first function parameter  |
+| %ebp + 4  | old EIP                   |
+| %ebp      | old EBP                   |
+| %ebp - 4  | first saved register      |
+| %ebp - 8  | second saved register     |
+| %ebp - 12 | first local variable      |
+| %ebp - 16 | second local variable     |
+| %ebp - 20 | third local variable      |
+
+Then returning:
+* Reset space allocated for local storage by updating the stack pointer
+* Restore saved registers, in exactly reverse order they were pushed to the stack
+* Restore the old base pointer
+* Return from the function by popping EIP from the stack and jumping there, also updating the stack pointer
+* Clean up pushed parameters (the caller does this)
+
 ### stdcall
 Specified by Microsoft, used for Windows calls.
+
+Every function has a hard-coded set of parameters that cannot vary from call to call (like variadic functions).
+The fixed-sized block of parameters is cleaned up by the callee (as opposed to the caller in cdecl).
 
 ### fastcall
 Attempts to fit values into registers, but behavior depends on the compiler.

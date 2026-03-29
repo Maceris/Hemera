@@ -229,6 +229,11 @@ interlocked_xor_uintptr_acquire : fn(target: ptr[mut uintptr]) -> uintptr : ---
 interlocked_xor_uintptr_no_fence : fn(target: ptr[mut uintptr]) -> uintptr : ---
 interlocked_xor_uintptr_release : fn(target: ptr[mut uintptr]) -> uintptr : ---
 
+/*
+ * Jump to an address in executable memory. Should not be called outside of core code like a fiber scheduler.
+ */
+jump_to_address : fn(base_pointer: rawptr) : ---
+
 mem_copy : fn(dest, source: rawptr, len: usize) : ---
 mem_copy_non_overlapping : fn(dest, source: rawptr, len: usize) : ---
 mem_zero : fn(target: rawptr, len: usize) : ---
