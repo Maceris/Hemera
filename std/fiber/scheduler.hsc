@@ -20,6 +20,12 @@ FiberSchedulerLocalData :: struct {
     index : usize,
     tasks_since_last_global_pull : u8,
     run_next_count : u8,
+    /*
+     * When running a fiber, stores the currently executing fiber functions
+     * stack frame, so that we know where to drop the stack back to when
+     * yielding.
+     */
+    fiber_base_pointer : rawptr,
 }
 
 create_fiber :: fn(function: ThreadFunction, data: any? = null) -> ptr[Fiber] {
@@ -41,9 +47,13 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
         log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type)
         return void
     }
+    if context.is_running_on_a_fiber {
+        log_error("run_fiber_scheduler is being called from a fiber")
+        return void
+    }
     global_data : ptr[FiberSchedulerGlobalData] : data.value
 
-    local_data : new(FiberSchedulerLocalData)
+    local_data := new(FiberSchedulerLocalData)
     {
         //TODO(ches) synchronize access with a lock
         new_index :: global_data.thread_data.count
@@ -54,43 +64,55 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
 
     new_context : Context
     new_context.is_running_on_a_fiber = true
+    new_context.fiber_data = cast[rawptr](local_data);
     new_context.fiber_yield_function = yield
 
     push_context new_context {
+        next_task : ptr[Fiber]? = null
+        next_task_index : usize = 0
+
+        frame_size : u32
+        frozen_stack : u8[]
+
         // No messing with the current stack frame after we do this
-        context.fiber_base_pointer = scheduler_get_current_stack_pointer()
-        
+        local_data.fiber_base_pointer = intrinsics.get_stack_pointer()
+
         loop {
-            //TODO(ches) pick up a task and run it
-            // Maybe sleep if empty?
+            if global_data.global_queue.count == 0 {
+                //TODO(ches) sleep 
+                continue
+            }
+            //TODO(ches) actually have a strategy for updating tasks
+
+            next_task_index = (next_task_index + 1) % global_data.global_queue.count;
+            next_task = global_data.global_queue[next_task_index]
+
+            switch next_task.state {
+                case .NotStarted:
+                    next_task.function(next_task.data)
+                case .Running: continue
+                case .Suspended:
+                    // Weird return address handling, only returns here after the frame returns
+                    // Thaw one stack frame and "call" the function associated with it
+                    {
+                        frozen_stack = fiber.frozen_stack or_continue
+
+                        if frozen_stack.size == 0 {
+                            //TODO(ches) we are out of stack frames, consider the task done
+                            continue
+                        }
+                        
+                        //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
+                        //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
+                        //TODO(ches) then load one stack frame from the current coroutine on top of new buffer, or fiber_base_pointer if no return
+                        //TODO(ches) set the return pointer from this function to the start of that new stack frame
+                        //TODO(ches) update the return pointer of that new frame to this function
+                    }
+            }
+
         }
         while !global_data.should_stop
     }
-}
-
-// Needs to be a function we call so we leave the current stack frame
-scheduler_get_current_stack_pointer :: fn() -> rawptr {
-    return get_return_address()
-}
-
-thaw_one_stack_frame :: fn(fiber: Fiber) {
-    frame_size : u32
-
-    frozen_stack :: fiber.frozen_stack or_return void
-
-    if frozen_stack.size == 0 {
-        //TODO(ches) we are out of stack frames, consider the task done
-        return void
-    }
-
-    //TODO(ches) figure out where this location actually should be
-    end_of_this_stack_frame : rawptr : scheduler_get_current_stack_pointer()
-    
-    //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
-    //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
-    //TODO(ches) then load one stack frame from the current coroutine on top of new buffer, or fiber_base_pointer if no return
-    //TODO(ches) set the return pointer from this function to the start of that new stack frame
-    //TODO(ches) update the return pointer of that new frame to this function
 }
 
 yield :: fn() {
@@ -98,7 +120,7 @@ yield :: fn() {
         // Returns to the actual yield call site, yielding is not reasonable
         return void
     }
-    stack_max : rawptr : get_return_address()
+    stack_max : rawptr : intrinsics.get_stack_base_pointer()
     stack_min : rawptr : context.fiber_base_pointer
     stack_size : uintptr : cast[uintptr](stack_max) - cast[uintptr](stack_min)
     stack_bytes : usize : cast[usize](stack_size) / size_of(u8)

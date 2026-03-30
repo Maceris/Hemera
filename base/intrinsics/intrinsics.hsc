@@ -6,12 +6,15 @@ package intrinsics
  * Intended for fiber schedulers.
  */
 get_return_address : fn() -> rawptr : ---
+
 /*
- * Sets the location that the current function will return to once done.
- * Only valid for functions that don't have any return values.
- * Intended for fiber schedulers, in general this is wildly unsafe to use.
+ * Fetch the current stack pointer. Intended for fiber schedulers.
  */
-set_return_address : fn(base_pointer: rawptr) : ---
+get_stack_pointer : fn() -> rawptr : ---
+/*
+ * Fetch the current stack base pointer. Intended for fiber schedulers.
+ */
+get_stack_base_pointer : fn() -> rawptr : ---
 
 interlocked_and_i8 : fn(target: ptr[mut i8]) -> i8 : ---
 interlocked_and_i8_acquire : fn(target: ptr[mut i8]) -> i8 : ---
@@ -237,3 +240,10 @@ jump_to_address : fn(base_pointer: rawptr) : ---
 mem_copy : fn(dest, source: rawptr, len: usize) : ---
 mem_copy_non_overlapping : fn(dest, source: rawptr, len: usize) : ---
 mem_zero : fn(target: rawptr, len: usize) : ---
+
+/*
+ * Sets the location that the current function will return to once done.
+ * Only valid for functions that don't have any return values.
+ * Intended for fiber schedulers, in general this is wildly unsafe to use.
+ */
+set_return_address : fn(base_pointer: rawptr) : ---
