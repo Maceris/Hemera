@@ -83,6 +83,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
                 continue
             }
             //TODO(ches) actually have a strategy for updating tasks
+            //TODO(ches) grab and release locks for the queue
 
             next_task_index = (next_task_index + 1) % global_data.global_queue.count;
             next_task = global_data.global_queue[next_task_index]
@@ -98,7 +99,9 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
                         frozen_stack = fiber.frozen_stack or_continue
 
                         if frozen_stack.size == 0 {
-                            //TODO(ches) we are out of stack frames, consider the task done
+                            //TODO(ches) grab and release locks for the queue
+                            array_remove_fast(global_data.global_queue, next_task_index)
+                            free(next_task)
                             continue
                         }
                         
