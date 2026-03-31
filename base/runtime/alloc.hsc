@@ -1,5 +1,28 @@
 package runtime
 
+free :: fn[T](
+    pointer: ptr[T],
+    allocator := context.allocator,
+    loc := #caller_location,
+) {
+    //TODO(ches) free
+}
+
+free_all :: fn[T](
+    allocator := context.allocator,
+    loc := #caller_location,
+) {
+    //TODO(ches) free
+}
+
+free_array :: fn[T](
+    array: T[],
+    allocator := context.allocator,
+    loc := #caller_location,
+) {
+    //TODO(ches) free
+}
+
 new :: fn[T](
     t: type, 
     allocator := context.allocator,
@@ -32,6 +55,6 @@ new_array_aligned :: fn[T](
     alignment: int,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ptr[T], AllocatorError?) {
+) -> (T[], AllocatorError?) {
     //TODO(ches) allocate
 }
