@@ -73,6 +73,9 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
 
         frame_size : u32
         frozen_stack : u8[]
+        end_of_frozen_frame : rawptr
+        size_of_frozen_frame : usize
+        start_of_frozen_frame : rawptr
 
         // No messing with the current stack frame after we do this
         local_data.fiber_base_pointer = intrinsics.get_stack_pointer()
@@ -98,14 +101,19 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
                     {
                         frozen_stack = fiber.frozen_stack or_continue
 
-                        if frozen_stack.size == 0 {
+                        if frozen_stack.count == 0 {
                             //TODO(ches) grab and release locks for the queue
                             array_remove_fast(global_data.global_queue, next_task_index)
                             free(next_task)
                             continue
                         }
+
+                        end_of_frozen_frame = cast[rawptr](cast[uintptr](frozen_stack.data) + cast[uintptr](frozen_stack.count))
+                        size_of_frozen_frame = cast[ptr[usize]](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of(usize)))^
+                        start_of_frozen_frame = cast[rawptr](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of_frozen_frame))
+                        mem_copy_non_overlapping(local_data.fiber_base_pointer, start_of_frozen_frame, size_of_frozen_frame)
+                        fiber.frozen_stack.count -= size_of_frozen_frame
                         
-                        //TODO(ches) copy over the buffer, if there is one, to the space on the next stack frame where it should have gone
                         //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
                         //TODO(ches) then load one stack frame from the current coroutine on top of new buffer, or fiber_base_pointer if no return
                         //TODO(ches) set the return pointer from this function to the start of that new stack frame
