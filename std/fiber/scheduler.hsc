@@ -76,6 +76,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
         end_of_frozen_frame : rawptr
         size_of_frozen_frame : usize
         start_of_frozen_frame : rawptr
+        next_base_address : ptr[rawptr]
 
         // No messing with the current stack frame after we do this
         local_data.fiber_base_pointer = intrinsics.get_stack_pointer()
@@ -114,10 +115,18 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
                         mem_copy_non_overlapping(local_data.fiber_base_pointer, start_of_frozen_frame, size_of_frozen_frame)
                         fiber.frozen_stack.count -= size_of_frozen_frame
                         
-                        //TODO(ches) load a buffer for the return value of the next stack frame on top of fiber_base_pointer
-                        //TODO(ches) then load one stack frame from the current coroutine on top of new buffer, or fiber_base_pointer if no return
-                        //TODO(ches) set the return pointer from this function to the start of that new stack frame
-                        //TODO(ches) update the return pointer of that new frame to this function
+                        // Find next frame's base address
+                        if frozen_stack.count > 0 {
+                            end_of_frozen_frame = cast[rawptr](cast[uintptr](frozen_stack.data) + cast[uintptr](frozen_stack.count))
+                            size_of_frozen_frame = cast[ptr[usize]](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of(usize)))^
+                            start_of_frozen_frame = cast[rawptr](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of_frozen_frame))
+
+                            next_base_address = cast[ptr[rawptr]](cast[uintptr](local_data.fiber_base_pointer) + cast[uintptr](size_of(uintptr)))
+                            next_base_address^ = cast[ptr[rawptr]](start_of_frozen_frame)^
+                        }
+
+                        set_return_address(fiber.last_frame_return_address)
+                        //TODO(ches) update the return pointer of that new frame to the thaw point
                     }
             }
 
