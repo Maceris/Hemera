@@ -23,6 +23,9 @@ To create the project or solution files for the project, you can run `regenerate
 This will generate all of the project files in the `bin` folder. These can be rerun to wipe out the whole bin directory
 again and regenerate the project contents.
 
+It's not recommended to use that script if the project has already been built, due to the size of the LLVM build outputs, so
+instead you can cd into `bin` and run `cmake ..` should the parent CMakeLists.txt change.
+
 If using Visual Studio, you can open the Loquat solution and build and run it from there.
 
 Note that since this includes LLVM, Debug builds require a lot of time and disk space. An LLVM-only build will need about 1-3 GB of space. A full build of LLVM and Clang will need around 15-20 GB of disk space. The exact space requirements will vary by system.
