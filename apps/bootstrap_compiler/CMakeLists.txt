@@ -69,6 +69,8 @@ ELSEIF(MSVC)
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/WX")
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/wd5045") # /Qspectre mitigation location warning, we don't use that flag
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/wd4710") # It's not a problem if we don't inline
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/wd4711") # It's not a problem if we don't inline
   
 ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # clang-cl
