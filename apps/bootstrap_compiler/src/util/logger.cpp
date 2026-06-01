@@ -371,10 +371,8 @@ namespace Logger
 	{
 		if (enabled)
 		{
-			if (log_manager->error(error_message, fatal, location))
-			{
-				enabled = false;
-			}
+			enabled = false;
+			log_manager->error(error_message, fatal, location);
 		}
 	}
 }
