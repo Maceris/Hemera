@@ -1,6 +1,6 @@
 # Hemera compiler source
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.13...3.31.4)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16...3.31.4)
 
 SET(HEADER_FILES
   ${INCLUDE_DIR}/job.h
@@ -78,14 +78,39 @@ ADD_EXECUTABLE(Hemera
   ${SOURCE_DIR}/main.cpp
 )
 
-llvm_map_components_to_libnames(llvm_libs support core irreader)
-TARGET_LINK_LIBRARIES(HemeraLib ${llvm_libs})
-
+llvm_map_components_to_libnames(
+  aarch64
+  aarch64codegen
+  aarch64desc
+  aarch64info
+  aarch64utils
+  analysis
+  arm
+  armcodegen
+  armdesc
+  arminfo
+  armutils
+  codegen
+  codegentypes
+  core
+  debuginfopdb
+  irreader
+  llvm_libs
+  native
+  support
+  transformutils
+  x86
+  x86codegen
+  x86desc
+  x86info
+  x86targetmca
+)
 SEPARATE_ARGUMENTS(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib PUBLIC
   ${INCLUDE_DIR}/
   $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}>
+  ${llvm_libs}
 )
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib SYSTEM PRIVATE
@@ -100,7 +125,7 @@ SOURCE_GROUP(TREE ${INCLUDE_DIR} PREFIX "include" FILES ${HEADER_FILES})
 SOURCE_GROUP(TREE ${SOURCE_DIR} PREFIX "src" FILES ${SOURCE_FILES})
 SOURCE_GROUP(TREE ${TEST_DIR} PREFIX "test" FILES ${TEST_FILES})
 
-TARGET_LINK_LIBRARIES(Hemera HemeraLib)
+TARGET_LINK_LIBRARIES(Hemera HemeraLib ${llvm_libs})
 SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera")
 TARGET_COMPILE_DEFINITIONS(HemeraLib PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
 TARGET_COMPILE_DEFINITIONS(Hemera PRIVATE ${HEMERA_DEFINITIONS})
@@ -124,6 +149,7 @@ TARGET_LINK_LIBRARIES(HemeraTest
   GTest::gtest_main
   GTest::gtest
   HemeraLib
+  ${llvm_libs}
 )
 
 gtest_discover_tests(HemeraTest)

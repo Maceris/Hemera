@@ -2,7 +2,7 @@
 
 # CMake settings
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.13...3.31.4)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.16...3.31.4)
 
 PROJECT(Hemera VERSION 1.0.0) # Decoupled from actual version, which are tracked in source
 
@@ -13,8 +13,6 @@ SET(CMAKE_C_STANDARD 99)
 # Modules
 
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules")
-
-INCLUDE(PrecompiledHeader)
 
 SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON) # Use solution folders.
 
@@ -155,8 +153,10 @@ MESSAGE(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 MESSAGE(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 SET(LLVM_TARGETS_TO_BUILD "X86;AArch64;ARM" CACHE STRING "")
+# We build lld so we can use it as the linker
+# We build clang so it can be used to build the runtimes for the target platforms
 SET(LLVM_ENABLE_PROJECTS "clang;lld" CACHE STRING "")
-SET(LLVM_ENABLE_RUNTIMES "compiler-rt;libcxx;libcxxabi;libunwind;libc" CACHE STRING "")
+SET(LLVM_ENABLE_RUNTIMES "compiler-rt;libcxxabi;libc" CACHE STRING "")
 SET(LLVM_BUILD_TESTS OFF CACHE BOOL "")
 SET(LLVM_INCLUDE_TESTS OFF CACHE BOOL "")
 SET(LLVM_INCLUDE_BENCHMARKS OFF CACHE BOOL "")
