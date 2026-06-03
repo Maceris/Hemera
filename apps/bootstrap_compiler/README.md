@@ -5,7 +5,7 @@ This is the compiler for Hemera.
 # Building
 
 This project uses submodules for some third party libraries, and so the `--recursive` flag must be used when cloning the
-repository.
+repository in order to build.
 
 ```bash
 $ git clone --recursive https://github.com/Maceris/Hemera.git
@@ -31,3 +31,5 @@ If using Visual Studio, you can open the Loquat solution and build and run it fr
 Note that since this includes LLVM, Debug builds require a lot of time and disk space. An LLVM-only build will need about 1-3 GB of space. A full build of LLVM and Clang will need around 15-20 GB of disk space. The exact space requirements will vary by system.
 
 When building on Windows, the generated paths might get pretty long and exceed filesystem limits. You may need to clone to a less-nested folder or enable the LongPathsEnabled registry key.
+
+It's quite likely that you'll need to build multiple times to get a full clean build, as some stages/tools depend on each other.
