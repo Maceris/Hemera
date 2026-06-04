@@ -2,6 +2,15 @@
 
 This is the compiler for Hemera.
 
+# Projects
+
+The main projects are:
+
+generate_errors - Used to convert errors/warnings from text files to C++ code with doc comments
+Hemera - The executable part, essentially just a main method
+HemeraLib - The core project, built as a library so we can run tests
+HemeraTest - Unit test suite for the compiler
+
 # Building
 
 This project uses submodules for some third party libraries, and so the `--recursive` flag must be used when cloning the
@@ -19,17 +28,25 @@ $ git submodule update --init --recursive
 
 The build system uses [cmake](http://www.cmake.org/).
 
-To create the project or solution files for the project, you can run `regenerate-project.bat` or `regenerate-project.sh`. 
-This will generate all of the project files in the `bin` folder. These can be rerun to wipe out the whole bin directory
-again and regenerate the project contents.
+To create the project or solution files for the project, create a directory named "bin" under this folder, and run
+`cmake ..` from bin. For example:
+```bash
+mkdir bin
+cd bin
+cmake ..
+```
+This is set up as `generate-project.bat` (for Windows) or `generate-project.sh` (for Linux) for convenience.
 
-It's not recommended to use that script if the project has already been built, due to the size of the LLVM build outputs, so
-instead you can cd into `bin` and run `cmake ..` should the parent CMakeLists.txt change.
-
+This will generate all of the project files in the `bin` folder, where build output will also be stored.
 If using Visual Studio, you can open the Loquat solution and build and run it from there.
 
-Note that since this includes LLVM, Debug builds require a lot of time and disk space. An LLVM-only build will need about 1-3 GB of space. A full build of LLVM and Clang will need around 15-20 GB of disk space. The exact space requirements will vary by system.
+Note that since this includes LLVM, Debug builds require a very large amount of time and disk space.
+A full debug build could be tens or even hundreds of GB of disk space and will take hours.
+The exact space requirements will vary by system.
+Release builds are very much recommended, but will still not be small or fast.
 
-When building on Windows, the generated paths might get pretty long and exceed filesystem limits. You may need to clone to a less-nested folder or enable the LongPathsEnabled registry key.
+When building on Windows, the generated paths might get quite long and exceed filesystem limits.
+You may need to clone to a less-nested folder or enable the LongPathsEnabled registry key.
 
-It's quite likely that you'll need to build multiple times to get a full clean build, as some stages/tools depend on each other.
+It's quite likely that you'll need to build several times to get a full/clean build, 
+as some stages/tools depend on the outputs of others to be used as build tools.
