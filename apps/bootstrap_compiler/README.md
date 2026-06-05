@@ -11,6 +11,15 @@ Hemera - The executable part, essentially just a main method
 HemeraLib - The core project, built as a library so we can run tests
 HemeraTest - Unit test suite for the compiler
 
+# Requirements
+
+The LLVM requirements apply, see https://llvm.org/docs/GettingStarted.html#software.
+
+[CMake](http://www.cmake.org/) >=3.20.0
+python >=3.8
+zlib >=1.2.3.4
+libxml2
+
 # Building
 
 This project uses submodules for some third party libraries, and so the `--recursive` flag must be used when cloning the
@@ -26,16 +35,16 @@ run this command to update dependencies:
 $ git submodule update --init --recursive
 ```
 
-The build system uses [cmake](http://www.cmake.org/).
-
-To create the project or solution files for the project, create a directory named "bin" under this folder, and run
+To minimally create the project or solution files for the project, create a directory named "bin" under this folder, and run
 `cmake ..` from bin. For example:
 ```bash
 mkdir bin
 cd bin
 cmake ..
 ```
-This is set up as `generate-project.bat` (for Windows) or `generate-project.sh` (for Linux) for convenience.
+
+It's recommended to use pre-installed LLVM tools (ideally the same version) for building and linking. e.g.
+`cmake .. -T ClangCL`
 
 This will generate all of the project files in the `bin` folder, where build output will also be stored.
 If using Visual Studio, you can open the Loquat solution and build and run it from there.
@@ -45,8 +54,25 @@ A full debug build could be tens or even hundreds of GB of disk space and will t
 The exact space requirements will vary by system.
 Release builds are very much recommended, but will still not be small or fast.
 
-When building on Windows, the generated paths might get quite long and exceed filesystem limits.
-You may need to clone to a less-nested folder or enable the LongPathsEnabled registry key.
-
 It's quite likely that you'll need to build several times to get a full/clean build, 
 as some stages/tools depend on the outputs of others to be used as build tools.
+
+## Build Issues
+
+**Paths too long on Windows**
+
+1. Press Win+R, type regedit, and hit enter
+2. Navigate to HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem
+3. Set LongPathsEnabled to 1
+
+**ASM Compiler not found**
+Try installing clang and add `-DCMAKE_ASM_COMPILER=clang` (`clang-cl` for windows) or `-T ClangCL` to the cmake command.
+
+**ZLIB and/or LibXml2 not found**
+On Windows, you can install vcpkg and install the libraries from there
+
+`vcpkg install zlib`
+Set `ZLIB_ROOT` environment variable to the path like `<vcpkg>\packages\zlib_x64-windows\`
+
+`vcpkg install libxml2:x64-windows`
+Set `LIBXML2_ROOT` environment variable to the path like `<vcpkg>\packages\libxml2_x64-windows\`
