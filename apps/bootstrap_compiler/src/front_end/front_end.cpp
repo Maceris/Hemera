@@ -1,23 +1,17 @@
 #include <chrono>
-#include <random>
 #include <thread>
 
+#include "error/reporting.h"
 #include "util/logger.h"
 #include "front_end/front_end.h"
 #include "front_end/hlir.h"
 
 namespace hemera {
-	const uint32_t THREAD_COUNT =
-		std::max(1u, std::thread::hardware_concurrency());
+	uint32_t THREAD_COUNT = 1;
 
-	const uint32_t MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
+	static uint32_t MAX_SEARCHERS = 1;
 
 	constexpr auto SLEEP_DURATION = std::chrono::milliseconds(100);
-
-	std::random_device rand_device;
-	std::mt19937 rng(rand_device());
-	std::uniform_int_distribution<> distribution(0, 
-		static_cast<int>(THREAD_COUNT) - 2);
 
 	/// <summary>
 	/// Does a wrapping add to the specified value, and returns the original
@@ -68,7 +62,10 @@ namespace hemera {
 		, threads_searching{ 0 }
 		, threads_running{ 0 }
 		, shutdown_flag{ false }
-		, info{ info}
+		, rand_device{}
+		, rng{ rand_device() }
+		, distribution{ 0, static_cast<int>(THREAD_COUNT) - 2 }
+		, info{ info }
 		, work_allocator{ work_allocator }
 	{}
 	GlobalThreadData::~GlobalThreadData() = default;
@@ -120,7 +117,7 @@ namespace hemera {
 		if (result != nullptr
 			&& 0 == data.global_data->threads_searching
 			) {
-			size_t to_notify = static_cast<size_t>(distribution(rng));
+			size_t to_notify = static_cast<size_t>(data.global_data->distribution(data.global_data->rng));
 			if (to_notify == data.index) {
 				to_notify = (to_notify + 1u) % LOCAL_QUEUE_CAPACITY;
 			}
@@ -205,17 +202,24 @@ namespace hemera {
 
 	void kick_off_processing() {
 		//TODO(ches) we need to create info somewhere where we care about it
+		initialize_builtin_types();
+		initialize_reporting_storage();
+
+		THREAD_COUNT =
+			std::max(1u, std::thread::hardware_concurrency());
+		MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
+
 		Info* info = new Info();
 		std::pmr::monotonic_buffer_resource work_allocator{};
 
 		GlobalThreadData global_data{ info, &work_allocator };
-		for (uint32_t i = 0; i < (int)THREAD_COUNT; ++i) {
+		for (uint32_t i = 0; i < THREAD_COUNT; ++i) {
 			WorkThreadData* new_thread = new WorkThreadData(global_data);
 			new_thread->index = i;
 			global_data.thread_data.push_back(new_thread);
 		}
 
-		for (size_t i = 0; i < (size_t)THREAD_COUNT; ++i) {
+		for (size_t i = 0; i < static_cast<size_t>(THREAD_COUNT); ++i) {
 			std::jthread new_thread(do_work, std::ref(*global_data.thread_data[i]));
 		}
 
@@ -267,7 +271,7 @@ namespace hemera {
 				break;
 			}
 			Work* dumped = queue.buffer[wrapping_add(queue.head)];
-			global_queue.enqueue_unsafe(dumped);
+			global_queue.enqueue_unsafe(std::move(dumped));
 		}
 	}
 
@@ -299,7 +303,7 @@ namespace hemera {
 	}
 
 	bool steal_work(WorkThreadData& stealer) {
-		const int start = distribution(rng);
+		const unsigned int start = static_cast<unsigned int>(stealer.global_data->distribution(stealer.global_data->rng));
 
 		for (unsigned int i = 0; i < THREAD_COUNT; ++i) {
 			unsigned int index = (start + i) % THREAD_COUNT;

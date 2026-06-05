@@ -44,7 +44,7 @@ namespace hemera {
 		std::cout << VERSION_COPYRIGHT_STR << std::endl;
 	}
 
-	int main(int argc, char* argv[])
+	static int main(int argc, char* argv[])
 	{
 		Logger::init();
 		Allocator<> arg_alloc;

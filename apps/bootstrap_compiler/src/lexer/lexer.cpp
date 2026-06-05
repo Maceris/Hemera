@@ -286,7 +286,6 @@ namespace hemera::lexer {
 				report_error(ErrorCode::E2001, file_path, tokenizer.line_number, tokenizer.column_number);
 				goto switch_start;
 			}
-			break;
 		case State::block_comment:
 			switch (next_char(tokenizer, input_stream, start_line, start_column, token_contents)) {
 			case '*':
@@ -599,7 +598,6 @@ namespace hemera::lexer {
 				state = State::literal_char;
 				goto switch_start;
 			}
-			break;
 		case State::literal_string:
 			switch (next_char(tokenizer, input_stream)) {
 			case '"':
@@ -641,7 +639,6 @@ namespace hemera::lexer {
 				state = State::literal_string;
 				goto switch_start;
 			}
-			break;
 		case State::minus:
 			switch (peek_char(tokenizer)) {
 			case '>':
@@ -1188,7 +1185,6 @@ namespace hemera::lexer {
 		case TokenType::SYM_RPAREN:
 		case TokenType::SYM_UNDERSCORE:
 		case TokenType::SYM_UNINITIALIZED:
-		default:
 			string_alloc.delete_object(token_contents);
 			token_contents = nullptr;
 			break;

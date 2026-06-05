@@ -39,12 +39,12 @@ namespace hemera {
 
 	void work_execution(WorkThreadData& executor, WorkTarget& target) {
 		//TODO(ches) do this
-		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
+		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
 	}
 	
 	void work_if_else(WorkThreadData& executor, WorkTarget& target) {
 		//TODO(ches) do this
-		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
+		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
 	}
 
 	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
@@ -59,7 +59,7 @@ namespace hemera {
 		// Add work for those files to be parsed
 		
 		//TODO(ches) do this
-		if ((void*)&executor == (void*)&target) {}//TODO(ches) remove this
+		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
 	}
 	
 	void work_parse(WorkThreadData& executor, WorkTarget& target) {

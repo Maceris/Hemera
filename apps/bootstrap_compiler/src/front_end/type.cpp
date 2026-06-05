@@ -34,15 +34,15 @@ namespace hemera {
 	TypeInfoArray::~TypeInfoArray() = default;
 
 
-	TypeInfoEnum::TypeInfoEnum(InternedString name, size_t size)
-		: TypeInfo{ TypeInfoVariant::ENUM, size }
+	TypeInfoEnum::TypeInfoEnum(InternedString name, size_t size_)
+		: TypeInfo{ TypeInfoVariant::ENUM, size_ }
 		, name{ name }
 	{}
 	TypeInfoEnum::~TypeInfoEnum() = default;
 
 
-	TypeInfoFloat::TypeInfoFloat(Endianness endianness, size_t size)
-		: TypeInfo{ TypeInfoVariant::FLOAT, size }
+	TypeInfoFloat::TypeInfoFloat(Endianness endianness, size_t size_)
+		: TypeInfo{ TypeInfoVariant::FLOAT, size_ }
 		, endianness{ endianness }
 	{}
 	TypeInfoFloat::~TypeInfoFloat() = default;
@@ -55,8 +55,8 @@ namespace hemera {
 
 
 	TypeInfoInteger::TypeInfoInteger(bool is_signed, Endianness endianness,
-		size_t size)
-		: TypeInfo{ TypeInfoVariant::INTEGER, size }
+		size_t size_)
+		: TypeInfo{ TypeInfoVariant::INTEGER, size_ }
 		, is_signed{ is_signed }
 		, endianness{ endianness }
 	{}
@@ -64,8 +64,8 @@ namespace hemera {
 
 
 	TypeInfoPointer::TypeInfoPointer(TypeInfo* base_type, bool is_relative,
-		bool is_mutable, size_t size)
-		: TypeInfo{ TypeInfoVariant::POINTER, size }
+		bool is_mutable, size_t size_)
+		: TypeInfo{ TypeInfoVariant::POINTER, size_ }
 		, base_type{ base_type }
 		, is_relative{ is_relative }
 		, is_mutable{ is_mutable }
@@ -82,81 +82,80 @@ namespace hemera {
 	TypeInfoString::~TypeInfoString() = default;
 
 
-	TypeInfoStruct::TypeInfoStruct(InternedString name, size_t size)
-		: TypeInfo{ TypeInfoVariant::STRUCT, size }
+	TypeInfoStruct::TypeInfoStruct(InternedString name, size_t size_)
+		: TypeInfo{ TypeInfoVariant::STRUCT, size_ }
 		, name{ name }
 	{}
 	TypeInfoStruct::~TypeInfoStruct() = default;
 	
 
-	TypeInfoUnion::TypeInfoUnion(InternedString name, size_t size)
-		: TypeInfo{ TypeInfoVariant::STRUCT, size }
+	TypeInfoUnion::TypeInfoUnion(InternedString name, size_t size_)
+		: TypeInfo{ TypeInfoVariant::STRUCT, size_ }
 		, name{ name }
 	{}
 	TypeInfoUnion::~TypeInfoUnion() = default;
 
-
-	TypeInfo* BUILTIN_any      = new TypeInfo(TypeInfoVariant::ANY,        sizeof(builtin::_any));
-	TypeInfo* BUILTIN_b8       = new TypeInfo(TypeInfoVariant::BOOLEAN,    8);
-	TypeInfo* BUILTIN_b16      = new TypeInfo(TypeInfoVariant::BOOLEAN,    16);
-	TypeInfo* BUILTIN_b32      = new TypeInfo(TypeInfoVariant::BOOLEAN,    32);
-	TypeInfo* BUILTIN_b64      = new TypeInfo(TypeInfoVariant::BOOLEAN,    64);
-	TypeInfo* BUILTIN_bool     = new TypeInfo(TypeInfoVariant::BOOLEAN,    sizeof(builtin::_bool));
-	TypeInfo* BUILTIN_c16      = new TypeInfo(TypeInfoVariant::COMPLEX,    16);
-	TypeInfo* BUILTIN_c32      = new TypeInfo(TypeInfoVariant::COMPLEX,    32);
-	TypeInfo* BUILTIN_c64      = new TypeInfo(TypeInfoVariant::COMPLEX,    64);
-	TypeInfo* BUILTIN_c128     = new TypeInfo(TypeInfoVariant::COMPLEX,    128);
-	TypeInfo* BUILTIN_char     = new TypeInfo(TypeInfoVariant::CHAR,       sizeof(builtin::_char));
-	TypeInfo* BUILTIN_cstring  = new TypeInfoString(false);
-	TypeInfo* BUILTIN_f16      = new TypeInfoFloat(Endianness::SYSTEM, 16);
-	TypeInfo* BUILTIN_f16be    = new TypeInfoFloat(Endianness::BIG,    16);
-	TypeInfo* BUILTIN_f16le    = new TypeInfoFloat(Endianness::LITTLE, 16);
-	TypeInfo* BUILTIN_f32      = new TypeInfoFloat(Endianness::SYSTEM, 32);
-	TypeInfo* BUILTIN_f32be    = new TypeInfoFloat(Endianness::BIG,    32);
-	TypeInfo* BUILTIN_f32le    = new TypeInfoFloat(Endianness::LITTLE, 32);
-	TypeInfo* BUILTIN_f64      = new TypeInfoFloat(Endianness::SYSTEM, 64);
-	TypeInfo* BUILTIN_f64be    = new TypeInfoFloat(Endianness::BIG,    64);
-	TypeInfo* BUILTIN_f64le    = new TypeInfoFloat(Endianness::LITTLE, 64);
-	TypeInfo* BUILTIN_i8       = new TypeInfoInteger(true, Endianness::SYSTEM, 8);
-	TypeInfo* BUILTIN_i16      = new TypeInfoInteger(true, Endianness::SYSTEM, 16);
-	TypeInfo* BUILTIN_i16be    = new TypeInfoInteger(true, Endianness::BIG,    16);
-	TypeInfo* BUILTIN_i16le    = new TypeInfoInteger(true, Endianness::LITTLE, 16);
-	TypeInfo* BUILTIN_i32      = new TypeInfoInteger(true, Endianness::SYSTEM, 32);
-	TypeInfo* BUILTIN_i32be    = new TypeInfoInteger(true, Endianness::BIG,    32);
-	TypeInfo* BUILTIN_i32le    = new TypeInfoInteger(true, Endianness::LITTLE, 32);
-	TypeInfo* BUILTIN_i64      = new TypeInfoInteger(true, Endianness::SYSTEM, 64);
-	TypeInfo* BUILTIN_i64be    = new TypeInfoInteger(true, Endianness::BIG,    64);
-	TypeInfo* BUILTIN_i64le    = new TypeInfoInteger(true, Endianness::LITTLE, 64);
-	TypeInfo* BUILTIN_i128     = new TypeInfoInteger(true, Endianness::SYSTEM, 128);
-	TypeInfo* BUILTIN_i128be   = new TypeInfoInteger(true, Endianness::BIG,    128);
-	TypeInfo* BUILTIN_i128le   = new TypeInfoInteger(true, Endianness::LITTLE, 128);
-	TypeInfo* BUILTIN_int      = new TypeInfoInteger(true, Endianness::SYSTEM, sizeof(builtin::_int));
-	TypeInfo* BUILTIN_ptr      = new TypeInfo(TypeInfoVariant::POINTER,    sizeof(builtin::_ptr));
-	TypeInfo* BUILTIN_q32      = new TypeInfo(TypeInfoVariant::QUATERNION, 32);
-	TypeInfo* BUILTIN_q64      = new TypeInfo(TypeInfoVariant::QUATERNION, 64);
-	TypeInfo* BUILTIN_q128     = new TypeInfo(TypeInfoVariant::QUATERNION, 128);
-	TypeInfo* BUILTIN_q256     = new TypeInfo(TypeInfoVariant::QUATERNION, 256);
-	TypeInfo* BUILTIN_rawptr   = new TypeInfo(TypeInfoVariant::POINTER,    sizeof(builtin::_rawptr));
-	TypeInfo* BUILTIN_string   = new TypeInfoString(false);
-	TypeInfo* BUILTIN_type     = new TypeInfo(TypeInfoVariant::TYPE,       sizeof(builtin::_type));
-	TypeInfo* BUILTIN_u8       = new TypeInfoInteger(false, Endianness::SYSTEM, 8);
-	TypeInfo* BUILTIN_u16      = new TypeInfoInteger(false, Endianness::SYSTEM, 16);
-	TypeInfo* BUILTIN_u16be    = new TypeInfoInteger(false, Endianness::BIG,    16);
-	TypeInfo* BUILTIN_u16le    = new TypeInfoInteger(false, Endianness::LITTLE, 16);
-	TypeInfo* BUILTIN_u32      = new TypeInfoInteger(false, Endianness::SYSTEM, 32);
-	TypeInfo* BUILTIN_u32be    = new TypeInfoInteger(false, Endianness::BIG,    32);
-	TypeInfo* BUILTIN_u32le    = new TypeInfoInteger(false, Endianness::LITTLE, 32);
-	TypeInfo* BUILTIN_u64      = new TypeInfoInteger(false, Endianness::SYSTEM, 64);
-	TypeInfo* BUILTIN_u64be    = new TypeInfoInteger(false, Endianness::BIG,    64);
-	TypeInfo* BUILTIN_u64le    = new TypeInfoInteger(false, Endianness::LITTLE, 64);
-	TypeInfo* BUILTIN_u128     = new TypeInfoInteger(false, Endianness::SYSTEM, 128);
-	TypeInfo* BUILTIN_u128be   = new TypeInfoInteger(false, Endianness::BIG,    128);
-	TypeInfo* BUILTIN_u128le   = new TypeInfoInteger(false, Endianness::LITTLE, 128);
-	TypeInfo* BUILTIN_uint     = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uint));
-	TypeInfo* BUILTIN_uintptr  = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uintptr));
+	TypeInfo* BUILTIN_any;
+	TypeInfo* BUILTIN_b8;
+	TypeInfo* BUILTIN_b16;
+	TypeInfo* BUILTIN_b32;
+	TypeInfo* BUILTIN_b64;
+	TypeInfo* BUILTIN_bool;
+	TypeInfo* BUILTIN_c16;
+	TypeInfo* BUILTIN_c32;
+	TypeInfo* BUILTIN_c64;
+	TypeInfo* BUILTIN_c128;
+	TypeInfo* BUILTIN_char;
+	TypeInfo* BUILTIN_cstring;
+	TypeInfo* BUILTIN_f16;
+	TypeInfo* BUILTIN_f16be;
+	TypeInfo* BUILTIN_f16le;
+	TypeInfo* BUILTIN_f32;
+	TypeInfo* BUILTIN_f32be;
+	TypeInfo* BUILTIN_f32le;
+	TypeInfo* BUILTIN_f64;
+	TypeInfo* BUILTIN_f64be;
+	TypeInfo* BUILTIN_f64le;
+	TypeInfo* BUILTIN_i8;
+	TypeInfo* BUILTIN_i16;
+	TypeInfo* BUILTIN_i16be;
+	TypeInfo* BUILTIN_i16le;
+	TypeInfo* BUILTIN_i32;
+	TypeInfo* BUILTIN_i32be;
+	TypeInfo* BUILTIN_i32le;
+	TypeInfo* BUILTIN_i64;
+	TypeInfo* BUILTIN_i64be;
+	TypeInfo* BUILTIN_i64le;
+	TypeInfo* BUILTIN_i128;
+	TypeInfo* BUILTIN_i128be;
+	TypeInfo* BUILTIN_i128le;
+	TypeInfo* BUILTIN_int;
+	TypeInfo* BUILTIN_ptr;
+	TypeInfo* BUILTIN_q32;
+	TypeInfo* BUILTIN_q64;
+	TypeInfo* BUILTIN_q128;
+	TypeInfo* BUILTIN_q256;
+	TypeInfo* BUILTIN_rawptr;
+	TypeInfo* BUILTIN_string;
+	TypeInfo* BUILTIN_type;
+	TypeInfo* BUILTIN_u8;
+	TypeInfo* BUILTIN_u16;
+	TypeInfo* BUILTIN_u16be;
+	TypeInfo* BUILTIN_u16le;
+	TypeInfo* BUILTIN_u32;
+	TypeInfo* BUILTIN_u32be;
+	TypeInfo* BUILTIN_u32le;
+	TypeInfo* BUILTIN_u64;
+	TypeInfo* BUILTIN_u64be;
+	TypeInfo* BUILTIN_u64le;
+	TypeInfo* BUILTIN_u128;
+	TypeInfo* BUILTIN_u128be;
+	TypeInfo* BUILTIN_u128le;
+	TypeInfo* BUILTIN_uint;
+	TypeInfo* BUILTIN_uintptr;
 	
-	TypeInfo* BUILTIN_void  = new TypeInfo(TypeInfoVariant::VOID, 0);
-	TypeInfo* BUILTIN_poisoned_value  = new TypeInfo(TypeInfoVariant::VOID, 0);
+	TypeInfo* BUILTIN_void;
+	TypeInfo* BUILTIN_poisoned_value;
 
 	std::string to_string(TypeInfo const* type) {
 		//TODO(ches) handle aliases
@@ -600,7 +599,6 @@ namespace hemera {
 			// We couldn't rule out conversion
 			return true;
 		}
-			break;
 		case TypeInfoVariant::STRING:
 		{
 			TypeInfoString const* from_specific =
@@ -617,5 +615,69 @@ namespace hemera {
 			to_string(actual_from), to_string(actual_to))
 		);
 		return false;
+	}
+
+	void initialize_builtin_types() {
+		BUILTIN_any = new TypeInfo(TypeInfoVariant::ANY, sizeof(builtin::_any));
+		BUILTIN_b8 = new TypeInfo(TypeInfoVariant::BOOLEAN, 8);
+		BUILTIN_b16 = new TypeInfo(TypeInfoVariant::BOOLEAN, 16);
+		BUILTIN_b32 = new TypeInfo(TypeInfoVariant::BOOLEAN, 32);
+		BUILTIN_b64 = new TypeInfo(TypeInfoVariant::BOOLEAN, 64);
+		BUILTIN_bool = new TypeInfo(TypeInfoVariant::BOOLEAN, sizeof(builtin::_bool));
+		BUILTIN_c16 = new TypeInfo(TypeInfoVariant::COMPLEX, 16);
+		BUILTIN_c32 = new TypeInfo(TypeInfoVariant::COMPLEX, 32);
+		BUILTIN_c64 = new TypeInfo(TypeInfoVariant::COMPLEX, 64);
+		BUILTIN_c128 = new TypeInfo(TypeInfoVariant::COMPLEX, 128);
+		BUILTIN_char = new TypeInfo(TypeInfoVariant::CHAR, sizeof(builtin::_char));
+		BUILTIN_cstring = new TypeInfoString(false);
+		BUILTIN_f16 = new TypeInfoFloat(Endianness::SYSTEM, 16);
+		BUILTIN_f16be = new TypeInfoFloat(Endianness::BIG, 16);
+		BUILTIN_f16le = new TypeInfoFloat(Endianness::LITTLE, 16);
+		BUILTIN_f32 = new TypeInfoFloat(Endianness::SYSTEM, 32);
+		BUILTIN_f32be = new TypeInfoFloat(Endianness::BIG, 32);
+		BUILTIN_f32le = new TypeInfoFloat(Endianness::LITTLE, 32);
+		BUILTIN_f64 = new TypeInfoFloat(Endianness::SYSTEM, 64);
+		BUILTIN_f64be = new TypeInfoFloat(Endianness::BIG, 64);
+		BUILTIN_f64le = new TypeInfoFloat(Endianness::LITTLE, 64);
+		BUILTIN_i8 = new TypeInfoInteger(true, Endianness::SYSTEM, 8);
+		BUILTIN_i16 = new TypeInfoInteger(true, Endianness::SYSTEM, 16);
+		BUILTIN_i16be = new TypeInfoInteger(true, Endianness::BIG, 16);
+		BUILTIN_i16le = new TypeInfoInteger(true, Endianness::LITTLE, 16);
+		BUILTIN_i32 = new TypeInfoInteger(true, Endianness::SYSTEM, 32);
+		BUILTIN_i32be = new TypeInfoInteger(true, Endianness::BIG, 32);
+		BUILTIN_i32le = new TypeInfoInteger(true, Endianness::LITTLE, 32);
+		BUILTIN_i64 = new TypeInfoInteger(true, Endianness::SYSTEM, 64);
+		BUILTIN_i64be = new TypeInfoInteger(true, Endianness::BIG, 64);
+		BUILTIN_i64le = new TypeInfoInteger(true, Endianness::LITTLE, 64);
+		BUILTIN_i128 = new TypeInfoInteger(true, Endianness::SYSTEM, 128);
+		BUILTIN_i128be = new TypeInfoInteger(true, Endianness::BIG, 128);
+		BUILTIN_i128le = new TypeInfoInteger(true, Endianness::LITTLE, 128);
+		BUILTIN_int = new TypeInfoInteger(true, Endianness::SYSTEM, sizeof(builtin::_int));
+		BUILTIN_ptr = new TypeInfo(TypeInfoVariant::POINTER, sizeof(builtin::_ptr));
+		BUILTIN_q32 = new TypeInfo(TypeInfoVariant::QUATERNION, 32);
+		BUILTIN_q64 = new TypeInfo(TypeInfoVariant::QUATERNION, 64);
+		BUILTIN_q128 = new TypeInfo(TypeInfoVariant::QUATERNION, 128);
+		BUILTIN_q256 = new TypeInfo(TypeInfoVariant::QUATERNION, 256);
+		BUILTIN_rawptr = new TypeInfo(TypeInfoVariant::POINTER, sizeof(builtin::_rawptr));
+		BUILTIN_string = new TypeInfoString(false);
+		BUILTIN_type = new TypeInfo(TypeInfoVariant::TYPE, sizeof(builtin::_type));
+		BUILTIN_u8 = new TypeInfoInteger(false, Endianness::SYSTEM, 8);
+		BUILTIN_u16 = new TypeInfoInteger(false, Endianness::SYSTEM, 16);
+		BUILTIN_u16be = new TypeInfoInteger(false, Endianness::BIG, 16);
+		BUILTIN_u16le = new TypeInfoInteger(false, Endianness::LITTLE, 16);
+		BUILTIN_u32 = new TypeInfoInteger(false, Endianness::SYSTEM, 32);
+		BUILTIN_u32be = new TypeInfoInteger(false, Endianness::BIG, 32);
+		BUILTIN_u32le = new TypeInfoInteger(false, Endianness::LITTLE, 32);
+		BUILTIN_u64 = new TypeInfoInteger(false, Endianness::SYSTEM, 64);
+		BUILTIN_u64be = new TypeInfoInteger(false, Endianness::BIG, 64);
+		BUILTIN_u64le = new TypeInfoInteger(false, Endianness::LITTLE, 64);
+		BUILTIN_u128 = new TypeInfoInteger(false, Endianness::SYSTEM, 128);
+		BUILTIN_u128be = new TypeInfoInteger(false, Endianness::BIG, 128);
+		BUILTIN_u128le = new TypeInfoInteger(false, Endianness::LITTLE, 128);
+		BUILTIN_uint = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uint));
+		BUILTIN_uintptr = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uintptr));
+
+		BUILTIN_void = new TypeInfo(TypeInfoVariant::VOID, 0);
+		BUILTIN_poisoned_value = new TypeInfo(TypeInfoVariant::VOID, 0);
 	}
 }

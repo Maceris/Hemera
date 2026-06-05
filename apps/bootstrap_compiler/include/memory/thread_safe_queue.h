@@ -17,18 +17,15 @@ namespace hemera {
 		ThreadSafeQueue& operator=(const ThreadSafeQueue&) = delete;
 		~ThreadSafeQueue() = default;
 
-		template <typename T>
 		void enqueue(T&& data) {
 			std::scoped_lock<std::mutex> lock(mutex);
 			queue.push(std::forward<T>(data));
 		}
 
-		template <typename T>
 		void enqueue_unsafe(T&& data) {
 			queue.push(std::forward<T>(data));
 		}
 
-		template <typename T>
 		T dequeue_or_else(T or_else) {
 			std::scoped_lock<std::mutex> lock(mutex);
 

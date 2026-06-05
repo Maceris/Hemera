@@ -11,8 +11,8 @@ namespace hemera {
 	static std::mutex storage_mutex;
 	static bool reporting_enabled = true;
 	static bool printing_enabled = true;
-	static std::vector<ErrorCode> error_list_storage{};
-	static std::vector<WarningCode> warning_list_storage{};
+	static std::vector<ErrorCode>* error_list_storage;
+	static std::vector<WarningCode>* warning_list_storage;
 
 	DisableReportingForBlock::DisableReportingForBlock() {
 		disable_reporting();
@@ -22,8 +22,25 @@ namespace hemera {
 		enable_reporting();
 	}
 
+	void destroy_reporting_storage() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+
+		if (error_list_storage != nullptr) {
+			error_list_storage->clear();
+			delete error_list_storage;
+			error_list_storage = nullptr;
+		}
+		if (warning_list_storage != nullptr) {
+			warning_list_storage->clear();
+			delete warning_list_storage;
+			warning_list_storage = nullptr;
+		}
+		destroy_error_info_map();
+		destroy_warning_info_map();
+	}
+
 	void disable_reporting() {
-		std::lock_guard<std::mutex> lock(cout_mutex);
+		std::lock_guard<std::mutex> lock(storage_mutex);
 		reporting_enabled = false;
 	}
 
@@ -33,7 +50,7 @@ namespace hemera {
 	}
 
 	void enable_reporting() {
-		std::lock_guard<std::mutex> lock(cout_mutex);
+		std::lock_guard<std::mutex> lock(storage_mutex);
 		reporting_enabled = true;
 	}
 
@@ -41,27 +58,48 @@ namespace hemera {
 		std::lock_guard<std::mutex> lock(cout_mutex);
 		printing_enabled = true;
 	}
+	
+	void initialize_reporting_storage() {
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		
+		initialize_error_info_map();
+		initialize_warning_info_map();
+
+		if (error_list_storage == nullptr) {
+			error_list_storage = new std::vector<ErrorCode>();
+		}
+		if (warning_list_storage == nullptr) {
+			warning_list_storage = new std::vector<WarningCode>();
+		}
+	}
 
 	void reset_reporting_storage() {
-		std::lock_guard<std::mutex> lock(cout_mutex);
+		std::lock_guard<std::mutex> lock(storage_mutex);
 
-		error_list_storage.clear();
-		warning_list_storage.clear();
+		if (error_list_storage != nullptr) {
+			error_list_storage->clear();
+		}
+		if (warning_list_storage != nullptr) {
+			warning_list_storage->clear();
+		}
 	}
 
 	static void log_error(ErrorCode error) {
 		std::lock_guard<std::mutex> lock(storage_mutex);
-		error_list_storage.push_back(error);
+
+		if (error_list_storage != nullptr) {
+			error_list_storage->push_back(error);
+		}
 	}
 
 	static void print_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
-		auto it = ErrorInfoMap.find(error);
+		auto it = error_info_map->find(error);
 
-		ErrorInfo info = (it != ErrorInfoMap.end())
-			? info = it->second
+		ErrorInfo info = (it != error_info_map->end())
+			? it->second
 			: ErrorInfo("E0000", "Unknown error");
 
 		std::string extension = "";
@@ -113,17 +151,20 @@ namespace hemera {
 
 	static void log_warning(WarningCode warning) {
 		std::lock_guard<std::mutex> lock(storage_mutex);
-		warning_list_storage.push_back(warning);
+
+		if (warning_list_storage != nullptr) {
+			warning_list_storage->push_back(warning);
+		}
 	}
 
 	static void print_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
-		auto it = WarningInfoMap.find(warning);
+		auto it = warning_info_map->find(warning);
 
-		WarningInfo info = (it != WarningInfoMap.end())
-			? info = it->second
+		WarningInfo info = (it != warning_info_map->end())
+			? it->second
 			: WarningInfo("W0000", "Unknown warning");
 
 		std::string extension = "";
@@ -173,22 +214,18 @@ namespace hemera {
 
 	size_t error_count() {
 		std::lock_guard<std::mutex> lock(storage_mutex);
-		return error_list_storage.size();
-	}
-	
-	std::vector<ErrorCode> error_list() {
-		std::lock_guard<std::mutex> lock(storage_mutex);
-		return error_list_storage;
+		if (error_list_storage == nullptr) {
+			return 0;
+		}
+		return error_list_storage->size();
 	}
 
 	size_t warning_count() {
 		std::lock_guard<std::mutex> lock(storage_mutex);
-		return warning_list_storage.size();
-	}
-
-	std::vector<WarningCode> warning_list() {
-		std::lock_guard<std::mutex> lock(storage_mutex);
-		return warning_list_storage;
+		if (warning_list_storage == nullptr) {
+			return 0;
+		}
+		return warning_list_storage->size();
 	}
 
 }

@@ -60,7 +60,7 @@ namespace hemera::hlir {
 		/// <summary>
 		/// Not used, only for iterating.
 		/// </summary>
-		_COUNT,
+		_count,
 	};
 	
 	enum class ValueType { 
@@ -71,7 +71,7 @@ namespace hemera::hlir {
 
 	struct Value {
 		ValueType value_type;
-		char _padding[4] = { 0 };
+		char _value_padding[4] = { 0 };
 		TypeID type;//TODO(ches) actual type?
 
 		Value(ValueType value_type);
@@ -89,7 +89,7 @@ namespace hemera::hlir {
 
 	struct User : public Value {
 		UserType user_type;
-		char _padding[4] = { 0 };
+		char _user_padding[4] = { 0 };
 
 		User(UserType user_type);
 		User(const User& other);
@@ -127,7 +127,7 @@ namespace hemera::hlir {
 
 	struct Instruction : public User {
 		InstructionType instruction_type;
-		char _padding[4] = { 0 };
+		char _instruction_padding[4] = { 0 };
 
 		Instruction(InstructionType user_type);
 		Instruction(const Instruction& other);
@@ -169,7 +169,7 @@ namespace hemera::hlir {
 
 	struct CallBase : public Instruction {
 		CallType call_type;
-		char _padding[4] = { 0 };
+		char _call_base_padding[4] = { 0 };
 
 		CallBase(CallType call_type);
 		CallBase(const CallBase& other);
@@ -245,7 +245,10 @@ namespace hemera::hlir {
 		/// <returns>The newly allocated instruction.</returns>
 		template <typename T>
 			requires std::derived_from<T, Instruction>
-		T* create_instruction();
+		T* create_instruction() {
+			T* result = allocator.allocate_object<T>();
+			return result;
+		}
 	};
 
 	struct Function {

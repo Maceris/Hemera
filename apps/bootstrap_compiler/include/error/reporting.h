@@ -4,10 +4,15 @@
 #include <string_view>
 #include <vector>
 
-#include "errors.h"
-#include "warnings.h"
+#include "hemera_errors.h"
+#include "hemera_warnings.h"
 
 namespace hemera {
+
+	/// <summary>
+	/// Delete the reporting storage.
+	/// </summary>
+	void destroy_reporting_storage();
 
 	/// <summary>
 	/// Used for testing, turns off error reporting globally.
@@ -22,6 +27,10 @@ namespace hemera {
 	void enable_reporting();
 	void enable_reporting_printing();
 
+	/// <summary>
+	/// Allocate the reporting storage. Must be done before reporting anything.
+	/// </summary>
+	void initialize_reporting_storage();
 	void reset_reporting_storage();
 
 	/// <summary>
@@ -54,8 +63,5 @@ namespace hemera {
 		std::string_view additional_info);
 
 	size_t error_count();
-	std::vector<ErrorCode> error_list();
 	size_t warning_count();
-	std::vector<WarningCode> warning_list();
-
 }

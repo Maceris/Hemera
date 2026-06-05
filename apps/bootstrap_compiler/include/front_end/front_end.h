@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <memory_resource>
+#include <random>
 #include <thread>
 
 #include "front_end/info.h"
@@ -16,7 +17,7 @@ namespace hemera {
 	constexpr uint8_t GLOBAL_QUEUE_INTERVAL = 31;
 	constexpr uint8_t RUN_NEXT_CAP = 3;
 
-	extern const uint32_t THREAD_COUNT;
+	extern uint32_t THREAD_COUNT;
 
 	struct Queue {
 		/// <summary>
@@ -81,6 +82,10 @@ namespace hemera {
 		std::atomic_uint32_t threads_running;
 		std::atomic_bool shutdown_flag;
 		char _padding[3] = { 0 };
+		std::random_device rand_device;
+		std::mt19937 rng;
+		std::uniform_int_distribution<> distribution;
+
 		Info* info;
 		std::pmr::monotonic_buffer_resource* work_allocator;
 

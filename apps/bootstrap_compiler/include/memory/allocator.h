@@ -24,6 +24,12 @@ namespace hemera {
 	/// A cheap const pointer to an interned string.
 	/// </summary>
 	using InternedString = MyString const*;
+
+	/// <summary>
+	/// Initialize the interned string cache. Must be called before interning
+	/// anything.
+	/// </summary>
+	void init_interned_string_cache();
 	
 	/// <summary>
 	/// Converts the provided string to an interned version, creating a new

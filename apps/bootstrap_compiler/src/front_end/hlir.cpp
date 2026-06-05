@@ -132,13 +132,6 @@ namespace hemera::hlir {
 
 	BasicBlock::~BasicBlock() = default;
 
-	template <typename T>
-		requires std::derived_from<T, Instruction>
-	T* BasicBlock::create_instruction() {
-		T* result = allocator.allocate_object<T>();
-		return result;
-	}
-
 	Function::Function(Allocator<>& allocator)
 		: allocator{ allocator }
 		, basic_blocks{ allocator }

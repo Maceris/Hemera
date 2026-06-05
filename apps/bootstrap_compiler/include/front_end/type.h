@@ -305,7 +305,7 @@ namespace hemera {
 		TypeInfo* base_type;
 		InternedString name;
 		bool distinct;
-		char _padding[7] = { 0 };
+		char _type_info_alias_padding[7] = { 0 };
 		
 		/// <summary>
 		/// Create a new type alias.
@@ -336,7 +336,7 @@ namespace hemera {
 	
 	struct TypeInfoFloat : public TypeInfo {
 		Endianness endianness;
-		char _padding[7] = { 0 };
+		char _type_info_float_padding[7] = { 0 };
 
 		TypeInfoFloat(Endianness endianness, size_t size);
 		~TypeInfoFloat();
@@ -346,7 +346,7 @@ namespace hemera {
 		TypeInfo* type;
 		InternedString name;
 		bool is_varargs;
-		char _padding[7] = { 0 };
+		char _function_input_padding[7] = { 0 };
 	};
 
 	struct FunctionOutput {
@@ -364,7 +364,7 @@ namespace hemera {
 	struct TypeInfoInteger : public TypeInfo {
 		bool is_signed;
 		Endianness endianness;
-		char _padding[6] = { 0 };
+		char _type_info_integer_padding[6] = { 0 };
 
 		TypeInfoInteger(bool is_signed, Endianness endianness, size_t size);
 		~TypeInfoInteger();
@@ -374,7 +374,7 @@ namespace hemera {
 		TypeInfo* base_type;
 		bool is_relative;
 		bool is_mutable;
-		char _padding[6] = { 0 };
+		char _type_info_pointer_padding[6] = { 0 };
 
 		TypeInfoPointer(TypeInfo* base_type, bool is_relative, bool is_mutable,
 			size_t size);
@@ -383,7 +383,7 @@ namespace hemera {
 
 	struct TypeInfoString : public TypeInfo {
 		bool is_raw;
-		char _padding[7] = { 0 };
+		char _type_info_string_padding[7] = { 0 };
 
 		TypeInfoString(bool is_raw);
 		~TypeInfoString();
@@ -511,4 +511,6 @@ namespace hemera {
 	/// <param name="to">The type we are converting to.</param>
 	/// <returns>Whether implicit conversion is possible.</returns>
 	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to);
+
+	void initialize_builtin_types();
 }
