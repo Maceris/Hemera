@@ -1,4 +1,4 @@
-# Bootstrap Compiler
+# Compiler
 
 This is the compiler for Hemera.
 
@@ -51,15 +51,18 @@ If using Visual Studio, you can open the Loquat solution and build and run it fr
 
 Note that since this includes LLVM, Debug builds require a very large amount of time and disk space.
 A full debug build could be tens or even hundreds of GB of disk space and will take hours.
-The exact space requirements will vary by system.
+Around 75 GB would be a reasonable estimate. The exact space requirements will vary by system.
 Release builds are very much recommended, but will still not be small or fast.
 
-It's quite likely that you'll need to build several times to get a full/clean build, 
+It's quite likely that you'll need to build a few times to get a full/clean build, 
 as some stages/tools depend on the outputs of others to be used as build tools.
 
 ## Build Issues
 
 **Paths too long on Windows**
+
+Try moving the project to a directory as close to the root of the disk is possible.
+You can also try this, but it may still cause issues with MSVC:
 
 1. Press Win+R, type regedit, and hit enter
 2. Navigate to HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem

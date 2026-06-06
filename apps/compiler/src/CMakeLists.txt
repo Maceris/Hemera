@@ -1,6 +1,44 @@
 # Hemera compiler source
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.16...3.31.4)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.20.0...4.3.3)
+
+ADD_EXECUTABLE(generate_errors ${SOURCE_DIR}/error/generate_errors.cpp)
+
+TARGET_COMPILE_DEFINITIONS(generate_errors PRIVATE ${HEMERA_DEFINITIONS})
+TARGET_COMPILE_OPTIONS(generate_errors PRIVATE ${HEMERA_OPTIONS})
+
+SET_TARGET_PROPERTIES(generate_errors PROPERTIES OUTPUT_NAME generate_errors)
+
+ADD_CUSTOM_COMMAND(
+  OUTPUT
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h 
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+  COMMAND generate_errors hemera_errors hpp ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
+  COMMAND generate_errors hemera_errors cpp ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+  DEPENDS generate_errors ${ROOT_DIR}/include/error/errors.list
+)
+SET(HEMERA_GENERATED
+  ${HEMERA_GENERATED}
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+)
+
+ADD_CUSTOM_COMMAND(
+  OUTPUT
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+  COMMAND generate_errors hemera_warnings hpp ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
+  COMMAND generate_errors hemera_warnings cpp ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+  DEPENDS generate_errors ${ROOT_DIR}/include/error/warnings.list
+)
+
+SET(HEMERA_GENERATED 
+  ${HEMERA_GENERATED}
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+)
+
+ADD_CUSTOM_TARGET(HemeraGenerated DEPENDS ${HEMERA_GENERATED})
 
 SET(HEADER_FILES
   ${INCLUDE_DIR}/job.h
@@ -63,8 +101,8 @@ SET(TEST_FILES
 ADD_LIBRARY(HemeraLib
   ${HEADER_FILES}
   ${THIRD_PARTY_HEADER_FILES}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.h
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.h
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
   
   ${SOURCE_FILES}
 )
@@ -72,8 +110,8 @@ ADD_LIBRARY(HemeraLib
 ADD_EXECUTABLE(Hemera
   ${HEADER_FILES}
   ${THIRD_PARTY_HEADER_FILES}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.cpp
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.cpp
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
 
   ${SOURCE_DIR}/main.cpp
 )
@@ -129,21 +167,29 @@ TARGET_LINK_LIBRARIES(Hemera HemeraLib ${llvm_libs})
 SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera")
 TARGET_COMPILE_DEFINITIONS(HemeraLib PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
 TARGET_COMPILE_DEFINITIONS(Hemera PRIVATE ${HEMERA_DEFINITIONS})
-TARGET_COMPILE_OPTIONS(HemeraLib PRIVATE ${HEMERA_OPTIONS})
-TARGET_COMPILE_OPTIONS(Hemera PRIVATE ${HEMERA_OPTIONS})
+TARGET_COMPILE_OPTIONS(HemeraLib PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
+TARGET_COMPILE_OPTIONS(Hemera PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
 
 ADD_DEPENDENCIES(Hemera HemeraGenerated)
 
 enable_testing()
+
+IF(MSVC)
+    # Append custom paths directly to the VC++ Include Directories list since for some reason it doesn't normally
+    LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/googletest/googletest/include)
+ENDIF()
 
 ADD_EXECUTABLE(HemeraTest
   ${HEADER_FILES}
   ${THIRD_PARTY_HEADER_FILES}
   
   ${TEST_FILES}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/errors.cpp
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/warnings.cpp
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
 )
+
+TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})
+TARGET_COMPILE_DEFINITIONS(HemeraTest PRIVATE ${HEMERA_DEFINITIONS})
 
 TARGET_LINK_LIBRARIES(HemeraTest
   GTest::gtest_main
