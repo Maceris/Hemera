@@ -212,6 +212,7 @@ namespace hemera {
 		}
 	}
 
+
 	size_t error_count() {
 		std::lock_guard<std::mutex> lock(storage_mutex);
 		if (error_list_storage == nullptr) {
@@ -220,12 +221,20 @@ namespace hemera {
 		return error_list_storage->size();
 	}
 
+	std::vector<ErrorCode>* error_list() {
+		return error_list_storage;
+	}
+
 	size_t warning_count() {
 		std::lock_guard<std::mutex> lock(storage_mutex);
 		if (warning_list_storage == nullptr) {
 			return 0;
 		}
 		return warning_list_storage->size();
+	}
+
+	std::vector<WarningCode>* warning_list() {
+		return warning_list_storage;
 	}
 
 }

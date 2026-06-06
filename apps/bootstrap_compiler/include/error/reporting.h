@@ -63,5 +63,7 @@ namespace hemera {
 		std::string_view additional_info);
 
 	size_t error_count();
+	std::vector<ErrorCode>* error_list();
 	size_t warning_count();
+	std::vector<WarningCode>* warning_list();
 }

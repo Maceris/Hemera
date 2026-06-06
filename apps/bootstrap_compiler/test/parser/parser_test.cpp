@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 
-#include "errors.h"
+#include "hemera_errors.h"
 #include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
@@ -16,7 +16,7 @@ using hemera::MyVector;
 using hemera::Token;
 
 static std::optional<hemera::ErrorCode> find_error(std::string_view name) {
-	for (const auto& entry : hemera::ErrorInfoMap) {
+	for (const auto& entry : *hemera::error_info_map) {
 		if (name.compare(entry.second.string_value) == 0) {
 			return entry.first;
 		}
@@ -38,7 +38,6 @@ TEST(ParserSmoke, SmokeTest)
 
 	if (!file.is_open()) {
 		FAIL();
-		return;
 	}
 
 	hemera::lexer::lex(file, tokens, alloc, file_path);
@@ -60,7 +59,6 @@ TEST(ParserSmoke, ErrorScenarios)
 
 	if (!std::filesystem::exists(dir_path) || !std::filesystem::is_directory(dir_path)) {
 		FAIL();
-		return;
 	}
 
 	for (const auto& file : std::filesystem::directory_iterator(dir_path)) {
@@ -72,26 +70,26 @@ TEST(ParserSmoke, ErrorScenarios)
 		std::optional<hemera::ErrorCode> maybe_code = find_error(error_code);
 		if (!maybe_code) {
 			FAIL();
-			return;
 		}
 		hemera::ErrorCode actual_code = maybe_code.value();
 
 		Allocator<> alloc;
 		MyVector<Token> tokens;
 
-		std::ifstream file(file_path);
+		std::ifstream file_stream(file_path);
 
-		if (!file.is_open()) {
+		if (!file_stream.is_open()) {
 			FAIL();
-			return;
 		}
 
-		hemera::lexer::lex(file, tokens, alloc, file_path);
+		hemera::lexer::lex(file_stream, tokens, alloc, file_path);
 		EXPECT_FALSE(tokens.empty());
 		
 		Allocator<> node_alloc;
 
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc);
+
+		EXPECT_NE(ast, nullptr);
 
 		EXPECT_EQ(hemera::error_count(), 1) 
 			<< std::format("Incorrect number of errors for {}", file_name);
@@ -99,9 +97,9 @@ TEST(ParserSmoke, ErrorScenarios)
 			continue;
 		}
 		
-		const hemera::ErrorInfo& actual_info = hemera::ErrorInfoMap.find(hemera::error_list()[0])->second;
+		const hemera::ErrorInfo& actual_info = hemera::error_info_map->find(hemera::error_list()->at(0))->second;
 
-		EXPECT_EQ(hemera::error_list()[0], actual_code)
+		EXPECT_EQ(hemera::error_list()->at(0), actual_code)
 			<< std::format("Incorrect error code for {}, got {}: {}", file_name, actual_info.string_value, actual_info.message);
 	}
 

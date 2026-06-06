@@ -387,15 +387,15 @@ TEST(LexerTests, InvalidTokenTest)
 	inputs.push_back(std::make_tuple("\\\\\r", 
 		std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
 	for (int invalid : invalid_chars) {
-		inputs.push_back(std::make_tuple(std::format("'{}'", (char)invalid),
+		inputs.push_back(std::make_tuple(std::format("'{}'", static_cast<char>(invalid)),
 			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
-		inputs.push_back(std::make_tuple(std::format("\"{}\"", (char)invalid),
+		inputs.push_back(std::make_tuple(std::format("\"{}\"", static_cast<char>(invalid)),
 			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
-		inputs.push_back(std::make_tuple(std::format("'\\{}'", (char)invalid),
+		inputs.push_back(std::make_tuple(std::format("'\\{}'", static_cast<char>(invalid)),
 			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
-		inputs.push_back(std::make_tuple(std::format("\"\\{}\"", (char)invalid),
+		inputs.push_back(std::make_tuple(std::format("\"\\{}\"", static_cast<char>(invalid)),
 			std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
-		inputs.push_back(std::make_tuple(std::format("\\\\{}", (char)invalid),
+		inputs.push_back(std::make_tuple(std::format("\\\\{}", static_cast<char>(invalid)),
 			std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
 	}
 	
@@ -403,7 +403,6 @@ TEST(LexerTests, InvalidTokenTest)
 	inputs.push_back(std::make_tuple("\\", std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
 	inputs.push_back(std::make_tuple("\r", std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
 
-	int entry = 0;
 	for (const auto& input : inputs) {
 		output.clear();
 
@@ -419,7 +418,6 @@ TEST(LexerTests, InvalidTokenTest)
 			<< std::format("Incorrect number of tokens for {:}", sanitize(text));
 		
 		if (output.size() != expected.size()) {
-			entry++;
 			continue;
 		}
 
@@ -429,7 +427,6 @@ TEST(LexerTests, InvalidTokenTest)
 			EXPECT_EQ(output[i].value, nullptr)
 				<< std::format("Incorrect string contents for {:}", sanitize(text));
 		}
-		entry++;
 	}
 
 	hemera::purge_interned_string_cache();
