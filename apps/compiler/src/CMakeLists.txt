@@ -43,6 +43,7 @@ ADD_CUSTOM_TARGET(HemeraGenerated DEPENDS ${HEMERA_GENERATED})
 SET(HEADER_FILES
   ${INCLUDE_DIR}/job.h
   ${INCLUDE_DIR}/version.h
+  ${INCLUDE_DIR}/back_end/back_end.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/front_end/event.h
@@ -67,6 +68,7 @@ SET(HEADER_FILES
 )
 
 SET(SOURCE_FILES
+  ${SOURCE_DIR}/back_end/llvm.cpp
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
@@ -116,14 +118,12 @@ ADD_EXECUTABLE(Hemera
   ${SOURCE_DIR}/main.cpp
 )
 
-llvm_map_components_to_libnames(
-  aarch64
+llvm_map_components_to_libnames(llvm_libs
   aarch64codegen
   aarch64desc
   aarch64info
   aarch64utils
   analysis
-  arm
   armcodegen
   armdesc
   arminfo
@@ -132,28 +132,41 @@ llvm_map_components_to_libnames(
   codegentypes
   core
   debuginfopdb
+  ipo
   irreader
-  llvm_libs
+  linker
   native
+  nativecodegen
+  scalaropts
   support
   transformutils
-  x86
+  vectorize
   x86codegen
   x86desc
   x86info
   x86targetmca
 )
 SEPARATE_ARGUMENTS(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
+TARGET_LINK_LIBRARIES(HemeraLib PUBLIC ${llvm_libs})
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib PUBLIC
   ${INCLUDE_DIR}/
   $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}>
-  ${llvm_libs}
+  $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include>
 )
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib SYSTEM PRIVATE
   ${LLVM_INCLUDE_DIRS}
+  ${THIRD_PARTY_DIR}/llvm-project/llvm/include
+  $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include>
 )
+
+IF(MSVC)
+  # Intellisense doesn't play well with the clang-cl SYSTEM PRIVATE includes
+  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include>)
+  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/llvm-project/llvm/include)
+  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/googletest/googletest/include)
+ENDIF()
 
 TARGET_INCLUDE_DIRECTORIES(Hemera PUBLIC
   ${INCLUDE_DIR}/
@@ -163,7 +176,7 @@ SOURCE_GROUP(TREE ${INCLUDE_DIR} PREFIX "include" FILES ${HEADER_FILES})
 SOURCE_GROUP(TREE ${SOURCE_DIR} PREFIX "src" FILES ${SOURCE_FILES})
 SOURCE_GROUP(TREE ${TEST_DIR} PREFIX "test" FILES ${TEST_FILES})
 
-TARGET_LINK_LIBRARIES(Hemera HemeraLib ${llvm_libs})
+TARGET_LINK_LIBRARIES(Hemera HemeraLib)
 SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera")
 TARGET_COMPILE_DEFINITIONS(HemeraLib PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
 TARGET_COMPILE_DEFINITIONS(Hemera PRIVATE ${HEMERA_DEFINITIONS})
@@ -173,11 +186,6 @@ TARGET_COMPILE_OPTIONS(Hemera PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS
 ADD_DEPENDENCIES(Hemera HemeraGenerated)
 
 enable_testing()
-
-IF(MSVC)
-    # Append custom paths directly to the VC++ Include Directories list since for some reason it doesn't normally
-    LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/googletest/googletest/include)
-ENDIF()
 
 ADD_EXECUTABLE(HemeraTest
   ${HEADER_FILES}
@@ -190,6 +198,9 @@ ADD_EXECUTABLE(HemeraTest
 
 TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})
 TARGET_COMPILE_DEFINITIONS(HemeraTest PRIVATE ${HEMERA_DEFINITIONS})
+TARGET_INCLUDE_DIRECTORIES(HemeraTest SYSTEM PRIVATE
+  ${THIRD_PARTY_DIR}/googletest/googletest/include
+)
 
 TARGET_LINK_LIBRARIES(HemeraTest
   GTest::gtest_main
