@@ -6,19 +6,19 @@ This is the compiler for Hemera.
 
 The main projects are:
 
-generate_errors - Used to convert errors/warnings from text files to C++ code with doc comments
-Hemera - The executable part, essentially just a main method
-HemeraLib - The core project, built as a library so we can run tests
-HemeraTest - Unit test suite for the compiler
+* generate_errors - Used to convert errors/warnings from text files to C++ code with doc comments
+* Hemera - The executable part, essentially just a main method
+* HemeraLib - The core project, built as a library so we can run tests
+* HemeraTest - Unit test suite for the compiler
 
 # Requirements
 
 The LLVM requirements apply, see https://llvm.org/docs/GettingStarted.html#software.
 
-[CMake](http://www.cmake.org/) >=3.20.0
-python >=3.8
-zlib >=1.2.3.4
-libxml2
+* [CMake](http://www.cmake.org/) >=3.20.0
+* python >=3.8
+* zlib >=1.2.3.4
+* libxml2
 
 # Building
 
