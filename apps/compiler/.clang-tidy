@@ -1,0 +1,20 @@
+---
+Checks: >
+  -clang-diagnostic-c++98-compat,
+  -clang-diagnostic-c++98-compat,
+  -clang-diagnostic-c++98-compat-pedantic,
+  -clang-diagnostic-c++11-compat,
+  -clang-diagnostic-pre-c++14-compat,
+  -clang-diagnostic-c99-compat,
+  -clang-diagnostic-unsafe-buffer-usage,
+  -clang-diagnostic-shadow-field-in-constructor,
+  -clang-diagnostic-unused-private-field,
+  -clang-diagnostic-ctad-maybe-unsupported,
+  -clang-diagnostic-switch-default,
+  -clang-diagnostic-pragma-once-outside-header
+
+ExtraArgsBefore:
+  - --driver-mode=cl
+
+ExtraArgs:
+  - -std=c++20

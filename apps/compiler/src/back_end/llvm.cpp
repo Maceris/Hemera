@@ -70,6 +70,8 @@ namespace hemera {
 			destination, nullptr, llvm::CodeGenFileType::ObjectFile, opts,
 			context, &pic);
 
+		destination.flush();
+
 	}
 
 	void BackendLLVM::initialize() {

@@ -5,7 +5,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.20.0...4.3.3)
 ADD_EXECUTABLE(generate_errors ${SOURCE_DIR}/error/generate_errors.cpp)
 
 TARGET_COMPILE_DEFINITIONS(generate_errors PRIVATE ${HEMERA_DEFINITIONS})
-TARGET_COMPILE_OPTIONS(generate_errors PRIVATE ${HEMERA_OPTIONS})
+TARGET_COMPILE_OPTIONS(generate_errors PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
 
 SET_TARGET_PROPERTIES(generate_errors PROPERTIES OUTPUT_NAME generate_errors)
 
@@ -45,6 +45,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/version.h
   ${INCLUDE_DIR}/back_end/back_end.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
+  ${INCLUDE_DIR}/cmd_line/options.h
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
