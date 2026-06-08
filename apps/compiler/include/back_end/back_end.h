@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cmd_line/options.h"
+
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -13,8 +15,9 @@ namespace hemera {
 		virtual ~Backend();
 
 		virtual void destroy();
-		virtual void generate_object_file(llvm::Module& module);
-		virtual void initialize();
+		virtual void generate_object_file(const Options& options, 
+			llvm::Module& module);
+		virtual void initialize(const Options& options);
 		virtual void link();
 	};
 
@@ -27,8 +30,9 @@ namespace hemera {
 		~BackendLLVM() override;
 
 		void destroy() override;
-		void generate_object_file(llvm::Module& module) override;
-		void initialize() override;
+		void generate_object_file(const Options& options, 
+			llvm::Module& module) override;
+		void initialize(const Options& options) override;
 		void link() override;
 
 	private:

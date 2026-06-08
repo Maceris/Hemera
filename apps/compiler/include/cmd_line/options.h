@@ -395,6 +395,24 @@ namespace hemera {
         OSType os;
         EnvironmentType environment;
         ObjectFormatType object_format;
+        /// <summary>
+        /// The specific processor name to optimize for. Empty strings or
+        /// "generic" will use the default CPU based on the target info.
+        /// This is more portable but leaves off advanced instruction sets.
+        /// </summary>
+        std::string cpu;
+        /// <summary>
+        /// A comma-separated list of target-specific features to explicitly
+        /// enable or disable (e.g., +avx, -neon).
+        /// </summary>
+        std::string cpu_features;
 		std::string output_name;
+
+        Options();
+        Options(const Options&) = delete;
+        Options(Options&&) = delete;
+        Options& operator=(const Options&) = delete;
+        Options& operator=(Options&&) = delete;
+        ~Options();
 	};
 }

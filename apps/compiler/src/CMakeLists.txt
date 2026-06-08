@@ -71,6 +71,7 @@ SET(HEADER_FILES
 SET(SOURCE_FILES
   ${SOURCE_DIR}/back_end/llvm.cpp
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
+  ${SOURCE_DIR}/cmd_line/options.cpp
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/hlir.cpp

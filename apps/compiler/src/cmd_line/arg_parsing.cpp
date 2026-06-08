@@ -65,8 +65,11 @@ namespace hemera::arg_parse {
 	bool parse_arguments(int argc, char* argv[], Options& output, 
 		Allocator<> alloc) {
 
-		bool all_fine = true;
+		//TODO(ches) add support for setting a custom output name
+		//TODO(ches) default the app name to that of the package/file
+		//TODO(ches) Add all the option flags, with help text
 
+		bool all_fine = true;
 		bool started_input = false;
 
 		//NOTE(ches) Skip the first argument, hoping it's the program name
