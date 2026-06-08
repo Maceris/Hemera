@@ -65,7 +65,7 @@ namespace hemera {
     /// <summary>
     /// Corresponds to LLVM's environment types.
     /// </summary>
-    enum EnvironmentType {
+    enum class EnvironmentType {
         UnknownEnvironment,
 
         /// <summary>
@@ -177,7 +177,7 @@ namespace hemera {
     /// <summary>
     /// Corresponds to LLVM's object format types.
     /// </summary>
-    enum ObjectFormatType {
+    enum class ObjectFormatType {
         /// <summary>
         /// An uninitialized, unrecognized, or architecture-default target
         /// object file format.
@@ -258,7 +258,7 @@ namespace hemera {
     /// <summary>
     /// Corresponds to LLVM's OS types.
     /// </summary>
-    enum OSType {
+    enum class OSType {
         /// <summary>
         /// Unspecified or representing a bare-metal environment
         /// (e.g., embedded systems) with no recognizable OS.
@@ -315,7 +315,7 @@ namespace hemera {
     /// <summary>
     /// Corresponds to LLVM's subarchitecture types.
     /// </summary>
-    enum SubArchType {
+    enum class SubArchType {
         NoSubArch,
 
         ARMSubArch_v9_7a,
@@ -362,7 +362,7 @@ namespace hemera {
     /// <summary>
     /// Corresponds to LLVM's vendor types.
     /// </summary>
-    enum VendorType {
+    enum class VendorType {
         /// <summary>
         /// A fallback for generic, bare-metal, or cross-compiled environments
         /// that do not tie directly to a specific commercial entity.

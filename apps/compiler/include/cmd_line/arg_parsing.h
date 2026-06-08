@@ -22,6 +22,7 @@ namespace hemera {
 		enum Option {
 			DEBUG_INFO,
 			HELP,
+			LIST,
 			OUTPUT,
 			STOP_BEFORE_ASSEMBLY,
 			STOP_BEFORE_LINK,
@@ -42,7 +43,7 @@ namespace hemera {
 				, summary{ summary }
 				, name_length{ constexpr_strlen(name) }
 				, option{ option }
-				, has_args(has_args)
+				, has_args{has_args}
 			{}
 			OptionDescription(const OptionDescription&) = delete;
 			OptionDescription& operator=(const OptionDescription&) = delete;
@@ -57,6 +58,7 @@ namespace hemera {
 			{"-S", "Stop after compilation, do not assemble", Option::STOP_BEFORE_ASSEMBLY, NO_ARGS},
 			{"-o", "Place output in the specified file", Option::OUTPUT, HAS_ARGS},
 			{"--help", "Print out a help message", Option::HELP, NO_ARGS},
+			{"--list", "List supported options", Option::LIST, HAS_ARGS},
 			{"--version", "Print version information", Option::VERSION, NO_ARGS},
 			{"-d", "Produce debug information", Option::DEBUG_INFO, NO_ARGS},
 		};
