@@ -159,12 +159,16 @@ namespace hemera::arg_parse {
 	std::optional<const OptionDescription*> find_option(const char* option) {
 		const size_t option_length = constexpr_strlen(option);
 
-		for (const auto& value : NAMED_OPTIONS) {
-			if (option_length != value.name_length) {
+		for (const auto& option_mapping : OPTION_MAPPINGS) {
+			if (option_length != option_mapping.name_length) {
 				continue;
 			}
-			if (strncmp(option, value.name, option_length) == 0) {
-				return { &value };
+			if (strncmp(option, option_mapping.name, option_length) == 0) {
+				for (const auto& value : NAMED_OPTIONS) {
+					if (value.option == option_mapping.option) {
+						return { &value };
+					}
+				}
 			}
 		}
 

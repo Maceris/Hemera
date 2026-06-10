@@ -14,28 +14,116 @@ namespace hemera {
 		using std::cout;
 		using std::endl;
 
-		cout << "Usage: hemera [-c | -S ] [-g] [-d] [-o=output_name] inputs..." << endl;
-		cout << "       hemera --list=[architecture | subarchitecture | vendor | os | environment | object]" << endl;
+		cout << "Usage: hemera [<optional flags>...] <package path>" << endl;
+		cout << "       hemera --list=<type(s)>" << endl;
 		cout << "Flags:" << endl;
+
+		static const char* ARG_STRING = "=value";
+		static const size_t ARG_STRING_LEN = strlen(ARG_STRING);
+		static const char* MULTIPLE_ARGS_STRING = "=arg1,arg2,...";
+		static const size_t MULTIPLE_ARGS_STRING_LEN 
+			= strlen(MULTIPLE_ARGS_STRING);
 
 		size_t longest_flag = 0;
 		for (const auto& arg : arg_parse::NAMED_OPTIONS) {
-			longest_flag = std::max(arg.name_length, longest_flag);
-		}
-		static const char* ARGS_STRING = "=arg1";
-		static const size_t ARGS_STRING_LEN = strlen(ARGS_STRING);
+			size_t total_length = 0;
+			for (const auto& name_mapping: arg_parse::OPTION_MAPPINGS) {
+				if (arg.option == name_mapping.option) {
+					if (total_length > 0) {
+						// Comma and space between items
+						total_length += 2;
+					}
+					total_length += name_mapping.name_length;
+				}
+			}
 
-		const size_t total_space = longest_flag + ARGS_STRING_LEN + 1;
+			if (arg.has_args) {
+				if (arg.multiple_args) {
+					total_length += MULTIPLE_ARGS_STRING_LEN;
+				}
+				else {
+					total_length += ARG_STRING_LEN;
+				}
+			}
+			longest_flag = std::max(total_length, longest_flag);
+		}
+
+		const size_t total_space = longest_flag + 1;
+		LOG_ASSERT(total_space < 80);
 
 		for (const auto& arg : arg_parse::NAMED_OPTIONS) {
-			cout << arg.name;
-			size_t length_used = arg.name_length;
-			if (arg.has_args) {
-				cout << ARGS_STRING;
-				length_used += ARGS_STRING_LEN;
+			size_t length_used = 0;
+
+			for (const auto& name_mapping : arg_parse::OPTION_MAPPINGS) {
+				if (arg.option != name_mapping.option) {
+					continue;
+				}
+				if (length_used > 0) {
+					// We already listed an option
+					cout << ", ";
+					length_used += 2;
+				}
+				cout << name_mapping.name;
+				length_used += name_mapping.name_length;
 			}
+
+			if (arg.has_args) {
+				if (arg.multiple_args) {
+					cout << MULTIPLE_ARGS_STRING;
+					length_used += MULTIPLE_ARGS_STRING_LEN;
+				}
+				else {
+					cout << ARG_STRING;
+					length_used += ARG_STRING_LEN;
+				}
+			}
+
 			cout << std::string(total_space - length_used, ' ');
-			cout << arg.summary;
+
+			// Word wrapping hell
+			std::streamsize remaining_summary = 
+				static_cast<std::streamsize>(strlen(arg.summary));
+			const std::streamsize description_space = 
+				80 - static_cast<std::streamsize>(total_space);
+			const std::string full_padding = std::string(total_space, ' ');
+			std::streamsize end_of_word = 0;
+			const char* current_line_start = arg.summary;
+			bool has_wrapped = false;
+
+			while (remaining_summary > 0) {
+				if (has_wrapped) {
+					cout << full_padding;
+				}
+				if (description_space >= remaining_summary) {
+					// the rest fits on this line
+					cout.write(current_line_start, remaining_summary);
+					break;
+				}
+				else {
+					// we need to break
+
+					// Find the first space working back from where we need to wrap
+					end_of_word = std::min(description_space, remaining_summary);
+					while (*(current_line_start + end_of_word) != ' ' && end_of_word > 0) {
+						end_of_word -= 1;
+					}
+					LOG_ASSERT(end_of_word > 0 
+						&& "Stop using diabolically long words in the description please");
+					
+					cout.write(current_line_start, end_of_word);
+					cout << endl;
+
+					has_wrapped = true;
+					if (*(current_line_start + end_of_word) == ' ') {
+						// We wrapped on a space, so skip that space
+						current_line_start += 1;
+						remaining_summary -= 1;
+					}
+					current_line_start += end_of_word;
+					remaining_summary -= end_of_word;
+				}
+			}
+
 			cout << endl;
 		}
 	}
@@ -59,6 +147,7 @@ namespace hemera {
 		}
 		else if (value == "subarchitecture") {
 			std::cout << "Sub-architectures: ";
+			std::cout << "None ";
 			std::cout << "ARMSubArch_v9_7a ";
 			std::cout << "ARMSubArch_v9_6a ";
 			std::cout << "ARMSubArch_v9_5a ";
@@ -101,6 +190,7 @@ namespace hemera {
 		}
 		else if (value == "vendor") {
 			std::cout << "Vendors: ";
+			std::cout << "Unknown ";
 			std::cout << "Apple ";
 			std::cout << "PC ";
 			std::cout << "AMD ";
@@ -109,6 +199,7 @@ namespace hemera {
 		}
 		else if (value == "os") {
 			std::cout << "Operating systems: ";
+			std::cout << "Unknown ";
 			std::cout << "Darwin ";
 			std::cout << "FreeBSD ";
 			std::cout << "Linux ";
@@ -122,6 +213,7 @@ namespace hemera {
 		}
 		else if (value == "environment") {
 			std::cout << "Environments: ";
+			std::cout << "Unknown ";
 			std::cout << "GNU ";
 			std::cout << "GNUT64 ";
 			std::cout << "GNUEABI ";
@@ -146,17 +238,12 @@ namespace hemera {
 			std::cout << "Itanium ";
 			std::cout << std::endl;
 		}
-		else if (value == "object") {
-			std::cout << "Operating systems: ";
-			std::cout << "Darwin ";
-			std::cout << "FreeBSD ";
-			std::cout << "Linux ";
-			std::cout << "MacOSX ";
-			std::cout << "NetBSD ";
-			std::cout << "OpenBSD ";
-			std::cout << "UEFI ";
-			std::cout << "Win32 ";
-			std::cout << "Firmware ";
+		else if (value == "object-format") {
+			std::cout << "Object Formats: ";
+			std::cout << "Unknown ";
+			std::cout << "COFF ";
+			std::cout << "ELF ";
+			std::cout << "MachO ";
 			std::cout << std::endl;
 		}
 	}

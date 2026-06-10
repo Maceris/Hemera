@@ -20,47 +20,103 @@ namespace hemera {
 		}
 
 		enum Option {
+			ARCHITECTURE,
 			DEBUG_INFO,
+			ENVIRONMENT,
 			HELP,
 			LIST,
+			OBJECT_FORMAT,
+			OS,
 			OUTPUT,
 			STOP_BEFORE_ASSEMBLY,
 			STOP_BEFORE_LINK,
+			SUBARCHITECTURE,
+			VENDOR,
 			VERSION,
 		};
 
-		struct OptionDescription {
+		struct OptionMapping {
 			const char* name;
-			const char* summary;
 			const size_t name_length;
 			const Option option;
-			const bool has_args;
-			const char _padding[3] = { 0 };
 
-			constexpr OptionDescription(const char* name, const char* summary,
-				const Option option, const bool has_args)
+			constexpr OptionMapping(const char* name, const Option option)
 				: name{ name }
-				, summary{ summary }
 				, name_length{ constexpr_strlen(name) }
 				, option{ option }
-				, has_args{has_args}
+			{}
+			OptionMapping(const OptionMapping&) = delete;
+			OptionMapping& operator=(const OptionMapping&) = delete;
+			OptionMapping& operator=(OptionMapping&&) = delete;
+			constexpr ~OptionMapping() = default;
+		};
+
+		struct OptionDescription {
+			const char* summary;
+			const Option option;
+			const bool has_args;
+			const bool multiple_args;
+			const char _padding[2] = { 0 };
+
+			constexpr OptionDescription(const Option option,
+				const char* summary,
+				const bool has_args,
+				const bool multiple_args = false)
+				: summary{ summary }
+				, option{ option }
+				, has_args{ has_args }
+				, multiple_args{ multiple_args }
 			{}
 			OptionDescription(const OptionDescription&) = delete;
 			OptionDescription& operator=(const OptionDescription&) = delete;
 			OptionDescription& operator=(OptionDescription&&) = delete;
+			constexpr ~OptionDescription() = default;
 		};
 
 		static constexpr bool NO_ARGS = false;
 		static constexpr bool HAS_ARGS = true;
+		static constexpr bool MULTIPLE_ARGS = true;
 
+		//NOTE(ches) these are in the order that we'll print them out in
+		static constexpr OptionMapping OPTION_MAPPINGS[] = {
+			{"-c", Option::STOP_BEFORE_LINK},
+			{"--stop-before-link", Option::STOP_BEFORE_LINK},
+			{"-S", Option::STOP_BEFORE_ASSEMBLY},
+			{"--stop-before-assembly", Option::STOP_BEFORE_ASSEMBLY},
+			{"-o", Option::OUTPUT},
+			{"--output", Option::OUTPUT},
+			{"--help", Option::HELP},
+			{"--list", Option::LIST},
+			{"--version", Option::VERSION},
+			{"-d", Option::DEBUG_INFO},
+			{"--debug", Option::DEBUG_INFO},
+			{"--architecture", Option::ARCHITECTURE},
+			{"--arch", Option::ARCHITECTURE},
+			{"--subarchitecture", Option::SUBARCHITECTURE},
+			{"--subarch", Option::SUBARCHITECTURE},
+			{"--vendor", Option::VENDOR},
+			{"--os", Option::OS},
+			{"--environment", Option::ENVIRONMENT},
+			{"--env", Option::ENVIRONMENT},
+			{"--object-format", Option::OBJECT_FORMAT},
+			{"--obj", Option::OBJECT_FORMAT},
+		};
+
+		//NOTE(ches) these are in the order that we'll print them out in
 		static constexpr OptionDescription NAMED_OPTIONS[] = {
-			{"-c", "Compile or assemble sources, but do not link", Option::STOP_BEFORE_LINK, NO_ARGS},
-			{"-S", "Stop after compilation, do not assemble", Option::STOP_BEFORE_ASSEMBLY, NO_ARGS},
-			{"-o", "Place output in the specified file", Option::OUTPUT, HAS_ARGS},
-			{"--help", "Print out a help message", Option::HELP, NO_ARGS},
-			{"--list", "List supported options", Option::LIST, HAS_ARGS},
-			{"--version", "Print version information", Option::VERSION, NO_ARGS},
-			{"-d", "Produce debug information", Option::DEBUG_INFO, NO_ARGS},
+			{Option::STOP_BEFORE_LINK, "Compile or assemble sources, but do not link", NO_ARGS},
+			{Option::STOP_BEFORE_ASSEMBLY, "Stop after compilation, do not assemble", NO_ARGS},
+			{Option::OUTPUT, "Place output in the specified file", HAS_ARGS},
+			{Option::HELP, "Print out a help message", NO_ARGS},
+			{Option::LIST, "List supported options. Valid values are: architecture, subarchitecture, vendor, os, environment, object-format", HAS_ARGS, MULTIPLE_ARGS},
+			{Option::VERSION, "Print version information", NO_ARGS},
+			{Option::DEBUG_INFO, "Produce debug information", NO_ARGS},
+			{Option::ARCHITECTURE, "Specify the target architecture", HAS_ARGS},
+			{Option::SUBARCHITECTURE, "Specify the target subarchitecture", HAS_ARGS},
+			{Option::VENDOR, "Specify the target vendor", HAS_ARGS},
+			{Option::OS, "Specify the target OS", HAS_ARGS},
+			{Option::ENVIRONMENT, "Specify the target environment", HAS_ARGS},
+			{Option::OBJECT_FORMAT, "Specify the intermediary object format", HAS_ARGS},
 		};
 
 		struct OptionWithValue {
