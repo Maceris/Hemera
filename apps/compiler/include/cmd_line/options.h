@@ -407,6 +407,7 @@ namespace hemera {
         /// </summary>
         std::string cpu_features;
 		std::string output_name;
+        bool debug_info;
 
         Options();
         Options(const Options&) = delete;
