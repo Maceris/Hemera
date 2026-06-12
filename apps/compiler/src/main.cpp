@@ -254,8 +254,8 @@ namespace hemera {
 		Logger::init();
 		Allocator<> arg_alloc;
 
-		arg_parse::Options* command_line_options =
-			arg_alloc.new_object<arg_parse::Options>();
+		arg_parse::UnprocessedOptions* command_line_options =
+			arg_alloc.new_object<arg_parse::UnprocessedOptions>();
 
 		bool all_fine = arg_parse::parse_arguments(argc, argv, 
 			*command_line_options, arg_alloc);

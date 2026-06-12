@@ -62,7 +62,7 @@ namespace hemera::arg_parse {
 		}
 	}
 
-	bool parse_arguments(int argc, char* argv[], Options& output, 
+	bool parse_arguments(int argc, char* argv[], UnprocessedOptions& output,
 		Allocator<> alloc) {
 
 		//TODO(ches) add support for setting a custom output name

@@ -131,13 +131,13 @@ namespace hemera {
 			OptionWithValue& operator=(OptionWithValue&&) = delete;
 		};
 
-		struct Options {
+		struct UnprocessedOptions {
 			MyVector<Option> options;
 			MyVector<OptionWithValue> options_with_values;
 			MyVector<MyString> input;
 		};
 		
-		bool parse_arguments(int argc, char* argv[], Options& output,
+		bool parse_arguments(int argc, char* argv[], UnprocessedOptions& output,
 			Allocator<> alloc);
 
 		std::optional<const OptionDescription*> find_option(const char* option);
