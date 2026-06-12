@@ -45,6 +45,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/version.h
   ${INCLUDE_DIR}/back_end/back_end.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
+  ${INCLUDE_DIR}/cmd_line/cmd_line_utils.h
   ${INCLUDE_DIR}/cmd_line/options.h
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/front_end/event.h
@@ -71,6 +72,7 @@ SET(HEADER_FILES
 SET(SOURCE_FILES
   ${SOURCE_DIR}/back_end/llvm.cpp
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
+  ${SOURCE_DIR}/cmd_line/cmd_line_utils.cpp
   ${SOURCE_DIR}/cmd_line/options.cpp
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
