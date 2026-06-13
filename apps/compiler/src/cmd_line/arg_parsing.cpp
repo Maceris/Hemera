@@ -7,6 +7,12 @@
 
 namespace hemera::arg_parse {
 
+	UnprocessedOptions::UnprocessedOptions(Allocator<>& allocator)
+		: options{ allocator }
+		, options_with_values{ allocator }
+		, input{ allocator }
+	{}
+
 	struct FindResult {
 		bool found;
 		char _padding[7] = { 0 };
@@ -132,7 +138,7 @@ namespace hemera::arg_parse {
 						continue;
 					}
 					started_input = true;
-					output.input.emplace_back(raw_arg);
+					output.input = raw_arg;
 					continue;
 				}
 

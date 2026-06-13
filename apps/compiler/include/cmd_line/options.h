@@ -39,7 +39,7 @@ namespace hemera {
     };
 
 	/// <summary>
-	/// How far we want to build.
+	/// How far we want to build. These are in order.
 	/// </summary>
 	enum class BuildExtent {
 		/// <summary>
@@ -406,6 +406,7 @@ namespace hemera {
         /// enable or disable (e.g., +avx, -neon).
         /// </summary>
         std::string cpu_features;
+		std::string input;
 		std::string output_name;
         bool debug_info;
 

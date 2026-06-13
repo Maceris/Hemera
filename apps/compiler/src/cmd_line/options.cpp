@@ -12,6 +12,7 @@ namespace hemera {
 		, object_format{ ObjectFormatType::COFF }
 		, cpu{ "generic" }
 		, cpu_features{ "" }
+		, input{ "" }
 		, output_name{ "application" }
 		, debug_info{ false }
 	{}

@@ -137,7 +137,13 @@ namespace hemera {
 		struct UnprocessedOptions {
 			MyVector<Option> options;
 			MyVector<OptionWithValue> options_with_values;
-			MyVector<MyString> input;
+			MyString input;
+
+			UnprocessedOptions(Allocator<>& allocator);
+			UnprocessedOptions(const UnprocessedOptions&) = delete;
+			UnprocessedOptions(UnprocessedOptions&&) = delete;
+			UnprocessedOptions& operator=(const UnprocessedOptions&) = delete;
+			UnprocessedOptions& operator=(UnprocessedOptions&&) = delete;
 		};
 		
 		bool parse_arguments(int argc, char* argv[], UnprocessedOptions& output,

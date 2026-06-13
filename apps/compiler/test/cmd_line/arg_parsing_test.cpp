@@ -5,7 +5,7 @@
 #include "cmd_line/arg_parsing.h"
 
 using hemera::arg_parse::Option;
-using hemera::arg_parse::Options;
+using hemera::arg_parse::UnprocessedOptions;
 using hemera::Allocator;
 
 TEST(ArgParsingTest, OptionsWithoutArgs)
@@ -27,7 +27,7 @@ TEST(ArgParsingTest, OptionsWithoutArgs)
 	options.push_back(std::make_pair(version, Option::VERSION));
 
 	char* arguments[] = { application, nullptr };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	for (const auto& input : options) {
 		arguments[1] = input.first;
@@ -54,7 +54,7 @@ TEST(ArgParsingTest, OutputArg)
 	char* output_chars = output_string.data();
 
 	char* arguments[] = { application, output_chars };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(2, arguments, output, alloc);
 
@@ -74,7 +74,7 @@ TEST(ArgParsingTest, ErrorStartingWithEquals)
 	char invalid[] = "=123";
 
 	char* arguments[] = { application, invalid };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(2, arguments, output, alloc);
 
@@ -89,7 +89,7 @@ TEST(ArgParsingTest, ErrorMissingArg)
 	char invalid[] = "-o";
 
 	char* arguments[] = { application, invalid };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(2, arguments, output, alloc);
 
@@ -104,7 +104,7 @@ TEST(ArgParsingTest, ErrorExtraArg)
 	char invalid[] = "-c=a,b,c";
 
 	char* arguments[] = { application, invalid };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(2, arguments, output, alloc);
 
@@ -120,7 +120,7 @@ TEST(ArgParsingTest, ErrorFlagAfterInput)
 	char flag[] = "-d";
 
 	char* arguments[] = { application, input, flag };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(3, arguments, output, alloc);
 
@@ -136,7 +136,7 @@ TEST(ArgParsingTest, ErrorFlagWithArgsAfterInput)
 	char flag[] = "-o=test.exe";
 
 	char* arguments[] = { application, input, flag };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(3, arguments, output, alloc);
 
@@ -151,7 +151,7 @@ TEST(ArgParsingTest, ErrorUnknownFlag)
 	char invalid[] = "-this-does-not-exist";
 
 	char* arguments[] = { application, invalid };
-	Options output;
+	UnprocessedOptions output{ alloc };
 
 	bool result = hemera::arg_parse::parse_arguments(2, arguments, output, alloc);
 

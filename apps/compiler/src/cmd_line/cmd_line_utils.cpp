@@ -257,6 +257,8 @@ namespace hemera {
 		using std::cout;
 		using std::endl;
 
+		output.input = std::string(input.input.data(), input.input.size());
+
 		bool architecture_seen = false;
 		bool debug_info_seen = false;
 		bool environment_seen = false;

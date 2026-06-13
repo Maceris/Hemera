@@ -50,7 +50,11 @@ namespace hemera {
 			}
 		}
 
-		hemera::Options* options = new hemera::Options();
+		Allocator<> main_alloc;
+
+		hemera::Options* options = main_alloc.new_object<hemera::Options>(
+			main_alloc, command_line_options->input
+		);
 		all_fine = process_command_line_args(*command_line_options, *options);
 		if (!all_fine) {
 			std::cout << "Error parsing arguments!" << std::endl;
@@ -62,6 +66,22 @@ namespace hemera {
 		ThreadSafeQueue<Job> work_queue = ThreadSafeQueue<Job>();
 
 		ThreadPool threads = ThreadPool();
+
+		if (options->build_extent >= BuildExtent::COMPILE) {
+
+		}
+
+		if (options->build_extent >= BuildExtent::LOWER) {
+
+		}
+
+		if (options->build_extent >= BuildExtent::ASSEMBLE) {
+
+		}
+
+		if (options->build_extent >= BuildExtent::LINK) {
+
+		}
 
 		return 0;
 	}
