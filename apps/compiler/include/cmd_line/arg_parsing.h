@@ -29,6 +29,7 @@ namespace hemera {
 			OS,
 			OUTPUT,
 			STOP_BEFORE_ASSEMBLY,
+			STOP_BEFORE_LOWERING,
 			STOP_BEFORE_LINK,
 			SUBARCHITECTURE,
 			VENDOR,
@@ -79,10 +80,11 @@ namespace hemera {
 
 		//NOTE(ches) these are in the order that we'll print them out in
 		static constexpr OptionMapping OPTION_MAPPINGS[] = {
-			{"-c", Option::STOP_BEFORE_LINK},
-			{"--stop-before-link", Option::STOP_BEFORE_LINK},
+			{"--stop-before-lowering", Option::STOP_BEFORE_LOWERING},
 			{"-S", Option::STOP_BEFORE_ASSEMBLY},
 			{"--stop-before-assembly", Option::STOP_BEFORE_ASSEMBLY},
+			{"-c", Option::STOP_BEFORE_LINK},
+			{"--stop-before-link", Option::STOP_BEFORE_LINK},
 			{"-o", Option::OUTPUT},
 			{"--output", Option::OUTPUT},
 			{"--help", Option::HELP},
@@ -104,8 +106,9 @@ namespace hemera {
 
 		//NOTE(ches) these are in the order that we'll print them out in
 		static constexpr OptionDescription NAMED_OPTIONS[] = {
+			{Option::STOP_BEFORE_LOWERING, "Stop after compiling, do not lower MLIR to LLVM IR", NO_ARGS},
+			{Option::STOP_BEFORE_ASSEMBLY, "Stop after lowering to LLVM IR, do not assemble", NO_ARGS},
 			{Option::STOP_BEFORE_LINK, "Compile or assemble sources, but do not link", NO_ARGS},
-			{Option::STOP_BEFORE_ASSEMBLY, "Stop after compilation, do not assemble", NO_ARGS},
 			{Option::OUTPUT, "Place output in the specified file", HAS_ARGS},
 			{Option::HELP, "Print out a help message", NO_ARGS},
 			{Option::LIST, "List supported options. Valid values are: architecture, subarchitecture, vendor, os, environment, object-format", HAS_ARGS, MULTIPLE_ARGS},

@@ -1,5 +1,7 @@
 #include "cmd_line/cmd_line_utils.h"
 
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 
 #include "version.h"
@@ -132,123 +134,128 @@ namespace hemera {
 	}
 
 	void print_command_line_arg_list(const MyString& value) {
+		using std::cout;
+		using std::endl;
 
 		if (value == "architecture") {
-			std::cout << "Architectures: ";
-			std::cout << "arm ";
-			std::cout << "armeb ";
-			std::cout << "aarch64 ";
-			std::cout << "aarch64_be ";
-			std::cout << "aarch64_32 ";
-			std::cout << "x86 ";
-			std::cout << "x86_64 ";
-			std::cout << std::endl;
+			cout << "Architectures: ";
+			cout << "arm ";
+			cout << "armeb ";
+			cout << "aarch64 ";
+			cout << "aarch64_be ";
+			cout << "aarch64_32 ";
+			cout << "x86 ";
+			cout << "x86_64 ";
+			cout << endl;
 		}
 		else if (value == "subarchitecture") {
-			std::cout << "Sub-architectures: ";
-			std::cout << "None ";
-			std::cout << "ARMSubArch_v9_7a ";
-			std::cout << "ARMSubArch_v9_6a ";
-			std::cout << "ARMSubArch_v9_5a ";
-			std::cout << "ARMSubArch_v9_4a ";
-			std::cout << "ARMSubArch_v9_3a ";
-			std::cout << "ARMSubArch_v9_2a ";
-			std::cout << "ARMSubArch_v9_1a ";
-			std::cout << "ARMSubArch_v9 ";
-			std::cout << "ARMSubArch_v8_9a ";
-			std::cout << "ARMSubArch_v8_8a ";
-			std::cout << "ARMSubArch_v8_7a ";
-			std::cout << "ARMSubArch_v8_6a ";
-			std::cout << "ARMSubArch_v8_5a ";
-			std::cout << "ARMSubArch_v8_4a ";
-			std::cout << "ARMSubArch_v8_3a ";
-			std::cout << "ARMSubArch_v8_2a ";
-			std::cout << "ARMSubArch_v8_1a ";
-			std::cout << "ARMSubArch_v8 ";
-			std::cout << "ARMSubArch_v8r ";
-			std::cout << "ARMSubArch_v8m_baseline ";
-			std::cout << "ARMSubArch_v8m_mainline ";
-			std::cout << "ARMSubArch_v8_1m_mainline ";
-			std::cout << "ARMSubArch_v7 ";
-			std::cout << "ARMSubArch_v7em ";
-			std::cout << "ARMSubArch_v7m ";
-			std::cout << "ARMSubArch_v7s ";
-			std::cout << "ARMSubArch_v7k ";
-			std::cout << "ARMSubArch_v7ve ";
-			std::cout << "ARMSubArch_v6 ";
-			std::cout << "ARMSubArch_v6m ";
-			std::cout << "ARMSubArch_v6k ";
-			std::cout << "ARMSubArch_v6t2 ";
-			std::cout << "ARMSubArch_v5 ";
-			std::cout << "ARMSubArch_v5te ";
-			std::cout << "ARMSubArch_v4t ";
-			std::cout << "AArch64SubArch_arm64e ";
-			std::cout << "AArch64SubArch_arm64ec ";
-			std::cout << "AArch64SubArch_lfi ";
-			std::cout << std::endl;
+			cout << "Sub-architectures: ";
+			cout << "None ";
+			cout << "ARMSubArch_v9_7a ";
+			cout << "ARMSubArch_v9_6a ";
+			cout << "ARMSubArch_v9_5a ";
+			cout << "ARMSubArch_v9_4a ";
+			cout << "ARMSubArch_v9_3a ";
+			cout << "ARMSubArch_v9_2a ";
+			cout << "ARMSubArch_v9_1a ";
+			cout << "ARMSubArch_v9 ";
+			cout << "ARMSubArch_v8_9a ";
+			cout << "ARMSubArch_v8_8a ";
+			cout << "ARMSubArch_v8_7a ";
+			cout << "ARMSubArch_v8_6a ";
+			cout << "ARMSubArch_v8_5a ";
+			cout << "ARMSubArch_v8_4a ";
+			cout << "ARMSubArch_v8_3a ";
+			cout << "ARMSubArch_v8_2a ";
+			cout << "ARMSubArch_v8_1a ";
+			cout << "ARMSubArch_v8 ";
+			cout << "ARMSubArch_v8r ";
+			cout << "ARMSubArch_v8m_baseline ";
+			cout << "ARMSubArch_v8m_mainline ";
+			cout << "ARMSubArch_v8_1m_mainline ";
+			cout << "ARMSubArch_v7 ";
+			cout << "ARMSubArch_v7em ";
+			cout << "ARMSubArch_v7m ";
+			cout << "ARMSubArch_v7s ";
+			cout << "ARMSubArch_v7k ";
+			cout << "ARMSubArch_v7ve ";
+			cout << "ARMSubArch_v6 ";
+			cout << "ARMSubArch_v6m ";
+			cout << "ARMSubArch_v6k ";
+			cout << "ARMSubArch_v6t2 ";
+			cout << "ARMSubArch_v5 ";
+			cout << "ARMSubArch_v5te ";
+			cout << "ARMSubArch_v4t ";
+			cout << "AArch64SubArch_arm64e ";
+			cout << "AArch64SubArch_arm64ec ";
+			cout << "AArch64SubArch_lfi ";
+			cout << endl;
 		}
 		else if (value == "vendor") {
-			std::cout << "Vendors: ";
-			std::cout << "Unknown ";
-			std::cout << "Apple ";
-			std::cout << "PC ";
-			std::cout << "AMD ";
-			std::cout << "Intel ";
-			std::cout << std::endl;
+			cout << "Vendors: ";
+			cout << "Unknown ";
+			cout << "Apple ";
+			cout << "PC ";
+			cout << "AMD ";
+			cout << "Intel ";
+			cout << endl;
 		}
 		else if (value == "os") {
-			std::cout << "Operating systems: ";
-			std::cout << "Unknown ";
-			std::cout << "Darwin ";
-			std::cout << "FreeBSD ";
-			std::cout << "Linux ";
-			std::cout << "MacOSX ";
-			std::cout << "NetBSD ";
-			std::cout << "OpenBSD ";
-			std::cout << "UEFI ";
-			std::cout << "Win32 ";
-			std::cout << "Firmware ";
-			std::cout << std::endl;
+			cout << "Operating systems: ";
+			cout << "Unknown ";
+			cout << "Darwin ";
+			cout << "FreeBSD ";
+			cout << "Linux ";
+			cout << "MacOSX ";
+			cout << "NetBSD ";
+			cout << "OpenBSD ";
+			cout << "UEFI ";
+			cout << "Win32 ";
+			cout << "Firmware ";
+			cout << endl;
 		}
 		else if (value == "environment") {
-			std::cout << "Environments: ";
-			std::cout << "Unknown ";
-			std::cout << "GNU ";
-			std::cout << "GNUT64 ";
-			std::cout << "GNUEABI ";
-			std::cout << "GNUEABIT64 ";
-			std::cout << "GNUEABIHF ";
-			std::cout << "GNUEABIHFT64 ";
-			std::cout << "GNUF32 ";
-			std::cout << "GNUF64 ";
-			std::cout << "GNUSF ";
-			std::cout << "GNUX32 ";
-			std::cout << "GNUILP32 ";
-			std::cout << "EABI ";
-			std::cout << "EABIHF ";
-			std::cout << "Musl ";
-			std::cout << "MuslABI64 ";
-			std::cout << "MuslEABI ";
-			std::cout << "MuslEABIHF ";
-			std::cout << "MuslF32 ";
-			std::cout << "MuslSF ";
-			std::cout << "MuslX32 ";
-			std::cout << "MSVC ";
-			std::cout << "Itanium ";
-			std::cout << std::endl;
+			cout << "Environments: ";
+			cout << "Unknown ";
+			cout << "GNU ";
+			cout << "GNUT64 ";
+			cout << "GNUEABI ";
+			cout << "GNUEABIT64 ";
+			cout << "GNUEABIHF ";
+			cout << "GNUEABIHFT64 ";
+			cout << "GNUF32 ";
+			cout << "GNUF64 ";
+			cout << "GNUSF ";
+			cout << "GNUX32 ";
+			cout << "GNUILP32 ";
+			cout << "EABI ";
+			cout << "EABIHF ";
+			cout << "Musl ";
+			cout << "MuslABI64 ";
+			cout << "MuslEABI ";
+			cout << "MuslEABIHF ";
+			cout << "MuslF32 ";
+			cout << "MuslSF ";
+			cout << "MuslX32 ";
+			cout << "MSVC ";
+			cout << "Itanium ";
+			cout << endl;
 		}
 		else if (value == "object-format") {
-			std::cout << "Object Formats: ";
-			std::cout << "Unknown ";
-			std::cout << "COFF ";
-			std::cout << "ELF ";
-			std::cout << "MachO ";
-			std::cout << std::endl;
+			cout << "Object Formats: ";
+			cout << "Unknown ";
+			cout << "COFF ";
+			cout << "ELF ";
+			cout << "MachO ";
+			cout << endl;
 		}
 	}
 
 	bool process_command_line_args(const arg_parse::UnprocessedOptions& input,
 		hemera::Options& output) {
+
+		using std::cout;
+		using std::endl;
 
 		bool architecture_seen = false;
 		bool debug_info_seen = false;
@@ -261,6 +268,14 @@ namespace hemera {
 
 		for (const auto& option : input.options) {
 			switch (option) {
+			case hemera::arg_parse::STOP_BEFORE_LOWERING:
+				if (stage_seen) {
+					std::cout << "Duplicate stage flag" << std::endl;
+					return 1;
+				}
+				output.build_extent = BuildExtent::COMPILE;
+				stage_seen = true;
+				break;
 			case hemera::arg_parse::STOP_BEFORE_ASSEMBLY:
 				if (stage_seen) {
 					std::cout << "Duplicate stage flag" << std::endl;
@@ -277,8 +292,15 @@ namespace hemera {
 				output.build_extent = BuildExtent::ASSEMBLE;
 				stage_seen = true;
 				break;
-			case hemera::arg_parse::ARCHITECTURE:
 			case hemera::arg_parse::DEBUG_INFO:
+				if (debug_info_seen) {
+					cout << "Duplicate debug flag" << endl;
+					return false;
+				}
+				output.debug_info = true;
+				debug_info_seen = true;
+				break;
+			case hemera::arg_parse::ARCHITECTURE:
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
@@ -293,66 +315,438 @@ namespace hemera {
 		}
 
 		for (const auto& option_with_value : input.options_with_values) {
+
+			MyString first_arg = option_with_value.values[0];
+			
+			std::transform(first_arg.begin(), first_arg.end(), 
+				first_arg.begin(), [](unsigned char c) {
+				return std::tolower(c);
+			});
+
 			switch (option_with_value.option) {
 			case hemera::arg_parse::ARCHITECTURE:
 				if (architecture_seen) {
-					std::cout << "Duplicate architecture flag" << std::endl;
+					cout << "Duplicate architecture flag" << endl;
 					return false;
 				}
-				//TODO(ches) parse arg
-				architecture_seen = true;
-				break;
-			case hemera::arg_parse::DEBUG_INFO:
-				if (debug_info_seen) {
-					std::cout << "Duplicate debug flag" << std::endl;
-					return false;
+
+				if (strcmp("arm", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::arm;
+					architecture_seen = true;
 				}
-				//TODO(ches) parse arg
-				debug_info_seen = true;
+				else if (strcmp("armeb", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::armeb;
+					architecture_seen = true;
+				}
+				else if (strcmp("aarch64", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::aarch64;
+					architecture_seen = true;
+				}
+				else if (strcmp("aarch64_be", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::aarch64_be;
+					architecture_seen = true;
+				}
+				else if (strcmp("aarch64_32", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::aarch64_32;
+					architecture_seen = true;
+				}
+				else if (strcmp("x86", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::x86;
+					architecture_seen = true;
+				}
+				else if (strcmp("x86_64", first_arg.c_str()) == 0) {
+					output.architecture = ArchType::x86_64;
+					architecture_seen = true;
+				}
+
+				if (!architecture_seen) {
+					cout << "Unrecognized architecture: " << first_arg << endl;
+				}
 				break;
 			case hemera::arg_parse::ENVIRONMENT:
 				if (environment_seen) {
-					std::cout << "Duplicate environment flag" << std::endl;
+					cout << "Duplicate environment flag" << endl;
 					return false;
 				}
-				//TODO(ches) parse arg
-				environment_seen = true;
+				
+				if (strcmp("unknown", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::UnknownEnvironment;
+					environment_seen = true;
+				}
+				else if (strcmp("gnu", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNU;
+					environment_seen = true;
+				}
+				else if (strcmp("gnut64", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUT64;
+					environment_seen = true;
+				}
+				else if (strcmp("gnueabi", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUEABI;
+					environment_seen = true;
+				}
+				else if (strcmp("gnueabit64", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUEABIT64;
+					environment_seen = true;
+				}
+				else if (strcmp("gnueabihf", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUEABIHF;
+					environment_seen = true;
+				}
+				else if (strcmp("gnueabihft64", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUEABIHFT64;
+					environment_seen = true;
+				}
+				else if (strcmp("gnuf32", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUF32;
+					environment_seen = true;
+				}
+				else if (strcmp("gnuf64", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUF64;
+					environment_seen = true;
+				}
+				else if (strcmp("gnusf", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUSF;
+					environment_seen = true;
+				}
+				else if (strcmp("gnux32", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUX32;
+					environment_seen = true;
+				}
+				else if (strcmp("gnuilp32", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::GNUILP32;
+					environment_seen = true;
+				}
+				else if (strcmp("eabi", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::EABI;
+					environment_seen = true;
+				}
+				else if (strcmp("eabihf", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::EABIHF;
+					environment_seen = true;
+				}
+				else if (strcmp("musl", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::Musl;
+					environment_seen = true;
+				}
+				else if (strcmp("muslabi64", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MuslABI64;
+					environment_seen = true;
+				}
+				else if (strcmp("musleabi", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MuslEABI;
+					environment_seen = true;
+				}
+				else if (strcmp("musleabihf", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MuslEABIHF;
+					environment_seen = true;
+				}
+				else if (strcmp("muslf32", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MuslF32;
+					environment_seen = true;
+				}
+				else if (strcmp("muslsf", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MuslSF;
+					environment_seen = true;
+				}
+				else if (strcmp("muslx32", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MuslX32;
+					environment_seen = true;
+				}
+				else if (strcmp("msvc", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::MSVC;
+					environment_seen = true;
+				}
+				else if (strcmp("itanium", first_arg.c_str()) == 0) {
+					output.environment = EnvironmentType::Itanium;
+					environment_seen = true;
+				}
+
+				if (!environment_seen) {
+					cout << "Unrecognized environment: " << first_arg << endl;
+				}
 				break;
 			case hemera::arg_parse::OBJECT_FORMAT:
 				if (object_format_seen) {
-					std::cout << "Duplicate object-format flag" << std::endl;
+					cout << "Duplicate object-format flag" << endl;
 					return false;
 				}
-				//TODO(ches) parse arg
-				object_format_seen = true;
+
+				if (strcmp("unknown", first_arg.c_str()) == 0) {
+					output.object_format = ObjectFormatType::UnknownObjectFormat;
+					object_format_seen = true;
+				}
+				else if (strcmp("coff", first_arg.c_str()) == 0) {
+					output.object_format = ObjectFormatType::COFF;
+					object_format_seen = true;
+				}
+				else if (strcmp("elf", first_arg.c_str()) == 0) {
+					output.object_format = ObjectFormatType::ELF;
+					object_format_seen = true;
+				}
+				else if (strcmp("macho", first_arg.c_str()) == 0) {
+					output.object_format = ObjectFormatType::MachO;
+					object_format_seen = true;
+				}
+
+				if (!object_format_seen) {
+					cout << "Unrecognized object format: " << first_arg << endl;
+				}
 				break;
 			case hemera::arg_parse::OS:
 				if (os_seen) {
-					std::cout << "Duplicate os flag" << std::endl;
+					cout << "Duplicate os flag" << endl;
 					return false;
 				}
-				//TODO(ches) parse arg
-				os_seen = true;
+
+				if (strcmp("unknown", first_arg.c_str()) == 0) {
+					output.os = OSType::UnknownOS;
+					os_seen = true;
+				}
+				else if (strcmp("darwin", first_arg.c_str()) == 0) {
+					output.os = OSType::Darwin;
+					os_seen = true;
+				}
+				else if (strcmp("freebsd", first_arg.c_str()) == 0) {
+					output.os = OSType::FreeBSD;
+					os_seen = true;
+				}
+				else if (strcmp("linux", first_arg.c_str()) == 0) {
+					output.os = OSType::Linux;
+					os_seen = true;
+				}
+				else if (strcmp("macosx", first_arg.c_str()) == 0) {
+					output.os = OSType::MacOSX;
+					os_seen = true;
+				}
+				else if (strcmp("netbsd", first_arg.c_str()) == 0) {
+					output.os = OSType::NetBSD;
+					os_seen = true;
+				}
+				else if (strcmp("openbsd", first_arg.c_str()) == 0) {
+					output.os = OSType::OpenBSD;
+					os_seen = true;
+				}
+				else if (strcmp("uefi", first_arg.c_str()) == 0) {
+					output.os = OSType::UEFI;
+					os_seen = true;
+				}
+				else if (strcmp("win32", first_arg.c_str()) == 0) {
+					output.os = OSType::Win32;
+					os_seen = true;
+				}
+				else if (strcmp("firmware", first_arg.c_str()) == 0) {
+					output.os = OSType::Firmware;
+					os_seen = true;
+				}
+
+				if (!os_seen) {
+					cout << "Unrecognized os: " << first_arg << endl;
+				}
 				break;
 			case hemera::arg_parse::SUBARCHITECTURE:
 				if (subarchitecture_seen) {
-					std::cout << "Duplicate subarchitecture flag" << std::endl;
+					cout << "Duplicate subarchitecture flag" << endl;
 					return false;
 				}
-				//TODO(ches) parse arg
-				subarchitecture_seen = true;
+
+				if (strcmp("none", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::NoSubArch;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_7a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_7a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_6a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_6a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_5a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_5a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_4a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_4a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_3a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_3a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_2a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_2a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9_1a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9_1a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v9", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v9;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_9a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_9a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_8a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_8a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_7a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_7a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_6a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_6a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_5a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_5a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_4a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_4a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_3a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_3a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_2a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_2a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_1a", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_1a;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8r", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8r;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8m_baseline", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8m_baseline;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8m_mainline", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8m_mainline;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v8_1m_mainline", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v8_1m_mainline;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v7", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v7;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v7em", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v7em;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v7m", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v7m;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v7s", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v7s;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v7k", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v7k;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v7ve", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v7ve;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v6", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v6;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v6m", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v6m;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v6k", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v6k;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v6t2", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v6t2;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v5", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v5;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v5te", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v5te;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("armsubarch_v4t", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::ARMSubArch_v4t;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("aarch64subarch_arm64e", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::AArch64SubArch_arm64e;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("aarch64subarch_arm64ec", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::AArch64SubArch_arm64ec;
+					subarchitecture_seen = true;
+				}
+				else if (strcmp("aarch64subarch_lfi", first_arg.c_str()) == 0) {
+					output.subarchitecture = SubArchType::AArch64SubArch_lfi;
+					subarchitecture_seen = true;
+				}
+
+				if (!subarchitecture_seen) {
+					cout << "Unrecognized subarchitecture: " << first_arg << endl;
+				}
 				break;
 			case hemera::arg_parse::VENDOR:
 				if (vendor_seen) {
-					std::cout << "Duplicate vendor flag" << std::endl;
+					cout << "Duplicate vendor flag" << endl;
 					return false;
 				}
-				//TODO(ches) parse arg
-				vendor_seen = true;
+
+				if (strcmp("unknown", first_arg.c_str()) == 0) {
+					output.vendor = VendorType::UnknownVendor;
+					vendor_seen = true;
+				}
+				else if (strcmp("apple", first_arg.c_str()) == 0) {
+					output.vendor = VendorType::Apple;
+					vendor_seen = true;
+				}
+				else if (strcmp("pc", first_arg.c_str()) == 0) {
+					output.vendor = VendorType::PC;
+					vendor_seen = true;
+				}
+				else if (strcmp("amd", first_arg.c_str()) == 0) {
+					output.vendor = VendorType::AMD;
+					vendor_seen = true;
+				}
+				else if (strcmp("intel", first_arg.c_str()) == 0) {
+					output.vendor = VendorType::Intel;
+					vendor_seen = true;
+				}
+
+				if (!vendor_seen) {
+					cout << "Unrecognized vendor: " << first_arg << endl;
+				}
 				break;
+			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
 			case hemera::arg_parse::OUTPUT:
+			case hemera::arg_parse::STOP_BEFORE_LOWERING:
 			case hemera::arg_parse::STOP_BEFORE_ASSEMBLY:
 			case hemera::arg_parse::STOP_BEFORE_LINK:
 			case hemera::arg_parse::VERSION:
