@@ -4,6 +4,7 @@
 #include <string>
 #include <system_error>
 
+#include "error/reporting.h"
 #include "util/logger.h"
 
 #include "llvm/IR/IRBuilder.h"
@@ -241,7 +242,7 @@ namespace hemera {
 
 	}
 
-	void BackendLLVM::generate_object_file(const Options& options,
+	bool BackendLLVM::generate_object_file(const Options& options,
 		llvm::Module& module) {
 		// Optimize the IR
 		
@@ -259,7 +260,6 @@ namespace hemera {
 		PB.registerLoopAnalyses(LAM);
 		PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-		//TODO(ches) decide this
 		llvm::OptimizationLevel optimization_level =
 			map_optimization_level(options.optimization_level);
 
@@ -285,14 +285,24 @@ namespace hemera {
 		llvm::Error result = target_machine->buildCodeGenPipeline(MPM, MAM,
 			destination, nullptr, llvm::CodeGenFileType::ObjectFile, opts,
 			context, &pic);
-		//TODO(ches) check result
+
+		bool had_errors = false;
+		llvm::handleAllErrors(std::move(result),
+			[&output_name = options.output_name, &had_errors](
+				const llvm::ErrorInfoBase& error_base) {
+				report_error(ErrorCode::E5001, output_name, 0, 0,
+					error_base.message());
+				had_errors = true;
+			});
+
 		//TODO(ches) can we delete the .o output? Do we need to ourselves?
 
 		destination.flush();
 
+		return !had_errors;
 	}
 
-	void BackendLLVM::initialize(const Options& options) {
+	bool BackendLLVM::initialize(const Options& options) {
 		llvm::InitializeAllTargetInfos();
 		llvm::InitializeAllTargets();
 		llvm::InitializeAllTargetMCs();
@@ -315,7 +325,12 @@ namespace hemera {
 		const llvm::Target* target =
 			llvm::TargetRegistry::lookupTarget(target_triple,
 				target_lookup_error);
-		//TODO(ches) check target_lookup_error
+
+		if (!target_lookup_error.empty()) {
+			report_error(ErrorCode::E5000, options.output_name, 0, 0,
+				target_lookup_error);
+			return false;
+		}
 
 		std::string cpu = options.cpu;
 		std::string features = options.cpu_features;
@@ -325,6 +340,8 @@ namespace hemera {
 		target_machine = target->createTargetMachine(
 			target_triple, cpu, features, opts, reloc_model
 		);
+
+		return true;
 	}
 
 	void BackendLLVM::link() {

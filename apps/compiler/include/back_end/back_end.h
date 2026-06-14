@@ -15,9 +15,20 @@ namespace hemera {
 		virtual ~Backend();
 
 		virtual void destroy();
-		virtual void generate_object_file(const Options& options, 
+		/// <summary>
+		/// Take a module and turn it into an object file.
+		/// </summary>
+		/// <param name="options">Options provided by the user.</param>
+		/// <param name="module">The module to turn into an object file.</param>
+		/// <returns>Whether we were successful.</returns>
+		virtual bool generate_object_file(const Options& options,
 			llvm::Module& module);
-		virtual void initialize(const Options& options);
+		/// <summary>
+		/// Set up the backend.
+		/// </summary>
+		/// <param name="options">Options provided by the user.</param>
+		/// <returns>Whether it was set up successfully.</returns>
+		virtual bool initialize(const Options& options);
 		virtual void link();
 	};
 
@@ -30,9 +41,9 @@ namespace hemera {
 		~BackendLLVM() override;
 
 		void destroy() override;
-		void generate_object_file(const Options& options, 
+		bool generate_object_file(const Options& options, 
 			llvm::Module& module) override;
-		void initialize(const Options& options) override;
+		bool initialize(const Options& options) override;
 		void link() override;
 
 	private:
