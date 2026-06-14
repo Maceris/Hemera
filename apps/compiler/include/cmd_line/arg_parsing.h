@@ -21,6 +21,8 @@ namespace hemera {
 
 		enum Option {
 			ARCHITECTURE,
+			CPU,
+			CPU_FEATURES,
 			DEBUG_INFO,
 			ENVIRONMENT,
 			HELP,
@@ -100,6 +102,9 @@ namespace hemera {
 			{"--os", Option::OS},
 			{"--environment", Option::ENVIRONMENT},
 			{"--env", Option::ENVIRONMENT},
+			{"-mcpu", Option::CPU},
+			{"--cpu", Option::CPU},
+			{"--cpu-features", Option::CPU_FEATURES},
 			{"--object-format", Option::OBJECT_FORMAT},
 			{"--obj", Option::OBJECT_FORMAT},
 		};
@@ -119,6 +124,8 @@ namespace hemera {
 			{Option::VENDOR, "Specify the target vendor", HAS_ARGS},
 			{Option::OS, "Specify the target OS", HAS_ARGS},
 			{Option::ENVIRONMENT, "Specify the target environment", HAS_ARGS},
+			{Option::CPU, "The CPU to target, defaults to 'generic'", HAS_ARGS},
+			{Option::CPU_FEATURES, "The CPU features to target, defaults to blank", HAS_ARGS},
 			{Option::OBJECT_FORMAT, "Specify the intermediary object format", HAS_ARGS},
 		};
 

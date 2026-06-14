@@ -260,6 +260,8 @@ namespace hemera {
 		output.input = std::string(input.input.data(), input.input.size());
 
 		bool architecture_seen = false;
+		bool cpu_seen = false;
+		bool cpu_features_seen = false;
 		bool debug_info_seen = false;
 		bool environment_seen = false;
 		bool object_format_seen = false;
@@ -303,6 +305,8 @@ namespace hemera {
 				debug_info_seen = true;
 				break;
 			case hemera::arg_parse::ARCHITECTURE:
+			case hemera::arg_parse::CPU:
+			case hemera::arg_parse::CPU_FEATURES:
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
@@ -743,6 +747,24 @@ namespace hemera {
 				if (!vendor_seen) {
 					cout << "Unrecognized vendor: " << first_arg << endl;
 				}
+				break;
+			case hemera::arg_parse::CPU:
+				//TODO(ches) can we validate this with llvm here?
+				if (cpu_seen) {
+					cout << "Duplicate cpu flag" << endl;
+					return false;
+				}
+				cpu_seen = true;
+				output.cpu = option_with_value.values[0];
+				break;
+			case hemera::arg_parse::CPU_FEATURES:
+				//TODO(ches) can we validate this with llvm here?
+				if (cpu_features_seen) {
+					cout << "Duplicate cpu features flag" << endl;
+					return false;
+				}
+				cpu_features_seen = true;
+				output.cpu_features = option_with_value.values[0];
 				break;
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::HELP:
