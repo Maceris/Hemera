@@ -175,6 +175,9 @@ int main(int argc, char* argv[])
 		if (line.empty()) {
 			continue;
 		}
+		if (line.starts_with("//") || line.starts_with("#")) {
+			continue;
+		}
 		size_t first_comma = line.find(",");
 		if (first_comma == std::string::npos) {
 			std::cerr << "Bad file format" << std::endl;

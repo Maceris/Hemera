@@ -13,9 +13,9 @@ ADD_CUSTOM_COMMAND(
   OUTPUT
     ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h 
     ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
-  COMMAND generate_errors hemera_errors hpp ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
-  COMMAND generate_errors hemera_errors cpp ${ROOT_DIR}/include/error/errors.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
-  DEPENDS generate_errors ${ROOT_DIR}/include/error/errors.list
+  COMMAND generate_errors hemera_errors hpp ${ROOT_DIR}/include/error/errors_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
+  COMMAND generate_errors hemera_errors cpp ${ROOT_DIR}/include/error/errors_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+  DEPENDS generate_errors ${ROOT_DIR}/include/error/errors_template.h
 )
 SET(HEMERA_GENERATED
   ${HEMERA_GENERATED}
@@ -27,9 +27,9 @@ ADD_CUSTOM_COMMAND(
   OUTPUT
     ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
     ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
-  COMMAND generate_errors hemera_warnings hpp ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
-  COMMAND generate_errors hemera_warnings cpp ${ROOT_DIR}/include/error/warnings.list > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
-  DEPENDS generate_errors ${ROOT_DIR}/include/error/warnings.list
+  COMMAND generate_errors hemera_warnings hpp ${ROOT_DIR}/include/error/warnings_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
+  COMMAND generate_errors hemera_warnings cpp ${ROOT_DIR}/include/error/warnings_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+  DEPENDS generate_errors ${ROOT_DIR}/include/error/warnings_template.h
 )
 
 SET(HEMERA_GENERATED 
@@ -47,7 +47,9 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
   ${INCLUDE_DIR}/cmd_line/cmd_line_utils.h
   ${INCLUDE_DIR}/cmd_line/options.h
+  ${INCLUDE_DIR}/error/errors_template.h
   ${INCLUDE_DIR}/error/reporting.h
+  ${INCLUDE_DIR}/error/warnings_template.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
   ${INCLUDE_DIR}/front_end/hlir.h
