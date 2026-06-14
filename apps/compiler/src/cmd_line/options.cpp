@@ -13,7 +13,7 @@ namespace hemera {
 		, cpu{ "generic" }
 		, cpu_features{ "" }
 		, input{ "" }
-		, output_name{ "application" }
+		, output_name{ "" }
 		, debug_info{ false }
 	{}
 	Options::~Options() = default;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <iostream>
 
 #include "version.h"
@@ -776,6 +777,14 @@ namespace hemera {
 			case hemera::arg_parse::VERSION:
 				break;
 			}
+		}
+
+		if (output.output_name == "") {
+			std::filesystem::path input_path(input.input);
+
+			//NOTE(ches) Folder, file without extension, I don't care.
+			std::string last_folderish = input_path.filename().stem().string();
+			output.output_name = last_folderish;
 		}
 
 		return true;

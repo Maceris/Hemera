@@ -50,6 +50,10 @@ namespace hemera {
 			}
 		}
 
+		if (command_line_options->input.empty()) {
+			std::cout << "Missing input folder! Please provide a path to a package." << std::endl;
+		}
+
 		Allocator<> main_alloc;
 
 		hemera::Options* options = main_alloc.new_object<hemera::Options>(
