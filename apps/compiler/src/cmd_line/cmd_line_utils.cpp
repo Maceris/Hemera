@@ -270,6 +270,7 @@ namespace hemera {
 		bool stage_seen = false;
 		bool subarchitecture_seen = false;
 		bool vendor_seen = false;
+		bool optimization_seen = false;
 
 		for (const auto& option : input.options) {
 			switch (option) {
@@ -304,6 +305,38 @@ namespace hemera {
 				}
 				output.debug_info = true;
 				debug_info_seen = true;
+				break;
+			case hemera::arg_parse::O0:
+				if (optimization_seen) {
+					cout << "Duplicate optimization level flag" << endl;
+					return false;
+				}
+				output.optimization_level = OptimizationLevel::O0;
+				optimization_seen = true;
+				break;
+			case hemera::arg_parse::O1:
+				if (optimization_seen) {
+					cout << "Duplicate optimization level flag" << endl;
+					return false;
+				}
+				output.optimization_level = OptimizationLevel::O1;
+				optimization_seen = true;
+				break;
+			case hemera::arg_parse::O2:
+				if (optimization_seen) {
+					cout << "Duplicate optimization level flag" << endl;
+					return false;
+				}
+				output.optimization_level = OptimizationLevel::O2;
+				optimization_seen = true;
+				break;
+			case hemera::arg_parse::O3:
+				if (optimization_seen) {
+					cout << "Duplicate optimization level flag" << endl;
+					return false;
+				}
+				output.optimization_level = OptimizationLevel::O3;
+				optimization_seen = true;
 				break;
 			case hemera::arg_parse::ARCHITECTURE:
 			case hemera::arg_parse::CPU:
@@ -770,6 +803,10 @@ namespace hemera {
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
+			case hemera::arg_parse::O0:
+			case hemera::arg_parse::O1:
+			case hemera::arg_parse::O2:
+			case hemera::arg_parse::O3:
 			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::STOP_BEFORE_LOWERING:
 			case hemera::arg_parse::STOP_BEFORE_ASSEMBLY:
