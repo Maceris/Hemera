@@ -2,12 +2,15 @@
 #include <iostream>
 
 #include "job.h"
+#include "back_end/back_end.h"
 #include "cmd_line/arg_parsing.h"
 #include "cmd_line/cmd_line_utils.h"
 #include "cmd_line/options.h"
 #include "memory/thread_safe_queue.h"
 #include "util/logger.h"
 #include "util/thread_pool.h"
+
+#include "llvm/IR/IRBuilder.h"
 
 namespace hemera {
 
@@ -17,7 +20,7 @@ namespace hemera {
 		Allocator<> arg_alloc;
 
 		arg_parse::UnprocessedOptions* command_line_options =
-			arg_alloc.new_object<arg_parse::UnprocessedOptions>();
+			arg_alloc.new_object<arg_parse::UnprocessedOptions>(arg_alloc);
 
 		bool all_fine = arg_parse::parse_arguments(argc, argv, 
 			*command_line_options, arg_alloc);
@@ -56,9 +59,7 @@ namespace hemera {
 
 		Allocator<> main_alloc;
 
-		hemera::Options* options = main_alloc.new_object<hemera::Options>(
-			main_alloc, command_line_options->input
-		);
+		hemera::Options* options = main_alloc.new_object<hemera::Options>();
 		all_fine = process_command_line_args(*command_line_options, *options);
 		if (!all_fine) {
 			std::cout << "Error parsing arguments!" << std::endl;
@@ -71,22 +72,50 @@ namespace hemera {
 
 		ThreadPool threads = ThreadPool();
 
-		if (options->build_extent >= BuildExtent::COMPILE) {
+		// Compile
 
+		if (options->build_extent < BuildExtent::LOWER) {
+			return 0;
 		}
 
-		if (options->build_extent >= BuildExtent::LOWER) {
+		//TODO(ches) Lower
 
+		if (options->build_extent < BuildExtent::ASSEMBLE) {
+			return 0;
 		}
+		//TODO(ches) Assemble
+		Backend* backend = new BackendLLVM();
+		backend->initialize(*options);
+		
+		//TODO(ches) get rid of the dummy module
+		llvm::LLVMContext context;
+		llvm::Module* dummy_module = main_alloc.new_object<llvm::Module>(
+			"dummy_module", context);
+		llvm::Type* int32 = llvm::Type::getInt32Ty(context);
+		llvm::FunctionType* func_type = llvm::FunctionType::get(int32, false);
+		llvm::Function* func = llvm::Function::Create(func_type,
+			llvm::Function::ExternalLinkage,
+			"main",
+			dummy_module
+		);
+		llvm::BasicBlock* block = llvm::BasicBlock::Create(context, "entry", func);
+		llvm::IRBuilder<> builder(block);
+		llvm::Value* constant_zero = builder.getInt32(0);
+		builder.CreateRet(constant_zero);
 
-		if (options->build_extent >= BuildExtent::ASSEMBLE) {
+		backend->generate_object_file(*options, *dummy_module);
 
+		if (options->build_extent < BuildExtent::LINK) {
+			backend->destroy();
+			delete backend;
+			backend = nullptr;
+			return 0;
 		}
+		//TODO(ches) Link
 
-		if (options->build_extent >= BuildExtent::LINK) {
-
-		}
-
+		backend->destroy();
+		delete backend;
+		backend = nullptr;
 		return 0;
 	}
 }

@@ -24,7 +24,9 @@ namespace hemera {
 	Backend::Backend() = default;
 	Backend::~Backend() = default;
 
-	BackendLLVM::BackendLLVM() = default;
+	BackendLLVM::BackendLLVM()
+		: target_machine{ nullptr }
+	{}
 	BackendLLVM::~BackendLLVM() = default;
 
 	static llvm::Triple::ArchType map_arch_type(ArchType architecture) {
