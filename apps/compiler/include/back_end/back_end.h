@@ -14,7 +14,7 @@ namespace hemera {
 		Backend& operator=(Backend&&) = delete;
 		virtual ~Backend();
 
-		virtual void destroy();
+		virtual void destroy() = 0;
 		/// <summary>
 		/// Take a module and turn it into an object file.
 		/// </summary>
@@ -22,14 +22,14 @@ namespace hemera {
 		/// <param name="module">The module to turn into an object file.</param>
 		/// <returns>Whether we were successful.</returns>
 		virtual bool generate_object_file(const Options& options,
-			llvm::Module& module);
+			llvm::Module& module) = 0;
 		/// <summary>
 		/// Set up the backend.
 		/// </summary>
 		/// <param name="options">Options provided by the user.</param>
 		/// <returns>Whether it was set up successfully.</returns>
-		virtual bool initialize(const Options& options);
-		virtual void link();
+		virtual bool initialize(const Options& options) = 0;
+		virtual void link() = 0;
 	};
 
 	struct BackendLLVM : public Backend {
