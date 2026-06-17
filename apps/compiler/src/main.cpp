@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <format>
 
 #include "job.h"
 #include "back_end/back_end.h"
@@ -57,6 +58,7 @@ namespace hemera {
 
 		if (command_line_options->input.empty()) {
 			std::cout << "Missing input folder! Please provide a path to a package." << std::endl;
+			return 1;
 		}
 
 		Allocator<> main_alloc;
@@ -114,7 +116,9 @@ namespace hemera {
 		if (llvm::verifyModule(*dummy_module, &os)) {
 			std::cout << "Module verification failed: " << os.str() << std::endl;
 		}
-		backend->generate_object_file(*options, *dummy_module);
+
+		std::string object_file_name = std::format("{}.o", options->output_name);
+		backend->generate_object_file(*options, *dummy_module, object_file_name);
 
 		if (options->build_extent < BuildExtent::LINK) {
 			backend->destroy();

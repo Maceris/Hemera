@@ -252,7 +252,7 @@ namespace hemera {
 	}
 
 	bool BackendLLVM::generate_object_file(const Options& options,
-		llvm::Module& module) {
+		llvm::Module& module, std::string_view output_name) {
 		// Optimize the IR
 
 		module.setTargetTriple(target_machine->getTargetTriple());
@@ -295,9 +295,8 @@ namespace hemera {
 			pass_builder.buildPerModuleDefaultPipeline(optimization_level);
 
 		// Setup the IR output
-		std::string filename = std::format("{}.o", options.output_name);
 		std::error_code error_code;
-		llvm::raw_fd_ostream destination(filename, error_code,
+		llvm::raw_fd_ostream destination(output_name, error_code,
 			llvm::sys::fs::OF_None);
 		
 		llvm::MCRegisterInfo* mc_register_info = target->createMCRegInfo(*target_triple);
@@ -343,7 +342,7 @@ namespace hemera {
 
 		bool had_errors = false;
 		llvm::handleAllErrors(std::move(result),
-			[&output_name = options.output_name, &had_errors](
+			[&output_name, &had_errors](
 				const llvm::ErrorInfoBase& error_base) {
 				report_error(ErrorCode::E5001, output_name, 0, 0,
 					error_base.message());

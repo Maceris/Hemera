@@ -1,9 +1,13 @@
 #pragma once
 
+#include <string_view>
+
 #include "cmd_line/options.h"
 
 #include "llvm/IR/Module.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace hemera {
 	struct Backend {
@@ -22,7 +26,7 @@ namespace hemera {
 		/// <param name="module">The module to turn into an object file.</param>
 		/// <returns>Whether we were successful.</returns>
 		virtual bool generate_object_file(const Options& options,
-			llvm::Module& module) = 0;
+			llvm::Module& module, std::string_view output_name) = 0;
 		/// <summary>
 		/// Set up the backend.
 		/// </summary>
@@ -42,7 +46,7 @@ namespace hemera {
 
 		void destroy() override;
 		bool generate_object_file(const Options& options, 
-			llvm::Module& module) override;
+			llvm::Module& module, std::string_view output_name) override;
 		bool initialize(const Options& options) override;
 		void link() override;
 
