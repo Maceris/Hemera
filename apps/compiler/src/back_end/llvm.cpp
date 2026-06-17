@@ -7,6 +7,10 @@
 #include "error/reporting.h"
 #include "util/logger.h"
 
+#include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/MachineFunctionAnalysis.h"
+#include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -18,6 +22,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
 
 namespace hemera {
 
@@ -25,7 +31,8 @@ namespace hemera {
 	Backend::~Backend() = default;
 
 	BackendLLVM::BackendLLVM()
-		: target_machine{ nullptr }
+		: target{ nullptr }
+		, target_machine{ nullptr }
 	{}
 	BackendLLVM::~BackendLLVM() = default;
 
@@ -247,46 +254,92 @@ namespace hemera {
 	bool BackendLLVM::generate_object_file(const Options& options,
 		llvm::Module& module) {
 		// Optimize the IR
-		
+
+		module.setTargetTriple(target_machine->getTargetTriple());
+		module.setDataLayout(target_machine->createDataLayout());
+
 		//NOTE(ches) the order is important here
-		llvm::LoopAnalysisManager LAM;
-		llvm::FunctionAnalysisManager FAM;
-		llvm::CGSCCAnalysisManager CGAM;
-		llvm::ModuleAnalysisManager MAM;
+		llvm::LoopAnalysisManager loop_analysis_manager;
+		llvm::FunctionAnalysisManager function_analysis_manager;
+		llvm::CGSCCAnalysisManager call_graph_analysis_manager;
+		llvm::ModuleAnalysisManager module_analysis_manager;
 
-		llvm::PassBuilder PB;
+		llvm::MachineModuleInfo machine_module_info(target_machine);
+		llvm::MachineModuleAnalysis machine_module_analysis(machine_module_info);
+		llvm::MachineFunctionAnalysisManager machine_function_analysis_manager;
+		llvm::MachineFunctionAnalysis machine_function_analysis(*target_machine);
+		llvm::BasicBlockSectionsProfileReaderAnalysis basic_block_sections_profile_reader_analysis(*target_machine);
 
-		PB.registerModuleAnalyses(MAM);
-		PB.registerCGSCCAnalyses(CGAM);
-		PB.registerFunctionAnalyses(FAM);
-		PB.registerLoopAnalyses(LAM);
-		PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+		llvm::PassBuilder pass_builder;
+
+		pass_builder.registerModuleAnalyses(module_analysis_manager);
+		pass_builder.registerCGSCCAnalyses(call_graph_analysis_manager);
+		pass_builder.registerFunctionAnalyses(function_analysis_manager);
+		pass_builder.registerMachineFunctionAnalyses(machine_function_analysis_manager);
+		pass_builder.registerLoopAnalyses(loop_analysis_manager);
+		pass_builder.crossRegisterProxies(loop_analysis_manager,
+			function_analysis_manager,
+			call_graph_analysis_manager,
+			module_analysis_manager,
+			&machine_function_analysis_manager
+		);
+		
+		module_analysis_manager.registerPass([&] { return machine_module_analysis; });
+		function_analysis_manager.registerPass([&] { return machine_function_analysis; });
+		function_analysis_manager.registerPass([&] { return basic_block_sections_profile_reader_analysis; });
 
 		llvm::OptimizationLevel optimization_level =
 			map_optimization_level(options.optimization_level);
 
-		llvm::ModulePassManager MPM =
-			PB.buildPerModuleDefaultPipeline(optimization_level);
+		llvm::ModulePassManager module_pass_manager =
+			pass_builder.buildPerModuleDefaultPipeline(optimization_level);
 
-		MPM.run(module, MAM);
-
-		// Output the IR
+		// Setup the IR output
 		std::string filename = std::format("{}.o", options.output_name);
 		std::error_code error_code;
 		llvm::raw_fd_ostream destination(filename, error_code,
 			llvm::sys::fs::OF_None);
 		
-		llvm::CGPassBuilderOption opts;
-		llvm::MCContext context(target_machine->getTargetTriple(),
-			target_machine->getMCAsmInfo(),
-			target_machine->getMCRegisterInfo(),
-			target_machine->getMCSubtargetInfo()
+		llvm::MCRegisterInfo* mc_register_info = target->createMCRegInfo(*target_triple);
+		llvm::MCTargetOptions mc_target_options;
+		llvm::MCAsmInfo* mc_asm_info = target->createMCAsmInfo(
+			*mc_register_info,
+			*target_triple,
+			mc_target_options
 		);
-		llvm::PassInstrumentationCallbacks pic;
-		
-		llvm::Error result = target_machine->buildCodeGenPipeline(MPM, MAM,
-			destination, nullptr, llvm::CodeGenFileType::ObjectFile, opts,
-			context, &pic);
+		llvm::MCSubtargetInfo* mc_subtarget_info = target->createMCSubtargetInfo(
+			*target_triple, 
+			target_machine->getTargetCPU(), 
+			target_machine->getTargetFeatureString()
+		);
+		llvm::MCContext mc_context(
+			*target_triple, 
+			*mc_asm_info, 
+			*mc_register_info, 
+			*mc_subtarget_info
+		);
+		const bool is_PIC = true;// Position Independent Code
+		const bool is_large_code_model = false; // Large memory model
+		llvm::MCObjectFileInfo* mc_object_file_info = 
+			target->createMCObjectFileInfo(mc_context, is_PIC, 
+				is_large_code_model);
+		mc_context.setObjectFileInfo(mc_object_file_info);
+
+		llvm::CGPassBuilderOption code_gen_pass_builder_option;
+		llvm::PassInstrumentationCallbacks pass_instrumentation_callbacks;
+		llvm::Error result = target_machine->buildCodeGenPipeline(
+			module_pass_manager,
+			module_analysis_manager,
+			destination,
+			nullptr,
+			llvm::CodeGenFileType::ObjectFile,
+			code_gen_pass_builder_option,
+			mc_context,
+			&pass_instrumentation_callbacks
+		);
+
+		// Run everything
+		module_pass_manager.run(module, module_analysis_manager);
 
 		bool had_errors = false;
 		llvm::handleAllErrors(std::move(result),
@@ -320,12 +373,11 @@ namespace hemera {
 		llvm::Triple::ObjectFormatType object_format_type =
 			map_object_format_type(options.object_format);
 
-		llvm::Triple target_triple = llvm::Triple(arch_type, sub_arch_type,
+		target_triple = new llvm::Triple(arch_type, sub_arch_type,
 			vendor_type, os_type, environment_type, object_format_type);
 
 		std::string target_lookup_error;
-		const llvm::Target* target =
-			llvm::TargetRegistry::lookupTarget(target_triple,
+		target = llvm::TargetRegistry::lookupTarget(*target_triple,
 				target_lookup_error);
 
 		if (!target_lookup_error.empty()) {
@@ -340,7 +392,7 @@ namespace hemera {
 		llvm::Reloc::Model reloc_model = llvm::Reloc::Model::PIC_;
 
 		target_machine = target->createTargetMachine(
-			target_triple, cpu, features, opts, reloc_model
+			*target_triple, cpu, features, opts, reloc_model
 		);
 
 		return true;

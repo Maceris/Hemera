@@ -47,6 +47,8 @@ namespace hemera {
 		void link() override;
 
 	private:
+		const llvm::Target* target;
+		llvm::Triple* target_triple;
 		llvm::TargetMachine* target_machine;
 	};
 }

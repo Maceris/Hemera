@@ -11,6 +11,8 @@
 #include "util/thread_pool.h"
 
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Support/FileSystem.h"
 
 namespace hemera {
 
@@ -86,7 +88,7 @@ namespace hemera {
 		//TODO(ches) Assemble
 		Backend* backend = new BackendLLVM();
 		backend->initialize(*options);
-		
+
 		//TODO(ches) get rid of the dummy module
 		llvm::LLVMContext context;
 		llvm::Module* dummy_module = main_alloc.new_object<llvm::Module>(
@@ -103,6 +105,15 @@ namespace hemera {
 		llvm::Value* constant_zero = builder.getInt32(0);
 		builder.CreateRet(constant_zero);
 
+		std::string errorStr;
+		llvm::raw_string_ostream os(errorStr);
+		if (llvm::verifyFunction(*func, &os)) {
+			std::cout << "Function verification failed: " << os.str() << std::endl;
+			errorStr.clear();
+		}
+		if (llvm::verifyModule(*dummy_module, &os)) {
+			std::cout << "Module verification failed: " << os.str() << std::endl;
+		}
 		backend->generate_object_file(*options, *dummy_module);
 
 		if (options->build_extent < BuildExtent::LINK) {
