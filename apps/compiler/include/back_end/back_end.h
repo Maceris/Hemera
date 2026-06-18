@@ -33,7 +33,8 @@ namespace hemera {
 		/// <param name="options">Options provided by the user.</param>
 		/// <returns>Whether it was set up successfully.</returns>
 		virtual bool initialize(const Options& options) = 0;
-		virtual void link() = 0;
+		virtual void link(const Options& options, 
+			std::string_view object_file) = 0;
 	};
 
 	struct BackendLLVM : public Backend {
@@ -48,7 +49,8 @@ namespace hemera {
 		bool generate_object_file(const Options& options, 
 			llvm::Module& module, std::string_view output_name) override;
 		bool initialize(const Options& options) override;
-		void link() override;
+		void link(const Options& options, 
+			std::string_view object_file) override;
 
 	private:
 		const llvm::Target* target;

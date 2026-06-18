@@ -1,5 +1,7 @@
 #include "back_end/back_end.h"
 
+#include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -397,7 +399,60 @@ namespace hemera {
 		return true;
 	}
 
-	void BackendLLVM::link() {
+	void BackendLLVM::link(const Options& options, 
+		std::string_view object_file) {
+
+		// Unix = ld.lld
+		// macOS = ld64.lld
+		// Windows = lld-link
+		
+#if defined(_WIN32) || defined(_WIN64)
+		std::string linker_name = "lld-link.exe";
+#elif defined(__APPLE__) || defined(__MACH__)
+		std::string linker_name = "ld64.lld";
+#elif defined(__linux__)
+		std::string linker_name = "ld.lld";
+#else
+		static_assert(false, "Unknown operating system");
+#endif
+
+		std::string args;
+
+		if (options.debug_info) {
+			args += "/debug ";
+		}
+		//TODO(ches) appropriate /entry:<value>
+
+		args += "/entry:main ";
+
+		switch (options.architecture) {
+		case ArchType::arm:
+		case ArchType::armeb:
+			args += "/machine:arm ";
+			break;
+		case ArchType::aarch64:
+		case ArchType::aarch64_be:
+		case ArchType::aarch64_32:
+			args += "/machine:arm64 ";
+			break;
+		case ArchType::x86:
+			args += "/machine:x86 ";
+			break;
+		case ArchType::x86_64:
+			args += "/machine:x64 ";
+			break;
+		}
+		std::string command = linker_name + " " + args + object_file.data();
+		int result = std::system(command.c_str());
+		
+		if (result != 0) {
+			report_error(ErrorCode::E7000, object_file, 0, 0);
+		}
+		
+		std::filesystem::path filePath = object_file;
+		if (!std::filesystem::remove(filePath)) {
+			report_error(ErrorCode::E7001, object_file, 0, 0);
+		}
 
 	}
 

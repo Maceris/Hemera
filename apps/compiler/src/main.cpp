@@ -126,7 +126,7 @@ namespace hemera {
 			backend = nullptr;
 			return 0;
 		}
-		//TODO(ches) Link
+		backend->link(*options, object_file_name);
 
 		backend->destroy();
 		delete backend;
