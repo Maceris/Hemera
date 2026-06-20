@@ -12,7 +12,7 @@ def hmir_dialect : Dialect {
 	let cppNamespace = "hmir";
 }
 
-class hmir_op<string mnemonic, list<Trait> traits = []> :
-	Op<hmir_dialect, mnemonic, traits>;
+class hmir_op<string mnemonic, list<Trait> props = []> :
+	Op<hmir_dialect, mnemonic, props>;
 
 #endif

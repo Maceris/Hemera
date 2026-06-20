@@ -1,13 +1,5 @@
 # HMIR lib
 
-INCLUDE_DIRECTORIES(SYSTEM
-  ${LLVM_INCLUDE_DIRS}
-  ${MLIR_INCLUDE_DIRS}
-  ${THIRD_PARTY_DIR}/llvm-project/mlir/include
-  ${THIRD_PARTY_DIR}/llvm-project/llvm/include
-  $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include>
-)
-
 add_mlir_dialect_library(HMIR
   ${HEMERA_MLIR_DIR}/lib/hmir/hmir_dialect.cpp
   ${HEMERA_MLIR_DIR}/lib/hmir/ir/hmir_ops.cpp
@@ -21,14 +13,7 @@ add_mlir_dialect_library(HMIR
 
 TARGET_INCLUDE_DIRECTORIES(HMIR PUBLIC
   $<BUILD_INTERFACE:${INCLUDE_DIR}/>
+  $<BUILD_INTERFACE:${HEMERA_MLIR_DIR}/include>
 )
 
 TARGET_LINK_LIBRARIES(HMIR PUBLIC MLIRIR)
-
-IF(MSVC)
-  # Intellisense doesn't play well with the clang-cl SYSTEM PRIVATE includes
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/bin/mlir/include>)
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include>)
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/llvm-project/mlir/include)
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/llvm-project/llvm/include)
-ENDIF()

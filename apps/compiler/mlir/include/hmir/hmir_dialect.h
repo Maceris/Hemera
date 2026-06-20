@@ -1,5 +1,9 @@
-#pragma once
+#ifndef HMIR_HMIR_DIALECT_H
+#define HMIR_HMIR_DIALECT_H
 
-namespace mlir::hmir {
-#include "hmir/hmir_ops_dialect.h.inc"
-}
+#include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/IR/Dialect.h"
+
+#include "hmir/hmir_opsDialect.h.inc"
+
+#endif
