@@ -305,11 +305,6 @@ namespace hemera {
         /// For Windows, either 32-bit or 64-bit (despite the name).
         /// </summary>
         Win32,
-        /// <summary>
-        /// For embedded development and bare-metal environments like
-        /// microcontrollers.
-        /// </summary>
-        Firmware,
     };
 
     /// <summary>

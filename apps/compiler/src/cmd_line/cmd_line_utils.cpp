@@ -212,7 +212,6 @@ namespace hemera {
 			cout << "OpenBSD ";
 			cout << "UEFI ";
 			cout << "Win32 ";
-			cout << "Firmware ";
 			cout << endl;
 		}
 		else if (value == "environment") {
@@ -573,10 +572,6 @@ namespace hemera {
 				}
 				else if (strcmp("win32", first_arg.c_str()) == 0) {
 					output.os = OSType::Win32;
-					os_seen = true;
-				}
-				else if (strcmp("firmware", first_arg.c_str()) == 0) {
-					output.os = OSType::Firmware;
 					os_seen = true;
 				}
 

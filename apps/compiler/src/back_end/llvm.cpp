@@ -144,7 +144,6 @@ namespace hemera {
 			case OSType::OpenBSD: return llvm::Triple::OSType::OpenBSD;
 			case OSType::UEFI: return llvm::Triple::OSType::UEFI;
 			case OSType::Win32: return llvm::Triple::OSType::Win32;
-			case OSType::Firmware: return llvm::Triple::OSType::Firmware;
 		}
 		LOG_FATAL("Unexpected OS type");
 	}
@@ -301,6 +300,7 @@ namespace hemera {
 		llvm::raw_fd_ostream destination(output_name, error_code,
 			llvm::sys::fs::OF_None);
 		
+		llvm::SourceMgr source_manager;
 		llvm::MCRegisterInfo* mc_register_info = target->createMCRegInfo(*target_triple);
 		llvm::MCTargetOptions mc_target_options;
 		llvm::MCAsmInfo* mc_asm_info = target->createMCAsmInfo(
@@ -314,10 +314,12 @@ namespace hemera {
 			target_machine->getTargetFeatureString()
 		);
 		llvm::MCContext mc_context(
-			*target_triple, 
-			*mc_asm_info, 
-			*mc_register_info, 
-			*mc_subtarget_info
+			*target_triple,
+			mc_asm_info,
+			mc_register_info,
+			mc_subtarget_info,
+			&source_manager,
+			&mc_target_options
 		);
 		const bool is_PIC = true;// Position Independent Code
 		const bool is_large_code_model = false; // Large memory model
@@ -330,12 +332,10 @@ namespace hemera {
 		llvm::PassInstrumentationCallbacks pass_instrumentation_callbacks;
 		llvm::Error result = target_machine->buildCodeGenPipeline(
 			module_pass_manager,
-			module_analysis_manager,
 			destination,
 			nullptr,
 			llvm::CodeGenFileType::ObjectFile,
 			code_gen_pass_builder_option,
-			mc_context,
 			&pass_instrumentation_callbacks
 		);
 
@@ -374,8 +374,17 @@ namespace hemera {
 		llvm::Triple::ObjectFormatType object_format_type =
 			map_object_format_type(options.object_format);
 
-		target_triple = new llvm::Triple(arch_type, sub_arch_type,
-			vendor_type, os_type, environment_type, object_format_type);
+		/*
+		 * TODO(ches) we'll want to switch back to enums once that's supported
+		 * by a stable branch.
+		 */
+		target_triple = new llvm::Triple(
+			llvm::Triple::getArchName(arch_type, sub_arch_type),
+			llvm::Triple::getVendorTypeName(vendor_type),
+			llvm::Triple::getOSTypeName(os_type),
+			llvm::Triple::getEnvironmentTypeName(environment_type)
+		);
+		target_triple->setObjectFormat(object_format_type);
 
 		std::string target_lookup_error;
 		target = llvm::TargetRegistry::lookupTarget(*target_triple,
