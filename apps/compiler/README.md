@@ -10,6 +10,7 @@ The main projects are:
 * Hemera - The executable part, essentially just a main method
 * HemeraLib - The core project, built as a library so we can run tests
 * HemeraTest - Unit test suite for the compiler
+* HMIR - An MLIR dialect (should be at MLIR/Libraries/HMIR in Visual Studio)
 
 # Requirements
 

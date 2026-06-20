@@ -55,7 +55,6 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/front_end/hlir.h
   ${INCLUDE_DIR}/front_end/hlir_generation.h
   ${INCLUDE_DIR}/front_end/info.h
-  ${INCLUDE_DIR}/front_end/mlir.h
   ${INCLUDE_DIR}/front_end/type.h
   ${INCLUDE_DIR}/front_end/type_checking.h
   ${INCLUDE_DIR}/front_end/type_id.h
@@ -81,7 +80,6 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/front_end/hlir.cpp
   ${SOURCE_DIR}/front_end/hlir_generation.cpp
   ${SOURCE_DIR}/front_end/info.cpp
-  ${SOURCE_DIR}/front_end/mlir.cpp
   ${SOURCE_DIR}/front_end/type.cpp
   ${SOURCE_DIR}/front_end/type_checking.cpp
   ${SOURCE_DIR}/front_end/work.cpp
@@ -153,7 +151,10 @@ llvm_map_components_to_libnames(llvm_libs
   x86targetmca
 )
 SEPARATE_ARGUMENTS(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
-TARGET_LINK_LIBRARIES(HemeraLib PUBLIC ${llvm_libs})
+TARGET_LINK_LIBRARIES(HemeraLib PUBLIC
+  ${llvm_libs}
+  HMIR
+)
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib PUBLIC
   ${INCLUDE_DIR}/
