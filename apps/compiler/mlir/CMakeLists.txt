@@ -1,8 +1,4 @@
 # MLIR dialect source
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.20.0...4.3.3)
-
-PROJECT(hmir-dialect LANGUAGES CXX C)
-
 ADD_SUBDIRECTORY(include/hmir)
 ADD_SUBDIRECTORY(lib/hmir)
