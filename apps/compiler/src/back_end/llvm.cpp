@@ -315,11 +315,10 @@ namespace hemera {
 		);
 		llvm::MCContext mc_context(
 			*target_triple,
-			mc_asm_info,
-			mc_register_info,
-			mc_subtarget_info,
-			&source_manager,
-			&mc_target_options
+			*mc_asm_info,
+			*mc_register_info,
+			*mc_subtarget_info,
+			&source_manager
 		);
 		const bool is_PIC = true;// Position Independent Code
 		const bool is_large_code_model = false; // Large memory model
@@ -332,10 +331,12 @@ namespace hemera {
 		llvm::PassInstrumentationCallbacks pass_instrumentation_callbacks;
 		llvm::Error result = target_machine->buildCodeGenPipeline(
 			module_pass_manager,
+			module_analysis_manager,
 			destination,
 			nullptr,
 			llvm::CodeGenFileType::ObjectFile,
 			code_gen_pass_builder_option,
+			mc_context,
 			&pass_instrumentation_callbacks
 		);
 
@@ -374,17 +375,14 @@ namespace hemera {
 		llvm::Triple::ObjectFormatType object_format_type =
 			map_object_format_type(options.object_format);
 
-		/*
-		 * TODO(ches) we'll want to switch back to enums once that's supported
-		 * by a stable branch.
-		 */
 		target_triple = new llvm::Triple(
-			llvm::Triple::getArchName(arch_type, sub_arch_type),
-			llvm::Triple::getVendorTypeName(vendor_type),
-			llvm::Triple::getOSTypeName(os_type),
-			llvm::Triple::getEnvironmentTypeName(environment_type)
+			arch_type,
+			sub_arch_type,
+			vendor_type,
+			os_type,
+			environment_type,
+			object_format_type
 		);
-		target_triple->setObjectFormat(object_format_type);
 
 		std::string target_lookup_error;
 		target = llvm::TargetRegistry::lookupTarget(*target_triple,
