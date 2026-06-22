@@ -4,11 +4,12 @@
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.20.0...4.3.3)
 
-SET(CMAKE_CXX_STANDARD 20)
-SET(CMAKE_CXX_STANDARD_REQUIRED ON)
-SET(CMAKE_C_STANDARD 99)
-
 PROJECT(Hemera VERSION 1.0.0) # Decoupled from actual version, which are tracked in source
+
+SET(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard to conform to" FORCE)
+SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(CMAKE_CXX_EXTENSIONS OFF)
+SET(CMAKE_C_STANDARD 99)
 
 ENABLE_LANGUAGE(CXX)
 ENABLE_LANGUAGE(ASM)
@@ -35,10 +36,6 @@ IF(POLICY CMP0077)
   CMAKE_POLICY(SET CMP0077 NEW)
 ENDIF()
 
-# Modules
-
-LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules")
-
 SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON) # Use solution folders.
 
 # Operating system settings
@@ -50,6 +47,11 @@ ELSEIF(UNIX)
 ENDIF()
 
 # Compiler settings
+
+IF (MSVC)
+  STRING(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  STRING(REPLACE "/GR" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+ENDIF()
 
 IF ((CMAKE_C_COMPILER_ID MATCHES "GNU") AND NOT MINGW AND NOT HAIKU)
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wall")
@@ -80,6 +82,7 @@ IF ((CMAKE_C_COMPILER_ID MATCHES "GNU") AND NOT MINGW AND NOT HAIKU)
 
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fsanitize=undefined,shift,shift-exponent,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr,pointer-overflow,builtin")
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fno-sanitize-recover=all")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fno-exceptions")
   
 ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:>:;/MT>;")       # link with multithreaded, static version of the C Runtime Library
@@ -87,6 +90,8 @@ ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Debug>:;/MTd>")  # link with debug, multithreaded, static version of the C Runtime Library
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/MP")                      # Compile in parallel
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")                  # increase the maximum number of sections an object file can contain
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/EHs-;/EHc-")              # Disable exceptions
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/GR-")                     # Disable run-time type information
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};/Wall")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};/WX")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};/wd5045") # /Qspectre mitigation location warning, we don't use that flag
@@ -99,6 +104,8 @@ ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VAR
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Debug>:;/MTd>")  # link with debug, multithreaded, static version of the C Runtime Library
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")                  # increase the maximum number of sections an object file can contain
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/MP")                      # Compile in parallel
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/EHs-;/EHc-")              # Disable exceptions
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/GR-")                     # Disable run-time type information
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wall")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wextra")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};/WX")
@@ -117,11 +124,18 @@ ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # clang-cl
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj") # increase the maximum number of sections an object file can contain
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-ffp-contract=off")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fno-exceptions")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fno-rtti")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-c++98-compat")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-c++98-compat-pedantic")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-c++11-compat")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-pre-c++14-compat")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-c99-compat")
+  SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-unsafe-buffer-usage")
+  SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-shadow-field-in-constructor")
+  SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-unused-private-field")
+  SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-ctad-maybe-unsupported")
+  SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};-Wno-switch-default")
   
 ENDIF()
 
