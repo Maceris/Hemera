@@ -1,10 +1,13 @@
 ---
 Checks: >
-  -clang-diagnostic-c++98-compat,
+  -clang-diagnostic-c++17-compat,
+  -clang-diagnostic-c++14-compat,
+  -clang-diagnostic-c++11-compat,
   -clang-diagnostic-c++98-compat,
   -clang-diagnostic-c++98-compat-pedantic,
   -clang-diagnostic-c++98-compat-local-type-template-args,
-  -clang-diagnostic-c++11-compat,
+  -clang-diagnostic-pre-c++20-compat,
+  -clang-diagnostic-pre-c++17-compat,
   -clang-diagnostic-pre-c++14-compat,
   -clang-diagnostic-c99-compat,
   -clang-diagnostic-unsafe-buffer-usage,
