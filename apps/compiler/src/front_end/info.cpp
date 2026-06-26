@@ -21,7 +21,9 @@ namespace hemera {
 	{}
 	PackageInfo::~PackageInfo() = default;
 
-	Info::Info()
+	ProgramInfo::ProgramInfo(mlir::MLIRContext* mlir_context,
+		mlir::OpBuilder* mlir_op_builder,
+		mlir::ModuleOp* mlir_module)
 		: packages{}
 		, expressions{}
 		, functions{}
@@ -32,6 +34,9 @@ namespace hemera {
 		, packages_mutex{}
 		, expressions_mutex{}
 		, functions_mutex{}
+		, context{ mlir_context }
+		, op_builder{ mlir_op_builder }
+		, module{ mlir_module }
 	{}
-	Info::~Info() = default;
+	ProgramInfo::~ProgramInfo() = default;
 }

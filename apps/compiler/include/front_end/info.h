@@ -4,13 +4,16 @@
 #include <cstdint>
 #include <mutex>
 
-#include "mlir/IR/Region.h"
-
 #include "front_end/hlir.h"
 #include "front_end/type.h"
 #include "lexer/token.h"
 #include "memory/allocator.h"
 #include "parser/ast_types.h"
+
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Region.h"
 
 namespace hemera {
 
@@ -76,7 +79,7 @@ namespace hemera {
 		PackageInfo& operator=(PackageInfo&&) = delete;
 	};
 
-	struct Info {
+	struct ProgramInfo {
 		MyMap<InternedString, PackageInfo*> packages;
 		MyMap<ExpressionID, ExpressionInfo*> expressions;
 		MyMap<FunctionID, FunctionInfo*> functions;
@@ -90,11 +93,17 @@ namespace hemera {
 		std::mutex expressions_mutex;
 		std::mutex functions_mutex;
 
-		Info();
-		~Info();
-		Info(const Info&) = delete;
-		Info(Info&&) = delete;
-		Info& operator=(const Info&) = delete;
-		Info& operator=(Info&&) = delete;
+		mlir::MLIRContext* context;
+		mlir::OpBuilder* op_builder;
+		mlir::ModuleOp* module;
+
+		ProgramInfo(mlir::MLIRContext* mlir_context, 
+			mlir::OpBuilder* mlir_op_builder,
+			mlir::ModuleOp* mlir_module);
+		~ProgramInfo();
+		ProgramInfo(const ProgramInfo&) = delete;
+		ProgramInfo(ProgramInfo&&) = delete;
+		ProgramInfo& operator=(const ProgramInfo&) = delete;
+		ProgramInfo& operator=(ProgramInfo&&) = delete;
 	};
 }

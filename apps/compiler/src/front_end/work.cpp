@@ -67,10 +67,10 @@ namespace hemera {
 		PackageInfo* package_info = nullptr;
 
 		{
-			std::scoped_lock<std::mutex> lock(executor.info->packages_mutex);
+			std::scoped_lock<std::mutex> lock(executor.program_info->packages_mutex);
 
-			auto iter = executor.info->packages.find(location.package_name);
-			if (iter == executor.info->packages.end()) {
+			auto iter = executor.program_info->packages.find(location.package_name);
+			if (iter == executor.program_info->packages.end()) {
 				LOG_ASSERT(location.file_name != nullptr);
 				LOG_ASSERT(location.package_name != nullptr);
 
@@ -137,9 +137,9 @@ namespace hemera {
 		lexer::lex(file, file_info->tokens, token_alloc, file_path);
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
-			executor.info->node_alloc);
+			executor.program_info->node_alloc);
 
-		Info* info = executor.global_data->info;
+		ProgramInfo* program_info = executor.global_data->program_info;
 		
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->node_type == ast::NodeType::PACKAGE) {
@@ -149,7 +149,7 @@ namespace hemera {
 			if (child->node_type == ast::NodeType::IMPORT) {
 				LOG_ASSERT(child->children.size() % 2 == 1);
 				
-				ImportInfo* import = info->info_alloc.new_object<ImportInfo>();
+				ImportInfo* import = program_info->info_alloc.new_object<ImportInfo>();
 				
 				{
 					std::scoped_lock<std::mutex> lock(file_info->imports_mutex);

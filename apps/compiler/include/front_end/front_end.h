@@ -58,7 +58,7 @@ namespace hemera {
 		/// </summary>
 		bool doing_work;
 		uint32_t index;
-		Info* info;
+		ProgramInfo* program_info;
 
 		WorkThreadData(GlobalThreadData& global_data);
 		~WorkThreadData();
@@ -86,11 +86,11 @@ namespace hemera {
 		std::mt19937 rng;
 		std::uniform_int_distribution<> distribution;
 
-		Info* info;
-		std::pmr::monotonic_buffer_resource* work_allocator;
+		ProgramInfo* program_info;
+		Allocator<>* work_allocator;
 
-		GlobalThreadData(Info* info, 
-			std::pmr::monotonic_buffer_resource* work_allocator);
+		GlobalThreadData(ProgramInfo* program_info,
+			Allocator<>* work_allocator);
 		~GlobalThreadData();
 		GlobalThreadData(const GlobalThreadData&) = delete;
 		GlobalThreadData(GlobalThreadData&&) = delete;
@@ -98,7 +98,7 @@ namespace hemera {
 		GlobalThreadData& operator=(GlobalThreadData&&) = delete;
 	};
 
-	void kick_off_processing();
+	void kick_off_processing(ProgramInfo* program_info);
 	void sleep_thread(WorkThreadData& data);
 	void notify_thread(WorkThreadData& data, size_t target_thread_index);
 	void enqueue_work(WorkThreadData& data, Work* work);

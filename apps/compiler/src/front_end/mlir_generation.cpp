@@ -6,19 +6,6 @@
 
 namespace hemera {
 
-	struct DeferredExpression {
-		ast::Node* expression = nullptr;
-		DeferredExpression* next = nullptr;
-	};
-
-	static void free_deferred_expressions(DeferredExpression* expr) {
-		if (nullptr == expr) {
-			return;
-		}
-		DeferredExpression* next = expr->next;
-		delete expr;
-		free_deferred_expressions(next);
-	}
 
 	/// <summary>
 	/// Process a block into HLIR.
@@ -28,8 +15,6 @@ namespace hemera {
 	/// <returns>The first basic block in the block.</returns>
 	hlir::BasicBlock* hlir_process_block(ast::Node* node, hlir::Function* fn) {
 		hlir::BasicBlock* block = fn->create_basic_block();
-
-		DeferredExpression* deferred = nullptr;
 
 		for (size_t i = 0; i < node->children.size(); ++i) {
 			ast::Node* child = node->children[i];
@@ -50,11 +35,7 @@ namespace hemera {
 				block->instructions.push_back(instr);
 			}
 			else if (ast::NodeType::DEFER == child->node_type) {
-				//NTOE(ches) slap it onto the stack of deferred expressions
-				DeferredExpression* next = new DeferredExpression();
-				next->expression = child->children[0];
-				next->next = deferred;
-				deferred = next;
+				//TODO(ches) deferred op
 			}
 			else if (ast::NodeType::BREAK == child->node_type) {
 				//TODO(ches) deferred expression(s)
@@ -100,10 +81,6 @@ namespace hemera {
 
 		}
 
-		//TODO(ches) deferred expression(s)
-
-		free_deferred_expressions(deferred);
-
 		return block;
 	}
 
@@ -116,7 +93,7 @@ namespace hemera {
 	void hlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
 		//TODO(ches) finish this
 
-		Allocator<>& alloc = executor.info->info_alloc;
+		Allocator<>& alloc = executor.program_info->info_alloc;
 		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
 		alloc.construct(fn, alloc);
 

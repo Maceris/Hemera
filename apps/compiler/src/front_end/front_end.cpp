@@ -54,8 +54,8 @@ namespace hemera {
 		return head == tail;
 	}
 
-	GlobalThreadData::GlobalThreadData(Info* info,
-		std::pmr::monotonic_buffer_resource* work_allocator)
+	GlobalThreadData::GlobalThreadData(ProgramInfo* program_info,
+		Allocator<>* work_allocator)
 		: shared_queue{}
 		, thread_data{}
 		, parked_work{ 0 }
@@ -65,7 +65,7 @@ namespace hemera {
 		, rand_device{}
 		, rng{ rand_device() }
 		, distribution{ 0, static_cast<int>(THREAD_COUNT) - 2 }
-		, info{ info }
+		, program_info{ program_info }
 		, work_allocator{ work_allocator }
 	{}
 	GlobalThreadData::~GlobalThreadData() = default;
@@ -81,9 +81,16 @@ namespace hemera {
 		, run_next_count{ 0 }
 		, doing_work{ false }
 		, index{ 0 }
-		, info{ global_data.info }
+		, program_info{ global_data.program_info }
 	{}
 	WorkThreadData::~WorkThreadData() = default;
+
+	Work* WorkThreadData::create_work(WorkType type, WorkTarget&& target) {
+		Work* work = global_data->work_allocator->new_object<Work>(
+			type, std::move(target));
+		global_data->shared_queue.enqueue(std::move(work));
+		return work;
+	}
 
 	Work* dequeue_work_local(WorkThreadData& data) {
 		Work* to_do = nullptr;
@@ -200,19 +207,17 @@ namespace hemera {
 		data.global_data->threads_running--;
 	}
 
-	void kick_off_processing() {
+	void kick_off_processing(ProgramInfo* program_info) {
 		//TODO(ches) we need to create info somewhere where we care about it
 		initialize_builtin_types();
-		initialize_reporting_storage();
 
 		THREAD_COUNT =
 			std::max(1u, std::thread::hardware_concurrency());
 		MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
+		
+		Allocator<> work_allocator{};
 
-		Info* info = new Info();
-		std::pmr::monotonic_buffer_resource work_allocator{};
-
-		GlobalThreadData global_data{ info, &work_allocator };
+		GlobalThreadData global_data{ program_info, &work_allocator };
 		for (uint32_t i = 0; i < THREAD_COUNT; ++i) {
 			WorkThreadData* new_thread = new WorkThreadData(global_data);
 			new_thread->index = i;

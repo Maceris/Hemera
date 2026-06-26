@@ -7,6 +7,8 @@
 #include "cmd_line/arg_parsing.h"
 #include "cmd_line/cmd_line_utils.h"
 #include "cmd_line/options.h"
+#include "error/reporting.h"
+#include "front_end/front_end.h"
 #include "memory/thread_safe_queue.h"
 #include "util/logger.h"
 #include "util/thread_pool.h"
@@ -14,6 +16,11 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinDialect.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
 
 namespace hemera {
 
@@ -71,20 +78,33 @@ namespace hemera {
 			print_command_line_help();
 			return 1;
 		}
-
-		ThreadSafeQueue<Job> work_queue = ThreadSafeQueue<Job>();
-
-		ThreadPool threads = ThreadPool();
+		initialize_reporting_storage();
 
 		// Compile
+		ThreadSafeQueue<Job> work_queue = ThreadSafeQueue<Job>();
+		ThreadPool threads = ThreadPool();
+
+		mlir::MLIRContext mlir_context;
+		mlir_context.loadDialect<mlir::BuiltinDialect>();
+		mlir::OpBuilder mlir_builder(&mlir_context);
+
+		mlir::ModuleOp mlir_module =
+			mlir::ModuleOp::create(mlir_builder.getUnknownLoc());
+		
+		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
+			&mlir_context, &mlir_builder, &mlir_module);
+
+		kick_off_processing(program_info);
 
 		if (options->build_extent < BuildExtent::LOWER) {
+			destroy_reporting_storage();
 			return 0;
 		}
 
 		//TODO(ches) Lower
 
 		if (options->build_extent < BuildExtent::ASSEMBLE) {
+			destroy_reporting_storage();
 			return 0;
 		}
 		//TODO(ches) Assemble
@@ -124,6 +144,7 @@ namespace hemera {
 			backend->destroy();
 			delete backend;
 			backend = nullptr;
+			destroy_reporting_storage();
 			return 0;
 		}
 		backend->link(*options, object_file_name);
@@ -131,6 +152,7 @@ namespace hemera {
 		backend->destroy();
 		delete backend;
 		backend = nullptr;
+		destroy_reporting_storage();
 		return 0;
 	}
 }
