@@ -4,7 +4,7 @@
 
 #include "error/reporting.h"
 #include "front_end/front_end.h"
-#include "front_end/hlir_generation.h"
+#include "front_end/mlir_generation.h"
 #include "front_end/type_checking.h"
 #include "front_end/work.h"
 #include "lexer/lexer.h"
@@ -47,8 +47,8 @@ namespace hemera {
 		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
 	}
 
-	void work_function_hlir_generation(WorkThreadData& executor, FunctionInfo* function) {
-		hlir_process_function(executor, function);
+	void work_function_code_generation(WorkThreadData& executor, FunctionInfo* function) {
+		mlir_process_function(executor, function);
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {

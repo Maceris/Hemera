@@ -1,4 +1,4 @@
-#include "front_end/hlir_generation.h"
+#include "front_end/mlir_generation.h"
 #include "util/logger.h"
 
 //TODO(ches) remove this, shuts up unused warnings while we work
@@ -119,7 +119,6 @@ namespace hemera {
 		Allocator<>& alloc = executor.info->info_alloc;
 		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
 		alloc.construct(fn, alloc);
-		function->ir = fn;
 
 		ast::Node* fn_root = function->node;
 
@@ -145,5 +144,14 @@ namespace hemera {
 		IGNORE_UNUSED(signature);
 
 		hlir_process_block(body, fn);
+	}
+
+	void mlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
+		//TODO(ches) finish this
+
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(executor);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(function);
 	}
 }

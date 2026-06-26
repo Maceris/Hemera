@@ -49,7 +49,7 @@ namespace hemera {
 		/// and actually doing so.
 		/// </summary>
 		IF_ELSE,
-		FUNCTION_HLIR_GENERATION,
+		FUNCTION_CODE_GENERATION,
 		IMPORT,
 		PARSE,
 		TYPE_CHECK,

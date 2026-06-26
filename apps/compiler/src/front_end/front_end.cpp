@@ -181,8 +181,8 @@ namespace hemera {
 					case WorkType::IF_ELSE:
 						work_if_else(data, to_do->work_target);
 						break;
-					case WorkType::FUNCTION_HLIR_GENERATION:
-						work_function_hlir_generation(data, 
+					case WorkType::FUNCTION_CODE_GENERATION:
+						work_function_code_generation(data, 
 							to_do->work_target.value.function);
 						break;
 					case WorkType::IMPORT:

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <mutex>
 
+#include "mlir/IR/Region.h"
+
 #include "front_end/hlir.h"
 #include "front_end/type.h"
 #include "lexer/token.h"
@@ -29,7 +31,7 @@ namespace hemera {
 		InternedString name;
 		InternedString package;
 		ast::Node* node;
-		hlir::Function* ir;
+		mlir::Region* ir;
 		TypeInfoFunction type_info;
 	};
 
