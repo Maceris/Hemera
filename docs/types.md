@@ -506,6 +506,48 @@ my_int :: i32
 more_verbose : type : i32
 ```
 
+### Alias Equality
+The compiler understands the underlying type of an alias, but when checking
+for equality distinct aliases are considered different.
+
+Let's say we have a few aliases for integer:
+```
+index   :: alias int
+ind     :: alias index
+counter :: distinct alias index
+
+number :: distinct alias int
+num    :: alias number
+age    :: distinct alias number
+```
+
+As a diagram, they might look like this:
+```
+            int
+           /   \
+          /  (distinct)
+         /       \
+    index         number
+    /  \           /  \
+   / (distinct)   / (distinct)
+  /      \       /      \
+ind   counter  num     age
+
+```
+
+This table indicates whether each pair of types would be
+considered the "same" type.
+
+|         | int | index |ind | counter | number | num | age |
+|---------|-----|-------|----|---------|--------|-----|-----|
+| int     | ==  | ==    | == |         |        |     |     |
+| index   | ==  | ==    | == |         |        |     |     |
+| ind     | ==  | ==    | == |         |        |     |     |
+| counter |     |       |    | ==      |        |     |     |
+| number  |     |       |    |         | ==     | ==  |     |
+| num     |     |       |    |         | ==     | ==  |     |
+| age     |     |       |    |         |        |     | ==  |
+
 ## Unions
 
 Unions are tagged/discriminated unions. They are be one of a set of values, and know which variant they are. 
