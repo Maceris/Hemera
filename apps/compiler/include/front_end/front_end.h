@@ -106,6 +106,8 @@ namespace hemera {
 	Work* dequeue_work_global(WorkThreadData& data);
 	bool steal_work(WorkThreadData& stealer);
 
+	void initialize_builtin_functions();
+
 	// Handled in work.cpp, but defined here for convenience
 	void work_execution(WorkThreadData& executor, WorkTarget& target);
 	void work_if_else(WorkThreadData& executor, WorkTarget& target);

@@ -8,6 +8,7 @@ namespace hemera {
 
 	struct TypeInfo;
 
+	//TODO(ches) switch to MLIR types
 	namespace builtin {
 		struct _any {
 			TypeInfo* type;

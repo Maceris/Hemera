@@ -208,8 +208,8 @@ namespace hemera {
 	}
 
 	void kick_off_processing(ProgramInfo* program_info) {
-		//TODO(ches) we need to create info somewhere where we care about it
 		initialize_builtin_types();
+		initialize_builtin_functions();
 
 		THREAD_COUNT =
 			std::max(1u, std::thread::hardware_concurrency());
@@ -331,5 +331,9 @@ namespace hemera {
 		}
 
 		return false;
+	}
+
+	void initialize_builtin_functions() {
+		//TODO(ches) set up builtin functions
 	}
 }
