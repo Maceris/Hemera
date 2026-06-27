@@ -158,10 +158,7 @@ namespace hemera {
 	TypeInfo* BUILTIN_poisoned_value;
 
 	std::string to_string(TypeInfo const* type) {
-		//TODO(ches) handle aliases
-		if (type == nullptr) {
-			return "null";
-		}
+		LOG_ASSERT(type != nullptr);
 
 		// Primitives
 		if (BUILTIN_any == type) {
@@ -362,7 +359,21 @@ namespace hemera {
 		}
 
 		// User created type
-		if (TypeInfoVariant::ANY == type->variant
+		if (TypeInfoVariant::ALIAS == type->variant) {
+			TypeInfoAlias const* specific_type =
+				static_cast<TypeInfoAlias const*>(type);
+
+			std::string result = specific_type->name->c_str();
+			
+			result += " : ";
+			result += specific_type->distinct ? "distinct alias" : "alias";
+			result += "[";
+			result += to_string(specific_type->base_type);
+			result += "]";
+
+			return result;
+		}
+		else if (TypeInfoVariant::ANY == type->variant
 			|| TypeInfoVariant::BOOLEAN == type->variant
 			|| TypeInfoVariant::CHAR == type->variant
 			|| TypeInfoVariant::COMPLEX == type->variant
@@ -468,12 +479,14 @@ namespace hemera {
 	}
 
 	bool same_type(TypeInfo const* a, TypeInfo const* b) {
-		//TODO(ches) handle aliases
 		if (a == nullptr || b == nullptr) {
 			return false;
 		}
 
-		return a == b;
+		TypeInfo const* base_a = get_base_type_or_alias(a);
+		TypeInfo const* base_b = get_base_type_or_alias(b);
+
+		return base_a == base_b;
 	}
 
 	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to) {
@@ -615,6 +628,39 @@ namespace hemera {
 			to_string(actual_from), to_string(actual_to))
 		);
 		return false;
+	}
+
+	TypeInfo const* get_base_type(TypeInfo const* type) {
+		TypeInfo const* base_type = type;
+		TypeInfoAlias const* base_type_as_alias = nullptr;
+
+		while (TypeInfoVariant::ALIAS == base_type->variant) {
+			base_type_as_alias = static_cast<TypeInfoAlias const*>(base_type);
+			base_type = base_type_as_alias->base_type;
+			LOG_ASSERT(base_type != nullptr);
+		}
+		// It isn't an alias (anymore)
+
+		return base_type;
+	}
+
+	TypeInfo const* get_base_type_or_alias(TypeInfo const* type) {
+		TypeInfo const* base_type = type;
+		TypeInfoAlias const* base_type_as_alias = nullptr;
+
+		while (TypeInfoVariant::ALIAS == base_type->variant) {
+			base_type_as_alias = static_cast<TypeInfoAlias const*>(base_type);
+			if (base_type_as_alias->distinct) {
+				// we hit a distinct alias, so we can just stop looking now
+				break;
+			}
+			// It's an alias, and not distinct, so keep going up the chain
+			base_type = base_type_as_alias->base_type;
+			LOG_ASSERT(base_type != nullptr);
+		}
+		// It isn't an alias (anymore), by now it's a base type or distinct
+
+		return base_type;
 	}
 
 	void initialize_builtin_types() {

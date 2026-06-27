@@ -456,10 +456,6 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_q128;
 	extern TypeInfo* BUILTIN_q256;
 	extern TypeInfo* BUILTIN_rawptr;
-	//extern TypeInfo* BUILTIN_relptr8; //TODO(ches) these are polymorphic?
-	//extern TypeInfo* BUILTIN_relptr16; //TODO(ches) these are polymorphic?
-	//extern TypeInfo* BUILTIN_relptr32; //TODO(ches) these are polymorphic?
-	//extern TypeInfo* BUILTIN_relptr64; //TODO(ches) these are polymorphic?
 	extern TypeInfo* BUILTIN_string;
 	extern TypeInfo* BUILTIN_type;
 	extern TypeInfo* BUILTIN_u8;
@@ -512,6 +508,25 @@ namespace hemera {
 	/// <param name="to">The type we are converting to.</param>
 	/// <returns>Whether implicit conversion is possible.</returns>
 	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to);
+
+	/// <summary>
+
+	/// If the provided type is an alias, look up the true base type, ignoring
+	/// anything to do with distinct aliases.
+	/// </summary>
+	/// <param name="type">The type to find a base type for.</param>
+	/// <returns>The base type.</returns>
+	TypeInfo const* get_base_type(TypeInfo const* type);
+
+	/// <summary>
+	/// If the provided type is an alias, look up the base type until we 
+	/// find something that is either not an alias, or the nearest distinct
+	/// alias this refers to.
+	/// </summary>
+	/// <param name="type">The type to find a base type for.</param>
+	/// <returns>The base type, or a distinct alias this refers to.</returns>
+	TypeInfo const* get_base_type_or_alias(TypeInfo const* type);
+
 
 	void initialize_builtin_types();
 }
