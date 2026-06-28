@@ -100,6 +100,7 @@ namespace hemera {
 			destroy_reporting_storage();
 			return 0;
 		}
+		llvm::LLVMContext context;
 
 		//TODO(ches) Lower
 
@@ -107,12 +108,10 @@ namespace hemera {
 			destroy_reporting_storage();
 			return 0;
 		}
-		//TODO(ches) Assemble
 		Backend* backend = new BackendLLVM();
 		backend->initialize(*options);
 
 		//TODO(ches) get rid of the dummy module
-		llvm::LLVMContext context;
 		llvm::Module* dummy_module = main_alloc.new_object<llvm::Module>(
 			"dummy_module", context);
 		llvm::Type* int32 = llvm::Type::getInt32Ty(context);
