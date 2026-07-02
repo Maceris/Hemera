@@ -27,57 +27,19 @@ namespace hemera {
 	static int main(int argc, char* argv[])
 	{
 		Logger::init();
-		Allocator<> arg_alloc;
-
-		arg_parse::UnprocessedOptions* command_line_options =
-			arg_alloc.new_object<arg_parse::UnprocessedOptions>(arg_alloc);
-
-		bool all_fine = arg_parse::parse_arguments(argc, argv, 
-			*command_line_options, arg_alloc);
-
-		if (!all_fine) {
-			std::cout << "Error parsing arguments!" << std::endl;
-
-			print_command_line_help();
-			return 1;
-		}
-
-		for (const auto& option : command_line_options->options) {
-			if (option == arg_parse::Option::HELP) {
-				print_command_line_help();
-				return 0;
-			}
-
-			if (option == arg_parse::Option::VERSION) {
-				print_command_line_version();
-				return 0;
-			}
-		}
-
-		for (const auto& option_with_value : command_line_options->options_with_values) {
-			if (option_with_value.option == arg_parse::Option::LIST) {
-				for (const auto& value : option_with_value.values) {
-					print_command_line_arg_list(value);
-				}
-				return 0;
-			}
-		}
-
-		if (command_line_options->input.empty()) {
-			std::cout << "Missing input folder! Please provide a path to a package." << std::endl;
-			return 1;
-		}
-
 		Allocator<> main_alloc;
 
-		hemera::Options* options = main_alloc.new_object<hemera::Options>();
-		all_fine = process_command_line_args(*command_line_options, *options);
-		if (!all_fine) {
-			std::cout << "Error parsing arguments!" << std::endl;
+		bool all_fine = true;
+		hemera::Options* options = handle_command_line(argc, argv, main_alloc, 
+			&all_fine);
 
-			print_command_line_help();
+		if (!all_fine) {
 			return 1;
 		}
+		if (!options) {
+			return 0;
+		}
+
 		initialize_reporting_storage();
 
 		// Compile
