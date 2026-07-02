@@ -23,6 +23,33 @@
 #include "mlir/IR/MLIRContext.h"
 
 namespace hemera {
+	
+	static void fill_out_dummy_module(llvm::LLVMContext& context, unsigned int address_space, llvm::Module* module) {
+		//TODO(ches) get rid of the dummy module
+
+		llvm::Type* int32 = llvm::Type::getInt32Ty(context);
+		llvm::FunctionType* func_type = llvm::FunctionType::get(int32, false);
+		llvm::Function* func = llvm::Function::Create(func_type,
+			llvm::Function::ExternalLinkage,
+			address_space,
+			"main",
+			module
+		);
+		llvm::BasicBlock* block = llvm::BasicBlock::Create(context, "entry", func);
+		llvm::IRBuilder<> builder(block);
+		llvm::Value* constant_zero = builder.getInt32(0);
+		builder.CreateRet(constant_zero);
+
+		std::string errorStr;
+		llvm::raw_string_ostream os(errorStr);
+		if (llvm::verifyFunction(*func, &os)) {
+			std::cout << "Function verification failed: " << os.str() << std::endl;
+			errorStr.clear();
+		}
+		if (llvm::verifyModule(*module, &os)) {
+			std::cout << "Module verification failed: " << os.str() << std::endl;
+		}
+	}
 
 	static int main(int argc, char* argv[])
 	{
@@ -30,7 +57,7 @@ namespace hemera {
 		Allocator<> main_alloc;
 
 		bool all_fine = true;
-		hemera::Options* options = handle_command_line(argc, argv, main_alloc, 
+		hemera::Options* options = handle_command_line(argc, argv, main_alloc,
 			&all_fine);
 
 		if (!all_fine) {
@@ -39,6 +66,11 @@ namespace hemera {
 		if (!options) {
 			return 0;
 		}
+
+		std::string object_file_name = std::format("{}.o", options->output_name);
+		llvm::Module* main_module = nullptr;
+		unsigned int address_space = 0;
+
 
 		initialize_reporting_storage();
 
@@ -52,7 +84,7 @@ namespace hemera {
 
 		mlir::ModuleOp mlir_module =
 			mlir::ModuleOp::create(mlir_builder.getUnknownLoc());
-		
+
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
 
@@ -62,6 +94,7 @@ namespace hemera {
 			destroy_reporting_storage();
 			return 0;
 		}
+		//TODO(ches) this isn't thread safe, we need locking or more contexts
 		llvm::LLVMContext context;
 
 		//TODO(ches) Lower
@@ -71,35 +104,17 @@ namespace hemera {
 			return 0;
 		}
 		Backend* backend = new BackendLLVM();
-		backend->initialize(*options);
-
-		//TODO(ches) get rid of the dummy module
-		llvm::Module* dummy_module = main_alloc.new_object<llvm::Module>(
-			"dummy_module", context);
-		llvm::Type* int32 = llvm::Type::getInt32Ty(context);
-		llvm::FunctionType* func_type = llvm::FunctionType::get(int32, false);
-		llvm::Function* func = llvm::Function::Create(func_type,
-			llvm::Function::ExternalLinkage,
-			"main",
-			dummy_module
-		);
-		llvm::BasicBlock* block = llvm::BasicBlock::Create(context, "entry", func);
-		llvm::IRBuilder<> builder(block);
-		llvm::Value* constant_zero = builder.getInt32(0);
-		builder.CreateRet(constant_zero);
-
-		std::string errorStr;
-		llvm::raw_string_ostream os(errorStr);
-		if (llvm::verifyFunction(*func, &os)) {
-			std::cout << "Function verification failed: " << os.str() << std::endl;
-			errorStr.clear();
-		}
-		if (llvm::verifyModule(*dummy_module, &os)) {
-			std::cout << "Module verification failed: " << os.str() << std::endl;
+		if (!backend->initialize(*options)) {
+			destroy_reporting_storage();
+			return 1;
 		}
 
-		std::string object_file_name = std::format("{}.o", options->output_name);
-		backend->generate_object_file(*options, *dummy_module, object_file_name);
+		main_module = main_alloc.new_object<llvm::Module>(options->output_name,
+			context);
+
+		fill_out_dummy_module(context, address_space, main_module);
+
+		backend->generate_object_file(*options, *main_module, object_file_name);
 
 		if (options->build_extent < BuildExtent::LINK) {
 			backend->destroy();
