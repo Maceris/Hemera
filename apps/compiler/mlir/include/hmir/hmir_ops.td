@@ -2,28 +2,42 @@
 #define HMIR_OPS
 
 include "hmir_dialect.td"
-include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def hmir_example_op : hmir_op<"example", [NoMemoryEffect, 
-	SameOperandsAndResultType]> {
+def hmir_defer_op : hmir_op<"defer", [AlwaysSpeculatableImplTrait]> {
 	
-	let summary = "This is an example";
+	let summary = "Used to defer an expression until the end of the scope";
 	let description = [{
 	 Example:
 
         ```mlir
-        %0 = constant 2 : i32
-        // Apply the example operation to %0
-        %1 = hmir.example %0 : i32
+        ^bb2:
+          %2 = call @someFn()
+          hmir.defer ^bb3(%2 : tensor<*xf32>)
+        ^bb3(%3: tensor<*xf32>):
         ```
 	}];
 
-	let arguments = (ins I32:$input);
-    let results = (outs I32:$res);
+	let arguments = (ins Variadic<AnyType>:$destOperands);
+    let successors = (successor AnySuccessor:$dest);
 
+    let builders = [
+    OpBuilder<(ins "mlir::Block *":$dest,
+                   CArg<"mlir::ValueRange", "{}">:$destOperands), [{
+      $_state.addSuccessors(dest);
+      $_state.addOperands(destOperands);
+    }]>];
+
+    let extraClassDeclaration = [{
+        void setDest(mlir::Block *block);
+
+        /// Erase the operand at 'index' from the operand list.
+        void eraseOperand(unsigned index);
+    }];
+
+    let hasCanonicalizeMethod = 1;
     let assemblyFormat = [{
-        $input attr-dict `:` type($input)
+        $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
     }];
 }
 
