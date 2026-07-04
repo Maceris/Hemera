@@ -55,6 +55,7 @@ namespace hemera {
 	{
 		Logger::init();
 		Allocator<> main_alloc;
+		int rc = 0;
 
 		bool all_fine = true;
 		hemera::Options* options = handle_command_line(argc, argv, main_alloc,
@@ -70,7 +71,7 @@ namespace hemera {
 		std::string object_file_name = std::format("{}.o", options->output_name);
 		llvm::Module* main_module = nullptr;
 		unsigned int address_space = 0;
-
+		Backend* backend = nullptr;
 
 		initialize_reporting_storage();
 
@@ -88,48 +89,54 @@ namespace hemera {
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
 
-		kick_off_processing(program_info);
-
-		if (options->build_extent < BuildExtent::LOWER) {
-			destroy_reporting_storage();
-			return 0;
-		}
 		//TODO(ches) this isn't thread safe, we need locking or more contexts
 		llvm::LLVMContext context;
 
+		kick_off_processing(program_info);
+
+		if (options->build_extent < BuildExtent::LOWER) {
+			goto teardown_compilation;
+		}
+
+		// Lower
+		
 		//TODO(ches) Lower
 
 		if (options->build_extent < BuildExtent::ASSEMBLE) {
-			destroy_reporting_storage();
-			return 0;
+			goto teardown_lowering;
 		}
-		Backend* backend = new BackendLLVM();
+		// Assemble
+
+		backend = main_alloc.new_object<BackendLLVM>();
 		if (!backend->initialize(*options)) {
-			destroy_reporting_storage();
-			return 1;
+			goto teardown_lowering;
 		}
 
 		main_module = main_alloc.new_object<llvm::Module>(options->output_name,
 			context);
 
 		fill_out_dummy_module(context, address_space, main_module);
-
+		
 		backend->generate_object_file(*options, *main_module, object_file_name);
 
 		if (options->build_extent < BuildExtent::LINK) {
-			backend->destroy();
-			delete backend;
-			backend = nullptr;
-			destroy_reporting_storage();
-			return 0;
+			goto teardown_assembly;
 		}
+		// Link
+		
 		backend->link(*options, object_file_name);
 
+	teardown_assembly:
+
+	teardown_lowering:
 		backend->destroy();
 		delete backend;
 		backend = nullptr;
+
+	teardown_compilation:
 		destroy_reporting_storage();
-		return 0;
+
+		return rc;
 	}
 }
 
