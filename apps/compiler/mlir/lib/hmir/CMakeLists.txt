@@ -2,13 +2,20 @@
 
 add_mlir_dialect_library(HMIR
   ${HEMERA_MLIR_DIR}/lib/hmir/hmir_dialect.cpp
+  ${HEMERA_MLIR_DIR}/lib/hmir/hmir_passes.cpp
   ${HEMERA_MLIR_DIR}/lib/hmir/ir/hmir_ops.cpp
 
   DEPENDS
   MLIRhmir_opsIncGen
+  MLIRhmir_passesIncGen
 
   LINK_COMPONENTS
   Core
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+  MLIRInferTypeOpInterface
+  MLIRFuncDialect
 )
 
 TARGET_INCLUDE_DIRECTORIES(HMIR PUBLIC
