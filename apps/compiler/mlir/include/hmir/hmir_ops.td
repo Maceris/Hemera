@@ -4,7 +4,7 @@
 include "hmir_dialect.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def hmir_defer_op : hmir_op<"defer", [AlwaysSpeculatableImplTrait]> {
+def HemeraDeferOp : HemeraOp<"defer", [AlwaysSpeculatableImplTrait]> {
 	
 	let summary = "Used to defer an expression until the end of the scope";
 	let description = [{

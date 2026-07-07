@@ -3,7 +3,7 @@
 
 include "mlir/IR/OpBase.td"
 
-def hmir_dialect : Dialect {
+def HemeraDialect : Dialect {
 	let name = "hmir";
 	let summary = "A MLIR dialect for Hemera";
 	let description = [{
@@ -12,7 +12,7 @@ def hmir_dialect : Dialect {
 	let cppNamespace = "hmir";
 }
 
-class hmir_op<string mnemonic, list<Trait> props = []> :
-	Op<hmir_dialect, mnemonic, props>;
+class HemeraOp<string mnemonic, list<Trait> props = []> :
+	Op<HemeraDialect, mnemonic, props>;
 
 #endif

@@ -6,7 +6,7 @@ using namespace hmir;
 
 #include "hmir/hmir_opsDialect.cpp.inc"
 
-void hmirdialect::initialize() {
+void HemeraDialect::initialize() {
 	addOperations<
 #define GET_OP_LIST
 #include "hmir/hmir_ops.cpp.inc"
