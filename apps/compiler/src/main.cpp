@@ -16,6 +16,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -81,6 +82,7 @@ namespace hemera {
 
 		mlir::MLIRContext mlir_context;
 		mlir_context.loadDialect<mlir::BuiltinDialect>();
+		mlir_context.loadDialect<mlir::func::FuncDialect>();
 		mlir::OpBuilder mlir_builder(&mlir_context);
 
 		mlir::ModuleOp mlir_module =

@@ -1,6 +1,11 @@
 #include "front_end/mlir_generation.h"
 #include "util/logger.h"
 
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+
 //TODO(ches) remove this, shuts up unused warnings while we work
 #define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
 
@@ -126,9 +131,35 @@ namespace hemera {
 	void mlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
 		//TODO(ches) finish this
 
+		ast::Node* fn_root = function->node;
+
+		// Decl (colon), colon/equals, signature, block
+		LOG_ASSERT(fn_root->children.size() == 4);
+
+		ast::Node* decl = fn_root->children[0];
+		ast::Node* identifier = decl->children[0];
+		ast::Node* explicit_type = decl->children.size() > 1
+			? decl->children[1]
+			: nullptr;
+		ast::Node* colon_or_equals = fn_root->children[1];
+		ast::Node* signature = fn_root->children[2];
+		ast::Node* body = fn_root->children[3];
+
 		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(executor);
 		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(function);
+		IGNORE_UNUSED(identifier);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(explicit_type);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(colon_or_equals);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(signature);
+		//TODO(ches) do something with this, or remove it
+		IGNORE_UNUSED(body);
+
+		//TODO(ches) FunctionType::get
+		//TODO(ches) create a mlir::func::FuncOp 
+
 	}
 }
