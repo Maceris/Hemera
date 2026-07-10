@@ -2,6 +2,11 @@
 
 namespace hemera {
 
+	FunctionInfoMLIR::FunctionInfoMLIR(mlir::func::FuncOp func_op)
+		: func_op{ func_op }
+	{}
+	FunctionInfoMLIR::~FunctionInfoMLIR() = default;
+
 	FileInfo::FileInfo()
 		: identifiers{}
 		, imports{}

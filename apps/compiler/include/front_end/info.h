@@ -10,6 +10,7 @@
 #include "memory/allocator.h"
 #include "parser/ast_types.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -30,11 +31,22 @@ namespace hemera {
 		InternedString location;
 	};
 
+	struct FunctionInfoMLIR {
+		mlir::func::FuncOp func_op;
+		
+		FunctionInfoMLIR(mlir::func::FuncOp func_op);
+		~FunctionInfoMLIR();
+		FunctionInfoMLIR(const FunctionInfoMLIR&) = delete;
+		FunctionInfoMLIR(FunctionInfoMLIR&&) = delete;
+		FunctionInfoMLIR& operator=(const FunctionInfoMLIR&) = delete;
+		FunctionInfoMLIR& operator=(FunctionInfoMLIR&&) = delete;
+	};
+
 	struct FunctionInfo {
 		InternedString name;
 		InternedString package;
 		ast::Node* node;
-		mlir::Region* ir;
+		FunctionInfoMLIR* mlir_info;
 		TypeInfoFunction type_info;
 	};
 

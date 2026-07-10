@@ -5,6 +5,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 //TODO(ches) remove this, shuts up unused warnings while we work
 #define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
@@ -132,6 +133,7 @@ namespace hemera {
 		//TODO(ches) finish this
 
 		ast::Node* fn_root = function->node;
+		Allocator<>& alloc = executor.program_info->info_alloc;
 
 		// Decl (colon), colon/equals, signature, block
 		LOG_ASSERT(fn_root->children.size() == 4);
@@ -146,8 +148,6 @@ namespace hemera {
 		ast::Node* body = fn_root->children[3];
 
 		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(executor);
-		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(identifier);
 		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(explicit_type);
@@ -158,8 +158,31 @@ namespace hemera {
 		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(body);
 
-		//TODO(ches) FunctionType::get
-		//TODO(ches) create a mlir::func::FuncOp 
+		//TODO(ches) figure out from the signature
 
+		mlir::OpBuilder* builder = executor.program_info->op_builder;
+		mlir::ModuleOp* module = executor.program_info->module;
+
+		llvm::SmallVector<mlir::Type, 0> argumentTypes = {};
+		llvm::SmallVector<mlir::Type, 0> resultTypes = {};
+
+		mlir::FunctionType function_type = 
+			builder->getFunctionType(argumentTypes, resultTypes);
+
+		builder->setInsertionPointToEnd(module->getBody());
+
+		mlir::Location location = builder->getUnknownLoc();
+		//TODO(ches) figure out from the signature
+		llvm::StringRef function_name = "func_I_guess";
+
+		mlir::func::FuncOp func_op = mlir::func::FuncOp::create(location,
+			function_name, function_type);
+
+		mlir::Block* entry_block = func_op.addEntryBlock();
+
+		builder->setInsertionPointToStart(entry_block);
+		mlir::func::ReturnOp::create(*builder, location);
+
+		function->mlir_info = alloc.new_object<FunctionInfoMLIR>(func_op);
 	}
 }
