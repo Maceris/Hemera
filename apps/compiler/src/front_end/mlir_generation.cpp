@@ -12,22 +12,17 @@
 
 namespace hemera {
 
+	mlir::Block* mlir_process_block(ast::Node* node, mlir::OpBuilder* builder, 
+		mlir::func::FuncOp fn) {
 
-	/// <summary>
-	/// Process a block into HLIR.
-	/// </summary>
-	/// <param name="node">The AST node representing/starting the block.</param>
-	/// <param name="fn">The function we are processing.</param>
-	/// <returns>The first basic block in the block.</returns>
-	hlir::BasicBlock* hlir_process_block(ast::Node* node, hlir::Function* fn) {
-		hlir::BasicBlock* block = fn->create_basic_block();
+		mlir::Region& region = fn.getBody();
+
+		mlir::Block* block = builder->createBlock(&region, region.end(), {}, {});
 
 		for (size_t i = 0; i < node->children.size(); ++i) {
 			ast::Node* child = node->children[i];
 			if (ast::NodeType::RETURN == child->node_type) {
-				//TODO(ches) deferred expression(s)
-
-				hlir::Return* instr = block->create_instruction<hlir::Return>();
+				// mlir::func::ReturnOp::create(*builder, location);
 
 				LOG_ASSERT(child->children.size() > 0);
 
@@ -35,10 +30,9 @@ namespace hemera {
 				if (ast::NodeType::VOID != child->children[0]->node_type) {
 					for (size_t j = 0; j < child->children.size(); ++j) {
 						ast::Node* value = child->children[i];
-						hlir_process_expression(value, block);
+						mlir_process_expression(value, block);
 					}
 				}
-				block->instructions.push_back(instr);
 			}
 			else if (ast::NodeType::DEFER == child->node_type) {
 				//TODO(ches) deferred op
@@ -48,7 +42,6 @@ namespace hemera {
 				//TODO(ches) handle this
 			}
 			else if (ast::NodeType::CONTINUE == child->node_type) {
-				//TODO(ches) deferred expression(s)
 				//TODO(ches) handle this
 			}
 			// Expressions without results
@@ -65,7 +58,7 @@ namespace hemera {
 				//TODO(ches) store current context
 				InternedString context_name = child->children[0]->value.value;
 				IGNORE_UNUSED(context_name);
-				hlir_process_block(child->children[1], fn);
+				mlir_process_block(child->children[1], builder, fn);
 				//TODO(ches) restore old context
 			}
 			else if (ast::NodeType::SWITCH == child->node_type) {
@@ -75,7 +68,7 @@ namespace hemera {
 				//TODO(ches) handle this
 			}
 			else if (ast::NodeType::BLOCK == child->node_type) {
-				hlir_process_block(child, fn);
+				mlir_process_block(child, builder, fn);
 			}
 			// Expressions with results
 			else if (ast::NodeType::MATCH == child->node_type) {
@@ -90,43 +83,10 @@ namespace hemera {
 		return block;
 	}
 
-	void hlir_process_expression(ast::Node* node, hlir::BasicBlock* containing_block) {
+	void mlir_process_expression(ast::Node* node, mlir::Block* containing_block) {
 		//TODO(ches) finish this
 		IGNORE_UNUSED(node);
 		IGNORE_UNUSED(containing_block);
-	}
-
-	void hlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
-		//TODO(ches) finish this
-
-		Allocator<>& alloc = executor.program_info->info_alloc;
-		hlir::Function* fn = alloc.allocate_object<hlir::Function>();
-		alloc.construct(fn, alloc);
-
-		ast::Node* fn_root = function->node;
-
-		// Decl (colon), colon/equals, signature, block
-		LOG_ASSERT(fn_root->children.size() == 4);
-
-		ast::Node* decl = fn_root->children[0];
-		ast::Node* identifier = decl->children[0];
-		ast::Node* explicit_type = decl->children.size() > 1
-			? decl->children[1]
-			: nullptr;
-		ast::Node* colon_or_equals = fn_root->children[1];
-		ast::Node* signature = fn_root->children[2];
-		ast::Node* body = fn_root->children[3];
-
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(identifier);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(explicit_type);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(colon_or_equals);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(signature);
-
-		hlir_process_block(body, fn);
 	}
 
 	void mlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
@@ -155,8 +115,6 @@ namespace hemera {
 		IGNORE_UNUSED(colon_or_equals);
 		//TODO(ches) do something with this, or remove it
 		IGNORE_UNUSED(signature);
-		//TODO(ches) do something with this, or remove it
-		IGNORE_UNUSED(body);
 
 		//TODO(ches) figure out from the signature
 
@@ -184,5 +142,7 @@ namespace hemera {
 		mlir::func::ReturnOp::create(*builder, location);
 
 		function->mlir_info = alloc.new_object<FunctionInfoMLIR>(func_op);
+
+		mlir_process_block(body, builder, func_op);
 	}
 }
