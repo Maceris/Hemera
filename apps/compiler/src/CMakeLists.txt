@@ -52,7 +52,6 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/error/warnings_template.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
-  ${INCLUDE_DIR}/front_end/hlir.h
   ${INCLUDE_DIR}/front_end/mlir_generation.h
   ${INCLUDE_DIR}/front_end/info.h
   ${INCLUDE_DIR}/front_end/type.h
@@ -77,7 +76,6 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/options.cpp
   ${SOURCE_DIR}/error/reporting.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
-  ${SOURCE_DIR}/front_end/hlir.cpp
   ${SOURCE_DIR}/front_end/mlir_generation.cpp
   ${SOURCE_DIR}/front_end/info.cpp
   ${SOURCE_DIR}/front_end/type.cpp

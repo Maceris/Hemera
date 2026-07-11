@@ -3,7 +3,6 @@
 #include <atomic>
 #include <cstdint>
 
-#include "front_end/hlir.h"
 #include "front_end/info.h"
 #include "front_end/type_id.h"
 #include "memory/allocator.h"

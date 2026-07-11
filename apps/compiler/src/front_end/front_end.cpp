@@ -4,7 +4,6 @@
 #include "error/reporting.h"
 #include "util/logger.h"
 #include "front_end/front_end.h"
-#include "front_end/hlir.h"
 
 namespace hemera {
 	uint32_t THREAD_COUNT = 1;

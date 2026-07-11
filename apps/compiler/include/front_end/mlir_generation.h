@@ -1,6 +1,5 @@
 #pragma once
 
-#include "front_end/hlir.h"
 #include "front_end/front_end.h"
 #include "parser/ast_types.h"
 

@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <mutex>
 
-#include "front_end/hlir.h"
 #include "front_end/type.h"
+#include "front_end/type_id.h"
 #include "lexer/token.h"
 #include "memory/allocator.h"
 #include "parser/ast_types.h"
