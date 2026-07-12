@@ -138,8 +138,6 @@ namespace hemera {
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
 			executor.program_info->node_alloc);
-
-		ProgramInfo* program_info = executor.global_data->program_info;
 		
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->node_type == ast::NodeType::PACKAGE) {
@@ -149,7 +147,7 @@ namespace hemera {
 			if (child->node_type == ast::NodeType::IMPORT) {
 				LOG_ASSERT(child->children.size() % 2 == 1);
 				
-				ImportInfo* import = program_info->info_alloc.new_object<ImportInfo>();
+				ImportInfo* import = new ImportInfo();
 				
 				{
 					std::scoped_lock<std::mutex> lock(file_info->imports_mutex);

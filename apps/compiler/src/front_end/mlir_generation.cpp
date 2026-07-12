@@ -93,7 +93,6 @@ namespace hemera {
 		//TODO(ches) finish this
 
 		ast::Node* fn_root = function->node;
-		Allocator<>& alloc = executor.program_info->info_alloc;
 
 		// Decl (colon), colon/equals, signature, block
 		LOG_ASSERT(fn_root->children.size() == 4);
@@ -141,7 +140,7 @@ namespace hemera {
 		builder->setInsertionPointToStart(entry_block);
 		mlir::func::ReturnOp::create(*builder, location);
 
-		function->mlir_info = alloc.new_object<FunctionInfoMLIR>(func_op);
+		function->mlir_info = std::make_unique<FunctionInfoMLIR>(func_op);
 
 		mlir_process_block(body, builder, func_op);
 	}

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 
 #include "front_end/type.h"
@@ -46,7 +47,7 @@ namespace hemera {
 		InternedString name;
 		InternedString package;
 		ast::Node* node;
-		FunctionInfoMLIR* mlir_info;
+		std::unique_ptr<FunctionInfoMLIR> mlir_info;
 		TypeInfoFunction type_info;
 	};
 
@@ -96,7 +97,6 @@ namespace hemera {
 		MyMap<ExpressionID, ExpressionInfo*> expressions;
 		MyMap<FunctionID, FunctionInfo*> functions;
 		Allocator<> node_alloc;
-		Allocator<> info_alloc;
 
 		std::atomic_size_t next_location_id;
 
