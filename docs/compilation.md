@@ -13,10 +13,10 @@ calculate values should be avoided, or opened in a safe mode which avoids such o
 1. Lexing
 2. Parsing
 3. Type Checking
-4. High Level Intermediate Representation Generation (See the [HLIR page](hlir.md))
+4. MLIR Generation
 5. Compile-Time Execution
 6. Optimization
-7. Medium Level Intermediate Representation Generation
+7. LLVM IR Generation
 8. Optimization
 9. Executable Generation (backend)
 
@@ -27,13 +27,13 @@ File Import --> Parse --> Type Check <--\
      |           |            \|/       |
      |           |     Type Deduction --/
      |          \|/
- Execution <--- HLIR Generation 
+ Execution <--- MLIR Generation 
                  |
                 \|/
             Optimization
                  |
                 \|/
-           MLIR Generation
+           LLVM IR Generation
                  |
                 \|/
             Optimization
