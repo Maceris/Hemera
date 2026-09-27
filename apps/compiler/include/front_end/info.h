@@ -19,6 +19,9 @@
 
 namespace hemera {
 
+	struct FileInfo;
+	struct PackageInfo;
+
 	struct IdentifierInfo {
 		TypeID type;
 		builtin::_any default_value;
@@ -45,10 +48,18 @@ namespace hemera {
 
 	struct FunctionInfo {
 		InternedString name;
-		InternedString package;
+		FileInfo* file;
+		PackageInfo* package;
 		ast::Node* node;
 		std::unique_ptr<FunctionInfoMLIR> mlir_info;
 		TypeInfoFunction type_info;
+
+		FunctionInfo();
+		~FunctionInfo();
+		FunctionInfo(const FunctionInfo&) = delete;
+		FunctionInfo(FunctionInfo&&) = delete;
+		FunctionInfo& operator=(const FunctionInfo&) = delete;
+		FunctionInfo& operator=(FunctionInfo&&) = delete;
 	};
 
 	struct ExpressionInfo {
@@ -60,6 +71,7 @@ namespace hemera {
 		MyVector<ImportInfo*> imports;
 		MyVector<Token> tokens;
 		ast::Node* ast_root;
+		InternedString full_path;
 
 		std::mutex imports_mutex;
 		std::mutex identifiers_mutex;
@@ -108,6 +120,8 @@ namespace hemera {
 		mlir::MLIRContext* context;
 		mlir::OpBuilder* op_builder;
 		mlir::ModuleOp* module;
+
+		bool debug_build;
 
 		ProgramInfo(mlir::MLIRContext* mlir_context, 
 			mlir::OpBuilder* mlir_op_builder,

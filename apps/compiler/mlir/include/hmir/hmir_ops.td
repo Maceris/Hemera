@@ -4,7 +4,7 @@
 include "hmir_dialect.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-def HemeraDeferOp : HemeraOp<"defer", [AlwaysSpeculatableImplTrait]> {
+def HemeraDeferOp : HemeraOp<"defer", [AlwaysSpeculatableImplTrait, Pure]> {
 	
 	let summary = "Used to defer an expression until the end of the scope";
 	let description = [{
@@ -18,26 +18,11 @@ def HemeraDeferOp : HemeraOp<"defer", [AlwaysSpeculatableImplTrait]> {
         ```
 	}];
 
-	let arguments = (ins Variadic<AnyType>:$destOperands);
-    let successors = (successor AnySuccessor:$dest);
+	let arguments = (ins AnyType:$input);
+    let results = (outs);
 
-    let builders = [
-    OpBuilder<(ins "mlir::Block *":$dest,
-                   CArg<"mlir::ValueRange", "{}">:$destOperands), [{
-      $_state.addSuccessors(dest);
-      $_state.addOperands(destOperands);
-    }]>];
-
-    let extraClassDeclaration = [{
-        void setDest(mlir::Block *block);
-
-        /// Erase the operand at 'index' from the operand list.
-        void eraseOperand(unsigned index);
-    }];
-
-    let hasCanonicalizeMethod = 1;
     let assemblyFormat = [{
-        $dest (`(` $destOperands^ `:` type($destOperands) `)`)? attr-dict
+        $input `:` type($input) attr-dict 
     }];
 }
 

@@ -6,16 +6,20 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "hmir/hmir_dialect.h"
+#include "hmir/hmir_ops.h"
 
 //TODO(ches) remove this, shuts up unused warnings while we work
 #define IGNORE_UNUSED(X) do{(void)sizeof(X);}while(false)
 
 namespace hemera {
 
-	mlir::Block* mlir_process_block(ast::Node* node, mlir::OpBuilder* builder, 
-		mlir::func::FuncOp fn) {
+	mlir::Block* mlir_process_block_in_function(ProgramInfo* program_info, 
+		ast::Node* node, mlir::OpBuilder* builder, FunctionInfo* function) {
 
+		mlir::func::FuncOp fn = function->mlir_info->func_op;
 		mlir::Region& region = fn.getBody();
+		InternedString file_path = function->file->full_path;
 
 		mlir::Block* block = builder->createBlock(&region, region.end(), {}, {});
 
@@ -30,11 +34,26 @@ namespace hemera {
 				if (ast::NodeType::VOID != child->children[0]->node_type) {
 					for (size_t j = 0; j < child->children.size(); ++j) {
 						ast::Node* value = child->children[i];
-						mlir_process_expression(value, block);
+						mlir::Value* expr = mlir_process_expression(
+							program_info, value, block, file_path);
+						IGNORE_UNUSED(expr);
 					}
 				}
 			}
 			else if (ast::NodeType::DEFER == child->node_type) {
+				LOG_ASSERT(child->children.size() == 1);
+				ast::Node* deferTarget = child->children[0];
+				mlir::Value* expr = mlir_process_expression(program_info,
+					deferTarget, block, file_path);
+
+				mlir::Location loc = program_info->debug_build ? 
+					mlir::FileLineColLoc::get(
+						builder->getStringAttr(file_path->c_str()),
+						child->value.line_number, child->value.column_number)
+					: builder->getUnknownLoc();
+
+				hmir::HemeraDeferOp::create(*builder, loc, *expr);
+
 				//TODO(ches) deferred op
 			}
 			else if (ast::NodeType::BREAK == child->node_type) {
@@ -58,7 +77,8 @@ namespace hemera {
 				//TODO(ches) store current context
 				InternedString context_name = child->children[0]->value.value;
 				IGNORE_UNUSED(context_name);
-				mlir_process_block(child->children[1], builder, fn);
+				mlir_process_block_in_function(program_info, 
+					child->children[1], builder, function);
 				//TODO(ches) restore old context
 			}
 			else if (ast::NodeType::SWITCH == child->node_type) {
@@ -68,7 +88,8 @@ namespace hemera {
 				//TODO(ches) handle this
 			}
 			else if (ast::NodeType::BLOCK == child->node_type) {
-				mlir_process_block(child, builder, fn);
+				mlir_process_block_in_function(program_info, child, builder,
+					function);
 			}
 			// Expressions with results
 			else if (ast::NodeType::MATCH == child->node_type) {
@@ -83,10 +104,15 @@ namespace hemera {
 		return block;
 	}
 
-	void mlir_process_expression(ast::Node* node, mlir::Block* containing_block) {
+	mlir::Value* mlir_process_expression(ProgramInfo* program_info,
+		ast::Node* node, mlir::Block* containing_block,
+		InternedString file_path) {
 		//TODO(ches) finish this
+		IGNORE_UNUSED(program_info);
 		IGNORE_UNUSED(node);
 		IGNORE_UNUSED(containing_block);
+		IGNORE_UNUSED(file_path);
+		return nullptr;
 	}
 
 	void mlir_process_function(WorkThreadData& executor, FunctionInfo* function) {
@@ -120,8 +146,8 @@ namespace hemera {
 		mlir::OpBuilder* builder = executor.program_info->op_builder;
 		mlir::ModuleOp* module = executor.program_info->module;
 
-		llvm::SmallVector<mlir::Type, 0> argumentTypes = {};
-		llvm::SmallVector<mlir::Type, 0> resultTypes = {};
+		llvm::SmallVector<mlir::Type, 5> argumentTypes = {};
+		llvm::SmallVector<mlir::Type, 1> resultTypes = {};
 
 		mlir::FunctionType function_type = 
 			builder->getFunctionType(argumentTypes, resultTypes);
@@ -142,6 +168,7 @@ namespace hemera {
 
 		function->mlir_info = std::make_unique<FunctionInfoMLIR>(func_op);
 
-		mlir_process_block(body, builder, func_op);
+		mlir_process_block_in_function(executor.program_info, body, builder,
+			function);
 	}
 }

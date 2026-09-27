@@ -17,12 +17,51 @@ namespace {
         LogicalResult matchAndRewrite(::hmir::HemeraDeferOp op,
             PatternRewriter& rewriter) const final
         {
-            //TODO(ches) find where we need to defer to, and do so
+            mlir::Block* currentBlock = op->getBlock();
+            if (!currentBlock) {
+                return mlir::failure();
+            }
 
-            // Some dummy code that should in theory unwrap the op in place
-            mlir::Value deferInput = op.getOperand(0);
-            rewriter.replaceOp(op, { deferInput });
-            return success();
+            SmallVector<mlir::Operation*, 5> deferredOps;
+            bool modified = false;
+
+            for (mlir::Block& block : op->getRegions().front()) {
+                for (mlir::Operation& nestedOp : block.getOperations()) {
+                    if (mlir::isa<::hmir::HemeraDeferOp>(nestedOp)) {
+                        deferredOps.push_back(&nestedOp);
+                    }
+                }
+            }
+
+            if (deferredOps.empty()) {
+                return mlir::failure();
+            }
+
+            mlir::Operation* terminator = currentBlock->getTerminator();
+
+            for (Operation* deferOp : llvm::reverse(deferredOps)) {
+                if (deferOp->getNextNode() == terminator) {
+                    // Already at the end
+                    terminator = deferOp;
+                    continue;
+                }
+
+                // Move it to the bottom, or before the previous defer
+                rewriter.moveOpBefore(deferOp, terminator);
+
+                // Then replace it with the operand
+                mlir::Value deferInput = deferOp->getOperand(0);
+                Operation* definingOp = deferInput.getDefiningOp();
+                if (!definingOp) {
+                    return rewriter.notifyMatchFailure(op, "Operand does not have a defining operation.");
+                }
+                rewriter.replaceOp(deferOp, definingOp->getResults());
+                terminator = definingOp;
+
+                modified = true;
+            }
+            
+            return success(modified);
         }
     };
 

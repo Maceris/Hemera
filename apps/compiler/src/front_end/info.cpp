@@ -7,11 +7,23 @@ namespace hemera {
 	{}
 	FunctionInfoMLIR::~FunctionInfoMLIR() = default;
 
+	FunctionInfo::FunctionInfo()
+		: name{}
+		, file{}
+		, package{}
+		, node{}
+		, mlir_info{}
+		, type_info{}
+	{}
+
+	FunctionInfo::~FunctionInfo() = default;
+
 	FileInfo::FileInfo()
 		: identifiers{}
 		, imports{}
 		, tokens{}
 		, ast_root{ nullptr }
+		, full_path{}
 		, imports_mutex{}
 		, identifiers_mutex{}
 	{}
@@ -41,6 +53,7 @@ namespace hemera {
 		, context{ mlir_context }
 		, op_builder{ mlir_op_builder }
 		, module{ mlir_module }
+		, debug_build{ false }
 	{}
 	ProgramInfo::~ProgramInfo() = default;
 }
