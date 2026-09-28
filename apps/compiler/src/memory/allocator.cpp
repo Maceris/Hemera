@@ -40,6 +40,23 @@ namespace hemera {
 		return new_value;
 	}
 
+	InternedString intern(const std::string& string) {
+		if (cache == nullptr) {
+			return nullptr;
+		}
+
+		MyString* new_value = cache->string_alloc.new_object<MyString>(
+			string.begin(), string.end()
+		);
+		const size_t hash_value = cache->string_hasher(*new_value);
+		if (cache->interned_strings.contains(hash_value)) {
+			cache->string_alloc.delete_object(new_value);
+			return cache->interned_strings.find(hash_value)->second;
+		}
+		cache->interned_strings.insert(std::make_pair(hash_value, new_value));
+		return new_value;
+	}
+
 	InternedString intern(const MyString&& string) {
 		return intern(&string);
 	}

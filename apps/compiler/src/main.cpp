@@ -86,7 +86,8 @@ namespace hemera {
 		mlir::OpBuilder mlir_builder(&mlir_context);
 
 		mlir::ModuleOp mlir_module =
-			mlir::ModuleOp::create(mlir_builder.getUnknownLoc());
+			mlir::ModuleOp::create(mlir_builder, mlir_builder.getUnknownLoc(), 
+				options->output_name);
 
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
@@ -94,9 +95,10 @@ namespace hemera {
 		//TODO(ches) this isn't thread safe, we need locking or more contexts
 		llvm::LLVMContext context;
 
-		kick_off_processing(program_info);
+		kick_off_processing(program_info, intern(options->input));
 
 		if (options->build_extent < BuildExtent::LOWER) {
+			dump_mlir_to_file(options, &mlir_module);
 			goto teardown_compilation;
 		}
 

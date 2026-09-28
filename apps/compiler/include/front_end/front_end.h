@@ -6,6 +6,7 @@
 #include <random>
 #include <thread>
 
+#include "cmd_line/options.h"
 #include "front_end/info.h"
 #include "front_end/work.h"
 #include "memory/allocator.h"
@@ -75,7 +76,17 @@ namespace hemera {
 	};
 
 	struct GlobalThreadData {
-		ThreadSafeQueue<Work*> shared_queue;
+		/// <summary>
+		/// Queue for anything that doesn't involve LLVM code. Things like 
+		/// reading files, parsing.
+		/// </summary>
+		ThreadSafeQueue<Work*> general_queue;
+		/// <summary>
+		/// Queue for work that involves LLVM, MLIR. Only a single thread
+		/// will pull from this. LLVM really doesn't like multiple threads
+		/// messing with a single module, and we only ever have one module.
+		/// </summary>
+		ThreadSafeQueue<Work*> llvm_queue;
 		MyVector<WorkThreadData*> thread_data;
 		std::atomic_uint32_t parked_work;
 		std::atomic_uint32_t threads_searching;
@@ -98,7 +109,7 @@ namespace hemera {
 		GlobalThreadData& operator=(GlobalThreadData&&) = delete;
 	};
 
-	void kick_off_processing(ProgramInfo* program_info);
+	void kick_off_processing(ProgramInfo* program_info, InternedString main_package);
 	void sleep_thread(WorkThreadData& data);
 	void notify_thread(WorkThreadData& data, size_t target_thread_index);
 	void enqueue_work(WorkThreadData& data, Work* work);
@@ -107,6 +118,7 @@ namespace hemera {
 	bool steal_work(WorkThreadData& stealer);
 
 	void initialize_builtin_functions();
+	void dump_mlir_to_file(hemera::Options* options, mlir::ModuleOp* mlir_module);
 
 	// Handled in work.cpp, but defined here for convenience
 	void work_execution(WorkThreadData& executor, WorkTarget& target);

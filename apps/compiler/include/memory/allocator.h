@@ -41,6 +41,16 @@ namespace hemera {
 
 	/// <summary>
 	/// Converts the provided string to an interned version, creating a new
+	/// one if this is a newly encountered string. This is more expensive than
+	/// The MyString versions, albeit not by much, so it should be used
+	/// sparingly.
+	/// </summary>
+	/// <param name="string">The string we want to intern.</param>
+	/// <returns>The interned version of the provided string.</returns>
+	InternedString intern(const std::string& string);
+
+	/// <summary>
+	/// Converts the provided string to an interned version, creating a new
 	/// one if this is a newly encountered string.
 	/// </summary>
 	/// <param name="string">The string we want to intern.</param>
