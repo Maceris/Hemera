@@ -312,7 +312,9 @@ namespace hemera {
 		using std::cout;
 		using std::endl;
 
-		output.input = std::filesystem::path(input.input);
+		output.input = std::filesystem::canonical(
+			std::filesystem::path(input.input)
+		);
 		if (!std::filesystem::is_directory(output.input)) {
 			cout << "Input folder ";
 			cout << output.install_path;
@@ -865,7 +867,9 @@ namespace hemera {
 					return false;
 				}
 				install_path_seen = true;
-				output.install_path = std::filesystem::path(option_with_value.values[0]);
+				output.install_path = std::filesystem::canonical(
+					std::filesystem::path(option_with_value.values[0])
+				);
 
 				if (!std::filesystem::is_directory(output.install_path)) {
 					cout << "Install folder ";

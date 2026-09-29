@@ -56,7 +56,8 @@ namespace hemera {
 	}
 
 	GlobalThreadData::GlobalThreadData(ProgramInfo* program_info,
-		const Options* options, Allocator<>* work_allocator)
+		const Options* options, Allocator<>* work_allocator,
+		Allocator<>* info_allocator)
 		: general_queue{}
 		, llvm_queue{}
 		, thread_data{}
@@ -70,6 +71,7 @@ namespace hemera {
 		, program_info{ program_info }
 		, options{ options }
 		, work_allocator{ work_allocator }
+		, info_allocator{ info_allocator }
 	{}
 	GlobalThreadData::~GlobalThreadData() = default;
 
@@ -288,8 +290,10 @@ namespace hemera {
 		MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
 		
 		Allocator<> work_allocator{};
+		Allocator<> info_allocator{};
 
-		GlobalThreadData global_data{ program_info, options, &work_allocator };
+		GlobalThreadData global_data{ program_info, options, &work_allocator, 
+			&info_allocator };
 
 		InternedString input_package = intern(options->input.string());
 

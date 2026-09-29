@@ -30,7 +30,8 @@ namespace hemera {
 	FileInfo::~FileInfo() = default;
 
 	PackageInfo::PackageInfo()
-		: full_path{}
+		: full_path{ nullptr }
+		, self_reported_name{ nullptr }
 		, files{}
 		, identifiers{}
 		, files_mutex{}

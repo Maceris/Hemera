@@ -13,6 +13,8 @@
 
 namespace hemera {
 
+#define INFO_ALLOC (executor.global_data->info_allocator)
+
 	WorkTarget::WorkTarget(WorkTargetType type, WorkTargetValue value)
 		: type{ type }
 		, value{ value }
@@ -52,48 +54,88 @@ namespace hemera {
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {
-		// Find the package
-		// Note down package details in the package struct
-		// Find the files in the package
-		// Add to package structure
-		// Add work for those files to be parsed
+		LOG_ASSERT(target.type == WorkTargetType::PACKAGE);
+		// We expect the path to be a full canonical path at this point
 		
-		//TODO(ches) do this
-		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
-	}
-	
-	void work_parse(WorkThreadData& executor, WorkTarget& target) {
-		const FileLocation& location = target.value.file_location;
+		InternedString package_path_text = target.value.name;
+		LOG_ASSERT(package_path_text != nullptr);
+		std::filesystem::path package_path(*package_path_text);
+
+		if (!std::filesystem::is_directory(package_path)) {
+			report_error(ErrorCode::E4005, *package_path_text, 0, 0);
+			return;
+		}
 		PackageInfo* package_info = nullptr;
 
 		{
 			std::scoped_lock<std::mutex> lock(executor.program_info->packages_mutex);
 
-			auto iter = executor.program_info->packages.find(location.package_name);
-			if (iter == executor.program_info->packages.end()) {
-				LOG_ASSERT(location.file_name != nullptr);
-				LOG_ASSERT(location.package_name != nullptr);
+			MyMap<InternedString, PackageInfo*>& packages = executor.program_info->packages;
+			auto iter = packages.find(package_path_text);
+			if (iter != packages.end()) {
+				LOG_WARNING("We already imported the package " + *package_path_text);
+				return;
+			}
+			package_info = INFO_ALLOC->new_object<PackageInfo>();
+			packages.insert(std::make_pair(package_path_text, package_info));
+			package_info->full_path = package_path_text;
+		}
+		
+		{
+			std::scoped_lock<std::mutex> lock(package_info->files_mutex);
 
+			for (const auto& entry : std::filesystem::directory_iterator(package_path)) {
+				if (!std::filesystem::is_regular_file(entry.status())) {
+					continue;
+				}
+				if (entry.path().extension() != ".hsc") {
+					continue;
+				}
+
+				InternedString file_name = intern(entry.path().filename().string());
+				
+				FileInfo* file_info = INFO_ALLOC->new_object<FileInfo>();
+				package_info->files.insert(std::make_pair(file_name, file_info));
+
+				executor.create_work(
+					WorkType::PARSE,
+					WorkTarget{
+						WorkTargetType::FILE,
+						WorkTargetValue{.file_location = {package_path_text, file_name } }
+					}
+				);
+			}
+		}
+	}
+	
+	void work_parse(WorkThreadData& executor, WorkTarget& target) {
+		const FileLocation& location = target.value.file_location;
+		LOG_ASSERT(location.file_name != nullptr);
+
+		if (location.package_path == nullptr) {
+			std::string details = std::format("Missing package path for {}",
+				*location.package_path);
+			report_error(ErrorCode::E4000, *location.file_name, 0, 0,
+				details);
+			return;
+		}
+
+		PackageInfo* package_info = nullptr;
+
+		{
+			std::scoped_lock<std::mutex> lock(executor.program_info->packages_mutex);
+
+			auto iter = executor.program_info->packages.find(location.package_path);
+			if (iter == executor.program_info->packages.end()) {
 				std::string details = std::format("Unknown package {}",
-					*location.package_name);
+					*location.package_path);
 				report_error(ErrorCode::E4000, *location.file_name, 0, 0,
 					details);
 				return;
 			}
 			package_info = iter->second;
 		}
-
-		InternedString package_path = package_info->full_path;
-		if (package_path == nullptr) {
-			LOG_ASSERT(location.file_name != nullptr);
-			LOG_ASSERT(location.package_name != nullptr);
-
-			std::string details = std::format("Missing package path for {}",
-				*location.package_name);
-			report_error(ErrorCode::E4000, *location.file_name, 0, 0,
-				details);
-			return;
-		}
+		
 		FileInfo* file_info = nullptr;
 
 		{
@@ -101,11 +143,8 @@ namespace hemera {
 
 			auto iter = package_info->files.find(location.file_name);
 			if (iter == package_info->files.end()) {
-				LOG_ASSERT(location.file_name != nullptr);
-				LOG_ASSERT(location.package_name != nullptr);
-
 				std::string details = std::format(
-					"Missing files entr for {}.{}", *location.package_name,
+					"Missing files entr for {}.{}", *location.package_path,
 					*location.file_name);
 				report_error(ErrorCode::E4000, *location.file_name, 0, 0,
 					details);
@@ -114,12 +153,11 @@ namespace hemera {
 			file_info = iter->second;
 		}
 
-		std::filesystem::path dir_path = std::filesystem::path(*package_path);
-		if (!std::filesystem::exists(dir_path) 
-			|| !std::filesystem::is_directory(dir_path)) {
+		std::filesystem::path dir_path = std::filesystem::path(*location.package_path);
+		if (!std::filesystem::is_directory(dir_path)) {
 			std::string details = std::format(
-				"Pacakge {}'s path '{}' is not a valid directory",
-				*location.package_name, dir_path.generic_string());
+				"Package {}'s path '{}' is not a valid directory",
+				*location.package_path, dir_path.generic_string());
 			report_error(ErrorCode::E4000, *location.file_name, 0, 0,
 				details);
 			return;
@@ -141,14 +179,28 @@ namespace hemera {
 		
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->node_type == ast::NodeType::PACKAGE) {
-				//TODO(ches) check it matches the pacakge
+				InternedString package_name = child->value.value;
+
+				std::scoped_lock<std::mutex> lock(package_info->files_mutex);
+				if (package_info->self_reported_name == nullptr) {
+					package_info->self_reported_name = package_name;
+				}
+				else if (*package_info->self_reported_name != *package_name) {
+					std::string details = std::format(
+						"We previously saw {} but now see {}",
+						*package_info->self_reported_name, *package_name);
+					report_error(ErrorCode::E4006, file_path,
+						child->value.line_number, child->value.column_number,
+						details);
+					return;
+				}
 				continue;
 			}
 			if (child->node_type == ast::NodeType::IMPORT) {
 				LOG_ASSERT(child->children.size() % 2 == 1);
 				
-				ImportInfo* import = new ImportInfo();
-				
+				ImportInfo* import = INFO_ALLOC->new_object<ImportInfo>();
+
 				{
 					std::scoped_lock<std::mutex> lock(file_info->imports_mutex);
 					file_info->imports.push_back(import);

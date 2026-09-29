@@ -29,7 +29,7 @@ namespace hemera {
 	/// Initialize the interned string cache. Must be called before interning
 	/// anything.
 	/// </summary>
-	void init_interned_string_cache();
+	void initialize_interned_string_cache();
 	
 	/// <summary>
 	/// Converts the provided string to an interned version, creating a new

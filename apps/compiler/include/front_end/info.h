@@ -86,6 +86,7 @@ namespace hemera {
 
 	struct PackageInfo {
 		InternedString full_path;
+		InternedString self_reported_name;
 		MyMap<InternedString, FileInfo*> files;
 		/// <summary>
 		/// Filled out later, after files are processed, by combining
@@ -94,6 +95,10 @@ namespace hemera {
 		MyMap<InternedString, IdentifierInfo> identifiers;
 
 		std::mutex files_mutex;
+		/// <summary>
+		/// Used for identifiers within the package, as well as the 
+		/// self-reported name.
+		/// </summary>
 		std::mutex identifiers_mutex;
 
 		PackageInfo();
@@ -105,6 +110,9 @@ namespace hemera {
 	};
 
 	struct ProgramInfo {
+		/// <summary>
+		/// Map from (canonical) package path to package info.
+		/// </summary>
 		MyMap<InternedString, PackageInfo*> packages;
 		MyMap<ExpressionID, ExpressionInfo*> expressions;
 		MyMap<FunctionID, FunctionInfo*> functions;

@@ -20,7 +20,7 @@ namespace hemera {
 	};
 
 	struct FileLocation {
-		InternedString package_name;
+		InternedString package_path;
 		InternedString file_name;
 	};
 

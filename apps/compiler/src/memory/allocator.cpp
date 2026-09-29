@@ -3,6 +3,7 @@
 #include <mutex>
 
 #include "memory/allocator.h"
+#include "util/logger.h"
 
 namespace hemera {
 	
@@ -10,25 +11,32 @@ namespace hemera {
 		Allocator<MyString> string_alloc;
 		std::hash<MyString> string_hasher;
 		std::map<size_t, MyString*> interned_strings;
-		std::mutex cache_mutex;
 	};
 
 	static StringCache* cache;
+	static std::mutex cache_mutex{};
 
-	void init_interned_string_cache() {
-		if (cache != nullptr) {
+	void initialize_interned_string_cache() {
+		if (cache == nullptr) {
 			cache = new StringCache();
+		}
+		else {
+			LOG_ERROR("String cache already initialized");
 		}
 	}
 
 	InternedString intern(const MyString* string) {
-		if (string == nullptr || cache == nullptr) {
+		if (cache == nullptr) {
+			LOG_ERROR("String cache not initialized yet!");
+			return nullptr;
+		}
+		if (string == nullptr) {
 			return nullptr;
 		}
 
 		const size_t hash_value = cache->string_hasher(*string);
 
-		std::lock_guard<std::mutex> lock(cache->cache_mutex);
+		std::lock_guard<std::mutex> lock(cache_mutex);
 		if (cache->interned_strings.contains(hash_value)) {
 			return cache->interned_strings.find(hash_value)->second;
 		}
@@ -42,6 +50,7 @@ namespace hemera {
 
 	InternedString intern(const std::string& string) {
 		if (cache == nullptr) {
+			LOG_ERROR("String cache not initialized yet!");
 			return nullptr;
 		}
 
@@ -49,6 +58,8 @@ namespace hemera {
 			string.begin(), string.end()
 		);
 		const size_t hash_value = cache->string_hasher(*new_value);
+
+		std::lock_guard<std::mutex> lock(cache_mutex);
 		if (cache->interned_strings.contains(hash_value)) {
 			cache->string_alloc.delete_object(new_value);
 			return cache->interned_strings.find(hash_value)->second;
@@ -62,12 +73,16 @@ namespace hemera {
 	}
 
 	void delete_interned_string(InternedString string) {
-		if (string == nullptr || cache == nullptr) {
+		if (cache == nullptr) {
+			LOG_ERROR("String cache not initialized yet!");
+			return;
+		}
+		if (string == nullptr) {
 			return;
 		}
 		const size_t hash_value = cache->string_hasher(*string);
 		
-		std::lock_guard<std::mutex> lock(cache->cache_mutex);
+		std::lock_guard<std::mutex> lock(cache_mutex);
 
 		auto it = cache->interned_strings.find(hash_value);
 		if (it != cache->interned_strings.end()) {
@@ -79,10 +94,11 @@ namespace hemera {
 
 	void purge_interned_string_cache() {
 		if (cache == nullptr) {
+			LOG_ERROR("String cache not initialized yet!");
 			return;
 		}
 
-		std::lock_guard<std::mutex> lock(cache->cache_mutex);
+		std::lock_guard<std::mutex> lock(cache_mutex);
 
 		for (auto& it : cache->interned_strings) {
 			cache->string_alloc.delete_object<MyString>(it.second);

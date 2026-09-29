@@ -100,9 +100,10 @@ namespace hemera {
 		ProgramInfo* program_info;
 		const Options* options;
 		Allocator<>* work_allocator;
+		Allocator<>* info_allocator;
 
 		GlobalThreadData(ProgramInfo* program_info, const Options* options,
-			Allocator<>* work_allocator);
+			Allocator<>* work_allocator, Allocator<>* info_allocator);
 		~GlobalThreadData();
 		GlobalThreadData(const GlobalThreadData&) = delete;
 		GlobalThreadData(GlobalThreadData&&) = delete;

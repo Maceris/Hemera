@@ -74,7 +74,10 @@ namespace hemera {
 		unsigned int address_space = 0;
 		Backend* backend = nullptr;
 
+		initialize_interned_string_cache();
 		initialize_reporting_storage();
+		enable_reporting();
+		enable_reporting_printing();
 
 		// Compile
 		ThreadSafeQueue<Job> work_queue = ThreadSafeQueue<Job>();
@@ -138,6 +141,7 @@ namespace hemera {
 
 	teardown_compilation:
 		destroy_reporting_storage();
+		purge_interned_string_cache();
 
 		return rc;
 	}

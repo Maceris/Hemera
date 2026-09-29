@@ -52,6 +52,8 @@ E4001,Unexpected node type
 E4002,Unexpected directive
 E4003,Invalid function definition
 E4004,Incorrect number of return values
+E4005,Could not find package
+E4006,Inconsistent package name within a folder
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed
