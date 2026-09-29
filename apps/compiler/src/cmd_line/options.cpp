@@ -12,7 +12,8 @@ namespace hemera {
 		, object_format{ ObjectFormatType::COFF }
 		, cpu{ "generic" }
 		, cpu_features{ "" }
-		, input{ "" }
+		, input{ std::filesystem::current_path() }
+		, install_path{ std::filesystem::current_path() }
 		, output_name{ "" }
 		, debug_info{ false }
 	{}

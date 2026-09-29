@@ -2,6 +2,7 @@
 #include <thread>
 
 #include "error/reporting.h"
+#include "memory/allocator.h"
 #include "util/logger.h"
 #include "front_end/front_end.h"
 
@@ -55,7 +56,7 @@ namespace hemera {
 	}
 
 	GlobalThreadData::GlobalThreadData(ProgramInfo* program_info,
-		Allocator<>* work_allocator)
+		const Options* options, Allocator<>* work_allocator)
 		: general_queue{}
 		, llvm_queue{}
 		, thread_data{}
@@ -67,6 +68,7 @@ namespace hemera {
 		, rng{ rand_device() }
 		, distribution{ 1, static_cast<int>(THREAD_COUNT) - 1 }
 		, program_info{ program_info }
+		, options{ options }
 		, work_allocator{ work_allocator }
 	{}
 	GlobalThreadData::~GlobalThreadData() = default;
@@ -277,7 +279,7 @@ namespace hemera {
 		data.global_data->threads_running--;
 	}
 
-	void kick_off_processing(ProgramInfo* program_info, InternedString main_package) {
+	void kick_off_processing(ProgramInfo* program_info, const Options* options) {
 		initialize_builtin_types();
 		initialize_builtin_functions();
 
@@ -287,12 +289,14 @@ namespace hemera {
 		
 		Allocator<> work_allocator{};
 
-		GlobalThreadData global_data{ program_info, &work_allocator };
+		GlobalThreadData global_data{ program_info, options, &work_allocator };
+
+		InternedString input_package = intern(options->input.string());
 
 		global_data.general_queue.enqueue(
 			std::move(global_data.work_allocator->new_object<Work>(
 				WorkType::IMPORT,
-				WorkTarget{ WorkTargetType::PACKAGE, {.name = main_package} }
+				WorkTarget{ WorkTargetType::PACKAGE, {.name = input_package}}
 			))
 		);
 		

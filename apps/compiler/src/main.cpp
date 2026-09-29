@@ -92,10 +92,9 @@ namespace hemera {
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
 
-		//TODO(ches) this isn't thread safe, we need locking or more contexts
 		llvm::LLVMContext context;
 
-		kick_off_processing(program_info, intern(options->input));
+		kick_off_processing(program_info, options);
 
 		if (options->build_extent < BuildExtent::LOWER) {
 			dump_mlir_to_file(options, &mlir_module);

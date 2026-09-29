@@ -312,13 +312,21 @@ namespace hemera {
 		using std::cout;
 		using std::endl;
 
-		output.input = std::string(input.input.data(), input.input.size());
+		output.input = std::filesystem::path(input.input);
+		if (!std::filesystem::is_directory(output.input)) {
+			cout << "Input folder ";
+			cout << output.install_path;
+			cout << " does not exist!";
+			cout << endl;
+			return false;
+		}
 
 		bool architecture_seen = false;
 		bool cpu_seen = false;
 		bool cpu_features_seen = false;
 		bool debug_info_seen = false;
 		bool environment_seen = false;
+		bool install_path_seen = false;
 		bool object_format_seen = false;
 		bool os_seen = false;
 		bool stage_seen = false;
@@ -397,6 +405,7 @@ namespace hemera {
 			case hemera::arg_parse::CPU_FEATURES:
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
+			case hemera::arg_parse::INSTALL_PATH:
 			case hemera::arg_parse::LIST:
 			case hemera::arg_parse::OBJECT_FORMAT:
 			case hemera::arg_parse::OS:
@@ -850,6 +859,22 @@ namespace hemera {
 				cpu_features_seen = true;
 				output.cpu_features = option_with_value.values[0];
 				break;
+			case hemera::arg_parse::INSTALL_PATH:
+				if (install_path_seen) {
+					cout << "Duplicate install path flag" << endl;
+					return false;
+				}
+				install_path_seen = true;
+				output.install_path = std::filesystem::path(option_with_value.values[0]);
+
+				if (!std::filesystem::is_directory(output.install_path)) {
+					cout << "Install folder ";
+					cout << output.install_path;
+					cout << " does not exist!";
+					cout << endl;
+					return false;
+				}
+				break;
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
@@ -867,10 +892,8 @@ namespace hemera {
 		}
 
 		if (output.output_name == "") {
-			std::filesystem::path input_path(input.input);
-
 			//NOTE(ches) Folder, file without extension, I don't care.
-			std::string last_folderish = input_path.filename().stem().string();
+			std::string last_folderish = output.input.filename().stem().string();
 			output.output_name = last_folderish;
 		}
 

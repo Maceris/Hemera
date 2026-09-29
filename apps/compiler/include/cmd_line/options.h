@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 
 namespace hemera {
@@ -401,7 +402,8 @@ namespace hemera {
         /// enable or disable (e.g., +avx, -neon).
         /// </summary>
         std::string cpu_features;
-		std::string input;
+		std::filesystem::path input;
+        std::filesystem::path install_path;
 		std::string output_name;
         bool debug_info;
 

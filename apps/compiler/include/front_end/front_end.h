@@ -98,9 +98,10 @@ namespace hemera {
 		std::uniform_int_distribution<> distribution;
 
 		ProgramInfo* program_info;
+		const Options* options;
 		Allocator<>* work_allocator;
 
-		GlobalThreadData(ProgramInfo* program_info,
+		GlobalThreadData(ProgramInfo* program_info, const Options* options,
 			Allocator<>* work_allocator);
 		~GlobalThreadData();
 		GlobalThreadData(const GlobalThreadData&) = delete;
@@ -109,7 +110,7 @@ namespace hemera {
 		GlobalThreadData& operator=(GlobalThreadData&&) = delete;
 	};
 
-	void kick_off_processing(ProgramInfo* program_info, InternedString main_package);
+	void kick_off_processing(ProgramInfo* program_info, const Options* options);
 	void sleep_thread(WorkThreadData& data);
 	void notify_thread(WorkThreadData& data, size_t target_thread_index);
 	void enqueue_work(WorkThreadData& data, Work* work);

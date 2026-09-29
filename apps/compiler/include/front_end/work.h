@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 
 #include "front_end/info.h"
 #include "front_end/type_id.h"

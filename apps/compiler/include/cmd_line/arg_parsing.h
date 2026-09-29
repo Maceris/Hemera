@@ -26,6 +26,7 @@ namespace hemera {
 			DEBUG_INFO,
 			ENVIRONMENT,
 			HELP,
+			INSTALL_PATH,
 			LIST,
 			O0,
 			O1,
@@ -86,6 +87,7 @@ namespace hemera {
 
 		//NOTE(ches) these are in the order that we'll print them out in
 		static constexpr OptionMapping OPTION_MAPPINGS[] = {
+			{"-s", Option::STOP_BEFORE_LOWERING},
 			{"--stop-before-lowering", Option::STOP_BEFORE_LOWERING},
 			{"-S", Option::STOP_BEFORE_ASSEMBLY},
 			{"--stop-before-assembly", Option::STOP_BEFORE_ASSEMBLY},
@@ -115,6 +117,7 @@ namespace hemera {
 			{"--cpu-features", Option::CPU_FEATURES},
 			{"--object-format", Option::OBJECT_FORMAT},
 			{"--obj", Option::OBJECT_FORMAT},
+			{"--install-path", Option::INSTALL_PATH},
 		};
 
 		//NOTE(ches) these are in the order that we'll print them out in
@@ -139,6 +142,7 @@ namespace hemera {
 			{Option::CPU, "The CPU to target, defaults to 'generic'", HAS_ARGS},
 			{Option::CPU_FEATURES, "The CPU features to target, defaults to blank", HAS_ARGS},
 			{Option::OBJECT_FORMAT, "Specify the intermediary object format", HAS_ARGS},
+			{Option::INSTALL_PATH, "Folder containing the standard libraries", HAS_ARGS},
 		};
 
 		struct OptionWithValue {
