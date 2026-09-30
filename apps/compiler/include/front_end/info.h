@@ -94,6 +94,9 @@ namespace hemera {
 		/// </summary>
 		MyMap<InternedString, IdentifierInfo> identifiers;
 
+		/// <summary>
+		/// Used while modifying or checking the list of files.
+		/// </summary>
 		std::mutex files_mutex;
 		/// <summary>
 		/// Used for identifiers within the package, as well as the 

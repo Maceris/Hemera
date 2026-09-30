@@ -212,7 +212,6 @@ namespace hemera {
 		}
 	}
 
-
 	size_t error_count() {
 		std::lock_guard<std::mutex> lock(storage_mutex);
 		if (error_list_storage == nullptr) {

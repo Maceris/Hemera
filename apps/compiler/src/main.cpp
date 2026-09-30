@@ -99,6 +99,11 @@ namespace hemera {
 
 		kick_off_processing(program_info, options);
 
+		if (error_count() > 0) {
+			rc = -1;
+			goto teardown_compilation;
+		}
+
 		if (options->build_extent < BuildExtent::LOWER) {
 			dump_mlir_to_file(options, &mlir_module);
 			goto teardown_compilation;
@@ -108,6 +113,10 @@ namespace hemera {
 		
 		//TODO(ches) Lower
 
+		if (error_count() > 0) {
+			rc = -1;
+			goto teardown_lowering;
+		}
 		if (options->build_extent < BuildExtent::ASSEMBLE) {
 			goto teardown_lowering;
 		}
@@ -125,6 +134,10 @@ namespace hemera {
 		
 		backend->generate_object_file(*options, *main_module, object_file_name);
 
+		if (error_count() > 0) {
+			rc = -1;
+			goto teardown_assembly;
+		}
 		if (options->build_extent < BuildExtent::LINK) {
 			goto teardown_assembly;
 		}

@@ -103,11 +103,83 @@ namespace hemera {
 
 	void type_check_definition(WorkThreadData& executor, 
 		FileLocation file_location, ast::Node* parent_block, ast::Node* node) {
-
+		
 		IGNORE_UNUSED(executor);
 		IGNORE_UNUSED(file_location);
 		IGNORE_UNUSED(parent_block);
-		IGNORE_UNUSED(node);
+
+		ast::Node* identifier = nullptr;
+		ast::Node* type = nullptr;
+		ast::Node* const_or_mut = nullptr;
+		ast::Node* rhs = nullptr;
+		ast::Node* body = nullptr;
+
+		LOG_ASSERT(node->children.size() > 1);
+
+		identifier = node->children[0];
+		if (ast::NodeType::IDENTIFIER == identifier->node_type) {
+			//TODO(ches) check for duplicate id, set up IdentifierInfo
+		}
+		else if (ast::NodeType::UNDERSCORE == identifier->node_type) {
+			//TODO(ches) handle anonymous struct
+		}
+		else {
+			//TODO(ches) error?
+		}
+
+		type = node->children[1];
+		if (ast::NodeType::STRUCT == type->node_type) {
+			//TODO(ches) handle this
+		}
+		else if (ast::NodeType::TYPE == type->node_type) {
+			//TODO(ches) handle this
+		}
+		else if (ast::NodeType::FUNCTION == type->node_type) {
+			//TODO(ches) handle this
+		}
+		else {
+			//TODO(ches) error?
+		}
+
+		if (node->children.size() < 3) {
+			goto done;
+		}
+
+		const_or_mut = node->children[2];
+
+		if (ast::NodeType::COLON == const_or_mut->node_type) {
+			//TODO(ches) handle const
+		}
+		else if (ast::NodeType::IDENTIFIER == const_or_mut->node_type) {
+			//TODO(ches) handle mut
+		}
+		else {
+			//TODO(ches) error?
+		}
+		
+		if (node->children.size() < 4) {
+			goto done;
+		}
+
+		rhs = node->children[3];
+
+		//TODO(ches) function decl
+		//TODO(ches) struct decl
+		//TODO(ches) union decl
+		//TODO(ches) enum decl
+		//TODO(ches) type decl
+		//TODO(ches) expression with result
+
+		if (node->children.size() < 5) {
+			goto done;
+		}
+		body = node->children[4];
+		//TODO(ches) function body
+
+	done:
+
+		IGNORE_UNUSED(rhs);
+		IGNORE_UNUSED(body);
 
 		//TODO(ches) complete this
 	}
