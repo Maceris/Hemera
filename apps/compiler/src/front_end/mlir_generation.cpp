@@ -42,26 +42,35 @@ namespace hemera {
 			}
 			else if (ast::NodeType::DEFER == child->node_type) {
 				LOG_ASSERT(child->children.size() == 1);
-				ast::Node* deferTarget = child->children[0];
-				mlir::Value* expr = mlir_process_expression(program_info,
-					deferTarget, block, file_path);
-
 				mlir::Location loc = program_info->debug_build ? 
 					mlir::FileLineColLoc::get(
 						builder->getStringAttr(file_path->c_str()),
 						child->value.line_number, child->value.column_number)
 					: builder->getUnknownLoc();
+				
+				hmir::HemeraDeferOp defer_op = hmir::HemeraDeferOp::create(*builder, loc);
+				// Back up where we are at so the block doesn't mess us up
+				mlir::OpBuilder::InsertionGuard guard(*builder);
 
-				hmir::HemeraDeferOp::create(*builder, loc, *expr);
+				ast::Node* deferTarget = child->children[0];
+				builder->createBlock(&defer_op.getBodyRegion());
+				mlir_process_expression(program_info,
+					deferTarget, builder->getBlock(), file_path);
+				hmir::HemeraEndOp::create(*builder, loc);
 
 				//TODO(ches) deferred op
 			}
 			else if (ast::NodeType::BREAK == child->node_type) {
-				//TODO(ches) deferred expression(s)
 				//TODO(ches) handle this
+				// hmir::HemeraBreakOp::create(*builder, loc, depth);
 			}
 			else if (ast::NodeType::CONTINUE == child->node_type) {
-				//TODO(ches) handle this
+				mlir::Location loc = program_info->debug_build ?
+					mlir::FileLineColLoc::get(
+						builder->getStringAttr(file_path->c_str()),
+						child->value.line_number, child->value.column_number)
+					: builder->getUnknownLoc();
+				hmir::HemeraContinueOp::create(*builder, loc);
 			}
 			// Expressions without results
 			else if (ast::NodeType::WITH_CLAUSE == child->node_type) {
@@ -69,6 +78,9 @@ namespace hemera {
 			}
 			else if (ast::NodeType::LOOP == child->node_type) {
 				//TODO(ches) handle this
+				// hmir::HemeraLoopOp loop = hmir::HemeraLoopOp::create(*builder, loc);
+				// mlir::OpBuilder::InsertionGuard guard(*builder);
+				// builder->createBlock(&loop.getBodyRegion());
 			}
 			else if (ast::NodeType::FOR_LOOP == child->node_type) {
 				//TODO(ches) handle this
@@ -88,8 +100,22 @@ namespace hemera {
 				//TODO(ches) handle this
 			}
 			else if (ast::NodeType::BLOCK == child->node_type) {
+				mlir::Location loc = program_info->debug_build ?
+					mlir::FileLineColLoc::get(
+						builder->getStringAttr(file_path->c_str()),
+						child->value.line_number, child->value.column_number)
+					: builder->getUnknownLoc();
+
+				hmir::HemeraScopeOp scope = hmir::HemeraScopeOp::create(*builder, loc);
+				mlir::OpBuilder::InsertionGuard guard(*builder);
+				builder->createBlock(&scope.getBodyRegion());
+
 				mlir_process_block_in_function(program_info, child, builder,
 					function);
+
+				if (!builder->getBlock()->mightHaveTerminator()) {
+					hmir::HemeraEndOp::create(*builder, loc);
+				}
 			}
 			// Expressions with results
 			else if (ast::NodeType::MATCH == child->node_type) {
