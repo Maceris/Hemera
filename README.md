@@ -25,3 +25,5 @@ $ git submodule update --init --recursive
 * `examples/` - Example projects
 * `std/` - The standard library, intended to support the runtime, operating system specific calls, and other common core functionality
 * `vendor/` - Binding and ports for third-party libraries that are commonly used
+
+It should be noted that until the language stabilizes, `std`, and likely `base` and `vendor`, will likely change wildly and unpredictably.
