@@ -75,6 +75,7 @@ namespace hemera::parser {
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
 	bool generic_tag(ParserState* state, ast::Node& parent);
+	ExprResult assign_target(ParserState* state, bool ignore_lists);
 	ExprResult expr_lvl_1(ParserState* state, bool ignore_lists);
 	ExprResult expr_lvl_2(ParserState* state, bool ignore_lists);
 	ExprResult expr_lvl_3(ParserState* state);

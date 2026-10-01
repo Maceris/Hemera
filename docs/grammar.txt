@@ -289,7 +289,11 @@ literal = literal_integer
     | KEYWORD_null
     ;
 
-expr_lvl_1 = expr_lvl_2 , { SYM_COMMA , expr_lvl_2 } , [ ( OPERATOR_assign
+assign_target = expr_lvl_2
+    | SYM_UNDERSCORE
+    ;
+
+expr_lvl_1 = assign_target , { SYM_COMMA , assign_target } , [ ( OPERATOR_assign
     | OPERATOR_assign_add
     | OPERATOR_assign_and
     | OPERATOR_assign_bitwise_and

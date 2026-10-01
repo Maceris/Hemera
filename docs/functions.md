@@ -177,6 +177,61 @@ AbsurdFnType : type : fn(fn(int) -> int) -> (fn(int) -> (result, error: int))
 nicer_definition :: fn() -> AbsurdFnType {/* ... */}
 ```
 
+# Ignoring Return Values
+If a function has multiple return values, you can indicate that you'd like to
+ignore one or more by using `_`.
+
+```
+find_vowels :: fn(text: string) -> (count: int, found_any: bool) {/* ... */}
+
+foo :: fn() {
+    relevant: bool
+    _, relevant = find_vowels("somewhere")
+
+    // These 2 are equivalent
+    _, _ = find_vowels("else")
+    find_vowels("else")
+}
+```
+
+When using any kind of special assignment, all values must be of types that make sense
+for that operator to apply.
+
+```
+multiple_returns :: fn() -> (a: A, b: B) {/* ... */}
+
+foo :: fn() {
+    c: C
+    d: D
+
+    c, d += multiple_returns()
+    // c += a and d += b must make sense
+    // e.g. C and A must be integral types that we can add without casting weirdly
+    // And similarly D and B must be compatible
+    // None of these types could be booleans, for example, as "+" doesn't apply to those
+}
+```
+
+Here is a more concrete example.
+```
+multiple_returns :: fn() -> (i64, u8) {/* ... */}
+
+foo :: fn() {
+    c: i64
+    d: u16
+
+    // This is fine:
+    // c can have another i64 added to it
+    // a u8 can be implicitly cast up to a u16 and added to d
+    c, d += multiple_returns()
+
+    // This is an error:
+    // i64 cannot be implicitly cast to the smaller (and unsigned) u8
+    // The u8 can't cast to i64 either, as the signed-ness changes
+    d, c += multiple_returns()
+}
+```
+
 ## Variable Arguments
 
 Variable number of arguments can be provided using `...`, after the type of argument.

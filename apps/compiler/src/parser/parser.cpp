@@ -1655,8 +1655,17 @@ namespace hemera::parser {
 		return true;
 	}
 
+	ExprResult assign_target(ParserState* state, bool ignore_lists) {
+		//TODO(ches) add tests for underscores as assignment targets
+		if (expect(state, TokenType::SYM_UNDERSCORE)) {
+			ast::Node* underscore = &next_as_node(state, ast::NodeType::UNDERSCORE);
+			return ExprResult(std::move(underscore));
+		}
+		return expr_lvl_2(state, ignore_lists);
+	}
+
 	ExprResult expr_lvl_1(ParserState* state, bool ignore_lists) {
-		ExprResult lhs = expr_lvl_2(state, ignore_lists);
+		ExprResult lhs = assign_target(state, ignore_lists);
 
 		if (!lhs.success) {
 			return ExprResult{ false };
@@ -1672,7 +1681,7 @@ namespace hemera::parser {
 			else {
 				skip(state, TokenType::SYM_COMMA);
 			}
-			ExprResult next_expr = expr_lvl_2(state, ignore_lists);
+			ExprResult next_expr = assign_target(state, ignore_lists);
 
 			if (!next_expr.success) {
 				delete_node(state->node_alloc, list);
