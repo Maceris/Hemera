@@ -7,12 +7,12 @@ ThreadFunction :: fn(any) -> void
 
     }
 }
-#elif OS == .Mac {
+#else_if OS == .Mac {
     ThreadSpecificOS :: struct {
 
     }
 }
-#elif OS == .Linux {
+#else_if OS == .Linux {
     ThreadSpecificOS :: struct {
 
     }
