@@ -10,5 +10,6 @@ Architecture :: enum {
 OperatingSystem :: enum {
     Linux,
     Mac,
+    None,
     Windows,
 }
