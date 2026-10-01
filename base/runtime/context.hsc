@@ -13,4 +13,5 @@ Context :: struct {
      */
     fiber_yield_function : fn()?,
     fiber_data: rawptr,
+    user_data: rawptr,
 }
