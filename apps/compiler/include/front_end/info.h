@@ -27,6 +27,7 @@ namespace hemera {
 		builtin::_any default_value;
 		bool has_value;
 		char _padding[7] = { 0 };
+		//TODO(ches) need directives?
 	};
 
 	struct ImportInfo {

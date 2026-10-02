@@ -406,6 +406,20 @@ namespace hemera::parser {
 		}
 		ast::Node& lhs = next_as_node(state, ast::NodeType::IDENTIFIER);
 
+		while (expect(state, TokenType::DIRECTIVE)) {
+			ast::Node& directive = next_as_node(state,
+				ast::NodeType::DIRECTIVE, &lhs);
+
+			bool expected = false;
+			if (directive.value.value->compare("#export") == 0) {
+				expected = true;
+			}
+			if (!expected) {
+				report_error_on_last_token(state, ErrorCode::E3020);
+				return false;
+			}
+		}
+
 		if (!expect(state, TokenType::SYM_COLON)) {
 			report_error_on_last_token(state, ErrorCode::E3010);
 			delete_node(state->node_alloc, &lhs);

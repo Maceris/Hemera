@@ -126,6 +126,8 @@ namespace hemera {
 		else {
 			//TODO(ches) error?
 		}
+		//TODO(ches) check for #export directive(s)
+		//TODO(ches) add a warning for duplicate export directives and a test for that
 
 		type = node->children[1];
 		if (ast::NodeType::STRUCT == type->node_type) {

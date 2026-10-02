@@ -52,6 +52,19 @@ for i in 0..=10 #reverse {
 
 `#backed_by(x)` is used to specify `x` as the backing type, which must be one of the unsigned integer types (u8, u16, u32, u64, u128). By default enums are backed by uint.
 
+## Functions
+
+`#export` on a function marks it as part of a library or program's public interface.
+This is placed after the identifier in a declaration.
+
+```
+example #export :: fn() {/* ... */}
+```
+
+You could in theory put this on a function inside other functions, as they are effectively hoisted out anyway.
+However that is a fairly confusing thing to do, since it's visible outside the program by name but must be passed 
+around by function pointer inside the program, so it's discouraged.
+
 ## Function Parameters
 
 ### `#caller_location`

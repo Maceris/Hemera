@@ -34,7 +34,7 @@ E3016,Expected a type
 E3017,Unexpected token
 E3018,Expected an opening brace
 E3019,Expected a closing brace
-E3020,Unused error
+E3020,Unexpected directive
 E3021,Unused error
 E3022,Expected a comma or end of list
 E3023,Expected a struct definition
