@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 
 namespace hemera {
@@ -62,6 +63,30 @@ namespace hemera {
 		/// </summary>
 		LINK
 	};
+
+    /// <summary>
+    /// The builtin packages that can be imported.
+    /// </summary>
+    enum class BuiltinPackage {
+        /// <summary>
+        /// Part of the language itself, which must be implemented by all
+        /// compilers.
+        /// </summary>
+        BASE,
+        /// <summary>
+        /// The standard library.
+        /// </summary>
+        STD,
+        /// <summary>
+        /// User supplied packages, like anything downloaded by the package
+        /// manager.
+        /// </summary>
+        USER,
+        /// <summary>
+        /// Officially supported bindings and ports for third party libraries.
+        /// </summary>
+        VENDOR
+    };
 
     /// <summary>
     /// Corresponds to LLVM's environment types.
@@ -404,6 +429,7 @@ namespace hemera {
         std::string cpu_features;
 		std::filesystem::path input;
         std::filesystem::path install_path;
+        std::map<BuiltinPackage, std::filesystem::path> builtin_paths;
 		std::string output_name;
         bool debug_info;
 

@@ -35,6 +35,7 @@ namespace hemera {
 			OBJECT_FORMAT,
 			OS,
 			OUTPUT,
+			PACKAGE_PATH,
 			STOP_BEFORE_ASSEMBLY,
 			STOP_BEFORE_LOWERING,
 			STOP_BEFORE_LINK,
@@ -118,6 +119,7 @@ namespace hemera {
 			{"--object-format", Option::OBJECT_FORMAT},
 			{"--obj", Option::OBJECT_FORMAT},
 			{"--install-path", Option::INSTALL_PATH},
+			{"--package", Option::PACKAGE_PATH},
 		};
 
 		//NOTE(ches) these are in the order that we'll print them out in
@@ -143,6 +145,7 @@ namespace hemera {
 			{Option::CPU_FEATURES, "The CPU features to target, defaults to blank", HAS_ARGS},
 			{Option::OBJECT_FORMAT, "Specify the intermediary object format", HAS_ARGS},
 			{Option::INSTALL_PATH, "Folder containing the standard libraries", HAS_ARGS},
+			{Option::PACKAGE_PATH, "Paths to builtin pacakge(s), written as \"package:path\"", HAS_ARGS, MULTIPLE_ARGS},
 		};
 
 		struct OptionWithValue {

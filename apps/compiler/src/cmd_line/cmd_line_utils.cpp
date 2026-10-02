@@ -4,12 +4,25 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
+#include <ranges>
+#include <string_view>
 
 #include "version.h"
 #include "cmd_line/arg_parsing.h"
 #include "util/logger.h"
 
 namespace hemera {
+
+	static bool package_name_matches(std::string_view value1, std::string_view value2) {
+		if (value1.size() != value2.size()) {
+			return false;
+		}
+		return std::equal(value1.begin(), value1.end(), value2.begin(), value2.end(),
+			[](char a, char b) {
+				return std::tolower(static_cast<unsigned char>(a)) ==
+					std::tolower(static_cast<unsigned char>(b));
+			});
+	}
 
 	hemera::Options* handle_command_line(int argc, char* argv[], Allocator<> main_alloc, bool* all_fine) {
 		Allocator<> arg_alloc;
@@ -412,6 +425,7 @@ namespace hemera {
 			case hemera::arg_parse::OBJECT_FORMAT:
 			case hemera::arg_parse::OS:
 			case hemera::arg_parse::OUTPUT:
+			case hemera::arg_parse::PACKAGE_PATH:
 			case hemera::arg_parse::SUBARCHITECTURE:
 			case hemera::arg_parse::VENDOR:
 			case hemera::arg_parse::VERSION:
@@ -879,6 +893,68 @@ namespace hemera {
 					return false;
 				}
 				break;
+			case hemera::arg_parse::PACKAGE_PATH:
+				for (MyString value : option_with_value.values) {
+
+					auto split_view = std::views::split(value, ":");
+					auto count = std::ranges::distance(split_view);
+					if (count != 2) {
+						cout << "Trouble understanding package path ";
+						cout << value;
+						cout << endl;
+						return false;
+					}
+
+					BuiltinPackage package;
+					std::filesystem::path location;
+
+					size_t i = 0;
+					for (const auto&& word : split_view) {
+						if (i == 0) {
+							if (package_name_matches("base", { word.begin(), word.end() })) {
+								package = BuiltinPackage::BASE;
+							}
+							else if (package_name_matches("std", { word.begin(), word.end() })) {
+								package = BuiltinPackage::STD;
+							}
+							else if (package_name_matches("user", { word.begin(), word.end() })) {
+								package = BuiltinPackage::USER;
+							}
+							else if (package_name_matches("vendor", { word.begin(), word.end() })) {
+								package = BuiltinPackage::VENDOR;
+							}
+							else {
+								cout << "Unrecognized builtin package ";
+								cout << std::string_view{ word.begin(), word.end() };
+								cout << endl;
+								return false;
+							}
+							if (output.builtin_paths.contains(package)) {
+								cout << "Package path for ";
+								cout << std::string_view{ word.begin(), word.end() };
+								cout << " already defined!";
+								return false;
+							}
+						}
+						else {
+							location = std::filesystem::canonical(
+								std::filesystem::path(
+									std::string_view{ word.begin(), word.end() }
+								)
+							);
+							if (!std::filesystem::is_directory(location)) {
+								cout << "Package folder ";
+								cout << location;
+								cout << " does not exist!";
+								cout << endl;
+								return false;
+							}
+						}
+						i += 1;
+					}
+					output.builtin_paths.insert(std::make_pair(package, location));
+				}
+				break;
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
@@ -899,6 +975,23 @@ namespace hemera {
 			//NOTE(ches) Folder, file without extension, I don't care.
 			std::string last_folderish = output.input.filename().stem().string();
 			output.output_name = last_folderish;
+		}
+
+		if (!output.builtin_paths.contains(BuiltinPackage::BASE)) {
+			output.builtin_paths.insert(std::make_pair(BuiltinPackage::BASE, 
+				output.install_path / "base"));
+		}
+		if (!output.builtin_paths.contains(BuiltinPackage::STD)) {
+			output.builtin_paths.insert(std::make_pair(BuiltinPackage::STD,
+				output.install_path / "std"));
+		}
+		if (!output.builtin_paths.contains(BuiltinPackage::USER)) {
+			output.builtin_paths.insert(std::make_pair(BuiltinPackage::USER,
+				output.install_path / "user"));
+		}
+		if (!output.builtin_paths.contains(BuiltinPackage::VENDOR)) {
+			output.builtin_paths.insert(std::make_pair(BuiltinPackage::VENDOR,
+				output.install_path / "vendor"));
 		}
 
 		return true;

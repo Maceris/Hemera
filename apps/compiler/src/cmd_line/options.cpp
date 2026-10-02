@@ -14,6 +14,7 @@ namespace hemera {
 		, cpu_features{ "" }
 		, input{ std::filesystem::current_path() }
 		, install_path{ std::filesystem::current_path() }
+		, builtin_paths{}
 		, output_name{ "" }
 		, debug_info{ false }
 	{}
