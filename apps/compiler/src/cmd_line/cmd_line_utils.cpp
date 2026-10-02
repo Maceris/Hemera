@@ -896,62 +896,56 @@ namespace hemera {
 			case hemera::arg_parse::PACKAGE_PATH:
 				for (MyString value : option_with_value.values) {
 
-					auto split_view = std::views::split(value, ":");
-					auto count = std::ranges::distance(split_view);
-					if (count != 2) {
+					size_t pos = value.find(":");
+					if (pos == std::string::npos) {
 						cout << "Trouble understanding package path ";
 						cout << value;
 						cout << endl;
 						return false;
 					}
 
+					MyString package_part = value.substr(0, pos);
+					MyString path_part = value.substr(pos + 1);
+
 					BuiltinPackage package;
 					std::filesystem::path location;
 
-					size_t i = 0;
-					for (const auto&& word : split_view) {
-						if (i == 0) {
-							if (package_name_matches("base", { word.begin(), word.end() })) {
-								package = BuiltinPackage::BASE;
-							}
-							else if (package_name_matches("std", { word.begin(), word.end() })) {
-								package = BuiltinPackage::STD;
-							}
-							else if (package_name_matches("user", { word.begin(), word.end() })) {
-								package = BuiltinPackage::USER;
-							}
-							else if (package_name_matches("vendor", { word.begin(), word.end() })) {
-								package = BuiltinPackage::VENDOR;
-							}
-							else {
-								cout << "Unrecognized builtin package ";
-								cout << std::string_view{ word.begin(), word.end() };
-								cout << endl;
-								return false;
-							}
-							if (output.builtin_paths.contains(package)) {
-								cout << "Package path for ";
-								cout << std::string_view{ word.begin(), word.end() };
-								cout << " already defined!";
-								return false;
-							}
-						}
-						else {
-							location = std::filesystem::canonical(
-								std::filesystem::path(
-									std::string_view{ word.begin(), word.end() }
-								)
-							);
-							if (!std::filesystem::is_directory(location)) {
-								cout << "Package folder ";
-								cout << location;
-								cout << " does not exist!";
-								cout << endl;
-								return false;
-							}
-						}
-						i += 1;
+					if (package_name_matches("base", package_part)) {
+						package = BuiltinPackage::BASE;
 					}
+					else if (package_name_matches("std", package_part)) {
+						package = BuiltinPackage::STD;
+					}
+					else if (package_name_matches("user", package_part)) {
+						package = BuiltinPackage::USER;
+					}
+					else if (package_name_matches("vendor", package_part)) {
+						package = BuiltinPackage::VENDOR;
+					}
+					else {
+						cout << "Unrecognized builtin package ";
+						cout << package_part;
+						cout << endl;
+						return false;
+					}
+					if (output.builtin_paths.contains(package)) {
+						cout << "Package path for ";
+						cout << package_part;
+						cout << " already defined!";
+						cout << endl;
+						return false;
+					}
+						
+					location = std::filesystem::path(path_part);
+					
+					if (!std::filesystem::is_directory(location)) {
+						cout << "Package folder ";
+						cout << location;
+						cout << " does not exist!";
+						cout << endl;
+						return false;
+					}
+					location = std::filesystem::canonical(location);
 					output.builtin_paths.insert(std::make_pair(package, location));
 				}
 				break;
