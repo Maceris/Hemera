@@ -91,6 +91,13 @@ atomic_store_uintptr          : fn(target: ptr[mut uintptr], value: uintptr)    
 atomic_store_uintptr_release  : fn(target: ptr[mut uintptr], value: uintptr)            : ---
 atomic_store_uintptr_no_fence : fn(target: ptr[mut uintptr], value: uintptr)            : ---
 
+atomic_load_rawptr           : fn(target: ptr[rawptr]                   ) -> rawptr : ---
+atomic_load_rawptr_acquire   : fn(target: ptr[rawptr]                   ) -> rawptr : ---
+atomic_load_rawptr_no_fence  : fn(target: ptr[rawptr]                   ) -> rawptr : ---
+atomic_store_rawptr          : fn(target: ptr[mut rawptr], value: rawptr)            : ---
+atomic_store_rawptr_release  : fn(target: ptr[mut rawptr], value: rawptr)            : ---
+atomic_store_rawptr_no_fence : fn(target: ptr[mut rawptr], value: rawptr)            : ---
+
 /*
  * Later loads/stores cannot move before earlier loads, but only for compiler
  * reordering. Does not emit instructions.
@@ -679,6 +686,47 @@ interlocked_xor_uintptr_acquire                      : fn(target: ptr[mut uintpt
 interlocked_xor_uintptr_acquire_release              : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
 interlocked_xor_uintptr_no_fence                     : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
 interlocked_xor_uintptr_release                      : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
+
+interlocked_and_rawptr                              : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_and_rawptr_acquire                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_and_rawptr_acquire_release              : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_and_rawptr_no_fence                     : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_and_rawptr_release                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_compare_exchange_rawptr                 : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
+interlocked_compare_exchange_rawptr_acquire         : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
+interlocked_compare_exchange_rawptr_acquire_release : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
+interlocked_compare_exchange_rawptr_no_fence        : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
+interlocked_compare_exchange_rawptr_release         : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
+interlocked_decrement_rawptr                        : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_decrement_rawptr_acquire                : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_decrement_rawptr_acquire_release        : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_decrement_rawptr_no_fence               : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_decrement_rawptr_release                : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_exchange_rawptr                         : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_rawptr_acquire                 : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_rawptr_acquire_release         : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_rawptr_no_fence                : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_rawptr_release                 : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_add_rawptr                     : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_add_rawptr_acquire             : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_add_rawptr_acquire_release     : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_add_rawptr_no_fence            : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_exchange_add_rawptr_release             : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_increment_rawptr                        : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_increment_rawptr_acquire                : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_increment_rawptr_acquire_release        : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_increment_rawptr_no_fence               : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_increment_rawptr_release                : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
+interlocked_or_rawptr                               : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_or_rawptr_acquire                       : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_or_rawptr_acquire_release               : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_or_rawptr_no_fence                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_or_rawptr_release                       : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_xor_rawptr                              : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_xor_rawptr_acquire                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_xor_rawptr_acquire_release              : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_xor_rawptr_no_fence                     : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+interlocked_xor_rawptr_release                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
 
 /*
  * Jump to an address in executable memory. Should not be called outside of core code like a fiber scheduler.
