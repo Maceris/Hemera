@@ -4,6 +4,8 @@ Context :: struct {
     allocator : Allocator,
     logger : ptr[Logger],
     log_level : LogLevel,
+    clock : ptr[Clock],
+    random : ptr[Random],
     stack_trace : ptr[StackTraceNode],
     thread_index : usize,
     is_running_on_a_fiber : bool,
@@ -14,6 +16,4 @@ Context :: struct {
     fiber_yield_function : fn()?,
     fiber_data: rawptr,
     user_data: rawptr,
-    //TODO(ches) add clock
-    //TODO(ches) add random
 }
