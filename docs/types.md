@@ -153,7 +153,8 @@ Both static and dynamic arrays will be auto-cast to array views if
 provided to a function with an array view parameter.
 
 It is not valid to take an array on the stack and pass it to a function as,
-or cast it to, an array view.
+or cast it to, an array view. This also applies to fields of structs on the stack.
+In other words, these are only for heap-allocated arrays.
 
 The range operators can be used to grab a view from indexes in an array.
 
