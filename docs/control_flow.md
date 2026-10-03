@@ -230,8 +230,9 @@ result2 : int = match bar {
 In order to use a new context, the `push_context` keyword is used. Within the block that is part of this context,
 the new context is used, and then popped at the end of the block (returning to what it was before).
 
+push_context allocates a new context, and it is destroyed when we leave the block.
+
 ```
-my_context: Context
 push_context my_context {
     // context in this block, and any function calls in it, is referring to my_context
     context.allocator = memory.ArenaAllocator

@@ -36,7 +36,18 @@ import vulkan as vk from "vendor"
 If, for some reason, trying to import from a folder in the local folder with a name exactly the same as a built-in location,
 a relative path is used: `import example from "./base"`.
 
-## Name collision
+### Circular Imports
+
+Circular imports are fine. Imports indicate to the compiler what the file needs included to work, and allows
+you to give the imports names. They do not work like C/C++ imports, and if something has already been imported
+somewhere in the program, importing again does not do any meaningful amount of work.
+
+We build everything in one big module, sort of like a "unity build" in the C world, but with
+a wildly less-linear build process. A C unity build basically uses a preprocessor to drag all the text
+into a single translation unit and that's processed top-down, whereas Hemera has a directed
+graph of compilation-related work that needs to happen that it processes in parallel.
+
+## Name Collision
 
 Since most things like functions and structs are global in the language, there is a risk of name collision when importing other libraries.
 Names must be unique within a package, but there are no guarantees when importing other code or when a package gets imported. In 

@@ -106,11 +106,18 @@ More details:
 | uintptr  | Unsigned integer that is large enough to hold the bit pattern of any pointer, the same size as a standard pointer on that system.            |
 | usize    | Unsigned integer that is the same size as uintptr, used for sizes and counts.                                                                |
 
+## Any
+
+The `any` type is a combination of a type and raw pointer.
+Any other type can be implicitly cast to an `any`, but you cannot store/cast
+a stack variable or parameter.
+In other words, it is only valid for values on the heap.
+
 ## Arrays
 
 There are a few types of arrays.
 
-### Static arrays
+### Static Arrays
 
 Static arrays have a fixed size. They are accessed using `[]` subscript syntax.
 
@@ -122,7 +129,7 @@ c : i8[10][5] // 2D array of i8s
 
 Arrays know their size, and you can access it with `array.count`.
 
-### Dynamic arrays
+### Dynamic Arrays
 
 Dynamic arrays are resizable, allocating more memory as needed. It behaves
 similarly to the C++ `std::vector`, but using the current context's allocator.
@@ -134,7 +141,7 @@ b : string[..] // Dynamic array of strings
 
 Dynamic arrays know their size, and also have a capacity that can be accessed with `array.capacity`.
 
-### Array views
+### Array Views
 
 Array views represent a view into data stored in an array, or a subsection of one.
 
@@ -144,6 +151,9 @@ a : int[]
 
 Both static and dynamic arrays will be auto-cast to array views if 
 provided to a function with an array view parameter.
+
+It is not valid to take an array on the stack and pass it to a function as,
+or cast it to, an array view.
 
 The range operators can be used to grab a view from indexes in an array.
 
@@ -163,7 +173,7 @@ g : int[] : a[..=5]  // View over everything up to index 5, inclusive
 g2 : int[] : a[0..=5]  // Equivalent to g
 ```
 
-### Bounds checking
+### Bounds Checking
 
 When directly indexing into arrays, the index must be proven to be within the bounds of the array.
 

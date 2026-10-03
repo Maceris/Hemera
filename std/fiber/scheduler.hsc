@@ -6,6 +6,7 @@ import intrinsics from "base"
 FIBER_LOCAL_QUEUE_SIZE :: 255
 FIBER_GLOBAL_QUEUE_INTERVAL :: 31
 FIBER_RUN_NEXT_CAP :: 3
+FIBER_MIN_FROZEN_CAPACITY :: 4096
 
 FiberSchedulerGlobalData :: struct {
     global_queue : ptr[Fiber][..],
@@ -21,18 +22,17 @@ FiberSchedulerLocalData :: struct {
     tasks_since_last_global_pull : u8,
     run_next_count : u8,
     /*
-     * When running a fiber, stores the currently executing fiber functions
-     * stack frame, so that we know where to drop the stack back to when
-     * yielding.
+     * The fiber currently running on this thread, so that yield knows what to freeze.
+     * The fiber's stack top (where its frames start) lives in its stack_state,
+     * and is set by fiber_start/fiber_thaw.
      */
-    fiber_base_pointer : rawptr,
+    current_fiber : ptr[Fiber]?,
 }
 
 create_fiber :: fn(function: ThreadFunction, data: any? = null) -> ptr[Fiber] {
     result := new(Fiber)
     result.function = function
     result.data = data
-    result.frozen_stack = null
     result.state = .NotStarted
 }
 
@@ -41,8 +41,6 @@ create_fiber_scheduler :: fn() -> ptr[FiberSchedulerGlobalData] {
 }
 
 run_fiber_scheduler : ThreadFunction : fn(data: any) {
-    //TODO(ches) do the scheduler stuff
-    
     if data.type != ptr[FiberSchedulerGlobalData] {
         log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type)
         return void
@@ -62,28 +60,18 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
     }
     local_data.global_data = global_data
 
-    new_context : Context
-    new_context.is_running_on_a_fiber = true
-    new_context.fiber_data = cast[rawptr](local_data);
-    new_context.fiber_yield_function = yield
-
     push_context new_context {
+        new_context.is_running_on_a_fiber = true
+        new_context.fiber_data = cast[rawptr](local_data);
+        new_context.fiber_yield_function = yield
+
         next_task : ptr[Fiber]? = null
         next_task_index : usize = 0
-
-        frame_size : u32
-        frozen_stack : u8[]
-        end_of_frozen_frame : rawptr
-        size_of_frozen_frame : usize
-        start_of_frozen_frame : rawptr
-        next_base_address : ptr[rawptr]
-
-        // No messing with the current stack frame after we do this
-        local_data.fiber_base_pointer = intrinsics.get_stack_pointer()
+        exit : intrinsics.FiberExit
 
         loop {
             if global_data.global_queue.count == 0 {
-                //TODO(ches) sleep 
+                //TODO(ches) sleep
                 continue
             }
             //TODO(ches) actually have a strategy for updating tasks
@@ -93,46 +81,81 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
             next_task = global_data.global_queue[next_task_index]
 
             switch next_task.state {
-                case .NotStarted:
-                    next_task.function(next_task.data)
                 case .Running: continue
+                case .NotStarted:
+                    next_task.state = .Running
+                    local_data.current_fiber = next_task
+                    /*
+                     * Calls the function with fiber_thaw_trampoline as its return address,
+                     * and comes back here when the fiber yields or its function returns.
+                     */
+                    exit = intrinsics.fiber_start(&next_task.stack_state, next_task.function, next_task.data)
                 case .Suspended:
-                    // Weird return address handling, only returns here after the frame returns
-                    // Thaw one stack frame and "call" the function associated with it
-                    {
-                        frozen_stack = fiber.frozen_stack or_continue
-
-                        if frozen_stack.count == 0 {
-                            //TODO(ches) grab and release locks for the queue
-                            array_remove_fast(global_data.global_queue, next_task_index)
-                            free(next_task)
-                            continue
-                        }
-
-                        end_of_frozen_frame = cast[rawptr](cast[uintptr](frozen_stack.data) + cast[uintptr](frozen_stack.count))
-                        size_of_frozen_frame = cast[ptr[usize]](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of(usize)))^
-                        start_of_frozen_frame = cast[rawptr](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of_frozen_frame))
-                        mem_copy_non_overlapping(local_data.fiber_base_pointer, start_of_frozen_frame, size_of_frozen_frame)
-                        fiber.frozen_stack.count -= size_of_frozen_frame
-                        
-                        // Find next frame's base address
-                        if frozen_stack.count > 0 {
-                            end_of_frozen_frame = cast[rawptr](cast[uintptr](frozen_stack.data) + cast[uintptr](frozen_stack.count))
-                            size_of_frozen_frame = cast[ptr[usize]](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of(usize)))^
-                            start_of_frozen_frame = cast[rawptr](cast[uintptr](end_of_frozen_frame) - cast[uintptr](size_of_frozen_frame))
-
-                            next_base_address = cast[ptr[rawptr]](cast[uintptr](local_data.fiber_base_pointer) + cast[uintptr](size_of(uintptr)))
-                            next_base_address^ = cast[ptr[rawptr]](start_of_frozen_frame)^
-                        }
-
-                        set_return_address(fiber.last_frame_return_address)
-                        //TODO(ches) update the return pointer of that new frame to the thaw point
-                    }
+                    next_task.state = .Running
+                    local_data.current_fiber = next_task
+                    /*
+                     * Thaws only the innermost frozen frame (the one that called fiber_freeze) just
+                     * below this stack pointer, restores the fiber's registers and jumps to where it yielded.
+                     * Outer frames are thawed one at a time by fiber_thaw_trampoline as each frame returns.
+                     * Comes back here, like a normal call, when the fiber yields again or finishes.
+                     */
+                    exit = intrinsics.fiber_thaw(&next_task.stack_state)
             }
 
+            // Nothing from the fiber is left on this thread's stack now
+            local_data.current_fiber = null
+
+            switch exit {
+                case .Yielded:
+                    next_task.state = .Suspended
+                case .Finished:
+                    //TODO(ches) grab and release locks for the queue
+                    array_remove_fast(global_data.global_queue, next_task_index)
+                    if next_task.stack_state.frozen_frames.count > 0 {
+                        free(next_task.stack_state.frozen_frames)
+                    }
+                    free(next_task)
+            }
         }
         while !global_data.should_stop
     }
+}
+
+/*
+ * Make sure there are at least `needed` free bytes below frozen_low,
+ * since fiber_freeze can't allocate.
+ */
+ensure_frozen_capacity :: fn(state: ptr[mut intrinsics.FiberStackState], needed: usize) {
+    if state.frozen_low >= needed {
+        return void
+    }
+
+    used : usize : state.frozen_frames.count - state.frozen_low
+    new_capacity : usize = state.frozen_frames.count * 2
+    if new_capacity < used + needed {
+        new_capacity = used + needed
+    }
+    if new_capacity < FIBER_MIN_FROZEN_CAPACITY {
+        new_capacity = FIBER_MIN_FROZEN_CAPACITY
+    }
+
+    /*
+     * The frozen frames grow downward like the stack, so keep them at the high end of the new buffer.
+     * Moving them is fine: the only pointer into this buffer is the outermost thawed frame's saved BP,
+     * and that frame is about to be frozen too, then re-patched when it is thawed again.
+     */
+    new_frames : u8[] = new_array(u8, new_capacity)
+    if used > 0 {
+        mem_copy_non_overlapping(
+            cast[rawptr](cast[uintptr](new_frames.data) + cast[uintptr](new_capacity - used)),
+            cast[rawptr](cast[uintptr](state.frozen_frames.data) + cast[uintptr](state.frozen_low)),
+            used)
+    }
+    if state.frozen_frames.count > 0 {
+        free(state.frozen_frames)
+    }
+    state.frozen_frames = new_frames
+    state.frozen_low = new_capacity - used
 }
 
 yield :: fn() {
@@ -140,18 +163,21 @@ yield :: fn() {
         // Returns to the actual yield call site, yielding is not reasonable
         return void
     }
-    stack_max : rawptr : intrinsics.get_stack_base_pointer()
-    stack_min : rawptr : context.fiber_base_pointer
-    stack_size : uintptr : cast[uintptr](stack_max) - cast[uintptr](stack_min)
-    stack_bytes : usize : cast[usize](stack_size) / size_of(u8)
+    local_data : ptr[FiberSchedulerLocalData] : cast[ptr[FiberSchedulerLocalData]](context.fiber_data)
+    current :: local_data.current_fiber or_return
 
-    frozen_stack_space : u8[] = new_array(u8, stack_bytes)
-    mem_copy_non_overlapping(&frozen_stack_space, stack_min, stack_bytes)
-
-    set_return_address(stack_min)
     /*
-     * Returns to where the fiber function was run from, not what called yield.
-     * The actual return from the yield function, from the perspective of 
-     * the function calling it, happens after the fiber is resumed.
+     * Everything from this frame up to the stack top belongs to the fiber and is about to be frozen.
+     * Growing the buffer calls other functions, which is fine since they return before the freeze.
      */
+    live_bytes : usize : cast[usize](cast[uintptr](current.stack_state.stack_top) - cast[uintptr](intrinsics.get_stack_pointer()))
+    ensure_frozen_capacity(&current.stack_state, live_bytes)
+
+    /*
+     * Saves the registers, copies [stack pointer, stack top) below frozen_low, and makes the
+     * scheduler's fiber_start/fiber_thaw call return .Yielded.
+     * This call only "returns" once the fiber is resumed, possibly on another thread,
+     * so don't use local_data or current after this.
+     */
+    intrinsics.fiber_freeze(&current.stack_state)
 }
