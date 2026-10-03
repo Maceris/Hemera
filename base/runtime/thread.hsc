@@ -17,6 +17,11 @@ ThreadFunction :: fn(any) -> void
 
     }
 }
+#else_if OS == .None {
+    ThreadSpecificOS :: struct {
+
+    }
+}
 #else {
     //TODO(ches) error, unsupported
 }
