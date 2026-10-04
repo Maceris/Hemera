@@ -144,6 +144,7 @@ interlocked_and_i8_acquire_release              : fn(target: ptr[mut i8], value:
 interlocked_and_i8_no_fence                     : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
 interlocked_and_i8_release                      : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
 interlocked_compare_exchange_i8                 : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
+interlocked_compare_exchange_i8_weak            : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
 interlocked_compare_exchange_i8_acquire         : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
 interlocked_compare_exchange_i8_acquire_release : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
 interlocked_compare_exchange_i8_no_fence        : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
@@ -185,6 +186,7 @@ interlocked_and_u8_acquire_release              : fn(target: ptr[mut u8], value:
 interlocked_and_u8_no_fence                     : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
 interlocked_and_u8_release                      : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
 interlocked_compare_exchange_u8                 : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
+interlocked_compare_exchange_u8_weak            : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
 interlocked_compare_exchange_u8_acquire         : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
 interlocked_compare_exchange_u8_acquire_release : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
 interlocked_compare_exchange_u8_no_fence        : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
@@ -226,6 +228,7 @@ interlocked_and_i16_acquire_release              : fn(target: ptr[mut i16], valu
 interlocked_and_i16_no_fence                     : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
 interlocked_and_i16_release                      : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
 interlocked_compare_exchange_i16                 : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
+interlocked_compare_exchange_i16_weak            : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
 interlocked_compare_exchange_i16_acquire         : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
 interlocked_compare_exchange_i16_acquire_release : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
 interlocked_compare_exchange_i16_no_fence        : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
@@ -267,6 +270,7 @@ interlocked_and_u16_acquire_release              : fn(target: ptr[mut u16], valu
 interlocked_and_u16_no_fence                     : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
 interlocked_and_u16_release                      : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
 interlocked_compare_exchange_u16                 : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
+interlocked_compare_exchange_u16_weak            : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
 interlocked_compare_exchange_u16_acquire         : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
 interlocked_compare_exchange_u16_acquire_release : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
 interlocked_compare_exchange_u16_no_fence        : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
@@ -308,6 +312,7 @@ interlocked_and_i32_acquire_release              : fn(target: ptr[mut i32], valu
 interlocked_and_i32_no_fence                     : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
 interlocked_and_i32_release                      : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
 interlocked_compare_exchange_i32                 : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
+interlocked_compare_exchange_i32_weak            : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
 interlocked_compare_exchange_i32_acquire         : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
 interlocked_compare_exchange_i32_acquire_release : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
 interlocked_compare_exchange_i32_no_fence        : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
@@ -349,6 +354,7 @@ interlocked_and_u32_acquire_release              : fn(target: ptr[mut u32], valu
 interlocked_and_u32_no_fence                     : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
 interlocked_and_u32_release                      : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
 interlocked_compare_exchange_u32                 : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
+interlocked_compare_exchange_u32_weak            : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
 interlocked_compare_exchange_u32_acquire         : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
 interlocked_compare_exchange_u32_acquire_release : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
 interlocked_compare_exchange_u32_no_fence        : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
@@ -390,6 +396,7 @@ interlocked_and_i64_acquire_release              : fn(target: ptr[mut i64], valu
 interlocked_and_i64_no_fence                     : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
 interlocked_and_i64_release                      : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
 interlocked_compare_exchange_i64                 : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
+interlocked_compare_exchange_i64_weak            : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
 interlocked_compare_exchange_i64_acquire         : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
 interlocked_compare_exchange_i64_acquire_release : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
 interlocked_compare_exchange_i64_no_fence        : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
@@ -431,6 +438,7 @@ interlocked_and_u64_acquire_release              : fn(target: ptr[mut u64], valu
 interlocked_and_u64_no_fence                     : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
 interlocked_and_u64_release                      : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
 interlocked_compare_exchange_u64                 : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
+interlocked_compare_exchange_u64_weak            : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
 interlocked_compare_exchange_u64_acquire         : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
 interlocked_compare_exchange_u64_acquire_release : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
 interlocked_compare_exchange_u64_no_fence        : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
@@ -472,6 +480,7 @@ interlocked_and_i128_acquire_release              : fn(target: ptr[mut i128], va
 interlocked_and_i128_no_fence                     : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
 interlocked_and_i128_release                      : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
 interlocked_compare_exchange_i128                 : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
+interlocked_compare_exchange_i128_weak            : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
 interlocked_compare_exchange_i128_acquire         : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
 interlocked_compare_exchange_i128_acquire_release : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
 interlocked_compare_exchange_i128_no_fence        : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
@@ -513,6 +522,7 @@ interlocked_and_u128_acquire_release              : fn(target: ptr[mut u128], va
 interlocked_and_u128_no_fence                     : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
 interlocked_and_u128_release                      : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
 interlocked_compare_exchange_u128                 : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
+interlocked_compare_exchange_u128_weak            : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
 interlocked_compare_exchange_u128_acquire         : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
 interlocked_compare_exchange_u128_acquire_release : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
 interlocked_compare_exchange_u128_no_fence        : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
@@ -554,6 +564,7 @@ interlocked_and_int_acquire_release              : fn(target: ptr[mut int], valu
 interlocked_and_int_no_fence                     : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
 interlocked_and_int_release                      : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
 interlocked_compare_exchange_int                 : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
+interlocked_compare_exchange_int_weak            : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
 interlocked_compare_exchange_int_acquire         : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
 interlocked_compare_exchange_int_acquire_release : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
 interlocked_compare_exchange_int_no_fence        : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
@@ -595,6 +606,7 @@ interlocked_and_uint_acquire_release              : fn(target: ptr[mut uint], va
 interlocked_and_uint_no_fence                     : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
 interlocked_and_uint_release                      : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
 interlocked_compare_exchange_uint                 : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
+interlocked_compare_exchange_uint_weak            : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
 interlocked_compare_exchange_uint_acquire         : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
 interlocked_compare_exchange_uint_acquire_release : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
 interlocked_compare_exchange_uint_no_fence        : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
@@ -636,6 +648,7 @@ interlocked_and_uintptr_acquire_release              : fn(target: ptr[mut uintpt
 interlocked_and_uintptr_no_fence                     : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
 interlocked_and_uintptr_release                      : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
 interlocked_compare_exchange_uintptr                 : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
+interlocked_compare_exchange_uintptr_weak            : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
 interlocked_compare_exchange_uintptr_acquire         : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
 interlocked_compare_exchange_uintptr_acquire_release : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
 interlocked_compare_exchange_uintptr_no_fence        : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
@@ -677,6 +690,7 @@ interlocked_and_rawptr_acquire_release              : fn(target: ptr[mut rawptr]
 interlocked_and_rawptr_no_fence                     : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
 interlocked_and_rawptr_release                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
 interlocked_compare_exchange_rawptr                 : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
+interlocked_compare_exchange_rawptr_weak            : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
 interlocked_compare_exchange_rawptr_acquire         : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
 interlocked_compare_exchange_rawptr_acquire_release : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
 interlocked_compare_exchange_rawptr_no_fence        : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
