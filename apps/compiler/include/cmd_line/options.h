@@ -15,17 +15,9 @@ namespace hemera {
         /// </summary>
         arm,
         /// <summary>
-        /// ARM (big endian): armeb.
-        /// </summary>
-        armeb,
-        /// <summary>
         /// AArch64 (little endian): aarch64.
         /// </summary>
         aarch64,
-        /// <summary>
-        /// AArch64 (big endian): aarch64_be.
-        /// </summary>
-        aarch64_be,
         /// <summary>
         /// AArch64 (little endian) ILP32: aarch64_32.
         /// </summary>

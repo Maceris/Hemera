@@ -209,9 +209,7 @@ namespace hemera {
 		if (value == "architecture") {
 			cout << "Architectures: ";
 			cout << "arm ";
-			cout << "armeb ";
 			cout << "aarch64 ";
-			cout << "aarch64_be ";
 			cout << "aarch64_32 ";
 			cout << "x86 ";
 			cout << "x86_64 ";
@@ -453,16 +451,8 @@ namespace hemera {
 					output.architecture = ArchType::arm;
 					architecture_seen = true;
 				}
-				else if (strcmp("armeb", first_arg.c_str()) == 0) {
-					output.architecture = ArchType::armeb;
-					architecture_seen = true;
-				}
 				else if (strcmp("aarch64", first_arg.c_str()) == 0) {
 					output.architecture = ArchType::aarch64;
-					architecture_seen = true;
-				}
-				else if (strcmp("aarch64_be", first_arg.c_str()) == 0) {
-					output.architecture = ArchType::aarch64_be;
 					architecture_seen = true;
 				}
 				else if (strcmp("aarch64_32", first_arg.c_str()) == 0) {

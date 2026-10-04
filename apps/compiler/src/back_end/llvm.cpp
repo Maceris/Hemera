@@ -41,9 +41,7 @@ namespace hemera {
 	static llvm::Triple::ArchType map_arch_type(ArchType architecture) {
 		switch (architecture) {
 			case ArchType::arm: return llvm::Triple::ArchType::arm;
-			case ArchType::armeb: return llvm::Triple::ArchType::armeb;
 			case ArchType::aarch64: return llvm::Triple::ArchType::aarch64;
-			case ArchType::aarch64_be: return llvm::Triple::ArchType::aarch64_be;
 			case ArchType::aarch64_32: return llvm::Triple::ArchType::aarch64_32;
 			case ArchType::x86: return llvm::Triple::ArchType::x86;
 			case ArchType::x86_64: return llvm::Triple::ArchType::x86_64;
@@ -434,11 +432,9 @@ namespace hemera {
 
 		switch (options.architecture) {
 		case ArchType::arm:
-		case ArchType::armeb:
 			args += "/machine:arm ";
 			break;
 		case ArchType::aarch64:
-		case ArchType::aarch64_be:
 		case ArchType::aarch64_32:
 			args += "/machine:arm64 ";
 			break;
