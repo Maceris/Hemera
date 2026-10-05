@@ -1,105 +1,133 @@
 package runtime
 
-Fiber :: struct {
+// Size of each additional stack segment, unless a single frame needs more.
+STACK_SEGMENT_SIZE :: 1024
+// Bytes between stack_limit and the real end of a segment.
+STACK_GUARD :: 256
+// Usable stack in a fiber's first segment, before it needs another segment.
+FIBER_INITIAL_STACK_SIZE :: 1024
+/*
+ * Each fiber is one allocation of this size: the Fiber struct (which includes its root context),
+ * then its first stack segment, which is the guard plus the usable stack.
+ *
+ * Fiber is 16-byte aligned, so this stays a multiple of 16. It comes to about 1.4 KiB,
+ * under the target of 1.5 GB of runtime overhead per million idle fibers (1536 bytes each),
+ * leaving some room for the allocator's own overhead.
+ */
+FIBER_BLOCK_SIZE :: size_of(Fiber) + STACK_GUARD + FIBER_INITIAL_STACK_SIZE
+// Leaf functions with frames up to this size skip the prologue check.
+STACK_SMALL :: 128
+
+/*
+ * A fiber, and the start of its FIBER_BLOCK_SIZE allocation.
+ * Its first stack segment is the rest of the allocation, growing down from the end
+ * toward this struct, with stack_limit at (address of this struct) + size_of(Fiber) + STACK_GUARD.
+ *
+ * The fiber intrinsics read resume using fixed offsets, so keep it first.
+ */
+Fiber :: struct #align(16) {
+    resume : FiberResumeState,
     function : ThreadFunction,
     data : any?,
-    stack_state : FiberStackState,
+    // Copied from the context of whoever created the fiber
+    context : Context,
     state : FiberState,
+    // Intrusive link for scheduler queues, owned by whichever scheduler holds the fiber
+    next : ptr[Fiber]?,
 }
 
 /*
- * Callee-saved registers for each supported ABI.
- * Only the member for the target ABI is used, the union is just
- * big enough for the largest one.
+ * Where a suspended fiber continues, see docs/calling_convention.md
+ * (Suspending and Resuming a Fiber).
  *
- * The intrinsics save the 128-bit registers with aligned stores,
- * so these are placed first and the union is 16-byte aligned.
+ * While suspended, the fiber's callee-saved registers are pushed on its own stack, at saved_sp:
+ *     x86-64 System V: rbx, r12, r13, r15, mxcsr, x87 control word
+ *     x86-64 Windows:  xmm6-xmm15, rbx, rsi, rdi, r12, r13, r15, mxcsr, x87 control word
+ *     AArch64:         x19-x27, d8-d15, fpcr
+ * The carrier register (r14 / x28) is never saved, so a resumed fiber sees the carrier it's on.
+ *
+ * The fiber intrinsics read these using fixed offsets, so don't reorder them.
  */
-FiberCalleeSavedRegisters :: struct #union #align(16) {
-    x86_64_sysv : struct {
-        rbx, r12, r13, r14, r15 : u64,
-        mxcsr : u32,
-        x87_control_word : u16,
-    },
-    x86_64_windows : struct {
-        xmm6, xmm7, xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15 : u128,
-        rbx, rsi, rdi, r12, r13, r14, r15 : u64,
-        mxcsr : u32,
-        x87_control_word : u16,
-    },
-    arm64 : struct {
-        x19, x20, x21, x22, x23, x24, x25, x26, x27, x28 : u64,
-        // Only the low 64 bits of v8-v15 are callee-saved
-        d8, d9, d10, d11, d12, d13, d14, d15 : u64,
-        fpcr : u64,
-    },
+FiberResumeState :: struct {
+    // Stack pointer after fiber_suspend pushed the callee-saved registers
+    saved_sp : rawptr,
+    // Base pointer of the innermost suspended frame
+    top_frame : rawptr,
+    // Where that frame continues, just after its call to fiber_suspend
+    top_continuation : rawptr,
+    /*
+     * The frame most recently re-entered by the resume loop, whose return address slot
+     * points back into the loop. null if there isn't one.
+     */
+    reentered_frame : rawptr,
+    // The original contents of that slot, exactly as they were (still signed, on AArch64)
+    reentered_return : rawptr,
+    // reentered_frame's caller's base pointer, saved before the frame could be popped
+    parent_frame : rawptr,
+    // The carrier's stack_segment and stack_limit for the fiber's current segment
+    stack_segment : ptr[StackSegment]?,
+    stack_limit : rawptr,
 }
 
 /*
- * Registers that must survive a fiber switch.
- * The compiler intrinsics read from these using fixed offsets,
- * so don't reorder them.
+ * Header at the low end of an additional stack segment, which grows down toward it.
+ * The segment's stack_limit is (address of this) + size_of(StackSegment) + STACK_GUARD.
+ * These are similar to how Go used to handle stacks for goroutines, before they
+ * switched to stack copying.
  */
-FiberSavedRegisters :: struct #align(16) {
-    stack_pointer : rawptr,
-    base_pointer : rawptr,
-    callee_saved : FiberCalleeSavedRegisters,
-}
-
-/*
- * The compiler intrinsics read from these using fixed offsets,
- * so don't reorder them.
- */
-FiberStackState :: struct {
-    /*
-     * Frozen frames, laid out exactly as they were on the stack, and growing
-     * downward like it.
-     *
-     * count is always the whole allocation (equal to capacity), and only
-     * frozen_frames[frozen_low ..< count] holds frozen frames, with the
-     * innermost frame (the next one to thaw) starting at frozen_low.
-     * Everything below frozen_low is free space for the next freeze.
-     *
-     * Grow it with ensure_frozen_capacity, not the array_* functions,
-     * since those would keep the frames at the low end.
-     * The allocator stored in the array is used for growing and freeing it.
-     */
-    frozen_frames : u8[..],
-    frozen_low : usize,
-    /*
-     * Where the innermost frozen frame continues running, just after its call
-     * to fiber_freeze.
-     */
-    resume_address : rawptr,
-    /*
-     * The real return address of the outermost thawed frame, whose return
-     * address slot now points at fiber_thaw_trampoline.
-     *
-     * null when that frame already holds its real return address
-     * (i.e. it's the last frozen frame).
-     *
-     * fiber_freeze puts this back into the frame before freezing it, so
-     * frozen frames always hold their real return addresses.
-     */
-    patched_return_address : rawptr,
-    /*
-     * The stack pointer of the scheduler on the thread currently running this
-     * fiber. Every frame between the stack pointer and this address belongs to
-     * the fiber.
-     */
-    stack_top : rawptr,
-    fiber_registers : FiberSavedRegisters,
-    scheduler_registers : FiberSavedRegisters,
-    scheduler_return_address : rawptr,
+StackSegment :: struct #align(16) {
+    // Total size of the segment in bytes, including this header
+    size : u32,
+    // Link for the carrier's segment cache, while the segment is free
+    next_free : ptr[StackSegment]?,
 }
 
 FiberState :: enum {
     NotStarted,
     Running,
     Suspended,
+    Finished,
 }
 
 FiberExit :: enum {
     Yielded,
     Finished,
+}
+
+/*
+ * Make a fiber that will run function(data), starting with a copy of the current context.
+ * Nothing runs until a scheduler starts it with intrinsics.fiber_start.
+ * data is kept in the fiber, so it can't point into the caller's stack.
+ */
+fiber_create :: fn(
+    function: ThreadFunction,
+    data #escaping : any? = null,
+    allocator := context.allocator,
+    loc := #caller_location,
+) -> (ptr[Fiber], AllocatorError?) {
+    block, error :: new_array_aligned(u8, FIBER_BLOCK_SIZE, 16, allocator, loc)
+    if error != null {
+        return null, error
+    }
+    result : ptr[mut Fiber] : cast[ptr[mut Fiber]](block.data)
+    result.resume = FiberResumeState.{}
+    result.function = function
+    result.data = data
+    result.context = context
+    result.state = .NotStarted
+    result.next = null
+    return result, null
+}
+
+/*
+ * Free a fiber that has finished, or never started.
+ * Its first stack segment is part of the same allocation, and it doesn't hold any others
+ * once it isn't running.
+ */
+fiber_destroy :: fn(
+    fiber: ptr[Fiber],
+    allocator := context.allocator,
+    loc := #caller_location,
+) {
+    free(fiber, allocator, loc)
 }

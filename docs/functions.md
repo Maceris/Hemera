@@ -22,6 +22,16 @@ print_something2 :: fn(text: string = "hello") {
 }
 ```
 
+Parameters that are pointers, or contain them (views, strings, `any`), can't be kept after the call returns
+unless they are marked `#escaping`, since the caller may have passed something on its stack.
+See [memory.md](memory.md#escaping-parameters).
+
+```
+remember :: fn(registry: ptr[mut Registry], name #escaping : string) {
+    array_add(registry.names, name)
+}
+```
+
 Outputs from functions are provided using `->` followed by the type(s) that are returned.
 
 ```

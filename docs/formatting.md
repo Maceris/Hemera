@@ -24,6 +24,7 @@ Commas at the ends of lists (below) are optional. They can be there, or they cou
 * unions
 * match expressions
 * struct literals that specify fields by name
+* `push_context` field overrides
 
 This is to enable definitions of things to be reordered or modified without having to fiddle with adding or removing commas.
 

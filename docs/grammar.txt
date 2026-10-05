@@ -232,7 +232,9 @@ function_output_in_paren = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = [ identifier , { SYM_COMMA , identifier } , SYM_COLON ] , type_in_list , [ SYM_ELLIPSIS ]  ;
+function_parameter = [ parameter_name , { SYM_COMMA , parameter_name } , SYM_COLON ] , type_in_list , [ SYM_ELLIPSIS ]  ;
+
+parameter_name = identifier , { directive } ;
 
 default_value = literal
     | type
@@ -406,7 +408,12 @@ loop = [ KEYWORD_with , SYM_LBRACE , { any_definition } , SYM_RBRACE ]
     , [ KEYWORD_while , SYM_LPAREN, expression_with_result , SYM_RPAREN ]
     ;
 
-push_context = KEYWORD_push_context , identifier , block ;
+push_context = KEYWORD_push_context , identifier
+    , SYM_LPAREN , context_override , { SYM_COMMA , context_override } , [ SYM_COMMA ] , SYM_RPAREN
+    , block
+    ;
+
+context_override = identifier , OPERATOR_assign , expression_with_result ;
 
 enum_shorthand = SYM_DOT , identifier ;
 

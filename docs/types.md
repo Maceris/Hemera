@@ -109,9 +109,9 @@ More details:
 ## Any
 
 The `any` type is a combination of a type and raw pointer.
-Any other type can be implicitly cast to an `any`, but you cannot store/cast
-a stack variable or parameter.
-In other words, it is only valid for values on the heap.
+Any other type can be implicitly cast to an `any`, including stack variables and parameters.
+An `any` made from something on the stack can't outlive it, which the compiler checks,
+see [memory.md](memory.md#pointers-to-the-stack).
 
 ## Arrays
 
@@ -152,9 +152,9 @@ a : int[]
 Both static and dynamic arrays will be auto-cast to array views if 
 provided to a function with an array view parameter.
 
-It is not valid to take an array on the stack and pass it to a function as,
-or cast it to, an array view. This also applies to fields of structs on the stack.
-In other words, these are only for heap-allocated arrays.
+Arrays on the stack (including fields of structs on the stack) can be passed to functions as,
+or cast to, array views. Such a view can't outlive the array, which the compiler checks,
+see [memory.md](memory.md#pointers-to-the-stack).
 
 The range operators can be used to grab a view from indexes in an array.
 

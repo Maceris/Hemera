@@ -3,59 +3,77 @@ package intrinsics
 import runtime from "base"
 
 /*
- * Save the scheduler's registers, set stack_top to the current stack pointer,
- * and call function(data) with fiber_thaw_trampoline as its return address.
+ * The current thread's carrier block, from the carrier register.
  *
- * Returns once the fiber yields or the function returns.
+ * A fiber can move to another carrier during any call that might yield, so only use
+ * the result until then, or inside runtime.no_yield_enter() / runtime.no_yield_exit().
  *
- * The current FiberStackState is kept in a thread-local slot, so the trampoline can find it.
- *
- * Intended for fiber schedulers.
+ * At compile time the compiler supplies its own carrier block, with no yield_function.
  */
-fiber_start : fn(state: ptr[mut FiberStackState], function: fn(any), data: any?) -> FiberExit : ---
+carrier : fn() -> ptr[mut runtime.CarrierBlock] : ---
 
 /*
- * Saves the scheduler's registers, sets stack_top to the current stack pointer.
- * Then copies the innermost frozen frame (at frozen_low) to just below the stack
- * pointer, moving the stack pointer first so nothing else uses that memory.
+ * Start running a fiber that hasn't started yet, on its first stack segment.
  *
- * If more frames are frozen, patches the thawed frame's saved base pointer to
- * its caller's base pointer inside frozen_frames, and its return address to
- * fiber_thaw_trampoline (keeping the real one in patched_return_address).
+ * Saves the scheduler's callee-saved registers and stack pointer in the carrier block,
+ * records the shadow stack pointer, makes this fiber the carrier's current fiber,
+ * switches the stack pointer to the top of the fiber's first segment, and calls fiber_entry.
  *
- * Restores the fiber's registers, and jumps to resume_address.
- *
- * Returns once the fiber yields again or finishes.
+ * Returns .Yielded once the fiber suspends, or .Finished once its function returns.
  *
  * Intended for fiber schedulers.
  */
-fiber_thaw : fn(state: ptr[mut FiberStackState]) -> FiberExit : ---
+fiber_start : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
 
 /*
- * Saves the fiber's registers and resume address, puts patched_return_address
- * back into the outermost thawed frame, and copies [stack pointer, stack_top)
- * to just below frozen_low. Then restores the scheduler's registers, so that its
- * fiber_start/fiber_thaw call returns .Yielded.
+ * Resume a suspended fiber, on this carrier.
  *
- * This can't allocate, so the caller must make sure there are at least
- * (stack_top - stack pointer) free bytes below frozen_low first.
+ * Saves the scheduler's state the same way fiber_start does, then re-enters the fiber's
+ * innermost frame with a real call, so that the frame later returns into the resume loop.
+ * Each time a re-entered frame returns, the loop re-enters its caller the same way.
  *
- * Only "returns" when the fiber is thawed again, possibly on another thread.
+ * Returns .Yielded once the fiber suspends again, or .Finished once its function returns.
  *
  * Intended for fiber schedulers.
  */
-fiber_freeze : fn(state: ptr[mut FiberStackState]) : ---
+fiber_resume : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
+
+/*
+ * Suspend the current fiber. Called on the fiber's own stack, by the scheduler's
+ * yield function (or park), once it has decided to switch.
+ *
+ * Pushes the fiber's callee-saved registers on its stack, records its innermost frame and
+ * where it continues, puts the real return address back into the most recently re-entered
+ * frame, drops the fiber's entries from this thread's shadow stack, and switches back to
+ * the scheduler, whose fiber_start/fiber_resume call returns .Yielded.
+ *
+ * Nothing is copied, and nothing is allocated.
+ *
+ * Only "returns" once the fiber is resumed, possibly on another carrier, so the caller
+ * must not use anything it got from carrier() before this.
+ *
+ * Intended for fiber schedulers.
+ */
+fiber_suspend : fn(fiber: ptr[mut runtime.Fiber]) : ---
 
 /*
  * Never called directly, but needs a name.
  *
- * Its address is written into the return address of thawed frames, so that it
- * runs when that frame returns, with the stack pointer at stack_top.
+ * The bottom frame of every fiber. Builds a normal frame, calls function(data) with the
+ * fiber's root context, and when that returns, marks the fiber .Finished and switches back
+ * to the scheduler the same way fiber_suspend does.
  *
- * Leaves the return value registers and callee-saved registers alone,
- * thaws the next frozen frame the same way fiber_thaw does, and jumps to the
- * old patched_return_address.
- *
- * If nothing is left to thaw, the fiber is done, and fiber_start/fiber_thaw returns .Finished.
+ * Its continuation after that call is also where the resume loop ends up if the fiber's
+ * function returns after being resumed, so the loop needs no special case for finishing.
  */
-fiber_thaw_trampoline : fn() : ---
+fiber_entry : fn() : ---
+
+/*
+ * Never called directly, but needs a name.
+ *
+ * Called by every function's prologue when it doesn't have room left on the current stack
+ * segment. Takes a new segment (the carrier's spare, its cache, or a new allocation),
+ * copies the function's stack parameters to it, and calls the function's body there.
+ * When the body returns, switches back and keeps the segment as the carrier's spare.
+ */
+morestack : fn() : ---

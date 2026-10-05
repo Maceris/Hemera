@@ -172,7 +172,7 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
 
     if flags & DEFAULT_LOGGER_FLAG_THREAD_ID != 0 {
         append(log_builder, '[')
-        append(log_builder, usize_to_string(context.thread_index))
+        append(log_builder, usize_to_string(current_thread_index()))
         append(log_builder, ']')
         append(log_builder, ' ')
     }

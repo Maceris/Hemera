@@ -227,18 +227,56 @@ result2 : int = match bar {
 
 ## Push Context
 
-In order to use a new context, the `push_context` keyword is used. Within the block that is part of this context,
-the new context is used, and then popped at the end of the block (returning to what it was before).
+The context can't be modified. To use a different one, the `push_context` keyword is used, which does two things:
 
-push_context allocates a new context, and it is destroyed when we leave the block.
+1. Defines a new context: a copy of the current context, with the listed fields overridden.
+2. Saves the current context, uses the new one for the block (and every function called from it),
+   then switches back to the saved one when the block is left.
 
 ```
-push_context my_context {
+push_context my_context (allocator = memory.ArenaAllocator, log_level = .WARN) {
     // context in this block, and any function calls in it, is referring to my_context
-    context.allocator = memory.ArenaAllocator
     print_something("You can do whatever you want here")
 }
+// back to the previous context here
 ```
+
+* At least one field must be listed, and each field at most once. Fields not listed keep their current values.
+* Override values can't point into the stack (see [memory.md](memory.md#contexts)),
+  so a context can always be copied, for example into a new thread or fiber.
+  A trailing comma is allowed, as in other lists.
+* The override expressions are evaluated in order, before the switch, so they see the old context.
+  For example, in `push_context scratch (allocator = make_arena(context.allocator))`, the arena gets its memory
+  from the allocator that was current before the push.
+* `my_context` names the new context inside the block. It refers to the same value as `context` there,
+  and is read-only like it. The name is useful for referring to an outer context from inside a nested `push_context`.
+* The new context lives in the current function's stack frame, and is destroyed when the block is left.
+  That happens however the block is left: reaching its end, `return`, `break` or `continue`.
+  `defer` statements inside the block run before the old context is restored, so they still see the new one.
+* New threads and fibers get a copy of the context that was current when they were created
+  (see [multitasking.md](multitasking.md#contexts)).
+
+### The Context is Read-Only
+
+The compiler rejects anything that would change the current context, rather than replace it for a scope:
+
+```
+context.allocator = memory.ArenaAllocator   // Error: the context can't be assigned to
+context.allocator.data = some_data          // Error: neither can any of its fields, at any depth
+context = other_context                     // Error
+x : ptr[mut Allocator] = &context.allocator // Error: no mutable pointers into the context
+modify_allocator(&context.allocator)        // Error, if the parameter is ptr[mut Allocator]
+```
+
+Fields that are pointers, like `logger : ptr[Logger]`, follow the usual rules for what they point to:
+`ptr[Logger]` isn't `mut`, so the logger can't be modified through it either.
+State that does need to change, like an allocator's or a random number generator's, is changed by calling
+the functions they hold, which receive their data pointer as `mut`.
+
+These checks are for well-behaved code. Laundering a pointer to the context through `rawptr` or a cast can get
+around them, and the result is undefined behavior.
+The point of pushing contexts is that a function can rely on the context it was given, and can't change
+the allocator or logger out from under the function that called it.
 
 ## Switch
 

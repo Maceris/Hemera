@@ -12,7 +12,7 @@ ResizableArray :: struct {
     allocator : Allocator,
 }
 
-array_add :: fn[T](array: mut T[..], value: T) ---
+array_add :: fn[T](array: mut T[..], value #escaping : T) ---
 array_copy :: fn[T](source: T[..], target: mut T[..]) ---
 array_find :: fn[T](array: T[..], value: T) -> (bool, usize) ---
 array_free :: fn[T](array: mut T[..]) ---

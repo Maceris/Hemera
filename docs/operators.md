@@ -4,7 +4,8 @@ Operators combine operands into expressions. For binary operations, the operand 
 
 ## Address operators
 
-For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr[T]` to `x`. This cannot be done on stack variables.
+For an operand `x` of type `T`, the address operation `&x` will generate a pointer `ptr[T]` to `x`.
+When `x` is on the stack, the compiler checks that the pointer can't outlive it, see [memory.md](memory.md#pointers-to-the-stack).
 
 For an operand `x` of type `ptr[T]`, the dereference operation `x^` will result in the variable of type `T` pointed to by `x`. If x is an invalid address, such as `null`, dereferencing the pointer will result in platform specific behavior, likely a segmentation fault.
 
