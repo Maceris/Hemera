@@ -21,6 +21,8 @@ FunctionInput :: struct {
     type: ptr[TypeInfo],
     name: string,
     is_varargs: bool,
+    // Marked #escaping, which is part of the function's type.
+    is_escaping: bool,
 }
 
 FunctionOutput :: struct {
@@ -112,6 +114,8 @@ TypeInfoStruct :: struct {
     using TypeInfo,
     name: string,
     members: StructMember[],
+    // Marked #scoped, so values hold pointers into the stack and can't be stored on the heap.
+    is_scoped: bool,
 }
 
 TypeInfoUnion :: struct {

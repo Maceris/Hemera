@@ -295,7 +295,14 @@ namespace hemera {
 
 	struct TypeInfo {
 		TypeInfoVariant variant;
-		char _padding[4] = { 0 };
+		/// <summary>
+		/// Whether values of this type can carry pointers (pointers, rawptr,
+		/// array views, strings, any, or aggregates containing those), and so
+		/// can be local values that point into the stack. Function values and
+		/// type values never point into the stack, so they don't count.
+		/// </summary>
+		bool contains_pointers;
+		char _padding[3] = { 0 };
 		size_t size;
 
 		TypeInfo(TypeInfoVariant variant, size_t size);
@@ -347,7 +354,12 @@ namespace hemera {
 		TypeInfo* type;
 		InternedString name;
 		bool is_varargs;
-		char _function_input_padding[7] = { 0 };
+		/// <summary>
+		/// Marked #escaping, so the function may keep it after returning.
+		/// This is part of the function's type.
+		/// </summary>
+		bool is_escaping;
+		char _function_input_padding[6] = { 0 };
 	};
 
 	struct FunctionOutput {
@@ -402,10 +414,36 @@ namespace hemera {
 	struct TypeInfoStruct : public TypeInfo {
 		InternedString name;
 		MyVector<StructMember> members;
+		/// <summary>
+		/// From #align(n), or 0 for the natural alignment.
+		/// </summary>
+		uint32_t alignment;
+		/// <summary>
+		/// From #scoped. Values hold pointers into the stack, are always
+		/// local, and can never be stored on the heap.
+		/// </summary>
+		bool is_scoped;
+		/// <summary>
+		/// From #packed.
+		/// </summary>
+		bool is_packed;
+		/// <summary>
+		/// From #union.
+		/// </summary>
+		bool is_union;
+		char _type_info_struct_padding[1] = { 0 };
 
-		TypeInfoStruct(InternedString name, size_t size);
+		TypeInfoStruct(InternedString name, size_t size, uint32_t alignment,
+			bool is_scoped, bool is_packed, bool is_union);
 		~TypeInfoStruct();
 	};
+
+	/// <summary>
+	/// Set contains_pointers for a struct, once all its members have been
+	/// added and their types are known.
+	/// </summary>
+	/// <param name="type">The struct to update.</param>
+	void update_contains_pointers(TypeInfoStruct* type);
 	
 	struct TypeInfoUnion : public TypeInfo {
 		InternedString name;

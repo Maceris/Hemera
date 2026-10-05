@@ -9,6 +9,7 @@
 #include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
+#include "../string_cache_guard.h"
 #include "parser/parser.h"
 
 using hemera::Allocator;
@@ -27,6 +28,7 @@ static std::optional<hemera::ErrorCode> find_error(std::string_view name) {
 TEST(ParserSmoke, SmokeTest)
 {
 	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
 
 	Allocator<> alloc;
 	MyVector<Token> tokens;
@@ -49,11 +51,13 @@ TEST(ParserSmoke, SmokeTest)
 
 	EXPECT_NE(ast, nullptr);
 	EXPECT_EQ(hemera::error_count(), 0);
+
 }
 
 TEST(ParserSmoke, ErrorScenarios)
 {
 	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
 
 	std::filesystem::path dir_path = std::filesystem::path(__FILE__).remove_filename().append("error_scenarios");
 

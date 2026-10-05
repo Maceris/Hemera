@@ -8,7 +8,7 @@
 #include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
-#include "memory/allocator.h"
+#include "../string_cache_guard.h"
 
 using hemera::Allocator;
 using hemera::MyVector;
@@ -18,6 +18,7 @@ using hemera::TokenType;
 TEST(LexerTests, SingleSimpleTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
+	StringCacheGuard string_cache;
 
 	Allocator<> alloc;
 	MyVector<Token> output;
@@ -152,12 +153,12 @@ TEST(LexerTests, SingleSimpleTokenTest)
 			<< std::format("Incorrect string contents of EOF for {}", text);
 	}
 
-	hemera::purge_interned_string_cache();
 }
 
 TEST(LexerTests, SingleComplexTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
+	StringCacheGuard string_cache;
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -220,12 +221,12 @@ TEST(LexerTests, SingleComplexTokenTest)
 
 		output.clear();
 	}
-	hemera::purge_interned_string_cache();
 }
 
 TEST(LexerTests, ManyTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
+	StringCacheGuard string_cache;
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -321,12 +322,12 @@ TEST(LexerTests, ManyTokenTest)
 		}
 		
 	}
-	hemera::purge_interned_string_cache();
 }
 
 TEST(LexerTests, RangeLexingTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
+	StringCacheGuard string_cache;
 
 	Allocator<> alloc;
 	MyVector<Token> output;
@@ -348,7 +349,6 @@ TEST(LexerTests, RangeLexingTest)
 	EXPECT_EQ(output[3].type, TokenType::END_OF_FILE)
 		<< std::format("Incorrect type for {}", text);
 
-	hemera::purge_interned_string_cache();
 }
 
 static std::string sanitize(const std::string& input) {
@@ -367,6 +367,7 @@ static std::string sanitize(const std::string& input) {
 TEST(LexerTests, InvalidTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
+	StringCacheGuard string_cache;
 	Allocator<> alloc;
 	MyVector<Token> output;
 
@@ -429,5 +430,4 @@ TEST(LexerTests, InvalidTokenTest)
 		}
 	}
 
-	hemera::purge_interned_string_cache();
 }

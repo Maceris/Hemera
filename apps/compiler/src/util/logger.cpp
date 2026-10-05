@@ -17,17 +17,20 @@
 #elif defined(UNIX)
 #endif
 #include <iostream>
+
+#if !defined(WIN32)
 #include <signal.h>
 
 #ifndef SIGTRAP
 #define SIGTRAP 5
 #endif
+#endif
 
 static const char* ERROR_LOG_FILENAME = "log.txt";
 
-const LogFlag DEFAULT_FLAG_ERROR = FLAG_WRITE_TO_CONSOLE;
-const LogFlag DEFAULT_FLAG_WARNING = FLAG_WRITE_TO_CONSOLE;
-const LogFlag DEFAULT_FLAG_INFO = FLAG_WRITE_TO_CONSOLE;
+const LogFlag DEFAULT_FLAG_ERROR = FLAG_WRITE_TO_CONSOLE | FLAG_WRITE_TO_DEBUGGER;
+const LogFlag DEFAULT_FLAG_WARNING = FLAG_WRITE_TO_CONSOLE | FLAG_WRITE_TO_DEBUGGER;
+const LogFlag DEFAULT_FLAG_INFO = FLAG_WRITE_TO_CONSOLE | FLAG_WRITE_TO_DEBUGGER;
 const LogFlag DEFAULT_FLAG_VERBOSE = FLAG_WRITE_NOWHERE;
 
 #pragma region LogManager declaration
@@ -170,6 +173,7 @@ static LogManager* log_manager = nullptr;
 
 LogManager::LogManager()
 {
+	set_display_flags(LogTag::FATAL, DEFAULT_FLAG_ERROR);
 	set_display_flags(LogTag::ERROR, DEFAULT_FLAG_ERROR);
 	set_display_flags(LogTag::WARNING, DEFAULT_FLAG_WARNING);
 	set_display_flags(LogTag::INFO, DEFAULT_FLAG_INFO);
@@ -276,7 +280,15 @@ LogManager::ErrorDialogResult LogManager::error(
 		}
 	}
 #ifdef _DEBUG
+#if defined(WIN32)
+	// The CRT rejects SIGTRAP and aborts, so break only when someone can catch it
+	if (IsDebuggerPresent())
+	{
+		__debugbreak();
+	}
+#else
 	raise(SIGTRAP);
+#endif
 #endif
 	exit(1);
 }
@@ -284,12 +296,15 @@ LogManager::ErrorDialogResult LogManager::error(
 void LogManager::output_buffer_to_logs(std::string_view final_buffer,
 	unsigned char flags)
 {
-	if ((flags & FLAG_WRITE_TO_CONSOLE ) != FLAG_WRITE_NOWHERE)
+	if ((flags & FLAG_WRITE_TO_CONSOLE) != FLAG_WRITE_NOWHERE)
+	{
+		std::clog << final_buffer << std::endl;
+	}
+	if ((flags & FLAG_WRITE_TO_DEBUGGER) != FLAG_WRITE_NOWHERE)
 	{
 #if defined(WIN32)
-		OutputDebugStringA(final_buffer.data());
-#elif defined(UNIX)
-		std::clog << final_buffer << std::endl;
+		// Needs a null terminated string, which a string_view doesn't promise
+		OutputDebugStringA(std::string(final_buffer).c_str());
 #endif
 	}
 	if ((flags & FLAG_WRITE_TO_LOG_FILE) != FLAG_WRITE_NOWHERE)

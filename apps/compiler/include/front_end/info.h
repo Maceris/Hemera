@@ -22,18 +22,46 @@ namespace hemera {
 	struct FileInfo;
 	struct PackageInfo;
 
+	enum class IdentifierKind : uint8_t {
+		UNKNOWN,
+		CONSTANT,
+		FUNCTION,
+		TYPE,
+		VARIABLE,
+	};
+
 	struct IdentifierInfo {
 		TypeID type;
 		builtin::_any default_value;
+		/// <summary>
+		/// The file the identifier is declared in.
+		/// </summary>
+		FileInfo* file = nullptr;
+		/// <summary>
+		/// The declaration, which also gives its location.
+		/// </summary>
+		ast::Node* node = nullptr;
+		IdentifierKind kind = IdentifierKind::UNKNOWN;
 		bool has_value;
-		char _padding[7] = { 0 };
-		//TODO(ches) need directives?
+		/// <summary>
+		/// Marked #export, so part of the public interface.
+		/// </summary>
+		bool is_exported = false;
+		char _padding[5] = { 0 };
 	};
 
 	struct ImportInfo {
 		InternedString name;
 		InternedString alias;
 		InternedString location;
+		/// <summary>
+		/// The import statement, which also gives its location.
+		/// </summary>
+		ast::Node* node = nullptr;
+		/// <summary>
+		/// The imported package, once it has been resolved.
+		/// </summary>
+		PackageInfo* package = nullptr;
 	};
 
 	struct FunctionInfoMLIR {
@@ -54,6 +82,11 @@ namespace hemera {
 		ast::Node* node;
 		std::unique_ptr<FunctionInfoMLIR> mlir_info;
 		TypeInfoFunction type_info;
+		/// <summary>
+		/// Marked #export, so part of the public interface.
+		/// </summary>
+		bool is_exported;
+		char _padding[7] = { 0 };
 
 		FunctionInfo();
 		~FunctionInfo();

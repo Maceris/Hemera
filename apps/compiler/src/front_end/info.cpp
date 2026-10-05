@@ -14,6 +14,7 @@ namespace hemera {
 		, node{}
 		, mlir_info{}
 		, type_info{}
+		, is_exported{ false }
 	{}
 
 	FunctionInfo::~FunctionInfo() = default;

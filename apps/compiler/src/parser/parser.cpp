@@ -66,8 +66,8 @@ namespace hemera::parser {
 		}
 		for (ast::Node* child : node->children) {
 			delete_node(node_alloc, child);
-			node->children.clear();
 		}
+		node->children.clear();
 		node_alloc.delete_object<ast::Node>(node);
 	}
 
@@ -803,6 +803,8 @@ namespace hemera::parser {
 					else {
 						name_part = list_part;
 					}
+
+					//TODO(ches) add directive(s)
 
 					if (!expect(state, TokenType::SYM_COLON)) {
 						//TODO(ches) make sure we have a test for this
@@ -2539,6 +2541,7 @@ namespace hemera::parser {
 	}
 
 	bool push_context(ParserState* state, ast::Node& parent) {
+		//TODO(ches) add overrides
 		ast::Node& push = next_as_node(state, ast::NodeType::PUSH_CONTEXT, 
 			&parent);
 		if (!expect(state, TokenType::IDENTIFIER)) {

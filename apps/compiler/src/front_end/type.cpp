@@ -8,6 +8,10 @@ namespace hemera {
 
 	TypeInfo::TypeInfo(TypeInfoVariant variant, size_t size)
 		: variant{ variant }
+		, contains_pointers{ TypeInfoVariant::ANY == variant
+			|| TypeInfoVariant::POINTER == variant
+			|| TypeInfoVariant::STRING == variant
+		}
 		, size{ size }
 	{}
 	
@@ -21,6 +25,7 @@ namespace hemera {
 		, name{ name }
 		, distinct{ distinct }
 	{
+		contains_pointers = base_type->contains_pointers;
 	}
 	TypeInfoAlias::~TypeInfoAlias() = default;
 
@@ -30,7 +35,15 @@ namespace hemera {
 		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(size_t) } //TODO(ches) what is the size here??
 		, base_type{ base_type }
 		, dimensions{ dimensions }
-	{}
+	{
+		contains_pointers = base_type->contains_pointers;
+		for (const ArrayDimension& dimension : this->dimensions) {
+			if (ArrayType::STATIC != dimension.type) {
+				contains_pointers = true;
+				break;
+			}
+		}
+	}
 	TypeInfoArray::~TypeInfoArray() = default;
 
 
@@ -49,7 +62,7 @@ namespace hemera {
 
 
 	TypeInfoFunction::TypeInfoFunction()
-		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(builtin::_ptr) } //TODO(ches) what is the size here??
+		: TypeInfo{ TypeInfoVariant::FUNCTION, sizeof(builtin::_ptr) } //TODO(ches) what is the size here??
 	{};
 	TypeInfoFunction::~TypeInfoFunction() = default;
 
@@ -82,18 +95,45 @@ namespace hemera {
 	TypeInfoString::~TypeInfoString() = default;
 
 
-	TypeInfoStruct::TypeInfoStruct(InternedString name, size_t size_)
+	TypeInfoStruct::TypeInfoStruct(InternedString name, size_t size_,
+		uint32_t alignment, bool is_scoped, bool is_packed, bool is_union)
 		: TypeInfo{ TypeInfoVariant::STRUCT, size_ }
 		, name{ name }
-	{}
+		, members{}
+		, alignment{ alignment }
+		, is_scoped{ is_scoped }
+		, is_packed{ is_packed }
+		, is_union{ is_union }
+	{
+		// Members are added later, see update_contains_pointers()
+		contains_pointers = is_scoped;
+	}
 	TypeInfoStruct::~TypeInfoStruct() = default;
 	
 
 	TypeInfoUnion::TypeInfoUnion(InternedString name, size_t size_)
-		: TypeInfo{ TypeInfoVariant::STRUCT, size_ }
+		: TypeInfo{ TypeInfoVariant::UNION, size_ }
 		, name{ name }
-	{}
+	{
+		//TODO(ches) variants only track names, so assume a payload might
+		// carry pointers until their types are tracked
+		contains_pointers = true;
+	}
 	TypeInfoUnion::~TypeInfoUnion() = default;
+
+	void update_contains_pointers(TypeInfoStruct* type) {
+		LOG_ASSERT(type != nullptr);
+
+		bool result = type->is_scoped;
+		for (const StructMember& member : type->members) {
+			LOG_ASSERT(member.member_type != nullptr);
+			if (member.member_type->contains_pointers) {
+				result = true;
+				break;
+			}
+		}
+		type->contains_pointers = result;
+	}
 
 	TypeInfo* BUILTIN_any;
 	TypeInfo* BUILTIN_b8;
@@ -424,7 +464,12 @@ namespace hemera {
 
 			const size_t INPUT_COUNT = specific_type->input.size();
 			for (size_t i = 0; i < INPUT_COUNT; i++) {
-				result += to_string(specific_type->input[i].type);
+				const FunctionInput& input = specific_type->input[i];
+				// Parameters have to be named to be marked #escaping
+				if (input.is_escaping && input.name != nullptr) {
+					result += std::format("{} #escaping : ", *input.name);
+				}
+				result += to_string(input.type);
 				if (i < INPUT_COUNT - 1) {
 					result += ", ";
 				}
@@ -466,8 +511,8 @@ namespace hemera {
 			return result;
 		}
 		else if (TypeInfoVariant::UNION == type->variant) {
-			TypeInfoStruct const* specific_type =
-				static_cast<TypeInfoStruct const*>(type);
+			TypeInfoUnion const* specific_type =
+				static_cast<TypeInfoUnion const*>(type);
 
 			std::string result = std::format("{}", *specific_type->name);
 			return result;
@@ -540,7 +585,6 @@ namespace hemera {
 			// We just can't convert it
 		case TypeInfoVariant::ALIAS:
 		case TypeInfoVariant::ENUM:
-		case TypeInfoVariant::FUNCTION:
 		case TypeInfoVariant::POINTER:
 		case TypeInfoVariant::STRUCT:
 		case TypeInfoVariant::UNION:
@@ -610,6 +654,44 @@ namespace hemera {
 				}
 			}
 			// We couldn't rule out conversion
+			return true;
+		}
+		case TypeInfoVariant::FUNCTION:
+		{
+			TypeInfoFunction const* from_specific =
+				static_cast<TypeInfoFunction const*>(actual_from);
+			TypeInfoFunction const* to_specific =
+				static_cast<TypeInfoFunction const*>(actual_to);
+
+			if (from_specific->input.size() != to_specific->input.size()
+				|| from_specific->output.size() != to_specific->output.size()) {
+				return false;
+			}
+
+			for (size_t i = 0; i < from_specific->input.size(); i++) {
+				const FunctionInput& from_input = from_specific->input[i];
+				const FunctionInput& to_input = to_specific->input[i];
+
+				if (!same_type(from_input.type, to_input.type)
+					|| from_input.is_varargs != to_input.is_varargs) {
+					return false;
+				}
+				/*
+				 * Callers of the target type only pass unrestricted values to
+				 * its #escaping parameters, which is always fine, but they
+				 * might pass local values to the others.
+				 */
+				if (from_input.is_escaping && !to_input.is_escaping) {
+					return false;
+				}
+			}
+
+			for (size_t i = 0; i < from_specific->output.size(); i++) {
+				if (!same_type(from_specific->output[i].type,
+					to_specific->output[i].type)) {
+					return false;
+				}
+			}
 			return true;
 		}
 		case TypeInfoVariant::STRING:

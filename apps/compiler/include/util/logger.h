@@ -18,9 +18,15 @@ const LogFlag FLAG_WRITE_NOWHERE = 0;
 const LogFlag FLAG_WRITE_TO_LOG_FILE = 1 << 0;
 
 /// <summary>
-/// Writes the log to the console.
+/// Writes the log to the console (standard error).
 /// </summary>
 const LogFlag FLAG_WRITE_TO_CONSOLE = 1 << 1;
+
+/// <summary>
+/// Writes the log to an attached debugger's output, on platforms that have
+/// one. Does nothing elsewhere.
+/// </summary>
+const LogFlag FLAG_WRITE_TO_DEBUGGER = 1 << 2;
 
 namespace LogTag {
 	static constexpr const char* FATAL = "FATAL";

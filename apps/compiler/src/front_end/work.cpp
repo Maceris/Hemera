@@ -206,6 +206,7 @@ namespace hemera {
 					file_info->imports.push_back(import);
 				}
 
+				import->node = child;
 				import->name = child->children[0]->value.value;
 
 				for (size_t i = 1; i < child->children.size(); ++i) {
