@@ -113,6 +113,11 @@ RelocationModel :: enum {
 OutputType :: enum {
     DynamicLibrary,
     Executable,
+    /*
+     * The loadable bytes only, with no headers, laid out by the linker script and meant
+     * to be loaded at a fixed address. For boot sectors and firmware images.
+     */
+    FlatBinary,
     Nothing,
     StaticLibrary,
 }

@@ -24,7 +24,8 @@ Below are a few examples of imports
 
 ```
 // Imports are relative to the current file if no prefix is specified
-import foo from "../"
+import foo from "../neighbor"
+import bar from "bar_v1"
 import builtin from "base"
 import io // from "std"
 import test from "std"

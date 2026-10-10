@@ -22,6 +22,16 @@ ThreadFunction :: fn(any) -> void
 
     }
 }
+#else_if OS == .SlopOS {
+    ThreadSpecificOS :: struct {
+
+    }
+}
+#else_if OS == .UEFI {
+    ThreadSpecificOS :: struct {
+
+    }
+}
 #else {
     //TODO(ches) error, unsupported
 }

@@ -1,5 +1,14 @@
 package intrinsics
 
+/*
+ * Atomic operations, each on one naturally aligned value.
+ *
+ * Without a suffix, an operation is sequentially consistent. The suffixes choose a weaker
+ * ordering: _acquire for loads and read-modify-writes, _release for stores and
+ * read-modify-writes, _acquire_release for read-modify-writes, and _no_fence, which is
+ * atomic but orders nothing else.
+ */
+
 atomic_load_i8           : fn(target: ptr[i8]               ) -> i8 : ---
 atomic_load_i8_acquire   : fn(target: ptr[i8]               ) -> i8 : ---
 atomic_load_i8_no_fence  : fn(target: ptr[i8]               ) -> i8 : ---

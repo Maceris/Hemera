@@ -27,3 +27,20 @@ Instant :: struct {
 
 // Time in nanoseconds
 MonotonicTime :: distinct alias i64
+
+NANOSECONDS_PER_SECOND :: 1_000_000_000
+
+/*
+ * The time from start to end, negative if end is earlier.
+ * Like every Duration, seconds is rounded down, so nanos is never negative.
+ */
+duration_between :: fn(start, end: MonotonicTime) -> Duration {
+    difference := cast[i64](end) - cast[i64](start)
+    seconds := difference / NANOSECONDS_PER_SECOND
+    nanos := difference % NANOSECONDS_PER_SECOND
+    if nanos < 0 {
+        seconds -= 1
+        nanos += NANOSECONDS_PER_SECOND
+    }
+    return Duration.{seconds, cast[u32](nanos)}
+}
