@@ -119,7 +119,7 @@ OutputType :: enum {
 
 /*
  * Where a built-in import location ("base", "std", "user", "vendor") is found,
- * like --package=std:std_proposal on the command line.
+ * like --package=std:../my_std on the command line.
  */
 PackagePath :: struct {
     location : string,

@@ -107,6 +107,26 @@ collision :: fn() {
 }
 ```
 
+## Package Info
+
+Information about a package as a whole goes in a file named `package_info.hsc` in the package's folder, following Java's `package-info.java`.
+It holds the package's documentation, as a comment above the package statement, and package-wide constants like `PACKAGE_TIER`.
+Every `std` package has one, and other packages are encouraged to do the same.
+
+```
+/*
+ * Atomic operations on integers, built on the interlocked intrinsics in base.
+ */
+package atomic
+
+import tiers from "std"
+
+PACKAGE_TIER :: tiers.Tier.Freestanding
+```
+
+It's an ordinary source file of the package, so its constants can be used unqualified anywhere in the package,
+and are found by compile-time code through `PackageInfo.constants`.
+
 ## Structure
 
 The following is the standard structure of a package intended to be built/distributed.
@@ -118,4 +138,19 @@ The following is the standard structure of a package intended to be built/distri
 * `user/` - Dependencies, used by package manager
 * `LICENSE.txt`
 * `NOTICE.txt` - Notices and attributions required by dependencies
-* `README.txt` / `README.md` 
+* `README.txt` / `README.md`
+
+## Standard Library Tiers
+
+Every `std` package says what it needs from the target with a `PACKAGE_TIER` constant, using `Tier` from the `tiers` package.
+A package may only import packages of the same or a lower tier, so code without an operating system (`OS == .None`)
+knows which parts of `std` it can use.
+
+| Tier | Needs | Packages |
+|---|---|---|
+| `Freestanding` | Nothing but `base` | `atomic`, `concurrency`, `reflection`, `tiers` |
+| `Allocating` | An `Allocator` in `context` | `formatting`, `memory`, `string` |
+| `Os` | System calls | `fiber`, `io`, `logger`, `os`, `time` |
+
+A package's tier is the highest any of its files needs, and it's declared in the package's `package_info.hsc`
+(see [Package Info](#package-info)).

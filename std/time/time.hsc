@@ -1,55 +1,53 @@
 package time
 
-Time :: struct {
-    nanoseconds: i64
-}
+import runtime from "base"
 
-now :: fn() -> Time {
+now :: fn() -> Instant {
     //TODO(ches) fill this out
-    return Time.{0}
+    return Instant.{0}
 }
 
-date :: fn(t: Time) -> (year, month, day: int) {
+date :: fn(t: Instant) -> (year, month, day: int) {
     //TODO(ches) fill this out
     return 0, 0, 0
 }
 
-year :: fn(t: Time) -> (year: int) {
+year :: fn(t: Instant) -> (year: int) {
     //TODO(ches) fill this out
     return 0
 }
 
-month :: fn(t: Time) -> (month: int) {
+month :: fn(t: Instant) -> (month: int) {
     //TODO(ches) fill this out
     return 0
 }
 
-day :: fn(t: Time) -> (day: int) {
+day :: fn(t: Instant) -> (day: int) {
     //TODO(ches) fill this out
     return 0
 }
 
-hour :: fn(t: Time) -> (hour: int) {
+hour :: fn(t: Instant) -> (hour: int) {
     //TODO(ches) fill this out
     return 0
 }
 
-minute :: fn(t: Time) -> (minute: int) {
+minute :: fn(t: Instant) -> (minute: int) {
     //TODO(ches) fill this out
     return 0
 }
 
-second :: fn(t: Time) -> (second: int) {
+second :: fn(t: Instant) -> (second: int) {
     //TODO(ches) fill this out
     return 0
 }
 
-clock :: fn(t: Time) -> (hour, minute, second: int) {
+clock :: fn(t: Instant) -> (hour, minute, second: int) {
     //TODO(ches) fill this out
     return 0, 0, 0
 }
 
-precise_clock :: fn(t: Time) -> (hour, minute, second, nanosecond: int) {
+precise_clock :: fn(t: Instant) -> (hour, minute, second, nanosecond: int) {
     //TODO(ches) fill this out
     return 0, 0, 0, 0
 }

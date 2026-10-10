@@ -119,7 +119,7 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
     defer delete(log_builder)
     init_string_builder(log_builder)
 
-    current_time := Time.{0}
+    current_time := Instant.{0}
 
     if flags & (DEFAULT_LOGGER_FLAG_DATE | DEFAULT_LOGGER_FLAG_TIME) != 0 {
         current_time = now()
