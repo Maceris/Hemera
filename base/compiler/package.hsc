@@ -11,6 +11,8 @@ PackageInfo :: struct {
     name : string,
     // Canonical path of the package's folder.
     path : string,
+    // The package statement in the first of files, for errors about the package as a whole.
+    location : SourceCodeLocation,
     files : string[],
     imports : ImportInfo[],
     functions : FunctionInfo[],
@@ -28,6 +30,12 @@ ImportInfo :: struct {
     location : SourceCodeLocation,
 }
 
+/*
+ * Values are typed by the program the constant was evaluated in. Types from one program don't
+ * exist in another, so a check can't cast a target's value to its own copy of the type;
+ * compare by name instead (reflection.enum_member_name in std). Type values from the same
+ * program compare correctly with each other.
+ */
 ConstantInfo :: struct {
     name : string,
     type_ : type,

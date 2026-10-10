@@ -86,9 +86,12 @@ type :: alias type
 // Functions
 align_of : fn[T](T: type) -> usize : ---
 size_of  : fn[T](T: type) -> usize : ---
+// Byte offset of a struct member from the start of the struct, like offset_of(Header, magic).
+offset_of : fn[T](T: type, member: expr) -> usize : ---
 
 type_of : fn(x: expr) -> type : ---
-type_info_of : fn[T](T: type) -> TypeInfo : ---
+// Cast the result to the variant's struct (TypeInfoStruct, TypeInfoEnum, ...) to read its details.
+type_info_of : fn[T](T: type) -> ptr[TypeInfo] : ---
 types_are_aliases : fn(a, b: type) -> bool : ---
 
 max_value : fn[T](T: type) -> T : ---

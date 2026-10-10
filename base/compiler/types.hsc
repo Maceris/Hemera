@@ -32,6 +32,8 @@ FunctionOutput :: struct {
 StructMember :: struct {
     name: string,
     member_type: ptr[TypeInfo],
+    // Byte offset from the start of the struct, 0 for every member of a #union.
+    offset: usize,
     value: any,
     has_value: bool,
     is_using: bool,
@@ -114,8 +116,14 @@ TypeInfoStruct :: struct {
     using TypeInfo,
     name: string,
     members: StructMember[],
+    // In bytes, from #align(n) if it was given, otherwise the natural alignment.
+    alignment: usize,
     // Marked #scoped, so values hold pointers into the stack and can't be stored on the heap.
     is_scoped: bool,
+    // Marked #packed, so there is no padding between members.
+    is_packed: bool,
+    // Marked #union, so every member is at offset 0 and they share memory.
+    is_union: bool,
 }
 
 TypeInfoUnion :: struct {
