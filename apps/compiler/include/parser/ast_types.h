@@ -8,6 +8,7 @@
 
 namespace hemera::ast {
 	enum class NodeType {
+		ANNOTATION,
 		ARRAY_DIMENSION,
 		BINARY_OPERATOR,
 		BLOCK,
@@ -62,6 +63,7 @@ namespace hemera::ast {
 		TYPE,
 		UNARY_OPERATOR,
 		UNDERSCORE,
+		UNINITIALIZED,
 		UNION,
 		USING,
 		VOID,

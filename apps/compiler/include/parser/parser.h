@@ -52,7 +52,9 @@ namespace hemera::parser {
 	bool any_definition(ParserState* state, ast::Node& parent);
 	bool const_definition_rhs(ParserState* state, ast::Node& parent);
 	bool mut_definition_rhs(ParserState* state, ast::Node& parent);
+	ExprResult directive_with_arguments(ParserState* state, ast::Node* parent);
 	ExprResult declaration(ParserState* state, ast::Node& parent);
+	ExprResult definition_after_names(ParserState* state, ast::Node& parent, ast::Node& names);
 	bool decl_rhs(ParserState* state, ast::Node& parent);
 	bool function_decl(ParserState* state, ast::Node& parent);
 	bool struct_decl(ParserState* state, ast::Node& parent);
@@ -66,12 +68,14 @@ namespace hemera::parser {
 	bool function_parameter_list(ParserState* state, ast::Node& parent);
 	bool function_output_list(ParserState* state, ast::Node& parent);
 	bool default_value(ParserState* state, ast::Node& parent);
+	bool statement(ParserState* state, ast::Node& parent);
 	ExprResult block(ParserState* state);
 	bool expression(ParserState* state, ast::Node& parent);
 	ExprResult expression_with_result(ParserState* state, bool ignore_lists);
 	bool expression_without_result(ParserState* state, ast::Node& parent);
 	bool literal(ParserState* state, ast::Node& parent);
 	bool struct_body(ParserState* state, ast::Node& parent);
+	bool struct_member(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
 	bool generic_tag(ParserState* state, ast::Node& parent);
@@ -87,6 +91,8 @@ namespace hemera::parser {
 	ExprResult expr_lvl_9(ParserState* state);
 	ExprResult expr_lvl_10(ParserState* state);
 	ExprResult expr_lvl_11(ParserState* state);
+	ExprResult slice_index(ParserState* state);
+	bool postfix_operations(ParserState* state, ast::Node& target);
 	ExprResult location(ParserState* state);
 	ExprResult struct_literal(ParserState* state);
 	bool function_call(ParserState* state, ast::Node& parent);

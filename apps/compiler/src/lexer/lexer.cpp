@@ -277,6 +277,8 @@ namespace hemera::lexer {
 			switch (peek_char(tokenizer)) {
 			case '\\':
 				state = State::multiline_string_line;
+				// One token per line, the parser joins consecutive lines
+				result_type = TokenType::LITERAL_STRING;
 				next_char(tokenizer, input_stream, start_line, start_column, token_contents);
 				goto switch_start;
 			case 0:

@@ -1,8 +1,7 @@
 package error_scenarios
 
 main :: fn() {
-    x : Context
-    push_context x 
+    push_context x (allocator = a)
         println("pushed")
     }
 }

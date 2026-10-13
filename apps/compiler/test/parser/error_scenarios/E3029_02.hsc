@@ -3,7 +3,7 @@ package error_scenarios
 main :: fn() {
     x : int
     match x {
-        4..=< => println("foo")
-        _ => println("bar") 
+        case 4..=< => println("foo")
+        case _ => println("bar") 
     }
 }

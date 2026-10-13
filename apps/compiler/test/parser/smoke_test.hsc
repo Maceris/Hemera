@@ -240,13 +240,15 @@ casting_example :: fn() {
 //-----------------------------------------------------------------------------
 
 context_example :: fn() {
-	my_context: Context
-	push_context my_context {
+	push_context my_context (allocator = memory.ArenaAllocator, log_level = .WARN) {
 		// context here is referring to my_context
-		context.allocator = memory.ArenaAllocator
 		print_something("You can do whatever you want here")
 	}
 	// my_context would no longer be the context once we leave the block
+
+	push_context trailing (allocator = memory.ArenaAllocator,) {
+		print_something("A trailing comma is allowed")
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -537,39 +539,39 @@ deferring_example :: fn() {
 
 match_example :: fn() {
 	foo : string : match x {
-		1 => "one"
-		2, 3 => "two"
-		4..<6 => "three"
-		6..=30, 32, 44 => "four"
-		_ => "default"
+		case 1 => "one"
+		case 2, 3 => "two"
+		case 4..<6 => "three"
+		case 6..=30, 32, 44 => "four"
+		case _ => "default"
 	}
 
 	bar : int = match y {
-		.FOO => 3
-		example_enum.BAR => 43
-		.BAZ, .CAZ => 2
+		case .FOO => 3
+		case example_enum.BAR => 43
+		case .BAZ, .CAZ => 2
 	}
 
 	baz : f32 = match z {
-		"foo" => 4.3
-		"bar", "Baz" => 2.1
-		_ => 9.0
+		case "foo" => 4.3
+		case "bar", "Baz" => 2.1
+		case _ => 9.0
 	}
 
-	caz : example_enum : switch a {
-		'a' => .FOO
-		'b'..='m', 'o'..<'y' => .BAR
-		_ => .UNKNOWN
+	caz : example_enum : match a {
+		case 'a' => .FOO
+		case 'b'..='m', 'o'..<'y' => .BAR
+		case _ => .UNKNOWN
 	}
 
 	match a {
-		Ok(foo) => print(foo)
-		Fail(_) => return 5
+		case Ok(foo) => print(foo)
+		case Fail(_) => return 5
 	}
 
-	daf : i64be = switch x {
-		true => 0xABCD_0123_FFFE_2398_0001_2223_DAF3_CAFB
-		false => 0x0000_0000_0001_0000_1111_BBB7_00FF_CAFE
+	daf : i64be = match x {
+		case true => 0xABCD_0123_FFFE_2398_0001_2223_DAF3_CAFB
+		case false => 0x0000_0000_0001_0000_1111_BBB7_00FF_CAFE
 	}
 }
 
@@ -651,7 +653,7 @@ struct4 :: struct[X, Y] {
 	foo1: fn(X) -> Y
 }
 
-Rectangle :: #packed #align(8) struct {
+Rectangle :: struct #packed #align(8) {
 	x : int,
 	y : int,
 	width : uint = 10,

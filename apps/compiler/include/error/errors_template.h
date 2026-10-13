@@ -46,6 +46,8 @@ E3028,Expected a value for start of range
 E3029,Expected a value for end of range
 E3030,Expected a dot before or after identifier, plain identifiers are not allowed in switches
 E3031,Expected a double arrow after match value(s)
+E3032,Expected case before match value(s)
+E3033,Expected alias after distinct
 // E4000-E4999 Lowering to MLIR and compile time execution
 E4000,Failed to open file
 E4001,Unexpected node type
