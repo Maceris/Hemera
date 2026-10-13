@@ -20,6 +20,6 @@ char_to_int :: fn(value: char) -> (int, bool) {
         case '7': return 7, true
         case '8': return 8, true
         case '9': return 9, true
-        default: return 0, false
+        case _: return 0, false
     }
 }

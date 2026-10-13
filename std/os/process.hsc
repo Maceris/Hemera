@@ -38,8 +38,8 @@ run_process :: fn(
     if #is_compile_time && !compiler.build_permissions().run_processes {
         compiler.report_error(location,
             "running % at compile time needs --allow-run on the command line", program)
-        return Result::Error(ProcessError.NotPermitted)
+        return .Error(.NotPermitted)
     }
     //TODO start the process and collect its output
-    return Result::Error(ProcessError.Unsupported)
+    return .Error(.Unsupported)
 }

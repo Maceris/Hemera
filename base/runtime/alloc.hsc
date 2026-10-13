@@ -27,7 +27,7 @@ new :: fn[T](
     t: type, 
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ptr[T], AllocatorError?) {
+) -> (ptr[mut T], AllocatorError?) {
     return new_aligned(t, align_of(T), allocator, loc)
 }
 
@@ -36,7 +36,7 @@ new_aligned :: fn[T](
     alignment: int,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ptr[T], AllocatorError?) {
+) -> (ptr[mut T], AllocatorError?) {
     //TODO(ches) allocate
 }
 
@@ -58,3 +58,25 @@ new_array_aligned :: fn[T](
 ) -> (T[], AllocatorError?) {
     //TODO(ches) allocate
 }
+
+/*
+ * An allocator with no memory: every allocation fails with OutOfMemory, and freeing does
+ * nothing. For a Context needed before any heap exists, like early in a kernel's boot.
+ * It holds no state, so FAILING_ALLOCATOR is a constant.
+ */
+failing_allocator_function : AllocatorFn : fn(
+    allocator_data: rawptr,
+    size: usize,
+    alignment: int,
+    old_memory: rawptr,
+    old_size: usize,
+    location := #caller_location,
+) -> (u8[], AllocatorError?) {
+    empty : u8[]
+    if size == 0 {
+        return empty, null
+    }
+    return empty, AllocatorError.OutOfMemory
+}
+
+FAILING_ALLOCATOR :: Allocator.{failing_allocator_function, null}

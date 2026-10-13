@@ -7,6 +7,13 @@ The callee pops its own arguments.
 Every function keeps a base pointer, so the chain of saved base pointers always links every frame to its caller's
 (`morestack` and resuming fibers both rely on it).
 
+### Version
+
+This convention is `hemera-abi-v1`. Anything that separately compiled code or tools depend on gets a new version
+when it changes: register use, frame layout, carrier block and fiber offsets, the fiber resume loop
+(`FiberResumeState`, `.loop_return`) and stack segment layout. Within a version, those are stable, so debuggers and
+profilers can unwind suspended fibers from outside the process.
+
 ### Carrier Register
 
 One register always holds a pointer to the current thread's carrier block (see [multitasking.md](multitasking.md#carriers)):
@@ -15,10 +22,13 @@ One register always holds a pointer to the current thread's carrier block (see [
 |--------------|----------|
 | x86-64       | `r14`    |
 | AArch64      | `x28`    |
+| RISC-V 64    | `s11`    |
 
 The register allocator never uses it, functions never save or restore it, and fiber switches leave it alone.
 It is callee-saved in the platform conventions, so foreign code preserves it too.
 It is only loaded from the OS's thread-local storage when a thread starts, and when foreign code calls into Hemera.
+Code that starts without Hemera's startup code (freestanding entry points, [interrupt functions](#interrupt-functions),
+threads on systems without thread-local storage) loads it itself with `intrinsics.set_carrier`.
 
 The first field of the carrier block is `stack_limit`, so the prologue check below is a single memory operand.
 
@@ -174,6 +184,10 @@ to call `morestack`, without going past the end:
 
 The check costs a load, a compare and a predicted branch. On plain threads `stack_limit` is the thread stack's
 limit, so the same check catches stack overflow there.
+
+What happens when the check fails is a per-target option, `TargetOptions.stack_check_failure`: call `morestack`
+(the default), trap, or call `context.assertion_handler`. Code with one fixed-size stack and no allocator, like a
+kernel, uses one of the last two.
 
 ### Growing the Stack: morestack
 
@@ -363,6 +377,24 @@ saved base pointers from the current frame and collecting each frame's return ad
 
 Turning the addresses into function names, files and lines uses the debug information, and only happens when a
 trace is printed or reported.
+
+### Interrupt Functions
+
+A function declared with `#calling_convention(.interrupt)` is entered by the CPU through the interrupt descriptor
+table, not called (x86-64 only, like LLVM's `x86_intrcc`). It takes a pointer to the frame the CPU pushed, and for
+the exceptions that push an error code, the code as a second parameter:
+
+```
+timer_interrupt #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFrame]) {/* ... */}
+page_fault #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFrame], error_code: u64) {/* ... */}
+```
+
+* It saves every register it changes, and returns with `iretq`.
+* It can't be called from Hemera code. Its address goes in the interrupt descriptor table.
+* It gets no context, and the carrier register holds whatever the interrupted code had, which may not be a
+  carrier at all (user-mode code, for example). So its prologue has no stack check, and before calling anything
+  that needs them, it loads a carrier block with `intrinsics.set_carrier` (found through per-CPU data, like the
+  `gs` base after `swapgs`) and pushes a context.
 
 ## Other Conventions
 

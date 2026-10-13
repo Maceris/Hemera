@@ -2,9 +2,9 @@ package time
 
 import runtime from "base"
 
-now :: fn() -> Instant {
-    //TODO(ches) fill this out
-    return Instant.{0}
+// The current wall-clock time, from context.clock.
+now :: fn() -> Result[Instant, ClockError] {
+    return context.clock.wall(context.clock.data)
 }
 
 date :: fn(t: Instant) -> (year, month, day: int) {

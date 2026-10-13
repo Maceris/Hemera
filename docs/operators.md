@@ -155,6 +155,15 @@ auto_cast(value)    automatically converts the value to the necessary type, if p
 
 Note that `auto_cast` is intended for prototypes, and generally discouraged. But we aren't the casting police.
 
+Since the value is already in parentheses, the result of a cast can be used directly, without wrapping the cast in
+more parentheses like C needs:
+
+```
+members :: cast[ptr[TypeInfoStruct]](info).members
+first_byte :: cast[ptr[u8]](data)^
+cast[ptr[mut u32]](register)^ = 1
+```
+
 ## Comparison operators
 
 ```
@@ -296,7 +305,8 @@ example :: fn() -> i32 {
 example_2 :: fn() {
     option : i32? : some_function()
     
-    // If a function does not have a return value, void is used (like a normal return would have)
+    // If a function does not have a return value, void is used (like a normal return would have).
+    // The value is always required, so a bare or_return is an error.
     bar :: option or_return void
     //...
 
@@ -375,6 +385,26 @@ Unary operators have the highest precedence.
 
 Binary operators of the same precedence are evaluated left to right.
 For example, `a / b * c` is evaluated as `(a / b) * c`.
+
+## Line breaks
+
+Line breaks mean nothing, and there are no semicolons. An expression keeps going for as long as the next token can
+continue it, so these are each one expression, not two statements:
+
+```
+total = a + b
+    - offset          // total = a + b - offset
+
+value :: lookup()
+    & mask            // value :: lookup() & mask
+
+reset()
+(callback)()          // reset()(callback)(): calls what reset returns, then what that returns
+```
+
+A statement that only computes a value and throws it away would be pointless, so the combined reading is almost always
+what was meant. A new statement can't start with a token that would continue the previous expression, like `-`, `(`,
+`[`, `.` or `&`. Keywords like `case`, `return` and `if` always start something new.
 
 ## Integer overflow
 

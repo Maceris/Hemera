@@ -178,7 +178,7 @@ imports = ( import | ( directive , [ expression_with_result ] , [ SYM_LBRACE , i
 import = KEYWORD_import , identifier , [ KEYWORD_as , identifier ] , [ KEYWORD_from, literal_string ] ;
 
 const_definitions = { 
-    ( declaration , const_definition_rhs )
+    ( { annotation } , declaration , const_definition_rhs )
     | ( directive , [ expression_with_result ] , [ SYM_LBRACE , const_definitions , SYM_RBRACE ] )
     }
     ;
@@ -186,37 +186,47 @@ const_definition_rhs = SYM_COLON , decl_rhs ;
 mut_definition_rhs = OPERATOR_assign , decl_rhs ;
 any_definition = declaration , ( const_definition_rhs | mut_definition_rhs ) ;
 
-declaration = identifier , { directive } , SYM_COLON , [ type ]
+declaration = ( identifier , { directive_with_arguments } , SYM_COLON , [ type ] )
+    | ( declaration_name , SYM_COMMA , declaration_name , { SYM_COMMA , declaration_name } , SYM_COLON , [ type ] )
+    ;
+declaration_name = identifier | SYM_UNDERSCORE ;
 
+# Only #run takes an expression, others like #caller_location stand alone.
+directive_with_arguments = directive , [ SYM_LPAREN , [ function_call_input_list ] , SYM_RPAREN ] ;
+
+# Anything starting with an identifier is an expression, which also covers naming a type (my_int :: i32).
+# alias is required after distinct, so that the word makes sense, and is otherwise optional,
+# showing the value is meant to be a type without writing : type.
 decl_rhs = expression_with_result
     | function_decl
     | struct_decl
     | union_decl
     | enum_decl
-    | ( [ KEYWORD_distinct ] , [ KEYWORD_alias ] , type )
+    | ( [ KEYWORD_distinct ] , KEYWORD_alias , type )
     | SYM_UNINITIALIZED
     ;
 
 function_decl = function_signature , block ;
-struct_decl = KEYWORD_struct , [ generic_tag ] , { directive } , SYM_LBRACE , struct_body , SYM_RBRACE ;
+struct_decl = KEYWORD_struct , [ generic_tag ] , { directive_with_arguments } , SYM_LBRACE , struct_body , SYM_RBRACE ;
 union_decl = KEYWORD_union , [ generic_tag ] , SYM_LBRACE , union_body , SYM_RBRACE ;
-enum_decl = KEYWORD_enum , SYM_LBRACE , enum_body , SYM_RBRACE ;
+enum_decl = KEYWORD_enum , { directive_with_arguments } , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
 type = simple_type
-    | complicated_type
+    | ( complicated_type , [ SYM_QUESTION ] )
     ;
 type_in_list = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-simple_type = ( [ KEYWORD_mut ] , identifier , [ generic_tag ] , [ array_dimension ]+ )
+# Qualified by package like runtime.Fiber, and optional with a trailing ?
+simple_type = [ KEYWORD_mut ] , identifier , { SYM_DOT , identifier } , [ generic_tag ] , { array_dimension } , [ SYM_QUESTION ]
     ;
 
 # Confusing without parentheses in a function return type list
 complicated_type = function_signature
     ;
 
-array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array ] , SYM_RBRACK ;
+array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array | ( identifier , { SYM_DOT , identifier } ) ] , SYM_RBRACK ;
 
 function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
 function_parameter_list = function_parameter , [ OPERATOR_assign , default_value ] , { SYM_COMMA , function_parameter , [ OPERATOR_assign , default_value ] }
@@ -228,11 +238,14 @@ function_output_list = KEYWORD_void
     ;
 
 function_output_in_paren = simple_type
-    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list )
+    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , simple_type )
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
-function_parameter = [ parameter_name , { SYM_COMMA , parameter_name } , SYM_COLON ] , type_in_list , [ SYM_ELLIPSIS ]  ;
+# name := default deduces the type from the default value
+function_parameter = ( parameter_name , { SYM_COMMA , parameter_name } , SYM_COLON , ( type_in_list | OPERATOR_assign ) , [ SYM_ELLIPSIS ] )
+    | ( type_in_list , [ SYM_ELLIPSIS ] )
+    ;
 
 parameter_name = identifier , { directive } ;
 
@@ -248,21 +261,22 @@ enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
 generic_tag = SYM_LBRACK , type_in_list , { SYM_COMMA , type_in_list } , SYM_RBRACK ;
 
 struct_member = ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , [ mut_definition_rhs ] ) 
-    | ( KEYWORD_using , identifier , [ SYM_DOT , identifier ] )
+    | ( KEYWORD_using , identifier , { SYM_DOT , identifier } )
     | ( SYM_UNDERSCORE , SYM_COLON , struct_decl )
     ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;
-enum_member = identifier ;
+enum_member = identifier , [ OPERATOR_assign , expression_with_result ] ;
 
-block = SYM_LBRACE ,
-    { expression
+# Line breaks mean nothing: an expression continues as long as the next token can continue it
+block = SYM_LBRACE , { statement } , SYM_RBRACE ;
+
+# Also the body of a match arm or switch case
+statement = expression
     | ( KEYWORD_return , ( KEYWORD_void | ( expression_with_result , { SYM_COMMA , expression_with_result } ) ) )
     | ( KEYWORD_defer , expression )
     | ( KEYWORD_break , [ literal_integer | KEYWORD_all ] )
     | KEYWORD_continue
     | ( directive , [ expression_with_result ] , [ block ] )
-    } 
-    , SYM_RBRACE
     ;
 
 expression = expression_with_result 
@@ -278,7 +292,7 @@ expression_with_result = expr_lvl_1
 expression_without_result = for_loop
     | loop
     | push_context
-    | ( declaration , [ const_definition_rhs , mut_definition_rhs ] )
+    | ( declaration , [ const_definition_rhs | mut_definition_rhs ] )
     | switch_statement
     ;
 
@@ -319,7 +333,8 @@ expr_lvl_2 = if_expression
     | ( expr_lvl_3 , KEYWORD_or_break )
     | ( expr_lvl_3 , KEYWORD_or_continue )
     | ( expr_lvl_3 , KEYWORD_or_else , expression_with_result )
-    | ( expr_lvl_3 , KEYWORD_or_return , [ expression_with_result ] )
+    # Like return, the value is required, void if the function has no results
+    | ( expr_lvl_3 , KEYWORD_or_return , ( KEYWORD_void | expression_with_result ) )
     | expr_lvl_3
     ;
 
@@ -371,19 +386,30 @@ expr_lvl_10 = ( OPERATOR_plus , expr_lvl_11 )
     , [ SYM_QUESTION ]
     ;
 
+# A multiline string is one literal_string per line, joined into one literal
 expr_lvl_11 = literal
     | ( location , { OPERATOR_pipe , function_call } )
-    | cast_expression
-    | enum_shorthand
+    | ( cast_expression , postfix_operations )
+    | ( enum_shorthand , postfix_operations )
     | ( directive , [ expression_with_result ] )
     ;
 
-location = { SYM_AMPERSAND } , identifier , 
-    { ( SYM_LBRACK , [ expression_with_result ] , SYM_RBRACK ) 
+location = { SYM_AMPERSAND } , identifier , postfix_operations ;
+
+# Several arguments in brackets are for a type used as a value, like Result[int, string]
+postfix_operations = { ( SYM_LBRACK , [ slice_index , { SYM_COMMA , slice_index } ] , SYM_RBRACK ) 
     | ( SYM_DOT , identifier ) 
     | function_call_parens 
     | OPERATOR_dereference
     }
+    ;
+
+slice_index = expression_with_result
+    | ( expression_with_result , OPERATOR_range_array )
+    | ( ( OPERATOR_range_exclusive | OPERATOR_range_inclusive ) , expression_with_result )
+    # For a type used as a value: a dynamic array, or a type argument that isn't an expression
+    | OPERATOR_range_array
+    | ( ( KEYWORD_mut | KEYWORD_fn ) , type )
     ;
 
 struct_literal = identifier , SYM_DOT , SYM_LBRACE , [ 
@@ -401,11 +427,11 @@ cast_expression = ( KEYWORD_cast , SYM_LBRACK , type , SYM_RBRACK , SYM_LPAREN ,
 
 if_expression = KEYWORD_if , expression_with_result , block , { KEYWORD_else , KEYWORD_if , expression_with_result , block } , [ KEYWORD_else , block ] ;
 
-for_loop = KEYWORD_for , identifier , [ SYM_COMMA , identifier ] , KEYWORD_in , expression_with_result , block ;
+for_loop = KEYWORD_for , [ SYM_AMPERSAND ] , identifier , [ SYM_COMMA , identifier ] , KEYWORD_in , expression_with_result , { directive } , block ;
 
 loop = [ KEYWORD_with , SYM_LBRACE , { any_definition } , SYM_RBRACE ] 
     , KEYWORD_loop , [ directive ] , block 
-    , [ KEYWORD_while , SYM_LPAREN, expression_with_result , SYM_RPAREN ]
+    , [ KEYWORD_while , expression_with_result ]
     ;
 
 push_context = KEYWORD_push_context , identifier
@@ -428,14 +454,14 @@ function_call_input_list = [ identifier , OPERATOR_assign ] , function_call_inpu
 function_call_input = expression_with_result
     | SYM_UNDERSCORE
     | pipe_reorder_identifier
-    | directive
     ;
 
-switch_statement = KEYWORD_switch , identifier , SYM_LBRACE , 
+switch_statement = KEYWORD_switch , location , SYM_LBRACE , 
     ( switch_case , [ directive ] )+
     , SYM_RBRACE
     ;
-switch_case = KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry } , SYM_COLON , expression ;
+# Like C, a case runs every statement up to the next case or #fall_through
+switch_case = KEYWORD_case , switch_entry , { SYM_COMMA , switch_entry } , SYM_COLON , statement , { statement } ;
 switch_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )
     | ( literal_char , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_char ] )
     | literal_string
@@ -444,8 +470,9 @@ switch_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_
     | SYM_UNDERSCORE
     ;
 
-match_expression = KEYWORD_match , identifier , SYM_LBRACE
-    , ( match_entry , { SYM_COMMA , match_entry } , SYM_ARROW_DOUBLE , expression )+
+# Like switch, each arm starts with case, which also ends the previous arm
+match_expression = KEYWORD_match , location , SYM_LBRACE
+    , ( KEYWORD_case , match_entry , { SYM_COMMA , match_entry } , SYM_ARROW_DOUBLE , statement )+
     , SYM_RBRACE
     ;
 match_entry = ( literal_integer , [ (OPERATOR_range_exclusive | OPERATOR_range_inclusive) , literal_integer ] )

@@ -124,7 +124,7 @@ unrestricted values to it:
 Registry :: struct { names : string[..] }
 
 register :: fn(registry: ptr[mut Registry], name #escaping : string) {
-    array_add(registry.names, name)         // without #escaping: error, `name` is stored somewhere
+    array_add(&registry.names, name)        // without #escaping: error, `name` is stored somewhere
 }                                           // that may outlive this call, mark it #escaping
 
 example :: fn(registry: ptr[mut Registry]) {
@@ -200,6 +200,11 @@ a context can always be copied, including into new threads and fibers.
 
 A context can't use an allocator whose memory is a buffer on the stack, for example.
 
+The one exception is `extensions`: it may point at a `ContextExtension` node on the stack of the frame doing the
+push, whose own `next` follows the same rule. New threads and fibers don't keep those pointers, they get their own
+copy of the chain (see [multitasking.md](multitasking.md#context-extensions)). What each node's `data` points to
+must still be unrestricted.
+
 ## Threads and Fibers
 
 `thread_create`, `fiber_create` and similar functions take their `data` as `#escaping`, since the new thread or
@@ -221,7 +226,22 @@ even when a fiber moves to another OS thread.
   Debug allocators are the tool for these.
 * Pointers laundered through integers.
 * Data races. Pointers to the stack can be handed to other threads only through `#escaping` parameters,
-  which don't accept them, but heap pointers can be shared freely.
+  which don't accept them, but heap pointers can be shared freely. A race isn't undefined behavior, though,
+  see [Data Races](#data-races).
+
+## Data Races
+
+Plain loads and stores that race with each other (on different threads, with at least one store, and nothing
+ordering them) are defined, not undefined behavior:
+
+* A naturally aligned value no larger than a pointer is read or written in one piece, like a `_no_fence` atomic.
+  A racing load sees some value that was stored, possibly an old one, but never a mix of two.
+* Larger values may be torn: a racing load can see parts of different stores.
+* Nothing orders racing accesses against each other or anything else. That takes atomics and fences
+  (`base/intrinsics/atomics.hsc`).
+
+The compiler can't invent loads or stores of shared memory, or assume a value it loaded can't change underneath
+it, so races give stale or torn values, but never break unrelated code.
 
 ## Prior Art
 

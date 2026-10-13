@@ -212,18 +212,35 @@ The cases can be any of these types:
 Example:
 ```
 result : string : match foo {
-    1 => "a"
-    2, 3 => "b"
-    4..=10 => "c"
-    _ => "x"
+    case 1 => "a"
+    case 2, 3 => "b"
+    case 4..=10 => "c"
+    case _ => "x"
 }
 
 result2 : int = match bar {
-    Ok(foo, _) => foo + 1
-    Fail(_) => 0
-    _ => -1
+    case Ok(foo, _) => foo + 1
+    case Fail(_) => 0
+    case _ => -1
 }
 ```
+
+* Like `switch`, each arm starts with `case`, so arms need no separators. Commas only separate the values of one
+  arm, like `case 2, 3`.
+* An arm's result can be a block, and an arm can also be a statement like `return`:
+
+```
+match load_settings() {
+    case Ok(settings) => {
+        apply(settings)
+        log_info("loaded")
+    }
+    case Error(error) => return error
+}
+```
+
+* `match` gives a value to a declaration, a `return`, or a function argument. It can't be the right side of a plain
+  assignment (`x = match ...`), so assign inside the arms instead.
 
 ## Push Context
 
@@ -244,6 +261,7 @@ push_context my_context (allocator = memory.ArenaAllocator, log_level = .WARN) {
 * At least one field must be listed, and each field at most once. Fields not listed keep their current values.
 * Override values can't point into the stack (see [memory.md](memory.md#contexts)),
   so a context can always be copied, for example into a new thread or fiber.
+  The exception is `extensions`, whose nodes can be on the pushing frame's stack.
   A trailing comma is allowed, as in other lists.
 * The override expressions are evaluated in order, before the switch, so they see the old context.
   For example, in `push_context scratch (allocator = make_arena(context.allocator))`, the arena gets its memory
@@ -281,6 +299,7 @@ the allocator or logger out from under the function that called it.
 ## Switch
 
 Switch statements work similar to C's, except they never fall through except where a directive is explicitly provided to do so.
+Like C, a case runs every statement up to the next case, so a case with several statements doesn't need braces.
 
 The cases can be any of these types:
 * Integer (including ranges)
@@ -294,7 +313,9 @@ switch foo {
     case 1: print("a")
     #fall_through
     case 2, 3: print("b")
-    case 4..=10: print("c")
+    case 4..=10:
+        print("c")
+        print("d")
     case _: print("x")
 }
 ```

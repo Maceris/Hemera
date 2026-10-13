@@ -31,9 +31,11 @@ Fiber :: struct #align(16) {
     data : any?,
     // Copied from the context of whoever created the fiber
     context : Context,
+    // context's own copy of its extension chain
+    extensions : ContextExtension[],
     state : FiberState,
     // Intrusive link for scheduler queues, owned by whichever scheduler holds the fiber
-    next : ptr[Fiber]?,
+    next : ptr[mut Fiber]?,
 }
 
 /*
@@ -44,7 +46,8 @@ Fiber :: struct #align(16) {
  *     x86-64 System V: rbx, r12, r13, r15, mxcsr, x87 control word
  *     x86-64 Windows:  xmm6-xmm15, rbx, rsi, rdi, r12, r13, r15, mxcsr, x87 control word
  *     AArch64:         x19-x27, d8-d15, fpcr
- * The carrier register (r14 / x28) is never saved, so a resumed fiber sees the carrier it's on.
+ *     RISC-V 64:       s1-s10, fs0-fs11, fcsr
+ * The carrier register (r14 / x28 / s11) is never saved, so a resumed fiber sees the carrier it's on.
  *
  * The fiber intrinsics read these using fixed offsets, so don't reorder them.
  */
@@ -65,7 +68,7 @@ FiberResumeState :: struct {
     // reentered_frame's caller's base pointer, saved before the frame could be popped
     parent_frame : rawptr,
     // The carrier's stack_segment and stack_limit for the fiber's current segment
-    stack_segment : ptr[StackSegment]?,
+    stack_segment : ptr[mut StackSegment]?,
     stack_limit : rawptr,
 }
 
@@ -79,7 +82,7 @@ StackSegment :: struct #align(16) {
     // Total size of the segment in bytes, including this header
     size : u32,
     // Link for the carrier's segment cache, while the segment is free
-    next_free : ptr[StackSegment]?,
+    next_free : ptr[mut StackSegment]?,
 }
 
 FiberState :: enum {
@@ -104,7 +107,7 @@ fiber_create :: fn(
     data #escaping : any? = null,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ptr[Fiber], AllocatorError?) {
+) -> (ptr[mut Fiber], AllocatorError?) {
     block, error :: new_array_aligned(u8, FIBER_BLOCK_SIZE, 16, allocator, loc)
     if error != null {
         return null, error
@@ -114,6 +117,12 @@ fiber_create :: fn(
     result.function = function
     result.data = data
     result.context = context
+    extensions, extensions_error :: copy_extensions(&result.context, allocator, loc)
+    if extensions_error != null {
+        free(result, allocator, loc)
+        return null, extensions_error
+    }
+    result.extensions = extensions
     result.state = .NotStarted
     result.next = null
     return result, null
@@ -129,5 +138,6 @@ fiber_destroy :: fn(
     allocator := context.allocator,
     loc := #caller_location,
 ) {
+    free_array(fiber.extensions, allocator, loc)
     free(fiber, allocator, loc)
 }

@@ -130,6 +130,28 @@ Functions can't modify the context they were given.
 * The context doesn't contain anything about where the code is running (which OS thread, which scheduler).
   That changes underneath a fiber when it moves between carriers, so it lives in the carrier block instead.
 
+## Context Extensions
+
+Programs and libraries can't add fields to `Context`. A program with one owner, like a kernel, uses `user_data`.
+For state from several libraries at once, the context has a chain of typed extensions, each a
+`ContextExtension` node with a key (a `type`), a data pointer and the next node:
+
+```
+node := runtime.extension_node(&connection_state)   // in front of the current chain
+push_context with_connection (extensions = &node) {
+    handle_request()   // runtime.get_extension(ConnectionState) finds connection_state, here and in callees
+}
+```
+
+* Pushing an extension doesn't allocate. The node can live in the pushing frame, and is gone with the block,
+  like the rest of the pushed context. Inner pushes shadow outer extensions of the same type.
+* Threads and fibers created inside the block get their own copy of the chain, in memory they own and free with
+  themselves (`runtime.copy_extensions`), so they never depend on the frame that pushed a node.
+  Copying costs one allocation per new thread or fiber, sized by the chain, which is usually a few nodes.
+* `get_extension` walks the chain, so it costs one step per node. A hot path can look an extension up once and
+  pass the pointer down.
+* Adding extension types never changes `Context`'s layout, so it doesn't break separately compiled code.
+
 ## Assertion Handlers
 
 `context.assertion_handler` is inherited like the rest of the context, so every thread and fiber created from
@@ -156,7 +178,7 @@ execution environment. It holds:
 * the carrier's index
 
 Hemera code keeps a pointer to the carrier block in a register that is never used for anything else
-(`r14` on x86-64, `x28` on AArch64). Both platform conventions preserve those registers, so foreign code leaves it
+(`r14` on x86-64, `x28` on AArch64, `s11` on RISC-V). Both platform conventions preserve those registers, so foreign code leaves it
 alone. It is loaded from the OS's thread-local storage only at the boundaries: when a thread starts, and when foreign
 code calls back into Hemera. Fiber switches never save or restore it, so a resumed fiber always sees the carrier
 it is actually running on.

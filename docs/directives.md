@@ -18,6 +18,16 @@ The runtime `assert` calls `context.assertion_handler` when the assertion is fal
 with `intrinsics.trap()` (an illegal instruction), so execution never continues past a failed assertion.
 At compile time, that fails the build.
 
+The checks the language does at run time fail the same way, through `context.assertion_handler` with a message
+saying what went wrong:
+
+* integer division or remainder by zero
+* unwrapping an empty optional
+* running out of stack, if the target's `stack_check_failure` is `.AssertionHandler`
+
+Array indexes aren't checked at run time, since they must be proven in bounds at compile time
+(see [types.md](types.md#bounds-checking)). Integer overflow isn't a check either: it wraps (two's complement).
+
 `#if` used to conditionally include sections of code, evaluated (as in chosen, not executed) at compile time.
 The boolean expression is executed at compile time, but the block is either included in the code or not. 
 Also used with `#else_if` and `#else`.
@@ -80,6 +90,14 @@ example #export :: fn() {/* ... */}
 You could in theory put this on a function inside other functions, as they are effectively hoisted out anyway.
 However that is a fairly confusing thing to do, since it's visible outside the program by name but must be passed 
 around by function pointer inside the program, so it's discouraged.
+
+`#calling_convention(.interrupt)` makes a function an interrupt handler, entered by the CPU instead of called
+(x86-64 only). It is also placed after the identifier, and is part of the function's type.
+See [calling_convention.md](calling_convention.md#interrupt-functions).
+
+```
+timer_interrupt #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFrame]) {/* ... */}
+```
 
 ## Function Parameters
 

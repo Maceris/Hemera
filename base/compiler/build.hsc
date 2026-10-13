@@ -11,7 +11,10 @@ package compiler
 BuildOptions :: struct {
     // Name used in error messages ([kernel] ...) and as the default output file name.
     name : string,
-    // Folder of the target's root package, relative to the build package.
+    /*
+     * Folder of the target's root package, relative to the build package, or absolute,
+     * like the canonical PackageInfo.path that find_packages returns.
+     */
     root : string,
     // Where the output is written. Empty means the default output folder, using name.
     output_path : string,
@@ -70,6 +73,28 @@ TargetOptions :: struct {
     red_zone : bool = true,
     // Linker script for section placement. Empty uses the linker's default layout.
     linker_script : string,
+    // Linker to run. Empty uses the default for the target, see docs/compilation.md (Linking).
+    linker : string,
+    /*
+     * Whether the output includes Hemera's startup code, which sets up the first carrier block
+     * and context before calling entry. Freestanding programs like kernels turn this off and
+     * do it themselves, with intrinsics.set_carrier and push_context.
+     */
+    startup_code : bool = true,
+    stack_check_failure : StackCheckFailure,
+}
+
+// What a function does when its prologue stack check finds too little room left.
+StackCheckFailure :: enum {
+    // Call morestack, which runs the function on a new stack segment. Needs an allocator.
+    Morestack,
+    // Stop with intrinsics.trap(), for code with one fixed-size stack, like a kernel.
+    Trap,
+    /*
+     * Call context.assertion_handler with a stack overflow message. It runs in the last
+     * STACK_GUARD bytes of the stack, so it must need very little, or switch stacks.
+     */
+    AssertionHandler,
 }
 
 /*
@@ -170,7 +195,9 @@ CheckFunction :: alias fn(target: ptr[BuildOptions], program: ptr[ProgramInfo]) 
 
 /*
  * What compile-time code is allowed to do outside the compiler.
- * By default, neither is allowed. They are granted on the command line (--allow-run).
+ * By default, neither is allowed. They are granted on the command line (--allow-run),
+ * and only to execution the build package started: its own #run code, steps and checks.
+ * #run code in other packages always gets neither (docs/compilation.md).
  */
 BuildPermissions :: struct {
     run_processes : bool,
@@ -212,7 +239,10 @@ add_check : fn(check: CheckFunction, location := #caller_location) : ---
  */
 target_setting : fn(name: string, default := "") -> string : ---
 
-// What compile-time code is allowed to do outside the compiler, for this build.
+/*
+ * What the compile-time code calling this is allowed to do outside the compiler.
+ * Nothing is granted outside execution the build package started.
+ */
 build_permissions : fn() -> BuildPermissions : ---
 
 /*

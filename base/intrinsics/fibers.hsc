@@ -13,6 +13,15 @@ import runtime from "base"
 carrier : fn() -> ptr[mut runtime.CarrierBlock] : ---
 
 /*
+ * Load the carrier register with block, for code that starts without Hemera's startup code
+ * setting it up: entry points of freestanding programs, interrupt functions, and threads on
+ * systems without thread-local storage.
+ *
+ * Every prologue reads block.stack_limit, so set that first.
+ */
+set_carrier : fn(block: ptr[mut runtime.CarrierBlock]) : ---
+
+/*
  * Start running a fiber that hasn't started yet, on its first stack segment.
  *
  * Saves the scheduler's callee-saved registers and stack pointer in the carrier block,

@@ -42,15 +42,20 @@ Thread :: struct {
     data : any?,
     // A copy of the creating thread's context, which the new thread starts with
     starting_context : Context,
+    // starting_context's own copy of its extension chain
+    extensions : ContextExtension[],
     using ThreadSpecificOS,
 }
 
 // data is kept until the thread runs, so it can't point into the caller's stack
 thread_create :: fn(function: ThreadFunction, data #escaping : any? = null) -> ptr[Thread] {
-    result : ptr[Thread] = new(Thread)
+    result : ptr[mut Thread] = new(Thread)
     result.function = function
     result.data = data
     result.starting_context = context
+    extensions, error :: copy_extensions(&result.starting_context)
+    assert(error == null, "out of memory copying the context's extensions for a new thread")
+    result.extensions = extensions
 
     return result
 }

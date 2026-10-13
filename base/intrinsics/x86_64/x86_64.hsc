@@ -15,6 +15,18 @@ DescriptorTablePointer :: struct #packed {
     base : u64,
 }
 
+/*
+ * What the CPU pushes when entering an interrupt function (#calling_convention(.interrupt)),
+ * from the lowest address up.
+ */
+InterruptFrame :: struct {
+    rip : u64,
+    cs : u64,
+    rflags : u64,
+    rsp : u64,
+    ss : u64,
+}
+
 CpuidResult :: struct {
     eax : u32,
     ebx : u32,

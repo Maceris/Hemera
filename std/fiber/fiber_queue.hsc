@@ -3,5 +3,5 @@ package fiber
 FiberLocalQueue :: struct {
     head : uint,
     tail : uint,
-    buffer : ptr[Fiber][FIBER_LOCAL_QUEUE_SIZE]
+    buffer : ptr[mut Fiber][FIBER_LOCAL_QUEUE_SIZE]
 }

@@ -8,8 +8,8 @@ FIBER_GLOBAL_QUEUE_INTERVAL :: 31
 FIBER_RUN_NEXT_CAP :: 3
 
 FiberSchedulerGlobalData :: struct {
-    global_queue : ptr[Fiber][..],
-    thread_data : ptr[FiberSchedulerLocalData][..],
+    global_queue : ptr[mut Fiber][..],
+    thread_data : ptr[mut FiberSchedulerLocalData][..],
     should_stop : bool,
 }
 
@@ -18,9 +18,9 @@ FiberSchedulerGlobalData :: struct {
  * Installed as the carrier's scheduler_data, so yield can find it.
  */
 FiberSchedulerLocalData :: struct {
-    global_data : ptr[FiberSchedulerGlobalData],
+    global_data : ptr[mut FiberSchedulerGlobalData],
     local_queue : FiberLocalQueue,
-    run_next : ptr[Fiber]?,
+    run_next : ptr[mut Fiber]?,
     index : usize,
     tasks_since_last_global_pull : u8,
     run_next_count : u8,
@@ -30,18 +30,18 @@ FiberSchedulerLocalData :: struct {
  * Make a fiber that will run function(data), with a copy of the current context.
  * It doesn't run until it's added to a scheduler's queue.
  */
-create_fiber :: fn(function: ThreadFunction, data #escaping : any? = null) -> (ptr[Fiber], AllocatorError?) {
+create_fiber :: fn(function: ThreadFunction, data #escaping : any? = null) -> (ptr[mut Fiber], AllocatorError?) {
     return fiber_create(function, data)
 }
 
-create_fiber_scheduler :: fn() -> ptr[FiberSchedulerGlobalData] {
+create_fiber_scheduler :: fn() -> ptr[mut FiberSchedulerGlobalData] {
     result, _ :: new(FiberSchedulerGlobalData)
     return result
 }
 
 run_fiber_scheduler : ThreadFunction : fn(data: any) {
-    if data.type != ptr[FiberSchedulerGlobalData] {
-        log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type)
+    if data.type_ != ptr[mut FiberSchedulerGlobalData] {
+        log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type_)
         return void
     }
     {
@@ -51,13 +51,13 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
             return void
         }
     }
-    global_data : ptr[FiberSchedulerGlobalData] : data.value
+    global_data : ptr[mut FiberSchedulerGlobalData] : cast[ptr[ptr[mut FiberSchedulerGlobalData]]](data.data)^
 
     local_data, _ := new(FiberSchedulerLocalData)
     {
         //TODO(ches) synchronize access with a lock
         new_index :: global_data.thread_data.count
-        array_add(global_data.thread_data, local_data)
+        array_add(&global_data.thread_data, local_data)
         local_data.index = new_index
     }
     local_data.global_data = global_data
@@ -74,7 +74,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
         carrier.scheduler_data = null
     }
 
-    next_task : ptr[Fiber]? = null
+    next_task : ptr[mut Fiber]? = null
     next_task_index : usize = 0
     exit : FiberExit
 
@@ -86,7 +86,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
         //TODO(ches) actually have a strategy for updating tasks
         //TODO(ches) grab and release locks for the queue
 
-        next_task_index = (next_task_index + 1) % global_data.global_queue.count;
+        next_task_index = (next_task_index + 1) % global_data.global_queue.count
         next_task = global_data.global_queue[next_task_index]
 
         switch next_task.state {
@@ -115,7 +115,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
             case .Finished:
                 next_task.state = .Finished
                 //TODO(ches) grab and release locks for the queue
-                array_remove_fast(global_data.global_queue, next_task_index)
+                array_remove_fast(&global_data.global_queue, next_task_index)
                 fiber_destroy(next_task)
         }
     }
@@ -129,7 +129,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
  * fiber_yield has already checked foreign_depth and no_yield_depth.
  */
 yield :: fn(carrier: ptr[mut CarrierBlock]) {
-    current :: carrier.current_fiber or_return
+    current :: carrier.current_fiber or_return void
     local_data : ptr[FiberSchedulerLocalData] : cast[ptr[FiberSchedulerLocalData]](carrier.scheduler_data)
 
     if !has_other_work(local_data) {

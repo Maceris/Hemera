@@ -28,7 +28,7 @@ See [memory.md](memory.md#escaping-parameters).
 
 ```
 remember :: fn(registry: ptr[mut Registry], name #escaping : string) {
-    array_add(registry.names, name)
+    array_add(&registry.names, name)
 }
 ```
 

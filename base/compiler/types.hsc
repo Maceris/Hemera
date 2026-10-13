@@ -68,19 +68,24 @@ TypeInfoAlias :: struct {
     using TypeInfo,
     base_type: ptr[TypeInfo],
     name: string,
-    distinct: bool,
+    is_distinct: bool,
 }
 
 TypeInfoArray :: struct {
     using TypeInfo,
     base_type: ptr[TypeInfo],
+    // Outermost first, the one indexed first.
     dimensions: ArrayDimensions[],
 }
 
 TypeInfoEnum :: struct {
     using TypeInfo,
     name: string,
+    // From #backed_by, uint if it wasn't given.
+    backing_type: ptr[TypeInfo],
     members: string[],
+    // The value of each member, in the same order as members.
+    values: u128[],
 }
 
 TypeInfoFloat :: struct {

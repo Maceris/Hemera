@@ -11,12 +11,12 @@ FormatLocation :: struct {
     argument_number : i32,
 }
 
-find_format_locations :: fn(format: string, format_locations : mut FormatLocation[..], arg_count: usize) -> bool {
+find_format_locations :: fn(format: string, format_locations : ptr[mut FormatLocation[..]], arg_count: usize) -> bool {
     has_positional : bool = false
     has_unspecified : bool = false
     with {
         index : usize = 0
-        character : char
+        character : char = ---
         found_placeholder : bool = false
     }
     loop {
@@ -78,12 +78,13 @@ find_format_locations :: fn(format: string, format_locations : mut FormatLocatio
         return false
     }
 
-    for match, index in format_locations {
-        if match <= 0 {
+    for format_location in format_locations^ {
+        if format_location.argument_number <= 0 {
             continue
         }
-        if match > arg_count {
-            log_error("Tried to log %'th argument but only had % arguments", match, arg_count)
+        if cast[usize](format_location.argument_number) > arg_count {
+            log_error("Tried to log %'th argument but only had % arguments",
+                format_location.argument_number, arg_count)
             return false
         }
     }
@@ -99,10 +100,10 @@ format :: fn(format: string, args: any...) -> string {
     init_string_builder(log_builder)
 
     format_locations : FormatLocation[..]
-    defer array_free(format_locations)
-    array_reserve(format_locations, 8)
+    defer array_free(&format_locations)
+    array_reserve(&format_locations, 8)
 
-    valid: bool = find_format_locations(format, format_locations, args.count)
+    valid: bool = find_format_locations(format, &format_locations, args.count)
 
     //TODO(ches) we should check the validity of this at compile time where possible
     if !valid {
@@ -119,20 +120,20 @@ format :: fn(format: string, args: any...) -> string {
     input_index : usize = 0
     arg_index : usize = 0
 
-    for match in format_locations {
-        if match.location > 0 {
+    for found in format_locations {
+        if found.location > 0 {
             // Everything before the match, after the start / last match
-            before_match :: match.location - input_index
+            before_match :: found.location - input_index
             append(log_builder, format, input_index, before_match)
             input_index += before_match
         }
         // And now the actual match
-        if match.argument_number == -1 {
+        if found.argument_number == -1 {
             // Just need a placeholder
             append(log_builder, FORMAT_PLACEHOLDER)
             input_index += 2
         }
-        else if match.argument_number == 0 {
+        else if found.argument_number == 0 {
             // unspecified
             if arg_index >= args.count {
                 log_error("Invalid argument count slipped past our checks")
@@ -146,11 +147,11 @@ format :: fn(format: string, args: any...) -> string {
         }
         else {
             // numbered
-            if match.argument_number < 0 || match.argument_number >= args.count {
+            if found.argument_number < 0 || found.argument_number >= args.count {
                 log_error("Invalid argument number slipped past our checks")
                 continue
             }
-            arg_string :: any_to_string(args[match.argument_number])
+            arg_string :: any_to_string(args[found.argument_number])
             append(log_builder, arg_string)
 
             input_index += 1

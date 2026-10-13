@@ -108,7 +108,8 @@ More details:
 
 ## Any
 
-The `any` type is a combination of a type and raw pointer.
+The `any` type is a combination of a type and raw pointer, in the fields `data: rawptr` and `type_: type`.
+`type_info_of(value.type_)` describes what `data` points to.
 Any other type can be implicitly cast to an `any`, including stack variables and parameters.
 An `any` made from something on the stack can't outlive it, which the compiler checks,
 see [memory.md](memory.md#pointers-to-the-stack).
@@ -261,6 +262,25 @@ Suit :: enum #backed_by(u8) {
 }
 ```
 
+Members count up from 0, unless given a value. A member without a value is one more than the member before it:
+
+```
+LogLevel :: enum {
+    TRACE = 0,
+    DEBUG = 10,
+    INFO = 20,
+    VERBOSE_INFO,   // 21
+}
+```
+
+`cast` gets the backing integer of an enum value, converted to the integer type asked for like any integer cast:
+
+```
+level : u8 = cast[u8](LogLevel.DEBUG)   // 10
+```
+
+The backing type is part of the enum's type info (`TypeInfoEnum.backing_type`), along with each member's name and value.
+
 ## Implicit Casting
 
 Some types will implicitly (automatically) cast to each other, without having to manually add in casts.
@@ -284,6 +304,23 @@ Will not implicitly cast:
 * uintptr will not implicitly cast to or from usize
 * Complex numbers will not implicitly cast between sizes
 * Quaternions will not implicitly cast between sizes
+
+## Memory Layout
+
+Strings, array views and dynamic arrays are small structs pointing at their contents, which code working through
+`rawptr` and type info can read as `runtime.StringView`, `ArrayView` and `ResizableArray`:
+
+| Type | Layout |
+|---|---|
+| `string` | `count: usize` (bytes), `data: rawptr` |
+| `T[]` | `count: usize`, `data: rawptr` |
+| `T[..]` | `count: usize`, `data: rawptr`, `capacity: usize`, `allocator: Allocator` |
+| `any` | `data: rawptr`, `type_: type` |
+
+Functions that change a dynamic array take a pointer to it, so the change reaches the caller's array:
+`array_add(&names, name)`. Functions that only read one take an array view, which dynamic arrays convert to.
+
+Static arrays are their elements, one after another, with nothing else.
 
 ## Notes On Types
 
@@ -336,6 +373,27 @@ Relative pointers refer to an address relative to their own, and have different 
 An 8-bit relative pointer is quite small, but can only refer to things 128 bytes below and 127 bytes above their own address.
 
 There is no pointer arithmetic on regular pointers, though raw pointers and relative pointers (being closer to integers) do allow it.
+
+### Mutability
+
+`ptr[T]` can only read what it points to, and `ptr[mut T]` can also change it.
+
+A struct is mutable or immutable as a whole: every field, and everything stored inline in it (nested structs, static
+arrays), shares that. What a pointer field points to is different, its own type decides whether it can be changed:
+
+```
+Queue :: struct {
+    first : ptr[mut Task]?,     // whoever can read the queue can change its tasks
+    owner : ptr[Scheduler],     // but never the scheduler, even through a mutable queue
+}
+```
+
+So a pointer field is `ptr[mut T]` when the code using the struct changes what it points to, and `ptr[T]` when it
+only reads it. An immutable struct can't point its fields elsewhere, but can still hand out a `ptr[mut T]`.
+
+`new` returns a `ptr[mut T]`, since a new value has to be filled in. A function that changes something it's given
+takes a pointer to it, including dynamic arrays (`array_add(&names, name)`), since a value parameter is a copy.
+Iterating through a pointer to an array dereferences it explicitly: `for name in names^`.
 
 ## Result Types
 
@@ -510,16 +568,18 @@ meters_to_feet :: fn(m: meters) -> feet {
 }
 ```
 
-If the type is not distinct, `alias` is not required, for example these are fine:
+`alias` is required after `distinct`. If the type is not distinct, `alias` is optional, and shows that the value is
+meant to be a type without spelling out `: type`. These are all the same:
 
 ```
 my_int :: i32
-more_verbose : type : i32
+my_int :: alias i32
+my_int : type : i32
 ```
 
 ### Alias Equality
-The compiler understands the underlying type of an alias, but when checking
-for equality distinct aliases are considered different.
+The compiler understands the underlying type of an alias. For type checking, like whether a value can be assigned
+or passed without a cast, an alias is the same type as what it aliases, but distinct aliases are considered different.
 
 Let's say we have a few aliases for integer:
 ```
@@ -558,6 +618,16 @@ considered the "same" type.
 | number  |     |       |    |         | ==     | ==  |     |
 | num     |     |       |    |         | ==     | ==  |     |
 | age     |     |       |    |         |        |     | ==  |
+
+### Comparing Type Values
+
+Type values (of type `type`) can be compared at compile time and through reflection. There are two comparisons:
+
+* `==` is exact. Every alias is its own type value, distinct or not, so `index == int` is false. Only the diagonal
+  of the table above compares equal.
+* `types_are_aliases(a, b)` is the looser comparison from the table: whether the compiler treats `a` and `b` as the
+  same type, following aliases that aren't distinct. `types_are_aliases(ind, int)` is true,
+  `types_are_aliases(counter, int)` is false.
 
 ## Unions
 

@@ -7,10 +7,10 @@ import time from "std"
 import formatting from "std"
 
 create_default_logger :: fn() -> ptr[Logger] {
-    result : ptr[Logger] = new(Logger)
+    result : ptr[mut Logger] = new(Logger)
     result.name = DEFAULT_LOGGER_NAME
 
-    data : ptr[DefaultLoggerData] = new(DefaultLoggerData)
+    data : ptr[mut DefaultLoggerData] = new(DefaultLoggerData)
     data.flags = DEFAULT_LOGGER_FLAG_DEFAULT
     result.data = cast[rawptr](data)
 
@@ -119,13 +119,22 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
     defer delete(log_builder)
     init_string_builder(log_builder)
 
+    // Left out of the message if the clock can't tell the time.
     current_time := Instant.{0}
+    has_time := false
 
     if flags & (DEFAULT_LOGGER_FLAG_DATE | DEFAULT_LOGGER_FLAG_TIME) != 0 {
-        current_time = now()
+        time_result :: now()
+        match time_result {
+            case Ok(instant) => {
+                current_time = instant
+                has_time = true
+            }
+            case Error(_) => {}
+        }
     }
 
-    if flags & DEFAULT_LOGGER_FLAG_DATE != 0 {
+    if has_time && flags & DEFAULT_LOGGER_FLAG_DATE != 0 {
         year, month, day : int : date(current_time)
         append(log_builder, int_to_string(year))
         append(log_builder, '-')
@@ -135,7 +144,7 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
         append(log_builder, ' ')
     }
 
-    if flags & DEFAULT_LOGGER_FLAG_TIME != 0 {
+    if has_time && flags & DEFAULT_LOGGER_FLAG_TIME != 0 {
         hour, minute, second, nanosecond : int : precise_clock(current_time)
         append(log_builder, int_to_string(hour))
         append(log_builder, ':')

@@ -5,9 +5,9 @@ import intrinsics from "base"
 /*
  * Per-OS-thread execution state, owned by the runtime.
  *
- * Hemera code keeps a pointer to this in the carrier register (r14 on x86-64, x28 on AArch64),
- * which fiber switches never save or restore. It is loaded from the OS's thread-local storage
- * only when a thread starts, and when foreign code calls back into Hemera.
+ * Hemera code keeps a pointer to this in the carrier register (r14 on x86-64, x28 on AArch64,
+ * s11 on RISC-V), which fiber switches never save or restore. It is loaded from the OS's
+ * thread-local storage only when a thread starts, and when foreign code calls back into Hemera.
  *
  * Get it with intrinsics.carrier(). Any call that might yield can move a fiber to another
  * carrier, so a pointer to this is only valid until then, unless inside a no-yield region.
@@ -25,18 +25,18 @@ CarrierBlock :: struct #align(64) {
      * The segment the stack pointer is in, null for a fiber's first segment
      * or the thread's own stack.
      */
-    stack_segment : ptr[StackSegment]?,
+    stack_segment : ptr[mut StackSegment]?,
     /*
      * The segment most recently left by morestack, kept so a call that keeps
      * crossing a segment boundary doesn't allocate each time.
      */
-    spare_segment : ptr[StackSegment]?,
+    spare_segment : ptr[mut StackSegment]?,
     // Number of foreign calls currently on the stack. Yields decline while this is non-zero.
     foreign_depth : u32,
     // Number of no-yield regions currently entered. Yields decline while this is non-zero.
     no_yield_depth : u32,
     // The fiber running on this carrier, if any.
-    current_fiber : ptr[Fiber]?,
+    current_fiber : ptr[mut Fiber]?,
     /*
      * Installed by a fiber scheduler running on this thread, called by fiber_yield
      * when yielding is allowed. Null on plain threads.
@@ -53,12 +53,14 @@ CarrierBlock :: struct #align(64) {
     // The context foreign callbacks run with, saved by the most recent foreign call.
     foreign_context : ptr[Context]?,
     // Free stack segments, linked through StackSegment.next_free.
-    segment_cache : ptr[StackSegment]?,
+    segment_cache : ptr[mut StackSegment]?,
     segment_cache_count : u32,
     // Small index identifying this OS thread, for logging and diagnostics.
     index : usize,
     // Set while an assertion handler runs on this carrier, so a failure inside it traps immediately.
     asserting : bool,
+    // Freestanding programs' own per-carrier data, like a kernel's per-CPU block. Unused by the runtime.
+    program_data : rawptr,
 }
 
 /*
@@ -95,7 +97,7 @@ no_yield_exit :: fn() {
  */
 fiber_yield :: fn() {
     carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
-    yield_function :: carrier.yield_function or_return
+    yield_function :: carrier.yield_function or_return void
     if carrier.foreign_depth > 0 || carrier.no_yield_depth > 0 {
         return void
     }

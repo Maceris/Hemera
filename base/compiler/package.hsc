@@ -24,7 +24,7 @@ ImportInfo :: struct {
     // Canonical path of the imported package's folder.
     path : string,
     // The name it was imported as, which is the package name if there was no alias.
-    alias : string,
+    alias_ : string,
     // The from part, like "base", "../" or "" if there was none.
     from_ : string,
     location : SourceCodeLocation,

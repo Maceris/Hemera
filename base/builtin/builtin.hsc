@@ -92,6 +92,10 @@ offset_of : fn[T](T: type, member: expr) -> usize : ---
 type_of : fn(x: expr) -> type : ---
 // Cast the result to the variant's struct (TypeInfoStruct, TypeInfoEnum, ...) to read its details.
 type_info_of : fn[T](T: type) -> ptr[TypeInfo] : ---
+/*
+ * Whether the compiler treats a and b as the same type, following aliases that aren't distinct.
+ * == on type values is exact instead, so every alias compares different from what it aliases.
+ */
 types_are_aliases : fn(a, b: type) -> bool : ---
 
 max_value : fn[T](T: type) -> T : ---
