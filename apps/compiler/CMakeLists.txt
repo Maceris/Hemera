@@ -206,6 +206,31 @@ SET(LLVM_INCLUDE_TESTS OFF CACHE BOOL "")
 SET(LLVM_INCLUDE_BENCHMARKS OFF CACHE BOOL "")
 SET(LLVM_INCLUDE_EXAMPLES OFF CACHE BOOL "")
 SET(LLVM_OPTIMIZED_TABLEGEN ON CACHE BOOL "")
+
+# LLVM_OPTIMIZED_TABLEGEN builds tablegen and friends in a nested Release build (NATIVE). With Visual Studio, LLVM makes
+# each native tool step depend on every native tool registered before it, including ones that are never built
+# (llvm-readobj, mlir-pdll, mlir-irdl-to-cpp), so MSBuild always considers some of the steps out of date and re-runs the
+# nested build on every build. Once those tools exist, point LLVM straight at them instead, using the same paths so none
+# of the generated files change. Turn this off after updating LLVM so they are rebuilt from the new sources.
+OPTION(HEMERA_REUSE_NATIVE_TOOLS "Use the already built native MLIR tools instead of re-checking them every build" ON)
+IF(CMAKE_CONFIGURATION_TYPES)
+  SET(HEMERA_NATIVE_TOOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/third-party/llvm-project/llvm/NATIVE/Release/bin)
+ELSE()
+  SET(HEMERA_NATIVE_TOOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/third-party/llvm-project/llvm/NATIVE/bin)
+ENDIF()
+
+FUNCTION(HEMERA_REUSE_NATIVE_TOOL TOOL SETTING DEFAULT)
+  SET(TOOL_PATH ${HEMERA_NATIVE_TOOL_DIR}/${TOOL}${CMAKE_EXECUTABLE_SUFFIX})
+  IF(HEMERA_REUSE_NATIVE_TOOLS AND EXISTS ${TOOL_PATH})
+    SET(${SETTING} ${TOOL_PATH} CACHE STRING "" FORCE)
+  ELSEIF("${${SETTING}}" STREQUAL "${TOOL_PATH}")
+    SET(${SETTING} "${DEFAULT}" CACHE STRING "" FORCE) # Go back to LLVM building it
+  ENDIF()
+ENDFUNCTION()
+
+HEMERA_REUSE_NATIVE_TOOL(mlir-tblgen MLIR_TABLEGEN mlir-tblgen)
+HEMERA_REUSE_NATIVE_TOOL(mlir-linalg-ods-yaml-gen MLIR_LINALG_ODS_YAML_GEN "")
+
 SET(LLVM_RUNTIME_OUTPUT_INTDIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY})
 SET(LLVM_LIBRARY_OUTPUT_INTDIR ${HEMERA_LIBRARY_OUTPUT_DIRECTORY})
 ADD_SUBDIRECTORY(${THIRD_PARTY_DIR}/llvm-project/llvm)
