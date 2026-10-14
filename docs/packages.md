@@ -61,6 +61,17 @@ a wildly less-linear build process. A C unity build basically uses a preprocesso
 into a single translation unit and that's processed top-down, whereas Hemera has a directed
 graph of compilation-related work that needs to happen that it processes in parallel.
 
+Work that needs something not available yet, like a name declared later or a type whose layout isn't known yet, waits
+until it is. Declarations can therefore appear in any order, in any file of any package. If the compiler reaches a
+point where nothing can make progress, it stops with errors instead of waiting forever:
+
+* Each cycle of work waiting on itself is reported with every step in it, like "`A` needs `B`, which needs `A`".
+* Each name that is never declared is reported where it's used.
+
+Only cycles that can't be resolved are errors. Circular imports, mutually recursive functions (a call only needs the
+other function's signature), and types that refer to each other through pointers are all fine. A struct containing
+itself by value isn't, since its size would depend on itself.
+
 ## Name Collision
 
 Since most things like functions and structs are global in the language, there is a risk of name collision when importing other libraries.
