@@ -78,7 +78,7 @@ namespace hemera::parser {
 	bool struct_member(ParserState* state, ast::Node& parent);
 	bool union_body(ParserState* state, ast::Node& parent);
 	bool enum_body(ParserState* state, ast::Node& parent);
-	bool generic_tag(ParserState* state, ast::Node& parent);
+	bool generic_tag(ParserState* state, ast::Node& parent, bool is_declaration);
 	ExprResult assign_target(ParserState* state, bool ignore_lists);
 	ExprResult expr_lvl_1(ParserState* state, bool ignore_lists);
 	ExprResult expr_lvl_2(ParserState* state, bool ignore_lists);
@@ -96,6 +96,8 @@ namespace hemera::parser {
 	ExprResult location(ParserState* state);
 	ExprResult struct_literal(ParserState* state);
 	ExprResult array_literal(ParserState* state);
+	bool is_typed_literal(ParserState* state, TokenType open);
+	bool literal_type(ParserState* state, ast::Node& literal);
 	bool function_call(ParserState* state, ast::Node& parent);
 	bool function_call_input_list(ParserState* state, ast::Node& parent);
 	ExprResult cast_expression(ParserState* state);

@@ -290,6 +290,93 @@ level : u8 = cast[u8](LogLevel.DEBUG)   // 10
 
 The backing type is part of the enum's type info (`TypeInfoEnum.backing_type`), along with each member's name and value.
 
+## Generics
+
+Structs, unions and functions can take generic parameters, listed in square brackets. They're filled in at compile time,
+and each distinct set of arguments makes a separate instance, like C++ templates or Jai's polymorphic procedures
+(where `fn[T](x: T)` would be written `(x: $T)`).
+
+```
+Pair :: struct[A, B] {
+    first : A,
+    second : B,
+}
+
+Maybe :: union[T] {
+    Nothing,
+    Just(T),
+}
+
+swap :: fn[A, B](pair: Pair[A, B]) -> Pair[B, A] {
+    return Pair[B, A].{pair.second, pair.first}
+}
+```
+
+A generic type is always used with its arguments, like `Pair[int, string]` or `Maybe[int]`, including in a struct
+literal: `Pair[int, string].{1, "one"}`.
+
+### Binding a Function's Generic Parameters
+
+Each call binds every generic parameter of the function, in one of three ways:
+
+| How | Example | |
+|---|---|---|
+| Inferred from a parameter's type | `free(pointer)` | `free :: fn[T](pointer: ptr[T], ...)`: `T` is whatever `pointer` points to |
+| By the parameter with the same name | `size_of(Foo)` | `size_of :: fn[T](T: type) -> usize`: the parameter `T` is the generic `T` |
+| Explicitly, in brackets after the name | `empty[string]()` | For generics nothing else binds, like `empty :: fn[T]() -> T[..]` |
+
+* A generic that can't be bound any of these ways is an error.
+* Giving a generic explicitly when it's already bound another way, like `size_of[Foo](Foo)`, is allowed but gives a
+  warning, since it says the same thing twice.
+
+### Compile-Time Parameters
+
+A parameter with the same name as a generic parameter is a compile-time parameter, whatever its type. That's how
+`size_of(Foo)` takes a type, and it works the same for values:
+
+```
+buffer :: fn[count](count: usize) -> u8[count] {
+    result : u8[count]
+    return result
+}
+
+bytes :: buffer(16) // u8[16]
+```
+
+* The argument must be known at compile time: a literal, a named constant, an enum member, a function, or the result
+  of `#run`.
+* Only integers, enums, booleans and functions can be compile-time values, besides types.
+* Inside the function, the parameter is a constant, so it can size an array, or be used in `#if` and `#assert`.
+* A function with a body gets an instance for each distinct value, as it does for each distinct type.
+* A declaration without a body (`---`), like an intrinsic, receives the value at compile time. For example,
+  `x86_64.entry_points(handler)` generates code that jumps to `handler`.
+* The call looks like any other. Nothing at the call site shows that an argument is compile-time.
+
+### Values in Generic Lists
+
+A generic list can also take values, written `name: type`, for values that aren't a function's parameters,
+like a container's capacity:
+
+```
+Ring :: struct[T, capacity: usize] {
+    items : T[capacity],
+    head : usize,
+    tail : usize,
+}
+
+ring : Ring[u8, 4096]
+
+push :: fn[T, capacity: usize](ring: ptr[mut Ring[T, capacity]], item: T) {/* ... */}
+```
+
+They follow the same rules as compile-time parameters, and are bound explicitly, or inferred from a parameter's type,
+as `push` binds `capacity` from `ring`.
+
+A generic type whose only argument is an integer, like `Bits[64]`, means `Bits` with the argument 64 when `Bits` is
+generic, and an array of 64 `Bits` otherwise.
+
+For how `#escaping` applies to generic parameters, see [memory.md](memory.md#escaping-parameters).
+
 ## Implicit Casting
 
 Some types will implicitly (automatically) cast to each other, without having to manually add in casts.

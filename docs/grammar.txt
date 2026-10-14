@@ -207,8 +207,8 @@ decl_rhs = expression_with_result
     ;
 
 function_decl = function_signature , block ;
-struct_decl = KEYWORD_struct , [ generic_tag ] , { directive_with_arguments } , SYM_LBRACE , struct_body , SYM_RBRACE ;
-union_decl = KEYWORD_union , [ generic_tag ] , SYM_LBRACE , union_body , SYM_RBRACE ;
+struct_decl = KEYWORD_struct , [ generic_parameters ] , { directive_with_arguments } , SYM_LBRACE , struct_body , SYM_RBRACE ;
+union_decl = KEYWORD_union , [ generic_parameters ] , SYM_LBRACE , union_body , SYM_RBRACE ;
 enum_decl = KEYWORD_enum , { directive_with_arguments } , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
 type = simple_type
@@ -219,7 +219,7 @@ type_in_list = simple_type
     ;
 
 # Qualified by package like runtime.Fiber, and optional with a trailing ?
-simple_type = [ KEYWORD_mut ] , identifier , { SYM_DOT , identifier } , [ generic_tag ] , { array_dimension } , [ SYM_QUESTION ]
+simple_type = [ KEYWORD_mut ] , identifier , { SYM_DOT , identifier } , [ generic_arguments ] , { array_dimension } , [ SYM_QUESTION ]
     ;
 
 # Confusing without parentheses in a function return type list
@@ -229,7 +229,7 @@ complicated_type = function_signature
 array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array | ( identifier , { SYM_DOT , identifier } ) ] , SYM_RBRACK ;
 
 # A directive at the end is part of the function's type. Only #never_returns, so any other directive starts the next statement
-function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , [ directive ] ;
+function_signature = KEYWORD_fn , [ generic_parameters ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , [ directive ] ;
 function_parameter_list = function_parameter , [ OPERATOR_assign , default_value ] , { SYM_COMMA , function_parameter , [ OPERATOR_assign , default_value ] }
     ;
 function_output_list = KEYWORD_void 
@@ -259,7 +259,13 @@ struct_body = [ struct_member , { SYM_COMMA , struct_member } ] , [ SYM_COMMA ] 
 union_body = [ union_member , { SYM_COMMA , union_member } ] , [ SYM_COMMA ] ;
 enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
 
-generic_tag = SYM_LBRACK , type_in_list , { SYM_COMMA , type_in_list } , SYM_RBRACK ;
+# On a declaration: a type parameter, or a value parameter with its type (capacity: usize)
+generic_parameters = SYM_LBRACK , generic_parameter , { SYM_COMMA , generic_parameter } , SYM_RBRACK ;
+generic_parameter = identifier , [ SYM_COLON , type_in_list ] ;
+# Where a generic type is used: a type, or a constant value (named constants and functions parse as types).
+# A single integer, like Bits[64], parses as an array dimension; the type checker reads it as an argument if Bits is generic
+generic_arguments = SYM_LBRACK , generic_argument , { SYM_COMMA , generic_argument } , SYM_RBRACK ;
+generic_argument = type_in_list | literal_integer | ( OPERATOR_minus , literal_integer ) | KEYWORD_true | KEYWORD_false | enum_shorthand ;
 
 struct_member = ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , [ mut_definition_rhs ] ) 
     | ( KEYWORD_using , identifier , { SYM_DOT , identifier } )
@@ -414,14 +420,17 @@ slice_index = expression_with_result
     | ( ( KEYWORD_mut | KEYWORD_fn ) , type )
     ;
 
-struct_literal = identifier , SYM_DOT , SYM_LBRACE , [ 
+# The type of a struct or array literal, like Pair[int, string] or runtime.Context
+literal_type = identifier , { SYM_DOT , identifier } , [ generic_arguments ] ;
+
+struct_literal = literal_type , SYM_DOT , SYM_LBRACE , [ 
     ( expression_with_result , { SYM_COMMA , expression_with_result } )
     | ( identifier , OPERATOR_assign , expression_with_result , { SYM_COMMA , identifier , OPERATOR_assign , expression_with_result } , [ SYM_COMMA ] )
     ] , SYM_RBRACE
     ;
 
 # The element type, then the elements. Its type is a static array of that many elements.
-array_literal = identifier , SYM_DOT , SYM_LBRACK , [ expression_with_result , { SYM_COMMA , expression_with_result } , [ SYM_COMMA ] ] , SYM_RBRACK ;
+array_literal = literal_type , SYM_DOT , SYM_LBRACK , [ expression_with_result , { SYM_COMMA , expression_with_result } , [ SYM_COMMA ] ] , SYM_RBRACK ;
 
 function_call_chain = function_call , { OPERATOR_pipe , function_call } ;
 

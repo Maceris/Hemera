@@ -660,7 +660,7 @@ namespace hemera::parser {
 		ast::Node& node = next_as_node(state, ast::NodeType::STRUCT, &parent);
 
 		if (expect(state, TokenType::SYM_LBRACK)) {
-			if (!generic_tag(state, node)) {
+			if (!generic_tag(state, node, true)) {
 				return false;
 			}
 		}
@@ -697,7 +697,7 @@ namespace hemera::parser {
 		ast::Node& node = next_as_node(state, ast::NodeType::UNION, &parent);
 
 		if (expect(state, TokenType::SYM_LBRACK)) {
-			if (!generic_tag(state, node)) {
+			if (!generic_tag(state, node, true)) {
 				return false;
 			}
 		}
@@ -803,7 +803,7 @@ namespace hemera::parser {
 				|| next == TokenType::OPERATOR_RANGE_ARRAY
 				|| next == TokenType::SYM_RBRACK
 				;
-			if (!is_dimension && !generic_tag(state, type)) {
+			if (!is_dimension && !generic_tag(state, type, false)) {
 				delete_node(state->node_alloc, &type);
 				return ExprResult{ false };
 			}
@@ -866,7 +866,7 @@ namespace hemera::parser {
 		ast::Node& node = next_as_node(state, ast::NodeType::FUNCTION);
 		
 		if (expect(state, TokenType::SYM_LBRACK)) {
-			if (!generic_tag(state, node)) {
+			if (!generic_tag(state, node, true)) {
 				delete_node(state->node_alloc, &node);
 				return ExprResult{ false };
 			}
@@ -1480,16 +1480,10 @@ namespace hemera::parser {
 		if (expect(state, TokenType::KEYWORD_MATCH)) {
 			return match_expression(state);
 		}
-		if (expect(state, TokenType::IDENTIFIER) &&
-			TokenType::SYM_DOT == next_token(state, 1).type
-			&& TokenType::SYM_LBRACE == next_token(state, 2).type
-			) {
+		if (is_typed_literal(state, TokenType::SYM_LBRACE)) {
 			return struct_literal(state);
 		}
-		if (expect(state, TokenType::IDENTIFIER) &&
-			TokenType::SYM_DOT == next_token(state, 1).type
-			&& TokenType::SYM_LBRACK == next_token(state, 2).type
-			) {
+		if (is_typed_literal(state, TokenType::SYM_LBRACK)) {
 			return array_literal(state);
 		}
 		return expr_lvl_1(state, ignore_lists);
@@ -1695,7 +1689,11 @@ namespace hemera::parser {
 		return true;
 	}
 
-	bool generic_tag(ParserState* state, ast::Node& parent) {
+	/*
+	 * A list of generic parameters (on a declaration: T, or capacity: usize for a value),
+	 * or of generic arguments (where a generic type is used: a type, or a constant value).
+	 */
+	bool generic_tag(ParserState* state, ast::Node& parent, bool is_declaration) {
 		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, &parent);
 
 		while (!expect(state, TokenType::SYM_RBRACK)) {
@@ -1705,11 +1703,41 @@ namespace hemera::parser {
 			if (expect(state, TokenType::SYM_LBRACE)) {
 				break;
 			}
-			ExprResult type_result = type(state);
-			if (!type_result.success) {
-				return false;
+			const TokenType current = current_token(state).type;
+			const bool is_value = !is_declaration
+				&& (TokenType::LITERAL_INTEGER == current
+					|| TokenType::KEYWORD_TRUE == current
+					|| TokenType::KEYWORD_FALSE == current
+					|| TokenType::SYM_DOT == current
+					|| TokenType::OPERATOR_MINUS == current);
+			if (is_value) {
+				// A constant value, like Ring[u8, 4096]. Named constants parse as types.
+				ExprResult value = expression_with_result(state, true);
+				if (!value.success) {
+					return false;
+				}
+				node.children.push_back(value.result);
 			}
-			node.children.push_back(type_result.result);
+			else if (is_declaration
+				&& TokenType::IDENTIFIER == current
+				&& TokenType::SYM_COLON == next_token(state).type) {
+				// A value parameter, like capacity: usize
+				ast::Node& name = next_as_node(state, ast::NodeType::IDENTIFIER);
+				ast::Node& colon = next_as_node(state, ast::NodeType::COLON, &node);
+				colon.children.push_back(&name);
+				ExprResult value_type = type(state);
+				if (!value_type.success) {
+					return false;
+				}
+				colon.children.push_back(value_type.result);
+			}
+			else {
+				ExprResult type_result = type(state);
+				if (!type_result.success) {
+					return false;
+				}
+				node.children.push_back(type_result.result);
+			}
 
 			if (expect(state, TokenType::SYM_COMMA)) {
 				skip(state, TokenType::SYM_COMMA);
@@ -2294,9 +2322,60 @@ namespace hemera::parser {
 		return ExprResult{ true, root };
 	}
 
+	/*
+	 * Whether a struct literal (open is a brace) or array literal (a bracket) starts here:
+	 * a type name, possibly qualified by package and with generic arguments, then a dot and open.
+	 * Like runtime.Context.{...} or Pair[int, string].{...}.
+	 */
+	bool is_typed_literal(ParserState* state, TokenType open) {
+		if (!expect(state, TokenType::IDENTIFIER)) {
+			return false;
+		}
+		size_t i = 1;
+		while (TokenType::SYM_DOT == next_token(state, i).type
+			&& TokenType::IDENTIFIER == next_token(state, i + 1).type) {
+			i += 2;
+		}
+		if (TokenType::SYM_LBRACK == next_token(state, i).type) {
+			size_t depth = 0;
+			do {
+				const TokenType type = next_token(state, i).type;
+				if (TokenType::END_OF_FILE == type) {
+					return false;
+				}
+				if (TokenType::SYM_LBRACK == type) {
+					++depth;
+				}
+				else if (TokenType::SYM_RBRACK == type) {
+					--depth;
+				}
+				++i;
+			} while (depth > 0);
+		}
+		return TokenType::SYM_DOT == next_token(state, i).type
+			&& open == next_token(state, i + 1).type;
+	}
+
+	// The type of a struct or array literal, after its first name: package qualifiers and generic arguments.
+	bool literal_type(ParserState* state, ast::Node& literal) {
+		while (expect(state, TokenType::SYM_DOT)
+			&& TokenType::IDENTIFIER == next_token(state).type) {
+			accept(state, TokenType::SYM_DOT, ast::NodeType::DOT_ACCESS, literal);
+			accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, literal);
+		}
+		if (expect(state, TokenType::SYM_LBRACK)) {
+			return generic_tag(state, literal, false);
+		}
+		return true;
+	}
+
 	ExprResult struct_literal(ParserState* state) {
-		//NOTE(ches) assumes we already checked for identifier, dot, lbrace
+		//NOTE(ches) assumes we already checked with is_typed_literal
 		ast::Node& id = next_as_node(state, ast::NodeType::STRUCT_LITERAL);
+		if (!literal_type(state, id)) {
+			delete_node(state->node_alloc, &id);
+			return ExprResult{ false };
+		}
 		skip(state, TokenType::SYM_DOT);
 		ast::Node& braces = next_as_node(state, ast::NodeType::LIST, &id);
 
@@ -2367,8 +2446,12 @@ namespace hemera::parser {
 	}
 
 	ExprResult array_literal(ParserState* state) {
-		//NOTE(ches) assumes we already checked for identifier, dot, lbrack
+		//NOTE(ches) assumes we already checked with is_typed_literal
 		ast::Node& element_type = next_as_node(state, ast::NodeType::ARRAY_LITERAL);
+		if (!literal_type(state, element_type)) {
+			delete_node(state->node_alloc, &element_type);
+			return ExprResult{ false };
+		}
 		skip(state, TokenType::SYM_DOT);
 		ast::Node& brackets = next_as_node(state, ast::NodeType::LIST, &element_type);
 
