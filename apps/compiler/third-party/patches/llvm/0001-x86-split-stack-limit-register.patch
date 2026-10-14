@@ -1,0 +1,138 @@
+diff --git a/llvm/lib/Target/X86/X86FrameLowering.cpp b/llvm/lib/Target/X86/X86FrameLowering.cpp
+index a3f50cde617a..8cce58abc987 100644
+--- a/llvm/lib/Target/X86/X86FrameLowering.cpp
++++ b/llvm/lib/Target/X86/X86FrameLowering.cpp
+@@ -18,6 +18,7 @@
+ #include "X86Subtarget.h"
+ #include "X86TargetMachine.h"
+ #include "llvm/ADT/Statistic.h"
++#include "llvm/ADT/StringSwitch.h"
+ #include "llvm/CodeGen/LivePhysRegs.h"
+ #include "llvm/CodeGen/MachineFrameInfo.h"
+ #include "llvm/CodeGen/MachineFunction.h"
+@@ -3435,8 +3436,37 @@ void X86FrameLowering::adjustForSegmentedStacks(
+ 
+   if (MF.getFunction().isVarArg())
+     report_fatal_error("Segmented stacks do not support vararg functions.");
+-  if (!STI.isTargetLinux() && !STI.isTargetDarwin() && !STI.isTargetWin32() &&
+-      !STI.isTargetWin64() && !STI.isTargetFreeBSD() &&
++
++  // "split-stack-limit-register"="r14" reads the stack limit at an offset from a
++  // register the program reserves for it ("split-stack-limit-offset", default
++  // 0), rather than from thread-local storage, so any platform works, including
++  // freestanding ones. "split-stack-failure"="trap" traps when the stack is too
++  // small, rather than calling __morestack.
++  const Function &Fn = MF.getFunction();
++  Register LimitReg;
++  int64_t LimitOffset = 0;
++  if (Fn.hasFnAttribute("split-stack-limit-register")) {
++    StringRef Name =
++        Fn.getFnAttribute("split-stack-limit-register").getValueAsString();
++    LimitReg = StringSwitch<unsigned>(Name)
++                   .Case("r12", X86::R12)
++                   .Case("r13", X86::R13)
++                   .Case("r14", X86::R14)
++                   .Case("r15", X86::R15)
++                   .Default(0);
++    if (!LimitReg || !Is64Bit)
++      report_fatal_error("Unsupported split-stack-limit-register " + Name);
++    if (Fn.hasFnAttribute("split-stack-limit-offset") &&
++        Fn.getFnAttribute("split-stack-limit-offset")
++            .getValueAsString()
++            .getAsInteger(0, LimitOffset))
++      report_fatal_error("Invalid split-stack-limit-offset");
++  }
++  const bool TrapOnFailure =
++      Fn.getFnAttribute("split-stack-failure").getValueAsString() == "trap";
++
++  if (!LimitReg && !STI.isTargetLinux() && !STI.isTargetDarwin() &&
++      !STI.isTargetWin32() && !STI.isTargetWin64() && !STI.isTargetFreeBSD() &&
+       !STI.isTargetDragonFly())
+     report_fatal_error("Segmented stacks not supported on this platform.");
+ 
+@@ -3476,7 +3506,25 @@ void X86FrameLowering::adjustForSegmentedStacks(
+   bool CompareStackPointer = StackSize < kSplitStackAvailable;
+ 
+   // Read the limit off the current stacklet off the stack_guard location.
+-  if (Is64Bit) {
++  if (LimitReg) {
++    if (CompareStackPointer)
++      ScratchReg = X86::RSP;
++    else
++      BuildMI(checkMBB, DL, TII.get(X86::LEA64r), ScratchReg)
++          .addReg(X86::RSP)
++          .addImm(1)
++          .addReg(0)
++          .addImm(-StackSize)
++          .addReg(0);
++
++    BuildMI(checkMBB, DL, TII.get(X86::CMP64rm))
++        .addReg(ScratchReg)
++        .addReg(LimitReg)
++        .addImm(1)
++        .addReg(0)
++        .addImm(LimitOffset)
++        .addReg(0);
++  } else if (Is64Bit) {
+     if (STI.isTargetLinux()) {
+       TlsReg = X86::FS;
+       TlsOffset = IsLP64 ? 0x70 : 0x40;
+@@ -3599,6 +3647,13 @@ void X86FrameLowering::adjustForSegmentedStacks(
+       .addMBB(&PrologueMBB)
+       .addImm(X86::COND_A);
+ 
++  if (TrapOnFailure) {
++    BuildMI(allocMBB, DL, TII.get(X86::TRAP));
++    checkMBB->addSuccessor(allocMBB, BranchProbability::getZero());
++    checkMBB->addSuccessor(&PrologueMBB, BranchProbability::getOne());
++    return;
++  }
++
+   // On 32 bit we first push the arguments size and then the frame size. On 64
+   // bit, we pass the stack frame size in r10 and the argument size in r11.
+   if (Is64Bit) {
+diff --git a/llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll b/llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll
+new file mode 100644
+index 000000000000..057bda2ad33b
+--- /dev/null
++++ b/llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll
+@@ -0,0 +1,39 @@
++; RUN: llc < %s -mtriple=x86_64-unknown-none-elf -mattr=+reserve-r14 -verify-machineinstrs | FileCheck %s
++; RUN: llc < %s -mtriple=x86_64-pc-linux -mattr=+reserve-r14 -verify-machineinstrs | FileCheck %s
++
++; The stack limit is read at an offset from a reserved register, which works on any
++; platform, including freestanding ones, and running out can trap instead of calling
++; __morestack.
++
++declare void @use(ptr)
++
++define void @big() "split-stack" "split-stack-limit-register"="r14" "split-stack-failure"="trap" {
++; CHECK-LABEL: big:
++; CHECK:       leaq -{{[0-9]+}}(%rsp), %r11
++; CHECK-NEXT:  cmpq (%r14), %r11
++; CHECK-NEXT:  jbe [[TRAP:.LBB[0-9_]+]]
++; CHECK:       [[TRAP]]:
++; CHECK-NEXT:  ud2
++; CHECK-NOT:   __morestack
++  %buf = alloca [1024 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @small_with_offset() "split-stack" "split-stack-limit-register"="r14" "split-stack-limit-offset"="16" "split-stack-failure"="trap" {
++; CHECK-LABEL: small_with_offset:
++; CHECK:       cmpq 16(%r14), %rsp
++; CHECK-NEXT:  jbe
++  %buf = alloca [32 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @calls_morestack() "split-stack" "split-stack-limit-register"="r14" {
++; CHECK-LABEL: calls_morestack:
++; CHECK:       cmpq (%r14), %rsp
++; CHECK:       callq __morestack
++  %buf = alloca [32 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
