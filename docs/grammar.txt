@@ -228,7 +228,8 @@ complicated_type = function_signature
 
 array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array | ( identifier , { SYM_DOT , identifier } ) ] , SYM_RBRACK ;
 
-function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ];
+# A directive at the end is part of the function's type. Only #never_returns, so any other directive starts the next statement
+function_signature = KEYWORD_fn , [ generic_tag ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , [ directive ] ;
 function_parameter_list = function_parameter , [ OPERATOR_assign , default_value ] , { SYM_COMMA , function_parameter , [ OPERATOR_assign , default_value ] }
     ;
 function_output_list = KEYWORD_void 

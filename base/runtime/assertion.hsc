@@ -6,14 +6,14 @@ import intrinsics from "base"
 /*
  * Called by assert when an assertion fails, through context.assertion_handler.
  *
- * Handlers are expected to end the program, after reporting the failure however they like.
- * Continuing after a failed assertion isn't allowed: if a handler returns, assert traps.
+ * Handlers end the program, after reporting the failure however they like.
+ * Continuing after a failed assertion isn't allowed, so a handler never returns.
  *
  * A handler may be called by several threads or fibers at once, since they inherit it from the
  * context they were created with, so it must be thread-safe. While it runs, the current fiber
  * won't be suspended (it runs in a no-yield region).
  */
-AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) -> void
+AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #never_returns
 
 /*
  * If assertion is false, calls context.assertion_handler, which should end the program.
@@ -37,7 +37,7 @@ assert :: fn(assertion: bool, message: string, location := #caller_location) {
         carrier.asserting = true
         context.assertion_handler(location, message)
     }
-    // Only reached if the handler returned, or a handler's own assertion failed
+    // Only reached if a handler's own assertion failed
     intrinsics.trap()
 }
 
@@ -45,6 +45,6 @@ assert :: fn(assertion: bool, message: string, location := #caller_location) {
  * Stops the program without reporting anything.
  * The default until something better is installed, like std's default handler.
  */
-trap_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) {
+trap_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
     intrinsics.trap()
 }

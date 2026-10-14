@@ -9,11 +9,11 @@ mem_zero : fn(target: rawptr, len: usize) : ---
 /*
  * Stop the program immediately by executing an illegal instruction (ud2 on x86-64, brk on AArch64),
  * which the OS treats as an abnormal termination. Doesn't depend on the OS, so it works in
- * freestanding builds too. Never returns.
+ * freestanding builds too.
  *
  * At compile time, fails the compilation instead.
  */
-trap : fn() : ---
+trap #never_returns : fn() : ---
 
 /*
  * Fill addresses with the return addresses of the current call stack, innermost first,

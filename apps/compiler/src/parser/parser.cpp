@@ -550,6 +550,7 @@ namespace hemera::parser {
 			bool expected = false;
 			if (directive.value.value->compare("#export") == 0
 				|| directive.value.value->compare("#calling_convention") == 0
+				|| directive.value.value->compare("#never_returns") == 0
 				|| directive.value.value->compare("#externally_initialized") == 0
 				|| directive.value.value->compare("#section") == 0) {
 				expected = true;
@@ -895,6 +896,14 @@ namespace hemera::parser {
 				delete_node(state->node_alloc, &node);
 				return ExprResult{ false };
 			}
+		}
+		/*
+		 * #never_returns is part of the function's type. Only it continues a signature, since
+		 * line breaks mean nothing, and the next statement may start with a directive (#if).
+		 */
+		if (expect(state, TokenType::DIRECTIVE)
+			&& current_token(state).value->compare("#never_returns") == 0) {
+			next_as_node(state, ast::NodeType::DIRECTIVE, &node);
 		}
 		return ExprResult{ true, &node };
 	}

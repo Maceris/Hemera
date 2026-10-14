@@ -8,6 +8,8 @@ FunctionInfo :: struct {
     is_exported : bool,
     // False for bodiless --- declarations, like intrinsics and interface packages.
     has_body : bool,
+    // Marked #never_returns.
+    never_returns : bool,
     generic_bindings : GenericBinding[],
     parameters : FunctionParameter[],
     return_values : FunctionReturnValue[],

@@ -14,9 +14,9 @@ will behave similarly if you do a `#run assert(/*...*/, "Custom error here")`, b
 allows for a specific error message instead of the `#assert /* expression */` reporting style.
 
 The runtime `assert` calls `context.assertion_handler` when the assertion is false, which can be changed with
-`push_context`. Handlers are expected to end the program. If a handler returns anyway, `assert` stops the program
-with `intrinsics.trap()` (an illegal instruction), so execution never continues past a failed assertion.
-At compile time, that fails the build.
+`push_context`. Handlers end the program: `AssertionHandler` is `#never_returns`, so execution never continues
+past a failed assertion. If an assertion fails inside a handler, `assert` stops the program with `intrinsics.trap()`
+(an illegal instruction) instead of calling the handler again. At compile time, that fails the build.
 
 The checks the language does at run time fail the same way, through `context.assertion_handler` with a message
 saying what went wrong:
@@ -141,6 +141,28 @@ See [calling_convention.md](calling_convention.md#interrupt-functions).
 ```
 timer_interrupt #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFrame]) {/* ... */}
 ```
+
+### `#never_returns`
+
+`#never_returns` marks a function that never returns to its caller, like `os.exit` or `intrinsics.trap`.
+It's part of the function's type. On a declaration it's placed after the identifier, and in a function type after the signature.
+
+```
+exit #never_returns :: fn(code: int) {/* ... */}
+trap #never_returns : fn() : ---
+AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #never_returns
+```
+
+* The function has no results.
+* Its body can't `return` or reach its end: every path ends in a call to another `#never_returns` function, or in a
+  `loop` with no `break` out of it. Declarations without a body (`---`), like intrinsics and foreign functions, are trusted.
+* For the caller, code after the call is unreachable, as after a `return`, so a path ending in one needs no return value.
+* The caller's `defer`s don't run, since the call never returns and its scopes are never left.
+* A `#never_returns` function can be used where the same function type without it is expected, but not the other way around.
+* The compiler gives the function LLVM's `noreturn` attribute, and puts `unreachable` after every call to it,
+  including calls through function pointers.
+
+A call to it has no value, so `lookup(key) or_else exit(1)` isn't allowed. Use an `if` instead.
 
 ## Function Parameters
 

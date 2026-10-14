@@ -97,6 +97,8 @@ TypeInfoFunction :: struct {
     using TypeInfo,
     input: FunctionInput[],
     output: FunctionOutput[],
+    // Marked #never_returns.
+    never_returns: bool,
 }
 
 TypeInfoInteger :: struct {
