@@ -73,8 +73,23 @@ address for their whole lifetime, across yields and across carriers.
   a segment boundary in a loop doesn't allocate and free a segment each time.
 * A suspended fiber only holds the segments its live frames are in.
 
-Plain threads use the same prologue check: `stack_limit` is the thread's stack limit, and running out of stack is
-a deterministic error rather than a fault on a guard page.
+Plain threads run their Hemera code on segmented stacks too, the same way fibers do: a thread starts on a small first
+segment (1 KiB by default), allocated with the thread, and `morestack` adds segments as it needs them. Deep recursion
+works the same on a thread as on a fiber, and nothing has to guess a thread's stack size up front.
+
+Each thread also has a **native stack**: one contiguous stack, used only where Hemera code isn't running.
+That's foreign calls (see [Foreign Code](#foreign-code)), signal handlers (see [Signals](#signals)), and the
+scheduler's own work on threads that run fibers.
+
+* On systems that create every thread with a stack of their own (Linux, Windows, macOS), that stack is the native stack.
+* On systems where a thread starts with only the stack pointer it's given, the native stack is allocated on the
+  thread's first foreign call, with the size given when the thread was created. Threads that never call foreign code
+  never allocate one.
+
+A thread can ask for one fixed stack instead (`ThreadStack.Fixed` in `base/runtime/thread.hsc`), for code that must
+not allocate once it has started. Running out of a fixed stack is a deterministic error rather than a fault on a guard
+page. Freestanding programs, like kernels, always run on fixed stacks, since they have no allocator for `morestack`
+(see [compilation.md](compilation.md#freestanding-programs)).
 
 Since frames never move, pointers to stack variables stay valid across yields, even when a fiber moves to
 another OS thread. The compiler checks that they can't outlive the frame they point into,
@@ -98,11 +113,12 @@ The protocol is described in [calling_convention.md](calling_convention.md#suspe
 
 ## Foreign Code
 
-Foreign functions (C, and anything else using the platform's convention) can't run on a fiber's small segments,
+Foreign functions (C, and anything else using the platform's convention) can't run on small segments,
 and can't be suspended, since their frames may hold anything.
 
-* A call to a foreign function switches to the carrier thread's own stack first, and increments the carrier's
-  `foreign_depth`. Both are undone when the call returns.
+* A call to a foreign function switches to the thread's native stack first (allocating it on systems that don't
+  provide one, see [Stacks](#stacks)), and increments the carrier's `foreign_depth`. Both are undone when the call
+  returns.
 * If foreign code calls back into Hemera, the callback runs on the carrier's stack, and any yield inside it declines
   because `foreign_depth > 0`. Waiting inside a callback blocks the carrier.
 * If foreign code blocks, the carrier is blocked too. Schedulers may add carriers to make up for that.
@@ -110,8 +126,8 @@ and can't be suspended, since their frames may hold anything.
 ## Signals
 
 The runtime installs its signal handlers to run on an alternate signal stack for each carrier, since a signal
-delivered on a fiber's small segment could overflow it. Signal handlers installed by foreign libraries without
-an alternate stack can overflow a fiber's stack, the same as in Go.
+delivered on a small segment, a fiber's or a thread's, could overflow it. Signal handlers installed by foreign
+libraries without an alternate stack can overflow a segment, the same as in Go.
 
 # Contexts
 

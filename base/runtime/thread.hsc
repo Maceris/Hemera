@@ -36,8 +36,29 @@ ThreadFunction :: fn(any) -> void
     //TODO(ches) error, unsupported
 }
 
+// How a thread's stack is set up, see docs/multitasking.md (Stacks).
+ThreadStack :: union {
+    // Hemera code runs on segments, which grow as needed. The default.
+    Segmented(SegmentedStack),
+    // One fixed stack of this many bytes. Running out of it is an error.
+    Fixed(usize),
+}
+
+SegmentedStack :: struct {
+    // Size of the first segment, allocated with the thread.
+    first_segment : usize = 1024,
+    /*
+     * Size of the native stack for foreign calls, on systems that don't give every thread a stack.
+     * It's allocated on the thread's first foreign call. Ignored where the system provides one.
+     */
+    native_stack : usize = 65536,
+}
+
+DEFAULT_THREAD_STACK : ThreadStack : .Segmented(SegmentedStack.{})
+
 Thread :: struct {
     index : usize,
+    stack : ThreadStack,
     function : ThreadFunction,
     data : any?,
     // A copy of the creating thread's context, which the new thread starts with
@@ -48,8 +69,13 @@ Thread :: struct {
 }
 
 // data is kept until the thread runs, so it can't point into the caller's stack
-thread_create :: fn(function: ThreadFunction, data #escaping : any? = null) -> ptr[Thread] {
+thread_create :: fn(
+    function: ThreadFunction,
+    data #escaping : any? = null,
+    stack := DEFAULT_THREAD_STACK,
+) -> ptr[Thread] {
     result : ptr[mut Thread] = new(Thread)
+    result.stack = stack
     result.function = function
     result.data = data
     result.starting_context = context

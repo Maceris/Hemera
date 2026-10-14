@@ -184,8 +184,9 @@ to call `morestack`, without going past the end:
 * Functions with frames up to `STACK_SMALL` bytes compare the stack pointer directly.
 * Larger functions compare where their frame will end.
 
-The check costs a load, a compare and a predicted branch. On plain threads `stack_limit` is the thread stack's
-limit, so the same check catches stack overflow there.
+The check costs a load, a compare and a predicted branch. Plain threads run on segments like fibers, so the check
+grows their stacks too. On a thread with a fixed stack, `stack_limit` is that stack's limit, so the same check catches
+stack overflow there.
 
 What happens when the check fails is a per-target option, `TargetOptions.stack_check_failure`: call `morestack`
 (the default), trap, or call `context.assertion_handler`. Code with one fixed-size stack and no allocator, like a
@@ -249,9 +250,10 @@ A call to a foreign function goes through a shim that:
 
 1. Increments the carrier's `foreign_depth` and saves the current context pointer in the carrier,
    for any callbacks.
-2. If the stack pointer is on a fiber segment, switches to the carrier thread's own stack (just below where the
+2. If the stack pointer is on a segment, switches to the thread's native stack (on a fiber, just below where the
    scheduler's stack pointer was when it resumed the fiber), copies any stack arguments,
-   and sets `stack_limit` to that stack's limit.
+   and sets `stack_limit` to that stack's limit. On systems that don't give every thread a stack, the native stack is
+   allocated here on the thread's first foreign call.
 3. Calls the function with the platform's convention.
 4. Undoes 2 and 1.
 

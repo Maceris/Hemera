@@ -17,7 +17,7 @@ What the `from` string names depends on how it starts:
 
 * **A built-in location** (`base`, `std`, `user` or `vendor`), optionally followed by subfolders, names the folder
   that *contains* the package, and the identifier after `import` is the package's folder inside it.
-  `import io from "std"` is `std/io`, and `import slop_os from "std/os"` is `std/os/slop_os`.
+  `import io from "std"` is `std/io`, and `import json from "std/encoding"` is `std/encoding/json`.
 * **Anything else** is a path relative to the current file, like `"../neighbor"` or `"bar_v1"`. It names the
   package's folder *itself*, and the identifier after `import` is just the name it's used by in this file.
   `import foo from "../neighbor"` is the package in `../neighbor`, used as `foo`.
@@ -39,7 +39,7 @@ import builtin from "base"
 import io // from "std"
 import test from "std"
 // Subfolders of a built-in location
-import slop_os from "std/os"
+import json from "std/encoding"
 import x86_64 from "base/intrinsics"
 // You can give packages an alias
 import pandas as pd from "user"
