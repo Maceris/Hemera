@@ -229,3 +229,16 @@ Not included are the scheduler's queues, and whatever the program allocates per 
 
 At compile time the compiler may run fibers however it likes (fake threads, running them to completion one at a
 time), and `fiber_yield()` may do nothing. Functions see the same interface either way.
+
+## Open Questions
+
+* **Windows: stack bounds in the thread environment block.** Structured exception handling and some APIs read the
+  current stack's bounds from the thread environment block. Either update them on every switch to a fiber's segment,
+  as Windows' own fibers do, or rely only on vectored exception handlers, as Go does.
+* **Windows: the carrier pointer's thread-local storage slot.** Whether it can be at a fixed offset, so foreign
+  callbacks find the carrier block with a single load.
+* **LLVM:** reserving the carrier register, and emitting the prologue stack check and the `morestack` protocol
+  described in [calling_convention.md](calling_convention.md).
+* **Return addresses of suspended fibers.** While a fiber is suspended, its return addresses are in ordinary memory and
+  are trusted when it resumes. IBT and BTI limit where they can lead, and the runtime could also check them against a
+  table of call sites. A hardened mode with a shadow stack per fiber is possible, at a much higher memory cost.
