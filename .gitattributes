@@ -1,0 +1,2 @@
+# Patches must keep LF line endings, or git apply fails on files checked out with CRLF
+*.patch text eol=lf
