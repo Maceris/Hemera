@@ -60,7 +60,8 @@ Programs with nothing underneath them, like kernels, turn it off with `TargetOpt
 Their entry function then has to do it before calling any Hemera code that needs it:
 
 1. Point a carrier block's `stack_limit` at the end of the stack, and load it with `intrinsics.set_carrier`.
-2. `push_context` a context built from constants, like `runtime.FAILING_ALLOCATOR`, until there's a heap.
+2. Push a context made of constants, like `push_context boot from runtime.MINIMAL_CONTEXT`, until there's a heap,
+   a logger and a clock (see [control_flow.md](control_flow.md#pushing-a-whole-context)).
 
 Freestanding programs usually also set `TargetOptions.stack_check_failure` to `.Trap` or `.AssertionHandler`,
 since they have no allocator for `morestack`.

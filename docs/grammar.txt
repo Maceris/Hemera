@@ -439,8 +439,10 @@ loop = [ KEYWORD_with , SYM_LBRACE , { any_definition } , SYM_RBRACE ]
     , [ KEYWORD_while , expression_with_result ]
     ;
 
+# Either a whole context (from value), or a copy of the current one with overrides; they don't combine
 push_context = KEYWORD_push_context , identifier
-    , SYM_LPAREN , context_override , { SYM_COMMA , context_override } , [ SYM_COMMA ] , SYM_RPAREN
+    , ( ( KEYWORD_from , expression_with_result )
+      | ( SYM_LPAREN , context_override , { SYM_COMMA , context_override } , [ SYM_COMMA ] , SYM_RPAREN ) )
     , block
     ;
 

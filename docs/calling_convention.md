@@ -396,7 +396,8 @@ page_fault #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFram
 * It gets no context, and the carrier register holds whatever the interrupted code had, which may not be a
   carrier at all (user-mode code, for example). So its prologue has no stack check, and before calling anything
   that needs them, it loads a carrier block with `intrinsics.set_carrier` (found through per-CPU data, like the
-  `gs` base after `swapgs`) and pushes a context.
+  `gs` base after `swapgs`) and pushes a context with `push_context ... from`
+  (see [control_flow.md](control_flow.md#functions-without-a-context)).
 
 ### Entry Functions
 
@@ -410,7 +411,9 @@ user_entry #calling_convention(.entry) :: fn(frame: ptr[mut x86_64.RegisterFrame
     // No carrier yet: find this CPU's through per-CPU data, then set up a context
     cpu : ptr[ArchCpu] : cast[ptr[ArchCpu]](x86_64.read_gs_base())
     intrinsics.set_carrier(cpu.carrier)
-    /* ... */
+    push_context cpu_context from cpu.context^ {
+        dispatch(frame)
+    }
 }
 
 system_call #calling_convention(.syscall_entry) :: fn(frame: ptr[mut x86_64.RegisterFrame]) #never_returns {/* ... */}
@@ -439,7 +442,7 @@ stack using the `x86_64.SyscallScratch` the `gs` base points at, then builds the
 
 For both:
 * The body starts like an interrupt function's: no stack check in its prologue, no carrier block and no context until it
-  sets them up with `intrinsics.set_carrier` and `push_context`.
+  sets them up with `intrinsics.set_carrier` and `push_context ... from`.
 * Interrupts stay as the CPU left them (disabled through an interrupt gate, or by `IA32_FMASK` for `SYSCALL`).
 * A `.entry` function may return, which is meant for NMIs: the generated code restores the frame and returns with
   `iretq`, with the matching `swapgs`. A `.syscall_entry` function is always `#never_returns`.

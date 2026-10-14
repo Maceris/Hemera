@@ -99,3 +99,24 @@ copy_extensions :: fn(
     }
     return nodes, null
 }
+
+/*
+ * A context made only of constants, for code that has to push one before it has anything real:
+ * freestanding entry points, like a kernel's, before there's a heap, a logger or a clock.
+ * Allocations fail, log messages are dropped, the clock has no time, asking for random bytes
+ * traps, and a failed assertion traps.
+ *
+ *     push_context boot from runtime.MINIMAL_CONTEXT {
+ *         // ...
+ *     }
+ */
+MINIMAL_CONTEXT :: Context.{
+    allocator = FAILING_ALLOCATOR,
+    logger = &DISCARDING_LOGGER,
+    log_level = .FATAL,
+    clock = &NO_CLOCK,
+    random = &NO_RANDOM,
+    assertion_handler = trap_assertion_handler,
+    user_data = null,
+    extensions = null,
+}

@@ -11,3 +11,17 @@ push_context_overrides :: fn() {
         }
     }
 }
+
+push_whole_contexts :: fn(cpu: ptr[PerCpu], saved: Context) {
+    push_context boot from runtime.MINIMAL_CONTEXT {
+        print("minimal")
+    }
+    push_context cpu_context from cpu.context^ {
+        push_context quiet (log_level = .ERROR) {
+            print("nested")
+        }
+    }
+    push_context restored from saved {
+        print("saved")
+    }
+}

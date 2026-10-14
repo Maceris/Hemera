@@ -274,6 +274,48 @@ push_context my_context (allocator = memory.ArenaAllocator, log_level = .WARN) {
 * New threads and fibers get a copy of the context that was current when they were created
   (see [multitasking.md](multitasking.md#contexts)).
 
+### Pushing a Whole Context
+
+`push_context name from value` pushes a copy of a whole `runtime.Context` instead of a copy of the current one:
+
+```
+push_context boot from runtime.MINIMAL_CONTEXT {
+    start_kernel()
+}
+
+push_context cpu_context from cpu.context^ {
+    handle_interrupt(frame)
+}
+```
+
+* The value is copied into the current function's stack frame, so the pushed context can't change under the block
+  even if the original does. Everything else is as above: the same rules for what it may point to, the name, how long it
+  lasts, and `defer`.
+* It works anywhere, including where there is a current context, which it replaces for the block.
+* It can't be combined with overrides: `from value (allocator = x)` would read as a call to `value`. Nest them instead:
+
+```
+push_context cpu_context from cpu.context^ {
+    push_context quiet (log_level = .ERROR) {/* ... */}
+}
+```
+
+`runtime.MINIMAL_CONTEXT` is made only of constants, for code that needs a context before it has anything real:
+allocations fail, log messages are dropped, the clock has no time, and asking for random bytes or failing an assertion
+traps.
+
+### Functions Without a Context
+
+Most functions are called with a context. Three kinds start without one: freestanding entry points (see
+[compilation.md](compilation.md#freestanding-programs)), [interrupt functions](calling_convention.md#interrupt-functions)
+and [entry functions](calling_convention.md#entry-functions). Until they push one with `push_context ... from`:
+
+* `context` can't be used, and the override form of `push_context` is an error, since there is nothing to copy.
+* Only intrinsics (bodiless declarations in `base`, which compile to instructions) can be called, like
+  `intrinsics.set_carrier`. Every other call needs a context to pass.
+
+Calls inside the `push_context ... from` block get the pushed context as usual.
+
 ### The Context is Read-Only
 
 The compiler rejects anything that would change the current context, rather than replace it for a scope:

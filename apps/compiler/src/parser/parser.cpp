@@ -2735,6 +2735,30 @@ namespace hemera::parser {
 		}
 		next_as_node(state, ast::NodeType::IDENTIFIER, &push);
 
+		/*
+		 * A whole context, from value. It can't be combined with overrides, since
+		 * value (field = x) would read as a call.
+		 */
+		if (expect(state, TokenType::KEYWORD_FROM)) {
+			ast::Node& from = next_as_node(state, ast::NodeType::KEYWORD_FROM, &push);
+			ExprResult value = expression_with_result(state, true);
+			if (!value.success) {
+				return false;
+			}
+			from.children.push_back(value.result);
+
+			if (!expect(state, TokenType::SYM_LBRACE)) {
+				report_error_on_last_token(state, ErrorCode::E3018);
+				return false;
+			}
+			ExprResult from_block = block(state);
+			if (!from_block.success) {
+				return false;
+			}
+			push.children.push_back(from_block.result);
+			return true;
+		}
+
 		// The overrides, (field = value, ...), at least one
 		if (!expect(state, TokenType::SYM_LPAREN)) {
 			report_error_on_last_token(state, ErrorCode::E3014);

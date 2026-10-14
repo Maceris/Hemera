@@ -44,3 +44,21 @@ duration_between :: fn(start, end: MonotonicTime) -> Duration {
     }
     return Duration.{seconds, cast[u32](nanos)}
 }
+
+/*
+ * A clock with no time source, for MINIMAL_CONTEXT: the wall clock is always unavailable, and
+ * monotonic time stays at 0, since it can't report an error.
+ */
+NO_CLOCK :: Clock.{
+    data = null,
+    monotonic = no_clock_monotonic,
+    wall = no_clock_wall,
+}
+
+no_clock_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
+    return 0
+}
+
+no_clock_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
+    return .Error(.Unavailable)
+}
