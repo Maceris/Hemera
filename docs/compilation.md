@@ -63,6 +63,10 @@ Their entry function then has to do it before calling any Hemera code that needs
 2. Push a context made of constants, like `push_context boot from runtime.MINIMAL_CONTEXT`, until there's a heap,
    a logger and a clock (see [control_flow.md](control_flow.md#pushing-a-whole-context)).
 
+Programs with small fixed-size stacks, like kernels, can also set `TargetOptions.max_frame_size`: any function whose
+stack frame is larger is a compile error, so a large stack buffer is caught when building rather than when the stack
+runs out.
+
 Freestanding programs usually also set `TargetOptions.stack_check_failure` to `.Trap` or `.AssertionHandler`,
 since they have no allocator for `morestack`.
 

@@ -13,6 +13,15 @@ Files import other packages using the `import` keyword.
 They may (and usually do) have a pre-specified `from` part, specifying where the package is from, in the format `from "name"`.
 These can be left off for `base` and `std`.
 
+What the `from` string names depends on how it starts:
+
+* **A built-in location** (`base`, `std`, `user` or `vendor`), optionally followed by subfolders, names the folder
+  that *contains* the package, and the identifier after `import` is the package's folder inside it.
+  `import io from "std"` is `std/io`, and `import slop_os from "std/os"` is `std/os/slop_os`.
+* **Anything else** is a path relative to the current file, like `"../neighbor"` or `"bar_v1"`. It names the
+  package's folder *itself*, and the identifier after `import` is just the name it's used by in this file.
+  `import foo from "../neighbor"` is the package in `../neighbor`, used as `foo`.
+
 The built in locations are:
 
 * `base` - Part of the language itself, which must be implemented by all compilers
@@ -29,13 +38,17 @@ import bar from "bar_v1"
 import builtin from "base"
 import io // from "std"
 import test from "std"
+// Subfolders of a built-in location
+import slop_os from "std/os"
+import x86_64 from "base/intrinsics"
 // You can give packages an alias
 import pandas as pd from "user"
 import vulkan as vk from "vendor"
 ```
 
 If, for some reason, trying to import from a folder in the local folder with a name exactly the same as a built-in location,
-a relative path is used: `import example from "./base"`.
+a relative path is used: `import example from "./base"`. The same goes for its subfolders: `"std/os"` is always the
+built-in location, and a local folder named `std` is `"./std/os"`.
 
 ### Circular Imports
 
@@ -149,7 +162,7 @@ knows which parts of `std` it can use.
 
 | Tier | Needs | Packages |
 |---|---|---|
-| `Freestanding` | Nothing but `base` | `atomic`, `concurrency`, `reflection`, `tiers` |
+| `Freestanding` | Nothing but `base` | `atomic`, `concurrency`, `reflection`, `slop_os`, `tiers` |
 | `Allocating` | An `Allocator` in `context` | `formatting`, `memory`, `string` |
 | `Os` | System calls | `fiber`, `io`, `logger`, `os`, `time` |
 

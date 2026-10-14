@@ -82,6 +82,11 @@ TargetOptions :: struct {
      */
     startup_code : bool = true,
     stack_check_failure : StackCheckFailure,
+    /*
+     * Largest stack frame, in bytes, any function may have. A larger one is a compile error.
+     * 0 means no limit. For programs with small fixed stacks, like a kernel.
+     */
+    max_frame_size : usize,
 }
 
 // What a function does when its prologue stack check finds too little room left.
