@@ -27,6 +27,57 @@ InterruptFrame :: struct {
     ss : u64,
 }
 
+/*
+ * The interrupted code's registers, saved by the generated code of entry functions
+ * (#calling_convention(.entry) and .syscall_entry) and restored by return_to_user, from the lowest address up.
+ * Its layout is part of the calling convention version.
+ */
+RegisterFrame :: struct {
+    r15 : u64,
+    r14 : u64,
+    r13 : u64,
+    r12 : u64,
+    r11 : u64,
+    r10 : u64,
+    r9 : u64,
+    r8 : u64,
+    rbp : u64,
+    rdi : u64,
+    rsi : u64,
+    rdx : u64,
+    rcx : u64,
+    rbx : u64,
+    rax : u64,
+    // The vector that arrived, or SYSCALL_VECTOR for a SYSCALL.
+    vector : u64,
+    // The CPU's error code, or 0 for vectors without one.
+    error_code : u64,
+    // Pushed by the CPU, or filled in by a .syscall_entry function's generated code.
+    rip : u64,
+    cs : u64,
+    rflags : u64,
+    rsp : u64,
+    ss : u64,
+}
+
+// RegisterFrame.vector for a frame saved by a .syscall_entry function.
+SYSCALL_VECTOR :: 0xffff_ffff_ffff_ffff
+
+/*
+ * What the gs base must point at while in the kernel, at offset 0, for .syscall_entry functions:
+ * their generated code saves the user's stack pointer here, and loads kernel_stack.
+ */
+SyscallScratch :: struct {
+    // The top of the stack SYSCALL entry switches to.
+    kernel_stack : u64,
+    user_stack : u64,
+}
+
+// Addresses for the 256 interrupt descriptor table entries, from entry_points.
+EntryPoints :: struct {
+    addresses : u64[256],
+}
+
 CpuidResult :: struct {
     eax : u32,
     ebx : u32,
@@ -90,8 +141,49 @@ write_cr4 : fn(value: u64) : ---
 // Flush the TLB entry for the page containing address.
 invlpg : fn(address: rawptr) : ---
 
+// Entry and return
+
+/*
+ * One entry point per vector for handler, an entry function (#calling_convention(.entry)).
+ * The compiler generates a small stub per vector that records the vector number (and an error code of 0
+ * where the CPU doesn't push one), then enters handler.
+ *
+ * handler is also a generic parameter, so it must be known at compile time, and the stubs are
+ * generated once for each handler this is called with.
+ */
+entry_points : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]) #never_returns)) -> ptr[EntryPoints] : ---
+
+/*
+ * Restore every register from frame and return to user mode: swapgs, then sysretq when
+ * rcx == rip, r11 == rflags and rip is canonical, otherwise iretq.
+ */
+return_to_user #never_returns : fn(frame: ptr[RegisterFrame]) : ---
+
+// The current gs base: rdgsbase if FSGSBASE is enabled, otherwise the IA32_GS_BASE MSR.
+read_gs_base : fn() -> rawptr : ---
+
+// Vector state
+
+/*
+ * Save or restore the state components selected by mask (XCR0 bits) to or from area,
+ * which is 64-byte aligned and sized from CPUID leaf 0xD.
+ */
+xsave : fn(area: rawptr, mask: u64) : ---
+// Compacted format, leaving out components in their initial state.
+xsavec : fn(area: rawptr, mask: u64) : ---
+// Skips components unchanged since the last xrstor from the same area.
+xsaveopt : fn(area: rawptr, mask: u64) : ---
+xrstor : fn(area: rawptr, mask: u64) : ---
+// Read or write an extended control register; register 0 is XCR0.
+xgetbv : fn(register: u32) -> u64 : ---
+xsetbv : fn(register: u32, value: u64) : ---
+
 // Identification and timing
 
 cpuid : fn(leaf: u32, subleaf: u32 = 0) -> CpuidResult : ---
 // The time-stamp counter. Not serializing, so it may run before earlier instructions finish.
 rdtsc : fn() -> u64 : ---
+// A value from the CPU's entropy source, or null when none was ready (the carry flag was clear).
+rdseed : fn() -> u64? : ---
+// A value from the CPU's random number generator, seeded from its entropy source, or null when none was ready.
+rdrand : fn() -> u64? : ---

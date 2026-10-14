@@ -11,7 +11,8 @@ Every function keeps a base pointer, so the chain of saved base pointers always 
 
 This convention is `hemera-abi-v1`. Anything that separately compiled code or tools depend on gets a new version
 when it changes: register use, frame layout, carrier block and fiber offsets, the fiber resume loop
-(`FiberResumeState`, `.loop_return`) and stack segment layout. Within a version, those are stable, so debuggers and
+(`FiberResumeState`, `.loop_return`), stack segment layout, and the layout of `RegisterFrame` for
+[entry functions](#entry-functions). Within a version, those are stable, so debuggers and
 profilers can unwind suspended fibers from outside the process.
 
 ### Carrier Register
@@ -28,6 +29,7 @@ The register allocator never uses it, functions never save or restore it, and fi
 It is callee-saved in the platform conventions, so foreign code preserves it too.
 It is only loaded from the OS's thread-local storage when a thread starts, and when foreign code calls into Hemera.
 Code that starts without Hemera's startup code (freestanding entry points, [interrupt functions](#interrupt-functions),
+[entry functions](#entry-functions),
 threads on systems without thread-local storage) loads it itself with `intrinsics.set_carrier`.
 
 The first field of the carrier block is `stack_limit`, so the prologue check below is a single memory operand.
@@ -395,6 +397,59 @@ page_fault #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFram
   carrier at all (user-mode code, for example). So its prologue has no stack check, and before calling anything
   that needs them, it loads a carrier block with `intrinsics.set_carrier` (found through per-CPU data, like the
   `gs` base after `swapgs`) and pushes a context.
+
+### Entry Functions
+
+Entry functions are how a kernel is entered from user mode, and returns to it (x86-64 only for now). Unlike an
+[interrupt function](#interrupt-functions), an entry function gets every register of the interrupted code as data,
+in a `RegisterFrame`, and doesn't have to return to it: a kernel can save the frame, switch to another thread, and
+leave with `x86_64.return_to_user`.
+
+```
+user_entry #calling_convention(.entry) :: fn(frame: ptr[mut x86_64.RegisterFrame]) #never_returns {
+    // No carrier yet: find this CPU's through per-CPU data, then set up a context
+    cpu : ptr[ArchCpu] : cast[ptr[ArchCpu]](x86_64.read_gs_base())
+    intrinsics.set_carrier(cpu.carrier)
+    /* ... */
+}
+
+system_call #calling_convention(.syscall_entry) :: fn(frame: ptr[mut x86_64.RegisterFrame]) #never_returns {/* ... */}
+```
+
+`#calling_convention(.entry)` is entered through the interrupt descriptor table. The generated code before the body:
+1. pushes the vector number, and an error code of 0 for vectors where the CPU doesn't push one, so the frame always
+   has the same shape;
+2. runs `swapgs` if the interrupted code was in user mode. For NMIs, machine checks and double faults, which can arrive
+   between a `swapgs` and the `iretq` after it, it decides from `IA32_GS_BASE` instead of the saved `cs`;
+3. pushes every general register, completing the `RegisterFrame` on the stack the CPU switched to;
+4. calls the body with a pointer to the frame.
+
+The function can't be called from Hemera code. Its addresses come from `x86_64.entry_points`, which the compiler
+expands into one small stub per vector (256 in all) that pushes the vector number and jumps to the function:
+
+```
+// handler is a generic parameter too, so it must be known at compile time
+idt_addresses :: x86_64.entry_points(user_entry)
+```
+
+`#calling_convention(.syscall_entry)` is the target of the `SYSCALL` instruction (`IA32_LSTAR`). The CPU pushes nothing
+and leaves the user's stack pointer, so the generated code runs `swapgs`, saves the user's `rsp` and loads the kernel
+stack using the `x86_64.SyscallScratch` the `gs` base points at, then builds the `RegisterFrame` from the registers
+(`rip` from `rcx`, `rflags` from `r11`, `vector` is `x86_64.SYSCALL_VECTOR`).
+
+For both:
+* The body starts like an interrupt function's: no stack check in its prologue, no carrier block and no context until it
+  sets them up with `intrinsics.set_carrier` and `push_context`.
+* Interrupts stay as the CPU left them (disabled through an interrupt gate, or by `IA32_FMASK` for `SYSCALL`).
+* A `.entry` function may return, which is meant for NMIs: the generated code restores the frame and returns with
+  `iretq`, with the matching `swapgs`. A `.syscall_entry` function is always `#never_returns`.
+
+`x86_64.return_to_user(frame)` restores every register from a frame and returns to user mode: `swapgs`, then `sysretq`
+when its conditions hold (`rcx == rip`, `r11 == rflags`, and `rip` canonical), otherwise `iretq`. Since `RegisterFrame`'s
+layout is part of the convention version, a kernel may keep frames in its thread structures and return through any of
+them.
+
+The compiler generates these sequences itself; Hemera has no inline assembly.
 
 ## Other Conventions
 

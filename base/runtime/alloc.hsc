@@ -24,15 +24,15 @@ free_array :: fn[T](
 }
 
 new :: fn[T](
-    t: type, 
+    T: type, 
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (ptr[mut T], AllocatorError?) {
-    return new_aligned(t, align_of(T), allocator, loc)
+    return new_aligned(T, align_of(T), allocator, loc)
 }
 
 new_aligned :: fn[T](
-    t: type,
+    T: type,
     alignment: int,
     allocator := context.allocator,
     loc := #caller_location,
@@ -41,16 +41,16 @@ new_aligned :: fn[T](
 }
 
 new_array :: fn[T](
-    t: type,
+    T: type,
     count: usize,
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (T[], AllocatorError?) {
-    new_array_aligned(t, count, align_of(T), allocator, loc)
+    new_array_aligned(T, count, align_of(T), allocator, loc)
 }
 
 new_array_aligned :: fn[T](
-    t: type,
+    T: type,
     count: usize,
     alignment: int,
     allocator := context.allocator,
