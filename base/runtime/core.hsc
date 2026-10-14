@@ -20,19 +20,9 @@ AllocatorError :: enum #backed_by(u8) {
     InvalidArgument,
 }
 
-Optional :: union[T] {
-    Some(T),
-    None,
-}
-
 SourceCodeLocation :: struct {
     file_path: string,
     function: string,
     line: u32,
     column: u16,
-}
-
-Result :: union[T, E] {
-    Ok(T),
-    Error(E),
 }

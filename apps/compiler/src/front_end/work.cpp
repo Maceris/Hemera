@@ -6,6 +6,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/mlir_generation.h"
+#include "front_end/names.h"
 #include "front_end/type_checking.h"
 #include "front_end/work.h"
 #include "lexer/lexer.h"
@@ -45,9 +46,53 @@ namespace hemera {
 		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
 	}
 	
+	static void process_top_level_nodes(WorkThreadData& executor, const FileLocation& location,
+		FileInfo* file_info, const MyVector<ast::Node*>& nodes, size_t start);
+
+	/*
+	 * Evaluates an #if chain's conditions in order and processes the branch it picks. Waiting for a
+	 * constant parks the whole chain, which starts over when woken; nothing is processed until a
+	 * branch is picked.
+	 */
+	static Progress decide_if_chain(WorkThreadData& executor, IfChain* chain) {
+		FileInfo* file_info = find_file(executor.program_info, chain->file.package_path,
+			chain->file.file_name);
+		const std::string file_path = (std::filesystem::path(std::string_view(*chain->file.package_path))
+			/ std::string_view(*chain->file.file_name)).string();
+
+		for (ast::Node* branch : chain->branches) {
+			const bool is_else = branch->value.value->compare("#else") == 0;
+			if (!is_else) {
+				if (branch->children.empty()) {
+					return Progress::FAILED;
+				}
+				ConstantValue condition;
+				Progress progress = evaluate_condition(executor, chain, file_info, branch->children[0],
+					condition);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				if (ConstantValue::Kind::BOOLEAN != condition.kind) {
+					report_error(ErrorCode::E4010, file_path, branch->value.line_number,
+						branch->value.column_number, "an #if condition must be true or false");
+					return Progress::FAILED;
+				}
+				if (!condition.boolean) {
+					continue;
+				}
+			}
+			process_top_level_nodes(executor, chain->file, file_info, branch->children,
+				is_else ? 0 : 1);
+			return Progress::DONE;
+		}
+		return Progress::DONE;
+	}
+
 	void work_if_else(WorkThreadData& executor, WorkTarget& target) {
-		//TODO(ches) do this
-		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
+		IfChain* chain = target.value.if_chain;
+		if (decide_if_chain(executor, chain) != Progress::PARKED) {
+			end_if_chain(executor, chain);
+		}
 	}
 
 	void work_function_code_generation(WorkThreadData& executor, FunctionInfo* function) {
@@ -112,6 +157,9 @@ namespace hemera {
 		return package_folder / location;
 	}
 	
+	static void list_package_files(WorkThreadData& executor, InternedString package_path_text,
+		PackageInfo* package_info);
+
 	void work_import(WorkThreadData& executor, WorkTarget& target) {
 		LOG_ASSERT(target.type == WorkTargetType::PACKAGE);
 		// We expect the path to be a full canonical path at this point
@@ -140,6 +188,17 @@ namespace hemera {
 			packages.insert(std::make_pair(package_path_text, package_info));
 			package_info->full_path = package_path_text;
 		}
+		begin_file_work(executor, package_path_text);
+		list_package_files(executor, package_path_text, package_info);
+		end_file_work(executor, package_path_text);
+	}
+
+	// Creates a PARSE work for each source file in a package.
+	static void list_package_files(WorkThreadData& executor, InternedString package_path_text,
+		PackageInfo* package_info) {
+
+		std::filesystem::path package_path(*package_path_text);
+		std::error_code error;
 		
 		{
 			std::scoped_lock<std::mutex> lock(package_info->files_mutex);
@@ -162,6 +221,7 @@ namespace hemera {
 				FileInfo* file_info = INFO_ALLOC->new_object<FileInfo>();
 				package_info->files.insert(std::make_pair(file_name, file_info));
 
+				begin_file_work(executor, package_path_text);
 				executor.create_work(
 					WorkType::PARSE,
 					WorkTarget{
@@ -173,17 +233,167 @@ namespace hemera {
 		}
 	}
 	
+	// Records an import, and starts loading its package unless the compiler provides it (base).
+	static void process_import(WorkThreadData& executor, const FileLocation& location,
+		FileInfo* file_info, ast::Node* child) {
+
+		const std::string file_path = (std::filesystem::path(std::string_view(*location.package_path))
+			/ std::string_view(*location.file_name)).string();
+
+		ImportInfo* import = INFO_ALLOC->new_object<ImportInfo>();
+		import->node = child;
+		import->name = child->children[0]->value.value;
+
+		for (size_t i = 1; i < child->children.size(); ++i) {
+			if (ast::NodeType::KEYWORD_AS == child->children[i]->node_type) {
+				++i;
+				import->alias = child->children[i]->value.value;
+				continue;
+			}
+			if (ast::NodeType::KEYWORD_FROM == child->children[i]->node_type) {
+				++i;
+				import->location = child->children[i]->value.value;
+				continue;
+			}
+		}
+
+		// Base is the interface to what the compiler provides, so nothing is read from files
+		std::string location_text = import->location == nullptr
+			? std::string("std")
+			: string_literal_text(import->location);
+		const size_t slash = location_text.find('/');
+		if (location_text.substr(0, slash) == "base") {
+			std::string subfolders = slash == std::string::npos ? std::string() : location_text.substr(slash + 1) + "/";
+			import->resolved_path = intern(std::string(BASE_PACKAGE_PREFIX) + subfolders
+				+ std::string(std::string_view(*import->name)));
+		}
+		else {
+			std::error_code error;
+			std::filesystem::path folder = std::filesystem::weakly_canonical(
+				import_folder(*executor.global_data->options,
+					std::filesystem::path(*location.package_path), *import),
+				error);
+			if (error || !std::filesystem::is_directory(folder, error)) {
+				report_error(ErrorCode::E4005, file_path,
+					child->value.line_number, child->value.column_number,
+					folder.string());
+				return;
+			}
+			import->resolved_path = intern(folder.string());
+			executor.create_work(WorkType::IMPORT,
+				WorkTarget{ WorkTargetType::PACKAGE, { .name = import->resolved_path } });
+		}
+
+		{
+			std::scoped_lock<std::mutex> lock(file_info->imports_mutex);
+			file_info->imports.push_back(import);
+		}
+	}
+
+	/*
+	 * Handles a file's top-level nodes from start: imports, definitions (declared now, resolved by
+	 * their own work), #if chains (evaluated by their own work) and #run. Used for a whole file, and
+	 * for the branch an #if chain picks.
+	 */
+	static void process_top_level_nodes(WorkThreadData& executor, const FileLocation& location,
+		FileInfo* file_info, const MyVector<ast::Node*>& nodes, size_t start) {
+
+		const std::string file_path = (std::filesystem::path(std::string_view(*location.package_path))
+			/ std::string_view(*location.file_name)).string();
+
+		for (size_t i = start; i < nodes.size(); ++i) {
+			ast::Node* child = nodes[i];
+
+			if (child->node_type == ast::NodeType::PACKAGE) {
+				continue;
+			}
+			if (child->node_type == ast::NodeType::IMPORT) {
+				LOG_ASSERT(child->children.size() % 2 == 1);
+				process_import(executor, location, file_info, child);
+				continue;
+			}
+			if (child->node_type == ast::NodeType::DEFINITION) {
+				declare(executor, location.package_path, location.file_name, file_info, child);
+				executor.create_work(WorkType::TYPE_CHECK,
+					WorkTarget(WorkTargetType::DEFINITION,
+						{ .node_location = { location, child } })
+				);
+				continue;
+			}
+			if (child->node_type == ast::NodeType::DIRECTIVE) {
+				InternedString value = child->value.value;
+
+				if (value->compare("#if") == 0) {
+					// The chain: this #if, and any #else_if and #else right after it
+					IfChain* chain = INFO_ALLOC->new_object<IfChain>();
+					chain->file = location;
+					chain->branches.push_back(child);
+					while (i + 1 < nodes.size()
+						&& ast::NodeType::DIRECTIVE == nodes[i + 1]->node_type
+						&& (nodes[i + 1]->value.value->compare("#else_if") == 0
+							|| nodes[i + 1]->value.value->compare("#else") == 0)) {
+						++i;
+						chain->branches.push_back(nodes[i]);
+						if (nodes[i]->value.value->compare("#else") == 0) {
+							break;
+						}
+					}
+					begin_if_chain(executor, chain);
+					executor.create_work(WorkType::IF_ELSE,
+						WorkTarget(WorkTargetType::EXPRESSION, { .if_chain = chain }));
+				}
+				else if (value->compare("#else_if") == 0 || value->compare("#else") == 0) {
+					std::string details = std::format("{} without an #if", *value);
+
+					report_error(ErrorCode::E4002, file_path,
+						child->value.line_number,
+						child->value.column_number,
+						details);
+				}
+				else if (value->compare("#run") == 0) {
+					ast::Node* expr = child->children[0];
+
+					executor.create_work(WorkType::EXECUTION,
+						WorkTarget(WorkTargetType::EXPRESSION,
+							{ .node_location = { location, expr } })
+					);
+				}
+				else {
+					std::string details = std::string(*value);
+
+					report_error(ErrorCode::E4002, file_path,
+						child->value.line_number,
+						child->value.column_number,
+						details);
+				}
+				continue;
+			}
+
+			std::string details = std::format("Did not expect {}",
+				*child->value.value);
+
+			report_error(ErrorCode::E4001, file_path,
+				child->value.line_number,
+				child->value.column_number,
+				details);
+		}
+	}
+
+	static void parse_file(WorkThreadData& executor, const FileLocation& location);
+
 	void work_parse(WorkThreadData& executor, WorkTarget& target) {
 		const FileLocation& location = target.value.file_location;
 		LOG_ASSERT(location.file_name != nullptr);
 
 		if (location.package_path == nullptr) {
-			std::string details = std::format("Missing package path for {}",
-				*location.package_path);
-			report_error(ErrorCode::E4000, *location.file_name, 0, 0,
-				details);
+			report_error(ErrorCode::E4000, *location.file_name, 0, 0, "Missing package path");
 			return;
 		}
+		parse_file(executor, location);
+		end_file_work(executor, location.package_path);
+	}
+
+	static void parse_file(WorkThreadData& executor, const FileLocation& location) {
 
 		PackageInfo* package_info = nullptr;
 
@@ -243,136 +453,40 @@ namespace hemera {
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
 			executor.program_info->node_alloc);
 		
-		// Whether the previous top-level node was an #if or #else_if, which #else_if and #else must follow
-		bool after_if_chain = false;
-
 		for (ast::Node* child : file_info->ast_root->children) {
-			if (child->node_type != ast::NodeType::DIRECTIVE) {
-				after_if_chain = false;
-			}
-			if (child->node_type == ast::NodeType::PACKAGE) {
-				InternedString package_name = child->value.value;
-
-				std::scoped_lock<std::mutex> lock(package_info->files_mutex);
-				if (package_info->self_reported_name == nullptr) {
-					package_info->self_reported_name = package_name;
-				}
-				else if (*package_info->self_reported_name != *package_name) {
-					std::string details = std::format(
-						"We previously saw {} but now see {}",
-						*package_info->self_reported_name, *package_name);
-					report_error(ErrorCode::E4006, file_path,
-						child->value.line_number, child->value.column_number,
-						details);
-					return;
-				}
+			if (child->node_type != ast::NodeType::PACKAGE) {
 				continue;
 			}
-			if (child->node_type == ast::NodeType::IMPORT) {
-				LOG_ASSERT(child->children.size() % 2 == 1);
-				
-				ImportInfo* import = INFO_ALLOC->new_object<ImportInfo>();
-
-				{
-					std::scoped_lock<std::mutex> lock(file_info->imports_mutex);
-					file_info->imports.push_back(import);
-				}
-
-				import->node = child;
-				import->name = child->children[0]->value.value;
-
-				for (size_t i = 1; i < child->children.size(); ++i) {
-					if (ast::NodeType::KEYWORD_AS == child->children[i]->node_type) {
-						++i;
-						import->alias = child->children[i]->value.value;
-						continue;
-					}
-					if (ast::NodeType::KEYWORD_FROM == child->children[i]->node_type) {
-						++i;
-							import->location = child->children[i]->value.value;
-						continue;
-					}
-				}
-
-				std::error_code error;
-				std::filesystem::path folder = std::filesystem::weakly_canonical(
-					import_folder(*executor.global_data->options,
-						std::filesystem::path(*location.package_path), *import),
-					error);
-				if (error || !std::filesystem::is_directory(folder, error)) {
-					report_error(ErrorCode::E4005, file_path,
-						child->value.line_number, child->value.column_number,
-						folder.string());
-					continue;
-				}
-				import->resolved_path = intern(folder.string());
-				executor.create_work(WorkType::IMPORT,
-					WorkTarget{ WorkTargetType::PACKAGE, { .name = import->resolved_path } });
-
+			// The name is the package statement's identifier; the PACKAGE node itself has no text
+			if (child->children.empty() || child->children[0]->value.value == nullptr) {
 				continue;
 			}
-			if (child->node_type == ast::NodeType::DEFINITION) {
-				executor.create_work(WorkType::TYPE_CHECK,
-					WorkTarget(WorkTargetType::DEFINITION,
-						{ .node_location = { location, child } })
-				);
-				continue;
+			InternedString package_name = child->children[0]->value.value;
+
+			std::scoped_lock<std::mutex> lock(package_info->files_mutex);
+			if (package_info->self_reported_name == nullptr) {
+				package_info->self_reported_name = package_name;
 			}
-			if (child->node_type == ast::NodeType::DIRECTIVE) {
-				InternedString value = child->value.value;
-				const bool continues_if_chain = after_if_chain;
-				after_if_chain = false;
-
-				if (value->compare("#if") == 0) {
-					//TODO(ches) evaluate the chain with IF_ELSE work, including imports inside it
-					after_if_chain = true;
-				}
-				else if (value->compare("#else_if") == 0 || value->compare("#else") == 0) {
-					if (!continues_if_chain) {
-						std::string details = std::format("{} without an #if", *value);
-
-						report_error(ErrorCode::E4002, file_path,
-							child->value.line_number,
-							child->value.column_number,
-							details);
-					}
-					after_if_chain = value->compare("#else_if") == 0;
-				}
-				else if (value->compare("#run") == 0) {
-					ast::Node* expr = child->children[0];
-
-					executor.create_work(WorkType::EXECUTION,
-						WorkTarget(WorkTargetType::EXPRESSION,
-							{ .node_location = { location, expr } })
-					);
-				}
-				else {
-					std::string details = std::string(*value);
-
-					report_error(ErrorCode::E4002, *location.file_name,
-						child->value.line_number,
-						child->value.column_number,
-						details);
-				}
-
-				continue;
+			else if (*package_info->self_reported_name != *package_name) {
+				std::string details = std::format(
+					"We previously saw {} but now see {}",
+					*package_info->self_reported_name, *package_name);
+				report_error(ErrorCode::E4006, file_path,
+					child->value.line_number, child->value.column_number,
+					details);
+				return;
 			}
-
-			std::string details = std::format("Did not expect {}",
-				*child->value.value);
-
-			report_error(ErrorCode::E4001, *location.file_name, 
-				child->value.line_number, 
-				child->value.column_number,
-				details);
 		}
+
+		process_top_level_nodes(executor, location, file_info, file_info->ast_root->children, 0);
 	}
 
 	void work_type_check(WorkThreadData& executor, WorkTarget& target) {
 		switch (target.type) {
 			case WorkTargetType::DEFINITION:
-				type_check_definition(executor, target.value.node_location.file,
-					nullptr, target.value.node_location.node);
+				// Names first: everything the declaration refers to exists, and what it needs is resolved
+				resolve_definition(executor, target.value.node_location.file.package_path,
+					target.value.node_location.file.file_name, target.value.node_location.node);
 				break;
 			case WorkTargetType::EXPRESSION:
 				type_check_expression(executor, target.value.node_location.file,

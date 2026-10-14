@@ -109,7 +109,7 @@ format :: fn(format: string, args: any...) -> string {
     if !valid {
         append(log_builder, "Invalid format string: \"")
         append(log_builder, format)
-        append(log_builder, '"')
+        append_char(log_builder, '"')
 
         error_message :: builder_to_string(log_builder)
         log_warn(error_message)
@@ -124,7 +124,7 @@ format :: fn(format: string, args: any...) -> string {
         if found.location > 0 {
             // Everything before the match, after the start / last match
             before_match :: found.location - input_index
-            append(log_builder, format, input_index, before_match)
+            append_substring(log_builder, format, input_index, before_match)
             input_index += before_match
         }
         // And now the actual match
@@ -173,7 +173,7 @@ format :: fn(format: string, args: any...) -> string {
     // Everything after final match
     if input_index < format.count {
         before_match :: format.count - input_index
-        append(log_builder, format, input_index, before_match)
+        append_substring(log_builder, format, input_index, before_match)
         input_index += before_match
     }
 

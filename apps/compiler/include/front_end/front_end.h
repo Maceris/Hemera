@@ -60,6 +60,10 @@ namespace hemera {
 		bool doing_work;
 		uint32_t index;
 		ProgramInfo* program_info;
+		/// <summary>
+		/// The work this thread is running, for parking it.
+		/// </summary>
+		Work* current_work;
 
 		WorkThreadData(GlobalThreadData& global_data);
 		~WorkThreadData();
@@ -88,7 +92,24 @@ namespace hemera {
 		/// </summary>
 		ThreadSafeQueue<Work*> llvm_queue;
 		MyVector<WorkThreadData*> thread_data;
+		/// <summary>
+		/// Work waiting for a name or declaration (see names.h).
+		/// </summary>
 		std::atomic_uint32_t parked_work;
+		/// <summary>
+		/// Work that is queued or running. Creating or waking work adds one, and finishing a run
+		/// (including one that parked) takes one away. When it reaches 0, nothing can make more
+		/// work: compilation is done, or, with work still parked, stalled.
+		/// </summary>
+		std::atomic_uint32_t outstanding_work;
+		/// <summary>
+		/// Set once a thread has finished up, reporting a stall or checking provisional uses.
+		/// </summary>
+		std::atomic_bool stall_reported;
+		/// <summary>
+		/// Which general thread to wake next when work is enqueued, round robin.
+		/// </summary>
+		std::atomic_uint32_t next_to_wake;
 		std::atomic_uint32_t threads_searching;
 		std::atomic_uint32_t threads_running;
 		std::atomic_bool shutdown_flag;
@@ -112,6 +133,10 @@ namespace hemera {
 	};
 
 	void kick_off_processing(ProgramInfo* program_info, const Options* options);
+	/// <summary>
+	/// Puts parked work back in its queue, counting it as outstanding again.
+	/// </summary>
+	void requeue_work(GlobalThreadData& global_data, Work* work);
 	void sleep_thread(WorkThreadData& data);
 	void notify_thread(WorkThreadData& data, size_t target_thread_index);
 	void enqueue_work(WorkThreadData& data, Work* work);

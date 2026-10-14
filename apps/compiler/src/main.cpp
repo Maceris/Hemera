@@ -1,5 +1,9 @@
 
+#include <cstdlib>
 #include <iostream>
+#ifdef _MSC_VER
+#include <crtdbg.h>
+#endif
 #include <format>
 
 #include "job.h"
@@ -164,5 +168,13 @@ namespace hemera {
 
 int main(int argc, char* argv[])
 {
+#ifdef _MSC_VER
+	// Report debug-runtime assertions and aborts on stderr instead of in a dialog
+	_CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+	_CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+	_CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+	_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+	_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
 	return hemera::main(argc, argv);
 }

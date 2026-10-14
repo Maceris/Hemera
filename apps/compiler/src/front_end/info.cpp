@@ -6,8 +6,7 @@ namespace hemera {
 		// A constant's separator is a COLON node; a variable's is the = token, kept as an IDENTIFIER
 		return ast::NodeType::COLON == node->node_type
 			|| (ast::NodeType::IDENTIFIER == node->node_type
-				&& node->value.value != nullptr
-				&& node->value.value->compare("=") == 0);
+				&& TokenType::OPERATOR_ASSIGN == node->value.type);
 	}
 
 	bool function_parts(ast::Node* definition, FunctionParts& parts) {

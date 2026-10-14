@@ -1,6 +1,7 @@
 package logger
 
 import io from "std"
+import runtime from "base"
 import reflection from "std"
 import string from "std"
 import time from "std"
@@ -137,53 +138,53 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
     if has_time && flags & DEFAULT_LOGGER_FLAG_DATE != 0 {
         year, month, day : int : date(current_time)
         append(log_builder, int_to_string(year))
-        append(log_builder, '-')
+        append_char(log_builder, '-')
         append(log_builder, int_to_string(month))
-        append(log_builder, '-')
+        append_char(log_builder, '-')
         append(log_builder, int_to_string(day))
-        append(log_builder, ' ')
+        append_char(log_builder, ' ')
     }
 
     if has_time && flags & DEFAULT_LOGGER_FLAG_TIME != 0 {
         hour, minute, second, nanosecond : int : precise_clock(current_time)
         append(log_builder, int_to_string(hour))
-        append(log_builder, ':')
+        append_char(log_builder, ':')
         append(log_builder, int_to_string(minute))
-        append(log_builder, ':')
+        append_char(log_builder, ':')
         append(log_builder, int_to_string(second))
-        append(log_builder, '.')
+        append_char(log_builder, '.')
         append(log_builder, int_to_string(nanosecond))
-        append(log_builder, ' ')
+        append_char(log_builder, ' ')
     }
 
     append(log_builder, reflection.as_string(level))
-    append(log_builder, ' ')
+    append_char(log_builder, ' ')
 
     if flags & DEFAULT_LOGGER_FLAG_FILE_NAME != 0 {
         append(log_builder, location.file_path)
         if flags & DEFAULT_LOGGER_FLAG_LINE != 0 {
-            append(log_builder, ':')
+            append_char(log_builder, ':')
         }
         else {
-            append(log_builder, ' ')
+            append_char(log_builder, ' ')
         }
     }
 
     if flags & DEFAULT_LOGGER_FLAG_LINE != 0 {
         append(log_builder, u32_to_string(location.line))
-        append(log_builder, ' ')
+        append_char(log_builder, ' ')
     }
 
     if flags & DEFAULT_LOGGER_FLAG_FUNCTION != 0 {
         append(log_builder, location.function)
-        append(log_builder, ' ')
+        append_char(log_builder, ' ')
     }
 
     if flags & DEFAULT_LOGGER_FLAG_THREAD_ID != 0 {
-        append(log_builder, '[')
+        append_char(log_builder, '[')
         append(log_builder, usize_to_string(current_thread_index()))
-        append(log_builder, ']')
-        append(log_builder, ' ')
+        append_char(log_builder, ']')
+        append_char(log_builder, ' ')
     }
 
     append(log_builder, log_string)

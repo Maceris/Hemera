@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 
+#include "front_end/names.h"
 #include "front_end/type.h"
 #include "front_end/type_id.h"
 #include "lexer/token.h"
@@ -188,6 +189,11 @@ namespace hemera {
 		Allocator<> node_alloc;
 
 		std::atomic_size_t next_location_id;
+
+		/// <summary>
+		/// Every top-level declaration, and the work waiting on names and declarations.
+		/// </summary>
+		NameRegistry names;
 
 		std::mutex types_mutex;
 		std::mutex packages_mutex;

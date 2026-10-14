@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <vector>
 
 #include "front_end/info.h"
 #include "front_end/type_id.h"
@@ -32,11 +33,20 @@ namespace hemera {
 		ast::Node* node;
 	};
 
+	/// <summary>
+	/// A top-level #if, with any #else_if and #else after it, in one file.
+	/// </summary>
+	struct IfChain {
+		FileLocation file;
+		std::vector<ast::Node*> branches;
+	};
+
 	union WorkTargetValue {
 		InternedString name;
 		FileLocation file_location;
 		NodeLocation node_location;
 		FunctionInfo* function;
+		IfChain* if_chain;
 	};
 
 	struct WorkTarget {

@@ -56,6 +56,12 @@ E4003,Invalid function definition
 E4004,Incorrect number of return values
 E4005,Could not find package
 E4006,Inconsistent package name within a folder
+E4007,Circular dependency
+E4008,Undeclared name
+E4009,Duplicate declaration
+E4010,Not a compile-time constant
+E4011,Compilation can't continue
+E4012,Ambiguous name
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

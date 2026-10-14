@@ -132,6 +132,80 @@ collision :: fn() {
 }
 ```
 
+### Builtins
+
+The names in `base/builtin` (`int`, `string`, `Result`, `size_of`, ...) follow the same rules, as if every file imported them.
+A package can declare a name a builtin already has, and its own is then the one used unqualified. The builtin is still
+reachable with the `base` prefix, like `base.Result`. If an imported package declares a builtin's name and the current
+package doesn't, the unqualified name is ambiguous, like any name declared by two imports.
+
+```
+package example
+
+Result :: struct {
+    code: int,
+}
+
+mine :: fn() -> Result {}                      // This package's Result
+builtin :: fn() -> base.Result[int, string] {} // The builtin one
+```
+
+### Names and `#if`
+
+A top-level `#if` can declare names and import packages, so until it's decided, what a package declares and what a
+file imports aren't fully known. A name only waits for the `#if` chains (an `#if` with its `#else_if`s and `#else`)
+that could change what it refers to:
+
+* An undecided `#if` anywhere in the package with a branch declaring the name, since the package's own declaration
+  would win.
+* An undecided `#if` in the same file with a branch importing a package, when the name isn't found otherwise. What
+  that package declares isn't known until it's loaded, and it's only loaded if that branch is picked.
+
+A name found while an `#if` in its file may still add an import is used, and checked again once every `#if` is decided:
+if a new import declares it too, it's ambiguous, as above, and compilation stops.
+
+`#if` conditions follow the same rules, so the chains are decided in whatever order their names need. Here the first
+`#if` is decided first, since nothing else can declare or import `BAR`, and the second waits for it, since `BAT` may
+come from either of its branches:
+
+```
+package example
+
+import foo from "user" // declares BAR
+
+#if BAR {
+    import baz from "user" // declares BAT
+}
+#else {
+    BAT :: false
+}
+
+#if BAT {
+    // ...
+}
+```
+
+When chains need each other, neither can be decided first, and it's a circular dependency like any other:
+
+```
+package example
+
+#if BAR {
+    import baz from "user" // declares BAT
+}
+
+#if BAT {
+    import foo from "user" // declares BAR
+}
+```
+
+```
+example.hsc(3,4): error E4007: Circular dependency. This #if needs BAR, which the #if on line 7 may import
+(import foo, line 8); that #if needs BAT, which this #if may import (import baz, line 4)
+```
+
+The same goes for an `#if` whose condition needs a name only its own branches declare, like `#if FLAG { FLAG :: true }`.
+
 ## Package Info
 
 Information about a package as a whole goes in a file named `package_info.hsc` in the package's folder, following Java's `package-info.java`.

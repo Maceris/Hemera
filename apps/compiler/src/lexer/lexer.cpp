@@ -1243,7 +1243,10 @@ namespace hemera::lexer {
 			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);
 			if (!include_comments && (next_token.type == TokenType::COMMENT_BLOCK
 				|| next_token.type == TokenType::COMMENT_LINE)) {
-				delete_interned_string(next_token.value);
+				/*
+				 * The text stays interned: interned strings are shared, so another file being lexed
+				 * at the same time may hold the same comment's text.
+				 */
 				next_token.value = nullptr;
 				continue;
 			}

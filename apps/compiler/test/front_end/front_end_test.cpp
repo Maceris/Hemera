@@ -1,5 +1,8 @@
 #include <filesystem>
 #include <fstream>
+#include <regex>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -10,6 +13,7 @@
 #include "front_end/front_end.h"
 #include "front_end/info.h"
 #include "front_end/mlir_generation.h"
+#include "front_end/names.h"
 #include "hmir/hmir_dialect.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -191,4 +195,335 @@ TEST(FrontEnd, GeneratesValidFunctions)
 	for (hemera::FunctionInfo* function : functions) {
 		delete function;
 	}
+}
+
+static hemera::Declaration* find_declaration(FrontEndFixture& fixture,
+	const std::filesystem::path& package, std::string_view name) {
+
+	hemera::InternedString package_path = hemera::intern(std::filesystem::canonical(package).string());
+	hemera::InternedString interned = hemera::intern(std::string(name));
+	auto& declarations = fixture.program_info->names.declarations;
+	auto iter = declarations.find(std::make_pair(package_path, interned));
+	return iter == declarations.end() ? nullptr : iter->second;
+}
+
+TEST(FrontEnd, ResolvesNames)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("names_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	for (std::string_view name : { "LIMIT", "Node", "Pair", "use", "COUNT", "Item", "Shape", "Mode", "LIB_VALUE" }) {
+		hemera::Declaration* declaration = find_declaration(fixture, scenario("names_ok"), name);
+		ASSERT_NE(declaration, nullptr) << name;
+		EXPECT_TRUE(declaration->resolved) << name;
+	}
+}
+
+TEST(FrontEnd, ReportsUndeclaredName)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("undeclared"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4008);
+}
+
+TEST(FrontEnd, ReportsConstantCycle)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("constant_cycle"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4007);
+}
+
+TEST(FrontEnd, ReportsStructCycle)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("struct_cycle"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4007);
+}
+
+TEST(FrontEnd, ReportsDuplicateDeclaration)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("duplicate"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4009);
+}
+
+TEST(FrontEnd, EvaluatesIfConditions)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_constants"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	EXPECT_NE(find_declaration(fixture, scenario("if_constants"), "IN_KERNEL"), nullptr);
+	EXPECT_EQ(find_declaration(fixture, scenario("if_constants"), "ONLY_LINUX"), nullptr);
+}
+
+TEST(FrontEnd, ReportsIfNeedingItsOwnDeclaration)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_needs_own_declaration"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4007);
+}
+
+TEST(FrontEnd, ReportsIfConditionThatIsNotBoolean)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_not_bool"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4010);
+}
+
+static std::filesystem::path hemera_root() {
+	// apps/compiler/test/front_end/front_end_test.cpp
+	return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+		.parent_path().parent_path();
+}
+
+/*
+ * Base is the interface to what the compiler provides, so the compiler doesn't read it.
+ * This checks the names the compiler provides without an import against base/builtin.
+ */
+TEST(FrontEnd, BuiltinNamesMatchBase)
+{
+	std::set<std::string> in_base;
+	const std::regex declaration(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*(\[[^\]]*\])?\s*:)");
+	for (const auto& entry : std::filesystem::directory_iterator(hemera_root() / "base" / "builtin")) {
+		if (entry.path().extension() != ".hsc") {
+			continue;
+		}
+		std::ifstream file(entry.path());
+		std::string line;
+		while (std::getline(file, line)) {
+			std::smatch match;
+			if (std::regex_search(line, match, declaration)) {
+				in_base.insert(match[1].str());
+			}
+		}
+	}
+	ASSERT_FALSE(in_base.empty());
+
+	std::set<std::string> in_compiler;
+	for (std::string_view name : hemera::builtin_names()) {
+		// The implicit context isn't declared in base
+		if (name != "context") {
+			in_compiler.insert(std::string(name));
+		}
+	}
+
+	for (const std::string& name : in_base) {
+		EXPECT_TRUE(in_compiler.contains(name)) << name << " is in base/builtin but not the compiler";
+	}
+	for (const std::string& name : in_compiler) {
+		EXPECT_TRUE(in_base.contains(name)) << name << " is in the compiler but not base/builtin";
+	}
+}
+
+/*
+ * Every std package loads, with its imports, and every name its declarations use is declared,
+ * with nothing stalled.
+ */
+TEST(FrontEnd, ResolvesStd)
+{
+	hemera::disable_reporting_printing();
+	const std::filesystem::path std_path = hemera_root() / "std";
+
+	for (const auto& entry : std::filesystem::recursive_directory_iterator(std_path)) {
+		if (!entry.is_directory()) {
+			continue;
+		}
+		bool has_source = false;
+		for (const auto& file : std::filesystem::directory_iterator(entry.path())) {
+			if (file.path().extension() == ".hsc") {
+				has_source = true;
+			}
+		}
+		if (!has_source) {
+			continue;
+		}
+		StringCacheGuard string_cache;
+		FrontEndFixture fixture;
+		std::vector<hemera::ErrorCode> errors = process_package(fixture, entry.path(), std_path);
+		EXPECT_TRUE(errors.empty()) << entry.path().string() << ": " << codes(errors);
+	}
+}
+
+TEST(FrontEnd, ReportsDuplicateFunction)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("duplicate_function"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4009);
+}
+
+/*
+ * docs/packages.md, Name Collision: the package's own name wins over its imports', a name only one
+ * import declares can be used unqualified, and qualified names pick an import's.
+ */
+TEST(FrontEnd, ResolvesNameCollisions)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("collision_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	for (std::string_view name : { "USES_OWN", "USES_A", "QUALIFIED", "SHARED" }) {
+		hemera::Declaration* declaration = find_declaration(fixture, scenario("collision_ok"), name);
+		ASSERT_NE(declaration, nullptr) << name;
+		EXPECT_TRUE(declaration->resolved) << name;
+	}
+}
+
+TEST(FrontEnd, ReportsAmbiguousName)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("collision_ambiguous"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4012);
+}
+
+TEST(FrontEnd, EvaluatesIfConditionWithImportedName)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_uses_import"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	EXPECT_NE(find_declaration(fixture, scenario("if_uses_import"), "PICKED"), nullptr);
+}
+
+TEST(FrontEnd, ReportsIfDeclaringItsConditionsName)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_declares_used_import"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4007);
+}
+
+TEST(FrontEnd, ResolvesPackageNameOverBuiltin)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("builtin_shadow"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	for (std::string_view name : { "Result", "convert", "WIDTH" }) {
+		hemera::Declaration* declaration = find_declaration(fixture, scenario("builtin_shadow"), name);
+		ASSERT_NE(declaration, nullptr) << name;
+		EXPECT_TRUE(declaration->resolved) << name;
+	}
+}
+
+TEST(FrontEnd, ReportsBuiltinNameDeclaredByAnImport)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("builtin_ambiguous"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4012);
+}
+
+// docs/packages.md, Names and #if: an #if waits only for the #if chains that may provide its names
+TEST(FrontEnd, DecidesIfChainsInDependencyOrder)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_chains_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	EXPECT_NE(find_declaration(fixture, scenario("if_chains_ok"), "PICKED"), nullptr);
+	EXPECT_EQ(find_declaration(fixture, scenario("if_chains_ok"), "BAT"), nullptr);
+}
+
+TEST(FrontEnd, ReportsIfChainsThatNeedEachOther)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_chains_cycle"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4007);
+}
+
+TEST(FrontEnd, FindsNamesWithoutWaitingForUnrelatedImports)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_kernel"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	EXPECT_NE(find_declaration(fixture, scenario("if_kernel"), "HOSTED"), nullptr);
+}
+
+TEST(FrontEnd, ReportsNameMadeAmbiguousByAnIfImport)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("if_late_ambiguous"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4012);
 }

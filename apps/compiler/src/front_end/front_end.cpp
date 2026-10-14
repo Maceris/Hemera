@@ -5,6 +5,7 @@
 #include "memory/allocator.h"
 #include "util/logger.h"
 #include "front_end/front_end.h"
+#include "front_end/names.h"
 
 namespace hemera {
 	constexpr uint32_t MIN_THREAD_COUNT = 2;
@@ -62,6 +63,9 @@ namespace hemera {
 		, llvm_queue{}
 		, thread_data{}
 		, parked_work{ 0 }
+		, outstanding_work{ 0 }
+		, stall_reported{ false }
+		, next_to_wake{ 0 }
 		, threads_searching{ 0 }
 		, threads_running{ 0 }
 		, shutdown_flag{ false }
@@ -87,12 +91,42 @@ namespace hemera {
 		, doing_work{ false }
 		, index{ 0 }
 		, program_info{ global_data.program_info }
+		, current_work{ nullptr }
 	{}
 	WorkThreadData::~WorkThreadData() = default;
+
+	static void signal_thread(WorkThreadData& target) {
+		{
+			std::scoped_lock<std::mutex> lock(target.sleep_mutex);
+			target.interrupt_flag = true;
+		}
+		target.sleep_condition.notify_one();
+	}
+
+	/*
+	 * Wakes a thread that can run work of this type: the LLVM thread (0) for LLVM work, otherwise
+	 * the next general thread, round robin, so new work doesn't wait for a sleeping thread's timeout.
+	 */
+	static void wake_a_thread(GlobalThreadData& global_data, WorkType type) {
+		if (global_data.thread_data.empty()) {
+			return;
+		}
+		if (WorkType::EXECUTION == type || WorkType::FUNCTION_CODE_GENERATION == type) {
+			signal_thread(*global_data.thread_data[0]);
+			return;
+		}
+		const size_t general_threads = global_data.thread_data.size() - 1;
+		if (general_threads == 0) {
+			return;
+		}
+		const size_t index = 1 + global_data.next_to_wake.fetch_add(1) % general_threads;
+		signal_thread(*global_data.thread_data[index]);
+	}
 
 	Work* WorkThreadData::create_work(WorkType type, WorkTarget&& target) {
 		Work* work = global_data->work_allocator->new_object<Work>(
 			type, std::move(target));
+		global_data->outstanding_work += 1;
 
 		switch (type) {
 			case WorkType::IF_ELSE:
@@ -106,6 +140,7 @@ namespace hemera {
 				global_data->llvm_queue.enqueue(std::move(work));
 				break;
 		}
+		wake_a_thread(*global_data, type);
 		return work;
 	}
 
@@ -151,17 +186,39 @@ namespace hemera {
 		return result;
 	}
 
+	void requeue_work(GlobalThreadData& global_data, Work* work) {
+		global_data.outstanding_work += 1;
+		switch (work->type) {
+			case WorkType::IF_ELSE:
+			case WorkType::IMPORT:
+			case WorkType::PARSE:
+			case WorkType::TYPE_CHECK:
+				global_data.general_queue.enqueue(std::move(work));
+				break;
+			case WorkType::EXECUTION:
+			case WorkType::FUNCTION_CODE_GENERATION:
+				global_data.llvm_queue.enqueue(std::move(work));
+				break;
+		}
+		wake_a_thread(global_data, work->type);
+	}
+
+	/*
+	 * Whether there's nothing left to do. The first thread to notice finishes up: with work still
+	 * parked, nothing can ever wake it, so it reports the stall (its cycles and undeclared names);
+	 * otherwise it checks names used before an #if added an import that declares them too.
+	 */
 	static bool we_ran_out_of_tasks(GlobalThreadData& data) {
-		for (const auto& thread : data.thread_data) {
-			if (thread->doing_work) {
-				return false;
+		if (data.outstanding_work.load() != 0) {
+			return false;
+		}
+		if (!data.stall_reported.exchange(true)) {
+			if (data.parked_work.load() != 0) {
+				report_stall(data);
 			}
-		}
-		if (!data.general_queue.empty()) {
-			return false;
-		}
-		if (!data.llvm_queue.empty()) {
-			return false;
+			else {
+				check_provisional_uses(data);
+			}
 		}
 		return true;
 	}
@@ -173,38 +230,26 @@ namespace hemera {
 			if (data.global_data->shutdown_flag) {
 				break;
 			}
-			Work* to_do = nullptr;
-
-			if (data.tasks_since_last_global_pull >= GLOBAL_QUEUE_INTERVAL) {
-				// Occasionally pull from the global queue
-				to_do = dequeue_work_global(data);
-			}
-
-			if (to_do == nullptr) {
-				to_do = dequeue_work_local(data);
-			}
+			/*
+			 * All work goes through the shared queue, which is thread-safe. The per-thread queues
+			 * and stealing between them aren't used: their head and tail updates race between the
+			 * owner and a thief, which could run one work twice or read an empty slot.
+			 */
+			Work* to_do = data.global_data->general_queue.dequeue_or_else(static_cast<Work*>(nullptr));
 
 			if (to_do == nullptr) {
-				// no work, need to steal from another thread
 				if (we_ran_out_of_tasks(*data.global_data)) {
 					data.global_data->shutdown_flag = true;
 					break;
 				}
-				data.global_data->threads_searching += 1;
-
-				if (data.global_data->threads_searching >= MAX_SEARCHERS 
-					|| !steal_work(data)
-					){
-					data.doing_work = false;
-					// sleep
-					data.global_data->threads_searching -= 1;
-					sleep_thread(data);
-					if (data.global_data->shutdown_flag) {
-						break;
-					}
+				data.doing_work = false;
+				sleep_thread(data);
+				if (data.global_data->shutdown_flag) {
+					break;
 				}
 			}
 			else {
+				data.current_work = to_do;
 				switch (to_do->type) {
 					case WorkType::EXECUTION:
 					case WorkType::FUNCTION_CODE_GENERATION:
@@ -223,6 +268,8 @@ namespace hemera {
 						work_type_check(data, to_do->work_target);
 						break;
 				}
+				data.current_work = nullptr;
+				data.global_data->outstanding_work -= 1;
 			}
 		}
 		data.global_data->threads_running--;
@@ -261,6 +308,7 @@ namespace hemera {
 			}
 			else {
 				data.doing_work = true;
+				data.current_work = to_do;
 				switch (to_do->type) {
 				case WorkType::EXECUTION:
 					work_execution(data, to_do->work_target);
@@ -276,6 +324,8 @@ namespace hemera {
 					LOG_FATAL("Someone put general work in the LLVM queue");
 					break;
 				}
+				data.current_work = nullptr;
+				data.global_data->outstanding_work -= 1;
 			}
 		}
 		data.global_data->threads_running--;
@@ -297,6 +347,7 @@ namespace hemera {
 
 		InternedString input_package = intern(options->input.string());
 
+		global_data.outstanding_work = 1;
 		global_data.general_queue.enqueue(
 			std::move(global_data.work_allocator->new_object<Work>(
 				WorkType::IMPORT,
@@ -328,8 +379,7 @@ namespace hemera {
 			[&flag = data.interrupt_flag]{ return flag.load(); });
 
 		if (interrupted) {
-			// interrupted, there's tasks to be stolen, so we move to searching
-			data.global_data->threads_searching += 1;
+			// interrupted, there's work to be found, so go back to searching
 			data.interrupt_flag = false;
 			data.doing_work = true;
 		}

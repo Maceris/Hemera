@@ -1,10 +1,10 @@
-package string_builder
+package string
 
-append :: fn(builder: ptr[mut StringBuilder], s: ptr[char], length: usize) {
+append_chars :: fn(builder: ptr[mut StringBuilder], s: ptr[char], length: usize) {
     //TODO(ches) implement this
 }
 
-append :: fn(builder: ptr[mut StringBuilder], s: string, start: usize, length: usize) {
+append_substring :: fn(builder: ptr[mut StringBuilder], s: string, start: usize, length: usize) {
     //TODO(ches) implement this
 }
 
@@ -12,7 +12,7 @@ append :: fn(builder: ptr[mut StringBuilder], s: string) {
     //TODO(ches) implement this
 }
 
-append :: fn(builder: ptr[mut StringBuilder], s: char) {
+append_char :: fn(builder: ptr[mut StringBuilder], s: char) {
     //TODO(ches) implement this
 }
 

@@ -1,5 +1,7 @@
 package fiber
 
+import runtime from "base"
+
 FiberLocalQueue :: struct {
     head : uint,
     tail : uint,

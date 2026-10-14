@@ -237,13 +237,18 @@ namespace hemera::parser {
 		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
 
 		//TODO(ches) stop bailing early and attempt to recover from errors
-		if (!package_statement(&state, *node)) {
-			return node;
-		}
-		if (!imports(&state, *node)) {
-			return node;
-		}
-		if (!const_definitions(&state, *node)) {
+		const size_t errors_before = error_count();
+		if (!package_statement(&state, *node)
+			|| !imports(&state, *node)
+			|| !const_definitions(&state, *node)) {
+			/*
+			 * Some failures don't report an error themselves; without this the rest of the file
+			 * would be dropped silently. Another file's error can hide this, which only loses the
+			 * generic message.
+			 */
+			if (error_count() == errors_before) {
+				report_error_on_last_token(&state, ErrorCode::E3017);
+			}
 			return node;
 		}
 		if (!expect(&state, TokenType::END_OF_FILE)) {
@@ -1223,9 +1228,14 @@ namespace hemera::parser {
 			}
 			return true;
 		}
-		else {
-			return literal(state, parent);
+		// Any expression, like allocator := context.allocator
+		ExprResult expr = expression_with_result(state, true);
+		if (!expr.success || expr.result == nullptr) {
+			report_error_on_last_token(state, ErrorCode::E3006);
+			return false;
 		}
+		parent.children.push_back(expr.result);
+		return true;
 	}
 
 	/*
@@ -1664,9 +1674,12 @@ namespace hemera::parser {
 		while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, parent)) {
 			//NOTE(ches) this is all one entry in the union
 			if (expect(state, TokenType::SYM_LPAREN)) {
-				const Token& lparen = next_as_node(state, ast::NodeType::PAREN_GROUP, &parent).value;
+				// The payload's types are children of the paren group, so the next variant isn't
+				// mistaken for one of them
+				ast::Node& payload = next_as_node(state, ast::NodeType::PAREN_GROUP, &parent);
+				const Token& lparen = payload.value;
 				//NOTE(ches) will simply exit when we hit the rparen
-				while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, parent)) {
+				while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, payload)) {
 					if (!skip(state, TokenType::SYM_COMMA)) {
 						if (!expect(state, TokenType::SYM_RPAREN)) {
 							/*
@@ -1838,7 +1851,8 @@ namespace hemera::parser {
 			result = &next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result->children.push_back(list);
 
-			ExprResult rhs = expr_lvl_1(state, ignore_lists);
+			// Any expression, like a typed literal: result.resume = FiberResumeState.{}
+			ExprResult rhs = expression_with_result(state, ignore_lists);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, result);
 				return ExprResult{ false };

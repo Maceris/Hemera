@@ -14,8 +14,6 @@ bool :: alias b8
 
 // Signed integers
 i8    :: alias i8
-i8be  :: alias i8be
-i8le  :: alias i8le
 i16   :: alias i16
 i16be :: alias i16be
 i16le :: alias i16le
@@ -25,12 +23,13 @@ i32le :: alias i32le
 i64   :: alias i64
 i64be :: alias i64be
 i64le :: alias i64le
+i128   :: alias i128
+i128be :: alias i128be
+i128le :: alias i128le
 int   :: alias int
 
 // Unsigned integers
 u8      :: alias u8
-u8be    :: alias u8be
-u8le    :: alias u8le
 u16     :: alias u16
 u16be   :: alias u16be
 u16le   :: alias u16le
@@ -40,6 +39,9 @@ u32le   :: alias u32le
 u64     :: alias u64
 u64be   :: alias u64be
 u64le   :: alias u64le
+u128    :: alias u128
+u128be  :: alias u128be
+u128le  :: alias u128le
 uint    :: alias uint
 uintptr :: alias uintptr
 usize   :: alias usize
@@ -70,6 +72,7 @@ q256 :: alias q256
 // Strings
 string  :: alias string
 cstring :: alias cstring
+char    :: alias char
 
 // Pointers
 ptr[T] :: alias ptr[T]
@@ -78,6 +81,17 @@ relptr8[T] :: alias relptr8[T]
 relptr16[T] :: alias relptr16[T]
 relptr32[T] :: alias relptr32[T]
 relptr64[T] :: alias relptr64[T]
+
+// Optional values (T? is Optional[T]) and results
+Optional :: union[T] {
+    Some(T),
+    None,
+}
+
+Result :: union[T, E] {
+    Ok(T),
+    Error(E),
+}
 
 // Type info
 any  :: alias any
