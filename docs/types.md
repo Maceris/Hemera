@@ -130,6 +130,15 @@ c : i8[10][5] // 2D array of i8s
 
 Arrays know their size, and you can access it with `array.count`.
 
+An array literal is the element type, followed by `.[]` holding the elements. Its type is a static array of that many
+elements, so it can be used anywhere a static array can, including as an array view.
+
+```
+d :: int.[1, 2, 3]          // int[3]
+e : f64[2] : f64.[0.5, 1.5]
+f : int[] : int.[4, 5, 6]   // A view over an array on the stack
+```
+
 ### Dynamic Arrays
 
 Dynamic arrays are resizable, allocating more memory as needed. It behaves

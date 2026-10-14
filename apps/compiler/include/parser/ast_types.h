@@ -10,6 +10,7 @@ namespace hemera::ast {
 	enum class NodeType {
 		ANNOTATION,
 		ARRAY_DIMENSION,
+		ARRAY_LITERAL,
 		BINARY_OPERATOR,
 		BLOCK,
 		BREAK,

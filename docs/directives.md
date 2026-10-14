@@ -60,6 +60,49 @@ example :: fn() {
 }
 ```
 
+## Constants
+
+### `#externally_initialized`
+
+`#externally_initialized` on a top-level constant means its value is only the initial contents of the program's image.
+Something outside the program, like a bootloader, a loader or a tool run after linking, may replace it before the program starts,
+and the program sees the replaced value. It's placed after the identifier in a declaration.
+
+```
+MEMORY_MAP_REQUEST #externally_initialized #section(".limine_requests") :: MemoryMapRequest.{
+    id = u64.[COMMON_MAGIC_0, COMMON_MAGIC_1, 0x67cf3d9d378a806f, 0xe304acdfc50c3c62],
+}
+
+memory_map :: fn() -> ptr[MemoryMapResponse]? {
+    // Read from the image at run time, never replaced by the initializer's null
+    return MEMORY_MAP_REQUEST.response
+}
+```
+
+* It's always in the output, even if nothing in the program uses it.
+* Reads at run time load it from the image. The compiler never replaces a read with the initializer, but may still assume
+  the value doesn't change while the program runs.
+* It's still a constant: it can't be assigned to, and `&` gives a `ptr[T]`, not a `ptr[mut T]`.
+* Reading it at compile time is an error, since the value isn't known until the program is loaded. Its address and
+  `size_of`/`align_of` are fine.
+
+This isn't a mutable global. The value is fixed before the program's first instruction, and is the same for every reader
+for the whole run, the same way relocations already fill in addresses when a position-independent program is loaded.
+
+### `#section`
+
+`#section(name)` places an `#externally_initialized` constant in the output section `name`, for a linker script to place.
+It's only allowed together with `#externally_initialized`. Every other constant goes in the read-only data section on
+platforms that have one.
+
+The compiler doesn't promise an order between constants in the same section.
+When an order matters, put them in separate sections and order those in the linker script.
+
+```
+REQUESTS_START #externally_initialized #section(".limine_requests_start") :: REQUESTS_START_MARKER
+REQUESTS_END #externally_initialized #section(".limine_requests_end") :: REQUESTS_END_MARKER
+```
+
 ## Control
 
 `#at_least_once` causes a loop operation to occur at least once, skipping the first condition check. This is equivalent to turning a C while loop into a do-while loop.

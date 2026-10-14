@@ -95,6 +95,7 @@ namespace hemera::parser {
 	bool postfix_operations(ParserState* state, ast::Node& target);
 	ExprResult location(ParserState* state);
 	ExprResult struct_literal(ParserState* state);
+	ExprResult array_literal(ParserState* state);
 	bool function_call(ParserState* state, ast::Node& parent);
 	bool function_call_input_list(ParserState* state, ast::Node& parent);
 	ExprResult cast_expression(ParserState* state);

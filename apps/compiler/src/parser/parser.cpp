@@ -549,7 +549,9 @@ namespace hemera::parser {
 
 			bool expected = false;
 			if (directive.value.value->compare("#export") == 0
-				|| directive.value.value->compare("#calling_convention") == 0) {
+				|| directive.value.value->compare("#calling_convention") == 0
+				|| directive.value.value->compare("#externally_initialized") == 0
+				|| directive.value.value->compare("#section") == 0) {
 				expected = true;
 			}
 			if (!expected) {
@@ -1475,6 +1477,12 @@ namespace hemera::parser {
 			) {
 			return struct_literal(state);
 		}
+		if (expect(state, TokenType::IDENTIFIER) &&
+			TokenType::SYM_DOT == next_token(state, 1).type
+			&& TokenType::SYM_LBRACK == next_token(state, 2).type
+			) {
+			return array_literal(state);
+		}
 		return expr_lvl_1(state, ignore_lists);
 	}
 
@@ -2347,6 +2355,42 @@ namespace hemera::parser {
 		}
 
 		return ExprResult{ true, &id };
+	}
+
+	ExprResult array_literal(ParserState* state) {
+		//NOTE(ches) assumes we already checked for identifier, dot, lbrack
+		ast::Node& element_type = next_as_node(state, ast::NodeType::ARRAY_LITERAL);
+		skip(state, TokenType::SYM_DOT);
+		ast::Node& brackets = next_as_node(state, ast::NodeType::LIST, &element_type);
+
+		while (!expect(state, TokenType::SYM_RBRACK)) {
+			if (expect(state, TokenType::END_OF_FILE)) {
+				break;
+			}
+			ExprResult value = expression_with_result(state, true);
+			if (!value.result) {
+				delete_node(state->node_alloc, &element_type);
+				return ExprResult{ false };
+			}
+			brackets.children.push_back(value.result);
+			if (!skip(state, TokenType::SYM_COMMA)
+				&& !expect(state, TokenType::SYM_RBRACK)) {
+				report_error_on_last_token(state, ErrorCode::E3022);
+				delete_node(state->node_alloc, &element_type);
+				return ExprResult{ false };
+			}
+		}
+
+		if (!skip(state, TokenType::SYM_RBRACK)) {
+			report_error_on_last_token(state, ErrorCode::E3012,
+				std::format("Opening bracket was at ({},{})",
+					brackets.value.line_number,
+					brackets.value.column_number));
+			delete_node(state->node_alloc, &element_type);
+			return ExprResult{ false };
+		}
+
+		return ExprResult{ true, &element_type };
 	}
 
 	bool function_call(ParserState* state, ast::Node& parent) {

@@ -69,6 +69,9 @@ However, they introduce a huge variety of issues with things like
 
 The consensus is almost universally "don't use global variables". So instead of suggesting they not be used, they have been removed completely.
 
+The closest thing is a constant marked `#externally_initialized`, which a bootloader or loader may fill in before the program
+starts. It never changes while the program runs, so it has none of the problems above. See [directives.md](directives.md#externally_initialized).
+
 More specifically, there are still globally accessible variables, but any global variable must evaluate to a constant value at compile time.
 
 Benefits of this include
