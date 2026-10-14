@@ -174,12 +174,14 @@ file = package_statement , [ imports ] , [ const_definitions ] ;
 
 package_statement = KEYWORD_package , identifier ;
 
-imports = ( import | ( directive , [ expression_with_result ] , [ SYM_LBRACE , imports , SYM_RBRACE ] ) ) , [ imports ] ;
+imports = ( import | ( directive , [ expression_with_result ] , [ SYM_LBRACE , top_level_block , SYM_RBRACE ] ) ) , [ imports ] ;
+# The inside of a top-level #if, #else_if or #else: imports and definitions in any order
+top_level_block = { import | const_definitions } ;
 import = KEYWORD_import , identifier , [ KEYWORD_as , identifier ] , [ KEYWORD_from, literal_string ] ;
 
 const_definitions = { 
     ( { annotation } , declaration , const_definition_rhs )
-    | ( directive , [ expression_with_result ] , [ SYM_LBRACE , const_definitions , SYM_RBRACE ] )
+    | ( directive , [ expression_with_result ] , [ SYM_LBRACE , top_level_block , SYM_RBRACE ] )
     }
     ;
 const_definition_rhs = SYM_COLON , decl_rhs ;

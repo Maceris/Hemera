@@ -144,9 +144,16 @@ namespace hemera::lexer {
 	}
 
 	static bool next_line(Tokenizer& tokenizer, std::istream& input_stream) {
-		if (!std::getline(input_stream, tokenizer.current_line)) {
+		/*
+		 * getline empties the string it's given even when there's no line left, so read into
+		 * another one: a token that runs to the end of the last line, like a trailing comment,
+		 * still needs the current line to copy its text from.
+		 */
+		MyString line;
+		if (!std::getline(input_stream, line)) {
 			return false;
 		}
+		tokenizer.current_line = line;
 		tokenizer.column_number = 0;
 		tokenizer.line_number += 1;
 		return true;

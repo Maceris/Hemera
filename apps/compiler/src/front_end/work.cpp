@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
 
 #include "error/reporting.h"
 #include "front_end/front_end.h"
@@ -50,7 +51,65 @@ namespace hemera {
 	}
 
 	void work_function_code_generation(WorkThreadData& executor, FunctionInfo* function) {
-		mlir_process_function(executor, function);
+		mlir_process_function(executor.program_info, function);
+	}
+
+	// The text of a string literal, without the quotes the lexer keeps.
+	static std::string string_literal_text(InternedString literal) {
+		std::string text(literal->begin(), literal->end());
+		if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+			return text.substr(1, text.size() - 2);
+		}
+		return text;
+	}
+
+	static std::optional<BuiltinPackage> builtin_location(std::string_view segment) {
+		if (segment == "base") {
+			return BuiltinPackage::BASE;
+		}
+		if (segment == "std") {
+			return BuiltinPackage::STD;
+		}
+		if (segment == "user") {
+			return BuiltinPackage::USER;
+		}
+		if (segment == "vendor") {
+			return BuiltinPackage::VENDOR;
+		}
+		return {};
+	}
+
+	/*
+	 * The folder an import refers to (docs/packages.md, Imports). A built-in location, optionally
+	 * followed by subfolders, names the folder containing the package, which is the folder named
+	 * after the import. Anything else is relative to the importing package's folder and names the
+	 * package's folder itself. No location means std.
+	 */
+	static std::filesystem::path import_folder(const Options& options,
+		const std::filesystem::path& package_folder, const ImportInfo& import) {
+
+		std::string location = import.location == nullptr
+			? std::string("std")
+			: string_literal_text(import.location);
+
+		const bool explicitly_relative = location == "." || location == ".."
+			|| location.starts_with("./") || location.starts_with("../");
+
+		if (!explicitly_relative) {
+			const size_t slash = location.find('/');
+			std::optional<BuiltinPackage> builtin = builtin_location(location.substr(0, slash));
+			if (builtin) {
+				auto iter = options.builtin_paths.find(builtin.value());
+				std::filesystem::path folder = iter == options.builtin_paths.end()
+					? std::filesystem::path(location.substr(0, slash))
+					: iter->second;
+				if (slash != std::string::npos) {
+					folder /= location.substr(slash + 1);
+				}
+				return folder / *import.name;
+			}
+		}
+		return package_folder / location;
 	}
 	
 	void work_import(WorkThreadData& executor, WorkTarget& target) {
@@ -61,7 +120,8 @@ namespace hemera {
 		LOG_ASSERT(package_path_text != nullptr);
 		std::filesystem::path package_path(*package_path_text);
 
-		if (!std::filesystem::is_directory(package_path)) {
+		std::error_code error;
+		if (!std::filesystem::is_directory(package_path, error)) {
 			report_error(ErrorCode::E4005, *package_path_text, 0, 0);
 			return;
 		}
@@ -73,7 +133,7 @@ namespace hemera {
 			MyMap<InternedString, PackageInfo*>& packages = executor.program_info->packages;
 			auto iter = packages.find(package_path_text);
 			if (iter != packages.end()) {
-				LOG_WARNING("We already imported the package " + *package_path_text);
+				// Already imported, by this or another import of the same package
 				return;
 			}
 			package_info = INFO_ALLOC->new_object<PackageInfo>();
@@ -84,8 +144,13 @@ namespace hemera {
 		{
 			std::scoped_lock<std::mutex> lock(package_info->files_mutex);
 
-			for (const auto& entry : std::filesystem::directory_iterator(package_path)) {
-				if (!std::filesystem::is_regular_file(entry.status())) {
+			std::filesystem::directory_iterator files(package_path, error);
+			if (error) {
+				report_error(ErrorCode::E4005, *package_path_text, 0, 0, error.message());
+				return;
+			}
+			for (const auto& entry : files) {
+				if (!entry.is_regular_file(error)) {
 					continue;
 				}
 				if (entry.path().extension() != ".hsc") {
@@ -154,7 +219,8 @@ namespace hemera {
 		}
 
 		std::filesystem::path dir_path = std::filesystem::path(*location.package_path);
-		if (!std::filesystem::is_directory(dir_path)) {
+		std::error_code directory_error;
+		if (!std::filesystem::is_directory(dir_path, directory_error)) {
 			std::string details = std::format(
 				"Package {}'s path '{}' is not a valid directory",
 				*location.package_path, dir_path.generic_string());
@@ -177,7 +243,13 @@ namespace hemera {
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
 			executor.program_info->node_alloc);
 		
+		// Whether the previous top-level node was an #if or #else_if, which #else_if and #else must follow
+		bool after_if_chain = false;
+
 		for (ast::Node* child : file_info->ast_root->children) {
+			if (child->node_type != ast::NodeType::DIRECTIVE) {
+				after_if_chain = false;
+			}
 			if (child->node_type == ast::NodeType::PACKAGE) {
 				InternedString package_name = child->value.value;
 
@@ -217,41 +289,62 @@ namespace hemera {
 					}
 					if (ast::NodeType::KEYWORD_FROM == child->children[i]->node_type) {
 						++i;
-						import->location = child->children[i]->value.value;
+							import->location = child->children[i]->value.value;
 						continue;
 					}
 				}
+
+				std::error_code error;
+				std::filesystem::path folder = std::filesystem::weakly_canonical(
+					import_folder(*executor.global_data->options,
+						std::filesystem::path(*location.package_path), *import),
+					error);
+				if (error || !std::filesystem::is_directory(folder, error)) {
+					report_error(ErrorCode::E4005, file_path,
+						child->value.line_number, child->value.column_number,
+						folder.string());
+					continue;
+				}
+				import->resolved_path = intern(folder.string());
+				executor.create_work(WorkType::IMPORT,
+					WorkTarget{ WorkTargetType::PACKAGE, { .name = import->resolved_path } });
 
 				continue;
 			}
 			if (child->node_type == ast::NodeType::DEFINITION) {
 				executor.create_work(WorkType::TYPE_CHECK,
-					WorkTarget(WorkTargetType::DEFINITION, { .node = child })
+					WorkTarget(WorkTargetType::DEFINITION,
+						{ .node_location = { location, child } })
 				);
 				continue;
 			}
 			if (child->node_type == ast::NodeType::DIRECTIVE) {
 				InternedString value = child->value.value;
-				if (value->compare("#if") || value->compare("#else_if")) {
-					// TODO(ches) check for else_if and else clause(s)
-				}
-				else if (value->compare("#else")) {
-					std::string details = "#else without an #if";
+				const bool continues_if_chain = after_if_chain;
+				after_if_chain = false;
 
-					report_error(ErrorCode::E4002, *location.file_name,
-						child->value.line_number,
-						child->value.column_number,
-						details);
-
-					continue;
+				if (value->compare("#if") == 0) {
+					//TODO(ches) evaluate the chain with IF_ELSE work, including imports inside it
+					after_if_chain = true;
 				}
-				else if (value->compare("#run")) {
+				else if (value->compare("#else_if") == 0 || value->compare("#else") == 0) {
+					if (!continues_if_chain) {
+						std::string details = std::format("{} without an #if", *value);
+
+						report_error(ErrorCode::E4002, file_path,
+							child->value.line_number,
+							child->value.column_number,
+							details);
+					}
+					after_if_chain = value->compare("#else_if") == 0;
+				}
+				else if (value->compare("#run") == 0) {
 					ast::Node* expr = child->children[0];
 
 					executor.create_work(WorkType::EXECUTION,
-						WorkTarget(WorkTargetType::EXPRESSION, { .node = expr })
+						WorkTarget(WorkTargetType::EXPRESSION,
+							{ .node_location = { location, expr } })
 					);
-					continue;
 				}
 				else {
 					std::string details = std::string(*value);
@@ -278,20 +371,26 @@ namespace hemera {
 	void work_type_check(WorkThreadData& executor, WorkTarget& target) {
 		switch (target.type) {
 			case WorkTargetType::DEFINITION:
-				type_check_definition(executor, target.value.file_location, 
-					nullptr, target.value.node);
+				type_check_definition(executor, target.value.node_location.file,
+					nullptr, target.value.node_location.node);
 				break;
 			case WorkTargetType::EXPRESSION:
-				type_check_expression(executor, target.value.file_location,
-					nullptr, target.value.node);
+				type_check_expression(executor, target.value.node_location.file,
+					nullptr, target.value.node_location.node);
 				break;
 			case WorkTargetType::FILE:
 				LOG_ERROR("Trying to type check a file");
 				break;
 			case WorkTargetType::FUNCTION:
-				type_check_function(executor, target.value.file_location,
-					nullptr, target.value.function);
+			{
+				FunctionInfo* function = target.value.function;
+				FileLocation file_location{
+					function->package != nullptr ? function->package->full_path : nullptr,
+					function->file != nullptr ? function->file->full_path : nullptr,
+				};
+				type_check_function(executor, file_location, nullptr, function);
 				break;
+			}
 			case WorkTargetType::PACKAGE:
 				LOG_ERROR("Trying to type check a package");
 				break;

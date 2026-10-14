@@ -297,7 +297,7 @@ namespace hemera::parser {
 					}
 					const Token& lbrace = current_token(state);
 					skip(state, TokenType::SYM_LBRACE);
-					if (!imports(state, directive)) {
+					if (!top_level_block(state, directive)) {
 						return false;
 					}
 					if (!skip(state, TokenType::SYM_RBRACE)) {
@@ -324,6 +324,30 @@ namespace hemera::parser {
 			current_type = current_token(state).type;
 		}
 		return true;
+	}
+
+	/*
+	 * The inside of a top-level #if, #else_if or #else block: imports and definitions, in any order,
+	 * wherever the block is in the file.
+	 */
+	bool top_level_block(ParserState* state, ast::Node& parent) {
+		while (true) {
+			if (expect(state, TokenType::KEYWORD_IMPORT)) {
+				if (!import(state, parent)) {
+					return false;
+				}
+			}
+			else if (expect(state, TokenType::IDENTIFIER)
+				|| expect(state, TokenType::DIRECTIVE)
+				|| expect(state, TokenType::ANNOTATION)) {
+				if (!const_definitions(state, parent)) {
+					return false;
+				}
+			}
+			else {
+				return true;
+			}
+		}
 	}
 
 	bool import(ParserState* state, ast::Node& parent) {
@@ -388,7 +412,7 @@ namespace hemera::parser {
 					}
 					const Token& lbrace = current_token(state);
 					skip(state, TokenType::SYM_LBRACE);
-					if (!const_definitions(state, directive)) {
+					if (!top_level_block(state, directive)) {
 						return false;
 					}
 					if (!skip(state, TokenType::SYM_RBRACE)) {

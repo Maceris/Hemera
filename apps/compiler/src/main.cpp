@@ -9,6 +9,7 @@
 #include "cmd_line/options.h"
 #include "error/reporting.h"
 #include "front_end/front_end.h"
+#include "hmir/hmir_dialect.h"
 #include "memory/thread_safe_queue.h"
 #include "util/logger.h"
 #include "util/thread_pool.h"
@@ -86,6 +87,7 @@ namespace hemera {
 		mlir::MLIRContext mlir_context;
 		mlir_context.loadDialect<mlir::BuiltinDialect>();
 		mlir_context.loadDialect<mlir::func::FuncDialect>();
+		mlir_context.loadDialect<hmir::HemeraDialect>();
 		mlir::OpBuilder mlir_builder(&mlir_context);
 
 		mlir::ModuleOp mlir_module =

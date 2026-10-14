@@ -212,34 +212,24 @@ namespace hemera {
 
 		ast::Node* fn_root = function->node;
 
-		if (fn_root->children.size() < 3 || fn_root->children.size() > 4) {
-			report_error(ErrorCode::E4001, *file_location.file_name,
+		FunctionParts parts;
+		if (!function_parts(fn_root, parts)) {
+			report_error(ErrorCode::E4003,
+				file_location.file_name != nullptr
+				? std::string_view(*file_location.file_name)
+				: std::string_view(),
 				fn_root->value.line_number,
 				fn_root->value.column_number);
+			return;
 		}
 
-		ast::Node* decl = fn_root->children[0];
-		ast::Node* identifier = decl->children[0];
-		ast::Node* explicit_type = decl->children.size() > 1
-			? decl->children[1]
-			: nullptr;
-		ast::Node* colon_or_equals = fn_root->children[1];
-		ast::Node* signature = fn_root->children[2];
-		ast::Node* body = fn_root->children.size() >= 4 
-			? fn_root->children[3]
-			: nullptr;
+		function->name = parts.name->value.value;
 
-		IGNORE_UNUSED(explicit_type);
-		IGNORE_UNUSED(colon_or_equals);
-		IGNORE_UNUSED(signature);
-
-		function->name = identifier->value.value;
-
-		if (explicit_type == nullptr) {
+		if (parts.explicit_type == nullptr) {
 			//TODO(ches) deduce type
 		}
-		if (body != nullptr) {
-			type_check_block(executor, file_location, function, nullptr, body);
+		if (parts.body != nullptr) {
+			type_check_block(executor, file_location, function, nullptr, parts.body);
 		}
 
 		//TODO(ches) complete this

@@ -55,6 +55,10 @@ namespace hemera {
 		InternedString alias;
 		InternedString location;
 		/// <summary>
+		/// The canonical path of the imported package's folder, once resolved.
+		/// </summary>
+		InternedString resolved_path = nullptr;
+		/// <summary>
 		/// The import statement, which also gives its location.
 		/// </summary>
 		ast::Node* node = nullptr;
@@ -95,6 +99,34 @@ namespace hemera {
 		FunctionInfo& operator=(const FunctionInfo&) = delete;
 		FunctionInfo& operator=(FunctionInfo&&) = delete;
 	};
+
+	/// <summary>
+	/// The parts of a function's definition, like name : type : fn(...) {...}.
+	/// </summary>
+	struct FunctionParts {
+		ast::Node* name = nullptr;
+		/// <summary>
+		/// The type written before the second colon, if any.
+		/// </summary>
+		ast::Node* explicit_type = nullptr;
+		/// <summary>
+		/// The function's signature: the fn literal, or the explicit type for a declaration
+		/// without a body (name : fn() : ---).
+		/// </summary>
+		ast::Node* signature = nullptr;
+		/// <summary>
+		/// The body, or null for a declaration without one.
+		/// </summary>
+		ast::Node* body = nullptr;
+	};
+
+	/// <summary>
+	/// Splits a DEFINITION node whose value is a function into its parts.
+	/// The node's children are the name, an optional explicit type, any annotations,
+	/// the separator (: or =), then either the signature and body, or --- for a declaration.
+	/// </summary>
+	/// <returns>False if the definition isn't a function.</returns>
+	bool function_parts(ast::Node* definition, FunctionParts& parts);
 
 	struct ExpressionInfo {
 		ast::Node* node;

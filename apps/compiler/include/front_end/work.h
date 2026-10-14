@@ -24,10 +24,18 @@ namespace hemera {
 		InternedString file_name;
 	};
 
+	/// <summary>
+	/// A node, and the file it's in, for work on definitions and expressions.
+	/// </summary>
+	struct NodeLocation {
+		FileLocation file;
+		ast::Node* node;
+	};
+
 	union WorkTargetValue {
 		InternedString name;
 		FileLocation file_location;
-		ast::Node* node;
+		NodeLocation node_location;
 		FunctionInfo* function;
 	};
 

@@ -47,6 +47,7 @@ namespace hemera::parser {
 	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc);
 	bool package_statement(ParserState* state, ast::Node& parent);
 	bool imports(ParserState* state, ast::Node& parent);
+	bool top_level_block(ParserState* state, ast::Node& parent);
 	bool import(ParserState* state, ast::Node& parent);
 	bool const_definitions(ParserState* state, ast::Node& parent);
 	bool any_definition(ParserState* state, ast::Node& parent);
