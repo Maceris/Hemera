@@ -37,5 +37,9 @@ compiled with `.Trap` as its `stack_check_failure` gets:
     ud2
 ```
 
+Functions with a limit register don't mark the object with `.note.GNU-split-stack`, which tells linkers to adjust
+calls into code without the check so they call `__morestack_non_split`. That's for limits in thread-local storage
+grown through `__morestack`; with a carrier block, any function can be called from any other.
+
 Includes `llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll`. LLVM's existing segmented-stack tests are
 unchanged.

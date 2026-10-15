@@ -83,3 +83,30 @@ The object format follows the target's OS:
 
 `TargetOptions.linker_script` places sections, for outputs loaded at fixed addresses like kernels.
 `OutputType.FlatBinary` links the same way, then keeps only the loadable bytes.
+
+## Target Options on the Command Line
+
+Until a build package can set `TargetOptions` (it needs `#run`), the compiler takes the ones freestanding programs
+need as flags:
+
+| Flag | `TargetOptions` |
+|---|---|
+| `--os=none` | `os = .None`, which also makes the output ELF |
+| `--no-startup-code` | `startup_code = false` |
+| `--entry=name` | The entry function, `main` by default |
+| `--no-red-zone` | `red_zone = false` |
+| `--stack-check=trap` | `stack_check_failure = .Trap`; `off`, the default, leaves the check out until hosted startup code sets up a carrier block |
+| `--code-model=kernel` | `code_model`: `default`, `small`, `kernel`, `medium` or `large` |
+| `--relocation-model=static` | `relocation_model`: `static`, or `pic`, the default |
+| `--cpu-features=...` | `cpu_features` |
+| `--linker-script=path` | `linker_script` |
+
+A kernel loaded by a bootloader, with SIMD left off since the bootloader may not enable it:
+
+```
+hemera --os=none --no-startup-code --entry=kernel_entry --no-red-zone --stack-check=trap \
+    --cpu-features=-mmx,-sse,-sse2,-avx,-avx2,+soft-float --linker-script=kernel.ld --output=kernel.elf kernel
+```
+
+A function that starts without a context has no stack check, since there's no carrier block yet when it starts, so
+the functions it calls aren't inlined into it, which keeps their checks.

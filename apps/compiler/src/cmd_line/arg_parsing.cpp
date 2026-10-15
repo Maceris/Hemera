@@ -120,8 +120,14 @@ namespace hemera::arg_parse {
 				OptionWithValue& option_with_value =
 					output.options_with_values.emplace_back();
 				option_with_value.option = option;
-				split_on_char(raw_arg + found_equals.location + 1, ',',
-					option_with_value.values);
+				// Only options taking several values are lists; others, like --cpu-features=+a,-b, keep their commas
+				if (maybe_option.value()->multiple_args) {
+					split_on_char(raw_arg + found_equals.location + 1, ',',
+						option_with_value.values);
+				}
+				else {
+					option_with_value.values.emplace_back(raw_arg + found_equals.location + 1);
+				}
 
 			}
 			else {

@@ -118,6 +118,7 @@ SET(THIRD_PARTY_HEADER_FILES
 SET(TEST_FILES
   ${TEST_DIR}/main.cpp
   ${TEST_DIR}/string_cache_guard.h
+  ${TEST_DIR}/back_end/freestanding_test.cpp
   ${TEST_DIR}/back_end/hosted_test.cpp
   ${TEST_DIR}/cmd_line/arg_parsing_test.cpp
   ${TEST_DIR}/front_end/front_end_test.cpp
@@ -145,11 +146,13 @@ ADD_EXECUTABLE(Hemera
 )
 
 llvm_map_components_to_libnames(llvm_libs
+  aarch64asmparser
   aarch64codegen
   aarch64desc
   aarch64info
   aarch64utils
   analysis
+  armasmparser
   armcodegen
   armdesc
   arminfo
@@ -167,6 +170,7 @@ llvm_map_components_to_libnames(llvm_libs
   support
   transformutils
   vectorize
+  x86asmparser
   x86codegen
   x86desc
   x86info

@@ -56,6 +56,10 @@ namespace hemera {
 		/// Where to record what each node is, for generating code, or null.
 		/// </summary>
 		CheckedBody* record = nullptr;
+		/// <summary>
+		/// The function a freestanding program starts at, which starts without a context.
+		/// </summary>
+		bool freestanding_entry = false;
 		explicit Checker(Walk& walk_)
 			: walk{ walk_ }
 		{}
@@ -3139,7 +3143,16 @@ namespace hemera {
 		for (size_t i = 1; i + 1 < node->children.size(); ++i) {
 			ast::Node* part = node->children[i];
 			if (ast::NodeType::KEYWORD_FROM == part->node_type) {
+				// from value: a whole context, which is the from's child
 				from = true;
+				if (!part->children.empty()) {
+					Value value;
+					progress = check_expression(checker, part->children[0], context, value);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+					require_fit(checker, value, context, part->children[0], "push_context ... from");
+				}
 				continue;
 			}
 			if (ast::NodeType::LIST == part->node_type && !from) {
@@ -3475,7 +3488,7 @@ namespace hemera {
 		checker.scopes.emplace_back();
 		declare_parameters(checker, function_node, type);
 		checker.function = const_cast<TypeInfoFunction*>(type);
-		checker.has_context = !starts_without_context(type);
+		checker.has_context = !starts_without_context(type) && !checker.freestanding_entry;
 		bool continues = true;
 		checker.scopes.emplace_back();
 		Progress progress = check_block(checker, body, continues, nullptr, nullptr);
@@ -3584,6 +3597,9 @@ namespace hemera {
 		auto checked = std::make_shared<CheckedBody>();
 		Checker checker(walk);
 		checker.record = checked.get();
+		const Options* options = executor.global_data->options;
+		checker.freestanding_entry = options != nullptr && !options->startup_code && function->generic == nullptr
+			&& text_of(function->name) == options->entry && *function->package_path == *intern(options->input.string());
 		const size_t errors_before = error_count();
 		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
 		if (progress == Progress::DONE && error_count() == errors_before) {

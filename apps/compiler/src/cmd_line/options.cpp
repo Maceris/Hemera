@@ -10,13 +10,20 @@ namespace hemera {
 		, os{ OSType::Win32 }
 		, environment{ EnvironmentType::MSVC }
 		, object_format{ ObjectFormatType::COFF }
+		, code_model{ TargetCodeModel::Default }
+		, relocation_model{ TargetRelocationModel::PositionIndependent }
+		, stack_check{ TargetStackCheck::Off }
 		, cpu{ "generic" }
 		, cpu_features{ "" }
 		, input{ std::filesystem::current_path() }
 		, install_path{ std::filesystem::current_path() }
 		, builtin_paths{}
 		, output_name{ "" }
+		, entry{ "main" }
+		, linker_script{}
 		, debug_info{ false }
+		, startup_code{ true }
+		, red_zone{ true }
 	{}
 	Options::~Options() = default;
 }

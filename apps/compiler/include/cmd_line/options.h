@@ -399,6 +399,40 @@ namespace hemera {
         Intel,
     };
 	
+	/// <summary>
+	/// How far apart code and data may be (base/compiler/build.hsc, CodeModel).
+	/// </summary>
+	enum class TargetCodeModel {
+		Default,
+		Small,
+		Kernel,
+		Medium,
+		Large,
+	};
+
+	/// <summary>
+	/// Whether addresses are absolute or relative to the code using them.
+	/// </summary>
+	enum class TargetRelocationModel {
+		Static,
+		PositionIndependent,
+	};
+
+	/// <summary>
+	/// Whether each function's prologue checks for room on the stack, and what it does without it
+	/// (docs/calling_convention.md, Prologue Stack Check).
+	/// </summary>
+	enum class TargetStackCheck {
+		/// <summary>
+		/// No check, until startup code sets up the carrier block it reads.
+		/// </summary>
+		Off,
+		/// <summary>
+		/// Stop with a trap, for code with one fixed-size stack, like a kernel.
+		/// </summary>
+		Trap,
+	};
+
 	struct Options {
 		BuildExtent build_extent;
 		OptimizationLevel optimization_level;
@@ -408,6 +442,9 @@ namespace hemera {
         OSType os;
         EnvironmentType environment;
         ObjectFormatType object_format;
+        TargetCodeModel code_model;
+        TargetRelocationModel relocation_model;
+        TargetStackCheck stack_check;
         /// <summary>
         /// The specific processor name to optimize for. Empty strings or
         /// "generic" will use the default CPU based on the target info.
@@ -423,7 +460,26 @@ namespace hemera {
         std::filesystem::path install_path;
         std::map<BuiltinPackage, std::filesystem::path> builtin_paths;
 		std::string output_name;
+        /// <summary>
+        /// The function the program starts at, in the input package.
+        /// </summary>
+        std::string entry;
+        /// <summary>
+        /// Places sections, for outputs loaded at fixed addresses like kernels. Empty for the
+        /// linker's default layout.
+        /// </summary>
+        std::filesystem::path linker_script;
         bool debug_info;
+        /// <summary>
+        /// Whether the output includes startup code that sets up the first carrier block and
+        /// context before calling the entry function. Freestanding programs turn it off, and
+        /// their entry function starts without a context (docs/compilation.md).
+        /// </summary>
+        bool startup_code;
+        /// <summary>
+        /// Kernel code needs this off, since interrupts can write below the stack pointer.
+        /// </summary>
+        bool red_zone;
 
         Options();
         Options(const Options&) = delete;

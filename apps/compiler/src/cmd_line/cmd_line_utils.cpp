@@ -323,16 +323,16 @@ namespace hemera {
 		using std::cout;
 		using std::endl;
 
-		output.input = std::filesystem::canonical(
-			std::filesystem::path(input.input)
-		);
-		if (!std::filesystem::is_directory(output.input)) {
+		// Checked before canonical, which can't make a path that doesn't exist canonical
+		const std::filesystem::path given(input.input);
+		if (!std::filesystem::is_directory(given)) {
 			cout << "Input folder ";
-			cout << output.install_path;
+			cout << given;
 			cout << " does not exist!";
 			cout << endl;
 			return false;
 		}
+		output.input = std::filesystem::canonical(given);
 
 		bool architecture_seen = false;
 		bool cpu_seen = false;
@@ -346,6 +346,11 @@ namespace hemera {
 		bool subarchitecture_seen = false;
 		bool vendor_seen = false;
 		bool optimization_seen = false;
+		bool code_model_seen = false;
+		bool relocation_model_seen = false;
+		bool entry_seen = false;
+		bool linker_script_seen = false;
+		bool stack_check_seen = false;
 
 		for (const auto& option : input.options) {
 			switch (option) {
@@ -413,17 +418,28 @@ namespace hemera {
 				output.optimization_level = OptimizationLevel::O3;
 				optimization_seen = true;
 				break;
+			case hemera::arg_parse::NO_RED_ZONE:
+				output.red_zone = false;
+				break;
+			case hemera::arg_parse::NO_STARTUP_CODE:
+				output.startup_code = false;
+				break;
 			case hemera::arg_parse::ARCHITECTURE:
+			case hemera::arg_parse::CODE_MODEL:
 			case hemera::arg_parse::CPU:
 			case hemera::arg_parse::CPU_FEATURES:
+			case hemera::arg_parse::ENTRY:
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::INSTALL_PATH:
+			case hemera::arg_parse::LINKER_SCRIPT:
 			case hemera::arg_parse::LIST:
 			case hemera::arg_parse::OBJECT_FORMAT:
 			case hemera::arg_parse::OS:
 			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::PACKAGE_PATH:
+			case hemera::arg_parse::RELOCATION_MODEL:
+			case hemera::arg_parse::STACK_CHECK:
 			case hemera::arg_parse::SUBARCHITECTURE:
 			case hemera::arg_parse::VENDOR:
 			case hemera::arg_parse::VERSION:
@@ -608,7 +624,7 @@ namespace hemera {
 					return false;
 				}
 
-				if (strcmp("unknown", first_arg.c_str()) == 0) {
+				if (strcmp("unknown", first_arg.c_str()) == 0 || strcmp("none", first_arg.c_str()) == 0) {
 					output.os = OSType::UnknownOS;
 					os_seen = true;
 				}
@@ -939,20 +955,118 @@ namespace hemera {
 					output.builtin_paths.insert(std::make_pair(package, location));
 				}
 				break;
+			case hemera::arg_parse::CODE_MODEL:
+				if (code_model_seen) {
+					cout << "Duplicate code model flag" << endl;
+					return false;
+				}
+				code_model_seen = true;
+				if (first_arg == "default") {
+					output.code_model = TargetCodeModel::Default;
+				}
+				else if (first_arg == "small") {
+					output.code_model = TargetCodeModel::Small;
+				}
+				else if (first_arg == "kernel") {
+					output.code_model = TargetCodeModel::Kernel;
+				}
+				else if (first_arg == "medium") {
+					output.code_model = TargetCodeModel::Medium;
+				}
+				else if (first_arg == "large") {
+					output.code_model = TargetCodeModel::Large;
+				}
+				else {
+					cout << "Unrecognized code model: " << first_arg << endl;
+					return false;
+				}
+				break;
+			case hemera::arg_parse::RELOCATION_MODEL:
+				if (relocation_model_seen) {
+					cout << "Duplicate relocation model flag" << endl;
+					return false;
+				}
+				relocation_model_seen = true;
+				if (first_arg == "static") {
+					output.relocation_model = TargetRelocationModel::Static;
+				}
+				else if (first_arg == "pic") {
+					output.relocation_model = TargetRelocationModel::PositionIndependent;
+				}
+				else {
+					cout << "Unrecognized relocation model: " << first_arg << endl;
+					return false;
+				}
+				break;
+			case hemera::arg_parse::STACK_CHECK:
+				if (stack_check_seen) {
+					cout << "Duplicate stack check flag" << endl;
+					return false;
+				}
+				stack_check_seen = true;
+				if (first_arg == "off") {
+					output.stack_check = TargetStackCheck::Off;
+				}
+				else if (first_arg == "trap") {
+					output.stack_check = TargetStackCheck::Trap;
+				}
+				else {
+					cout << "Unrecognized stack check: " << first_arg << endl;
+					return false;
+				}
+				break;
+			case hemera::arg_parse::ENTRY:
+				if (entry_seen) {
+					cout << "Duplicate entry flag" << endl;
+					return false;
+				}
+				entry_seen = true;
+				output.entry = option_with_value.values[0];
+				break;
+			case hemera::arg_parse::LINKER_SCRIPT:
+				if (linker_script_seen) {
+					cout << "Duplicate linker script flag" << endl;
+					return false;
+				}
+				linker_script_seen = true;
+				output.linker_script = std::filesystem::path(option_with_value.values[0]);
+				if (!std::filesystem::is_regular_file(output.linker_script)) {
+					cout << "Linker script " << output.linker_script << " does not exist!" << endl;
+					return false;
+				}
+				output.linker_script = std::filesystem::canonical(output.linker_script);
+				break;
 			case hemera::arg_parse::DEBUG_INFO:
+			case hemera::arg_parse::NO_RED_ZONE:
+			case hemera::arg_parse::NO_STARTUP_CODE:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:
 			case hemera::arg_parse::O0:
 			case hemera::arg_parse::O1:
 			case hemera::arg_parse::O2:
 			case hemera::arg_parse::O3:
-			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::STOP_BEFORE_LOWERING:
 			case hemera::arg_parse::STOP_BEFORE_ASSEMBLY:
 			case hemera::arg_parse::STOP_BEFORE_LINK:
 			case hemera::arg_parse::VERSION:
 				break;
+			case hemera::arg_parse::OUTPUT:
+				output.output_name = option_with_value.values[0];
+				break;
 			}
+		}
+
+		// The object format and environment follow the OS, unless they're given (docs/compilation.md, Linking)
+		if (os_seen && !object_format_seen) {
+			output.object_format = OSType::Win32 == output.os || OSType::UEFI == output.os ? ObjectFormatType::COFF
+				: OSType::Darwin == output.os || OSType::MacOSX == output.os ? ObjectFormatType::MachO
+				: ObjectFormatType::ELF;
+		}
+		if (os_seen && !environment_seen && OSType::Win32 != output.os) {
+			output.environment = EnvironmentType::UnknownEnvironment;
+		}
+		if (os_seen && !vendor_seen && OSType::Win32 != output.os) {
+			output.vendor = VendorType::UnknownVendor;
 		}
 
 		if (output.output_name == "") {

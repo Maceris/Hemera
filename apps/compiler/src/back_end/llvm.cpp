@@ -364,6 +364,8 @@ namespace hemera {
 		llvm::InitializeAllTargets();
 		llvm::InitializeAllTargetMCs();
 		llvm::InitializeAllAsmPrinters();
+		// For inline assembly, which intrinsics compile to
+		llvm::InitializeAllAsmParsers();
 
 		llvm::Triple::ArchType arch_type = map_arch_type(options.architecture);
 		llvm::Triple::SubArchType sub_arch_type =
@@ -396,42 +398,51 @@ namespace hemera {
 
 		std::string cpu = options.cpu;
 		std::string features = options.cpu_features;
+		// The carrier register, which nothing else may use (docs/calling_convention.md, Carrier Register)
+		if (ArchType::x86_64 == options.architecture) {
+			features += features.empty() ? "+reserve-r14" : ",+reserve-r14";
+		}
 		llvm::TargetOptions opts;
-		llvm::Reloc::Model reloc_model = llvm::Reloc::Model::PIC_;
+		llvm::Reloc::Model reloc_model = TargetRelocationModel::Static == options.relocation_model
+			? llvm::Reloc::Model::Static : llvm::Reloc::Model::PIC_;
+		std::optional<llvm::CodeModel::Model> code_model;
+		switch (options.code_model) {
+		case TargetCodeModel::Default:
+			break;
+		case TargetCodeModel::Small:
+			code_model = llvm::CodeModel::Small;
+			break;
+		case TargetCodeModel::Kernel:
+			code_model = llvm::CodeModel::Kernel;
+			break;
+		case TargetCodeModel::Medium:
+			code_model = llvm::CodeModel::Medium;
+			break;
+		case TargetCodeModel::Large:
+			code_model = llvm::CodeModel::Large;
+			break;
+		}
 
 		target_machine = target->createTargetMachine(
-			*target_triple, cpu, features, opts, reloc_model
+			*target_triple, cpu, features, opts, reloc_model, code_model
 		);
 
 		return true;
 	}
 
-	void BackendLLVM::link(const Options& options, 
-		std::string_view object_file) {
-
-		// Unix = ld.lld
-		// macOS = ld64.lld
-		// Windows = lld-link
-		
-#if defined(_WIN32) || defined(_WIN64)
-		std::string linker_name = "lld-link.exe";
-#elif defined(__APPLE__) || defined(__MACH__)
-		std::string linker_name = "ld64.lld";
-#elif defined(__linux__)
-		std::string linker_name = "ld.lld";
-#else
-		static_assert(false, "Unknown operating system");
-#endif
-
+	// lld-link, for PE/COFF: a hosted program starts at the entry the compiler generates, which needs only kernel32.
+	static std::string coff_arguments(const Options& options, std::string_view object_file) {
 		std::string args;
-
 		if (options.debug_info) {
 			args += "/debug ";
 		}
-		// A hosted program starts at the entry the compiler generates, which needs only kernel32
-		args += std::format("/entry:{} /subsystem:console /nodefaultlib kernel32.lib \"/out:{}.exe\" ", HOSTED_ENTRY_SYMBOL,
-			options.output_name);
-
+		if (options.startup_code) {
+			args += std::format("/entry:{} /subsystem:console /nodefaultlib kernel32.lib ", HOSTED_ENTRY_SYMBOL);
+		}
+		else {
+			args += std::format("/entry:{} /nodefaultlib ", options.entry);
+		}
+		args += std::format("\"/out:{}.exe\" ", options.output_name);
 		switch (options.architecture) {
 		case ArchType::arm:
 			args += "/machine:arm ";
@@ -447,7 +458,43 @@ namespace hemera {
 			args += "/machine:x64 ";
 			break;
 		}
-		std::string command = std::format("{} {}\"{}\"", linker_name, args, object_file);
+		return std::format("lld-link {}\"{}\"", args, object_file);
+	}
+
+	/*
+	 * ld.lld, for ELF: static, without the C runtime, and a position-independent executable for
+	 * position-independent code, like a relocatable kernel.
+	 */
+	static std::string elf_arguments(const Options& options, std::string_view object_file) {
+		std::string args = "-nostdlib -static ";
+		if (TargetRelocationModel::PositionIndependent == options.relocation_model) {
+			args += "-pie --no-dynamic-linker ";
+		}
+		args += std::format("-e {} ", options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry);
+		if (!options.linker_script.empty()) {
+			args += std::format("-T \"{}\" ", options.linker_script.string());
+		}
+		if (!options.debug_info) {
+			args += "--strip-debug ";
+		}
+		args += std::format("-o \"{}\" ", options.output_name);
+		return std::format("ld.lld {}\"{}\"", args, object_file);
+	}
+
+	void BackendLLVM::link(const Options& options, 
+		std::string_view object_file) {
+
+		std::string command;
+		if (ObjectFormatType::ELF == options.object_format) {
+			command = elf_arguments(options, object_file);
+		}
+		else if (ObjectFormatType::COFF == options.object_format) {
+			command = coff_arguments(options, object_file);
+		}
+		else {
+			report_error(ErrorCode::E7000, object_file, 0, 0, "only ELF and PE/COFF outputs can be linked yet");
+			return;
+		}
 		int result = std::system(command.c_str());
 		
 		if (result != 0) {

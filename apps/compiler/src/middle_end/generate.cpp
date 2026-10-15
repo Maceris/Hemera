@@ -16,6 +16,8 @@
 #include "hmir/hmir_passes.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Builders.h"
@@ -68,6 +70,11 @@ namespace hemera {
 		/// </summary>
 		size_t variant = 0;
 		InternedString name = nullptr;
+		/// <summary>
+		/// For a typed constant in another constant's value, which can't load from its global:
+		/// the constant, whose value is generated again where it's needed.
+		/// </summary>
+		Declaration* constant = nullptr;
 		/// <summary>
 		/// A call to a function that never returns.
 		/// </summary>
@@ -133,6 +140,12 @@ namespace hemera {
 		/// </summary>
 		std::vector<Emitted> piped;
 		FunctionState* state = nullptr;
+		const Options* options = nullptr;
+		InternedString input_package = nullptr;
+		/// <summary>
+		/// Globals the linker must keep though nothing refers to them: #externally_initialized ones.
+		/// </summary>
+		std::vector<LLVM::GlobalOp> used;
 		bool failed = false;
 
 		Generator(ProgramInfo* program_, mlir::ModuleOp module_)
@@ -317,9 +330,12 @@ namespace hemera {
 		return result;
 	}
 
-	// A function's LLVM type: the context, then its parameters; its result, or a struct of several.
-	static LLVM::LLVMFunctionType function_type(Generator& generator, TypeInfoFunction const* function) {
-		std::vector<mlir::Type> parameters{ pointer_type(generator) };
+	// A function's LLVM type: the context, if it takes one, then its parameters; its result, or a struct of several.
+	static LLVM::LLVMFunctionType function_type(Generator& generator, TypeInfoFunction const* function, bool with_context = true) {
+		std::vector<mlir::Type> parameters;
+		if (with_context) {
+			parameters.push_back(pointer_type(generator));
+		}
 		for (const FunctionInput& input : function->input) {
 			// Varargs are a view of them
 			parameters.push_back(input.is_varargs ? view_type(generator) : llvm_type(generator, input.type));
@@ -419,9 +435,14 @@ namespace hemera {
 		return slot;
 	}
 
+	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where);
+
 	static mlir::Value value_of(Generator& generator, const Emitted& emitted) {
 		if (emitted.value) {
 			return emitted.value;
+		}
+		if (emitted.constant != nullptr && !in_function(generator)) {
+			return emit_constant_value(generator, emitted.constant, emitted.constant->value_type, nullptr);
 		}
 		if (emitted.address && emitted.type != nullptr) {
 			return load(generator, emitted.type, emitted.address);
@@ -553,17 +574,95 @@ namespace hemera {
 		return unique;
 	}
 
-	// The function a declaration is, declared now and generated later.
+	// Whether a declaration's name has a directive after it, like main #export.
+	static bool has_name_directive(Declaration* declaration, std::string_view directive) {
+		ast::Node* names_node = declaration->node->children[0];
+		std::vector<ast::Node*> names{ names_node };
+		if (ast::NodeType::LIST == names_node->node_type) {
+			names.assign(names_node->children.begin(), names_node->children.end());
+		}
+		for (ast::Node* name : names) {
+			if (name->value.value == nullptr || *name->value.value != *declaration->name) {
+				continue;
+			}
+			for (ast::Node* child : name->children) {
+				if (is_text(child->value.value, directive)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	static bool has_convention(TypeInfoFunction const* function, std::string_view convention) {
+		return text_of(function->calling_convention).find(convention) != std::string::npos;
+	}
+
+	// The function a freestanding program starts at (docs/compilation.md, Freestanding Programs).
+	static bool is_freestanding_entry(Generator& generator, Declaration* declaration) {
+		return declaration != nullptr && !generator.options->startup_code && declaration->generic == nullptr
+			&& text_of(declaration->name) == generator.options->entry && declaration->package_path != nullptr
+			&& *declaration->package_path == *generator.input_package;
+	}
+
+	/*
+	 * Whether a function is called with a context: not interrupt and entry functions, or a
+	 * freestanding entry point (docs/control_flow.md, Functions Without a Context).
+	 */
+	static bool takes_context(Generator& generator, TypeInfoFunction const* function, Declaration* declaration) {
+		return !has_convention(function, "entry") && !has_convention(function, "interrupt")
+			&& !is_freestanding_entry(generator, declaration);
+	}
+
+	/*
+	 * The function a declaration is, declared now and generated later. Exported functions and the
+	 * freestanding entry keep their own names, for the linker and other languages.
+	 */
 	static LLVM::LLVMFuncOp function_for(Generator& generator, Declaration* declaration) {
 		auto iter = generator.functions.find(declaration);
 		if (iter != generator.functions.end()) {
 			return iter->second;
 		}
 		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+		const bool exported = has_name_directive(declaration, "#export") || is_freestanding_entry(generator, declaration);
 		mlir::OpBuilder::InsertionGuard guard(generator.builder);
 		generator.builder.setInsertionPointToEnd(generator.module.getBody());
-		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc,
-			symbol_for(generator, declaration), function_type(generator, type), LLVM::Linkage::Internal);
+		std::string name = exported ? text_of(declaration->name) : symbol_for(generator, declaration);
+		if (exported) {
+			generator.symbols.insert(name);
+		}
+		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, name,
+			function_type(generator, type, takes_context(generator, type, declaration)),
+			exported ? LLVM::Linkage::External : LLVM::Linkage::Internal);
+		std::vector<mlir::Attribute> attributes;
+		if (type->never_returns) {
+			attributes.push_back(generator.builder.getStringAttr("noreturn"));
+		}
+		if (TargetStackCheck::Trap == generator.options->stack_check && takes_context(generator, type, declaration)) {
+			/*
+			 * The prologue compares the stack pointer with the carrier block's stack_limit, at [r14],
+			 * and traps without room (apps/compiler/third-party/patches/llvm). Functions without a
+			 * context don't have a carrier yet.
+			 */
+			auto pair = [&](std::string_view key, std::string_view text) {
+				return generator.builder.getArrayAttr({ generator.builder.getStringAttr(key), generator.builder.getStringAttr(text) });
+			};
+			attributes.push_back(generator.builder.getStringAttr("split-stack"));
+			attributes.push_back(pair("split-stack-limit-register", "r14"));
+			attributes.push_back(pair("split-stack-limit-offset", "0"));
+			attributes.push_back(pair("split-stack-failure", "trap"));
+		}
+		if (!attributes.empty()) {
+			function.setPassthroughAttr(generator.builder.getArrayAttr(attributes));
+		}
+		if (has_convention(type, "interrupt")) {
+			// Entered through the IDT with a pointer to what the CPU pushed (LLVM's x86_intrcc)
+			function.setCConv(LLVM::cconv::CConv::X86_INTR);
+			if (!type->input.empty() && is_variant(type->input[0].type, TypeInfoVariant::POINTER)) {
+				TypeInfo* frame = static_cast<TypeInfoPointer const*>(base(type->input[0].type))->base_type;
+				function.setArgAttr(0, LLVM::LLVMDialect::getByValAttrName(), mlir::TypeAttr::get(llvm_type(generator, frame)));
+			}
+		}
 		generator.functions[declaration] = function;
 		generator.pending.push_back(declaration);
 		return function;
@@ -936,6 +1035,8 @@ namespace hemera {
 		return 0;
 	}
 
+	static bool is_intrinsic(Declaration* called);
+
 	// What a name is: a local, the context, a function, a constant, or something that isn't a value.
 	static Emitted emit_name(Generator& generator, ast::Node* node, const CheckedNode* found, TypeInfo* expected) {
 		if (found == nullptr || ValueKind::POISONED == found->kind) {
@@ -981,13 +1082,20 @@ namespace hemera {
 			return value(emit_constant_value(generator, declaration, type, node), type);
 		}
 		if (DeclarationKind::FUNCTION == declaration->kind && declaration->value_type != nullptr) {
+			if (is_intrinsic(declaration)) {
+				// Only called, never a value, since it's instructions rather than a function
+				return result;
+			}
 			LLVM::LLVMFuncOp function = function_for(generator, declaration);
 			return value(LLVM::AddressOfOp::create(generator.builder, generator.loc, function), declaration->value_type);
 		}
 		if (DeclarationKind::VALUE == declaration->kind && declaration->value_type != nullptr && ValueKind::VALUE == found->kind) {
 			if (!in_function(generator)) {
-				// In another constant's value, which can't read a global: its value again
-				return value(emit_constant_value(generator, declaration, declaration->value_type, node), declaration->value_type);
+				// In another constant's value, which can't read a global: its address, or its value again
+				Emitted constant = location(LLVM::AddressOfOp::create(generator.builder, generator.loc,
+					global_for(generator, declaration)), declaration->value_type);
+				constant.constant = declaration;
+				return constant;
 			}
 			LLVM::GlobalOp global = global_for(generator, declaration);
 			return location(LLVM::AddressOfOp::create(generator.builder, generator.loc, global), declaration->value_type);
@@ -1338,6 +1446,342 @@ namespace hemera {
 		return value(zero_of(generator, usize_type(generator)), BUILTIN_usize);
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Intrinsics: declarations without a body in base, which compile to instructions
+
+	// The ordering an atomic's name ends with, which is taken off it: none is sequentially consistent.
+	static LLVM::AtomicOrdering ordering_suffix(std::string_view& name) {
+		const std::pair<std::string_view, LLVM::AtomicOrdering> suffixes[] = {
+			{ "_acquire_release", LLVM::AtomicOrdering::acq_rel },
+			{ "_acquire", LLVM::AtomicOrdering::acquire },
+			{ "_release", LLVM::AtomicOrdering::release },
+			{ "_no_fence", LLVM::AtomicOrdering::monotonic },
+			{ "_sequentially_consistent", LLVM::AtomicOrdering::seq_cst },
+		};
+		for (const auto& [suffix, ordering] : suffixes) {
+			if (name.ends_with(suffix)) {
+				name.remove_suffix(suffix.size());
+				return ordering;
+			}
+		}
+		return LLVM::AtomicOrdering::seq_cst;
+	}
+
+	// What a compare-exchange that fails orders: no release, since it stores nothing.
+	static LLVM::AtomicOrdering failure_ordering(LLVM::AtomicOrdering ordering) {
+		return LLVM::AtomicOrdering::acq_rel == ordering ? LLVM::AtomicOrdering::acquire
+			: LLVM::AtomicOrdering::release == ordering ? LLVM::AtomicOrdering::monotonic
+			: ordering;
+	}
+
+	// One instruction, or a few, as inline assembly (AT&T syntax), which the optimizer keeps.
+	static mlir::Value assembly(Generator& generator, mlir::Type result, const std::vector<mlir::Value>& operands,
+		std::string_view text, std::string_view constraints) {
+
+		auto op = LLVM::InlineAsmOp::create(generator.builder, generator.loc, result, operands, text, constraints, true, false,
+			LLVM::tailcallkind::TailCallKind::None, LLVM::AsmDialectAttr(), mlir::ArrayAttr());
+		return result ? static_cast<mlir::Value>(op.getRes()) : mlir::Value();
+	}
+
+	// Two 32-bit halves, like edx:eax, as one 64-bit value.
+	static mlir::Value join_halves(Generator& generator, mlir::Value low, mlir::Value high) {
+		mlir::Type i64 = integer_type(generator, 8);
+		mlir::Value wide_low = LLVM::ZExtOp::create(generator.builder, generator.loc, i64, low);
+		mlir::Value wide_high = LLVM::ZExtOp::create(generator.builder, generator.loc, i64, high);
+		mlir::Value shifted = LLVM::ShlOp::create(generator.builder, generator.loc, wide_high, constant_int(generator, i64, 32));
+		return LLVM::OrOp::create(generator.builder, generator.loc, shifted, wide_low);
+	}
+
+	static mlir::Value low_half(Generator& generator, mlir::Value v) {
+		return LLVM::TruncOp::create(generator.builder, generator.loc, integer_type(generator, 4), v);
+	}
+
+	static mlir::Value high_half(Generator& generator, mlir::Value v) {
+		mlir::Value shifted = LLVM::LShrOp::create(generator.builder, generator.loc, v, constant_int(generator, v.getType(), 32));
+		return LLVM::TruncOp::create(generator.builder, generator.loc, integer_type(generator, 4), shifted);
+	}
+
+	// Two 32-bit results of one instruction, like rdmsr's edx:eax, joined.
+	static mlir::Value pair_result(Generator& generator, const std::vector<mlir::Value>& operands, std::string_view text,
+		std::string_view constraints) {
+
+		mlir::Type i32 = integer_type(generator, 4);
+		mlir::Value both = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i32, i32 }), operands,
+			text, constraints);
+		return join_halves(generator, extract(generator, both, 0), extract(generator, both, 1));
+	}
+
+	static Emitted intrinsic_value(mlir::Value v, TypeInfoFunction const* function) {
+		return value(v, function->output.empty() ? nullptr : function->output[0].type);
+	}
+
+	struct PortAccess {
+		std::string_view name;
+		std::string_view instruction;
+		std::string_view constraints;
+		size_t bytes;
+	};
+
+	/*
+	 * An x86-64 instruction (base/intrinsics/x86_64). Returns false for a name that isn't one of
+	 * them, or isn't generated yet.
+	 */
+	static bool emit_x86_64(Generator& generator, std::string_view name, const std::vector<mlir::Value>& arguments,
+		TypeInfoFunction const* function, Emitted& result) {
+
+		mlir::Type i8 = integer_type(generator, 1);
+		mlir::Type i32 = integer_type(generator, 4);
+		mlir::Type i64 = integer_type(generator, 8);
+		const std::pair<std::string_view, std::string_view> plain[] = {
+			{ "cli", "cli" }, { "sti", "sti" }, { "hlt", "hlt" }, { "pause", "pause" }, { "swapgs", "swapgs" },
+		};
+		for (const auto& [intrinsic, instruction] : plain) {
+			if (name == intrinsic) {
+				assembly(generator, mlir::Type(), {}, instruction, "~{memory}");
+				return true;
+			}
+		}
+		if (name == "read_rflags") {
+			result = intrinsic_value(assembly(generator, i64, {}, "pushfq\n\tpopq $0", "=r,~{memory}"), function);
+			return true;
+		}
+		if (name == "lgdt" || name == "lidt") {
+			assembly(generator, mlir::Type(), arguments, name == "lgdt" ? "lgdt ($0)" : "lidt ($0)", "r,~{memory}");
+			return true;
+		}
+		if (name == "ltr") {
+			assembly(generator, mlir::Type(), arguments, "ltr $0", "r,~{memory}");
+			return true;
+		}
+		if (name == "load_segments") {
+			// The data segments, then cs with a far return to the next instruction
+			std::vector<mlir::Value> selectors{
+				LLVM::ZExtOp::create(generator.builder, generator.loc, i64, arguments[0]),
+				LLVM::ZExtOp::create(generator.builder, generator.loc, i64, arguments[1]),
+			};
+			assembly(generator, mlir::Type(), selectors,
+				"movw ${1:w}, %ds\n\tmovw ${1:w}, %es\n\tmovw ${1:w}, %fs\n\tmovw ${1:w}, %gs\n\tmovw ${1:w}, %ss\n\t"
+				"pushq $0\n\tleaq 1f(%rip), %rax\n\tpushq %rax\n\tlretq\n1:",
+				"r,r,~{rax},~{memory}");
+			return true;
+		}
+		const PortAccess port_reads[] = {
+			{ "in_u8", "inb %dx, %al", "={al},{dx},~{memory}", 1 },
+			{ "in_u16", "inw %dx, %ax", "={ax},{dx},~{memory}", 2 },
+			{ "in_u32", "inl %dx, %eax", "={eax},{dx},~{memory}", 4 },
+		};
+		for (const PortAccess& access : port_reads) {
+			if (name == access.name) {
+				result = intrinsic_value(assembly(generator, integer_type(generator, access.bytes), arguments, access.instruction,
+					access.constraints), function);
+				return true;
+			}
+		}
+		const PortAccess port_writes[] = {
+			{ "out_u8", "outb %al, %dx", "{dx},{al},~{memory}", 1 },
+			{ "out_u16", "outw %ax, %dx", "{dx},{ax},~{memory}", 2 },
+			{ "out_u32", "outl %eax, %dx", "{dx},{eax},~{memory}", 4 },
+		};
+		for (const PortAccess& access : port_writes) {
+			if (name == access.name) {
+				assembly(generator, mlir::Type(), arguments, access.instruction, access.constraints);
+				return true;
+			}
+		}
+		if (name == "rdmsr") {
+			result = intrinsic_value(pair_result(generator, arguments, "rdmsr", "={eax},={edx},{ecx},~{memory}"), function);
+			return true;
+		}
+		if (name == "read_gs_base") {
+			// IA32_GS_BASE, which works whether or not FSGSBASE is enabled
+			mlir::Value address = pair_result(generator, { constant_int(generator, i32, 0xC0000101) }, "rdmsr",
+				"={eax},={edx},{ecx},~{memory}");
+			result = intrinsic_value(LLVM::IntToPtrOp::create(generator.builder, generator.loc, pointer_type(generator), address),
+				function);
+			return true;
+		}
+		if (name == "wrmsr" || name == "xsetbv") {
+			std::vector<mlir::Value> operands{ arguments[0], low_half(generator, arguments[1]), high_half(generator, arguments[1]) };
+			assembly(generator, mlir::Type(), operands, name, "{ecx},{eax},{edx},~{memory}");
+			return true;
+		}
+		if (name == "xgetbv") {
+			result = intrinsic_value(pair_result(generator, arguments, "xgetbv", "={eax},={edx},{ecx},~{memory}"), function);
+			return true;
+		}
+		if (name == "rdtsc") {
+			result = intrinsic_value(pair_result(generator, {}, "rdtsc", "={eax},={edx},~{memory}"), function);
+			return true;
+		}
+		if (name.starts_with("read_cr")) {
+			const std::string text = std::format("movq %{}, $0", name.substr(5));
+			result = intrinsic_value(assembly(generator, i64, {}, text, "=r,~{memory}"), function);
+			return true;
+		}
+		if (name.starts_with("write_cr")) {
+			const std::string text = std::format("movq $0, %{}", name.substr(6));
+			assembly(generator, mlir::Type(), arguments, text, "r,~{memory}");
+			return true;
+		}
+		if (name == "invlpg") {
+			assembly(generator, mlir::Type(), arguments, "invlpg ($0)", "r,~{memory}");
+			return true;
+		}
+		if (name == "xsave" || name == "xsavec" || name == "xsaveopt" || name == "xrstor") {
+			// The mask goes in edx:eax
+			std::vector<mlir::Value> operands{ arguments[0], low_half(generator, arguments[1]), high_half(generator, arguments[1]) };
+			assembly(generator, mlir::Type(), operands, std::format("{}64 ($0)", name), "r,{eax},{edx},~{memory}");
+			return true;
+		}
+		if (name == "cpuid") {
+			mlir::Value all = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i32, i32, i32, i32 }),
+				arguments, "cpuid", "={eax},={ebx},={ecx},={edx},{eax},{ecx},~{memory}");
+			TypeInfo* type = function->output[0].type;
+			mlir::Value registers = zero_of(generator, llvm_type(generator, type));
+			const std::vector<int64_t> elements = generator.member_elements[static_cast<TypeInfoStruct const*>(base(type))];
+			for (size_t i = 0; i < 4 && i < elements.size(); ++i) {
+				registers = insert(generator, registers, extract(generator, all, static_cast<int64_t>(i)), { elements[i] });
+			}
+			result = value(registers, type);
+			return true;
+		}
+		if (name == "rdrand" || name == "rdseed") {
+			// The value, and whether the carry flag said it's ready
+			mlir::Value both = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i8 }), {},
+				std::format("{} $0\n\tsetc $1", name), "=r,=r,~{memory}");
+			TypeInfo* type = function->output[0].type;
+			mlir::Value ready = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::ne,
+				extract(generator, both, 1), constant_int(generator, i8, 0));
+			mlir::Value some = make_variant(generator, type, 0, { extract(generator, both, 0) }, { BUILTIN_u64 });
+			mlir::Value none = make_variant(generator, type, variant_named(type, "None"), {}, {});
+			result = value(LLVM::SelectOp::create(generator.builder, generator.loc, ready, some, none), type);
+			return true;
+		}
+		return false;
+	}
+
+	// An atomic load, store or read-modify-write, by its name: what it does and how it's ordered.
+	static bool emit_atomic(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, Emitted& result) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		const LLVM::AtomicOrdering ordering = ordering_suffix(name);
+		bool weak = false;
+		if (name.ends_with("_weak")) {
+			name.remove_suffix(5);
+			weak = true;
+		}
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		TypeInfo const* target = static_cast<TypeInfoPointer const*>(base(function->input[0].type))->base_type;
+		TypeInfo const* value_type = target != nullptr ? target : BUILTIN_rawptr;
+		const unsigned alignment = static_cast<unsigned>(value_type->size);
+		if (name.starts_with("atomic_load_")) {
+			result = value(LLVM::LoadOp::create(b, l, llvm_type(generator, value_type), arguments[0], alignment, false, false, false,
+				false, ordering), result_type);
+			return true;
+		}
+		if (name.starts_with("atomic_store_")) {
+			LLVM::StoreOp::create(b, l, arguments[1], arguments[0], alignment, false, false, false, ordering);
+			return true;
+		}
+		if (name.starts_with("interlocked_compare_exchange_")) {
+			// (old, success), the same struct as the function's two results
+			auto exchange = LLVM::AtomicCmpXchgOp::create(b, l, arguments[0], arguments[2], arguments[1], ordering,
+				failure_ordering(ordering), "", alignment, weak);
+			result = value(exchange.getRes(), nullptr);
+			result.kind = ValueKind::RESULTS;
+			result.results = { function->output[0].type, function->output[1].type };
+			return true;
+		}
+		const std::pair<std::string_view, LLVM::AtomicBinOp> operations[] = {
+			{ "interlocked_exchange_add_", LLVM::AtomicBinOp::add },
+			{ "interlocked_exchange_", LLVM::AtomicBinOp::xchg },
+			{ "interlocked_and_", LLVM::AtomicBinOp::_and },
+			{ "interlocked_or_", LLVM::AtomicBinOp::_or },
+			{ "interlocked_xor_", LLVM::AtomicBinOp::_xor },
+			{ "interlocked_increment_", LLVM::AtomicBinOp::add },
+			{ "interlocked_decrement_", LLVM::AtomicBinOp::sub },
+		};
+		for (const auto& [prefix, operation] : operations) {
+			if (!name.starts_with(prefix)) {
+				continue;
+			}
+			// Increment and decrement change it by one; each gives the old value
+			mlir::Value operand = arguments.size() > 1 ? arguments[1] : constant_int(generator, llvm_type(generator, value_type), 1);
+			mlir::Value old = LLVM::AtomicRMWOp::create(b, l, operation, arguments[0], operand, ordering, "", alignment);
+			result = value(old, result_type);
+			return true;
+		}
+		return false;
+	}
+
+	/*
+	 * An intrinsic's instructions (base/intrinsics): trap, memory, volatile and atomic accesses,
+	 * fences, the carrier register, and the platform's own instructions.
+	 */
+	static Emitted emit_intrinsic(Generator& generator, Declaration* called, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
+
+		const std::string full_name = text_of(called->name);
+		std::string_view name = full_name;
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		Emitted result;
+		if (name == "trap") {
+			LLVM::Trap::create(b, l);
+			return never_returning();
+		}
+		if (name == "mem_copy") {
+			LLVM::MemmoveOp::create(b, l, arguments[0], arguments[1], arguments[2], false);
+			return result;
+		}
+		if (name == "mem_copy_non_overlapping") {
+			LLVM::MemcpyOp::create(b, l, arguments[0], arguments[1], arguments[2], false);
+			return result;
+		}
+		if (name == "mem_zero") {
+			LLVM::MemsetOp::create(b, l, arguments[0], constant_int(generator, integer_type(generator, 1), 0), arguments[1], false);
+			return result;
+		}
+		// The carrier register, which nothing else uses (docs/calling_convention.md, Carrier Register)
+		if (name == "carrier") {
+			return value(assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}"), result_type);
+		}
+		if (name == "set_carrier") {
+			assembly(generator, mlir::Type(), arguments, "movq $0, %r14", "r,~{memory}");
+			return result;
+		}
+		if (name.starts_with("volatile_load_")) {
+			return value(LLVM::LoadOp::create(b, l, llvm_type(generator, result_type), arguments[0],
+				static_cast<unsigned>(result_type->size), true), result_type);
+		}
+		if (name.starts_with("volatile_store_")) {
+			LLVM::StoreOp::create(b, l, arguments[1], arguments[0], static_cast<unsigned>(function->input[1].type->size), true);
+			return result;
+		}
+		if (name.starts_with("fence_") || name.starts_with("compiler_fence_")) {
+			const bool compiler_only = name.starts_with("compiler_");
+			LLVM::FenceOp::create(b, l, ordering_suffix(name), compiler_only ? "singlethread" : "");
+			return result;
+		}
+		if ((name.starts_with("atomic_") || name.starts_with("interlocked_")) && emit_atomic(generator, name, function, arguments, result)) {
+			return result;
+		}
+		if (emit_x86_64(generator, name, arguments, function, result)) {
+			return result;
+		}
+		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", full_name));
+		return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : result;
+	}
+
+	// Whether a declaration is an intrinsic: a function in base without a body.
+	static bool is_intrinsic(Declaration* called) {
+		return called != nullptr && is_base_package(called->package_path)
+			&& function_body(called->generic != nullptr ? called->generic : called) == nullptr;
+	}
+
 	/*
 	 * A call: its arguments matched to the function's parameters like the checker does, in order,
 	 * then by name, then defaults; the varargs parameter takes the rest of those in order.
@@ -1363,14 +1807,9 @@ namespace hemera {
 			unsupported(generator, paren, "this call can't be generated yet");
 			return Emitted{};
 		}
-		// Intrinsics: declarations without a body in base
-		if (called != nullptr && function_body(called->generic != nullptr ? called->generic : called) == nullptr) {
-			const std::string name = text_of(called->name);
-			if (name == "trap") {
-				LLVM::Trap::create(generator.builder, generator.loc);
-				return never_returning();
-			}
-			unsupported(generator, paren, std::format("calling {}, which has no body, isn't supported yet", name));
+		if (called != nullptr && !is_intrinsic(called)
+			&& function_body(called->generic != nullptr ? called->generic : called) == nullptr) {
+			unsupported(generator, paren, std::format("calling {}, which has no body, isn't supported yet", text_of(called->name)));
 			return Emitted{};
 		}
 		// What a pipe passed fills its placeholders in order or by number, or comes first
@@ -1400,7 +1839,7 @@ namespace hemera {
 			}
 		}
 		const std::vector<ParameterNode> parameters = parameter_nodes(called);
-		std::vector<mlir::Value> arguments{ generator.state->context };
+		std::vector<mlir::Value> arguments;
 		size_t next = 0;
 		for (size_t i = 0; i < function->input.size(); ++i) {
 			const FunctionInput& input = function->input[i];
@@ -1448,6 +1887,13 @@ namespace hemera {
 			arguments.push_back(named_node != nullptr ? emit_as(generator, named_node, input.type)
 				: emit_default(generator, called, i, input.type, paren));
 		}
+		if (is_intrinsic(called)) {
+			return emit_intrinsic(generator, called, function, arguments, paren);
+		}
+		// The context goes first, to the functions that take one
+		if (takes_context(generator, function, called)) {
+			arguments.insert(arguments.begin(), generator.state->context);
+		}
 		LLVM::CallOp call;
 		if (called != nullptr && DeclarationKind::FUNCTION == called->kind) {
 			call = LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, called), arguments);
@@ -1456,7 +1902,17 @@ namespace hemera {
 			// Through a function value: its pointer first
 			std::vector<mlir::Value> operands{ value_of(generator, callee) };
 			operands.insert(operands.end(), arguments.begin(), arguments.end());
-			call = LLVM::CallOp::create(generator.builder, generator.loc, function_type(generator, function), operands);
+			call = LLVM::CallOp::create(generator.builder, generator.loc,
+				function_type(generator, function, takes_context(generator, function, nullptr)), operands);
+		}
+		/*
+		 * A function that starts without a context has no stack check, since there's no carrier
+		 * yet, so a checked function it calls stays a call, to keep its check.
+		 */
+		FunctionState& caller = *generator.state;
+		if (TargetStackCheck::Off != generator.options->stack_check && caller.type != nullptr
+			&& !takes_context(generator, caller.type, caller.declaration)) {
+			call.setNoInlineAttr(generator.builder.getUnitAttr());
 		}
 		Emitted result;
 		result.never_returns = function->never_returns;
@@ -2581,7 +3037,12 @@ namespace hemera {
 		for (size_t i = 1; i + 1 < node->children.size(); ++i) {
 			ast::Node* part = node->children[i];
 			if (ast::NodeType::KEYWORD_FROM == part->node_type) {
+				// from value: a copy of a whole context, which is the from's child
 				from = true;
+				if (!part->children.empty()) {
+					store(generator, emit_as(generator, part->children[0], context_type), slot);
+					copied = true;
+				}
 				continue;
 			}
 			if (ast::NodeType::LIST == part->node_type && !from) {
@@ -2776,10 +3237,15 @@ namespace hemera {
 			generator.state = outer;
 			return;
 		}
-		state.context = entry->getArgument(0);
+		if (has_convention(type, "entry")) {
+			unsupported(generator, declaration->node, "entry functions can't be generated yet");
+		}
+		const bool with_context = takes_context(generator, type, declaration);
+		const unsigned first = with_context ? 1 : 0;
+		state.context = with_context ? static_cast<mlir::Value>(entry->getArgument(0)) : mlir::Value();
 		// Parameters and named results in slots
 		for (size_t i = 0; i < state.checked->parameters.size() && i < type->input.size(); ++i) {
-			mlir::Value argument = entry->getArgument(static_cast<unsigned>(i + 1));
+			mlir::Value argument = entry->getArgument(static_cast<unsigned>(i) + first);
 			mlir::Value slot = make_raw_slot(generator, argument.getType(), std::max<size_t>(type->input[i].type->alignment, 1));
 			store(generator, argument, slot);
 			state.slots[state.checked->parameters[i]] = slot;
@@ -2821,6 +3287,11 @@ namespace hemera {
 		}
 		if (declaration->externally_initialized) {
 			global.setExternallyInitialized(true);
+			generator.used.push_back(global);
+		}
+		if (has_name_directive(declaration, "#export")) {
+			global.setLinkage(LLVM::Linkage::External);
+			global.setSymName(text_of(declaration->name));
 		}
 		generator.globals[declaration] = global;
 		generator.builder.setInsertionPointToStart(generator.builder.createBlock(&global.getInitializerRegion()));
@@ -2887,29 +3358,86 @@ namespace hemera {
 		LLVM::UnreachableOp::create(generator.builder, generator.loc);
 	}
 
+	/*
+	 * What's kept though nothing in the program uses it: #externally_initialized constants, which
+	 * something outside fills in, like Limine's requests, and #export functions and constants.
+	 */
+	static void generate_kept(Generator& generator) {
+		std::vector<Declaration*> declarations;
+		{
+			std::scoped_lock<std::mutex> lock(generator.names.mutex);
+			for (const auto& [key, declaration] : generator.names.declarations) {
+				declarations.push_back(declaration);
+			}
+		}
+		for (Declaration* declaration : declarations) {
+			if (declaration->generic != nullptr || declaration->value_type == nullptr || declaration->failed) {
+				continue;
+			}
+			const bool exported = has_name_directive(declaration, "#export");
+			if (DeclarationKind::VALUE == declaration->kind && (declaration->externally_initialized || exported)) {
+				global_for(generator, declaration);
+			}
+			else if (DeclarationKind::FUNCTION == declaration->kind && exported && !is_intrinsic(declaration)) {
+				function_for(generator, declaration);
+			}
+		}
+	}
+
+	// llvm.used, which keeps globals that nothing refers to, like Limine's requests, through linking.
+	static void generate_used(Generator& generator) {
+		if (generator.used.empty()) {
+			return;
+		}
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		mlir::Type type = LLVM::LLVMArrayType::get(pointer_type(generator), generator.used.size());
+		auto used = LLVM::GlobalOp::create(generator.builder, generator.loc, type, false, LLVM::Linkage::Appending, "llvm.used",
+			mlir::Attribute());
+		used.setSectionAttr(generator.builder.getStringAttr("llvm.metadata"));
+		generator.builder.setInsertionPointToStart(generator.builder.createBlock(&used.getInitializerRegion()));
+		mlir::Value list = LLVM::UndefOp::create(generator.builder, generator.loc, type);
+		for (size_t i = 0; i < generator.used.size(); ++i) {
+			list = insert(generator, list, LLVM::AddressOfOp::create(generator.builder, generator.loc, generator.used[i]),
+				{ static_cast<int64_t>(i) });
+		}
+		LLVM::ReturnOp::create(generator.builder, generator.loc, list);
+	}
+
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {
 		module.getContext()->loadDialect<LLVM::LLVMDialect>();
 		module.getContext()->loadDialect<::hmir::HemeraDialect>();
 		Generator generator(program_info, module);
-		InternedString input_package = intern(options.input.string());
-		Declaration* main = nullptr;
+		generator.options = &options;
+		generator.input_package = intern(options.input.string());
+		Declaration* entry = nullptr;
 		{
 			std::scoped_lock<std::mutex> lock(generator.names.mutex);
-			auto iter = generator.names.declarations.find(std::make_pair(input_package, intern(std::string("main"))));
+			auto iter = generator.names.declarations.find(std::make_pair(generator.input_package, intern(options.entry)));
 			if (iter != generator.names.declarations.end()) {
-				main = iter->second;
+				entry = iter->second;
 			}
 		}
-		if (main == nullptr || DeclarationKind::FUNCTION != main->kind || main->value_type == nullptr) {
-			report_error(ErrorCode::E5004, options.input.string(), 0, 0, "a hosted program needs main :: fn() or fn() -> int");
+		if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr) {
+			report_error(ErrorCode::E5004, options.input.string(), 0, 0, options.startup_code
+				? std::format("a hosted program needs {} :: fn() or fn() -> int", options.entry)
+				: std::format("the entry function {} isn't declared", options.entry));
 			return false;
 		}
-		generate_entry(generator, main, OSType::Win32 == options.os);
+		if (options.startup_code) {
+			generate_entry(generator, entry, OSType::Win32 == options.os);
+		}
+		else {
+			// A freestanding program starts at its entry function itself
+			function_for(generator, entry);
+		}
+		generate_kept(generator);
 		while (!generator.pending.empty()) {
 			Declaration* next = generator.pending.back();
 			generator.pending.pop_back();
 			generate_function(generator, next);
 		}
+		generate_used(generator);
 		if (generator.failed) {
 			return false;
 		}
@@ -2918,6 +3446,115 @@ namespace hemera {
 			return false;
 		}
 		return true;
+	}
+
+	/*
+	 * A loop over count bytes, calling body with each index: upwards, or downwards from the end.
+	 * Leaves the builder after the loop.
+	 */
+	static void byte_loop(llvm::IRBuilder<>& builder, llvm::Value* count, bool downwards,
+		const std::function<void(llvm::Value*)>& body) {
+
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+		llvm::LLVMContext& context = function->getContext();
+		llvm::BasicBlock* before = builder.GetInsertBlock();
+		llvm::BasicBlock* header = llvm::BasicBlock::Create(context, "loop", function);
+		llvm::BasicBlock* inside = llvm::BasicBlock::Create(context, "byte", function);
+		llvm::BasicBlock* after = llvm::BasicBlock::Create(context, "done", function);
+		builder.CreateBr(header);
+		builder.SetInsertPoint(header);
+		llvm::PHINode* remaining = builder.CreatePHI(count->getType(), 2);
+		remaining->addIncoming(count, before);
+		builder.CreateCondBr(builder.CreateICmpEQ(remaining, llvm::ConstantInt::get(count->getType(), 0)), after, inside);
+		builder.SetInsertPoint(inside);
+		llvm::Value* next = builder.CreateSub(remaining, llvm::ConstantInt::get(count->getType(), 1));
+		body(downwards ? next : builder.CreateSub(count, remaining));
+		remaining->addIncoming(next, builder.GetInsertBlock());
+		builder.CreateBr(header);
+		builder.SetInsertPoint(after);
+	}
+
+	// A function of the C library's, defined here, or its body if it's only declared.
+	static llvm::Function* library_function(llvm::Module& module, llvm::StringRef name, llvm::FunctionType* type) {
+		llvm::Function* function = module.getFunction(name);
+		if (function == nullptr) {
+			function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name, module);
+		}
+		// Its own loop mustn't be turned back into a call to itself
+		function->addFnAttr("no-builtins");
+		return function;
+	}
+
+	/*
+	 * memcpy, memmove, memset and memcmp, which LLVM calls for large copies even without the C
+	 * library, as byte loops: nothing Hemera builds links a C library.
+	 */
+	static void define_memory_functions(llvm::Module& module) {
+		llvm::LLVMContext& context = module.getContext();
+		llvm::Type* pointer = llvm::PointerType::get(context, 0);
+		llvm::Type* size = llvm::Type::getInt64Ty(context);
+		llvm::Type* byte = llvm::Type::getInt8Ty(context);
+		llvm::Type* i32 = llvm::Type::getInt32Ty(context);
+		llvm::IRBuilder<> builder(context);
+		for (llvm::StringRef name : { "memcpy", "memmove" }) {
+			llvm::Function* function = library_function(module, name, llvm::FunctionType::get(pointer, { pointer, pointer, size }, false));
+			if (!function->isDeclaration()) {
+				continue;
+			}
+			llvm::Value* target = function->getArg(0);
+			llvm::Value* source = function->getArg(1);
+			llvm::Value* count = function->getArg(2);
+			builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", function));
+			auto copy = [&](bool downwards) {
+				byte_loop(builder, count, downwards, [&](llvm::Value* index) {
+					llvm::Value* from = builder.CreateGEP(byte, source, index);
+					builder.CreateStore(builder.CreateLoad(byte, from), builder.CreateGEP(byte, target, index));
+				});
+				builder.CreateRet(target);
+			};
+			if (name == "memcpy") {
+				copy(false);
+				continue;
+			}
+			// memmove copies downwards when the target is after the source, so overlap is fine
+			llvm::BasicBlock* upwards = llvm::BasicBlock::Create(context, "upwards", function);
+			llvm::BasicBlock* downwards = llvm::BasicBlock::Create(context, "downwards", function);
+			builder.CreateCondBr(builder.CreateICmpUGT(target, source), downwards, upwards);
+			builder.SetInsertPoint(upwards);
+			copy(false);
+			builder.SetInsertPoint(downwards);
+			copy(true);
+		}
+		llvm::Function* memset = library_function(module, "memset", llvm::FunctionType::get(pointer, { pointer, i32, size }, false));
+		if (memset->isDeclaration()) {
+			builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", memset));
+			llvm::Value* fill = builder.CreateTrunc(memset->getArg(1), byte);
+			byte_loop(builder, memset->getArg(2), false, [&](llvm::Value* index) {
+				builder.CreateStore(fill, builder.CreateGEP(byte, memset->getArg(0), index));
+			});
+			builder.CreateRet(memset->getArg(0));
+		}
+		llvm::Function* memcmp = library_function(module, "memcmp", llvm::FunctionType::get(i32, { pointer, pointer, size }, false));
+		if (memcmp->isDeclaration()) {
+			// The difference of the first bytes that differ, as unsigned bytes, or 0
+			builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", memcmp));
+			llvm::BasicBlock* differs = llvm::BasicBlock::Create(context, "differs", memcmp);
+			builder.SetInsertPoint(differs);
+			llvm::PHINode* left = builder.CreatePHI(i32, 1);
+			llvm::PHINode* right = builder.CreatePHI(i32, 1);
+			builder.CreateRet(builder.CreateSub(left, right));
+			builder.SetInsertPoint(&memcmp->getEntryBlock());
+			byte_loop(builder, memcmp->getArg(2), false, [&](llvm::Value* index) {
+				llvm::Value* a = builder.CreateZExt(builder.CreateLoad(byte, builder.CreateGEP(byte, memcmp->getArg(0), index)), i32);
+				llvm::Value* b = builder.CreateZExt(builder.CreateLoad(byte, builder.CreateGEP(byte, memcmp->getArg(1), index)), i32);
+				llvm::BasicBlock* same = llvm::BasicBlock::Create(builder.getContext(), "same", memcmp);
+				left->addIncoming(a, builder.GetInsertBlock());
+				right->addIncoming(b, builder.GetInsertBlock());
+				builder.CreateCondBr(builder.CreateICmpNE(a, b), differs, same);
+				builder.SetInsertPoint(same);
+			});
+			builder.CreateRet(llvm::ConstantInt::get(i32, 0));
+		}
 	}
 
 	std::unique_ptr<llvm::Module> lower_to_llvm(mlir::ModuleOp module, llvm::LLVMContext& context, const Options& options) {
@@ -2935,7 +3572,14 @@ namespace hemera {
 		std::unique_ptr<llvm::Module> result = mlir::translateModuleToLLVMIR(module, context, options.output_name);
 		if (result == nullptr) {
 			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "translating to LLVM IR failed");
+			return result;
 		}
+		if (!options.red_zone) {
+			for (llvm::Function& function : *result) {
+				function.addFnAttr(llvm::Attribute::NoRedZone);
+			}
+		}
+		define_memory_functions(*result);
 		return result;
 	}
 }
