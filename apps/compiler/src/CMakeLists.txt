@@ -38,6 +38,18 @@ SET(HEMERA_GENERATED
   ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
 )
 
+# base is built into the compiler, which supplies it rather than reading it while compiling
+FILE(GLOB_RECURSE HEMERA_BASE_SOURCES CONFIGURE_DEPENDS ${ROOT_DIR}/../../base/*.hsc)
+ADD_CUSTOM_COMMAND(
+  OUTPUT ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
+  COMMAND ${CMAKE_COMMAND} -DBASE_DIR=${ROOT_DIR}/../../base -DOUTPUT=${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp -P ${SOURCE_DIR}/front_end/embed_base.cmake
+  DEPENDS ${SOURCE_DIR}/front_end/embed_base.cmake ${HEMERA_BASE_SOURCES}
+)
+SET(HEMERA_GENERATED
+  ${HEMERA_GENERATED}
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
+)
+
 ADD_CUSTOM_TARGET(HemeraGenerated DEPENDS ${HEMERA_GENERATED})
 
 SET(HEADER_FILES
@@ -50,6 +62,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/error/errors_template.h
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/error/warnings_template.h
+  ${INCLUDE_DIR}/front_end/base_sources.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
   ${INCLUDE_DIR}/front_end/mlir_generation.h
@@ -58,6 +71,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/front_end/type.h
   ${INCLUDE_DIR}/front_end/type_checking.h
   ${INCLUDE_DIR}/front_end/type_id.h
+  ${INCLUDE_DIR}/front_end/walk.h
   ${INCLUDE_DIR}/front_end/work.h
   ${INCLUDE_DIR}/lexer/lexer.h
   ${INCLUDE_DIR}/lexer/token.h
@@ -76,6 +90,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/cmd_line_utils.cpp
   ${SOURCE_DIR}/cmd_line/options.cpp
   ${SOURCE_DIR}/error/reporting.cpp
+  ${SOURCE_DIR}/front_end/declarations.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/mlir_generation.cpp
   ${SOURCE_DIR}/front_end/names.cpp
@@ -110,6 +125,7 @@ ADD_LIBRARY(HemeraLib
   ${THIRD_PARTY_HEADER_FILES}
   ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
   ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
+  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
   
   ${SOURCE_FILES}
 )

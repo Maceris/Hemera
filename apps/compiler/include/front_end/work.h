@@ -12,8 +12,14 @@
 
 namespace hemera {
 
+	struct Declaration;
+
 	enum class WorkTargetType {
 		DEFINITION,
+		/// <summary>
+		/// An instance of a generic type, to resolve.
+		/// </summary>
+		INSTANCE,
 		EXPRESSION,
 		FILE,
 		FUNCTION,
@@ -47,6 +53,7 @@ namespace hemera {
 		NodeLocation node_location;
 		FunctionInfo* function;
 		IfChain* if_chain;
+		Declaration* declaration;
 	};
 
 	struct WorkTarget {

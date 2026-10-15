@@ -51,8 +51,8 @@ More details:
 | c16      | 16-bit complex number, composed of 2 i8 values                                                                                               |
 | c32      | 32-bit complex number, composed of 2 i16 values                                                                                              |
 | c64      | 64-bit complex number, composed of 2 i32 values                                                                                              |
-| c128     | 128-bit complex number, composed of 2 i128 values                                                                                            |
-| char     | Single character, in utf-8                                                                                                                   |
+| c128     | 128-bit complex number, composed of 2 i64 values                                                                                             |
+| char     | One byte of utf-8 text (a code unit)                                                                                                         |
 | cstring  | C-style null-terminated string                                                                                                               |
 | f16      | 16-bit (half-precision) IEEE-754 floating point number                                                                                       |
 | f16be    | 16-bit (half-precision) IEEE-754 floating point number, big endian                                                                           |
@@ -417,6 +417,45 @@ Functions that change a dynamic array take a pointer to it, so the change reache
 `array_add(&names, name)`. Functions that only read one take an array view, which dynamic arrays convert to.
 
 Static arrays are their elements, one after another, with nothing else.
+
+Sizes, on the 64-bit targets Hemera supports:
+
+* `bool`, `b8` and `char` are 1 byte; `b16`, `b32` and `b64` are 2, 4 and 8.
+* `int`, `uint`, `uintptr`, `usize`, pointers, `rawptr`, `cstring`, `type` and function values are 8 bytes.
+  Relative pointers are their size: `relptr8` is 1 byte, up to `relptr64` at 8.
+* Every primitive is aligned to its size, `i128` and `u128` included (16).
+
+Structs lay out their fields in order, each at the next offset its alignment allows. A struct is aligned to its most
+aligned field, and its size is rounded up to that, so that arrays of it keep every field aligned.
+
+* `#packed` leaves no padding between fields, and aligns the struct to 1.
+* `#align(n)` raises the struct's alignment to `n` bytes when that's more than it would be. It never lowers it; for
+  that, combine it with `#packed`, which then gives exactly `n`.
+* `#union` puts every field at offset 0, and the struct is as big as its biggest field.
+* Fields included with `using`, and anonymous structs (`_ : struct {...}`), are laid out as one field.
+
+```
+Mixed :: struct {
+    a : u8,  // offset 0
+    b : u32, // offset 4
+    c : u16, // offset 8
+    d : u64, // offset 16
+}            // size 24, alignment 8
+```
+
+Unions (including optional values and results) start with a tag saying which variant a value is: the smallest
+unsigned integer that counts the variants, so `u8` for up to 256 of them. Each variant's values follow the tag like a
+struct's fields, all variants overlapping, and the union is as big as its biggest variant, rounded up to its alignment.
+
+```
+Shape :: union {
+    Circle(f32),          // tag at 0, the f32 at 4
+    Rectangle(u8, u64),   // tag at 0, the u8 at 1, the u64 at 8
+    Empty,                // just the tag
+}                         // size 16, alignment 8; int? is 16 too
+```
+
+Enums are the size of their backing type, `uint` unless `#backed_by` gives another.
 
 ## Notes On Types
 

@@ -1,138 +1,202 @@
 #include "front_end/type.h"
 
+#include <algorithm>
 #include <format>
+#include <utility>
 
 #include "util/logger.h"
 
 namespace hemera {
 
-	TypeInfo::TypeInfo(TypeInfoVariant variant, size_t size)
+	TypeInfo::TypeInfo(TypeInfoVariant variant, size_t size, size_t alignment)
 		: variant{ variant }
 		, contains_pointers{ TypeInfoVariant::ANY == variant
 			|| TypeInfoVariant::POINTER == variant
 			|| TypeInfoVariant::STRING == variant
 		}
 		, size{ size }
+		, alignment{ alignment }
 	{}
-	
+
 	TypeInfo::~TypeInfo() = default;
 
-
-	TypeInfoAlias::TypeInfoAlias(TypeInfo* base_type, InternedString name,
-		bool distinct)
-		: TypeInfo{ TypeInfoVariant::ALIAS, base_type->size }
-		, base_type{ base_type }
+	TypeInfoAlias::TypeInfoAlias(InternedString name, bool distinct)
+		: TypeInfo{ TypeInfoVariant::ALIAS, 0, 1 }
+		, base_type{ nullptr }
 		, name{ name }
 		, distinct{ distinct }
 	{
-		contains_pointers = base_type->contains_pointers;
+		complete = false;
 	}
-	TypeInfoAlias::~TypeInfoAlias() = default;
 
+	/*
+	 * A static array is its elements, one after another. An array view is a count and a pointer,
+	 * and a dynamic array adds a capacity and an allocator (docs/types.md, Memory Layout).
+	 */
+	static constexpr size_t VIEW_SIZE = 2 * POINTER_SIZE;
+	// count, data, capacity, then an Allocator: a function and a data pointer
+	static constexpr size_t DYNAMIC_ARRAY_SIZE = 5 * POINTER_SIZE;
 
-	TypeInfoArray::TypeInfoArray(TypeInfo* base_type,
-		MyVector<ArrayDimension>&& dimensions)
-		: TypeInfo{ TypeInfoVariant::ARRAY, sizeof(size_t) } //TODO(ches) what is the size here??
-		, base_type{ base_type }
-		, dimensions{ dimensions }
+	TypeInfoArray::TypeInfoArray(TypeInfo* element_type, ArrayType array_type, size_t count)
+		: TypeInfo{ TypeInfoVariant::ARRAY, 0, POINTER_SIZE }
+		, element_type{ element_type }
+		, array_type{ array_type }
+		, count{ count }
 	{
-		contains_pointers = base_type->contains_pointers;
-		for (const ArrayDimension& dimension : this->dimensions) {
-			if (ArrayType::STATIC != dimension.type) {
-				contains_pointers = true;
-				break;
-			}
+		if (ArrayType::STATIC == array_type) {
+			complete = element_type->complete;
+			size = element_type->size * count;
+			alignment = element_type->alignment;
+			contains_pointers = element_type->contains_pointers;
+		}
+		else {
+			size = ArrayType::VIEW == array_type ? VIEW_SIZE : DYNAMIC_ARRAY_SIZE;
+			contains_pointers = true;
 		}
 	}
-	TypeInfoArray::~TypeInfoArray() = default;
 
-
-	TypeInfoEnum::TypeInfoEnum(InternedString name, size_t size_)
-		: TypeInfo{ TypeInfoVariant::ENUM, size_ }
-		, name{ name }
+	TypeInfoBoolean::TypeInfoBoolean(size_t size_)
+		: TypeInfo{ TypeInfoVariant::BOOLEAN, size_, size_ }
 	{}
-	TypeInfoEnum::~TypeInfoEnum() = default;
 
-
-	TypeInfoFloat::TypeInfoFloat(Endianness endianness, size_t size_)
-		: TypeInfo{ TypeInfoVariant::FLOAT, size_ }
-		, endianness{ endianness }
+	TypeInfoComposite::TypeInfoComposite(TypeInfoVariant variant_, size_t part_size_, size_t parts)
+		: TypeInfo{ variant_, part_size_ * parts, part_size_ }
+		, part_size{ part_size_ }
 	{}
-	TypeInfoFloat::~TypeInfoFloat() = default;
 
+	TypeInfoEnum::TypeInfoEnum(InternedString name_)
+		: TypeInfo{ TypeInfoVariant::ENUM, 0, 1 }
+		, name{ name_ }
+		, backing_type{ nullptr }
+	{
+		complete = false;
+	}
 
+	TypeInfoFloat::TypeInfoFloat(Endianness endianness_, size_t size_)
+		: TypeInfo{ TypeInfoVariant::FLOAT, size_, size_ }
+		, endianness{ endianness_ }
+	{}
+
+	// A function value is a pointer to the function
 	TypeInfoFunction::TypeInfoFunction()
-		: TypeInfo{ TypeInfoVariant::FUNCTION, sizeof(builtin::_ptr) } //TODO(ches) what is the size here??
-	{};
-	TypeInfoFunction::~TypeInfoFunction() = default;
+		: TypeInfo{ TypeInfoVariant::FUNCTION, POINTER_SIZE, POINTER_SIZE }
+	{}
 
+	// 128-bit integers are aligned to 16 bytes, as C compilers do on these targets
+	TypeInfoInteger::TypeInfoInteger(bool is_signed_, Endianness endianness_, size_t size_)
+		: TypeInfo{ TypeInfoVariant::INTEGER, size_, size_ }
+		, is_signed{ is_signed_ }
+		, endianness{ endianness_ }
+	{}
 
-	TypeInfoInteger::TypeInfoInteger(bool is_signed, Endianness endianness,
+	TypeInfoPointer::TypeInfoPointer(TypeInfo* base_type_, bool is_relative_, bool is_mutable_,
 		size_t size_)
-		: TypeInfo{ TypeInfoVariant::INTEGER, size_ }
-		, is_signed{ is_signed }
-		, endianness{ endianness }
+		: TypeInfo{ TypeInfoVariant::POINTER, size_, size_ }
+		, base_type{ base_type_ }
+		, is_relative{ is_relative_ }
+		, is_mutable{ is_mutable_ }
 	{}
-	TypeInfoInteger::~TypeInfoInteger() = default;
 
-
-	TypeInfoPointer::TypeInfoPointer(TypeInfo* base_type, bool is_relative,
-		bool is_mutable, size_t size_)
-		: TypeInfo{ TypeInfoVariant::POINTER, size_ }
-		, base_type{ base_type }
-		, is_relative{ is_relative }
-		, is_mutable{ is_mutable }
+	// A string is a count and a pointer to its bytes; a cstring is just the pointer
+	TypeInfoString::TypeInfoString(bool is_raw_)
+		: TypeInfo{ TypeInfoVariant::STRING, is_raw_ ? POINTER_SIZE : VIEW_SIZE, POINTER_SIZE }
+		, is_raw{ is_raw_ }
 	{}
-	TypeInfoPointer::~TypeInfoPointer() = default;
 
-
-	TypeInfoString::TypeInfoString(bool is_raw)
-		: TypeInfo{ TypeInfoVariant::STRING
-		, is_raw ? sizeof(BUILTIN_rawptr) : sizeof(BUILTIN_string)
-		}
-		, is_raw{ is_raw }
-	{}
-	TypeInfoString::~TypeInfoString() = default;
-
-
-	TypeInfoStruct::TypeInfoStruct(InternedString name, size_t size_,
-		uint32_t alignment, bool is_scoped, bool is_packed, bool is_union)
-		: TypeInfo{ TypeInfoVariant::STRUCT, size_ }
-		, name{ name }
-		, members{}
-		, alignment{ alignment }
-		, is_scoped{ is_scoped }
-		, is_packed{ is_packed }
-		, is_union{ is_union }
+	TypeInfoStruct::TypeInfoStruct(InternedString name_)
+		: TypeInfo{ TypeInfoVariant::STRUCT, 0, 1 }
+		, name{ name_ }
 	{
-		// Members are added later, see update_contains_pointers()
-		contains_pointers = is_scoped;
+		complete = false;
 	}
-	TypeInfoStruct::~TypeInfoStruct() = default;
-	
 
-	TypeInfoUnion::TypeInfoUnion(InternedString name, size_t size_)
-		: TypeInfo{ TypeInfoVariant::UNION, size_ }
-		, name{ name }
+	TypeInfoUnion::TypeInfoUnion(InternedString name_)
+		: TypeInfo{ TypeInfoVariant::UNION, 0, 1 }
+		, name{ name_ }
 	{
-		//TODO(ches) variants only track names, so assume a payload might
-		// carry pointers until their types are tracked
-		contains_pointers = true;
+		complete = false;
 	}
-	TypeInfoUnion::~TypeInfoUnion() = default;
 
-	void update_contains_pointers(TypeInfoStruct* type) {
-		LOG_ASSERT(type != nullptr);
+	static size_t round_up(size_t value, size_t alignment) {
+		return alignment == 0 ? value : (value + alignment - 1) / alignment * alignment;
+	}
 
-		bool result = type->is_scoped;
-		for (const StructMember& member : type->members) {
-			LOG_ASSERT(member.member_type != nullptr);
-			if (member.member_type->contains_pointers) {
-				result = true;
-				break;
+	/*
+	 * Members in order, each at the next offset its alignment allows, unless #packed; every member
+	 * at 0 with #union. The struct is aligned to its most aligned member (1 when #packed), raised
+	 * to #align(n) if that's more, and its size is rounded up to that.
+	 */
+	void lay_out_struct(TypeInfoStruct* type) {
+		size_t offset = 0;
+		size_t size = 0;
+		size_t alignment = 1;
+		bool contains_pointers = type->is_scoped;
+		for (StructMember& member : type->members) {
+			LOG_ASSERT(member.member_type != nullptr && member.member_type->complete);
+			const size_t member_alignment = type->is_packed ? 1 : member.member_type->alignment;
+			alignment = std::max(alignment, member_alignment);
+			contains_pointers = contains_pointers || member.member_type->contains_pointers;
+			if (type->is_union) {
+				member.offset = 0;
+				size = std::max(size, member.member_type->size);
+				continue;
 			}
+			offset = round_up(offset, member_alignment);
+			member.offset = offset;
+			offset += member.member_type->size;
+			size = offset;
 		}
-		type->contains_pointers = result;
+		alignment = std::max(alignment, type->requested_alignment);
+		type->alignment = alignment;
+		type->size = round_up(size, alignment);
+		type->contains_pointers = contains_pointers;
+		type->complete = true;
+	}
+
+	/*
+	 * docs/types.md, Unions: the tag at offset 0, then each variant's values like a struct's
+	 * members, all variants overlapping. The tag is the smallest unsigned integer that counts them.
+	 */
+	void lay_out_union(TypeInfoUnion* type) {
+		const size_t count = type->variants.size();
+		type->tag_type = count <= 0x100 ? BUILTIN_u8
+			: count <= 0x10000 ? BUILTIN_u16
+			: BUILTIN_u32;
+		size_t size = type->tag_type->size;
+		size_t alignment = type->tag_type->alignment;
+		bool contains_pointers = false;
+		for (UnionVariant& variant : type->variants) {
+			size_t offset = type->tag_type->size;
+			variant.offsets.clear();
+			for (TypeInfo* value_type : variant.types) {
+				LOG_ASSERT(value_type != nullptr && value_type->complete);
+				offset = round_up(offset, value_type->alignment);
+				variant.offsets.push_back(offset);
+				offset += value_type->size;
+				alignment = std::max(alignment, value_type->alignment);
+				contains_pointers = contains_pointers || value_type->contains_pointers;
+			}
+			size = std::max(size, offset);
+		}
+		type->alignment = alignment;
+		type->size = round_up(size, alignment);
+		type->contains_pointers = contains_pointers;
+		type->complete = true;
+	}
+
+	void lay_out_alias(TypeInfoAlias* type) {
+		LOG_ASSERT(type->base_type != nullptr && type->base_type->complete);
+		type->size = type->base_type->size;
+		type->alignment = type->base_type->alignment;
+		type->contains_pointers = type->base_type->contains_pointers;
+		type->complete = true;
+	}
+
+	void lay_out_enum(TypeInfoEnum* type) {
+		LOG_ASSERT(type->backing_type != nullptr);
+		type->size = type->backing_type->size;
+		type->alignment = type->backing_type->alignment;
+		type->complete = true;
 	}
 
 	TypeInfo* BUILTIN_any;
@@ -170,7 +234,6 @@ namespace hemera {
 	TypeInfo* BUILTIN_i128be;
 	TypeInfo* BUILTIN_i128le;
 	TypeInfo* BUILTIN_int;
-	TypeInfo* BUILTIN_ptr;
 	TypeInfo* BUILTIN_q32;
 	TypeInfo* BUILTIN_q64;
 	TypeInfo* BUILTIN_q128;
@@ -193,619 +256,256 @@ namespace hemera {
 	TypeInfo* BUILTIN_u128le;
 	TypeInfo* BUILTIN_uint;
 	TypeInfo* BUILTIN_uintptr;
-	
+	TypeInfo* BUILTIN_usize;
+
 	TypeInfo* BUILTIN_void;
 	TypeInfo* BUILTIN_poisoned_value;
 
+	// Each builtin type's name, for looking it up and printing it
+	static constexpr std::pair<std::string_view, TypeInfo**> BUILTIN_TYPES[] = {
+		{ "any", &BUILTIN_any },
+		{ "b8", &BUILTIN_b8 }, { "b16", &BUILTIN_b16 }, { "b32", &BUILTIN_b32 }, { "b64", &BUILTIN_b64 },
+		{ "bool", &BUILTIN_bool },
+		{ "c16", &BUILTIN_c16 }, { "c32", &BUILTIN_c32 }, { "c64", &BUILTIN_c64 }, { "c128", &BUILTIN_c128 },
+		{ "char", &BUILTIN_char },
+		{ "cstring", &BUILTIN_cstring },
+		{ "f16", &BUILTIN_f16 }, { "f16be", &BUILTIN_f16be }, { "f16le", &BUILTIN_f16le },
+		{ "f32", &BUILTIN_f32 }, { "f32be", &BUILTIN_f32be }, { "f32le", &BUILTIN_f32le },
+		{ "f64", &BUILTIN_f64 }, { "f64be", &BUILTIN_f64be }, { "f64le", &BUILTIN_f64le },
+		{ "i8", &BUILTIN_i8 },
+		{ "i16", &BUILTIN_i16 }, { "i16be", &BUILTIN_i16be }, { "i16le", &BUILTIN_i16le },
+		{ "i32", &BUILTIN_i32 }, { "i32be", &BUILTIN_i32be }, { "i32le", &BUILTIN_i32le },
+		{ "i64", &BUILTIN_i64 }, { "i64be", &BUILTIN_i64be }, { "i64le", &BUILTIN_i64le },
+		{ "i128", &BUILTIN_i128 }, { "i128be", &BUILTIN_i128be }, { "i128le", &BUILTIN_i128le },
+		{ "int", &BUILTIN_int },
+		{ "q32", &BUILTIN_q32 }, { "q64", &BUILTIN_q64 }, { "q128", &BUILTIN_q128 }, { "q256", &BUILTIN_q256 },
+		{ "rawptr", &BUILTIN_rawptr },
+		{ "string", &BUILTIN_string },
+		{ "type", &BUILTIN_type },
+		{ "u8", &BUILTIN_u8 },
+		{ "u16", &BUILTIN_u16 }, { "u16be", &BUILTIN_u16be }, { "u16le", &BUILTIN_u16le },
+		{ "u32", &BUILTIN_u32 }, { "u32be", &BUILTIN_u32be }, { "u32le", &BUILTIN_u32le },
+		{ "u64", &BUILTIN_u64 }, { "u64be", &BUILTIN_u64be }, { "u64le", &BUILTIN_u64le },
+		{ "u128", &BUILTIN_u128 }, { "u128be", &BUILTIN_u128be }, { "u128le", &BUILTIN_u128le },
+		{ "uint", &BUILTIN_uint },
+		{ "uintptr", &BUILTIN_uintptr },
+		{ "usize", &BUILTIN_usize },
+		{ "void", &BUILTIN_void },
+	};
+
+	TypeInfo* builtin_type(std::string_view name) {
+		for (const auto& [builtin_name, type] : BUILTIN_TYPES) {
+			if (builtin_name == name) {
+				return *type;
+			}
+		}
+		return nullptr;
+	}
+
 	std::string to_string(TypeInfo const* type) {
-		LOG_ASSERT(type != nullptr);
-
-		// Primitives
-		if (BUILTIN_any == type) {
-			return "any";
+		if (type == nullptr) {
+			return "?";
 		}
-		if (BUILTIN_b8 == type) {
-			return "b8";
-		}
-		if (BUILTIN_b16 == type) {
-			return "b16";
-		}
-		if (BUILTIN_b32 == type) {
-			return "b32";
-		}
-		if (BUILTIN_b64 == type) {
-			return "b64";
-		}
-		if (BUILTIN_bool == type) {
-			return "bool";
-		}
-		if (BUILTIN_c16 == type) {
-			return "c16";
-		}
-		if (BUILTIN_c32 == type) {
-			return "c32";
-		}
-		if (BUILTIN_c64 == type) {
-			return "c64";
-		}
-		if (BUILTIN_c128 == type) {
-			return "c128";
-		}
-		if (BUILTIN_char == type) {
-			return "char";
-		}
-		if (BUILTIN_cstring == type) {
-			return "cstring";
-		}
-		if (BUILTIN_f16 == type) {
-			return "f16";
-		}
-		if (BUILTIN_f16be == type) {
-			return "f16be";
-		}
-		if (BUILTIN_f16le == type) {
-			return "f16le";
-		}
-		if (BUILTIN_f32 == type) {
-			return "f32";
-		}
-		if (BUILTIN_f32be == type) {
-			return "f32be";
-		}
-		if (BUILTIN_f32le == type) {
-			return "f32le";
-		}
-		if (BUILTIN_f64 == type) {
-			return "f64";
-		}
-		if (BUILTIN_f64be == type) {
-			return "f64be";
-		}
-		if (BUILTIN_f64le == type) {
-			return "f64le";
-		}
-		if (BUILTIN_i8 == type) {
-			return "i8";
-		}
-		if (BUILTIN_i16 == type) {
-			return "i16";
-		}
-		if (BUILTIN_i16be == type) {
-			return "i16be";
-		}
-		if (BUILTIN_i16le == type) {
-			return "i16le";
-		}
-		if (BUILTIN_i32 == type) {
-			return "i32";
-		}
-		if (BUILTIN_i32be == type) {
-			return "i32be";
-		}
-		if (BUILTIN_i32le == type) {
-			return "i32le";
-		}
-		if (BUILTIN_i64 == type) {
-			return "i64";
-		}
-		if (BUILTIN_i64be == type) {
-			return "i64be";
-		}
-		if (BUILTIN_i64le == type) {
-			return "i64le";
-		}
-		if (BUILTIN_i128 == type) {
-			return "i128";
-		}
-		if (BUILTIN_i128be == type) {
-			return "i128be";
-		}
-		if (BUILTIN_i128le == type) {
-			return "i128le";
-		}
-		if (BUILTIN_int == type) {
-			return "int";
-		}
-		if (BUILTIN_q32 == type) {
-			return "q32";
-		}
-		if (BUILTIN_q64 == type) {
-			return "q64";
-		}
-		if (BUILTIN_q128 == type) {
-			return "q128";
-		}
-		if (BUILTIN_q256 == type) {
-			return "q256";
-		}
-		if (BUILTIN_rawptr == type) {
-			return "rawptr";
-		}
-		if (BUILTIN_string == type) {
-			return "string";
-		}
-		if (BUILTIN_type == type) {
-			return "type";
-		}
-		if (BUILTIN_u8 == type) {
-			return "u8";
-		}
-		if (BUILTIN_u16 == type) {
-			return "u16";
-		}
-		if (BUILTIN_u16be == type) {
-			return "u16be";
-		}
-		if (BUILTIN_u16le == type) {
-			return "u16le";
-		}
-		if (BUILTIN_u32 == type) {
-			return "u32";
-		}
-		if (BUILTIN_u32be == type) {
-			return "u32be";
-		}
-		if (BUILTIN_u32le == type) {
-			return "u32le";
-		}
-		if (BUILTIN_u64 == type) {
-			return "u64";
-		}
-		if (BUILTIN_u64be == type) {
-			return "u64be";
-		}
-		if (BUILTIN_u64le == type) {
-			return "u64le";
-		}
-		if (BUILTIN_u128 == type) {
-			return "u128";
-		}
-		if (BUILTIN_u128be == type) {
-			return "u128be";
-		}
-		if (BUILTIN_u128le == type) {
-			return "u128le";
-		}
-		if (BUILTIN_uint == type) {
-			return "uint";
-		}
-		if (BUILTIN_uintptr == type) {
-			return "uintptr";
-		}
-		if (BUILTIN_void == type) {
-			return "void";
-		}
-		
-		// Special types
-		if (BUILTIN_poisoned_value == type) {
-			return "$POISONED$";
-		}
-
-		// More complicated builtin types
-		if (BUILTIN_ptr == type) {
-			TypeInfoPointer const* specific_type = 
-				static_cast<TypeInfoPointer const*>(type);
-
-			std::string result = specific_type->is_relative ? "relptr" : "ptr";
-
-			result += "[";
-			if (specific_type->is_mutable) {
-				result += "mut ";
+		for (const auto& [builtin_name, builtin] : BUILTIN_TYPES) {
+			if (*builtin == type) {
+				return std::string(builtin_name);
 			}
-			result += to_string(specific_type->base_type);
-			result += "]";
-
-			return result;
 		}
-
-		// User created type
-		if (TypeInfoVariant::ALIAS == type->variant) {
-			TypeInfoAlias const* specific_type =
-				static_cast<TypeInfoAlias const*>(type);
-
-			std::string result = specific_type->name->c_str();
-			
-			result += " : ";
-			result += specific_type->distinct ? "distinct alias" : "alias";
-			result += "[";
-			result += to_string(specific_type->base_type);
-			result += "]";
-
-			return result;
+		const TypeInfoVariant variant = type->variant;
+		if (TypeInfoVariant::ALIAS == variant) {
+			return std::string(std::string_view(*static_cast<TypeInfoAlias const*>(type)->name));
 		}
-		else if (TypeInfoVariant::ANY == type->variant
-			|| TypeInfoVariant::BOOLEAN == type->variant
-			|| TypeInfoVariant::CHAR == type->variant
-			|| TypeInfoVariant::COMPLEX == type->variant
-			|| TypeInfoVariant::FLOAT == type->variant
-			|| TypeInfoVariant::INTEGER == type->variant
-			|| TypeInfoVariant::QUATERNION == type->variant
-			|| TypeInfoVariant::STRING == type->variant
-			|| TypeInfoVariant::TYPE == type->variant
-			|| TypeInfoVariant::POINTER == type->variant
-			|| TypeInfoVariant::VOID == type->variant
-			) {
-			LOG_FATAL("Should have used an existing primitive type");
-			return "$ERROR$";
+		if (TypeInfoVariant::STRUCT == variant) {
+			InternedString name = static_cast<TypeInfoStruct const*>(type)->name;
+			return name != nullptr ? std::string(std::string_view(*name)) : std::string("struct");
 		}
-		else if (TypeInfoVariant::ARRAY == type->variant) {
-			TypeInfoArray const* specific_type = 
-				static_cast<TypeInfoArray const*>(type);
-
-			std::string result = to_string(specific_type->base_type);
-
-			for (const ArrayDimension& dim : specific_type->dimensions) {
-				switch (dim.type) {
-				case ArrayType::STATIC:
-					result += std::format("[{}]", dim.count);
-					break;
-				case ArrayType::DYNAMIC:
-					result += "[..]";
-					break;
-				case ArrayType::VIEW:
-					result += "[]";
-					break;
-				}
-			}
-			return result;
+		if (TypeInfoVariant::UNION == variant) {
+			InternedString name = static_cast<TypeInfoUnion const*>(type)->name;
+			return name != nullptr ? std::string(std::string_view(*name)) : std::string("union");
 		}
-		else if (TypeInfoVariant::ENUM == type->variant) {
-			TypeInfoEnum const* specific_type =
-				static_cast<TypeInfoEnum const*>(type);
-
-			std::string result = std::format("{}", *specific_type->name);
-			return result;
+		if (TypeInfoVariant::ENUM == variant) {
+			InternedString name = static_cast<TypeInfoEnum const*>(type)->name;
+			return name != nullptr ? std::string(std::string_view(*name)) : std::string("enum");
 		}
-		else if (TypeInfoVariant::FUNCTION == type->variant) {
-			TypeInfoFunction const* specific_type = 
-				static_cast<TypeInfoFunction const*>(type);
-			
+		if (TypeInfoVariant::POINTER == variant) {
+			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			std::string kind = pointer->is_relative ? std::format("relptr{}", pointer->size * 8) : "ptr";
+			return std::format("{}[{}{}]", kind, pointer->is_mutable ? "mut " : "",
+				to_string(pointer->base_type));
+		}
+		if (TypeInfoVariant::ARRAY == variant) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			const std::string dimension = ArrayType::STATIC == array->array_type
+				? std::format("[{}]", array->count)
+				: ArrayType::VIEW == array->array_type ? "[]" : "[..]";
+			return to_string(array->element_type) + dimension;
+		}
+		if (TypeInfoVariant::FUNCTION == variant) {
+			auto function = static_cast<TypeInfoFunction const*>(type);
 			std::string result = "fn(";
-
-			const size_t INPUT_COUNT = specific_type->input.size();
-			for (size_t i = 0; i < INPUT_COUNT; i++) {
-				const FunctionInput& input = specific_type->input[i];
-				// Parameters have to be named to be marked #escaping
-				if (input.is_escaping && input.name != nullptr) {
-					result += std::format("{} #escaping : ", *input.name);
-				}
-				result += to_string(input.type);
-				if (i < INPUT_COUNT - 1) {
-					result += ", ";
-				}
+			for (size_t i = 0; i < function->input.size(); ++i) {
+				result += (i > 0 ? ", " : "") + to_string(function->input[i].type);
 			}
-			result += ") -> ";
-
-			const size_t OUTPUT_COUNT = specific_type->output.size();
-			if (OUTPUT_COUNT == 0) {
-				result += "void";
+			result += ")";
+			if (function->output.size() == 1) {
+				result += " -> " + to_string(function->output[0].type);
 			}
-			else {
-				TypeInfoVariant first_output_variant 
-					= specific_type->output[0].type->variant;
-
-				const bool complex = OUTPUT_COUNT > 1 
-					|| TypeInfoVariant::FUNCTION == first_output_variant;
-
-				if (complex) {
-					result += "(";
+			else if (!function->output.empty()) {
+				result += " -> (";
+				for (size_t i = 0; i < function->output.size(); ++i) {
+					result += (i > 0 ? ", " : "") + to_string(function->output[i].type);
 				}
-				for (size_t i = 0; i < OUTPUT_COUNT; i++) {
-					result += to_string(specific_type->output[i].type);
-					if (i < OUTPUT_COUNT - 1) {
-						result += ", ";
-					}
-				}
-				if (complex) {
-					result += ")";
-				}
+				result += ")";
 			}
-
 			return result;
 		}
-		else if (TypeInfoVariant::STRUCT == type->variant) {
-			TypeInfoStruct const* specific_type = 
-				static_cast<TypeInfoStruct const*>(type);
+		return "?";
+	}
 
-			std::string result = std::format("{}", *specific_type->name);
-			return result;
+	TypeInfo const* get_base_type(TypeInfo const* type) {
+		while (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
+			type = static_cast<TypeInfoAlias const*>(type)->base_type;
 		}
-		else if (TypeInfoVariant::UNION == type->variant) {
-			TypeInfoUnion const* specific_type =
-				static_cast<TypeInfoUnion const*>(type);
+		return type;
+	}
 
-			std::string result = std::format("{}", *specific_type->name);
-			return result;
+	TypeInfo const* get_base_type_or_alias(TypeInfo const* type) {
+		while (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
+			auto alias = static_cast<TypeInfoAlias const*>(type);
+			if (alias->distinct) {
+				break;
+			}
+			type = alias->base_type;
 		}
-		else {
-			LOG_FATAL("Unknown type variant");
-			return "$ERROR$";
-		}
+		return type;
 	}
 
 	bool same_type(TypeInfo const* a, TypeInfo const* b) {
 		if (a == nullptr || b == nullptr) {
 			return false;
 		}
+		return get_base_type_or_alias(a) == get_base_type_or_alias(b);
+	}
 
-		TypeInfo const* base_a = get_base_type_or_alias(a);
-		TypeInfo const* base_b = get_base_type_or_alias(b);
-
-		return base_a == base_b;
+	static bool is_one_of(TypeInfo const* type, std::initializer_list<TypeInfo*> types) {
+		return std::find(types.begin(), types.end(), type) != types.end();
 	}
 
 	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to) {
-		TypeInfo const* actual_from = from;
-		TypeInfo const* actual_to = to;
-
-		// Look up aliases until we reach the base type or a distinct alias
-		while (actual_from != nullptr 
-			&& TypeInfoVariant::ALIAS == actual_from->variant) {
-			TypeInfoAlias const* real = static_cast<TypeInfoAlias const*>(actual_from);
-			if (real->distinct) {
-				break;
-			}
-			else {
-				actual_from = real->base_type;
-			}
-		}
-		while (actual_to != nullptr
-			&& TypeInfoVariant::ALIAS == actual_to->variant) {
-			TypeInfoAlias const* real = static_cast<TypeInfoAlias const*>(actual_to);
-			if (real->distinct) {
-				break;
-			}
-			else {
-				actual_to = real->base_type;
-			}
-		}
-		
-		if (actual_from == nullptr || actual_to == nullptr) {
+		if (from == nullptr || to == nullptr) {
 			return false;
 		}
-
-		if (actual_from == actual_to) {
+		from = get_base_type_or_alias(from);
+		to = get_base_type_or_alias(to);
+		if (from == to) {
 			return true;
 		}
-
-		if (actual_from->variant != actual_to->variant) {
+		// Distinct aliases convert to nothing else
+		if (TypeInfoVariant::ALIAS == from->variant || TypeInfoVariant::ALIAS == to->variant) {
 			return false;
 		}
-
-		switch (actual_from->variant) {
-			// There's only one variant, they would have been equal
-		case TypeInfoVariant::ANY:
-		case TypeInfoVariant::CHAR:
-		case TypeInfoVariant::VOID:
-			LOG_WARNING(std::format(
-				"We should have had equal type pointers, from={}, to={}", 
-				to_string(actual_from), to_string(actual_to))
-			);
+		if (from->variant != to->variant) {
 			return false;
-			// We just can't convert it
-		case TypeInfoVariant::ALIAS:
-		case TypeInfoVariant::ENUM:
-		case TypeInfoVariant::POINTER:
-		case TypeInfoVariant::STRUCT:
-		case TypeInfoVariant::UNION:
-		case TypeInfoVariant::TYPE:
-			return false;
-		case TypeInfoVariant::BOOLEAN:
-		case TypeInfoVariant::COMPLEX:
-		case TypeInfoVariant::FLOAT:
-		case TypeInfoVariant::INTEGER:
-		case TypeInfoVariant::QUATERNION:
-			return actual_to->size >= actual_from->size;
-		case TypeInfoVariant::ARRAY:
-		{
-			TypeInfoArray const* from_specific =
-				static_cast<TypeInfoArray const*>(actual_from);
-			TypeInfoArray const* to_specific =
-				static_cast<TypeInfoArray const*>(actual_to);
-			
-			size_t from_dimension_count = from_specific->dimensions.size();
-			size_t to_dimension_count = to_specific->dimensions.size();
-
-			if (from_dimension_count != to_dimension_count) {
+		}
+		if (TypeInfoVariant::INTEGER == from->variant) {
+			auto a = static_cast<TypeInfoInteger const*>(from);
+			auto b = static_cast<TypeInfoInteger const*>(to);
+			// uintptr and usize convert to uint, but not to each other
+			if (is_one_of(from, { BUILTIN_uintptr, BUILTIN_usize })) {
+				return to == BUILTIN_uint;
+			}
+			if (is_one_of(to, { BUILTIN_uintptr, BUILTIN_usize })) {
 				return false;
 			}
-
-			for (size_t i = 0; i < from_dimension_count; i++) {
-				const ArrayDimension& from_dimension = from_specific->dimensions[i];
-				const ArrayDimension& to_dimension = to_specific->dimensions[i];
-
-				switch (from_dimension.type) {
-				case ArrayType::STATIC:
-					switch (to_dimension.type) {
-					case ArrayType::STATIC:
-						if (from_dimension.count != to_dimension.count) {
-							return false;
-						}
-						break;
-					case ArrayType::DYNAMIC:
-					case ArrayType::VIEW:
-						// Fine
-						break;
-					}
-					break;
-				case ArrayType::DYNAMIC:
-					switch (to_dimension.type) {
-					case ArrayType::STATIC:
-						// Runtime info, we can't convert
-						return false;
-					case ArrayType::DYNAMIC:
-					case ArrayType::VIEW:
-						// Fine
-						break;
-					}
-					break;
-				case ArrayType::VIEW:
-					switch (to_dimension.type) {
-					case ArrayType::STATIC:
-						// Runtime info, we can't convert
-					case ArrayType::DYNAMIC:
-						// Doens't make sense to resize the middle of an array
-						return false;
-					case ArrayType::VIEW:
-						// Fine
-						break;
-					}
-					break;
+			// Widening only, keeping the signedness and endianness; 128-bit doesn't fit int
+			return a->is_signed == b->is_signed && a->endianness == b->endianness
+				&& a->size < b->size;
+		}
+		if (TypeInfoVariant::FLOAT == from->variant) {
+			auto a = static_cast<TypeInfoFloat const*>(from);
+			auto b = static_cast<TypeInfoFloat const*>(to);
+			return a->endianness == b->endianness && a->size < b->size;
+		}
+		if (TypeInfoVariant::BOOLEAN == from->variant) {
+			return from->size < to->size;
+		}
+		if (TypeInfoVariant::STRUCT == from->variant) {
+			// To any struct included with using, at any depth
+			for (const StructMember& member : static_cast<TypeInfoStruct const*>(from)->members) {
+				if (member.is_using && can_implicitly_convert_to(member.member_type, to)) {
+					return true;
 				}
 			}
-			// We couldn't rule out conversion
-			return true;
 		}
-		case TypeInfoVariant::FUNCTION:
-		{
-			TypeInfoFunction const* from_specific =
-				static_cast<TypeInfoFunction const*>(actual_from);
-			TypeInfoFunction const* to_specific =
-				static_cast<TypeInfoFunction const*>(actual_to);
-
-			if (from_specific->input.size() != to_specific->input.size()
-				|| from_specific->output.size() != to_specific->output.size()) {
-				return false;
-			}
-
-			for (size_t i = 0; i < from_specific->input.size(); i++) {
-				const FunctionInput& from_input = from_specific->input[i];
-				const FunctionInput& to_input = to_specific->input[i];
-
-				if (!same_type(from_input.type, to_input.type)
-					|| from_input.is_varargs != to_input.is_varargs) {
-					return false;
-				}
-				/*
-				 * Callers of the target type only pass unrestricted values to
-				 * its #escaping parameters, which is always fine, but they
-				 * might pass local values to the others.
-				 */
-				if (from_input.is_escaping && !to_input.is_escaping) {
-					return false;
-				}
-			}
-
-			for (size_t i = 0; i < from_specific->output.size(); i++) {
-				if (!same_type(from_specific->output[i].type,
-					to_specific->output[i].type)) {
-					return false;
-				}
-			}
-			return true;
-		}
-		case TypeInfoVariant::STRING:
-		{
-			TypeInfoString const* from_specific =
-				static_cast<TypeInfoString const*>(actual_from);
-			TypeInfoString const* to_specific =
-				static_cast<TypeInfoString const*>(actual_to);
-
-			return from_specific->is_raw == to_specific->is_raw;
-		}
-		}
-
-		LOG_WARNING(std::format(
-			"We probably should have decided if types could convert by now, from={}, to={}",
-			to_string(actual_from), to_string(actual_to))
-		);
 		return false;
 	}
 
-	TypeInfo const* get_base_type(TypeInfo const* type) {
-		TypeInfo const* base_type = type;
-		TypeInfoAlias const* base_type_as_alias = nullptr;
-
-		while (TypeInfoVariant::ALIAS == base_type->variant) {
-			base_type_as_alias = static_cast<TypeInfoAlias const*>(base_type);
-			base_type = base_type_as_alias->base_type;
-			LOG_ASSERT(base_type != nullptr);
-		}
-		// It isn't an alias (anymore)
-
-		return base_type;
-	}
-
-	TypeInfo const* get_base_type_or_alias(TypeInfo const* type) {
-		TypeInfo const* base_type = type;
-		TypeInfoAlias const* base_type_as_alias = nullptr;
-
-		while (TypeInfoVariant::ALIAS == base_type->variant) {
-			base_type_as_alias = static_cast<TypeInfoAlias const*>(base_type);
-			if (base_type_as_alias->distinct) {
-				// we hit a distinct alias, so we can just stop looking now
-				break;
-			}
-			// It's an alias, and not distinct, so keep going up the chain
-			base_type = base_type_as_alias->base_type;
-			LOG_ASSERT(base_type != nullptr);
-		}
-		// It isn't an alias (anymore), by now it's a base type or distinct
-
-		return base_type;
-	}
-
 	void initialize_builtin_types() {
-		BUILTIN_any = new TypeInfo(TypeInfoVariant::ANY, sizeof(builtin::_any));
-		BUILTIN_b8 = new TypeInfo(TypeInfoVariant::BOOLEAN, 8);
-		BUILTIN_b16 = new TypeInfo(TypeInfoVariant::BOOLEAN, 16);
-		BUILTIN_b32 = new TypeInfo(TypeInfoVariant::BOOLEAN, 32);
-		BUILTIN_b64 = new TypeInfo(TypeInfoVariant::BOOLEAN, 64);
-		BUILTIN_bool = new TypeInfo(TypeInfoVariant::BOOLEAN, sizeof(builtin::_bool));
-		BUILTIN_c16 = new TypeInfo(TypeInfoVariant::COMPLEX, 16);
-		BUILTIN_c32 = new TypeInfo(TypeInfoVariant::COMPLEX, 32);
-		BUILTIN_c64 = new TypeInfo(TypeInfoVariant::COMPLEX, 64);
-		BUILTIN_c128 = new TypeInfo(TypeInfoVariant::COMPLEX, 128);
-		BUILTIN_char = new TypeInfo(TypeInfoVariant::CHAR, sizeof(builtin::_char));
-		BUILTIN_cstring = new TypeInfoString(false);
-		BUILTIN_f16 = new TypeInfoFloat(Endianness::SYSTEM, 16);
-		BUILTIN_f16be = new TypeInfoFloat(Endianness::BIG, 16);
-		BUILTIN_f16le = new TypeInfoFloat(Endianness::LITTLE, 16);
-		BUILTIN_f32 = new TypeInfoFloat(Endianness::SYSTEM, 32);
-		BUILTIN_f32be = new TypeInfoFloat(Endianness::BIG, 32);
-		BUILTIN_f32le = new TypeInfoFloat(Endianness::LITTLE, 32);
-		BUILTIN_f64 = new TypeInfoFloat(Endianness::SYSTEM, 64);
-		BUILTIN_f64be = new TypeInfoFloat(Endianness::BIG, 64);
-		BUILTIN_f64le = new TypeInfoFloat(Endianness::LITTLE, 64);
-		BUILTIN_i8 = new TypeInfoInteger(true, Endianness::SYSTEM, 8);
-		BUILTIN_i16 = new TypeInfoInteger(true, Endianness::SYSTEM, 16);
-		BUILTIN_i16be = new TypeInfoInteger(true, Endianness::BIG, 16);
-		BUILTIN_i16le = new TypeInfoInteger(true, Endianness::LITTLE, 16);
-		BUILTIN_i32 = new TypeInfoInteger(true, Endianness::SYSTEM, 32);
-		BUILTIN_i32be = new TypeInfoInteger(true, Endianness::BIG, 32);
-		BUILTIN_i32le = new TypeInfoInteger(true, Endianness::LITTLE, 32);
-		BUILTIN_i64 = new TypeInfoInteger(true, Endianness::SYSTEM, 64);
-		BUILTIN_i64be = new TypeInfoInteger(true, Endianness::BIG, 64);
-		BUILTIN_i64le = new TypeInfoInteger(true, Endianness::LITTLE, 64);
-		BUILTIN_i128 = new TypeInfoInteger(true, Endianness::SYSTEM, 128);
-		BUILTIN_i128be = new TypeInfoInteger(true, Endianness::BIG, 128);
-		BUILTIN_i128le = new TypeInfoInteger(true, Endianness::LITTLE, 128);
-		BUILTIN_int = new TypeInfoInteger(true, Endianness::SYSTEM, sizeof(builtin::_int));
-		BUILTIN_ptr = new TypeInfo(TypeInfoVariant::POINTER, sizeof(builtin::_ptr));
-		BUILTIN_q32 = new TypeInfo(TypeInfoVariant::QUATERNION, 32);
-		BUILTIN_q64 = new TypeInfo(TypeInfoVariant::QUATERNION, 64);
-		BUILTIN_q128 = new TypeInfo(TypeInfoVariant::QUATERNION, 128);
-		BUILTIN_q256 = new TypeInfo(TypeInfoVariant::QUATERNION, 256);
-		BUILTIN_rawptr = new TypeInfo(TypeInfoVariant::POINTER, sizeof(builtin::_rawptr));
+		if (BUILTIN_int != nullptr) {
+			return;
+		}
+		BUILTIN_any = new TypeInfo(TypeInfoVariant::ANY, 2 * POINTER_SIZE, POINTER_SIZE);
+		BUILTIN_b8 = new TypeInfoBoolean(1);
+		BUILTIN_b16 = new TypeInfoBoolean(2);
+		BUILTIN_b32 = new TypeInfoBoolean(4);
+		BUILTIN_b64 = new TypeInfoBoolean(8);
+		BUILTIN_bool = new TypeInfoBoolean(1);
+		// Complex numbers are two integers, quaternions four (docs/types.md)
+		BUILTIN_c16 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 1, 2);
+		BUILTIN_c32 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 2, 2);
+		BUILTIN_c64 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 4, 2);
+		BUILTIN_c128 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 8, 2);
+		BUILTIN_char = new TypeInfo(TypeInfoVariant::CHAR, 1, 1);
+		BUILTIN_cstring = new TypeInfoString(true);
+		BUILTIN_f16 = new TypeInfoFloat(Endianness::SYSTEM, 2);
+		BUILTIN_f16be = new TypeInfoFloat(Endianness::BIG, 2);
+		BUILTIN_f16le = new TypeInfoFloat(Endianness::LITTLE, 2);
+		BUILTIN_f32 = new TypeInfoFloat(Endianness::SYSTEM, 4);
+		BUILTIN_f32be = new TypeInfoFloat(Endianness::BIG, 4);
+		BUILTIN_f32le = new TypeInfoFloat(Endianness::LITTLE, 4);
+		BUILTIN_f64 = new TypeInfoFloat(Endianness::SYSTEM, 8);
+		BUILTIN_f64be = new TypeInfoFloat(Endianness::BIG, 8);
+		BUILTIN_f64le = new TypeInfoFloat(Endianness::LITTLE, 8);
+		BUILTIN_i8 = new TypeInfoInteger(true, Endianness::SYSTEM, 1);
+		BUILTIN_i16 = new TypeInfoInteger(true, Endianness::SYSTEM, 2);
+		BUILTIN_i16be = new TypeInfoInteger(true, Endianness::BIG, 2);
+		BUILTIN_i16le = new TypeInfoInteger(true, Endianness::LITTLE, 2);
+		BUILTIN_i32 = new TypeInfoInteger(true, Endianness::SYSTEM, 4);
+		BUILTIN_i32be = new TypeInfoInteger(true, Endianness::BIG, 4);
+		BUILTIN_i32le = new TypeInfoInteger(true, Endianness::LITTLE, 4);
+		BUILTIN_i64 = new TypeInfoInteger(true, Endianness::SYSTEM, 8);
+		BUILTIN_i64be = new TypeInfoInteger(true, Endianness::BIG, 8);
+		BUILTIN_i64le = new TypeInfoInteger(true, Endianness::LITTLE, 8);
+		BUILTIN_i128 = new TypeInfoInteger(true, Endianness::SYSTEM, 16);
+		BUILTIN_i128be = new TypeInfoInteger(true, Endianness::BIG, 16);
+		BUILTIN_i128le = new TypeInfoInteger(true, Endianness::LITTLE, 16);
+		BUILTIN_int = new TypeInfoInteger(true, Endianness::SYSTEM, POINTER_SIZE);
+		BUILTIN_q32 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 1, 4);
+		BUILTIN_q64 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 2, 4);
+		BUILTIN_q128 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 4, 4);
+		BUILTIN_q256 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 8, 4);
+		BUILTIN_rawptr = new TypeInfoPointer(nullptr, false, true, POINTER_SIZE);
 		BUILTIN_string = new TypeInfoString(false);
-		BUILTIN_type = new TypeInfo(TypeInfoVariant::TYPE, sizeof(builtin::_type));
-		BUILTIN_u8 = new TypeInfoInteger(false, Endianness::SYSTEM, 8);
-		BUILTIN_u16 = new TypeInfoInteger(false, Endianness::SYSTEM, 16);
-		BUILTIN_u16be = new TypeInfoInteger(false, Endianness::BIG, 16);
-		BUILTIN_u16le = new TypeInfoInteger(false, Endianness::LITTLE, 16);
-		BUILTIN_u32 = new TypeInfoInteger(false, Endianness::SYSTEM, 32);
-		BUILTIN_u32be = new TypeInfoInteger(false, Endianness::BIG, 32);
-		BUILTIN_u32le = new TypeInfoInteger(false, Endianness::LITTLE, 32);
-		BUILTIN_u64 = new TypeInfoInteger(false, Endianness::SYSTEM, 64);
-		BUILTIN_u64be = new TypeInfoInteger(false, Endianness::BIG, 64);
-		BUILTIN_u64le = new TypeInfoInteger(false, Endianness::LITTLE, 64);
-		BUILTIN_u128 = new TypeInfoInteger(false, Endianness::SYSTEM, 128);
-		BUILTIN_u128be = new TypeInfoInteger(false, Endianness::BIG, 128);
-		BUILTIN_u128le = new TypeInfoInteger(false, Endianness::LITTLE, 128);
-		BUILTIN_uint = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uint));
-		BUILTIN_uintptr = new TypeInfoInteger(false, Endianness::SYSTEM, sizeof(builtin::_uintptr));
+		// A type value points to its type info
+		BUILTIN_type = new TypeInfo(TypeInfoVariant::TYPE, POINTER_SIZE, POINTER_SIZE);
+		BUILTIN_u8 = new TypeInfoInteger(false, Endianness::SYSTEM, 1);
+		BUILTIN_u16 = new TypeInfoInteger(false, Endianness::SYSTEM, 2);
+		BUILTIN_u16be = new TypeInfoInteger(false, Endianness::BIG, 2);
+		BUILTIN_u16le = new TypeInfoInteger(false, Endianness::LITTLE, 2);
+		BUILTIN_u32 = new TypeInfoInteger(false, Endianness::SYSTEM, 4);
+		BUILTIN_u32be = new TypeInfoInteger(false, Endianness::BIG, 4);
+		BUILTIN_u32le = new TypeInfoInteger(false, Endianness::LITTLE, 4);
+		BUILTIN_u64 = new TypeInfoInteger(false, Endianness::SYSTEM, 8);
+		BUILTIN_u64be = new TypeInfoInteger(false, Endianness::BIG, 8);
+		BUILTIN_u64le = new TypeInfoInteger(false, Endianness::LITTLE, 8);
+		BUILTIN_u128 = new TypeInfoInteger(false, Endianness::SYSTEM, 16);
+		BUILTIN_u128be = new TypeInfoInteger(false, Endianness::BIG, 16);
+		BUILTIN_u128le = new TypeInfoInteger(false, Endianness::LITTLE, 16);
+		BUILTIN_uint = new TypeInfoInteger(false, Endianness::SYSTEM, POINTER_SIZE);
+		BUILTIN_uintptr = new TypeInfoInteger(false, Endianness::SYSTEM, POINTER_SIZE);
+		BUILTIN_usize = new TypeInfoInteger(false, Endianness::SYSTEM, POINTER_SIZE);
 
-		BUILTIN_void = new TypeInfo(TypeInfoVariant::VOID, 0);
-		BUILTIN_poisoned_value = new TypeInfo(TypeInfoVariant::VOID, 0);
+		BUILTIN_void = new TypeInfo(TypeInfoVariant::VOID, 0, 1);
+		BUILTIN_poisoned_value = new TypeInfo(TypeInfoVariant::VOID, 0, 1);
 	}
 }

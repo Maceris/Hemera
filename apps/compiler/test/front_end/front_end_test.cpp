@@ -105,8 +105,9 @@ TEST(FrontEnd, FollowsImports)
 		scenario("imports/main"), scenario("imports/fake_std"));
 
 	EXPECT_TRUE(errors.empty()) << codes(errors);
-	// main, neighbor, fake_io and deep, each once even though main is imported back and fake_io twice
-	EXPECT_EQ(fixture.program_info->packages.size(), 4);
+	// main, neighbor, fake_io and deep, each once even though main is imported back and fake_io twice,
+	// and base/builtin, which every program has for its generic types
+	EXPECT_EQ(fixture.program_info->packages.size(), 5);
 }
 
 TEST(FrontEnd, ReportsMissingImport)
@@ -357,6 +358,41 @@ TEST(FrontEnd, BuiltinNamesMatchBase)
  * Every std package loads, with its imports, and every name its declarations use is declared,
  * with nothing stalled.
  */
+/*
+ * Every declaration resolved to its type information: a type is laid out, and a function that
+ * isn't generic has its signature. Constants' types may wait for type checking.
+ */
+static bool is_generic_function(const hemera::Declaration& declaration) {
+	for (const hemera::ast::Node* child : declaration.node->children) {
+		if (hemera::ast::NodeType::FUNCTION != child->node_type) {
+			continue;
+		}
+		for (const hemera::ast::Node* part : child->children) {
+			if (hemera::ast::NodeType::GENERIC_TAG == part->node_type) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+static void expect_typed(FrontEndFixture& fixture, std::string_view where) {
+	size_t types = 0;
+	for (const hemera::Declaration& declaration : fixture.program_info->names.storage) {
+		const std::string name(std::string_view(*declaration.name));
+		EXPECT_TRUE(declaration.resolved) << where << ": " << name;
+		if (hemera::DeclarationKind::TYPE == declaration.kind) {
+			++types;
+			ASSERT_NE(declaration.type_value, nullptr) << where << ": " << name;
+			EXPECT_TRUE(declaration.type_value->complete) << where << ": " << name;
+		}
+		if (hemera::DeclarationKind::FUNCTION == declaration.kind && !is_generic_function(declaration)) {
+			EXPECT_NE(declaration.value_type, nullptr) << where << ": " << name;
+		}
+	}
+	EXPECT_GT(types, 0u) << where;
+}
+
 TEST(FrontEnd, ResolvesStd)
 {
 	hemera::disable_reporting_printing();
@@ -379,6 +415,7 @@ TEST(FrontEnd, ResolvesStd)
 		FrontEndFixture fixture;
 		std::vector<hemera::ErrorCode> errors = process_package(fixture, entry.path(), std_path);
 		EXPECT_TRUE(errors.empty()) << entry.path().string() << ": " << codes(errors);
+		expect_typed(fixture, entry.path().string());
 	}
 }
 
@@ -526,4 +563,227 @@ TEST(FrontEnd, ReportsNameMadeAmbiguousByAnIfImport)
 
 	ASSERT_EQ(errors.size(), 1) << codes(errors);
 	EXPECT_EQ(errors[0], hemera::ErrorCode::E4012);
+}
+
+// Base is built into the compiler, and every package of it resolves
+TEST(FrontEnd, ResolvesBase)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("base_all"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	expect_typed(fixture, "base");
+	size_t from_base = 0;
+	for (const hemera::Declaration& declaration : fixture.program_info->names.storage) {
+		if (hemera::is_base_package(declaration.package_path)) {
+			EXPECT_TRUE(declaration.resolved) << std::string_view(*declaration.name);
+			++from_base;
+		}
+	}
+	EXPECT_GT(from_base, 100u);
+}
+
+// The type a type declaration in the "types" scenario is.
+static hemera::TypeInfo* declared_type(FrontEndFixture& fixture, std::string_view name) {
+	hemera::Declaration* declaration = find_declaration(fixture, scenario("types"), name);
+	return declaration != nullptr ? declaration->type_value : nullptr;
+}
+
+static hemera::TypeInfoStruct* declared_struct(FrontEndFixture& fixture, std::string_view name) {
+	hemera::TypeInfo* type = declared_type(fixture, name);
+	return type != nullptr && hemera::TypeInfoVariant::STRUCT == type->variant
+		? static_cast<hemera::TypeInfoStruct*>(type) : nullptr;
+}
+
+static std::vector<size_t> offsets(const hemera::TypeInfoStruct* type) {
+	std::vector<size_t> result;
+	for (const hemera::StructMember& member : type->members) {
+		result.push_back(member.offset);
+	}
+	return result;
+}
+
+// docs/types.md, Memory Layout, and the layout rules for structs, unions and enums
+TEST(FrontEnd, LaysOutTypes)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("types"));
+	ASSERT_TRUE(errors.empty()) << codes(errors);
+
+	struct Expected {
+		std::string_view name;
+		size_t size;
+		size_t alignment;
+		std::vector<size_t> offsets;
+	};
+	for (const Expected& expected : std::vector<Expected>{
+		{ "Mixed", 24, 8, { 0, 4, 8, 16 } },
+		{ "Packed", 5, 1, { 0, 1 } },
+		{ "Aligned", 16, 16, { 0 } },
+		{ "PackedAligned", 8, 4, { 0, 1 } },
+		{ "Floats", 8, 1, { 0, 4 } },
+		{ "MoreComplex", 8, 8, { 0, 0, 0, 0, 0 } },
+		{ "MyVec3", 12, 4, { 0, 8 } },
+		{ "Node", 32, 8, { 0, 8, 16 } },
+		{ "UsesPair", 32, 8, { 0, 16 } },
+		{ "Strings", 120, 8, { 0, 16, 24, 40, 80, 96, 112 } },
+		{ "Layouts", 72, 8, { 0, 16, 32 } },
+	}) {
+		hemera::TypeInfoStruct* type = declared_struct(fixture, expected.name);
+		ASSERT_NE(type, nullptr) << expected.name;
+		EXPECT_TRUE(type->complete) << expected.name;
+		EXPECT_EQ(type->size, expected.size) << expected.name;
+		EXPECT_EQ(type->alignment, expected.alignment) << expected.name;
+		EXPECT_EQ(offsets(type), expected.offsets) << expected.name;
+	}
+
+	// The layouts runtime describes are the builtins'
+	hemera::TypeInfoStruct* layouts = declared_struct(fixture, "Layouts");
+	ASSERT_NE(layouts, nullptr);
+	EXPECT_EQ(layouts->members[0].member_type->size, hemera::BUILTIN_string->size);
+	EXPECT_EQ(layouts->members[1].member_type->size, 16u);
+	EXPECT_EQ(offsets(static_cast<hemera::TypeInfoStruct*>(layouts->members[2].member_type)),
+		(std::vector<size_t>{ 0, 8, 16, 24 }));
+	hemera::TypeInfoStruct* strings = declared_struct(fixture, "Strings");
+	ASSERT_NE(strings, nullptr);
+	EXPECT_EQ(strings->members[3].member_type->size, layouts->members[2].member_type->size);
+	EXPECT_EQ(hemera::BUILTIN_any->size, 16u);
+
+	// Enums
+	auto suit = static_cast<hemera::TypeInfoEnum*>(declared_type(fixture, "Suit"));
+	ASSERT_NE(suit, nullptr);
+	EXPECT_EQ(suit->size, 1u);
+	EXPECT_EQ(suit->backing_type, hemera::BUILTIN_u8);
+	auto level = static_cast<hemera::TypeInfoEnum*>(declared_type(fixture, "LogLevel"));
+	ASSERT_NE(level, nullptr);
+	EXPECT_EQ(level->size, 8u);
+	EXPECT_EQ(level->values, (std::vector<uint64_t>{ 0, 10, 20, 21 }));
+
+	// Unions: the tag, then each variant's values
+	auto shape = static_cast<hemera::TypeInfoUnion*>(declared_type(fixture, "Shape"));
+	ASSERT_NE(shape, nullptr);
+	EXPECT_EQ(shape->tag_type, hemera::BUILTIN_u8);
+	EXPECT_EQ(shape->size, 16u);
+	EXPECT_EQ(shape->alignment, 8u);
+	ASSERT_EQ(shape->variants.size(), 3u);
+	EXPECT_EQ(shape->variants[0].offsets, (std::vector<size_t>{ 4 }));
+	EXPECT_EQ(shape->variants[1].offsets, (std::vector<size_t>{ 1, 8 }));
+	EXPECT_TRUE(shape->variants[2].offsets.empty());
+
+	// Optional values are instances of base/builtin's Optional
+	const hemera::TypeInfo* maybe_int = hemera::get_base_type(declared_type(fixture, "MaybeInt"));
+	ASSERT_NE(maybe_int, nullptr);
+	EXPECT_EQ(maybe_int->variant, hemera::TypeInfoVariant::UNION);
+	EXPECT_EQ(maybe_int->size, 16u);
+	EXPECT_EQ(hemera::to_string(maybe_int), "Optional[int]");
+
+	// Aliases
+	EXPECT_TRUE(hemera::same_type(declared_type(fixture, "index"), hemera::BUILTIN_int));
+	EXPECT_FALSE(hemera::same_type(declared_type(fixture, "counter"), hemera::BUILTIN_int));
+	EXPECT_EQ(declared_type(fixture, "my_int")->size, 4u);
+}
+
+TEST(FrontEnd, TypesFunctionsAndConstants)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("types"));
+	ASSERT_TRUE(errors.empty()) << codes(errors);
+
+	auto handler = static_cast<hemera::TypeInfoFunction*>(declared_type(fixture, "Handler"));
+	ASSERT_NE(handler, nullptr);
+	EXPECT_EQ(hemera::to_string(handler), "fn(int, string) -> bool");
+
+	hemera::Declaration* handle = find_declaration(fixture, scenario("types"), "handle");
+	ASSERT_NE(handle, nullptr);
+	auto function = static_cast<hemera::TypeInfoFunction*>(handle->value_type);
+	ASSERT_NE(function, nullptr);
+	ASSERT_EQ(function->input.size(), 3u);
+	EXPECT_TRUE(function->input[1].is_escaping);
+	EXPECT_TRUE(function->input[2].is_varargs);
+	ASSERT_EQ(function->output.size(), 2u);
+	EXPECT_EQ(std::string_view(*function->output[1].name), "count");
+	EXPECT_EQ(function->output[1].type, hemera::BUILTIN_usize);
+	EXPECT_TRUE(function->never_returns);
+
+	auto value_type = [&](std::string_view name) {
+		hemera::Declaration* declaration = find_declaration(fixture, scenario("types"), name);
+		return declaration != nullptr ? declaration->value_type : nullptr;
+	};
+	EXPECT_EQ(hemera::to_string(value_type("intrinsic")), "fn(int) -> int");
+	EXPECT_EQ(value_type("COUNT"), hemera::BUILTIN_u8);
+	EXPECT_EQ(value_type("UNTYPED"), nullptr);
+	EXPECT_EQ(value_type("SAME_AS_COUNT"), hemera::BUILTIN_u8);
+	EXPECT_EQ(value_type("SUIT"), declared_type(fixture, "Suit"));
+	EXPECT_EQ(hemera::to_string(value_type("BYTES")), "u8[3]");
+}
+
+// docs/directives.md, #externally_initialized and #section
+TEST(FrontEnd, RecordsExternallyInitializedConstants)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("external_ok"));
+	ASSERT_TRUE(errors.empty()) << codes(errors);
+
+	hemera::Declaration* start = find_declaration(fixture, scenario("external_ok"), "START");
+	ASSERT_NE(start, nullptr);
+	EXPECT_TRUE(start->externally_initialized);
+	ASSERT_NE(start->section, nullptr);
+	EXPECT_EQ(std::string_view(*start->section), ".requests_start");
+	EXPECT_EQ(hemera::to_string(start->value_type), "Marker");
+	hemera::Declaration* plain = find_declaration(fixture, scenario("external_ok"), "PLAIN");
+	ASSERT_NE(plain, nullptr);
+	EXPECT_TRUE(plain->externally_initialized);
+	EXPECT_EQ(plain->section, nullptr);
+}
+
+TEST(FrontEnd, ReportsSectionWithoutExternallyInitialized)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("section_alone"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4014);
+}
+
+TEST(FrontEnd, ReportsReadingExternallyInitializedAtCompileTime)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("external_in_if"));
+
+	ASSERT_EQ(errors.size(), 1) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4010);
+}
+
+TEST(FrontEnd, ReportsTypeErrors)
+{
+	hemera::disable_reporting_printing();
+	for (const auto& [name, expected] : std::vector<std::pair<std::string_view, hemera::ErrorCode>>{
+		{ "not_a_type", hemera::ErrorCode::E4013 },
+		{ "signed_enum", hemera::ErrorCode::E4014 },
+		{ "generic_arguments", hemera::ErrorCode::E4014 },
+	}) {
+		StringCacheGuard string_cache;
+		FrontEndFixture fixture;
+		std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario(name));
+		ASSERT_EQ(errors.size(), 1) << name << ": " << codes(errors);
+		EXPECT_EQ(errors[0], expected) << name;
+	}
 }

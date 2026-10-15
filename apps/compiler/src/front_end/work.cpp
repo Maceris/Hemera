@@ -2,11 +2,14 @@
 #include <format>
 #include <fstream>
 #include <optional>
+#include <sstream>
 
 #include "error/reporting.h"
+#include "front_end/base_sources.h"
 #include "front_end/front_end.h"
 #include "front_end/mlir_generation.h"
 #include "front_end/names.h"
+#include "front_end/walk.h"
 #include "front_end/type_checking.h"
 #include "front_end/work.h"
 #include "lexer/lexer.h"
@@ -57,8 +60,7 @@ namespace hemera {
 	static Progress decide_if_chain(WorkThreadData& executor, IfChain* chain) {
 		FileInfo* file_info = find_file(executor.program_info, chain->file.package_path,
 			chain->file.file_name);
-		const std::string file_path = (std::filesystem::path(std::string_view(*chain->file.package_path))
-			/ std::string_view(*chain->file.file_name)).string();
+		const std::string file_path = file_path_of(chain->file.package_path, chain->file.file_name);
 
 		for (ast::Node* branch : chain->branches) {
 			const bool is_else = branch->value.value->compare("#else") == 0;
@@ -159,6 +161,8 @@ namespace hemera {
 	
 	static void list_package_files(WorkThreadData& executor, InternedString package_path_text,
 		PackageInfo* package_info);
+	static void list_base_package_files(WorkThreadData& executor, InternedString package_path_text,
+		PackageInfo* package_info);
 
 	void work_import(WorkThreadData& executor, WorkTarget& target) {
 		LOG_ASSERT(target.type == WorkTargetType::PACKAGE);
@@ -168,8 +172,9 @@ namespace hemera {
 		LOG_ASSERT(package_path_text != nullptr);
 		std::filesystem::path package_path(*package_path_text);
 
+		const bool from_base = is_base_package(package_path_text);
 		std::error_code error;
-		if (!std::filesystem::is_directory(package_path, error)) {
+		if (!from_base && !std::filesystem::is_directory(package_path, error)) {
 			report_error(ErrorCode::E4005, *package_path_text, 0, 0);
 			return;
 		}
@@ -189,8 +194,56 @@ namespace hemera {
 			package_info->full_path = package_path_text;
 		}
 		begin_file_work(executor, package_path_text);
-		list_package_files(executor, package_path_text, package_info);
+		if (from_base) {
+			list_base_package_files(executor, package_path_text, package_info);
+		}
+		else {
+			list_package_files(executor, package_path_text, package_info);
+		}
 		end_file_work(executor, package_path_text);
+	}
+
+	// The folder under base of a package from base, like "runtime" for "<base>/runtime".
+	static std::string_view base_folder(InternedString package_path) {
+		return std::string_view(*package_path).substr(BASE_PACKAGE_PREFIX.size());
+	}
+
+	// Creates a PARSE work for each source file of a package from base, which the compiler holds.
+	static void list_base_package_files(WorkThreadData& executor, InternedString package_path_text,
+		PackageInfo* package_info) {
+
+		std::scoped_lock<std::mutex> lock(package_info->files_mutex);
+		for (const EmbeddedFile& embedded : embedded_base_files()) {
+			if (embedded.folder != base_folder(package_path_text)) {
+				continue;
+			}
+			// builtin describes the compiler's own names, besides its generic types
+			if (is_compiler_provided(package_path_text) && embedded.file_name != "generic_types.hsc") {
+				continue;
+			}
+			InternedString file_name = intern(std::string(embedded.file_name));
+			FileInfo* file_info = INFO_ALLOC->new_object<FileInfo>();
+			package_info->files.insert(std::make_pair(file_name, file_info));
+
+			begin_file_work(executor, package_path_text);
+			executor.create_work(
+				WorkType::PARSE,
+				WorkTarget{
+					WorkTargetType::FILE,
+					WorkTargetValue{.file_location = {package_path_text, file_name } }
+				}
+			);
+		}
+	}
+
+	// Whether base has a package in folder, like "runtime" or "intrinsics/x86_64".
+	static bool base_has_package(std::string_view folder) {
+		for (const EmbeddedFile& embedded : embedded_base_files()) {
+			if (embedded.folder == folder) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// Creates a PARSE work for each source file in a package.
@@ -237,8 +290,7 @@ namespace hemera {
 	static void process_import(WorkThreadData& executor, const FileLocation& location,
 		FileInfo* file_info, ast::Node* child) {
 
-		const std::string file_path = (std::filesystem::path(std::string_view(*location.package_path))
-			/ std::string_view(*location.file_name)).string();
+		const std::string file_path = file_path_of(location.package_path, location.file_name);
 
 		ImportInfo* import = INFO_ALLOC->new_object<ImportInfo>();
 		import->node = child;
@@ -262,10 +314,36 @@ namespace hemera {
 			? std::string("std")
 			: string_literal_text(import->location);
 		const size_t slash = location_text.find('/');
-		if (location_text.substr(0, slash) == "base") {
-			std::string subfolders = slash == std::string::npos ? std::string() : location_text.substr(slash + 1) + "/";
-			import->resolved_path = intern(std::string(BASE_PACKAGE_PREFIX) + subfolders
-				+ std::string(std::string_view(*import->name)));
+		const bool relative = location_text == "." || location_text == ".."
+			|| location_text.starts_with("./") || location_text.starts_with("../");
+		// From base, or relative to a package of base, like "./x86_64" in base/intrinsics
+		const bool from_base = relative ? is_base_package(location.package_path)
+			: location_text.substr(0, slash) == "base";
+		if (from_base) {
+			std::string folder;
+			if (relative) {
+				folder = (std::filesystem::path(std::string(base_folder(location.package_path)))
+					/ location_text).lexically_normal().generic_string();
+				while (folder.ends_with("/")) {
+					folder.pop_back();
+				}
+			}
+			else {
+				std::string subfolders = slash == std::string::npos ? std::string() : location_text.substr(slash + 1) + "/";
+				folder = subfolders + std::string(std::string_view(*import->name));
+			}
+			if (folder.starts_with("..") || !base_has_package(folder)) {
+				report_error(ErrorCode::E4005, file_path,
+					child->value.line_number, child->value.column_number,
+					std::format("base/{}", folder));
+				return;
+			}
+			import->resolved_path = intern(std::string(BASE_PACKAGE_PREFIX) + folder);
+			// builtin's names are the compiler's own, so it has nothing to load
+			if (!is_compiler_provided(import->resolved_path)) {
+				executor.create_work(WorkType::IMPORT,
+					WorkTarget{ WorkTargetType::PACKAGE, { .name = import->resolved_path } });
+			}
 		}
 		else {
 			std::error_code error;
@@ -298,11 +376,21 @@ namespace hemera {
 	static void process_top_level_nodes(WorkThreadData& executor, const FileLocation& location,
 		FileInfo* file_info, const MyVector<ast::Node*>& nodes, size_t start) {
 
-		const std::string file_path = (std::filesystem::path(std::string_view(*location.package_path))
-			/ std::string_view(*location.file_name)).string();
+		const std::string file_path = file_path_of(location.package_path, location.file_name);
+
+		// base/builtin's names are the compiler's own, besides its generic types
+		const bool builtin = is_compiler_provided(location.package_path);
 
 		for (size_t i = start; i < nodes.size(); ++i) {
 			ast::Node* child = nodes[i];
+			if (builtin) {
+				ast::Node* value = ast::NodeType::DEFINITION == child->node_type
+					? definition_value(child) : nullptr;
+				if (value == nullptr || (ast::NodeType::STRUCT != value->node_type
+					&& ast::NodeType::UNION != value->node_type)) {
+					continue;
+				}
+			}
 
 			if (child->node_type == ast::NodeType::PACKAGE) {
 				continue;
@@ -380,6 +468,9 @@ namespace hemera {
 	}
 
 	static void parse_file(WorkThreadData& executor, const FileLocation& location);
+	static void parse_and_process(WorkThreadData& executor, const FileLocation& location,
+		PackageInfo* package_info, FileInfo* file_info, std::istream& file, const std::string& file_path);
+	static std::string_view base_folder(InternedString package_path);
 
 	void work_parse(WorkThreadData& executor, WorkTarget& target) {
 		const FileLocation& location = target.value.file_location;
@@ -428,6 +519,20 @@ namespace hemera {
 			file_info = iter->second;
 		}
 
+		if (is_base_package(location.package_path)) {
+			std::string file_path = file_path_of(location.package_path, location.file_name);
+			for (const EmbeddedFile& embedded : embedded_base_files()) {
+				if (embedded.folder == base_folder(location.package_path)
+					&& embedded.file_name == std::string_view(*location.file_name)) {
+					std::istringstream file(embedded.contents());
+					parse_and_process(executor, location, package_info, file_info, file, file_path);
+					return;
+				}
+			}
+			report_error(ErrorCode::E4000, file_path, 0, 0);
+			return;
+		}
+
 		std::filesystem::path dir_path = std::filesystem::path(*location.package_path);
 		std::error_code directory_error;
 		if (!std::filesystem::is_directory(dir_path, directory_error)) {
@@ -446,6 +551,12 @@ namespace hemera {
 			report_error(ErrorCode::E4000, file_path, 0, 0);
 			return;
 		}
+		parse_and_process(executor, location, package_info, file_info, file, file_path);
+	}
+
+	// Lexes and parses a file's text, checks its package name, and processes its top-level nodes.
+	static void parse_and_process(WorkThreadData& executor, const FileLocation& location,
+		PackageInfo* package_info, FileInfo* file_info, std::istream& file, const std::string& file_path) {
 
 		Allocator<> token_alloc;
 		lexer::lex(file, file_info->tokens, token_alloc, file_path);
@@ -487,6 +598,9 @@ namespace hemera {
 				// Names first: everything the declaration refers to exists, and what it needs is resolved
 				resolve_definition(executor, target.value.node_location.file.package_path,
 					target.value.node_location.file.file_name, target.value.node_location.node);
+				break;
+			case WorkTargetType::INSTANCE:
+				resolve_instance(executor, target.value.declaration);
 				break;
 			case WorkTargetType::EXPRESSION:
 				type_check_expression(executor, target.value.node_location.file,

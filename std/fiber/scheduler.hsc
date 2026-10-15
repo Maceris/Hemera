@@ -1,6 +1,6 @@
 package fiber
 
-import array from "base"
+import runtime from "base"
 import intrinsics from "base"
 
 FIBER_LOCAL_QUEUE_SIZE :: 255

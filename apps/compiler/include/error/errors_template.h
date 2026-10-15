@@ -62,6 +62,8 @@ E4009,Duplicate declaration
 E4010,Not a compile-time constant
 E4011,Compilation can't continue
 E4012,Ambiguous name
+E4013,Not a type
+E4014,Invalid type
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

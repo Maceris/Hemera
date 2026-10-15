@@ -347,11 +347,19 @@ namespace hemera {
 
 		InternedString input_package = intern(options->input.string());
 
-		global_data.outstanding_work = 1;
+		// The input package, and base/builtin's generic types (Optional and Result), which every
+		// file can use
+		global_data.outstanding_work = 2;
 		global_data.general_queue.enqueue(
 			std::move(global_data.work_allocator->new_object<Work>(
 				WorkType::IMPORT,
 				WorkTarget{ WorkTargetType::PACKAGE, {.name = input_package}}
+			))
+		);
+		global_data.general_queue.enqueue(
+			std::move(global_data.work_allocator->new_object<Work>(
+				WorkType::IMPORT,
+				WorkTarget{ WorkTargetType::PACKAGE, {.name = builtin_package()}}
 			))
 		);
 		

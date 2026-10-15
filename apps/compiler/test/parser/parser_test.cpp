@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <iostream>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -210,4 +212,25 @@ TEST(ParserSmoke, ErrorScenarios)
 			<< std::format("Incorrect error code for {}, got {}: {}", file_name, actual_info.string_value, actual_info.message);
 	}
 
+}
+
+/*
+ * Prints the tree of the file named by HEMERA_DUMP_AST, for looking at what the parser makes:
+ * HemeraTest --gtest_also_run_disabled_tests --gtest_filter=*DumpAst
+ */
+TEST(ParserSmoke, DISABLED_DumpAst)
+{
+	const char* path = std::getenv("HEMERA_DUMP_AST");
+	ASSERT_NE(path, nullptr) << "Set HEMERA_DUMP_AST to a file";
+	hemera::enable_reporting_printing();
+	StringCacheGuard string_cache;
+
+	std::ifstream file_stream(path);
+	ASSERT_TRUE(file_stream.is_open());
+	Allocator<> alloc;
+	MyVector<Token> tokens;
+	hemera::lexer::lex(file_stream, tokens, alloc, path);
+	Allocator<> node_alloc;
+	hemera::ast::Node* ast = hemera::parser::file(path, tokens, node_alloc);
+	std::cout << hemera::ast::dump(ast);
 }

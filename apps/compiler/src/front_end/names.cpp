@@ -9,6 +9,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/names.h"
+#include "front_end/walk.h"
 #include "front_end/work.h"
 #include "util/logger.h"
 
@@ -76,9 +77,13 @@ namespace hemera {
 		return text == "ptr" || text == "rawptr" || text.starts_with("relptr");
 	}
 
-	static std::string file_path_of(InternedString package_path, InternedString file_name) {
+	std::string file_path_of(InternedString package_path, InternedString file_name) {
 		if (package_path == nullptr || file_name == nullptr) {
 			return std::string();
+		}
+		// Base's files aren't on disk, so their paths are written the same everywhere
+		if (is_base_package(package_path)) {
+			return std::string(std::string_view(*package_path)) + "/" + std::string(std::string_view(*file_name));
 		}
 		return (std::filesystem::path(std::string_view(*package_path))
 			/ std::string_view(*file_name)).string();
@@ -189,6 +194,7 @@ namespace hemera {
 					declaration.file_name = file_name;
 					declaration.file = file;
 					declaration.node = definition;
+					classify_declaration(names, &declaration);
 					names.declarations[key] = &declaration;
 					result.push_back(&declaration);
 
@@ -257,21 +263,6 @@ namespace hemera {
 		pending.erase(std::remove(pending.begin(), pending.end(), chain), pending.end());
 		wake_locked(*executor.global_data, names, chain_key(chain));
 	}
-
-	/*
-	 * Where a walk is: its package and file, the declaration it resolves or the #if chain it decides
-	 * (or neither), and the generic parameters in scope.
-	 */
-	struct Walk {
-		WorkThreadData& executor;
-		InternedString package_path;
-		InternedString file_name;
-		FileInfo* file;
-		Declaration* owner;
-		IfChain* chain;
-		std::string file_path;
-		std::vector<InternedString> locals;
-	};
 
 	// Parks the walk's work until key happens, looking up needed. The registry's mutex must be held.
 	static void park_locked(Walk& walk, NameRegistry& names, const WaitKey& key, ast::Node* where,
@@ -457,6 +448,12 @@ namespace hemera {
 	static Progress check_locked(Walk& walk, NameRegistry& names, ast::Node* where,
 		Declaration* declaration, Need need) {
 
+		walk.bindings[where] = declaration;
+		// Pointers can refer to a declared type before it's resolved, but whether a VALUE, like
+		// X :: Y, is a type at all is only known once it is
+		if (need == Need::DECLARED && DeclarationKind::VALUE == declaration->kind) {
+			need = Need::RESOLVED;
+		}
 		if (need == Need::RESOLVED && declaration->failed) {
 			return Progress::FAILED; // already reported
 		}
@@ -490,8 +487,17 @@ namespace hemera {
 		return Progress::FAILED;
 	}
 
-	static bool is_compiler_provided(InternedString package_path) {
+	InternedString builtin_package() {
+		return intern(std::string(BUILTIN_PACKAGE));
+	}
+
+	bool is_base_package(InternedString package_path) {
 		return package_path != nullptr && std::string_view(*package_path).starts_with(BASE_PACKAGE_PREFIX);
+	}
+
+	bool is_compiler_provided(InternedString package_path) {
+		return package_path != nullptr
+			&& std::string_view(*package_path) == std::string(BASE_PACKAGE_PREFIX) + "builtin";
 	}
 
 	/*
@@ -557,6 +563,12 @@ namespace hemera {
 					where->value.line_number, where->value.column_number });
 			}
 			if (builtin) {
+				// Optional and Result are declared by base/builtin, like any generic type
+				auto declared = names.declarations.find(std::make_pair(builtin_package(), name));
+				if (declared != names.declarations.end()) {
+					found_declaration = declared->second;
+					return check_locked(walk, names, where, declared->second, need);
+				}
 				return Progress::DONE;
 			}
 			found_declaration = found[0];
@@ -660,6 +672,13 @@ namespace hemera {
 				if (!declared_here) {
 					head_was_package = true;
 					if (is_builtin_name(qualifier->value.value)) {
+						NameRegistry& names = walk.executor.program_info->names;
+						std::scoped_lock<std::mutex> lock(names.mutex);
+						auto declared = names.declarations.find(
+							std::make_pair(builtin_package(), qualifier->value.value));
+						if (declared != names.declarations.end()) {
+							return check_locked(walk, names, qualifier, declared->second, need);
+						}
 						return Progress::DONE;
 					}
 					report_error(ErrorCode::E4008, walk.file_path, qualifier->value.line_number,
@@ -969,7 +988,7 @@ namespace hemera {
 			}
 			else if (ast::NodeType::PAREN_GROUP == child->node_type) {
 				for (ast::Node* payload : child->children) {
-					progress = require(walk, payload, payload->value.value, Need::RESOLVED);
+					progress = walk_node(walk, payload, Need::RESOLVED);
 					if (progress != Progress::DONE) {
 						break;
 					}
@@ -1091,6 +1110,30 @@ namespace hemera {
 		return result;
 	}
 
+	/*
+	 * Marks declarations resolved, or failed, and wakes anything waiting for them, unless the work
+	 * resolving them parked. Anything waiting on a failed one fails too, without another error.
+	 */
+	static Progress finish_resolving(WorkThreadData& executor,
+		const std::vector<Declaration*>& declarations, Progress progress) {
+
+		if (Progress::PARKED == progress) {
+			return progress;
+		}
+		NameRegistry& names = executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		for (Declaration* declaration : declarations) {
+			if (Progress::DONE == progress) {
+				declaration->resolved = true;
+			}
+			else {
+				declaration->failed = true;
+			}
+			wake_locked(*executor.global_data, names, resolved_key(declaration));
+		}
+		return progress;
+	}
+
 	Progress resolve_definition(WorkThreadData& executor, InternedString package_path,
 		InternedString file_name, ast::Node* definition) {
 
@@ -1110,6 +1153,8 @@ namespace hemera {
 			nullptr,
 			file_path_of(package_path, file_name),
 			{},
+			{},
+			{},
 		};
 
 		// The explicit type, before the separator, then the value after it
@@ -1122,25 +1167,104 @@ namespace hemera {
 			}
 			Progress progress = walk_node(walk, child,
 				after_separator ? Need::RESOLVED : Need::DECLARED);
-			if (Progress::FAILED == progress) {
-				// Anything waiting for it to resolve fails too, without another error
-				std::scoped_lock<std::mutex> lock(names.mutex);
-				for (Declaration* declaration : declarations) {
-					declaration->failed = true;
-					wake_locked(*executor.global_data, names,
-						resolved_key(declaration));
-				}
-			}
 			if (progress != Progress::DONE) {
-				return progress;
+				return finish_resolving(executor, declarations, progress);
 			}
 		}
+		// Then its types, from what each name resolved to
+		return finish_resolving(executor, declarations,
+			compute_declaration(walk, declarations, definition));
+	}
 
+	Progress resolve_instance(WorkThreadData& executor, Declaration* instance) {
+		Walk walk{
+			executor,
+			instance->package_path,
+			instance->file_name,
+			instance->file,
+			instance,
+			nullptr,
+			file_path_of(instance->package_path, instance->file_name),
+			{},
+			{},
+			{},
+		};
+		// The generic's own names, with its parameters as locals, then its types with them bound
+		ast::Node* value = definition_value(instance->node);
+		Progress progress = value == nullptr ? Progress::FAILED : walk_node(walk, value, Need::RESOLVED);
+		if (Progress::DONE == progress) {
+			progress = compute_instance(walk, instance);
+		}
+		return finish_resolving(executor, { instance }, progress);
+	}
+
+	Progress require_resolved(Walk& walk, ast::Node* where, Declaration* declaration, Need need) {
+		NameRegistry& names = walk.executor.program_info->names;
 		std::scoped_lock<std::mutex> lock(names.mutex);
-		for (Declaration* declaration : declarations) {
-			declaration->resolved = true;
-			wake_locked(*executor.global_data, names,
-				resolved_key(declaration));
+		return check_locked(walk, names, where, declaration, need);
+	}
+
+	Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type) {
+		if (type == nullptr || type->complete) {
+			return Progress::DONE;
+		}
+		NameRegistry& names = walk.executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		auto iter = names.type_declarations.find(type);
+		if (iter == names.type_declarations.end()) {
+			// Made complete by its own construction, like an array of complete elements
+			return Progress::DONE;
+		}
+		return check_locked(walk, names, where, iter->second, Need::RESOLVED);
+	}
+
+	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments) {
+		// Aliases that aren't distinct are the same type, so the same instance
+		std::vector<TypeInfo*> key;
+		for (TypeInfo* argument : arguments) {
+			key.push_back(const_cast<TypeInfo*>(get_base_type_or_alias(argument)));
+		}
+		NameRegistry& names = walk.executor.program_info->names;
+		Declaration* instance = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			auto iter = names.instances.find(std::make_pair(generic, key));
+			if (iter != names.instances.end()) {
+				return iter->second;
+			}
+			std::string name = std::string(std::string_view(*generic->name)) + "[";
+			for (size_t i = 0; i < arguments.size(); ++i) {
+				name += (i > 0 ? ", " : "") + to_string(arguments[i]);
+			}
+			name += "]";
+			instance = &names.storage.emplace_back();
+			instance->name = intern(name);
+			instance->package_path = generic->package_path;
+			instance->file_name = generic->file_name;
+			instance->file = generic->file;
+			instance->node = generic->node;
+			instance->generic = generic;
+			instance->generic_arguments = arguments;
+			classify_declaration(names, instance);
+			names.instances[std::make_pair(generic, key)] = instance;
+		}
+		walk.executor.create_work(WorkType::TYPE_CHECK,
+			WorkTarget(WorkTargetType::INSTANCE, { .declaration = instance }));
+		return instance;
+	}
+
+	Progress builtin_generic(Walk& walk, ast::Node* where, std::string_view name, Declaration*& found) {
+		NameRegistry& names = walk.executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		Found result = declared_in_locked(walk, names, where, builtin_package(), intern(std::string(name)),
+			found);
+		if (Found::PARKED == result) {
+			return Progress::PARKED;
+		}
+		if (Found::NOTHING == result) {
+			report_error(ErrorCode::E4008, walk.file_path, where->value.line_number,
+				where->value.column_number, std::string(name));
+			return Progress::FAILED;
 		}
 		return Progress::DONE;
 	}
@@ -1208,6 +1332,13 @@ namespace hemera {
 	static Progress evaluate_declaration(Walk& walk, ast::Node* where, Declaration* declaration,
 		ConstantValue& result) {
 
+		if (declaration->externally_initialized) {
+			report_not_constant(walk.file_path, where, std::format(
+				"{} is #externally_initialized, so its value isn't known until the program is loaded",
+				std::string_view(*declaration->name)));
+			return Progress::FAILED;
+		}
+
 		ast::Node* value = nullptr;
 		bool after_separator = false;
 		for (size_t i = 1; i < declaration->node->children.size(); ++i) {
@@ -1234,6 +1365,8 @@ namespace hemera {
 			walk.owner,
 			walk.chain,
 			file_path_of(declaration->package_path, declaration->file_name),
+			{},
+			{},
 			{},
 		};
 		return evaluate(inner, value, result);
@@ -1442,6 +1575,10 @@ namespace hemera {
 		return Progress::FAILED;
 	}
 
+	Progress evaluate_in(Walk& walk, ast::Node* expression, ConstantValue& result) {
+		return evaluate(walk, expression, result);
+	}
+
 	Progress evaluate_condition(WorkThreadData& executor, IfChain* chain, FileInfo* file,
 		ast::Node* expression, ConstantValue& result) {
 
@@ -1453,6 +1590,8 @@ namespace hemera {
 			nullptr,
 			chain,
 			file_path_of(chain->file.package_path, chain->file.file_name),
+			{},
+			{},
 			{},
 		};
 		return evaluate(walk, expression, result);

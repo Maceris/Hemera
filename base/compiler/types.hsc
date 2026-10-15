@@ -29,6 +29,15 @@ FunctionOutput :: struct {
     type: ptr[TypeInfo],
 }
 
+UnionVariant :: struct {
+    name: string,
+    // The types of the variant's values, like int and string for Pair(int, string); none for a
+    // variant without values.
+    types: ptr[TypeInfo][],
+    // Each value's byte offset from the start of the union, after the tag, in the same order.
+    offsets: usize[],
+}
+
 StructMember :: struct {
     name: string,
     member_type: ptr[TypeInfo],
@@ -136,6 +145,8 @@ TypeInfoStruct :: struct {
 TypeInfoUnion :: struct {
     using TypeInfo,
     name: string,
-    variants: Map[string, string[]],
+    variants: UnionVariant[],
+    // The unsigned integer at offset 0 saying which variant a value is: its index in variants.
+    tag_type: ptr[TypeInfo],
 }
 

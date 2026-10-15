@@ -105,7 +105,7 @@ i128le_to_string :: fn(value: i128le) -> string {
 int_to_string :: fn(value: int) -> string {
     //TODO(ches) implement this
 }
-ptr_to_string :: fn(value: ptr) -> string {
+ptr_to_string :: fn[T](value: ptr[T]) -> string {
     //TODO(ches) implement this
 }
 q32_to_string :: fn(value: q32) -> string {
@@ -123,16 +123,16 @@ q256_to_string :: fn(value: q256) -> string {
 rawptr_to_string :: fn(value: rawptr) -> string {
     //TODO(ches) implement this
 }
-relptr8_to_string :: fn(value: relptr8) -> string {
+relptr8_to_string :: fn[T](value: relptr8[T]) -> string {
     //TODO(ches) implement this
 }
-relptr16_to_string :: fn(value: relptr16) -> string {
+relptr16_to_string :: fn[T](value: relptr16[T]) -> string {
     //TODO(ches) implement this
 }
-relptr32_to_string :: fn(value: relptr32) -> string {
+relptr32_to_string :: fn[T](value: relptr32[T]) -> string {
     //TODO(ches) implement this
 }
-relptr64_to_string :: fn(value: relptr64) -> string {
+relptr64_to_string :: fn[T](value: relptr64[T]) -> string {
     //TODO(ches) implement this
 }
 type_to_string :: fn(value: type) -> string {
@@ -302,7 +302,7 @@ string_to_i128le :: fn(str: string) -> (i128le, bool) {
 string_to_int :: fn(str: string) -> (int, bool) {
     //TODO(ches) implement this
 }
-string_to_ptr :: fn(str: string) -> (ptr, bool) {
+string_to_ptr :: fn[T](str: string) -> (ptr[T], bool) {
     //TODO(ches) implement this
 }
 string_to_q32 :: fn(str: string) -> (q32, bool) {
@@ -320,16 +320,16 @@ string_to_q256 :: fn(str: string) -> (q256, bool) {
 string_to_rawptr :: fn(str: string) -> (rawptr, bool) {
     //TODO(ches) implement this
 }
-string_to_relptr8 :: fn(str: string) -> (relptr8, bool) {
+string_to_relptr8 :: fn[T](str: string) -> (relptr8[T], bool) {
     //TODO(ches) implement this
 }
-string_to_relptr16 :: fn(str: string) -> (relptr16, bool) {
+string_to_relptr16 :: fn[T](str: string) -> (relptr16[T], bool) {
     //TODO(ches) implement this
 }
-string_to_relptr32 :: fn(str: string) -> (relptr32, bool) {
+string_to_relptr32 :: fn[T](str: string) -> (relptr32[T], bool) {
     //TODO(ches) implement this
 }
-string_to_relptr64 :: fn(str: string) -> (relptr64, bool) {
+string_to_relptr64 :: fn[T](str: string) -> (relptr64[T], bool) {
     //TODO(ches) implement this
 }
 string_to_type :: fn(str: string) -> (type, bool) {

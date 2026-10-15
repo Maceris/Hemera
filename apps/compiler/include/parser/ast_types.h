@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include <cstdint>
 
 #include "front_end/type.h"
@@ -89,5 +92,12 @@ namespace hemera::ast {
 		Node& operator=(Node&&) = delete;
 		~Node();
 	};
+
+	std::string_view name_of(NodeType type);
+
+	/// <summary>
+	/// The tree under node, one node to a line, for debugging and tests.
+	/// </summary>
+	std::string dump(const Node* node);
 
 }

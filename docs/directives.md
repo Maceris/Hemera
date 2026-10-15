@@ -189,7 +189,8 @@ Callback :: alias fn(data #escaping : any)
 
 ## Structs
 
-`#align(n)` is used to align to `n` bytes, for example `struct #align(8) {...}` aligns the struct to 8 bytes.
+`#align(n)` is used to align to `n` bytes, for example `struct #align(8) {...}` aligns the struct to at least 8 bytes.
+It only raises the alignment; with `#packed`, it sets it exactly (see [types.md](types.md#memory-layout)).
 `#packed` is used to remove padding between fields in a struct
 `#union` turns the struct into a c-style union, where every field is located at the same offset and share memory
 `#scoped` is used for structs meant to hold pointers into the stack and be passed around by pointer, like parsers and iterators over a stack buffer.

@@ -1,279 +1,19 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "memory/allocator.h"
 
 namespace hemera {
 
-	struct TypeInfo;
+	/*
+	 * Type information: what the compiler knows about each type, including its memory layout
+	 * (docs/types.md, Memory Layout). Sizes and alignments are in bytes, for a 64-bit target.
+	 */
 
-	//TODO(ches) switch to MLIR types
-	namespace builtin {
-		struct _any {
-			TypeInfo* type;
-			void* value;
-		};
-		using _b8 = uint8_t;
-		using _b16 = uint16_t;
-		using _b32 = uint32_t;
-		using _b64 = uint64_t;
-		using _bool = bool;
-		struct _c16 {
-			uint8_t real;
-			uint8_t imaginary;
-		};
-		struct _c32 {
-			uint16_t real;
-			uint16_t imaginary;
-		};
-		struct _c64 {
-			uint32_t real;
-			uint32_t imaginary;
-		};
-		struct _c128 {
-			uint64_t real;
-			uint64_t imaginary;
-		};
-		using _char = char8_t;
-		using _cstring = char*;
-		struct _f16 {}; // TODO(ches) create/complete this
-		struct _f16be {}; // TODO(ches) create/complete this
-		struct _f16le {}; // TODO(ches) create/complete this
-		static_assert(sizeof(float) == 4);
-		using _f32 = float;
-		struct _f32be {}; // TODO(ches) create/complete this
-		struct _f32le {}; // TODO(ches) create/complete this
-		static_assert(sizeof(double) == 8);
-		using _f64 = double;
-		struct _f64be {}; // TODO(ches) create/complete this
-		struct _f64le {}; // TODO(ches) create/complete this
-		using _i8 = int8_t;
-		using _i16 = int16_t;
-		struct _i16be {
-			int8_t byte_1;
-			uint8_t byte_2;
-		};
-		struct _i16le {
-			uint8_t byte_2;
-			int8_t byte_1;
-		};
-		using _i32 = int32_t;
-		struct _i32be {
-			int8_t byte_1;
-			uint8_t byte_2;
-			uint8_t byte_3;
-			uint8_t byte_4;
-		};
-		struct _i32le {
-			uint8_t byte_4;
-			uint8_t byte_3;
-			uint8_t byte_2;
-			int8_t byte_1;
-		};
-		using _i64 = int64_t;
-		struct _i64be {
-			int8_t byte_1;
-			uint8_t byte_2;
-			uint8_t byte_3;
-			uint8_t byte_4;
-			uint8_t byte_5;
-			uint8_t byte_6;
-			uint8_t byte_7;
-			uint8_t byte_8;
-		};
-		struct _i64le {
-			uint8_t byte_8;
-			uint8_t byte_7;
-			uint8_t byte_6;
-			uint8_t byte_5;
-			uint8_t byte_4;
-			uint8_t byte_3;
-			uint8_t byte_2;
-			int8_t byte_1;
-		};
-		struct _i128be {
-			int8_t byte_1;
-			uint8_t byte_2;
-			uint8_t byte_3;
-			uint8_t byte_4;
-			uint8_t byte_5;
-			uint8_t byte_6;
-			uint8_t byte_7;
-			uint8_t byte_8;
-			uint8_t byte_9;
-			uint8_t byte_10;
-			uint8_t byte_11;
-			uint8_t byte_12;
-			uint8_t byte_13;
-			uint8_t byte_14;
-			uint8_t byte_15;
-			uint8_t byte_16;
-		};
-		struct _i128le {
-			uint8_t byte_16;
-			uint8_t byte_15;
-			uint8_t byte_14;
-			uint8_t byte_13;
-			uint8_t byte_12;
-			uint8_t byte_11;
-			uint8_t byte_10;
-			uint8_t byte_9;
-			uint8_t byte_8;
-			uint8_t byte_7;
-			uint8_t byte_6;
-			uint8_t byte_5;
-			uint8_t byte_4;
-			uint8_t byte_3;
-			uint8_t byte_2;
-			int8_t byte_1;
-		};
-		using _i128 = _i128le; // TODO(ches) is this right?
-		static_assert(sizeof(int64_t) == sizeof(uintptr_t));
-		using _int = int64_t;
-		struct _ptr {
-			TypeInfo* pointing_to_type;
-			void* pointer;
-		};
-		struct _q32 {
-			uint8_t a;
-			uint8_t b;
-			uint8_t c;
-			uint8_t d;
-		};
-		struct _q64 {
-			uint16_t a;
-			uint16_t b;
-			uint16_t c;
-			uint16_t d;
-		};
-		struct _q128 {
-			uint32_t a;
-			uint32_t b;
-			uint32_t c;
-			uint32_t d;
-		};
-		struct _q256 {
-			uint64_t a;
-			uint64_t b;
-			uint64_t c;
-			uint64_t d;
-		};
-		using _rawptr = void*;
-		struct _relptr8 {
-
-		}; // TODO(ches) create/complete this
-		struct _relptr16 {}; // TODO(ches) create/complete this
-		struct _relptr32 {}; // TODO(ches) create/complete this
-		struct _relptr64 {}; // TODO(ches) create/complete this
-		struct _string {
-			_int size;
-			_char* data;
-		};
-		using _type = TypeInfo*;
-		using _u8 = uint8_t;
-		using _u16 = uint16_t;
-		struct _u16be {
-			uint8_t byte_1;
-			uint8_t byte_2;
-		};
-		struct _u16le {
-			uint8_t byte_2;
-			uint8_t byte_1;
-		};
-		using _u32 = uint32_t;
-		struct _u32be {
-			uint8_t byte_1;
-			uint8_t byte_2;
-			uint8_t byte_3;
-			uint8_t byte_4;
-		};
-		struct _u32le {
-			uint8_t byte_4;
-			uint8_t byte_3;
-			uint8_t byte_2;
-			uint8_t byte_1;
-		};
-		using _u64 = uint64_t;
-		struct _u64be {
-			uint8_t byte_1;
-			uint8_t byte_2;
-			uint8_t byte_3;
-			uint8_t byte_4;
-			uint8_t byte_5;
-			uint8_t byte_6;
-			uint8_t byte_7;
-			uint8_t byte_8;
-		};
-		struct _u64le {
-			uint8_t byte_8;
-			uint8_t byte_7;
-			uint8_t byte_6;
-			uint8_t byte_5;
-			uint8_t byte_4;
-			uint8_t byte_3;
-			uint8_t byte_2;
-			uint8_t byte_1;
-		};
-		struct _u128be {
-			uint8_t byte_1;
-			uint8_t byte_2;
-			uint8_t byte_3;
-			uint8_t byte_4;
-			uint8_t byte_5;
-			uint8_t byte_6;
-			uint8_t byte_7;
-			uint8_t byte_8;
-			uint8_t byte_9;
-			uint8_t byte_10;
-			uint8_t byte_11;
-			uint8_t byte_12;
-			uint8_t byte_13;
-			uint8_t byte_14;
-			uint8_t byte_15;
-			uint8_t byte_16;
-		};
-		struct _u128le {
-			uint8_t byte_16;
-			uint8_t byte_15;
-			uint8_t byte_14;
-			uint8_t byte_13;
-			uint8_t byte_12;
-			uint8_t byte_11;
-			uint8_t byte_10;
-			uint8_t byte_9;
-			uint8_t byte_8;
-			uint8_t byte_7;
-			uint8_t byte_6;
-			uint8_t byte_5;
-			uint8_t byte_4;
-			uint8_t byte_3;
-			uint8_t byte_2;
-			uint8_t byte_1;
-		};
-		using _u128 = _u128le; // TODO(ches) is this right?
-		using _uint = uintptr_t;
-		using _uintptr = uintptr_t;
-	}
-	
-	enum class ArrayType {
-		STATIC,
-		DYNAMIC,
-		VIEW,
-	};
-
-	enum class Endianness : uint8_t {
-		BIG,
-		LITTLE,
-		SYSTEM,
-	};
-
-	struct ArrayDimension {
-		ArrayType type;
-		int count;
-	};
-
-	enum class TypeInfoVariant {
+	enum class TypeInfoVariant : uint8_t {
 		ALIAS,
 		ANY,
 		ARRAY,
@@ -293,165 +33,247 @@ namespace hemera {
 		VOID,
 	};
 
+	enum class ArrayType : uint8_t {
+		STATIC,
+		DYNAMIC,
+		VIEW,
+	};
+
+	enum class Endianness : uint8_t {
+		BIG,
+		LITTLE,
+		SYSTEM,
+	};
+
+	/// <summary>
+	/// The size of a pointer, usize, uint and int on the targets Hemera supports.
+	/// </summary>
+	constexpr size_t POINTER_SIZE = 8;
+
 	struct TypeInfo {
 		TypeInfoVariant variant;
 		/// <summary>
-		/// Whether values of this type can carry pointers (pointers, rawptr,
-		/// array views, strings, any, or aggregates containing those), and so
-		/// can be local values that point into the stack. Function values and
-		/// type values never point into the stack, so they don't count.
+		/// Whether values of this type can carry pointers (pointers, rawptr, array views, strings,
+		/// any, or aggregates containing those), and so can be local values that point into the
+		/// stack. Function values and type values never point into the stack, so they don't count.
 		/// </summary>
-		bool contains_pointers;
-		char _padding[3] = { 0 };
+		bool contains_pointers = false;
+		/// <summary>
+		/// Its size and alignment are known. A declared struct, union, enum or alias exists before
+		/// it's resolved, so pointers can refer to it, but its layout is only known after.
+		/// </summary>
+		bool complete = true;
 		size_t size;
+		size_t alignment;
 
-		TypeInfo(TypeInfoVariant variant, size_t size);
-		~TypeInfo();
+		TypeInfo(TypeInfoVariant variant, size_t size, size_t alignment);
+		TypeInfo(const TypeInfo&) = delete;
+		TypeInfo& operator=(const TypeInfo&) = delete;
+		virtual ~TypeInfo();
 	};
 
 	struct TypeInfoAlias : public TypeInfo {
 		TypeInfo* base_type;
 		InternedString name;
 		bool distinct;
-		char _type_info_alias_padding[7] = { 0 };
-		
-		/// <summary>
-		/// Create a new type alias.
-		/// </summary>
-		/// <param name="base_type">The type this is an alias of, must be a
-		/// valid type info pointer.</param>
-		/// <param name="name">The name of the alias.</param>
-		/// <param name="distinct">Whether this is a distinct type.</param>
-		TypeInfoAlias(TypeInfo* base_type, InternedString name, bool distinct);
-		~TypeInfoAlias();
+
+		TypeInfoAlias(InternedString name, bool distinct);
 	};
 
+	/// <summary>
+	/// One dimension: a static array of count elements, an array view, or a dynamic array. An array
+	/// of arrays, like int[4][], has an array as its element type: the outermost dimension, the one
+	/// indexed first, is this one.
+	/// </summary>
 	struct TypeInfoArray : public TypeInfo {
-		TypeInfo* base_type;
-		MyVector<ArrayDimension> dimensions;
+		TypeInfo* element_type;
+		ArrayType array_type;
+		size_t count;
 
-		TypeInfoArray(TypeInfo* base_type, MyVector<ArrayDimension>&& dimensions);
-		~TypeInfoArray();
+		TypeInfoArray(TypeInfo* element_type, ArrayType array_type, size_t count);
+	};
+
+	/// <summary>
+	/// bool and b8 to b64.
+	/// </summary>
+	struct TypeInfoBoolean : public TypeInfo {
+		explicit TypeInfoBoolean(size_t size);
+	};
+
+	/// <summary>
+	/// Complex numbers (two parts) and quaternions (four), of integers of a part's size.
+	/// </summary>
+	struct TypeInfoComposite : public TypeInfo {
+		size_t part_size;
+
+		TypeInfoComposite(TypeInfoVariant variant, size_t part_size, size_t parts);
 	};
 
 	struct TypeInfoEnum : public TypeInfo {
 		InternedString name;
-		MyVector<InternedString> members;
+		/// <summary>
+		/// From #backed_by, uint if it wasn't given.
+		/// </summary>
+		TypeInfo* backing_type;
+		std::vector<InternedString> members;
+		/// <summary>
+		/// Each member's value, in the same order as members.
+		/// </summary>
+		std::vector<uint64_t> values;
 
-		TypeInfoEnum(InternedString name, size_t size);
-		~TypeInfoEnum();
+		explicit TypeInfoEnum(InternedString name);
 	};
-	
+
 	struct TypeInfoFloat : public TypeInfo {
 		Endianness endianness;
-		char _type_info_float_padding[7] = { 0 };
 
 		TypeInfoFloat(Endianness endianness, size_t size);
-		~TypeInfoFloat();
 	};
 
 	struct FunctionInput {
-		TypeInfo* type;
-		InternedString name;
-		bool is_varargs;
+		TypeInfo* type = nullptr;
+		InternedString name = nullptr;
+		bool has_default = false;
+		bool is_varargs = false;
 		/// <summary>
-		/// Marked #escaping, so the function may keep it after returning.
-		/// This is part of the function's type.
+		/// Marked #escaping, so the function may keep it after returning. This is part of the
+		/// function's type.
 		/// </summary>
-		bool is_escaping;
-		char _function_input_padding[6] = { 0 };
+		bool is_escaping = false;
 	};
 
 	struct FunctionOutput {
-		TypeInfo* type;
+		TypeInfo* type = nullptr;
+		InternedString name = nullptr;
 	};
 
 	struct TypeInfoFunction : public TypeInfo {
-		MyVector<FunctionInput> input;
-		MyVector<FunctionOutput> output;
+		std::vector<FunctionInput> input;
+		std::vector<FunctionOutput> output;
+		/// <summary>
+		/// Marked #never_returns.
+		/// </summary>
+		bool never_returns = false;
+		/// <summary>
+		/// From #calling_convention(...), or null for Hemera's own.
+		/// </summary>
+		InternedString calling_convention = nullptr;
 
 		TypeInfoFunction();
-		~TypeInfoFunction();
 	};
 
 	struct TypeInfoInteger : public TypeInfo {
 		bool is_signed;
 		Endianness endianness;
-		char _type_info_integer_padding[6] = { 0 };
 
 		TypeInfoInteger(bool is_signed, Endianness endianness, size_t size);
-		~TypeInfoInteger();
 	};
 
 	struct TypeInfoPointer : public TypeInfo {
+		/// <summary>
+		/// What it points to, or null for rawptr.
+		/// </summary>
 		TypeInfo* base_type;
 		bool is_relative;
 		bool is_mutable;
-		char _type_info_pointer_padding[6] = { 0 };
 
-		TypeInfoPointer(TypeInfo* base_type, bool is_relative, bool is_mutable,
-			size_t size);
-		~TypeInfoPointer();
+		TypeInfoPointer(TypeInfo* base_type, bool is_relative, bool is_mutable, size_t size);
 	};
 
 	struct TypeInfoString : public TypeInfo {
+		/// <summary>
+		/// A cstring: a pointer to null-terminated text, rather than a count and a pointer.
+		/// </summary>
 		bool is_raw;
-		char _type_info_string_padding[7] = { 0 };
 
-		TypeInfoString(bool is_raw);
-		~TypeInfoString();
+		explicit TypeInfoString(bool is_raw);
 	};
 
 	struct StructMember {
-		InternedString name;
-		TypeInfo* member_type;
-		builtin::_any value;
-		bool has_value;
-		bool is_using;
-		char _padding[6] = { 0 };
+		InternedString name = nullptr;
+		TypeInfo* member_type = nullptr;
+		/// <summary>
+		/// Byte offset from the start of the struct, 0 for every member of a #union.
+		/// </summary>
+		size_t offset = 0;
+		/// <summary>
+		/// It has a default value (= value), which type checking evaluates.
+		/// </summary>
+		bool has_value = false;
+		/// <summary>
+		/// Included with using, so its own members can be used as the struct's.
+		/// </summary>
+		bool is_using = false;
 	};
 
 	struct TypeInfoStruct : public TypeInfo {
 		InternedString name;
-		MyVector<StructMember> members;
+		std::vector<StructMember> members;
 		/// <summary>
 		/// From #align(n), or 0 for the natural alignment.
 		/// </summary>
-		uint32_t alignment;
+		size_t requested_alignment = 0;
 		/// <summary>
-		/// From #scoped. Values hold pointers into the stack, are always
-		/// local, and can never be stored on the heap.
+		/// From #scoped. Values hold pointers into the stack, are always local, and can never be
+		/// stored on the heap.
 		/// </summary>
-		bool is_scoped;
+		bool is_scoped = false;
 		/// <summary>
-		/// From #packed.
+		/// From #packed: no padding, and an alignment of 1 unless #align asks for more.
 		/// </summary>
-		bool is_packed;
+		bool is_packed = false;
 		/// <summary>
-		/// From #union.
+		/// From #union: every member at offset 0, sharing memory.
 		/// </summary>
-		bool is_union;
-		char _type_info_struct_padding[1] = { 0 };
+		bool is_union = false;
 
-		TypeInfoStruct(InternedString name, size_t size, uint32_t alignment,
-			bool is_scoped, bool is_packed, bool is_union);
-		~TypeInfoStruct();
+		explicit TypeInfoStruct(InternedString name);
+	};
+
+	struct UnionVariant {
+		InternedString name = nullptr;
+		/// <summary>
+		/// The types of the variant's values, like int and string for Pair(int, string).
+		/// </summary>
+		std::vector<TypeInfo*> types;
+		/// <summary>
+		/// Each value's byte offset from the start of the union, after the tag.
+		/// </summary>
+		std::vector<size_t> offsets;
 	};
 
 	/// <summary>
-	/// Set contains_pointers for a struct, once all its members have been
-	/// added and their types are known.
+	/// A tagged union: an unsigned tag at offset 0, the smallest that counts the variants, then
+	/// the variant's values laid out like a struct's members, all variants overlapping.
 	/// </summary>
-	/// <param name="type">The struct to update.</param>
-	void update_contains_pointers(TypeInfoStruct* type);
-	
 	struct TypeInfoUnion : public TypeInfo {
 		InternedString name;
-		MyMap<InternedString, MyVector<InternedString>> variants;
+		std::vector<UnionVariant> variants;
+		TypeInfo* tag_type = nullptr;
 
-		TypeInfoUnion(InternedString name, size_t size);
-		~TypeInfoUnion();
+		explicit TypeInfoUnion(InternedString name);
 	};
+
+	/// <summary>
+	/// Lays out a struct whose members' types are complete: sets each member's offset, and the
+	/// struct's size, alignment and contains_pointers, and marks it complete.
+	/// </summary>
+	void lay_out_struct(TypeInfoStruct* type);
+
+	/// <summary>
+	/// Lays out a union whose variants' types are complete, the same way.
+	/// </summary>
+	void lay_out_union(TypeInfoUnion* type);
+
+	/// <summary>
+	/// Sets an alias's size and alignment from its base type, once that's complete.
+	/// </summary>
+	void lay_out_alias(TypeInfoAlias* type);
+
+	/// <summary>
+	/// Sets an enum's size and alignment from its backing type.
+	/// </summary>
+	void lay_out_enum(TypeInfoEnum* type);
 
 	extern TypeInfo* BUILTIN_any;
 	extern TypeInfo* BUILTIN_b8;
@@ -488,7 +310,6 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_i128be;
 	extern TypeInfo* BUILTIN_i128le;
 	extern TypeInfo* BUILTIN_int;
-	extern TypeInfo* BUILTIN_ptr;
 	extern TypeInfo* BUILTIN_q32;
 	extern TypeInfo* BUILTIN_q64;
 	extern TypeInfo* BUILTIN_q128;
@@ -511,60 +332,42 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_u128le;
 	extern TypeInfo* BUILTIN_uint;
 	extern TypeInfo* BUILTIN_uintptr;
+	extern TypeInfo* BUILTIN_usize;
 
 	extern TypeInfo* BUILTIN_void;
 	extern TypeInfo* BUILTIN_poisoned_value;
 
+	/// <summary>
+	/// The builtin type with this name, like int or string, or null. ptr and the relative
+	/// pointers aren't types by themselves, only with what they point to.
+	/// </summary>
+	TypeInfo* builtin_type(std::string_view name);
+
 	std::string to_string(TypeInfo const* type);
 
 	/// <summary>
-	/// Check if two types are the same.
-	/// 
-	/// A few notes about the comparison:
-	/// 
-	/// Null pointers are never equal to anything, even other null pointers.
+	/// Check if two types are the same: aliases that aren't distinct are the same as what they
+	/// alias (docs/types.md, Alias Equality). Null pointers are never equal to anything.
 	/// </summary>
-	/// <param name="a">The first type.</param>
-	/// <param name="b">The second type.</param>
-	/// <returns>If the types are the same.</returns>
 	bool same_type(TypeInfo const* a, TypeInfo const* b);
 
 	/// <summary>
-	/// Check if the first type can be implicitly converted to the second 
-	/// type.
-	/// 
-	/// A few notes about the comparison:
-	/// 
-	/// Null pointers can be converted, even from/to other null pointers.
-	/// A type can convert to itself, since saying that it can't would be more
-	/// confusing.
-	/// Primitive types can convert to the same type (floating point to 
-	/// floating point, signed integer to signed integer) of a larger size.
-	/// 
+	/// Check if the first type can be implicitly converted to the second (docs/types.md, Implicit
+	/// Casting). A type can convert to itself.
 	/// </summary>
-	/// <param name="from">The type we are converting from.</param>
-	/// <param name="to">The type we are converting to.</param>
-	/// <returns>Whether implicit conversion is possible.</returns>
 	bool can_implicitly_convert_to(TypeInfo const* from, TypeInfo const* to);
 
 	/// <summary>
-
-	/// If the provided type is an alias, look up the true base type, ignoring
-	/// anything to do with distinct aliases.
+	/// If the provided type is an alias, look up the true base type, ignoring anything to do with
+	/// distinct aliases.
 	/// </summary>
-	/// <param name="type">The type to find a base type for.</param>
-	/// <returns>The base type.</returns>
 	TypeInfo const* get_base_type(TypeInfo const* type);
 
 	/// <summary>
-	/// If the provided type is an alias, look up the base type until we 
-	/// find something that is either not an alias, or the nearest distinct
-	/// alias this refers to.
+	/// If the provided type is an alias, look up the base type until we find something that is
+	/// either not an alias, or the nearest distinct alias this refers to.
 	/// </summary>
-	/// <param name="type">The type to find a base type for.</param>
-	/// <returns>The base type, or a distinct alias this refers to.</returns>
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type);
-
 
 	void initialize_builtin_types();
 }

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <list>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -30,14 +31,63 @@ namespace hemera {
 
 	/// <summary>
 	/// The resolved path of an import from base. Base is the interface to what the compiler provides,
-	/// so its packages aren't read from files: an import from base resolves to this prefix plus the
-	/// package's name.
+	/// so its packages are built into the compiler rather than read from disk (base_sources.h): an
+	/// import from base resolves to this prefix plus the package's folder, like "<base>/runtime".
 	/// </summary>
 	constexpr std::string_view BASE_PACKAGE_PREFIX = "<base>/";
 
 	/// <summary>
+	/// base/builtin, whose names are the compiler's own. Only its generic types, Optional and
+	/// Result, are declared from its source, since their instances are made like any other's.
+	/// </summary>
+	constexpr std::string_view BUILTIN_PACKAGE = "<base>/builtin";
+
+	/// <summary>
+	/// BUILTIN_PACKAGE, interned.
+	/// </summary>
+	InternedString builtin_package();
+
+	/// <summary>
+	/// Whether a package's resolved path is a package of base.
+	/// </summary>
+	bool is_base_package(InternedString package_path);
+
+	/// <summary>
+	/// Whether a package's names are the compiler's own, with nothing to load: base/builtin.
+	/// </summary>
+	bool is_compiler_provided(InternedString package_path);
+
+	/// <summary>
+	/// The path of a source file, for error messages: on disk, or like "<base>/runtime/core.hsc".
+	/// </summary>
+	std::string file_path_of(InternedString package_path, InternedString file_name);
+
+	/// <summary>
 	/// A top-level declaration: one name of a top-level definition, in a package.
 	/// </summary>
+	/// <summary>
+	/// What a declaration is, as far as its syntax says.
+	/// </summary>
+	enum class DeclarationKind : uint8_t {
+		/// <summary>
+		/// A struct, union, enum, alias or function type. Its TypeInfo exists from when it's
+		/// declared, so pointers can refer to it before its layout is known.
+		/// </summary>
+		TYPE,
+		/// <summary>
+		/// A struct or union with generic parameters, a type only with its arguments.
+		/// </summary>
+		GENERIC_TYPE,
+		/// <summary>
+		/// A function, with a body or ---.
+		/// </summary>
+		FUNCTION,
+		/// <summary>
+		/// A constant, or a name for something else, like X :: Y, which is a type when Y is one.
+		/// </summary>
+		VALUE,
+	};
+
 	struct Declaration {
 		InternedString name = nullptr;
 		/// <summary>
@@ -63,6 +113,32 @@ namespace hemera {
 		/// reporting it again.
 		/// </summary>
 		bool failed = false;
+		DeclarationKind kind = DeclarationKind::VALUE;
+		/// <summary>
+		/// The type it is, for a TYPE, or a VALUE that turns out to name a type. Complete once
+		/// it's resolved.
+		/// </summary>
+		TypeInfo* type_value = nullptr;
+		/// <summary>
+		/// The type of its value, for a function or a constant, once it's resolved; null for an
+		/// untyped constant, like C :: 5, or one whose type comes from type checking its value.
+		/// </summary>
+		TypeInfo* value_type = nullptr;
+		/// <summary>
+		/// For an instance of a generic type, like Pair[int, string]: the generic declaration, and
+		/// the types given for its parameters, in order. Its node is the generic's.
+		/// </summary>
+		Declaration* generic = nullptr;
+		std::vector<TypeInfo*> generic_arguments;
+		/// <summary>
+		/// Marked #externally_initialized (docs/directives.md): its value is only the image's
+		/// initial contents, so it can't be read at compile time.
+		/// </summary>
+		bool externally_initialized = false;
+		/// <summary>
+		/// From #section(name), the output section to put it in, or null.
+		/// </summary>
+		InternedString section = nullptr;
 	};
 
 	/// <summary>
@@ -189,6 +265,24 @@ namespace hemera {
 		/// </summary>
 		std::map<Declaration*, ParkedWork*> parked_resolvers;
 		std::map<IfChain*, ParkedWork*> parked_chains;
+		/// <summary>
+		/// Each instance of a generic type, by the generic and its arguments.
+		/// </summary>
+		std::map<std::pair<Declaration*, std::vector<TypeInfo*>>, Declaration*> instances;
+		/// <summary>
+		/// The declaration each declared type belongs to, for waiting on its layout.
+		/// </summary>
+		std::map<const TypeInfo*, Declaration*> type_declarations;
+		/// <summary>
+		/// Every type made while compiling, besides the builtins.
+		/// </summary>
+		std::mutex types_mutex;
+		std::vector<std::unique_ptr<TypeInfo>> owned_types;
+		/// <summary>
+		/// Types made from others, like ptr[int] or int[4], by what they're made of, so each is one
+		/// object. Guarded by types_mutex.
+		/// </summary>
+		std::map<std::string, TypeInfo*> derived_types;
 	};
 
 	/// <summary>
@@ -255,6 +349,12 @@ namespace hemera {
 	/// </summary>
 	void begin_if_chain(WorkThreadData& executor, IfChain* chain);
 	void end_if_chain(WorkThreadData& executor, IfChain* chain);
+
+	/// <summary>
+	/// Resolves an instance of a generic type, like Pair[int, string]: its members' types, with
+	/// the generic parameters bound to its arguments, and its layout.
+	/// </summary>
+	Progress resolve_instance(WorkThreadData& executor, Declaration* instance);
 
 	/// <summary>
 	/// Checks that every name a top-level definition refers to is declared, and that the

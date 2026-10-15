@@ -82,16 +82,7 @@ relptr16[T] :: alias relptr16[T]
 relptr32[T] :: alias relptr32[T]
 relptr64[T] :: alias relptr64[T]
 
-// Optional values (T? is Optional[T]) and results
-Optional :: union[T] {
-    Some(T),
-    None,
-}
-
-Result :: union[T, E] {
-    Ok(T),
-    Error(E),
-}
+// Optional values (T? is Optional[T]) and results are in generic_types.hsc
 
 // Type info
 any  :: alias any

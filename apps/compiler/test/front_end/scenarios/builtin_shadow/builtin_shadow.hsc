@@ -5,6 +5,10 @@ Result :: struct {
     code : int,
 }
 
+char :: struct {
+    code : u32,
+}
+
 // base. reaches the builtin
 convert :: fn(mine: Result) -> base.Result[int, string] {
 }

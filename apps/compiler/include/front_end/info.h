@@ -33,7 +33,6 @@ namespace hemera {
 
 	struct IdentifierInfo {
 		TypeID type;
-		builtin::_any default_value;
 		/// <summary>
 		/// The file the identifier is declared in.
 		/// </summary>
