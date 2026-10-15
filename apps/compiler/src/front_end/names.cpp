@@ -547,6 +547,11 @@ namespace hemera {
 			}
 		}
 		if (found.size() + (builtin ? 1 : 0) > 1) {
+			// Reported now, so not again once everything is decided
+			std::erase_if(names.provisional_uses, [&](const ProvisionalUse& use) {
+				return use.file == walk.file && use.name == name && use.line == where->value.line_number
+					&& use.column == where->value.column_number;
+			});
 			report_error(ErrorCode::E4012, walk.file_path, where->value.line_number,
 				where->value.column_number,
 				builtin
@@ -564,11 +569,15 @@ namespace hemera {
 					where->value.line_number, where->value.column_number });
 			}
 			if (builtin) {
-				// Optional and Result are declared by base/builtin, like any generic type
-				auto declared = names.declarations.find(std::make_pair(builtin_package(), name));
-				if (declared != names.declarations.end()) {
-					found_declaration = declared->second;
-					return check_locked(walk, names, where, declared->second, need);
+				// Optional and Result are declared by base/builtin, like any generic type, once it's loaded
+				Declaration* declared = nullptr;
+				Found result = declared_in_locked(walk, names, where, builtin_package(), name, declared);
+				if (Found::PARKED == result) {
+					return Progress::PARKED;
+				}
+				if (Found::DECLARATION == result) {
+					found_declaration = declared;
+					return check_locked(walk, names, where, declared, need);
 				}
 				return Progress::DONE;
 			}
@@ -675,10 +684,14 @@ namespace hemera {
 					if (is_builtin_name(qualifier->value.value)) {
 						NameRegistry& names = walk.executor.program_info->names;
 						std::scoped_lock<std::mutex> lock(names.mutex);
-						auto declared = names.declarations.find(
-							std::make_pair(builtin_package(), qualifier->value.value));
-						if (declared != names.declarations.end()) {
-							return check_locked(walk, names, qualifier, declared->second, need);
+						Declaration* declared = nullptr;
+						Found result = declared_in_locked(walk, names, qualifier, builtin_package(),
+							qualifier->value.value, declared);
+						if (Found::PARKED == result) {
+							return Progress::PARKED;
+						}
+						if (Found::DECLARATION == result) {
+							return check_locked(walk, names, qualifier, declared, need);
 						}
 						return Progress::DONE;
 					}
@@ -1234,12 +1247,29 @@ namespace hemera {
 		return check_locked(walk, names, where, iter->second, Need::RESOLVED);
 	}
 
-	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments) {
-		// Aliases that aren't distinct are the same type, so the same instance
-		std::vector<TypeInfo*> key;
-		for (TypeInfo* argument : arguments) {
-			key.push_back(const_cast<TypeInfo*>(get_base_type_or_alias(argument)));
+	std::string constant_text(const ConstantValue& value) {
+		if (ConstantValue::Kind::BOOLEAN == value.kind) {
+			return value.boolean ? "true" : "false";
 		}
+		if (ConstantValue::Kind::INTEGER == value.kind) {
+			return std::to_string(value.integer);
+		}
+		return "." + value.member;
+	}
+
+	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments,
+		const std::vector<ConstantValue>& values) {
+
+		// Aliases that aren't distinct are the same type, so the same instance; values by their text
+		std::string key;
+		std::string name = std::string(std::string_view(*generic->name)) + "[";
+		for (size_t i = 0; i < arguments.size(); ++i) {
+			const bool is_value = arguments[i] == nullptr && i < values.size();
+			key += is_value ? "=" + constant_text(values[i])
+				: std::format("{} ", static_cast<const void*>(get_base_type_or_alias(arguments[i])));
+			name += (i > 0 ? ", " : "") + (is_value ? constant_text(values[i]) : to_string(arguments[i]));
+		}
+		name += "]";
 		NameRegistry& names = walk.executor.program_info->names;
 		Declaration* instance = nullptr;
 		{
@@ -1248,11 +1278,6 @@ namespace hemera {
 			if (iter != names.instances.end()) {
 				return iter->second;
 			}
-			std::string name = std::string(std::string_view(*generic->name)) + "[";
-			for (size_t i = 0; i < arguments.size(); ++i) {
-				name += (i > 0 ? ", " : "") + to_string(arguments[i]);
-			}
-			name += "]";
 			instance = &names.storage.emplace_back();
 			instance->name = intern(name);
 			instance->package_path = generic->package_path;
@@ -1261,6 +1286,8 @@ namespace hemera {
 			instance->node = generic->node;
 			instance->generic = generic;
 			instance->generic_arguments = arguments;
+			instance->generic_values = values;
+			instance->generic_values.resize(arguments.size());
 			classify_declaration(names, instance);
 			names.instances[std::make_pair(generic, key)] = instance;
 		}
@@ -1394,6 +1421,50 @@ namespace hemera {
 		return evaluate(inner, value, result);
 	}
 
+	// size_of(T), align_of(T) or offset_of(T, member): what the compiler knows of a type's layout.
+	static Progress evaluate_builtin_call(Walk& walk, ast::Node* node, ConstantValue& result) {
+		const std::string name(std::string_view(*node->value.value));
+		std::vector<ast::Node*> arguments(node->children.begin() + 1, node->children.end());
+		const bool known = name == "size_of" || name == "align_of" || name == "offset_of";
+		if (!known || arguments.size() != (name == "offset_of" ? 2u : 1u)) {
+			report_not_constant(walk.file_path, node, std::format("{} isn't something the compiler can compute here",
+				name));
+			return Progress::FAILED;
+		}
+		TypeInfo* type = nullptr;
+		Progress progress = walk_node(walk, arguments[0], Need::RESOLVED);
+		if (progress == Progress::DONE) {
+			progress = type_of(walk, arguments[0], Need::RESOLVED, type);
+		}
+		if (progress == Progress::DONE) {
+			progress = require_complete(walk, arguments[0], type);
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		result.kind = ConstantValue::Kind::INTEGER;
+		if (name == "size_of") {
+			result.integer = static_cast<int64_t>(type->size);
+			return Progress::DONE;
+		}
+		if (name == "align_of") {
+			result.integer = static_cast<int64_t>(type->alignment);
+			return Progress::DONE;
+		}
+		TypeInfo const* base = get_base_type(type);
+		if (base != nullptr && TypeInfoVariant::STRUCT == base->variant) {
+			for (const StructMember& member : static_cast<TypeInfoStruct const*>(base)->members) {
+				if (member.name != nullptr && *member.name == *arguments[1]->value.value) {
+					result.integer = static_cast<int64_t>(member.offset);
+					return Progress::DONE;
+				}
+			}
+		}
+		report_not_constant(walk.file_path, arguments[1], std::format("{} has no member {}", to_string(type),
+			std::string_view(*arguments[1]->value.value)));
+		return Progress::FAILED;
+	}
+
 	// A builtin constant, from the command line: TARGET_ARCH or OS.
 	static Progress evaluate_builtin(Walk& walk, ast::Node* node, ConstantValue& result) {
 		InternedString name = node->value.value;
@@ -1415,6 +1486,16 @@ namespace hemera {
 
 	static Progress evaluate_name(Walk& walk, ast::Node* node, ConstantValue& result) {
 		InternedString name = node->value.value;
+		// A compile-time parameter, in an instance
+		auto value = walk.generic_values.find(std::string(std::string_view(*name)));
+		if (value != walk.generic_values.end() && node->children.empty()) {
+			result = value->second;
+			return Progress::DONE;
+		}
+		// size_of(T), align_of(T) and offset_of(T, member), which #assert uses
+		if (!node->children.empty() && ast::NodeType::PAREN_GROUP == node->children[0]->node_type) {
+			return evaluate_builtin_call(walk, node, result);
+		}
 
 		// Qualified, like compiler.Architecture.x86_64 or Mode.Fast: an enum member, by its name
 		if (!node->children.empty()) {
@@ -1581,7 +1662,8 @@ namespace hemera {
 			result.member = std::string(std::string_view(*node->value.value));
 			return Progress::DONE;
 		}
-		if (ast::NodeType::IDENTIFIER == type) {
+		// A name, or one in a type's position, like count in u8[count]
+		if (ast::NodeType::IDENTIFIER == type || (ast::NodeType::TYPE == type && node->children.empty())) {
 			return evaluate_name(walk, node, result);
 		}
 		if (ast::NodeType::PAREN_GROUP == type && node->children.size() == 1) {

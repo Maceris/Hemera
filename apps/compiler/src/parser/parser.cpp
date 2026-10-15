@@ -314,7 +314,9 @@ namespace hemera::parser {
 					}
 				}
 
-				if (directive.value.value->compare("#run") == 0) {
+				// #run and #assert take an expression
+				if (directive.value.value->compare("#run") == 0
+					|| directive.value.value->compare("#assert") == 0) {
 					ExprResult expr = expression_with_result(state, true);
 					if (!expr.success) {
 						return false;
@@ -429,7 +431,9 @@ namespace hemera::parser {
 					}
 				}
 
-				if (directive.value.value->compare("#run") == 0) {
+				// #run and #assert take an expression
+				if (directive.value.value->compare("#run") == 0
+					|| directive.value.value->compare("#assert") == 0) {
 					ExprResult expr = expression_with_result(state, true);
 					if (!expr.success) {
 						return false;

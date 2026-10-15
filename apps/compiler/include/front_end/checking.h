@@ -118,6 +118,11 @@ namespace hemera {
 	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result);
 
 	/// <summary>
+	/// A top-level #assert (docs/directives.md): its condition, a compile-time constant, is true.
+	/// </summary>
+	Progress check_top_level_assert(WorkThreadData& executor, const FileLocation& file, ast::Node* node);
+
+	/// <summary>
 	/// The type a value has where nothing else decides it: 5 is an int, 0.5 an f64; null if it
 	/// has none.
 	/// </summary>

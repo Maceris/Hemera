@@ -439,6 +439,10 @@ namespace hemera {
 						child->value.column_number,
 						details);
 				}
+				else if (value->compare("#assert") == 0) {
+					executor.create_work(WorkType::TYPE_CHECK,
+						WorkTarget(WorkTargetType::ASSERT, { .node_location = { location, child } }));
+				}
 				else if (value->compare("#run") == 0) {
 					ast::Node* expr = child->children[0];
 
@@ -605,6 +609,9 @@ namespace hemera {
 				break;
 			case WorkTargetType::BODY:
 				check_body(executor, target.value.declaration);
+				break;
+			case WorkTargetType::ASSERT:
+				check_top_level_assert(executor, target.value.node_location.file, target.value.node_location.node);
 				break;
 			case WorkTargetType::EXPRESSION:
 				type_check_expression(executor, target.value.node_location.file,

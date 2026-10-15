@@ -35,6 +35,10 @@ namespace hemera {
 		/// In an instance of a generic type, the type given for each generic parameter.
 		/// </summary>
 		std::map<std::string, TypeInfo*> generic_types;
+		/// <summary>
+		/// In an instance of a generic function, the value given for each compile-time parameter.
+		/// </summary>
+		std::map<std::string, ConstantValue> generic_values{};
 	};
 
 	/// <summary>
@@ -58,7 +62,13 @@ namespace hemera {
 	/// The instance of a generic type for these arguments, made (and its resolution started) the
 	/// first time it's asked for.
 	/// </summary>
-	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments);
+	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments,
+		const std::vector<ConstantValue>& values = {});
+
+	/// <summary>
+	/// The constant a compile-time value is, as text, like 16 or .Fast.
+	/// </summary>
+	std::string constant_text(const ConstantValue& value);
 
 	/// <summary>
 	/// A builtin generic type from base/builtin, Optional or Result, waiting until it's declared.

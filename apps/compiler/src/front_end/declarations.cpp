@@ -345,6 +345,12 @@ namespace hemera {
 		std::vector<TypePart> dimensions;
 		bool has_arguments = false;
 		for (TypePart& part : parts) {
+			// One value in brackets after a type that isn't generic is an array's count, like
+			// u8[count] (docs/types.md, Values in Generic Lists)
+			if (TypePart::Kind::ARGUMENTS == part.kind && !pointer && generic == nullptr && current != nullptr
+				&& part.arguments.size() == 1) {
+				part.kind = TypePart::Kind::DIMENSION;
+			}
 			if (TypePart::Kind::ARGUMENTS == part.kind) {
 				if (has_arguments || (!pointer && generic == nullptr)) {
 					return type_error(walk, ErrorCode::E4014, part.node,
@@ -1176,11 +1182,18 @@ namespace hemera {
 			}
 			for (ast::Node* parameter : child->children) {
 				if (ast::NodeType::COLON == parameter->node_type || index >= instance->generic_arguments.size()) {
-					//TODO(ches) values in generic lists
+					//TODO(ches) values in generic lists (docs/types.md, Values in Generic Lists)
 					return type_error(walk, ErrorCode::E4014, parameter,
-						"values as generic parameters aren't supported yet");
+						"values in generic lists aren't supported yet");
 				}
-				walk.generic_types[name_text(parameter->value.value)] = instance->generic_arguments[index++];
+				// A type, or a compile-time parameter's value
+				if (instance->generic_arguments[index] == nullptr) {
+					walk.generic_values[name_text(parameter->value.value)] = instance->generic_values[index];
+				}
+				else {
+					walk.generic_types[name_text(parameter->value.value)] = instance->generic_arguments[index];
+				}
+				++index;
 			}
 		}
 		if (ast::NodeType::FUNCTION == value->node_type) {

@@ -24,6 +24,10 @@ namespace hemera {
 		/// A function's body, to type check.
 		/// </summary>
 		BODY,
+		/// <summary>
+		/// A top-level #assert, to check.
+		/// </summary>
+		ASSERT,
 		EXPRESSION,
 		FILE,
 		FUNCTION,

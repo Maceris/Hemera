@@ -89,6 +89,24 @@ namespace hemera {
 	};
 
 	/// <summary>
+	/// A compile-time constant value, for #if conditions.
+	/// </summary>
+	struct ConstantValue {
+		enum class Kind : uint8_t {
+			BOOLEAN,
+			INTEGER,
+			/// <summary>
+			/// An enum member, by name, like .x86_64.
+			/// </summary>
+			ENUM_MEMBER,
+		};
+		Kind kind;
+		bool boolean = false;
+		int64_t integer = 0;
+		std::string member;
+	};
+
+	/// <summary>
 	/// What kind of literal an untyped constant is, like C :: 5, which takes the type it's used as.
 	/// </summary>
 	enum class Untyped : uint8_t {
@@ -140,7 +158,12 @@ namespace hemera {
 		/// the types given for its parameters, in order. Its node is the generic's.
 		/// </summary>
 		Declaration* generic = nullptr;
+		/// <summary>
+		/// One per generic parameter: its type, or null for a compile-time value (docs/types.md,
+		/// Compile-Time Parameters), which is in generic_values at the same place.
+		/// </summary>
 		std::vector<TypeInfo*> generic_arguments;
+		std::vector<ConstantValue> generic_values;
 		/// <summary>
 		/// Marked #externally_initialized (docs/directives.md): its value is only the image's
 		/// initial contents, so it can't be read at compile time.
@@ -283,7 +306,7 @@ namespace hemera {
 		/// <summary>
 		/// Each instance of a generic type, by the generic and its arguments.
 		/// </summary>
-		std::map<std::pair<Declaration*, std::vector<TypeInfo*>>, Declaration*> instances;
+		std::map<std::pair<Declaration*, std::string>, Declaration*> instances;
 		/// <summary>
 		/// The declaration each declared type belongs to, for waiting on its layout.
 		/// </summary>
@@ -298,24 +321,6 @@ namespace hemera {
 		/// object. Guarded by types_mutex.
 		/// </summary>
 		std::map<std::string, TypeInfo*> derived_types;
-	};
-
-	/// <summary>
-	/// A compile-time constant value, for #if conditions.
-	/// </summary>
-	struct ConstantValue {
-		enum class Kind : uint8_t {
-			BOOLEAN,
-			INTEGER,
-			/// <summary>
-			/// An enum member, by name, like .x86_64.
-			/// </summary>
-			ENUM_MEMBER,
-		};
-		Kind kind;
-		bool boolean = false;
-		int64_t integer = 0;
-		std::string member;
 	};
 
 	/// <summary>

@@ -37,9 +37,13 @@ namespace hemera {
 		TypeInfoFunction* function = nullptr;
 		std::vector<Scope> scopes;
 		/// <summary>
-		/// How many loops (and switches, for break) the statement being checked is in.
+		/// How many loops the statement being checked is in, for continue.
 		/// </summary>
 		size_t loops = 0;
+		/// <summary>
+		/// How many loops and switches it's in, for break, and break 2 (docs/control_flow.md).
+		/// </summary>
+		size_t breakables = 0;
 		/// <summary>
 		/// Whether there's a context: false in entry points until they push one.
 		/// </summary>
@@ -883,15 +887,61 @@ namespace hemera {
 		}
 	}
 
+	// A positional argument: an expression, or a value a pipe passed.
+	struct Positional {
+		ast::Node* node = nullptr;
+		bool has_value = false;
+		Value value;
+	};
+
 	// The arguments of a call: positional first, then named, as name = value.
 	struct Arguments {
-		std::vector<ast::Node*> positional;
+		std::vector<Positional> positional;
 		std::vector<std::pair<InternedString, ast::Node*>> named;
 	};
 
-	static Arguments split_arguments(Checker& checker, const std::vector<ast::Node*>& nodes) {
+	static bool is_placeholder(const ast::Node* node) {
+		return ast::NodeType::UNDERSCORE == node->node_type
+			|| ast::NodeType::PIPE_REORDER_IDENTIFIER == node->node_type;
+	}
+
+	/*
+	 * Splits a call's arguments. What a pipe passed fills its _ placeholders in order, or $1, $2...
+	 * by number, and comes first otherwise (docs/operators.md, Pipe operator).
+	 */
+	static Arguments split_arguments(Checker& checker, const std::vector<ast::Node*>& nodes,
+		const std::vector<Value>& piped, const ast::Node* where) {
+
 		Arguments result;
+		const bool placeholders = std::any_of(nodes.begin(), nodes.end(), is_placeholder);
+		if (!placeholders) {
+			for (const Value& value : piped) {
+				result.positional.push_back({ nullptr, true, value });
+			}
+		}
+		size_t next_piped = 0;
 		for (ast::Node* argument : nodes) {
+			if (ast::NodeType::UNDERSCORE == argument->node_type) {
+				if (next_piped >= piped.size()) {
+					error_at(checker, ErrorCode::E4018, argument, "more _ than the values |> passes");
+					result.positional.push_back({ argument, true, poisoned() });
+					continue;
+				}
+				result.positional.push_back({ argument, true, piped[next_piped++] });
+				continue;
+			}
+			if (ast::NodeType::PIPE_REORDER_IDENTIFIER == argument->node_type) {
+				const std::string text = text_of(argument->value.value);
+				const size_t number = text.size() > 1 ? std::stoul(text.substr(1)) : 0;
+				if (number == 0 || number > piped.size()) {
+					error_at(checker, ErrorCode::E4018, argument, std::format("{} isn't one of the {} values |> passes",
+						text, piped.size()));
+					result.positional.push_back({ argument, true, poisoned() });
+					continue;
+				}
+				result.positional.push_back({ argument, true, piped[number - 1] });
+				continue;
+			}
 			if (ast::NodeType::BINARY_OPERATOR == argument->node_type && is_assign(argument)
 				&& argument->children.size() == 2
 				&& ast::NodeType::IDENTIFIER == argument->children[0]->node_type) {
@@ -901,9 +951,19 @@ namespace hemera {
 			if (!result.named.empty()) {
 				error_at(checker, ErrorCode::E4018, argument, "positional arguments come before named ones");
 			}
-			result.positional.push_back(argument);
+			result.positional.push_back({ argument, false, {} });
 		}
+		(void)where;
 		return result;
+	}
+
+	// A positional argument's value: what a pipe passed, or its expression checked.
+	static Progress positional_value(Checker& checker, const Positional& argument, TypeInfo* expected, Value& value) {
+		if (argument.has_value) {
+			value = argument.value;
+			return Progress::DONE;
+		}
+		return check_expression(checker, argument.node, expected, value);
 	}
 
 	/*
@@ -916,21 +976,10 @@ namespace hemera {
 
 		std::vector<bool> given(function->input.size(), false);
 		size_t parameter = 0;
-		// What a pipe passed comes first
-		for (const Value& value : piped) {
-			if (parameter >= function->input.size()) {
-				error_at(checker, ErrorCode::E4018, where, std::format("|> passes more values than {} takes",
-					to_string(function)));
-				return Progress::DONE;
-			}
-			require_fit(checker, value, function->input[parameter].type, where, "the piped value");
-			given[parameter] = true;
-			if (!function->input[parameter].is_varargs) {
-				++parameter;
-			}
-		}
+		(void)piped;
 		for (size_t i = 0; i < arguments.positional.size(); ++i) {
-			ast::Node* argument = arguments.positional[i];
+			const Positional& positional = arguments.positional[i];
+			ast::Node* argument = positional.node != nullptr ? positional.node : where;
 			if (parameter >= function->input.size()) {
 				error_at(checker, ErrorCode::E4018, argument, std::format("too many arguments, {} takes {}",
 					to_string(function), function->input.size()));
@@ -941,7 +990,7 @@ namespace hemera {
 			if (input.is_varargs && expected != nullptr) {
 				// Each remaining value is one of the varargs, unless a view of them is passed on
 				Value value;
-				Progress progress = check_expression(checker, argument, expected, value);
+				Progress progress = positional_value(checker, positional, expected, value);
 				if (progress != Progress::DONE) {
 					return progress;
 				}
@@ -957,7 +1006,7 @@ namespace hemera {
 				continue;
 			}
 			Value value;
-			Progress progress = check_expression(checker, argument, expected, value);
+			Progress progress = positional_value(checker, positional, expected, value);
 			if (progress != Progress::DONE) {
 				return progress;
 			}
@@ -1028,8 +1077,11 @@ namespace hemera {
 		ast::Node* function = function_node(generic);
 		const std::vector<std::string> generics = generic_names(function);
 		const std::vector<Parameter> parameters = parameters_of(function);
-		const Arguments arguments = split_arguments(checker, argument_nodes);
+		const Arguments arguments = split_arguments(checker, argument_nodes, piped, where);
 		std::map<std::string, TypeInfo*> bound;
+		std::map<std::string, ConstantValue> bound_values;
+		// A compile-time argument that isn't a constant is reported already
+		bool binding_failed = false;
 		std::set<std::string> explicit_names;
 		for (size_t i = 0; i < callee.generic_arguments.size() && i < generics.size(); ++i) {
 			bound[generics[i]] = callee.generic_arguments[i];
@@ -1047,14 +1099,38 @@ namespace hemera {
 			}
 			return nullptr;
 		};
-		auto bind = [&](const Parameter* parameter, ast::Node* argument) -> Progress {
+		auto bind = [&](const Parameter* parameter, const Positional& positional) -> Progress {
 			if (parameter == nullptr) {
 				return Progress::DONE;
 			}
+			ast::Node* argument = positional.node != nullptr ? positional.node : where;
 			const std::string name = text_of(parameter->name);
 			const bool compile_time = std::find(generics.begin(), generics.end(), name) != generics.end();
+			const bool takes_type = parameter->type != nullptr && is_text(parameter->type->value.value, "type")
+				&& parameter->type->children.empty();
+			if (compile_time && !takes_type && !positional.has_value) {
+				// A compile-time value: a constant, which the instance is made for (docs/types.md)
+				if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument->value.value) != nullptr
+					&& !checker.walk.generic_values.contains(text_of(argument->value.value))) {
+					error_at(checker, ErrorCode::E4010, argument, std::format("{} is passed to {}, a compile-time parameter, so it must be a constant, not a variable",
+						text_of(argument->value.value), name));
+					binding_failed = true;
+					return Progress::DONE;
+				}
+				ConstantValue constant;
+				Progress progress = evaluate_in(checker.walk, argument, constant);
+				if (progress == Progress::FAILED) {
+					binding_failed = true;
+					return Progress::DONE;
+				}
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				bound_values[name] = constant;
+				return Progress::DONE;
+			}
 			Value value;
-			Progress progress = check_expression(checker, argument, nullptr, value);
+			Progress progress = positional_value(checker, positional, nullptr, value);
 			if (progress != Progress::DONE) {
 				return progress;
 			}
@@ -1066,7 +1142,6 @@ namespace hemera {
 					}
 					bound[name] = value.type;
 				}
-				//TODO(ches) values as compile-time arguments (docs/types.md, Compile-Time Parameters)
 				return Progress::DONE;
 			}
 			TypeInfo* type = default_type(value);
@@ -1087,31 +1162,34 @@ namespace hemera {
 			}
 			return Progress::DONE;
 		};
-		// Values a pipe passed bind their parameters first
-		for (size_t i = 0; i < piped.size() && i < parameters.size(); ++i) {
-			std::map<std::string, TypeInfo*> inferred;
-			unify(checker, parameters[i].type, default_type(piped[i]), inferred, generics);
-			for (const auto& [generic_name, generic_type] : inferred) {
-				bound.emplace(generic_name, generic_type);
-			}
-		}
 		for (size_t i = 0; i < arguments.positional.size(); ++i) {
 			// Past the last parameter, the rest go to a varargs one
-			const size_t index = i + piped.size();
-			const size_t position = index < parameters.size() || parameters.empty() ? index : parameters.size() - 1;
+			const size_t position = i < parameters.size() || parameters.empty() ? i : parameters.size() - 1;
 			Progress progress = bind(parameter_for(position, nullptr), arguments.positional[i]);
 			if (progress != Progress::DONE) {
 				return progress;
 			}
 		}
 		for (const auto& [name, argument] : arguments.named) {
-			Progress progress = bind(parameter_for(0, name), argument);
+			Progress progress = bind(parameter_for(0, name), Positional{ argument, false, {} });
 			if (progress != Progress::DONE) {
 				return progress;
 			}
 		}
+		if (binding_failed) {
+			callee = poisoned();
+			return Progress::DONE;
+		}
 		std::vector<TypeInfo*> instance_arguments;
+		std::vector<ConstantValue> instance_values;
 		for (const std::string& name : generics) {
+			auto value = bound_values.find(name);
+			if (value != bound_values.end()) {
+				instance_arguments.push_back(nullptr);
+				instance_values.push_back(value->second);
+				continue;
+			}
+			instance_values.push_back({});
 			auto iter = bound.find(name);
 			if (iter == bound.end() || iter->second == nullptr) {
 				callee = error_at(checker, ErrorCode::E4023, where, std::format("nothing binds {} in a call to {}; give it as {}[...]",
@@ -1120,7 +1198,7 @@ namespace hemera {
 			}
 			instance_arguments.push_back(iter->second);
 		}
-		Declaration* instance = instance_of(checker.walk, generic, instance_arguments);
+		Declaration* instance = instance_of(checker.walk, generic, instance_arguments, instance_values);
 		Progress progress = require_resolved(checker.walk, where, instance, Need::RESOLVED);
 		if (progress == Progress::FAILED) {
 			callee = poisoned();
@@ -1288,8 +1366,8 @@ namespace hemera {
 				}
 			}
 		}
-		Progress progress = check_arguments(checker, where, function, split_arguments(checker, arguments), names,
-			piped);
+		Progress progress = check_arguments(checker, where, function, split_arguments(checker, arguments, piped, where),
+			names, piped);
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -1362,6 +1440,10 @@ namespace hemera {
 				arguments.push_back(node->children[++i]);
 			}
 			const ast::NodeType type = child->node_type;
+			// A call on the right of |> holds its arguments inside its parentheses
+			if (ast::NodeType::PAREN_GROUP == type && arguments.empty() && !child->children.empty()) {
+				arguments.assign(child->children.begin(), child->children.end());
+			}
 			if (ast::NodeType::DOT_ACCESS == type) {
 				if (arguments.empty()) {
 					value = error_at(checker, ErrorCode::E4017, child, "a member's name is missing");
@@ -1550,12 +1632,6 @@ namespace hemera {
 				result = error_at(checker, ErrorCode::E4021, right_node, "the right of |> is a call");
 				return Progress::DONE;
 			}
-			for (size_t i = 2; i < node->children.size(); ++i) {
-				if (ast::NodeType::UNDERSCORE == node->children[i]->node_type) {
-					result = error_at(checker, ErrorCode::E4024, node->children[i], "_ and $1 in a piped call aren't supported yet");
-					return Progress::DONE;
-				}
-			}
 			checker.piped = std::move(piped);
 			progress = check_postfix(checker, right_node, result);
 			if (progress == Progress::DONE) {
@@ -1739,7 +1815,7 @@ namespace hemera {
 					describe(operand)));
 				return Progress::DONE;
 			}
-			if (checker.loops == 0) {
+			if ((TokenType::KEYWORD_OR_BREAK == op ? checker.breakables : checker.loops) == 0) {
 				error_at(checker, ErrorCode::E4022, node, "or_break and or_continue are only in a loop");
 			}
 			result = typed(held);
@@ -2649,9 +2725,11 @@ namespace hemera {
 			declare_local(checker, name->value.value, element);
 		}
 		checker.loops += 1;
+		checker.breakables += 1;
 		bool continues = true;
 		Progress progress = check_block(checker, body, continues, nullptr, nullptr);
 		checker.loops -= 1;
+		checker.breakables -= 1;
 		checker.scopes.pop_back();
 		return progress;
 	}
@@ -2716,11 +2794,13 @@ namespace hemera {
 		}
 		if (progress == Progress::DONE && body != nullptr) {
 			checker.loops += 1;
+			checker.breakables += 1;
 			checker.scopes.emplace_back();
 			bool body_continues = true;
 			progress = check_block(checker, body, body_continues, nullptr, nullptr);
 			checker.scopes.pop_back();
 			checker.loops -= 1;
+			checker.breakables -= 1;
 		}
 		checker.scopes.pop_back();
 		// A loop without a condition only ends with a break
@@ -2961,9 +3041,9 @@ namespace hemera {
 					}
 				}
 				bool case_continues = true;
-				checker.loops += 1;
+				checker.breakables += 1;
 				progress = check_block(checker, entry->children.back(), case_continues, nullptr, nullptr);
-				checker.loops -= 1;
+				checker.breakables -= 1;
 				checker.scopes.pop_back();
 				if (progress != Progress::DONE) {
 					return progress;
@@ -3086,9 +3166,21 @@ namespace hemera {
 		}
 		if (ast::NodeType::BREAK == type || ast::NodeType::CONTINUE == type) {
 			continues = false;
-			if (checker.loops == 0) {
+			const size_t available = ast::NodeType::BREAK == type ? checker.breakables : checker.loops;
+			if (available == 0) {
 				error_at(checker, ErrorCode::E4022, statement, std::format("{} is only in a loop",
 					ast::NodeType::BREAK == type ? "break" : "continue"));
+				return Progress::DONE;
+			}
+			// break 2 leaves two loops, so it has to be in at least two; break all, any
+			if (ast::NodeType::BREAK == type && !statement->children.empty()
+				&& ast::NodeType::LITERAL == statement->children[0]->node_type) {
+				const ast::Node* count_node = statement->children[0];
+				const unsigned long count = std::stoul(std::string(std::string_view(*count_node->value.value)));
+				if (count == 0 || count > available) {
+					error_at(checker, ErrorCode::E4022, count_node, std::format("break {} needs to be in {} loops, but it's in {}",
+						count, count, available));
+				}
 			}
 			return Progress::DONE;
 		}
@@ -3145,6 +3237,40 @@ namespace hemera {
 	}
 
 	/*
+	 * Decides an #if chain in a body (docs/directives.md): each condition, a compile-time constant,
+	 * in order, giving the BLOCK of the first that's true, or of #else, or null.
+	 */
+	static Progress pick_branch(Checker& checker, const std::vector<ast::Node*>& chain, ast::Node*& picked) {
+		picked = nullptr;
+		for (ast::Node* branch : chain) {
+			if (branch->children.empty()) {
+				continue;
+			}
+			if (is_text(branch->value.value, "#else")) {
+				picked = branch->children.back();
+				return Progress::DONE;
+			}
+			ConstantValue condition;
+			Progress progress = evaluate_in(checker.walk, branch->children[0], condition);
+			if (progress == Progress::FAILED) {
+				return Progress::DONE;
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ConstantValue::Kind::BOOLEAN != condition.kind) {
+				error_at(checker, ErrorCode::E4010, branch, "an #if condition must be true or false");
+				return Progress::DONE;
+			}
+			if (condition.boolean) {
+				picked = branch->children.back();
+				return Progress::DONE;
+			}
+		}
+		return Progress::DONE;
+	}
+
+	/*
 	 * A block's statements in order. Code after one that can't continue (return, break, a call to a
 	 * #never_returns function) is unreachable. For a block used as a value, its last statement is
 	 * its value.
@@ -3159,6 +3285,33 @@ namespace hemera {
 			if (!continues && !reported) {
 				error_at(checker, ErrorCode::E4025, statement, "this can't be reached");
 				reported = true;
+			}
+			if (ast::NodeType::DIRECTIVE == statement->node_type && is_text(statement->value.value, "#if")) {
+				// An #if chain: the branch its conditions pick, as if written here
+				std::vector<ast::Node*> chain{ statement };
+				while (i + 1 < block->children.size()
+					&& ast::NodeType::DIRECTIVE == block->children[i + 1]->node_type
+					&& (is_text(block->children[i + 1]->value.value, "#else_if")
+						|| is_text(block->children[i + 1]->value.value, "#else"))) {
+					chain.push_back(block->children[++i]);
+					if (is_text(chain.back()->value.value, "#else")) {
+						break;
+					}
+				}
+				ast::Node* picked = nullptr;
+				Progress progress = pick_branch(checker, chain, picked);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				if (picked != nullptr) {
+					bool branch_continues = true;
+					progress = check_block(checker, picked, branch_continues, nullptr, nullptr);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+					continues = continues && branch_continues;
+				}
+				continue;
 			}
 			const bool is_last = i + 1 == block->children.size();
 			if (is_last && last_value != nullptr && ast::NodeType::DEFINITION != statement->node_type
@@ -3194,6 +3347,11 @@ namespace hemera {
 			auto bound = checker.walk.generic_types.find(text_of(parameters[i].name));
 			if (bound != checker.walk.generic_types.end()) {
 				declare_local(checker, parameters[i].name, type_value(bound->second));
+				continue;
+			}
+			// Or a constant, like count in buffer :: fn[count](count: usize)
+			if (checker.walk.generic_values.contains(text_of(parameters[i].name))) {
+				declare_local(checker, parameters[i].name, typed(type->input[i].type));
 				continue;
 			}
 			TypeInfo* parameter_type = type->input[i].type;
@@ -3314,7 +3472,12 @@ namespace hemera {
 		if (function->generic != nullptr) {
 			const std::vector<std::string> names = generic_names(function_node_);
 			for (size_t i = 0; i < names.size() && i < function->generic_arguments.size(); ++i) {
-				walk.generic_types[names[i]] = function->generic_arguments[i];
+				if (function->generic_arguments[i] != nullptr) {
+					walk.generic_types[names[i]] = function->generic_arguments[i];
+				}
+				else if (i < function->generic_values.size()) {
+					walk.generic_values[names[i]] = function->generic_values[i];
+				}
 				walk.locals.push_back(intern(names[i]));
 			}
 		}
@@ -3333,6 +3496,24 @@ namespace hemera {
 		}
 		Checker checker(walk);
 		return check_function_body(checker, function_node_, body, type, function->node);
+	}
+
+	Progress check_top_level_assert(WorkThreadData& executor, const FileLocation& file, ast::Node* node) {
+		Walk walk{
+			executor,
+			file.package_path,
+			file.file_name,
+			find_file(executor.program_info, file.package_path, file.file_name),
+			nullptr,
+			nullptr,
+			file_path_of(file.package_path, file.file_name),
+			{},
+			{},
+			{},
+		};
+		Checker checker(walk);
+		checker.scopes.emplace_back();
+		return check_assert(checker, node);
 	}
 
 	TypeInfo* usual_type(const Value& value) {

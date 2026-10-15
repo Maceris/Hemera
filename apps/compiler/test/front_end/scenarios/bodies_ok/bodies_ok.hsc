@@ -197,3 +197,52 @@ ends_by_never_returning :: fn() -> int {
 ends_by_todo :: fn() -> int {
     todo()
 }
+
+FLAG :: true
+
+// docs/types.md, Compile-Time Parameters: an instance for each value
+buffer :: fn[count](count: usize) -> u8[count] {
+    result : u8[count]
+    return result
+}
+
+pass_three :: fn() -> (int, bool, string) {
+    return 1, true, "three"
+}
+
+takes :: fn(a: int, b: string, c: bool) -> int {
+    return a
+}
+
+takes_all :: fn(a: int, b: bool, c: string) -> int {
+    return a
+}
+
+later :: fn() {
+    // An #if in a body picks its branch at compile time
+    #if FLAG {
+        picked := 1
+    }
+    #else {
+        picked := "not checked"
+    }
+    picked += 1
+    // Piped values fill _ in order, or $1, $2 by number
+    first := pass_three() |> takes(_, "x", _)
+    second := pass_three() |> takes($1, $3, $2)
+    third := pass_three() |> takes_all()
+    // Compile-time values
+    bytes := buffer(16)
+    sixteen : u8[16] = bytes
+    // break 2 leaves both loops
+    for i in 0..<3 {
+        for j in 0..<3 {
+            if j == 1 {
+                break 2
+            }
+        }
+    }
+    #assert size_of(Point) == 16
+}
+
+#assert align_of(Point) == 8
