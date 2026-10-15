@@ -20,6 +20,10 @@ namespace hemera {
 		/// An instance of a generic type, to resolve.
 		/// </summary>
 		INSTANCE,
+		/// <summary>
+		/// A function's body, to type check.
+		/// </summary>
+		BODY,
 		EXPRESSION,
 		FILE,
 		FUNCTION,

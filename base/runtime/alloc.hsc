@@ -5,14 +5,14 @@ free :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    //TODO(ches) free
+    todo("free")
 }
 
 free_all :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    //TODO(ches) free
+    todo("free_all")
 }
 
 free_array :: fn[T](
@@ -20,24 +20,32 @@ free_array :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    //TODO(ches) free
+    todo("free_array")
 }
 
+/*
+ * A new T, from the allocator. If it can't be allocated, calls context.assertion_handler, which ends
+ * the program; new_aligned and new_array return the error instead, for code that handles it.
+ */
 new :: fn[T](
-    T: type, 
+    T: type,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ptr[mut T], AllocatorError?) {
-    return new_aligned(T, align_of(T), allocator, loc)
+) -> ptr[mut T] {
+    result, error :: new_aligned(T, align_of(T), allocator, loc)
+    if error is_some {
+        context.assertion_handler(loc, "out of memory")
+    }
+    return result
 }
 
 new_aligned :: fn[T](
     T: type,
-    alignment: int,
+    alignment: usize,
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (ptr[mut T], AllocatorError?) {
-    //TODO(ches) allocate
+    todo("new_aligned")
 }
 
 new_array :: fn[T](
@@ -46,17 +54,17 @@ new_array :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (T[], AllocatorError?) {
-    new_array_aligned(T, count, align_of(T), allocator, loc)
+    return new_array_aligned(T, count, align_of(T), allocator, loc)
 }
 
 new_array_aligned :: fn[T](
     T: type,
     count: usize,
-    alignment: int,
+    alignment: usize,
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (T[], AllocatorError?) {
-    //TODO(ches) allocate
+    todo("new_array_aligned")
 }
 
 /*
@@ -67,7 +75,7 @@ new_array_aligned :: fn[T](
 failing_allocator_function : AllocatorFn : fn(
     allocator_data: rawptr,
     size: usize,
-    alignment: int,
+    alignment: usize,
     old_memory: rawptr,
     old_size: usize,
     location := #caller_location,

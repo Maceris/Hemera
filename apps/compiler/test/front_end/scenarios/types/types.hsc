@@ -106,6 +106,7 @@ Strings :: struct {
 Handler :: fn(code: int, name: string) -> bool
 
 handle :: fn(code: int, values #escaping : ptr[u8], rest: int...) -> (ok: bool, count: usize) #never_returns {
+    todo()
 }
 
 intrinsic : fn(int) -> int : ---

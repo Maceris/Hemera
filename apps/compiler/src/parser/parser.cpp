@@ -1353,7 +1353,9 @@ namespace hemera::parser {
 				directive.children.push_back(block_contents.result);
 			}
 
-			if (directive.value.value->compare("#run") == 0) {
+			// #run and #assert take an expression: what to run, or the condition to check
+			if (directive.value.value->compare("#run") == 0
+				|| directive.value.value->compare("#assert") == 0) {
 				ExprResult expr = expression_with_result(state, true);
 				if (!expr.success) {
 					return false;
@@ -2118,8 +2120,9 @@ namespace hemera::parser {
 			|| current == TokenType::OPERATOR_NOT) {
 			result = &next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 		}
-		
-		ExprResult expr = expr_lvl_11(state);
+
+		// A unary operator's operand can be in parentheses, like !(a == b), or another unary, like -~x
+		ExprResult expr = result != nullptr ? expr_lvl_9(state) : expr_lvl_11(state);
 		
 		if (!expr.success) {
 			if (result != nullptr) {
@@ -2996,10 +2999,13 @@ namespace hemera::parser {
 
 			/*
 			 * Like C, a case runs every statement up to the next case, so it doesn't need
-			 * braces. There must be at least one.
+			 * braces. There must be at least one. They're kept in a BLOCK after the values.
 			 */
+			ast::Node* statements = state->node_alloc.new_object<ast::Node>(ast::NodeType::BLOCK,
+				current_token(state));
+			current_case.children.push_back(statements);
 			do {
-				if (!statement(state, current_case)) {
+				if (!statement(state, *statements)) {
 					return false;
 				}
 			} while (!expect(state, TokenType::KEYWORD_CASE)

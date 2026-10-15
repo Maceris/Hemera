@@ -21,6 +21,7 @@ create_default_logger :: fn() -> ptr[Logger] {
     result.warn = default_log_warn
     result.error = default_log_error
     result.fatal = default_log_fatal
+    return result
 }
 
 default_log_trace : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
@@ -117,11 +118,11 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
     flags : DefaultLoggerFlag : data.flags
 
     log_builder := new(StringBuilder)
-    defer delete(log_builder)
+    defer free(log_builder)
     init_string_builder(log_builder)
 
     // Left out of the message if the clock can't tell the time.
-    current_time := Instant.{0}
+    current_time := Instant.{0, 0}
     has_time := false
 
     if flags & (DEFAULT_LOGGER_FLAG_DATE | DEFAULT_LOGGER_FLAG_TIME) != 0 {
@@ -157,7 +158,8 @@ default_log_print :: fn(log_string: string, level: LogLevel, location: SourceCod
         append_char(log_builder, ' ')
     }
 
-    append(log_builder, reflection.as_string(level))
+    level_name, _ :: reflection.as_string(level)
+    append(log_builder, level_name)
     append_char(log_builder, ' ')
 
     if flags & DEFAULT_LOGGER_FLAG_FILE_NAME != 0 {

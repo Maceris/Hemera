@@ -1,6 +1,7 @@
 #include <format>
 #include <iostream>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include "error/reporting.h"
@@ -13,6 +14,11 @@ namespace hemera {
 	static bool printing_enabled = true;
 	static std::vector<ErrorCode>* error_list_storage;
 	static std::vector<WarningCode>* warning_list_storage;
+	/*
+	 * Every error reported so far, so the same one isn't reported twice. Work that waits for
+	 * something starts over when woken, and reports again what it found before.
+	 */
+	static std::set<std::string>* reported_storage;
 
 	DisableReportingForBlock::DisableReportingForBlock() {
 		disable_reporting();
@@ -35,6 +41,8 @@ namespace hemera {
 			delete warning_list_storage;
 			warning_list_storage = nullptr;
 		}
+		delete reported_storage;
+		reported_storage = nullptr;
 		destroy_error_info_map();
 		destroy_warning_info_map();
 	}
@@ -71,6 +79,9 @@ namespace hemera {
 		if (warning_list_storage == nullptr) {
 			warning_list_storage = new std::vector<WarningCode>();
 		}
+		if (reported_storage == nullptr) {
+			reported_storage = new std::set<std::string>();
+		}
 	}
 
 	void reset_reporting_storage() {
@@ -82,6 +93,21 @@ namespace hemera {
 		if (warning_list_storage != nullptr) {
 			warning_list_storage->clear();
 		}
+		if (reported_storage != nullptr) {
+			reported_storage->clear();
+		}
+	}
+
+	// Whether this exact report is new, recording it if so.
+	static bool first_report(std::string_view kind, int code, std::string_view file,
+		uint32_t line_number, uint16_t column_number, std::string_view additional_info) {
+
+		std::lock_guard<std::mutex> lock(storage_mutex);
+		if (reported_storage == nullptr) {
+			return true;
+		}
+		return reported_storage->insert(std::format("{} {} {}({},{}) {}", kind, code, file, line_number,
+			column_number, additional_info)).second;
 	}
 
 	static void log_error(ErrorCode error) {
@@ -118,7 +144,8 @@ namespace hemera {
 	void report_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
 
-		if (!reporting_enabled) {
+		if (!reporting_enabled
+			|| !first_report("error", static_cast<int>(error), file, line_number, column_number, "")) {
 			return;
 		}
 		
@@ -135,7 +162,8 @@ namespace hemera {
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
-		if (!reporting_enabled) {
+		if (!reporting_enabled || !first_report("error", static_cast<int>(error), file, line_number,
+			column_number, additional_info)) {
 			return;
 		}
 
@@ -183,7 +211,8 @@ namespace hemera {
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
 
-		if (!reporting_enabled) {
+		if (!reporting_enabled
+			|| !first_report("warning", static_cast<int>(warning), file, line_number, column_number, "")) {
 			return;
 		}
 		log_warning(warning);
@@ -199,7 +228,8 @@ namespace hemera {
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
-		if (!reporting_enabled) {
+		if (!reporting_enabled || !first_report("warning", static_cast<int>(warning), file, line_number,
+			column_number, additional_info)) {
 			return;
 		}
 		log_warning(warning);

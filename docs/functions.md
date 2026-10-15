@@ -263,3 +263,17 @@ bar :: fn(fiz: bool, some_numbers: int..., fuzz: f32) {
     // ...
 }
 ```
+
+## Functions Still to Write
+
+A function that isn't written yet calls `todo()`, a builtin that never returns: reaching it calls
+`context.assertion_handler` with its message, which ends the program. Since it doesn't return, a function whose
+body is `todo()` doesn't need a `return`, and still type-checks.
+
+```
+parse_config :: fn(text: string) -> Result[Config, ParseError] {
+    todo("parse the config format")
+}
+```
+
+An empty body is an error in a function with results, since it would finish without returning them.

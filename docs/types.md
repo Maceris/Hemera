@@ -526,7 +526,8 @@ Queue :: struct {
 So a pointer field is `ptr[mut T]` when the code using the struct changes what it points to, and `ptr[T]` when it
 only reads it. An immutable struct can't point its fields elsewhere, but can still hand out a `ptr[mut T]`.
 
-`new` returns a `ptr[mut T]`, since a new value has to be filled in. A function that changes something it's given
+`new` returns a `ptr[mut T]`, since a new value has to be filled in. If it can't allocate one, it calls
+`context.assertion_handler`; `new_aligned` and `new_array` return the `AllocatorError` instead, for code that handles it. A function that changes something it's given
 takes a pointer to it, including dynamic arrays (`array_add(&names, name)`), since a value parameter is a copy.
 Iterating through a pointer to an array dereferences it explicitly: `for name in names^`.
 

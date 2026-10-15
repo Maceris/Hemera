@@ -11,6 +11,7 @@ char :: struct {
 
 // base. reaches the builtin
 convert :: fn(mine: Result) -> base.Result[int, string] {
+    todo()
 }
 
 WIDTH :: base.size_of(Result)

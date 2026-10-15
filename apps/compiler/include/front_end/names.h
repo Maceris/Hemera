@@ -88,6 +88,17 @@ namespace hemera {
 		VALUE,
 	};
 
+	/// <summary>
+	/// What kind of literal an untyped constant is, like C :: 5, which takes the type it's used as.
+	/// </summary>
+	enum class Untyped : uint8_t {
+		NONE,
+		INTEGER,
+		FLOAT,
+		STRING,
+		BOOLEAN,
+	};
+
 	struct Declaration {
 		InternedString name = nullptr;
 		/// <summary>
@@ -139,6 +150,10 @@ namespace hemera {
 		/// From #section(name), the output section to put it in, or null.
 		/// </summary>
 		InternedString section = nullptr;
+		/// <summary>
+		/// For a constant without a type, what kind of literal it is.
+		/// </summary>
+		Untyped untyped = Untyped::NONE;
 	};
 
 	/// <summary>

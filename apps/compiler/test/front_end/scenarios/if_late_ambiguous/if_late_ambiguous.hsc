@@ -6,4 +6,5 @@ package if_late_ambiguous
 }
 
 latest :: fn() -> char {
+    todo()
 }

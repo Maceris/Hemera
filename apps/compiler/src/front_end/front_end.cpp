@@ -349,7 +349,7 @@ namespace hemera {
 
 		// The input package, and base/builtin's generic types (Optional and Result), which every
 		// file can use
-		global_data.outstanding_work = 2;
+		global_data.outstanding_work = 3;
 		global_data.general_queue.enqueue(
 			std::move(global_data.work_allocator->new_object<Work>(
 				WorkType::IMPORT,
@@ -360,6 +360,13 @@ namespace hemera {
 			std::move(global_data.work_allocator->new_object<Work>(
 				WorkType::IMPORT,
 				WorkTarget{ WorkTargetType::PACKAGE, {.name = builtin_package()}}
+			))
+		);
+		// base/runtime, for context, a runtime.Context, which every function can use
+		global_data.general_queue.enqueue(
+			std::move(global_data.work_allocator->new_object<Work>(
+				WorkType::IMPORT,
+				WorkTarget{ WorkTargetType::PACKAGE, {.name = intern(std::string(BASE_PACKAGE_PREFIX) + "runtime")}}
 			))
 		);
 		

@@ -9,6 +9,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/names.h"
+#include "front_end/checking.h"
 #include "front_end/walk.h"
 #include "front_end/work.h"
 #include "util/logger.h"
@@ -51,7 +52,7 @@ namespace hemera {
 		"Optional", "Result",
 		// Functions
 		"align_of", "size_of", "offset_of", "type_of", "type_info_of", "types_are_aliases",
-		"max_value", "min_value",
+		"max_value", "min_value", "todo",
 		// Constants
 		"OS", "TARGET_ARCH",
 	};
@@ -290,7 +291,7 @@ namespace hemera {
 	}
 
 	// The package a file imports under local_name, or null. Compiler-provided packages (base) count.
-	static InternedString imported_package(FileInfo* file, InternedString local_name) {
+	InternedString imported_package(FileInfo* file, InternedString local_name) {
 		if (file == nullptr) {
 			return nullptr;
 		}
@@ -468,7 +469,7 @@ namespace hemera {
 	 * Requires name, declared in package_path, to be declared, and with need RESOLVED, resolved.
 	 * Parks the walk's work if it isn't yet.
 	 */
-	static Progress require_in(Walk& walk, ast::Node* where, InternedString package_path,
+	Progress require_in(Walk& walk, ast::Node* where, InternedString package_path,
 		InternedString name, Need need) {
 
 		NameRegistry& names = walk.executor.program_info->names;
@@ -593,7 +594,7 @@ namespace hemera {
 	 * one of the file's imports and the builtins. The package's own declaration always wins, so a
 	 * name it doesn't declare yet waits while it still may.
 	 */
-	static Progress require(Walk& walk, ast::Node* where, InternedString name, Need need) {
+	Progress require(Walk& walk, ast::Node* where, InternedString name, Need need) {
 		if (name == nullptr || is_local(walk, name)) {
 			return Progress::DONE;
 		}
@@ -651,7 +652,7 @@ namespace hemera {
 	 * A name, possibly qualified by a package, like Fiber or runtime.Fiber. qualifier is the
 	 * IDENTIFIER after the DOT_ACCESS, or null.
 	 */
-	static Progress require_qualified(Walk& walk, ast::Node* where, InternedString head,
+	Progress require_qualified(Walk& walk, ast::Node* where, InternedString head,
 		ast::Node* qualifier, Need need, bool& head_was_package) {
 
 		head_was_package = false;
@@ -1077,6 +1078,10 @@ namespace hemera {
 		return walk_children(walk, node, need);
 	}
 
+	Progress walk_names(Walk& walk, ast::Node* node, Need need) {
+		return walk_node(walk, node, need);
+	}
+
 	static bool is_separator(const ast::Node* node) {
 		return ast::NodeType::COLON == node->node_type
 			|| (ast::NodeType::IDENTIFIER == node->node_type && is_assign(node));
@@ -1121,15 +1126,26 @@ namespace hemera {
 			return progress;
 		}
 		NameRegistry& names = executor.program_info->names;
-		std::scoped_lock<std::mutex> lock(names.mutex);
-		for (Declaration* declaration : declarations) {
-			if (Progress::DONE == progress) {
-				declaration->resolved = true;
+		std::vector<Declaration*> bodies;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			for (Declaration* declaration : declarations) {
+				if (Progress::DONE == progress) {
+					declaration->resolved = true;
+					// A function's body is checked once its signature is known
+					if (DeclarationKind::FUNCTION == declaration->kind && declaration->value_type != nullptr
+						&& function_body(declaration->generic != nullptr ? declaration->generic : declaration) != nullptr) {
+						bodies.push_back(declaration);
+					}
+				}
+				else {
+					declaration->failed = true;
+				}
+				wake_locked(*executor.global_data, names, resolved_key(declaration));
 			}
-			else {
-				declaration->failed = true;
-			}
-			wake_locked(*executor.global_data, names, resolved_key(declaration));
+		}
+		for (Declaration* function : bodies) {
+			executor.create_work(WorkType::TYPE_CHECK, WorkTarget(WorkTargetType::BODY, { .declaration = function }));
 		}
 		return progress;
 	}
@@ -1190,7 +1206,7 @@ namespace hemera {
 			{},
 		};
 		// The generic's own names, with its parameters as locals, then its types with them bound
-		ast::Node* value = definition_value(instance->node);
+		ast::Node* value = generic_node(instance->generic != nullptr ? instance->generic : instance);
 		Progress progress = value == nullptr ? Progress::FAILED : walk_node(walk, value, Need::RESOLVED);
 		if (Progress::DONE == progress) {
 			progress = compute_instance(walk, instance);
@@ -1254,10 +1270,16 @@ namespace hemera {
 	}
 
 	Progress builtin_generic(Walk& walk, ast::Node* where, std::string_view name, Declaration*& found) {
+		return base_declaration(walk, where, "builtin", name, found);
+	}
+
+	Progress base_declaration(Walk& walk, ast::Node* where, std::string_view folder, std::string_view name,
+		Declaration*& found) {
+
 		NameRegistry& names = walk.executor.program_info->names;
 		std::scoped_lock<std::mutex> lock(names.mutex);
-		Found result = declared_in_locked(walk, names, where, builtin_package(), intern(std::string(name)),
-			found);
+		InternedString package = intern(std::string(BASE_PACKAGE_PREFIX) + std::string(folder));
+		Found result = declared_in_locked(walk, names, where, package, intern(std::string(name)), found);
 		if (Found::PARKED == result) {
 			return Progress::PARKED;
 		}

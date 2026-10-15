@@ -64,6 +64,19 @@ E4011,Compilation can't continue
 E4012,Ambiguous name
 E4013,Not a type
 E4014,Invalid type
+E4015,Type mismatch
+E4016,Can't assign
+E4017,Unknown member
+E4018,Wrong arguments
+E4019,Missing return
+E4020,Invalid operation
+E4021,Not callable
+E4022,Not inside a loop
+E4023,Can't bind generic parameter
+E4024,Not supported yet
+E4025,Unreachable code
+E4026,Match not exhaustive
+E4027,No context
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

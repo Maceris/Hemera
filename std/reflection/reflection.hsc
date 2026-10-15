@@ -94,7 +94,7 @@ values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {
     if info.variant == .QUATERNION {
         quarter :: info.size / 4
         for part in 0..<4 {
-            offset :: part * quarter
+            offset :: cast[usize](part) * quarter
             if !floats_equal(a + offset, b + offset, quarter) {
                 return false
             }

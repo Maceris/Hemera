@@ -74,7 +74,6 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
         carrier.scheduler_data = null
     }
 
-    next_task : ptr[mut Fiber]? = null
     next_task_index : usize = 0
     exit : FiberExit
 
@@ -87,7 +86,7 @@ run_fiber_scheduler : ThreadFunction : fn(data: any) {
         //TODO(ches) grab and release locks for the queue
 
         next_task_index = (next_task_index + 1) % global_data.global_queue.count
-        next_task = global_data.global_queue[next_task_index]
+        next_task :: global_data.global_queue[next_task_index]
 
         switch next_task.state {
             case .Running: continue

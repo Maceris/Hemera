@@ -3,14 +3,14 @@ package io
 import formatting
 
 print :: fn(text: string) {
-    //TODO(ches) print text
+    todo("print text")
 }
 
-printf :: fn(format: string, args: any...) {
-    format(format, args) 
+printf :: fn(format_string: string, args: any...) {
+    format(format_string, args)
     |> print()
 }
 
 println :: fn(text: string) {
-    //TODO(ches) print line
+    todo("print line")
 }

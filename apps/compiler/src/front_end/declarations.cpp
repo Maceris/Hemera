@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "error/reporting.h"
+#include "front_end/checking.h"
 #include "front_end/front_end.h"
 #include "front_end/walk.h"
 #include "util/logger.h"
@@ -144,22 +145,22 @@ namespace hemera {
 		return type;
 	}
 
-	static TypeInfo* pointer_to(Walk& walk, TypeInfo* base, bool is_mutable, bool is_relative, size_t size) {
+	TypeInfo* pointer_to(Walk& walk, TypeInfo* base, bool is_mutable, bool is_relative, size_t size) {
 		return derived_type(walk,
 			std::format("ptr {} {} {} {}", static_cast<const void*>(base), is_mutable, is_relative, size),
 			[&] { return new TypeInfoPointer(base, is_relative, is_mutable, size); });
 	}
 
-	static TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count) {
+	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count) {
 		return derived_type(walk,
 			std::format("array {} {} {}", static_cast<const void*>(element), static_cast<int>(array_type), count),
 			[&] { return new TypeInfoArray(element, array_type, count); });
 	}
 
-	static Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
+	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
 
 	// An instance of a generic type, made the first time it's asked for, resolved when need asks.
-	static Progress instance_type(Walk& walk, ast::Node* where, Declaration* generic,
+	Progress instance_type(Walk& walk, ast::Node* where, Declaration* generic,
 		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result) {
 
 		ast::Node* value = definition_value(generic->node);
@@ -183,7 +184,7 @@ namespace hemera {
 	}
 
 	// T?, an instance of base/builtin's Optional.
-	static Progress optional_of(Walk& walk, ast::Node* where, TypeInfo* type, Need need, TypeInfo*& result) {
+	Progress optional_of(Walk& walk, ast::Node* where, TypeInfo* type, Need need, TypeInfo*& result) {
 		Declaration* optional = nullptr;
 		Progress progress = builtin_generic(walk, where, "Optional", optional);
 		if (progress != Progress::DONE) {
@@ -488,7 +489,7 @@ namespace hemera {
 	 * A function type, the same object for the same signature, so types that refer to it, like
 	 * an optional function, are the same each time a declaration is worked out.
 	 */
-	static Progress function_type(Walk& walk, ast::Node* node, TypeInfo*& result) {
+	Progress function_type(Walk& walk, ast::Node* node, TypeInfo*& result) {
 		TypeInfoFunction signature;
 		Progress progress = function_signature(walk, node, &signature);
 		if (progress != Progress::DONE) {
@@ -515,6 +516,34 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	// The same function type, marked #never_returns.
+	static TypeInfo* never_returning(Walk& walk, TypeInfoFunction* function) {
+		if (function->never_returns) {
+			return function;
+		}
+		return derived_type(walk, std::format("never returns {}", static_cast<const void*>(function)), [&] {
+			auto result = new TypeInfoFunction();
+			result->input = function->input;
+			result->output = function->output;
+			result->never_returns = true;
+			result->calling_convention = function->calling_convention;
+			return result;
+		});
+	}
+
+	// The same function type, with a calling convention (docs/calling_convention.md).
+	static TypeInfo* with_convention(Walk& walk, TypeInfoFunction* function, InternedString convention) {
+		return derived_type(walk, std::format("convention {} {}", static_cast<const void*>(function),
+			name_text(convention)), [&] {
+			auto result = new TypeInfoFunction();
+			result->input = function->input;
+			result->output = function->output;
+			result->never_returns = function->never_returns;
+			result->calling_convention = convention;
+			return result;
+		});
+	}
+
 	// Which anonymous type a node is: the node, in an instance with its generic arguments.
 	static std::string anonymous_type_key(Walk& walk, const ast::Node* node) {
 		std::string key = std::format("anonymous {}", static_cast<const void*>(node));
@@ -524,7 +553,7 @@ namespace hemera {
 		return key;
 	}
 
-	static Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
+	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
 		const ast::NodeType type = node->node_type;
 		if (ast::NodeType::TYPE == type) {
 			return type_of_type_node(walk, node, need, result);
@@ -646,10 +675,18 @@ namespace hemera {
 							}
 						}
 					}
+					if (parameter_type == nullptr && has_default && parameter->children.size() == 2) {
+						// The type of its default, like allocator := context.allocator
+						Value default_value;
+						Progress progress = check_constant(walk, parameter->children[1], nullptr, default_value);
+						if (progress != Progress::DONE) {
+							return progress;
+						}
+						parameter_type = usual_type(default_value);
+					}
 					for (ast::Node* name : parameter_names) {
 						FunctionInput input;
 						input.name = name->value.value;
-						//TODO(ches) a type from the default, like allocator := context.allocator, needs type checking
 						input.type = parameter_type;
 						input.has_default = has_default;
 						input.is_varargs = is_varargs;
@@ -663,25 +700,35 @@ namespace hemera {
 				}
 			}
 			else if (ast::NodeType::LIST == type) {
-				// Several results; named ones are flat, as each name, a COLON, then the type
+				/*
+				 * Several results. Named ones are flat: names, a COLON, then the type they share, like
+				 * (a: u16, b, c: f32).
+				 */
 				const bool named = has_child(child, ast::NodeType::COLON);
+				std::vector<InternedString> pending;
 				for (size_t i = 0; i < child->children.size(); ++i) {
 					ast::Node* part = child->children[i];
 					if (ast::NodeType::COLON == part->node_type) {
 						continue;
 					}
-					if (named && !(i > 0 && ast::NodeType::COLON == child->children[i - 1]->node_type)) {
+					const bool is_type = !named || (i > 0 && ast::NodeType::COLON == child->children[i - 1]->node_type);
+					if (!is_type) {
+						pending.push_back(part->value.value);
 						continue;
 					}
-					FunctionOutput output;
-					if (named) {
-						output.name = child->children[i - 2]->value.value;
-					}
-					Progress progress = type_of(walk, part, Need::DECLARED, output.type);
+					TypeInfo* result_type = nullptr;
+					Progress progress = type_of(walk, part, Need::DECLARED, result_type);
 					if (progress != Progress::DONE) {
 						return progress;
 					}
-					function->output.push_back(output);
+					if (!named) {
+						function->output.push_back({ result_type, nullptr });
+						continue;
+					}
+					for (InternedString name : pending) {
+						function->output.push_back({ result_type, name });
+					}
+					pending.clear();
 				}
 			}
 			else if (is_optional_marker(child)) {
@@ -949,66 +996,6 @@ namespace hemera {
 			|| walk.generic_types.contains(name_text(name));
 	}
 
-	/*
-	 * The type of a constant's value where its syntax shows it: a struct or array literal, or
-	 * another constant or function. Other values are typed by type checking.
-	 */
-	static Progress value_type_of(Walk& walk, ast::Node* value, TypeInfo*& result) {
-		result = nullptr;
-		const ast::NodeType type = value->node_type;
-		if (ast::NodeType::IDENTIFIER == type) {
-			const NamedHead head = head_of(walk, value);
-			auto bound = walk.bindings.find(head.binding);
-			if (bound == walk.bindings.end()) {
-				return Progress::DONE;
-			}
-			if (head.next == value->children.size()) {
-				// Another constant or function
-				result = bound->second->value_type;
-			}
-			else if (head.next + 2 == value->children.size() && bound->second->type_value != nullptr
-				&& TypeInfoVariant::ENUM == get_base_type(bound->second->type_value)->variant) {
-				// An enum member, like Mode.Fast
-				result = bound->second->type_value;
-			}
-			return Progress::DONE;
-		}
-		if (ast::NodeType::STRUCT_LITERAL == type || ast::NodeType::ARRAY_LITERAL == type) {
-			std::vector<TypePart> parts;
-			ast::Node* binding = value;
-			InternedString name = value->value.value;
-			size_t elements = 0;
-			for (size_t i = 0; i < value->children.size(); ++i) {
-				ast::Node* child = value->children[i];
-				if (ast::NodeType::DOT_ACCESS == child->node_type && i + 1 < value->children.size()) {
-					binding = value->children[++i];
-					name = binding->value.value;
-				}
-				else if (ast::NodeType::GENERIC_TAG == child->node_type) {
-					parts.push_back({ TypePart::Kind::ARGUMENTS, child,
-						std::vector<ast::Node*>(child->children.begin(), child->children.end()) });
-				}
-				else if (ast::NodeType::LIST == child->node_type) {
-					elements = child->children.size();
-				}
-			}
-			TypeInfo* named = nullptr;
-			Progress progress = compose_type(walk, value, binding, name, parts, Need::RESOLVED, named);
-			if (progress != Progress::DONE) {
-				return progress;
-			}
-			if (ast::NodeType::ARRAY_LITERAL == type) {
-				progress = require_complete(walk, value, named);
-				if (progress != Progress::DONE) {
-					return progress;
-				}
-				named = array_of(walk, named, ArrayType::STATIC, elements);
-			}
-			result = named;
-		}
-		return Progress::DONE;
-	}
-
 	// The directives after a declaration's name, like #externally_initialized (docs/directives.md).
 	static Progress name_directives(Walk& walk, ast::Node* definition, Declaration* declaration) {
 		ast::Node* names_node = definition->children[0];
@@ -1096,6 +1083,21 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+			/*
+			 * #never_returns and #calling_convention after the name, like
+			 * trap #never_returns : fn() : --- or handler #calling_convention(.interrupt) :: fn(...),
+			 * are the type's
+			 */
+			for (ast::Node* directive : definition->children[0]->children) {
+				if (is_text(directive->value.value, "#never_returns")) {
+					function = never_returning(walk, static_cast<TypeInfoFunction*>(function));
+				}
+				else if (is_text(directive->value.value, "#calling_convention")) {
+					ast::Node* convention = directive_argument(directive);
+					function = with_convention(walk, static_cast<TypeInfoFunction*>(function),
+						convention != nullptr ? convention->value.value : nullptr);
+				}
+			}
 			for (Declaration* each : declarations) {
 				each->value_type = function;
 			}
@@ -1129,10 +1131,21 @@ namespace hemera {
 			}
 			return Progress::DONE;
 		}
-		else if (value != nullptr) {
-			Progress progress = value_type_of(walk, value, value_type);
+		else if (value != nullptr && ast::NodeType::UNINITIALIZED != value->node_type) {
+			// Its value's type, or what kind of literal it is (docs/types.md)
+			Value constant;
+			Progress progress = check_constant(walk, value, nullptr, constant);
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			value_type = ValueKind::VALUE == constant.kind ? constant.type : nullptr;
+			const Untyped untyped = ValueKind::UNTYPED_INTEGER == constant.kind ? Untyped::INTEGER
+				: ValueKind::UNTYPED_FLOAT == constant.kind ? Untyped::FLOAT
+				: ValueKind::UNTYPED_STRING == constant.kind ? Untyped::STRING
+				: ValueKind::UNTYPED_BOOLEAN == constant.kind ? Untyped::BOOLEAN
+				: Untyped::NONE;
+			for (Declaration* each : declarations) {
+				each->untyped = untyped;
 			}
 		}
 		for (Declaration* each : declarations) {
@@ -1141,8 +1154,19 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	ast::Node* generic_node(const Declaration* generic) {
+		ast::Node* value = definition_value(generic->node);
+		if (value != nullptr && (ast::NodeType::STRUCT == value->node_type || ast::NodeType::UNION == value->node_type
+			|| ast::NodeType::FUNCTION == value->node_type)) {
+			return value;
+		}
+		// A function declared without a body, like array_add : fn[T](...) : ---
+		ast::Node* declared = definition_declared_type(generic->node);
+		return declared != nullptr && ast::NodeType::FUNCTION == declared->node_type ? declared : value;
+	}
+
 	Progress compute_instance(Walk& walk, Declaration* instance) {
-		ast::Node* value = definition_value(instance->node);
+		ast::Node* value = generic_node(instance->generic != nullptr ? instance->generic : instance);
 		// Bind the generic parameters to the instance's arguments
 		walk.generic_types.clear();
 		size_t index = 0;
@@ -1158,6 +1182,9 @@ namespace hemera {
 				}
 				walk.generic_types[name_text(parameter->value.value)] = instance->generic_arguments[index++];
 			}
+		}
+		if (ast::NodeType::FUNCTION == value->node_type) {
+			return function_type(walk, value, instance->value_type);
 		}
 		if (TypeInfoVariant::STRUCT == instance->type_value->variant) {
 			return struct_body(walk, value, static_cast<TypeInfoStruct*>(instance->type_value));

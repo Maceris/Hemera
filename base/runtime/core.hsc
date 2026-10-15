@@ -8,7 +8,7 @@ Allocator :: struct {
 AllocatorFn :: alias fn(
     allocator_data: rawptr,
     size: usize,
-    alignment: int,
+    alignment: usize,
     old_memory: rawptr,
     old_size: usize,
     location:= #caller_location

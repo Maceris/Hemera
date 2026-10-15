@@ -105,3 +105,9 @@ types_are_aliases : fn(a, b: type) -> bool : ---
 
 max_value : fn[T](T: type) -> T : ---
 min_value : fn[T](T: type) -> T : ---
+
+/*
+ * Marks code still to write. Reaching it calls context.assertion_handler with message, so it never
+ * returns, and a function whose body is todo() needs no return.
+ */
+todo : fn(message := "not implemented yet", location := #caller_location) #never_returns : ---

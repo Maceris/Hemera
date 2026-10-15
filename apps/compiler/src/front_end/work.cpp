@@ -6,6 +6,7 @@
 
 #include "error/reporting.h"
 #include "front_end/base_sources.h"
+#include "front_end/checking.h"
 #include "front_end/front_end.h"
 #include "front_end/mlir_generation.h"
 #include "front_end/names.h"
@@ -601,6 +602,9 @@ namespace hemera {
 				break;
 			case WorkTargetType::INSTANCE:
 				resolve_instance(executor, target.value.declaration);
+				break;
+			case WorkTargetType::BODY:
+				check_body(executor, target.value.declaration);
 				break;
 			case WorkTargetType::EXPRESSION:
 				type_check_expression(executor, target.value.node_location.file,

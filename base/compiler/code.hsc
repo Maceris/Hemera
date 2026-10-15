@@ -1,11 +1,9 @@
 package compiler
 
+import runtime from "base"
+
 /*
- * A location in the source code. This is what #caller_location refers to,
- * and mirrors token information that the compiler tracks.
+ * A location in the source code, what #caller_location gives: runtime's, so a location from either
+ * package is the same type.
  */
-SourceCodeLocation :: struct {
-    file_name: string,
-    line_number: u32,
-    column_number: u16,
-}
+SourceCodeLocation :: runtime.SourceCodeLocation

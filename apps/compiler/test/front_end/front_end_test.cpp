@@ -105,9 +105,14 @@ TEST(FrontEnd, FollowsImports)
 		scenario("imports/main"), scenario("imports/fake_std"));
 
 	EXPECT_TRUE(errors.empty()) << codes(errors);
-	// main, neighbor, fake_io and deep, each once even though main is imported back and fake_io twice,
-	// and base/builtin, which every program has for its generic types
-	EXPECT_EQ(fixture.program_info->packages.size(), 5);
+	// main, neighbor, fake_io and deep, each once even though main is imported back and fake_io twice
+	size_t loaded = 0;
+	for (const auto& [path, package] : fixture.program_info->packages) {
+		if (!hemera::is_base_package(path)) {
+			++loaded;
+		}
+	}
+	EXPECT_EQ(loaded, 4u);
 }
 
 TEST(FrontEnd, ReportsMissingImport)
@@ -786,4 +791,48 @@ TEST(FrontEnd, ReportsTypeErrors)
 		ASSERT_EQ(errors.size(), 1) << name << ": " << codes(errors);
 		EXPECT_EQ(errors[0], expected) << name;
 	}
+}
+
+// One error each, for the rules of docs/operators.md, docs/control_flow.md and docs/functions.md
+TEST(FrontEnd, ReportsBodyErrors)
+{
+	hemera::disable_reporting_printing();
+	for (const auto& [name, expected] : std::vector<std::pair<std::string_view, hemera::ErrorCode>>{
+		{ "assign_constant", hemera::ErrorCode::E4016 },
+		{ "assign_through_pointer", hemera::ErrorCode::E4016 },
+		{ "assign_context", hemera::ErrorCode::E4016 },
+		{ "mutable_pointer_into_context", hemera::ErrorCode::E4015 },
+		{ "missing_return", hemera::ErrorCode::E4019 },
+		{ "never_returns_finishes", hemera::ErrorCode::E4019 },
+		{ "unreachable", hemera::ErrorCode::E4025 },
+		{ "match_not_exhaustive", hemera::ErrorCode::E4026 },
+		{ "wrong_arguments", hemera::ErrorCode::E4018 },
+		{ "break_outside_loop", hemera::ErrorCode::E4022 },
+		{ "type_mismatch", hemera::ErrorCode::E4015 },
+		{ "unknown_member", hemera::ErrorCode::E4017 },
+		{ "not_callable", hemera::ErrorCode::E4021 },
+		{ "unbound_generic", hemera::ErrorCode::E4023 },
+		{ "return_count", hemera::ErrorCode::E4004 },
+		{ "no_context", hemera::ErrorCode::E4027 },
+		{ "operator_types", hemera::ErrorCode::E4015 },
+		{ "match_assigned", hemera::ErrorCode::E4020 },
+		{ "call_without_context", hemera::ErrorCode::E4027 }
+	}) {
+		StringCacheGuard string_cache;
+		FrontEndFixture fixture;
+		std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("body_errors") / name);
+		ASSERT_EQ(errors.size(), 1) << name << ": " << codes(errors);
+		EXPECT_EQ(errors[0], expected) << name;
+	}
+}
+
+TEST(FrontEnd, ChecksBodies)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("bodies_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
 }

@@ -87,7 +87,7 @@ thread_create :: fn(
 }
 
 thread_start :: fn(thread: ptr[Thread]) {
-    //TODO(ches) start running the thread
+    todo("start running the thread")
     /*
      * The new thread's entry needs to, before running any Hemera code:
      * allocate its CarrierBlock, store the pointer in the OS's thread-local storage,

@@ -66,6 +66,69 @@ namespace hemera {
 	Progress builtin_generic(Walk& walk, ast::Node* where, std::string_view name, Declaration*& found);
 
 	/// <summary>
+	/// A declaration in a package of base, like runtime's Context, waiting until it's declared.
+	/// </summary>
+	Progress base_declaration(Walk& walk, ast::Node* where, std::string_view folder, std::string_view name,
+		Declaration*& found);
+
+	/*
+	 * Name lookup (names.cpp, docs/packages.md), recording each declaration found in walk.bindings.
+	 * They park the walk's work until what they need is there.
+	 */
+
+	/// <summary>
+	/// The package a file imports under local_name, or null.
+	/// </summary>
+	InternedString imported_package(FileInfo* file, InternedString local_name);
+
+	/// <summary>
+	/// A name used unqualified, by the rules of docs/packages.md, Name Collision.
+	/// </summary>
+	Progress require(Walk& walk, ast::Node* where, InternedString name, Need need);
+
+	/// <summary>
+	/// A name declared in a particular package, like runtime.Fiber's Fiber.
+	/// </summary>
+	Progress require_in(Walk& walk, ast::Node* where, InternedString package_path, InternedString name,
+		Need need);
+
+	/// <summary>
+	/// A name, possibly qualified by a package: qualifier is the IDENTIFIER after the dot, or null.
+	/// head_was_package says whether head named a package rather than a declaration.
+	/// </summary>
+	Progress require_qualified(Walk& walk, ast::Node* where, InternedString head, ast::Node* qualifier,
+		Need need, bool& head_was_package);
+
+	/// <summary>
+	/// Looks up every name a node uses, like a type's in a function body, so type_of can follow them.
+	/// </summary>
+	Progress walk_names(Walk& walk, ast::Node* node, Need need);
+
+	/*
+	 * Types (declarations.cpp), the same object each time they're asked for.
+	 */
+
+	/// <summary>
+	/// The type a type expression is, in either position: a TYPE node, or a value like ptr[int].
+	/// </summary>
+	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
+
+	TypeInfo* pointer_to(Walk& walk, TypeInfo* base, bool is_mutable, bool is_relative, size_t size);
+	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count);
+	Progress optional_of(Walk& walk, ast::Node* where, TypeInfo* type, Need need, TypeInfo*& result);
+
+	/// <summary>
+	/// A FUNCTION node's type, the same object for the same signature.
+	/// </summary>
+	Progress function_type(Walk& walk, ast::Node* node, TypeInfo*& result);
+
+	/// <summary>
+	/// The instance of a generic type for these arguments, resolved when need asks.
+	/// </summary>
+	Progress instance_type(Walk& walk, ast::Node* where, Declaration* generic,
+		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result);
+
+	/// <summary>
 	/// Makes a type the program's registry owns, which lives as long as the program does.
 	/// </summary>
 	template<typename T, typename... Arguments>
@@ -99,4 +162,10 @@ namespace hemera {
 	/// The node after a definition's separator (:: or : type :), its value, or null.
 	/// </summary>
 	ast::Node* definition_value(ast::Node* definition);
+
+	/// <summary>
+	/// What a generic declaration's instances are made from: its struct, union or function, which
+	/// for a function without a body (---) is its declared type.
+	/// </summary>
+	ast::Node* generic_node(const Declaration* generic);
 }

@@ -1,5 +1,6 @@
 package formatting
 
+import runtime from "base"
 import string from "std"
 
 FORMAT_PLACEHOLDER : char : '%'
@@ -8,7 +9,7 @@ FormatLocation :: struct {
     // Position in the input string
     location : usize,
     // -1 for an escaped placeholder, 0 for unspecified, 1/2/3... for first, second, etc. argument
-    argument_number : i32,
+    argument_number : int,
 }
 
 find_format_locations :: fn(format: string, format_locations : ptr[mut FormatLocation[..]], arg_count: usize) -> bool {
@@ -96,7 +97,7 @@ format :: fn(format: string, args: any...) -> string {
     //TODO(ches) format string
     
     log_builder := new(StringBuilder)
-    defer delete(log_builder)
+    defer free(log_builder)
     init_string_builder(log_builder)
 
     format_locations : FormatLocation[..]
@@ -130,7 +131,7 @@ format :: fn(format: string, args: any...) -> string {
         // And now the actual match
         if found.argument_number == -1 {
             // Just need a placeholder
-            append(log_builder, FORMAT_PLACEHOLDER)
+            append_char(log_builder, FORMAT_PLACEHOLDER)
             input_index += 2
         }
         else if found.argument_number == 0 {
@@ -147,7 +148,7 @@ format :: fn(format: string, args: any...) -> string {
         }
         else {
             // numbered
-            if found.argument_number < 0 || found.argument_number >= args.count {
+            if found.argument_number < 0 || found.argument_number >= cast[int](args.count) {
                 log_error("Invalid argument number slipped past our checks")
                 continue
             }
