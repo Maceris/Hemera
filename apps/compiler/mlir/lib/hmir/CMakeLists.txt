@@ -16,6 +16,7 @@ add_mlir_dialect_library(HMIR
   MLIRIR
   MLIRInferTypeOpInterface
   MLIRFuncDialect
+  MLIRLLVMDialect
 )
 
 TARGET_INCLUDE_DIRECTORIES(HMIR PUBLIC

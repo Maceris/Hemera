@@ -52,6 +52,10 @@ namespace hemera {
 		/// What the left of |> gave, for the call on its right to take first.
 		/// </summary>
 		std::vector<Value> piped;
+		/// <summary>
+		/// Where to record what each node is, for generating code, or null.
+		/// </summary>
+		CheckedBody* record = nullptr;
 		explicit Checker(Walk& walk_)
 			: walk{ walk_ }
 		{}
@@ -100,9 +104,32 @@ namespace hemera {
 		return value;
 	}
 
-	static void declare_local(Checker& checker, InternedString name, Value value) {
+	static void store_checked(CheckedNode& checked, const Value& value) {
+		checked.kind = value.kind;
+		checked.type = value.type;
+		checked.declaration = value.declaration;
+		checked.local = value.local;
+		checked.called = value.called;
+		checked.called_declaration = value.called_declaration;
+		checked.variant = value.variant;
+	}
+
+	// Records what a node is, for generating its code.
+	static void record(Checker& checker, const ast::Node* node, const Value& value) {
+		if (checker.record != nullptr) {
+			store_checked(checker.record->nodes[node], value);
+		}
+	}
+
+	// A local, keyed by where it's defined (its name's node), which its uses record.
+	static void declare_local(Checker& checker, const void* at, InternedString name, Value value) {
 		if (name == nullptr || is_text(name, "_")) {
 			return;
+		}
+		value.local = at;
+		// What it is, where it's defined, for generating its storage
+		if (checker.record != nullptr) {
+			store_checked(checker.record->nodes[static_cast<const ast::Node*>(at)], value);
 		}
 		checker.scopes.back().locals.push_back({ name, std::move(value) });
 	}
@@ -741,6 +768,10 @@ namespace hemera {
 	// A function's parameters, from its FUNCTION node: their names, types and defaults.
 	struct Parameter {
 		InternedString name = nullptr;
+		/// <summary>
+		/// Its name's node, which keys it as a local.
+		/// </summary>
+		ast::Node* node = nullptr;
 		ast::Node* type = nullptr;
 		bool has_default = false;
 		bool is_varargs = false;
@@ -761,19 +792,19 @@ namespace hemera {
 					has_default = true;
 				}
 				if (ast::NodeType::COLON != names_and_type->node_type) {
-					result.push_back({ nullptr, names_and_type, has_default, false });
+					result.push_back({ nullptr, names_and_type, names_and_type, has_default, false });
 					continue;
 				}
-				std::vector<InternedString> names;
+				std::vector<ast::Node*> names;
 				ast::Node* type = nullptr;
 				bool is_varargs = false;
 				for (ast::Node* part : names_and_type->children) {
 					if (ast::NodeType::IDENTIFIER == part->node_type && names.empty()) {
-						names.push_back(part->value.value);
+						names.push_back(part);
 					}
 					else if (ast::NodeType::LIST == part->node_type) {
 						for (ast::Node* name : part->children) {
-							names.push_back(name->value.value);
+							names.push_back(name);
 						}
 					}
 					else if (ast::NodeType::ELLIIPSIS == part->node_type) {
@@ -783,8 +814,8 @@ namespace hemera {
 						type = part;
 					}
 				}
-				for (InternedString name : names) {
-					result.push_back({ name, type, has_default, is_varargs });
+				for (ast::Node* name : names) {
+					result.push_back({ name->value.value, name, type, has_default, is_varargs });
 				}
 			}
 			break;
@@ -1049,8 +1080,7 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
-	// The value a call gives: nothing, its result, or its several results.
-	static Value call_result(TypeInfoFunction const* function) {
+	static Value call_result_of(TypeInfoFunction const* function) {
 		Value value = nothing();
 		if (function->output.size() == 1) {
 			value = typed(function->output[0].type);
@@ -1064,6 +1094,15 @@ namespace hemera {
 		value.never_returns = function->never_returns;
 		return value;
 	}
+
+	// The value a call gives: nothing, its result, or its several results.
+	static Value call_result(TypeInfoFunction const* function, Declaration* declaration) {
+		Value value = call_result_of(function);
+		value.called = function;
+		value.called_declaration = declaration;
+		return value;
+	}
+
 
 	/*
 	 * A call to a generic function: binds its generic parameters explicitly, from compile-time
@@ -1220,7 +1259,7 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
-		callee = call_result(signature);
+		callee = call_result(signature, instance);
 		return Progress::DONE;
 	}
 
@@ -1340,7 +1379,9 @@ namespace hemera {
 				}
 				require_fit(checker, value, variant.types[i], arguments[i], text_of(variant.name));
 			}
+			const size_t index = callee.variant;
 			callee = typed(callee.type);
+			callee.variant = index;
 			return Progress::DONE;
 		}
 		TypeInfo const* type = ValueKind::VALUE == kind ? base_of(callee.type) : nullptr;
@@ -1371,7 +1412,9 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
-		callee = call_result(function);
+		Declaration* called = callee.declaration != nullptr && DeclarationKind::FUNCTION == callee.declaration->kind
+			? callee.declaration : nullptr;
+		callee = call_result(function, called);
 		return Progress::DONE;
 	}
 
@@ -1413,6 +1456,15 @@ namespace hemera {
 		}
 		const bool type_head = ValueKind::TYPE == value.kind
 			|| (is_text(node->value.value, "ptr") || std::string_view(*node->value.value).starts_with("relptr"));
+		// The head's own value, at the head's qualifier for package.Name, or at the DOT_ACCESS before it
+		if (next > 0) {
+			record(checker, node->children[next - 1], value);
+		}
+		if (checker.record != nullptr) {
+			CheckedNode& head = checker.record->heads[node];
+			store_checked(head, value);
+			head.next = next;
+		}
 		if (type_head && next < node->children.size()
 			&& ast::NodeType::ARRAY_DIMENSION == node->children[next]->node_type && find_local(checker, node->value.value) == nullptr) {
 			TypeInfo* type = nullptr;
@@ -1493,6 +1545,8 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+			// The value so far, at the node after it: a member's name, or the marker
+			record(checker, ast::NodeType::DOT_ACCESS == type && !arguments.empty() ? arguments[0] : child, value);
 		}
 		return Progress::DONE;
 	}
@@ -1901,6 +1955,10 @@ namespace hemera {
 			result = error_at(checker, ErrorCode::E4015, node, "auto_cast needs to know the type it's converting to");
 			return Progress::DONE;
 		}
+		// The type it converts to, as the cast's head
+		if (checker.record != nullptr) {
+			store_checked(checker.record->heads[node], typed(target));
+		}
 		if (ValueKind::POISONED == value.kind) {
 			result = typed(target);
 			return apply_postfix(checker, node, rest, result);
@@ -2172,7 +2230,17 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	static Progress check_expression_inner(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result);
+
 	static Progress check_expression(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
+		Progress progress = check_expression_inner(checker, node, expected, result);
+		if (progress == Progress::DONE) {
+			record(checker, node, result);
+		}
+		return progress;
+	}
+
+	static Progress check_expression_inner(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		result = poisoned();
 		const ast::NodeType type = node->node_type;
 		if (ast::NodeType::LITERAL == type) {
@@ -2525,7 +2593,7 @@ namespace hemera {
 			value.is_location = ValueKind::VALUE == value.kind;
 			value.is_mutable = !parts.is_constant && ValueKind::VALUE == value.kind;
 			value.is_context = false;
-			declare_local(checker, parts.names[i]->value.value, value);
+			declare_local(checker, parts.names[i], parts.names[i]->value.value, value);
 		}
 		return Progress::DONE;
 	}
@@ -2709,7 +2777,7 @@ namespace hemera {
 		for (size_t i = 0; i < names.size(); ++i) {
 			ast::Node* name = names[i];
 			if (i == 1) {
-				declare_local(checker, name->value.value, typed(BUILTIN_usize));
+				declare_local(checker, name, name->value.value, typed(BUILTIN_usize));
 				continue;
 			}
 			if (ast::NodeType::UNARY_OPERATOR == name->node_type && TokenType::SYM_AMPERSAND == name->value.type
@@ -2719,10 +2787,10 @@ namespace hemera {
 				}
 				Value reference = ValueKind::VALUE == element.kind
 					? typed(pointer_to(checker.walk, element.type, element_mutable, false, POINTER_SIZE)) : poisoned();
-				declare_local(checker, name->children[0]->value.value, reference);
+				declare_local(checker, name->children[0], name->children[0]->value.value, reference);
 				continue;
 			}
-			declare_local(checker, name->value.value, element);
+			declare_local(checker, name, name->value.value, element);
 		}
 		checker.loops += 1;
 		checker.breakables += 1;
@@ -2866,7 +2934,7 @@ namespace hemera {
 			}
 			for (size_t i = 0; i < bindings.size(); ++i) {
 				if (!is_wildcard(bindings[i])) {
-					declare_local(checker, bindings[i]->value.value, typed(variant->types[i]));
+					declare_local(checker, bindings[i], bindings[i]->value.value, typed(variant->types[i]));
 				}
 			}
 			return Progress::DONE;
@@ -3122,7 +3190,7 @@ namespace hemera {
 		named.is_location = true;
 		named.is_context = true;
 		if (name != nullptr && ast::NodeType::IDENTIFIER == name->node_type) {
-			declare_local(checker, name->value.value, named);
+			declare_local(checker, name, name->value.value, named);
 		}
 		const bool had_context = checker.has_context;
 		checker.has_context = true;
@@ -3303,6 +3371,15 @@ namespace hemera {
 				if (progress != Progress::DONE) {
 					return progress;
 				}
+				// Which branch, by its BLOCK, for generating only that one's code
+				Value chosen = nothing();
+				chosen.variant = chain.size();
+				for (size_t branch = 0; branch < chain.size(); ++branch) {
+					if (!chain[branch]->children.empty() && chain[branch]->children.back() == picked) {
+						chosen.variant = branch;
+					}
+				}
+				record(checker, statement, chosen);
 				if (picked != nullptr) {
 					bool branch_continues = true;
 					progress = check_block(checker, picked, branch_continues, nullptr, nullptr);
@@ -3342,16 +3419,21 @@ namespace hemera {
 	// Parameters as locals, which can't be assigned; varargs as a view of them; named results as variables.
 	static void declare_parameters(Checker& checker, ast::Node* function, TypeInfoFunction const* type) {
 		const std::vector<Parameter> parameters = parameters_of(function);
+		if (checker.record != nullptr) {
+			for (const Parameter& parameter : parameters) {
+				checker.record->parameters.push_back(parameter.node);
+			}
+		}
 		for (size_t i = 0; i < parameters.size() && i < type->input.size(); ++i) {
 			// A compile-time parameter, like T: type, is what its generic parameter is bound to
 			auto bound = checker.walk.generic_types.find(text_of(parameters[i].name));
 			if (bound != checker.walk.generic_types.end()) {
-				declare_local(checker, parameters[i].name, type_value(bound->second));
+				declare_local(checker, parameters[i].node, parameters[i].name, type_value(bound->second));
 				continue;
 			}
 			// Or a constant, like count in buffer :: fn[count](count: usize)
 			if (checker.walk.generic_values.contains(text_of(parameters[i].name))) {
-				declare_local(checker, parameters[i].name, typed(type->input[i].type));
+				declare_local(checker, parameters[i].node, parameters[i].name, typed(type->input[i].type));
 				continue;
 			}
 			TypeInfo* parameter_type = type->input[i].type;
@@ -3360,14 +3442,19 @@ namespace hemera {
 			}
 			Value value = parameter_type != nullptr ? typed(parameter_type) : poisoned();
 			value.is_location = true;
-			declare_local(checker, parameters[i].name, value);
+			declare_local(checker, parameters[i].node, parameters[i].name, value);
 		}
 		for (const FunctionOutput& output : type->output) {
+			// A named result's key is its entry in the type, which lives as long as the program
+			const void* key = output.name != nullptr ? static_cast<const void*>(&output) : nullptr;
+			if (checker.record != nullptr) {
+				checker.record->outputs.push_back(key);
+			}
 			if (output.name != nullptr) {
 				Value value = typed(output.type);
 				value.is_location = true;
 				value.is_mutable = true;
-				declare_local(checker, output.name, value);
+				declare_local(checker, key, output.name, value);
 			}
 		}
 	}
@@ -3494,8 +3581,17 @@ namespace hemera {
 				return progress;
 			}
 		}
+		auto checked = std::make_shared<CheckedBody>();
 		Checker checker(walk);
-		return check_function_body(checker, function_node_, body, type, function->node);
+		checker.record = checked.get();
+		const size_t errors_before = error_count();
+		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
+		if (progress == Progress::DONE && error_count() == errors_before) {
+			NameRegistry& names = executor.program_info->names;
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			function->checked = checked;
+		}
+		return progress;
 	}
 
 	Progress check_top_level_assert(WorkThreadData& executor, const FileLocation& file, ast::Node* node) {
@@ -3520,9 +3616,14 @@ namespace hemera {
 		return default_type(value);
 	}
 
-	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result) {
+	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result, CheckedBody* record_into) {
 		Checker checker(walk);
+		checker.record = record_into;
 		checker.scopes.emplace_back();
-		return check_expression(checker, value, expected, result);
+		Progress progress = check_expression(checker, value, expected, result);
+		if (progress == Progress::DONE && expected != nullptr) {
+			require_fit(checker, result, expected, value, "the constant's value");
+		}
+		return progress;
 	}
 }

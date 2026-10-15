@@ -1,0 +1,2941 @@
+#include "middle_end/generate.h"
+
+#include <algorithm>
+#include <format>
+#include <functional>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "error/reporting.h"
+#include "front_end/checking.h"
+#include "front_end/walk.h"
+#include "hmir/hmir_dialect.h"
+#include "hmir/hmir_ops.h"
+#include "hmir/hmir_passes.h"
+
+#include "llvm/ADT/APFloat.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Verifier.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Export.h"
+
+namespace hemera {
+
+	namespace LLVM = mlir::LLVM;
+
+	/*
+	 * Code generation, from what the checker recorded of each body (CheckedBody). Every Hemera
+	 * value is an LLVM value laid out like its type (docs/types.md, Memory Layout): structs are
+	 * packed LLVM structs with their padding as bytes, so offsets match. Every local lives in a
+	 * stack slot, which LLVM promotes to registers. Each function takes the context, a pointer,
+	 * first. Control flow is HMIR's (scope, loop, if, defer, break, continue, return), lowered to
+	 * branches once defers are expanded; a switch is a loop that runs once, so break leaves it.
+	 */
+
+	static std::string text_of(InternedString value) {
+		return value != nullptr ? std::string(std::string_view(*value)) : std::string();
+	}
+
+	static bool is_text(InternedString value, std::string_view text) {
+		return value != nullptr && std::string_view(*value) == text;
+	}
+
+	static bool is_assign(const ast::Node* node) {
+		return TokenType::OPERATOR_ASSIGN == node->value.type;
+	}
+
+	/// <summary>
+	/// What an expression gave: a value, or a location (where a value is, which value is loaded
+	/// from when it's needed), or something that isn't a value, like a type or a package.
+	/// </summary>
+	struct Emitted {
+		ValueKind kind = ValueKind::NOTHING;
+		mlir::Value value;
+		mlir::Value address;
+		TypeInfo* type = nullptr;
+		/// <summary>
+		/// A call's several results: value is a struct of them.
+		/// </summary>
+		std::vector<TypeInfo*> results;
+		/// <summary>
+		/// For a VARIANT, which one; for a BUILTIN_FUNCTION, its name.
+		/// </summary>
+		size_t variant = 0;
+		InternedString name = nullptr;
+		/// <summary>
+		/// A call to a function that never returns.
+		/// </summary>
+		bool never_returns = false;
+	};
+
+	struct Breakable {
+		/// <summary>
+		/// A loop, which continue goes to, rather than a switch, which only break leaves. Both
+		/// are hmir.loop, so break and continue count both.
+		/// </summary>
+		bool continues;
+	};
+
+	struct FunctionState {
+		Declaration* declaration = nullptr;
+		CheckedBody* checked = nullptr;
+		TypeInfoFunction const* type = nullptr;
+		/// <summary>
+		/// Each local's slot, by its key (where it's defined).
+		/// </summary>
+		std::map<const void*, mlir::Value> slots;
+		/// <summary>
+		/// Constants defined in the body, like c :: 3, by their key: their value's expression.
+		/// </summary>
+		std::map<const void*, ast::Node*> constants;
+		/// <summary>
+		/// The current context, a pointer to a runtime.Context.
+		/// </summary>
+		mlir::Value context;
+		std::vector<Breakable> breakables;
+		/// <summary>
+		/// Where stack slots are made: the function's first block. Null for a constant's
+		/// initializer, which can't have any.
+		/// </summary>
+		mlir::Block* entry = nullptr;
+	};
+
+	struct Generator {
+		ProgramInfo* program;
+		NameRegistry& names;
+		mlir::MLIRContext* context;
+		mlir::ModuleOp module;
+		mlir::OpBuilder builder;
+		mlir::Location loc;
+		std::map<const TypeInfo*, mlir::Type> types;
+		/// <summary>
+		/// For each struct, which LLVM element each member is (padding is elements too), or -1
+		/// for a #union struct's members, which share its bytes.
+		/// </summary>
+		std::map<const TypeInfoStruct*, std::vector<int64_t>> member_elements;
+		std::map<Declaration*, LLVM::LLVMFuncOp> functions;
+		std::map<Declaration*, LLVM::GlobalOp> globals;
+		std::set<std::string> symbols;
+		std::vector<Declaration*> pending;
+		std::map<std::string, LLVM::GlobalOp> strings;
+		/// <summary>
+		/// Constants whose value is being generated, so one inlined into another can't loop.
+		/// </summary>
+		std::set<Declaration*> inlining;
+		/// <summary>
+		/// What the left of |> gave, for the call on its right.
+		/// </summary>
+		std::vector<Emitted> piped;
+		FunctionState* state = nullptr;
+		bool failed = false;
+
+		Generator(ProgramInfo* program_, mlir::ModuleOp module_)
+			: program{ program_ }
+			, names{ program_->names }
+			, context{ module_.getContext() }
+			, module{ module_ }
+			, builder{ module_.getContext() }
+			, loc{ builder.getUnknownLoc() }
+		{}
+	};
+
+	static std::string current_file(Generator& generator) {
+		Declaration* declaration = generator.state != nullptr ? generator.state->declaration : nullptr;
+		return declaration != nullptr ? file_path_of(declaration->package_path, declaration->file_name) : std::string();
+	}
+
+	// Reports what code generation can't do yet; the caller carries on with a placeholder.
+	static void unsupported(Generator& generator, const ast::Node* node, std::string what) {
+		generator.failed = true;
+		report_error(ErrorCode::E5002, current_file(generator), node != nullptr ? node->value.line_number : 0,
+			node != nullptr ? node->value.column_number : 0, std::move(what));
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Types
+
+	static TypeInfo const* base(TypeInfo const* type) {
+		return type != nullptr ? get_base_type(type) : nullptr;
+	}
+
+	static bool is_variant(TypeInfo const* type, TypeInfoVariant variant) {
+		type = base(type);
+		return type != nullptr && variant == type->variant;
+	}
+
+	static bool is_signed(TypeInfo const* type) {
+		type = base(type);
+		if (type != nullptr && TypeInfoVariant::ENUM == type->variant) {
+			type = base(static_cast<TypeInfoEnum const*>(type)->backing_type);
+		}
+		return type != nullptr && TypeInfoVariant::INTEGER == type->variant
+			&& static_cast<TypeInfoInteger const*>(type)->is_signed;
+	}
+
+	static bool is_float(TypeInfo const* type) {
+		return is_variant(type, TypeInfoVariant::FLOAT);
+	}
+
+	static bool is_raw_string(TypeInfo const* type) {
+		return is_variant(type, TypeInfoVariant::STRING) && static_cast<TypeInfoString const*>(base(type))->is_raw;
+	}
+
+	static mlir::Type pointer_type(Generator& generator) {
+		return LLVM::LLVMPointerType::get(generator.context);
+	}
+
+	static mlir::Type integer_type(Generator& generator, size_t bytes) {
+		return mlir::IntegerType::get(generator.context, static_cast<unsigned>(bytes * 8));
+	}
+
+	static mlir::Type usize_type(Generator& generator) {
+		return integer_type(generator, POINTER_SIZE);
+	}
+
+	static mlir::Type llvm_type(Generator& generator, TypeInfo const* type);
+
+	// A struct of the given element types, packed: its padding is explicit, to match our layout.
+	static mlir::Type packed(Generator& generator, const std::vector<mlir::Type>& elements) {
+		return LLVM::LLVMStructType::getLiteral(generator.context, elements, true);
+	}
+
+	static mlir::Type bytes_type(Generator& generator, size_t count) {
+		return LLVM::LLVMArrayType::get(integer_type(generator, 1), count);
+	}
+
+	// A count and a pointer: a string, or a view of an array.
+	static mlir::Type view_type(Generator& generator) {
+		return packed(generator, { usize_type(generator), pointer_type(generator) });
+	}
+
+	// A struct's members at their offsets, with padding between them and at the end.
+	static mlir::Type struct_type(Generator& generator, TypeInfoStruct const* type) {
+		std::vector<mlir::Type> elements;
+		std::vector<int64_t> indexes;
+		if (type->is_union) {
+			elements.push_back(bytes_type(generator, type->size));
+			indexes.assign(type->members.size(), -1);
+		}
+		else {
+			size_t offset = 0;
+			for (const StructMember& member : type->members) {
+				if (member.offset > offset) {
+					elements.push_back(bytes_type(generator, member.offset - offset));
+				}
+				indexes.push_back(static_cast<int64_t>(elements.size()));
+				elements.push_back(llvm_type(generator, member.member_type));
+				offset = member.offset + member.member_type->size;
+			}
+			if (type->size > offset) {
+				elements.push_back(bytes_type(generator, type->size - offset));
+			}
+		}
+		generator.member_elements[type] = indexes;
+		return packed(generator, elements);
+	}
+
+	static mlir::Type llvm_type(Generator& generator, TypeInfo const* type) {
+		if (type == nullptr) {
+			return LLVM::LLVMVoidType::get(generator.context);
+		}
+		auto cached = generator.types.find(type);
+		if (cached != generator.types.end()) {
+			return cached->second;
+		}
+		mlir::Type result;
+		const TypeInfoVariant variant = type->variant;
+		if (TypeInfoVariant::ALIAS == variant) {
+			result = llvm_type(generator, static_cast<TypeInfoAlias const*>(type)->base_type);
+		}
+		else if (TypeInfoVariant::INTEGER == variant || TypeInfoVariant::ENUM == variant
+			|| TypeInfoVariant::CHAR == variant) {
+			result = integer_type(generator, type->size);
+		}
+		else if (TypeInfoVariant::BOOLEAN == variant) {
+			// bool is an i1, which takes a byte in memory; b16 to b64 are integers
+			result = type->size == 1 ? mlir::IntegerType::get(generator.context, 1) : integer_type(generator, type->size);
+		}
+		else if (TypeInfoVariant::FLOAT == variant) {
+			result = type->size == 2 ? static_cast<mlir::Type>(mlir::Float16Type::get(generator.context))
+				: type->size == 4 ? static_cast<mlir::Type>(mlir::Float32Type::get(generator.context))
+				: static_cast<mlir::Type>(mlir::Float64Type::get(generator.context));
+		}
+		else if (TypeInfoVariant::POINTER == variant) {
+			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			result = pointer->is_relative ? integer_type(generator, pointer->size) : pointer_type(generator);
+		}
+		else if (TypeInfoVariant::FUNCTION == variant || TypeInfoVariant::TYPE == variant) {
+			result = pointer_type(generator);
+		}
+		else if (TypeInfoVariant::STRING == variant) {
+			result = static_cast<TypeInfoString const*>(type)->is_raw ? pointer_type(generator) : view_type(generator);
+		}
+		else if (TypeInfoVariant::ANY == variant) {
+			result = packed(generator, { pointer_type(generator), pointer_type(generator) });
+		}
+		else if (TypeInfoVariant::ARRAY == variant) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			if (ArrayType::STATIC == array->array_type) {
+				result = LLVM::LLVMArrayType::get(llvm_type(generator, array->element_type), array->count);
+			}
+			else if (ArrayType::VIEW == array->array_type) {
+				result = view_type(generator);
+			}
+			else {
+				// count, data, capacity, and the allocator's function and data
+				result = packed(generator, { usize_type(generator), pointer_type(generator), usize_type(generator),
+					pointer_type(generator), pointer_type(generator) });
+			}
+		}
+		else if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
+			auto composite = static_cast<TypeInfoComposite const*>(type);
+			result = LLVM::LLVMArrayType::get(integer_type(generator, composite->part_size), type->size / composite->part_size);
+		}
+		else if (TypeInfoVariant::STRUCT == variant) {
+			result = struct_type(generator, static_cast<TypeInfoStruct const*>(type));
+		}
+		else if (TypeInfoVariant::UNION == variant) {
+			// The tag, then the bytes every variant's values share
+			auto union_type = static_cast<TypeInfoUnion const*>(type);
+			const size_t tag = union_type->tag_type->size;
+			std::vector<mlir::Type> elements{ integer_type(generator, tag) };
+			if (type->size > tag) {
+				elements.push_back(bytes_type(generator, type->size - tag));
+			}
+			result = packed(generator, elements);
+		}
+		else {
+			result = LLVM::LLVMVoidType::get(generator.context);
+		}
+		generator.types[type] = result;
+		return result;
+	}
+
+	// A function's LLVM type: the context, then its parameters; its result, or a struct of several.
+	static LLVM::LLVMFunctionType function_type(Generator& generator, TypeInfoFunction const* function) {
+		std::vector<mlir::Type> parameters{ pointer_type(generator) };
+		for (const FunctionInput& input : function->input) {
+			// Varargs are a view of them
+			parameters.push_back(input.is_varargs ? view_type(generator) : llvm_type(generator, input.type));
+		}
+		mlir::Type result = LLVM::LLVMVoidType::get(generator.context);
+		if (function->output.size() == 1) {
+			result = llvm_type(generator, function->output[0].type);
+		}
+		else if (function->output.size() > 1) {
+			std::vector<mlir::Type> results;
+			for (const FunctionOutput& output : function->output) {
+				results.push_back(llvm_type(generator, output.type));
+			}
+			result = LLVM::LLVMStructType::getLiteral(generator.context, results);
+		}
+		return LLVM::LLVMFunctionType::get(result, parameters);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Small helpers
+
+	static mlir::Value constant_int(Generator& generator, mlir::Type type, int64_t value) {
+		return LLVM::ConstantOp::create(generator.builder, generator.loc, type, value);
+	}
+
+	static mlir::Value zero_of(Generator& generator, mlir::Type type) {
+		return LLVM::ZeroOp::create(generator.builder, generator.loc, type);
+	}
+
+	static bool in_function(Generator& generator) {
+		return generator.state != nullptr && generator.state->entry != nullptr;
+	}
+
+	// A stack slot for a value of an LLVM type, made at the start of the function.
+	static mlir::Value make_raw_slot(Generator& generator, mlir::Type type, size_t alignment) {
+		if (!in_function(generator)) {
+			unsupported(generator, nullptr, "a constant's value needs memory to be generated, which isn't supported yet");
+			return zero_of(generator, pointer_type(generator));
+		}
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToStart(generator.state->entry);
+		mlir::Value one = constant_int(generator, usize_type(generator), 1);
+		return LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator), type, one,
+			static_cast<unsigned>(alignment));
+	}
+
+	static mlir::Value make_slot(Generator& generator, TypeInfo const* type) {
+		return make_raw_slot(generator, llvm_type(generator, type), std::max<size_t>(type->alignment, 1));
+	}
+
+	static mlir::Value load(Generator& generator, TypeInfo const* type, mlir::Value address) {
+		return LLVM::LoadOp::create(generator.builder, generator.loc, llvm_type(generator, type), address);
+	}
+
+	static void store(Generator& generator, mlir::Value value, mlir::Value address) {
+		LLVM::StoreOp::create(generator.builder, generator.loc, value, address);
+	}
+
+	static mlir::Value extract(Generator& generator, mlir::Value whole, int64_t index) {
+		return LLVM::ExtractValueOp::create(generator.builder, generator.loc, whole, llvm::ArrayRef<int64_t>{ index });
+	}
+
+	static mlir::Value insert(Generator& generator, mlir::Value whole, mlir::Value part, llvm::ArrayRef<int64_t> path) {
+		return LLVM::InsertValueOp::create(generator.builder, generator.loc, whole, part, path);
+	}
+
+	// A count and a pointer, as a string or view.
+	static mlir::Value make_view(Generator& generator, mlir::Value count, mlir::Value data) {
+		mlir::Value result = LLVM::UndefOp::create(generator.builder, generator.loc, view_type(generator));
+		result = insert(generator, result, count, { 0 });
+		return insert(generator, result, data, { 1 });
+	}
+
+	static Emitted value(mlir::Value v, TypeInfo* type) {
+		Emitted result;
+		result.kind = ValueKind::VALUE;
+		result.value = v;
+		result.type = type;
+		return result;
+	}
+
+	static Emitted location(mlir::Value address, TypeInfo* type) {
+		Emitted result;
+		result.kind = ValueKind::VALUE;
+		result.address = address;
+		result.type = type;
+		return result;
+	}
+
+	// A value's address: its own, for a location, or a new slot holding it.
+	static mlir::Value address_of(Generator& generator, const Emitted& emitted) {
+		if (emitted.address) {
+			return emitted.address;
+		}
+		mlir::Value slot = make_slot(generator, emitted.type);
+		store(generator, emitted.value, slot);
+		return slot;
+	}
+
+	static mlir::Value value_of(Generator& generator, const Emitted& emitted) {
+		if (emitted.value) {
+			return emitted.value;
+		}
+		if (emitted.address && emitted.type != nullptr) {
+			return load(generator, emitted.type, emitted.address);
+		}
+		return zero_of(generator, llvm_type(generator, emitted.type != nullptr ? emitted.type : BUILTIN_int));
+	}
+
+	// The address of a byte offset from a pointer.
+	static mlir::Value offset_address(Generator& generator, mlir::Value address, size_t offset) {
+		if (offset == 0) {
+			return address;
+		}
+		llvm::SmallVector<LLVM::GEPArg> indices{ static_cast<int32_t>(offset) };
+		return LLVM::GEPOp::create(generator.builder, generator.loc, pointer_type(generator), integer_type(generator, 1),
+			address, indices);
+	}
+
+	// The address of an element of type at index, from where the elements start.
+	static mlir::Value element_address(Generator& generator, mlir::Value data, TypeInfo const* element, mlir::Value index) {
+		return LLVM::GEPOp::create(generator.builder, generator.loc, pointer_type(generator), llvm_type(generator, element),
+			data, mlir::ValueRange{ index });
+	}
+
+	static const CheckedNode* checked(Generator& generator, const ast::Node* node) {
+		if (generator.state == nullptr || generator.state->checked == nullptr) {
+			return nullptr;
+		}
+		auto iter = generator.state->checked->nodes.find(node);
+		return iter == generator.state->checked->nodes.end() ? nullptr : &iter->second;
+	}
+
+	static const CheckedNode* head_of(Generator& generator, const ast::Node* node) {
+		if (generator.state == nullptr || generator.state->checked == nullptr) {
+			return nullptr;
+		}
+		auto iter = generator.state->checked->heads.find(node);
+		return iter == generator.state->checked->heads.end() ? nullptr : &iter->second;
+	}
+
+	static bool is_untyped(ValueKind kind) {
+		return ValueKind::UNTYPED_INTEGER == kind || ValueKind::UNTYPED_FLOAT == kind
+			|| ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_BOOLEAN == kind
+			|| ValueKind::NULL_VALUE == kind;
+	}
+
+	// The type an untyped value takes where nothing else decides: an int, an f64, a string, a bool.
+	static TypeInfo* usual(ValueKind kind) {
+		return ValueKind::UNTYPED_FLOAT == kind ? BUILTIN_f64
+			: ValueKind::UNTYPED_STRING == kind ? BUILTIN_string
+			: ValueKind::UNTYPED_BOOLEAN == kind ? BUILTIN_bool
+			: ValueKind::NULL_VALUE == kind ? BUILTIN_rawptr
+			: BUILTIN_int;
+	}
+
+	// Whether an untyped value can be a value of type directly, like 5 a u8 or 0.5 an f32.
+	static bool takes_untyped(ValueKind kind, TypeInfo const* type) {
+		TypeInfo const* target = base(type);
+		if (target == nullptr) {
+			return false;
+		}
+		const TypeInfoVariant variant = target->variant;
+		if (ValueKind::UNTYPED_INTEGER == kind) {
+			return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant
+				|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::ENUM == variant;
+		}
+		if (ValueKind::UNTYPED_FLOAT == kind) {
+			return TypeInfoVariant::FLOAT == variant;
+		}
+		if (ValueKind::UNTYPED_STRING == kind) {
+			return TypeInfoVariant::STRING == variant;
+		}
+		if (ValueKind::UNTYPED_BOOLEAN == kind) {
+			return TypeInfoVariant::BOOLEAN == variant;
+		}
+		return ValueKind::NULL_VALUE == kind && (TypeInfoVariant::POINTER == variant || TypeInfoVariant::STRING == variant
+			|| TypeInfoVariant::FUNCTION == variant || TypeInfoVariant::UNION == variant);
+	}
+
+	// The type an optional or result holds: Some's or Ok's.
+	static TypeInfo* held_type(TypeInfo const* type) {
+		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
+		return !union_type->variants.empty() && !union_type->variants[0].types.empty() ? union_type->variants[0].types[0] : nullptr;
+	}
+
+	// The type an untyped value is generated as, where it's used as expected.
+	static TypeInfo* untyped_as(ValueKind kind, TypeInfo* expected) {
+		if (takes_untyped(kind, expected)) {
+			return expected;
+		}
+		// An optional's or result's value: 5 as an int?, made Some(5) by converting
+		if (is_variant(expected, TypeInfoVariant::UNION) && takes_untyped(kind, held_type(expected))) {
+			return held_type(expected);
+		}
+		return usual(kind);
+	}
+
+	// The type a node was checked as, or for an untyped one, the type it's used as.
+	static TypeInfo* type_at(Generator& generator, const ast::Node* node, TypeInfo* expected) {
+		const CheckedNode* found = checked(generator, node);
+		if (found == nullptr) {
+			return expected;
+		}
+		if (is_untyped(found->kind)) {
+			return untyped_as(found->kind, expected);
+		}
+		return found->type;
+	}
+
+	static Declaration* base_declaration_named(Generator& generator, std::string_view folder, std::string_view name) {
+		std::scoped_lock<std::mutex> lock(generator.names.mutex);
+		auto iter = generator.names.declarations.find(std::make_pair(intern(std::format("{}{}", BASE_PACKAGE_PREFIX, folder)),
+			intern(std::string(name))));
+		return iter != generator.names.declarations.end() ? iter->second : nullptr;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Functions and strings, made as they're first used
+
+	static std::string symbol_for(Generator& generator, Declaration* declaration) {
+		std::string package = text_of(declaration->package_path);
+		const size_t slash = package.find_last_of("/\\");
+		std::string name = std::format("{}.{}", slash == std::string::npos ? package : package.substr(slash + 1),
+			text_of(declaration->name));
+		std::string unique = name;
+		for (int i = 2; generator.symbols.contains(unique); ++i) {
+			unique = std::format("{}.{}", name, i);
+		}
+		generator.symbols.insert(unique);
+		return unique;
+	}
+
+	// The function a declaration is, declared now and generated later.
+	static LLVM::LLVMFuncOp function_for(Generator& generator, Declaration* declaration) {
+		auto iter = generator.functions.find(declaration);
+		if (iter != generator.functions.end()) {
+			return iter->second;
+		}
+		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc,
+			symbol_for(generator, declaration), function_type(generator, type), LLVM::Linkage::Internal);
+		generator.functions[declaration] = function;
+		generator.pending.push_back(declaration);
+		return function;
+	}
+
+	// A string's bytes as a global, the same one for the same text.
+	static mlir::Value string_bytes(Generator& generator, const std::string& text) {
+		auto iter = generator.strings.find(text);
+		LLVM::GlobalOp global;
+		if (iter != generator.strings.end()) {
+			global = iter->second;
+		}
+		else {
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			// With a null after it, so it works as a cstring too
+			std::string with_null = text;
+			with_null.push_back('\0');
+			global = LLVM::GlobalOp::create(generator.builder, generator.loc, bytes_type(generator, with_null.size()), true,
+				LLVM::Linkage::Private, std::format("string.{}", generator.strings.size()),
+				generator.builder.getStringAttr(with_null), 1);
+			generator.strings[text] = global;
+		}
+		return LLVM::AddressOfOp::create(generator.builder, generator.loc, global);
+	}
+
+	// A literal's text without its quotes, with escapes like \n replaced.
+	static std::string literal_text(InternedString literal) {
+		std::string text = text_of(literal);
+		if (text.size() >= 2 && (text.front() == '"' || text.front() == '\'')) {
+			text = text.substr(1, text.size() - 2);
+		}
+		std::string result;
+		for (size_t i = 0; i < text.size(); ++i) {
+			if (text[i] != '\\' || i + 1 >= text.size()) {
+				result += text[i];
+				continue;
+			}
+			const char escaped = text[++i];
+			result += escaped == 'n' ? '\n' : escaped == 't' ? '\t' : escaped == 'r' ? '\r' : escaped == '0' ? '\0' : escaped;
+		}
+		return result;
+	}
+
+	static mlir::Value string_value(Generator& generator, const std::string& text, TypeInfo const* type) {
+		mlir::Value data = string_bytes(generator, text);
+		if (is_raw_string(type)) {
+			return data;
+		}
+		return make_view(generator, constant_int(generator, usize_type(generator), static_cast<int64_t>(text.size())), data);
+	}
+
+	static uint64_t parse_integer(std::string text) {
+		std::erase(text, '_');
+		int radix = 10;
+		if (text.starts_with("0x")) {
+			radix = 16;
+		}
+		else if (text.starts_with("0o")) {
+			radix = 8;
+		}
+		else if (text.starts_with("0b")) {
+			radix = 2;
+		}
+		return std::stoull(radix == 10 ? text : text.substr(2), nullptr, radix);
+	}
+
+	static size_t variant_named(TypeInfo const* type, std::string_view name) {
+		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
+		for (size_t i = 0; i < union_type->variants.size(); ++i) {
+			if (std::string_view(*union_type->variants[i].name) == name) {
+				return i;
+			}
+		}
+		return union_type->variants.size();
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Conversions
+
+	static mlir::Value convert(Generator& generator, mlir::Value v, TypeInfo const* from, TypeInfo const* to);
+
+	// A union value of a variant, with its values.
+	static mlir::Value make_variant(Generator& generator, TypeInfo* type, size_t variant, const std::vector<mlir::Value>& values,
+		const std::vector<TypeInfo*>& value_types) {
+
+		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
+		mlir::Value tag = constant_int(generator, llvm_type(generator, union_type->tag_type), static_cast<int64_t>(variant));
+		if (values.empty()) {
+			// Only the tag, which works in a constant too
+			return insert(generator, zero_of(generator, llvm_type(generator, type)), tag, { 0 });
+		}
+		mlir::Value slot = make_slot(generator, type);
+		store(generator, zero_of(generator, llvm_type(generator, type)), slot);
+		store(generator, tag, slot);
+		const UnionVariant& chosen = union_type->variants[variant];
+		for (size_t i = 0; i < values.size() && i < chosen.offsets.size(); ++i) {
+			store(generator, convert(generator, values[i], value_types[i], chosen.types[i]),
+				offset_address(generator, slot, chosen.offsets[i]));
+		}
+		return load(generator, type, slot);
+	}
+
+	// A literal as a constant of type.
+	static mlir::Value emit_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
+		const TokenType token = node->value.type;
+		mlir::Type target = llvm_type(generator, type);
+		if (TokenType::LITERAL_STRING == token) {
+			return string_value(generator, literal_text(node->value.value), type);
+		}
+		if (TokenType::LITERAL_CHAR == token) {
+			const std::string text = literal_text(node->value.value);
+			return constant_int(generator, target, text.empty() ? 0 : static_cast<unsigned char>(text[0]));
+		}
+		if (TokenType::KEYWORD_TRUE == token || TokenType::KEYWORD_FALSE == token) {
+			return constant_int(generator, target, TokenType::KEYWORD_TRUE == token ? 1 : 0);
+		}
+		if (TokenType::KEYWORD_NULL == token) {
+			if (is_variant(type, TypeInfoVariant::UNION)) {
+				// An optional's None
+				return make_variant(generator, type, variant_named(type, "None"), {}, {});
+			}
+			return zero_of(generator, target);
+		}
+		if (TokenType::LITERAL_FLOATING_POINT == token || is_float(type)) {
+			std::string text = text_of(node->value.value);
+			std::erase(text, '_');
+			llvm::APFloat number(std::stod(text));
+			bool lost = false;
+			number.convert(llvm::cast<mlir::FloatType>(target).getFloatSemantics(), llvm::APFloat::rmNearestTiesToEven, &lost);
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, target, number);
+		}
+		return constant_int(generator, target, static_cast<int64_t>(parse_integer(text_of(node->value.value))));
+	}
+
+	// A union's tag, from where it is.
+	static mlir::Value union_tag(Generator& generator, mlir::Value address, TypeInfo const* type) {
+		return load(generator, static_cast<TypeInfoUnion const*>(base(type))->tag_type, address);
+	}
+
+	// A value converted to a type it implicitly converts to (docs/types.md, Implicit Casting), or cast to.
+	static mlir::Value convert(Generator& generator, mlir::Value v, TypeInfo const* from, TypeInfo const* to) {
+		if (from == nullptr || to == nullptr || !v) {
+			return v;
+		}
+		TypeInfo const* source = base(from);
+		TypeInfo const* destination = base(to);
+		if (source == destination) {
+			return v;
+		}
+		mlir::Type target = llvm_type(generator, to);
+		// Into an any: a pointer to a copy of it, and its type
+		if (TypeInfoVariant::ANY == destination->variant) {
+			mlir::Value slot = make_slot(generator, from);
+			store(generator, v, slot);
+			mlir::Value result = LLVM::UndefOp::create(generator.builder, generator.loc, target);
+			result = insert(generator, result, slot, { 0 });
+			//TODO(ches) the type's info, once type info is generated
+			return insert(generator, result, zero_of(generator, pointer_type(generator)), { 1 });
+		}
+		// A static array as a view of its elements, or a dynamic array's
+		if (TypeInfoVariant::ARRAY == source->variant && TypeInfoVariant::ARRAY == destination->variant
+			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(destination)->array_type) {
+			auto array = static_cast<TypeInfoArray const*>(source);
+			if (ArrayType::STATIC == array->array_type) {
+				mlir::Value slot = make_slot(generator, from);
+				store(generator, v, slot);
+				return make_view(generator, constant_int(generator, usize_type(generator), static_cast<int64_t>(array->count)), slot);
+			}
+			return make_view(generator, extract(generator, v, 0), extract(generator, v, 1));
+		}
+		// A value as an optional or result holding it: Some or Ok, the first variant
+		if (TypeInfoVariant::UNION == destination->variant && TypeInfoVariant::UNION != source->variant) {
+			return make_variant(generator, const_cast<TypeInfo*>(to), 0, { v }, { const_cast<TypeInfo*>(from) });
+		}
+		// Through a using, the struct it includes
+		if (TypeInfoVariant::STRUCT == source->variant && TypeInfoVariant::STRUCT == destination->variant) {
+			for (const StructMember& member : static_cast<TypeInfoStruct const*>(source)->members) {
+				if (member.is_using && base(member.member_type) == destination && in_function(generator)) {
+					mlir::Value slot = make_slot(generator, from);
+					store(generator, v, slot);
+					return load(generator, to, offset_address(generator, slot, member.offset));
+				}
+			}
+			return v;
+		}
+		mlir::Type from_type = v.getType();
+		if (from_type == target) {
+			return v;
+		}
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		if (llvm::isa<mlir::IntegerType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
+			const unsigned from_width = from_type.getIntOrFloatBitWidth();
+			const unsigned to_width = target.getIntOrFloatBitWidth();
+			if (from_width == 1) {
+				return LLVM::ZExtOp::create(b, l, target, v);
+			}
+			if (to_width == 1) {
+				return LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::ne, v, constant_int(generator, from_type, 0));
+			}
+			if (to_width > from_width) {
+				return is_signed(from) ? static_cast<mlir::Value>(LLVM::SExtOp::create(b, l, target, v))
+					: static_cast<mlir::Value>(LLVM::ZExtOp::create(b, l, target, v));
+			}
+			return LLVM::TruncOp::create(b, l, target, v);
+		}
+		if (llvm::isa<mlir::FloatType>(from_type) && llvm::isa<mlir::FloatType>(target)) {
+			return from_type.getIntOrFloatBitWidth() < target.getIntOrFloatBitWidth()
+				? static_cast<mlir::Value>(LLVM::FPExtOp::create(b, l, target, v))
+				: static_cast<mlir::Value>(LLVM::FPTruncOp::create(b, l, target, v));
+		}
+		if (llvm::isa<mlir::IntegerType>(from_type) && llvm::isa<mlir::FloatType>(target)) {
+			return is_signed(from) ? static_cast<mlir::Value>(LLVM::SIToFPOp::create(b, l, target, v))
+				: static_cast<mlir::Value>(LLVM::UIToFPOp::create(b, l, target, v));
+		}
+		if (llvm::isa<mlir::FloatType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
+			return is_signed(to) ? static_cast<mlir::Value>(LLVM::FPToSIOp::create(b, l, target, v))
+				: static_cast<mlir::Value>(LLVM::FPToUIOp::create(b, l, target, v));
+		}
+		if (llvm::isa<LLVM::LLVMPointerType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
+			return LLVM::PtrToIntOp::create(b, l, target, v);
+		}
+		if (llvm::isa<mlir::IntegerType>(from_type) && llvm::isa<LLVM::LLVMPointerType>(target)) {
+			return LLVM::IntToPtrOp::create(b, l, target, v);
+		}
+		// Different layouts of the same bytes: reinterpret them
+		if (in_function(generator)) {
+			mlir::Value slot = make_slot(generator, from->size >= to->size ? from : to);
+			store(generator, v, slot);
+			return load(generator, to, slot);
+		}
+		return v;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Control flow
+
+	static Emitted emit_expression(Generator& generator, ast::Node* node, TypeInfo* expected);
+	static bool emit_statement(Generator& generator, ast::Node* statement);
+	static bool emit_block(Generator& generator, ast::Node* block, mlir::Value result_slot, TypeInfo* result_type);
+
+	// An expression's value, converted to the type it's used as.
+	static mlir::Value emit_as(Generator& generator, ast::Node* node, TypeInfo* type) {
+		Emitted emitted = emit_expression(generator, node, type);
+		if (ValueKind::VARIANT == emitted.kind) {
+			return make_variant(generator, emitted.type, emitted.variant, {}, {});
+		}
+		return convert(generator, value_of(generator, emitted), emitted.type, type);
+	}
+
+	static mlir::Value boolean(Generator& generator, bool truth) {
+		return constant_int(generator, llvm_type(generator, BUILTIN_bool), truth ? 1 : 0);
+	}
+
+	// A condition, as an i1.
+	static mlir::Value emit_condition(Generator& generator, ast::Node* node) {
+		mlir::Value v = emit_as(generator, node, BUILTIN_bool);
+		if (v.getType().getIntOrFloatBitWidth() == 1) {
+			return v;
+		}
+		return LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::ne, v,
+			constant_int(generator, v.getType(), 0));
+	}
+
+	static mlir::Value negate(Generator& generator, mlir::Value condition) {
+		return LLVM::XOrOp::create(generator.builder, generator.loc, condition, boolean(generator, true));
+	}
+
+	/*
+	 * Structured control flow, built in place: a region of a new op, filled by a function, then
+	 * ended with hmir.end unless the function ended it already (and says so).
+	 */
+	static void fill_region(Generator& generator, mlir::Region& region, const std::function<bool()>& fill) {
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		mlir::Block* block = generator.builder.createBlock(&region);
+		generator.builder.setInsertionPointToStart(block);
+		if (!fill()) {
+			::hmir::HemeraEndOp::create(generator.builder, generator.loc);
+		}
+	}
+
+	// if condition { then } else { otherwise }, without an else if otherwise is empty.
+	static void emit_if(Generator& generator, mlir::Value condition, const std::function<bool()>& then,
+		const std::function<bool()>& otherwise) {
+
+		auto op = ::hmir::HemeraIfOp::create(generator.builder, generator.loc, condition);
+		fill_region(generator, op.getThenRegion(), then);
+		if (otherwise) {
+			fill_region(generator, op.getElseRegion(), otherwise);
+		}
+	}
+
+	static void emit_scope(Generator& generator, const std::function<bool()>& body) {
+		auto op = ::hmir::HemeraScopeOp::create(generator.builder, generator.loc);
+		fill_region(generator, op.getBodyRegion(), body);
+	}
+
+	// A loop or switch: break and continue count it.
+	static void emit_loop(Generator& generator, bool continues, const std::function<bool()>& body) {
+		auto op = ::hmir::HemeraLoopOp::create(generator.builder, generator.loc);
+		generator.state->breakables.push_back({ continues });
+		fill_region(generator, op.getBodyRegion(), body);
+		generator.state->breakables.pop_back();
+	}
+
+	// break: leaves depth loops and switches.
+	static void emit_break(Generator& generator, uint64_t depth) {
+		::hmir::HemeraBreakOp::create(generator.builder, generator.loc, depth);
+	}
+
+	// continue: the innermost loop, past any switches inside it.
+	static void emit_continue(Generator& generator) {
+		uint64_t depth = 0;
+		for (auto each = generator.state->breakables.rbegin(); each != generator.state->breakables.rend(); ++each) {
+			++depth;
+			if (each->continues) {
+				break;
+			}
+		}
+		::hmir::HemeraContinueOp::create(generator.builder, generator.loc, depth);
+	}
+
+	// return, with the function's results: one, or a struct of several.
+	static void emit_return(Generator& generator, const std::vector<mlir::Value>& values) {
+		if (values.size() <= 1) {
+			::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange(values));
+			return;
+		}
+		LLVM::LLVMFunctionType type = function_type(generator, generator.state->type);
+		mlir::Value result = LLVM::UndefOp::create(generator.builder, generator.loc, type.getReturnType());
+		for (size_t i = 0; i < values.size(); ++i) {
+			result = insert(generator, result, values[i], { static_cast<int64_t>(i) });
+		}
+		::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{ result });
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Names
+
+	// A constant's value, generated where it's used from its value's expression, as type.
+	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
+		if (generator.inlining.contains(declaration)) {
+			unsupported(generator, where, std::format("{} refers to itself", text_of(declaration->name)));
+			return zero_of(generator, llvm_type(generator, type));
+		}
+		FunctionState constant_state;
+		constant_state.declaration = declaration;
+		constant_state.checked = declaration->checked.get();
+		constant_state.context = generator.state != nullptr ? generator.state->context : mlir::Value();
+		constant_state.entry = generator.state != nullptr ? generator.state->entry : nullptr;
+		FunctionState* outer = generator.state;
+		generator.state = &constant_state;
+		generator.inlining.insert(declaration);
+		mlir::Value result = emit_as(generator, definition_value(declaration->node), type);
+		generator.inlining.erase(declaration);
+		generator.state = outer;
+		return result;
+	}
+
+	static LLVM::GlobalOp global_for(Generator& generator, Declaration* declaration);
+
+	static int64_t enum_value(TypeInfo const* type, InternedString member) {
+		auto enumeration = static_cast<TypeInfoEnum const*>(base(type));
+		for (size_t i = 0; i < enumeration->members.size(); ++i) {
+			if (*enumeration->members[i] == *member) {
+				return static_cast<int64_t>(enumeration->values[i]);
+			}
+		}
+		return 0;
+	}
+
+	// What a name is: a local, the context, a function, a constant, or something that isn't a value.
+	static Emitted emit_name(Generator& generator, ast::Node* node, const CheckedNode* found, TypeInfo* expected) {
+		if (found == nullptr || ValueKind::POISONED == found->kind) {
+			unsupported(generator, node, std::format("{} wasn't checked", text_of(node->value.value)));
+			return value(zero_of(generator, usize_type(generator)), BUILTIN_int);
+		}
+		Emitted result;
+		result.kind = found->kind;
+		result.type = found->type;
+		result.variant = found->variant;
+		result.name = node->value.value;
+		if (ValueKind::TYPE == found->kind || ValueKind::PACKAGE == found->kind || ValueKind::BUILTIN_FUNCTION == found->kind
+			|| ValueKind::GENERIC_FUNCTION == found->kind) {
+			return result;
+		}
+		FunctionState& state = *generator.state;
+		if (found->local != nullptr) {
+			auto slot = state.slots.find(found->local);
+			if (slot != state.slots.end()) {
+				return location(slot->second, found->type);
+			}
+			auto constant = state.constants.find(found->local);
+			if (constant != state.constants.end()) {
+				TypeInfo* type = is_untyped(found->kind) ? untyped_as(found->kind, expected) : found->type;
+				return value(emit_as(generator, constant->second, type), type);
+			}
+			unsupported(generator, node, std::format("{} can't be generated here", text_of(node->value.value)));
+			return value(zero_of(generator, llvm_type(generator, found->type)), found->type);
+		}
+		Declaration* declaration = found->declaration;
+		if (declaration == nullptr && ValueKind::VALUE == found->kind && is_text(node->value.value, "context")) {
+			return location(state.context, found->type);
+		}
+		if (declaration == nullptr) {
+			if (ValueKind::VALUE == found->kind) {
+				unsupported(generator, node, std::format("{} can't be generated yet", text_of(node->value.value)));
+				return value(zero_of(generator, llvm_type(generator, found->type)), found->type);
+			}
+			return result;
+		}
+		if (is_untyped(found->kind)) {
+			TypeInfo* type = untyped_as(found->kind, expected);
+			return value(emit_constant_value(generator, declaration, type, node), type);
+		}
+		if (DeclarationKind::FUNCTION == declaration->kind && declaration->value_type != nullptr) {
+			LLVM::LLVMFuncOp function = function_for(generator, declaration);
+			return value(LLVM::AddressOfOp::create(generator.builder, generator.loc, function), declaration->value_type);
+		}
+		if (DeclarationKind::VALUE == declaration->kind && declaration->value_type != nullptr && ValueKind::VALUE == found->kind) {
+			if (!in_function(generator)) {
+				// In another constant's value, which can't read a global: its value again
+				return value(emit_constant_value(generator, declaration, declaration->value_type, node), declaration->value_type);
+			}
+			LLVM::GlobalOp global = global_for(generator, declaration);
+			return location(LLVM::AddressOfOp::create(generator.builder, generator.loc, global), declaration->value_type);
+		}
+		return result;
+	}
+
+	// A member of a struct by name, at any depth through using: its offset, type and LLVM path.
+	static bool find_member(Generator& generator, TypeInfoStruct const* structure, InternedString name, size_t& offset,
+		TypeInfo*& type, std::vector<int64_t>& path) {
+
+		llvm_type(generator, structure);
+		const std::vector<int64_t> elements = generator.member_elements[structure];
+		for (size_t i = 0; i < structure->members.size(); ++i) {
+			const StructMember& member = structure->members[i];
+			if (member.name != nullptr && !member.is_using && *member.name == *name) {
+				offset = member.offset;
+				type = member.member_type;
+				path.push_back(elements[i]);
+				return true;
+			}
+		}
+		for (size_t i = 0; i < structure->members.size(); ++i) {
+			const StructMember& member = structure->members[i];
+			TypeInfo const* included = base(member.member_type);
+			if ((member.is_using || member.name == nullptr) && included != nullptr && TypeInfoVariant::STRUCT == included->variant) {
+				std::vector<int64_t> inner_path{ elements[i] };
+				size_t inner = 0;
+				if (find_member(generator, static_cast<TypeInfoStruct const*>(included), name, inner, type, inner_path)) {
+					offset = member.offset + inner;
+					path.insert(path.end(), inner_path.begin(), inner_path.end());
+					return true;
+				}
+			}
+		}
+		for (size_t i = 0; i < structure->members.size(); ++i) {
+			const StructMember& member = structure->members[i];
+			if (member.is_using && member.name != nullptr && *member.name == *name) {
+				offset = member.offset;
+				type = member.member_type;
+				path.push_back(elements[i]);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// .member on a value: a struct's field, through a pointer automatically, or a count or data.
+	static Emitted emit_member(Generator& generator, Emitted current, ast::Node* name_node, const CheckedNode* found) {
+		InternedString name = name_node->value.value;
+		TypeInfo const* type = base(current.type);
+		TypeInfo* result_type = found->type;
+		if (TypeInfoVariant::POINTER == type->variant) {
+			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			current = location(value_of(generator, current), pointer->base_type);
+			type = base(pointer->base_type);
+		}
+		if (TypeInfoVariant::STRUCT == type->variant) {
+			size_t offset = 0;
+			TypeInfo* member_type = result_type;
+			std::vector<int64_t> path;
+			find_member(generator, static_cast<TypeInfoStruct const*>(type), name, offset, member_type, path);
+			const bool through_union = std::find(path.begin(), path.end(), -1) != path.end();
+			if (!current.address && !through_union) {
+				// A value: its part
+				return value(LLVM::ExtractValueOp::create(generator.builder, generator.loc, current.value, path), member_type);
+			}
+			return location(offset_address(generator, address_of(generator, current), offset), member_type);
+		}
+		const std::string member = text_of(name);
+		if (TypeInfoVariant::ARRAY == type->variant && ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
+			return value(constant_int(generator, usize_type(generator),
+				static_cast<int64_t>(static_cast<TypeInfoArray const*>(type)->count)), BUILTIN_usize);
+		}
+		mlir::Value whole = value_of(generator, current);
+		if (TypeInfoVariant::ANY == type->variant) {
+			return value(extract(generator, whole, member == "data" ? 0 : 1), result_type);
+		}
+		// count, data and capacity are the first, second and third parts
+		const int64_t part = member == "data" ? 1 : member == "capacity" ? 2 : 0;
+		return value(extract(generator, whole, part), result_type);
+	}
+
+	// Where an array's or string's elements are, and how many.
+	static void elements_of(Generator& generator, Emitted& current, TypeInfo const*& type, mlir::Value& data, mlir::Value& count) {
+		if (TypeInfoVariant::POINTER == type->variant) {
+			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			current = location(value_of(generator, current), pointer->base_type);
+			type = base(pointer->base_type);
+		}
+		if (TypeInfoVariant::ARRAY == type->variant && ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
+			data = address_of(generator, current);
+			count = constant_int(generator, usize_type(generator), static_cast<int64_t>(static_cast<TypeInfoArray const*>(type)->count));
+			return;
+		}
+		mlir::Value whole = value_of(generator, current);
+		if (TypeInfoVariant::STRING == type->variant && static_cast<TypeInfoString const*>(type)->is_raw) {
+			data = whole;
+			count = constant_int(generator, usize_type(generator), 0);
+			return;
+		}
+		count = extract(generator, whole, 0);
+		data = extract(generator, whole, 1);
+	}
+
+	static TypeInfo* element_of(TypeInfo const* type) {
+		return TypeInfoVariant::ARRAY == type->variant ? static_cast<TypeInfoArray const*>(type)->element_type : BUILTIN_char;
+	}
+
+	// [index] or [low..<high]: an element, or a view of several.
+	static Emitted emit_index(Generator& generator, Emitted current, ast::Node* index, const CheckedNode* found) {
+		TypeInfo const* type = base(current.type);
+		mlir::Value data;
+		mlir::Value count;
+		elements_of(generator, current, type, data, count);
+		TypeInfo* element = element_of(type);
+		const TokenType op = index->value.type;
+		const bool range = ast::NodeType::BINARY_OPERATOR == index->node_type
+			&& (TokenType::OPERATOR_RANGE_EXCLUSIVE == op || TokenType::OPERATOR_RANGE_INCLUSIVE == op);
+		if (range || ast::NodeType::RANGE_ARRAY == index->node_type) {
+			mlir::Value low = constant_int(generator, usize_type(generator), 0);
+			mlir::Value high = count;
+			if (range && index->children.size() == 2) {
+				if (ast::NodeType::RANGE_ARRAY != index->children[0]->node_type) {
+					low = emit_as(generator, index->children[0], BUILTIN_usize);
+				}
+				if (ast::NodeType::RANGE_ARRAY != index->children[1]->node_type) {
+					high = emit_as(generator, index->children[1], BUILTIN_usize);
+					if (TokenType::OPERATOR_RANGE_INCLUSIVE == op) {
+						high = LLVM::AddOp::create(generator.builder, generator.loc, high,
+							constant_int(generator, usize_type(generator), 1));
+					}
+				}
+			}
+			mlir::Value start = element_address(generator, data, element, low);
+			return value(make_view(generator, LLVM::SubOp::create(generator.builder, generator.loc, high, low), start), found->type);
+		}
+		mlir::Value position = emit_as(generator, index, BUILTIN_usize);
+		return location(element_address(generator, data, element, position), element);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Calls
+
+	static bool is_postfix_marker(const ast::Node* node) {
+		return ast::NodeType::DOT_ACCESS == node->node_type
+			|| ast::NodeType::PAREN_GROUP == node->node_type
+			|| ast::NodeType::ARRAY_DIMENSION == node->node_type
+			|| (ast::NodeType::UNARY_OPERATOR == node->node_type
+				&& TokenType::OPERATOR_DEREFERENCE == node->value.type);
+	}
+
+	static bool is_placeholder(const ast::Node* node) {
+		return ast::NodeType::UNDERSCORE == node->node_type
+			|| ast::NodeType::PIPE_REORDER_IDENTIFIER == node->node_type;
+	}
+
+	// Each parameter's name and default value, in order, from a function's FUNCTION node.
+	struct ParameterNode {
+		InternedString name = nullptr;
+		ast::Node* default_value = nullptr;
+	};
+
+	static std::vector<ParameterNode> parameter_nodes(Declaration* function) {
+		std::vector<ParameterNode> result;
+		if (function == nullptr) {
+			return result;
+		}
+		Declaration* generic = function->generic != nullptr ? function->generic : function;
+		ast::Node* node = nullptr;
+		for (ast::Node* child : generic->node->children) {
+			if (ast::NodeType::FUNCTION == child->node_type) {
+				node = child;
+			}
+		}
+		if (node == nullptr) {
+			return result;
+		}
+		for (ast::Node* list : node->children) {
+			if (ast::NodeType::LIST != list->node_type) {
+				continue;
+			}
+			for (ast::Node* parameter : list->children) {
+				const bool has_default = ast::NodeType::BINARY_OPERATOR == parameter->node_type && is_assign(parameter)
+					&& parameter->children.size() == 2;
+				ast::Node* names_node = has_default ? parameter->children[0] : parameter;
+				ast::Node* default_value = has_default ? parameter->children[1] : nullptr;
+				if (ast::NodeType::COLON != names_node->node_type) {
+					result.push_back({ nullptr, default_value });
+					continue;
+				}
+				for (ast::Node* part : names_node->children) {
+					if (ast::NodeType::IDENTIFIER == part->node_type) {
+						result.push_back({ part->value.value, default_value });
+						break;
+					}
+					if (ast::NodeType::LIST == part->node_type) {
+						for (ast::Node* name : part->children) {
+							result.push_back({ name->value.value, default_value });
+						}
+						break;
+					}
+				}
+			}
+			break;
+		}
+		return result;
+	}
+
+	// #caller_location: where the call is (runtime.SourceCodeLocation).
+	static mlir::Value caller_location(Generator& generator, TypeInfo* type, const ast::Node* call) {
+		mlir::Value result = zero_of(generator, llvm_type(generator, type));
+		auto structure = static_cast<TypeInfoStruct const*>(base(type));
+		const std::string file = current_file(generator);
+		const std::string function = generator.state->declaration != nullptr ? text_of(generator.state->declaration->name) : std::string();
+		for (const StructMember& member : structure->members) {
+			size_t offset = 0;
+			TypeInfo* member_type = nullptr;
+			std::vector<int64_t> path;
+			find_member(generator, structure, member.name, offset, member_type, path);
+			const std::string name = text_of(member.name);
+			mlir::Value part;
+			if (name == "file_path") {
+				part = string_value(generator, file, member.member_type);
+			}
+			else if (name == "function") {
+				part = string_value(generator, function, member.member_type);
+			}
+			else if (name == "line" || name == "column") {
+				part = constant_int(generator, llvm_type(generator, member.member_type),
+					static_cast<int64_t>(name == "line" ? call->value.line_number : call->value.column_number));
+			}
+			if (part) {
+				result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result, part, path);
+			}
+		}
+		return result;
+	}
+
+	/*
+	 * A parameter's default (docs/functions.md): only simple ones for now, a literal, a constant,
+	 * #caller_location, or the context's fields.
+	 */
+	static mlir::Value emit_default(Generator& generator, Declaration* callee, size_t index, TypeInfo* type, ast::Node* call) {
+		const std::vector<ParameterNode> parameters = parameter_nodes(callee);
+		ast::Node* node = index < parameters.size() ? parameters[index].default_value : nullptr;
+		if (node == nullptr) {
+			unsupported(generator, call, "a call that leaves out a parameter without a default");
+			return zero_of(generator, llvm_type(generator, type));
+		}
+		const ast::NodeType kind = node->node_type;
+		if (ast::NodeType::LITERAL == kind) {
+			const bool held = is_variant(type, TypeInfoVariant::UNION) && TokenType::KEYWORD_NULL != node->value.type;
+			mlir::Value literal = emit_literal(generator, node, held ? held_type(type) : type);
+			return held ? convert(generator, literal, held_type(type), type) : literal;
+		}
+		if (ast::NodeType::DIRECTIVE == kind && is_text(node->value.value, "#caller_location")) {
+			return caller_location(generator, type, call);
+		}
+		if (ast::NodeType::IDENTIFIER == kind && is_text(node->value.value, "context")) {
+			// context.field...: read through the current context
+			Declaration* context_declaration = base_declaration_named(generator, "runtime", "Context");
+			Emitted current = location(generator.state->context, context_declaration != nullptr ? context_declaration->type_value : nullptr);
+			for (size_t i = 0; i + 1 < node->children.size() && current.type != nullptr; i += 2) {
+				size_t offset = 0;
+				TypeInfo* member_type = nullptr;
+				std::vector<int64_t> path;
+				if (!is_variant(current.type, TypeInfoVariant::STRUCT)
+					|| !find_member(generator, static_cast<TypeInfoStruct const*>(base(current.type)), node->children[i + 1]->value.value,
+						offset, member_type, path)) {
+					break;
+				}
+				current = location(offset_address(generator, current.address, offset), member_type);
+			}
+			return convert(generator, value_of(generator, current), current.type, type);
+		}
+		if (ast::NodeType::IDENTIFIER == kind && node->children.empty()) {
+			// A constant from the function's package
+			Declaration* generic = callee->generic != nullptr ? callee->generic : callee;
+			Declaration* constant = nullptr;
+			{
+				std::scoped_lock<std::mutex> lock(generator.names.mutex);
+				auto iter = generator.names.declarations.find(std::make_pair(generic->package_path, node->value.value));
+				if (iter != generator.names.declarations.end()) {
+					constant = iter->second;
+				}
+			}
+			if (constant != nullptr && constant->value_type == nullptr && constant->untyped != Untyped::NONE) {
+				return emit_constant_value(generator, constant, type, call);
+			}
+			if (constant != nullptr && constant->value_type != nullptr && DeclarationKind::VALUE == constant->kind) {
+				LLVM::GlobalOp global = global_for(generator, constant);
+				return convert(generator, load(generator, constant->value_type,
+					LLVM::AddressOfOp::create(generator.builder, generator.loc, global)), constant->value_type, type);
+			}
+		}
+		unsupported(generator, call, "this call leaves out a parameter whose default can't be generated yet");
+		return zero_of(generator, llvm_type(generator, type));
+	}
+
+	struct CallArgument {
+		ast::Node* node = nullptr;
+		bool has_value = false;
+		Emitted given;
+	};
+
+	static mlir::Value argument_as(Generator& generator, const CallArgument& argument, TypeInfo* type) {
+		if (argument.has_value) {
+			return convert(generator, value_of(generator, argument.given), argument.given.type, type);
+		}
+		return emit_as(generator, argument.node, type);
+	}
+
+	static Emitted never_returning() {
+		Emitted result;
+		result.never_returns = true;
+		return result;
+	}
+
+	// A builtin function's call: size_of, align_of, offset_of, todo.
+	static Emitted emit_builtin_call(Generator& generator, ast::Node* paren, const std::vector<ast::Node*>& arguments,
+		const Emitted& callee) {
+
+		const std::string name = text_of(callee.name);
+		if (name == "todo") {
+			LLVM::Trap::create(generator.builder, generator.loc);
+			return never_returning();
+		}
+		if ((name == "size_of" || name == "align_of" || name == "offset_of") && !arguments.empty()) {
+			TypeInfo const* of = emit_expression(generator, arguments[0], nullptr).type;
+			int64_t number = 0;
+			if (of != nullptr && name == "size_of") {
+				number = static_cast<int64_t>(of->size);
+			}
+			else if (of != nullptr && name == "align_of") {
+				number = static_cast<int64_t>(of->alignment);
+			}
+			else if (of != nullptr && arguments.size() == 2 && is_variant(of, TypeInfoVariant::STRUCT)) {
+				size_t offset = 0;
+				TypeInfo* member_type = nullptr;
+				std::vector<int64_t> path;
+				find_member(generator, static_cast<TypeInfoStruct const*>(base(of)), arguments[1]->value.value, offset, member_type, path);
+				number = static_cast<int64_t>(offset);
+			}
+			return value(constant_int(generator, usize_type(generator), number), BUILTIN_usize);
+		}
+		unsupported(generator, paren, std::format("{} can't be generated yet", name));
+		return value(zero_of(generator, usize_type(generator)), BUILTIN_usize);
+	}
+
+	/*
+	 * A call: its arguments matched to the function's parameters like the checker does, in order,
+	 * then by name, then defaults; the varargs parameter takes the rest of those in order.
+	 */
+	static Emitted emit_call(Generator& generator, ast::Node* paren, const std::vector<ast::Node*>& argument_nodes,
+		const Emitted& callee, const CheckedNode* found, const std::vector<Emitted>& piped) {
+
+		if (ValueKind::BUILTIN_FUNCTION == callee.kind) {
+			return emit_builtin_call(generator, paren, argument_nodes, callee);
+		}
+		if (ValueKind::VARIANT == callee.kind) {
+			auto union_type = static_cast<TypeInfoUnion const*>(base(callee.type));
+			const UnionVariant& variant = union_type->variants[callee.variant];
+			std::vector<mlir::Value> values;
+			for (size_t i = 0; i < argument_nodes.size() && i < variant.types.size(); ++i) {
+				values.push_back(emit_as(generator, argument_nodes[i], variant.types[i]));
+			}
+			return value(make_variant(generator, callee.type, callee.variant, values, variant.types), callee.type);
+		}
+		TypeInfoFunction const* function = found->called;
+		Declaration* called = found->called_declaration;
+		if (function == nullptr) {
+			unsupported(generator, paren, "this call can't be generated yet");
+			return Emitted{};
+		}
+		// Intrinsics: declarations without a body in base
+		if (called != nullptr && function_body(called->generic != nullptr ? called->generic : called) == nullptr) {
+			const std::string name = text_of(called->name);
+			if (name == "trap") {
+				LLVM::Trap::create(generator.builder, generator.loc);
+				return never_returning();
+			}
+			unsupported(generator, paren, std::format("calling {}, which has no body, isn't supported yet", name));
+			return Emitted{};
+		}
+		// What a pipe passed fills its placeholders in order or by number, or comes first
+		std::vector<CallArgument> positional;
+		std::vector<std::pair<InternedString, ast::Node*>> named;
+		const bool placeholders = std::any_of(argument_nodes.begin(), argument_nodes.end(), is_placeholder);
+		if (!placeholders) {
+			for (const Emitted& each : piped) {
+				positional.push_back({ nullptr, true, each });
+			}
+		}
+		size_t next_piped = 0;
+		for (ast::Node* argument : argument_nodes) {
+			if (ast::NodeType::UNDERSCORE == argument->node_type && next_piped < piped.size()) {
+				positional.push_back({ argument, true, piped[next_piped++] });
+			}
+			else if (ast::NodeType::PIPE_REORDER_IDENTIFIER == argument->node_type) {
+				const size_t number = std::stoul(text_of(argument->value.value).substr(1));
+				positional.push_back({ argument, true, piped[number - 1] });
+			}
+			else if (ast::NodeType::BINARY_OPERATOR == argument->node_type && is_assign(argument)
+				&& argument->children.size() == 2 && ast::NodeType::IDENTIFIER == argument->children[0]->node_type) {
+				named.emplace_back(argument->children[0]->value.value, argument->children[1]);
+			}
+			else {
+				positional.push_back({ argument, false, {} });
+			}
+		}
+		const std::vector<ParameterNode> parameters = parameter_nodes(called);
+		std::vector<mlir::Value> arguments{ generator.state->context };
+		size_t next = 0;
+		for (size_t i = 0; i < function->input.size(); ++i) {
+			const FunctionInput& input = function->input[i];
+			if (input.is_varargs) {
+				// A view passed on, or the rest in order, in a stack array whose view is passed
+				if (positional.size() == next + 1) {
+					const CallArgument& only = positional[next];
+					TypeInfo* only_type = only.has_value ? only.given.type : type_at(generator, only.node, nullptr);
+					if (is_variant(only_type, TypeInfoVariant::ARRAY)
+						&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(base(only_type))->array_type) {
+						arguments.push_back(only.has_value ? value_of(generator, only.given)
+							: value_of(generator, emit_expression(generator, only.node, nullptr)));
+						next = positional.size();
+						continue;
+					}
+				}
+				std::vector<mlir::Value> values;
+				for (; next < positional.size(); ++next) {
+					values.push_back(argument_as(generator, positional[next], input.type));
+				}
+				mlir::Value data = zero_of(generator, pointer_type(generator));
+				if (!values.empty()) {
+					data = make_raw_slot(generator, LLVM::LLVMArrayType::get(llvm_type(generator, input.type), values.size()),
+						input.type->alignment);
+					for (size_t j = 0; j < values.size(); ++j) {
+						store(generator, values[j], element_address(generator, data, input.type,
+							constant_int(generator, usize_type(generator), static_cast<int64_t>(j))));
+					}
+				}
+				arguments.push_back(make_view(generator, constant_int(generator, usize_type(generator),
+					static_cast<int64_t>(values.size())), data));
+				continue;
+			}
+			if (next < positional.size()) {
+				arguments.push_back(argument_as(generator, positional[next++], input.type));
+				continue;
+			}
+			InternedString name = input.name != nullptr ? input.name : (i < parameters.size() ? parameters[i].name : nullptr);
+			ast::Node* named_node = nullptr;
+			for (const auto& [argument_name, node] : named) {
+				if (name != nullptr && *argument_name == *name) {
+					named_node = node;
+				}
+			}
+			arguments.push_back(named_node != nullptr ? emit_as(generator, named_node, input.type)
+				: emit_default(generator, called, i, input.type, paren));
+		}
+		LLVM::CallOp call;
+		if (called != nullptr && DeclarationKind::FUNCTION == called->kind) {
+			call = LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, called), arguments);
+		}
+		else {
+			// Through a function value: its pointer first
+			std::vector<mlir::Value> operands{ value_of(generator, callee) };
+			operands.insert(operands.end(), arguments.begin(), arguments.end());
+			call = LLVM::CallOp::create(generator.builder, generator.loc, function_type(generator, function), operands);
+		}
+		Emitted result;
+		result.never_returns = function->never_returns;
+		if (function->output.empty()) {
+			return result;
+		}
+		result.kind = ValueKind::VALUE;
+		result.value = call.getResult();
+		if (function->output.size() == 1) {
+			result.type = function->output[0].type;
+		}
+		else {
+			result.kind = ValueKind::RESULTS;
+			for (const FunctionOutput& output : function->output) {
+				result.results.push_back(output.type);
+			}
+		}
+		return result;
+	}
+
+	/*
+	 * What follows a value, flat, from start: .member, (arguments), [index] or [type arguments],
+	 * and ^, each step's result as the checker recorded it at its node.
+	 */
+	static Emitted emit_steps(Generator& generator, ast::Node* node, size_t start, Emitted current) {
+		for (size_t i = start; i < node->children.size(); ++i) {
+			ast::Node* child = node->children[i];
+			std::vector<ast::Node*> arguments;
+			while (i + 1 < node->children.size() && !is_postfix_marker(node->children[i + 1])) {
+				arguments.push_back(node->children[++i]);
+			}
+			const ast::NodeType type = child->node_type;
+			if (ast::NodeType::PAREN_GROUP == type && arguments.empty() && !child->children.empty()) {
+				arguments.assign(child->children.begin(), child->children.end());
+			}
+			ast::Node* at = ast::NodeType::DOT_ACCESS == type && !arguments.empty() ? arguments[0] : child;
+			const CheckedNode* found = checked(generator, at);
+			if (found == nullptr || ValueKind::POISONED == found->kind) {
+				unsupported(generator, at, "this wasn't checked");
+				return Emitted{};
+			}
+			if (ast::NodeType::DOT_ACCESS == type) {
+				if (ValueKind::PACKAGE == current.kind) {
+					current = emit_name(generator, arguments[0], found, nullptr);
+				}
+				else if (ValueKind::TYPE == current.kind && ValueKind::VARIANT == found->kind) {
+					current = Emitted{};
+					current.kind = ValueKind::VARIANT;
+					current.type = found->type;
+					current.variant = found->variant;
+				}
+				else if (ValueKind::TYPE == current.kind) {
+					// An enum's member
+					current = value(constant_int(generator, llvm_type(generator, found->type),
+						enum_value(found->type, arguments[0]->value.value)), found->type);
+				}
+				else {
+					current = emit_member(generator, current, arguments[0], found);
+				}
+			}
+			else if (ast::NodeType::PAREN_GROUP == type) {
+				bool last_call = true;
+				for (size_t j = i + 1; j < node->children.size(); ++j) {
+					if (ast::NodeType::PAREN_GROUP == node->children[j]->node_type) {
+						last_call = false;
+					}
+				}
+				std::vector<Emitted> piped;
+				if (last_call) {
+					piped = std::move(generator.piped);
+					generator.piped.clear();
+				}
+				current = emit_call(generator, child, arguments, current, found, piped);
+			}
+			else if (ast::NodeType::ARRAY_DIMENSION == type) {
+				if (ValueKind::GENERIC_FUNCTION != current.kind) {
+					current = emit_index(generator, current, arguments[0], found);
+				}
+			}
+			else {
+				current = location(value_of(generator, current), found->type);
+			}
+			if (ValueKind::RESULTS != current.kind && ValueKind::NOTHING != current.kind) {
+				current.kind = found->kind;
+				if (found->type != nullptr) {
+					current.type = found->type;
+				}
+			}
+		}
+		return current;
+	}
+
+	// A name and what follows it.
+	static Emitted emit_postfix(Generator& generator, ast::Node* node, TypeInfo* expected) {
+		const CheckedNode* whole = checked(generator, node);
+		if (whole != nullptr && ValueKind::TYPE == whole->kind) {
+			Emitted result;
+			result.kind = ValueKind::TYPE;
+			result.type = whole->type;
+			return result;
+		}
+		const CheckedNode* head = head_of(generator, node);
+		if (node->children.empty() || head == nullptr) {
+			return emit_name(generator, node, head != nullptr ? head : whole, expected);
+		}
+		// For package.Name, the head is Name
+		Emitted current = emit_name(generator, head->next > 0 ? node->children[head->next - 1] : node, head,
+			node->children.size() == head->next ? expected : nullptr);
+		return emit_steps(generator, node, head->next, current);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Operators
+
+	static bool is_comparison(TokenType op) {
+		return TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op
+			|| TokenType::SYM_LT == op || TokenType::SYM_GT == op
+			|| TokenType::OPERATOR_LESS_THAN_OR_EQUAL == op || TokenType::OPERATOR_GREATER_THAN_OR_EQUAL == op;
+	}
+
+	static bool is_shift(TokenType op) {
+		return TokenType::OPERATOR_LEFT_SHIFT == op || TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC == op
+			|| TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op;
+	}
+
+	// The type two operands share, as the checker found it: the typed one's, or the one the other converts to.
+	static TypeInfo* shared_type(Generator& generator, ast::Node* left, ast::Node* right, TypeInfo* expected) {
+		const CheckedNode* left_checked = checked(generator, left);
+		const CheckedNode* right_checked = checked(generator, right);
+		const bool left_typed = left_checked != nullptr && !is_untyped(left_checked->kind);
+		const bool right_typed = right_checked != nullptr && !is_untyped(right_checked->kind);
+		if (left_typed && right_typed) {
+			return can_implicitly_convert_to(right_checked->type, left_checked->type) ? left_checked->type : right_checked->type;
+		}
+		if (left_typed) {
+			return left_checked->type;
+		}
+		if (right_typed) {
+			return right_checked->type;
+		}
+		ValueKind kind = left_checked != nullptr ? left_checked->kind : ValueKind::UNTYPED_INTEGER;
+		if (right_checked != nullptr && ValueKind::UNTYPED_FLOAT == right_checked->kind) {
+			kind = ValueKind::UNTYPED_FLOAT;
+		}
+		return untyped_as(kind, expected);
+	}
+
+	static mlir::Value compare(Generator& generator, TokenType op, mlir::Value left, mlir::Value right, TypeInfo const* type) {
+		if (is_float(type)) {
+			const LLVM::FCmpPredicate predicate = TokenType::OPERATOR_EQUAL == op ? LLVM::FCmpPredicate::oeq
+				: TokenType::OPERATOR_NOT_EQUAL == op ? LLVM::FCmpPredicate::une
+				: TokenType::SYM_LT == op ? LLVM::FCmpPredicate::olt
+				: TokenType::SYM_GT == op ? LLVM::FCmpPredicate::ogt
+				: TokenType::OPERATOR_LESS_THAN_OR_EQUAL == op ? LLVM::FCmpPredicate::ole
+				: LLVM::FCmpPredicate::oge;
+			return LLVM::FCmpOp::create(generator.builder, generator.loc, predicate, left, right);
+		}
+		const bool signed_ = is_signed(type);
+		const LLVM::ICmpPredicate predicate = TokenType::OPERATOR_EQUAL == op ? LLVM::ICmpPredicate::eq
+			: TokenType::OPERATOR_NOT_EQUAL == op ? LLVM::ICmpPredicate::ne
+			: TokenType::SYM_LT == op ? (signed_ ? LLVM::ICmpPredicate::slt : LLVM::ICmpPredicate::ult)
+			: TokenType::SYM_GT == op ? (signed_ ? LLVM::ICmpPredicate::sgt : LLVM::ICmpPredicate::ugt)
+			: TokenType::OPERATOR_LESS_THAN_OR_EQUAL == op ? (signed_ ? LLVM::ICmpPredicate::sle : LLVM::ICmpPredicate::ule)
+			: (signed_ ? LLVM::ICmpPredicate::sge : LLVM::ICmpPredicate::uge);
+		return LLVM::ICmpOp::create(generator.builder, generator.loc, predicate, left, right);
+	}
+
+	// An arithmetic, bitwise or shift operator on two values of type.
+	static mlir::Value arithmetic(Generator& generator, TokenType op, mlir::Value left, mlir::Value right, TypeInfo const* type,
+		const ast::Node* where) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		if (is_float(type)) {
+			if (TokenType::OPERATOR_PLUS == op) {
+				return LLVM::FAddOp::create(b, l, left, right);
+			}
+			if (TokenType::OPERATOR_MINUS == op) {
+				return LLVM::FSubOp::create(b, l, left, right);
+			}
+			if (TokenType::OPERATOR_MULTIPLY == op) {
+				return LLVM::FMulOp::create(b, l, left, right);
+			}
+			if (TokenType::OPERATOR_DIVIDE == op) {
+				return LLVM::FDivOp::create(b, l, left, right);
+			}
+			unsupported(generator, where, "this operator on floats can't be generated yet");
+			return left;
+		}
+		const bool signed_ = is_signed(type);
+		if (TokenType::OPERATOR_PLUS == op) {
+			return LLVM::AddOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_MINUS == op) {
+			return LLVM::SubOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_MULTIPLY == op) {
+			return LLVM::MulOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_DIVIDE == op) {
+			return signed_ ? static_cast<mlir::Value>(LLVM::SDivOp::create(b, l, left, right))
+				: static_cast<mlir::Value>(LLVM::UDivOp::create(b, l, left, right));
+		}
+		if (TokenType::OPERATOR_MODULUS == op || (TokenType::OPERATOR_REMAINDER == op && !signed_)) {
+			// % is truncated, like C's
+			return signed_ ? static_cast<mlir::Value>(LLVM::SRemOp::create(b, l, left, right))
+				: static_cast<mlir::Value>(LLVM::URemOp::create(b, l, left, right));
+		}
+		if (TokenType::OPERATOR_REMAINDER == op) {
+			// %% is floored: the truncated one, plus the divisor when their signs differ
+			mlir::Value truncated = LLVM::SRemOp::create(b, l, left, right);
+			mlir::Value zero = constant_int(generator, left.getType(), 0);
+			mlir::Value nonzero = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::ne, truncated, zero);
+			mlir::Value signs = LLVM::XOrOp::create(b, l, truncated, right);
+			mlir::Value differ = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::slt, signs, zero);
+			mlir::Value adjust = LLVM::AndOp::create(b, l, nonzero, differ);
+			return LLVM::SelectOp::create(b, l, adjust, LLVM::AddOp::create(b, l, truncated, right), truncated);
+		}
+		if (TokenType::SYM_AMPERSAND == op) {
+			return LLVM::AndOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_BITWISE_OR == op) {
+			return LLVM::OrOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_BITWISE_XOR == op) {
+			return LLVM::XOrOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_LEFT_SHIFT == op) {
+			return LLVM::ShlOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC == op && signed_) {
+			return LLVM::AShrOp::create(b, l, left, right);
+		}
+		if (TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC == op || TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op) {
+			return LLVM::LShrOp::create(b, l, left, right);
+		}
+		unsupported(generator, where, "this operator can't be generated yet");
+		return left;
+	}
+
+	// A shift's amount, as wide as what's shifted.
+	static mlir::Value shift_amount(Generator& generator, mlir::Value amount, mlir::Type target) {
+		const unsigned from = amount.getType().getIntOrFloatBitWidth();
+		const unsigned to = target.getIntOrFloatBitWidth();
+		if (from < to) {
+			return LLVM::ZExtOp::create(generator.builder, generator.loc, target, amount);
+		}
+		if (from > to) {
+			return LLVM::TruncOp::create(generator.builder, generator.loc, target, amount);
+		}
+		return amount;
+	}
+
+	static mlir::Value tag_is(Generator& generator, mlir::Value address, TypeInfo const* type, size_t variant, bool equal) {
+		mlir::Value tag = union_tag(generator, address, type);
+		return LLVM::ICmpOp::create(generator.builder, generator.loc, equal ? LLVM::ICmpPredicate::eq : LLVM::ICmpPredicate::ne,
+			tag, constant_int(generator, tag.getType(), static_cast<int64_t>(variant)));
+	}
+
+	// What a function returns instead, for x? and or_return: an optional's None, or a result's error.
+	static void return_missing(Generator& generator, mlir::Value address, TypeInfo const* type, const ast::Node* where) {
+		TypeInfoFunction const* function = generator.state->type;
+		if (function == nullptr || function->output.size() != 1) {
+			unsupported(generator, where, "? here can't be generated yet");
+			::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
+			return;
+		}
+		TypeInfo* returned = function->output[0].type;
+		const size_t none = variant_named(returned, "None");
+		if (none < static_cast<TypeInfoUnion const*>(base(returned))->variants.size()) {
+			emit_return(generator, { make_variant(generator, returned, none, {}, {}) });
+			return;
+		}
+		// The error, as the function's result's error
+		const UnionVariant& error = static_cast<TypeInfoUnion const*>(base(type))->variants[1];
+		mlir::Value missing = load(generator, error.types[0], offset_address(generator, address, error.offsets[0]));
+		emit_return(generator, { make_variant(generator, returned, 1, { missing }, { error.types[0] }) });
+	}
+
+	// What an optional or result holds, where it is.
+	static Emitted held_value(Generator& generator, mlir::Value address, TypeInfo const* type) {
+		const UnionVariant& some = static_cast<TypeInfoUnion const*>(base(type))->variants[0];
+		return location(offset_address(generator, address, some.offsets.empty() ? 0 : some.offsets[0]), some.types[0]);
+	}
+
+	static Emitted emit_unary(Generator& generator, ast::Node* node, TypeInfo* expected) {
+		const TokenType op = node->value.type;
+		ast::Node* operand_node = node->children[0];
+		const CheckedNode* found = checked(generator, node);
+		TypeInfo* result_type = type_at(generator, node, expected);
+		if (found != nullptr && ValueKind::TYPE == found->kind) {
+			Emitted type;
+			type.kind = ValueKind::TYPE;
+			type.type = found->type;
+			return type;
+		}
+		if (TokenType::SYM_QUESTION == op || TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op
+			|| TokenType::KEYWORD_OR_BREAK == op || TokenType::KEYWORD_OR_CONTINUE == op) {
+			Emitted operand = emit_expression(generator, operand_node, nullptr);
+			mlir::Value address = address_of(generator, operand);
+			if (TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op) {
+				return value(tag_is(generator, address, operand.type, 0, TokenType::KEYWORD_IS_SOME == op), BUILTIN_bool);
+			}
+			emit_if(generator, tag_is(generator, address, operand.type, 0, false), [&]() {
+				if (TokenType::KEYWORD_OR_BREAK == op) {
+					emit_break(generator, 1);
+				}
+				else if (TokenType::KEYWORD_OR_CONTINUE == op) {
+					emit_continue(generator);
+				}
+				else {
+					return_missing(generator, address, operand.type, node);
+				}
+				return true;
+			}, nullptr);
+			return held_value(generator, address, operand.type);
+		}
+		if (TokenType::SYM_AMPERSAND == op) {
+			Emitted operand = emit_expression(generator, operand_node, nullptr);
+			return value(address_of(generator, operand), result_type);
+		}
+		if (TokenType::OPERATOR_DEREFERENCE == op) {
+			Emitted operand = emit_expression(generator, operand_node, nullptr);
+			return location(value_of(generator, operand), result_type);
+		}
+		mlir::Value operand = emit_as(generator, operand_node, result_type);
+		mlir::Type type = operand.getType();
+		if (TokenType::OPERATOR_NOT == op) {
+			return value(LLVM::XOrOp::create(generator.builder, generator.loc, operand,
+				constant_int(generator, type, type.getIntOrFloatBitWidth() == 1 ? 1 : -1)), result_type);
+		}
+		if (TokenType::OPERATOR_MINUS == op) {
+			if (is_float(result_type)) {
+				return value(LLVM::FNegOp::create(generator.builder, generator.loc, operand), result_type);
+			}
+			return value(LLVM::SubOp::create(generator.builder, generator.loc, constant_int(generator, type, 0), operand), result_type);
+		}
+		if (TokenType::OPERATOR_BITWISE_XOR == op) {
+			return value(LLVM::XOrOp::create(generator.builder, generator.loc, operand, constant_int(generator, type, -1)), result_type);
+		}
+		return value(operand, result_type);
+	}
+
+	static Emitted emit_binary(Generator& generator, ast::Node* node, TypeInfo* expected) {
+		const TokenType op = node->value.type;
+		ast::Node* left_node = node->children[0];
+		ast::Node* right_node = node->children.size() > 1 ? node->children[1] : nullptr;
+		TypeInfo* result_type = type_at(generator, node, expected);
+		if (TokenType::OPERATOR_PIPE == op) {
+			// a |> f(b): f(a, b), with each of a's results
+			Emitted left = emit_expression(generator, left_node, nullptr);
+			std::vector<Emitted> piped;
+			if (ValueKind::RESULTS == left.kind) {
+				for (size_t i = 0; i < left.results.size(); ++i) {
+					piped.push_back(value(extract(generator, left.value, static_cast<int64_t>(i)), left.results[i]));
+				}
+			}
+			else if (ValueKind::NOTHING != left.kind) {
+				piped.push_back(left);
+			}
+			generator.piped = std::move(piped);
+			Emitted right = emit_postfix(generator, right_node, nullptr);
+			Emitted result = emit_steps(generator, node, 2, right);
+			generator.piped.clear();
+			return result;
+		}
+		if (TokenType::KEYWORD_OR_ELSE == op || TokenType::KEYWORD_OR_RETURN == op) {
+			Emitted left = emit_expression(generator, left_node, nullptr);
+			mlir::Value address = address_of(generator, left);
+			Emitted held = held_value(generator, address, left.type);
+			if (TokenType::KEYWORD_OR_RETURN == op) {
+				emit_if(generator, tag_is(generator, address, left.type, 0, false), [&]() {
+					TypeInfoFunction const* function = generator.state->type;
+					if (function->output.empty()) {
+						emit_return(generator, {});
+					}
+					else {
+						emit_return(generator, { emit_as(generator, right_node, function->output[0].type) });
+					}
+					return true;
+				}, nullptr);
+				return held;
+			}
+			mlir::Value slot = make_slot(generator, held.type);
+			emit_if(generator, tag_is(generator, address, left.type, 0, true), [&]() {
+				store(generator, value_of(generator, held), slot);
+				return false;
+			}, [&]() {
+				store(generator, emit_as(generator, right_node, held.type), slot);
+				return false;
+			});
+			return location(slot, held.type);
+		}
+		if (TokenType::OPERATOR_AND == op || TokenType::OPERATOR_OR == op) {
+			// The right only if it's needed
+			mlir::Value slot = make_slot(generator, BUILTIN_bool);
+			mlir::Value left = emit_condition(generator, left_node);
+			store(generator, left, slot);
+			emit_if(generator, TokenType::OPERATOR_AND == op ? left : negate(generator, left), [&]() {
+				store(generator, emit_condition(generator, right_node), slot);
+				return false;
+			}, nullptr);
+			return location(slot, BUILTIN_bool);
+		}
+		if (is_comparison(op)) {
+			TypeInfo* type = shared_type(generator, left_node, right_node, nullptr);
+			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::TYPE)
+				|| is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
+				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
+				return value(boolean(generator, false), BUILTIN_bool);
+			}
+			mlir::Value left = emit_as(generator, left_node, type);
+			mlir::Value right = emit_as(generator, right_node, type);
+			return value(compare(generator, op, left, right, type), BUILTIN_bool);
+		}
+		if (is_shift(op)) {
+			mlir::Value left = emit_as(generator, left_node, result_type);
+			mlir::Value amount = emit_as(generator, right_node, type_at(generator, right_node, BUILTIN_usize));
+			return value(arithmetic(generator, op, left, shift_amount(generator, amount, left.getType()), result_type, node),
+				result_type);
+		}
+		// Pointer arithmetic: a raw pointer and a count of bytes
+		if (is_variant(result_type, TypeInfoVariant::POINTER) && !static_cast<TypeInfoPointer const*>(base(result_type))->is_relative) {
+			mlir::Value pointer = emit_as(generator, left_node, result_type);
+			mlir::Value amount = emit_as(generator, right_node, BUILTIN_int);
+			if (TokenType::OPERATOR_MINUS == op) {
+				amount = LLVM::SubOp::create(generator.builder, generator.loc, constant_int(generator, amount.getType(), 0), amount);
+			}
+			llvm::SmallVector<LLVM::GEPArg> indices{ amount };
+			return value(LLVM::GEPOp::create(generator.builder, generator.loc, pointer_type(generator), integer_type(generator, 1),
+				pointer, indices), result_type);
+		}
+		if (is_variant(result_type, TypeInfoVariant::STRING)) {
+			unsupported(generator, node, "joining strings can't be generated yet");
+			return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
+		}
+		mlir::Value left = emit_as(generator, left_node, result_type);
+		mlir::Value right = emit_as(generator, right_node, result_type);
+		return value(arithmetic(generator, op, left, right, result_type, node), result_type);
+	}
+
+	// cast[T](x), bit_cast[T](x), auto_cast(x), then anything after it.
+	static Emitted emit_cast(Generator& generator, ast::Node* node) {
+		const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type;
+		ast::Node* value_node = node->children[automatic ? 0 : 1];
+		const size_t rest = automatic ? 1 : 2;
+		const CheckedNode* head = head_of(generator, node);
+		TypeInfo* target = head != nullptr ? head->type : nullptr;
+		if (target == nullptr) {
+			unsupported(generator, node, "this cast wasn't checked");
+			return Emitted{};
+		}
+		const CheckedNode* found = checked(generator, value_node);
+		mlir::Value result;
+		if (found != nullptr && is_untyped(found->kind) && takes_untyped(found->kind, target)) {
+			result = emit_as(generator, value_node, target);
+		}
+		else {
+			Emitted source = emit_expression(generator, value_node, nullptr);
+			mlir::Value v = value_of(generator, source);
+			if (TokenType::KEYWORD_BIT_CAST == node->value.type) {
+				mlir::Value slot = make_slot(generator, source.type->size >= target->size ? source.type : target);
+				store(generator, v, slot);
+				result = load(generator, target, slot);
+			}
+			else {
+				result = convert(generator, v, source.type, target);
+			}
+		}
+		return emit_steps(generator, node, rest, value(result, target));
+	}
+
+	// Type.{values} or Type.{name = value}: built as a value, part by part.
+	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
+		auto structure = static_cast<TypeInfoStruct const*>(base(type));
+		mlir::Value result = zero_of(generator, llvm_type(generator, type));
+		std::vector<ast::Node*> elements;
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::LIST == child->node_type) {
+				elements.assign(child->children.begin(), child->children.end());
+			}
+		}
+		std::set<std::string> given;
+		size_t position = 0;
+		for (ast::Node* element : elements) {
+			const bool named = ast::NodeType::BINARY_OPERATOR == element->node_type && is_assign(element)
+				&& element->children.size() == 2;
+			size_t offset = 0;
+			TypeInfo* member_type = nullptr;
+			std::vector<int64_t> path;
+			if (named) {
+				find_member(generator, structure, element->children[0]->value.value, offset, member_type, path);
+				given.insert(text_of(element->children[0]->value.value));
+			}
+			else {
+				// In order: the member at this position, which may have no name
+				llvm_type(generator, structure);
+				path.push_back(generator.member_elements[structure][position]);
+				member_type = structure->members[position].member_type;
+				given.insert(text_of(structure->members[position].name));
+				++position;
+			}
+			if (std::find(path.begin(), path.end(), -1) != path.end()) {
+				unsupported(generator, element, "a #union struct's literal can't be generated yet");
+				continue;
+			}
+			result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result,
+				emit_as(generator, named ? element->children[1] : element, member_type), path);
+		}
+		for (const StructMember& member : structure->members) {
+			if (member.has_value && !given.contains(text_of(member.name))) {
+				unsupported(generator, node, std::format("{}'s default value can't be generated yet", text_of(member.name)));
+			}
+		}
+		return value(result, type);
+	}
+
+	// Type.[values]: a static array of them.
+	static Emitted emit_array_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
+		auto array = static_cast<TypeInfoArray const*>(base(type));
+		mlir::Value result = zero_of(generator, llvm_type(generator, type));
+		int64_t index = 0;
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::LIST != child->node_type) {
+				continue;
+			}
+			for (ast::Node* element : child->children) {
+				result = insert(generator, result, emit_as(generator, element, array->element_type), { index++ });
+			}
+		}
+		return value(result, type);
+	}
+
+	// .Name or .Name(values): an enum's member, or a union's variant.
+	static Emitted emit_enum_shorthand(Generator& generator, ast::Node* node, const CheckedNode* found, TypeInfo* type) {
+		if (found == nullptr || type == nullptr) {
+			unsupported(generator, node, "this wasn't checked");
+			return Emitted{};
+		}
+		if (is_variant(type, TypeInfoVariant::ENUM)) {
+			return value(constant_int(generator, llvm_type(generator, type), enum_value(type, node->value.value)), type);
+		}
+		const UnionVariant& variant = static_cast<TypeInfoUnion const*>(base(type))->variants[found->variant];
+		std::vector<mlir::Value> values;
+		bool called = false;
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::PAREN_GROUP == child->node_type) {
+				called = true;
+			}
+			else if (called && values.size() < variant.types.size()) {
+				values.push_back(emit_as(generator, child, variant.types[values.size()]));
+			}
+		}
+		return value(make_variant(generator, type, found->variant, values, variant.types), type);
+	}
+
+	// An if's else: its block, or the if after it.
+	static ast::Node* else_of(ast::Node* if_node) {
+		ast::Node* otherwise = if_node->children.size() > 2 ? if_node->children[2] : nullptr;
+		if (otherwise != nullptr && ast::NodeType::ELSE == otherwise->node_type && !otherwise->children.empty()) {
+			otherwise = otherwise->children[0];
+		}
+		return otherwise;
+	}
+
+	// if as a value: each branch's block ends with its value.
+	static void emit_if_value(Generator& generator, ast::Node* node, mlir::Value slot, TypeInfo* type) {
+		ast::Node* otherwise = else_of(node);
+		emit_if(generator, emit_condition(generator, node->children[0]), [&]() {
+			return emit_block(generator, node->children[1], slot, type);
+		}, otherwise == nullptr ? std::function<bool()>() : [&]() {
+			if (ast::NodeType::IF == otherwise->node_type) {
+				emit_if_value(generator, otherwise, slot, type);
+				return false;
+			}
+			return emit_block(generator, otherwise, slot, type);
+		});
+	}
+
+	static Emitted emit_match(Generator& generator, ast::Node* node, TypeInfo* type, bool as_value);
+
+	static Emitted emit_expression(Generator& generator, ast::Node* node, TypeInfo* expected) {
+		const CheckedNode* found = checked(generator, node);
+		const ast::NodeType type = node->node_type;
+		TypeInfo* result_type = type_at(generator, node, expected);
+		if (ast::NodeType::LITERAL == type) {
+			return value(emit_literal(generator, node, result_type), result_type);
+		}
+		if (ast::NodeType::IDENTIFIER == type) {
+			return emit_postfix(generator, node, expected);
+		}
+		if (ast::NodeType::PAREN_GROUP == type && node->children.size() == 1) {
+			return emit_expression(generator, node->children[0], expected);
+		}
+		if (ast::NodeType::TYPE == type || ast::NodeType::FUNCTION == type) {
+			Emitted result;
+			result.kind = ValueKind::TYPE;
+			result.type = found != nullptr ? found->type : nullptr;
+			return result;
+		}
+		if (ast::NodeType::UNARY_OPERATOR == type) {
+			return emit_unary(generator, node, expected);
+		}
+		if (ast::NodeType::BINARY_OPERATOR == type) {
+			return emit_binary(generator, node, expected);
+		}
+		if (ast::NodeType::CAST == type) {
+			return emit_cast(generator, node);
+		}
+		if (ast::NodeType::STRUCT_LITERAL == type) {
+			return emit_struct_literal(generator, node, result_type);
+		}
+		if (ast::NodeType::ARRAY_LITERAL == type) {
+			return emit_array_literal(generator, node, result_type);
+		}
+		if (ast::NodeType::ENUM_SHORTHAND == type) {
+			return emit_enum_shorthand(generator, node, found, result_type);
+		}
+		if (ast::NodeType::IF == type) {
+			mlir::Value slot = make_slot(generator, result_type);
+			emit_if_value(generator, node, slot, result_type);
+			return location(slot, result_type);
+		}
+		if (ast::NodeType::MATCH == type) {
+			return emit_match(generator, node, result_type, true);
+		}
+		if (ast::NodeType::VOID == type) {
+			return Emitted{};
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#caller_location")) {
+			return value(caller_location(generator, result_type, node), result_type);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
+			return value(boolean(generator, false), BUILTIN_bool);
+		}
+		unsupported(generator, node, std::format("{} can't be generated yet", ast::name_of(type)));
+		TypeInfo* placeholder = result_type != nullptr ? result_type : BUILTIN_int;
+		return value(zero_of(generator, llvm_type(generator, placeholder)), placeholder);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// match and switch
+
+	static bool is_wildcard(const ast::Node* node) {
+		return ast::NodeType::UNDERSCORE == node->node_type;
+	}
+
+	// Whether the subject matches one case's value; a variant's values become its locals.
+	static mlir::Value case_matches(Generator& generator, ast::Node* pattern, const Emitted& subject, mlir::Value address) {
+		if (is_wildcard(pattern)) {
+			return boolean(generator, true);
+		}
+		TypeInfo const* type = base(subject.type);
+		const TokenType op = pattern->value.type;
+		if (ast::NodeType::BINARY_OPERATOR == pattern->node_type
+			&& (TokenType::OPERATOR_RANGE_EXCLUSIVE == op || TokenType::OPERATOR_RANGE_INCLUSIVE == op)) {
+			mlir::Value v = load(generator, subject.type, address);
+			mlir::Value low = emit_as(generator, pattern->children[0], subject.type);
+			mlir::Value high = emit_as(generator, pattern->children[1], subject.type);
+			mlir::Value above = compare(generator, TokenType::OPERATOR_GREATER_THAN_OR_EQUAL, v, low, type);
+			mlir::Value below = compare(generator, TokenType::OPERATOR_RANGE_INCLUSIVE == op
+				? TokenType::OPERATOR_LESS_THAN_OR_EQUAL : TokenType::SYM_LT, v, high, type);
+			return LLVM::AndOp::create(generator.builder, generator.loc, above, below);
+		}
+		if (TypeInfoVariant::UNION == type->variant
+			&& (ast::NodeType::IDENTIFIER == pattern->node_type || ast::NodeType::ENUM_SHORTHAND == pattern->node_type)) {
+			const size_t index = variant_named(type, std::string_view(*pattern->value.value));
+			const UnionVariant& variant = static_cast<TypeInfoUnion const*>(type)->variants[index];
+			for (ast::Node* child : pattern->children) {
+				if (ast::NodeType::PAREN_GROUP != child->node_type) {
+					continue;
+				}
+				// Its values, named: where they are in the subject, read only once it matches
+				for (size_t i = 0; i < child->children.size() && i < variant.types.size(); ++i) {
+					if (!is_wildcard(child->children[i])) {
+						generator.state->slots[child->children[i]] = offset_address(generator, address, variant.offsets[i]);
+					}
+				}
+			}
+			return tag_is(generator, address, type, index, true);
+		}
+		if (TypeInfoVariant::STRING == type->variant) {
+			unsupported(generator, pattern, "matching strings can't be generated yet");
+			return boolean(generator, false);
+		}
+		mlir::Value v = load(generator, subject.type, address);
+		return compare(generator, TokenType::OPERATOR_EQUAL, v, emit_as(generator, pattern, subject.type), type);
+	}
+
+	// Whether any of an arm's or case's values match.
+	static mlir::Value arm_matches(Generator& generator, ast::Node* arm, const Emitted& subject, mlir::Value address) {
+		mlir::Value result;
+		for (size_t i = 0; i + 1 < arm->children.size(); ++i) {
+			mlir::Value each = case_matches(generator, arm->children[i], subject, address);
+			result = result ? static_cast<mlir::Value>(LLVM::OrOp::create(generator.builder, generator.loc, result, each)) : each;
+		}
+		return result ? result : boolean(generator, true);
+	}
+
+	static bool is_assignment(const ast::Node* node);
+
+	// The entries of a match's or switch's lists: its arms or cases.
+	static std::vector<ast::Node*> entries_of(ast::Node* node, bool cases) {
+		std::vector<ast::Node*> result;
+		for (ast::Node* list : node->children) {
+			if (ast::NodeType::LIST != list->node_type) {
+				continue;
+			}
+			for (ast::Node* entry : list->children) {
+				if (!entry->children.empty() && (!cases || ast::NodeType::SWITCH_CASE == entry->node_type)) {
+					result.push_back(entry);
+				}
+			}
+		}
+		return result;
+	}
+
+	// One arm of a match, and the ones after it in its else.
+	static void emit_arms(Generator& generator, const std::vector<ast::Node*>& arms, size_t index, const Emitted& subject,
+		mlir::Value address, mlir::Value slot, TypeInfo* type) {
+
+		ast::Node* arm = arms[index];
+		emit_if(generator, arm_matches(generator, arm, subject, address), [&]() {
+			ast::Node* outcome = arm->children.back();
+			const ast::NodeType outcome_type = outcome->node_type;
+			if (ast::NodeType::BLOCK == outcome_type) {
+				return emit_block(generator, outcome, slot, type);
+			}
+			if (ast::NodeType::RETURN == outcome_type || ast::NodeType::BREAK == outcome_type
+				|| ast::NodeType::CONTINUE == outcome_type || is_assignment(outcome) || !slot) {
+				return emit_statement(generator, outcome);
+			}
+			Emitted result = emit_expression(generator, outcome, type);
+			if (result.never_returns) {
+				LLVM::UnreachableOp::create(generator.builder, generator.loc);
+				return true;
+			}
+			store(generator, convert(generator, value_of(generator, result), result.type, type), slot);
+			return false;
+		}, index + 1 == arms.size() ? std::function<bool()>() : [&]() {
+			emit_arms(generator, arms, index + 1, subject, address, slot, type);
+			return false;
+		});
+	}
+
+	// match (docs/control_flow.md): the first arm whose values match runs. As a value, it stores its result.
+	static Emitted emit_match(Generator& generator, ast::Node* node, TypeInfo* type, bool as_value) {
+		Emitted subject = emit_expression(generator, node->children[0], nullptr);
+		mlir::Value address = address_of(generator, subject);
+		mlir::Value slot = as_value && type != nullptr ? make_slot(generator, type) : mlir::Value();
+		const std::vector<ast::Node*> arms = entries_of(node, false);
+		if (!arms.empty()) {
+			emit_arms(generator, arms, 0, subject, address, slot, type);
+		}
+		return slot ? location(slot, type) : Emitted{};
+	}
+
+	// One case of a switch, and the ones after it in its else.
+	static void emit_cases(Generator& generator, const std::vector<ast::Node*>& cases, size_t index, const Emitted& subject,
+		mlir::Value address) {
+
+		ast::Node* entry = cases[index];
+		emit_if(generator, arm_matches(generator, entry, subject, address), [&]() {
+			return emit_block(generator, entry->children.back(), mlir::Value(), nullptr);
+		}, index + 1 == cases.size() ? std::function<bool()>() : [&]() {
+			emit_cases(generator, cases, index + 1, subject, address);
+			return false;
+		});
+	}
+
+	// switch: a loop that runs once, so break leaves it; the first case that matches runs.
+	static void emit_switch(Generator& generator, ast::Node* node) {
+		Emitted subject = emit_expression(generator, node->children[0], nullptr);
+		mlir::Value address = address_of(generator, subject);
+		const std::vector<ast::Node*> cases = entries_of(node, true);
+		emit_loop(generator, false, [&]() {
+			if (!cases.empty()) {
+				emit_cases(generator, cases, 0, subject, address);
+			}
+			emit_break(generator, 1);
+			return true;
+		});
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Statements
+
+	static TokenType operator_of_assignment(TokenType op) {
+		const std::pair<TokenType, TokenType> pairs[] = {
+			{ TokenType::OPERATOR_ASSIGN_ADD, TokenType::OPERATOR_PLUS },
+			{ TokenType::OPERATOR_ASSIGN_SUB, TokenType::OPERATOR_MINUS },
+			{ TokenType::OPERATOR_ASSIGN_MUL, TokenType::OPERATOR_MULTIPLY },
+			{ TokenType::OPERATOR_ASSIGN_DIV, TokenType::OPERATOR_DIVIDE },
+			{ TokenType::OPERATOR_ASSIGN_MOD, TokenType::OPERATOR_MODULUS },
+			{ TokenType::OPERATOR_ASSIGN_REMAINDER, TokenType::OPERATOR_REMAINDER },
+			{ TokenType::OPERATOR_ASSIGN_BITWISE_AND, TokenType::SYM_AMPERSAND },
+			{ TokenType::OPERATOR_ASSIGN_BITWISE_OR, TokenType::OPERATOR_BITWISE_OR },
+			{ TokenType::OPERATOR_ASSIGN_BITWISE_XOR, TokenType::OPERATOR_BITWISE_XOR },
+			{ TokenType::OPERATOR_ASSIGN_LEFT_SHIFT, TokenType::OPERATOR_LEFT_SHIFT },
+			{ TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC, TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC },
+			{ TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL, TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL },
+			{ TokenType::OPERATOR_ASSIGN_AND, TokenType::OPERATOR_AND },
+			{ TokenType::OPERATOR_ASSIGN_OR, TokenType::OPERATOR_OR },
+		};
+		for (const auto& [assignment, operation] : pairs) {
+			if (assignment == op) {
+				return operation;
+			}
+		}
+		return TokenType::INVALID;
+	}
+
+	static bool is_assignment(const ast::Node* node) {
+		return ast::NodeType::BINARY_OPERATOR == node->node_type && node->children.size() == 2
+			&& (is_assign(node) || TokenType::INVALID != operator_of_assignment(node->value.type));
+	}
+
+	// The values of a list, or of one expression, with a call's several results as several; read now.
+	static std::vector<Emitted> emit_values(Generator& generator, ast::Node* node, const std::vector<TypeInfo*>& expected) {
+		std::vector<ast::Node*> nodes;
+		if (ast::NodeType::LIST == node->node_type) {
+			nodes.assign(node->children.begin(), node->children.end());
+		}
+		else {
+			nodes.push_back(node);
+		}
+		std::vector<Emitted> values;
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			TypeInfo* hint = nodes.size() == 1 && expected.size() == 1 ? expected[0]
+				: i < expected.size() && nodes.size() == expected.size() ? expected[i] : nullptr;
+			Emitted emitted = emit_expression(generator, nodes[i], hint);
+			if (ValueKind::RESULTS == emitted.kind) {
+				for (size_t j = 0; j < emitted.results.size(); ++j) {
+					values.push_back(value(extract(generator, emitted.value, static_cast<int64_t>(j)), emitted.results[j]));
+				}
+				continue;
+			}
+			if (ValueKind::VARIANT == emitted.kind) {
+				emitted = value(make_variant(generator, emitted.type, emitted.variant, {}, {}), emitted.type);
+			}
+			else if (emitted.address) {
+				// Read before anything is assigned, for a, b = b, a
+				emitted = value(value_of(generator, emitted), emitted.type);
+			}
+			values.push_back(emitted);
+		}
+		return values;
+	}
+
+	// a = b, a, b = b, a, and a += b.
+	static void emit_assignment(Generator& generator, ast::Node* node) {
+		ast::Node* left_node = node->children[0];
+		ast::Node* right_node = node->children[1];
+		std::vector<ast::Node*> targets;
+		if (ast::NodeType::LIST == left_node->node_type) {
+			targets.assign(left_node->children.begin(), left_node->children.end());
+		}
+		else {
+			targets.push_back(left_node);
+		}
+		std::vector<TypeInfo*> types;
+		for (ast::Node* target : targets) {
+			types.push_back(is_wildcard(target) ? nullptr : type_at(generator, target, nullptr));
+		}
+		std::vector<Emitted> values;
+		if (is_assignment(right_node)) {
+			// Chained, right to left: the right one's targets are the values
+			emit_assignment(generator, right_node);
+			values = emit_values(generator, right_node->children[0], types);
+		}
+		else {
+			values = emit_values(generator, right_node, types);
+		}
+		const TokenType op = operator_of_assignment(node->value.type);
+		for (size_t i = 0; i < targets.size() && !values.empty(); ++i) {
+			if (is_wildcard(targets[i])) {
+				continue;
+			}
+			const Emitted& given = values.size() == 1 ? values[0] : values[i];
+			Emitted target = emit_expression(generator, targets[i], nullptr);
+			if (!target.address) {
+				unsupported(generator, targets[i], "this can't be assigned to");
+				continue;
+			}
+			mlir::Value v;
+			if (TokenType::INVALID == op) {
+				v = convert(generator, value_of(generator, given), given.type, target.type);
+			}
+			else if (is_shift(op)) {
+				mlir::Value current = value_of(generator, target);
+				v = arithmetic(generator, op, current, shift_amount(generator, value_of(generator, given), current.getType()),
+					target.type, node);
+			}
+			else {
+				mlir::Value current = value_of(generator, target);
+				mlir::Value operand = convert(generator, value_of(generator, given), given.type, target.type);
+				v = TokenType::OPERATOR_AND == op ? static_cast<mlir::Value>(LLVM::AndOp::create(generator.builder, generator.loc, current, operand))
+					: TokenType::OPERATOR_OR == op ? static_cast<mlir::Value>(LLVM::OrOp::create(generator.builder, generator.loc, current, operand))
+					: arithmetic(generator, op, current, operand, target.type, node);
+			}
+			store(generator, v, target.address);
+		}
+	}
+
+	// x : T = value, x := value, x :: value: a slot for each name, or for a constant, its value's expression.
+	static void emit_definition(Generator& generator, ast::Node* definition) {
+		std::vector<ast::Node*> names;
+		ast::Node* names_node = definition->children[0];
+		if (ast::NodeType::LIST == names_node->node_type) {
+			names.assign(names_node->children.begin(), names_node->children.end());
+		}
+		else {
+			names.push_back(names_node);
+		}
+		ast::Node* value_node = nullptr;
+		for (size_t i = 1; i < definition->children.size(); ++i) {
+			ast::Node* child = definition->children[i];
+			if (ast::NodeType::COLON == child->node_type || (ast::NodeType::IDENTIFIER == child->node_type && is_assign(child))) {
+				value_node = i + 1 < definition->children.size() ? definition->children[i + 1] : nullptr;
+				break;
+			}
+		}
+		if (value_node != nullptr && ast::NodeType::FUNCTION == value_node->node_type) {
+			unsupported(generator, definition, "functions defined inside functions can't be generated yet");
+			return;
+		}
+		std::vector<TypeInfo*> types;
+		bool all_values = true;
+		for (size_t i = 0; i < names.size(); ++i) {
+			const CheckedNode* found = checked(generator, names[i]);
+			const bool is_value = found != nullptr && ValueKind::VALUE == found->kind;
+			types.push_back(is_value ? found->type : nullptr);
+			all_values = all_values && is_value;
+			// Untyped constants are generated where they're used, as what they're used as
+			if (found != nullptr && is_untyped(found->kind) && value_node != nullptr) {
+				generator.state->constants[names[i]] = ast::NodeType::LIST == value_node->node_type
+					? value_node->children[std::min(i, value_node->children.size() - 1)] : value_node;
+			}
+		}
+		if (!all_values) {
+			return;
+		}
+		std::vector<Emitted> values;
+		if (value_node != nullptr && ast::NodeType::UNINITIALIZED != value_node->node_type) {
+			values = emit_values(generator, value_node, types);
+		}
+		for (size_t i = 0; i < names.size(); ++i) {
+			mlir::Value slot = make_slot(generator, types[i]);
+			if (values.empty()) {
+				store(generator, zero_of(generator, llvm_type(generator, types[i])), slot);
+			}
+			else {
+				const Emitted& given = values.size() == 1 ? values[0] : values[std::min(i, values.size() - 1)];
+				store(generator, convert(generator, value_of(generator, given), given.type, types[i]), slot);
+			}
+			generator.state->slots[names[i]] = slot;
+		}
+	}
+
+	// return values: converted to the function's results.
+	static void emit_return_statement(Generator& generator, ast::Node* node) {
+		TypeInfoFunction const* function = generator.state->type;
+		if (node->children.empty() || (node->children.size() == 1 && ast::NodeType::VOID == node->children[0]->node_type)) {
+			emit_return(generator, {});
+			return;
+		}
+		std::vector<TypeInfo*> expected;
+		for (const FunctionOutput& output : function->output) {
+			expected.push_back(output.type);
+		}
+		std::vector<Emitted> given;
+		for (size_t i = 0; i < node->children.size(); ++i) {
+			TypeInfo* hint = node->children.size() == expected.size() ? expected[i] : nullptr;
+			std::vector<Emitted> each = emit_values(generator, node->children[i], { hint });
+			given.insert(given.end(), each.begin(), each.end());
+		}
+		std::vector<mlir::Value> values;
+		for (size_t i = 0; i < given.size() && i < expected.size(); ++i) {
+			values.push_back(convert(generator, value_of(generator, given[i]), given[i].type, expected[i]));
+		}
+		emit_return(generator, values);
+	}
+
+	// A for loop: through a range, or an array's or string's elements, by value or by &.
+	static void emit_for(Generator& generator, ast::Node* node) {
+		std::vector<ast::Node*> names;
+		ast::Node* iterable = nullptr;
+		ast::Node* body = nullptr;
+		bool after_in = false;
+		for (ast::Node* child : node->children) {
+			const ast::NodeType type = child->node_type;
+			if (ast::NodeType::IN == type) {
+				after_in = true;
+			}
+			else if (!after_in) {
+				names.push_back(child);
+			}
+			else if (ast::NodeType::BLOCK == type) {
+				body = child;
+			}
+			else if (ast::NodeType::DIRECTIVE == type) {
+				unsupported(generator, child, std::format("{} on a for loop can't be generated yet", text_of(child->value.value)));
+			}
+			else if (iterable == nullptr) {
+				iterable = child;
+			}
+		}
+		const TokenType op = iterable->value.type;
+		const bool is_range = ast::NodeType::BINARY_OPERATOR == iterable->node_type
+			&& (TokenType::OPERATOR_RANGE_EXCLUSIVE == op || TokenType::OPERATOR_RANGE_INCLUSIVE == op);
+		// A range's bounds, or where the elements are and how many
+		TypeInfo* index_type = BUILTIN_usize;
+		mlir::Value low;
+		mlir::Value high;
+		mlir::Value data;
+		TypeInfo* element = nullptr;
+		if (is_range) {
+			index_type = shared_type(generator, iterable->children[0], iterable->children[1], nullptr);
+			low = emit_as(generator, iterable->children[0], index_type);
+			high = emit_as(generator, iterable->children[1], index_type);
+		}
+		else {
+			Emitted collection = emit_expression(generator, iterable, nullptr);
+			TypeInfo const* type = base(collection.type);
+			elements_of(generator, collection, type, data, high);
+			element = element_of(type);
+			low = constant_int(generator, usize_type(generator), 0);
+		}
+		mlir::Value next = make_slot(generator, index_type);
+		store(generator, low, next);
+		const bool inclusive = is_range && TokenType::OPERATOR_RANGE_INCLUSIVE == op;
+		emit_loop(generator, true, [&]() {
+			// The index is taken before the body, so continue moves on to the next
+			mlir::Value index = load(generator, index_type, next);
+			emit_if(generator, compare(generator, inclusive ? TokenType::SYM_GT : TokenType::OPERATOR_GREATER_THAN_OR_EQUAL,
+				index, high, index_type), [&]() {
+				emit_break(generator, 1);
+				return true;
+			}, nullptr);
+			store(generator, LLVM::AddOp::create(generator.builder, generator.loc, index, constant_int(generator, index.getType(), 1)), next);
+			for (size_t i = 0; i < names.size(); ++i) {
+				ast::Node* name = names[i];
+				mlir::Value slot;
+				if (i == 1) {
+					slot = make_slot(generator, BUILTIN_usize);
+					store(generator, convert(generator, index, index_type, BUILTIN_usize), slot);
+				}
+				else if (is_range) {
+					slot = make_slot(generator, index_type);
+					store(generator, index, slot);
+				}
+				else if (ast::NodeType::UNARY_OPERATOR == name->node_type && !name->children.empty()) {
+					// By reference: a pointer to the element
+					slot = make_raw_slot(generator, pointer_type(generator), POINTER_SIZE);
+					store(generator, element_address(generator, data, element, index), slot);
+					name = name->children[0];
+				}
+				else {
+					slot = make_slot(generator, element);
+					store(generator, load(generator, element, element_address(generator, data, element, index)), slot);
+				}
+				generator.state->slots[name] = slot;
+			}
+			emit_scope(generator, [&]() {
+				return emit_block(generator, body, mlir::Value(), nullptr);
+			});
+			return false;
+		});
+	}
+
+	// loop, with with and while: with wraps the whole loop, and while is checked before each time.
+	static void emit_loop_statement(Generator& generator, ast::Node* node) {
+		ast::Node* body = nullptr;
+		ast::Node* condition = nullptr;
+		ast::Node* with = nullptr;
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::WITH_CLAUSE == child->node_type) {
+				with = child;
+			}
+			else if (ast::NodeType::BLOCK == child->node_type) {
+				body = child;
+			}
+			else if (ast::NodeType::WHILE_CLAUSE == child->node_type && !child->children.empty()) {
+				condition = child->children[0];
+			}
+		}
+		emit_scope(generator, [&]() {
+			if (with != nullptr) {
+				for (ast::Node* list : with->children) {
+					for (ast::Node* statement : list->children) {
+						emit_statement(generator, statement);
+					}
+				}
+			}
+			emit_loop(generator, true, [&]() {
+				if (condition != nullptr) {
+					emit_if(generator, negate(generator, emit_condition(generator, condition)), [&]() {
+						emit_break(generator, 1);
+						return true;
+					}, nullptr);
+				}
+				if (body != nullptr) {
+					emit_scope(generator, [&]() {
+						return emit_block(generator, body, mlir::Value(), nullptr);
+					});
+				}
+				return false;
+			});
+			return false;
+		});
+	}
+
+	// push_context name (field = value...) or from value: a new context for the block.
+	static void emit_push_context(Generator& generator, ast::Node* node) {
+		Declaration* context_declaration = base_declaration_named(generator, "runtime", "Context");
+		TypeInfo* context_type = context_declaration != nullptr ? context_declaration->type_value : nullptr;
+		ast::Node* name = node->children.empty() ? nullptr : node->children[0];
+		ast::Node* body = node->children.empty() ? nullptr : node->children.back();
+		mlir::Value slot = make_slot(generator, context_type);
+		bool from = false;
+		bool copied = false;
+		for (size_t i = 1; i + 1 < node->children.size(); ++i) {
+			ast::Node* part = node->children[i];
+			if (ast::NodeType::KEYWORD_FROM == part->node_type) {
+				from = true;
+				continue;
+			}
+			if (ast::NodeType::LIST == part->node_type && !from) {
+				// The overrides are read before the switch, so they see the old context
+				std::vector<std::pair<size_t, mlir::Value>> overrides;
+				for (ast::Node* field : part->children) {
+					size_t offset = 0;
+					TypeInfo* member_type = nullptr;
+					std::vector<int64_t> path;
+					find_member(generator, static_cast<TypeInfoStruct const*>(base(context_type)), field->children[0]->value.value,
+						offset, member_type, path);
+					overrides.emplace_back(offset, emit_as(generator, field->children[1], member_type));
+				}
+				store(generator, load(generator, context_type, generator.state->context), slot);
+				for (const auto& [offset, v] : overrides) {
+					store(generator, v, offset_address(generator, slot, offset));
+				}
+				copied = true;
+				continue;
+			}
+			store(generator, emit_as(generator, part, context_type), slot);
+			copied = true;
+		}
+		if (!copied) {
+			store(generator, load(generator, context_type, generator.state->context), slot);
+		}
+		if (name != nullptr && ast::NodeType::IDENTIFIER == name->node_type) {
+			generator.state->slots[name] = slot;
+		}
+		mlir::Value outer = generator.state->context;
+		generator.state->context = slot;
+		emit_scope(generator, [&]() {
+			return body != nullptr && ast::NodeType::BLOCK == body->node_type && emit_block(generator, body, mlir::Value(), nullptr);
+		});
+		generator.state->context = outer;
+	}
+
+	// A statement; returns whether it ended the block (return, break, a call that never returns).
+	static bool emit_statement(Generator& generator, ast::Node* statement) {
+		const ast::NodeType type = statement->node_type;
+		if (ast::NodeType::DEFINITION == type) {
+			emit_definition(generator, statement);
+			return false;
+		}
+		if (is_assignment(statement)) {
+			emit_assignment(generator, statement);
+			return false;
+		}
+		if (ast::NodeType::RETURN == type) {
+			emit_return_statement(generator, statement);
+			return true;
+		}
+		if (ast::NodeType::BREAK == type) {
+			uint64_t depth = 1;
+			if (!statement->children.empty()) {
+				const ast::Node* count = statement->children[0];
+				depth = ast::NodeType::KEYWORD_ALL == count->node_type ? generator.state->breakables.size()
+					: std::stoull(text_of(count->value.value));
+			}
+			emit_break(generator, depth);
+			return true;
+		}
+		if (ast::NodeType::CONTINUE == type) {
+			emit_continue(generator);
+			return true;
+		}
+		if (ast::NodeType::IF == type) {
+			ast::Node* otherwise = else_of(statement);
+			emit_if(generator, emit_condition(generator, statement->children[0]), [&]() {
+				return emit_block(generator, statement->children[1], mlir::Value(), nullptr);
+			}, otherwise == nullptr ? std::function<bool()>() : [&]() {
+				return ast::NodeType::IF == otherwise->node_type ? emit_statement(generator, otherwise)
+					: emit_block(generator, otherwise, mlir::Value(), nullptr);
+			});
+			return false;
+		}
+		if (ast::NodeType::FOR_LOOP == type) {
+			emit_for(generator, statement);
+			return false;
+		}
+		if (ast::NodeType::LOOP == type) {
+			emit_loop_statement(generator, statement);
+			return false;
+		}
+		if (ast::NodeType::DEFER == type) {
+			auto op = ::hmir::HemeraDeferOp::create(generator.builder, generator.loc);
+			fill_region(generator, op.getBodyRegion(), [&]() {
+				for (ast::Node* deferred : statement->children) {
+					emit_statement(generator, deferred);
+				}
+				return false;
+			});
+			return false;
+		}
+		if (ast::NodeType::BLOCK == type) {
+			emit_scope(generator, [&]() {
+				return emit_block(generator, statement, mlir::Value(), nullptr);
+			});
+			return false;
+		}
+		if (ast::NodeType::MATCH == type) {
+			emit_match(generator, statement, nullptr, false);
+			return false;
+		}
+		if (ast::NodeType::SWITCH == type) {
+			emit_switch(generator, statement);
+			return false;
+		}
+		if (ast::NodeType::PUSH_CONTEXT == type) {
+			emit_push_context(generator, statement);
+			return false;
+		}
+		if (ast::NodeType::DIRECTIVE == type) {
+			if (is_text(statement->value.value, "#run")) {
+				unsupported(generator, statement, "#run can't be generated yet");
+			}
+			return false;
+		}
+		if (emit_expression(generator, statement, nullptr).never_returns) {
+			LLVM::UnreachableOp::create(generator.builder, generator.loc);
+			return true;
+		}
+		return false;
+	}
+
+	/*
+	 * A block's statements, with the branch the checker picked for each #if chain among them; for
+	 * a block used as a value, its last statement's value goes in result_slot. Returns whether it
+	 * ended itself.
+	 */
+	static bool emit_block(Generator& generator, ast::Node* block, mlir::Value result_slot, TypeInfo* result_type) {
+		for (size_t i = 0; i < block->children.size(); ++i) {
+			ast::Node* statement = block->children[i];
+			if (ast::NodeType::DIRECTIVE == statement->node_type && is_text(statement->value.value, "#if")) {
+				std::vector<ast::Node*> chain{ statement };
+				while (i + 1 < block->children.size()
+					&& ast::NodeType::DIRECTIVE == block->children[i + 1]->node_type
+					&& (is_text(block->children[i + 1]->value.value, "#else_if")
+						|| is_text(block->children[i + 1]->value.value, "#else"))) {
+					chain.push_back(block->children[++i]);
+					if (is_text(chain.back()->value.value, "#else")) {
+						break;
+					}
+				}
+				const CheckedNode* chosen = checked(generator, statement);
+				if (chosen != nullptr && chosen->variant < chain.size() && !chain[chosen->variant]->children.empty()
+					&& emit_block(generator, chain[chosen->variant]->children.back(), mlir::Value(), nullptr)) {
+					return true;
+				}
+				continue;
+			}
+			const ast::NodeType type = statement->node_type;
+			if (i + 1 == block->children.size() && result_slot && ast::NodeType::DEFINITION != type && !is_assignment(statement)
+				&& ast::NodeType::RETURN != type && ast::NodeType::BREAK != type && ast::NodeType::CONTINUE != type
+				&& ast::NodeType::FOR_LOOP != type && ast::NodeType::LOOP != type && ast::NodeType::BLOCK != type) {
+				Emitted result = emit_expression(generator, statement, result_type);
+				if (result.never_returns) {
+					LLVM::UnreachableOp::create(generator.builder, generator.loc);
+					return true;
+				}
+				store(generator, convert(generator, value_of(generator, result), result.type, result_type), result_slot);
+				return false;
+			}
+			if (emit_statement(generator, statement)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Functions, constants and the entry point
+
+	static void generate_function(Generator& generator, Declaration* declaration) {
+		LLVM::LLVMFuncOp function = generator.functions[declaration];
+		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+		FunctionState state;
+		state.declaration = declaration;
+		state.checked = declaration->checked.get();
+		state.type = type;
+		ast::Node* body = function_body(declaration->generic != nullptr ? declaration->generic : declaration);
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		mlir::Block* entry = function.addEntryBlock(generator.builder);
+		state.entry = entry;
+		generator.builder.setInsertionPointToEnd(entry);
+		FunctionState* outer = generator.state;
+		generator.state = &state;
+		if (state.checked == nullptr || body == nullptr) {
+			unsupported(generator, declaration->node, std::format("{} wasn't checked, so it can't be generated",
+				text_of(declaration->name)));
+			LLVM::UnreachableOp::create(generator.builder, generator.loc);
+			generator.state = outer;
+			return;
+		}
+		state.context = entry->getArgument(0);
+		// Parameters and named results in slots
+		for (size_t i = 0; i < state.checked->parameters.size() && i < type->input.size(); ++i) {
+			mlir::Value argument = entry->getArgument(static_cast<unsigned>(i + 1));
+			mlir::Value slot = make_raw_slot(generator, argument.getType(), std::max<size_t>(type->input[i].type->alignment, 1));
+			store(generator, argument, slot);
+			state.slots[state.checked->parameters[i]] = slot;
+		}
+		for (size_t i = 0; i < state.checked->outputs.size() && i < type->output.size(); ++i) {
+			if (state.checked->outputs[i] != nullptr) {
+				mlir::Value slot = make_slot(generator, type->output[i].type);
+				store(generator, zero_of(generator, llvm_type(generator, type->output[i].type)), slot);
+				state.slots[state.checked->outputs[i]] = slot;
+			}
+		}
+		if (!emit_block(generator, body, mlir::Value(), nullptr)) {
+			// Falling off the end, which the checker allows only without results
+			if (type->output.empty()) {
+				::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
+			}
+			else {
+				LLVM::UnreachableOp::create(generator.builder, generator.loc);
+			}
+		}
+		generator.state = outer;
+	}
+
+	// A typed constant's global, read-only, made the first time it's used.
+	static LLVM::GlobalOp global_for(Generator& generator, Declaration* declaration) {
+		auto iter = generator.globals.find(declaration);
+		if (iter != generator.globals.end()) {
+			return iter->second;
+		}
+		mlir::Type type = llvm_type(generator, declaration->value_type);
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		// #externally_initialized ones can be replaced in the image, so they aren't constant to LLVM
+		LLVM::GlobalOp global = LLVM::GlobalOp::create(generator.builder, generator.loc, type,
+			!declaration->externally_initialized, LLVM::Linkage::Internal, symbol_for(generator, declaration),
+			mlir::Attribute(), std::max<size_t>(declaration->value_type->alignment, 1));
+		if (declaration->section != nullptr) {
+			global.setSectionAttr(generator.builder.getStringAttr(text_of(declaration->section)));
+		}
+		if (declaration->externally_initialized) {
+			global.setExternallyInitialized(true);
+		}
+		generator.globals[declaration] = global;
+		generator.builder.setInsertionPointToStart(generator.builder.createBlock(&global.getInitializerRegion()));
+		ast::Node* value_node = definition_value(declaration->node);
+		FunctionState* outer = generator.state;
+		generator.state = nullptr;
+		mlir::Value initial = value_node == nullptr || ast::NodeType::UNINITIALIZED == value_node->node_type
+			? zero_of(generator, type) : emit_constant_value(generator, declaration, declaration->value_type, value_node);
+		generator.state = outer;
+		LLVM::ReturnOp::create(generator.builder, generator.loc, initial);
+		return global;
+	}
+
+	/*
+	 * A hosted program's entry: a zeroed context for main, whose result, if it has one, is the
+	 * exit code.
+	 */
+	static void generate_entry(Generator& generator, Declaration* main, bool windows) {
+		Declaration* context_declaration = base_declaration_named(generator, "runtime", "Context");
+		TypeInfo* context_type = context_declaration != nullptr ? context_declaration->type_value : nullptr;
+		auto main_type = static_cast<TypeInfoFunction const*>(main->value_type);
+		LLVM::LLVMFuncOp main_function = function_for(generator, main);
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		mlir::Type i32 = integer_type(generator, 4);
+		auto entry_function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, HOSTED_ENTRY_SYMBOL,
+			LLVM::LLVMFunctionType::get(i32, llvm::ArrayRef<mlir::Type>{}));
+		generator.builder.setInsertionPointToEnd(entry_function.addEntryBlock(generator.builder));
+		mlir::Value one = constant_int(generator, usize_type(generator), 1);
+		mlir::Value context = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
+			llvm_type(generator, context_type), one, static_cast<unsigned>(context_type->alignment));
+		store(generator, zero_of(generator, llvm_type(generator, context_type)), context);
+		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
+		mlir::Value code = constant_int(generator, i32, 0);
+		if (main_type->output.size() == 1 && is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER)) {
+			code = call.getResult();
+			const unsigned width = code.getType().getIntOrFloatBitWidth();
+			if (width > 32) {
+				code = LLVM::TruncOp::create(generator.builder, generator.loc, i32, code);
+			}
+			else if (width < 32) {
+				code = LLVM::SExtOp::create(generator.builder, generator.loc, i32, code);
+			}
+		}
+		if (!windows) {
+			LLVM::ReturnOp::create(generator.builder, generator.loc, code);
+			return;
+		}
+		/*
+		 * On Windows, returning from the entry only ends its thread, and the process ends with the
+		 * last thread's exit code, which may be a loader worker's. ExitProcess ends it with ours.
+		 */
+		LLVM::LLVMFuncOp exit_process;
+		{
+			mlir::OpBuilder::InsertionGuard declaration_guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			exit_process = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, "ExitProcess",
+				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), { i32 }));
+			// LLVM refers to _fltused from code using floating point on Windows; the C runtime would define it
+			LLVM::GlobalOp::create(generator.builder, generator.loc, i32, false, LLVM::Linkage::External, "_fltused",
+				generator.builder.getI32IntegerAttr(0));
+		}
+		LLVM::CallOp::create(generator.builder, generator.loc, exit_process, mlir::ValueRange{ code });
+		LLVM::UnreachableOp::create(generator.builder, generator.loc);
+	}
+
+	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {
+		module.getContext()->loadDialect<LLVM::LLVMDialect>();
+		module.getContext()->loadDialect<::hmir::HemeraDialect>();
+		Generator generator(program_info, module);
+		InternedString input_package = intern(options.input.string());
+		Declaration* main = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(generator.names.mutex);
+			auto iter = generator.names.declarations.find(std::make_pair(input_package, intern(std::string("main"))));
+			if (iter != generator.names.declarations.end()) {
+				main = iter->second;
+			}
+		}
+		if (main == nullptr || DeclarationKind::FUNCTION != main->kind || main->value_type == nullptr) {
+			report_error(ErrorCode::E5004, options.input.string(), 0, 0, "a hosted program needs main :: fn() or fn() -> int");
+			return false;
+		}
+		generate_entry(generator, main, OSType::Win32 == options.os);
+		while (!generator.pending.empty()) {
+			Declaration* next = generator.pending.back();
+			generator.pending.pop_back();
+			generate_function(generator, next);
+		}
+		if (generator.failed) {
+			return false;
+		}
+		if (mlir::failed(mlir::verify(module))) {
+			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "the generated MLIR isn't valid");
+			return false;
+		}
+		return true;
+	}
+
+	std::unique_ptr<llvm::Module> lower_to_llvm(mlir::ModuleOp module, llvm::LLVMContext& context, const Options& options) {
+		mlir::PassManager passes(module.getContext(), mlir::ModuleOp::getOperationName());
+		passes.addPass(mlir::hmir::createHemeraDefer());
+		passes.addPass(mlir::hmir::createHemeraLowerControlFlow());
+		if (mlir::failed(passes.run(module))) {
+			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "lowering HMIR failed");
+			return nullptr;
+		}
+		mlir::DialectRegistry registry;
+		mlir::registerBuiltinDialectTranslation(registry);
+		mlir::registerLLVMDialectTranslation(registry);
+		module.getContext()->appendDialectRegistry(registry);
+		std::unique_ptr<llvm::Module> result = mlir::translateModuleToLLVMIR(module, context, options.output_name);
+		if (result == nullptr) {
+			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "translating to LLVM IR failed");
+		}
+		return result;
+	}
+}

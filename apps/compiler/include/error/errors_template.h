@@ -80,6 +80,9 @@ E4027,No context
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed
+E5002,Code generation not supported yet
+E5003,Lowering failed
+E5004,No entry point
 // E6000-E6999 Assembling LLVM IR
 // E7000-E7999 Linking errors
 E7000,Failed to run linker

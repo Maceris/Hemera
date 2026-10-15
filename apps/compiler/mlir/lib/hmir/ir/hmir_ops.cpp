@@ -50,10 +50,11 @@ namespace hmir {
 
     mlir::LogicalResult HemeraContinueOp::verify() {
         mlir::Operation* boundary = nullptr;
-        if (countLoopsBeforeBoundary(getOperation(), boundary) < 1) {
-            return emitOpError() << "must be inside a loop"
+        const int64_t depth = static_cast<int64_t>(getDepth());
+        if (countLoopsBeforeBoundary(getOperation(), boundary) < depth) {
+            return emitOpError() << "must be inside " << depth << " loop(s)"
                 << (mlir::isa_and_nonnull<HemeraDeferOp>(boundary)
-                    ? " which is inside the enclosing defer"
+                    ? " which are inside the enclosing defer"
                     : "");
         }
         return mlir::success();

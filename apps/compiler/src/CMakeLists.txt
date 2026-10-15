@@ -78,6 +78,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/lexer/token.h
   ${INCLUDE_DIR}/memory/allocator.h
   ${INCLUDE_DIR}/memory/thread_safe_queue.h
+  ${INCLUDE_DIR}/middle_end/generate.h
   ${INCLUDE_DIR}/parser/ast_types.h
   ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/types/primitives.h
@@ -103,6 +104,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/lexer/lexer.cpp 
   ${SOURCE_DIR}/lexer/token.cpp
   ${SOURCE_DIR}/memory/allocator.cpp
+  ${SOURCE_DIR}/middle_end/generate.cpp
   ${SOURCE_DIR}/parser/ast_types.cpp
   ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/util/logger.cpp
@@ -116,6 +118,7 @@ SET(THIRD_PARTY_HEADER_FILES
 SET(TEST_FILES
   ${TEST_DIR}/main.cpp
   ${TEST_DIR}/string_cache_guard.h
+  ${TEST_DIR}/back_end/hosted_test.cpp
   ${TEST_DIR}/cmd_line/arg_parsing_test.cpp
   ${TEST_DIR}/front_end/front_end_test.cpp
   ${TEST_DIR}/lexer/lexer_test.cpp
@@ -173,6 +176,10 @@ SEPARATE_ARGUMENTS(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 TARGET_LINK_LIBRARIES(HemeraLib PUBLIC
   ${llvm_libs}
   HMIR
+  MLIRPass
+  MLIRBuiltinToLLVMIRTranslation
+  MLIRLLVMToLLVMIRTranslation
+  MLIRTargetLLVMIRExport
 )
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib PUBLIC
@@ -214,7 +221,8 @@ ADD_EXECUTABLE(HemeraTest
 )
 
 TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})
-TARGET_COMPILE_DEFINITIONS(HemeraTest PRIVATE ${HEMERA_DEFINITIONS})
+# Where tests write what they build, like the hosted test's program
+TARGET_COMPILE_DEFINITIONS(HemeraTest PRIVATE ${HEMERA_DEFINITIONS} HEMERA_TEST_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/test_output")
 TARGET_INCLUDE_DIRECTORIES(HemeraTest SYSTEM PRIVATE
   ${THIRD_PARTY_DIR}/googletest/googletest/include
 )

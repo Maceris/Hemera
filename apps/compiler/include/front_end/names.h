@@ -20,6 +20,7 @@
 
 namespace hemera {
 
+	struct CheckedBody;
 	struct FileInfo;
 	struct FileLocation;
 	struct GlobalThreadData;
@@ -177,6 +178,11 @@ namespace hemera {
 		/// For a constant without a type, what kind of literal it is.
 		/// </summary>
 		Untyped untyped = Untyped::NONE;
+		/// <summary>
+		/// For a function (or an instance of one) with a body, what checking it found, once it's
+		/// checked without errors.
+		/// </summary>
+		std::shared_ptr<CheckedBody> checked;
 	};
 
 	/// <summary>

@@ -2,11 +2,13 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <optional>
 #include <string>
 #include <system_error>
 
 #include "error/reporting.h"
+#include "middle_end/generate.h"
 #include "util/logger.h"
 
 #include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
@@ -426,9 +428,9 @@ namespace hemera {
 		if (options.debug_info) {
 			args += "/debug ";
 		}
-		//TODO(ches) appropriate /entry:<value>
-
-		args += "/entry:main ";
+		// A hosted program starts at the entry the compiler generates, which needs only kernel32
+		args += std::format("/entry:{} /subsystem:console /nodefaultlib kernel32.lib \"/out:{}.exe\" ", HOSTED_ENTRY_SYMBOL,
+			options.output_name);
 
 		switch (options.architecture) {
 		case ArchType::arm:
@@ -445,7 +447,7 @@ namespace hemera {
 			args += "/machine:x64 ";
 			break;
 		}
-		std::string command = linker_name + " " + args + object_file.data();
+		std::string command = std::format("{} {}\"{}\"", linker_name, args, object_file);
 		int result = std::system(command.c_str());
 		
 		if (result != 0) {

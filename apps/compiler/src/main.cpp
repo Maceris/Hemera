@@ -14,13 +14,13 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "hmir/hmir_dialect.h"
+#include "middle_end/generate.h"
 #include "memory/thread_safe_queue.h"
 #include "util/logger.h"
 #include "util/thread_pool.h"
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinDialect.h"
@@ -30,33 +30,6 @@
 
 namespace hemera {
 	
-	static void fill_out_dummy_module(llvm::LLVMContext& context, unsigned int address_space, llvm::Module* module) {
-		//TODO(ches) get rid of the dummy module
-
-		llvm::Type* int32 = llvm::Type::getInt32Ty(context);
-		llvm::FunctionType* func_type = llvm::FunctionType::get(int32, false);
-		llvm::Function* func = llvm::Function::Create(func_type,
-			llvm::Function::ExternalLinkage,
-			address_space,
-			"main",
-			module
-		);
-		llvm::BasicBlock* block = llvm::BasicBlock::Create(context, "entry", func);
-		llvm::IRBuilder<> builder(block);
-		llvm::Value* constant_zero = builder.getInt32(0);
-		builder.CreateRet(constant_zero);
-
-		std::string errorStr;
-		llvm::raw_string_ostream os(errorStr);
-		if (llvm::verifyFunction(*func, &os)) {
-			std::cout << "Function verification failed: " << os.str() << std::endl;
-			errorStr.clear();
-		}
-		if (llvm::verifyModule(*module, &os)) {
-			std::cout << "Module verification failed: " << os.str() << std::endl;
-		}
-	}
-
 	static int main(int argc, char* argv[])
 	{
 		Logger::init();
@@ -75,8 +48,7 @@ namespace hemera {
 		}
 
 		std::string object_file_name = std::format("{}.o", options->output_name);
-		llvm::Module* main_module = nullptr;
-		unsigned int address_space = 0;
+		std::unique_ptr<llvm::Module> main_module;
 		Backend* backend = nullptr;
 
 		initialize_interned_string_cache();
@@ -110,35 +82,45 @@ namespace hemera {
 			goto teardown_compilation;
 		}
 
+		// Generate the program's MLIR, from main and everything it uses
+		if (!generate_program(program_info, *options, mlir_module)) {
+			rc = -1;
+			goto teardown_compilation;
+		}
+
 		if (options->build_extent < BuildExtent::LOWER) {
 			dump_mlir_to_file(options, &mlir_module);
 			goto teardown_compilation;
 		}
 
 		// Lower
-		
-		//TODO(ches) Lower
 
-		if (error_count() > 0) {
+		main_module = lower_to_llvm(mlir_module, context, *options);
+
+		if (main_module == nullptr || error_count() > 0) {
 			rc = -1;
 			goto teardown_lowering;
 		}
 		if (options->build_extent < BuildExtent::ASSEMBLE) {
+			std::error_code error;
+			llvm::raw_fd_ostream file(std::format("{}.ll", options->output_name), error);
+			if (!error) {
+				main_module->print(file, nullptr);
+			}
 			goto teardown_lowering;
 		}
 		// Assemble
 
 		backend = main_alloc.new_object<BackendLLVM>();
 		if (!backend->initialize(*options)) {
+			rc = -1;
 			goto teardown_lowering;
 		}
 
-		main_module = main_alloc.new_object<llvm::Module>(options->output_name,
-			context);
-
-		fill_out_dummy_module(context, address_space, main_module);
-		
-		backend->generate_object_file(*options, *main_module, object_file_name);
+		if (!backend->generate_object_file(*options, *main_module, object_file_name)) {
+			rc = -1;
+			goto teardown_lowering;
+		}
 
 		if (error_count() > 0) {
 			rc = -1;
@@ -150,13 +132,19 @@ namespace hemera {
 		// Link
 		
 		backend->link(*options, object_file_name);
+		if (error_count() > 0) {
+			rc = -1;
+		}
 
 	teardown_assembly:
 
 	teardown_lowering:
-		backend->destroy();
-		delete backend;
-		backend = nullptr;
+		if (backend != nullptr) {
+			backend->destroy();
+			delete backend;
+			backend = nullptr;
+		}
+		main_module.reset();
 
 	teardown_compilation:
 		destroy_reporting_storage();

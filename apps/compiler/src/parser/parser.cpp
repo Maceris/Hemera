@@ -2034,22 +2034,26 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		const TokenType current = current_token(state).type;
-		if (current == TokenType::OPERATOR_PLUS
-			|| current == TokenType::OPERATOR_MINUS
-			|| current == TokenType::OPERATOR_BITWISE_OR
-			|| current == TokenType::OPERATOR_BITWISE_XOR
-			) {
+		// Left to right: a - b - c is (a - b) - c
+		while (true) {
+			const TokenType current = current_token(state).type;
+			if (!(current == TokenType::OPERATOR_PLUS
+				|| current == TokenType::OPERATOR_MINUS
+				|| current == TokenType::OPERATOR_BITWISE_OR
+				|| current == TokenType::OPERATOR_BITWISE_XOR
+				)) {
+				break;
+			}
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
-			ExprResult rhs = expr_lvl_7(state);
+			ExprResult rhs = expr_lvl_8(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
+			lhs = ExprResult{ true, &result };
 		}
 
 		return lhs;
@@ -2062,26 +2066,30 @@ namespace hemera::parser {
 			return { false };
 		}
 
-		const TokenType current = current_token(state).type;
-		if (current == TokenType::OPERATOR_MULTIPLY
-			|| current == TokenType::OPERATOR_DIVIDE
-			|| current == TokenType::OPERATOR_MODULUS
-			|| current == TokenType::OPERATOR_REMAINDER
-			|| current == TokenType::SYM_AMPERSAND
-			|| current == TokenType::OPERATOR_LEFT_SHIFT
-			|| current == TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC
-			|| current == TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL
-			) {
+		// Left to right: a - b - c is (a - b) - c
+		while (true) {
+			const TokenType current = current_token(state).type;
+			if (!(current == TokenType::OPERATOR_MULTIPLY
+				|| current == TokenType::OPERATOR_DIVIDE
+				|| current == TokenType::OPERATOR_MODULUS
+				|| current == TokenType::OPERATOR_REMAINDER
+				|| current == TokenType::SYM_AMPERSAND
+				|| current == TokenType::OPERATOR_LEFT_SHIFT
+				|| current == TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC
+				|| current == TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL
+				)) {
+				break;
+			}
 			ast::Node& result = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result.children.push_back(lhs.result);
 
-			ExprResult rhs = expr_lvl_8(state);
+			ExprResult rhs = expr_lvl_9(state);
 			if (!rhs.success) {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
 			result.children.push_back(rhs.result);
-			return ExprResult{ true, &result };
+			lhs = ExprResult{ true, &result };
 		}
 
 		return lhs;

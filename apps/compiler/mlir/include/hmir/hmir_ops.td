@@ -43,6 +43,29 @@ def HemeraLoopOp : HemeraOp<"loop", [SingleBlock, NoRegionArguments]> {
     let assemblyFormat = "$bodyRegion attr-dict";
 }
 
+def HemeraIfOp : HemeraOp<"if", [NoRegionArguments]> {
+    let summary = "Runs one of two regions, by a condition";
+    let description = [{
+        Runs `thenRegion` if `condition` is true, otherwise `elseRegion`, which
+        may be empty. Each region is a single block ending in `hmir.end` (which
+        falls through to after the if), or `hmir.break`, `hmir.continue` or
+        `hmir.return`.
+
+        ```mlir
+        hmir.if %condition {
+          ...
+          hmir.end
+        } else {
+          hmir.end
+        }
+        ```
+    }];
+
+    let arguments = (ins I1:$condition);
+    let regions = (region SizedRegion<1>:$thenRegion, AnyRegion:$elseRegion);
+    let assemblyFormat = "$condition $thenRegion `else` $elseRegion attr-dict";
+}
+
 def HemeraDeferOp : HemeraOp<"defer", [SingleBlock, NoRegionArguments]> {
     
     let summary = "Defers an expression until control flow leaves the end of the enclosing scope";
@@ -81,8 +104,15 @@ def HemeraBreakOp : HemeraOp<"break", [Terminator]> {
 }
 
 def HemeraContinueOp : HemeraOp<"continue", [Terminator]> {
-    let summary = "Ends the current iteration of the innermost loop";
-    let assemblyFormat = "attr-dict";
+    let summary = "Ends the current iteration of the `depth`th enclosing loop";
+    let description = [{
+        Ends the current iteration of the `depth`th enclosing loop, the innermost
+        by default, leaving any loops inside it. A front end that lowers
+        something else to a loop, like a switch that break can leave, continues
+        the loop around it with a larger depth.
+    }];
+    let arguments = (ins DefaultValuedAttr<ConfinedAttr<I64Attr, [IntMinValue<1>]>, "1">:$depth);
+    let assemblyFormat = "($depth^)? attr-dict";
     let hasVerifier = 1;
 }
 

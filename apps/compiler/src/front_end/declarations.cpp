@@ -1112,10 +1112,23 @@ namespace hemera {
 
 		// A constant, or a name for a type, like my_int :: i32 (docs/types.md, Type Aliases)
 		TypeInfo* value_type = nullptr;
+		auto checked = std::make_shared<CheckedBody>();
 		if (declared != nullptr) {
 			Progress progress = type_of(walk, declared, Need::DECLARED, value_type);
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			// Its value, which has to fit, and is recorded for generating it
+			if (value != nullptr && ast::NodeType::UNINITIALIZED != value->node_type) {
+				progress = require_complete(walk, declared, value_type);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				Value constant;
+				progress = check_constant(walk, value, value_type, constant, checked.get());
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 			}
 		}
 		else if (value != nullptr && is_type_expression(walk, value)) {
@@ -1140,7 +1153,7 @@ namespace hemera {
 		else if (value != nullptr && ast::NodeType::UNINITIALIZED != value->node_type) {
 			// Its value's type, or what kind of literal it is (docs/types.md)
 			Value constant;
-			Progress progress = check_constant(walk, value, nullptr, constant);
+			Progress progress = check_constant(walk, value, nullptr, constant, checked.get());
 			if (progress != Progress::DONE) {
 				return progress;
 			}
@@ -1156,6 +1169,7 @@ namespace hemera {
 		}
 		for (Declaration* each : declarations) {
 			each->value_type = value_type;
+			each->checked = checked;
 		}
 		return Progress::DONE;
 	}

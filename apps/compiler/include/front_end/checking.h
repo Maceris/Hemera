@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "front_end/walk.h"
@@ -104,6 +105,51 @@ namespace hemera {
 		/// Generic arguments given explicitly, like f[int], before the call.
 		/// </summary>
 		std::vector<TypeInfo*> generic_arguments;
+		/// <summary>
+		/// The local a name is, by where it was defined, or null for anything else.
+		/// </summary>
+		const void* local = nullptr;
+		/// <summary>
+		/// For a call's result: the function type called, and the function (an instance, for a
+		/// generic one), or null for a function value.
+		/// </summary>
+		TypeInfoFunction const* called = nullptr;
+		Declaration* called_declaration = nullptr;
+	};
+
+	/// <summary>
+	/// What the checker found at one node of a body, for generating its code.
+	/// </summary>
+	struct CheckedNode {
+		ValueKind kind = ValueKind::POISONED;
+		TypeInfo* type = nullptr;
+		Declaration* declaration = nullptr;
+		const void* local = nullptr;
+		TypeInfoFunction const* called = nullptr;
+		Declaration* called_declaration = nullptr;
+		size_t variant = 0;
+		/// <summary>
+		/// For a name's head, the child its steps start at: 2 after package.Name, otherwise 0.
+		/// </summary>
+		size_t next = 0;
+	};
+
+	/// <summary>
+	/// A checked function body: what each expression is, by node. A value inside a chain like
+	/// a.b(c)[d] is at the node after it: the member's name, the (, the [, or the ^.
+	/// </summary>
+	struct CheckedBody {
+		std::unordered_map<const ast::Node*, CheckedNode> nodes;
+		/// <summary>
+		/// What a name alone is, before what follows it like .b(c), by the name's node; and for a
+		/// cast, the type it converts to.
+		/// </summary>
+		std::unordered_map<const ast::Node*, CheckedNode> heads;
+		/// <summary>
+		/// Each parameter's local, in order, and each named result's (null for an unnamed one).
+		/// </summary>
+		std::vector<const void*> parameters;
+		std::vector<const void*> outputs;
 	};
 
 	/// <summary>
@@ -115,7 +161,8 @@ namespace hemera {
 	/// <summary>
 	/// The type of a constant's value, or for a literal, what kind of untyped value it is.
 	/// </summary>
-	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result);
+	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result,
+		CheckedBody* record_into = nullptr);
 
 	/// <summary>
 	/// A top-level #assert (docs/directives.md): its condition, a compile-time constant, is true.
