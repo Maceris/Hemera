@@ -1812,6 +1812,12 @@ namespace hemera {
 			unsupported(generator, paren, std::format("calling {}, which has no body, isn't supported yet", text_of(called->name)));
 			return Emitted{};
 		}
+		// In a constant's value, the call would have to run while compiling
+		if (!in_function(generator)) {
+			unsupported(generator, paren, "a call in a constant's value needs compile-time execution, which isn't supported yet");
+			TypeInfo* result_type = function->output.size() == 1 ? function->output[0].type : nullptr;
+			return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : Emitted{};
+		}
 		// What a pipe passed fills its placeholders in order or by number, or comes first
 		std::vector<CallArgument> positional;
 		std::vector<std::pair<InternedString, ast::Node*>> named;
@@ -1844,15 +1850,19 @@ namespace hemera {
 		for (size_t i = 0; i < function->input.size(); ++i) {
 			const FunctionInput& input = function->input[i];
 			if (input.is_varargs) {
-				// A view passed on, or the rest in order, in a stack array whose view is passed
-				if (positional.size() == next + 1) {
-					const CallArgument& only = positional[next];
-					TypeInfo* only_type = only.has_value ? only.given.type : type_at(generator, only.node, nullptr);
-					if (is_variant(only_type, TypeInfoVariant::ARRAY)
-						&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(base(only_type))->array_type) {
-						arguments.push_back(only.has_value ? value_of(generator, only.given)
-							: value_of(generator, emit_expression(generator, only.node, nullptr)));
-						next = positional.size();
+				/*
+				 * A view of them passed on, with the values after it going to the parameters after
+				 * the varargs, or the rest in order, in a stack array whose view is passed
+				 */
+				if (next < positional.size()) {
+					const CallArgument& first = positional[next];
+					TypeInfo* first_type = first.has_value ? first.given.type : type_at(generator, first.node, nullptr);
+					if (is_variant(first_type, TypeInfoVariant::ARRAY)
+						&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(base(first_type))->array_type
+						&& base(static_cast<TypeInfoArray const*>(base(first_type))->element_type) == base(input.type)) {
+						arguments.push_back(first.has_value ? value_of(generator, first.given)
+							: value_of(generator, emit_expression(generator, first.node, nullptr)));
+						++next;
 						continue;
 					}
 				}

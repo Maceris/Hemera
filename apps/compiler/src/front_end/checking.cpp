@@ -1023,21 +1023,26 @@ namespace hemera {
 			const FunctionInput& input = function->input[parameter];
 			TypeInfo* expected = input.type;
 			if (input.is_varargs && expected != nullptr) {
-				// Each remaining value is one of the varargs, unless a view of them is passed on
+				/*
+				 * Each remaining value is one of the varargs, unless the first is a view of them,
+				 * which is passed on whole, and the values after it go to the parameters after
+				 * the varargs (docs/functions.md, Variable Arguments).
+				 */
 				Value value;
 				Progress progress = positional_value(checker, positional, expected, value);
 				if (progress != Progress::DONE) {
 					return progress;
 				}
 				TypeInfo const* passed = ValueKind::VALUE == value.kind ? base_of(value.type) : nullptr;
-				const bool passed_on = passed != nullptr && TypeInfoVariant::ARRAY == passed->variant
+				const bool passed_on = !given[parameter] && passed != nullptr && TypeInfoVariant::ARRAY == passed->variant
 					&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(passed)->array_type
-					&& same_type(static_cast<TypeInfoArray const*>(passed)->element_type, expected)
-					&& arguments.positional.size() == i + 1;
-				if (!passed_on) {
-					require_fit(checker, value, expected, argument, std::format("{}", text_of(input.name)));
-				}
+					&& same_type(static_cast<TypeInfoArray const*>(passed)->element_type, expected);
 				given[parameter] = true;
+				if (passed_on) {
+					++parameter;
+					continue;
+				}
+				require_fit(checker, value, expected, argument, std::format("{}", text_of(input.name)));
 				continue;
 			}
 			Value value;

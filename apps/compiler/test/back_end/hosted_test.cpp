@@ -71,3 +71,28 @@ TEST(Hosted, RunsProgram)
 
 	module.erase();
 }
+
+// A call in a constant's value would have to run while compiling, which isn't supported yet: it's reported.
+TEST(Hosted, ReportsCallInConstant)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "constant_call");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("constant_call"));
+	options.output_name = (std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "constant_call").string();
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0);
+	EXPECT_FALSE(hemera::generate_program(program_info.get(), options, module));
+	EXPECT_EQ(hemera::error_count(), 1);
+
+	module.erase();
+}

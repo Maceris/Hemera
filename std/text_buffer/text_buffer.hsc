@@ -1,0 +1,92 @@
+package text_buffer
+
+import raw from "std"
+
+/*
+ * Text built up in bytes the caller provides. Appending past the end keeps what fits and sets
+ * truncated, so a message that's too long is cut short rather than lost.
+ *
+ *     storage : u8[128]
+ *     text := make(storage)
+ *     append(&text, "free pages: ")
+ *     append_unsigned(&text, count)
+ *     log_info(as_string(&text))
+ */
+TextBuffer :: struct {
+    bytes : u8[],
+    count : usize,
+    truncated : bool,
+}
+
+//TODO(claude) a string constant, once constant strings can be indexed
+DIGITS :: char.['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
+
+make :: fn(bytes: u8[]) -> TextBuffer {
+    return TextBuffer.{bytes = bytes, count = 0, truncated = false}
+}
+
+// What's been appended so far.
+as_string :: fn(text: ptr[TextBuffer]) -> string {
+    if text.count == 0 {
+        return ""
+    }
+    return raw.string_of(&text.bytes[0], text.count)
+}
+
+clear :: fn(text: ptr[mut TextBuffer]) {
+    text.count = 0
+    text.truncated = false
+}
+
+append_byte :: fn(text: ptr[mut TextBuffer], byte: u8) {
+    if text.count >= text.bytes.count {
+        text.truncated = true
+        return void
+    }
+    text.bytes[text.count] = byte
+    text.count += 1
+}
+
+append :: fn(text: ptr[mut TextBuffer], value: string) {
+    for character in value {
+        append_byte(text, cast[u8](character))
+    }
+}
+
+/*
+ * value in base (2 to 16), with at least minimum_digits digits, padded with zeros.
+ * Hexadecimal digits are lowercase, with no prefix.
+ */
+append_unsigned :: fn(text: ptr[mut TextBuffer], value: u64, base: u64 = 10, minimum_digits: usize = 1) {
+    // The digits come out lowest first, so they're collected backwards
+    digits : u8[64]
+    count : usize = 0
+    with {
+        rest := value
+    }
+    loop {
+        digits[63 - count] = cast[u8](DIGITS[rest % base])
+        rest /= base
+        count += 1
+    }
+    while (rest != 0 || count < minimum_digits) && count < 64
+    for i in (64 - count)..<64 {
+        append_byte(text, digits[i])
+    }
+}
+
+append_signed :: fn(text: ptr[mut TextBuffer], value: i64, base: u64 = 10, minimum_digits: usize = 1) {
+    if value < 0 {
+        append_byte(text, cast[u8]('-'))
+        // Negating in unsigned arithmetic also works for the most negative value
+        append_unsigned(text, 0 - cast[u64](value), base, minimum_digits)
+        return void
+    }
+    append_unsigned(text, cast[u64](value), base, minimum_digits)
+}
+
+// value as 0x followed by 16 hexadecimal digits, the way addresses are usually shown.
+append_address :: fn(text: ptr[mut TextBuffer], value: u64) {
+    append(text, "0x")
+    append_unsigned(text, value, 16, 16)
+}

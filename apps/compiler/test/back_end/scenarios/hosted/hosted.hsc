@@ -121,6 +121,35 @@ double :: fn(n: int) -> int {
     return n * 2
 }
 
+// Each else belongs to the if before it
+grade :: fn(n: int) -> int {
+    if n > 90 {
+        return 4
+    }
+    else if n > 80 {
+        return 3
+    }
+    else if n > 70 {
+        return 2
+    }
+    else {
+        return 1
+    }
+}
+
+sign :: fn(n: int) -> int {
+    return if n > 0 { 1 } else if n < 0 { -1 } else { 0 }
+}
+
+// A varargs view passed on, with a value after it for the next parameter
+count_with :: fn(values: int..., extra: int) -> int {
+    return cast[int](values.count) + extra
+}
+
+forward :: fn(values: int...) -> int {
+    return count_with(values, 10)
+}
+
 move :: fn(p: ptr[mut Point], by: int) {
     p.x += by
     p.y -= by
@@ -236,6 +265,16 @@ main :: fn() -> int {
     choice := if a > 5 { 1 } else { 2 }
     if choice != 1 {
         return 21
+    }
+    if grade(95) != 4 || grade(85) != 3 || grade(75) != 2 || grade(5) != 1 {
+        return 22
+    }
+    if sign(5) != 1 || sign(-5) != -1 || sign(0) != 0 {
+        return 23
+    }
+    _ = double(3)
+    if forward(1, 2, 3) != 13 {
+        return 24
     }
     return 42
 }

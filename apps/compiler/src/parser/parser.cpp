@@ -1799,7 +1799,7 @@ namespace hemera::parser {
 		//TODO(ches) add tests for underscores as assignment targets
 		if (expect(state, TokenType::SYM_UNDERSCORE)) {
 			ast::Node* underscore = &next_as_node(state, ast::NodeType::UNDERSCORE);
-			return ExprResult(std::move(underscore));
+			return ExprResult{ true, underscore };
 		}
 		return expr_lvl_2(state, ignore_lists);
 	}
@@ -2715,9 +2715,14 @@ namespace hemera::parser {
 		}
 		if_node.children.push_back(block_node.result);
 
+		/*
+		 * Each else belongs to the if before it, and an else if is an if inside the else, so
+		 * if a {} else if b {} else {} is IF(a, {}, ELSE(IF(b, {}, ELSE({})))).
+		 */
+		ast::Node* current_if = &if_node;
 		while (expect(state, TokenType::KEYWORD_ELSE)) {
-			ast::Node& else_node = next_as_node(state, ast::NodeType::ELSE, 
-				&if_node);
+			ast::Node& else_node = next_as_node(state, ast::NodeType::ELSE,
+				current_if);
 			if (expect(state, TokenType::KEYWORD_IF)) {
 				ast::Node& else_if_node = next_as_node(state, ast::NodeType::IF, &else_node);
 
@@ -2733,7 +2738,8 @@ namespace hemera::parser {
 					delete_node(state->node_alloc, &if_node);
 					return ExprResult{ false };
 				}
-				else_node.children.push_back(else_block_node.result);
+				else_if_node.children.push_back(else_block_node.result);
+				current_if = &else_if_node;
 			}
 			else {
 				// Final else block
