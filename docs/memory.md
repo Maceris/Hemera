@@ -11,8 +11,8 @@ an `any` made from a local variable. The compiler checks that none of them can o
 
 The checks are deliberately much smaller than a borrow checker:
 
-* There are no lifetime annotations or lifetime variables. The only annotations are `#escaping` on parameters
-  and `#scoped` on structs, and most code needs neither.
+* There are no lifetime annotations or lifetime variables. The only annotations are `#escaping` on parameters,
+  and `#scoped` and `#unrestricted` on structs, and most code needs none of them.
 * There are no rules about aliasing or exclusive access. Any number of pointers, mutable or not, can refer
   to the same thing.
 * Each function is checked on its own, using only the signatures of the functions it calls.
@@ -22,13 +22,13 @@ The checks are deliberately much smaller than a borrow checker:
 
 Every value whose type contains pointers (pointers, `rawptr`, array views, strings, `any`,
 and structs, unions and arrays containing any of those) is either **local** or **unrestricted**.
-Values of types without pointers are always unrestricted.
+Values of types without pointers, and of `#unrestricted` structs, are always unrestricted.
 
 A value is local if it is, or was computed from:
 
 * the address of a local variable or parameter, or of any part of one (`&x`, `&x.field`, `&x[i]`)
 * a view of a stack array (`buffer[5]`, or passing `buffer` where a view is expected)
-* an `any` made from a local variable or parameter
+* an `any`, which points at a copy of the value in the stack frame that made it (see [types.md](types.md#any))
 * a parameter that isn't marked `#escaping`
 * any value of a `#scoped` type
 * a value loaded through a deep pointer (below)
@@ -160,6 +160,10 @@ This is conservative. `lookup(table: ptr[Map], key: string) -> ptr[Value]` calle
 local value, even if it really points into the table's heap memory. That only matters when storing the result
 somewhere that outlives the key. You can however copy the key to the heap first.
 
+A pointer to a local variable counts the same way: `take(&arena, count)` gives a local view, whatever memory the arena
+hands out. When what's returned really comes from elsewhere, keep the stack out of the call: pass the state by value
+or keep it somewhere other than the stack, or make the handle `#unrestricted` (below) and pass it by value.
+
 ## Scoped Structs
 
 A struct marked `#scoped` is meant to hold pointers into the stack, and to be passed around by pointer.
@@ -193,6 +197,31 @@ parse :: fn() {
 
 Ordinary structs can hold local values too, as long as nothing takes their address.
 
+## Unrestricted Structs
+
+A struct marked `#unrestricted` never points into the stack. Its values are always unrestricted, so they can be stored
+anywhere, and passing one to a function doesn't make what the function returns local.
+
+```
+Allocator :: struct #unrestricted {
+    function : AllocatorFn,
+    data : rawptr,
+}
+
+grow :: fn(list: ptr[mut List], allocator: Allocator, loc := #caller_location) {
+    list.items = new_array(Item, list.count * 2, allocator, loc)   // OK: allocator and loc are unrestricted
+}
+```
+
+This is for handles that are passed to many functions and never made from stack memory, like `base`'s `Allocator` and
+`SourceCodeLocation`. Without it, everything allocated through an allocator parameter would be local, since the
+parameter is.
+
+* Building one from a local value, or storing a local value in one of its fields, is an error.
+* A struct can't be both `#scoped` and `#unrestricted`.
+
+So an allocator whose memory is a buffer on the stack can't be an `Allocator`, as for contexts (below).
+
 ## Contexts
 
 `push_context` overrides must be unrestricted values. So everything reachable from a context is unrestricted, and
@@ -209,6 +238,7 @@ must still be unrestricted.
 
 `thread_create`, `fiber_create` and similar functions take their `data` as `#escaping`, since the new thread or
 fiber outlives the call. A new thread or fiber can't be handed a pointer into the creating function's stack frame.
+The function a thread runs takes its `data` as `#escaping` too (`ThreadFunction`), since that's where it came from.
 
 Fiber stacks never move (see [multitasking.md](multitasking.md#stacks)), so local values stay valid across yields,
 even when a fiber moves to another OS thread.

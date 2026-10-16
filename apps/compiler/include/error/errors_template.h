@@ -79,6 +79,7 @@ E4026,Match not exhaustive
 E4027,No context
 E4028,Can't read file
 E4029,Compile-time code failed
+E4030,Pointer into the stack escapes
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

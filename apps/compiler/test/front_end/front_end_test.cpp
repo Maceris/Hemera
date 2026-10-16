@@ -828,7 +828,19 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "file_data_missing", hemera::ErrorCode::E4028 },
 		{ "file_data_not_string", hemera::ErrorCode::E4014 },
 		{ "null_pointer", hemera::ErrorCode::E4015 },
-		{ "c_needs_no_context", hemera::ErrorCode::E4024 }
+		{ "c_needs_no_context", hemera::ErrorCode::E4024 },
+		{ "stack_return_local", hemera::ErrorCode::E4030 },
+		{ "stack_outlives_block", hemera::ErrorCode::E4030 },
+		{ "stack_pointer_to_holder", hemera::ErrorCode::E4030 },
+		{ "stack_escaping_argument", hemera::ErrorCode::E4030 },
+		{ "stack_keeps_parameter", hemera::ErrorCode::E4030 },
+		{ "stack_parameter_address", hemera::ErrorCode::E4030 },
+		{ "stack_named_result", hemera::ErrorCode::E4030 },
+		{ "stack_view_of_holders", hemera::ErrorCode::E4030 },
+		{ "stack_unrestricted", hemera::ErrorCode::E4030 },
+		{ "stack_scoped_store", hemera::ErrorCode::E4030 },
+		{ "stack_scoped_and_unrestricted", hemera::ErrorCode::E4014 },
+		{ "stack_escaping_function", hemera::ErrorCode::E4015 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;
@@ -836,6 +848,18 @@ TEST(FrontEnd, ReportsBodyErrors)
 		ASSERT_EQ(errors.size(), 1) << name << ": " << codes(errors);
 		EXPECT_EQ(errors[0], expected) << name;
 	}
+}
+
+// docs/memory.md, Pointers to the Stack: what's allowed
+TEST(FrontEnd, AllowsStackPointersThatDontEscape)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("stack_pointers_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
 }
 
 TEST(FrontEnd, ChecksBodies)

@@ -6,6 +6,7 @@
 #include "error/reporting.h"
 #include "front_end/checking.h"
 #include "front_end/front_end.h"
+#include "front_end/stack_pointers.h"
 #include "util/logger.h"
 
 namespace hemera {
@@ -130,6 +131,7 @@ namespace hemera {
 		// What it is, where it's defined, for generating its storage
 		if (checker.record != nullptr) {
 			store_checked(checker.record->nodes[static_cast<const ast::Node*>(at)], value);
+			checker.record->local_depths[at] = checker.scopes.size();
 		}
 		checker.scopes.back().locals.push_back({ name, std::move(value) });
 	}
@@ -291,6 +293,10 @@ namespace hemera {
 			for (size_t i = 0; i < a->input.size(); ++i) {
 				if (!same_type(a->input[i].type, b->input[i].type)
 					|| a->input[i].is_varargs != b->input[i].is_varargs) {
+					return false;
+				}
+				// One that keeps a parameter can't be called as one that doesn't, whose callers may pass the stack
+				if (a->input[i].is_escaping && !b->input[i].is_escaping) {
 					return false;
 				}
 			}
@@ -3739,6 +3745,10 @@ namespace hemera {
 		}
 		const size_t errors_before = thread_error_count();
 		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
+		// Then what points into the stack, once everything in the body is known (docs/memory.md)
+		if (progress == Progress::DONE && thread_error_count() == errors_before) {
+			check_stack_pointers(*checked, body, type, checker.walk.file_path);
+		}
 		if (progress == Progress::DONE && thread_error_count() == errors_before) {
 			NameRegistry& names = executor.program_info->names;
 			std::scoped_lock<std::mutex> lock(names.mutex);

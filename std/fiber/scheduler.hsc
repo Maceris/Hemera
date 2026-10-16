@@ -39,7 +39,7 @@ create_fiber_scheduler :: fn() -> ptr[mut FiberSchedulerGlobalData] {
     return result
 }
 
-run_fiber_scheduler : ThreadFunction : fn(data: any) {
+run_fiber_scheduler : ThreadFunction : fn(data #escaping : any) {
     if data.type != ptr[mut FiberSchedulerGlobalData] {
         log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type)
         return void

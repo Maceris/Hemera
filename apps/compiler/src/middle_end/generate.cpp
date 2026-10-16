@@ -2266,6 +2266,7 @@ namespace hemera {
 				});
 				info.number("alignment", type->alignment);
 				info.flag("is_scoped", structure->is_scoped);
+				info.flag("is_unrestricted", structure->is_unrestricted);
 				info.flag("is_packed", structure->is_packed);
 				info.flag("is_union", structure->is_union);
 				break;

@@ -1,6 +1,7 @@
 package runtime
 
-Allocator :: struct {
+// #unrestricted: what's allocated through one can be kept anywhere (docs/memory.md, Unrestricted Structs)
+Allocator :: struct #unrestricted {
     function : AllocatorFn,
     data : rawptr,
 }
@@ -20,7 +21,7 @@ AllocatorError :: enum #backed_by(u8) {
     InvalidArgument,
 }
 
-SourceCodeLocation :: struct {
+SourceCodeLocation :: struct #unrestricted {
     file_path: string,
     function: string,
     line: u32,

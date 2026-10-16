@@ -1,6 +1,7 @@
 package runtime
 
-ThreadFunction :: fn(any) -> void
+// A thread's data came through thread_create's #escaping data, so it never points into a stack
+ThreadFunction :: fn(data #escaping : any) -> void
 
 #if OS == .Windows {
     ThreadSpecificOS :: struct {

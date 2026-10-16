@@ -138,6 +138,8 @@ TypeInfoStruct :: struct {
     alignment: usize,
     // Marked #scoped, so values hold pointers into the stack and can't be stored on the heap.
     is_scoped: bool,
+    // Marked #unrestricted, so values never point into the stack and can be stored anywhere.
+    is_unrestricted: bool,
     // Marked #packed, so there is no padding between members.
     is_packed: bool,
     // Marked #union, so every member is at offset 0 and they share memory.

@@ -224,6 +224,11 @@ namespace hemera {
 		/// </summary>
 		bool is_scoped = false;
 		/// <summary>
+		/// From #unrestricted. Values never point into the stack, so they can be stored anywhere, and
+		/// what a function makes with one isn't held to the stack's lifetimes.
+		/// </summary>
+		bool is_unrestricted = false;
+		/// <summary>
 		/// From #packed: no padding, and an alignment of 1 unless #align asks for more.
 		/// </summary>
 		bool is_packed = false;

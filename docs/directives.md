@@ -208,6 +208,8 @@ It only raises the alignment; with `#packed`, it sets it exactly (see [types.md]
 `#union` turns the struct into a c-style union, where every field is located at the same offset and share memory
 `#scoped` is used for structs meant to hold pointers into the stack and be passed around by pointer, like parsers and iterators over a stack buffer.
 Values of these structs can never be stored on the heap. See [memory.md](memory.md#scoped-structs).
+`#unrestricted` is used for structs that never point into the stack, like allocators: their values can be stored anywhere,
+and passing one to a function doesn't tie what it returns to the stack. See [memory.md](memory.md#unrestricted-structs).
 
 ## Values
 

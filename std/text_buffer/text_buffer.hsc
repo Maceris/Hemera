@@ -9,8 +9,11 @@ package text_buffer
  *     append(&text, "free pages: ")
  *     append_unsigned(&text, count)
  *     log_info(as_string(&text))
+ *
+ * It's #scoped, since its bytes are usually a buffer on the stack: it's passed by pointer, and can't
+ * be kept on the heap (docs/memory.md, Scoped Structs).
  */
-TextBuffer :: struct {
+TextBuffer :: struct #scoped {
     bytes : u8[],
     count : usize,
     truncated : bool,

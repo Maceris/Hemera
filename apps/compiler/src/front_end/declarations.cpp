@@ -817,7 +817,7 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
-	// docs/types.md, Structs: fields, using, anonymous structs, and #packed, #align, #union, #scoped.
+	// docs/types.md, Structs: fields, using, anonymous structs, and #packed, #align, #union, #scoped, #unrestricted.
 	static Progress struct_body(Walk& walk, ast::Node* node, TypeInfoStruct* type) {
 		type->members.clear();
 		for (ast::Node* child : node->children) {
@@ -831,6 +831,12 @@ namespace hemera {
 				}
 				else if (is_text(child->value.value, "#scoped")) {
 					type->is_scoped = true;
+				}
+				else if (is_text(child->value.value, "#unrestricted")) {
+					type->is_unrestricted = true;
+				}
+				if (type->is_scoped && type->is_unrestricted) {
+					return type_error(walk, ErrorCode::E4014, child, "a struct can't be both #scoped and #unrestricted");
 				}
 				else if (is_text(child->value.value, "#align")) {
 					int64_t alignment = 0;

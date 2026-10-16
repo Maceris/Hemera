@@ -152,6 +152,11 @@ namespace hemera {
 		/// </summary>
 		std::vector<const void*> parameters;
 		std::vector<const void*> outputs;
+		/// <summary>
+		/// How deep in the function's scopes each local is defined: 1 for parameters, and more for
+		/// each block in. A variable lives as long as its scope (docs/memory.md, Pointers to the Stack).
+		/// </summary>
+		std::unordered_map<const void*, size_t> local_depths;
 	};
 
 	/// <summary>

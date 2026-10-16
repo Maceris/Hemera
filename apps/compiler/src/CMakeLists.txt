@@ -64,6 +64,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/error/warnings_template.h
   ${INCLUDE_DIR}/front_end/base_sources.h
   ${INCLUDE_DIR}/front_end/checking.h
+  ${INCLUDE_DIR}/front_end/stack_pointers.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
   ${INCLUDE_DIR}/front_end/mlir_generation.h
@@ -100,6 +101,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/mlir_generation.cpp
   ${SOURCE_DIR}/front_end/names.cpp
+  ${SOURCE_DIR}/front_end/stack_pointers.cpp
   ${SOURCE_DIR}/front_end/info.cpp
   ${SOURCE_DIR}/front_end/type.cpp
   ${SOURCE_DIR}/front_end/type_checking.cpp

@@ -111,7 +111,8 @@ More details:
 The `any` type is a combination of a type and raw pointer, in the fields `data: rawptr` and `type: type`.
 `type_info_of(value.type)` describes what `data` points to.
 Any other type can be implicitly cast to an `any`, including stack variables and parameters.
-An `any` made from something on the stack can't outlive it, which the compiler checks,
+Converting a value to an `any` copies it into the current stack frame, and `data` points at the copy,
+so an `any` can't outlive the frame that made it, which the compiler checks,
 see [memory.md](memory.md#pointers-to-the-stack).
 
 ## Type Values and Type Information

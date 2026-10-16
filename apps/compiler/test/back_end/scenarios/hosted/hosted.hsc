@@ -234,7 +234,8 @@ total_of :: fn(from: int, in: int, all: int, alias: int) -> int {
 }
 
 // An optional pointer is just the pointer, null when there's none (docs/types.md, Optional Types)
-Link :: struct {
+// #scoped, since the test chains links on the stack (docs/memory.md, Scoped Structs)
+Link :: struct #scoped {
     next : ptr[Link]?,
     value : int,
 }
@@ -302,12 +303,12 @@ move :: fn(p: ptr[mut Point], by: int) {
     p.y -= by
 }
 
-// What a value formats as, through its any's type information.
-formatted :: fn(format: string, values: any...) -> string {
-    storage : u8[128]
+// What a value formats as, through its any's type information, in storage the caller gives.
+formatted :: fn(storage: u8[], format: string, values: any...) -> string {
     text := text_buffer.make(storage)
     text_buffer.append_format(&text, format, values)
-    return text_buffer.as_string(&text)
+    // A view of the caller's storage; the text buffer itself is on this stack
+    return string_of(&storage[0], text.count)
 }
 
 // The type information an any carries.
@@ -625,11 +626,13 @@ main :: fn() -> int {
     if some_number.type != int || some_number.type == i64 || type_of(origin) != Origin {
         return 43
     }
-    shape_text :: formatted("% %", Shape.Rectangle(2, 3), first.next)
-    if formatted("%2 %1 %%", Color.Green, true) != "true Green %" || shape_text.count < 16 {
+    shape_storage, colors_storage, point_storage, pointer_storage : u8[128]
+    shape_text :: formatted(shape_storage, "% %", Shape.Rectangle(2, 3), first.next)
+    if formatted(colors_storage, "%2 %1 %%", Color.Green, true) != "true Green %" || shape_text.count < 16 {
         return 44
     }
-    if formatted("%", Point.{1, -2}) != "Point{x = 1, y = -2}" || formatted("% %", ptr[mut Point], none) != "ptr[mut Point] none" {
+    if formatted(point_storage, "%", Point.{1, -2}) != "Point{x = 1, y = -2}"
+        || formatted(pointer_storage, "% %", ptr[mut Point], none) != "ptr[mut Point] none" {
         return 45
     }
     _, second :: two_results()
