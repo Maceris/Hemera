@@ -3478,11 +3478,13 @@ namespace hemera {
 		}
 		std::vector<TypeInfo*> types;
 		bool all_values = true;
+		// _ takes a value and drops it
+		auto discarded = [](ast::Node* name) { return ast::NodeType::UNDERSCORE == name->node_type; };
 		for (size_t i = 0; i < names.size(); ++i) {
 			const CheckedNode* found = checked(generator, names[i]);
 			const bool is_value = found != nullptr && ValueKind::VALUE == found->kind;
 			types.push_back(is_value ? found->type : nullptr);
-			all_values = all_values && is_value;
+			all_values = all_values && (is_value || discarded(names[i]));
 			// Untyped constants are generated where they're used, as what they're used as
 			if (found != nullptr && is_untyped(found->kind) && value_node != nullptr) {
 				generator.state->constants[names[i]] = ast::NodeType::LIST == value_node->node_type
@@ -3497,6 +3499,9 @@ namespace hemera {
 			values = emit_values(generator, value_node, types);
 		}
 		for (size_t i = 0; i < names.size(); ++i) {
+			if (discarded(names[i])) {
+				continue;
+			}
 			mlir::Value slot = make_slot(generator, types[i]);
 			if (values.empty()) {
 				store_zero(generator, types[i], slot);

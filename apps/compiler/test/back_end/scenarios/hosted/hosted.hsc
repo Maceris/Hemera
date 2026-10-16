@@ -314,6 +314,11 @@ info_of :: fn(value: any) -> ptr[compiler.TypeInfo] {
     return type_info_of(value.type)
 }
 
+// Two results, for definitions that drop one with _.
+two_results :: fn() -> (u32, bool) {
+    return 3, true
+}
+
 main :: fn() -> int {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
@@ -533,6 +538,11 @@ main :: fn() -> int {
     }
     if formatted("%", Point.{1, -2}) != "Point{x = 1, y = -2}" || formatted("% %", ptr[mut Point], none) != "ptr[mut Point] none" {
         return 45
+    }
+    _, second :: two_results()
+    first, _ := two_results()
+    if !second || first != 3 {
+        return 46
     }
     return 42
 }
