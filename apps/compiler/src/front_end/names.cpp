@@ -1442,7 +1442,7 @@ namespace hemera {
 	 * Execution): the run is queued the first time it's needed, and the walk waits for it.
 	 */
 	Progress require_compile_time_runtime(Walk& walk, ast::Node* where) {
-		for (std::string_view name : { "CarrierBlock", "Context", "MINIMAL_CONTEXT" }) {
+		for (std::string_view name : { "CarrierBlock", "Context", "COMPILE_TIME_CONTEXT" }) {
 			Declaration* found = nullptr;
 			Progress progress = base_declaration(walk, where, "runtime", name, found);
 			if (progress == Progress::DONE) {

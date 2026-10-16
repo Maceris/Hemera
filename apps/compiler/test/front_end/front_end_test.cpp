@@ -823,6 +823,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "compile_time_cycle", hemera::ErrorCode::E4007 },
 		{ "compile_time_assert", hemera::ErrorCode::E4010 },
 		{ "compile_time_calls_error", hemera::ErrorCode::E4015 },
+		{ "compile_time_assertion", hemera::ErrorCode::E4029 },
+		{ "compile_time_trap", hemera::ErrorCode::E4029 },
 		{ "file_data_missing", hemera::ErrorCode::E4028 },
 		{ "file_data_not_string", hemera::ErrorCode::E4014 },
 		{ "null_pointer", hemera::ErrorCode::E4015 },

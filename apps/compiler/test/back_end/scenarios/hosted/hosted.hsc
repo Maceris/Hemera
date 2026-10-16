@@ -6,6 +6,7 @@ package hosted
 
 import compiler from "base"
 import intrinsics from "base"
+import runtime from "base"
 import text_buffer from "std"
 
 Point :: struct {
@@ -340,6 +341,25 @@ compile_time_name :: fn() -> string {
 }
 
 FIBONACCI_20 :: fibonacci(20)
+// Compile-time code gets memory from its context, and can log
+SQUARES_SUM :: sum_of_squares(6)
+
+sum_of_squares :: fn(count: int) -> int {
+    runtime.log_info("adding up % squares", count)
+    memory, error :: context.allocator.function(context.allocator.data, cast[usize](count) * 8, 8, null, 0, #caller_location)
+    if error is_some {
+        return -1
+    }
+    squares :: view_of(cast[ptr[mut int]](cast[rawptr](&memory[0])), cast[usize](count))
+    for index in 0..<count {
+        squares[index] = index * index
+    }
+    total := 0
+    for square in squares {
+        total += square
+    }
+    return total
+}
 // Run while checking, since checking needs them: an array's count, an #if and an #assert
 FIBONACCI_7 :: fibonacci(7)
 LARGE :: fibonacci(7) > 10
@@ -610,6 +630,9 @@ main :: fn() -> int {
     fibonacci_bytes : u8[FIBONACCI_7]
     if fibonacci_bytes.count != 13 || size_name() != "large" {
         return 50
+    }
+    if SQUARES_SUM != 55 {
+        return 51
     }
     return 42
 }

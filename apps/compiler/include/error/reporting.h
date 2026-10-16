@@ -62,6 +62,13 @@ namespace hemera {
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info);
 
+	/// <summary>
+	/// Prints a message that isn't an error or a warning, like what compile-time code logs at the
+	/// info level, when printing is on.
+	/// </summary>
+	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,
+		std::string_view kind, std::string_view text);
+
 	size_t error_count();
 	std::vector<ErrorCode>* error_list();
 	size_t warning_count();

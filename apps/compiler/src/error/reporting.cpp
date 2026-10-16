@@ -242,6 +242,18 @@ namespace hemera {
 		}
 	}
 
+	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,
+		std::string_view kind, std::string_view text) {
+
+		if (!reporting_enabled) {
+			return;
+		}
+		std::lock_guard<std::mutex> lock(cout_mutex);
+		if (printing_enabled) {
+			std::cout << std::format("{}({},{}): {}: {}", file, line_number, column_number, kind, text) << std::endl;
+		}
+	}
+
 	size_t error_count() {
 		std::lock_guard<std::mutex> lock(storage_mutex);
 		if (error_list_storage == nullptr) {

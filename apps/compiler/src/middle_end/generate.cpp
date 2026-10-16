@@ -1613,7 +1613,8 @@ namespace hemera {
 		compiled.input_package = generator.input_package;
 		compiled.compile_time = true;
 		compiled.collecting = unchecked != nullptr;
-		compiled.file_path = current_file(generator);
+		compiled.file_path = declaration != nullptr ? file_path_of(declaration->package_path, declaration->file_name)
+			: current_file(generator);
 		{
 			mlir::OpBuilder::InsertionGuard guard(compiled.builder);
 			compiled.builder.setInsertionPointToEnd(module.getBody());
@@ -1626,10 +1627,10 @@ namespace hemera {
 			state.checked = checked;
 			state.entry = entry;
 			compiled.state = &state;
-			// A carrier block and the minimal context, as for code with nothing underneath it
+			// A carrier block, and the context the compiler's services are reached through
 			Declaration* carrier_declaration = base_declaration_named(compiled, "runtime", "CarrierBlock");
 			Declaration* context_declaration = base_declaration_named(compiled, "runtime", "Context");
-			Declaration* minimal = base_declaration_named(compiled, "runtime", "MINIMAL_CONTEXT");
+			Declaration* minimal = base_declaration_named(compiled, "runtime", "COMPILE_TIME_CONTEXT");
 			if (carrier_declaration == nullptr || context_declaration == nullptr || minimal == nullptr) {
 				unsupported(generator, node, "base/runtime isn't available for compile-time code");
 				module.erase();
@@ -1669,6 +1670,13 @@ namespace hemera {
 			module.erase();
 			return false;
 		}
+		CompileTimeRun run;
+		run.file_path = compiled.file_path;
+		run.line = node->value.line_number;
+		run.column = node->value.column_number;
+		for (auto& [described, global] : compiled.descriptors) {
+			run.descriptors.emplace_back(global.getSymName().str(), described);
+		}
 		auto llvm_context = std::make_unique<llvm::LLVMContext>();
 		std::unique_ptr<llvm::Module> lowered = lower_to_llvm(module, *llvm_context, options);
 		module.erase();
@@ -1680,15 +1688,19 @@ namespace hemera {
 		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(buffer.data());
 		bool captured = true;
 		std::string error;
-		const bool ran = run_on_host(std::move(lowered), std::move(llvm_context), std::string(COMPILE_TIME_ENTRY), buffer.data(),
-			[&]() {
+		const RunResult ran = run_on_host(std::move(lowered), std::move(llvm_context), std::string(COMPILE_TIME_ENTRY),
+			buffer.data(), [&]() {
 				if (type != nullptr) {
 					result.bytes.assign(bytes, bytes + type->size);
 					captured = capture_pointed(generator, type, result.bytes.data(), 0, result, node);
 				}
-			}, error);
-		if (!ran) {
+			}, run, error);
+		if (RunResult::NOT_COMPILED == ran) {
 			unsupported(generator, node, std::format("compile-time code couldn't run: {}", error));
+			return false;
+		}
+		if (RunResult::FAILED == ran) {
+			generator.failed = true;
 			return false;
 		}
 		return captured;
@@ -2216,7 +2228,8 @@ namespace hemera {
 		{
 			mlir::OpBuilder::InsertionGuard guard(generator.builder);
 			generator.builder.setInsertionPointToEnd(generator.module.getBody());
-			global = LLVM::GlobalOp::create(generator.builder, generator.loc, llvm, true, LLVM::Linkage::Private,
+			global = LLVM::GlobalOp::create(generator.builder, generator.loc, llvm, true,
+				generator.compile_time ? LLVM::Linkage::External : LLVM::Linkage::Private,
 				std::format("type_info.{}", generator.descriptors.size()), mlir::Attribute(),
 				std::max<size_t>(descriptor_type->alignment, 1));
 			// Before its value, which may refer to it, like a struct with a pointer to its own type
@@ -2820,6 +2833,9 @@ namespace hemera {
 	 * An intrinsic's instructions (base/intrinsics): trap, memory, volatile and atomic accesses,
 	 * fences, the carrier register, and the platform's own instructions.
 	 */
+	static Emitted emit_compile_time_service(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, const ast::Node* where);
+
 	static Emitted emit_intrinsic(Generator& generator, Declaration* called, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
 
@@ -2896,6 +2912,10 @@ namespace hemera {
 		if ((name.starts_with("atomic_") || name.starts_with("interlocked_")) && emit_atomic(generator, name, function, arguments, result)) {
 			return result;
 		}
+		// The compiler's services to compile-time code (docs/compilation.md, Compile-Time Execution)
+		if (name.starts_with("compile_time_")) {
+			return emit_compile_time_service(generator, name, function, arguments, where);
+		}
 		// Generated assembly, made once (docs/calling_convention.md, Entry Functions)
 		if (name == "return_to_user") {
 			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(RETURN_TO_USER_SYMBOL)) {
@@ -2921,6 +2941,95 @@ namespace hemera {
 		}
 		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", full_name));
 		return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : result;
+	}
+
+	// A function in the compiler, which the JIT finds; not dso_local, since it may be far from the compiled code.
+	static LLVM::LLVMFuncOp compiler_function(Generator& generator, const char* symbol, mlir::Type result,
+		const std::vector<mlir::Type>& parameters) {
+
+		if (auto existing = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(symbol)) {
+			return existing;
+		}
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		return LLVM::LLVMFuncOp::create(generator.builder, generator.loc, symbol, LLVM::LLVMFunctionType::get(result, parameters));
+	}
+
+	// A number as an i64, for the compiler's services.
+	static mlir::Value as_i64(Generator& generator, mlir::Value number) {
+		mlir::Type i64 = integer_type(generator, 8);
+		const unsigned width = number.getType().getIntOrFloatBitWidth();
+		return width == 64 ? number : static_cast<mlir::Value>(LLVM::ZExtOp::create(generator.builder, generator.loc, i64, number));
+	}
+
+	// A SourceCodeLocation's file path, line and column, as the compiler's services take them.
+	static std::vector<mlir::Value> location_parts(Generator& generator, mlir::Value location, TypeInfo const* type) {
+		auto structure = static_cast<TypeInfoStruct const*>(base(type));
+		std::vector<mlir::Value> parts;
+		size_t offset = 0;
+		TypeInfo* member = nullptr;
+		std::vector<int64_t> path;
+		find_member(generator, structure, intern(std::string("file_path")), offset, member, path);
+		mlir::Value file = LLVM::ExtractValueOp::create(generator.builder, generator.loc, location, path);
+		parts.push_back(extract(generator, file, 1));
+		parts.push_back(extract(generator, file, 0));
+		for (const char* field : { "line", "column" }) {
+			path.clear();
+			find_member(generator, structure, intern(std::string(field)), offset, member, path);
+			parts.push_back(as_i64(generator, LLVM::ExtractValueOp::create(generator.builder, generator.loc, location, path)));
+		}
+		return parts;
+	}
+
+	/*
+	 * intrinsics.compile_time_log and the rest: calls to the compiler, with strings, views and locations taken
+	 * apart into pointers and numbers. Only compile-time code can make them.
+	 */
+	static Emitted emit_compile_time_service(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
+
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		if (!generator.compile_time) {
+			unsupported(generator, where, std::format("intrinsics.{} is only for compile-time code", name));
+			return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : Emitted{};
+		}
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::Type i64 = integer_type(generator, 8);
+		mlir::Type pointer = pointer_type(generator);
+		mlir::Type nothing = LLVM::LLVMVoidType::get(generator.context);
+		if (name == "compile_time_log") {
+			std::vector<mlir::Value> values{ as_i64(generator, arguments[0]), extract(generator, arguments[1], 1),
+				extract(generator, arguments[1], 0), extract(generator, arguments[2], 1), extract(generator, arguments[2], 0) };
+			for (mlir::Value part : location_parts(generator, arguments[3], function->input[3].type)) {
+				values.push_back(part);
+			}
+			LLVM::LLVMFuncOp log = compiler_function(generator, COMPILE_TIME_LOG_SYMBOL, nothing,
+				{ i64, pointer, i64, pointer, i64, pointer, i64, i64, i64 });
+			LLVM::CallOp::create(b, l, log, values);
+			return Emitted{};
+		}
+		if (name == "compile_time_allocate") {
+			LLVM::LLVMFuncOp allocate = compiler_function(generator, COMPILE_TIME_ALLOCATE_SYMBOL, pointer, { i64, i64 });
+			auto call = LLVM::CallOp::create(b, l, allocate, mlir::ValueRange{ as_i64(generator, arguments[0]), as_i64(generator, arguments[1]) });
+			return value(call.getResult(), result_type);
+		}
+		if (name == "compile_time_free") {
+			LLVM::CallOp::create(b, l, compiler_function(generator, COMPILE_TIME_FREE_SYMBOL, nothing, { pointer }),
+				mlir::ValueRange{ arguments[0] });
+			return Emitted{};
+		}
+		if (name == "compile_time_fail") {
+			std::vector<mlir::Value> values{ extract(generator, arguments[0], 1), extract(generator, arguments[0], 0) };
+			for (mlir::Value part : location_parts(generator, arguments[1], function->input[1].type)) {
+				values.push_back(part);
+			}
+			LLVM::LLVMFuncOp fail = compiler_function(generator, COMPILE_TIME_FAIL_SYMBOL, nothing, { pointer, i64, pointer, i64, i64, i64 });
+			LLVM::CallOp::create(b, l, fail, values);
+			return never_returning();
+		}
+		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", name));
+		return Emitted{};
 	}
 
 	// Whether a declaration is an intrinsic: a function in base without a body.

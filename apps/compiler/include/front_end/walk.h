@@ -55,7 +55,7 @@ namespace hemera {
 
 	/// <summary>
 	/// Waits until what compile-time code runs with is resolved: base/runtime's CarrierBlock, Context and
-	/// MINIMAL_CONTEXT (docs/compilation.md, Compile-Time Execution).
+	/// COMPILE_TIME_CONTEXT (docs/compilation.md, Compile-Time Execution).
 	/// </summary>
 	Progress require_compile_time_runtime(Walk& walk, ast::Node* where);
 

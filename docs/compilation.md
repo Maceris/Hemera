@@ -55,6 +55,12 @@ like an array's count or an `#if` condition, waits for it, and the program uses 
 computes such a value can't call a function whose own checking needs it; that's reported as a cycle. Checking can
 use integers, booleans and enum members from it; anything else it gives is only for the program's constants.
 
+Compile-time code runs with `runtime.COMPILE_TIME_CONTEXT`. What it logs is printed by the compiler at the line that
+logged it, with `%` filled in like a run-time logger's; warnings are the compiler's warnings, and errors fail the build.
+Its allocator gives memory that lasts until the code finishes. A failed assertion, a trap, or a crash, like reading
+memory it can't, fails the build at that line, or at the constant or `#run` being worked out, and the compiler goes on
+to report anything else wrong.
+
 Compile-time code is the program's own code, with the `#if` choices made for the target, compiled for the machine
 doing the compiling. Code that only computes runs the same either way; code that uses the operating system only works
 at compile time when the target's operating system is the one compiling it, as it is for a build package.

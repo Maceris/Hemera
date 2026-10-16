@@ -41,6 +41,18 @@ stack_pointer : fn() -> rawptr : ---
 spin_hint : fn() : ---
 
 /*
+ * The compiler's services to compile-time code (docs/compilation.md, Compile-Time Execution), which
+ * runtime.COMPILE_TIME_CONTEXT is made of. Only compile-time code can call them.
+ */
+// Print a log line, with format_string's placeholders filled in from params. ERROR and FATAL fail the build.
+compile_time_log : fn(level: runtime.LogLevel, format_string: string, params: any[], location: runtime.SourceCodeLocation) : ---
+// size bytes, aligned to alignment, that last until the compile-time code finishes; null if there's no memory.
+compile_time_allocate : fn(size: usize, alignment: usize) -> rawptr : ---
+compile_time_free : fn(memory: rawptr) : ---
+// Fail the build with message at location, and stop the compile-time code there.
+compile_time_fail #never_returns : fn(message: string, location: runtime.SourceCodeLocation) : ---
+
+/*
  * Same as capture_stack_trace, for a suspended fiber, starting from its innermost frame.
  * Returns 0 for a fiber that is running, finished, or hasn't started.
  * For debugging stuck fibers.
