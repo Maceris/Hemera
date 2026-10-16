@@ -146,12 +146,13 @@ invlpg : fn(address: rawptr) : ---
 /*
  * One entry point per vector for handler, an entry function (#calling_convention(.entry)).
  * The compiler generates a small stub per vector that records the vector number (and an error code of 0
- * where the CPU doesn't push one), then enters handler.
+ * where the CPU doesn't push one), then enters handler. handler may return, for NMIs: the frame is
+ * restored and the interrupted code resumes.
  *
  * handler is also a generic parameter, so it must be known at compile time, and the stubs are
  * generated once for each handler this is called with.
  */
-entry_points : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]) #never_returns)) -> ptr[EntryPoints] : ---
+entry_points : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[EntryPoints] : ---
 
 /*
  * Restore every register from frame and return to user mode: swapgs, then sysretq when

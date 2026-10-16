@@ -141,6 +141,18 @@ namespace hemera {
 		/// </summary>
 		std::map<const TypeInfo*, LLVM::GlobalOp> descriptors;
 		/// <summary>
+		/// Each entry function's body, which its generated code calls (docs/calling_convention.md, Entry Functions).
+		/// </summary>
+		std::map<Declaration*, LLVM::LLVMFuncOp> entry_bodies;
+		/// <summary>
+		/// The table x86_64.entry_points made for each entry function, by its symbol.
+		/// </summary>
+		std::map<std::string, LLVM::GlobalOp> entry_tables;
+		/// <summary>
+		/// The module's assembly: entry functions' code, their stubs, and return_to_user.
+		/// </summary>
+		std::vector<std::string> module_assembly;
+		/// <summary>
 		/// How many arrays descriptors have used, like an enum's members, for their globals' names.
 		/// </summary>
 		size_t type_data = 0;
@@ -652,6 +664,215 @@ namespace hemera {
 		return !function->no_context && !has_convention(function, "entry") && !has_convention(function, "interrupt");
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Entry functions (docs/calling_convention.md, Entry Functions): their generated code is module-level
+	// assembly around the body, which is an ordinary function taking the frame
+
+	static bool is_entry_function(TypeInfoFunction const* function) {
+		return has_convention(function, "entry");
+	}
+
+	// The general registers, in the order they're pushed: the reverse of RegisterFrame's, which is lowest first.
+	static constexpr std::string_view FRAME_REGISTERS[] = {
+		"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+	};
+
+	// Where RegisterFrame's fields are, from its start (base/intrinsics/x86_64/x86_64.hsc).
+	constexpr int FRAME_RCX = 96;
+	constexpr int FRAME_R11 = 32;
+	constexpr int FRAME_RIP = 136;
+	constexpr int FRAME_CS = 144;
+	constexpr int FRAME_RFLAGS = 152;
+	constexpr int FRAME_SS = 168;
+	// From the vector, where the stack pointer is once the general registers are popped, to the saved rsp
+	constexpr int VECTOR_TO_RSP = 40;
+
+	static std::string push_registers() {
+		std::string text;
+		for (std::string_view name : FRAME_REGISTERS) {
+			text += std::format("\tpushq %{}\n", name);
+		}
+		return text;
+	}
+
+	static std::string pop_registers() {
+		std::string text;
+		for (size_t i = std::size(FRAME_REGISTERS); i > 0; --i) {
+			text += std::format("\tpopq %{}\n", FRAME_REGISTERS[i - 1]);
+		}
+		return text;
+	}
+
+	/*
+	 * The frame is complete: call the body with it. rbp is cleared so stack walks end here, and the
+	 * direction flag, which user code may have set, is cleared as the body expects.
+	 */
+	static std::string call_body(std::string_view body) {
+		return std::format("\txorl %ebp, %ebp\n\tcld\n\tmovq %rsp, %rdi\n\tcall {}\n", body);
+	}
+
+	/*
+	 * A .entry function: entered from the stubs entry_points makes, with the vector and an error code
+	 * pushed after what the CPU pushed. symbol decides swapgs from the interrupted cs; symbol.paranoid,
+	 * for NMIs, double faults and machine checks, which can arrive between a swapgs and the iretq or
+	 * sysretq after it, decides from IA32_GS_BASE: a kernel's is in the upper half.
+	 */
+	static std::string entry_assembly(std::string_view symbol, std::string_view body, bool returns) {
+		auto leave = [&](std::string_view swap_back) {
+			if (!returns) {
+				return std::string("\tud2\n");
+			}
+			return std::format("{}{}\taddq $16, %rsp\n\tiretq\n", swap_back, pop_registers());
+		};
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", symbol);
+		text += push_registers();
+		text += std::format("\ttestb $3, {}(%rsp)\n\tjz 1f\n\tswapgs\n1:\n", FRAME_CS);
+		text += call_body(body);
+		text += leave(std::format("\ttestb $3, {}(%rsp)\n\tjz 2f\n\tswapgs\n2:\n", FRAME_CS));
+		text += std::format("\t.p2align 4\n{}.paranoid:\n", symbol);
+		text += push_registers();
+		// rbx, which the body preserves, remembers whether this swapped
+		text += "\tmovl $0xc0000101, %ecx\n\trdmsr\n\txorl %ebx, %ebx\n\ttestl %edx, %edx\n\tjs 1f\n\tswapgs\n\tmovl $1, %ebx\n1:\n";
+		text += call_body(body);
+		text += leave("\ttestl %ebx, %ebx\n\tjz 2f\n\tswapgs\n2:\n");
+		return text;
+	}
+
+	/*
+	 * A .syscall_entry function: SYSCALL pushes nothing and leaves the user's stack, so this switches
+	 * to the kernel stack in the x86_64.SyscallScratch the gs base points at, and builds the frame:
+	 * rip from rcx, rflags from r11, and cs and ss as SYSRET will load them, from IA32_STAR.
+	 */
+	static std::string syscall_entry_assembly(std::string_view symbol, std::string_view body) {
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", symbol);
+		text += "\tswapgs\n\tmovq %rsp, %gs:8\n\tmovq %gs:0, %rsp\n";
+		// ss, rsp, rflags, cs, rip, the error code and the vector
+		text += "\tpushq $0\n\tpushq %gs:8\n\tpushq %r11\n\tpushq $0\n\tpushq %rcx\n\tpushq $0\n\tpushq $-1\n";
+		text += push_registers();
+		text += "\tmovl $0xc0000081, %ecx\n\trdmsr\n\tshrl $16, %edx\n";
+		text += std::format("\tleal 16(%rdx), %eax\n\torl $3, %eax\n\tmovq %rax, {}(%rsp)\n", FRAME_CS);
+		text += std::format("\tleal 8(%rdx), %eax\n\torl $3, %eax\n\tmovq %rax, {}(%rsp)\n", FRAME_SS);
+		text += call_body(body);
+		text += "\tud2\n";
+		return text;
+	}
+
+	// The vectors the CPU pushes an error code for (Intel SDM Vol. 3A §7.15).
+	static bool pushes_error_code(int vector) {
+		return vector == 8 || (vector >= 10 && vector <= 14) || vector == 17 || vector == 21 || vector == 29 || vector == 30;
+	}
+
+	// One stub per vector: an error code of 0 where the CPU pushes none, the vector, then the entry function.
+	static std::string vector_stubs(std::string_view symbol) {
+		std::string text = "\t.text\n";
+		for (int vector = 0; vector < 256; ++vector) {
+			const bool paranoid = vector == 2 || vector == 8 || vector == 18;
+			text += std::format("{}.vector.{}:\n{}\tpushq ${}\n\tjmp {}{}\n", symbol, vector,
+				pushes_error_code(vector) ? "" : "\tpushq $0\n", vector, symbol, paranoid ? ".paranoid" : "");
+		}
+		return text;
+	}
+
+	/*
+	 * x86_64.return_to_user: the frame becomes the stack, its registers are popped, then swapgs and
+	 * sysretq when rcx == rip, r11 == rflags and rip is canonical, otherwise swapgs and iretq.
+	 */
+	constexpr std::string_view RETURN_TO_USER_SYMBOL = "hemera.return_to_user";
+
+	static std::string return_to_user_assembly() {
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n\tmovq %rdi, %rsp\n", RETURN_TO_USER_SYMBOL);
+		text += std::format("\tmovq {}(%rsp), %rax\n\tcmpq {}(%rsp), %rax\n\tjne 1f\n", FRAME_RIP, FRAME_RCX);
+		text += std::format("\tmovq {}(%rsp), %rax\n\tcmpq {}(%rsp), %rax\n\tjne 1f\n", FRAME_RFLAGS, FRAME_R11);
+		text += std::format("\tmovq {0}(%rsp), %rax\n\tshlq $16, %rax\n\tsarq $16, %rax\n\tcmpq {0}(%rsp), %rax\n\tjne 1f\n", FRAME_RIP);
+		text += pop_registers();
+		text += std::format("\tswapgs\n\tmovq {}(%rsp), %rsp\n\tsysretq\n1:\n", VECTOR_TO_RSP);
+		text += pop_registers();
+		text += "\taddq $16, %rsp\n\tswapgs\n\tiretq\n";
+		return text;
+	}
+
+	// A function defined in the module's assembly, declared so code can take its address or call it.
+	static LLVM::LLVMFuncOp assembly_function(Generator& generator, const std::string& symbol, LLVM::LLVMFunctionType type) {
+		if (auto existing = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(symbol)) {
+			return existing;
+		}
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, symbol, type);
+		// Defined in this object, so it's reached directly rather than through the GOT
+		function.setDsoLocal(true);
+		return function;
+	}
+
+	static LLVM::LLVMFunctionType no_arguments(Generator& generator) {
+		return LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), llvm::ArrayRef<mlir::Type>{});
+	}
+
+	/*
+	 * x86_64.entry_points(handler): the stubs for handler's vectors, and a table of their addresses,
+	 * made once per handler.
+	 */
+	static mlir::Value entry_points_of(Generator& generator, const std::string& symbol) {
+		auto iter = generator.entry_tables.find(symbol);
+		LLVM::GlobalOp table;
+		if (iter != generator.entry_tables.end()) {
+			table = iter->second;
+		}
+		else {
+			generator.module_assembly.push_back(vector_stubs(symbol));
+			mlir::Type u64 = integer_type(generator, 8);
+			mlir::Type type = LLVM::LLVMArrayType::get(u64, 256);
+			std::vector<LLVM::LLVMFuncOp> stubs;
+			for (int vector = 0; vector < 256; ++vector) {
+				stubs.push_back(assembly_function(generator, std::format("{}.vector.{}", symbol, vector), no_arguments(generator)));
+			}
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			table = LLVM::GlobalOp::create(generator.builder, generator.loc, type, true, LLVM::Linkage::Internal,
+				std::format("{}.entry_points", symbol), mlir::Attribute(), 8);
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&table.getInitializerRegion()));
+			mlir::Value addresses = LLVM::UndefOp::create(generator.builder, generator.loc, type);
+			for (int vector = 0; vector < 256; ++vector) {
+				mlir::Value address = LLVM::PtrToIntOp::create(generator.builder, generator.loc, u64,
+					LLVM::AddressOfOp::create(generator.builder, generator.loc, stubs[static_cast<size_t>(vector)]));
+				addresses = insert(generator, addresses, address, { static_cast<int64_t>(vector) });
+			}
+			LLVM::ReturnOp::create(generator.builder, generator.loc, addresses);
+			generator.entry_tables[symbol] = table;
+		}
+		return LLVM::AddressOfOp::create(generator.builder, generator.loc, table);
+	}
+
+	/*
+	 * An entry function: its body, an ordinary function taking the frame, and the generated code around it,
+	 * whose address the declaration's own symbol is. Code can't call it, only take its address.
+	 */
+	static LLVM::LLVMFuncOp entry_function_for(Generator& generator, Declaration* declaration, TypeInfoFunction const* type) {
+		const bool exported = has_name_directive(declaration, "#export");
+		const std::string symbol = exported ? text_of(declaration->name) : symbol_for(generator, declaration);
+		const std::string body_symbol = symbol + ".body";
+		generator.symbols.insert(symbol);
+		generator.symbols.insert(body_symbol);
+		LLVM::LLVMFuncOp address = assembly_function(generator, symbol, no_arguments(generator));
+		LLVM::LLVMFuncOp body;
+		{
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			body = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, body_symbol, function_type(generator, type, false));
+			if (type->never_returns) {
+				body.setPassthroughAttr(generator.builder.getArrayAttr({ generator.builder.getStringAttr("noreturn") }));
+			}
+		}
+		std::string text = exported ? std::format("\t.globl {}\n", symbol) : std::string();
+		text += has_convention(type, "syscall_entry") ? syscall_entry_assembly(symbol, body_symbol)
+			: entry_assembly(symbol, body_symbol, !type->never_returns);
+		generator.module_assembly.push_back(text);
+		generator.functions[declaration] = address;
+		generator.entry_bodies[declaration] = body;
+		generator.pending.push_back(declaration);
+		return address;
+	}
+
 	/*
 	 * The function a declaration is, declared now and generated later. Exported functions and the
 	 * freestanding entry keep their own names, for the linker and other languages.
@@ -662,6 +883,9 @@ namespace hemera {
 			return iter->second;
 		}
 		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+		if (is_entry_function(type)) {
+			return entry_function_for(generator, declaration, type);
+		}
 		const bool exported = has_name_directive(declaration, "#export") || is_freestanding_entry(generator, declaration);
 		mlir::OpBuilder::InsertionGuard guard(generator.builder);
 		generator.builder.setInsertionPointToEnd(generator.module.getBody());
@@ -2262,6 +2486,26 @@ namespace hemera {
 		if ((name.starts_with("atomic_") || name.starts_with("interlocked_")) && emit_atomic(generator, name, function, arguments, result)) {
 			return result;
 		}
+		// Generated assembly, made once (docs/calling_convention.md, Entry Functions)
+		if (name == "return_to_user") {
+			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(RETURN_TO_USER_SYMBOL)) {
+				generator.module_assembly.push_back(return_to_user_assembly());
+			}
+			LLVM::LLVMFuncOp helper = assembly_function(generator, std::string(RETURN_TO_USER_SYMBOL),
+				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), { pointer_type(generator) }));
+			LLVM::CallOp::create(b, l, helper, mlir::ValueRange{ arguments[0] });
+			return never_returning();
+		}
+		if (name.starts_with("entry_points[") && called->generic_values.size() == 1) {
+			Declaration* handler = called->generic_values[0].function;
+			if (handler == nullptr || !is_entry_function(static_cast<TypeInfoFunction const*>(handler->value_type))
+				|| has_convention(static_cast<TypeInfoFunction const*>(handler->value_type), "syscall_entry")) {
+				unsupported(generator, where, "entry_points takes a #calling_convention(.entry) function");
+				return value(zero_of(generator, pointer_type(generator)), result_type);
+			}
+			LLVM::LLVMFuncOp address = function_for(generator, handler);
+			return value(entry_points_of(generator, address.getSymName().str()), result_type);
+		}
 		if (emit_x86_64(generator, name, arguments, function, result)) {
 			return result;
 		}
@@ -3859,7 +4103,9 @@ namespace hemera {
 	// Functions, constants and the entry point
 
 	static void generate_function(Generator& generator, Declaration* declaration) {
-		LLVM::LLVMFuncOp function = generator.functions[declaration];
+		// An entry function's body, not the code around it
+		auto body_iter = generator.entry_bodies.find(declaration);
+		LLVM::LLVMFuncOp function = body_iter != generator.entry_bodies.end() ? body_iter->second : generator.functions[declaration];
 		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
 		FunctionState state;
 		state.declaration = declaration;
@@ -3878,9 +4124,6 @@ namespace hemera {
 			LLVM::UnreachableOp::create(generator.builder, generator.loc);
 			generator.state = outer;
 			return;
-		}
-		if (has_convention(type, "entry")) {
-			unsupported(generator, declaration->node, "entry functions can't be generated yet");
 		}
 		const bool with_context = takes_context(generator, type, declaration);
 		const unsigned first = with_context ? 1 : 0;
@@ -4080,6 +4323,13 @@ namespace hemera {
 			generate_function(generator, next);
 		}
 		generate_used(generator);
+		if (!generator.module_assembly.empty()) {
+			std::vector<mlir::Attribute> lines;
+			for (const std::string& text : generator.module_assembly) {
+				lines.push_back(generator.builder.getStringAttr(text));
+			}
+			module->setAttr(LLVM::LLVMDialect::getModuleLevelAsmAttrName(), generator.builder.getArrayAttr(lines));
+		}
 		if (generator.failed) {
 			return false;
 		}

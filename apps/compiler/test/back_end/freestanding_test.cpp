@@ -91,6 +91,10 @@ TEST(Freestanding, BuildsKernel)
 	// The entry function keeps its name, and the program starts there
 	bool found_entry = false;
 	uint64_t entry_address = 0;
+	// Entry functions' generated code (docs/calling_convention.md, Entry Functions)
+	std::set<std::string> generated{ "freestanding.breakpoint_entry", "freestanding.breakpoint_entry.paranoid",
+		"freestanding.breakpoint_entry.vector.0", "freestanding.breakpoint_entry.vector.255", "freestanding.system_call",
+		"hemera.return_to_user" };
 	for (const llvm::object::SymbolRef& symbol : elf.symbols()) {
 		auto name = symbol.getName();
 		auto address = symbol.getAddress();
@@ -98,8 +102,12 @@ TEST(Freestanding, BuildsKernel)
 			found_entry = true;
 			entry_address = *address;
 		}
+		if (name) {
+			generated.erase(name->str());
+		}
 	}
 	EXPECT_TRUE(found_entry);
+	EXPECT_TRUE(generated.empty()) << "missing " << (generated.empty() ? std::string() : *generated.begin());
 	auto start = elf.getStartAddress();
 	ASSERT_TRUE(static_cast<bool>(start));
 	EXPECT_EQ(*start, entry_address);

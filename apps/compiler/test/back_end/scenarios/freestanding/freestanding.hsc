@@ -77,6 +77,19 @@ invalid_opcode #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.Interrupt
     }
 }
 
+/*
+ * Entry functions, installed but never entered: breakpoints aren't raised, and SYSCALL isn't
+ * enabled. The test checks that their generated code, stubs and return_to_user link.
+ */
+breakpoint_entry #calling_convention(.entry) :: fn(frame: ptr[mut x86_64.RegisterFrame]) {
+    frame.rax = frame.vector
+}
+
+system_call #calling_convention(.syscall_entry) :: fn(frame: ptr[mut x86_64.RegisterFrame]) #never_returns {
+    frame.rax = 0
+    x86_64.return_to_user(frame)
+}
+
 checks :: fn(carrier: ptr[mut runtime.CarrierBlock]) {
     if cast[rawptr](intrinsics.carrier()) != cast[rawptr](carrier) {
         exit_qemu(1)
@@ -130,6 +143,10 @@ kernel_entry #calling_convention(.c) #no_context :: fn() #never_returns {
         write("booted\n")
         checks(&carrier)
         idt[6] = gate(cast[u64](invalid_opcode))
+        points :: x86_64.entry_points(breakpoint_entry)
+        idt[3] = gate(points.addresses[3])
+        // IA32_LSTAR, which SYSCALL would jump to if EFER.SCE were set
+        x86_64.wrmsr(0xc0000082, cast[u64](system_call))
         table := x86_64.DescriptorTablePointer.{cast[u16](size_of(IdtEntry) * 256 - 1), cast[u64](&idt)}
         x86_64.lidt(&table)
         carrier.stack_limit = cast[rawptr](0xffff_ffff_ffff_ffff)

@@ -100,11 +100,19 @@ namespace hemera {
 			/// An enum member, by name, like .x86_64.
 			/// </summary>
 			ENUM_MEMBER,
+			/// <summary>
+			/// A function declared at the top level, like an entry function given to x86_64.entry_points.
+			/// </summary>
+			FUNCTION,
 		};
 		Kind kind;
 		bool boolean = false;
 		int64_t integer = 0;
 		std::string member;
+		/// <summary>
+		/// For a FUNCTION, its declaration.
+		/// </summary>
+		struct Declaration* function = nullptr;
 	};
 
 	/// <summary>

@@ -433,9 +433,11 @@ system_call #calling_convention(.syscall_entry) :: fn(frame: ptr[mut x86_64.Regi
 1. pushes the vector number, and an error code of 0 for vectors where the CPU doesn't push one, so the frame always
    has the same shape;
 2. runs `swapgs` if the interrupted code was in user mode. For NMIs, machine checks and double faults, which can arrive
-   between a `swapgs` and the `iretq` after it, it decides from `IA32_GS_BASE` instead of the saved `cs`;
+   between a `swapgs` and the `iretq` after it, it decides from `IA32_GS_BASE` instead of the saved `cs`: the kernel's
+   is an upper-half address, and anything else is swapped;
 3. pushes every general register, completing the `RegisterFrame` on the stack the CPU switched to;
-4. calls the body with a pointer to the frame.
+4. clears `rbp`, so stack walks end at the entry, and the direction flag, then calls the body with a pointer to the
+   frame.
 
 The function can't be called from Hemera code. Its addresses come from `x86_64.entry_points`, which the compiler
 expands into one small stub per vector (256 in all) that pushes the vector number and jumps to the function:
@@ -455,7 +457,9 @@ For both:
   sets them up with `intrinsics.set_carrier` and `push_context ... from`.
 * Interrupts stay as the CPU left them (disabled through an interrupt gate, or by `IA32_FMASK` for `SYSCALL`).
 * A `.entry` function may return, which is meant for NMIs: the generated code restores the frame and returns with
-  `iretq`, with the matching `swapgs`. A `.syscall_entry` function is always `#never_returns`.
+  `iretq`, with the matching `swapgs`. One function can serve every vector and return only for some, since
+  `entry_points` takes a function that may return. A `.syscall_entry` function is always `#never_returns`.
+* The frame is the body's to change: a `.entry` function that returns resumes with whatever the frame holds then.
 
 `x86_64.return_to_user(frame)` restores every register from a frame and returns to user mode: `swapgs`, then `sysretq`
 when its conditions hold (`rcx == rip`, `r11 == rflags`, and `rip` canonical), otherwise `iretq`. Since `RegisterFrame`'s

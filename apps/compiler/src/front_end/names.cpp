@@ -1256,6 +1256,9 @@ namespace hemera {
 		if (ConstantValue::Kind::INTEGER == value.kind) {
 			return std::to_string(value.integer);
 		}
+		if (ConstantValue::Kind::FUNCTION == value.kind && value.function != nullptr) {
+			return std::format("{}.{}", std::string_view(*value.function->package_path), std::string_view(*value.function->name));
+		}
 		return "." + value.member;
 	}
 
@@ -1407,6 +1410,12 @@ namespace hemera {
 			report_not_constant(walk.file_path, where, std::format("{} has no value",
 				std::string_view(*declaration->name)));
 			return Progress::FAILED;
+		}
+		// A function is a constant itself
+		if (ast::NodeType::FUNCTION == value->node_type) {
+			result.kind = ConstantValue::Kind::FUNCTION;
+			result.function = declaration;
+			return Progress::DONE;
 		}
 		Walk inner{
 			walk.executor,
