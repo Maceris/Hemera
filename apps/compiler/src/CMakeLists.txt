@@ -63,6 +63,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/error/reporting.h
   ${INCLUDE_DIR}/error/warnings_template.h
   ${INCLUDE_DIR}/front_end/base_sources.h
+  ${INCLUDE_DIR}/front_end/bounds.h
   ${INCLUDE_DIR}/front_end/checking.h
   ${INCLUDE_DIR}/front_end/stack_pointers.h
   ${INCLUDE_DIR}/front_end/event.h
@@ -96,6 +97,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/cmd_line/cmd_line_utils.cpp
   ${SOURCE_DIR}/cmd_line/options.cpp
   ${SOURCE_DIR}/error/reporting.cpp
+  ${SOURCE_DIR}/front_end/bounds.cpp
   ${SOURCE_DIR}/front_end/checking.cpp
   ${SOURCE_DIR}/front_end/declarations.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp

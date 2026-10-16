@@ -336,6 +336,7 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
         append_unsigned(text, mantissa << shift)
         return false
     }
+    // A double's mantissa shifted by at most 1074 is at most 1138 bits: 36 limbs, and 40 chunks of nine digits
     limbs : u32[36]
     limbs[0] = cast[u32](mantissa & 0xffffffff)
     limbs[1] = cast[u32](mantissa >> 32)
@@ -344,6 +345,7 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
         left := shift
     }
     loop {
+        runtime.assert(used <= limbs.count, "a double's digits fit in 36 limbs")
         step :: if left < 31 { left } else { 31 }
         carry : u64 = 0
         for index in 0..<used {
@@ -352,6 +354,7 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
             carry = shifted >> 32
         }
         if carry != 0 {
+            runtime.assert(used < limbs.count, "a double's digits fit in 36 limbs")
             limbs[used] = cast[u32](carry)
             used += 1
         }
@@ -359,17 +362,23 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
     }
     while left > 0
 
-    // Nine digits at a time, lowest first
+    // Nine digits at a time, lowest first: each time, every limb divided by 10^9 from the top down
     chunks : u32[40]
     chunk_count : usize = 0
+    runtime.assert(used <= limbs.count, "a double's digits fit in 36 limbs")
     loop {
         remainder : u64 = 0
-        for step_down in 0..<used {
-            index :: used - 1 - step_down
+        with {
+            index := used
+        }
+        loop {
+            index -= 1
             current :: (remainder << 32) | cast[u64](limbs[index])
             limbs[index] = cast[u32](current / 1000000000)
             remainder = current % 1000000000
         }
+        while index > 0
+        runtime.assert(chunk_count < chunks.count, "a double's digits fit in 40 chunks")
         chunks[chunk_count] = cast[u32](remainder)
         chunk_count += 1
         loop {
@@ -378,6 +387,7 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
         while used > 0 && limbs[used - 1] == 0
     }
     while used > 0
+    runtime.assert(chunk_count >= 1 && chunk_count <= chunks.count, "a double has from 1 to 40 chunks of digits")
 
     // Every digit, if there are at most 20
     top :: chunks[chunk_count - 1]
@@ -385,12 +395,19 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
     total :: top_digits + (chunk_count - 1) * 9
     if total <= 20 {
         append_unsigned(text, cast[u64](top))
-        for step_down in 1..<chunk_count {
-            append_unsigned(text, cast[u64](chunks[chunk_count - 1 - step_down]), 10, 9)
+        // The rest, from the one below the top down
+        with {
+            index := chunk_count - 1
         }
+        loop {
+            index -= 1
+            append_unsigned(text, cast[u64](chunks[index]), 10, 9)
+        }
+        while index > 0
         return false
     }
-    // Otherwise the first seven digits, as d.dddddd, and the exponent
+    // Otherwise the first seven digits, as d.dddddd, and the exponent: more than 20 digits is at least three chunks
+    runtime.assert(chunk_count >= 2, "more than 20 digits are more than two chunks")
     digits : u8[18]
     storage := make(digits)
     append_unsigned(&storage, cast[u64](top))
@@ -499,8 +516,13 @@ append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
         if variant.types.count == 0 {
             append(text, "ok")
         }
+        // An offset for each value: a copy of the view, which nothing below changes
+        offsets :: variant.offsets
         for value_type, value_index in variant.types {
-            append_data(text, data + variant.offsets[value_index], value_type)
+            if value_index >= offsets.count {
+                break
+            }
+            append_data(text, data + offsets[value_index], value_type)
         }
         return void
     }
@@ -509,11 +531,15 @@ append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
         return void
     }
     append(text, "(")
+    offsets :: variant.offsets
     for value_type, value_index in variant.types {
+        if value_index >= offsets.count {
+            break
+        }
         if value_index > 0 {
             append(text, ", ")
         }
-        append_data(text, data + variant.offsets[value_index], value_type)
+        append_data(text, data + offsets[value_index], value_type)
     }
     append(text, ")")
 }

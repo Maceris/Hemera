@@ -840,7 +840,13 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "stack_unrestricted", hemera::ErrorCode::E4030 },
 		{ "stack_scoped_store", hemera::ErrorCode::E4030 },
 		{ "stack_scoped_and_unrestricted", hemera::ErrorCode::E4014 },
-		{ "stack_escaping_function", hemera::ErrorCode::E4015 }
+		{ "stack_escaping_function", hemera::ErrorCode::E4015 },
+		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
+		{ "bounds_past_static", hemera::ErrorCode::E4031 },
+		{ "bounds_wraps", hemera::ErrorCode::E4031 },
+		{ "bounds_slice_backwards", hemera::ErrorCode::E4031 },
+		{ "bounds_runaway", hemera::ErrorCode::E4031 },
+		{ "bounds_last_of_empty", hemera::ErrorCode::E4031 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;
@@ -848,6 +854,18 @@ TEST(FrontEnd, ReportsBodyErrors)
 		ASSERT_EQ(errors.size(), 1) << name << ": " << codes(errors);
 		EXPECT_EQ(errors[0], expected) << name;
 	}
+}
+
+// docs/types.md, Bounds Checking: what's proven
+TEST(FrontEnd, ProvesIndexesInBounds)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("bounds_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
 }
 
 // docs/memory.md, Pointers to the Stack: what's allowed

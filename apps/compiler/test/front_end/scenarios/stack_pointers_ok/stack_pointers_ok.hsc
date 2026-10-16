@@ -25,6 +25,9 @@ trim :: fn(text: string) -> string {
 }
 
 first_of :: fn(values: int[]) -> ptr[int] {
+    if values.count == 0 {
+        todo()
+    }
     return &values[0]
 }
 
@@ -41,6 +44,9 @@ Parser :: struct #scoped {
 
 // Storing back what came through the same #scoped pointer
 advance :: fn(parser: ptr[mut Parser]) {
+    if parser.input.count == 0 {
+        return void
+    }
     parser.input = parser.input[1..<parser.input.count]
     parser.line += 1
 }

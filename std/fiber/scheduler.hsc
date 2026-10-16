@@ -85,7 +85,11 @@ run_fiber_scheduler : ThreadFunction : fn(data #escaping : any) {
         //TODO(ches) actually have a strategy for updating tasks
         //TODO(ches) grab and release locks for the queue
 
-        next_task_index = (next_task_index + 1) % global_data.global_queue.count
+        // The next one, around to the first after the last
+        next_task_index += 1
+        if next_task_index >= global_data.global_queue.count {
+            next_task_index = 0
+        }
         next_task :: global_data.global_queue[next_task_index]
 
         switch next_task.state {

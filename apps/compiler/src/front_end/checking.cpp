@@ -6,6 +6,7 @@
 #include "error/reporting.h"
 #include "front_end/checking.h"
 #include "front_end/front_end.h"
+#include "front_end/bounds.h"
 #include "front_end/stack_pointers.h"
 #include "util/logger.h"
 
@@ -3748,6 +3749,8 @@ namespace hemera {
 		// Then what points into the stack, once everything in the body is known (docs/memory.md)
 		if (progress == Progress::DONE && thread_error_count() == errors_before) {
 			check_stack_pointers(*checked, body, type, checker.walk.file_path);
+			// And that every index is in bounds (docs/types.md, Bounds Checking)
+			check_bounds(*checked, body, type, checker.walk.file_path);
 		}
 		if (progress == Progress::DONE && thread_error_count() == errors_before) {
 			NameRegistry& names = executor.program_info->names;

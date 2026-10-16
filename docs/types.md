@@ -227,7 +227,8 @@ g2 : int[] : a[0..=5]  // Equivalent to g
 
 ### Bounds Checking
 
-When directly indexing into arrays, the index must be proven to be within the bounds of the array.
+When directly indexing into arrays and strings, the index must be proven to be within the bounds, at compile
+time. There's no check at run time, so an index the compiler can't prove is an error (E4031).
 
 ```
 foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: usize) {
@@ -239,13 +240,13 @@ foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: usize) {
     // result = resizable[known] // Didn't check the bounds
     // result = resizable[unknown] // Unknown bounds, and didn't check
     // result = fixed[over] // Provably outside the bounds
-    
+
     // fine
-    if (known <= resizable.count) { // don't know the count
+    if known < resizable.count { // don't know the count
         result = resizable[known] // Checked the bounds
     }
     result = fixed[known] // Provably in bounds
-    if (unknown >= fixed.count) {
+    if unknown >= fixed.count {
         return
     }
     result = fixed[unknown] // Can't reach here if it would go out of bounds
@@ -255,8 +256,7 @@ foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: usize) {
         print(i)
     }
     for i, index in view {
-        print(i)
-        print(index)
+        print(view[index])
     }
     for i in fixed {
         print(i)
@@ -264,7 +264,8 @@ foo :: fn(resizable: i8[..], view: i8[], fixed: i8[5], unknown: usize) {
 }
 ```
 
-When providing bounds for slices, they must not extend outside the bounds of the array, or it is a compile-time error.
+When providing bounds for slices, they must not extend outside the bounds of the array, or it is a compile-time error:
+the start must be at least 0 and at most the end, and the end at most the count.
 
 ```
 foo :: fn(resizable: i8[..], fixed: i8[10]) {
@@ -280,11 +281,43 @@ foo :: fn(resizable: i8[..], fixed: i8[10]) {
     result = fixed[2..<5] // Known to be in bounds
     result = fixed[a..=b] // Known to be in bounds
 
-    if (a < resizable.count && b < resizable.count) {
+    if a <= b && b <= resizable.count {
         result = resizable[a..<b] // We checked that it's fine
     }
 }
 ```
+
+#### What's Proven
+
+Each function is checked on its own. What the compiler knows at each point is how integers compare: locals, the
+counts of local arrays, views and strings, fields reached from locals (`text.count`, `parser.input.count`), and
+constants. It learns from:
+
+* definitions and assignments: after `j := i + 1`, `j` is one more than `i`, and `i += 1` moves what's known about `i`
+* conditions, through `&&`, `||` and `!`, in the branch they lead to, and after an `if` whose other branch doesn't
+  continue (`return`, `break`, a `#never_returns` call)
+* `for` loops over a range or over elements, whose index is in bounds, and the condition of a `while`
+* `runtime.assert(condition)`, which ends the program when the condition is false, so after it the condition holds
+* types: an unsigned value is at least 0, a `u32` at most 2^32 - 1, an enum value at most its largest member's,
+  `x & 15` at most 15 and `x % n` less than `n`
+
+A loop keeps what holds every time around it: a counter that only goes down keeps its upper bound, and one that's
+kept below a count keeps that.
+
+Integers wrap, so `x + 1` is only known to be one more than `x` when `x` is already known to be below something, like
+a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a huge `offset` wraps around;
+`if offset < bytes.count && offset + 4 <= bytes.count` does.
+
+#### What Isn't
+
+* What other functions do. A count a function computed and another relies on, or a value one returns, is unknown to
+  the caller: check it, or state it with `runtime.assert`, which documents the contract and checks it at run time.
+* Memory reached through a pointer, after anything that could write it: a call, or a store through a pointer.
+  `info.cpus.count` is forgotten across a call; a copy of the view in a local, `cpus :: info.cpus`, isn't.
+* Relations between more than two values, like `i + j < n`, or products of two variables. Compute the index into a
+  local and compare that, or loop with an index that counts the way the code needs.
+* Invariants of a data structure, like a struct's array having one entry per frame. Compare against the array's own
+  count, rather than a field that's meant to equal it.
 
 ## Enums
 

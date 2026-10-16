@@ -107,6 +107,7 @@ sum :: fn(values: int...) -> int {
 }
 
 first :: fn[T](values: T[]) -> T {
+    runtime.assert(values.count > 0, "first takes at least one value")
     return values[0]
 }
 
@@ -305,6 +306,9 @@ move :: fn(p: ptr[mut Point], by: int) {
 
 // What a value formats as, through its any's type information, in storage the caller gives.
 formatted :: fn(storage: u8[], format: string, values: any...) -> string {
+    if storage.count == 0 {
+        return ""
+    }
     text := text_buffer.make(storage)
     text_buffer.append_format(&text, format, values)
     // A view of the caller's storage; the text buffer itself is on this stack
@@ -367,7 +371,7 @@ SQUARES_SUM :: sum_of_squares(6)
 sum_of_squares :: fn(count: int) -> int {
     runtime.log_info("adding up % squares", count)
     memory, error :: context.allocator.function(context.allocator.data, cast[usize](count) * 8, 8, null, 0, #caller_location)
-    if error is_some {
+    if (error is_some) || memory.count == 0 {
         return -1
     }
     squares :: view_of(cast[ptr[mut int]](cast[rawptr](&memory[0])), cast[usize](count))

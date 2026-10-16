@@ -1,5 +1,7 @@
 package text_buffer
 
+import runtime from "base"
+
 /*
  * Text built up in bytes the caller provides. Appending past the end keeps what fits and sets
  * truncated, so a message that's too long is cut short rather than lost.
@@ -27,7 +29,7 @@ make :: fn(bytes: u8[]) -> TextBuffer {
 
 // What's been appended so far.
 as_string :: fn(text: ptr[TextBuffer]) -> string {
-    if text.count == 0 {
+    if text.count == 0 || text.bytes.count == 0 {
         return ""
     }
     return string_of(&text.bytes[0], text.count)
@@ -58,19 +60,20 @@ append :: fn(text: ptr[mut TextBuffer], value: string) {
  * Hexadecimal digits are lowercase, with no prefix.
  */
 append_unsigned :: fn(text: ptr[mut TextBuffer], value: u64, base: u64 = 10, minimum_digits: usize = 1) {
-    // The digits come out lowest first, so they're collected backwards
+    runtime.assert(base >= 2 && base <= 16, "append_unsigned takes a base from 2 to 16")
+    // The digits come out lowest first, so they're collected backwards, from the end
     digits : u8[64]
-    count : usize = 0
+    start : usize = digits.count
     with {
         rest := value
     }
     loop {
-        digits[63 - count] = cast[u8](DIGITS[rest % base])
+        start -= 1
+        digits[start] = cast[u8](DIGITS[rest % base])
         rest /= base
-        count += 1
     }
-    while (rest != 0 || count < minimum_digits) && count < 64
-    for i in (64 - count)..<64 {
+    while (rest != 0 || digits.count - start < minimum_digits) && start > 0
+    for i in start..<digits.count {
         append_byte(text, digits[i])
     }
 }

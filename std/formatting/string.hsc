@@ -157,7 +157,7 @@ format :: fn(format: string, args: any...) -> string {
 
             input_index += 1
             loop {
-                if input_index > format.count {
+                if input_index >= format.count {
                     break 2
                 }
                 current :: format[input_index]

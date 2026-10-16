@@ -58,6 +58,9 @@ sum :: fn(values: int...) -> int {
 }
 
 first :: fn[T](values: T[]) -> T {
+    if values.count == 0 {
+        todo()
+    }
     return values[0]
 }
 
