@@ -2,8 +2,10 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -22,10 +24,14 @@ namespace hemera {
 	/// </summary>
 	struct CompileTimeRun {
 		/// <summary>
-		/// Each type descriptor's symbol in the module and the type it describes, so values compile-time code
-		/// logs can be formatted.
+		/// Symbols the module refers to that are in the compiler: type descriptors and services.
 		/// </summary>
-		std::vector<std::pair<std::string, const TypeInfo*>> descriptors;
+		std::vector<std::pair<std::string, const void*>> symbols;
+		/// <summary>
+		/// Each type descriptor's address and the type it describes, so values compile-time code logs can be
+		/// formatted.
+		/// </summary>
+		const std::map<uintptr_t, const TypeInfo*>* types = nullptr;
 		/// <summary>
 		/// The code being run, where a crash in it is reported.
 		/// </summary>
@@ -51,6 +57,12 @@ namespace hemera {
 	RunResult run_on_host(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
 		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
 		std::string& error);
+
+	/// <summary>
+	/// format with each % filled in from count any values at params, the way compile-time code's logs are,
+	/// for compile-time code that's running.
+	/// </summary>
+	std::string format_compile_time(std::string_view format, const void* params, size_t count);
 
 	/// <summary>
 	/// The symbols compile-time code calls for runtime.COMPILE_TIME_CONTEXT's services (base/intrinsics).

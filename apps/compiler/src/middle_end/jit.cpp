@@ -35,8 +35,8 @@ namespace hemera {
 		 */
 		struct Active {
 			const CompileTimeRun* run = nullptr;
-			// Each type descriptor's address in the loaded code, and the type it describes
-			std::map<uintptr_t, const TypeInfo*> types;
+			// Each type descriptor's address, and the type it describes
+			const std::map<uintptr_t, const TypeInfo*>* types = nullptr;
 			std::set<void*> allocations;
 #if defined(_WIN32)
 			// The registers when the code was entered, restored to leave it from anywhere
@@ -63,6 +63,15 @@ namespace hemera {
 
 		std::string_view text_of(InternedString name) {
 			return name != nullptr ? std::string_view(*name) : std::string_view();
+		}
+
+		// The type a descriptor describes, for the code running now.
+		const TypeInfo* described(uintptr_t descriptor) {
+			if (active == nullptr || active->types == nullptr) {
+				return nullptr;
+			}
+			auto found = active->types->find(descriptor);
+			return found != active->types->end() ? found->second : nullptr;
 		}
 
 		// A value of type at data as text, like runtime formatting does (std/text_buffer/format.hsc).
@@ -204,17 +213,16 @@ namespace hemera {
 			}
 			else if (TypeInfoVariant::ANY == variant) {
 				const AnyValue* any = reinterpret_cast<const AnyValue*>(data);
-				auto found = active != nullptr ? active->types.find(reinterpret_cast<uintptr_t>(any->type)) : decltype(active->types.end()){};
-				if (active == nullptr || found == active->types.end()) {
+				const TypeInfo* held = described(reinterpret_cast<uintptr_t>(any->type));
+				if (held == nullptr) {
 					out += "<any>";
 					return;
 				}
-				format_value(found->second, any->data, out, depth + 1);
+				format_value(held, any->data, out, depth + 1);
 			}
 			else if (TypeInfoVariant::TYPE == variant) {
-				const uintptr_t descriptor = static_cast<uintptr_t>(read_unsigned(data, 8));
-				auto found = active != nullptr ? active->types.find(descriptor) : decltype(active->types.end()){};
-				out += active != nullptr && found != active->types.end() ? to_string(found->second) : std::string("<type>");
+				const TypeInfo* named = described(static_cast<uintptr_t>(read_unsigned(data, 8)));
+				out += named != nullptr ? to_string(named) : std::string("<type>");
 			}
 			else if (TypeInfoVariant::VOID == variant) {
 				out += "void";
@@ -250,12 +258,12 @@ namespace hemera {
 					out += "%!";
 					continue;
 				}
-				auto found = active->types.find(reinterpret_cast<uintptr_t>(params[chosen].type));
-				if (found == active->types.end()) {
+				const TypeInfo* type = described(reinterpret_cast<uintptr_t>(params[chosen].type));
+				if (type == nullptr) {
 					out += "<?>";
 					continue;
 				}
-				format_value(found->second, params[chosen].data, out, 0);
+				format_value(type, params[chosen].data, out, 0);
 			}
 			return out;
 		}
@@ -393,6 +401,13 @@ namespace hemera {
 		}
 	}
 
+	std::string format_compile_time(std::string_view format, const void* params, size_t count) {
+		if (active == nullptr) {
+			return std::string(format);
+		}
+		return format_log(format, static_cast<const AnyValue*>(params), count);
+	}
+
 	RunResult run_on_host(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
 		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
 		std::string& error) {
@@ -425,12 +440,16 @@ namespace hemera {
 		llvm::orc::JITDylib& library = (*jit)->getMainJITDylib();
 		// The compiler's services, then the operating system's functions, through the compiler's own process
 		llvm::orc::MangleAndInterner mangle(library.getExecutionSession(), (*jit)->getDataLayout());
-		if (llvm::Error defined = library.define(llvm::orc::absoluteSymbols({
+		llvm::orc::SymbolMap symbols{
 			{ mangle(COMPILE_TIME_LOG_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_log)) },
 			{ mangle(COMPILE_TIME_ALLOCATE_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_allocate)) },
 			{ mangle(COMPILE_TIME_FREE_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_free)) },
 			{ mangle(COMPILE_TIME_FAIL_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_fail)) },
-		}))) {
+		};
+		for (const auto& [name, address] : run.symbols) {
+			symbols[mangle(name)] = service(address);
+		}
+		if (llvm::Error defined = library.define(llvm::orc::absoluteSymbols(std::move(symbols)))) {
 			error = llvm::toString(std::move(defined));
 			return RunResult::NOT_COMPILED;
 		}
@@ -453,15 +472,7 @@ namespace hemera {
 
 		Active state;
 		state.run = &run;
-		for (const auto& [name, type] : run.descriptors) {
-			auto address = (*jit)->lookup(name);
-			if (address) {
-				state.types[address->getValue()] = type;
-			}
-			else {
-				llvm::consumeError(address.takeError());
-			}
-		}
+		state.types = run.types;
 		Active* outer = active;
 		active = &state;
 		const bool finished = guarded_call(symbol->toPtr<void (*)(void*)>(), result, &state);

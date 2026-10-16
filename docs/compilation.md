@@ -65,6 +65,11 @@ Compile-time code is the program's own code, with the `#if` choices made for the
 doing the compiling. Code that only computes runs the same either way; code that uses the operating system only works
 at compile time when the target's operating system is the one compiling it, as it is for a build package.
 
+Compile-time code can look at the program through `base/compiler`: `compiler.package_info` for a package the file
+imports, with its files, imports, functions, constants (with their values) and types, `find_function` and
+`find_constant` in one, and `report_error` and `report_warning` at any location. `compiler.target_setting` reads a
+setting given on the command line as `--setting=name=value`.
+
 ## Compile-Time Permissions
 
 Compile-time code can't run other programs or write outside the output folder unless the command line grants it

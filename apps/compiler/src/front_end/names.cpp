@@ -1442,9 +1442,17 @@ namespace hemera {
 	 * Execution): the run is queued the first time it's needed, and the walk waits for it.
 	 */
 	Progress require_compile_time_runtime(Walk& walk, ast::Node* where) {
-		for (std::string_view name : { "CarrierBlock", "Context", "COMPILE_TIME_CONTEXT" }) {
+		// The context, and the structs type information is made of
+		static constexpr std::pair<std::string_view, std::string_view> NEEDED[] = {
+			{ "runtime", "CarrierBlock" }, { "runtime", "Context" }, { "runtime", "COMPILE_TIME_CONTEXT" },
+			{ "compiler", "TypeInfo" }, { "compiler", "TypeInfoAlias" }, { "compiler", "TypeInfoArray" },
+			{ "compiler", "TypeInfoEnum" }, { "compiler", "TypeInfoFloat" }, { "compiler", "TypeInfoFunction" },
+			{ "compiler", "TypeInfoInteger" }, { "compiler", "TypeInfoPointer" }, { "compiler", "TypeInfoString" },
+			{ "compiler", "TypeInfoStruct" }, { "compiler", "TypeInfoUnion" },
+		};
+		for (const auto& [folder, name] : NEEDED) {
 			Declaration* found = nullptr;
-			Progress progress = base_declaration(walk, where, "runtime", name, found);
+			Progress progress = base_declaration(walk, where, folder, name, found);
 			if (progress == Progress::DONE) {
 				progress = require_resolved(walk, where, found, Need::RESOLVED);
 			}

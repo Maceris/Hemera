@@ -70,6 +70,11 @@ namespace hemera {
 		std::string_view kind, std::string_view text);
 
 	size_t error_count();
+	/// <summary>
+	/// How many errors this thread has reported, including ones already reported elsewhere: what checking one
+	/// thing found, unlike error_count, which other threads' work adds to.
+	/// </summary>
+	size_t thread_error_count();
 	std::vector<ErrorCode>* error_list();
 	size_t warning_count();
 	std::vector<WarningCode>* warning_list();

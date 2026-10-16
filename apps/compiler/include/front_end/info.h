@@ -205,6 +205,13 @@ namespace hemera {
 
 		bool debug_build;
 
+		/// <summary>
+		/// What the compiler makes for compile-time code (middle_end/reflection.h), made the first time it's
+		/// needed, and its mutex.
+		/// </summary>
+		std::shared_ptr<void> compile_time_data;
+		std::mutex compile_time_data_mutex;
+
 		ProgramInfo(mlir::MLIRContext* mlir_context, 
 			mlir::OpBuilder* mlir_op_builder,
 			mlir::ModuleOp* mlir_module);

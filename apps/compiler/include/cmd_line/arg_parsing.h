@@ -32,6 +32,7 @@ namespace hemera {
 			LINKER_SCRIPT,
 			LIST,
 			ADDRESS_ZERO_IS_MEMORY,
+			ALLOW_RUN,
 			NO_RED_ZONE,
 			NO_STARTUP_CODE,
 			O0,
@@ -43,6 +44,7 @@ namespace hemera {
 			OUTPUT,
 			PACKAGE_PATH,
 			RELOCATION_MODEL,
+			SETTING,
 			STACK_CHECK,
 			STOP_BEFORE_ASSEMBLY,
 			STOP_BEFORE_LOWERING,
@@ -136,6 +138,8 @@ namespace hemera {
 			{"--stack-check", Option::STACK_CHECK},
 			{"--install-path", Option::INSTALL_PATH},
 			{"--package", Option::PACKAGE_PATH},
+			{"--allow-run", Option::ALLOW_RUN},
+			{"--setting", Option::SETTING},
 		};
 
 		//NOTE(ches) these are in the order that we'll print them out in
@@ -170,6 +174,8 @@ namespace hemera {
 			{Option::STACK_CHECK, "What a function does without room on the stack: off, the default, or trap, which needs a carrier block", HAS_ARGS},
 			{Option::INSTALL_PATH, "Folder containing the standard libraries", HAS_ARGS},
 			{Option::PACKAGE_PATH, "Paths to builtin pacakge(s), written as \"package:path\"", HAS_ARGS, MULTIPLE_ARGS},
+			{Option::SETTING, "Settings compile-time code reads with compiler.target_setting, written as \"name=value\"", HAS_ARGS, MULTIPLE_ARGS},
+			{Option::ALLOW_RUN, "Let the build package's compile-time code run programs and write outside the output folder", NO_ARGS},
 		};
 
 		struct OptionWithValue {

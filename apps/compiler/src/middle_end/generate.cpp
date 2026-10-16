@@ -32,6 +32,7 @@
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "middle_end/jit.h"
+#include "middle_end/reflection.h"
 
 namespace hemera {
 
@@ -169,6 +170,10 @@ namespace hemera {
 		/// </summary>
 		bool collecting = false;
 		std::vector<Declaration*> unchecked;
+		/// <summary>
+		/// In compile-time code, what it refers to that's in the compiler: type descriptors (middle_end/reflection.h).
+		/// </summary>
+		std::vector<std::pair<std::string, const void*>> compile_time_symbols;
 		/// <summary>
 		/// The file errors are in when there's no declaration being generated, like a top-level #run's.
 		/// </summary>
@@ -1602,9 +1607,32 @@ namespace hemera {
 	 * Run node at compile time, an expression checked in checked (the body or constant it's in), and capture its
 	 * value as type, or just run it when type is null. Reports why not and returns false if it can't be run.
 	 */
-	static bool run_at_compile_time(Generator& generator, ast::Node* node, TypeInfo* type, CheckedBody* checked,
-		Declaration* declaration, CompileTimeValue& result, std::vector<Declaration*>* unchecked = nullptr) {
+	// One piece of compile-time code in a run, and where its value goes (none for code run for its effects).
+	struct CompileTimeItem {
+		ast::Node* node;
+		TypeInfo* type;
+		CheckedBody* checked;
+		Declaration* declaration;
+		CompileTimeValue* result;
+	};
 
+	static void compiler_service(const char* name, int64_t name_count, uint8_t* result, uint8_t* const* arguments,
+		int64_t count, const uint8_t* context, const char* file, int64_t file_count);
+	constexpr const char* COMPILER_SERVICE_SYMBOL = "hemera.compiler_service";
+
+	// What compile-time code's calls to base/compiler reach (compiler_service), while it runs.
+	struct ServiceScope {
+		ProgramInfo* program;
+		const Options* options;
+	};
+	static thread_local ServiceScope* service_scope = nullptr;
+
+	/*
+	 * Run compile-time code, each item in turn in one run, capturing each one's value. When unchecked is given,
+	 * functions and constants it reaches that aren't checked yet are listed there instead, and nothing runs.
+	 * Reports why not and returns false if it can't be run.
+	 */
+	static bool run_items(Generator& generator, std::vector<CompileTimeItem>& items, std::vector<Declaration*>* unchecked) {
 		Options options;
 		set_host_options(options, *generator.options);
 		mlir::ModuleOp module = mlir::ModuleOp::create(generator.loc, "compile_time");
@@ -1613,18 +1641,21 @@ namespace hemera {
 		compiled.input_package = generator.input_package;
 		compiled.compile_time = true;
 		compiled.collecting = unchecked != nullptr;
-		compiled.file_path = declaration != nullptr ? file_path_of(declaration->package_path, declaration->file_name)
+		Declaration* first_declaration = items[0].declaration;
+		compiled.file_path = first_declaration != nullptr ? file_path_of(first_declaration->package_path, first_declaration->file_name)
 			: current_file(generator);
+		ast::Node* first = items[0].node;
 		{
 			mlir::OpBuilder::InsertionGuard guard(compiled.builder);
 			compiled.builder.setInsertionPointToEnd(module.getBody());
+			// Its argument: where each item's value goes
 			auto body = LLVM::LLVMFuncOp::create(compiled.builder, compiled.loc, COMPILE_TIME_ENTRY,
 				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(compiled.context), { pointer_type(compiled) }));
 			mlir::Block* entry = body.addEntryBlock(compiled.builder);
 			compiled.builder.setInsertionPointToEnd(entry);
 			FunctionState state;
-			state.declaration = declaration;
-			state.checked = checked;
+			state.declaration = first_declaration;
+			state.checked = items[0].checked;
 			state.entry = entry;
 			compiled.state = &state;
 			// A carrier block, and the context the compiler's services are reached through
@@ -1632,7 +1663,7 @@ namespace hemera {
 			Declaration* context_declaration = base_declaration_named(compiled, "runtime", "Context");
 			Declaration* minimal = base_declaration_named(compiled, "runtime", "COMPILE_TIME_CONTEXT");
 			if (carrier_declaration == nullptr || context_declaration == nullptr || minimal == nullptr) {
-				unsupported(generator, node, "base/runtime isn't available for compile-time code");
+				unsupported(generator, first, "base/runtime isn't available for compile-time code");
 				module.erase();
 				return false;
 			}
@@ -1640,13 +1671,20 @@ namespace hemera {
 			store_zero(compiled, carrier_declaration->type_value, carrier);
 			assembly(compiled, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
 			mlir::Value context = make_slot(compiled, context_declaration->type_value);
-			store(compiled, emit_constant_value(compiled, minimal, context_declaration->type_value, node), context);
+			store(compiled, emit_constant_value(compiled, minimal, context_declaration->type_value, first), context);
 			state.context = context;
-			if (type != nullptr) {
-				store(compiled, emit_as(compiled, node, type), entry->getArgument(0));
-			}
-			else {
-				emit_expression(compiled, node, nullptr);
+			for (size_t i = 0; i < items.size(); ++i) {
+				CompileTimeItem& item = items[i];
+				state.declaration = item.declaration;
+				state.checked = item.checked;
+				if (item.type != nullptr) {
+					mlir::Value destination = LLVM::LoadOp::create(compiled.builder, compiled.loc, pointer_type(compiled),
+						offset_address(compiled, entry->getArgument(0), i * 8));
+					store(compiled, emit_as(compiled, item.node, item.type), destination);
+				}
+				else {
+					emit_expression(compiled, item.node, nullptr);
+				}
 			}
 			LLVM::ReturnOp::create(compiled.builder, compiled.loc, mlir::ValueRange{});
 			compiled.state = nullptr;
@@ -1670,13 +1708,14 @@ namespace hemera {
 			module.erase();
 			return false;
 		}
+		CompileTimeData& data = compile_time_data(generator.program);
 		CompileTimeRun run;
 		run.file_path = compiled.file_path;
-		run.line = node->value.line_number;
-		run.column = node->value.column_number;
-		for (auto& [described, global] : compiled.descriptors) {
-			run.descriptors.emplace_back(global.getSymName().str(), described);
-		}
+		run.line = first->value.line_number;
+		run.column = first->value.column_number;
+		run.symbols = compiled.compile_time_symbols;
+		run.symbols.emplace_back(COMPILER_SERVICE_SYMBOL, reinterpret_cast<const void*>(&compiler_service));
+		run.types = &data.described_types();
 		auto llvm_context = std::make_unique<llvm::LLVMContext>();
 		std::unique_ptr<llvm::Module> lowered = lower_to_llvm(module, *llvm_context, options);
 		module.erase();
@@ -1684,19 +1723,32 @@ namespace hemera {
 			generator.failed = true;
 			return false;
 		}
-		std::vector<uint64_t> buffer(type != nullptr ? (type->size + 7) / 8 + 1 : 1);
-		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(buffer.data());
+		// Where each item's value goes
+		std::vector<std::vector<uint64_t>> buffers;
+		std::vector<void*> destinations;
+		for (const CompileTimeItem& item : items) {
+			buffers.emplace_back(item.type != nullptr ? (item.type->size + 7) / 8 + 1 : 1);
+			destinations.push_back(buffers.back().data());
+		}
 		bool captured = true;
 		std::string error;
+		ServiceScope scope{ generator.program, generator.options };
+		ServiceScope* outer_scope = service_scope;
+		service_scope = &scope;
 		const RunResult ran = run_on_host(std::move(lowered), std::move(llvm_context), std::string(COMPILE_TIME_ENTRY),
-			buffer.data(), [&]() {
-				if (type != nullptr) {
-					result.bytes.assign(bytes, bytes + type->size);
-					captured = capture_pointed(generator, type, result.bytes.data(), 0, result, node);
+			destinations.data(), [&]() {
+				for (size_t i = 0; i < items.size(); ++i) {
+					CompileTimeItem& item = items[i];
+					if (item.type != nullptr && item.result != nullptr) {
+						const uint8_t* bytes = reinterpret_cast<const uint8_t*>(buffers[i].data());
+						item.result->bytes.assign(bytes, bytes + item.type->size);
+						captured = capture_pointed(generator, item.type, item.result->bytes.data(), 0, *item.result, item.node) && captured;
+					}
 				}
 			}, run, error);
+		service_scope = outer_scope;
 		if (RunResult::NOT_COMPILED == ran) {
-			unsupported(generator, node, std::format("compile-time code couldn't run: {}", error));
+			unsupported(generator, first, std::format("compile-time code couldn't run: {}", error));
 			return false;
 		}
 		if (RunResult::FAILED == ran) {
@@ -1704,6 +1756,13 @@ namespace hemera {
 			return false;
 		}
 		return captured;
+	}
+
+	static bool run_at_compile_time(Generator& generator, ast::Node* node, TypeInfo* type, CheckedBody* checked,
+		Declaration* declaration, CompileTimeValue& result, std::vector<Declaration*>* unchecked = nullptr) {
+
+		std::vector<CompileTimeItem> items{ CompileTimeItem{ node, type, checked, declaration, &result } };
+		return run_items(generator, items, unchecked);
 	}
 
 	/*
@@ -2215,6 +2274,25 @@ namespace hemera {
 		auto iter = generator.descriptors.find(type);
 		if (iter != generator.descriptors.end()) {
 			return LLVM::AddressOfOp::create(generator.builder, generator.loc, iter->second);
+		}
+		// Compile-time code uses the compiler's descriptors, so a type from reflection equals the same type here
+		if (generator.compile_time) {
+			const uint8_t* described = compile_time_data(generator.program).descriptor(type);
+			if (described == nullptr) {
+				unsupported(generator, nullptr, std::format("base/compiler isn't laid out yet, for {}'s type information", to_string(type)));
+				return zero_of(generator, pointer_type(generator));
+			}
+			const std::string symbol = std::format("hemera.type.{}", generator.descriptors.size());
+			LLVM::GlobalOp global;
+			{
+				mlir::OpBuilder::InsertionGuard guard(generator.builder);
+				generator.builder.setInsertionPointToEnd(generator.module.getBody());
+				global = LLVM::GlobalOp::create(generator.builder, generator.loc, integer_type(generator, 1), true,
+					LLVM::Linkage::External, symbol, mlir::Attribute(), 8);
+			}
+			generator.descriptors[type] = global;
+			generator.compile_time_symbols.emplace_back(symbol, described);
+			return LLVM::AddressOfOp::create(generator.builder, generator.loc, global);
 		}
 		Declaration* declaration = base_declaration_named(generator, "compiler", descriptor_struct(type->variant));
 		TypeInfo* descriptor_type = declaration != nullptr ? declaration->type_value : nullptr;
@@ -2835,6 +2913,8 @@ namespace hemera {
 	 */
 	static Emitted emit_compile_time_service(Generator& generator, std::string_view name, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where);
+	static Emitted emit_compiler_call(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, const ast::Node* where);
 
 	static Emitted emit_intrinsic(Generator& generator, Declaration* called, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
@@ -2911,6 +2991,10 @@ namespace hemera {
 		}
 		if ((name.starts_with("atomic_") || name.starts_with("interlocked_")) && emit_atomic(generator, name, function, arguments, result)) {
 			return result;
+		}
+		// base/compiler's functions, which the compiler carries out for compile-time code
+		if (called->package_path != nullptr && text_of(called->package_path) == std::format("{}compiler", BASE_PACKAGE_PREFIX)) {
+			return emit_compiler_call(generator, name, function, arguments, where);
 		}
 		// The compiler's services to compile-time code (docs/compilation.md, Compile-Time Execution)
 		if (name.starts_with("compile_time_")) {
@@ -3030,6 +3114,44 @@ namespace hemera {
 		}
 		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", name));
 		return Emitted{};
+	}
+
+	/*
+	 * A call to one of base/compiler's functions, like compiler.package_info: each argument in a slot, and the
+	 * compiler's service called with the function's name, pointers to them and to where the result goes, the
+	 * context, and the calling file.
+	 */
+	static Emitted emit_compiler_call(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
+
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		if (!generator.compile_time) {
+			unsupported(generator, where, std::format("compiler.{} is only for compile-time code", name));
+			return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : Emitted{};
+		}
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::Type pointer = pointer_type(generator);
+		mlir::Type i64 = integer_type(generator, 8);
+		const size_t count = std::min(arguments.size(), function->input.size());
+		mlir::Value list = make_raw_slot(generator, LLVM::LLVMArrayType::get(pointer, std::max<size_t>(count, 1)), 8);
+		for (size_t i = 0; i < count; ++i) {
+			mlir::Value slot = make_slot(generator, function->input[i].type);
+			store(generator, arguments[i], slot);
+			store(generator, slot, offset_address(generator, list, i * 8));
+		}
+		mlir::Value result = result_type != nullptr ? make_slot(generator, result_type) : zero_of(generator, pointer);
+		if (result_type != nullptr) {
+			store_zero(generator, result_type, result);
+		}
+		const std::string file = current_file(generator);
+		LLVM::LLVMFuncOp service = compiler_function(generator, COMPILER_SERVICE_SYMBOL, LLVM::LLVMVoidType::get(generator.context),
+			{ pointer, i64, pointer, pointer, i64, pointer, pointer, i64 });
+		LLVM::CallOp::create(b, l, service, mlir::ValueRange{ string_bytes(generator, std::string(name)),
+			constant_int(generator, i64, static_cast<int64_t>(name.size())), result, list,
+			constant_int(generator, i64, static_cast<int64_t>(count)), generator.state->context, string_bytes(generator, file),
+			constant_int(generator, i64, static_cast<int64_t>(file.size())) });
+		return result_type != nullptr ? location(result, result_type) : Emitted{};
 	}
 
 	// Whether a declaration is an intrinsic: a function in base without a body.
@@ -4844,6 +4966,536 @@ namespace hemera {
 			lines.push_back(generator.builder.getStringAttr(text));
 		}
 		generator.module->setAttr(LLVM::LLVMDialect::getModuleLevelAsmAttrName(), generator.builder.getArrayAttr(lines));
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// base/compiler's functions, carried out by the compiler for compile-time code (docs/compilation.md)
+
+	namespace {
+
+		// A call to one of base/compiler's functions, with its arguments where the compiled code put them.
+		struct Call {
+			std::string_view name;
+			uint8_t* result;
+			uint8_t* const* arguments;
+			size_t count;
+			const uint8_t* context;
+			std::string file;
+			TypeInfoFunction const* type;
+			ProgramInfo* program;
+			const Options* options;
+			CompileTimeData& data;
+		};
+
+		uint64_t read_u64(const uint8_t* at) {
+			uint64_t value = 0;
+			std::memcpy(&value, at, sizeof(value));
+			return value;
+		}
+
+		std::string_view read_string(const uint8_t* at) {
+			const char* text = reinterpret_cast<const char*>(read_u64(at + 8));
+			return text != nullptr ? std::string_view(text, read_u64(at)) : std::string_view();
+		}
+
+		const TypeInfoStruct* struct_of(const TypeInfo* type) {
+			const TypeInfo* base_type = get_base_type(type);
+			return base_type != nullptr && TypeInfoVariant::STRUCT == base_type->variant ? static_cast<const TypeInfoStruct*>(base_type) : nullptr;
+		}
+
+		// What an optional result holds: none, or its value written by fill.
+		void write_optional(Call& call, bool some, const std::function<void(uint8_t*, const TypeInfoStruct*)>& fill) {
+			const TypeInfo* optional = call.type->output[0].type;
+			auto union_type = static_cast<const TypeInfoUnion*>(get_base_type(optional));
+			if (!some) {
+				CompileTimeData::write_number_at(call.result, union_type->tag_type->size, 1);
+				return;
+			}
+			uint8_t* value = CompileTimeData::write_some_at(call.result, optional);
+			fill(value, struct_of(union_type->variants[0].types[0]));
+		}
+
+		// A SourceCodeLocation record's fields.
+		void write_location(CompileTimeData& data, uint8_t* at, const TypeInfo* location_type, std::string_view file, uint32_t line,
+			uint16_t column) {
+
+			const TypeInfoStruct* layout = struct_of(location_type);
+			data.write_text(at, layout, "file_path", file);
+			data.write_number(at, layout, "line", line);
+			data.write_number(at, layout, "column", column);
+		}
+
+		void write_location_field(CompileTimeData& data, uint8_t* record, const TypeInfoStruct* layout, std::string_view file,
+			const ast::Node* node) {
+
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (CompileTimeData::find_field(layout, "location", offset, field_type)) {
+				write_location(data, record + offset, field_type, file, node != nullptr ? node->value.line_number : 1,
+					node != nullptr ? node->value.column_number : uint16_t(1));
+			}
+		}
+
+		// A view field of records, each written by fill, count of them.
+		void write_records(CompileTimeData& data, uint8_t* record, const TypeInfoStruct* layout, std::string_view field, size_t count,
+			const std::function<void(uint8_t*, const TypeInfoStruct*, size_t)>& fill) {
+
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (!CompileTimeData::find_field(layout, field, offset, field_type) || count == 0) {
+				return;
+			}
+			const TypeInfo* element = static_cast<const TypeInfoArray*>(get_base_type(field_type))->element_type;
+			uint8_t* elements = data.allocate(element->size * count, std::max<size_t>(element->alignment, 1));
+			for (size_t i = 0; i < count; ++i) {
+				fill(elements + i * element->size, struct_of(element), i);
+			}
+			CompileTimeData::write_view_at(record + offset, elements, count);
+		}
+
+		std::string declaration_file(Declaration* declaration) {
+			return file_path_of(declaration->package_path, declaration->file_name);
+		}
+
+		// The front end's package at a canonical path.
+		hemera::PackageInfo* package_at(ProgramInfo* program, std::string_view path) {
+			std::scoped_lock<std::mutex> lock(program->packages_mutex);
+			auto iter = program->packages.find(intern(std::string(path)));
+			return iter != program->packages.end() ? iter->second : nullptr;
+		}
+
+		// A package's top-level declarations, by name, without instances of generics.
+		std::vector<Declaration*> declarations_of(ProgramInfo* program, std::string_view path) {
+			std::vector<Declaration*> result;
+			InternedString package_path = intern(std::string(path));
+			std::scoped_lock<std::mutex> lock(program->names.mutex);
+			for (const auto& [key, declaration] : program->names.declarations) {
+				if (key.first != nullptr && *key.first == *package_path && declaration->generic == nullptr) {
+					result.push_back(declaration);
+				}
+			}
+			return result;
+		}
+
+		bool is_constant(Declaration* declaration) {
+			return DeclarationKind::VALUE == declaration->kind && declaration->type_value == nullptr && declaration->checked != nullptr;
+		}
+
+		bool is_type(Declaration* declaration) {
+			return declaration->type_value != nullptr && DeclarationKind::FUNCTION != declaration->kind;
+		}
+
+		/*
+		 * Constants' values, worked out in one run: each one's type (an untyped one's default) and a copy of its
+		 * value in the compile-time data. Values that can't be worked out are left null.
+		 */
+		std::vector<std::pair<const TypeInfo*, const uint8_t*>> constant_values(Call& call, const std::vector<Declaration*>& constants) {
+			std::vector<std::pair<const TypeInfo*, const uint8_t*>> result(constants.size(), { nullptr, nullptr });
+			if (constants.empty()) {
+				return result;
+			}
+			std::vector<CompileTimeValue> values(constants.size());
+			std::vector<CompileTimeItem> items;
+			std::vector<size_t> positions;
+			for (size_t i = 0; i < constants.size(); ++i) {
+				Declaration* constant = constants[i];
+				TypeInfo* type = constant->value_type;
+				if (type == nullptr) {
+					type = Untyped::INTEGER == constant->untyped ? BUILTIN_int : Untyped::FLOAT == constant->untyped ? BUILTIN_f64
+						: Untyped::STRING == constant->untyped ? BUILTIN_string : Untyped::BOOLEAN == constant->untyped ? BUILTIN_bool : nullptr;
+				}
+				if (type == nullptr || constant->externally_initialized) {
+					continue;
+				}
+				result[i].first = type;
+				items.push_back(CompileTimeItem{ definition_value(constant->node), type, constant->checked.get(), constant, &values[i] });
+				positions.push_back(i);
+			}
+			if (items.empty()) {
+				return result;
+			}
+			mlir::ModuleOp scratch = mlir::ModuleOp::create(mlir::UnknownLoc::get(call.program->context), "constants");
+			bool ran = false;
+			{
+				Generator generator(call.program, scratch);
+				generator.options = call.options;
+				generator.input_package = intern(call.options->input.string());
+				ran = run_items(generator, items, nullptr);
+			}
+			scratch.erase();
+			if (ran) {
+				for (size_t i : positions) {
+					result[i].second = call.data.copy_value(result[i].first, values[i]);
+				}
+			}
+			return result;
+		}
+
+		void write_constant(Call& call, uint8_t* record, const TypeInfoStruct* layout, Declaration* constant, const TypeInfo* type,
+			const uint8_t* value) {
+
+			call.data.write_text(record, layout, "name", text_of(constant->name));
+			call.data.write_type(record, layout, "type", type);
+			call.data.write_any(record, layout, "value", value, value != nullptr ? type : nullptr);
+			write_location_field(call.data, record, layout, declaration_file(constant), constant->node);
+		}
+
+		// A function's FunctionInfo: its signature, and what its checked body calls and uses.
+		void write_function(Call& call, uint8_t* record, const TypeInfoStruct* layout, Declaration* function) {
+			CompileTimeData& data = call.data;
+			auto type = static_cast<TypeInfoFunction const*>(function->value_type);
+			const std::string file = declaration_file(function);
+			data.write_text(record, layout, "package", text_of(function->package_path));
+			data.write_text(record, layout, "name", text_of(function->name));
+			write_location_field(data, record, layout, file, function->node);
+			data.write_number(record, layout, "is_exported", has_name_directive(function, "#export"));
+			data.write_number(record, layout, "has_body", function_body(function) != nullptr);
+			if (type == nullptr) {
+				return;
+			}
+			data.write_number(record, layout, "never_returns", type->never_returns);
+			write_records(data, record, layout, "parameters", type->input.size(), [&](uint8_t* at, const TypeInfoStruct* parameter, size_t i) {
+				const FunctionInput& input = type->input[i];
+				data.write_text(at, parameter, "name", text_of(input.name));
+				data.write_type(at, parameter, "type", input.type);
+				data.write_number(at, parameter, "is_escaping", input.is_escaping);
+				data.write_number(at, parameter, "is_varargs", input.is_varargs);
+				//TODO(claude) default values, which need running each default
+				size_t offset = 0;
+				const TypeInfo* field_type = nullptr;
+				if (CompileTimeData::find_field(parameter, "default_value", offset, field_type)) {
+					auto optional = static_cast<const TypeInfoUnion*>(get_base_type(field_type));
+					CompileTimeData::write_number_at(at + offset, optional->tag_type->size, 1);
+				}
+			});
+			write_records(data, record, layout, "return_values", type->output.size(), [&](uint8_t* at, const TypeInfoStruct* output, size_t i) {
+				data.write_type(at, output, "type", type->output[i].type);
+				size_t offset = 0;
+				const TypeInfo* field_type = nullptr;
+				if (CompileTimeData::find_field(output, "name", offset, field_type)) {
+					if (type->output[i].name != nullptr) {
+						data.write_text_at(CompileTimeData::write_some_at(at + offset, field_type), text_of(type->output[i].name));
+					}
+					else {
+						auto optional = static_cast<const TypeInfoUnion*>(get_base_type(field_type));
+						CompileTimeData::write_number_at(at + offset, optional->tag_type->size, 1);
+					}
+				}
+			});
+			// What the body calls and uses, in source order
+			std::vector<std::pair<const ast::Node*, const CheckedNode*>> nodes;
+			if (function->checked != nullptr) {
+				for (const auto& [node, found] : function->checked->nodes) {
+					nodes.emplace_back(node, &found);
+				}
+			}
+			std::sort(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {
+				return std::make_pair(a.first->value.line_number, a.first->value.column_number)
+					< std::make_pair(b.first->value.line_number, b.first->value.column_number);
+			});
+			std::vector<std::pair<const ast::Node*, const CheckedNode*>> calls;
+			std::vector<std::pair<const ast::Node*, const TypeInfo*>> used;
+			std::set<const TypeInfo*> seen;
+			for (const auto& [node, found] : nodes) {
+				// A call is recorded at its name and at its (: one, at the name
+				const bool repeated = ast::NodeType::PAREN_GROUP == node->node_type && !calls.empty()
+					&& calls.back().second->called == found->called && calls.back().second->called_declaration == found->called_declaration
+					&& calls.back().first->value.line_number == node->value.line_number;
+				if (found->called != nullptr && !repeated) {
+					calls.emplace_back(node, found);
+				}
+				if (ValueKind::VALUE == found->kind && found->type != nullptr && seen.insert(get_base_type_or_alias(found->type)).second) {
+					used.emplace_back(node, found->type);
+				}
+			}
+			write_records(data, record, layout, "calls", calls.size(), [&](uint8_t* at, const TypeInfoStruct* call_layout, size_t i) {
+				Declaration* called = calls[i].second->called_declaration;
+				if (called != nullptr) {
+					data.write_text(at, call_layout, "package_path", text_of(called->package_path));
+					data.write_text(at, call_layout, "name", text_of(called->name));
+				}
+				data.write_type(at, call_layout, "type", calls[i].second->called);
+				write_location_field(data, at, call_layout, file, calls[i].first);
+			});
+			write_records(data, record, layout, "used_types", used.size(), [&](uint8_t* at, const TypeInfoStruct* use, size_t i) {
+				data.write_type(at, use, "type", used[i].second);
+				write_location_field(data, at, use, file, used[i].first);
+			});
+		}
+
+		// A package's PackageInfo, with its constants' values worked out.
+		void write_package(Call& call, uint8_t* record, const TypeInfoStruct* layout, hemera::PackageInfo* package) {
+			CompileTimeData& data = call.data;
+			const std::string path = text_of(package->full_path);
+			data.write_text(record, layout, "name", text_of(package->self_reported_name));
+			data.write_text(record, layout, "path", path);
+			// Each file, by its path, in order
+			std::vector<std::pair<std::string, FileInfo*>> files;
+			{
+				std::scoped_lock<std::mutex> lock(package->files_mutex);
+				for (const auto& [name, file] : package->files) {
+					files.emplace_back(file_path_of(package->full_path, name), file);
+				}
+			}
+			std::sort(files.begin(), files.end());
+			auto file_names = reinterpret_cast<uint8_t*>(data.allocate(16 * std::max<size_t>(files.size(), 1), 8));
+			for (size_t i = 0; i < files.size(); ++i) {
+				data.write_text_at(file_names + i * 16, files[i].first);
+			}
+			data.write_view(record, layout, "files", files.empty() ? nullptr : file_names, files.size());
+			// The package statement, which is at the top of the first file
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (!files.empty() && CompileTimeData::find_field(layout, "location", offset, field_type)) {
+				write_location(data, record + offset, field_type, files[0].first, 1, 1);
+			}
+			std::vector<std::pair<std::string, ImportInfo*>> imports;
+			for (const auto& [file_path, file] : files) {
+				std::scoped_lock<std::mutex> lock(file->imports_mutex);
+				for (ImportInfo* import : file->imports) {
+					imports.emplace_back(file_path, import);
+				}
+			}
+			write_records(data, record, layout, "imports", imports.size(), [&](uint8_t* at, const TypeInfoStruct* import_layout, size_t i) {
+				ImportInfo* import = imports[i].second;
+				data.write_text(at, import_layout, "path", text_of(import->resolved_path));
+				data.write_text(at, import_layout, "alias", text_of(import->alias != nullptr ? import->alias : import->name));
+				data.write_text(at, import_layout, "from", text_of(import->location));
+				write_location_field(data, at, import_layout, imports[i].first, import->node);
+			});
+			std::vector<Declaration*> functions;
+			std::vector<Declaration*> constants;
+			std::vector<Declaration*> types;
+			for (Declaration* declaration : declarations_of(call.program, path)) {
+				if (DeclarationKind::FUNCTION == declaration->kind) {
+					functions.push_back(declaration);
+				}
+				else if (is_type(declaration)) {
+					types.push_back(declaration);
+				}
+				else if (is_constant(declaration)) {
+					constants.push_back(declaration);
+				}
+			}
+			write_records(data, record, layout, "functions", functions.size(), [&](uint8_t* at, const TypeInfoStruct* function_layout, size_t i) {
+				write_function(call, at, function_layout, functions[i]);
+			});
+			const auto values = constant_values(call, constants);
+			write_records(data, record, layout, "constants", constants.size(), [&](uint8_t* at, const TypeInfoStruct* constant_layout, size_t i) {
+				write_constant(call, at, constant_layout, constants[i], values[i].first, values[i].second);
+			});
+			write_records(data, record, layout, "types", types.size(), [&](uint8_t* at, const TypeInfoStruct* type_layout, size_t i) {
+				data.write_text(at, type_layout, "name", text_of(types[i]->name));
+				data.write_type(at, type_layout, "type", types[i]->type_value);
+				write_location_field(data, at, type_layout, declaration_file(types[i]), types[i]->node);
+			});
+		}
+
+		// The package the calling file imports as import_name, by its alias or name.
+		hemera::PackageInfo* imported(Call& call, std::string_view import_name) {
+			for (const auto& [path, package] : call.program->packages) {
+				std::scoped_lock<std::mutex> lock(package->files_mutex);
+				for (const auto& [name, file] : package->files) {
+					if (file_path_of(package->full_path, name) != call.file) {
+						continue;
+					}
+					std::scoped_lock<std::mutex> imports_lock(file->imports_mutex);
+					for (ImportInfo* import : file->imports) {
+						InternedString local = import->alias != nullptr ? import->alias : import->name;
+						if (local != nullptr && std::string_view(*local) == import_name && import->resolved_path != nullptr) {
+							return package_at(call.program, text_of(import->resolved_path));
+						}
+					}
+				}
+			}
+			return nullptr;
+		}
+
+		// The package a PackageInfo record describes.
+		std::string_view package_path_of(Call& call, const uint8_t* package_record) {
+			const TypeInfoStruct* layout = call.data.compiler_struct("PackageInfo");
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (package_record == nullptr || layout == nullptr || !CompileTimeData::find_field(layout, "path", offset, field_type)) {
+				return std::string_view();
+			}
+			return read_string(package_record + offset);
+		}
+
+		Declaration* declared(Call& call, std::string_view path, std::string_view name) {
+			std::scoped_lock<std::mutex> lock(call.program->names.mutex);
+			auto iter = call.program->names.declarations.find(std::make_pair(intern(std::string(path)), intern(std::string(name))));
+			return iter != call.program->names.declarations.end() ? iter->second : nullptr;
+		}
+
+		// A SourceCodeLocation argument's file, line and column.
+		void read_location(Call& call, size_t index, std::string& file, uint32_t& line, uint16_t& column) {
+			const TypeInfoStruct* layout = struct_of(call.type->input[index].type);
+			const uint8_t* at = call.arguments[index];
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (CompileTimeData::find_field(layout, "file_path", offset, field_type)) {
+				file = std::string(read_string(at + offset));
+			}
+			if (CompileTimeData::find_field(layout, "line", offset, field_type)) {
+				line = static_cast<uint32_t>(read_u64(at + offset) & 0xffffffff);
+			}
+			if (CompileTimeData::find_field(layout, "column", offset, field_type)) {
+				column = static_cast<uint16_t>(read_u64(at + offset) & 0xffff);
+			}
+		}
+
+		// Whether the calling code is the build package's, the input package, which the permissions are for.
+		bool in_root_package(Call& call) {
+			return call.file.starts_with(call.options->input.string());
+		}
+
+		const char* operating_system_name(OSType os) {
+			return OSType::Win32 == os ? "Windows" : OSType::Linux == os ? "Linux" : OSType::Darwin == os || OSType::MacOSX == os ? "Mac"
+				: OSType::UEFI == os ? "UEFI" : "None";
+		}
+
+		// The options given on the command line, as BuildOptions.
+		void write_build_options(Call& call, uint8_t* record, const TypeInfoStruct* layout, bool current) {
+			CompileTimeData& data = call.data;
+			const Options& options = *call.options;
+			if (current) {
+				data.write_text(record, layout, "name", options.output_name);
+				data.write_text(record, layout, "root", options.input.string());
+				data.write_text(record, layout, "entry", options.entry);
+			}
+			data.write_text(record, layout, "output_path", current ? options.output_name : "");
+			// Settings, as a dynamic array that uses the calling code's allocator, so it can be added to
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (CompileTimeData::find_field(layout, "settings", offset, field_type) && !options.settings.empty()) {
+				const TypeInfoStruct* setting = struct_of(static_cast<const TypeInfoArray*>(get_base_type(field_type))->element_type);
+				uint8_t* elements = data.allocate(setting->size * options.settings.size(), setting->alignment);
+				for (size_t i = 0; i < options.settings.size(); ++i) {
+					data.write_text(elements + i * setting->size, setting, "name", options.settings[i].first);
+					data.write_text(elements + i * setting->size, setting, "value", options.settings[i].second);
+				}
+				//TODO(claude) the context's allocator, so build code can grow it; until then it can't be added to
+				uint8_t* settings = record + offset;
+				CompileTimeData::write_number_at(settings, 8, options.settings.size());
+				CompileTimeData::write_number_at(settings + 8, 8, reinterpret_cast<uintptr_t>(elements));
+				CompileTimeData::write_number_at(settings + 16, 8, options.settings.size());
+			}
+			if (CompileTimeData::find_field(layout, "backend_options", offset, field_type)) {
+				const TypeInfoStruct* backend = struct_of(field_type);
+				uint8_t* at = record + offset;
+				data.write_member(at, backend, "backend_type", "LLVM");
+				const char* level = OptimizationLevel::O0 == options.optimization_level ? "O0" : OptimizationLevel::O1 == options.optimization_level ? "O1"
+					: OptimizationLevel::O3 == options.optimization_level ? "O3" : "O2";
+				data.write_member(at, backend, "optimization_level", level);
+				data.write_number(at, backend, "debug_info", options.debug_info);
+			}
+			data.write_member(record, layout, "configuration", options.debug_info ? "Debug" : "Release");
+			if (CompileTimeData::find_field(layout, "target_options", offset, field_type)) {
+				const TypeInfoStruct* target = struct_of(field_type);
+				uint8_t* at = record + offset;
+				data.write_member(at, target, "architecture", ArchType::aarch64 == options.architecture ? "arm64" : ArchType::x86 == options.architecture ? "x86"
+					: ArchType::arm == options.architecture ? "arm" : "x86_64");
+				data.write_member(at, target, "os", options.startup_code || OSType::UnknownOS != options.os ? operating_system_name(options.os) : "None");
+				data.write_member(at, target, "output_type", "Executable");
+				data.write_text(at, target, "cpu", options.cpu);
+				data.write_text(at, target, "cpu_features", options.cpu_features);
+				data.write_member(at, target, "code_model", TargetCodeModel::Kernel == options.code_model ? "Kernel" : TargetCodeModel::Small == options.code_model ? "Small"
+					: TargetCodeModel::Medium == options.code_model ? "Medium" : "Default");
+				data.write_member(at, target, "relocation_model", TargetRelocationModel::Static == options.relocation_model ? "Static" : "Default");
+				data.write_number(at, target, "red_zone", options.red_zone);
+				data.write_number(at, target, "address_zero_is_memory", options.address_zero_is_memory);
+				data.write_text(at, target, "linker_script", options.linker_script.empty() ? std::string() : options.linker_script.string());
+				data.write_number(at, target, "startup_code", options.startup_code);
+				data.write_member(at, target, "stack_check_failure", TargetStackCheck::Trap == options.stack_check ? "Trap" : "Morestack");
+			}
+		}
+
+		void carry_out(Call& call) {
+			CompileTimeData& data = call.data;
+			const std::string_view name = call.name;
+			if (name == "report_error" || name == "report_warning") {
+				std::string file;
+				uint32_t line = 0;
+				uint16_t column = 0;
+				read_location(call, 0, file, line, column);
+				const std::string message = format_compile_time(read_string(call.arguments[1]),
+					reinterpret_cast<const void*>(read_u64(call.arguments[2] + 8)), read_u64(call.arguments[2]));
+				if (name == "report_error") {
+					report_error(ErrorCode::E4029, file, line, column, message);
+				}
+				else {
+					report_warning(WarningCode::W4001, file, line, column, message);
+				}
+				return;
+			}
+			if (name == "build_permissions") {
+				const TypeInfoStruct* layout = struct_of(call.type->output[0].type);
+				const bool granted = call.options->allow_run && in_root_package(call);
+				data.write_number(call.result, layout, "run_processes", granted);
+				data.write_number(call.result, layout, "write_outside_output", granted);
+				return;
+			}
+			if (name == "target_setting") {
+				const std::string_view setting = read_string(call.arguments[0]);
+				std::string_view value = read_string(call.arguments[1]);
+				for (const auto& [setting_name, setting_value] : call.options->settings) {
+					if (setting_name == setting) {
+						value = setting_value;
+					}
+				}
+				data.write_text_at(call.result, value);
+				return;
+			}
+			if (name == "command_line_options" || name == "current_build_options") {
+				write_build_options(call, call.result, struct_of(call.type->output[0].type), name == "current_build_options");
+				return;
+			}
+			if (name == "package_info") {
+				hemera::PackageInfo* package = imported(call, read_string(call.arguments[0]));
+				write_optional(call, package != nullptr, [&](uint8_t* at, const TypeInfoStruct* layout) {
+					write_package(call, at, layout, package);
+				});
+				return;
+			}
+			if (name == "find_constant" || name == "find_function") {
+				const uint8_t* package = reinterpret_cast<const uint8_t*>(read_u64(call.arguments[0]));
+				Declaration* found = declared(call, package_path_of(call, package), read_string(call.arguments[1]));
+				const bool wanted = found != nullptr && (name == "find_constant" ? is_constant(found) : DeclarationKind::FUNCTION == found->kind);
+				write_optional(call, wanted, [&](uint8_t* at, const TypeInfoStruct* layout) {
+					if (name == "find_function") {
+						write_function(call, at, layout, found);
+						return;
+					}
+					const auto values = constant_values(call, { found });
+					write_constant(call, at, layout, found, values[0].first, values[0].second);
+				});
+				return;
+			}
+			// add_target, add_step, all_targets, add_check and find_packages need a build package
+			report_error(ErrorCode::E4024, call.file, 0, 0,
+				std::format("compiler.{} isn't supported yet: it comes with build packages (compiler-plan Phase 8, step 4b)", name));
+		}
+	}
+
+	static void compiler_service(const char* name, int64_t name_count, uint8_t* result, uint8_t* const* arguments,
+		int64_t count, const uint8_t* context, const char* file, int64_t file_count) {
+
+		ServiceScope* scope = service_scope;
+		const std::string_view called(name, static_cast<size_t>(name_count));
+		Declaration* declaration = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(scope->program->names.mutex);
+			auto iter = scope->program->names.declarations.find(std::make_pair(intern(std::format("{}compiler", BASE_PACKAGE_PREFIX)),
+				intern(std::string(called))));
+			declaration = iter != scope->program->names.declarations.end() ? iter->second : nullptr;
+		}
+		if (declaration == nullptr || declaration->value_type == nullptr) {
+			return;
+		}
+		Call call{ called, result, arguments, static_cast<size_t>(count), context, std::string(file, static_cast<size_t>(file_count)),
+			static_cast<TypeInfoFunction const*>(declaration->value_type), scope->program, scope->options, compile_time_data(scope->program) };
+		carry_out(call);
 	}
 
 	bool run_evaluation(ProgramInfo* program_info, const Options& options, Evaluation& evaluation,

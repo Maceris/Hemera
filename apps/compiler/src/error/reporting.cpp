@@ -141,9 +141,17 @@ namespace hemera {
 		std::cout << result << std::endl;
 	}
 
+	// Errors reported on each thread, including ones already reported elsewhere.
+	static thread_local size_t errors_on_this_thread = 0;
+
+	size_t thread_error_count() {
+		return errors_on_this_thread;
+	}
+
 	void report_error(ErrorCode error, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
 
+		++errors_on_this_thread;
 		if (!reporting_enabled
 			|| !first_report("error", static_cast<int>(error), file, line_number, column_number, "")) {
 			return;
@@ -162,6 +170,7 @@ namespace hemera {
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
+		++errors_on_this_thread;
 		if (!reporting_enabled || !first_report("error", static_cast<int>(error), file, line_number,
 			column_number, additional_info)) {
 			return;

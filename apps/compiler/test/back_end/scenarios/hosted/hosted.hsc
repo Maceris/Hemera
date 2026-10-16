@@ -341,6 +341,19 @@ compile_time_name :: fn() -> string {
 }
 
 FIBONACCI_20 :: fibonacci(20)
+// Reflection: a package this file imports, as compile-time code sees it
+reflected_parameters :: fn() -> int {
+    info :: compiler.package_info("text_buffer") or_else compiler.PackageInfo.{}
+    format :: compiler.find_function(&info, "append_format") or_else compiler.FunctionInfo.{}
+    digits :: compiler.find_constant(&info, "DIGITS") or_else compiler.ConstantInfo.{}
+    if info.name != "text_buffer" || digits.type != string || !format.has_body || (compiler.package_info("missing") is_some) {
+        return -1
+    }
+    return cast[int](format.parameters.count)
+}
+
+REFLECTED_PARAMETERS :: reflected_parameters()
+
 // Compile-time code gets memory from its context, and can log
 SQUARES_SUM :: sum_of_squares(6)
 
@@ -633,6 +646,9 @@ main :: fn() -> int {
     }
     if SQUARES_SUM != 55 {
         return 51
+    }
+    if REFLECTED_PARAMETERS != 3 {
+        return 52
     }
     return 42
 }

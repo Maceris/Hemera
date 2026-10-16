@@ -451,6 +451,9 @@ namespace hemera {
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 				output.address_zero_is_memory = true;
 				break;
+			case hemera::arg_parse::ALLOW_RUN:
+				output.allow_run = true;
+				break;
 			case hemera::arg_parse::NO_STARTUP_CODE:
 				output.startup_code = false;
 				break;
@@ -468,6 +471,7 @@ namespace hemera {
 			case hemera::arg_parse::OS:
 			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::PACKAGE_PATH:
+			case hemera::arg_parse::SETTING:
 			case hemera::arg_parse::RELOCATION_MODEL:
 			case hemera::arg_parse::STACK_CHECK:
 			case hemera::arg_parse::SUBARCHITECTURE:
@@ -929,6 +933,16 @@ namespace hemera {
 					return false;
 				}
 				break;
+			case hemera::arg_parse::SETTING:
+				for (MyString value : option_with_value.values) {
+					const size_t equals = value.find("=");
+					if (equals == std::string::npos || equals == 0) {
+						cout << "A setting is written name=value, not " << value << endl;
+						return false;
+					}
+					output.settings.emplace_back(std::string(value.substr(0, equals)), std::string(value.substr(equals + 1)));
+				}
+				break;
 			case hemera::arg_parse::PACKAGE_PATH:
 				for (MyString value : option_with_value.values) {
 
@@ -1069,6 +1083,7 @@ namespace hemera {
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::NO_RED_ZONE:
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
+			case hemera::arg_parse::ALLOW_RUN:
 			case hemera::arg_parse::NO_STARTUP_CODE:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:

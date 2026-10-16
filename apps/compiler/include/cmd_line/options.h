@@ -485,6 +485,15 @@ namespace hemera {
         /// are kept, rather than assumed never to happen.
         /// </summary>
         bool address_zero_is_memory;
+        /// <summary>
+        /// --allow-run: the build package's compile-time code may run programs and write outside the output
+        /// folder (docs/compilation.md, Compile-Time Permissions).
+        /// </summary>
+        bool allow_run = false;
+        /// <summary>
+        /// --setting=name=value, which compile-time code reads with compiler.target_setting.
+        /// </summary>
+        std::vector<std::pair<std::string, std::string>> settings;
 
         Options();
         Options(const Options&) = delete;
