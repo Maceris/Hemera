@@ -24,9 +24,9 @@ ImportInfo :: struct {
     // Canonical path of the imported package's folder.
     path : string,
     // The name it was imported as, which is the package name if there was no alias.
-    alias_ : string,
+    alias : string,
     // The from part, like "base", "../" or "" if there was none.
-    from_ : string,
+    from : string,
     location : SourceCodeLocation,
 }
 
@@ -38,14 +38,14 @@ ImportInfo :: struct {
  */
 ConstantInfo :: struct {
     name : string,
-    type_ : type,
+    type : type,
     value : any,
     location : SourceCodeLocation,
 }
 
 TypeDeclaration :: struct {
     name : string,
-    type_ : type,
+    type : type,
     location : SourceCodeLocation,
 }
 
@@ -73,7 +73,7 @@ find_packages : fn(folder: string, declares := "") -> PackageInfo[] : ---
 package_info : fn(import_name: string) -> PackageInfo? : ---
 
 // The constant called name in package, if it declares one.
-find_constant : fn(package_: ptr[PackageInfo], name: string) -> ConstantInfo? : ---
+find_constant : fn(package: ptr[PackageInfo], name: string) -> ConstantInfo? : ---
 
 // The function called name in package, if it declares one.
-find_function : fn(package_: ptr[PackageInfo], name: string) -> FunctionInfo? : ---
+find_function : fn(package: ptr[PackageInfo], name: string) -> FunctionInfo? : ---

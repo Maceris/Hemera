@@ -480,6 +480,11 @@ namespace hemera {
         /// Kernel code needs this off, since interrupts can write below the stack pointer.
         /// </summary>
         bool red_zone;
+        /// <summary>
+        /// Address 0 is memory on this target (some embedded ones): accesses through a rawptr to it
+        /// are kept, rather than assumed never to happen.
+        /// </summary>
+        bool address_zero_is_memory;
 
         Options();
         Options(const Options&) = delete;

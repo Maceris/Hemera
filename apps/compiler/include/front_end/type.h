@@ -158,6 +158,11 @@ namespace hemera {
 		/// From #calling_convention(...), or null for Hemera's own.
 		/// </summary>
 		InternedString calling_convention = nullptr;
+		/// <summary>
+		/// Marked #no_context: called without a context, and without a stack check, since it may be
+		/// entered without a carrier block; the body sets both up (docs/calling_convention.md).
+		/// </summary>
+		bool no_context = false;
 
 		TypeInfoFunction();
 	};
@@ -250,6 +255,11 @@ namespace hemera {
 		InternedString name;
 		std::vector<UnionVariant> variants;
 		TypeInfo* tag_type = nullptr;
+		/// <summary>
+		/// An optional of a pointer that's never null (ptr[T], cstring, a function): just the
+		/// pointer, null for None, with no tag (docs/types.md, Optional Types).
+		/// </summary>
+		bool null_is_none = false;
 
 		explicit TypeInfoUnion(InternedString name);
 	};

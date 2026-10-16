@@ -510,13 +510,14 @@ namespace hemera {
 		for (const FunctionOutput& output : signature.output) {
 			key += std::format(" {}:{}", name_text(output.name), static_cast<const void*>(output.type));
 		}
-		key += std::format(" {} {}", signature.never_returns, name_text(signature.calling_convention));
+		key += std::format(" {} {} {}", signature.never_returns, name_text(signature.calling_convention), signature.no_context);
 		result = derived_type(walk, key, [&] {
 			auto function = new TypeInfoFunction();
 			function->input = signature.input;
 			function->output = signature.output;
 			function->never_returns = signature.never_returns;
 			function->calling_convention = signature.calling_convention;
+			function->no_context = signature.no_context;
 			return function;
 		});
 		return Progress::DONE;
@@ -533,6 +534,7 @@ namespace hemera {
 			result->output = function->output;
 			result->never_returns = true;
 			result->calling_convention = function->calling_convention;
+			result->no_context = function->no_context;
 			return result;
 		});
 	}
@@ -546,6 +548,23 @@ namespace hemera {
 			result->output = function->output;
 			result->never_returns = function->never_returns;
 			result->calling_convention = convention;
+			result->no_context = function->no_context;
+			return result;
+		});
+	}
+
+	// The same function type, called without a context (#no_context).
+	static TypeInfo* without_context(Walk& walk, TypeInfoFunction* function) {
+		if (function->no_context) {
+			return function;
+		}
+		return derived_type(walk, std::format("no context {}", static_cast<const void*>(function)), [&] {
+			auto result = new TypeInfoFunction();
+			result->input = function->input;
+			result->output = function->output;
+			result->never_returns = function->never_returns;
+			result->calling_convention = function->calling_convention;
+			result->no_context = true;
 			return result;
 		});
 	}
@@ -561,6 +580,10 @@ namespace hemera {
 
 	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
 		const ast::NodeType type = node->node_type;
+		if (ast::NodeType::VOID == type) {
+			result = BUILTIN_void;
+			return Progress::DONE;
+		}
 		if (ast::NodeType::TYPE == type) {
 			return type_of_type_node(walk, node, need, result);
 		}
@@ -753,6 +776,9 @@ namespace hemera {
 				if (is_text(child->value.value, "#never_returns")) {
 					function->never_returns = true;
 				}
+				else if (is_text(child->value.value, "#no_context")) {
+					function->no_context = true;
+				}
 				else if (is_text(child->value.value, "#calling_convention")) {
 					ast::Node* convention = directive_argument(child);
 					function->calling_convention = convention != nullptr ? convention->value.value : nullptr;
@@ -889,7 +915,10 @@ namespace hemera {
 					if (progress != Progress::DONE) {
 						return progress;
 					}
-					type->variants.back().types.push_back(value_type);
+					// A void value is none at all, so Result[void, E]'s Ok holds nothing, like None
+					if (value_type != BUILTIN_void) {
+						type->variants.back().types.push_back(value_type);
+					}
 				}
 			}
 		}
@@ -1097,6 +1126,9 @@ namespace hemera {
 			for (ast::Node* directive : definition->children[0]->children) {
 				if (is_text(directive->value.value, "#never_returns")) {
 					function = never_returning(walk, static_cast<TypeInfoFunction*>(function));
+				}
+				else if (is_text(directive->value.value, "#no_context")) {
+					function = without_context(walk, static_cast<TypeInfoFunction*>(function));
 				}
 				else if (is_text(directive->value.value, "#calling_convention")) {
 					ast::Node* convention = directive_argument(directive);

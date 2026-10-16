@@ -29,6 +29,18 @@ trap #never_returns : fn() : ---
 capture_stack_trace : fn(addresses: mut rawptr[], skip: usize = 0) -> usize : ---
 
 /*
+ * The stack pointer, for code that sets up its own stack limit, like a kernel's entry before it
+ * has a carrier block. Frames below it may change at any call.
+ */
+stack_pointer : fn() -> rawptr : ---
+
+/*
+ * Hint that the caller is spinning, waiting for another thread or CPU to change something:
+ * pause on x86-64, yield on AArch64. Nothing on targets without such an instruction.
+ */
+spin_hint : fn() : ---
+
+/*
  * Same as capture_stack_trace, for a suspended fiber, starting from its innermost frame.
  * Returns 0 for a fiber that is running, finished, or hasn't started.
  * For debugging stuck fibers.

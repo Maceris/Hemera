@@ -358,8 +358,32 @@ f2 :: fn() -> Result[string, MyError] {
     if result {
         return .Ok("test")
     }
-    return .Ok("value")
+    return .Ok("value")
+}
+```
+
+### Results with Nothing on Success
+
+`Result[void, E]` is the result of something that either works or fails with an `E`, with nothing to give back when
+it works. Its `Ok` holds no value, so it's written `.Ok`, like `.None`, and matched with `case Ok`. Each operator
+keeps its meaning, with nothing as the value it evaluates to:
+
+```
+a?               returns the error from the function, otherwise nothing; used as a statement
+a or_return b    returns b if a is an error, otherwise nothing
+a or_break       breaks if a is an error
+a or_continue    continues if a is an error
+a or_else b      does b if a is an error: a call that returns nothing, or one that never returns
+```
+
+```
+map_page :: fn(table: ptr[mut PageTable], page: Page) -> Result[void, MapError] {
+    reserve_tables(table)?
+    install(table, page)?
+    return .Ok
 }
+
+unmap(page) or_else log_warn("the page wasn't mapped")
 ```
 
 # Operator Details

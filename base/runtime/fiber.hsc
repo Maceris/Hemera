@@ -107,7 +107,7 @@ fiber_create :: fn(
     data #escaping : any? = null,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ptr[mut Fiber], AllocatorError?) {
+) -> (ptr[mut Fiber]?, AllocatorError?) {
     block, error :: new_array_aligned(u8, FIBER_BLOCK_SIZE, 16, allocator, loc)
     if error != null {
         return null, error

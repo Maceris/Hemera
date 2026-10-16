@@ -1,7 +1,7 @@
 package compiler
 
 FunctionInfo :: struct {
-    package_ : string,
+    package : string,
     name : string,
     location : SourceCodeLocation,
     // Marked #export, so part of the library's or program's public interface.
@@ -25,18 +25,18 @@ FunctionCall :: struct {
     // Empty for a call through a function value.
     name : string,
     // The called function's type, which is all that is known for a call through a function value.
-    type_ : type,
+    type : type,
     location : SourceCodeLocation,
 }
 
 TypeUse :: struct {
-    type_ : type,
+    type : type,
     location : SourceCodeLocation,
 }
 
 FunctionParameter :: struct {
     name : string,
-    type_ : type,
+    type : type,
     default_value : any?,
     // Marked #escaping, so the function may keep it after returning.
     is_escaping : bool,
@@ -45,7 +45,7 @@ FunctionParameter :: struct {
 
 FunctionReturnValue :: struct {
     name : string?,
-    type_ : type,
+    type : type,
 }
 
 GenericBinding :: struct {

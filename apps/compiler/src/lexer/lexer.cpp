@@ -17,15 +17,6 @@ namespace hemera::lexer {
 	{}
 
 	static std::optional<TokenType> get_reserved_identifier(std::string_view identifier) {
-		if (identifier.compare("alias") == 0) {
-			return TokenType::KEYWORD_ALIAS;
-		}
-		if (identifier.compare("all") == 0) {
-			return TokenType::KEYWORD_ALL;
-		}
-		if (identifier.compare("as") == 0) {
-			return TokenType::KEYWORD_AS;
-		}
 		if (identifier.compare("auto_cast") == 0) {
 			return TokenType::KEYWORD_AUTO_CAST;
 		}
@@ -65,17 +56,8 @@ namespace hemera::lexer {
 		if (identifier.compare("for") == 0) {
 			return TokenType::KEYWORD_FOR;
 		}
-		if (identifier.compare("from") == 0) {
-			return TokenType::KEYWORD_FROM;
-		}
 		if (identifier.compare("if") == 0) {
 			return TokenType::KEYWORD_IF;
-		}
-		if (identifier.compare("import") == 0) {
-			return TokenType::KEYWORD_IMPORT;
-		}
-		if (identifier.compare("in") == 0) {
-			return TokenType::KEYWORD_IN;
 		}
 		if (identifier.compare("is_none") == 0) {
 			return TokenType::KEYWORD_IS_NONE;
@@ -106,9 +88,6 @@ namespace hemera::lexer {
 		}
 		if (identifier.compare("or_return") == 0) {
 			return TokenType::KEYWORD_OR_RETURN;
-		}
-		if (identifier.compare("package") == 0) {
-			return TokenType::KEYWORD_PACKAGE;
 		}
 		if (identifier.compare("push_context") == 0) {
 			return TokenType::KEYWORD_PUSH_CONTEXT;
@@ -1096,9 +1075,6 @@ namespace hemera::lexer {
 		
 		case TokenType::END_OF_FILE:
 		case TokenType::INVALID:
-		case TokenType::KEYWORD_ALIAS:
-		case TokenType::KEYWORD_ALL:
-		case TokenType::KEYWORD_AS:
 		case TokenType::KEYWORD_AUTO_CAST:
 		case TokenType::KEYWORD_BIT_CAST:
 		case TokenType::KEYWORD_BREAK:
@@ -1112,10 +1088,7 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_FALSE:
 		case TokenType::KEYWORD_FN:
 		case TokenType::KEYWORD_FOR:
-		case TokenType::KEYWORD_FROM:
 		case TokenType::KEYWORD_IF:
-		case TokenType::KEYWORD_IMPORT:
-		case TokenType::KEYWORD_IN:
 		case TokenType::KEYWORD_IS_NONE:
 		case TokenType::KEYWORD_IS_SOME:
 		case TokenType::KEYWORD_LOOP:
@@ -1126,7 +1099,6 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_OR_CONTINUE:
 		case TokenType::KEYWORD_OR_ELSE:
 		case TokenType::KEYWORD_OR_RETURN:
-		case TokenType::KEYWORD_PACKAGE:
 		case TokenType::KEYWORD_PUSH_CONTEXT:
 		case TokenType::KEYWORD_RETURN:
 		case TokenType::KEYWORD_STRUCT:
@@ -1201,10 +1173,9 @@ namespace hemera::lexer {
 
 		if (result_type == TokenType::IDENTIFIER && token_contents) {
 			std::optional<TokenType> maybe_token = get_reserved_identifier(*token_contents);
+			// A keyword keeps its text, since it can still be a name where only a name can go
 			if (maybe_token) {
 				result_type = *maybe_token;
-				string_alloc.delete_object(token_contents);
-				token_contents = nullptr;
 			}
 		}
 

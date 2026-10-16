@@ -214,6 +214,86 @@ Big :: struct {
     values : int[32],
 }
 
+// Any word is a member's name (docs/keywords.md)
+Origin :: struct {
+    package : string,
+    match : int,
+}
+
+Direction :: enum {
+    in,
+    else,
+}
+
+// The contextual keywords are names outside the constructs they start
+total_of :: fn(from: int, in: int, all: int, alias: int) -> int {
+    return from + in + all + alias
+}
+
+// An optional pointer is just the pointer, null when there's none (docs/types.md, Optional Types)
+Link :: struct {
+    next : ptr[Link]?,
+    value : int,
+}
+
+#assert size_of(ptr[int]?) == 8
+#assert size_of(Link) == 16
+
+chain_total :: fn(first: ptr[Link]) -> int {
+    total := 0
+    current : ptr[Link]? = first
+    loop {
+        link :: current or_break
+        total += link.value
+        current = link.next
+    }
+    return total
+}
+
+twice :: fn(n: int) -> int {
+    return n * 2
+}
+
+Transform :: alias fn(n: int) -> int
+
+apply :: fn(function: Transform?, n: int) -> int {
+    return match function {
+        case Some(f) => f(n)
+        case None => n
+    }
+}
+
+// A result with nothing on success (docs/operators.md, Result Operators)
+Fault :: enum {
+    Busy,
+}
+
+attempt :: fn(fail: bool) -> Result[void, Fault] {
+    if fail {
+        return .Error(.Busy)
+    }
+    return .Ok
+}
+
+attempt_twice :: fn(fail: bool) -> Result[void, Fault] {
+    attempt(false)?
+    attempt(fail)?
+    return .Ok
+}
+
+successes :: fn() -> int {
+    count := 0
+    for i in 0..<5 {
+        attempt(i % 2 == 0) or_continue
+        count += 1
+    }
+    return count
+}
+
+count_up :: fn(counter: ptr[mut int]) {
+    counter^ += 1
+}
+
 move :: fn(p: ptr[mut Point], by: int) {
     p.x += by
     p.y -= by
@@ -393,6 +473,31 @@ main :: fn() -> int {
     big.values[31] = 6
     if copy.values[31] != 5 {
         return 35
+    }
+    origin := Origin.{package = "hosted", match = 2}
+    direction : Direction = .else
+    if origin.match != 2 || origin.package.count != 6 || direction != Direction.else || total_of(1, 2, 3, 4) != 10 {
+        return 36
+    }
+    last := Link.{null, 3}
+    first := Link.{&last, 4}
+    none : ptr[Link]? = null
+    // None is a null pointer in memory
+    if chain_total(&first) != 7 || (none is_some) || (first.next is_none) || cast[ptr[u64]](&last)^ != 0 {
+        return 37
+    }
+    if apply(twice, 5) != 10 || apply(null, 5) != 5 {
+        return 38
+    }
+    failed_twice := match attempt_twice(true) {
+        case Ok => false
+        case Error(fault) => true
+    }
+    failures := 0
+    attempt(true) or_else count_up(&failures)
+    attempt(false) or_else count_up(&failures)
+    if !failed_twice || successes() != 2 || failures != 1 {
+        return 39
     }
     return 42
 }

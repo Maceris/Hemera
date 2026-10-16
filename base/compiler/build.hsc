@@ -71,6 +71,11 @@ TargetOptions :: struct {
     relocation_model : RelocationModel,
     // Kernel code needs this off, since interrupts can write below the stack pointer.
     red_zone : bool = true,
+    /*
+     * Address 0 is memory on this target, like an embedded one's vector table. Accesses to it go
+     * through a rawptr (docs/types.md, Pointers), and are kept rather than assumed never to happen.
+     */
+    address_zero_is_memory : bool = false,
     // Linker script for section placement. Empty uses the linker's default layout.
     linker_script : string,
     // Linker to run. Empty uses the default for the target, see docs/compilation.md (Linking).

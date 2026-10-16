@@ -121,7 +121,7 @@ overflows :: fn() {
     exit_qemu(10)
 }
 
-kernel_entry :: fn() #never_returns {
+kernel_entry #calling_convention(.c) #no_context :: fn() #never_returns {
     // A carrier block for this stack before anything else, then a context
     carrier : runtime.CarrierBlock
     intrinsics.set_carrier(&carrier)

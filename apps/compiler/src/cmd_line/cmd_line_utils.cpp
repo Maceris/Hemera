@@ -448,6 +448,9 @@ namespace hemera {
 			case hemera::arg_parse::NO_RED_ZONE:
 				output.red_zone = false;
 				break;
+			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
+				output.address_zero_is_memory = true;
+				break;
 			case hemera::arg_parse::NO_STARTUP_CODE:
 				output.startup_code = false;
 				break;
@@ -1065,6 +1068,7 @@ namespace hemera {
 				break;
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::NO_RED_ZONE:
+			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 			case hemera::arg_parse::NO_STARTUP_CODE:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::LIST:

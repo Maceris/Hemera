@@ -57,7 +57,14 @@ package, always runs without it, so importing a package never hands it the build
 Normally the output includes startup code that sets up the first carrier block (see
 [calling_convention.md](calling_convention.md#carrier-register)) and context before calling the entry function.
 Programs with nothing underneath them, like kernels, turn it off with `TargetOptions.startup_code = false`.
-Their entry function then has to do it before calling any Hemera code that needs it:
+Their entry function is then entered from outside Hemera, so it's declared `#calling_convention(.c) #no_context`
+([calling_convention.md](calling_convention.md#functions-entered-from-outside)), and keeps its own name for the linker
+without needing `#export`. It has to set things up before calling any Hemera code that needs a context:
+
+```
+kernel_entry #calling_convention(.c) #no_context :: fn() #never_returns {/* ... */}
+```
+
 
 1. Point a carrier block's `stack_limit` at the end of the stack, and load it with `intrinsics.set_carrier`.
 2. Push a context made of constants, like `push_context boot from runtime.MINIMAL_CONTEXT`, until there's a heap,
@@ -95,6 +102,7 @@ need as flags:
 | `--no-startup-code` | `startup_code = false` |
 | `--entry=name` | The entry function, `main` by default |
 | `--no-red-zone` | `red_zone = false` |
+| `--address-zero-is-memory` | `address_zero_is_memory = true`, for targets where address 0 is memory (docs/types.md, Pointers) |
 | `--stack-check=trap` | `stack_check_failure = .Trap`; `off`, the default, leaves the check out until hosted startup code sets up a carrier block |
 | `--code-model=kernel` | `code_model`: `default`, `small`, `kernel`, `medium` or `large` |
 | `--relocation-model=static` | `relocation_model`: `static`, or `pic`, the default |

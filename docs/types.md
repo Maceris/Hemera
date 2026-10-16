@@ -108,8 +108,8 @@ More details:
 
 ## Any
 
-The `any` type is a combination of a type and raw pointer, in the fields `data: rawptr` and `type_: type`.
-`type_info_of(value.type_)` describes what `data` points to.
+The `any` type is a combination of a type and raw pointer, in the fields `data: rawptr` and `type: type`.
+`type_info_of(value.type)` describes what `data` points to.
 Any other type can be implicitly cast to an `any`, including stack variables and parameters.
 An `any` made from something on the stack can't outlive it, which the compiler checks,
 see [memory.md](memory.md#pointers-to-the-stack).
@@ -166,6 +166,16 @@ them, so changing an element through the view changes the array.
 Arrays on the stack (including fields of structs on the stack) can be passed to functions as,
 or cast to, array views. Such a view can't outlive the array, which the compiler checks,
 see [memory.md](memory.md#pointers-to-the-stack).
+
+A view of memory that didn't come from a Hemera array, like a table a bootloader or a device wrote, comes from the
+builtin `view_of(data: ptr[T], count: usize) -> T[]`: `count` elements of `T` starting at `data`, so
+`count × size_of(T)` bytes. `string_of(data: ptr[u8], count: usize) -> string` does the same for text. Neither is
+checked, like a cast to a pointer: the caller makes sure the elements are there for as long as the view is used. From a
+`ptr[mut T]`, the elements can be changed through the view.
+
+```
+regions :: view_of(cast[ptr[MemoryRegion]](address), count)
+```
 
 The range operators can be used to grab a view from indexes in an array.
 
@@ -412,7 +422,7 @@ Strings, array views and dynamic arrays are small structs pointing at their cont
 | `string` | `count: usize` (bytes), `data: rawptr` |
 | `T[]` | `count: usize`, `data: rawptr` |
 | `T[..]` | `count: usize`, `data: rawptr`, `capacity: usize`, `allocator: Allocator` |
-| `any` | `data: rawptr`, `type_: type` |
+| `any` | `data: rawptr`, `type: type` |
 
 Functions that change a dynamic array take a pointer to it, so the change reaches the caller's array:
 `array_add(&names, name)`. Functions that only read one take an array view, which dynamic arrays convert to.
@@ -478,7 +488,8 @@ Any format can use underscores (`_`) freely between digits, they are ignored.
 ## Optional Types
 
 Any type can be represented as an optional by appending a `?` to the type name.
-This is only equivalent to a nullable type, albeit `null` still exists for `rawptr`'s.
+This is Hemera's nullable type: a `ptr[T]`, `cstring` or function value always refers to something, and only a
+`rawptr` or an optional can be `null` (where `null` is an optional's `None`).
 
 For example `i32?` is a type that either contains an `i32`, or does not.
 This works for any built-in or user-defined type.
@@ -493,6 +504,17 @@ Optional :: union[T] {
 ```
 
 There are a few [operators built in](operators.md#optional-operators) to make life easier when dealing with optional values.
+
+An optional of a pointer that's never null, `ptr[T]?`, `cstring?` or an optional function, is just the pointer, with
+`None` as a null pointer. It has no tag and the same size and layout as the pointer, so it matches a nullable pointer
+in C and in other foreign layouts. `rawptr?` keeps its tag, since a `rawptr` can be `null` itself.
+
+```
+Node :: struct {
+    next : ptr[Node]?,    // 8 bytes, null at the end of the list
+    value : int,
+}
+```
 
 ## Pointers
 
@@ -509,6 +531,11 @@ Relative pointers refer to an address relative to their own, and have different 
 An 8-bit relative pointer is quite small, but can only refer to things 128 bytes below and 127 bytes above their own address.
 
 There is no pointer arithmetic on regular pointers, though raw pointers and relative pointers (being closer to integers) do allow it.
+
+A `ptr[T]` is never null, so nothing in a program is ever at address 0 through one. On targets where address 0 is
+memory, like an embedded vector table, code reaches it through a `rawptr` and the volatile intrinsics, and the target
+sets `TargetOptions.address_zero_is_memory`, so those accesses aren't assumed never to happen
+(`--address-zero-is-memory` on the command line).
 
 ### Mutability
 

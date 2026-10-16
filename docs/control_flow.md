@@ -306,13 +306,15 @@ traps.
 
 ### Functions Without a Context
 
-Most functions are called with a context. Three kinds start without one: freestanding entry points (see
-[compilation.md](compilation.md#freestanding-programs)), [interrupt functions](calling_convention.md#interrupt-functions)
-and [entry functions](calling_convention.md#entry-functions). Until they push one with `push_context ... from`:
+Most functions are called with a context. Some start without one: functions marked `#no_context`, like a
+freestanding program's entry (see [compilation.md](compilation.md#freestanding-programs)) and functions a bootloader
+or other foreign code calls ([calling_convention.md](calling_convention.md#functions-entered-from-outside)), and
+[interrupt functions](calling_convention.md#interrupt-functions) and [entry functions](calling_convention.md#entry-functions).
+Until they push one with `push_context ... from`:
 
 * `context` can't be used, and the override form of `push_context` is an error, since there is nothing to copy.
-* Only intrinsics (bodiless declarations in `base`, which compile to instructions) can be called, like
-  `intrinsics.set_carrier`. Every other call needs a context to pass.
+* Only intrinsics (bodiless declarations in `base`, which compile to instructions) and other `#no_context` functions
+  can be called, like `intrinsics.set_carrier`. Every other call needs a context to pass.
 
 Calls inside the `push_context ... from` block get the pushed context as usual.
 

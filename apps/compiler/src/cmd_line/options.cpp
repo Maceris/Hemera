@@ -24,6 +24,7 @@ namespace hemera {
 		, debug_info{ false }
 		, startup_code{ true }
 		, red_zone{ true }
+		, address_zero_is_memory{ false }
 	{}
 	Options::~Options() = default;
 }

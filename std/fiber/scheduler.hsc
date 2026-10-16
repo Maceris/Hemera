@@ -30,7 +30,7 @@ FiberSchedulerLocalData :: struct {
  * Make a fiber that will run function(data), with a copy of the current context.
  * It doesn't run until it's added to a scheduler's queue.
  */
-create_fiber :: fn(function: ThreadFunction, data #escaping : any? = null) -> (ptr[mut Fiber], AllocatorError?) {
+create_fiber :: fn(function: ThreadFunction, data #escaping : any? = null) -> (ptr[mut Fiber]?, AllocatorError?) {
     return fiber_create(function, data)
 }
 
@@ -40,8 +40,8 @@ create_fiber_scheduler :: fn() -> ptr[mut FiberSchedulerGlobalData] {
 }
 
 run_fiber_scheduler : ThreadFunction : fn(data: any) {
-    if data.type_ != ptr[mut FiberSchedulerGlobalData] {
-        log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type_)
+    if data.type != ptr[mut FiberSchedulerGlobalData] {
+        log_error("run_fiber_scheduler expected a pointer to FiberSchedulerGlobalData, but got %", data.type)
         return void
     }
     {

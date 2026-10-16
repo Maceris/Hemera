@@ -8,7 +8,7 @@ import runtime from "base"
  * valid is false for anything else.
  */
 as_string :: fn(value: any) -> (result: string, valid: bool) {
-    info :: unaliased(type_info_of(value.type_))
+    info :: unaliased(type_info_of(value.type))
     if info.variant == .STRING {
         string_info :: cast[ptr[compiler.TypeInfoString]](info)
         if string_info.is_raw {
@@ -41,7 +41,7 @@ as_string :: fn(value: any) -> (result: string, valid: bool) {
  * enum type itself differs between programs.
  */
 enum_member_name :: fn(value: any) -> string? {
-    info :: unaliased(type_info_of(value.type_))
+    info :: unaliased(type_info_of(value.type))
     if info.variant != .ENUM {
         return null
     }
@@ -64,10 +64,10 @@ enum_member_name :: fn(value: any) -> string? {
  * their bytes, since type info doesn't say which variant is in use.
  */
 equal :: fn(a, b: any) -> bool {
-    if a.type_ != b.type_ {
+    if a.type != b.type {
         return false
     }
-    return values_equal(a.data, b.data, type_info_of(a.type_))
+    return values_equal(a.data, b.data, type_info_of(a.type))
 }
 
 values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {

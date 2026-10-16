@@ -464,6 +464,34 @@ them.
 
 The compiler generates these sequences itself; Hemera has no inline assembly.
 
+### Functions Entered from Outside
+
+A function that something other than Hemera code calls, like a bootloader starting the program or another CPU, is
+declared with the platform's C convention and without a context:
+
+```
+cpu_start #calling_convention(.c) #no_context :: fn(info: ptr[MpInfo]) #never_returns {
+    carrier : runtime.CarrierBlock
+    carrier.stack_limit = /* ... */
+    intrinsics.set_carrier(&carrier)
+    push_context boot from runtime.MINIMAL_CONTEXT {/* ... */}
+}
+```
+
+* `#calling_convention(.c)` passes parameters and results the way the platform's C compilers do.
+* `#no_context` leaves out the context parameter, and the prologue stack check, since there may be no carrier block
+  yet. Like an interrupt function's body, its body sets up a carrier block and pushes a context before calling
+  anything that needs them (see [control_flow.md](control_flow.md#functions-without-a-context)). It's part of the
+  function's type, and can also follow a signature, like `#never_returns` (`fn(info: ptr[MpInfo]) #no_context`).
+* Nothing more is needed when the caller gets the function's address, like a bootloader's table of CPUs. Something
+  that finds it by name, like a linker or C code, needs it `#export`ed; the program's entry function is, without saying.
+
+`#no_context` works with Hemera's own convention too, for Hemera code that runs before there's a carrier block.
+
+A `.c` function without `#no_context` is a callback from foreign code, which gets the entry shim described in
+[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context. The compiler doesn't make that shim
+yet, so for now `.c` functions are `#no_context`.
+
 ## Other Conventions
 
 ### cdecl

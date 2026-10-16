@@ -13,7 +13,7 @@
 | Variable     | snake_case           | first_item, cached_width        |
 
 The only valid characters for identifiers are alphanumeric characters ([a-z], [A-Z], [0-9]) and underscore ('_'), and must start with a letter.
-Identifiers may not be the same as [reserved keywords](keywords.md) or [builtin types](types.md).
+Identifiers may not be the same as [reserved keywords](keywords.md); [contextual keywords](keywords.md#contextual-keywords) and the names of [builtin types](types.md) can be used, though a builtin type's name hides the type.
 
 ## Lists
 

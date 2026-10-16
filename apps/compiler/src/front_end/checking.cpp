@@ -56,10 +56,6 @@ namespace hemera {
 		/// Where to record what each node is, for generating code, or null.
 		/// </summary>
 		CheckedBody* record = nullptr;
-		/// <summary>
-		/// The function a freestanding program starts at, which starts without a context.
-		/// </summary>
-		bool freestanding_entry = false;
 		explicit Checker(Walk& walk_)
 			: walk{ walk_ }
 		{}
@@ -209,8 +205,12 @@ namespace hemera {
 		if (holder == nullptr) {
 			holder = builtin_union(type, "Result");
 		}
-		if (holder == nullptr || holder->variants.empty() || holder->variants[0].types.empty()) {
+		if (holder == nullptr || holder->variants.empty()) {
 			return nullptr;
+		}
+		// Result[void, E]'s Ok holds nothing
+		if (holder->variants[0].types.empty()) {
+			return builtin_union(type, "Result") != nullptr ? BUILTIN_void : nullptr;
 		}
 		return holder->variants[0].types[0];
 	}
@@ -339,9 +339,9 @@ namespace hemera {
 		if (ValueKind::UNTYPED_BOOLEAN == kind) {
 			return is_boolean(type);
 		}
+		// null is a rawptr's, or an optional's None: ptr[T], cstring and functions are never null
 		if (ValueKind::NULL_VALUE == kind) {
-			return is_pointer(type) || is_variant(type, TypeInfoVariant::FUNCTION)
-				|| (is_variant(type, TypeInfoVariant::STRING) && static_cast<TypeInfoString const*>(base_of(type))->is_raw)
+			return (is_pointer(type) && static_cast<TypeInfoPointer const*>(base_of(type))->base_type == nullptr)
 				|| builtin_union(type, "Optional") != nullptr;
 		}
 		if (ValueKind::TYPE == kind) {
@@ -706,7 +706,7 @@ namespace hemera {
 				value = typed(BUILTIN_rawptr);
 				return Progress::DONE;
 			}
-			if (member == "type_") {
+			if (member == "type") {
 				value = typed(BUILTIN_type);
 				return Progress::DONE;
 			}
@@ -1348,7 +1348,7 @@ namespace hemera {
 				expected_count, expected_count == 1 ? "" : "s"));
 			return Progress::DONE;
 		}
-		// type_info_of also takes a type value, like an any's type_
+		// type_info_of also takes a type value, like an any's type
 		const bool takes_type = name != "type_of";
 		const bool type_value_given = name == "type_info_of" && ValueKind::VALUE == values[0].kind
 			&& is_variant(values[0].type, TypeInfoVariant::TYPE);
@@ -1433,13 +1433,13 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		auto function = static_cast<TypeInfoFunction const*>(type);
-		// Without a context, only intrinsics can be called: bodiless declarations in base
-		if (!checker.has_context) {
+		// Without a context, only what takes none can be called: intrinsics, and #no_context functions
+		if (!checker.has_context && !function->no_context) {
 			const bool intrinsic = callee.declaration != nullptr && is_base_package(callee.declaration->package_path)
 				&& function_body(callee.declaration) == nullptr;
 			if (!intrinsic) {
 				error_at(checker, ErrorCode::E4027, where,
-					"without a context, only intrinsics can be called; push one with push_context ... from first");
+					"without a context, only intrinsics and #no_context functions can be called; push one with push_context ... from first");
 			}
 		}
 		std::vector<InternedString> names;
@@ -1684,8 +1684,18 @@ namespace hemera {
 				if (progress != Progress::DONE) {
 					return progress;
 				}
-				// A default that never returns, like a call that stops the program, fits anything
-				if (!right.never_returns) {
+				/*
+				 * A default that never returns, like a call that stops the program, fits anything. For
+				 * Result[void, E], the default is what to do instead: a call that returns nothing.
+				 */
+				if (held == BUILTIN_void) {
+					if (ValueKind::NOTHING != right.kind && !right.never_returns) {
+						error_at(checker, ErrorCode::E4015, right_node, std::format(
+							"or_else on a result with nothing in Ok takes what to do instead, a call that returns nothing, not {}",
+							describe(right)));
+					}
+				}
+				else if (!right.never_returns) {
 					require_fit(checker, right, held, right_node, "or_else's default");
 				}
 			}
@@ -3581,9 +3591,11 @@ namespace hemera {
 	}
 
 	// Entry points start without a context (docs/control_flow.md, Functions Without a Context).
+	// Whether a function starts without a context: #no_context, or an interrupt or entry function.
 	static bool starts_without_context(TypeInfoFunction const* function) {
 		const std::string convention = text_of(function->calling_convention);
-		return convention.find("entry") != std::string::npos || convention.find("interrupt") != std::string::npos;
+		return function->no_context || convention.find("entry") != std::string::npos
+			|| convention.find("interrupt") != std::string::npos;
 	}
 
 	/*
@@ -3596,7 +3608,7 @@ namespace hemera {
 		checker.scopes.emplace_back();
 		declare_parameters(checker, function_node, type);
 		checker.function = const_cast<TypeInfoFunction*>(type);
-		checker.has_context = !starts_without_context(type) && !checker.freestanding_entry;
+		checker.has_context = !starts_without_context(type);
 		bool continues = true;
 		checker.scopes.emplace_back();
 		Progress progress = check_block(checker, body, continues, nullptr, nullptr);
@@ -3706,8 +3718,19 @@ namespace hemera {
 		Checker checker(walk);
 		checker.record = checked.get();
 		const Options* options = executor.global_data->options;
-		checker.freestanding_entry = options != nullptr && !options->startup_code && function->generic == nullptr
+		// Without startup code, the program starts at its entry function, before there's a context
+		const bool entry = options != nullptr && !options->startup_code && function->generic == nullptr
 			&& text_of(function->name) == options->entry && *function->package_path == *intern(options->input.string());
+		if (entry && !starts_without_context(type)) {
+			error_at(checker, ErrorCode::E4027, function->node, std::format(
+				"{} is where the program starts, without a context: mark it #no_context (with #calling_convention(.c))",
+				text_of(function->name)));
+		}
+		// .c functions that foreign code calls back get a shim that finds the context, not made yet
+		if (text_of(type->calling_convention) == "c" && !type->no_context) {
+			error_at(checker, ErrorCode::E4024, function->node,
+				"a .c function needs #no_context until the compiler makes callback shims (docs/calling_convention.md)");
+		}
 		const size_t errors_before = error_count();
 		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
 		if (progress == Progress::DONE && error_count() == errors_before) {

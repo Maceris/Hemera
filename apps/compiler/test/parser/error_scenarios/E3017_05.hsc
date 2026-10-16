@@ -2,6 +2,6 @@ package error_scenarios
 
 main :: fn() {
     switch x {
-        case import: println("wait a minute")
+        case else: println("wait a minute")
     }
 }

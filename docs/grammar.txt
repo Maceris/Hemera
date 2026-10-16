@@ -68,6 +68,9 @@ float_exponent = ( "e" | "E" ) , [ "-" ] , integer_decimal ;
 
 pipe_reorder_identifier = "$" , integer_decimal ;
 
+(* alias, all, as, from, import, in and package are contextual (docs/keywords.md): the lexer reads them as
+   identifiers, and they are keywords only where these rules use them. Where only a name can go (after ".",
+   field names, named arguments and fields, enum members, union variants), any keyword is a name too. *)
 KEYWORD_alias = "alias" ;
 KEYWORD_all = "all" ;
 KEYWORD_as = "as" ;

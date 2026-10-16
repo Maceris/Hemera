@@ -1,7 +1,5 @@
 package text_buffer
 
-import raw from "std"
-
 /*
  * Text built up in bytes the caller provides. Appending past the end keeps what fits and sets
  * truncated, so a message that's too long is cut short rather than lost.
@@ -29,7 +27,7 @@ as_string :: fn(text: ptr[TextBuffer]) -> string {
     if text.count == 0 {
         return ""
     }
-    return raw.string_of(&text.bytes[0], text.count)
+    return string_of(&text.bytes[0], text.count)
 }
 
 clear :: fn(text: ptr[mut TextBuffer]) {

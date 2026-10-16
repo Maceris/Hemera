@@ -166,7 +166,20 @@ AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #nev
 * The compiler gives the function LLVM's `noreturn` attribute, and puts `unreachable` after every call to it,
   including calls through function pointers.
 
-A call to it has no value, so `lookup(key) or_else exit(1)` isn't allowed. Use an `if` instead.
+A call to it has no value, but fits wherever a value is expected, since there's never a value to use: `lookup(key) or_else exit(1)` is fine.
+
+### `#no_context`
+
+`#no_context` marks a function that's called without a context, and has no prologue stack check, since it may start
+before there's a carrier block. It's part of the function's type, placed like `#never_returns`. Its body sets up a
+carrier block and pushes a context before calling anything that needs them, and can call intrinsics and other
+`#no_context` functions until then (see [control_flow.md](control_flow.md#functions-without-a-context)). It's for
+functions entered from outside Hemera, usually with `#calling_convention(.c)` (see
+[calling_convention.md](calling_convention.md#functions-entered-from-outside)).
+
+```
+kernel_entry #calling_convention(.c) #no_context :: fn() #never_returns {/* ... */}
+```
 
 ## Function Parameters
 

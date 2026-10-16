@@ -318,6 +318,10 @@ namespace hemera {
 		else if (TypeInfoVariant::STRUCT == variant) {
 			result = struct_type(generator, static_cast<TypeInfoStruct const*>(type));
 		}
+		else if (TypeInfoVariant::UNION == variant && static_cast<TypeInfoUnion const*>(type)->null_is_none) {
+			// An optional of a pointer that's never null: the pointer, null for None
+			result = pointer_type(generator);
+		}
 		else if (TypeInfoVariant::UNION == variant) {
 			// The tag, then the bytes every variant's values share
 			auto union_type = static_cast<TypeInfoUnion const*>(type);
@@ -626,12 +630,13 @@ namespace hemera {
 	}
 
 	/*
-	 * Whether a function is called with a context: not interrupt and entry functions, or a
-	 * freestanding entry point (docs/control_flow.md, Functions Without a Context).
+	 * Whether a function is called with a context: not #no_context, interrupt or entry functions
+	 * (docs/control_flow.md, Functions Without a Context).
 	 */
 	static bool takes_context(Generator& generator, TypeInfoFunction const* function, Declaration* declaration) {
-		return !has_convention(function, "entry") && !has_convention(function, "interrupt")
-			&& !is_freestanding_entry(generator, declaration);
+		(void)generator;
+		(void)declaration;
+		return !function->no_context && !has_convention(function, "entry") && !has_convention(function, "interrupt");
 	}
 
 	/*
@@ -770,6 +775,13 @@ namespace hemera {
 		const std::vector<TypeInfo*>& value_types) {
 
 		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
+		if (union_type->null_is_none) {
+			// Some is the pointer itself, None is null
+			if (variant != 0 || values.empty()) {
+				return zero_of(generator, pointer_type(generator));
+			}
+			return convert(generator, values[0], value_types[0], union_type->variants[0].types[0]);
+		}
 		mlir::Value tag = constant_int(generator, llvm_type(generator, union_type->tag_type), static_cast<int64_t>(variant));
 		if (values.empty()) {
 			// Only the tag, which works in a constant too
@@ -820,7 +832,15 @@ namespace hemera {
 
 	// A union's tag, from where it is.
 	static mlir::Value union_tag(Generator& generator, mlir::Value address, TypeInfo const* type) {
-		return load(generator, static_cast<TypeInfoUnion const*>(base(type))->tag_type, address);
+		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
+		if (union_type->null_is_none) {
+			// Some (0) unless the pointer is null, then None (1)
+			mlir::Value pointer = LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), address);
+			mlir::Value is_null = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, pointer,
+				zero_of(generator, pointer_type(generator)));
+			return LLVM::ZExtOp::create(generator.builder, generator.loc, llvm_type(generator, union_type->tag_type), is_null);
+		}
+		return load(generator, union_type->tag_type, address);
 	}
 
 	// A value converted to a type it implicitly converts to (docs/types.md, Implicit Casting), or cast to.
@@ -1794,6 +1814,19 @@ namespace hemera {
 			LLVM::Trap::create(b, l);
 			return never_returning();
 		}
+		if (name == "stack_pointer") {
+			return value(LLVM::StackSaveOp::create(b, l, pointer_type(generator)), result_type);
+		}
+		if (name == "spin_hint") {
+			const ArchType architecture = generator.options != nullptr ? generator.options->architecture : ArchType::x86_64;
+			if (ArchType::x86_64 == architecture || ArchType::x86 == architecture) {
+				assembly(generator, mlir::Type(), {}, "pause", "~{memory}");
+			}
+			else if (ArchType::aarch64 == architecture) {
+				assembly(generator, mlir::Type(), {}, "yield", "~{memory}");
+			}
+			return result;
+		}
 		if (name == "mem_copy") {
 			LLVM::MemmoveOp::create(b, l, arguments[0], arguments[1], arguments[2], false);
 			return result;
@@ -2280,6 +2313,10 @@ namespace hemera {
 	// What an optional or result holds, where it is.
 	static Emitted held_value(Generator& generator, mlir::Value address, TypeInfo const* type) {
 		const UnionVariant& some = static_cast<TypeInfoUnion const*>(base(type))->variants[0];
+		// Result[void, E]'s Ok holds nothing
+		if (some.types.empty()) {
+			return Emitted{};
+		}
 		return location(offset_address(generator, address, some.offsets.empty() ? 0 : some.offsets[0]), some.types[0]);
 	}
 
@@ -2380,6 +2417,17 @@ namespace hemera {
 					return true;
 				}, nullptr);
 				return held;
+			}
+			// Result[void, E]: on an error, the default runs, for what it does
+			if (held.type == nullptr) {
+				emit_if(generator, tag_is(generator, address, left.type, 0, false), [&]() {
+					if (emit_expression(generator, right_node, nullptr).never_returns) {
+						LLVM::UnreachableOp::create(generator.builder, generator.loc);
+						return true;
+					}
+					return false;
+				}, nullptr);
+				return Emitted{};
 			}
 			mlir::Value slot = make_slot(generator, held.type);
 			emit_if(generator, tag_is(generator, address, left.type, 0, true), [&]() {
@@ -3907,6 +3955,10 @@ namespace hemera {
 		for (llvm::Function& function : *result) {
 			if (!options.red_zone) {
 				function.addFnAttr(llvm::Attribute::NoRedZone);
+			}
+			// Otherwise LLVM assumes nothing is ever at address 0 and drops accesses to it
+			if (options.address_zero_is_memory) {
+				function.addFnAttr(llvm::Attribute::NullPointerIsValid);
 			}
 			// Every frame keeps its frame pointer, so capture_stack_trace can walk the chain
 			function.addFnAttr("frame-pointer", "all");

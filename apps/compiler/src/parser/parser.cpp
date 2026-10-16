@@ -259,8 +259,40 @@ namespace hemera::parser {
 		return node;
 	}
 
+	/*
+	 * Whether the token at offset is the word text: an identifier, since the contextual keywords
+	 * (package, import, from, as, all, in, alias) are only keywords where they start their
+	 * construct, and names everywhere else (docs/keywords.md).
+	 */
+	static bool is_word(ParserState* state, std::string_view text, size_t offset = 0) {
+		const Token& token = offset == 0 ? current_token(state) : next_token(state, offset);
+		return TokenType::IDENTIFIER == token.type && token.value != nullptr && *token.value == text;
+	}
+
+	// Whether a token can be a name where only a name can go: an identifier, or any keyword.
+	static bool is_name(TokenType type) {
+		return TokenType::IDENTIFIER == type
+			|| (type >= TokenType::KEYWORD_AUTO_CAST && type <= TokenType::KEYWORD_WITH);
+	}
+
+	// A name where only a name can go, as an IDENTIFIER node under parent.
+	static bool accept_name(ParserState* state, ast::Node& parent) {
+		if (!is_name(current_token(state).type)) {
+			return false;
+		}
+		next_as_node(state, ast::NodeType::IDENTIFIER, &parent);
+		return true;
+	}
+
+	// An import, unless import is the name of a declaration (import :: ..., import #export : ...).
+	static bool is_import(ParserState* state) {
+		const TokenType next = next_token(state).type;
+		return is_word(state, "import") && TokenType::SYM_COLON != next && TokenType::DIRECTIVE != next
+			&& TokenType::SYM_COMMA != next;
+	}
+
 	bool package_statement(ParserState* state, ast::Node& parent) {
-		if (!expect(state, TokenType::KEYWORD_PACKAGE)) {
+		if (!is_word(state, "package")) {
 			report_error_on_last_token(state, ErrorCode::E3001);
 			return false;
 		}
@@ -277,7 +309,7 @@ namespace hemera::parser {
 	bool imports(ParserState* state, ast::Node& parent) {
 
 		TokenType current_type = current_token(state).type;
-		while (current_type == TokenType::KEYWORD_IMPORT 
+		while (is_import(state)
 			|| current_type == TokenType::DIRECTIVE
 		) {
 			if (current_type == TokenType::DIRECTIVE) {
@@ -340,7 +372,7 @@ namespace hemera::parser {
 	 */
 	bool top_level_block(ParserState* state, ast::Node& parent) {
 		while (true) {
-			if (expect(state, TokenType::KEYWORD_IMPORT)) {
+			if (is_import(state)) {
 				if (!import(state, parent)) {
 					return false;
 				}
@@ -359,9 +391,8 @@ namespace hemera::parser {
 	}
 
 	bool import(ParserState* state, ast::Node& parent) {
+		// The import word itself becomes the IMPORT node
 		ast::Node& node = next_as_node(state, ast::NodeType::IMPORT, &parent);
-
-		skip(state, TokenType::KEYWORD_IMPORT);
 
 		if (!accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER,
 			node)) {
@@ -369,9 +400,8 @@ namespace hemera::parser {
 			return false;
 		}
 
-		if (expect(state, TokenType::KEYWORD_AS)) {
-			accept(state, TokenType::KEYWORD_AS, ast::NodeType::KEYWORD_AS,
-				node);
+		if (is_word(state, "as")) {
+			next_as_node(state, ast::NodeType::KEYWORD_AS, &node);
 			if (!accept(state, TokenType::IDENTIFIER,
 				ast::NodeType::IDENTIFIER, node)) {
 				report_error_on_last_token(state, ErrorCode::E3005);
@@ -379,9 +409,8 @@ namespace hemera::parser {
 			}
 		}
 
-		if (expect(state, TokenType::KEYWORD_FROM)) {
-			accept(state, TokenType::KEYWORD_FROM, ast::NodeType::KEYWORD_FROM,
-				node);
+		if (is_word(state, "from")) {
+			next_as_node(state, ast::NodeType::KEYWORD_FROM, &node);
 			if (!accept(state, TokenType::LITERAL_STRING, 
 				ast::NodeType::LITERAL, node)) {
 				report_error_on_last_token(state, ErrorCode::E3004);
@@ -393,7 +422,7 @@ namespace hemera::parser {
 	}
 
 	bool const_definitions(ParserState* state, ast::Node& parent) {
-		while (expect(state, TokenType::IDENTIFIER) 
+		while ((expect(state, TokenType::IDENTIFIER) && !is_import(state))
 			|| expect(state, TokenType::DIRECTIVE)
 			|| expect(state, TokenType::ANNOTATION)) {
 
@@ -584,6 +613,7 @@ namespace hemera::parser {
 			bool expected = false;
 			if (directive.value.value->compare("#export") == 0
 				|| directive.value.value->compare("#calling_convention") == 0
+				|| directive.value.value->compare("#no_context") == 0
 				|| directive.value.value->compare("#never_returns") == 0
 				|| directive.value.value->compare("#externally_initialized") == 0
 				|| directive.value.value->compare("#section") == 0) {
@@ -646,15 +676,15 @@ namespace hemera::parser {
 		 * naming a type (Foo :: Bar). alias is required after distinct, so that the word makes
 		 * sense, and otherwise optional, showing the value is meant to be a type.
 		 */
-		if (TokenType::KEYWORD_DISTINCT == current_type
-			|| TokenType::KEYWORD_ALIAS == current_type
-			) {
+		const bool is_alias = is_word(state, "alias") && (TokenType::IDENTIFIER == next_token(state).type
+			|| TokenType::KEYWORD_FN == next_token(state).type || TokenType::KEYWORD_MUT == next_token(state).type);
+		if (TokenType::KEYWORD_DISTINCT == current_type || is_alias) {
 			if (accept(state, TokenType::KEYWORD_DISTINCT, ast::NodeType::KEYWORD_DISTINCT, parent)
-				&& !expect(state, TokenType::KEYWORD_ALIAS)) {
+				&& !is_word(state, "alias")) {
 				report_error_on_last_token(state, ErrorCode::E3033);
 				return false;
 			}
-			accept(state, TokenType::KEYWORD_ALIAS, ast::NodeType::KEYWORD_ALIAS, parent);
+			next_as_node(state, ast::NodeType::KEYWORD_ALIAS, &parent);
 			
 			ExprResult rhs = type(state);
 			if (!rhs.success) {
@@ -788,9 +818,13 @@ namespace hemera::parser {
 
 	ExprResult type(ParserState* state) {
 
-		if (expect(state, TokenType::KEYWORD_MUT) || 
+		if (expect(state, TokenType::KEYWORD_MUT) ||
 			expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state);
+		}
+		// void as a type, like Result[void, MapError]: a result with nothing on success
+		if (expect(state, TokenType::KEYWORD_VOID)) {
+			return ExprResult{ true, &next_as_node(state, ast::NodeType::VOID) };
 		}
 		else if (expect(state, TokenType::KEYWORD_FN)) {
 			ExprResult result = complicated_type(state);
@@ -935,8 +969,9 @@ namespace hemera::parser {
 		 * #never_returns is part of the function's type. Only it continues a signature, since
 		 * line breaks mean nothing, and the next statement may start with a directive (#if).
 		 */
-		if (expect(state, TokenType::DIRECTIVE)
-			&& current_token(state).value->compare("#never_returns") == 0) {
+		while (expect(state, TokenType::DIRECTIVE)
+			&& (current_token(state).value->compare("#never_returns") == 0
+				|| current_token(state).value->compare("#no_context") == 0)) {
 			next_as_node(state, ast::NodeType::DIRECTIVE, &node);
 		}
 		return ExprResult{ true, &node };
@@ -1319,7 +1354,7 @@ namespace hemera::parser {
 			if (expect(state, TokenType::LITERAL_INTEGER)) {
 				next_as_node(state, ast::NodeType::LITERAL, &break_node);
 			}
-			else if (expect(state, TokenType::KEYWORD_ALL)) {
+			else if (is_word(state, "all")) {
 				next_as_node(state, ast::NodeType::KEYWORD_ALL, &break_node);
 			}
 			return true;
@@ -1373,17 +1408,11 @@ namespace hemera::parser {
 		case TokenType::COMMENT_BLOCK:
 		case TokenType::COMMENT_LINE:
 		case TokenType::INVALID:
-		case TokenType::KEYWORD_ALIAS:
-		case TokenType::KEYWORD_ALL:
-		case TokenType::KEYWORD_AS:
 		case TokenType::KEYWORD_CASE:
 		case TokenType::KEYWORD_DISTINCT:
 		case TokenType::KEYWORD_ELSE:
 		case TokenType::KEYWORD_ENUM:
 		case TokenType::KEYWORD_FN:
-		case TokenType::KEYWORD_FROM:
-		case TokenType::KEYWORD_IMPORT:
-		case TokenType::KEYWORD_IN:
 		case TokenType::KEYWORD_IS_NONE:
 		case TokenType::KEYWORD_IS_SOME:
 		case TokenType::KEYWORD_MUT:
@@ -1391,7 +1420,6 @@ namespace hemera::parser {
 		case TokenType::KEYWORD_OR_CONTINUE:
 		case TokenType::KEYWORD_OR_ELSE:
 		case TokenType::KEYWORD_OR_RETURN:
-		case TokenType::KEYWORD_PACKAGE:
 		case TokenType::KEYWORD_STRUCT:
 		case TokenType::KEYWORD_UNION:
 		case TokenType::KEYWORD_USING:
@@ -1581,12 +1609,19 @@ namespace hemera::parser {
 		return false;
 	}
 
+	// A field's name: any word, as long as : or , follows (so using still starts a using).
+	static bool is_field_name(ParserState* state) {
+		const TokenType next = next_token(state).type;
+		return is_name(current_token(state).type) && (TokenType::IDENTIFIER == current_token(state).type
+			|| TokenType::SYM_COLON == next || TokenType::SYM_COMMA == next);
+	}
+
 	bool struct_body(ParserState* state, ast::Node& parent) {
-		while (expect(state, TokenType::IDENTIFIER)
+		while (is_field_name(state)
 			|| expect(state, TokenType::KEYWORD_USING)
 			|| expect(state, TokenType::SYM_UNDERSCORE)) {
 
-			if (expect(state, TokenType::KEYWORD_USING)) {
+			if (expect(state, TokenType::KEYWORD_USING) && !is_field_name(state)) {
 				ast::Node& using_node = next_as_node(state, ast::NodeType::USING, &parent);
 				if (!expect(state, TokenType::IDENTIFIER)) {
 					report_error_on_last_token(state, ErrorCode::E3009);
@@ -1641,7 +1676,7 @@ namespace hemera::parser {
 			else {
 				skip(state, TokenType::SYM_COMMA);
 			}
-			if (!accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, *names)) {
+			if (!accept_name(state, *names)) {
 				report_error_on_last_token(state, ErrorCode::E3009);
 				delete_node(state->node_alloc, names);
 				return false;
@@ -1678,7 +1713,7 @@ namespace hemera::parser {
 	}
 
 	bool union_body(ParserState* state, ast::Node& parent) {
-		while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, parent)) {
+		while (accept_name(state, parent)) {
 			//NOTE(ches) this is all one entry in the union
 			if (expect(state, TokenType::SYM_LPAREN)) {
 				// The payload's types are children of the paren group, so the next variant isn't
@@ -1722,7 +1757,7 @@ namespace hemera::parser {
 	}
 
 	bool enum_body(ParserState* state, ast::Node& parent) {
-		while (expect(state, TokenType::IDENTIFIER)) {
+		while (is_name(current_token(state).type)) {
 			ast::Node& member = next_as_node(state, ast::NodeType::IDENTIFIER, &parent);
 
 			// An explicit value, like TRACE = 0
@@ -2332,8 +2367,7 @@ namespace hemera::parser {
 			}
 			if (accept(state, TokenType::SYM_DOT, ast::NodeType::DOT_ACCESS,
 				target)) {
-				if (!accept(state, TokenType::IDENTIFIER,
-					ast::NodeType::IDENTIFIER, target)) {
+				if (!accept_name(state, target)) {
 					report_error_on_last_token(state, ErrorCode::E3009);
 					return false;
 				}
@@ -2453,8 +2487,8 @@ namespace hemera::parser {
 		
 		if (TokenType::IDENTIFIER == current_token(state).type
 			&& TokenType::OPERATOR_ASSIGN == next_token(state).type) {
-			//NOTE(ches) named inputs	
-			while (expect(state, TokenType::IDENTIFIER)) {
+			//NOTE(ches) named inputs
+			while (is_name(current_token(state).type)) {
 				ast::Node& target = next_as_node(state, ast::NodeType::IDENTIFIER);
 
 				if (!expect(state, TokenType::OPERATOR_ASSIGN)) {
@@ -2595,7 +2629,7 @@ namespace hemera::parser {
 
 			ast::Node* to_add_to = &parent;
 
-			if (current_token_type == TokenType::IDENTIFIER 
+			if (is_name(current_token_type)
 				&& TokenType::OPERATOR_ASSIGN == next_token(state).type
 				) {
 				ast::Node& lhs = next_as_node(state, ast::NodeType::IDENTIFIER);
@@ -2792,10 +2826,11 @@ namespace hemera::parser {
 			return false;
 		}
 
-		if (!accept(state, TokenType::KEYWORD_IN, ast::NodeType::IN, for_node)) {
+		if (!is_word(state, "in")) {
 			report_error_on_last_token(state, ErrorCode::E3025);
 			return false;
 		}
+		next_as_node(state, ast::NodeType::IN, &for_node);
 
 		ExprResult expr = expression_with_result(state, true);
 		if (!expr.success) {
@@ -2896,7 +2931,7 @@ namespace hemera::parser {
 		 * A whole context, from value. It can't be combined with overrides, since
 		 * value (field = x) would read as a call.
 		 */
-		if (expect(state, TokenType::KEYWORD_FROM)) {
+		if (is_word(state, "from")) {
 			ast::Node& from = next_as_node(state, ast::NodeType::KEYWORD_FROM, &push);
 			ExprResult value = expression_with_result(state, true);
 			if (!value.success) {
@@ -2928,7 +2963,7 @@ namespace hemera::parser {
 				// Trailing comma
 				break;
 			}
-			if (!expect(state, TokenType::IDENTIFIER)) {
+			if (!is_name(current_token(state).type)) {
 				report_error_on_last_token(state, ErrorCode::E3009);
 				return false;
 			}
@@ -2972,7 +3007,7 @@ namespace hemera::parser {
 		if (!skip(state, TokenType::SYM_DOT)) {
 			return ExprResult{ false };
 		}
-		if (!expect(state, TokenType::IDENTIFIER)) {
+		if (!is_name(current_token(state).type)) {
 			report_error_on_last_token(state, ErrorCode::E3009);
 			return ExprResult{ false };
 		}

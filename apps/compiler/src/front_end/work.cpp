@@ -218,8 +218,12 @@ namespace hemera {
 			if (embedded.folder != base_folder(package_path_text)) {
 				continue;
 			}
-			// builtin describes the compiler's own names, besides its generic types
-			if (is_compiler_provided(package_path_text) && embedded.file_name != "generic_types.hsc") {
+			/*
+			 * builtin.hsc and constants.hsc describe the compiler's own names; builtin's other files,
+			 * like its generic types and views, are compiled like any package's
+			 */
+			if (is_compiler_provided(package_path_text)
+				&& (embedded.file_name == "builtin.hsc" || embedded.file_name == "constants.hsc")) {
 				continue;
 			}
 			InternedString file_name = intern(std::string(embedded.file_name));
@@ -379,19 +383,8 @@ namespace hemera {
 
 		const std::string file_path = file_path_of(location.package_path, location.file_name);
 
-		// base/builtin's names are the compiler's own, besides its generic types
-		const bool builtin = is_compiler_provided(location.package_path);
-
 		for (size_t i = start; i < nodes.size(); ++i) {
 			ast::Node* child = nodes[i];
-			if (builtin) {
-				ast::Node* value = ast::NodeType::DEFINITION == child->node_type
-					? definition_value(child) : nullptr;
-				if (value == nullptr || (ast::NodeType::STRUCT != value->node_type
-					&& ast::NodeType::UNION != value->node_type)) {
-					continue;
-				}
-			}
 
 			if (child->node_type == ast::NodeType::PACKAGE) {
 				continue;

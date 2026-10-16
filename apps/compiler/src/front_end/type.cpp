@@ -157,7 +157,39 @@ namespace hemera {
 	 * docs/types.md, Unions: the tag at offset 0, then each variant's values like a struct's
 	 * members, all variants overlapping. The tag is the smallest unsigned integer that counts them.
 	 */
+	// A pointer that's never null: ptr[T] (not rawptr or a relative pointer), cstring, or a function.
+	static bool is_never_null(TypeInfo const* type) {
+		while (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
+			type = static_cast<TypeInfoAlias const*>(type)->base_type;
+		}
+		if (type == nullptr) {
+			return false;
+		}
+		if (TypeInfoVariant::POINTER == type->variant) {
+			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			return pointer->base_type != nullptr && !pointer->is_relative;
+		}
+		if (TypeInfoVariant::STRING == type->variant) {
+			return static_cast<TypeInfoString const*>(type)->is_raw;
+		}
+		return TypeInfoVariant::FUNCTION == type->variant;
+	}
+
 	void lay_out_union(TypeInfoUnion* type) {
+		// An optional of a pointer that's never null is the pointer, null for None
+		const std::string_view name = type->name != nullptr ? std::string_view(*type->name) : std::string_view();
+		if (name.starts_with("Optional[") && type->variants.size() == 2 && type->variants[0].types.size() == 1
+			&& type->variants[1].types.empty() && is_never_null(type->variants[0].types[0])) {
+			type->null_is_none = true;
+			type->tag_type = BUILTIN_u8;
+			type->variants[0].offsets = { 0 };
+			type->variants[1].offsets.clear();
+			type->size = type->variants[0].types[0]->size;
+			type->alignment = type->variants[0].types[0]->alignment;
+			type->contains_pointers = true;
+			type->complete = true;
+			return;
+		}
 		const size_t count = type->variants.size();
 		type->tag_type = count <= 0x100 ? BUILTIN_u8
 			: count <= 0x10000 ? BUILTIN_u16

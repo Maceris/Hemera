@@ -821,7 +821,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "assert_false", hemera::ErrorCode::E4010 },
 		{ "compile_time_variable", hemera::ErrorCode::E4010 },
 		{ "file_data_missing", hemera::ErrorCode::E4028 },
-		{ "file_data_not_string", hemera::ErrorCode::E4014 }
+		{ "file_data_not_string", hemera::ErrorCode::E4014 },
+		{ "null_pointer", hemera::ErrorCode::E4015 },
+		{ "c_needs_no_context", hemera::ErrorCode::E4024 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

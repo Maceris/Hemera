@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cctype>
 #include <format>
 #include <tuple>
 #include <vector>
@@ -81,9 +82,9 @@ TEST(LexerTests, SingleSimpleTokenTest)
 	inputs.push_back(std::make_tuple("...", TokenType::SYM_ELLIPSIS));
 	inputs.push_back(std::make_tuple("---", TokenType::SYM_UNINITIALIZED));
 
-	inputs.push_back(std::make_tuple("alias", TokenType::KEYWORD_ALIAS));
-	inputs.push_back(std::make_tuple("all", TokenType::KEYWORD_ALL));
-	inputs.push_back(std::make_tuple("as", TokenType::KEYWORD_AS));
+	inputs.push_back(std::make_tuple("alias", TokenType::IDENTIFIER));
+	inputs.push_back(std::make_tuple("all", TokenType::IDENTIFIER));
+	inputs.push_back(std::make_tuple("as", TokenType::IDENTIFIER));
 	inputs.push_back(std::make_tuple("auto_cast", TokenType::KEYWORD_AUTO_CAST));
 	inputs.push_back(std::make_tuple("bit_cast", TokenType::KEYWORD_BIT_CAST));
 	inputs.push_back(std::make_tuple("break", TokenType::KEYWORD_BREAK));
@@ -97,10 +98,10 @@ TEST(LexerTests, SingleSimpleTokenTest)
 	inputs.push_back(std::make_tuple("false", TokenType::KEYWORD_FALSE));
 	inputs.push_back(std::make_tuple("fn", TokenType::KEYWORD_FN));
 	inputs.push_back(std::make_tuple("for", TokenType::KEYWORD_FOR));
-	inputs.push_back(std::make_tuple("from", TokenType::KEYWORD_FROM));
+	inputs.push_back(std::make_tuple("from", TokenType::IDENTIFIER));
 	inputs.push_back(std::make_tuple("if", TokenType::KEYWORD_IF));
-	inputs.push_back(std::make_tuple("import", TokenType::KEYWORD_IMPORT));
-	inputs.push_back(std::make_tuple("in", TokenType::KEYWORD_IN));
+	inputs.push_back(std::make_tuple("import", TokenType::IDENTIFIER));
+	inputs.push_back(std::make_tuple("in", TokenType::IDENTIFIER));
 	inputs.push_back(std::make_tuple("is_none", TokenType::KEYWORD_IS_NONE));
 	inputs.push_back(std::make_tuple("is_some", TokenType::KEYWORD_IS_SOME));
 	inputs.push_back(std::make_tuple("loop", TokenType::KEYWORD_LOOP));
@@ -111,7 +112,7 @@ TEST(LexerTests, SingleSimpleTokenTest)
 	inputs.push_back(std::make_tuple("or_continue", TokenType::KEYWORD_OR_CONTINUE));
 	inputs.push_back(std::make_tuple("or_else", TokenType::KEYWORD_OR_ELSE));
 	inputs.push_back(std::make_tuple("or_return", TokenType::KEYWORD_OR_RETURN));
-	inputs.push_back(std::make_tuple("package", TokenType::KEYWORD_PACKAGE));
+	inputs.push_back(std::make_tuple("package", TokenType::IDENTIFIER));
 	inputs.push_back(std::make_tuple("push_context", TokenType::KEYWORD_PUSH_CONTEXT));
 	inputs.push_back(std::make_tuple("return", TokenType::KEYWORD_RETURN));
 	inputs.push_back(std::make_tuple("struct", TokenType::KEYWORD_STRUCT));
@@ -140,8 +141,17 @@ TEST(LexerTests, SingleSimpleTokenTest)
 			<< std::format("Incorrect line number for {}", text);
 		EXPECT_EQ(output[0].column_number, 0)
 			<< std::format("Incorrect column number for {}", text);
-		EXPECT_EQ(output[0].value, nullptr)
-			<< std::format("Incorrect string contents for {}", text);
+		// Words keep their text: identifiers, including the contextual keywords, and keywords, which
+		// can still be names where only a name can go
+		const bool is_word = std::isalpha(static_cast<unsigned char>(text[0])) != 0;
+		if (is_word) {
+			ASSERT_NE(output[0].value, nullptr) << std::format("No string contents for {}", text);
+			EXPECT_EQ(std::string_view(*output[0].value), std::string_view(text)) << std::format("Incorrect string contents for {}", text);
+		}
+		else {
+			EXPECT_EQ(output[0].value, nullptr)
+				<< std::format("Incorrect string contents for {}", text);
+		}
 
 		EXPECT_EQ(output[1].type, TokenType::END_OF_FILE)
 			<< std::format("Incorrect type of EOF for {}", text);
@@ -317,7 +327,8 @@ TEST(LexerTests, ManyTokenTest)
 				strlen(expected)), 0)
 				<< std::format("Failed to find string '{}' in '{}'", expected, 
 					output[i].value->c_str());
-		} else {
+		} else if (output[i].type < TokenType::KEYWORD_AUTO_CAST || output[i].type > TokenType::KEYWORD_WITH) {
+			// Keywords keep their text, since they can still be names where only a name can go
 			EXPECT_EQ(output[i].value, nullptr);
 		}
 		
