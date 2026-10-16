@@ -314,6 +314,14 @@ info_of :: fn(value: any) -> ptr[compiler.TypeInfo] {
     return type_info_of(value.type)
 }
 
+// A frame bigger than a page, which Windows code probes a page at a time with __chkstk.
+big_frame :: fn() -> u8 {
+    buffer : u8[16384]
+    buffer[0] = 1
+    buffer[16383] = 2
+    return buffer[0] + buffer[16383]
+}
+
 // Two results, for definitions that drop one with _.
 two_results :: fn() -> (u32, bool) {
     return 3, true
@@ -543,6 +551,9 @@ main :: fn() -> int {
     first, _ := two_results()
     if !second || first != 3 {
         return 46
+    }
+    if big_frame() != 3 {
+        return 47
     }
     return 42
 }

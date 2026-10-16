@@ -4378,6 +4378,42 @@ namespace hemera {
 	}
 
 	/*
+	 * __chkstk, which code for Windows calls before taking a frame bigger than a page, with its size
+	 * in rax: Windows commits a thread's stack a page at a time as its guard page is touched, so each
+	 * page of the frame is touched in order, from the top down. It changes no register but the
+	 * flags, like the C library's, which Hemera doesn't link.
+	 */
+	//SPEC: compiler-rt lib/builtins/x86_64/chkstk.S
+	static void define_stack_probe(llvm::Module& module, const Options& options) {
+		if (OSType::Win32 != options.os || ArchType::x86_64 != options.architecture) {
+			return;
+		}
+		module.appendModuleInlineAsm(
+			"\t.text\n"
+			"\t.globl __chkstk\n"
+			"\t.p2align 4\n"
+			"__chkstk:\n"
+			"\tpushq %rcx\n"
+			"\tpushq %rax\n"
+			// The stack pointer the caller called from: above the return address and the two pushes
+			"\tleaq 24(%rsp), %rcx\n"
+			"\tcmpq $0x1000, %rax\n"
+			"\tjb 2f\n"
+			"1:\n"
+			"\tsubq $0x1000, %rcx\n"
+			"\torq $0, (%rcx)\n"
+			"\tsubq $0x1000, %rax\n"
+			"\tcmpq $0x1000, %rax\n"
+			"\tja 1b\n"
+			"2:\n"
+			"\tsubq %rax, %rcx\n"
+			"\torq $0, (%rcx)\n"
+			"\tpopq %rax\n"
+			"\tpopq %rcx\n"
+			"\tretq\n");
+	}
+
+	/*
 	 * memcpy, memmove, memset and memcmp, which LLVM calls for large copies even without the C
 	 * library, as byte loops: nothing Hemera builds links a C library.
 	 */
@@ -4608,6 +4644,7 @@ namespace hemera {
 			function.addFnAttr("frame-pointer", "all");
 		}
 		define_memory_functions(*result);
+		define_stack_probe(*result, options);
 		define_stack_walker(*result, OSType::Win32 == options.os);
 		end_stack_at_entry(*result, options);
 		return result;
