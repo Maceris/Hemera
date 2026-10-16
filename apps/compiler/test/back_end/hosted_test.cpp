@@ -23,6 +23,11 @@ static std::filesystem::path scenario(std::string_view name) {
 	return std::filesystem::path(__FILE__).remove_filename() / "scenarios" / name;
 }
 
+// std, in the repository: apps/compiler/test/back_end/hosted_test.cpp
+static std::filesystem::path std_folder() {
+	return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path() / "std";
+}
+
 /*
  * A hosted program, compiled the whole way: generated, lowered, assembled, linked with lld-link,
  * then run. Its main returns 42 if everything it checks worked, or the number of the first
@@ -45,6 +50,7 @@ TEST(Hosted, RunsProgram)
 	std::filesystem::create_directories(output_folder);
 	hemera::Options options;
 	options.input = std::filesystem::canonical(scenario("hosted"));
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
 	options.output_name = (output_folder / "hosted").string();
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);

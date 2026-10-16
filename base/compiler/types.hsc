@@ -43,6 +43,7 @@ StructMember :: struct {
     member_type: ptr[TypeInfo],
     // Byte offset from the start of the struct, 0 for every member of a #union.
     offset: usize,
+    // The default value, if has_value. Not filled in at run time yet: an empty any.
     value: any,
     has_value: bool,
     is_using: bool,
@@ -118,7 +119,8 @@ TypeInfoInteger :: struct {
 
 TypeInfoPointer :: struct {
     using TypeInfo,
-    base_type: ptr[TypeInfo],
+    // What it points to, none for rawptr.
+    base_type: ptr[TypeInfo]?,
     is_relative: bool,
     is_mutable: bool,
 }
@@ -147,6 +149,10 @@ TypeInfoUnion :: struct {
     name: string,
     variants: UnionVariant[],
     // The unsigned integer at offset 0 saying which variant a value is: its index in variants.
-    tag_type: ptr[TypeInfo],
+    // None when null_is_none.
+    tag_type: ptr[TypeInfo]?,
+    // An optional of a pointer that's never null, like ptr[T]? or cstring?: just the pointer,
+    // null for None (the second variant) and anything else for Some, with no tag.
+    null_is_none: bool,
 }
 

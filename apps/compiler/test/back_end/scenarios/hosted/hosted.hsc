@@ -4,7 +4,9 @@
  */
 package hosted
 
+import compiler from "base"
 import intrinsics from "base"
+import text_buffer from "std"
 
 Point :: struct {
     x : int,
@@ -299,6 +301,19 @@ move :: fn(p: ptr[mut Point], by: int) {
     p.y -= by
 }
 
+// What a value formats as, through its any's type information.
+formatted :: fn(format: string, values: any...) -> string {
+    storage : u8[128]
+    text := text_buffer.make(storage)
+    text_buffer.append_format(&text, format, values)
+    return text_buffer.as_string(&text)
+}
+
+// The type information an any carries.
+info_of :: fn(value: any) -> ptr[compiler.TypeInfo] {
+    return type_info_of(value.type)
+}
+
 main :: fn() -> int {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
@@ -498,6 +513,26 @@ main :: fn() -> int {
     attempt(false) or_else count_up(&failures)
     if !failed_twice || successes() != 2 || failures != 1 {
         return 39
+    }
+    // Type information: an any's type, type values, and descriptors
+    color_info :: cast[ptr[compiler.TypeInfoEnum]](info_of(Color.Blue))
+    if color_info.variant != .ENUM || color_info.name != "Color" || color_info.members[2] != "Blue" || color_info.values[2] != 2 {
+        return 40
+    }
+    labeled_info :: cast[ptr[compiler.TypeInfoStruct]](type_info_of(Labeled))
+    if labeled_info.members.count != 2 || !labeled_info.members[0].is_using || labeled_info.members[1].offset != 16 {
+        return 41
+    }
+    some_number : any = 5
+    if some_number.type != int || some_number.type == i64 || type_of(origin) != Origin {
+        return 43
+    }
+    shape_text :: formatted("% %", Shape.Rectangle(2, 3), first.next)
+    if formatted("%2 %1 %%", Color.Green, true) != "true Green %" || shape_text.count < 16 {
+        return 44
+    }
+    if formatted("%", Point.{1, -2}) != "Point{x = 1, y = -2}" || formatted("% %", ptr[mut Point], none) != "ptr[mut Point] none" {
+        return 45
     }
     return 42
 }

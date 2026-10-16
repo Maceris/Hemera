@@ -137,6 +137,14 @@ namespace hemera {
 		std::vector<Declaration*> pending;
 		std::map<std::string, LLVM::GlobalOp> strings;
 		/// <summary>
+		/// Each type's descriptor, the base/compiler TypeInfo a type value points to.
+		/// </summary>
+		std::map<const TypeInfo*, LLVM::GlobalOp> descriptors;
+		/// <summary>
+		/// How many arrays descriptors have used, like an enum's members, for their globals' names.
+		/// </summary>
+		size_t type_data = 0;
+		/// <summary>
 		/// Constants whose value is being generated, so one inlined into another can't loop.
 		/// </summary>
 		std::set<Declaration*> inlining;
@@ -459,11 +467,16 @@ namespace hemera {
 	}
 
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where);
+	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type);
 	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right);
 
 	static mlir::Value value_of(Generator& generator, const Emitted& emitted) {
 		if (emitted.value) {
 			return emitted.value;
+		}
+		// A type as a value: its descriptor
+		if (ValueKind::TYPE == emitted.kind && emitted.type != nullptr) {
+			return type_descriptor(generator, emitted.type);
 		}
 		if (emitted.constant != nullptr && !in_function(generator)) {
 			return emit_constant_value(generator, emitted.constant, emitted.constant->value_type, nullptr);
@@ -860,8 +873,7 @@ namespace hemera {
 			store(generator, v, slot);
 			mlir::Value result = LLVM::UndefOp::create(generator.builder, generator.loc, target);
 			result = insert(generator, result, slot, { 0 });
-			//TODO(ches) the type's info, once type info is generated
-			return insert(generator, result, zero_of(generator, pointer_type(generator)), { 1 });
+			return insert(generator, result, type_descriptor(generator, from), { 1 });
 		}
 		// A static array as a view of its elements, or a dynamic array's
 		if (TypeInfoVariant::ARRAY == source->variant && TypeInfoVariant::ARRAY == destination->variant
@@ -965,6 +977,9 @@ namespace hemera {
 	 * itself, not of a copy: changes through the view reach it, and a large constant isn't copied.
 	 */
 	static mlir::Value convert_emitted(Generator& generator, const Emitted& emitted, TypeInfo* type) {
+		if (ValueKind::TYPE == emitted.kind) {
+			return convert(generator, value_of(generator, emitted), BUILTIN_type, type);
+		}
 		if (emitted.address && in_function(generator) && is_array_to_view(emitted.type, type)) {
 			return make_view(generator, constant_int(generator, usize_type(generator),
 				static_cast<int64_t>(static_cast<TypeInfoArray const*>(base(emitted.type))->count)), emitted.address);
@@ -1222,6 +1237,367 @@ namespace hemera {
 			}
 		}
 		return false;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Type descriptors: the base/compiler TypeInfo each type value points to (docs/types.md, any)
+
+	// A read-only global whose value build emits, and its address.
+	static mlir::Value constant_global(Generator& generator, mlir::Type type, size_t alignment, const std::string& name,
+		const std::function<mlir::Value()>& build) {
+
+		LLVM::GlobalOp global;
+		{
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			global = LLVM::GlobalOp::create(generator.builder, generator.loc, type, true, LLVM::Linkage::Private, name,
+				mlir::Attribute(), alignment);
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&global.getInitializerRegion()));
+			FunctionState* outer = generator.state;
+			generator.state = nullptr;
+			mlir::Value initial = build();
+			generator.state = outer;
+			LLVM::ReturnOp::create(generator.builder, generator.loc, initial);
+		}
+		return LLVM::AddressOfOp::create(generator.builder, generator.loc, global);
+	}
+
+	static std::string name_or_empty(InternedString name) {
+		return name != nullptr ? text_of(name) : std::string();
+	}
+
+	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type);
+
+	/*
+	 * A value of one of base/compiler's structs, made field by field by name, so it follows their
+	 * declarations' layout. Fields that aren't set are zero.
+	 */
+	struct ConstantStruct {
+		Generator& generator;
+		TypeInfoStruct const* type;
+		mlir::Value whole;
+
+		ConstantStruct(Generator& generator_, TypeInfo const* type_)
+			: generator{ generator_ }
+			, type{ static_cast<TypeInfoStruct const*>(base(type_)) }
+			, whole{ zero_of(generator_, llvm_type(generator_, type_)) }
+		{}
+
+		// The field's type, or null if the struct has no such field.
+		TypeInfo* field(std::string_view name, std::vector<int64_t>& path) {
+			size_t offset = 0;
+			TypeInfo* field_type = nullptr;
+			if (!find_member(generator, type, intern(std::string(name)), offset, field_type, path)) {
+				unsupported(generator, nullptr, std::format("{} has no member {}, which type information needs",
+					name_or_empty(type->name), name));
+				return nullptr;
+			}
+			return field_type;
+		}
+
+		void set(std::string_view name, const std::function<mlir::Value(TypeInfo*)>& make) {
+			std::vector<int64_t> path;
+			if (TypeInfo* field_type = field(name, path)) {
+				whole = insert(generator, whole, make(field_type), path);
+			}
+		}
+
+		void number(std::string_view name, uint64_t value) {
+			set(name, [&](TypeInfo* field_type) { return constant_number(generator, field_type, value); });
+		}
+
+		void flag(std::string_view name, bool value) {
+			number(name, value ? 1 : 0);
+		}
+
+		void text(std::string_view name, const std::string& value) {
+			set(name, [&](TypeInfo*) { return constant_string(generator, value); });
+		}
+
+		// A ptr[TypeInfo]: the type's descriptor, or null.
+		void type_of(std::string_view name, TypeInfo const* value) {
+			set(name, [&](TypeInfo*) {
+				return value != nullptr ? type_descriptor(generator, value) : zero_of(generator, pointer_type(generator));
+			});
+		}
+
+		// An enum member of the field's enum type, by name.
+		void member(std::string_view name, std::string_view member_name) {
+			set(name, [&](TypeInfo* field_type) {
+				auto enum_type = static_cast<TypeInfoEnum const*>(base(field_type));
+				uint64_t value = 0;
+				for (size_t i = 0; i < enum_type->members.size(); ++i) {
+					if (text_of(enum_type->members[i]) == member_name) {
+						value = enum_type->values[i];
+					}
+				}
+				return constant_number(generator, field_type, value);
+			});
+		}
+
+		// A view of count elements, each made by make from the element type and its index.
+		void view(std::string_view name, size_t count, const std::function<mlir::Value(TypeInfo*, size_t)>& make) {
+			set(name, [&](TypeInfo* field_type) {
+				TypeInfo* element = static_cast<TypeInfoArray const*>(base(field_type))->element_type;
+				return constant_view(generator, element, count, make);
+			});
+		}
+
+		static mlir::Value constant_number(Generator& generator, TypeInfo* type, uint64_t value) {
+			mlir::Type llvm = llvm_type(generator, type);
+			const unsigned width = llvm.getIntOrFloatBitWidth();
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, llvm,
+				generator.builder.getIntegerAttr(llvm, llvm::APInt(width, value)));
+		}
+
+		static mlir::Value constant_string(Generator& generator, const std::string& value) {
+			return make_view(generator, constant_int(generator, usize_type(generator), static_cast<int64_t>(value.size())),
+				string_bytes(generator, value));
+		}
+
+		static mlir::Value constant_view(Generator& generator, TypeInfo* element, size_t count,
+			const std::function<mlir::Value(TypeInfo*, size_t)>& make) {
+
+			mlir::Value data = zero_of(generator, pointer_type(generator));
+			if (count > 0) {
+				mlir::Type array = LLVM::LLVMArrayType::get(llvm_type(generator, element), count);
+				data = constant_global(generator, array, std::max<size_t>(element->alignment, 1),
+					std::format("type_info.data.{}", generator.type_data++), [&]() {
+						mlir::Value elements = zero_of(generator, array);
+						for (size_t i = 0; i < count; ++i) {
+							elements = insert(generator, elements, make(element, i), { static_cast<int64_t>(i) });
+						}
+						return elements;
+					});
+			}
+			return make_view(generator, constant_int(generator, usize_type(generator), static_cast<int64_t>(count)), data);
+		}
+	};
+
+	static const char* variant_name(TypeInfoVariant variant) {
+		switch (variant) {
+			case TypeInfoVariant::ALIAS: return "ALIAS";
+			case TypeInfoVariant::ANY: return "ANY";
+			case TypeInfoVariant::ARRAY: return "ARRAY";
+			case TypeInfoVariant::BOOLEAN: return "BOOLEAN";
+			case TypeInfoVariant::CHAR: return "CHAR";
+			case TypeInfoVariant::COMPLEX: return "COMPLEX";
+			case TypeInfoVariant::ENUM: return "ENUM";
+			case TypeInfoVariant::FLOAT: return "FLOAT";
+			case TypeInfoVariant::FUNCTION: return "FUNCTION";
+			case TypeInfoVariant::INTEGER: return "INTEGER";
+			case TypeInfoVariant::POINTER: return "POINTER";
+			case TypeInfoVariant::QUATERNION: return "QUATERNION";
+			case TypeInfoVariant::STRING: return "STRING";
+			case TypeInfoVariant::STRUCT: return "STRUCT";
+			case TypeInfoVariant::TYPE: return "TYPE";
+			case TypeInfoVariant::UNION: return "UNION";
+			case TypeInfoVariant::VOID: return "VOID";
+		}
+		return "VOID";
+	}
+
+	static const char* endianness_name(Endianness endianness) {
+		return Endianness::BIG == endianness ? "BIG" : Endianness::LITTLE == endianness ? "LITTLE" : "SYSTEM";
+	}
+
+	static const char* array_type_name(ArrayType array_type) {
+		return ArrayType::STATIC == array_type ? "STATIC" : ArrayType::VIEW == array_type ? "VIEW" : "DYNAMIC";
+	}
+
+	// The base/compiler struct describing a type of this variant: TypeInfoEnum for an enum, and so on.
+	static const char* descriptor_struct(TypeInfoVariant variant) {
+		switch (variant) {
+			case TypeInfoVariant::ALIAS: return "TypeInfoAlias";
+			case TypeInfoVariant::ARRAY: return "TypeInfoArray";
+			case TypeInfoVariant::ENUM: return "TypeInfoEnum";
+			case TypeInfoVariant::FLOAT: return "TypeInfoFloat";
+			case TypeInfoVariant::FUNCTION: return "TypeInfoFunction";
+			case TypeInfoVariant::INTEGER: return "TypeInfoInteger";
+			case TypeInfoVariant::POINTER: return "TypeInfoPointer";
+			case TypeInfoVariant::STRING: return "TypeInfoString";
+			case TypeInfoVariant::STRUCT: return "TypeInfoStruct";
+			case TypeInfoVariant::UNION: return "TypeInfoUnion";
+			case TypeInfoVariant::ANY:
+			case TypeInfoVariant::BOOLEAN:
+			case TypeInfoVariant::CHAR:
+			case TypeInfoVariant::COMPLEX:
+			case TypeInfoVariant::QUATERNION:
+			case TypeInfoVariant::TYPE:
+			case TypeInfoVariant::VOID:
+				break;
+		}
+		return "TypeInfo";
+	}
+
+	// The fields particular to a type's variant, after variant and size.
+	static void describe(Generator& generator, TypeInfo const* type, ConstantStruct& info) {
+		switch (type->variant) {
+			case TypeInfoVariant::ALIAS: {
+				auto alias = static_cast<TypeInfoAlias const*>(type);
+				info.type_of("base_type", alias->base_type);
+				info.text("name", name_or_empty(alias->name));
+				info.flag("is_distinct", alias->distinct);
+				break;
+			}
+			case TypeInfoVariant::ARRAY: {
+				// Each dimension, outermost first, down to the first element type that isn't an array
+				std::vector<TypeInfoArray const*> dimensions;
+				TypeInfo const* element = type;
+				while (element != nullptr && TypeInfoVariant::ARRAY == element->variant) {
+					dimensions.push_back(static_cast<TypeInfoArray const*>(element));
+					element = base(static_cast<TypeInfoArray const*>(element)->element_type);
+				}
+				info.type_of("base_type", dimensions.back()->element_type);
+				info.view("dimensions", dimensions.size(), [&](TypeInfo* element_type, size_t i) {
+					ConstantStruct dimension(generator, element_type);
+					dimension.member("type", array_type_name(dimensions[i]->array_type));
+					dimension.number("count", dimensions[i]->count);
+					return dimension.whole;
+				});
+				break;
+			}
+			case TypeInfoVariant::ENUM: {
+				auto enum_type = static_cast<TypeInfoEnum const*>(type);
+				info.text("name", name_or_empty(enum_type->name));
+				info.type_of("backing_type", enum_type->backing_type != nullptr ? enum_type->backing_type : BUILTIN_uint);
+				info.view("members", enum_type->members.size(), [&](TypeInfo*, size_t i) {
+					return ConstantStruct::constant_string(generator, text_of(enum_type->members[i]));
+				});
+				info.view("values", enum_type->values.size(), [&](TypeInfo* element_type, size_t i) {
+					return ConstantStruct::constant_number(generator, element_type, enum_type->values[i]);
+				});
+				break;
+			}
+			case TypeInfoVariant::FLOAT:
+				info.member("endianness", endianness_name(static_cast<TypeInfoFloat const*>(type)->endianness));
+				break;
+			case TypeInfoVariant::FUNCTION: {
+				auto function = static_cast<TypeInfoFunction const*>(type);
+				info.view("input", function->input.size(), [&](TypeInfo* element_type, size_t i) {
+					const FunctionInput& input = function->input[i];
+					ConstantStruct parameter(generator, element_type);
+					parameter.type_of("type", input.type);
+					parameter.text("name", name_or_empty(input.name));
+					parameter.flag("is_varargs", input.is_varargs);
+					parameter.flag("is_escaping", input.is_escaping);
+					return parameter.whole;
+				});
+				info.view("output", function->output.size(), [&](TypeInfo* element_type, size_t i) {
+					ConstantStruct output(generator, element_type);
+					output.type_of("type", function->output[i].type);
+					return output.whole;
+				});
+				info.flag("never_returns", function->never_returns);
+				break;
+			}
+			case TypeInfoVariant::INTEGER: {
+				auto integer = static_cast<TypeInfoInteger const*>(type);
+				info.flag("is_signed", integer->is_signed);
+				info.member("endianness", endianness_name(integer->endianness));
+				break;
+			}
+			case TypeInfoVariant::POINTER: {
+				auto pointer = static_cast<TypeInfoPointer const*>(type);
+				info.type_of("base_type", pointer->base_type);
+				info.flag("is_relative", pointer->is_relative);
+				info.flag("is_mutable", pointer->is_mutable);
+				break;
+			}
+			case TypeInfoVariant::STRING:
+				info.flag("is_raw", static_cast<TypeInfoString const*>(type)->is_raw);
+				break;
+			case TypeInfoVariant::STRUCT: {
+				auto structure = static_cast<TypeInfoStruct const*>(type);
+				info.text("name", name_or_empty(structure->name));
+				//TODO(claude) members' default values, which need constants of any type
+				info.view("members", structure->members.size(), [&](TypeInfo* element_type, size_t i) {
+					const StructMember& member = structure->members[i];
+					ConstantStruct described(generator, element_type);
+					described.text("name", name_or_empty(member.name));
+					described.type_of("member_type", member.member_type);
+					described.number("offset", member.offset);
+					described.flag("has_value", member.has_value);
+					described.flag("is_using", member.is_using);
+					return described.whole;
+				});
+				info.number("alignment", type->alignment);
+				info.flag("is_scoped", structure->is_scoped);
+				info.flag("is_packed", structure->is_packed);
+				info.flag("is_union", structure->is_union);
+				break;
+			}
+			case TypeInfoVariant::UNION: {
+				auto union_type = static_cast<TypeInfoUnion const*>(type);
+				info.text("name", name_or_empty(union_type->name));
+				info.view("variants", union_type->variants.size(), [&](TypeInfo* element_type, size_t i) {
+					const UnionVariant& variant = union_type->variants[i];
+					ConstantStruct described(generator, element_type);
+					described.text("name", name_or_empty(variant.name));
+					described.view("types", variant.types.size(), [&](TypeInfo*, size_t j) {
+						return type_descriptor(generator, variant.types[j]);
+					});
+					described.view("offsets", variant.offsets.size(), [&](TypeInfo* offset_type, size_t j) {
+						return ConstantStruct::constant_number(generator, offset_type, variant.offsets[j]);
+					});
+					return described.whole;
+				});
+				info.type_of("tag_type", union_type->null_is_none ? nullptr : union_type->tag_type);
+				info.flag("null_is_none", union_type->null_is_none);
+				break;
+			}
+			// Only a variant and a size
+			case TypeInfoVariant::ANY:
+			case TypeInfoVariant::BOOLEAN:
+			case TypeInfoVariant::CHAR:
+			case TypeInfoVariant::COMPLEX:
+			case TypeInfoVariant::QUATERNION:
+			case TypeInfoVariant::TYPE:
+			case TypeInfoVariant::VOID:
+				break;
+		}
+	}
+
+	/*
+	 * The address of a type's descriptor, made the first time it's asked for: a read-only TypeInfo,
+	 * or the struct for its variant that includes one, like a TypeInfoEnum. A type value is this
+	 * address, so two type values are equal when they're the same type. A plain alias is the type
+	 * it names; a distinct one has its own descriptor.
+	 */
+	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type) {
+		type = get_base_type_or_alias(type);
+		auto iter = generator.descriptors.find(type);
+		if (iter != generator.descriptors.end()) {
+			return LLVM::AddressOfOp::create(generator.builder, generator.loc, iter->second);
+		}
+		Declaration* declaration = base_declaration_named(generator, "compiler", descriptor_struct(type->variant));
+		TypeInfo* descriptor_type = declaration != nullptr ? declaration->type_value : nullptr;
+		if (descriptor_type == nullptr || !descriptor_type->complete || TypeInfoVariant::STRUCT != descriptor_type->variant) {
+			unsupported(generator, nullptr, std::format("compiler.{} isn't available for type information",
+				descriptor_struct(type->variant)));
+			return zero_of(generator, pointer_type(generator));
+		}
+		mlir::Type llvm = llvm_type(generator, descriptor_type);
+		LLVM::GlobalOp global;
+		{
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			global = LLVM::GlobalOp::create(generator.builder, generator.loc, llvm, true, LLVM::Linkage::Private,
+				std::format("type_info.{}", generator.descriptors.size()), mlir::Attribute(),
+				std::max<size_t>(descriptor_type->alignment, 1));
+			// Before its value, which may refer to it, like a struct with a pointer to its own type
+			generator.descriptors[type] = global;
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&global.getInitializerRegion()));
+			FunctionState* outer = generator.state;
+			generator.state = nullptr;
+			ConstantStruct info(generator, descriptor_type);
+			info.member("variant", variant_name(type->variant));
+			info.number("size", type->size);
+			describe(generator, type, info);
+			generator.state = outer;
+			LLVM::ReturnOp::create(generator.builder, generator.loc, info.whole);
+		}
+		return LLVM::AddressOfOp::create(generator.builder, generator.loc, global);
 	}
 
 	// .member on a value: a struct's field, through a pointer automatically, or a count or data.
@@ -1504,6 +1880,15 @@ namespace hemera {
 		if (name == "todo") {
 			LLVM::Trap::create(generator.builder, generator.loc);
 			return never_returning();
+		}
+		if ((name == "type_info_of" || name == "type_of") && arguments.size() == 1) {
+			// A type's descriptor, without evaluating a value whose type it is; a type value is its address already
+			TypeInfo* result_type = type_at(generator, paren, nullptr);
+			const CheckedNode* found = checked(generator, arguments[0]);
+			if (found != nullptr && (ValueKind::TYPE == found->kind || name == "type_of")) {
+				return value(type_descriptor(generator, found->type), result_type);
+			}
+			return value(value_of(generator, emit_expression(generator, arguments[0], nullptr)), result_type);
 		}
 		if ((name == "size_of" || name == "align_of" || name == "offset_of") && !arguments.empty()) {
 			TypeInfo const* of = emit_expression(generator, arguments[0], nullptr).type;
@@ -2162,14 +2547,19 @@ namespace hemera {
 		const CheckedNode* right_checked = checked(generator, right);
 		const bool left_typed = left_checked != nullptr && !is_untyped(left_checked->kind);
 		const bool right_typed = right_checked != nullptr && !is_untyped(right_checked->kind);
+		// A type, like int in a.type == int, is a type value
+		TypeInfo* left_type = left_typed && ValueKind::TYPE == left_checked->kind ? BUILTIN_type
+			: left_typed ? left_checked->type : nullptr;
+		TypeInfo* right_type = right_typed && ValueKind::TYPE == right_checked->kind ? BUILTIN_type
+			: right_typed ? right_checked->type : nullptr;
 		if (left_typed && right_typed) {
-			return can_implicitly_convert_to(right_checked->type, left_checked->type) ? left_checked->type : right_checked->type;
+			return can_implicitly_convert_to(right_type, left_type) ? left_type : right_type;
 		}
 		if (left_typed) {
-			return left_checked->type;
+			return left_type;
 		}
 		if (right_typed) {
-			return right_checked->type;
+			return right_type;
 		}
 		ValueKind kind = left_checked != nullptr ? left_checked->kind : ValueKind::UNTYPED_INTEGER;
 		if (right_checked != nullptr && ValueKind::UNTYPED_FLOAT == right_checked->kind) {
@@ -2467,8 +2857,7 @@ namespace hemera {
 				mlir::Value same = strings_equal(generator, emit_as(generator, left_node, type), emit_as(generator, right_node, type));
 				return value(TokenType::OPERATOR_EQUAL == op ? same : negate(generator, same), BUILTIN_bool);
 			}
-			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::TYPE)
-				|| is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
+			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
 				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
 				return value(boolean(generator, false), BUILTIN_bool);
 			}

@@ -308,7 +308,8 @@ namespace hemera {
 	/*
 	 * Whether a value can be used as type, converting untyped literals: an integer becomes any
 	 * integer or float; a float any float; a string a string or cstring; true and false any boolean;
-	 * null any pointer, cstring, function or optional. A value fits an optional of its type.
+	 * null any pointer, cstring, function or optional. A value fits an optional of its type, and
+	 * anything but null fits an any, a type as a type value.
 	 */
 	static bool fits(const Value& value, TypeInfo* type) {
 		if (type == nullptr || base_of(type) == nullptr || ValueKind::POISONED == value.kind) {
@@ -322,7 +323,7 @@ namespace hemera {
 		if (TypeInfoVariant::ANY == base_of(type)->variant) {
 			return ValueKind::VALUE == kind || ValueKind::UNTYPED_INTEGER == kind
 				|| ValueKind::UNTYPED_FLOAT == kind || ValueKind::UNTYPED_STRING == kind
-				|| ValueKind::UNTYPED_BOOLEAN == kind;
+				|| ValueKind::UNTYPED_BOOLEAN == kind || ValueKind::TYPE == kind;
 		}
 		if (ValueKind::VALUE == kind) {
 			return assignable(value.type, type);

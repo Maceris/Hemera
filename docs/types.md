@@ -114,6 +114,35 @@ Any other type can be implicitly cast to an `any`, including stack variables and
 An `any` made from something on the stack can't outlive it, which the compiler checks,
 see [memory.md](memory.md#pointers-to-the-stack).
 
+## Type Values and Type Information
+
+A type can be used as a value of type `type`: `t : type = int`, `type_of(x)`, or an `any`'s `type`.
+Two type values are equal when they're the same type, so `value.type == int` checks what an `any` holds.
+A plain alias is the type it names; a distinct alias is a type of its own.
+
+```
+describe :: fn(value: any) -> string {
+    if value.type == string {
+        return "text"
+    }
+    info :: type_info_of(value.type)
+    if info.variant == .ENUM {
+        return "an enum"
+    }
+    return "something else"
+}
+```
+
+At run time, a type value is the address of a read-only description of the type, which
+`type_info_of` returns as a `ptr[compiler.TypeInfo]` (`base/compiler/types.hsc`). Its `variant` says
+which struct describes the type in full, to cast it to: `TypeInfoEnum` has an enum's member names and
+values, `TypeInfoStruct` its members with their types and offsets, `TypeInfoUnion` its variants, and so
+on. A type gets a description when a program uses it as a value or puts a value of it in an `any`,
+along with every type that description refers to.
+
+`int`, `uint`, `usize` and `uintptr` are described like the fixed-size integers they're laid out as;
+comparing type values tells them apart.
+
 ## Arrays
 
 There are a few types of arrays.
