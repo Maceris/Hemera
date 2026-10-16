@@ -14,6 +14,7 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "hmir/hmir_dialect.h"
+#include "middle_end/build.h"
 #include "middle_end/generate.h"
 #include "memory/thread_safe_queue.h"
 #include "util/logger.h"
@@ -29,7 +30,7 @@
 #include "mlir/IR/MLIRContext.h"
 
 namespace hemera {
-	
+
 	static int main(int argc, char* argv[])
 	{
 		Logger::init();
@@ -47,18 +48,10 @@ namespace hemera {
 			return 0;
 		}
 
-		std::string object_file_name = std::format("{}.o", options->output_name);
-		std::unique_ptr<llvm::Module> main_module;
-		Backend* backend = nullptr;
-
 		initialize_interned_string_cache();
 		initialize_reporting_storage();
 		enable_reporting();
 		enable_reporting_printing();
-
-		// Compile
-		ThreadSafeQueue<Job> work_queue = ThreadSafeQueue<Job>();
-		ThreadPool threads = ThreadPool();
 
 		mlir::MLIRContext mlir_context;
 		mlir_context.loadDialect<mlir::BuiltinDialect>();
@@ -73,80 +66,19 @@ namespace hemera {
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
 
-		llvm::LLVMContext context;
-
 		kick_off_processing(program_info, options);
 
 		if (error_count() > 0) {
 			rc = -1;
-			goto teardown_compilation;
 		}
-
-		// Generate the program's MLIR, from main and everything it uses
-		if (!generate_program(program_info, *options, mlir_module)) {
-			rc = -1;
-			goto teardown_compilation;
+		// A build package registers targets while it's checked, and is only what builds them
+		else if (!build_registry().targets.empty() || !build_registry().steps.empty()) {
+			rc = build_targets(program_info, *options, main_alloc) ? 0 : -1;
 		}
-
-		if (options->build_extent < BuildExtent::LOWER) {
-			dump_mlir_to_file(options, &mlir_module);
-			goto teardown_compilation;
-		}
-
-		// Lower
-
-		main_module = lower_to_llvm(mlir_module, context, *options);
-
-		if (main_module == nullptr || error_count() > 0) {
-			rc = -1;
-			goto teardown_lowering;
-		}
-		if (options->build_extent < BuildExtent::ASSEMBLE) {
-			std::error_code error;
-			llvm::raw_fd_ostream file(std::format("{}.ll", options->output_name), error);
-			if (!error) {
-				main_module->print(file, nullptr);
-			}
-			goto teardown_lowering;
-		}
-		// Assemble
-
-		backend = main_alloc.new_object<BackendLLVM>();
-		if (!backend->initialize(*options)) {
-			rc = -1;
-			goto teardown_lowering;
-		}
-
-		if (!backend->generate_object_file(*options, *main_module, object_file_name)) {
-			rc = -1;
-			goto teardown_lowering;
-		}
-
-		if (error_count() > 0) {
-			rc = -1;
-			goto teardown_assembly;
-		}
-		if (options->build_extent < BuildExtent::LINK) {
-			goto teardown_assembly;
-		}
-		// Link
-		
-		backend->link(*options, object_file_name);
-		if (error_count() > 0) {
+		else if (!finish_program(options, program_info, mlir_module, main_alloc)) {
 			rc = -1;
 		}
 
-	teardown_assembly:
-
-	teardown_lowering:
-		if (backend != nullptr) {
-			backend->destroy();
-			delete backend;
-			backend = nullptr;
-		}
-		main_module.reset();
-
-	teardown_compilation:
 		destroy_reporting_storage();
 		purge_interned_string_cache();
 

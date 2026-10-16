@@ -70,6 +70,39 @@ imports, with its files, imports, functions, constants (with their values) and t
 `find_constant` in one, and `report_error` and `report_warning` at any location. `compiler.target_setting` reads a
 setting given on the command line as `--setting=name=value`.
 
+## Build Packages
+
+A program whose compile-time code registers targets with `compiler.add_target` is a build package: it produces
+nothing itself, and once it's checked, the compiler builds each target it registered, in the same process, in the
+order they were registered. A target is a root package and its `BuildOptions`, usually started from
+`compiler.command_line_options()` so settings and options given on the command line carry over. Its `root`,
+`output_path` and `linker_script` are relative to the build package's folder.
+
+```
+package build
+
+import compiler from "base"
+
+build :: fn() {
+    kernel := compiler.command_line_options()
+    kernel.name = "kernel"
+    kernel.root = "../kernel"
+    kernel.target_options.os = .None
+    target :: compiler.add_target(kernel)
+    compiler.add_check(check_program)
+    step :: compiler.add_step(make_image, compiler.all_targets())
+}
+
+#run build()
+```
+
+Each target is checked on its own, with its own `#if` choices and settings, then every check registered with
+`compiler.add_check` runs on it, with its `BuildOptions` and its whole program as a `ProgramInfo`. A check that
+returns false, or reports an error, stops that target. The rest are generated and linked, then each step registered
+with `compiler.add_step` runs, after the targets it depends on, with their outputs. Checks and steps are the build
+package's own functions, so they run with its types: a value from a target, like a constant in its `ProgramInfo`,
+has the target's types, which are compared by name (see `ConstantInfo`).
+
 ## Compile-Time Permissions
 
 Compile-time code can't run other programs or write outside the output folder unless the command line grants it

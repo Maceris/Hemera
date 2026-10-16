@@ -12,6 +12,7 @@
 #include "front_end/front_end.h"
 #include "front_end/info.h"
 #include "hmir/hmir_dialect.h"
+#include "middle_end/build.h"
 #include "middle_end/generate.h"
 #include "../string_cache_guard.h"
 
@@ -100,5 +101,43 @@ TEST(Hosted, ReportsPointerFromCompileTime)
 	EXPECT_FALSE(hemera::generate_program(program_info.get(), options, module));
 	EXPECT_EQ(hemera::error_count(), 1);
 
+	module.erase();
+}
+
+// A build package (docs/compilation.md, Build Packages): its target compiled in the same process, run through its
+// check, linked, and its step run after; then the target is run.
+TEST(Build, BuildsTargets)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_package";
+	std::filesystem::create_directories(output_folder);
+	const std::string output = (output_folder / "app").string();
+	std::filesystem::remove(output + ".exe");
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("build_package") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.settings = { { "output", output }, { "answer", "42" } };
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	ASSERT_EQ(hemera::build_registry().targets.size(), 1u);
+	hemera::Allocator<> alloc;
+	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
+	EXPECT_EQ(hemera::error_count(), 0);
+	// The check's warning and the step's
+	EXPECT_EQ(std::count(hemera::warning_list()->begin(), hemera::warning_list()->end(), hemera::WarningCode::W4001), 2);
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
+
+	hemera::reset_build_registry();
 	module.erase();
 }

@@ -33,6 +33,7 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "middle_end/jit.h"
 #include "middle_end/reflection.h"
+#include "middle_end/build.h"
 
 namespace hemera {
 
@@ -1387,6 +1388,9 @@ namespace hemera {
 		host.object_format = ObjectFormatType::ELF;
 #endif
 		host.input = target.input;
+		// What compile-time code asks the compiler about the program being compiled
+		host.settings = target.settings;
+		host.allow_run = target.allow_run;
 		host.output_name = "compile_time";
 		host.entry = "";
 		host.startup_code = false;
@@ -1624,6 +1628,9 @@ namespace hemera {
 	struct ServiceScope {
 		ProgramInfo* program;
 		const Options* options;
+		// The program PackageInfo records describe, and its options: a target's during its checks
+		ProgramInfo* reflected = nullptr;
+		const Options* reflected_options = nullptr;
 	};
 	static thread_local ServiceScope* service_scope = nullptr;
 
@@ -1632,7 +1639,32 @@ namespace hemera {
 	 * functions and constants it reaches that aren't checked yet are listed there instead, and nothing runs.
 	 * Reports why not and returns false if it can't be run.
 	 */
-	static bool run_items(Generator& generator, std::vector<CompileTimeItem>& items, std::vector<Declaration*>* unchecked) {
+	/*
+	 * The start of code the compiler enters, like a run's entry: a carrier block, loaded, and
+	 * runtime.COMPILE_TIME_CONTEXT, which the compiler's services are reached through. The context's slot, or
+	 * nothing if base/runtime isn't there.
+	 */
+	static mlir::Value enter_compile_time(Generator& compiled, const ast::Node* where) {
+		Declaration* carrier_declaration = base_declaration_named(compiled, "runtime", "CarrierBlock");
+		Declaration* context_declaration = base_declaration_named(compiled, "runtime", "Context");
+		Declaration* compile_time_context = base_declaration_named(compiled, "runtime", "COMPILE_TIME_CONTEXT");
+		if (carrier_declaration == nullptr || context_declaration == nullptr || compile_time_context == nullptr) {
+			unsupported(compiled, where, "base/runtime isn't available for compile-time code");
+			return mlir::Value();
+		}
+		mlir::Value carrier = make_slot(compiled, carrier_declaration->type_value);
+		store_zero(compiled, carrier_declaration->type_value, carrier);
+		assembly(compiled, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+		mlir::Value context = make_slot(compiled, context_declaration->type_value);
+		store(compiled, emit_constant_value(compiled, compile_time_context, context_declaration->type_value, where), context);
+		return context;
+	}
+
+	static bool run_items(Generator& generator, std::vector<CompileTimeItem>& items, std::vector<Declaration*>* unchecked,
+		bool quiet = false) {
+		// Compile-time code can run before the program is generated, which loads these otherwise
+		generator.program->context->loadDialect<LLVM::LLVMDialect>();
+		generator.program->context->loadDialect<::hmir::HemeraDialect>();
 		Options options;
 		set_host_options(options, *generator.options);
 		mlir::ModuleOp module = mlir::ModuleOp::create(generator.loc, "compile_time");
@@ -1640,6 +1672,11 @@ namespace hemera {
 		compiled.options = &options;
 		compiled.input_package = generator.input_package;
 		compiled.compile_time = true;
+		// Quietly: anything that can't be generated just fails the run, like a constant reflection can't show
+		std::vector<Declaration*> ignored;
+		if (quiet && unchecked == nullptr) {
+			unchecked = &ignored;
+		}
 		compiled.collecting = unchecked != nullptr;
 		Declaration* first_declaration = items[0].declaration;
 		compiled.file_path = first_declaration != nullptr ? file_path_of(first_declaration->package_path, first_declaration->file_name)
@@ -1658,20 +1695,12 @@ namespace hemera {
 			state.checked = items[0].checked;
 			state.entry = entry;
 			compiled.state = &state;
-			// A carrier block, and the context the compiler's services are reached through
-			Declaration* carrier_declaration = base_declaration_named(compiled, "runtime", "CarrierBlock");
-			Declaration* context_declaration = base_declaration_named(compiled, "runtime", "Context");
-			Declaration* minimal = base_declaration_named(compiled, "runtime", "COMPILE_TIME_CONTEXT");
-			if (carrier_declaration == nullptr || context_declaration == nullptr || minimal == nullptr) {
-				unsupported(generator, first, "base/runtime isn't available for compile-time code");
+			mlir::Value context = enter_compile_time(compiled, first);
+			if (!context) {
+				generator.failed = true;
 				module.erase();
 				return false;
 			}
-			mlir::Value carrier = make_slot(compiled, carrier_declaration->type_value);
-			store_zero(compiled, carrier_declaration->type_value, carrier);
-			assembly(compiled, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
-			mlir::Value context = make_slot(compiled, context_declaration->type_value);
-			store(compiled, emit_constant_value(compiled, minimal, context_declaration->type_value, first), context);
 			state.context = context;
 			for (size_t i = 0; i < items.size(); ++i) {
 				CompileTimeItem& item = items[i];
@@ -1696,6 +1725,10 @@ namespace hemera {
 		}
 		if (!compiled.unchecked.empty()) {
 			*unchecked = compiled.unchecked;
+			module.erase();
+			return false;
+		}
+		if (quiet && compiled.failed) {
 			module.erase();
 			return false;
 		}
@@ -1732,7 +1765,9 @@ namespace hemera {
 		}
 		bool captured = true;
 		std::string error;
-		ServiceScope scope{ generator.program, generator.options };
+		// The program's options, not the ones compile-time code is compiled with, when this runs from compile-time code
+		const Options* program_options = generator.compile_time && service_scope != nullptr ? service_scope->options : generator.options;
+		ServiceScope scope{ generator.program, program_options };
 		ServiceScope* outer_scope = service_scope;
 		service_scope = &scope;
 		const RunResult ran = run_on_host(std::move(lowered), std::move(llvm_context), std::string(COMPILE_TIME_ENTRY),
@@ -3117,6 +3152,45 @@ namespace hemera {
 	}
 
 	/*
+	 * A C function the compiler calls a check or a step through, once the build package's code has run, with a
+	 * frame: the function, then each argument (8 or 16 bytes each), then room for its boolean result. It gives
+	 * the function a carrier block and the compile-time context, like a run's entry does.
+	 */
+	static mlir::Value callback_caller(Generator& generator, TypeInfoFunction const* callback, const std::string& symbol,
+		const ast::Node* where) {
+
+		LLVM::LLVMFuncOp caller = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(symbol);
+		if (!caller) {
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			caller = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, symbol,
+				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), { pointer_type(generator) }));
+			mlir::Block* entry = caller.addEntryBlock(generator.builder);
+			generator.builder.setInsertionPointToEnd(entry);
+			FunctionState state;
+			state.declaration = generator.state != nullptr ? generator.state->declaration : nullptr;
+			state.entry = entry;
+			FunctionState* outer = generator.state;
+			generator.state = &state;
+			mlir::Value context = enter_compile_time(generator, where);
+			mlir::Value frame = entry->getArgument(0);
+			std::vector<mlir::Value> operands{ LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), frame), context };
+			size_t offset = 8;
+			for (const FunctionInput& input : callback->input) {
+				operands.push_back(load(generator, input.type, offset_address(generator, frame, offset)));
+				offset += (input.type->size + 7) & ~size_t(7);
+			}
+			auto call = LLVM::CallOp::create(generator.builder, generator.loc, function_type(generator, callback, true), operands);
+			if (!callback->output.empty()) {
+				store(generator, call.getResult(), offset_address(generator, frame, offset));
+			}
+			LLVM::ReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
+			generator.state = outer;
+		}
+		return LLVM::AddressOfOp::create(generator.builder, generator.loc, caller);
+	}
+
+	/*
 	 * A call to one of base/compiler's functions, like compiler.package_info: each argument in a slot, and the
 	 * compiler's service called with the function's name, pointers to them and to where the result goes, the
 	 * context, and the calling file.
@@ -3134,11 +3208,17 @@ namespace hemera {
 		mlir::Type pointer = pointer_type(generator);
 		mlir::Type i64 = integer_type(generator, 8);
 		const size_t count = std::min(arguments.size(), function->input.size());
-		mlir::Value list = make_raw_slot(generator, LLVM::LLVMArrayType::get(pointer, std::max<size_t>(count, 1)), 8);
+		// One more, for the caller of a check or a step
+		mlir::Value list = make_raw_slot(generator, LLVM::LLVMArrayType::get(pointer, count + 1), 8);
 		for (size_t i = 0; i < count; ++i) {
 			mlir::Value slot = make_slot(generator, function->input[i].type);
 			store(generator, arguments[i], slot);
 			store(generator, slot, offset_address(generator, list, i * 8));
+		}
+		if ((name == "add_check" || name == "add_step") && count > 0) {
+			auto callback = static_cast<TypeInfoFunction const*>(base(function->input[0].type));
+			store(generator, callback_caller(generator, callback, std::format("hemera.call_{}", name.substr(4)), where),
+				offset_address(generator, list, count * 8));
 		}
 		mlir::Value result = result_type != nullptr ? make_slot(generator, result_type) : zero_of(generator, pointer);
 		if (result_type != nullptr) {
@@ -5114,18 +5194,31 @@ namespace hemera {
 			if (items.empty()) {
 				return result;
 			}
-			mlir::ModuleOp scratch = mlir::ModuleOp::create(mlir::UnknownLoc::get(call.program->context), "constants");
-			bool ran = false;
-			{
-				Generator generator(call.program, scratch);
-				generator.options = call.options;
-				generator.input_package = intern(call.options->input.string());
-				ran = run_items(generator, items, nullptr);
-			}
-			scratch.erase();
-			if (ran) {
+			// All at once, or one at a time if that fails, leaving out what can't be worked out
+			auto run = [&](std::vector<CompileTimeItem>& batch) {
+				mlir::ModuleOp scratch = mlir::ModuleOp::create(mlir::UnknownLoc::get(call.program->context), "constants");
+				bool ran = false;
+				{
+					Generator generator(call.program, scratch);
+					generator.options = call.options;
+					generator.input_package = intern(call.options->input.string());
+					// A value that can't leave compile time, like a function, is left out without a word
+					generator.collecting = true;
+					ran = run_items(generator, batch, nullptr, true) && !generator.failed;
+				}
+				scratch.erase();
+				return ran;
+			};
+			if (run(items)) {
 				for (size_t i : positions) {
 					result[i].second = call.data.copy_value(result[i].first, values[i]);
+				}
+				return result;
+			}
+			for (size_t j = 0; j < items.size(); ++j) {
+				std::vector<CompileTimeItem> one{ items[j] };
+				if (run(one)) {
+					result[positions[j]].second = call.data.copy_value(result[positions[j]].first, values[positions[j]]);
 				}
 			}
 			return result;
@@ -5345,6 +5438,97 @@ namespace hemera {
 			}
 		}
 
+		// Reading a record's fields, as its type lays them out.
+		const uint8_t* field_at(const uint8_t* record, const TypeInfoStruct* layout, std::string_view field, const TypeInfo*& type) {
+			size_t offset = 0;
+			type = nullptr;
+			return CompileTimeData::find_field(layout, field, offset, type) ? record + offset : nullptr;
+		}
+
+		std::string read_text(const uint8_t* record, const TypeInfoStruct* layout, std::string_view field) {
+			const TypeInfo* type = nullptr;
+			const uint8_t* at = field_at(record, layout, field, type);
+			return at != nullptr ? std::string(read_string(at)) : std::string();
+		}
+
+		uint64_t read_number(const uint8_t* record, const TypeInfoStruct* layout, std::string_view field) {
+			const TypeInfo* type = nullptr;
+			const uint8_t* at = field_at(record, layout, field, type);
+			if (at == nullptr) {
+				return 0;
+			}
+			uint64_t value = 0;
+			std::memcpy(&value, at, std::min<size_t>(type->size, sizeof(value)));
+			return value;
+		}
+
+		// An enum field's member, by name.
+		std::string read_member(const uint8_t* record, const TypeInfoStruct* layout, std::string_view field) {
+			const TypeInfo* type = nullptr;
+			const uint8_t* at = field_at(record, layout, field, type);
+			if (at == nullptr) {
+				return std::string();
+			}
+			auto enumeration = static_cast<const TypeInfoEnum*>(get_base_type(type));
+			uint64_t value = 0;
+			std::memcpy(&value, at, std::min<size_t>(type->size, sizeof(value)));
+			for (size_t i = 0; i < enumeration->members.size(); ++i) {
+				if (enumeration->values[i] == value) {
+					return text_of(enumeration->members[i]);
+				}
+			}
+			return std::string();
+		}
+
+		// A dynamic array or view field of records with two string fields, like TargetSetting's name and value.
+		std::vector<std::pair<std::string, std::string>> read_pairs(const uint8_t* record, const TypeInfoStruct* layout,
+			std::string_view field, std::string_view first, std::string_view second) {
+
+			std::vector<std::pair<std::string, std::string>> result;
+			const TypeInfo* type = nullptr;
+			const uint8_t* at = field_at(record, layout, field, type);
+			if (at == nullptr) {
+				return result;
+			}
+			const TypeInfoStruct* element = struct_of(static_cast<const TypeInfoArray*>(get_base_type(type))->element_type);
+			const uint8_t* elements = reinterpret_cast<const uint8_t*>(read_u64(at + 8));
+			for (uint64_t i = 0; i < read_u64(at) && elements != nullptr; ++i) {
+				const uint8_t* each = elements + i * element->size;
+				result.emplace_back(read_text(each, element, first), read_text(each, element, second));
+			}
+			return result;
+		}
+
+		// A compiler.BuildOptions value.
+		void read_build_options(const uint8_t* record, const TypeInfoStruct* layout, BuildTarget& target) {
+			target.name = read_text(record, layout, "name");
+			target.root = read_text(record, layout, "root");
+			target.output_path = read_text(record, layout, "output_path");
+			target.entry = read_text(record, layout, "entry");
+			target.settings = read_pairs(record, layout, "settings", "name", "value");
+			target.package_paths = read_pairs(record, layout, "package_paths", "location", "path");
+			const TypeInfo* type = nullptr;
+			if (const uint8_t* backend = field_at(record, layout, "backend_options", type)) {
+				target.optimization_level = read_member(backend, struct_of(type), "optimization_level");
+				target.debug_info = read_number(backend, struct_of(type), "debug_info") != 0;
+			}
+			if (const uint8_t* options = field_at(record, layout, "target_options", type)) {
+				const TypeInfoStruct* target_layout = struct_of(type);
+				target.architecture = read_member(options, target_layout, "architecture");
+				target.os = read_member(options, target_layout, "os");
+				target.output_type = read_member(options, target_layout, "output_type");
+				target.cpu = read_text(options, target_layout, "cpu");
+				target.cpu_features = read_text(options, target_layout, "cpu_features");
+				target.code_model = read_member(options, target_layout, "code_model");
+				target.relocation_model = read_member(options, target_layout, "relocation_model");
+				target.red_zone = read_number(options, target_layout, "red_zone") != 0;
+				target.address_zero_is_memory = read_number(options, target_layout, "address_zero_is_memory") != 0;
+				target.linker_script = read_text(options, target_layout, "linker_script");
+				target.startup_code = read_number(options, target_layout, "startup_code") != 0;
+				target.stack_check_failure = read_member(options, target_layout, "stack_check_failure");
+			}
+		}
+
 		// Whether the calling code is the build package's, the input package, which the permissions are for.
 		bool in_root_package(Call& call) {
 			return call.file.starts_with(call.options->input.string());
@@ -5360,7 +5544,7 @@ namespace hemera {
 			CompileTimeData& data = call.data;
 			const Options& options = *call.options;
 			if (current) {
-				data.write_text(record, layout, "name", options.output_name);
+				data.write_text(record, layout, "name", std::filesystem::path(options.output_name).filename().string());
 				data.write_text(record, layout, "root", options.input.string());
 				data.write_text(record, layout, "entry", options.entry);
 			}
@@ -5459,6 +5643,11 @@ namespace hemera {
 				return;
 			}
 			if (name == "find_constant" || name == "find_function") {
+				// In the program the record describes, which during a check is the target's
+				if (service_scope->reflected != nullptr) {
+					call.program = service_scope->reflected;
+					call.options = service_scope->reflected_options;
+				}
 				const uint8_t* package = reinterpret_cast<const uint8_t*>(read_u64(call.arguments[0]));
 				Declaration* found = declared(call, package_path_of(call, package), read_string(call.arguments[1]));
 				const bool wanted = found != nullptr && (name == "find_constant" ? is_constant(found) : DeclarationKind::FUNCTION == found->kind);
@@ -5472,9 +5661,53 @@ namespace hemera {
 				});
 				return;
 			}
-			// add_target, add_step, all_targets, add_check and find_packages need a build package
-			report_error(ErrorCode::E4024, call.file, 0, 0,
-				std::format("compiler.{} isn't supported yet: it comes with build packages (compiler-plan Phase 8, step 4b)", name));
+			if (name == "add_target") {
+				BuildTarget target;
+				read_build_options(call.arguments[0], struct_of(call.type->input[0].type), target);
+				read_location(call, 1, target.location.file, target.location.line, target.location.column);
+				BuildRegistry& registry = build_registry();
+				std::scoped_lock<std::mutex> lock(registry.mutex);
+				target.node = registry.next_node++;
+				CompileTimeData::write_number_at(call.result, call.type->output[0].type->size, target.node);
+				registry.targets.push_back(std::move(target));
+				return;
+			}
+			if (name == "all_targets") {
+				BuildRegistry& registry = build_registry();
+				std::scoped_lock<std::mutex> lock(registry.mutex);
+				auto nodes = reinterpret_cast<uint32_t*>(data.allocate(4 * std::max<size_t>(registry.targets.size(), 1), 4));
+				for (size_t i = 0; i < registry.targets.size(); ++i) {
+					nodes[i] = registry.targets[i].node;
+				}
+				CompileTimeData::write_view_at(call.result, nodes, registry.targets.size());
+				return;
+			}
+			if (name == "add_check" || name == "add_step") {
+				BuildCallback callback;
+				callback.function = reinterpret_cast<const void*>(read_u64(call.arguments[0]));
+				callback.caller = reinterpret_cast<void (*)(void*)>(call.arguments[call.count]);
+				const size_t location_index = name == "add_check" ? 1 : 2;
+				read_location(call, location_index, callback.location.file, callback.location.line, callback.location.column);
+				// The code they're in has to stay loaded for the compiler to call them
+				keep_running_code_loaded();
+				BuildRegistry& registry = build_registry();
+				std::scoped_lock<std::mutex> lock(registry.mutex);
+				if (name == "add_check") {
+					registry.checks.push_back(std::move(callback));
+					return;
+				}
+				const uint8_t* after = call.arguments[1];
+				auto nodes = reinterpret_cast<const uint32_t*>(read_u64(after + 8));
+				for (size_t i = 0; i < read_u64(after); ++i) {
+					callback.after.push_back(nodes[i]);
+				}
+				callback.node = registry.next_node++;
+				CompileTimeData::write_number_at(call.result, call.type->output[0].type->size, callback.node);
+				registry.steps.push_back(std::move(callback));
+				return;
+			}
+			// find_packages loads packages the program doesn't import
+			report_error(ErrorCode::E4024, call.file, 0, 0, std::format("compiler.{} isn't supported yet", name));
 		}
 	}
 
@@ -5496,6 +5729,206 @@ namespace hemera {
 		Call call{ called, result, arguments, static_cast<size_t>(count), context, std::string(file, static_cast<size_t>(file_count)),
 			static_cast<TypeInfoFunction const*>(declaration->value_type), scope->program, scope->options, compile_time_data(scope->program) };
 		carry_out(call);
+	}
+
+	BuildRegistry& build_registry() {
+		// Never freed: the build lasts until the compiler exits
+		static auto* registry = new BuildRegistry();
+		return *registry;
+	}
+
+	void reset_build_registry() {
+		BuildRegistry& registry = build_registry();
+		std::scoped_lock<std::mutex> lock(registry.mutex);
+		registry.targets.clear();
+		registry.checks.clear();
+		registry.steps.clear();
+		registry.next_node = 1;
+	}
+
+	// A path the build package gave, relative to its folder.
+	static std::filesystem::path from_build(const Options& build, const std::string& path) {
+		std::filesystem::path given(path);
+		return given.is_absolute() ? given : build.input / given;
+	}
+
+	bool target_options(const BuildTarget& target, const Options& build, Options& result) {
+		auto refuse = [&](const std::string& why) {
+			report_error(ErrorCode::E4029, target.location.file, target.location.line, target.location.column,
+				std::format("target {}: {}", target.name, why));
+			return false;
+		};
+		std::error_code error;
+		const std::filesystem::path root = std::filesystem::canonical(from_build(build, target.root), error);
+		if (target.root.empty() || error) {
+			return refuse(std::format("its root package {} isn't a folder", target.root));
+		}
+		result.input = root;
+		result.output_name = !target.output_path.empty() ? from_build(build, target.output_path).string()
+			: (std::filesystem::current_path() / (target.name.empty() ? root.filename().string() : target.name)).string();
+		result.entry = target.entry.empty() ? "main" : target.entry;
+		result.install_path = build.install_path;
+		result.builtin_paths = build.builtin_paths;
+		for (const auto& [location, path] : target.package_paths) {
+			const BuiltinPackage package = location == "base" ? BuiltinPackage::BASE : location == "std" ? BuiltinPackage::STD
+				: location == "user" ? BuiltinPackage::USER : BuiltinPackage::VENDOR;
+			result.builtin_paths[package] = from_build(build, path);
+		}
+		result.settings = target.settings;
+		result.build_extent = build.build_extent;
+		result.optimization_level = target.optimization_level == "O0" ? OptimizationLevel::O0 : target.optimization_level == "O1" ? OptimizationLevel::O1
+			: target.optimization_level == "O3" ? OptimizationLevel::O3 : OptimizationLevel::O2;
+		result.debug_info = target.debug_info;
+		if (target.architecture == "x86_64") {
+			result.architecture = ArchType::x86_64;
+		}
+		else if (target.architecture == "arm64") {
+			result.architecture = ArchType::aarch64;
+		}
+		else {
+			return refuse(std::format("it's for {}, which can't be built yet", target.architecture));
+		}
+		if (target.os == "Windows") {
+			result.os = OSType::Win32;
+		}
+		else if (target.os == "Linux" || target.os == "None" || target.os == "UEFI") {
+			result.os = target.os == "Linux" ? OSType::Linux : target.os == "UEFI" ? OSType::UEFI : OSType::UnknownOS;
+			result.object_format = target.os == "UEFI" ? ObjectFormatType::COFF : ObjectFormatType::ELF;
+			result.environment = EnvironmentType::UnknownEnvironment;
+			result.vendor = VendorType::UnknownVendor;
+		}
+		else {
+			return refuse(std::format("it's for {}, which can't be built yet", target.os));
+		}
+		result.cpu = target.cpu.empty() ? "generic" : target.cpu;
+		result.cpu_features = target.cpu_features;
+		result.code_model = target.code_model == "Kernel" ? TargetCodeModel::Kernel : target.code_model == "Small" ? TargetCodeModel::Small
+			: target.code_model == "Medium" ? TargetCodeModel::Medium : TargetCodeModel::Default;
+		result.relocation_model = target.relocation_model == "Static" ? TargetRelocationModel::Static : TargetRelocationModel::PositionIndependent;
+		result.red_zone = target.red_zone;
+		result.address_zero_is_memory = target.address_zero_is_memory;
+		result.startup_code = target.startup_code;
+		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap : TargetStackCheck::Off;
+		if (!target.linker_script.empty()) {
+			result.linker_script = std::filesystem::canonical(from_build(build, target.linker_script), error);
+			if (error) {
+				return refuse(std::format("its linker script {} isn't there", target.linker_script));
+			}
+		}
+		return true;
+	}
+
+	/*
+	 * A call into the build package's code: the frame its caller reads, with the services set up for the build
+	 * program. Returns the function's boolean result, or false if it failed.
+	 */
+	static bool call_back(ProgramInfo* build, const Options& build_options, const BuildCallback& callback,
+		std::vector<uint64_t>& frame, size_t result_offset, ProgramInfo* reflected = nullptr, const Options* reflected_options = nullptr) {
+
+		CompileTimeData& data = compile_time_data(build);
+		CompileTimeRun run;
+		run.types = &data.described_types();
+		run.file_path = callback.location.file;
+		run.line = callback.location.line;
+		run.column = callback.location.column;
+		frame[0] = reinterpret_cast<uintptr_t>(callback.function);
+		ServiceScope scope{ build, &build_options, reflected, reflected_options };
+		ServiceScope* outer = service_scope;
+		service_scope = &scope;
+		const RunResult ran = call_loaded(callback.caller, frame.data(), run);
+		service_scope = outer;
+		return RunResult::RAN == ran && reinterpret_cast<const uint8_t*>(frame.data())[result_offset] != 0;
+	}
+
+	bool run_build_checks(ProgramInfo* build, const Options& build_options, ProgramInfo* target, const Options& options) {
+		BuildRegistry& registry = build_registry();
+		if (registry.checks.empty()) {
+			return true;
+		}
+		CompileTimeData& data = compile_time_data(build);
+		const TypeInfoStruct* build_layout = data.compiler_struct("BuildOptions");
+		const TypeInfoStruct* program_layout = data.compiler_struct("ProgramInfo");
+		const TypeInfoStruct* package_layout = data.compiler_struct("PackageInfo");
+		if (build_layout == nullptr || program_layout == nullptr || package_layout == nullptr) {
+			return true;
+		}
+		// The target as a check sees it: its options, and every package in its program, written in the build's
+		// memory with the build's layouts, about the target's declarations and types
+		Call call{ "", nullptr, nullptr, 0, nullptr, std::string(), nullptr, target, &options, data };
+		uint8_t* target_record = data.new_records(build_layout);
+		write_build_options(call, target_record, build_layout, true);
+		std::vector<hemera::PackageInfo*> packages;
+		for (const auto& [path, package] : target->packages) {
+			packages.push_back(package);
+		}
+		uint8_t* package_records = data.new_records(package_layout, packages.size());
+		uint8_t* root = nullptr;
+		for (size_t i = 0; i < packages.size(); ++i) {
+			uint8_t* record = package_records + i * package_layout->size;
+			write_package(call, record, package_layout, packages[i]);
+			if (text_of(packages[i]->full_path) == options.input.string()) {
+				root = record;
+			}
+		}
+		uint8_t* program_record = data.new_records(program_layout);
+		data.write_pointer(program_record, program_layout, "root", root);
+		data.write_view(program_record, program_layout, "packages", package_records, packages.size());
+		bool passed = true;
+		for (const BuildCallback& check : registry.checks) {
+			std::vector<uint64_t> frame{ 0, reinterpret_cast<uintptr_t>(target_record), reinterpret_cast<uintptr_t>(program_record), 0 };
+			passed = call_back(build, build_options, check, frame, 24, target, &options) && passed;
+		}
+		return passed;
+	}
+
+	bool run_build_steps(ProgramInfo* build, const Options& build_options) {
+		BuildRegistry& registry = build_registry();
+		CompileTimeData& data = compile_time_data(build);
+		const TypeInfoStruct* output_layout = data.compiler_struct("TargetOutput");
+		std::set<uint32_t> finished;
+		for (const BuildTarget& target : registry.targets) {
+			if (target.built) {
+				finished.insert(target.node);
+			}
+		}
+		bool passed = true;
+		for (const BuildCallback& step : registry.steps) {
+			// Each target it runs after, as a TargetOutput; it doesn't run if one of them didn't finish
+			std::vector<const BuildTarget*> inputs;
+			bool ready = output_layout != nullptr;
+			for (uint32_t node : step.after) {
+				if (!finished.contains(node)) {
+					ready = false;
+				}
+				for (const BuildTarget& target : registry.targets) {
+					if (target.node == node) {
+						inputs.push_back(&target);
+					}
+				}
+			}
+			if (!ready) {
+				report_error(ErrorCode::E4029, step.location.file, step.location.line, step.location.column,
+					"this step didn't run, since something it runs after failed");
+				passed = false;
+				continue;
+			}
+			uint8_t* outputs = data.new_records(output_layout, inputs.size());
+			for (size_t i = 0; i < inputs.size(); ++i) {
+				uint8_t* record = outputs + i * output_layout->size;
+				data.write_number(record, output_layout, "node", inputs[i]->node);
+				data.write_text(record, output_layout, "name", inputs[i]->name);
+				data.write_text(record, output_layout, "path", inputs[i]->output);
+				data.write_member(record, output_layout, "output_type", inputs[i]->output_type.empty() ? "Executable" : inputs[i]->output_type);
+			}
+			std::vector<uint64_t> frame{ 0, inputs.size(), reinterpret_cast<uintptr_t>(outputs), 0 };
+			if (call_back(build, build_options, step, frame, 24)) {
+				finished.insert(step.node);
+			}
+			else {
+				passed = false;
+			}
+		}
+		return passed;
 	}
 
 	bool run_evaluation(ProgramInfo* program_info, const Options& options, Evaluation& evaluation,

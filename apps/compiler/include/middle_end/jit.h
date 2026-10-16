@@ -59,6 +59,18 @@ namespace hemera {
 		std::string& error);
 
 	/// <summary>
+	/// Keeps the code running now loaded once it finishes, since it registered functions the compiler calls later,
+	/// like a build package's checks and steps. For the compiler's services.
+	/// </summary>
+	void keep_running_code_loaded();
+
+	/// <summary>
+	/// Calls a C function in code that was kept loaded, the way run_on_host calls its entry: its logs are printed,
+	/// and a failed assertion or a crash is reported and stops it.
+	/// </summary>
+	RunResult call_loaded(void (*function)(void*), void* argument, const CompileTimeRun& run);
+
+	/// <summary>
 	/// format with each % filled in from count any values at params, the way compile-time code's logs are,
 	/// for compile-time code that's running.
 	/// </summary>

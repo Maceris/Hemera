@@ -45,7 +45,17 @@ namespace hemera {
 			volatile bool escaped = false;
 			volatile bool running = false;
 			std::string crash;
+			// It registered functions to be called later, so it stays loaded
+			bool keep = false;
 		};
+
+		// Code kept loaded for the rest of the compilation, like a build package's checks and steps
+		std::mutex kept_mutex;
+		std::vector<std::unique_ptr<llvm::orc::LLJIT>>& kept_code() {
+			// Never freed: it's loaded until the compiler exits
+			static auto* kept = new std::vector<std::unique_ptr<llvm::orc::LLJIT>>();
+			return *kept;
+		}
 
 		thread_local Active* active = nullptr;
 
@@ -408,6 +418,41 @@ namespace hemera {
 		return format_log(format, static_cast<const AnyValue*>(params), count);
 	}
 
+	/*
+	 * Calls compiled code with the services' state set up, coming back with the failure reported if it fails an
+	 * assertion or crashes.
+	 */
+	static RunResult run_guarded(void (*function)(void*), void* argument, const CompileTimeRun& run,
+		const std::function<void()>& while_loaded, bool& keep) {
+
+		Active state;
+		state.run = &run;
+		state.types = run.types;
+		Active* outer = active;
+		active = &state;
+		const bool finished = guarded_call(function, argument, &state);
+		if (finished) {
+			while_loaded();
+		}
+		active = outer;
+		keep = state.keep;
+		for (void* memory : state.allocations) {
+			release(memory);
+		}
+		if (finished) {
+			return RunResult::RAN;
+		}
+		if (!state.crash.empty()) {
+#if defined(_WIN32)
+			if (state.crash == "ran out of stack") {
+				_resetstkoflw();
+			}
+#endif
+			report_error(ErrorCode::E4029, run.file_path, run.line, run.column, std::format("the compile-time code {}", state.crash));
+		}
+		return RunResult::FAILED;
+	}
+
 	RunResult run_on_host(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
 		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
 		std::string& error) {
@@ -470,31 +515,24 @@ namespace hemera {
 			return RunResult::NOT_COMPILED;
 		}
 
-		Active state;
-		state.run = &run;
-		state.types = run.types;
-		Active* outer = active;
-		active = &state;
-		const bool finished = guarded_call(symbol->toPtr<void (*)(void*)>(), result, &state);
-		if (finished) {
-			while_loaded();
+		bool keep = false;
+		const RunResult ran = run_guarded(symbol->toPtr<void (*)(void*)>(), result, run, while_loaded, keep);
+		if (keep) {
+			std::scoped_lock<std::mutex> lock(kept_mutex);
+			kept_code().push_back(std::move(*jit));
 		}
-		active = outer;
-		for (void* memory : state.allocations) {
-			release(memory);
+		return ran;
+	}
+
+	void keep_running_code_loaded() {
+		if (active != nullptr) {
+			active->keep = true;
 		}
-		if (finished) {
-			return RunResult::RAN;
-		}
-		if (!state.crash.empty()) {
-#if defined(_WIN32)
-			if (state.crash == "ran out of stack") {
-				_resetstkoflw();
-			}
-#endif
-			report_error(ErrorCode::E4029, run.file_path, run.line, run.column, std::format("the compile-time code {}", state.crash));
-		}
-		return RunResult::FAILED;
+	}
+
+	RunResult call_loaded(void (*function)(void*), void* argument, const CompileTimeRun& run) {
+		bool keep = false;
+		return run_guarded(function, argument, run, [] {}, keep);
 	}
 
 }
