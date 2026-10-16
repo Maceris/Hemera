@@ -366,7 +366,8 @@ the same shape as the x86-64 frame above, so the loop is the same, with these di
 #### Walking the Stack
 
 Stack traces aren't recorded as code runs. `intrinsics.capture_stack_trace` builds one when asked, by following
-saved base pointers from the current frame and collecting each frame's return address (`[BP + 8]`):
+saved base pointers from the current frame and collecting each frame's return address (`[BP + 8]`). Every function
+keeps its frame pointer for this, so the chain is never broken by an optimized-out frame:
 
 * Across segments, there's nothing special to do: `morestack` and `.grow` build ordinary frames,
   so the chain leads from a function on a new segment back to its caller on the old one.
@@ -376,7 +377,11 @@ saved base pointers from the current frame and collecting each frame's return ad
   next frame. The fiber is found through the carrier block.
 * On a suspended fiber (`intrinsics.capture_fiber_stack_trace`), the walk starts at `top_frame`. `fiber_suspend` has
   already put the real return address back, so the chain is ordinary all the way down.
-* The walk stops at `fiber_entry` for fibers, and at the thread's entry function for threads.
+* The walk stops at `fiber_entry` for fibers, and at the thread's entry function for threads. A program's entry
+  function (the startup code's, or the freestanding entry) clears the frame pointer it saved, since whatever called it
+  isn't Hemera code: the walk ends there, without its caller's return address.
+* An interrupt function's frame chains to the interrupted code's, so a trace from a fault handler continues through the
+  code that faulted.
 * On AArch64 with pointer authentication, return addresses are stripped (`XPACI`) before being recorded.
 
 Turning the addresses into function names, files and lines uses the debug information, and only happens when a

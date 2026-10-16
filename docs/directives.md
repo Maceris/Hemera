@@ -200,3 +200,19 @@ Values of these structs can never be stored on the heap. See [memory.md](memory.
 
 `#file_path` is the path to the file in which this directive appears.
 
+`#file_data("path")` is the contents of a file, read when the program is compiled, as a `u8[N]` with `N` the file's
+size. The path is relative to the folder of the file the directive is in. Data a program needs but shouldn't keep in
+source, like a font, an image or a table, goes in the program this way, without a step that turns it into a constant
+first.
+
+```
+FONT :: #file_data("fonts/console.psf")
+
+load_font :: fn() -> Font {
+    return parse_font(FONT) // FONT is a u8[N], so it passes as a u8[]
+}
+```
+
+It's a compile error if the file can't be read, or if the path isn't a string literal. Like any constant, the bytes are
+part of the program's read-only data.
+

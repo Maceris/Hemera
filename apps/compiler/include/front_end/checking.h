@@ -1,6 +1,8 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -179,4 +181,10 @@ namespace hemera {
 	/// A function definition's body, or null for a declaration without one (---).
 	/// </summary>
 	ast::Node* function_body(const Declaration* function);
+
+	/*
+	 * The file #file_data(path) names, in a file at including_file: path is relative to that
+	 * file's folder (docs/directives.md, Values). Empty if the argument isn't a string literal.
+	 */
+	std::filesystem::path file_data_path(std::string_view including_file, const ast::Node* directive);
 }

@@ -160,7 +160,8 @@ a : int[]
 ```
 
 Both static and dynamic arrays will be auto-cast to array views if 
-provided to a function with an array view parameter.
+provided to a function with an array view parameter. A view refers to the array's own elements, not a copy of
+them, so changing an element through the view changes the array.
 
 Arrays on the stack (including fields of structs on the stack) can be passed to functions as,
 or cast to, array views. Such a view can't outlive the array, which the compiler checks,

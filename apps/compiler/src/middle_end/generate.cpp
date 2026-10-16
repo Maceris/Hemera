@@ -1,6 +1,9 @@
 #include "middle_end/generate.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <format>
 #include <functional>
 #include <map>
@@ -21,6 +24,8 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
@@ -394,6 +399,19 @@ namespace hemera {
 		LLVM::StoreOp::create(generator.builder, generator.loc, value, address);
 	}
 
+	// Values bigger than this are zeroed with memset, which LLVM handles far better than a large aggregate store.
+	constexpr size_t LARGEST_ZERO_STORE = 64;
+
+	// Zero the value of type at address.
+	static void store_zero(Generator& generator, TypeInfo* type, mlir::Value address) {
+		if (type != nullptr && type->size > LARGEST_ZERO_STORE) {
+			LLVM::MemsetOp::create(generator.builder, generator.loc, address, constant_int(generator, integer_type(generator, 1), 0),
+				constant_int(generator, usize_type(generator), static_cast<int64_t>(type->size)), false);
+			return;
+		}
+		store(generator, zero_of(generator, llvm_type(generator, type)), address);
+	}
+
 	static mlir::Value extract(Generator& generator, mlir::Value whole, int64_t index) {
 		return LLVM::ExtractValueOp::create(generator.builder, generator.loc, whole, llvm::ArrayRef<int64_t>{ index });
 	}
@@ -756,7 +774,7 @@ namespace hemera {
 			return insert(generator, zero_of(generator, llvm_type(generator, type)), tag, { 0 });
 		}
 		mlir::Value slot = make_slot(generator, type);
-		store(generator, zero_of(generator, llvm_type(generator, type)), slot);
+		store_zero(generator, type, slot);
 		store(generator, tag, slot);
 		const UnionVariant& chosen = union_type->variants[variant];
 		for (size_t i = 0; i < values.size() && i < chosen.offsets.size(); ++i) {
@@ -906,12 +924,33 @@ namespace hemera {
 	static bool emit_block(Generator& generator, ast::Node* block, mlir::Value result_slot, TypeInfo* result_type);
 
 	// An expression's value, converted to the type it's used as.
+	// Whether a value of type from becomes a view of it as type to: a static array as a view.
+	static bool is_array_to_view(TypeInfo const* from, TypeInfo const* to) {
+		from = from != nullptr ? base(from) : nullptr;
+		to = to != nullptr ? base(to) : nullptr;
+		return from != nullptr && to != nullptr && TypeInfoVariant::ARRAY == from->variant && TypeInfoVariant::ARRAY == to->variant
+			&& ArrayType::STATIC == static_cast<TypeInfoArray const*>(from)->array_type
+			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(to)->array_type;
+	}
+
+	/*
+	 * What was emitted, as type. A static array that has an address becomes a view of the array
+	 * itself, not of a copy: changes through the view reach it, and a large constant isn't copied.
+	 */
+	static mlir::Value convert_emitted(Generator& generator, const Emitted& emitted, TypeInfo* type) {
+		if (emitted.address && in_function(generator) && is_array_to_view(emitted.type, type)) {
+			return make_view(generator, constant_int(generator, usize_type(generator),
+				static_cast<int64_t>(static_cast<TypeInfoArray const*>(base(emitted.type))->count)), emitted.address);
+		}
+		return convert(generator, value_of(generator, emitted), emitted.type, type);
+	}
+
 	static mlir::Value emit_as(Generator& generator, ast::Node* node, TypeInfo* type) {
 		Emitted emitted = emit_expression(generator, node, type);
 		if (ValueKind::VARIANT == emitted.kind) {
 			return make_variant(generator, emitted.type, emitted.variant, {}, {});
 		}
-		return convert(generator, value_of(generator, emitted), emitted.type, type);
+		return convert_emitted(generator, emitted, type);
 	}
 
 	static mlir::Value boolean(Generator& generator, bool truth) {
@@ -1370,7 +1409,7 @@ namespace hemera {
 				}
 				current = location(offset_address(generator, current.address, offset), member_type);
 			}
-			return convert(generator, value_of(generator, current), current.type, type);
+			return convert_emitted(generator, current, type);
 		}
 		if (ast::NodeType::IDENTIFIER == kind && node->children.empty()) {
 			// A constant from the function's package
@@ -1404,7 +1443,7 @@ namespace hemera {
 
 	static mlir::Value argument_as(Generator& generator, const CallArgument& argument, TypeInfo* type) {
 		if (argument.has_value) {
-			return convert(generator, value_of(generator, argument.given), argument.given.type, type);
+			return convert_emitted(generator, argument.given, type);
 		}
 		return emit_as(generator, argument.node, type);
 	}
@@ -1744,6 +1783,20 @@ namespace hemera {
 		if (name == "mem_zero") {
 			LLVM::MemsetOp::create(b, l, arguments[0], constant_int(generator, integer_type(generator, 1), 0), arguments[1], false);
 			return result;
+		}
+		// A call to the stack walker, which lower_to_llvm defines (define_stack_walker)
+		if (name == "capture_stack_trace") {
+			mlir::Type usize = usize_type(generator);
+			LLVM::LLVMFuncOp walker = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(STACK_WALKER_SYMBOL);
+			if (!walker) {
+				mlir::OpBuilder::InsertionGuard guard(b);
+				b.setInsertionPointToEnd(generator.module.getBody());
+				walker = LLVM::LLVMFuncOp::create(b, l, STACK_WALKER_SYMBOL,
+					LLVM::LLVMFunctionType::get(usize, { pointer_type(generator), usize, usize }));
+			}
+			auto call = LLVM::CallOp::create(b, l, walker, mlir::ValueRange{ extract(generator, arguments[0], 1),
+				extract(generator, arguments[0], 0), arguments[1] });
+			return value(call.getResult(), result_type);
 		}
 		// The carrier register, which nothing else uses (docs/calling_convention.md, Carrier Register)
 		if (name == "carrier") {
@@ -2441,19 +2494,82 @@ namespace hemera {
 	}
 
 	// Type.[values]: a static array of them.
+	/*
+	 * Integer elements that are all constants as one dense constant, or null if they aren't. The
+	 * elements' own constants are erased either way, since nothing uses them: a long table, like a
+	 * font, would otherwise be one insertvalue per element for LLVM to fold.
+	 */
+	static mlir::Value dense_integer_array(Generator& generator, mlir::Type array_type, mlir::Type element_type,
+		const std::vector<mlir::Value>& elements) {
+
+		auto integer = mlir::dyn_cast<mlir::IntegerType>(element_type);
+		std::vector<llvm::APInt> numbers;
+		bool dense = integer != nullptr;
+		for (const mlir::Value& element : elements) {
+			auto constant = dense ? element.getDefiningOp<LLVM::ConstantOp>() : LLVM::ConstantOp();
+			auto attribute = constant ? mlir::dyn_cast<mlir::IntegerAttr>(constant.getValue()) : mlir::IntegerAttr();
+			if (!attribute || attribute.getType() != element_type) {
+				dense = false;
+				break;
+			}
+			numbers.push_back(attribute.getValue());
+		}
+		if (!dense) {
+			return mlir::Value();
+		}
+		auto tensor = mlir::RankedTensorType::get({ static_cast<int64_t>(numbers.size()) }, integer);
+		mlir::Value result = LLVM::ConstantOp::create(generator.builder, generator.loc, array_type,
+			mlir::DenseElementsAttr::get(tensor, numbers));
+		for (const mlir::Value& element : elements) {
+			if (element.use_empty()) {
+				element.getDefiningOp()->erase();
+			}
+		}
+		return result;
+	}
+
 	static Emitted emit_array_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
 		auto array = static_cast<TypeInfoArray const*>(base(type));
-		mlir::Value result = zero_of(generator, llvm_type(generator, type));
-		int64_t index = 0;
+		std::vector<mlir::Value> elements;
 		for (ast::Node* child : node->children) {
 			if (ast::NodeType::LIST != child->node_type) {
 				continue;
 			}
 			for (ast::Node* element : child->children) {
-				result = insert(generator, result, emit_as(generator, element, array->element_type), { index++ });
+				elements.push_back(emit_as(generator, element, array->element_type));
 			}
 		}
+		mlir::Type array_type = llvm_type(generator, type);
+		if (!elements.empty() && ArrayType::STATIC == array->array_type
+			&& static_cast<size_t>(array->count) == elements.size()) {
+			mlir::Value dense = dense_integer_array(generator, array_type, llvm_type(generator, array->element_type), elements);
+			if (dense) {
+				return value(dense, type);
+			}
+		}
+		mlir::Value result = zero_of(generator, array_type);
+		for (size_t i = 0; i < elements.size(); ++i) {
+			result = insert(generator, result, elements[i], { static_cast<int64_t>(i) });
+		}
 		return value(result, type);
+	}
+
+	/*
+	 * #file_data(path): the file's bytes, as one dense constant. The checker made its type from the
+	 * file's size; if the file changed size since, it's reported rather than cut short or padded.
+	 */
+	static mlir::Value emit_file_data(Generator& generator, ast::Node* node, TypeInfo* type) {
+		const std::filesystem::path path = file_data_path(current_file(generator), node);
+		std::ifstream file(path, std::ios::binary);
+		std::vector<char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		auto array = static_cast<TypeInfoArray const*>(base(type));
+		if (!file || bytes.size() != array->count) {
+			unsupported(generator, node, std::format("{} changed while it was compiled", path.string()));
+			return zero_of(generator, llvm_type(generator, type));
+		}
+		auto tensor = mlir::RankedTensorType::get({ static_cast<int64_t>(bytes.size()) }, generator.builder.getI8Type());
+		auto data = mlir::DenseElementsAttr::getFromRawBuffer(tensor, llvm::ArrayRef<char>(bytes.data(), bytes.size()));
+		return LLVM::ConstantOp::create(generator.builder, generator.loc, llvm_type(generator, type), data);
 	}
 
 	// .Name or .Name(values): an enum's member, or a union's variant.
@@ -2554,6 +2670,9 @@ namespace hemera {
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#caller_location")) {
 			return value(caller_location(generator, result_type, node), result_type);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#file_data")) {
+			return value(emit_file_data(generator, node, result_type), result_type);
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
 			return value(boolean(generator, false), BUILTIN_bool);
@@ -2660,7 +2779,7 @@ namespace hemera {
 				LLVM::UnreachableOp::create(generator.builder, generator.loc);
 				return true;
 			}
-			store(generator, convert(generator, value_of(generator, result), result.type, type), slot);
+			store(generator, convert_emitted(generator, result, type), slot);
 			return false;
 		}, index + 1 == arms.size() ? std::function<bool()>() : [&]() {
 			emit_arms(generator, arms, index + 1, subject, address, slot, type);
@@ -2763,8 +2882,8 @@ namespace hemera {
 			if (ValueKind::VARIANT == emitted.kind) {
 				emitted = value(make_variant(generator, emitted.type, emitted.variant, {}, {}), emitted.type);
 			}
-			else if (emitted.address) {
-				// Read before anything is assigned, for a, b = b, a
+			else if (emitted.address && !is_array_to_view(emitted.type, hint)) {
+				// Read before anything is assigned, for a, b = b, a. A view of an array refers to it anyway
 				emitted = value(value_of(generator, emitted), emitted.type);
 			}
 			values.push_back(emitted);
@@ -2809,7 +2928,7 @@ namespace hemera {
 			}
 			mlir::Value v;
 			if (TokenType::INVALID == op) {
-				v = convert(generator, value_of(generator, given), given.type, target.type);
+				v = convert_emitted(generator, given, target.type);
 			}
 			else if (is_shift(op)) {
 				mlir::Value current = value_of(generator, target);
@@ -2818,7 +2937,7 @@ namespace hemera {
 			}
 			else {
 				mlir::Value current = value_of(generator, target);
-				mlir::Value operand = convert(generator, value_of(generator, given), given.type, target.type);
+				mlir::Value operand = convert_emitted(generator, given, target.type);
 				v = TokenType::OPERATOR_AND == op ? static_cast<mlir::Value>(LLVM::AndOp::create(generator.builder, generator.loc, current, operand))
 					: TokenType::OPERATOR_OR == op ? static_cast<mlir::Value>(LLVM::OrOp::create(generator.builder, generator.loc, current, operand))
 					: arithmetic(generator, op, current, operand, target.type, node);
@@ -2872,11 +2991,11 @@ namespace hemera {
 		for (size_t i = 0; i < names.size(); ++i) {
 			mlir::Value slot = make_slot(generator, types[i]);
 			if (values.empty()) {
-				store(generator, zero_of(generator, llvm_type(generator, types[i])), slot);
+				store_zero(generator, types[i], slot);
 			}
 			else {
 				const Emitted& given = values.size() == 1 ? values[0] : values[std::min(i, values.size() - 1)];
-				store(generator, convert(generator, value_of(generator, given), given.type, types[i]), slot);
+				store(generator, convert_emitted(generator, given, types[i]), slot);
 			}
 			generator.state->slots[names[i]] = slot;
 		}
@@ -3213,7 +3332,7 @@ namespace hemera {
 					LLVM::UnreachableOp::create(generator.builder, generator.loc);
 					return true;
 				}
-				store(generator, convert(generator, value_of(generator, result), result.type, result_type), result_slot);
+				store(generator, convert_emitted(generator, result, result_type), result_slot);
 				return false;
 			}
 			if (emit_statement(generator, statement)) {
@@ -3263,7 +3382,7 @@ namespace hemera {
 		for (size_t i = 0; i < state.checked->outputs.size() && i < type->output.size(); ++i) {
 			if (state.checked->outputs[i] != nullptr) {
 				mlir::Value slot = make_slot(generator, type->output[i].type);
-				store(generator, zero_of(generator, llvm_type(generator, type->output[i].type)), slot);
+				store_zero(generator, type->output[i].type, slot);
 				state.slots[state.checked->outputs[i]] = slot;
 			}
 		}
@@ -3333,7 +3452,7 @@ namespace hemera {
 		mlir::Value one = constant_int(generator, usize_type(generator), 1);
 		mlir::Value context = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
 			llvm_type(generator, context_type), one, static_cast<unsigned>(context_type->alignment));
-		store(generator, zero_of(generator, llvm_type(generator, context_type)), context);
+		store_zero(generator, context_type, context);
 		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
 		mlir::Value code = constant_int(generator, i32, 0);
 		if (main_type->output.size() == 1 && is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER)) {
@@ -3567,6 +3686,105 @@ namespace hemera {
 		}
 	}
 
+	/*
+	 * capture_stack_trace's walk (docs/calling_convention.md, Walking the Stack), if a program uses
+	 * it: (addresses, count, skip) -> how many were written. It starts at its caller's frame, so the
+	 * first address is in the caller of the function that called capture_stack_trace, and follows the
+	 * saved frame pointers. A frame whose saved frame pointer is null is the entry function's, which
+	 * end_stack_at_entry made the end of the chain, so its return address isn't recorded.
+	 */
+	//TODO(claude) leaving out morestack's and .grow's frames, and following fibers' resume loops
+	static void define_stack_walker(llvm::Module& module) {
+		llvm::Function* walker = module.getFunction(STACK_WALKER_SYMBOL);
+		if (walker == nullptr || !walker->isDeclaration()) {
+			return;
+		}
+		llvm::LLVMContext& context = module.getContext();
+		llvm::Type* pointer = llvm::PointerType::get(context, 0);
+		llvm::Type* size = llvm::Type::getInt64Ty(context);
+		walker->setLinkage(llvm::GlobalValue::InternalLinkage);
+		walker->addFnAttr(llvm::Attribute::NoInline);
+		walker->addFnAttr("frame-pointer", "all");
+		llvm::Value* addresses = walker->getArg(0);
+		llvm::Value* count = walker->getArg(1);
+		llvm::Value* skip = walker->getArg(2);
+		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
+		llvm::BasicBlock* entry = builder.GetInsertBlock();
+		llvm::BasicBlock* loop = llvm::BasicBlock::Create(context, "loop", walker);
+		llvm::BasicBlock* frame = llvm::BasicBlock::Create(context, "frame", walker);
+		llvm::BasicBlock* record = llvm::BasicBlock::Create(context, "record", walker);
+		llvm::BasicBlock* next = llvm::BasicBlock::Create(context, "next", walker);
+		llvm::BasicBlock* done = llvm::BasicBlock::Create(context, "done", walker);
+		llvm::Value* own = builder.CreateIntrinsic(llvm::Intrinsic::frameaddress, { pointer }, { builder.getInt32(0) });
+		llvm::Value* first = builder.CreateLoad(pointer, own);
+		builder.CreateBr(loop);
+
+		// Stop at a null or misaligned frame pointer, or once addresses is full
+		builder.SetInsertPoint(loop);
+		llvm::PHINode* current = builder.CreatePHI(pointer, 2);
+		llvm::PHINode* written = builder.CreatePHI(size, 2);
+		llvm::PHINode* skipped = builder.CreatePHI(size, 2);
+		current->addIncoming(first, entry);
+		written->addIncoming(llvm::ConstantInt::get(size, 0), entry);
+		skipped->addIncoming(llvm::ConstantInt::get(size, 0), entry);
+		llvm::Value* misaligned = builder.CreateICmpNE(builder.CreateAnd(builder.CreatePtrToInt(current, size), 7),
+			llvm::ConstantInt::get(size, 0));
+		llvm::Value* stop = builder.CreateOr(builder.CreateOr(builder.CreateIsNull(current), misaligned),
+			builder.CreateICmpUGE(written, count));
+		builder.CreateCondBr(stop, done, frame);
+
+		// The caller's frame pointer, then this frame's return address unless it's the entry function's
+		builder.SetInsertPoint(frame);
+		llvm::Value* caller = builder.CreateLoad(pointer, current);
+		llvm::Value* return_address = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), current, 8));
+		builder.CreateCondBr(builder.CreateIsNull(caller), done, record);
+
+		// Skipped frames count towards skip; the others go in addresses
+		builder.SetInsertPoint(record);
+		llvm::Value* skipping = builder.CreateICmpULT(skipped, skip);
+		llvm::Value* one_more_skipped = builder.CreateAdd(skipped, llvm::ConstantInt::get(size, 1));
+		llvm::BasicBlock* store = llvm::BasicBlock::Create(context, "store", walker, next);
+		builder.CreateCondBr(skipping, next, store);
+		builder.SetInsertPoint(store);
+		builder.CreateStore(return_address, builder.CreateGEP(pointer, addresses, written));
+		llvm::Value* one_more_written = builder.CreateAdd(written, llvm::ConstantInt::get(size, 1));
+		builder.CreateBr(next);
+
+		builder.SetInsertPoint(next);
+		llvm::PHINode* now_written = builder.CreatePHI(size, 2);
+		now_written->addIncoming(written, record);
+		now_written->addIncoming(one_more_written, store);
+		llvm::PHINode* now_skipped = builder.CreatePHI(size, 2);
+		now_skipped->addIncoming(one_more_skipped, record);
+		now_skipped->addIncoming(skipped, store);
+		current->addIncoming(caller, next);
+		written->addIncoming(now_written, next);
+		skipped->addIncoming(now_skipped, next);
+		builder.CreateBr(loop);
+
+		builder.SetInsertPoint(done);
+		llvm::PHINode* result = builder.CreatePHI(size, 2);
+		result->addIncoming(written, loop);
+		result->addIncoming(written, frame);
+		builder.CreateRet(result);
+	}
+
+	/*
+	 * Make the program's entry function the end of the frame pointer chain, by clearing the frame
+	 * pointer it saved: whatever called it (a bootloader, the OS) isn't Hemera code, and its frames
+	 * may not follow the convention. Entry functions don't return, so nothing restores it.
+	 */
+	static void end_stack_at_entry(llvm::Module& module, const Options& options) {
+		llvm::Function* entry = module.getFunction(options.startup_code ? std::string(HOSTED_ENTRY_SYMBOL) : options.entry);
+		if (entry == nullptr || entry->isDeclaration()) {
+			return;
+		}
+		llvm::IRBuilder<> builder(&*entry->getEntryBlock().getFirstInsertionPt());
+		llvm::Type* pointer = llvm::PointerType::get(module.getContext(), 0);
+		llvm::Value* frame = builder.CreateIntrinsic(llvm::Intrinsic::frameaddress, { pointer }, { builder.getInt32(0) });
+		builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(module.getContext(), 0)), frame);
+	}
+
 	std::unique_ptr<llvm::Module> lower_to_llvm(mlir::ModuleOp module, llvm::LLVMContext& context, const Options& options) {
 		mlir::PassManager passes(module.getContext(), mlir::ModuleOp::getOperationName());
 		passes.addPass(mlir::hmir::createHemeraDefer());
@@ -3584,12 +3802,16 @@ namespace hemera {
 			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "translating to LLVM IR failed");
 			return result;
 		}
-		if (!options.red_zone) {
-			for (llvm::Function& function : *result) {
+		for (llvm::Function& function : *result) {
+			if (!options.red_zone) {
 				function.addFnAttr(llvm::Attribute::NoRedZone);
 			}
+			// Every frame keeps its frame pointer, so capture_stack_trace can walk the chain
+			function.addFnAttr("frame-pointer", "all");
 		}
 		define_memory_functions(*result);
+		define_stack_walker(*result);
+		end_stack_at_entry(*result, options);
 		return result;
 	}
 }

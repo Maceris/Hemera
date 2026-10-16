@@ -31,4 +31,6 @@ namespace hemera {
 	/// The symbol a hosted program starts at, which the linker is told about.
 	/// </summary>
 	constexpr const char* HOSTED_ENTRY_SYMBOL = "hemera_entry";
+	// What intrinsics.capture_stack_trace calls, defined by lower_to_llvm
+	constexpr const char* STACK_WALKER_SYMBOL = "hemera_capture_stack_trace";
 }

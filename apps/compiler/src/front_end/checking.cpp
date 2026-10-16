@@ -2324,6 +2324,22 @@ namespace hemera {
 				result = typed(BUILTIN_bool);
 				return Progress::DONE;
 			}
+			if (is_text(node->value.value, "#file_data")) {
+				// The file's bytes, as many as it has when it's compiled
+				const std::filesystem::path path = file_data_path(checker.walk.file_path, node);
+				if (path.empty()) {
+					result = error_at(checker, ErrorCode::E4014, node, "#file_data needs a string, the file's path");
+					return Progress::DONE;
+				}
+				std::error_code error;
+				const uintmax_t size = std::filesystem::file_size(path, error);
+				if (error) {
+					result = error_at(checker, ErrorCode::E4028, node, std::format("{}: {}", path.string(), error.message()));
+					return Progress::DONE;
+				}
+				result = typed(array_of(checker.walk, BUILTIN_u8, ArrayType::STATIC, static_cast<size_t>(size)));
+				return Progress::DONE;
+			}
 			if (is_text(node->value.value, "#run") && !node->children.empty()) {
 				//TODO(ches) run it; for now it has the type of what it runs
 				return check_expression(checker, node->children[0], expected, result);
@@ -2680,6 +2696,23 @@ namespace hemera {
 	}
 
 	// if, else if and else: whether control can continue after is whether any branch can.
+	std::filesystem::path file_data_path(std::string_view including_file, const ast::Node* directive) {
+		const ast::Node* argument = nullptr;
+		for (const ast::Node* child : directive->children) {
+			if (ast::NodeType::PAREN_GROUP != child->node_type) {
+				argument = child;
+			}
+		}
+		if (argument == nullptr || ast::NodeType::LITERAL != argument->node_type
+			|| TokenType::LITERAL_STRING != argument->value.type) {
+			return {};
+		}
+		// The lexer keeps a string literal's quotes
+		std::string_view text(*argument->value.value);
+		const std::filesystem::path relative(std::string(text.substr(1, text.size() - 2)));
+		return (std::filesystem::path(including_file).parent_path() / relative).lexically_normal();
+	}
+
 	static Progress check_if(Checker& checker, ast::Node* node, bool& continues) {
 		Progress progress = check_condition(checker, node->children[0], "if");
 		if (progress != Progress::DONE) {

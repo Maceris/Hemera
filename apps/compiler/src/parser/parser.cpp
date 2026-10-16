@@ -2171,6 +2171,10 @@ namespace hemera::parser {
 		if (current == TokenType::SYM_DOT) {
 			return enum_shorthand(state);
 		}
+		// #file_data("path") takes its argument in parentheses, like a declaration's directives
+		if (current == TokenType::DIRECTIVE && current_token(state).value->compare("#file_data") == 0) {
+			return directive_with_arguments(state, nullptr);
+		}
 		if (current == TokenType::DIRECTIVE) {
 			ast::Node& result = next_as_node(state, ast::NodeType::DIRECTIVE);
 			// Only #run takes an expression, others like #caller_location stand alone

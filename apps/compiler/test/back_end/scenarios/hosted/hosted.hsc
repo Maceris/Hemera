@@ -4,6 +4,8 @@
  */
 package hosted
 
+import intrinsics from "base"
+
 Point :: struct {
     x : int,
     y : int,
@@ -150,6 +152,26 @@ forward :: fn(values: int...) -> int {
     return count_with(values, 10)
 }
 
+// A file's bytes, from next to this one
+WORD :: #file_data("word.txt")
+
+// A table of integer constants, generated as one constant
+PRIMES : u8[5] : u8.[2, 3, 5, 7, 11]
+
+sum_bytes :: fn(values: u8[]) -> int {
+    total := 0
+    for value in values {
+        total += cast[int](value)
+    }
+    return total
+}
+
+// How many frames are above this one: at least main's caller
+frames_above :: fn() -> usize {
+    addresses : rawptr[8]
+    return intrinsics.capture_stack_trace(addresses)
+}
+
 move :: fn(p: ptr[mut Point], by: int) {
     p.x += by
     p.y -= by
@@ -275,6 +297,23 @@ main :: fn() -> int {
     _ = double(3)
     if forward(1, 2, 3) != 13 {
         return 24
+    }
+    // A view of an array refers to it, so changes through the view reach it
+    numbers_to_change : int[3]
+    view : int[] = numbers_to_change
+    view[1] = 5
+    if numbers_to_change[1] != 5 {
+        return 25
+    }
+    if sum_bytes(PRIMES) != 28 {
+        return 26
+    }
+    if frames_above() == 0 {
+        return 27
+    }
+    word : u8[] = WORD
+    if word.count != 6 || word[0] != 0x48 || WORD[5] != 0x41 {
+        return 28
     }
     return 42
 }
