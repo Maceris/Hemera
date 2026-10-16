@@ -42,6 +42,18 @@ File Import --> Parse --> Type Check <--\
         Executable Generation
 ```
 
+## Compile-Time Execution
+
+Compile-time code, like `#run` and a constant whose value calls a function, is compiled and run through a JIT: the
+compiler generates the code an evaluation reaches as MLIR, lowers it the same way as the program, and runs it on the
+machine doing the compiling. Its result becomes a constant in the program, so it can only hold what a constant can:
+numbers, booleans, enums, characters, strings, and structs and arrays of them. Pointers other than null can't leave
+compile time, since what they point to doesn't exist in the program.
+
+Compile-time code is the program's own code, with the `#if` choices made for the target, compiled for the machine
+doing the compiling. Code that only computes runs the same either way; code that uses the operating system only works
+at compile time when the target's operating system is the one compiling it, as it is for a build package.
+
 ## Compile-Time Permissions
 
 Compile-time code can't run other programs or write outside the output folder unless the command line grants it

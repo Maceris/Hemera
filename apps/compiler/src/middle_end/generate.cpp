@@ -31,6 +31,7 @@
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "middle_end/jit.h"
 
 namespace hemera {
 
@@ -94,6 +95,15 @@ namespace hemera {
 		bool continues;
 	};
 
+	/*
+	 * A value compile-time code gave, in the program's layout: its bytes, and copies of what its strings and
+	 * views point to, by the offset of the pointer in bytes.
+	 */
+	struct CompileTimeValue {
+		std::vector<uint8_t> bytes;
+		std::map<size_t, CompileTimeValue> pointed;
+	};
+
 	struct FunctionState {
 		Declaration* declaration = nullptr;
 		CheckedBody* checked = nullptr;
@@ -152,6 +162,15 @@ namespace hemera {
 		/// The module's assembly: entry functions' code, their stubs, and return_to_user.
 		/// </summary>
 		std::vector<std::string> module_assembly;
+		/// <summary>
+		/// Generating compile-time code (docs/compilation.md, Compile-Time Execution), for #is_compile_time.
+		/// </summary>
+		bool compile_time = false;
+		/// <summary>
+		/// What compile-time code gave, by the constant's declaration or the #run's node, so each runs once.
+		/// </summary>
+		std::map<const void*, CompileTimeValue> compile_time_values;
+		size_t compile_time_globals = 0;
 		/// <summary>
 		/// How many arrays descriptors have used, like an enum's members, for their globals' names.
 		/// </summary>
@@ -1324,10 +1343,358 @@ namespace hemera {
 	// Names
 
 	// A constant's value, generated where it's used from its value's expression, as type.
+	// ---------------------------------------------------------------------------------------------
+	// Compile-time execution (docs/compilation.md, Compile-Time Execution): what an evaluation reaches is
+	// generated into a module of its own, compiled for this machine and run, and its result becomes a constant
+
+	static void generate_function(Generator& generator, Declaration* declaration);
+	static void finish_module(Generator& generator);
+	static mlir::Value constant_global(Generator& generator, mlir::Type type, size_t alignment, const std::string& name,
+		const std::function<mlir::Value()>& build);
+	static mlir::Value dense_integer_array(Generator& generator, mlir::Type array_type, mlir::Type element_type,
+		const std::vector<mlir::Value>& elements);
+	static mlir::Value assembly(Generator& generator, mlir::Type result, const std::vector<mlir::Value>& operands,
+		std::string_view text, std::string_view constraints);
+	static mlir::Value convert(Generator& generator, mlir::Value v, TypeInfo const* from, TypeInfo const* to);
+
+	// The C function compile-time code is entered through, with a pointer to where its result goes.
+	constexpr std::string_view COMPILE_TIME_ENTRY = "hemera.compile_time";
+
+	// The options compile-time code is generated with: the target's choices, compiled for this machine.
+	static void set_host_options(Options& host, const Options& target) {
+#if !defined(_WIN32)
+		host.os = OSType::Linux;
+		host.environment = EnvironmentType::GNU;
+		host.object_format = ObjectFormatType::ELF;
+#endif
+		host.input = target.input;
+		host.output_name = "compile_time";
+		host.entry = "";
+		host.startup_code = false;
+	}
+
+	// Whether a constant's value calls a function, so it's worked out by running it.
+	static bool needs_execution(Declaration* declaration) {
+		if (declaration->checked == nullptr) {
+			return false;
+		}
+		for (const auto& [node, found] : declaration->checked->nodes) {
+			if (found.called != nullptr || (ast::NodeType::DIRECTIVE == node->node_type && is_text(node->value.value, "#run"))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static uint64_t read_unsigned(const uint8_t* bytes, size_t size) {
+		uint64_t value = 0;
+		std::memcpy(&value, bytes, std::min<size_t>(size, sizeof(value)));
+		return value;
+	}
+
+	/*
+	 * Copy what a value of type at data points to, into value.pointed, at the offset in value.bytes of each
+	 * pointer, so it outlives the compiled code. Strings and views are copied; any other pointer must be null.
+	 */
+	static bool capture_pointed(Generator& generator, TypeInfo const* type, const uint8_t* data, size_t offset,
+		CompileTimeValue& value, const ast::Node* where) {
+
+		type = base(type);
+		const TypeInfoVariant variant = type->variant;
+		const uint8_t* at = data + offset;
+		auto refuse = [&](std::string_view what) {
+			unsupported(generator, where, std::format("{} can't be the result of compile-time code, since what it points to "
+				"doesn't exist in the program", what));
+			return false;
+		};
+		if (TypeInfoVariant::INTEGER == variant || TypeInfoVariant::ENUM == variant || TypeInfoVariant::CHAR == variant
+			|| TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::FLOAT == variant || TypeInfoVariant::COMPLEX == variant
+			|| TypeInfoVariant::QUATERNION == variant || TypeInfoVariant::VOID == variant) {
+			return true;
+		}
+		if (TypeInfoVariant::STRUCT == variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(type);
+			if (structure->is_union) {
+				return !type->contains_pointers || refuse("a #union struct holding a pointer");
+			}
+			for (const StructMember& member : structure->members) {
+				if (!capture_pointed(generator, member.member_type, data, offset + member.offset, value, where)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		if (TypeInfoVariant::ARRAY == variant) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			if (ArrayType::STATIC == array->array_type) {
+				for (size_t i = 0; i < array->count; ++i) {
+					if (!capture_pointed(generator, array->element_type, data, offset + i * array->element_type->size, value, where)) {
+						return false;
+					}
+				}
+				return true;
+			}
+			const uint64_t count = read_unsigned(at, 8);
+			const uint8_t* elements = reinterpret_cast<const uint8_t*>(read_unsigned(at + 8, 8));
+			if (ArrayType::DYNAMIC == array->array_type) {
+				return elements == nullptr || refuse("a dynamic array");
+			}
+			if (elements == nullptr || count == 0) {
+				return true;
+			}
+			CompileTimeValue& copied = value.pointed[offset + 8];
+			copied.bytes.assign(elements, elements + count * array->element_type->size);
+			for (size_t i = 0; i < count; ++i) {
+				if (!capture_pointed(generator, array->element_type, copied.bytes.data(), i * array->element_type->size, copied, where)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		if (TypeInfoVariant::STRING == variant) {
+			const bool raw = static_cast<TypeInfoString const*>(type)->is_raw;
+			const size_t pointer_offset = raw ? 0 : 8;
+			const char* text = reinterpret_cast<const char*>(read_unsigned(at + pointer_offset, 8));
+			if (text == nullptr) {
+				return true;
+			}
+			const size_t count = raw ? std::strlen(text) : read_unsigned(at, 8);
+			value.pointed[offset + pointer_offset].bytes.assign(text, text + count);
+			return true;
+		}
+		if (TypeInfoVariant::UNION == variant) {
+			auto union_type = static_cast<TypeInfoUnion const*>(type);
+			if (union_type->null_is_none) {
+				return read_unsigned(at, 8) == 0 || refuse("a pointer");
+			}
+			return !type->contains_pointers || refuse("a union holding pointers");
+		}
+		// Pointers, functions, types and anys: only null can leave compile time
+		return read_unsigned(at, 8) == 0 || refuse(std::format("a value of type {}", to_string(type)));
+	}
+
+	// A constant array of i8, of bytes.
+	static mlir::Value constant_bytes(Generator& generator, const uint8_t* bytes, size_t count) {
+		std::vector<mlir::Value> elements;
+		mlir::Type byte = integer_type(generator, 1);
+		for (size_t i = 0; i < count; ++i) {
+			elements.push_back(constant_int(generator, byte, static_cast<int64_t>(static_cast<int8_t>(bytes[i]))));
+		}
+		mlir::Type array = bytes_type(generator, count);
+		mlir::Value dense = dense_integer_array(generator, array, byte, elements);
+		return dense ? dense : zero_of(generator, array);
+	}
+
+	static mlir::Value constant_number(Generator& generator, mlir::Type type, const uint8_t* bytes, size_t size) {
+		llvm::APInt bits(static_cast<unsigned>(size * 8), 0);
+		for (size_t i = 0; i < size; ++i) {
+			bits.insertBits(llvm::APInt(8, bytes[i]), static_cast<unsigned>(i * 8));
+		}
+		if (auto floating = mlir::dyn_cast<mlir::FloatType>(type)) {
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, type,
+				generator.builder.getFloatAttr(type, llvm::APFloat(floating.getFloatSemantics(), bits)));
+		}
+		const unsigned width = type.getIntOrFloatBitWidth();
+		return LLVM::ConstantOp::create(generator.builder, generator.loc, type,
+			generator.builder.getIntegerAttr(type, width == 1 ? llvm::APInt(1, bits.isZero() ? 0 : 1) : bits.zextOrTrunc(width)));
+	}
+
+	// The value of type at offset in value, as a constant in generator's module.
+	static mlir::Value constant_from(Generator& generator, TypeInfo const* type, const CompileTimeValue& value, size_t offset) {
+		mlir::Type llvm = llvm_type(generator, type);
+		type = base(type);
+		const TypeInfoVariant variant = type->variant;
+		const uint8_t* at = value.bytes.data() + offset;
+		if (TypeInfoVariant::INTEGER == variant || TypeInfoVariant::ENUM == variant || TypeInfoVariant::CHAR == variant
+			|| TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::FLOAT == variant) {
+			return constant_number(generator, llvm, at, type->size);
+		}
+		if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
+			auto composite = static_cast<TypeInfoComposite const*>(type);
+			mlir::Value result = zero_of(generator, llvm);
+			mlir::Type part = integer_type(generator, composite->part_size);
+			for (size_t i = 0; i < type->size / composite->part_size; ++i) {
+				result = insert(generator, result, constant_number(generator, part, at + i * composite->part_size, composite->part_size),
+					{ static_cast<int64_t>(i) });
+			}
+			return result;
+		}
+		if (TypeInfoVariant::STRUCT == variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(type);
+			if (structure->is_union) {
+				return insert(generator, zero_of(generator, llvm), constant_bytes(generator, at, type->size), { 0 });
+			}
+			mlir::Value result = zero_of(generator, llvm);
+			const std::vector<int64_t> elements = generator.member_elements[structure];
+			for (size_t i = 0; i < structure->members.size(); ++i) {
+				const StructMember& member = structure->members[i];
+				result = insert(generator, result, constant_from(generator, member.member_type, value, offset + member.offset), { elements[i] });
+			}
+			return result;
+		}
+		if (TypeInfoVariant::ARRAY == variant) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			if (ArrayType::STATIC == array->array_type) {
+				mlir::Value result = zero_of(generator, llvm);
+				for (size_t i = 0; i < array->count; ++i) {
+					result = insert(generator, result, constant_from(generator, array->element_type, value, offset + i * array->element_type->size),
+						{ static_cast<int64_t>(i) });
+				}
+				return result;
+			}
+			auto pointed = value.pointed.find(offset + 8);
+			if (ArrayType::DYNAMIC == array->array_type || pointed == value.pointed.end()) {
+				return zero_of(generator, llvm);
+			}
+			const CompileTimeValue& elements = pointed->second;
+			const size_t count = elements.bytes.size() / std::max<size_t>(array->element_type->size, 1);
+			mlir::Type array_type = LLVM::LLVMArrayType::get(llvm_type(generator, array->element_type), count);
+			mlir::Value data = constant_global(generator, array_type, std::max<size_t>(array->element_type->alignment, 1),
+				std::format("compile_time.{}", generator.compile_time_globals++), [&]() {
+					mlir::Value result = zero_of(generator, array_type);
+					for (size_t i = 0; i < count; ++i) {
+						result = insert(generator, result, constant_from(generator, array->element_type, elements, i * array->element_type->size),
+							{ static_cast<int64_t>(i) });
+					}
+					return result;
+				});
+			return make_view(generator, constant_int(generator, usize_type(generator), static_cast<int64_t>(count)), data);
+		}
+		if (TypeInfoVariant::STRING == variant) {
+			const bool raw = static_cast<TypeInfoString const*>(type)->is_raw;
+			const size_t pointer_offset = raw ? 0 : 8;
+			auto pointed = value.pointed.find(offset + pointer_offset);
+			mlir::Value data = pointed == value.pointed.end() ? zero_of(generator, pointer_type(generator))
+				: string_bytes(generator, std::string(pointed->second.bytes.begin(), pointed->second.bytes.end()));
+			if (raw) {
+				return data;
+			}
+			return make_view(generator, constant_number(generator, usize_type(generator), at, 8), data);
+		}
+		if (TypeInfoVariant::UNION == variant && !static_cast<TypeInfoUnion const*>(type)->null_is_none) {
+			auto union_type = static_cast<TypeInfoUnion const*>(type);
+			const size_t tag = union_type->tag_type->size;
+			mlir::Value result = insert(generator, zero_of(generator, llvm), constant_number(generator, integer_type(generator, tag), at, tag), { 0 });
+			if (type->size > tag) {
+				result = insert(generator, result, constant_bytes(generator, at + tag, type->size - tag), { 1 });
+			}
+			return result;
+		}
+		// Pointers, functions, types, anys and optional pointers, which capture_pointed made sure are null
+		return zero_of(generator, llvm);
+	}
+
+	/*
+	 * Run node at compile time, an expression checked in checked (the body or constant it's in), and capture its
+	 * value as type, or just run it when type is null. Reports why not and returns false if it can't be run.
+	 */
+	static bool run_at_compile_time(Generator& generator, ast::Node* node, TypeInfo* type, CheckedBody* checked,
+		Declaration* declaration, CompileTimeValue& result) {
+
+		Options options;
+		set_host_options(options, *generator.options);
+		mlir::ModuleOp module = mlir::ModuleOp::create(generator.loc, "compile_time");
+		Generator compiled(generator.program, module);
+		compiled.options = &options;
+		compiled.input_package = generator.input_package;
+		compiled.compile_time = true;
+		{
+			mlir::OpBuilder::InsertionGuard guard(compiled.builder);
+			compiled.builder.setInsertionPointToEnd(module.getBody());
+			auto body = LLVM::LLVMFuncOp::create(compiled.builder, compiled.loc, COMPILE_TIME_ENTRY,
+				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(compiled.context), { pointer_type(compiled) }));
+			mlir::Block* entry = body.addEntryBlock(compiled.builder);
+			compiled.builder.setInsertionPointToEnd(entry);
+			FunctionState state;
+			state.declaration = declaration;
+			state.checked = checked;
+			state.entry = entry;
+			compiled.state = &state;
+			// A carrier block and the minimal context, as for code with nothing underneath it
+			Declaration* carrier_declaration = base_declaration_named(compiled, "runtime", "CarrierBlock");
+			Declaration* context_declaration = base_declaration_named(compiled, "runtime", "Context");
+			Declaration* minimal = base_declaration_named(compiled, "runtime", "MINIMAL_CONTEXT");
+			if (carrier_declaration == nullptr || context_declaration == nullptr || minimal == nullptr) {
+				unsupported(generator, node, "base/runtime isn't available for compile-time code");
+				module.erase();
+				return false;
+			}
+			mlir::Value carrier = make_slot(compiled, carrier_declaration->type_value);
+			store_zero(compiled, carrier_declaration->type_value, carrier);
+			assembly(compiled, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+			mlir::Value context = make_slot(compiled, context_declaration->type_value);
+			store(compiled, emit_constant_value(compiled, minimal, context_declaration->type_value, node), context);
+			state.context = context;
+			if (type != nullptr) {
+				store(compiled, emit_as(compiled, node, type), entry->getArgument(0));
+			}
+			else {
+				emit_expression(compiled, node, nullptr);
+			}
+			LLVM::ReturnOp::create(compiled.builder, compiled.loc, mlir::ValueRange{});
+			compiled.state = nullptr;
+		}
+		while (!compiled.pending.empty()) {
+			Declaration* next = compiled.pending.back();
+			compiled.pending.pop_back();
+			generate_function(compiled, next);
+		}
+		finish_module(compiled);
+		if (compiled.failed || mlir::failed(mlir::verify(module))) {
+			generator.failed = true;
+			module.erase();
+			return false;
+		}
+		auto llvm_context = std::make_unique<llvm::LLVMContext>();
+		std::unique_ptr<llvm::Module> lowered = lower_to_llvm(module, *llvm_context, options);
+		module.erase();
+		if (lowered == nullptr) {
+			generator.failed = true;
+			return false;
+		}
+		std::vector<uint64_t> buffer(type != nullptr ? (type->size + 7) / 8 + 1 : 1);
+		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(buffer.data());
+		bool captured = true;
+		std::string error;
+		const bool ran = run_on_host(std::move(lowered), std::move(llvm_context), std::string(COMPILE_TIME_ENTRY), buffer.data(),
+			[&]() {
+				if (type != nullptr) {
+					result.bytes.assign(bytes, bytes + type->size);
+					captured = capture_pointed(generator, type, result.bytes.data(), 0, result, node);
+				}
+			}, error);
+		if (!ran) {
+			unsupported(generator, node, std::format("compile-time code couldn't run: {}", error));
+			return false;
+		}
+		return captured;
+	}
+
+	/*
+	 * A constant whose value calls a function: run once, the first time it's used, and the same constant
+	 * after that.
+	 */
+	static mlir::Value executed_constant(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
+		auto iter = generator.compile_time_values.find(declaration);
+		if (iter == generator.compile_time_values.end()) {
+			CompileTimeValue result;
+			if (!run_at_compile_time(generator, definition_value(declaration->node), declaration->value_type,
+				declaration->checked.get(), declaration, result)) {
+				return zero_of(generator, llvm_type(generator, type));
+			}
+			iter = generator.compile_time_values.emplace(declaration, std::move(result)).first;
+		}
+		(void)where;
+		return convert(generator, constant_from(generator, declaration->value_type, iter->second, 0), declaration->value_type, type);
+	}
+
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
 		if (generator.inlining.contains(declaration)) {
 			unsupported(generator, where, std::format("{} refers to itself", text_of(declaration->name)));
 			return zero_of(generator, llvm_type(generator, type));
+		}
+		if (needs_execution(declaration)) {
+			return executed_constant(generator, declaration, type, where);
 		}
 		FunctionState constant_state;
 		constant_state.declaration = declaration;
@@ -3423,7 +3790,20 @@ namespace hemera {
 			return value(emit_file_data(generator, node, result_type), result_type);
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
-			return value(boolean(generator, false), BUILTIN_bool);
+			return value(boolean(generator, generator.compile_time), BUILTIN_bool);
+		}
+		// #run in an expression: a constant, run once
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#run") && !node->children.empty() && result_type != nullptr) {
+			auto iter = generator.compile_time_values.find(node);
+			if (iter == generator.compile_time_values.end()) {
+				CompileTimeValue ran;
+				if (!run_at_compile_time(generator, node->children[0], result_type, generator.state->checked,
+					generator.state->declaration, ran)) {
+					return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
+				}
+				iter = generator.compile_time_values.emplace(node, std::move(ran)).first;
+			}
+			return value(constant_from(generator, result_type, iter->second, 0), result_type);
 		}
 		unsupported(generator, node, std::format("{} can't be generated yet", ast::name_of(type)));
 		TypeInfo* placeholder = result_type != nullptr ? result_type : BUILTIN_int;
@@ -3776,8 +4156,9 @@ namespace hemera {
 			given.insert(given.end(), each.begin(), each.end());
 		}
 		std::vector<mlir::Value> values;
+		// A static array that's somewhere returns as a view of it, not of a copy on this stack
 		for (size_t i = 0; i < given.size() && i < expected.size(); ++i) {
-			values.push_back(convert(generator, value_of(generator, given[i]), given[i].type, expected[i]));
+			values.push_back(convert_emitted(generator, given[i], expected[i]));
 		}
 		emit_return(generator, values);
 	}
@@ -4042,8 +4423,13 @@ namespace hemera {
 			return false;
 		}
 		if (ast::NodeType::DIRECTIVE == type) {
-			if (is_text(statement->value.value, "#run")) {
-				unsupported(generator, statement, "#run can't be generated yet");
+			// #run as a statement runs when its function is generated
+			if (is_text(statement->value.value, "#run") && !statement->children.empty()
+				&& !generator.compile_time_values.contains(statement)) {
+				CompileTimeValue ran;
+				run_at_compile_time(generator, statement->children[0], nullptr, generator.state->checked,
+					generator.state->declaration, ran);
+				generator.compile_time_values.emplace(statement, std::move(ran));
 			}
 			return false;
 		}
@@ -4289,6 +4675,18 @@ namespace hemera {
 		LLVM::ReturnOp::create(generator.builder, generator.loc, list);
 	}
 
+	// The module's assembly, as the attribute translation turns into module-level assembly.
+	static void finish_module(Generator& generator) {
+		if (generator.module_assembly.empty()) {
+			return;
+		}
+		std::vector<mlir::Attribute> lines;
+		for (const std::string& text : generator.module_assembly) {
+			lines.push_back(generator.builder.getStringAttr(text));
+		}
+		generator.module->setAttr(LLVM::LLVMDialect::getModuleLevelAsmAttrName(), generator.builder.getArrayAttr(lines));
+	}
+
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {
 		module.getContext()->loadDialect<LLVM::LLVMDialect>();
 		module.getContext()->loadDialect<::hmir::HemeraDialect>();
@@ -4323,13 +4721,7 @@ namespace hemera {
 			generate_function(generator, next);
 		}
 		generate_used(generator);
-		if (!generator.module_assembly.empty()) {
-			std::vector<mlir::Attribute> lines;
-			for (const std::string& text : generator.module_assembly) {
-				lines.push_back(generator.builder.getStringAttr(text));
-			}
-			module->setAttr(LLVM::LLVMDialect::getModuleLevelAsmAttrName(), generator.builder.getArrayAttr(lines));
-		}
+		finish_module(generator);
 		if (generator.failed) {
 			return false;
 		}

@@ -78,8 +78,8 @@ TEST(Hosted, RunsProgram)
 	module.erase();
 }
 
-// A call in a constant's value would have to run while compiling, which isn't supported yet: it's reported.
-TEST(Hosted, ReportsCallInConstant)
+// Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.
+TEST(Hosted, ReportsPointerFromCompileTime)
 {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
@@ -88,12 +88,12 @@ TEST(Hosted, ReportsCallInConstant)
 	context.loadDialect<mlir::BuiltinDialect>();
 	context.loadDialect<hmir::HemeraDialect>();
 	mlir::OpBuilder builder(&context);
-	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "constant_call");
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "compile_time_pointer");
 	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
 
 	hemera::Options options;
-	options.input = std::filesystem::canonical(scenario("constant_call"));
-	options.output_name = (std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "constant_call").string();
+	options.input = std::filesystem::canonical(scenario("compile_time_pointer"));
+	options.output_name = (std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "compile_time_pointer").string();
 
 	hemera::kick_off_processing(program_info.get(), &options);
 	ASSERT_EQ(hemera::error_count(), 0);

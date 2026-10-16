@@ -314,6 +314,36 @@ info_of :: fn(value: any) -> ptr[compiler.TypeInfo] {
     return type_info_of(value.type)
 }
 
+// Compile-time execution: constants whose values call functions, and #run, worked out while compiling.
+SQUARE_TABLE :: int.[1, 4, 9, 16]
+
+fibonacci :: fn(n: int) -> int {
+    if n < 2 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+squares :: fn() -> int[] {
+    return SQUARE_TABLE
+}
+
+labeled_point :: fn(weight: int) -> Labeled {
+    return Labeled.{Point.{weight, weight * 2}, weight * 3}
+}
+
+compile_time_name :: fn() -> string {
+    if #is_compile_time {
+        return "compiling"
+    }
+    return "running"
+}
+
+FIBONACCI_20 :: fibonacci(20)
+SQUARES :: squares()
+LABELED :: labeled_point(5)
+WHEN :: compile_time_name()
+
 // A frame bigger than a page, which Windows code probes a page at a time with __chkstk.
 big_frame :: fn() -> u8 {
     buffer : u8[16384]
@@ -554,6 +584,12 @@ main :: fn() -> int {
     }
     if big_frame() != 3 {
         return 47
+    }
+    if FIBONACCI_20 != 6765 || #run fibonacci(10) != 55 || SQUARES.count != 4 || SQUARES[3] != 16 {
+        return 48
+    }
+    if LABELED.y != 10 || LABELED.weight != 15 || WHEN != "compiling" || compile_time_name() != "running" {
+        return 49
     }
     return 42
 }

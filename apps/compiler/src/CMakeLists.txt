@@ -79,6 +79,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/memory/allocator.h
   ${INCLUDE_DIR}/memory/thread_safe_queue.h
   ${INCLUDE_DIR}/middle_end/generate.h
+  ${INCLUDE_DIR}/middle_end/jit.h
   ${INCLUDE_DIR}/parser/ast_types.h
   ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/types/primitives.h
@@ -105,6 +106,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/lexer/token.cpp
   ${SOURCE_DIR}/memory/allocator.cpp
   ${SOURCE_DIR}/middle_end/generate.cpp
+  ${SOURCE_DIR}/middle_end/jit.cpp
   ${SOURCE_DIR}/parser/ast_types.cpp
   ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/util/logger.cpp
@@ -166,6 +168,7 @@ llvm_map_components_to_libnames(llvm_libs
   linker
   native
   nativecodegen
+  orcjit
   scalaropts
   support
   transformutils

@@ -45,9 +45,17 @@ namespace hemera {
 	Dependency& Dependency::operator=(const Dependency&) = default;
 	Dependency& Dependency::operator=(Dependency&&) = default;
 
+	/*
+	 * A #run at the top of a file, which runs while the program is checked (docs/directives.md). Compile-time
+	 * code only runs once the program is checked so far (docs/compilation.md, Compile-Time Execution), so
+	 * it's reported rather than skipped.
+	 */
 	void work_execution(WorkThreadData& executor, WorkTarget& target) {
-		//TODO(ches) do this
-		if (static_cast<void*>(&executor) == static_cast<void*>(&target)) {}//TODO(ches) remove this
+		(void)executor;
+		const NodeLocation& at = target.value.node_location;
+		report_error(ErrorCode::E4024, file_path_of(at.file.package_path, at.file.file_name),
+			at.node->value.line_number, at.node->value.column_number,
+			"#run at the top of a file isn't supported yet: compile-time code runs in constants and functions so far");
 	}
 	
 	static void process_top_level_nodes(WorkThreadData& executor, const FileLocation& location,
