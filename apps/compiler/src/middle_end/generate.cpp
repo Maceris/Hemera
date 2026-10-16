@@ -95,15 +95,6 @@ namespace hemera {
 		bool continues;
 	};
 
-	/*
-	 * A value compile-time code gave, in the program's layout: its bytes, and copies of what its strings and
-	 * views point to, by the offset of the pointer in bytes.
-	 */
-	struct CompileTimeValue {
-		std::vector<uint8_t> bytes;
-		std::map<size_t, CompileTimeValue> pointed;
-	};
-
 	struct FunctionState {
 		Declaration* declaration = nullptr;
 		CheckedBody* checked = nullptr;
@@ -172,6 +163,24 @@ namespace hemera {
 		std::map<const void*, CompileTimeValue> compile_time_values;
 		size_t compile_time_globals = 0;
 		/// <summary>
+		/// Generating compile-time code while the program is still being checked: functions and constants
+		/// it reaches that aren't checked yet are listed in unchecked instead of reported, and errors are held
+		/// back, since the code is generated again once they are.
+		/// </summary>
+		bool collecting = false;
+		std::vector<Declaration*> unchecked;
+		/// <summary>
+		/// The file errors are in when there's no declaration being generated, like a top-level #run's.
+		/// </summary>
+		std::string file_path;
+		struct HeldError {
+			std::string file_path;
+			uint32_t line;
+			uint16_t column;
+			std::string what;
+		};
+		std::vector<HeldError> held;
+		/// <summary>
 		/// How many arrays descriptors have used, like an enum's members, for their globals' names.
 		/// </summary>
 		size_t type_data = 0;
@@ -204,12 +213,17 @@ namespace hemera {
 
 	static std::string current_file(Generator& generator) {
 		Declaration* declaration = generator.state != nullptr ? generator.state->declaration : nullptr;
-		return declaration != nullptr ? file_path_of(declaration->package_path, declaration->file_name) : std::string();
+		return declaration != nullptr ? file_path_of(declaration->package_path, declaration->file_name) : generator.file_path;
 	}
 
 	// Reports what code generation can't do yet; the caller carries on with a placeholder.
 	static void unsupported(Generator& generator, const ast::Node* node, std::string what) {
 		generator.failed = true;
+		if (generator.collecting) {
+			generator.held.push_back({ current_file(generator), node != nullptr ? node->value.line_number : 0,
+				node != nullptr ? node->value.column_number : uint16_t(0), std::move(what) });
+			return;
+		}
 		report_error(ErrorCode::E5002, current_file(generator), node != nullptr ? node->value.line_number : 0,
 			node != nullptr ? node->value.column_number : 0, std::move(what));
 	}
@@ -1589,7 +1603,7 @@ namespace hemera {
 	 * value as type, or just run it when type is null. Reports why not and returns false if it can't be run.
 	 */
 	static bool run_at_compile_time(Generator& generator, ast::Node* node, TypeInfo* type, CheckedBody* checked,
-		Declaration* declaration, CompileTimeValue& result) {
+		Declaration* declaration, CompileTimeValue& result, std::vector<Declaration*>* unchecked = nullptr) {
 
 		Options options;
 		set_host_options(options, *generator.options);
@@ -1598,6 +1612,8 @@ namespace hemera {
 		compiled.options = &options;
 		compiled.input_package = generator.input_package;
 		compiled.compile_time = true;
+		compiled.collecting = unchecked != nullptr;
+		compiled.file_path = current_file(generator);
 		{
 			mlir::OpBuilder::InsertionGuard guard(compiled.builder);
 			compiled.builder.setInsertionPointToEnd(module.getBody());
@@ -1639,6 +1655,14 @@ namespace hemera {
 			compiled.pending.pop_back();
 			generate_function(compiled, next);
 		}
+		if (!compiled.unchecked.empty()) {
+			*unchecked = compiled.unchecked;
+			module.erase();
+			return false;
+		}
+		for (const Generator::HeldError& error : compiled.held) {
+			report_error(ErrorCode::E5002, error.file_path, error.line, error.column, error.what);
+		}
 		finish_module(compiled);
 		if (compiled.failed || mlir::failed(mlir::verify(module))) {
 			generator.failed = true;
@@ -1674,8 +1698,23 @@ namespace hemera {
 	 * A constant whose value calls a function: run once, the first time it's used, and the same constant
 	 * after that.
 	 */
+	// What checking already ran for key, a constant's declaration or a #run's node, if it did.
+	static std::optional<CompileTimeValue> already_run(Generator& generator, const void* key) {
+		std::scoped_lock<std::mutex> lock(generator.names.mutex);
+		auto iter = generator.names.evaluations.find(key);
+		if (iter == generator.names.evaluations.end() || Evaluation::State::DONE != iter->second->state) {
+			return std::nullopt;
+		}
+		return iter->second->value;
+	}
+
 	static mlir::Value executed_constant(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
 		auto iter = generator.compile_time_values.find(declaration);
+		if (iter == generator.compile_time_values.end()) {
+			if (std::optional<CompileTimeValue> ran = already_run(generator, declaration)) {
+				iter = generator.compile_time_values.emplace(declaration, std::move(*ran)).first;
+			}
+		}
 		if (iter == generator.compile_time_values.end()) {
 			CompileTimeValue result;
 			if (!run_at_compile_time(generator, definition_value(declaration->node), declaration->value_type,
@@ -1691,6 +1730,10 @@ namespace hemera {
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where) {
 		if (generator.inlining.contains(declaration)) {
 			unsupported(generator, where, std::format("{} refers to itself", text_of(declaration->name)));
+			return zero_of(generator, llvm_type(generator, type));
+		}
+		if (generator.collecting && declaration->checked == nullptr) {
+			generator.unchecked.push_back(declaration);
 			return zero_of(generator, llvm_type(generator, type));
 		}
 		if (needs_execution(declaration)) {
@@ -4504,6 +4547,13 @@ namespace hemera {
 		generator.builder.setInsertionPointToEnd(entry);
 		FunctionState* outer = generator.state;
 		generator.state = &state;
+		if (generator.collecting && state.checked == nullptr && body != nullptr) {
+			// Compile-time code that runs once this is checked
+			generator.unchecked.push_back(declaration);
+			LLVM::UnreachableOp::create(generator.builder, generator.loc);
+			generator.state = outer;
+			return;
+		}
 		if (state.checked == nullptr || body == nullptr) {
 			unsupported(generator, declaration->node, std::format("{} wasn't checked, so it can't be generated",
 				text_of(declaration->name)));
@@ -4685,6 +4735,26 @@ namespace hemera {
 			lines.push_back(generator.builder.getStringAttr(text));
 		}
 		generator.module->setAttr(LLVM::LLVMDialect::getModuleLevelAsmAttrName(), generator.builder.getArrayAttr(lines));
+	}
+
+	bool run_evaluation(ProgramInfo* program_info, const Options& options, Evaluation& evaluation,
+		std::vector<Declaration*>& unchecked) {
+
+		// Checking hasn't finished, so generating the program hasn't loaded these yet
+		program_info->context->loadDialect<LLVM::LLVMDialect>();
+		program_info->context->loadDialect<::hmir::HemeraDialect>();
+		mlir::ModuleOp scratch = mlir::ModuleOp::create(mlir::UnknownLoc::get(program_info->context), "evaluation");
+		bool ran = false;
+		{
+			Generator generator(program_info, scratch);
+			generator.options = &options;
+			generator.input_package = intern(options.input.string());
+			generator.file_path = evaluation.file_path;
+			ran = run_at_compile_time(generator, evaluation.node, evaluation.type, evaluation.checked.get(), evaluation.declaration,
+				evaluation.value, &unchecked);
+		}
+		scratch.erase();
+		return ran;
 	}
 
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {

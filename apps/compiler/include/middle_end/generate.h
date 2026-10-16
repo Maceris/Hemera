@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "cmd_line/options.h"
 #include "front_end/info.h"
@@ -18,6 +19,16 @@ namespace hemera {
 	/// </summary>
 	/// <returns>Whether it worked, having reported anything that didn't.</returns>
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module);
+
+	/// <summary>
+	/// Runs an evaluation's compile-time code while the program is still being checked
+	/// (docs/compilation.md, Compile-Time Execution), keeping its result in the evaluation. If functions or
+	/// constants it reaches aren't checked yet, lists them in unchecked and returns false, reporting
+	/// nothing; it's run again once they are.
+	/// </summary>
+	/// <returns>Whether it ran, having reported anything that went wrong.</returns>
+	bool run_evaluation(ProgramInfo* program_info, const Options& options, Evaluation& evaluation,
+		std::vector<Declaration*>& unchecked);
 
 	/// <summary>
 	/// Lowers the generated MLIR: expands defers, lowers HMIR's control flow to branches, and

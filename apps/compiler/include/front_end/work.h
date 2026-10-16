@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <vector>
 
+#include "front_end/compile_time.h"
 #include "front_end/info.h"
 #include "front_end/type_id.h"
 #include "memory/allocator.h"
@@ -29,6 +30,10 @@ namespace hemera {
 		/// </summary>
 		ASSERT,
 		EXPRESSION,
+		/// <summary>
+		/// Compile-time code to run, for checking that needs its value (docs/compilation.md).
+		/// </summary>
+		EVALUATION,
 		FILE,
 		FUNCTION,
 		PACKAGE,
@@ -62,6 +67,7 @@ namespace hemera {
 		FunctionInfo* function;
 		IfChain* if_chain;
 		Declaration* declaration;
+		Evaluation* evaluation;
 	};
 
 	struct WorkTarget {

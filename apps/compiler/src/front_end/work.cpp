@@ -13,6 +13,7 @@
 #include "front_end/walk.h"
 #include "front_end/type_checking.h"
 #include "front_end/work.h"
+#include "middle_end/generate.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "util/logger.h"
@@ -46,16 +47,68 @@ namespace hemera {
 	Dependency& Dependency::operator=(Dependency&&) = default;
 
 	/*
-	 * A #run at the top of a file, which runs while the program is checked (docs/directives.md). Compile-time
-	 * code only runs once the program is checked so far (docs/compilation.md, Compile-Time Execution), so
-	 * it's reported rather than skipped.
+	 * Runs compile-time code (docs/compilation.md, Compile-Time Execution) once everything it reaches is
+	 * checked, waiting for what isn't yet, then wakes what needs its value.
+	 */
+	static void run_when_checked(WorkThreadData& executor, Evaluation* evaluation) {
+		// Again while everything it was waiting for got checked meanwhile
+		while (true) {
+			std::vector<Declaration*> unchecked;
+			const bool ran = run_evaluation(executor.program_info, *executor.global_data->options, *evaluation, unchecked);
+			if (unchecked.empty()) {
+				finish_evaluation(executor, evaluation, ran);
+				return;
+			}
+			for (Declaration* declaration : unchecked) {
+				Progress progress = wait_for_declaration(executor, evaluation, declaration);
+				if (Progress::PARKED == progress) {
+					return;
+				}
+				if (Progress::FAILED == progress) {
+					// It has errors, which were reported
+					finish_evaluation(executor, evaluation, false);
+					return;
+				}
+			}
+		}
+	}
+
+	/*
+	 * Compile-time code: a constant's value that checking needs, or a #run at the top of a file, which is
+	 * checked first and runs while the program is checked (docs/directives.md).
 	 */
 	void work_execution(WorkThreadData& executor, WorkTarget& target) {
-		(void)executor;
+		if (WorkTargetType::EVALUATION == target.type) {
+			run_when_checked(executor, target.value.evaluation);
+			return;
+		}
 		const NodeLocation& at = target.value.node_location;
-		report_error(ErrorCode::E4024, file_path_of(at.file.package_path, at.file.file_name),
-			at.node->value.line_number, at.node->value.column_number,
-			"#run at the top of a file isn't supported yet: compile-time code runs in constants and functions so far");
+		NameRegistry& names = executor.program_info->names;
+		Evaluation* evaluation = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			std::unique_ptr<Evaluation>& slot = names.evaluations[at.node];
+			if (slot == nullptr) {
+				slot = std::make_unique<Evaluation>();
+				slot->node = at.node;
+				slot->file_path = file_path_of(at.file.package_path, at.file.file_name);
+				slot->queued = true;
+			}
+			evaluation = slot.get();
+		}
+		if (evaluation->checked == nullptr) {
+			auto checked = std::make_shared<CheckedBody>();
+			Progress progress = check_top_level_run(executor, at.file, at.node, checked.get());
+			if (Progress::PARKED == progress) {
+				return;
+			}
+			if (Progress::FAILED == progress) {
+				finish_evaluation(executor, evaluation, false);
+				return;
+			}
+			evaluation->checked = checked;
+		}
+		run_when_checked(executor, evaluation);
 	}
 	
 	static void process_top_level_nodes(WorkThreadData& executor, const FileLocation& location,
@@ -609,7 +662,10 @@ namespace hemera {
 				resolve_instance(executor, target.value.declaration);
 				break;
 			case WorkTargetType::BODY:
-				check_body(executor, target.value.declaration);
+				// Done, with or without errors: compile-time code that calls it can go on
+				if (check_body(executor, target.value.declaration) != Progress::PARKED) {
+					finish_body(executor, target.value.declaration);
+				}
 				break;
 			case WorkTargetType::ASSERT:
 				check_top_level_assert(executor, target.value.node_location.file, target.value.node_location.node);
@@ -617,6 +673,9 @@ namespace hemera {
 			case WorkTargetType::EXPRESSION:
 				type_check_expression(executor, target.value.node_location.file,
 					nullptr, target.value.node_location.node);
+				break;
+			case WorkTargetType::EVALUATION:
+				LOG_ERROR("Trying to type check compile-time code, which is EXECUTION work");
 				break;
 			case WorkTargetType::FILE:
 				LOG_ERROR("Trying to type check a file");

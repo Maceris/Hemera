@@ -57,7 +57,7 @@ TEST(Hosted, RunsProgram)
 	std::filesystem::remove(executable);
 
 	hemera::kick_off_processing(program_info.get(), &options);
-	ASSERT_EQ(hemera::error_count(), 0);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
 	ASSERT_TRUE(hemera::generate_program(program_info.get(), options, module));
 
 	llvm::LLVMContext llvm_context;

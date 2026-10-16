@@ -172,6 +172,18 @@ namespace hemera {
 	Progress check_top_level_assert(WorkThreadData& executor, const FileLocation& file, ast::Node* node);
 
 	/// <summary>
+	/// Checks compile-time code in the walk's scope, recording what it found in record, for running it, and
+	/// gives its value's type (null for nothing). FAILED once it reported errors.
+	/// </summary>
+	Progress check_compile_time_expression(Walk& walk, ast::Node* expression, CheckedBody* record, TypeInfo*& type);
+
+	/// <summary>
+	/// Checks the expression of a top-level #run, recording what it found in record, for running it.
+	/// </summary>
+	Progress check_top_level_run(WorkThreadData& executor, const FileLocation& file, ast::Node* expression,
+		CheckedBody* record);
+
+	/// <summary>
 	/// The type a value has where nothing else decides it: 5 is an int, 0.5 an f64; null if it
 	/// has none.
 	/// </summary>

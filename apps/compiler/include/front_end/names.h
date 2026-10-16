@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "front_end/compile_time.h"
 #include "memory/allocator.h"
 #include "parser/ast_types.h"
 
@@ -191,6 +192,10 @@ namespace hemera {
 		/// checked without errors.
 		/// </summary>
 		std::shared_ptr<CheckedBody> checked;
+		/// <summary>
+		/// For a function, checking its body has finished, with or without errors (checked says which).
+		/// </summary>
+		bool body_done = false;
 	};
 
 	/// <summary>
@@ -227,16 +232,25 @@ namespace hemera {
 			/// An #if chain to be decided, and the branch it picks processed.
 			/// </summary>
 			CHAIN_DECIDED,
+			/// <summary>
+			/// A function's body to be checked, with or without errors, for compile-time code that calls it.
+			/// </summary>
+			BODY_CHECKED,
+			/// <summary>
+			/// Compile-time code to have run, for checking that needs its value.
+			/// </summary>
+			EVALUATION_DONE,
 		};
 		Kind kind;
 		InternedString package_path;
 		InternedString name;
 		Declaration* declaration;
 		IfChain* chain;
+		Evaluation* evaluation = nullptr;
 
 		bool operator<(const WaitKey& other) const {
-			return std::tie(kind, package_path, name, declaration, chain)
-				< std::tie(other.kind, other.package_path, other.name, other.declaration, other.chain);
+			return std::tie(kind, package_path, name, declaration, chain, evaluation)
+				< std::tie(other.kind, other.package_path, other.name, other.declaration, other.chain, other.evaluation);
 		}
 	};
 
@@ -317,6 +331,11 @@ namespace hemera {
 		/// </summary>
 		std::map<Declaration*, ParkedWork*> parked_resolvers;
 		std::map<IfChain*, ParkedWork*> parked_chains;
+		/// <summary>
+		/// Compile-time code, by the constant's declaration or the #run's node (docs/compilation.md,
+		/// Compile-Time Execution).
+		/// </summary>
+		std::map<const void*, std::unique_ptr<Evaluation>> evaluations;
 		/// <summary>
 		/// Each instance of a generic type, by the generic and its arguments.
 		/// </summary>
@@ -409,6 +428,23 @@ namespace hemera {
 	/// reports each cycle and each name that's never declared, and releases the parked work.
 	/// </summary>
 	void report_stall(GlobalThreadData& global_data);
+
+	/// <summary>
+	/// Marks a function's body checked, with or without errors, waking compile-time code that calls it.
+	/// </summary>
+	void finish_body(WorkThreadData& executor, Declaration* function);
+
+	/// <summary>
+	/// Marks compile-time code run, or failed, waking checking that needs its value.
+	/// </summary>
+	void finish_evaluation(WorkThreadData& executor, Evaluation* evaluation, bool succeeded);
+
+	/// <summary>
+	/// For the EXECUTION work running an evaluation: waits until a function it calls has its body checked,
+	/// or a constant it reads is resolved, parking the work. DONE if it already is; FAILED if that ended in
+	/// errors, which were reported.
+	/// </summary>
+	Progress wait_for_declaration(WorkThreadData& executor, Evaluation* evaluation, Declaration* declaration);
 
 	/// <summary>
 	/// Called once all work is done: reports names used from an import or the builtins that an

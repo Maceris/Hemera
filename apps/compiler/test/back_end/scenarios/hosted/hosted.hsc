@@ -340,6 +340,22 @@ compile_time_name :: fn() -> string {
 }
 
 FIBONACCI_20 :: fibonacci(20)
+// Run while checking, since checking needs them: an array's count, an #if and an #assert
+FIBONACCI_7 :: fibonacci(7)
+LARGE :: fibonacci(7) > 10
+#assert FIBONACCI_7 == 13
+#assert fibonacci(6) == 8 && #run fibonacci(5) == 5
+
+#if LARGE {
+    size_name :: fn() -> string {
+        return "large"
+    }
+}
+#else {
+    size_name :: fn() -> string {
+        return "small"
+    }
+}
 SQUARES :: squares()
 LABELED :: labeled_point(5)
 WHEN :: compile_time_name()
@@ -590,6 +606,10 @@ main :: fn() -> int {
     }
     if LABELED.y != 10 || LABELED.weight != 15 || WHEN != "compiling" || compile_time_name() != "running" {
         return 49
+    }
+    fibonacci_bytes : u8[FIBONACCI_7]
+    if fibonacci_bytes.count != 13 || size_name() != "large" {
+        return 50
     }
     return 42
 }

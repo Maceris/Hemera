@@ -50,6 +50,11 @@ machine doing the compiling. Its result becomes a constant in the program, so it
 numbers, booleans, enums, characters, strings, and structs and arrays of them. Pointers other than null can't leave
 compile time, since what they point to doesn't exist in the program.
 
+Compile-time code runs once every function it reaches is checked, and only once: checking that needs its value,
+like an array's count or an `#if` condition, waits for it, and the program uses the same result. So code that
+computes such a value can't call a function whose own checking needs it; that's reported as a cycle. Checking can
+use integers, booleans and enum members from it; anything else it gives is only for the program's constants.
+
 Compile-time code is the program's own code, with the `#if` choices made for the target, compiled for the machine
 doing the compiling. Code that only computes runs the same either way; code that uses the operating system only works
 at compile time when the target's operating system is the one compiling it, as it is for a build package.

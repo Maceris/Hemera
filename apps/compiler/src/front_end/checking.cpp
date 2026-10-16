@@ -1884,6 +1884,11 @@ namespace hemera {
 			result = poisoned();
 			return Progress::DONE;
 		}
+		// ?, is_some and the like read an optional's or result's variants, which its instance may not have yet
+		progress = complete_subject(checker, operand_node, operand);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
 		if (TokenType::SYM_QUESTION == op) {
 			if (ValueKind::TYPE == operand.kind) {
 				// T? as a type
@@ -3739,6 +3744,44 @@ namespace hemera {
 			std::scoped_lock<std::mutex> lock(names.mutex);
 			function->checked = checked;
 		}
+		return progress;
+	}
+
+	Progress check_top_level_run(WorkThreadData& executor, const FileLocation& file, ast::Node* expression,
+		CheckedBody* record) {
+
+		Walk walk{
+			executor,
+			file.package_path,
+			file.file_name,
+			find_file(executor.program_info, file.package_path, file.file_name),
+			nullptr,
+			nullptr,
+			file_path_of(file.package_path, file.file_name),
+			{},
+			{},
+			{},
+		};
+		TypeInfo* ignored = nullptr;
+		return check_compile_time_expression(walk, expression, record, ignored);
+	}
+
+	Progress check_compile_time_expression(Walk& walk, ast::Node* expression, CheckedBody* record, TypeInfo*& type) {
+		Progress ready = require_compile_time_runtime(walk, expression);
+		if (ready != Progress::DONE) {
+			return ready;
+		}
+		Walk inner = walk;
+		Checker checker(inner);
+		checker.record = record;
+		checker.scopes.emplace_back();
+		const size_t errors_before = error_count();
+		Value value;
+		Progress progress = check_expression(checker, expression, nullptr, value);
+		if (progress == Progress::DONE && error_count() != errors_before) {
+			return Progress::FAILED;
+		}
+		type = ValueKind::VALUE == value.kind || is_untyped(value) ? default_type(value) : nullptr;
 		return progress;
 	}
 

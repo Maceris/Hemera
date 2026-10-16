@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <set>
@@ -128,6 +129,14 @@ namespace hemera {
 
 	static WaitKey chain_key(IfChain* chain) {
 		return WaitKey{ WaitKey::Kind::CHAIN_DECIDED, nullptr, nullptr, nullptr, chain };
+	}
+
+	static WaitKey body_key(Declaration* function) {
+		return WaitKey{ WaitKey::Kind::BODY_CHECKED, nullptr, nullptr, function, nullptr };
+	}
+
+	static WaitKey evaluation_key(Evaluation* evaluation) {
+		return WaitKey{ WaitKey::Kind::EVALUATION_DONE, nullptr, nullptr, nullptr, nullptr, evaluation };
 	}
 
 	// Moves every work waiting for key back into the queues. The registry's mutex must be held.
@@ -1382,6 +1391,213 @@ namespace hemera {
 
 	static Progress evaluate(Walk& walk, ast::Node* node, ConstantValue& result);
 
+	// Whether checking a constant's value found a call, so its value is worked out by running it.
+	static bool calls_a_function(const CheckedBody* checked) {
+		if (checked == nullptr) {
+			return false;
+		}
+		for (const auto& [node, found] : checked->nodes) {
+			if (found.called != nullptr) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// What compile-time code gave, as a constant checking can use: an integer, a boolean or an enum member.
+	static Progress constant_from_run(Walk& walk, ast::Node* where, const Evaluation& evaluation, ConstantValue& result) {
+		TypeInfo const* type = get_base_type(evaluation.type);
+		const std::vector<uint8_t>& bytes = evaluation.value.bytes;
+		uint64_t raw = 0;
+		std::memcpy(&raw, bytes.data(), std::min<size_t>(bytes.size(), sizeof(raw)));
+		if (type != nullptr && TypeInfoVariant::BOOLEAN == type->variant) {
+			result.kind = ConstantValue::Kind::BOOLEAN;
+			result.boolean = raw != 0;
+			return Progress::DONE;
+		}
+		if (type != nullptr && TypeInfoVariant::INTEGER == type->variant && type->size <= 8) {
+			result.kind = ConstantValue::Kind::INTEGER;
+			const size_t shift = 64 - type->size * 8;
+			result.integer = static_cast<const TypeInfoInteger*>(type)->is_signed
+				? static_cast<int64_t>(raw << shift) >> shift : static_cast<int64_t>(shift == 64 ? 0 : (raw << shift) >> shift);
+			return Progress::DONE;
+		}
+		if (type != nullptr && TypeInfoVariant::ENUM == type->variant) {
+			auto enumeration = static_cast<const TypeInfoEnum*>(type);
+			for (size_t i = 0; i < enumeration->members.size(); ++i) {
+				if (enumeration->values[i] == raw) {
+					result.kind = ConstantValue::Kind::ENUM_MEMBER;
+					result.member = std::string(std::string_view(*enumeration->members[i]));
+					return Progress::DONE;
+				}
+			}
+		}
+		report_not_constant(walk.file_path, where,
+			"only integers, booleans and enum members from compile-time code can be used here");
+		return Progress::FAILED;
+	}
+
+	/*
+	 * A constant whose value calls a function, worked out by running it (docs/compilation.md, Compile-Time
+	 * Execution): the run is queued the first time it's needed, and the walk waits for it.
+	 */
+	Progress require_compile_time_runtime(Walk& walk, ast::Node* where) {
+		for (std::string_view name : { "CarrierBlock", "Context", "MINIMAL_CONTEXT" }) {
+			Declaration* found = nullptr;
+			Progress progress = base_declaration(walk, where, "runtime", name, found);
+			if (progress == Progress::DONE) {
+				progress = require_resolved(walk, where, found, Need::RESOLVED);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
+		return Progress::DONE;
+	}
+
+	/*
+	 * The value of compile-time code that's checked: its result, or the walk waits for it, queuing its run the
+	 * first time it's needed.
+	 */
+	static Progress run_or_wait(Walk& walk, ast::Node* where, Evaluation* evaluation, InternedString name,
+		ConstantValue& result) {
+
+		NameRegistry& names = walk.executor.program_info->names;
+		bool queue = false;
+		bool parked = false;
+		Evaluation::State state = Evaluation::State::WAITING;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			state = evaluation->state;
+			if (Evaluation::State::WAITING == state) {
+				queue = !evaluation->queued;
+				evaluation->queued = true;
+				park_locked(walk, names, evaluation_key(evaluation), where, name, nullptr);
+				parked = true;
+			}
+		}
+		if (queue) {
+			walk.executor.create_work(WorkType::EXECUTION, WorkTarget(WorkTargetType::EVALUATION, { .evaluation = evaluation }));
+		}
+		if (parked) {
+			return Progress::PARKED;
+		}
+		if (Evaluation::State::FAILED == state) {
+			return Progress::FAILED;
+		}
+		return constant_from_run(walk, where, *evaluation, result);
+	}
+
+	static Progress evaluate_by_running(Walk& walk, ast::Node* where, Declaration* declaration, ConstantValue& result) {
+		Progress ready = require_compile_time_runtime(walk, where);
+		if (ready != Progress::DONE) {
+			return ready;
+		}
+		NameRegistry& names = walk.executor.program_info->names;
+		Evaluation* evaluation = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			std::unique_ptr<Evaluation>& slot = names.evaluations[declaration];
+			if (slot == nullptr) {
+				slot = std::make_unique<Evaluation>();
+				slot->node = definition_value(declaration->node);
+				slot->type = declaration->value_type;
+				slot->declaration = declaration;
+				slot->checked = declaration->checked;
+				slot->file_path = file_path_of(declaration->package_path, declaration->file_name);
+			}
+			evaluation = slot.get();
+		}
+		return run_or_wait(walk, where, evaluation, declaration->name, result);
+	}
+
+	// Whether a constant expression is compile-time code to run: #run, or a call like table_size().
+	static bool runs_code(const ast::Node* node) {
+		if (ast::NodeType::DIRECTIVE == node->node_type) {
+			return is_text(node->value.value, "#run") && !node->children.empty();
+		}
+		// Builtins like size_of are worked out without running anything
+		if (ast::NodeType::IDENTIFIER != node->node_type || is_builtin_name(node->value.value)) {
+			return false;
+		}
+		for (const ast::Node* child : node->children) {
+			if (ast::NodeType::PAREN_GROUP == child->node_type) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Compile-time code written in place, like #assert table_size() == 16: checked here, then run.
+	static Progress evaluate_expression_by_running(Walk& walk, ast::Node* node, ConstantValue& result) {
+		ast::Node* expression = ast::NodeType::DIRECTIVE == node->node_type ? node->children[0] : node;
+		NameRegistry& names = walk.executor.program_info->names;
+		Evaluation* evaluation = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			std::unique_ptr<Evaluation>& slot = names.evaluations[expression];
+			if (slot == nullptr) {
+				slot = std::make_unique<Evaluation>();
+				slot->node = expression;
+				slot->file_path = walk.file_path;
+			}
+			evaluation = slot.get();
+		}
+		if (evaluation->checked == nullptr) {
+			auto checked = std::make_shared<CheckedBody>();
+			TypeInfo* type = nullptr;
+			Progress progress = check_compile_time_expression(walk, expression, checked.get(), type);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			if (evaluation->checked == nullptr) {
+				evaluation->type = type;
+				evaluation->checked = checked;
+			}
+		}
+		return run_or_wait(walk, node, evaluation, intern(std::string("#run")), result);
+	}
+
+	void finish_body(WorkThreadData& executor, Declaration* function) {
+		NameRegistry& names = executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		function->body_done = true;
+		wake_locked(*executor.global_data, names, body_key(function));
+	}
+
+	void finish_evaluation(WorkThreadData& executor, Evaluation* evaluation, bool succeeded) {
+		NameRegistry& names = executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		evaluation->state = succeeded ? Evaluation::State::DONE : Evaluation::State::FAILED;
+		wake_locked(*executor.global_data, names, evaluation_key(evaluation));
+	}
+
+	Progress wait_for_declaration(WorkThreadData& executor, Evaluation* evaluation, Declaration* declaration) {
+		NameRegistry& names = executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		const bool function = DeclarationKind::FUNCTION == declaration->kind;
+		const bool done = function ? declaration->body_done : (declaration->resolved || declaration->failed);
+		if (done) {
+			return declaration->checked != nullptr ? Progress::DONE : Progress::FAILED;
+		}
+		Walk walk{
+			executor,
+			declaration->package_path,
+			declaration->file_name,
+			declaration->file,
+			nullptr,
+			nullptr,
+			evaluation->file_path,
+			{},
+			{},
+			{},
+		};
+		park_locked(walk, names, function ? body_key(declaration) : resolved_key(declaration), evaluation->node,
+			declaration->name, nullptr);
+		return Progress::PARKED;
+	}
+
 	// The value of a constant declaration, from the expression after its separator.
 	static Progress evaluate_declaration(Walk& walk, ast::Node* where, Declaration* declaration,
 		ConstantValue& result) {
@@ -1416,6 +1632,10 @@ namespace hemera {
 			result.kind = ConstantValue::Kind::FUNCTION;
 			result.function = declaration;
 			return Progress::DONE;
+		}
+		// A value that calls a function comes from running it
+		if (calls_a_function(declaration->checked.get())) {
+			return evaluate_by_running(walk, where, declaration, result);
 		}
 		Walk inner{
 			walk.executor,
@@ -1673,6 +1893,9 @@ namespace hemera {
 			result.member = std::string(std::string_view(*node->value.value));
 			return Progress::DONE;
 		}
+		if (runs_code(node)) {
+			return evaluate_expression_by_running(walk, node, result);
+		}
 		// A name, or one in a type's position, like count in u8[count]
 		if (ast::NodeType::IDENTIFIER == type || (ast::NodeType::TYPE == type && node->children.empty())) {
 			return evaluate_name(walk, node, result);
@@ -1830,6 +2053,17 @@ namespace hemera {
 			seen.insert(where);
 			report_error(ErrorCode::E4008, parked->file_path, parked->line, parked->column,
 				std::string(std::string_view(*parked->key.name)));
+			++reported;
+		}
+
+		// Compile-time code waiting for a function whose checking needs that code's value
+		for (ParkedWork* parked : all) {
+			if (WaitKey::Kind::BODY_CHECKED != parked->key.kind) {
+				continue;
+			}
+			report_error(ErrorCode::E4007, parked->file_path, parked->line, parked->column, std::format(
+				"this compile-time code calls {}, which can't be checked until the code has run",
+				std::string_view(*parked->key.declaration->name)));
 			++reported;
 		}
 
