@@ -13,6 +13,7 @@
 
 #include "error/reporting.h"
 #include "front_end/checking.h"
+#include "front_end/front_end.h"
 #include "front_end/walk.h"
 #include "hmir/hmir_dialect.h"
 #include "hmir/hmir_ops.h"
@@ -25,6 +26,8 @@
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinDialect.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
@@ -5529,6 +5532,75 @@ namespace hemera {
 			}
 		}
 
+		/*
+		 * A package load_package checked on its own, as the root of a program of its own, by its folder. The
+		 * program stays for the rest of the compilation, since its types are in what was written about it.
+		 */
+		struct LoadedProgram {
+			ProgramInfo* program = nullptr;
+			Options* options = nullptr;
+		};
+
+		std::mutex loaded_mutex;
+
+		std::map<std::string, LoadedProgram>& loaded_programs() {
+			// Never freed, like the programs
+			static auto* loaded = new std::map<std::string, LoadedProgram>();
+			return *loaded;
+		}
+
+		// A folder compile-time code gave: relative to the calling file's package, or absolute.
+		std::filesystem::path folder_from(Call& call, std::string_view folder) {
+			std::filesystem::path given(folder);
+			return given.is_absolute() ? given : std::filesystem::path(call.file).parent_path() / given;
+		}
+
+		// The package in folder checked as a program of its own, the first time it's asked for.
+		LoadedProgram load(Call& call, const std::string& folder) {
+			std::scoped_lock<std::mutex> lock(loaded_mutex);
+			auto iter = loaded_programs().find(folder);
+			if (iter != loaded_programs().end()) {
+				return iter->second;
+			}
+			LoadedProgram loaded;
+			loaded.options = new Options();
+			Options& options = *loaded.options;
+			options.input = folder;
+			options.output_name = "loaded";
+			options.entry = "";
+			options.startup_code = false;
+			options.install_path = call.options->install_path;
+			options.builtin_paths = call.options->builtin_paths;
+			options.settings = call.options->settings;
+			options.architecture = call.options->architecture;
+			options.os = call.options->os;
+			options.object_format = call.options->object_format;
+			options.environment = call.options->environment;
+			options.vendor = call.options->vendor;
+			auto* context = new mlir::MLIRContext();
+			context->loadDialect<mlir::BuiltinDialect>();
+			context->loadDialect<mlir::func::FuncDialect>();
+			context->loadDialect<::hmir::HemeraDialect>();
+			auto* builder = new mlir::OpBuilder(context);
+			auto* module = new mlir::ModuleOp(mlir::ModuleOp::create(builder->getUnknownLoc(), "loaded"));
+			loaded.program = new ProgramInfo(context, builder, module);
+			kick_off_processing(loaded.program, loaded.options);
+			loaded_programs()[folder] = loaded;
+			return loaded;
+		}
+
+		// The program a PackageInfo record at path is from, when it isn't the calling program: one load_package checked.
+		bool program_of(const std::string& path, ProgramInfo*& program, const Options*& options) {
+			std::scoped_lock<std::mutex> lock(loaded_mutex);
+			auto iter = loaded_programs().find(path);
+			if (iter == loaded_programs().end()) {
+				return false;
+			}
+			program = iter->second.program;
+			options = iter->second.options;
+			return true;
+		}
+
 		// Whether the calling code is the build package's, the input package, which the permissions are for.
 		bool in_root_package(Call& call) {
 			return call.file.starts_with(call.options->input.string());
@@ -5642,13 +5714,56 @@ namespace hemera {
 				});
 				return;
 			}
+			if (name == "subfolders") {
+				std::error_code error;
+				const std::filesystem::path folder = std::filesystem::canonical(folder_from(call, read_string(call.arguments[0])), error);
+				std::vector<std::string> found;
+				if (!error) {
+					for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(folder, error)) {
+						if (entry.is_directory()) {
+							found.push_back(std::filesystem::canonical(entry.path(), error).string());
+						}
+					}
+				}
+				std::sort(found.begin(), found.end());
+				uint8_t* names = data.allocate(16 * std::max<size_t>(found.size(), 1), 8);
+				for (size_t i = 0; i < found.size(); ++i) {
+					data.write_text_at(names + i * 16, found[i]);
+				}
+				CompileTimeData::write_view_at(call.result, found.empty() ? nullptr : names, found.size());
+				return;
+			}
+			if (name == "load_package") {
+				std::error_code error;
+				const std::filesystem::path folder = std::filesystem::canonical(folder_from(call, read_string(call.arguments[0])), error);
+				hemera::PackageInfo* package = nullptr;
+				Call described = call;
+				if (!error && std::filesystem::is_directory(folder)) {
+					package = package_at(call.program, folder.string());
+					if (package == nullptr) {
+						const LoadedProgram loaded = load(call, folder.string());
+						described.program = loaded.program;
+						described.options = loaded.options;
+						package = package_at(loaded.program, folder.string());
+					}
+				}
+				write_optional(call, package != nullptr && package->files.size() > 0, [&](uint8_t* at, const TypeInfoStruct* layout) {
+					write_package(described, at, layout, package);
+				});
+				return;
+			}
 			if (name == "find_constant" || name == "find_function") {
-				// In the program the record describes, which during a check is the target's
-				if (service_scope->reflected != nullptr) {
+				const uint8_t* package = reinterpret_cast<const uint8_t*>(read_u64(call.arguments[0]));
+				// In the program the record describes: one load_package checked, or during a check the target's
+				const std::string path(package_path_of(call, package));
+				const Options* loaded_options = nullptr;
+				if (!program_of(path, call.program, loaded_options) && service_scope->reflected != nullptr) {
 					call.program = service_scope->reflected;
 					call.options = service_scope->reflected_options;
 				}
-				const uint8_t* package = reinterpret_cast<const uint8_t*>(read_u64(call.arguments[0]));
+				else if (loaded_options != nullptr) {
+					call.options = loaded_options;
+				}
 				Declaration* found = declared(call, package_path_of(call, package), read_string(call.arguments[1]));
 				const bool wanted = found != nullptr && (name == "find_constant" ? is_constant(found) : DeclarationKind::FUNCTION == found->kind);
 				write_optional(call, wanted, [&](uint8_t* at, const TypeInfoStruct* layout) {

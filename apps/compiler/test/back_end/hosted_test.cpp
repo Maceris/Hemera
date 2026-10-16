@@ -141,3 +141,41 @@ TEST(Build, BuildsTargets)
 	hemera::reset_build_registry();
 	module.erase();
 }
+
+// A build package that finds what to build: it lists a folder's subfolders, loads each one, and builds the
+// packages that say they're programs.
+TEST(Build, BuildsDiscoveredTargets)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_discovery";
+	std::filesystem::create_directories(output_folder);
+	const std::string output = (output_folder / "alpha").string();
+	std::filesystem::remove(output + ".exe");
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("build_discovery") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.settings = { { "output", output } };
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	ASSERT_EQ(hemera::build_registry().targets.size(), 1u);
+	EXPECT_EQ(hemera::build_registry().targets[0].name, "alpha");
+	hemera::Allocator<> alloc;
+	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
+	EXPECT_EQ(hemera::error_count(), 0);
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 11);
+
+	hemera::reset_build_registry();
+	module.erase();
+}

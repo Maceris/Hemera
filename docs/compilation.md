@@ -96,6 +96,22 @@ build :: fn() {
 #run build()
 ```
 
+A build package can find what to build instead of naming it. `compiler.subfolders(folder)` lists the folders in
+one, and `compiler.load_package(folder)` gives a package's info whether the build imports it or not: a package
+nothing imports is checked on its own, as the root of a program of its own, so its constants have that program's
+types and are compared by name. What to build is then up to the build package's code, like every package in
+`programs` whose `KIND` is `Program`:
+
+```
+for folder in compiler.subfolders("../programs") {
+    package := compiler.load_package(folder) or_continue
+    kind :: compiler.find_constant(&package, "KIND") or_continue
+    if (reflection.enum_member_name(kind.value) or_else "") == "Program" {
+        // add_target, with root = package.path
+    }
+}
+```
+
 Each target is checked on its own, with its own `#if` choices and settings, then every check registered with
 `compiler.add_check` runs on it, with its `BuildOptions` and its whole program as a `ProgramInfo`. A check that
 returns false, or reports an error, stops that target. The rest are generated and linked, then each step registered

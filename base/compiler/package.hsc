@@ -65,7 +65,23 @@ ProgramInfo :: struct {
  * Constants are evaluated as part of the program doing the finding (usually the build package),
  * so their values and types are the ones of that program, not of a target later built from the package.
  */
+//NOTE: not implemented, and may be removed in favor of subfolders and load_package, which leave the
+//choosing to the build's own code. Kept until there's evidence which is the better path.
 find_packages : fn(folder: string, declares := "") -> PackageInfo[] : ---
+
+/*
+ * The folders directly inside folder, by their canonical paths, in order. folder is relative to the
+ * calling file's package, or absolute. For a build package to find what to build, with load_package.
+ */
+subfolders : fn(folder: string) -> string[] : ---
+
+/*
+ * Info for the package in folder, relative to the calling file's package or absolute, or none if there's
+ * no package there. A package the calling program has is its own; any other is checked on its own, as the
+ * root of a program of its own, so its constants' values have that program's types, which are compared by
+ * name (see ConstantInfo). Its errors are reported.
+ */
+load_package : fn(folder: string) -> PackageInfo? : ---
 
 /*
  * Info for a package imported by the calling file, by its alias or name.
