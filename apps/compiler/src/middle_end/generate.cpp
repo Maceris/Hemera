@@ -1893,6 +1893,20 @@ namespace hemera {
 		}
 		FunctionState& state = *generator.state;
 		if (found->local != nullptr) {
+			// A value from an instance's generic list, a constant
+			auto generic_constant = state.checked != nullptr ? state.checked->generic_constants.find(found->local)
+				: decltype(state.checked->generic_constants)::const_iterator();
+			if (state.checked != nullptr && generic_constant != state.checked->generic_constants.end()) {
+				const ConstantValue& constant = generic_constant->second;
+				if (ConstantValue::Kind::FUNCTION == constant.kind && constant.function != nullptr) {
+					return value(LLVM::AddressOfOp::create(generator.builder, generator.loc, function_for(generator, constant.function)),
+						found->type);
+				}
+				const int64_t number = ConstantValue::Kind::BOOLEAN == constant.kind ? (constant.boolean ? 1 : 0)
+					: ConstantValue::Kind::ENUM_MEMBER == constant.kind ? enum_value(found->type, intern(constant.member))
+					: constant.integer;
+				return value(constant_int(generator, llvm_type(generator, found->type), number), found->type);
+			}
 			auto slot = state.slots.find(found->local);
 			if (slot != state.slots.end()) {
 				return location(slot->second, found->type);

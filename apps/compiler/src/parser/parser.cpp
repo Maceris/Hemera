@@ -896,10 +896,46 @@ namespace hemera::parser {
 		}
 	}
 
+	/*
+	 * Whether what's next is a name, maybe qualified (QUEUE_SIZE, net.MTU), followed by what's in
+	 * after: a name alone, rather than the start of arithmetic like CAPACITY * 2.
+	 */
+	static bool name_then(ParserState* state, std::initializer_list<TokenType> after) {
+		size_t at = state->current;
+		if (at >= state->tokens.size() || TokenType::IDENTIFIER != state->tokens[at].type) {
+			return false;
+		}
+		++at;
+		while (at + 1 < state->tokens.size() && TokenType::SYM_DOT == state->tokens[at].type
+			&& TokenType::IDENTIFIER == state->tokens[at + 1].type) {
+			at += 2;
+		}
+		return at < state->tokens.size() && std::find(after.begin(), after.end(), state->tokens[at].type) != after.end();
+	}
+
+	// Whether a token continues a name into arithmetic, making it a value rather than a type.
+	static bool is_arithmetic(TokenType type) {
+		return TokenType::OPERATOR_PLUS == type || TokenType::OPERATOR_MINUS == type || TokenType::OPERATOR_MULTIPLY == type
+			|| TokenType::OPERATOR_DIVIDE == type || TokenType::OPERATOR_MODULUS == type || TokenType::OPERATOR_LEFT_SHIFT == type
+			|| TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == type || TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC == type
+			|| TokenType::SYM_AMPERSAND == type || TokenType::OPERATOR_BITWISE_OR == type;
+	}
+
 	bool array_dimension(ParserState* state, ast::Node& parent) {
 		ast::Node& dims = next_as_node(state, ast::NodeType::ARRAY_DIMENSION,
 			&parent);
-		if (expect(state, TokenType::LITERAL_INTEGER)) {
+		const bool simple = expect(state, TokenType::OPERATOR_RANGE_ARRAY) || expect(state, TokenType::SYM_RBRACK)
+			|| (expect(state, TokenType::LITERAL_INTEGER) && TokenType::SYM_RBRACK == next_token(state).type)
+			|| name_then(state, { TokenType::SYM_RBRACK });
+		if (!simple) {
+			// A constant expression, like [CAPACITY * 2] or [(bits + 63) / 64]
+			ExprResult count = expression_with_result(state, true);
+			if (!count.success) {
+				return false;
+			}
+			dims.children.push_back(count.result);
+		}
+		else if (expect(state, TokenType::LITERAL_INTEGER)) {
 			accept(state, TokenType::LITERAL_INTEGER, ast::NodeType::LITERAL,
 				dims);
 		}
@@ -1789,12 +1825,24 @@ namespace hemera::parser {
 				break;
 			}
 			const TokenType current = current_token(state).type;
+			// A name followed by arithmetic, like CAPACITY * 2, is a value too; a name alone parses as a type
+			bool name_into_arithmetic = false;
+			if (TokenType::IDENTIFIER == current) {
+				size_t at = state->current + 1;
+				while (at + 1 < state->tokens.size() && TokenType::SYM_DOT == state->tokens[at].type
+					&& TokenType::IDENTIFIER == state->tokens[at + 1].type) {
+					at += 2;
+				}
+				name_into_arithmetic = at < state->tokens.size() && is_arithmetic(state->tokens[at].type);
+			}
 			const bool is_value = !is_declaration
 				&& (TokenType::LITERAL_INTEGER == current
 					|| TokenType::KEYWORD_TRUE == current
 					|| TokenType::KEYWORD_FALSE == current
 					|| TokenType::SYM_DOT == current
-					|| TokenType::OPERATOR_MINUS == current);
+					|| TokenType::OPERATOR_MINUS == current
+					|| TokenType::SYM_LPAREN == current
+					|| name_into_arithmetic);
 			if (is_value) {
 				// A constant value, like Ring[u8, 4096]. Named constants parse as types.
 				ExprResult value = expression_with_result(state, true);

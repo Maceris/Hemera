@@ -161,7 +161,7 @@ namespace hemera {
 
 	// An instance of a generic type, made the first time it's asked for, resolved when need asks.
 	Progress instance_type(Walk& walk, ast::Node* where, Declaration* generic,
-		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result) {
+		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result, const std::vector<ConstantValue>& values) {
 
 		ast::Node* value = definition_value(generic->node);
 		size_t parameters = 0;
@@ -174,7 +174,7 @@ namespace hemera {
 			return type_error(walk, ErrorCode::E4014, where, std::format("{} takes {} generic arguments, not {}",
 				name_text(generic->name), parameters, arguments.size()));
 		}
-		Declaration* instance = instance_of(walk, generic, arguments);
+		Declaration* instance = instance_of(walk, generic, arguments, values);
 		Progress progress = require_resolved(walk, where, instance, need);
 		if (progress != Progress::DONE) {
 			return progress;
@@ -351,6 +351,11 @@ namespace hemera {
 				&& part.arguments.size() == 1) {
 				part.kind = TypePart::Kind::DIMENSION;
 			}
+			// And the other way: brackets right after a generic type, like Bits[64], are its arguments
+			if (TypePart::Kind::DIMENSION == part.kind && generic != nullptr && current == nullptr && !part.arguments.empty()
+				&& ast::NodeType::RANGE_ARRAY != part.arguments[0]->node_type) {
+				part.kind = TypePart::Kind::ARGUMENTS;
+			}
 			if (TypePart::Kind::ARGUMENTS == part.kind) {
 				if (has_arguments || (!pointer && generic == nullptr)) {
 					return type_error(walk, ErrorCode::E4014, part.node,
@@ -375,20 +380,14 @@ namespace hemera {
 				}
 				else {
 					std::vector<TypeInfo*> arguments;
-					for (ast::Node* argument : part.arguments) {
-						if (ast::NodeType::LITERAL == argument->node_type) {
-							//TODO(ches) values in generic lists (docs/types.md, Values in Generic Lists)
-							return type_error(walk, ErrorCode::E4014, argument,
-								"values as generic arguments aren't supported yet");
-						}
-						TypeInfo* argument_type = nullptr;
-						Progress progress = type_of(walk, argument, Need::DECLARED, argument_type);
-						if (progress != Progress::DONE) {
-							return progress;
-						}
-						arguments.push_back(argument_type);
+					std::vector<ConstantValue> values;
+					Progress progress = generic_type_arguments(walk, generic, part.arguments, [&](ast::Node* argument, TypeInfo*& type) {
+						return type_of(walk, argument, Need::DECLARED, type);
+					}, arguments, values);
+					if (progress != Progress::DONE) {
+						return progress;
 					}
-					Progress progress = instance_type(walk, part.node, generic, arguments, head_need, current);
+					progress = instance_type(walk, part.node, generic, arguments, head_need, current, values);
 					if (progress != Progress::DONE) {
 						return progress;
 					}
@@ -1212,6 +1211,58 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	// A generic parameter's name: T, or capacity in capacity: usize.
+	static InternedString generic_parameter_name(const ast::Node* parameter) {
+		return ast::NodeType::COLON == parameter->node_type && !parameter->children.empty()
+			? parameter->children[0]->value.value : parameter->value.value;
+	}
+
+	bool generic_parameter_is_value(const Declaration* generic, size_t index) {
+		ast::Node* value = generic_node(generic);
+		size_t at = 0;
+		for (ast::Node* child : value != nullptr ? value->children : MyVector<ast::Node*>{}) {
+			if (ast::NodeType::GENERIC_TAG != child->node_type) {
+				continue;
+			}
+			for (ast::Node* parameter : child->children) {
+				if (at++ == index) {
+					return ast::NodeType::COLON == parameter->node_type;
+				}
+			}
+		}
+		return false;
+	}
+
+	Progress generic_type_arguments(Walk& walk, const Declaration* generic, const std::vector<ast::Node*>& nodes,
+		const std::function<Progress(ast::Node*, TypeInfo*&)>& type_of, std::vector<TypeInfo*>& arguments,
+		std::vector<ConstantValue>& values) {
+
+		arguments.clear();
+		values.clear();
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			ast::Node* argument = nodes[i];
+			if (generic_parameter_is_value(generic, i)) {
+				// A compile-time value: a literal, a named constant, an enum member or #run's result
+				ConstantValue value;
+				Progress progress = evaluate_in(walk, argument, value);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				arguments.push_back(nullptr);
+				values.push_back(value);
+				continue;
+			}
+			TypeInfo* type = nullptr;
+			Progress progress = type_of(argument, type);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			arguments.push_back(type);
+			values.push_back({});
+		}
+		return Progress::DONE;
+	}
+
 	ast::Node* generic_node(const Declaration* generic) {
 		ast::Node* value = definition_value(generic->node);
 		if (value != nullptr && (ast::NodeType::STRUCT == value->node_type || ast::NodeType::UNION == value->node_type
@@ -1233,17 +1284,42 @@ namespace hemera {
 				continue;
 			}
 			for (ast::Node* parameter : child->children) {
-				if (ast::NodeType::COLON == parameter->node_type || index >= instance->generic_arguments.size()) {
-					//TODO(ches) values in generic lists (docs/types.md, Values in Generic Lists)
-					return type_error(walk, ErrorCode::E4014, parameter,
-						"values in generic lists aren't supported yet");
+				if (index >= instance->generic_arguments.size()) {
+					return type_error(walk, ErrorCode::E4014, parameter, "this generic parameter has no argument");
+				}
+				const bool is_value = ast::NodeType::COLON == parameter->node_type;
+				const std::string name = name_text(generic_parameter_name(parameter));
+				// A value, like capacity: usize, takes a compile-time value; anything else a type
+				if (is_value != (instance->generic_arguments[index] == nullptr)
+					&& ast::NodeType::FUNCTION != value->node_type) {
+					return type_error(walk, ErrorCode::E4014, parameter, is_value
+						? std::format("{} is a value, so it takes one, not a type", name)
+						: std::format("{} is a type, so it takes one, not a value", name));
+				}
+				if (is_value && parameter->children.size() > 1) {
+					TypeInfo* declared = nullptr;
+					Progress progress = type_of(walk, parameter->children[1], Need::DECLARED, declared);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+					const ConstantValue& given = instance->generic_values[index];
+					TypeInfo const* kind = get_base_type(declared);
+					const bool fits = kind == nullptr
+						|| (TypeInfoVariant::INTEGER == kind->variant && ConstantValue::Kind::INTEGER == given.kind)
+						|| (TypeInfoVariant::BOOLEAN == kind->variant && ConstantValue::Kind::BOOLEAN == given.kind)
+						|| (TypeInfoVariant::ENUM == kind->variant && ConstantValue::Kind::ENUM_MEMBER == given.kind)
+						|| (TypeInfoVariant::FUNCTION == kind->variant && ConstantValue::Kind::FUNCTION == given.kind);
+					if (!fits) {
+						return type_error(walk, ErrorCode::E4014, parameter, std::format("{} takes a {}, not {}",
+							name, to_string(declared), constant_text(given)));
+					}
 				}
 				// A type, or a compile-time parameter's value
 				if (instance->generic_arguments[index] == nullptr) {
-					walk.generic_values[name_text(parameter->value.value)] = instance->generic_values[index];
+					walk.generic_values[name] = instance->generic_values[index];
 				}
 				else {
-					walk.generic_types[name_text(parameter->value.value)] = instance->generic_arguments[index];
+					walk.generic_types[name] = instance->generic_arguments[index];
 				}
 				++index;
 			}

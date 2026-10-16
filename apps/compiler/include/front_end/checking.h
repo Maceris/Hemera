@@ -108,6 +108,10 @@ namespace hemera {
 		/// </summary>
 		std::vector<TypeInfo*> generic_arguments;
 		/// <summary>
+		/// For an explicit argument that's a value (its type in generic_arguments is null), the value.
+		/// </summary>
+		std::vector<ConstantValue> generic_values;
+		/// <summary>
 		/// The local a name is, by where it was defined, or null for anything else.
 		/// </summary>
 		const void* local = nullptr;
@@ -157,6 +161,11 @@ namespace hemera {
 		/// each block in. A variable lives as long as its scope (docs/memory.md, Pointers to the Stack).
 		/// </summary>
 		std::unordered_map<const void*, size_t> local_depths;
+		/// <summary>
+		/// In an instance, the values of its generic list that aren't parameters, like capacity in
+		/// fn[T, capacity: usize]: locals that are constants, by where they're declared.
+		/// </summary>
+		std::unordered_map<const void*, ConstantValue> generic_constants;
 	};
 
 	/// <summary>

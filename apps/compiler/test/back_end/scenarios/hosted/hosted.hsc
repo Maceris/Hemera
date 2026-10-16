@@ -417,6 +417,44 @@ two_results :: fn() -> (u32, bool) {
     return 3, true
 }
 
+// Values in generic lists (docs/types.md, Values in Generic Lists)
+Ring :: struct[T, capacity: usize] {
+    items : T[capacity],
+    head : usize,
+}
+
+push :: fn[T, capacity: usize](ring: ptr[mut Ring[T, capacity]], item: T) {
+    if ring.head < capacity {
+        ring.items[ring.head] = item
+        ring.head += 1
+    }
+}
+
+// A value only given explicitly, sizing a local and the result
+filled :: fn[count: usize](value: u8) -> u8[count] {
+    result : u8[count]
+    for i in 0..<count {
+        result[i] = value
+    }
+    return result
+}
+
+verbosity :: fn[verbose: bool]() -> int {
+    #if verbose {
+        return 2
+    }
+    #else {
+        return 1
+    }
+}
+
+// One argument after a generic type is its argument, not an array's count; sizes can be arithmetic
+Bits :: struct[size: usize] {
+    words : u64[(size + 63) / 64],
+}
+
+RING_SIZE :: 2
+
 main :: fn() -> int {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
@@ -662,6 +700,18 @@ main :: fn() -> int {
     }
     if REFLECTED_PARAMETERS != 3 {
         return 52
+    }
+    ring : Ring[u8, RING_SIZE * 1]
+    push[u8, 2](&ring, cast[u8](1))
+    push(&ring, cast[u8](2))
+    push(&ring, cast[u8](3))
+    if ring.head != 2 || ring.items[1] != 2 || size_of(Ring[u8, 2]) != 16 {
+        return 53
+    }
+    nines :: filled[4](cast[u8](9))
+    bits : Bits[130]
+    if nines.count != 4 || nines[3] != 9 || verbosity[true]() != 2 || verbosity[false]() != 1 || bits.words.count != 3 {
+        return 54
     }
     return 42
 }

@@ -769,6 +769,15 @@ namespace hemera {
 			}
 			chain.kind = found->kind;
 			chain.type = found->type;
+			// A value from an instance's generic list is a constant
+			auto generic_constant = analysis.checked.generic_constants.find(found->local);
+			if (found->local != nullptr && generic_constant != analysis.checked.generic_constants.end()) {
+				chain.pathless = true;
+				if (ConstantValue::Kind::INTEGER == generic_constant->second.kind) {
+					chain.value = constant(generic_constant->second.integer);
+				}
+				return chain;
+			}
 			if (found->local != nullptr) {
 				chain.local = found->local;
 				if (is_variant(found->type, TypeInfoVariant::INTEGER) || (found->type == nullptr && ValueKind::UNTYPED_INTEGER == found->kind)) {

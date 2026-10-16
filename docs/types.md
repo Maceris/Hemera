@@ -444,7 +444,21 @@ push :: fn[T, capacity: usize](ring: ptr[mut Ring[T, capacity]], item: T) {/* ..
 ```
 
 They follow the same rules as compile-time parameters, and are bound explicitly, or inferred from a parameter's type,
-as `push` binds `capacity` from `ring`.
+as `push` binds `capacity` from `ring`. Inside the type or function, a value is a constant of its declared type: it can
+size an array, be used in `#if` and `#assert`, and be used like any other constant. A value given explicitly is written
+like a type argument, as in `filled[4](byte)`. Two instances with equal values are the same type, so
+`Ring[u8, 2 + 2]` is `Ring[u8, 4]`.
+
+An array's size in a type, and a value in a generic list, can be a constant expression:
+
+```
+Bits :: struct[size: usize] {
+    words : u64[(size + 63) / 64],
+}
+
+flags : Bits[130]        // three words
+ring : Ring[u8, PAGE_SIZE / 2]
+```
 
 A generic type whose only argument is an integer, like `Bits[64]`, means `Bits` with the argument 64 when `Bits` is
 generic, and an array of 64 `Bits` otherwise.

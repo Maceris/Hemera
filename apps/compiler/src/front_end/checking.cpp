@@ -872,11 +872,37 @@ namespace hemera {
 		for (ast::Node* child : function->children) {
 			if (ast::NodeType::GENERIC_TAG == child->node_type) {
 				for (ast::Node* parameter : child->children) {
-					result.push_back(text_of(parameter->value.value));
+					// T, or capacity in capacity: usize
+					const bool is_value = ast::NodeType::COLON == parameter->node_type && !parameter->children.empty();
+					result.push_back(text_of(is_value ? parameter->children[0]->value.value : parameter->value.value));
 				}
 			}
 		}
 		return result;
+	}
+
+	/*
+	 * Whether a generic function's generic parameter at index takes a value: one written name: type,
+	 * or a compile-time parameter, named like a parameter that isn't a type (docs/types.md).
+	 */
+	static bool generic_takes_value(Declaration* generic, size_t index) {
+		ast::Node* function = generic != nullptr ? function_node(generic) : nullptr;
+		if (function == nullptr) {
+			return false;
+		}
+		if (generic_parameter_is_value(generic, index)) {
+			return true;
+		}
+		const std::vector<std::string> names = generic_names(function);
+		if (index >= names.size()) {
+			return false;
+		}
+		for (const Parameter& parameter : parameters_of(function)) {
+			if (text_of(parameter.name) == names[index]) {
+				return parameter.type == nullptr || !is_text(parameter.type->value.value, "type") || !parameter.type->children.empty();
+			}
+		}
+		return false;
 	}
 
 	/*
@@ -885,7 +911,8 @@ namespace hemera {
 	 * target, in T[] from an array's elements, in Pair[T, U] from an instance's arguments.
 	 */
 	static void unify(Checker& checker, ast::Node* pattern, TypeInfo* actual,
-		std::map<std::string, TypeInfo*>& bound, const std::vector<std::string>& generics) {
+		std::map<std::string, TypeInfo*>& bound, std::map<std::string, ConstantValue>& bound_values,
+		const std::vector<std::string>& generics) {
 
 		if (pattern == nullptr || actual == nullptr) {
 			return;
@@ -931,7 +958,7 @@ namespace hemera {
 		if ((name == "ptr" || name.starts_with("relptr")) && type != nullptr
 			&& TypeInfoVariant::POINTER == type->variant && !arguments->children.empty()) {
 			unify(checker, arguments->children[0], static_cast<TypeInfoPointer const*>(type)->base_type, bound,
-				generics);
+				bound_values, generics);
 			return;
 		}
 		// An instance of a generic type: its arguments
@@ -948,7 +975,20 @@ namespace hemera {
 			return;
 		}
 		for (size_t i = 0; i < arguments->children.size() && i < instance->generic_arguments.size(); ++i) {
-			unify(checker, arguments->children[i], instance->generic_arguments[i], bound, generics);
+			// A value in the instance's list, like capacity in Ring[T, capacity], binds a value parameter
+			ast::Node* argument = arguments->children[i];
+			if (instance->generic_arguments[i] == nullptr) {
+				const std::string value_name = text_of(argument->value.value);
+				// In a type, the parser makes a plain name a TYPE node
+				if ((ast::NodeType::IDENTIFIER == argument->node_type || ast::NodeType::TYPE == argument->node_type)
+					&& argument->children.empty()
+					&& std::find(generics.begin(), generics.end(), value_name) != generics.end()
+					&& i < instance->generic_values.size()) {
+					bound_values.emplace(value_name, instance->generic_values[i]);
+				}
+				continue;
+			}
+			unify(checker, argument, instance->generic_arguments[i], bound, bound_values, generics);
 		}
 	}
 
@@ -1174,7 +1214,12 @@ namespace hemera {
 		bool binding_failed = false;
 		std::set<std::string> explicit_names;
 		for (size_t i = 0; i < callee.generic_arguments.size() && i < generics.size(); ++i) {
-			bound[generics[i]] = callee.generic_arguments[i];
+			if (callee.generic_arguments[i] == nullptr && i < callee.generic_values.size()) {
+				bound_values[generics[i]] = callee.generic_values[i];
+			}
+			else {
+				bound[generics[i]] = callee.generic_arguments[i];
+			}
 			explicit_names.insert(generics[i]);
 		}
 		// Each argument, matched to its parameter, binds what it can
@@ -1242,7 +1287,7 @@ namespace hemera {
 				}
 			}
 			std::map<std::string, TypeInfo*> inferred;
-			unify(checker, parameter->type, type, inferred, generics);
+			unify(checker, parameter->type, type, inferred, bound_values, generics);
 			for (const auto& [generic_name, generic_type] : inferred) {
 				if (explicit_names.contains(generic_name)) {
 					report_warning(WarningCode::W4000, checker.walk.file_path, argument->value.line_number,
@@ -1572,8 +1617,26 @@ namespace hemera {
 			}
 			else if (ast::NodeType::ARRAY_DIMENSION == type) {
 				if (ValueKind::GENERIC_FUNCTION == value.kind) {
-					// Generic arguments given explicitly, like empty[string]()
+					// Generic arguments given explicitly, like empty[string]() or push[u8, 4](...)
 					for (ast::Node* argument : arguments) {
+						if (generic_takes_value(value.declaration, value.generic_arguments.size())) {
+							if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument->value.value) != nullptr
+								&& !checker.walk.generic_values.contains(text_of(argument->value.value))) {
+								error_at(checker, ErrorCode::E4010, argument, std::format(
+									"{} is a variable, but a generic argument that's a value must be a constant", text_of(argument->value.value)));
+								progress = Progress::FAILED;
+								break;
+							}
+							ConstantValue constant;
+							progress = evaluate_in(checker.walk, argument, constant);
+							if (progress != Progress::DONE) {
+								break;
+							}
+							value.generic_arguments.push_back(nullptr);
+							value.generic_values.resize(value.generic_arguments.size());
+							value.generic_values.back() = constant;
+							continue;
+						}
 						TypeInfo* argument_type = nullptr;
 						progress = check_type(checker, argument, Need::DECLARED, argument_type);
 						if (progress != Progress::DONE) {
@@ -2071,21 +2134,21 @@ namespace hemera {
 		else if (bound != checker.walk.bindings.end()) {
 			Declaration* declaration = bound->second;
 			if (DeclarationKind::GENERIC_TYPE == declaration->kind) {
-				std::vector<TypeInfo*> arguments;
+				std::vector<ast::Node*> argument_nodes;
 				for (ast::Node* child : node->children) {
-					if (ast::NodeType::GENERIC_TAG != child->node_type) {
-						continue;
-					}
-					for (ast::Node* argument : child->children) {
-						TypeInfo* argument_type = nullptr;
-						progress = check_type(checker, argument, Need::DECLARED, argument_type);
-						if (progress != Progress::DONE) {
-							return progress;
-						}
-						arguments.push_back(argument_type);
+					if (ast::NodeType::GENERIC_TAG == child->node_type) {
+						argument_nodes.insert(argument_nodes.end(), child->children.begin(), child->children.end());
 					}
 				}
-				return instance_type(checker.walk, node, declaration, arguments, Need::RESOLVED, result);
+				std::vector<TypeInfo*> arguments;
+				std::vector<ConstantValue> values;
+				progress = generic_type_arguments(checker.walk, declaration, argument_nodes, [&](ast::Node* argument, TypeInfo*& type) {
+					return check_type(checker, argument, Need::DECLARED, type);
+				}, arguments, values);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				return instance_type(checker.walk, node, declaration, arguments, Need::RESOLVED, result, values);
 			}
 			named = declaration->type_value;
 		}
@@ -3615,11 +3678,48 @@ namespace hemera {
 	 * A function's body: every path that finishes returns its results, and a #never_returns one
 	 * can't finish at all (docs/directives.md).
 	 */
+	/*
+	 * In an instance, each value in the generic list that isn't also a parameter, like capacity in
+	 * fn[T, capacity: usize]: a constant of its declared type (docs/types.md, Values in Generic Lists).
+	 */
+	static Progress declare_generic_values(Checker& checker, ast::Node* function_node) {
+		for (ast::Node* child : function_node->children) {
+			if (ast::NodeType::GENERIC_TAG != child->node_type) {
+				continue;
+			}
+			for (ast::Node* parameter : child->children) {
+				if (ast::NodeType::COLON != parameter->node_type || parameter->children.size() < 2) {
+					continue;
+				}
+				ast::Node* name = parameter->children[0];
+				auto value = checker.walk.generic_values.find(text_of(name->value.value));
+				if (value == checker.walk.generic_values.end() || find_local(checker, name->value.value) != nullptr) {
+					continue;
+				}
+				TypeInfo* type = nullptr;
+				Progress progress = check_type(checker, parameter->children[1], Need::DECLARED, type);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				declare_local(checker, name, name->value.value, typed(type));
+				if (checker.record != nullptr) {
+					checker.record->generic_constants[name] = value->second;
+				}
+			}
+		}
+		return Progress::DONE;
+	}
+
 	static Progress check_function_body(Checker& checker, ast::Node* function_node, ast::Node* body,
 		TypeInfoFunction const* type, const ast::Node* where) {
 
 		checker.scopes.emplace_back();
 		declare_parameters(checker, function_node, type);
+		Progress declared = declare_generic_values(checker, function_node);
+		if (declared != Progress::DONE) {
+			checker.scopes.pop_back();
+			return declared;
+		}
 		checker.function = const_cast<TypeInfoFunction*>(type);
 		checker.has_context = !starts_without_context(type);
 		bool continues = true;

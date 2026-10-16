@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -142,7 +143,21 @@ namespace hemera {
 	/// The instance of a generic type for these arguments, resolved when need asks.
 	/// </summary>
 	Progress instance_type(Walk& walk, ast::Node* where, Declaration* generic,
-		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result);
+		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result, const std::vector<ConstantValue>& values = {});
+
+	/// <summary>
+	/// Whether a generic's parameter at index is a value, written name: type, rather than a type
+	/// (docs/types.md, Values in Generic Lists).
+	/// </summary>
+	bool generic_parameter_is_value(const Declaration* generic, size_t index);
+
+	/// <summary>
+	/// A generic type's arguments: for a parameter that's a type, the type type_of gives; for one
+	/// that's a value, a null type and the compile-time value of the argument.
+	/// </summary>
+	Progress generic_type_arguments(Walk& walk, const Declaration* generic, const std::vector<ast::Node*>& nodes,
+		const std::function<Progress(ast::Node*, TypeInfo*&)>& type_of, std::vector<TypeInfo*>& arguments,
+		std::vector<ConstantValue>& values);
 
 	/// <summary>
 	/// Makes a type the program's registry owns, which lives as long as the program does.
