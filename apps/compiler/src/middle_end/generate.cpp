@@ -5356,7 +5356,8 @@ namespace hemera {
 				ImportInfo* import = imports[i].second;
 				data.write_text(at, import_layout, "path", text_of(import->resolved_path));
 				data.write_text(at, import_layout, "alias", text_of(import->alias != nullptr ? import->alias : import->name));
-				data.write_text(at, import_layout, "from", text_of(import->location));
+				// The text of its from literal, without the quotes
+				data.write_text(at, import_layout, "from", import->location != nullptr ? literal_text(import->location) : std::string());
 				write_location_field(data, at, import_layout, imports[i].first, import->node);
 			});
 			std::vector<Declaration*> functions;
