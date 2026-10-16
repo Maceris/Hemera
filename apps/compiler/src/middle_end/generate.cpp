@@ -4993,6 +4993,14 @@ namespace hemera {
 		LLVM::UnreachableOp::create(generator.builder, generator.loc);
 	}
 
+	// Declarations by package path, then name, so what's generated from them comes out in the same order every time.
+	static void sort_by_name(std::vector<Declaration*>& declarations) {
+		const auto text = [](InternedString name) { return name != nullptr ? std::string_view(*name) : std::string_view(); };
+		std::sort(declarations.begin(), declarations.end(), [&](const Declaration* a, const Declaration* b) {
+			return std::make_pair(text(a->package_path), text(a->name)) < std::make_pair(text(b->package_path), text(b->name));
+		});
+	}
+
 	/*
 	 * What's kept though nothing in the program uses it: #externally_initialized constants, which
 	 * something outside fills in, like Limine's requests, and #export functions and constants.
@@ -5005,6 +5013,8 @@ namespace hemera {
 				declarations.push_back(declaration);
 			}
 		}
+		// The map is ordered by the names' addresses, which change from run to run; the output shouldn't
+		sort_by_name(declarations);
 		for (Declaration* declaration : declarations) {
 			if (declaration->generic != nullptr || declaration->value_type == nullptr || declaration->failed) {
 				continue;
@@ -5157,6 +5167,7 @@ namespace hemera {
 					result.push_back(declaration);
 				}
 			}
+			sort_by_name(result);
 			return result;
 		}
 
@@ -5977,6 +5988,10 @@ namespace hemera {
 		for (const auto& [path, package] : target->packages) {
 			packages.push_back(package);
 		}
+		// By path, since the map's order is the paths' addresses
+		std::sort(packages.begin(), packages.end(), [](const hemera::PackageInfo* a, const hemera::PackageInfo* b) {
+			return std::string_view(*a->full_path) < std::string_view(*b->full_path);
+		});
 		uint8_t* package_records = data.new_records(package_layout, packages.size());
 		uint8_t* root = nullptr;
 		for (size_t i = 0; i < packages.size(); ++i) {
@@ -6387,6 +6402,23 @@ namespace hemera {
 		builder.CreateStore(llvm::ConstantPointerNull::get(llvm::PointerType::get(module.getContext(), 0)), frame);
 	}
 
+	/*
+	 * The LLVM module's name, which object files keep (an ELF's file symbol): the root package's folder,
+	 * not the output's name, so where the output goes doesn't change what's in it.
+	 */
+	static std::string module_name(const Options& options) {
+		std::error_code error;
+		std::filesystem::path root = std::filesystem::weakly_canonical(options.input, error);
+		if (error) {
+			root = options.input;
+		}
+		if (!std::filesystem::is_directory(root, error)) {
+			root = root.stem();
+		}
+		const std::string name = root.filename().string();
+		return name.empty() ? std::string("hemera") : name;
+	}
+
 	std::unique_ptr<llvm::Module> lower_to_llvm(mlir::ModuleOp module, llvm::LLVMContext& context, const Options& options) {
 		mlir::PassManager passes(module.getContext(), mlir::ModuleOp::getOperationName());
 		passes.addPass(mlir::hmir::createHemeraDefer());
@@ -6399,7 +6431,7 @@ namespace hemera {
 		mlir::registerBuiltinDialectTranslation(registry);
 		mlir::registerLLVMDialectTranslation(registry);
 		module.getContext()->appendDialectRegistry(registry);
-		std::unique_ptr<llvm::Module> result = mlir::translateModuleToLLVMIR(module, context, options.output_name);
+		std::unique_ptr<llvm::Module> result = mlir::translateModuleToLLVMIR(module, context, module_name(options));
 		if (result == nullptr) {
 			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "translating to LLVM IR failed");
 			return result;

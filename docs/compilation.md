@@ -42,6 +42,20 @@ File Import --> Parse --> Type Check <--\
         Executable Generation
 ```
 
+## Deterministic Output
+
+The same inputs (source, `base` and `std`, options and settings, and the same compiler) give the
+same output, byte for byte, wherever it's written and however the work was spread across threads.
+That lets you check that two builds of a commit match, see only real changes when comparing two
+compilers' output, and cache or bisect builds.
+
+Work happens on many threads, in whatever order its dependencies allow, so nothing the compiler
+writes may depend on that order or on memory addresses. Where the compiler walks a collection to
+produce output, or a list compile-time code sees (a package's declarations, a program's packages),
+it orders it by something in the source: a name, a path, a position. The object file is named
+after the root package's folder, not the output file. Compile-time code can still make a build
+differ, by reading the clock or a file that changed; that's the code's choice, not the compiler's.
+
 ## Compile-Time Execution
 
 Compile-time code, like `#run` and a constant whose value calls a function, is compiled and run through a JIT: the

@@ -1,5 +1,7 @@
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <string>
@@ -25,13 +27,11 @@ static std::filesystem::path scenario(std::string_view name) {
 }
 
 /*
- * A freestanding kernel, compiled the whole way to an ELF the way SlopOS builds one: no startup
- * code, no red zone, no SIMD, stack checks that trap, position-independent, placed by a linker
- * script. Booting it takes Limine and QEMU, which SlopOS's harness has; here the ELF is checked:
- * its entry, and Limine's requests in their sections.
+ * Compiles the freestanding scenario the whole way to an ELF at output, the way SlopOS builds a
+ * kernel: no startup code, no red zone, no SIMD, stack checks that trap, position-independent,
+ * placed by a linker script.
  */
-TEST(Freestanding, BuildsKernel)
-{
+static void build_kernel(const std::filesystem::path& output) {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
 
@@ -42,11 +42,10 @@ TEST(Freestanding, BuildsKernel)
 	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "freestanding");
 	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
 
-	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "freestanding";
-	std::filesystem::create_directories(output_folder);
+	std::filesystem::create_directories(output.parent_path());
 	hemera::Options options;
 	options.input = std::filesystem::canonical(scenario("freestanding"));
-	options.output_name = (output_folder / "kernel.elf").string();
+	options.output_name = output.string();
 	options.os = hemera::OSType::UnknownOS;
 	options.vendor = hemera::VendorType::UnknownVendor;
 	options.environment = hemera::EnvironmentType::UnknownEnvironment;
@@ -74,8 +73,27 @@ TEST(Freestanding, BuildsKernel)
 	backend.link(options, object_file);
 	backend.destroy();
 	ASSERT_EQ(hemera::error_count(), 0);
+	module.erase();
+}
 
-	auto binary = llvm::object::ObjectFile::createObjectFile(options.output_name);
+static std::string bytes_of(const std::filesystem::path& file) {
+	std::ifstream stream(file, std::ios::binary);
+	return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+}
+
+/*
+ * A freestanding kernel. Booting it takes Limine and QEMU, which SlopOS's harness has; here the ELF
+ * is checked: its entry, and Limine's requests in their sections.
+ */
+TEST(Freestanding, BuildsKernel)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "freestanding" / "kernel.elf";
+	build_kernel(output);
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
 	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
 	llvm::object::ObjectFile& elf = *binary->getBinary();
 	EXPECT_TRUE(elf.isELF());
@@ -112,6 +130,31 @@ TEST(Freestanding, BuildsKernel)
 	ASSERT_TRUE(static_cast<bool>(start));
 	EXPECT_EQ(*start, entry_address);
 	EXPECT_GE(entry_address, 0xffffffff80000000);
+}
 
-	module.erase();
+/*
+ * The same program builds to the same bytes every time, wherever the output goes (docs/compilation.md,
+ * Deterministic Output). The kernel's #externally_initialized requests are kept though nothing uses
+ * them, which is where map order once leaked in. Builds that differ can still match by chance, so
+ * this builds a few times.
+ */
+TEST(Freestanding, BuildsTheSameEveryTime)
+{
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "deterministic";
+	std::string first;
+	for (int i = 0; i < 4; ++i) {
+		const std::filesystem::path output = folder / std::format("build_{}", i) / std::format("kernel_{}.elf", i);
+		build_kernel(output);
+		if (testing::Test::HasFatalFailure()) {
+			return;
+		}
+		const std::string bytes = bytes_of(output);
+		ASSERT_FALSE(bytes.empty());
+		if (i == 0) {
+			first = bytes;
+		}
+		else {
+			EXPECT_TRUE(bytes == first) << output.string() << " differs from the first build";
+		}
+	}
 }
