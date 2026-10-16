@@ -399,12 +399,13 @@ namespace hemera {
 		LLVM::StoreOp::create(generator.builder, generator.loc, value, address);
 	}
 
-	// Values bigger than this are zeroed with memset, which LLVM handles far better than a large aggregate store.
-	constexpr size_t LARGEST_ZERO_STORE = 64;
+	// Values bigger than this are zeroed with memset and copied with memmove, which LLVM handles far better
+	// than loading and storing a large aggregate whole.
+	constexpr size_t LARGEST_WHOLE_STORE = 64;
 
 	// Zero the value of type at address.
 	static void store_zero(Generator& generator, TypeInfo* type, mlir::Value address) {
-		if (type != nullptr && type->size > LARGEST_ZERO_STORE) {
+		if (type != nullptr && type->size > LARGEST_WHOLE_STORE) {
 			LLVM::MemsetOp::create(generator.builder, generator.loc, address, constant_int(generator, integer_type(generator, 1), 0),
 				constant_int(generator, usize_type(generator), static_cast<int64_t>(type->size)), false);
 			return;
@@ -454,6 +455,7 @@ namespace hemera {
 	}
 
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where);
+	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right);
 
 	static mlir::Value value_of(Generator& generator, const Emitted& emitted) {
 		if (emitted.value) {
@@ -852,8 +854,13 @@ namespace hemera {
 			}
 			return make_view(generator, extract(generator, v, 0), extract(generator, v, 1));
 		}
-		// A value as an optional or result holding it: Some or Ok, the first variant
-		if (TypeInfoVariant::UNION == destination->variant && TypeInfoVariant::UNION != source->variant) {
+		/*
+		 * A value as an optional or result holding it: Some or Ok, the first variant. The value may
+		 * be a union itself, like a ConsoleError as a ConsoleError?
+		 */
+		TypeInfo const* held = TypeInfoVariant::UNION == destination->variant ? held_type(destination) : nullptr;
+		if (TypeInfoVariant::UNION == destination->variant
+			&& (TypeInfoVariant::UNION != source->variant || (held != nullptr && base(held) == source))) {
 			return make_variant(generator, const_cast<TypeInfo*>(to), 0, { v }, { const_cast<TypeInfo*>(from) });
 		}
 		// Through a using, the struct it includes
@@ -943,6 +950,21 @@ namespace hemera {
 				static_cast<int64_t>(static_cast<TypeInfoArray const*>(base(emitted.type))->count)), emitted.address);
 		}
 		return convert(generator, value_of(generator, emitted), emitted.type, type);
+	}
+
+	/*
+	 * Store what was emitted, as type, at address. A large value that's already in memory, of the
+	 * same type, is copied with memmove (it may be the same place), which LLVM handles far better
+	 * than loading and storing it whole.
+	 */
+	static void store_emitted(Generator& generator, const Emitted& emitted, TypeInfo* type, mlir::Value address) {
+		if (emitted.address && in_function(generator) && type != nullptr && emitted.type != nullptr
+			&& base(emitted.type) == base(type) && type->size > LARGEST_WHOLE_STORE) {
+			LLVM::MemmoveOp::create(generator.builder, generator.loc, address, emitted.address,
+				constant_int(generator, usize_type(generator), static_cast<int64_t>(type->size)), false);
+			return;
+		}
+		store(generator, convert_emitted(generator, emitted, type), address);
 	}
 
 	static mlir::Value emit_as(Generator& generator, ast::Node* node, TypeInfo* type) {
@@ -2364,7 +2386,17 @@ namespace hemera {
 				store(generator, value_of(generator, held), slot);
 				return false;
 			}, [&]() {
-				store(generator, emit_as(generator, right_node, held.type), slot);
+				// A default that never returns, like a call that stops the program, ends here
+				Emitted otherwise = emit_expression(generator, right_node, held.type);
+				if (otherwise.never_returns) {
+					LLVM::UnreachableOp::create(generator.builder, generator.loc);
+					return true;
+				}
+				if (ValueKind::VARIANT == otherwise.kind) {
+					store(generator, convert(generator, make_variant(generator, otherwise.type, otherwise.variant, {}, {}), otherwise.type, held.type), slot);
+					return false;
+				}
+				store(generator, convert_emitted(generator, otherwise, held.type), slot);
 				return false;
 			});
 			return location(slot, held.type);
@@ -2382,6 +2414,11 @@ namespace hemera {
 		}
 		if (is_comparison(op)) {
 			TypeInfo* type = shared_type(generator, left_node, right_node, nullptr);
+			if ((TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) && is_variant(type, TypeInfoVariant::STRING)
+				&& !static_cast<TypeInfoString const*>(base(type))->is_raw) {
+				mlir::Value same = strings_equal(generator, emit_as(generator, left_node, type), emit_as(generator, right_node, type));
+				return value(TokenType::OPERATOR_EQUAL == op ? same : negate(generator, same), BUILTIN_bool);
+			}
 			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::TYPE)
 				|| is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
 				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
@@ -2494,6 +2531,36 @@ namespace hemera {
 	}
 
 	// Type.[values]: a static array of them.
+	// memcmp, which lower_to_llvm defines (define_memory_functions), declared for a call.
+	static LLVM::LLVMFuncOp memcmp_function(Generator& generator) {
+		LLVM::LLVMFuncOp function = generator.module.lookupSymbol<LLVM::LLVMFuncOp>("memcmp");
+		if (!function) {
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, "memcmp",
+				LLVM::LLVMFunctionType::get(integer_type(generator, 4),
+					{ pointer_type(generator), pointer_type(generator), usize_type(generator) }));
+		}
+		return function;
+	}
+
+	/*
+	 * Whether two strings have the same bytes, as an i1: the same count, and memcmp over it. When
+	 * the counts differ, memcmp compares no bytes, so it never reads past the shorter one.
+	 */
+	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::Value left_count = extract(generator, left, 0);
+		mlir::Value same_count = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, left_count, extract(generator, right, 0));
+		mlir::Value count = LLVM::SelectOp::create(b, l, same_count, left_count, constant_int(generator, usize_type(generator), 0));
+		auto difference = LLVM::CallOp::create(b, l, memcmp_function(generator),
+			mlir::ValueRange{ extract(generator, left, 1), extract(generator, right, 1), count });
+		mlir::Value same_bytes = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, difference.getResult(),
+			constant_int(generator, integer_type(generator, 4), 0));
+		return LLVM::AndOp::create(b, l, same_count, same_bytes);
+	}
+
 	/*
 	 * Integer elements that are all constants as one dense constant, or null if they aren't. The
 	 * elements' own constants are erased either way, since nothing uses them: a long table, like a
@@ -2882,8 +2949,11 @@ namespace hemera {
 			if (ValueKind::VARIANT == emitted.kind) {
 				emitted = value(make_variant(generator, emitted.type, emitted.variant, {}, {}), emitted.type);
 			}
-			else if (emitted.address && !is_array_to_view(emitted.type, hint)) {
-				// Read before anything is assigned, for a, b = b, a. A view of an array refers to it anyway
+			else if (emitted.address && nodes.size() > 1 && !is_array_to_view(emitted.type, hint)) {
+				/*
+				 * Read before anything is assigned, for a, b = b, a. A single value can't be swapped
+				 * with anything, and a view of an array refers to it anyway
+				 */
 				emitted = value(value_of(generator, emitted), emitted.type);
 			}
 			values.push_back(emitted);
@@ -2926,11 +2996,12 @@ namespace hemera {
 				unsupported(generator, targets[i], "this can't be assigned to");
 				continue;
 			}
-			mlir::Value v;
 			if (TokenType::INVALID == op) {
-				v = convert_emitted(generator, given, target.type);
+				store_emitted(generator, given, target.type, target.address);
+				continue;
 			}
-			else if (is_shift(op)) {
+			mlir::Value v;
+			if (is_shift(op)) {
 				mlir::Value current = value_of(generator, target);
 				v = arithmetic(generator, op, current, shift_amount(generator, value_of(generator, given), current.getType()),
 					target.type, node);
@@ -2995,7 +3066,7 @@ namespace hemera {
 			}
 			else {
 				const Emitted& given = values.size() == 1 ? values[0] : values[std::min(i, values.size() - 1)];
-				store(generator, convert_emitted(generator, given, types[i]), slot);
+				store_emitted(generator, given, types[i], slot);
 			}
 			generator.state->slots[names[i]] = slot;
 		}
@@ -3694,7 +3765,9 @@ namespace hemera {
 	 * end_stack_at_entry made the end of the chain, so its return address isn't recorded.
 	 */
 	//TODO(claude) leaving out morestack's and .grow's frames, and following fibers' resume loops
-	static void define_stack_walker(llvm::Module& module) {
+	static void define_windows_stack_walker(llvm::Module& module, llvm::Function* walker);
+
+	static void define_stack_walker(llvm::Module& module, bool windows) {
 		llvm::Function* walker = module.getFunction(STACK_WALKER_SYMBOL);
 		if (walker == nullptr || !walker->isDeclaration()) {
 			return;
@@ -3705,6 +3778,10 @@ namespace hemera {
 		walker->setLinkage(llvm::GlobalValue::InternalLinkage);
 		walker->addFnAttr(llvm::Attribute::NoInline);
 		walker->addFnAttr("frame-pointer", "all");
+		if (windows) {
+			define_windows_stack_walker(module, walker);
+			return;
+		}
 		llvm::Value* addresses = walker->getArg(0);
 		llvm::Value* count = walker->getArg(1);
 		llvm::Value* skip = walker->getArg(2);
@@ -3770,6 +3847,31 @@ namespace hemera {
 	}
 
 	/*
+	 * The walker on Windows, where frame pointers don't form a chain (x64 frames are found through
+	 * their unwind information): RtlCaptureStackBackTrace, from kernel32, which programs link with.
+	 * Its first two frames are the walker's own and its caller's, so they're skipped too. The trace
+	 * goes on into the system's frames below the entry function.
+	 */
+	static void define_windows_stack_walker(llvm::Module& module, llvm::Function* walker) {
+		llvm::LLVMContext& context = module.getContext();
+		llvm::Type* pointer = llvm::PointerType::get(context, 0);
+		llvm::Type* size = llvm::Type::getInt64Ty(context);
+		llvm::Type* u32 = llvm::Type::getInt32Ty(context);
+		llvm::Type* u16 = llvm::Type::getInt16Ty(context);
+		llvm::FunctionCallee capture = module.getOrInsertFunction("RtlCaptureStackBackTrace",
+			llvm::FunctionType::get(u16, { u32, u32, pointer, pointer }, false));
+		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
+		// At most 62 frames in all (ULONG counts, but XP's limit is still documented)
+		llvm::Value* count = builder.CreateTrunc(builder.CreateBinaryIntrinsic(llvm::Intrinsic::umin, walker->getArg(1),
+			llvm::ConstantInt::get(size, 62)), u32);
+		llvm::Value* skip = builder.CreateAdd(builder.CreateTrunc(builder.CreateBinaryIntrinsic(llvm::Intrinsic::umin,
+			walker->getArg(2), llvm::ConstantInt::get(size, 60)), u32), llvm::ConstantInt::get(u32, 2));
+		llvm::Value* written = builder.CreateCall(capture, { skip, count, walker->getArg(0),
+			llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)) });
+		builder.CreateRet(builder.CreateZExt(written, size));
+	}
+
+	/*
 	 * Make the program's entry function the end of the frame pointer chain, by clearing the frame
 	 * pointer it saved: whatever called it (a bootloader, the OS) isn't Hemera code, and its frames
 	 * may not follow the convention. Entry functions don't return, so nothing restores it.
@@ -3810,7 +3912,7 @@ namespace hemera {
 			function.addFnAttr("frame-pointer", "all");
 		}
 		define_memory_functions(*result);
-		define_stack_walker(*result);
+		define_stack_walker(*result, OSType::Win32 == options.os);
 		end_stack_at_entry(*result, options);
 		return result;
 	}

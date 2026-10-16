@@ -11,6 +11,9 @@
 #include "cmd_line/arg_parsing.h"
 #include "util/logger.h"
 
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Program.h"
+
 namespace hemera {
 
 	static bool package_name_matches(std::string_view value1, std::string_view value2) {
@@ -315,6 +318,30 @@ namespace hemera {
 			cout << "MachO ";
 			cout << endl;
 		}
+	}
+
+	/*
+	 * Where std is when --install-path doesn't say: the nearest folder holding std, starting from
+	 * the compiler's own folder and going up. That finds an installed layout (std next to bin) and
+	 * the source tree the compiler was built in. The current folder when there's neither.
+	 */
+	static std::filesystem::path default_install_path() {
+		static int anchor = 0;
+		const std::string executable = llvm::sys::fs::getMainExecutable(nullptr, &anchor);
+		if (executable.empty()) {
+			return {};
+		}
+		std::error_code error;
+		for (std::filesystem::path folder = std::filesystem::path(executable).parent_path();
+			!folder.empty(); folder = folder.parent_path()) {
+			if (std::filesystem::is_directory(folder / "std", error)) {
+				return folder;
+			}
+			if (folder == folder.parent_path()) {
+				break;
+			}
+		}
+		return {};
 	}
 
 	bool process_command_line_args(const arg_parse::UnprocessedOptions& input,
@@ -1067,6 +1094,10 @@ namespace hemera {
 		}
 		if (os_seen && !vendor_seen && OSType::Win32 != output.os) {
 			output.vendor = VendorType::UnknownVendor;
+		}
+
+		if (!install_path_seen) {
+			output.install_path = default_install_path();
 		}
 
 		if (output.output_name == "") {

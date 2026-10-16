@@ -382,6 +382,9 @@ keeps its frame pointer for this, so the chain is never broken by an optimized-o
   isn't Hemera code: the walk ends there, without its caller's return address.
 * An interrupt function's frame chains to the interrupted code's, so a trace from a fault handler continues through the
   code that faulted.
+* On Windows, x64 frames don't form a frame pointer chain: they're found through the program's unwind information. There
+  the walk is the system's (`RtlCaptureStackBackTrace`), which also goes on into the system's frames below the entry
+  function.
 * On AArch64 with pointer authentication, return addresses are stripped (`XPACI`) before being recorded.
 
 Turning the addresses into function names, files and lines uses the debug information, and only happens when a

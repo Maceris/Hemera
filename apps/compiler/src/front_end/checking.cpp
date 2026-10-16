@@ -201,6 +201,8 @@ namespace hemera {
 		return name.starts_with(std::string(generic) + "[") ? result : nullptr;
 	}
 
+	static Progress complete_subject(Checker& checker, ast::Node* where, const Value& subject);
+
 	// What an optional (Some) or a result (Ok) holds, or null if type is neither.
 	static TypeInfo* held_value(TypeInfo const* type) {
 		TypeInfoUnion const* holder = builtin_union(type, "Optional");
@@ -344,6 +346,12 @@ namespace hemera {
 		}
 		if (ValueKind::TYPE == kind) {
 			return is_variant(type, TypeInfoVariant::TYPE);
+		}
+		// A variant without values, like ConsoleError.Unsupported, is a value of its union
+		if (ValueKind::VARIANT == kind && value.type != nullptr) {
+			auto union_type = static_cast<TypeInfoUnion const*>(base_of(value.type));
+			return value.variant < union_type->variants.size() && union_type->variants[value.variant].types.empty()
+				&& assignable(value.type, type);
 		}
 		return false;
 	}
@@ -639,6 +647,11 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		TypeInfo const* type = base_of(value.type);
+		// A value whose type is unknown comes from an error reported already, like a missing package
+		if (type == nullptr) {
+			value = poisoned();
+			return Progress::DONE;
+		}
 		bool is_location = value.is_location;
 		bool is_mutable = value.is_mutable;
 		// Through a pointer, automatically
@@ -710,6 +723,10 @@ namespace hemera {
 		if (ValueKind::POISONED == value.kind) {
 			return Progress::DONE;
 		}
+		// An untyped string, like a constant's, is indexed as a string
+		if (ValueKind::UNTYPED_STRING == value.kind) {
+			value = typed(default_type(value));
+		}
 		if (ValueKind::VALUE != value.kind || arguments.size() != 1) {
 			value = error_at(checker, ErrorCode::E4020, where, std::format("{} can't be indexed", describe(value)));
 			return Progress::DONE;
@@ -750,6 +767,11 @@ namespace hemera {
 				if (!is_integer(default_type(bound_value)) && ValueKind::POISONED != bound_value.kind) {
 					error_at(checker, ErrorCode::E4015, bound, "a range's bounds are integers");
 				}
+			}
+			// Part of a string is a string; part of an array, a view of its elements
+			if (TypeInfoVariant::STRING == type->variant && !static_cast<TypeInfoString const*>(type)->is_raw) {
+				value = typed(const_cast<TypeInfo*>(type));
+				return Progress::DONE;
 			}
 			value = typed(array_of(checker.walk, element, ArrayType::VIEW, 0));
 			return Progress::DONE;
@@ -1009,6 +1031,18 @@ namespace hemera {
 	static Progress check_arguments(Checker& checker, ast::Node* where, TypeInfoFunction const* function,
 		const Arguments& arguments, const std::vector<InternedString>& names, const std::vector<Value>& piped) {
 
+		/*
+		 * Parameters' types only had to be declared for the signature: wait until they're laid out,
+		 * since whether a value fits an optional or a union depends on its variants
+		 */
+		for (const FunctionInput& input : function->input) {
+			if (input.type != nullptr && !input.type->complete) {
+				Progress progress = require_complete(checker.walk, where, input.type);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+			}
+		}
 		std::vector<bool> given(function->input.size(), false);
 		size_t parameter = 0;
 		(void)piped;
@@ -1635,6 +1669,10 @@ namespace hemera {
 				result = poisoned();
 				return Progress::DONE;
 			}
+			progress = complete_subject(checker, left_node, left);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
 			TypeInfo* held = ValueKind::VALUE == left.kind ? held_value(left.type) : nullptr;
 			if (held == nullptr) {
 				result = error_at(checker, ErrorCode::E4020, node, std::format("{} needs an optional or a result, not {}",
@@ -1646,7 +1684,10 @@ namespace hemera {
 				if (progress != Progress::DONE) {
 					return progress;
 				}
-				require_fit(checker, right, held, right_node, "or_else's default");
+				// A default that never returns, like a call that stops the program, fits anything
+				if (!right.never_returns) {
+					require_fit(checker, right, held, right_node, "or_else's default");
+				}
 			}
 			else {
 				// What to return from the function instead
@@ -2038,9 +2079,20 @@ namespace hemera {
 	}
 
 	// Type.{values} or Type.{name = value}: a struct's fields, all in order, or some by name.
-	static Progress check_struct_literal(Checker& checker, ast::Node* node, Value& result) {
+	static Progress check_struct_literal(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		TypeInfo* type = nullptr;
-		Progress progress = literal_type(checker, node, type);
+		Progress progress = Progress::DONE;
+		// .{...}: a struct of the type expected there
+		if (TokenType::SYM_DOT == node->value.type) {
+			if (expected == nullptr) {
+				result = error_at(checker, ErrorCode::E4015, node, ".{...} needs a known struct type here");
+				return Progress::DONE;
+			}
+			type = expected;
+		}
+		else {
+			progress = literal_type(checker, node, type);
+		}
 		if (progress == Progress::FAILED) {
 			result = poisoned();
 			return Progress::DONE;
@@ -2284,7 +2336,7 @@ namespace hemera {
 			return check_cast(checker, node, expected, result);
 		}
 		if (ast::NodeType::STRUCT_LITERAL == type) {
-			return check_struct_literal(checker, node, result);
+			return check_struct_literal(checker, node, expected, result);
 		}
 		if (ast::NodeType::ARRAY_LITERAL == type) {
 			return check_array_literal(checker, node, result);
@@ -3046,9 +3098,24 @@ namespace hemera {
 	 * block, or a statement like return. As a value, it's what the arms give; it must cover
 	 * everything its subject can be.
 	 */
+	/*
+	 * Wait until what's matched has its variants or members: a type a signature only needed
+	 * declared, like a call's Result, may still be being laid out on another thread.
+	 */
+	static Progress complete_subject(Checker& checker, ast::Node* where, const Value& subject) {
+		TypeInfo const* type = ValueKind::VALUE == subject.kind ? base_of(subject.type) : nullptr;
+		if (type == nullptr || type->complete) {
+			return Progress::DONE;
+		}
+		return require_complete(checker.walk, where, const_cast<TypeInfo*>(type));
+	}
+
 	static Progress check_match(Checker& checker, ast::Node* node, TypeInfo* expected, Value* result, bool& continues) {
 		Value subject;
 		Progress progress = check_expression(checker, node->children[0], nullptr, subject);
+		if (progress == Progress::DONE) {
+			progress = complete_subject(checker, node->children[0], subject);
+		}
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -3126,6 +3193,9 @@ namespace hemera {
 		bool any_continues = false;
 		Value subject;
 		Progress progress = check_expression(checker, node->children[0], nullptr, subject);
+		if (progress == Progress::DONE) {
+			progress = complete_subject(checker, node->children[0], subject);
+		}
 		if (progress != Progress::DONE) {
 			return progress;
 		}

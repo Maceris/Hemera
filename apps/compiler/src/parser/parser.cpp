@@ -155,6 +155,7 @@ namespace hemera::parser {
 			|| TokenType::PIPE_REORDER_IDENTIFIER == type
 			|| TokenType::DIRECTIVE == type
 			|| TokenType::KEYWORD_MATCH == type
+			|| TokenType::KEYWORD_IF == type
 			|| TokenType::OPERATOR_PLUS == type
 			|| TokenType::OPERATOR_MINUS == type
 			|| TokenType::OPERATOR_BITWISE_XOR == type
@@ -1684,8 +1685,14 @@ namespace hemera::parser {
 				// mistaken for one of them
 				ast::Node& payload = next_as_node(state, ast::NodeType::PAREN_GROUP, &parent);
 				const Token& lparen = payload.value;
-				//NOTE(ches) will simply exit when we hit the rparen
-				while (accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, payload)) {
+				// Each value's type, of any kind: ptr[mut T], runtime.Fiber, fn() -> int, ...
+				while (expect(state, TokenType::IDENTIFIER) || expect(state, TokenType::KEYWORD_MUT)
+					|| expect(state, TokenType::KEYWORD_FN)) {
+					ExprResult value_type = type(state);
+					if (!value_type.success) {
+						return false;
+					}
+					payload.children.push_back(value_type.result);
 					if (!skip(state, TokenType::SYM_COMMA)) {
 						if (!expect(state, TokenType::SYM_RPAREN)) {
 							/*
@@ -2167,6 +2174,10 @@ namespace hemera::parser {
 			|| current == TokenType::KEYWORD_BIT_CAST
 			|| current == TokenType::KEYWORD_AUTO_CAST) {
 			return cast_expression(state);
+		}
+		// .{...}: a struct literal of the type expected there
+		if (current == TokenType::SYM_DOT && TokenType::SYM_LBRACE == next_token(state).type) {
+			return struct_literal(state);
 		}
 		if (current == TokenType::SYM_DOT) {
 			return enum_shorthand(state);

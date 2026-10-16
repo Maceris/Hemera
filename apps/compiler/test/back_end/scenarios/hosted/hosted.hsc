@@ -172,6 +172,48 @@ frames_above :: fn() -> usize {
     return intrinsics.capture_stack_trace(addresses)
 }
 
+// A variant can hold any type, like a pointer or a function
+Event :: union {
+    Counter(ptr[mut int]),
+    Callback(fn(n: int) -> int),
+    Quiet,
+}
+
+POINTS :: Point.[.{1, 2}, .{3, 4}]
+
+// A variant without values, named through its union, as an optional
+quiet :: fn() -> Event? {
+    return Event.Quiet
+}
+
+stop :: fn() -> int #never_returns {
+    loop {
+    }
+}
+
+value_or_stop :: fn(value: int?) -> int {
+    return value or_else stop()
+}
+
+larger :: fn(a, b: int) -> int {
+    return if a > b { a } else { b }
+}
+
+// A value for an optional parameter
+described :: fn(where: Point?) -> int {
+    return match where {
+        case Some(point) => point.x
+        case None => -1
+    }
+}
+
+DIGITS :: "0123456789"
+
+// Big enough to be copied with memmove
+Big :: struct {
+    values : int[32],
+}
+
 move :: fn(p: ptr[mut Point], by: int) {
     p.x += by
     p.y -= by
@@ -314,6 +356,43 @@ main :: fn() -> int {
     word : u8[] = WORD
     if word.count != 6 || word[0] != 0x48 || WORD[5] != 0x41 {
         return 28
+    }
+    counted := 1
+    event : Event = .Counter(&counted)
+    match event {
+        case Counter(target) => target^ += 1
+        case _ => {}
+    }
+    if counted != 2 {
+        return 29
+    }
+    if POINTS[1].y != 4 {
+        return 30
+    }
+    is_quiet := false
+    match quiet() {
+        case Some(found) => is_quiet = true
+        case None => {}
+    }
+    if !is_quiet || value_or_stop(7) != 7 {
+        return 31
+    }
+    if larger(if counted > 1 { 10 } else { 0 }, 5) != 10 {
+        return 32
+    }
+    if described(Point.{8, 9}) != 8 {
+        return 33
+    }
+    greeting := "hello world"
+    if greeting[0..<5] != "hello" || greeting == "hello" || DIGITS[3] != '3' {
+        return 34
+    }
+    big : Big
+    big.values[31] = 5
+    copy := big
+    big.values[31] = 6
+    if copy.values[31] != 5 {
+        return 35
     }
     return 42
 }
