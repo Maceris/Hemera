@@ -480,6 +480,11 @@ painted :: fn(color: Color = .Green, shape: Shape = .Empty, frame: Defaults = De
     return cast[int](color) * 1000 + area(shape) * 100 + cast[int](frame.width)
 }
 
+// Defaults that are expressions: run in the caller, checked with this function
+scaled :: fn(value: int, factor: int = LIMIT * 2 + 1, offset: int = sum_to(LIMIT)) -> int {
+    return value * factor + offset
+}
+
 main :: fn() -> int {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
@@ -764,6 +769,10 @@ main :: fn() -> int {
     // Green is 1, Empty's area 0, the default width 10
     if painted() != 1010 || painted(.Red, .Circle(1)) != 310 {
         return 58
+    }
+    // 2 * 9 + (0 + 1 + 2 + 3), then with the factor given
+    if scaled(2) != 24 || scaled(2, 1) != 8 {
+        return 59
     }
     return 42
 }

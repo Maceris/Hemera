@@ -828,6 +828,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "file_data_missing", hemera::ErrorCode::E4028 },
 		{ "file_data_not_string", hemera::ErrorCode::E4014 },
 		{ "null_pointer", hemera::ErrorCode::E4015 },
+		{ "default_mismatch", hemera::ErrorCode::E4015 },
 		{ "foreign_with_body", hemera::ErrorCode::E4014 },
 		{ "foreign_not_library", hemera::ErrorCode::E4014 },
 		{ "foreign_convention", hemera::ErrorCode::E4014 },

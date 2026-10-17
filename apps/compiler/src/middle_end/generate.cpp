@@ -3101,6 +3101,18 @@ namespace hemera {
 					LLVM::AddressOfOp::create(generator.builder, generator.loc, global)), constant->value_type, type);
 			}
 		}
+		/*
+		 * Anything else, as checking the callee found it (check_parameter_defaults), here in the
+		 * caller, with the caller's context
+		 */
+		if (callee->checked != nullptr && callee->checked->nodes.contains(node)) {
+			FunctionState& state = *generator.state;
+			CheckedBody* outer = state.checked;
+			state.checked = callee->checked.get();
+			mlir::Value result = emit_as(generator, node, type);
+			state.checked = outer;
+			return result;
+		}
 		unsupported(generator, call, "this call leaves out a parameter whose default can't be generated yet");
 		return zero_of(generator, llvm_type(generator, type));
 	}

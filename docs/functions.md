@@ -22,6 +22,16 @@ print_something2 :: fn(text: string = "hello") {
 }
 ```
 
+### Default Values
+
+A parameter's default can be any expression that fits its type. It's checked with the function, using the names the
+function's own package sees, before the parameters exist, so it can't use them. It runs each time a call leaves the
+parameter out, in the caller, with the caller's context: `allocator := context.allocator` is the caller's allocator.
+
+```
+read_all :: fn(file: File, buffer_size: usize = PAGE_SIZE * 4, allocator := context.allocator) -> (u8[], Error?) {/* ... */}
+```
+
 Parameters that are pointers, or contain them (views, strings, `any`), can't be kept after the call returns
 unless they are marked `#escaping`, since the caller may have passed something on its stack.
 See [memory.md](memory.md#escaping-parameters).

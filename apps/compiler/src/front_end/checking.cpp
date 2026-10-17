@@ -3729,9 +3729,62 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	/*
+	 * Each parameter's default (docs/functions.md, Default Values): a call that leaves the parameter
+	 * out runs it, in the caller, with the caller's context. It's checked here, with the function's
+	 * names and before its parameters are declared, so it can't use them, and what checking finds is
+	 * the function's, for the generator to use at each such call.
+	 */
+	static Progress check_parameter_defaults(Checker& checker, ast::Node* function_node, TypeInfoFunction const* type) {
+		const bool had_context = checker.has_context;
+		checker.has_context = true;
+		size_t index = 0;
+		for (ast::Node* list : function_node->children) {
+			if (ast::NodeType::LIST != list->node_type) {
+				continue;
+			}
+			for (ast::Node* parameter : list->children) {
+				const bool has_default = ast::NodeType::BINARY_OPERATOR == parameter->node_type && is_assign(parameter)
+					&& parameter->children.size() == 2;
+				ast::Node* names_node = has_default ? parameter->children[0] : parameter;
+				// One input per name: a, b : int = 0 is two, with the same default
+				size_t count = 1;
+				if (ast::NodeType::COLON == names_node->node_type) {
+					for (ast::Node* part : names_node->children) {
+						if (ast::NodeType::IDENTIFIER == part->node_type) {
+							break;
+						}
+						if (ast::NodeType::LIST == part->node_type) {
+							count = part->children.size();
+							break;
+						}
+					}
+				}
+				if (has_default && index < type->input.size()) {
+					ast::Node* value_node = parameter->children[1];
+					Value value;
+					Progress progress = check_expression(checker, value_node, type->input[index].type, value);
+					if (progress != Progress::DONE) {
+						checker.has_context = had_context;
+						return progress;
+					}
+					require_fit(checker, value, type->input[index].type, value_node, "this default");
+				}
+				index += count;
+			}
+			break;
+		}
+		checker.has_context = had_context;
+		return Progress::DONE;
+	}
+
 	static Progress check_function_body(Checker& checker, ast::Node* function_node, ast::Node* body,
 		TypeInfoFunction const* type, const ast::Node* where) {
 
+		Progress defaults = check_parameter_defaults(checker, function_node, type);
+		if (defaults != Progress::DONE) {
+			return defaults;
+		}
 		checker.scopes.emplace_back();
 		declare_parameters(checker, function_node, type);
 		Progress declared = declare_generic_values(checker, function_node);
