@@ -23,6 +23,7 @@ TESTS = [
     ("hosted", []),
     ("threads", ["--stack-check=morestack"]),
     ("heap", []),
+    ("containers", []),
 ]
 
 

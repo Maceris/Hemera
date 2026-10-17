@@ -110,6 +110,12 @@ TEST(Hosted, AllocatesFromThreads)
 	run_hosted("heap", hemera::TargetStackCheck::Off);
 }
 
+// std/containers, which need no allocator.
+TEST(Hosted, UsesContainers)
+{
+	run_hosted("containers", hemera::TargetStackCheck::Off);
+}
+
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.
 TEST(Hosted, ReportsPointerFromCompileTime)
 {
