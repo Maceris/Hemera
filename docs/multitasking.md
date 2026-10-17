@@ -348,9 +348,6 @@ time), and `fiber_yield()` may do nothing. Functions see the same interface eith
 
 ## Open Questions
 
-* **Windows: the carrier pointer's thread-local storage slot.** Callbacks find the carrier block through
-  `TlsGetValue` for now. A slot below 64 is also at a fixed offset in the thread environment block, which would make
-  it a single load.
 * **LLVM:** reserving the carrier register, and emitting the prologue stack check and the `morestack` protocol
   described in [calling_convention.md](calling_convention.md).
 * **Return addresses of suspended fibers.** While a fiber is suspended, its return addresses are in ordinary memory and

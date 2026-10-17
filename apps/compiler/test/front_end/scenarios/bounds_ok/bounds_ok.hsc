@@ -123,6 +123,27 @@ made :: fn(values: int[], count: usize) -> int {
     return total
 }
 
+// An unsigned remainder is below its divisor whatever was divided, wrapped or not
+wrapped :: fn(ring: ptr[mut Ring], head: u64, i: u64) -> int {
+    return ring.items[(head + i) % 8]
+}
+
+Ring :: struct {
+    items : int[8],
+    count : usize,
+}
+
+// A field counted down, or given a value, keeps what was known about it
+counted :: fn(ring: ptr[mut Ring]) -> int {
+    if ring.count == 0 || ring.count > 8 {
+        return 0
+    }
+    ring.count -= 1
+    last :: ring.items[ring.count]
+    ring.count = 3
+    return last + ring.items[ring.count]
+}
+
 main :: fn() -> int {
     return 0
 }

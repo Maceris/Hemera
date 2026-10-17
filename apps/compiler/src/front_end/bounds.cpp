@@ -982,7 +982,11 @@ namespace hemera {
 			return c < UNBOUNDED ? std::optional<int64_t>(-c) : std::nullopt;
 		}
 
-		Value combine(const Analysis& analysis, const Facts& facts, TokenType op, Value left, Value right) {
+		/*
+		 * left op right. unsigned_operands says the operation is on unsigned integers, whose remainder
+		 * by a positive constant is below it whatever the left was, wrapped or not.
+		 */
+		Value combine(const Analysis& analysis, const Facts& facts, TokenType op, Value left, Value right, bool unsigned_operands) {
 			// Addition either way around: the term on the left
 			if (TokenType::OPERATOR_PLUS == op && !(left.known && ZERO != left.term) && right.known && ZERO != right.term) {
 				std::swap(left, right);
@@ -1065,7 +1069,7 @@ namespace hemera {
 				result.nonnegative = true;
 			}
 			if ((TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op) && right.known && ZERO == right.term
-				&& right.offset > 0 && nonnegative(left)) {
+				&& right.offset > 0 && (nonnegative(left) || unsigned_operands)) {
 				result.at_most = right.offset - 1;
 				result.nonnegative = true;
 			}
@@ -1151,7 +1155,8 @@ namespace hemera {
 				}
 				Value left = evaluate(analysis, facts, node->children[0]);
 				Value right = evaluate(analysis, facts, node->children[1]);
-				return combine(analysis, facts, op, left, right);
+				const CheckedNode* operand = found_at(analysis, node->children[0]);
+				return combine(analysis, facts, op, left, right, operand != nullptr && is_unsigned(operand->type));
 			}
 			if (ast::NodeType::CAST == type) {
 				const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type;
@@ -1538,13 +1543,35 @@ namespace hemera {
 				const bool plain_local = target->children.empty() && found != nullptr && found->local != nullptr;
 				if (!plain_local) {
 					// A field, an element or through a pointer: the target's indexes are checked
-					evaluate_chain(analysis, facts, target);
-					if (found != nullptr && found->local != nullptr) {
-						forget(facts, [&](Term term) {
-							return TermKind::PATH == analysis.terms[term].kind && analysis.terms[term].local == found->local;
-						});
+					const Chain chain = evaluate_chain(analysis, facts, target);
+					/*
+					 * An integer field reached from a local, like array.count, is a term of its own,
+					 * which this store changes in a way that's known: added to, or given a constant or
+					 * a local's value. Everything else through memory may have changed with it.
+					 */
+					const bool field = targets.size() == 1 && chain.value.known && ZERO != chain.value.term && 0 == chain.value.offset
+						&& 0 == chain.value.spread && TermKind::PATH == analysis.terms[chain.value.term].kind;
+					const Term stored = field ? chain.value.term : ZERO;
+					const bool moved = field && (TokenType::OPERATOR_ASSIGN_ADD == op || TokenType::OPERATOR_ASSIGN_SUB == op)
+						&& value.known && ZERO == value.term && 0 == value.spread;
+					if (moved) {
+						shift(analysis, facts, stored, TokenType::OPERATOR_ASSIGN_ADD == op ? value.offset : -value.offset);
 					}
-					forget_memory(analysis, facts);
+					auto changed = [&](Term term) {
+						if (moved && term == stored) {
+							return false;
+						}
+						const TermInfo& info = analysis.terms[term];
+						return (found != nullptr && found->local != nullptr && TermKind::PATH == info.kind && info.local == found->local)
+							|| info.through_pointer || (info.local != nullptr && analysis.address_taken.contains(info.local));
+					};
+					forget(facts, changed);
+					// The value it's given, when that's a constant or a local, which the store didn't change
+					if (field && is_assign(node) && value.known
+						&& (ZERO == value.term || (TermKind::LOCAL == analysis.terms[value.term].kind && !changed(value.term)))) {
+						forget(facts, [&](Term term) { return term == stored; });
+						add_value_equal(analysis, facts, stored, value);
+					}
 					continue;
 				}
 				const void* local = found->local;

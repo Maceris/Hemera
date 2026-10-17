@@ -1113,6 +1113,9 @@ namespace hemera {
 
 	static mlir::Value assembly(Generator& generator, mlir::Type result, const std::vector<mlir::Value>& operands,
 		std::string_view text, std::string_view constraints);
+	static LLVM::GlobalOp process_state_global(Generator& generator);
+	static void emit_if(Generator& generator, mlir::Value condition, const std::function<bool()>& then,
+		const std::function<bool()>& otherwise);
 
 	/*
 	 * A callback's shim (is_callback), which foreign code calls with the platform's C convention:
@@ -1151,11 +1154,39 @@ namespace hemera {
 		FunctionState* outer = generator.state;
 		generator.state = &state;
 		mlir::Value callers = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
-		mlir::Value temporary = make_slot(generator, carrier_type);
-		store_zero(generator, carrier_type, temporary);
-		LLVM::StoreOp::create(b, l, constant_int(generator, integer_type(generator, 4), 1), offset_address(generator, temporary, foreign_depth));
-		assembly(generator, mlir::Type(), { temporary }, "movq $0, %r14", "r,~{memory}");
-		mlir::Value carrier = LLVM::CallOp::create(b, l, function_for(generator, find_carrier), mlir::ValueRange{}).getResult();
+		mlir::Type pointer = pointer_type(generator);
+		mlir::Value found = make_raw_slot(generator, pointer, 8);
+		LLVM::StoreOp::create(b, l, zero_of(generator, pointer), found);
+		/*
+		 * A slot below 64 is also in the thread environment block, at gs:[0x1480 + 8 * slot] on x64: one
+		 * load, which is null on a thread that has never run Hemera code
+		 */
+		LLVM::GlobalOp process = process_state_global(generator);
+		size_t carrier_slot = 0;
+		if (process && runtime_offset(generator, "ProcessState", "carrier_slot", carrier_slot)) {
+			mlir::Type i32 = integer_type(generator, 4);
+			mlir::Value stored = LLVM::LoadOp::create(b, l, i32,
+				offset_address(generator, LLVM::AddressOfOp::create(b, l, process), carrier_slot));
+			mlir::Value index = LLVM::SubOp::create(b, l, stored, constant_int(generator, i32, 1));
+			mlir::Value fixed = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::ult, index, constant_int(generator, i32, 64));
+			emit_if(generator, fixed, [&]() {
+				mlir::Value wide = LLVM::ZExtOp::create(b, l, integer_type(generator, 8), index);
+				LLVM::StoreOp::create(b, l, assembly(generator, pointer, { wide }, "movq %gs:0x1480(,$1,8), $0", "=r,r"), found);
+				return false;
+			}, nullptr);
+		}
+		// Otherwise the runtime finds it, or makes it, with a temporary one loaded meanwhile
+		mlir::Value missing = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, LLVM::LoadOp::create(b, l, pointer, found),
+			zero_of(generator, pointer));
+		emit_if(generator, missing, [&]() {
+			mlir::Value temporary = make_slot(generator, carrier_type);
+			store_zero(generator, carrier_type, temporary);
+			LLVM::StoreOp::create(b, l, constant_int(generator, integer_type(generator, 4), 1), offset_address(generator, temporary, foreign_depth));
+			assembly(generator, mlir::Type(), { temporary }, "movq $0, %r14", "r,~{memory}");
+			LLVM::StoreOp::create(b, l, LLVM::CallOp::create(b, l, function_for(generator, find_carrier), mlir::ValueRange{}).getResult(), found);
+			return false;
+		}, nullptr);
+		mlir::Value carrier = LLVM::LoadOp::create(b, l, pointer, found);
 		assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
 		// The context: the foreign call's, or HOSTED_CONTEXT
 		mlir::Value fallback = make_slot(generator, context_type);
@@ -1306,6 +1337,26 @@ namespace hemera {
 
 	static void emit_callback_shim(Generator& generator, Declaration* declaration, LLVM::LLVMFuncOp shim, LLVM::LLVMFuncOp body,
 		TypeInfoFunction const* type);
+
+	static mlir::Value zero_of(Generator& generator, mlir::Type type);
+
+	// intrinsics.process_state's global: base/runtime's ProcessState, zeroed, made the first time. Null without one.
+	static LLVM::GlobalOp process_state_global(Generator& generator) {
+		constexpr const char* PROCESS_STATE_SYMBOL = "hemera.process_state";
+		LLVM::GlobalOp state = generator.module.lookupSymbol<LLVM::GlobalOp>(PROCESS_STATE_SYMBOL);
+		Declaration* state_declaration = base_declaration_named(generator, "runtime", "ProcessState");
+		if (!state && state_declaration != nullptr && state_declaration->type_value != nullptr) {
+			TypeInfo* state_type = state_declaration->type_value;
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			mlir::Type type = llvm_type(generator, state_type);
+			state = LLVM::GlobalOp::create(generator.builder, generator.loc, type, false, LLVM::Linkage::Internal, PROCESS_STATE_SYMBOL,
+				mlir::Attribute(), std::max<size_t>(state_type->alignment, 1));
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&state.getInitializerRegion()));
+			LLVM::ReturnOp::create(generator.builder, generator.loc, zero_of(generator, type));
+		}
+		return state;
+	}
 
 	/*
 	 * The function a declaration is, declared now and generated later. Exported functions and the
@@ -3852,19 +3903,7 @@ namespace hemera {
 		}
 		// One global, the program's, zeroed, which only the runtime uses
 		if (name == "process_state") {
-			constexpr const char* PROCESS_STATE_SYMBOL = "hemera.process_state";
-			LLVM::GlobalOp state = generator.module.lookupSymbol<LLVM::GlobalOp>(PROCESS_STATE_SYMBOL);
-			Declaration* state_declaration = base_declaration_named(generator, "runtime", "ProcessState");
-			if (!state && state_declaration != nullptr && state_declaration->type_value != nullptr) {
-				TypeInfo* state_type = state_declaration->type_value;
-				mlir::OpBuilder::InsertionGuard guard(b);
-				b.setInsertionPointToEnd(generator.module.getBody());
-				mlir::Type type = llvm_type(generator, state_type);
-				state = LLVM::GlobalOp::create(b, l, type, false, LLVM::Linkage::Internal, PROCESS_STATE_SYMBOL, mlir::Attribute(),
-					std::max<size_t>(state_type->alignment, 1));
-				b.setInsertionPointToStart(b.createBlock(&state.getInitializerRegion()));
-				LLVM::ReturnOp::create(b, l, zero_of(generator, type));
-			}
+			LLVM::GlobalOp state = process_state_global(generator);
 			if (!state) {
 				unsupported(generator, nullptr, "base/runtime's ProcessState isn't what the compiler expects");
 				return value(zero_of(generator, pointer_type(generator)), result_type);

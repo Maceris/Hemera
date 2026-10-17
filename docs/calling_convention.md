@@ -335,10 +335,12 @@ Hemera functions that foreign code can call (`.c` functions with a context) get 
 function's symbol and is what its value points to:
 
 1. It keeps foreign code's value of the carrier register.
-2. It loads the thread's carrier block from the OS's thread-local storage (`runtime.callback_carrier`), with a
-   temporary carrier block on its own stack loaded meanwhile, counting a foreign call, since finding the real one
-   makes foreign calls itself. A thread Hemera didn't start gets a carrier block of its own the first time, from the
-   process heap, with its stack's limits, kept for the rest of the thread's life.
+2. It loads the thread's carrier block from the OS's thread-local storage. With a slot below 64, which the program
+   allocates first thing, that's one load from the thread environment block (`gs:[0x1480 + 8 * slot]`). Otherwise,
+   or on a thread that has never run Hemera code, where that load is null, `runtime.callback_carrier` finds it,
+   with a temporary carrier block on the shim's stack loaded meanwhile, counting a foreign call, since finding the
+   real one makes foreign calls itself. A thread Hemera didn't start gets a carrier block of its own the first
+   time, from the process heap, with its stack's limits, kept for the rest of the thread's life.
 3. It calls the function's body with the context the foreign call it's inside kept (`foreign_context`), or, on a
    thread Hemera didn't start, `HOSTED_CONTEXT`.
 4. It puts foreign code's carrier register back.

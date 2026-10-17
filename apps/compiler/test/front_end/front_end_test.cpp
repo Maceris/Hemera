@@ -851,7 +851,10 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_slice_backwards", hemera::ErrorCode::E4031 },
 		{ "bounds_runaway", hemera::ErrorCode::E4031 },
 		{ "bounds_last_of_empty", hemera::ErrorCode::E4031 },
+		{ "bounds_field_grown", hemera::ErrorCode::E4031 },
+		{ "bounds_field_aliased", hemera::ErrorCode::E4031 },
 		{ "generic_value_variable", hemera::ErrorCode::E4010 },
+		{ "generic_value_given_type", hemera::ErrorCode::E4010 },
 		{ "generic_value_kind", hemera::ErrorCode::E4014 }
 	}) {
 		StringCacheGuard string_cache;

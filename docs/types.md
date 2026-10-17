@@ -294,6 +294,8 @@ counts of local arrays, views and strings, fields reached from locals (`text.cou
 constants. It learns from:
 
 * definitions and assignments: after `j := i + 1`, `j` is one more than `i`, and `i += 1` moves what's known about `i`
+* stores to an integer field: `ring.count -= 1` moves what's known about `ring.count`, and `ring.count = 3` (a constant
+  or a local) sets it, while what's known about other paths through pointers is forgotten, since they may be the same memory
 * conditions, through `&&`, `||` and `!`, in the branch they lead to, and after an `if` whose other branch doesn't
   continue (`return`, `break`, a `#never_returns` call)
 * `for` loops over a range or over elements, whose index is in bounds, and the condition of a `while`

@@ -160,6 +160,8 @@ namespace hemera {
 	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
 
 	// An instance of a generic type, made the first time it's asked for, resolved when need asks.
+	static InternedString generic_parameter_name(const ast::Node* parameter);
+
 	Progress instance_type(Walk& walk, ast::Node* where, Declaration* generic,
 		const std::vector<TypeInfo*>& arguments, Need need, TypeInfo*& result, const std::vector<ConstantValue>& values) {
 
@@ -173,6 +175,45 @@ namespace hemera {
 		if (parameters != arguments.size()) {
 			return type_error(walk, ErrorCode::E4014, where, std::format("{} takes {} generic arguments, not {}",
 				name_text(generic->name), parameters, arguments.size()));
+		}
+		/*
+		 * Each argument the kind its parameter takes, checked here, where it's given: a type or a
+		 * value, and a value one its type holds, when that's a builtin type. A type of the generic's
+		 * own is checked with the instance, where its names are.
+		 */
+		size_t index = 0;
+		for (ast::Node* child : value->children) {
+			if (ast::NodeType::GENERIC_TAG != child->node_type || ast::NodeType::FUNCTION == value->node_type) {
+				continue;
+			}
+			for (ast::Node* parameter : child->children) {
+				if (index >= arguments.size()) {
+					break;
+				}
+				const bool is_value = ast::NodeType::COLON == parameter->node_type;
+				const bool given_value = arguments[index] == nullptr;
+				const std::string name = name_text(generic_parameter_name(parameter));
+				if (is_value != given_value) {
+					return type_error(walk, ErrorCode::E4014, where, is_value
+						? std::format("{}'s {} is a value, so it takes one, not a type", name_text(generic->name), name)
+						: std::format("{}'s {} is a type, so it takes one, not a value", name_text(generic->name), name));
+				}
+				ast::Node* declared_node = is_value && parameter->children.size() > 1 ? parameter->children[1] : nullptr;
+				TypeInfo* declared = declared_node != nullptr && declared_node->children.empty() && declared_node->value.value != nullptr
+					? builtin_type(name_text(declared_node->value.value)) : nullptr;
+				if (declared != nullptr && index < values.size()) {
+					const ConstantValue& given = values[index];
+					TypeInfo const* kind = get_base_type(declared);
+					const bool fits = kind == nullptr
+						|| (TypeInfoVariant::INTEGER == kind->variant && ConstantValue::Kind::INTEGER == given.kind)
+						|| (TypeInfoVariant::BOOLEAN == kind->variant && ConstantValue::Kind::BOOLEAN == given.kind);
+					if (!fits) {
+						return type_error(walk, ErrorCode::E4014, where, std::format("{}'s {} takes a {}, not {}",
+							name_text(generic->name), name, to_string(declared), constant_text(given)));
+					}
+				}
+				++index;
+			}
 		}
 		Declaration* instance = instance_of(walk, generic, arguments, values);
 		Progress progress = require_resolved(walk, where, instance, need);
