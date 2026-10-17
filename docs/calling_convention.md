@@ -177,6 +177,12 @@ the chain. Hemera's functions get the classic prologue and no tables instead (th
 A frame bigger than a page still touches each page in order first, through `__chkstk`, which the compiler defines.
 Stack segments are committed memory, so that works on them too.
 
+The thread environment block's stack bounds stay those of the thread's own stack, even while a fiber runs on a
+segment; switching fibers doesn't change them, unlike Windows' own fibers. System code only runs on the thread's own
+stack, since foreign calls move there first ([Calls to Foreign Code](#calls-to-foreign-code)), so the bounds are right
+whenever it reads them. A fault in Hemera code on a segment reaches vectored exception handlers, which run before
+Windows looks at the bounds to walk frames, as Go relies on too.
+
 ### Prologue Stack Check
 
 Every function checks that it has room on the current stack segment before it builds its frame,
@@ -210,8 +216,10 @@ grows their stacks too. On a thread with a fixed stack, `stack_limit` is that st
 stack overflow there.
 
 What happens when the check fails is a per-target option, `TargetOptions.stack_check_failure`: call `morestack`
-(the default), trap, or call `context.assertion_handler`. Code with one fixed-size stack and no allocator, like a
-kernel, uses one of the last two.
+(the default) or trap. Code with one fixed-size stack and no allocator, like a kernel, traps. Nothing runs Hemera code
+in the failing prologue itself: there's no reliable context there (LLVM drops a context parameter a function doesn't
+use), and only the guard's bytes of stack, so a handler would need a stack of its own, which is what a trap gets from
+whatever handles faults, like a kernel's handler for invalid instructions.
 
 ### Growing the Stack: morestack
 

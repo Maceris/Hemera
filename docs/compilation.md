@@ -165,8 +165,8 @@ Programs with small fixed-size stacks, like kernels, can also set `TargetOptions
 stack frame is larger is a compile error, so a large stack buffer is caught when building rather than when the stack
 runs out.
 
-Freestanding programs usually also set `TargetOptions.stack_check_failure` to `.Trap` or `.AssertionHandler`,
-since they have no allocator for `morestack`.
+Freestanding programs usually also set `TargetOptions.stack_check_failure` to `.Trap`, since they have no allocator
+for `morestack`.
 
 ## Linking
 

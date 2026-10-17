@@ -23,7 +23,9 @@ saying what went wrong:
 
 * integer division or remainder by zero
 * unwrapping an empty optional
-* running out of stack, if the target's `stack_check_failure` is `.AssertionHandler`
+
+Running out of stack, on a target that doesn't grow its stacks, traps instead (see
+[calling_convention.md](calling_convention.md#prologue-stack-check)).
 
 Array indexes aren't checked at run time, since they must be proven in bounds at compile time
 (see [types.md](types.md#bounds-checking)). Integer overflow isn't a check either: it wraps (two's complement).

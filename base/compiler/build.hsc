@@ -94,17 +94,16 @@ TargetOptions :: struct {
     max_frame_size : usize,
 }
 
-// What a function does when its prologue stack check finds too little room left.
+/*
+ * What a function does when its prologue stack check finds too little room left. There's no
+ * reliable context in a prologue, and only STACK_GUARD bytes of stack, so nothing runs Hemera code
+ * there: a trap reaches whatever handles faults, on a stack of its own, like a kernel's.
+ */
 StackCheckFailure :: enum {
     // Call morestack, which runs the function on a new stack segment. Needs an allocator.
     Morestack,
     // Stop with intrinsics.trap(), for code with one fixed-size stack, like a kernel.
     Trap,
-    /*
-     * Call context.assertion_handler with a stack overflow message. It runs in the last
-     * STACK_GUARD bytes of the stack, so it must need very little, or switch stacks.
-     */
-    AssertionHandler,
 }
 
 /*
