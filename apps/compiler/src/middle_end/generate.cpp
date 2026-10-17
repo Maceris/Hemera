@@ -3322,6 +3322,36 @@ namespace hemera {
 			result = intrinsic_value(pair_result(generator, arguments, "rdmsr", "={eax},={edx},{ecx},~{memory}"), function);
 			return true;
 		}
+		if (name == "syscall") {
+			result = intrinsic_value(assembly(generator, integer_type(generator, 8), arguments, "syscall",
+				"={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}"), function);
+			return true;
+		}
+		if (name == "clone_thread") {
+			/*
+			 * The child can't go on in this function, whose frame is on the parent's stack, so a stub
+			 * leaves entry and argument at the top of the child's stack, and the child calls entry there
+			 */
+			constexpr const char* CLONE_SYMBOL = "hemera.clone_thread";
+			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(CLONE_SYMBOL)) {
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.p2align 4\n{}:\n"
+					"\tsubq $16, %rsi\n\tmovq %r8, (%rsi)\n\tmovq %r9, 8(%rsi)\n"
+					"\tmovq %rcx, %r10\n\txorl %r8d, %r8d\n\tmovl $56, %eax\n\tsyscall\n"
+					"\ttestq %rax, %rax\n\tjnz 1f\n"
+					"\txorl %ebp, %ebp\n\tpopq %rax\n\tpopq %rdi\n\tandq $-16, %rsp\n\tcallq *%rax\n\tud2\n"
+					"1:\n\tretq\n", CLONE_SYMBOL));
+			}
+			mlir::Type pointer = pointer_type(generator);
+			mlir::Type word = integer_type(generator, 8);
+			LLVM::LLVMFuncOp clone = assembly_function(generator, CLONE_SYMBOL,
+				LLVM::LLVMFunctionType::get(word, { word, pointer, pointer, pointer, pointer, pointer }));
+			clone.setCConv(LLVM::cconv::CConv::C);
+			auto call = LLVM::CallOp::create(generator.builder, generator.loc, clone, arguments);
+			call.setCConv(LLVM::cconv::CConv::C);
+			result = intrinsic_value(call.getResult(), function);
+			return true;
+		}
 		if (name == "read_gs_base") {
 			// IA32_GS_BASE, which works whether or not FSGSBASE is enabled
 			mlir::Value address = pair_result(generator, { constant_int(generator, i32, 0xC0000101) }, "rdmsr",

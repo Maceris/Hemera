@@ -21,6 +21,7 @@ SCENARIOS = COMPILER_DIR / "test" / "back_end" / "scenarios"
 # Scenario folder, and the compiler's extra arguments
 TESTS = [
     ("hosted", []),
+    ("threads", ["--stack-check=morestack"]),
 ]
 
 

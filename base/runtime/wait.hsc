@@ -11,7 +11,8 @@ import intrinsics from "base"
  * A wait whose value already changed returns at once. Without an operating system to sleep on,
  * waiting just spins once, so callers loop the same either way.
  */
-#if OS != .Windows {
+// Windows' are in windows.hsc, and Linux's on x86-64 in linux.hsc
+#if OS != .Windows && !(OS == .Linux && TARGET_ARCH == .x86_64) {
     wait_on_value :: fn(address: ptr[u32], expected: u32) {
         intrinsics.spin_hint()
     }

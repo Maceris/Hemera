@@ -9,7 +9,7 @@ ThreadFunction :: fn(data #escaping : any) -> void
 
     }
 }
-#else_if OS == .Linux {
+#else_if OS == .Linux && TARGET_ARCH != .x86_64 {
     ThreadSpecificOS :: struct {
 
     }

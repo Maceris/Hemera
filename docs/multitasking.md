@@ -27,9 +27,19 @@ Each thread has its own carrier block, part of its `Thread`. Its entry, a `#call
 function the system starts the thread at, loads the carrier register with it first, sets `stack_limit` and
 `native_stack_limit` 64 KiB above the bottom of the stack the system gave the thread, and calls the function with the
 copied context. It ends the thread with the system's exit call rather than returning, since it doesn't keep the carrier
-register for whatever called it. Threads start on Windows so far, where a hosted program's `main` also starts with
-the process heap as its allocator (`runtime.HOSTED_CONTEXT`). Not yet: the carrier block in the OS's thread-local
-storage, for callbacks from foreign code, and threads running their Hemera code on segments.
+register for whatever called it. Once it reaches its stack's limit, `morestack` takes it onto segments.
+
+Threads start on Windows x64 (`base/runtime/windows.hsc`) and on Linux x86-64 (`base/runtime/linux.hsc`), where a
+hosted program's `main` also starts with an allocator in `runtime.HOSTED_CONTEXT`: the process heap on Windows, and
+pages from the kernel on Linux.
+
+* On Windows, the system makes each thread's stack, and the carrier block also goes in the thread's thread-local
+  storage, where callbacks from foreign code find it.
+* On Linux, without a C library, everything is a system call (`intrinsics.x86_64.syscall`): a thread's stack is
+  mapped pages (1 MiB), the thread starts with `clone` (`intrinsics.x86_64.clone_thread`, which starts it on that
+  stack at its entry), `thread_join` waits on the thread's ID, which the kernel clears when it exits
+  (`CLONE_CHILD_CLEARTID`), and `wait_on_value` is a private `futex` wait. Callbacks from foreign code aren't made
+  for Linux yet.
 
 # Fibers
 
