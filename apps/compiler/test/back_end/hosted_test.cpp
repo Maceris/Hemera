@@ -96,11 +96,12 @@ TEST(Hosted, RunsFibers)
 
 /*
  * Threads on Windows, each with its own carrier block: a plain main thread, two threads sharing
- * one std/fiber pool and three sharing another, and a thread without a pool.
+ * one std/fiber pool and three sharing another, and a thread without a pool. Built with morestack,
+ * so stacks grow onto segments allocated as they're needed.
  */
 TEST(Hosted, RunsThreads)
 {
-	run_hosted("threads", hemera::TargetStackCheck::Off);
+	run_hosted("threads", hemera::TargetStackCheck::Morestack);
 }
 
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.

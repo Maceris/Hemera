@@ -149,9 +149,10 @@ address for their whole lifetime, across yields and across carriers.
   a segment boundary in a loop doesn't allocate and free a segment each time.
 * A suspended fiber only holds the segments its live frames are in.
 
-Plain threads run their Hemera code on segmented stacks too, the same way fibers do: a thread starts on a small first
-segment (1 KiB by default), allocated with the thread, and `morestack` adds segments as it needs them. Deep recursion
-works the same on a thread as on a fiber, and nothing has to guess a thread's stack size up front.
+Plain threads run their Hemera code on segmented stacks too, the same way fibers do: a thread starts on the stack the
+system gave it, with its `stack_limit` 64 KiB above that stack's end, and once it reaches that, `morestack` takes it
+onto segments, as many as it needs. Deep recursion works the same on a thread as on a fiber, and nothing has to guess
+a thread's stack size up front. (`ThreadStack`'s choice of a small first segment for every thread isn't done yet.)
 
 Each thread also has a **native stack**: one contiguous stack, used only where Hemera code isn't running.
 That's foreign calls (see [Foreign Code](#foreign-code)), signal handlers (see [Signals](#signals)), and the

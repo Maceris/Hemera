@@ -109,6 +109,7 @@ import intrinsics from "base"
         GetCurrentThreadStackLimits(&low, &high)
         thread.carrier.native_stack_limit = cast[rawptr](low + NATIVE_STACK_RESERVE)
         thread.carrier.stack_limit = thread.carrier.native_stack_limit
+        thread.carrier.segment_allocator = thread.starting_context.allocator
         data : any
         match thread.data {
             case Some(given) => data = given

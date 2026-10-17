@@ -955,15 +955,40 @@ namespace hemera {
 	// One of base/runtime's integer constants, written as a literal, like STACK_GUARD :: 256.
 	static bool runtime_integer(Generator& generator, std::string_view name, uint64_t& value);
 
+	static LLVM::LLVMFuncOp function_for(Generator& generator, Declaration* declaration);
+
+	// Where morestack finds what it changes in the carrier block and a segment's header.
+	struct MorestackOffsets {
+		size_t limit = 0;
+		size_t segment = 0;
+		size_t spare = 0;
+		size_t cache = 0;
+		size_t cache_count = 0;
+		size_t current_fiber = 0;
+		size_t scheduler_sp = 0;
+		size_t native_stack_limit = 0;
+		size_t native_sp = 0;
+		size_t foreign_depth = 0;
+		size_t segment_size = 0;
+		size_t next_free = 0;
+	};
+
 	/*
 	 * morestack: takes a segment for a function's body (the carrier's spare, or one from its cache),
 	 * copies the stack parameters to it, and calls the body there; once it returns, switches back and
 	 * keeps the segment as the carrier's spare. Until the body runs it only uses rax (the body),
 	 * r10 and r11 (the sizes), and rbx and r12, which it saves; after, nothing a result is in.
-	 * Out of cached segments, it traps: allocating one needs the native stack, not done yet.
+	 *
+	 * With no segment big enough, it allocates one with allocate (runtime.allocate_stack_segment) on
+	 * the thread's native stack: below the scheduler on a fiber, below native_sp on a thread already
+	 * on a segment, or where it is on a thread still on its native stack (or inside foreign code). It
+	 * saves the arguments first, counts the allocating as foreign code, so nothing yields and foreign
+	 * calls in it stay where they are, and traps without memory. allocate takes no context: the function being grown may not
+	 * have one to give, since LLVM drops parameters an internal function doesn't use.
 	 */
-	static std::string morestack_assembly(size_t limit, size_t segment, size_t spare, size_t cache, size_t cache_count,
-		size_t segment_size, size_t next_free, uint64_t header_and_guard) {
+	static std::string morestack_assembly(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate, bool sse) {
+		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
+		const size_t segment_size = o.segment_size, next_free = o.next_free;
 
 		// Room for the frame, the parameters, the return address, alignment, and the guard
 		const uint64_t extra = header_and_guard + 32;
@@ -978,8 +1003,13 @@ namespace hemera {
 		text += std::format("1:\n\tmovq {}(%r14), %r12\n\ttestq %r12, %r12\n\tjz 9f\n", cache);
 		text += std::format("\tmovl {}(%r12), %r10d\n\tcmpq %rbx, %r10\n\tjb 9f\n", segment_size);
 		text += std::format("\tmovq {}(%r12), %r10\n\tmovq %r10, {}(%r14)\n\tdecl {}(%r14)\n", next_free, cache, cache_count);
-		// On it: the carrier's segment and limit, and the parameters at the top, 16-byte aligned
-		text += std::format("3:\n\tmovq %r12, {}(%r14)\n", segment);
+		/*
+		 * On it: the carrier's segment and limit, and the parameters at the top, 16-byte aligned. A
+		 * thread leaving its native stack for the first time records where it was.
+		 */
+		text += std::format("3:\n\tcmpq $0, {}(%r14)\n\tjne 11f\n\tcmpq $0, {}(%r14)\n\tjne 11f\n", segment, o.current_fiber);
+		text += std::format("\tmovq %rsp, {}(%r14)\n", o.native_sp);
+		text += std::format("11:\n\tmovq %r12, {}(%r14)\n", segment);
 		text += std::format("\tleaq {}(%r12), %r10\n\tmovq %r10, {}(%r14)\n", header_and_guard, limit);
 		text += std::format("\tmovl {}(%r12), %ebx\n\taddq %r12, %rbx\n\tsubq %r11, %rbx\n\tandq $-16, %rbx\n", segment_size);
 		text += "\txorl %r12d, %r12d\n2:\n\tcmpq %r11, %r12\n\tjae 4f\n";
@@ -994,7 +1024,36 @@ namespace hemera {
 			cache, next_free, cache, cache_count);
 		text += std::format("5:\n\tmovq %r10, {}(%r14)\n", spare);
 		text += std::format("\tpopq {}(%r14)\n\tpopq {}(%r14)\n\tpopq %rbp\n\tretq\n", segment, limit);
-		text += "9:\n\tud2\n";
+		// None big enough: one from allocate, on the native stack, with the arguments and the body kept there
+		text += "9:\n\tmovq %rsp, %r12\n";
+		text += std::format("\tcmpl $0, {}(%r14)\n\tjne 7f\n", o.foreign_depth);
+		text += std::format("\tcmpq $0, {}(%r14)\n\tje 6f\n\tmovq {}(%r14), %rsp\n\tjmp 7f\n", o.current_fiber, o.scheduler_sp);
+		text += std::format("6:\n\tcmpq $0, {}(%r14)\n\tje 7f\n\tmovq {}(%r14), %rsp\n", segment, o.native_sp);
+		text += "7:\n\tandq $-16, %rsp\n";
+		text += "\tpushq %rdi\n\tpushq %rsi\n\tpushq %rdx\n\tpushq %rcx\n\tpushq %r8\n\tpushq %r9\n\tpushq %rax\n\tpushq %r11\n";
+		if (sse) {
+			text += "\tsubq $128, %rsp\n";
+			for (int i = 0; i < 8; ++i) {
+				text += std::format("\tmovdqu %xmm{}, {}(%rsp)\n", i, i * 16);
+			}
+		}
+		/*
+		 * No limit while it allocates: a thread may already be at its native stack's limit, with the
+		 * reserve below it (NATIVE_STACK_RESERVE) for code like this, which mustn't grow again
+		 */
+		text += std::format("\tpushq {}(%r14)\n\tpushq %r12\n\tmovq $0, {}(%r14)\n", limit, limit);
+		text += std::format("\tincl {}(%r14)\n\tmovq %rbx, %rdi\n\tcallq {}\n\tmovq %rax, %r10\n\tdecl {}(%r14)\n",
+			o.foreign_depth, allocate, o.foreign_depth);
+		text += std::format("\tpopq %r12\n\tpopq {}(%r14)\n", limit);
+		if (sse) {
+			for (int i = 0; i < 8; ++i) {
+				text += std::format("\tmovdqu {}(%rsp), %xmm{}\n", i * 16, i);
+			}
+			text += "\taddq $128, %rsp\n";
+		}
+		text += "\tpopq %r11\n\tpopq %rax\n\tpopq %r9\n\tpopq %r8\n\tpopq %rcx\n\tpopq %rdx\n\tpopq %rsi\n\tpopq %rdi\n";
+		text += "\tmovq %r12, %rsp\n\ttestq %r10, %r10\n\tjz 8f\n\tmovq %r10, %r12\n\tjmp 3b\n";
+		text += "8:\n\tud2\n";
 		return text;
 	}
 
@@ -1009,25 +1068,37 @@ namespace hemera {
 		if (ArchType::x86_64 != generator.options->architecture) {
 			return false;
 		}
-		size_t limit = 0, segment = 0, spare = 0, cache = 0, cache_count = 0, segment_size = 0, next_free = 0;
+		MorestackOffsets o;
 		uint64_t guard = 0;
 		Declaration* header = base_declaration_named(generator, "runtime", "StackSegment");
-		const bool found = runtime_offset(generator, "CarrierBlock", "stack_limit", limit)
-			&& runtime_offset(generator, "CarrierBlock", "stack_segment", segment)
-			&& runtime_offset(generator, "CarrierBlock", "spare_segment", spare)
-			&& runtime_offset(generator, "CarrierBlock", "segment_cache", cache)
-			&& runtime_offset(generator, "CarrierBlock", "segment_cache_count", cache_count)
-			&& runtime_offset(generator, "StackSegment", "size", segment_size)
-			&& runtime_offset(generator, "StackSegment", "next_free", next_free)
-			&& runtime_integer(generator, "STACK_GUARD", guard) && header != nullptr && header->type_value != nullptr;
+		Declaration* allocate = base_declaration_named(generator, "runtime", "allocate_stack_segment");
+		const bool found = runtime_offset(generator, "CarrierBlock", "stack_limit", o.limit)
+			&& runtime_offset(generator, "CarrierBlock", "stack_segment", o.segment)
+			&& runtime_offset(generator, "CarrierBlock", "spare_segment", o.spare)
+			&& runtime_offset(generator, "CarrierBlock", "segment_cache", o.cache)
+			&& runtime_offset(generator, "CarrierBlock", "segment_cache_count", o.cache_count)
+			&& runtime_offset(generator, "CarrierBlock", "current_fiber", o.current_fiber)
+			&& runtime_offset(generator, "CarrierBlock", "scheduler_sp", o.scheduler_sp)
+			&& runtime_offset(generator, "CarrierBlock", "native_stack_limit", o.native_stack_limit)
+			&& runtime_offset(generator, "CarrierBlock", "native_sp", o.native_sp)
+			&& runtime_offset(generator, "CarrierBlock", "foreign_depth", o.foreign_depth)
+			&& runtime_offset(generator, "StackSegment", "size", o.segment_size)
+			&& runtime_offset(generator, "StackSegment", "next_free", o.next_free)
+			&& runtime_integer(generator, "STACK_GUARD", guard) && header != nullptr && header->type_value != nullptr
+			&& allocate != nullptr;
 		if (!found) {
 			unsupported(generator, where != nullptr ? where->node : nullptr, "base/runtime's stack segments aren't what the compiler expects");
 			return false;
 		}
-		generator.module_assembly.push_back(morestack_assembly(limit, segment, spare, cache, cache_count, segment_size, next_free,
-			guard + header->type_value->size));
+		// Declared first, so the allocating function, which grows like any other, finds morestack made
 		assembly_function(generator, std::string(MORESTACK_SYMBOL), no_arguments(generator));
 		assembly_function(generator, MORESTACK_CONTINUE_SYMBOL, no_arguments(generator));
+		// Only the assembly calls it, which LLVM doesn't count as a use, so it's kept by being external
+		LLVM::LLVMFuncOp allocate_function = function_for(generator, allocate);
+		allocate_function.setLinkage(LLVM::Linkage::External);
+		const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
+		generator.module_assembly.push_back(morestack_assembly(o, guard + header->type_value->size,
+			allocate_function.getSymName().str(), sse));
 		return true;
 	}
 
@@ -1041,6 +1112,8 @@ namespace hemera {
 		size_t current_fiber = 0;
 		size_t scheduler_sp = 0;
 		size_t native_stack_limit = 0;
+		size_t stack_segment = 0;
+		size_t native_sp = 0;
 	};
 
 	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset);
@@ -1090,9 +1163,15 @@ namespace hemera {
 		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", shim);
 		text += "\tpushq %rbp\n\tmovq %rsp, %rbp\n\tpushq %rbx\n\tpushq %r12\n";
 		text += std::format("\tincl {}(%r14)\n\tmovq {}(%r14), %r12\n\tmovq %rsp, %rbx\n", o.foreign_depth, o.stack_limit);
-		// On a fiber: below the scheduler, whose stack is the thread's own
-		text += std::format("\tcmpq $0, {}(%r14)\n\tje 1f\n", o.current_fiber);
-		text += std::format("\tmovq {}(%r14), %rsp\n\tandq $-16, %rsp\n", o.scheduler_sp);
+		// Already on the native stack, inside other foreign code or morestack's allocating: stay there
+		text += std::format("\tcmpl $1, {}(%r14)\n\tjne 1f\n", o.foreign_depth);
+		/*
+		 * On a fiber: below the scheduler, whose stack is the thread's own. On a thread on a segment:
+		 * below where it left its own stack.
+		 */
+		text += std::format("\tcmpq $0, {}(%r14)\n\tje 2f\n\tmovq {}(%r14), %rsp\n\tjmp 3f\n", o.current_fiber, o.scheduler_sp);
+		text += std::format("2:\n\tcmpq $0, {}(%r14)\n\tje 1f\n\tmovq {}(%r14), %rsp\n", o.stack_segment, o.native_sp);
+		text += "3:\n\tandq $-16, %rsp\n";
 		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%r14)\n", o.native_stack_limit, o.stack_limit);
 		text += "1:\n";
 		if (area > 0) {
@@ -1131,7 +1210,9 @@ namespace hemera {
 				&& runtime_offset(generator, "CarrierBlock", "foreign_depth", offsets.foreign_depth)
 				&& runtime_offset(generator, "CarrierBlock", "current_fiber", offsets.current_fiber)
 				&& runtime_offset(generator, "CarrierBlock", "scheduler_sp", offsets.scheduler_sp)
-				&& runtime_offset(generator, "CarrierBlock", "native_stack_limit", offsets.native_stack_limit);
+				&& runtime_offset(generator, "CarrierBlock", "native_stack_limit", offsets.native_stack_limit)
+				&& runtime_offset(generator, "CarrierBlock", "stack_segment", offsets.stack_segment)
+				&& runtime_offset(generator, "CarrierBlock", "native_sp", offsets.native_sp);
 			if (!found) {
 				unsupported(generator, where, "base/runtime's carrier block isn't what the compiler expects");
 			}
@@ -5546,6 +5627,18 @@ namespace hemera {
 			mlir::Value carrier = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
 				llvm_type(generator, carrier_type), one, static_cast<unsigned>(carrier_type->alignment));
 			store_zero(generator, carrier_type, carrier);
+			// Segments for morestack come from the same allocator as main's context
+			size_t segment_allocator = 0;
+			size_t allocator = 0;
+			if (runtime_offset(generator, "CarrierBlock", "segment_allocator", segment_allocator)
+				&& runtime_offset(generator, "Context", "allocator", allocator)) {
+				Declaration* allocator_declaration = base_declaration_named(generator, "runtime", "Allocator");
+				if (allocator_declaration != nullptr && allocator_declaration->type_value != nullptr) {
+					TypeInfo* allocator_type = allocator_declaration->type_value;
+					store(generator, load(generator, allocator_type, offset_address(generator, context, allocator)),
+						offset_address(generator, carrier, segment_allocator));
+				}
+			}
 			callers_carrier = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
 			assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
 		}

@@ -1,5 +1,7 @@
 package runtime
 
+import intrinsics from "base"
+
 // Size of each additional stack segment, unless a single frame needs more.
 STACK_SEGMENT_SIZE :: 1024
 // Bytes between stack_limit and the real end of a segment.
@@ -17,6 +19,37 @@ FIBER_INITIAL_STACK_SIZE :: 1024
 FIBER_BLOCK_SIZE :: size_of(Fiber) + STACK_GUARD + FIBER_INITIAL_STACK_SIZE
 // Leaf functions with frames up to this size skip the prologue check.
 STACK_SMALL :: 128
+
+/*
+ * A stack segment of at least size bytes, header included, for morestack when the carrier has none
+ * to spare (docs/calling_convention.md, Growing the Stack): from the carrier's segment_allocator, and
+ * at least STACK_SEGMENT_SIZE. morestack calls it on the thread's native stack, and the function it's
+ * growing may have no context to give, so it runs the allocator with MINIMAL_CONTEXT. Null without
+ * an allocator or memory, and morestack traps.
+ */
+allocate_stack_segment #no_context :: fn(size: usize) -> ptr[mut StackSegment]? {
+    carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
+    allocator :: carrier.segment_allocator
+    if cast[rawptr](allocator.function) == null {
+        return null
+    }
+    wanted := if size > STACK_SEGMENT_SIZE { size } else { cast[usize](STACK_SEGMENT_SIZE) }
+    wanted = (wanted + 15) & ~cast[usize](15)
+    block : u8[]
+    failed := false
+    push_context segments from MINIMAL_CONTEXT {
+        made, error :: new_array_aligned(u8, wanted, 16, allocator)
+        block = made
+        failed = error != null
+    }
+    if failed {
+        return null
+    }
+    segment :: cast[ptr[mut StackSegment]](block.data)
+    segment.size = cast[u32](wanted)
+    segment.next_free = null
+    return segment
+}
 
 /*
  * A fiber, and the start of its FIBER_BLOCK_SIZE allocation.

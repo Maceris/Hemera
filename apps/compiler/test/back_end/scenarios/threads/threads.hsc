@@ -9,6 +9,10 @@
  *
  * Every turn also adds one to a counter behind a std/concurrency Mutex, yielding while it holds it,
  * so other fibers park waiting for it, and main and thread 6 add to it too, blocking instead.
+ *
+ * Built with stack_check = .Morestack. Nothing fills the carriers' segment caches, so growing
+ * allocates segments: a fiber of the first pool recurses FIBER_DEPTH calls deep, and thread 6
+ * THREAD_DEPTH, well past the stack the system gave it.
  */
 package threads
 
@@ -28,6 +32,9 @@ POOL_THREADS :: 5
 PLAIN_THREAD :: 6
 // What main and thread 6 each add to the counter
 PLAIN_ADDS :: 500
+// About 64 bytes a call: 192 KiB on a fiber, and 4 MiB on thread 6, whose own stack is 1 MiB
+FIBER_DEPTH :: 3000
+THREAD_DEPTH :: 65536
 
 // What one pool's fibers record.
 PoolCounts :: struct {
@@ -53,6 +60,25 @@ ThreadTest :: struct {
     // Only changed with counter_lock held, and read and written in separate steps around a yield
     counter_lock : concurrency.Mutex,
     counter : u64,
+    // What the deep calls added up to
+    fiber_sum : u64,
+    thread_sum : u64,
+}
+
+// 1 + 2 + ... + depth, a call each, reading back after the call so it isn't turned into a loop.
+climb :: fn(depth: u64, last: u64) -> u64 {
+    padding : u64[4]
+    intrinsics.volatile_store_u64(&padding[0], depth)
+    if depth == last {
+        return depth
+    }
+    below :: climb(depth + 1, last)
+    return below + intrinsics.volatile_load_u64(&padding[0])
+}
+
+deep_worker : runtime.ThreadFunction : fn(data #escaping : any) {
+    test :: cast[ptr[mut ThreadTest]](context.user_data)
+    test.fiber_sum = climb(1, FIBER_DEPTH)
 }
 
 // One more on the counter: read, yield (or not, on a thread), write, all with the lock held.
@@ -85,6 +111,10 @@ main :: fn() -> int {
             intrinsics.spin_hint()
         }
         while intrinsics.atomic_load_u64_acquire(&test.started) < POOL_THREADS
+        _, deep_error :: fiber.spawn(test.first, deep_worker)
+        if deep_error != null {
+            return 2
+        }
         for i in 0..<FIRST_FIBERS {
             _, error :: fiber.spawn(test.first, first_worker)
             if error != null {
@@ -122,6 +152,12 @@ main :: fn() -> int {
     if test.counter != (FIRST_FIBERS + SECOND_FIBERS) * TURNS + 2 * PLAIN_ADDS {
         return 7
     }
+    if test.fiber_sum != FIBER_DEPTH * (FIBER_DEPTH + 1) / 2 {
+        return 8
+    }
+    if test.thread_sum != THREAD_DEPTH * (THREAD_DEPTH + 1) / 2 {
+        return 9
+    }
     fiber.destroy_fiber_pool(test.first)
     fiber.destroy_fiber_pool(test.second)
     return 42
@@ -146,6 +182,7 @@ plain_main : runtime.ThreadFunction : fn(data #escaping : any) {
     test.plain_index = cast[u64](runtime.current_thread_index())
     runtime.fiber_yield()
     test.plain_yielded = 1
+    test.thread_sum = climb(1, THREAD_DEPTH)
     for i in 0..<PLAIN_ADDS {
         add_one(test)
     }

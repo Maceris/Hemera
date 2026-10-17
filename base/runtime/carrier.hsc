@@ -69,6 +69,17 @@ CarrierBlock :: struct #align(64) {
     park_function : fn(carrier: ptr[mut CarrierBlock], waiter #escaping : ptr[mut Waiter])?,
     // The thread's own waiter, for park when it isn't running a fiber.
     thread_waiter : Waiter,
+    /*
+     * Where a thread's stack pointer was when morestack first took it off its native stack onto a
+     * segment, so foreign calls and allocating segments can go back below it. Only meaningful while
+     * a thread not running a fiber is on a segment.
+     */
+    native_sp : rawptr,
+    /*
+     * Where morestack gets segments when the cache has none big enough: set when the thread starts,
+     * from its context's allocator. Without one (no function), it traps instead.
+     */
+    segment_allocator : Allocator,
 }
 
 /*
