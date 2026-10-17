@@ -433,7 +433,7 @@ namespace hemera {
 		Trap,
 		/// <summary>
 		/// Call morestack, which runs the function on a new stack segment (docs/calling_convention.md,
-		/// Growing the Stack). For now on x86-64 targets whose frames chain through rbp.
+		/// Growing the Stack). For now on x86-64.
 		/// </summary>
 		Morestack,
 	};

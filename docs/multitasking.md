@@ -20,7 +20,8 @@ The new thread starts with a copy of the creating thread's context (see [Context
 
 Fibers are cooperatively scheduled, with runtimes that share
 tasks among one or more threads. The fiber runtimes can be user-defined,
-though there is an implementation in the standard library.
+though there is an implementation in the standard library: `std/fiber`'s scheduler, which for now runs fibers on one
+carrier, taking turns in order (`spawn`, `run_fibers`).
 
 A fiber is a function, some data, its own small stack, and its own root context. A scheduler runs fibers on one or
 more OS threads, called *carriers*. A suspended fiber may be resumed on a different carrier than the one it was
@@ -231,8 +232,8 @@ allocation of `FIBER_BLOCK_SIZE` bytes, which is calculated from its parts:
 That leaves about 80 bytes of each fiber's share of the budget for the allocator's own overhead.
 
 While suspended, the fiber's callee-saved registers are on its stack:
-about 40 bytes for x86-64 System V, 216 bytes for x86-64 Windows (which includes `xmm6`-`xmm15`), and 144 bytes
-for AArch64.
+about 40 bytes for x86-64 (Windows too, where Hemera's functions use System V's registers, see
+[calling_convention.md](calling_convention.md#windows-x64)), and 144 bytes for AArch64.
 
 A fiber that suspends with its frames inside the first segment costs exactly the block. One that suspends deeper
 holds another segment (`STACK_SEGMENT_SIZE`, 1 KiB by default) for each segment its frames reach into.
@@ -248,9 +249,6 @@ time), and `fiber_yield()` may do nothing. Functions see the same interface eith
 
 ## Open Questions
 
-* **Windows: the frame pointer chain.** The resume loop and `morestack` follow `[rbp]` and `[rbp + 8]`, but on Windows
-  x64 LLVM points `rbp` up to 240 bytes into larger frames, for its unwind information. Fibers need either Hemera
-  functions with a classic chain (and no Windows unwind information for them), or a different way to find each frame.
 * **Windows: stack bounds in the thread environment block.** Structured exception handling and some APIs read the
   current stack's bounds from the thread environment block. Either update them on every switch to a fiber's segment,
   as Windows' own fibers do, or rely only on vectored exception handlers, as Go does.

@@ -44,3 +44,20 @@ grown through `__morestack`; with a carrier block, any function can be called fr
 
 Includes `llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll`. LLVM's existing segmented-stack tests are
 unchanged.
+
+## 0002-x86-classic-frame.patch
+
+Hemera's frames on Windows x64 (`docs/calling_convention.md`, *Windows x64*). Apply it after 0001. LLVM gives every
+function on Windows x64 the prologue its unwind information can describe: `push rbp`, `sub rsp, N`,
+`lea rbp, [rsp + N]`, with `rbp` up to 240 bytes into the frame rather than at the saved one. The fiber resume loop,
+`morestack` and stack walks follow `[rbp]` and `[rbp + 8]`, so this adds a function attribute to get the prologue
+other targets have instead:
+
+| Attribute | Meaning |
+|---|---|
+| `"classic-frame"` | On targets with Windows unwind information: `push rbp`, `mov rbp, rsp`, `sub rsp, N`, and no unwind information (no `.seh_*` directives). `llvm.frameaddress` is the frame pointer, as elsewhere |
+
+Elsewhere it changes nothing. A function with it can't be unwound through by Windows' unwinder, so structured
+exception handling and C++ exceptions can't pass through it.
+
+Includes `llvm/test/CodeGen/X86/win64-classic-frame.ll`.

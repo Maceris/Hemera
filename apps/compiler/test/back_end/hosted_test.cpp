@@ -34,7 +34,7 @@ static std::filesystem::path std_folder() {
  * then run. Its main returns 42 if everything it checks worked, or the number of the first
  * check that failed.
  */
-TEST(Hosted, RunsProgram)
+static void run_hosted(std::string_view name, hemera::TargetStackCheck stack_check)
 {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
@@ -47,12 +47,13 @@ TEST(Hosted, RunsProgram)
 	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
 
 	// In the build folder, which antivirus software is likelier to leave alone than the temp folder
-	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "hosted";
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / name;
 	std::filesystem::create_directories(output_folder);
 	hemera::Options options;
-	options.input = std::filesystem::canonical(scenario("hosted"));
+	options.input = std::filesystem::canonical(scenario(name));
 	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
-	options.output_name = (output_folder / "hosted").string();
+	options.output_name = (output_folder / name).string();
+	options.stack_check = stack_check;
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
 	std::filesystem::remove(executable);
@@ -77,6 +78,20 @@ TEST(Hosted, RunsProgram)
 	EXPECT_EQ(std::system(std::format("\"{}\"", executable).c_str()), 42);
 
 	module.erase();
+}
+
+TEST(Hosted, RunsProgram)
+{
+	run_hosted("hosted", hemera::TargetStackCheck::Off);
+}
+
+/*
+ * Fibers taking turns under std/fiber's scheduler, one of them growing its stack onto segments:
+ * on Windows, Hemera's frames chain through rbp like elsewhere (docs/calling_convention.md, Windows x64).
+ */
+TEST(Hosted, RunsFibers)
+{
+	run_hosted("fibers", hemera::TargetStackCheck::Morestack);
 }
 
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.

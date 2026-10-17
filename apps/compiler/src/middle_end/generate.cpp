@@ -689,6 +689,27 @@ namespace hemera {
 		return text_of(function->calling_convention).find(convention) != std::string::npos;
 	}
 
+	/*
+	 * Whether Hemera's own functions are called with System V's convention though the target's C
+	 * convention is another: on Windows x64, so the fiber switches and morestack are the same as
+	 * elsewhere (docs/calling_convention.md, Windows x64).
+	 */
+	static bool system_v_on_windows(const Options& options) {
+		return OSType::Win32 == options.os && ArchType::x86_64 == options.architecture;
+	}
+
+	// The LLVM convention functions of a type are called with.
+	static LLVM::cconv::CConv convention_of(Generator& generator, TypeInfoFunction const* function) {
+		if (has_convention(function, "interrupt")) {
+			// Entered through the IDT with a pointer to what the CPU pushed (LLVM's x86_intrcc)
+			return LLVM::cconv::CConv::X86_INTR;
+		}
+		if (text_of(function->calling_convention).empty() && system_v_on_windows(*generator.options)) {
+			return LLVM::cconv::CConv::X86_64_SysV;
+		}
+		return LLVM::cconv::CConv::C;
+	}
+
 	// The function a freestanding program starts at (docs/compilation.md, Freestanding Programs).
 	static bool is_freestanding_entry(Generator& generator, Declaration* declaration) {
 		return declaration != nullptr && !generator.options->startup_code && declaration->generic == nullptr
@@ -843,6 +864,10 @@ namespace hemera {
 		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, symbol, type);
 		// Defined in this object, so it's reached directly rather than through the GOT
 		function.setDsoLocal(true);
+		// Written for System V's registers, which Hemera's functions use on Windows too
+		if (system_v_on_windows(*generator.options)) {
+			function.setCConv(LLVM::cconv::CConv::X86_64_SysV);
+		}
 		return function;
 	}
 
@@ -970,14 +995,14 @@ namespace hemera {
 	}
 
 	/*
-	 * Whether functions can call morestack: on x86-64 targets whose frames chain through rbp, with
-	 * morestack made once. Reports why not, the first time.
+	 * Whether functions can call morestack: on x86-64 targets, with morestack made once. Reports why
+	 * not, the first time.
 	 */
 	static bool morestack_ready(Generator& generator, Declaration* where) {
 		if (generator.module.lookupSymbol<LLVM::LLVMFuncOp>(MORESTACK_SYMBOL)) {
 			return true;
 		}
-		if (OSType::Win32 == generator.options->os || ArchType::x86_64 != generator.options->architecture) {
+		if (ArchType::x86_64 != generator.options->architecture) {
 			return false;
 		}
 		size_t limit = 0, segment = 0, spare = 0, cache = 0, cache_count = 0, segment_size = 0, next_free = 0;
@@ -1052,9 +1077,8 @@ namespace hemera {
 		if (!attributes.empty()) {
 			function.setPassthroughAttr(generator.builder.getArrayAttr(attributes));
 		}
+		function.setCConv(convention_of(generator, type));
 		if (has_convention(type, "interrupt")) {
-			// Entered through the IDT with a pointer to what the CPU pushed (LLVM's x86_intrcc)
-			function.setCConv(LLVM::cconv::CConv::X86_INTR);
 			if (!type->input.empty() && is_variant(type->input[0].type, TypeInfoVariant::POINTER)) {
 				TypeInfo* frame = static_cast<TypeInfoPointer const*>(base(type->input[0].type))->base_type;
 				function.setArgAttr(0, LLVM::LLVMDialect::getByValAttrName(), mlir::TypeAttr::get(llvm_type(generator, frame)));
@@ -3269,7 +3293,7 @@ namespace hemera {
 
 	/*
 	 * intrinsics.fiber_start, fiber_resume and fiber_suspend: calls to the generated switches, made
-	 * once. For now on x86-64 targets whose frames chain through rbp, which Windows' don't.
+	 * once. For now on x86-64.
 	 */
 	static bool emit_fiber_intrinsic(Generator& generator, std::string_view name, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where, Emitted& result) {
@@ -3277,9 +3301,8 @@ namespace hemera {
 		if (name != "fiber_start" && name != "fiber_resume" && name != "fiber_suspend") {
 			return false;
 		}
-		if (OSType::Win32 == generator.options->os || ArchType::x86_64 != generator.options->architecture) {
-			unsupported(generator, where, "fibers need x86-64 frames that chain through rbp, which Windows' don't yet "
-				"(docs/multitasking.md, Open Questions)");
+		if (ArchType::x86_64 != generator.options->architecture) {
+			unsupported(generator, where, "fibers are only made for x86-64 so far (docs/multitasking.md, Open Questions)");
 			result = intrinsic_value(zero_of(generator, llvm_type(generator, function->output.empty() ? BUILTIN_int : function->output[0].type)),
 				function);
 			return true;
@@ -3591,6 +3614,7 @@ namespace hemera {
 				offset += (input.type->size + 7) & ~size_t(7);
 			}
 			auto call = LLVM::CallOp::create(generator.builder, generator.loc, function_type(generator, callback, true), operands);
+			call.setCConv(convention_of(generator, callback));
 			if (!callback->output.empty()) {
 				store(generator, call.getResult(), offset_address(generator, frame, offset));
 			}
@@ -3782,6 +3806,7 @@ namespace hemera {
 			operands.insert(operands.end(), arguments.begin(), arguments.end());
 			call = LLVM::CallOp::create(generator.builder, generator.loc,
 				function_type(generator, function, takes_context(generator, function, nullptr)), operands);
+			call.setCConv(convention_of(generator, function));
 		}
 		/*
 		 * A function that starts without a context has no stack check, since there's no carrier
@@ -4231,6 +4256,14 @@ namespace hemera {
 				&& !static_cast<TypeInfoString const*>(base(type))->is_raw) {
 				mlir::Value same = strings_equal(generator, emit_as(generator, left_node, type), emit_as(generator, right_node, type));
 				return value(TokenType::OPERATOR_EQUAL == op ? same : negate(generator, same), BUILTIN_bool);
+			}
+			// An optional against null: whether it holds nothing, like is_none
+			const bool left_null = TokenType::KEYWORD_NULL == left_node->value.type;
+			if ((TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) && is_variant(type, TypeInfoVariant::UNION)
+				&& right_node != nullptr && (left_null || TokenType::KEYWORD_NULL == right_node->value.type)) {
+				Emitted operand = emit_expression(generator, left_null ? right_node : left_node, type);
+				mlir::Value address = address_of(generator, operand);
+				return value(tag_is(generator, address, operand.type, 0, TokenType::OPERATOR_NOT_EQUAL == op), BUILTIN_bool);
 			}
 			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
 				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
@@ -5366,6 +5399,22 @@ namespace hemera {
 		mlir::Value context = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
 			llvm_type(generator, context_type), one, static_cast<unsigned>(context_type->alignment));
 		store_zero(generator, context_type, context);
+		/*
+		 * A carrier block for the main thread, zeroed: no stack limit to check, no fiber and no
+		 * scheduler yet. The carrier register is the caller's to keep, so it's put back if the entry
+		 * returns.
+		 */
+		Declaration* carrier_declaration = base_declaration_named(generator, "runtime", "CarrierBlock");
+		mlir::Value callers_carrier;
+		if (ArchType::x86_64 == generator.options->architecture && carrier_declaration != nullptr
+			&& carrier_declaration->type_value != nullptr) {
+			TypeInfo* carrier_type = carrier_declaration->type_value;
+			mlir::Value carrier = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
+				llvm_type(generator, carrier_type), one, static_cast<unsigned>(carrier_type->alignment));
+			store_zero(generator, carrier_type, carrier);
+			callers_carrier = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
+			assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+		}
 		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
 		mlir::Value code = constant_int(generator, i32, 0);
 		if (main_type->output.size() == 1 && is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER)) {
@@ -5379,6 +5428,9 @@ namespace hemera {
 			}
 		}
 		if (!windows) {
+			if (callers_carrier) {
+				assembly(generator, mlir::Type(), { callers_carrier }, "movq $0, %r14", "r,~{memory}");
+			}
 			LLVM::ReturnOp::create(generator.builder, generator.loc, code);
 			return;
 		}
@@ -6342,8 +6394,8 @@ namespace hemera {
 		result.red_zone = target.red_zone;
 		result.address_zero_is_memory = target.address_zero_is_memory;
 		result.startup_code = target.startup_code;
-		// Morestack where it's made: x86-64 targets whose frames chain through rbp; off elsewhere, for now
-		const bool grows = OSType::Win32 != result.os && ArchType::x86_64 == result.architecture;
+		// Morestack where it's made: x86-64 targets; off elsewhere, for now
+		const bool grows = ArchType::x86_64 == result.architecture;
 		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap
 			: target.stack_check_failure == "Morestack" && grows ? TargetStackCheck::Morestack : TargetStackCheck::Off;
 		if (!target.linker_script.empty()) {
@@ -6682,15 +6734,6 @@ namespace hemera {
 		}
 	}
 
-	/*
-	 * capture_stack_trace's walk (docs/calling_convention.md, Walking the Stack), if a program uses
-	 * it: (addresses, count, skip) -> how many were written. It starts at its caller's frame, so the
-	 * first address is in the caller of the function that called capture_stack_trace, and follows the
-	 * saved frame pointers. A frame whose saved frame pointer is null is the entry function's, which
-	 * end_stack_at_entry made the end of the chain, so its return address isn't recorded.
-	 */
-	static void define_windows_stack_walker(llvm::Module& module, llvm::Function* walker);
-
 	// What a walk needs from the generated fiber switches and morestack, when the program has them.
 	struct WalkSupport {
 		llvm::Function* loop_return = nullptr;
@@ -6868,7 +6911,14 @@ namespace hemera {
 			llvm::ConstantInt::get(size, 0), llvm::ConstantInt::get(size, 1));
 	}
 
-	static void define_stack_walker(llvm::Module& module, bool windows) {
+	/*
+	 * capture_stack_trace's walk (docs/calling_convention.md, Walking the Stack), if a program uses
+	 * it: (addresses, count, skip) -> how many were written. It starts at its caller's frame, so the
+	 * first address is in the caller of the function that called capture_stack_trace, and follows the
+	 * saved frame pointers. A frame whose saved frame pointer is null is the entry function's, which
+	 * end_stack_at_entry made the end of the chain, so its return address isn't recorded.
+	 */
+	static void define_stack_walker(llvm::Module& module) {
 		const WalkSupport support = walk_support(module);
 		define_fiber_stack_walker(module, support);
 		llvm::Function* walker = module.getFunction(STACK_WALKER_SYMBOL);
@@ -6881,40 +6931,11 @@ namespace hemera {
 		walker->setLinkage(llvm::GlobalValue::InternalLinkage);
 		walker->addFnAttr(llvm::Attribute::NoInline);
 		walker->addFnAttr("frame-pointer", "all");
-		if (windows) {
-			define_windows_stack_walker(module, walker);
-			return;
-		}
 		// From the walker's caller's frame
 		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
 		llvm::Value* own = builder.CreateIntrinsic(llvm::Intrinsic::frameaddress, { pointer }, { builder.getInt32(0) });
 		build_walk(builder, walker, support, builder.CreateLoad(pointer, own), walker->getArg(0), walker->getArg(1),
 			walker->getArg(2), llvm::ConstantInt::get(size, 0));
-	}
-
-	/*
-	 * The walker on Windows, where frame pointers don't form a chain (x64 frames are found through
-	 * their unwind information): RtlCaptureStackBackTrace, from kernel32, which programs link with.
-	 * Its first two frames are the walker's own and its caller's, so they're skipped too. The trace
-	 * goes on into the system's frames below the entry function.
-	 */
-	static void define_windows_stack_walker(llvm::Module& module, llvm::Function* walker) {
-		llvm::LLVMContext& context = module.getContext();
-		llvm::Type* pointer = llvm::PointerType::get(context, 0);
-		llvm::Type* size = llvm::Type::getInt64Ty(context);
-		llvm::Type* u32 = llvm::Type::getInt32Ty(context);
-		llvm::Type* u16 = llvm::Type::getInt16Ty(context);
-		llvm::FunctionCallee capture = module.getOrInsertFunction("RtlCaptureStackBackTrace",
-			llvm::FunctionType::get(u16, { u32, u32, pointer, pointer }, false));
-		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
-		// At most 62 frames in all (ULONG counts, but XP's limit is still documented)
-		llvm::Value* count = builder.CreateTrunc(builder.CreateBinaryIntrinsic(llvm::Intrinsic::umin, walker->getArg(1),
-			llvm::ConstantInt::get(size, 62)), u32);
-		llvm::Value* skip = builder.CreateAdd(builder.CreateTrunc(builder.CreateBinaryIntrinsic(llvm::Intrinsic::umin,
-			walker->getArg(2), llvm::ConstantInt::get(size, 60)), u32), llvm::ConstantInt::get(u32, 2));
-		llvm::Value* written = builder.CreateCall(capture, { skip, count, walker->getArg(0),
-			llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)) });
-		builder.CreateRet(builder.CreateZExt(written, size));
 	}
 
 	/*
@@ -6967,8 +6988,16 @@ namespace hemera {
 			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "translating to LLVM IR failed");
 			return result;
 		}
+		const bool classic_frames = system_v_on_windows(options);
 		for (llvm::Function& function : *result) {
-			if (!options.red_zone) {
+			/*
+			 * On Windows, frames chain through rbp like elsewhere, without Windows' unwind information
+			 * (apps/compiler/third-party/patches/llvm), and nothing below the stack pointer is kept
+			 */
+			if (classic_frames) {
+				function.addFnAttr("classic-frame");
+			}
+			if (!options.red_zone || classic_frames) {
 				function.addFnAttr(llvm::Attribute::NoRedZone);
 			}
 			// Otherwise LLVM assumes nothing is ever at address 0 and drops accesses to it
@@ -6977,10 +7006,20 @@ namespace hemera {
 			}
 			// Every frame keeps its frame pointer, so capture_stack_trace can walk the chain
 			function.addFnAttr("frame-pointer", "all");
+			// A direct call has its callee's convention, which the generator only gave the callee
+			for (llvm::BasicBlock& block : function) {
+				for (llvm::Instruction& instruction : block) {
+					auto* call = llvm::dyn_cast<llvm::CallBase>(&instruction);
+					llvm::Function* callee = call != nullptr ? call->getCalledFunction() : nullptr;
+					if (callee != nullptr && !callee->isIntrinsic()) {
+						call->setCallingConv(callee->getCallingConv());
+					}
+				}
+			}
 		}
 		define_memory_functions(*result);
 		define_stack_probe(*result, options);
-		define_stack_walker(*result, OSType::Win32 == options.os);
+		define_stack_walker(*result);
 		end_stack_at_entry(*result, options);
 		return result;
 	}

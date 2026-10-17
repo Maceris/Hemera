@@ -1,11 +1,12 @@
 package runtime
 
+// Give back a T from new or new_aligned, to the allocator it came from.
 free :: fn[T](
     pointer: ptr[T],
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    todo("free")
+    allocator.function(allocator.data, 0, 0, cast[rawptr](pointer), size_of(T), loc)
 }
 
 free_all :: fn[T](
@@ -15,12 +16,16 @@ free_all :: fn[T](
     todo("free_all")
 }
 
+// Give back an array from new_array or new_array_aligned, to the allocator it came from.
 free_array :: fn[T](
     array: T[],
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    todo("free_array")
+    if array.count == 0 {
+        return void
+    }
+    allocator.function(allocator.data, 0, 0, cast[rawptr](array.data), array.count * size_of(T), loc)
 }
 
 /*
@@ -45,7 +50,8 @@ new_aligned :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (ptr[mut T], AllocatorError?) {
-    todo("new_aligned")
+    memory, error :: allocator.function(allocator.data, size_of(T), alignment, null, 0, loc)
+    return cast[ptr[mut T]](memory.data), error
 }
 
 new_array :: fn[T](
@@ -64,7 +70,15 @@ new_array_aligned :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (T[], AllocatorError?) {
-    todo("new_array_aligned")
+    empty : T[]
+    if count == 0 {
+        return empty, null
+    }
+    memory, error :: allocator.function(allocator.data, count * size_of(T), alignment, null, 0, loc)
+    if error != null {
+        return empty, error
+    }
+    return view_of(cast[ptr[mut T]](memory.data), count), null
 }
 
 /*

@@ -43,8 +43,8 @@ Fiber :: struct #align(16) {
  * (Suspending and Resuming a Fiber).
  *
  * While suspended, the fiber's callee-saved registers are pushed on its own stack, at saved_sp:
- *     x86-64 System V: rbx, r12, r13, r15, mxcsr, x87 control word
- *     x86-64 Windows:  xmm6-xmm15, rbx, rsi, rdi, r12, r13, r15, mxcsr, x87 control word
+ *     x86-64:          rbx, r12, r13, r15, mxcsr, x87 control word (Windows too, where
+ *                      Hemera's functions use System V's registers)
  *     AArch64:         x19-x27, d8-d15, fpcr
  *     RISC-V 64:       s1-s10, fs0-fs11, fcsr
  * The carrier register (r14 / x28 / s11) is never saved, so a resumed fiber sees the carrier it's on.
@@ -133,7 +133,7 @@ fiber_create :: fn(
  * this on the fiber's first stack segment, and switches back to the scheduler with .Finished once
  * it returns (docs/calling_convention.md, Suspending and Resuming a Fiber).
  */
-fiber_run #calling_convention(.c) #no_context :: fn(fiber: ptr[mut Fiber]) {
+fiber_run #no_context :: fn(fiber: ptr[mut Fiber]) {
     data : any
     match fiber.data {
         case Some(given) => data = given
