@@ -248,6 +248,9 @@ time), and `fiber_yield()` may do nothing. Functions see the same interface eith
 
 ## Open Questions
 
+* **Windows: the frame pointer chain.** The resume loop and `morestack` follow `[rbp]` and `[rbp + 8]`, but on Windows
+  x64 LLVM points `rbp` up to 240 bytes into larger frames, for its unwind information. Fibers need either Hemera
+  functions with a classic chain (and no Windows unwind information for them), or a different way to find each frame.
 * **Windows: stack bounds in the thread environment block.** Structured exception handling and some APIs read the
   current stack's bounds from the thread environment block. Either update them on every switch to a fiber's segment,
   as Windows' own fibers do, or rely only on vectored exception handlers, as Go does.

@@ -129,6 +129,23 @@ fiber_create :: fn(
 }
 
 /*
+ * The body of every fiber: its function, given its data, with its root context. fiber_entry calls
+ * this on the fiber's first stack segment, and switches back to the scheduler with .Finished once
+ * it returns (docs/calling_convention.md, Suspending and Resuming a Fiber).
+ */
+fiber_run #calling_convention(.c) #no_context :: fn(fiber: ptr[mut Fiber]) {
+    data : any
+    match fiber.data {
+        case Some(given) => data = given
+        case None => {}
+    }
+    push_context fiber_context from fiber.context {
+        fiber.function(data)
+    }
+    fiber.state = .Finished
+}
+
+/*
  * Free a fiber that has finished, or never started.
  * Its first stack segment is part of the same allocation, and it doesn't hold any others
  * once it isn't running.

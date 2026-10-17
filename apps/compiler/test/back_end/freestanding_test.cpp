@@ -112,7 +112,7 @@ TEST(Freestanding, BuildsKernel)
 	// Entry functions' generated code (docs/calling_convention.md, Entry Functions)
 	std::set<std::string> generated{ "freestanding.breakpoint_entry", "freestanding.breakpoint_entry.paranoid",
 		"freestanding.breakpoint_entry.vector.0", "freestanding.breakpoint_entry.vector.255", "freestanding.system_call",
-		"hemera.return_to_user" };
+		"hemera.return_to_user", "hemera.fiber_start", "hemera.fiber_resume", "hemera.fiber_suspend", "runtime.fiber_run" };
 	for (const llvm::object::SymbolRef& symbol : elf.symbols()) {
 		auto name = symbol.getName();
 		auto address = symbol.getAddress();

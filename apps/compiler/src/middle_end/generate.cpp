@@ -2969,6 +2969,231 @@ namespace hemera {
 	static Emitted emit_compiler_call(Generator& generator, std::string_view name, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where);
 
+	// ---------------------------------------------------------------------------------------------
+	// Fibers (docs/calling_convention.md, Suspending and Resuming a Fiber)
+
+	constexpr std::string_view FIBER_START_SYMBOL = "hemera.fiber_start";
+	constexpr std::string_view FIBER_RESUME_SYMBOL = "hemera.fiber_resume";
+	constexpr std::string_view FIBER_SUSPEND_SYMBOL = "hemera.fiber_suspend";
+
+	// Where the fiber switches find what they read: offsets into Fiber and CarrierBlock.
+	struct FiberOffsets {
+		size_t saved_sp = 0;
+		size_t top_frame = 0;
+		size_t top_continuation = 0;
+		size_t reentered_frame = 0;
+		size_t reentered_return = 0;
+		size_t parent_frame = 0;
+		size_t segment = 0;
+		size_t limit = 0;
+		size_t carrier_limit = 0;
+		size_t carrier_segment = 0;
+		size_t current_fiber = 0;
+		size_t scheduler_sp = 0;
+		size_t shadow_stack_base = 0;
+	};
+
+	// A member's offset in one of base/runtime's structs.
+	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset) {
+		Declaration* declaration = base_declaration_named(generator, "runtime", type_name);
+		if (declaration == nullptr || declaration->type_value == nullptr || !is_variant(declaration->type_value, TypeInfoVariant::STRUCT)) {
+			return false;
+		}
+		TypeInfo* type = nullptr;
+		std::vector<int64_t> path;
+		return find_member(generator, static_cast<TypeInfoStruct const*>(base(declaration->type_value)), intern(std::string(member)),
+			offset, type, path);
+	}
+
+	static bool fiber_offsets(Generator& generator, FiberOffsets& offsets) {
+		size_t resume = 0;
+		bool found = runtime_offset(generator, "Fiber", "resume", resume);
+		const std::pair<std::string_view, size_t*> resume_fields[] = {
+			{ "saved_sp", &offsets.saved_sp }, { "top_frame", &offsets.top_frame },
+			{ "top_continuation", &offsets.top_continuation }, { "reentered_frame", &offsets.reentered_frame },
+			{ "reentered_return", &offsets.reentered_return }, { "parent_frame", &offsets.parent_frame },
+			{ "stack_segment", &offsets.segment }, { "stack_limit", &offsets.limit },
+		};
+		for (const auto& [name, offset] : resume_fields) {
+			found = found && runtime_offset(generator, "FiberResumeState", name, *offset);
+			*offset += resume;
+		}
+		const std::pair<std::string_view, size_t*> carrier_fields[] = {
+			{ "stack_limit", &offsets.carrier_limit }, { "stack_segment", &offsets.carrier_segment },
+			{ "current_fiber", &offsets.current_fiber }, { "scheduler_sp", &offsets.scheduler_sp },
+			{ "shadow_stack_base", &offsets.shadow_stack_base },
+		};
+		for (const auto& [name, offset] : carrier_fields) {
+			found = found && runtime_offset(generator, "CarrierBlock", name, *offset);
+		}
+		return found;
+	}
+
+	/*
+	 * fiber_start, fiber_resume, fiber_suspend, fiber_entry and the resume loop, for x86-64 frames
+	 * that chain through rbp. run is runtime.fiber_run's symbol. With SSE, MXCSR and the x87 control
+	 * word are callee-saved too; without it, as in a kernel, those instructions may not be allowed.
+	 *
+	 * Switching away from the scheduler pushes its callee-saved registers and the carrier's
+	 * stack_limit, stack_segment and current_fiber on its own stack, and switching back pops them.
+	 * The resume loop keeps its state in rcx, rsi, rdi, r9, r10 and r11, which no function returns
+	 * anything in, so a re-entered frame's result reaches its caller untouched.
+	 */
+	static std::string fiber_assembly(const FiberOffsets& o, std::string_view run, bool sse) {
+		const std::string save_floating = sse ? "\tsubq $16, %rsp\n\tstmxcsr (%rsp)\n\tfnstcw 4(%rsp)\n" : "";
+		const std::string restore_floating = sse ? "\tldmxcsr (%rsp)\n\tfldcw 4(%rsp)\n\taddq $16, %rsp\n" : "";
+		// The scheduler's state, on its own stack: 8 pushes and padding after the return address keep rsp 16-byte aligned
+		std::string save_scheduler = "\tpushq %rbx\n\tpushq %rbp\n\tpushq %r12\n\tpushq %r13\n\tpushq %r15\n";
+		save_scheduler += std::format("\tpushq {}(%r14)\n\tpushq {}(%r14)\n\tpushq {}(%r14)\n\tsubq $8, %rsp\n",
+			o.carrier_limit, o.carrier_segment, o.current_fiber);
+		save_scheduler += save_floating;
+		save_scheduler += std::format("\tmovq %rsp, {}(%r14)\n", o.scheduler_sp);
+		/*
+		 * The shadow stack pointer, 0 without shadow stacks, where rdsspq does nothing. It and incsspq are
+		 * written as bytes, since the assembler only takes them for targets with shadow stacks.
+		 */
+		save_scheduler += std::format("\txorl %eax, %eax\n\t.byte 0xf3, 0x48, 0x0f, 0x1e, 0xc8\n\tmovq %rax, {}(%r14)\n", o.shadow_stack_base);
+		auto back_to_scheduler = [&](int exit) {
+			// Drop the fiber's entries from the shadow stack, at most 255 at a time; none without shadow stacks
+			std::string text = "\txorl %ecx, %ecx\n\t.byte 0xf3, 0x48, 0x0f, 0x1e, 0xc9\n\ttestq %rcx, %rcx\n\tjz 3f\n";
+			text += std::format("\tmovq {}(%r14), %rax\n\tsubq %rcx, %rax\n\tshrq $3, %rax\n", o.shadow_stack_base);
+			text += "2:\n\ttestq %rax, %rax\n\tjz 3f\n\tmovq %rax, %rcx\n\tcmpq $255, %rcx\n\tjbe 4f\n\tmovl $255, %ecx\n";
+			text += "4:\n\t.byte 0xf3, 0x48, 0x0f, 0xae, 0xe9\n\tsubq %rcx, %rax\n\tjmp 2b\n3:\n";
+			text += std::format("\tmovq {}(%r14), %rsp\n", o.scheduler_sp);
+			text += restore_floating;
+			text += std::format("\taddq $8, %rsp\n\tpopq {}(%r14)\n\tpopq {}(%r14)\n\tpopq {}(%r14)\n",
+				o.current_fiber, o.carrier_segment, o.carrier_limit);
+			text += "\tpopq %r15\n\tpopq %r13\n\tpopq %r12\n\tpopq %rbp\n\tpopq %rbx\n";
+			text += std::format("\tmovl ${}, %eax\n\tretq\n", exit);
+			return text;
+		};
+		std::string text = "\t.text\n";
+		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
+		text += std::format("\t.p2align 4\n{}:\n", FIBER_START_SYMBOL);
+		text += save_scheduler;
+		text += std::format("\tmovq %rdi, {}(%r14)\n\tmovq %rdx, {}(%r14)\n\tmovq $0, {}(%r14)\n",
+			o.current_fiber, o.carrier_limit, o.carrier_segment);
+		text += "\tmovq %rsi, %rsp\n\txorl %ebp, %ebp\n\tcallq hemera.fiber_entry\n\tud2\n";
+		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
+		text += "\t.p2align 4\nhemera.fiber_entry:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n";
+		text += std::format("\tcallq {}\n", run);
+		text += back_to_scheduler(1);
+		// fiber_resume(fiber): re-enter its frames, innermost first, each with a real call
+		text += std::format("\t.p2align 4\n{}:\n", FIBER_RESUME_SYMBOL);
+		text += save_scheduler;
+		text += std::format("\tmovq %rdi, {}(%r14)\n", o.current_fiber);
+		text += std::format("\tmovq {}(%rdi), %rax\n\tmovq %rax, {}(%r14)\n", o.segment, o.carrier_segment);
+		text += std::format("\tmovq {}(%rdi), %rax\n\tmovq %rax, {}(%r14)\n", o.limit, o.carrier_limit);
+		text += std::format("\tmovq {}(%rdi), %r10\n\tmovq {}(%rdi), %r11\n\tmovl $1, %esi\n", o.top_frame, o.top_continuation);
+		text += "hemera.fiber_reenter_next:\n";
+		text += std::format("\tmovq %r10, {}(%rdi)\n", o.reentered_frame);
+		// r9 for what's copied, since rcx holds the frame bottom the loop is going to re-enter at
+		text += std::format("\tmovq 8(%r10), %r9\n\tmovq %r9, {}(%rdi)\n", o.reentered_return);
+		text += std::format("\tmovq (%r10), %r9\n\tmovq %r9, {}(%rdi)\n", o.parent_frame);
+		text += "\tleaq 16(%r10), %rsp\n\tcallq hemera.fiber_reenter\n";
+		// The frame returned, to here: on to its caller, whose frame bottom the stack pointer is at now
+		text += "hemera.fiber_loop_return:\n\tmovq %rsp, %rcx\n";
+		text += std::format("\tmovq {}(%r14), %rdi\n", o.current_fiber);
+		text += std::format("\tmovq {}(%rdi), %r11\n\tmovq {}(%rdi), %r10\n", o.reentered_return, o.parent_frame);
+		text += "\txorl %esi, %esi\n\tjmp hemera.fiber_reenter_next\n";
+		// fiber_reenter: only reached by the call above, which put the loop's address in the frame's return slot
+		text += "\t.p2align 4\nhemera.fiber_reenter:\n\tmovq %r10, %rbp\n\ttestl %esi, %esi\n\tjz 1f\n";
+		text += std::format("\tmovq {}(%rdi), %rsp\n", o.saved_sp);
+		text += restore_floating;
+		text += "\tpopq %r15\n\tpopq %r13\n\tpopq %r12\n\tpopq %rbx\n\taddq $8, %rsp\n\tjmpq *%r11\n";
+		text += "1:\n\tmovq %rcx, %rsp\n\tjmpq *%r11\n";
+		// fiber_suspend(fiber): save its registers on its own stack, where it is, and back to the scheduler
+		text += std::format("\t.p2align 4\n{}:\n", FIBER_SUSPEND_SYMBOL);
+		text += "\tpushq %rbx\n\tpushq %r12\n\tpushq %r13\n\tpushq %r15\n";
+		text += save_floating;
+		text += std::format("\tmovq %rsp, {}(%rdi)\n\tmovq %rbp, {}(%rdi)\n", o.saved_sp, o.top_frame);
+		text += std::format("\tmovq {}(%rsp), %rax\n\tmovq %rax, {}(%rdi)\n", sse ? 48 : 32, o.top_continuation);
+		// Suspended frames hold their real return addresses
+		text += std::format("\tmovq {}(%rdi), %rax\n\ttestq %rax, %rax\n\tjz 1f\n", o.reentered_frame);
+		text += std::format("\tmovq {}(%rdi), %rcx\n\tmovq %rcx, 8(%rax)\n\tmovq $0, {}(%rdi)\n", o.reentered_return, o.reentered_frame);
+		text += "1:\n";
+		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%rdi)\n", o.carrier_segment, o.segment);
+		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%rdi)\n", o.carrier_limit, o.limit);
+		text += back_to_scheduler(0);
+		return text;
+	}
+
+	/*
+	 * intrinsics.fiber_start, fiber_resume and fiber_suspend: calls to the generated switches, made
+	 * once. For now on x86-64 targets whose frames chain through rbp, which Windows' don't.
+	 */
+	static bool emit_fiber_intrinsic(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, const ast::Node* where, Emitted& result) {
+
+		if (name != "fiber_start" && name != "fiber_resume" && name != "fiber_suspend") {
+			return false;
+		}
+		if (OSType::Win32 == generator.options->os || ArchType::x86_64 != generator.options->architecture) {
+			unsupported(generator, where, "fibers need x86-64 frames that chain through rbp, which Windows' don't yet "
+				"(docs/multitasking.md, Open Questions)");
+			result = intrinsic_value(zero_of(generator, llvm_type(generator, function->output.empty() ? BUILTIN_int : function->output[0].type)),
+				function);
+			return true;
+		}
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(FIBER_START_SYMBOL)) {
+			FiberOffsets offsets;
+			Declaration* run = base_declaration_named(generator, "runtime", "fiber_run");
+			if (!fiber_offsets(generator, offsets) || run == nullptr) {
+				unsupported(generator, where, "base/runtime's fibers aren't what the compiler expects");
+				return true;
+			}
+			// Only the assembly calls it, which LLVM doesn't count as a use, so it's kept by being external
+			LLVM::LLVMFuncOp run_function = function_for(generator, run);
+			run_function.setLinkage(LLVM::Linkage::External);
+			const std::string run_symbol = run_function.getSymName().str();
+			const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
+			generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse));
+		}
+		mlir::Type pointer = pointer_type(generator);
+		mlir::Type i32 = integer_type(generator, 4);
+		// Declared with the assembly, which is how it's made only once whichever of these comes first
+		assembly_function(generator, std::string(FIBER_START_SYMBOL), LLVM::LLVMFunctionType::get(i32, { pointer, pointer, pointer }));
+		if (name == "fiber_suspend") {
+			LLVM::LLVMFuncOp suspend = assembly_function(generator, std::string(FIBER_SUSPEND_SYMBOL),
+				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), { pointer }));
+			LLVM::CallOp::create(b, l, suspend, mlir::ValueRange{ arguments[0] });
+			result = Emitted{};
+			return true;
+		}
+		LLVM::CallOp call;
+		if (name == "fiber_start") {
+			// The first segment is the rest of the fiber's block, with its limit STACK_GUARD above the Fiber
+			Declaration* block_size = base_declaration_named(generator, "runtime", "FIBER_BLOCK_SIZE");
+			Declaration* guard = base_declaration_named(generator, "runtime", "STACK_GUARD");
+			Declaration* fiber = base_declaration_named(generator, "runtime", "Fiber");
+			if (block_size == nullptr || guard == nullptr || fiber == nullptr || fiber->type_value == nullptr) {
+				unsupported(generator, where, "base/runtime's fibers aren't what the compiler expects");
+				return true;
+			}
+			mlir::Value top_offset = emit_constant_value(generator, block_size, BUILTIN_usize, where);
+			mlir::Value guard_offset = emit_constant_value(generator, guard, BUILTIN_usize, where);
+			mlir::Value limit_offset = LLVM::AddOp::create(b, l, guard_offset,
+				constant_int(generator, usize_type(generator), static_cast<int64_t>(fiber->type_value->size)));
+			mlir::Type i8 = integer_type(generator, 1);
+			mlir::Value top = LLVM::GEPOp::create(b, l, pointer, i8, arguments[0], llvm::SmallVector<LLVM::GEPArg>{ top_offset });
+			mlir::Value limit = LLVM::GEPOp::create(b, l, pointer, i8, arguments[0], llvm::SmallVector<LLVM::GEPArg>{ limit_offset });
+			LLVM::LLVMFuncOp start = assembly_function(generator, std::string(FIBER_START_SYMBOL),
+				LLVM::LLVMFunctionType::get(i32, { pointer, pointer, pointer }));
+			call = LLVM::CallOp::create(b, l, start, mlir::ValueRange{ arguments[0], top, limit });
+		}
+		else {
+			LLVM::LLVMFuncOp resume = assembly_function(generator, std::string(FIBER_RESUME_SYMBOL),
+				LLVM::LLVMFunctionType::get(i32, { pointer }));
+			call = LLVM::CallOp::create(b, l, resume, mlir::ValueRange{ arguments[0] });
+		}
+		// What it returns: FiberExit's .Yielded (0) or .Finished (1)
+		TypeInfo* exit = function->output.empty() ? nullptr : function->output[0].type;
+		result = intrinsic_value(exit != nullptr ? convert(generator, call.getResult(), BUILTIN_u32, exit) : call.getResult(), function);
+		return true;
+	}
+
 	static Emitted emit_intrinsic(Generator& generator, Declaration* called, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
 
@@ -3062,6 +3287,9 @@ namespace hemera {
 				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), { pointer_type(generator) }));
 			LLVM::CallOp::create(b, l, helper, mlir::ValueRange{ arguments[0] });
 			return never_returning();
+		}
+		if (emit_fiber_intrinsic(generator, name, function, arguments, where, result)) {
+			return result;
 		}
 		if (name.starts_with("entry_points[") && called->generic_values.size() == 1) {
 			Declaration* handler = called->generic_values[0].function;

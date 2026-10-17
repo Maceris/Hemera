@@ -118,6 +118,10 @@ checks :: fn(carrier: ptr[mut runtime.CarrierBlock]) {
     if vendor.eax == 0 {
         exit_qemu(6)
     }
+    // Never true: makes the fiber switches part of the kernel, so they're assembled and linked
+    if vendor.eax == 0xffffffff {
+        switch_fibers(cast[ptr[mut runtime.Fiber]](cast[rawptr](carrier)))
+    }
     if x86_64.rdtsc() == 0 {
         exit_qemu(7)
     }
@@ -125,6 +129,14 @@ checks :: fn(carrier: ptr[mut runtime.CarrierBlock]) {
     if (x86_64.read_cr0() >> 31) & 1 != 1 || (x86_64.rdmsr(0xc0000080) >> 8) & 1 != 1 {
         exit_qemu(8)
     }
+}
+
+// Never runs (see checks): starts, resumes and suspends a fiber.
+switch_fibers :: fn(fiber: ptr[mut runtime.Fiber]) {
+    if intrinsics.fiber_start(fiber) == .Yielded {
+        intrinsics.fiber_resume(fiber)
+    }
+    intrinsics.fiber_suspend(fiber)
 }
 
 // Never runs: with stack_limit above the stack, its prologue traps first. It calls write, since

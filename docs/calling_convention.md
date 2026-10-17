@@ -335,11 +335,23 @@ fiber_reenter:                              ; only ever reached by the call abov
     jmp     cont
 ```
 
-The loop keeps `frame`, `cont`, `bottom` and `restore_registers` in scratch registers that aren't used for return values.
+The loop keeps `frame`, `cont`, `bottom` and `restore_registers` in scratch registers that aren't used for return values,
+and copies through another such register (on x86-64 System V: `r10`, `r11`, `rcx`, `rsi`, and `r9` for copying, with the
+fiber in `rdi`). Switching away from the scheduler also saves the carrier's `stack_limit`, `stack_segment` and
+`current_fiber` on the scheduler's stack, and switching back restores them.
+
+While the loop re-enters a frame, the stack pointer is just above that frame's return address slot, so the frame's live
+data is below the stack pointer until the jump to `cont`. Anything that pushes onto the current stack in that moment
+overwrites it. In a process that's a signal handler without an alternate stack, which the runtime avoids (see
+[multitasking.md](multitasking.md#signals)). A kernel that runs fibers has to take interrupts on a stack of their own,
+or mask them while fibers run.
 
 Re-entering every frame with a `call` means each frame's eventual `ret` pops an address that was really pushed,
 both on the stack and on the shadow stack. No return address is ever rewritten by anything but a `call`,
 the fiber doesn't need its own shadow stack, and frames never move.
+
+Implemented for x86-64 targets whose frames chain through `rbp` (System V, and freestanding). Windows' frames don't
+always, see [multitasking.md](multitasking.md#open-questions).
 
 The loop doesn't need a way to stop. The fiber's bottom frame is `fiber_entry` (see `fiber_start` in
 `base/intrinsics/fibers.hsc`), which is re-entered like any other frame. Its continuation is the code that runs
