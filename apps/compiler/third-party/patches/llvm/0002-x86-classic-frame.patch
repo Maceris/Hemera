@@ -12,7 +12,7 @@ index 95d5cbe06da6..53539f24eb25 100644
  
      Type *RetTy = II->getCalledFunction()->getReturnType();
 diff --git a/llvm/lib/Target/X86/X86FrameLowering.cpp b/llvm/lib/Target/X86/X86FrameLowering.cpp
-index 7bd6aaefa0df..a897c0e5ba5f 100644
+index 8807c01630df..4a8a502a5bac 100644
 --- a/llvm/lib/Target/X86/X86FrameLowering.cpp
 +++ b/llvm/lib/Target/X86/X86FrameLowering.cpp
 @@ -1460,13 +1460,17 @@ bool X86FrameLowering::has128ByteRedZone(const MachineFunction &MF) const {

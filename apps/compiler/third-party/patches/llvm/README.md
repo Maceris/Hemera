@@ -31,12 +31,17 @@ Hemera's carrier register is `r14`, and `stack_limit` is the first field of the 
 compiled with `.Trap` as its `stack_check_failure` gets:
 
 ```
-    cmpq    (%r14), %rsp          # frames under 256 bytes
+    leaq    -FRAME(%rsp), %r11
+    cmpq    (%r14), %r11
     jbe     .Ltrap
     ...
 .Ltrap:
     ud2
 ```
+
+With a limit register the frame's end is compared whatever the frame's size. LLVM's own segmented stacks compare the
+stack pointer directly for frames under 256 bytes, which would let such a frame use most of a 256-byte guard before
+anything that grows the stack is pushed.
 
 Functions with a limit register don't mark the object with `.note.GNU-split-stack`, which tells linkers to adjust
 calls into code without the check so they call `__morestack_non_split`. That's for limits in thread-local storage

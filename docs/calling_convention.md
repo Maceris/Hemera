@@ -135,7 +135,7 @@ it saves bar's return address (`0xCB1C`) and foo's BP (`0x1FB0`), sets the stack
 |----------|---------|-------------------------------|-----------------------------------------------------------------------------|
 | `0x1F58` | BP+56   | `0x1F80`                      | Unchanged                                                                   |
 | `0x1F30` | BP+16   | (contents of d)               | Unchanged                                                                   |
-| `0x1F28` | BP+8    | `.loop_return`                | Pushed by the loop's `call`. `0xCB1C` is in `reentered_return`              |
+| `0x1F28` | BP+8    | `.loop_return`                | Pushed by the loop's `call`. `0xCB1C` is in the carrier's `resume_return`   |
 | `0x1F20` | BP      | `0x1FB0`                      | Unchanged                                                                   |
 | `0x1EF0` | BP-48   | (e)                           |                                                                             |
 | `0x1EE8` | BP-56   | (saved rbx)                   | foo's value of rbx                                                          |
@@ -183,31 +183,27 @@ Every function checks that it has room on the current stack segment before it bu
 comparing against `stack_limit` in the carrier block:
 
 ```
-; Frames up to STACK_SMALL bytes
+; FRAME is the frame size, saved registers included, plus the largest outgoing argument area
 foo:
-    cmp     rsp, [r14 + CARRIER_STACK_LIMIT]
+    lea     r11, [rsp - FRAME]
+    cmp     r11, [r14 + CARRIER_STACK_LIMIT]
     jbe     .grow
 .body:
     push    rbp
     mov     rbp, rsp
     ; ...
-
-; Larger frames, FRAME is the frame size plus the largest outgoing argument area
-bar:
-    lea     r11, [rsp - FRAME]
-    cmp     r11, [r14 + CARRIER_STACK_LIMIT]
-    jbe     .grow
-.body:
-    ; ...
 ```
 
-`stack_limit` is `STACK_GUARD` (256) bytes above the real end of the segment.
-That leaves room for a checked function with a small frame to call a leaf function, and for that leaf function
-to call `morestack`, without going past the end:
+Every function with a frame compares where its frame will end, whatever its size, so after any prologue the stack
+pointer is at or above `stack_limit`. Functions without a frame, which use nothing below the return address, don't
+check at all.
 
-* Leaf functions (they don't call anything) whose frame and return address fit in `STACK_SMALL` (128) bytes don't check at all.
-* Functions with frames up to `STACK_SMALL` bytes compare the stack pointer directly.
-* Larger functions compare where their frame will end.
+`stack_limit` is `STACK_GUARD` (256) bytes above the real end of the segment. Below it there only has to be room for
+what's pushed while growing: the next call's return address, `.grow`'s saved base pointer and its call into
+`morestack`, and `morestack`'s own frame (about 64 bytes), plus `fiber_suspend`'s (64 bytes, or 80 with SSE), since a
+fiber suspends from wherever it is. (LLVM's own segmented stacks compare the stack pointer directly for frames under
+256 bytes, which would let such a frame use most of the guard before anything is pushed; the patch for Hemera's limit
+register always compares the frame's end.)
 
 The check costs a load, a compare and a predicted branch. Plain threads run on segments like fibers, so the check
 grows their stacks too. On a thread with a fixed stack, `stack_limit` is that stack's limit, so the same check catches
@@ -331,17 +327,25 @@ register on the way out.
 
 ### Suspending and Resuming a Fiber
 
-The state for this lives in the fiber's `FiberResumeState` (`base/runtime/fiber.hsc`):
+A suspended fiber's state is on its own stack, where `fiber_suspend` pushed it, and the fiber's `FiberResumeState`
+(`base/runtime/fiber.hsc`) only keeps `saved_sp`, where it is. From `saved_sp` up, on x86-64:
 
-| Field                          | Meaning                                                                          |
-|--------------------------------|----------------------------------------------------------------------------------|
-| `saved_sp`                     | Stack pointer after `fiber_suspend` saved the callee-saved registers             |
-| `top_frame`                    | Base pointer of the innermost suspended frame                                    |
-| `top_continuation`             | Where that frame continues: just after its call to `fiber_suspend`               |
-| `reentered_frame`              | The frame most recently re-entered, whose return address slot points at the loop |
-| `reentered_return`             | The original contents of that slot (still signed, on AArch64)                    |
-| `parent_frame`                 | That frame's caller's base pointer, saved before it could be popped              |
-| `stack_segment`, `stack_limit` | The carrier's values for the fiber's current segment                             |
+| Offset           | Contents                                                                |
+|------------------|-------------------------------------------------------------------------|
+| 0                | MXCSR and the x87 control word, 16 bytes, only with SSE (*F* = 16, else 0) |
+| *F*              | Base pointer of the innermost suspended frame (the top frame)           |
+| *F* + 8          | The carrier's `stack_limit` for the fiber's current segment            |
+| *F* + 16         | The carrier's `stack_segment` for it                                    |
+| *F* + 24 to + 48 | `r15`, `r13`, `r12`, `rbx`                                              |
+| *F* + 56         | `fiber_suspend`'s return address: where the top frame continues          |
+
+While a fiber runs, the resume loop's state is in the carrier block, since a fiber only runs on one carrier at a time:
+
+| Field           | Meaning                                                                          |
+|-----------------|----------------------------------------------------------------------------------|
+| `resume_frame`  | The frame most recently re-entered, whose return address slot points at the loop |
+| `resume_return` | The original contents of that slot (still signed, on AArch64)                    |
+| `resume_parent` | That frame's caller's base pointer, saved before it could be popped              |
 
 #### Suspending
 
@@ -350,13 +354,13 @@ The scheduler's yield function runs on the fiber's stack, and calls `fiber_suspe
 ```
 fiber_suspend:
     push    callee-saved registers (never r14)
-    fiber.saved_sp         = rsp
-    fiber.top_frame        = rbp            ; the caller's frame, fiber_suspend doesn't build one
-    fiber.top_continuation = [return address]
-    if fiber.reentered_frame:
-        [fiber.reentered_frame + 8] = fiber.reentered_return   ; suspended frames always hold real return addresses
-        fiber.reentered_frame = null
-    fiber.stack_segment, fiber.stack_limit = carrier's values
+    push    carrier.stack_segment, carrier.stack_limit
+    push    rbp                             ; the caller's frame, fiber_suspend doesn't build one
+    push    MXCSR and the x87 control word  ; with SSE
+    fiber.saved_sp = rsp                    ; the return address above all this is where the fiber continues
+    if carrier.resume_frame:
+        [carrier.resume_frame + 8] = carrier.resume_return   ; suspended frames always hold real return addresses
+        carrier.resume_frame = null
     INCSSP  (carrier.shadow_stack_base - RDSSP) / 8   ; drop the fiber's entries from this thread's shadow stack
     rsp = carrier.scheduler_sp
     pop     the scheduler's callee-saved registers
@@ -375,20 +379,20 @@ fiber_resume(fiber) -> FiberExit:           ; called by the scheduler, on the ca
     carrier.scheduler_sp      = rsp
     carrier.shadow_stack_base = RDSSP       ; the top entry is the return into the scheduler
     carrier.current_fiber     = fiber
-    carrier's stack_segment, stack_limit = fiber's values
-    frame = fiber.top_frame,  cont = fiber.top_continuation,  restore_registers = true
+    carrier's stack_segment, stack_limit = the ones at fiber.saved_sp
+    frame = the top frame at fiber.saved_sp,  cont = the return address there,  restore_registers = true
 
 reenter_next:
-    fiber.reentered_frame  = frame
-    fiber.reentered_return = [frame + 8]
-    fiber.parent_frame     = [frame]
+    carrier.resume_frame  = frame
+    carrier.resume_return = [frame + 8]
+    carrier.resume_parent = [frame]
     rsp = frame + 16                        ; just above the frame's return address slot
     call    fiber_reenter                   ; pushes .loop_return into [frame + 8], and onto the shadow stack
 
 .loop_return:                               ; the frame returned. Return value and callee-saved registers are untouched
     bottom = rsp                            ; the callee popped its parameters, so this is the caller's frame bottom
-    cont   = fiber.reentered_return
-    frame  = fiber.parent_frame
+    cont   = carrier.resume_return
+    frame  = carrier.resume_parent
     restore_registers = false
     jmp     reenter_next
 
@@ -396,6 +400,7 @@ fiber_reenter:                              ; only ever reached by the call abov
     rbp = frame
     if restore_registers:
         rsp = fiber.saved_sp
+        skip MXCSR, the top frame, the limit and the segment
         pop     callee-saved registers, and skip fiber_suspend's return address
     else:
         rsp = bottom
@@ -438,7 +443,7 @@ the same shape as the x86-64 frame above, so the loop is the same, with these di
   the loop's return address into `[frame + 8]`. With pointer authentication enabled, it signs it first with the
   same modifier the frame's prologue used (its stack pointer on entry, which is `frame + 16`).
   This only ever signs that one fixed address.
-* `fiber_suspend` writes `reentered_return` back exactly as it was, still signed, so nothing else needs re-signing.
+* `fiber_suspend` writes `resume_return` back exactly as it was, still signed, so nothing else needs re-signing.
 * Shadow stack entries are dropped with `GCSPOPM` in a loop. (I'm not aware of a bulk equivalent of `INCSSP`.)
 * Builds with branch target identification put `bti j` after every call instead of `endbr64`.
 
@@ -453,10 +458,10 @@ keeps its frame pointer for this, so the chain is never broken by an optimized-o
   `morestack`'s own frame returns into the function's `.grow`, so the walk leaves out both of those addresses: the
   next one is the function's real caller.
 * On a running fiber, the outermost re-entered frame's return address is `.loop_return`. When the walk reaches it,
-  it continues with the fiber's `reentered_return` as that frame's real return address, and `parent_frame` as the
-  next frame. The fiber is found through the carrier block.
-* On a suspended fiber (`intrinsics.capture_fiber_stack_trace`), the trace starts with `top_continuation`, and the walk
-  with `top_frame`. `fiber_suspend` has already put the real return address back, so the chain is ordinary all the way
+  it continues with the carrier's `resume_return` as that frame's real return address, and `resume_parent` as the
+  next frame.
+* On a suspended fiber (`intrinsics.capture_fiber_stack_trace`), the trace starts with the return address at the top
+  of what `fiber_suspend` saved, and the walk with the top frame saved below it. `fiber_suspend` has already put the real return address back, so the chain is ordinary all the way
   down. The fiber switches keep the fiber's `state` current (`.Running` or `.Suspended`), and a fiber that isn't
   suspended gives an empty trace.
 * The walk stops at `fiber_entry` for fibers (whose address is the last one, as the fiber function's caller's), and at the thread's entry function for threads. A program's entry

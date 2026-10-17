@@ -17,8 +17,6 @@ FIBER_INITIAL_STACK_SIZE :: 1024
  * leaving some room for the allocator's own overhead.
  */
 FIBER_BLOCK_SIZE :: size_of(Fiber) + STACK_GUARD + FIBER_INITIAL_STACK_SIZE
-// Leaf functions with frames up to this size skip the prologue check.
-STACK_SMALL :: 128
 
 /*
  * A stack segment of at least size bytes, header included, for morestack when the carrier has none
@@ -61,53 +59,48 @@ allocate_stack_segment #no_context :: fn(size: usize) -> ptr[mut StackSegment]? 
 Fiber :: struct #align(16) {
     resume : FiberResumeState,
     function : ThreadFunction,
-    data : any?,
+    // What function is given; an empty any (a null type) when there's none
+    data : any,
     // Copied from the context of whoever created the fiber
     context : Context,
-    // context's own copy of its extension chain
-    extensions : ContextExtension[],
+    // context's own copy of its extension chain: extension_count nodes
+    extension_nodes : rawptr,
+    extension_count : u32,
     state : FiberState,
     // Intrusive link for scheduler queues, owned by whichever scheduler holds the fiber
     next : ptr[mut Fiber]?,
     // The fiber's waiter, for park (park.hsc)
     waiter : Waiter,
-    // Set by the fiber's scheduler: how wake queues the fiber again once it's parked, and its data for that
-    wake_function : fn(fiber #escaping : ptr[mut Fiber])?,
-    scheduler_data : rawptr,
+    // Set by the scheduler that runs the fiber, for wake to queue it again once it's parked
+    scheduler : ptr[mut FiberScheduler]?,
+}
+
+/*
+ * The start of a fiber scheduler's own state, which a fiber points to: what wake calls to queue a
+ * parked fiber again, from any thread.
+ */
+FiberScheduler :: struct {
+    wake_function : fn(fiber #escaping : ptr[mut Fiber]),
 }
 
 /*
  * Where a suspended fiber continues, see docs/calling_convention.md
  * (Suspending and Resuming a Fiber).
  *
- * While suspended, the fiber's callee-saved registers are pushed on its own stack, at saved_sp:
- *     x86-64:          rbx, r12, r13, r15, mxcsr, x87 control word (Windows too, where
- *                      Hemera's functions use System V's registers)
- *     AArch64:         x19-x27, d8-d15, fpcr
- *     RISC-V 64:       s1-s10, fs0-fs11, fcsr
- * The carrier register (r14 / x28 / s11) is never saved, so a resumed fiber sees the carrier it's on.
+ * While suspended, everything else is on the fiber's own stack, where fiber_suspend pushed it,
+ * from saved_sp up, on x86-64 (Windows too, where Hemera's functions use System V's registers):
+ *     mxcsr and the x87 control word (16 bytes, with SSE), the innermost frame's base pointer,
+ *     the carrier's stack_limit and stack_segment for that segment, r15, r13, r12, rbx, and the
+ *     return address into the innermost frame, which is where it continues.
+ * The resume loop's state, while the fiber runs, is in the carrier block (resume_frame,
+ * resume_return, resume_parent). The carrier register (r14 / x28 / s11) is never saved, so a
+ * resumed fiber sees the carrier it's on.
  *
- * The fiber intrinsics read these using fixed offsets, so don't reorder them.
+ * The fiber intrinsics and stack walks read these using fixed offsets.
  */
 FiberResumeState :: struct {
-    // Stack pointer after fiber_suspend pushed the callee-saved registers
+    // Stack pointer after fiber_suspend pushed everything above
     saved_sp : rawptr,
-    // Base pointer of the innermost suspended frame
-    top_frame : rawptr,
-    // Where that frame continues, just after its call to fiber_suspend
-    top_continuation : rawptr,
-    /*
-     * The frame most recently re-entered by the resume loop, whose return address slot
-     * points back into the loop. null if there isn't one.
-     */
-    reentered_frame : rawptr,
-    // The original contents of that slot, exactly as they were (still signed, on AArch64)
-    reentered_return : rawptr,
-    // reentered_frame's caller's base pointer, saved before the frame could be popped
-    parent_frame : rawptr,
-    // The carrier's stack_segment and stack_limit for the fiber's current segment
-    stack_segment : ptr[mut StackSegment]?,
-    stack_limit : rawptr,
 }
 
 /*
@@ -123,7 +116,7 @@ StackSegment :: struct #align(16) {
     next_free : ptr[mut StackSegment]?,
 }
 
-FiberState :: enum {
+FiberState :: enum #backed_by(u8) {
     NotStarted,
     Running,
     Suspended,
@@ -153,19 +146,24 @@ fiber_create :: fn(
     result : ptr[mut Fiber] : cast[ptr[mut Fiber]](block.data)
     result.resume = FiberResumeState.{}
     result.function = function
-    result.data = data
+    nothing : any
+    result.data = nothing
+    match data {
+        case Some(given) => result.data = given
+        case None => {}
+    }
     result.context = context
     extensions, extensions_error :: copy_extensions(&result.context, allocator, loc)
     if extensions_error != null {
         free(result, allocator, loc)
         return null, extensions_error
     }
-    result.extensions = extensions
+    result.extension_nodes = cast[rawptr](extensions.data)
+    result.extension_count = cast[u32](extensions.count)
     result.state = .NotStarted
     result.next = null
     result.waiter = Waiter.{}
-    result.wake_function = null
-    result.scheduler_data = null
+    result.scheduler = null
     return result, null
 }
 
@@ -175,13 +173,8 @@ fiber_create :: fn(
  * it returns (docs/calling_convention.md, Suspending and Resuming a Fiber).
  */
 fiber_run #no_context :: fn(fiber: ptr[mut Fiber]) {
-    data : any
-    match fiber.data {
-        case Some(given) => data = given
-        case None => {}
-    }
     push_context fiber_context from fiber.context {
-        fiber.function(data)
+        fiber.function(fiber.data)
     }
     fiber.state = .Finished
 }
@@ -196,6 +189,6 @@ fiber_destroy :: fn(
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    free_array(fiber.extensions, allocator, loc)
+    free_array(view_of(cast[ptr[ContextExtension]](fiber.extension_nodes), cast[usize](fiber.extension_count)), allocator, loc)
     free(fiber, allocator, loc)
 }

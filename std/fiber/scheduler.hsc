@@ -32,6 +32,8 @@ import concurrency from "std"
  * and left out of the queues until runtime.wake, from any thread, puts it back in the shared queue.
  */
 FiberPool :: struct {
+    // What the pool's fibers point to, for runtime.wake: first, so a fiber's scheduler is its pool
+    scheduler : runtime.FiberScheduler,
     // Guards the shared queue, and the list of carriers while one joins
     lock : concurrency.SpinLock,
     // The shared queue, linked through Fiber.next, first to run first
@@ -49,7 +51,7 @@ FiberPool :: struct {
     // Carriers running the pool now
     active_carriers : u64,
     // Changes whenever there's something for a sleeping carrier to look at, which it sleeps on
-    work_epoch : u64,
+    work_epoch : u32,
     // Carriers asleep, or about to be, so adding work only wakes one when there is one
     sleepers : u64,
     allocator : runtime.Allocator,
@@ -88,6 +90,7 @@ PoolCarrier :: struct {
 
 create_fiber_pool :: fn(allocator := context.allocator) -> ptr[mut FiberPool] {
     pool :: runtime.new(FiberPool, allocator)
+    pool.scheduler.wake_function = requeue_fiber
     pool.lock = concurrency.SpinLock.{}
     pool.first = null
     pool.last = null
@@ -134,8 +137,7 @@ spawn :: fn(
     made, error :: runtime.fiber_create(function, data, pool.allocator)
     match made {
         case Some(fiber) => {
-            fiber.wake_function = requeue_fiber
-            fiber.scheduler_data = cast[rawptr](pool)
+            fiber.scheduler = &pool.scheduler
             intrinsics.interlocked_exchange_add_u64(&pool.live, 1)
             match carrier_in(pool) {
                 case Some(here) => add_local(here, fiber)
@@ -210,7 +212,7 @@ run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
          * The epoch is read before looking for work: anything added after that changes it, so the
          * wait below returns at once instead of missing it.
          */
-        epoch :: intrinsics.atomic_load_u64_acquire(&pool.work_epoch)
+        epoch :: intrinsics.atomic_load_u32_acquire(&pool.work_epoch)
         match next_fiber(here) {
             case Some(fiber) => {
                 idle = 0
@@ -260,7 +262,7 @@ run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fib
                  * straight back in the queue. Once it's marked parked, whoever wakes it queues it.
                  */
                 here.parking = null
-                _, parked :: intrinsics.interlocked_compare_exchange_u64(&waiter.state, runtime.WAITER_PARKED, runtime.WAITER_WAITING)
+                _, parked :: intrinsics.interlocked_compare_exchange_u32(&waiter.state, runtime.WAITER_PARKED, runtime.WAITER_WAITING)
                 if !parked {
                     add_shared(pool, fiber, fiber, 1)
                 }
@@ -283,7 +285,7 @@ run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fib
  * counted itself as a sleeper yet won't sleep through it: its wait finds the epoch changed.
  */
 wake_carriers :: fn(pool: ptr[mut FiberPool], all: bool) {
-    intrinsics.interlocked_increment_u64(&pool.work_epoch)
+    intrinsics.interlocked_increment_u32(&pool.work_epoch)
     if intrinsics.atomic_load_u64(&pool.sleepers) == 0 {
         return void
     }
@@ -327,9 +329,11 @@ park_fiber :: fn(carrier: ptr[mut runtime.CarrierBlock], waiter #escaping : ptr[
     intrinsics.fiber_suspend(current)
 }
 
-// A fiber's wake_function: back in its pool's shared queue, from whichever thread woke it.
+// The pool's wake_function: back in its shared queue, from whichever thread woke the fiber.
 requeue_fiber :: fn(fiber #escaping : ptr[mut runtime.Fiber]) {
-    pool :: cast[ptr[mut FiberPool]](fiber.scheduler_data)
+    scheduler :: fiber.scheduler or_return void
+    // The scheduler is the pool's first field
+    pool :: cast[ptr[mut FiberPool]](scheduler)
     add_shared(pool, fiber, fiber, 1)
 }
 

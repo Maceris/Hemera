@@ -3,7 +3,7 @@ package runtime
 import intrinsics from "base"
 
 /*
- * Sleeping until a value changes, for code like a fiber pool's carriers with nothing to run:
+ * Sleeping until a 32-bit value changes, for code like a fiber pool's carriers with nothing to run:
  *
  *     wait_on_value(address, expected)   // returns once address^ isn't expected, or spuriously
  *     wake_one(address), wake_all(address)
@@ -12,13 +12,13 @@ import intrinsics from "base"
  * waiting just spins once, so callers loop the same either way.
  */
 #if OS != .Windows {
-    wait_on_value :: fn(address: ptr[u64], expected: u64) {
+    wait_on_value :: fn(address: ptr[u32], expected: u32) {
         intrinsics.spin_hint()
     }
 
-    wake_one :: fn(address: ptr[u64]) {}
+    wake_one :: fn(address: ptr[u32]) {}
 
-    wake_all :: fn(address: ptr[u64]) {}
+    wake_all :: fn(address: ptr[u32]) {}
 
     // Threads only start on Windows so far
     os_thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {

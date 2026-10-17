@@ -17,32 +17,32 @@ import intrinsics from "base"
  */
 Waiter :: struct {
     // WAITER_IDLE, WAITER_WAITING, WAITER_PARKED or WAITER_WOKEN
-    state : u64,
-    // The fiber waiting, or null for a thread
-    fiber : ptr[mut Fiber]?,
+    state : u32,
+    // 1 for a fiber's waiter, the one in its Fiber, and 0 for a thread's
+    on_fiber : u32,
     // For whatever it's waiting on to keep a list of its waiters
     next : ptr[mut Waiter]?,
 }
 
 // Not waiting.
-WAITER_IDLE : u64 : 0
+WAITER_IDLE : u32 : 0
 // About to wait: on a list, but not suspended yet, or a thread waiting on state.
-WAITER_WAITING : u64 : 1
+WAITER_WAITING : u32 : 1
 // A suspended fiber, which whoever wakes it queues again.
-WAITER_PARKED : u64 : 2
+WAITER_PARKED : u32 : 2
 // Woken: park returns.
-WAITER_WOKEN : u64 : 3
+WAITER_WOKEN : u32 : 3
 
 // The current fiber's waiter, or the thread's when it isn't running a fiber.
 current_waiter :: fn() -> ptr[mut Waiter] {
     carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
     match carrier.current_fiber {
         case Some(fiber) => {
-            fiber.waiter.fiber = fiber
+            fiber.waiter.on_fiber = 1
             return &fiber.waiter
         }
         case None => {
-            carrier.thread_waiter.fiber = null
+            carrier.thread_waiter.on_fiber = 0
             return &carrier.thread_waiter
         }
     }
@@ -51,7 +51,7 @@ current_waiter :: fn() -> ptr[mut Waiter] {
 // Ready a waiter to be put on a list, before anything can wake it.
 prepare_wait :: fn(waiter: ptr[mut Waiter]) {
     waiter.next = null
-    intrinsics.atomic_store_u64_release(&waiter.state, WAITER_WAITING)
+    intrinsics.atomic_store_u32_release(&waiter.state, WAITER_WAITING)
 }
 
 /*
@@ -75,7 +75,7 @@ park :: fn(waiter #escaping : ptr[mut Waiter]) {
         }
     }
     loop {
-        state :: intrinsics.atomic_load_u64_acquire(&waiter.state)
+        state :: intrinsics.atomic_load_u32_acquire(&waiter.state)
         if state == WAITER_WOKEN {
             break
         }
@@ -84,17 +84,18 @@ park :: fn(waiter #escaping : ptr[mut Waiter]) {
 }
 
 /*
- * Wake a waiter, from any thread: a parked fiber goes back to its scheduler's queue, through its
- * wake_function, and a thread returns from park.
+ * Wake a waiter, from any thread: a parked fiber goes back to its scheduler's queue, through the
+ * scheduler's wake_function, and a thread returns from park.
  */
 wake :: fn(waiter: ptr[mut Waiter]) {
     // Read first: once woken, a thread's waiter may be used for its next wait at once
-    fiber :: waiter.fiber
-    old :: intrinsics.interlocked_exchange_u64(&waiter.state, WAITER_WOKEN)
-    if old == WAITER_PARKED {
-        parked :: fiber or_return void
-        requeue :: parked.wake_function or_return void
-        requeue(parked)
+    on_fiber :: waiter.on_fiber
+    old :: intrinsics.interlocked_exchange_u32(&waiter.state, WAITER_WOKEN)
+    if old == WAITER_PARKED && on_fiber != 0 {
+        // The fiber it's part of
+        parked :: cast[ptr[mut Fiber]](cast[rawptr](cast[usize](waiter) - offset_of(Fiber, waiter)))
+        scheduler :: parked.scheduler or_return void
+        scheduler.wake_function(parked)
         return void
     }
     // A thread, or a fiber that blocked its thread, may be asleep on the state

@@ -131,16 +131,16 @@ import intrinsics from "base"
         CloseHandle(thread.handle)
     }
 
-    wait_on_value :: fn(address: ptr[u64], expected: u64) {
+    wait_on_value :: fn(address: ptr[u32], expected: u32) {
         compare := expected
-        WaitOnAddress(cast[rawptr](address), cast[rawptr](&compare), 8, INFINITE)
+        WaitOnAddress(cast[rawptr](address), cast[rawptr](&compare), 4, INFINITE)
     }
 
-    wake_one :: fn(address: ptr[u64]) {
+    wake_one :: fn(address: ptr[u32]) {
         WakeByAddressSingle(cast[rawptr](address))
     }
 
-    wake_all :: fn(address: ptr[u64]) {
+    wake_all :: fn(address: ptr[u32]) {
         WakeByAddressAll(cast[rawptr](address))
     }
 }

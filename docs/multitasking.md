@@ -308,18 +308,18 @@ allocation of `FIBER_BLOCK_SIZE` bytes, which is calculated from its parts:
 
 | Part                                                         | Constant                   | Approximate size |
 |--------------------------------------------------------------|----------------------------|------------------|
-| Fiber struct: state, resume state, links, waiter, root context | `size_of(Fiber)`         | 240 bytes        |
+| Fiber struct: state, resume state, links, waiter, root context | `size_of(Fiber)`         | 160 bytes        |
 | Stack guard                                                  | `STACK_GUARD`              | 256 bytes        |
 | Usable stack in the first segment                            | `FIBER_INITIAL_STACK_SIZE` | 1024 bytes       |
-| Total                                                        | `FIBER_BLOCK_SIZE`         | 1520 bytes       |
+| Total                                                        | `FIBER_BLOCK_SIZE`         | 1440 bytes       |
 
-That leaves only 16 bytes of each fiber's share of the budget for the allocator's own overhead, less than most
-allocators keep per block. Most of `Fiber` is its root context (72 bytes) and its resume state (64), so meeting the
-target again means shrinking one of those, or the first segment.
+That leaves 96 bytes of each fiber's share of the budget for the allocator's own overhead. Most of `Fiber` is its root
+context (72 bytes); a suspended fiber's registers and resume state are on its own stack, and the resume loop's state
+while it runs is in the carrier block, so the `Fiber` keeps only where they are.
 
-While suspended, the fiber's callee-saved registers are on its stack:
-about 40 bytes for x86-64 (Windows too, where Hemera's functions use System V's registers, see
-[calling_convention.md](calling_convention.md#windows-x64)), and 144 bytes for AArch64.
+While suspended, the fiber's callee-saved registers and resume state are on its stack: 64 bytes for x86-64, or 80
+with SSE (Windows too, where Hemera's functions use System V's registers, see
+[calling_convention.md](calling_convention.md#windows-x64)), and 144 bytes plus the same resume state for AArch64.
 
 A fiber that suspends with its frames inside the first segment costs exactly the block. One that suspends deeper
 holds another segment (`STACK_SEGMENT_SIZE`, 1 KiB by default) for each segment its frames reach into.

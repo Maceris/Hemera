@@ -3299,14 +3299,12 @@ namespace hemera {
 
 	// Where the fiber switches find what they read: offsets into Fiber and CarrierBlock.
 	struct FiberOffsets {
+		// The fiber's: where fiber_suspend left its state, on its own stack
 		size_t saved_sp = 0;
-		size_t top_frame = 0;
-		size_t top_continuation = 0;
-		size_t reentered_frame = 0;
-		size_t reentered_return = 0;
-		size_t parent_frame = 0;
-		size_t segment = 0;
-		size_t limit = 0;
+		// The carrier's: the resume loop's state, for the fiber running on it
+		size_t resume_frame = 0;
+		size_t resume_return = 0;
+		size_t resume_parent = 0;
 		size_t carrier_limit = 0;
 		size_t carrier_segment = 0;
 		size_t current_fiber = 0;
@@ -3342,21 +3340,14 @@ namespace hemera {
 
 	static bool fiber_offsets(Generator& generator, FiberOffsets& offsets) {
 		size_t resume = 0;
-		bool found = runtime_offset(generator, "Fiber", "resume", resume);
-		const std::pair<std::string_view, size_t*> resume_fields[] = {
-			{ "saved_sp", &offsets.saved_sp }, { "top_frame", &offsets.top_frame },
-			{ "top_continuation", &offsets.top_continuation }, { "reentered_frame", &offsets.reentered_frame },
-			{ "reentered_return", &offsets.reentered_return }, { "parent_frame", &offsets.parent_frame },
-			{ "stack_segment", &offsets.segment }, { "stack_limit", &offsets.limit },
-		};
-		for (const auto& [name, offset] : resume_fields) {
-			found = found && runtime_offset(generator, "FiberResumeState", name, *offset);
-			*offset += resume;
-		}
+		bool found = runtime_offset(generator, "Fiber", "resume", resume)
+			&& runtime_offset(generator, "FiberResumeState", "saved_sp", offsets.saved_sp);
+		offsets.saved_sp += resume;
 		const std::pair<std::string_view, size_t*> carrier_fields[] = {
 			{ "stack_limit", &offsets.carrier_limit }, { "stack_segment", &offsets.carrier_segment },
 			{ "current_fiber", &offsets.current_fiber }, { "scheduler_sp", &offsets.scheduler_sp },
-			{ "shadow_stack_base", &offsets.shadow_stack_base },
+			{ "shadow_stack_base", &offsets.shadow_stack_base }, { "resume_frame", &offsets.resume_frame },
+			{ "resume_return", &offsets.resume_return }, { "resume_parent", &offsets.resume_parent },
 		};
 		for (const auto& [name, offset] : carrier_fields) {
 			found = found && runtime_offset(generator, "CarrierBlock", name, *offset);
@@ -3385,16 +3376,37 @@ namespace hemera {
 	}
 
 	/*
+	 * Where fiber_suspend leaves a fiber's state on its own stack, from saved_sp: MXCSR and the x87
+	 * control word (with SSE), then the innermost frame's base pointer, the carrier's stack_limit and
+	 * stack_segment, rbx, r12, r13 and r15, and the return address into that frame, where it continues.
+	 */
+	struct SuspendedLayout {
+		size_t top_frame = 0;
+		size_t limit = 0;
+		size_t segment = 0;
+		size_t registers = 0;
+		size_t continuation = 0;
+	};
+
+	static SuspendedLayout suspended_layout(bool sse) {
+		const size_t floating = sse ? 16 : 0;
+		return SuspendedLayout{ floating, floating + 8, floating + 16, floating + 24, floating + 56 };
+	}
+
+	/*
 	 * fiber_start, fiber_resume, fiber_suspend, fiber_entry and the resume loop, for x86-64 frames
 	 * that chain through rbp. run is runtime.fiber_run's symbol. With SSE, MXCSR and the x87 control
 	 * word are callee-saved too; without it, as in a kernel, those instructions may not be allowed.
 	 *
 	 * Switching away from the scheduler pushes its callee-saved registers and the carrier's
 	 * stack_limit, stack_segment and current_fiber on its own stack, and switching back pops them.
+	 * A suspended fiber's state is on its own stack (suspended_layout), and the Fiber only keeps where.
 	 * The resume loop keeps its state in rcx, rsi, rdi, r9, r10 and r11, which no function returns
-	 * anything in, so a re-entered frame's result reaches its caller untouched.
+	 * anything in, so a re-entered frame's result reaches its caller untouched, and the frame it
+	 * re-entered last in the carrier block, since the fiber only runs on one carrier at a time.
 	 */
 	static std::string fiber_assembly(const FiberOffsets& o, std::string_view run, bool sse) {
+		const SuspendedLayout layout = suspended_layout(sse);
 		const std::string save_floating = sse ? "\tsubq $16, %rsp\n\tstmxcsr (%rsp)\n\tfnstcw 4(%rsp)\n" : "";
 		const std::string restore_floating = sse ? "\tldmxcsr (%rsp)\n\tfldcw 4(%rsp)\n\taddq $16, %rsp\n" : "";
 		// The scheduler's state, on its own stack: 8 pushes and padding after the return address keep rsp 16-byte aligned
@@ -3426,51 +3438,51 @@ namespace hemera {
 		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
 		text += std::format("\t.p2align 4\n{}:\n", FIBER_START_SYMBOL);
 		text += save_scheduler;
-		text += std::format("\tmovq %rdi, {}(%r14)\n\tmovq %rdx, {}(%r14)\n\tmovq $0, {}(%r14)\n",
-			o.current_fiber, o.carrier_limit, o.carrier_segment);
+		text += std::format("\tmovq %rdi, {}(%r14)\n\tmovq %rdx, {}(%r14)\n\tmovq $0, {}(%r14)\n\tmovq $0, {}(%r14)\n",
+			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
 		text += set_state(o, o.running);
 		text += "\tmovq %rsi, %rsp\n\txorl %ebp, %ebp\n\tcallq hemera.fiber_entry\n\tud2\n";
 		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
 		text += "\t.p2align 4\nhemera.fiber_entry:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n";
 		text += std::format("\tcallq {}\n", run);
 		text += back_to_scheduler(1);
-		// fiber_resume(fiber): re-enter its frames, innermost first, each with a real call
+		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
 		text += std::format("\t.p2align 4\n{}:\n", FIBER_RESUME_SYMBOL);
 		text += save_scheduler;
 		text += std::format("\tmovq %rdi, {}(%r14)\n", o.current_fiber);
 		text += set_state(o, o.running);
-		text += std::format("\tmovq {}(%rdi), %rax\n\tmovq %rax, {}(%r14)\n", o.segment, o.carrier_segment);
-		text += std::format("\tmovq {}(%rdi), %rax\n\tmovq %rax, {}(%r14)\n", o.limit, o.carrier_limit);
-		text += std::format("\tmovq {}(%rdi), %r10\n\tmovq {}(%rdi), %r11\n\tmovl $1, %esi\n", o.top_frame, o.top_continuation);
+		text += std::format("\tmovq {}(%rdi), %rax\n", o.saved_sp);
+		text += std::format("\tmovq {}(%rax), %r9\n\tmovq %r9, {}(%r14)\n", layout.segment, o.carrier_segment);
+		text += std::format("\tmovq {}(%rax), %r9\n\tmovq %r9, {}(%r14)\n", layout.limit, o.carrier_limit);
+		text += std::format("\tmovq {}(%rax), %r10\n\tmovq {}(%rax), %r11\n\tmovl $1, %esi\n", layout.top_frame, layout.continuation);
 		text += "hemera.fiber_reenter_next:\n";
-		text += std::format("\tmovq %r10, {}(%rdi)\n", o.reentered_frame);
+		text += std::format("\tmovq %r10, {}(%r14)\n", o.resume_frame);
 		// r9 for what's copied, since rcx holds the frame bottom the loop is going to re-enter at
-		text += std::format("\tmovq 8(%r10), %r9\n\tmovq %r9, {}(%rdi)\n", o.reentered_return);
-		text += std::format("\tmovq (%r10), %r9\n\tmovq %r9, {}(%rdi)\n", o.parent_frame);
+		text += std::format("\tmovq 8(%r10), %r9\n\tmovq %r9, {}(%r14)\n", o.resume_return);
+		text += std::format("\tmovq (%r10), %r9\n\tmovq %r9, {}(%r14)\n", o.resume_parent);
 		text += "\tleaq 16(%r10), %rsp\n\tcallq hemera.fiber_reenter\n";
 		// The frame returned, to here: on to its caller, whose frame bottom the stack pointer is at now
 		text += std::format("{}:\n\tmovq %rsp, %rcx\n", FIBER_LOOP_RETURN_SYMBOL);
-		text += std::format("\tmovq {}(%r14), %rdi\n", o.current_fiber);
-		text += std::format("\tmovq {}(%rdi), %r11\n\tmovq {}(%rdi), %r10\n", o.reentered_return, o.parent_frame);
+		text += std::format("\tmovq {}(%r14), %r11\n\tmovq {}(%r14), %r10\n", o.resume_return, o.resume_parent);
 		text += "\txorl %esi, %esi\n\tjmp hemera.fiber_reenter_next\n";
 		// fiber_reenter: only reached by the call above, which put the loop's address in the frame's return slot
 		text += "\t.p2align 4\nhemera.fiber_reenter:\n\tmovq %r10, %rbp\n\ttestl %esi, %esi\n\tjz 1f\n";
 		text += std::format("\tmovq {}(%rdi), %rsp\n", o.saved_sp);
 		text += restore_floating;
+		// Past the frame pointer, limit and segment, to the registers, and past the return address after them
+		text += std::format("\taddq ${}, %rsp\n", layout.registers - layout.top_frame);
 		text += "\tpopq %r15\n\tpopq %r13\n\tpopq %r12\n\tpopq %rbx\n\taddq $8, %rsp\n\tjmpq *%r11\n";
 		text += "1:\n\tmovq %rcx, %rsp\n\tjmpq *%r11\n";
-		// fiber_suspend(fiber): save its registers on its own stack, where it is, and back to the scheduler
+		// fiber_suspend(fiber): its state on its own stack, where it is, and back to the scheduler
 		text += std::format("\t.p2align 4\n{}:\n", FIBER_SUSPEND_SYMBOL);
 		text += "\tpushq %rbx\n\tpushq %r12\n\tpushq %r13\n\tpushq %r15\n";
+		text += std::format("\tpushq {}(%r14)\n\tpushq {}(%r14)\n\tpushq %rbp\n", o.carrier_segment, o.carrier_limit);
 		text += save_floating;
-		text += std::format("\tmovq %rsp, {}(%rdi)\n\tmovq %rbp, {}(%rdi)\n", o.saved_sp, o.top_frame);
-		text += std::format("\tmovq {}(%rsp), %rax\n\tmovq %rax, {}(%rdi)\n", sse ? 48 : 32, o.top_continuation);
+		text += std::format("\tmovq %rsp, {}(%rdi)\n", o.saved_sp);
 		// Suspended frames hold their real return addresses
-		text += std::format("\tmovq {}(%rdi), %rax\n\ttestq %rax, %rax\n\tjz 1f\n", o.reentered_frame);
-		text += std::format("\tmovq {}(%rdi), %rcx\n\tmovq %rcx, 8(%rax)\n\tmovq $0, {}(%rdi)\n", o.reentered_return, o.reentered_frame);
+		text += std::format("\tmovq {}(%r14), %rax\n\ttestq %rax, %rax\n\tjz 1f\n", o.resume_frame);
+		text += std::format("\tmovq {}(%r14), %rcx\n\tmovq %rcx, 8(%rax)\n\tmovq $0, {}(%r14)\n", o.resume_return, o.resume_frame);
 		text += "1:\n";
-		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%rdi)\n", o.carrier_segment, o.segment);
-		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%rdi)\n", o.carrier_limit, o.limit);
 		text += set_state(o, o.suspended);
 		text += back_to_scheduler(0);
 		return text;
@@ -3478,14 +3490,16 @@ namespace hemera {
 
 	/*
 	 * What lower_to_llvm's stack walks need to follow fibers (define_stack_walker): the resume loop's
-	 * return address, and FIBER_WALK_SYMBOL, the offsets of the carrier's current_fiber, and of a
-	 * fiber's reentered_return, state (and its size, and .Suspended), top_frame and top_continuation.
+	 * return address, and FIBER_WALK_SYMBOL: the offsets of the carrier's resume_return and of a
+	 * fiber's saved_sp, state (and its size, and .Suspended), and of the top frame's base pointer and
+	 * continuation from saved_sp (suspended_layout).
 	 */
-	static void fiber_walk_table(Generator& generator, const FiberOffsets& o) {
+	static void fiber_walk_table(Generator& generator, const FiberOffsets& o, bool sse) {
 		assembly_function(generator, FIBER_LOOP_RETURN_SYMBOL, no_arguments(generator));
-		const std::vector<int64_t> values{ static_cast<int64_t>(o.current_fiber), static_cast<int64_t>(o.reentered_return),
+		const SuspendedLayout layout = suspended_layout(sse);
+		const std::vector<int64_t> values{ static_cast<int64_t>(o.resume_return), static_cast<int64_t>(o.saved_sp),
 			static_cast<int64_t>(o.state), static_cast<int64_t>(o.state_size), static_cast<int64_t>(o.suspended),
-			static_cast<int64_t>(o.top_frame), static_cast<int64_t>(o.top_continuation) };
+			static_cast<int64_t>(layout.top_frame), static_cast<int64_t>(layout.continuation) };
 		mlir::Type i64 = integer_type(generator, 8);
 		mlir::Type type = LLVM::LLVMArrayType::get(i64, values.size());
 		auto tensor = mlir::RankedTensorType::get({ static_cast<int64_t>(values.size()) }, i64);
@@ -3526,7 +3540,7 @@ namespace hemera {
 			const std::string run_symbol = run_function.getSymName().str();
 			const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
 			generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse));
-			fiber_walk_table(generator, offsets);
+			fiber_walk_table(generator, offsets, sse);
 		}
 		mlir::Type pointer = pointer_type(generator);
 		mlir::Type i32 = integer_type(generator, 4);
@@ -7053,8 +7067,7 @@ namespace hemera {
 			llvm::Value* r14 = builder.CreateCall(read_register, { llvm::MetadataAsValue::get(context,
 				llvm::MDNode::get(context, { llvm::MDString::get(context, "r14") })) });
 			llvm::Value* carrier = builder.CreateIntToPtr(r14, pointer);
-			llvm::Value* fiber = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), carrier, support.offsets[0]));
-			llvm::Value* real = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), fiber, support.offsets[1]));
+			llvm::Value* real = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), carrier, support.offsets[0]));
 			builder.CreateBr(found);
 			builder.SetInsertPoint(found);
 			llvm::PHINode* chosen = builder.CreatePHI(pointer, 2);
@@ -7140,8 +7153,10 @@ namespace hemera {
 		builder.SetInsertPoint(none);
 		builder.CreateRet(llvm::ConstantInt::get(size, 0));
 		builder.SetInsertPoint(walk);
-		builder.CreateStore(builder.CreateLoad(pointer, field(6)), addresses);
-		build_walk(builder, walker, support, builder.CreateLoad(pointer, field(5)), addresses, count,
+		llvm::Value* saved = builder.CreateLoad(pointer, field(1));
+		auto from_saved = [&](size_t index) { return builder.CreateConstGEP1_64(builder.getInt8Ty(), saved, support.offsets[index]); };
+		builder.CreateStore(builder.CreateLoad(pointer, from_saved(6)), addresses);
+		build_walk(builder, walker, support, builder.CreateLoad(pointer, from_saved(5)), addresses, count,
 			llvm::ConstantInt::get(size, 0), llvm::ConstantInt::get(size, 1));
 	}
 

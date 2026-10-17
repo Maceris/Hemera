@@ -80,6 +80,15 @@ CarrierBlock :: struct #align(64) {
      * from its context's allocator. Without one (no function), it traps instead.
      */
     segment_allocator : Allocator,
+    /*
+     * The resume loop's state for the fiber running here (docs/calling_convention.md, Resuming):
+     * the frame it re-entered last, whose return address slot points into the loop, null if none;
+     * that slot's real contents; and that frame's caller's base pointer, saved before the frame
+     * could be popped.
+     */
+    resume_frame : rawptr,
+    resume_return : rawptr,
+    resume_parent : rawptr,
 }
 
 /*
