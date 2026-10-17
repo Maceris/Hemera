@@ -56,5 +56,7 @@ namespace hemera {
 		const llvm::Target* target;
 		llvm::Triple* target_triple;
 		llvm::TargetMachine* target_machine;
+		// The libraries the module's #foreign functions come from, from generate_object_file, for link
+		std::vector<std::string> libraries;
 	};
 }

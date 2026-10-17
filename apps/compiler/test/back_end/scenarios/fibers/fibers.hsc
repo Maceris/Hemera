@@ -1,10 +1,10 @@
 /*
- * Fibers in a hosted program, run by a std/fiber pool with this thread as its one carrier: main returns 42 if everything worked,
- * or the number of the first check that failed. Built with stack_check = .Morestack, so a fiber
- * that recurses deeply grows onto segments.
+ * Fibers in a hosted program on Windows, run by a std/fiber pool with this thread as its one
+ * carrier: main returns 42 if everything worked, or the number of the first check that failed.
+ * Built with stack_check = .Morestack, so a fiber that recurses deeply grows onto segments.
  *
- * Nothing here calls foreign code, which fibers can't do yet: memory comes from an arena in main's
- * frame.
+ * Foreign calls run on the thread's own stack, from main and from a fiber. Memory comes from an
+ * arena in main's frame.
  */
 package fibers
 
@@ -62,6 +62,64 @@ Turns :: struct {
     deep_sum : u64,
     // Whether the deepest call was on a segment morestack gave it
     deep_on_segment : bool,
+    // What RtlCaptureContext saw, from a fiber
+    windows_context : WindowsContext,
+    // Where main's arena starts: fibers' stacks are above it, and the thread's below
+    arena_start : u64,
+    // main's thread, which the fibers run on too
+    thread : u32,
+    // From the fiber that calls foreign functions: 0 once they all worked, or the first that didn't
+    foreign_failure : int,
+}
+
+// Foreign functions, from two libraries
+KERNEL32 :: #library("kernel32")
+NTDLL :: #library("ntdll")
+
+GetCurrentThreadId #foreign(KERNEL32) : fn() -> u32 : ---
+SetLastError #foreign(KERNEL32) : fn(code: u32) : ---
+GetLastError #foreign(KERNEL32) : fn() -> u32 : ---
+// Six arguments: the last two on the stack
+multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : fn(
+    code_page: u32,
+    flags: u32,
+    text: rawptr,
+    count: i32,
+    wide: ptr[mut u16],
+    wide_count: i32,
+) -> i32 : ---
+RtlCaptureContext #foreign(NTDLL) : fn(context: ptr[mut WindowsContext]) : ---
+
+// Windows' CONTEXT, of which only the stack pointer is read.
+WindowsContext :: struct #align(16) {
+    bytes : u8[1232],
+}
+CONTEXT_RSP :: 0x98
+
+// The stack pointer RtlCaptureContext saw.
+captured_rsp :: fn(context: ptr[WindowsContext]) -> u64 {
+    return cast[ptr[u64]](cast[rawptr](cast[u64](&context.bytes) + CONTEXT_RSP))^
+}
+
+/*
+ * Foreign calls, with a result, with arguments on the stack, and keeping the thread's last error
+ * between calls: 0 if they all worked, or the number of the first that didn't.
+ */
+call_foreign :: fn(thread: u32) -> int {
+    if GetCurrentThreadId() != thread {
+        return 1
+    }
+    SetLastError(1234)
+    if GetLastError() != 1234 {
+        return 2
+    }
+    text : string : "fibers"
+    wide : u16[8]
+    // CP_UTF8
+    if multi_byte_to_wide_char(65001, 0, text.data, 6, &wide[0], 8) != 6 || wide[0] != 102 || wide[5] != 115 {
+        return 3
+    }
+    return 0
 }
 
 // What the fibers write, in the order taking turns gives: b keeps running once it's alone.
@@ -117,6 +175,20 @@ climb :: fn(depth: u64) -> u64 {
     }
     below :: climb(depth + 1)
     return below + intrinsics.volatile_load_u64(&padding[0])
+}
+
+// Foreign calls from a fiber: they run below the arena, on the thread's own stack, not on the fiber's.
+worker_foreign : runtime.ThreadFunction : fn(data #escaping : any) {
+    turns :: cast[ptr[mut Turns]](context.user_data)
+    limit :: intrinsics.carrier().stack_limit
+    turns.foreign_failure = call_foreign(turns.thread)
+    RtlCaptureContext(&turns.windows_context)
+    if turns.foreign_failure == 0 && captured_rsp(&turns.windows_context) >= turns.arena_start {
+        turns.foreign_failure = 4
+    }
+    if turns.foreign_failure == 0 && intrinsics.carrier().stack_limit != limit {
+        turns.foreign_failure = 5
+    }
 }
 
 worker_deep : runtime.ThreadFunction : fn(data #escaping : any) {
@@ -185,13 +257,21 @@ main :: fn() -> int {
         turns.count = 0
         turns.deep_sum = 0
         turns.deep_on_segment = false
+        turns.arena_start = cast[u64](&arena.bytes)
+        turns.thread = GetCurrentThreadId()
+        turns.foreign_failure = -1
+        // From main, on the thread's stack already
+        if call_foreign(turns.thread) != 0 {
+            return 9
+        }
         live_before :: arena.live
         pool :: fiber.create_fiber_pool()
         push_context with_turns (user_data = cast[rawptr](turns)) {
             _, error_a :: fiber.spawn(pool, worker_a)
             _, error_b :: fiber.spawn(pool, worker_b)
             _, error_deep :: fiber.spawn(pool, worker_deep)
-            if error_a != null || error_b != null || error_deep != null {
+            _, error_foreign :: fiber.spawn(pool, worker_foreign)
+            if error_a != null || error_b != null || error_deep != null || error_foreign != null {
                 return 2
             }
         }
@@ -218,6 +298,12 @@ main :: fn() -> int {
         }
         if carrier.current_fiber != null || carrier.yield_function != null {
             return 8
+        }
+        if turns.foreign_failure != 0 {
+            return 10 + turns.foreign_failure
+        }
+        if carrier.foreign_depth != 0 {
+            return 20
         }
     }
     return 42

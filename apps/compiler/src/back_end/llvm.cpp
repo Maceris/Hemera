@@ -258,6 +258,16 @@ namespace hemera {
 
 		module.setTargetTriple(target_machine->getTargetTriple());
 		module.setDataLayout(target_machine->createDataLayout());
+		libraries.clear();
+		if (llvm::NamedMDNode* list = module.getNamedMetadata(LIBRARIES_METADATA)) {
+			for (llvm::MDNode* library : list->operands()) {
+				if (library->getNumOperands() == 1) {
+					if (auto* name = llvm::dyn_cast<llvm::MDString>(library->getOperand(0))) {
+						libraries.push_back(name->getString().str());
+					}
+				}
+			}
+		}
 
 		//NOTE(ches) the order is important here
 		llvm::LoopAnalysisManager loop_analysis_manager;
@@ -431,8 +441,12 @@ namespace hemera {
 	}
 
 	// lld-link, for PE/COFF: a hosted program starts at the entry the compiler generates, which needs only kernel32.
-	static std::string coff_arguments(const Options& options, std::string_view object_file) {
+	static std::string coff_arguments(const Options& options, std::string_view object_file, const std::vector<std::string>& libraries) {
 		std::string args;
+		// Each #foreign function's library, by its import library
+		for (const std::string& library : libraries) {
+			args += std::format("\"{}.lib\" ", library);
+		}
 		if (options.debug_info) {
 			args += "/debug ";
 		}
@@ -465,8 +479,12 @@ namespace hemera {
 	 * ld.lld, for ELF: static, without the C runtime, and a position-independent executable for
 	 * position-independent code, like a relocatable kernel.
 	 */
-	static std::string elf_arguments(const Options& options, std::string_view object_file) {
+	static std::string elf_arguments(const Options& options, std::string_view object_file, const std::vector<std::string>& libraries) {
 		std::string args = "-nostdlib -static ";
+		// Each #foreign function's library
+		for (const std::string& library : libraries) {
+			args += std::format("-l{} ", library);
+		}
 		if (TargetRelocationModel::PositionIndependent == options.relocation_model) {
 			args += "-pie --no-dynamic-linker ";
 		}
@@ -486,10 +504,10 @@ namespace hemera {
 
 		std::string command;
 		if (ObjectFormatType::ELF == options.object_format) {
-			command = elf_arguments(options, object_file);
+			command = elf_arguments(options, object_file, libraries);
 		}
 		else if (ObjectFormatType::COFF == options.object_format) {
-			command = coff_arguments(options, object_file);
+			command = coff_arguments(options, object_file, libraries);
 		}
 		else {
 			report_error(ErrorCode::E7000, object_file, 0, 0, "only ELF and PE/COFF outputs can be linked yet");

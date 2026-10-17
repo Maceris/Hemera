@@ -181,6 +181,30 @@ functions entered from outside Hemera, usually with `#calling_convention(.c)` (s
 kernel_entry #calling_convention(.c) #no_context :: fn() #never_returns {/* ... */}
 ```
 
+### `#foreign`, `#library` and `#link_name`
+
+A foreign function, written in C or anything else that uses the platform's convention, is declared without a body and
+marked `#foreign`, naming the library it comes from. The library is a constant made by `#library("name")`, declared
+once and used by every function from it, in the same package or an imported one:
+
+```
+KERNEL32 :: #library("kernel32")
+
+GetCurrentThreadId #foreign(KERNEL32) : fn() -> u32 : ---
+ExitProcess #foreign(KERNEL32) : fn(code: u32) #never_returns : ---
+multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : fn(/* ... */) -> i32 : ---
+```
+
+* The function is linked by its own name, or by `#link_name("symbol")` when that's different.
+* Its type uses the platform's C convention, without a context, like `#calling_convention(.c) #no_context`, so it can't
+  have those directives itself, nor `#export`.
+* The program is linked with every library its foreign functions come from: `name.lib` for PE/COFF outputs, and
+  `-lname` for ELF.
+* Calls go through a shim that runs the function on the thread's own stack, see
+  [calling_convention.md](calling_convention.md#calls-to-foreign-code). For now each parameter and the result have
+  to fit a register (integers, pointers, floating-point values, booleans and enums), there are no variadic foreign
+  functions, and only x86-64 is supported.
+
 ## Function Parameters
 
 ### `#caller_location`

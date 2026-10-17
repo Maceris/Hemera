@@ -2458,6 +2458,25 @@ namespace hemera {
 				}
 				return progress;
 			}
+			// LIBRARY :: #library("name"), for #foreign functions (docs/directives.md, #foreign)
+			if (is_text(node->value.value, "#library")) {
+				ast::Node* name = nullptr;
+				for (ast::Node* child : node->children) {
+					if (ast::NodeType::PAREN_GROUP != child->node_type) {
+						name = child;
+					}
+				}
+				if (name == nullptr || ast::NodeType::LITERAL != name->node_type || TokenType::LITERAL_STRING != name->value.type) {
+					result = error_at(checker, ErrorCode::E4014, node, "#library needs a string, the library's name");
+					return Progress::DONE;
+				}
+				TypeInfo* library = nullptr;
+				Progress progress = base_type(checker, node, "runtime", "ForeignLibrary", library);
+				if (progress == Progress::DONE) {
+					result = typed(library);
+				}
+				return progress;
+			}
 			if (is_text(node->value.value, "#is_compile_time")) {
 				result = typed(BUILTIN_bool);
 				return Progress::DONE;

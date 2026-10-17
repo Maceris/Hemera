@@ -53,4 +53,10 @@ namespace hemera {
 	constexpr const char* FIBER_LOOP_RETURN_SYMBOL = "hemera.fiber_loop_return";
 	constexpr const char* MORESTACK_CONTINUE_SYMBOL = "hemera.morestack_continue";
 	constexpr const char* FIBER_WALK_SYMBOL = "hemera.fiber_walk";
+	/*
+	 * The libraries #foreign functions come from: the MLIR module's attribute, then the LLVM module's
+	 * named metadata, a string each, which the back end links.
+	 */
+	constexpr const char* LIBRARIES_ATTRIBUTE = "hmir.libraries";
+	constexpr const char* LIBRARIES_METADATA = "hemera.libraries";
 }

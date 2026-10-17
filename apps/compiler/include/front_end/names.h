@@ -184,6 +184,13 @@ namespace hemera {
 		/// </summary>
 		InternedString section = nullptr;
 		/// <summary>
+		/// For a foreign function, from #foreign(LIBRARY) (docs/directives.md): the library's name, from
+		/// LIBRARY :: #library("name"), and the symbol it's linked by, its own name unless #link_name
+		/// gives another. Null for every other declaration.
+		/// </summary>
+		InternedString foreign_library = nullptr;
+		InternedString link_name = nullptr;
+		/// <summary>
 		/// For a constant without a type, what kind of literal it is.
 		/// </summary>
 		Untyped untyped = Untyped::NONE;

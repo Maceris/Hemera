@@ -289,6 +289,20 @@ A call to a foreign function goes through a shim that:
 3. Calls the function with the platform's convention.
 4. Undoes 2 and 1.
 
+The compiler makes one shim per foreign function (see `#foreign` in [directives.md](directives.md#foreign-library-and-link_name)),
+which Hemera code calls with the platform's convention, so the arguments are already where the function expects them.
+On x86-64 the shim builds a frame like any other, so the frame chain continues through it, saves `rbx` and `r12`, and
+only uses `rax` until the call. On a fiber (the carrier's `current_fiber` isn't null), it moves to the scheduler's
+stack pointer, aligned down to 16 bytes, and sets `stack_limit` to the carrier's `native_stack_limit`; elsewhere it
+stays where it is. Either way it copies the stack arguments: on Windows x64, the ones after the first four, above
+the 32 bytes of shadow space it leaves; on System V, the integers after the first six and the floating-point values
+after the first eight, in order. Results come back in `rax` or `xmm0`, untouched. On Windows the native stack is also
+the stack the thread environment block describes, so system functions that check where they're running, and
+Windows' exception dispatch, see the stack they expect.
+
+Not done yet: switching away from a plain thread's segments (threads run on the stack the system gives them so far),
+allocating a native stack on systems that don't give threads one, and the entry shims below.
+
 Hemera functions that foreign code can call get an entry shim that saves the foreign code's value of the carrier
 register, loads it from the OS's thread-local storage (creating a carrier block if this thread has never run
 Hemera code), uses the context saved by the shim above (or a default one on a foreign thread), and restores the

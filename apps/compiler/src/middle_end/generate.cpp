@@ -159,6 +159,10 @@ namespace hemera {
 		/// </summary>
 		std::vector<std::string> module_assembly;
 		/// <summary>
+		/// The libraries #foreign functions the program calls come from, for the linker.
+		/// </summary>
+		std::set<std::string> libraries;
+		/// <summary>
 		/// Generating compile-time code (docs/compilation.md, Compile-Time Execution), for #is_compile_time.
 		/// </summary>
 		bool compile_time = false;
@@ -1027,6 +1031,122 @@ namespace hemera {
 		return true;
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Foreign functions (docs/calling_convention.md, Calls to Foreign Code)
+
+	// Where the shims find what they change in the carrier block.
+	struct ForeignOffsets {
+		size_t stack_limit = 0;
+		size_t foreign_depth = 0;
+		size_t current_fiber = 0;
+		size_t scheduler_sp = 0;
+		size_t native_stack_limit = 0;
+	};
+
+	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset);
+
+	/*
+	 * Each stack argument's offset from the shim's frame pointer, where its caller put it, and from
+	 * the stack pointer, where the foreign function finds it: for Windows x64, the arguments after the
+	 * first four, above the 32-byte shadow space; for System V, the integers after the first six and
+	 * the floating-point values after the first eight, in order.
+	 */
+	static std::vector<std::pair<int64_t, int64_t>> foreign_stack_arguments(TypeInfoFunction const* type, bool windows) {
+		std::vector<std::pair<int64_t, int64_t>> result;
+		const int64_t shadow = windows ? 32 : 0;
+		size_t integers = 0;
+		size_t floats = 0;
+		for (size_t i = 0; i < type->input.size(); ++i) {
+			bool in_register = false;
+			if (windows) {
+				in_register = i < 4;
+			}
+			else if (is_float(type->input[i].type)) {
+				in_register = floats++ < 8;
+			}
+			else {
+				in_register = integers++ < 6;
+			}
+			if (!in_register) {
+				const int64_t slot = static_cast<int64_t>(result.size()) * 8;
+				result.emplace_back(16 + shadow + slot, shadow + slot);
+			}
+		}
+		return result;
+	}
+
+	/*
+	 * A foreign function's shim, which Hemera code calls with the platform's C convention: counts the
+	 * foreign call in the carrier block, moves to the thread's native stack if it's on a fiber (just
+	 * below where the scheduler's stack pointer stopped, with the native stack's limit), copies the
+	 * stack arguments there, and calls the function. Then it puts everything back. Its frame chains
+	 * like any other, and until the call it only uses rax, besides rbx and r12, which it saves; after,
+	 * nothing a result is in.
+	 */
+	static std::string foreign_shim_assembly(const std::string& shim, const std::string& symbol, const ForeignOffsets& o,
+		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool windows) {
+
+		const int64_t area = ((windows ? 32 : 0) + static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", shim);
+		text += "\tpushq %rbp\n\tmovq %rsp, %rbp\n\tpushq %rbx\n\tpushq %r12\n";
+		text += std::format("\tincl {}(%r14)\n\tmovq {}(%r14), %r12\n\tmovq %rsp, %rbx\n", o.foreign_depth, o.stack_limit);
+		// On a fiber: below the scheduler, whose stack is the thread's own
+		text += std::format("\tcmpq $0, {}(%r14)\n\tje 1f\n", o.current_fiber);
+		text += std::format("\tmovq {}(%r14), %rsp\n\tandq $-16, %rsp\n", o.scheduler_sp);
+		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%r14)\n", o.native_stack_limit, o.stack_limit);
+		text += "1:\n";
+		if (area > 0) {
+			text += std::format("\tsubq ${}, %rsp\n", area);
+		}
+		for (const auto& [from, to] : stack_arguments) {
+			text += std::format("\tmovq {}(%rbp), %rax\n\tmovq %rax, {}(%rsp)\n", from, to);
+		}
+		text += std::format("\tcallq {}\n", symbol);
+		text += std::format("\tmovq %rbx, %rsp\n\tmovq %r12, {}(%r14)\n\tdecl {}(%r14)\n", o.stack_limit, o.foreign_depth);
+		text += "\tpopq %r12\n\tpopq %rbx\n\tpopq %rbp\n\tretq\n";
+		return text;
+	}
+
+	/*
+	 * A #foreign function: its shim, which is what Hemera code calls, made once, and its library,
+	 * for the linker. For now on x86-64, with parameters and a result that each fit a register.
+	 */
+	static LLVM::LLVMFuncOp foreign_function_for(Generator& generator, Declaration* declaration, TypeInfoFunction const* type) {
+		const std::string symbol = text_of(declaration->link_name);
+		const std::string shim = std::format("hemera.foreign.{}", symbol);
+		generator.libraries.insert(text_of(declaration->foreign_library));
+		ast::Node* where = declaration->node;
+		bool fits = ArchType::x86_64 == generator.options->architecture && type->output.size() <= 1;
+		for (const FunctionInput& input : type->input) {
+			fits = fits && !input.is_varargs && input.type != nullptr && input.type->size <= 8
+				&& (is_float(input.type) || is_variant(input.type, TypeInfoVariant::INTEGER) || is_variant(input.type, TypeInfoVariant::POINTER)
+					|| is_variant(input.type, TypeInfoVariant::BOOLEAN) || is_variant(input.type, TypeInfoVariant::ENUM));
+		}
+		if (!fits) {
+			unsupported(generator, where, "a #foreign function can only take and give values that fit a register, on x86-64, so far");
+		}
+		ForeignOffsets offsets;
+		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
+			const bool found = runtime_offset(generator, "CarrierBlock", "stack_limit", offsets.stack_limit)
+				&& runtime_offset(generator, "CarrierBlock", "foreign_depth", offsets.foreign_depth)
+				&& runtime_offset(generator, "CarrierBlock", "current_fiber", offsets.current_fiber)
+				&& runtime_offset(generator, "CarrierBlock", "scheduler_sp", offsets.scheduler_sp)
+				&& runtime_offset(generator, "CarrierBlock", "native_stack_limit", offsets.native_stack_limit);
+			if (!found) {
+				unsupported(generator, where, "base/runtime's carrier block isn't what the compiler expects");
+			}
+			else if (fits) {
+				const bool windows = OSType::Win32 == generator.options->os;
+				generator.module_assembly.push_back(foreign_shim_assembly(shim, symbol, offsets,
+					foreign_stack_arguments(type, windows), windows));
+			}
+		}
+		LLVM::LLVMFuncOp function = assembly_function(generator, shim, function_type(generator, type, false));
+		function.setCConv(LLVM::cconv::CConv::C);
+		generator.functions[declaration] = function;
+		return function;
+	}
+
 	/*
 	 * The function a declaration is, declared now and generated later. Exported functions and the
 	 * freestanding entry keep their own names, for the linker and other languages.
@@ -1039,6 +1159,9 @@ namespace hemera {
 		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
 		if (is_entry_function(type)) {
 			return entry_function_for(generator, declaration, type);
+		}
+		if (declaration->foreign_library != nullptr) {
+			return foreign_function_for(generator, declaration, type);
 		}
 		const bool exported = has_name_directive(declaration, "#export") || is_freestanding_entry(generator, declaration);
 		mlir::OpBuilder::InsertionGuard guard(generator.builder);
@@ -3699,7 +3822,7 @@ namespace hemera {
 			unsupported(generator, paren, "this call can't be generated yet");
 			return Emitted{};
 		}
-		if (called != nullptr && !is_intrinsic(called)
+		if (called != nullptr && !is_intrinsic(called) && called->foreign_library == nullptr
 			&& function_body(called->generic != nullptr ? called->generic : called) == nullptr) {
 			unsupported(generator, paren, std::format("calling {}, which has no body, isn't supported yet", text_of(called->name)));
 			return Emitted{};
@@ -5510,6 +5633,13 @@ namespace hemera {
 
 	// The module's assembly, as the attribute translation turns into module-level assembly.
 	static void finish_module(Generator& generator) {
+		if (!generator.libraries.empty()) {
+			std::vector<mlir::Attribute> names;
+			for (const std::string& library : generator.libraries) {
+				names.push_back(generator.builder.getStringAttr(library));
+			}
+			generator.module->setAttr(LIBRARIES_ATTRIBUTE, generator.builder.getArrayAttr(names));
+		}
 		if (generator.module_assembly.empty()) {
 			return;
 		}
@@ -6987,6 +7117,13 @@ namespace hemera {
 		if (result == nullptr) {
 			report_error(ErrorCode::E5003, options.input.string(), 0, 0, "translating to LLVM IR failed");
 			return result;
+		}
+		// The libraries #foreign functions come from, which the back end links
+		if (auto libraries = module->getAttrOfType<mlir::ArrayAttr>(LIBRARIES_ATTRIBUTE)) {
+			llvm::NamedMDNode* list = result->getOrInsertNamedMetadata(LIBRARIES_METADATA);
+			for (mlir::Attribute library : libraries) {
+				list->addOperand(llvm::MDNode::get(context, { llvm::MDString::get(context, llvm::cast<mlir::StringAttr>(library).getValue()) }));
+			}
 		}
 		const bool classic_frames = system_v_on_windows(options);
 		for (llvm::Function& function : *result) {

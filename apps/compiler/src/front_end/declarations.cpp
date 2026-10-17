@@ -1036,6 +1036,80 @@ namespace hemera {
 			|| walk.generic_types.contains(name_text(name));
 	}
 
+	// Directives a #foreign function can't have, since #foreign decides its convention.
+	static bool foreign_conflicts(ast::Node* directive) {
+		return is_text(directive->value.value, "#calling_convention") || is_text(directive->value.value, "#no_context")
+			|| is_text(directive->value.value, "#export");
+	}
+
+	/*
+	 * #foreign(LIBRARY) and #link_name("symbol") on a function without a body (docs/directives.md,
+	 * #foreign): the library comes from LIBRARY :: #library("name"), in this package or an imported one.
+	 */
+	static Progress foreign_directives(Walk& walk, ast::Node* definition, Declaration* declaration) {
+		ast::Node* foreign = nullptr;
+		ast::Node* link_name = nullptr;
+		ast::Node* conflict = nullptr;
+		for (ast::Node* directive : definition->children[0]->children) {
+			if (is_text(directive->value.value, "#foreign")) {
+				foreign = directive;
+			}
+			else if (is_text(directive->value.value, "#link_name")) {
+				link_name = directive;
+			}
+			else if (foreign_conflicts(directive)) {
+				conflict = directive;
+			}
+		}
+		if (foreign == nullptr) {
+			if (link_name != nullptr) {
+				return type_error(walk, ErrorCode::E4014, link_name, "#link_name is only for #foreign functions");
+			}
+			return Progress::DONE;
+		}
+		if (conflict != nullptr) {
+			return type_error(walk, ErrorCode::E4014, conflict,
+				"a #foreign function uses the platform's C convention without a context, so it takes no other");
+		}
+		if (function_body(declaration) != nullptr) {
+			return type_error(walk, ErrorCode::E4014, foreign, "a #foreign function has no body: declare it with : ---");
+		}
+		ast::Node* library = directive_argument(foreign);
+		if (library == nullptr || ast::NodeType::IDENTIFIER != library->node_type) {
+			return type_error(walk, ErrorCode::E4014, foreign,
+				"#foreign needs the name of a library constant, like #foreign(KERNEL32) for KERNEL32 :: #library(\"kernel32\")");
+		}
+		// LIBRARY, or package.LIBRARY
+		ast::Node* qualifier = library->children.size() == 2 && ast::NodeType::DOT_ACCESS == library->children[0]->node_type
+			? library->children[1] : nullptr;
+		bool head_was_package = false;
+		Progress progress = require_qualified(walk, library, library->value.value, qualifier, Need::DECLARED, head_was_package);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		auto bound = walk.bindings.find(head_was_package ? qualifier : library);
+		Declaration* constant = bound != walk.bindings.end() ? bound->second : nullptr;
+		ast::Node* value = constant != nullptr && constant->node != nullptr ? definition_value(constant->node) : nullptr;
+		ast::Node* name = value != nullptr && ast::NodeType::DIRECTIVE == value->node_type && is_text(value->value.value, "#library")
+			? directive_argument(value) : nullptr;
+		if (name == nullptr || ast::NodeType::LITERAL != name->node_type || TokenType::LITERAL_STRING != name->value.type) {
+			return type_error(walk, ErrorCode::E4014, library, "#foreign needs a constant declared as #library(\"name\")");
+		}
+		// The lexer keeps a string literal's quotes
+		std::string_view text(*name->value.value);
+		declaration->foreign_library = intern(std::string(text.substr(1, text.size() - 2)));
+		declaration->link_name = declaration->name;
+		if (link_name != nullptr) {
+			ast::Node* symbol = directive_argument(link_name);
+			if (symbol == nullptr || ast::NodeType::LITERAL != symbol->node_type || TokenType::LITERAL_STRING != symbol->value.type) {
+				return type_error(walk, ErrorCode::E4014, link_name, "#link_name needs a string, the symbol's name");
+			}
+			std::string_view symbol_text(*symbol->value.value);
+			declaration->link_name = intern(std::string(symbol_text.substr(1, symbol_text.size() - 2)));
+		}
+		return Progress::DONE;
+	}
+
 	// The directives after a declaration's name, like #externally_initialized (docs/directives.md).
 	static Progress name_directives(Walk& walk, ast::Node* definition, Declaration* declaration) {
 		ast::Node* names_node = definition->children[0];
@@ -1126,8 +1200,16 @@ namespace hemera {
 			/*
 			 * #never_returns and #calling_convention after the name, like
 			 * trap #never_returns : fn() : --- or handler #calling_convention(.interrupt) :: fn(...),
-			 * are the type's
+			 * are the type's. So is #foreign's convention: the platform's C convention, without a context.
 			 */
+			progress = foreign_directives(walk, definition, declarations[0]);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (declarations[0]->foreign_library != nullptr) {
+				function = with_convention(walk, static_cast<TypeInfoFunction*>(without_context(walk, static_cast<TypeInfoFunction*>(function))),
+					intern(std::string("c")));
+			}
 			for (ast::Node* directive : definition->children[0]->children) {
 				if (is_text(directive->value.value, "#never_returns")) {
 					function = never_returning(walk, static_cast<TypeInfoFunction*>(function));
