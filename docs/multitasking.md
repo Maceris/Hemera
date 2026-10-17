@@ -20,8 +20,7 @@ The new thread starts with a copy of the creating thread's context (see [Context
 
 Fibers are cooperatively scheduled, with runtimes that share
 tasks among one or more threads. The fiber runtimes can be user-defined,
-though there is an implementation in the standard library: `std/fiber`'s scheduler, which for now runs fibers on one
-carrier, taking turns in order (`spawn`, `run_fibers`).
+though there is an implementation in the standard library, `std/fiber`'s pools (see [Fiber Pools](#fiber-pools)).
 
 A fiber is a function, some data, its own small stack, and its own root context. A scheduler runs fibers on one or
 more OS threads, called *carriers*. A suspended fiber may be resumed on a different carrier than the one it was
@@ -58,6 +57,40 @@ and the waiting code falls back to blocking the carrier thread.
 
 Functions that wait look the same either way: `read(socket)` suspends the fiber when it can, and blocks the thread
 when it can't.
+
+## Fiber Pools
+
+A program chooses, thread by thread, whether a thread runs fibers, and whose. `std/fiber`'s runtime is a **pool**:
+a queue of fibers that any number of threads share, each running it as a carrier with `run_carrier(pool)`. One
+program can have threads that run no pool, and several pools, each with its own threads. A game might start a thread
+per core, all sharing one pool, and leave its main thread without one. A thread that runs no pool can still spawn
+fibers into one, and `fiber_yield` on it just returns.
+
+```
+pool :: fiber.create_fiber_pool()
+fiber.spawn(pool, work, data)    // from any thread
+fiber.close_pool(pool)           // nothing more from outside; fibers can still spawn
+// On each of the pool's threads: runs fibers until the pool is closed and they've all finished
+fiber.run_carrier(pool)
+```
+
+Fibers move between the pool's carriers, never between pools:
+
+* Each carrier has a queue of its own, a ring that it adds to at one end and takes from at the other. The pool has a
+  shared queue too, behind a lock.
+* A carrier runs fibers from its own queue first. With none left, it takes from the shared queue: one to run, and its
+  share of the rest (the queue divided among the carriers) into its own queue. With nothing there either, it takes
+  half of another carrier's queue, which other carriers do with a compare and exchange on the queue's head. Every so
+  many turns it looks at the shared queue first, so fibers there aren't left waiting.
+* A fiber spawned on one of the pool's fibers goes to that carrier's queue. Others go to the shared queue. When a
+  carrier's queue is full, half of it moves to the shared queue.
+* A fiber that yields goes to the back of the shared queue, so whichever carrier is free next resumes it. It's queued
+  only once it has switched away, so no other carrier can resume it while it's still running.
+* Until the pool closes and its last fiber finishes, a carrier with nothing to run spins. Sleeping until there's work
+  needs the operating system (or, in a kernel, an interrupt), and isn't done yet.
+
+Fibers are made and freed with the pool's allocator, which its carriers use at the same time, so it has to be safe
+for that.
 
 ## Stacks
 

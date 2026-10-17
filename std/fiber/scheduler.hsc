@@ -2,56 +2,129 @@ package fiber
 
 import intrinsics from "base"
 import runtime from "base"
+import concurrency from "std"
 
 /*
- * A scheduler for fibers on one carrier, the thread that runs it (docs/multitasking.md). Fibers
- * take turns in the order they were added: each runs until it yields or finishes, and a fiber
- * that yields goes to the back of the line, unless no other is waiting, when it keeps running.
- * run_fibers returns once every fiber has finished, or once should_stop is set.
+ * A pool of fibers that one or more carriers share (docs/multitasking.md, Fiber Pools). Each thread
+ * chooses whether to run a pool: a program can have threads without one, and any number of pools,
+ * each run by its own set of threads.
  *
- *     scheduler :: fiber.create_fiber_scheduler()
- *     fiber.spawn(scheduler, worker, data)
- *     fiber.run_fibers(scheduler)
+ *     pool :: fiber.create_fiber_pool()
+ *     fiber.spawn(pool, worker, data)
+ *     fiber.close_pool(pool)
+ *     // On each thread that runs the pool, until it's closed and every fiber has finished
+ *     fiber.run_carrier(pool)
+ *
+ * Each carrier keeps a queue of its own, and the pool has a shared one. A carrier runs fibers
+ * from its own queue, then from the shared queue, taking a share of what's there, and with
+ * nothing left, takes half of another carrier's queue. A fiber that yields goes to the back of
+ * the shared queue, so any carrier can resume it. Fibers spawned on one of the pool's fibers go
+ * to that carrier's queue, the others to the shared one.
  *
  * Fibers start with a copy of the context of whoever spawned them, and are made and freed with
- * the scheduler's allocator.
+ * the pool's allocator, which the carriers use at the same time, so it has to be safe for that.
  *
- * Not yet: more than one carrier, parking a fiber until something wakes it, and fibers calling
- * foreign code, which needs the native stack.
+ * Not yet: sleeping while there's nothing to run (carriers spin, which suits a kernel that gives
+ * a pool its own CPUs), and parking a fiber until something wakes it.
  */
-FiberScheduler :: struct {
-    // Fibers waiting for their turn, linked through Fiber.next, first to run first
+FiberPool :: struct {
+    // Guards the shared queue, and the list of carriers while one joins
+    lock : concurrency.SpinLock,
+    // The shared queue, linked through Fiber.next, first to run first
     first : ptr[mut runtime.Fiber]?,
     last : ptr[mut runtime.Fiber]?,
-    waiting : usize,
+    // How many fibers are in the shared queue: written under the lock, read without it
+    shared_count : u64,
+    // Fibers spawned that haven't finished
+    live : u64,
+    // Set by close_pool: once no fiber is live, carriers leave
+    closed : u64,
+    // Every carrier that has joined, as ptr[mut PoolCarrier]: carrier_count of them
+    carriers : rawptr[MAX_CARRIERS],
+    carrier_count : u64,
+    // Carriers running the pool now
+    active_carriers : u64,
     allocator : runtime.Allocator,
-    // Set, by a fiber or anyone else, to stop run_fibers once the running fiber yields or finishes
-    should_stop : bool,
 }
 
-create_fiber_scheduler :: fn(allocator := context.allocator) -> ptr[mut FiberScheduler] {
-    result :: runtime.new(FiberScheduler, allocator)
-    result.first = null
-    result.last = null
-    result.waiting = 0
-    result.allocator = allocator
-    result.should_stop = false
-    return result
+// The most carriers one pool can have.
+MAX_CARRIERS :: 64
+// The size of a carrier's own queue, a power of two, so a position masked is its slot.
+LOCAL_QUEUE_SIZE :: 256
+LOCAL_QUEUE_MASK :: LOCAL_QUEUE_SIZE - 1
+// Every this many turns, a carrier looks at the shared queue first, so it isn't left waiting.
+SHARED_QUEUE_INTERVAL :: 61
+
+/*
+ * One carrier's part of a pool, the carrier block's scheduler_data while it runs the pool. Kept
+ * until the pool is destroyed, since other carriers may be looking at its queue.
+ */
+PoolCarrier :: struct {
+    pool : ptr[mut FiberPool],
+    /*
+     * The carrier's own queue, a ring: the carrier adds at tail and takes at head, and other
+     * carriers take at head too, so head only moves by compare and exchange. Neither wraps.
+     */
+    head : u64,
+    tail : u64,
+    queue : rawptr[LOCAL_QUEUE_SIZE],
+    // Turns taken, for SHARED_QUEUE_INTERVAL
+    turns : u64,
+    // For choosing which carrier to take from
+    random : u64,
+}
+
+create_fiber_pool :: fn(allocator := context.allocator) -> ptr[mut FiberPool] {
+    pool :: runtime.new(FiberPool, allocator)
+    pool.lock = concurrency.SpinLock.{}
+    pool.first = null
+    pool.last = null
+    pool.shared_count = 0
+    pool.live = 0
+    pool.closed = 0
+    pool.carrier_count = 0
+    pool.active_carriers = 0
+    pool.allocator = allocator
+    return pool
 }
 
 /*
- * Make a fiber that will run function(data), and add it to the back of the line. It runs once
- * run_fibers gets to it.
+ * Free the pool, once it's closed and every carrier has left run_carrier. Fibers that never ran
+ * are freed too.
+ */
+destroy_fiber_pool :: fn(pool: ptr[mut FiberPool]) {
+    allocator :: pool.allocator
+    count :: intrinsics.atomic_load_u64_acquire(&pool.carrier_count)
+    for i in 0..<count {
+        if i < MAX_CARRIERS {
+            runtime.free(cast[ptr[PoolCarrier]](pool.carriers[i]), allocator)
+        }
+    }
+    loop {
+        fiber :: pool.first or_break
+        pool.first = fiber.next
+        runtime.fiber_destroy(fiber, allocator)
+    }
+    runtime.free(pool, allocator)
+}
+
+/*
+ * Make a fiber that will run function(data), and queue it: on this carrier, if this is one of
+ * the pool's fibers, otherwise in the shared queue.
  */
 spawn :: fn(
-    scheduler: ptr[mut FiberScheduler],
+    pool: ptr[mut FiberPool],
     function: runtime.ThreadFunction,
     data #escaping : any? = null,
 ) -> (ptr[mut runtime.Fiber]?, runtime.AllocatorError?) {
-    made, error :: runtime.fiber_create(function, data, scheduler.allocator)
+    made, error :: runtime.fiber_create(function, data, pool.allocator)
     match made {
         case Some(fiber) => {
-            add_waiting(scheduler, fiber)
+            intrinsics.interlocked_exchange_add_u64(&pool.live, 1)
+            match carrier_in(pool) {
+                case Some(here) => add_local(here, fiber)
+                case None => add_shared(pool, fiber, fiber, 1)
+            }
             return fiber, null
         }
         case None => return null, error
@@ -59,69 +132,114 @@ spawn :: fn(
 }
 
 /*
- * Run the scheduler's fibers on this thread until all have finished, or should_stop is set.
- * Called from a plain thread, not from a fiber, and not while another scheduler runs here.
+ * No more fibers come from outside the pool: once every fiber has finished, carriers leave
+ * run_carrier. Fibers can still spawn more.
  */
-run_fibers :: fn(scheduler #escaping : ptr[mut FiberScheduler]) {
+close_pool :: fn(pool: ptr[mut FiberPool]) {
+    intrinsics.atomic_store_u64_release(&pool.closed, 1)
+}
+
+/*
+ * Run the pool's fibers on this thread, with the other carriers running it, until the pool is
+ * closed and every fiber has finished. Called from a plain thread, not from a fiber, and not
+ * while this thread runs another pool.
+ */
+run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
     {
         carrier :: intrinsics.carrier()
         if carrier.current_fiber != null || carrier.yield_function != null {
-            runtime.log_error("run_fibers is being called from a fiber, or a thread already running a scheduler")
+            runtime.log_error("run_carrier is being called from a fiber, or a thread already running a pool")
             return void
         }
     }
+    here :: runtime.new(PoolCarrier, pool.allocator)
+    here.pool = pool
+    here.head = 0
+    here.tail = 0
+    here.turns = 0
+    {
+        concurrency.lock(&pool.lock)
+        defer concurrency.unlock(&pool.lock)
+        index :: pool.carrier_count
+        if index >= MAX_CARRIERS {
+            runtime.log_error("a fiber pool can have at most % carriers", MAX_CARRIERS)
+            runtime.free(here, pool.allocator)
+            return void
+        }
+        pool.carriers[index] = cast[rawptr](here)
+        intrinsics.atomic_store_u64_release(&pool.carrier_count, index + 1)
+        // Different carriers start their searches in different places
+        here.random = (index + 1) * 0x9e3779b97f4a7c15
+    }
+    intrinsics.interlocked_exchange_add_u64(&pool.active_carriers, 1)
+
     /*
      * The loop itself never yields (it isn't running on a fiber), so the carrier stays the same
      * and this pointer stays valid.
      */
     carrier :: intrinsics.carrier()
     carrier.yield_function = yield
-    carrier.scheduler_data = cast[rawptr](scheduler)
+    carrier.scheduler_data = cast[rawptr](here)
     defer {
         carrier.yield_function = null
         carrier.scheduler_data = null
     }
     loop {
-        if scheduler.should_stop {
-            break
+        match next_fiber(here) {
+            case Some(fiber) => run_turn(here, fiber)
+            case None => {
+                if intrinsics.atomic_load_u64_acquire(&pool.closed) != 0 && intrinsics.atomic_load_u64_acquire(&pool.live) == 0 {
+                    break
+                }
+                intrinsics.spin_hint()
+            }
         }
-        fiber :: take_waiting(scheduler) or_break
-        /*
-         * fiber_start calls fiber_entry on the fiber's own first segment, which calls its function;
-         * fiber_resume re-enters its frames where it suspended, nothing copied. Either comes back
-         * here once the fiber suspends or its function returns.
-         */
-        exit := runtime.FiberExit.Finished
-        if fiber.state == .NotStarted {
-            exit = intrinsics.fiber_start(fiber)
-        }
-        else {
-            exit = intrinsics.fiber_resume(fiber)
-        }
-        if exit == .Yielded {
-            add_waiting(scheduler, fiber)
-        }
-        else {
-            runtime.fiber_destroy(fiber, scheduler.allocator)
-        }
+    }
+    intrinsics.interlocked_decrement_u64(&pool.active_carriers)
+}
+
+/*
+ * A turn for a fiber: started or resumed here, until it yields, when it goes to the back of the
+ * shared queue, or finishes, when it's freed.
+ */
+run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fiber]) {
+    pool :: here.pool
+    exit := runtime.FiberExit.Finished
+    if fiber.state == .NotStarted {
+        exit = intrinsics.fiber_start(fiber)
+    }
+    else {
+        exit = intrinsics.fiber_resume(fiber)
+    }
+    /*
+     * Only now, with the fiber switched away from, can another carrier take it: queued any
+     * sooner, it could be resumed while still running here.
+     */
+    if exit == .Yielded {
+        add_shared(pool, fiber, fiber, 1)
+    }
+    else {
+        runtime.fiber_destroy(fiber, pool.allocator)
+        intrinsics.interlocked_decrement_u64(&pool.live)
     }
 }
 
 /*
- * Installed as the carrier's yield_function, so it's what fiber_yield calls on a fiber run by
- * this scheduler, on the fiber's own stack. fiber_yield has already checked foreign_depth and
+ * Installed as the carrier's yield_function, so it's what fiber_yield calls on one of the pool's
+ * fibers, on the fiber's own stack. fiber_yield has already checked foreign_depth and
  * no_yield_depth.
  */
 yield :: fn(carrier: ptr[mut runtime.CarrierBlock]) {
     current :: carrier.current_fiber or_return void
-    scheduler : ptr[FiberScheduler] : cast[ptr[FiberScheduler]](carrier.scheduler_data)
-    if scheduler.waiting == 0 && !scheduler.should_stop {
-        // Switching would be pointless, keep running
+    here :: cast[ptr[mut PoolCarrier]](carrier.scheduler_data)
+    // With nothing else waiting here or in the shared queue, switching would be pointless
+    if intrinsics.atomic_load_u64_acquire(&here.tail) == intrinsics.atomic_load_u64_acquire(&here.head)
+        && intrinsics.atomic_load_u64_acquire(&here.pool.shared_count) == 0 {
         return void
     }
     /*
-     * Back to the scheduler's loop, which puts this fiber at the back of the line. Only "returns"
-     * once the fiber is resumed, so don't use carrier or scheduler after this.
+     * Back to the carrier's loop, which queues this fiber. Only "returns" once the fiber is
+     * resumed, possibly on another carrier, so don't use carrier or here after this.
      */
     intrinsics.fiber_suspend(current)
 }
@@ -137,23 +255,214 @@ park :: fn() -> bool {
     return false
 }
 
-add_waiting :: fn(scheduler: ptr[mut FiberScheduler], fiber #escaping : ptr[mut runtime.Fiber]) {
-    fiber.next = null
-    match scheduler.last {
-        case Some(last) => last.next = fiber
-        case None => scheduler.first = fiber
+// This carrier's part of pool, if it's running one of the pool's fibers.
+carrier_in :: fn(pool: ptr[FiberPool]) -> ptr[mut PoolCarrier]? {
+    carrier :: intrinsics.carrier()
+    if carrier.current_fiber == null {
+        return null
     }
-    scheduler.last = fiber
-    scheduler.waiting += 1
+    installed :: carrier.yield_function or_return null
+    if installed != yield {
+        return null
+    }
+    here :: cast[ptr[mut PoolCarrier]](carrier.scheduler_data)
+    if cast[rawptr](here.pool) != cast[rawptr](pool) {
+        return null
+    }
+    return here
 }
 
-take_waiting :: fn(scheduler: ptr[mut FiberScheduler]) -> ptr[mut runtime.Fiber]? {
-    fiber :: scheduler.first or_return null
-    scheduler.first = fiber.next
-    if scheduler.first == null {
-        scheduler.last = null
+// The next fiber for this carrier to run, from its own queue, the shared queue, or another carrier's.
+next_fiber :: fn(here: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
+    here.turns += 1
+    if here.turns % SHARED_QUEUE_INTERVAL == 0 {
+        match take_shared(here) {
+            case Some(fiber) => return fiber
+            case None => {}
+        }
     }
-    fiber.next = null
-    scheduler.waiting -= 1
-    return fiber
+    match take_local(here) {
+        case Some(fiber) => return fiber
+        case None => {}
+    }
+    match take_shared(here) {
+        case Some(fiber) => return fiber
+        case None => {}
+    }
+    return steal_any(here)
+}
+
+// ---------------------------------------------------------------------------------------------
+// The carrier's own queue
+
+// Add to the back of this carrier's queue, moving half of it to the shared queue if it's full.
+add_local :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fiber]) {
+    loop {
+        head :: intrinsics.atomic_load_u64_acquire(&here.head)
+        // Only this carrier changes tail
+        tail :: here.tail
+        if tail - head < LOCAL_QUEUE_SIZE {
+            here.queue[tail & LOCAL_QUEUE_MASK] = cast[rawptr](fiber)
+            intrinsics.atomic_store_u64_release(&here.tail, tail + 1)
+            return void
+        }
+        if move_half_to_shared(here, head, fiber) {
+            return void
+        }
+    }
+}
+
+/*
+ * The full queue's first half, then fiber, to the back of the shared queue. False if another
+ * carrier took some of the queue first, so it isn't full anymore.
+ */
+move_half_to_shared :: fn(here: ptr[mut PoolCarrier], head: u64, fiber #escaping : ptr[mut runtime.Fiber]) -> bool {
+    half :: cast[u64](LOCAL_QUEUE_SIZE / 2)
+    // Linked first, and only queued once they're taken
+    first :: cast[ptr[mut runtime.Fiber]](here.queue[head & LOCAL_QUEUE_MASK])
+    previous := first
+    for i in 1..<half {
+        next :: cast[ptr[mut runtime.Fiber]](here.queue[(head + i) & LOCAL_QUEUE_MASK])
+        previous.next = next
+        previous = next
+    }
+    _, taken :: intrinsics.interlocked_compare_exchange_u64(&here.head, head + half, head)
+    if !taken {
+        return false
+    }
+    previous.next = fiber
+    add_shared(here.pool, first, fiber, half + 1)
+    return true
+}
+
+// The fiber at a position in this carrier's queue.
+fiber_at :: fn(here: ptr[PoolCarrier], position: u64) -> ptr[mut runtime.Fiber] {
+    return cast[ptr[mut runtime.Fiber]](here.queue[position & LOCAL_QUEUE_MASK])
+}
+
+// Take from the front of this carrier's queue.
+take_local :: fn(here: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
+    loop {
+        head :: intrinsics.atomic_load_u64_acquire(&here.head)
+        if head == here.tail {
+            return null
+        }
+        fiber :: fiber_at(here, head)
+        _, taken :: intrinsics.interlocked_compare_exchange_u64(&here.head, head + 1, head)
+        if taken {
+            return fiber
+        }
+    }
+}
+
+/*
+ * Take half of another carrier's queue, starting with a different carrier each time: the first
+ * fiber to run now, the rest into this carrier's queue, which is empty.
+ */
+steal_any :: fn(here: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
+    pool :: here.pool
+    count :: intrinsics.atomic_load_u64_acquire(&pool.carrier_count)
+    if count < 2 {
+        return null
+    }
+    // xorshift
+    here.random ~= here.random << 13
+    here.random ~= here.random >> 7
+    here.random ~= here.random << 17
+    start :: here.random % count
+    for i in 0..<count {
+        index :: (start + i) % count
+        if index < MAX_CARRIERS && pool.carriers[index] != cast[rawptr](here) {
+            match steal_from(here, cast[ptr[mut PoolCarrier]](pool.carriers[index])) {
+                case Some(fiber) => return fiber
+                case None => {}
+            }
+        }
+    }
+    return null
+}
+
+steal_from :: fn(here: ptr[mut PoolCarrier], other: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
+    tail :: here.tail
+    loop {
+        head :: intrinsics.atomic_load_u64_acquire(&other.head)
+        other_tail :: intrinsics.atomic_load_u64_acquire(&other.tail)
+        if other_tail <= head {
+            return null
+        }
+        waiting :: other_tail - head
+        // Read while its owner kept changing it: try again
+        if waiting > LOCAL_QUEUE_SIZE {
+            continue
+        }
+        count :: waiting - waiting / 2
+        // Copied before they're taken, since once they are, the other carrier may reuse their slots
+        for i in 0..<count {
+            here.queue[(tail + i) & LOCAL_QUEUE_MASK] = other.queue[(head + i) & LOCAL_QUEUE_MASK]
+        }
+        _, taken :: intrinsics.interlocked_compare_exchange_u64(&other.head, head + count, head)
+        if taken {
+            // The last one runs now, the others are this carrier's
+            intrinsics.atomic_store_u64_release(&here.tail, tail + count - 1)
+            return fiber_at(here, tail + count - 1)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The shared queue
+
+// Add a chain of fibers, first to last, linked through next, to the back of the shared queue.
+add_shared :: fn(pool: ptr[mut FiberPool], first #escaping : ptr[mut runtime.Fiber], last #escaping : ptr[mut runtime.Fiber],
+    count: u64) {
+
+    last.next = null
+    concurrency.lock(&pool.lock)
+    defer concurrency.unlock(&pool.lock)
+    match pool.last {
+        case Some(previous) => previous.next = first
+        case None => pool.first = first
+    }
+    pool.last = last
+    intrinsics.atomic_store_u64_release(&pool.shared_count, pool.shared_count + count)
+}
+
+/*
+ * Take from the front of the shared queue: the first fiber to run now, and this carrier's share
+ * of the rest (the queue divided among the carriers running) into its own queue, as far as half
+ * of it has room.
+ */
+take_shared :: fn(here: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
+    pool :: here.pool
+    if intrinsics.atomic_load_u64_acquire(&pool.shared_count) == 0 {
+        return null
+    }
+    concurrency.lock(&pool.lock)
+    defer concurrency.unlock(&pool.lock)
+    result :: pool.first or_return null
+    remaining :: pool.shared_count - 1
+    carriers :: intrinsics.atomic_load_u64_acquire(&pool.active_carriers)
+    head :: intrinsics.atomic_load_u64_acquire(&here.head)
+    tail :: here.tail
+    half :: cast[u64](LOCAL_QUEUE_SIZE / 2)
+    room :: half - min_of(tail - head, half)
+    share :: min_of(remaining / (if carriers == 0 { cast[u64](1) } else { carriers }), room)
+    walk := result.next
+    for i in 0..<share {
+        fiber :: walk or_break
+        here.queue[(tail + i) & LOCAL_QUEUE_MASK] = cast[rawptr](fiber)
+        walk = fiber.next
+    }
+    pool.first = walk
+    if walk == null {
+        pool.last = null
+    }
+    intrinsics.atomic_store_u64_release(&pool.shared_count, remaining - share)
+    intrinsics.atomic_store_u64_release(&here.tail, tail + share)
+    result.next = null
+    return result
+}
+
+min_of :: fn(a, b: u64) -> u64 {
+    return if a < b { a } else { b }
 }

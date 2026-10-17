@@ -5,4 +5,4 @@ package fiber
 
 import tiers from "std"
 
-PACKAGE_TIER :: tiers.Tier.Os
+PACKAGE_TIER :: tiers.Tier.Allocating

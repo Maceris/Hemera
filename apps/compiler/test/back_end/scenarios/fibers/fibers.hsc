@@ -1,5 +1,5 @@
 /*
- * Fibers in a hosted program, run by std/fiber's scheduler: main returns 42 if everything worked,
+ * Fibers in a hosted program, run by a std/fiber pool with this thread as its one carrier: main returns 42 if everything worked,
  * or the number of the first check that failed. Built with stack_check = .Morestack, so a fiber
  * that recurses deeply grows onto segments.
  *
@@ -185,17 +185,18 @@ main :: fn() -> int {
         turns.count = 0
         turns.deep_sum = 0
         turns.deep_on_segment = false
-        scheduler :: fiber.create_fiber_scheduler()
+        live_before :: arena.live
+        pool :: fiber.create_fiber_pool()
         push_context with_turns (user_data = cast[rawptr](turns)) {
-            _, error_a :: fiber.spawn(scheduler, worker_a)
-            _, error_b :: fiber.spawn(scheduler, worker_b)
-            _, error_deep :: fiber.spawn(scheduler, worker_deep)
+            _, error_a :: fiber.spawn(pool, worker_a)
+            _, error_b :: fiber.spawn(pool, worker_b)
+            _, error_deep :: fiber.spawn(pool, worker_deep)
             if error_a != null || error_b != null || error_deep != null {
                 return 2
             }
         }
-        live_before :: arena.live
-        fiber.run_fibers(scheduler)
+        fiber.close_pool(pool)
+        fiber.run_carrier(pool)
         // The deep fiber runs between a's and b's turns: "ab", then its own, then "AB" and "C"
         if string_of(&turns.marks[0], turns.count) != EXPECTED_MARKS {
             return 3
@@ -210,8 +211,9 @@ main :: fn() -> int {
         if segments_cached(carrier) != SEGMENT_COUNT {
             return 6
         }
-        // Each fiber was one allocation, freed once it finished
-        if arena.live != live_before - 3 {
+        // Each fiber was freed once it finished, and the pool and its carrier's part now
+        fiber.destroy_fiber_pool(pool)
+        if arena.live != live_before {
             return 7
         }
         if carrier.current_fiber != null || carrier.yield_function != null {

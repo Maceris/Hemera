@@ -86,7 +86,7 @@ TEST(Hosted, RunsProgram)
 }
 
 /*
- * Fibers taking turns under std/fiber's scheduler, one of them growing its stack onto segments:
+ * Fibers taking turns in a std/fiber pool with one carrier, one of them growing its stack onto segments:
  * on Windows, Hemera's frames chain through rbp like elsewhere (docs/calling_convention.md, Windows x64).
  */
 TEST(Hosted, RunsFibers)
