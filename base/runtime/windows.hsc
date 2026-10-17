@@ -25,6 +25,9 @@ import intrinsics from "base"
     WaitForSingleObject #foreign(KERNEL32) : fn(handle: rawptr, milliseconds: u32) -> u32 : ---
     CloseHandle #foreign(KERNEL32) : fn(handle: rawptr) -> i32 : ---
     GetCurrentThreadStackLimits #foreign(KERNEL32) : fn(low: ptr[mut usize], high: ptr[mut usize]) : ---
+    TlsAlloc #foreign(KERNEL32) : fn() -> u32 : ---
+    TlsGetValue #foreign(KERNEL32) : fn(slot: u32) -> rawptr : ---
+    TlsSetValue #foreign(KERNEL32) : fn(slot: u32, value: rawptr) -> i32 : ---
     WaitOnAddress #foreign(SYNCHRONIZATION) : fn(address: rawptr, compare: rawptr, size: usize, milliseconds: u32) -> i32 : ---
     WakeByAddressSingle #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
     WakeByAddressAll #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
@@ -104,6 +107,7 @@ import intrinsics from "base"
     windows_thread_entry #calling_convention(.c) #no_context :: fn(parameter: rawptr) -> u32 {
         thread :: cast[ptr[mut Thread]](parameter)
         intrinsics.set_carrier(&thread.carrier)
+        register_carrier(&thread.carrier)
         low : usize = 0
         high : usize = 0
         GetCurrentThreadStackLimits(&low, &high)
@@ -119,6 +123,50 @@ import intrinsics from "base"
             thread.function(data)
         }
         ExitThread(0)
+    }
+
+    /*
+     * Store a thread's carrier block in its thread-local storage, where callbacks from foreign code
+     * look for it, allocating the slot the first time. The program's entry does this for the main
+     * thread before any other starts.
+     */
+    register_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
+        slot :: intrinsics.carrier_slot()
+        if slot^ == 0 {
+            slot^ = TlsAlloc() + 1
+        }
+        TlsSetValue(slot^ - 1, cast[rawptr](carrier))
+    }
+
+    /*
+     * The carrier block of the thread a callback from foreign code is on, which callback shims call
+     * with a temporary one loaded (counting a foreign call, so nothing here moves stacks or yields).
+     * A thread Hemera didn't start gets one of its own the first time, from the process heap, with
+     * its stack's limits and the heap for segments, kept for the rest of the thread's life (it may
+     * call back again).
+     */
+    callback_carrier #no_context :: fn() -> ptr[mut CarrierBlock] {
+        slot :: intrinsics.carrier_slot()
+        if slot^ != 0 {
+            found :: TlsGetValue(slot^ - 1)
+            if found != null {
+                return cast[ptr[mut CarrierBlock]](found)
+            }
+        }
+        raw :: HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size_of(CarrierBlock) + align_of(CarrierBlock))
+        if raw == null {
+            intrinsics.trap()
+        }
+        alignment :: cast[usize](align_of(CarrierBlock))
+        carrier :: cast[ptr[mut CarrierBlock]](cast[rawptr]((cast[usize](raw) + alignment - 1) & ~(alignment - 1)))
+        low : usize = 0
+        high : usize = 0
+        GetCurrentThreadStackLimits(&low, &high)
+        carrier.native_stack_limit = cast[rawptr](low + NATIVE_STACK_RESERVE)
+        carrier.stack_limit = carrier.native_stack_limit
+        carrier.segment_allocator = HEAP_ALLOCATOR
+        register_carrier(carrier)
+        return carrier
     }
 
     os_thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {

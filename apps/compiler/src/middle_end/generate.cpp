@@ -731,6 +731,15 @@ namespace hemera {
 		return !function->no_context && !has_convention(function, "entry") && !has_convention(function, "interrupt");
 	}
 
+	/*
+	 * Whether a function is a callback from foreign code: .c, with a context, which a shim finds for
+	 * it (docs/calling_convention.md, Calls to Foreign Code). Its symbol, and its value, are the
+	 * shim's, which takes no context; Hemera code calling it by name calls its body directly.
+	 */
+	static bool is_callback(Generator& generator, TypeInfoFunction const* function) {
+		return has_convention(function, "c") && takes_context(generator, function, nullptr);
+	}
+
 	// ---------------------------------------------------------------------------------------------
 	// Entry functions (docs/calling_convention.md, Entry Functions): their generated code is module-level
 	// assembly around the body, which is an ordinary function taking the frame
@@ -1102,6 +1111,73 @@ namespace hemera {
 		return true;
 	}
 
+	static mlir::Value assembly(Generator& generator, mlir::Type result, const std::vector<mlir::Value>& operands,
+		std::string_view text, std::string_view constraints);
+
+	/*
+	 * A callback's shim (is_callback), which foreign code calls with the platform's C convention:
+	 * keeps foreign code's carrier register, loads the thread's carrier block from where the runtime
+	 * keeps it (runtime.callback_carrier, run with a temporary one that counts a foreign call, since
+	 * it makes some itself), and calls the body with the context the foreign call it's inside saved,
+	 * or HOSTED_CONTEXT on a thread Hemera didn't start. The body runs where the shim was called:
+	 * the native stack, which a foreign call from a fiber moved to, with foreign_depth still counting
+	 * it, so nothing yields. Windows only, so far.
+	 */
+	static void emit_callback_shim(Generator& generator, Declaration* declaration, LLVM::LLVMFuncOp shim, LLVM::LLVMFuncOp body,
+		TypeInfoFunction const* type) {
+
+		Declaration* carrier_declaration = base_declaration_named(generator, "runtime", "CarrierBlock");
+		Declaration* context_declaration = base_declaration_named(generator, "runtime", "Context");
+		Declaration* hosted = base_declaration_named(generator, "runtime", "HOSTED_CONTEXT");
+		Declaration* find_carrier = base_declaration_named(generator, "runtime", "callback_carrier");
+		size_t foreign_depth = 0;
+		size_t foreign_context = 0;
+		if (!system_v_on_windows(*generator.options) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
+			|| find_carrier == nullptr || carrier_declaration->type_value == nullptr || context_declaration->type_value == nullptr
+			|| !runtime_offset(generator, "CarrierBlock", "foreign_depth", foreign_depth)
+			|| !runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
+			unsupported(generator, declaration->node, "callbacks from foreign code (.c functions with a context) are only made for Windows x64 so far");
+			return;
+		}
+		TypeInfo* carrier_type = carrier_declaration->type_value;
+		TypeInfo* context_type = context_declaration->type_value;
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::OpBuilder::InsertionGuard guard(b);
+		mlir::Block* entry = shim.addEntryBlock(b);
+		b.setInsertionPointToEnd(entry);
+		FunctionState state;
+		state.entry = entry;
+		FunctionState* outer = generator.state;
+		generator.state = &state;
+		mlir::Value callers = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
+		mlir::Value temporary = make_slot(generator, carrier_type);
+		store_zero(generator, carrier_type, temporary);
+		LLVM::StoreOp::create(b, l, constant_int(generator, integer_type(generator, 4), 1), offset_address(generator, temporary, foreign_depth));
+		assembly(generator, mlir::Type(), { temporary }, "movq $0, %r14", "r,~{memory}");
+		mlir::Value carrier = LLVM::CallOp::create(b, l, function_for(generator, find_carrier), mlir::ValueRange{}).getResult();
+		assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+		// The context: the foreign call's, or HOSTED_CONTEXT
+		mlir::Value fallback = make_slot(generator, context_type);
+		store(generator, emit_constant_value(generator, hosted, context_type, nullptr), fallback);
+		mlir::Value saved = LLVM::LoadOp::create(b, l, pointer_type(generator), offset_address(generator, carrier, foreign_context));
+		mlir::Value none = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, saved, zero_of(generator, pointer_type(generator)));
+		mlir::Value context = LLVM::SelectOp::create(b, l, none, fallback, saved);
+		std::vector<mlir::Value> arguments{ context };
+		for (mlir::BlockArgument argument : entry->getArguments()) {
+			arguments.push_back(argument);
+		}
+		auto call = LLVM::CallOp::create(b, l, body, arguments);
+		assembly(generator, mlir::Type(), { callers }, "movq $0, %r14", "r,~{memory}");
+		if (type->output.empty()) {
+			LLVM::ReturnOp::create(b, l, mlir::ValueRange{});
+		}
+		else {
+			LLVM::ReturnOp::create(b, l, call.getResult());
+		}
+		generator.state = outer;
+	}
+
 	// ---------------------------------------------------------------------------------------------
 	// Foreign functions (docs/calling_convention.md, Calls to Foreign Code)
 
@@ -1228,6 +1304,9 @@ namespace hemera {
 		return function;
 	}
 
+	static void emit_callback_shim(Generator& generator, Declaration* declaration, LLVM::LLVMFuncOp shim, LLVM::LLVMFuncOp body,
+		TypeInfoFunction const* type);
+
 	/*
 	 * The function a declaration is, declared now and generated later. Exported functions and the
 	 * freestanding entry keep their own names, for the linker and other languages.
@@ -1251,9 +1330,18 @@ namespace hemera {
 		if (exported) {
 			generator.symbols.insert(name);
 		}
+		const bool callback = is_callback(generator, type);
 		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, name,
-			function_type(generator, type, takes_context(generator, type, declaration)),
+			function_type(generator, type, takes_context(generator, type, declaration) && !callback),
 			exported ? LLVM::Linkage::External : LLVM::Linkage::Internal);
+		LLVM::LLVMFuncOp shim;
+		if (callback) {
+			// The function is its body, generated like any other; the shim, called by foreign code, has its name
+			shim = function;
+			function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, name + ".body",
+				function_type(generator, type, true), LLVM::Linkage::Internal);
+			function.setCConv(system_v_on_windows(*generator.options) ? LLVM::cconv::CConv::X86_64_SysV : LLVM::cconv::CConv::C);
+		}
 		std::vector<mlir::Attribute> attributes;
 		if (type->never_returns) {
 			attributes.push_back(generator.builder.getStringAttr("noreturn"));
@@ -1281,12 +1369,22 @@ namespace hemera {
 		if (!attributes.empty()) {
 			function.setPassthroughAttr(generator.builder.getArrayAttr(attributes));
 		}
-		function.setCConv(convention_of(generator, type));
+		if (!callback) {
+			function.setCConv(convention_of(generator, type));
+		}
 		if (has_convention(type, "interrupt")) {
 			if (!type->input.empty() && is_variant(type->input[0].type, TypeInfoVariant::POINTER)) {
 				TypeInfo* frame = static_cast<TypeInfoPointer const*>(base(type->input[0].type))->base_type;
 				function.setArgAttr(0, LLVM::LLVMDialect::getByValAttrName(), mlir::TypeAttr::get(llvm_type(generator, frame)));
 			}
+		}
+		if (callback) {
+			shim.setCConv(LLVM::cconv::CConv::C);
+			generator.functions[declaration] = shim;
+			generator.entry_bodies[declaration] = function;
+			generator.pending.push_back(declaration);
+			emit_callback_shim(generator, declaration, shim, function, type);
+			return shim;
 		}
 		generator.functions[declaration] = function;
 		generator.pending.push_back(declaration);
@@ -3655,6 +3753,18 @@ namespace hemera {
 		if (name == "carrier") {
 			return value(assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}"), result_type);
 		}
+		// One global, the program's, which the runtime fills in
+		if (name == "carrier_slot") {
+			constexpr const char* CARRIER_SLOT_SYMBOL = "hemera.carrier_slot";
+			LLVM::GlobalOp slot = generator.module.lookupSymbol<LLVM::GlobalOp>(CARRIER_SLOT_SYMBOL);
+			if (!slot) {
+				mlir::OpBuilder::InsertionGuard guard(b);
+				b.setInsertionPointToEnd(generator.module.getBody());
+				mlir::Type i32 = integer_type(generator, 4);
+				slot = LLVM::GlobalOp::create(b, l, i32, false, LLVM::Linkage::Internal, CARRIER_SLOT_SYMBOL, b.getI32IntegerAttr(0));
+			}
+			return value(LLVM::AddressOfOp::create(b, l, slot), result_type);
+		}
 		if (name == "set_carrier") {
 			assembly(generator, mlir::Type(), arguments, "movq $0, %r14", "r,~{memory}");
 			return result;
@@ -4010,21 +4120,44 @@ namespace hemera {
 		if (is_intrinsic(called)) {
 			return emit_intrinsic(generator, called, function, arguments, paren);
 		}
-		// The context goes first, to the functions that take one
-		if (takes_context(generator, function, called)) {
+		const bool by_name = called != nullptr && DeclarationKind::FUNCTION == called->kind;
+		// The context goes first, to the functions that take one: a callback only by name, to its body
+		if (takes_context(generator, function, called) && (by_name || !is_callback(generator, function))) {
 			arguments.insert(arguments.begin(), generator.state->context);
 		}
+		/*
+		 * A foreign function's callbacks run with this context, which is kept in the carrier block
+		 * for the call (docs/calling_convention.md, Calls to Foreign Code)
+		 */
+		mlir::Value foreign_context_slot;
+		mlir::Value outer_foreign_context;
+		size_t foreign_context = 0;
+		if (by_name && called->foreign_library != nullptr && generator.state->context
+			&& runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
+			mlir::Value carrier = assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}");
+			foreign_context_slot = offset_address(generator, carrier, foreign_context);
+			outer_foreign_context = LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), foreign_context_slot);
+			LLVM::StoreOp::create(generator.builder, generator.loc, generator.state->context, foreign_context_slot);
+		}
 		LLVM::CallOp call;
-		if (called != nullptr && DeclarationKind::FUNCTION == called->kind) {
-			call = LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, called), arguments);
+		if (by_name) {
+			LLVM::LLVMFuncOp target = function_for(generator, called);
+			auto body = generator.entry_bodies.find(called);
+			if (is_callback(generator, function) && body != generator.entry_bodies.end()) {
+				target = body->second;
+			}
+			call = LLVM::CallOp::create(generator.builder, generator.loc, target, arguments);
 		}
 		else {
 			// Through a function value: its pointer first
 			std::vector<mlir::Value> operands{ value_of(generator, callee) };
 			operands.insert(operands.end(), arguments.begin(), arguments.end());
 			call = LLVM::CallOp::create(generator.builder, generator.loc,
-				function_type(generator, function, takes_context(generator, function, nullptr)), operands);
+				function_type(generator, function, takes_context(generator, function, nullptr) && !is_callback(generator, function)), operands);
 			call.setCConv(convention_of(generator, function));
+		}
+		if (foreign_context_slot) {
+			LLVM::StoreOp::create(generator.builder, generator.loc, outer_foreign_context, foreign_context_slot);
 		}
 		/*
 		 * A function that starts without a context has no stack check, since there's no carrier
@@ -5655,6 +5788,10 @@ namespace hemera {
 			}
 			callers_carrier = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
 			assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+			// Where callbacks from foreign code find it, where the runtime has that
+			if (Declaration* registers = base_declaration_named(generator, "runtime", "register_carrier")) {
+				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, registers), mlir::ValueRange{ carrier });
+			}
 		}
 		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
 		mlir::Value code = constant_int(generator, i32, 0);

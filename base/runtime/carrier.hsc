@@ -50,7 +50,10 @@ CarrierBlock :: struct #align(64) {
     shadow_stack_base : uintptr,
     // stack_limit for this thread's own stack.
     native_stack_limit : rawptr,
-    // The context foreign callbacks run with, saved by the most recent foreign call.
+    /*
+     * The context foreign callbacks run with: the caller's, which each call to a foreign function
+     * saves here for the call, and puts back after.
+     */
     foreign_context : ptr[Context]?,
     // Free stack segments, linked through StackSegment.next_free.
     segment_cache : ptr[mut StackSegment]?,

@@ -3,8 +3,9 @@
  * carrier: main returns 42 if everything worked, or the number of the first check that failed.
  * Built with stack_check = .Morestack, so a fiber that recurses deeply grows onto segments.
  *
- * Foreign calls run on the thread's own stack, from main and from a fiber. Memory comes from an
- * arena in main's frame.
+ * Foreign calls run on the thread's own stack, from main and from a fiber. Foreign code calls back
+ * into Hemera, with the caller's context, from main, from a fiber, and on a thread Hemera didn't
+ * start. Memory comes from an arena in main's frame.
  */
 package fibers
 
@@ -70,6 +71,55 @@ Turns :: struct {
     thread : u32,
     // From the fiber that calls foreign functions: 0 once they all worked, or the first that didn't
     foreign_failure : int,
+    // Callbacks counted, and what the fiber's enumeration counted
+    code_pages : u64,
+    fiber_code_pages : u64,
+    // What the thread Hemera didn't start saw: its carrier block, and a value from the heap
+    foreign_thread_carrier : u64,
+    foreign_thread_value : u64,
+}
+
+// Callbacks from foreign code: EnumSystemCodePagesA calls code_page once for each installed code page
+CP_INSTALLED : u32 : 1
+EnumSystemCodePagesA #foreign(KERNEL32) : fn(callback: rawptr, flags: u32) -> i32 : ---
+create_thread #foreign(KERNEL32) #link_name("CreateThread") : fn(
+    attributes: rawptr,
+    stack_size: usize,
+    start: rawptr,
+    parameter: rawptr,
+    flags: u32,
+    id: rawptr,
+) -> rawptr : ---
+WaitForSingleObject #foreign(KERNEL32) : fn(handle: rawptr, milliseconds: u32) -> u32 : ---
+CloseHandle #foreign(KERNEL32) : fn(handle: rawptr) -> i32 : ---
+
+// A callback with the context of whoever called EnumSystemCodePagesA, which has the Turns.
+code_page #calling_convention(.c) :: fn(name: rawptr) -> i32 {
+    turns :: cast[ptr[mut Turns]](context.user_data)
+    turns.code_pages += 1
+    return 1
+}
+
+count_code_pages :: fn(turns: ptr[mut Turns]) -> u64 {
+    turns.code_pages = 0
+    EnumSystemCodePagesA(cast[rawptr](code_page), CP_INSTALLED)
+    return turns.code_pages
+}
+
+/*
+ * Where a thread Hemera didn't start runs: it gets a carrier block of its own and HOSTED_CONTEXT,
+ * with the process heap, which new uses.
+ */
+foreign_thread #calling_convention(.c) :: fn(parameter: rawptr) -> u32 {
+    turns :: cast[ptr[mut Turns]](parameter)
+    turns.foreign_thread_carrier = cast[u64](intrinsics.carrier())
+    made :: runtime.new(u64)
+    made^ = 7
+    // HOSTED_CONTEXT has no user_data
+    extra :: if context.user_data == null { cast[u64](1) } else { cast[u64](100) }
+    turns.foreign_thread_value = made^ + extra
+    runtime.free(made)
+    return 0
 }
 
 // Foreign functions, from two libraries
@@ -182,6 +232,8 @@ worker_foreign : runtime.ThreadFunction : fn(data #escaping : any) {
     turns :: cast[ptr[mut Turns]](context.user_data)
     limit :: intrinsics.carrier().stack_limit
     turns.foreign_failure = call_foreign(turns.thread)
+    // Called back on the thread's own stack, with this fiber's context
+    turns.fiber_code_pages = count_code_pages(turns)
     RtlCaptureContext(&turns.windows_context)
     if turns.foreign_failure == 0 && captured_rsp(&turns.windows_context) >= turns.arena_start {
         turns.foreign_failure = 4
@@ -264,6 +316,22 @@ main :: fn() -> int {
         if call_foreign(turns.thread) != 0 {
             return 9
         }
+        main_code_pages : u64 = 0
+        push_context with_turns (user_data = cast[rawptr](turns)) {
+            main_code_pages = count_code_pages(turns)
+        }
+        if main_code_pages == 0 {
+            return 21
+        }
+        thread :: create_thread(null, 0, cast[rawptr](foreign_thread), cast[rawptr](turns), 0, null)
+        if thread == null {
+            return 22
+        }
+        WaitForSingleObject(thread, 0xffffffff)
+        CloseHandle(thread)
+        if turns.foreign_thread_value != 8 || turns.foreign_thread_carrier == 0 || turns.foreign_thread_carrier == cast[u64](carrier) {
+            return 23
+        }
         live_before :: arena.live
         pool :: fiber.create_fiber_pool()
         push_context with_turns (user_data = cast[rawptr](turns)) {
@@ -304,6 +372,9 @@ main :: fn() -> int {
         }
         if carrier.foreign_depth != 0 {
             return 20
+        }
+        if turns.fiber_code_pages != main_code_pages {
+            return 24
         }
     }
     return 42

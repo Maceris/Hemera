@@ -3858,11 +3858,6 @@ namespace hemera {
 				"{} is where the program starts, without a context: mark it #no_context (with #calling_convention(.c))",
 				text_of(function->name)));
 		}
-		// .c functions that foreign code calls back get a shim that finds the context, not made yet
-		if (text_of(type->calling_convention) == "c" && !type->no_context) {
-			error_at(checker, ErrorCode::E4024, function->node,
-				"a .c function needs #no_context until the compiler makes callback shims (docs/calling_convention.md)");
-		}
 		const size_t errors_before = thread_error_count();
 		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
 		// Then what points into the stack, once everything in the body is known (docs/memory.md)

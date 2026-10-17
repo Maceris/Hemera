@@ -13,6 +13,14 @@ import runtime from "base"
 carrier : fn() -> ptr[mut runtime.CarrierBlock] : ---
 
 /*
+ * Where the program keeps which of the operating system's thread-local storage slots holds each
+ * thread's carrier block, for callbacks from foreign code to find it (docs/calling_convention.md,
+ * Calls to Foreign Code): one more than the slot, or 0 until one is allocated. The runtime
+ * allocates it and stores each carrier block there (runtime.register_carrier).
+ */
+carrier_slot : fn() -> ptr[mut u32] : ---
+
+/*
  * Load the carrier register with block, for code that starts without Hemera's startup code
  * setting it up: entry points of freestanding programs, interrupt functions, and threads on
  * systems without thread-local storage.

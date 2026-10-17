@@ -318,12 +318,28 @@ A thread on a segment moves below `native_sp` instead, where `morestack` took it
 outermost foreign call moves: one made while `foreign_depth` is already above zero (from foreign code, or from
 `morestack` allocating a segment) is on the native stack already.
 
-Not done yet: allocating a native stack on systems that don't give threads one, and the entry shims below.
+Not done yet: allocating a native stack on systems that don't give threads one.
 
-Hemera functions that foreign code can call get an entry shim that saves the foreign code's value of the carrier
-register, loads it from the OS's thread-local storage (creating a carrier block if this thread has never run
-Hemera code), uses the context saved by the shim above (or a default one on a foreign thread), and restores the
-register on the way out.
+Each call to a foreign function also keeps the caller's context in the carrier block's `foreign_context` for the
+call, and puts back what was there after, so callbacks from inside it run with the caller's context.
+
+Hemera functions that foreign code can call (`.c` functions with a context) get an entry shim, which has the
+function's symbol and is what its value points to:
+
+1. It keeps foreign code's value of the carrier register.
+2. It loads the thread's carrier block from the OS's thread-local storage (`runtime.callback_carrier`), with a
+   temporary carrier block on its own stack loaded meanwhile, counting a foreign call, since finding the real one
+   makes foreign calls itself. A thread Hemera didn't start gets a carrier block of its own the first time, from the
+   process heap, with its stack's limits, kept for the rest of the thread's life.
+3. It calls the function's body with the context the foreign call it's inside kept (`foreign_context`), or, on a
+   thread Hemera didn't start, `HOSTED_CONTEXT`.
+4. It puts foreign code's carrier register back.
+
+The body runs where the shim was called: on the native stack, which a foreign call from a fiber already moved to,
+with `foreign_depth` still counting that call, so nothing in it yields, and foreign calls from it stay where they
+are. Hemera code calling the function by name calls its body directly, with its own context. The thread-local
+storage slot is the program's (`intrinsics.carrier_slot`), allocated by `runtime.register_carrier`, which the program's
+entry calls for the main thread and each thread's entry for itself. Windows x64 only, so far.
 
 ### Suspending and Resuming a Fiber
 
@@ -577,8 +593,7 @@ cpu_start #calling_convention(.c) #no_context :: fn(info: ptr[MpInfo]) #never_re
 `#no_context` works with Hemera's own convention too, for Hemera code that runs before there's a carrier block.
 
 A `.c` function without `#no_context` is a callback from foreign code, which gets the entry shim described in
-[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context. The compiler doesn't make that shim
-yet, so for now `.c` functions are `#no_context`.
+[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context (Windows x64 only, so far).
 
 ## Other Conventions
 
