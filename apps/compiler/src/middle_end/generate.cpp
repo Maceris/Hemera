@@ -5920,6 +5920,8 @@ namespace hemera {
 			}
 		}
 		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
+		// A real call, so main has a frame of its own: stack traces end at the entry's, which isn't recorded
+		call.setNoInlineAttr(generator.builder.getUnitAttr());
 		mlir::Value code = constant_int(generator, i32, 0);
 		if (main_type->output.size() == 1 && is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER)) {
 			code = call.getResult();
@@ -5936,6 +5938,17 @@ namespace hemera {
 				assembly(generator, mlir::Type(), { callers_carrier }, "movq $0, %r14", "r,~{memory}");
 			}
 			LLVM::ReturnOp::create(generator.builder, generator.loc, code);
+			if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture) {
+				/*
+				 * Linux starts a static program at _start, with the stack pointer 16-byte aligned rather
+				 * than as a call leaves it, and nothing to return to: it calls the entry, then ends the
+				 * process with exit_group and the entry's result. No C library, so nothing else runs first.
+				 */
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\txorl %ebp, %ebp\n\tandq $-16, %rsp\n"
+					"\tcallq {1}\n\tmovl %eax, %edi\n\tmovl $231, %eax\n\tsyscall\n\tud2\n",
+					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
+			}
 			return;
 		}
 		/*

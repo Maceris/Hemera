@@ -485,10 +485,15 @@ namespace hemera {
 		for (const std::string& library : libraries) {
 			args += std::format("-l{} ", library);
 		}
-		if (TargetRelocationModel::PositionIndependent == options.relocation_model) {
+		/*
+		 * A position-independent executable relocates itself, which freestanding programs like a
+		 * relocatable kernel do; a hosted one has no C library to do it, so it's linked at a fixed address
+		 */
+		if (TargetRelocationModel::PositionIndependent == options.relocation_model && !options.startup_code) {
 			args += "-pie --no-dynamic-linker ";
 		}
-		args += std::format("-e {} ", options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry);
+		const bool linux_start = options.startup_code && OSType::Linux == options.os && ArchType::x86_64 == options.architecture;
+		args += std::format("-e {} ", linux_start ? LINUX_START_SYMBOL : options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry);
 		if (!options.linker_script.empty()) {
 			args += std::format("-T \"{}\" ", options.linker_script.string());
 		}
