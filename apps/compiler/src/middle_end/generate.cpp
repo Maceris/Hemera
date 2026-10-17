@@ -3850,17 +3850,26 @@ namespace hemera {
 		if (name == "carrier") {
 			return value(assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}"), result_type);
 		}
-		// One global, the program's, which the runtime fills in
-		if (name == "carrier_slot") {
-			constexpr const char* CARRIER_SLOT_SYMBOL = "hemera.carrier_slot";
-			LLVM::GlobalOp slot = generator.module.lookupSymbol<LLVM::GlobalOp>(CARRIER_SLOT_SYMBOL);
-			if (!slot) {
+		// One global, the program's, zeroed, which only the runtime uses
+		if (name == "process_state") {
+			constexpr const char* PROCESS_STATE_SYMBOL = "hemera.process_state";
+			LLVM::GlobalOp state = generator.module.lookupSymbol<LLVM::GlobalOp>(PROCESS_STATE_SYMBOL);
+			Declaration* state_declaration = base_declaration_named(generator, "runtime", "ProcessState");
+			if (!state && state_declaration != nullptr && state_declaration->type_value != nullptr) {
+				TypeInfo* state_type = state_declaration->type_value;
 				mlir::OpBuilder::InsertionGuard guard(b);
 				b.setInsertionPointToEnd(generator.module.getBody());
-				mlir::Type i32 = integer_type(generator, 4);
-				slot = LLVM::GlobalOp::create(b, l, i32, false, LLVM::Linkage::Internal, CARRIER_SLOT_SYMBOL, b.getI32IntegerAttr(0));
+				mlir::Type type = llvm_type(generator, state_type);
+				state = LLVM::GlobalOp::create(b, l, type, false, LLVM::Linkage::Internal, PROCESS_STATE_SYMBOL, mlir::Attribute(),
+					std::max<size_t>(state_type->alignment, 1));
+				b.setInsertionPointToStart(b.createBlock(&state.getInitializerRegion()));
+				LLVM::ReturnOp::create(b, l, zero_of(generator, type));
 			}
-			return value(LLVM::AddressOfOp::create(b, l, slot), result_type);
+			if (!state) {
+				unsupported(generator, nullptr, "base/runtime's ProcessState isn't what the compiler expects");
+				return value(zero_of(generator, pointer_type(generator)), result_type);
+			}
+			return value(LLVM::AddressOfOp::create(b, l, state), result_type);
 		}
 		if (name == "set_carrier") {
 			assembly(generator, mlir::Type(), arguments, "movq $0, %r14", "r,~{memory}");

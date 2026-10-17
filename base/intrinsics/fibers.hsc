@@ -13,12 +13,11 @@ import runtime from "base"
 carrier : fn() -> ptr[mut runtime.CarrierBlock] : ---
 
 /*
- * Where the program keeps which of the operating system's thread-local storage slots holds each
- * thread's carrier block, for callbacks from foreign code to find it (docs/calling_convention.md,
- * Calls to Foreign Code): one more than the slot, or 0 until one is allocated. The runtime
- * allocates it and stores each carrier block there (runtime.register_carrier).
+ * The runtime's state for the whole process, like which thread-local storage slot holds each
+ * thread's carrier block, and the heap's: one global, the program's, zeroed when it starts. Only
+ * the runtime uses it; programs have no mutable globals (docs/faq.md).
  */
-carrier_slot : fn() -> ptr[mut u32] : ---
+process_state : fn() -> ptr[mut runtime.ProcessState] : ---
 
 /*
  * Load the carrier register with block, for code that starts without Hemera's startup code

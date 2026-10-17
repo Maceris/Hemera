@@ -131,7 +131,7 @@ import intrinsics from "base"
      * thread before any other starts.
      */
     register_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
-        slot :: intrinsics.carrier_slot()
+        slot :: &intrinsics.process_state().carrier_slot
         if slot^ == 0 {
             slot^ = TlsAlloc() + 1
         }
@@ -146,7 +146,7 @@ import intrinsics from "base"
      * call back again).
      */
     callback_carrier #no_context :: fn() -> ptr[mut CarrierBlock] {
-        slot :: intrinsics.carrier_slot()
+        slot :: &intrinsics.process_state().carrier_slot
         if slot^ != 0 {
             found :: TlsGetValue(slot^ - 1)
             if found != null {

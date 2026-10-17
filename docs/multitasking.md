@@ -31,7 +31,10 @@ register for whatever called it. Once it reaches its stack's limit, `morestack` 
 
 Threads start on Windows x64 (`base/runtime/windows.hsc`) and on Linux x86-64 (`base/runtime/linux.hsc`), where a
 hosted program's `main` also starts with an allocator in `runtime.HOSTED_CONTEXT`: the process heap on Windows, and
-pages from the kernel on Linux.
+on Linux the runtime's own `PageHeap` (`base/runtime/process.hsc`), which keeps a free list for each size class from
+16 bytes to 2 KiB, carved from 64 KiB chunks of mapped pages, gives bigger blocks pages of their own, and has one
+lock. The runtime keeps its state for the whole process, like that heap's, in one global the program has for it
+(`intrinsics.process_state`).
 
 * On Windows, the system makes each thread's stack, and the carrier block also goes in the thread's thread-local
   storage, where callbacks from foreign code find it.

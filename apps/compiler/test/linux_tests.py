@@ -22,6 +22,7 @@ SCENARIOS = COMPILER_DIR / "test" / "back_end" / "scenarios"
 TESTS = [
     ("hosted", []),
     ("threads", ["--stack-check=morestack"]),
+    ("heap", []),
 ]
 
 

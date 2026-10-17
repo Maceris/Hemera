@@ -104,6 +104,12 @@ TEST(Hosted, RunsThreads)
 	run_hosted("threads", hemera::TargetStackCheck::Morestack);
 }
 
+// The hosted context's allocator, from several threads at once.
+TEST(Hosted, AllocatesFromThreads)
+{
+	run_hosted("heap", hemera::TargetStackCheck::Off);
+}
+
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.
 TEST(Hosted, ReportsPointerFromCompileTime)
 {
