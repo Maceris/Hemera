@@ -94,8 +94,16 @@ runtime.wake(waiter)
   compare and exchange fails, and it queues the fiber itself. Either way exactly one of them does.
 * A thread waits on the state with `wait_on_value`, and `wake` wakes it.
 
-`std/concurrency`'s `Mutex` is built on this: a fiber waiting for it parks, a thread blocks, waiters are served in
-order, and unlocking hands the lock straight to the first of them.
+`std/concurrency` builds on this, so that a fiber waiting parks and a thread blocks:
+
+* `Mutex`: waiters are served in order, and unlocking hands the lock straight to the first of them.
+* `Condition`: `condition_wait(&condition, &mutex)` joins the condition's list, then unlocks the mutex and parks,
+  and locks it again once woken by `condition_signal` or `condition_broadcast`. Joining before unlocking means a
+  signal from whoever takes the mutex next isn't missed. Waits can end without a signal of their own, so they go in a
+  loop that checks what they wait for.
+* `Channel[T, capacity]`: a queue of values between fibers and threads, made from a mutex and two conditions.
+  `channel_send` waits for room and `channel_receive` for a value; `channel_close` makes sends fail, and receives
+  fail once what's left is taken.
 
 ## Fiber Pools
 

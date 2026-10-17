@@ -10,6 +10,10 @@
  * Every turn also adds one to a counter behind a std/concurrency Mutex, yielding while it holds it,
  * so other fibers park waiting for it, and main and thread 6 add to it too, blocking instead.
  *
+ * Values go through a std/concurrency Channel of 8, from PRODUCERS fibers of the first pool to
+ * CONSUMERS fibers of the second and to thread 6, so senders and receivers both wait, on fibers and
+ * on a thread. The last producer closes it.
+ *
  * Built with stack_check = .Morestack. Nothing fills the carriers' segment caches, so growing
  * allocates segments: a fiber of the first pool recurses FIBER_DEPTH calls deep, and thread 6
  * THREAD_DEPTH, well past the stack the system gave it.
@@ -34,6 +38,9 @@ PLAIN_THREAD :: 6
 PLAIN_ADDS :: 500
 // About 64 bytes a call: 192 KiB on a fiber, and 4 MiB on thread 6, whose own stack is 1 MiB
 FIBER_DEPTH :: 3000
+PRODUCERS :: 6
+CONSUMERS :: 4
+ITEMS_EACH :: 200
 THREAD_DEPTH :: 65536
 
 // What one pool's fibers record.
@@ -63,6 +70,37 @@ ThreadTest :: struct {
     // What the deep calls added up to
     fiber_sum : u64,
     thread_sum : u64,
+    channel : concurrency.Channel[u64, 8],
+    producers_done : u64,
+    received_sum : u64,
+    received_count : u64,
+}
+
+producer_worker : runtime.ThreadFunction : fn(data #escaping : any) {
+    test :: cast[ptr[mut ThreadTest]](context.user_data)
+    for i in 0..<ITEMS_EACH {
+        concurrency.channel_send(&test.channel, cast[u64](i + 1))
+    }
+    // The last one closes it (the count from before comes back)
+    if intrinsics.interlocked_increment_u64(&test.producers_done) == PRODUCERS - 1 {
+        concurrency.channel_close(&test.channel)
+    }
+}
+
+// Until the channel is closed and empty.
+consume :: fn(test: ptr[mut ThreadTest]) {
+    loop {
+        value, ok :: concurrency.channel_receive(&test.channel)
+        if !ok {
+            break
+        }
+        intrinsics.interlocked_exchange_add_u64(&test.received_sum, value)
+        intrinsics.interlocked_increment_u64(&test.received_count)
+    }
+}
+
+consumer_worker : runtime.ThreadFunction : fn(data #escaping : any) {
+    consume(cast[ptr[mut ThreadTest]](context.user_data))
 }
 
 // 1 + 2 + ... + depth, a call each, reading back after the call so it isn't turned into a loop.
@@ -115,6 +153,18 @@ main :: fn() -> int {
         if deep_error != null {
             return 2
         }
+        for i in 0..<PRODUCERS {
+            _, error :: fiber.spawn(test.first, producer_worker)
+            if error != null {
+                return 2
+            }
+        }
+        for i in 0..<CONSUMERS {
+            _, error :: fiber.spawn(test.second, consumer_worker)
+            if error != null {
+                return 2
+            }
+        }
         for i in 0..<FIRST_FIBERS {
             _, error :: fiber.spawn(test.first, first_worker)
             if error != null {
@@ -158,6 +208,9 @@ main :: fn() -> int {
     if test.thread_sum != THREAD_DEPTH * (THREAD_DEPTH + 1) / 2 {
         return 9
     }
+    if test.received_count != PRODUCERS * ITEMS_EACH || test.received_sum != PRODUCERS * ITEMS_EACH * (ITEMS_EACH + 1) / 2 {
+        return 10
+    }
     fiber.destroy_fiber_pool(test.first)
     fiber.destroy_fiber_pool(test.second)
     return 42
@@ -183,6 +236,8 @@ plain_main : runtime.ThreadFunction : fn(data #escaping : any) {
     runtime.fiber_yield()
     test.plain_yielded = 1
     test.thread_sum = climb(1, THREAD_DEPTH)
+    // A thread receiving too, blocking while the channel is empty
+    consume(test)
     for i in 0..<PLAIN_ADDS {
         add_one(test)
     }
