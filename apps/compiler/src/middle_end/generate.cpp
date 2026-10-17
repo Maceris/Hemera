@@ -956,7 +956,8 @@ namespace hemera {
 		text += "\txorl %r12d, %r12d\n2:\n\tcmpq %r11, %r12\n\tjae 4f\n";
 		text += "\tmovq 32(%rbp,%r12), %r10\n\tmovq %r10, (%rbx,%r12)\n\taddq $8, %r12\n\tjmp 2b\n";
 		text += "4:\n\tmovq %rbx, %r10\n\tmovq -24(%rbp), %rbx\n\tmovq -32(%rbp), %r12\n\tmovq %r10, %rsp\n";
-		text += "\tcallq *%rax\n";
+		// Where a body on a new segment returns: stack walks leave this frame out, and .grow's too
+		text += std::format("\tcallq *%rax\n{}:\n", MORESTACK_CONTINUE_SYMBOL);
 		// Back: the segment just left is the spare now, and an older spare goes to the cache
 		text += "\tleaq -16(%rbp), %rsp\n";
 		text += std::format("\tmovq {}(%r14), %r10\n\tmovq {}(%r14), %r11\n\ttestq %r11, %r11\n\tjz 5f\n", segment, spare);
@@ -997,6 +998,7 @@ namespace hemera {
 		generator.module_assembly.push_back(morestack_assembly(limit, segment, spare, cache, cache_count, segment_size, next_free,
 			guard + header->type_value->size));
 		assembly_function(generator, std::string(MORESTACK_SYMBOL), no_arguments(generator));
+		assembly_function(generator, MORESTACK_CONTINUE_SYMBOL, no_arguments(generator));
 		return true;
 	}
 
@@ -3082,6 +3084,11 @@ namespace hemera {
 		size_t current_fiber = 0;
 		size_t scheduler_sp = 0;
 		size_t shadow_stack_base = 0;
+		// Fiber.state: where, how many bytes, and the values for .Running and .Suspended
+		size_t state = 0;
+		size_t state_size = 0;
+		uint64_t running = 0;
+		uint64_t suspended = 0;
 	};
 
 	static bool runtime_integer(Generator& generator, std::string_view name, uint64_t& value) {
@@ -3126,7 +3133,27 @@ namespace hemera {
 		for (const auto& [name, offset] : carrier_fields) {
 			found = found && runtime_offset(generator, "CarrierBlock", name, *offset);
 		}
-		return found;
+		// The state, which the switches keep up to date
+		Declaration* fiber = base_declaration_named(generator, "runtime", "Fiber");
+		if (!found || fiber == nullptr || fiber->type_value == nullptr) {
+			return false;
+		}
+		TypeInfo* state_type = nullptr;
+		std::vector<int64_t> path;
+		if (!find_member(generator, static_cast<TypeInfoStruct const*>(base(fiber->type_value)), intern(std::string("state")), offsets.state,
+			state_type, path) || !is_variant(state_type, TypeInfoVariant::ENUM)) {
+			return false;
+		}
+		offsets.state_size = state_type->size;
+		offsets.running = static_cast<uint64_t>(enum_value(state_type, intern(std::string("Running"))));
+		offsets.suspended = static_cast<uint64_t>(enum_value(state_type, intern(std::string("Suspended"))));
+		return offsets.state_size == 1 || offsets.state_size == 2 || offsets.state_size == 4 || offsets.state_size == 8;
+	}
+
+	// Storing a fiber's state, as wide as FiberState is.
+	static std::string set_state(const FiberOffsets& o, uint64_t value) {
+		const char suffix = o.state_size == 1 ? 'b' : o.state_size == 2 ? 'w' : o.state_size == 4 ? 'l' : 'q';
+		return std::format("\tmov{} ${}, {}(%rdi)\n", suffix, value, o.state);
 	}
 
 	/*
@@ -3173,6 +3200,7 @@ namespace hemera {
 		text += save_scheduler;
 		text += std::format("\tmovq %rdi, {}(%r14)\n\tmovq %rdx, {}(%r14)\n\tmovq $0, {}(%r14)\n",
 			o.current_fiber, o.carrier_limit, o.carrier_segment);
+		text += set_state(o, o.running);
 		text += "\tmovq %rsi, %rsp\n\txorl %ebp, %ebp\n\tcallq hemera.fiber_entry\n\tud2\n";
 		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
 		text += "\t.p2align 4\nhemera.fiber_entry:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n";
@@ -3182,6 +3210,7 @@ namespace hemera {
 		text += std::format("\t.p2align 4\n{}:\n", FIBER_RESUME_SYMBOL);
 		text += save_scheduler;
 		text += std::format("\tmovq %rdi, {}(%r14)\n", o.current_fiber);
+		text += set_state(o, o.running);
 		text += std::format("\tmovq {}(%rdi), %rax\n\tmovq %rax, {}(%r14)\n", o.segment, o.carrier_segment);
 		text += std::format("\tmovq {}(%rdi), %rax\n\tmovq %rax, {}(%r14)\n", o.limit, o.carrier_limit);
 		text += std::format("\tmovq {}(%rdi), %r10\n\tmovq {}(%rdi), %r11\n\tmovl $1, %esi\n", o.top_frame, o.top_continuation);
@@ -3192,7 +3221,7 @@ namespace hemera {
 		text += std::format("\tmovq (%r10), %r9\n\tmovq %r9, {}(%rdi)\n", o.parent_frame);
 		text += "\tleaq 16(%r10), %rsp\n\tcallq hemera.fiber_reenter\n";
 		// The frame returned, to here: on to its caller, whose frame bottom the stack pointer is at now
-		text += "hemera.fiber_loop_return:\n\tmovq %rsp, %rcx\n";
+		text += std::format("{}:\n\tmovq %rsp, %rcx\n", FIBER_LOOP_RETURN_SYMBOL);
 		text += std::format("\tmovq {}(%r14), %rdi\n", o.current_fiber);
 		text += std::format("\tmovq {}(%rdi), %r11\n\tmovq {}(%rdi), %r10\n", o.reentered_return, o.parent_frame);
 		text += "\txorl %esi, %esi\n\tjmp hemera.fiber_reenter_next\n";
@@ -3214,8 +3243,28 @@ namespace hemera {
 		text += "1:\n";
 		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%rdi)\n", o.carrier_segment, o.segment);
 		text += std::format("\tmovq {}(%r14), %rax\n\tmovq %rax, {}(%rdi)\n", o.carrier_limit, o.limit);
+		text += set_state(o, o.suspended);
 		text += back_to_scheduler(0);
 		return text;
+	}
+
+	/*
+	 * What lower_to_llvm's stack walks need to follow fibers (define_stack_walker): the resume loop's
+	 * return address, and FIBER_WALK_SYMBOL, the offsets of the carrier's current_fiber, and of a
+	 * fiber's reentered_return, state (and its size, and .Suspended), top_frame and top_continuation.
+	 */
+	static void fiber_walk_table(Generator& generator, const FiberOffsets& o) {
+		assembly_function(generator, FIBER_LOOP_RETURN_SYMBOL, no_arguments(generator));
+		const std::vector<int64_t> values{ static_cast<int64_t>(o.current_fiber), static_cast<int64_t>(o.reentered_return),
+			static_cast<int64_t>(o.state), static_cast<int64_t>(o.state_size), static_cast<int64_t>(o.suspended),
+			static_cast<int64_t>(o.top_frame), static_cast<int64_t>(o.top_continuation) };
+		mlir::Type i64 = integer_type(generator, 8);
+		mlir::Type type = LLVM::LLVMArrayType::get(i64, values.size());
+		auto tensor = mlir::RankedTensorType::get({ static_cast<int64_t>(values.size()) }, i64);
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		generator.builder.setInsertionPointToEnd(generator.module.getBody());
+		LLVM::GlobalOp::create(generator.builder, generator.loc, type, true, LLVM::Linkage::Internal, FIBER_WALK_SYMBOL,
+			mlir::DenseElementsAttr::get(tensor, llvm::ArrayRef<int64_t>(values)), 8);
 	}
 
 	/*
@@ -3250,6 +3299,7 @@ namespace hemera {
 			const std::string run_symbol = run_function.getSymName().str();
 			const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
 			generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse));
+			fiber_walk_table(generator, offsets);
 		}
 		mlir::Type pointer = pointer_type(generator);
 		mlir::Type i32 = integer_type(generator, 4);
@@ -3344,6 +3394,20 @@ namespace hemera {
 			}
 			auto call = LLVM::CallOp::create(b, l, walker, mlir::ValueRange{ extract(generator, arguments[0], 1),
 				extract(generator, arguments[0], 0), arguments[1] });
+			return value(call.getResult(), result_type);
+		}
+		// A suspended fiber's trace, from the walker lower_to_llvm defines (define_stack_walker)
+		if (name == "capture_fiber_stack_trace") {
+			mlir::Type usize = usize_type(generator);
+			LLVM::LLVMFuncOp walker = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(FIBER_STACK_WALKER_SYMBOL);
+			if (!walker) {
+				mlir::OpBuilder::InsertionGuard guard(b);
+				b.setInsertionPointToEnd(generator.module.getBody());
+				walker = LLVM::LLVMFuncOp::create(b, l, FIBER_STACK_WALKER_SYMBOL,
+					LLVM::LLVMFunctionType::get(usize, { pointer_type(generator), pointer_type(generator), usize }));
+			}
+			auto call = LLVM::CallOp::create(b, l, walker, mlir::ValueRange{ arguments[0], extract(generator, arguments[1], 1),
+				extract(generator, arguments[1], 0) });
 			return value(call.getResult(), result_type);
 		}
 		// The carrier register, which nothing else uses (docs/calling_convention.md, Carrier Register)
@@ -6625,10 +6689,188 @@ namespace hemera {
 	 * saved frame pointers. A frame whose saved frame pointer is null is the entry function's, which
 	 * end_stack_at_entry made the end of the chain, so its return address isn't recorded.
 	 */
-	//TODO(claude) leaving out morestack's and .grow's frames, and following fibers' resume loops
 	static void define_windows_stack_walker(llvm::Module& module, llvm::Function* walker);
 
+	// What a walk needs from the generated fiber switches and morestack, when the program has them.
+	struct WalkSupport {
+		llvm::Function* loop_return = nullptr;
+		llvm::Function* morestack_continue = nullptr;
+		// FIBER_WALK_SYMBOL's offsets, see fiber_walk_table
+		std::vector<uint64_t> offsets;
+	};
+
+	static WalkSupport walk_support(llvm::Module& module) {
+		WalkSupport support;
+		support.loop_return = module.getFunction(FIBER_LOOP_RETURN_SYMBOL);
+		support.morestack_continue = module.getFunction(MORESTACK_CONTINUE_SYMBOL);
+		llvm::GlobalVariable* table = module.getGlobalVariable(FIBER_WALK_SYMBOL, true);
+		auto* values = table != nullptr ? llvm::dyn_cast<llvm::ConstantDataArray>(table->getInitializer()) : nullptr;
+		for (unsigned i = 0; values != nullptr && i < values->getNumElements(); ++i) {
+			support.offsets.push_back(values->getElementAsInteger(i));
+		}
+		if (support.offsets.size() < 7) {
+			support.loop_return = nullptr;
+		}
+		return support;
+	}
+
+	/*
+	 * The walk itself, from where builder is in function: from frame start, following saved frame
+	 * pointers, recording each frame's return address into addresses after the written ones, up to
+	 * count, once skip have gone by; returns how many it wrote. A frame whose saved frame pointer is
+	 * null is the entry function's, which end_stack_at_entry made the end of the chain, so its return
+	 * address isn't recorded. A frame the fiber resume loop re-entered returns to the loop: its real
+	 * return address is the running fiber's reentered_return. A body morestack ran on a new segment
+	 * returns into morestack, whose own frame returns into the function's .grow: both are left out.
+	 */
+	static void build_walk(llvm::IRBuilder<>& builder, llvm::Function* function, const WalkSupport& support, llvm::Value* start,
+		llvm::Value* addresses, llvm::Value* count, llvm::Value* skip, llvm::Value* first_written) {
+
+		llvm::LLVMContext& context = builder.getContext();
+		llvm::Type* pointer = llvm::PointerType::get(context, 0);
+		llvm::Type* size = llvm::Type::getInt64Ty(context);
+		llvm::Type* bit = llvm::Type::getInt1Ty(context);
+		llvm::BasicBlock* entry = builder.GetInsertBlock();
+		llvm::BasicBlock* loop = llvm::BasicBlock::Create(context, "loop", function);
+		llvm::BasicBlock* frame = llvm::BasicBlock::Create(context, "frame", function);
+		llvm::BasicBlock* returned = llvm::BasicBlock::Create(context, "returned", function);
+		llvm::BasicBlock* record = llvm::BasicBlock::Create(context, "record", function);
+		llvm::BasicBlock* store = llvm::BasicBlock::Create(context, "store", function);
+		llvm::BasicBlock* next = llvm::BasicBlock::Create(context, "next", function);
+		llvm::BasicBlock* done = llvm::BasicBlock::Create(context, "done", function);
+		builder.CreateBr(loop);
+
+		// Stop at a null or misaligned frame pointer, or once addresses is full
+		builder.SetInsertPoint(loop);
+		llvm::PHINode* current = builder.CreatePHI(pointer, 2);
+		llvm::PHINode* written = builder.CreatePHI(size, 2);
+		llvm::PHINode* skipped = builder.CreatePHI(size, 2);
+		llvm::PHINode* dropping = builder.CreatePHI(bit, 2);
+		current->addIncoming(start, entry);
+		written->addIncoming(first_written, entry);
+		skipped->addIncoming(llvm::ConstantInt::get(size, 0), entry);
+		dropping->addIncoming(llvm::ConstantInt::getFalse(context), entry);
+		llvm::Value* misaligned = builder.CreateICmpNE(builder.CreateAnd(builder.CreatePtrToInt(current, size), 7),
+			llvm::ConstantInt::get(size, 0));
+		llvm::Value* stop = builder.CreateOr(builder.CreateOr(builder.CreateIsNull(current), misaligned),
+			builder.CreateICmpUGE(written, count));
+		builder.CreateCondBr(stop, done, frame);
+
+		// The caller's frame pointer, then this frame's return address unless it's the entry function's
+		builder.SetInsertPoint(frame);
+		llvm::Value* caller = builder.CreateLoad(pointer, current);
+		llvm::Value* raw_return = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), current, 8));
+		builder.CreateCondBr(builder.CreateIsNull(caller), done, returned);
+
+		builder.SetInsertPoint(returned);
+		llvm::Value* return_address = raw_return;
+		if (support.loop_return != nullptr) {
+			// Through the resume loop: the running fiber knows where this frame really returns
+			llvm::BasicBlock* through_loop = llvm::BasicBlock::Create(context, "through_loop", function);
+			llvm::BasicBlock* found = llvm::BasicBlock::Create(context, "found", function);
+			llvm::BasicBlock* from = builder.GetInsertBlock();
+			builder.CreateCondBr(builder.CreateICmpEQ(raw_return, support.loop_return), through_loop, found);
+			builder.SetInsertPoint(through_loop);
+			llvm::Function* read_register = llvm::Intrinsic::getOrInsertDeclaration(function->getParent(),
+				llvm::Intrinsic::read_register, { size });
+			llvm::Value* r14 = builder.CreateCall(read_register, { llvm::MetadataAsValue::get(context,
+				llvm::MDNode::get(context, { llvm::MDString::get(context, "r14") })) });
+			llvm::Value* carrier = builder.CreateIntToPtr(r14, pointer);
+			llvm::Value* fiber = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), carrier, support.offsets[0]));
+			llvm::Value* real = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), fiber, support.offsets[1]));
+			builder.CreateBr(found);
+			builder.SetInsertPoint(found);
+			llvm::PHINode* chosen = builder.CreatePHI(pointer, 2);
+			chosen->addIncoming(raw_return, from);
+			chosen->addIncoming(real, through_loop);
+			return_address = chosen;
+		}
+		// morestack's continuation, and then .grow's: neither is a call the program made
+		llvm::Value* into_morestack = support.morestack_continue != nullptr
+			? builder.CreateICmpEQ(return_address, support.morestack_continue) : static_cast<llvm::Value*>(llvm::ConstantInt::getFalse(context));
+		llvm::Value* drop = builder.CreateOr(dropping, into_morestack);
+		llvm::BasicBlock* checked = builder.GetInsertBlock();
+		builder.CreateCondBr(drop, next, record);
+
+		// Skipped frames count towards skip; the others go in addresses
+		builder.SetInsertPoint(record);
+		llvm::Value* skipping = builder.CreateICmpULT(skipped, skip);
+		llvm::Value* one_more_skipped = builder.CreateAdd(skipped, llvm::ConstantInt::get(size, 1));
+		builder.CreateCondBr(skipping, next, store);
+		builder.SetInsertPoint(store);
+		builder.CreateStore(return_address, builder.CreateGEP(pointer, addresses, written));
+		llvm::Value* one_more_written = builder.CreateAdd(written, llvm::ConstantInt::get(size, 1));
+		builder.CreateBr(next);
+
+		builder.SetInsertPoint(next);
+		llvm::PHINode* now_written = builder.CreatePHI(size, 3);
+		now_written->addIncoming(written, checked);
+		now_written->addIncoming(written, record);
+		now_written->addIncoming(one_more_written, store);
+		llvm::PHINode* now_skipped = builder.CreatePHI(size, 3);
+		now_skipped->addIncoming(skipped, checked);
+		now_skipped->addIncoming(one_more_skipped, record);
+		now_skipped->addIncoming(skipped, store);
+		llvm::PHINode* now_dropping = builder.CreatePHI(bit, 3);
+		now_dropping->addIncoming(into_morestack, checked);
+		now_dropping->addIncoming(llvm::ConstantInt::getFalse(context), record);
+		now_dropping->addIncoming(llvm::ConstantInt::getFalse(context), store);
+		current->addIncoming(caller, next);
+		written->addIncoming(now_written, next);
+		skipped->addIncoming(now_skipped, next);
+		dropping->addIncoming(now_dropping, next);
+		builder.CreateBr(loop);
+
+		builder.SetInsertPoint(done);
+		llvm::PHINode* result = builder.CreatePHI(size, 2);
+		result->addIncoming(written, loop);
+		result->addIncoming(written, frame);
+		builder.CreateRet(result);
+	}
+
+	/*
+	 * intrinsics.capture_fiber_stack_trace(fiber, addresses), if a program uses it: a suspended
+	 * fiber's trace, where it continues first, then the walk from its innermost frame, whose return
+	 * addresses fiber_suspend made real again. 0 for a fiber that isn't suspended.
+	 */
+	static void define_fiber_stack_walker(llvm::Module& module, const WalkSupport& support) {
+		llvm::Function* walker = module.getFunction(FIBER_STACK_WALKER_SYMBOL);
+		if (walker == nullptr || !walker->isDeclaration()) {
+			return;
+		}
+		llvm::LLVMContext& context = module.getContext();
+		llvm::Type* pointer = llvm::PointerType::get(context, 0);
+		llvm::Type* size = llvm::Type::getInt64Ty(context);
+		walker->setLinkage(llvm::GlobalValue::InternalLinkage);
+		walker->addFnAttr(llvm::Attribute::NoInline);
+		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
+		if (support.loop_return == nullptr) {
+			// No fibers switch in this program, so none is suspended
+			builder.CreateRet(llvm::ConstantInt::get(size, 0));
+			return;
+		}
+		llvm::Value* fiber = walker->getArg(0);
+		llvm::Value* addresses = walker->getArg(1);
+		llvm::Value* count = walker->getArg(2);
+		auto field = [&](size_t index) { return builder.CreateConstGEP1_64(builder.getInt8Ty(), fiber, support.offsets[index]); };
+		llvm::Type* state_type = llvm::Type::getIntNTy(context, static_cast<unsigned>(support.offsets[3] * 8));
+		llvm::Value* suspended = builder.CreateICmpEQ(builder.CreateLoad(state_type, field(2)),
+			llvm::ConstantInt::get(state_type, support.offsets[4]));
+		llvm::Value* room = builder.CreateICmpNE(count, llvm::ConstantInt::get(size, 0));
+		llvm::BasicBlock* walk = llvm::BasicBlock::Create(context, "walk", walker);
+		llvm::BasicBlock* none = llvm::BasicBlock::Create(context, "none", walker);
+		builder.CreateCondBr(builder.CreateAnd(suspended, room), walk, none);
+		builder.SetInsertPoint(none);
+		builder.CreateRet(llvm::ConstantInt::get(size, 0));
+		builder.SetInsertPoint(walk);
+		builder.CreateStore(builder.CreateLoad(pointer, field(6)), addresses);
+		build_walk(builder, walker, support, builder.CreateLoad(pointer, field(5)), addresses, count,
+			llvm::ConstantInt::get(size, 0), llvm::ConstantInt::get(size, 1));
+	}
+
 	static void define_stack_walker(llvm::Module& module, bool windows) {
+		const WalkSupport support = walk_support(module);
+		define_fiber_stack_walker(module, support);
 		llvm::Function* walker = module.getFunction(STACK_WALKER_SYMBOL);
 		if (walker == nullptr || !walker->isDeclaration()) {
 			return;
@@ -6643,68 +6885,11 @@ namespace hemera {
 			define_windows_stack_walker(module, walker);
 			return;
 		}
-		llvm::Value* addresses = walker->getArg(0);
-		llvm::Value* count = walker->getArg(1);
-		llvm::Value* skip = walker->getArg(2);
+		// From the walker's caller's frame
 		llvm::IRBuilder<> builder(llvm::BasicBlock::Create(context, "entry", walker));
-		llvm::BasicBlock* entry = builder.GetInsertBlock();
-		llvm::BasicBlock* loop = llvm::BasicBlock::Create(context, "loop", walker);
-		llvm::BasicBlock* frame = llvm::BasicBlock::Create(context, "frame", walker);
-		llvm::BasicBlock* record = llvm::BasicBlock::Create(context, "record", walker);
-		llvm::BasicBlock* next = llvm::BasicBlock::Create(context, "next", walker);
-		llvm::BasicBlock* done = llvm::BasicBlock::Create(context, "done", walker);
 		llvm::Value* own = builder.CreateIntrinsic(llvm::Intrinsic::frameaddress, { pointer }, { builder.getInt32(0) });
-		llvm::Value* first = builder.CreateLoad(pointer, own);
-		builder.CreateBr(loop);
-
-		// Stop at a null or misaligned frame pointer, or once addresses is full
-		builder.SetInsertPoint(loop);
-		llvm::PHINode* current = builder.CreatePHI(pointer, 2);
-		llvm::PHINode* written = builder.CreatePHI(size, 2);
-		llvm::PHINode* skipped = builder.CreatePHI(size, 2);
-		current->addIncoming(first, entry);
-		written->addIncoming(llvm::ConstantInt::get(size, 0), entry);
-		skipped->addIncoming(llvm::ConstantInt::get(size, 0), entry);
-		llvm::Value* misaligned = builder.CreateICmpNE(builder.CreateAnd(builder.CreatePtrToInt(current, size), 7),
-			llvm::ConstantInt::get(size, 0));
-		llvm::Value* stop = builder.CreateOr(builder.CreateOr(builder.CreateIsNull(current), misaligned),
-			builder.CreateICmpUGE(written, count));
-		builder.CreateCondBr(stop, done, frame);
-
-		// The caller's frame pointer, then this frame's return address unless it's the entry function's
-		builder.SetInsertPoint(frame);
-		llvm::Value* caller = builder.CreateLoad(pointer, current);
-		llvm::Value* return_address = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), current, 8));
-		builder.CreateCondBr(builder.CreateIsNull(caller), done, record);
-
-		// Skipped frames count towards skip; the others go in addresses
-		builder.SetInsertPoint(record);
-		llvm::Value* skipping = builder.CreateICmpULT(skipped, skip);
-		llvm::Value* one_more_skipped = builder.CreateAdd(skipped, llvm::ConstantInt::get(size, 1));
-		llvm::BasicBlock* store = llvm::BasicBlock::Create(context, "store", walker, next);
-		builder.CreateCondBr(skipping, next, store);
-		builder.SetInsertPoint(store);
-		builder.CreateStore(return_address, builder.CreateGEP(pointer, addresses, written));
-		llvm::Value* one_more_written = builder.CreateAdd(written, llvm::ConstantInt::get(size, 1));
-		builder.CreateBr(next);
-
-		builder.SetInsertPoint(next);
-		llvm::PHINode* now_written = builder.CreatePHI(size, 2);
-		now_written->addIncoming(written, record);
-		now_written->addIncoming(one_more_written, store);
-		llvm::PHINode* now_skipped = builder.CreatePHI(size, 2);
-		now_skipped->addIncoming(one_more_skipped, record);
-		now_skipped->addIncoming(skipped, store);
-		current->addIncoming(caller, next);
-		written->addIncoming(now_written, next);
-		skipped->addIncoming(now_skipped, next);
-		builder.CreateBr(loop);
-
-		builder.SetInsertPoint(done);
-		llvm::PHINode* result = builder.CreatePHI(size, 2);
-		result->addIncoming(written, loop);
-		result->addIncoming(written, frame);
-		builder.CreateRet(result);
+		build_walk(builder, walker, support, builder.CreateLoad(pointer, own), walker->getArg(0), walker->getArg(1),
+			walker->getArg(2), llvm::ConstantInt::get(size, 0));
 	}
 
 	/*

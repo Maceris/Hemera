@@ -388,15 +388,18 @@ Stack traces aren't recorded as code runs. `intrinsics.capture_stack_trace` buil
 saved base pointers from the current frame and collecting each frame's return address (`[BP + 8]`). Every function
 keeps its frame pointer for this, so the chain is never broken by an optimized-out frame:
 
-* Across segments, there's nothing special to do: `morestack` and `.grow` build ordinary frames,
-  so the chain leads from a function on a new segment back to its caller on the old one.
-  Their return addresses are inside `morestack` and `.grow`, and get filtered out of the trace.
+* Across segments, `morestack` and `.grow` build ordinary frames, so the chain leads from a function on a new segment
+  back to its caller on the old one. A body that `morestack` ran returns to `morestack`'s continuation, and
+  `morestack`'s own frame returns into the function's `.grow`, so the walk leaves out both of those addresses: the
+  next one is the function's real caller.
 * On a running fiber, the outermost re-entered frame's return address is `.loop_return`. When the walk reaches it,
   it continues with the fiber's `reentered_return` as that frame's real return address, and `parent_frame` as the
   next frame. The fiber is found through the carrier block.
-* On a suspended fiber (`intrinsics.capture_fiber_stack_trace`), the walk starts at `top_frame`. `fiber_suspend` has
-  already put the real return address back, so the chain is ordinary all the way down.
-* The walk stops at `fiber_entry` for fibers, and at the thread's entry function for threads. A program's entry
+* On a suspended fiber (`intrinsics.capture_fiber_stack_trace`), the trace starts with `top_continuation`, and the walk
+  with `top_frame`. `fiber_suspend` has already put the real return address back, so the chain is ordinary all the way
+  down. The fiber switches keep the fiber's `state` current (`.Running` or `.Suspended`), and a fiber that isn't
+  suspended gives an empty trace.
+* The walk stops at `fiber_entry` for fibers (whose address is the last one, as the fiber function's caller's), and at the thread's entry function for threads. A program's entry
   function (the startup code's, or the freestanding entry) clears the frame pointer it saved, since whatever called it
   isn't Hemera code: the walk ends there, without its caller's return address.
 * An interrupt function's frame chains to the interrupted code's, so a trace from a fault handler continues through the

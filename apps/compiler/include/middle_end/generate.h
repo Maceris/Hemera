@@ -44,4 +44,13 @@ namespace hemera {
 	constexpr const char* HOSTED_ENTRY_SYMBOL = "hemera_entry";
 	// What intrinsics.capture_stack_trace calls, defined by lower_to_llvm
 	constexpr const char* STACK_WALKER_SYMBOL = "hemera_capture_stack_trace";
+	// What intrinsics.capture_fiber_stack_trace calls, defined by lower_to_llvm
+	constexpr const char* FIBER_STACK_WALKER_SYMBOL = "hemera.fiber_stack_walker";
+	/*
+	 * What the walks need from the generated fiber switches and morestack, when a program has them:
+	 * the resume loop's return address, morestack's, and a table of offsets (see fiber_walk_table).
+	 */
+	constexpr const char* FIBER_LOOP_RETURN_SYMBOL = "hemera.fiber_loop_return";
+	constexpr const char* MORESTACK_CONTINUE_SYMBOL = "hemera.morestack_continue";
+	constexpr const char* FIBER_WALK_SYMBOL = "hemera.fiber_walk";
 }
