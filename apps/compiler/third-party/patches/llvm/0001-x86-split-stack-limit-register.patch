@@ -24,7 +24,7 @@ index aedc4956f1bd..8a204d0cb903 100644
      HasNoSplitStack = true;
  
 diff --git a/llvm/lib/Target/X86/X86FrameLowering.cpp b/llvm/lib/Target/X86/X86FrameLowering.cpp
-index a3f50cde617a..8cce58abc987 100644
+index a3f50cde617a..7bd6aaefa0df 100644
 --- a/llvm/lib/Target/X86/X86FrameLowering.cpp
 +++ b/llvm/lib/Target/X86/X86FrameLowering.cpp
 @@ -18,6 +18,7 @@
@@ -35,7 +35,7 @@ index a3f50cde617a..8cce58abc987 100644
  #include "llvm/CodeGen/LivePhysRegs.h"
  #include "llvm/CodeGen/MachineFrameInfo.h"
  #include "llvm/CodeGen/MachineFunction.h"
-@@ -3435,8 +3436,37 @@ void X86FrameLowering::adjustForSegmentedStacks(
+@@ -3435,8 +3436,43 @@ void X86FrameLowering::adjustForSegmentedStacks(
  
    if (MF.getFunction().isVarArg())
      report_fatal_error("Segmented stacks do not support vararg functions.");
@@ -69,13 +69,19 @@ index a3f50cde617a..8cce58abc987 100644
 +  }
 +  const bool TrapOnFailure =
 +      Fn.getFnAttribute("split-stack-failure").getValueAsString() == "trap";
++  // "split-stack-morestack"="symbol": call symbol with Hemera's protocol instead
++  // of __morestack's, see below.
++  const StringRef MorestackSymbol =
++      Fn.getFnAttribute("split-stack-morestack").getValueAsString();
++  if (!MorestackSymbol.empty() && !LimitReg)
++    report_fatal_error("split-stack-morestack needs split-stack-limit-register");
 +
 +  if (!LimitReg && !STI.isTargetLinux() && !STI.isTargetDarwin() &&
 +      !STI.isTargetWin32() && !STI.isTargetWin64() && !STI.isTargetFreeBSD() &&
        !STI.isTargetDragonFly())
      report_fatal_error("Segmented stacks not supported on this platform.");
  
-@@ -3476,7 +3506,25 @@ void X86FrameLowering::adjustForSegmentedStacks(
+@@ -3476,7 +3512,25 @@ void X86FrameLowering::adjustForSegmentedStacks(
    bool CompareStackPointer = StackSize < kSplitStackAvailable;
  
    // Read the limit off the current stacklet off the stack_guard location.
@@ -102,7 +108,7 @@ index a3f50cde617a..8cce58abc987 100644
      if (STI.isTargetLinux()) {
        TlsReg = X86::FS;
        TlsOffset = IsLP64 ? 0x70 : 0x40;
-@@ -3599,6 +3647,13 @@ void X86FrameLowering::adjustForSegmentedStacks(
+@@ -3599,6 +3653,45 @@ void X86FrameLowering::adjustForSegmentedStacks(
        .addMBB(&PrologueMBB)
        .addImm(X86::COND_A);
  
@@ -113,15 +119,47 @@ index a3f50cde617a..8cce58abc987 100644
 +    return;
 +  }
 +
++  // Hemera's protocol: a minimal frame, so the function has its own link in the
++  // base pointer chain while its body runs elsewhere; the frame size in r10, the
++  // stack parameters' size in r11, the body's address in rax; and a call to
++  // the symbol, which runs the body on a new stack segment and returns once it
++  // has. Then back to the original caller, who pops the parameters.
++  if (!MorestackSymbol.empty()) {
++    PrologueMBB.setMachineBlockAddressTaken();
++    PrologueMBB.setLabelMustBeEmitted();
++    BuildMI(allocMBB, DL, TII.get(X86::PUSH64r)).addReg(X86::RBP);
++    BuildMI(allocMBB, DL, TII.get(X86::MOV64rr), X86::RBP).addReg(X86::RSP);
++    BuildMI(allocMBB, DL, TII.get(X86::getMOVriOpcode(true, StackSize)),
++            X86::R10)
++        .addImm(StackSize);
++    BuildMI(allocMBB, DL,
++            TII.get(X86::getMOVriOpcode(true, X86FI->getArgumentStackSize())),
++            X86::R11)
++        .addImm(X86FI->getArgumentStackSize());
++    BuildMI(allocMBB, DL, TII.get(X86::LEA64r), X86::RAX)
++        .addReg(X86::RIP)
++        .addImm(1)
++        .addReg(0)
++        .addMBB(&PrologueMBB)
++        .addReg(0);
++    BuildMI(allocMBB, DL, TII.get(X86::CALL64pcrel32))
++        .addExternalSymbol(MF.createExternalSymbolName(MorestackSymbol));
++    BuildMI(allocMBB, DL, TII.get(X86::POP64r), X86::RBP);
++    BuildMI(allocMBB, DL, TII.get(X86::RET64));
++    checkMBB->addSuccessor(allocMBB, BranchProbability::getZero());
++    checkMBB->addSuccessor(&PrologueMBB, BranchProbability::getOne());
++    return;
++  }
++
    // On 32 bit we first push the arguments size and then the frame size. On 64
    // bit, we pass the stack frame size in r10 and the argument size in r11.
    if (Is64Bit) {
 diff --git a/llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll b/llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll
 new file mode 100644
-index 000000000000..057bda2ad33b
+index 000000000000..902249a12112
 --- /dev/null
 +++ b/llvm/test/CodeGen/X86/segmented-stacks-limit-register.ll
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,62 @@
 +; RUN: llc < %s -mtriple=x86_64-unknown-none-elf -mattr=+reserve-r14 -verify-machineinstrs | FileCheck %s
 +; RUN: llc < %s -mtriple=x86_64-pc-linux -mattr=+reserve-r14 -verify-machineinstrs | FileCheck %s
 +
@@ -158,6 +196,29 @@ index 000000000000..057bda2ad33b
 +; CHECK:       cmpq (%r14), %rsp
 +; CHECK:       callq __morestack
 +  %buf = alloca [32 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++; With "split-stack-morestack", running out calls that symbol with Hemera's protocol:
++; a minimal frame, the frame size in r10, the stack parameters' size in r11 and the
++; body's address in rax.
++define void @grows() "split-stack" "split-stack-limit-register"="r14" "split-stack-morestack"="hemera.morestack" {
++; CHECK-LABEL: grows:
++; CHECK:       leaq -{{[0-9]+}}(%rsp), %r11
++; CHECK-NEXT:  cmpq (%r14), %r11
++; CHECK-NEXT:  jbe [[GROW:.LBB[0-9_]+]]
++; CHECK:       [[GROW]]:
++; CHECK-NEXT:  pushq %rbp
++; CHECK-NEXT:  movq %rsp, %rbp
++; CHECK-NEXT:  movl ${{[0-9]+}}, %r10d
++; CHECK-NEXT:  movl $0, %r11d
++; CHECK-NEXT:  leaq {{.LBB[0-9_]+}}(%rip), %rax
++; CHECK-NEXT:  callq hemera.morestack
++; CHECK-NEXT:  popq %rbp
++; CHECK-NEXT:  retq
++; CHECK-NOT:   __morestack
++  %buf = alloca [1024 x i8]
 +  call void @use(ptr %buf)
 +  ret void
 +}

@@ -31,7 +31,7 @@ static std::filesystem::path scenario(std::string_view name) {
  * kernel: no startup code, no red zone, no SIMD, stack checks that trap, position-independent,
  * placed by a linker script.
  */
-static void build_kernel(const std::filesystem::path& output) {
+static void build_kernel(const std::filesystem::path& output, hemera::TargetStackCheck stack_check = hemera::TargetStackCheck::Trap) {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
 
@@ -52,7 +52,7 @@ static void build_kernel(const std::filesystem::path& output) {
 	options.object_format = hemera::ObjectFormatType::ELF;
 	options.cpu_features = "-mmx,-sse,-sse2,-avx,-avx2,+soft-float";
 	options.red_zone = false;
-	options.stack_check = hemera::TargetStackCheck::Trap;
+	options.stack_check = stack_check;
 	options.startup_code = false;
 	options.entry = "kernel_entry";
 	options.linker_script = std::filesystem::canonical(scenario("freestanding") / "linker.ld");
@@ -157,4 +157,25 @@ TEST(Freestanding, BuildsTheSameEveryTime)
 			EXPECT_TRUE(bytes == first) << output.string() << " differs from the first build";
 		}
 	}
+}
+
+/*
+ * With morestack instead of a trap, a function without room calls morestack (docs/calling_convention.md,
+ * Growing the Stack), which the compiler makes: the kernel links with it.
+ */
+TEST(Freestanding, BuildsWithMorestack)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "morestack" / "kernel.elf";
+	build_kernel(output, hemera::TargetStackCheck::Morestack);
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
+	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
+	bool found = false;
+	for (const llvm::object::SymbolRef& symbol : binary->getBinary()->symbols()) {
+		auto name = symbol.getName();
+		found = found || (name && *name == "hemera.morestack");
+	}
+	EXPECT_TRUE(found);
 }

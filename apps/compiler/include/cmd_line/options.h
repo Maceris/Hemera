@@ -431,6 +431,11 @@ namespace hemera {
 		/// Stop with a trap, for code with one fixed-size stack, like a kernel.
 		/// </summary>
 		Trap,
+		/// <summary>
+		/// Call morestack, which runs the function on a new stack segment (docs/calling_convention.md,
+		/// Growing the Stack). For now on x86-64 targets whose frames chain through rbp.
+		/// </summary>
+		Morestack,
 	};
 
 	struct Options {

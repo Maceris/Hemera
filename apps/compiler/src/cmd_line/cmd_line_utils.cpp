@@ -1054,6 +1054,9 @@ namespace hemera {
 				else if (first_arg == "trap") {
 					output.stack_check = TargetStackCheck::Trap;
 				}
+				else if (first_arg == "morestack") {
+					output.stack_check = TargetStackCheck::Morestack;
+				}
 				else {
 					cout << "Unrecognized stack check: " << first_arg << endl;
 					return false;

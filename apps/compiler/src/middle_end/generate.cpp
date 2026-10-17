@@ -915,6 +915,91 @@ namespace hemera {
 		return address;
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Growing the stack (docs/calling_convention.md, Growing the Stack: morestack)
+
+	constexpr std::string_view MORESTACK_SYMBOL = "hemera.morestack";
+
+	// A member's offset in one of base/runtime's structs.
+	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset);
+
+	// One of base/runtime's integer constants, written as a literal, like STACK_GUARD :: 256.
+	static bool runtime_integer(Generator& generator, std::string_view name, uint64_t& value);
+
+	/*
+	 * morestack: takes a segment for a function's body (the carrier's spare, or one from its cache),
+	 * copies the stack parameters to it, and calls the body there; once it returns, switches back and
+	 * keeps the segment as the carrier's spare. Until the body runs it only uses rax (the body),
+	 * r10 and r11 (the sizes), and rbx and r12, which it saves; after, nothing a result is in.
+	 * Out of cached segments, it traps: allocating one needs the native stack, not done yet.
+	 */
+	static std::string morestack_assembly(size_t limit, size_t segment, size_t spare, size_t cache, size_t cache_count,
+		size_t segment_size, size_t next_free, uint64_t header_and_guard) {
+
+		// Room for the frame, the parameters, the return address, alignment, and the guard
+		const uint64_t extra = header_and_guard + 32;
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", MORESTACK_SYMBOL);
+		text += "\tpushq %rbp\n\tmovq %rsp, %rbp\n";
+		text += std::format("\tpushq {}(%r14)\n\tpushq {}(%r14)\n\tpushq %rbx\n\tpushq %r12\n", limit, segment);
+		text += std::format("\tleaq {}(%r10,%r11), %rbx\n", extra);
+		// The spare, if it's big enough, or the first cached segment, which must be
+		text += std::format("\tmovq {}(%r14), %r12\n\ttestq %r12, %r12\n\tjz 1f\n", spare);
+		text += std::format("\tmovl {}(%r12), %r10d\n\tcmpq %rbx, %r10\n\tjb 1f\n", segment_size);
+		text += std::format("\tmovq $0, {}(%r14)\n\tjmp 3f\n", spare);
+		text += std::format("1:\n\tmovq {}(%r14), %r12\n\ttestq %r12, %r12\n\tjz 9f\n", cache);
+		text += std::format("\tmovl {}(%r12), %r10d\n\tcmpq %rbx, %r10\n\tjb 9f\n", segment_size);
+		text += std::format("\tmovq {}(%r12), %r10\n\tmovq %r10, {}(%r14)\n\tdecl {}(%r14)\n", next_free, cache, cache_count);
+		// On it: the carrier's segment and limit, and the parameters at the top, 16-byte aligned
+		text += std::format("3:\n\tmovq %r12, {}(%r14)\n", segment);
+		text += std::format("\tleaq {}(%r12), %r10\n\tmovq %r10, {}(%r14)\n", header_and_guard, limit);
+		text += std::format("\tmovl {}(%r12), %ebx\n\taddq %r12, %rbx\n\tsubq %r11, %rbx\n\tandq $-16, %rbx\n", segment_size);
+		text += "\txorl %r12d, %r12d\n2:\n\tcmpq %r11, %r12\n\tjae 4f\n";
+		text += "\tmovq 32(%rbp,%r12), %r10\n\tmovq %r10, (%rbx,%r12)\n\taddq $8, %r12\n\tjmp 2b\n";
+		text += "4:\n\tmovq %rbx, %r10\n\tmovq -24(%rbp), %rbx\n\tmovq -32(%rbp), %r12\n\tmovq %r10, %rsp\n";
+		text += "\tcallq *%rax\n";
+		// Back: the segment just left is the spare now, and an older spare goes to the cache
+		text += "\tleaq -16(%rbp), %rsp\n";
+		text += std::format("\tmovq {}(%r14), %r10\n\tmovq {}(%r14), %r11\n\ttestq %r11, %r11\n\tjz 5f\n", segment, spare);
+		text += std::format("\tmovq {}(%r14), %r9\n\tmovq %r9, {}(%r11)\n\tmovq %r11, {}(%r14)\n\tincl {}(%r14)\n",
+			cache, next_free, cache, cache_count);
+		text += std::format("5:\n\tmovq %r10, {}(%r14)\n", spare);
+		text += std::format("\tpopq {}(%r14)\n\tpopq {}(%r14)\n\tpopq %rbp\n\tretq\n", segment, limit);
+		text += "9:\n\tud2\n";
+		return text;
+	}
+
+	/*
+	 * Whether functions can call morestack: on x86-64 targets whose frames chain through rbp, with
+	 * morestack made once. Reports why not, the first time.
+	 */
+	static bool morestack_ready(Generator& generator, Declaration* where) {
+		if (generator.module.lookupSymbol<LLVM::LLVMFuncOp>(MORESTACK_SYMBOL)) {
+			return true;
+		}
+		if (OSType::Win32 == generator.options->os || ArchType::x86_64 != generator.options->architecture) {
+			return false;
+		}
+		size_t limit = 0, segment = 0, spare = 0, cache = 0, cache_count = 0, segment_size = 0, next_free = 0;
+		uint64_t guard = 0;
+		Declaration* header = base_declaration_named(generator, "runtime", "StackSegment");
+		const bool found = runtime_offset(generator, "CarrierBlock", "stack_limit", limit)
+			&& runtime_offset(generator, "CarrierBlock", "stack_segment", segment)
+			&& runtime_offset(generator, "CarrierBlock", "spare_segment", spare)
+			&& runtime_offset(generator, "CarrierBlock", "segment_cache", cache)
+			&& runtime_offset(generator, "CarrierBlock", "segment_cache_count", cache_count)
+			&& runtime_offset(generator, "StackSegment", "size", segment_size)
+			&& runtime_offset(generator, "StackSegment", "next_free", next_free)
+			&& runtime_integer(generator, "STACK_GUARD", guard) && header != nullptr && header->type_value != nullptr;
+		if (!found) {
+			unsupported(generator, where != nullptr ? where->node : nullptr, "base/runtime's stack segments aren't what the compiler expects");
+			return false;
+		}
+		generator.module_assembly.push_back(morestack_assembly(limit, segment, spare, cache, cache_count, segment_size, next_free,
+			guard + header->type_value->size));
+		assembly_function(generator, std::string(MORESTACK_SYMBOL), no_arguments(generator));
+		return true;
+	}
+
 	/*
 	 * The function a declaration is, declared now and generated later. Exported functions and the
 	 * freestanding entry keep their own names, for the linker and other languages.
@@ -942,7 +1027,8 @@ namespace hemera {
 		if (type->never_returns) {
 			attributes.push_back(generator.builder.getStringAttr("noreturn"));
 		}
-		if (TargetStackCheck::Trap == generator.options->stack_check && takes_context(generator, type, declaration)) {
+		const bool grows = TargetStackCheck::Morestack == generator.options->stack_check && morestack_ready(generator, declaration);
+		if ((TargetStackCheck::Trap == generator.options->stack_check || grows) && takes_context(generator, type, declaration)) {
 			/*
 			 * The prologue compares the stack pointer with the carrier block's stack_limit, at [r14],
 			 * and traps without room (apps/compiler/third-party/patches/llvm). Functions without a
@@ -954,7 +1040,12 @@ namespace hemera {
 			attributes.push_back(generator.builder.getStringAttr("split-stack"));
 			attributes.push_back(pair("split-stack-limit-register", "r14"));
 			attributes.push_back(pair("split-stack-limit-offset", "0"));
-			attributes.push_back(pair("split-stack-failure", "trap"));
+			if (grows) {
+				attributes.push_back(pair("split-stack-morestack", MORESTACK_SYMBOL));
+			}
+			else {
+				attributes.push_back(pair("split-stack-failure", "trap"));
+			}
 		}
 		if (!attributes.empty()) {
 			function.setPassthroughAttr(generator.builder.getArrayAttr(attributes));
@@ -2993,7 +3084,16 @@ namespace hemera {
 		size_t shadow_stack_base = 0;
 	};
 
-	// A member's offset in one of base/runtime's structs.
+	static bool runtime_integer(Generator& generator, std::string_view name, uint64_t& value) {
+		Declaration* declaration = base_declaration_named(generator, "runtime", name);
+		ast::Node* literal = declaration != nullptr && declaration->node != nullptr ? definition_value(declaration->node) : nullptr;
+		if (literal == nullptr || ast::NodeType::LITERAL != literal->node_type || TokenType::LITERAL_INTEGER != literal->value.type) {
+			return false;
+		}
+		value = parse_integer(text_of(literal->value.value));
+		return true;
+	}
+
 	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset) {
 		Declaration* declaration = base_declaration_named(generator, "runtime", type_name);
 		if (declaration == nullptr || declaration->type_value == nullptr || !is_variant(declaration->type_value, TypeInfoVariant::STRUCT)) {
@@ -6178,7 +6278,10 @@ namespace hemera {
 		result.red_zone = target.red_zone;
 		result.address_zero_is_memory = target.address_zero_is_memory;
 		result.startup_code = target.startup_code;
-		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap : TargetStackCheck::Off;
+		// Morestack where it's made: x86-64 targets whose frames chain through rbp; off elsewhere, for now
+		const bool grows = OSType::Win32 != result.os && ArchType::x86_64 == result.architecture;
+		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap
+			: target.stack_check_failure == "Morestack" && grows ? TargetStackCheck::Morestack : TargetStackCheck::Off;
 		if (!target.linker_script.empty()) {
 			result.linker_script = std::filesystem::canonical(from_build(build, target.linker_script), error);
 			if (error) {

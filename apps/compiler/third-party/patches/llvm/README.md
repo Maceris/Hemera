@@ -25,6 +25,7 @@ platform, including freestanding ones:
 | `"split-stack-limit-register"="r14"` | Read the limit at an offset from this register (`r12` to `r15`). Reserve it with the `+reserve-r14` target feature |
 | `"split-stack-limit-offset"="0"` | The offset, in bytes. Defaults to 0 |
 | `"split-stack-failure"="trap"` | Run `ud2` when the stack is too small, instead of calling `__morestack` |
+| `"split-stack-morestack"="symbol"` | Call `symbol` with Hemera's protocol instead of `__morestack`: a minimal frame (`push rbp`, `mov rbp, rsp`), the frame size in `r10`, the stack parameters' size in `r11`, the body's address in `rax`, `call symbol`, `pop rbp`, `ret` (`docs/calling_convention.md`, *Growing the Stack*) |
 
 Hemera's carrier register is `r14`, and `stack_limit` is the first field of the carrier block, so a function
 compiled with `.Trap` as its `stack_check_failure` gets:
