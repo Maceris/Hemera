@@ -3,12 +3,8 @@ package runtime
 // A thread's data came through thread_create's #escaping data, so it never points into a stack
 ThreadFunction :: fn(data #escaping : any) -> void
 
-#if OS == .Windows {
-    ThreadSpecificOS :: struct {
-
-    }
-}
-#else_if OS == .Mac {
+// Windows' is in windows.hsc
+#if OS == .Mac {
     ThreadSpecificOS :: struct {
 
     }
@@ -33,9 +29,6 @@ ThreadFunction :: fn(data #escaping : any) -> void
 
     }
 }
-#else {
-    //TODO(ches) error, unsupported
-}
 
 // How a thread's stack is set up, see docs/multitasking.md (Stacks).
 ThreadStack :: union {
@@ -55,11 +48,15 @@ SegmentedStack :: struct {
     native_stack : usize = 65536,
 }
 
-DEFAULT_THREAD_STACK : ThreadStack : .Segmented(SegmentedStack.{})
+DEFAULT_THREAD_STACK : ThreadStack : .Segmented(SegmentedStack.{first_segment = 1024, native_stack = 65536})
 
 Thread :: struct {
+    // The thread's carrier block, from when it starts until it's joined
+    carrier : CarrierBlock,
+    // For the thread's carrier block, which code on the thread can read with current_thread_index
     index : usize,
-    stack : ThreadStack,
+    // How its stack is set up, or null for DEFAULT_THREAD_STACK
+    stack : ThreadStack?,
     function : ThreadFunction,
     data : any?,
     // A copy of the creating thread's context, which the new thread starts with
@@ -73,9 +70,10 @@ Thread :: struct {
 thread_create :: fn(
     function: ThreadFunction,
     data #escaping : any? = null,
-    stack := DEFAULT_THREAD_STACK,
-) -> ptr[Thread] {
+    stack : ThreadStack? = null,
+) -> ptr[mut Thread] {
     result : ptr[mut Thread] = new(Thread)
+    result.carrier = CarrierBlock.{}
     result.stack = stack
     result.function = function
     result.data = data
@@ -87,12 +85,22 @@ thread_create :: fn(
     return result
 }
 
-thread_start :: fn(thread: ptr[Thread]) {
-    todo("start running the thread")
-    /*
-     * The new thread's entry needs to, before running any Hemera code:
-     * allocate its CarrierBlock, store the pointer in the OS's thread-local storage,
-     * load the carrier register, and set stack_limit and native_stack_limit from the
-     * thread's stack bounds. Then call function(data) with starting_context.
-     */
+/*
+ * Start running the thread: its entry loads the carrier register with the thread's carrier block,
+ * sets stack_limit and native_stack_limit from its own stack, and calls function(data) with
+ * starting_context. False if the system couldn't start it.
+ *
+ * Not yet: storing the carrier block in the OS's thread-local storage, for callbacks from foreign
+ * code, and running a thread's Hemera code on segments rather than the stack the system gives it.
+ */
+thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {
+    thread.carrier.index = thread.index
+    return os_thread_start(thread)
+}
+
+// Wait for the thread to finish, then free it, with the allocator that was current when it was made.
+thread_join :: fn(thread: ptr[mut Thread], allocator := context.allocator, loc := #caller_location) {
+    os_thread_join(thread)
+    free_array(thread.extensions, allocator, loc)
+    free(thread, allocator, loc)
 }

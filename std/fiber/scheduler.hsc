@@ -24,8 +24,11 @@ import concurrency from "std"
  * Fibers start with a copy of the context of whoever spawned them, and are made and freed with
  * the pool's allocator, which the carriers use at the same time, so it has to be safe for that.
  *
- * Not yet: sleeping while there's nothing to run (carriers spin, which suits a kernel that gives
- * a pool its own CPUs), and parking a fiber until something wakes it.
+ * A carrier with nothing to run spins a little, then sleeps (runtime.wait_on_value) until work
+ * is added, the pool closes, or its last fiber finishes. Without an operating system to sleep on,
+ * it keeps spinning, which suits a kernel that gives a pool its own CPUs.
+ *
+ * Not yet: parking a fiber until something wakes it.
  */
 FiberPool :: struct {
     // Guards the shared queue, and the list of carriers while one joins
@@ -44,6 +47,10 @@ FiberPool :: struct {
     carrier_count : u64,
     // Carriers running the pool now
     active_carriers : u64,
+    // Changes whenever there's something for a sleeping carrier to look at, which it sleeps on
+    work_epoch : u64,
+    // Carriers asleep, or about to be, so adding work only wakes one when there is one
+    sleepers : u64,
     allocator : runtime.Allocator,
 }
 
@@ -54,6 +61,8 @@ LOCAL_QUEUE_SIZE :: 256
 LOCAL_QUEUE_MASK :: LOCAL_QUEUE_SIZE - 1
 // Every this many turns, a carrier looks at the shared queue first, so it isn't left waiting.
 SHARED_QUEUE_INTERVAL :: 61
+// How many times a carrier with nothing to run looks again before it sleeps.
+IDLE_SPINS :: 64
 
 /*
  * One carrier's part of a pool, the carrier block's scheduler_data while it runs the pool. Kept
@@ -84,6 +93,8 @@ create_fiber_pool :: fn(allocator := context.allocator) -> ptr[mut FiberPool] {
     pool.closed = 0
     pool.carrier_count = 0
     pool.active_carriers = 0
+    pool.work_epoch = 0
+    pool.sleepers = 0
     pool.allocator = allocator
     return pool
 }
@@ -137,6 +148,7 @@ spawn :: fn(
  */
 close_pool :: fn(pool: ptr[mut FiberPool]) {
     intrinsics.atomic_store_u64_release(&pool.closed, 1)
+    wake_carriers(pool, true)
 }
 
 /*
@@ -184,14 +196,31 @@ run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
         carrier.yield_function = null
         carrier.scheduler_data = null
     }
+    idle := 0
     loop {
+        /*
+         * The epoch is read before looking for work: anything added after that changes it, so the
+         * wait below returns at once instead of missing it.
+         */
+        epoch :: intrinsics.atomic_load_u64_acquire(&pool.work_epoch)
         match next_fiber(here) {
-            case Some(fiber) => run_turn(here, fiber)
+            case Some(fiber) => {
+                idle = 0
+                run_turn(here, fiber)
+            }
             case None => {
                 if intrinsics.atomic_load_u64_acquire(&pool.closed) != 0 && intrinsics.atomic_load_u64_acquire(&pool.live) == 0 {
                     break
                 }
-                intrinsics.spin_hint()
+                idle += 1
+                if idle < IDLE_SPINS {
+                    intrinsics.spin_hint()
+                }
+                else {
+                    intrinsics.interlocked_increment_u64(&pool.sleepers)
+                    runtime.wait_on_value(&pool.work_epoch, epoch)
+                    intrinsics.interlocked_decrement_u64(&pool.sleepers)
+                }
             }
         }
     }
@@ -220,7 +249,28 @@ run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fib
     }
     else {
         runtime.fiber_destroy(fiber, pool.allocator)
-        intrinsics.interlocked_decrement_u64(&pool.live)
+        // The last one (it gives the count from before): carriers asleep can leave, if the pool is closed
+        if intrinsics.interlocked_decrement_u64(&pool.live) == 1 {
+            wake_carriers(pool, true)
+        }
+    }
+}
+
+/*
+ * Tell sleeping carriers there's something to look at: one, for new work, or all of them. The
+ * epoch changes first, and both are full fences, so a carrier that read the old epoch and hasn't
+ * counted itself as a sleeper yet won't sleep through it: its wait finds the epoch changed.
+ */
+wake_carriers :: fn(pool: ptr[mut FiberPool], all: bool) {
+    intrinsics.interlocked_increment_u64(&pool.work_epoch)
+    if intrinsics.atomic_load_u64(&pool.sleepers) == 0 {
+        return void
+    }
+    if all {
+        runtime.wake_all(&pool.work_epoch)
+    }
+    else {
+        runtime.wake_one(&pool.work_epoch)
     }
 }
 
@@ -304,6 +354,8 @@ add_local :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fi
         if tail - head < LOCAL_QUEUE_SIZE {
             here.queue[tail & LOCAL_QUEUE_MASK] = cast[rawptr](fiber)
             intrinsics.atomic_store_u64_release(&here.tail, tail + 1)
+            // Another carrier may be asleep with nothing to take
+            wake_carriers(here.pool, false)
             return void
         }
         if move_half_to_shared(here, head, fiber) {
@@ -417,14 +469,17 @@ add_shared :: fn(pool: ptr[mut FiberPool], first #escaping : ptr[mut runtime.Fib
     count: u64) {
 
     last.next = null
-    concurrency.lock(&pool.lock)
-    defer concurrency.unlock(&pool.lock)
-    match pool.last {
-        case Some(previous) => previous.next = first
-        case None => pool.first = first
+    {
+        concurrency.lock(&pool.lock)
+        defer concurrency.unlock(&pool.lock)
+        match pool.last {
+            case Some(previous) => previous.next = first
+            case None => pool.first = first
+        }
+        pool.last = last
+        intrinsics.atomic_store_u64_release(&pool.shared_count, pool.shared_count + count)
     }
-    pool.last = last
-    intrinsics.atomic_store_u64_release(&pool.shared_count, pool.shared_count + count)
+    wake_carriers(pool, false)
 }
 
 /*

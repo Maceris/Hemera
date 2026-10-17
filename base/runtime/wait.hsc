@@ -1,0 +1,32 @@
+package runtime
+
+import intrinsics from "base"
+
+/*
+ * Sleeping until a value changes, for code like a fiber pool's carriers with nothing to run:
+ *
+ *     wait_on_value(address, expected)   // returns once address^ isn't expected, or spuriously
+ *     wake_one(address), wake_all(address)
+ *
+ * A wait whose value already changed returns at once. Without an operating system to sleep on,
+ * waiting just spins once, so callers loop the same either way.
+ */
+#if OS != .Windows {
+    wait_on_value :: fn(address: ptr[u64], expected: u64) {
+        intrinsics.spin_hint()
+    }
+
+    wake_one :: fn(address: ptr[u64]) {}
+
+    wake_all :: fn(address: ptr[u64]) {}
+
+    // Threads only start on Windows so far
+    os_thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {
+        return false
+    }
+
+    os_thread_join :: fn(thread: ptr[mut Thread]) {}
+
+    // What a hosted program's main starts with
+    HOSTED_CONTEXT :: MINIMAL_CONTEXT
+}

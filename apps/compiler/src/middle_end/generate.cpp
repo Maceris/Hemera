@@ -3791,9 +3791,9 @@ namespace hemera {
 		return result_type != nullptr ? location(result, result_type) : Emitted{};
 	}
 
-	// Whether a declaration is an intrinsic: a function in base without a body.
+	// Whether a declaration is an intrinsic: a function in base without a body, which isn't #foreign.
 	static bool is_intrinsic(Declaration* called) {
-		return called != nullptr && is_base_package(called->package_path)
+		return called != nullptr && called->foreign_library == nullptr && is_base_package(called->package_path)
 			&& function_body(called->generic != nullptr ? called->generic : called) == nullptr;
 	}
 
@@ -5522,6 +5522,11 @@ namespace hemera {
 		mlir::Value context = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
 			llvm_type(generator, context_type), one, static_cast<unsigned>(context_type->alignment));
 		store_zero(generator, context_type, context);
+		// base/runtime's HOSTED_CONTEXT, like the process heap as the allocator, where it has one
+		Declaration* hosted_context = base_declaration_named(generator, "runtime", "HOSTED_CONTEXT");
+		if (hosted_context != nullptr) {
+			store(generator, emit_constant_value(generator, hosted_context, context_type, nullptr), context);
+		}
 		/*
 		 * A carrier block for the main thread, zeroed: no stack limit to check, no fiber and no
 		 * scheduler yet. The carrier register is the caller's to keep, so it's put back if the entry

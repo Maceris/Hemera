@@ -16,6 +16,21 @@ then start running in a new thread.
 
 The new thread starts with a copy of the creating thread's context (see [Contexts](#contexts)).
 
+```
+thread :: runtime.thread_create(work)    // with an optional ThreadStack; doesn't start it yet
+thread.index = 1                         // what current_thread_index() gives on it
+runtime.thread_start(thread)
+runtime.thread_join(thread)              // waits for it, then frees it
+```
+
+Each thread has its own carrier block, part of its `Thread`. Its entry, a `#calling_convention(.c) #no_context`
+function the system starts the thread at, loads the carrier register with it first, sets `stack_limit` and
+`native_stack_limit` 64 KiB above the bottom of the stack the system gave the thread, and calls the function with the
+copied context. It ends the thread with the system's exit call rather than returning, since it doesn't keep the carrier
+register for whatever called it. Threads start on Windows so far, where a hosted program's `main` also starts with
+the process heap as its allocator (`runtime.HOSTED_CONTEXT`). Not yet: the carrier block in the OS's thread-local
+storage, for callbacks from foreign code, and threads running their Hemera code on segments.
+
 # Fibers
 
 Fibers are cooperatively scheduled, with runtimes that share
@@ -86,8 +101,11 @@ Fibers move between the pool's carriers, never between pools:
   carrier's queue is full, half of it moves to the shared queue.
 * A fiber that yields goes to the back of the shared queue, so whichever carrier is free next resumes it. It's queued
   only once it has switched away, so no other carrier can resume it while it's still running.
-* Until the pool closes and its last fiber finishes, a carrier with nothing to run spins. Sleeping until there's work
-  needs the operating system (or, in a kernel, an interrupt), and isn't done yet.
+* A carrier with nothing to run looks a few more times, then sleeps until the pool's work epoch changes
+  (`runtime.wait_on_value`, `WaitOnAddress` on Windows). Adding work changes the epoch and wakes one sleeping
+  carrier; closing the pool, or its last fiber finishing, wakes them all. A carrier reads the epoch before it looks for
+  work, so work added in between makes its wait return at once. Without an operating system to sleep on, the wait is
+  a spin, which suits a kernel that gives a pool its own CPUs.
 
 Fibers are made and freed with the pool's allocator, which its carriers use at the same time, so it has to be safe
 for that.
