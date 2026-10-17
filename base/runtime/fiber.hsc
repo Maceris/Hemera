@@ -36,6 +36,11 @@ Fiber :: struct #align(16) {
     state : FiberState,
     // Intrusive link for scheduler queues, owned by whichever scheduler holds the fiber
     next : ptr[mut Fiber]?,
+    // The fiber's waiter, for park (park.hsc)
+    waiter : Waiter,
+    // Set by the fiber's scheduler: how wake queues the fiber again once it's parked, and its data for that
+    wake_function : fn(fiber #escaping : ptr[mut Fiber])?,
+    scheduler_data : rawptr,
 }
 
 /*
@@ -125,6 +130,9 @@ fiber_create :: fn(
     result.extensions = extensions
     result.state = .NotStarted
     result.next = null
+    result.waiter = Waiter.{}
+    result.wake_function = null
+    result.scheduler_data = null
     return result, null
 }
 

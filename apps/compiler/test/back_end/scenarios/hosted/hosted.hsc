@@ -713,5 +713,16 @@ main :: fn() -> int {
     if nines.count != 4 || nines[3] != 9 || verbosity[true]() != 2 || verbosity[false]() != 1 || bits.words.count != 3 {
         return 54
     }
+    // A match's values are copies: changing what was matched doesn't change them
+    held : int? = 5
+    match held {
+        case Some(value) => {
+            held = null
+            if value != 5 {
+                return 55
+            }
+        }
+        case None => return 55
+    }
     return 42
 }

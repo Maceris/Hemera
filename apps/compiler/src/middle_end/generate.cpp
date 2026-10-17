@@ -4762,10 +4762,16 @@ namespace hemera {
 				if (ast::NodeType::PAREN_GROUP != child->node_type) {
 					continue;
 				}
-				// Its values, named: where they are in the subject, read only once it matches
+				/*
+				 * Its values, named: copied out of the subject now, so they keep the values they
+				 * matched with when the arm changes what the subject is in, like here.parking = null
+				 */
 				for (size_t i = 0; i < child->children.size() && i < variant.types.size(); ++i) {
 					if (!is_wildcard(child->children[i])) {
-						generator.state->slots[child->children[i]] = offset_address(generator, address, variant.offsets[i]);
+						TypeInfo* held = variant.types[i];
+						mlir::Value copy = make_slot(generator, held);
+						store(generator, load(generator, held, offset_address(generator, address, variant.offsets[i])), copy);
+						generator.state->slots[child->children[i]] = copy;
 					}
 				}
 			}

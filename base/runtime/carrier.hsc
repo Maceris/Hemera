@@ -61,6 +61,14 @@ CarrierBlock :: struct #align(64) {
     asserting : bool,
     // Freestanding programs' own per-carrier data, like a kernel's per-CPU block. Unused by the runtime.
     program_data : rawptr,
+    /*
+     * Installed by a fiber scheduler, like yield_function: what park calls to suspend the current
+     * fiber until wake(waiter), which then queues it with the fiber's wake_function. Null on plain
+     * threads, which block instead.
+     */
+    park_function : fn(carrier: ptr[mut CarrierBlock], waiter #escaping : ptr[mut Waiter])?,
+    // The thread's own waiter, for park when it isn't running a fiber.
+    thread_waiter : Waiter,
 }
 
 /*

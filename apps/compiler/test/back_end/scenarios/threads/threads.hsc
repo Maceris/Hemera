@@ -6,12 +6,16 @@
  * runs none. The pools' threads start before there's any work, so they go to sleep, and main's
  * spawning wakes them. Each fiber takes TURNS turns, yielding after each, and records which threads
  * it ran on: it has to stay on its own pool's threads, and every thread of a pool has to run some.
+ *
+ * Every turn also adds one to a counter behind a std/concurrency Mutex, yielding while it holds it,
+ * so other fibers park waiting for it, and main and thread 6 add to it too, blocking instead.
  */
 package threads
 
 import intrinsics from "base"
 import runtime from "base"
 import fiber from "std"
+import concurrency from "std"
 
 FIRST_FIBERS :: 40
 SECOND_FIBERS :: 60
@@ -22,6 +26,8 @@ SECOND_THREADS : u64 : 0b111000
 POOL_THREADS :: 5
 // Thread 6 runs no pool
 PLAIN_THREAD :: 6
+// What main and thread 6 each add to the counter
+PLAIN_ADDS :: 500
 
 // What one pool's fibers record.
 PoolCounts :: struct {
@@ -44,6 +50,18 @@ ThreadTest :: struct {
     // What the thread without a pool saw
     plain_index : u64,
     plain_yielded : u64,
+    // Only changed with counter_lock held, and read and written in separate steps around a yield
+    counter_lock : concurrency.Mutex,
+    counter : u64,
+}
+
+// One more on the counter: read, yield (or not, on a thread), write, all with the lock held.
+add_one :: fn(test: ptr[mut ThreadTest]) {
+    concurrency.mutex_lock(&test.counter_lock)
+    defer concurrency.mutex_unlock(&test.counter_lock)
+    before :: test.counter
+    runtime.fiber_yield()
+    test.counter = before + 1
 }
 
 main :: fn() -> int {
@@ -81,6 +99,10 @@ main :: fn() -> int {
         }
         fiber.close_pool(test.first)
         fiber.close_pool(test.second)
+        // main runs no pool, so it blocks when it has to wait
+        for i in 0..<PLAIN_ADDS {
+            add_one(test)
+        }
     }
     for i in 1..<7 {
         runtime.thread_join(cast[ptr[mut runtime.Thread]](threads[i]))
@@ -96,6 +118,9 @@ main :: fn() -> int {
     }
     if test.plain_index != PLAIN_THREAD || test.plain_yielded != 1 {
         return 6
+    }
+    if test.counter != (FIRST_FIBERS + SECOND_FIBERS) * TURNS + 2 * PLAIN_ADDS {
+        return 7
     }
     fiber.destroy_fiber_pool(test.first)
     fiber.destroy_fiber_pool(test.second)
@@ -121,6 +146,9 @@ plain_main : runtime.ThreadFunction : fn(data #escaping : any) {
     test.plain_index = cast[u64](runtime.current_thread_index())
     runtime.fiber_yield()
     test.plain_yielded = 1
+    for i in 0..<PLAIN_ADDS {
+        add_one(test)
+    }
 }
 
 first_worker : runtime.ThreadFunction : fn(data #escaping : any) {
@@ -147,6 +175,7 @@ take_turns :: fn(counts: ptr[mut PoolCounts], threads: u64) {
         intrinsics.interlocked_or_u64(&counts.threads, bit)
         intrinsics.interlocked_increment_u64(&counts.turns)
         previous = here
+        add_one(cast[ptr[mut ThreadTest]](context.user_data))
         runtime.fiber_yield()
     }
 }

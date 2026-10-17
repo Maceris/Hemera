@@ -66,12 +66,36 @@ one that didn't are that time passed, and that the code may be running on a diff
 ## Waiting
 
 Waiting for something (I/O, a timer, a lock) can't rely on `fiber_yield()` alone, because a declined yield returns
-immediately. Waiting goes through the scheduler's `park` operation instead: if the fiber can be suspended, it is
-suspended until the waiter is woken. If it can't (for the same reasons a yield would decline), `park` reports that,
-and the waiting code falls back to blocking the carrier thread.
+immediately. Waiting goes through `runtime.park` instead (`base/runtime/park.hsc`): if the fiber can be suspended, it
+is suspended until it's woken. If it can't (for the same reasons a yield would decline, or on a plain thread), `park`
+blocks the thread instead.
 
 Functions that wait look the same either way: `read(socket)` suspends the fiber when it can, and blocks the thread
 when it can't.
+
+Every fiber and every thread has one `Waiter`, in its `Fiber` or its carrier block, since it waits for one thing at a
+time. Waiting on something puts the waiter on that thing's list, then parks; whoever finishes the thing takes it off
+and wakes it:
+
+```
+waiter :: runtime.current_waiter()
+runtime.prepare_wait(waiter)    // WAITING
+// put waiter on the thing's list, under its lock
+runtime.park(waiter)            // returns once woken
+// elsewhere, any thread: take it off the list, then
+runtime.wake(waiter)
+```
+
+* A fiber parks through its scheduler's `park_function`, in the carrier block like `yield_function`: it switches back
+  to the scheduler, which only then marks the waiter `PARKED`, with a compare and exchange from `WAITING`.
+* `wake` exchanges the state for `WOKEN`. If it was `PARKED`, the fiber is suspended and nothing else will queue it,
+  so `wake` does, through the fiber's `wake_function`, which its scheduler set: a `std/fiber` fiber goes back into its
+  own pool, whichever thread wakes it. If it was still `WAITING`, the fiber is still switching away: the scheduler's
+  compare and exchange fails, and it queues the fiber itself. Either way exactly one of them does.
+* A thread waits on the state with `wait_on_value`, and `wake` wakes it.
+
+`std/concurrency`'s `Mutex` is built on this: a fiber waiting for it parks, a thread blocks, waiters are served in
+order, and unlocking hands the lock straight to the first of them.
 
 ## Fiber Pools
 
@@ -275,12 +299,14 @@ allocation of `FIBER_BLOCK_SIZE` bytes, which is calculated from its parts:
 
 | Part                                                         | Constant                   | Approximate size |
 |--------------------------------------------------------------|----------------------------|------------------|
-| Fiber struct: state, resume state, links, and root context   | `size_of(Fiber)`           | 176 bytes        |
+| Fiber struct: state, resume state, links, waiter, root context | `size_of(Fiber)`         | 240 bytes        |
 | Stack guard                                                  | `STACK_GUARD`              | 256 bytes        |
 | Usable stack in the first segment                            | `FIBER_INITIAL_STACK_SIZE` | 1024 bytes       |
-| Total                                                        | `FIBER_BLOCK_SIZE`         | 1456 bytes       |
+| Total                                                        | `FIBER_BLOCK_SIZE`         | 1520 bytes       |
 
-That leaves about 80 bytes of each fiber's share of the budget for the allocator's own overhead.
+That leaves only 16 bytes of each fiber's share of the budget for the allocator's own overhead, less than most
+allocators keep per block. Most of `Fiber` is its root context (72 bytes) and its resume state (64), so meeting the
+target again means shrinking one of those, or the first segment.
 
 While suspended, the fiber's callee-saved registers are on its stack:
 about 40 bytes for x86-64 (Windows too, where Hemera's functions use System V's registers, see

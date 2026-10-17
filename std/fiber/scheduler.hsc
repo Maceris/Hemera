@@ -28,7 +28,8 @@ import concurrency from "std"
  * is added, the pool closes, or its last fiber finishes. Without an operating system to sleep on,
  * it keeps spinning, which suits a kernel that gives a pool its own CPUs.
  *
- * Not yet: parking a fiber until something wakes it.
+ * A fiber that parks (runtime.park, which locks like std/concurrency's Mutex use) is suspended
+ * and left out of the queues until runtime.wake, from any thread, puts it back in the shared queue.
  */
 FiberPool :: struct {
     // Guards the shared queue, and the list of carriers while one joins
@@ -81,6 +82,8 @@ PoolCarrier :: struct {
     turns : u64,
     // For choosing which carrier to take from
     random : u64,
+    // The waiter of the fiber that's parking, from park_fiber until its switch back is done
+    parking : ptr[mut runtime.Waiter]?,
 }
 
 create_fiber_pool :: fn(allocator := context.allocator) -> ptr[mut FiberPool] {
@@ -124,13 +127,15 @@ destroy_fiber_pool :: fn(pool: ptr[mut FiberPool]) {
  * the pool's fibers, otherwise in the shared queue.
  */
 spawn :: fn(
-    pool: ptr[mut FiberPool],
+    pool #escaping : ptr[mut FiberPool],
     function: runtime.ThreadFunction,
     data #escaping : any? = null,
 ) -> (ptr[mut runtime.Fiber]?, runtime.AllocatorError?) {
     made, error :: runtime.fiber_create(function, data, pool.allocator)
     match made {
         case Some(fiber) => {
+            fiber.wake_function = requeue_fiber
+            fiber.scheduler_data = cast[rawptr](pool)
             intrinsics.interlocked_exchange_add_u64(&pool.live, 1)
             match carrier_in(pool) {
                 case Some(here) => add_local(here, fiber)
@@ -169,6 +174,7 @@ run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
     here.head = 0
     here.tail = 0
     here.turns = 0
+    here.parking = null
     {
         concurrency.lock(&pool.lock)
         defer concurrency.unlock(&pool.lock)
@@ -191,9 +197,11 @@ run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
      */
     carrier :: intrinsics.carrier()
     carrier.yield_function = yield
+    carrier.park_function = park_fiber
     carrier.scheduler_data = cast[rawptr](here)
     defer {
         carrier.yield_function = null
+        carrier.park_function = null
         carrier.scheduler_data = null
     }
     idle := 0
@@ -245,7 +253,20 @@ run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fib
      * sooner, it could be resumed while still running here.
      */
     if exit == .Yielded {
-        add_shared(pool, fiber, fiber, 1)
+        match here.parking {
+            case Some(waiter) => {
+                /*
+                 * Parked, unless it was woken while it switched away, in which case it goes
+                 * straight back in the queue. Once it's marked parked, whoever wakes it queues it.
+                 */
+                here.parking = null
+                _, parked :: intrinsics.interlocked_compare_exchange_u64(&waiter.state, runtime.WAITER_PARKED, runtime.WAITER_WAITING)
+                if !parked {
+                    add_shared(pool, fiber, fiber, 1)
+                }
+            }
+            case None => add_shared(pool, fiber, fiber, 1)
+        }
     }
     else {
         runtime.fiber_destroy(fiber, pool.allocator)
@@ -295,14 +316,21 @@ yield :: fn(carrier: ptr[mut runtime.CarrierBlock]) {
 }
 
 /*
- * Wait until awoken, suspending the current fiber if possible.
- *
- * Returns false if the fiber couldn't be suspended (not on a fiber, foreign frames on the stack,
- * or inside a no-yield region), in which case the caller has to block the thread instead.
+ * Installed as the carrier's park_function, so it's what runtime.park calls on one of the pool's
+ * fibers, on the fiber's own stack: back to the carrier's loop, which marks the waiter parked
+ * (run_turn). Only "returns" once woken, possibly on another carrier.
  */
-park :: fn() -> bool {
-    //TODO(ches) waiter registration, waking, and the checks fiber_yield does
-    return false
+park_fiber :: fn(carrier: ptr[mut runtime.CarrierBlock], waiter #escaping : ptr[mut runtime.Waiter]) {
+    current :: carrier.current_fiber or_return void
+    here :: cast[ptr[mut PoolCarrier]](carrier.scheduler_data)
+    here.parking = waiter
+    intrinsics.fiber_suspend(current)
+}
+
+// A fiber's wake_function: back in its pool's shared queue, from whichever thread woke it.
+requeue_fiber :: fn(fiber #escaping : ptr[mut runtime.Fiber]) {
+    pool :: cast[ptr[mut FiberPool]](fiber.scheduler_data)
+    add_shared(pool, fiber, fiber, 1)
 }
 
 // This carrier's part of pool, if it's running one of the pool's fibers.
