@@ -1485,6 +1485,40 @@ namespace hemera {
 			// Only the tag, which works in a constant too
 			return insert(generator, zero_of(generator, llvm_type(generator, type)), tag, { 0 });
 		}
+		if (!in_function(generator)) {
+			/*
+			 * A constant has no memory to build it in: a packed struct laid out like this variant
+			 * instead, the tag, the values at their offsets, and zeros between, which a global takes
+			 * as its type (global_for), and which reads the same through the union's
+			 */
+			const UnionVariant& chosen = union_type->variants[variant];
+			std::vector<mlir::Type> fields{ tag.getType() };
+			std::vector<mlir::Value> parts{ tag };
+			size_t at = union_type->tag_type->size;
+			mlir::Type byte = integer_type(generator, 1);
+			auto pad_to = [&](size_t offset) {
+				if (offset > at) {
+					mlir::Type padding = LLVM::LLVMArrayType::get(byte, offset - at);
+					fields.push_back(padding);
+					parts.push_back(zero_of(generator, padding));
+					at = offset;
+				}
+			};
+			for (size_t i = 0; i < values.size() && i < chosen.offsets.size(); ++i) {
+				pad_to(chosen.offsets[i]);
+				mlir::Value part = convert(generator, values[i], value_types[i], chosen.types[i]);
+				fields.push_back(part.getType());
+				parts.push_back(part);
+				at = chosen.offsets[i] + chosen.types[i]->size;
+			}
+			pad_to(type->size);
+			mlir::Type shaped = LLVM::LLVMStructType::getLiteral(generator.context, fields, true);
+			mlir::Value result = zero_of(generator, shaped);
+			for (size_t i = 0; i < parts.size(); ++i) {
+				result = insert(generator, result, parts[i], { static_cast<int64_t>(i) });
+			}
+			return result;
+		}
 		mlir::Value slot = make_slot(generator, type);
 		store_zero(generator, type, slot);
 		store(generator, tag, slot);
@@ -4681,6 +4715,52 @@ namespace hemera {
 		return emit_steps(generator, node, rest, value(result, target));
 	}
 
+	// A struct member's default value (StructMember::has_value), a constant.
+	static mlir::Value default_of(Generator& generator, const StructMember& member) {
+		mlir::Type type = llvm_type(generator, member.member_type);
+		if (!member.default_member.empty() && is_variant(member.member_type, TypeInfoVariant::ENUM)) {
+			return constant_int(generator, type, enum_value(member.member_type, intern(member.default_member)));
+		}
+		if (is_float(member.member_type)) {
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, type,
+				generator.builder.getFloatAttr(type, static_cast<double>(member.default_integer)));
+		}
+		if (!type.isIntOrIndex()) {
+			unsupported(generator, nullptr, std::format("{}'s default value can't be generated yet", text_of(member.name)));
+			return zero_of(generator, type);
+		}
+		return constant_int(generator, type, member.default_integer);
+	}
+
+	/*
+	 * A struct's starting value where it isn't given one: zero, but for its members' defaults, and
+	 * theirs in turn, in a struct a member holds (docs/types.md, Structs).
+	 */
+	static void store_defaults(Generator& generator, TypeInfo* type, mlir::Value address) {
+		store_zero(generator, type, address);
+		if (!is_variant(type, TypeInfoVariant::STRUCT)) {
+			return;
+		}
+		auto structure = static_cast<TypeInfoStruct const*>(base(type));
+		for (const StructMember& member : structure->members) {
+			if (member.name == nullptr) {
+				continue;
+			}
+			size_t offset = 0;
+			TypeInfo* member_type = nullptr;
+			std::vector<int64_t> path;
+			if (!find_member(generator, structure, member.name, offset, member_type, path)) {
+				continue;
+			}
+			if (member.has_value) {
+				store(generator, default_of(generator, member), offset_address(generator, address, offset));
+			}
+			else if (is_variant(member.member_type, TypeInfoVariant::STRUCT) && !member.is_using) {
+				store_defaults(generator, member.member_type, offset_address(generator, address, offset));
+			}
+		}
+	}
+
 	// Type.{values} or Type.{name = value}: built as a value, part by part.
 	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
 		auto structure = static_cast<TypeInfoStruct const*>(base(type));
@@ -4718,9 +4798,18 @@ namespace hemera {
 			result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result,
 				emit_as(generator, named ? element->children[1] : element, member_type), path);
 		}
+		// The others have their defaults, or zero
 		for (const StructMember& member : structure->members) {
 			if (member.has_value && !given.contains(text_of(member.name))) {
-				unsupported(generator, node, std::format("{}'s default value can't be generated yet", text_of(member.name)));
+				size_t offset = 0;
+				TypeInfo* member_type = nullptr;
+				std::vector<int64_t> path;
+				find_member(generator, structure, member.name, offset, member_type, path);
+				if (std::find(path.begin(), path.end(), -1) != path.end()) {
+					unsupported(generator, node, "a #union struct's defaults can't be generated yet");
+					continue;
+				}
+				result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result, default_of(generator, member), path);
 			}
 		}
 		return value(result, type);
@@ -5282,7 +5371,7 @@ namespace hemera {
 			}
 			mlir::Value slot = make_slot(generator, types[i]);
 			if (values.empty()) {
-				store_zero(generator, types[i], slot);
+				store_defaults(generator, types[i], slot);
 			}
 			else {
 				const Emitted& given = values.size() == 1 ? values[0] : values[std::min(i, values.size() - 1)];
@@ -5733,6 +5822,10 @@ namespace hemera {
 		mlir::Value initial = value_node == nullptr || ast::NodeType::UNINITIALIZED == value_node->node_type
 			? zero_of(generator, type) : emit_constant_value(generator, declaration, declaration->value_type, value_node);
 		generator.state = outer;
+		// A union's variant built as its own shape (make_variant): the global has that type, and the same bytes
+		if (initial.getType() != type) {
+			global.setGlobalType(initial.getType());
+		}
 		LLVM::ReturnOp::create(generator.builder, generator.loc, initial);
 		return global;
 	}

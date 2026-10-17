@@ -3,14 +3,16 @@
 Changes Hemera needs in LLVM that aren't upstream. They're kept as patch files rather than committed to the
 `llvm-project` submodule, which tracks upstream LLVM unchanged.
 
-Apply them to the submodule before building LLVM:
+Configuring the compiler applies them to the submodule, in order, skipping any already applied
+(`apply_patches.cmake`), and stops with the reason if one doesn't apply, as can happen after updating LLVM. To apply
+them by hand instead:
 
 ```bash
 cd apps/compiler/third-party/llvm-project
 git apply ../patches/llvm/*.patch
 ```
 
-`git apply --check` reports whether a patch still applies after updating LLVM.
+`git apply --check` reports whether a patch still applies, and `git apply --reverse --check` whether it's applied.
 
 ## 0001-x86-split-stack-limit-register.patch
 

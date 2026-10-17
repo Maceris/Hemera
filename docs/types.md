@@ -669,7 +669,9 @@ Structs are user defined groups of data. Structs cannot have any "private" field
 
 Structs do not have any methods or member functions, though they can store functions as a member since they are first-class entities.
 
-All values are initialized to zero, except where default values are provided for a field.
+All values are initialized to zero, except where default values are provided for a field. A default is a compile-time
+constant: a literal, a named constant, arithmetic on those, or an enum member. A struct that holds another starts that
+one with its own defaults too.
 
 ```
 Rectangle :: struct {

@@ -862,20 +862,35 @@ namespace hemera {
 				if (progress != Progress::DONE) {
 					return progress;
 				}
-				const bool has_value = std::any_of(child->children.begin(), child->children.end(),
-					[](const ast::Node* part) { return is_assign(part); });
+				// A default, = value, is a compile-time constant (docs/types.md, Structs); --- is none
+				ast::Node* default_node = std::any_of(child->children.begin(), child->children.end(),
+					[](const ast::Node* part) { return is_assign(part); }) ? definition_value(child) : nullptr;
+				const bool has_value = default_node != nullptr && ast::NodeType::UNINITIALIZED != default_node->node_type;
+				ConstantValue default_value{ ConstantValue::Kind::INTEGER, false, 0, std::string(), nullptr };
+				if (has_value) {
+					progress = evaluate_in(walk, default_node, default_value);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+					if (ConstantValue::Kind::FUNCTION == default_value.kind) {
+						return type_error(walk, ErrorCode::E4014, default_node, "a field's default can't be a function yet");
+					}
+				}
+				const int64_t default_integer = ConstantValue::Kind::BOOLEAN == default_value.kind ? (default_value.boolean ? 1 : 0)
+					: default_value.integer;
+				const std::string default_member = ConstantValue::Kind::ENUM_MEMBER == default_value.kind ? default_value.member : std::string();
 				ast::Node* names_node = child->children[0];
 				if (ast::NodeType::UNDERSCORE == names_node->node_type) {
 					// Its members are the struct's own
-					type->members.push_back({ nullptr, field_type, 0, has_value, true });
+					type->members.push_back({ nullptr, field_type, 0, has_value, true, default_integer, default_member });
 				}
 				else if (ast::NodeType::LIST == names_node->node_type) {
 					for (ast::Node* name : names_node->children) {
-						type->members.push_back({ name->value.value, field_type, 0, has_value, false });
+						type->members.push_back({ name->value.value, field_type, 0, has_value, false, default_integer, default_member });
 					}
 				}
 				else {
-					type->members.push_back({ names_node->value.value, field_type, 0, has_value, false });
+					type->members.push_back({ names_node->value.value, field_type, 0, has_value, false, default_integer, default_member });
 				}
 			}
 			else if (ast::NodeType::USING == child_type && !child->children.empty()) {
@@ -897,7 +912,7 @@ namespace hemera {
 					return type_error(walk, ErrorCode::E4014, binding,
 						std::format("using needs a struct, and {} isn't one", to_string(included)));
 				}
-				type->members.push_back({ binding->value.value, included, 0, false, true });
+				type->members.push_back({ binding->value.value, included, 0, false, true, 0, std::string() });
 			}
 		}
 		lay_out_struct(type);

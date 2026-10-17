@@ -202,13 +202,17 @@ namespace hemera {
 		/// </summary>
 		size_t offset = 0;
 		/// <summary>
-		/// It has a default value (= value), which type checking evaluates.
+		/// It has a default value (= value), a compile-time constant worked out when the struct is
+		/// declared: default_integer for an integer or a boolean (0 or 1), or default_member for an
+		/// enum member, by name.
 		/// </summary>
 		bool has_value = false;
 		/// <summary>
 		/// Included with using, so its own members can be used as the struct's.
 		/// </summary>
 		bool is_using = false;
+		int64_t default_integer = 0;
+		std::string default_member;
 	};
 
 	struct TypeInfoStruct : public TypeInfo {

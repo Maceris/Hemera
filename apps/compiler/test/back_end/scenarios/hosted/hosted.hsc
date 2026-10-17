@@ -455,6 +455,26 @@ Bits :: struct[size: usize] {
 
 RING_SIZE :: 2
 
+// Fields with defaults, which literals and declarations start with (docs/types.md, Structs)
+Defaults :: struct {
+    width : uint = 10,
+    height : uint = WIDE / 2,
+    shown : bool = true,
+    color : Color = .Blue,
+    plain : int,
+}
+
+WIDE :: 40
+
+// Constants of a union with values, built without memory
+PICKED : Shape : .Rectangle(3, 4)
+ROUND : Shape : .Circle(5)
+
+Framed :: struct {
+    inner : Defaults,
+    border : u8 = 3,
+}
+
 main :: fn() -> int {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
@@ -723,6 +743,18 @@ main :: fn() -> int {
             }
         }
         case None => return 55
+    }
+    declared : Defaults
+    empty :: Defaults.{}
+    some :: Defaults.{height = 7, plain = 1}
+    framed : Framed
+    if declared.width != 10 || declared.height != 20 || !declared.shown || declared.color != .Blue || declared.plain != 0
+        || empty.width != 10 || empty.height != 20 || some.height != 7 || some.width != 10 || some.plain != 1
+        || framed.inner.height != 20 || framed.border != 3 {
+        return 56
+    }
+    if area(PICKED) != 12 || area(ROUND) != 75 {
+        return 57
     }
     return 42
 }

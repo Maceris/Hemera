@@ -48,15 +48,14 @@ SegmentedStack :: struct {
     native_stack : usize = 65536,
 }
 
-DEFAULT_THREAD_STACK : ThreadStack : .Segmented(SegmentedStack.{first_segment = 1024, native_stack = 65536})
+DEFAULT_THREAD_STACK : ThreadStack : .Segmented(SegmentedStack.{})
 
 Thread :: struct {
     // The thread's carrier block, from when it starts until it's joined
     carrier : CarrierBlock,
     // For the thread's carrier block, which code on the thread can read with current_thread_index
     index : usize,
-    // How its stack is set up, or null for DEFAULT_THREAD_STACK
-    stack : ThreadStack?,
+    stack : ThreadStack,
     function : ThreadFunction,
     data : any?,
     // A copy of the creating thread's context, which the new thread starts with
@@ -70,7 +69,7 @@ Thread :: struct {
 thread_create :: fn(
     function: ThreadFunction,
     data #escaping : any? = null,
-    stack : ThreadStack? = null,
+    stack := DEFAULT_THREAD_STACK,
 ) -> ptr[mut Thread] {
     result : ptr[mut Thread] = new(Thread)
     result.carrier = CarrierBlock.{}

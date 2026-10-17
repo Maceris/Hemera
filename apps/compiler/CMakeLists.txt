@@ -192,6 +192,10 @@ SET(CONFIGURATION_BINARY_DIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}/$<$<CONFIG:Debug
 
 # Third party
 
+# Hemera's changes to LLVM, applied to the submodule unless they already are (third-party/patches/llvm/README.md)
+SET(LLVM_SOURCE_DIR ${THIRD_PARTY_DIR}/llvm-project)
+INCLUDE(${THIRD_PARTY_DIR}/patches/llvm/apply_patches.cmake)
+
 SET(LLVM_DIR ${THIRD_PARTY_DIR}/llvm-project/llvm/cmake/modules)
 FIND_PACKAGE(LLVM REQUIRED CONFIG)
 MESSAGE(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
