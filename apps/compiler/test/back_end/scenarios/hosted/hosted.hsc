@@ -475,6 +475,11 @@ Framed :: struct {
     border : u8 = 3,
 }
 
+// Parameter defaults: an enum member, a union variant without values, and a struct with its defaults
+painted :: fn(color: Color = .Green, shape: Shape = .Empty, frame: Defaults = Defaults.{}) -> int {
+    return cast[int](color) * 1000 + area(shape) * 100 + cast[int](frame.width)
+}
+
 main :: fn() -> int {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
@@ -755,6 +760,10 @@ main :: fn() -> int {
     }
     if area(PICKED) != 12 || area(ROUND) != 75 {
         return 57
+    }
+    // Green is 1, Empty's area 0, the default width 10
+    if painted() != 1010 || painted(.Red, .Circle(1)) != 310 {
+        return 58
     }
     return 42
 }

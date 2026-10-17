@@ -3027,6 +3027,8 @@ namespace hemera {
 	 * A parameter's default (docs/functions.md): only simple ones for now, a literal, a constant,
 	 * #caller_location, or the context's fields.
 	 */
+	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type);
+
 	static mlir::Value emit_default(Generator& generator, Declaration* callee, size_t index, TypeInfo* type, ast::Node* call) {
 		const std::vector<ParameterNode> parameters = parameter_nodes(callee);
 		ast::Node* node = index < parameters.size() ? parameters[index].default_value : nullptr;
@@ -3042,6 +3044,25 @@ namespace hemera {
 		}
 		if (ast::NodeType::DIRECTIVE == kind && is_text(node->value.value, "#caller_location")) {
 			return caller_location(generator, type, call);
+		}
+		// .member: an enum's member, or a union's variant without values, like .None
+		if (ast::NodeType::ENUM_SHORTHAND == kind && node->children.empty()) {
+			if (is_variant(type, TypeInfoVariant::ENUM)) {
+				return constant_int(generator, llvm_type(generator, type), enum_value(type, node->value.value));
+			}
+			if (is_variant(type, TypeInfoVariant::UNION)) {
+				return make_variant(generator, type, variant_named(type, std::string_view(*node->value.value)), {}, {});
+			}
+		}
+		// Type.{} or .{}: zero, but for the struct's defaults
+		if (ast::NodeType::STRUCT_LITERAL == kind && is_variant(type, TypeInfoVariant::STRUCT)) {
+			bool empty = true;
+			for (ast::Node* child : node->children) {
+				empty = empty && !(ast::NodeType::LIST == child->node_type && !child->children.empty());
+			}
+			if (empty) {
+				return value_of(generator, emit_struct_literal(generator, node, type));
+			}
 		}
 		if (ast::NodeType::IDENTIFIER == kind && is_text(node->value.value, "context")) {
 			// context.field...: read through the current context
