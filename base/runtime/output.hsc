@@ -1,0 +1,373 @@
+package runtime
+
+import compiler from "base"
+import intrinsics from "base"
+
+/*
+ * Text for the process's standard output and standard error, where there are some: WriteFile on
+ * Windows, and the write system call on Linux. Elsewhere, like in a kernel, the text goes nowhere.
+ *
+ *     runtime.write_output("hello\n")
+ *     runtime.write_error("something went wrong\n")
+ *
+ * Text is written as it's given, in bytes, with nothing added: no newline, and no translation.
+ * Each call is one write, for text that fits one (all of it, in practice), so lines from several
+ * threads written whole don't mix.
+ */
+OutputStream :: enum {
+    OUTPUT,
+    ERROR,
+}
+
+write_output #no_context :: fn(text: string) {
+    os_write(.OUTPUT, cast[rawptr](text.data), text.count)
+}
+
+write_error #no_context :: fn(text: string) {
+    os_write(.ERROR, cast[rawptr](text.data), text.count)
+}
+
+// Bytes an OutputBuffer holds before it writes them.
+OUTPUT_BUFFER_SIZE : usize : 512
+
+/*
+ * Text built a piece at a time on the stack, then written whole, for the standard logger and the
+ * assertion handler, which can't count on an allocator. Writes what it has when it fills up.
+ *
+ *     buffer :: runtime.output_buffer(.ERROR)
+ *     runtime.output_format(&buffer, "% of %\n", done, total)
+ *     runtime.output_flush(&buffer)
+ */
+OutputBuffer :: struct {
+    bytes : u8[OUTPUT_BUFFER_SIZE],
+    count : usize,
+    stream : OutputStream,
+}
+
+output_buffer #no_context :: fn(stream: OutputStream) -> OutputBuffer {
+    buffer : OutputBuffer
+    buffer.count = 0
+    buffer.stream = stream
+    return buffer
+}
+
+// Writes what the buffer has, and empties it.
+output_flush #no_context :: fn(buffer: ptr[mut OutputBuffer]) {
+    count :: if buffer.count < OUTPUT_BUFFER_SIZE { buffer.count } else { OUTPUT_BUFFER_SIZE }
+    if count > 0 {
+        os_write(buffer.stream, cast[rawptr](&buffer.bytes[0]), count)
+    }
+    buffer.count = 0
+}
+
+output_byte #no_context :: fn(buffer: ptr[mut OutputBuffer], byte: u8) {
+    if buffer.count >= OUTPUT_BUFFER_SIZE {
+        output_flush(buffer)
+    }
+    index :: buffer.count
+    if index < OUTPUT_BUFFER_SIZE {
+        buffer.bytes[index] = byte
+        buffer.count = index + 1
+    }
+}
+
+output_text #no_context :: fn(buffer: ptr[mut OutputBuffer], text: string) {
+    for i in 0..<text.count {
+        output_byte(buffer, cast[u8](text[i]))
+    }
+}
+
+// value in decimal.
+output_unsigned #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
+    digits : u8[20]
+    count : usize = 0
+    rest := value
+    loop {
+        if count < 20 {
+            digits[count] = cast[u8](rest % 10) + cast[u8]('0')
+            count += 1
+        }
+        rest = rest / 10
+    }
+    while rest != 0
+    loop {
+        if count == 0 || count > 20 {
+            break
+        }
+        count -= 1
+        output_byte(buffer, digits[count])
+    }
+}
+
+output_signed #no_context :: fn(buffer: ptr[mut OutputBuffer], value: i64) {
+    if value < 0 {
+        output_byte(buffer, cast[u8]('-'))
+        // Negated as unsigned, which works for the most negative value too
+        output_unsigned(buffer, 0 - cast[u64](value))
+    }
+    else {
+        output_unsigned(buffer, cast[u64](value))
+    }
+}
+
+// value in hexadecimal, as 0x and at least one digit.
+output_address #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
+    output_text(buffer, "0x")
+    started := false
+    for i in 0..<16 {
+        nibble :: cast[u8]((value >> cast[u64](60 - 4 * i)) & 15)
+        if nibble != 0 || started || i == 15 {
+            started = true
+            output_byte(buffer, if nibble < 10 { cast[u8]('0') + nibble } else { cast[u8]('a') + nibble - 10 })
+        }
+    }
+}
+
+/*
+ * format with each % replaced by the next value, and %% by %: a smaller version of std's
+ * text_buffer.append_format, for base. Integers are in decimal, booleans, characters and strings
+ * as they are, enum members by name, and pointers as addresses; other values only by their kind,
+ * like <struct Name>. A % without a value left is written as %!.
+ */
+output_format :: fn(buffer: ptr[mut OutputBuffer], format: string, values: any...) {
+    next : usize = 0
+    index : usize = 0
+    loop {
+        if index >= format.count {
+            break
+        }
+        character :: format[index]
+        index += 1
+        if character != '%' {
+            output_byte(buffer, cast[u8](character))
+            continue
+        }
+        if index < format.count && format[index] == '%' {
+            output_byte(buffer, cast[u8]('%'))
+            index += 1
+            continue
+        }
+        if next >= values.count {
+            output_text(buffer, "%!")
+            continue
+        }
+        output_value(buffer, values[next])
+        next += 1
+    }
+}
+
+output_value :: fn(buffer: ptr[mut OutputBuffer], value: any) {
+    given :: type_info_of(value.type)
+    if cast[rawptr](given) == null {
+        output_text(buffer, "<nothing>")
+        return void
+    }
+    info := given
+    loop {
+        if info.variant != .ALIAS {
+            break
+        }
+        info = cast[ptr[compiler.TypeInfoAlias]](info).base_type
+    }
+    data :: value.data
+    variant :: info.variant
+    if variant == .INTEGER {
+        if cast[ptr[compiler.TypeInfoInteger]](info).is_signed {
+            output_signed(buffer, read_signed(data, info.size))
+        }
+        else {
+            output_unsigned(buffer, read_unsigned(data, info.size))
+        }
+    }
+    else if variant == .BOOLEAN {
+        output_text(buffer, if read_unsigned(data, info.size) != 0 { "true" } else { "false" })
+    }
+    else if variant == .CHAR {
+        output_byte(buffer, cast[ptr[u8]](data)^)
+    }
+    else if variant == .STRING {
+        if cast[ptr[compiler.TypeInfoString]](info).is_raw {
+            output_cstring(buffer, cast[ptr[rawptr]](data)^)
+        }
+        else {
+            output_text(buffer, cast[ptr[string]](data)^)
+        }
+    }
+    else if variant == .ENUM {
+        enum_info :: cast[ptr[compiler.TypeInfoEnum]](info)
+        raw :: cast[u128](read_unsigned(data, info.size))
+        for member_value, member in enum_info.values {
+            if member_value == raw && member < enum_info.members.count {
+                output_text(buffer, enum_info.members[member])
+                return void
+            }
+        }
+        output_text(buffer, enum_info.name)
+        output_byte(buffer, cast[u8]('('))
+        output_unsigned(buffer, cast[u64](raw))
+        output_byte(buffer, cast[u8](')'))
+    }
+    else if variant == .POINTER || variant == .FUNCTION {
+        address :: cast[ptr[u64]](data)^
+        if address == 0 {
+            output_text(buffer, "null")
+        }
+        else {
+            output_address(buffer, address)
+        }
+    }
+    else if variant == .STRUCT {
+        output_text(buffer, "<struct ")
+        output_text(buffer, cast[ptr[compiler.TypeInfoStruct]](info).name)
+        output_byte(buffer, cast[u8]('>'))
+    }
+    else {
+        output_text(buffer, "<value>")
+    }
+}
+
+// Bytes up to the first 0.
+output_cstring #no_context :: fn(buffer: ptr[mut OutputBuffer], start: rawptr) {
+    if start == null {
+        output_text(buffer, "null")
+        return void
+    }
+    index : usize = 0
+    loop {
+        byte :: cast[ptr[u8]](start + index)^
+        if byte == 0 {
+            break
+        }
+        output_byte(buffer, byte)
+        index += 1
+    }
+}
+
+// An integer of size bytes at data, up to 8.
+read_unsigned #no_context :: fn(data: rawptr, size: usize) -> u64 {
+    if size == 1 {
+        return cast[u64](cast[ptr[u8]](data)^)
+    }
+    if size == 2 {
+        return cast[u64](cast[ptr[u16]](data)^)
+    }
+    if size == 4 {
+        return cast[u64](cast[ptr[u32]](data)^)
+    }
+    // Only the low half of a 128-bit one
+    return cast[ptr[u64]](data)^
+}
+
+read_signed #no_context :: fn(data: rawptr, size: usize) -> i64 {
+    if size == 1 {
+        return cast[i64](cast[ptr[i8]](data)^)
+    }
+    if size == 2 {
+        return cast[i64](cast[ptr[i16]](data)^)
+    }
+    if size == 4 {
+        return cast[i64](cast[ptr[i32]](data)^)
+    }
+    return cast[ptr[i64]](data)^
+}
+
+/*
+ * The logger hosted programs start with: each message on a line of its own on standard error, after
+ * its level, like
+ *
+ *     [info] loaded 3 files
+ *
+ * Messages below context.log_level are dropped. Values are formatted by output_format.
+ */
+STANDARD_LOGGER :: Logger.{
+    data = null,
+    trace = standard_log_trace,
+    debug = standard_log_debug,
+    info = standard_log_info,
+    warn = standard_log_warn,
+    error = standard_log_error,
+    fatal = standard_log_fatal,
+    name = "standard",
+}
+
+standard_log_trace : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    standard_log(.TRACE, "trace", format_string, params)
+}
+
+standard_log_debug : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    standard_log(.DEBUG, "debug", format_string, params)
+}
+
+standard_log_info : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    standard_log(.INFO, "info", format_string, params)
+}
+
+standard_log_warn : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    standard_log(.WARN, "warn", format_string, params)
+}
+
+standard_log_error : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    standard_log(.ERROR, "error", format_string, params)
+}
+
+standard_log_fatal : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+    standard_log(.FATAL, "fatal", format_string, params)
+}
+
+standard_log :: fn(level: LogLevel, label: string, format_string: string, params: any[]) {
+    if cast[int](level) < cast[int](context.log_level) {
+        return void
+    }
+    buffer := output_buffer(.ERROR)
+    output_byte(&buffer, cast[u8]('['))
+    output_text(&buffer, label)
+    output_text(&buffer, "] ")
+    output_format(&buffer, format_string, params)
+    output_byte(&buffer, cast[u8]('\n'))
+    output_flush(&buffer)
+}
+
+// The exit code of a program a failed assertion ended, from printing_assertion_handler.
+ASSERTION_EXIT_CODE : u32 : 134
+
+/*
+ * The assertion handler hosted programs start with: it writes the failure to standard error, where
+ * it was and the stack that led there, then ends the process with ASSERTION_EXIT_CODE.
+ *
+ *     assertion failed: count must be positive
+ *         at main.hsc:12:5, in main
+ *         0x140001234
+ *         0x140001100
+ *
+ * The stack's addresses are return addresses, innermost first, starting in assert (or where it
+ * was inlined), which debug info turns into functions and lines.
+ */
+printing_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
+    buffer := output_buffer(.ERROR)
+    output_text(&buffer, "assertion failed: ")
+    output_text(&buffer, message)
+    output_text(&buffer, "\n    at ")
+    output_text(&buffer, location.file_path)
+    output_byte(&buffer, cast[u8](':'))
+    output_unsigned(&buffer, cast[u64](location.line))
+    output_byte(&buffer, cast[u8](':'))
+    output_unsigned(&buffer, cast[u64](location.column))
+    if location.function.count > 0 {
+        output_text(&buffer, ", in ")
+        output_text(&buffer, location.function)
+    }
+    output_byte(&buffer, cast[u8]('\n'))
+    addresses : rawptr[32]
+    // From the handler's caller: assert, or what called it where assert was inlined
+    count :: intrinsics.capture_stack_trace(addresses)
+    for address, index in addresses {
+        if index >= count {
+            break
+        }
+        output_text(&buffer, "    ")
+        output_address(&buffer, cast[u64](address))
+        output_byte(&buffer, cast[u8]('\n'))
+    }
+    output_flush(&buffer)
+    os_exit_process(ASSERTION_EXIT_CODE)
+}

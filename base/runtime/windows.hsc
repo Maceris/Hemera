@@ -3,7 +3,8 @@ package runtime
 import intrinsics from "base"
 
 /*
- * What the runtime needs from Windows: the process heap, threads, and waiting on an address.
+ * What the runtime needs from Windows: the process heap, threads, waiting on an address, and
+ * standard output and error.
  */
 #if OS == .Windows {
     KERNEL32 :: #library("kernel32")
@@ -28,11 +29,17 @@ import intrinsics from "base"
     TlsAlloc #foreign(KERNEL32) : fn() -> u32 : ---
     TlsGetValue #foreign(KERNEL32) : fn(slot: u32) -> rawptr : ---
     TlsSetValue #foreign(KERNEL32) : fn(slot: u32, value: rawptr) -> i32 : ---
+    GetStdHandle #foreign(KERNEL32) : fn(which: u32) -> rawptr : ---
+    WriteFile #foreign(KERNEL32) : fn(file: rawptr, bytes: rawptr, count: u32, written: ptr[mut u32], overlapped: rawptr) -> i32 : ---
+    GetCurrentProcess #foreign(KERNEL32) : fn() -> rawptr : ---
+    TerminateProcess #foreign(KERNEL32) : fn(process: rawptr, code: u32) -> i32 : ---
     WaitOnAddress #foreign(SYNCHRONIZATION) : fn(address: rawptr, compare: rawptr, size: usize, milliseconds: u32) -> i32 : ---
     WakeByAddressSingle #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
     WakeByAddressAll #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
 
     INFINITE : u32 : 0xffffffff
+    STD_OUTPUT_HANDLE : u32 : 0xfffffff5
+    STD_ERROR_HANDLE : u32 : 0xfffffff4
     HEAP_ZERO_MEMORY : u32 : 8
 
     /*
@@ -78,16 +85,52 @@ import intrinsics from "base"
     HEAP_ALLOCATOR :: Allocator.{heap_allocator_function, null}
 
     /*
-     * What a hosted program's main starts with: the process heap, and otherwise MINIMAL_CONTEXT's
-     * constants until there's a logger, a clock and random numbers for Windows.
+     * Bytes to standard output or error, a WriteFile at a time until they're all written. Nothing
+     * happens without one, like in a program started with it closed.
+     */
+    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {
+        which := STD_ERROR_HANDLE
+        if stream == OutputStream.OUTPUT {
+            which = STD_OUTPUT_HANDLE
+        }
+        handle :: GetStdHandle(which)
+        // INVALID_HANDLE_VALUE, or none
+        if handle == null || cast[usize](handle) == ~cast[usize](0) {
+            return void
+        }
+        done : usize = 0
+        loop {
+            if done >= count {
+                break
+            }
+            left :: count - done
+            chunk :: if left > 0x40000000 { cast[u32](0x40000000) } else { cast[u32](left) }
+            written : u32 = 0
+            if WriteFile(handle, bytes + done, chunk, &written, null) == 0 || written == 0 {
+                return void
+            }
+            done += cast[usize](written)
+        }
+    }
+
+    // Ends the process at once, with code, running nothing else: for a failed assertion.
+    os_exit_process #no_context :: fn(code: u32) #never_returns {
+        TerminateProcess(GetCurrentProcess(), code)
+        intrinsics.trap()
+    }
+
+    /*
+     * What a hosted program's main starts with: the process heap, the standard logger and assertion
+     * handler, and otherwise MINIMAL_CONTEXT's constants until there's a clock and random numbers
+     * for Windows.
      */
     HOSTED_CONTEXT :: Context.{
         allocator = HEAP_ALLOCATOR,
-        logger = &DISCARDING_LOGGER,
-        log_level = .FATAL,
+        logger = &STANDARD_LOGGER,
+        log_level = .INFO,
         clock = &NO_CLOCK,
         random = &NO_RANDOM,
-        assertion_handler = trap_assertion_handler,
+        assertion_handler = printing_assertion_handler,
         user_data = null,
         extensions = null,
     }

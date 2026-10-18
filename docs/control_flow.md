@@ -304,6 +304,31 @@ push_context cpu_context from cpu.context^ {
 allocations fail, log messages are dropped, the clock has no time, and asking for random bytes or failing an assertion
 traps.
 
+A hosted program's `main` starts with `runtime.HOSTED_CONTEXT` instead, on Windows and Linux:
+
+* The allocator is the system's: the process heap on Windows, and the runtime's own heap on Linux (see
+  [multitasking.md](multitasking.md#threads)).
+* The logger is `runtime.STANDARD_LOGGER`, which writes each message on a line of its own to standard error, after
+  its level, like `[info] loaded 3 files`, and `log_level` is `.INFO`, so trace and debug messages are dropped until a
+  `push_context` lowers it.
+* The assertion handler is `runtime.printing_assertion_handler`, which writes the failure to standard error, then ends
+  the process with `runtime.ASSERTION_EXIT_CODE` (134) (see [directives.md](directives.md)).
+
+```
+main :: fn() -> int {
+    runtime.log_info("starting with % files", count)    // [info] starting with 3 files
+    push_context verbose (log_level = .DEBUG) {
+        runtime.log_debug("shown here")
+    }
+    return 0
+}
+```
+
+Standard output and error are written with `runtime.write_output` and `runtime.write_error`, which go nowhere on a
+target without them, like a kernel. `std/io` prints through them: `print`, `println` and `printf` to standard output,
+and `eprint`, `eprintln` and `eprintf` to standard error, with `printf` formatting like `text_buffer.append_format`
+into a buffer on the stack, so none of them allocate. Each call is one write, so lines from several threads don't mix.
+
 ### Functions Without a Context
 
 Most functions are called with a context. Some start without one: functions marked `#no_context`, like a

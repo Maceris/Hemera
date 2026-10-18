@@ -7693,8 +7693,12 @@ namespace hemera {
 			if (options.address_zero_is_memory) {
 				function.addFnAttr(llvm::Attribute::NullPointerIsValid);
 			}
-			// Every frame keeps its frame pointer, so capture_stack_trace can walk the chain
+			/*
+			 * Every frame keeps its frame pointer, so capture_stack_trace can walk the chain, and no call
+			 * reuses its caller's frame, which would leave the caller out of it
+			 */
 			function.addFnAttr("frame-pointer", "all");
+			function.addFnAttr("disable-tail-calls", "true");
 			// A direct call has its callee's convention, which the generator only gave the callee
 			for (llvm::BasicBlock& block : function) {
 				for (llvm::Instruction& instruction : block) {

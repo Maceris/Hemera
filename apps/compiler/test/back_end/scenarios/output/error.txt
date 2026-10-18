@@ -1,0 +1,4 @@
+to standard error
+[info] loaded 3 files in 1 pass
+[warn] GREEN is 7, %
+[error] only errors: -5

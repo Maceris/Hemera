@@ -1,6 +1,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -29,13 +31,26 @@ static std::filesystem::path std_folder() {
 	return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path() / "std";
 }
 
+// A file's bytes, or nothing if it can't be read.
+static std::string read_file(const std::filesystem::path& path) {
+	std::ifstream file(path, std::ios::binary);
+	return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
+// What a hosted program wrote, to standard output and to standard error.
+struct HostedOutput {
+	std::string output;
+	std::string error;
+};
+
 /*
  * A hosted program, compiled the whole way: generated, lowered, assembled, linked with lld-link,
- * then run. Its main returns 42 if everything it checks worked, or the number of the first
- * check that failed.
+ * then run, with what it writes to standard output and error kept in files. Its main returns 42
+ * if everything it checks worked, or the number of the first check that failed.
  */
-static void run_hosted(std::string_view name, hemera::TargetStackCheck stack_check)
+static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42)
 {
+	HostedOutput result;
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
 
@@ -59,25 +74,40 @@ static void run_hosted(std::string_view name, hemera::TargetStackCheck stack_che
 	std::filesystem::remove(executable);
 
 	hemera::kick_off_processing(program_info.get(), &options);
-	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
-	ASSERT_TRUE(hemera::generate_program(program_info.get(), options, module));
+	EXPECT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	if (hemera::error_count() != 0 || !hemera::generate_program(program_info.get(), options, module)) {
+		ADD_FAILURE() << "generating failed";
+		return result;
+	}
 
 	llvm::LLVMContext llvm_context;
 	std::unique_ptr<llvm::Module> lowered = hemera::lower_to_llvm(module, llvm_context, options);
-	ASSERT_NE(lowered, nullptr);
+	if (lowered == nullptr) {
+		ADD_FAILURE() << "lowering failed";
+		return result;
+	}
 
 	hemera::BackendLLVM backend;
-	ASSERT_TRUE(backend.initialize(options));
+	EXPECT_TRUE(backend.initialize(options));
 	EXPECT_TRUE(backend.generate_object_file(options, *lowered, object_file));
 	backend.link(options, object_file);
 	backend.destroy();
-	ASSERT_EQ(hemera::error_count(), 0);
-	ASSERT_TRUE(std::filesystem::exists(executable));
+	EXPECT_EQ(hemera::error_count(), 0);
+	if (!std::filesystem::exists(executable)) {
+		ADD_FAILURE() << "linking failed";
+		return result;
+	}
 
-	// On Windows, system gives the program's exit code
-	EXPECT_EQ(std::system(std::format("\"{}\"", executable).c_str()), 42);
+	// On Windows, system gives the program's exit code; cmd takes off the outermost quotes
+	const std::filesystem::path output_file = output_folder / "output.txt";
+	const std::filesystem::path error_file = output_folder / "error.txt";
+	EXPECT_EQ(std::system(std::format("\"\"{}\" > \"{}\" 2> \"{}\"\"", executable, output_file.string(), error_file.string()).c_str()),
+		expected_exit_code);
+	result.output = read_file(output_file);
+	result.error = read_file(error_file);
 
 	module.erase();
+	return result;
 }
 
 TEST(Hosted, RunsProgram)
@@ -114,6 +144,26 @@ TEST(Hosted, AllocatesFromThreads)
 TEST(Hosted, UsesContainers)
 {
 	run_hosted("containers", hemera::TargetStackCheck::Off);
+}
+
+/*
+ * std/io's printing, to standard output and error, and the standard logger the hosted context starts
+ * with: what the program writes is in output.txt and error.txt in its scenario folder.
+ */
+TEST(Hosted, WritesOutput)
+{
+	const HostedOutput written = run_hosted("output", hemera::TargetStackCheck::Off);
+	EXPECT_EQ(written.output, read_file(scenario("output") / "output.txt"));
+	EXPECT_EQ(written.error, read_file(scenario("output") / "error.txt"));
+}
+
+// A failed assertion, with the hosted context's handler: the failure, where it was and the stack, then ASSERTION_EXIT_CODE.
+TEST(Hosted, ReportsFailedAssertion)
+{
+	const HostedOutput written = run_hosted("assertion", hemera::TargetStackCheck::Off, 134);
+	EXPECT_TRUE(written.output.empty());
+	EXPECT_TRUE(written.error.starts_with("assertion failed: count must be positive\n    at ")) << written.error;
+	EXPECT_NE(written.error.find("assertion.hsc:10:18, in check\n    0x"), std::string::npos) << written.error;
 }
 
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.

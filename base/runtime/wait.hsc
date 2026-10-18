@@ -28,6 +28,13 @@ import intrinsics from "base"
 
     os_thread_join :: fn(thread: ptr[mut Thread]) {}
 
+    // No standard output or error to write to
+    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
+
+    os_exit_process #no_context :: fn(code: u32) #never_returns {
+        intrinsics.trap()
+    }
+
     // What a hosted program's main starts with
     HOSTED_CONTEXT :: MINIMAL_CONTEXT
 }

@@ -479,7 +479,9 @@ the same shape as the x86-64 frame above, so the loop is the same, with these di
 
 Stack traces aren't recorded as code runs. `intrinsics.capture_stack_trace` builds one when asked, by following
 saved base pointers from the current frame and collecting each frame's return address (`[BP + 8]`). Every function
-keeps its frame pointer for this, so the chain is never broken by an optimized-out frame:
+keeps its frame pointer for this, so the chain is never broken by an optimized-out frame, and no call is made a tail
+call, which would reuse its caller's frame and leave the caller out. A function inlined into its caller has no frame
+of its own, so its addresses are its caller's:
 
 * Across segments, `morestack` and `.grow` build ordinary frames, so the chain leads from a function on a new segment
   back to its caller on the old one. A body that `morestack` ran returns to `morestack`'s continuation, and

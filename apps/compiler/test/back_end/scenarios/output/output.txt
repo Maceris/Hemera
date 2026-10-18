@@ -1,0 +1,2 @@
+hello, world
+3 files, -12 bytes, true

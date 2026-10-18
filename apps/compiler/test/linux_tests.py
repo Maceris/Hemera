@@ -1,7 +1,8 @@
 """
 Cross-compiles hosted test programs for Linux with the compiler built here, copies them to a Linux
 machine over SSH and runs them there, checking each one's exit code: 42 if everything it checks
-worked, or the number of the first check that failed. Exits 0 if every test passed.
+worked, or the number of the first check that failed. A scenario with output.txt or error.txt is
+also checked for writing exactly that to standard output or error. Exits 0 if every test passed.
 
     HEMERA_LINUX_HOST=user@address python apps/compiler/test/linux_tests.py
 
@@ -20,15 +21,21 @@ from pathlib import Path
 COMPILER_DIR = Path(__file__).resolve().parent.parent
 SCENARIOS = COMPILER_DIR / "test" / "back_end" / "scenarios"
 
-# Scenario folder, and the compiler's extra arguments
+# Scenario folder, the compiler's extra arguments, and the exit code expected
 TESTS = [
-    ("hosted", []),
-    ("threads", ["--stack-check=morestack"]),
-    ("heap", []),
-    ("containers", []),
+    ("hosted", [], 42),
+    ("threads", ["--stack-check=morestack"], 42),
+    ("heap", [], 42),
+    ("containers", [], 42),
+    ("output", [], 42),
+    # runtime.ASSERTION_EXIT_CODE
+    ("assertion", [], 134),
     # Links C, against HEMERA_LINUX_SYSROOT
-    ("libc", ["--stack-check=morestack", "SYSROOT"]),
+    ("libc", ["--stack-check=morestack", "SYSROOT"], 42),
 ]
+
+# What a failed assertion's report starts with, on standard error
+ASSERTION_REPORT = "assertion failed: count must be positive\n    at "
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess:
@@ -49,7 +56,7 @@ def main() -> int:
         return 2
     failures = 0
     with tempfile.TemporaryDirectory(prefix="hemera-linux-tests-") as temporary:
-        for name, arguments in TESTS:
+        for name, arguments, exit_code in TESTS:
             output = Path(temporary) / name
             arguments = [f"--sysroot={sysroot}" if argument == "SYSROOT" else argument for argument in arguments]
             built = run([compiler, "--os=linux", f"--output={output}", *arguments, str(SCENARIOS / name)])
@@ -63,10 +70,19 @@ def main() -> int:
                 failures += 1
                 continue
             ran = run(ssh + [f"chmod +x ~/hemera-tests/{name} && timeout 120 ~/hemera-tests/{name}"])
-            if ran.returncode == 42:
+            problems = []
+            if ran.returncode != exit_code:
+                problems.append(f"exited with {ran.returncode}")
+            for stream, written in (("output.txt", ran.stdout), ("error.txt", ran.stderr)):
+                expected = SCENARIOS / name / stream
+                if expected.exists() and written != expected.read_text(encoding="utf-8"):
+                    problems.append(f"wrote {written!r} rather than {stream}")
+            if name == "assertion" and not ran.stderr.startswith(ASSERTION_REPORT):
+                problems.append(f"reported {ran.stderr!r}")
+            if not problems:
                 print(f"passed: {name}")
             else:
-                print(f"FAILED: {name} exited with {ran.returncode}\n{ran.stdout}{ran.stderr}")
+                print(f"FAILED: {name} {', '.join(problems)}\n{ran.stdout}{ran.stderr}")
                 failures += 1
     print(f"{len(TESTS) - failures} of {len(TESTS)} passed")
     return 0 if failures == 0 else 1

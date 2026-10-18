@@ -9,10 +9,12 @@ import intrinsics from "base"
 #if OS == .Linux && TARGET_ARCH == .x86_64 {
     import x86_64 from "base/intrinsics"
 
+    SYS_WRITE : u64 : 1
     SYS_MMAP : u64 : 9
     SYS_MUNMAP : u64 : 11
     SYS_EXIT : u64 : 60
     SYS_FUTEX : u64 : 202
+    SYS_EXIT_GROUP : u64 : 231
 
     PROT_READ_WRITE : u64 : 3
     MAP_PRIVATE_ANONYMOUS : u64 : 0x22
@@ -162,14 +164,49 @@ import intrinsics from "base"
         heap_unlock(heap)
     }
 
-    // What a hosted program's main starts with: memory from the kernel, and otherwise MINIMAL_CONTEXT's constants.
+    /*
+     * Bytes to standard output (1) or error (2), a write at a time until they're all written, or
+     * one fails. Written directly, so text from C's stdio, which buffers, can come out after it.
+     */
+    os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {
+        descriptor : u64 = 2
+        if stream == OutputStream.OUTPUT {
+            descriptor = 1
+        }
+        done : usize = 0
+        loop {
+            if done >= count {
+                break
+            }
+            result :: x86_64.syscall(SYS_WRITE, descriptor, cast[u64](bytes + done), cast[u64](count - done))
+            // EINTR: again
+            if result == ~cast[u64](3) {
+                continue
+            }
+            if syscall_failed(result) || result == 0 {
+                return void
+            }
+            done += cast[usize](result)
+        }
+    }
+
+    // Ends the process at once, with code, running nothing else: for a failed assertion.
+    os_exit_process #no_context :: fn(code: u32) #never_returns {
+        x86_64.syscall(SYS_EXIT_GROUP, cast[u64](code))
+        intrinsics.trap()
+    }
+
+    /*
+     * What a hosted program's main starts with: memory from the kernel, the standard logger and
+     * assertion handler, and otherwise MINIMAL_CONTEXT's constants.
+     */
     HOSTED_CONTEXT :: Context.{
         allocator = PAGES_ALLOCATOR,
-        logger = &DISCARDING_LOGGER,
-        log_level = .FATAL,
+        logger = &STANDARD_LOGGER,
+        log_level = .INFO,
         clock = &NO_CLOCK,
         random = &NO_RANDOM,
-        assertion_handler = trap_assertion_handler,
+        assertion_handler = printing_assertion_handler,
         user_data = null,
         extensions = null,
     }

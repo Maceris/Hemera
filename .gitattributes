@@ -1,2 +1,5 @@
 # Patches must keep LF line endings, or git apply fails on files checked out with CRLF
 *.patch text eol=lf
+
+# What a test program is expected to write, byte for byte
+apps/compiler/test/back_end/scenarios/output/*.txt text eol=lf
