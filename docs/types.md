@@ -181,6 +181,38 @@ b : string[..] // Dynamic array of strings
 
 Dynamic arrays know their size, and also have a capacity that can be accessed with `array.capacity`.
 
+An array starts empty, with no memory and no allocator. The first time it needs memory it takes the context's
+allocator, and keeps it, so every block it uses comes from and goes back to that one, even if it's changed later
+where the context's allocator is another. It grows by doubling, from 4 elements. Running out of memory calls
+`context.assertion_handler`, like `new`.
+
+The functions for them are in `runtime` (`base/runtime/array.hsc`). Those that change an array take a pointer to it,
+and those that only read one take a view:
+
+```
+names : string[..]
+defer runtime.array_free(&names)
+runtime.array_add(&names, "first")
+runtime.array_add(&names, "second")
+last :: runtime.pop(&names)           // "second"
+```
+
+| Function | What it does |
+|---|---|
+| `array_add(&array, value)` | Adds `value` at the end, growing the array if it's full |
+| `array_copy(source, &target)` | Adds each of a view's elements at the end, in order |
+| `array_reserve(&array, capacity)` | Makes room for at least `capacity` elements |
+| `array_remove(&array, position)` | Removes an element, moving the later ones down, so the order is kept |
+| `array_remove_fast(&array, position)` | Removes an element by moving the last one into its place |
+| `pop(&array)`, `peek(view)` | Removes and gives back, or just gives back, the last element |
+| `array_find(view, value)` | Where `value` first is, comparing with `==`, or none |
+| `array_reset(&array)` | Empties it, keeping its memory |
+| `array_free(&array)` | Gives its memory back, leaving it empty |
+
+Removing past the end, or popping or peeking at an empty array, calls `context.assertion_handler`. What's added is
+kept beyond the call, so `value` is `#escaping`, and `array_copy`'s elements are checked the same way (see
+[memory.md](memory.md#escaping-parameters)).
+
 ### Array Views
 
 Array views represent a view into data stored in an array, or a subsection of one.

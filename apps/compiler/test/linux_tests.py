@@ -29,6 +29,7 @@ TESTS = [
     ("containers", [], 42),
     ("output", [], 42),
     ("library", [], 42),
+    ("arrays", [], 42),
     # runtime.ASSERTION_EXIT_CODE
     ("assertion", [], 134),
     # Links C, against HEMERA_LINUX_SYSROOT

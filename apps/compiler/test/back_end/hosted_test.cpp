@@ -157,6 +157,12 @@ TEST(Hosted, WritesOutput)
 	EXPECT_EQ(written.error, read_file(scenario("output") / "error.txt"));
 }
 
+// Dynamic arrays, from a counting allocator that checks every block is given back.
+TEST(Hosted, UsesDynamicArrays)
+{
+	run_hosted("arrays", hemera::TargetStackCheck::Off);
+}
+
 /*
  * std's general-purpose packages: strings, time's calendar, memory's SharedPtr, and logger, whose
  * lines are in output.txt and error.txt in the scenario folder.
