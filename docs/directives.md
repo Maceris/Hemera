@@ -19,17 +19,20 @@ past a failed assertion. If an assertion fails inside a handler, `assert` stops 
 (an illegal instruction) instead of calling the handler again. At compile time, that fails the build.
 
 A hosted program starts with `runtime.printing_assertion_handler`, which writes the message, where the assertion was
-and the stack's return addresses to standard error, then ends the process with `runtime.ASSERTION_EXIT_CODE` (134):
+and the stack to standard error, then ends the process with `runtime.ASSERTION_EXIT_CODE` (134):
 
 ```
 assertion failed: count must be positive
     at src/main.hsc:10:18, in check
-    0x7ff6428d140a
-    0x7ff6428d155d
+    0x146a  app.main+0x6a
+    0x15bd
+    (hemera --symbolize=app.exe 0x146a 0x15bd for files and lines)
 ```
 
-The addresses start in `assert`, or in its caller where `assert` was inlined, and debug info turns them into
-functions and lines. Freestanding programs start with `MINIMAL_CONTEXT`'s `trap_assertion_handler`, which traps.
+The stack is its return addresses, innermost first, starting in `assert` (or where it was inlined), as offsets into
+the program's image, which are the same every run. With debug info, each is followed by the Hemera function it's in,
+and `hemera --symbolize` gives their files and lines (see [compilation.md](compilation.md#debug-info)). Freestanding
+programs start with `MINIMAL_CONTEXT`'s `trap_assertion_handler`, which traps.
 
 The checks the language does at run time fail the same way, through `context.assertion_handler` with a message
 saying what went wrong:

@@ -205,6 +205,40 @@ A hosted Linux program is normally static, with no C library: the runtime makes 
 * It's linked against the target's own libraries, from the folder `--sysroot` names: `libc.so` (a copy of `libc.so.6`
   does), the `lib<name>.so` of each other `#library`, and `ld-linux-x86-64.so.2`. No C runtime objects are needed.
 
+## Debug Info
+
+`--debug` (`BackendOptions.debug_info` in a build package) gives the program debug info, so debuggers and stack traces
+can name its functions and lines:
+
+* Each Hemera function has a subprogram, and each statement a location, which become DWARF for ELF programs and
+  CodeView for PE/COFF ones, which lld-link puts in a PDB next to the program. Inlined calls are described too.
+* The program has a table of its functions' starts and names (`intrinsics.function_names`), so a stack trace can name
+  each frame while it runs, with `runtime.function_at`. `runtime.printing_assertion_handler` does.
+* With CodeView, `switch`-like branches don't use jump tables, since LLVM describes a table it has optimized away
+  with a label that's never defined.
+
+Stack traces give their frames as offsets into the program's image (`runtime.image_offset`), which are the same every
+run, wherever the system loaded it. `hemera --symbolize` turns them into functions, files and lines, from the
+program's PDB or DWARF, innermost first, with each call that was inlined:
+
+```
+hemera --symbolize=app.exe 0x146a 0x15bd
+
+0x146a
+    runtime.assert at <base>/runtime/assertion.hsc:38, inlined
+    app.check at src/main.hsc:10, inlined
+    app.main at src/main.hsc:15:4
+0x15bd
+    hemera_entry
+```
+
+An offset is a return address, so it's looked up one byte earlier, in the call. For ELF, offsets are from the lowest
+load segment, where `__ehdr_start` is in an ordinary program; a kernel that gives its frames relative to where its
+image was loaded, like one moved by KASLR, matches that.
+
+Functions are never tail calls, with or without debug info, so a frame is never left out of a stack trace by a
+caller whose frame was reused (see [calling_convention.md](calling_convention.md#walking-the-stack)).
+
 ## Target Options on the Command Line
 
 Until a build package can set `TargetOptions` (it needs `#run`), the compiler takes the ones freestanding programs

@@ -33,6 +33,8 @@ TESTS = [
     ("files", [], 42),
     # runtime.ASSERTION_EXIT_CODE
     ("assertion", [], 134),
+    # The same with debug info, its frames named and symbolized from its DWARF
+    ("assertion_debug", ["--debug"], 134),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--stack-check=morestack", "SYSROOT"], 42),
 ]
@@ -42,6 +44,19 @@ TESTS = [
 RUN_WITH = {
     "files": ("HEMERA_FILES_TEST='h\u00e9llo'", "alpha 'two words' ''"),
 }
+
+# A test that builds another's scenario, with different arguments
+SCENARIO_OF = {
+    "assertion_debug": "assertion",
+}
+
+# What hemera --symbolize says about assertion_debug's first frame: assert inlined into check, into main
+SYMBOLIZED = [
+    "runtime.assert at <base>/runtime/assertion.hsc:",
+    "assertion.check at ",
+    "assertion.hsc:10:",
+    "assertion.main at ",
+]
 
 # What a failed assertion's report starts with, on standard error
 ASSERTION_REPORT = "assertion failed: count must be positive\n    at "
@@ -68,7 +83,8 @@ def main() -> int:
         for name, arguments, exit_code in TESTS:
             output = Path(temporary) / name
             arguments = [f"--sysroot={sysroot}" if argument == "SYSROOT" else argument for argument in arguments]
-            built = run([compiler, "--os=linux", f"--output={output}", *arguments, str(SCENARIOS / name)])
+            scenario = SCENARIOS / SCENARIO_OF.get(name, name)
+            built = run([compiler, "--os=linux", f"--output={output}", *arguments, str(scenario)])
             if built.returncode != 0 or not output.exists():
                 print(f"FAILED: {name} doesn't build\n{built.stdout}{built.stderr}")
                 failures += 1
@@ -85,11 +101,20 @@ def main() -> int:
             if ran.returncode != exit_code:
                 problems.append(f"exited with {ran.returncode}")
             for stream, written in (("output.txt", ran.stdout), ("error.txt", ran.stderr)):
-                expected = SCENARIOS / name / stream
+                expected = scenario / stream
                 if expected.exists() and written != expected.read_text(encoding="utf-8"):
                     problems.append(f"wrote {written!r} rather than {stream}")
-            if name == "assertion" and not ran.stderr.startswith(ASSERTION_REPORT):
+            if name.startswith("assertion") and not ran.stderr.startswith(ASSERTION_REPORT):
                 problems.append(f"reported {ran.stderr!r}")
+            if name == "assertion_debug":
+                offsets = [line.split()[0] for line in ran.stderr.splitlines() if line.startswith("    0x")]
+                if "  assertion.main+0x" not in ran.stderr or not offsets:
+                    problems.append("didn't name its frames")
+                else:
+                    symbolized = run([compiler, f"--symbolize={output}", *offsets])
+                    missing = [part for part in SYMBOLIZED if part not in symbolized.stdout]
+                    if missing:
+                        problems.append(f"symbolized without {missing}:\n{symbolized.stdout}")
             if not problems:
                 print(f"passed: {name}")
             else:

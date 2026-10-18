@@ -5,9 +5,13 @@
 #include <crtdbg.h>
 #endif
 #include <format>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "job.h"
 #include "back_end/back_end.h"
+#include "back_end/symbolize.h"
 #include "cmd_line/arg_parsing.h"
 #include "cmd_line/cmd_line_utils.h"
 #include "cmd_line/options.h"
@@ -33,6 +37,11 @@ namespace hemera {
 
 	static int main(int argc, char* argv[])
 	{
+		// hemera --symbolize=<program> <offset>...: a stack trace's frames, from the program's debug info
+		if (argc >= 2 && std::string_view(argv[1]).starts_with("--symbolize=")) {
+			std::vector<std::string> offsets(argv + 2, argv + argc);
+			return symbolize(std::string(std::string_view(argv[1]).substr(std::string_view("--symbolize=").size())), offsets, std::cout);
+		}
 		Logger::init();
 		Allocator<> main_alloc;
 		int rc = 0;

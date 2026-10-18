@@ -4,11 +4,13 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "gtest/gtest.h"
 
 #include "back_end/back_end.h"
+#include "back_end/symbolize.h"
 #include "cmd_line/options.h"
 #include "error/reporting.h"
 #include "front_end/front_end.h"
@@ -37,10 +39,11 @@ static std::string read_file(const std::filesystem::path& path) {
 	return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
-// What a hosted program wrote, to standard output and to standard error.
+// What a hosted program wrote, to standard output and to standard error, and where the program is.
 struct HostedOutput {
 	std::string output;
 	std::string error;
+	std::string executable;
 };
 
 /*
@@ -49,7 +52,7 @@ struct HostedOutput {
  * if everything it checks worked, or the number of the first check that failed.
  */
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
-	std::string_view arguments = "")
+	std::string_view arguments = "", bool debug_info = false)
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -70,8 +73,10 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
 	options.output_name = (output_folder / name).string();
 	options.stack_check = stack_check;
+	options.debug_info = debug_info;
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
+	result.executable = executable;
 	std::filesystem::remove(executable);
 
 	hemera::kick_off_processing(program_info.get(), &options);
@@ -193,6 +198,34 @@ TEST(Hosted, ReportsFailedAssertion)
 	EXPECT_TRUE(written.output.empty());
 	EXPECT_TRUE(written.error.starts_with("assertion failed: count must be positive\n    at ")) << written.error;
 	EXPECT_NE(written.error.find("assertion.hsc:10:18, in check\n    0x"), std::string::npos) << written.error;
+}
+
+/*
+ * The same with debug info: each frame is named at run time, from the program's table of its
+ * functions, and hemera --symbolize turns the offsets into files and lines from its PDB, assert
+ * and check inlined into main.
+ */
+TEST(Hosted, NamesFramesWithDebugInfo)
+{
+	const HostedOutput written = run_hosted("assertion", hemera::TargetStackCheck::Off, 134, "", true);
+	EXPECT_NE(written.error.find("  assertion.main+0x"), std::string::npos) << written.error;
+	EXPECT_NE(written.error.find("(hemera --symbolize="), std::string::npos) << written.error;
+	// The offsets the trace gave, one a line
+	std::vector<std::string> offsets;
+	std::istringstream lines(written.error);
+	for (std::string line; std::getline(lines, line);) {
+		if (line.starts_with("    0x")) {
+			offsets.push_back(line.substr(4, line.find_first_of(" \r", 4) - 4));
+		}
+	}
+	ASSERT_FALSE(offsets.empty()) << written.error;
+	std::ostringstream symbolized;
+	EXPECT_EQ(hemera::symbolize(written.executable, offsets, symbolized), 0);
+	const std::string frames = symbolized.str();
+	EXPECT_NE(frames.find("runtime.assert at <base>/runtime/assertion.hsc:"), std::string::npos) << frames;
+	EXPECT_NE(frames.find("assertion.check at "), std::string::npos) << frames;
+	EXPECT_NE(frames.find("assertion.hsc:10, inlined"), std::string::npos) << frames;
+	EXPECT_NE(frames.find("assertion.main at "), std::string::npos) << frames;
 }
 
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.

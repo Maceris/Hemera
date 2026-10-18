@@ -335,12 +335,15 @@ ASSERTION_EXIT_CODE : u32 : 134
  * it was and the stack that led there, then ends the process with ASSERTION_EXIT_CODE.
  *
  *     assertion failed: count must be positive
- *         at main.hsc:12:5, in main
- *         0x140001234
- *         0x140001100
+ *         at main.hsc:12:5, in check
+ *         0x140a  app.main+0x6a
+ *         0x155d
+ *         (hemera --symbolize=app.exe 0x140a 0x155d for files and lines)
  *
- * The stack's addresses are return addresses, innermost first, starting in assert (or where it
- * was inlined), which debug info turns into functions and lines.
+ * The stack is its return addresses, innermost first, starting in assert (or where it was
+ * inlined), as offsets into the program's image, which are the same every run. With debug info,
+ * each is followed by the Hemera function it's in (function_at), and hemera --symbolize turns
+ * them into files and lines, inlined calls included.
  */
 printing_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
     buffer := output_buffer(.ERROR)
@@ -365,8 +368,33 @@ printing_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation,
             break
         }
         output_text(&buffer, "    ")
-        output_address(&buffer, cast[u64](address))
+        output_address(&buffer, cast[u64](image_offset(address)))
+        // A return address may be just past a call that ends its function
+        name, offset :: function_at(cast[rawptr](cast[usize](address) - 1))
+        if name.count > 0 {
+            output_text(&buffer, "  ")
+            output_text(&buffer, name)
+            output_byte(&buffer, cast[u8]('+'))
+            output_address(&buffer, cast[u64](offset + 1))
+        }
         output_byte(&buffer, cast[u8]('\n'))
+    }
+    if count > 0 {
+        program := "<program>"
+        arguments :: process_arguments()
+        if arguments.count > 0 {
+            program = arguments[0]
+        }
+        output_text(&buffer, "    (hemera --symbolize=")
+        output_text(&buffer, program)
+        for address, index in addresses {
+            if index >= count {
+                break
+            }
+            output_byte(&buffer, cast[u8](' '))
+            output_address(&buffer, cast[u64](image_offset(address)))
+        }
+        output_text(&buffer, " for files and lines)\n")
     }
     output_flush(&buffer)
     os_exit_process(ASSERTION_EXIT_CODE)

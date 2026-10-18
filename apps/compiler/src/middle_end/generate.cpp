@@ -20,6 +20,7 @@
 #include "hmir/hmir_passes.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -102,6 +103,10 @@ namespace hemera {
 
 	struct FunctionState {
 		Declaration* declaration = nullptr;
+		/// <summary>
+		/// It has a DISubprogram, so each statement sets the location of what it generates.
+		/// </summary>
+		bool debug_info = false;
 		CheckedBody* checked = nullptr;
 		TypeInfoFunction const* type = nullptr;
 		/// <summary>
@@ -220,6 +225,19 @@ namespace hemera {
 		/// </summary>
 		std::vector<LLVM::GlobalOp> used;
 		bool failed = false;
+		/// <summary>
+		/// Debug info (Options::debug_info): the program's compile unit, made with its first function,
+		/// and each source file's.
+		/// </summary>
+		LLVM::DICompileUnitAttr compile_unit;
+		std::map<std::string, LLVM::DIFileAttr> debug_files;
+		/// <summary>
+		/// The functions with debug info and their names, for intrinsics.function_names' table, and
+		/// that table's view once the program asks for it.
+		/// </summary>
+		std::vector<std::pair<LLVM::LLVMFuncOp, std::string>> named_functions;
+		LLVM::GlobalOp function_names;
+		TypeInfo* function_names_type = nullptr;
 
 		Generator(ProgramInfo* program_, mlir::ModuleOp module_)
 			: program{ program_ }
@@ -1777,6 +1795,7 @@ namespace hemera {
 
 	static Emitted emit_expression(Generator& generator, ast::Node* node, TypeInfo* expected);
 	static bool emit_statement(Generator& generator, ast::Node* statement);
+	static mlir::Location source_location(Generator& generator, const ast::Node* node);
 	static bool emit_block(Generator& generator, ast::Node* block, mlir::Value result_slot, TypeInfo* result_type);
 
 	// An expression's value, converted to the type it's used as.
@@ -3916,6 +3935,44 @@ namespace hemera {
 			LLVM::MemsetOp::create(b, l, arguments[0], constant_int(generator, integer_type(generator, 1), 0), arguments[1], false);
 			return result;
 		}
+		/*
+		 * Where the program's image starts, for addresses relative to it: __ImageBase, which lld-link
+		 * defines, for PE/COFF, and __ehdr_start for ELF, weak, since a linker script may leave the
+		 * headers out of memory. Null where there's neither.
+		 */
+		if (name == "image_base") {
+			const bool coff = ObjectFormatType::COFF == generator.options->object_format;
+			const bool elf = ObjectFormatType::ELF == generator.options->object_format;
+			if (generator.compile_time || (!coff && !elf)) {
+				return value(zero_of(generator, pointer_type(generator)), result_type);
+			}
+			const char* symbol = coff ? "__ImageBase" : "__ehdr_start";
+			LLVM::GlobalOp base = generator.module.lookupSymbol<LLVM::GlobalOp>(symbol);
+			if (!base) {
+				mlir::OpBuilder::InsertionGuard guard(generator.builder);
+				generator.builder.setInsertionPointToEnd(generator.module.getBody());
+				base = LLVM::GlobalOp::create(generator.builder, generator.loc, integer_type(generator, 1), true,
+					coff ? LLVM::Linkage::External : LLVM::Linkage::ExternWeak, symbol, mlir::Attribute());
+			}
+			return value(LLVM::AddressOfOp::create(b, l, base), result_type);
+		}
+		/*
+		 * The table of functions' starts and names, for stack traces: filled in once every function
+		 * is generated (generate_function_names), and empty without debug info
+		 */
+		if (name == "function_names") {
+			if (generator.compile_time || result_type == nullptr) {
+				return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
+			}
+			if (!generator.function_names) {
+				mlir::OpBuilder::InsertionGuard guard(generator.builder);
+				generator.builder.setInsertionPointToEnd(generator.module.getBody());
+				generator.function_names = LLVM::GlobalOp::create(generator.builder, generator.loc, llvm_type(generator, result_type),
+					true, LLVM::Linkage::Internal, "hemera.function_names", mlir::Attribute(), 8);
+				generator.function_names_type = result_type;
+			}
+			return value(load(generator, result_type, LLVM::AddressOfOp::create(b, l, generator.function_names)), result_type);
+		}
 		// A call to the stack walker, which lower_to_llvm defines (define_stack_walker)
 		if (name == "capture_stack_trace") {
 			mlir::Type usize = usize_type(generator);
@@ -5821,6 +5878,9 @@ namespace hemera {
 
 	// A statement; returns whether it ended the block (return, break, a call that never returns).
 	static bool emit_statement(Generator& generator, ast::Node* statement) {
+		if (generator.state != nullptr && generator.state->debug_info) {
+			generator.loc = source_location(generator, statement);
+		}
 		const ast::NodeType type = statement->node_type;
 		if (ast::NodeType::DEFINITION == type) {
 			emit_definition(generator, statement);
@@ -5960,6 +6020,71 @@ namespace hemera {
 	// ---------------------------------------------------------------------------------------------
 	// Functions, constants and the entry point
 
+	// A source file's debug info: its name and folder.
+	static LLVM::DIFileAttr debug_file(Generator& generator, const std::string& path) {
+		auto iter = generator.debug_files.find(path);
+		if (iter != generator.debug_files.end()) {
+			return iter->second;
+		}
+		const std::filesystem::path file(path);
+		// base's files are named <base>/..., not on disk: kept whole, so tools don't put a folder in front
+		LLVM::DIFileAttr result = file.is_absolute()
+			? LLVM::DIFileAttr::get(generator.context, file.filename().string(), file.parent_path().string())
+			: LLVM::DIFileAttr::get(generator.context, file.generic_string(), "");
+		generator.debug_files.emplace(path, result);
+		return result;
+	}
+
+	// The file being generated, for debug info: base's <base>/... names with / throughout.
+	static std::string debug_path(Generator& generator) {
+		std::string path = current_file(generator);
+		if (!std::filesystem::path(path).is_absolute()) {
+			std::replace(path.begin(), path.end(), '\\', '/');
+		}
+		return path;
+	}
+
+	// Where node is, in the file being generated, or the location so far if it has none.
+	static mlir::Location source_location(Generator& generator, const ast::Node* node) {
+		if (node == nullptr || node->value.line_number == 0) {
+			return generator.loc;
+		}
+		return mlir::FileLineColLoc::get(generator.builder.getStringAttr(debug_path(generator)), node->value.line_number,
+			node->value.column_number);
+	}
+
+	/*
+	 * A function's debug info, with --debug-info: a DISubprogram on the function's location, so the
+	 * locations of what's generated in it become line information (DWARF, or CodeView for PE/COFF)
+	 * and stack traces and debuggers can name its frames. Compile-time code has none.
+	 */
+	static bool attach_subprogram(Generator& generator, LLVM::LLVMFuncOp function, Declaration* declaration) {
+		if (generator.options == nullptr || !generator.options->debug_info || generator.compile_time || declaration->node == nullptr) {
+			return false;
+		}
+		mlir::MLIRContext* context = generator.context;
+		const std::string path = debug_path(generator);
+		LLVM::DIFileAttr file = debug_file(generator, path);
+		if (!generator.compile_unit) {
+			generator.compile_unit = LLVM::DICompileUnitAttr::get(mlir::DistinctAttr::create(mlir::UnitAttr::get(context)),
+				llvm::dwarf::DW_LANG_C99, file, mlir::StringAttr::get(context, "hemera"), true, LLVM::DIEmissionKind::Full);
+		}
+		const unsigned line = declaration->node->value.line_number;
+		auto type = LLVM::DISubroutineTypeAttr::get(context, llvm::dwarf::DW_CC_normal, {});
+		std::string name = text_of(declaration->name);
+		if (declaration->package_path != nullptr) {
+			name = std::format("{}.{}", std::filesystem::path(text_of(declaration->package_path)).filename().string(), name);
+		}
+		auto subprogram = LLVM::DISubprogramAttr::get(context, mlir::DistinctAttr::create(mlir::UnitAttr::get(context)),
+			generator.compile_unit, file, mlir::StringAttr::get(context, name), function.getSymNameAttr(), file, line, line,
+			LLVM::DISubprogramFlags::Definition | LLVM::DISubprogramFlags::Optimized, type, {}, {});
+		mlir::Location start = mlir::FileLineColLoc::get(generator.builder.getStringAttr(path), line, declaration->node->value.column_number);
+		function->setLoc(mlir::FusedLoc::get(context, { start }, subprogram));
+		generator.loc = start;
+		generator.named_functions.emplace_back(function, name);
+		return true;
+	}
+
 	static void generate_function(Generator& generator, Declaration* declaration) {
 		// An entry function's body, not the code around it
 		auto body_iter = generator.entry_bodies.find(declaration);
@@ -5976,11 +6101,15 @@ namespace hemera {
 		generator.builder.setInsertionPointToEnd(entry);
 		FunctionState* outer = generator.state;
 		generator.state = &state;
+		// Each statement's location, under the function's subprogram, with debug info
+		const mlir::Location outer_location = generator.loc;
+		state.debug_info = attach_subprogram(generator, function, declaration);
 		if (generator.collecting && state.checked == nullptr && body != nullptr) {
 			// Compile-time code that runs once this is checked
 			generator.unchecked.push_back(declaration);
 			LLVM::UnreachableOp::create(generator.builder, generator.loc);
 			generator.state = outer;
+			generator.loc = outer_location;
 			return;
 		}
 		if (state.checked == nullptr || body == nullptr) {
@@ -5988,6 +6117,7 @@ namespace hemera {
 				text_of(declaration->name)));
 			LLVM::UnreachableOp::create(generator.builder, generator.loc);
 			generator.state = outer;
+			generator.loc = outer_location;
 			return;
 		}
 		const bool with_context = takes_context(generator, type, declaration);
@@ -6017,6 +6147,7 @@ namespace hemera {
 			}
 		}
 		generator.state = outer;
+		generator.loc = outer_location;
 	}
 
 	// A typed constant's global, read-only, made the first time it's used.
@@ -6239,6 +6370,58 @@ namespace hemera {
 				function_for(generator, declaration);
 			}
 		}
+	}
+
+	/*
+	 * intrinsics.function_names' table, if the program asks for it, as runtime.FunctionName: each
+	 * function with debug info's start and name, and every other function the module defines, with
+	 * no name, since where one starts is where the one before it ends.
+	 */
+	static void generate_function_names(Generator& generator) {
+		if (!generator.function_names) {
+			return;
+		}
+		if (!generator.named_functions.empty()) {
+			std::set<mlir::Operation*> named;
+			for (auto& [function, name] : generator.named_functions) {
+				named.insert(function.getOperation());
+			}
+			for (LLVM::LLVMFuncOp function : generator.module.getOps<LLVM::LLVMFuncOp>()) {
+				if (!function.isExternal() && !named.contains(function.getOperation())) {
+					generator.named_functions.emplace_back(function, "");
+				}
+			}
+		}
+		mlir::OpBuilder::InsertionGuard guard(generator.builder);
+		mlir::Type view_type = generator.function_names.getGlobalType();
+		auto view_struct = llvm::cast<LLVM::LLVMStructType>(view_type);
+		TypeInfo* entry_info = static_cast<TypeInfoArray const*>(base(generator.function_names_type))->element_type;
+		mlir::Type entry_type = llvm_type(generator, entry_info);
+		const size_t count = generator.named_functions.size();
+		LLVM::GlobalOp table;
+		if (count > 0) {
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			mlir::Type table_type = LLVM::LLVMArrayType::get(entry_type, count);
+			table = LLVM::GlobalOp::create(generator.builder, generator.loc, table_type, true, LLVM::Linkage::Internal,
+				"hemera.function_table", mlir::Attribute(), 8);
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&table.getInitializerRegion()));
+			mlir::Value entries = LLVM::UndefOp::create(generator.builder, generator.loc, table_type);
+			mlir::Type usize = usize_type(generator);
+			for (size_t i = 0; i < count; ++i) {
+				const auto& [function, name] = generator.named_functions[i];
+				const int64_t index = static_cast<int64_t>(i);
+				entries = insert(generator, entries, LLVM::AddressOfOp::create(generator.builder, generator.loc, function), { index, 0 });
+				entries = insert(generator, entries, constant_int(generator, usize, static_cast<int64_t>(name.size())), { index, 1, 0 });
+				entries = insert(generator, entries, string_bytes(generator, name), { index, 1, 1 });
+			}
+			LLVM::ReturnOp::create(generator.builder, generator.loc, entries);
+		}
+		generator.builder.setInsertionPointToStart(generator.builder.createBlock(&generator.function_names.getInitializerRegion()));
+		mlir::Value view = LLVM::UndefOp::create(generator.builder, generator.loc, view_struct);
+		view = insert(generator, view, constant_int(generator, view_struct.getBody()[0], static_cast<int64_t>(count)), { 0 });
+		view = insert(generator, view, table ? static_cast<mlir::Value>(LLVM::AddressOfOp::create(generator.builder, generator.loc, table))
+			: zero_of(generator, pointer_type(generator)), { 1 });
+		LLVM::ReturnOp::create(generator.builder, generator.loc, view);
 	}
 
 	// llvm.used, which keeps globals that nothing refers to, like Limine's requests, through linking.
@@ -7346,6 +7529,7 @@ namespace hemera {
 			generator.pending.pop_back();
 			generate_function(generator, next);
 		}
+		generate_function_names(generator);
 		generate_used(generator);
 		finish_module(generator);
 		if (generator.failed) {
@@ -7765,6 +7949,14 @@ namespace hemera {
 				list->addOperand(llvm::MDNode::get(context, { llvm::MDString::get(context, llvm::cast<mlir::StringAttr>(library).getValue()) }));
 			}
 		}
+		/*
+		 * Debug info for PE/COFF is CodeView, which lld-link puts in a PDB; LLVM picks it by this flag,
+		 * since the target triple is only set when the object file is made
+		 */
+		if (options.debug_info && OSType::Win32 == options.os && !result->getModuleFlag("CodeView")) {
+			result->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+		}
+		const bool codeview = result->getModuleFlag("CodeView") != nullptr;
 		const bool classic_frames = system_v_on_windows(options);
 		for (llvm::Function& function : *result) {
 			/*
@@ -7793,6 +7985,13 @@ namespace hemera {
 			 */
 			function.addFnAttr("no-builtin-strlen");
 			function.addFnAttr("no-builtin-wcslen");
+			/*
+			 * CodeView describes each jump table, and a table optimized away still gets a reference to its
+			 * label, which is never defined; switches become branches instead
+			 */
+			if (codeview) {
+				function.addFnAttr("no-jump-tables", "true");
+			}
 			// A direct call has its callee's convention, which the generator only gave the callee
 			for (llvm::BasicBlock& block : function) {
 				for (llvm::Instruction& instruction : block) {

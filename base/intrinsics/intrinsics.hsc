@@ -29,6 +29,19 @@ trap #never_returns : fn() : ---
 capture_stack_trace : fn(addresses: mut rawptr[], skip: usize = 0) -> usize : ---
 
 /*
+ * Where the program's image starts in memory, so an address can be given relative to it, which is
+ * the same every run: PE/COFF's __ImageBase, or ELF's __ehdr_start. Null where it isn't known,
+ * like an ELF image whose headers a linker script left out of memory.
+ */
+image_base : fn() -> rawptr : ---
+
+/*
+ * The start and name of each Hemera function in a program built with debug info (--debug), for
+ * naming the frames of a stack trace (runtime.function_at). Empty otherwise.
+ */
+function_names : fn() -> runtime.FunctionName[] : ---
+
+/*
  * The stack pointer, for code that sets up its own stack limit, like a kernel's entry before it
  * has a carrier block. Frames below it may change at any call.
  */
