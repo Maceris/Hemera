@@ -145,6 +145,11 @@ namespace hemera {
 	struct FunctionOutput {
 		TypeInfo* type = nullptr;
 		InternedString name = nullptr;
+		/// <summary>
+		/// Marked #unrestricted, so it never points into the stack, whatever the function was given,
+		/// like memory from an allocator. Part of the function's type.
+		/// </summary>
+		bool is_unrestricted = false;
 	};
 
 	struct TypeInfoFunction : public TypeInfo {

@@ -310,7 +310,8 @@ A hosted program's `main` starts with `runtime.HOSTED_CONTEXT` instead, on Windo
   [multitasking.md](multitasking.md#threads)).
 * The logger is `runtime.STANDARD_LOGGER`, which writes each message on a line of its own to standard error, after
   its level, like `[info] loaded 3 files`, and `log_level` is `.INFO`, so trace and debug messages are dropped until a
-  `push_context` lowers it.
+  `push_context` lowers it. `std/logger` makes loggers that also put the time, the file and line, the function or
+  the thread on each line, like `[warn] 14:03:27.412 loader.hsc:88 load_file [thread 2] missing 3 files`.
 * The assertion handler is `runtime.printing_assertion_handler`, which writes the failure to standard error, then ends
   the process with `runtime.ASSERTION_EXIT_CODE` (134) (see [directives.md](directives.md)).
 

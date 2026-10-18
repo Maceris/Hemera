@@ -244,7 +244,7 @@ function_output_list = KEYWORD_void
     ;
 
 function_output_in_paren = simple_type
-    | ( identifier , { SYM_COMMA , identifier } , SYM_COLON , simple_type )
+    | ( parameter_name , { SYM_COMMA , parameter_name } , SYM_COLON , simple_type )
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )
     ;
 
@@ -253,6 +253,7 @@ function_parameter = ( parameter_name , { SYM_COMMA , parameter_name } , SYM_COL
     | ( type_in_list , [ SYM_ELLIPSIS ] )
     ;
 
+# #escaping on a parameter, #unrestricted on a named result
 parameter_name = identifier , { directive } ;
 
 default_value = literal

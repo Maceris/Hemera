@@ -53,6 +53,11 @@ advance :: fn(parser: ptr[mut Parser]) {
 
 Registry :: struct { first : string }
 
+// Its result is #unrestricted, so it isn't local even when what it's given is
+name_for :: fn(values: int[]) -> (name #unrestricted : string, found : bool) {
+    return GREETING, values.count > 0
+}
+
 register :: fn(registry: ptr[mut Registry], name #escaping : string) {
     registry.first = name
 }
@@ -96,6 +101,8 @@ main :: fn(registry: ptr[mut Registry]) -> int {
     trimmed := trim(GREETING)
     first := first_of(buffer)
     register(registry, GREETING)
+    name, found :: name_for(buffer)
+    register(registry, name)
     label := Shape.Label("text")
     return total + p^ + first^ + cast[int](length + count + view.count + trimmed.count + label_length(&label))
 }

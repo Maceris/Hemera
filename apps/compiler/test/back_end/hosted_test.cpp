@@ -157,6 +157,17 @@ TEST(Hosted, WritesOutput)
 	EXPECT_EQ(written.error, read_file(scenario("output") / "error.txt"));
 }
 
+/*
+ * std's general-purpose packages: strings, time's calendar, memory's SharedPtr, and logger, whose
+ * lines are in output.txt and error.txt in the scenario folder.
+ */
+TEST(Hosted, UsesStdLibrary)
+{
+	const HostedOutput written = run_hosted("library", hemera::TargetStackCheck::Off);
+	EXPECT_EQ(written.output, read_file(scenario("library") / "output.txt"));
+	EXPECT_EQ(written.error, read_file(scenario("library") / "error.txt"));
+}
+
 // A failed assertion, with the hosted context's handler: the failure, where it was and the stack, then ASSERTION_EXIT_CODE.
 TEST(Hosted, ReportsFailedAssertion)
 {

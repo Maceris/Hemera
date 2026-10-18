@@ -25,9 +25,10 @@ ProcessError :: enum {
  * Run program with arguments, wait for it to finish, and return its exit code and output.
  * working_directory defaults to the current one.
  *
- * Works at compile time too, for build steps that need an external tool, but only when
- * the command line grants it with --allow-run. Otherwise this reports a compile error at
- * the caller and returns NotPermitted, so each caller doesn't have to check.
+ * Meant for compile time, for build steps that need an external tool, and only when the command
+ * line grants it with --allow-run. Otherwise this reports a compile error at the caller and returns
+ * NotPermitted, so each caller doesn't have to check. Starting processes isn't written yet, at
+ * compile time or run time, so for now it always ends with Unsupported.
  */
 run_process :: fn(
     program: string,
@@ -40,6 +41,5 @@ run_process :: fn(
             "running % at compile time needs --allow-run on the command line", program)
         return .Error(.NotPermitted)
     }
-    //TODO start the process and collect its output
     return .Error(.Unsupported)
 }

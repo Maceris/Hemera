@@ -1261,6 +1261,10 @@ namespace hemera::parser {
 							return false;
 						}
 						node.children.push_back(type.result);
+						// A named result's directives, like text #unrestricted : string
+						while (expect(state, TokenType::DIRECTIVE)) {
+							next_as_node(state, ast::NodeType::DIRECTIVE, type.result);
+						}
 					}
 					skip(state, TokenType::SYM_COMMA);
 					if (accept(state, TokenType::SYM_COLON,

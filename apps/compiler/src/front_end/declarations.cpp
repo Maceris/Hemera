@@ -548,7 +548,7 @@ namespace hemera {
 		}
 		key += " ->";
 		for (const FunctionOutput& output : signature.output) {
-			key += std::format(" {}:{}", name_text(output.name), static_cast<const void*>(output.type));
+			key += std::format(" {}:{}:{}", name_text(output.name), static_cast<const void*>(output.type), output.is_unrestricted);
 		}
 		key += std::format(" {} {} {}", signature.never_returns, name_text(signature.calling_convention), signature.no_context);
 		result = derived_type(walk, key, [&] {
@@ -774,7 +774,7 @@ namespace hemera {
 				 * (a: u16, b, c: f32).
 				 */
 				const bool named = has_child(child, ast::NodeType::COLON);
-				std::vector<InternedString> pending;
+				std::vector<FunctionOutput> pending;
 				for (size_t i = 0; i < child->children.size(); ++i) {
 					ast::Node* part = child->children[i];
 					if (ast::NodeType::COLON == part->node_type) {
@@ -782,7 +782,14 @@ namespace hemera {
 					}
 					const bool is_type = !named || (i > 0 && ast::NodeType::COLON == child->children[i - 1]->node_type);
 					if (!is_type) {
-						pending.push_back(part->value.value);
+						FunctionOutput output;
+						output.name = part->value.value;
+						for (ast::Node* directive : part->children) {
+							if (ast::NodeType::DIRECTIVE == directive->node_type && is_text(directive->value.value, "#unrestricted")) {
+								output.is_unrestricted = true;
+							}
+						}
+						pending.push_back(output);
 						continue;
 					}
 					TypeInfo* result_type = nullptr;
@@ -794,8 +801,9 @@ namespace hemera {
 						function->output.push_back({ result_type, nullptr });
 						continue;
 					}
-					for (InternedString name : pending) {
-						function->output.push_back({ result_type, name });
+					for (FunctionOutput output : pending) {
+						output.type = result_type;
+						function->output.push_back(output);
 					}
 					pending.clear();
 				}

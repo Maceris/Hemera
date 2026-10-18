@@ -2,4 +2,5 @@
 *.patch text eol=lf
 
 # What a test program is expected to write, byte for byte
-apps/compiler/test/back_end/scenarios/output/*.txt text eol=lf
+apps/compiler/test/back_end/scenarios/*/output.txt text eol=lf
+apps/compiler/test/back_end/scenarios/*/error.txt text eol=lf

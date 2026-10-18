@@ -164,6 +164,32 @@ A pointer to a local variable counts the same way: `take(&arena, count)` gives a
 hands out. When what's returned really comes from elsewhere, keep the stack out of the call: pass the state by value
 or keep it somewhere other than the stack, or make the handle `#unrestricted` (below) and pass it by value.
 
+### Unrestricted Results
+
+A function whose result never points at what it was given, like one that copies into memory from an allocator, marks
+that result `#unrestricted`, the way a parameter is marked `#escaping`. The result has to be named:
+
+```
+clone :: fn(text: string, allocator := context.allocator) -> (copy #unrestricted : string, error : AllocatorError?) {
+    // ... copies text into new memory ...
+}
+
+example :: fn(registry: ptr[mut Registry]) {
+    name_bytes : u8[32]
+    // ...
+    name, error :: clone(string_from(name_bytes))
+    register(registry, name)            // OK: the copy is unrestricted, though name_bytes is on the stack
+}
+```
+
+* At the call site, the result is unrestricted whatever the arguments were.
+* Inside the function, returning anything local there is an error, including a value whose origin is a parameter,
+  since the caller's arguments may be on its stack.
+* It's part of the function's type: a function whose result is `#unrestricted` can be used where the type's result
+  isn't, but not the other way around.
+
+`std/strings`' `format` and `clone` are marked this way.
+
 ## Scoped Structs
 
 A struct marked `#scoped` is meant to hold pointers into the stack, and to be passed around by pointer.

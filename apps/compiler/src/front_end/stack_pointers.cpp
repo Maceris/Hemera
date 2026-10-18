@@ -477,7 +477,12 @@ namespace hemera {
 			report(analysis, where, "stores a pointer into the stack through a pointer: only a #scoped struct can hold one there");
 		}
 
-		void check_returned(Analysis& analysis, const Reach& value, const ast::Node* where) {
+		void check_returned(Analysis& analysis, const Reach& value, const ast::Node* where, const FunctionOutput* output = nullptr) {
+			// An #unrestricted result can't be anything the function was given, either
+			if (output != nullptr && output->is_unrestricted && value.local) {
+				report(analysis, where, std::format("returns what may point into the stack as #unrestricted result `{}`", text_of(output->name)));
+				return;
+			}
 			if (value.local && PARAMETER != value.origin) {
 				report(analysis, where, "returns a pointer into this function's stack");
 			}
@@ -734,13 +739,14 @@ namespace hemera {
 			if (function->output.empty()) {
 				return Evaluated{};
 			}
+			// An #unrestricted result is never local, whatever the call was given
 			if (function->output.size() == 1) {
-				return value_of_type(result, function->output[0].type);
+				return value_of_type(function->output[0].is_unrestricted ? Reach{} : result, function->output[0].type);
 			}
 			Evaluated several;
 			several.kind = ValueKind::RESULTS;
 			for (const FunctionOutput& output : function->output) {
-				several.results.emplace_back(as_type(result, output.type), output.type);
+				several.results.emplace_back(output.is_unrestricted ? Reach{} : as_type(result, output.type), output.type);
 			}
 			return several;
 		}
@@ -902,7 +908,8 @@ namespace hemera {
 					}
 					else {
 						TypeInfo* returned = analysis.function->output[0].type;
-						check_returned(analysis, convert(analysis, evaluate(analysis, right_node, returned), returned, right_node), right_node);
+						check_returned(analysis, convert(analysis, evaluate(analysis, right_node, returned), returned, right_node), right_node,
+							&analysis.function->output[0]);
 					}
 					return held(left, held_as);
 				}
@@ -1240,7 +1247,7 @@ namespace hemera {
 				given.insert(given.end(), each.begin(), each.end());
 			}
 			for (size_t i = 0; i < given.size() && i < expected.size(); ++i) {
-				check_returned(analysis, convert(analysis, given[i], expected[i], node), node);
+				check_returned(analysis, convert(analysis, given[i], expected[i], node), node, &analysis.function->output[i]);
 			}
 		}
 

@@ -305,6 +305,10 @@ namespace hemera {
 				if (!same_type(a->output[i].type, b->output[i].type)) {
 					return false;
 				}
+				// One whose result may point into the stack can't be called as one whose result can't
+				if (b->output[i].is_unrestricted && !a->output[i].is_unrestricted) {
+					return false;
+				}
 			}
 			return a->never_returns || !b->never_returns;
 		}
