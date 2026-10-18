@@ -5,7 +5,9 @@
  * main runs no pool. Threads 1 and 2 share the first pool, threads 3 to 5 the second, and thread 6
  * runs none. The pools' threads start before there's any work, so they go to sleep, and main's
  * spawning wakes them. Each fiber takes TURNS turns, yielding after each, and records which threads
- * it ran on: it has to stay on its own pool's threads, and every thread of a pool has to run some.
+ * it ran on: it has to stay on its own pool's threads, every thread of a pool has to run some, and
+ * some have to move between threads, which fibers that have taken their turns wait for
+ * (take_turns), so it doesn't depend on timing.
  *
  * Every turn also adds one to a counter behind a std/concurrency Mutex, yielding while it holds it,
  * so other fibers park waiting for it, and main and thread 6 add to it too, blocking instead.
@@ -28,6 +30,9 @@ import concurrency from "std"
 FIRST_FIBERS :: 40
 SECOND_FIBERS :: 60
 TURNS :: 50
+// How long a fiber that has taken its turns waits for the rest of its pool's threads to run one,
+// and for one to move
+WAIT_YIELDS :: 1000000
 // The threads each pool runs on, a bit per thread index: 1 and 2, and 3 to 5
 FIRST_THREADS : u64 : 0b000110
 SECOND_THREADS : u64 : 0b111000
@@ -253,21 +258,41 @@ second_worker : runtime.ThreadFunction : fn(data #escaping : any) {
     take_turns(&test.second_counts, SECOND_THREADS)
 }
 
+/*
+ * TURNS turns, then yielding until every one of the pool's threads has run one of its fibers and
+ * one has moved, or WAIT_YIELDS yields. A thread counts as started before it joins its pool, so
+ * with few CPUs it can join after the others have taken every turn: waiting here keeps fibers in
+ * the queue for it, rather than relying on the operating system to run it in time. These yields
+ * aren't turns, but are recorded the same way, so they still have to stay on the pool's threads.
+ */
 take_turns :: fn(counts: ptr[mut PoolCounts], threads: u64) {
     previous := runtime.current_thread_index()
     for turn in 0..<TURNS {
-        here :: runtime.current_thread_index()
-        bit :: cast[u64](1) << cast[u64](here)
-        if bit & threads == 0 {
-            intrinsics.interlocked_increment_u64(&counts.strays)
-        }
-        if here != previous {
-            intrinsics.interlocked_increment_u64(&counts.moves)
-        }
-        intrinsics.interlocked_or_u64(&counts.threads, bit)
+        previous = record(counts, threads, previous)
         intrinsics.interlocked_increment_u64(&counts.turns)
-        previous = here
         add_one(cast[ptr[mut ThreadTest]](context.user_data))
         runtime.fiber_yield()
     }
+    for i in 0..<WAIT_YIELDS {
+        if intrinsics.atomic_load_u64_acquire(&counts.threads) & threads == threads
+            && intrinsics.atomic_load_u64_acquire(&counts.moves) != 0 {
+            break
+        }
+        runtime.fiber_yield()
+        previous = record(counts, threads, previous)
+    }
+}
+
+// Which thread this is, for the next time, after counting it in counts.
+record :: fn(counts: ptr[mut PoolCounts], threads: u64, previous: usize) -> usize {
+    here :: runtime.current_thread_index()
+    bit :: cast[u64](1) << cast[u64](here)
+    if bit & threads == 0 {
+        intrinsics.interlocked_increment_u64(&counts.strays)
+    }
+    if here != previous {
+        intrinsics.interlocked_increment_u64(&counts.moves)
+    }
+    intrinsics.interlocked_or_u64(&counts.threads, bit)
+    return here
 }
