@@ -322,8 +322,9 @@ foo :: fn(resizable: i8[..], fixed: i8[10]) {
 #### What's Proven
 
 Each function is checked on its own. What the compiler knows at each point is how integers compare: locals, the
-counts of local arrays, views and strings, fields reached from locals (`text.count`, `parser.input.count`), and
-constants. It learns from:
+counts of local arrays, views and strings, fields reached from locals (`text.count`, `parser.input.count`), including
+through an element at a constant or a local's index (`names[2].count`, `items[i].count`), and constants. What's known
+about an element's fields is forgotten when its index changes, as well as when the array or memory does. It learns from:
 
 * definitions and assignments: after `j := i + 1`, `j` is one more than `i`, and `i += 1` moves what's known about `i`
 * stores to an integer field: `ring.count -= 1` moves what's known about `ring.count`, and `ring.count = 3` (a constant

@@ -202,5 +202,64 @@ main :: fn() -> int {
     }
     logger.destroy(detailed)
     logger.destroy(plain)
+    failure = check_patterns()
+    if failure != 0 {
+        return 50 + failure
+    }
     return 42
+}
+
+Problem :: enum {
+    MISSING,
+    DENIED,
+}
+
+look :: fn(n: int) -> Result[int, Problem] {
+    if n == 0 {
+        return .Error(.MISSING)
+    }
+    if n == 1 {
+        return .Error(.DENIED)
+    }
+    return .Ok(n)
+}
+
+// Patterns inside a variant's values: what each arm gave, so the order of the arms shows.
+classify :: fn(n: int) -> int {
+    match look(n) {
+        case Ok(7) => return 70
+        case Ok(value) => return value
+        case Error(.MISSING) => return -1
+        case Error(_) => return -2
+    }
+}
+
+maybe :: fn(n: int) -> Optional[int?] {
+    if n == 0 {
+        return null
+    }
+    inner : int? = null
+    if n == 1 {
+        return inner
+    }
+    return n
+}
+
+// Nested patterns: 0 if they all matched as they should, or the first check that didn't.
+check_patterns :: fn() -> int {
+    if classify(0) != -1 || classify(1) != -2 || classify(7) != 70 || classify(5) != 5 {
+        return 1
+    }
+    for n in 0..<3 {
+        got :: match maybe(n) {
+            case Some(.None) => 1
+            case Some(Some(value)) => 10 + value
+            case None => 0
+        }
+        expected :: if n == 0 { 0 } else if n == 1 { 1 } else { 12 }
+        if got != expected {
+            return 2
+        }
+    }
+    return 0
 }

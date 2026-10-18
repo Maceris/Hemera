@@ -771,6 +771,10 @@ namespace hemera {
 		const bool is_open_range = ast::NodeType::RANGE_ARRAY == index->node_type;
 		if (is_range || is_open_range) {
 			for (ast::Node* bound : index->children) {
+				// The missing bound of an open range, like 5.. (its count) or ..<5 (0)
+				if (ast::NodeType::RANGE_ARRAY == bound->node_type) {
+					continue;
+				}
 				Value bound_value;
 				Progress progress = check_expression(checker, bound, BUILTIN_usize, bound_value);
 				if (progress != Progress::DONE) {
@@ -3087,6 +3091,11 @@ namespace hemera {
 	 * One case's value against what's matched: a literal or range of it, an enum member, or a
 	 * union's variant with names for its values, which the arm can use.
 	 */
+	// A pattern that names a variant's value rather than testing it: a plain name, with nothing after it.
+	static bool is_binding(const ast::Node* pattern) {
+		return ast::NodeType::IDENTIFIER == pattern->node_type && pattern->children.empty();
+	}
+
 	static Progress check_case_value(Checker& checker, ast::Node* pattern, const Value& subject,
 		std::set<std::string>& covered) {
 
@@ -3123,7 +3132,6 @@ namespace hemera {
 					text_of(pattern->value.value)));
 				return Progress::DONE;
 			}
-			covered.insert(text_of(variant->name));
 			std::vector<ast::Node*> bindings;
 			for (ast::Node* child : pattern->children) {
 				if (ast::NodeType::PAREN_GROUP == child->node_type) {
@@ -3135,10 +3143,35 @@ namespace hemera {
 					variant->types.size(), bindings.size()));
 				return Progress::DONE;
 			}
+			/*
+			 * Each value: named, ignored, or a pattern it must match too, like Error(.NotFound). An arm
+			 * with one of those doesn't cover the whole variant by itself: for a variant of one value,
+			 * what it covers is kept as Variant(covered), so arms like Some(.None) and Some(Some(x))
+			 * can cover it together (exhaustive).
+			 */
+			bool whole_variant = true;
 			for (size_t i = 0; i < bindings.size(); ++i) {
-				if (!is_wildcard(bindings[i])) {
-					declare_local(checker, bindings[i], bindings[i]->value.value, typed(variant->types[i]));
+				if (is_wildcard(bindings[i])) {
+					continue;
 				}
+				if (is_binding(bindings[i])) {
+					declare_local(checker, bindings[i], bindings[i]->value.value, typed(variant->types[i]));
+					continue;
+				}
+				whole_variant = false;
+				std::set<std::string> nested;
+				Progress progress = check_case_value(checker, bindings[i], typed(variant->types[i]), nested);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				if (bindings.size() == 1) {
+					for (const std::string& inner : nested) {
+						covered.insert(std::format("{}({})", text_of(variant->name), inner));
+					}
+				}
+			}
+			if (whole_variant) {
+				covered.insert(text_of(variant->name));
 			}
 			return Progress::DONE;
 		}
@@ -3178,7 +3211,22 @@ namespace hemera {
 		}
 		if (TypeInfoVariant::UNION == type->variant) {
 			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(type)->variants) {
-				if (!covered.contains(text_of(variant.name))) {
+				const std::string name = text_of(variant.name);
+				if (covered.contains(name)) {
+					continue;
+				}
+				// Covered by the patterns on its value, like Some(.None) and Some(Some(x))
+				if (variant.types.size() != 1) {
+					return false;
+				}
+				std::set<std::string> inner;
+				const std::string prefix = name + "(";
+				for (const std::string& each : covered) {
+					if (each.starts_with(prefix) && each.ends_with(")")) {
+						inner.insert(each.substr(prefix.size(), each.size() - prefix.size() - 1));
+					}
+				}
+				if (inner.empty() || !exhaustive(typed(variant.types[0]), inner)) {
 					return false;
 				}
 			}

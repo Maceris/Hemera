@@ -239,6 +239,20 @@ match load_settings() {
 }
 ```
 
+* A variant's values can be patterns too, rather than names: an enum member, a literal, a range, or another variant.
+  The arm matches only when they do, and it doesn't cover the whole variant on its own, so another arm (or `case _`)
+  covers the rest. Arms that together cover every value inside do cover it, like `Some(.None)` and `Some(Some(x))`.
+
+```
+match os.read_entire_file(path) {
+    case Ok(text) => apply(text)
+    case Error(.NotFound) => use_defaults()
+    case Error(error) => report(error)
+}
+```
+
+  A name alone inside the parentheses is always a new name for the value, so a variant without values is written
+  with a dot there: `Some(.None)`, not `Some(None)`.
 * `match` gives a value to a declaration, a `return`, or a function argument. It can't be the right side of a plain
   assignment (`x = match ...`), so assign inside the arms instead.
 
@@ -346,12 +360,8 @@ what doesn't gives an `os.OsError?`:
 ```
 match os.read_entire_file("settings.txt") {
     case Ok(text) => apply(text)
-    case Error(error) => {
-        if error != .NotFound {
-            runtime.log_error("can't read settings: %", error)
-        }
-        use_defaults()
-    }
+    case Error(.NotFound) => use_defaults()
+    case Error(error) => runtime.log_error("can't read settings: %", error)
 }
 ```
 

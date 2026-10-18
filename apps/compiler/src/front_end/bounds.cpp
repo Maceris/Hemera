@@ -296,6 +296,8 @@ namespace hemera {
 			std::unordered_set<const ast::Node*> reported;
 			// While working out what holds each time around a loop: report nothing
 			size_t quiet = 0;
+			// The locals a path's indexes are, like i in items[i].count, which change what it's about
+			std::map<Term, std::vector<const void*>> indexed_by;
 		};
 
 		void report(Analysis& analysis, const ast::Node* where, const std::string& details) {
@@ -531,8 +533,28 @@ namespace hemera {
 		}
 
 		// A local assigned: what's known about it and its count, and paths through it.
+		// Paths indexed by local, like items[i].count, which are about another element once it changes.
+		void forget_indexed_by(Analysis& analysis, Facts& facts, const void* local) {
+			forget(facts, [&](Term term) {
+				auto indexes = analysis.indexed_by.find(term);
+				return indexes != analysis.indexed_by.end()
+					&& std::find(indexes->second.begin(), indexes->second.end(), local) != indexes->second.end();
+			});
+		}
+
 		void forget_local(Analysis& analysis, Facts& facts, const void* local) {
-			forget(facts, [&](Term term) { return term != ZERO && analysis.terms[term].local == local; });
+			forget(facts, [&](Term term) {
+				if (term == ZERO) {
+					return false;
+				}
+				if (analysis.terms[term].local == local) {
+					return true;
+				}
+				// A path indexed by it, like items[i].count when i changes
+				auto indexes = analysis.indexed_by.find(term);
+				return indexes != analysis.indexed_by.end()
+					&& std::find(indexes->second.begin(), indexes->second.end(), local) != indexes->second.end();
+			});
 		}
 
 		// Something wrote memory, or called a function that may have.
@@ -660,8 +682,10 @@ namespace hemera {
 			ValueKind kind = ValueKind::NOTHING;
 			const void* local = nullptr;
 			std::string path;
-			// Whether it went through a call or an element, after which there's no path
+			// Whether it went through a call, or an element at an index that isn't a constant or a local, after which there's no path
 			bool pathless = false;
+			// The locals its path's indexes are (Analysis::indexed_by)
+			std::vector<const void*> indexed_by;
 			// What its count is, when that's known another way: a slice's, or view_of's
 			std::optional<Value> count;
 			Value value;
@@ -672,6 +696,20 @@ namespace hemera {
 		void walk_statement(Analysis& analysis, Facts& facts, ast::Node* statement);
 		void walk_block(Analysis& analysis, Facts& facts, ast::Node* block);
 		std::pair<Facts, Facts> condition(Analysis& analysis, const Facts& facts, ast::Node* node);
+
+		// The term for a path from a chain's local, remembering the locals its indexes are.
+		Term path_term(Analysis& analysis, const Chain& chain, const std::string& path, bool nonnegative) {
+			const Term term = term_for(analysis, TermKind::PATH, chain.local, path, nonnegative);
+			if (!chain.indexed_by.empty()) {
+				std::vector<const void*>& indexes = analysis.indexed_by[term];
+				for (const void* local : chain.indexed_by) {
+					if (std::find(indexes.begin(), indexes.end(), local) == indexes.end()) {
+						indexes.push_back(local);
+					}
+				}
+			}
+			return term;
+		}
 
 		// The count of what a chain is, as a value: a constant, a term, or unknown.
 		Value count_of(Analysis& analysis, const Chain& chain) {
@@ -687,7 +725,7 @@ namespace hemera {
 			if (chain.path.empty()) {
 				return of_term(term_for(analysis, TermKind::COUNT, chain.local, "", true));
 			}
-			return of_term(term_for(analysis, TermKind::PATH, chain.local, chain.path, true));
+			return of_term(path_term(analysis, chain, chain.path, true));
 		}
 
 		// Whether value <= limit - 1 and 0 <= value, for value and limit as known.
@@ -856,6 +894,7 @@ namespace hemera {
 						const std::string member = text_of(arguments[0]->value.value);
 						next.local = current.local;
 						next.pathless = current.pathless;
+						next.indexed_by = current.indexed_by;
 						// Through a pointer, what it points to
 						next.path = current.path + (is_variant(current.type, TypeInfoVariant::POINTER) ? "^." : ".") + member;
 						if (member == "count" && is_indexable(current.type)) {
@@ -863,8 +902,8 @@ namespace hemera {
 						}
 						// An integer field reached from a local, like text.count: a path of its own
 						else if (is_variant(found->type, TypeInfoVariant::INTEGER) && next.local != nullptr && !next.pathless) {
-							next.value = of_term(bounded_by_type(analysis, term_for(analysis, TermKind::PATH, next.local,
-								next.path + "#", is_unsigned(found->type)), found->type));
+							next.value = of_term(bounded_by_type(analysis, path_term(analysis, next, next.path + "#", is_unsigned(found->type)),
+								found->type));
 						}
 					}
 				}
@@ -910,18 +949,41 @@ namespace hemera {
 							collection.path += "^";
 						}
 						ast::Node* index = arguments[0];
+						next.pathless = true;
 						if (is_indexable(collection.type)) {
 							if (is_range(index) || ast::NodeType::RANGE_ARRAY == index->node_type) {
 								next.count = check_slice(analysis, facts, collection, index);
 							}
 							else {
-								check_index(analysis, facts, collection, index, evaluate(analysis, facts, index));
+								const Value at = evaluate(analysis, facts, index);
+								check_index(analysis, facts, collection, index, at);
+								/*
+								 * An element at a constant or a local's index keeps a path, like names[2] or
+								 * items[i], so what's learned about its fields, like names[2].count, is kept
+								 * until the array, the index or memory the elements are in changes. Only a
+								 * static array's elements are in the local itself.
+								 */
+								const bool constant_index = at.known && ZERO == at.term && 0 == at.spread;
+								const bool local_index = at.known && ZERO != at.term && 0 == at.spread && 0 == at.offset
+									&& TermKind::LOCAL == analysis.terms[at.term].kind;
+								if (collection.local != nullptr && !collection.pathless && (constant_index || local_index)) {
+									next.local = collection.local;
+									next.pathless = false;
+									next.indexed_by = collection.indexed_by;
+									const std::string inside = static_count(collection.type).has_value() ? "" : "^";
+									if (constant_index) {
+										next.path = std::format("{}{}[{}]", collection.path, inside, at.offset);
+									}
+									else {
+										next.path = std::format("{}{}[L{}]", collection.path, inside, at.term);
+										next.indexed_by.push_back(analysis.terms[at.term].local);
+									}
+								}
 							}
 						}
 						else {
 							evaluate(analysis, facts, index);
 						}
-						next.pathless = true;
 					}
 				}
 				else {
@@ -1580,10 +1642,12 @@ namespace hemera {
 				const bool single = targets.size() == 1;
 				if (integer && single && (TokenType::OPERATOR_ASSIGN_ADD == op || TokenType::OPERATOR_ASSIGN_SUB == op)
 					&& value.known && ZERO == value.term) {
+					forget_indexed_by(analysis, facts, local);
 					shift(analysis, facts, term, TokenType::OPERATOR_ASSIGN_ADD == op ? value.offset : -value.offset);
 					continue;
 				}
 				if (integer && single && is_assign(node) && value.known && value.term == term && 0 == value.spread) {
+					forget_indexed_by(analysis, facts, local);
 					shift(analysis, facts, term, value.offset);
 					continue;
 				}
@@ -1979,7 +2043,7 @@ namespace hemera {
 	}
 
 	bool check_bounds(const CheckedBody& checked, ast::Node* body, TypeInfoFunction const* type, const std::string& file_path) {
-		Analysis analysis{ checked, type, file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0 };
+		Analysis analysis{ checked, type, file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0, {} };
 		find_address_taken(analysis, body);
 		Facts facts;
 		walk_block(analysis, facts, body);

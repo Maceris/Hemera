@@ -2353,14 +2353,21 @@ namespace hemera::parser {
 			ast::Node& dynamic = next_as_node(state, ast::NodeType::RANGE_ARRAY);
 			return ExprResult{ true, &dynamic };
 		}
+		/*
+		 * An open range is a range like start..<end with a RANGE_ARRAY in place of the missing
+		 * bound, which the checker and generator read as the start or the count.
+		 */
 		if (expect(state, TokenType::OPERATOR_RANGE_EXCLUSIVE)
 			|| expect(state, TokenType::OPERATOR_RANGE_INCLUSIVE)) {
-			ast::Node& range = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			Token open_start = current_token(state);
+			ast::Node& range = next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			ExprResult end = expression_with_result(state, true);
 			if (!end.success) {
 				delete_node(state->node_alloc, &range);
 				return ExprResult{ false };
 			}
+			open_start.type = TokenType::OPERATOR_RANGE_ARRAY;
+			range.children.push_back(state->node_alloc.new_object<ast::Node>(ast::NodeType::RANGE_ARRAY, open_start));
 			range.children.push_back(end.result);
 			return ExprResult{ true, &range };
 		}
@@ -2370,9 +2377,15 @@ namespace hemera::parser {
 			return ExprResult{ false };
 		}
 		if (expect(state, TokenType::OPERATOR_RANGE_ARRAY)) {
-			ast::Node& range = next_as_node(state, ast::NodeType::UNARY_OPERATOR);
-			range.children.push_back(index.result);
-			return ExprResult{ true, &range };
+			// start.. is start..<count
+			Token open_end = current_token(state);
+			state->current += 1;
+			Token exclusive = open_end;
+			exclusive.type = TokenType::OPERATOR_RANGE_EXCLUSIVE;
+			ast::Node* range = state->node_alloc.new_object<ast::Node>(ast::NodeType::BINARY_OPERATOR, exclusive);
+			range->children.push_back(index.result);
+			range->children.push_back(state->node_alloc.new_object<ast::Node>(ast::NodeType::RANGE_ARRAY, open_end));
+			return ExprResult{ true, range };
 		}
 		return index;
 	}
@@ -3393,10 +3406,22 @@ namespace hemera::parser {
 
 				while (!expect(state, TokenType::SYM_RPAREN)) {
 					const TokenType next_token_type = current_token(state).type;
+					const TokenType after = next_token(state).type;
 
-					if (TokenType::IDENTIFIER == next_token_type) {
-						next_as_node(state, ast::NodeType::IDENTIFIER, 
-							&type_list);
+					// A name for the value, or a pattern it must match too, like .NotFound or Some(x)
+					if (TokenType::IDENTIFIER == next_token_type && TokenType::SYM_LPAREN != after && TokenType::SYM_DOT != after) {
+						next_as_node(state, ast::NodeType::IDENTIFIER, &type_list);
+					}
+					else if (TokenType::IDENTIFIER == next_token_type || TokenType::SYM_DOT == next_token_type
+						|| TokenType::LITERAL_INTEGER == next_token_type || TokenType::LITERAL_CHAR == next_token_type
+						|| TokenType::LITERAL_STRING == next_token_type || TokenType::KEYWORD_TRUE == next_token_type
+						|| TokenType::KEYWORD_FALSE == next_token_type) {
+						ExprResult nested = match_entry(state);
+						if (!nested.success) {
+							delete_node(state->node_alloc, &identifier);
+							return ExprResult{ false };
+						}
+						type_list.children.push_back(nested.result);
 					}
 					else if (TokenType::SYM_UNDERSCORE == next_token_type) {
 						next_as_node(state, ast::NodeType::UNDERSCORE,

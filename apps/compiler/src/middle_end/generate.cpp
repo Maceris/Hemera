@@ -5297,14 +5297,29 @@ namespace hemera {
 				 * Its values, named: copied out of the subject now, so they keep the values they
 				 * matched with when the arm changes what the subject is in, like here.parking = null
 				 */
+				mlir::Value matches = tag_is(generator, address, type, index, true);
 				for (size_t i = 0; i < child->children.size() && i < variant.types.size(); ++i) {
-					if (!is_wildcard(child->children[i])) {
-						TypeInfo* held = variant.types[i];
-						mlir::Value copy = make_slot(generator, held);
-						store(generator, load(generator, held, offset_address(generator, address, variant.offsets[i])), copy);
-						generator.state->slots[child->children[i]] = copy;
+					ast::Node* part = child->children[i];
+					if (is_wildcard(part)) {
+						continue;
 					}
+					TypeInfo* held = variant.types[i];
+					mlir::Value held_address = offset_address(generator, address, variant.offsets[i]);
+					if (ast::NodeType::IDENTIFIER == part->node_type && part->children.empty()) {
+						mlir::Value copy = make_slot(generator, held);
+						store(generator, load(generator, held, held_address), copy);
+						generator.state->slots[part] = copy;
+						continue;
+					}
+					/*
+					 * A pattern the value must match too, like .NotFound in Error(.NotFound). It's
+					 * worked out whatever the tag is, so it may read what another variant left there,
+					 * which only loads and compares
+					 */
+					mlir::Value nested = case_matches(generator, part, location(held_address, held), held_address);
+					matches = LLVM::AndOp::create(generator.builder, generator.loc, matches, nested);
 				}
+				return matches;
 			}
 			return tag_is(generator, address, type, index, true);
 		}

@@ -147,3 +147,18 @@ counted :: fn(ring: ptr[mut Ring]) -> int {
 main :: fn() -> int {
     return 0
 }
+
+// Fields reached through an element at a constant or a local's index (names[2].count, names[i].count)
+first_letters :: fn(names: string[], into: mut u8[]) -> usize {
+    count : usize = 0
+    for i in 0..<names.count {
+        if names[i].count > 0 && count < into.count {
+            into[count] = cast[u8](names[i][0])
+            count += 1
+        }
+    }
+    if names.count > 2 && names[2].count > 1 {
+        return cast[usize](names[2][1])
+    }
+    return count
+}

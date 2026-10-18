@@ -1051,11 +1051,25 @@ namespace hemera {
 					if (ast::NodeType::PAREN_GROUP != child->node_type) {
 						continue;
 					}
-					for (ast::Node* binding : child->children) {
-						if (!is_wildcard(binding)) {
-							Place part = subject;
-							part.part = true;
+					const UnionVariant* variant = nullptr;
+					for (const UnionVariant& each : static_cast<TypeInfoUnion const*>(type)->variants) {
+						if (each.name != nullptr && pattern->value.value != nullptr && *each.name == *pattern->value.value) {
+							variant = &each;
+						}
+					}
+					for (size_t i = 0; i < child->children.size(); ++i) {
+						ast::Node* binding = child->children[i];
+						if (is_wildcard(binding)) {
+							continue;
+						}
+						Place part = subject;
+						part.part = true;
+						if (ast::NodeType::IDENTIFIER == binding->node_type && binding->children.empty()) {
 							analysis.aliases[binding] = part;
+						}
+						// A pattern inside, like Some(x) in Ok(Some(x)): its names are parts of the same place
+						else if (variant != nullptr && i < variant->types.size()) {
+							walk_pattern(analysis, binding, part, variant->types[i]);
 						}
 					}
 				}

@@ -97,11 +97,15 @@ check_elements :: fn() -> int {
     runtime.array_add(&names, "alpha")
     runtime.array_add(&names, "beta")
     runtime.array_add(&names, "gamma")
-    if names.count != 3 || names[1].count != 4 {
+    if names.count != 3 || names[1].count != 4 || names[2].count == 0 || names[2][0] != 'g' {
         return 1
     }
-    third :: names[2]
-    if third.count == 0 || third[0] != 'g' {
+    // Open slices: from an index to the end, and from the start to one
+    if names[1..].count != 2 || names[..<1].count != 1 || names[..=1].count != 2 {
+        return 1
+    }
+    start : usize = 2
+    if names[start..].count != 1 {
         return 1
     }
     runtime.array_free(&names)
