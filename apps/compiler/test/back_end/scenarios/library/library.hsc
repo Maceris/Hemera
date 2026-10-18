@@ -13,14 +13,14 @@ import time from "std"
 
 // Formatting, comparing, searching and splitting: 0 if it all worked, or the first check that didn't.
 check_strings :: fn() -> int {
-    formatted, error :: strings.format("% + % = %", 2, 3, "five")
-    if error != null || !strings.equal(formatted, "2 + 3 = five") {
+    formatted :: strings.format("% + % = %", 2, 3, "five") or_else "failed"
+    if !strings.equal(formatted, "2 + 3 = five") {
         return 1
     }
     strings.free_string(formatted)
     // Longer than the stack buffer, so formatted again from the allocator
-    long, long_error :: strings.format("%1%2%3", "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789")
-    if long_error != null || long.count != 300 || !strings.ends_with(long, "789") {
+    long :: strings.format("%1%2%3", "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789") or_else ""
+    if long.count != 300 || !strings.ends_with(long, "789") {
         return 2
     }
     strings.free_string(long)
@@ -92,6 +92,10 @@ check_parsing :: fn() -> int {
     }
     if strings.parse_signed("9223372036854775808") != null || strings.parse_bool("yes") != null {
         return 4
+    }
+    // An optional against a value of what it holds: equal only when it holds that value
+    if strings.parse_unsigned("ff", 16) != 255 || strings.parse_unsigned("12x") == 12 || 7 == strings.parse_unsigned("8") {
+        return 6
     }
     match strings.parse_bool("true") {
         case Some(value) => {

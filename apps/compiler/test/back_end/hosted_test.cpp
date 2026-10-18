@@ -48,7 +48,8 @@ struct HostedOutput {
  * then run, with what it writes to standard output and error kept in files. Its main returns 42
  * if everything it checks worked, or the number of the first check that failed.
  */
-static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42)
+static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
+	std::string_view arguments = "")
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -101,7 +102,7 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	// On Windows, system gives the program's exit code; cmd takes off the outermost quotes
 	const std::filesystem::path output_file = output_folder / "output.txt";
 	const std::filesystem::path error_file = output_folder / "error.txt";
-	EXPECT_EQ(std::system(std::format("\"\"{}\" > \"{}\" 2> \"{}\"\"", executable, output_file.string(), error_file.string()).c_str()),
+	EXPECT_EQ(std::system(std::format("\"\"{}\" {} > \"{}\" 2> \"{}\"\"", executable, arguments, output_file.string(), error_file.string()).c_str()),
 		expected_exit_code);
 	result.output = read_file(output_file);
 	result.error = read_file(error_file);
@@ -172,6 +173,17 @@ TEST(Hosted, UsesStdLibrary)
 	const HostedOutput written = run_hosted("library", hemera::TargetStackCheck::Off);
 	EXPECT_EQ(written.output, read_file(scenario("library") / "output.txt"));
 	EXPECT_EQ(written.error, read_file(scenario("library") / "error.txt"));
+}
+
+/*
+ * std/os: the program's arguments, an environment variable with a character outside ASCII, and
+ * files and folders it makes in the current directory and removes again.
+ */
+TEST(Hosted, UsesFilesAndArguments)
+{
+	_wputenv_s(L"HEMERA_FILES_TEST", L"h\u00e9llo");
+	run_hosted("files", hemera::TargetStackCheck::Off, 42, "alpha \"two words\" \"\"");
+	_wputenv_s(L"HEMERA_FILES_TEST", L"");
 }
 
 // A failed assertion, with the hosted context's handler: the failure, where it was and the stack, then ASSERTION_EXIT_CODE.

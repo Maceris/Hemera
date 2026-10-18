@@ -480,7 +480,9 @@ namespace hemera {
 		void check_returned(Analysis& analysis, const Reach& value, const ast::Node* where, const FunctionOutput* output = nullptr) {
 			// An #unrestricted result can't be anything the function was given, either
 			if (output != nullptr && output->is_unrestricted && value.local) {
-				report(analysis, where, std::format("returns what may point into the stack as #unrestricted result `{}`", text_of(output->name)));
+				report(analysis, where, output->name != nullptr
+					? std::format("returns what may point into the stack as #unrestricted result `{}`", text_of(output->name))
+					: std::string("returns what may point into the stack as an #unrestricted result"));
 				return;
 			}
 			if (value.local && PARAMETER != value.origin) {
@@ -1120,6 +1122,43 @@ namespace hemera {
 			}
 			if (ast::NodeType::ARRAY_LITERAL == type) {
 				return evaluate_array_literal(analysis, node, result_type);
+			}
+			// A variant by its name alone, like .Ok(value): what it holds, as for a call to the variant
+			if (ast::NodeType::ENUM_SHORTHAND == type) {
+				Reach reach;
+				TypeInfo* shorthand_type = result_type != nullptr ? result_type : expected;
+				TypeInfo const* union_type = base(shorthand_type);
+				const UnionVariant* variant = nullptr;
+				if (is_variant(union_type, TypeInfoVariant::UNION)) {
+					for (const UnionVariant& each : static_cast<TypeInfoUnion const*>(union_type)->variants) {
+						if (each.name != nullptr && node->value.value != nullptr && *each.name == *node->value.value) {
+							variant = &each;
+						}
+					}
+				}
+				// Its arguments: inside the parentheses' node, or the children after it, as for calls
+				std::vector<ast::Node*> arguments;
+				for (size_t i = 0; i < node->children.size(); ++i) {
+					ast::Node* step = node->children[i];
+					if (ast::NodeType::PAREN_GROUP != step->node_type) {
+						continue;
+					}
+					if (!step->children.empty()) {
+						arguments.assign(step->children.begin(), step->children.end());
+					}
+					while (i + 1 < node->children.size() && !is_postfix_marker(node->children[i + 1])) {
+						arguments.push_back(node->children[++i]);
+					}
+					break;
+				}
+				for (size_t i = 0; i < arguments.size(); ++i) {
+					TypeInfo* held = variant != nullptr && i < variant->types.size() ? variant->types[i] : nullptr;
+					Evaluated argument = evaluate(analysis, arguments[i], held);
+					if (held != nullptr) {
+						reach = join(reach, convert(analysis, argument, held, arguments[i]));
+					}
+				}
+				return value_of_type(reach, shorthand_type);
 			}
 			if (ast::NodeType::IF == type) {
 				return value_of_type(walk_if(analysis, node, result_type, true), result_type);

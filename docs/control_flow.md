@@ -330,6 +330,31 @@ target without them, like a kernel. `std/io` prints through them: `print`, `prin
 and `eprint`, `eprintln` and `eprintf` to standard error, with `printf` formatting like `text_buffer.append_format`
 into a buffer on the stack, so none of them allocate. Each call is one write, so lines from several threads don't mix.
 
+`std/os` has the rest of what a hosted program needs from its system, on Windows and Linux, with UTF-8 paths and names
+throughout:
+
+* `os.arguments()`, the command line, worked out once and kept for the whole process (on Windows, split the way the C
+  runtime splits it), and `os.get_environment(name)`.
+* Files: `open` (`.READ`, `.WRITE`, `.APPEND`, `.READ_WRITE`), `read`, `write`, `file_size`, `close`, and
+  `read_entire_file` and `write_entire_file`.
+* Paths: `delete_file`, `rename`, `path_kind`, `exists` and `is_directory`; folders: `make_directory`,
+  `remove_directory` and `list_directory`; and `current_directory` and `set_current_directory`.
+
+What gives something back gives a `Result[T, os.OsError]`, `#unrestricted` when it's memory from the allocator, and
+what doesn't gives an `os.OsError?`:
+
+```
+match os.read_entire_file("settings.txt") {
+    case Ok(text) => apply(text)
+    case Error(error) => {
+        if error != .NotFound {
+            runtime.log_error("can't read settings: %", error)
+        }
+        use_defaults()
+    }
+}
+```
+
 ### Functions Without a Context
 
 Most functions are called with a context. Some start without one: functions marked `#no_context`, like a

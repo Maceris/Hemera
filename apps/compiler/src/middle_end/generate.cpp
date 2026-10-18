@@ -4818,6 +4818,52 @@ namespace hemera {
 				mlir::Value address = address_of(generator, operand);
 				return value(tag_is(generator, address, operand.type, 0, TokenType::OPERATOR_NOT_EQUAL == op), BUILTIN_bool);
 			}
+			/*
+			 * An optional against a value of what it holds, like error != OsError.NotFound: equal when it
+			 * holds a value, and that value is equal
+			 */
+			if (TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) {
+				TypeInfo* left_type = type_at(generator, left_node, nullptr);
+				TypeInfo* right_type = right_node != nullptr ? type_at(generator, right_node, nullptr) : nullptr;
+				const auto optional = [](TypeInfo const* t) {
+					if (!is_variant(t, TypeInfoVariant::UNION)) {
+						return false;
+					}
+					auto union_type = static_cast<TypeInfoUnion const*>(base(t));
+					return union_type->variants.size() == 2 && variant_named(t, "None") == 1 && union_type->variants[0].types.size() == 1;
+				};
+				const bool left_optional = optional(left_type);
+				const bool right_optional = optional(right_type);
+				if (left_optional != right_optional) {
+					ast::Node* optional_node = left_optional ? left_node : right_node;
+					ast::Node* other_node = left_optional ? right_node : left_node;
+					TypeInfo* optional_type = left_optional ? left_type : right_type;
+					TypeInfo* held_type = static_cast<TypeInfoUnion const*>(base(optional_type))->variants[0].types[0];
+					Emitted operand = emit_expression(generator, optional_node, optional_type);
+					mlir::Value address = address_of(generator, operand);
+					mlir::Value other = emit_as(generator, other_node, held_type);
+					mlir::Value slot = make_slot(generator, BUILTIN_bool);
+					store(generator, boolean(generator, false), slot);
+					emit_if(generator, tag_is(generator, address, optional_type, 0, true), [&]() {
+						mlir::Value held = value_of(generator, held_value(generator, address, optional_type));
+						mlir::Value same;
+						if (is_variant(held_type, TypeInfoVariant::STRING) && !static_cast<TypeInfoString const*>(base(held_type))->is_raw) {
+							same = strings_equal(generator, held, other);
+						}
+						else if (is_variant(held_type, TypeInfoVariant::STRUCT) || is_variant(held_type, TypeInfoVariant::UNION)) {
+							unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(held_type)));
+							same = boolean(generator, false);
+						}
+						else {
+							same = compare(generator, TokenType::OPERATOR_EQUAL, held, other, held_type);
+						}
+						store(generator, same, slot);
+						return false;
+					}, nullptr);
+					mlir::Value equal = load(generator, BUILTIN_bool, slot);
+					return value(TokenType::OPERATOR_EQUAL == op ? equal : negate(generator, equal), BUILTIN_bool);
+				}
+			}
 			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
 				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
 				return value(boolean(generator, false), BUILTIN_bool);
@@ -6010,10 +6056,34 @@ namespace hemera {
 		mlir::OpBuilder::InsertionGuard guard(generator.builder);
 		generator.builder.setInsertionPointToEnd(generator.module.getBody());
 		mlir::Type i32 = integer_type(generator, 4);
+		/*
+		 * On Linux the entry is called as C's main is, with argc, argv and envp: by libc when the
+		 * program links C, and by _start otherwise, which finds them on the stack the kernel set up
+		 */
+		const bool linux_x86 = OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture;
+		std::vector<mlir::Type> entry_parameters;
+		if (linux_x86) {
+			entry_parameters = { i32, pointer_type(generator), pointer_type(generator) };
+		}
 		auto entry_function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, HOSTED_ENTRY_SYMBOL,
-			LLVM::LLVMFunctionType::get(i32, llvm::ArrayRef<mlir::Type>{}));
-		generator.builder.setInsertionPointToEnd(entry_function.addEntryBlock(generator.builder));
+			LLVM::LLVMFunctionType::get(i32, entry_parameters));
+		mlir::Block* entry_block = entry_function.addEntryBlock(generator.builder);
+		generator.builder.setInsertionPointToEnd(entry_block);
 		mlir::Value one = constant_int(generator, usize_type(generator), 1);
+		// What the process started with, for runtime.process_arguments and std/os's environment
+		LLVM::GlobalOp process = linux_x86 ? process_state_global(generator) : LLVM::GlobalOp();
+		size_t argument_count = 0;
+		size_t argument_pointers = 0;
+		size_t environment_pointers = 0;
+		if (process && runtime_offset(generator, "ProcessState", "argument_count", argument_count)
+			&& runtime_offset(generator, "ProcessState", "argument_pointers", argument_pointers)
+			&& runtime_offset(generator, "ProcessState", "environment_pointers", environment_pointers)) {
+			mlir::Value state = LLVM::AddressOfOp::create(generator.builder, generator.loc, process);
+			mlir::Value count = LLVM::SExtOp::create(generator.builder, generator.loc, usize_type(generator), entry_block->getArgument(0));
+			LLVM::StoreOp::create(generator.builder, generator.loc, count, offset_address(generator, state, argument_count));
+			LLVM::StoreOp::create(generator.builder, generator.loc, entry_block->getArgument(1), offset_address(generator, state, argument_pointers));
+			LLVM::StoreOp::create(generator.builder, generator.loc, entry_block->getArgument(2), offset_address(generator, state, environment_pointers));
+		}
 		mlir::Value context = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
 			llvm_type(generator, context_type), one, static_cast<unsigned>(context_type->alignment));
 		store_zero(generator, context_type, context);
@@ -6089,11 +6159,14 @@ namespace hemera {
 			else if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture) {
 				/*
 				 * Linux starts a static program at _start, with the stack pointer 16-byte aligned rather
-				 * than as a call leaves it, and nothing to return to: it calls the entry, then ends the
-				 * process with exit_group and the entry's result. No C library, so nothing else runs first.
+				 * than as a call leaves it, and nothing to return to: it calls the entry with argc, argv
+				 * and envp from the stack (argc, then argv's pointers and a null, then envp's), then ends
+				 * the process with exit_group and the entry's result. No C library, so nothing else runs
+				 * first.
 				 */
 				generator.module_assembly.push_back(std::format(
-					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\txorl %ebp, %ebp\n\tandq $-16, %rsp\n"
+					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\txorl %ebp, %ebp\n\tmovq (%rsp), %rdi\n"
+					"\tleaq 8(%rsp), %rsi\n\tleaq 16(%rsp,%rdi,8), %rdx\n\tandq $-16, %rsp\n"
 					"\tcallq {1}\n\tmovl %eax, %edi\n\tmovl $231, %eax\n\tsyscall\n\tud2\n",
 					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
 			}
@@ -7699,6 +7772,12 @@ namespace hemera {
 			 */
 			function.addFnAttr("frame-pointer", "all");
 			function.addFnAttr("disable-tail-calls", "true");
+			/*
+			 * No C library, so a loop that finds a string's end stays a loop, rather than becoming a call
+			 * to strlen or wcslen. memcpy, memmove, memset and memcmp are defined (define_memory_functions).
+			 */
+			function.addFnAttr("no-builtin-strlen");
+			function.addFnAttr("no-builtin-wcslen");
 			// A direct call has its callee's convention, which the generator only gave the callee
 			for (llvm::BasicBlock& block : function) {
 				for (llvm::Instruction& instruction : block) {

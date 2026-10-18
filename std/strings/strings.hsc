@@ -13,14 +13,15 @@ FORMAT_STACK_SIZE :: 256
  * format_string with its values filled in, as text_buffer.append_format does it, in a new string
  * from allocator, which free_string gives back:
  *
- *     name, error :: strings.format("frame %", index)
- *     defer strings.free_string(name)
+ *     match strings.format("frame %", index) {
+ *         case Ok(name) => keep(name)
+ *         case Error(_) => {}
+ *     }
  *
  * The result is #unrestricted: it's the allocator's memory, never the values', so it can be kept
- * anywhere. An empty result allocates nothing. If memory runs out, the error is returned with an
- * empty string.
+ * anywhere. An empty result allocates nothing.
  */
-format :: fn(format_string: string, values: any..., allocator := context.allocator) -> (text #unrestricted : string, error : runtime.AllocatorError?) {
+format :: fn(format_string: string, values: any..., allocator := context.allocator) -> Result[string, runtime.AllocatorError] #unrestricted {
     storage : u8[FORMAT_STACK_SIZE]
     text := text_buffer.make(storage)
     text_buffer.append_format(&text, format_string, values)
@@ -30,15 +31,16 @@ format :: fn(format_string: string, values: any..., allocator := context.allocat
     size : usize = FORMAT_STACK_SIZE * 2
     loop {
         bytes, error :: runtime.new_array(u8, size, allocator)
-        if error != null {
-            return "", error
+        match error {
+            case Some(failure) => return .Error(failure)
+            case None => {}
         }
         larger := text_buffer.make(bytes)
         text_buffer.append_format(&larger, format_string, values)
         if !larger.truncated {
-            result, copy_error :: clone(text_buffer.as_string(&larger), allocator)
+            result :: clone(text_buffer.as_string(&larger), allocator)
             runtime.free_array(bytes, allocator)
-            return result, copy_error
+            return result
         }
         runtime.free_array(bytes, allocator)
         size *= 2
@@ -46,20 +48,24 @@ format :: fn(format_string: string, values: any..., allocator := context.allocat
 }
 
 // A copy of text, in a new string from allocator, which free_string gives back. An empty one allocates nothing.
-clone :: fn(text: string, allocator := context.allocator) -> (copy #unrestricted : string, error : runtime.AllocatorError?) {
+clone :: fn(text: string, allocator := context.allocator) -> Result[string, runtime.AllocatorError] #unrestricted {
     if text.count == 0 {
-        return "", null
+        return .Ok("")
     }
     bytes, error :: runtime.new_array(u8, text.count, allocator)
-    if error != null || bytes.count == 0 {
-        return "", error
+    match error {
+        case Some(failure) => return .Error(failure)
+        case None => {}
+    }
+    if bytes.count == 0 {
+        return .Ok("")
     }
     for character, index in text {
         if index < bytes.count {
             bytes[index] = cast[u8](character)
         }
     }
-    return string_of(&bytes[0], bytes.count), null
+    return .Ok(string_of(&bytes[0], bytes.count))
 }
 
 // Gives back a string from format or clone, to the allocator it came from.

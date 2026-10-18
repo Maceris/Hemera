@@ -1004,12 +1004,14 @@ namespace hemera::parser {
 			}
 		}
 		/*
-		 * #never_returns is part of the function's type. Only it continues a signature, since
-		 * line breaks mean nothing, and the next statement may start with a directive (#if).
+		 * #never_returns, #no_context and #unrestricted (every result) are part of the function's
+		 * type. Only they continue a signature, since line breaks mean nothing, and the next
+		 * statement may start with a directive (#if).
 		 */
 		while (expect(state, TokenType::DIRECTIVE)
 			&& (current_token(state).value->compare("#never_returns") == 0
-				|| current_token(state).value->compare("#no_context") == 0)) {
+				|| current_token(state).value->compare("#no_context") == 0
+				|| current_token(state).value->compare("#unrestricted") == 0)) {
 			next_as_node(state, ast::NodeType::DIRECTIVE, &node);
 		}
 		return ExprResult{ true, &node };

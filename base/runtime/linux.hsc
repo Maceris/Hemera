@@ -190,6 +190,23 @@ import intrinsics from "base"
         }
     }
 
+    // argv, from the entry, as strings viewing the kernel's copies, which last as long as the process.
+    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+        empty : string[]
+        state :: intrinsics.process_state()
+        if state.argument_count == 0 || state.argument_pointers == null {
+            return empty
+        }
+        arguments, error :: new_array(string, state.argument_count, allocator)
+        if error != null {
+            return empty
+        }
+        for &argument, index in arguments {
+            argument^ = cstring_view(cast[ptr[rawptr]](state.argument_pointers + index * 8)^)
+        }
+        return arguments
+    }
+
     // Ends the process at once, with code, running nothing else: for a failed assertion.
     os_exit_process #no_context :: fn(code: u32) #never_returns {
         x86_64.syscall(SYS_EXIT_GROUP, cast[u64](code))

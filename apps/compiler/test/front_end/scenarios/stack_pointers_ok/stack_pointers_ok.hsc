@@ -58,6 +58,14 @@ name_for :: fn(values: int[]) -> (name #unrestricted : string, found : bool) {
     return GREETING, values.count > 0
 }
 
+// Every result #unrestricted, with no names needed
+label_for :: fn(values: int[]) -> Result[string, int] #unrestricted {
+    if values.count == 0 {
+        return .Error(0)
+    }
+    return .Ok(GREETING)
+}
+
 register :: fn(registry: ptr[mut Registry], name #escaping : string) {
     registry.first = name
 }
@@ -103,6 +111,10 @@ main :: fn(registry: ptr[mut Registry]) -> int {
     register(registry, GREETING)
     name, found :: name_for(buffer)
     register(registry, name)
+    match label_for(buffer) {
+        case Ok(label_text) => register(registry, label_text)
+        case Error(_) => {}
+    }
     label := Shape.Label("text")
     return total + p^ + first^ + cast[int](length + count + view.count + trimmed.count + label_length(&label))
 }

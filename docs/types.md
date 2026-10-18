@@ -616,6 +616,9 @@ Optional :: union[T] {
 
 There are a few [operators built in](operators.md#optional-operators) to make life easier when dealing with optional values.
 
+An optional compared with `==` or `!=` to a value of the type it holds is equal when it holds that value: `found == 3`
+is false when `found` is `None`, and `error != OsError.NotFound` is true when there's no error at all.
+
 An optional of a pointer that's never null, `ptr[T]?`, `cstring?` or an optional function, is just the pointer, with
 `None` as a null pointer. It has no tag and the same size and layout as the pointer, so it matches a nullable pointer
 in C and in other foreign layouts. `rawptr?` keeps its tag, since a `rawptr` can be `null` itself.

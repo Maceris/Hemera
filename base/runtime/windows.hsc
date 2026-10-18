@@ -33,6 +33,7 @@ import intrinsics from "base"
     WriteFile #foreign(KERNEL32) : fn(file: rawptr, bytes: rawptr, count: u32, written: ptr[mut u32], overlapped: rawptr) -> i32 : ---
     GetCurrentProcess #foreign(KERNEL32) : fn() -> rawptr : ---
     TerminateProcess #foreign(KERNEL32) : fn(process: rawptr, code: u32) -> i32 : ---
+    GetCommandLineW #foreign(KERNEL32) : fn() -> ptr[u16] : ---
     WaitOnAddress #foreign(SYNCHRONIZATION) : fn(address: rawptr, compare: rawptr, size: usize, milliseconds: u32) -> i32 : ---
     WakeByAddressSingle #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
     WakeByAddressAll #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
@@ -117,6 +118,45 @@ import intrinsics from "base"
     os_exit_process #no_context :: fn(code: u32) #never_returns {
         TerminateProcess(GetCurrentProcess(), code)
         intrinsics.trap()
+    }
+
+    /*
+     * GetCommandLineW, as UTF-8, split as the C runtime splits it (split_command_line), in memory
+     * from allocator kept for the rest of the process. None if memory runs out.
+     */
+    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+        empty : string[]
+        line :: GetCommandLineW()
+        length : usize = 0
+        loop {
+            if cast[ptr[u16]](cast[rawptr](line) + length * 2)^ == 0 {
+                break
+            }
+            length += 1
+        }
+        if length == 0 {
+            return empty
+        }
+        capacity :: utf8_capacity_for_utf16(length)
+        // The command line as UTF-8, then each argument, which is never longer than it
+        text, text_error :: new_array(u8, capacity, allocator)
+        split, split_error :: new_array(u8, capacity, allocator)
+        if text_error != null || split_error != null || text.count == 0 {
+            return empty
+        }
+        converted :: utf16_to_utf8(view_of(line, length), text)
+        if converted == 0 || converted > text.count {
+            return empty
+        }
+        utf8 :: string_of(&text[0], converted)
+        none : string[]
+        count :: split_command_line(utf8, split, none)
+        arguments, arguments_error :: new_array(string, count, allocator)
+        if arguments_error != null {
+            return empty
+        }
+        split_command_line(utf8, split, arguments)
+        return arguments
     }
 
     /*

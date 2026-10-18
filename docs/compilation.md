@@ -182,6 +182,13 @@ The object format follows the target's OS:
 `TargetOptions.linker_script` places sections, for outputs loaded at fixed addresses like kernels.
 `OutputType.FlatBinary` links the same way, then keeps only the loadable bytes.
 
+### Starting on Linux
+
+A hosted Linux program's entry is called as C's `main` is, with `argc`, `argv` and `envp`, which it keeps in the
+runtime's process state for `runtime.process_arguments` and `std/os`'s environment. Without the C library, its `_start`
+finds them on the stack the kernel set up (`argc`, then `argv`'s pointers and a null, then `envp`'s); with it, libc
+passes them.
+
 ### Linking C on Linux
 
 A hosted Linux program is normally static, with no C library: the runtime makes its own system calls

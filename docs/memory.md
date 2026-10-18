@@ -167,20 +167,28 @@ or keep it somewhere other than the stack, or make the handle `#unrestricted` (b
 ### Unrestricted Results
 
 A function whose result never points at what it was given, like one that copies into memory from an allocator, marks
-that result `#unrestricted`, the way a parameter is marked `#escaping`. The result has to be named:
+that result `#unrestricted`, the way a parameter is marked `#escaping`. After the results, it marks every one of them,
+and after a named result, just that one:
 
 ```
-clone :: fn(text: string, allocator := context.allocator) -> (copy #unrestricted : string, error : AllocatorError?) {
+clone :: fn(text: string, allocator := context.allocator) -> Result[string, AllocatorError] #unrestricted {
     // ... copies text into new memory ...
 }
+
+split_off :: fn(text: string, allocator := context.allocator) -> (copy #unrestricted : string, rest : string) {/* ... */}
 
 example :: fn(registry: ptr[mut Registry]) {
     name_bytes : u8[32]
     // ...
-    name, error :: clone(string_from(name_bytes))
-    register(registry, name)            // OK: the copy is unrestricted, though name_bytes is on the stack
+    match clone(string_from(name_bytes)) {
+        case Ok(name) => register(registry, name)   // OK: the copy is unrestricted, though name_bytes is on the stack
+        case Error(_) => {}
+    }
 }
 ```
+
+An unrestricted `Result` or optional is unrestricted whatever it holds, so what `case Ok(name)` or `or_else` takes out
+of it is too. That's what lets a function that allocates give one value back, rather than a value and an error.
 
 * At the call site, the result is unrestricted whatever the arguments were.
 * Inside the function, returning anything local there is an error, including a value whose origin is a parameter,
@@ -188,7 +196,8 @@ example :: fn(registry: ptr[mut Registry]) {
 * It's part of the function's type: a function whose result is `#unrestricted` can be used where the type's result
   isn't, but not the other way around.
 
-`std/strings`' `format` and `clone` are marked this way.
+`std/strings`' `format` and `clone`, and `std/os`'s functions that allocate, like `read_entire_file`, are marked this
+way.
 
 ## Scoped Structs
 

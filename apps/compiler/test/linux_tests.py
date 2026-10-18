@@ -30,11 +30,18 @@ TESTS = [
     ("output", [], 42),
     ("library", [], 42),
     ("arrays", [], 42),
+    ("files", [], 42),
     # runtime.ASSERTION_EXIT_CODE
     ("assertion", [], 134),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--stack-check=morestack", "SYSROOT"], 42),
 ]
+
+# How a test is run, in its folder on the Linux machine, where it isn't just the program: its
+# environment and arguments (see each scenario)
+RUN_WITH = {
+    "files": ("HEMERA_FILES_TEST='h\u00e9llo'", "alpha 'two words' ''"),
+}
 
 # What a failed assertion's report starts with, on standard error
 ASSERTION_REPORT = "assertion failed: count must be positive\n    at "
@@ -71,7 +78,9 @@ def main() -> int:
                 print(f"FAILED: {name} couldn't be copied\n{copied.stderr}")
                 failures += 1
                 continue
-            ran = run(ssh + [f"chmod +x ~/hemera-tests/{name} && timeout 120 ~/hemera-tests/{name}"])
+            environment, program_arguments = RUN_WITH.get(name, ("", ""))
+            ran = run(ssh + [f"chmod +x ~/hemera-tests/{name} && cd ~/hemera-tests && "
+                             f"{environment} timeout 120 ./{name} {program_arguments}"])
             problems = []
             if ran.returncode != exit_code:
                 problems.append(f"exited with {ran.returncode}")

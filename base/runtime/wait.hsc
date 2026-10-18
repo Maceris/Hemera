@@ -28,6 +28,12 @@ import intrinsics from "base"
 
     os_thread_join :: fn(thread: ptr[mut Thread]) {}
 
+    // No command line
+    os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
+        empty : string[]
+        return empty
+    }
+
     // No standard output or error to write to
     os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
 

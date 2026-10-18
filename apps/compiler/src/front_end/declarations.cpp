@@ -699,6 +699,7 @@ namespace hemera {
 		function->input.clear();
 		function->output.clear();
 		bool seen_parameters = false;
+		bool all_unrestricted = false;
 		for (ast::Node* child : node->children) {
 			const ast::NodeType type = child->node_type;
 			if (ast::NodeType::LIST == type && !seen_parameters) {
@@ -827,10 +828,19 @@ namespace hemera {
 				else if (is_text(child->value.value, "#no_context")) {
 					function->no_context = true;
 				}
+				// After the results, like -> Result[string, Error] #unrestricted: every result is
+				else if (is_text(child->value.value, "#unrestricted")) {
+					all_unrestricted = true;
+				}
 				else if (is_text(child->value.value, "#calling_convention")) {
 					ast::Node* convention = directive_argument(child);
 					function->calling_convention = convention != nullptr ? convention->value.value : nullptr;
 				}
+			}
+		}
+		if (all_unrestricted) {
+			for (FunctionOutput& output : function->output) {
+				output.is_unrestricted = true;
 			}
 		}
 		return Progress::DONE;

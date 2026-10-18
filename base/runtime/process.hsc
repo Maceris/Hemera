@@ -12,6 +12,16 @@ ProcessState :: struct {
     carrier_slot : u32,
     // The heap on systems where the runtime makes its own from pages (linux.hsc)
     heap : PageHeap,
+    /*
+     * On Linux, what the entry was given, as C's main is: argc, argv, and envp (each a pointer to
+     * null-terminated pointers to null-terminated strings). Zero elsewhere.
+     */
+    argument_count : usize,
+    argument_pointers : rawptr,
+    environment_pointers : rawptr,
+    // process_arguments: 0 until someone starts on them, 1 while they're worked out, 2 once they're there
+    arguments_state : u32,
+    arguments : string[],
 }
 
 // Size classes of PageHeap's small blocks: 16 bytes, doubling, to 2 KiB.

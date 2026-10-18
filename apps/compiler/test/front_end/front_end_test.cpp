@@ -846,6 +846,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "stack_scoped_and_unrestricted", hemera::ErrorCode::E4014 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },
 		{ "stack_unrestricted_result", hemera::ErrorCode::E4030 },
+		{ "stack_return_variant_shorthand", hemera::ErrorCode::E4030 },
+		{ "stack_unrestricted_all_results", hemera::ErrorCode::E4030 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },

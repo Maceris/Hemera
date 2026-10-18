@@ -1,2 +1,2 @@
-[debug] library.hsc:192 main [thread 0] 4 of 4 checks passed
+[debug] library.hsc:196 main [thread 0] 4 of 4 checks passed
 [warn] on standard output
