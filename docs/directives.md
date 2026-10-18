@@ -60,6 +60,11 @@ foo :: fn() {
 
 `#is_compile_time` evaluates to `true` during compile time and `false` during run time.
 
+An `if` whose condition `#is_compile_time` decides, alone or through `!`, `&&` and `||` (like
+`#is_compile_time && !allowed()`), only has the branch that can run generated. So a function can call what only works
+at compile time, like `compiler.report_error`, in a branch that only compile-time code takes, and still be used in the
+program. Both branches are checked.
+
 `#run` specifies code should be run during compile time. It is followed by an expression to execute.
 
 When the `#run` directive appears at the top level of a file, it is executed when that file gets processed (each unique file should be processed once).

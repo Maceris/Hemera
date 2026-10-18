@@ -30,6 +30,8 @@ TESTS = [
     ("output", [], 42),
     ("library", [], 42),
     ("arrays", [], 42),
+    # Every function in base and std, used or not
+    ("everything", ["--generate-all"], 42),
     ("files", [], 42),
     # runtime.ASSERTION_EXIT_CODE
     ("assertion", [], 134),

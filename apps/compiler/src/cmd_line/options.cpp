@@ -23,6 +23,7 @@ namespace hemera {
 		, linker_script{}
 		, sysroot{}
 		, debug_info{ false }
+		, generate_all{ false }
 		, startup_code{ true }
 		, red_zone{ true }
 		, address_zero_is_memory{ false }

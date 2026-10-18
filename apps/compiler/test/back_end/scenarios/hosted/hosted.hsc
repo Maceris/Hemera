@@ -774,5 +774,12 @@ main :: fn() -> int {
     if scaled(2) != 24 || scaled(2, 1) != 8 {
         return 59
     }
+    // The most and least each kind of number holds
+    if max_value(u8) != 255 || min_value(i8) != -128 || max_value(u64) != 0xffff_ffff_ffff_ffff || min_value(u16) != 0 {
+        return 60
+    }
+    if max_value(f32) <= 3.0e38 || min_value(f64) >= -1.0e308 {
+        return 61
+    }
     return 42
 }

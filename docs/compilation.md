@@ -205,6 +205,14 @@ A hosted Linux program is normally static, with no C library: the runtime makes 
 * It's linked against the target's own libraries, from the folder `--sysroot` names: `libc.so` (a copy of `libc.so.6`
   does), the `lib<name>.so` of each other `#library`, and `ld-linux-x86-64.so.2`. No C runtime objects are needed.
 
+## Generating Everything
+
+`--generate-all` generates every function the program's packages declare, used or not, rather than only those
+reachable from its entry, so what the compiler can't generate yet shows up before anything calls it. Generic
+functions are only generated for the type arguments something gives them. The compiler's tests build a program that
+imports all of `std` this way, with each generic in `base` and `std` instantiated, for Windows, Linux and a target with
+no operating system, so each one's `#if` code is generated too.
+
 ## Debug Info
 
 `--debug` (`BackendOptions.debug_info` in a build package) gives the program debug info, so debuggers and stack traces

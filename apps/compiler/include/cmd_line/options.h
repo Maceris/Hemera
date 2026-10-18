@@ -481,6 +481,12 @@ namespace hemera {
         std::filesystem::path sysroot;
         bool debug_info;
         /// <summary>
+        /// Generate every function the program's packages declare, not only those it uses (generic
+        /// ones aside, which need their type arguments), so what can't be generated yet shows up
+        /// before anything calls it.
+        /// </summary>
+        bool generate_all;
+        /// <summary>
         /// Whether the output includes startup code that sets up the first carrier block and
         /// context before calling the entry function. Freestanding programs turn it off, and
         /// their entry function starts without a context (docs/compilation.md).

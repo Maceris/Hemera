@@ -31,7 +31,8 @@ static std::filesystem::path scenario(std::string_view name) {
  * kernel: no startup code, no red zone, no SIMD, stack checks that trap, position-independent,
  * placed by a linker script.
  */
-static void build_kernel(const std::filesystem::path& output, hemera::TargetStackCheck stack_check = hemera::TargetStackCheck::Trap) {
+static void build_kernel(const std::filesystem::path& output, hemera::TargetStackCheck stack_check = hemera::TargetStackCheck::Trap,
+	std::string_view name = "freestanding", bool generate_all = false) {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
 
@@ -44,7 +45,11 @@ static void build_kernel(const std::filesystem::path& output, hemera::TargetStac
 
 	std::filesystem::create_directories(output.parent_path());
 	hemera::Options options;
-	options.input = std::filesystem::canonical(scenario("freestanding"));
+	options.input = std::filesystem::canonical(scenario(name));
+	// std, in the repository: apps/compiler/test/back_end/freestanding_test.cpp
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(
+		std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path() / "std");
+	options.generate_all = generate_all;
 	options.output_name = output.string();
 	options.os = hemera::OSType::UnknownOS;
 	options.vendor = hemera::VendorType::UnknownVendor;
@@ -138,6 +143,16 @@ TEST(Freestanding, BuildsKernel)
  * them, which is where map order once leaked in. Builds that differ can still match by chance, so
  * this builds a few times.
  */
+/*
+ * Every function base and std declare, generated for a target with no operating system, so what
+ * can't be generated yet, or what doesn't fall back without one, shows up before anything calls it.
+ */
+TEST(Freestanding, GeneratesEverything)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "everything_freestanding" / "kernel.elf";
+	build_kernel(output, hemera::TargetStackCheck::Trap, "everything_freestanding", true);
+}
+
 TEST(Freestanding, BuildsTheSameEveryTime)
 {
 	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "deterministic";

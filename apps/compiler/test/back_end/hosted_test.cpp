@@ -52,7 +52,7 @@ struct HostedOutput {
  * if everything it checks worked, or the number of the first check that failed.
  */
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
-	std::string_view arguments = "", bool debug_info = false)
+	std::string_view arguments = "", bool debug_info = false, bool generate_all = false)
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -74,6 +74,7 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.output_name = (output_folder / name).string();
 	options.stack_check = stack_check;
 	options.debug_info = debug_info;
+	options.generate_all = generate_all;
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
 	result.executable = executable;
@@ -226,6 +227,15 @@ TEST(Hosted, NamesFramesWithDebugInfo)
 	EXPECT_NE(frames.find("assertion.check at "), std::string::npos) << frames;
 	EXPECT_NE(frames.find("assertion.hsc:10, inlined"), std::string::npos) << frames;
 	EXPECT_NE(frames.find("assertion.main at "), std::string::npos) << frames;
+}
+
+/*
+ * Every function base and std declare, used or not, generated for Windows, so what can't be
+ * generated yet shows up before anything calls it. The program itself does nothing.
+ */
+TEST(Hosted, GeneratesEverything)
+{
+	run_hosted("everything", hemera::TargetStackCheck::Off, 42, "", false, true);
 }
 
 // Compile-time code that gives a pointer: what it points to doesn't exist in the program, so it's reported.

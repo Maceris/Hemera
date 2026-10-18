@@ -414,6 +414,9 @@ namespace hemera {
 				output.debug_info = true;
 				debug_info_seen = true;
 				break;
+			case hemera::arg_parse::GENERATE_ALL:
+				output.generate_all = true;
+				break;
 			case hemera::arg_parse::O0:
 				if (optimization_seen) {
 					cout << "Duplicate optimization level flag" << endl;
@@ -1094,6 +1097,7 @@ namespace hemera {
 				output.sysroot = std::filesystem::canonical(output.sysroot);
 				break;
 			case hemera::arg_parse::DEBUG_INFO:
+			case hemera::arg_parse::GENERATE_ALL:
 			case hemera::arg_parse::NO_RED_ZONE:
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 			case hemera::arg_parse::ALLOW_RUN:

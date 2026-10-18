@@ -1851,6 +1851,43 @@ namespace hemera {
 	}
 
 	// A condition, as an i1.
+	/*
+	 * What a condition is when #is_compile_time decides it, like #is_compile_time && !allowed():
+	 * an if's other branch isn't generated, so compile-time code can call what only works there,
+	 * and run-time code what only works there. None if it depends on anything else.
+	 */
+	static std::optional<bool> known_condition(Generator& generator, const ast::Node* node) {
+		if (node == nullptr) {
+			return std::nullopt;
+		}
+		const ast::NodeType type = node->node_type;
+		if (ast::NodeType::PAREN_GROUP == type && node->children.size() == 1) {
+			return known_condition(generator, node->children[0]);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
+			return generator.compile_time;
+		}
+		const TokenType op = node->value.type;
+		if (ast::NodeType::UNARY_OPERATOR == type && TokenType::OPERATOR_NOT == op && node->children.size() == 1) {
+			std::optional<bool> operand = known_condition(generator, node->children[0]);
+			return operand.has_value() ? std::optional<bool>(!*operand) : std::nullopt;
+		}
+		if (ast::NodeType::BINARY_OPERATOR == type && node->children.size() == 2
+			&& (TokenType::OPERATOR_AND == op || TokenType::OPERATOR_OR == op)) {
+			const std::optional<bool> left = known_condition(generator, node->children[0]);
+			const std::optional<bool> right = known_condition(generator, node->children[1]);
+			// Either side decides an && that's false or an || that's true
+			const bool decides = TokenType::OPERATOR_OR == op;
+			if ((left.has_value() && *left == decides) || (right.has_value() && *right == decides)) {
+				return decides;
+			}
+			if (left.has_value() && right.has_value()) {
+				return !decides;
+			}
+		}
+		return std::nullopt;
+	}
+
 	static mlir::Value emit_condition(Generator& generator, ast::Node* node) {
 		mlir::Value v = emit_as(generator, node, BUILTIN_bool);
 		if (v.getType().getIntOrFloatBitWidth() == 1) {
@@ -3288,6 +3325,30 @@ namespace hemera {
 				number = static_cast<int64_t>(offset);
 			}
 			return value(constant_int(generator, usize_type(generator), number), BUILTIN_usize);
+		}
+		/*
+		 * The most or least an integer, character or float type holds: for a float, its largest finite
+		 * value, and the most negative one
+		 */
+		if ((name == "max_value" || name == "min_value") && arguments.size() == 1) {
+			TypeInfo* of = emit_expression(generator, arguments[0], nullptr).type;
+			const bool most = name == "max_value";
+			mlir::Type type = of != nullptr ? llvm_type(generator, of) : mlir::Type();
+			if (of != nullptr && (is_variant(of, TypeInfoVariant::INTEGER) || is_variant(of, TypeInfoVariant::CHAR)) && type.isInteger()) {
+				const unsigned bits = type.getIntOrFloatBitWidth();
+				const bool is_signed = is_variant(of, TypeInfoVariant::INTEGER) && static_cast<TypeInfoInteger const*>(base(of))->is_signed;
+				const llvm::APInt limit = is_signed ? (most ? llvm::APInt::getSignedMaxValue(bits) : llvm::APInt::getSignedMinValue(bits))
+					: (most ? llvm::APInt::getMaxValue(bits) : llvm::APInt::getMinValue(bits));
+				return value(LLVM::ConstantOp::create(generator.builder, generator.loc, type, generator.builder.getIntegerAttr(type, limit)), of);
+			}
+			if (of != nullptr && is_float(of)) {
+				auto float_type = llvm::cast<mlir::FloatType>(type);
+				const llvm::APFloat limit = llvm::APFloat::getLargest(float_type.getFloatSemantics(), !most);
+				return value(LLVM::ConstantOp::create(generator.builder, generator.loc, type, generator.builder.getFloatAttr(type, limit)), of);
+			}
+			unsupported(generator, paren, std::format("{} of {} can't be generated yet", name, of != nullptr ? to_string(of) : "this"));
+			TypeInfo* placeholder = of != nullptr ? of : BUILTIN_int;
+			return value(zero_of(generator, llvm_type(generator, placeholder)), placeholder);
 		}
 		unsupported(generator, paren, std::format("{} can't be generated yet", name));
 		return value(zero_of(generator, usize_type(generator)), BUILTIN_usize);
@@ -5910,6 +5971,17 @@ namespace hemera {
 		}
 		if (ast::NodeType::IF == type) {
 			ast::Node* otherwise = else_of(statement);
+			// Only the branch that runs, when #is_compile_time decides which
+			if (std::optional<bool> known = known_condition(generator, statement->children[0])) {
+				if (*known) {
+					return emit_block(generator, statement->children[1], mlir::Value(), nullptr);
+				}
+				if (otherwise == nullptr) {
+					return false;
+				}
+				return ast::NodeType::IF == otherwise->node_type ? emit_statement(generator, otherwise)
+					: emit_block(generator, otherwise, mlir::Value(), nullptr);
+			}
 			emit_if(generator, emit_condition(generator, statement->children[0]), [&]() {
 				return emit_block(generator, statement->children[1], mlir::Value(), nullptr);
 			}, otherwise == nullptr ? std::function<bool()>() : [&]() {
@@ -6367,6 +6439,11 @@ namespace hemera {
 				global_for(generator, declaration);
 			}
 			else if (DeclarationKind::FUNCTION == declaration->kind && exported && !is_intrinsic(declaration)) {
+				function_for(generator, declaration);
+			}
+			// --generate-all: every function, used or not
+			else if (DeclarationKind::FUNCTION == declaration->kind && generator.options->generate_all && !is_intrinsic(declaration)
+				&& declaration->node != nullptr) {
 				function_for(generator, declaration);
 			}
 		}
