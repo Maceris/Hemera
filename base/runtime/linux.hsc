@@ -14,7 +14,9 @@ import intrinsics from "base"
     SYS_MUNMAP : u64 : 11
     SYS_EXIT : u64 : 60
     SYS_FUTEX : u64 : 202
+    SYS_CLOCK_GETTIME : u64 : 228
     SYS_EXIT_GROUP : u64 : 231
+    SYS_GETRANDOM : u64 : 318
 
     PROT_READ_WRITE : u64 : 3
     MAP_PRIVATE_ANONYMOUS : u64 : 0x22
@@ -213,16 +215,73 @@ import intrinsics from "base"
         intrinsics.trap()
     }
 
+    // The system's clocks, from clock_gettime: CLOCK_MONOTONIC, and CLOCK_REALTIME for the wall clock.
+    SYSTEM_CLOCK :: Clock.{
+        data = null,
+        monotonic = system_monotonic,
+        wall = system_wall,
+    }
+
+    CLOCK_REALTIME : u64 : 0
+    CLOCK_MONOTONIC : u64 : 1
+
+    // struct timespec
+    TimeSpec :: struct {
+        seconds : i64,
+        nanoseconds : i64,
+    }
+
+    system_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
+        now : TimeSpec
+        if syscall_failed(x86_64.syscall(SYS_CLOCK_GETTIME, CLOCK_MONOTONIC, cast[u64](&now))) {
+            return 0
+        }
+        return cast[MonotonicTime](now.seconds * NANOSECONDS_PER_SECOND + now.nanoseconds)
+    }
+
+    system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
+        now : TimeSpec
+        if syscall_failed(x86_64.syscall(SYS_CLOCK_GETTIME, CLOCK_REALTIME, cast[u64](&now))) {
+            return .Error(.Unavailable)
+        }
+        return .Ok(Instant.{now.seconds, cast[u32](now.nanoseconds)})
+    }
+
+    // The system's random numbers, from getrandom, which waits until the kernel's generator is ready.
+    SYSTEM_RANDOM :: Random.{
+        data = null,
+        fill = system_random_fill,
+    }
+
+    // Fills bytes, a getrandom at a time; stops the program if it can't, since fill can't report it.
+    system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
+        done : usize = 0
+        loop {
+            if done >= bytes.count {
+                break
+            }
+            result :: x86_64.syscall(SYS_GETRANDOM, cast[u64](cast[rawptr](bytes.data) + done), cast[u64](bytes.count - done), 0)
+            // EINTR: again
+            if result == ~cast[u64](3) {
+                continue
+            }
+            if syscall_failed(result) || result == 0 {
+                intrinsics.trap()
+            }
+            done += cast[usize](result)
+        }
+    }
+
     /*
      * What a hosted program's main starts with: memory from the kernel, the standard logger and
-     * assertion handler, and otherwise MINIMAL_CONTEXT's constants.
+     * assertion handler, and the system's clock and random numbers.
      */
     HOSTED_CONTEXT :: Context.{
         allocator = PAGES_ALLOCATOR,
         logger = &STANDARD_LOGGER,
         log_level = .INFO,
-        clock = &NO_CLOCK,
-        random = &NO_RANDOM,
+        clock = &SYSTEM_CLOCK,
+        random = &SYSTEM_RANDOM,
         assertion_handler = printing_assertion_handler,
         user_data = null,
         extensions = null,

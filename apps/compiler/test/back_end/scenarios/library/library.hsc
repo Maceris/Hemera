@@ -170,8 +170,8 @@ check_memory :: fn() -> int {
     return 0
 }
 
-// What the logger puts on each line: no clock in a hosted program yet, so no time
-DETAILED :: logger.Options.{time = true, location = true, function = true, thread = true}
+// What the logger puts on each line: no time, which changes from run to run
+DETAILED :: logger.Options.{time = false, location = true, function = true, thread = true}
 PLAIN :: logger.Options.{time = false, location = false, function = false, thread = false, stream = .OUTPUT}
 
 main :: fn() -> int {

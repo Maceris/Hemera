@@ -6,11 +6,29 @@ Instant :: runtime.Instant
 Duration :: runtime.Duration
 
 /*
- * The current wall-clock time, from context.clock. Hosted programs have no clock yet, so this is
- * ClockError.Unavailable there, as it is in MINIMAL_CONTEXT.
+ * The current wall-clock time, from context.clock: the system's in a hosted program, and
+ * ClockError.Unavailable in MINIMAL_CONTEXT. It can jump, when the system's time is set; measure
+ * how long something takes with monotonic instead.
  */
 now :: fn() -> Result[Instant, runtime.ClockError] {
     return context.clock.wall(context.clock.data)
+}
+
+/*
+ * A time that only goes forward, for measuring how long things take, in nanoseconds from some
+ * point the system chose, like when it started:
+ *
+ *     start :: time.monotonic()
+ *     load_everything()
+ *     took :: time.since(start)     // took.seconds, took.nanos
+ */
+monotonic :: fn() -> runtime.MonotonicTime {
+    return context.clock.monotonic(context.clock.data)
+}
+
+// How long it's been since start, a monotonic time.
+since :: fn(start: runtime.MonotonicTime) -> Duration {
+    return runtime.duration_between(start, monotonic())
 }
 
 /*

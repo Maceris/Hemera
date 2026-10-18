@@ -8,6 +8,8 @@ import intrinsics from "base"
  */
 #if OS == .Windows {
     KERNEL32 :: #library("kernel32")
+    // BCryptGenRandom, the system's random numbers
+    BCRYPT :: #library("bcrypt")
     // WaitOnAddress and its wakes, from the API set kernelbase implements
     SYNCHRONIZATION :: #library("synchronization")
 
@@ -34,6 +36,10 @@ import intrinsics from "base"
     GetCurrentProcess #foreign(KERNEL32) : fn() -> rawptr : ---
     TerminateProcess #foreign(KERNEL32) : fn(process: rawptr, code: u32) -> i32 : ---
     GetCommandLineW #foreign(KERNEL32) : fn() -> ptr[u16] : ---
+    QueryPerformanceCounter #foreign(KERNEL32) : fn(count: ptr[mut i64]) -> i32 : ---
+    QueryPerformanceFrequency #foreign(KERNEL32) : fn(frequency: ptr[mut i64]) -> i32 : ---
+    GetSystemTimePreciseAsFileTime #foreign(KERNEL32) : fn(time: ptr[mut u64]) : ---
+    BCryptGenRandom #foreign(BCRYPT) : fn(algorithm: rawptr, buffer: rawptr, count: u32, flags: u32) -> i32 : ---
     WaitOnAddress #foreign(SYNCHRONIZATION) : fn(address: rawptr, compare: rawptr, size: usize, milliseconds: u32) -> i32 : ---
     WakeByAddressSingle #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
     WakeByAddressAll #foreign(SYNCHRONIZATION) : fn(address: rawptr) : ---
@@ -160,16 +166,77 @@ import intrinsics from "base"
     }
 
     /*
+     * The system's clocks: the performance counter for monotonic time, which counts at a frequency
+     * that's fixed while the system runs, and the precise system time for the wall clock, in 100
+     * nanosecond ticks since 1601.
+     */
+    SYSTEM_CLOCK :: Clock.{
+        data = null,
+        monotonic = system_monotonic,
+        wall = system_wall,
+    }
+
+    system_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
+        count : i64 = 0
+        frequency : i64 = 0
+        QueryPerformanceCounter(&count)
+        QueryPerformanceFrequency(&frequency)
+        if frequency <= 0 {
+            return 0
+        }
+        // Seconds and what's left, so the nanoseconds don't overflow
+        seconds :: count / frequency
+        left :: count % frequency
+        return cast[MonotonicTime](seconds * NANOSECONDS_PER_SECOND + left * NANOSECONDS_PER_SECOND / frequency)
+    }
+
+    // 100 nanosecond ticks from 1601-01-01 to 1970-01-01
+    FILETIME_TO_UNIX : u64 : 116444736000000000
+
+    system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
+        ticks : u64 = 0
+        GetSystemTimePreciseAsFileTime(&ticks)
+        if ticks < FILETIME_TO_UNIX {
+            return .Error(.NotSynchronized)
+        }
+        since :: ticks - FILETIME_TO_UNIX
+        return .Ok(Instant.{cast[i64](since / 10000000), cast[u32](since % 10000000 * 100)})
+    }
+
+    // The system's random numbers, from its preferred generator, which is suitable for keys.
+    SYSTEM_RANDOM :: Random.{
+        data = null,
+        fill = system_random_fill,
+    }
+
+    BCRYPT_USE_SYSTEM_PREFERRED_RNG : u32 : 2
+
+    // Fills bytes, a BCryptGenRandom at a time; stops the program if it can't, since fill can't report it.
+    system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
+        done : usize = 0
+        loop {
+            if done >= bytes.count {
+                break
+            }
+            left :: bytes.count - done
+            chunk :: if left > 0x40000000 { cast[u32](0x40000000) } else { cast[u32](left) }
+            if BCryptGenRandom(null, cast[rawptr](bytes.data) + done, chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0 {
+                intrinsics.trap()
+            }
+            done += cast[usize](chunk)
+        }
+    }
+
+    /*
      * What a hosted program's main starts with: the process heap, the standard logger and assertion
-     * handler, and otherwise MINIMAL_CONTEXT's constants until there's a clock and random numbers
-     * for Windows.
+     * handler, and the system's clock and random numbers.
      */
     HOSTED_CONTEXT :: Context.{
         allocator = HEAP_ALLOCATOR,
         logger = &STANDARD_LOGGER,
         log_level = .INFO,
-        clock = &NO_CLOCK,
-        random = &NO_RANDOM,
+        clock = &SYSTEM_CLOCK,
+        random = &SYSTEM_RANDOM,
         assertion_handler = printing_assertion_handler,
         user_data = null,
         extensions = null,

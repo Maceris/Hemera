@@ -328,6 +328,12 @@ A hosted program's `main` starts with `runtime.HOSTED_CONTEXT` instead, on Windo
   the thread on each line, like `[warn] 14:03:27.412 loader.hsc:88 load_file [thread 2] missing 3 files`.
 * The assertion handler is `runtime.printing_assertion_handler`, which writes the failure to standard error, then ends
   the process with `runtime.ASSERTION_EXIT_CODE` (134) (see [directives.md](directives.md)).
+* The clock is the system's (`runtime.SYSTEM_CLOCK`): `time.now()` is the wall-clock time, from
+  `GetSystemTimePreciseAsFileTime` on Windows and `clock_gettime(CLOCK_REALTIME)` on Linux, and `time.monotonic()` a
+  time that only goes forward, from the performance counter or `CLOCK_MONOTONIC`, for measuring with `time.since`.
+* Random numbers are the system's (`runtime.SYSTEM_RANDOM`), suitable for keys: `BCryptGenRandom` on Windows and
+  `getrandom` on Linux. `std/random` has `fill`, `next_u64`, and `below` and `between`, which give each number in a
+  range the same chance.
 
 ```
 main :: fn() -> int {

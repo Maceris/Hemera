@@ -164,6 +164,12 @@ TEST(Hosted, WritesOutput)
 	EXPECT_EQ(written.error, read_file(scenario("output") / "error.txt"));
 }
 
+// The hosted context's clock and random numbers, from the system.
+TEST(Hosted, UsesSystemClockAndRandom)
+{
+	run_hosted("system", hemera::TargetStackCheck::Off);
+}
+
 // Dynamic arrays, from a counting allocator that checks every block is given back.
 TEST(Hosted, UsesDynamicArrays)
 {

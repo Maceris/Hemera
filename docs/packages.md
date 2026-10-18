@@ -247,7 +247,7 @@ knows which parts of `std` it can use.
 
 | Tier | Needs | Packages |
 |---|---|---|
-| `Freestanding` | Nothing but `base` | `c_string`, `concurrency`, `containers`, `reflection`, `slop_os`, `text_buffer`, `tiers` |
+| `Freestanding` | Nothing but `base` | `c_string`, `concurrency`, `containers`, `random`, `reflection`, `slop_os`, `text_buffer`, `tiers` |
 | `Allocating` | An `Allocator` in `context` | `memory`, `strings` |
 | `Os` | System calls | `fiber`, `io`, `logger`, `os`, `time` |
 
