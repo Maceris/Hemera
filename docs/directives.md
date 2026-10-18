@@ -201,7 +201,8 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
 * Its type uses the platform's C convention, without a context, like `#calling_convention(.c) #no_context`, so it can't
   have those directives itself, nor `#export`.
 * The program is linked with every library its foreign functions come from: `name.lib` for PE/COFF outputs, and
-  `-lname` for ELF.
+  `-lname` for ELF. On Linux that also links the C library, dynamically (see
+  [compilation.md](compilation.md#linking-c-on-linux)).
 * Calls go through a shim that runs the function on the thread's own stack, see
   [calling_convention.md](calling_convention.md#calls-to-foreign-code). For now each parameter and the result have
   to fit a register (integers, pointers, floating-point values, booleans and enums), there are no variadic foreign

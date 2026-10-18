@@ -163,6 +163,13 @@ namespace hemera {
 		/// </summary>
 		std::set<std::string> libraries;
 		/// <summary>
+		/// A hosted Linux program that declares #foreign functions of its own, so it links the C
+		/// library: it starts through libc's __libc_start_main, and the runtime makes its threads with
+		/// pthreads, since C needs its own state set up on every thread that calls it
+		/// (docs/compilation.md, Linking C on Linux). base's own #foreign functions don't count.
+		/// </summary>
+		bool c_library = false;
+		/// <summary>
 		/// Generating compile-time code (docs/compilation.md, Compile-Time Execution), for #is_compile_time.
 		/// </summary>
 		bool compile_time = false;
@@ -1114,6 +1121,7 @@ namespace hemera {
 	static mlir::Value assembly(Generator& generator, mlir::Type result, const std::vector<mlir::Value>& operands,
 		std::string_view text, std::string_view constraints);
 	static LLVM::GlobalOp process_state_global(Generator& generator);
+	static LLVM::GlobalOp thread_carrier_global(Generator& generator);
 	static void emit_if(Generator& generator, mlir::Value condition, const std::function<bool()>& then,
 		const std::function<bool()>& otherwise);
 
@@ -1135,11 +1143,13 @@ namespace hemera {
 		Declaration* find_carrier = base_declaration_named(generator, "runtime", "callback_carrier");
 		size_t foreign_depth = 0;
 		size_t foreign_context = 0;
-		if (!system_v_on_windows(*generator.options) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
+		const bool linux_c = OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture && generator.c_library;
+		if (!(system_v_on_windows(*generator.options) || linux_c) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
 			|| find_carrier == nullptr || carrier_declaration->type_value == nullptr || context_declaration->type_value == nullptr
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_depth", foreign_depth)
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
-			unsupported(generator, declaration->node, "callbacks from foreign code (.c functions with a context) are only made for Windows x64 so far");
+			unsupported(generator, declaration->node,
+				"callbacks from foreign code (.c functions with a context) are only made for Windows x64, and Linux x86-64 linking C, so far");
 			return;
 		}
 		TypeInfo* carrier_type = carrier_declaration->type_value;
@@ -1163,7 +1173,12 @@ namespace hemera {
 		 */
 		LLVM::GlobalOp process = process_state_global(generator);
 		size_t carrier_slot = 0;
-		if (process && runtime_offset(generator, "ProcessState", "carrier_slot", carrier_slot)) {
+		if (linux_c) {
+			// Linux: the thread-local slot, null on a thread that has never run Hemera code
+			LLVM::StoreOp::create(b, l, LLVM::LoadOp::create(b, l, pointer, LLVM::AddressOfOp::create(b, l, thread_carrier_global(generator))),
+				found);
+		}
+		else if (process && runtime_offset(generator, "ProcessState", "carrier_slot", carrier_slot)) {
 			mlir::Type i32 = integer_type(generator, 4);
 			mlir::Value stored = LLVM::LoadOp::create(b, l, i32,
 				offset_address(generator, LLVM::AddressOfOp::create(b, l, process), carrier_slot));
@@ -1300,6 +1315,19 @@ namespace hemera {
 	static LLVM::LLVMFuncOp foreign_function_for(Generator& generator, Declaration* declaration, TypeInfoFunction const* type) {
 		const std::string symbol = text_of(declaration->link_name);
 		const std::string shim = std::format("hemera.foreign.{}", symbol);
+		/*
+		 * base's C library functions on Linux, like pthread_create, are only called when the program
+		 * links C (intrinsics.uses_c_library); otherwise the shim is never run, and stops if it is
+		 */
+		if (OSType::Linux == generator.options->os && !generator.c_library && is_base_package(declaration->package_path)) {
+			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
+				generator.module_assembly.push_back(std::format("\t.text\n\t.p2align 4\n{}:\n\tud2\n", shim));
+			}
+			LLVM::LLVMFuncOp unused = assembly_function(generator, shim, function_type(generator, type, false));
+			unused.setCConv(LLVM::cconv::CConv::C);
+			generator.functions[declaration] = unused;
+			return unused;
+		}
 		generator.libraries.insert(text_of(declaration->foreign_library));
 		ast::Node* where = declaration->node;
 		bool fits = ArchType::x86_64 == generator.options->architecture && type->output.size() <= 1;
@@ -1339,6 +1367,25 @@ namespace hemera {
 		TypeInfoFunction const* type);
 
 	static mlir::Value zero_of(Generator& generator, mlir::Type type);
+
+	/*
+	 * Each thread's carrier block, for callbacks from foreign code on Linux with the C library, in
+	 * ELF thread-local storage, which libc sets up for every thread (intrinsics.set_thread_carrier).
+	 */
+	static LLVM::GlobalOp thread_carrier_global(Generator& generator) {
+		constexpr const char* THREAD_CARRIER_SYMBOL = "hemera.thread_carrier";
+		LLVM::GlobalOp carrier = generator.module.lookupSymbol<LLVM::GlobalOp>(THREAD_CARRIER_SYMBOL);
+		if (!carrier) {
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			mlir::Type pointer = LLVM::LLVMPointerType::get(generator.context);
+			carrier = LLVM::GlobalOp::create(generator.builder, generator.loc, pointer, false, LLVM::Linkage::Internal,
+				THREAD_CARRIER_SYMBOL, mlir::Attribute(), 8, 0, true, true);
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&carrier.getInitializerRegion()));
+			LLVM::ReturnOp::create(generator.builder, generator.loc, zero_of(generator, pointer));
+		}
+		return carrier;
+	}
 
 	// intrinsics.process_state's global: base/runtime's ProcessState, zeroed, made the first time. Null without one.
 	static LLVM::GlobalOp process_state_global(Generator& generator) {
@@ -3901,6 +3948,16 @@ namespace hemera {
 		if (name == "carrier") {
 			return value(assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}"), result_type);
 		}
+		if (name == "uses_c_library") {
+			return value(boolean(generator, generator.c_library), result_type);
+		}
+		// The thread's carrier block, for callbacks from foreign code, in ELF thread-local storage
+		if (name == "set_thread_carrier") {
+			if (generator.c_library) {
+				LLVM::StoreOp::create(b, l, arguments[0], LLVM::AddressOfOp::create(b, l, thread_carrier_global(generator)));
+			}
+			return result;
+		}
 		// One global, the program's, zeroed, which only the runtime uses
 		if (name == "process_state") {
 			LLVM::GlobalOp state = process_state_global(generator);
@@ -6016,7 +6073,20 @@ namespace hemera {
 				assembly(generator, mlir::Type(), { callers_carrier }, "movq $0, %r14", "r,~{memory}");
 			}
 			LLVM::ReturnOp::create(generator.builder, generator.loc, code);
-			if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture) {
+			if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture && generator.c_library) {
+				/*
+				 * Linking C, the program starts through libc, which sets itself up first and calls the
+				 * entry as main, then exits with its result through exit, which flushes C's streams. The
+				 * same as crt1.o's _start: argc and argv from the stack, rtld_fini from rdx, the stack
+				 * aligned, and no init or fini of its own.
+				 */
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\txorl %ebp, %ebp\n\tmovq %rdx, %r9\n\tpopq %rsi\n"
+					"\tmovq %rsp, %rdx\n\tandq $-16, %rsp\n\tpushq %rax\n\tpushq %rsp\n\txorl %r8d, %r8d\n\txorl %ecx, %ecx\n"
+					"\tleaq {1}(%rip), %rdi\n\tcallq __libc_start_main\n\thlt\n",
+					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
+			}
+			else if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture) {
 				/*
 				 * Linux starts a static program at _start, with the stack pointer 16-byte aligned rather
 				 * than as a call leaves it, and nothing to return to: it calls the entry, then ends the
@@ -7152,6 +7222,15 @@ namespace hemera {
 		Generator generator(program_info, module);
 		generator.options = &options;
 		generator.input_package = intern(options.input.string());
+		if (options.startup_code && OSType::Linux == options.os && ArchType::x86_64 == options.architecture) {
+			std::scoped_lock<std::mutex> lock(generator.names.mutex);
+			for (const auto& [key, declaration] : generator.names.declarations) {
+				if (declaration != nullptr && declaration->foreign_library != nullptr && !is_base_package(declaration->package_path)) {
+					generator.c_library = true;
+					break;
+				}
+			}
+		}
 		Declaration* entry = nullptr;
 		{
 			std::scoped_lock<std::mutex> lock(generator.names.mutex);

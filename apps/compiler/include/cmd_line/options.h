@@ -474,6 +474,11 @@ namespace hemera {
         /// linker's default layout.
         /// </summary>
         std::filesystem::path linker_script;
+        /// <summary>
+        /// The target's own libraries, to link against: for Linux, libc.so (a copy of libc.so.6
+        /// will do), libm.so and the like, and ld-linux-x86-64.so.2. Empty without any.
+        /// </summary>
+        std::filesystem::path sysroot;
         bool debug_info;
         /// <summary>
         /// Whether the output includes startup code that sets up the first carrier block and

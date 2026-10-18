@@ -182,6 +182,22 @@ The object format follows the target's OS:
 `TargetOptions.linker_script` places sections, for outputs loaded at fixed addresses like kernels.
 `OutputType.FlatBinary` links the same way, then keeps only the loadable bytes.
 
+### Linking C on Linux
+
+A hosted Linux program is normally static, with no C library: the runtime makes its own system calls
+(`base/runtime/linux.hsc`), it starts at a `_start` of its own, and it ends with `exit_group`. One that declares
+`#foreign` functions of its own (base's don't count) links the C library instead, dynamically, which
+`intrinsics.uses_c_library()` tells the runtime:
+
+* It starts through libc: its `_start` calls `__libc_start_main` with the program's entry as `main`, as `crt1.o`'s
+  would, so libc sets itself up first, and `main`'s result goes to `exit`, which flushes C's streams.
+* The runtime starts threads with `pthread_create`, on the stack it maps for them, so C sets up its own state on each
+  thread that may call it, and joins them with `pthread_join`.
+* Each thread's carrier block is in an ELF thread-local slot, where callbacks from foreign code find it, so `.c`
+  functions with a context work, as on Windows.
+* It's linked against the target's own libraries, from the folder `--sysroot` names: `libc.so` (a copy of `libc.so.6`
+  does), the `lib<name>.so` of each other `#library`, and `ld-linux-x86-64.so.2`. No C runtime objects are needed.
+
 ## Target Options on the Command Line
 
 Until a build package can set `TargetOptions` (it needs `#run`), the compiler takes the ones freestanding programs
@@ -199,6 +215,7 @@ need as flags:
 | `--relocation-model=static` | `relocation_model`: `static`, or `pic`, the default |
 | `--cpu-features=...` | `cpu_features` |
 | `--linker-script=path` | `linker_script` |
+| `--sysroot=path` | The target's own libraries, for a Linux program that links C (see [Linking C on Linux](#linking-c-on-linux)) |
 
 A kernel loaded by a bootloader, with SIMD left off since the bootloader may not enable it:
 

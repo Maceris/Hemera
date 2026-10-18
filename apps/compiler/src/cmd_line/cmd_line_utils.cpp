@@ -466,6 +466,7 @@ namespace hemera {
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::INSTALL_PATH:
 			case hemera::arg_parse::LINKER_SCRIPT:
+			case hemera::arg_parse::SYSROOT:
 			case hemera::arg_parse::LIST:
 			case hemera::arg_parse::OBJECT_FORMAT:
 			case hemera::arg_parse::OS:
@@ -1082,6 +1083,14 @@ namespace hemera {
 					return false;
 				}
 				output.linker_script = std::filesystem::canonical(output.linker_script);
+				break;
+			case hemera::arg_parse::SYSROOT:
+				output.sysroot = std::filesystem::path(option_with_value.values[0]);
+				if (!std::filesystem::is_directory(output.sysroot)) {
+					cout << "Sysroot " << output.sysroot << " is not a folder!" << endl;
+					return false;
+				}
+				output.sysroot = std::filesystem::canonical(output.sysroot);
 				break;
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::NO_RED_ZONE:

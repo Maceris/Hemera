@@ -349,7 +349,9 @@ The body runs where the shim was called: on the native stack, which a foreign ca
 with `foreign_depth` still counting that call, so nothing in it yields, and foreign calls from it stay where they
 are. Hemera code calling the function by name calls its body directly, with its own context. The thread-local
 storage slot is the program's (`intrinsics.carrier_slot`), allocated by `runtime.register_carrier`, which the program's
-entry calls for the main thread and each thread's entry for itself. Windows x64 only, so far.
+entry calls for the main thread and each thread's entry for itself. On Linux x86-64, for a program that links C, the
+slot is an ELF thread-local variable, which libc sets up on every thread, and a thread Hemera didn't start gets a carrier
+block with no stack limit, since its stack's bounds aren't known. Windows x64 and Linux x86-64 linking C, so far.
 
 ### Suspending and Resuming a Fiber
 
@@ -603,7 +605,7 @@ cpu_start #calling_convention(.c) #no_context :: fn(info: ptr[MpInfo]) #never_re
 `#no_context` works with Hemera's own convention too, for Hemera code that runs before there's a carrier block.
 
 A `.c` function without `#no_context` is a callback from foreign code, which gets the entry shim described in
-[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context (Windows x64 only, so far).
+[Calls to Foreign Code](#calls-to-foreign-code) to find its carrier and context (Windows x64, and Linux x86-64 linking C, so far).
 
 ## Other Conventions
 

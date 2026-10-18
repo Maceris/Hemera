@@ -480,10 +480,27 @@ namespace hemera {
 	 * position-independent code, like a relocatable kernel.
 	 */
 	static std::string elf_arguments(const Options& options, std::string_view object_file, const std::vector<std::string>& libraries) {
-		std::string args = "-nostdlib -static ";
+		/*
+		 * A hosted Linux program with #foreign libraries links C dynamically, against the sysroot's
+		 * libraries, and starts through libc; any other is static, with no C library
+		 */
+		const bool links_c = options.startup_code && OSType::Linux == options.os && !libraries.empty();
+		std::string args = "-nostdlib ";
+		if (links_c) {
+			args += "-dynamic-linker /lib64/ld-linux-x86-64.so.2 ";
+			if (!options.sysroot.empty()) {
+				args += std::format("-L \"{}\" ", options.sysroot.string());
+			}
+			args += "-lc ";
+		}
+		else {
+			args += "-static ";
+		}
 		// Each #foreign function's library
 		for (const std::string& library : libraries) {
-			args += std::format("-l{} ", library);
+			if (!links_c || library != "c") {
+				args += std::format("-l{} ", library);
+			}
 		}
 		/*
 		 * A position-independent executable relocates itself, which freestanding programs like a

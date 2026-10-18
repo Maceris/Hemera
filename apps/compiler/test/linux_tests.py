@@ -5,8 +5,10 @@ worked, or the number of the first check that failed. Exits 0 if every test pass
 
     HEMERA_LINUX_HOST=user@address python apps/compiler/test/linux_tests.py
 
-HEMERA_LINUX_KEY is the SSH key to log in with (default ~/.ssh/hemera_linux_vm), and HEMERA the
-compiler (default the Debug build). The programs go in ~/hemera-tests on the Linux machine.
+HEMERA_LINUX_KEY is the SSH key to log in with (default ~/.ssh/hemera_linux_vm), HEMERA the
+compiler (default the Debug build), and HEMERA_LINUX_SYSROOT a folder with the Linux machine's
+libc.so (a copy of libc.so.6), libm.so and ld-linux-x86-64.so.2, for the tests that link C. The
+programs go in ~/hemera-tests on the Linux machine.
 """
 
 import os
@@ -24,6 +26,8 @@ TESTS = [
     ("threads", ["--stack-check=morestack"]),
     ("heap", []),
     ("containers", []),
+    # Links C, against HEMERA_LINUX_SYSROOT
+    ("libc", ["--stack-check=morestack", "SYSROOT"]),
 ]
 
 
@@ -38,6 +42,7 @@ def main() -> int:
         return 2
     key = os.environ.get("HEMERA_LINUX_KEY", str(Path.home() / ".ssh" / "hemera_linux_vm"))
     compiler = os.environ.get("HEMERA", str(COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
+    sysroot = os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
     ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", host]
     if run(ssh + ["mkdir -p ~/hemera-tests"]).returncode != 0:
         print(f"can't reach {host}")
@@ -46,6 +51,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="hemera-linux-tests-") as temporary:
         for name, arguments in TESTS:
             output = Path(temporary) / name
+            arguments = [f"--sysroot={sysroot}" if argument == "SYSROOT" else argument for argument in arguments]
             built = run([compiler, "--os=linux", f"--output={output}", *arguments, str(SCENARIOS / name)])
             if built.returncode != 0 or not output.exists():
                 print(f"FAILED: {name} doesn't build\n{built.stdout}{built.stderr}")

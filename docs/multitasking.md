@@ -41,8 +41,9 @@ lock. The runtime keeps its state for the whole process, like that heap's, in on
 * On Linux, without a C library, everything is a system call (`intrinsics.x86_64.syscall`): a thread's stack is
   mapped pages (1 MiB), the thread starts with `clone` (`intrinsics.x86_64.clone_thread`, which starts it on that
   stack at its entry), `thread_join` waits on the thread's ID, which the kernel clears when it exits
-  (`CLONE_CHILD_CLEARTID`), and `wait_on_value` is a private `futex` wait. Callbacks from foreign code aren't made
-  for Linux yet.
+  (`CLONE_CHILD_CLEARTID`), and `wait_on_value` is a private `futex` wait. A program that links C starts threads
+  with `pthread_create` instead, on the same mapped stacks, so C works on them (see
+  [compilation.md](compilation.md#linking-c-on-linux)).
 
 # Fibers
 

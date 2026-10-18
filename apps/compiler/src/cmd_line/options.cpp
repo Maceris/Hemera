@@ -21,6 +21,7 @@ namespace hemera {
 		, output_name{ "" }
 		, entry{ "main" }
 		, linker_script{}
+		, sysroot{}
 		, debug_info{ false }
 		, startup_code{ true }
 		, red_zone{ true }

@@ -20,6 +20,20 @@ carrier : fn() -> ptr[mut runtime.CarrierBlock] : ---
 process_state : fn() -> ptr[mut runtime.ProcessState] : ---
 
 /*
+ * Whether the program links the C library: a hosted Linux program that declares #foreign functions
+ * of its own (docs/compilation.md, Linking C on Linux). The runtime then starts threads through
+ * pthreads, since C sets up its own state on each thread, and keeps each carrier block where
+ * callbacks find it. A constant.
+ */
+uses_c_library : fn() -> bool : ---
+
+/*
+ * Keep a thread's carrier block in thread-local storage, for callbacks from foreign code to find,
+ * where the program links the C library on Linux. Does nothing anywhere else.
+ */
+set_thread_carrier : fn(carrier: ptr[mut runtime.CarrierBlock]) : ---
+
+/*
  * Load the carrier register with block, for code that starts without Hemera's startup code
  * setting it up: entry points of freestanding programs, interrupt functions, and threads on
  * systems without thread-local storage.

@@ -184,16 +184,60 @@ import intrinsics from "base"
         tid : u32,
         // Its own stack, THREAD_STACK_SIZE bytes
         stack_memory : rawptr,
+        // Linking C: the thread's pthread_t
+        pthread : u64,
+    }
+
+    /*
+     * Linking C (intrinsics.uses_c_library), threads start through pthreads, on the stack the runtime
+     * maps, so C sets up its own state for them. These are never called otherwise.
+     */
+    LIBC :: #library("c")
+    pthread_attr_init #foreign(LIBC) : fn(attributes: rawptr) -> i32 : ---
+    pthread_attr_setstack #foreign(LIBC) : fn(attributes: rawptr, stack: rawptr, size: usize) -> i32 : ---
+    pthread_attr_destroy #foreign(LIBC) : fn(attributes: rawptr) -> i32 : ---
+    pthread_create #foreign(LIBC) : fn(thread: ptr[mut u64], attributes: rawptr, start: rawptr, argument: rawptr) -> i32 : ---
+    pthread_join #foreign(LIBC) : fn(thread: u64, result: rawptr) -> i32 : ---
+
+    // pthread_attr_t, 56 bytes on x86-64, with room to spare.
+    PthreadAttributes :: struct #align(16) {
+        bytes : u8[64],
+    }
+
+    // Where callbacks from foreign code find a thread's carrier block, linking C (callback_carrier).
+    register_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
+        intrinsics.set_thread_carrier(carrier)
+    }
+
+    /*
+     * The carrier block of a thread a callback from foreign code found none on: a thread Hemera didn't
+     * start, which gets one of its own, from the runtime's heap, kept for the rest of its life. Its
+     * stack's bounds aren't known, so it has no limit. Callback shims call this with a temporary one
+     * loaded, counting a foreign call.
+     */
+    callback_carrier #no_context :: fn() -> ptr[mut CarrierBlock] {
+        memory :: heap_allocate(size_of(CarrierBlock), align_of(CarrierBlock))
+        if memory == null {
+            intrinsics.trap()
+        }
+        carrier :: cast[ptr[mut CarrierBlock]](memory)
+        carrier.segment_allocator = PAGES_ALLOCATOR
+        register_carrier(carrier)
+        return carrier
     }
 
     /*
      * Where a thread starts, on its new stack: its carrier block first, since every prologue reads it,
-     * with its stack's limit, then its function with the context it was created with. It ends with the
-     * exit system call, which ends only this thread.
+     * with its stack's limit, then its function with the context it was created with. Started by
+     * clone, it ends with the exit system call, which ends only this thread; started by
+     * pthread_create, it returns, with the carrier register as pthreads left it.
      */
-    linux_thread_entry #calling_convention(.c) #no_context :: fn(parameter: rawptr) {
+    linux_thread_entry #calling_convention(.c) #no_context :: fn(parameter: rawptr) -> rawptr {
+        // pthreads' value of the carrier register, to give back
+        callers :: intrinsics.carrier()
         thread :: cast[ptr[mut Thread]](parameter)
         intrinsics.set_carrier(&thread.carrier)
+        register_carrier(&thread.carrier)
         thread.carrier.native_stack_limit = cast[rawptr](cast[usize](thread.stack_memory) + NATIVE_STACK_RESERVE)
         thread.carrier.stack_limit = thread.carrier.native_stack_limit
         thread.carrier.segment_allocator = thread.starting_context.allocator
@@ -204,6 +248,10 @@ import intrinsics from "base"
         }
         push_context thread_context from thread.starting_context {
             thread.function(data)
+        }
+        if intrinsics.uses_c_library() {
+            intrinsics.set_carrier(callers)
+            return null
         }
         x86_64.syscall(SYS_EXIT, 0)
         intrinsics.trap()
@@ -218,6 +266,18 @@ import intrinsics from "base"
             return false
         }
         thread.stack_memory = stack
+        if intrinsics.uses_c_library() {
+            attributes : PthreadAttributes
+            pthread_attr_init(cast[rawptr](&attributes))
+            pthread_attr_setstack(cast[rawptr](&attributes), stack, THREAD_STACK_SIZE)
+            created :: pthread_create(&thread.pthread, cast[rawptr](&attributes), cast[rawptr](linux_thread_entry), cast[rawptr](thread))
+            pthread_attr_destroy(cast[rawptr](&attributes))
+            if created != 0 {
+                unmap_pages(stack, THREAD_STACK_SIZE)
+                return false
+            }
+            return true
+        }
         top :: cast[rawptr](cast[usize](stack) + THREAD_STACK_SIZE)
         result :: x86_64.clone_thread(THREAD_CLONE_FLAGS, top, &thread.tid, &thread.tid, cast[rawptr](linux_thread_entry),
             cast[rawptr](thread))
@@ -233,6 +293,11 @@ import intrinsics from "base"
      * this. Not a private futex: the kernel's wake for it isn't.
      */
     os_thread_join :: fn(thread: ptr[mut Thread]) {
+        if intrinsics.uses_c_library() {
+            pthread_join(thread.pthread, null)
+            unmap_pages(thread.stack_memory, THREAD_STACK_SIZE)
+            return void
+        }
         loop {
             tid :: intrinsics.atomic_load_u32_acquire(&thread.tid)
             if tid == 0 {
