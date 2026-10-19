@@ -791,6 +791,11 @@ Integers can be written as
 
 Any format can use underscores (`_`) freely between digits, they are ignored.
 
+An integer literal has to fit the type it becomes, whether that's written, like `small : u8 = 300`, or its usual
+type `int`, like `big := 0xffff_ffff_ffff_ffff`. Both are errors, as is `-1` given to an unsigned integer, or a
+literal larger than a `u64` can hold. Only the literal itself is checked, with any `-` in front of it, so
+`255 + 1` as a `u8` isn't caught.
+
 ## Optional Types
 
 Any type can be represented as an optional by appending a `?` to the type name.

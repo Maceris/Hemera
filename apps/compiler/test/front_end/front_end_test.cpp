@@ -1096,6 +1096,39 @@ TEST(FrontEnd, KeepsThreadBoundValues)
 	}
 }
 
+/*
+ * Integer literals out of range of the type they become (docs/types.md, Number Formats): one given a
+ * type, a negative given to an unsigned one, one defaulting to int, a range's bound, an argument, a
+ * result, a field, an operand beside a typed one, and one too large for any integer. Those in range aren't.
+ */
+TEST(FrontEnd, ChecksIntegerRanges)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("integer_ranges"));
+	ASSERT_EQ(errors.size(), 11) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4015);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"128 is out of i8's range, -128 to 127",
+		"300 is out of u8's range, 0 to 255",
+		"-1 is out of u32's range, 0 to 4294967295",
+		"-129 is out of i8's range, -128 to 127",
+		"18446744073709551615 is out of int's range, -9223372036854775808 to 9223372036854775807",
+		"0x1_0000_0000_0000_0000 is too large for any integer",
+		"256 is out of u8's range, 0 to 255",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksBodies)
 {
 	hemera::disable_reporting_printing();

@@ -121,6 +121,13 @@ namespace hemera {
 		/// </summary>
 		TypeInfoFunction const* called = nullptr;
 		Declaration* called_declaration = nullptr;
+		/// <summary>
+		/// For UNTYPED_INTEGER, its value when it's known, like a literal's or its negation's, which
+		/// has to be in range of the integer type it becomes.
+		/// </summary>
+		bool integer_known = false;
+		bool integer_negative = false;
+		uint64_t integer_magnitude = 0;
 	};
 
 	/// <summary>

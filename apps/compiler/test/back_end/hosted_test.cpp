@@ -189,6 +189,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// Integer literals at the edges of their types' ranges, kept exactly (docs/types.md, Number Formats).
+TEST(Hosted, KeepsIntegerLiterals)
+{
+	run_hosted("integer_ranges", hemera::TargetStackCheck::Off);
+}
+
 // std/os's run_process: output, error output, exit codes, a missing program, and quoting.
 TEST(Hosted, RunsProcesses)
 {

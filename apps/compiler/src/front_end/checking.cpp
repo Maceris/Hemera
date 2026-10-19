@@ -270,7 +270,8 @@ namespace hemera {
 			return std::format("the type {}", to_string(value.type));
 		}
 		if (ValueKind::UNTYPED_INTEGER == kind) {
-			return "an integer";
+			return value.integer_known ? std::format("the integer {}{}", value.integer_negative ? "-" : "", value.integer_magnitude)
+				: "an integer";
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
 			return "a floating point number";
@@ -364,6 +365,41 @@ namespace hemera {
 	}
 
 	/*
+	 * The largest value an integer type holds, and the magnitude of its smallest, as far as a literal
+	 * goes: u64's largest, so every literal fits an i128 or u128.
+	 */
+	static uint64_t integer_max(TypeInfoInteger const* integer) {
+		const size_t bits = integer->size * 8;
+		if (bits > 64) {
+			return UINT64_MAX;
+		}
+		if (integer->is_signed) {
+			return (uint64_t{ 1 } << (bits - 1)) - 1;
+		}
+		return bits == 64 ? UINT64_MAX : (uint64_t{ 1 } << bits) - 1;
+	}
+
+	static uint64_t integer_min_magnitude(TypeInfoInteger const* integer) {
+		if (!integer->is_signed) {
+			return 0;
+		}
+		const size_t bits = integer->size * 8;
+		return bits > 64 ? UINT64_MAX : uint64_t{ 1 } << (bits - 1);
+	}
+
+	// Whether an untyped integer whose value is known, like 300, is in range of an integer type, like u8.
+	static bool in_range(const Value& value, TypeInfo const* type) {
+		if (ValueKind::UNTYPED_INTEGER != value.kind || !value.integer_known || !is_integer(type)) {
+			return true;
+		}
+		auto integer = static_cast<TypeInfoInteger const*>(base_of(type));
+		if (value.integer_negative) {
+			return value.integer_magnitude <= integer_min_magnitude(integer);
+		}
+		return value.integer_magnitude <= integer_max(integer);
+	}
+
+	/*
 	 * Whether a value can be used as type, converting untyped literals: an integer becomes any
 	 * integer or float; a float any float; a string a string or cstring; true and false any boolean;
 	 * null any pointer, cstring, function or optional. A value fits an optional of its type, and
@@ -387,7 +423,7 @@ namespace hemera {
 			return assignable(value.type, type);
 		}
 		if (ValueKind::UNTYPED_INTEGER == kind) {
-			return is_integer(type) || is_float(type) || promised(type, CAPABILITY_ARITHMETIC);
+			return (is_integer(type) && in_range(value, type)) || is_float(type) || promised(type, CAPABILITY_ARITHMETIC);
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
 			return is_float(type) || promised(type, CAPABILITY_FLOAT);
@@ -439,6 +475,14 @@ namespace hemera {
 		return nullptr;
 	}
 
+	static void report_out_of_range(Checker& checker, const Value& value, TypeInfo* type, const ast::Node* where) {
+		auto integer = static_cast<TypeInfoInteger const*>(base_of(type));
+		const uint64_t smallest = integer_min_magnitude(integer);
+		error_at(checker, ErrorCode::E4015, where, std::format("{}{} is out of {}'s range, {}{} to {}",
+			value.integer_negative ? "-" : "", value.integer_magnitude, to_string(type), smallest == 0 ? "" : "-", smallest,
+			integer_max(integer)));
+	}
+
 	// Reports a value that can't be used as type. Returns whether it fits.
 	static bool require_fit(Checker& checker, const Value& value, TypeInfo* type, const ast::Node* where,
 		std::string_view what) {
@@ -446,8 +490,35 @@ namespace hemera {
 		if (fits(value, type)) {
 			return true;
 		}
+		if (!in_range(value, type)) {
+			report_out_of_range(checker, value, type, where);
+			return false;
+		}
 		error_at(checker, ErrorCode::E4015, where, std::format("{} needs {}, not {}", what, to_string(type),
 			describe(value)));
+		return false;
+	}
+
+	// Reports a known integer out of range of the other side's type, like 300 in small + 300. Returns whether it was.
+	static bool report_operand_range(Checker& checker, const Value& left, const Value& right, const ast::Node* where) {
+		if (ValueKind::VALUE == right.kind && !in_range(left, right.type)) {
+			report_out_of_range(checker, left, right.type, where);
+			return true;
+		}
+		if (ValueKind::VALUE == left.kind && !in_range(right, left.type)) {
+			report_out_of_range(checker, right, left.type, where);
+			return true;
+		}
+		return false;
+	}
+
+	// Reports an untyped integer out of range of its usual type, int, which it's becoming. Returns whether it fits.
+	static bool require_default_range(Checker& checker, const Value& value, const ast::Node* where) {
+		TypeInfo* type = default_type(value);
+		if (in_range(value, type)) {
+			return true;
+		}
+		report_out_of_range(checker, value, type, where);
 		return false;
 	}
 
@@ -2082,6 +2153,8 @@ namespace hemera {
 	static bool common_type(const Value& left, const Value& right, Value& result) {
 		if (is_untyped(left) && is_untyped(right)) {
 			result = left;
+			// 1 + 300 isn't 1: operations on known integers aren't worked out
+			result.integer_known = false;
 			if (ValueKind::UNTYPED_FLOAT == right.kind) {
 				result.kind = ValueKind::UNTYPED_FLOAT;
 			}
@@ -2302,6 +2375,10 @@ namespace hemera {
 					|| ValueKind::UNTYPED_FLOAT == right.kind ? CAPABILITY_FLOAT : CAPABILITY_ARITHMETIC);
 				return Progress::DONE;
 			}
+			if (report_operand_range(checker, left, right, node)) {
+				result = poisoned();
+				return Progress::DONE;
+			}
 			result = error_at(checker, ErrorCode::E4015, node, std::format("{} and {} don't go together",
 				describe(left), describe(right)));
 			return Progress::DONE;
@@ -2468,6 +2545,12 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		result = is_untyped(operand) ? operand : typed(type);
+		if (ValueKind::UNTYPED_INTEGER == result.kind && TokenType::OPERATOR_MINUS == op) {
+			result.integer_negative = !result.integer_negative && result.integer_magnitude != 0;
+		}
+		else if (TokenType::OPERATOR_BITWISE_XOR == op) {
+			result.integer_known = false;
+		}
 		return Progress::DONE;
 	}
 
@@ -2781,10 +2864,39 @@ namespace hemera {
 
 	static Progress check_match(Checker& checker, ast::Node* node, TypeInfo* expected, Value* result, bool& continues);
 
+	// An integer literal's value, like 0xff or 1_000: false when it's too large for a u64.
+	static bool literal_value(std::string_view text, uint64_t& value) {
+		uint64_t radix = 10;
+		if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'o' || text[1] == 'b')) {
+			radix = text[1] == 'x' ? 16 : text[1] == 'o' ? 8 : 2;
+			text.remove_prefix(2);
+		}
+		value = 0;
+		for (char c : text) {
+			if (c == '_') {
+				continue;
+			}
+			const uint64_t digit = c >= '0' && c <= '9' ? static_cast<uint64_t>(c - '0')
+				: c >= 'a' && c <= 'f' ? static_cast<uint64_t>(c - 'a' + 10)
+				: static_cast<uint64_t>(c - 'A' + 10);
+			if (value > (UINT64_MAX - digit) / radix) {
+				return false;
+			}
+			value = value * radix + digit;
+		}
+		return true;
+	}
+
 	static Progress check_literal(Checker& checker, ast::Node* node, Value& result) {
 		const TokenType token = node->value.type;
 		if (TokenType::LITERAL_INTEGER == token) {
 			result.kind = ValueKind::UNTYPED_INTEGER;
+			if (!literal_value(text_of(node->value.value), result.integer_magnitude)) {
+				result = error_at(checker, ErrorCode::E4015, node, std::format("{} is too large for any integer, which go up to u64's {}",
+					text_of(node->value.value), UINT64_MAX));
+				return Progress::DONE;
+			}
+			result.integer_known = true;
 		}
 		else if (TokenType::LITERAL_FLOATING_POINT == token) {
 			result.kind = ValueKind::UNTYPED_FLOAT;
@@ -3099,7 +3211,8 @@ namespace hemera {
 				continue;
 			}
 			Value shared;
-			if (!common_type(target_values[i], value, shared) && ValueKind::POISONED != value.kind) {
+			if (!common_type(target_values[i], value, shared) && ValueKind::POISONED != value.kind
+				&& !report_operand_range(checker, target_values[i], value, targets[i])) {
 				error_at(checker, ErrorCode::E4015, targets[i], std::format("{} and {} don't go together",
 					describe(target_values[i]), describe(value)));
 			}
@@ -3203,6 +3316,7 @@ namespace hemera {
 			}
 			else if (!parts.is_constant && is_untyped(value)) {
 				// A variable takes the untyped value's usual type
+				require_default_range(checker, value, definition);
 				value = typed(default_type(value));
 			}
 			if (!parts.is_constant && ValueKind::TYPE == value.kind) {
@@ -3386,6 +3500,13 @@ namespace hemera {
 			}
 			else if (ValueKind::POISONED != low.kind && ValueKind::POISONED != high.kind) {
 				element = typed(default_type(shared));
+				// Each bound in range of the element, like 0..<0xffff_ffff_ffff_ffff, which int can't hold
+				if (!in_range(low, element.type)) {
+					report_out_of_range(checker, low, element.type, iterable->children[0]);
+				}
+				else if (!in_range(high, element.type)) {
+					report_out_of_range(checker, high, element.type, iterable->children[1]);
+				}
 			}
 		}
 		else {
