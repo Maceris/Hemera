@@ -250,6 +250,16 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
 
 `#caller_location` is (only) used to set a function parameter's default value to the location of the code calling the function.
 
+### `#crosses_threads`
+
+`#crosses_threads` marks a parameter whose value goes to another thread, like a new thread's data or what a channel
+sends, so it can't be given anything `#thread_bound`. It's placed after the parameter's name, with `#escaping`, which
+such a parameter usually is too. See [multitasking.md](multitasking.md#values-that-stay-on-their-thread).
+
+```
+channel_send :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]], value #escaping #crosses_threads : T) -> T?
+```
+
 ### `#escaping`
 
 `#escaping` marks a parameter that the function may keep after it returns, for example by storing it on the heap.
@@ -276,6 +286,9 @@ and passing one to a function doesn't tie what it returns to the stack. See [mem
 `#owned(release)` is used for structs whose values are resources, like files: each has one owner, which releases it
 with `release` or moves it on, and the compiler checks every path does. `#owned(release, condition)` decides for each
 instance of a generic. See [memory.md](memory.md#owned-types).
+`#thread_bound` is used for structs whose values can't leave the thread they were made on, like a reference count kept
+without atomics; `#thread_bound(condition)` decides for each instance. They can't be given to a `#crosses_threads`
+parameter. See [multitasking.md](multitasking.md#values-that-stay-on-their-thread).
 
 ### `#release`
 

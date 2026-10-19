@@ -19,11 +19,12 @@ import runtime from "base"
  *
  * SharedPtr[mut T] can change the value, and SharedPtr[T] only read it; one becomes the other by
  * itself. Counting is atomic, so owners can be on different threads; SharedPtr[T, false], or
- * LocalPtr[T], counts with plain arithmetic, for values that stay on one thread.
+ * LocalPtr[T], counts with plain arithmetic, for values that stay on one thread: it's #thread_bound, so
+ * the compiler stops one being given to another (docs/multitasking.md).
  *
  * It's #unrestricted: it points at its block on the heap, never into a stack, so it can be kept anywhere.
  */
-SharedPtr :: struct[T, atomic = true] #owned(release) #unrestricted {
+SharedPtr :: struct[T, atomic = true] #owned(release) #unrestricted #thread_bound(!atomic) {
     // Named so it's unlikely to hide a field of the value's own
     using shared_value : ptr[T],
 }
@@ -35,7 +36,7 @@ LocalPtr :: alias[T] SharedPtr[T, false]
  * A reference that doesn't keep the value: upgrade gives a SharedPtr while there's still one, and
  * null once the last is released. The block stays until the weak references are released too.
  */
-WeakPtr :: struct[T, atomic = true] #owned(release_weak) #unrestricted {
+WeakPtr :: struct[T, atomic = true] #owned(release_weak) #unrestricted #thread_bound(!atomic) {
     shared_value : ptr[T],
 }
 

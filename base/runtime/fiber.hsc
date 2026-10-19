@@ -135,7 +135,7 @@ FiberExit :: enum {
  */
 fiber_create :: fn(
     function: ThreadFunction,
-    data #escaping : any? = null,
+    data #escaping #crosses_threads : any? = null,
     allocator := context.allocator,
     loc := #caller_location,
 ) -> (ptr[mut Fiber]?, AllocatorError?) {

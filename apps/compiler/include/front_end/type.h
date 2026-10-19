@@ -194,6 +194,11 @@ namespace hemera {
 		/// function's type.
 		/// </summary>
 		bool is_escaping = false;
+		/// <summary>
+		/// #crosses_threads: what it's given goes to another thread, like a new thread's data, so it can't be
+		/// #thread_bound (docs/multitasking.md, Values That Stay on Their Thread).
+		/// </summary>
+		bool crosses_threads = false;
 	};
 
 	struct FunctionOutput {
@@ -289,6 +294,10 @@ namespace hemera {
 		bool is_owned = false;
 		InternedString release_package = nullptr;
 		InternedString release_name = nullptr;
+		/// <summary>
+		/// From #thread_bound: a value can't leave the thread it was made on, like one counted without atomics.
+		/// </summary>
+		bool is_thread_bound = false;
 		/// <summary>
 		/// From #align(n), or 0 for the natural alignment.
 		/// </summary>
@@ -446,6 +455,12 @@ namespace hemera {
 	/// anything holding one in place, in a static or dynamic array, or in a union's payload.
 	/// </summary>
 	bool is_owned(TypeInfo const* type);
+
+	/// <summary>
+	/// The #thread_bound type a value of type can reach, through its fields, arrays, unions, pointers and views,
+	/// or null if there's none: then it can be given to another thread.
+	/// </summary>
+	TypeInfo const* thread_bound_part(TypeInfo const* type);
 
 	/// <summary>
 	/// Check if the first type can be implicitly converted to the second (docs/types.md, Implicit

@@ -458,6 +458,46 @@ namespace hemera {
 		return false;
 	}
 
+	static TypeInfo const* thread_bound_part(TypeInfo const* type, std::vector<TypeInfo const*>& seen) {
+		TypeInfo const* base = get_base_type(type);
+		if (base == nullptr || std::find(seen.begin(), seen.end(), base) != seen.end()) {
+			return nullptr;
+		}
+		seen.push_back(base);
+		if (TypeInfoVariant::STRUCT == base->variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(base);
+			if (structure->is_thread_bound) {
+				return type;
+			}
+			for (const StructMember& member : structure->members) {
+				if (TypeInfo const* found = thread_bound_part(member.member_type, seen)) {
+					return found;
+				}
+			}
+		}
+		else if (TypeInfoVariant::UNION == base->variant) {
+			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(base)->variants) {
+				for (TypeInfo* payload : variant.types) {
+					if (TypeInfo const* found = thread_bound_part(payload, seen)) {
+						return found;
+					}
+				}
+			}
+		}
+		else if (TypeInfoVariant::ARRAY == base->variant) {
+			return thread_bound_part(static_cast<TypeInfoArray const*>(base)->element_type, seen);
+		}
+		else if (TypeInfoVariant::POINTER == base->variant) {
+			return thread_bound_part(static_cast<TypeInfoPointer const*>(base)->base_type, seen);
+		}
+		return nullptr;
+	}
+
+	TypeInfo const* thread_bound_part(TypeInfo const* type) {
+		std::vector<TypeInfo const*> seen;
+		return thread_bound_part(type, seen);
+	}
+
 	bool same_type(TypeInfo const* a, TypeInfo const* b) {
 		if (a == nullptr || b == nullptr) {
 			return false;

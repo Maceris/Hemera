@@ -45,6 +45,31 @@ lock. The runtime keeps its state for the whole process, like that heap's, in on
   with `pthread_create` instead, on the same mapped stacks, so C works on them (see
   [compilation.md](compilation.md#linking-c-on-linux)).
 
+## Values That Stay on Their Thread
+
+Some values can't safely be used from two threads, like a `LocalPtr`, whose counts change without atomics. A struct
+marked `#thread_bound` says so, and the places that hand a value to another thread, marked `#crosses_threads` on the
+parameter, won't take one (E4036):
+
+```
+_ = runtime.thread_create(worker, memory.share(&shared))    // a SharedPtr counts atomically: fine
+_ = runtime.thread_create(worker, memory.share(&local))     // error: LocalPtr[int] is #thread_bound
+```
+
+* **A type is thread-bound** when it's marked, or when anything it can reach is: its fields, array elements and union
+  payloads, and what its pointers and views point to. `#thread_bound(condition)` decides per instance of a generic, as
+  `SharedPtr[T, atomic]` is `#thread_bound(!atomic)`.
+* **The crossing points** in base and std are `thread_create`'s and `fiber_create`'s `data` (a pool's fibers move
+  between its threads), `spawn`'s, and `channel_send`'s `value`. A function that hands work to another thread marks its
+  parameter the same way. An `any` given to one is checked by the value's own type, which is known where it's given.
+* **Moving owners across.** An `#owned` value given to a thread's data moves to it (see
+  [memory.md](memory.md#owned-types)); `channel_send` gives the value back when the channel is closed, so it's still the
+  sender's to release.
+* **What isn't checked:** values reached through an `any` or a `rawptr`, and context extensions, which a new thread
+  copies, since their types aren't known where the thread is made. And nothing here proves there are no data races: two
+  threads changing what one `ptr[mut T]` points to still needs locks, atomics or channels (see
+  [memory.md](memory.md#data-races)).
+
 # Fibers
 
 Fibers are cooperatively scheduled, with runtimes that share

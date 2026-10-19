@@ -9,7 +9,7 @@ import compiler from "base"
  * then fails.
  *
  *     jobs : Channel[Job, 64]
- *     channel_send(&jobs, job)              // false once it's closed
+ *     channel_send(&jobs, job)              // the job back once it's closed
  *     job, ok :: channel_receive(&jobs)     // ok is false once it's closed and empty
  *     channel_close(&jobs)
  *
@@ -28,15 +28,16 @@ Channel :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
 }
 
 /*
- * Add a value once there's room, waiting until there is. False if the channel is closed, before or
- * while waiting, and then the value isn't added.
+ * Add a value once there's room, waiting until there is. What wasn't sent: null once the value is in the
+ * channel, or the value back if the channel is closed, before or while waiting, so a value that's
+ * #owned is still the caller's to release (docs/memory.md, Owned Types).
  */
-channel_send :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]], value #escaping : T) -> bool {
+channel_send :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]], value #escaping #crosses_threads : T) -> T? {
     mutex_lock(&channel.lock)
     defer mutex_unlock(&channel.lock)
     loop {
         if channel.closed {
-            return false
+            return value
         }
         if channel.count < capacity {
             break
@@ -46,7 +47,7 @@ channel_send :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]], v
     channel.items[(channel.head + channel.count) % capacity] = value
     channel.count += 1
     condition_signal(&channel.not_empty)
-    return true
+    return null
 }
 
 /*

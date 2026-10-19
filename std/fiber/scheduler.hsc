@@ -132,7 +132,7 @@ destroy_fiber_pool :: fn(pool: ptr[mut FiberPool]) {
 spawn :: fn(
     pool #escaping : ptr[mut FiberPool],
     function: runtime.ThreadFunction,
-    data #escaping : any? = null,
+    data #escaping #crosses_threads : any? = null,
 ) -> (ptr[mut runtime.Fiber]?, runtime.AllocatorError?) {
     made, error :: runtime.fiber_create(function, data, pool.allocator)
     match made {

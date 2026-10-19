@@ -68,7 +68,7 @@ Thread :: struct {
 // data is kept until the thread runs, so it can't point into the caller's stack
 thread_create :: fn(
     function: ThreadFunction,
-    data #escaping : any? = null,
+    data #escaping #crosses_threads : any? = null,
     stack := DEFAULT_THREAD_STACK,
 ) -> ptr[mut Thread] {
     result : ptr[mut Thread] = new(Thread)

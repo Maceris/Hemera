@@ -1248,6 +1248,29 @@ namespace hemera {
 		}
 	}
 
+	/*
+	 * A value given to a #crosses_threads parameter, like a new thread's data, can't reach anything
+	 * #thread_bound: checked by the value's own type, even when it's passed as an any
+	 * (docs/multitasking.md, Values That Stay on Their Thread).
+	 */
+	static void require_stays(Checker& checker, const Value& value, const FunctionInput& input, TypeInfoFunction const* function,
+		const ast::Node* where) {
+
+		if (!input.crosses_threads || ValueKind::VALUE != value.kind) {
+			return;
+		}
+		TypeInfo const* bound = thread_bound_part(value.type);
+		if (bound == nullptr) {
+			return;
+		}
+		const std::string given = to_string(value.type);
+		const std::string reason = same_type(bound, value.type) ? std::format("{} is #thread_bound", given)
+			: std::format("{} reaches {}, which is #thread_bound", given, to_string(bound));
+		error_at(checker, ErrorCode::E4036, where, std::format("{}, so it can't be given to {}, which goes to another thread",
+			reason, input.name != nullptr ? text_of(input.name) : std::string("a parameter")));
+		(void)function;
+	}
+
 	static Progress check_arguments(Checker& checker, ast::Node* where, TypeInfoFunction const* function,
 		const Arguments& arguments, const std::vector<InternedString>& names, const std::vector<Value>& piped) {
 
@@ -1312,6 +1335,7 @@ namespace hemera {
 				}
 				format_values.emplace_back(argument, value);
 				require_fit(checker, value, expected, argument, std::format("{}", text_of(input.name)));
+				require_stays(checker, value, input, function, argument);
 				continue;
 			}
 			Value value;
@@ -1321,6 +1345,7 @@ namespace hemera {
 			}
 			require_fit(checker, value, expected, argument,
 				input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the argument"));
+			require_stays(checker, value, input, function, argument);
 			if (takes_format(parameter) && positional.node != nullptr && ast::NodeType::LITERAL == positional.node->node_type
 				&& TokenType::LITERAL_STRING == positional.node->value.type) {
 				format_literal = positional.node;
@@ -1354,6 +1379,7 @@ namespace hemera {
 				return progress;
 			}
 			require_fit(checker, value, function->input[index].type, argument, text_of(name));
+			require_stays(checker, value, function->input[index], function, argument);
 		}
 		for (size_t i = 0; i < function->input.size(); ++i) {
 			if (!given[i] && !function->input[i].has_default && !function->input[i].is_varargs) {

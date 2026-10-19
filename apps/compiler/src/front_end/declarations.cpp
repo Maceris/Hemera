@@ -1035,6 +1035,9 @@ namespace hemera {
 						input.has_default = has_default;
 						input.is_varargs = is_varargs;
 						for (ast::Node* directive : name->children) {
+							if (is_text(directive->value.value, "#crosses_threads")) {
+								input.crosses_threads = true;
+							}
 							if (is_text(directive->value.value, "#escaping")) {
 								input.is_escaping = true;
 							}
@@ -1175,6 +1178,25 @@ namespace hemera {
 				}
 				else if (is_text(child->value.value, "#unrestricted")) {
 					type->is_unrestricted = true;
+				}
+				else if (is_text(child->value.value, "#thread_bound")) {
+					// #thread_bound, or #thread_bound(condition) for the instances it's true for
+					type->is_thread_bound = true;
+					for (ast::Node* argument : child->children) {
+						if (ast::NodeType::PAREN_GROUP == argument->node_type) {
+							continue;
+						}
+						ConstantValue condition;
+						Progress progress = evaluate_in(walk, argument, condition);
+						if (progress != Progress::DONE) {
+							return progress;
+						}
+						if (ConstantValue::Kind::BOOLEAN != condition.kind) {
+							return type_error(walk, ErrorCode::E4014, argument, "#thread_bound's condition is a bool");
+						}
+						type->is_thread_bound = condition.boolean;
+						break;
+					}
 				}
 				else if (is_text(child->value.value, "#owned")) {
 					// #owned(release), or #owned(release, condition) for the instances it's true for

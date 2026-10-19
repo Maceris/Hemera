@@ -1066,6 +1066,36 @@ TEST(FrontEnd, ChecksOwners)
 	}
 }
 
+/*
+ * Values that can't leave their thread given to what sends them to another (docs/multitasking.md, Values
+ * That Stay on Their Thread): a type marked #thread_bound, one bound by its argument, one reached through
+ * a pointer, and one given to a #crosses_threads parameter of the program's own. One not bound can go.
+ */
+TEST(FrontEnd, KeepsThreadBoundValues)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("thread_bound"));
+	ASSERT_EQ(errors.size(), 4) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4036);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"ptr[mut Count] reaches Count, which is #thread_bound, so it can't be given to data, which goes to another thread",
+		"ptr[mut Shared[false]] reaches Shared[false], which is #thread_bound, so it can't be given to data",
+		"ptr[mut Holder] reaches Count, which is #thread_bound, so it can't be given to data",
+		"ptr[mut Count] reaches Count, which is #thread_bound, so it can't be given to value, which goes to another thread",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksBodies)
 {
 	hemera::disable_reporting_printing();
