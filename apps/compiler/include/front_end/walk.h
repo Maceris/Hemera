@@ -270,6 +270,12 @@ namespace hemera {
 	Progress prove_constraints(Walk& walk, ast::Node* where, Declaration* generic, Declaration* instance);
 
 	/// <summary>
+	/// Checks that each function an instance is given takes and gives what its parameter says, at
+	/// where it's made (declarations.cpp, docs/types.md, Values in Generic Lists).
+	/// </summary>
+	Progress check_function_arguments(Walk& walk, ast::Node* where, Declaration* generic, Declaration* instance);
+
+	/// <summary>
 	/// A generic type's arguments: for a parameter that's a type, the type type_of gives; for one
 	/// that's a value, a null type and the compile-time value of the argument.
 	/// </summary>

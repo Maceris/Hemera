@@ -263,8 +263,11 @@ namespace hemera {
 			}
 		}
 		Declaration* instance = instance_of(walk, generic, arguments, values);
-		// Its constraints, checked where it's used (docs/types.md, Constraints)
+		// Its constraints, and the functions it's given, checked where it's used (docs/types.md, Constraints)
 		Progress progress = check_constraints(walk, where, generic, instance);
+		if (progress == Progress::DONE) {
+			progress = check_function_arguments(walk, where, generic, instance);
+		}
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -273,6 +276,85 @@ namespace hemera {
 			return progress;
 		}
 		result = instance->type_value;
+		return Progress::DONE;
+	}
+
+	/*
+	 * Each function an instance is given, like a HashMap's hash, takes and gives what its parameter
+	 * says, with the instance's other arguments in it: checked where the instance is made, so an error
+	 * points there (docs/types.md, Values in Generic Lists).
+	 */
+	Progress check_function_arguments(Walk& walk, ast::Node* where, Declaration* generic, Declaration* instance) {
+		ast::Node* value = generic_node(generic);
+		if (value == nullptr) {
+			return Progress::DONE;
+		}
+		std::vector<ast::Node*> parameters;
+		for (ast::Node* child : value->children) {
+			if (ast::NodeType::GENERIC_TAG == child->node_type) {
+				parameters.insert(parameters.end(), child->children.begin(), child->children.end());
+			}
+		}
+		// The generic's own file, with its parameters bound to the instance's arguments
+		Walk inside{
+			walk.executor,
+			generic->package_path,
+			generic->file_name,
+			generic->file,
+			nullptr,
+			nullptr,
+			file_path_of(generic->package_path, generic->file_name),
+			{},
+			{},
+			{},
+		};
+		for (size_t i = 0; i < parameters.size() && i < instance->generic_arguments.size(); ++i) {
+			const std::string name = name_text(generic_parameter_name(parameters[i]));
+			inside.locals.push_back(intern(name));
+			if (instance->generic_arguments[i] != nullptr) {
+				inside.generic_types[name] = instance->generic_arguments[i];
+			}
+			else if (i < instance->generic_values.size()) {
+				inside.generic_values[name] = instance->generic_values[i];
+			}
+		}
+		for (size_t i = 0; i < parameters.size() && i < instance->generic_values.size(); ++i) {
+			ast::Node* parameter = parameters[i];
+			const ConstantValue& given = instance->generic_values[i];
+			if (ast::NodeType::COLON != parameter->node_type || parameter->children.size() < 2
+				|| ast::NodeType::FUNCTION != parameter->children[1]->node_type
+				|| ConstantValue::Kind::FUNCTION != given.kind || given.function == nullptr) {
+				continue;
+			}
+			Progress progress = walk_names(inside, parameter->children[1], Need::DECLARED);
+			TypeInfo* declared = nullptr;
+			if (progress == Progress::DONE) {
+				progress = type_of(inside, parameter->children[1], Need::DECLARED, declared);
+			}
+			if (progress == Progress::DONE) {
+				progress = require_resolved(walk, where, given.function, Need::RESOLVED);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			auto wanted = static_cast<TypeInfoFunction const*>(get_base_type(declared));
+			auto actual = given.function->value_type != nullptr
+				? static_cast<TypeInfoFunction const*>(get_base_type(given.function->value_type)) : nullptr;
+			bool matches = wanted != nullptr && actual != nullptr && TypeInfoVariant::FUNCTION == actual->variant
+				&& TypeInfoVariant::FUNCTION == wanted->variant && actual->input.size() == wanted->input.size()
+				&& actual->output.size() == wanted->output.size();
+			for (size_t j = 0; matches && j < wanted->input.size(); ++j) {
+				matches = same_type(wanted->input[j].type, actual->input[j].type);
+			}
+			for (size_t j = 0; matches && j < wanted->output.size(); ++j) {
+				matches = same_type(wanted->output[j].type, actual->output[j].type);
+			}
+			if (!matches) {
+				return type_error(walk, ErrorCode::E4014, where, std::format("{}'s {} takes a {}, not {}, a {}",
+					name_text(instance->name), name_text(generic_parameter_name(parameter)), to_string(declared),
+					name_text(given.function->name), actual != nullptr ? to_string(actual) : "function"));
+			}
+		}
 		return Progress::DONE;
 	}
 
@@ -1522,29 +1604,6 @@ namespace hemera {
 					if (!fits) {
 						return type_error(walk, ErrorCode::E4014, parameter, std::format("{} takes a {}, not {}",
 							name, to_string(declared), constant_text(given)));
-					}
-					// A function given has to take and give what the parameter says, like a HashMap's hash
-					if (TypeInfoVariant::FUNCTION == kind->variant && ConstantValue::Kind::FUNCTION == given.kind && given.function != nullptr) {
-						Progress resolved = require_resolved(walk, parameter, given.function, Need::RESOLVED);
-						if (resolved != Progress::DONE) {
-							return resolved;
-						}
-						auto wanted = static_cast<TypeInfoFunction const*>(kind);
-						auto actual = given.function->value_type != nullptr
-							? static_cast<TypeInfoFunction const*>(get_base_type(given.function->value_type)) : nullptr;
-						bool matches = actual != nullptr && TypeInfoVariant::FUNCTION == actual->variant
-							&& actual->input.size() == wanted->input.size() && actual->output.size() == wanted->output.size();
-						for (size_t i = 0; matches && i < wanted->input.size(); ++i) {
-							matches = same_type(wanted->input[i].type, actual->input[i].type);
-						}
-						for (size_t i = 0; matches && i < wanted->output.size(); ++i) {
-							matches = same_type(wanted->output[i].type, actual->output[i].type);
-						}
-						if (!matches) {
-							return type_error(walk, ErrorCode::E4014, parameter, std::format("{}'s {} takes a {}, not {}, a {}",
-								name_text(instance->name), name, to_string(declared), name_text(given.function->name),
-								actual != nullptr ? to_string(actual) : "function"));
-						}
 					}
 				}
 				// A type, or a compile-time parameter's value

@@ -851,6 +851,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "constraint_unknown", hemera::ErrorCode::E4014 },
 		{ "derived_cycle", hemera::ErrorCode::E4007 },
 		{ "alias_argument_count", hemera::ErrorCode::E4014 },
+		{ "function_argument_wrong", hemera::ErrorCode::E4014 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },

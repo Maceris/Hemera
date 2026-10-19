@@ -2140,6 +2140,9 @@ namespace hemera {
 		Declaration* instance = instance_of(walk, generic, arguments, values);
 		progress = check_constraints(walk, node, generic, instance);
 		if (progress == Progress::DONE) {
+			progress = check_function_arguments(walk, node, generic, instance);
+		}
+		if (progress == Progress::DONE) {
 			progress = require_resolved(walk, node, instance, Need::RESOLVED);
 		}
 		if (progress != Progress::DONE) {

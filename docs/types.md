@@ -509,7 +509,7 @@ squares : maps.HashMap[int, int, maps.hash_integer[int]]
 ```
 
 * The function given has to take and give exactly what the parameter says, with the other parameters filled in:
-  `HashMap[string, int, hash_wrong]`, for a `hash_wrong` returning `u32`, is an error (E4014).
+  `HashMap[string, int, hash_wrong]`, for a `hash_wrong` returning `u32`, is an error (E4014), where it's written.
 * A generic function is given as one of its instances, named with its arguments, like `hash_integer[int]`.
 * In the generic, it's called like any function: `hash(key)`.
 

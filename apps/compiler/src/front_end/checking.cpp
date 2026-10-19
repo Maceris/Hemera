@@ -1444,8 +1444,11 @@ namespace hemera {
 			instance_arguments.push_back(iter->second);
 		}
 		Declaration* instance = instance_of(checker.walk, generic, instance_arguments, instance_values);
-		// Its constraints, checked here, where it's made (docs/types.md, Constraints)
+		// Its constraints, and the functions it's given, checked here, where it's made (docs/types.md, Constraints)
 		Progress progress = check_constraints(checker.walk, where, generic, instance);
+		if (progress == Progress::DONE) {
+			progress = check_function_arguments(checker.walk, where, generic, instance);
+		}
 		if (progress == Progress::FAILED) {
 			callee = poisoned();
 			return Progress::DONE;
