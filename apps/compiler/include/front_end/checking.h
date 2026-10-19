@@ -145,6 +145,13 @@ namespace hemera {
 		/// For a name's head, the child its steps start at: 2 after package.Name, otherwise 0.
 		/// </summary>
 		size_t next = 0;
+		/// <summary>
+		/// For an untyped integer whose value is known, like 512 / 4, that value, generated as one
+		/// constant of the type it becomes.
+		/// </summary>
+		bool integer_known = false;
+		bool integer_negative = false;
+		uint64_t integer_magnitude = 0;
 	};
 
 	/// <summary>

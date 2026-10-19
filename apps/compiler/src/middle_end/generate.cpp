@@ -1678,6 +1678,24 @@ namespace hemera {
 		return constant_int(generator, target, static_cast<int64_t>(parse_integer(text_of(node->value.value))));
 	}
 
+	// An untyped integer whose value the checker worked out, as a constant of type.
+	static mlir::Value known_integer(Generator& generator, const CheckedNode& known, TypeInfo* type) {
+		mlir::Type target = llvm_type(generator, type);
+		if (is_float(type)) {
+			llvm::APFloat number(static_cast<double>(known.integer_magnitude) * (known.integer_negative ? -1.0 : 1.0));
+			bool lost = false;
+			number.convert(llvm::cast<mlir::FloatType>(target).getFloatSemantics(), llvm::APFloat::rmNearestTiesToEven, &lost);
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, target, number);
+		}
+		const unsigned bits = llvm::cast<mlir::IntegerType>(target).getWidth();
+		llvm::APInt number(std::max(bits, 64u), known.integer_magnitude);
+		if (known.integer_negative) {
+			number.negate();
+		}
+		return LLVM::ConstantOp::create(generator.builder, generator.loc, target,
+			generator.builder.getIntegerAttr(target, number.trunc(bits)));
+	}
+
 	// A union's tag, from where it is.
 	static mlir::Value union_tag(Generator& generator, mlir::Value address, TypeInfo const* type) {
 		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
@@ -5417,6 +5435,10 @@ namespace hemera {
 		TypeInfo* result_type = type_at(generator, node, expected);
 		if (ast::NodeType::LITERAL == type) {
 			return value(emit_literal(generator, node, result_type), result_type);
+		}
+		// A known integer, like 512 / 4 or a constant's, as one constant, not worked out in a type too small for its parts
+		if (found != nullptr && found->integer_known && (is_variant(result_type, TypeInfoVariant::INTEGER) || is_float(result_type))) {
+			return value(known_integer(generator, *found, result_type), result_type);
 		}
 		if (ast::NodeType::IDENTIFIER == type) {
 			return emit_postfix(generator, node, expected);

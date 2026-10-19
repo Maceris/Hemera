@@ -121,6 +121,9 @@ namespace hemera {
 		checked.called = value.called;
 		checked.called_declaration = value.called_declaration;
 		checked.variant = value.variant;
+		checked.integer_known = ValueKind::UNTYPED_INTEGER == value.kind && value.integer_known;
+		checked.integer_negative = value.integer_negative;
+		checked.integer_magnitude = value.integer_magnitude;
 	}
 
 	// Records what a node is, for generating its code.
@@ -564,6 +567,9 @@ namespace hemera {
 			return value;
 		}
 		const Untyped untyped = declaration->untyped;
+		value.integer_known = declaration->integer_known;
+		value.integer_negative = declaration->integer_negative;
+		value.integer_magnitude = declaration->integer_magnitude;
 		value.kind = Untyped::INTEGER == untyped ? ValueKind::UNTYPED_INTEGER
 			: Untyped::FLOAT == untyped ? ValueKind::UNTYPED_FLOAT
 			: Untyped::STRING == untyped ? ValueKind::UNTYPED_STRING
@@ -2153,7 +2159,7 @@ namespace hemera {
 	static bool common_type(const Value& left, const Value& right, Value& result) {
 		if (is_untyped(left) && is_untyped(right)) {
 			result = left;
-			// 1 + 300 isn't 1: operations on known integers aren't worked out
+			// Not the left's value: an operator's is worked out by fold_result
 			result.integer_known = false;
 			if (ValueKind::UNTYPED_FLOAT == right.kind) {
 				result.kind = ValueKind::UNTYPED_FLOAT;
@@ -2183,6 +2189,155 @@ namespace hemera {
 	// An operand that's a value of some kind, rather than a type, package or function to call.
 	static bool is_operand(const Value& value) {
 		return ValueKind::VALUE == value.kind || is_untyped(value);
+	}
+
+	// A known integer's value, as a sign and a magnitude: anything a u64 or an i64 holds, and their negations.
+	struct KnownInteger {
+		bool negative = false;
+		uint64_t magnitude = 0;
+	};
+
+	enum class Folded : uint8_t {
+		DONE,
+		// Not worked out, like a bitwise operator on a negative, which depends on the type's size
+		UNKNOWN,
+		TOO_LARGE,
+		DIVIDED_BY_ZERO,
+	};
+
+	static KnownInteger known_of(const Value& value) {
+		return KnownInteger{ value.integer_negative, value.integer_magnitude };
+	}
+
+	static Folded add_known(KnownInteger a, KnownInteger b, KnownInteger& result) {
+		if (a.negative == b.negative) {
+			if (a.magnitude > UINT64_MAX - b.magnitude) {
+				return Folded::TOO_LARGE;
+			}
+			result = { a.negative, a.magnitude + b.magnitude };
+		}
+		else if (a.magnitude >= b.magnitude) {
+			result = { a.negative, a.magnitude - b.magnitude };
+		}
+		else {
+			result = { b.negative, b.magnitude - a.magnitude };
+		}
+		result.negative = result.negative && result.magnitude != 0;
+		return Folded::DONE;
+	}
+
+	/*
+	 * An operator on two known integers, worked out exactly, as the language defines it (docs/operators.md):
+	 * / and % truncated, %% floored, >> filling with the sign. Bitwise operators on negatives, and >>> on
+	 * them, depend on the type's size, so they aren't worked out.
+	 */
+	static Folded fold_integers(TokenType op, KnownInteger a, KnownInteger b, KnownInteger& result) {
+		const bool divides = TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_MODULUS == op
+			|| TokenType::OPERATOR_REMAINDER == op;
+		if (divides && b.magnitude == 0) {
+			return Folded::DIVIDED_BY_ZERO;
+		}
+		if (TokenType::OPERATOR_PLUS == op) {
+			return add_known(a, b, result);
+		}
+		if (TokenType::OPERATOR_MINUS == op) {
+			b.negative = !b.negative && b.magnitude != 0;
+			return add_known(a, b, result);
+		}
+		if (TokenType::OPERATOR_MULTIPLY == op) {
+			if (a.magnitude != 0 && b.magnitude > UINT64_MAX / a.magnitude) {
+				return Folded::TOO_LARGE;
+			}
+			result = { a.negative != b.negative, a.magnitude * b.magnitude };
+		}
+		else if (TokenType::OPERATOR_DIVIDE == op) {
+			result = { a.negative != b.negative, a.magnitude / b.magnitude };
+		}
+		else if (TokenType::OPERATOR_MODULUS == op) {
+			result = { a.negative, a.magnitude % b.magnitude };
+		}
+		else if (TokenType::OPERATOR_REMAINDER == op) {
+			// Floored: the truncated one, moved to the divisor's sign
+			const KnownInteger truncated{ a.negative, a.magnitude % b.magnitude };
+			if (truncated.magnitude != 0 && a.negative != b.negative) {
+				return add_known(truncated, b, result);
+			}
+			result = truncated;
+		}
+		else if (TokenType::OPERATOR_LEFT_SHIFT == op) {
+			if (b.negative) {
+				return Folded::UNKNOWN;
+			}
+			if (a.magnitude != 0 && (b.magnitude >= 64 || a.magnitude > (UINT64_MAX >> b.magnitude))) {
+				return Folded::TOO_LARGE;
+			}
+			result = { a.negative, a.magnitude == 0 ? 0 : a.magnitude << b.magnitude };
+		}
+		else if (TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC == op || TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op) {
+			if (b.negative || (a.negative && TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op)) {
+				return Folded::UNKNOWN;
+			}
+			if (!a.negative) {
+				result = { false, b.magnitude >= 64 ? 0 : a.magnitude >> b.magnitude };
+			}
+			else if (b.magnitude >= 64) {
+				result = { true, 1 };
+			}
+			else {
+				// Toward negative infinity, like the sign filling in: -5 >> 1 is -3
+				const uint64_t shifted = a.magnitude >> b.magnitude;
+				const bool lost = (a.magnitude & ((uint64_t{ 1 } << b.magnitude) - 1)) != 0;
+				result = { true, shifted + (lost ? 1 : 0) };
+			}
+		}
+		else if (is_bitwise(op)) {
+			if (a.negative || b.negative) {
+				return Folded::UNKNOWN;
+			}
+			result = { false, TokenType::SYM_AMPERSAND == op ? a.magnitude & b.magnitude
+				: TokenType::OPERATOR_BITWISE_OR == op ? a.magnitude | b.magnitude : a.magnitude ^ b.magnitude };
+		}
+		else {
+			return Folded::UNKNOWN;
+		}
+		result.negative = result.negative && result.magnitude != 0;
+		return Folded::DONE;
+	}
+
+	/*
+	 * An operator's untyped integer result, worked out when both sides are known, so it's checked
+	 * against the type it becomes, and generated as one constant. One too large for any integer is an
+	 * error, and so is dividing by a known zero, whatever the left is.
+	 */
+	static void fold_result(Checker& checker, ast::Node* node, TokenType op, const Value& left, const Value& right,
+		Value& result) {
+
+		const bool right_known = ValueKind::UNTYPED_INTEGER == right.kind && right.integer_known;
+		const bool divides = TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_MODULUS == op
+			|| TokenType::OPERATOR_REMAINDER == op;
+		if (divides && right_known && right.integer_magnitude == 0) {
+			result = error_at(checker, ErrorCode::E4015, node, "dividing by zero, which is known here");
+			return;
+		}
+		if (ValueKind::UNTYPED_INTEGER != result.kind) {
+			return;
+		}
+		result.integer_known = false;
+		if (ValueKind::UNTYPED_INTEGER != left.kind || !left.integer_known || !right_known) {
+			return;
+		}
+		KnownInteger folded;
+		const Folded outcome = fold_integers(op, known_of(left), known_of(right), folded);
+		if (Folded::TOO_LARGE == outcome) {
+			result = error_at(checker, ErrorCode::E4015, node, std::format("this is too large for any integer, which go up to u64's {}",
+				UINT64_MAX));
+			return;
+		}
+		if (Folded::DONE == outcome) {
+			result.integer_known = true;
+			result.integer_negative = folded.negative;
+			result.integer_magnitude = folded.magnitude;
+		}
 	}
 
 	static Progress check_binary(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
@@ -2363,6 +2518,7 @@ namespace hemera {
 				return Progress::DONE;
 			}
 			result = ValueKind::VALUE == left.kind ? typed(left.type) : left;
+			fold_result(checker, node, op, left, right, result);
 			return Progress::DONE;
 		}
 		Value shared;
@@ -2427,6 +2583,7 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		result = is_untyped(shared) ? shared : typed(shared.type);
+		fold_result(checker, node, op, left, right, result);
 		return Progress::DONE;
 	}
 
@@ -2548,8 +2705,19 @@ namespace hemera {
 		if (ValueKind::UNTYPED_INTEGER == result.kind && TokenType::OPERATOR_MINUS == op) {
 			result.integer_negative = !result.integer_negative && result.integer_magnitude != 0;
 		}
-		else if (TokenType::OPERATOR_BITWISE_XOR == op) {
-			result.integer_known = false;
+		else if (ValueKind::UNTYPED_INTEGER == result.kind && TokenType::OPERATOR_BITWISE_XOR == op) {
+			// ~x is -x - 1, whatever the type's size: ~5 is -6, and ~-6 is 5
+			if (result.integer_negative) {
+				result.integer_negative = false;
+				result.integer_magnitude -= 1;
+			}
+			else if (result.integer_magnitude == UINT64_MAX) {
+				result.integer_known = false;
+			}
+			else {
+				result.integer_negative = true;
+				result.integer_magnitude += 1;
+			}
 		}
 		return Progress::DONE;
 	}

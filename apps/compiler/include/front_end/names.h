@@ -223,9 +223,13 @@ namespace hemera {
 		InternedString foreign_library = nullptr;
 		InternedString link_name = nullptr;
 		/// <summary>
-		/// For a constant without a type, what kind of literal it is.
+		/// For a constant without a type, what kind of literal it is, and for an integer whose value
+		/// is known, like X :: 300, that value, which has to fit the type it becomes where it's used.
 		/// </summary>
 		Untyped untyped = Untyped::NONE;
+		bool integer_known = false;
+		bool integer_negative = false;
+		uint64_t integer_magnitude = 0;
 		/// <summary>
 		/// For a function (or an instance of one) with a body, what checking it found, once it's
 		/// checked without errors.

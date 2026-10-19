@@ -1099,7 +1099,9 @@ TEST(FrontEnd, KeepsThreadBoundValues)
 /*
  * Integer literals out of range of the type they become (docs/types.md, Number Formats): one given a
  * type, a negative given to an unsigned one, one defaulting to int, a range's bound, an argument, a
- * result, a field, an operand beside a typed one, and one too large for any integer. Those in range aren't.
+ * result, a field, an operand beside a typed one, and one too large for any integer. Operators on known
+ * integers and named constants are worked out and checked the same way, and dividing by a known zero
+ * is an error. Those in range aren't, even when their parts aren't.
  */
 TEST(FrontEnd, ChecksIntegerRanges)
 {
@@ -1108,7 +1110,7 @@ TEST(FrontEnd, ChecksIntegerRanges)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("integer_ranges"));
-	ASSERT_EQ(errors.size(), 11) << codes(errors);
+	ASSERT_EQ(errors.size(), 21) << codes(errors);
 	for (hemera::ErrorCode error : errors) {
 		EXPECT_EQ(error, hemera::ErrorCode::E4015);
 	}
@@ -1124,6 +1126,11 @@ TEST(FrontEnd, ChecksIntegerRanges)
 		"18446744073709551615 is out of int's range, -9223372036854775808 to 9223372036854775807",
 		"0x1_0000_0000_0000_0000 is too large for any integer",
 		"256 is out of u8's range, 0 to 255",
+		"300 is out of u8's range, 0 to 255",
+		"200 is out of i8's range, -128 to 127",
+		"-300 is out of i8's range, -128 to 127",
+		"this is too large for any integer",
+		"dividing by zero, which is known here",
 	}) {
 		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
 	}

@@ -1719,6 +1719,11 @@ namespace hemera {
 				: Untyped::NONE;
 			for (Declaration* each : declarations) {
 				each->untyped = untyped;
+				// One name's value, like X :: 300; several share one value only in name
+				each->integer_known = declarations.size() == 1 && ValueKind::UNTYPED_INTEGER == constant.kind
+					&& constant.integer_known;
+				each->integer_negative = constant.integer_negative;
+				each->integer_magnitude = constant.integer_magnitude;
 			}
 		}
 		for (Declaration* each : declarations) {

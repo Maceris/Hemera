@@ -793,8 +793,12 @@ Any format can use underscores (`_`) freely between digits, they are ignored.
 
 An integer literal has to fit the type it becomes, whether that's written, like `small : u8 = 300`, or its usual
 type `int`, like `big := 0xffff_ffff_ffff_ffff`. Both are errors, as is `-1` given to an unsigned integer, or a
-literal larger than a `u64` can hold. Only the literal itself is checked, with any `-` in front of it, so
-`255 + 1` as a `u8` isn't caught.
+literal larger than a `u64` can hold.
+
+Operators on literals and on constants without a type, like `LARGE :: 300`, are worked out exactly when the
+program is compiled, so `255 + 1` as a `u8` is an error too, while `512 / 4` is a `u8`'s 128: only the result has
+to fit. A result larger than a `u64` can hold is an error, and so is dividing by a known zero. Bitwise
+operators on negative literals depend on the type's size, so those aren't worked out or checked.
 
 ## Optional Types
 
