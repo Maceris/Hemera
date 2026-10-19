@@ -192,6 +192,10 @@ namespace hemera::parser {
 			if (TokenType::IDENTIFIER != name && TokenType::SYM_UNDERSCORE != name) {
 				return false;
 			}
+			// A name's directives, like owner #release :: open(path)
+			while (TokenType::DIRECTIVE == next_token(state, offset + 1).type) {
+				++offset;
+			}
 			const TokenType after = next_token(state, offset + 1).type;
 			if (TokenType::SYM_COLON == after) {
 				return true;
@@ -621,7 +625,8 @@ namespace hemera::parser {
 				|| directive.value.value->compare("#section") == 0
 				|| directive.value.value->compare("#foreign") == 0
 				|| directive.value.value->compare("#link_name") == 0
-				|| directive.value.value->compare("#constraint") == 0) {
+				|| directive.value.value->compare("#constraint") == 0
+				|| directive.value.value->compare("#release") == 0) {
 				expected = true;
 			}
 			if (!expected) {

@@ -7420,6 +7420,9 @@ namespace hemera {
 						wanted != nullptr ? to_string(wanted) : "that"));
 				}
 			}
+			else if (name == "require_copyable") {
+				require(!is_owned(type), std::format("{} is #owned, so it's moved and released, not copied", type_name));
+			}
 			else if (name == "require_mutable") {
 				const bool given_mut = type != nullptr && TypeInfoVariant::ALIAS == type->variant
 					&& static_cast<const TypeInfoAlias*>(type)->mutable_argument;

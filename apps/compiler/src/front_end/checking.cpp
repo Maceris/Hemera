@@ -8,6 +8,7 @@
 #include "front_end/format_spec.h"
 #include "front_end/front_end.h"
 #include "front_end/bounds.h"
+#include "front_end/ownership.h"
 #include "front_end/stack_pointers.h"
 #include "util/logger.h"
 
@@ -1677,9 +1678,66 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	/*
+	 * The function an #owned type names to release one, like SharedPtr's #owned(release): looked up in
+	 * the file that declares the type (docs/memory.md, Owned Types).
+	 */
+	static Declaration* release_function_of(Checker& checker, TypeInfo const* type) {
+		TypeInfo const* base = base_of(type);
+		if (base == nullptr || TypeInfoVariant::STRUCT != base->variant) {
+			return nullptr;
+		}
+		auto structure = static_cast<TypeInfoStruct const*>(base);
+		if (!structure->is_owned || structure->release_name == nullptr) {
+			return nullptr;
+		}
+		NameRegistry& names = checker.walk.executor.program_info->names;
+		const Declaration* declared = structure->instance;
+		if (declared == nullptr) {
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			auto found = names.type_declarations.find(const_cast<TypeInfo*>(base));
+			declared = found != names.type_declarations.end() ? found->second : nullptr;
+		}
+		if (declared == nullptr) {
+			return nullptr;
+		}
+		InternedString package = declared->package_path;
+		if (structure->release_package != nullptr) {
+			package = declared->file != nullptr ? imported_package(declared->file, structure->release_package) : nullptr;
+		}
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		auto found = package != nullptr ? names.declarations.find(std::make_pair(package, structure->release_name))
+			: names.declarations.end();
+		return found != names.declarations.end() ? found->second : nullptr;
+	}
+
 	// A call: of a function value, a generic function, a builtin, or a union variant with its values.
 	static Progress check_call(Checker& checker, ast::Node* where, const std::vector<ast::Node*>& arguments,
 		Value& callee, const std::vector<Value>& piped) {
+
+		/*
+		 * compiler.release(value): a call to the function value's type names in #owned(...), so general
+		 * code can release what it's given (docs/memory.md, Owned Types)
+		 */
+		if (ValueKind::GENERIC_FUNCTION == callee.kind && is_compiler_function(callee.declaration, "release") && arguments.size() == 1
+			&& piped.empty()) {
+			Value argument;
+			Progress progress = check_expression(checker, arguments[0], nullptr, argument);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ValueKind::POISONED == argument.kind) {
+				callee = poisoned();
+				return Progress::DONE;
+			}
+			Declaration* release = ValueKind::VALUE == argument.kind ? release_function_of(checker, argument.type) : nullptr;
+			if (release == nullptr) {
+				callee = error_at(checker, ErrorCode::E4035, arguments[0], std::format(
+					"compiler.release needs a value of an #owned type that names its release function, not {}", describe(argument)));
+				return Progress::DONE;
+			}
+			callee = declaration_value(checker, release);
+		}
 
 		const ValueKind kind = callee.kind;
 		if (ValueKind::POISONED == kind) {
@@ -4405,6 +4463,15 @@ namespace hemera {
 			check_stack_pointers(*checked, body, type, checker.walk.file_path);
 			// And that every index is in bounds (docs/types.md, Bounds Checking)
 			check_bounds(*checked, body, type, checker.walk.file_path);
+			/*
+			 * And that each owner is released or moved (docs/memory.md, Owned Types), except in base/compiler's
+			 * forget, duplicate and take, which are how owners are made and ended outside the rules
+			 */
+			const bool primitive = generic->package_path != nullptr && std::string_view(*generic->package_path).starts_with("<base>")
+				&& std::string_view(*generic->package_path).ends_with("compiler");
+			if (!primitive) {
+				check_ownership(*checked, function_node_, body, type, checker.walk.file_path);
+			}
 		}
 		if (early && progress != Progress::PARKED) {
 			finish_early_check(registry, function, progress != Progress::DONE || thread_error_count() != errors_before);

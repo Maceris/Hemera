@@ -273,6 +273,19 @@ It only raises the alignment; with `#packed`, it sets it exactly (see [types.md]
 Values of these structs can never be stored on the heap. See [memory.md](memory.md#scoped-structs).
 `#unrestricted` is used for structs that never point into the stack, like allocators: their values can be stored anywhere,
 and passing one to a function doesn't tie what it returns to the stack. See [memory.md](memory.md#unrestricted-structs).
+`#owned(release)` is used for structs whose values are resources, like files: each has one owner, which releases it
+with `release` or moves it on, and the compiler checks every path does. `#owned(release, condition)` decides for each
+instance of a generic. See [memory.md](memory.md#owned-types).
+
+### `#release`
+
+`#release` after a parameter's or a local's name releases it, with its type's release function, where its scope ends,
+as a `defer` written there would. It can't be moved. See [memory.md](memory.md#owners).
+
+```
+consume :: fn(file #release : File) -> int {/* ... */}
+buffer #release :: make_buffer(4096)
+```
 
 ## Values
 

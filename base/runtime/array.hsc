@@ -128,6 +128,21 @@ array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
     raw.capacity = 0
 }
 
+/*
+ * An array of owned values (docs/memory.md, Owned Types), given up: each element released with release,
+ * then the array's memory given back.
+ *
+ *     runtime.array_release(files, close_file)
+ */
+array_release :: fn[T](array #escaping : T[..], release: (fn(value: T)), location := #caller_location) {
+    for i in 0..<array.count {
+        release(compiler.take(&array[i]))
+    }
+    items := array
+    array_free(&items, location)
+    compiler.forget(items)
+}
+
 // Empties the array, keeping its memory for what's added next.
 array_reset :: fn[T](array: ptr[mut T[..]]) {
     resizable(array).count = 0

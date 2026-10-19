@@ -171,6 +171,12 @@ TEST(Hosted, GivesMutToGenerics)
 	run_hosted("mut_arguments", hemera::TargetStackCheck::Off);
 }
 
+// Owned types: released, moved, taken, shared, in arrays and matches (docs/memory.md, Owned Types).
+TEST(Hosted, ReleasesOwners)
+{
+	run_hosted("owned", hemera::TargetStackCheck::Off);
+}
+
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {

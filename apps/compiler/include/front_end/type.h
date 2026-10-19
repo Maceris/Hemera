@@ -282,6 +282,14 @@ namespace hemera {
 		/// </summary>
 		const struct Declaration* instance = nullptr;
 		/// <summary>
+		/// From #owned(release): each value has one owner, which releases it or moves it on
+		/// (docs/memory.md, Owned Types). The function that releases one, by name, as written:
+		/// release_package is the package's local name for package.release, or null.
+		/// </summary>
+		bool is_owned = false;
+		InternedString release_package = nullptr;
+		InternedString release_name = nullptr;
+		/// <summary>
 		/// From #align(n), or 0 for the natural alignment.
 		/// </summary>
 		size_t requested_alignment = 0;
@@ -432,6 +440,12 @@ namespace hemera {
 	/// alias (docs/types.md, Alias Equality). Null pointers are never equal to anything.
 	/// </summary>
 	bool same_type(TypeInfo const* a, TypeInfo const* b);
+
+	/// <summary>
+	/// Whether a value of type has one owner (docs/memory.md, Owned Types): a struct marked #owned, or
+	/// anything holding one in place, in a static or dynamic array, or in a union's payload.
+	/// </summary>
+	bool is_owned(TypeInfo const* type);
 
 	/// <summary>
 	/// Check if the first type can be implicitly converted to the second (docs/types.md, Implicit

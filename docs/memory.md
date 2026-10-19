@@ -308,6 +308,91 @@ ordering them) are defined, not undefined behavior:
 The compiler can't invent loads or stores of shared memory, or assume a value it loaded can't change underneath
 it, so races give stale or torn values, but never break unrelated code.
 
+# Owned Types
+
+Some values are a resource as well as data: a file to close, memory to give back, a count to drop. A struct marked
+`#owned` says each of its values has one owner at a time, and names the function that releases one. The compiler
+checks that every owner is released or handed on, on every path, and that nothing uses an owner once it has been.
+It never releases anything by itself: what runs is what's written, and what's missing is an error (E4035).
+
+```
+File :: struct #owned(close_file) {
+    handle : int,
+}
+
+close_file :: fn(file: File) {/* ... */}
+
+main :: fn() {
+    log :: open_file("log.txt")
+    defer compiler.release(log)         // close_file(log), when main ends
+    write_line(&log, "started")         // &log only borrows it
+}
+```
+
+## Owners
+
+The owner of an `#owned` value is the local or parameter holding it.
+
+* **Moving.** Giving the value to another local, passing it by value, returning it, or storing it (through a pointer,
+  in a struct or array literal, or with `array_add`) moves it: the owner can't be used again until it's given a new
+  value. A function taking one by value owns it, and has to release it or move it on.
+* **Borrowing.** Taking its address, reading its fields, comparing it, or giving it to an `any`, as `log_info` takes
+  its values, leaves it where it is. A value given to an `#escaping` `any`, like a new thread's data, is moved.
+* **Ending.** On every path out of a scope, its end, `return`, `break` or `continue`, each owner declared in it has
+  been moved or released. A `defer` counts where it runs.
+* **Paths that meet,** after an `if`, a `match` or a loop, have to agree: an owner moved on one and not the other is
+  an error there. A loop can't move an owner from outside it unless it gives it a new value before going around.
+* **Replacing** a value an owner still has is an error: release or move it first.
+* **Dropping.** A call's owned result, or an owned literal, that nothing keeps is an error.
+* **Zero owns nothing.** An owner declared without a value owns nothing until it's given one, or until its address is
+  taken, since what it's given to may fill it, like `array_add(&files, file)`.
+
+`#release` after an owner's name releases it where its scope ends, as `defer compiler.release(name)` written there
+would. An owner marked `#release` can't be moved, since whether to release it would depend on the path taken:
+
+```
+consume :: fn(file #release : File) -> int {
+    return file.handle
+}                                       // released here
+
+buffer #release :: make_buffer(4096)
+```
+
+## What Holds Owners
+
+* **A struct holding an owned value** is owned too, and says so with `#owned`, with a function of its own that
+  releases what it holds. An instance of a generic is owned when it holds one, like `Optional[File]`.
+* **A dynamic array** holds its elements, so `File[..]` is owned. `runtime.array_release(files, close_file)` releases
+  each element with the function given, then frees the array.
+* **A view** borrows its elements: going through one, `for file in files^`, doesn't move them, and moving an element
+  out of one, or out of a field, is an error.
+* **Matching** an owned value that's made for it, like `match maybe_open(path) { case Some(file) => ... }`, gives the
+  bindings ownership; matching an owner only borrows it.
+* **`#owned(release, condition)`** decides per instance of a generic, like a container that's owned only when its
+  elements are: `#owned(release_map, !compiler.satisfies(compiler.Copyable(V)))`.
+
+Beyond locals and parameters, through pointers and on the heap, owners aren't tracked: what's stored there is the
+responsibility of whatever owns that memory, which is itself an owner, as a dynamic array is.
+
+## Making and Ending Owners
+
+base/compiler has what a type's own functions use to work outside the rules, and what general code uses to release
+any owner:
+
+| Function | Does |
+|---|---|
+| `compiler.release(value)` | Calls the function `value`'s type names in `#owned(...)` |
+| `compiler.take(&place)` | Moves out what a place holds, a field or an element, leaving it zero, which owns nothing |
+| `compiler.forget(value)` | Ends an owner with nothing done: nothing releases what it held |
+| `compiler.duplicate(&value)` | A second owner of the same value, without its type knowing, for a type's own share function |
+
+## Generics
+
+A generic's body is checked with each instance's own types, so an instance given an owned type that copies or drops
+it is reported in that instance. `T: compiler.Copyable` says up front that a generic copies its `T`, so an owned
+type is refused where the instance is made instead. In a body checked before any instance (see
+[types.md](types.md#checked-bodies)), a type parameter is treated as copyable.
+
 ## Prior Art
 
 * C#'s `ref struct`, `Span<T>` and `scoped`: local "safe-to-escape" rules, which `#scoped` structs are modeled on.

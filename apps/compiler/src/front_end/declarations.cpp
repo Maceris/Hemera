@@ -1147,6 +1147,15 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	static bool has_owned_directive(const ast::Node* node) {
+		for (const ast::Node* child : node->children) {
+			if (ast::NodeType::DIRECTIVE == child->node_type && is_text(child->value.value, "#owned")) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// docs/types.md, Structs: fields, using, anonymous structs, and #packed, #align, #union, #scoped, #unrestricted.
 	static Progress struct_body(Walk& walk, ast::Node* node, TypeInfoStruct* type) {
 		type->members.clear();
@@ -1164,6 +1173,37 @@ namespace hemera {
 				}
 				else if (is_text(child->value.value, "#unrestricted")) {
 					type->is_unrestricted = true;
+				}
+				else if (is_text(child->value.value, "#owned")) {
+					// #owned(release), or #owned(release, condition) for the instances it's true for
+					std::vector<ast::Node*> arguments;
+					for (ast::Node* argument : child->children) {
+						if (ast::NodeType::PAREN_GROUP != argument->node_type) {
+							arguments.push_back(argument);
+						}
+					}
+					ast::Node* release = arguments.empty() ? nullptr : arguments[0];
+					if (release == nullptr || ast::NodeType::IDENTIFIER != release->node_type) {
+						return type_error(walk, ErrorCode::E4014, child, "#owned names the function that releases one, like #owned(release)");
+					}
+					type->is_owned = true;
+					type->release_name = release->value.value;
+					type->release_package = nullptr;
+					if (release->children.size() >= 2 && ast::NodeType::DOT_ACCESS == release->children[0]->node_type) {
+						type->release_package = release->value.value;
+						type->release_name = release->children[1]->value.value;
+					}
+					if (arguments.size() >= 2) {
+						ConstantValue condition;
+						Progress progress = evaluate_in(walk, arguments[1], condition);
+						if (progress != Progress::DONE) {
+							return progress;
+						}
+						if (ConstantValue::Kind::BOOLEAN != condition.kind) {
+							return type_error(walk, ErrorCode::E4014, arguments[1], "#owned's condition is a bool");
+						}
+						type->is_owned = condition.boolean;
+					}
 				}
 				if (type->is_scoped && type->is_unrestricted) {
 					return type_error(walk, ErrorCode::E4014, child, "a struct can't be both #scoped and #unrestricted");
@@ -1256,6 +1296,19 @@ namespace hemera {
 						std::format("using needs a struct, and {} isn't one", to_string(included)));
 				}
 				type->members.push_back({ binding->value.value, included, 0, false, true, 0, std::string() });
+			}
+		}
+		/*
+		 * Holding an owner makes a struct owned (docs/memory.md, Owned Types). One of its own, not an
+		 * instance of a generic, says so, with the function that releases it.
+		 */
+		if (!type->is_owned && type->instance == nullptr && !has_owned_directive(node)) {
+			for (const StructMember& member : type->members) {
+				if (is_owned(member.member_type)) {
+					return type_error(walk, ErrorCode::E4035, node, std::format("{} holds {}, which is #owned, so it's owned too: "
+						"say so, with the function that releases it, like #owned(release_{})", name_text(type->name),
+						to_string(member.member_type), name_text(type->name)));
+				}
 			}
 		}
 		lay_out_struct(type);

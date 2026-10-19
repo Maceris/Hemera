@@ -423,6 +423,41 @@ namespace hemera {
 		return type;
 	}
 
+	bool is_owned(TypeInfo const* type) {
+		type = get_base_type(type);
+		if (type == nullptr) {
+			return false;
+		}
+		if (TypeInfoVariant::STRUCT == type->variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(type);
+			if (structure->is_owned) {
+				return true;
+			}
+			for (const StructMember& member : structure->members) {
+				if (is_owned(member.member_type)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		if (TypeInfoVariant::UNION == type->variant) {
+			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(type)->variants) {
+				for (TypeInfo* payload : variant.types) {
+					if (is_owned(payload)) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+		if (TypeInfoVariant::ARRAY == type->variant) {
+			// A view borrows its elements; a static or dynamic array holds them
+			auto array = static_cast<TypeInfoArray const*>(type);
+			return ArrayType::VIEW != array->array_type && is_owned(array->element_type);
+		}
+		return false;
+	}
+
 	bool same_type(TypeInfo const* a, TypeInfo const* b) {
 		if (a == nullptr || b == nullptr) {
 			return false;

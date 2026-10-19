@@ -42,6 +42,9 @@ require_view : fn(T: type, element: type) : ---
 // T was given with mut, like SharedPtr[mut Buffer], so ptr[T] can change what it points to.
 require_mutable : fn(T: type) : ---
 
+// T isn't #owned, so a value of it can be copied and dropped (docs/memory.md, Owned Types).
+require_copyable : fn(T: type) : ---
+
 /*
  * condition holds, or the constraint isn't met, saying format_string with each % filled in, like a
  * log message: for anything the others don't cover, like a value parameter's range.
@@ -87,6 +90,11 @@ Float #constraint :: fn(T: type) {
 // An integer or a float.
 Numeric #constraint :: fn(T: type) {
     require_numeric(T)
+}
+
+// Copied and dropped freely: not #owned.
+Copyable #constraint :: fn(T: type) {
+    require_copyable(T)
 }
 
 // Given with mut: what a ptr[T] points to can be changed.

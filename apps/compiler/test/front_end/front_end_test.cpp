@@ -856,6 +856,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "using_read_only", hemera::ErrorCode::E4016 },
 		{ "mut_argument_read_only", hemera::ErrorCode::E4016 },
 		{ "read_only_held", hemera::ErrorCode::E4015 },
+		{ "owned_not_marked", hemera::ErrorCode::E4035 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },
@@ -1025,6 +1026,41 @@ TEST(FrontEnd, ChecksFormatStrings)
 		"%{+} gives a number a sign or zeros, but string isn't one",
 		"%{#} has # for a 0x, 0b or 0o prefix, which needs x, X, b or o",
 		"%{.2} has a precision, which is for floats and strings, not int",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
+/*
+ * Owners that aren't released or moved on every path, or are used once they were (docs/memory.md, Owned
+ * Types): each reported where it's found, with what to do about it.
+ */
+TEST(FrontEnd, ChecksOwners)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("owned_errors"));
+	ASSERT_EQ(errors.size(), 10) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4035);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"a still owns its value where its scope ends, at line 28: release it, like defer compiler.release(a), mark it #release, or move it",
+		"a is used after it was moved or released, at line 34",
+		"this gives an owned value that nothing keeps: keep it, or release it",
+		"a still owns its value on one path to here, but not on another: move or release it on both",
+		"a is moved or released each time around this loop, so the next time around it has nothing",
+		"a still owns its value: release or move it before giving it another",
+		"a is #release, so it's released where its scope ends and can't be moved",
+		"this moves an owned value out of what holds it, which still would: take it out with compiler.take(&...)",
+		"file is part of what it came from, only borrowed here",
+		"files still owns its value where its scope ends, at line 77: release its elements and it with runtime.array_release(files, ...)",
 	}) {
 		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
 	}
