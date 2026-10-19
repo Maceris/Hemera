@@ -36,6 +36,9 @@ read :: fn(box: Box[int]) -> int {
     return box.value^ + box.uses
 }
 
+// mut written in an expression, like a constraint's argument
+#assert compiler.satisfies(compiler.Mutable(mut int)) && !compiler.satisfies(compiler.Mutable(int))
+
 main :: fn() -> int {
     number := 1
     changeable := Box[mut int].{value = &number, uses = 2}

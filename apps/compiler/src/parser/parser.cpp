@@ -150,6 +150,8 @@ namespace hemera::parser {
 
 	static bool could_be_function_input(const TokenType& type) {
 		return TokenType::IDENTIFIER == type
+			// A type given with mut, like compiler.Mutable(mut Config)
+			|| TokenType::KEYWORD_MUT == type
 			|| TokenType::SYM_AMPERSAND == type
 			|| TokenType::SYM_UNDERSCORE == type
 			|| TokenType::PIPE_REORDER_IDENTIFIER == type
@@ -861,6 +863,22 @@ namespace hemera::parser {
 			}
 			return result;
 		}
+		// (fn(n: int) -> int)?: a function type in parentheses, so a ? after it is the function's, not its result's
+		else if (expect(state, TokenType::SYM_LPAREN) && TokenType::KEYWORD_FN == next_token(state).type) {
+			const Token lparen = current_token(state);
+			skip(state, TokenType::SYM_LPAREN);
+			ExprResult result = complicated_type(state);
+			if (!result.success) {
+				return result;
+			}
+			if (!skip(state, TokenType::SYM_RPAREN)) {
+				report_error_on_last_token(state, ErrorCode::E3015,
+					std::format("Opening parenthesis was at ({},{})", lparen.line_number, lparen.column_number));
+				return ExprResult{ false };
+			}
+			accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *result.result);
+			return result;
+		}
 		else {
 			report_error_on_last_token(state, ErrorCode::E3017);
 			return ExprResult{ false };
@@ -1179,6 +1197,10 @@ namespace hemera::parser {
 									lparen.column_number));
 							return false;
 						}
+						// (fn(n: int) -> int)?: the function is optional
+						if (!type_deduced && !param->children.empty()) {
+							accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *param->children.back());
+						}
 					}
 				}
 				else {
@@ -1202,6 +1224,7 @@ namespace hemera::parser {
 									lparen.column_number));
 							return false;
 						}
+						accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *param);
 					}
 				}
 
@@ -1251,6 +1274,7 @@ namespace hemera::parser {
 		}
 		if (expect(state, TokenType::SYM_LPAREN)) {
 			const Token& lparen = current_token(state);
+			ast::Node* single_fn = nullptr;
 			if (TokenType::KEYWORD_FN == next_token(state).type) {
 				skip(state, TokenType::SYM_LPAREN);
 				ExprResult fn = function_signature(state);
@@ -1258,6 +1282,7 @@ namespace hemera::parser {
 					return false;
 				}
 				parent.children.push_back(fn.result);
+				single_fn = fn.result;
 			}
 			else {
 				ast::Node& node = next_as_node(state, ast::NodeType::LIST, &parent);
@@ -1282,6 +1307,8 @@ namespace hemera::parser {
 									next_lparen.column_number));
 							return false;
 						}
+						// (fn() -> int)?: the function is optional
+						accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *fn.result);
 						skip(state, TokenType::SYM_COMMA);
 						continue;
 					}
@@ -1300,6 +1327,27 @@ namespace hemera::parser {
 					skip(state, TokenType::SYM_COMMA);
 					if (accept(state, TokenType::SYM_COLON,
 						ast::NodeType::COLON, node)) {
+						// f: (fn() -> int), a named function result, optional with a ?
+						const Token& named_lparen = current_token(state);
+						if (expect(state, TokenType::SYM_LPAREN)
+							&& TokenType::KEYWORD_FN == next_token(state).type) {
+							skip(state, TokenType::SYM_LPAREN);
+							ExprResult fn = function_signature(state);
+							if (!fn.success) {
+								return false;
+							}
+							node.children.push_back(fn.result);
+							if (!skip(state, TokenType::SYM_RPAREN)) {
+								report_error_on_last_token(state, ErrorCode::E3015,
+									std::format("Opening parenthesis was at ({},{})",
+										named_lparen.line_number,
+										named_lparen.column_number));
+								return false;
+							}
+							accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *fn.result);
+							skip(state, TokenType::SYM_COMMA);
+							continue;
+						}
 						if (!expect(state, TokenType::IDENTIFIER)
 							&& !expect(state, TokenType::KEYWORD_MUT)) {
 							report_error_on_last_token(state, ErrorCode::E3016);
@@ -1320,6 +1368,10 @@ namespace hemera::parser {
 						lparen.line_number,
 						lparen.column_number));
 				return false;
+			}
+			if (single_fn != nullptr) {
+				// -> (fn() -> int)?: the function is optional
+				accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *single_fn);
 			}
 			return true;
 		}
@@ -1791,6 +1843,10 @@ namespace hemera::parser {
 					lparen.line_number,
 					lparen.column_number));
 			return false;
+		}
+		// (fn(n: int) -> int)?: the function is optional
+		if (in_parens) {
+			accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *member_type.result);
 		}
 
 		if (expect(state, TokenType::OPERATOR_ASSIGN)) {
@@ -2358,6 +2414,7 @@ namespace hemera::parser {
 	ExprResult expr_lvl_11(ParserState* state) {
 		const TokenType current = current_token(state).type;
 
+
 		if (current == TokenType::KEYWORD_CAST
 			|| current == TokenType::KEYWORD_BIT_CAST
 			|| current == TokenType::KEYWORD_AUTO_CAST) {
@@ -2809,6 +2866,14 @@ namespace hemera::parser {
 			if (current_token_type == TokenType::SYM_UNDERSCORE) {
 				accept(state, current_token_type, ast::NodeType::UNDERSCORE, 
 					*to_add_to);
+			}
+			// mut Config: a type given with mut, like compiler.Mutable(mut Config) (docs/types.md, Mutability in Type Arguments)
+			else if (current_token_type == TokenType::KEYWORD_MUT) {
+				ExprResult given = simple_type(state);
+				if (!given.success) {
+					return false;
+				}
+				to_add_to->children.push_back(given.result);
 			}
 			else if (current_token_type == TokenType::PIPE_REORDER_IDENTIFIER) {
 				accept(state, current_token_type, ast::NodeType::PIPE_REORDER_IDENTIFIER,

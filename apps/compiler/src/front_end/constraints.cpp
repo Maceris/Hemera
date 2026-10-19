@@ -129,6 +129,12 @@ namespace hemera {
 				}
 				Progress progress = type_of(check.inside, node, Need::DECLARED, type);
 				if (progress == Progress::DONE && type != nullptr) {
+					// mut Config: given with mut
+					for (const ast::Node* child : node->children) {
+						if (ast::NodeType::MUTABLE == child->node_type) {
+							type = mutable_argument(check.inside, type);
+						}
+					}
 					return Progress::DONE;
 				}
 				if (progress == Progress::PARKED) {

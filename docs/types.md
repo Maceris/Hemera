@@ -889,8 +889,8 @@ read_only : Box[Config]          // value is a ptr[Config]
   `read_only = changeable` works for `Box`, but not for a struct holding a `T` in place.
 * **Constraints** can ask for it: `T: compiler.Mutable` is satisfied by `mut Config`, and in a body checked before any
   instance (see [Checked Bodies](#checked-bodies)), writing through a `ptr[T]` needs it.
-* `mut` is written in a type's position, like `Box[mut Config]` or `f[mut Config](box)`; a constraint called in an
-  expression, like `compiler.Mutable(mut Config)` in `#assert`, can't take it yet.
+* `mut` is written where a type is, like `Box[mut Config]` or `f[mut Config](box)`, including a constraint's argument
+  in an expression: `#assert compiler.satisfies(compiler.Mutable(mut Config))`.
 
 ## Result Types
 

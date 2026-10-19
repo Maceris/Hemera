@@ -4,6 +4,13 @@ import runtime from "base"
 
 // Targets without a file system or environment, like OS == .None: everything is Unsupported.
 #if OS != .Windows && !(OS == .Linux && TARGET_ARCH == .x86_64) {
+    system_run_process :: fn(program: string, arguments: string[], working_directory: string?, allocator: runtime.Allocator)
+        -> (result #unrestricted : ProcessResult, error : ProcessError?) {
+
+        empty : ProcessResult
+        return empty, ProcessError.Unsupported
+    }
+
     system_get_environment :: fn(name: string, allocator: runtime.Allocator) -> (value #unrestricted : string, error : OsError?) {
         return "", OsError.Unsupported
     }

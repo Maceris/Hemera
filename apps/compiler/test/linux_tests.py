@@ -33,6 +33,8 @@ TESTS = [
     ("mut_arguments", [], 42),
     ("owned", [], 42),
     ("shared", [], 42),
+    ("optional_functions", [], 42),
+    ("processes", [], 42),
     ("output", [], 42),
     ("library", [], 42),
     ("arrays", [], 42),

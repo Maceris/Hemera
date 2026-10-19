@@ -162,6 +162,24 @@ main :: fn() {
 }
 ```
 
+A function that might not be there is an optional function type. With a result, the function type goes in parentheses,
+so the `?` is the function's: without them, it's the result's.
+
+```
+Handler :: struct {
+    on_done : fn()?,                    // no result: the function is optional
+    on_value : (fn(n: int) -> int)?,    // an optional function returning an int
+    find : fn(key: string) -> int?,     // a function returning an optional int
+}
+
+call_or :: fn(handler: (fn(n: int) -> int)?, n: int) -> int {
+    match handler {
+        case Some(function) => return function(n)
+        case None => return n
+    }
+}
+```
+
 ## Complicated Function Return Types
 
 Functions need to have parenthesis around the return type(s) if
@@ -188,6 +206,8 @@ returning_a_fn          :: fn() -> (fn() -> int) {/* ... */}
 ret_a_fn_with_2_returns :: fn() -> (fn() -> (int, int)) {/* ... */}
 returning_int_and_fn    :: fn() -> (int, (fn() -> int)) {/* ... */}
 returning_fn_and_int    :: fn() -> ((fn() -> int), int) {/* ... */}
+returning_optional_fn   :: fn() -> (fn() -> int)? {/* ... */}
+named_fn_result         :: fn() -> (n: int, f: (fn() -> int)) {/* ... */}
 ```
 
 Some higher order function definitions can (should) be simplified quite a bit using type aliases.

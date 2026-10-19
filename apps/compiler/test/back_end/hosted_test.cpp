@@ -183,6 +183,18 @@ TEST(Hosted, SharesOwnership)
 	run_hosted("shared", hemera::TargetStackCheck::Off);
 }
 
+// Optional function types written in place: (fn(n: int) -> int)? (docs/functions.md).
+TEST(Hosted, TakesOptionalFunctions)
+{
+	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
+}
+
+// std/os's run_process: output, error output, exit codes, a missing program, and quoting.
+TEST(Hosted, RunsProcesses)
+{
+	run_hosted("processes", hemera::TargetStackCheck::Off);
+}
+
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {
