@@ -259,6 +259,8 @@ namespace hemera {
 			int64_t spread = 0;
 			// What's known even when the value isn't, like x & 15 being at most 15
 			std::optional<int64_t> at_most;
+			// Or at most a term and an offset, like x % n being at most n - 1
+			std::optional<std::pair<Term, int64_t>> at_most_term;
 			bool nonnegative = false;
 		};
 
@@ -516,6 +518,9 @@ namespace hemera {
 			if (value.at_most.has_value()) {
 				add(facts, term, ZERO, *value.at_most);
 			}
+			if (value.at_most_term.has_value()) {
+				add(facts, term, value.at_most_term->first, value.at_most_term->second);
+			}
 			if (value.nonnegative) {
 				add(facts, ZERO, term, 0);
 			}
@@ -737,9 +742,15 @@ namespace hemera {
 			if (value.known && limit.known) {
 				return proves(analysis, facts, value.term, limit.term, limit.offset - value.offset - value.spread + slack);
 			}
-			if (!value.known && value.at_most.has_value() && limit.known) {
+			if (!value.known && value.at_most.has_value() && limit.known
+				&& proves(analysis, facts, ZERO, limit.term, limit.offset - *value.at_most + slack)) {
 				// limit >= at_most - slack: 0 - limit.term <= limit.offset - at_most + slack
-				return proves(analysis, facts, ZERO, limit.term, limit.offset - *value.at_most + slack);
+				return true;
+			}
+			if (!value.known && value.at_most_term.has_value() && limit.known) {
+				// term + offset - limit <= slack
+				return proves(analysis, facts, value.at_most_term->first, limit.term,
+					limit.offset - value.at_most_term->second + slack);
 			}
 			return false;
 		}
@@ -1142,6 +1153,12 @@ namespace hemera {
 					result.at_most = *most + right.offset + right.spread - 1;
 					result.nonnegative = true;
 				}
+			}
+			// x % m for any m, like a count: less than m, since % by zero never gives a value
+			if ((TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op) && right.known && ZERO != right.term
+				&& right.spread == 0 && (nonnegative(left) || unsigned_operands)) {
+				result.at_most_term = std::make_pair(right.term, right.offset - 1);
+				result.nonnegative = true;
 			}
 			// A bounded value divided by a positive constant, or shifted right
 			if ((TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op) && !left.known

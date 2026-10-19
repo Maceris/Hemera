@@ -27,6 +27,10 @@ namespace hemera {
 	struct EarlyCheck {
 		Declaration* instance = nullptr;
 		std::vector<TypeInfoArchetype*> archetypes;
+		// The early instance's arguments, and whether the archetypes have what's promised yet
+		std::vector<TypeInfo*> arguments;
+		std::vector<ConstantValue> values;
+		bool promised = false;
 		std::set<std::string> atoms;
 		bool done = false;
 		bool failed = false;
@@ -751,23 +755,82 @@ namespace hemera {
 		}
 
 		// Each of an instance's parameters' arguments, by name.
-		std::map<std::string, Argument> arguments_of(const Declaration* generic, const Declaration* instance) {
+		std::map<std::string, Argument> arguments_of(const Declaration* generic, const std::vector<TypeInfo*>& types,
+			const std::vector<ConstantValue>& values) {
+
 			std::map<std::string, Argument> result;
 			const auto parameters = generic_parameters(generic);
-			for (size_t i = 0; i < parameters.size() && i < instance->generic_arguments.size(); ++i) {
+			for (size_t i = 0; i < parameters.size() && i < types.size(); ++i) {
 				Argument argument;
-				if (instance->generic_arguments[i] != nullptr) {
-					argument.type = instance->generic_arguments[i];
+				if (types[i] != nullptr) {
+					argument.type = types[i];
 					argument.is_type = true;
 					argument.text = to_string(argument.type);
 				}
-				else if (i < instance->generic_values.size()) {
-					argument.value = instance->generic_values[i];
+				else if (i < values.size()) {
+					argument.value = values[i];
 					argument.text = constant_text(argument.value);
 				}
 				result[parameters[i].first] = argument;
 			}
 			return result;
+		}
+
+		std::map<std::string, Argument> arguments_of(const Declaration* generic, const Declaration* instance) {
+			return arguments_of(generic, instance->generic_arguments, instance->generic_values);
+		}
+
+		/*
+		 * Gives a generic's archetypes what its constraints promise, once: before its body is checked,
+		 * or sooner, when its signature uses a generic whose constraints need proving from them.
+		 */
+		Progress ensure_promised(Walk& walk, const Declaration* generic, EarlyCheck& check) {
+			NameRegistry& names = walk.executor.program_info->names;
+			{
+				std::scoped_lock<std::mutex> lock(names.mutex);
+				if (check.promised) {
+					return Progress::DONE;
+				}
+			}
+			std::map<std::string, Argument> parameters = arguments_of(generic, check.arguments, check.values);
+			Walk inside = walk_in(walk, generic);
+			for (const auto& [name, parameter] : generic_parameters(generic)) {
+				inside.locals.push_back(intern(name));
+			}
+			Analysis analysis{ walk };
+			Promises promised;
+			for (const auto& [name, parameter] : generic_parameters(generic)) {
+				if (!generic_parameter_is_constrained(names, generic, parameter)) {
+					continue;
+				}
+				Promises each;
+				Progress progress = promise_expression(analysis, inside, generic, parameters, parameter->children[1], &parameters[name], each);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				unite(promised, each);
+			}
+			if (ast::Node* where_clause = where_clause_of(generic); where_clause != nullptr) {
+				Promises each;
+				Progress progress = promise_expression(analysis, inside, generic, parameters, where_clause, nullptr, each);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				unite(promised, each);
+			}
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			if (check.promised) {
+				return Progress::DONE;
+			}
+			for (TypeInfoArchetype* archetype : check.archetypes) {
+				auto promise = promised.types.find(archetype);
+				archetype->capabilities = promise != promised.types.end() ? with_implied(promise->second.capabilities) : 0;
+				archetype->fields = promise != promised.types.end() ? promise->second.fields : decltype(archetype->fields){};
+				archetype->element = promise != promised.types.end() ? promise->second.element : nullptr;
+			}
+			check.atoms = promised.atoms;
+			check.promised = true;
+			return Progress::DONE;
 		}
 	}
 
@@ -802,7 +865,12 @@ namespace hemera {
 				: generic_parameter_is_value(names, generic, index);
 			++index;
 			if (is_value) {
-				value_names.insert(name);
+				// A function, like a HashMap's hash, doesn't size anything
+				const bool is_function = ast::NodeType::COLON == parameter->node_type && parameter->children.size() > 1
+					&& ast::NodeType::FUNCTION == parameter->children[1]->node_type;
+				if (!is_function) {
+					value_names.insert(name);
+				}
 				ConstantValue unknown{ ConstantValue::Kind::UNKNOWN, false, 0, name, generic };
 				arguments.push_back(nullptr);
 				values.push_back(unknown);
@@ -836,6 +904,8 @@ namespace hemera {
 			if (names.early_checks.contains(generic)) {
 				return;
 			}
+			check->arguments = arguments;
+			check->values = values;
 			names.early_checks[generic] = check;
 		}
 		Declaration* instance = instance_of(walk, generic, arguments, values);
@@ -852,47 +922,8 @@ namespace hemera {
 	}
 
 	Progress promise_archetypes(Walk& walk, Declaration* instance) {
-		NameRegistry& names = walk.executor.program_info->names;
-		std::shared_ptr<EarlyCheck> check = early_check_of(names, instance->generic);
-		if (check == nullptr) {
-			return Progress::DONE;
-		}
-		const Declaration* generic = instance->generic;
-		std::map<std::string, Argument> parameters = arguments_of(generic, instance);
-		Walk inside = walk_in(walk, generic);
-		for (const auto& [name, parameter] : generic_parameters(generic)) {
-			inside.locals.push_back(intern(name));
-		}
-		Analysis analysis{ walk };
-		Promises promised;
-		for (const auto& [name, parameter] : generic_parameters(generic)) {
-			if (!generic_parameter_is_constrained(names, generic, parameter)) {
-				continue;
-			}
-			Promises each;
-			Progress progress = promise_expression(analysis, inside, generic, parameters, parameter->children[1], &parameters[name], each);
-			if (progress != Progress::DONE) {
-				return progress;
-			}
-			unite(promised, each);
-		}
-		if (ast::Node* where_clause = where_clause_of(generic); where_clause != nullptr) {
-			Promises each;
-			Progress progress = promise_expression(analysis, inside, generic, parameters, where_clause, nullptr, each);
-			if (progress != Progress::DONE) {
-				return progress;
-			}
-			unite(promised, each);
-		}
-		std::scoped_lock<std::mutex> lock(names.mutex);
-		for (TypeInfoArchetype* archetype : check->archetypes) {
-			auto promise = promised.types.find(archetype);
-			archetype->capabilities = promise != promised.types.end() ? with_implied(promise->second.capabilities) : 0;
-			archetype->fields = promise != promised.types.end() ? promise->second.fields : decltype(archetype->fields){};
-			archetype->element = promise != promised.types.end() ? promise->second.element : nullptr;
-		}
-		check->atoms = promised.atoms;
-		return Progress::DONE;
+		std::shared_ptr<EarlyCheck> check = early_check_of(walk.executor.program_info->names, instance->generic);
+		return check != nullptr ? ensure_promised(walk, instance->generic, *check) : Progress::DONE;
 	}
 
 	bool early_check_failed(NameRegistry& names, const Declaration* generic) {
@@ -921,6 +952,10 @@ namespace hemera {
 		std::shared_ptr<EarlyCheck> have = owner != nullptr ? early_check_of(names, owner) : nullptr;
 		if (have == nullptr) {
 			return Progress::DONE;
+		}
+		Progress promised = ensure_promised(walk, owner, *have);
+		if (promised != Progress::DONE) {
+			return promised;
 		}
 		{
 			std::scoped_lock<std::mutex> lock(names.mutex);

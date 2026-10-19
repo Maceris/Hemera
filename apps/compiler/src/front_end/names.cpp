@@ -1339,7 +1339,10 @@ namespace hemera {
 			if (is_value && ConstantValue::Kind::UNKNOWN == values[i].kind) {
 				key += std::format("@{} ", static_cast<const void*>(values[i].function));
 			}
-			name += (i > 0 ? ", " : "") + (is_value ? constant_text(values[i]) : to_string(arguments[i]));
+			// A function by its name alone, like HashMap[string, int, hash_string]
+			const bool is_function = is_value && ConstantValue::Kind::FUNCTION == values[i].kind && values[i].function != nullptr;
+			name += (i > 0 ? ", " : "") + (is_function ? std::string(std::string_view(*values[i].function->name))
+				: is_value ? constant_text(values[i]) : to_string(arguments[i]));
 		}
 		name += "]";
 		NameRegistry& names = walk.executor.program_info->names;
@@ -2085,6 +2088,68 @@ namespace hemera {
 		return Progress::FAILED;
 	}
 
+	/*
+	 * A generic function named with its arguments, like hash_integer[int]: that instance, as a function
+	 * constant, for a compile-time parameter like a HashMap's hash (docs/types.md, Values in Generic Lists).
+	 */
+	static Progress evaluate_instance(Walk& walk, ast::Node* node, ConstantValue& result) {
+		ast::Node* qualifier = nullptr;
+		ast::Node* tag = nullptr;
+		for (size_t i = 0; i < node->children.size(); ++i) {
+			ast::Node* child = node->children[i];
+			if (ast::NodeType::DOT_ACCESS == child->node_type && i + 1 < node->children.size() && qualifier == nullptr) {
+				qualifier = node->children[i + 1];
+			}
+			if (ast::NodeType::GENERIC_TAG == child->node_type) {
+				tag = child;
+			}
+		}
+		bool head_was_package = false;
+		Progress progress = qualifier != nullptr
+			? require_qualified(walk, node, node->value.value, qualifier, Need::DECLARED, head_was_package)
+			: require(walk, node, node->value.value, Need::DECLARED);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		auto bound = walk.bindings.find(head_was_package ? qualifier : node);
+		Declaration* generic = bound != walk.bindings.end() ? bound->second : nullptr;
+		ast::Node* function = generic != nullptr && DeclarationKind::FUNCTION == generic->kind ? generic_node(generic) : nullptr;
+		bool is_generic = false;
+		for (ast::Node* child : function != nullptr ? function->children : MyVector<ast::Node*>{}) {
+			is_generic = is_generic || ast::NodeType::GENERIC_TAG == child->node_type;
+		}
+		if (!is_generic || tag == nullptr) {
+			report_not_constant(walk.file_path, node, "only a generic function can be named with its arguments here");
+			return Progress::FAILED;
+		}
+		std::vector<ast::Node*> nodes(tag->children.begin(), tag->children.end());
+		for (ast::Node* argument : nodes) {
+			progress = walk_node(walk, argument, Need::DECLARED);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
+		std::vector<TypeInfo*> arguments;
+		std::vector<ConstantValue> values;
+		progress = generic_type_arguments(walk, generic, nodes, [&](ast::Node* argument, TypeInfo*& type) {
+			return type_of(walk, argument, Need::DECLARED, type);
+		}, arguments, values);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		Declaration* instance = instance_of(walk, generic, arguments, values);
+		progress = check_constraints(walk, node, generic, instance);
+		if (progress == Progress::DONE) {
+			progress = require_resolved(walk, node, instance, Need::RESOLVED);
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		result.kind = ConstantValue::Kind::FUNCTION;
+		result.function = instance;
+		return Progress::DONE;
+	}
+
 	static Progress evaluate(Walk& walk, ast::Node* node, ConstantValue& result) {
 		const TokenType token = node->value.type;
 		if (TokenType::KEYWORD_TRUE == token || TokenType::KEYWORD_FALSE == token) {
@@ -2114,8 +2179,24 @@ namespace hemera {
 		if (runs_code(node)) {
 			return evaluate_expression_by_running(walk, node, result);
 		}
-		// A name, or one in a type's position, like count in u8[count]
-		if (ast::NodeType::IDENTIFIER == type || (ast::NodeType::TYPE == type && node->children.empty())) {
+		// A generic function's instance, like hash_integer[int]
+		if (ast::NodeType::IDENTIFIER == type || ast::NodeType::TYPE == type) {
+			bool tagged = false;
+			bool called = false;
+			for (const ast::Node* child : node->children) {
+				tagged = tagged || ast::NodeType::GENERIC_TAG == child->node_type;
+				called = called || ast::NodeType::PAREN_GROUP == child->node_type;
+			}
+			if (tagged && !called) {
+				return evaluate_instance(walk, node, result);
+			}
+		}
+		// A name, or one in a type's position, like count in u8[count] or a function in HashMap[string, int, maps.hash_string]
+		bool qualified_name = ast::NodeType::TYPE == type && !node->children.empty();
+		for (size_t i = 0; i < node->children.size(); ++i) {
+			qualified_name = qualified_name && node->children[i]->node_type == (i % 2 == 0 ? ast::NodeType::DOT_ACCESS : ast::NodeType::IDENTIFIER);
+		}
+		if (ast::NodeType::IDENTIFIER == type || (ast::NodeType::TYPE == type && (node->children.empty() || qualified_name))) {
 			return evaluate_name(walk, node, result);
 		}
 		if (ast::NodeType::PAREN_GROUP == type && node->children.size() == 1) {

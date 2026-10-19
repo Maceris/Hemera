@@ -8,6 +8,7 @@ package generics_sweep
 import runtime from "base"
 import concurrency from "std"
 import containers from "std"
+import maps from "std"
 import memory from "std"
 import os from "std"
 
@@ -99,6 +100,17 @@ instantiate_all :: fn(number: int, point: Point) {
     _ = concurrency.channel_send(channel, number)
     received, open :: concurrency.channel_receive(channel)
     concurrency.channel_close(channel)
+    // std/maps
+    words : maps.HashMap[string, Point, maps.hash_string]
+    maps.map_put(&words, text, point)
+    _ = maps.map_get(&words, text)
+    _ = maps.map_has(&words, text)
+    _ = maps.map_remove(&words, text)
+    maps.map_clear(&words)
+    maps.map_free(&words)
+    numbers_by_number : maps.HashMap[int, int, maps.hash_integer[int]]
+    maps.map_put(&numbers_by_number, number, number)
+    maps.map_free(&numbers_by_number)
     // std/os
     _ = os.as_result(number, null)
 }

@@ -27,6 +27,7 @@ TESTS = [
     ("threads", ["--stack-check=morestack"], 42),
     ("heap", [], 42),
     ("containers", [], 42),
+    ("maps", [], 42),
     ("output", [], 42),
     ("library", [], 42),
     ("arrays", [], 42),

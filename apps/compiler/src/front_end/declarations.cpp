@@ -1523,6 +1523,29 @@ namespace hemera {
 						return type_error(walk, ErrorCode::E4014, parameter, std::format("{} takes a {}, not {}",
 							name, to_string(declared), constant_text(given)));
 					}
+					// A function given has to take and give what the parameter says, like a HashMap's hash
+					if (TypeInfoVariant::FUNCTION == kind->variant && ConstantValue::Kind::FUNCTION == given.kind && given.function != nullptr) {
+						Progress resolved = require_resolved(walk, parameter, given.function, Need::RESOLVED);
+						if (resolved != Progress::DONE) {
+							return resolved;
+						}
+						auto wanted = static_cast<TypeInfoFunction const*>(kind);
+						auto actual = given.function->value_type != nullptr
+							? static_cast<TypeInfoFunction const*>(get_base_type(given.function->value_type)) : nullptr;
+						bool matches = actual != nullptr && TypeInfoVariant::FUNCTION == actual->variant
+							&& actual->input.size() == wanted->input.size() && actual->output.size() == wanted->output.size();
+						for (size_t i = 0; matches && i < wanted->input.size(); ++i) {
+							matches = same_type(wanted->input[i].type, actual->input[i].type);
+						}
+						for (size_t i = 0; matches && i < wanted->output.size(); ++i) {
+							matches = same_type(wanted->output[i].type, actual->output[i].type);
+						}
+						if (!matches) {
+							return type_error(walk, ErrorCode::E4014, parameter, std::format("{}'s {} takes a {}, not {}, a {}",
+								name_text(instance->name), name, to_string(declared), name_text(given.function->name),
+								actual != nullptr ? to_string(actual) : "function"));
+						}
+					}
 				}
 				// A type, or a compile-time parameter's value
 				if (instance->generic_arguments[index] == nullptr) {

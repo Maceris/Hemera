@@ -498,6 +498,21 @@ ring : Ring[u8, PAGE_SIZE / 2]
 A generic type whose only argument is an integer, like `Bits[64]`, means `Bits` with the argument 64 when `Bits` is
 generic, and an array of 64 `Bits` otherwise.
 
+A value can be a function, for what a generic needs done to its types. With no overloading, functions are named for
+what they take, so the generic is given the one to use rather than finding one by name, like std/maps' `HashMap`:
+
+```
+HashMap :: struct[K: compiler.Equatable, V, hash: fn(key: K) -> u64] { ... }
+
+ages : maps.HashMap[string, int, maps.hash_string]
+squares : maps.HashMap[int, int, maps.hash_integer[int]]
+```
+
+* The function given has to take and give exactly what the parameter says, with the other parameters filled in:
+  `HashMap[string, int, hash_wrong]`, for a `hash_wrong` returning `u32`, is an error (E4014).
+* A generic function is given as one of its instances, named with its arguments, like `hash_integer[int]`.
+* In the generic, it's called like any function: `hash(key)`.
+
 ### Constraints
 
 A generic says what it needs from its parameters with constraints, in its generic list, a `where` clause after its

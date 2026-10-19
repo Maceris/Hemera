@@ -153,6 +153,12 @@ TEST(Hosted, UsesContainers)
 	run_hosted("containers", hemera::TargetStackCheck::Off);
 }
 
+// std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
+TEST(Hosted, UsesHashMaps)
+{
+	run_hosted("maps", hemera::TargetStackCheck::Off);
+}
+
 /*
  * std/io's printing, to standard output and error, and the standard logger the hosted context starts
  * with: what the program writes is in output.txt and error.txt in its scenario folder.
