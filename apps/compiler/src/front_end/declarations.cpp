@@ -91,6 +91,9 @@ namespace hemera {
 					type = ast::NodeType::STRUCT == value_type
 						? static_cast<TypeInfo*>(make_type<TypeInfoStruct>(names, declaration->name))
 						: static_cast<TypeInfo*>(make_type<TypeInfoUnion>(names, declaration->name));
+					if (ast::NodeType::STRUCT == value_type && declaration->generic != nullptr) {
+						static_cast<TypeInfoStruct*>(type)->instance = declaration;
+					}
 				}
 			}
 			else if (ast::NodeType::ENUM == value_type) {
@@ -154,6 +157,137 @@ namespace hemera {
 		return derived_type(walk,
 			std::format("ptr {} {} {} {}", static_cast<const void*>(base), is_mutable, is_relative, size),
 			[&] { return new TypeInfoPointer(base, is_relative, is_mutable, size); });
+	}
+
+	bool is_mutable_argument(TypeInfo const* type) {
+		return type != nullptr && TypeInfoVariant::ALIAS == type->variant && static_cast<TypeInfoAlias const*>(type)->mutable_argument;
+	}
+
+	TypeInfo* mutable_argument(Walk& walk, TypeInfo* base) {
+		if (base == nullptr || is_mutable_argument(base)) {
+			return base;
+		}
+		return derived_type(walk, std::format("mut {}", static_cast<const void*>(base)), [&] {
+			auto alias = new TypeInfoAlias(intern("mut " + to_string(base)), false);
+			alias->base_type = base;
+			alias->mutable_argument = true;
+			if (base->complete) {
+				lay_out_alias(alias);
+			}
+			return alias;
+		});
+	}
+
+	void bind_generic_type(Walk& walk, const std::string& name, TypeInfo* argument) {
+		if (is_mutable_argument(argument)) {
+			walk.generic_types[name] = static_cast<TypeInfoAlias*>(argument)->base_type;
+			walk.generic_mutable.insert(name);
+			return;
+		}
+		walk.generic_types[name] = argument;
+		walk.generic_mutable.erase(name);
+	}
+
+	// Whether a type node names a generic parameter given with mut, like T in ptr[T] in SharedPtr[mut Buffer].
+	static bool names_mutable_parameter(const Walk& walk, const ast::Node* node) {
+		return (ast::NodeType::TYPE == node->node_type || ast::NodeType::IDENTIFIER == node->node_type) && node->value.value != nullptr
+			&& walk.generic_mutable.contains(std::string(std::string_view(*node->value.value)));
+	}
+
+	/*
+	 * Whether a generic struct's parameter is only ever pointed to in its fields, like T in a struct holding
+	 * a ptr[T]: then an instance given mut T has the same layout as one given T.
+	 */
+	static bool used_by_value(const ast::Node* node, std::string_view name, bool under_pointer) {
+		if ((ast::NodeType::TYPE == node->node_type || ast::NodeType::IDENTIFIER == node->node_type) && node->value.value != nullptr) {
+			const std::string_view text(*node->value.value);
+			if (text == name && !under_pointer) {
+				return true;
+			}
+			const bool pointer = text == "ptr" || text.starts_with("relptr");
+			for (const ast::Node* child : node->children) {
+				if (used_by_value(child, name, under_pointer || (pointer && ast::NodeType::GENERIC_TAG == child->node_type))) {
+					return true;
+				}
+			}
+			return false;
+		}
+		for (const ast::Node* child : node->children) {
+			if (used_by_value(child, name, under_pointer)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static InternedString generic_parameter_name(const ast::Node* parameter);
+
+	static bool only_pointed_to(const Declaration* generic, std::string_view name) {
+		ast::Node* value = generic_node(generic);
+		if (value == nullptr || ast::NodeType::STRUCT != value->node_type) {
+			return false;
+		}
+		for (const ast::Node* child : value->children) {
+			if (ast::NodeType::DEFINITION == child->node_type) {
+				for (size_t i = 1; i < child->children.size(); ++i) {
+					if (used_by_value(child->children[i], name, false)) {
+						return false;
+					}
+				}
+			}
+			else if (ast::NodeType::USING == child->node_type) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool converts_to_read_only(TypeInfo const* from, TypeInfo const* to) {
+		from = get_base_type_or_alias(from);
+		to = get_base_type_or_alias(to);
+		if (from == nullptr || to == nullptr || from == to || TypeInfoVariant::STRUCT != from->variant
+			|| TypeInfoVariant::STRUCT != to->variant) {
+			return false;
+		}
+		const Declaration* a = static_cast<TypeInfoStruct const*>(from)->instance;
+		const Declaration* b = static_cast<TypeInfoStruct const*>(to)->instance;
+		if (a == nullptr || b == nullptr || a->generic != b->generic || a->generic_arguments.size() != b->generic_arguments.size()) {
+			return false;
+		}
+		std::vector<std::string> names;
+		ast::Node* value = generic_node(a->generic);
+		for (const ast::Node* child : value != nullptr ? value->children : MyVector<ast::Node*>{}) {
+			if (ast::NodeType::GENERIC_TAG == child->node_type) {
+				for (const ast::Node* parameter : child->children) {
+					names.push_back(name_text(generic_parameter_name(parameter)));
+				}
+			}
+		}
+		bool loses_mut = false;
+		for (size_t i = 0; i < a->generic_arguments.size(); ++i) {
+			TypeInfo* given = a->generic_arguments[i];
+			TypeInfo* wanted = b->generic_arguments[i];
+			if (given == nullptr || wanted == nullptr) {
+				// Values: the same
+				if (given != wanted || i >= a->generic_values.size() || i >= b->generic_values.size()
+					|| constant_text(a->generic_values[i]) != constant_text(b->generic_values[i])) {
+					return false;
+				}
+				continue;
+			}
+			if (!same_type(given, wanted)) {
+				return false;
+			}
+			if (is_mutable_argument(given) == is_mutable_argument(wanted)) {
+				continue;
+			}
+			// Only from mut to without it, and only for a parameter that's only pointed to
+			if (!is_mutable_argument(given) || i >= names.size() || !only_pointed_to(a->generic, names[i])) {
+				return false;
+			}
+			loses_mut = true;
+		}
+		return loses_mut;
 	}
 
 	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count) {
@@ -550,8 +684,12 @@ namespace hemera {
 					const std::string_view text(*name);
 					const size_t size = text == "ptr" ? POINTER_SIZE
 						: static_cast<size_t>(std::stoi(std::string(text.substr(6)))) / 8;
-					current = pointer_to(walk, target, has_child(part.arguments[0], ast::NodeType::MUTABLE),
-						text != "ptr", size);
+					TypeInfo const* pointed = get_base_type(target);
+					const bool archetype_mutable = pointed != nullptr && TypeInfoVariant::ARCHETYPE == pointed->variant
+						&& (static_cast<TypeInfoArchetype const*>(pointed)->capabilities & CAPABILITY_MUTABLE) != 0;
+					const bool is_mutable = has_child(part.arguments[0], ast::NodeType::MUTABLE)
+						|| names_mutable_parameter(walk, part.arguments[0]) || archetype_mutable;
+					current = pointer_to(walk, target, is_mutable, text != "ptr", size);
 				}
 				else {
 					std::vector<TypeInfo*> arguments;
@@ -1559,6 +1697,9 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+			if (has_child(argument, ast::NodeType::MUTABLE) || names_mutable_parameter(walk, argument)) {
+				type = mutable_argument(walk, type);
+			}
 			arguments.push_back(type);
 			values.push_back({});
 		}
@@ -1623,7 +1764,7 @@ namespace hemera {
 					walk.generic_values[name] = instance->generic_values[index];
 				}
 				else {
-					walk.generic_types[name] = instance->generic_arguments[index];
+					bind_generic_type(walk, name, instance->generic_arguments[index]);
 				}
 				++index;
 			}

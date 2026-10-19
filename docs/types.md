@@ -545,11 +545,12 @@ HasCount #constraint :: fn(T: type) {
 | `require_integer(T)`, `require_signed(T)`, `require_unsigned(T)`, `require_float(T)`, `require_numeric(T)` | `T` is that kind of number |
 | `require_field(T, name, type)` | `T` is a struct with that field, or a view or array, whose `count` is a `usize` |
 | `require_view(T, element)` | `T` is an array, view or dynamic array of `element`: `for`, indexing and `count` work on it |
+| `require_mutable(T)` | `T` was given with `mut` (see [Mutability in Type Arguments](#mutability-in-type-arguments)) |
 | `require(condition, message, values...)` | `condition` is true; otherwise `message`, with `%` filled in, says why |
 | `note(message, values...)` | Adds to why the last requirement isn't met, like what to do about it |
 
 `base/compiler` has the constraints most generics need: `Equatable`, `Ordered`, `Integer`, `Float`, `Numeric`,
-`ViewOf(C, E)`, and for value parameters, `AtLeastOne` and `PowerOfTwo`.
+`ViewOf(C, E)`, `Mutable`, and for value parameters, `AtLeastOne` and `PowerOfTwo`.
 
 * **In a generic list,** `T: C` constrains the type parameter `T`, and means `C(T)`. Whether `name: X` is a constrained
   type or a value of type `X` (see [Values in Generic Lists](#values-in-generic-lists)) depends on what `X` is: a
@@ -631,6 +632,7 @@ it:
 | `require_float(T)` | A number's, and float literals |
 | `require_field(T, name, type)` | `.name`, of `type` |
 | `require_view(T, element)` | `for`, indexing and `count`, with elements of `element` |
+| `require_mutable(T)` | Changing what a `ptr[T]` points to |
 
 * **Combining** promises like it checks: `A && B` promises what either does, and `A || B` only what both do, since
   either may be the one that holds. `require_any` is the same as `||`, so `require_any(Integer(T), Float(T))`
@@ -865,6 +867,30 @@ only reads it. An immutable struct can't point its fields elsewhere, but can sti
 `context.assertion_handler`; `new_aligned` and `new_array` return the `AllocatorError` instead, for code that handles it. A function that changes something it's given
 takes a pointer to it, including dynamic arrays (`array_add(&names, name)`), since a value parameter is a copy.
 Iterating through a pointer to an array dereferences it explicitly: `for name in names^`.
+
+### Mutability in Type Arguments
+
+A generic's type argument can be given with `mut`, so the generic can change what it points to:
+
+```
+Box :: struct[T] {
+    value : ptr[T],
+}
+
+changeable : Box[mut Config]     // value is a ptr[mut Config]
+read_only : Box[Config]          // value is a ptr[Config]
+```
+
+* **Inside the generic,** the parameter is the type wherever it's held by value, and the `mut` applies wherever it's
+  pointed to: `ptr[T]` is `ptr[mut Config]`. Given on to another generic, like `Inner[T]`, the `mut` goes with it.
+* **They're different instances:** `Box[Config]` and `Box[mut Config]` are two types, with their own functions.
+* **Becoming read-only.** An instance given `mut` is accepted where the same one without it is wanted, when the
+  parameters that differ are only ever pointed to in the struct's fields, so the two are laid out the same:
+  `read_only = changeable` works for `Box`, but not for a struct holding a `T` in place.
+* **Constraints** can ask for it: `T: compiler.Mutable` is satisfied by `mut Config`, and in a body checked before any
+  instance (see [Checked Bodies](#checked-bodies)), writing through a `ptr[T]` needs it.
+* `mut` is written in a type's position, like `Box[mut Config]` or `f[mut Config](box)`; a constraint called in an
+  expression, like `compiler.Mutable(mut Config)` in `#assert`, can't take it yet.
 
 ## Result Types
 

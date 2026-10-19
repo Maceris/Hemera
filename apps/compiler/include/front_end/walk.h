@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,11 @@ namespace hemera {
 		/// In an instance of a generic function, the value given for each compile-time parameter.
 		/// </summary>
 		std::map<std::string, ConstantValue> generic_values{};
+		/// <summary>
+		/// The generic parameters given with mut, like T in SharedPtr[mut Buffer]: ptr[T] can change what it
+		/// points to (docs/types.md, Mutability).
+		/// </summary>
+		std::set<std::string> generic_mutable{};
 	};
 
 	/// <summary>
@@ -131,6 +137,23 @@ namespace hemera {
 	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
 
 	TypeInfo* pointer_to(Walk& walk, TypeInfo* base, bool is_mutable, bool is_relative, size_t size);
+
+	/// <summary>
+	/// A generic argument written with mut, like mut Buffer: an alias of base that remembers it.
+	/// </summary>
+	TypeInfo* mutable_argument(Walk& walk, TypeInfo* base);
+	bool is_mutable_argument(TypeInfo const* type);
+
+	/// <summary>
+	/// Whether an instance of a generic struct given mut becomes one given without it, like SharedPtr[mut Buffer]
+	/// to SharedPtr[Buffer]: the parameters that differ are only pointed to, so the layout is the same.
+	/// </summary>
+	bool converts_to_read_only(TypeInfo const* from, TypeInfo const* to);
+
+	/// <summary>
+	/// A generic parameter bound in walk to argument: the type itself, with mut remembered by name.
+	/// </summary>
+	void bind_generic_type(Walk& walk, const std::string& name, TypeInfo* argument);
 	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count);
 	Progress optional_of(Walk& walk, ast::Node* where, TypeInfo* type, Need need, TypeInfo*& result);
 

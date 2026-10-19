@@ -39,6 +39,9 @@ require_field : fn(T: type, name: string, field_type: type) : ---
 // T is an array, view or dynamic array of element: it can be gone through with for, indexed, and has a count.
 require_view : fn(T: type, element: type) : ---
 
+// T was given with mut, like SharedPtr[mut Buffer], so ptr[T] can change what it points to.
+require_mutable : fn(T: type) : ---
+
 /*
  * condition holds, or the constraint isn't met, saying format_string with each % filled in, like a
  * log message: for anything the others don't cover, like a value parameter's range.
@@ -84,6 +87,11 @@ Float #constraint :: fn(T: type) {
 // An integer or a float.
 Numeric #constraint :: fn(T: type) {
     require_numeric(T)
+}
+
+// Given with mut: what a ptr[T] points to can be changed.
+Mutable #constraint :: fn(T: type) {
+    require_mutable(T)
 }
 
 // An array, view or dynamic array of E.

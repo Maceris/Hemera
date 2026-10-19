@@ -165,6 +165,12 @@ TEST(Hosted, UsesThroughFields)
 	run_hosted("using_fields", hemera::TargetStackCheck::Off);
 }
 
+// Generic arguments given with mut, and instances given mut becoming read-only (docs/types.md, Mutability).
+TEST(Hosted, GivesMutToGenerics)
+{
+	run_hosted("mut_arguments", hemera::TargetStackCheck::Off);
+}
+
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {

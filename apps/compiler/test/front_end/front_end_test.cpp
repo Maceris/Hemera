@@ -854,6 +854,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "function_argument_wrong", hemera::ErrorCode::E4014 },
 		{ "using_not_struct", hemera::ErrorCode::E4014 },
 		{ "using_read_only", hemera::ErrorCode::E4016 },
+		{ "mut_argument_read_only", hemera::ErrorCode::E4016 },
+		{ "read_only_held", hemera::ErrorCode::E4015 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },
@@ -974,7 +976,7 @@ TEST(FrontEnd, ReportsWhatsNotPromised)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("checked_bodies_unpromised"));
-	ASSERT_EQ(errors.size(), 7) << codes(errors);
+	ASSERT_EQ(errors.size(), 8) << codes(errors);
 	for (hemera::ErrorCode error : errors) {
 		EXPECT_EQ(error, hemera::ErrorCode::E4033);
 	}
@@ -989,6 +991,7 @@ TEST(FrontEnd, ReportsWhatsNotPromised)
 		".count on T, which count_of's constraints don't promise; promise it with compiler.require_field(T, \"count\", ...) in a constraint",
 		"a for loop on C, which each's constraints don't promise; constrain it with compiler.ViewOf(C, ...)",
 		"largest[T] needs what pick's constraints don't promise\n    T needs Integer(T)\n    T needs Float(T)",
+		"writing through a pointer on T, which overwrite's constraints don't promise; constrain T with compiler.Mutable",
 		"scaled[factor] needs what other's constraints don't promise\n    its where clause needs PowerOfTwo(factor)",
 	}) {
 		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;

@@ -311,6 +311,10 @@ namespace hemera {
 		if (same_type(from, to) || can_implicitly_convert_to(from, to)) {
 			return true;
 		}
+		// A changeable share becomes a read-only one, like SharedPtr[mut Buffer] to SharedPtr[Buffer]
+		if (converts_to_read_only(from, to)) {
+			return true;
+		}
 		TypeInfo const* source = get_base_type_or_alias(from);
 		TypeInfo const* target = get_base_type_or_alias(to);
 		if (TypeInfoVariant::ANY == target->variant) {
@@ -1431,7 +1435,8 @@ namespace hemera {
 			else {
 				bound[generics[i]] = callee.generic_arguments[i];
 			}
-			if (i >= needed_before) {
+			// A mut argument says more than the arguments would, so it isn't given twice
+			if (i >= needed_before && !is_mutable_argument(callee.generic_arguments[i])) {
 				explicit_names.insert(generics[i]);
 			}
 		}
@@ -1910,6 +1915,15 @@ namespace hemera {
 						progress = check_type(checker, argument, Need::DECLARED, argument_type);
 						if (progress != Progress::DONE) {
 							break;
+						}
+						// Given with mut, like poke[mut int], or a parameter that was (docs/types.md, Mutability in Type Arguments)
+						bool given_mut = (ast::NodeType::IDENTIFIER == argument->node_type || ast::NodeType::TYPE == argument->node_type)
+							&& checker.walk.generic_mutable.contains(text_of(argument->value.value));
+						for (const ast::Node* part : argument->children) {
+							given_mut = given_mut || ast::NodeType::MUTABLE == part->node_type;
+						}
+						if (given_mut) {
+							argument_type = mutable_argument(checker.walk, argument_type);
 						}
 						value.generic_arguments.push_back(argument_type);
 					}
@@ -2837,6 +2851,13 @@ namespace hemera {
 		}
 		if (!target.is_location) {
 			error_at(checker, ErrorCode::E4016, where, std::format("{} isn't a location to assign to", describe(target)));
+			return false;
+		}
+		// A type parameter, in a body checked before any instance, changes only if it's promised mut
+		if (!target.is_mutable && archetype_of(target.type) != nullptr) {
+			TypeInfoArchetype const* archetype = archetype_of(target.type);
+			not_promised(checker, where, archetype, "writing through a pointer", std::format("constrain {} with compiler.Mutable",
+				to_string(archetype)));
 			return false;
 		}
 		if (!target.is_mutable) {
@@ -4344,7 +4365,7 @@ namespace hemera {
 			const std::vector<std::string> names = generic_names(function_node_);
 			for (size_t i = 0; i < names.size() && i < function->generic_arguments.size(); ++i) {
 				if (function->generic_arguments[i] != nullptr) {
-					walk.generic_types[names[i]] = function->generic_arguments[i];
+					bind_generic_type(walk, names[i], function->generic_arguments[i]);
 				}
 				else if (i < function->generic_values.size()) {
 					walk.generic_values[names[i]] = function->generic_values[i];

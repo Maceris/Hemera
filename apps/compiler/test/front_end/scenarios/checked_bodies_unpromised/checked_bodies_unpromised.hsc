@@ -53,5 +53,10 @@ other :: fn[factor: usize](value: usize) -> usize where compiler.AtLeastOne(fact
     return scaled[factor](value)
 }
 
+// Writing through a ptr[T] needs T given with mut
+overwrite :: fn[T: compiler.Equatable](at: ptr[T], value: T) {
+    at^ = value
+}
+
 main :: fn() {
 }

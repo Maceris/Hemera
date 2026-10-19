@@ -89,6 +89,8 @@ namespace hemera {
 		CAPABILITY_SIGNED = 1u << 4,
 		CAPABILITY_UNSIGNED = 1u << 5,
 		CAPABILITY_FLOAT = 1u << 6,
+		// Given with mut, so ptr[T] can change what it points to
+		CAPABILITY_MUTABLE = 1u << 7,
 	};
 
 	/// <summary>
@@ -123,6 +125,11 @@ namespace hemera {
 		TypeInfo* base_type;
 		InternedString name;
 		bool distinct;
+		/// <summary>
+		/// A generic argument written with mut, like the mut Buffer in SharedPtr[mut Buffer]: the same type as
+		/// what it aliases, except that pointers to it in the generic can change it (docs/types.md, Mutability).
+		/// </summary>
+		bool mutable_argument = false;
 
 		TypeInfoAlias(InternedString name, bool distinct);
 	};
@@ -270,6 +277,10 @@ namespace hemera {
 	struct TypeInfoStruct : public TypeInfo {
 		InternedString name;
 		std::vector<StructMember> members;
+		/// <summary>
+		/// For an instance of a generic struct, its declaration, with the generic and the arguments.
+		/// </summary>
+		const struct Declaration* instance = nullptr;
 		/// <summary>
 		/// From #align(n), or 0 for the natural alignment.
 		/// </summary>

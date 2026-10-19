@@ -370,6 +370,7 @@ namespace hemera {
 						: requirement == "require_unsigned" ? CAPABILITY_UNSIGNED
 						: requirement == "require_float" ? CAPABILITY_FLOAT
 						: requirement == "require_numeric" ? CAPABILITY_ARITHMETIC
+						: requirement == "require_mutable" ? CAPABILITY_MUTABLE
 						: 0;
 					promise.capabilities = with_implied(promise.capabilities | capability);
 					if (requirement == "require_field" && given.size() == 3 && given[2].is_type) {
@@ -563,6 +564,7 @@ namespace hemera {
 						: requirement == "require_unsigned" ? CAPABILITY_UNSIGNED
 						: requirement == "require_float" ? CAPABILITY_FLOAT
 						: requirement == "require_numeric" ? CAPABILITY_ARITHMETIC
+						: requirement == "require_mutable" ? CAPABILITY_MUTABLE
 						: 0;
 					bool met = has_capability(given[0], capability);
 					TypeInfoArchetype* archetype = given[0].is_type ? archetype_of(given[0].type) : nullptr;

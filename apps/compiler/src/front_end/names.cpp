@@ -1276,6 +1276,12 @@ namespace hemera {
 		const Declaration* generic = instance->generic != nullptr ? instance->generic : instance;
 		ast::Node* value = generic_node(generic);
 		Progress progress = Progress::FAILED;
+		if (is_early_instance(instance)) {
+			Progress promised = promise_archetypes(walk, instance);
+			if (promised != Progress::DONE) {
+				return finish_resolving(executor, { instance }, promised);
+			}
+		}
 		if (value != nullptr && (ast::NodeType::KEYWORD_ALIAS == value->node_type || ast::NodeType::KEYWORD_DISTINCT == value->node_type)) {
 			// A generic alias: its parameters are on the alias word, and what it names comes after
 			progress = walk_definition(walk, generic->node);
@@ -1298,6 +1304,19 @@ namespace hemera {
 	Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type) {
 		if (type == nullptr || type->complete) {
 			return Progress::DONE;
+		}
+		// A generic argument written with mut is laid out as what it aliases, once that is
+		if (is_mutable_argument(type)) {
+			auto alias = static_cast<TypeInfoAlias*>(type);
+			Progress progress = require_complete(walk, where, alias->base_type);
+			if (progress == Progress::DONE && alias->base_type->complete) {
+				NameRegistry& names = walk.executor.program_info->names;
+				std::scoped_lock<std::mutex> lock(names.types_mutex);
+				if (!alias->complete) {
+					lay_out_alias(alias);
+				}
+			}
+			return progress;
 		}
 		NameRegistry& names = walk.executor.program_info->names;
 		std::scoped_lock<std::mutex> lock(names.mutex);
@@ -1334,7 +1353,8 @@ namespace hemera {
 		for (size_t i = 0; i < arguments.size(); ++i) {
 			const bool is_value = arguments[i] == nullptr && i < values.size();
 			key += is_value ? "=" + constant_text(values[i])
-				: std::format("{} ", static_cast<const void*>(get_base_type_or_alias(arguments[i])));
+				: std::format("{}{} ", is_mutable_argument(arguments[i]) ? "mut " : "",
+					static_cast<const void*>(get_base_type_or_alias(arguments[i])));
 			// An unknown value is its own generic's, like an archetype (docs/types.md, Checked Bodies)
 			if (is_value && ConstantValue::Kind::UNKNOWN == values[i].kind) {
 				key += std::format("@{} ", static_cast<const void*>(values[i].function));
@@ -1644,7 +1664,8 @@ namespace hemera {
 		}
 		std::string key = std::format("{}", static_cast<const void*>(asked.constraint));
 		for (size_t i = 0; i < asked.types.size(); ++i) {
-			key += asked.types[i] != nullptr ? std::format(" {}", static_cast<const void*>(get_base_type_or_alias(asked.types[i])))
+			key += asked.types[i] != nullptr ? std::format(" {}{}", is_mutable_argument(asked.types[i]) ? "mut " : "",
+				static_cast<const void*>(get_base_type_or_alias(asked.types[i])))
 				: " =" + (i < asked.values.size() ? constant_text(asked.values[i]) : std::string());
 		}
 		NameRegistry& names = walk.executor.program_info->names;

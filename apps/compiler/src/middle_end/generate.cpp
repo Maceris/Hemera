@@ -2962,10 +2962,13 @@ namespace hemera {
 	 * The address of a type's descriptor, made the first time it's asked for: a read-only TypeInfo,
 	 * or the struct for its variant that includes one, like a TypeInfoEnum. A type value is this
 	 * address, so two type values are equal when they're the same type. A plain alias is the type
-	 * it names; a distinct one has its own descriptor.
+	 * it names; a distinct one has its own descriptor, and so does a generic argument given with mut,
+	 * so a constraint can tell, like compiler.Mutable.
 	 */
 	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type) {
-		type = get_base_type_or_alias(type);
+		if (type == nullptr || !(TypeInfoVariant::ALIAS == type->variant && static_cast<const TypeInfoAlias*>(type)->mutable_argument)) {
+			type = get_base_type_or_alias(type);
+		}
 		auto iter = generator.descriptors.find(type);
 		if (iter != generator.descriptors.end()) {
 			return LLVM::AddressOfOp::create(generator.builder, generator.loc, iter->second);
@@ -7416,6 +7419,11 @@ namespace hemera {
 					unsatisfied->push_back(std::format("{}'s {} is {}, not {}", type_name, field, actual,
 						wanted != nullptr ? to_string(wanted) : "that"));
 				}
+			}
+			else if (name == "require_mutable") {
+				const bool given_mut = type != nullptr && TypeInfoVariant::ALIAS == type->variant
+					&& static_cast<const TypeInfoAlias*>(type)->mutable_argument;
+				require(given_mut, std::format("{} is given without mut, so what points to it can't change it", type_name));
 			}
 			else if (name == "require_view") {
 				// An array, view or dynamic array of element: what for loops, indexing and count need

@@ -261,7 +261,10 @@ namespace hemera {
 
 	const uint8_t* CompileTimeData::descriptor(const TypeInfo* type) {
 		std::scoped_lock<std::recursive_mutex> lock(mutex);
-		type = get_base_type_or_alias(type);
+		// A generic argument given with mut keeps its own, for constraints like compiler.Mutable
+		if (type == nullptr || !(TypeInfoVariant::ALIAS == type->variant && static_cast<const TypeInfoAlias*>(type)->mutable_argument)) {
+			type = get_base_type_or_alias(type);
+		}
 		if (type == nullptr) {
 			return nullptr;
 		}
