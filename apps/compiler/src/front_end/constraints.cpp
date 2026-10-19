@@ -480,6 +480,16 @@ namespace hemera {
 		if (generic == nullptr || instance == nullptr) {
 			return Progress::DONE;
 		}
+		/*
+		 * In a checked body, with its archetypes: whether its own constraints promise these
+		 * (docs/types.md, Checked Bodies). The early instance itself has only what they promise.
+		 */
+		if (is_early_instance(instance)) {
+			return Progress::DONE;
+		}
+		if (has_archetype_arguments(instance)) {
+			return quiet ? Progress::DONE : prove_constraints(walk, where, generic, instance);
+		}
 		NameRegistry& names = walk.executor.program_info->names;
 		{
 			std::scoped_lock<std::mutex> lock(names.mutex);

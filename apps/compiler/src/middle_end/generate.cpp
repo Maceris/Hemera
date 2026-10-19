@@ -2773,6 +2773,8 @@ namespace hemera {
 		switch (variant) {
 			case TypeInfoVariant::ALIAS: return "ALIAS";
 			case TypeInfoVariant::ANY: return "ANY";
+			// Archetypes are only checked against, never generated
+			case TypeInfoVariant::ARCHETYPE: return "VOID";
 			case TypeInfoVariant::ARRAY: return "ARRAY";
 			case TypeInfoVariant::BOOLEAN: return "BOOLEAN";
 			case TypeInfoVariant::CHAR: return "CHAR";
@@ -2814,6 +2816,7 @@ namespace hemera {
 			case TypeInfoVariant::STRUCT: return "TypeInfoStruct";
 			case TypeInfoVariant::UNION: return "TypeInfoUnion";
 			case TypeInfoVariant::ANY:
+			case TypeInfoVariant::ARCHETYPE:
 			case TypeInfoVariant::BOOLEAN:
 			case TypeInfoVariant::CHAR:
 			case TypeInfoVariant::COMPLEX:
@@ -2944,6 +2947,7 @@ namespace hemera {
 			}
 			// Only a variant and a size
 			case TypeInfoVariant::ANY:
+			case TypeInfoVariant::ARCHETYPE:
 			case TypeInfoVariant::BOOLEAN:
 			case TypeInfoVariant::CHAR:
 			case TypeInfoVariant::COMPLEX:
@@ -7242,6 +7246,7 @@ namespace hemera {
 			case TypeInfoVariant::QUATERNION: return "a quaternion";
 			case TypeInfoVariant::VOID: return "void";
 			case TypeInfoVariant::ALIAS: return "an alias";
+			case TypeInfoVariant::ARCHETYPE: return "a generic's type parameter";
 			}
 			return "a type";
 		}
@@ -7369,6 +7374,17 @@ namespace hemera {
 				else if (!matches) {
 					unsatisfied->push_back(std::format("{}'s {} is {}, not {}", type_name, field, actual,
 						wanted != nullptr ? to_string(wanted) : "that"));
+				}
+			}
+			else if (name == "require_view") {
+				// An array, view or dynamic array of element: what for loops, indexing and count need
+				const TypeInfo* wanted = described(call, call.arguments[1]);
+				if (TypeInfoVariant::ARRAY != variant) {
+					unsatisfied->push_back(std::format("{} is {}, not an array or view", type_name, kind));
+				}
+				else if (get_base_type_or_alias(static_cast<const TypeInfoArray*>(base_type)->element_type) != get_base_type_or_alias(wanted)) {
+					unsatisfied->push_back(std::format("{} holds {}, not {}", type_name,
+						to_string(static_cast<const TypeInfoArray*>(base_type)->element_type), wanted != nullptr ? to_string(wanted) : "that"));
 				}
 			}
 			else {

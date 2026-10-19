@@ -20,6 +20,14 @@ namespace hemera {
 
 	TypeInfo::~TypeInfo() = default;
 
+	TypeInfoArchetype::TypeInfoArchetype(InternedString name, InternedString generic)
+		: TypeInfo{ TypeInfoVariant::ARCHETYPE, POINTER_SIZE, POINTER_SIZE }
+		, name{ name }
+		, generic{ generic }
+	{
+		contains_pointers = true;
+	}
+
 	TypeInfoAlias::TypeInfoAlias(InternedString name, bool distinct)
 		: TypeInfo{ TypeInfoVariant::ALIAS, 0, 1 }
 		, base_type{ nullptr }
@@ -346,6 +354,9 @@ namespace hemera {
 		const TypeInfoVariant variant = type->variant;
 		if (TypeInfoVariant::ALIAS == variant) {
 			return std::string(std::string_view(*static_cast<TypeInfoAlias const*>(type)->name));
+		}
+		if (TypeInfoVariant::ARCHETYPE == variant) {
+			return std::string(std::string_view(*static_cast<TypeInfoArchetype const*>(type)->name));
 		}
 		if (TypeInfoVariant::STRUCT == variant) {
 			InternedString name = static_cast<TypeInfoStruct const*>(type)->name;

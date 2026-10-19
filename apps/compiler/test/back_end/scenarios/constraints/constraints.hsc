@@ -65,10 +65,11 @@ element_of :: fn(C: type) -> type {
     return u8
 }
 
-sum :: fn[C, E = element_of(C)](values: C) -> E where compiler.Numeric(E) {
-    total : E = 0
+// The total is the elements' type, unless it's given, like a u64 for bytes
+sum :: fn[C, E = element_of(C), Total = E](values: C) -> Total where compiler.ViewOf(C, E) && compiler.Numeric(E) && compiler.Numeric(Total) {
+    total : Total = 0
     for value in values {
-        total += cast[E](value)
+        total += cast[Total](value)
     }
     return total
 }
@@ -137,7 +138,7 @@ main :: fn() -> int {
     bytes[1] = 100
     view : u8[] = bytes
     // Given instead of derived, a u64 total doesn't wrap
-    if sum(view) != 44 || sum[u8[], u64](view) != 300 || bits_of(cast[u16](1)) != 16 {
+    if sum(view) != 44 || sum[u8[], u8, u64](view) != 300 || bits_of(cast[u16](1)) != 16 {
         return 7
     }
     linked : Linked[int]

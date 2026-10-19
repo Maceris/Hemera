@@ -1210,6 +1210,9 @@ namespace hemera {
 				}
 				else {
 					declaration->failed = true;
+					// Its body won't be checked, so what waits for that can go on
+					declaration->body_done = true;
+					wake_locked(*executor.global_data, names, body_key(declaration));
 				}
 				wake_locked(*executor.global_data, names, resolved_key(declaration));
 			}
@@ -1248,8 +1251,12 @@ namespace hemera {
 			return finish_resolving(executor, declarations, walked);
 		}
 		// Then its types, from what each name resolved to
-		return finish_resolving(executor, declarations,
-			compute_declaration(walk, declarations, definition));
+		Progress computed = compute_declaration(walk, declarations, definition);
+		// A constrained generic function's body is checked once before any instance (docs/types.md, Checked Bodies)
+		if (Progress::DONE == computed && DeclarationKind::FUNCTION == declarations[0]->kind) {
+			start_early_check(walk, declarations[0]);
+		}
+		return finish_resolving(executor, declarations, computed);
 	}
 
 	Progress resolve_instance(WorkThreadData& executor, Declaration* instance) {
@@ -1312,6 +1319,9 @@ namespace hemera {
 		if (ConstantValue::Kind::FUNCTION == value.kind && value.function != nullptr) {
 			return std::format("{}.{}", std::string_view(*value.function->package_path), std::string_view(*value.function->name));
 		}
+		if (ConstantValue::Kind::UNKNOWN == value.kind) {
+			return value.member;
+		}
 		return "." + value.member;
 	}
 
@@ -1325,6 +1335,10 @@ namespace hemera {
 			const bool is_value = arguments[i] == nullptr && i < values.size();
 			key += is_value ? "=" + constant_text(values[i])
 				: std::format("{} ", static_cast<const void*>(get_base_type_or_alias(arguments[i])));
+			// An unknown value is its own generic's, like an archetype (docs/types.md, Checked Bodies)
+			if (is_value && ConstantValue::Kind::UNKNOWN == values[i].kind) {
+				key += std::format("@{} ", static_cast<const void*>(values[i].function));
+			}
 			name += (i > 0 ? ", " : "") + (is_value ? constant_text(values[i]) : to_string(arguments[i]));
 		}
 		name += "]";
@@ -1747,6 +1761,16 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		return run_or_wait(walk, expression, evaluation, intern(std::string("a derived parameter")), value);
+	}
+
+	Progress wait_for_body(Walk& walk, ast::Node* where, Declaration* function) {
+		NameRegistry& names = walk.executor.program_info->names;
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		if (function->body_done || function->failed) {
+			return Progress::DONE;
+		}
+		park_locked(walk, names, body_key(function), where, function->name, nullptr);
+		return Progress::PARKED;
 	}
 
 	void finish_body(WorkThreadData& executor, Declaration* function) {

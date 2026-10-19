@@ -16,6 +16,11 @@ namespace hemera {
 	enum class TypeInfoVariant : uint8_t {
 		ALIAS,
 		ANY,
+		/// <summary>
+		/// A stand-in for a constrained generic's type parameter, while its body is checked against what
+		/// its constraints promise (docs/types.md, Checked Bodies). Never generated.
+		/// </summary>
+		ARCHETYPE,
 		ARRAY,
 		BOOLEAN,
 		CHAR,
@@ -70,6 +75,48 @@ namespace hemera {
 		TypeInfo(const TypeInfo&) = delete;
 		TypeInfo& operator=(const TypeInfo&) = delete;
 		virtual ~TypeInfo();
+	};
+
+	/// <summary>
+	/// What a constraint promises about a type parameter, one bit each. Integers and floats are
+	/// numbers, and numbers have == and <.
+	/// </summary>
+	enum Capability : uint32_t {
+		CAPABILITY_EQUALITY = 1u << 0,
+		CAPABILITY_ORDERING = 1u << 1,
+		CAPABILITY_ARITHMETIC = 1u << 2,
+		CAPABILITY_INTEGER = 1u << 3,
+		CAPABILITY_SIGNED = 1u << 4,
+		CAPABILITY_UNSIGNED = 1u << 5,
+		CAPABILITY_FLOAT = 1u << 6,
+	};
+
+	/// <summary>
+	/// A constrained generic's type parameter while its body is checked once, before any instance
+	/// (docs/types.md, Checked Bodies): it has only what the constraints promise. Its layout isn't
+	/// known, so it's taken as the worst: it may hold pointers.
+	/// </summary>
+	struct TypeInfoArchetype : public TypeInfo {
+		/// <summary>
+		/// The parameter's name, like T, and the generic's, for messages.
+		/// </summary>
+		InternedString name;
+		InternedString generic;
+		/// <summary>
+		/// The generic declaration it stands in for a parameter of.
+		/// </summary>
+		const struct Declaration* owner = nullptr;
+		uint32_t capabilities = 0;
+		/// <summary>
+		/// From require_field: each field it has, with its type.
+		/// </summary>
+		std::vector<std::pair<InternedString, TypeInfo*>> fields;
+		/// <summary>
+		/// From require_view: it's an array, view or dynamic array of this.
+		/// </summary>
+		TypeInfo* element = nullptr;
+
+		TypeInfoArchetype(InternedString name, InternedString generic);
 	};
 
 	struct TypeInfoAlias : public TypeInfo {

@@ -250,7 +250,8 @@ namespace hemera {
 				if (declared != nullptr && index < values.size()) {
 					const ConstantValue& given = values[index];
 					TypeInfo const* kind = get_base_type(declared);
-					const bool fits = kind == nullptr
+					// An unknown value, in a body checked before any instance, is whatever its type allows
+					const bool fits = kind == nullptr || ConstantValue::Kind::UNKNOWN == given.kind
 						|| (TypeInfoVariant::INTEGER == kind->variant && ConstantValue::Kind::INTEGER == given.kind)
 						|| (TypeInfoVariant::BOOLEAN == kind->variant && ConstantValue::Kind::BOOLEAN == given.kind);
 					if (!fits) {
@@ -1512,7 +1513,8 @@ namespace hemera {
 					}
 					const ConstantValue& given = instance->generic_values[index];
 					TypeInfo const* kind = get_base_type(declared);
-					const bool fits = kind == nullptr
+					// An unknown value, in a body checked before any instance, is whatever its type allows
+					const bool fits = kind == nullptr || ConstantValue::Kind::UNKNOWN == given.kind
 						|| (TypeInfoVariant::INTEGER == kind->variant && ConstantValue::Kind::INTEGER == given.kind)
 						|| (TypeInfoVariant::BOOLEAN == kind->variant && ConstantValue::Kind::BOOLEAN == given.kind)
 						|| (TypeInfoVariant::ENUM == kind->variant && ConstantValue::Kind::ENUM_MEMBER == given.kind)

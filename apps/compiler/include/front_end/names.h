@@ -105,6 +105,11 @@ namespace hemera {
 			/// A function declared at the top level, like an entry function given to x86_64.entry_points.
 			/// </summary>
 			FUNCTION,
+			/// <summary>
+			/// A value parameter while a constrained generic's body is checked before any instance
+			/// (docs/types.md, Checked Bodies): its name in member, its generic in function.
+			/// </summary>
+			UNKNOWN,
 		};
 		Kind kind;
 		bool boolean = false;
@@ -380,6 +385,11 @@ namespace hemera {
 		/// arguments (docs/types.md, Derived Parameters).
 		/// </summary>
 		std::map<std::string, std::unique_ptr<Evaluation>> derived_evaluations;
+		/// <summary>
+		/// Each constrained generic function's check before any instance, by the generic
+		/// (docs/types.md, Checked Bodies).
+		/// </summary>
+		std::map<const Declaration*, std::shared_ptr<struct EarlyCheck>> early_checks;
 		/// <summary>
 		/// Each instance of a generic type, by the generic and its arguments.
 		/// </summary>

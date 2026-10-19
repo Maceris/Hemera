@@ -214,6 +214,61 @@ namespace hemera {
 	/// </summary>
 	Progress check_constraints(Walk& walk, ast::Node* where, Declaration* generic, Declaration* instance, bool quiet = false);
 
+	/*
+	 * Checked bodies (early.cpp, docs/types.md, Checked Bodies): a constrained generic function's body
+	 * is checked once, before any instance, with archetypes for its type parameters, which only have
+	 * what its constraints promise.
+	 */
+
+	/// <summary>
+	/// Whether a generic has constraints, in its generic list or a where clause.
+	/// </summary>
+	bool has_constraints(NameRegistry& names, const Declaration* generic);
+
+	/// <summary>
+	/// Makes a constrained generic function's archetypes and the instance of them whose body is
+	/// checked before any other: once, when the generic is resolved.
+	/// </summary>
+	void start_early_check(Walk& walk, Declaration* generic);
+
+	/// <summary>
+	/// Whether an instance is its generic's early check, made of its own archetypes.
+	/// </summary>
+	bool is_early_instance(const Declaration* instance);
+
+	/// <summary>
+	/// Whether any of an instance's arguments is an archetype or an unknown value: one a checked
+	/// body uses, whose own body isn't checked, since it's only ever an instance in name.
+	/// </summary>
+	bool has_archetype_arguments(const Declaration* instance);
+
+	/// <summary>
+	/// Gives the early instance's archetypes what the generic's constraints promise, before its body is checked.
+	/// </summary>
+	Progress promise_archetypes(Walk& walk, Declaration* instance);
+
+	/// <summary>
+	/// Whether the early check found its generic's body uses only what's promised; false until it's done.
+	/// </summary>
+	bool early_check_failed(NameRegistry& names, const Declaration* generic);
+
+	/// <summary>
+	/// A generic's early instance, if it has one, which its real instances wait for.
+	/// </summary>
+	Declaration* early_instance(NameRegistry& names, const Declaration* generic);
+
+	/// <summary>
+	/// Waits until a function's body has been checked, with or without errors (names.cpp).
+	/// </summary>
+	Progress wait_for_body(Walk& walk, ast::Node* where, Declaration* function);
+	void finish_early_check(NameRegistry& names, const Declaration* instance, bool failed);
+
+	/// <summary>
+	/// For an instance a checked body uses with its archetypes: whether the body's own constraints
+	/// promise what the instance's generic needs (E4033 when they don't).
+	/// </summary>
+	Progress prove_constraints(Walk& walk, ast::Node* where, Declaration* generic, Declaration* instance);
+
 	/// <summary>
 	/// A generic type's arguments: for a parameter that's a type, the type type_of gives; for one
 	/// that's a value, a null type and the compile-time value of the argument.

@@ -947,6 +947,51 @@ TEST(FrontEnd, ReportsUnsatisfiedConstraints)
 	}
 }
 
+// docs/types.md, Checked Bodies: constrained generics' bodies, checked once with what their constraints promise
+TEST(FrontEnd, AllowsBodiesUsingWhatsPromised)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("checked_bodies_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+}
+
+/*
+ * Each use of what a constrained generic's constraints don't promise, reported in its body whether
+ * anything calls it or not, with what would promise it: an operator, a field, a loop, and a call to a
+ * generic whose constraints the caller's don't cover.
+ */
+TEST(FrontEnd, ReportsWhatsNotPromised)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("checked_bodies_unpromised"));
+	ASSERT_EQ(errors.size(), 7) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4033);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"arithmetic on T, which total's constraints don't promise; constrain T with compiler.Numeric",
+		"ordering on T, which smaller's constraints don't promise; constrain T with compiler.Ordered",
+		"an integer operator on T, which odd's constraints don't promise; constrain T with compiler.Integer",
+		".count on T, which count_of's constraints don't promise; promise it with compiler.require_field(T, \"count\", ...) in a constraint",
+		"a for loop on C, which each's constraints don't promise; constrain it with compiler.ViewOf(C, ...)",
+		"largest[T] needs what pick's constraints don't promise\n    T needs Integer(T)\n    T needs Float(T)",
+		"scaled[factor] needs what other's constraints don't promise\n    its where clause needs PowerOfTwo(factor)",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksBodies)
 {
 	hemera::disable_reporting_printing();

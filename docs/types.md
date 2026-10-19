@@ -529,11 +529,12 @@ HasCount #constraint :: fn(T: type) {
 | `require_ordering(T)` | `<` works on `T`: numbers and characters |
 | `require_integer(T)`, `require_signed(T)`, `require_unsigned(T)`, `require_float(T)`, `require_numeric(T)` | `T` is that kind of number |
 | `require_field(T, name, type)` | `T` is a struct with that field, or a view or array, whose `count` is a `usize` |
+| `require_view(T, element)` | `T` is an array, view or dynamic array of `element`: `for`, indexing and `count` work on it |
 | `require(condition, message, values...)` | `condition` is true; otherwise `message`, with `%` filled in, says why |
 | `note(message, values...)` | Adds to why the last requirement isn't met, like what to do about it |
 
-`base/compiler` has the constraints most generics need: `Equatable`, `Ordered`, `Integer`, `Float`, `Numeric`, and for
-value parameters, `AtLeastOne` and `PowerOfTwo`.
+`base/compiler` has the constraints most generics need: `Equatable`, `Ordered`, `Integer`, `Float`, `Numeric`,
+`ViewOf(C, E)`, and for value parameters, `AtLeastOne` and `PowerOfTwo`.
 
 * **In a generic list,** `T: C` constrains the type parameter `T`, and means `C(T)`. Whether `name: X` is a constrained
   type or a value of type `X` (see [Values in Generic Lists](#values-in-generic-lists)) depends on what `X` is: a
@@ -557,7 +558,8 @@ main.hsc:12:9: error E4032: Constraint not satisfied. largest[char] can't be mad
 ```
 
 * A generic without constraints is a template, as it always has been: its body is checked for each instance, with
-  whatever its arguments support.
+  whatever its arguments support. A constrained generic function's body is also checked once on its own, against what
+  its constraints promise (see [Checked Bodies](#checked-bodies)).
 
 `require_any` takes constraints, and holds when any one of them does. It's for a constraint made of alternatives, where
 each alternative is itself a constraint, and when none holds, the reasons are each alternative's:
@@ -586,6 +588,64 @@ describe :: fn[T](value: T) -> string {
 }
 ```
 
+### Checked Bodies
+
+A constrained generic function's body is checked once, before any instance and whether or not anything calls it, with
+an **archetype** for each type parameter: a stand-in that has only what the constraints promise. So the body can only
+use what every argument its constraints allow will have, and using anything else is an error there (E4033), with what
+would promise it:
+
+```
+total :: fn[T: compiler.Equatable](a: T, b: T) -> T {
+    return a + b
+}
+
+main.hsc:2:14: error E4033: Not promised by constraints. arithmetic on T, which total's constraints don't promise;
+    constrain T with compiler.Numeric
+```
+
+What a constraint promises comes from the requirements it's made of, worked out from how it's written, not by running
+it:
+
+| Requirement | Promises the body |
+|---|---|
+| `require_equality(T)` | `==` and `!=` on `T` |
+| `require_ordering(T)` | `<`, `<=`, `>`, `>=`, and `==` |
+| `require_numeric(T)` | Arithmetic (`+`, `-`, `*`, `/`), comparisons, number literals, and casts to and from numbers |
+| `require_integer(T)`, `require_signed(T)`, `require_unsigned(T)` | A number's, and `%`, bitwise operators and shifts |
+| `require_float(T)` | A number's, and float literals |
+| `require_field(T, name, type)` | `.name`, of `type` |
+| `require_view(T, element)` | `for`, indexing and `count`, with elements of `element` |
+
+* **Combining** promises like it checks: `A && B` promises what either does, and `A || B` only what both do, since
+  either may be the one that holds. `require_any` is the same as `||`, so `require_any(Integer(T), Float(T))`
+  promises arithmetic, but not `%`.
+* **Every type** can be declared, assigned, passed, returned and pointed to, so those need nothing promised.
+* **`require(condition, ...)`** promises nothing: it's about values, and only an instance knows them.
+* **A value parameter** has no known value: it's a value of its type, fine in arithmetic and comparisons. A type it
+  sizes, like `T[capacity]`, needs its value, so a generic that has one is only checked at its instances.
+* **An `#if`** that decides on a type or value parameter is left to the instances, which check the branch they take.
+* **Calling a constrained generic** with an archetype needs the caller's constraints to promise what the callee's
+  ask for: the same constraint call, like `where compiler.PowerOfTwo(factor)` on both, or requirements the caller's
+  constraints promise. Calling an unconstrained generic, a template, is trusted: its body is checked at the real
+  instances, as always.
+
+```
+largest :: fn[T: compiler.Ordered && (compiler.Integer || compiler.Float)](a: T, b: T) -> T { ... }
+
+pick :: fn[T: compiler.Ordered](a: T, b: T) -> T {
+    return largest(a, b)
+}
+
+main.hsc:4:20: error E4033: Not promised by constraints. largest[T] needs what pick's constraints don't promise
+    T needs Integer(T)
+    T needs Float(T)
+```
+
+A body checked this way is still checked at each real instance, which is what's generated; it shouldn't find anything
+new, but things like bounds proofs that use a value parameter's value are only made there. A body the early check
+found errors in isn't checked again at its instances, so each error is reported once.
+
 ### Derived Parameters
 
 A generic parameter can be worked out from the ones before it with `name = expression`, like a default argument. The
@@ -596,21 +656,24 @@ expression is compile-time: a type, like `ptr[A]`, a builtin like `size_of(T)`, 
 // The type of an array or view's elements
 element_of :: fn(C: type) -> type { ... }
 
-sum :: fn[C, E = element_of(C)](values: C) -> E where compiler.Numeric(E) { ... }
+// The total is the elements' type, unless it's given
+sum :: fn[C, E = element_of(C), Total = E](values: C) -> Total
+    where compiler.ViewOf(C, E) && compiler.Numeric(E) && compiler.Numeric(Total) { ... }
 
 bits_of :: fn[T, bits = size_of(T) * 8](value: T) -> usize
 
 Linked :: struct[A, B = ptr[A]] { ... }
 ```
 
-* **Nothing binds it from arguments.** `sum(view)` binds `C` from `view`, then works out `E`.
-* **Giving it overrides it,** like a default argument: `sum[u8[], u64](view)` totals bytes in a `u64`, so it doesn't
-  wrap. The parameters before it are given too, since generic arguments are positional, and that isn't reported as
+* **Nothing binds it from arguments.** `sum(view)` binds `C` from `view`, then works out `E` and `Total`.
+* **Giving it overrides it,** like a default argument: `sum[u8[], u8, u64](view)` totals bytes in a `u64`, so it
+  doesn't wrap. The parameters before it are given too, since generic arguments are positional, and that isn't reported as
   giving them twice. `Linked[int]` works out `B` as `ptr[int]`; `Linked[int, usize]` uses `usize`.
 * **A parameter worked out from itself,** directly or through others, is an error (E4007).
 
 In the generic's body, a derived type is a type, and a derived value is a constant without a type of its own, like a
-literal.
+literal. When the body is checked before any instance, a derived type is an archetype like any other, with what the
+constraints promise about it, so `sum`'s `E` is something `C` is a view of, and a number.
 
 For how `#escaping` applies to generic parameters, see [memory.md](memory.md#escaping-parameters).
 

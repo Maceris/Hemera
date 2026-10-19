@@ -51,6 +51,11 @@ namespace hemera {
 		/// </summary>
 		bool has_context = true;
 		/// <summary>
+		/// In a body checked before any instance, an #if was left to the instances, since what it
+		/// decides on is only known there (docs/types.md, Checked Bodies).
+		/// </summary>
+		bool undecided = false;
+		/// <summary>
 		/// What the left of |> gave, for the call on its right to take first.
 		/// </summary>
 		std::vector<Value> piped;
@@ -187,6 +192,42 @@ namespace hemera {
 
 	static bool is_pointer(TypeInfo const* type) {
 		return is_variant(type, TypeInfoVariant::POINTER);
+	}
+
+	// A constrained generic's type parameter, while its body is checked before any instance (docs/types.md, Checked Bodies).
+	static TypeInfoArchetype const* archetype_of(TypeInfo const* type) {
+		type = base_of(type);
+		return type != nullptr && TypeInfoVariant::ARCHETYPE == type->variant ? static_cast<TypeInfoArchetype const*>(type) : nullptr;
+	}
+
+	static bool promised(TypeInfo const* type, uint32_t capability) {
+		TypeInfoArchetype const* archetype = archetype_of(type);
+		return archetype != nullptr && (archetype->capabilities & capability) == capability;
+	}
+
+	// The constraint in base/compiler that promises a capability, for what to add.
+	static const char* constraint_promising(uint32_t capability) {
+		switch (capability) {
+			case CAPABILITY_EQUALITY: return "compiler.Equatable";
+			case CAPABILITY_ORDERING: return "compiler.Ordered";
+			case CAPABILITY_INTEGER: return "compiler.Integer";
+			case CAPABILITY_FLOAT: return "compiler.Float";
+			default: return "compiler.Numeric";
+		}
+	}
+
+	static Value not_promised(Checker& checker, const ast::Node* where, TypeInfoArchetype const* archetype, std::string_view what,
+		std::string_view fix) {
+
+		return error_at(checker, ErrorCode::E4033, where, std::format("{} on {}, which {}'s constraints don't promise; {}", what,
+			to_string(archetype), text_of(archetype->generic), fix));
+	}
+
+	static Value not_promised(Checker& checker, const ast::Node* where, TypeInfoArchetype const* archetype, std::string_view what,
+		uint32_t capability) {
+
+		return not_promised(checker, where, archetype, what, std::format("constrain {} with {}", to_string(archetype),
+			constraint_promising(capability)));
 	}
 
 	// The union an Optional or Result instance is, by its generic's name, or null.
@@ -340,10 +381,10 @@ namespace hemera {
 			return assignable(value.type, type);
 		}
 		if (ValueKind::UNTYPED_INTEGER == kind) {
-			return is_integer(type) || is_float(type);
+			return is_integer(type) || is_float(type) || promised(type, CAPABILITY_ARITHMETIC);
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
-			return is_float(type);
+			return is_float(type) || promised(type, CAPABILITY_FLOAT);
 		}
 		if (ValueKind::UNTYPED_STRING == kind) {
 			return is_variant(type, TypeInfoVariant::STRING);
@@ -713,6 +754,25 @@ namespace hemera {
 				return Progress::DONE;
 			}
 		}
+		else if (TypeInfoVariant::ARCHETYPE == type->variant) {
+			// The fields its constraints promise, and a view's count
+			auto archetype = static_cast<TypeInfoArchetype const*>(type);
+			for (const auto& [field, field_type] : archetype->fields) {
+				if (text_of(field) == member) {
+					value = typed(field_type);
+					value.is_location = is_location;
+					value.is_mutable = is_mutable;
+					return Progress::DONE;
+				}
+			}
+			if (member == "count" && archetype->element != nullptr) {
+				value = typed(BUILTIN_usize);
+				return Progress::DONE;
+			}
+			value = not_promised(checker, where, archetype, std::format(".{}", member),
+				std::format("promise it with compiler.require_field({}, \"{}\", ...) in a constraint", to_string(archetype), member));
+			return Progress::DONE;
+		}
 		else if (TypeInfoVariant::ANY == type->variant) {
 			if (member == "data") {
 				value = typed(BUILTIN_rawptr);
@@ -759,6 +819,15 @@ namespace hemera {
 		else if (TypeInfoVariant::STRING == type->variant) {
 			element = BUILTIN_char;
 			is_mutable = false;
+		}
+		else if (TypeInfoVariant::ARCHETYPE == type->variant && static_cast<TypeInfoArchetype const*>(type)->element != nullptr) {
+			element = static_cast<TypeInfoArchetype const*>(type)->element;
+		}
+		else if (TypeInfoVariant::ARCHETYPE == type->variant) {
+			auto archetype = static_cast<TypeInfoArchetype const*>(type);
+			value = not_promised(checker, where, archetype, "indexing", std::format("constrain it with compiler.ViewOf({}, ...)",
+				to_string(archetype)));
+			return Progress::DONE;
 		}
 		else {
 			value = error_at(checker, ErrorCode::E4020, where, std::format("{} can't be indexed", to_string(value.type)));
@@ -1222,8 +1291,9 @@ namespace hemera {
 		bool binding_failed = false;
 		std::set<std::string> explicit_names;
 		/*
-		 * Overriding a derived parameter, like sum[u8[], u64], gives the ones before it too, since they're
-		 * positional, so those aren't given twice even when the arguments would bind them
+		 * Giving a value or overriding a derived parameter, like scaled[int, 4] or sum[u8[], u64], gives
+		 * the ones before it too, since they're positional, so those aren't given twice even when the
+		 * arguments would bind them
 		 */
 		size_t needed_before = 0;
 		{
@@ -1233,7 +1303,9 @@ namespace hemera {
 					continue;
 				}
 				for (ast::Node* parameter : child->children) {
-					if (index < callee.generic_arguments.size() && ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+					const bool unbound = ast::NodeType::DERIVED_PARAMETER == parameter->node_type
+						|| generic_parameter_is_value(checker.walk.executor.program_info->names, generic, index);
+					if (index < callee.generic_arguments.size() && unbound) {
 						needed_before = index;
 					}
 					++index;
@@ -1970,6 +2042,14 @@ namespace hemera {
 			result = typed(BUILTIN_bool);
 			return Progress::DONE;
 		}
+		if (is_shift(op) && archetype_of(default_type(left)) != nullptr) {
+			if (!promised(default_type(left), CAPABILITY_INTEGER)) {
+				result = not_promised(checker, node, archetype_of(default_type(left)), "a shift", CAPABILITY_INTEGER);
+				return Progress::DONE;
+			}
+			result = typed(left.type);
+			return Progress::DONE;
+		}
 		if (is_shift(op)) {
 			if (!is_integer(default_type(left)) || !(is_integer(default_type(right)) && !is_signed(right.type)
 				&& (ValueKind::VALUE != right.kind || !is_signed(right.type)))) {
@@ -1981,11 +2061,33 @@ namespace hemera {
 		}
 		Value shared;
 		if (!common_type(left, right, shared)) {
+			// A literal with an archetype that isn't promised to be a number
+			TypeInfoArchetype const* archetype = ValueKind::VALUE == left.kind ? archetype_of(left.type) : nullptr;
+			archetype = archetype == nullptr && ValueKind::VALUE == right.kind ? archetype_of(right.type) : archetype;
+			if (archetype != nullptr && (is_untyped(left) || is_untyped(right))) {
+				result = not_promised(checker, node, archetype, "a number", ValueKind::UNTYPED_FLOAT == left.kind
+					|| ValueKind::UNTYPED_FLOAT == right.kind ? CAPABILITY_FLOAT : CAPABILITY_ARITHMETIC);
+				return Progress::DONE;
+			}
 			result = error_at(checker, ErrorCode::E4015, node, std::format("{} and {} don't go together",
 				describe(left), describe(right)));
 			return Progress::DONE;
 		}
 		TypeInfo* type = default_type(shared);
+		// An archetype has the operators its constraints promise (docs/types.md, Checked Bodies)
+		if (TypeInfoArchetype const* archetype = archetype_of(type); archetype != nullptr) {
+			const bool ordered = TokenType::OPERATOR_EQUAL != op && TokenType::OPERATOR_NOT_EQUAL != op;
+			const bool integral = TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op || is_bitwise(op);
+			const uint32_t needed = is_comparison(op) ? (ordered ? CAPABILITY_ORDERING : CAPABILITY_EQUALITY)
+				: integral ? CAPABILITY_INTEGER : CAPABILITY_ARITHMETIC;
+			if (!promised(type, needed)) {
+				const std::string what = is_comparison(op) ? (ordered ? "ordering" : "==") : integral ? "an integer operator" : "arithmetic";
+				result = not_promised(checker, node, archetype, what, needed);
+				return Progress::DONE;
+			}
+			result = is_comparison(op) ? typed(BUILTIN_bool) : typed(shared.type);
+			return Progress::DONE;
+		}
 		if (is_comparison(op)) {
 			const bool ordered = TokenType::OPERATOR_EQUAL != op && TokenType::OPERATOR_NOT_EQUAL != op;
 			if (ordered && !(is_numeric(type) || is_enum(type) || is_variant(type, TypeInfoVariant::CHAR))) {
@@ -2116,6 +2218,13 @@ namespace hemera {
 			result = ValueKind::UNTYPED_BOOLEAN == operand.kind ? operand : typed(type);
 			return Progress::DONE;
 		}
+		if (TypeInfoArchetype const* archetype = archetype_of(type); archetype != nullptr
+			&& (TokenType::OPERATOR_BITWISE_XOR == op || TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op)) {
+			const uint32_t needed = TokenType::OPERATOR_BITWISE_XOR == op ? CAPABILITY_INTEGER : CAPABILITY_ARITHMETIC;
+			result = promised(type, needed) ? typed(type)
+				: not_promised(checker, node, archetype, TokenType::OPERATOR_BITWISE_XOR == op ? "~" : "a sign", needed);
+			return Progress::DONE;
+		}
 		if (TokenType::OPERATOR_BITWISE_XOR == op && !is_integer(type)) {
 			result = error_at(checker, ErrorCode::E4020, node, std::format("~ takes an integer, not {}", describe(operand)));
 			return Progress::DONE;
@@ -2138,7 +2247,7 @@ namespace hemera {
 		}
 		auto scalar = [](TypeInfo const* type) {
 			const TypeInfoVariant variant = type->variant;
-			return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant
+			return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant || promised(type, CAPABILITY_ARITHMETIC)
 				|| TypeInfoVariant::ENUM == variant || TypeInfoVariant::BOOLEAN == variant
 				|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::POINTER == variant
 				|| TypeInfoVariant::FUNCTION == variant;
@@ -2189,7 +2298,13 @@ namespace hemera {
 			}
 		}
 		else if (!is_untyped(value) && !castable(source, target)) {
-			error_at(checker, ErrorCode::E4020, node, std::format("{} can't be cast to {}", to_string(source), to_string(target)));
+			TypeInfoArchetype const* archetype = archetype_of(source) != nullptr ? archetype_of(source) : archetype_of(target);
+			if (archetype != nullptr) {
+				not_promised(checker, node, archetype, "a cast", CAPABILITY_ARITHMETIC);
+			}
+			else {
+				error_at(checker, ErrorCode::E4020, node, std::format("{} can't be cast to {}", to_string(source), to_string(target)));
+			}
 		}
 		result = typed(target);
 		return apply_postfix(checker, node, rest, result);
@@ -3049,6 +3164,17 @@ namespace hemera {
 			else if (type != nullptr && TypeInfoVariant::STRING == type->variant) {
 				element = typed(BUILTIN_char);
 			}
+			else if (TypeInfoArchetype const* archetype = archetype_of(type); archetype != nullptr) {
+				if (archetype->element != nullptr) {
+					element = typed(archetype->element);
+					by_reference_allowed = collection.is_location;
+					element_mutable = collection.is_mutable;
+				}
+				else {
+					not_promised(checker, iterable, archetype, "a for loop", std::format("constrain it with compiler.ViewOf({}, ...)",
+						to_string(archetype)));
+				}
+			}
 			else if (ValueKind::POISONED != collection.kind) {
 				error_at(checker, ErrorCode::E4020, iterable, std::format("a for loop goes through a range or an array, not {}",
 					describe(collection)));
@@ -3695,6 +3821,27 @@ namespace hemera {
 	 * #never_returns function) is unreachable. For a block used as a value, its last statement is
 	 * its value.
 	 */
+	// Whether an expression uses an archetype or an unknown value, which only an instance knows.
+	static bool uses_open_parameters(const Checker& checker, const ast::Node* node) {
+		if ((ast::NodeType::IDENTIFIER == node->node_type || ast::NodeType::TYPE == node->node_type) && node->value.value != nullptr) {
+			const std::string name = text_of(node->value.value);
+			auto type = checker.walk.generic_types.find(name);
+			if (type != checker.walk.generic_types.end() && archetype_of(type->second) != nullptr) {
+				return true;
+			}
+			auto value = checker.walk.generic_values.find(name);
+			if (value != checker.walk.generic_values.end() && ConstantValue::Kind::UNKNOWN == value->second.kind) {
+				return true;
+			}
+		}
+		for (const ast::Node* child : node->children) {
+			if (ast::NodeType::BLOCK != child->node_type && uses_open_parameters(checker, child)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static Progress check_block(Checker& checker, ast::Node* block, bool& continues, Value* last_value,
 		TypeInfo* expected) {
 
@@ -3717,6 +3864,15 @@ namespace hemera {
 					if (is_text(chain.back()->value.value, "#else")) {
 						break;
 					}
+				}
+				// Deciding on an archetype or an unknown value is left to the instances, which check the branch they take
+				bool open = false;
+				for (ast::Node* branch : chain) {
+					open = open || uses_open_parameters(checker, branch);
+				}
+				if (open) {
+					checker.undecided = true;
+					continue;
 				}
 				ast::Node* picked = nullptr;
 				Progress progress = pick_branch(checker, chain, picked);
@@ -3955,7 +4111,10 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
-		if (continues && type->never_returns) {
+		if (checker.undecided) {
+			// What an #if left to the instances may be what returns
+		}
+		else if (continues && type->never_returns) {
 			error_at(checker, ErrorCode::E4019, where, "a #never_returns function can't finish; end it with a call that doesn't return, or a loop");
 		}
 		else if (continues && !type->output.empty()) {
@@ -4027,6 +4186,35 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		/*
+		 * A constrained generic's body is checked once with archetypes, which have only what its
+		 * constraints promise. What that body calls with them is only an instance in name: its own
+		 * body is checked at real instances (docs/types.md, Checked Bodies).
+		 */
+		NameRegistry& registry = executor.program_info->names;
+		const bool early = is_early_instance(function);
+		if (function->generic != nullptr && !early && has_archetype_arguments(function)) {
+			return Progress::DONE;
+		}
+		if (early) {
+			Progress promised = promise_archetypes(walk, function);
+			if (promised != Progress::DONE) {
+				return promised;
+			}
+		}
+		// A body the early check found errors in has them reported once, there, so instances wait for it
+		if (function->generic != nullptr && !early) {
+			Declaration* first = early_instance(registry, function->generic);
+			if (first != nullptr) {
+				Progress waited = wait_for_body(walk, function->node, first);
+				if (waited != Progress::DONE) {
+					return waited;
+				}
+			}
+			if (early_check_failed(registry, function->generic)) {
+				return Progress::DONE;
+			}
+		}
+		/*
 		 * An instance whose constraints aren't satisfied isn't checked: where it's used says why
 		 * (docs/types.md, Constraints)
 		 */
@@ -4082,9 +4270,11 @@ namespace hemera {
 			// And that every index is in bounds (docs/types.md, Bounds Checking)
 			check_bounds(*checked, body, type, checker.walk.file_path);
 		}
-		if (progress == Progress::DONE && thread_error_count() == errors_before) {
-			NameRegistry& names = executor.program_info->names;
-			std::scoped_lock<std::mutex> lock(names.mutex);
+		if (early && progress != Progress::PARKED) {
+			finish_early_check(registry, function, progress != Progress::DONE || thread_error_count() != errors_before);
+		}
+		if (progress == Progress::DONE && thread_error_count() == errors_before && !early) {
+			std::scoped_lock<std::mutex> lock(registry.mutex);
 			function->checked = checked;
 		}
 		return progress;

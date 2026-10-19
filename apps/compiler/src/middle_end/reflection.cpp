@@ -21,6 +21,8 @@ namespace hemera {
 			switch (variant) {
 				case TypeInfoVariant::ALIAS: return "ALIAS";
 				case TypeInfoVariant::ANY: return "ANY";
+				// Archetypes are only checked against, never described
+				case TypeInfoVariant::ARCHETYPE: return "VOID";
 				case TypeInfoVariant::ARRAY: return "ARRAY";
 				case TypeInfoVariant::BOOLEAN: return "BOOLEAN";
 				case TypeInfoVariant::CHAR: return "CHAR";
@@ -409,6 +411,7 @@ namespace hemera {
 				break;
 			}
 			case TypeInfoVariant::ANY:
+			case TypeInfoVariant::ARCHETYPE:
 			case TypeInfoVariant::BOOLEAN:
 			case TypeInfoVariant::CHAR:
 			case TypeInfoVariant::COMPLEX:
