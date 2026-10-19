@@ -42,6 +42,8 @@ OutputBuffer :: struct {
     bytes : u8[OUTPUT_BUFFER_SIZE],
     count : usize,
     stream : OutputStream,
+    // Keeps what it's given rather than writing it, dropping what doesn't fit, to pad it afterwards
+    capture : bool,
 }
 
 output_buffer #no_context :: fn(stream: OutputStream) -> OutputBuffer {
@@ -61,6 +63,9 @@ output_flush #no_context :: fn(buffer: ptr[mut OutputBuffer]) {
 }
 
 output_byte #no_context :: fn(buffer: ptr[mut OutputBuffer], byte: u8) {
+    if buffer.count >= OUTPUT_BUFFER_SIZE && buffer.capture {
+        return void
+    }
     if buffer.count >= OUTPUT_BUFFER_SIZE {
         output_flush(buffer)
     }
@@ -124,36 +129,117 @@ output_address #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
 }
 
 /*
- * format with each % replaced by the next value, and %% by %: a smaller version of std's
- * text_buffer.append_format, for base. Integers are in decimal, booleans, characters and strings
- * as they are, enum members by name, and pointers as addresses; other values only by their kind,
- * like <struct Name>. A % without a value left is written as %!.
+ * format_string with each % replaced by the next value, %1, %2 and so on by that one, and %% by %:
+ * a smaller version of std's text_buffer.append_format, for base. Integers are in decimal, booleans,
+ * characters and strings as they are, enum members by name, and pointers as addresses; other values
+ * only by their kind, like <struct Name>. Each can have options, like %{08x} (docs/format_strings.md).
+ * A % without a value left, or with options that aren't well formed, is written as %!.
  */
-output_format :: fn(buffer: ptr[mut OutputBuffer], format: string, values: any...) {
+output_format :: fn(buffer: ptr[mut OutputBuffer], format_string: string, values: any...) {
     next : usize = 0
     index : usize = 0
     loop {
-        if index >= format.count {
+        if index >= format_string.count {
             break
         }
-        character :: format[index]
+        character :: format_string[index]
         index += 1
         if character != '%' {
             output_byte(buffer, cast[u8](character))
             continue
         }
-        if index < format.count && format[index] == '%' {
+        if index < format_string.count && format_string[index] == '%' {
             output_byte(buffer, cast[u8]('%'))
             index += 1
             continue
         }
-        if next >= values.count {
+        // %1, %2...: a value by its number
+        number : usize = 0
+        numbered := false
+        for step in 0..<format_string.count {
+            if index >= format_string.count || !is_format_digit(format_string[index]) {
+                break
+            }
+            number = number * 10 + cast[usize](format_string[index]) - cast[usize]('0')
+            numbered = true
+            index += 1
+        }
+        spec, after, valid :: parse_format_spec(format_string, index)
+        index = after
+        chosen := next
+        if !numbered {
+            next += 1
+        }
+        else {
+            chosen = if number > 0 { number - 1 } else { values.count }
+        }
+        if !valid || chosen >= values.count {
             output_text(buffer, "%!")
             continue
         }
-        output_value(buffer, values[next])
-        next += 1
+        output_value_with(buffer, values[chosen], spec)
     }
+}
+
+output_sink_byte :: fn(target: rawptr, byte: u8) {
+    output_byte(cast[ptr[mut OutputBuffer]](target), byte)
+}
+
+// Whether options change anything about how a value is written.
+is_plain_format :: fn(spec: FormatSpec) -> bool {
+    return spec.width == 0 && spec.kind == 0 && !spec.plus && !spec.prefix && !spec.has_precision
+}
+
+// A value with options: numbers worked out with them, anything else written, then padded.
+output_value_with :: fn(buffer: ptr[mut OutputBuffer], value: any, spec: FormatSpec) {
+    if is_plain_format(spec) {
+        output_value(buffer, value)
+        return void
+    }
+    sink :: FormatSink.{target = cast[rawptr](buffer), emit = output_sink_byte}
+    given :: type_info_of(value.type)
+    info := given
+    for step in 0..<64 {
+        if cast[rawptr](info) == null || info.variant != .ALIAS {
+            break
+        }
+        info = cast[ptr[compiler.TypeInfoAlias]](info).base_type
+    }
+    if cast[rawptr](info) != null {
+        data :: value.data
+        variant :: info.variant
+        numeric :: spec.kind != 0 && (variant == .CHAR || variant == .BOOLEAN || variant == .ENUM)
+        if variant == .INTEGER && info.size <= 8 && cast[ptr[compiler.TypeInfoInteger]](info).is_signed {
+            signed :: read_signed(data, info.size)
+            format_integer(sink, spec, signed < 0, if signed < 0 { 0 - cast[u64](signed) } else { cast[u64](signed) })
+            return void
+        }
+        if (variant == .INTEGER && info.size <= 8) || numeric {
+            format_integer(sink, spec, false, read_unsigned(data, info.size))
+            return void
+        }
+        if (variant == .POINTER || variant == .FUNCTION) && cast[ptr[u64]](data)^ != 0 {
+            // An address: in hexadecimal unless another kind is asked for, with 0x when it's the default
+            with_kind := spec
+            if with_kind.kind == 0 {
+                with_kind.kind = cast[u8]('x')
+                with_kind.prefix = true
+            }
+            format_integer(sink, with_kind, false, cast[ptr[u64]](data)^)
+            return void
+        }
+        if variant == .STRING && !cast[ptr[compiler.TypeInfoString]](info).is_raw {
+            format_text(sink, spec, cast[ptr[string]](data)^)
+            return void
+        }
+    }
+    // Anything else, written as usual, then padded
+    scratch := output_buffer(buffer.stream)
+    scratch.capture = true
+    output_value(&scratch, value)
+    count :: if scratch.count < OUTPUT_BUFFER_SIZE { scratch.count } else { OUTPUT_BUFFER_SIZE }
+    text :: if count > 0 { string_of(&scratch.bytes[0], count) } else { "" }
+    format_text(sink, spec, text)
 }
 
 output_value :: fn(buffer: ptr[mut OutputBuffer], value: any) {

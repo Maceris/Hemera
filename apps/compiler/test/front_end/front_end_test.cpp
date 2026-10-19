@@ -993,6 +993,38 @@ TEST(FrontEnd, ReportsWhatsNotPromised)
 	}
 }
 
+/*
+ * Format strings written in place, checked against their values (docs/format_strings.md): a placeholder
+ * without a value, %0, options that aren't well formed, and options the value's type can't take.
+ */
+TEST(FrontEnd, ChecksFormatStrings)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("format_unfit"));
+	ASSERT_EQ(errors.size(), 7) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4034);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"% is for value 2, but there is only 1",
+		"%{08q} has options that aren't well formed",
+		"%0 names no value: values are numbered from %1",
+		"%{x} is written as a number in base 16, which string isn't",
+		"%{+} gives a number a sign or zeros, but string isn't one",
+		"%{#} has # for a 0x, 0b or 0o prefix, which needs x, X, b or o",
+		"%{.2} has a precision, which is for floats and strings, not int",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksBodies)
 {
 	hemera::disable_reporting_printing();

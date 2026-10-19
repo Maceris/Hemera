@@ -102,6 +102,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/front_end/bounds.cpp
   ${SOURCE_DIR}/front_end/constraints.cpp
   ${SOURCE_DIR}/front_end/early.cpp
+  ${SOURCE_DIR}/front_end/format_spec.cpp
   ${SOURCE_DIR}/front_end/checking.cpp
   ${SOURCE_DIR}/front_end/declarations.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp

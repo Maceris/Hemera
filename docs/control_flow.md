@@ -348,7 +348,8 @@ main :: fn() -> int {
 Standard output and error are written with `runtime.write_output` and `runtime.write_error`, which go nowhere on a
 target without them, like a kernel. `std/io` prints through them: `print`, `println` and `printf` to standard output,
 and `eprint`, `eprintln` and `eprintf` to standard error, with `printf` formatting like `text_buffer.append_format`
-into a buffer on the stack, so none of them allocate. Each call is one write, so lines from several threads don't mix.
+into a buffer on the stack, so none of them allocate. Each call is one write, so lines from several threads don't mix. Format strings,
+with options like `%{08x}`, are in [format_strings.md](format_strings.md).
 
 `std/os` has the rest of what a hosted program needs from its system, on Windows and Linux, with UTF-8 paths and names
 throughout:

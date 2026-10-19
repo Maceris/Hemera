@@ -14,23 +14,25 @@ import reflection from "std"
 FORMAT_PLACEHOLDER : char : '%'
 
 /*
- * format, with each % replaced by the next value, formatted by append_value. %1, %2 and so on are
- * the first, second... value instead, and %% is a %. A placeholder without a value is written as
- * %!, and values left over are ignored.
+ * format_string, with each % replaced by the next value, formatted by append_value. %1, %2 and so on
+ * are the first, second... value instead, and %% is a %. Each can have options, like %{08x} or
+ * %2{>10} (docs/format_strings.md). A placeholder without a value, or with options that aren't well
+ * formed, is written as %!, and values left over are ignored.
  */
-append_format :: fn(text: ptr[mut TextBuffer], format: string, values: any...) {
+append_format :: fn(text: ptr[mut TextBuffer], format_string: string, values: any...) {
     next : usize = 0
-    with {
-        index : usize = 0
-    }
-    loop {
-        character :: format[index]
+    index : usize = 0
+    for step in 0..<format_string.count + 1 {
+        if index >= format_string.count {
+            break
+        }
+        character :: format_string[index]
         index += 1
         if character != FORMAT_PLACEHOLDER {
             append_byte(text, cast[u8](character))
             continue
         }
-        if index < format.count && format[index] == FORMAT_PLACEHOLDER {
+        if index < format_string.count && format_string[index] == FORMAT_PLACEHOLDER {
             append_byte(text, cast[u8](FORMAT_PLACEHOLDER))
             index += 1
             continue
@@ -38,12 +40,16 @@ append_format :: fn(text: ptr[mut TextBuffer], format: string, values: any...) {
         // %1, %2...: a value by its number
         number : usize = 0
         has_number := false
-        loop {
-            number = number * 10 + cast[usize](format[index]) - cast[usize]('0')
+        for digit in 0..<format_string.count {
+            if index >= format_string.count || !is_digit(format_string[index]) {
+                break
+            }
+            number = number * 10 + cast[usize](format_string[index]) - cast[usize]('0')
             has_number = true
             index += 1
         }
-        while index < format.count && is_digit(format[index])
+        spec, after, valid :: runtime.parse_format_spec(format_string, index)
+        index = after
         chosen := next
         if !has_number {
             next += 1
@@ -54,13 +60,93 @@ append_format :: fn(text: ptr[mut TextBuffer], format: string, values: any...) {
         else {
             chosen = values.count
         }
-        if chosen >= values.count {
+        if !valid || chosen >= values.count {
             append(text, "%!")
             continue
         }
-        append_value(text, values[chosen])
+        append_value_with(text, values[chosen], spec)
     }
-    while index < format.count
+}
+
+text_sink_byte :: fn(target: rawptr, byte: u8) {
+    append_byte(cast[ptr[mut TextBuffer]](target), byte)
+}
+
+/*
+ * A value with options (docs/format_strings.md): integers, and characters, booleans, enums and
+ * pointers as numbers, worked out with them; floats with their precision as decimals; anything else
+ * as append_value writes it, then padded.
+ */
+append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.FormatSpec) {
+    if runtime.is_plain_format(spec) {
+        append_value(text, value)
+        return void
+    }
+    sink :: runtime.FormatSink.{target = cast[rawptr](text), emit = text_sink_byte}
+    given :: type_info_of(value.type)
+    if cast[rawptr](given) != null {
+        info :: reflection.unaliased(given)
+        data :: value.data
+        variant :: info.variant
+        numeric :: spec.kind != 0 && (variant == .CHAR || variant == .BOOLEAN || variant == .ENUM)
+        if variant == .INTEGER && info.size <= 8 && cast[ptr[compiler.TypeInfoInteger]](info).is_signed {
+            signed :: runtime.read_signed(data, info.size)
+            runtime.format_integer(sink, spec, signed < 0, if signed < 0 { 0 - cast[u64](signed) } else { cast[u64](signed) })
+            return void
+        }
+        if (variant == .INTEGER && info.size <= 8) || numeric {
+            runtime.format_integer(sink, spec, false, cast[u64](reflection.read_unsigned(data, info.size)))
+            return void
+        }
+        if (variant == .POINTER || variant == .FUNCTION) && cast[ptr[u64]](data)^ != 0 {
+            // An address: in hexadecimal unless another kind is asked for, with 0x when it's the default
+            with_kind := spec
+            if with_kind.kind == 0 {
+                with_kind.kind = cast[u8]('x')
+                with_kind.prefix = true
+            }
+            runtime.format_integer(sink, with_kind, false, cast[ptr[u64]](data)^)
+            return void
+        }
+        if variant == .STRING && !cast[ptr[compiler.TypeInfoString]](info).is_raw {
+            runtime.format_text(sink, spec, cast[ptr[string]](data)^)
+            return void
+        }
+        if variant == .FLOAT {
+            // Its digits, then the sign split off, so zeros go after it
+            storage : u8[64]
+            digits := make(storage)
+            decimals :: if spec.has_precision { spec.precision } else { DEFAULT_DECIMALS }
+            if info.size == 2 {
+                append_float_bits(&digits, cast[u64](cast[ptr[u16]](data)^), 5, 10, decimals)
+            }
+            else if info.size == 4 {
+                append_float_bits(&digits, cast[u64](cast[ptr[u32]](data)^), 8, 23, decimals)
+            }
+            else {
+                append_float_bits(&digits, cast[ptr[u64]](data)^, 11, 52, decimals)
+            }
+            written :: as_string(&digits)
+            negative :: written.count > 0 && written[0] == '-'
+            sign :: if negative { "-" } else if spec.plus { "+" } else { "" }
+            body :: if negative { strings_after(written, 1) } else { written }
+            runtime.format_padded(sink, spec, sign, "", body, true)
+            return void
+        }
+    }
+    // Anything else, written as usual, then padded
+    storage : u8[256]
+    scratch := make(storage)
+    append_value(&scratch, value)
+    runtime.format_text(sink, spec, as_string(&scratch))
+}
+
+// text without its first start bytes.
+strings_after :: fn(text: string, start: usize) -> string {
+    if start >= text.count || text.count == 0 {
+        return ""
+    }
+    return string_of(cast[ptr[u8]](text.data + start), text.count - start)
 }
 
 is_digit :: fn(character: char) -> bool {

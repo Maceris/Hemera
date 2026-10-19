@@ -7,6 +7,7 @@
 #include <set>
 
 #include "error/reporting.h"
+#include "front_end/format_spec.h"
 #include "front_end/type.h"
 
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
@@ -242,7 +243,67 @@ namespace hemera {
 			}
 		}
 
-		// format with each % filled in from params, like std/text_buffer's append_format.
+		/*
+		 * A value with options (docs/format_strings.md), like base's output_value_with: integers, and
+		 * characters, booleans, enums and pointers as numbers, worked out with them; floats with their
+		 * precision; anything else written as usual, then padded.
+		 */
+		void format_value_with(const TypeInfo* type, const uint8_t* data, const FormatSpec& spec, std::string& out) {
+			if (spec.plain()) {
+				format_value(type, data, out, 0);
+				return;
+			}
+			const TypeInfo* base = get_base_type(type);
+			const TypeInfoVariant variant = base != nullptr ? base->variant : TypeInfoVariant::VOID;
+			const bool numeric = spec.kind != 0
+				&& (TypeInfoVariant::CHAR == variant || TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::ENUM == variant);
+			if (TypeInfoVariant::INTEGER == variant && base->size <= 8 && static_cast<const TypeInfoInteger*>(base)->is_signed) {
+				int64_t value = 0;
+				if (base->size == 1) { int8_t v; std::memcpy(&v, data, 1); value = v; }
+				else if (base->size == 2) { int16_t v; std::memcpy(&v, data, 2); value = v; }
+				else if (base->size == 4) { int32_t v; std::memcpy(&v, data, 4); value = v; }
+				else { std::memcpy(&value, data, 8); }
+				out += format_integer(spec, value < 0, value < 0 ? 0 - static_cast<uint64_t>(value) : static_cast<uint64_t>(value));
+				return;
+			}
+			if ((TypeInfoVariant::INTEGER == variant && base->size <= 8) || numeric) {
+				out += format_integer(spec, false, read_unsigned(data, base->size));
+				return;
+			}
+			if ((TypeInfoVariant::POINTER == variant || TypeInfoVariant::FUNCTION == variant) && read_unsigned(data, 8) != 0) {
+				FormatSpec with_kind = spec;
+				if (with_kind.kind == 0) {
+					with_kind.kind = 'x';
+					with_kind.prefix = true;
+				}
+				out += format_integer(with_kind, false, read_unsigned(data, 8));
+				return;
+			}
+			if (TypeInfoVariant::FLOAT == variant && (base->size == 4 || base->size == 8)) {
+				double value = 0;
+				if (base->size == 4) {
+					float narrow;
+					std::memcpy(&narrow, data, 4);
+					value = static_cast<double>(narrow);
+				}
+				else {
+					std::memcpy(&value, data, 8);
+				}
+				const std::string written = std::format("{:.{}f}", value, spec.has_precision ? spec.precision : size_t{ 6 });
+				const bool negative = !written.empty() && written[0] == '-';
+				out += format_padded(spec, negative ? "-" : spec.plus ? "+" : "", "", negative ? std::string_view(written).substr(1)
+					: std::string_view(written), true);
+				return;
+			}
+			std::string text;
+			format_value(type, data, text, 0);
+			out += format_text(spec, text);
+		}
+
+		/*
+		 * format with each % filled in from params, %1, %2 and so on by that one, and %% as %, with
+		 * options like %{08x}: like std/text_buffer's append_format.
+		 */
 		std::string format_log(std::string_view format, const AnyValue* params, size_t count) {
 			std::string out;
 			size_t next = 0;
@@ -263,8 +324,12 @@ namespace hemera {
 					numbered = true;
 					++i;
 				}
+				FormatSpec spec;
+				size_t after = i + 1;
+				const bool valid = parse_format_spec(format, i + 1, spec, after);
+				i = after - 1;
 				const size_t chosen = numbered ? (number > 0 ? number - 1 : count) : next++;
-				if (chosen >= count) {
+				if (!valid || chosen >= count) {
 					out += "%!";
 					continue;
 				}
@@ -273,7 +338,7 @@ namespace hemera {
 					out += "<?>";
 					continue;
 				}
-				format_value(type, params[chosen].data, out, 0);
+				format_value_with(type, params[chosen].data, spec, out);
 			}
 			return out;
 		}

@@ -153,6 +153,12 @@ TEST(Hosted, UsesContainers)
 	run_hosted("containers", hemera::TargetStackCheck::Off);
 }
 
+// Format string options, in base's output_format and std's text_buffer (docs/format_strings.md).
+TEST(Hosted, FormatsWithOptions)
+{
+	run_hosted("format", hemera::TargetStackCheck::Off);
+}
+
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {

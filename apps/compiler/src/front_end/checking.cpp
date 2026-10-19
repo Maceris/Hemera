@@ -5,6 +5,7 @@
 
 #include "error/reporting.h"
 #include "front_end/checking.h"
+#include "front_end/format_spec.h"
 #include "front_end/front_end.h"
 #include "front_end/bounds.h"
 #include "front_end/stack_pointers.h"
@@ -1153,6 +1154,64 @@ namespace hemera {
 	 * then by name, defaults for the rest, and the varargs parameter taking the remaining positional
 	 * ones (or another varargs view, passed on).
 	 */
+	/*
+	 * A constant format string and the values it's given (docs/format_strings.md): each placeholder has a
+	 * value, its options are well formed, and they suit the value's type.
+	 */
+	static void check_format_string(Checker& checker, ast::Node* literal, const std::vector<std::pair<ast::Node*, Value>>& values) {
+		std::string text = text_of(literal->value.value);
+		if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
+			text = text.substr(1, text.size() - 2);
+		}
+		for (const FormatPlaceholder& placeholder : format_placeholders(text)) {
+			const std::string written = text.substr(placeholder.offset, placeholder.length);
+			if (!placeholder.valid) {
+				error_at(checker, ErrorCode::E4034, literal, std::format("{} has options that aren't well formed, like %{{08x}} or %{{>10}}",
+					written));
+				continue;
+			}
+			if (placeholder.numbered_zero) {
+				error_at(checker, ErrorCode::E4034, literal, "%0 names no value: values are numbered from %1");
+				continue;
+			}
+			if (placeholder.value >= values.size()) {
+				error_at(checker, ErrorCode::E4034, literal, std::format("{} is for value {}, but there {} only {}", written,
+					placeholder.value + 1, values.size() == 1 ? "is" : "are", values.size()));
+				continue;
+			}
+			const FormatSpec& spec = placeholder.spec;
+			TypeInfo const* type = base_of(default_type(values[placeholder.value].second));
+			if (type == nullptr || TypeInfoVariant::ANY == type->variant || TypeInfoVariant::ARCHETYPE == type->variant) {
+				continue;
+			}
+			const TypeInfoVariant variant = type->variant;
+			const bool integral = TypeInfoVariant::INTEGER == variant || TypeInfoVariant::CHAR == variant
+				|| TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::ENUM == variant || TypeInfoVariant::POINTER == variant
+				|| TypeInfoVariant::FUNCTION == variant;
+			const bool number = TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant || spec.kind != 0;
+			std::string problem;
+			if (spec.kind != 0 && !integral) {
+				problem = std::format("{} is written as a number in base {}, which {} isn't", written,
+					spec.kind == 'b' ? "2" : spec.kind == 'o' ? "8" : spec.kind == 'd' ? "10" : "16", to_string(default_type(values[placeholder.value].second)));
+			}
+			else if ((spec.plus || spec.zeros) && !number) {
+				problem = std::format("{} gives a number a sign or zeros, but {} isn't one", written,
+					to_string(default_type(values[placeholder.value].second)));
+			}
+			else if (spec.prefix && !(spec.kind == 'x' || spec.kind == 'X' || spec.kind == 'b' || spec.kind == 'o'
+				|| (spec.kind == 0 && (TypeInfoVariant::POINTER == variant || TypeInfoVariant::FUNCTION == variant)))) {
+				problem = std::format("{} has # for a 0x, 0b or 0o prefix, which needs x, X, b or o", written);
+			}
+			else if (spec.has_precision && TypeInfoVariant::FLOAT != variant && TypeInfoVariant::STRING != variant) {
+				problem = std::format("{} has a precision, which is for floats and strings, not {}", written,
+					to_string(default_type(values[placeholder.value].second)));
+			}
+			if (!problem.empty()) {
+				error_at(checker, ErrorCode::E4034, literal, problem);
+			}
+		}
+	}
+
 	static Progress check_arguments(Checker& checker, ast::Node* where, TypeInfoFunction const* function,
 		const Arguments& arguments, const std::vector<InternedString>& names, const std::vector<Value>& piped) {
 
@@ -1171,6 +1230,19 @@ namespace hemera {
 		std::vector<bool> given(function->input.size(), false);
 		size_t parameter = 0;
 		(void)piped;
+		/*
+		 * A format_string parameter followed by any... values, like log_info's: a constant one is checked
+		 * against them (docs/format_strings.md), unless they're passed on as a view
+		 */
+		ast::Node* format_literal = nullptr;
+		std::vector<std::pair<ast::Node*, Value>> format_values;
+		bool format_values_known = true;
+		auto takes_format = [&](size_t index) {
+			const FunctionInput& input = function->input[index];
+			return input.name != nullptr && text_of(input.name) == "format_string" && is_variant(input.type, TypeInfoVariant::STRING)
+				&& index + 1 < function->input.size() && function->input[index + 1].is_varargs
+				&& is_variant(function->input[index + 1].type, TypeInfoVariant::ANY);
+		};
 		for (size_t i = 0; i < arguments.positional.size(); ++i) {
 			const Positional& positional = arguments.positional[i];
 			ast::Node* argument = positional.node != nullptr ? positional.node : where;
@@ -1198,9 +1270,11 @@ namespace hemera {
 					&& same_type(static_cast<TypeInfoArray const*>(passed)->element_type, expected);
 				given[parameter] = true;
 				if (passed_on) {
+					format_values_known = false;
 					++parameter;
 					continue;
 				}
+				format_values.emplace_back(argument, value);
 				require_fit(checker, value, expected, argument, std::format("{}", text_of(input.name)));
 				continue;
 			}
@@ -1211,8 +1285,15 @@ namespace hemera {
 			}
 			require_fit(checker, value, expected, argument,
 				input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the argument"));
+			if (takes_format(parameter) && positional.node != nullptr && ast::NodeType::LITERAL == positional.node->node_type
+				&& TokenType::LITERAL_STRING == positional.node->value.type) {
+				format_literal = positional.node;
+			}
 			given[parameter] = true;
 			++parameter;
+		}
+		if (format_literal != nullptr && format_values_known) {
+			check_format_string(checker, format_literal, format_values);
 		}
 		for (const auto& [name, argument] : arguments.named) {
 			size_t index = function->input.size();
