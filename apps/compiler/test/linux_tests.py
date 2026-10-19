@@ -29,6 +29,7 @@ TESTS = [
     ("containers", [], 42),
     ("maps", [], 42),
     ("format", [], 42),
+    ("using_fields", [], 42),
     ("output", [], 42),
     ("library", [], 42),
     ("arrays", [], 42),

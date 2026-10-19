@@ -950,6 +950,33 @@ foo :: fn() {
 }
 ```
 
+`using` can also name a field, `using name : type`, for a struct held in place or a pointer to one. Its members can
+be used as the struct's own, and the field is still there by its name:
+
+```
+Handle :: struct[T] {
+    using value : ptr[mut T],
+    uses : int,
+}
+
+handle.width = 30           // handle.value.width
+size :: handle.value        // the pointer itself
+
+View :: struct {
+    using config : ptr[Config],
+}
+
+view.width = 30             // error: Config is reached through a ptr without mut
+```
+
+* **Through a pointer,** what's reached can be changed only if the pointer is `ptr[mut T]`, as when it's written out.
+* **The struct's own members come first:** a member of the same name in the struct, or included by value, hides one
+  reached through a pointer.
+* **Only member access** goes through it: a `Handle[Config]` isn't a `ptr[Config]`, so passing one on is written
+  `handle.value`.
+* A pointer to something without members, like `ptr[int]`, is allowed, and adds nothing, so a generic like `Handle`
+  works for any `T`.
+
 Anonymous structs can be defined in another struct by defining them with the `_` name/operator:
 
 ```

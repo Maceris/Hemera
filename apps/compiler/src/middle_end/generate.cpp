@@ -3020,11 +3020,43 @@ namespace hemera {
 		return LLVM::AddressOfOp::create(generator.builder, generator.loc, global);
 	}
 
+	/*
+	 * The using pointer field a member is reached through, when the struct has no member of that name
+	 * itself (docs/types.md, Structs): its index in the struct.
+	 */
+	static bool forwarding_member(Generator& generator, TypeInfoStruct const* structure, InternedString name, size_t& index) {
+		for (size_t i = 0; i < structure->members.size(); ++i) {
+			const StructMember& member = structure->members[i];
+			TypeInfo const* used = base(member.member_type);
+			if (!member.is_using || member.name == nullptr || used == nullptr || TypeInfoVariant::POINTER != used->variant) {
+				continue;
+			}
+			TypeInfo const* pointed = base(static_cast<TypeInfoPointer const*>(used)->base_type);
+			if (pointed == nullptr || TypeInfoVariant::STRUCT != pointed->variant) {
+				continue;
+			}
+			auto target = static_cast<TypeInfoStruct const*>(pointed);
+			size_t offset = 0;
+			TypeInfo* found_type = nullptr;
+			std::vector<int64_t> path;
+			size_t inner = 0;
+			if (find_member(generator, target, name, offset, found_type, path) || forwarding_member(generator, target, name, inner)) {
+				index = i;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static Emitted emit_member_named(Generator& generator, Emitted current, InternedString name, TypeInfo* result_type);
+
 	// .member on a value: a struct's field, through a pointer automatically, or a count or data.
 	static Emitted emit_member(Generator& generator, Emitted current, ast::Node* name_node, const CheckedNode* found) {
-		InternedString name = name_node->value.value;
+		return emit_member_named(generator, current, name_node->value.value, found->type);
+	}
+
+	static Emitted emit_member_named(Generator& generator, Emitted current, InternedString name, TypeInfo* result_type) {
 		TypeInfo const* type = base(current.type);
-		TypeInfo* result_type = found->type;
 		if (TypeInfoVariant::POINTER == type->variant) {
 			auto pointer = static_cast<TypeInfoPointer const*>(type);
 			current = location(value_of(generator, current), pointer->base_type);
@@ -3034,7 +3066,16 @@ namespace hemera {
 			size_t offset = 0;
 			TypeInfo* member_type = result_type;
 			std::vector<int64_t> path;
-			find_member(generator, static_cast<TypeInfoStruct const*>(type), name, offset, member_type, path);
+			auto structure = static_cast<TypeInfoStruct const*>(type);
+			if (!find_member(generator, structure, name, offset, member_type, path)) {
+				// Through a using pointer field: the field, then the member of what it points to
+				size_t index = 0;
+				if (forwarding_member(generator, structure, name, index)) {
+					const StructMember& forwarding = structure->members[index];
+					Emitted pointer = emit_member_named(generator, current, forwarding.name, forwarding.member_type);
+					return emit_member_named(generator, pointer, name, result_type);
+				}
+			}
 			const bool through_union = std::find(path.begin(), path.end(), -1) != path.end();
 			if (!current.address && !through_union) {
 				// A value: its part

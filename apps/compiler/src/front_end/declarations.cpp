@@ -1073,7 +1073,19 @@ namespace hemera {
 					: default_value.integer;
 				const std::string default_member = ConstantValue::Kind::ENUM_MEMBER == default_value.kind ? default_value.member : std::string();
 				ast::Node* names_node = child->children[0];
-				if (ast::NodeType::UNDERSCORE == names_node->node_type) {
+				// using value : ptr[T], or : Inner: a named field whose members are the struct's own (docs/types.md, Structs)
+				const bool named_using = ast::NodeType::USING == child->children.back()->node_type;
+				if (named_using) {
+					TypeInfo const* used = get_base_type(field_type);
+					if (ast::NodeType::IDENTIFIER != names_node->node_type || used == nullptr
+						|| (TypeInfoVariant::POINTER != used->variant && TypeInfoVariant::STRUCT != used->variant)
+						|| (TypeInfoVariant::POINTER == used->variant && static_cast<TypeInfoPointer const*>(used)->base_type == nullptr)) {
+						return type_error(walk, ErrorCode::E4014, names_node, std::format("using needs one field, a struct or a pointer to something, not {}",
+							to_string(field_type)));
+					}
+					type->members.push_back({ names_node->value.value, field_type, 0, has_value, true, default_integer, default_member });
+				}
+				else if (ast::NodeType::UNDERSCORE == names_node->node_type) {
 					// Its members are the struct's own
 					type->members.push_back({ nullptr, field_type, 0, has_value, true, default_integer, default_member });
 				}

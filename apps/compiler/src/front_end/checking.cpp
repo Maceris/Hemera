@@ -642,6 +642,30 @@ namespace hemera {
 		return nullptr;
 	}
 
+	/*
+	 * The using pointer field a member is reached through, like value in a struct with
+	 * using value : ptr[Config], when the struct has no member of that name itself (docs/types.md, Structs).
+	 */
+	static const StructMember* forwarding_member(TypeInfoStruct const* type, InternedString name) {
+		for (const StructMember& member : type->members) {
+			if (!member.is_using || member.name == nullptr) {
+				continue;
+			}
+			TypeInfo const* used = base_of(member.member_type);
+			if (used == nullptr || TypeInfoVariant::POINTER != used->variant) {
+				continue;
+			}
+			TypeInfo const* pointed = base_of(static_cast<TypeInfoPointer const*>(used)->base_type);
+			if (pointed != nullptr && TypeInfoVariant::STRUCT == pointed->variant) {
+				auto target = static_cast<TypeInfoStruct const*>(pointed);
+				if (find_member(target, name) != nullptr || forwarding_member(target, name) != nullptr) {
+					return &member;
+				}
+			}
+		}
+		return nullptr;
+	}
+
 	// .name on a value: a struct's field (through one pointer), or an array's or string's count.
 	static Progress check_member(Checker& checker, ast::Node* where, InternedString name, Value& value) {
 		const ValueKind kind = value.kind;
@@ -732,6 +756,13 @@ namespace hemera {
 				value.is_mutable = is_mutable && !is_context;
 				value.is_context = is_context;
 				return Progress::DONE;
+			}
+			// Through a using pointer field, which decides whether it can be changed
+			if (const StructMember* forwarding = forwarding_member(static_cast<TypeInfoStruct const*>(type), name)) {
+				value = typed(forwarding->member_type);
+				value.is_location = is_location;
+				value.is_mutable = is_mutable;
+				return check_member(checker, where, name, value);
 			}
 		}
 		else if (TypeInfoVariant::ARRAY == type->variant) {

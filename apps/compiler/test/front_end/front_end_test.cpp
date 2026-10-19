@@ -852,6 +852,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "derived_cycle", hemera::ErrorCode::E4007 },
 		{ "alias_argument_count", hemera::ErrorCode::E4014 },
 		{ "function_argument_wrong", hemera::ErrorCode::E4014 },
+		{ "using_not_struct", hemera::ErrorCode::E4014 },
+		{ "using_read_only", hemera::ErrorCode::E4016 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },

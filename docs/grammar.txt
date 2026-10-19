@@ -283,6 +283,8 @@ generic_argument = type_in_list | literal_integer | ( OPERATOR_minus , literal_i
 
 struct_member = ( identifier , { SYM_COMMA , identifier } , SYM_COLON , type_in_list , [ mut_definition_rhs ] ) 
     | ( KEYWORD_using , identifier , { SYM_DOT , identifier } )
+    (* using name : type, a named field whose members are the struct's own: a struct, or a pointer to one *)
+    | ( KEYWORD_using , identifier , SYM_COLON , type_in_list , [ mut_definition_rhs ] )
     | ( SYM_UNDERSCORE , SYM_COLON , struct_decl )
     ;
 union_member = identifier ,  [ SYM_LPAREN , identifier , { SYM_COMMA , identifier } , SYM_RPAREN ] ;

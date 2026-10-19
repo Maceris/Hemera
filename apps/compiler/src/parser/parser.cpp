@@ -1689,7 +1689,21 @@ namespace hemera::parser {
 			|| expect(state, TokenType::KEYWORD_USING)
 			|| expect(state, TokenType::SYM_UNDERSCORE)) {
 
-			if (expect(state, TokenType::KEYWORD_USING) && !is_field_name(state)) {
+			// using value : ptr[T]: a named field whose members can be used as the struct's own
+			const bool named_using = expect(state, TokenType::KEYWORD_USING) && TokenType::IDENTIFIER == next_token(state).type
+				&& TokenType::SYM_COLON == next_token(state, 2).type;
+			if (named_using) {
+				ast::Node& marker = next_as_node(state, ast::NodeType::USING);
+				const size_t before = parent.children.size();
+				if (!struct_member(state, parent)) {
+					return false;
+				}
+				// On the field's definition, after its names and type
+				if (parent.children.size() > before) {
+					parent.children.back()->children.push_back(&marker);
+				}
+			}
+			else if (expect(state, TokenType::KEYWORD_USING) && !is_field_name(state)) {
 				ast::Node& using_node = next_as_node(state, ast::NodeType::USING, &parent);
 				if (!expect(state, TokenType::IDENTIFIER)) {
 					report_error_on_last_token(state, ErrorCode::E3009);

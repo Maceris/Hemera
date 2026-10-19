@@ -159,6 +159,12 @@ TEST(Hosted, FormatsWithOptions)
 	run_hosted("format", hemera::TargetStackCheck::Off);
 }
 
+// using on named fields: through pointers, and structs held in place (docs/types.md, Structs).
+TEST(Hosted, UsesThroughFields)
+{
+	run_hosted("using_fields", hemera::TargetStackCheck::Off);
+}
+
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {
