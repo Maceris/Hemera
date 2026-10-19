@@ -4663,7 +4663,13 @@ namespace hemera {
 				current = emit_call(generator, child, arguments, current, found, piped);
 			}
 			else if (ast::NodeType::ARRAY_DIMENSION == type) {
-				if (ValueKind::GENERIC_FUNCTION != current.kind) {
+				// A generic function named with its arguments and not called, like release_in_place[T]: that instance
+				if (ValueKind::GENERIC_FUNCTION == current.kind && ValueKind::VALUE == found->kind && found->declaration != nullptr
+					&& DeclarationKind::FUNCTION == found->declaration->kind) {
+					LLVM::LLVMFuncOp function = function_for(generator, found->declaration);
+					current = value(LLVM::AddressOfOp::create(generator.builder, generator.loc, function), found->declaration->value_type);
+				}
+				else if (ValueKind::GENERIC_FUNCTION != current.kind) {
 					current = emit_index(generator, current, arguments[0], found);
 				}
 			}
@@ -5946,8 +5952,14 @@ namespace hemera {
 		ast::Node* body = nullptr;
 		ast::Node* condition = nullptr;
 		ast::Node* with = nullptr;
+		// #at_least_once: the condition isn't checked the first time around (docs/control_flow.md)
+		bool at_least_once = false;
 		for (ast::Node* child : node->children) {
-			if (ast::NodeType::WITH_CLAUSE == child->node_type) {
+			if (ast::NodeType::DIRECTIVE == child->node_type && child->value.value != nullptr
+				&& std::string_view(*child->value.value) == "#at_least_once") {
+				at_least_once = true;
+			}
+			else if (ast::NodeType::WITH_CLAUSE == child->node_type) {
 				with = child;
 			}
 			else if (ast::NodeType::BLOCK == child->node_type) {
@@ -5965,12 +5977,27 @@ namespace hemera {
 					}
 				}
 			}
+			// Whether it's the first time around, for #at_least_once
+			mlir::Value first;
+			if (at_least_once && condition != nullptr) {
+				first = make_raw_slot(generator, generator.builder.getI1Type(), 1);
+				store(generator, boolean(generator, true), first);
+			}
 			emit_loop(generator, true, [&]() {
-				if (condition != nullptr) {
+				auto check = [&]() {
 					emit_if(generator, negate(generator, emit_condition(generator, condition)), [&]() {
 						emit_break(generator, 1);
 						return true;
 					}, nullptr);
+					return false;
+				};
+				if (condition != nullptr && first) {
+					mlir::Value was_first = LLVM::LoadOp::create(generator.builder, generator.loc, generator.builder.getI1Type(), first);
+					store(generator, boolean(generator, false), first);
+					emit_if(generator, negate(generator, was_first), check, nullptr);
+				}
+				else if (condition != nullptr) {
+					check();
 				}
 				if (body != nullptr) {
 					emit_scope(generator, [&]() {

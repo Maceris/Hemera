@@ -386,6 +386,43 @@ any owner:
 | `compiler.forget(value)` | Ends an owner with nothing done: nothing releases what it held |
 | `compiler.duplicate(&value)` | A second owner of the same value, without its type knowing, for a type's own share function |
 
+## Shared Ownership
+
+std/memory's `SharedPtr[T]` is a value on the heap with several owners, released when the last one is done with it.
+It's `#owned`, so each owner is released or moved on like any other, and the compiler checks it:
+
+```
+buffer #release :: memory.make_shared(Buffer.{size = 4096}, destroy_buffer)
+reader :: memory.share(&buffer)             // a second owner
+spawn_reader(reader)                        // moved to the reader, which releases it
+log_info("% bytes", buffer.size)            // the value's fields, through using
+```
+
+| Function | Does |
+|---|---|
+| `make_shared(value, destroy, allocator)` | Moves `value` into a new block with its counts, and gives its first owner |
+| `share(&shared)` | Another owner of the same value |
+| `release(shared)` | Drops an owner; the last one destroys the value and frees the block |
+| `weaken(&shared)` | A `WeakPtr`, which doesn't keep the value |
+| `upgrade(&weak)` | An owner, while there's still one, or null |
+| `release_weak(weak)` | Drops a weak reference |
+| `pointer_of(&shared)` | The value's address, for passing on |
+
+* **One allocation.** A `SharedPtr` is one pointer, to the value, with its counts in a header just before it in the same
+  block. Its field is named `shared_value`, and its members are the value's through `using`, so `shared.size` is the
+  value's field, as long as the value has no field called `shared_value`.
+* **What runs at the last release** is the `destroy` function `make_shared` was given, like closing a file, with the
+  value's address. Without one, a value whose type is `#owned` is released with its own release function, so a shared
+  file closes itself; anything else needs nothing. The function is kept in the block, not the type, so every
+  `SharedPtr[File]` is one type whatever closes it.
+* **Read-only and changeable.** `make_shared` gives a `SharedPtr[mut T]`, which can change the value; a
+  `SharedPtr[T]` can only read it, and one becomes the other by itself (see
+  [types.md](types.md#mutability-in-type-arguments)).
+* **Threads.** Counting is atomic, so owners can be on different threads. `SharedPtr[T, false]`, or `LocalPtr[T]`,
+  counts with plain arithmetic, for values that stay on one thread.
+* **Weak references** keep the block, not the value: `upgrade` counts up only while some owner is left, and the block
+  goes once the last owner and the last weak reference are both released.
+
 ## Generics
 
 A generic's body is checked with each instance's own types, so an instance given an owned type that copies or drops

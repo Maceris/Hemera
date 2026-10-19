@@ -177,6 +177,12 @@ TEST(Hosted, ReleasesOwners)
 	run_hosted("owned", hemera::TargetStackCheck::Off);
 }
 
+// std/memory's SharedPtr, WeakPtr and LocalPtr (docs/memory.md, Shared Ownership).
+TEST(Hosted, SharesOwnership)
+{
+	run_hosted("shared", hemera::TargetStackCheck::Off);
+}
+
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {

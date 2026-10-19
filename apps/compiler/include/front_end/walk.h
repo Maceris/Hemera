@@ -249,6 +249,12 @@ namespace hemera {
 	bool has_constraints(NameRegistry& names, const Declaration* generic);
 
 	/// <summary>
+	/// Whether a derived generic parameter, like E = element_of(C) or atomic = true, is a type, from how it's
+	/// written: a type, or a call to a function returning one; anything else is a value.
+	/// </summary>
+	bool derived_parameter_is_type(NameRegistry& names, const Declaration* generic, const ast::Node* parameter);
+
+	/// <summary>
 	/// Makes a constrained generic function's archetypes and the instance of them whose body is
 	/// checked before any other: once, when the generic is resolved.
 	/// </summary>

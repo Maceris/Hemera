@@ -142,27 +142,38 @@ check_time :: fn() -> int {
     return 0
 }
 
-destroyed :: fn(value: ptr[mut int]) {
-    value^ = -1
+Counter :: struct {
+    value : int,
+    // Where its destruction is seen, once it's gone
+    seen : ptr[mut int],
+}
+
+destroyed :: fn(counter: ptr[mut Counter]) {
+    counter.seen^ = counter.value
 }
 
 // SharedPtr: 0 if it worked, or the first check that didn't.
 check_memory :: fn() -> int {
-    value :: runtime.new(int)
-    value^ = 5
-    shared :: runtime.new(memory.SharedPtr[int])
-    shared.count = 1
-    shared.value = value
-    shared.destructor = destroyed
-    memory.increment(shared)
-    if memory.decrement(shared) || value^ != 5 {
+    seen :: runtime.new(int)
+    seen^ = 0
+    shared :: memory.make_shared(Counter.{value = 5, seen = seen}, destroyed)
+    second :: memory.share(&shared)
+    second.value += 1
+    memory.release(second)
+    if seen^ != 0 || shared.value != 6 {
+        memory.release(shared)
+        runtime.free(seen)
         return 1
     }
-    if !memory.decrement(shared) || value^ != -1 {
+    weak :: memory.weaken(&shared)
+    memory.release(shared)
+    if seen^ != 6 || memory.upgrade(&weak) != null {
+        memory.release_weak(weak)
+        runtime.free(seen)
         return 2
     }
-    runtime.free(shared)
-    runtime.free(value)
+    memory.release_weak(weak)
+    runtime.free(seen)
     ok : Result[int, int] = .Ok(1)
     if !memory.is_ok(ok) || memory.is_error(ok) {
         return 3

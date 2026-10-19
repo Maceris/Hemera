@@ -691,7 +691,7 @@ namespace hemera {
 		 * Whether a derived parameter is a type, from how it's written: a type, like ptr[A], or a call to
 		 * a function that returns one, like element_of(C). size_of and other values aren't.
 		 */
-		bool derived_is_type(NameRegistry& names, const Declaration* generic, const ast::Node* expression) {
+		bool derived_is_type_inner(NameRegistry& names, const Declaration* generic, const ast::Node* expression) {
 			if (ast::NodeType::TYPE == expression->node_type) {
 				return true;
 			}
@@ -836,6 +836,10 @@ namespace hemera {
 		}
 	}
 
+	bool derived_parameter_is_type(NameRegistry& names, const Declaration* generic, const ast::Node* parameter) {
+		return parameter->children.empty() || derived_is_type_inner(names, generic, parameter->children[0]);
+	}
+
 	bool has_constraints(NameRegistry& names, const Declaration* generic) {
 		if (where_clause_of(generic) != nullptr) {
 			return true;
@@ -863,7 +867,7 @@ namespace hemera {
 		size_t index = 0;
 		for (const auto& [name, parameter] : generic_parameters(generic)) {
 			const bool is_value = ast::NodeType::DERIVED_PARAMETER == parameter->node_type
-				? !parameter->children.empty() && !derived_is_type(names, generic, parameter->children[0])
+				? !derived_parameter_is_type(names, generic, parameter)
 				: generic_parameter_is_value(names, generic, index);
 			++index;
 			if (is_value) {

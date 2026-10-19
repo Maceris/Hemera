@@ -369,8 +369,10 @@ namespace hemera {
 				if (index >= arguments.size()) {
 					break;
 				}
-				const bool is_value = ast::NodeType::COLON == parameter->node_type
-					&& !generic_parameter_is_constrained(walk.executor.program_info->names, generic, parameter);
+				const bool is_value = ast::NodeType::DERIVED_PARAMETER == parameter->node_type
+					? !derived_parameter_is_type(walk.executor.program_info->names, generic, parameter)
+					: ast::NodeType::COLON == parameter->node_type
+						&& !generic_parameter_is_constrained(walk.executor.program_info->names, generic, parameter);
 				const bool given_value = arguments[index] == nullptr;
 				const std::string name = name_text(generic_parameter_name(parameter));
 				if (is_value != given_value) {
@@ -1719,6 +1721,10 @@ namespace hemera {
 			}
 			for (ast::Node* parameter : child->children) {
 				if (at++ == index) {
+					// A derived one, like atomic = true, is a value unless it's written as a type
+					if (ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+						return !derived_parameter_is_type(names, generic, parameter);
+					}
 					return ast::NodeType::COLON == parameter->node_type && !generic_parameter_is_constrained(names, generic, parameter);
 				}
 			}
@@ -1783,8 +1789,10 @@ namespace hemera {
 				if (index >= instance->generic_arguments.size()) {
 					return type_error(walk, ErrorCode::E4014, parameter, "this generic parameter has no argument");
 				}
-				const bool is_value = ast::NodeType::COLON == parameter->node_type
-					&& !generic_parameter_is_constrained(walk.executor.program_info->names, instance->generic, parameter);
+				const bool is_value = ast::NodeType::DERIVED_PARAMETER == parameter->node_type
+					? !derived_parameter_is_type(walk.executor.program_info->names, instance->generic, parameter)
+					: ast::NodeType::COLON == parameter->node_type
+						&& !generic_parameter_is_constrained(walk.executor.program_info->names, instance->generic, parameter);
 				const std::string name = name_text(generic_parameter_name(parameter));
 				// A value, like capacity: usize, takes a compile-time value; a derived one either; anything else a type
 				if (is_value != (instance->generic_arguments[index] == nullptr)

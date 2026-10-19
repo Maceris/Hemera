@@ -82,12 +82,12 @@ output_text #no_context :: fn(buffer: ptr[mut OutputBuffer], text: string) {
     }
 }
 
-// value in decimal.
+// value in decimal. Once at least, so 0 has its digit.
 output_unsigned #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     digits : u8[20]
     count : usize = 0
     rest := value
-    loop {
+    loop #at_least_once {
         if count < 20 {
             digits[count] = cast[u8](rest % 10) + cast[u8]('0')
             count += 1

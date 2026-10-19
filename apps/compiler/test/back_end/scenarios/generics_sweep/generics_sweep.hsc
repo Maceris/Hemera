@@ -70,9 +70,18 @@ instantiate_all :: fn(number: int, point: Point) {
     ok : Result[int, string] = .Ok(number)
     _ = memory.is_ok(ok)
     _ = memory.is_error(ok)
-    shared :: runtime.new(memory.SharedPtr[Point])
-    memory.increment(shared)
-    _ = memory.decrement(shared)
+    shared :: memory.make_shared(point)
+    other :: memory.share(&shared)
+    weak :: memory.weaken(&other)
+    memory.release(other)
+    match memory.upgrade(&weak) {
+        case Some(again) => memory.release(again)
+        case None => {}
+    }
+    memory.release_weak(weak)
+    memory.release(shared)
+    local :: memory.make_shared[string, false](text)
+    memory.release(local)
     // std/containers
     fixed : containers.FixedArray[Point, 4]
     _ = containers.fixed_push(&fixed, point)

@@ -32,6 +32,7 @@ TESTS = [
     ("using_fields", [], 42),
     ("mut_arguments", [], 42),
     ("owned", [], 42),
+    ("shared", [], 42),
     ("output", [], 42),
     ("library", [], 42),
     ("arrays", [], 42),

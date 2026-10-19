@@ -1985,6 +1985,26 @@ namespace hemera {
 						}
 						value.generic_arguments.push_back(argument_type);
 					}
+					/*
+					 * Named with its arguments and not called, like release_in_place[T]: that instance, as a
+					 * function value (docs/functions.md)
+					 */
+					const bool called = i + 1 < node->children.size() && ast::NodeType::PAREN_GROUP == node->children[i + 1]->node_type;
+					if (progress == Progress::DONE && !called) {
+						Declaration* generic = value.declaration;
+						value.generic_values.resize(value.generic_arguments.size());
+						Declaration* instance = instance_of(checker.walk, generic, value.generic_arguments, value.generic_values);
+						progress = check_constraints(checker.walk, child, generic, instance);
+						if (progress == Progress::DONE) {
+							progress = check_function_arguments(checker.walk, child, generic, instance);
+						}
+						if (progress == Progress::DONE) {
+							progress = require_resolved(checker.walk, child, instance, Need::RESOLVED);
+						}
+						if (progress == Progress::DONE) {
+							value = declaration_value(checker, instance);
+						}
+					}
 				}
 				else {
 					progress = check_index(checker, child, arguments, value);

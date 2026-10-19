@@ -67,6 +67,8 @@ main :: fn() -> int {
     // Not written in place, so only found when it runs
     ok = check("50% %! x", UNFIT, 1) && ok
     ok = check("plain 3", "plain %", 3) && ok
+    // Zero has its digit, in base's formatter as in std's
+    ok = check("0 0 [  0]", "% %{x} [%{>3}]", 0, 0, 0) && ok
     // Floats, in text_buffer only
     storage : u8[64]
     text := text_buffer.make(storage)
