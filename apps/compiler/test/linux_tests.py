@@ -34,6 +34,7 @@ TESTS = [
     ("everything", ["--generate-all"], 42),
     ("files", [], 42),
     ("system", [], 42),
+    ("constraints", [], 42),
     # runtime.ASSERTION_EXIT_CODE
     ("assertion", [], 134),
     # The same with debug info, its frames named and symbolized from its DWARF

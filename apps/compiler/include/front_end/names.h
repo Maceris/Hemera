@@ -117,6 +117,27 @@ namespace hemera {
 	};
 
 	/// <summary>
+	/// Whether an instance's constraints are checked yet, and what they found (docs/types.md, Constraints).
+	/// </summary>
+	enum class ConstraintState : uint8_t {
+		UNCHECKED,
+		SATISFIED,
+		UNSATISFIED,
+	};
+
+	/// <summary>
+	/// One constraint checked at compile time: the #constraint function, its arguments in order (a
+	/// type, or null for a value in values at the same place), and what its requirements found
+	/// unsatisfied, each with why. Empty when it's satisfied.
+	/// </summary>
+	struct ConstraintRun {
+		struct Declaration* constraint = nullptr;
+		std::vector<TypeInfo*> types;
+		std::vector<ConstantValue> values;
+		std::vector<std::string> unsatisfied;
+	};
+
+	/// <summary>
 	/// What kind of literal an untyped constant is, like C :: 5, which takes the type it's used as.
 	/// </summary>
 	enum class Untyped : uint8_t {
@@ -179,6 +200,12 @@ namespace hemera {
 		/// initial contents, so it can't be read at compile time.
 		/// </summary>
 		bool externally_initialized = false;
+		/// <summary>
+		/// For an instance of a generic with constraints: whether they're checked yet, and what
+		/// they found, with why in unsatisfied (docs/types.md, Constraints). Guarded by the registry's mutex.
+		/// </summary>
+		ConstraintState constraint_state = ConstraintState::UNCHECKED;
+		std::vector<std::string> unsatisfied;
 		/// <summary>
 		/// From #section(name), the output section to put it in, or null.
 		/// </summary>
@@ -343,6 +370,16 @@ namespace hemera {
 		/// Compile-Time Execution).
 		/// </summary>
 		std::map<const void*, std::unique_ptr<Evaluation>> evaluations;
+		/// <summary>
+		/// Each constraint checked so far, by the #constraint function and its arguments, so it's
+		/// only run once for them (docs/types.md, Constraints).
+		/// </summary>
+		std::map<std::string, std::unique_ptr<Evaluation>> constraint_evaluations;
+		/// <summary>
+		/// Each derived parameter worked out by running code, by its expression and the instance's
+		/// arguments (docs/types.md, Derived Parameters).
+		/// </summary>
+		std::map<std::string, std::unique_ptr<Evaluation>> derived_evaluations;
 		/// <summary>
 		/// Each instance of a generic type, by the generic and its arguments.
 		/// </summary>

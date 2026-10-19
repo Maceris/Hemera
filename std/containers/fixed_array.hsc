@@ -1,5 +1,7 @@
 package containers
 
+import compiler from "base"
+
 /*
  * Up to capacity values of T, in order, in the array itself: like a dynamic array that never
  * allocates, and fails to add once it's full.
@@ -8,7 +10,7 @@ package containers
  *     fixed_push(&ids, 7)          // false once it's full
  *     for id in fixed_view(&ids) {}
  */
-FixedArray :: struct[T, capacity: usize] {
+FixedArray :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
     items : T[capacity],
     count : usize,
 }

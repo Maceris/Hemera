@@ -893,12 +893,12 @@ namespace hemera {
 	 * Whether a generic function's generic parameter at index takes a value: one written name: type,
 	 * or a compile-time parameter, named like a parameter that isn't a type (docs/types.md).
 	 */
-	static bool generic_takes_value(Declaration* generic, size_t index) {
+	static bool generic_takes_value(NameRegistry& registry, Declaration* generic, size_t index) {
 		ast::Node* function = generic != nullptr ? function_node(generic) : nullptr;
 		if (function == nullptr) {
 			return false;
 		}
-		if (generic_parameter_is_value(generic, index)) {
+		if (generic_parameter_is_value(registry, generic, index)) {
 			return true;
 		}
 		const std::vector<std::string> names = generic_names(function);
@@ -1221,6 +1221,25 @@ namespace hemera {
 		// A compile-time argument that isn't a constant is reported already
 		bool binding_failed = false;
 		std::set<std::string> explicit_names;
+		/*
+		 * Overriding a derived parameter, like sum[u8[], u64], gives the ones before it too, since they're
+		 * positional, so those aren't given twice even when the arguments would bind them
+		 */
+		size_t needed_before = 0;
+		{
+			size_t index = 0;
+			for (ast::Node* child : function->children) {
+				if (ast::NodeType::GENERIC_TAG != child->node_type) {
+					continue;
+				}
+				for (ast::Node* parameter : child->children) {
+					if (index < callee.generic_arguments.size() && ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+						needed_before = index;
+					}
+					++index;
+				}
+			}
+		}
 		for (size_t i = 0; i < callee.generic_arguments.size() && i < generics.size(); ++i) {
 			if (callee.generic_arguments[i] == nullptr && i < callee.generic_values.size()) {
 				bound_values[generics[i]] = callee.generic_values[i];
@@ -1228,7 +1247,9 @@ namespace hemera {
 			else {
 				bound[generics[i]] = callee.generic_arguments[i];
 			}
-			explicit_names.insert(generics[i]);
+			if (i >= needed_before) {
+				explicit_names.insert(generics[i]);
+			}
 		}
 		// Each argument, matched to its parameter, binds what it can
 		auto parameter_for = [&](size_t position, InternedString name) -> const Parameter* {
@@ -1323,6 +1344,15 @@ namespace hemera {
 			callee = poisoned();
 			return Progress::DONE;
 		}
+		// Derived parameters, like E = element_of(C), from what's bound (docs/types.md, Derived Parameters)
+		Progress derived = bind_derived(checker.walk, where, generic, bound, bound_values);
+		if (derived == Progress::FAILED) {
+			callee = poisoned();
+			return Progress::DONE;
+		}
+		if (derived != Progress::DONE) {
+			return derived;
+		}
 		std::vector<TypeInfo*> instance_arguments;
 		std::vector<ConstantValue> instance_values;
 		for (const std::string& name : generics) {
@@ -1342,7 +1372,16 @@ namespace hemera {
 			instance_arguments.push_back(iter->second);
 		}
 		Declaration* instance = instance_of(checker.walk, generic, instance_arguments, instance_values);
-		Progress progress = require_resolved(checker.walk, where, instance, Need::RESOLVED);
+		// Its constraints, checked here, where it's made (docs/types.md, Constraints)
+		Progress progress = check_constraints(checker.walk, where, generic, instance);
+		if (progress == Progress::FAILED) {
+			callee = poisoned();
+			return Progress::DONE;
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		progress = require_resolved(checker.walk, where, instance, Need::RESOLVED);
 		if (progress == Progress::FAILED) {
 			callee = poisoned();
 			return Progress::DONE;
@@ -1466,6 +1505,41 @@ namespace hemera {
 		}
 		if (ValueKind::BUILTIN_FUNCTION == kind) {
 			return check_builtin_call(checker, where, callee, arguments);
+		}
+		/*
+		 * compiler.require_any(A(T), B(T)) in a #constraint function: each alternative a call to a
+		 * constraint, checked as one; the generator brackets them (docs/types.md, Constraints)
+		 */
+		if (is_compiler_function(callee.declaration, "require_any")) {
+			for (ast::Node* alternative : arguments) {
+				Value ignored;
+				Progress progress = check_expression(checker, alternative, nullptr, ignored);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+			}
+			callee = call_result(static_cast<TypeInfoFunction const*>(callee.declaration->value_type), callee.declaration);
+			return Progress::DONE;
+		}
+		/*
+		 * compiler.satisfies(constraints): worked out here, a constant, rather than its argument
+		 * checked as a call (docs/types.md, Constraints)
+		 */
+		if (is_compiler_function(callee.declaration, "satisfies")) {
+			ConstantValue satisfied;
+			Progress progress = evaluate_satisfies(checker.walk, where, arguments, satisfied);
+			if (progress == Progress::FAILED) {
+				callee = poisoned();
+				return Progress::DONE;
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (checker.record != nullptr) {
+				checker.record->satisfied[where] = satisfied.boolean;
+			}
+			callee = call_result(static_cast<TypeInfoFunction const*>(callee.declaration->value_type), callee.declaration);
+			return Progress::DONE;
 		}
 		if (ValueKind::VARIANT == kind) {
 			auto union_type = static_cast<TypeInfoUnion const*>(base_of(callee.type));
@@ -1627,7 +1701,7 @@ namespace hemera {
 				if (ValueKind::GENERIC_FUNCTION == value.kind) {
 					// Generic arguments given explicitly, like empty[string]() or push[u8, 4](...)
 					for (ast::Node* argument : arguments) {
-						if (generic_takes_value(value.declaration, value.generic_arguments.size())) {
+						if (generic_takes_value(checker.walk.executor.program_info->names, value.declaration, value.generic_arguments.size())) {
 							if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument->value.value) != nullptr
 								&& !checker.walk.generic_values.contains(text_of(argument->value.value))) {
 								error_at(checker, ErrorCode::E4010, argument, std::format(
@@ -3759,6 +3833,33 @@ namespace hemera {
 				continue;
 			}
 			for (ast::Node* parameter : child->children) {
+				/*
+				 * A derived value, like bits = size_of(T) * 8: an untyped constant, which takes the
+				 * type it's used as, like C :: 5 (docs/types.md, Derived Parameters)
+				 */
+				if (ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+					auto derived = checker.walk.generic_values.find(text_of(parameter->value.value));
+					if (derived == checker.walk.generic_values.end() || find_local(checker, parameter->value.value) != nullptr) {
+						continue;
+					}
+					Value constant;
+					if (ConstantValue::Kind::INTEGER == derived->second.kind) {
+						constant.kind = ValueKind::UNTYPED_INTEGER;
+					}
+					else if (ConstantValue::Kind::BOOLEAN == derived->second.kind) {
+						constant.kind = ValueKind::UNTYPED_BOOLEAN;
+					}
+					else {
+						error_at(checker, ErrorCode::E4014, parameter, std::format("{} can only be derived as a type, an integer or a boolean",
+							text_of(parameter->value.value)));
+						continue;
+					}
+					declare_local(checker, parameter, parameter->value.value, constant);
+					if (checker.record != nullptr) {
+						checker.record->generic_constants[parameter] = derived->second;
+					}
+					continue;
+				}
 				if (ast::NodeType::COLON != parameter->node_type || parameter->children.size() < 2) {
 					continue;
 				}
@@ -3924,6 +4025,16 @@ namespace hemera {
 		auto type = static_cast<TypeInfoFunction const*>(function->value_type);
 		if (function_node_ == nullptr || body == nullptr || type == nullptr) {
 			return Progress::DONE;
+		}
+		/*
+		 * An instance whose constraints aren't satisfied isn't checked: where it's used says why
+		 * (docs/types.md, Constraints)
+		 */
+		if (function->generic != nullptr) {
+			Progress satisfied = check_constraints(walk, function->node, function->generic, function, true);
+			if (satisfied != Progress::DONE) {
+				return satisfied;
+			}
 		}
 		// An instance's generic parameters
 		if (function->generic != nullptr) {

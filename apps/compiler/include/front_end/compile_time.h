@@ -12,6 +12,7 @@ namespace hemera {
 		struct Node;
 	}
 	struct CheckedBody;
+	struct ConstraintRun;
 	struct Declaration;
 	struct TypeInfo;
 
@@ -51,6 +52,11 @@ namespace hemera {
 		/// </summary>
 		bool queued = false;
 		CompileTimeValue value;
+		/// <summary>
+		/// A constraint to check, rather than code to run for a value: the #constraint function, its
+		/// arguments, and what its requirements found (docs/types.md, Constraints).
+		/// </summary>
+		std::shared_ptr<ConstraintRun> constraint;
 	};
 
 }

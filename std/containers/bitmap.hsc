@@ -1,5 +1,7 @@
 package containers
 
+import compiler from "base"
+
 /*
  * size bits, all clear to start, in 64-bit words in the bitmap itself: for things like which
  * frames or IDs are in use. Bits at or past size are left alone by everything here.
@@ -8,7 +10,7 @@ package containers
  *     bit_set(&used, 3)
  *     free :: bit_find_clear(&used, 0)     // the first clear bit from 0, if any
  */
-Bitmap :: struct[size: usize] {
+Bitmap :: struct[size: usize] where compiler.AtLeastOne(size) {
     words : u64[(size + 63) / 64],
 }
 

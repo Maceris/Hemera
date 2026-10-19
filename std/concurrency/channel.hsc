@@ -1,5 +1,7 @@
 package concurrency
 
+import compiler from "base"
+
 /*
  * A queue of up to capacity values between fibers and threads: sending waits while it's full, and
  * receiving waits while it's empty, parking a fiber and blocking a thread (runtime.park). Values
@@ -13,7 +15,7 @@ package concurrency
  *
  * The values are kept in the channel, so they can't point into a stack.
  */
-Channel :: struct[T, capacity: usize] {
+Channel :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
     lock : Mutex,
     // Waiting for a value, and for room
     not_empty : Condition,

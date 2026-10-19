@@ -166,6 +166,10 @@ namespace hemera {
 		/// fn[T, capacity: usize]: locals that are constants, by where they're declared.
 		/// </summary>
 		std::unordered_map<const void*, ConstantValue> generic_constants;
+		/// <summary>
+		/// What each compiler.satisfies worked out, by its call's node (docs/types.md, Constraints).
+		/// </summary>
+		std::unordered_map<const ast::Node*, bool> satisfied;
 	};
 
 	/// <summary>

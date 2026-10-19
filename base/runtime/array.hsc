@@ -1,5 +1,6 @@
 package runtime
 
+import compiler from "base"
 import intrinsics from "base"
 
 /*
@@ -107,7 +108,7 @@ array_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_loc
 }
 
 // Where value first is in array, or none.
-array_find :: fn[T](array: T[], value: T) -> usize? {
+array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
     for element, index in array {
         if element == value {
             return index

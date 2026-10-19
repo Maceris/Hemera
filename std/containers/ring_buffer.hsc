@@ -1,5 +1,7 @@
 package containers
 
+import compiler from "base"
+
 /*
  * A queue of up to capacity values of T, in the buffer itself: added at the back, taken from the
  * front, in the order they were added. Not safe to share between threads by itself (for that,
@@ -9,7 +11,7 @@ package containers
  *     ring_push(&events, event)        // false once it's full
  *     next :: ring_pop(&events)        // null once it's empty
  */
-RingBuffer :: struct[T, capacity: usize] {
+RingBuffer :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
     items : T[capacity],
     // Where the oldest value is, and how many there are
     head : usize,

@@ -97,6 +97,11 @@ namespace hemera {
 				kind = DeclarationKind::TYPE;
 				type = make_type<TypeInfoEnum>(names, declaration->name);
 			}
+			else if ((ast::NodeType::KEYWORD_ALIAS == value_type || ast::NodeType::KEYWORD_DISTINCT == value_type)
+				&& has_child(value, ast::NodeType::GENERIC_TAG) && declaration->generic == nullptr) {
+				// A generic alias, whose instances alias what it names with their arguments (docs/types.md)
+				kind = DeclarationKind::GENERIC_TYPE;
+			}
 			else if (ast::NodeType::KEYWORD_ALIAS == value_type
 				|| ast::NodeType::KEYWORD_DISTINCT == value_type) {
 				kind = DeclarationKind::TYPE;
@@ -167,9 +172,49 @@ namespace hemera {
 
 		ast::Node* value = definition_value(generic->node);
 		size_t parameters = 0;
+		std::vector<ast::Node*> parameter_nodes;
 		for (ast::Node* child : value->children) {
 			if (ast::NodeType::GENERIC_TAG == child->node_type) {
 				parameters = child->children.size();
+				parameter_nodes.assign(child->children.begin(), child->children.end());
+			}
+		}
+		/*
+		 * Derived parameters the use doesn't give, like E in Box[C, E = element_of(C)], worked out
+		 * from those it does (docs/types.md, Derived Parameters)
+		 */
+		if (arguments.size() < parameters) {
+			std::map<std::string, TypeInfo*> bound;
+			std::map<std::string, ConstantValue> bound_values;
+			for (size_t i = 0; i < arguments.size() && i < parameter_nodes.size(); ++i) {
+				const std::string name = name_text(generic_parameter_name(parameter_nodes[i]));
+				if (arguments[i] != nullptr) {
+					bound[name] = arguments[i];
+				}
+				else if (i < values.size()) {
+					bound_values[name] = values[i];
+				}
+			}
+			bool all_derived = true;
+			for (size_t i = arguments.size(); i < parameter_nodes.size(); ++i) {
+				all_derived = all_derived && ast::NodeType::DERIVED_PARAMETER == parameter_nodes[i]->node_type;
+			}
+			if (all_derived) {
+				Progress derived = bind_derived(walk, where, generic, bound, bound_values);
+				if (derived != Progress::DONE) {
+					return derived;
+				}
+				std::vector<TypeInfo*> completed = arguments;
+				std::vector<ConstantValue> completed_values = values;
+				completed_values.resize(arguments.size());
+				for (size_t i = arguments.size(); i < parameter_nodes.size(); ++i) {
+					const std::string name = name_text(generic_parameter_name(parameter_nodes[i]));
+					auto type = bound.find(name);
+					completed.push_back(type != bound.end() ? type->second : nullptr);
+					auto constant = bound_values.find(name);
+					completed_values.push_back(constant != bound_values.end() ? constant->second : ConstantValue{});
+				}
+				return instance_type(walk, where, generic, completed, need, result, completed_values);
 			}
 		}
 		if (parameters != arguments.size()) {
@@ -190,7 +235,8 @@ namespace hemera {
 				if (index >= arguments.size()) {
 					break;
 				}
-				const bool is_value = ast::NodeType::COLON == parameter->node_type;
+				const bool is_value = ast::NodeType::COLON == parameter->node_type
+					&& !generic_parameter_is_constrained(walk.executor.program_info->names, generic, parameter);
 				const bool given_value = arguments[index] == nullptr;
 				const std::string name = name_text(generic_parameter_name(parameter));
 				if (is_value != given_value) {
@@ -216,7 +262,12 @@ namespace hemera {
 			}
 		}
 		Declaration* instance = instance_of(walk, generic, arguments, values);
-		Progress progress = require_resolved(walk, where, instance, need);
+		// Its constraints, checked where it's used (docs/types.md, Constraints)
+		Progress progress = check_constraints(walk, where, generic, instance);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		progress = require_resolved(walk, where, instance, need);
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -1373,7 +1424,7 @@ namespace hemera {
 			? parameter->children[0]->value.value : parameter->value.value;
 	}
 
-	bool generic_parameter_is_value(const Declaration* generic, size_t index) {
+	bool generic_parameter_is_value(NameRegistry& names, const Declaration* generic, size_t index) {
 		ast::Node* value = generic_node(generic);
 		size_t at = 0;
 		for (ast::Node* child : value != nullptr ? value->children : MyVector<ast::Node*>{}) {
@@ -1382,7 +1433,7 @@ namespace hemera {
 			}
 			for (ast::Node* parameter : child->children) {
 				if (at++ == index) {
-					return ast::NodeType::COLON == parameter->node_type;
+					return ast::NodeType::COLON == parameter->node_type && !generic_parameter_is_constrained(names, generic, parameter);
 				}
 			}
 		}
@@ -1397,7 +1448,7 @@ namespace hemera {
 		values.clear();
 		for (size_t i = 0; i < nodes.size(); ++i) {
 			ast::Node* argument = nodes[i];
-			if (generic_parameter_is_value(generic, i)) {
+			if (generic_parameter_is_value(walk.executor.program_info->names, generic, i)) {
 				// A compile-time value: a literal, a named constant, an enum member or #run's result
 				ConstantValue value;
 				Progress progress = evaluate_in(walk, argument, value);
@@ -1443,11 +1494,12 @@ namespace hemera {
 				if (index >= instance->generic_arguments.size()) {
 					return type_error(walk, ErrorCode::E4014, parameter, "this generic parameter has no argument");
 				}
-				const bool is_value = ast::NodeType::COLON == parameter->node_type;
+				const bool is_value = ast::NodeType::COLON == parameter->node_type
+					&& !generic_parameter_is_constrained(walk.executor.program_info->names, instance->generic, parameter);
 				const std::string name = name_text(generic_parameter_name(parameter));
-				// A value, like capacity: usize, takes a compile-time value; anything else a type
+				// A value, like capacity: usize, takes a compile-time value; a derived one either; anything else a type
 				if (is_value != (instance->generic_arguments[index] == nullptr)
-					&& ast::NodeType::FUNCTION != value->node_type) {
+					&& ast::NodeType::FUNCTION != value->node_type && ast::NodeType::DERIVED_PARAMETER != parameter->node_type) {
 					return type_error(walk, ErrorCode::E4014, parameter, is_value
 						? std::format("{} is a value, so it takes one, not a type", name)
 						: std::format("{} is a type, so it takes one, not a value", name));
@@ -1482,6 +1534,10 @@ namespace hemera {
 		}
 		if (ast::NodeType::FUNCTION == value->node_type) {
 			return function_type(walk, value, instance->value_type);
+		}
+		// A generic alias's instance: what it names, with the instance's arguments
+		if (TypeInfoVariant::ALIAS == instance->type_value->variant) {
+			return alias_body(walk, instance->node, static_cast<TypeInfoAlias*>(instance->type_value));
 		}
 		if (TypeInfoVariant::STRUCT == instance->type_value->variant) {
 			return struct_body(walk, value, static_cast<TypeInfoStruct*>(instance->type_value));

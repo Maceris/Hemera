@@ -146,6 +146,21 @@ for i in 0..=10 #reverse {
 
 ## Functions
 
+### `#constraint`
+
+`#constraint` after a function's name makes it a constraint, which generics can name to say what they need from their
+parameters (see [types.md](types.md#constraints)):
+
+```
+Equatable #constraint :: fn(T: type) {
+    require_equality(T)
+}
+```
+
+A constraint only runs at compile time, while generics that use it are checked, so it's made of `base/compiler`'s
+requirements (`compiler.require_*`, `compiler.require`, `compiler.note`, and `compiler.require_any` for
+alternatives), calls to other constraints, and what compile-time code can always do. It's never generated into the program.
+
 `#export` on a function marks it as part of a library or program's public interface.
 This is placed after the identifier in a declaration.
 

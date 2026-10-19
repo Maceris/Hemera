@@ -13,6 +13,7 @@ namespace hemera {
 	static bool reporting_enabled = true;
 	static bool printing_enabled = true;
 	static std::vector<ErrorCode>* error_list_storage;
+	static std::vector<std::string>* error_message_storage;
 	static std::vector<WarningCode>* warning_list_storage;
 	/*
 	 * Every error reported so far, so the same one isn't reported twice. Work that waits for
@@ -36,6 +37,8 @@ namespace hemera {
 			delete error_list_storage;
 			error_list_storage = nullptr;
 		}
+		delete error_message_storage;
+		error_message_storage = nullptr;
 		if (warning_list_storage != nullptr) {
 			warning_list_storage->clear();
 			delete warning_list_storage;
@@ -76,6 +79,9 @@ namespace hemera {
 		if (error_list_storage == nullptr) {
 			error_list_storage = new std::vector<ErrorCode>();
 		}
+		if (error_message_storage == nullptr) {
+			error_message_storage = new std::vector<std::string>();
+		}
 		if (warning_list_storage == nullptr) {
 			warning_list_storage = new std::vector<WarningCode>();
 		}
@@ -89,6 +95,9 @@ namespace hemera {
 
 		if (error_list_storage != nullptr) {
 			error_list_storage->clear();
+		}
+		if (error_message_storage != nullptr) {
+			error_message_storage->clear();
 		}
 		if (warning_list_storage != nullptr) {
 			warning_list_storage->clear();
@@ -110,11 +119,14 @@ namespace hemera {
 			column_number, additional_info)).second;
 	}
 
-	static void log_error(ErrorCode error) {
+	static void log_error(ErrorCode error, std::string_view details = "") {
 		std::lock_guard<std::mutex> lock(storage_mutex);
 
 		if (error_list_storage != nullptr) {
 			error_list_storage->push_back(error);
+		}
+		if (error_message_storage != nullptr) {
+			error_message_storage->emplace_back(details);
 		}
 	}
 
@@ -176,7 +188,7 @@ namespace hemera {
 			return;
 		}
 
-		log_error(error);
+		log_error(error, additional_info);
 
 		std::lock_guard<std::mutex> lock(cout_mutex);
 
@@ -273,6 +285,10 @@ namespace hemera {
 
 	std::vector<ErrorCode>* error_list() {
 		return error_list_storage;
+	}
+
+	std::vector<std::string>* error_messages() {
+		return error_message_storage;
 	}
 
 	size_t warning_count() {

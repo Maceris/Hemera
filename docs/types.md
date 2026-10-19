@@ -498,6 +498,120 @@ ring : Ring[u8, PAGE_SIZE / 2]
 A generic type whose only argument is an integer, like `Bits[64]`, means `Bits` with the argument 64 when `Bits` is
 generic, and an array of 64 `Bits` otherwise.
 
+### Constraints
+
+A generic says what it needs from its parameters with constraints, in its generic list, a `where` clause after its
+signature or generic list, or both:
+
+```
+array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize?
+
+largest :: fn[T: compiler.Ordered && (compiler.Integer || compiler.Float)](a: T, b: T) -> T
+
+RingBuffer :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) { ... }
+```
+
+A constraint is a function marked `#constraint` (see [directives.md](directives.md#constraint)), taking types as `type`
+parameters and values as values, made of **requirements** from `base/compiler`. Each requirement either holds or adds
+why it doesn't, and checking goes on, so one error gives everything that's missing:
+
+```
+// Something with a count: a struct with a count field, or a view or array
+HasCount #constraint :: fn(T: type) {
+    compiler.require_field(T, "count", usize)
+    compiler.note("give % a count: usize", T)
+}
+```
+
+| Requirement | Holds when |
+|---|---|
+| `require_equality(T)` | `==` works on `T`: numbers, characters, booleans, enums, pointers, strings, functions and types |
+| `require_ordering(T)` | `<` works on `T`: numbers and characters |
+| `require_integer(T)`, `require_signed(T)`, `require_unsigned(T)`, `require_float(T)`, `require_numeric(T)` | `T` is that kind of number |
+| `require_field(T, name, type)` | `T` is a struct with that field, or a view or array, whose `count` is a `usize` |
+| `require(condition, message, values...)` | `condition` is true; otherwise `message`, with `%` filled in, says why |
+| `note(message, values...)` | Adds to why the last requirement isn't met, like what to do about it |
+
+`base/compiler` has the constraints most generics need: `Equatable`, `Ordered`, `Integer`, `Float`, `Numeric`, and for
+value parameters, `AtLeastOne` and `PowerOfTwo`.
+
+* **In a generic list,** `T: C` constrains the type parameter `T`, and means `C(T)`. Whether `name: X` is a constrained
+  type or a value of type `X` (see [Values in Generic Lists](#values-in-generic-lists)) depends on what `X` is: a
+  `#constraint` function, or a type.
+* **In a `where` clause,** constraints are called with any of the generic's parameters, types or values, and with types
+  or constants written in place: `where Convertible(From, To) && compiler.AtLeastOne(capacity * 2)`. `where` is only a
+  word there, so it can still name things elsewhere.
+* **Combining** is like short-circuiting booleans: `A && B` stops at the first that isn't satisfied, so `B` can rely on
+  `A`, and `A || B` at the first that is. Parentheses group them.
+* **Checked where an instance is made,** by running each constraint at compile time with the instance's arguments: at a
+  call, or where a generic type is used. Each constraint is run once for the same arguments. The generic list's
+  constraints are checked first, then the `where` clause.
+* **What isn't satisfied** is an error (E4032) where the instance is made, giving each failed part and why, with the
+  reasons for every alternative of an `||`. The instance's body isn't checked, so no error comes from inside it:
+
+```
+main.hsc:12:9: error E4032: Constraint not satisfied. largest[char] can't be made
+    T = char isn't compiler.Ordered && (compiler.Integer || compiler.Float)
+        Integer: char is a character, not an integer
+        Float: char is a character, not a float
+```
+
+* A generic without constraints is a template, as it always has been: its body is checked for each instance, with
+  whatever its arguments support.
+
+`require_any` takes constraints, and holds when any one of them does. It's for a constraint made of alternatives, where
+each alternative is itself a constraint, and when none holds, the reasons are each alternative's:
+
+```
+// A number formatting can write: an integer, a float, or a character
+Formattable #constraint :: fn(T: type) {
+    compiler.require_any(compiler.Integer(T), compiler.Float(T), Character(T))
+}
+```
+
+`compiler.satisfies(...)` asks whether constraints hold, as a compile-time `bool`, without an error when they don't. It
+takes the same `&&`, `||` and parentheses, and works in `#assert`, `#if`, and in a generic's body, where each instance
+decides for its own arguments:
+
+```
+#assert compiler.satisfies(compiler.Equatable(Key) && compiler.Ordered(Key))
+
+describe :: fn[T](value: T) -> string {
+    #if compiler.satisfies(compiler.Integer(T)) {
+        return "an integer"
+    }
+    #else {
+        return "something else"
+    }
+}
+```
+
+### Derived Parameters
+
+A generic parameter can be worked out from the ones before it with `name = expression`, like a default argument. The
+expression is compile-time: a type, like `ptr[A]`, a builtin like `size_of(T)`, or a call to a function returning a
+`type` or a value. It can use the generic's other parameters, and constraints can use it:
+
+```
+// The type of an array or view's elements
+element_of :: fn(C: type) -> type { ... }
+
+sum :: fn[C, E = element_of(C)](values: C) -> E where compiler.Numeric(E) { ... }
+
+bits_of :: fn[T, bits = size_of(T) * 8](value: T) -> usize
+
+Linked :: struct[A, B = ptr[A]] { ... }
+```
+
+* **Nothing binds it from arguments.** `sum(view)` binds `C` from `view`, then works out `E`.
+* **Giving it overrides it,** like a default argument: `sum[u8[], u64](view)` totals bytes in a `u64`, so it doesn't
+  wrap. The parameters before it are given too, since generic arguments are positional, and that isn't reported as
+  giving them twice. `Linked[int]` works out `B` as `ptr[int]`; `Linked[int, usize]` uses `usize`.
+* **A parameter worked out from itself,** directly or through others, is an error (E4007).
+
+In the generic's body, a derived type is a type, and a derived value is a constant without a type of its own, like a
+literal.
+
 For how `#escaping` applies to generic parameters, see [memory.md](memory.md#escaping-parameters).
 
 ## Implicit Casting
@@ -909,6 +1023,27 @@ Type values (of type `type`) can be compared at compile time and through reflect
 * `types_are_aliases(a, b)` is the looser comparison from the table: whether the compiler treats `a` and `b` as the
   same type, following aliases that aren't distinct. `types_are_aliases(ind, int)` is true,
   `types_are_aliases(counter, int)` is false.
+
+### Generic Aliases
+
+An alias can have generic parameters of its own, in a list after `alias`, to name the instances of a generic type with
+some of its arguments fixed:
+
+```
+Pair :: struct[A, B] { first : A, second : B }
+
+Named :: alias[V] Pair[string, V]
+Twin :: distinct alias[T] Pair[T, T]
+
+SmallRing :: alias[T, capacity: usize] RingBuffer[T, capacity] where Small(capacity)
+```
+
+* `Named[int]` is `Pair[string, int]`, and the same type as it, by the rules above. `Twin[int]` is distinct from
+  `Pair[int, int]`.
+* An alias takes its own generic arguments, not those of what it names: `Named[int, int]` is an error (E4014).
+* An alias can have constraints and a `where` clause, like any generic, checked first. What it names checks its own
+  constraints too, so `SmallRing[u8, 0]` isn't made because of `RingBuffer`'s `AtLeastOne`, and `SmallRing[u8, 128]`
+  because of `Small`.
 
 ## Unions
 

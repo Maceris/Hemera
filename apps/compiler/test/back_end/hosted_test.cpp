@@ -164,6 +164,12 @@ TEST(Hosted, WritesOutput)
 	EXPECT_EQ(written.error, read_file(scenario("output") / "error.txt"));
 }
 
+// Generics with constraints, used the ways they allow, generated and run.
+TEST(Hosted, UsesConstrainedGenerics)
+{
+	run_hosted("constraints", hemera::TargetStackCheck::Off);
+}
+
 // The hosted context's clock and random numbers, from the system.
 TEST(Hosted, UsesSystemClockAndRandom)
 {

@@ -147,9 +147,72 @@ namespace hemera {
 
 	/// <summary>
 	/// Whether a generic's parameter at index is a value, written name: type, rather than a type
-	/// (docs/types.md, Values in Generic Lists).
+	/// (docs/types.md, Values in Generic Lists), or a type with constraints, like T: Equatable.
 	/// </summary>
-	bool generic_parameter_is_value(const Declaration* generic, size_t index);
+	bool generic_parameter_is_value(NameRegistry& names, const Declaration* generic, size_t index);
+
+	/*
+	 * Constraints (constraints.cpp, docs/types.md, Constraints).
+	 */
+
+	/// <summary>
+	/// Whether a declaration is a #constraint function.
+	/// </summary>
+	bool is_constraint_function(const Declaration* declaration);
+
+	/// <summary>
+	/// The #constraint function a name in a generic's constraints is, from the generic's package
+	/// or its file's imports, or null if it isn't one. Takes the registry's lock.
+	/// </summary>
+	Declaration* constraint_named(NameRegistry& names, const Declaration* context, const ast::Node* node);
+	Declaration* constraint_named(NameRegistry& names, InternedString package_path, FileInfo* file, const ast::Node* node);
+
+	/// <summary>
+	/// Whether node is a call to compiler.satisfies, which the walk's file can see.
+	/// </summary>
+	bool is_satisfies_call(Walk& walk, const ast::Node* node);
+
+	/// <summary>
+	/// compiler.satisfies(Hashable(Point) && Ordered(Point)): whether a constraint expression is
+	/// satisfied, with the walk's generic parameters, reporting nothing. A boolean constant.
+	/// </summary>
+	Progress evaluate_satisfies(Walk& walk, ast::Node* node, ConstantValue& result);
+	Progress evaluate_satisfies(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, ConstantValue& result);
+
+	/// <summary>
+	/// Whether a declaration is one of base/compiler's, named name.
+	/// </summary>
+	bool is_compiler_function(const Declaration* declaration, std::string_view name);
+
+	/// <summary>
+	/// Whether a generic list's parameter, name: something, is a type with constraints rather than
+	/// a value of a type: something combines constraints, or names a #constraint function.
+	/// </summary>
+	bool generic_parameter_is_constrained(NameRegistry& names, const Declaration* generic, const ast::Node* parameter);
+
+	/// <summary>
+	/// A derived parameter's value for one instance (names.cpp): a type, or a constant when type is null.
+	/// </summary>
+	Progress evaluate_derived(Walk& walk, ast::Node* expression, const std::string& key, TypeInfo*& type, ConstantValue& value);
+
+	/// <summary>
+	/// The derived parameters a generic's instance gets from the rest (constraints.cpp): each one
+	/// not in bound or bound_values worked out in the generic's file, in whatever order they need.
+	/// </summary>
+	Progress bind_derived(Walk& walk, ast::Node* where, Declaration* generic, std::map<std::string, TypeInfo*>& bound,
+		std::map<std::string, ConstantValue>& bound_values);
+
+	/// <summary>
+	/// Runs one constraint at compile time (names.cpp), waiting for it; result is what it found.
+	/// </summary>
+	Progress run_constraint(Walk& walk, ast::Node* where, const ConstraintRun& asked, const ConstraintRun*& result);
+
+	/// <summary>
+	/// Checks an instance's constraints where it's made, at where in walk's file: once for the
+	/// instance, reporting what isn't satisfied at each place it's used, unless quiet. FAILED when
+	/// they aren't.
+	/// </summary>
+	Progress check_constraints(Walk& walk, ast::Node* where, Declaration* generic, Declaration* instance, bool quiet = false);
 
 	/// <summary>
 	/// A generic type's arguments: for a parameter that's a type, the type type_of gives; for one

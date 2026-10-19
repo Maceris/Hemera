@@ -81,6 +81,8 @@ E4028,Can't read file
 E4029,Compile-time code failed
 E4030,Pointer into the stack escapes
 E4031,Index not proven in bounds
+E4032,Constraint not satisfied
+E4033,Not promised by constraints
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

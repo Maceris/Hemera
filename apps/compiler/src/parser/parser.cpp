@@ -264,6 +264,8 @@ namespace hemera::parser {
 	 * (package, import, from, as, all, in, alias) are only keywords where they start their
 	 * construct, and names everywhere else (docs/keywords.md).
 	 */
+	static bool where_clause(ParserState* state, ast::Node& parent);
+
 	static bool is_word(ParserState* state, std::string_view text, size_t offset = 0) {
 		const Token& token = offset == 0 ? current_token(state) : next_token(state, offset);
 		return TokenType::IDENTIFIER == token.type && token.value != nullptr && *token.value == text;
@@ -618,7 +620,8 @@ namespace hemera::parser {
 				|| directive.value.value->compare("#externally_initialized") == 0
 				|| directive.value.value->compare("#section") == 0
 				|| directive.value.value->compare("#foreign") == 0
-				|| directive.value.value->compare("#link_name") == 0) {
+				|| directive.value.value->compare("#link_name") == 0
+				|| directive.value.value->compare("#constraint") == 0) {
 				expected = true;
 			}
 			if (!expected) {
@@ -679,21 +682,32 @@ namespace hemera::parser {
 		 * sense, and otherwise optional, showing the value is meant to be a type.
 		 */
 		const bool is_alias = is_word(state, "alias") && (TokenType::IDENTIFIER == next_token(state).type
-			|| TokenType::KEYWORD_FN == next_token(state).type || TokenType::KEYWORD_MUT == next_token(state).type);
+			|| TokenType::KEYWORD_FN == next_token(state).type || TokenType::KEYWORD_MUT == next_token(state).type
+			|| TokenType::SYM_LBRACK == next_token(state).type);
 		if (TokenType::KEYWORD_DISTINCT == current_type || is_alias) {
-			if (accept(state, TokenType::KEYWORD_DISTINCT, ast::NodeType::KEYWORD_DISTINCT, parent)
-				&& !is_word(state, "alias")) {
-				report_error_on_last_token(state, ErrorCode::E3033);
+			ast::Node* first = nullptr;
+			if (expect(state, TokenType::KEYWORD_DISTINCT)) {
+				first = &next_as_node(state, ast::NodeType::KEYWORD_DISTINCT, &parent);
+				if (!is_word(state, "alias")) {
+					report_error_on_last_token(state, ErrorCode::E3033);
+					return false;
+				}
+			}
+			ast::Node& alias = next_as_node(state, ast::NodeType::KEYWORD_ALIAS, &parent);
+			if (first == nullptr) {
+				first = &alias;
+			}
+			// A generic alias, like StringMap :: alias[V] HashMap[string, V, hash_string]: its list on the first word
+			if (expect(state, TokenType::SYM_LBRACK) && !generic_tag(state, *first, true)) {
 				return false;
 			}
-			next_as_node(state, ast::NodeType::KEYWORD_ALIAS, &parent);
-			
+
 			ExprResult rhs = type(state);
 			if (!rhs.success) {
 				return false;
 			}
 			parent.children.push_back(rhs.result);
-			return true;
+			return where_clause(state, *first);
 		}
 		ExprResult rhs = expression_with_result(state, true);
 		if (!rhs.success) {
@@ -736,6 +750,9 @@ namespace hemera::parser {
 				return false;
 			}
 		}
+		if (!where_clause(state, node)) {
+			return false;
+		}
 
 		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
@@ -766,6 +783,9 @@ namespace hemera::parser {
 			if (!generic_tag(state, node, true)) {
 				return false;
 			}
+		}
+		if (!where_clause(state, node)) {
+			return false;
 		}
 		if (!expect(state, TokenType::SYM_LBRACE)) {
 			report_error_on_last_token(state, ErrorCode::E3018);
@@ -1013,6 +1033,10 @@ namespace hemera::parser {
 				|| current_token(state).value->compare("#no_context") == 0
 				|| current_token(state).value->compare("#unrestricted") == 0)) {
 			next_as_node(state, ast::NodeType::DIRECTIVE, &node);
+		}
+		if (!where_clause(state, node)) {
+			delete_node(state->node_alloc, &node);
+			return ExprResult{ false };
 		}
 		return ExprResult{ true, &node };
 	}
@@ -1822,6 +1846,44 @@ namespace hemera::parser {
 	 * A list of generic parameters (on a declaration: T, or capacity: usize for a value),
 	 * or of generic arguments (where a generic type is used: a type, or a constant value).
 	 */
+	/*
+	 * Whether what follows a generic parameter's colon is a constraint expression that can't be a
+	 * type: names combined with && or ||, or one in parentheses, like (Integer || Float) && Ordered.
+	 */
+	static bool constraint_ahead(ParserState* state) {
+		if (TokenType::SYM_LPAREN == current_token(state).type) {
+			return TokenType::KEYWORD_FN != next_token(state).type;
+		}
+		if (TokenType::IDENTIFIER != current_token(state).type) {
+			return false;
+		}
+		size_t at = state->current + 1;
+		while (at + 1 < state->tokens.size() && TokenType::SYM_DOT == state->tokens[at].type
+			&& TokenType::IDENTIFIER == state->tokens[at + 1].type) {
+			at += 2;
+		}
+		return at < state->tokens.size()
+			&& (TokenType::OPERATOR_AND == state->tokens[at].type || TokenType::OPERATOR_OR == state->tokens[at].type);
+	}
+
+	/*
+	 * A generic's where clause, after its signature or generic list: where and a constraint
+	 * expression, like where Convertible(From, To) && AtLeastOne(capacity). where is only a word
+	 * here, so it can still name things elsewhere.
+	 */
+	static bool where_clause(ParserState* state, ast::Node& parent) {
+		if (!is_word(state, "where")) {
+			return true;
+		}
+		ast::Node& clause = next_as_node(state, ast::NodeType::WHERE_CLAUSE, &parent);
+		ExprResult condition = expression_with_result(state, true);
+		if (!condition.success) {
+			return false;
+		}
+		clause.children.push_back(condition.result);
+		return true;
+	}
+
 	bool generic_tag(ParserState* state, ast::Node& parent, bool is_declaration) {
 		ast::Node& node = next_as_node(state, ast::NodeType::GENERIC_TAG, &parent);
 
@@ -1861,12 +1923,28 @@ namespace hemera::parser {
 			}
 			else if (is_declaration
 				&& TokenType::IDENTIFIER == current
+				&& TokenType::OPERATOR_ASSIGN == next_token(state).type) {
+				// A derived parameter, like E = element_of(C)
+				ast::Node& derived = next_as_node(state, ast::NodeType::DERIVED_PARAMETER, &node);
+				skip(state, TokenType::OPERATOR_ASSIGN);
+				ExprResult expression = expression_with_result(state, true);
+				if (!expression.success) {
+					return false;
+				}
+				derived.children.push_back(expression.result);
+			}
+			else if (is_declaration
+				&& TokenType::IDENTIFIER == current
 				&& TokenType::SYM_COLON == next_token(state).type) {
 				// A value parameter, like capacity: usize
 				ast::Node& name = next_as_node(state, ast::NodeType::IDENTIFIER);
 				ast::Node& colon = next_as_node(state, ast::NodeType::COLON, &node);
 				colon.children.push_back(&name);
-				ExprResult value_type = type(state);
+				/*
+				 * Or a type parameter's constraints, like T: Equatable && Ordered: an expression when
+				 * it combines them, and otherwise a name, which the checker tells apart from a type
+				 */
+				ExprResult value_type = constraint_ahead(state) ? expression_with_result(state, true) : type(state);
 				if (!value_type.success) {
 					return false;
 				}

@@ -13,6 +13,7 @@
 #include "front_end/checking.h"
 #include "front_end/walk.h"
 #include "front_end/work.h"
+#include "middle_end/reflection.h"
 #include "util/logger.h"
 
 namespace hemera {
@@ -772,7 +773,22 @@ namespace hemera {
 
 	// Pushes the names of a declaration's generic parameters, like [T] or [T, capacity: usize].
 	static Progress push_generic_parameters(Walk& walk, ast::Node* generic_tag) {
+		// Every name first, since a derived parameter's expression uses the others, like element_of(C)
 		for (ast::Node* parameter : generic_tag->children) {
+			if (ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+				walk.locals.push_back(parameter->value.value);
+			}
+		}
+		for (ast::Node* parameter : generic_tag->children) {
+			if (ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+				for (ast::Node* child : parameter->children) {
+					Progress progress = walk_node(walk, child, Need::DECLARED);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+				}
+				continue;
+			}
 			if (ast::NodeType::COLON == parameter->node_type && !parameter->children.empty()) {
 				walk.locals.push_back(parameter->children[0]->value.value);
 				for (size_t i = 1; i < parameter->children.size(); ++i) {
@@ -1106,6 +1122,36 @@ namespace hemera {
 		return walk_node(walk, node, need);
 	}
 
+	/*
+	 * A definition's names: the explicit type, before the separator, then the value after it. A generic
+	 * alias's parameters, on its alias word, are names in what it names, like V in alias[V] Pair[string, V].
+	 */
+	static bool is_separator(const ast::Node* node);
+
+	static Progress walk_definition(Walk& walk, ast::Node* definition) {
+		const size_t locals_before = walk.locals.size();
+		bool after_separator = false;
+		Progress progress = Progress::DONE;
+		for (size_t i = 1; i < definition->children.size() && Progress::DONE == progress; ++i) {
+			ast::Node* child = definition->children[i];
+			if (is_separator(child)) {
+				after_separator = true;
+				continue;
+			}
+			if (ast::NodeType::KEYWORD_ALIAS == child->node_type || ast::NodeType::KEYWORD_DISTINCT == child->node_type) {
+				for (ast::Node* part : child->children) {
+					if (ast::NodeType::GENERIC_TAG == part->node_type) {
+						progress = push_generic_parameters(walk, part);
+					}
+				}
+				continue;
+			}
+			progress = walk_node(walk, child, after_separator ? Need::RESOLVED : Need::DECLARED);
+		}
+		walk.locals.resize(locals_before);
+		return progress;
+	}
+
 	static bool is_separator(const ast::Node* node) {
 		return ast::NodeType::COLON == node->node_type
 			|| (ast::NodeType::IDENTIFIER == node->node_type && is_assign(node));
@@ -1197,19 +1243,9 @@ namespace hemera {
 			{},
 		};
 
-		// The explicit type, before the separator, then the value after it
-		bool after_separator = false;
-		for (size_t i = 1; i < definition->children.size(); ++i) {
-			ast::Node* child = definition->children[i];
-			if (is_separator(child)) {
-				after_separator = true;
-				continue;
-			}
-			Progress progress = walk_node(walk, child,
-				after_separator ? Need::RESOLVED : Need::DECLARED);
-			if (progress != Progress::DONE) {
-				return finish_resolving(executor, declarations, progress);
-			}
+		Progress walked = walk_definition(walk, definition);
+		if (walked != Progress::DONE) {
+			return finish_resolving(executor, declarations, walked);
 		}
 		// Then its types, from what each name resolved to
 		return finish_resolving(executor, declarations,
@@ -1230,8 +1266,16 @@ namespace hemera {
 			{},
 		};
 		// The generic's own names, with its parameters as locals, then its types with them bound
-		ast::Node* value = generic_node(instance->generic != nullptr ? instance->generic : instance);
-		Progress progress = value == nullptr ? Progress::FAILED : walk_node(walk, value, Need::RESOLVED);
+		const Declaration* generic = instance->generic != nullptr ? instance->generic : instance;
+		ast::Node* value = generic_node(generic);
+		Progress progress = Progress::FAILED;
+		if (value != nullptr && (ast::NodeType::KEYWORD_ALIAS == value->node_type || ast::NodeType::KEYWORD_DISTINCT == value->node_type)) {
+			// A generic alias: its parameters are on the alias word, and what it names comes after
+			progress = walk_definition(walk, generic->node);
+		}
+		else if (value != nullptr) {
+			progress = walk_node(walk, value, Need::RESOLVED);
+		}
 		if (Progress::DONE == progress) {
 			progress = compute_instance(walk, instance);
 		}
@@ -1567,6 +1611,144 @@ namespace hemera {
 		return run_or_wait(walk, node, evaluation, intern(std::string("#run")), result);
 	}
 
+	/*
+	 * One constraint, checked by running its #constraint function with these arguments at compile
+	 * time (docs/types.md, Constraints): queued the first time they're asked for, and the walk waits.
+	 * Once it's run, result is what its requirements found.
+	 */
+	Progress run_constraint(Walk& walk, ast::Node* where, const ConstraintRun& asked, const ConstraintRun*& result) {
+		result = nullptr;
+		Progress ready = require_compile_time_runtime(walk, where);
+		if (ready == Progress::DONE) {
+			ready = require_resolved(walk, where, asked.constraint, Need::RESOLVED);
+		}
+		if (ready != Progress::DONE) {
+			return ready;
+		}
+		std::string key = std::format("{}", static_cast<const void*>(asked.constraint));
+		for (size_t i = 0; i < asked.types.size(); ++i) {
+			key += asked.types[i] != nullptr ? std::format(" {}", static_cast<const void*>(get_base_type_or_alias(asked.types[i])))
+				: " =" + (i < asked.values.size() ? constant_text(asked.values[i]) : std::string());
+		}
+		NameRegistry& names = walk.executor.program_info->names;
+		Evaluation* evaluation = nullptr;
+		bool queue = false;
+		Evaluation::State state = Evaluation::State::WAITING;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			std::unique_ptr<Evaluation>& slot = names.constraint_evaluations[key];
+			if (slot == nullptr) {
+				slot = std::make_unique<Evaluation>();
+				slot->constraint = std::make_shared<ConstraintRun>(asked);
+				slot->declaration = asked.constraint;
+				slot->file_path = file_path_of(asked.constraint->package_path, asked.constraint->file_name);
+			}
+			evaluation = slot.get();
+			state = evaluation->state;
+			if (Evaluation::State::WAITING == state) {
+				queue = !evaluation->queued;
+				evaluation->queued = true;
+				park_locked(walk, names, evaluation_key(evaluation), where, asked.constraint->name, nullptr);
+			}
+		}
+		if (queue) {
+			walk.executor.create_work(WorkType::EXECUTION, WorkTarget(WorkTargetType::EVALUATION, { .evaluation = evaluation }));
+		}
+		if (Evaluation::State::WAITING == state) {
+			return Progress::PARKED;
+		}
+		if (Evaluation::State::FAILED == state) {
+			return Progress::FAILED;
+		}
+		result = evaluation->constraint.get();
+		return Progress::DONE;
+	}
+
+	/*
+	 * A derived parameter's value for one instance, like E = element_of(C) with C bound in walk: a
+	 * type written in place, or the result of running the expression, a type or a constant. key says
+	 * which instance, since the same expression gives each its own (docs/types.md, Derived Parameters).
+	 */
+	Progress evaluate_derived(Walk& walk, ast::Node* expression, const std::string& key, TypeInfo*& type, ConstantValue& value) {
+		type = nullptr;
+		if (!runs_code(expression)) {
+			Progress named = walk_names(walk, expression, Need::DECLARED);
+			if (named != Progress::DONE) {
+				return named;
+			}
+			if (ast::NodeType::LITERAL == expression->node_type || ast::NodeType::BINARY_OPERATOR == expression->node_type
+				|| ast::NodeType::UNARY_OPERATOR == expression->node_type) {
+				return evaluate(walk, expression, value);
+			}
+			return type_of(walk, expression, Need::DECLARED, type);
+		}
+		Progress ready = require_compile_time_runtime(walk, expression);
+		if (ready != Progress::DONE) {
+			return ready;
+		}
+		NameRegistry& names = walk.executor.program_info->names;
+		Evaluation* evaluation = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			std::unique_ptr<Evaluation>& slot = names.derived_evaluations[key];
+			if (slot == nullptr) {
+				slot = std::make_unique<Evaluation>();
+				slot->node = expression;
+				slot->file_path = walk.file_path;
+			}
+			evaluation = slot.get();
+		}
+		if (evaluation->checked == nullptr) {
+			auto checked = std::make_shared<CheckedBody>();
+			TypeInfo* result_type = nullptr;
+			Progress progress = check_compile_time_expression(walk, expression, checked.get(), result_type);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			if (evaluation->checked == nullptr) {
+				evaluation->type = result_type;
+				evaluation->checked = checked;
+			}
+		}
+		TypeInfo const* result_type = get_base_type(evaluation->type);
+		if (result_type != nullptr && TypeInfoVariant::TYPE == result_type->variant) {
+			ConstantValue ignored;
+			bool queue = false;
+			Evaluation::State state = Evaluation::State::WAITING;
+			{
+				std::scoped_lock<std::mutex> lock(names.mutex);
+				state = evaluation->state;
+				if (Evaluation::State::WAITING == state) {
+					queue = !evaluation->queued;
+					evaluation->queued = true;
+					park_locked(walk, names, evaluation_key(evaluation), expression, intern(std::string("a derived parameter")), nullptr);
+				}
+			}
+			if (queue) {
+				walk.executor.create_work(WorkType::EXECUTION, WorkTarget(WorkTargetType::EVALUATION, { .evaluation = evaluation }));
+			}
+			if (Evaluation::State::WAITING == state) {
+				return Progress::PARKED;
+			}
+			if (Evaluation::State::FAILED == state) {
+				return Progress::FAILED;
+			}
+			// A type value is its descriptor's address, which the compile-time data knows the type of
+			uint64_t address = 0;
+			std::memcpy(&address, evaluation->value.bytes.data(), std::min<size_t>(evaluation->value.bytes.size(), sizeof(address)));
+			const auto& described = compile_time_data(walk.executor.program_info).described_types();
+			auto found = described.find(static_cast<uintptr_t>(address));
+			if (found == described.end()) {
+				report_not_constant(walk.file_path, expression, "this doesn't give a type the compiler knows");
+				return Progress::FAILED;
+			}
+			type = const_cast<TypeInfo*>(found->second);
+			return Progress::DONE;
+		}
+		return run_or_wait(walk, expression, evaluation, intern(std::string("a derived parameter")), value);
+	}
+
 	void finish_body(WorkThreadData& executor, Declaration* function) {
 		NameRegistry& names = executor.program_info->names;
 		std::scoped_lock<std::mutex> lock(names.mutex);
@@ -1900,6 +2082,10 @@ namespace hemera {
 			result.kind = ConstantValue::Kind::ENUM_MEMBER;
 			result.member = std::string(std::string_view(*node->value.value));
 			return Progress::DONE;
+		}
+		// Whether constraints are satisfied, worked out by the checker rather than run (docs/types.md, Constraints)
+		if (is_satisfies_call(walk, node)) {
+			return evaluate_satisfies(walk, node, result);
 		}
 		if (runs_code(node)) {
 			return evaluate_expression_by_running(walk, node, result);

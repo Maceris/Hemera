@@ -27,6 +27,7 @@ namespace hemera::ast {
 		if (NodeType::DEFER == type) { return "DEFER"; }
 		if (NodeType::DEFINITION == type) { return "DEFINITION"; }
 		if (NodeType::DIRECTIVE == type) { return "DIRECTIVE"; }
+		if (NodeType::DERIVED_PARAMETER == type) { return "DERIVED_PARAMETER"; }
 		if (NodeType::DOT_ACCESS == type) { return "DOT_ACCESS"; }
 		if (NodeType::ELLIIPSIS == type) { return "ELLIIPSIS"; }
 		if (NodeType::ELSE == type) { return "ELSE"; }
@@ -75,6 +76,7 @@ namespace hemera::ast {
 		if (NodeType::UNION == type) { return "UNION"; }
 		if (NodeType::USING == type) { return "USING"; }
 		if (NodeType::VOID == type) { return "VOID"; }
+		if (NodeType::WHERE_CLAUSE == type) { return "WHERE_CLAUSE"; }
 		if (NodeType::WHILE_CLAUSE == type) { return "WHILE_CLAUSE"; }
 		if (NodeType::WITH_CLAUSE == type) { return "WITH_CLAUSE"; }
 		return "?";

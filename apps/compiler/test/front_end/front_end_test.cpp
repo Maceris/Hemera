@@ -848,6 +848,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "stack_unrestricted_result", hemera::ErrorCode::E4030 },
 		{ "stack_return_variant_shorthand", hemera::ErrorCode::E4030 },
 		{ "stack_unrestricted_all_results", hemera::ErrorCode::E4030 },
+		{ "constraint_unknown", hemera::ErrorCode::E4014 },
+		{ "derived_cycle", hemera::ErrorCode::E4007 },
+		{ "alias_argument_count", hemera::ErrorCode::E4014 },
 		{ "stack_unrestricted_result_function", hemera::ErrorCode::E4015 },
 		{ "bounds_unchecked", hemera::ErrorCode::E4031 },
 		{ "bounds_past_static", hemera::ErrorCode::E4031 },
@@ -893,6 +896,55 @@ TEST(FrontEnd, AllowsStackPointersThatDontEscape)
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("stack_pointers_ok"));
 
 	EXPECT_TRUE(errors.empty()) << codes(errors);
+}
+
+// docs/types.md, Constraints: generics used with what they need
+TEST(FrontEnd, AllowsSatisfiedConstraints)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("constraints_ok"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+}
+
+/*
+ * Each use of a generic its constraints don't allow, reported where it's used, with why: what each
+ * requirement found, the alternatives of an || or require_any, only the first part of an && that failed,
+ * and a generic alias's own where clause.
+ */
+TEST(FrontEnd, ReportsUnsatisfiedConstraints)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("constraints_unsatisfied"));
+	ASSERT_EQ(errors.size(), 7) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4032);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"count_of[Point] can't be made\n    T = Point isn't HasCount\n        HasCount: Point is a struct without a field count; give Point a count: usize",
+		"largest[char] can't be made\n    T = char isn't compiler.Ordered && (compiler.Integer || compiler.Float)\n"
+			"        Integer: char is a character, not an integer\n        Float: char is a character, not a float",
+		"Buffer[int, 0] can't be made\n    where compiler.AtLeastOne(capacity) && compiler.PowerOfTwo(capacity) isn't satisfied\n"
+			"        AtLeastOne: 0 holds nothing; it needs to be at least 1\n",
+		"Buffer[int, 6] can't be made\n    where compiler.AtLeastOne(capacity) && compiler.PowerOfTwo(capacity) isn't satisfied\n"
+			"        PowerOfTwo: 6 isn't a power of two",
+		"Buffer[Point, 4] can't be made\n    T = Point isn't compiler.Equatable\n        Equatable: Point is a struct, which has no ==",
+		"show[Point] can't be made\n    T = Point isn't Formattable\n        Formattable: none of these holds: Point is a struct, not an integer, "
+			"or Point is a struct, not a float, or Point isn't a character",
+		"SmallBuffer[int, 128] can't be made\n    where Small(capacity) isn't satisfied\n        Small: 128 is more than a SmallBuffer holds",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
 }
 
 TEST(FrontEnd, ChecksBodies)

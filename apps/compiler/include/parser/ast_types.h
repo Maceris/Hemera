@@ -22,6 +22,9 @@ namespace hemera::ast {
 		CONTINUE,
 		DEFER,
 		DEFINITION,
+		// A generic parameter the generic works out from the others, like E = element_of(C): the
+		// name is its token, and its child the expression (docs/types.md, Derived Parameters)
+		DERIVED_PARAMETER,
 		DIRECTIVE,
 		DOT_ACCESS,
 		ELLIIPSIS,
@@ -71,6 +74,8 @@ namespace hemera::ast {
 		UNION,
 		USING,
 		VOID,
+		// A generic's where clause: its constraint expression (docs/types.md, Constraints)
+		WHERE_CLAUSE,
 		WHILE_CLAUSE,
 		WITH_CLAUSE,
 	};

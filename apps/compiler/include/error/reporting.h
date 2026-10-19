@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -76,6 +77,10 @@ namespace hemera {
 	/// </summary>
 	size_t thread_error_count();
 	std::vector<ErrorCode>* error_list();
+	/// <summary>
+	/// Each error's details, in the same order as error_list, empty for one reported without any.
+	/// </summary>
+	std::vector<std::string>* error_messages();
 	size_t warning_count();
 	std::vector<WarningCode>* warning_list();
 }

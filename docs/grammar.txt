@@ -201,19 +201,22 @@ directive_with_arguments = directive , [ SYM_LPAREN , [ function_call_input_list
 
 # Anything starting with an identifier is an expression, which also covers naming a type (my_int :: i32).
 # alias is required after distinct, so that the word makes sense, and is otherwise optional,
-# showing the value is meant to be a type without writing : type.
+# showing the value is meant to be a type without writing : type. A generic alias has its own generic parameters
+# after alias, and can have a where clause after the type, like Named :: alias[V] Pair[string, V].
 decl_rhs = expression_with_result
     | function_decl
     | struct_decl
     | union_decl
     | enum_decl
-    | ( [ KEYWORD_distinct ] , KEYWORD_alias , type )
+    | ( [ KEYWORD_distinct ] , KEYWORD_alias , [ generic_parameters ] , type , [ where_clause ] )
     | SYM_UNINITIALIZED
     ;
 
 function_decl = function_signature , block ;
-struct_decl = KEYWORD_struct , [ generic_parameters ] , { directive_with_arguments } , SYM_LBRACE , struct_body , SYM_RBRACE ;
-union_decl = KEYWORD_union , [ generic_parameters ] , SYM_LBRACE , union_body , SYM_RBRACE ;
+struct_decl = KEYWORD_struct , [ generic_parameters ] , { directive_with_arguments } , [ where_clause ] , SYM_LBRACE , struct_body , SYM_RBRACE ;
+union_decl = KEYWORD_union , [ generic_parameters ] , [ where_clause ] , SYM_LBRACE , union_body , SYM_RBRACE ;
+# A generic's constraints (docs/types.md, Constraints). where is only a word here, not a keyword
+where_clause = "where" , expression_with_result ;
 enum_decl = KEYWORD_enum , { directive_with_arguments } , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
 type = simple_type
@@ -235,7 +238,7 @@ array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array | ( iden
 
 # A directive at the end is part of the function's type: only #never_returns, #no_context and #unrestricted (every result),
 # so any other directive starts the next statement
-function_signature = KEYWORD_fn , [ generic_parameters ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , [ directive ] ;
+function_signature = KEYWORD_fn , [ generic_parameters ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , [ directive ] , [ where_clause ] ;
 function_parameter_list = function_parameter , [ OPERATOR_assign , default_value ] , { SYM_COMMA , function_parameter , [ OPERATOR_assign , default_value ] }
     ;
 function_output_list = KEYWORD_void 
@@ -268,7 +271,11 @@ enum_body = [ enum_member , { SYM_COMMA , enum_member } ] , [ SYM_COMMA ] ;
 
 # On a declaration: a type parameter, or a value parameter with its type (capacity: usize)
 generic_parameters = SYM_LBRACK , generic_parameter , { SYM_COMMA , generic_parameter } , SYM_RBRACK ;
-generic_parameter = identifier , [ SYM_COLON , type_in_list ] ;
+# name: type is a value parameter; name: constraints, a type parameter with constraints (a #constraint function's name,
+# or several combined with && and ||, which can be in parentheses); name = expression, a derived parameter, worked
+# out from the others unless it's given (E = element_of(C))
+generic_parameter = identifier , [ ( SYM_COLON , ( type_in_list | expression_with_result ) )
+    | ( OPERATOR_assign , expression_with_result ) ] ;
 # Where a generic type is used: a type, or a constant value (named constants and functions parse as types).
 # A single integer, like Bits[64], parses as an array dimension; the type checker reads it as an argument if Bits is generic
 generic_arguments = SYM_LBRACK , generic_argument , { SYM_COMMA , generic_argument } , SYM_RBRACK ;

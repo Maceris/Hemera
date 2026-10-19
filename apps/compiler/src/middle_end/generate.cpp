@@ -2045,6 +2045,16 @@ namespace hemera {
 			|| TypeInfoVariant::QUATERNION == variant || TypeInfoVariant::VOID == variant) {
 			return true;
 		}
+		/*
+		 * A type value: its description is the compiler's, which knows the type it describes, so the
+		 * program's constant can be that type's own (constant_from)
+		 */
+		if (TypeInfoVariant::TYPE == variant) {
+			uint64_t address = 0;
+			std::memcpy(&address, at, sizeof(address));
+			const auto& described = compile_time_data(generator.program).described_types();
+			return address == 0 || described.contains(static_cast<uintptr_t>(address)) || refuse("a type the compiler doesn't know");
+		}
 		if (TypeInfoVariant::STRUCT == variant) {
 			auto structure = static_cast<TypeInfoStruct const*>(type);
 			if (structure->is_union) {
@@ -2142,6 +2152,14 @@ namespace hemera {
 			|| TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::FLOAT == variant) {
 			return constant_number(generator, llvm, at, type->size);
 		}
+		// A type value from compile-time code: the description of the type it is, in the program
+		if (TypeInfoVariant::TYPE == variant) {
+			uint64_t address = 0;
+			std::memcpy(&address, at, sizeof(address));
+			const auto& described = compile_time_data(generator.program).described_types();
+			auto found = described.find(static_cast<uintptr_t>(address));
+			return found != described.end() ? type_descriptor(generator, found->second) : zero_of(generator, llvm);
+		}
 		if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
 			auto composite = static_cast<TypeInfoComposite const*>(type);
 			mlir::Value result = zero_of(generator, llvm);
@@ -2228,6 +2246,8 @@ namespace hemera {
 		CheckedBody* checked;
 		Declaration* declaration;
 		CompileTimeValue* result;
+		// Code to generate instead of node's, like a constraint's call (run_constraint_evaluation)
+		std::function<void(Generator&)> emit = nullptr;
 	};
 
 	static void compiler_service(const char* name, int64_t name_count, uint8_t* result, uint8_t* const* arguments,
@@ -2241,6 +2261,10 @@ namespace hemera {
 		// The program PackageInfo records describe, and its options: a target's during its checks
 		ProgramInfo* reflected = nullptr;
 		const Options* reflected_options = nullptr;
+		// While a constraint runs, where its requirements say what isn't satisfied (docs/types.md, Constraints)
+		std::vector<std::string>* unsatisfied = nullptr;
+		// Each require_any being run: where its failures start, then where each alternative's ended
+		std::vector<std::vector<size_t>> alternatives = {};
 	};
 	static thread_local ServiceScope* service_scope = nullptr;
 
@@ -2271,7 +2295,7 @@ namespace hemera {
 	}
 
 	static bool run_items(Generator& generator, std::vector<CompileTimeItem>& items, std::vector<Declaration*>* unchecked,
-		bool quiet = false) {
+		bool quiet = false, std::vector<std::string>* unsatisfied = nullptr) {
 		// Compile-time code can run before the program is generated, which loads these otherwise
 		generator.program->context->loadDialect<LLVM::LLVMDialect>();
 		generator.program->context->loadDialect<::hmir::HemeraDialect>();
@@ -2291,7 +2315,8 @@ namespace hemera {
 		Declaration* first_declaration = items[0].declaration;
 		compiled.file_path = first_declaration != nullptr ? file_path_of(first_declaration->package_path, first_declaration->file_name)
 			: current_file(generator);
-		ast::Node* first = items[0].node;
+		ast::Node* first = items[0].node != nullptr ? items[0].node
+			: items[0].declaration != nullptr ? items[0].declaration->node : nullptr;
 		{
 			mlir::OpBuilder::InsertionGuard guard(compiled.builder);
 			compiled.builder.setInsertionPointToEnd(module.getBody());
@@ -2316,7 +2341,10 @@ namespace hemera {
 				CompileTimeItem& item = items[i];
 				state.declaration = item.declaration;
 				state.checked = item.checked;
-				if (item.type != nullptr) {
+				if (item.emit) {
+					item.emit(compiled);
+				}
+				else if (item.type != nullptr) {
 					mlir::Value destination = LLVM::LoadOp::create(compiled.builder, compiled.loc, pointer_type(compiled),
 						offset_address(compiled, entry->getArgument(0), i * 8));
 					store(compiled, emit_as(compiled, item.node, item.type), destination);
@@ -2378,6 +2406,7 @@ namespace hemera {
 		// The program's options, not the ones compile-time code is compiled with, when this runs from compile-time code
 		const Options* program_options = generator.compile_time && service_scope != nullptr ? service_scope->options : generator.options;
 		ServiceScope scope{ generator.program, program_options };
+		scope.unsatisfied = unsatisfied;
 		ServiceScope* outer_scope = service_scope;
 		service_scope = &scope;
 		const RunResult ran = run_on_host(std::move(lowered), std::move(llvm_context), std::string(COMPILE_TIME_ENTRY),
@@ -2512,7 +2541,9 @@ namespace hemera {
 				const int64_t number = ConstantValue::Kind::BOOLEAN == constant.kind ? (constant.boolean ? 1 : 0)
 					: ConstantValue::Kind::ENUM_MEMBER == constant.kind ? enum_value(found->type, intern(constant.member))
 					: constant.integer;
-				return value(constant_int(generator, llvm_type(generator, found->type), number), found->type);
+				// A derived one is untyped, taking the type it's used as
+				TypeInfo* constant_type = found->type != nullptr ? found->type : untyped_as(found->kind, expected);
+				return value(constant_int(generator, llvm_type(generator, constant_type), number), constant_type);
 			}
 			auto slot = state.slots.find(found->local);
 			if (slot != state.slots.end()) {
@@ -4281,6 +4312,14 @@ namespace hemera {
 		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
 
 		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		// compiler.satisfies: what the checker worked out, a constant, at compile time or run time
+		if (name == "satisfies") {
+			auto satisfied = generator.state != nullptr && generator.state->checked != nullptr
+				? generator.state->checked->satisfied.find(where) : decltype(generator.state->checked->satisfied)::const_iterator();
+			const bool holds = generator.state != nullptr && generator.state->checked != nullptr
+				&& satisfied != generator.state->checked->satisfied.end() && satisfied->second;
+			return value(boolean(generator, holds), BUILTIN_bool);
+		}
 		if (!generator.compile_time) {
 			unsupported(generator, where, std::format("compiler.{} is only for compile-time code", name));
 			return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : Emitted{};
@@ -4343,6 +4382,20 @@ namespace hemera {
 		}
 		TypeInfoFunction const* function = found->called;
 		Declaration* called = found->called_declaration;
+		/*
+		 * compiler.require_any(A(T), B(T)): each alternative run, bracketed so the compiler can tell
+		 * whether any of them was met (docs/types.md, Constraints)
+		 */
+		if (is_compiler_function(called, "require_any")) {
+			const TypeInfoFunction bracket;
+			emit_compiler_call(generator, "require_any_begin", &bracket, {}, paren);
+			for (ast::Node* alternative : argument_nodes) {
+				emit_expression(generator, alternative, nullptr);
+				emit_compiler_call(generator, "require_any_next", &bracket, {}, paren);
+			}
+			emit_compiler_call(generator, "require_any_end", &bracket, {}, paren);
+			return Emitted{};
+		}
 		if (function == nullptr) {
 			unsupported(generator, paren, "this call can't be generated yet");
 			return Emitted{};
@@ -6441,9 +6494,9 @@ namespace hemera {
 			else if (DeclarationKind::FUNCTION == declaration->kind && exported && !is_intrinsic(declaration)) {
 				function_for(generator, declaration);
 			}
-			// --generate-all: every function, used or not
+			// --generate-all: every function, used or not, but constraints, which only run at compile time
 			else if (DeclarationKind::FUNCTION == declaration->kind && generator.options->generate_all && !is_intrinsic(declaration)
-				&& declaration->node != nullptr) {
+				&& declaration->node != nullptr && !is_constraint_function(declaration)) {
 				function_for(generator, declaration);
 			}
 		}
@@ -7158,6 +7211,171 @@ namespace hemera {
 			}
 		}
 
+		// The type a type value is, from its descriptor's address.
+		const TypeInfo* described(Call& call, const uint8_t* argument) {
+			const auto& types = call.data.described_types();
+			auto iter = types.find(static_cast<uintptr_t>(read_u64(argument)));
+			return iter != types.end() ? iter->second : nullptr;
+		}
+
+		// What kind of type something is, for saying why a requirement isn't met.
+		std::string kind_of(const TypeInfo* type) {
+			const TypeInfo* base_type = get_base_type(type);
+			if (base_type == nullptr) {
+				return "nothing";
+			}
+			switch (base_type->variant) {
+			case TypeInfoVariant::INTEGER: return static_cast<const TypeInfoInteger*>(base_type)->is_signed ? "a signed integer" : "an unsigned integer";
+			case TypeInfoVariant::FLOAT: return "a float";
+			case TypeInfoVariant::BOOLEAN: return "a boolean";
+			case TypeInfoVariant::CHAR: return "a character";
+			case TypeInfoVariant::ENUM: return "an enum";
+			case TypeInfoVariant::POINTER: return "a pointer";
+			case TypeInfoVariant::STRING: return "a string";
+			case TypeInfoVariant::STRUCT: return "a struct";
+			case TypeInfoVariant::UNION: return "a union";
+			case TypeInfoVariant::ARRAY: return "an array";
+			case TypeInfoVariant::FUNCTION: return "a function";
+			case TypeInfoVariant::ANY: return "an any";
+			case TypeInfoVariant::TYPE: return "a type";
+			case TypeInfoVariant::COMPLEX: return "a complex number";
+			case TypeInfoVariant::QUATERNION: return "a quaternion";
+			case TypeInfoVariant::VOID: return "void";
+			case TypeInfoVariant::ALIAS: return "an alias";
+			}
+			return "a type";
+		}
+
+		/*
+		 * compiler.require_equality(T) and the rest, called by a #constraint function while it's checked:
+		 * each adds why it isn't met to what the constraint found, and checking goes on. note adds detail
+		 * to the last one.
+		 */
+		void carry_out_requirement(Call& call) {
+			const std::string_view name = call.name;
+			std::vector<std::string>* unsatisfied = service_scope != nullptr ? service_scope->unsatisfied : nullptr;
+			if (unsatisfied == nullptr) {
+				report_error(ErrorCode::E4029, call.file, 0, 0, std::format("compiler.{} is only for #constraint functions", name));
+				return;
+			}
+			if (name == "note") {
+				const std::string detail = format_compile_time(read_string(call.arguments[0]),
+					reinterpret_cast<const void*>(read_u64(call.arguments[1] + 8)), read_u64(call.arguments[1]));
+				if (!unsatisfied->empty()) {
+					unsatisfied->back() += "; " + detail;
+				}
+				return;
+			}
+			// require_any: each alternative's failures, then all of them gone if one was met, or one reason
+			if (name == "require_any_begin") {
+				service_scope->alternatives.push_back({ unsatisfied->size() });
+				return;
+			}
+			if (name == "require_any_next") {
+				if (!service_scope->alternatives.empty()) {
+					service_scope->alternatives.back().push_back(unsatisfied->size());
+				}
+				return;
+			}
+			if (name == "require_any_end") {
+				if (service_scope->alternatives.empty()) {
+					return;
+				}
+				const std::vector<size_t> ends = service_scope->alternatives.back();
+				service_scope->alternatives.pop_back();
+				bool met = false;
+				std::string reasons;
+				for (size_t i = 0; i + 1 < ends.size(); ++i) {
+					if (ends[i] == ends[i + 1]) {
+						met = true;
+					}
+					for (size_t j = ends[i]; j < ends[i + 1] && j < unsatisfied->size(); ++j) {
+						reasons += (reasons.empty() ? "" : j == ends[i] ? ", or " : "; ") + (*unsatisfied)[j];
+					}
+				}
+				unsatisfied->resize(std::min(ends.front(), unsatisfied->size()));
+				if (!met) {
+					unsatisfied->push_back(std::format("none of these holds: {}", reasons));
+				}
+				return;
+			}
+			if (name == "require") {
+				if (*call.arguments[0] == 0) {
+					unsatisfied->push_back(format_compile_time(read_string(call.arguments[1]),
+						reinterpret_cast<const void*>(read_u64(call.arguments[2] + 8)), read_u64(call.arguments[2])));
+				}
+				return;
+			}
+			const TypeInfo* type = described(call, call.arguments[0]);
+			const TypeInfo* base_type = get_base_type(type);
+			const std::string type_name = type != nullptr ? to_string(type) : "the type";
+			const TypeInfoVariant variant = base_type != nullptr ? base_type->variant : TypeInfoVariant::VOID;
+			const bool integer = TypeInfoVariant::INTEGER == variant;
+			const bool is_signed = integer && static_cast<const TypeInfoInteger*>(base_type)->is_signed;
+			const bool floating = TypeInfoVariant::FLOAT == variant;
+			auto require = [&](bool holds, std::string why) {
+				if (!holds) {
+					unsatisfied->push_back(std::move(why));
+				}
+			};
+			const std::string kind = kind_of(type);
+			if (name == "require_equality") {
+				require(integer || floating || TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::CHAR == variant
+					|| TypeInfoVariant::ENUM == variant || TypeInfoVariant::POINTER == variant || TypeInfoVariant::STRING == variant
+					|| TypeInfoVariant::FUNCTION == variant || TypeInfoVariant::TYPE == variant,
+					std::format("{} is {}, which has no ==", type_name, kind));
+			}
+			else if (name == "require_ordering") {
+				require(integer || floating || TypeInfoVariant::CHAR == variant, std::format("{} is {}, which has no <", type_name, kind));
+			}
+			else if (name == "require_integer") {
+				require(integer, std::format("{} is {}, not an integer", type_name, kind));
+			}
+			else if (name == "require_signed") {
+				require(is_signed, std::format("{} is {}, not a signed integer", type_name, kind));
+			}
+			else if (name == "require_unsigned") {
+				require(integer && !is_signed, std::format("{} is {}, not an unsigned integer", type_name, kind));
+			}
+			else if (name == "require_float") {
+				require(floating, std::format("{} is {}, not a float", type_name, kind));
+			}
+			else if (name == "require_numeric") {
+				require(integer || floating, std::format("{} is {}, not a number", type_name, kind));
+			}
+			else if (name == "require_field") {
+				const std::string_view field = read_string(call.arguments[1]);
+				const TypeInfo* wanted = described(call, call.arguments[2]);
+				bool found = false;
+				bool matches = false;
+				std::string actual;
+				if (TypeInfoVariant::STRUCT == variant) {
+					for (const StructMember& member : static_cast<const TypeInfoStruct*>(base_type)->members) {
+						if (member.name != nullptr && std::string_view(*member.name) == field) {
+							found = true;
+							matches = get_base_type_or_alias(member.member_type) == get_base_type_or_alias(wanted);
+							actual = to_string(member.member_type);
+						}
+					}
+				}
+				else if (TypeInfoVariant::ARRAY == variant && field == "count") {
+					found = true;
+					matches = get_base_type_or_alias(wanted) == get_base_type_or_alias(BUILTIN_usize);
+					actual = "usize";
+				}
+				if (!found) {
+					unsatisfied->push_back(std::format("{} is {} without a field {}", type_name, kind, field));
+				}
+				else if (!matches) {
+					unsatisfied->push_back(std::format("{}'s {} is {}, not {}", type_name, field, actual,
+						wanted != nullptr ? to_string(wanted) : "that"));
+				}
+			}
+			else {
+				report_error(ErrorCode::E4024, call.file, 0, 0, std::format("compiler.{} isn't supported yet", name));
+			}
+		}
+
 		void carry_out(Call& call) {
 			CompileTimeData& data = call.data;
 			const std::string_view name = call.name;
@@ -7181,6 +7399,11 @@ namespace hemera {
 				const bool granted = call.options->allow_run && in_root_package(call);
 				data.write_number(call.result, layout, "run_processes", granted);
 				data.write_number(call.result, layout, "write_outside_output", granted);
+				return;
+			}
+			// A constraint's requirements (docs/types.md, Constraints): what isn't satisfied, and why
+			if (name.starts_with("require") || name == "note") {
+				carry_out_requirement(call);
 				return;
 			}
 			if (name == "target_setting") {
@@ -7329,11 +7552,14 @@ namespace hemera {
 				intern(std::string(called))));
 			declaration = iter != scope->program->names.declarations.end() ? iter->second : nullptr;
 		}
-		if (declaration == nullptr || declaration->value_type == nullptr) {
+		// require_any's brackets aren't declared, since only the generator calls them (docs/types.md, Constraints)
+		const bool bracket = called.starts_with("require_any_");
+		if (!bracket && (declaration == nullptr || declaration->value_type == nullptr)) {
 			return;
 		}
 		Call call{ called, result, arguments, static_cast<size_t>(count), context, std::string(file, static_cast<size_t>(file_count)),
-			static_cast<TypeInfoFunction const*>(declaration->value_type), scope->program, scope->options, compile_time_data(scope->program) };
+			declaration != nullptr ? static_cast<TypeInfoFunction const*>(declaration->value_type) : nullptr, scope->program, scope->options,
+			compile_time_data(scope->program) };
 		carry_out(call);
 	}
 
@@ -7544,6 +7770,50 @@ namespace hemera {
 		return passed;
 	}
 
+	/*
+	 * A constraint (docs/types.md, Constraints): its #constraint function called with the arguments
+	 * it's checked for, each type as its descriptor, and each value as a constant of its parameter's
+	 * type. What its requirements find unsatisfied goes in the run.
+	 */
+	static bool run_constraint_evaluation(Generator& generator, Evaluation& evaluation, std::vector<Declaration*>& unchecked) {
+		ConstraintRun& run = *evaluation.constraint;
+		run.unsatisfied.clear();
+		auto signature = run.constraint != nullptr ? static_cast<TypeInfoFunction const*>(run.constraint->value_type) : nullptr;
+		if (signature == nullptr || signature->input.size() != run.types.size()) {
+			report_error(ErrorCode::E4018, evaluation.file_path, run.constraint != nullptr && run.constraint->node != nullptr
+				? run.constraint->node->value.line_number : 0, 0, std::format("{} takes {} arguments, not {}",
+					run.constraint != nullptr ? text_of(run.constraint->name) : "the constraint",
+					signature != nullptr ? signature->input.size() : 0, run.types.size()));
+			return false;
+		}
+		CompileTimeItem item{ nullptr, nullptr, nullptr, run.constraint, nullptr };
+		item.emit = [&](Generator& compiled) {
+			std::vector<mlir::Value> arguments;
+			if (takes_context(compiled, signature, run.constraint)) {
+				arguments.push_back(compiled.state->context);
+			}
+			for (size_t i = 0; i < run.types.size(); ++i) {
+				TypeInfo* parameter = signature->input[i].type;
+				if (run.types[i] != nullptr) {
+					arguments.push_back(type_descriptor(compiled, run.types[i]));
+					continue;
+				}
+				const ConstantValue& constant = run.values[i];
+				if (ConstantValue::Kind::FUNCTION == constant.kind && constant.function != nullptr) {
+					arguments.push_back(LLVM::AddressOfOp::create(compiled.builder, compiled.loc, function_for(compiled, constant.function)));
+					continue;
+				}
+				const int64_t number = ConstantValue::Kind::BOOLEAN == constant.kind ? (constant.boolean ? 1 : 0)
+					: ConstantValue::Kind::ENUM_MEMBER == constant.kind ? enum_value(parameter, intern(constant.member))
+					: constant.integer;
+				arguments.push_back(constant_int(compiled, llvm_type(compiled, parameter), number));
+			}
+			LLVM::CallOp::create(compiled.builder, compiled.loc, function_for(compiled, run.constraint), arguments);
+		};
+		std::vector<CompileTimeItem> items{ item };
+		return run_items(generator, items, &unchecked, false, &run.unsatisfied);
+	}
+
 	bool run_evaluation(ProgramInfo* program_info, const Options& options, Evaluation& evaluation,
 		std::vector<Declaration*>& unchecked) {
 
@@ -7557,8 +7827,9 @@ namespace hemera {
 			generator.options = &options;
 			generator.input_package = intern(options.input.string());
 			generator.file_path = evaluation.file_path;
-			ran = run_at_compile_time(generator, evaluation.node, evaluation.type, evaluation.checked.get(), evaluation.declaration,
-				evaluation.value, &unchecked);
+			ran = evaluation.constraint != nullptr ? run_constraint_evaluation(generator, evaluation, unchecked)
+				: run_at_compile_time(generator, evaluation.node, evaluation.type, evaluation.checked.get(), evaluation.declaration,
+					evaluation.value, &unchecked);
 		}
 		scratch.erase();
 		return ran;
