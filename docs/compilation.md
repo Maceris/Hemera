@@ -133,6 +133,12 @@ with `compiler.add_step` runs, after the targets it depends on, with their outpu
 package's own functions, so they run with its types: a value from a target, like a constant in its `ProgramInfo`,
 has the target's types, which are compared by name (see `ConstantInfo`).
 
+Targets are built one at a time, and each is a program of its own: its files are read, parsed and checked for it,
+even ones another target already used, since its `#if` choices, settings and package paths can make them mean
+something else. The work within a target is spread across threads like any program's. Sharing parsed files between
+targets, and building targets that don't depend on each other at the same time, are planned; neither will change
+what a build produces (see Deterministic Output).
+
 ## Compile-Time Permissions
 
 Compile-time code can't run other programs or write outside the output folder unless the command line grants it
