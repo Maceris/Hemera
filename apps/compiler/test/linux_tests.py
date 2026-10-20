@@ -41,6 +41,7 @@ TESTS = [
     ("hashes", [], 42),
     ("aead", [], 42),
     ("curves", [], 42),
+    ("argon2", [], 42),
     ("processes", [], 42),
     ("output", [], 42),
     ("library", [], 42),

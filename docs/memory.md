@@ -347,8 +347,12 @@ tracked, so `cast[rawptr](&key)` is where a reviewer looks.
 
 A function whose parameters or results are secrets is marked `#constant_time`, so it shows in its signature. Any
 function can hold and work with secrets; the rules above hold everywhere. A `#constant_time` function that works
-with no secret at all is warned about, since it's probably left over from one that did: not for a generic, whose
-instances decide (`#constant_time` on one is what lets it take secrets).
+with no secret at all is warned about, since it's probably left over from one that did.
+
+A generic's instances needn't be marked: `new_array(Key, 4)` makes a secret instance of `new_array`, whose signature
+can't say so, and it's checked by the same rules as any function, so a generic that branches on what it's given, like
+`array_find`, is an error for secrets, pointing into its body. A generic marked `#constant_time` is meant for secrets,
+and isn't warned about for its instances that have none.
 
 ```
 // Whether two keys are equal, looking at every byte whatever it finds

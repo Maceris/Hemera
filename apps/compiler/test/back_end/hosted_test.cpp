@@ -201,6 +201,12 @@ TEST(Hosted, Curves)
 	run_hosted("curves", hemera::TargetStackCheck::Off);
 }
 
+// std/crypto's Argon2id against known values, its memory from new_array, and bad parameters refused.
+TEST(Hosted, PasswordHashes)
+{
+	run_hosted("argon2", hemera::TargetStackCheck::Off);
+}
+
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
 TEST(Hosted, Hashes)
 {

@@ -5347,7 +5347,11 @@ namespace hemera {
 		for (const FunctionOutput& output : type->output) {
 			checker.saw_secret = checker.saw_secret || reaches_secret(output.type);
 		}
-		if (checker.saw_secret && !checker.constant_time) {
+		/*
+		 * Not a generic's instance, like new_array[Key]: its signature is the generic's, which can't say,
+		 * and its body is checked by the rules like any other
+		 */
+		if (checker.saw_secret && !checker.constant_time && function->generic == nullptr) {
 			error_at(checker, ErrorCode::E4037, function->node, std::format(
 				"{} takes or gives a secret, so it's marked #constant_time", text_of(function->name)));
 		}
@@ -5355,7 +5359,7 @@ namespace hemera {
 		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
 		/*
 		 * #constant_time without a secret, maybe left behind when one moved elsewhere. Not for a generic's
-		 * instances, since #constant_time on a generic is what lets its secret instances exist
+		 * instances, since #constant_time on a generic says its secret instances are what it's for
 		 */
 		if (progress == Progress::DONE && checker.constant_time && !checker.saw_secret && function->generic == nullptr) {
 			report_warning(WarningCode::W4002, checker.walk.file_path, function->node->value.line_number,

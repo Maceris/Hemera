@@ -248,7 +248,7 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
 
 A function whose parameters or results are secrets is marked `#constant_time`, like
 `keys_equal #constant_time :: fn(a: ptr[Key], b: ptr[Key]) -> bool`, so it shows in its signature. One that works with
-no secret is warned about. See [memory.md](memory.md#secrets).
+no secret is warned about. A generic's instances needn't be marked. See [memory.md](memory.md#secrets).
 
 ### `#target_features`
 

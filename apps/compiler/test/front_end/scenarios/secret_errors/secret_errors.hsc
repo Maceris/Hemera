@@ -64,6 +64,23 @@ nothing_secret #constant_time :: fn(value: u32) -> u32 {
     return value + 1
 }
 
+// A generic's secret instance needn't be marked; one that branches on what it's given is still an error
+passes_through :: fn[T](value: T) -> T {
+    return value
+}
+
+branches_on :: fn[T](value: T, other: T) -> int {
+    if value == other {
+        return 1
+    }
+    return 0
+}
+
+uses_generics #constant_time :: fn(word: Word) -> Word {
+    _ = branches_on(word, word)
+    return passes_through(word)
+}
+
 main :: fn() -> int {
     return 0
 }

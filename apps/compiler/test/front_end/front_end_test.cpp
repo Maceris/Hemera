@@ -1188,7 +1188,7 @@ TEST(FrontEnd, ChecksSecrets)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("secret_errors"));
-	ASSERT_EQ(errors.size(), 13) << codes(errors);
+	ASSERT_EQ(errors.size(), 14) << codes(errors);
 	std::string all;
 	for (const std::string& message : *hemera::error_messages()) {
 		all += message + "\n";
