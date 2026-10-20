@@ -162,3 +162,26 @@ first_letters :: fn(names: string[], into: mut u8[]) -> usize {
     }
     return count
 }
+
+// Scaled indexes: a constant times a loop's name, either way around, plus a constant (4 * i + 3)
+words_of :: fn(bytes: ptr[u8[64]], words: ptr[mut u32[16]]) {
+    for i in 0..<16 {
+        words[i] = cast[u32](bytes[4 * i]) | (cast[u32](bytes[i * 4 + 1]) << 8) | (cast[u32](bytes[2 + 4 * i]) << 16)
+            | (cast[u32](bytes[4 * i + 3]) << 24)
+    }
+}
+
+// A bounded value times a constant, from a loop's name that starts at 0, then a remainder
+rounds :: fn(table: ptr[u8[160]]) -> u32 {
+    total : u32 = 0
+    for round in 0..<12 {
+        s := (round % 10) * 16
+        total += cast[u32](table[(s + 15) % 160])
+    }
+    return total
+}
+
+// A slice ending at a remainder, which is at most the count
+first_part :: fn(buffer: ptr[u8[1000]], count: usize) -> u8[] {
+    return buffer[0..<count % 1001]
+}

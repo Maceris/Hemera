@@ -752,6 +752,10 @@ namespace hemera {
 				return proves(analysis, facts, value.at_most_term->first, limit.term,
 					limit.offset - value.at_most_term->second + slack);
 			}
+			// A constant against what's only bounded above but isn't negative, like 0 against count % 1001
+			if (value.known && ZERO == value.term && !limit.known && limit.nonnegative && value.offset + value.spread <= slack) {
+				return true;
+			}
 			return false;
 		}
 
@@ -1064,6 +1068,26 @@ namespace hemera {
 			if (TokenType::OPERATOR_PLUS == op && !(left.known && ZERO != left.term) && right.known && ZERO != right.term) {
 				std::swap(left, right);
 			}
+			// A constant times a term, like 4 * i, is the term times the constant
+			if (TokenType::OPERATOR_MULTIPLY == op && left.known && ZERO == left.term && right.known && ZERO != right.term) {
+				std::swap(left, right);
+			}
+			// A constant times a bounded value, like 16 * (round % 10): the bounded value on the left
+			if (TokenType::OPERATOR_MULTIPLY == op && left.known && ZERO == left.term && !right.known && right.at_most.has_value()) {
+				std::swap(left, right);
+			}
+			// A bounded value times a positive constant, like (round % 10) * 16: still bounded
+			if (TokenType::OPERATOR_MULTIPLY == op && !left.known && left.at_most.has_value() && left.nonnegative && right.known
+				&& ZERO == right.term && right.offset > 0 && *left.at_most < (int64_t{ 1 } << 30) && right.offset < (int64_t{ 1 } << 30)) {
+				Value product;
+				product.at_most = *left.at_most * right.offset;
+				product.nonnegative = true;
+				return product;
+			}
+			// A constant plus a bounded value, like 3 + 4 * i: the bounded value on the left
+			if (TokenType::OPERATOR_PLUS == op && left.known && ZERO == left.term && !right.known && right.at_most.has_value()) {
+				std::swap(left, right);
+			}
 			// A bounded term times a positive constant: a bound
 			if (TokenType::OPERATOR_MULTIPLY == op && left.known && ZERO != left.term && right.known && ZERO == right.term
 				&& right.offset > 0 && right.offset < (int64_t{ 1 } << 20) && proves(analysis, facts, ZERO, left.term, left.offset)) {
@@ -1094,6 +1118,14 @@ namespace hemera {
 					return sum;
 				}
 			}
+			// A bounded value plus a constant, like 4 * i + 3: still bounded, and not negative if the constant isn't
+			if (TokenType::OPERATOR_PLUS == op && !left.known && left.at_most.has_value() && left.nonnegative && right.known
+				&& ZERO == right.term && right.offset >= 0 && *left.at_most < (int64_t{ 1 } << 40) && right.offset < (int64_t{ 1 } << 40)) {
+				Value sum;
+				sum.at_most = *left.at_most + right.offset;
+				sum.nonnegative = true;
+				return sum;
+			}
 			// A term divided or shifted: what's known of its range, as a bound
 			if (left.known && ZERO != left.term && right.known && ZERO == right.term
 				&& (TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op)
@@ -1107,7 +1139,9 @@ namespace hemera {
 			}
 			// Whether a value is known not to be negative: an unsigned term, or a bound that says so
 			auto nonnegative = [&](const Value& value) {
-				return value.nonnegative || (value.known && value.offset >= 0 && analysis.terms[value.term].nonnegative);
+				return value.nonnegative || (value.known && value.offset >= 0 && analysis.terms[value.term].nonnegative)
+					// Or proven, like a loop's name from 0: 0 - term <= offset
+					|| (value.known && proves(analysis, facts, ZERO, value.term, value.offset));
 			};
 			if (TokenType::OPERATOR_PLUS == op) {
 				if (left.known && right.known && (ZERO == left.term || ZERO == right.term)) {

@@ -38,6 +38,7 @@ TESTS = [
     ("vectors", [], 42),
     ("reverse_loops", [], 42),
     ("secrets", [], 42),
+    ("hashes", [], 42),
     ("processes", [], 42),
     ("output", [], 42),
     ("library", [], 42),

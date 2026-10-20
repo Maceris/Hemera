@@ -864,6 +864,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_wraps", hemera::ErrorCode::E4031 },
 		{ "bounds_slice_backwards", hemera::ErrorCode::E4031 },
 		{ "bounds_runaway", hemera::ErrorCode::E4031 },
+		{ "bounds_scaled_past", hemera::ErrorCode::E4031 },
 		{ "bounds_last_of_empty", hemera::ErrorCode::E4031 },
 		{ "bounds_field_grown", hemera::ErrorCode::E4031 },
 		{ "bounds_field_aliased", hemera::ErrorCode::E4031 },

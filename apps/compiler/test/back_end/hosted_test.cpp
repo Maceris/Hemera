@@ -189,6 +189,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
+TEST(Hosted, Hashes)
+{
+	run_hosted("hashes", hemera::TargetStackCheck::Off);
+}
+
 // Secrets: constant-time comparisons, choices without a branch, and wiping (docs/memory.md, Secrets).
 TEST(Hosted, KeepsSecrets)
 {

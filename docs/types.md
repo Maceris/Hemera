@@ -335,6 +335,9 @@ about an element's fields is forgotten when its index changes, as well as when t
 * `runtime.assert(condition)`, which ends the program when the condition is false, so after it the condition holds
 * types: an unsigned value is at least 0, a `u32` at most 2^32 - 1, an enum value at most its largest member's,
   `x & 15` at most 15 and `x % n` less than `n`
+* arithmetic on what's bounded: a bounded value times a constant, either way around, like `4 * i` and
+  `(round % 10) * 16`, and that plus a constant, like `4 * i + 3`, as long as it isn't negative (a loop's name from 0
+  isn't, even when it's signed)
 
 A loop keeps what holds every time around it: a counter that only goes down keeps its upper bound, and one that's
 kept below a count keeps that.
