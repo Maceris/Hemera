@@ -5,6 +5,8 @@ import runtime from "base"
 mem_copy : fn(dest, source: rawptr, len: usize) : ---
 mem_copy_non_overlapping : fn(dest, source: rawptr, len: usize) : ---
 mem_zero : fn(target: rawptr, len: usize) : ---
+// Zeros that are always written, even when nothing reads them after, for wiping secrets (docs/memory.md, Secrets).
+secure_zero : fn(target: rawptr, len: usize) : ---
 
 /*
  * Stop the program immediately by executing an illegal instruction (ud2 on x86-64, brk on AArch64),

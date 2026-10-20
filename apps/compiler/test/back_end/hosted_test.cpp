@@ -189,6 +189,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// Secrets: constant-time comparisons, choices without a branch, and wiping (docs/memory.md, Secrets).
+TEST(Hosted, KeepsSecrets)
+{
+	run_hosted("secrets", hemera::TargetStackCheck::Off);
+}
+
 // for loops with #reverse, last to first (docs/control_flow.md, Range-based for).
 TEST(Hosted, ReversesLoops)
 {

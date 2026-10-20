@@ -128,6 +128,10 @@ namespace hemera {
 		bool integer_known = false;
 		bool integer_negative = false;
 		uint64_t integer_magnitude = 0;
+		/// <summary>
+		/// A secret: of a #secret type, or worked out from one (docs/memory.md, Secrets).
+		/// </summary>
+		bool is_secret = false;
 	};
 
 	/// <summary>

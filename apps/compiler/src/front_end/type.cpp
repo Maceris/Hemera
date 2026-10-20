@@ -421,6 +421,46 @@ namespace hemera {
 		return "?";
 	}
 
+	bool is_secret_type(TypeInfo const* type) {
+		while (type != nullptr) {
+			const TypeInfoVariant variant = type->variant;
+			if (TypeInfoVariant::ALIAS == variant) {
+				auto alias = static_cast<TypeInfoAlias const*>(type);
+				if (alias->is_secret) {
+					return true;
+				}
+				type = alias->base_type;
+			}
+			else if (TypeInfoVariant::STRUCT == variant) {
+				return static_cast<TypeInfoStruct const*>(type)->is_secret;
+			}
+			else if (TypeInfoVariant::ARRAY == variant) {
+				type = static_cast<TypeInfoArray const*>(type)->element_type;
+			}
+			else if (TypeInfoVariant::VECTOR == variant) {
+				type = static_cast<TypeInfoVector const*>(type)->element_type;
+			}
+			else {
+				return false;
+			}
+		}
+		return false;
+	}
+
+	bool reaches_secret(TypeInfo const* type) {
+		for (int depth = 0; type != nullptr && depth < 16; ++depth) {
+			if (is_secret_type(type)) {
+				return true;
+			}
+			TypeInfo const* base = get_base_type(type);
+			if (base == nullptr || TypeInfoVariant::POINTER != base->variant) {
+				return false;
+			}
+			type = static_cast<TypeInfoPointer const*>(base)->base_type;
+		}
+		return false;
+	}
+
 	TypeInfo const* get_base_type(TypeInfo const* type) {
 		while (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
 			type = static_cast<TypeInfoAlias const*>(type)->base_type;

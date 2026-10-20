@@ -4166,8 +4166,34 @@ namespace hemera {
 			result = value(splat(generator, arguments[0], llvm_type(generator, result_type)), result_type);
 			return true;
 		}
-		if (name == "select") {
+		if (name == "select" && is_variant(result_type, TypeInfoVariant::VECTOR)) {
 			result = value(LLVM::SelectOp::create(b, l, mask_bits(generator, arguments[0]), arguments[1], arguments[2]), result_type);
+			return true;
+		}
+		/*
+		 * An integer's or bool's choice without a branch (docs/memory.md, Secrets): a mask of all ones or
+		 * all zeros from the condition, passed through an empty assembly block so the optimizer can't see
+		 * that it's one or the other, and turn it back into a branch; then (chosen & mask) | (otherwise & ~mask)
+		 */
+		if (name == "select") {
+			mlir::Type type = arguments[1].getType();
+			const unsigned bits = std::max(type.getIntOrFloatBitWidth(), 8u);
+			mlir::Type wide = b.getIntegerType(bits);
+			auto widen = [&](mlir::Value v) {
+				return v.getType() == wide ? v : static_cast<mlir::Value>(LLVM::ZExtOp::create(b, l, wide, v));
+			};
+			mlir::Value mask = LLVM::SubOp::create(b, l, constant_int(generator, wide, 0), widen(arguments[0]));
+			mask = assembly(generator, wide, { mask }, "", "=r,0");
+			mlir::Value chosen = LLVM::AndOp::create(b, l, widen(arguments[1]), mask);
+			mlir::Value otherwise = LLVM::AndOp::create(b, l, widen(arguments[2]),
+				LLVM::XOrOp::create(b, l, mask, constant_int(generator, wide, -1)));
+			mlir::Value both = LLVM::OrOp::create(b, l, chosen, otherwise);
+			result = value(wide == type ? both : static_cast<mlir::Value>(LLVM::TruncOp::create(b, l, type, both)), result_type);
+			return true;
+		}
+		// compiler.declassify and compiler.secret only change what the checker knows
+		if (name == "declassify" || name == "secret") {
+			result = value(arguments[0], result_type);
 			return true;
 		}
 		if (name == "rotate_lanes") {
@@ -4251,6 +4277,11 @@ namespace hemera {
 		}
 		if (name == "mem_zero") {
 			LLVM::MemsetOp::create(b, l, arguments[0], constant_int(generator, integer_type(generator, 1), 0), arguments[1], false);
+			return result;
+		}
+		// Volatile, so the zeros are written even when nothing reads them after (docs/memory.md, Secrets)
+		if (name == "secure_zero") {
+			LLVM::MemsetOp::create(b, l, arguments[0], constant_int(generator, integer_type(generator, 1), 0), arguments[1], true);
 			return result;
 		}
 		/*

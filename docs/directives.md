@@ -244,6 +244,12 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
   to fit a register (integers, pointers, floating-point values, booleans and enums), there are no variadic foreign
   functions, and only x86-64 is supported.
 
+### `#constant_time`
+
+A function whose parameters or results are secrets is marked `#constant_time`, like
+`keys_equal #constant_time :: fn(a: ptr[Key], b: ptr[Key]) -> bool`, so it shows in its signature. One that works with
+no secret is warned about. See [memory.md](memory.md#secrets).
+
 ### `#target_features`
 
 A function whose code uses CPU features beyond the target's, like AES instructions on an x86-64 CPU that may not have
@@ -314,6 +320,8 @@ instance of a generic. See [memory.md](memory.md#owned-types).
 `#thread_bound` is used for structs whose values can't leave the thread they were made on, like a reference count kept
 without atomics; `#thread_bound(condition)` decides for each instance. They can't be given to a `#crosses_threads`
 parameter. See [multitasking.md](multitasking.md#values-that-stay-on-their-thread).
+`#secret` is used for structs whose values are secrets, like keys, which can't decide timing; it also goes after a
+distinct alias's type, like `Word :: distinct alias u32 #secret`. See [memory.md](memory.md#secrets).
 
 ### `#release`
 

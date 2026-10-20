@@ -37,6 +37,7 @@ TESTS = [
     ("integer_ranges", [], 42),
     ("vectors", [], 42),
     ("reverse_loops", [], 42),
+    ("secrets", [], 42),
     ("processes", [], 42),
     ("output", [], 42),
     ("library", [], 42),

@@ -308,6 +308,73 @@ ordering them) are defined, not undefined behavior:
 The compiler can't invent loads or stores of shared memory, or assume a value it loaded can't change underneath
 it, so races give stale or torn values, but never break unrelated code.
 
+# Secrets
+
+Code that works with secrets, like keys and passwords, mustn't take a time that depends on them: an attacker who can
+time it, even across a network, learns the secret a little at a time. So a secret can't decide anything that changes
+what runs or which memory is read, and the compiler checks it can't.
+
+A type whose values are secrets is marked `#secret`: a struct, or a distinct alias, which then has the type it aliases
+as its public form. A value is a secret when its type is one, or when it's worked out from one: by an operator, a
+cast, a literal holding one, or reading a secret's field or element. A local made from a secret holds one too.
+
+```
+Key :: struct #secret {
+    bytes: u8[32],
+}
+
+Word :: distinct alias u32 #secret
+```
+
+A secret can't decide:
+
+* a branch: an `if`'s condition, which arm of a `match` or case of a `switch` runs, whether `&&` or `||` runs its
+  right side, `or_else`, `or_return` and `?`;
+* how long a loop runs: a range's bounds (going through a secret array is fine, since how many elements it has
+  isn't a secret);
+* which memory is read: an index, or a pointer worked out from one (a secret array indexed by a public index is fine);
+* a division: `/`, `%` and `%%` take longer for some values on most CPUs.
+
+What a secret can go into is checked by type, so where secrets cross from one function to another shows in their
+signatures: a parameter, a result, or something assigned to, has to be of a `#secret` type, or already hold secrets,
+like a field of a secret or a local made from one. Taking a pointer to a secret that isn't of a `#secret` type, like
+`&key.bytes`, would lose that it's one, so that's an error too. `.count` and `.capacity` aren't secrets.
+
+A function whose parameters or results are secrets is marked `#constant_time`, so it shows in its signature. Any
+function can hold and work with secrets; the rules above hold everywhere. A `#constant_time` function that works
+with no secret at all is warned about, since it's probably left over from one that did: not for a generic, whose
+instances decide (`#constant_time` on one is what lets it take secrets).
+
+```
+// Whether two keys are equal, looking at every byte whatever it finds
+keys_equal #constant_time :: fn(a: ptr[Key], b: ptr[Key]) -> bool {
+    difference := compiler.secret(cast[u8](0))
+    for i in 0..<a.bytes.count {
+        difference = difference | (a.bytes[i] ~ b.bytes[i])
+    }
+    return compiler.declassify(difference == 0)
+}
+
+larger #constant_time :: fn(a: Word, b: Word) -> Word {
+    return intrinsics.select(a > b, a, b)
+}
+```
+
+* `compiler.declassify(value)` gives a secret as its public form, for what's public by design, like whether a tag
+  matched once it's been compared, or ciphertext written to an output. A `#secret` alias's public form is what it
+  aliases; a `#secret` struct has none, so what's in it is declassified instead.
+* `compiler.secret(value)` makes a value a secret, for a local that will hold secrets, like `difference` above.
+* `intrinsics.select(condition, chosen, otherwise)` chooses between integers, bools or enums without a branch: from
+  the condition it makes a mask of all ones or all zeros, which it passes through an empty assembly block, so the
+  optimizer can't see it's one or the other and turn it back into a branch. With a vector of bools it chooses lane
+  by lane (see [types.md](types.md#vectors)).
+* Intrinsics take secrets wherever they're given them, since each is an instruction or two that takes the same time
+  whatever it's given, and give a secret back for one.
+* `intrinsics.secure_zero(target, len)` writes zeros even when nothing reads them after, for wiping a secret.
+
+The compiler checks the source; LLVM has no way to promise what the machine code does. `select` keeps its own
+masks from becoming branches, but other code is only as constant time as LLVM leaves it.
+
 # Owned Types
 
 Some values are a resource as well as data: a file to close, memory to give back, a count to drop. A struct marked

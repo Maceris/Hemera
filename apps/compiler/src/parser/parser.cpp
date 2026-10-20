@@ -628,6 +628,7 @@ namespace hemera::parser {
 				|| directive.value.value->compare("#foreign") == 0
 				|| directive.value.value->compare("#link_name") == 0
 				|| directive.value.value->compare("#target_features") == 0
+				|| directive.value.value->compare("#constant_time") == 0
 				|| directive.value.value->compare("#constraint") == 0
 				|| directive.value.value->compare("#release") == 0) {
 				expected = true;
@@ -715,6 +716,10 @@ namespace hemera::parser {
 				return false;
 			}
 			parent.children.push_back(rhs.result);
+			// Like Word :: distinct alias u32 #secret
+			while (expect(state, TokenType::DIRECTIVE)) {
+				next_as_node(state, ast::NodeType::DIRECTIVE, &alias);
+			}
 			return where_clause(state, *first);
 		}
 		ExprResult rhs = expression_with_result(state, true);

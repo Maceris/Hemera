@@ -9,8 +9,12 @@ package intrinsics
 // lane in every lane of V: splat[vector[u32, 4]](1).
 splat : fn[V](lane: any) -> V : ---
 
-// Each lane from chosen where mask's lane is true, otherwise from otherwise, without a branch. mask is a
-// vector of bools with as many lanes.
+/*
+ * Each lane from chosen where mask's lane is true, otherwise from otherwise, without a branch: mask is a
+ * vector of bools with as many lanes. Or for integers and bools, chosen when condition is true, otherwise
+ * otherwise, worked out with a mask the optimizer can't see through, so never with a branch either
+ * (docs/memory.md, Secrets).
+ */
 select : fn[V](mask: any, chosen: V, otherwise: V) -> V : ---
 
 // The lanes moved down by count, a constant: lane i is vector's lane i + count, the first ones coming

@@ -94,6 +94,18 @@ namespace hemera {
 					if (ast::NodeType::STRUCT == value_type && declaration->generic != nullptr) {
 						static_cast<TypeInfoStruct*>(type)->instance = declaration;
 					}
+					/*
+					 * #secret is known from when the type is declared, since what only points to it, like a
+					 * ptr[Key] parameter, may be checked before its body is (docs/memory.md, Secrets)
+					 */
+					if (ast::NodeType::STRUCT == value_type) {
+						for (const ast::Node* child : value->children) {
+							if (ast::NodeType::DIRECTIVE == child->node_type && child->value.value != nullptr
+								&& std::string_view(*child->value.value) == "#secret") {
+								static_cast<TypeInfoStruct*>(type)->is_secret = true;
+							}
+						}
+					}
 				}
 			}
 			else if (ast::NodeType::ENUM == value_type) {
@@ -110,6 +122,18 @@ namespace hemera {
 				kind = DeclarationKind::TYPE;
 				type = make_type<TypeInfoAlias>(names, declaration->name,
 					ast::NodeType::KEYWORD_DISTINCT == value_type);
+				// #secret, known from the start like a struct's; alias_body checks it's on a distinct alias
+				for (const ast::Node* part : declaration->node->children) {
+					if (ast::NodeType::KEYWORD_ALIAS != part->node_type) {
+						continue;
+					}
+					for (const ast::Node* directive : part->children) {
+						if (ast::NodeType::DIRECTIVE == directive->node_type && directive->value.value != nullptr
+							&& std::string_view(*directive->value.value) == "#secret" && ast::NodeType::KEYWORD_DISTINCT == value_type) {
+							static_cast<TypeInfoAlias*>(type)->is_secret = true;
+						}
+					}
+				}
 			}
 			else if (ast::NodeType::FUNCTION == value_type) {
 				if (has_body(declaration->node)) {
@@ -1260,6 +1284,9 @@ namespace hemera {
 				else if (is_text(child->value.value, "#unrestricted")) {
 					type->is_unrestricted = true;
 				}
+				else if (is_text(child->value.value, "#secret")) {
+					type->is_secret = true;
+				}
 				else if (is_text(child->value.value, "#thread_bound")) {
 					// #thread_bound, or #thread_bound(condition) for the instances it's true for
 					type->is_thread_bound = true;
@@ -1510,6 +1537,26 @@ namespace hemera {
 	// alias T and distinct alias T: the aliased type is the definition's last part.
 	static Progress alias_body(Walk& walk, ast::Node* definition, TypeInfoAlias* alias) {
 		ast::Node* aliased = definition->children.back();
+		// Word :: distinct alias u32 #secret (docs/memory.md, Secrets)
+		for (ast::Node* part : definition->children) {
+			if (ast::NodeType::KEYWORD_ALIAS != part->node_type) {
+				continue;
+			}
+			for (ast::Node* directive : part->children) {
+				if (ast::NodeType::DIRECTIVE != directive->node_type) {
+					continue;
+				}
+				if (!is_text(directive->value.value, "#secret")) {
+					return type_error(walk, ErrorCode::E4014, directive, std::format("an alias takes #secret, not {}",
+						name_text(directive->value.value)));
+				}
+				if (!alias->distinct) {
+					return type_error(walk, ErrorCode::E4014, directive,
+						"only a distinct alias is #secret, since an alias is the same type as what it names");
+				}
+				alias->is_secret = true;
+			}
+		}
 		TypeInfo* base = nullptr;
 		Progress progress = type_of(walk, aliased, Need::RESOLVED, base);
 		if (progress == Progress::DONE) {

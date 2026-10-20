@@ -134,6 +134,10 @@ namespace hemera {
 		/// what it aliases, except that pointers to it in the generic can change it (docs/types.md, Mutability).
 		/// </summary>
 		bool mutable_argument = false;
+		/// <summary>
+		/// From #secret, on a distinct alias: its values are secrets (docs/memory.md, Secrets).
+		/// </summary>
+		bool is_secret = false;
 
 		TypeInfoAlias(InternedString name, bool distinct);
 	};
@@ -316,6 +320,10 @@ namespace hemera {
 		/// </summary>
 		bool is_thread_bound = false;
 		/// <summary>
+		/// From #secret: its values are secrets, so they can't decide timing (docs/memory.md, Secrets).
+		/// </summary>
+		bool is_secret = false;
+		/// <summary>
 		/// From #align(n), or 0 for the natural alignment.
 		/// </summary>
 		size_t requested_alignment = 0;
@@ -481,6 +489,17 @@ namespace hemera {
 	/// or null if there's none: then it can be given to another thread.
 	/// </summary>
 	TypeInfo const* thread_bound_part(TypeInfo const* type);
+
+	/// <summary>
+	/// Whether values of type are secrets: a #secret struct or distinct alias, an alias of one, or an
+	/// array or vector of them (docs/memory.md, Secrets).
+	/// </summary>
+	bool is_secret_type(TypeInfo const* type);
+
+	/// <summary>
+	/// Whether a value of type holds or reaches a secret, through pointers too, like a ptr[Key] parameter.
+	/// </summary>
+	bool reaches_secret(TypeInfo const* type);
 
 	/// <summary>
 	/// Check if the first type can be implicitly converted to the second (docs/types.md, Implicit

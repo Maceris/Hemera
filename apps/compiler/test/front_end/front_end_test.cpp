@@ -1174,6 +1174,42 @@ TEST(FrontEnd, ChecksVectors)
 	}
 }
 
+/*
+ * Secrets where they could leak (docs/memory.md, Secrets): a branch, a loop's count, an index, a division,
+ * &&'s right side, a match, a parameter, an assignment, a pointer and a result that aren't #secret, a
+ * function taking one without #constant_time, and #secret on an alias that isn't distinct. What's allowed
+ * isn't reported, and #constant_time without a secret is warned about.
+ */
+TEST(FrontEnd, ChecksSecrets)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("secret_errors"));
+	ASSERT_EQ(errors.size(), 12) << codes(errors);
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"only a distinct alias is #secret",
+		"a secret can't decide if's condition",
+		"a secret can't decide how many times a loop runs",
+		"a secret can't decide which element is read",
+		"a secret can't be divided or divide",
+		"a secret can't decide whether the right side runs",
+		"a secret can't decide which arm of a match runs",
+		"value isn't a #secret type, so a secret can't go there",
+		"what's assigned to isn't a #secret type",
+		"a pointer to u8[4] would lose that this is a secret",
+		"the result isn't a #secret type",
+		"unmarked takes or gives a secret, so it's marked #constant_time",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksBodies)
 {
 	hemera::disable_reporting_printing();

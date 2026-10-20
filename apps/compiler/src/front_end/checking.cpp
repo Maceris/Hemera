@@ -2,6 +2,7 @@
 #include <format>
 #include <map>
 #include <set>
+#include <unordered_set>
 
 #include "error/reporting.h"
 #include "front_end/checking.h"
@@ -65,6 +66,17 @@ namespace hemera {
 		/// Where to record what each node is, for generating code, or null.
 		/// </summary>
 		CheckedBody* record = nullptr;
+		/// <summary>
+		/// Secrets (docs/memory.md, Secrets): whether the function is #constant_time, whether it works
+		/// with a secret, and which expressions are secrets, so what's worked out from them is too.
+		/// </summary>
+		bool constant_time = false;
+		bool saw_secret = false;
+		std::unordered_set<const ast::Node*> secret_nodes;
+		/// <summary>
+		/// The call being checked is of an intrinsic, which takes secrets wherever it's given them.
+		/// </summary>
+		bool intrinsic_arguments = false;
 		explicit Checker(Walk& walk_)
 			: walk{ walk_ }
 		{}
@@ -72,6 +84,57 @@ namespace hemera {
 
 	static bool is_text(InternedString value, std::string_view text) {
 		return value != nullptr && std::string_view(*value) == text;
+	}
+
+	static Value error_at(Checker& checker, ErrorCode code, const ast::Node* node, std::string message);
+
+	/*
+	 * A secret was worked with (docs/memory.md, Secrets). Any function can hold secrets, and the rules
+	 * hold everywhere; one whose parameters or results are secrets says so with #constant_time.
+	 */
+	static void note_secret(Checker& checker, const ast::Node* where) {
+		(void)where;
+		checker.saw_secret = true;
+	}
+
+	// Whether a function's definition is marked #constant_time, like f #constant_time :: fn(...).
+	static bool marked_constant_time(const ast::Node* definition) {
+		if (definition == nullptr || definition->children.empty()) {
+			return false;
+		}
+		for (const ast::Node* directive : definition->children[0]->children) {
+			if (ast::NodeType::DIRECTIVE == directive->node_type && is_text(directive->value.value, "#constant_time")) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	static bool is_secret_node(const Checker& checker, const ast::Node* node) {
+		return node != nullptr && checker.secret_nodes.contains(node);
+	}
+
+	// A secret can't decide what's described, like a branch or a loop's count, which would show in its timing.
+	static void require_public(Checker& checker, const ast::Node* node, std::string_view what) {
+		if (is_secret_node(checker, node)) {
+			error_at(checker, ErrorCode::E4037, node, std::format("a secret can't decide {}, which would show in how long it takes", what));
+		}
+	}
+
+	/*
+	 * Whether a secret can go where a value of type does: a #secret type, or a place that already holds
+	 * secrets, like a secret local. Otherwise it's said why, and how to get past it.
+	 */
+	static bool require_secret_fits(Checker& checker, bool secret, TypeInfo const* type, bool secret_place, const ast::Node* where,
+		std::string_view what) {
+
+		if (!secret || secret_place || type == nullptr || is_secret_type(type)) {
+			return true;
+		}
+		error_at(checker, ErrorCode::E4037, where, std::format(
+			"{} isn't a #secret type, so a secret can't go there; give it a #secret type, or compiler.declassify what's public by design",
+			what));
+		return false;
 	}
 
 	static std::string text_of(InternedString value) {
@@ -1002,6 +1065,7 @@ namespace hemera {
 			error_at(checker, ErrorCode::E4015, index, std::format("an index is an integer, not {}",
 				describe(index_value)));
 		}
+		require_public(checker, index, "which element is read, an address");
 		value = typed(element);
 		value.is_location = true;
 		value.is_mutable = is_mutable;
@@ -1430,6 +1494,9 @@ namespace hemera {
 				}
 				format_values.emplace_back(argument, value);
 				require_fit(checker, value, expected, argument, std::format("{}", text_of(input.name)));
+				if (!checker.intrinsic_arguments) {
+					require_secret_fits(checker, value.is_secret, expected, false, argument, std::format("{}", text_of(input.name)));
+				}
 				require_stays(checker, value, input, function, argument);
 				continue;
 			}
@@ -1440,6 +1507,10 @@ namespace hemera {
 			}
 			require_fit(checker, value, expected, argument,
 				input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the argument"));
+			if (!checker.intrinsic_arguments) {
+				require_secret_fits(checker, value.is_secret, expected, false, argument,
+					input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the parameter"));
+			}
 			require_stays(checker, value, input, function, argument);
 			if (takes_format(parameter) && positional.node != nullptr && ast::NodeType::LITERAL == positional.node->node_type
 				&& TokenType::LITERAL_STRING == positional.node->value.type) {
@@ -1844,6 +1915,12 @@ namespace hemera {
 		return is_text(declaration->name, "aes_key_assist") ? 2 : is_text(declaration->name, "carryless_multiply") ? 3 : 0;
 	}
 
+	// compiler.declassify and compiler.secret, typed from what they're given (docs/memory.md, Secrets).
+	static bool is_secret_function(const Declaration* declaration) {
+		const Declaration* generic = declaration != nullptr && declaration->generic != nullptr ? declaration->generic : declaration;
+		return is_compiler_function(generic, "declassify") || is_compiler_function(generic, "secret");
+	}
+
 	static bool is_vector_intrinsic(const Declaration* declaration) {
 		static constexpr std::string_view NAMES[] = {
 			"splat", "select", "rotate_lanes", "reduce_add", "reduce_and", "reduce_or", "reduce_xor", "any_true", "all_true",
@@ -1891,6 +1968,33 @@ namespace hemera {
 		}
 		TypeInfoVector const* vector = vector_type_of(given);
 		TypeInfo* type = ValueKind::VALUE == given.kind ? given.type : nullptr;
+		if (name == "declassify" || name == "secret") {
+			TypeInfo* own = default_type(given);
+			if (own == nullptr) {
+				return fail(arguments[0], std::format("takes a value, not {}", describe(given)));
+			}
+			// What a #secret alias names is its public form; a #secret struct has none
+			TypeInfo* result_type = own;
+			while (name == "declassify" && result_type != nullptr && TypeInfoVariant::ALIAS == result_type->variant
+				&& static_cast<TypeInfoAlias const*>(result_type)->is_secret) {
+				result_type = static_cast<TypeInfoAlias const*>(result_type)->base_type;
+			}
+			if (name == "declassify" && is_secret_type(result_type)) {
+				return fail(arguments[0], std::format("can't make {} public, since a #secret struct has no public form; declassify what's in it",
+					to_string(own)));
+			}
+			result = plain_function_type(checker.walk, { own }, result_type);
+			return Progress::DONE;
+		}
+		// A choice between integers or bools, without a branch
+		if (name == "select" && vector == nullptr) {
+			TypeInfo* own = default_type(given);
+			if (own == nullptr || !(is_integer(own) || is_boolean(own) || is_enum(own))) {
+				return fail(arguments[subject], std::format("chooses between vectors, integers, bools or enums, not {}", describe(given)));
+			}
+			result = plain_function_type(checker.walk, { BUILTIN_bool, own, own }, own);
+			return Progress::DONE;
+		}
 		if (name == "rotate_left" || name == "rotate_right" || name == "byte_swap") {
 			TypeInfo const* lane = vector != nullptr && !vector->is_bits ? vector->element_type : type;
 			if (lane == nullptr || !is_integer(lane) || (name == "byte_swap" && base_of(lane)->size < 2)) {
@@ -1976,7 +2080,8 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		// base/intrinsics' vector and bit functions: a function type worked out from what they're given
-		if (ValueKind::GENERIC_FUNCTION == kind && is_vector_intrinsic(callee.declaration) && piped.empty()) {
+		if (ValueKind::GENERIC_FUNCTION == kind && (is_vector_intrinsic(callee.declaration) || is_secret_function(callee.declaration))
+			&& piped.empty()) {
 			TypeInfo* signature = nullptr;
 			Progress progress = vector_intrinsic_type(checker, where, callee, arguments, signature);
 			if (progress != Progress::DONE) {
@@ -2076,10 +2181,21 @@ namespace hemera {
 				}
 			}
 		}
+		// An intrinsic is an instruction or two, which takes the same time whatever it's given (docs/memory.md, Secrets)
+		const bool intrinsic_call = callee.declaration != nullptr && is_base_package(callee.declaration->package_path)
+			&& function_body(callee.declaration->generic != nullptr ? callee.declaration->generic : callee.declaration) == nullptr
+			&& callee.declaration->foreign_library == nullptr;
+		const bool outer_intrinsic = checker.intrinsic_arguments;
+		checker.intrinsic_arguments = intrinsic_call;
 		Progress progress = check_arguments(checker, where, function, split_arguments(checker, arguments, piped, where),
 			names, piped);
+		checker.intrinsic_arguments = outer_intrinsic;
 		if (progress != Progress::DONE) {
 			return progress;
+		}
+		bool secret_argument = false;
+		for (const ast::Node* argument : arguments) {
+			secret_argument = secret_argument || is_secret_node(checker, argument);
 		}
 		// An instruction's immediate, like x86_64.aes_key_assist's round constant, is a constant
 		if (const size_t immediate = immediate_argument(callee.declaration); immediate != 0 && immediate <= arguments.size()) {
@@ -2095,7 +2211,10 @@ namespace hemera {
 		}
 		Declaration* called = callee.declaration != nullptr && DeclarationKind::FUNCTION == callee.declaration->kind
 			? callee.declaration : nullptr;
+		const bool declassify = called != nullptr && is_compiler_function(called->generic != nullptr ? called->generic : called, "declassify");
+		const bool classify = called != nullptr && is_compiler_function(called->generic != nullptr ? called->generic : called, "secret");
 		callee = call_result(function, called);
+		callee.is_secret = classify || (intrinsic_call && secret_argument && !declassify);
 		return Progress::DONE;
 	}
 
@@ -2118,6 +2237,9 @@ namespace hemera {
 			value = error_at(checker, ErrorCode::E4020, where, std::format("{} can't be dereferenced; ^ needs a typed pointer",
 				describe(value)));
 			return;
+		}
+		if (value.is_secret) {
+			error_at(checker, ErrorCode::E4037, where, "a secret can't decide which memory is read, which would show in how long it takes");
 		}
 		auto pointer = static_cast<TypeInfoPointer const*>(type);
 		value = typed(pointer->base_type);
@@ -2178,6 +2300,11 @@ namespace hemera {
 			if (ast::NodeType::PAREN_GROUP == type && arguments.empty() && !child->children.empty()) {
 				arguments.assign(child->children.begin(), child->children.end());
 			}
+			// A secret's members and elements are secrets, but not how many it has (docs/memory.md, Secrets)
+			// What a pointer points to counts, like key.bytes through a ptr[Key]
+			const bool was_secret = value.is_secret || (ValueKind::VALUE == value.kind && reaches_secret(value.type));
+			const bool keeps_secret = was_secret && (ast::NodeType::ARRAY_DIMENSION == type || (ast::NodeType::DOT_ACCESS == type
+				&& !arguments.empty() && !is_text(arguments[0]->value.value, "count") && !is_text(arguments[0]->value.value, "capacity")));
 			if (ast::NodeType::DOT_ACCESS == type) {
 				if (arguments.empty()) {
 					value = error_at(checker, ErrorCode::E4017, child, "a member's name is missing");
@@ -2273,6 +2400,9 @@ namespace hemera {
 			}
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			if (ValueKind::POISONED != value.kind && (keeps_secret || (ValueKind::VALUE == value.kind && is_secret_type(value.type)))) {
+				value.is_secret = true;
 			}
 			// The value so far, at the node after it: a member's name, or the marker
 			record(checker, ast::NodeType::DOT_ACCESS == type && !arguments.empty() ? arguments[0] : child, value);
@@ -2856,6 +2986,9 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		if (TokenType::SYM_QUESTION == op && ValueKind::TYPE != operand.kind) {
+			require_public(checker, operand_node, "whether ? returns");
+		}
 		if (TokenType::SYM_QUESTION == op) {
 			if (ValueKind::TYPE == operand.kind) {
 				// T? as a type
@@ -2912,6 +3045,10 @@ namespace hemera {
 			if (!operand.is_location) {
 				result = error_at(checker, ErrorCode::E4020, node, "& needs a location, like a variable or a field");
 				return Progress::DONE;
+			}
+			if (operand.is_secret && !is_secret_type(operand.type)) {
+				error_at(checker, ErrorCode::E4037, node, std::format(
+					"a pointer to {} would lose that this is a secret; give it a #secret type", to_string(operand.type)));
 			}
 			result = typed(pointer_to(checker.walk, operand.type, operand.is_mutable && !operand.is_context, false,
 				POINTER_SIZE));
@@ -3284,6 +3421,7 @@ namespace hemera {
 			return progress;
 		}
 		require_fit(checker, condition, BUILTIN_bool, node->children[0], "if's condition");
+		require_public(checker, node->children[0], "if's condition");
 		result = poisoned();
 		TypeInfo* type = expected;
 		for (size_t i = 1; i < node->children.size(); ++i) {
@@ -3375,9 +3513,81 @@ namespace hemera {
 
 	static Progress check_expression_inner(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result);
 
+	static bool is_assign(const ast::Node* node);
+
+	/*
+	 * Whether what an expression works out takes after a secret it's worked out from: an operator's
+	 * operands, a cast's value, parentheses, and a literal's parts (docs/memory.md, Secrets).
+	 */
+	static bool inherits_secret(const Checker& checker, const ast::Node* node) {
+		const ast::NodeType type = node->node_type;
+		const TokenType op = node->value.type;
+		if (ast::NodeType::BINARY_OPERATOR == type) {
+			if (is_assign(node) || TokenType::OPERATOR_PIPE == op) {
+				return false;
+			}
+			return std::any_of(node->children.begin(), node->children.end(), [&](const ast::Node* child) {
+				return is_secret_node(checker, child);
+			});
+		}
+		if (ast::NodeType::UNARY_OPERATOR == type) {
+			return TokenType::SYM_AMPERSAND != op && TokenType::OPERATOR_DEREFERENCE != op && !node->children.empty()
+				&& is_secret_node(checker, node->children[0]);
+		}
+		if (ast::NodeType::CAST == type || ast::NodeType::PAREN_GROUP == type) {
+			return !node->children.empty() && is_secret_node(checker, node->children.back());
+		}
+		if (ast::NodeType::STRUCT_LITERAL == type || ast::NodeType::ARRAY_LITERAL == type) {
+			for (const ast::Node* child : node->children) {
+				if (ast::NodeType::LIST != child->node_type) {
+					continue;
+				}
+				for (const ast::Node* part : child->children) {
+					const ast::Node* given = ast::NodeType::BINARY_OPERATOR == part->node_type && is_assign(part)
+						&& part->children.size() == 2 ? part->children[1] : part;
+					if (is_secret_node(checker, given)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	// What an operator can't do with a secret: divide, and decide whether the right side runs.
+	static void check_secret_operator(Checker& checker, const ast::Node* node) {
+		if (ast::NodeType::BINARY_OPERATOR != node->node_type || node->children.size() != 2) {
+			return;
+		}
+		const TokenType op = node->value.type;
+		const bool any = is_secret_node(checker, node->children[0]) || is_secret_node(checker, node->children[1]);
+		if (any && (TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op
+			|| TokenType::OPERATOR_ASSIGN_DIV == op || TokenType::OPERATOR_ASSIGN_MOD == op
+			|| TokenType::OPERATOR_ASSIGN_REMAINDER == op)) {
+			error_at(checker, ErrorCode::E4037, node, "a secret can't be divided or divide, since dividing takes longer for some values");
+		}
+		if (TokenType::OPERATOR_AND == op || TokenType::OPERATOR_OR == op || TokenType::KEYWORD_OR_ELSE == op
+			|| TokenType::KEYWORD_OR_RETURN == op) {
+			require_public(checker, node->children[0], "whether the right side runs");
+		}
+	}
+
 	static Progress check_expression(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		Progress progress = check_expression_inner(checker, node, expected, result);
 		if (progress == Progress::DONE) {
+			if (ValueKind::POISONED != result.kind) {
+				if (ValueKind::VALUE == result.kind && is_secret_type(result.type)) {
+					result.is_secret = true;
+				}
+				else if (!result.is_secret && inherits_secret(checker, node)) {
+					result.is_secret = true;
+				}
+			}
+			check_secret_operator(checker, node);
+			if (result.is_secret) {
+				checker.secret_nodes.insert(node);
+				note_secret(checker, node);
+			}
 			record(checker, node, result);
 		}
 		return progress;
@@ -3660,6 +3870,8 @@ namespace hemera {
 			if (ValueKind::POISONED == target_values[i].kind) {
 				continue;
 			}
+			require_secret_fits(checker, value.is_secret, types[i], target_values[i].is_secret, targets[i],
+				"what's assigned to");
 			if (TokenType::INVALID == op) {
 				require_fit(checker, value, types[i], targets[i], "this assignment");
 				continue;
@@ -3756,6 +3968,8 @@ namespace hemera {
 		for (size_t i = 0; i < parts.names.size(); ++i) {
 			Value value = values.empty() ? typed(type) : values.size() == 1 ? values[0]
 				: i < values.size() ? values[i] : poisoned();
+			// A local made from a secret holds one (docs/memory.md, Secrets)
+			const bool secret = value.is_secret;
 			if (type != nullptr) {
 				if (!values.empty()) {
 					require_fit(checker, value, type, parts.value, text_of(parts.names[i]->value.value));
@@ -3780,6 +3994,7 @@ namespace hemera {
 			value.is_location = ValueKind::VALUE == value.kind;
 			value.is_mutable = !parts.is_constant && ValueKind::VALUE == value.kind;
 			value.is_context = false;
+			value.is_secret = ValueKind::POISONED != value.kind && (secret || (ValueKind::VALUE == value.kind && is_secret_type(value.type)));
 			declare_local(checker, parts.names[i], parts.names[i]->value.value, value);
 		}
 		return Progress::DONE;
@@ -3840,6 +4055,8 @@ namespace hemera {
 		for (size_t i = 0; i < values.size(); ++i) {
 			require_fit(checker, values[i], outputs[i].type, node->children.size() == values.size() ? node->children[i] : node,
 				"the returned value");
+			require_secret_fits(checker, values[i].is_secret, outputs[i].type, false,
+				node->children.size() == values.size() ? node->children[i] : node, "the result");
 		}
 		return Progress::DONE;
 	}
@@ -3850,6 +4067,7 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		require_public(checker, node, std::format("{}'s condition", what));
 		if (!is_boolean(default_type(condition)) && ValueKind::UNTYPED_BOOLEAN != condition.kind
 			&& ValueKind::POISONED != condition.kind) {
 			error_at(checker, ErrorCode::E4015, node, std::format("{} needs a boolean, not {}", what, describe(condition)));
@@ -3951,6 +4169,8 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+			require_public(checker, iterable->children[0], "where a loop starts");
+			require_public(checker, iterable->children[1], "how many times a loop runs");
 			Value shared;
 			if (ValueKind::POISONED != low.kind && ValueKind::POISONED != high.kind
 				&& (!common_type(low, high, shared) || !is_integer(default_type(shared)))) {
@@ -3976,6 +4196,8 @@ namespace hemera {
 			TypeInfo const* type = ValueKind::VALUE == collection.kind ? base_of(collection.type) : nullptr;
 			if (type != nullptr && TypeInfoVariant::ARRAY == type->variant) {
 				element = typed(static_cast<TypeInfoArray const*>(type)->element_type);
+				// A secret's elements are secrets; how many there are isn't
+				element.is_secret = collection.is_secret || is_secret_type(element.type);
 				const bool elsewhere = ArrayType::STATIC != static_cast<TypeInfoArray const*>(type)->array_type;
 				by_reference_allowed = collection.is_location || elsewhere;
 				element_mutable = collection.is_mutable || elsewhere;
@@ -4010,6 +4232,10 @@ namespace hemera {
 				&& !name->children.empty()) {
 				if (!by_reference_allowed && ValueKind::POISONED != element.kind) {
 					error_at(checker, ErrorCode::E4020, name, "& in a for loop needs an array to point into");
+				}
+				if (element.is_secret && !is_secret_type(element.type)) {
+					error_at(checker, ErrorCode::E4037, name, std::format(
+						"a pointer to {} would lose that these are secrets; make the elements a #secret type", to_string(element.type)));
 				}
 				Value reference = ValueKind::VALUE == element.kind
 					? typed(pointer_to(checker.walk, element.type, element_mutable, false, POINTER_SIZE)) : poisoned();
@@ -4295,6 +4521,7 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		require_public(checker, node->children[0], "which arm of a match runs");
 		if (!can_match_on(subject, true)) {
 			error_at(checker, ErrorCode::E4020, node->children[0], std::format("match goes through integers, characters, strings, enums, unions and booleans, not {}",
 				describe(subject)));
@@ -4375,6 +4602,7 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		require_public(checker, node->children[0], "which case of a switch runs");
 		if (!can_match_on(subject, false)) {
 			error_at(checker, ErrorCode::E4020, node->children[0], std::format("switch goes through integers, characters, strings and enums, not {}",
 				describe(subject)));
@@ -4968,6 +5196,7 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		Checker nested(checker.walk);
+		nested.constant_time = marked_constant_time(definition);
 		return check_function_body(nested, function, body, static_cast<TypeInfoFunction const*>(type), definition);
 	}
 
@@ -5081,8 +5310,30 @@ namespace hemera {
 				"{} is where the program starts, without a context: mark it #no_context (with #calling_convention(.c))",
 				text_of(function->name)));
 		}
+		checker.constant_time = marked_constant_time(generic->node);
+		// A secret parameter or result is working with secrets, used or not (docs/memory.md, Secrets)
+		for (const FunctionInput& input : type->input) {
+			checker.saw_secret = checker.saw_secret || reaches_secret(input.type);
+		}
+		for (const FunctionOutput& output : type->output) {
+			checker.saw_secret = checker.saw_secret || reaches_secret(output.type);
+		}
+		if (checker.saw_secret && !checker.constant_time) {
+			error_at(checker, ErrorCode::E4037, function->node, std::format(
+				"{} takes or gives a secret, so it's marked #constant_time", text_of(function->name)));
+		}
 		const size_t errors_before = thread_error_count();
 		Progress progress = check_function_body(checker, function_node_, body, type, function->node);
+		/*
+		 * #constant_time without a secret, maybe left behind when one moved elsewhere. Not for a generic's
+		 * instances, since #constant_time on a generic is what lets its secret instances exist
+		 */
+		if (progress == Progress::DONE && checker.constant_time && !checker.saw_secret && function->generic == nullptr) {
+			report_warning(WarningCode::W4002, checker.walk.file_path, function->node->value.line_number,
+				function->node->value.column_number, std::format(
+					"{} is #constant_time, but works with no secret: no #secret parameter or result, and none in its body",
+					text_of(function->name)));
+		}
 		// Then what points into the stack, once everything in the body is known (docs/memory.md)
 		if (progress == Progress::DONE && thread_error_count() == errors_before) {
 			check_stack_pointers(*checked, body, type, checker.walk.file_path);
