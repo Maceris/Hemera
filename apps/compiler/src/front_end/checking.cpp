@@ -3923,6 +3923,10 @@ namespace hemera {
 			else if (ast::NodeType::BLOCK == type) {
 				body = child;
 			}
+			else if (ast::NodeType::DIRECTIVE == type && !is_text(child->value.value, "#reverse")) {
+				// #reverse is a for loop's only directive (docs/control_flow.md)
+				error_at(checker, ErrorCode::E4020, child, std::format("a for loop takes #reverse, not {}", text_of(child->value.value)));
+			}
 			else if (ast::NodeType::DIRECTIVE != type && iterable == nullptr) {
 				iterable = child;
 			}

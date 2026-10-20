@@ -137,15 +137,9 @@ encrypt #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 
 
 decrypt #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 {
     state := block ~ keys[10]
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[9]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[8]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[7]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[6]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[5]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[4]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[3]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[2]))
-    state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[1]))
+    for round in 1..<10 #reverse {
+        state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[round]))
+    }
     return x86_64.aes_decrypt_last(state, keys[0])
 }
 

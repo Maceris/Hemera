@@ -6125,6 +6125,7 @@ namespace hemera {
 		ast::Node* iterable = nullptr;
 		ast::Node* body = nullptr;
 		bool after_in = false;
+		bool reverse = false;
 		for (ast::Node* child : node->children) {
 			const ast::NodeType type = child->node_type;
 			if (ast::NodeType::IN == type) {
@@ -6135,6 +6136,9 @@ namespace hemera {
 			}
 			else if (ast::NodeType::BLOCK == type) {
 				body = child;
+			}
+			else if (ast::NodeType::DIRECTIVE == type && is_text(child->value.value, "#reverse")) {
+				reverse = true;
 			}
 			else if (ast::NodeType::DIRECTIVE == type) {
 				unsupported(generator, child, std::format("{} on a for loop can't be generated yet", text_of(child->value.value)));
@@ -6165,17 +6169,43 @@ namespace hemera {
 			low = constant_int(generator, usize_type(generator), 0);
 		}
 		mlir::Value next = make_slot(generator, index_type);
-		store(generator, low, next);
 		const bool inclusive = is_range && TokenType::OPERATOR_RANGE_INCLUSIVE == op;
+		/*
+		 * #reverse: from the last down to low. Whether there's more decides, so the index never goes
+		 * below low, which for an unsigned low of 0 would wrap
+		 */
+		mlir::Value more;
+		if (reverse) {
+			more = make_raw_slot(generator, generator.builder.getI1Type(), 1);
+			store(generator, compare(generator, inclusive ? TokenType::OPERATOR_LESS_THAN_OR_EQUAL : TokenType::SYM_LT, low, high,
+				index_type), more);
+			store(generator, inclusive ? high
+				: static_cast<mlir::Value>(LLVM::SubOp::create(generator.builder, generator.loc, high, constant_int(generator, high.getType(), 1))),
+				next);
+		}
+		else {
+			store(generator, low, next);
+		}
 		emit_loop(generator, true, [&]() {
 			// The index is taken before the body, so continue moves on to the next
 			mlir::Value index = load(generator, index_type, next);
-			emit_if(generator, compare(generator, inclusive ? TokenType::SYM_GT : TokenType::OPERATOR_GREATER_THAN_OR_EQUAL,
-				index, high, index_type), [&]() {
-				emit_break(generator, 1);
-				return true;
-			}, nullptr);
-			store(generator, LLVM::AddOp::create(generator.builder, generator.loc, index, constant_int(generator, index.getType(), 1)), next);
+			if (reverse) {
+				mlir::Value had_more = LLVM::LoadOp::create(generator.builder, generator.loc, generator.builder.getI1Type(), more);
+				emit_if(generator, negate(generator, had_more), [&]() {
+					emit_break(generator, 1);
+					return true;
+				}, nullptr);
+				store(generator, compare(generator, TokenType::SYM_GT, index, low, index_type), more);
+				store(generator, LLVM::SubOp::create(generator.builder, generator.loc, index, constant_int(generator, index.getType(), 1)), next);
+			}
+			else {
+				emit_if(generator, compare(generator, inclusive ? TokenType::SYM_GT : TokenType::OPERATOR_GREATER_THAN_OR_EQUAL,
+					index, high, index_type), [&]() {
+					emit_break(generator, 1);
+					return true;
+				}, nullptr);
+				store(generator, LLVM::AddOp::create(generator.builder, generator.loc, index, constant_int(generator, index.getType(), 1)), next);
+			}
 			for (size_t i = 0; i < names.size(); ++i) {
 				ast::Node* name = names[i];
 				mlir::Value slot;

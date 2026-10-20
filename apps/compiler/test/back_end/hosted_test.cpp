@@ -189,6 +189,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// for loops with #reverse, last to first (docs/control_flow.md, Range-based for).
+TEST(Hosted, ReversesLoops)
+{
+	run_hosted("reverse_loops", hemera::TargetStackCheck::Off);
+}
+
 // Vectors, their intrinsics, and AES-NI and PCLMULQDQ where the CPU has them (docs/types.md, Vectors).
 TEST(Hosted, RunsVectors)
 {

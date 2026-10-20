@@ -808,6 +808,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "match_not_exhaustive", hemera::ErrorCode::E4026 },
 		{ "wrong_arguments", hemera::ErrorCode::E4018 },
 		{ "break_outside_loop", hemera::ErrorCode::E4022 },
+		{ "for_directive", hemera::ErrorCode::E4020 },
 		{ "type_mismatch", hemera::ErrorCode::E4015 },
 		{ "unknown_member", hemera::ErrorCode::E4017 },
 		{ "not_callable", hemera::ErrorCode::E4021 },

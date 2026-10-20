@@ -145,11 +145,17 @@ for &value, index in some_array {
 }
 ```
 
-The `#reverse` directive indicates a loop should be done in reverse
+The `#reverse` directive indicates a loop should be done in reverse: from the last value or element down to the first.
+It works on ranges and on arrays, whose index still counts the element's position, and never goes below the range's
+first value, so an unsigned range down to 0 doesn't wrap.
 
 ```
 for i in 0..=10 #reverse {
-    println(i)
+    println(i)          // 10, 9, ..., 0
+}
+
+for value, index in values #reverse {
+    println(value)      // the last element first, with index values.count - 1
 }
 ```
 
