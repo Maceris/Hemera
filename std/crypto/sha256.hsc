@@ -103,7 +103,7 @@ sha256_compress #constant_time :: fn(state: ptr[mut Sha256State]) {
     state.words[7] += h
 }
 
-// One byte into the block, compressing it once it's full.
+// One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it.
 sha256_byte :: fn(hasher: ptr[mut Sha256], byte: u8) {
     hasher.state.block[hasher.buffered % SHA256_BLOCK] = byte
     hasher.buffered += 1

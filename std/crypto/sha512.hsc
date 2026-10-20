@@ -104,6 +104,7 @@ sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
     state.words[7] += h
 }
 
+// One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it.
 sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
     hasher.state.block[hasher.buffered % SHA512_BLOCK] = byte
     hasher.buffered += 1

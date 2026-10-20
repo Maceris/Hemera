@@ -5358,7 +5358,8 @@ namespace hemera {
 					return value(TokenType::OPERATOR_EQUAL == op ? equal : negate(generator, equal), BUILTIN_bool);
 				}
 			}
-			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)) {
+			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)
+				|| is_variant(type, TypeInfoVariant::ARRAY)) {
 				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
 				return value(boolean(generator, false), BUILTIN_bool);
 			}

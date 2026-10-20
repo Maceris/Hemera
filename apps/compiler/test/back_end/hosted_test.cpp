@@ -195,6 +195,12 @@ TEST(Hosted, AuthenticatedEncryption)
 	run_hosted("aead", hemera::TargetStackCheck::Off);
 }
 
+// std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.
+TEST(Hosted, Curves)
+{
+	run_hosted("curves", hemera::TargetStackCheck::Off);
+}
+
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
 TEST(Hosted, Hashes)
 {

@@ -4,6 +4,8 @@ import compiler from "base"
 
 // A byte that's a secret, like a key's or a password's (docs/memory.md, Secrets).
 SecretByte :: distinct alias u8 #secret
+// A true or false that's a secret, like whether a secret number is 0, to choose with but not branch on.
+SecretBool :: distinct alias bool #secret
 
 // Public bytes, like a message, seen as secret ones, for what takes secrets.
 as_secret #constant_time :: fn(data: u8[]) -> SecretByte[] {
