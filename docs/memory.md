@@ -338,7 +338,12 @@ A secret can't decide:
 What a secret can go into is checked by type, so where secrets cross from one function to another shows in their
 signatures: a parameter, a result, or something assigned to, has to be of a `#secret` type, or already hold secrets,
 like a field of a secret or a local made from one. Taking a pointer to a secret that isn't of a `#secret` type, like
-`&key.bytes`, would lose that it's one, so that's an error too. `.count` and `.capacity` aren't secrets.
+`&key.bytes`, would lose that it's one, so that's an error too, and so is casting a pointer to a secret, like a
+`ptr[Key]`, to a pointer to what isn't. `bit_cast` of a secret gives a secret, so it needs nothing more. `.count` and
+`.capacity` aren't secrets.
+
+A `rawptr` is the way past these on purpose: what's read through one, or copied with `intrinsics.mem_copy`, isn't
+tracked, so `cast[rawptr](&key)` is where a reviewer looks.
 
 A function whose parameters or results are secrets is marked `#constant_time`, so it shows in its signature. Any
 function can hold and work with secrets; the rules above hold everywhere. A `#constant_time` function that works

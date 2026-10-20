@@ -189,6 +189,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// std/crypto's ChaCha20-Poly1305 and AES-256-GCM, with and without AES-NI, against known values.
+TEST(Hosted, AuthenticatedEncryption)
+{
+	run_hosted("aead", hemera::TargetStackCheck::Off);
+}
+
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
 TEST(Hosted, Hashes)
 {

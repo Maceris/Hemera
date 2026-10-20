@@ -983,8 +983,21 @@ namespace hemera {
 		TypeInfo const* type = base_of(value.type);
 		bool is_mutable = value.is_mutable;
 		if (TypeInfoVariant::POINTER == type->variant && static_cast<TypeInfoPointer const*>(type)->base_type != nullptr) {
+			/*
+			 * What it points to only had to be declared, so an alias of it may not be resolved yet, by
+			 * another thread: wait for it, as a member through a pointer does
+			 */
+			TypeInfo* pointee = static_cast<TypeInfoPointer const*>(type)->base_type;
+			Progress progress = require_complete(checker.walk, where, pointee);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
 			is_mutable = static_cast<TypeInfoPointer const*>(type)->is_mutable;
-			type = base_of(static_cast<TypeInfoPointer const*>(type)->base_type);
+			type = base_of(pointee);
+		}
+		if (type == nullptr) {
+			value = poisoned();
+			return Progress::DONE;
 		}
 		TypeInfo* element = nullptr;
 		if (TypeInfoVariant::ARRAY == type->variant) {
@@ -3168,6 +3181,15 @@ namespace hemera {
 			return apply_postfix(checker, node, rest, result);
 		}
 		TypeInfo* source = default_type(value);
+		/*
+		 * A pointer to a secret made a pointer to what isn't one would read it as public (docs/memory.md,
+		 * Secrets). rawptr is the way past this, on purpose, where it shows.
+		 */
+		if (is_pointer(source) && is_pointer(target) && reaches_secret(source) && !reaches_secret(target)
+			&& static_cast<TypeInfoPointer const*>(base_of(target))->base_type != nullptr) {
+			error_at(checker, ErrorCode::E4037, node, std::format("a cast from {} to {} would read a secret as public",
+				to_string(source), to_string(target)));
+		}
 		if (TokenType::KEYWORD_BIT_CAST == node->value.type) {
 			if (source != nullptr && source->complete && target->complete && source->size != target->size) {
 				error_at(checker, ErrorCode::E4020, node, std::format("bit_cast needs types of the same size, not {} ({} bytes) and {} ({})",
@@ -3341,6 +3363,9 @@ namespace hemera {
 			}
 			if (member != nullptr) {
 				require_fit(checker, value, member->member_type, value_node, text_of(member->name));
+				// A field holds a secret by its type, like an assignment to it (docs/memory.md, Secrets)
+				require_secret_fits(checker, value.is_secret, member->member_type, is_secret_type(type), value_node,
+					std::format("{}", text_of(member->name)));
 			}
 		}
 		if (position > 0 && position < structure->members.size() && !any_named) {
@@ -3519,7 +3544,7 @@ namespace hemera {
 	 * Whether what an expression works out takes after a secret it's worked out from: an operator's
 	 * operands, a cast's value, parentheses, and a literal's parts (docs/memory.md, Secrets).
 	 */
-	static bool inherits_secret(const Checker& checker, const ast::Node* node) {
+	static bool inherits_secret(const Checker& checker, const ast::Node* node, const Value& result) {
 		const ast::NodeType type = node->node_type;
 		const TokenType op = node->value.type;
 		if (ast::NodeType::BINARY_OPERATOR == type) {
@@ -3536,6 +3561,10 @@ namespace hemera {
 		}
 		if (ast::NodeType::CAST == type || ast::NodeType::PAREN_GROUP == type) {
 			return !node->children.empty() && is_secret_node(checker, node->children.back());
+		}
+		// A struct's fields say whether they hold secrets; a vector's lanes and an array's elements take after them
+		if (ast::NodeType::STRUCT_LITERAL == type && !(ValueKind::VALUE == result.kind && is_variant(result.type, TypeInfoVariant::VECTOR))) {
+			return false;
 		}
 		if (ast::NodeType::STRUCT_LITERAL == type || ast::NodeType::ARRAY_LITERAL == type) {
 			for (const ast::Node* child : node->children) {
@@ -3579,7 +3608,7 @@ namespace hemera {
 				if (ValueKind::VALUE == result.kind && is_secret_type(result.type)) {
 					result.is_secret = true;
 				}
-				else if (!result.is_secret && inherits_secret(checker, node)) {
+				else if (!result.is_secret && inherits_secret(checker, node, result)) {
 					result.is_secret = true;
 				}
 			}

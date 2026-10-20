@@ -1188,7 +1188,7 @@ TEST(FrontEnd, ChecksSecrets)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("secret_errors"));
-	ASSERT_EQ(errors.size(), 12) << codes(errors);
+	ASSERT_EQ(errors.size(), 13) << codes(errors);
 	std::string all;
 	for (const std::string& message : *hemera::error_messages()) {
 		all += message + "\n";
@@ -1204,6 +1204,7 @@ TEST(FrontEnd, ChecksSecrets)
 		"value isn't a #secret type, so a secret can't go there",
 		"what's assigned to isn't a #secret type",
 		"a pointer to u8[4] would lose that this is a secret",
+		"a cast from ptr[Key] to ptr[u8] would read a secret as public",
 		"the result isn't a #secret type",
 		"unmarked takes or gives a secret, so it's marked #constant_time",
 	}) {

@@ -1,7 +1,7 @@
 /*
  * Secrets used where they could leak (docs/memory.md, Secrets): deciding a branch, a loop, an index,
  * a pointer, whether && runs its right side, or which arm of a match runs; divided; given to, returned
- * as, or stored in what isn't #secret; pointed to as what isn't; a function taking one unmarked; and
+ * as, or stored in what isn't #secret; pointed to, or cast to a pointer to, what isn't; a function taking one unmarked; and
  * #secret where it can't be. What's allowed is used too.
  */
 package secret_errors
@@ -42,6 +42,7 @@ leaks #constant_time :: fn(key: ptr[Key], word: Word) -> u8 {
     out : u8 = 0
     out = key.bytes[0]
     _ = &key.bytes
+    _ = cast[ptr[u8]](key)
     return key.bytes[1]
 }
 
