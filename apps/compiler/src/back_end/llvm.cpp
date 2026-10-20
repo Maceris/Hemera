@@ -407,11 +407,7 @@ namespace hemera {
 		}
 
 		std::string cpu = options.cpu;
-		std::string features = options.cpu_features;
-		// The carrier register, which nothing else may use (docs/calling_convention.md, Carrier Register)
-		if (ArchType::x86_64 == options.architecture) {
-			features += features.empty() ? "+reserve-r14" : ",+reserve-r14";
-		}
+		std::string features = target_features(options);
 		llvm::TargetOptions opts;
 		llvm::Reloc::Model reloc_model = TargetRelocationModel::Static == options.relocation_model
 			? llvm::Reloc::Model::Static : llvm::Reloc::Model::PIC_;

@@ -627,6 +627,7 @@ namespace hemera::parser {
 				|| directive.value.value->compare("#section") == 0
 				|| directive.value.value->compare("#foreign") == 0
 				|| directive.value.value->compare("#link_name") == 0
+				|| directive.value.value->compare("#target_features") == 0
 				|| directive.value.value->compare("#constraint") == 0
 				|| directive.value.value->compare("#release") == 0) {
 				expected = true;
@@ -2426,6 +2427,13 @@ namespace hemera::parser {
 		}
 		if (current == TokenType::SYM_DOT) {
 			return enum_shorthand(state);
+		}
+		// A typed literal as an operand, like the right of a < Words.{2, 2, 2, 2}
+		if (is_typed_literal(state, TokenType::SYM_LBRACE)) {
+			return struct_literal(state);
+		}
+		if (is_typed_literal(state, TokenType::SYM_LBRACK)) {
+			return array_literal(state);
 		}
 		// #file_data("path") and #library("name") take their argument in parentheses, like a declaration's directives
 		if (current == TokenType::DIRECTIVE && (current_token(state).value->compare("#file_data") == 0

@@ -189,6 +189,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// Vectors, their intrinsics, and AES-NI and PCLMULQDQ where the CPU has them (docs/types.md, Vectors).
+TEST(Hosted, RunsVectors)
+{
+	run_hosted("vectors", hemera::TargetStackCheck::Off);
+}
+
 // Integer literals at the edges of their types' ranges, kept exactly (docs/types.md, Number Formats).
 TEST(Hosted, KeepsIntegerLiterals)
 {

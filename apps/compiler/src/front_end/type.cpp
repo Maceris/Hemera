@@ -80,6 +80,14 @@ namespace hemera {
 		complete = false;
 	}
 
+	// A vector is as aligned as it's big, as vector registers want, up to 64 bytes
+	TypeInfoVector::TypeInfoVector(TypeInfo* element_type_, size_t count_, bool is_bits_)
+		: TypeInfo{ TypeInfoVariant::VECTOR, element_type_->size * count_, std::min<size_t>(element_type_->size * count_, 64) }
+		, element_type{ element_type_ }
+		, count{ count_ }
+		, is_bits{ is_bits_ }
+	{}
+
 	TypeInfoFloat::TypeInfoFloat(Endianness endianness_, size_t size_)
 		: TypeInfo{ TypeInfoVariant::FLOAT, size_, size_ }
 		, endianness{ endianness_ }
@@ -297,6 +305,9 @@ namespace hemera {
 	TypeInfo* BUILTIN_uint;
 	TypeInfo* BUILTIN_uintptr;
 	TypeInfo* BUILTIN_usize;
+	TypeInfo* BUILTIN_v128;
+	TypeInfo* BUILTIN_v256;
+	TypeInfo* BUILTIN_v512;
 
 	TypeInfo* BUILTIN_void;
 	TypeInfo* BUILTIN_poisoned_value;
@@ -330,6 +341,7 @@ namespace hemera {
 		{ "uint", &BUILTIN_uint },
 		{ "uintptr", &BUILTIN_uintptr },
 		{ "usize", &BUILTIN_usize },
+		{ "v128", &BUILTIN_v128 }, { "v256", &BUILTIN_v256 }, { "v512", &BUILTIN_v512 },
 		{ "void", &BUILTIN_void },
 	};
 
@@ -375,6 +387,10 @@ namespace hemera {
 			std::string kind = pointer->is_relative ? std::format("relptr{}", pointer->size * 8) : "ptr";
 			return std::format("{}[{}{}]", kind, pointer->is_mutable ? "mut " : "",
 				to_string(pointer->base_type));
+		}
+		if (TypeInfoVariant::VECTOR == variant) {
+			auto vector = static_cast<TypeInfoVector const*>(type);
+			return std::format("vector[{}, {}]", to_string(vector->element_type), vector->count);
 		}
 		if (TypeInfoVariant::ARRAY == variant) {
 			auto array = static_cast<TypeInfoArray const*>(type);
@@ -622,6 +638,10 @@ namespace hemera {
 		BUILTIN_uint = new TypeInfoInteger(false, Endianness::SYSTEM, POINTER_SIZE);
 		BUILTIN_uintptr = new TypeInfoInteger(false, Endianness::SYSTEM, POINTER_SIZE);
 		BUILTIN_usize = new TypeInfoInteger(false, Endianness::SYSTEM, POINTER_SIZE);
+		// Bits of a vector register, lanes of u64 underneath
+		BUILTIN_v128 = new TypeInfoVector(BUILTIN_u64, 2, true);
+		BUILTIN_v256 = new TypeInfoVector(BUILTIN_u64, 4, true);
+		BUILTIN_v512 = new TypeInfoVector(BUILTIN_u64, 8, true);
 
 		BUILTIN_void = new TypeInfo(TypeInfoVariant::VOID, 0, 1);
 		BUILTIN_poisoned_value = new TypeInfo(TypeInfoVariant::VOID, 0, 1);

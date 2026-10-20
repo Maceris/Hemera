@@ -244,6 +244,31 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
   to fit a register (integers, pointers, floating-point values, booleans and enums), there are no variadic foreign
   functions, and only x86-64 is supported.
 
+### `#target_features`
+
+A function whose code uses CPU features beyond the target's, like AES instructions on an x86-64 CPU that may not have
+them, names them, and is only called once the CPU is known to have them:
+
+```
+encrypt_block #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 {
+    state := block ~ keys[0]
+    for round in 1..<10 {
+        state = x86_64.aes_encrypt_round(state, keys[round])
+    }
+    return x86_64.aes_encrypt_last(state, keys[10])
+}
+
+if (x86_64.cpuid(1).ecx & (1 << 25)) != 0 {
+    cipher = encrypt_block(&keys, block)
+}
+```
+
+* The names are LLVM's for the architecture, separated by commas, like `"aes,pclmul"`. Each is added to the target's
+  own features, which the function keeps, along with the carrier register being kept for the program
+  (see [calling_convention.md](calling_convention.md#carrier-register)).
+* Only a function with a body has them, since it's its code that uses them.
+* Calling it on a CPU without them is an illegal instruction, so check first, like with `cpuid`.
+
 ## Function Parameters
 
 ### `#caller_location`

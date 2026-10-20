@@ -207,3 +207,28 @@ rdtsc : fn() -> u64 : ---
 rdseed : fn() -> u64? : ---
 // A value from the CPU's random number generator, seeded from its entropy source, or null when none was ready.
 rdrand : fn() -> u64? : ---
+
+/*
+ * AES and carryless multiplication (AES-NI and PCLMULQDQ). Neither is in every x86-64 CPU, so a
+ * function using them is marked #target_features("aes,pclmul") and only called once cpuid says the
+ * CPU has them (leaf 1: ecx bit 25 for AES, bit 1 for PCLMULQDQ). A round constant or selector is a
+ * constant, since it's part of the instruction.
+ */
+
+// One AES encryption round (aesenc): ShiftRows, SubBytes and MixColumns, then round_key xor'ed in.
+aes_encrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
+// The last encryption round (aesenclast), without MixColumns.
+aes_encrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
+// One AES decryption round (aesdec), with a round key made for decryption by aes_inverse_mix.
+aes_decrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
+// The last decryption round (aesdeclast).
+aes_decrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
+// InvMixColumns of a round key (aesimc), to use an encryption round key for decryption.
+aes_inverse_mix : fn(round_key: v128) -> v128 : ---
+// What expanding a key's next round key needs (aeskeygenassist), for its round constant.
+aes_key_assist : fn(key: v128, round_constant: u8) -> v128 : ---
+/*
+ * One 64-bit half of a times one of b without carries (pclmulqdq), giving 128 bits: selector's bit 0
+ * picks a's half (0 low, 1 high), and bit 4 b's.
+ */
+carryless_multiply : fn(a: v128, b: v128, selector: u8) -> v128 : ---

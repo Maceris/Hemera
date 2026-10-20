@@ -21,6 +21,12 @@ namespace hemera {
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module);
 
 	/// <summary>
+	/// The target's CPU features, as LLVM takes them: the options', and on x86-64 the carrier register
+	/// kept for itself. A #target_features function adds its own to these.
+	/// </summary>
+	std::string target_features(const Options& options);
+
+	/// <summary>
 	/// Runs an evaluation's compile-time code while the program is still being checked
 	/// (docs/compilation.md, Compile-Time Execution), keeping its result in the evaluation. If functions or
 	/// constants it reaches aren't checked yet, lists them in unchecked and returns false, reporting

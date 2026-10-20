@@ -674,8 +674,8 @@ namespace hemera {
 			result.name = name;
 			return Progress::DONE;
 		}
-		if (is_pointer_name(text_of(name))) {
-			// ptr or a relative pointer, which is a type once it's given what it points to
+		if (is_pointer_name(text_of(name)) || is_text(name, "vector")) {
+			// ptr, a relative pointer or vector, which is a type once it's given its arguments
 			result = type_value(nullptr);
 			result.name = name;
 			return Progress::DONE;
@@ -933,6 +933,24 @@ namespace hemera {
 		else if (TypeInfoVariant::STRING == type->variant) {
 			element = BUILTIN_char;
 			is_mutable = false;
+		}
+		else if (TypeInfoVariant::VECTOR == type->variant && !static_cast<TypeInfoVector const*>(type)->is_bits) {
+			// A lane, chosen by a constant so it's never out of range, and never decided at run time
+			auto vector = static_cast<TypeInfoVector const*>(type);
+			Value lane;
+			Progress progress = check_expression(checker, arguments[0], BUILTIN_usize, lane);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ValueKind::POISONED != lane.kind && (ValueKind::UNTYPED_INTEGER != lane.kind || !lane.integer_known
+				|| lane.integer_negative || lane.integer_magnitude >= vector->count)) {
+				error_at(checker, ErrorCode::E4015, arguments[0], std::format("a lane of {} is chosen by a constant from 0 to {}",
+					to_string(value.type), vector->count - 1));
+			}
+			value = typed(vector->element_type);
+			value.is_location = true;
+			value.is_mutable = is_mutable;
+			return Progress::DONE;
 		}
 		else if (TypeInfoVariant::ARCHETYPE == type->variant && static_cast<TypeInfoArchetype const*>(type)->element != nullptr) {
 			element = static_cast<TypeInfoArchetype const*>(type)->element;
@@ -1814,6 +1832,110 @@ namespace hemera {
 		return found != names.declarations.end() ? found->second : nullptr;
 	}
 
+	static TypeInfoVector const* vector_type_of(const Value& value);
+
+	// Which argument of an x86_64 intrinsic is an instruction's immediate, counting from 1, or 0 for none.
+	static size_t immediate_argument(const Declaration* declaration) {
+		if (declaration == nullptr || declaration->package_path == nullptr
+			|| !std::string_view(*declaration->package_path).starts_with("<base>")
+			|| !std::string_view(*declaration->package_path).ends_with("x86_64")) {
+			return 0;
+		}
+		return is_text(declaration->name, "aes_key_assist") ? 2 : is_text(declaration->name, "carryless_multiply") ? 3 : 0;
+	}
+
+	static bool is_vector_intrinsic(const Declaration* declaration) {
+		static constexpr std::string_view NAMES[] = {
+			"splat", "select", "rotate_lanes", "reduce_add", "reduce_and", "reduce_or", "reduce_xor", "any_true", "all_true",
+			"rotate_left", "rotate_right", "byte_swap",
+		};
+		if (declaration == nullptr || declaration->package_path == nullptr
+			|| !std::string_view(*declaration->package_path).starts_with("<base>")
+			|| !std::string_view(*declaration->package_path).ends_with("intrinsics")) {
+			return false;
+		}
+		const Declaration* generic = declaration->generic != nullptr ? declaration->generic : declaration;
+		return std::find(std::begin(NAMES), std::end(NAMES), text_of(generic->name)) != std::end(NAMES);
+	}
+
+	/*
+	 * The function type of a call to one of base/intrinsics' vector and bit functions, worked out from
+	 * what it's given (docs/types.md, Vectors): its first argument's type, or for splat its generic
+	 * argument. Null, with the error reported, when they don't fit.
+	 */
+	static Progress vector_intrinsic_type(Checker& checker, ast::Node* where, const Value& callee,
+		const std::vector<ast::Node*>& arguments, TypeInfo*& result) {
+
+		result = nullptr;
+		const std::string name = text_of(callee.declaration->name);
+		auto fail = [&](ast::Node* at, std::string message) {
+			error_at(checker, ErrorCode::E4015, at != nullptr ? at : where, std::format("intrinsics.{} {}", name, message));
+			return Progress::DONE;
+		};
+		if (name == "splat") {
+			TypeInfo* type = callee.generic_arguments.size() == 1 ? callee.generic_arguments[0] : nullptr;
+			if (!is_variant(type, TypeInfoVariant::VECTOR) || static_cast<TypeInfoVector const*>(base_of(type))->is_bits) {
+				return fail(nullptr, "takes the vector type to fill, like splat[vector[u32, 4]](1)");
+			}
+			result = plain_function_type(checker.walk, { static_cast<TypeInfoVector const*>(base_of(type))->element_type }, type);
+			return Progress::DONE;
+		}
+		const size_t subject = name == "select" ? 1 : 0;
+		if (arguments.size() <= subject) {
+			return fail(nullptr, "needs its arguments");
+		}
+		Value given;
+		Progress progress = check_expression(checker, arguments[subject], nullptr, given);
+		if (progress != Progress::DONE || ValueKind::POISONED == given.kind) {
+			return progress;
+		}
+		TypeInfoVector const* vector = vector_type_of(given);
+		TypeInfo* type = ValueKind::VALUE == given.kind ? given.type : nullptr;
+		if (name == "rotate_left" || name == "rotate_right" || name == "byte_swap") {
+			TypeInfo const* lane = vector != nullptr && !vector->is_bits ? vector->element_type : type;
+			if (lane == nullptr || !is_integer(lane) || (name == "byte_swap" && base_of(lane)->size < 2)) {
+				return fail(arguments[0], std::format("takes an integer{}, or a vector of them, not {}",
+					name == "byte_swap" ? " of 2 bytes or more" : "", describe(given)));
+			}
+			result = name == "byte_swap" ? plain_function_type(checker.walk, { type }, type)
+				: plain_function_type(checker.walk, { type, BUILTIN_u32 }, type);
+			return Progress::DONE;
+		}
+		if (vector == nullptr || vector->is_bits) {
+			return fail(arguments[subject], std::format("takes a vector with lanes, not {}", describe(given)));
+		}
+		TypeInfo* mask = vector_of(checker.walk, BUILTIN_bool, vector->count);
+		if (name == "select") {
+			result = plain_function_type(checker.walk, { mask, type, type }, type);
+		}
+		else if (name == "rotate_lanes") {
+			Value count;
+			progress = arguments.size() == 2 ? check_expression(checker, arguments[1], BUILTIN_usize, count) : Progress::DONE;
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (arguments.size() != 2 || ValueKind::UNTYPED_INTEGER != count.kind || !count.integer_known || count.integer_negative
+				|| count.integer_magnitude >= vector->count) {
+				return fail(arguments.size() == 2 ? arguments[1] : nullptr, std::format("takes a constant count, from 0 to {}",
+					vector->count - 1));
+			}
+			result = plain_function_type(checker.walk, { type, BUILTIN_usize }, type);
+		}
+		else if (name == "any_true" || name == "all_true") {
+			if (!is_boolean(vector->element_type)) {
+				return fail(arguments[0], std::format("takes a vector of bools, not {}", to_string(type)));
+			}
+			result = plain_function_type(checker.walk, { type }, BUILTIN_bool);
+		}
+		else {
+			if (!is_integer(vector->element_type)) {
+				return fail(arguments[0], std::format("takes a vector of integers, not {}", to_string(type)));
+			}
+			result = plain_function_type(checker.walk, { type }, vector->element_type);
+		}
+		return Progress::DONE;
+	}
+
 	// A call: of a function value, a generic function, a builtin, or a union variant with its values.
 	static Progress check_call(Checker& checker, ast::Node* where, const std::vector<ast::Node*>& arguments,
 		Value& callee, const std::vector<Value>& piped) {
@@ -1852,6 +1974,22 @@ namespace hemera {
 				}
 			}
 			return Progress::DONE;
+		}
+		// base/intrinsics' vector and bit functions: a function type worked out from what they're given
+		if (ValueKind::GENERIC_FUNCTION == kind && is_vector_intrinsic(callee.declaration) && piped.empty()) {
+			TypeInfo* signature = nullptr;
+			Progress progress = vector_intrinsic_type(checker, where, callee, arguments, signature);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (signature == nullptr) {
+				callee = poisoned();
+				return Progress::DONE;
+			}
+			Declaration* declaration = callee.declaration;
+			callee = typed(signature);
+			callee.declaration = declaration;
+			return check_call(checker, where, arguments, callee, piped);
 		}
 		if (ValueKind::GENERIC_FUNCTION == kind) {
 			return check_generic_call(checker, where, callee, arguments, piped);
@@ -1943,6 +2081,18 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		// An instruction's immediate, like x86_64.aes_key_assist's round constant, is a constant
+		if (const size_t immediate = immediate_argument(callee.declaration); immediate != 0 && immediate <= arguments.size()) {
+			Value constant;
+			progress = check_expression(checker, arguments[immediate - 1], BUILTIN_u8, constant);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ValueKind::POISONED != constant.kind && (ValueKind::UNTYPED_INTEGER != constant.kind || !constant.integer_known)) {
+				error_at(checker, ErrorCode::E4015, arguments[immediate - 1], std::format("{}'s {} is part of the instruction, so it's a constant",
+					text_of(callee.declaration->name), immediate == 2 ? "round constant" : "selector"));
+			}
+		}
 		Declaration* called = callee.declaration != nullptr && DeclarationKind::FUNCTION == callee.declaration->kind
 			? callee.declaration : nullptr;
 		callee = call_result(function, called);
@@ -1986,7 +2136,8 @@ namespace hemera {
 			return progress;
 		}
 		const bool type_head = ValueKind::TYPE == value.kind
-			|| (is_text(node->value.value, "ptr") || std::string_view(*node->value.value).starts_with("relptr"));
+			|| (is_text(node->value.value, "ptr") || std::string_view(*node->value.value).starts_with("relptr")
+				|| is_text(node->value.value, "vector"));
 		// The head's own value, at the head's qualifier for package.Name, or at the DOT_ACCESS before it
 		if (next > 0) {
 			record(checker, node->children[next - 1], value);
@@ -2189,6 +2340,97 @@ namespace hemera {
 	// An operand that's a value of some kind, rather than a type, package or function to call.
 	static bool is_operand(const Value& value) {
 		return ValueKind::VALUE == value.kind || is_untyped(value);
+	}
+
+	// A value's vector type, or null when it isn't a vector.
+	static TypeInfoVector const* vector_type_of(const Value& value) {
+		if (ValueKind::VALUE != value.kind || !is_variant(value.type, TypeInfoVariant::VECTOR)) {
+			return nullptr;
+		}
+		return static_cast<TypeInfoVector const*>(base_of(value.type));
+	}
+
+	/*
+	 * An operator on vectors, lane by lane (docs/types.md, Vectors): two of the same vector type, or
+	 * one and an untyped literal, which goes in every lane. A shift takes a vector of amounts, or one
+	 * unsigned amount for every lane. Comparisons give a vector of bools. v128 to v512 only take the
+	 * bitwise operators; integer division isn't on vectors yet, since a lane of 0 has no panic to give.
+	 */
+	static void check_vector_binary(Checker& checker, ast::Node* node, TokenType op, const Value& left, const Value& right,
+		Value& result) {
+
+		const bool vector_left = vector_type_of(left) != nullptr;
+		const Value& vector_side = vector_left ? left : right;
+		const Value& other = vector_left ? right : left;
+		TypeInfo* type = vector_side.type;
+		auto vector = vector_type_of(vector_side);
+		TypeInfo* lane = vector->element_type;
+		const bool integer_lanes = is_integer(lane) && !vector->is_bits;
+		const bool float_lanes = is_float(lane);
+		const bool bool_lanes = is_boolean(lane);
+		result = typed(type);
+		if (TokenType::OPERATOR_AND == op || TokenType::OPERATOR_OR == op) {
+			result = error_at(checker, ErrorCode::E4020, node, "&& and || take booleans; on vectors, & and | work lane by lane");
+			return;
+		}
+		if (is_shift(op)) {
+			const TypeInfoVector* amounts = vector_type_of(right);
+			const bool amount_fits = (amounts != nullptr && same_type(right.type, type))
+				|| (amounts == nullptr && ValueKind::VALUE == right.kind && is_integer(right.type) && !is_signed(right.type))
+				|| (ValueKind::UNTYPED_INTEGER == right.kind && !right.integer_negative);
+			if (!vector_left || !integer_lanes || !amount_fits) {
+				result = error_at(checker, ErrorCode::E4020, node, std::format(
+					"a vector's shift takes integer lanes, shifted by a vector of the same type or one unsigned amount, not {} and {}",
+					describe(left), describe(right)));
+			}
+			return;
+		}
+		if (ValueKind::VALUE == other.kind && !same_type(other.type, type)) {
+			result = error_at(checker, ErrorCode::E4015, node, std::format("{} and {} don't go together", describe(left),
+				describe(right)));
+			return;
+		}
+		if (ValueKind::VALUE != other.kind && (vector->is_bits || !fits(other, lane))) {
+			if (!in_range(other, lane)) {
+				report_out_of_range(checker, other, lane, node);
+				result = poisoned();
+				return;
+			}
+			result = error_at(checker, ErrorCode::E4015, node, std::format("{} can't go in every lane of {}", describe(other),
+				to_string(type)));
+			return;
+		}
+		if (vector->is_bits) {
+			if (!is_bitwise(op)) {
+				result = error_at(checker, ErrorCode::E4020, node, std::format("{} only takes &, | and ~; bit_cast it to a vector for lanes",
+					to_string(type)));
+			}
+			return;
+		}
+		if (is_comparison(op)) {
+			const bool ordered = TokenType::OPERATOR_EQUAL != op && TokenType::OPERATOR_NOT_EQUAL != op;
+			if (ordered && !(integer_lanes || float_lanes)) {
+				result = error_at(checker, ErrorCode::E4020, node, std::format("{} lanes can't be ordered", to_string(lane)));
+				return;
+			}
+			result = typed(vector_of(checker.walk, BUILTIN_bool, vector->count));
+			return;
+		}
+		bool valid = false;
+		if (TokenType::OPERATOR_PLUS == op || TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_MULTIPLY == op) {
+			valid = integer_lanes || float_lanes;
+		}
+		else if (TokenType::OPERATOR_DIVIDE == op) {
+			valid = float_lanes;
+		}
+		else if (is_bitwise(op)) {
+			valid = integer_lanes || bool_lanes;
+		}
+		if (!valid) {
+			result = error_at(checker, ErrorCode::E4020, node, std::format("this operator doesn't apply to {}{}", to_string(type),
+				TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op
+				? ", since integer division isn't on vectors yet" : ""));
+		}
 	}
 
 	// A known integer's value, as a sign and a magnitude: anything a u64 or an i64 holds, and their negations.
@@ -2483,6 +2725,10 @@ namespace hemera {
 				describe(left), describe(right)));
 			return Progress::DONE;
 		}
+		if (vector_type_of(left) != nullptr || vector_type_of(right) != nullptr) {
+			check_vector_binary(checker, node, op, left, right, result);
+			return Progress::DONE;
+		}
 		// Raw and relative pointers allow arithmetic with integers (docs/types.md, Pointers)
 		const bool raw_left = ValueKind::VALUE == left.kind && is_pointer(left.type)
 			&& (static_cast<TypeInfoPointer const*>(base_of(left.type))->base_type == nullptr
@@ -2677,6 +2923,16 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		TypeInfo* type = default_type(operand);
+		// -v on integer or float lanes, ~v on integer or bool lanes, or the bits of v128 to v512
+		if (TypeInfoVector const* vector = vector_type_of(operand); vector != nullptr) {
+			const bool integer_lanes = is_integer(vector->element_type);
+			const bool valid = TokenType::OPERATOR_BITWISE_XOR == op ? (integer_lanes || is_boolean(vector->element_type))
+				: (TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op)
+				&& !vector->is_bits && (integer_lanes || is_float(vector->element_type));
+			result = valid ? typed(type) : error_at(checker, ErrorCode::E4020, node, std::format("this operator doesn't apply to {}",
+				to_string(type)));
+			return Progress::DONE;
+		}
 		if (TokenType::OPERATOR_NOT == op) {
 			if (!is_boolean(type) && ValueKind::UNTYPED_BOOLEAN != operand.kind) {
 				result = error_at(checker, ErrorCode::E4015, node, std::format("! takes a boolean, not {}", describe(operand)));
@@ -2833,6 +3089,16 @@ namespace hemera {
 			}
 			named = declaration->type_value;
 		}
+		else if (is_text(node->value.value, "vector") && !head_was_package) {
+			// vector[u32, 4].{...}
+			std::vector<ast::Node*> argument_nodes;
+			for (ast::Node* child : node->children) {
+				if (ast::NodeType::GENERIC_TAG == child->node_type) {
+					argument_nodes.insert(argument_nodes.end(), child->children.begin(), child->children.end());
+				}
+			}
+			return vector_type(checker.walk, node, argument_nodes, result);
+		}
 		else {
 			named = builtin_type(text_of(binding->value.value));
 		}
@@ -2875,6 +3141,26 @@ namespace hemera {
 			}
 		}
 		result = typed(type);
+		// vector[u32, 4].{a, b, c, d}: each lane, in order, or .{} for zeros (docs/types.md, Vectors)
+		if (base != nullptr && TypeInfoVariant::VECTOR == base->variant) {
+			auto vector = static_cast<TypeInfoVector const*>(base);
+			const size_t given = list != nullptr ? list->children.size() : 0;
+			if (given != 0 && (vector->is_bits || given != vector->count)) {
+				result = error_at(checker, ErrorCode::E4015, node, vector->is_bits
+					? std::format("{} is written .{{}} for zeros, or bit_cast from a vector with lanes", to_string(type))
+					: std::format("{} takes all {} lanes, not {}", to_string(type), vector->count, given));
+				return Progress::DONE;
+			}
+			for (size_t i = 0; i < given; ++i) {
+				Value lane;
+				progress = check_expression(checker, list->children[i], vector->element_type, lane);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				require_fit(checker, lane, vector->element_type, list->children[i], "a lane");
+			}
+			return Progress::DONE;
+		}
 		if (base == nullptr || TypeInfoVariant::STRUCT != base->variant) {
 			result = error_at(checker, ErrorCode::E4015, node, std::format("{} isn't a struct, for a struct literal",
 				to_string(type)));

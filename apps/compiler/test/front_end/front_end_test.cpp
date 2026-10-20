@@ -1136,6 +1136,43 @@ TEST(FrontEnd, ChecksIntegerRanges)
 	}
 }
 
+/*
+ * Vectors used wrongly (docs/types.md, Vectors): lanes, counts, a lane chosen at run time or out of
+ * range, operators that don't apply, intrinsics given what they can't take, an x86_64 immediate that
+ * isn't a constant, and #target_features with a +.
+ */
+TEST(FrontEnd, ChecksVectors)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("vector_errors"));
+	ASSERT_EQ(errors.size(), 15) << codes(errors);
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"#target_features names the features to add",
+		"a vector's lanes are integers or floats of up to 64 bits, or bools, not string",
+		"a vector has a power of two lanes, at most 64 bytes in all, not 3 of u32",
+		"not 16 of u64",
+		"a lane of Words is chosen by a constant from 0 to 3",
+		"Words and vector[u32, 8] don't go together",
+		"since integer division isn't on vectors yet",
+		"v128 only takes &, | and ~",
+		"Words takes all 4 lanes, not 2",
+		"intrinsics.rotate_lanes takes a constant count, from 0 to 3",
+		"intrinsics.reduce_add takes a vector of integers, not vector[f32, 4]",
+		"intrinsics.byte_swap takes an integer of 2 bytes or more",
+		"aes_key_assist's round constant is part of the instruction, so it's a constant",
+		"4294967296 is out of u32's range",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksBodies)
 {
 	hemera::disable_reporting_printing();

@@ -48,6 +48,8 @@ namespace hemera {
 		// Pointers
 		"ptr", "rawptr",
 		"relptr8", "relptr16", "relptr32", "relptr64",
+		// Vectors
+		"vector", "v128", "v256", "v512",
 		// Type related
 		"any", "type",
 		// Structs

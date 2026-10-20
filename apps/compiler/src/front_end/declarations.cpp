@@ -290,6 +290,11 @@ namespace hemera {
 		return loses_mut;
 	}
 
+	TypeInfo* vector_of(Walk& walk, TypeInfo* element, size_t count) {
+		return derived_type(walk, std::format("vector {} {}", static_cast<const void*>(element), count),
+			[&] { return new TypeInfoVector(element, count, false); });
+	}
+
 	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count) {
 		return derived_type(walk,
 			std::format("array {} {} {}", static_cast<const void*>(element), static_cast<int>(array_type), count),
@@ -510,6 +515,11 @@ namespace hemera {
 			&& TokenType::SYM_QUESTION == node->value.type && node->children.empty();
 	}
 
+	// vector[T, n], which like ptr[T] is made from its arguments rather than declared.
+	static bool is_vector_name(std::string_view name) {
+		return name == "vector";
+	}
+
 	static bool is_pointer_name(std::string_view name) {
 		return name == "ptr" || name == "relptr8" || name == "relptr16" || name == "relptr32"
 			|| name == "relptr64";
@@ -600,6 +610,41 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	/*
+	 * vector[T, n] (docs/types.md, Vectors): lanes of an integer, float or bool of the target's own
+	 * endianness, a power of two of them, at most 64 bytes in all.
+	 */
+	Progress vector_type(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, TypeInfo*& result) {
+		if (arguments.size() != 2) {
+			return type_error(walk, ErrorCode::E4014, where, "vector takes its lanes' type and how many, like vector[u32, 4]");
+		}
+		TypeInfo* element = nullptr;
+		Progress progress = type_of(walk, arguments[0], Need::RESOLVED, element);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		size_t count = 0;
+		progress = array_count(walk, arguments[1], count);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		TypeInfo const* lane = get_base_type(element);
+		const bool numeric = lane != nullptr && (TypeInfoVariant::INTEGER == lane->variant || TypeInfoVariant::FLOAT == lane->variant);
+		const bool own_endianness = !numeric
+			|| (TypeInfoVariant::INTEGER == lane->variant ? static_cast<TypeInfoInteger const*>(lane)->endianness
+				: static_cast<TypeInfoFloat const*>(lane)->endianness) == Endianness::SYSTEM;
+		if (lane == nullptr || !(numeric || element == BUILTIN_bool) || !own_endianness || lane->size > 8) {
+			return type_error(walk, ErrorCode::E4014, arguments[0],
+				std::format("a vector's lanes are integers or floats of up to 64 bits, or bools, not {}", to_string(element)));
+		}
+		if (count == 0 || (count & (count - 1)) != 0 || element->size * count > 64) {
+			return type_error(walk, ErrorCode::E4014, arguments[1],
+				std::format("a vector has a power of two lanes, at most 64 bytes in all, not {} of {}", count, to_string(element)));
+		}
+		result = vector_of(walk, element, count);
+		return Progress::DONE;
+	}
+
 	// Array dimensions, outermost first: the last one written is the innermost.
 	static Progress apply_dimensions(Walk& walk, std::vector<TypePart>& dimensions, TypeInfo*& current) {
 		for (auto iter = dimensions.rbegin(); iter != dimensions.rend(); ++iter) {
@@ -637,9 +682,21 @@ namespace hemera {
 
 		const bool pointer = is_pointer_name(name_text(name)) && !walk.bindings.contains(binding)
 			&& !walk.generic_types.contains(name_text(name));
+		const bool vector = is_vector_name(name_text(name)) && !walk.bindings.contains(binding)
+			&& !walk.generic_types.contains(name_text(name));
 		TypeInfo* current = nullptr;
 		Declaration* generic = nullptr;
-		if (!pointer) {
+		if (vector) {
+			if (parts.empty() || TypePart::Kind::ARGUMENTS != parts[0].kind) {
+				return type_error(walk, ErrorCode::E4014, where, "vector takes its lanes' type and how many, like vector[u32, 4]");
+			}
+			Progress progress = vector_type(walk, parts[0].node, parts[0].arguments, current);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			parts.erase(parts.begin());
+		}
+		else if (!pointer) {
 			Progress progress = named_type(walk, binding, name, current, generic);
 			if (progress != Progress::DONE) {
 				return progress;
@@ -779,7 +836,8 @@ namespace hemera {
 		InternedString name = head.name;
 		ast::Node* binding = head.binding;
 		size_t i = head.next;
-		const bool takes_arguments = (is_pointer_name(name_text(name)) && !walk.bindings.contains(binding))
+		const bool takes_arguments = ((is_pointer_name(name_text(name)) || is_vector_name(name_text(name)))
+				&& !walk.bindings.contains(binding))
 			|| (walk.bindings.contains(binding)
 				&& DeclarationKind::GENERIC_TYPE == walk.bindings[binding]->kind);
 		std::vector<TypePart> parts;
@@ -835,6 +893,29 @@ namespace hemera {
 			return function;
 		});
 		return Progress::DONE;
+	}
+
+	// A function type of its parameters' and result's types alone, for a call whose types the checker works out.
+	TypeInfo* plain_function_type(Walk& walk, const std::vector<TypeInfo*>& inputs, TypeInfo* output) {
+		std::string key = "plain fn";
+		for (TypeInfo* input : inputs) {
+			key += std::format(" {}", static_cast<const void*>(input));
+		}
+		key += std::format(" -> {}", static_cast<const void*>(output));
+		return derived_type(walk, key, [&] {
+			auto function = new TypeInfoFunction();
+			for (TypeInfo* input : inputs) {
+				FunctionInput parameter;
+				parameter.type = input;
+				function->input.push_back(parameter);
+			}
+			if (output != nullptr) {
+				FunctionOutput result;
+				result.type = output;
+				function->output.push_back(result);
+			}
+			return function;
+		});
 	}
 
 	// The same function type, marked #never_returns.
@@ -1467,7 +1548,7 @@ namespace hemera {
 		if (bound != walk.bindings.end()) {
 			return DeclarationKind::GENERIC_TYPE == bound->second->kind || bound->second->type_value != nullptr;
 		}
-		return is_pointer_name(name_text(name)) || builtin_type(name_text(name)) != nullptr
+		return is_pointer_name(name_text(name)) || is_vector_name(name_text(name)) || builtin_type(name_text(name)) != nullptr
 			|| walk.generic_types.contains(name_text(name));
 	}
 
@@ -1541,6 +1622,47 @@ namespace hemera {
 			}
 			std::string_view symbol_text(*symbol->value.value);
 			declaration->link_name = intern(std::string(symbol_text.substr(1, symbol_text.size() - 2)));
+		}
+		return Progress::DONE;
+	}
+
+	/*
+	 * #target_features("aes,pclmul") on a function with a body (docs/directives.md, Functions): CPU
+	 * features its code may use beyond the target's, so it's only called once the CPU is known to have
+	 * them. Names are LLVM's, comma separated; each is added, as +name.
+	 */
+	static Progress target_features_directive(Walk& walk, ast::Node* definition, Declaration* declaration) {
+		for (ast::Node* directive : definition->children[0]->children) {
+			if (!is_text(directive->value.value, "#target_features")) {
+				continue;
+			}
+			ast::Node* argument = directive_argument(directive);
+			if (argument == nullptr || ast::NodeType::LITERAL != argument->node_type || TokenType::LITERAL_STRING != argument->value.type) {
+				return type_error(walk, ErrorCode::E4014, directive, "#target_features needs a string of feature names, like \"aes,pclmul\"");
+			}
+			if (declaration->foreign_library != nullptr || function_body(declaration) == nullptr) {
+				return type_error(walk, ErrorCode::E4014, directive, "#target_features is for a function with a body, whose code uses them");
+			}
+			std::string_view text(*argument->value.value);
+			text = text.substr(1, text.size() - 2);
+			std::string features;
+			while (!text.empty()) {
+				const size_t comma = text.find(',');
+				std::string_view feature = text.substr(0, comma);
+				while (!feature.empty() && feature.front() == ' ') {
+					feature.remove_prefix(1);
+				}
+				while (!feature.empty() && feature.back() == ' ') {
+					feature.remove_suffix(1);
+				}
+				if (feature.empty() || feature.front() == '+' || feature.front() == '-') {
+					return type_error(walk, ErrorCode::E4014, directive,
+						"#target_features names the features to add, like \"aes,pclmul\", without + or -");
+				}
+				features += std::format("{}+{}", features.empty() ? "" : ",", feature);
+				text = comma == std::string_view::npos ? std::string_view() : text.substr(comma + 1);
+			}
+			declaration->target_features = intern(features);
 		}
 		return Progress::DONE;
 	}
@@ -1638,6 +1760,10 @@ namespace hemera {
 			 * are the type's. So is #foreign's convention: the platform's C convention, without a context.
 			 */
 			progress = foreign_directives(walk, definition, declarations[0]);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			progress = target_features_directive(walk, definition, declarations[0]);
 			if (progress != Progress::DONE) {
 				return progress;
 			}

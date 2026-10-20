@@ -402,6 +402,13 @@ namespace hemera {
 					pointer_type(generator), pointer_type(generator) });
 			}
 		}
+		else if (TypeInfoVariant::VECTOR == variant) {
+			// A vector[bool, n]'s lanes are bytes of 0 or 1, as a bool is in memory
+			auto vector = static_cast<TypeInfoVector const*>(type);
+			mlir::Type lane = is_variant(vector->element_type, TypeInfoVariant::BOOLEAN)
+				? integer_type(generator, 1) : llvm_type(generator, vector->element_type);
+			result = mlir::VectorType::get({ static_cast<int64_t>(vector->count) }, lane);
+		}
 		else if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
 			auto composite = static_cast<TypeInfoComposite const*>(type);
 			result = LLVM::LLVMArrayType::get(integer_type(generator, composite->part_size), type->size / composite->part_size);
@@ -458,7 +465,33 @@ namespace hemera {
 	// Small helpers
 
 	static mlir::Value constant_int(Generator& generator, mlir::Type type, int64_t value) {
+		// A vector's: the value in every lane
+		if (auto vector = llvm::dyn_cast<mlir::VectorType>(type)) {
+			const unsigned bits = vector.getElementType().getIntOrFloatBitWidth();
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, type,
+				mlir::DenseElementsAttr::get(vector, llvm::APInt(bits, static_cast<uint64_t>(value), true)));
+		}
 		return LLVM::ConstantOp::create(generator.builder, generator.loc, type, value);
+	}
+
+	// A lane's value as the vector holds it: a bool, an i1, as a byte.
+	static mlir::Value as_lane(Generator& generator, mlir::Value value, mlir::Type vector_type) {
+		mlir::Type lane = llvm::cast<mlir::VectorType>(vector_type).getElementType();
+		if (value.getType() != lane && value.getType().isInteger(1)) {
+			return LLVM::ZExtOp::create(generator.builder, generator.loc, lane, value);
+		}
+		return value;
+	}
+
+	// One value in every lane of a vector.
+	static mlir::Value splat(Generator& generator, mlir::Value scalar, mlir::Type vector_type) {
+		auto vector = llvm::cast<mlir::VectorType>(vector_type);
+		mlir::Value lane = as_lane(generator, scalar, vector_type);
+		mlir::Value first = LLVM::InsertElementOp::create(generator.builder, generator.loc,
+			LLVM::PoisonOp::create(generator.builder, generator.loc, vector_type), lane,
+			LLVM::ConstantOp::create(generator.builder, generator.loc, generator.builder.getI32Type(), 0));
+		const llvm::SmallVector<int32_t> mask(static_cast<size_t>(vector.getNumElements()), 0);
+		return LLVM::ShuffleVectorOp::create(generator.builder, generator.loc, first, first, mask);
 	}
 
 	static mlir::Value zero_of(Generator& generator, mlir::Type type) {
@@ -1484,6 +1517,13 @@ namespace hemera {
 		}
 		if (!attributes.empty()) {
 			function.setPassthroughAttr(generator.builder.getArrayAttr(attributes));
+		}
+		// LLVM takes a function's features instead of the target's, so they're the target's and its own
+		if (declaration->target_features != nullptr) {
+			const std::string base_features = target_features(*generator.options);
+			function.setTargetFeaturesAttr(LLVM::TargetFeaturesAttr::get(generator.context,
+				base_features.empty() ? text_of(declaration->target_features)
+				: std::format("{},{}", base_features, text_of(declaration->target_features))));
 		}
 		if (!callback) {
 			function.setCConv(convention_of(generator, type));
@@ -2807,6 +2847,7 @@ namespace hemera {
 			case TypeInfoVariant::STRUCT: return "STRUCT";
 			case TypeInfoVariant::TYPE: return "TYPE";
 			case TypeInfoVariant::UNION: return "UNION";
+			case TypeInfoVariant::VECTOR: return "VECTOR";
 			case TypeInfoVariant::VOID: return "VOID";
 		}
 		return "VOID";
@@ -2833,6 +2874,7 @@ namespace hemera {
 			case TypeInfoVariant::STRING: return "TypeInfoString";
 			case TypeInfoVariant::STRUCT: return "TypeInfoStruct";
 			case TypeInfoVariant::UNION: return "TypeInfoUnion";
+			case TypeInfoVariant::VECTOR: return "TypeInfoVector";
 			case TypeInfoVariant::ANY:
 			case TypeInfoVariant::ARCHETYPE:
 			case TypeInfoVariant::BOOLEAN:
@@ -2849,6 +2891,13 @@ namespace hemera {
 	// The fields particular to a type's variant, after variant and size.
 	static void describe(Generator& generator, TypeInfo const* type, ConstantStruct& info) {
 		switch (type->variant) {
+			case TypeInfoVariant::VECTOR: {
+				auto vector = static_cast<TypeInfoVector const*>(type);
+				info.type_of("element_type", vector->element_type);
+				info.number("count", vector->count);
+				info.flag("is_bits", vector->is_bits);
+				break;
+			}
 			case TypeInfoVariant::ALIAS: {
 				auto alias = static_cast<TypeInfoAlias const*>(type);
 				info.type_of("base_type", alias->base_type);
@@ -3130,6 +3179,12 @@ namespace hemera {
 			count = constant_int(generator, usize_type(generator), static_cast<int64_t>(static_cast<TypeInfoArray const*>(type)->count));
 			return;
 		}
+		// A vector's lanes are laid out like an array's elements
+		if (TypeInfoVariant::VECTOR == type->variant) {
+			data = address_of(generator, current);
+			count = constant_int(generator, usize_type(generator), static_cast<int64_t>(static_cast<TypeInfoVector const*>(type)->count));
+			return;
+		}
 		mlir::Value whole = value_of(generator, current);
 		if (TypeInfoVariant::STRING == type->variant && static_cast<TypeInfoString const*>(type)->is_raw) {
 			data = whole;
@@ -3141,6 +3196,9 @@ namespace hemera {
 	}
 
 	static TypeInfo* element_of(TypeInfo const* type) {
+		if (TypeInfoVariant::VECTOR == type->variant) {
+			return static_cast<TypeInfoVector const*>(type)->element_type;
+		}
 		return TypeInfoVariant::ARRAY == type->variant ? static_cast<TypeInfoArray const*>(type)->element_type : BUILTIN_char;
 	}
 
@@ -3680,6 +3738,22 @@ namespace hemera {
 			result = value(registers, type);
 			return true;
 		}
+		// AES-NI and PCLMULQDQ, as LLVM's intrinsics, so the optimizer knows what they do
+		const std::pair<std::string_view, std::string_view> aes[] = {
+			{ "aes_encrypt_round", "llvm.x86.aesni.aesenc" }, { "aes_encrypt_last", "llvm.x86.aesni.aesenclast" },
+			{ "aes_decrypt_round", "llvm.x86.aesni.aesdec" }, { "aes_decrypt_last", "llvm.x86.aesni.aesdeclast" },
+			{ "aes_inverse_mix", "llvm.x86.aesni.aesimc" }, { "aes_key_assist", "llvm.x86.aesni.aeskeygenassist" },
+			{ "carryless_multiply", "llvm.x86.pclmulqdq" },
+		};
+		for (const auto& [intrinsic, llvm_name] : aes) {
+			if (name == intrinsic) {
+				TypeInfo* type = function->output[0].type;
+				auto call = LLVM::CallIntrinsicOp::create(generator.builder, generator.loc, llvm_type(generator, type),
+					generator.builder.getStringAttr(llvm_name), arguments);
+				result = value(call.getResult(0), type);
+				return true;
+			}
+		}
 		if (name == "rdrand" || name == "rdseed") {
 			// The value, and whether the carry flag said it's ready
 			mlir::Value both = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i8 }), {},
@@ -4055,6 +4129,88 @@ namespace hemera {
 		return true;
 	}
 
+	static mlir::Value shift_amount(Generator& generator, mlir::Value amount, mlir::Type target);
+
+	// A vector of bools as LLVM's i1 lanes, which select and the reductions take.
+	static mlir::Value mask_bits(Generator& generator, mlir::Value mask) {
+		return LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::ne, mask,
+			constant_int(generator, mask.getType(), 0));
+	}
+
+	// An amount for every bit of value: one per lane for a vector, as wide as what it shifts.
+	static mlir::Value amount_for(Generator& generator, mlir::Value amount, mlir::Type target) {
+		if (auto vector = llvm::dyn_cast<mlir::VectorType>(target)) {
+			return splat(generator, shift_amount(generator, amount, vector.getElementType()), target);
+		}
+		return shift_amount(generator, amount, target);
+	}
+
+	// A constant argument's value, which the checker made sure is one, like rotate_lanes' count.
+	static int64_t constant_argument(mlir::Value argument) {
+		if (auto constant = argument.getDefiningOp<LLVM::ConstantOp>()) {
+			if (auto integer = llvm::dyn_cast<mlir::IntegerAttr>(constant.getValue())) {
+				return integer.getInt();
+			}
+		}
+		return 0;
+	}
+
+	// base/intrinsics' vector and bit functions (docs/types.md, Vectors), by name.
+	static bool emit_vector_intrinsic(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, Emitted& result) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		if (name == "splat") {
+			result = value(splat(generator, arguments[0], llvm_type(generator, result_type)), result_type);
+			return true;
+		}
+		if (name == "select") {
+			result = value(LLVM::SelectOp::create(b, l, mask_bits(generator, arguments[0]), arguments[1], arguments[2]), result_type);
+			return true;
+		}
+		if (name == "rotate_lanes") {
+			const int64_t count = static_cast<int64_t>(static_cast<TypeInfoVector const*>(base(result_type))->count);
+			const int64_t by = constant_argument(arguments[1]);
+			llvm::SmallVector<int32_t> mask;
+			for (int64_t i = 0; i < count; ++i) {
+				mask.push_back(static_cast<int32_t>((i + by) % count));
+			}
+			result = value(LLVM::ShuffleVectorOp::create(b, l, arguments[0], arguments[0], mask), result_type);
+			return true;
+		}
+		if (name == "reduce_add" || name == "reduce_and" || name == "reduce_or" || name == "reduce_xor") {
+			mlir::Type lane = llvm_type(generator, result_type);
+			mlir::Value reduced = name == "reduce_add" ? static_cast<mlir::Value>(LLVM::vector_reduce_add::create(b, l, lane, arguments[0]))
+				: name == "reduce_and" ? static_cast<mlir::Value>(LLVM::vector_reduce_and::create(b, l, lane, arguments[0]))
+				: name == "reduce_or" ? static_cast<mlir::Value>(LLVM::vector_reduce_or::create(b, l, lane, arguments[0]))
+				: static_cast<mlir::Value>(LLVM::vector_reduce_xor::create(b, l, lane, arguments[0]));
+			result = value(reduced, result_type);
+			return true;
+		}
+		if (name == "any_true" || name == "all_true") {
+			mlir::Value bits = mask_bits(generator, arguments[0]);
+			mlir::Type one = b.getI1Type();
+			mlir::Value reduced = name == "any_true" ? static_cast<mlir::Value>(LLVM::vector_reduce_or::create(b, l, one, bits))
+				: static_cast<mlir::Value>(LLVM::vector_reduce_and::create(b, l, one, bits));
+			result = value(reduced, result_type);
+			return true;
+		}
+		if (name == "rotate_left" || name == "rotate_right") {
+			mlir::Value amount = amount_for(generator, arguments[1], arguments[0].getType());
+			mlir::Value rotated = name == "rotate_left" ? static_cast<mlir::Value>(LLVM::FshlOp::create(b, l, arguments[0], arguments[0], amount))
+				: static_cast<mlir::Value>(LLVM::FshrOp::create(b, l, arguments[0], arguments[0], amount));
+			result = value(rotated, result_type);
+			return true;
+		}
+		if (name == "byte_swap") {
+			result = value(LLVM::ByteSwapOp::create(b, l, arguments[0]), result_type);
+			return true;
+		}
+		return false;
+	}
+
 	static Emitted emit_intrinsic(Generator& generator, Declaration* called, TypeInfoFunction const* function,
 		const std::vector<mlir::Value>& arguments, const ast::Node* where) {
 
@@ -4070,6 +4226,10 @@ namespace hemera {
 		}
 		if (name == "stack_pointer") {
 			return value(LLVM::StackSaveOp::create(b, l, pointer_type(generator)), result_type);
+		}
+		// The vector and bit functions are matched by their generic's name, splat for splat[Words]
+		if (Emitted vector_result; emit_vector_intrinsic(generator, name.substr(0, name.find('[')), function, arguments, vector_result)) {
+			return vector_result;
 		}
 		if (name == "spin_hint") {
 			const ArchType architecture = generator.options != nullptr ? generator.options->architecture : ArchType::x86_64;
@@ -4953,15 +5113,72 @@ namespace hemera {
 				constant_int(generator, type, type.getIntOrFloatBitWidth() == 1 ? 1 : -1)), result_type);
 		}
 		if (TokenType::OPERATOR_MINUS == op) {
-			if (is_float(result_type)) {
+			// A vector's lanes decide, like -v on floats
+			TypeInfo const* scalar = is_variant(result_type, TypeInfoVariant::VECTOR)
+				? static_cast<TypeInfoVector const*>(base(result_type))->element_type : result_type;
+			if (is_float(scalar)) {
 				return value(LLVM::FNegOp::create(generator.builder, generator.loc, operand), result_type);
 			}
 			return value(LLVM::SubOp::create(generator.builder, generator.loc, constant_int(generator, type, 0), operand), result_type);
 		}
 		if (TokenType::OPERATOR_BITWISE_XOR == op) {
-			return value(LLVM::XOrOp::create(generator.builder, generator.loc, operand, constant_int(generator, type, -1)), result_type);
+			// A vector of bools' lanes are 0 or 1
+			const bool bool_lanes = is_variant(result_type, TypeInfoVariant::VECTOR)
+				&& is_variant(static_cast<TypeInfoVector const*>(base(result_type))->element_type, TypeInfoVariant::BOOLEAN);
+			return value(LLVM::XOrOp::create(generator.builder, generator.loc, operand, constant_int(generator, type, bool_lanes ? 1 : -1)),
+				result_type);
 		}
 		return value(operand, result_type);
+	}
+
+	// An operand of an operator on vectors: the vector, or an untyped literal in every lane.
+	static mlir::Value vector_operand(Generator& generator, ast::Node* node, TypeInfo* type) {
+		const CheckedNode* found = checked(generator, node);
+		if (found != nullptr && is_untyped(found->kind)) {
+			auto vector = static_cast<TypeInfoVector const*>(base(type));
+			return splat(generator, emit_as(generator, node, vector->element_type), llvm_type(generator, type));
+		}
+		return emit_as(generator, node, type);
+	}
+
+	// The vector type of an operator's operands, or null when neither is a vector.
+	static TypeInfo* vector_operands(Generator& generator, ast::Node* left, ast::Node* right) {
+		for (ast::Node* operand : { left, right }) {
+			const CheckedNode* found = operand != nullptr ? checked(generator, operand) : nullptr;
+			if (found != nullptr && ValueKind::VALUE == found->kind && is_variant(found->type, TypeInfoVariant::VECTOR)) {
+				return found->type;
+			}
+		}
+		return nullptr;
+	}
+
+	/*
+	 * An operator on vectors, lane by lane: LLVM's operators take vectors as they are, so the scalar
+	 * ones do, told the lanes' type. A comparison's lanes become bytes, a vector of bools.
+	 */
+	static Emitted emit_vector_binary(Generator& generator, ast::Node* node, TokenType op, TypeInfo* type, TypeInfo* result_type) {
+		auto vector = static_cast<TypeInfoVector const*>(base(type));
+		TypeInfo* lane = vector->element_type;
+		mlir::Value left = vector_operand(generator, node->children[0], type);
+		ast::Node* right_node = node->children[1];
+		if (is_shift(op)) {
+			TypeInfo* amount_type = type_at(generator, right_node, BUILTIN_usize);
+			mlir::Value amount;
+			if (is_variant(amount_type, TypeInfoVariant::VECTOR)) {
+				amount = emit_as(generator, right_node, amount_type);
+			}
+			else {
+				mlir::Type lane_type = llvm::cast<mlir::VectorType>(left.getType()).getElementType();
+				amount = splat(generator, shift_amount(generator, emit_as(generator, right_node, amount_type), lane_type), left.getType());
+			}
+			return value(arithmetic(generator, op, left, amount, lane, node), type);
+		}
+		mlir::Value right = vector_operand(generator, right_node, type);
+		if (is_comparison(op)) {
+			mlir::Value lanes = compare(generator, op, left, right, lane);
+			return value(LLVM::ZExtOp::create(generator.builder, generator.loc, llvm_type(generator, result_type), lanes), result_type);
+		}
+		return value(arithmetic(generator, op, left, right, lane, node), type);
 	}
 
 	static Emitted emit_binary(Generator& generator, ast::Node* node, TypeInfo* expected) {
@@ -5045,6 +5262,9 @@ namespace hemera {
 				return false;
 			}, nullptr);
 			return location(slot, BUILTIN_bool);
+		}
+		if (TypeInfo* vector = vector_operands(generator, left_node, right_node); vector != nullptr && right_node != nullptr) {
+			return emit_vector_binary(generator, node, op, vector, result_type);
 		}
 		if (is_comparison(op)) {
 			TypeInfo* type = shared_type(generator, left_node, right_node, nullptr);
@@ -5220,6 +5440,23 @@ namespace hemera {
 
 	// Type.{values} or Type.{name = value}: built as a value, part by part.
 	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
+		// A vector's lanes, in order
+		if (is_variant(type, TypeInfoVariant::VECTOR)) {
+			auto vector = static_cast<TypeInfoVector const*>(base(type));
+			mlir::Type vector_type = llvm_type(generator, type);
+			mlir::Value lanes = zero_of(generator, vector_type);
+			for (ast::Node* child : node->children) {
+				if (ast::NodeType::LIST != child->node_type) {
+					continue;
+				}
+				for (size_t i = 0; i < child->children.size(); ++i) {
+					mlir::Value lane = as_lane(generator, emit_as(generator, child->children[i], vector->element_type), vector_type);
+					lanes = LLVM::InsertElementOp::create(generator.builder, generator.loc, lanes, lane,
+						LLVM::ConstantOp::create(generator.builder, generator.loc, generator.builder.getI32Type(), static_cast<int64_t>(i)));
+				}
+			}
+			return value(lanes, type);
+		}
 		auto structure = static_cast<TypeInfoStruct const*>(base(type));
 		mlir::Value result = zero_of(generator, llvm_type(generator, type));
 		std::vector<ast::Node*> elements;
@@ -7337,6 +7574,7 @@ namespace hemera {
 			case TypeInfoVariant::TYPE: return "a type";
 			case TypeInfoVariant::COMPLEX: return "a complex number";
 			case TypeInfoVariant::QUATERNION: return "a quaternion";
+			case TypeInfoVariant::VECTOR: return "a vector";
 			case TypeInfoVariant::VOID: return "void";
 			case TypeInfoVariant::ALIAS: return "an alias";
 			case TypeInfoVariant::ARCHETYPE: return "a generic's type parameter";
@@ -7950,6 +8188,15 @@ namespace hemera {
 		}
 		scratch.erase();
 		return ran;
+	}
+
+	std::string target_features(const Options& options) {
+		std::string features = options.cpu_features;
+		// The carrier register, which nothing else may use (docs/calling_convention.md, Carrier Register)
+		if (ArchType::x86_64 == options.architecture) {
+			features += features.empty() ? "+reserve-r14" : ",+reserve-r14";
+		}
+		return features;
 	}
 
 	bool generate_program(ProgramInfo* program_info, const Options& options, mlir::ModuleOp module) {

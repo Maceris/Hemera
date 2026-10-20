@@ -37,6 +37,7 @@ namespace hemera {
 				case TypeInfoVariant::STRUCT: return "STRUCT";
 				case TypeInfoVariant::TYPE: return "TYPE";
 				case TypeInfoVariant::UNION: return "UNION";
+				case TypeInfoVariant::VECTOR: return "VECTOR";
 				case TypeInfoVariant::VOID: return "VOID";
 			}
 			return "VOID";
@@ -54,6 +55,7 @@ namespace hemera {
 				: TypeInfoVariant::STRING == variant ? "TypeInfoString"
 				: TypeInfoVariant::STRUCT == variant ? "TypeInfoStruct"
 				: TypeInfoVariant::UNION == variant ? "TypeInfoUnion"
+				: TypeInfoVariant::VECTOR == variant ? "TypeInfoVector"
 				: "TypeInfo";
 		}
 
@@ -303,6 +305,13 @@ namespace hemera {
 			write_view(record, layout, field, elements, count);
 		};
 		switch (type->variant) {
+			case TypeInfoVariant::VECTOR: {
+				auto vector = static_cast<const TypeInfoVector*>(type);
+				write_type(record, layout, "element_type", vector->element_type);
+				write_number(record, layout, "count", vector->count);
+				write_number(record, layout, "is_bits", vector->is_bits);
+				break;
+			}
 			case TypeInfoVariant::ALIAS: {
 				auto alias = static_cast<const TypeInfoAlias*>(type);
 				write_type(record, layout, "base_type", alias->base_type);

@@ -66,6 +66,7 @@ TypeInfoVariant :: enum {
     STRUCT,
     TYPE,
     UNION,
+    VECTOR,
     VOID,
 }
 
@@ -123,6 +124,14 @@ TypeInfoPointer :: struct {
     base_type: ptr[TypeInfo]?,
     is_relative: bool,
     is_mutable: bool,
+}
+
+// vector[T, n], or v128 to v512 (is_bits), which are lanes of u64 (docs/types.md, Vectors).
+TypeInfoVector :: struct {
+    using TypeInfo,
+    element_type: ptr[TypeInfo],
+    count: usize,
+    is_bits: bool,
 }
 
 TypeInfoString :: struct {

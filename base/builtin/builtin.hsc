@@ -82,6 +82,12 @@ relptr16[T] :: alias relptr16[T]
 relptr32[T] :: alias relptr32[T]
 relptr64[T] :: alias relptr64[T]
 
+// SIMD vectors, and bits of a vector register (docs/types.md, Vectors)
+vector[T, count: usize] :: alias vector[T, count]
+v128 :: alias v128
+v256 :: alias v256
+v512 :: alias v512
+
 // Optional values (T? is Optional[T]) and results are in generic_types.hsc
 
 // Type info

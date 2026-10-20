@@ -35,6 +35,7 @@ TESTS = [
     ("shared", [], 42),
     ("optional_functions", [], 42),
     ("integer_ranges", [], 42),
+    ("vectors", [], 42),
     ("processes", [], 42),
     ("output", [], 42),
     ("library", [], 42),

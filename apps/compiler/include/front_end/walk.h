@@ -155,6 +155,9 @@ namespace hemera {
 	/// </summary>
 	void bind_generic_type(Walk& walk, const std::string& name, TypeInfo* argument);
 	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count);
+	TypeInfo* vector_of(Walk& walk, TypeInfo* element, size_t count);
+	TypeInfo* plain_function_type(Walk& walk, const std::vector<TypeInfo*>& inputs, TypeInfo* output);
+	Progress vector_type(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, TypeInfo*& result);
 	Progress optional_of(Walk& walk, ast::Node* where, TypeInfo* type, Need need, TypeInfo*& result);
 
 	/// <summary>

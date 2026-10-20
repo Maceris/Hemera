@@ -223,6 +223,11 @@ namespace hemera {
 		InternedString foreign_library = nullptr;
 		InternedString link_name = nullptr;
 		/// <summary>
+		/// From #target_features("aes,pclmul"): CPU features the function's code may use beyond the
+		/// target's, as LLVM takes them ("+aes,+pclmul"), or null.
+		/// </summary>
+		InternedString target_features = nullptr;
+		/// <summary>
 		/// For a constant without a type, what kind of literal it is, and for an integer whose value
 		/// is known, like X :: 300, that value, which has to fit the type it becomes where it's used.
 		/// </summary>

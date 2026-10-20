@@ -35,6 +35,10 @@ namespace hemera {
 		STRUCT,
 		TYPE,
 		UNION,
+		/// <summary>
+		/// A SIMD vector, vector[T, n], or bits of a vector register's size, v128 to v512 (docs/types.md, Vectors).
+		/// </summary>
+		VECTOR,
 		VOID,
 	};
 
@@ -145,6 +149,19 @@ namespace hemera {
 		size_t count;
 
 		TypeInfoArray(TypeInfo* element_type, ArrayType array_type, size_t count);
+	};
+
+	/// <summary>
+	/// vector[T, n]: count lanes of an integer, float or bool, worked on together. Or, with is_bits,
+	/// v128, v256 or v512: bits a vector register holds, lanes of u64, which bit_cast to any vector of
+	/// their size and only take the bitwise operators.
+	/// </summary>
+	struct TypeInfoVector : public TypeInfo {
+		TypeInfo* element_type;
+		size_t count;
+		bool is_bits;
+
+		TypeInfoVector(TypeInfo* element_type, size_t count, bool is_bits);
 	};
 
 	/// <summary>
@@ -432,6 +449,9 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_uint;
 	extern TypeInfo* BUILTIN_uintptr;
 	extern TypeInfo* BUILTIN_usize;
+	extern TypeInfo* BUILTIN_v128;
+	extern TypeInfo* BUILTIN_v256;
+	extern TypeInfo* BUILTIN_v512;
 
 	extern TypeInfo* BUILTIN_void;
 	extern TypeInfo* BUILTIN_poisoned_value;

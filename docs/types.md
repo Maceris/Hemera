@@ -354,6 +354,59 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
 * Invariants of a data structure, like a struct's array having one entry per frame. Compare against the array's own
   count, rather than a field that's meant to equal it.
 
+## Vectors
+
+A vector holds several values of one type, its lanes, and operators work on every lane at once, which the CPU does with
+its vector instructions where it has them. `vector[T, n]` has `n` lanes of `T`, an integer or float of up to 64 bits of
+the target's own endianness, or `bool`; `n` is a power of two, and the whole is at most 64 bytes. A vector is aligned
+to its size, up to 64 bytes.
+
+```
+Words :: vector[u32, 4]
+
+a := Words.{1, 2, 3, 4}         // every lane, in order
+zero := Words.{}
+b := a + Words.{10, 20, 30, 40} // .{11, 22, 33, 44}
+c := a * 2 - 1                  // a literal goes in every lane
+d := a << 4                     // shifted by one amount, or by a vector of them
+e := b >> Words.{0, 1, 2, 3}
+first := a[0]                   // a lane
+a[2] = 100
+```
+
+* The arithmetic, bitwise and shift operators work lane by lane on two vectors of the same type, or one and a literal,
+  which goes in every lane. Integer division and remainder aren't on vectors yet, since a lane of 0 has nothing like
+  the panic dividing by 0 gives; floats divide.
+* Comparisons compare lane by lane, giving a vector of bools: `a < b` is a `vector[bool, 4]`. `&`, `|`, `~` and the
+  unary `~` work on those, and `intrinsics.any_true` and `all_true` ask about them; `&&` and `||` don't.
+* A lane is chosen by a constant, `a[2]`, so it's never out of range, and never decided at run time.
+* A vector's lanes are laid out in memory like an array's elements, so `bit_cast` between a vector and an array of the
+  same size gives the same lanes.
+* Running on a target without vector instructions, like a kernel built without SIMD state, a vector's code works
+  one lane at a time.
+
+`v128`, `v256` and `v512` are bits of a vector register's size, without lanes of their own. They take `&`, `|` and
+`~`, and `bit_cast` to and from any vector or array of their size: they're what instructions like AES's work on,
+see `base/intrinsics/x86_64`.
+
+```
+bits := bit_cast[v128](vector[u8, 16].{/* ... */})
+masked := bits & mask
+bytes := bit_cast[vector[u8, 16]](masked)
+```
+
+`base/intrinsics` has what the operators don't do, each working out its types from what it's given:
+
+| Function | What it does |
+|---|---|
+| `splat[V](lane)` | `lane` in every lane of `V` |
+| `select(mask, chosen, otherwise)` | Each lane from `chosen` where `mask`'s is true, otherwise from `otherwise`, without a branch |
+| `rotate_lanes(vector, count)` | The lanes moved down by a constant `count`, the first ones coming round to the end |
+| `reduce_add`, `reduce_and`, `reduce_or`, `reduce_xor` | A vector of integers' lanes combined into one |
+| `any_true`, `all_true` | Whether any, or every, lane of a vector of bools is true |
+| `rotate_left(value, amount)`, `rotate_right` | An integer's bits rotated, or each lane's |
+| `byte_swap(value)` | An integer's bytes in the other order, or each lane's |
+
 ## Enums
 
 Enums represent a set of distinct values.
