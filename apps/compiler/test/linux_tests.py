@@ -34,6 +34,7 @@ TESTS = [
     ("owned", [], 42),
     ("shared", [], 42),
     ("optional_functions", [], 42),
+    ("large_values", ["--stack-check=morestack"], 42),
     ("integer_ranges", [], 42),
     ("vectors", [], 42),
     ("reverse_loops", [], 42),

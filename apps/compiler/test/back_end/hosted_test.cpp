@@ -123,6 +123,12 @@ TEST(Hosted, RunsProgram)
 	run_hosted("hosted", hemera::TargetStackCheck::Off);
 }
 
+// Results and parameters too large for registers, through pointers (docs/calling_convention.md, Large Values).
+TEST(Hosted, PassesLargeValues)
+{
+	run_hosted("large_values", hemera::TargetStackCheck::Off);
+}
+
 // An object file in a folder that isn't there is reported (E6000), rather than written to a stream that never opened.
 TEST(Hosted, ReportsUnwritableOutput)
 {

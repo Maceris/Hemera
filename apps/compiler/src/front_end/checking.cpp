@@ -1887,14 +1887,15 @@ namespace hemera {
 	 * The function an #owned type names to release one, like SharedPtr's #owned(release): looked up in
 	 * the file that declares the type (docs/memory.md, Owned Types).
 	 */
-	static Declaration* release_function_of(Checker& checker, TypeInfo const* type) {
+	// The package and name of the function an #owned type names to release it, or false if it names none.
+	static bool release_name_of(Checker& checker, TypeInfo const* type, InternedString& package, InternedString& name) {
 		TypeInfo const* base = base_of(type);
 		if (base == nullptr || TypeInfoVariant::STRUCT != base->variant) {
-			return nullptr;
+			return false;
 		}
 		auto structure = static_cast<TypeInfoStruct const*>(base);
 		if (!structure->is_owned || structure->release_name == nullptr) {
-			return nullptr;
+			return false;
 		}
 		NameRegistry& names = checker.walk.executor.program_info->names;
 		const Declaration* declared = structure->instance;
@@ -1904,15 +1905,25 @@ namespace hemera {
 			declared = found != names.type_declarations.end() ? found->second : nullptr;
 		}
 		if (declared == nullptr) {
-			return nullptr;
+			return false;
 		}
-		InternedString package = declared->package_path;
+		package = declared->package_path;
 		if (structure->release_package != nullptr) {
 			package = declared->file != nullptr ? imported_package(declared->file, structure->release_package) : nullptr;
 		}
+		name = structure->release_name;
+		return package != nullptr;
+	}
+
+	static Declaration* release_function_of(Checker& checker, TypeInfo const* type) {
+		InternedString package = nullptr;
+		InternedString name = nullptr;
+		if (!release_name_of(checker, type, package, name)) {
+			return nullptr;
+		}
+		NameRegistry& names = checker.walk.executor.program_info->names;
 		std::scoped_lock<std::mutex> lock(names.mutex);
-		auto found = package != nullptr ? names.declarations.find(std::make_pair(package, structure->release_name))
-			: names.declarations.end();
+		auto found = names.declarations.find(std::make_pair(package, name));
 		return found != names.declarations.end() ? found->second : nullptr;
 	}
 
@@ -2071,6 +2082,22 @@ namespace hemera {
 			if (ValueKind::POISONED == argument.kind) {
 				callee = poisoned();
 				return Progress::DONE;
+			}
+			/*
+			 * Its type's #owned(...) is known once the type is complete, and the function it names once its package
+			 * has declared it, either of which another thread may still be doing
+			 */
+			progress = complete_subject(checker, arguments[0], argument);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			InternedString release_package = nullptr;
+			InternedString release_name = nullptr;
+			if (ValueKind::VALUE == argument.kind && release_name_of(checker, argument.type, release_package, release_name)) {
+				progress = require_in(checker.walk, arguments[0], release_package, release_name, Need::DECLARED);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 			}
 			Declaration* release = ValueKind::VALUE == argument.kind ? release_function_of(checker, argument.type) : nullptr;
 			if (release == nullptr) {

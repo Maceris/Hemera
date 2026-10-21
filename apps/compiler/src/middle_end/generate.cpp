@@ -31,6 +31,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
@@ -121,6 +122,10 @@ namespace hemera {
 		/// The current context, a pointer to a runtime.Context.
 		/// </summary>
 		mlir::Value context;
+		/// <summary>
+		/// Where the result goes, for a function whose result is too large for registers (result_through_pointer).
+		/// </summary>
+		mlir::Value result_pointer;
 		std::vector<Breakable> breakables;
 		/// <summary>
 		/// Where stack slots are made: the function's first block. Null for a constant's
@@ -437,27 +442,65 @@ namespace hemera {
 		return result;
 	}
 
-	// A function's LLVM type: the context, if it takes one, then its parameters; its result, or a struct of several.
+	// The most a value can be and still be passed or returned in registers, two of them (docs/calling_convention.md).
+	constexpr size_t LARGEST_IN_REGISTERS = 16;
+
+	// Whether a function uses Hemera's own convention, not a platform's one like .c that foreign code shares.
+	static bool hemera_convention(TypeInfoFunction const* function) {
+		return text_of(function->calling_convention).empty();
+	}
+
+	// Whether a parameter of a function is passed as a pointer to a copy the caller makes, being too large for registers.
+	static bool parameter_by_pointer(TypeInfoFunction const* function, const FunctionInput& input) {
+		return hemera_convention(function) && !input.is_varargs && input.type != nullptr && input.type->size > LARGEST_IN_REGISTERS;
+	}
+
+	// Whether a function's results are written through a pointer the caller passes first, being too large for registers.
+	static bool result_through_pointer(TypeInfoFunction const* function) {
+		if (!hemera_convention(function) || function->output.empty()) {
+			return false;
+		}
+		size_t total = 0;
+		for (const FunctionOutput& output : function->output) {
+			total += output.type != nullptr ? output.type->size : 0;
+		}
+		return total > LARGEST_IN_REGISTERS;
+	}
+
+	// A function's results as one LLVM type: its result, or a struct of several, or void.
+	static mlir::Type results_type(Generator& generator, TypeInfoFunction const* function) {
+		if (function->output.size() == 1) {
+			return llvm_type(generator, function->output[0].type);
+		}
+		if (function->output.size() > 1) {
+			std::vector<mlir::Type> results;
+			for (const FunctionOutput& output : function->output) {
+				results.push_back(llvm_type(generator, output.type));
+			}
+			return LLVM::LLVMStructType::getLiteral(generator.context, results);
+		}
+		return LLVM::LLVMVoidType::get(generator.context);
+	}
+
+	/*
+	 * A function's LLVM type: where its results go, if they're too large for registers, then the context, if it
+	 * takes one, then its parameters, each too large for registers as a pointer; its result, or a struct of several.
+	 */
 	static LLVM::LLVMFunctionType function_type(Generator& generator, TypeInfoFunction const* function, bool with_context = true) {
 		std::vector<mlir::Type> parameters;
+		const bool through_pointer = result_through_pointer(function);
+		if (through_pointer) {
+			parameters.push_back(pointer_type(generator));
+		}
 		if (with_context) {
 			parameters.push_back(pointer_type(generator));
 		}
 		for (const FunctionInput& input : function->input) {
 			// Varargs are a view of them
-			parameters.push_back(input.is_varargs ? view_type(generator) : llvm_type(generator, input.type));
+			parameters.push_back(input.is_varargs ? view_type(generator)
+				: parameter_by_pointer(function, input) ? pointer_type(generator) : llvm_type(generator, input.type));
 		}
-		mlir::Type result = LLVM::LLVMVoidType::get(generator.context);
-		if (function->output.size() == 1) {
-			result = llvm_type(generator, function->output[0].type);
-		}
-		else if (function->output.size() > 1) {
-			std::vector<mlir::Type> results;
-			for (const FunctionOutput& output : function->output) {
-				results.push_back(llvm_type(generator, output.type));
-			}
-			result = LLVM::LLVMStructType::getLiteral(generator.context, results);
-		}
+		mlir::Type result = through_pointer ? LLVM::LLVMVoidType::get(generator.context) : results_type(generator, function);
 		return LLVM::LLVMFunctionType::get(result, parameters);
 	}
 
@@ -528,20 +571,26 @@ namespace hemera {
 	constexpr size_t LARGEST_WHOLE_STORE = 64;
 
 	/*
-	 * The bytes an array or packed struct of integers takes, as Hemera lays them out: no padding
-	 * anywhere. 0 for anything else, which isn't worked out here.
+	 * The bytes a value of an LLVM type takes, as Hemera lays it out: integers, floating-point values, pointers,
+	 * and arrays and packed structs of them, with no padding anywhere. 0 for anything else.
 	 */
-	static uint64_t aggregate_size(mlir::Type type) {
+	static uint64_t aggregate_size(Generator& generator, mlir::Type type) {
 		if (auto integer = mlir::dyn_cast<mlir::IntegerType>(type)) {
 			return (integer.getWidth() + 7) / 8;
 		}
+		if (auto floating = mlir::dyn_cast<mlir::FloatType>(type)) {
+			return (floating.getWidth() + 7) / 8;
+		}
+		if (mlir::isa<LLVM::LLVMPointerType>(type)) {
+			return aggregate_size(generator, usize_type(generator));
+		}
 		if (auto array = mlir::dyn_cast<LLVM::LLVMArrayType>(type)) {
-			return array.getNumElements() * aggregate_size(array.getElementType());
+			return array.getNumElements() * aggregate_size(generator, array.getElementType());
 		}
 		if (auto structure = mlir::dyn_cast<LLVM::LLVMStructType>(type); structure && structure.isPacked()) {
 			uint64_t total = 0;
 			for (mlir::Type field : structure.getBody()) {
-				const uint64_t size = aggregate_size(field);
+				const uint64_t size = aggregate_size(generator, field);
 				if (size == 0) {
 					return 0;
 				}
@@ -552,23 +601,105 @@ namespace hemera {
 		return 0;
 	}
 
-	/*
-	 * A large zero, like an empty struct literal's, is set with memset: stored whole, LLVM splits it
-	 * into a value per byte, which for a big enough one is more than instruction selection can hold.
-	 */
-	static void store(Generator& generator, mlir::Value value, mlir::Value address) {
-		if (auto zero = value.getDefiningOp<LLVM::ZeroOp>(); zero && in_function(generator)) {
-			const uint64_t size = aggregate_size(value.getType());
-			if (size > LARGEST_WHOLE_STORE) {
-				LLVM::MemsetOp::create(generator.builder, generator.loc, address, constant_int(generator, integer_type(generator, 1), 0),
-					constant_int(generator, usize_type(generator), static_cast<int64_t>(size)), false);
-				if (zero->use_empty()) {
-					zero->erase();
+	// Where the part of an aggregate at path starts, in bytes, and its type; false if aggregate_size can't say.
+	static bool part_offset(Generator& generator, mlir::Type type, llvm::ArrayRef<int64_t> path, uint64_t& offset, mlir::Type& part) {
+		offset = 0;
+		part = type;
+		for (int64_t index : path) {
+			if (auto array = mlir::dyn_cast<LLVM::LLVMArrayType>(part)) {
+				const uint64_t element = aggregate_size(generator, array.getElementType());
+				if (element == 0) {
+					return false;
 				}
-				return;
+				offset += element * static_cast<uint64_t>(index);
+				part = array.getElementType();
+			}
+			else if (auto structure = mlir::dyn_cast<LLVM::LLVMStructType>(part); structure && structure.isPacked()) {
+				for (int64_t i = 0; i < index; ++i) {
+					const uint64_t size = aggregate_size(generator, structure.getBody()[static_cast<size_t>(i)]);
+					if (size == 0) {
+						return false;
+					}
+					offset += size;
+				}
+				part = structure.getBody()[static_cast<size_t>(index)];
+			}
+			else {
+				return false;
 			}
 		}
-		LLVM::StoreOp::create(generator.builder, generator.loc, value, address);
+		return true;
+	}
+
+	static mlir::Value offset_address(Generator& generator, mlir::Value address, size_t offset);
+
+	// Whether nothing after op in its block, up to where code is being generated, could write memory.
+	static bool nothing_written_since(Generator& generator, mlir::Operation* op) {
+		if (op->getBlock() != generator.builder.getInsertionBlock()) {
+			return false;
+		}
+		for (mlir::Operation* next = op->getNextNode(); next != nullptr; next = next->getNextNode()) {
+			if (!mlir::isMemoryEffectFree(next)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/*
+	 * A value stored whole has LLVM split it into a value per element, which for a large one is slow to
+	 * generate code for, or more than instruction selection can hold. So a large value is stored in parts:
+	 * a zero with memset; one just loaded, with nothing written since, with memmove from where it was; and
+	 * one built by inserting parts into a zero, like a struct literal, with memset and then each part.
+	 */
+	static void store(Generator& generator, mlir::Value value, mlir::Value address) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		const uint64_t size = in_function(generator) ? aggregate_size(generator, value.getType()) : 0;
+		if (size <= LARGEST_WHOLE_STORE) {
+			LLVM::StoreOp::create(b, l, value, address);
+			return;
+		}
+		mlir::Value bytes = constant_int(generator, usize_type(generator), static_cast<int64_t>(size));
+		if (auto zero = value.getDefiningOp<LLVM::ZeroOp>()) {
+			LLVM::MemsetOp::create(b, l, address, constant_int(generator, integer_type(generator, 1), 0), bytes, false);
+			if (zero->use_empty()) {
+				zero->erase();
+			}
+			return;
+		}
+		if (auto loaded = value.getDefiningOp<LLVM::LoadOp>(); loaded && !loaded.getVolatile_() && nothing_written_since(generator, loaded)) {
+			LLVM::MemmoveOp::create(b, l, address, loaded.getAddr(), bytes, false);
+			if (loaded->use_empty()) {
+				loaded->erase();
+			}
+			return;
+		}
+		// The parts inserted, innermost first, down to the zero they were inserted into
+		std::vector<LLVM::InsertValueOp> inserts;
+		mlir::Value whole = value;
+		while (auto insert = whole.getDefiningOp<LLVM::InsertValueOp>()) {
+			inserts.push_back(insert);
+			whole = insert.getContainer();
+		}
+		const bool from_nothing = whole.getDefiningOp<LLVM::ZeroOp>() || whole.getDefiningOp<LLVM::UndefOp>()
+			|| whole.getDefiningOp<LLVM::PoisonOp>();
+		bool placed = from_nothing && !inserts.empty();
+		std::vector<std::pair<uint64_t, mlir::Value>> parts;
+		for (auto each = inserts.rbegin(); placed && each != inserts.rend(); ++each) {
+			uint64_t offset = 0;
+			mlir::Type part;
+			placed = part_offset(generator, value.getType(), each->getPosition(), offset, part);
+			parts.emplace_back(offset, each->getValue());
+		}
+		if (placed) {
+			LLVM::MemsetOp::create(b, l, address, constant_int(generator, integer_type(generator, 1), 0), bytes, false);
+			for (const auto& [offset, part] : parts) {
+				store(generator, part, offset_address(generator, address, offset));
+			}
+			return;
+		}
+		LLVM::StoreOp::create(b, l, value, address);
 	}
 
 	// Zero the value of type at address.
@@ -2053,18 +2184,25 @@ namespace hemera {
 		::hmir::HemeraContinueOp::create(generator.builder, generator.loc, depth);
 	}
 
-	// return, with the function's results: one, or a struct of several.
+	// return, with the function's results: one, or a struct of several, or written where the caller said.
 	static void emit_return(Generator& generator, const std::vector<mlir::Value>& values) {
-		if (values.size() <= 1) {
-			::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange(values));
+		mlir::Value result = values.size() == 1 ? values[0] : mlir::Value();
+		if (values.size() > 1) {
+			result = LLVM::UndefOp::create(generator.builder, generator.loc, results_type(generator, generator.state->type));
+			for (size_t i = 0; i < values.size(); ++i) {
+				result = insert(generator, result, values[i], { static_cast<int64_t>(i) });
+			}
+		}
+		if (generator.state->result_pointer && result) {
+			store(generator, result, generator.state->result_pointer);
+			::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
 			return;
 		}
-		LLVM::LLVMFunctionType type = function_type(generator, generator.state->type);
-		mlir::Value result = LLVM::UndefOp::create(generator.builder, generator.loc, type.getReturnType());
-		for (size_t i = 0; i < values.size(); ++i) {
-			result = insert(generator, result, values[i], { static_cast<int64_t>(i) });
+		if (result) {
+			::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{ result });
+			return;
 		}
-		::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{ result });
+		::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -3479,6 +3617,69 @@ namespace hemera {
 		return emit_as(generator, argument.node, type);
 	}
 
+	/*
+	 * An argument for a parameter too large for registers: a copy in a slot of the caller's, made from where
+	 * the argument is if it's in memory, whose address is passed (docs/calling_convention.md, Large Values).
+	 */
+	static mlir::Value argument_copy(Generator& generator, const Emitted& given, TypeInfo* type) {
+		mlir::Value slot = make_slot(generator, type);
+		if (ValueKind::VARIANT == given.kind) {
+			store(generator, make_variant(generator, given.type, given.variant, {}, {}), slot);
+			return slot;
+		}
+		store_emitted(generator, given, type, slot);
+		return slot;
+	}
+
+	static mlir::Value argument_copy(Generator& generator, const CallArgument& argument, TypeInfo* type) {
+		return argument_copy(generator, argument.has_value ? argument.given : emit_expression(generator, argument.node, type), type);
+	}
+
+	static mlir::Value value_copy(Generator& generator, mlir::Value value, TypeInfo* type) {
+		mlir::Value slot = make_slot(generator, type);
+		store(generator, value, slot);
+		return slot;
+	}
+
+	// Where a call's results go when they're too large for registers: a slot of the caller's, passed first.
+	static mlir::Value results_slot(Generator& generator, TypeInfoFunction const* function) {
+		size_t alignment = 1;
+		for (const FunctionOutput& output : function->output) {
+			alignment = std::max(alignment, output.type != nullptr ? output.type->alignment : 1);
+		}
+		return make_raw_slot(generator, results_type(generator, function), alignment);
+	}
+
+	/*
+	 * What a call gives, from the call or from its results' slot: one result where it is, rather than loaded
+	 * whole, or several as a struct of them.
+	 */
+	static Emitted call_results(Generator& generator, TypeInfoFunction const* function, LLVM::CallOp call, mlir::Value slot) {
+		Emitted result;
+		result.never_returns = function->never_returns;
+		if (function->output.empty()) {
+			return result;
+		}
+		if (slot && function->output.size() == 1) {
+			result = location(slot, function->output[0].type);
+			result.never_returns = function->never_returns;
+			return result;
+		}
+		result.kind = ValueKind::VALUE;
+		result.value = slot ? static_cast<mlir::Value>(LLVM::LoadOp::create(generator.builder, generator.loc,
+			results_type(generator, function), slot)) : call.getResult();
+		if (function->output.size() == 1) {
+			result.type = function->output[0].type;
+		}
+		else {
+			result.kind = ValueKind::RESULTS;
+			for (const FunctionOutput& output : function->output) {
+				result.results.push_back(output.type);
+			}
+		}
+		return result;
+	}
+
 	static Emitted never_returning() {
 		Emitted result;
 		result.never_returns = true;
@@ -4625,12 +4826,18 @@ namespace hemera {
 			std::vector<mlir::Value> operands{ LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), frame), context };
 			size_t offset = 8;
 			for (const FunctionInput& input : callback->input) {
-				operands.push_back(load(generator, input.type, offset_address(generator, frame, offset)));
+				// One too large for registers is passed where it is in the frame, which is the compiler's copy
+				mlir::Value at = offset_address(generator, frame, offset);
+				operands.push_back(parameter_by_pointer(callback, input) ? at : load(generator, input.type, at));
 				offset += (input.type->size + 7) & ~size_t(7);
+			}
+			const bool through_pointer = result_through_pointer(callback);
+			if (through_pointer) {
+				operands.insert(operands.begin() + 1, offset_address(generator, frame, offset));
 			}
 			auto call = LLVM::CallOp::create(generator.builder, generator.loc, function_type(generator, callback, true), operands);
 			call.setCConv(convention_of(generator, callback));
-			if (!callback->output.empty()) {
+			if (!callback->output.empty() && !through_pointer) {
 				store(generator, call.getResult(), offset_address(generator, frame, offset));
 			}
 			LLVM::ReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
@@ -4774,6 +4981,8 @@ namespace hemera {
 			}
 		}
 		const std::vector<ParameterNode> parameters = parameter_nodes(called);
+		// Intrinsics take values; other calls take a large value as a pointer to a copy (parameter_by_pointer)
+		const bool lowered = !is_intrinsic(called);
 		std::vector<mlir::Value> arguments;
 		size_t next = 0;
 		for (size_t i = 0; i < function->input.size(); ++i) {
@@ -4812,8 +5021,10 @@ namespace hemera {
 					static_cast<int64_t>(values.size())), data));
 				continue;
 			}
+			const bool by_pointer = lowered && parameter_by_pointer(function, input);
 			if (next < positional.size()) {
-				arguments.push_back(argument_as(generator, positional[next++], input.type));
+				arguments.push_back(by_pointer ? argument_copy(generator, positional[next++], input.type)
+					: argument_as(generator, positional[next++], input.type));
 				continue;
 			}
 			InternedString name = input.name != nullptr ? input.name : (i < parameters.size() ? parameters[i].name : nullptr);
@@ -4823,8 +5034,13 @@ namespace hemera {
 					named_node = node;
 				}
 			}
-			arguments.push_back(named_node != nullptr ? emit_as(generator, named_node, input.type)
-				: emit_default(generator, called, i, input.type, paren));
+			if (by_pointer && named_node != nullptr) {
+				arguments.push_back(argument_copy(generator, emit_expression(generator, named_node, input.type), input.type));
+				continue;
+			}
+			mlir::Value given = named_node != nullptr ? emit_as(generator, named_node, input.type)
+				: emit_default(generator, called, i, input.type, paren);
+			arguments.push_back(by_pointer ? value_copy(generator, given, input.type) : given);
 		}
 		if (is_intrinsic(called)) {
 			return emit_intrinsic(generator, called, function, arguments, paren);
@@ -4833,6 +5049,11 @@ namespace hemera {
 		// The context goes first, to the functions that take one: a callback only by name, to its body
 		if (takes_context(generator, function, called) && (by_name || !is_callback(generator, function))) {
 			arguments.insert(arguments.begin(), generator.state->context);
+		}
+		// And before that, where results too large for registers go
+		mlir::Value results = result_through_pointer(function) ? results_slot(generator, function) : mlir::Value();
+		if (results) {
+			arguments.insert(arguments.begin(), results);
 		}
 		/*
 		 * A foreign function's callbacks run with this context, which is kept in the carrier block
@@ -4877,23 +5098,7 @@ namespace hemera {
 			&& !takes_context(generator, caller.type, caller.declaration)) {
 			call.setNoInlineAttr(generator.builder.getUnitAttr());
 		}
-		Emitted result;
-		result.never_returns = function->never_returns;
-		if (function->output.empty()) {
-			return result;
-		}
-		result.kind = ValueKind::VALUE;
-		result.value = call.getResult();
-		if (function->output.size() == 1) {
-			result.type = function->output[0].type;
-		}
-		else {
-			result.kind = ValueKind::RESULTS;
-			for (const FunctionOutput& output : function->output) {
-				result.results.push_back(output.type);
-			}
-		}
-		return result;
+		return call_results(generator, function, call, results);
 	}
 
 	/*
@@ -6222,6 +6427,12 @@ namespace hemera {
 			std::vector<Emitted> each = emit_values(generator, node->children[i], { hint });
 			given.insert(given.end(), each.begin(), each.end());
 		}
+		// Written where the caller said, from where it is if it's in memory, rather than loaded whole
+		if (generator.state->result_pointer && given.size() == 1 && expected.size() == 1) {
+			store_emitted(generator, given[0], expected[0], generator.state->result_pointer);
+			::hmir::HemeraReturnOp::create(generator.builder, generator.loc, mlir::ValueRange{});
+			return;
+		}
 		std::vector<mlir::Value> values;
 		// A static array that's somewhere returns as a view of it, not of a copy on this stack
 		for (size_t i = 0; i < given.size() && i < expected.size(); ++i) {
@@ -6721,11 +6932,17 @@ namespace hemera {
 			return;
 		}
 		const bool with_context = takes_context(generator, type, declaration);
-		const unsigned first = with_context ? 1 : 0;
-		state.context = with_context ? static_cast<mlir::Value>(entry->getArgument(0)) : mlir::Value();
-		// Parameters and named results in slots
+		const bool through_pointer = result_through_pointer(type);
+		const unsigned first = (with_context ? 1 : 0) + (through_pointer ? 1 : 0);
+		state.result_pointer = through_pointer ? static_cast<mlir::Value>(entry->getArgument(0)) : mlir::Value();
+		state.context = with_context ? static_cast<mlir::Value>(entry->getArgument(through_pointer ? 1 : 0)) : mlir::Value();
+		// Parameters and named results in slots; one too large for registers is the caller's copy already
 		for (size_t i = 0; i < state.checked->parameters.size() && i < type->input.size(); ++i) {
 			mlir::Value argument = entry->getArgument(static_cast<unsigned>(i) + first);
+			if (parameter_by_pointer(type, type->input[i])) {
+				state.slots[state.checked->parameters[i]] = argument;
+				continue;
+			}
 			mlir::Value slot = make_raw_slot(generator, argument.getType(), std::max<size_t>(type->input[i].type->alignment, 1));
 			store(generator, argument, slot);
 			state.slots[state.checked->parameters[i]] = slot;

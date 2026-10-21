@@ -3,7 +3,9 @@
 
 ## Our Convention
 Passes an implicit context pointer on every call.
-The callee pops its own arguments.
+On x86-64 the caller pops the stack parameters, as in System V; a convention where the callee pops its own, which the
+example below shows, isn't done yet.
+Values too large for registers go through pointers (see [Large Values](#large-values)).
 Every function keeps a base pointer, so the chain of saved base pointers always links every frame to its caller's
 (`morestack` and resuming fibers both rely on it).
 
@@ -57,8 +59,20 @@ With the stack growing downwards, a stack frame is formatted like this:
 | (Next Stack Frame)                                     | Outgoing arguments go here                     |
                   (lower addresses \/)
 
-Frames never move once they are created, including on fibers, so return values that don't fit in registers are
-written through plain pointers that the caller passes along with the stack parameters.
+#### Large Values
+
+A result or parameter larger than 16 bytes, more than two registers hold, goes through memory. Frames never move once
+they are created, including on fibers, so it's through plain pointers:
+
+* **Results.** The caller passes a pointer to room for them as the first argument, before the context, and the callee
+  writes its results there and returns nothing. Several results count together: if they come to more than 16 bytes,
+  they're written as a struct of them, in order.
+* **Parameters.** The caller makes a copy in its own frame and passes a pointer to it, and the callee uses that copy as
+  its parameter, so nothing it does to it changes the caller's value.
+
+That's Hemera's own convention. A function with a `#calling_convention`, like `.c`, follows that convention instead,
+and `#foreign` functions only take and give values that fit a register so far
+(see [directives.md](directives.md#foreign-library-and-link_name)).
 
 #### Concrete Example
 
@@ -82,6 +96,10 @@ bar :: fn(d: LargeStruct) -> BigStruct { // 0xBABE
 ```
 
 This example assumes x86-64, with `LargeStruct` being 32 bytes and `BigStruct` being 48 bytes, so neither fit in registers.
+It shows the frames as a convention where the callee pops its arguments would lay them out, which isn't done yet: today
+the pointer to `c` is bar's first argument, in a register, `d` is passed as a pointer to foo's copy of `a`, and bar
+returns with a plain `ret` (see [Large Values](#large-values)). What it shows about base pointers, frame bottoms and
+resuming is the same either way.
 `main` is the fiber's entry function, and its stack pointer is `0x2000` when it calls `foo`.
 The context pointer is passed in a register, so it only shows up in a frame if it gets spilled.
 Addresses like `0xAC0A` stand for "somewhere inside that function, just after the call instruction".
@@ -230,7 +248,7 @@ whatever handles faults, like a kernel's handler for invalid instructions.
     push    rbp                  ; a minimal frame, so this function has its own link in the base pointer chain
     mov     rbp, rsp
     mov     r10d, FRAME          ; the frame size, including the outgoing argument area
-    mov     r11d, PARAM_BYTES    ; this function's stack parameters and return value pointers
+    mov     r11d, PARAM_BYTES    ; the size of this function's stack parameters
     lea     rax, [rip + .body]
     call    morestack            ; runs .body on a new segment, returns once it has returned
     pop     rbp
