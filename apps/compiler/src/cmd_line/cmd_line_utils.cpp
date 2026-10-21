@@ -414,6 +414,9 @@ namespace hemera {
 				output.debug_info = true;
 				debug_info_seen = true;
 				break;
+			case hemera::arg_parse::VALGRIND_SECRETS:
+				output.valgrind_secrets = true;
+				break;
 			case hemera::arg_parse::GENERATE_ALL:
 				output.generate_all = true;
 				break;
@@ -1098,6 +1101,7 @@ namespace hemera {
 				break;
 			case hemera::arg_parse::DEBUG_INFO:
 			case hemera::arg_parse::GENERATE_ALL:
+			case hemera::arg_parse::VALGRIND_SECRETS:
 			case hemera::arg_parse::NO_RED_ZONE:
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 			case hemera::arg_parse::ALLOW_RUN:

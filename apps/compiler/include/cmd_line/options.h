@@ -507,6 +507,12 @@ namespace hemera {
         /// </summary>
         bool allow_run = false;
         /// <summary>
+        /// --valgrind-secrets: compiler.secret tells Valgrind's Memcheck its value is undefined, and
+        /// compiler.declassify that it's defined again, so Memcheck reports any branch or address that
+        /// depends on a secret (docs/memory.md, Checking the Machine Code).
+        /// </summary>
+        bool valgrind_secrets = false;
+        /// <summary>
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;

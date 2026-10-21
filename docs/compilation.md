@@ -219,6 +219,12 @@ functions are only generated for the type arguments something gives them. The co
 imports all of `std` this way, with each generic in `base` and `std` instantiated, for Windows, Linux and a target with
 no operating system, so each one's `#if` code is generated too.
 
+## Checking Secrets
+
+`--valgrind-secrets` has `compiler.secret` and `compiler.declassify` tell Valgrind's Memcheck which values are
+secrets, so running the program under it reports any branch or memory address that depends on one (see
+[memory.md](memory.md#checking-the-machine-code)). It's for x86-64, and changes nothing outside Valgrind.
+
 ## Debug Info
 
 `--debug` (`BackendOptions.debug_info` in a build package) gives the program debug info, so debuggers and stack traces

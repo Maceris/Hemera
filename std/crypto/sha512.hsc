@@ -137,10 +137,14 @@ sha512_update_secret #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretB
 sha512_finish_secret #constant_time :: fn(hasher: ptr[mut Sha512]) -> SecretByte[64] {
     bits := hasher.total * 8
     sha512_byte(hasher, 0x80)
+    // Zeros up to the 16 bytes the length takes at the end of a block, a new one if they don't fit
     loop {
         sha512_byte(hasher, 0)
     }
-    while hasher.buffered != 120
+    while hasher.buffered != 112
+    for i in 0..<8 {
+        sha512_byte(hasher, 0)
+    }
     for i in 0..<8 {
         sha512_byte(hasher, cast[u8](bits >> (56 - 8 * cast[u64](i))))
     }

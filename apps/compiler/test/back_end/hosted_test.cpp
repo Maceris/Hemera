@@ -52,7 +52,7 @@ struct HostedOutput {
  * if everything it checks worked, or the number of the first check that failed.
  */
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
-	std::string_view arguments = "", bool debug_info = false, bool generate_all = false)
+	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false)
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -75,6 +75,7 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.stack_check = stack_check;
 	options.debug_info = debug_info;
 	options.generate_all = generate_all;
+	options.valgrind_secrets = valgrind_secrets;
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
 	result.executable = executable;
@@ -205,6 +206,21 @@ TEST(Hosted, Curves)
 TEST(Hosted, PasswordHashes)
 {
 	run_hosted("argon2", hemera::TargetStackCheck::Off);
+}
+
+/*
+ * std/crypto's constant-time functions built with --valgrind-secrets, whose requests to Valgrind do
+ * nothing outside it; linux_tests.py runs them under Memcheck.
+ */
+TEST(Hosted, MarksSecretsForValgrind)
+{
+	run_hosted("ctgrind", hemera::TargetStackCheck::Off, 42, "", false, false, true);
+}
+
+// std/crypto against Project Wycheproof's vectors: X25519, Ed25519, both AEADs, HMAC and HKDF.
+TEST(Hosted, Wycheproof)
+{
+	run_hosted("wycheproof", hemera::TargetStackCheck::Off);
 }
 
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).

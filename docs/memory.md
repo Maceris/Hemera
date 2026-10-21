@@ -384,6 +384,28 @@ larger #constant_time :: fn(a: Word, b: Word) -> Word {
 The compiler checks the source; LLVM has no way to promise what the machine code does. `select` keeps its own
 masks from becoming branches, but other code is only as constant time as LLVM leaves it.
 
+## Checking the Machine Code
+
+What the program really does can be checked by running it under Valgrind's Memcheck, the way ctgrind does. Built
+with `--valgrind-secrets` for x86-64, `compiler.secret` tells Memcheck its value is undefined, and
+`compiler.declassify` that it's defined again. Memcheck follows undefined values through every instruction and
+reports a conditional jump or a memory address that depends on one, so anything that depends on a secret, short of
+a declassification, is an error:
+
+```
+hemera --os=linux --valgrind-secrets --output=check program
+valgrind -q --error-exitcode=99 ./check
+```
+
+A test program marks what's secret with `compiler.secret`, like `key := compiler.secret(cast[Key](bytes))`, and
+calls what it's checking. Outside Valgrind, or built without the flag, nothing changes: Valgrind's requests are
+instructions that come to nothing. The compiler's tests run `std/crypto`'s constant-time functions this way on Linux, beside a program that leaks
+a secret through a `rawptr`, which Memcheck has to catch.
+
+It checks the paths the test takes, with the values it gives, not every one. And Memcheck doesn't report a
+conditional move on a secret, which passes the secret on rather than branching, or an instruction whose time
+depends on its operands, like a division.
+
 # Owned Types
 
 Some values are a resource as well as data: a file to close, memory to give back, a count to drop. A struct marked

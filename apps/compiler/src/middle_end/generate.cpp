@@ -523,13 +523,53 @@ namespace hemera {
 		return LLVM::LoadOp::create(generator.builder, generator.loc, llvm_type(generator, type), address);
 	}
 
-	static void store(Generator& generator, mlir::Value value, mlir::Value address) {
-		LLVM::StoreOp::create(generator.builder, generator.loc, value, address);
-	}
-
 	// Values bigger than this are zeroed with memset and copied with memmove, which LLVM handles far better
 	// than loading and storing a large aggregate whole.
 	constexpr size_t LARGEST_WHOLE_STORE = 64;
+
+	/*
+	 * The bytes an array or packed struct of integers takes, as Hemera lays them out: no padding
+	 * anywhere. 0 for anything else, which isn't worked out here.
+	 */
+	static uint64_t aggregate_size(mlir::Type type) {
+		if (auto integer = mlir::dyn_cast<mlir::IntegerType>(type)) {
+			return (integer.getWidth() + 7) / 8;
+		}
+		if (auto array = mlir::dyn_cast<LLVM::LLVMArrayType>(type)) {
+			return array.getNumElements() * aggregate_size(array.getElementType());
+		}
+		if (auto structure = mlir::dyn_cast<LLVM::LLVMStructType>(type); structure && structure.isPacked()) {
+			uint64_t total = 0;
+			for (mlir::Type field : structure.getBody()) {
+				const uint64_t size = aggregate_size(field);
+				if (size == 0) {
+					return 0;
+				}
+				total += size;
+			}
+			return total;
+		}
+		return 0;
+	}
+
+	/*
+	 * A large zero, like an empty struct literal's, is set with memset: stored whole, LLVM splits it
+	 * into a value per byte, which for a big enough one is more than instruction selection can hold.
+	 */
+	static void store(Generator& generator, mlir::Value value, mlir::Value address) {
+		if (auto zero = value.getDefiningOp<LLVM::ZeroOp>(); zero && in_function(generator)) {
+			const uint64_t size = aggregate_size(value.getType());
+			if (size > LARGEST_WHOLE_STORE) {
+				LLVM::MemsetOp::create(generator.builder, generator.loc, address, constant_int(generator, integer_type(generator, 1), 0),
+					constant_int(generator, usize_type(generator), static_cast<int64_t>(size)), false);
+				if (zero->use_empty()) {
+					zero->erase();
+				}
+				return;
+			}
+		}
+		LLVM::StoreOp::create(generator.builder, generator.loc, value, address);
+	}
 
 	// Zero the value of type at address.
 	static void store_zero(Generator& generator, TypeInfo* type, mlir::Value address) {
@@ -3546,6 +3586,31 @@ namespace hemera {
 		return result ? static_cast<mlir::Value>(op.getRes()) : mlir::Value();
 	}
 
+	// Memcheck's requests (valgrind/memcheck.h): ('M' << 24 | 'C' << 16) + 1 and + 2.
+	constexpr int64_t MEMCHECK_MAKE_MEM_UNDEFINED = 0x4d43'0001;
+	constexpr int64_t MEMCHECK_MAKE_MEM_DEFINED = 0x4d43'0002;
+
+	/*
+	 * A Valgrind client request about size bytes at address (valgrind.h, amd64): rax points at the
+	 * request and its five arguments, and four rotations of rdi that come to nothing, then xchg of rbx
+	 * with itself, are what Valgrind looks for. Outside Valgrind, nothing happens.
+	 */
+	static void valgrind_request(Generator& generator, int64_t request, mlir::Value address, size_t size) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::Type i64 = integer_type(generator, 8);
+		mlir::Value arguments = make_raw_slot(generator, LLVM::LLVMArrayType::get(i64, 6), 8);
+		const mlir::Value words[6] = { constant_int(generator, i64, request), LLVM::PtrToIntOp::create(b, l, i64, address),
+			constant_int(generator, i64, static_cast<int64_t>(size)), constant_int(generator, i64, 0), constant_int(generator, i64, 0),
+			constant_int(generator, i64, 0) };
+		for (size_t i = 0; i < 6; ++i) {
+			LLVM::StoreOp::create(b, l, words[i], offset_address(generator, arguments, 8 * i));
+		}
+		assembly(generator, i64, { arguments, constant_int(generator, i64, 0) },
+			"rolq $$3, %rdi; rolq $$13, %rdi; rolq $$61, %rdi; rolq $$51, %rdi; xchgq %rbx, %rbx",
+			"={dx},{ax},0,~{cc},~{memory}");
+	}
+
 	// Two 32-bit halves, like edx:eax, as one 64-bit value.
 	static mlir::Value join_halves(Generator& generator, mlir::Value low, mlir::Value high) {
 		mlir::Type i64 = integer_type(generator, 8);
@@ -4193,6 +4258,20 @@ namespace hemera {
 		}
 		// compiler.declassify and compiler.secret only change what the checker knows
 		if (name == "declassify" || name == "secret") {
+			/*
+			 * With --valgrind-secrets, through memory Memcheck is told is undefined or defined again, so it
+			 * reports what depends on a secret (docs/memory.md, Checking the Machine Code)
+			 */
+			if (generator.options != nullptr && generator.options->valgrind_secrets && !generator.compile_time
+				&& ArchType::x86_64 == generator.options->architecture && in_function(generator) && result_type->size > 0) {
+
+				mlir::Value slot = make_raw_slot(generator, arguments[0].getType(), std::max<size_t>(result_type->alignment, 1));
+				LLVM::StoreOp::create(b, l, arguments[0], slot);
+				valgrind_request(generator, name == "secret" ? MEMCHECK_MAKE_MEM_UNDEFINED : MEMCHECK_MAKE_MEM_DEFINED, slot,
+					result_type->size);
+				result = value(LLVM::LoadOp::create(b, l, arguments[0].getType(), slot), result_type);
+				return true;
+			}
 			result = value(arguments[0], result_type);
 			return true;
 		}

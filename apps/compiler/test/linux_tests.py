@@ -42,6 +42,11 @@ TESTS = [
     ("aead", [], 42),
     ("curves", [], 42),
     ("argon2", [], 42),
+    ("wycheproof", [], 42),
+    # Under Valgrind's Memcheck, which reports anything that depends on a secret (docs/memory.md)
+    ("ctgrind", ["--valgrind-secrets"], 42),
+    # And a secret leaked past the compiler, which it must report: --error-exitcode
+    ("ctgrind_leak", ["--valgrind-secrets"], 99),
     ("processes", [], 42),
     ("output", [], 42),
     ("library", [], 42),
@@ -64,6 +69,10 @@ TESTS = [
 RUN_WITH = {
     "files": ("HEMERA_FILES_TEST='h\u00e9llo'", "alpha 'two words' ''"),
 }
+
+# Tests run under Valgrind's Memcheck, when the Linux machine has it, failing on any error it reports
+UNDER_VALGRIND = {"ctgrind", "ctgrind_leak"}
+VALGRIND = "valgrind -q --error-exitcode=99 --track-origins=yes"
 
 # A test that builds another's scenario, with different arguments
 SCENARIO_OF = {
@@ -115,8 +124,12 @@ def main() -> int:
                 failures += 1
                 continue
             environment, program_arguments = RUN_WITH.get(name, ("", ""))
+            launch = f"timeout 120 ./{name}"
+            if name in UNDER_VALGRIND:
+                launch = (f"if command -v valgrind > /dev/null; then timeout 1200 {VALGRIND} ./{name}; "
+                          f"else echo 'valgrind not installed' >&2; exit {exit_code}; fi")
             ran = run(ssh + [f"chmod +x ~/hemera-tests/{name} && cd ~/hemera-tests && "
-                             f"{environment} timeout 120 ./{name} {program_arguments}"])
+                             f"{environment} {launch} {program_arguments}"])
             problems = []
             if ran.returncode != exit_code:
                 problems.append(f"exited with {ran.returncode}")
@@ -135,7 +148,9 @@ def main() -> int:
                     missing = [part for part in SYMBOLIZED if part not in symbolized.stdout]
                     if missing:
                         problems.append(f"symbolized without {missing}:\n{symbolized.stdout}")
-            if not problems:
+            if not problems and "valgrind not installed" in ran.stderr:
+                print(f"passed: {name}, but not under Valgrind, which isn't installed")
+            elif not problems:
                 print(f"passed: {name}")
             else:
                 print(f"FAILED: {name} {', '.join(problems)}\n{ran.stdout}{ran.stderr}")

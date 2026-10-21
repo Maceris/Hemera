@@ -234,53 +234,80 @@ main :: fn() -> int {
     if !hex(streamed(&digest), "4e4c294b331f7a2099a379bec34b9f9fc03dc46ab465d998f4d683da53487e6d") {
         return 25
     }
-    if !hex(three(&wide, &large, 0, 32), "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262") {
+    if !hex(crypto.sha256(pattern(56, &buffer)), "da2ae4d6b36748f2a318f23e7ab1dfdf45acdc9d049bd80e59de82a60895f562") {
         return 26
     }
-    if !hex(three(&wide, &large, 1, 32), "2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213") {
+    if !hex(crypto.sha256(pattern(63, &buffer)), "29af2686fd53374a36b0846694cc342177e428d1647515f078784d69cdb9e488") {
         return 27
     }
-    if !hex(three(&wide, &large, 64, 32), "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98") {
+    if !hex(crypto.sha512(pattern(112, &buffer)), "c5fbd731d19d2ae1180f001be72c2c1aaba1d7b094b3748880e24593b8e117a750e11c1bd867cc2f96dace8c8b74abd2d5c4f236be444e77d30d1916174070b9") {
         return 28
     }
-    if !hex(three(&wide, &large, 65, 32), "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee") {
+    if !hex(crypto.sha512(pattern(115, &buffer)), "e528abd6c315eade09a981e4861f6148c9dd4f2fce0ea54cd3e9796f17033a3751fe9a223aa23cde0e051a10c2bc27c0298be97cb87c7110667a115b6d30657c") {
         return 29
     }
-    if !hex(three(&wide, &large, 1023, 32), "10108970eeda3eb932baac1428c7a2163b0e924c9a9e25b35bba72b28f70bd11") {
+    if !hex(crypto.sha512(pattern(119, &buffer)), "43e497279c2ce805903a33b54b746ea92d607f7c4807986c849823b81097a9099b5896ac7cc66df3a93edc8a91b6f3971d6c7f5688daf635737760bd080e27b3") {
         return 30
     }
-    if !hex(three(&wide, &large, 1024, 32), "42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7") {
+    if !hex(crypto.sha512(pattern(120, &buffer)), "9636708964c5ff6600510319e07bf3fcfcb1f4058fec278efb677964ba1e140c1632505452f802e99bcf09da3d456dc3868d149a0788a730e49d239ce7415145") {
         return 31
     }
-    if !hex(three(&wide, &large, 1025, 32), "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444") {
+    if !hex(crypto.sha512(pattern(127, &buffer)), "eab89674feaa34e27aebeeff3c0a4d70070bb872d5e9f186cf1dbbdee517b6e35724d629ff025a5b07185e911ada7e3c8acf830aa0e4f71777bd2d44f504f7f0") {
         return 32
     }
-    if !hex(three(&wide, &large, 2048, 32), "e776b6028c7cd22a4d0ba182a8bf62205d2ef576467e838ed6f2529b85fba24a") {
+    if !hex(crypto.sha512(pattern(128, &buffer)), "1dffd5e3adb71d45d2245939665521ae001a317a03720a45732ba1900ca3b8351fc5c9b4ca513eba6f80bc7b1d1fdad4abd13491cb824d61b08d8c0e1561b3f7") {
         return 33
     }
-    if !hex(three(&wide, &large, 2049, 32), "5f4d72f40d7a5f82b15ca2b2e44b1de3c2ef86c426c95c1af0b6879522563030") {
+    if !hex(crypto.sha512(pattern(240, &buffer)), "6c48466c9f6c07e4ab762c696b7eeb35cfe236fca73683e5fab873ac3489b4d2eb3d7afcce7e8165dbbf37aded3b5b0c889c0b7e0f1790a8330d8677429d91a5") {
         return 34
     }
-    if !hex(three(&wide, &large, 3072, 32), "b98cb0ff3623be03326b373de6b9095218513e64f1ee2edd2525c7ad1e5cffd2") {
+    if !hex(three(&wide, &large, 0, 32), "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262") {
         return 35
     }
-    if !hex(three(&wide, &large, 5000, 32), "ee78d92070de3df1c57c37002abf0a6b1a6589acdeef4d8ffac7cf3d9e8f2836") {
+    if !hex(three(&wide, &large, 1, 32), "2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213") {
         return 36
     }
-    if !hex(three(&wide, &large, 3072, 131), "b98cb0ff3623be03326b373de6b9095218513e64f1ee2edd2525c7ad1e5cffd29a3f6b0b978d6608335c09dc94ccf682f9951cdfc501bfe47b9c9189a6fc7b404d120258506341a6d802857322fbd20d3e5dae05b95c88793fa83db1cb08e7d8008d1599b6209d78336e24839724c191b2a52a80448306e0daa84a3fdb566661a37e11") {
+    if !hex(three(&wide, &large, 64, 32), "4eed7141ea4a5cd4b788606bd23f46e212af9cacebacdc7d1f4c6dc7f2511b98") {
         return 37
     }
-    if !hex(three(&wide, &large, 100, 64), "8e2eb1bba3040b8f611a1240a0e111c74b45cfc9caed10b95f6372db1c40b8b5d9c178672a4afac6663ac3e7e72a557b9f634f7a4321268e61a2afb5bdf2606e") {
+    if !hex(three(&wide, &large, 65, 32), "de1e5fa0be70df6d2be8fffd0e99ceaa8eb6e8c93a63f2d8d1c30ecb6b263dee") {
         return 38
     }
-    if !hex(keyed_three(&wide, &large, 5000, 32), "3742909929a310dec551d9163c279136d6506f289f75c283c5df101108cd09e5") {
+    if !hex(three(&wide, &large, 1023, 32), "10108970eeda3eb932baac1428c7a2163b0e924c9a9e25b35bba72b28f70bd11") {
         return 39
     }
-    if !hex(keyed_three(&wide, &large, 0, 40), "73492b19995d71cdb1e9d74decc09809eb732f1b00bc95c27cb15f9dd4d6478f097a9b7858239644") {
+    if !hex(three(&wide, &large, 1024, 32), "42214739f095a406f3fc83deb889744ac00df831c10daa55189b5d121c855af7") {
         return 40
     }
-    if !hex(streamed_three(&wide, &large), "ee78d92070de3df1c57c37002abf0a6b1a6589acdeef4d8ffac7cf3d9e8f2836") {
+    if !hex(three(&wide, &large, 1025, 32), "d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444") {
         return 41
+    }
+    if !hex(three(&wide, &large, 2048, 32), "e776b6028c7cd22a4d0ba182a8bf62205d2ef576467e838ed6f2529b85fba24a") {
+        return 43
+    }
+    if !hex(three(&wide, &large, 2049, 32), "5f4d72f40d7a5f82b15ca2b2e44b1de3c2ef86c426c95c1af0b6879522563030") {
+        return 44
+    }
+    if !hex(three(&wide, &large, 3072, 32), "b98cb0ff3623be03326b373de6b9095218513e64f1ee2edd2525c7ad1e5cffd2") {
+        return 45
+    }
+    if !hex(three(&wide, &large, 5000, 32), "ee78d92070de3df1c57c37002abf0a6b1a6589acdeef4d8ffac7cf3d9e8f2836") {
+        return 46
+    }
+    if !hex(three(&wide, &large, 3072, 131), "b98cb0ff3623be03326b373de6b9095218513e64f1ee2edd2525c7ad1e5cffd29a3f6b0b978d6608335c09dc94ccf682f9951cdfc501bfe47b9c9189a6fc7b404d120258506341a6d802857322fbd20d3e5dae05b95c88793fa83db1cb08e7d8008d1599b6209d78336e24839724c191b2a52a80448306e0daa84a3fdb566661a37e11") {
+        return 47
+    }
+    if !hex(three(&wide, &large, 100, 64), "8e2eb1bba3040b8f611a1240a0e111c74b45cfc9caed10b95f6372db1c40b8b5d9c178672a4afac6663ac3e7e72a557b9f634f7a4321268e61a2afb5bdf2606e") {
+        return 48
+    }
+    if !hex(keyed_three(&wide, &large, 5000, 32), "3742909929a310dec551d9163c279136d6506f289f75c283c5df101108cd09e5") {
+        return 49
+    }
+    if !hex(keyed_three(&wide, &large, 0, 40), "73492b19995d71cdb1e9d74decc09809eb732f1b00bc95c27cb15f9dd4d6478f097a9b7858239644") {
+        return 50
+    }
+    if !hex(streamed_three(&wide, &large), "ee78d92070de3df1c57c37002abf0a6b1a6589acdeef4d8ffac7cf3d9e8f2836") {
+        return 51
     }
     // equal: the same, one byte off, and a different count
     tag := crypto.hmac_sha256(repeat(0x0b, 20, &key), bytes("Hi There"))
