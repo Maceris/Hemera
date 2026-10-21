@@ -42,10 +42,13 @@ namespace hemera {
 		}
 		if (options->build_extent < BuildExtent::ASSEMBLE) {
 			std::error_code error;
-			llvm::raw_fd_ostream file(std::format("{}.ll", options->output_name), error);
-			if (!error) {
-				lowered->print(file, nullptr);
+			const std::string path = std::format("{}.ll", options->output_name);
+			llvm::raw_fd_ostream file(path, error);
+			if (error) {
+				report_error(ErrorCode::E6000, path, 0, 0, error.message());
+				return false;
 			}
+			lowered->print(file, nullptr);
 			return true;
 		}
 		Backend* backend = alloc.new_object<BackendLLVM>();

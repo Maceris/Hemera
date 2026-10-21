@@ -123,6 +123,40 @@ TEST(Hosted, RunsProgram)
 	run_hosted("hosted", hemera::TargetStackCheck::Off);
 }
 
+// An object file in a folder that isn't there is reported (E6000), rather than written to a stream that never opened.
+TEST(Hosted, ReportsUnwritableOutput)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "hosted");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path missing = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "no_such_folder" / "deeper";
+	std::filesystem::remove_all(missing.parent_path());
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("hosted"));
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.output_name = (missing / "hosted").string();
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0);
+	ASSERT_TRUE(hemera::generate_program(program_info.get(), options, module));
+	llvm::LLVMContext llvm_context;
+	std::unique_ptr<llvm::Module> lowered = hemera::lower_to_llvm(module, llvm_context, options);
+	ASSERT_NE(lowered, nullptr);
+
+	hemera::BackendLLVM backend;
+	ASSERT_TRUE(backend.initialize(options));
+	EXPECT_FALSE(backend.generate_object_file(options, *lowered, std::format("{}.o", options.output_name)));
+	backend.destroy();
+	ASSERT_EQ(hemera::error_count(), 1);
+	EXPECT_EQ(hemera::error_list()->front(), hemera::ErrorCode::E6000);
+	module.erase();
+}
+
 /*
  * Fibers taking turns in a std/fiber pool with one carrier, one of them growing its stack onto segments:
  * on Windows, Hemera's frames chain through rbp like elsewhere (docs/calling_convention.md, Windows x64).

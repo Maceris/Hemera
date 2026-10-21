@@ -7,7 +7,7 @@ also checked for writing exactly that to standard output or error. Exits 0 if ev
     HEMERA_LINUX_HOST=user@address python apps/compiler/test/linux_tests.py
 
 HEMERA_LINUX_KEY is the SSH key to log in with (default ~/.ssh/hemera_linux_vm), HEMERA the
-compiler (default the Debug build), and HEMERA_LINUX_SYSROOT a folder with the Linux machine's
+compiler (default the Release build if there is one, otherwise Debug), and HEMERA_LINUX_SYSROOT a folder with the Linux machine's
 libc.so (a copy of libc.so.6), libm.so and ld-linux-x86-64.so.2, for the tests that link C. The
 programs go in ~/hemera-tests on the Linux machine.
 """
@@ -101,7 +101,8 @@ def main() -> int:
         print("HEMERA_LINUX_HOST isn't set: user@address of a Linux machine to run the tests on")
         return 2
     key = os.environ.get("HEMERA_LINUX_KEY", str(Path.home() / ".ssh" / "hemera_linux_vm"))
-    compiler = os.environ.get("HEMERA", str(COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
+    release = COMPILER_DIR / "bin" / "Release" / "hemera.exe"
+    compiler = os.environ.get("HEMERA", str(release if release.exists() else COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
     sysroot = os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
     ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", host]
     if run(ssh + ["mkdir -p ~/hemera-tests"]).returncode != 0:

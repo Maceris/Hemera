@@ -53,7 +53,10 @@ If using Visual Studio, you can open the Loquat solution and build and run it fr
 Note that since this includes LLVM, Debug builds require a very large amount of time and disk space.
 A full debug build could be tens or even hundreds of GB of disk space and will take hours.
 Around 75 GB would be a reasonable estimate. The exact space requirements will vary by system.
-Release builds are very much recommended, but will still not be small or fast.
+Release builds are very much recommended, but will still not be small or fast. A Debug compiler is also much slower
+at compiling Hemera: most of the time goes in LLVM's code generation, which a Debug LLVM does about ten to twenty times
+slower. Use the Release compiler (`bin/Release/hemera.exe`) to build programs, and Debug for debugging the compiler.
+Both can be built in the same `bin` folder, each with its own outputs.
 
 It's quite likely that you'll need to build a few times to get a full/clean build, 
 as some stages/tools depend on the outputs of others to be used as build tools.

@@ -309,6 +309,11 @@ namespace hemera {
 		std::error_code error_code;
 		llvm::raw_fd_ostream destination(output_name, error_code,
 			llvm::sys::fs::OF_None);
+		// Like a folder that isn't there: reported, rather than writing to a stream that never opened
+		if (error_code) {
+			report_error(ErrorCode::E6000, output_name, 0, 0, error_code.message());
+			return false;
+		}
 		
 		llvm::SourceMgr source_manager;
 		llvm::MCRegisterInfo* mc_register_info = target->createMCRegInfo(*target_triple);

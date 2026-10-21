@@ -2849,6 +2849,19 @@ namespace hemera {
 			result = is_comparison(op) ? typed(BUILTIN_bool) : poisoned();
 			return Progress::DONE;
 		}
+		/*
+		 * An optional compared with what it holds, like error != OsError.NotFound, reads its variants, which
+		 * its instance may not have yet if another thread is still making it
+		 */
+		if (is_comparison(op)) {
+			progress = complete_subject(checker, left_node, left);
+			if (progress == Progress::DONE) {
+				progress = complete_subject(checker, right_node, right);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
 		// Type values compare exactly (docs/types.md, Comparing Type Values)
 		const bool type_operand = ValueKind::TYPE == left.kind || ValueKind::TYPE == right.kind;
 		if (type_operand && (TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op)) {

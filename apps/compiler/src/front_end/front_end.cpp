@@ -510,9 +510,11 @@ namespace hemera {
 		
 		std::error_code EC;
 		llvm::raw_fd_ostream file(file_name, EC);
-		if (!EC) {
-			mlir_module->print(file);
+		if (EC) {
+			report_error(ErrorCode::E6000, file_name, 0, 0, EC.message());
+			return;
 		}
+		mlir_module->print(file);
 	}
 
 }
