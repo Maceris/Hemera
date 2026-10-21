@@ -402,9 +402,10 @@ calls what it's checking. Outside Valgrind, or built without the flag, nothing c
 instructions that come to nothing. The compiler's tests run `std/crypto`'s constant-time functions this way on Linux, beside a program that leaks
 a secret through a `rawptr`, which Memcheck has to catch.
 
-It checks the paths the test takes, with the values it gives, not every one. And Memcheck doesn't report a
-conditional move on a secret, which passes the secret on rather than branching, or an instruction whose time
-depends on its operands, like a division.
+It checks the paths the test takes, with the values it gives, not every one, and only on the CPU Valgrind
+presents, which leaves out some extensions, like x86-64's SHA instructions, so code that uses them when it can
+takes its other path there. And Memcheck doesn't report a conditional move on a secret, which passes the secret
+on rather than branching, or an instruction whose time depends on its operands, like a division.
 
 # Owned Types
 

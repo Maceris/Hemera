@@ -2,7 +2,8 @@
  * std/crypto's constant-time functions with their secrets marked for Valgrind's Memcheck: built with
  * --valgrind-secrets, compiler.secret tells Memcheck the keys, passwords and messages here are undefined,
  * so under valgrind --error-exitcode it reports any branch or address in the machine code that depends
- * on them, short of compiler.declassify (docs/memory.md, Checking the Machine Code). Outside Valgrind, or
+ * on them, short of compiler.declassify (docs/memory.md, Checking the Machine Code). Each hardware and
+ * vector path is taken, as the CPU allows, and the software one beside it. Outside Valgrind, or
  * without the flag, it just runs. main returns 42 if everything gave an answer.
  */
 package ctgrind_test
@@ -108,6 +109,39 @@ curves #constant_time :: fn(into: ptr[mut Sink], x_key: ptr[crypto.X25519SecretK
     }
 }
 
+/*
+ * The paths that only longer inputs, or a hasher told so, take: BLAKE3's whole chunks four and eight at a time,
+ * SHA-256 with and without the SHA extensions, and ChaCha20 four and eight blocks at a time, over 20 KB.
+ */
+long_paths #constant_time :: fn(into: ptr[mut Sink], key: ptr[crypto.Key256], long: crypto.SecretByte[]) {
+    key_bytes : crypto.SecretByte[32]
+    for i in 0..<32 {
+        key_bytes[i] = cast[crypto.SecretByte](key[i])
+    }
+    digest : crypto.SecretByte[32]
+    for wide in bool.[false, true] {
+        blake3 := crypto.blake3_start_keyed(key_bytes) or_return void
+        blake3.wide = wide && crypto.vectors_wide()
+        crypto.blake3_update_secret(&blake3, long)
+        crypto.blake3_finish_secret(&blake3, digest)
+        sink(into, digest)
+        sha256 := crypto.sha256_start()
+        sha256.hardware = wide && crypto.sha_hardware()
+        crypto.sha256_update_secret(&sha256, long)
+        sink(into, crypto.sha256_finish_secret(&sha256))
+    }
+    ciphertext, error := runtime.new_array(u8, long.count)
+    if error != null {
+        return void
+    }
+    nonce := cast[crypto.Nonce96](u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    tag : crypto.Tag128
+    for wide in bool.[false, true] {
+        _ = crypto.chacha20_poly1305_seal_with(key, &nonce, long, u8.[7], ciphertext, &tag, wide && crypto.vectors_wide())
+        into.total += cast[u64](tag[0])
+    }
+}
+
 passwords #constant_time :: fn(into: ptr[mut Sink], password: crypto.SecretByte[]) {
     parameters := crypto.Argon2Parameters.{memory_kib = 64, passes = 2, lanes = 2}
     blocks, error := runtime.new_array(crypto.Argon2Block, crypto.argon2_blocks_needed(parameters))
@@ -130,6 +164,15 @@ main :: fn() -> int {
     ed_key := compiler.secret(cast[crypto.Ed25519SecretKey](pattern32(4)))
     curves(&into, &x_key, &ed_key)
     passwords(&into, message[0..<20])
+    // Each byte marked secret, not the view of them
+    long, error := runtime.new_array(crypto.SecretByte, 20000)
+    if error != null {
+        return 1
+    }
+    for byte, i in long {
+        long[i] = compiler.secret(cast[crypto.SecretByte](i * 31 + 7))
+    }
+    long_paths(&into, &key, long)
     if into.total == 0 {
         return 1
     }

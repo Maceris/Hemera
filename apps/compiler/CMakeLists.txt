@@ -99,6 +99,7 @@ ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   SET(HEMERA_WARNING_OPTIONS "${HEMERA_WARNING_OPTIONS};/wd4711") # It's not a problem if we don't inline
   
 ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Release>:;/Zi>")  # debug info in a PDB beside a Release build, so a crash can be traced
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:>:;/MT>")        # link with multithreaded, static version of the C Runtime Library
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Release>:;/MT>") # link with multithreaded, static version of the C Runtime Library
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Debug>:;/MTd>")  # link with debug, multithreaded, static version of the C Runtime Library

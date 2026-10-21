@@ -232,3 +232,20 @@ aes_key_assist : fn(key: v128, round_constant: u8) -> v128 : ---
  * picks a's half (0 low, 1 high), and bit 4 b's.
  */
 carryless_multiply : fn(a: v128, b: v128, selector: u8) -> v128 : ---
+
+/*
+ * SHA-256 (the SHA extensions), on 32-bit lanes. Not in every x86-64 CPU, so a function using them is marked
+ * #target_features("sha") and only called once cpuid says the CPU has them (leaf 7: ebx bit 29). They hold the
+ * state as A, B, E and F in one vector and C, D, G and H in another, highest lane first.
+ */
+
+/*
+ * Two rounds (sha256rnds2): from cdgh and abef, with the next two rounds' message words, each plus its round
+ * constant, in lanes 0 and 1 of message. Gives the new A, B, E and F, and the old A, B, E and F are the new
+ * C, D, G and H.
+ */
+sha256_rounds2 : fn(cdgh: vector[u32, 4], abef: vector[u32, 4], message: vector[u32, 4]) -> vector[u32, 4] : ---
+// The first half of working out the next four message words from the last eight (sha256msg1).
+sha256_message1 : fn(earlier: vector[u32, 4], later: vector[u32, 4]) -> vector[u32, 4] : ---
+// The second half (sha256msg2), given what sha256_message1 gave plus words 7 back, and the last four words.
+sha256_message2 : fn(partial: vector[u32, 4], last: vector[u32, 4]) -> vector[u32, 4] : ---

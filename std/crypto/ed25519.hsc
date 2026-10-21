@@ -15,6 +15,9 @@ import intrinsics from "base"
  *
  * Signing works in constant time. Verifying only uses what's public, so it needn't, but it uses the same
  * arithmetic, and refuses a public key or signature that isn't written the one way it should be.
+ *
+ * Multiples of the base point come from a table of them, worked out while compiling (ED_BASE_TABLE), each
+ * read by looking at every entry it could be.
  */
 
 // An Ed25519 secret key, 32 random bytes, which RFC 8032 calls the seed.
@@ -61,6 +64,18 @@ ed_add #constant_time :: fn(p: EdPoint, q: EdPoint) -> EdPoint {
     return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
 }
 
+// 2p (RFC 8032, 5.1.4's doubling): four multiplications and four squarings, rather than an addition's nine.
+ed_double #constant_time :: fn(p: EdPoint) -> EdPoint {
+    a := fe_square(p.x)
+    b := fe_square(p.y)
+    c := fe_add(fe_square(p.z), fe_square(p.z))
+    h := fe_add(a, b)
+    e := fe_subtract(h, fe_square(fe_add(p.x, p.y)))
+    g := fe_subtract(a, b)
+    f := fe_add(c, g)
+    return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
+}
+
 ed_negate #constant_time :: fn(p: EdPoint) -> EdPoint {
     return EdPoint.{x = fe_negate(p.x), y = p.y, z = p.z, t = fe_negate(p.t)}
 }
@@ -74,9 +89,129 @@ ed_select #constant_time :: fn(condition: SecretBool, chosen: EdPoint, otherwise
 ed_multiply #constant_time :: fn(scalar: SecretByte[32], point: EdPoint) -> EdPoint {
     q := ed_identity()
     for i in 0..<256 #reverse {
-        q = ed_add(q, q)
+        q = ed_double(q)
         bit := cast[SecretBool](((cast[u8](scalar[i / 8]) >> cast[u8](i % 8)) & 1) == 1)
         q = ed_select(bit, ed_add(q, point), q)
+    }
+    return q
+}
+
+/*
+ * A point as y + x, y - x and 2d * x * y, with z = 1: what adding it to another needs, so a table of them
+ * costs one multiplication fewer an addition (ref10's "Niels" form).
+ */
+EdNiels :: struct {
+    sum: Fe,
+    difference: Fe,
+    product: Fe,
+}
+
+// p + q, q in Niels form: seven multiplications.
+ed_add_niels #constant_time :: fn(p: EdPoint, q: EdNiels) -> EdPoint {
+    a := fe_multiply(fe_subtract(p.y, p.x), q.difference)
+    b := fe_multiply(fe_add(p.y, p.x), q.sum)
+    c := fe_multiply(p.t, q.product)
+    d := fe_add(p.z, p.z)
+    e := fe_subtract(b, a)
+    f := fe_subtract(d, c)
+    g := fe_add(d, c)
+    h := fe_add(b, a)
+    return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
+}
+
+/*
+ * The base point's table (ref10's): for each j from 0 to 31 the multiples 1 to 8 of 256^j * B, in Niels form,
+ * as limbs, worked out while compiling. 32 * 8 entries of 3 values of 5 limbs.
+ */
+ED_TABLE_SIZE :: 3840
+ED_BASE_TABLE :: #run ed_base_table()
+
+ed_base_table :: fn() -> u64[3840] {
+    table : u64[3840]
+    position := ed_base()
+    for j in 0..<32 {
+        multiple := position
+        for k in 0..<8 {
+            inverse := fe_invert(multiple.z)
+            x := fe_multiply(multiple.x, inverse)
+            y := fe_multiply(multiple.y, inverse)
+            values := Fe.[fe_add(y, x), fe_subtract(y, x), fe_multiply(fe_multiply(x, y), fe_of(ED_D2))]
+            for v in 0..<3 {
+                limbs := fe_carry(values[v])
+                for l in 0..<5 {
+                    table[((j * 8 + k) * 3 + v) * 5 + l] = compiler.declassify(limbs[l])
+                }
+            }
+            multiple = ed_add(multiple, position)
+        }
+        // 256 times: eight doublings
+        for d in 0..<8 {
+            position = ed_double(position)
+        }
+    }
+    return table
+}
+
+ed_table_value #constant_time :: fn(entry: int, v: int) -> Fe {
+    f : Fe
+    for l in 0..<5 {
+        f[l] = ED_BASE_TABLE[cast[usize]((entry * 3 + v) * 5 + l) % ED_TABLE_SIZE]
+    }
+    return f
+}
+
+/*
+ * digit * 256^j * B, for a digit from -8 to 8, read from the table without the digit deciding what's read:
+ * every one of position j's entries looked at, the right one kept with a mask, then negated if the digit is.
+ */
+ed_table_select #constant_time :: fn(j: int, digit: SecretWord) -> EdNiels {
+    d := cast[u64](digit)
+    negative := d >> 63
+    // |digit|, without a branch
+    magnitude := (d ~ (cast[u64](0) - negative)) + negative
+    one := fe_of(u64.[1, 0, 0, 0, 0])
+    zero := fe_of(u64.[0, 0, 0, 0, 0])
+    chosen := EdNiels.{sum = one, difference = one, product = zero}
+    for k in 0..<8 {
+        found := cast[SecretBool](magnitude == cast[u64](k + 1))
+        entry := j * 8 + k
+        chosen.sum = fe_select(found, ed_table_value(entry, 0), chosen.sum)
+        chosen.difference = fe_select(found, ed_table_value(entry, 1), chosen.difference)
+        chosen.product = fe_select(found, ed_table_value(entry, 2), chosen.product)
+    }
+    // -P swaps y + x and y - x and negates x * y
+    flip := cast[SecretBool](negative == 1)
+    return EdNiels.{sum = fe_select(flip, chosen.difference, chosen.sum), difference = fe_select(flip, chosen.sum, chosen.difference),
+        product = fe_select(flip, fe_negate(chosen.product), chosen.product)}
+}
+
+/*
+ * scalar times the base point with the table (ref10's ge_scalarmult_base): the scalar as 64 signed digits
+ * from -8 to 8 in base 16, the odd ones' multiples added, times 16, then the even ones'. scalar's top bit is 0,
+ * as a clamped or reduced scalar's is.
+ */
+ed_multiply_base #constant_time :: fn(scalar: SecretByte[32]) -> EdPoint {
+    // Two digits a byte, kept as u64s in two's complement
+    e : EdDigits
+    for i in 0..<32 {
+        byte := cast[u64](scalar[i])
+        e[2 * i] = byte & 15
+        e[2 * i + 1] = (byte >> 4) & 15
+    }
+    carry := compiler.secret(cast[u64](0))
+    for i in 0..<63 {
+        e[i] = e[i] + carry
+        carry = (e[i] + 8) >> 4
+        e[i] = e[i] - (carry << 4)
+    }
+    e[63] = e[63] + carry
+    q := ed_identity()
+    for i in 0..<32 {
+        q = ed_add_niels(q, ed_table_select(i, cast[SecretWord](e[2 * i + 1])))
+    }
+    q = ed_double(ed_double(ed_double(ed_double(q))))
+    for i in 0..<32 {
+        q = ed_add_niels(q, ed_table_select(i, cast[SecretWord](e[2 * i])))
     }
     return q
 }
@@ -133,6 +268,9 @@ ed_decode #constant_time :: fn(bytes: u8[32], point: ptr[mut EdPoint]) -> bool {
     point^ = EdPoint.{x = x, y = y, z = one, t = fe_multiply(x, y)}
     return true
 }
+
+// A scalar's 64 signed digits, each a u64 in two's complement
+EdDigits :: distinct alias u64[64] #secret
 
 // A number mod the group's order, L = 2^252 + 27742317777372353535851937790883648493, in 64-bit limbs.
 Scalar :: distinct alias u64[4] #secret
@@ -251,7 +389,7 @@ ed25519_public_key #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed
     scalar : SecretByte[32]
     prefix : SecretByte[32]
     ed25519_expand(secret_key, &scalar, &prefix)
-    encoded := ed_encode(ed_multiply(scalar, ed_base()))
+    encoded := ed_encode(ed_multiply_base(scalar))
     public_key : Ed25519PublicKey
     for i in 0..<32 {
         public_key[i] = compiler.declassify(cast[u8](encoded[i]))
@@ -284,7 +422,7 @@ ed25519_sign #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], message: u8
     scalar : SecretByte[32]
     prefix : SecretByte[32]
     ed25519_expand(secret_key, &scalar, &prefix)
-    public_encoded := ed_encode(ed_multiply(scalar, ed_base()))
+    public_encoded := ed_encode(ed_multiply_base(scalar))
     public_key : Ed25519PublicKey
     for i in 0..<32 {
         public_key[i] = compiler.declassify(cast[u8](public_encoded[i]))
@@ -295,7 +433,7 @@ ed25519_sign #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], message: u8
     sha512_update_secret(&hasher, prefix)
     sha512_update(&hasher, message)
     r := scalar_reduce(scalar_wide_of(sha512_finish_secret(&hasher)))
-    r_encoded := ed_encode(ed_multiply(scalar_bytes(r), ed_base()))
+    r_encoded := ed_encode(ed_multiply_base(scalar_bytes(r)))
     signature : Ed25519Signature
     for i in 0..<32 {
         signature[i] = compiler.declassify(cast[u8](r_encoded[i]))
@@ -330,7 +468,7 @@ ed25519_verify :: fn(public_key: ptr[Ed25519PublicKey], message: u8[], signature
         return false
     }
     k := ed25519_challenge(signature, public_key, message)
-    check := ed_add(ed_multiply(s_bytes, ed_base()), ed_multiply(scalar_bytes(k), ed_negate(a)))
+    check := ed_add(ed_multiply_base(s_bytes), ed_multiply(scalar_bytes(k), ed_negate(a)))
     encoded := ed_encode(check)
     for i in 0..<32 {
         if compiler.declassify(cast[u8](encoded[i])) != signature[i] {

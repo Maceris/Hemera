@@ -281,7 +281,9 @@ namespace hemera {
 		llvm::MachineFunctionAnalysis machine_function_analysis(*target_machine);
 		llvm::BasicBlockSectionsProfileReaderAnalysis basic_block_sections_profile_reader_analysis(*target_machine);
 
-		llvm::PassBuilder pass_builder;
+		// With the target machine, so the passes cost things as the target does: what's worth inlining or
+		// vectorizing, and whether functions with different #target_features can be inlined into each other
+		llvm::PassBuilder pass_builder(target_machine);
 
 		pass_builder.registerModuleAnalyses(module_analysis_manager);
 		pass_builder.registerCGSCCAnalyses(call_graph_analysis_manager);

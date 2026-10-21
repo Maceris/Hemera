@@ -7,6 +7,7 @@
 package hashes_test
 
 import compiler from "base"
+import runtime from "base"
 import crypto from "std"
 
 bytes :: fn(text: string) -> u8[] {
@@ -129,6 +130,34 @@ streamed_three :: fn(digest: ptr[mut u8[200]], buffer: ptr[mut u8[5000]]) -> u8[
     crypto.blake3_update_secret(&hasher, crypto.as_secret(buffer[1..<1500]))
     crypto.blake3_update(&hasher, buffer[1500..<1500])
     crypto.blake3_update(&hasher, buffer[1500..<5000])
+    crypto.blake3_finish(&hasher, digest[0..<32])
+    return digest[0..<32]
+}
+
+/*
+ * BLAKE3 of count bytes of the pattern, in two parts, the first first bytes long, with whole chunks a batch at a
+ * time: eight wide only if asked and the CPU can, four otherwise.
+ */
+batched_three :: fn(digest: ptr[mut u8[200]], count: usize, keyed: bool, first: usize, eight: bool) -> u8[] {
+    data, error := runtime.new_array(u8, count)
+    if error != null {
+        return digest[0..<0]
+    }
+    for byte, i in data {
+        data[i] = cast[u8](i % 251)
+    }
+    salt : u8[200]
+    hasher := crypto.blake3_start()
+    if keyed {
+        hasher = crypto.blake3_start_keyed(crypto.as_secret(counting(0, 32, &salt))) or_return digest[0..<0]
+    }
+    hasher.wide = eight && crypto.vectors_wide()
+    split := first
+    if split > data.count {
+        split = data.count
+    }
+    crypto.blake3_update(&hasher, data[0..<split])
+    crypto.blake3_update(&hasher, data[split..<data.count])
     crypto.blake3_finish(&hasher, digest[0..<32])
     return digest[0..<32]
 }
@@ -308,6 +337,48 @@ main :: fn() -> int {
     }
     if !hex(streamed_three(&wide, &large), "ee78d92070de3df1c57c37002abf0a6b1a6589acdeef4d8ffac7cf3d9e8f2836") {
         return 51
+    }
+    if !hex(batched_three(&wide, 4097, false, 0, false), "9b4052b38f1c5fc8b1f9ff7ac7b27cd242487b3d890d15c96a1c25b8aa0fb995") {
+        return 52
+    }
+    if !hex(batched_three(&wide, 4097, false, 0, true), "9b4052b38f1c5fc8b1f9ff7ac7b27cd242487b3d890d15c96a1c25b8aa0fb995") {
+        return 53
+    }
+    if !hex(batched_three(&wide, 8193, false, 0, false), "bab6c09cb8ce8cf459261398d2e7aef35700bf488116ceb94a36d0f5f1b7bc3b") {
+        return 54
+    }
+    if !hex(batched_three(&wide, 8193, false, 0, true), "bab6c09cb8ce8cf459261398d2e7aef35700bf488116ceb94a36d0f5f1b7bc3b") {
+        return 55
+    }
+    if !hex(batched_three(&wide, 9216, false, 0, false), "e5ef79624045ef3e98fd23342e61d7eb965997b32928f9de591cd0d465a223fb") {
+        return 56
+    }
+    if !hex(batched_three(&wide, 9216, false, 0, true), "e5ef79624045ef3e98fd23342e61d7eb965997b32928f9de591cd0d465a223fb") {
+        return 57
+    }
+    if !hex(batched_three(&wide, 17409, false, 100, false), "50bc54238ac9271c9f3471f5206a04eb25d2e26b3214ed971cc55230b0d22864") {
+        return 58
+    }
+    if !hex(batched_three(&wide, 17409, false, 100, true), "50bc54238ac9271c9f3471f5206a04eb25d2e26b3214ed971cc55230b0d22864") {
+        return 59
+    }
+    if !hex(batched_three(&wide, 65537, false, 1024, false), "7c99f9840a73dfcb6e5bfe4ff6d1558acab7e015640790c26411818bdbe17eca") {
+        return 60
+    }
+    if !hex(batched_three(&wide, 65537, false, 1024, true), "7c99f9840a73dfcb6e5bfe4ff6d1558acab7e015640790c26411818bdbe17eca") {
+        return 61
+    }
+    if !hex(batched_three(&wide, 20000, true, 0, false), "07ffcc30936202a02092efceaa79bb53bbf99298ad4915f5a218f754f5d0bd12") {
+        return 62
+    }
+    if !hex(batched_three(&wide, 20000, true, 0, true), "07ffcc30936202a02092efceaa79bb53bbf99298ad4915f5a218f754f5d0bd12") {
+        return 63
+    }
+    if !hex(batched_three(&wide, 20000, true, 333, false), "07ffcc30936202a02092efceaa79bb53bbf99298ad4915f5a218f754f5d0bd12") {
+        return 64
+    }
+    if !hex(batched_three(&wide, 20000, true, 333, true), "07ffcc30936202a02092efceaa79bb53bbf99298ad4915f5a218f754f5d0bd12") {
+        return 65
     }
     // equal: the same, one byte off, and a different count
     tag := crypto.hmac_sha256(repeat(0x0b, 20, &key), bytes("Hi There"))

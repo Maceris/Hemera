@@ -45,8 +45,8 @@ hmac_sha256_start #constant_time :: fn(key: SecretByte[]) -> HmacSha256 {
         hmac.inner.state.block[i] = padded[i] ~ 0x36
         hmac.outer.state.block[i] = padded[i] ~ 0x5c
     }
-    sha256_compress(&hmac.inner.state)
-    sha256_compress(&hmac.outer.state)
+    sha256_compress(&hmac.inner.state, hmac.inner.hardware)
+    sha256_compress(&hmac.outer.state, hmac.outer.hardware)
     hmac.inner.total = SHA256_BLOCK
     hmac.outer.total = SHA256_BLOCK
     return hmac

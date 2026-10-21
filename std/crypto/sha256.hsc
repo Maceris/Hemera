@@ -15,6 +15,9 @@ import intrinsics from "base"
  *
  * What's hashed can be a secret, given with sha256_update_secret, and the digest kept one with
  * sha256_finish_secret, as HMAC and HKDF do. How many bytes there are is never a secret.
+ *
+ * Blocks are compressed with the SHA extensions when the CPU has them, as the hasher's hardware says; a kernel
+ * without vector state sets it to false after starting.
  */
 
 SHA256_SIZE :: 32
@@ -26,6 +29,9 @@ Sha256State :: struct #secret {
     block: u8[64],
 }
 
+// Four message words at a time, for the SHA extensions
+Sha256Lanes :: distinct alias vector[u32, 4][4] #secret
+
 // Sha256State's schedule, worked out from a block.
 Sha256Schedule :: distinct alias u32[64] #secret
 
@@ -34,6 +40,9 @@ Sha256 :: struct {
     // How much of block is filled, and how many bytes there have been in all
     buffered: usize,
     total: u64,
+    // Whether blocks are compressed with the SHA extensions, as sha_hardware() says when it starts; a kernel
+    // without vector state sets it to false
+    hardware: bool,
 }
 
 SHA256_ROUND :: u32.[
@@ -50,15 +59,25 @@ SHA256_ROUND :: u32.[
 SHA256_START :: u32.[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
 
 sha256_start :: fn() -> Sha256 {
-    hasher := Sha256.{}
+    hasher := Sha256.{hardware = sha_hardware()}
     for i in 0..<8 {
         hasher.state.words[i] = SHA256_START[i]
     }
     return hasher
 }
 
-// One block into the words.
-sha256_compress #constant_time :: fn(state: ptr[mut Sha256State]) {
+// One block into the words: with the SHA extensions when hardware says so, otherwise in software.
+sha256_compress #constant_time :: fn(state: ptr[mut Sha256State], hardware: bool) {
+    #if TARGET_ARCH == .x86_64 {
+        if hardware {
+            sha256_compress_hardware(state)
+            return void
+        }
+    }
+    sha256_compress_software(state)
+}
+
+sha256_compress_software #constant_time :: fn(state: ptr[mut Sha256State]) {
     w : Sha256Schedule
     for i in 0..<16 {
         w[i] = (cast[u32](state.block[4 * i]) << 24) | (cast[u32](state.block[4 * i + 1]) << 16)
@@ -108,27 +127,46 @@ sha256_byte :: fn(hasher: ptr[mut Sha256], byte: u8) {
     hasher.state.block[hasher.buffered % SHA256_BLOCK] = byte
     hasher.buffered += 1
     if hasher.buffered == SHA256_BLOCK {
-        sha256_compress(&hasher.state)
+        sha256_compress(&hasher.state, hasher.hardware)
         hasher.buffered = 0
     }
 }
 
 sha256_update :: fn(hasher: ptr[mut Sha256], data: u8[]) {
-    for byte in data {
-        sha256_byte(hasher, byte)
-    }
-    hasher.total += cast[u64](data.count)
+    sha256_absorb(hasher, as_secret(data))
 }
 
 sha256_update_secret #constant_time :: fn(hasher: ptr[mut Sha256], data: SecretByte[]) {
-    for byte in data {
-        hasher.state.block[hasher.buffered % SHA256_BLOCK] = cast[u8](byte)
+    sha256_absorb(hasher, data)
+}
+
+// data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+sha256_absorb #constant_time :: fn(hasher: ptr[mut Sha256], data: SecretByte[]) {
+    at : usize = 0
+    loop {
+        hasher.state.block[hasher.buffered % SHA256_BLOCK] = cast[u8](data[at])
         hasher.buffered += 1
+        at += 1
         if hasher.buffered == SHA256_BLOCK {
-            sha256_compress(&hasher.state)
+            sha256_compress(&hasher.state, hasher.hardware)
             hasher.buffered = 0
         }
     }
+    while hasher.buffered != 0 && at < data.count
+    loop {
+        for j in cast[usize](0)..<SHA256_BLOCK {
+            hasher.state.block[j] = cast[u8](data[at + j])
+        }
+        sha256_compress(&hasher.state, hasher.hardware)
+        at += SHA256_BLOCK
+    }
+    while at + SHA256_BLOCK <= data.count
+    loop {
+        hasher.state.block[hasher.buffered % SHA256_BLOCK] = cast[u8](data[at])
+        hasher.buffered += 1
+        at += 1
+    }
+    while at < data.count
     hasher.total += cast[u64](data.count)
 }
 
@@ -167,4 +205,90 @@ sha256 :: fn(data: u8[]) -> u8[32] {
     hasher := sha256_start()
     sha256_update(&hasher, data)
     return sha256_finish(&hasher)
+}
+
+#if TARGET_ARCH == .x86_64 {
+    import x86_64 from "base/intrinsics"
+
+    // Whether the CPU has the SHA extensions (cpuid leaf 7, ebx bit 29).
+    sha_hardware :: fn() -> bool {
+        return (x86_64.cpuid(7).ebx & (1 << 29)) != 0
+    }
+
+    // The round constants four at a time, as the SHA extensions add them to the message words
+    SHA256_ROUND4 :: vector[u32, 4].[
+        vector[u32, 4].{0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5},
+        vector[u32, 4].{0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5},
+        vector[u32, 4].{0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3},
+        vector[u32, 4].{0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174},
+        vector[u32, 4].{0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc},
+        vector[u32, 4].{0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da},
+        vector[u32, 4].{0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7},
+        vector[u32, 4].{0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967},
+        vector[u32, 4].{0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13},
+        vector[u32, 4].{0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85},
+        vector[u32, 4].{0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3},
+        vector[u32, 4].{0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070},
+        vector[u32, 4].{0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5},
+        vector[u32, 4].{0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3},
+        vector[u32, 4].{0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208},
+        vector[u32, 4].{0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2},
+    ]
+
+    /*
+     * One block into the words with the SHA extensions (Intel's SHA-NI sample code, as a loop): four rounds a
+     * step, two per sha256_rounds2, with the message's next four words worked out alongside. Lane shuffles are
+     * vector literals of the lanes, which LLVM turns into shuffles.
+     */
+    sha256_compress_hardware #constant_time #target_features("sha,sse4.1") :: fn(state: ptr[mut Sha256State]) {
+        abcd := vector[u32, 4].{state.words[0], state.words[1], state.words[2], state.words[3]}
+        efgh := vector[u32, 4].{state.words[4], state.words[5], state.words[6], state.words[7]}
+        // As the instructions hold them: A, B, E, F and C, D, G, H, highest lane first
+        abef := vector[u32, 4].{efgh[1], efgh[0], abcd[1], abcd[0]}
+        cdgh := vector[u32, 4].{efgh[3], efgh[2], abcd[3], abcd[2]}
+        start_abef := abef
+        start_cdgh := cdgh
+        message : Sha256Lanes
+        for i in 0..<16 {
+            if i < 4 {
+                // Big-endian words from the block
+                word := compiler.secret(u32.[0, 0, 0, 0])
+                for k in 0..<4 {
+                    for j in 0..<4 {
+                        word[k] = (word[k] << 8) | cast[u32](state.block[cast[usize](16 * i + 4 * k + j) % 64])
+                    }
+                }
+                message[i % 4] = bit_cast[vector[u32, 4]](word)
+            }
+            current := message[i % 4]
+            plus_k := current + SHA256_ROUND4[i % 16]
+            cdgh = x86_64.sha256_rounds2(cdgh, abef, plus_k)
+            if i >= 3 && i < 15 {
+                previous := message[(i + 3) % 4]
+                // Words 4i - 3 to 4i, as alignr would: the last three of previous and the first of current
+                shifted := vector[u32, 4].{previous[1], previous[2], previous[3], current[0]}
+                message[(i + 1) % 4] = x86_64.sha256_message2(message[(i + 1) % 4] + shifted, current)
+            }
+            rest := vector[u32, 4].{plus_k[2], plus_k[3], plus_k[0], plus_k[0]}
+            abef = x86_64.sha256_rounds2(abef, cdgh, rest)
+            if i >= 1 && i < 13 {
+                message[(i + 3) % 4] = x86_64.sha256_message1(message[(i + 3) % 4], current)
+            }
+        }
+        abef = abef + start_abef
+        cdgh = cdgh + start_cdgh
+        state.words[0] = abef[3]
+        state.words[1] = abef[2]
+        state.words[2] = cdgh[3]
+        state.words[3] = cdgh[2]
+        state.words[4] = abef[1]
+        state.words[5] = abef[0]
+        state.words[6] = cdgh[1]
+        state.words[7] = cdgh[0]
+    }
+}
+#else {
+    sha_hardware :: fn() -> bool {
+        return false
+    }
 }

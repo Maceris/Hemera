@@ -980,7 +980,16 @@ namespace hemera {
 			value = error_at(checker, ErrorCode::E4020, where, std::format("{} can't be indexed", describe(value)));
 			return Progress::DONE;
 		}
+		// Its type may be an alias, like a function's result's from another package, not resolved yet
+		Progress resolved = complete_subject(checker, where, value);
+		if (resolved != Progress::DONE) {
+			return resolved;
+		}
 		TypeInfo const* type = base_of(value.type);
+		if (type == nullptr) {
+			value = poisoned();
+			return Progress::DONE;
+		}
 		bool is_mutable = value.is_mutable;
 		if (TypeInfoVariant::POINTER == type->variant && static_cast<TypeInfoPointer const*>(type)->base_type != nullptr) {
 			/*
@@ -4574,11 +4583,15 @@ namespace hemera {
 	 * declared, like a call's Result, may still be being laid out on another thread.
 	 */
 	static Progress complete_subject(Checker& checker, ast::Node* where, const Value& subject) {
-		TypeInfo const* type = ValueKind::VALUE == subject.kind ? base_of(subject.type) : nullptr;
-		if (type == nullptr || type->complete) {
+		if (ValueKind::VALUE != subject.kind || subject.type == nullptr) {
 			return Progress::DONE;
 		}
-		return require_complete(checker.walk, where, const_cast<TypeInfo*>(type));
+		TypeInfo const* type = base_of(subject.type);
+		if (type != nullptr && type->complete) {
+			return Progress::DONE;
+		}
+		// An alias another thread hasn't resolved yet has no base to look at: wait for the alias itself
+		return require_complete(checker.walk, where, const_cast<TypeInfo*>(type != nullptr ? type : subject.type));
 	}
 
 	static Progress check_match(Checker& checker, ast::Node* node, TypeInfo* expected, Value* result, bool& continues) {

@@ -4004,12 +4004,14 @@ namespace hemera {
 			result = value(registers, type);
 			return true;
 		}
-		// AES-NI and PCLMULQDQ, as LLVM's intrinsics, so the optimizer knows what they do
+		// AES-NI, PCLMULQDQ and the SHA extensions, as LLVM's intrinsics, so the optimizer knows what they do
 		const std::pair<std::string_view, std::string_view> aes[] = {
 			{ "aes_encrypt_round", "llvm.x86.aesni.aesenc" }, { "aes_encrypt_last", "llvm.x86.aesni.aesenclast" },
 			{ "aes_decrypt_round", "llvm.x86.aesni.aesdec" }, { "aes_decrypt_last", "llvm.x86.aesni.aesdeclast" },
 			{ "aes_inverse_mix", "llvm.x86.aesni.aesimc" }, { "aes_key_assist", "llvm.x86.aesni.aeskeygenassist" },
 			{ "carryless_multiply", "llvm.x86.pclmulqdq" },
+			{ "sha256_rounds2", "llvm.x86.sha256rnds2" }, { "sha256_message1", "llvm.x86.sha256msg1" },
+			{ "sha256_message2", "llvm.x86.sha256msg2" },
 		};
 		for (const auto& [intrinsic, llvm_name] : aes) {
 			if (name == intrinsic) {

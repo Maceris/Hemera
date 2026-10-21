@@ -9,29 +9,10 @@ import intrinsics from "base"
  * chacha20_poly1305.hsc, whose Key256, Nonce96 and Tag128 it shares).
  *
  * On an x86-64 CPU with AES-NI and PCLMULQDQ it uses them; otherwise AES and GHASH are worked out in
- * software, in constant time, which is far slower: each S-box lookup looks at the whole table. A
- * kernel built without vector state passes hardware = false to the _with functions, unless it saves
- * the vector registers around the call.
+ * software, in constant time: AES bitsliced, four blocks at once, and GHASH with integer multiplies that
+ * can't carry into what's kept. A kernel built without vector state passes hardware = false to the _with
+ * functions, unless it saves the vector registers around the call.
  */
-
-AES_SBOX :: u8.[
-    0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
-    0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
-    0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
-    0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
-    0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
-    0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
-    0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
-    0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
-    0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
-    0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
-    0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
-    0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
-    0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
-    0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
-    0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
-]
 
 AES_ROUND_CONSTANTS :: u8.[0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
 
@@ -47,15 +28,174 @@ Ghash :: struct #secret {
 
 Aes256Gcm :: struct {
     schedule: AesSchedule,
+    // For software: the round keys as bit planes
+    sliced: AesSlicedSchedule,
     hash_key: Ghash,
+    // H, H^2, H^3 and H^4, so GHASH can take four blocks with one reduction
+    hash_powers: Ghash[4],
     hardware: bool,
 }
 
-// One byte through the S-box, looking at every entry so how long it takes says nothing of the byte.
+// Eight bit planes, plane k holding bit k of each byte the planes are carrying
+AesPlanes :: distinct alias u64[8] #secret
+
+/*
+ * The S-box on every byte the planes carry at once: Boyar and Peralta's circuit (the one BearSSL uses), the
+ * field inverse and the affine map as about 115 ands and xors, with no table.
+ */
+aes_sbox_planes #constant_time :: fn(q: ptr[mut AesPlanes]) {
+    x0 := q[7]
+    x1 := q[6]
+    x2 := q[5]
+    x3 := q[4]
+    x4 := q[3]
+    x5 := q[2]
+    x6 := q[1]
+    x7 := q[0]
+
+    // The top linear transformation
+    y14 := x3 ~ x5
+    y13 := x0 ~ x6
+    y9 := x0 ~ x3
+    y8 := x0 ~ x5
+    t0 := x1 ~ x2
+    y1 := t0 ~ x7
+    y4 := y1 ~ x3
+    y12 := y13 ~ y14
+    y2 := y1 ~ x0
+    y5 := y1 ~ x6
+    y3 := y5 ~ y8
+    t1 := x4 ~ y12
+    y15 := t1 ~ x5
+    y20 := t1 ~ x1
+    y6 := y15 ~ x7
+    y10 := y15 ~ t0
+    y11 := y20 ~ y9
+    y7 := x7 ~ y11
+    y17 := y10 ~ y11
+    y19 := y10 ~ y8
+    y16 := t0 ~ y11
+    y21 := y13 ~ y16
+    y18 := x0 ~ y16
+
+    // The non-linear middle
+    t2 := y12 & y15
+    t3 := y3 & y6
+    t4 := t3 ~ t2
+    t5 := y4 & x7
+    t6 := t5 ~ t2
+    t7 := y13 & y16
+    t8 := y5 & y1
+    t9 := t8 ~ t7
+    t10 := y2 & y7
+    t11 := t10 ~ t7
+    t12 := y9 & y11
+    t13 := y14 & y17
+    t14 := t13 ~ t12
+    t15 := y8 & y10
+    t16 := t15 ~ t12
+    t17 := t4 ~ t14
+    t18 := t6 ~ t16
+    t19 := t9 ~ t14
+    t20 := t11 ~ t16
+    t21 := t17 ~ y20
+    t22 := t18 ~ y19
+    t23 := t19 ~ y21
+    t24 := t20 ~ y18
+
+    t25 := t21 ~ t22
+    t26 := t21 & t23
+    t27 := t24 ~ t26
+    t28 := t25 & t27
+    t29 := t28 ~ t22
+    t30 := t23 ~ t24
+    t31 := t22 ~ t26
+    t32 := t31 & t30
+    t33 := t32 ~ t24
+    t34 := t23 ~ t33
+    t35 := t27 ~ t33
+    t36 := t24 & t35
+    t37 := t36 ~ t34
+    t38 := t27 ~ t36
+    t39 := t29 & t38
+    t40 := t25 ~ t39
+
+    t41 := t40 ~ t37
+    t42 := t29 ~ t33
+    t43 := t29 ~ t40
+    t44 := t33 ~ t37
+    t45 := t42 ~ t41
+    z0 := t44 & y15
+    z1 := t37 & y6
+    z2 := t33 & x7
+    z3 := t43 & y16
+    z4 := t40 & y1
+    z5 := t29 & y7
+    z6 := t42 & y11
+    z7 := t45 & y17
+    z8 := t41 & y10
+    z9 := t44 & y12
+    z10 := t37 & y3
+    z11 := t33 & y4
+    z12 := t43 & y13
+    z13 := t40 & y5
+    z14 := t29 & y2
+    z15 := t42 & y9
+    z16 := t45 & y14
+    z17 := t41 & y8
+
+    // The bottom linear transformation
+    t46 := z15 ~ z16
+    t47 := z10 ~ z11
+    t48 := z5 ~ z13
+    t49 := z9 ~ z10
+    t50 := z2 ~ z12
+    t51 := z2 ~ z5
+    t52 := z7 ~ z8
+    t53 := z0 ~ z3
+    t54 := z6 ~ z7
+    t55 := z16 ~ z17
+    t56 := z12 ~ t48
+    t57 := t50 ~ t53
+    t58 := z4 ~ t46
+    t59 := z3 ~ t54
+    t60 := t46 ~ t57
+    t61 := z14 ~ t57
+    t62 := t52 ~ t58
+    t63 := t49 ~ t58
+    t64 := z4 ~ t59
+    t65 := t61 ~ t62
+    t66 := z1 ~ t63
+    s0 := t59 ~ t63
+    s6 := t56 ~ (~t62)
+    s7 := t48 ~ (~t60)
+    t67 := t64 ~ t65
+    s3 := t53 ~ t66
+    s4 := t51 ~ t66
+    s5 := t47 ~ t65
+    s1 := t64 ~ (~s3)
+    s2 := t55 ~ (~t67)
+
+    q[7] = s0
+    q[6] = s1
+    q[5] = s2
+    q[4] = s3
+    q[3] = s4
+    q[2] = s5
+    q[1] = s6
+    q[0] = s7
+}
+
+// One byte through the S-box, as one bit of each plane.
 aes_sbox #constant_time :: fn(x: SecretByte) -> SecretByte {
+    q : AesPlanes
+    for k in 0..<8 {
+        q[k] = cast[u64](cast[u8](x) >> cast[u8](k)) & 1
+    }
+    aes_sbox_planes(&q)
     result := compiler.secret(cast[u8](0))
-    for i in 0..<256 {
-        result = intrinsics.select(cast[u8](x) == cast[u8](i), AES_SBOX[i], result)
+    for k in 0..<8 {
+        result = result | (cast[u8](q[k] & 1) << cast[u8](k))
     }
     return cast[SecretByte](result)
 }
@@ -100,62 +240,236 @@ aes256_expand #constant_time :: fn(key: ptr[Key256]) -> AesSchedule {
     return schedule
 }
 
-aes256_encrypt_software #constant_time :: fn(schedule: ptr[AesSchedule], block: ptr[mut AesBlock]) {
-    for i in 0..<16 {
-        block[i] = block[i] ~ schedule[i]
+// Four blocks, one after another: what bitsliced AES works on at once
+AesBlocks4 :: distinct alias u8[64] #secret
+// The round keys as bit planes, each byte repeated for the four blocks: 15 rounds of 8 planes
+AesSlicedSchedule :: distinct alias u64[120] #secret
+
+/*
+ * Bitsliced AES (like BearSSL's, laid out its own way): four blocks' 64 bytes as eight 64-bit planes, plane k
+ * holding bit k of every byte. Byte position p (row r + 4 * column c, as AES numbers a block's bytes) of block b
+ * is bit 4 * p + b, so each column is 16 bits of a plane, and each row a nibble of each column. Every step is
+ * ands, xors, shifts and rotations of whole planes: no table, nothing that depends on the bytes but the bytes.
+ */
+
+// An 8 by 8 bit matrix, a byte a row, turned so that byte k holds bit k of each row (Hacker's Delight, 7-3).
+aes_transpose8 #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    y := x
+    t := (y ~ (y >> 7)) & 0x00aa_00aa_00aa_00aa
+    y = y ~ t ~ (t << 7)
+    t = (y ~ (y >> 14)) & 0x0000_cccc_0000_cccc
+    y = y ~ t ~ (t << 14)
+    t = (y ~ (y >> 28)) & 0x0000_0000_f0f0_f0f0
+    y = y ~ t ~ (t << 28)
+    return cast[SecretWord](y)
+}
+
+// Bit j of a byte moved to bit 4 * j, and back.
+aes_spread #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    y := (x ~ (x << 12)) & 0x000f_000f
+    y = (y ~ (y << 6)) & 0x0303_0303
+    return cast[SecretWord]((y ~ (y << 3)) & 0x1111_1111)
+}
+
+aes_gather #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    y := x & 0x1111_1111
+    y = (y ~ (y >> 3)) & 0x0303_0303
+    y = (y ~ (y >> 6)) & 0x000f_000f
+    return cast[SecretWord]((y ~ (y >> 12)) & 0xff)
+}
+
+aes_pack #constant_time :: fn(blocks: ptr[AesBlocks4], q: ptr[mut AesPlanes]) {
+    for k in 0..<8 {
+        q[k] = 0
     }
-    for round in 1..<15 {
-        for i in 0..<16 {
-            block[i] = cast[u8](aes_sbox(cast[SecretByte](block[i])))
+    for half in 0..<8 {
+        // Bytes 8 * half to 8 * half + 7 of the 64: block half / 2, positions 8 * (half % 2) on
+        word := compiler.secret(cast[u64](0))
+        for j in 0..<8 {
+            word = word | (cast[u64](blocks[8 * half + j]) << (8 * cast[u64](j)))
         }
-        // Row r moves left by r
-        shifted : AesBlock
-        for column in 0..<4 {
-            for row in 0..<4 {
-                shifted[row + 4 * column] = block[row + 4 * ((column + row) % 4)]
-            }
-        }
-        block^ = shifted
-        if round < 14 {
-            for column in 0..<4 {
-                a0 := cast[SecretByte](block[4 * column])
-                a1 := cast[SecretByte](block[4 * column + 1])
-                a2 := cast[SecretByte](block[4 * column + 2])
-                a3 := cast[SecretByte](block[4 * column + 3])
-                d0 := aes_double(a0)
-                d1 := aes_double(a1)
-                d2 := aes_double(a2)
-                d3 := aes_double(a3)
-                block[4 * column] = cast[u8](d0) ~ cast[u8](d1) ~ cast[u8](a1) ~ cast[u8](a2) ~ cast[u8](a3)
-                block[4 * column + 1] = cast[u8](a0) ~ cast[u8](d1) ~ cast[u8](d2) ~ cast[u8](a2) ~ cast[u8](a3)
-                block[4 * column + 2] = cast[u8](a0) ~ cast[u8](a1) ~ cast[u8](d2) ~ cast[u8](d3) ~ cast[u8](a3)
-                block[4 * column + 3] = cast[u8](d0) ~ cast[u8](a0) ~ cast[u8](a1) ~ cast[u8](a2) ~ cast[u8](d3)
-            }
-        }
-        for i in 0..<16 {
-            block[i] = block[i] ~ schedule[16 * round + i]
+        turned := cast[u64](aes_transpose8(cast[SecretWord](word)))
+        shift := 32 * cast[u64](half % 2) + cast[u64](half / 2)
+        for k in 0..<8 {
+            q[k] = q[k] | (cast[u64](aes_spread(cast[SecretWord]((turned >> (8 * cast[u64](k))) & 0xff))) << shift)
         }
     }
 }
 
-// x times y in GHASH's field, a bit at a time, with masks rather than branches.
-ghash_multiply_software #constant_time :: fn(x: Ghash, y: Ghash) -> Ghash {
-    z := Ghash.{high = 0, low = 0}
-    v := y
-    for i in 0..<128 {
-        word := x.high
-        if i >= 64 {
-            word = x.low
+aes_unpack #constant_time :: fn(q: ptr[AesPlanes], blocks: ptr[mut AesBlocks4]) {
+    for half in 0..<8 {
+        shift := 32 * cast[u64](half % 2) + cast[u64](half / 2)
+        turned := compiler.secret(cast[u64](0))
+        for k in 0..<8 {
+            turned = turned | (cast[u64](aes_gather(cast[SecretWord](q[k] >> shift))) << (8 * cast[u64](k)))
         }
-        bit := (word >> (63 - cast[u64](i % 64))) & 1
-        mask := cast[u64](0) - bit
-        z.high = z.high ~ (v.high & mask)
-        z.low = z.low ~ (v.low & mask)
-        carry := v.low & 1
-        v.low = (v.low >> 1) | (v.high << 63)
-        v.high = (v.high >> 1) ~ (0xe100_0000_0000_0000 & (cast[u64](0) - carry))
+        word := cast[u64](aes_transpose8(cast[SecretWord](turned)))
+        for j in 0..<8 {
+            blocks[8 * half + j] = cast[u8](word >> (8 * cast[u64](j)))
+        }
     }
-    return z
+}
+
+// Row r of each column moves left by r columns: in a plane, row r's nibbles rotate by 16 * r bits.
+aes_shift_rows #constant_time :: fn(q: ptr[mut AesPlanes]) {
+    for k in 0..<8 {
+        x := q[k]
+        q[k] = (x & 0x000f_000f_000f_000f) | intrinsics.rotate_right(x & 0x00f0_00f0_00f0_00f0, 16)
+            | intrinsics.rotate_right(x & 0x0f00_0f00_0f00_0f00, 32) | intrinsics.rotate_right(x & 0xf000_f000_f000_f000, 48)
+    }
+}
+
+// Each column's rows moved up by 1, 2 or 3: row r + n's nibble into row r's, within the column's 16 bits.
+aes_rows_up1 #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    return cast[SecretWord](((x >> 4) & 0x0fff_0fff_0fff_0fff) | ((x << 12) & 0xf000_f000_f000_f000))
+}
+
+aes_rows_up2 #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    return cast[SecretWord](((x >> 8) & 0x00ff_00ff_00ff_00ff) | ((x << 8) & 0xff00_ff00_ff00_ff00))
+}
+
+aes_rows_up3 #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    return cast[SecretWord](((x >> 12) & 0x000f_000f_000f_000f) | ((x << 4) & 0xfff0_fff0_fff0_fff0))
+}
+
+/*
+ * Each column's b_r = 2 * a_r ~ 3 * a_(r+1) ~ a_(r+2) ~ a_(r+3), as 2 * (a_r ~ a_(r+1)) ~ a_(r+1) ~ a_(r+2) ~ a_(r+3):
+ * doubling moves each plane up one, the top one back in where x^8 = x^4 + x^3 + x + 1 says.
+ */
+aes_mix_columns #constant_time :: fn(q: ptr[mut AesPlanes]) {
+    sum : AesPlanes
+    rest : AesPlanes
+    for k in 0..<8 {
+        a := cast[SecretWord](q[k])
+        up1 := cast[u64](aes_rows_up1(a))
+        sum[k] = q[k] ~ up1
+        rest[k] = up1 ~ cast[u64](aes_rows_up2(a)) ~ cast[u64](aes_rows_up3(a))
+    }
+    top := sum[7]
+    q[0] = top ~ rest[0]
+    q[1] = sum[0] ~ top ~ rest[1]
+    q[2] = sum[1] ~ rest[2]
+    q[3] = sum[2] ~ top ~ rest[3]
+    q[4] = sum[3] ~ top ~ rest[4]
+    q[5] = sum[4] ~ rest[5]
+    q[6] = sum[5] ~ rest[6]
+    q[7] = sum[6] ~ rest[7]
+}
+
+// The schedule's round keys as planes, each byte in all four blocks' bits for it.
+aes256_slice_schedule #constant_time :: fn(schedule: ptr[AesSchedule]) -> AesSlicedSchedule {
+    sliced : AesSlicedSchedule
+    for round in 0..<15 {
+        for p in 0..<16 {
+            byte := cast[u64](schedule[16 * round + p])
+            for k in 0..<8 {
+                bit := (byte >> cast[u64](k)) & 1
+                sliced[8 * round + k] = sliced[8 * round + k] | ((cast[u64](0) - bit) & (cast[u64](0xf) << (4 * cast[u64](p))))
+            }
+        }
+    }
+    return sliced
+}
+
+// Four blocks encrypted at once (FIPS 197, 5.1), in place.
+aes256_encrypt4_software #constant_time :: fn(sliced: ptr[AesSlicedSchedule], blocks: ptr[mut AesBlocks4]) {
+    q : AesPlanes
+    aes_pack(blocks, &q)
+    for k in 0..<8 {
+        q[k] = q[k] ~ sliced[k]
+    }
+    for round in 1..<15 {
+        aes_sbox_planes(&q)
+        aes_shift_rows(&q)
+        if round < 14 {
+            aes_mix_columns(&q)
+        }
+        for k in 0..<8 {
+            q[k] = q[k] ~ sliced[8 * round + k]
+        }
+    }
+    aes_unpack(&q, blocks)
+}
+
+// x's bits in the other order.
+ghash_reverse #constant_time :: fn(word: SecretWord) -> SecretWord {
+    x := cast[u64](word)
+    y := ((x >> 1) & 0x5555_5555_5555_5555) | ((x & 0x5555_5555_5555_5555) << 1)
+    y = ((y >> 2) & 0x3333_3333_3333_3333) | ((y & 0x3333_3333_3333_3333) << 2)
+    y = ((y >> 4) & 0x0f0f_0f0f_0f0f_0f0f) | ((y & 0x0f0f_0f0f_0f0f_0f0f) << 4)
+    return cast[SecretWord](intrinsics.byte_swap(y))
+}
+
+/*
+ * The low 64 bits of x and y's carry-less product, with integer multiplies (BearSSL's ghash_ctmul64): each
+ * operand split into every fourth bit, so the carries a multiply makes land in bits the masks throw away.
+ */
+ghash_bmul64 #constant_time :: fn(a: SecretWord, b: SecretWord) -> SecretWord {
+    x := cast[u64](a)
+    y := cast[u64](b)
+    x0 := x & 0x1111_1111_1111_1111
+    x1 := x & 0x2222_2222_2222_2222
+    x2 := x & 0x4444_4444_4444_4444
+    x3 := x & 0x8888_8888_8888_8888
+    y0 := y & 0x1111_1111_1111_1111
+    y1 := y & 0x2222_2222_2222_2222
+    y2 := y & 0x4444_4444_4444_4444
+    y3 := y & 0x8888_8888_8888_8888
+    z0 := (x0 * y0) ~ (x1 * y3) ~ (x2 * y2) ~ (x3 * y1)
+    z1 := (x0 * y1) ~ (x1 * y0) ~ (x2 * y3) ~ (x3 * y2)
+    z2 := (x0 * y2) ~ (x1 * y1) ~ (x2 * y0) ~ (x3 * y3)
+    z3 := (x0 * y3) ~ (x1 * y2) ~ (x2 * y1) ~ (x3 * y0)
+    return cast[SecretWord]((z0 & 0x1111_1111_1111_1111) | (z1 & 0x2222_2222_2222_2222) | (z2 & 0x4444_4444_4444_4444)
+        | (z3 & 0x8888_8888_8888_8888))
+}
+
+/*
+ * x times y in GHASH's field, in constant time: three 64-bit products for the low halves and three for the
+ * high ones, the latter from the bits reversed (Karatsuba), then shifted and reduced by x^128 + x^7 + x^2 + x + 1.
+ */
+ghash_multiply_software #constant_time :: fn(x: Ghash, y: Ghash) -> Ghash {
+    h0 := cast[SecretWord](y.low)
+    h1 := cast[SecretWord](y.high)
+    h2 := cast[SecretWord](y.low ~ y.high)
+    h0r := ghash_reverse(h0)
+    h1r := ghash_reverse(h1)
+    h2r := cast[SecretWord](cast[u64](h0r) ~ cast[u64](h1r))
+    x0 := cast[SecretWord](x.low)
+    x1 := cast[SecretWord](x.high)
+    x2 := cast[SecretWord](x.low ~ x.high)
+    x0r := ghash_reverse(x0)
+    x1r := ghash_reverse(x1)
+    x2r := cast[SecretWord](cast[u64](x0r) ~ cast[u64](x1r))
+    z0 := cast[u64](ghash_bmul64(x0, h0))
+    z1 := cast[u64](ghash_bmul64(x1, h1))
+    z2 := cast[u64](ghash_bmul64(x2, h2))
+    z0h := cast[u64](ghash_bmul64(x0r, h0r))
+    z1h := cast[u64](ghash_bmul64(x1r, h1r))
+    z2h := cast[u64](ghash_bmul64(x2r, h2r))
+    z2 = z2 ~ z0 ~ z1
+    z2h = z2h ~ z0h ~ z1h
+    z0h = cast[u64](ghash_reverse(cast[SecretWord](z0h))) >> 1
+    z1h = cast[u64](ghash_reverse(cast[SecretWord](z1h))) >> 1
+    z2h = cast[u64](ghash_reverse(cast[SecretWord](z2h))) >> 1
+    v0 := z0
+    v1 := z0h ~ z2
+    v2 := z1 ~ z2h
+    v3 := z1h
+    v3 = (v3 << 1) | (v2 >> 63)
+    v2 = (v2 << 1) | (v1 >> 63)
+    v1 = (v1 << 1) | (v0 >> 63)
+    v0 = v0 << 1
+    v2 = v2 ~ v0 ~ (v0 >> 1) ~ (v0 >> 2) ~ (v0 >> 7)
+    v1 = v1 ~ (v0 << 63) ~ (v0 << 62) ~ (v0 << 57)
+    v3 = v3 ~ v1 ~ (v1 >> 1) ~ (v1 >> 2) ~ (v1 >> 7)
+    v2 = v2 ~ (v1 << 63) ~ (v1 << 62) ~ (v1 << 57)
+    return Ghash.{high = v3, low = v2}
 }
 
 ghash_multiply #constant_time :: fn(x: Ghash, y: Ghash, hardware: bool) -> Ghash {
@@ -167,14 +481,39 @@ ghash_multiply #constant_time :: fn(x: Ghash, y: Ghash, hardware: bool) -> Ghash
     return ghash_multiply_software(x, y)
 }
 
-aes256_encrypt #constant_time :: fn(schedule: ptr[AesSchedule], block: ptr[mut AesBlock], hardware: bool) {
+// One block encrypted in place: with AES-NI, or in software as the first of four.
+aes256_encrypt_block #constant_time :: fn(gcm: ptr[Aes256Gcm], block: ptr[mut AesBlock]) {
     #if TARGET_ARCH == .x86_64 {
-        if hardware {
-            aes256_encrypt_hardware(schedule, block)
+        if gcm.hardware {
+            aes256_encrypt_hardware(&gcm.schedule, block)
             return void
         }
     }
-    aes256_encrypt_software(schedule, block)
+    blocks : AesBlocks4
+    for i in 0..<16 {
+        blocks[i] = block[i]
+    }
+    aes256_encrypt4_software(&gcm.sliced, &blocks)
+    for i in 0..<16 {
+        block[i] = blocks[i]
+    }
+}
+
+// Four blocks of keystream: the counter blocks for count to count + 3, encrypted.
+gcm_keystream #constant_time :: fn(gcm: ptr[Aes256Gcm], nonce: ptr[Nonce96], count: u32, stream: ptr[mut AesBlocks4]) {
+    for b in 0..<4 {
+        counter := gcm_counter(nonce, count + cast[u32](b))
+        for i in 0..<16 {
+            stream[16 * b + i] = counter[i]
+        }
+    }
+    #if TARGET_ARCH == .x86_64 {
+        if gcm.hardware {
+            aes256_encrypt4_hardware(&gcm.schedule, stream)
+            return void
+        }
+    }
+    aes256_encrypt4_software(&gcm.sliced, stream)
 }
 
 // Whether AES-NI and PCLMULQDQ are there to use.
@@ -200,26 +539,53 @@ ghash_of #constant_time :: fn(block: ptr[AesBlock]) -> Ghash {
 
 aes256_gcm_start #constant_time :: fn(key: ptr[Key256], hardware: bool) -> Aes256Gcm {
     gcm := Aes256Gcm.{schedule = aes256_expand(key), hardware = hardware}
+    if !hardware {
+        gcm.sliced = aes256_slice_schedule(&gcm.schedule)
+    }
     zero : AesBlock
-    aes256_encrypt(&gcm.schedule, &zero, hardware)
+    aes256_encrypt_block(&gcm, &zero)
     gcm.hash_key = ghash_of(&zero)
+    gcm.hash_powers[0] = gcm.hash_key
+    for i in 1..<4 {
+        gcm.hash_powers[i] = ghash_multiply(gcm.hash_powers[i - 1], gcm.hash_key, hardware)
+    }
     return gcm
 }
 
-// GHASH's running value, given public bytes, a block at a time, zero padded at the end.
+// GHASH's running value, given public bytes: whole blocks straight from data, then the rest zero padded.
 ghash_update #constant_time :: fn(gcm: ptr[Aes256Gcm], value: ptr[mut Ghash], data: u8[]) {
-    block : AesBlock
-    for i in 0..<data.count {
-        block[i % 16] = data[i]
-        if i % 16 == 15 || i + 1 == data.count {
-            for j in i % 16 + 1..<16 {
-                block[j] = 0
-            }
-            addend := ghash_of(&block)
-            value.high = value.high ~ addend.high
-            value.low = value.low ~ addend.low
-            value^ = ghash_multiply(value^, gcm.hash_key, gcm.hardware)
+    at : usize = 0
+    #if TARGET_ARCH == .x86_64 {
+        if gcm.hardware {
+            at = ghash_blocks4_hardware(gcm, value, data)
         }
+    }
+    // Never more than the count, which it already isn't, so adding a block to it can't wrap
+    if at > data.count {
+        at = data.count
+    }
+    loop {
+        high : u64 = 0
+        low : u64 = 0
+        for j in cast[usize](0)..<8 {
+            high = (high << 8) | cast[u64](data[at + j])
+            low = (low << 8) | cast[u64](data[at + 8 + j])
+        }
+        value.high = value.high ~ high
+        value.low = value.low ~ low
+        value^ = ghash_multiply(value^, gcm.hash_key, gcm.hardware)
+        at += 16
+    }
+    while at + 16 <= data.count
+    if at < data.count {
+        block : AesBlock
+        for i in at..<data.count {
+            block[(i - at) % 16] = data[i]
+        }
+        addend := ghash_of(&block)
+        value.high = value.high ~ addend.high
+        value.low = value.low ~ addend.low
+        value^ = ghash_multiply(value^, gcm.hash_key, gcm.hardware)
     }
 }
 
@@ -243,7 +609,7 @@ gcm_tag #constant_time :: fn(gcm: ptr[Aes256Gcm], nonce: ptr[Nonce96], associate
     value.low = value.low ~ (cast[u64](ciphertext.count) * 8)
     value = ghash_multiply(value, gcm.hash_key, gcm.hardware)
     first := gcm_counter(nonce, 1)
-    aes256_encrypt(&gcm.schedule, &first, gcm.hardware)
+    aes256_encrypt_block(gcm, &first)
     tag : SecretByte[16]
     for i in 0..<8 {
         shift := 56 - 8 * cast[u64](i)
@@ -279,14 +645,21 @@ aes256_gcm_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
         return false
     }
     gcm := aes256_gcm_start(key, hardware)
-    stream : AesBlock
-    for i in 0..<plaintext.count {
-        if i % 16 == 0 {
-            stream = gcm_counter(nonce, cast[u32](i / 16 + 2))
-            aes256_encrypt(&gcm.schedule, &stream, hardware)
+    stream : AesBlocks4
+    at : usize = 0
+    // Four blocks at a time, so the loop over their bytes can be vectorized
+    loop {
+        gcm_keystream(&gcm, nonce, cast[u32](at / 16 + 2), &stream)
+        chunk := plaintext[at..<plaintext.count]
+        out := ciphertext[at..<ciphertext.count]
+        for i in cast[usize](0)..<64 {
+            if i < chunk.count && i < out.count {
+                out[i] = compiler.declassify(cast[u8](chunk[i]) ~ stream[i])
+            }
         }
-        ciphertext[i] = compiler.declassify(cast[u8](plaintext[i]) ~ stream[i % 16])
+        at += 64
     }
+    while at < plaintext.count
     computed := gcm_tag(&gcm, nonce, associated, ciphertext)
     for i in 0..<16 {
         tag[i] = compiler.declassify(cast[u8](computed[i]))
@@ -309,14 +682,20 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
     if !equal(computed, given) {
         return false
     }
-    stream : AesBlock
-    for i in 0..<ciphertext.count {
-        if i % 16 == 0 {
-            stream = gcm_counter(nonce, cast[u32](i / 16 + 2))
-            aes256_encrypt(&gcm.schedule, &stream, hardware)
+    stream : AesBlocks4
+    at : usize = 0
+    loop {
+        gcm_keystream(&gcm, nonce, cast[u32](at / 16 + 2), &stream)
+        chunk := ciphertext[at..<ciphertext.count]
+        out := plaintext[at..<plaintext.count]
+        for i in cast[usize](0)..<64 {
+            if i < chunk.count && i < out.count {
+                out[i] = cast[SecretByte](chunk[i] ~ stream[i])
+            }
         }
-        plaintext[i] = cast[SecretByte](ciphertext[i] ~ stream[i % 16])
+        at += 64
     }
+    while at < ciphertext.count
     return true
 }
 
@@ -336,9 +715,39 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
         block^ = bit_cast[AesBlock](state)
     }
 
+    AesLanes4 :: distinct alias v128[4] #secret
+
+    /*
+     * Four blocks encrypted at once, each round on all four before the next, so the CPU works on them
+     * together rather than waiting for each round's result.
+     */
+    aes256_encrypt4_hardware #constant_time #target_features("aes") :: fn(schedule: ptr[AesSchedule], blocks: ptr[mut AesBlocks4]) {
+        keys := bit_cast[AesRoundKeys](schedule^)
+        state := bit_cast[AesLanes4](blocks^)
+        for b in 0..<4 {
+            state[b] = state[b] ~ keys[0]
+        }
+        for round in 1..<14 {
+            for b in 0..<4 {
+                state[b] = x86_64.aes_encrypt_round(state[b], keys[round])
+            }
+        }
+        for b in 0..<4 {
+            state[b] = x86_64.aes_encrypt_last(state[b], keys[14])
+        }
+        blocks^ = bit_cast[AesBlocks4](state)
+    }
+
+    // A 256-bit carry-less product, its low half then its high half, before it's reduced
+    GhashWide :: distinct alias vector[u64, 2][2] #secret
+
     // GHASH's multiply with PCLMULQDQ (Intel's carry-less multiplication white paper), on values held
-    // as one 128-bit big-endian integer, its low half in lane 0
+    // as one 128-bit big-endian integer, its low half in lane 0: the product, then reduced.
     ghash_multiply_hardware #constant_time #target_features("pclmul") :: fn(x: Ghash, y: Ghash) -> Ghash {
+        return ghash_reduce_hardware(ghash_product_hardware(x, y))
+    }
+
+    ghash_product_hardware #constant_time #target_features("pclmul") :: fn(x: Ghash, y: Ghash) -> GhashWide {
         a := bit_cast[v128](vector[u64, 2].{x.low, x.high})
         b := bit_cast[v128](vector[u64, 2].{y.low, y.high})
         t3 := bit_cast[vector[u64, 2]](x86_64.carryless_multiply(a, b, 0x00))
@@ -346,8 +755,16 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
         t5 := bit_cast[vector[u64, 2]](x86_64.carryless_multiply(a, b, 0x01))
         t6 := bit_cast[vector[u64, 2]](x86_64.carryless_multiply(a, b, 0x11))
         t4 = t4 ~ t5
-        t3 = t3 ~ vector[u64, 2].{0, t4[0]}
-        t6 = t6 ~ vector[u64, 2].{t4[1], 0}
+        wide : GhashWide
+        wide[0] = t3 ~ vector[u64, 2].{0, t4[0]}
+        wide[1] = t6 ~ vector[u64, 2].{t4[1], 0}
+        return wide
+    }
+
+    // A product reduced mod x^128 + x^7 + x^2 + x + 1, as GHASH's bit order has it.
+    ghash_reduce_hardware #constant_time #target_features("pclmul") :: fn(wide: GhashWide) -> Ghash {
+        t3 := wide[0]
+        t6 := wide[1]
         // The 256-bit product shifted left by one
         w3 := bit_cast[vector[u32, 4]](t3)
         w6 := bit_cast[vector[u32, 4]](t6)
@@ -364,5 +781,40 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
         w6 = w6 ~ w3
         result := bit_cast[vector[u64, 2]](w6)
         return Ghash.{high = result[1], low = result[0]}
+    }
+
+    /*
+     * Four blocks at a time from at, while there are four: (value ~ x0) * H^4 ~ x1 * H^3 ~ x2 * H^2 ~ x3 * H, the
+     * products added before one reduction, since reducing is linear. The products don't wait on each other.
+     */
+    ghash_blocks4_hardware #constant_time #target_features("pclmul") :: fn(gcm: ptr[Aes256Gcm], value: ptr[mut Ghash], data: u8[]) -> usize {
+        start : usize = 0
+        loop {
+            group : u8[64]
+            for j in cast[usize](0)..<64 {
+                group[j] = data[start + j]
+            }
+            sum : GhashWide
+            for b in cast[usize](0)..<4 {
+                high : u64 = 0
+                low : u64 = 0
+                for j in cast[usize](0)..<8 {
+                    high = (high << 8) | cast[u64](group[(16 * b + j) % 64])
+                    low = (low << 8) | cast[u64](group[(16 * b + 8 + j) % 64])
+                }
+                block := Ghash.{high = high, low = low}
+                if b == 0 {
+                    block.high = block.high ~ value.high
+                    block.low = block.low ~ value.low
+                }
+                product := ghash_product_hardware(block, gcm.hash_powers[(3 - b) % 4])
+                sum[0] = sum[0] ~ product[0]
+                sum[1] = sum[1] ~ product[1]
+            }
+            value^ = ghash_reduce_hardware(sum)
+            start += 64
+        }
+        while start + 64 <= data.count
+        return start
     }
 }

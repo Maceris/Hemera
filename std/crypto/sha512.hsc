@@ -115,21 +115,40 @@ sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
 }
 
 sha512_update :: fn(hasher: ptr[mut Sha512], data: u8[]) {
-    for byte in data {
-        sha512_byte(hasher, byte)
-    }
-    hasher.total += cast[u64](data.count)
+    sha512_absorb(hasher, as_secret(data))
 }
 
 sha512_update_secret #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
-    for byte in data {
-        hasher.state.block[hasher.buffered % SHA512_BLOCK] = cast[u8](byte)
+    sha512_absorb(hasher, data)
+}
+
+// data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
+    at : usize = 0
+    loop {
+        hasher.state.block[hasher.buffered % SHA512_BLOCK] = cast[u8](data[at])
         hasher.buffered += 1
+        at += 1
         if hasher.buffered == SHA512_BLOCK {
             sha512_compress(&hasher.state)
             hasher.buffered = 0
         }
     }
+    while hasher.buffered != 0 && at < data.count
+    loop {
+        for j in cast[usize](0)..<SHA512_BLOCK {
+            hasher.state.block[j] = cast[u8](data[at + j])
+        }
+        sha512_compress(&hasher.state)
+        at += SHA512_BLOCK
+    }
+    while at + SHA512_BLOCK <= data.count
+    loop {
+        hasher.state.block[hasher.buffered % SHA512_BLOCK] = cast[u8](data[at])
+        hasher.buffered += 1
+        at += 1
+    }
+    while at < data.count
     hasher.total += cast[u64](data.count)
 }
 
