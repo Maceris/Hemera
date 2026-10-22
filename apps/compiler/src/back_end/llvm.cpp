@@ -590,7 +590,8 @@ namespace hemera {
 
 	// lld-link, for PE/COFF: a hosted program starts at the entry the compiler generates, which needs only kernel32.
 	static std::string coff_arguments(const Options& options, std::string_view object_files, const std::vector<std::string>& libraries) {
-		std::string args;
+		// /Brepro: no link time in the program or its PDB, so the same program builds to the same bytes every time
+		std::string args = "/Brepro ";
 		// Each #foreign function's library, by its import library
 		for (const std::string& library : libraries) {
 			args += std::format("\"{}.lib\" ", library);

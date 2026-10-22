@@ -123,6 +123,23 @@ TEST(Hosted, RunsProgram)
 	run_hosted("hosted", hemera::TargetStackCheck::Off);
 }
 
+/*
+ * A program large enough to be generated in parts, with debug info, built twice the same way: the program and
+ * its PDB are the same bytes each time, with no link time in them (docs/compilation.md, Generating in Parallel).
+ */
+TEST(Hosted, BuildsTheSameEveryTime)
+{
+	const HostedOutput first = run_hosted("curves", hemera::TargetStackCheck::Off, 42, "", true);
+	const std::filesystem::path pdb = std::filesystem::path(first.executable).replace_extension(".pdb");
+	const std::string program = read_file(first.executable);
+	const std::string debug_info = read_file(pdb);
+	ASSERT_FALSE(program.empty());
+	ASSERT_FALSE(debug_info.empty());
+	const HostedOutput second = run_hosted("curves", hemera::TargetStackCheck::Off, 42, "", true);
+	EXPECT_TRUE(read_file(second.executable) == program) << "the program differs from the first build";
+	EXPECT_TRUE(read_file(pdb) == debug_info) << "its PDB differs from the first build";
+}
+
 // Results and parameters too large for registers, through pointers (docs/calling_convention.md, Large Values).
 TEST(Hosted, PassesLargeValues)
 {

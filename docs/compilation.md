@@ -234,6 +234,9 @@ object file of its own, all at once, and the linker takes them all. Which part a
 the program, so it builds the same every time. A small program, or an object file asked for on its own with `-c`,
 is one part.
 
+The same program builds to the same bytes every time on every target: a Windows program is linked with `/Brepro`,
+so neither it nor its PDB holds the time it was linked.
+
 ## Timing a Build
 
 `--time-phases` prints how long each phase of compiling took, on standard error, for finding what makes a build slow:

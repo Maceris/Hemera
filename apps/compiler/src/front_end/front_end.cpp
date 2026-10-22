@@ -11,8 +11,10 @@
 namespace hemera {
 	constexpr uint32_t MIN_THREAD_COUNT = 2;
 	/*
-	 * Checking shares the names registry and the interned strings, so past a few threads more of them mostly
-	 * wait on those: on 24 cores, a kernel's check took 138 ms with 8 threads and 169 ms with 24.
+	 * Checking has only so much work that can go at once, and shares the names registry, so past a few threads
+	 * more of them mostly wait. On an i9-12900K (8 performance cores with two threads each, 8 efficiency cores,
+	 * 24 logical processors), a kernel's check took 34 ms with 6 or 8 threads, 33 with 12, 46 with 16 and 56
+	 * with 24; the front end's tests were quickest with 4 to 8.
 	 */
 	constexpr uint32_t MAX_THREAD_COUNT = 8;
 	uint32_t THREAD_COUNT = MIN_THREAD_COUNT;
@@ -229,6 +231,17 @@ namespace hemera {
 		return true;
 	}
 
+	/*
+	 * Everything's done: every thread stops, the sleeping ones woken to see it, rather than finishing their
+	 * sleep, which checking a program would wait for.
+	 */
+	static void shut_down(GlobalThreadData& global_data) {
+		global_data.shutdown_flag = true;
+		for (WorkThreadData* thread : global_data.thread_data) {
+			signal_thread(*thread);
+		}
+	}
+
 	static void do_work(WorkThreadData& data) {
 		data.global_data->threads_running++;
 
@@ -245,7 +258,7 @@ namespace hemera {
 
 			if (to_do == nullptr) {
 				if (we_ran_out_of_tasks(*data.global_data)) {
-					data.global_data->shutdown_flag = true;
+					shut_down(*data.global_data);
 					break;
 				}
 				data.doing_work = false;
@@ -295,7 +308,7 @@ namespace hemera {
 			if (to_do == nullptr) {
 				// no work, sleep for now
 				if (we_ran_out_of_tasks(*data.global_data)) {
-					data.global_data->shutdown_flag = true;
+					shut_down(*data.global_data);
 					break;
 				}
 				
@@ -341,8 +354,10 @@ namespace hemera {
 		initialize_builtin_types();
 		initialize_builtin_functions();
 
+		// About one a physical core, which is half the logical processors with two threads a core
 		THREAD_COUNT =
-			std::clamp(std::thread::hardware_concurrency(), MIN_THREAD_COUNT, MAX_THREAD_COUNT);
+			std::clamp(std::thread::hardware_concurrency() / 2, MIN_THREAD_COUNT, MAX_THREAD_COUNT);
+
 		MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
 		
 		Allocator<> work_allocator{};
