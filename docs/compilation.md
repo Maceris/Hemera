@@ -247,19 +247,23 @@ so neither it nor its PDB holds the time it was linked.
 `--time-phases` prints how long each phase of compiling took, on standard error, for finding what makes a build slow:
 
 ```
-phase check: 150 ms
-phase check kernel.elf: 168 ms
-phase describe the program for the build's checks: 206 ms
-phase a build check: 347 ms
-phase generate kernel.elf: 267 ms
-phase lower kernel.elf: 34 ms
-phase optimize and assemble kernel.elf: 958 ms
-phase link kernel.elf: 95 ms
+phase check: 53 ms
+phase check kernel.elf: 34 ms
+phase describe the program for the build's checks: 77 ms
+phase a build check: 0 ms
+phase generate kernel.elf: 82 ms
+phase lower kernel.elf: 33 ms
+phase   simplify the whole of kernel.elf.o: 540 ms
+phase   optimize and assemble kernel.elf.o in 7 parts: 183 ms
+phase optimize and assemble kernel.elf: 724 ms
+phase link kernel.elf: 29 ms
 ```
 
 Checking is the packages read, resolved and checked; generating makes the program's MLIR, lowering its LLVM IR, and
-optimizing and assembling is LLVM's passes and machine code. A build package's targets each have their own phases,
-and the time its checks take, and what describing the program to them takes, is shown too.
+optimizing and assembling is LLVM's passes and machine code: for a program generated in parts, the whole module
+simplified first, then the parts at once (see [Generating in Parallel](#generating-in-parallel)). A build package's
+targets each have their own phases, and the time its checks take, and what describing the program to them takes, is
+shown too. The linker is run directly, found on the PATH: `lld-link` for PE/COFF and `ld.lld` for ELF.
 
 ## Debug Info
 

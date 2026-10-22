@@ -13,6 +13,7 @@
 #include "error/reporting.h"
 #include "middle_end/generate.h"
 #include "util/logger.h"
+#include "util/phase_timer.h"
 
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
@@ -31,6 +32,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ModuleSymbolTable.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Program.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
@@ -443,8 +445,10 @@ namespace hemera {
 				simplification.addPass(llvm::ForceFunctionAttrsPass());
 				simplification.addPass(pass_builder.buildModuleSimplificationPipeline(optimization_level, llvm::ThinOrFullLTOPhase::None));
 				simplification.addPass(llvm::GlobalDCEPass());
+				PhaseTimer timer(options.time_phases, std::format("  simplify the whole of {}", std::filesystem::path(output_name).filename().string()));
 				simplification.run(module, module_analysis_manager);
 			}
+			PhaseTimer timer(options.time_phases, std::format("  optimize and assemble {} in {} parts", std::filesystem::path(output_name).filename().string(), parts));
 			return generate_in_parts(target, target_machine, module, parts, optimization_level, output_name, objects);
 		}
 
@@ -588,67 +592,67 @@ namespace hemera {
 		return true;
 	}
 
-	// lld-link, for PE/COFF: a hosted program starts at the entry the compiler generates, which needs only kernel32.
-	static std::string coff_arguments(const Options& options, std::string_view object_files, const std::vector<std::string>& libraries) {
+	// lld-link's arguments, for PE/COFF: a hosted program starts at the entry the compiler generates, which needs only kernel32.
+	static std::vector<std::string> coff_arguments(const Options& options, const std::vector<std::string>& libraries) {
 		// /Brepro: no link time in the program or its PDB, so the same program builds to the same bytes every time
-		std::string args = "/Brepro ";
+		std::vector<std::string> args{ "/Brepro" };
 		// Each #foreign function's library, by its import library
 		for (const std::string& library : libraries) {
-			args += std::format("\"{}.lib\" ", library);
+			args.push_back(std::format("{}.lib", library));
 		}
 		if (options.debug_info) {
-			args += "/debug ";
+			args.push_back("/debug");
 		}
 		if (options.startup_code) {
-			args += std::format("/entry:{} /subsystem:console /nodefaultlib kernel32.lib ", HOSTED_ENTRY_SYMBOL);
+			args.insert(args.end(), { std::format("/entry:{}", HOSTED_ENTRY_SYMBOL), "/subsystem:console", "/nodefaultlib", "kernel32.lib" });
 		}
 		else {
-			args += std::format("/entry:{} /nodefaultlib ", options.entry);
+			args.insert(args.end(), { std::format("/entry:{}", options.entry), "/nodefaultlib" });
 		}
-		args += std::format("\"/out:{}.exe\" ", options.output_name);
+		args.push_back(std::format("/out:{}.exe", options.output_name));
 		switch (options.architecture) {
 		case ArchType::arm:
-			args += "/machine:arm ";
+			args.push_back("/machine:arm");
 			break;
 		case ArchType::aarch64:
 		case ArchType::aarch64_32:
-			args += "/machine:arm64 ";
+			args.push_back("/machine:arm64");
 			break;
 		case ArchType::x86:
-			args += "/machine:x86 ";
+			args.push_back("/machine:x86");
 			break;
 		case ArchType::x86_64:
-			args += "/machine:x64 ";
+			args.push_back("/machine:x64");
 			break;
 		}
-		return std::format("lld-link {}{}", args, object_files);
+		return args;
 	}
 
 	/*
-	 * ld.lld, for ELF: static, without the C runtime, and a position-independent executable for
+	 * ld.lld's arguments, for ELF: static, without the C runtime, and a position-independent executable for
 	 * position-independent code, like a relocatable kernel.
 	 */
-	static std::string elf_arguments(const Options& options, std::string_view object_files, const std::vector<std::string>& libraries) {
+	static std::vector<std::string> elf_arguments(const Options& options, const std::vector<std::string>& libraries) {
 		/*
 		 * A hosted Linux program with #foreign libraries links C dynamically, against the sysroot's
 		 * libraries, and starts through libc; any other is static, with no C library
 		 */
 		const bool links_c = options.startup_code && OSType::Linux == options.os && !libraries.empty();
-		std::string args = "-nostdlib ";
+		std::vector<std::string> args{ "-nostdlib" };
 		if (links_c) {
-			args += "-dynamic-linker /lib64/ld-linux-x86-64.so.2 ";
+			args.insert(args.end(), { "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2" });
 			if (!options.sysroot.empty()) {
-				args += std::format("-L \"{}\" ", options.sysroot.string());
+				args.insert(args.end(), { "-L", options.sysroot.string() });
 			}
-			args += "-lc ";
+			args.push_back("-lc");
 		}
 		else {
-			args += "-static ";
+			args.push_back("-static");
 		}
 		// Each #foreign function's library
 		for (const std::string& library : libraries) {
 			if (!links_c || library != "c") {
-				args += std::format("-l{} ", library);
+				args.push_back(std::format("-l{}", library));
 			}
 		}
 		/*
@@ -656,46 +660,65 @@ namespace hemera {
 		 * relocatable kernel do; a hosted one has no C library to do it, so it's linked at a fixed address
 		 */
 		if (TargetRelocationModel::PositionIndependent == options.relocation_model && !options.startup_code) {
-			args += "-pie --no-dynamic-linker ";
+			args.insert(args.end(), { "-pie", "--no-dynamic-linker" });
 		}
 		const bool linux_start = options.startup_code && OSType::Linux == options.os && ArchType::x86_64 == options.architecture;
-		args += std::format("-e {} ", linux_start ? LINUX_START_SYMBOL : options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry);
+		args.insert(args.end(), { "-e", linux_start ? LINUX_START_SYMBOL : options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry });
 		if (!options.linker_script.empty()) {
-			args += std::format("-T \"{}\" ", options.linker_script.string());
+			args.insert(args.end(), { "-T", options.linker_script.string() });
 		}
 		if (!options.debug_info) {
-			args += "--strip-debug ";
+			args.push_back("--strip-debug");
 		}
-		args += std::format("-o \"{}\" ", options.output_name);
-		return std::format("ld.lld {}{}", args, object_files);
+		args.insert(args.end(), { "-o", options.output_name });
+		return args;
 	}
 
-	void BackendLLVM::link(const Options& options, 
+	/*
+	 * The linker run directly, rather than through a shell, which on Windows starts cmd.exe first: about 60 ms
+	 * of every build. The linker is found on the PATH.
+	 */
+	void BackendLLVM::link(const Options& options,
 		std::string_view object_file) {
 
 		// What generate_object_file wrote, in order, or the object asked for
 		const std::vector<std::string> files = objects.empty() ? std::vector<std::string>{ std::string(object_file) } : objects;
-		std::string quoted;
-		for (const std::string& file : files) {
-			quoted += std::format("{}\"{}\"", quoted.empty() ? "" : " ", file);
-		}
-		std::string command;
+		std::string linker;
+		std::vector<std::string> args;
 		if (ObjectFormatType::ELF == options.object_format) {
-			command = elf_arguments(options, quoted, libraries);
+			linker = "ld.lld";
+			args = elf_arguments(options, libraries);
 		}
 		else if (ObjectFormatType::COFF == options.object_format) {
-			command = coff_arguments(options, quoted, libraries);
+			linker = "lld-link";
+			args = coff_arguments(options, libraries);
 		}
 		else {
 			report_error(ErrorCode::E7000, object_file, 0, 0, "only ELF and PE/COFF outputs can be linked yet");
 			return;
 		}
-		int result = std::system(command.c_str());
-		
-		if (result != 0) {
-			report_error(ErrorCode::E7000, object_file, 0, 0);
+		args.insert(args.end(), files.begin(), files.end());
+		llvm::ErrorOr<std::string> program = llvm::sys::findProgramByName(linker);
+		if (!program) {
+			report_error(ErrorCode::E7000, object_file, 0, 0, std::format("{} isn't on the PATH", linker));
 		}
-		
+		else {
+			std::vector<llvm::StringRef> argv{ *program };
+			for (const std::string& arg : args) {
+				argv.push_back(arg);
+			}
+			std::string message;
+			const int result = llvm::sys::ExecuteAndWait(*program, argv, std::nullopt, {}, 0, 0, &message);
+			if (result != 0) {
+				if (message.empty()) {
+					report_error(ErrorCode::E7000, object_file, 0, 0);
+				}
+				else {
+					report_error(ErrorCode::E7000, object_file, 0, 0, message);
+				}
+			}
+		}
+
 		for (const std::string& file : files) {
 			if (!std::filesystem::remove(file)) {
 				report_error(ErrorCode::E7001, file, 0, 0);
