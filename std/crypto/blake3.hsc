@@ -88,7 +88,7 @@ blake3_start_keyed #constant_time :: fn(key: SecretByte[]) -> Blake3? {
     for i in 0..<8 {
         word := compiler.secret(cast[u32](0))
         for j in 0..<4 {
-            word = word | (cast[u32](key[(4 * i + j) % BLAKE3_KEY]) << (8 * cast[u32](j)))
+            word = word | (cast[u32](key[4 * i + j]) << (8 * cast[u32](j)))
         }
         hasher.state.key[i] = word
         hasher.state.chunk[i] = word

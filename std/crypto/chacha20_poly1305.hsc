@@ -195,7 +195,7 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
         for i in 0..<16 {
             lanes := bit_cast[u32[8]](x[i] + start[i])
             for b in 0..<8 {
-                words[(16 * cast[usize](b) + cast[usize](i)) % 128] = lanes[b]
+                words[16 * cast[usize](b) + cast[usize](i)] = lanes[b]
             }
         }
     }

@@ -334,10 +334,13 @@ about an element's fields is forgotten when its index changes, as well as when t
 * `for` loops over a range or over elements, whose index is in bounds, and the condition of a `while`
 * `runtime.assert(condition)`, which ends the program when the condition is false, so after it the condition holds
 * types: an unsigned value is at least 0, a `u32` at most 2^32 - 1, an enum value at most its largest member's,
-  `x & 15` at most 15 and `x % n` less than `n`
+  `x & 15` at most 15 and `x % n` less than `n`. `%` is truncated, so of a signed value that may be negative it may be
+  negative too; `x %% 16`, floored, is from 0 to 15 whatever `x` is
 * arithmetic on what's bounded: a bounded value times a constant, either way around, like `4 * i` and
-  `(round % 10) * 16`, and that plus a constant, like `4 * i + 3`, as long as it isn't negative (a loop's name from 0
-  isn't, even when it's signed)
+  `(round % 10) * 16`, and that plus a constant or another bounded value, like `4 * i + 3` and `16 * b + 4 * j + k`,
+  as long as it isn't negative (a loop's name from 0 isn't, even when it's signed)
+* a difference compared with a constant, like `data.count - at >= 16`, which says `at + 16 <= data.count`, once `at` is
+  known to be at most `data.count` (and, if signed, at least 0), so the difference can't wrap
 
 A loop keeps what holds every time around it: a counter that only goes down keeps its upper bound, and one that's
 kept below a count keeps that.
@@ -352,7 +355,8 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
   the caller: check it, or state it with `runtime.assert`, which documents the contract and checks it at run time.
 * Memory reached through a pointer, after anything that could write it: a call, or a store through a pointer.
   `info.cpus.count` is forgotten across a call; a copy of the view in a local, `cpus :: info.cpus`, isn't.
-* Relations between more than two values, like `i + j < n`, or products of two variables. Compute the index into a
+* Relations between more than two values that aren't bounded by constants, like `i + j < n`, or products of two
+  variables. Compute the index into a
   local and compare that, or loop with an index that counts the way the code needs.
 * Invariants of a data structure, like a struct's array having one entry per frame. Compare against the array's own
   count, rather than a field that's meant to equal it.

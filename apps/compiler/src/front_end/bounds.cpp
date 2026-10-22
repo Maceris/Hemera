@@ -1126,6 +1126,14 @@ namespace hemera {
 				sum.nonnegative = true;
 				return sum;
 			}
+			// Two bounded values, like 16 * b + 4 * j: bounded by the sum of their bounds
+			if (TokenType::OPERATOR_PLUS == op && !left.known && left.at_most.has_value() && left.nonnegative && !right.known
+				&& right.at_most.has_value() && right.nonnegative && *left.at_most < (int64_t{ 1 } << 40) && *right.at_most < (int64_t{ 1 } << 40)) {
+				Value sum;
+				sum.at_most = *left.at_most + *right.at_most;
+				sum.nonnegative = true;
+				return sum;
+			}
 			// A term divided or shifted: what's known of its range, as a bound
 			if (left.known && ZERO != left.term && right.known && ZERO == right.term
 				&& (TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op)
@@ -1176,7 +1184,8 @@ namespace hemera {
 				result.nonnegative = true;
 			}
 			if ((TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op) && right.known && ZERO == right.term
-				&& right.offset > 0 && (nonnegative(left) || unsigned_operands)) {
+				&& right.offset > 0 && (nonnegative(left) || unsigned_operands || TokenType::OPERATOR_REMAINDER == op)) {
+				// %% is floored, so by a positive constant it's never negative, whatever the left is
 				result.at_most = right.offset - 1;
 				result.nonnegative = true;
 			}
@@ -1405,6 +1414,84 @@ namespace hemera {
 			return TokenType::OPERATOR_EQUAL;
 		}
 
+		ast::Node* unwrapped(ast::Node* node) {
+			while (ast::NodeType::PAREN_GROUP == node->node_type && node->children.size() == 1) {
+				node = node->children[0];
+			}
+			return node;
+		}
+
+		bool is_difference(const ast::Node* node) {
+			return ast::NodeType::BINARY_OPERATOR == node->node_type && TokenType::OPERATOR_MINUS == node->value.type
+				&& node->children.size() == 2;
+		}
+
+		// x op y as y op' x
+		TokenType mirrored(TokenType op) {
+			if (TokenType::SYM_LT == op) {
+				return TokenType::SYM_GT;
+			}
+			if (TokenType::SYM_GT == op) {
+				return TokenType::SYM_LT;
+			}
+			if (TokenType::OPERATOR_LESS_THAN_OR_EQUAL == op) {
+				return TokenType::OPERATOR_GREATER_THAN_OR_EQUAL;
+			}
+			if (TokenType::OPERATOR_GREATER_THAN_OR_EQUAL == op) {
+				return TokenType::OPERATOR_LESS_THAN_OR_EQUAL;
+			}
+			return op;
+		}
+
+		/*
+		 * A comparison with a difference of two terms on one side and a constant on the other, like
+		 * count - at >= 16: as at + 16 <= count, when at is known to be at most count (and, for signed
+		 * integers, at least 0), so the difference doesn't wrap. Nothing when it isn't one.
+		 */
+		std::optional<std::pair<Facts, Facts>> difference_condition(Analysis& analysis, const Facts& facts, ast::Node* node) {
+			ast::Node* left_node = unwrapped(node->children[0]);
+			ast::Node* right_node = unwrapped(node->children[1]);
+			const bool on_left = is_difference(left_node);
+			if (!on_left && !is_difference(right_node)) {
+				return std::nullopt;
+			}
+			ast::Node* minus = on_left ? left_node : right_node;
+			const CheckedNode* operand = found_at(analysis, minus->children[0]);
+			const bool unsigned_operands = operand != nullptr && is_unsigned(operand->type);
+			Facts after = facts;
+			Value a;
+			Value b;
+			Value c;
+			if (on_left) {
+				a = evaluate(analysis, after, minus->children[0]);
+				b = evaluate(analysis, after, minus->children[1]);
+				c = evaluate(analysis, after, right_node);
+			}
+			else {
+				c = evaluate(analysis, after, left_node);
+				a = evaluate(analysis, after, minus->children[0]);
+				b = evaluate(analysis, after, minus->children[1]);
+			}
+			// a - b op c, with the difference on the left
+			const TokenType op = on_left ? node->value.type : mirrored(node->value.type);
+			Facts when_true = after;
+			Facts when_false = after;
+			const bool constant_c = c.known && ZERO == c.term && 0 == c.spread && std::abs(c.offset) < LARGEST_COUNT;
+			if (constant_c && a.known && b.known && ZERO != b.term && below(analysis, after, b, a, 0)
+				&& (unsigned_operands || at_least_zero(analysis, after, b))) {
+				Value shifted = b;
+				shifted.offset += c.offset;
+				compare(analysis, when_true, op, a, shifted);
+				compare(analysis, when_false, negated(op), a, shifted);
+				return std::make_pair(when_true, when_false);
+			}
+			// Otherwise as any other comparison
+			const Value difference = combine(analysis, after, TokenType::OPERATOR_MINUS, a, b, unsigned_operands);
+			compare(analysis, when_true, op, difference, c);
+			compare(analysis, when_false, negated(op), difference, c);
+			return std::make_pair(when_true, when_false);
+		}
+
 		// What's known where a condition is true, and where it's false.
 		std::pair<Facts, Facts> condition(Analysis& analysis, const Facts& facts, ast::Node* node) {
 			if (ast::NodeType::PAREN_GROUP == node->node_type && node->children.size() == 1) {
@@ -1427,6 +1514,9 @@ namespace hemera {
 					return { join(analysis, left_true, right_true), right_false };
 				}
 				if (is_comparison(op)) {
+					if (auto split = difference_condition(analysis, facts, node)) {
+						return *split;
+					}
 					Facts after = facts;
 					const Value left = evaluate(analysis, after, node->children[0]);
 					const Value right = evaluate(analysis, after, node->children[1]);

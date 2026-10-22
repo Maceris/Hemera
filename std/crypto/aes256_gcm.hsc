@@ -799,8 +799,8 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
                 high : u64 = 0
                 low : u64 = 0
                 for j in cast[usize](0)..<8 {
-                    high = (high << 8) | cast[u64](group[(16 * b + j) % 64])
-                    low = (low << 8) | cast[u64](group[(16 * b + 8 + j) % 64])
+                    high = (high << 8) | cast[u64](group[16 * b + j])
+                    low = (low << 8) | cast[u64](group[16 * b + 8 + j])
                 }
                 block := Ghash.{high = high, low = low}
                 if b == 0 {

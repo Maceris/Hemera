@@ -185,3 +185,36 @@ rounds :: fn(table: ptr[u8[160]]) -> u32 {
 first_part :: fn(buffer: ptr[u8[1000]], count: usize) -> u8[] {
     return buffer[0..<count % 1001]
 }
+
+// A difference against a constant, like count - at >= 16, once at is known to be at most count
+blocks_of :: fn(data: u8[]) -> u32 {
+    total : u32 = 0
+    at : usize = 0
+    loop {
+        total += cast[u32](data[at + 15])
+        at += 16
+    }
+    while data.count - at >= 16
+    if 4 <= data.count - at {
+        total += cast[u32](data[at + 3])
+    }
+    return total
+}
+
+// Sums of scaled loop names, like 16 * b + 4 * j + k
+tiles :: fn(grid: ptr[u8[64]]) -> u32 {
+    total : u32 = 0
+    for b in 0..<4 {
+        for j in 0..<4 {
+            for k in 0..<4 {
+                total += cast[u32](grid[16 * b + 4 * j + k])
+            }
+        }
+    }
+    return total
+}
+
+// A floored remainder by a constant is never negative, even of a signed value
+floored :: fn(ring: ptr[int[16]], i: int) -> int {
+    return ring[i %% 16]
+}

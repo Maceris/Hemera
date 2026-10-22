@@ -870,6 +870,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_field_aliased", hemera::ErrorCode::E4031 },
 		{ "bounds_index_changed", hemera::ErrorCode::E4031 },
 		{ "bounds_element_changed", hemera::ErrorCode::E4031 },
+		{ "bounds_difference_wraps", hemera::ErrorCode::E4031 },
+		{ "bounds_signed_modulus", hemera::ErrorCode::E4031 },
 		{ "generic_value_variable", hemera::ErrorCode::E4010 },
 		{ "generic_value_given_type", hemera::ErrorCode::E4010 },
 		{ "generic_value_kind", hemera::ErrorCode::E4014 }
