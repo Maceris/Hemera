@@ -1,4 +1,5 @@
 #include "middle_end/generate.h"
+#include "util/phase_timer.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -652,6 +653,9 @@ namespace hemera {
 	 * a zero with memset; one just loaded, with nothing written since, with memmove from where it was; and
 	 * one built by inserting parts into a zero, like a struct literal, with memset and then each part.
 	 */
+	static mlir::Value constant_global(Generator& generator, mlir::Type type, size_t alignment, const std::string& name,
+		const std::function<mlir::Value()>& build);
+
 	static void store(Generator& generator, mlir::Value value, mlir::Value address) {
 		mlir::OpBuilder& b = generator.builder;
 		const mlir::Location l = generator.loc;
@@ -696,6 +700,19 @@ namespace hemera {
 			LLVM::MemsetOp::create(b, l, address, constant_int(generator, integer_type(generator, 1), 0), bytes, false);
 			for (const auto& [offset, part] : parts) {
 				store(generator, part, offset_address(generator, address, offset));
+			}
+			return;
+		}
+		// A large constant, like a table or #file_data's bytes: kept in a read-only global and copied, since
+		// storing it whole has LLVM split it into a store for every few bytes, which takes a long time to compile
+		if (auto constant = value.getDefiningOp<LLVM::ConstantOp>()) {
+			const mlir::Attribute contents = constant.getValue();
+			const mlir::Type type = value.getType();
+			mlir::Value from = constant_global(generator, type, 8, std::format("stored.{}", generator.compile_time_globals++),
+				[&]() { return LLVM::ConstantOp::create(b, l, type, contents); });
+			LLVM::MemcpyOp::create(b, l, address, from, bytes, false);
+			if (constant->use_empty()) {
+				constant->erase();
 			}
 			return;
 		}
@@ -2512,6 +2529,11 @@ namespace hemera {
 		CompileTimeValue* result;
 		// Code to generate instead of node's, like a constraint's call (run_constraint_evaluation)
 		std::function<void(Generator&)> emit = nullptr;
+		/*
+		 * Where to say whether its value could be kept, for a run that goes on without the values that can't,
+		 * like one holding a function (constant_values). Without it, one that can't fails the run.
+		 */
+		bool* captured = nullptr;
 	};
 
 	static void compiler_service(const char* name, int64_t name_count, uint8_t* result, uint8_t* const* arguments,
@@ -2680,7 +2702,18 @@ namespace hemera {
 					if (item.type != nullptr && item.result != nullptr) {
 						const uint8_t* bytes = reinterpret_cast<const uint8_t*>(buffers[i].data());
 						item.result->bytes.assign(bytes, bytes + item.type->size);
-						captured = capture_pointed(generator, item.type, item.result->bytes.data(), 0, *item.result, item.node) && captured;
+						const bool failed_before = generator.failed;
+						const size_t held_before = generator.held.size();
+						const bool kept = capture_pointed(generator, item.type, item.result->bytes.data(), 0, *item.result, item.node);
+						if (item.captured != nullptr) {
+							// Left out on its own, without failing the others
+							*item.captured = kept;
+							generator.failed = failed_before;
+							generator.held.resize(held_before);
+						}
+						else {
+							captured = kept && captured;
+						}
 					}
 				}
 			}, run, error);
@@ -7456,6 +7489,8 @@ namespace hemera {
 				return result;
 			}
 			std::vector<CompileTimeValue> values(constants.size());
+			// Whether each value could be kept: one holding a function, say, can't, and is left out
+			std::unique_ptr<bool[]> kept(new bool[constants.size()]());
 			std::vector<CompileTimeItem> items;
 			std::vector<size_t> positions;
 			for (size_t i = 0; i < constants.size(); ++i) {
@@ -7470,12 +7505,13 @@ namespace hemera {
 				}
 				result[i].first = type;
 				items.push_back(CompileTimeItem{ definition_value(constant->node), type, constant->checked.get(), constant, &values[i] });
+				items.back().captured = &kept[i];
 				positions.push_back(i);
 			}
 			if (items.empty()) {
 				return result;
 			}
-			// All at once, or one at a time if that fails, leaving out what can't be worked out
+			// All at once, or if that fails, each half, and so on down, leaving out what can't be worked out
 			auto run = [&](std::vector<CompileTimeItem>& batch) {
 				mlir::ModuleOp scratch = mlir::ModuleOp::create(mlir::UnknownLoc::get(call.program->context), "constants");
 				bool ran = false;
@@ -7490,18 +7526,21 @@ namespace hemera {
 				scratch.erase();
 				return ran;
 			};
-			if (run(items)) {
-				for (size_t i : positions) {
-					result[i].second = call.data.copy_value(result[i].first, values[i]);
+			std::function<void(size_t, size_t)> run_range = [&](size_t from, size_t to) {
+				std::vector<CompileTimeItem> batch(items.begin() + static_cast<std::ptrdiff_t>(from), items.begin() + static_cast<std::ptrdiff_t>(to));
+				if (run(batch)) {
+					for (size_t j = from; j < to; ++j) {
+						if (kept[positions[j]]) {
+							result[positions[j]].second = call.data.copy_value(result[positions[j]].first, values[positions[j]]);
+						}
+					}
 				}
-				return result;
-			}
-			for (size_t j = 0; j < items.size(); ++j) {
-				std::vector<CompileTimeItem> one{ items[j] };
-				if (run(one)) {
-					result[positions[j]].second = call.data.copy_value(result[positions[j]].first, values[positions[j]]);
+				else if (to - from > 1) {
+					run_range(from, from + (to - from) / 2);
+					run_range(from + (to - from) / 2, to);
 				}
-			}
+			};
+			run_range(0, items.size());
 			return result;
 		}
 
@@ -7597,8 +7636,26 @@ namespace hemera {
 			});
 		}
 
-		// A package's PackageInfo, with its constants' values worked out.
-		void write_package(Call& call, uint8_t* record, const TypeInfoStruct* layout, hemera::PackageInfo* package) {
+		// Constants' types and values, worked out already: constant_values's, for many packages at once.
+		using KnownConstants = std::unordered_map<Declaration*, std::pair<const TypeInfo*, const uint8_t*>>;
+
+		// A package's top-level constants, the ones a PackageInfo describes.
+		std::vector<Declaration*> constants_of(ProgramInfo* program, const std::string& path) {
+			std::vector<Declaration*> constants;
+			for (Declaration* declaration : declarations_of(program, path)) {
+				if (DeclarationKind::FUNCTION != declaration->kind && !is_type(declaration) && is_constant(declaration)) {
+					constants.push_back(declaration);
+				}
+			}
+			return constants;
+		}
+
+		/*
+		 * A package's PackageInfo, with its constants' values worked out, or taken from known when given, which
+		 * saves a compile-time run for each package when describing many.
+		 */
+		void write_package(Call& call, uint8_t* record, const TypeInfoStruct* layout, hemera::PackageInfo* package,
+			const KnownConstants* known = nullptr) {
 			CompileTimeData& data = call.data;
 			const std::string path = text_of(package->full_path);
 			data.write_text(record, layout, "name", text_of(package->self_reported_name));
@@ -7655,7 +7712,16 @@ namespace hemera {
 			write_records(data, record, layout, "functions", functions.size(), [&](uint8_t* at, const TypeInfoStruct* function_layout, size_t i) {
 				write_function(call, at, function_layout, functions[i]);
 			});
-			const auto values = constant_values(call, constants);
+			std::vector<std::pair<const TypeInfo*, const uint8_t*>> values;
+			if (known != nullptr) {
+				for (Declaration* constant : constants) {
+					auto found = known->find(constant);
+					values.push_back(found != known->end() ? found->second : std::make_pair(nullptr, nullptr));
+				}
+			}
+			else {
+				values = constant_values(call, constants);
+			}
 			write_records(data, record, layout, "constants", constants.size(), [&](uint8_t* at, const TypeInfoStruct* constant_layout, size_t i) {
 				write_constant(call, at, constant_layout, constants[i], values[i].first, values[i].second);
 			});
@@ -8364,6 +8430,7 @@ namespace hemera {
 		}
 		result.settings = target.settings;
 		result.build_extent = build.build_extent;
+		result.time_phases = build.time_phases;
 		result.optimization_level = target.optimization_level == "O0" ? OptimizationLevel::O0 : target.optimization_level == "O1" ? OptimizationLevel::O1
 			: target.optimization_level == "O3" ? OptimizationLevel::O3 : OptimizationLevel::O2;
 		result.debug_info = target.debug_info;
@@ -8446,6 +8513,7 @@ namespace hemera {
 		// The target as a check sees it: its options, and every package in its program, written in the build's
 		// memory with the build's layouts, about the target's declarations and types
 		Call call{ "", nullptr, nullptr, 0, nullptr, std::string(), nullptr, target, &options, data };
+		auto describing = std::make_unique<PhaseTimer>(options.time_phases, "describe the program for the build's checks");
 		uint8_t* target_record = data.new_records(build_layout);
 		write_build_options(call, target_record, build_layout, true);
 		std::vector<hemera::PackageInfo*> packages;
@@ -8456,11 +8524,22 @@ namespace hemera {
 		std::sort(packages.begin(), packages.end(), [](const hemera::PackageInfo* a, const hemera::PackageInfo* b) {
 			return std::string_view(*a->full_path) < std::string_view(*b->full_path);
 		});
+		// Every package's constants worked out in one run
+		std::vector<Declaration*> constants;
+		for (hemera::PackageInfo* package : packages) {
+			const std::vector<Declaration*> found = constants_of(target, text_of(package->full_path));
+			constants.insert(constants.end(), found.begin(), found.end());
+		}
+		const auto values = constant_values(call, constants);
+		KnownConstants known;
+		for (size_t i = 0; i < constants.size(); ++i) {
+			known[constants[i]] = values[i];
+		}
 		uint8_t* package_records = data.new_records(package_layout, packages.size());
 		uint8_t* root = nullptr;
 		for (size_t i = 0; i < packages.size(); ++i) {
 			uint8_t* record = package_records + i * package_layout->size;
-			write_package(call, record, package_layout, packages[i]);
+			write_package(call, record, package_layout, packages[i], &known);
 			if (text_of(packages[i]->full_path) == options.input.string()) {
 				root = record;
 			}
@@ -8468,8 +8547,10 @@ namespace hemera {
 		uint8_t* program_record = data.new_records(program_layout);
 		data.write_pointer(program_record, program_layout, "root", root);
 		data.write_view(program_record, program_layout, "packages", package_records, packages.size());
+		describing.reset();
 		bool passed = true;
 		for (const BuildCallback& check : registry.checks) {
+			PhaseTimer timer(options.time_phases, "a build check");
 			std::vector<uint64_t> frame{ 0, reinterpret_cast<uintptr_t>(target_record), reinterpret_cast<uintptr_t>(program_record), 0 };
 			passed = call_back(build, build_options, check, frame, 24, target, &options) && passed;
 		}

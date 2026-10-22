@@ -365,6 +365,20 @@ reflected_parameters :: fn() -> int {
 
 REFLECTED_PARAMETERS :: reflected_parameters()
 
+/*
+ * A package's constants, worked out together: one holding functions, like a logger, has no value, without
+ * keeping the others from theirs.
+ */
+reflected_constants :: fn() -> bool {
+    info :: compiler.package_info("runtime") or_else compiler.PackageInfo.{}
+    segment :: compiler.find_constant(&info, "STACK_SEGMENT_SIZE") or_else compiler.ConstantInfo.{}
+    logger :: compiler.find_constant(&info, "STANDARD_LOGGER") or_else compiler.ConstantInfo.{}
+    return segment.value.type == int && segment.value.data != null && logger.name == "STANDARD_LOGGER"
+        && logger.value.data == null
+}
+
+REFLECTED_CONSTANTS :: reflected_constants()
+
 // Compile-time code gets memory from its context, and can log
 SQUARES_SUM :: sum_of_squares(6)
 
@@ -442,6 +456,11 @@ tables_hold :: fn() -> bool {
         if HALF_TABLE[i] != cast[f32](i) * 0.5 {
             return false
         }
+    }
+    // A copy of a whole table, which comes from a constant kept in the program
+    copy := WORD_TABLE
+    if copy[0] != 7 || copy[4095] != 4095 * 0x1_0000_0001 + 7 {
+        return false
     }
     ramp := RAMP
     return ramp.count == 8 && ramp[5] == 9 && ramp[7] == 6
@@ -773,6 +792,9 @@ main :: fn() -> int {
     }
     if !tables_hold() {
         return 62
+    }
+    if !REFLECTED_CONSTANTS {
+        return 63
     }
     if REFLECTED_PARAMETERS != 3 {
         return 52

@@ -513,6 +513,10 @@ namespace hemera {
         /// </summary>
         bool valgrind_secrets = false;
         /// <summary>
+        /// --time-phases: how long each phase of compiling took, on standard error, for finding what's slow.
+        /// </summary>
+        bool time_phases = false;
+        /// <summary>
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;

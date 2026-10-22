@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -9,6 +10,11 @@
 
 namespace hemera {
 	constexpr uint32_t MIN_THREAD_COUNT = 2;
+	/*
+	 * Checking shares the names registry and the interned strings, so past a few threads more of them mostly
+	 * wait on those: on 24 cores, a kernel's check took 138 ms with 8 threads and 169 ms with 24.
+	 */
+	constexpr uint32_t MAX_THREAD_COUNT = 8;
 	uint32_t THREAD_COUNT = MIN_THREAD_COUNT;
 
 	static uint32_t MAX_SEARCHERS = 1;
@@ -336,7 +342,7 @@ namespace hemera {
 		initialize_builtin_functions();
 
 		THREAD_COUNT =
-			std::max(MIN_THREAD_COUNT, std::thread::hardware_concurrency());
+			std::clamp(std::thread::hardware_concurrency(), MIN_THREAD_COUNT, MAX_THREAD_COUNT);
 		MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
 		
 		Allocator<> work_allocator{};

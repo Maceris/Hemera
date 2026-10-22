@@ -53,6 +53,7 @@ namespace hemera {
 			STOP_BEFORE_LINK,
 			SUBARCHITECTURE,
 			VALGRIND_SECRETS,
+			TIME_PHASES,
 			VENDOR,
 			VERSION,
 		};
@@ -145,6 +146,7 @@ namespace hemera {
 			{"--package", Option::PACKAGE_PATH},
 			{"--allow-run", Option::ALLOW_RUN},
 			{"--valgrind-secrets", Option::VALGRIND_SECRETS},
+			{"--time-phases", Option::TIME_PHASES},
 			{"--setting", Option::SETTING},
 		};
 
@@ -164,6 +166,7 @@ namespace hemera {
 			{Option::DEBUG_INFO, "Produce debug information", NO_ARGS},
 			{Option::GENERATE_ALL, "Generate every function the packages declare, used or not", NO_ARGS},
 			{Option::VALGRIND_SECRETS, "Tell Valgrind's Memcheck secrets are undefined, so it reports branches and addresses that depend on them", NO_ARGS},
+			{Option::TIME_PHASES, "Print how long each phase of compiling took, on standard error", NO_ARGS},
 			{Option::ARCHITECTURE, "Specify the target architecture", HAS_ARGS},
 			{Option::SUBARCHITECTURE, "Specify the target subarchitecture", HAS_ARGS},
 			{Option::VENDOR, "Specify the target vendor", HAS_ARGS},

@@ -22,6 +22,7 @@
 #include "middle_end/generate.h"
 #include "memory/thread_safe_queue.h"
 #include "util/logger.h"
+#include "util/phase_timer.h"
 #include "util/thread_pool.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -75,7 +76,10 @@ namespace hemera {
 		ProgramInfo* program_info = main_alloc.new_object<ProgramInfo>(
 			&mlir_context, &mlir_builder, &mlir_module);
 
-		kick_off_processing(program_info, options);
+		{
+			PhaseTimer timer(options->time_phases, "check");
+			kick_off_processing(program_info, options);
+		}
 
 		if (error_count() > 0) {
 			rc = -1;

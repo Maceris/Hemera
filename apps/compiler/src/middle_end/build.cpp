@@ -1,6 +1,8 @@
 #include "middle_end/build.h"
 
+#include <filesystem>
 #include <format>
+#include <memory>
 
 #include "back_end/back_end.h"
 #include "cmd_line/options.h"
@@ -9,6 +11,7 @@
 #include "front_end/info.h"
 #include "hmir/hmir_dialect.h"
 #include "middle_end/generate.h"
+#include "util/phase_timer.h"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -27,16 +30,22 @@ namespace hemera {
 	 */
 	bool finish_program(Options* options, ProgramInfo* program_info, mlir::ModuleOp mlir_module, Allocator<>& alloc) {
 		const std::string object_file_name = std::format("{}.o", options->output_name);
+		const std::string program = std::filesystem::path(options->output_name).filename().string();
+		auto timer = [&](const char* phase) { return std::make_unique<PhaseTimer>(options->time_phases, std::format("{} {}", phase, program)); };
 		// Generate the program's MLIR, from main and everything it uses
+		auto generating = timer("generate");
 		if (!generate_program(program_info, *options, mlir_module)) {
 			return false;
 		}
+		generating.reset();
 		if (options->build_extent < BuildExtent::LOWER) {
 			dump_mlir_to_file(options, &mlir_module);
 			return true;
 		}
 		llvm::LLVMContext context;
+		auto lowering = timer("lower");
 		std::unique_ptr<llvm::Module> lowered = lower_to_llvm(mlir_module, context, *options);
+		lowering.reset();
 		if (lowered == nullptr || error_count() > 0) {
 			return false;
 		}
@@ -52,9 +61,12 @@ namespace hemera {
 			return true;
 		}
 		Backend* backend = alloc.new_object<BackendLLVM>();
+		auto optimizing = timer("optimize and assemble");
 		bool worked = backend->initialize(*options) && backend->generate_object_file(*options, *lowered, object_file_name)
 			&& error_count() == 0;
+		optimizing.reset();
 		if (worked && options->build_extent >= BuildExtent::LINK) {
+			auto linking = timer("link");
 			backend->link(*options, object_file_name);
 			worked = error_count() == 0;
 		}
@@ -86,7 +98,10 @@ namespace hemera {
 			auto* mlir_builder = new mlir::OpBuilder(mlir_context);
 			auto* mlir_module = new mlir::ModuleOp(mlir::ModuleOp::create(mlir_builder->getUnknownLoc(), options->output_name));
 			ProgramInfo* program = alloc.new_object<ProgramInfo>(mlir_context, mlir_builder, mlir_module);
-			kick_off_processing(program, options);
+			{
+				PhaseTimer timer(options->time_phases, std::format("check {}", std::filesystem::path(options->output_name).filename().string()));
+				kick_off_processing(program, options);
+			}
 			if (error_count() != errors_before || !run_build_checks(build, build_options, program, *options)) {
 				worked = false;
 				continue;

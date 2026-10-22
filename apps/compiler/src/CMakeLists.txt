@@ -259,5 +259,9 @@ TARGET_LINK_LIBRARIES(HemeraTest
   HemeraLib
   ${llvm_libs}
 )
+IF(MSVC)
+  # A PDB for the Release tests too, so a crash or a profile of them has names
+  TARGET_LINK_OPTIONS(HemeraTest PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+ENDIF()
 
 gtest_discover_tests(HemeraTest)

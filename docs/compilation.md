@@ -225,6 +225,25 @@ no operating system, so each one's `#if` code is generated too.
 secrets, so running the program under it reports any branch or memory address that depends on one (see
 [memory.md](memory.md#checking-the-machine-code)). It's for x86-64, and changes nothing outside Valgrind.
 
+## Timing a Build
+
+`--time-phases` prints how long each phase of compiling took, on standard error, for finding what makes a build slow:
+
+```
+phase check: 150 ms
+phase check kernel.elf: 168 ms
+phase describe the program for the build's checks: 206 ms
+phase a build check: 347 ms
+phase generate kernel.elf: 267 ms
+phase lower kernel.elf: 34 ms
+phase optimize and assemble kernel.elf: 958 ms
+phase link kernel.elf: 95 ms
+```
+
+Checking is the packages read, resolved and checked; generating makes the program's MLIR, lowering its LLVM IR, and
+optimizing and assembling is LLVM's passes and machine code. A build package's targets each have their own phases,
+and the time its checks take, and what describing the program to them takes, is shown too.
+
 ## Debug Info
 
 `--debug` (`BackendOptions.debug_info` in a build package) gives the program debug info, so debuggers and stack traces
