@@ -212,6 +212,13 @@ namespace hemera {
 		std::shared_ptr<void> compile_time_data;
 		std::mutex compile_time_data_mutex;
 
+		/// <summary>
+		/// Its compile-time code's JIT (middle_end/jit.h, CompileTimeLibrary), made the first time code runs,
+		/// and its mutex.
+		/// </summary>
+		std::shared_ptr<void> compile_time_library;
+		std::mutex compile_time_library_mutex;
+
 		ProgramInfo(mlir::MLIRContext* mlir_context, 
 			mlir::OpBuilder* mlir_op_builder,
 			mlir::ModuleOp* mlir_module);

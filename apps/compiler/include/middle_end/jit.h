@@ -40,6 +40,31 @@ namespace hemera {
 		uint16_t column = 0;
 	};
 
+	/// <summary>
+	/// A program's compile-time code once it's compiled: one JIT for every run, each run's module in a library
+	/// of its own that links to the earlier ones, so a function an earlier run compiled, like the compile-time
+	/// context's logger, isn't compiled again (docs/compilation.md, Compile-Time Execution).
+	/// </summary>
+	struct CompileTimeLibrary;
+
+	std::shared_ptr<CompileTimeLibrary> new_compile_time_library();
+
+	/// <summary>
+	/// Whether an earlier run compiled the function called symbol, so a later one can call it rather than
+	/// compiling it again.
+	/// </summary>
+	bool compile_time_library_has(CompileTimeLibrary& library, const std::string& symbol);
+
+	/// <summary>
+	/// What a run's module shares with the library: the functions it defines for later runs, and the ones it
+	/// calls that earlier runs defined.
+	/// </summary>
+	struct CompileTimeLinks {
+		CompileTimeLibrary* library = nullptr;
+		std::vector<std::string> defines;
+		std::vector<std::string> uses;
+	};
+
 	enum class RunResult {
 		RAN,
 		// The module couldn't be compiled or entry wasn't found: error says why.
@@ -56,7 +81,7 @@ namespace hemera {
 	/// </summary>
 	RunResult run_on_host(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
 		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
-		std::string& error);
+		std::string& error, const CompileTimeLinks& links = {});
 
 	/// <summary>
 	/// Keeps the code running now loaded once it finishes, since it registered functions the compiler calls later,

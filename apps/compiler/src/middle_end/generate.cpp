@@ -201,6 +201,11 @@ namespace hemera {
 		/// </summary>
 		std::vector<std::pair<std::string, const void*>> compile_time_symbols;
 		/// <summary>
+		/// In compile-time code, the program's library of what earlier runs compiled, and what this run defines
+		/// for later ones and calls from earlier ones (middle_end/jit.h).
+		/// </summary>
+		CompileTimeLinks links;
+		/// <summary>
 		/// The file errors are in when there's no declaration being generated, like a top-level #run's.
 		/// </summary>
 		std::string file_path;
@@ -1668,9 +1673,25 @@ namespace hemera {
 			generator.symbols.insert(name);
 		}
 		const bool callback = is_callback(generator, type);
+		/*
+		 * Compile-time code: a function an earlier run compiled is called there, only declared here; any other
+		 * is defined for later runs to call too
+		 */
+		const bool shared = generator.links.library != nullptr && !exported && !callback;
+		if (shared && compile_time_library_has(*generator.links.library, name)) {
+			LLVM::LLVMFuncOp compiled = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, name,
+				function_type(generator, type, takes_context(generator, type, declaration)), LLVM::Linkage::External);
+			compiled.setCConv(convention_of(generator, type));
+			generator.links.uses.push_back(name);
+			generator.functions[declaration] = compiled;
+			return compiled;
+		}
+		if (shared) {
+			generator.links.defines.push_back(name);
+		}
 		LLVM::LLVMFuncOp function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, name,
 			function_type(generator, type, takes_context(generator, type, declaration) && !callback),
-			exported ? LLVM::Linkage::External : LLVM::Linkage::Internal);
+			exported || shared ? LLVM::Linkage::External : LLVM::Linkage::Internal);
 		LLVM::LLVMFuncOp shim;
 		if (callback) {
 			// The function is its body, generated like any other; the shim, called by foreign code, has its name
@@ -2580,6 +2601,15 @@ namespace hemera {
 		return context;
 	}
 
+	// The program's compile-time library (middle_end/jit.h), made the first time code runs.
+	static CompileTimeLibrary& compile_time_library(ProgramInfo* program) {
+		std::scoped_lock<std::mutex> lock(program->compile_time_library_mutex);
+		if (program->compile_time_library == nullptr) {
+			program->compile_time_library = new_compile_time_library();
+		}
+		return *static_cast<CompileTimeLibrary*>(program->compile_time_library.get());
+	}
+
 	static bool run_items(Generator& generator, std::vector<CompileTimeItem>& items, std::vector<Declaration*>* unchecked,
 		bool quiet = false, std::vector<std::string>* unsatisfied = nullptr) {
 		// Compile-time code can run before the program is generated, which loads these otherwise
@@ -2592,6 +2622,7 @@ namespace hemera {
 		compiled.options = &options;
 		compiled.input_package = generator.input_package;
 		compiled.compile_time = true;
+		compiled.links.library = &compile_time_library(generator.program);
 		// Quietly: anything that can't be generated just fails the run, like a constant reflection can't show
 		std::vector<Declaration*> ignored;
 		if (quiet && unchecked == nullptr) {
@@ -2716,7 +2747,7 @@ namespace hemera {
 						}
 					}
 				}
-			}, run, error);
+			}, run, error, compiled.links);
 		service_scope = outer_scope;
 		if (RunResult::NOT_COMPILED == ran) {
 			unsupported(generator, first, std::format("compile-time code couldn't run: {}", error));

@@ -57,6 +57,10 @@ namespace hemera {
 			static auto* kept = new std::vector<std::unique_ptr<llvm::orc::LLJIT>>();
 			return *kept;
 		}
+		std::vector<std::shared_ptr<CompileTimeLibrary>>& kept_libraries() {
+			static auto* kept = new std::vector<std::shared_ptr<CompileTimeLibrary>>();
+			return *kept;
+		}
 
 		thread_local Active* active = nullptr;
 
@@ -518,10 +522,35 @@ namespace hemera {
 		return RunResult::FAILED;
 	}
 
-	RunResult run_on_host(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
-		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
-		std::string& error) {
+	struct CompileTimeLibrary : std::enable_shared_from_this<CompileTimeLibrary> {
+		std::mutex mutex;
+		std::unique_ptr<llvm::orc::LLJIT> jit;
+		// The compiler's services and the process's own functions, which every run links to last
+		llvm::orc::JITDylib* shared = nullptr;
+		// Each function an earlier run compiled, and the library it's in
+		std::map<std::string, llvm::orc::JITDylib*> functions;
+		size_t runs = 0;
+	};
 
+	std::shared_ptr<CompileTimeLibrary> new_compile_time_library() {
+		return std::make_shared<CompileTimeLibrary>();
+	}
+
+	bool compile_time_library_has(CompileTimeLibrary& library, const std::string& symbol) {
+		std::scoped_lock<std::mutex> lock(library.mutex);
+		return library.functions.contains(symbol);
+	}
+
+	static llvm::orc::SymbolMap service_symbols(llvm::orc::MangleAndInterner& mangle) {
+		return llvm::orc::SymbolMap{
+			{ mangle(COMPILE_TIME_LOG_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_log)) },
+			{ mangle(COMPILE_TIME_ALLOCATE_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_allocate)) },
+			{ mangle(COMPILE_TIME_FREE_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_free)) },
+			{ mangle(COMPILE_TIME_FAIL_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_fail)) },
+		};
+	}
+
+	static void initialize_host_target() {
 		// The host's target, with its assembly parser for module-level assembly like entry functions'
 		static std::once_flag initialized;
 		std::call_once(initialized, [] {
@@ -532,11 +561,12 @@ namespace hemera {
 			AddVectoredExceptionHandler(1, on_exception);
 #endif
 		});
+	}
 
+	static llvm::Expected<std::unique_ptr<llvm::orc::LLJIT>> host_jit() {
 		auto machine = llvm::orc::JITTargetMachineBuilder::detectHost();
 		if (!machine) {
-			error = llvm::toString(machine.takeError());
-			return RunResult::NOT_COMPILED;
+			return machine.takeError();
 		}
 		// The carrier register, which nothing else may use (docs/calling_convention.md, Carrier Register)
 		machine->addFeatures({ "+reserve-r14" });
@@ -546,7 +576,112 @@ namespace hemera {
 		 * 48 the other, and the Ed25519 table, which computes, came out quicker overall too.
 		 */
 		machine->setCodeGenOptLevel(llvm::CodeGenOptLevel::None);
-		auto jit = llvm::orc::LLJITBuilder().setJITTargetMachineBuilder(std::move(*machine)).create();
+		return llvm::orc::LLJITBuilder().setJITTargetMachineBuilder(std::move(*machine)).create();
+	}
+
+	/*
+	 * A run in a program's library: its module in a library of its own, which links to each earlier one whose
+	 * functions it calls, then to the shared services. Its own definitions come first, so each run's entry,
+	 * memcpy and type descriptors are its own.
+	 */
+	static RunResult run_in_library(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
+		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
+		std::string& error, const CompileTimeLinks& links) {
+
+		CompileTimeLibrary& library = *links.library;
+		llvm::orc::JITDylib* own = nullptr;
+		llvm::orc::LLJIT* jit = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(library.mutex);
+			if (library.jit == nullptr) {
+				auto made = host_jit();
+				if (!made) {
+					error = llvm::toString(made.takeError());
+					return RunResult::NOT_COMPILED;
+				}
+				library.jit = std::move(*made);
+				library.shared = &library.jit->getMainJITDylib();
+				llvm::orc::MangleAndInterner mangle(library.shared->getExecutionSession(), library.jit->getDataLayout());
+				if (llvm::Error defined = library.shared->define(llvm::orc::absoluteSymbols(service_symbols(mangle)))) {
+					error = llvm::toString(std::move(defined));
+					library.jit.reset();
+					return RunResult::NOT_COMPILED;
+				}
+				auto process = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+					library.jit->getDataLayout().getGlobalPrefix());
+				if (!process) {
+					error = llvm::toString(process.takeError());
+					library.jit.reset();
+					return RunResult::NOT_COMPILED;
+				}
+				library.shared->addGenerator(std::move(*process));
+			}
+			jit = library.jit.get();
+			auto created = jit->createJITDylib(std::format("run.{}", library.runs++));
+			if (!created) {
+				error = llvm::toString(created.takeError());
+				return RunResult::NOT_COMPILED;
+			}
+			own = &*created;
+			llvm::orc::JITDylibSearchOrder order;
+			std::set<llvm::orc::JITDylib*> linked;
+			for (const std::string& use : links.uses) {
+				auto found = library.functions.find(use);
+				if (found != library.functions.end() && linked.insert(found->second).second) {
+					order.emplace_back(found->second, llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
+				}
+			}
+			order.emplace_back(library.shared, llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
+			own->setLinkOrder(std::move(order));
+		}
+		module->setDataLayout(jit->getDataLayout());
+		module->setTargetTriple(jit->getTargetTriple());
+		llvm::orc::MangleAndInterner mangle(own->getExecutionSession(), jit->getDataLayout());
+		llvm::orc::SymbolMap symbols;
+		for (const auto& [name, address] : run.symbols) {
+			symbols[mangle(name)] = service(address);
+		}
+		if (!symbols.empty()) {
+			if (llvm::Error defined = own->define(llvm::orc::absoluteSymbols(std::move(symbols)))) {
+				error = llvm::toString(std::move(defined));
+				return RunResult::NOT_COMPILED;
+			}
+		}
+		if (llvm::Error added = jit->addIRModule(*own, llvm::orc::ThreadSafeModule(std::move(module), std::move(context)))) {
+			error = llvm::toString(std::move(added));
+			return RunResult::NOT_COMPILED;
+		}
+		auto symbol = jit->lookup(*own, entry);
+		if (!symbol) {
+			error = llvm::toString(symbol.takeError());
+			return RunResult::NOT_COMPILED;
+		}
+		// Compiled: what it defines is there for later runs
+		{
+			std::scoped_lock<std::mutex> lock(library.mutex);
+			for (const std::string& name : links.defines) {
+				library.functions.emplace(name, own);
+			}
+		}
+		bool keep = false;
+		const RunResult ran = run_guarded(symbol->toPtr<void (*)(void*)>(), result, run, while_loaded, keep);
+		if (keep) {
+			std::scoped_lock<std::mutex> lock(kept_mutex);
+			kept_libraries().push_back(library.shared_from_this());
+		}
+		return ran;
+	}
+
+	RunResult run_on_host(std::unique_ptr<llvm::Module> module, std::unique_ptr<llvm::LLVMContext> context,
+		const std::string& entry, void* result, const std::function<void()>& while_loaded, const CompileTimeRun& run,
+		std::string& error, const CompileTimeLinks& links) {
+
+		initialize_host_target();
+		if (links.library != nullptr) {
+			return run_in_library(std::move(module), std::move(context), entry, result, while_loaded, run, error, links);
+		}
+		// On its own: the compiler's services, then the operating system's functions, through the compiler's own process
+		auto jit = host_jit();
 		if (!jit) {
 			error = llvm::toString(jit.takeError());
 			return RunResult::NOT_COMPILED;
@@ -554,14 +689,8 @@ namespace hemera {
 		module->setDataLayout((*jit)->getDataLayout());
 		module->setTargetTriple((*jit)->getTargetTriple());
 		llvm::orc::JITDylib& library = (*jit)->getMainJITDylib();
-		// The compiler's services, then the operating system's functions, through the compiler's own process
 		llvm::orc::MangleAndInterner mangle(library.getExecutionSession(), (*jit)->getDataLayout());
-		llvm::orc::SymbolMap symbols{
-			{ mangle(COMPILE_TIME_LOG_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_log)) },
-			{ mangle(COMPILE_TIME_ALLOCATE_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_allocate)) },
-			{ mangle(COMPILE_TIME_FREE_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_free)) },
-			{ mangle(COMPILE_TIME_FAIL_SYMBOL), service(reinterpret_cast<const void*>(&compile_time_fail)) },
-		};
+		llvm::orc::SymbolMap symbols = service_symbols(mangle);
 		for (const auto& [name, address] : run.symbols) {
 			symbols[mangle(name)] = service(address);
 		}

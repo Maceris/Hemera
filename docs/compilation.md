@@ -75,6 +75,11 @@ Its allocator gives memory that lasts until the code finishes. A failed assertio
 memory it can't, fails the build at that line, or at the constant or `#run` being worked out, and the compiler goes on
 to report anything else wrong.
 
+Each function compile-time code reaches is compiled once for the whole program: a later `#run` or constant that calls
+it again, like the compile-time context's logger, which every run has, calls what an earlier one compiled. A function's
+values, like a constant it reads, are worked out the same each time, so that's the same code either way. A value
+compile-time code works out for reflection, like a constant `compiler.find_constant` finds, is worked out once too.
+
 Compile-time code is the program's own code, with the `#if` choices made for the target, compiled for the machine
 doing the compiling. Code that only computes runs the same either way; code that uses the operating system only works
 at compile time when the target's operating system is the one compiling it, as it is for a build package.
