@@ -155,7 +155,7 @@ fiber_create :: fn(
     result.context = context
     extensions, extensions_error :: copy_extensions(&result.context, allocator, loc)
     if extensions_error != null {
-        free(result, allocator, loc)
+        free_array(block, allocator, loc)
         return null, extensions_error
     }
     result.extension_nodes = cast[rawptr](extensions.data)
@@ -190,5 +190,6 @@ fiber_destroy :: fn(
     loc := #caller_location,
 ) {
     free_array(view_of(cast[ptr[ContextExtension]](fiber.extension_nodes), cast[usize](fiber.extension_count)), allocator, loc)
-    free(fiber, allocator, loc)
+    // The whole block fiber_create allocated, with its first stack segment: an allocator may tell blocks apart by size
+    free_array(view_of(cast[ptr[u8]](fiber), FIBER_BLOCK_SIZE), allocator, loc)
 }
