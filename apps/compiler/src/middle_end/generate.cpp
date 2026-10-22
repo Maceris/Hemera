@@ -2378,6 +2378,28 @@ namespace hemera {
 			generator.builder.getIntegerAttr(type, width == 1 ? llvm::APInt(1, bits.isZero() ? 0 : 1) : bits.zextOrTrunc(width)));
 	}
 
+	/*
+	 * count numbers of element, from bytes, as one dense constant of array_type, or nothing if element isn't a
+	 * number. Inserting each element instead has LLVM fold the whole array again for every one, which takes
+	 * seconds for a table of thousands.
+	 */
+	static mlir::Value dense_numbers(Generator& generator, mlir::Type array_type, TypeInfo const* element, const uint8_t* bytes,
+		size_t count) {
+
+		mlir::Type lane = llvm_type(generator, element);
+		element = base(element);
+		const TypeInfoVariant variant = element->variant;
+		const bool number = TypeInfoVariant::INTEGER == variant || TypeInfoVariant::ENUM == variant || TypeInfoVariant::CHAR == variant
+			|| TypeInfoVariant::FLOAT == variant;
+		if (!number || count == 0 || !lane.isIntOrFloat() || lane.getIntOrFloatBitWidth() != element->size * 8) {
+			return mlir::Value();
+		}
+		auto tensor = mlir::RankedTensorType::get({ static_cast<int64_t>(count) }, lane);
+		auto data = mlir::DenseElementsAttr::getFromRawBuffer(tensor,
+			llvm::ArrayRef<char>(reinterpret_cast<const char*>(bytes), count * element->size));
+		return LLVM::ConstantOp::create(generator.builder, generator.loc, array_type, data);
+	}
+
 	// The value of type at offset in value, as a constant in generator's module.
 	static mlir::Value constant_from(Generator& generator, TypeInfo const* type, const CompileTimeValue& value, size_t offset) {
 		mlir::Type llvm = llvm_type(generator, type);
@@ -2422,6 +2444,9 @@ namespace hemera {
 		if (TypeInfoVariant::ARRAY == variant) {
 			auto array = static_cast<TypeInfoArray const*>(type);
 			if (ArrayType::STATIC == array->array_type) {
+				if (mlir::Value dense = dense_numbers(generator, llvm, array->element_type, at, array->count)) {
+					return dense;
+				}
 				mlir::Value result = zero_of(generator, llvm);
 				for (size_t i = 0; i < array->count; ++i) {
 					result = insert(generator, result, constant_from(generator, array->element_type, value, offset + i * array->element_type->size),
@@ -2438,6 +2463,9 @@ namespace hemera {
 			mlir::Type array_type = LLVM::LLVMArrayType::get(llvm_type(generator, array->element_type), count);
 			mlir::Value data = constant_global(generator, array_type, std::max<size_t>(array->element_type->alignment, 1),
 				std::format("compile_time.{}", generator.compile_time_globals++), [&]() {
+					if (mlir::Value dense = dense_numbers(generator, array_type, array->element_type, elements.bytes.data(), count)) {
+						return dense;
+					}
 					mlir::Value result = zero_of(generator, array_type);
 					for (size_t i = 0; i < count; ++i) {
 						result = insert(generator, result, constant_from(generator, array->element_type, elements, i * array->element_type->size),
@@ -2697,8 +2725,16 @@ namespace hemera {
 			}
 		}
 		if (iter == generator.compile_time_values.end()) {
+			// A constant that's a #run: what it runs, rather than code that runs it only to copy out what it gives
+			ast::Node* definition = definition_value(declaration->node);
+			const bool directive = definition != nullptr && ast::NodeType::DIRECTIVE == definition->node_type
+				&& is_text(definition->value.value, "#run") && !definition->children.empty();
+			std::optional<CompileTimeValue> ran = directive ? already_run(generator, definition) : std::nullopt;
 			CompileTimeValue result;
-			if (!run_at_compile_time(generator, definition_value(declaration->node), declaration->value_type,
+			if (ran.has_value()) {
+				result = std::move(*ran);
+			}
+			else if (!run_at_compile_time(generator, directive ? definition->children[0] : definition, declaration->value_type,
 				declaration->checked.get(), declaration, result)) {
 				return zero_of(generator, llvm_type(generator, type));
 			}
@@ -6048,6 +6084,11 @@ namespace hemera {
 		// #run in an expression: a constant, run once
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#run") && !node->children.empty() && result_type != nullptr) {
 			auto iter = generator.compile_time_values.find(node);
+			if (iter == generator.compile_time_values.end()) {
+				if (std::optional<CompileTimeValue> checked = already_run(generator, node)) {
+					iter = generator.compile_time_values.emplace(node, std::move(*checked)).first;
+				}
+			}
 			if (iter == generator.compile_time_values.end()) {
 				CompileTimeValue ran;
 				if (!run_at_compile_time(generator, node->children[0], result_type, generator.state->checked,

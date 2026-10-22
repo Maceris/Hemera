@@ -13,6 +13,9 @@ import intrinsics from "base"
  *     hasher := crypto.blake2b_start_keyed(32, key) or_return false
  *     crypto.blake2b_update(&hasher, message)
  *     crypto.blake2b_finish(&hasher, digest)
+ *
+ * Blocks are compressed four words at a time with AVX2, when the hasher's wide says so; a kernel without
+ * vector state sets it to false after starting.
  */
 
 BLAKE2B_BLOCK :: 128
@@ -24,6 +27,10 @@ Blake2bState :: struct #secret {
 
 // A block's words, and the working words a compression mixes.
 Blake2bWords :: distinct alias u64[16] #secret
+// v's four rows, a vector of four words each, for compressing with AVX2.
+Blake2bRows :: distinct alias vector[u64, 4][4] #secret
+// The message words for four G at once, x then y.
+Blake2bMessageLanes :: distinct alias vector[u64, 4][2] #secret
 
 Blake2b :: struct {
     state: Blake2bState,
@@ -31,6 +38,8 @@ Blake2b :: struct {
     buffered: usize,
     total: u64,
     size: usize,
+    // Whether blocks are compressed with AVX2, as vectors_wide() says when it starts
+    wide: bool,
 }
 
 BLAKE2B_START :: u64.[
@@ -62,7 +71,7 @@ blake2b_start_keyed #constant_time :: fn(size: usize, key: SecretByte[]) -> Blak
     if size == 0 || size > 64 || key.count > 64 {
         return null
     }
-    hasher := Blake2b.{size = size}
+    hasher := Blake2b.{size = size, wide = vectors_wide()}
     for i in 0..<8 {
         hasher.state.words[i] = BLAKE2B_START[i]
     }
@@ -91,7 +100,7 @@ blake2b_mix #constant_time :: fn(v: ptr[mut Blake2bWords], a: usize, b: usize, c
 }
 
 // The block into the words, with how many bytes there have been, and whether it's the last.
-blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, last: bool) {
+blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, last: bool, wide: bool) {
     m : Blake2bWords
     for i in 0..<16 {
         word := compiler.secret(cast[u64](0))
@@ -99,6 +108,19 @@ blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, 
             word = word | (cast[u64](state.block[8 * i + j]) << (8 * cast[u64](j)))
         }
         m[i] = word
+    }
+    blake2b_compress_words(state, &m, total, last, wide)
+}
+
+// A block's words, m, into the state's words.
+blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr[Blake2bWords], total: u64, last: bool,
+    wide: bool) {
+
+    #if TARGET_ARCH == .x86_64 {
+        if wide {
+            blake2b_compress_wide(state, m, total, last)
+            return void
+        }
     }
     v : Blake2bWords
     for i in 0..<8 {
@@ -111,47 +133,122 @@ blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, 
     }
     for round in 0..<12 {
         s := (round % 10) * 16
-        blake2b_mix(&v, 0, 4, 8, 12, &m, BLAKE2B_SIGMA[s % 160], BLAKE2B_SIGMA[(s + 1) % 160])
-        blake2b_mix(&v, 1, 5, 9, 13, &m, BLAKE2B_SIGMA[(s + 2) % 160], BLAKE2B_SIGMA[(s + 3) % 160])
-        blake2b_mix(&v, 2, 6, 10, 14, &m, BLAKE2B_SIGMA[(s + 4) % 160], BLAKE2B_SIGMA[(s + 5) % 160])
-        blake2b_mix(&v, 3, 7, 11, 15, &m, BLAKE2B_SIGMA[(s + 6) % 160], BLAKE2B_SIGMA[(s + 7) % 160])
-        blake2b_mix(&v, 0, 5, 10, 15, &m, BLAKE2B_SIGMA[(s + 8) % 160], BLAKE2B_SIGMA[(s + 9) % 160])
-        blake2b_mix(&v, 1, 6, 11, 12, &m, BLAKE2B_SIGMA[(s + 10) % 160], BLAKE2B_SIGMA[(s + 11) % 160])
-        blake2b_mix(&v, 2, 7, 8, 13, &m, BLAKE2B_SIGMA[(s + 12) % 160], BLAKE2B_SIGMA[(s + 13) % 160])
-        blake2b_mix(&v, 3, 4, 9, 14, &m, BLAKE2B_SIGMA[(s + 14) % 160], BLAKE2B_SIGMA[(s + 15) % 160])
+        blake2b_mix(&v, 0, 4, 8, 12, m, BLAKE2B_SIGMA[s % 160], BLAKE2B_SIGMA[(s + 1) % 160])
+        blake2b_mix(&v, 1, 5, 9, 13, m, BLAKE2B_SIGMA[(s + 2) % 160], BLAKE2B_SIGMA[(s + 3) % 160])
+        blake2b_mix(&v, 2, 6, 10, 14, m, BLAKE2B_SIGMA[(s + 4) % 160], BLAKE2B_SIGMA[(s + 5) % 160])
+        blake2b_mix(&v, 3, 7, 11, 15, m, BLAKE2B_SIGMA[(s + 6) % 160], BLAKE2B_SIGMA[(s + 7) % 160])
+        blake2b_mix(&v, 0, 5, 10, 15, m, BLAKE2B_SIGMA[(s + 8) % 160], BLAKE2B_SIGMA[(s + 9) % 160])
+        blake2b_mix(&v, 1, 6, 11, 12, m, BLAKE2B_SIGMA[(s + 10) % 160], BLAKE2B_SIGMA[(s + 11) % 160])
+        blake2b_mix(&v, 2, 7, 8, 13, m, BLAKE2B_SIGMA[(s + 12) % 160], BLAKE2B_SIGMA[(s + 13) % 160])
+        blake2b_mix(&v, 3, 4, 9, 14, m, BLAKE2B_SIGMA[(s + 14) % 160], BLAKE2B_SIGMA[(s + 15) % 160])
     }
     for i in 0..<8 {
         state.words[i] = state.words[i] ~ v[i] ~ v[i + 8]
     }
 }
 
-// A full block is only compressed once more comes, since the last one is compressed differently.
-blake2b_byte :: fn(hasher: ptr[mut Blake2b], byte: u8) {
-    if hasher.buffered == BLAKE2B_BLOCK {
-        hasher.total += BLAKE2B_BLOCK
-        blake2b_compress(&hasher.state, hasher.total, false)
-        hasher.buffered = 0
+#if TARGET_ARCH == .x86_64 {
+    // The message words for four of a round's G, from its sigma at s: x from sigma's k, k + 2, k + 4 and k + 6, y
+    // from the ones after those.
+    blake2b_message_lanes #constant_time #target_features("avx2") :: fn(lanes: ptr[mut Blake2bMessageLanes], m: ptr[Blake2bWords],
+        s: usize, k: usize) {
+
+        for xy in cast[usize](0)..<2 {
+            lanes[xy] = vector[u64, 4].{m[BLAKE2B_SIGMA[(s + k + xy) % 160] % 16], m[BLAKE2B_SIGMA[(s + k + xy + 2) % 160] % 16],
+                m[BLAKE2B_SIGMA[(s + k + xy + 4) % 160] % 16], m[BLAKE2B_SIGMA[(s + k + xy + 6) % 160] % 16]}
+        }
     }
-    hasher.state.block[hasher.buffered % BLAKE2B_BLOCK] = byte
-    hasher.buffered += 1
+
+    // G on each of the rows' four columns at once, with the message words from the round's sigma at s, from k.
+    blake2b_mix_rows #constant_time #target_features("avx2") :: fn(r: ptr[mut Blake2bRows], m: ptr[Blake2bWords], s: usize, k: usize) {
+        lanes : Blake2bMessageLanes
+        blake2b_message_lanes(&lanes, m, s, k)
+        r[0] = r[0] + r[1] + lanes[0]
+        r[3] = intrinsics.rotate_right(r[3] ~ r[0], 32)
+        r[2] = r[2] + r[3]
+        r[1] = intrinsics.rotate_right(r[1] ~ r[2], 24)
+        r[0] = r[0] + r[1] + lanes[1]
+        r[3] = intrinsics.rotate_right(r[3] ~ r[0], 16)
+        r[2] = r[2] + r[3]
+        r[1] = intrinsics.rotate_right(r[1] ~ r[2], 63)
+    }
+
+    /*
+     * blake2b_compress_words with AVX2: G on the rows' columns, then the rows turned so the diagonals are
+     * columns, G again, and turned back.
+     */
+    blake2b_compress_wide #constant_time #target_features("avx2") :: fn(state: ptr[mut Blake2bState], m: ptr[Blake2bWords], total: u64,
+        last: bool) {
+
+        r : Blake2bRows
+        r[0] = vector[u64, 4].{state.words[0], state.words[1], state.words[2], state.words[3]}
+        r[1] = vector[u64, 4].{state.words[4], state.words[5], state.words[6], state.words[7]}
+        r[2] = vector[u64, 4].{BLAKE2B_START[0], BLAKE2B_START[1], BLAKE2B_START[2], BLAKE2B_START[3]}
+        final : u64 = 0
+        if last {
+            final = ~final
+        }
+        r[3] = vector[u64, 4].{BLAKE2B_START[4] ~ total, BLAKE2B_START[5], BLAKE2B_START[6] ~ final, BLAKE2B_START[7]}
+        for round in cast[usize](0)..<12 {
+            s := (round % 10) * 16
+            blake2b_mix_rows(&r, m, s, 0)
+            r[1] = intrinsics.rotate_lanes(r[1], 1)
+            r[2] = intrinsics.rotate_lanes(r[2], 2)
+            r[3] = intrinsics.rotate_lanes(r[3], 3)
+            blake2b_mix_rows(&r, m, s, 8)
+            r[1] = intrinsics.rotate_lanes(r[1], 3)
+            r[2] = intrinsics.rotate_lanes(r[2], 2)
+            r[3] = intrinsics.rotate_lanes(r[3], 1)
+        }
+        low := bit_cast[u64[4]](r[0] ~ r[2])
+        high := bit_cast[u64[4]](r[1] ~ r[3])
+        for i in 0..<4 {
+            state.words[i] = state.words[i] ~ low[i]
+            state.words[i + 4] = state.words[i + 4] ~ high[i]
+        }
+    }
 }
 
 blake2b_update :: fn(hasher: ptr[mut Blake2b], data: u8[]) {
-    for byte in data {
-        blake2b_byte(hasher, byte)
-    }
+    blake2b_absorb(hasher, data)
 }
 
 blake2b_update_secret #constant_time :: fn(hasher: ptr[mut Blake2b], data: SecretByte[]) {
-    for byte in data {
+    blake2b_absorb(hasher, data)
+}
+
+/*
+ * data, bytes or secret ones, into the hasher: into the block until it's full, then whole blocks straight
+ * from data while more comes after them, since the last block is compressed differently, then the rest
+ * into the block.
+ */
+blake2b_absorb :: fn[T](hasher: ptr[mut Blake2b], data: T[]) {
+    at : usize = 0
+    loop {
         if hasher.buffered == BLAKE2B_BLOCK {
             hasher.total += BLAKE2B_BLOCK
-            blake2b_compress(&hasher.state, hasher.total, false)
+            blake2b_compress(&hasher.state, hasher.total, false, hasher.wide)
             hasher.buffered = 0
+            loop {
+                m : Blake2bWords
+                for i in cast[usize](0)..<16 {
+                    word := compiler.secret(cast[u64](0))
+                    for j in cast[usize](0)..<8 {
+                        word = word | (cast[u64](cast[u8](data[at + 8 * i + j])) << (8 * cast[u64](j)))
+                    }
+                    m[i] = word
+                }
+                hasher.total += BLAKE2B_BLOCK
+                blake2b_compress_words(&hasher.state, &m, hasher.total, false, hasher.wide)
+                at += BLAKE2B_BLOCK
+            }
+            while at + BLAKE2B_BLOCK < data.count
         }
-        hasher.state.block[hasher.buffered % BLAKE2B_BLOCK] = cast[u8](byte)
+        hasher.state.block[hasher.buffered % BLAKE2B_BLOCK] = cast[u8](data[at])
         hasher.buffered += 1
+        at += 1
     }
+    while at < data.count
 }
 
 // The digest, its size's worth of output's bytes, or as many as fit.
@@ -160,7 +257,7 @@ blake2b_finish_secret #constant_time :: fn(hasher: ptr[mut Blake2b], output: mut
     for i in hasher.buffered..<BLAKE2B_BLOCK {
         hasher.state.block[i] = 0
     }
-    blake2b_compress(&hasher.state, hasher.total, true)
+    blake2b_compress(&hasher.state, hasher.total, true, hasher.wide)
     for i in 0..<output.count {
         if i < hasher.size {
             output[i] = cast[SecretByte](hasher.state.words[(i / 8) % 8] >> (8 * cast[u64](i % 8)))

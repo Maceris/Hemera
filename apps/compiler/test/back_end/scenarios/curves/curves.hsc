@@ -102,6 +102,17 @@ check_ed25519 :: fn(secret_hex: string, message_hex: string, public_hex: string,
     if !crypto.ed25519_verify(&public, message[0..<message_count], &signature) {
         return 3
     }
+    // A key pair has the same public key, and signs the same
+    pair := crypto.ed25519_key_pair(&secret)
+    if !same_public(cast[u8[32]](pair.public_key), bytes32(public_hex)) {
+        return 1
+    }
+    signed_with := crypto.ed25519_sign_with(&pair, message[0..<message_count])
+    for i in 0..<64 {
+        if signed_with[i] != expected_signature[i] {
+            return 2
+        }
+    }
     if message_count > 0 {
         message[0] = message[0] ~ 1
         if crypto.ed25519_verify(&public, message[0..<message_count], &signature) {

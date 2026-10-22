@@ -404,6 +404,49 @@ SQUARES :: squares()
 LABELED :: labeled_point(5)
 WHEN :: compile_time_name()
 
+// Tables of thousands of numbers worked out while compiling, which the program holds as one constant each.
+WORD_TABLE :: #run word_table()
+HALF_TABLE :: #run half_table()
+RAMP :: ramp()
+
+word_table :: fn() -> u64[4096] {
+    table : u64[4096]
+    for i in 0..<4096 {
+        table[i] = cast[u64](i) * 0x1_0000_0001 + 7
+    }
+    return table
+}
+
+half_table :: fn() -> f32[3000] {
+    table : f32[3000]
+    for i in 0..<3000 {
+        table[i] = cast[f32](i) * 0.5
+    }
+    return table
+}
+
+// A view, whose elements the constant points to
+RAMP_VALUES :: u16.[3, 1, 4, 1, 5, 9, 2, 6]
+
+ramp :: fn() -> u16[] {
+    return RAMP_VALUES
+}
+
+tables_hold :: fn() -> bool {
+    for i in 0..<4096 {
+        if WORD_TABLE[i] != cast[u64](i) * 0x1_0000_0001 + 7 {
+            return false
+        }
+    }
+    for i in 0..<3000 {
+        if HALF_TABLE[i] != cast[f32](i) * 0.5 {
+            return false
+        }
+    }
+    ramp := RAMP
+    return ramp.count == 8 && ramp[5] == 9 && ramp[7] == 6
+}
+
 // A frame bigger than a page, which Windows code probes a page at a time with __chkstk.
 big_frame :: fn() -> u8 {
     buffer : u8[16384]
@@ -727,6 +770,9 @@ main :: fn() -> int {
     }
     if SQUARES_SUM != 55 {
         return 51
+    }
+    if !tables_hold() {
+        return 62
     }
     if REFLECTED_PARAMETERS != 3 {
         return 52

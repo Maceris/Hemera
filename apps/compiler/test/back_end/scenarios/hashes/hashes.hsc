@@ -93,9 +93,11 @@ blake :: fn(digest: ptr[mut u8[64]], data: u8[], size: usize) -> u8[] {
     return digest[0..<size % 65]
 }
 
+// Without AVX2, so the plain compression is checked too: blake checks whichever the CPU allows
 keyed_blake :: fn(digest: ptr[mut u8[64]], data: u8[], size: usize) -> u8[] {
     salt : u8[200]
     hasher := crypto.blake2b_start_keyed(size, crypto.as_secret(counting(0, 64, &salt))) or_return digest[0..<0]
+    hasher.wide = false
     crypto.blake2b_update(&hasher, data)
     crypto.blake2b_finish(&hasher, digest[0..<size % 65])
     return digest[0..<size % 65]

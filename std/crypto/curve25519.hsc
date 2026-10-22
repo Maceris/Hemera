@@ -23,8 +23,9 @@ X25519SecretKey :: distinct alias u8[32] #secret
 X25519PublicKey :: distinct alias u8[32]
 
 /*
- * A field element: five 51-bit limbs, least significant first, each kept under 2^52 so a product of two
- * limbs and the sums of them fit in a u128.
+ * A field element: five 51-bit limbs, least significant first. A multiplication's or subtraction's limbs are
+ * carried to just over 2^51; an addition's aren't, so they're under 2^53 after two, and a multiplication takes
+ * limbs under 2^54, whose products and their sums (times 19) fit in a u128.
  */
 Fe :: distinct alias u64[5] #secret
 
@@ -57,14 +58,16 @@ fe_carry #constant_time :: fn(f: Fe) -> Fe {
     return h
 }
 
+// Not carried: what it gives goes into a multiplication, a square or fe_to_bytes, or one more addition first.
 fe_add #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
         h[i] = f[i] + g[i]
     }
-    return fe_carry(h)
+    return h
 }
 
+// g's limbs under 2^53, at most two additions' worth, so adding 4p first keeps each limb from going below 0.
 fe_subtract #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
@@ -92,6 +95,7 @@ fe_carry_wide #constant_time :: fn(r: FeWide) -> Fe {
     return h
 }
 
+// Each product of 64-bit limbs is one 64 by 64 multiplication: the 19s are applied before widening.
 fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     f0 := cast[u128](f[0])
     f1 := cast[u128](f[1])
@@ -103,10 +107,10 @@ fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     g2 := cast[u128](g[2])
     g3 := cast[u128](g[3])
     g4 := cast[u128](g[4])
-    g1_19 := g1 * 19
-    g2_19 := g2 * 19
-    g3_19 := g3 * 19
-    g4_19 := g4 * 19
+    g1_19 := cast[u128](g[1] * 19)
+    g2_19 := cast[u128](g[2] * 19)
+    g3_19 := cast[u128](g[3] * 19)
+    g4_19 := cast[u128](g[4] * 19)
     r : FeWide
     r[0] = f0 * g0 + f1 * g4_19 + f2 * g3_19 + f3 * g2_19 + f4 * g1_19
     r[1] = f0 * g1 + f1 * g0 + f2 * g4_19 + f3 * g3_19 + f4 * g2_19
@@ -116,15 +120,31 @@ fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     return fe_carry_wide(r)
 }
 
+// f * f, with the products that come twice worked out once and doubled: 15 multiplications rather than 25.
 fe_square #constant_time :: fn(f: Fe) -> Fe {
-    return fe_multiply(f, f)
+    f0 := cast[u128](f[0])
+    f1 := cast[u128](f[1])
+    f2 := cast[u128](f[2])
+    f0_2 := cast[u128](f[0] * 2)
+    f1_2 := cast[u128](f[1] * 2)
+    f3_19 := cast[u128](f[3] * 19)
+    f3_38 := cast[u128](f[3] * 38)
+    f4_19 := cast[u128](f[4] * 19)
+    f4_38 := cast[u128](f[4] * 38)
+    r : FeWide
+    r[0] = f0 * f0 + f1 * f4_38 + f2 * f3_38
+    r[1] = f0_2 * f1 + f2 * f4_38 + cast[u128](f[3]) * f3_19
+    r[2] = f0_2 * f2 + f1 * f1 + cast[u128](f[3]) * f4_38
+    r[3] = f0_2 * cast[u128](f[3]) + f1_2 * f2 + cast[u128](f[4]) * f4_19
+    r[4] = f0_2 * cast[u128](f[4]) + f1_2 * cast[u128](f[3]) + f2 * f2
+    return fe_carry_wide(r)
 }
 
 // f squared count times.
 fe_square_times #constant_time :: fn(f: Fe, count: int) -> Fe {
     h := f
     for i in 0..<count {
-        h = fe_multiply(h, h)
+        h = fe_square(h)
     }
     return h
 }

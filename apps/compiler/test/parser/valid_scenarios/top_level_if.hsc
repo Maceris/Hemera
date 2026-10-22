@@ -19,3 +19,9 @@ VALUE :: 1
     import windows from "std/os"
     HANDLE :: distinct alias u64
 }
+
+// One straight after an alias with a directive is its own, not another of the alias's
+Masked :: distinct alias u32 #secret
+#if OS == .Linux {
+    LINUX_ONLY :: 1
+}

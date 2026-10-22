@@ -47,6 +47,15 @@ check #constant_time :: fn(password_hex: string, salt_hex: string, key_hex: stri
 
         return false
     }
+    if !crypto.equal(hash[0..<expected_count], expected[0..<expected_count]) {
+        return false
+    }
+    // And without AVX2, as a kernel would
+    if !crypto.argon2id_keyed_with(crypto.as_secret(password[0..<password_count]), salt[0..<salt_count],
+        crypto.as_secret(key[0..<key_count]), associated[0..<associated_count], parameters, blocks, hash[0..<expected_count], false) {
+
+        return false
+    }
     return crypto.equal(hash[0..<expected_count], expected[0..<expected_count])
 }
 

@@ -716,8 +716,9 @@ namespace hemera::parser {
 				return false;
 			}
 			parent.children.push_back(rhs.result);
-			// Like Word :: distinct alias u32 #secret
-			while (expect(state, TokenType::DIRECTIVE)) {
+			// Like Word :: distinct alias u32 #secret: on its line, so a directive starting the next line, like #if, is its own
+			while (expect(state, TokenType::DIRECTIVE) && state->current > 0
+				&& current_token(state).line_number == state->tokens[state->current - 1].line_number) {
 				next_as_node(state, ast::NodeType::DIRECTIVE, &alias);
 			}
 			return where_clause(state, *first);

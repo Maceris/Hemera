@@ -13,11 +13,17 @@ import intrinsics from "base"
  *         // not signed with that key, or not this message
  *     }
  *
- * Signing works in constant time. Verifying only uses what's public, so it needn't, but it uses the same
- * arithmetic, and refuses a public key or signature that isn't written the one way it should be.
+ * Signing many messages with one key is quicker with a key pair, which keeps the public key signing needs:
  *
- * Multiples of the base point come from a table of them, worked out while compiling (ED_BASE_TABLE), each
- * read by looking at every entry it could be.
+ *     pair := crypto.ed25519_key_pair(&secret_key)
+ *     signature := crypto.ed25519_sign_with(&pair, message)
+ *
+ * Signing works in constant time. Verifying only uses what's public, so it needn't, and doesn't: it adds
+ * both multiples along one chain of doublings, with a window of digits for each. It refuses a public key or
+ * signature that isn't written the one way it should be.
+ *
+ * Multiples of the base point come from tables of them, worked out while compiling (ED_BASE_TABLE, and
+ * ED_BASE_ODD for verifying); signing reads each entry by looking at every entry it could be.
  */
 
 // An Ed25519 secret key, 32 random bytes, which RFC 8032 calls the seed.
@@ -80,22 +86,6 @@ ed_negate #constant_time :: fn(p: EdPoint) -> EdPoint {
     return EdPoint.{x = fe_negate(p.x), y = p.y, z = p.z, t = fe_negate(p.t)}
 }
 
-ed_select #constant_time :: fn(condition: SecretBool, chosen: EdPoint, otherwise: EdPoint) -> EdPoint {
-    return EdPoint.{x = fe_select(condition, chosen.x, otherwise.x), y = fe_select(condition, chosen.y, otherwise.y),
-        z = fe_select(condition, chosen.z, otherwise.z), t = fe_select(condition, chosen.t, otherwise.t)}
-}
-
-// scalar, 32 little-endian bytes, times point: doubling and adding for every bit, keeping the sum or not.
-ed_multiply #constant_time :: fn(scalar: SecretByte[32], point: EdPoint) -> EdPoint {
-    q := ed_identity()
-    for i in 0..<256 #reverse {
-        q = ed_double(q)
-        bit := cast[SecretBool](((cast[u8](scalar[i / 8]) >> cast[u8](i % 8)) & 1) == 1)
-        q = ed_select(bit, ed_add(q, point), q)
-    }
-    return q
-}
-
 /*
  * A point as y + x, y - x and 2d * x * y, with z = 1: what adding it to another needs, so a table of them
  * costs one multiplication fewer an addition (ref10's "Niels" form).
@@ -123,25 +113,15 @@ ed_add_niels #constant_time :: fn(p: EdPoint, q: EdNiels) -> EdPoint {
  * The base point's table (ref10's): for each j from 0 to 31 the multiples 1 to 8 of 256^j * B, in Niels form,
  * as limbs, worked out while compiling. 32 * 8 entries of 3 values of 5 limbs.
  */
-ED_TABLE_SIZE :: 3840
 ED_BASE_TABLE :: #run ed_base_table()
 
 ed_base_table :: fn() -> u64[3840] {
-    table : u64[3840]
+    points : EdPoint[256]
     position := ed_base()
     for j in 0..<32 {
         multiple := position
         for k in 0..<8 {
-            inverse := fe_invert(multiple.z)
-            x := fe_multiply(multiple.x, inverse)
-            y := fe_multiply(multiple.y, inverse)
-            values := Fe.[fe_add(y, x), fe_subtract(y, x), fe_multiply(fe_multiply(x, y), fe_of(ED_D2))]
-            for v in 0..<3 {
-                limbs := fe_carry(values[v])
-                for l in 0..<5 {
-                    table[((j * 8 + k) * 3 + v) * 5 + l] = compiler.declassify(limbs[l])
-                }
-            }
+            points[j * 8 + k] = multiple
             multiple = ed_add(multiple, position)
         }
         // 256 times: eight doublings
@@ -149,15 +129,46 @@ ed_base_table :: fn() -> u64[3840] {
             position = ed_double(position)
         }
     }
+    table : u64[3840]
+    ed_niels_limbs(points, table)
     return table
 }
 
-ed_table_value #constant_time :: fn(entry: int, v: int) -> Fe {
-    f : Fe
-    for l in 0..<5 {
-        f[l] = ED_BASE_TABLE[cast[usize]((entry * 3 + v) * 5 + l) % ED_TABLE_SIZE]
+/*
+ * Points, as the limbs of their Niels forms, 15 each, into table, for a table worked out while compiling:
+ * every z inverted at once (Montgomery's trick: one inversion, and three multiplications a point), as
+ * inverting is most of the work.
+ */
+ed_niels_limbs :: fn(points: EdPoint[], table: mut u64[]) {
+    if points.count == 0 || points.count > 256 || table.count == 0 {
+        return void
     }
-    return f
+    // Each z multiplied by those before it
+    products : Fe[256]
+    running := fe_of(u64.[1, 0, 0, 0, 0])
+    for point, i in points {
+        running = fe_multiply(running, point.z)
+        products[i % 256] = running
+    }
+    // 1 / (every z multiplied), then from the last point down, 1 / its z, and what's left of the inverse
+    inverse := fe_invert(running)
+    for i in 0..<points.count #reverse {
+        before := fe_of(u64.[1, 0, 0, 0, 0])
+        if i > 0 {
+            before = products[(i - 1) % 256]
+        }
+        z_inverse := fe_multiply(inverse, before)
+        inverse = fe_multiply(inverse, points[i].z)
+        x := fe_multiply(points[i].x, z_inverse)
+        y := fe_multiply(points[i].y, z_inverse)
+        values := Fe.[fe_add(y, x), fe_subtract(y, x), fe_multiply(fe_multiply(x, y), fe_of(ED_D2))]
+        for v in 0..<3 {
+            limbs := fe_carry(values[v])
+            for l in 0..<5 {
+                table[(15 * i + 5 * cast[usize](v) + cast[usize](l)) % table.count] = compiler.declassify(limbs[l])
+            }
+        }
+    }
 }
 
 /*
@@ -172,12 +183,15 @@ ed_table_select #constant_time :: fn(j: int, digit: SecretWord) -> EdNiels {
     one := fe_of(u64.[1, 0, 0, 0, 0])
     zero := fe_of(u64.[0, 0, 0, 0, 0])
     chosen := EdNiels.{sum = one, difference = one, product = zero}
-    for k in 0..<8 {
-        found := cast[SecretBool](magnitude == cast[u64](k + 1))
-        entry := j * 8 + k
-        chosen.sum = fe_select(found, ed_table_value(entry, 0), chosen.sum)
-        chosen.difference = fe_select(found, ed_table_value(entry, 1), chosen.difference)
-        chosen.product = fe_select(found, ed_table_value(entry, 2), chosen.product)
+    // Position j's 8 entries of 15 limbs
+    row := (cast[usize](j) % 32) * 120
+    for k in cast[usize](0)..<8 {
+        found := cast[bool](cast[SecretBool](magnitude == cast[u64](k + 1)))
+        for l in cast[usize](0)..<5 {
+            chosen.sum[l] = intrinsics.select(found, ED_BASE_TABLE[row + 15 * k + l], chosen.sum[l])
+            chosen.difference[l] = intrinsics.select(found, ED_BASE_TABLE[row + 15 * k + 5 + l], chosen.difference[l])
+            chosen.product[l] = intrinsics.select(found, ED_BASE_TABLE[row + 15 * k + 10 + l], chosen.product[l])
+        }
     }
     // -P swaps y + x and y - x and negates x * y
     flip := cast[SecretBool](negative == 1)
@@ -212,6 +226,161 @@ ed_multiply_base #constant_time :: fn(scalar: SecretByte[32]) -> EdPoint {
     q = ed_double(ed_double(ed_double(ed_double(q))))
     for i in 0..<32 {
         q = ed_add_niels(q, ed_table_select(i, cast[SecretWord](e[2 * i])))
+    }
+    return q
+}
+
+/*
+ * A point as y + x, y - x, z and 2d * t: what adding it to another needs, worked out once for a point that's
+ * added many times (ref10's "cached" form).
+ */
+EdCached :: struct {
+    sum: Fe,
+    difference: Fe,
+    z: Fe,
+    product: Fe,
+}
+
+ed_cached #constant_time :: fn(p: EdPoint) -> EdCached {
+    return EdCached.{sum = fe_add(p.y, p.x), difference = fe_subtract(p.y, p.x), z = p.z,
+        product = fe_multiply(p.t, fe_of(ED_D2))}
+}
+
+// -p, cached: x and t negated, so y + x and y - x swap.
+ed_cached_negate #constant_time :: fn(q: EdCached) -> EdCached {
+    return EdCached.{sum = q.difference, difference = q.sum, z = q.z, product = fe_negate(q.product)}
+}
+
+// p + q, q cached: eight multiplications.
+ed_add_cached #constant_time :: fn(p: EdPoint, q: EdCached) -> EdPoint {
+    a := fe_multiply(fe_subtract(p.y, p.x), q.difference)
+    b := fe_multiply(fe_add(p.y, p.x), q.sum)
+    c := fe_multiply(p.t, q.product)
+    z := fe_multiply(p.z, q.z)
+    d := fe_add(z, z)
+    e := fe_subtract(b, a)
+    f := fe_subtract(d, c)
+    g := fe_add(d, c)
+    h := fe_add(b, a)
+    return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
+}
+
+ed_niels_negate #constant_time :: fn(q: EdNiels) -> EdNiels {
+    return EdNiels.{sum = q.difference, difference = q.sum, product = fe_negate(q.product)}
+}
+
+/*
+ * B, 3B, 5B, up to 15B, in Niels form, worked out while compiling: what verifying adds for the base point's
+ * digits. 8 entries of 3 values of 5 limbs.
+ */
+ED_BASE_ODD :: #run ed_base_odd_table()
+
+ed_base_odd_table :: fn() -> u64[120] {
+    points : EdPoint[8]
+    twice := ed_double(ed_base())
+    multiple := ed_base()
+    for k in 0..<8 {
+        points[k] = multiple
+        multiple = ed_add(multiple, twice)
+    }
+    table : u64[120]
+    ed_niels_limbs(points, table)
+    return table
+}
+
+// (2k + 1)B, from the table.
+ed_base_odd :: fn(k: int) -> EdNiels {
+    values : Fe[3]
+    for v in 0..<3 {
+        for l in 0..<5 {
+            values[v][l] = ED_BASE_ODD[cast[usize]((k * 3 + v) * 5 + l) % 120]
+        }
+    }
+    return EdNiels.{sum = values[0], difference = values[1], product = values[2]}
+}
+
+/*
+ * A public scalar as 256 signed digits, the sum of digit[i] * 2^i: most of them 0, the others odd, from -15 to
+ * 15, with at least four 0s after each (ref10's slide). Each nonzero digit is one addition.
+ */
+ed_sliding_digits :: fn(scalar: u8[32]) -> int[256] {
+    r : int[256]
+    for i in 0..<256 {
+        r[i] = cast[int]((scalar[i / 8] >> cast[u8](i % 8)) & 1)
+    }
+    for i in 0..<256 {
+        if r[i] == 0 {
+            continue
+        }
+        for b in 1..<7 {
+            j := i + b
+            if j >= 256 {
+                break
+            }
+            if r[j] == 0 {
+                continue
+            }
+            if r[i] + (r[j] << cast[u32](b)) <= 15 {
+                r[i] += r[j] << cast[u32](b)
+                r[j] = 0
+            }
+            else if r[i] - (r[j] << cast[u32](b)) >= -15 {
+                r[i] -= r[j] << cast[u32](b)
+                // The digit taken away is carried up, as one more above it
+                for k in j..<256 {
+                    if r[k] == 0 {
+                        r[k] = 1
+                        break
+                    }
+                    r[k] = 0
+                }
+            }
+            else {
+                break
+            }
+        }
+    }
+    return r
+}
+
+/*
+ * a * point + b * B, for public a and b, not in constant time: both scalars' digits added along one chain of
+ * doublings (Straus), point's odd multiples worked out first and B's from ED_BASE_ODD.
+ */
+ed_double_multiply :: fn(a: u8[32], point: EdPoint, b: u8[32]) -> EdPoint {
+    a_digits := ed_sliding_digits(a)
+    b_digits := ed_sliding_digits(b)
+    odd : EdCached[8]
+    twice := ed_double(point)
+    multiple := point
+    for k in 0..<8 {
+        odd[k] = ed_cached(multiple)
+        multiple = ed_add_cached(multiple, ed_cached(twice))
+    }
+    q := ed_identity()
+    started := false
+    for i in 0..<256 #reverse {
+        if started {
+            q = ed_double(q)
+        }
+        digit := a_digits[i]
+        if digit > 0 {
+            q = ed_add_cached(q, odd[(digit / 2) %% 8])
+            started = true
+        }
+        else if digit < 0 {
+            q = ed_add_cached(q, ed_cached_negate(odd[(-digit / 2) %% 8]))
+            started = true
+        }
+        digit = b_digits[i]
+        if digit > 0 {
+            q = ed_add_niels(q, ed_base_odd(digit / 2))
+            started = true
+        }
+        else if digit < 0 {
+            q = ed_add_niels(q, ed_niels_negate(ed_base_odd(-digit / 2)))
+            started = true
+        }
     }
     return q
 }
@@ -292,18 +461,44 @@ scalar_less_order #constant_time :: fn(s: Scalar, below: ptr[mut SecretBool]) ->
     return difference
 }
 
-// x mod L, a bit at a time from the top: doubled, the bit added, and L taken away if it's more.
+/*
+ * x mod L, a byte at a time from the top: r times 256 plus the byte, less q * L for q its bits from 252 up,
+ * under 2^9. That leaves it below 2^252, so below L, and above -q * (L - 2^252), above -2^134, so adding L
+ * once if it went below 0 brings it back between 0 and L - 1.
+ */
 scalar_reduce #constant_time :: fn(x: ScalarWide) -> Scalar {
     r : Scalar
-    for i in 0..<512 #reverse {
-        r[3] = (r[3] << 1) | (r[2] >> 63)
-        r[2] = (r[2] << 1) | (r[1] >> 63)
-        r[1] = (r[1] << 1) | (r[0] >> 63)
-        r[0] = (r[0] << 1) | ((x[i / 64] >> cast[u64](i % 64)) & 1)
-        below : SecretBool
-        less := scalar_less_order(r, &below)
+    for i in 0..<64 #reverse {
+        byte := (x[i / 8] >> (8 * cast[u64](i % 8))) & 255
+        top := r[3] >> 56
+        r[3] = (r[3] << 8) | (r[2] >> 56)
+        r[2] = (r[2] << 8) | (r[1] >> 56)
+        r[1] = (r[1] << 8) | (r[0] >> 56)
+        r[0] = (r[0] << 8) | byte
+        q := (top << 4) | (r[3] >> 60)
+        // Less q * 2^252: the bits from 252 up
+        r[3] = r[3] & 0x0fff_ffff_ffff_ffff
+        // Less q * (L - 2^252), which is ED_ORDER's two low limbs
+        low := cast[u128](q) * cast[u128](ED_ORDER[0])
+        high := cast[u128](q) * cast[u128](ED_ORDER[1])
+        middle := (low >> 64) + (high & 0xffff_ffff_ffff_ffff)
+        taken : Scalar
+        taken[0] = cast[u64](low)
+        taken[1] = cast[u64](middle)
+        taken[2] = cast[u64]((high >> 64) + (middle >> 64))
+        borrow := compiler.secret(cast[u64](0))
         for k in 0..<4 {
-            r[k] = intrinsics.select(cast[bool](below), r[k], less[k])
+            wide := cast[u128](r[k]) - cast[u128](taken[k]) - cast[u128](borrow)
+            r[k] = cast[u64](wide)
+            borrow = cast[u64](wide >> 127)
+        }
+        // Plus L if that went below 0
+        mask := cast[u64](0) - borrow
+        carry := compiler.secret(cast[u128](0))
+        for k in 0..<4 {
+            sum := cast[u128](r[k]) + cast[u128](ED_ORDER[k] & mask) + carry
+            r[k] = cast[u64](sum)
+            carry = sum >> 64
         }
     }
     return r
@@ -417,20 +612,42 @@ ed25519_challenge #constant_time :: fn(r: ptr[Ed25519Signature], public_key: ptr
     return scalar_reduce(scalar_wide_of(secret_digest))
 }
 
+/*
+ * A secret key expanded, with its public key worked out once, for signing many messages with
+ * ed25519_sign_with, which then takes about half as long. Only ed25519_key_pair makes one, so its public key
+ * is always its secret key's: signing with one that isn't would give the secret key away. Zero it with
+ * intrinsics.secure_zero when done.
+ */
+Ed25519KeyPair :: struct {
+    // The clamped scalar and the nonce's prefix (RFC 8032, 5.1.5)
+    scalar: SecretByte[32],
+    prefix: SecretByte[32],
+    public_key: Ed25519PublicKey,
+}
+
+ed25519_key_pair #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed25519KeyPair {
+    pair : Ed25519KeyPair
+    ed25519_expand(secret_key, &pair.scalar, &pair.prefix)
+    encoded := ed_encode(ed_multiply_base(pair.scalar))
+    for i in 0..<32 {
+        pair.public_key[i] = compiler.declassify(cast[u8](encoded[i]))
+    }
+    return pair
+}
+
 // message signed with secret_key (RFC 8032, 5.1.6).
 ed25519_sign #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], message: u8[]) -> Ed25519Signature {
-    scalar : SecretByte[32]
-    prefix : SecretByte[32]
-    ed25519_expand(secret_key, &scalar, &prefix)
-    public_encoded := ed_encode(ed_multiply_base(scalar))
-    public_key : Ed25519PublicKey
-    for i in 0..<32 {
-        public_key[i] = compiler.declassify(cast[u8](public_encoded[i]))
-    }
+    pair := ed25519_key_pair(secret_key)
+    signature := ed25519_sign_with(&pair, message)
+    intrinsics.secure_zero(&pair, size_of(Ed25519KeyPair))
+    return signature
+}
 
+// message signed with a key pair's secret key: the same signature ed25519_sign gives.
+ed25519_sign_with #constant_time :: fn(pair: ptr[Ed25519KeyPair], message: u8[]) -> Ed25519Signature {
     // r, the nonce, from the prefix and the message, so the same message always gets the same one
     hasher := sha512_start()
-    sha512_update_secret(&hasher, prefix)
+    sha512_update_secret(&hasher, pair.prefix)
     sha512_update(&hasher, message)
     r := scalar_reduce(scalar_wide_of(sha512_finish_secret(&hasher)))
     r_encoded := ed_encode(ed_multiply_base(scalar_bytes(r)))
@@ -439,13 +656,11 @@ ed25519_sign #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], message: u8
         signature[i] = compiler.declassify(cast[u8](r_encoded[i]))
     }
 
-    k := ed25519_challenge(&signature, &public_key, message)
-    s := scalar_bytes(scalar_multiply_add(k, scalar_of(scalar), r))
+    k := ed25519_challenge(&signature, &pair.public_key, message)
+    s := scalar_bytes(scalar_multiply_add(k, scalar_of(pair.scalar), r))
     for i in 0..<32 {
         signature[32 + i] = compiler.declassify(cast[u8](s[i]))
     }
-    intrinsics.secure_zero(&scalar, size_of(SecretByte[32]))
-    intrinsics.secure_zero(&prefix, size_of(SecretByte[32]))
     return signature
 }
 
@@ -467,8 +682,14 @@ ed25519_verify :: fn(public_key: ptr[Ed25519PublicKey], message: u8[], signature
     if !compiler.declassify(below) {
         return false
     }
-    k := ed25519_challenge(signature, public_key, message)
-    check := ed_add(ed_multiply_base(s_bytes), ed_multiply(scalar_bytes(k), ed_negate(a)))
+    k := scalar_bytes(ed25519_challenge(signature, public_key, message))
+    k_public : u8[32]
+    s_public : u8[32]
+    for i in 0..<32 {
+        k_public[i] = compiler.declassify(cast[u8](k[i]))
+        s_public[i] = signature[32 + i]
+    }
+    check := ed_double_multiply(k_public, ed_negate(a), s_public)
     encoded := ed_encode(check)
     for i in 0..<32 {
         if compiler.declassify(cast[u8](encoded[i])) != signature[i] {
