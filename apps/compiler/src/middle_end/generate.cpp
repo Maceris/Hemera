@@ -7488,6 +7488,27 @@ namespace hemera {
 			if (constants.empty()) {
 				return result;
 			}
+			// The ones worked out already
+			std::vector<bool> known(constants.size(), false);
+			{
+				std::scoped_lock<std::mutex> lock(call.data.constant_values_mutex);
+				for (size_t i = 0; i < constants.size(); ++i) {
+					auto found = call.data.constant_values.find(constants[i]);
+					if (found != call.data.constant_values.end()) {
+						result[i] = found->second;
+						known[i] = true;
+					}
+				}
+			}
+			// What's worked out now is kept for next time, values or not
+			auto remember = [&]() {
+				std::scoped_lock<std::mutex> lock(call.data.constant_values_mutex);
+				for (size_t i = 0; i < constants.size(); ++i) {
+					if (!known[i]) {
+						call.data.constant_values[constants[i]] = result[i];
+					}
+				}
+			};
 			std::vector<CompileTimeValue> values(constants.size());
 			// Whether each value could be kept: one holding a function, say, can't, and is left out
 			std::unique_ptr<bool[]> kept(new bool[constants.size()]());
@@ -7495,6 +7516,9 @@ namespace hemera {
 			std::vector<size_t> positions;
 			for (size_t i = 0; i < constants.size(); ++i) {
 				Declaration* constant = constants[i];
+				if (known[i]) {
+					continue;
+				}
 				TypeInfo* type = constant->value_type;
 				if (type == nullptr) {
 					type = Untyped::INTEGER == constant->untyped ? BUILTIN_int : Untyped::FLOAT == constant->untyped ? BUILTIN_f64
@@ -7509,6 +7533,7 @@ namespace hemera {
 				positions.push_back(i);
 			}
 			if (items.empty()) {
+				remember();
 				return result;
 			}
 			// All at once, or if that fails, each half, and so on down, leaving out what can't be worked out
@@ -7541,6 +7566,7 @@ namespace hemera {
 				}
 			};
 			run_range(0, items.size());
+			remember();
 			return result;
 		}
 

@@ -92,6 +92,14 @@ namespace hemera {
 
 		ProgramInfo* const program;
 
+		/// <summary>
+		/// Constants' values worked out for reflection (constant_values), by their declarations: the type and
+		/// the value copied here, or null for one that couldn't be, so each one only runs once however often
+		/// compile-time code asks for it, like a build check finding each package's PACKAGE_TIER.
+		/// </summary>
+		std::map<const void*, std::pair<const TypeInfo*, const uint8_t*>> constant_values;
+		std::mutex constant_values_mutex;
+
 	private:
 		void describe(const TypeInfo* type, uint8_t* record, const TypeInfoStruct* layout);
 

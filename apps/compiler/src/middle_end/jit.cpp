@@ -540,6 +540,12 @@ namespace hemera {
 		}
 		// The carrier register, which nothing else may use (docs/calling_convention.md, Carrier Register)
 		machine->addFeatures({ "+reserve-r14" });
+		/*
+		 * The quick code generator: compile-time code is generated unoptimized, and mostly runs once, so making
+		 * its machine code takes longer than running it. A build package's constants took 186 ms this way and
+		 * 48 the other, and the Ed25519 table, which computes, came out quicker overall too.
+		 */
+		machine->setCodeGenOptLevel(llvm::CodeGenOptLevel::None);
 		auto jit = llvm::orc::LLJITBuilder().setJITTargetMachineBuilder(std::move(*machine)).create();
 		if (!jit) {
 			error = llvm::toString(jit.takeError());
