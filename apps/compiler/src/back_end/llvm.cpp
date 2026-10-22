@@ -1,21 +1,27 @@
 #include "back_end/back_end.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <optional>
 #include <string>
 #include <system_error>
+#include <thread>
+#include <vector>
 
 #include "error/reporting.h"
 #include "middle_end/generate.h"
 #include "util/logger.h"
 
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
@@ -23,11 +29,17 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Object/ModuleSymbolTable.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO/Annotation2Metadata.h"
+#include "llvm/Transforms/IPO/ForceFunctionAttrs.h"
+#include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/IPO/MemProfContextDisambiguation.h"
+#include "llvm/Transforms/Utils/SplitModule.h"
 
 namespace hemera {
 
@@ -252,6 +264,120 @@ namespace hemera {
 
 	}
 
+	/*
+	 * How many parts to generate machine code for at once: one for a small module, since splitting costs a
+	 * copy of the module for each part, and for an object file asked for on its own (-c), which is one file.
+	 */
+	static unsigned code_generation_parts(const Options& options, const llvm::Module& module) {
+		// Instructions a part should have at least, to be worth a thread
+		constexpr size_t PART_INSTRUCTIONS = 2500;
+		constexpr unsigned MOST_PARTS = 8;
+		if (options.build_extent < BuildExtent::LINK) {
+			return 1;
+		}
+		size_t instructions = 0;
+		for (const llvm::Function& function : module) {
+			instructions += function.getInstructionCount();
+		}
+		const unsigned threads = std::max(1u, std::thread::hardware_concurrency());
+		return static_cast<unsigned>(std::clamp<size_t>(instructions / PART_INSTRUCTIONS, 1, std::min(MOST_PARTS, threads)));
+	}
+
+	/*
+	 * A simplified module's late optimizations and machine code, done in parts at once (like LLVM's splitCodeGen,
+	 * for LTO): split by function, with what each part uses from another made external, each part written as
+	 * bitcode and read back into a context of its own, since a context can't be shared between threads, then
+	 * given its own target machine, optimized function by function (the second half of the default pipeline,
+	 * after inlining has been done across the whole module) and generated into its object file. Module-level
+	 * assembly goes in the first part. Which part a function goes in depends only on the module, so the program
+	 * is the same every time.
+	 */
+	static bool generate_in_parts(const llvm::Target* target, const llvm::TargetMachine* machine, llvm::Module& module,
+		unsigned parts, llvm::OptimizationLevel level, std::string_view output_name, std::vector<std::string>& objects) {
+
+		/*
+		 * The module's assembly, which goes in the first part, defines functions others call, like #foreign
+		 * functions' shims and fibers' switches, without making them global, since one object file had them all
+		 */
+		std::string globals;
+		llvm::ModuleSymbolTable::CollectAsmSymbols(module, [&](llvm::StringRef name, llvm::object::BasicSymbolRef::Flags flags) {
+			const bool local = (flags & (llvm::object::BasicSymbolRef::SF_Global | llvm::object::BasicSymbolRef::SF_Undefined)) == 0;
+			if (local && !name.empty() && !name.starts_with(".L")) {
+				globals += std::format("\t.globl {}\n", name.str());
+			}
+		});
+		if (!globals.empty()) {
+			module.appendModuleInlineAsm(globals);
+		}
+
+		std::vector<llvm::SmallString<0>> bitcode;
+		llvm::SplitModule(module, parts, [&](std::unique_ptr<llvm::Module> part) {
+			llvm::SmallString<0> buffer;
+			llvm::raw_svector_ostream stream(buffer);
+			llvm::WriteBitcodeToFile(*part, stream);
+			bitcode.push_back(std::move(buffer));
+		}, false);
+
+		// Each part's object file, opened first, so one that can't be written is reported as the whole one's is
+		std::vector<std::unique_ptr<llvm::raw_fd_ostream>> destinations;
+		for (size_t i = 0; i < bitcode.size(); ++i) {
+			objects.push_back(std::format("{}.part{}.o", output_name, i));
+			std::error_code error;
+			destinations.push_back(std::make_unique<llvm::raw_fd_ostream>(objects[i], error, llvm::sys::fs::OF_None));
+			if (error) {
+				report_error(ErrorCode::E6000, objects[i], 0, 0, error.message());
+				return false;
+			}
+		}
+		std::vector<std::string> errors(bitcode.size());
+		std::vector<std::thread> threads;
+		for (size_t i = 0; i < bitcode.size(); ++i) {
+			threads.emplace_back([&, i]() {
+				llvm::LLVMContext context;
+				llvm::Expected<std::unique_ptr<llvm::Module>> part = llvm::parseBitcodeFile(
+					llvm::MemoryBufferRef(llvm::StringRef(bitcode[i].data(), bitcode[i].size()), "part"), context);
+				if (!part) {
+					errors[i] = llvm::toString(part.takeError());
+					return;
+				}
+				std::unique_ptr<llvm::TargetMachine> part_machine(target->createTargetMachine(machine->getTargetTriple(),
+					machine->getTargetCPU(), machine->getTargetFeatureString(), machine->Options, machine->getRelocationModel(),
+					machine->getCodeModel(), machine->getOptLevel()));
+				if (level != llvm::OptimizationLevel::O0) {
+					llvm::LoopAnalysisManager loops;
+					llvm::FunctionAnalysisManager functions;
+					llvm::CGSCCAnalysisManager call_graph;
+					llvm::ModuleAnalysisManager modules;
+					llvm::PassBuilder builder(part_machine.get());
+					builder.registerModuleAnalyses(modules);
+					builder.registerCGSCCAnalyses(call_graph);
+					builder.registerFunctionAnalyses(functions);
+					builder.registerLoopAnalyses(loops);
+					builder.crossRegisterProxies(loops, functions, call_graph, modules);
+					builder.buildModuleOptimizationPipeline(level, llvm::ThinOrFullLTOPhase::None).run(**part, modules);
+				}
+				llvm::legacy::PassManager passes;
+				if (part_machine->addPassesToEmitFile(passes, *destinations[i], nullptr, llvm::CodeGenFileType::ObjectFile)) {
+					errors[i] = "the target can't generate an object file";
+					return;
+				}
+				passes.run(**part);
+				destinations[i]->flush();
+			});
+		}
+		for (std::thread& thread : threads) {
+			thread.join();
+		}
+		// The first, since the parts fail alike, like all their files being in a folder that isn't there
+		for (const std::string& error : errors) {
+			if (!error.empty()) {
+				report_error(ErrorCode::E5001, output_name, 0, 0, error);
+				return false;
+			}
+		}
+		return true;
+	}
+
 	bool BackendLLVM::generate_object_file(const Options& options,
 		llvm::Module& module, std::string_view output_name) {
 		// Optimize the IR
@@ -304,8 +430,27 @@ namespace hemera {
 		llvm::OptimizationLevel optimization_level =
 			map_optimization_level(options.optimization_level);
 
+		/*
+		 * A large module: simplified whole, inlining across all of it, with the functions that leaves unused
+		 * dropped, then optimized function by function and generated in parts at once
+		 */
+		objects.clear();
+		if (const unsigned parts = code_generation_parts(options, module); parts > 1) {
+			if (optimization_level != llvm::OptimizationLevel::O0) {
+				llvm::ModulePassManager simplification;
+				simplification.addPass(llvm::MemProfRemoveInfo());
+				simplification.addPass(llvm::Annotation2MetadataPass());
+				simplification.addPass(llvm::ForceFunctionAttrsPass());
+				simplification.addPass(pass_builder.buildModuleSimplificationPipeline(optimization_level, llvm::ThinOrFullLTOPhase::None));
+				simplification.addPass(llvm::GlobalDCEPass());
+				simplification.run(module, module_analysis_manager);
+			}
+			return generate_in_parts(target, target_machine, module, parts, optimization_level, output_name, objects);
+		}
+
 		llvm::ModulePassManager module_pass_manager =
 			pass_builder.buildPerModuleDefaultPipeline(optimization_level);
+		objects.push_back(std::string(output_name));
 
 		// Setup the IR output
 		std::error_code error_code;
@@ -444,7 +589,7 @@ namespace hemera {
 	}
 
 	// lld-link, for PE/COFF: a hosted program starts at the entry the compiler generates, which needs only kernel32.
-	static std::string coff_arguments(const Options& options, std::string_view object_file, const std::vector<std::string>& libraries) {
+	static std::string coff_arguments(const Options& options, std::string_view object_files, const std::vector<std::string>& libraries) {
 		std::string args;
 		// Each #foreign function's library, by its import library
 		for (const std::string& library : libraries) {
@@ -475,14 +620,14 @@ namespace hemera {
 			args += "/machine:x64 ";
 			break;
 		}
-		return std::format("lld-link {}\"{}\"", args, object_file);
+		return std::format("lld-link {}{}", args, object_files);
 	}
 
 	/*
 	 * ld.lld, for ELF: static, without the C runtime, and a position-independent executable for
 	 * position-independent code, like a relocatable kernel.
 	 */
-	static std::string elf_arguments(const Options& options, std::string_view object_file, const std::vector<std::string>& libraries) {
+	static std::string elf_arguments(const Options& options, std::string_view object_files, const std::vector<std::string>& libraries) {
 		/*
 		 * A hosted Linux program with #foreign libraries links C dynamically, against the sysroot's
 		 * libraries, and starts through libc; any other is static, with no C library
@@ -521,18 +666,24 @@ namespace hemera {
 			args += "--strip-debug ";
 		}
 		args += std::format("-o \"{}\" ", options.output_name);
-		return std::format("ld.lld {}\"{}\"", args, object_file);
+		return std::format("ld.lld {}{}", args, object_files);
 	}
 
 	void BackendLLVM::link(const Options& options, 
 		std::string_view object_file) {
 
+		// What generate_object_file wrote, in order, or the object asked for
+		const std::vector<std::string> files = objects.empty() ? std::vector<std::string>{ std::string(object_file) } : objects;
+		std::string quoted;
+		for (const std::string& file : files) {
+			quoted += std::format("{}\"{}\"", quoted.empty() ? "" : " ", file);
+		}
 		std::string command;
 		if (ObjectFormatType::ELF == options.object_format) {
-			command = elf_arguments(options, object_file, libraries);
+			command = elf_arguments(options, quoted, libraries);
 		}
 		else if (ObjectFormatType::COFF == options.object_format) {
-			command = coff_arguments(options, object_file, libraries);
+			command = coff_arguments(options, quoted, libraries);
 		}
 		else {
 			report_error(ErrorCode::E7000, object_file, 0, 0, "only ELF and PE/COFF outputs can be linked yet");
@@ -544,9 +695,10 @@ namespace hemera {
 			report_error(ErrorCode::E7000, object_file, 0, 0);
 		}
 		
-		std::filesystem::path filePath = object_file;
-		if (!std::filesystem::remove(filePath)) {
-			report_error(ErrorCode::E7001, object_file, 0, 0);
+		for (const std::string& file : files) {
+			if (!std::filesystem::remove(file)) {
+				report_error(ErrorCode::E7001, file, 0, 0);
+			}
 		}
 
 	}

@@ -168,6 +168,8 @@ llvm_map_components_to_libnames(llvm_libs
   aarch64info
   aarch64utils
   analysis
+  bitreader
+  bitwriter
   armasmparser
   armcodegen
   armdesc
@@ -182,6 +184,7 @@ llvm_map_components_to_libnames(llvm_libs
   linker
   native
   nativecodegen
+  object
   orcjit
   scalaropts
   support

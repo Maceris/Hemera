@@ -225,6 +225,15 @@ no operating system, so each one's `#if` code is generated too.
 secrets, so running the program under it reports any branch or memory address that depends on one (see
 [memory.md](memory.md#checking-the-machine-code)). It's for x86-64, and changes nothing outside Valgrind.
 
+## Generating in Parallel
+
+A large program's machine code is generated on several threads. LLVM simplifies the whole module first, which is
+where functions are inlined into each other, wherever they are; then it's split by function into up to 8 parts,
+about one for every 2,500 instructions, and each part is optimized function by function and generated into an
+object file of its own, all at once, and the linker takes them all. Which part a function goes in depends only on
+the program, so it builds the same every time. A small program, or an object file asked for on its own with `-c`,
+is one part.
+
 ## Timing a Build
 
 `--time-phases` prints how long each phase of compiling took, on standard error, for finding what makes a build slow:
