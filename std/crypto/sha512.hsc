@@ -18,6 +18,9 @@ Sha512State :: struct #secret {
 
 Sha512Schedule :: distinct alias u64[80] #secret
 
+// A compression's eight working words, a to h, then b ~ c, which the next round's majority uses.
+Sha512Working :: distinct alias u64[9] #secret
+
 Sha512 :: struct {
     state: Sha512State,
     buffered: usize,
@@ -56,6 +59,7 @@ sha512_start :: fn() -> Sha512 {
     return hasher
 }
 
+// The block in the state into its words.
 sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
     w : Sha512Schedule
     for i in 0..<16 {
@@ -65,43 +69,77 @@ sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
         }
         w[i] = word
     }
+    sha512_compress_words(state, &w)
+}
+
+// A block, its 16 words in w's first, into the state's words.
+sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[mut Sha512Schedule]) {
+    sha512_schedule(w)
+    v : Sha512Working
+    for i in 0..<8 {
+        v[i] = state.words[i]
+    }
+    v[8] = v[1] ~ v[2]
+    // Eight rounds a time, each one's words a slot further round, so they're renamed rather than moved
+    for i in cast[usize](0)..<10 {
+        at := 8 * i
+        sha512_round(&v, 0, w, at + 0)
+        sha512_round(&v, 1, w, at + 1)
+        sha512_round(&v, 2, w, at + 2)
+        sha512_round(&v, 3, w, at + 3)
+        sha512_round(&v, 4, w, at + 4)
+        sha512_round(&v, 5, w, at + 5)
+        sha512_round(&v, 6, w, at + 6)
+        sha512_round(&v, 7, w, at + 7)
+    }
+    for i in 0..<8 {
+        state.words[i] += v[i]
+    }
+}
+
+/*
+ * Round r of eight: a is v's word at (8 - r) % 8, b the one after, and so on, so the round only writes the two
+ * words it changes, e = d + t1 into d's place and a = t1 + t2 into h's, and the next round reads one place back.
+ * v[8] is b ~ c, which this round's a ~ b becomes for the next.
+ * i is the round's number, of 80, for its schedule word, which has the round's constant added.
+ */
+sha512_round #constant_time :: fn(v: ptr[mut Sha512Working], r: usize, w: ptr[Sha512Schedule], i: usize) {
+    a := v[(8 - r) % 8]
+    b := v[(9 - r) % 8]
+    e := v[(12 - r) % 8]
+    f := v[(13 - r) % 8]
+    g := v[(14 - r) % 8]
+    h := v[(15 - r) % 8]
+    s1 := intrinsics.rotate_right(e, 14) ~ intrinsics.rotate_right(e, 18) ~ intrinsics.rotate_right(e, 41)
+    // e's bits choose f's, otherwise g's: and, and BMI2's andn, with nothing copied first
+    choose := (e & f) ~ (~e & g)
+    t1 := h + s1 + choose + w[i % 80]
+    /*
+     * a rotated by 28, 34 and 39, as one chain: 39 is 5 + 6 + 28 and 34 is 6 + 28. Written unlike s1, so the
+     * optimizer doesn't pair the two into vectors, which can't rotate 64-bit lanes and are slower here.
+     */
+    s0 := intrinsics.rotate_right(a ~ intrinsics.rotate_right(a ~ intrinsics.rotate_right(a, 5), 6), 28)
+    // Each bit as most of a's, b's and c's are: b's, unless a's and c's both differ from it
+    a_b := a ~ b
+    majority := b ~ (a_b & v[8])
+    v[8] = a_b
+    v[(11 - r) % 8] = v[(11 - r) % 8] + t1
+    v[(15 - r) % 8] = t1 + s0 + majority
+}
+
+/*
+ * w's other 64 words, worked out from its first 16, then each round's constant added to its word, so a round
+ * reads one value rather than two.
+ */
+sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
     for i in 16..<80 {
         s0 := intrinsics.rotate_right(w[i - 15], 1) ~ intrinsics.rotate_right(w[i - 15], 8) ~ (w[i - 15] >> 7)
         s1 := intrinsics.rotate_right(w[i - 2], 19) ~ intrinsics.rotate_right(w[i - 2], 61) ~ (w[i - 2] >> 6)
         w[i] = w[i - 16] + s0 + w[i - 7] + s1
     }
-    a := state.words[0]
-    b := state.words[1]
-    c := state.words[2]
-    d := state.words[3]
-    e := state.words[4]
-    f := state.words[5]
-    g := state.words[6]
-    h := state.words[7]
     for i in 0..<80 {
-        s1 := intrinsics.rotate_right(e, 14) ~ intrinsics.rotate_right(e, 18) ~ intrinsics.rotate_right(e, 41)
-        choose := (e & f) ~ (~e & g)
-        t1 := h + s1 + choose + SHA512_ROUND[i] + w[i]
-        s0 := intrinsics.rotate_right(a, 28) ~ intrinsics.rotate_right(a, 34) ~ intrinsics.rotate_right(a, 39)
-        majority := (a & b) ~ (a & c) ~ (b & c)
-        t2 := s0 + majority
-        h = g
-        g = f
-        f = e
-        e = d + t1
-        d = c
-        c = b
-        b = a
-        a = t1 + t2
+        w[i] = w[i] + SHA512_ROUND[i]
     }
-    state.words[0] += a
-    state.words[1] += b
-    state.words[2] += c
-    state.words[3] += d
-    state.words[4] += e
-    state.words[5] += f
-    state.words[6] += g
-    state.words[7] += h
 }
 
 // One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it.
@@ -135,11 +173,17 @@ sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) 
         }
     }
     while hasher.buffered != 0 && at < data.count
+    // Whole blocks' words straight from data
     loop {
-        for j in cast[usize](0)..<SHA512_BLOCK {
-            hasher.state.block[j] = cast[u8](data[at + j])
+        w : Sha512Schedule
+        for i in cast[usize](0)..<16 {
+            word := compiler.secret(cast[u64](0))
+            for j in cast[usize](0)..<8 {
+                word = (word << 8) | cast[u64](data[at + 8 * i + j])
+            }
+            w[i] = word
         }
-        sha512_compress(&hasher.state)
+        sha512_compress_words(&hasher.state, &w)
         at += SHA512_BLOCK
     }
     while at + SHA512_BLOCK <= data.count
