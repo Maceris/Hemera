@@ -28,6 +28,8 @@ ObjectKind :: enum #backed_by(u8) {
     Irq = 9,
     IoPortRange = 10,
     IommuDomain = 11,
+    // The authority over the machine's hardware, which the root task holds and gives the platform service (decisions/0039).
+    Platform = 12,
 }
 
 /*
@@ -55,6 +57,8 @@ RIGHT_BUDGET_CHARGE : Rights : 1 << 8
 RIGHT_MEMORY_READ : Rights : 1 << 8
 RIGHT_MEMORY_WRITE : Rights : 1 << 9
 RIGHT_MEMORY_EXECUTE : Rights : 1 << 10
+// An IRQ: may acknowledge it, unmasking a level-triggered line.
+RIGHT_IRQ_ACK : Rights : 1 << 8
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -120,6 +124,35 @@ Syscall :: enum #backed_by(u32) {
     MemoryMap = 27,
     // (address space, address) -> nothing: the mapping that starts at address, unmapped.
     MemoryUnmap = 28,
+    // (platform, kind, registers) -> the controller's number, and how many lines it has.
+    ControllerRegister = 29,
+    // (platform, budget, controller, line, IRQ_* flags) -> an owning handle to the line's IRQ, routed and unmasked.
+    IrqCreate = 30,
+    // (irq) -> nothing: a level-triggered line, unmasked again.
+    IrqAck = 31,
+    // (platform, budget, physical address, size, cache) -> an owning handle to device memory at that address.
+    MemoryCreatePhysical = 32,
+    // (memory, budget, offset, size) -> an owning handle to a window onto size bytes of it from offset.
+    MemoryCreateWindow = 33,
+}
+
+// For ControllerRegister: the kinds of interrupt controller.
+ControllerKind :: enum #backed_by(u32) {
+    IoApic = 1,
+    GicDistributor = 2,
+    Plic = 3,
+}
+
+// For IrqCreate: how the line signals, from the firmware tables. Edge-triggered and active-high without them.
+IRQ_LEVEL : u32 : 1 << 0
+IRQ_ACTIVE_LOW : u32 : 1 << 1
+
+// For MemoryCreatePhysical: how device memory is cached.
+CacheMode :: enum #backed_by(u32) {
+    WriteBack = 1,
+    WriteCombining = 2,
+    // Uncached and strongly ordered, for device registers.
+    Device = 3,
 }
 
 // For MemoryMap: how a mapping can be reached. Writable and executable at once is refused.
@@ -140,6 +173,8 @@ PacketKind :: enum #backed_by(u32) {
     Timer = 2,
     // port_wake: data[0] is every bit raised since the packet was last taken.
     User = 3,
+    // An IRQ's: data[0] is how many interrupts arrived since the packet was last taken.
+    Irq = 4,
 }
 
 // One event, as PortWait writes it (knowledge/design/ipc.md §3).
@@ -315,3 +350,27 @@ MemoryError :: enum #backed_by(u32) {
 
 // The largest memory object, 1 GiB.
 MAX_MEMORY_SIZE : u64 : 1 << 30
+
+// What registering a controller, making an IRQ or device memory can fail with. Tags shared with the others mean the same.
+DeviceError :: enum #backed_by(u32) {
+    InvalidHandle = 1,
+    ObjectGone = 2,
+    MissingRight = 3,
+    WrongKind = 4,
+    TableFull = 5,
+    OutOfMemory = 6,
+    // Not page-aligned, or memory the kernel owns.
+    BadAddress = 18,
+    InvalidSize = 24,
+    BudgetExceeded = 25,
+    // No controller of that kind there, or the architecture has none of that kind.
+    NoController = 28,
+    // Every controller the kernel takes is registered.
+    TooManyControllers = 29,
+    NoSuchController = 30,
+    NoSuchLine = 31,
+    // The line already has an IRQ.
+    LineInUse = 32,
+    // No CPU has a device interrupt free.
+    NoFreeInterrupt = 33,
+}
