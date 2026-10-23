@@ -30,6 +30,8 @@ ObjectKind :: enum #backed_by(u8) {
     IommuDomain = 11,
     // The authority over the machine's hardware, which the root task holds and gives the platform service (decisions/0039).
     Platform = 12,
+    // A process's subtree intercepted: its threads stop at system calls and faults for a debugger (decisions/0017).
+    Intercept = 13,
 }
 
 /*
@@ -59,6 +61,16 @@ RIGHT_MEMORY_WRITE : Rights : 1 << 9
 RIGHT_MEMORY_EXECUTE : Rights : 1 << 10
 // An IRQ: may acknowledge it, unmasking a level-triggered line.
 RIGHT_IRQ_ACK : Rights : 1 << 8
+// A process, over its whole subtree (decisions/0017): list its threads and read their registers.
+RIGHT_PROCESS_INSPECT : Rights : 1 << 8
+// A process: read its memory.
+RIGHT_PROCESS_READ_MEMORY : Rights : 1 << 9
+// A process: write its memory and its threads' registers, and suspend and resume them.
+RIGHT_PROCESS_WRITE_STATE : Rights : 1 << 10
+// A process: intercept its threads' system calls, and take their faults.
+RIGHT_PROCESS_INTERCEPT : Rights : 1 << 11
+// A process: destroy it, through a handle that isn't its owning one.
+RIGHT_PROCESS_KILL : Rights : 1 << 12
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -134,7 +146,66 @@ Syscall :: enum #backed_by(u32) {
     MemoryCreatePhysical = 32,
     // (memory, budget, offset, size) -> an owning handle to a window onto size bytes of it from offset.
     MemoryCreateWindow = 33,
+    // (process, ids, capacity) -> how many of its subtree's threads there are: their IDs, up to capacity, at ids.
+    ProcessThreads = 34,
+    // (process, address space, address, buffer, size) -> nothing: size bytes of the space, one in the process's subtree, read into buffer.
+    ProcessReadMemory = 35,
+    // (process, address space, address, buffer, size) -> nothing: size bytes from buffer, written into the space.
+    ProcessWriteMemory = 36,
+    // (process, thread ID) -> nothing: the thread, stopped where it is until ThreadResume. A wait it's in goes on.
+    ThreadSuspend = 37,
+    // (process, thread ID) -> nothing: a suspended thread, going on.
+    ThreadResume = 38,
+    // (process, thread ID, registers) -> nothing: a stopped or suspended thread's THREAD_REGISTERS registers, written at registers.
+    ThreadReadRegisters = 39,
+    // (process, thread ID, registers) -> nothing: a stopped or suspended thread's registers, set from registers.
+    ThreadWriteRegisters = 40,
+    // (process, port, key, calls, points) -> an owning handle to an intercept of the process's subtree.
+    InterceptAttach = 41,
+    // (intercept, stop) -> nothing: the next stop not yet reported, written at stop.
+    InterceptNext = 42,
+    // (intercept, thread ID, action) -> nothing: a stopped thread, going on as action says.
+    InterceptResume = 43,
+    // (process) -> nothing: the process destroyed, with its subtree.
+    ProcessKill = 44,
 }
+
+// For InterceptAttach: where threads stop. calls is a bit per syscall number below 64.
+STOP_SYSCALL_ENTRY : u32 : 1 << 0
+STOP_SYSCALL_EXIT : u32 : 1 << 1
+// A fault the thread's memory doesn't resolve, which would otherwise destroy it.
+STOP_FAULT : u32 : 1 << 2
+
+StopPoint :: enum #backed_by(u32) {
+    SyscallEntry = 1,
+    SyscallExit = 2,
+    Fault = 3,
+}
+
+// One stop, as InterceptNext writes it.
+StopInfo :: struct {
+    thread : u64,
+    point : StopPoint,
+    // The system call's number, or for a fault, how it accessed: 0 read, 1 write, 2 execute.
+    number : u32,
+    // For a fault: the address it touched.
+    address : u64,
+}
+
+InterceptAction :: enum #backed_by(u32) {
+    // Run the system call, with any registers changed (entry); return to user mode (exit); retry the access (fault).
+    Continue = 1,
+    // Entry only: don't run the system call; return with the registers as written.
+    Skip = 2,
+    // Destroy the thread.
+    Kill = 3,
+}
+
+/*
+ * ThreadReadRegisters' and ThreadWriteRegisters' registers, u64s, in this order on x86-64: rax, rbx, rcx,
+ * rdx, rsi, rdi, rbp, rsp, r8 to r15, rip, rflags. Writing rflags changes only its status flags and DF.
+ */
+THREAD_REGISTERS : u32 : 18
 
 // For ControllerRegister: the kinds of interrupt controller.
 ControllerKind :: enum #backed_by(u32) {
@@ -175,6 +246,8 @@ PacketKind :: enum #backed_by(u32) {
     User = 3,
     // An IRQ's: data[0] is how many interrupts arrived since the packet was last taken.
     Irq = 4,
+    // An intercept's: data[0] is how many threads stopped since the packet was last taken (InterceptNext reports them).
+    Stop = 5,
 }
 
 // One event, as PortWait writes it (knowledge/design/ipc.md §3).
@@ -195,6 +268,8 @@ SIGNAL_READABLE : Signals : 1 << 0
 SIGNAL_WRITABLE : Signals : 1 << 1
 // A channel end: the other end is closed. It stays raised.
 SIGNAL_PEER_CLOSED : Signals : 1 << 2
+// A process or a thread: destroyed. It stays raised.
+SIGNAL_TERMINATED : Signals : 1 << 3
 
 BindMode :: enum #backed_by(u32) {
     // Disarmed once its packet is queued; PortBind with the same key and object arms it again.
@@ -350,6 +425,31 @@ MemoryError :: enum #backed_by(u32) {
 
 // The largest memory object, 1 GiB.
 MAX_MEMORY_SIZE : u64 : 1 << 30
+
+// What process control can fail with. Tags shared with the others mean the same.
+ControlError :: enum #backed_by(u32) {
+    InvalidHandle = 1,
+    ObjectGone = 2,
+    MissingRight = 3,
+    WrongKind = 4,
+    TableFull = 5,
+    OutOfMemory = 6,
+    // Memory the call reads or writes isn't there, or isn't the caller's to.
+    BadBuffer = 10,
+    // InterceptNext: no stop left to report.
+    Empty = 14,
+    // The address space isn't in the process's subtree, or the range isn't mapped.
+    BadAddress = 18,
+    BudgetExceeded = 25,
+    // No thread with that ID in the subtree, or none the intercept stopped.
+    NoSuchThread = 34,
+    // The thread isn't stopped or suspended, or (Skip) isn't stopped at a system call's entry.
+    NotStopped = 35,
+    // The process is intercepted already.
+    AlreadyIntercepted = 36,
+    // A register value user mode can't have.
+    BadRegisters = 37,
+}
 
 // What registering a controller, making an IRQ or device memory can fail with. Tags shared with the others mean the same.
 DeviceError :: enum #backed_by(u32) {
