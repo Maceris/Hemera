@@ -1,4 +1,4 @@
-package insert_at_top_level
+package insert_top_level_expression
 
 import compiler from "base"
 
@@ -6,7 +6,7 @@ make :: fn() -> compiler.Code {
     return #code(1)
 }
 
-// At the top level, which comes later
+// An expression, where declarations go
 #insert make()
 
 main :: fn() {

@@ -1,6 +1,8 @@
 #include "middle_end/code_values.h"
 
+#include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <format>
 #include <mutex>
 #include <string_view>
@@ -236,6 +238,25 @@ namespace hemera {
 		const std::unique_lock<std::mutex> lock = nodes.hold();
 		Copier copier{ nodes, quotes, none, origin, &site };
 		return copier.copy(tree, false);
+	}
+
+	void show_inserted(const Options* options, const ast::InsertionSite& site, const ast::Node* tree,
+		const ast::QuoteTable& quotes) {
+		if (options == nullptr) {
+			return;
+		}
+		std::string file = site.file;
+		std::replace(file.begin(), file.end(), '\\', '/');
+		for (const auto& [wanted, line] : options->show_inserted) {
+			if (line == site.line && file.ends_with(wanted)) {
+				std::string source = code_source(tree, quotes);
+				if (!source.ends_with('\n')) {
+					source += '\n';
+				}
+				std::cout << std::format("// Inserted at {}({},{}):\n{}", site.file, site.line, site.column, source);
+				std::cout.flush();
+			}
+		}
 	}
 
 	std::string code_source(const ast::Node* tree, const ast::QuoteTable& quotes) {

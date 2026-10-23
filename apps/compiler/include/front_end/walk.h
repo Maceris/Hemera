@@ -241,6 +241,13 @@ namespace hemera {
 	Progress code_to_insert(Walk& walk, ast::Node* insert, const ast::Node*& tree);
 
 	/// <summary>
+	/// The fields, variants or members #inserts among a struct's, union's or enum's put there, in their
+	/// place, before anything reads them (docs/compilation.md, Code Values). Done once, by whatever comes
+	/// to the type first; FAILED once reported.
+	/// </summary>
+	Progress insert_members(Walk& walk, ast::Node* node);
+
+	/// <summary>
 	/// Checks an instance's constraints where it's made, at where in walk's file: once for the
 	/// instance, reporting what isn't satisfied at each place it's used, unless quiet. FAILED when
 	/// they aren't.

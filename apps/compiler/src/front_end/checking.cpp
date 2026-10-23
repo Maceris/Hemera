@@ -4002,21 +4002,7 @@ namespace hemera {
 		if (inserted == nullptr) {
 			return Progress::FAILED;
 		}
-		const Options* options = checker.walk.executor.global_data->options;
-		if (options != nullptr) {
-			std::string file = site.file;
-			std::replace(file.begin(), file.end(), '\\', '/');
-			for (const auto& [wanted, line] : options->show_inserted) {
-				if (line == site.line && file.ends_with(wanted)) {
-					std::string source = code_source(inserted, program->quotes);
-					if (!source.ends_with('\n')) {
-						source += '\n';
-					}
-					std::cout << std::format("// Inserted at {}({},{}):\n{}", site.file, site.line, site.column, source);
-					std::cout.flush();
-				}
-			}
-		}
+		show_inserted(checker.walk.executor.global_data->options, site, inserted, program->quotes);
 		return Progress::DONE;
 	}
 
@@ -4829,7 +4815,45 @@ namespace hemera {
 		return require_complete(checker.walk, where, const_cast<TypeInfo*>(type != nullptr ? type : subject.type));
 	}
 
+	/*
+	 * The patterns or cases #inserts among a match's or switch's put there, in their place, before they're
+	 * checked (docs/compilation.md, Code Values). FAILED once reported.
+	 */
+	static Progress insert_cases(Checker& checker, ast::Node* cases, std::string_view word) {
+		ast::NodeStore& made = checker.walk.executor.program_info->made_nodes;
+		for (size_t i = 0; i < cases->children.size(); ++i) {
+			ast::Node* insert = cases->children[i];
+			if (ast::NodeType::DIRECTIVE != insert->node_type || !is_text(insert->value.value, "#insert") || insert->children.empty()) {
+				continue;
+			}
+			ast::Node* inserted = nullptr;
+			Progress progress = insert_code(checker, insert, inserted);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ast::NodeType::LIST != inserted->node_type || inserted->value.value == nullptr || *inserted->value.value != word) {
+				report_at(ErrorCode::E4014, checker.walk.file_path, &made, insert, std::format(
+					"#insert among a {}'s {} puts {} there: quote them with #code {} {{ ... }}",
+					word == "patterns" ? "match" : "switch", word, word, word));
+				return Progress::FAILED;
+			}
+			auto at = cases->children.erase(cases->children.begin() + static_cast<std::ptrdiff_t>(i));
+			cases->children.insert(at, inserted->children.begin(), inserted->children.end());
+			--i;
+		}
+		return Progress::DONE;
+	}
+
 	static Progress check_match(Checker& checker, ast::Node* node, TypeInfo* expected, Value* result, bool& continues) {
+		if (node->children.size() > 1) {
+			Progress inserted = insert_cases(checker, node->children[1], "patterns");
+			if (inserted == Progress::FAILED && result != nullptr) {
+				*result = poisoned();
+			}
+			if (inserted != Progress::DONE) {
+				return inserted == Progress::FAILED ? Progress::DONE : inserted;
+			}
+		}
 		Value subject;
 		Progress progress = check_expression(checker, node->children[0], nullptr, subject);
 		if (progress == Progress::DONE) {
@@ -4910,6 +4934,12 @@ namespace hemera {
 	 * continues after it unless it has case _ and no case can finish.
 	 */
 	static Progress check_switch(Checker& checker, ast::Node* node, bool& continues) {
+		if (node->children.size() > 1) {
+			Progress inserted = insert_cases(checker, node->children[1], "cases");
+			if (inserted != Progress::DONE) {
+				return inserted == Progress::FAILED ? Progress::DONE : inserted;
+			}
+		}
 		bool any_continues = false;
 		Value subject;
 		Progress progress = check_expression(checker, node->children[0], nullptr, subject);

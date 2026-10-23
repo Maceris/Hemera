@@ -110,6 +110,9 @@ namespace hemera::parser {
 	ExprResult cast_expression(ParserState* state);
 	ExprResult code_quote(ParserState* state, ast::Node& quote);
 	ExprResult insert_operand(ParserState* state);
+	bool insert_item(ParserState* state, ast::Node& parent);
+	bool match_arms(ParserState* state, ast::Node& cases);
+	bool switch_cases(ParserState* state, ast::Node& cases);
 	ExprResult if_expression(ParserState* state);
 	bool for_loop(ParserState* state, ast::Node& parent);
 	bool loop(ParserState* state, ast::Node& parent);

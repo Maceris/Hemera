@@ -1387,6 +1387,10 @@ namespace hemera {
 
 	// docs/types.md, Structs: fields, using, anonymous structs, and #packed, #align, #union, #scoped, #unrestricted.
 	static Progress struct_body(Walk& walk, ast::Node* node, TypeInfoStruct* type) {
+		Progress inserted = insert_members(walk, node);
+		if (inserted != Progress::DONE) {
+			return inserted;
+		}
 		type->members.clear();
 		for (ast::Node* child : node->children) {
 			const ast::NodeType child_type = child->node_type;
@@ -1568,6 +1572,10 @@ namespace hemera {
 
 	// docs/types.md, Unions: variants, each with the types of its values.
 	static Progress union_body(Walk& walk, ast::Node* node, TypeInfoUnion* type) {
+		Progress inserted = insert_members(walk, node);
+		if (inserted != Progress::DONE) {
+			return inserted;
+		}
 		type->variants.clear();
 		for (ast::Node* child : node->children) {
 			if (ast::NodeType::IDENTIFIER == child->node_type) {
@@ -1602,6 +1610,10 @@ namespace hemera {
 
 	// docs/types.md, Enums: #backed_by, and members counting up from 0 unless given a value.
 	static Progress enum_body(Walk& walk, ast::Node* node, TypeInfoEnum* type) {
+		Progress inserted = insert_members(walk, node);
+		if (inserted != Progress::DONE) {
+			return inserted;
+		}
 		type->backing_type = BUILTIN_uint;
 		type->members.clear();
 		type->values.clear();

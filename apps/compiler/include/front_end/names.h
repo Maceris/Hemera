@@ -361,6 +361,11 @@ namespace hemera {
 		std::string file_path;
 		uint32_t line;
 		uint16_t column;
+		/// <summary>
+		/// The file's package, when a top-level #insert in it wasn't decided yet either, which may declare
+		/// the name in the package itself (docs/compilation.md, Code Values).
+		/// </summary>
+		InternedString package_path = nullptr;
 	};
 
 	/// <summary>
@@ -499,6 +504,12 @@ namespace hemera {
 	/// <summary>
 	/// Evaluates an #if chain's condition, a compile-time constant expression.
 	/// </summary>
+	/// <summary>
+	/// The code a top-level #insert puts in place, the only branch of its chain (docs/compilation.md, Code
+	/// Values), with the chain waiting meanwhile, like a condition.
+	/// </summary>
+	Progress code_at_top_level(WorkThreadData& executor, IfChain* chain, FileInfo* file, const ast::Node*& tree);
+
 	Progress evaluate_condition(WorkThreadData& executor, IfChain* chain, FileInfo* file,
 		ast::Node* expression, ConstantValue& result);
 

@@ -340,6 +340,12 @@ TEST(Hosted, InsertsCode)
 	run_hosted("inserted_code", hemera::TargetStackCheck::Off);
 }
 
+// docs/compilation.md, Code Values: declarations at the top level, fields, variants, members, patterns and cases.
+TEST(Hosted, InsertsDeclarations)
+{
+	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off);
+}
+
 /*
  * std/io's printing, to standard output and error, and the standard logger the hosted context starts
  * with: what the program writes is in output.txt and error.txt in its scenario folder.

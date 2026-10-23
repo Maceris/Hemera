@@ -158,7 +158,46 @@ main :: fn() -> int {
 * **Errors** in inserted code are reported where it was written, the quote, followed by where it was inserted.
 * **To see what was inserted**, `--show-inserted=file:line` prints the code each `#insert` on that line put there, as
   Hemera. The file is matched by the end of its path.
-* `#insert` at the top level of a file, and in a generic's body, aren't supported yet.
+* `#insert` in a generic's body or a generic type isn't supported yet.
+
+### Declarations, Members and Cases
+
+`#insert` also goes at the top level of a file, where its code holds declarations, and among what's inside a struct,
+union, enum, `match` or `switch`. What goes inside something else is quoted with a word after `#code` saying what it
+holds, parsed as it is there:
+
+| Quote | Holds | Inserted among |
+|---|---|---|
+| `#code { ... }` | Statements, or declarations | A body's statements, or the top level of a file |
+| `#code fields { ... }` | Fields | A struct's fields |
+| `#code variants { ... }` | Variants | A union's variants |
+| `#code members { ... }` | Members | An enum's members |
+| `#code patterns { ... }` | Patterns, each with what it runs | A `match`'s |
+| `#code cases { ... }` | Cases | A `switch`'s |
+
+```
+position :: fn() -> compiler.Code {
+    return #code fields {
+        x : f32,
+        y : f32,
+    }
+}
+
+Point :: struct {
+    #insert position(),
+    z : f32,
+}
+
+#insert declarations()      // what it declares is the package's, like anything written here
+```
+
+The words are only special right after `#code`, so `#code(Point.{})` and a struct's own `fields` mean what they always
+do.
+
+At the top level, an `#insert` may declare any name, so a name the package doesn't declare otherwise waits for it, as it
+waits for an `#if` that may declare it. A name a file imports, or a builtin, is used without waiting; if code inserted
+in the package turns out to declare it too, that's an error, since the package's own would have been meant. Code an
+`#insert` runs can't need a name only that `#insert` declares, which is reported as a cycle.
 
 ## Build Packages
 

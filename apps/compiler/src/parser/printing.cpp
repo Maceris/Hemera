@@ -292,6 +292,11 @@ namespace hemera::ast {
 				|| (NodeType::IDENTIFIER == node->node_type && is_token(node, TokenType::OPERATOR_ASSIGN));
 		}
 
+		// An #insert among fields, variants, members, patterns or cases, rather than a directive on what holds them.
+		bool is_insert(const Node* node) {
+			return NodeType::DIRECTIVE == node->node_type && text_of(node) == "#insert";
+		}
+
 		bool is_question(const Node* node) {
 			return NodeType::UNARY_OPERATOR == node->node_type && node->children.empty() && is_token(node, TokenType::SYM_QUESTION);
 		}
@@ -515,13 +520,17 @@ namespace hemera::ast {
 				return node->children.empty() ? std::string(" where") : " where " + expression(node->children[0], ANY);
 			}
 
-			std::string struct_declaration(const Node* node) {
-				std::string out = "struct";
+			// keyword is struct, or fields for a quote of a struct's fields
+			std::string struct_declaration(const Node* node, std::string_view keyword = "struct") {
+				std::string out(keyword);
 				std::string members;
 				++depth;
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::GENERIC_TAG) {
 						out += generic_list(child);
+					}
+					else if (is_insert(child)) {
+						members += indent() + directive(child) + ",\n";
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
 						out += " " + directive(child);
@@ -540,14 +549,18 @@ namespace hemera::ast {
 				return out + " {\n" + members + indent() + "}";
 			}
 
-			std::string union_declaration(const Node* node) {
-				std::string out = "union";
+			// keyword is union, or variants for a quote of a union's variants
+			std::string union_declaration(const Node* node, std::string_view keyword = "union") {
+				std::string out(keyword);
 				std::string variants;
 				++depth;
 				for (size_t i = 0; i < node->children.size(); ++i) {
 					const Node* child = node->children[i];
 					if (NodeType::GENERIC_TAG == child->node_type) {
 						out += generic_list(child);
+					}
+					else if (is_insert(child)) {
+						variants += indent() + directive(child) + ",\n";
 					}
 					else if (NodeType::WHERE_CLAUSE == child->node_type) {
 						out += where_clause(child);
@@ -565,11 +578,16 @@ namespace hemera::ast {
 				return out + " {\n" + variants + indent() + "}";
 			}
 
-			std::string enum_declaration(const Node* node) {
-				std::string out = "enum";
+			// keyword is enum, or members for a quote of an enum's members
+			std::string enum_declaration(const Node* node, std::string_view keyword = "enum") {
+				std::string out(keyword);
 				std::string members;
 				++depth;
 				for (const Node* child : node->children) {
+					if (is_insert(child)) {
+						members += indent() + directive(child) + ",\n";
+						continue;
+					}
 					if (NodeType::DIRECTIVE == child->node_type) {
 						out += " " + directive(child);
 						continue;
@@ -964,9 +982,15 @@ namespace hemera::ast {
 			}
 
 			std::string switch_statement(const Node* node) {
-				std::string out = "switch " + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + " {\n";
-				if (node->children.size() > 1) {
-					for (const Node* item : node->children[1]->children) {
+				return "switch " + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + " "
+					+ (node->children.size() > 1 ? switch_cases(node->children[1]) : std::string("{\n") + indent() + "}");
+			}
+
+			// A switch's cases, in braces.
+			std::string switch_cases(const Node* cases) {
+				std::string out = "{\n";
+				{
+					for (const Node* item : cases->children) {
 						if (NodeType::DIRECTIVE == item->node_type) {
 							++depth;
 							out += indent() + directive(item) + "\n";
@@ -1022,10 +1046,20 @@ namespace hemera::ast {
 			}
 
 			std::string match(const Node* node) {
-				std::string out = "match " + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + " {\n";
+				return "match " + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + " "
+					+ (node->children.size() > 1 ? match_arms(node->children[1]) : std::string("{\n") + indent() + "}");
+			}
+
+			// A match's patterns, each with what it runs, in braces.
+			std::string match_arms(const Node* arms) {
+				std::string out = "{\n";
 				++depth;
-				if (node->children.size() > 1) {
-					for (const Node* arm : node->children[1]->children) {
+				{
+					for (const Node* arm : arms->children) {
+						if (is_insert(arm)) {
+							out += indent() + directive(arm) + "\n";
+							continue;
+						}
 						std::string entries;
 						for (size_t i = 0; i + 1 < arm->children.size(); ++i) {
 							entries += (i > 0 ? ", " : "") + case_entry(arm->children[i]);
@@ -1410,7 +1444,27 @@ namespace hemera::ast {
 					return "#code";
 				}
 				quotes.push_back({ node, 0 });
-				std::string out = NodeType::BLOCK == tree->node_type ? "#code " + block(tree) : "#code(" + expression(tree, ANY) + ")";
+				// What goes in something else is named by a word: fields, variants, members, patterns or cases
+				const std::string_view word = text_of(tree);
+				std::string out;
+				if (NodeType::STRUCT == tree->node_type && word == "fields") {
+					out = "#code " + struct_declaration(tree, "fields");
+				}
+				else if (NodeType::UNION == tree->node_type && word == "variants") {
+					out = "#code " + union_declaration(tree, "variants");
+				}
+				else if (NodeType::ENUM == tree->node_type && word == "members") {
+					out = "#code " + enum_declaration(tree, "members");
+				}
+				else if (NodeType::LIST == tree->node_type && word == "patterns") {
+					out = "#code patterns " + match_arms(tree);
+				}
+				else if (NodeType::LIST == tree->node_type && word == "cases") {
+					out = "#code cases " + switch_cases(tree);
+				}
+				else {
+					out = NodeType::BLOCK == tree->node_type ? "#code " + block(tree) : "#code(" + expression(tree, ANY) + ")";
+				}
 				quotes.pop_back();
 				return out;
 			}

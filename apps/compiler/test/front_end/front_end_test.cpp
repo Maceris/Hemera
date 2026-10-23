@@ -881,7 +881,11 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "insert_statements_as_expression", hemera::ErrorCode::E4014 },
 		{ "insert_in_generic", hemera::ErrorCode::E4024 },
 		{ "insert_undeclared_in_code", hemera::ErrorCode::E4008 },
-		{ "insert_at_top_level", hemera::ErrorCode::E4024 }
+		{ "insert_top_level_expression", hemera::ErrorCode::E4014 },
+		{ "insert_wrong_members", hemera::ErrorCode::E4014 },
+		{ "insert_in_generic_type", hemera::ErrorCode::E4024 },
+		{ "insert_needs_itself", hemera::ErrorCode::E4007 },
+		{ "insert_shadows_builtin", hemera::ErrorCode::E4012 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

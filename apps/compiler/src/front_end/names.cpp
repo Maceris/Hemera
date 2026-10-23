@@ -13,6 +13,7 @@
 #include "front_end/checking.h"
 #include "front_end/walk.h"
 #include "front_end/work.h"
+#include "middle_end/code_values.h"
 #include "middle_end/reflection.h"
 #include "util/logger.h"
 
@@ -381,13 +382,21 @@ namespace hemera {
 					return found;
 				}
 			}
+			// Code an #insert puts there may declare anything (docs/compilation.md, Code Values), but no imports
+			else if (Look::DEFINITION == look && ast::NodeType::DIRECTIVE == child->node_type
+				&& is_text(child->value.value, "#insert")) {
+				return child;
+			}
 		}
 		return nullptr;
 	}
 
-	// What in an undecided #if chain's branches may provide name, or null.
+	// What in an undecided #if chain's branches may provide name, or null. A top-level #insert is a chain of its own.
 	static ast::Node* find_in_chain(IfChain* chain, InternedString name, Look look) {
 		for (ast::Node* branch : chain->branches) {
+			if (is_text(branch->value.value, "#insert")) {
+				return Look::DEFINITION == look ? branch : nullptr;
+			}
 			ast::Node* found = find_in_branch(branch, name, look);
 			if (found != nullptr) {
 				return found;
@@ -409,7 +418,7 @@ namespace hemera {
 	 * registry's mutex must be held.
 	 */
 	static Found declared_in_locked(Walk& walk, NameRegistry& names, ast::Node* where,
-		InternedString package_path, InternedString name, Declaration*& found) {
+		InternedString package_path, InternedString name, Declaration*& found, IfChain** pending_insert = nullptr) {
 
 		found = nullptr;
 		auto iter = names.declarations.find(std::make_pair(package_path, name));
@@ -421,19 +430,41 @@ namespace hemera {
 			park_locked(walk, names, name_key(package_path, name), where, name, nullptr);
 			return Found::PARKED;
 		}
-		// Another chain first: if the walk's own #if may declare it too, that cycle is less telling
+		/*
+		 * Another chain first: if the walk's own #if may declare it too, that cycle is less telling. An
+		 * #insert may declare anything, so when only inserts may, a caller that takes pending_insert gets
+		 * the first, and looks elsewhere first (docs/compilation.md, Code Values).
+		 */
 		const std::vector<IfChain*>& pending = names.progress[package_path].pending_chains;
+		IfChain* insert_chain = nullptr;
+		ast::Node* insert_reason = nullptr;
 		for (int pass = 0; pass < 2; ++pass) {
 			for (IfChain* chain : pending) {
 				if ((chain == walk.chain) != (pass == 1)) {
 					continue;
 				}
 				ast::Node* reason = find_in_chain(chain, name, Look::DEFINITION);
-				if (reason != nullptr) {
-					park_locked(walk, names, chain_key(chain), where, name, reason);
-					return Found::PARKED;
+				if (reason == nullptr) {
+					continue;
 				}
+				if (is_text(reason->value.value, "#insert")) {
+					if (insert_chain == nullptr) {
+						insert_chain = chain;
+						insert_reason = reason;
+					}
+					continue;
+				}
+				park_locked(walk, names, chain_key(chain), where, name, reason);
+				return Found::PARKED;
 			}
+		}
+		if (insert_chain != nullptr) {
+			if (pending_insert != nullptr) {
+				*pending_insert = insert_chain;
+				return Found::NOTHING;
+			}
+			park_locked(walk, names, chain_key(insert_chain), where, name, insert_reason);
+			return Found::PARKED;
 		}
 		return Found::NOTHING;
 	}
@@ -530,7 +561,7 @@ namespace hemera {
 	 * found, the walk waits for the chain.
 	 */
 	static Progress require_from_imports_locked(Walk& walk, NameRegistry& names, ast::Node* where,
-		InternedString name, Need need, Declaration*& found_declaration) {
+		InternedString name, Need need, Declaration*& found_declaration, IfChain* pending_insert = nullptr) {
 
 		const bool builtin = is_builtin_name(name);
 		found_declaration = nullptr;
@@ -580,9 +611,10 @@ namespace hemera {
 		ast::Node* reason = nullptr;
 		IfChain* chain = import_chain_locked(walk, names, name, Look::ANY_IMPORT, reason);
 		if (builtin || found.size() == 1) {
-			if (chain != nullptr && walk.file != nullptr) {
+			if ((chain != nullptr || pending_insert != nullptr) && walk.file != nullptr) {
 				names.provisional_uses.push_back(ProvisionalUse{ walk.file, name, walk.file_path,
-					where->value.line_number, where->value.column_number });
+					where->value.line_number, where->value.column_number,
+					pending_insert != nullptr ? walk.package_path : nullptr });
 			}
 			if (builtin) {
 				// Optional and Result are declared by base/builtin, like any generic type, once it's loaded
@@ -608,8 +640,21 @@ namespace hemera {
 			park_locked(walk, names, chain_key(chain), where, name, reason);
 			return Progress::PARKED;
 		}
+		// Not imported: what the package's #insert puts there may declare it
+		if (pending_insert != nullptr) {
+			park_locked(walk, names, chain_key(pending_insert), where, name, pending_insert->branches.front());
+			return Progress::PARKED;
+		}
 		report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, where, std::string(std::string_view(*name)));
 		return Progress::FAILED;
+	}
+
+	// A name a file imports a package under, used while an #insert in its package may still declare it.
+	static void provisional_import_locked(Walk& walk, NameRegistry& names, ast::Node* where, InternedString name) {
+		if (walk.file != nullptr) {
+			names.provisional_uses.push_back(ProvisionalUse{ walk.file, name, walk.file_path,
+				where->value.line_number, where->value.column_number, walk.package_path });
+		}
 	}
 
 	/*
@@ -626,7 +671,8 @@ namespace hemera {
 		std::scoped_lock<std::mutex> lock(names.mutex);
 
 		Declaration* own = nullptr;
-		Found found = declared_in_locked(walk, names, where, walk.package_path, name, own);
+		IfChain* pending_insert = nullptr;
+		Found found = declared_in_locked(walk, names, where, walk.package_path, name, own, &pending_insert);
 		if (Found::DECLARATION == found) {
 			return check_locked(walk, names, where, own, need);
 		}
@@ -634,10 +680,13 @@ namespace hemera {
 			return Progress::PARKED;
 		}
 		if (imported_package(walk.file, name) != nullptr) {
+			if (pending_insert != nullptr) {
+				provisional_import_locked(walk, names, where, name);
+			}
 			return Progress::DONE;
 		}
 		Declaration* declaration = nullptr;
-		return require_from_imports_locked(walk, names, where, name, need, declaration);
+		return require_from_imports_locked(walk, names, where, name, need, declaration, pending_insert);
 	}
 
 	/*
@@ -653,7 +702,8 @@ namespace hemera {
 		std::scoped_lock<std::mutex> lock(names.mutex);
 
 		Declaration* own = nullptr;
-		Found found = declared_in_locked(walk, names, where, walk.package_path, head, own);
+		IfChain* pending_insert = nullptr;
+		Found found = declared_in_locked(walk, names, where, walk.package_path, head, own, &pending_insert);
 		if (Found::PARKED == found) {
 			return Progress::PARKED;
 		}
@@ -661,9 +711,16 @@ namespace hemera {
 			return Progress::DONE; // the package's own, like an enum
 		}
 		package = imported_package(walk.file, head);
+		if (package != nullptr && pending_insert != nullptr) {
+			provisional_import_locked(walk, names, where, head);
+		}
 		if (package == nullptr && !is_text(head, "base")) {
 			ast::Node* reason = nullptr;
 			IfChain* chain = import_chain_locked(walk, names, head, Look::IMPORT_NAMED, reason);
+			if (chain == nullptr && pending_insert != nullptr) {
+				chain = pending_insert;
+				reason = pending_insert->branches.front();
+			}
 			if (chain != nullptr) {
 				park_locked(walk, names, chain_key(chain), where, head, reason);
 				return Progress::PARKED;
@@ -987,7 +1044,10 @@ namespace hemera {
 	// A struct's fields are held by value, so their types need to be resolved, unless they're pointers.
 	static Progress walk_struct(Walk& walk, ast::Node* node) {
 		const size_t locals_before = walk.locals.size();
-		Progress progress = Progress::DONE;
+		Progress progress = insert_members(walk, node);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
 		for (ast::Node* child : node->children) {
 			if (ast::NodeType::GENERIC_TAG == child->node_type) {
 				progress = push_generic_parameters(walk, child);
@@ -1024,7 +1084,10 @@ namespace hemera {
 	// A union's variants hold their payloads by value.
 	static Progress walk_union(Walk& walk, ast::Node* node) {
 		const size_t locals_before = walk.locals.size();
-		Progress progress = Progress::DONE;
+		Progress progress = insert_members(walk, node);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
 		for (ast::Node* child : node->children) {
 			if (ast::NodeType::GENERIC_TAG == child->node_type) {
 				progress = push_generic_parameters(walk, child);
@@ -1083,6 +1146,10 @@ namespace hemera {
 			return walk_union(walk, node);
 		}
 		if (ast::NodeType::ENUM == type) {
+			Progress inserted = insert_members(walk, node);
+			if (inserted != Progress::DONE) {
+				return inserted;
+			}
 			// Members, with their values
 			for (ast::Node* member : node->children) {
 				if (ast::NodeType::IDENTIFIER == member->node_type) {
@@ -1749,6 +1816,50 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	Progress insert_members(Walk& walk, ast::Node* node) {
+		const ast::NodeType kind = node->node_type;
+		const std::string_view word = ast::NodeType::STRUCT == kind ? "fields" : ast::NodeType::UNION == kind ? "variants" : "members";
+		const std::string_view holder = ast::NodeType::STRUCT == kind ? "a struct's fields"
+			: ast::NodeType::UNION == kind ? "a union's variants" : "an enum's members";
+		ProgramInfo* program = walk.executor.program_info;
+		for (size_t i = 0; i < node->children.size(); ++i) {
+			ast::Node* insert = node->children[i];
+			if (ast::NodeType::DIRECTIVE != insert->node_type || !is_text(insert->value.value, "#insert") || insert->children.empty()) {
+				continue;
+			}
+			// A generic type's instances share its tree, which an insertion would change for all of them
+			const bool generic = std::any_of(node->children.begin(), node->children.end(),
+				[](const ast::Node* child) { return ast::NodeType::GENERIC_TAG == child->node_type; });
+			if (generic || !walk.generic_types.empty()) {
+				report_at(ErrorCode::E4024, walk.file_path, &program->made_nodes, insert, "#insert in a generic type isn't supported yet");
+				return Progress::FAILED;
+			}
+			const ast::Node* tree = nullptr;
+			Progress progress = code_to_insert(walk, insert, tree);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
+			const ast::InsertionSite site{ origin != nullptr ? origin->file : walk.file_path, insert->value.line_number,
+				insert->value.column_number };
+			const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site);
+			if (inserted == nullptr) {
+				return Progress::FAILED;
+			}
+			show_inserted(walk.executor.global_data->options, site, inserted, program->quotes);
+			if (inserted->node_type != kind || inserted->value.value == nullptr || *inserted->value.value != word) {
+				report_at(ErrorCode::E4014, walk.file_path, &program->made_nodes, insert, std::format(
+					"#insert among {} puts {} there: quote them with #code {} {{ ... }}", holder, word, word));
+				return Progress::FAILED;
+			}
+			auto at = node->children.erase(node->children.begin() + static_cast<std::ptrdiff_t>(i));
+			node->children.insert(at, inserted->children.begin(), inserted->children.end());
+			// What was inserted is looked at from where it is, since it may hold #inserts of its own
+			--i;
+		}
+		return Progress::DONE;
+	}
+
 	/*
 	 * One constraint, checked by running its #constraint function with these arguments at compile
 	 * time (docs/types.md, Constraints): queued the first time they're asked for, and the walk waits.
@@ -2341,6 +2452,22 @@ namespace hemera {
 		return evaluate(walk, expression, result);
 	}
 
+	Progress code_at_top_level(WorkThreadData& executor, IfChain* chain, FileInfo* file, const ast::Node*& tree) {
+		Walk walk{
+			executor,
+			chain->file.package_path,
+			chain->file.file_name,
+			file,
+			nullptr,
+			chain,
+			file_path_of(chain->file.package_path, chain->file.file_name),
+			{},
+			{},
+			{},
+		};
+		return code_to_insert(walk, chain->branches.front(), tree);
+	}
+
 	Progress evaluate_condition(WorkThreadData& executor, IfChain* chain, FileInfo* file,
 		ast::Node* expression, ConstantValue& result) {
 
@@ -2371,16 +2498,17 @@ namespace hemera {
 		if (parked->owner_chain == nullptr || parked->owner_chain->branches.empty()) {
 			return std::string("an #if condition");
 		}
-		if (parked->owner_chain == reported->owner_chain) {
-			return std::string("this #if");
-		}
 		const IfChain* chain = parked->owner_chain;
 		const ast::Node* first = chain->branches.front();
+		const std::string_view directive = first->value.value != nullptr ? std::string_view(*first->value.value) : "#if";
+		if (parked->owner_chain == reported->owner_chain) {
+			return std::format("this {}", directive);
+		}
 		const std::string file_path = file_path_of(chain->file.package_path, chain->file.file_name);
 		if (file_path == reported->file_path) {
-			return std::format("the #if on line {}", first->value.line_number);
+			return std::format("the {} on line {}", directive, first->value.line_number);
 		}
-		return std::format("the #if at {}({},{})", file_path, first->value.line_number,
+		return std::format("the {} at {}({},{})", directive, file_path, first->value.line_number,
 			first->value.column_number);
 	}
 
@@ -2523,6 +2651,12 @@ namespace hemera {
 			if (declared_by > 1) {
 				report_error(ErrorCode::E4012, use.file_path, use.line, use.column, std::format(
 					"{} is declared by more than one of the file's imports and the builtins, once its #if chains are decided; qualify it",
+					std::string_view(*use.name)));
+			}
+			// Code an #insert put in the package declared it after all, where an import or a builtin was used
+			else if (use.package_path != nullptr && names.declarations.contains(std::make_pair(use.package_path, use.name))) {
+				report_error(ErrorCode::E4012, use.file_path, use.line, use.column, std::format(
+					"{} is declared by code an #insert put in this package, and was used as the import or builtin it also names; rename one",
 					std::string_view(*use.name)));
 			}
 		}

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "cmd_line/options.h"
 #include "front_end/type.h"
 #include "parser/ast_types.h"
 
@@ -54,6 +55,13 @@ namespace hemera {
 	/// </summary>
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
 		const ast::InsertionSite& site);
+
+	/// <summary>
+	/// Prints what was inserted at site, if the command line asks to see what's inserted there
+	/// (--show-inserted=file:line).
+	/// </summary>
+	void show_inserted(const Options* options, const ast::InsertionSite& site, const ast::Node* tree,
+		const ast::QuoteTable& quotes);
 
 	/// <summary>
 	/// Hemera source for a Code's tree, as code_text gives it.

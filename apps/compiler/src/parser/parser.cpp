@@ -293,6 +293,8 @@ namespace hemera::parser {
 		return true;
 	}
 
+	static bool is_insert(ParserState* state);
+
 	// An import, unless import is the name of a declaration (import :: ..., import #export : ...).
 	static bool is_import(ParserState* state) {
 		const TokenType next = next_token(state).type;
@@ -1758,8 +1760,15 @@ namespace hemera::parser {
 	bool struct_body(ParserState* state, ast::Node& parent) {
 		while (is_field_name(state)
 			|| expect(state, TokenType::KEYWORD_USING)
-			|| expect(state, TokenType::SYM_UNDERSCORE)) {
+			|| expect(state, TokenType::SYM_UNDERSCORE)
+			|| is_insert(state)) {
 
+			if (is_insert(state)) {
+				if (!insert_item(state, parent)) {
+					return false;
+				}
+				continue;
+			}
 			// using value : ptr[T]: a named field whose members can be used as the struct's own
 			const bool named_using = expect(state, TokenType::KEYWORD_USING) && TokenType::IDENTIFIER == next_token(state).type
 				&& TokenType::SYM_COLON == next_token(state, 2).type;
@@ -1870,7 +1879,16 @@ namespace hemera::parser {
 	}
 
 	bool union_body(ParserState* state, ast::Node& parent) {
-		while (accept_name(state, parent)) {
+		while (true) {
+			if (is_insert(state)) {
+				if (!insert_item(state, parent)) {
+					return false;
+				}
+				continue;
+			}
+			if (!accept_name(state, parent)) {
+				break;
+			}
 			//NOTE(ches) this is all one entry in the union
 			if (expect(state, TokenType::SYM_LPAREN)) {
 				// The payload's types are children of the paren group, so the next variant isn't
@@ -1914,7 +1932,13 @@ namespace hemera::parser {
 	}
 
 	bool enum_body(ParserState* state, ast::Node& parent) {
-		while (is_name(current_token(state).type)) {
+		while (is_name(current_token(state).type) || is_insert(state)) {
+			if (is_insert(state)) {
+				if (!insert_item(state, parent)) {
+					return false;
+				}
+				continue;
+			}
 			ast::Node& member = next_as_node(state, ast::NodeType::IDENTIFIER, &parent);
 
 			// An explicit value, like TRACE = 0
@@ -2523,6 +2547,27 @@ namespace hemera::parser {
 		return expr_lvl_10(state);
 	}
 
+	// Whether an #insert starts here.
+	static bool is_insert(ParserState* state) {
+		return expect(state, TokenType::DIRECTIVE) && current_token(state).value != nullptr
+			&& current_token(state).value->compare("#insert") == 0;
+	}
+
+	/*
+	 * An #insert among fields, variants, members, patterns or cases (docs/compilation.md, Code Values):
+	 * the directive with its operand, as one of parent's items, followed by a comma if there is one.
+	 */
+	bool insert_item(ParserState* state, ast::Node& parent) {
+		ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+		ExprResult operand = insert_operand(state);
+		if (!operand.success) {
+			return false;
+		}
+		directive.children.push_back(operand.result);
+		skip(state, TokenType::SYM_COMMA);
+		return true;
+	}
+
 	/*
 	 * The #insert directives in a quote's tree, in order, not counting those inside a #code within it,
 	 * which belong to that quote.
@@ -2549,7 +2594,35 @@ namespace hemera::parser {
 	 */
 	ExprResult code_quote(ParserState* state, ast::Node& quote) {
 		ast::Node* tree = nullptr;
-		if (expect(state, TokenType::SYM_LPAREN)) {
+		/*
+		 * What goes inside something else, named by a word: fields of a struct, variants of a union, members
+		 * of an enum, patterns of a match and cases of a switch, each parsed as it is there
+		 */
+		const Token word = current_token(state);
+		const bool named = TokenType::IDENTIFIER == word.type && TokenType::SYM_LBRACE == next_token(state).type
+			&& word.value != nullptr && (*word.value == "fields" || *word.value == "variants" || *word.value == "members"
+				|| *word.value == "patterns" || *word.value == "cases");
+		if (named) {
+			const std::string_view kind(*word.value);
+			const ast::NodeType node_type = kind == "fields" ? ast::NodeType::STRUCT : kind == "variants" ? ast::NodeType::UNION
+				: kind == "members" ? ast::NodeType::ENUM : ast::NodeType::LIST;
+			tree = &next_as_node(state, node_type);
+			const Token lbrace = current_token(state);
+			skip(state, TokenType::SYM_LBRACE);
+			const bool parsed = kind == "fields" ? struct_body(state, *tree) : kind == "variants" ? union_body(state, *tree)
+				: kind == "members" ? enum_body(state, *tree) : kind == "patterns" ? match_arms(state, *tree)
+				: switch_cases(state, *tree);
+			if (!parsed || !skip(state, TokenType::SYM_RBRACE)) {
+				if (parsed) {
+					report_error_on_last_token(state, ErrorCode::E3019,
+						std::format("Opening brace was at ({},{})", lbrace.line_number, lbrace.column_number));
+				}
+				delete_node(state->node_alloc, tree);
+				delete_node(state->node_alloc, &quote);
+				return ExprResult{ false };
+			}
+		}
+		else if (expect(state, TokenType::SYM_LPAREN)) {
 			const Token lparen = current_token(state);
 			skip(state, TokenType::SYM_LPAREN);
 			ExprResult inner = expression_with_result(state, true);
@@ -3395,10 +3468,33 @@ namespace hemera::parser {
 			return false;
 		}
 		
-		ast::Node& cases = next_as_node(state, ast::NodeType::LIST, 
+		ast::Node& cases = next_as_node(state, ast::NodeType::LIST,
 			&switch_node);
 
-		while (expect(state, TokenType::KEYWORD_CASE)) {
+		if (!switch_cases(state, cases)) {
+			return false;
+		}
+
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					cases.value.line_number,
+					cases.value.column_number));
+			return false;
+		}
+
+		return true;
+	}
+
+	// A switch's cases, and #inserts of more, up to its closing brace.
+	bool switch_cases(ParserState* state, ast::Node& cases) {
+		while (expect(state, TokenType::KEYWORD_CASE) || is_insert(state)) {
+			if (is_insert(state)) {
+				if (!insert_item(state, cases)) {
+					return false;
+				}
+				continue;
+			}
 			ast::Node& current_case = next_as_node(state, 
 				ast::NodeType::SWITCH_CASE, &cases);
 
@@ -3433,21 +3529,12 @@ namespace hemera::parser {
 				&& !expect(state, TokenType::SYM_RBRACE)
 				&& !expect(state, TokenType::END_OF_FILE)
 				&& !(expect(state, TokenType::DIRECTIVE)
-					&& current_token(state).value->compare("#fall_through") == 0));
+					&& (current_token(state).value->compare("#fall_through") == 0 || is_insert(state))));
 
-			if (expect(state, TokenType::DIRECTIVE)) {
+			if (expect(state, TokenType::DIRECTIVE) && !is_insert(state)) {
 				next_as_node(state, ast::NodeType::DIRECTIVE, &cases);
 			}
 		}
-
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019,
-				std::format("Opening brace was at ({},{})",
-					cases.value.line_number,
-					cases.value.column_number));
-			return false;
-		}
-
 		return true;
 	}
 
@@ -3549,16 +3636,40 @@ namespace hemera::parser {
 		ast::Node& cases = next_as_node(state, ast::NodeType::LIST,
 			&match_node);
 
+		if (!match_arms(state, cases)) {
+			delete_node(state->node_alloc, &match_node);
+			return ExprResult{ false };
+		}
+
+		if (!skip(state, TokenType::SYM_RBRACE)) {
+			report_error_on_last_token(state, ErrorCode::E3019,
+				std::format("Opening brace was at ({},{})",
+					cases.value.line_number,
+					cases.value.column_number));
+			delete_node(state->node_alloc, &match_node);
+			return ExprResult{ false };
+		}
+
+		return ExprResult{ true, &match_node };
+	}
+
+	// A match's patterns, each with what it runs, and #inserts of more, up to its closing brace.
+	bool match_arms(ParserState* state, ast::Node& cases) {
 		while (!expect(state, TokenType::SYM_RBRACE)) {
 			if (expect(state, TokenType::END_OF_FILE)) {
 				break;
+			}
+			if (is_insert(state)) {
+				if (!insert_item(state, cases)) {
+					return false;
+				}
+				continue;
 			}
 
 			// Each arm starts with case, which also ends the previous arm's body
 			if (!skip(state, TokenType::KEYWORD_CASE)) {
 				report_error_on_last_token(state, ErrorCode::E3032);
-				delete_node(state->node_alloc, &match_node);
-				return ExprResult{ false };
+				return false;
 			}
 			TokenType current = current_token(state).type;
 
@@ -3574,15 +3685,13 @@ namespace hemera::parser {
 				&& TokenType::OPERATOR_RANGE_INCLUSIVE != current
 				) {
 				report_error_on_last_token(state, ErrorCode::E3017);
-				delete_node(state->node_alloc, &match_node);
-				return ExprResult{ false };
+				return false;
 			}
 			ExprResult entry = match_entry(state);
 
 			MyVector<ast::Node*> entries{};
 			if (!entry.success) {
-				delete_node(state->node_alloc, &match_node);
-				return ExprResult{ false };
+				return false;
 			}
 			entries.push_back(entry.result);
 
@@ -3590,22 +3699,20 @@ namespace hemera::parser {
 				ExprResult next_entry = match_entry(state);
 
 				if (!next_entry.success) {
-					delete_node(state->node_alloc, &match_node);
 					for (ast::Node* n : entries) {
 						delete_node(state->node_alloc, n);
 					}
-					return ExprResult{ false };
+					return false;
 				}
 				entries.push_back(next_entry.result);
 			}
 
 			if (!expect(state, TokenType::SYM_ARROW_DOUBLE)) {
 				report_error_on_last_token(state, ErrorCode::E3031);
-				delete_node(state->node_alloc, &match_node);
 				for (ast::Node* n : entries) {
 					delete_node(state->node_alloc, n);
 				}
-				return ExprResult{ false };
+				return false;
 			}
 
 			ast::Node& current_case = next_as_node(state, 
@@ -3617,21 +3724,10 @@ namespace hemera::parser {
 
 			// An arm's body can also be a statement, like return
 			if (!statement(state, current_case)) {
-				delete_node(state->node_alloc, &match_node);
-				return ExprResult{ false };
+				return false;
 			}
 		}
-
-		if (!skip(state, TokenType::SYM_RBRACE)) {
-			report_error_on_last_token(state, ErrorCode::E3019,
-				std::format("Opening brace was at ({},{})",
-					cases.value.line_number,
-					cases.value.column_number));
-			delete_node(state->node_alloc, &match_node);
-			return ExprResult{ false };
-		}
-
-		return ExprResult{ true, &match_node };
+		return true;
 	}
 
 	ExprResult match_entry(ParserState* state) {

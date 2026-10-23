@@ -13,6 +13,7 @@
 #include "front_end/walk.h"
 #include "front_end/type_checking.h"
 #include "front_end/work.h"
+#include "middle_end/code_values.h"
 #include "middle_end/generate.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -115,6 +116,48 @@ namespace hemera {
 		FileInfo* file_info, const MyVector<ast::Node*>& nodes, size_t start);
 
 	/*
+	 * A top-level #insert (docs/compilation.md, Code Values): its code, run once at compile time, copied for
+	 * this place and processed as if written there, like the branch an #if picks. It holds declarations,
+	 * and #run, #assert, #if and #insert, which are what goes at the top level.
+	 */
+	static Progress insert_at_top_level(WorkThreadData& executor, IfChain* chain, FileInfo* file_info,
+		const std::string& file_path) {
+		ast::Node* insert = chain->branches.front();
+		const ast::Node* tree = nullptr;
+		Progress progress = code_at_top_level(executor, chain, file_info, tree);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		ProgramInfo* program = executor.program_info;
+		const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
+		const ast::InsertionSite site{ origin != nullptr ? origin->file : file_path, insert->value.line_number,
+			insert->value.column_number };
+		const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site);
+		if (inserted == nullptr) {
+			return Progress::FAILED;
+		}
+		show_inserted(executor.global_data->options, site, inserted, program->quotes);
+		if (ast::NodeType::BLOCK != inserted->node_type) {
+			report_at(ErrorCode::E4014, file_path, &program->made_nodes, inserted,
+				"#insert at the top level puts declarations there: quote them with #code { ... }");
+			return Progress::FAILED;
+		}
+		for (const ast::Node* item : inserted->children) {
+			const bool declares = ast::NodeType::DEFINITION == item->node_type
+				|| (ast::NodeType::DIRECTIVE == item->node_type && item->value.value != nullptr
+					&& (*item->value.value == "#run" || *item->value.value == "#assert" || *item->value.value == "#insert"
+						|| *item->value.value == "#if" || *item->value.value == "#else_if" || *item->value.value == "#else"));
+			if (!declares) {
+				report_at(ErrorCode::E4014, file_path, &program->made_nodes, item,
+					"only declarations, #run, #assert, #if and #insert go at the top level");
+				return Progress::FAILED;
+			}
+		}
+		process_top_level_nodes(executor, chain->file, file_info, inserted->children, 0);
+		return Progress::DONE;
+	}
+
+	/*
 	 * Evaluates an #if chain's conditions in order and processes the branch it picks. Waiting for a
 	 * constant parks the whole chain, which starts over when woken; nothing is processed until a
 	 * branch is picked.
@@ -123,6 +166,9 @@ namespace hemera {
 		FileInfo* file_info = find_file(executor.program_info, chain->file.package_path,
 			chain->file.file_name);
 		const std::string file_path = file_path_of(chain->file.package_path, chain->file.file_name);
+		if (!chain->branches.empty() && chain->branches.front()->value.value->compare("#insert") == 0) {
+			return insert_at_top_level(executor, chain, file_info, file_path);
+		}
 
 		for (ast::Node* branch : chain->branches) {
 			const bool is_else = branch->value.value->compare("#else") == 0;
@@ -498,8 +544,13 @@ namespace hemera {
 						WorkTarget(WorkTargetType::ASSERT, { .node_location = { location, child } }));
 				}
 				else if (value->compare("#insert") == 0) {
-					report_error(ErrorCode::E4024, file_path, child->value.line_number, child->value.column_number,
-						"#insert at the top level isn't supported yet");
+					// Like an #if chain: names the package doesn't declare yet may come from it
+					IfChain* chain = INFO_ALLOC->new_object<IfChain>();
+					chain->file = location;
+					chain->branches.push_back(child);
+					begin_if_chain(executor, chain);
+					executor.create_work(WorkType::IF_ELSE,
+						WorkTarget(WorkTargetType::EXPRESSION, { .if_chain = chain }));
 				}
 				else if (value->compare("#run") == 0) {
 					ast::Node* expr = child->children[0];
