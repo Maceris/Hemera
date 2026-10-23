@@ -899,8 +899,9 @@ namespace hemera {
 		}
 		std::string key = "fn";
 		for (const FunctionInput& input : signature.input) {
+			// Which default, so a call through the type finds it; types that differ only in defaults still convert
 			key += std::format(" {}:{}:{}{}{}", name_text(input.name), static_cast<const void*>(input.type),
-				input.has_default, input.is_varargs, input.is_escaping);
+				static_cast<const void*>(input.default_value), input.is_varargs, input.is_escaping);
 		}
 		key += " ->";
 		for (const FunctionOutput& output : signature.output) {
@@ -986,6 +987,88 @@ namespace hemera {
 			result->no_context = true;
 			return result;
 		});
+	}
+
+	// Whether two expressions are written the same: the same nodes, with the same text.
+	static bool same_expression(const ast::Node* a, const ast::Node* b) {
+		if (a == nullptr || b == nullptr) {
+			return a == b;
+		}
+		if (a->node_type != b->node_type || a->value.type != b->value.type || name_text(a->value.value) != name_text(b->value.value)
+			|| a->children.size() != b->children.size()) {
+			return false;
+		}
+		for (size_t i = 0; i < a->children.size(); ++i) {
+			if (!same_expression(a->children[i], b->children[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/*
+	 * A function declared with a type, like foo : FooFn : fn(a: int, b: int) { }: a parameter it gives no
+	 * default gets the type's, and one it gives must be the type's, written the same (docs/functions.md,
+	 * Defaults in Function Types). Whether the type fits the function otherwise is checked with its value.
+	 */
+	static Progress defaults_from_stated_type(Walk& walk, InternedString name, ast::Node* declared, TypeInfo*& function) {
+		// Resolved, so an alias has what it aliases and a named function type its parameters
+		Progress progress = walk_names(walk, declared, Need::RESOLVED);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		TypeInfo* stated = nullptr;
+		progress = type_of(walk, declared, Need::RESOLVED, stated);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		TypeInfo const* stated_base = get_base_type_or_alias(stated);
+		if (stated_base == nullptr || TypeInfoVariant::FUNCTION != stated_base->variant) {
+			return Progress::DONE;
+		}
+		auto type = static_cast<TypeInfoFunction const*>(stated_base);
+		auto own = static_cast<TypeInfoFunction*>(function);
+		if (type->input.size() != own->input.size()) {
+			return Progress::DONE;
+		}
+		std::vector<FunctionInput> inputs = own->input;
+		bool inherits = false;
+		for (size_t i = 0; i < inputs.size(); ++i) {
+			const FunctionInput& theirs = type->input[i];
+			FunctionInput& mine = inputs[i];
+			if (mine.default_value == nullptr) {
+				if (theirs.default_value != nullptr) {
+					mine.has_default = true;
+					mine.default_value = theirs.default_value;
+					mine.default_package = theirs.default_package;
+					inherits = true;
+				}
+				continue;
+			}
+			if (theirs.default_value == nullptr) {
+				return type_error(walk, ErrorCode::E4038, mine.default_value, std::format(
+					"{} gives {} a default its stated type doesn't: leave out the type to give it one", name_text(name), name_text(mine.name)));
+			}
+			if (!same_expression(mine.default_value, theirs.default_value)) {
+				return type_error(walk, ErrorCode::E4038, mine.default_value, std::format(
+					"{}'s default for {} isn't its stated type's: leave it out to use the type's, or leave out the type", name_text(name),
+					name_text(mine.name)));
+			}
+		}
+		if (!inherits) {
+			return Progress::DONE;
+		}
+		function = derived_type(walk, std::format("defaults of {} for {}", static_cast<const void*>(stated_base),
+			static_cast<const void*>(own)), [&] {
+			auto result = new TypeInfoFunction();
+			result->input = inputs;
+			result->output = own->output;
+			result->never_returns = own->never_returns;
+			result->calling_convention = own->calling_convention;
+			result->no_context = own->no_context;
+			return result;
+		});
+		return Progress::DONE;
 	}
 
 	// Which anonymous type a node is: the node, in an instance with its generic arguments.
@@ -1138,6 +1221,10 @@ namespace hemera {
 						input.name = name->value.value;
 						input.type = parameter_type;
 						input.has_default = has_default;
+						if (has_default && parameter->children.size() == 2) {
+							input.default_value = parameter->children[1];
+							input.default_package = walk.package_path;
+						}
 						input.is_varargs = is_varargs;
 						for (ast::Node* directive : name->children) {
 							if (is_text(directive->value.value, "#crosses_threads")) {
@@ -1800,6 +1887,12 @@ namespace hemera {
 			Progress progress = function_type(walk, signature, function);
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			if (declared != nullptr && declared != signature) {
+				progress = defaults_from_stated_type(walk, declarations[0]->name, declared, function);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 			}
 			/*
 			 * #never_returns and #calling_convention after the name, like

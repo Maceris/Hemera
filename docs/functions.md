@@ -180,6 +180,60 @@ call_or :: fn(handler: (fn(n: int) -> int)?, n: int) -> int {
 }
 ```
 
+### Defaults in Function Types
+
+A function type can give its parameters defaults too, as [a function does](#default-values): checked where the type is
+written, with the names its package sees, and run in the caller, with the caller's context, each time a call leaves the
+parameter out. `base`'s `AllocatorFn` gives its location one, so a call through an allocator needn't pass it:
+
+```
+AllocatorFn :: alias fn(allocator_data: rawptr, size: usize, alignment: usize, old_memory: rawptr, old_size: usize,
+    location := #caller_location) -> (u8[], AllocatorError?)
+
+memory, error :: context.allocator.function(context.allocator.data, 64, 8, null, 0)
+```
+
+Defaults aren't part of a function type's identity: function types that differ only in their defaults are the same
+type to convert between, so a function converts to any type with its parameters, whatever either's defaults are.
+They're a convenience for callers, not a promise about the function. Which defaults a call uses is decided by how it's
+written, never by what the compiler can work out:
+
+* A call through the name of a function, or a constant naming one, uses the function's defaults.
+* Any other call, through a variable, parameter or field, or any other expression, uses the defaults of the callee's
+  type.
+
+A function that states its type takes the type's defaults: a parameter it gives no default gets the type's, and one
+it gives a default must be given the type's, written the same (error E4038 otherwise). A function that wants defaults
+of its own doesn't state the type, and still converts to it.
+
+```
+FooFn :: alias fn(a: int, b: int = 1) -> int
+
+foo : FooFn : fn(a: int, b: int) -> int {      // b = 1, from FooFn
+    return a + b
+}
+
+bar : FooFn : fn(a: int, b: int = 2) -> int {  // error E4038: FooFn gives b the default 1
+    return a + b
+}
+
+qux :: fn(a: int, b: int = 2) -> int {         // its own default, since it doesn't state FooFn
+    return a + b
+}
+
+twice :: fn(f: FooFn) -> int {
+    return f(1) + f(1)                         // FooFn's default: f(1, 1), whatever f is
+}
+
+main :: fn() {
+    println(qux(1))     // 3: qux's default
+    println(twice(qux)) // 4: FooFn's
+}
+```
+
+For now the compiler generates a function type's defaults when they're literals, constants, enum members, `.{}`,
+`#caller_location` or the context's fields; a function's own defaults can be any expression.
+
 ## Complicated Function Return Types
 
 Functions need to have parenthesis around the return type(s) if

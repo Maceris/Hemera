@@ -1071,6 +1071,35 @@ TEST(FrontEnd, ChecksOwners)
 }
 
 /*
+ * A function that states its type gets the type's defaults and can't change them (docs/functions.md,
+ * Defaults in Function Types): one repeating the type's default and one inheriting it are fine; one
+ * changing it, one adding a default the type lacks, and one changing a type written out aren't.
+ */
+TEST(FrontEnd, KeepsStatedTypesDefaults)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("stated_type_defaults"));
+	ASSERT_EQ(errors.size(), 3) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4038);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"different's default for b isn't its stated type's: leave it out to use the type's, or leave out the type",
+		"extra gives b a default its stated type doesn't: leave out the type to give it one",
+		"written_out's default for b isn't its stated type's",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
+/*
  * Values that can't leave their thread given to what sends them to another (docs/multitasking.md, Values
  * That Stay on Their Thread): a type marked #thread_bound, one bound by its argument, one reached through
  * a pointer, and one given to a #crosses_threads parameter of the program's own. One not bound can go.

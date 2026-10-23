@@ -137,7 +137,7 @@ release_block :: fn[atomic: bool](header: ptr[mut SharedHeader]) {
     }
     if last {
         allocator :: header.allocator
-        allocator.function(allocator.data, 0, 0, header.block, header.size, #caller_location)
+        allocator.function(allocator.data, 0, 0, header.block, header.size)
     }
 }
 

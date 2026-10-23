@@ -241,6 +241,12 @@ TEST(Hosted, SharesOwnership)
 	run_hosted("shared", hemera::TargetStackCheck::Off);
 }
 
+// Defaults in function types: through names, values, fields and an Allocator (docs/functions.md).
+TEST(Hosted, UsesFunctionTypesDefaults)
+{
+	run_hosted("function_type_defaults", hemera::TargetStackCheck::Off);
+}
+
 // Optional function types written in place: (fn(n: int) -> int)? (docs/functions.md).
 TEST(Hosted, TakesOptionalFunctions)
 {

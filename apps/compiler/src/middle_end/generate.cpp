@@ -3616,9 +3616,23 @@ namespace hemera {
 	 */
 	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type);
 
-	static mlir::Value emit_default(Generator& generator, Declaration* callee, size_t index, TypeInfo* type, ast::Node* call) {
-		const std::vector<ParameterNode> parameters = parameter_nodes(callee);
-		ast::Node* node = index < parameters.size() ? parameters[index].default_value : nullptr;
+	/*
+	 * The default comes from the function type the call was checked against: a function's own, with what
+	 * it inherits from a type it states, or, for a call through a value, the value's type's (docs/functions.md,
+	 * Defaults in Function Types).
+	 */
+	static mlir::Value emit_default(Generator& generator, Declaration* callee, const FunctionInput& input, size_t index, TypeInfo* type,
+		ast::Node* call) {
+		ast::Node* node = input.default_value;
+		InternedString package = input.default_package;
+		if (node == nullptr) {
+			const std::vector<ParameterNode> parameters = parameter_nodes(callee);
+			node = index < parameters.size() ? parameters[index].default_value : nullptr;
+			package = nullptr;
+		}
+		if (package == nullptr && callee != nullptr) {
+			package = (callee->generic != nullptr ? callee->generic : callee)->package_path;
+		}
 		if (node == nullptr) {
 			unsupported(generator, call, "a call that leaves out a parameter without a default");
 			return zero_of(generator, llvm_type(generator, type));
@@ -3669,12 +3683,11 @@ namespace hemera {
 			return convert_emitted(generator, current, type);
 		}
 		if (ast::NodeType::IDENTIFIER == kind && node->children.empty()) {
-			// A constant from the function's package
-			Declaration* generic = callee->generic != nullptr ? callee->generic : callee;
+			// A constant from the package the default was written in
 			Declaration* constant = nullptr;
 			{
 				std::scoped_lock<std::mutex> lock(generator.names.mutex);
-				auto iter = generator.names.declarations.find(std::make_pair(generic->package_path, node->value.value));
+				auto iter = generator.names.declarations.find(std::make_pair(package, node->value.value));
 				if (iter != generator.names.declarations.end()) {
 					constant = iter->second;
 				}
@@ -3692,7 +3705,7 @@ namespace hemera {
 		 * Anything else, as checking the callee found it (check_parameter_defaults), here in the
 		 * caller, with the caller's context
 		 */
-		if (callee->checked != nullptr && callee->checked->nodes.contains(node)) {
+		if (callee != nullptr && callee->checked != nullptr && callee->checked->nodes.contains(node)) {
 			FunctionState& state = *generator.state;
 			CheckedBody* outer = state.checked;
 			state.checked = callee->checked.get();
@@ -5141,7 +5154,7 @@ namespace hemera {
 				continue;
 			}
 			mlir::Value given = named_node != nullptr ? emit_as(generator, named_node, input.type)
-				: emit_default(generator, called, i, input.type, paren);
+				: emit_default(generator, called, input, i, input.type, paren);
 			arguments.push_back(by_pointer ? value_copy(generator, given, input.type) : given);
 		}
 		if (is_intrinsic(called)) {

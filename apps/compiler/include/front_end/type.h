@@ -7,6 +7,10 @@
 #include "memory/allocator.h"
 
 namespace hemera {
+	namespace ast {
+		struct Node;
+	}
+
 
 	/*
 	 * Type information: what the compiler knows about each type, including its memory layout
@@ -209,6 +213,13 @@ namespace hemera {
 		TypeInfo* type = nullptr;
 		InternedString name = nullptr;
 		bool has_default = false;
+		/// <summary>
+		/// The default's expression, and the package whose names it sees: where the signature giving it was
+		/// written, a function's or a function type's (docs/functions.md, Defaults in Function Types). A call
+		/// that leaves the parameter out runs it, in the caller. Not part of the type's identity.
+		/// </summary>
+		ast::Node* default_value = nullptr;
+		InternedString default_package = nullptr;
 		bool is_varargs = false;
 		/// <summary>
 		/// Marked #escaping, so the function may keep it after returning. This is part of the
