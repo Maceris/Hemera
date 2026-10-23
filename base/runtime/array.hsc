@@ -75,7 +75,7 @@ array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #
         intrinsics.mem_copy_non_overlapping(cast[rawptr](memory.data), raw.data, raw.count * size_of(T))
     }
     if raw.capacity > 0 {
-        allocator.function(allocator.data, 0, 0, raw.data, raw.capacity * size_of(T), location)
+        allocator.function(allocator.data, 0, align_of(T), raw.data, raw.capacity * size_of(T), location)
     }
     raw.data = cast[rawptr](memory.data)
     raw.capacity = new_capacity
@@ -121,7 +121,7 @@ array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
 array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
     raw :: resizable(array)
     if raw.capacity > 0 {
-        raw.allocator.function(raw.allocator.data, 0, 0, raw.data, raw.capacity * size_of(T), location)
+        raw.allocator.function(raw.allocator.data, 0, align_of(T), raw.data, raw.capacity * size_of(T), location)
     }
     raw.data = null
     raw.count = 0

@@ -3,6 +3,32 @@
 Hemera operates under, and will use operating system utilities to enforce whenever possible,
 the model that all memory is either writable or executable but never both.
 
+# Allocators
+
+Memory comes from an `Allocator` (`base/runtime/core.hsc`), usually `context.allocator`: a function and its data.
+The one function allocates, frees and resizes:
+
+```
+AllocatorFn :: alias fn(allocator_data: rawptr, size: usize, alignment: usize, old_memory: rawptr, old_size: usize,
+    location := #caller_location) -> (u8[], AllocatorError?)
+```
+
+* With `old_memory` null, it allocates `size` bytes aligned to `alignment`, a power of two.
+* With `size` 0, it frees `old_memory`.
+* With both, it resizes `old_memory` to `size` bytes, keeping its alignment.
+
+Freeing and resizing pass the block's `old_size` and `alignment` as it was allocated, so an allocator can find a block
+from them, like one that keeps blocks of each size and alignment apart and has no header to read. `base`'s functions
+come in pairs that keep this: `free` gives back what `new` made and `free_array` what `new_array` made, each with the
+type's own alignment, and `free_aligned` and `free_array_aligned` what `new_aligned` and `new_array_aligned` made,
+given the same alignment again.
+
+```
+block, error :: new_array_aligned(u8, 4096, 64)
+// ...
+free_array_aligned(block, 64)
+```
+
 # Pointers to the Stack
 
 Pointers and views can refer to stack memory: `&local_variable`, a stack array passed as an array view,

@@ -84,6 +84,6 @@ main :: fn() -> int {
     if error != null || bytes.count != 16 {
         return 9
     }
-    context.allocator.function(context.allocator.data, 0, 0, cast[rawptr](bytes.data), 16)
+    context.allocator.function(context.allocator.data, 0, 8, cast[rawptr](bytes.data), 16)
     return 42
 }

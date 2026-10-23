@@ -39,7 +39,7 @@ instantiate_all :: fn(number: int, point: Point) {
     many, _ :: runtime.new_array(string, 4)
     runtime.free_array(many)
     aligned, _ :: runtime.new_aligned(int, 64)
-    runtime.free(aligned)
+    runtime.free_aligned(aligned, 64)
     // runtime: dynamic arrays of each kind of element
     numbers : int[..]
     runtime.array_reserve(&numbers, 8)

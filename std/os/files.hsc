@@ -278,7 +278,7 @@ free_directory_listing :: fn(entries: DirectoryEntry[..], allocator := context.a
     // The array's own block, to the allocator it took (runtime.array_free, for an array given by value)
     raw :: bit_cast[runtime.ResizableArray](entries)
     if raw.capacity > 0 {
-        raw.allocator.function(raw.allocator.data, 0, 0, raw.data, raw.capacity * size_of(DirectoryEntry), location)
+        raw.allocator.function(raw.allocator.data, 0, align_of(DirectoryEntry), raw.data, raw.capacity * size_of(DirectoryEntry), location)
     }
 }
 

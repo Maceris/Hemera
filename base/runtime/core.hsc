@@ -6,6 +6,12 @@ Allocator :: struct #unrestricted {
     data : rawptr,
 }
 
+/*
+ * Allocates, frees or resizes a block (docs/memory.md, Allocators). With old_memory null, a new block of size
+ * bytes aligned to alignment; with size 0, frees old_memory; with both, resizes it, keeping its alignment. Freeing
+ * and resizing pass the block's old_size and alignment as it was allocated, so an allocator can find a block from
+ * them.
+ */
 AllocatorFn :: alias fn(
     allocator_data: rawptr,
     size: usize,

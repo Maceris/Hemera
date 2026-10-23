@@ -1,12 +1,28 @@
 package runtime
 
-// Give back a T from new or new_aligned, to the allocator it came from.
+/*
+ * Freeing passes the block's size and alignment, as it was allocated (docs/memory.md, Allocators): free and
+ * free_array give back what new and new_array made, and free_aligned and free_array_aligned what new_aligned
+ * and new_array_aligned made, with the same alignment.
+ */
+
+// Give back a T from new, to the allocator it came from.
 free :: fn[T](
     pointer: ptr[T],
     allocator := context.allocator,
     loc := #caller_location,
 ) {
-    allocator.function(allocator.data, 0, 0, cast[rawptr](pointer), size_of(T), loc)
+    allocator.function(allocator.data, 0, align_of(T), cast[rawptr](pointer), size_of(T), loc)
+}
+
+// Give back a T from new_aligned, with the alignment it was allocated with.
+free_aligned :: fn[T](
+    pointer: ptr[T],
+    alignment: usize,
+    allocator := context.allocator,
+    loc := #caller_location,
+) {
+    allocator.function(allocator.data, 0, alignment, cast[rawptr](pointer), size_of(T), loc)
 }
 
 free_all :: fn[T](
@@ -16,16 +32,26 @@ free_all :: fn[T](
     todo("free_all")
 }
 
-// Give back an array from new_array or new_array_aligned, to the allocator it came from.
+// Give back an array from new_array, to the allocator it came from.
 free_array :: fn[T](
     array: T[],
+    allocator := context.allocator,
+    loc := #caller_location,
+) {
+    free_array_aligned(array, align_of(T), allocator, loc)
+}
+
+// Give back an array from new_array_aligned, with the alignment it was allocated with.
+free_array_aligned :: fn[T](
+    array: T[],
+    alignment: usize,
     allocator := context.allocator,
     loc := #caller_location,
 ) {
     if array.count == 0 {
         return void
     }
-    allocator.function(allocator.data, 0, 0, cast[rawptr](array.data), array.count * size_of(T), loc)
+    allocator.function(allocator.data, 0, alignment, cast[rawptr](array.data), array.count * size_of(T), loc)
 }
 
 /*
@@ -44,6 +70,7 @@ new :: fn[T](
     return result
 }
 
+// A new T aligned to alignment, a power of two, which free_aligned gives back with the same alignment.
 new_aligned :: fn[T](
     T: type,
     alignment: usize,
@@ -63,6 +90,7 @@ new_array :: fn[T](
     return new_array_aligned(T, count, align_of(T), allocator, loc)
 }
 
+// count Ts aligned to alignment, a power of two, which free_array_aligned gives back with the same alignment.
 new_array_aligned :: fn[T](
     T: type,
     count: usize,

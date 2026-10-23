@@ -92,7 +92,7 @@ exercise :: fn(thread: usize) -> u64 {
         // Every other one back, and again
         for i in 0..<BLOCKS {
             if i % 2 == 0 {
-                runtime.free_array(blocks[i].bytes)
+                runtime.free_array_aligned(blocks[i].bytes, alignment_of_block(i))
                 failure :: allocate(thread, i, &blocks)
                 if failure != 0 {
                     return failure
@@ -105,7 +105,7 @@ exercise :: fn(thread: usize) -> u64 {
             }
         }
         for i in 0..<BLOCKS {
-            runtime.free_array(blocks[i].bytes)
+            runtime.free_array_aligned(blocks[i].bytes, alignment_of_block(i))
         }
     }
     return 0

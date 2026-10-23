@@ -57,6 +57,7 @@ SharedHeader :: struct {
     allocator : runtime.Allocator,
     block : rawptr,
     size : usize,
+    alignment : usize,
 }
 
 // The header before a value in its block.
@@ -93,6 +94,7 @@ make_shared :: fn[T, atomic = true](value #escaping : T, destroy : DestroyValue[
     header.allocator = allocator
     header.block = block
     header.size = size
+    header.alignment = alignment
     match destroy {
         case Some(function) => header.destroy = bit_cast[Destroy](function)
         case None => {
@@ -137,7 +139,7 @@ release_block :: fn[atomic: bool](header: ptr[mut SharedHeader]) {
     }
     if last {
         allocator :: header.allocator
-        allocator.function(allocator.data, 0, 0, header.block, header.size)
+        allocator.function(allocator.data, 0, header.alignment, header.block, header.size)
     }
 }
 
