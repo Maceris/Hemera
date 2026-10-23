@@ -116,6 +116,15 @@ namespace hemera {
 		/// </summary>
 		std::map<const void*, mlir::Value> slots;
 		/// <summary>
+		/// Locals kept as values rather than in slots: scalars nothing assigns to or takes the address of
+		/// (in_slot), by their key. LLVM would take them out of memory anyway; this way it starts with less.
+		/// </summary>
+		std::map<const void*, mlir::Value> values;
+		/// <summary>
+		/// The locals that need a slot: assigned to, or with their address taken, by their key.
+		/// </summary>
+		std::set<const void*> in_slot;
+		/// <summary>
 		/// Constants defined in the body, like c :: 3, by their key: their value's expression.
 		/// </summary>
 		std::map<const void*, ast::Node*> constants;
@@ -2880,6 +2889,10 @@ namespace hemera {
 				// A derived one is untyped, taking the type it's used as
 				TypeInfo* constant_type = found->type != nullptr ? found->type : untyped_as(found->kind, expected);
 				return value(constant_int(generator, llvm_type(generator, constant_type), number), constant_type);
+			}
+			auto kept = state.values.find(found->local);
+			if (kept != state.values.end()) {
+				return value(kept->second, found->type);
 			}
 			auto slot = state.slots.find(found->local);
 			if (slot != state.slots.end()) {
@@ -6488,6 +6501,60 @@ namespace hemera {
 		}
 	}
 
+	// The local a place like x, x.field or x[i] is part of, by its key, or null if it isn't a local's.
+	static const void* local_of_place(Generator& generator, const ast::Node* node) {
+		while (node != nullptr && !node->children.empty() && ast::NodeType::IDENTIFIER != node->node_type) {
+			node = node->children[0];
+		}
+		if (node == nullptr) {
+			return nullptr;
+		}
+		const CheckedNode* found = head_of(generator, node);
+		if (found == nullptr || found->local == nullptr) {
+			found = checked(generator, node);
+		}
+		return found != nullptr ? found->local : nullptr;
+	}
+
+	// Every local in node that's assigned to or has its address taken, which needs a slot.
+	static void find_locals_in_slots(Generator& generator, const ast::Node* node) {
+		if (node == nullptr) {
+			return;
+		}
+		if (is_assignment(node)) {
+			const ast::Node* left = node->children[0];
+			if (ast::NodeType::LIST == left->node_type) {
+				for (const ast::Node* target : left->children) {
+					generator.state->in_slot.insert(local_of_place(generator, target));
+				}
+			}
+			else {
+				generator.state->in_slot.insert(local_of_place(generator, left));
+			}
+		}
+		if (ast::NodeType::UNARY_OPERATOR == node->node_type && TokenType::SYM_AMPERSAND == node->value.type && !node->children.empty()) {
+			generator.state->in_slot.insert(local_of_place(generator, node->children[0]));
+		}
+		for (const ast::Node* child : node->children) {
+			find_locals_in_slots(generator, child);
+		}
+	}
+
+	/*
+	 * Whether a local of type can be kept as a value: a scalar, held in a register, with nothing of it to
+	 * take the address of (docs/types.md, Memory Layout), and nothing assigning to it.
+	 */
+	static bool kept_as_value(Generator& generator, const void* key, TypeInfo* type) {
+		TypeInfo const* held = base(type);
+		if (held == nullptr || key == nullptr || generator.state->in_slot.contains(key)) {
+			return false;
+		}
+		const TypeInfoVariant variant = held->variant;
+		return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant || TypeInfoVariant::BOOLEAN == variant
+			|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::ENUM == variant || TypeInfoVariant::POINTER == variant
+			|| TypeInfoVariant::FUNCTION == variant;
+	}
+
 	// x : T = value, x := value, x :: value: a slot for each name, or for a constant, its value's expression.
 	static void emit_definition(Generator& generator, ast::Node* definition) {
 		std::vector<ast::Node*> names;
@@ -6534,6 +6601,13 @@ namespace hemera {
 		}
 		for (size_t i = 0; i < names.size(); ++i) {
 			if (discarded(names[i])) {
+				continue;
+			}
+			// Never assigned and never pointed at: its value, as it was given
+			if (kept_as_value(generator, names[i], types[i])) {
+				const Emitted& given = values.empty() ? Emitted{} : values.size() == 1 ? values[0] : values[std::min(i, values.size() - 1)];
+				generator.state->values[names[i]] = values.empty() ? zero_of(generator, llvm_type(generator, types[i]))
+					: convert_emitted(generator, given, types[i]);
 				continue;
 			}
 			mlir::Value slot = make_slot(generator, types[i]);
@@ -7074,11 +7148,19 @@ namespace hemera {
 		const unsigned first = (with_context ? 1 : 0) + (through_pointer ? 1 : 0);
 		state.result_pointer = through_pointer ? static_cast<mlir::Value>(entry->getArgument(0)) : mlir::Value();
 		state.context = with_context ? static_cast<mlir::Value>(entry->getArgument(through_pointer ? 1 : 0)) : mlir::Value();
-		// Parameters and named results in slots; one too large for registers is the caller's copy already
+		find_locals_in_slots(generator, body);
+		/*
+		 * Parameters and named results in slots, but for a parameter kept as its value; one too large for
+		 * registers is the caller's copy already
+		 */
 		for (size_t i = 0; i < state.checked->parameters.size() && i < type->input.size(); ++i) {
 			mlir::Value argument = entry->getArgument(static_cast<unsigned>(i) + first);
 			if (parameter_by_pointer(type, type->input[i])) {
 				state.slots[state.checked->parameters[i]] = argument;
+				continue;
+			}
+			if (kept_as_value(generator, state.checked->parameters[i], type->input[i].type)) {
+				state.values[state.checked->parameters[i]] = argument;
 				continue;
 			}
 			mlir::Value slot = make_raw_slot(generator, argument.getType(), std::max<size_t>(type->input[i].type->alignment, 1));
