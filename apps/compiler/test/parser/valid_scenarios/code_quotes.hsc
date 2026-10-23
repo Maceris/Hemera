@@ -80,6 +80,14 @@ swap #macro :: fn(a: compiler.Code, b: compiler.Code) -> compiler.Code {
     }
 }
 
+// Result types an #insert puts there
+results :: fn(T: compiler.Code) -> compiler.Code {
+    return #code {
+        load : fn(target: ptr[#insert T]) -> #insert T : ---
+        swap : fn(target: ptr[mut #insert T]) -> (old: #insert T, success: bool) : ---
+    }
+}
+
 use_macros :: fn() -> int {
     a := 1
     b := 2

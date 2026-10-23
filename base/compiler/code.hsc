@@ -31,9 +31,9 @@ quote_code : fn(quote: u64, splices: any[]) -> Code : ---
  * where it's called, which is where errors in it are reported.
  */
 
-// A name: an identifier, never anything else, or an error there if text isn't one (letters, digits and _, not
-// starting with a digit, and not a keyword).
-name : fn(text: string, location := #caller_location) -> Code : ---
+// A name: its parts joined, like name("atomic_load_", "u64"), which is an identifier, never anything else, or an
+// error there if it isn't one (letters, digits and _, not starting with a digit, and not a keyword).
+name : fn(parts: string..., location := #caller_location) -> Code : ---
 
 // A literal of a number, boolean, character, string or enum member.
 literal : fn(value: any, location := #caller_location) -> Code : ---

@@ -1,5 +1,7 @@
 package intrinsics
 
+import compiler from "base"
+
 /*
  * Atomic operations, each on one naturally aligned value.
  *
@@ -11,105 +13,36 @@ package intrinsics
  * A _weak compare-exchange may fail even when the value matched, which is cheaper on
  * architectures without a single compare-exchange instruction (ARM, RISC-V). Use it in
  * retry loops. Its ordering suffix comes after _weak.
+ *
+ * They're made by atomic_operations below, so they aren't written out here. Each is named for its
+ * operation, then its type, then its ordering, and comes in every type: i8, u8, i16, u16, i32, u32,
+ * i64, u64, i128, u128, int, uint, uintptr and rawptr. For a type T:
+ *
+ *   atomic_load_T[_acquire | _no_fence]
+ *       : fn(target: ptr[T]) -> T
+ *   atomic_store_T[_release | _no_fence]
+ *       : fn(target: ptr[mut T], value: T)
+ *   interlocked_and_T, interlocked_or_T, interlocked_xor_T, interlocked_exchange_T,
+ *   interlocked_exchange_add_T[_acquire | _release | _acquire_release | _no_fence]
+ *       : fn(target: ptr[mut T], value: T) -> T
+ *   interlocked_increment_T, interlocked_decrement_T[_acquire | _release | _acquire_release | _no_fence]
+ *       : fn(target: ptr[mut T]) -> (old: T)
+ *   interlocked_compare_exchange_T[_weak][_acquire | _release | _acquire_release | _no_fence]
+ *       : fn(target: ptr[mut T], exchange: T, expected: T) -> (old: T, success: bool)
+ *
+ * Every interlocked operation gives the value target held before it. A compare-exchange stores
+ * exchange only if target held expected, and success says whether it did. For example:
+ *
+ *   count := atomic_load_u32_acquire(&shared.count)
+ *   atomic_store_u64_release(&shared.ready, 1)
+ *   before :: interlocked_exchange_add_uint(&total, 4)          // total was before, is now before + 4
+ *   old :: interlocked_decrement_u32(&object.references)        // the last reference if old == 1
+ *   _, claimed :: interlocked_compare_exchange_u32(&slot.owner, me, 0)
+ *
+ * To see them all, as Hemera, compile with --show-inserted=atomics.hsc:<the #insert's line>.
  */
 
-atomic_load_i8           : fn(target: ptr[i8]               ) -> i8 : ---
-atomic_load_i8_acquire   : fn(target: ptr[i8]               ) -> i8 : ---
-atomic_load_i8_no_fence  : fn(target: ptr[i8]               ) -> i8 : ---
-atomic_store_i8          : fn(target: ptr[mut i8], value: i8)       : ---
-atomic_store_i8_release  : fn(target: ptr[mut i8], value: i8)       : ---
-atomic_store_i8_no_fence : fn(target: ptr[mut i8], value: i8)       : ---
-
-atomic_load_u8           : fn(target: ptr[u8]               ) -> u8 : ---
-atomic_load_u8_acquire   : fn(target: ptr[u8]               ) -> u8 : ---
-atomic_load_u8_no_fence  : fn(target: ptr[u8]               ) -> u8 : ---
-atomic_store_u8          : fn(target: ptr[mut u8], value: u8)       : ---
-atomic_store_u8_release  : fn(target: ptr[mut u8], value: u8)       : ---
-atomic_store_u8_no_fence : fn(target: ptr[mut u8], value: u8)       : ---
-
-atomic_load_i16           : fn(target: ptr[i16]                ) -> i16 : ---
-atomic_load_i16_acquire   : fn(target: ptr[i16]                ) -> i16 : ---
-atomic_load_i16_no_fence  : fn(target: ptr[i16]                ) -> i16 : ---
-atomic_store_i16          : fn(target: ptr[mut i16], value: i16)        : ---
-atomic_store_i16_release  : fn(target: ptr[mut i16], value: i16)        : ---
-atomic_store_i16_no_fence : fn(target: ptr[mut i16], value: i16)        : ---
-
-atomic_load_u16           : fn(target: ptr[u16]                ) -> u16 : ---
-atomic_load_u16_acquire   : fn(target: ptr[u16]                ) -> u16 : ---
-atomic_load_u16_no_fence  : fn(target: ptr[u16]                ) -> u16 : ---
-atomic_store_u16          : fn(target: ptr[mut u16], value: u16)        : ---
-atomic_store_u16_release  : fn(target: ptr[mut u16], value: u16)        : ---
-atomic_store_u16_no_fence : fn(target: ptr[mut u16], value: u16)        : ---
-
-atomic_load_i32           : fn(target: ptr[i32]                ) -> i32 : ---
-atomic_load_i32_acquire   : fn(target: ptr[i32]                ) -> i32 : ---
-atomic_load_i32_no_fence  : fn(target: ptr[i32]                ) -> i32 : ---
-atomic_store_i32          : fn(target: ptr[mut i32], value: i32)        : ---
-atomic_store_i32_release  : fn(target: ptr[mut i32], value: i32)        : ---
-atomic_store_i32_no_fence : fn(target: ptr[mut i32], value: i32)        : ---
-
-atomic_load_u32           : fn(target: ptr[u32]                ) -> u32 : ---
-atomic_load_u32_acquire   : fn(target: ptr[u32]                ) -> u32 : ---
-atomic_load_u32_no_fence  : fn(target: ptr[u32]                ) -> u32 : ---
-atomic_store_u32          : fn(target: ptr[mut u32], value: u32)        : ---
-atomic_store_u32_release  : fn(target: ptr[mut u32], value: u32)        : ---
-atomic_store_u32_no_fence : fn(target: ptr[mut u32], value: u32)        : ---
-
-atomic_load_i64           : fn(target: ptr[i64]                ) -> i64 : ---
-atomic_load_i64_acquire   : fn(target: ptr[i64]                ) -> i64 : ---
-atomic_load_i64_no_fence  : fn(target: ptr[i64]                ) -> i64 : ---
-atomic_store_i64          : fn(target: ptr[mut i64], value: i64)        : ---
-atomic_store_i64_release  : fn(target: ptr[mut i64], value: i64)        : ---
-atomic_store_i64_no_fence : fn(target: ptr[mut i64], value: i64)        : ---
-
-atomic_load_u64           : fn(target: ptr[u64]                ) -> u64 : ---
-atomic_load_u64_acquire   : fn(target: ptr[u64]                ) -> u64 : ---
-atomic_load_u64_no_fence  : fn(target: ptr[u64]                ) -> u64 : ---
-atomic_store_u64          : fn(target: ptr[mut u64], value: u64)        : ---
-atomic_store_u64_release  : fn(target: ptr[mut u64], value: u64)        : ---
-atomic_store_u64_no_fence : fn(target: ptr[mut u64], value: u64)        : ---
-
-atomic_load_i128           : fn(target: ptr[i128]                 ) -> i128 : ---
-atomic_load_i128_acquire   : fn(target: ptr[i128]                 ) -> i128 : ---
-atomic_load_i128_no_fence  : fn(target: ptr[i128]                 ) -> i128 : ---
-atomic_store_i128          : fn(target: ptr[mut i128], value: i128)         : ---
-atomic_store_i128_release  : fn(target: ptr[mut i128], value: i128)         : ---
-atomic_store_i128_no_fence : fn(target: ptr[mut i128], value: i128)         : ---
-
-atomic_load_u128           : fn(target: ptr[u128]                 ) -> u128 : ---
-atomic_load_u128_acquire   : fn(target: ptr[u128]                 ) -> u128 : ---
-atomic_load_u128_no_fence  : fn(target: ptr[u128]                 ) -> u128 : ---
-atomic_store_u128          : fn(target: ptr[mut u128], value: u128)         : ---
-atomic_store_u128_release  : fn(target: ptr[mut u128], value: u128)         : ---
-atomic_store_u128_no_fence : fn(target: ptr[mut u128], value: u128)         : ---
-
-atomic_load_int           : fn(target: ptr[int]                ) -> int : ---
-atomic_load_int_acquire   : fn(target: ptr[int]                ) -> int : ---
-atomic_load_int_no_fence  : fn(target: ptr[int]                ) -> int : ---
-atomic_store_int          : fn(target: ptr[mut int], value: int)        : ---
-atomic_store_int_release  : fn(target: ptr[mut int], value: int)        : ---
-atomic_store_int_no_fence : fn(target: ptr[mut int], value: int)        : ---
-
-atomic_load_uint           : fn(target: ptr[uint]                 ) -> uint : ---
-atomic_load_uint_acquire   : fn(target: ptr[uint]                 ) -> uint : ---
-atomic_load_uint_no_fence  : fn(target: ptr[uint]                 ) -> uint : ---
-atomic_store_uint          : fn(target: ptr[mut uint], value: uint)         : ---
-atomic_store_uint_release  : fn(target: ptr[mut uint], value: uint)         : ---
-atomic_store_uint_no_fence : fn(target: ptr[mut uint], value: uint)         : ---
-
-atomic_load_uintptr           : fn(target: ptr[uintptr]                    ) -> uintptr : ---
-atomic_load_uintptr_acquire   : fn(target: ptr[uintptr]                    ) -> uintptr : ---
-atomic_load_uintptr_no_fence  : fn(target: ptr[uintptr]                    ) -> uintptr : ---
-atomic_store_uintptr          : fn(target: ptr[mut uintptr], value: uintptr)            : ---
-atomic_store_uintptr_release  : fn(target: ptr[mut uintptr], value: uintptr)            : ---
-atomic_store_uintptr_no_fence : fn(target: ptr[mut uintptr], value: uintptr)            : ---
-
-atomic_load_rawptr           : fn(target: ptr[rawptr]                   ) -> rawptr : ---
-atomic_load_rawptr_acquire   : fn(target: ptr[rawptr]                   ) -> rawptr : ---
-atomic_load_rawptr_no_fence  : fn(target: ptr[rawptr]                   ) -> rawptr : ---
-atomic_store_rawptr          : fn(target: ptr[mut rawptr], value: rawptr)            : ---
-atomic_store_rawptr_release  : fn(target: ptr[mut rawptr], value: rawptr)            : ---
-atomic_store_rawptr_no_fence : fn(target: ptr[mut rawptr], value: rawptr)            : ---
+#insert atomic_operations()
 
 /*
  * Later loads/stores cannot move before earlier loads, but only for compiler
@@ -151,646 +84,72 @@ fence_release : fn() : ---
  */
 fence_sequentially_consistent : fn() : ---
 
-interlocked_and_i8                                   : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_and_i8_acquire                           : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_and_i8_acquire_release                   : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_and_i8_no_fence                          : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_and_i8_release                           : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_compare_exchange_i8                      : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_weak                 : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_weak_acquire         : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_weak_acquire_release : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_weak_no_fence        : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_weak_release         : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_acquire              : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_acquire_release      : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_no_fence             : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_compare_exchange_i8_release              : fn(target: ptr[mut i8], exchange: i8, expected: i8) -> (old: i8, success: bool) : ---
-interlocked_decrement_i8                             : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_decrement_i8_acquire                     : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_decrement_i8_acquire_release             : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_decrement_i8_no_fence                    : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_decrement_i8_release                     : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_exchange_i8                              : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_i8_acquire                      : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_i8_acquire_release              : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_i8_no_fence                     : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_i8_release                      : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_add_i8                          : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_add_i8_acquire                  : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_add_i8_acquire_release          : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_add_i8_no_fence                 : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_exchange_add_i8_release                  : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_increment_i8                             : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_increment_i8_acquire                     : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_increment_i8_acquire_release             : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_increment_i8_no_fence                    : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_increment_i8_release                     : fn(target: ptr[mut i8]                            ) -> (old: i8)                : ---
-interlocked_or_i8                                    : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_or_i8_acquire                            : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_or_i8_acquire_release                    : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_or_i8_no_fence                           : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_or_i8_release                            : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_xor_i8                                   : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_xor_i8_acquire                           : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_xor_i8_acquire_release                   : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_xor_i8_no_fence                          : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
-interlocked_xor_i8_release                           : fn(target: ptr[mut i8], value: i8                 ) -> i8                       : ---
+/*
+ * The atomic operations, made from three lists: the types they come in, the orderings each kind of
+ * operation takes, and the operations themselves, each with its signature.
+ */
+atomic_operations :: fn() -> compiler.Code {
+    types :: compiler.Code.[
+        compiler.type_code(i8), compiler.type_code(u8), compiler.type_code(i16), compiler.type_code(u16),
+        compiler.type_code(i32), compiler.type_code(u32), compiler.type_code(i64), compiler.type_code(u64),
+        compiler.type_code(i128), compiler.type_code(u128), compiler.type_code(int), compiler.type_code(uint),
+        compiler.type_code(uintptr), compiler.type_code(rawptr),
+    ]
+    load_orderings :: string.["", "_acquire", "_no_fence"]
+    store_orderings :: string.["", "_release", "_no_fence"]
+    read_modify_write_orderings :: string.["", "_acquire", "_acquire_release", "_no_fence", "_release"]
 
-interlocked_and_u8                                   : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_and_u8_acquire                           : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_and_u8_acquire_release                   : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_and_u8_no_fence                          : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_and_u8_release                           : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_compare_exchange_u8                      : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_weak                 : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_weak_acquire         : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_weak_acquire_release : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_weak_no_fence        : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_weak_release         : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_acquire              : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_acquire_release      : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_no_fence             : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_compare_exchange_u8_release              : fn(target: ptr[mut u8], exchange: u8, expected: u8) -> (old: u8, success: bool) : ---
-interlocked_decrement_u8                             : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_decrement_u8_acquire                     : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_decrement_u8_acquire_release             : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_decrement_u8_no_fence                    : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_decrement_u8_release                     : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_exchange_u8                              : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_u8_acquire                      : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_u8_acquire_release              : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_u8_no_fence                     : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_u8_release                      : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_add_u8                          : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_add_u8_acquire                  : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_add_u8_acquire_release          : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_add_u8_no_fence                 : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_exchange_add_u8_release                  : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_increment_u8                             : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_increment_u8_acquire                     : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_increment_u8_acquire_release             : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_increment_u8_no_fence                    : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_increment_u8_release                     : fn(target: ptr[mut u8]                            ) -> (old: u8)                : ---
-interlocked_or_u8                                    : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_or_u8_acquire                            : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_or_u8_acquire_release                    : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_or_u8_no_fence                           : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_or_u8_release                            : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_xor_u8                                   : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_xor_u8_acquire                           : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_xor_u8_acquire_release                   : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_xor_u8_no_fence                          : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
-interlocked_xor_u8_release                           : fn(target: ptr[mut u8], value: u8                 ) -> u8                       : ---
+    made : AtomicDeclarations
+    for T in types {
+        type_name :: compiler.code_text(T)
+        for ordering in load_orderings {
+            add_atomic(&made, #code {
+                #insert compiler.name("atomic_load_", type_name, ordering) : fn(target: ptr[#insert T]) -> #insert T : ---
+            })
+        }
+        for ordering in store_orderings {
+            add_atomic(&made, #code {
+                #insert compiler.name("atomic_store_", type_name, ordering) : fn(target: ptr[mut #insert T], value: #insert T) : ---
+            })
+        }
+        for ordering in read_modify_write_orderings {
+            // Each gives the value from before
+            for operation in string.["and", "exchange", "exchange_add", "or", "xor"] {
+                add_atomic(&made, #code {
+                    #insert compiler.name("interlocked_", operation, "_", type_name, ordering)
+                        : fn(target: ptr[mut #insert T], value: #insert T) -> #insert T : ---
+                })
+            }
+            for operation in string.["increment", "decrement"] {
+                add_atomic(&made, #code {
+                    #insert compiler.name("interlocked_", operation, "_", type_name, ordering)
+                        : fn(target: ptr[mut #insert T]) -> (old: #insert T) : ---
+                })
+            }
+            for weak in string.["", "_weak"] {
+                add_atomic(&made, #code {
+                    #insert compiler.name("interlocked_compare_exchange_", type_name, weak, ordering)
+                        : fn(target: ptr[mut #insert T], exchange: #insert T, expected: #insert T) -> (old: #insert T, success: bool) : ---
+                })
+            }
+        }
+    }
+    // The rest hold no code, which a list leaves out
+    return compiler.list(made.codes)
+}
 
-interlocked_and_i16                                   : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_and_i16_acquire                           : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_and_i16_acquire_release                   : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_and_i16_no_fence                          : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_and_i16_release                           : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_compare_exchange_i16                      : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_weak                 : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_weak_acquire         : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_weak_acquire_release : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_weak_no_fence        : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_weak_release         : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_acquire              : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_acquire_release      : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_no_fence             : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_compare_exchange_i16_release              : fn(target: ptr[mut i16], exchange: i16, expected: i16) -> (old: i16, success: bool) : ---
-interlocked_decrement_i16                             : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_decrement_i16_acquire                     : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_decrement_i16_acquire_release             : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_decrement_i16_no_fence                    : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_decrement_i16_release                     : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_exchange_i16                              : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_i16_acquire                      : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_i16_acquire_release              : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_i16_no_fence                     : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_i16_release                      : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_add_i16                          : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_add_i16_acquire                  : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_add_i16_acquire_release          : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_add_i16_no_fence                 : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_exchange_add_i16_release                  : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_increment_i16                             : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_increment_i16_acquire                     : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_increment_i16_acquire_release             : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_increment_i16_no_fence                    : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_increment_i16_release                     : fn(target: ptr[mut i16]                              ) -> (old: i16)                : ---
-interlocked_or_i16                                    : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_or_i16_acquire                            : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_or_i16_acquire_release                    : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_or_i16_no_fence                           : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_or_i16_release                            : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_xor_i16                                   : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_xor_i16_acquire                           : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_xor_i16_acquire_release                   : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_xor_i16_no_fence                          : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
-interlocked_xor_i16_release                           : fn(target: ptr[mut i16], value: i16                  ) -> i16                       : ---
+// The declarations atomic_operations makes, in the first count of codes.
+AtomicDeclarations :: struct {
+    codes : compiler.Code[1024],
+    count : usize,
+}
 
-interlocked_and_u16                                   : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_and_u16_acquire                           : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_and_u16_acquire_release                   : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_and_u16_no_fence                          : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_and_u16_release                           : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_compare_exchange_u16                      : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_weak                 : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_weak_acquire         : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_weak_acquire_release : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_weak_no_fence        : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_weak_release         : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_acquire              : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_acquire_release      : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_no_fence             : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_compare_exchange_u16_release              : fn(target: ptr[mut u16], exchange: u16, expected: u16) -> (old: u16, success: bool) : ---
-interlocked_decrement_u16                             : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_decrement_u16_acquire                     : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_decrement_u16_acquire_release             : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_decrement_u16_no_fence                    : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_decrement_u16_release                     : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_exchange_u16                              : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_u16_acquire                      : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_u16_acquire_release              : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_u16_no_fence                     : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_u16_release                      : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_add_u16                          : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_add_u16_acquire                  : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_add_u16_acquire_release          : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_add_u16_no_fence                 : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_exchange_add_u16_release                  : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_increment_u16                             : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_increment_u16_acquire                     : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_increment_u16_acquire_release             : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_increment_u16_no_fence                    : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_increment_u16_release                     : fn(target: ptr[mut u16]                              ) -> (old: u16)                : ---
-interlocked_or_u16                                    : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_or_u16_acquire                            : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_or_u16_acquire_release                    : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_or_u16_no_fence                           : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_or_u16_release                            : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_xor_u16                                   : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_xor_u16_acquire                           : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_xor_u16_acquire_release                   : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_xor_u16_no_fence                          : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-interlocked_xor_u16_release                           : fn(target: ptr[mut u16], value: u16                  ) -> u16                       : ---
-
-interlocked_and_i32                                   : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_and_i32_acquire                           : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_and_i32_acquire_release                   : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_and_i32_no_fence                          : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_and_i32_release                           : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_compare_exchange_i32                      : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_weak                 : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_weak_acquire         : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_weak_acquire_release : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_weak_no_fence        : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_weak_release         : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_acquire              : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_acquire_release      : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_no_fence             : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_compare_exchange_i32_release              : fn(target: ptr[mut i32], exchange: i32, expected: i32) -> (old: i32, success: bool) : ---
-interlocked_decrement_i32                             : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_decrement_i32_acquire                     : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_decrement_i32_acquire_release             : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_decrement_i32_no_fence                    : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_decrement_i32_release                     : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_exchange_i32                              : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_i32_acquire                      : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_i32_acquire_release              : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_i32_no_fence                     : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_i32_release                      : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_add_i32                          : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_add_i32_acquire                  : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_add_i32_acquire_release          : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_add_i32_no_fence                 : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_exchange_add_i32_release                  : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_increment_i32                             : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_increment_i32_acquire                     : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_increment_i32_acquire_release             : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_increment_i32_no_fence                    : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_increment_i32_release                     : fn(target: ptr[mut i32]                              ) -> (old: i32)                : ---
-interlocked_or_i32                                    : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_or_i32_acquire                            : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_or_i32_acquire_release                    : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_or_i32_no_fence                           : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_or_i32_release                            : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_xor_i32                                   : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_xor_i32_acquire                           : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_xor_i32_acquire_release                   : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_xor_i32_no_fence                          : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-interlocked_xor_i32_release                           : fn(target: ptr[mut i32], value: i32                  ) -> i32                       : ---
-
-interlocked_and_u32                                   : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_and_u32_acquire                           : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_and_u32_acquire_release                   : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_and_u32_no_fence                          : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_and_u32_release                           : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_compare_exchange_u32                      : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_weak                 : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_weak_acquire         : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_weak_acquire_release : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_weak_no_fence        : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_weak_release         : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_acquire              : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_acquire_release      : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_no_fence             : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_compare_exchange_u32_release              : fn(target: ptr[mut u32], exchange: u32, expected: u32) -> (old: u32, success: bool) : ---
-interlocked_decrement_u32                             : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_decrement_u32_acquire                     : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_decrement_u32_acquire_release             : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_decrement_u32_no_fence                    : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_decrement_u32_release                     : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_exchange_u32                              : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_u32_acquire                      : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_u32_acquire_release              : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_u32_no_fence                     : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_u32_release                      : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_add_u32                          : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_add_u32_acquire                  : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_add_u32_acquire_release          : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_add_u32_no_fence                 : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_exchange_add_u32_release                  : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_increment_u32                             : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_increment_u32_acquire                     : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_increment_u32_acquire_release             : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_increment_u32_no_fence                    : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_increment_u32_release                     : fn(target: ptr[mut u32]                              ) -> (old: u32)                : ---
-interlocked_or_u32                                    : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_or_u32_acquire                            : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_or_u32_acquire_release                    : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_or_u32_no_fence                           : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_or_u32_release                            : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_xor_u32                                   : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_xor_u32_acquire                           : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_xor_u32_acquire_release                   : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_xor_u32_no_fence                          : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-interlocked_xor_u32_release                           : fn(target: ptr[mut u32], value: u32                  ) -> u32                       : ---
-
-interlocked_and_i64                                   : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_and_i64_acquire                           : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_and_i64_acquire_release                   : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_and_i64_no_fence                          : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_and_i64_release                           : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_compare_exchange_i64                      : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_weak                 : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_weak_acquire         : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_weak_acquire_release : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_weak_no_fence        : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_weak_release         : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_acquire              : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_acquire_release      : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_no_fence             : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_compare_exchange_i64_release              : fn(target: ptr[mut i64], exchange: i64, expected: i64) -> (old: i64, success: bool) : ---
-interlocked_decrement_i64                             : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_decrement_i64_acquire                     : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_decrement_i64_acquire_release             : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_decrement_i64_no_fence                    : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_decrement_i64_release                     : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_exchange_i64                              : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_i64_acquire                      : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_i64_acquire_release              : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_i64_no_fence                     : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_i64_release                      : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_add_i64                          : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_add_i64_acquire                  : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_add_i64_acquire_release          : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_add_i64_no_fence                 : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_exchange_add_i64_release                  : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_increment_i64                             : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_increment_i64_acquire                     : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_increment_i64_acquire_release             : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_increment_i64_no_fence                    : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_increment_i64_release                     : fn(target: ptr[mut i64]                              ) -> (old: i64)                : ---
-interlocked_or_i64                                    : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_or_i64_acquire                            : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_or_i64_acquire_release                    : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_or_i64_no_fence                           : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_or_i64_release                            : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_xor_i64                                   : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_xor_i64_acquire                           : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_xor_i64_acquire_release                   : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_xor_i64_no_fence                          : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-interlocked_xor_i64_release                           : fn(target: ptr[mut i64], value: i64                  ) -> i64                       : ---
-
-interlocked_and_u64                                   : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_and_u64_acquire                           : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_and_u64_acquire_release                   : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_and_u64_no_fence                          : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_and_u64_release                           : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_compare_exchange_u64                      : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_weak                 : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_weak_acquire         : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_weak_acquire_release : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_weak_no_fence        : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_weak_release         : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_acquire              : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_acquire_release      : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_no_fence             : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_compare_exchange_u64_release              : fn(target: ptr[mut u64], exchange: u64, expected: u64) -> (old: u64, success: bool) : ---
-interlocked_decrement_u64                             : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_decrement_u64_acquire                     : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_decrement_u64_acquire_release             : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_decrement_u64_no_fence                    : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_decrement_u64_release                     : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_exchange_u64                              : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_u64_acquire                      : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_u64_acquire_release              : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_u64_no_fence                     : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_u64_release                      : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_add_u64                          : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_add_u64_acquire                  : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_add_u64_acquire_release          : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_add_u64_no_fence                 : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_exchange_add_u64_release                  : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_increment_u64                             : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_increment_u64_acquire                     : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_increment_u64_acquire_release             : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_increment_u64_no_fence                    : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_increment_u64_release                     : fn(target: ptr[mut u64]                              ) -> (old: u64)                : ---
-interlocked_or_u64                                    : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_or_u64_acquire                            : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_or_u64_acquire_release                    : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_or_u64_no_fence                           : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_or_u64_release                            : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_xor_u64                                   : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_xor_u64_acquire                           : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_xor_u64_acquire_release                   : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_xor_u64_no_fence                          : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-interlocked_xor_u64_release                           : fn(target: ptr[mut u64], value: u64                  ) -> u64                       : ---
-
-interlocked_and_i128                                   : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_and_i128_acquire                           : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_and_i128_acquire_release                   : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_and_i128_no_fence                          : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_and_i128_release                           : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_compare_exchange_i128                      : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_weak                 : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_weak_acquire         : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_weak_acquire_release : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_weak_no_fence        : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_weak_release         : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_acquire              : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_acquire_release      : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_no_fence             : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_compare_exchange_i128_release              : fn(target: ptr[mut i128], exchange: i128, expected: i128) -> (old: i128, success: bool) : ---
-interlocked_decrement_i128                             : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_decrement_i128_acquire                     : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_decrement_i128_acquire_release             : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_decrement_i128_no_fence                    : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_decrement_i128_release                     : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_exchange_i128                              : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_i128_acquire                      : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_i128_acquire_release              : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_i128_no_fence                     : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_i128_release                      : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_add_i128                          : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_add_i128_acquire                  : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_add_i128_acquire_release          : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_add_i128_no_fence                 : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_exchange_add_i128_release                  : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_increment_i128                             : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_increment_i128_acquire                     : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_increment_i128_acquire_release             : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_increment_i128_no_fence                    : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_increment_i128_release                     : fn(target: ptr[mut i128]                                ) -> (old: i128)                : ---
-interlocked_or_i128                                    : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_or_i128_acquire                            : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_or_i128_acquire_release                    : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_or_i128_no_fence                           : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_or_i128_release                            : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_xor_i128                                   : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_xor_i128_acquire                           : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_xor_i128_acquire_release                   : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_xor_i128_no_fence                          : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-interlocked_xor_i128_release                           : fn(target: ptr[mut i128], value: i128                   ) -> i128                       : ---
-
-interlocked_and_u128                                   : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_and_u128_acquire                           : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_and_u128_acquire_release                   : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_and_u128_no_fence                          : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_and_u128_release                           : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_compare_exchange_u128                      : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_weak                 : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_weak_acquire         : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_weak_acquire_release : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_weak_no_fence        : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_weak_release         : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_acquire              : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_acquire_release      : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_no_fence             : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_compare_exchange_u128_release              : fn(target: ptr[mut u128], exchange: u128, expected: u128) -> (old: u128, success: bool) : ---
-interlocked_decrement_u128                             : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_decrement_u128_acquire                     : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_decrement_u128_acquire_release             : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_decrement_u128_no_fence                    : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_decrement_u128_release                     : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_exchange_u128                              : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_u128_acquire                      : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_u128_acquire_release              : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_u128_no_fence                     : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_u128_release                      : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_add_u128                          : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_add_u128_acquire                  : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_add_u128_acquire_release          : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_add_u128_no_fence                 : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_exchange_add_u128_release                  : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_increment_u128                             : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_increment_u128_acquire                     : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_increment_u128_acquire_release             : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_increment_u128_no_fence                    : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_increment_u128_release                     : fn(target: ptr[mut u128]                                ) -> (old: u128)                : ---
-interlocked_or_u128                                    : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_or_u128_acquire                            : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_or_u128_acquire_release                    : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_or_u128_no_fence                           : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_or_u128_release                            : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_xor_u128                                   : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_xor_u128_acquire                           : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_xor_u128_acquire_release                   : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_xor_u128_no_fence                          : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-interlocked_xor_u128_release                           : fn(target: ptr[mut u128], value: u128                   ) -> u128                       : ---
-
-interlocked_and_int                                   : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_and_int_acquire                           : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_and_int_acquire_release                   : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_and_int_no_fence                          : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_and_int_release                           : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_compare_exchange_int                      : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_weak                 : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_weak_acquire         : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_weak_acquire_release : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_weak_no_fence        : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_weak_release         : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_acquire              : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_acquire_release      : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_no_fence             : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_compare_exchange_int_release              : fn(target: ptr[mut int], exchange: int, expected: int) -> (old: int, success: bool) : ---
-interlocked_decrement_int                             : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_decrement_int_acquire                     : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_decrement_int_acquire_release             : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_decrement_int_no_fence                    : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_decrement_int_release                     : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_exchange_int                              : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_int_acquire                      : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_int_acquire_release              : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_int_no_fence                     : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_int_release                      : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_add_int                          : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_add_int_acquire                  : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_add_int_acquire_release          : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_add_int_no_fence                 : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_exchange_add_int_release                  : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_increment_int                             : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_increment_int_acquire                     : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_increment_int_acquire_release             : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_increment_int_no_fence                    : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_increment_int_release                     : fn(target: ptr[mut int]                              ) -> (old: int)                : ---
-interlocked_or_int                                    : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_or_int_acquire                            : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_or_int_acquire_release                    : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_or_int_no_fence                           : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_or_int_release                            : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_xor_int                                   : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_xor_int_acquire                           : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_xor_int_acquire_release                   : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_xor_int_no_fence                          : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-interlocked_xor_int_release                           : fn(target: ptr[mut int], value: int                  ) -> int                       : ---
-
-interlocked_and_uint                                   : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_and_uint_acquire                           : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_and_uint_acquire_release                   : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_and_uint_no_fence                          : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_and_uint_release                           : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_compare_exchange_uint                      : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_weak                 : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_weak_acquire         : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_weak_acquire_release : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_weak_no_fence        : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_weak_release         : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_acquire              : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_acquire_release      : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_no_fence             : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_compare_exchange_uint_release              : fn(target: ptr[mut uint], exchange: uint, expected: uint) -> (old: uint, success: bool) : ---
-interlocked_decrement_uint                             : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_decrement_uint_acquire                     : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_decrement_uint_acquire_release             : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_decrement_uint_no_fence                    : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_decrement_uint_release                     : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_exchange_uint                              : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_uint_acquire                      : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_uint_acquire_release              : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_uint_no_fence                     : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_uint_release                      : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_add_uint                          : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_add_uint_acquire                  : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_add_uint_acquire_release          : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_add_uint_no_fence                 : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_exchange_add_uint_release                  : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_increment_uint                             : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_increment_uint_acquire                     : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_increment_uint_acquire_release             : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_increment_uint_no_fence                    : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_increment_uint_release                     : fn(target: ptr[mut uint]                                ) -> (old: uint)                : ---
-interlocked_or_uint                                    : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_or_uint_acquire                            : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_or_uint_acquire_release                    : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_or_uint_no_fence                           : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_or_uint_release                            : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_xor_uint                                   : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_xor_uint_acquire                           : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_xor_uint_acquire_release                   : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_xor_uint_no_fence                          : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-interlocked_xor_uint_release                           : fn(target: ptr[mut uint], value: uint                   ) -> uint                       : ---
-
-interlocked_and_uintptr                                   : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_and_uintptr_acquire                           : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_and_uintptr_acquire_release                   : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_and_uintptr_no_fence                          : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_and_uintptr_release                           : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_compare_exchange_uintptr                      : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_weak                 : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_weak_acquire         : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_weak_acquire_release : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_weak_no_fence        : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_weak_release         : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_acquire              : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_acquire_release      : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_no_fence             : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_compare_exchange_uintptr_release              : fn(target: ptr[mut uintptr], exchange: uintptr, expected: uintptr) -> (old: uintptr, success: bool) : ---
-interlocked_decrement_uintptr                             : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_decrement_uintptr_acquire                     : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_decrement_uintptr_acquire_release             : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_decrement_uintptr_no_fence                    : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_decrement_uintptr_release                     : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_exchange_uintptr                              : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_uintptr_acquire                      : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_uintptr_acquire_release              : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_uintptr_no_fence                     : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_uintptr_release                      : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_add_uintptr                          : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_add_uintptr_acquire                  : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_add_uintptr_acquire_release          : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_add_uintptr_no_fence                 : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_exchange_add_uintptr_release                  : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_increment_uintptr                             : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_increment_uintptr_acquire                     : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_increment_uintptr_acquire_release             : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_increment_uintptr_no_fence                    : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_increment_uintptr_release                     : fn(target: ptr[mut uintptr]                                      ) -> (old: uintptr)                : ---
-interlocked_or_uintptr                                    : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_or_uintptr_acquire                            : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_or_uintptr_acquire_release                    : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_or_uintptr_no_fence                           : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_or_uintptr_release                            : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_xor_uintptr                                   : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_xor_uintptr_acquire                           : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_xor_uintptr_acquire_release                   : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_xor_uintptr_no_fence                          : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-interlocked_xor_uintptr_release                           : fn(target: ptr[mut uintptr], value: uintptr                      ) -> uintptr                       : ---
-
-interlocked_and_rawptr                                   : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_and_rawptr_acquire                           : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_and_rawptr_acquire_release                   : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_and_rawptr_no_fence                          : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_and_rawptr_release                           : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_compare_exchange_rawptr                      : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_weak                 : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_weak_acquire         : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_weak_acquire_release : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_weak_no_fence        : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_weak_release         : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_acquire              : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_acquire_release      : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_no_fence             : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_compare_exchange_rawptr_release              : fn(target: ptr[mut rawptr], exchange: rawptr, expected: rawptr) -> (old: rawptr, success: bool) : ---
-interlocked_decrement_rawptr                             : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_decrement_rawptr_acquire                     : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_decrement_rawptr_acquire_release             : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_decrement_rawptr_no_fence                    : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_decrement_rawptr_release                     : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_exchange_rawptr                              : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_rawptr_acquire                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_rawptr_acquire_release              : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_rawptr_no_fence                     : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_rawptr_release                      : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_add_rawptr                          : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_add_rawptr_acquire                  : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_add_rawptr_acquire_release          : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_add_rawptr_no_fence                 : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_exchange_add_rawptr_release                  : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_increment_rawptr                             : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_increment_rawptr_acquire                     : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_increment_rawptr_acquire_release             : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_increment_rawptr_no_fence                    : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_increment_rawptr_release                     : fn(target: ptr[mut rawptr]                                    ) -> (old: rawptr)                : ---
-interlocked_or_rawptr                                    : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_or_rawptr_acquire                            : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_or_rawptr_acquire_release                    : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_or_rawptr_no_fence                           : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_or_rawptr_release                            : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_xor_rawptr                                   : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_xor_rawptr_acquire                           : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_xor_rawptr_acquire_release                   : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_xor_rawptr_no_fence                          : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
-interlocked_xor_rawptr_release                           : fn(target: ptr[mut rawptr], value: rawptr                     ) -> rawptr                       : ---
+add_atomic :: fn(made: ptr[mut AtomicDeclarations], code: compiler.Code) {
+    if made.count < made.codes.count {
+        made.codes[made.count] = code
+        made.count += 1
+    }
+    else {
+        compiler.report_error(#caller_location, "more atomic operations than AtomicDeclarations holds")
+    }
+}

@@ -204,7 +204,7 @@ like a name from a table:
 
 | Function | Makes |
 |---|---|
-| `compiler.name(text)` | A name, which is only ever an identifier: anything else is an error there |
+| `compiler.name(parts...)` | A name, its parts joined, like `compiler.name("load_", "u64")`, which is only ever an identifier: anything else is an error there |
 | `compiler.literal(value)` | A literal of a number, boolean, character, string or enum member |
 | `compiler.type_code(T)` | A type, as itself |
 | `compiler.list(items)` | A list, whose items go in its place, each one of what holds it: arguments, parameters, statements. Statements given are each an item |
@@ -245,8 +245,9 @@ type, a literal, a list, or fields, variants, members, patterns or cases), `iden
 ### The Top Level
 
 At the top level, an `#insert` may declare any name, so a name the package doesn't declare otherwise waits for it, as it
-waits for an `#if` that may declare it. A name a file imports, or a builtin, is used without waiting; if code inserted
-in the package turns out to declare it too, that's an error, since the package's own would have been meant. Code an
+waits for an `#if` that may declare it, and so does a name a file looks for in a package it imports whose `#insert` may
+declare it. A name a file imports from elsewhere, or a builtin, is used without waiting; if inserted code turns out to
+declare it too, that's an error, since the package's own would have been meant, or the use is ambiguous. Code an
 `#insert` runs can't need a name only that `#insert` declares, which is reported as a cycle.
 
 ### Macros
@@ -428,7 +429,8 @@ A hosted Linux program is normally static, with no C library: the runtime makes 
 
 ## Generating Everything
 
-`--generate-all` generates every function the program's packages declare, used or not, rather than only those
+`--generate-all` generates every function the program's packages declare, used or not, but those that only run at
+compile time (constraints, macros, and functions taking or giving a `compiler.Code`), rather than only those
 reachable from its entry, so what the compiler can't generate yet shows up before anything calls it. Generic
 functions are only generated for the type arguments something gives them. The compiler's tests build a program that
 imports all of `std` this way, with each generic in `base` and `std` instantiated, for Windows, Linux and a target with

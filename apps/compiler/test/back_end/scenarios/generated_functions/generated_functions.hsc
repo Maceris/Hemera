@@ -52,6 +52,8 @@ expect :: fn(code: compiler.Code, text: string) {
 making_code_works :: fn() -> bool {
     count := compiler.name("count")
     expect(count, "count")
+    // A name from parts, joined
+    expect(compiler.name("load_", "u64", "_acquire"), "load_u64_acquire")
     expect(compiler.literal(7), "7")
     expect(compiler.literal("seven"), "\"seven\"")
     expect(compiler.type_code(u16), "u16")

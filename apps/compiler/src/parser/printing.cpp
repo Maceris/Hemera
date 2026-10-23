@@ -741,7 +741,8 @@ namespace hemera::ast {
 						out += " -> " + type(child, true);
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
-						out += " " + directive(child);
+						// A result type an #insert puts there, or the function's directives
+						out += (text_of(child) == "#insert" ? " -> " : " ") + directive(child);
 					}
 					else if (child->node_type == NodeType::WHERE_CLAUSE) {
 						after += where_clause(child);

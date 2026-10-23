@@ -376,7 +376,11 @@ namespace hemera {
 		if (tree == nullptr) {
 			return "";
 		}
-		if (ast::NodeType::BLOCK == tree->node_type) {
+		// Statements, or a list of declarations, a line each
+		const bool declarations = is_code_list(tree) && !tree->children.empty()
+			&& std::all_of(tree->children.begin(), tree->children.end(),
+				[](const ast::Node* item) { return ast::NodeType::DEFINITION == item->node_type; });
+		if (ast::NodeType::BLOCK == tree->node_type || declarations) {
 			return ast::source_of_statements(tree, &quotes);
 		}
 		return ast::source_of(tree, &quotes);

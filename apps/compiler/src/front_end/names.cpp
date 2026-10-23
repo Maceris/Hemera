@@ -567,6 +567,8 @@ namespace hemera {
 		found_declaration = nullptr;
 		std::vector<Declaration*> found;
 		bool imports_base = false;
+		// An imported package's #insert that may declare it, waited for only if nothing else does
+		IfChain* imported_insert = nullptr;
 		if (walk.file != nullptr) {
 			std::vector<InternedString> packages;
 			{
@@ -584,9 +586,13 @@ namespace hemera {
 			}
 			for (InternedString package : packages) {
 				Declaration* declaration = nullptr;
-				Found result = declared_in_locked(walk, names, where, package, name, declaration);
+				IfChain* insert = nullptr;
+				Found result = declared_in_locked(walk, names, where, package, name, declaration, &insert);
 				if (Found::PARKED == result) {
 					return Progress::PARKED;
+				}
+				if (Found::NOTHING == result && insert != nullptr && imported_insert == nullptr) {
+					imported_insert = insert;
 				}
 				if (Found::DECLARATION == result
 					&& std::find(found.begin(), found.end(), declaration) == found.end()) {
@@ -611,7 +617,7 @@ namespace hemera {
 		ast::Node* reason = nullptr;
 		IfChain* chain = import_chain_locked(walk, names, name, Look::ANY_IMPORT, reason);
 		if (builtin || found.size() == 1) {
-			if ((chain != nullptr || pending_insert != nullptr) && walk.file != nullptr) {
+			if ((chain != nullptr || pending_insert != nullptr || imported_insert != nullptr) && walk.file != nullptr) {
 				names.provisional_uses.push_back(ProvisionalUse{ walk.file, name, walk.file_path,
 					where->value.line_number, where->value.column_number,
 					pending_insert != nullptr ? walk.package_path : nullptr });
@@ -640,9 +646,10 @@ namespace hemera {
 			park_locked(walk, names, chain_key(chain), where, name, reason);
 			return Progress::PARKED;
 		}
-		// Not imported: what the package's #insert puts there may declare it
-		if (pending_insert != nullptr) {
-			park_locked(walk, names, chain_key(pending_insert), where, name, pending_insert->branches.front());
+		// Not imported yet: what the package's #insert, or an imported package's, puts there may declare it
+		if (pending_insert != nullptr || imported_insert != nullptr) {
+			IfChain* waited = pending_insert != nullptr ? pending_insert : imported_insert;
+			park_locked(walk, names, chain_key(waited), where, name, waited->branches.front());
 			return Progress::PARKED;
 		}
 		report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, where, std::string(std::string_view(*name)));

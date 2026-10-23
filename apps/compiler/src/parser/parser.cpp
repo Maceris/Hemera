@@ -1336,8 +1336,19 @@ namespace hemera::parser {
 				while (expect(state, TokenType::SYM_LPAREN)
 					|| expect(state, TokenType::KEYWORD_MUT)
 					|| expect(state, TokenType::IDENTIFIER)
+					|| is_insert(state)
 					) {
-					
+
+					// A type an #insert puts there, in a quote (docs/compilation.md, Code Values)
+					if (is_insert(state)) {
+						ExprResult inserted = insert_type(state, nullptr);
+						if (!inserted.success) {
+							return false;
+						}
+						node.children.push_back(inserted.result);
+						skip(state, TokenType::SYM_COMMA);
+						continue;
+					}
 					const Token& next_lparen = current_token(state);
 					if (skip(state, TokenType::SYM_LPAREN)) {
 						ExprResult fn = function_signature(state);
@@ -1391,6 +1402,15 @@ namespace hemera::parser {
 								return false;
 							}
 							accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, *fn.result);
+							skip(state, TokenType::SYM_COMMA);
+							continue;
+						}
+						if (is_insert(state)) {
+							ExprResult inserted = insert_type(state, nullptr);
+							if (!inserted.success) {
+								return false;
+							}
+							node.children.push_back(inserted.result);
 							skip(state, TokenType::SYM_COMMA);
 							continue;
 						}

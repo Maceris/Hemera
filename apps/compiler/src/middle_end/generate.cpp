@@ -7482,6 +7482,21 @@ namespace hemera {
 		}
 		// The map is ordered by the names' addresses, which change from run to run; the output shouldn't
 		sort_by_name(declarations);
+		// Code only exists at compile time: a macro, or a function taking or giving it, can't be in the program
+		auto only_compile_time = [&](Declaration* declaration) {
+			auto is_code = [&](TypeInfo const* type) {
+				TypeInfo const* base_type = type != nullptr ? get_base_type(type) : nullptr;
+				return base_type != nullptr && TypeInfoVariant::STRUCT == base_type->variant
+					&& is_code_struct(generator, static_cast<TypeInfoStruct const*>(base_type));
+			};
+			TypeInfo const* type = get_base_type(declaration->value_type);
+			if (is_macro_function(declaration) || type == nullptr || TypeInfoVariant::FUNCTION != type->variant) {
+				return is_macro_function(declaration);
+			}
+			auto function = static_cast<TypeInfoFunction const*>(type);
+			return std::any_of(function->input.begin(), function->input.end(), [&](const FunctionInput& input) { return is_code(input.type); })
+				|| std::any_of(function->output.begin(), function->output.end(), [&](const FunctionOutput& output) { return is_code(output.type); });
+		};
 		for (Declaration* declaration : declarations) {
 			if (declaration->generic != nullptr || declaration->value_type == nullptr || declaration->failed) {
 				continue;
@@ -7493,9 +7508,9 @@ namespace hemera {
 			else if (DeclarationKind::FUNCTION == declaration->kind && exported && !is_intrinsic(declaration)) {
 				function_for(generator, declaration);
 			}
-			// --generate-all: every function, used or not, but constraints, which only run at compile time
+			// --generate-all: every function, used or not, but those that only run at compile time
 			else if (DeclarationKind::FUNCTION == declaration->kind && generator.options->generate_all && !is_intrinsic(declaration)
-				&& declaration->node != nullptr && !is_constraint_function(declaration)) {
+				&& declaration->node != nullptr && !is_constraint_function(declaration) && !only_compile_time(declaration)) {
 				function_for(generator, declaration);
 			}
 		}
@@ -8639,7 +8654,13 @@ namespace hemera {
 				read_location(call, 1, file, line, column);
 			}
 			if (name == "name") {
-				const std::string_view text = read_string(call.arguments[0]);
+				// Its parts, joined
+				const uint8_t* parts = call.arguments[0];
+				const uint8_t* strings = reinterpret_cast<const uint8_t*>(read_u64(parts + 8));
+				std::string text;
+				for (uint64_t i = 0; i < read_u64(parts); ++i) {
+					text += read_string(strings + i * 16);
+				}
 				uint64_t handle = 0;
 				if (!is_identifier(text)) {
 					report_error(ErrorCode::E4029, file, line, column, std::format("compiler.name needs a name, not \"{}\"", text));
