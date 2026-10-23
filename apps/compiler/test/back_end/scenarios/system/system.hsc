@@ -1,6 +1,7 @@
 /*
- * The hosted context's clock and random numbers, from the system: main returns 42 if everything
- * worked, or the number of the first check that failed.
+ * The hosted context's clock and random numbers, from the system, and on Linux x86-64 a system call
+ * answering in three registers (x86_64.system_call): main returns 42 if everything worked, or the number
+ * of the first check that failed.
  */
 package system_test
 
@@ -8,6 +9,10 @@ import runtime from "base"
 import random from "std"
 import strings from "std"
 import time from "std"
+
+#if TARGET_ARCH == .x86_64 {
+    import x86_64 from "base/intrinsics"
+}
 
 check_clock :: fn() -> int {
     // The wall clock: after this was written, 2026-10-18, and before 2200
@@ -82,8 +87,33 @@ check_random :: fn() -> int {
     return 0
 }
 
+/*
+ * getpid through system_call: rax is the process's ID, and Linux keeps rdx and r8, which were arguments,
+ * as they were.
+ */
+check_system_call :: fn() -> int {
+    #if OS == .Linux && TARGET_ARCH == .x86_64 {
+        // getpid's number on x86-64 Linux
+        result :: x86_64.system_call(39, 0, 0, 0x1234, 0, 0x5678)
+        if result.rax == 0 || result.rax > 0x7fffffff {
+            return 1
+        }
+        if result.rdx != 0x1234 || result.r8 != 0x5678 {
+            return 2
+        }
+        if result.rax != x86_64.syscall(39) {
+            return 3
+        }
+    }
+    return 0
+}
+
 main :: fn() -> int {
-    failure := check_clock()
+    failure := check_system_call()
+    if failure != 0 {
+        return 30 + failure
+    }
+    failure = check_clock()
     if failure != 0 {
         return 10 + failure
     }

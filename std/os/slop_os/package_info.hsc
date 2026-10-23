@@ -6,7 +6,8 @@
  * Service protocols that std speaks on SlopOS (clock, entropy, storage) are packages in
  * subfolders, imported from "std/os/slop_os".
  *
- * Empty so far. See the SlopOS repository's knowledge/design/system-abi.md.
+ * So far: CpuFeatures (cpu_features.hsc), and the first system calls with their handles, rights and
+ * errors (syscalls.hsc). See the SlopOS repository's knowledge/design/system-abi.md.
  */
 package slop_os
 

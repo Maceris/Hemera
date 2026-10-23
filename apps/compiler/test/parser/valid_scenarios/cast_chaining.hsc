@@ -12,4 +12,7 @@ cast_chaining :: fn(data: rawptr, callback: rawptr) {
     }
     flag :: !cast[ptr[bool]](data)^
     sum :: cast[ptr[int]](data)^ + cast[ptr[int]](data)^
+    // And the address of what a cast reaches
+    field :: &cast[ptr[mut Foo]](data).count
+    element :: &bit_cast[ptr[mut Foo]](data).items[2]
 }

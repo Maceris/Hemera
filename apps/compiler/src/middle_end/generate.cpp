@@ -4073,6 +4073,19 @@ namespace hemera {
 				"={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}"), function);
 			return true;
 		}
+		if (name == "system_call") {
+			// rdx and r8 go in as arguments and come back as results
+			mlir::Value all = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i64, i64 }), arguments,
+				"syscall", "={rax},={rdx},={r8},0,{rdi},{rsi},1,{r10},2,{r9},~{rcx},~{r11},~{memory}");
+			TypeInfo* type = function->output[0].type;
+			mlir::Value registers = zero_of(generator, llvm_type(generator, type));
+			const std::vector<int64_t> elements = generator.member_elements[static_cast<TypeInfoStruct const*>(base(type))];
+			for (size_t i = 0; i < 3 && i < elements.size(); ++i) {
+				registers = insert(generator, registers, extract(generator, all, static_cast<int64_t>(i)), { elements[i] });
+			}
+			result = value(registers, type);
+			return true;
+		}
 		if (name == "clone_thread") {
 			/*
 			 * The child can't go on in this function, whose frame is on the parent's stack, so a stub

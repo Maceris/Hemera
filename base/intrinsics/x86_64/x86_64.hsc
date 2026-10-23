@@ -130,6 +130,20 @@ out_u32 : fn(port: u16, value: u32) : ---
  */
 syscall : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 : ---
 
+// What system_call gives: rax, rdx and r8 after the call.
+SystemCallResult :: struct {
+    rax : u64,
+    rdx : u64,
+    r8 : u64,
+}
+
+/*
+ * A system call that answers in up to three registers, like SlopOS's: the number in rax, up to six
+ * arguments in rdi, rsi, rdx, r10, r8 and r9, and rax, rdx and r8 after it. rcx and r11 are clobbered,
+ * and every other register is kept. It doesn't use the stack.
+ */
+system_call : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SystemCallResult : ---
+
 /*
  * Linux's clone for a new thread, which starts on stack (its top) by calling entry(argument), with
  * the C convention; entry must end the thread with the exit system call rather than return. The

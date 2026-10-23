@@ -55,6 +55,12 @@ main :: fn() -> int {
     if handle.value.width != 30 || view.config^.height != 12 || placed.at.y != 5 {
         return 2
     }
+    // A field's address through a cast, as kernels reach objects by address
+    width :: &cast[ptr[mut Config]](cast[u64](config)).width
+    width^ = 12
+    if config.width != 12 {
+        return 3
+    }
     runtime.free(config)
     return 42
 }

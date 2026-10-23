@@ -2650,6 +2650,19 @@ namespace hemera::parser {
 			}
 		}
 
+		// The address of a cast's result, or of what follows it, like &cast[ptr[Foo]](data).bar
+		const TokenType current = current_token(state).type;
+		if (latest != nullptr && (TokenType::KEYWORD_CAST == current || TokenType::KEYWORD_BIT_CAST == current
+			|| TokenType::KEYWORD_AUTO_CAST == current)) {
+			ExprResult operand = cast_expression(state);
+			if (!operand.success) {
+				delete_node(state->node_alloc, root);
+				return ExprResult{ false };
+			}
+			latest->children.push_back(operand.result);
+			return ExprResult{ true, root };
+		}
+
 		ast::Node& identifier = next_as_node(state, ast::NodeType::IDENTIFIER, latest);
 		if (root == nullptr) {
 			root = &identifier;
