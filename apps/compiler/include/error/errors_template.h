@@ -14,6 +14,7 @@ E2003,Invalid character in character literal
 E2004,Invalid character in string literal
 E2005,Unexpected end of file
 E2006,Unrecognized character
+E2007,Line too long
 // E3000-E3999 Parser
 E3001,Missing package statement
 E3002,Missing package name

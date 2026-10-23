@@ -874,7 +874,11 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_signed_modulus", hemera::ErrorCode::E4031 },
 		{ "generic_value_variable", hemera::ErrorCode::E4010 },
 		{ "generic_value_given_type", hemera::ErrorCode::E4010 },
-		{ "generic_value_kind", hemera::ErrorCode::E4014 }
+		{ "generic_value_kind", hemera::ErrorCode::E4014 },
+		// docs/compilation.md, Code Values
+		{ "quote_unspliceable", hemera::ErrorCode::E4014 },
+		{ "insert_outside_quote", hemera::ErrorCode::E4024 },
+		{ "insert_at_top_level", hemera::ErrorCode::E4024 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

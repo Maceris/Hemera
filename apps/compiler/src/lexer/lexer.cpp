@@ -14,6 +14,7 @@ namespace hemera::lexer {
 		, line_number{ 1 }
 		, column_number{ 0 }
 		, comment_depth{ 0 }
+		, line_too_long{ false }
 	{}
 
 	static std::optional<TokenType> get_reserved_identifier(std::string_view identifier) {
@@ -122,6 +123,19 @@ namespace hemera::lexer {
 		return {};
 	}
 
+	/*
+	 * A line can have at most MAX_LINE_LENGTH characters, as many as a token's column counts; a longer
+	 * one is cut short there, and reported by the next token (E2007).
+	 */
+	constexpr size_t MAX_LINE_LENGTH = 0xffff;
+
+	static void limit_line(Tokenizer& tokenizer, MyString& line) {
+		if (line.size() > MAX_LINE_LENGTH) {
+			line.resize(MAX_LINE_LENGTH);
+			tokenizer.line_too_long = true;
+		}
+	}
+
 	static bool next_line(Tokenizer& tokenizer, std::istream& input_stream) {
 		/*
 		 * getline empties the string it's given even when there's no line left, so read into
@@ -132,6 +146,7 @@ namespace hemera::lexer {
 		if (!std::getline(input_stream, line)) {
 			return false;
 		}
+		limit_line(tokenizer, line);
 		tokenizer.current_line = line;
 		tokenizer.column_number = 0;
 		tokenizer.line_number += 1;
@@ -190,6 +205,11 @@ namespace hemera::lexer {
 	Token next(Tokenizer& tokenizer, std::istream& input_stream,
 		Allocator<> string_alloc, std::string_view file_path) {
 
+		if (tokenizer.line_too_long) {
+			tokenizer.line_too_long = false;
+			report_error(ErrorCode::E2007, file_path, tokenizer.line_number, 0,
+				std::format("a line can have at most {} characters", MAX_LINE_LENGTH));
+		}
 		uint32_t start_line = tokenizer.line_number;
 		uint16_t start_column = tokenizer.column_number;
 		TokenType result_type = TokenType::END_OF_FILE;
@@ -1209,6 +1229,7 @@ namespace hemera::lexer {
 
 		Tokenizer tokenizer{};
 		std::getline(input_stream, tokenizer.current_line);
+		limit_line(tokenizer, tokenizer.current_line);
 
 		while (true) {
 			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);

@@ -497,6 +497,10 @@ namespace hemera {
 					executor.create_work(WorkType::TYPE_CHECK,
 						WorkTarget(WorkTargetType::ASSERT, { .node_location = { location, child } }));
 				}
+				else if (value->compare("#insert") == 0) {
+					report_error(ErrorCode::E4024, file_path, child->value.line_number, child->value.column_number,
+						"#insert at the top level isn't supported yet");
+				}
 				else if (value->compare("#run") == 0) {
 					ast::Node* expr = child->children[0];
 
@@ -621,7 +625,7 @@ namespace hemera {
 		lexer::lex(file, file_info->tokens, token_alloc, file_path);
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
-			executor.program_info->node_alloc);
+			executor.program_info->node_alloc, &executor.program_info->quotes);
 		
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->node_type != ast::NodeType::PACKAGE) {

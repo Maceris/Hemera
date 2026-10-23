@@ -1,4 +1,5 @@
 #include "middle_end/generate.h"
+#include "middle_end/code_values.h"
 #include "util/phase_timer.h"
 
 #include <algorithm>
@@ -2311,6 +2312,18 @@ namespace hemera {
 		return value;
 	}
 
+	// Whether a struct is base/compiler's Code, which only compile-time code can have (docs/compilation.md, Code Values).
+	static bool is_code_struct(Generator& generator, TypeInfoStruct const* structure) {
+		if (structure->name == nullptr || *structure->name != "Code") {
+			return false;
+		}
+		std::scoped_lock<std::mutex> lock(generator.program->names.mutex);
+		auto iter = generator.program->names.declarations.find(std::make_pair(intern(std::format("{}compiler", BASE_PACKAGE_PREFIX)),
+			intern(std::string("Code"))));
+		return iter != generator.program->names.declarations.end() && iter->second->type_value != nullptr
+			&& base(iter->second->type_value) == structure;
+	}
+
 	/*
 	 * Copy what a value of type at data points to, into value.pointed, at the offset in value.bytes of each
 	 * pointer, so it outlives the compiled code. Strings and views are copied; any other pointer must be null.
@@ -2343,6 +2356,9 @@ namespace hemera {
 		}
 		if (TypeInfoVariant::STRUCT == variant) {
 			auto structure = static_cast<TypeInfoStruct const*>(type);
+			if (is_code_struct(generator, structure)) {
+				return refuse("a compiler.Code");
+			}
 			if (structure->is_union) {
 				return !type->contains_pointers || refuse("a #union struct holding a pointer");
 			}
@@ -2584,6 +2600,11 @@ namespace hemera {
 		std::vector<std::string>* unsatisfied = nullptr;
 		// Each require_any being run: where its failures start, then where each alternative's ended
 		std::vector<std::vector<size_t>> alternatives = {};
+		/*
+		 * The trees the Code this run made hold, by handle less one (docs/compilation.md, Code Values): numbered
+		 * within the run, so a handle doesn't depend on what ran meanwhile on other threads.
+		 */
+		std::vector<const ast::Node*> codes = {};
 	};
 	static thread_local ServiceScope* service_scope = nullptr;
 
@@ -5060,6 +5081,41 @@ namespace hemera {
 		return result_type != nullptr ? location(result, result_type) : Emitted{};
 	}
 
+	/*
+	 * #code, at compile time (docs/compilation.md, Code Values): what it splices, each as an any, then
+	 * compiler.quote_code with the quote's node, which copies the quote with them in it.
+	 */
+	static Emitted emit_quote(Generator& generator, ast::Node* node) {
+		const CheckedNode* found = checked(generator, node);
+		if (found == nullptr || found->called == nullptr) {
+			unsupported(generator, node, "#code wasn't checked");
+			return Emitted{};
+		}
+		const size_t count = node->children.size();
+		mlir::Type any = llvm_type(generator, BUILTIN_any);
+		mlir::Value splices = make_raw_slot(generator, LLVM::LLVMArrayType::get(any, std::max<size_t>(count, 1)), 8);
+		for (size_t i = 0; i < count; ++i) {
+			ast::Node* splice = node->children[i];
+			const CheckedNode* spliced = checked(generator, splice);
+			// A literal takes its usual type, as it would in a variable
+			TypeInfo* expected = spliced != nullptr ? spliced->type : nullptr;
+			if (spliced != nullptr) {
+				const ValueKind kind = spliced->kind;
+				expected = ValueKind::UNTYPED_INTEGER == kind ? BUILTIN_int
+					: ValueKind::UNTYPED_FLOAT == kind ? BUILTIN_f64
+					: ValueKind::UNTYPED_STRING == kind ? BUILTIN_string
+					: ValueKind::UNTYPED_BOOLEAN == kind ? BUILTIN_bool
+					: ValueKind::TYPE == kind ? BUILTIN_type
+					: expected;
+			}
+			const Emitted emitted = emit_expression(generator, splice, expected);
+			store(generator, convert_emitted(generator, emitted, BUILTIN_any), offset_address(generator, splices, i * 16));
+		}
+		mlir::Value view = make_view(generator, constant_int(generator, usize_type(generator), static_cast<int64_t>(count)), splices);
+		mlir::Value quote = constant_int(generator, integer_type(generator, 8), static_cast<int64_t>(reinterpret_cast<uintptr_t>(node)));
+		return emit_compiler_call(generator, "quote_code", found->called, { quote, view }, node);
+	}
+
 	// Whether a declaration is an intrinsic: a function in base without a body, which isn't #foreign.
 	static bool is_intrinsic(Declaration* called) {
 		return called != nullptr && called->foreign_library == nullptr && is_base_package(called->package_path)
@@ -6204,6 +6260,9 @@ namespace hemera {
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
 			return value(boolean(generator, generator.compile_time), BUILTIN_bool);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#code")) {
+			return emit_quote(generator, node);
 		}
 		// #run in an expression: a constant, run once
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#run") && !node->children.empty() && result_type != nullptr) {
@@ -8384,9 +8443,132 @@ namespace hemera {
 			}
 		}
 
+		// The tree a Code this run made holds, or null.
+		const ast::Node* code_tree(uint64_t handle) {
+			const auto& codes = service_scope->codes;
+			return handle == 0 || handle > codes.size() ? nullptr : codes[handle - 1];
+		}
+
+		// base/compiler's Code, in the program compile-time code runs in.
+		const TypeInfo* code_type(Call& call) {
+			std::scoped_lock<std::mutex> lock(call.program->names.mutex);
+			auto iter = call.program->names.declarations.find(std::make_pair(intern(std::format("{}compiler", BASE_PACKAGE_PREFIX)),
+				intern(std::string("Code"))));
+			return iter != call.program->names.declarations.end() ? iter->second->type_value : nullptr;
+		}
+
+		/*
+		 * What an any holds, for #insert to splice (docs/compilation.md, Code Values): a Code, a type, or a
+		 * number, boolean, character, string or enum member. False, having reported why, for anything else.
+		 */
+		bool read_spliced(Call& call, const uint8_t* any, Spliced& spliced) {
+			const uint8_t* data = reinterpret_cast<const uint8_t*>(read_u64(any));
+			const TypeInfo* type = described(call, any + 8);
+			const TypeInfo* base_type = type != nullptr ? get_base_type(type) : nullptr;
+			if (base_type == nullptr || data == nullptr) {
+				report_error(ErrorCode::E4029, call.file, 0, 0, "#insert was given something without a type");
+				return false;
+			}
+			const TypeInfo* code = code_type(call);
+			if (code != nullptr && base_type == get_base_type(code)) {
+				spliced.kind = Spliced::Kind::CODE;
+				spliced.tree = code_tree(read_u64(data));
+				return spliced.tree != nullptr;
+			}
+			const size_t size = base_type->size;
+			uint64_t bits = 0;
+			std::memcpy(&bits, data, std::min<size_t>(size, 8));
+			if (TypeInfoVariant::TYPE == base_type->variant) {
+				spliced.kind = Spliced::Kind::TYPE;
+				spliced.type = described(call, data);
+				return spliced.type != nullptr;
+			}
+			if (TypeInfoVariant::INTEGER == base_type->variant) {
+				spliced.kind = Spliced::Kind::INTEGER;
+				const bool is_signed = static_cast<const TypeInfoInteger*>(base_type)->is_signed;
+				const unsigned shift = static_cast<unsigned>(64 - 8 * std::min<size_t>(size, 8));
+				const int64_t signed_value = static_cast<int64_t>(bits << shift) >> shift;
+				spliced.negative = is_signed && signed_value < 0;
+				spliced.magnitude = spliced.negative ? 0 - static_cast<uint64_t>(signed_value) : bits;
+				return true;
+			}
+			if (TypeInfoVariant::FLOAT == base_type->variant) {
+				spliced.kind = Spliced::Kind::FLOAT;
+				if (size == 4) {
+					float value = 0;
+					std::memcpy(&value, data, 4);
+					spliced.floating = static_cast<double>(value);
+				}
+				else {
+					std::memcpy(&spliced.floating, data, 8);
+				}
+				if (!std::isfinite(spliced.floating)) {
+					report_error(ErrorCode::E4029, call.file, 0, 0, std::format("#insert can't make a literal of {}", spliced.floating));
+					return false;
+				}
+				return true;
+			}
+			if (TypeInfoVariant::BOOLEAN == base_type->variant) {
+				spliced.kind = Spliced::Kind::BOOLEAN;
+				spliced.magnitude = bits & 0xff;
+				return true;
+			}
+			if (TypeInfoVariant::CHAR == base_type->variant) {
+				spliced.kind = Spliced::Kind::CHARACTER;
+				spliced.magnitude = bits;
+				return true;
+			}
+			if (TypeInfoVariant::STRING == base_type->variant) {
+				spliced.kind = Spliced::Kind::STRING;
+				spliced.text = std::string(read_string(data));
+				return true;
+			}
+			if (TypeInfoVariant::ENUM == base_type->variant) {
+				auto enumeration = static_cast<const TypeInfoEnum*>(base_type);
+				for (size_t i = 0; i < enumeration->values.size() && i < enumeration->members.size(); ++i) {
+					if (enumeration->values[i] == bits) {
+						spliced.kind = Spliced::Kind::ENUM_MEMBER;
+						spliced.type = type;
+						spliced.text = std::string(*enumeration->members[i]);
+						return true;
+					}
+				}
+				report_error(ErrorCode::E4029, call.file, 0, 0, std::format("#insert was given {} {}, which isn't one of its members",
+					to_string(type), bits));
+				return false;
+			}
+			report_error(ErrorCode::E4029, call.file, 0, 0, std::format("#insert can't put {} into code", to_string(type)));
+			return false;
+		}
+
 		void carry_out(Call& call) {
 			CompileTimeData& data = call.data;
 			const std::string_view name = call.name;
+			// #code's copy of its quote, with what its #inserts splice (docs/compilation.md, Code Values)
+			if (name == "quote_code") {
+				const auto quote = reinterpret_cast<const ast::Node*>(read_u64(call.arguments[0]));
+				const uint8_t* splices = call.arguments[1];
+				const uint64_t count = read_u64(splices);
+				const uint8_t* items = reinterpret_cast<const uint8_t*>(read_u64(splices + 8));
+				std::vector<Spliced> spliced(count);
+				for (uint64_t i = 0; i < count; ++i) {
+					if (!read_spliced(call, items + i * 16, spliced[i])) {
+						return;
+					}
+				}
+				const ast::Node* made = make_code(call.program->made_nodes, call.program->quotes, quote, spliced);
+				uint64_t handle = 0;
+				if (made != nullptr) {
+					service_scope->codes.push_back(made);
+					handle = service_scope->codes.size();
+				}
+				CompileTimeData::write_number_at(call.result, 8, handle);
+				return;
+			}
+			if (name == "code_text") {
+				data.write_text_at(call.result, code_source(code_tree(read_u64(call.arguments[0])), call.program->quotes));
+				return;
+			}
 			if (name == "report_error" || name == "report_warning") {
 				std::string file;
 				uint32_t line = 0;

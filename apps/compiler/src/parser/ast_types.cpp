@@ -99,4 +99,25 @@ namespace hemera::ast {
 		dump(node, 0, out);
 		return out;
 	}
+
+	void QuoteTable::set(const Node* quote, const Node* tree) {
+		std::scoped_lock<std::mutex> lock(mutex);
+		trees[quote] = tree;
+	}
+
+	const Node* QuoteTable::get(const Node* quote) const {
+		std::scoped_lock<std::mutex> lock(mutex);
+		auto iter = trees.find(quote);
+		return iter != trees.end() ? iter->second : nullptr;
+	}
+
+	Node* NodeStore::make(NodeType type, Token value) {
+		nodes.push_back(std::make_unique<Node>(type, value));
+		return nodes.back().get();
+	}
+
+	std::unique_lock<std::mutex> NodeStore::hold() {
+		return std::unique_lock<std::mutex>(mutex);
+	}
+
 }

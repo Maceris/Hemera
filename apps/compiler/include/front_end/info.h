@@ -187,6 +187,13 @@ namespace hemera {
 		MyMap<FunctionID, FunctionInfo*> functions;
 		Allocator<> node_alloc;
 
+		/// <summary>
+		/// The trees its #code quotes quote, and the nodes compile-time code's quotes made: they last as
+		/// long as the program (docs/compilation.md, Code Values).
+		/// </summary>
+		ast::QuoteTable quotes;
+		ast::NodeStore made_nodes;
+
 		std::atomic_size_t next_location_id;
 
 		/// <summary>

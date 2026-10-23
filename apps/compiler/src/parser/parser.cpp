@@ -8,11 +8,12 @@
 namespace hemera::parser {
 
 	ParserState::ParserState(std::string_view file_path, 
-		MyVector<Token>& tokens, Allocator<ast::Node> node_alloc)
+		MyVector<Token>& tokens, Allocator<ast::Node> node_alloc, ast::QuoteTable* quotes)
 		: current{ 0 }
 		, tokens{ tokens }
 		, node_alloc{ node_alloc }
 		, file_path{ file_path }
+		, quotes{ quotes }
 		, has_errors{ false }
 	{}
 	ParserState::ParserState(const ParserState&) = default;
@@ -236,9 +237,9 @@ namespace hemera::parser {
 	}
 
 	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens,
-		Allocator<ast::Node> node_alloc)
+		Allocator<ast::Node> node_alloc, ast::QuoteTable* quotes)
 	{
-		ParserState state(file_path, tokens, node_alloc);
+		ParserState state(file_path, tokens, node_alloc, quotes);
 
 		Token current(TokenType::START_OF_FILE, 0, 0);
 		ast::Node* node = node_alloc.new_object<ast::Node>(ast::NodeType::FILE, current);
@@ -355,10 +356,12 @@ namespace hemera::parser {
 					}
 				}
 
-				// #run and #assert take an expression
+				// #run and #assert take an expression, #insert an operand (insert_operand)
 				if (directive.value.value->compare("#run") == 0
-					|| directive.value.value->compare("#assert") == 0) {
-					ExprResult expr = expression_with_result(state, true);
+					|| directive.value.value->compare("#assert") == 0
+					|| directive.value.value->compare("#insert") == 0) {
+					ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
+						: expression_with_result(state, true);
 					if (!expr.success) {
 						return false;
 					}
@@ -469,10 +472,12 @@ namespace hemera::parser {
 					}
 				}
 
-				// #run and #assert take an expression
+				// #run and #assert take an expression, #insert an operand (insert_operand)
 				if (directive.value.value->compare("#run") == 0
-					|| directive.value.value->compare("#assert") == 0) {
-					ExprResult expr = expression_with_result(state, true);
+					|| directive.value.value->compare("#assert") == 0
+					|| directive.value.value->compare("#insert") == 0) {
+					ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
+						: expression_with_result(state, true);
 					if (!expr.success) {
 						return false;
 					}
@@ -1525,10 +1530,12 @@ namespace hemera::parser {
 				directive.children.push_back(block_contents.result);
 			}
 
-			// #run and #assert take an expression: what to run, or the condition to check
+			// #run and #assert take an expression, what to run or the condition to check; #insert an operand, the code to put there
 			if (directive.value.value->compare("#run") == 0
-				|| directive.value.value->compare("#assert") == 0) {
-				ExprResult expr = expression_with_result(state, true);
+				|| directive.value.value->compare("#assert") == 0
+				|| directive.value.value->compare("#insert") == 0) {
+				ExprResult expr = directive.value.value->compare("#insert") == 0 ? insert_operand(state)
+					: expression_with_result(state, true);
 				if (!expr.success) {
 					return false;
 				}
@@ -2448,9 +2455,13 @@ namespace hemera::parser {
 		}
 		if (current == TokenType::DIRECTIVE) {
 			ast::Node& result = next_as_node(state, ast::NodeType::DIRECTIVE);
-			// Only #run takes an expression, others like #caller_location stand alone
-			if (result.value.value->compare("#run") == 0) {
-				ExprResult expr = expression_with_result(state, true);
+			if (result.value.value->compare("#code") == 0) {
+				return code_quote(state, result);
+			}
+			// #run takes an expression and #insert an operand, others like #caller_location stand alone
+			if (result.value.value->compare("#run") == 0 || result.value.value->compare("#insert") == 0) {
+				ExprResult expr = result.value.value->compare("#insert") == 0 ? insert_operand(state)
+					: expression_with_result(state, true);
 				if (!expr.success) {
 					delete_node(state->node_alloc, &result);
 					return ExprResult{ false };
@@ -2502,6 +2513,89 @@ namespace hemera::parser {
 
 		report_error_on_last_token(state, ErrorCode::E3017);
 		return ExprResult{ false };
+	}
+
+	/*
+	 * What #insert puts in place: an operand, which binds like a prefix operator's, so
+	 * #insert a * #insert b multiplies two insertions. Anything more goes in parentheses or a call.
+	 */
+	ExprResult insert_operand(ParserState* state) {
+		return expr_lvl_10(state);
+	}
+
+	/*
+	 * The #insert directives in a quote's tree, in order, not counting those inside a #code within it,
+	 * which belong to that quote.
+	 */
+	static void find_splices(ast::Node* node, std::vector<ast::Node*>& found) {
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::DIRECTIVE == child->node_type && child->value.value != nullptr) {
+				if (child->value.value->compare("#insert") == 0) {
+					found.push_back(child);
+					continue;
+				}
+				if (child->value.value->compare("#code") == 0) {
+					continue;
+				}
+			}
+			find_splices(child, found);
+		}
+	}
+
+	/*
+	 * #code(expression) or #code { statements } (docs/compilation.md, Code Values): the tree goes in the
+	 * quote table (ast::QuoteTable), and what each #insert in it splices becomes the #code node's
+	 * children, in order, so passes over the body see only those.
+	 */
+	ExprResult code_quote(ParserState* state, ast::Node& quote) {
+		ast::Node* tree = nullptr;
+		if (expect(state, TokenType::SYM_LPAREN)) {
+			const Token lparen = current_token(state);
+			skip(state, TokenType::SYM_LPAREN);
+			ExprResult inner = expression_with_result(state, true);
+			if (!inner.success) {
+				delete_node(state->node_alloc, &quote);
+				return ExprResult{ false };
+			}
+			if (!skip(state, TokenType::SYM_RPAREN)) {
+				report_error_on_last_token(state, ErrorCode::E3015,
+					std::format("Opening parenthesis was at ({},{})", lparen.line_number, lparen.column_number));
+				delete_node(state->node_alloc, &quote);
+				return ExprResult{ false };
+			}
+			tree = inner.result;
+		}
+		else if (expect(state, TokenType::SYM_LBRACE)) {
+			ExprResult inner = block(state);
+			if (!inner.success) {
+				delete_node(state->node_alloc, &quote);
+				return ExprResult{ false };
+			}
+			tree = inner.result;
+		}
+		else {
+			report_error_on_last_token(state, ErrorCode::E3017, "#code quotes ( an expression ) or { statements }");
+			delete_node(state->node_alloc, &quote);
+			return ExprResult{ false };
+		}
+		std::vector<ast::Node*> splices;
+		// The quote can be an #insert alone, like #code(#insert x)
+		if (ast::NodeType::DIRECTIVE == tree->node_type && tree->value.value != nullptr && tree->value.value->compare("#insert") == 0) {
+			splices.push_back(tree);
+		}
+		else {
+			find_splices(tree, splices);
+		}
+		for (ast::Node* splice : splices) {
+			for (ast::Node* child : splice->children) {
+				quote.children.push_back(child);
+			}
+			splice->children.clear();
+		}
+		if (state->quotes != nullptr) {
+			state->quotes->set(&quote, tree);
+		}
+		return ExprResult{ true, &quote };
 	}
 
 	/*

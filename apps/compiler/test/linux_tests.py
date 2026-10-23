@@ -28,6 +28,7 @@ TESTS = [
     ("heap", [], 42),
     ("containers", [], 42),
     ("maps", [], 42),
+    ("code_values", [], 42),
     ("format", [], 42),
     ("using_fields", [], 42),
     ("mut_arguments", [], 42),

@@ -1,0 +1,203 @@
+#include "middle_end/code_values.h"
+
+#include <cmath>
+#include <format>
+#include <mutex>
+#include <string_view>
+
+#include "parser/printing.h"
+
+namespace hemera {
+
+	namespace {
+
+		bool is_directive(const ast::Node* node, std::string_view name) {
+			return ast::NodeType::DIRECTIVE == node->node_type && node->value.value != nullptr && *node->value.value == name;
+		}
+
+		Token token_at(const Token& where, TokenType type, const std::string& text) {
+			return Token(type, where.column_number, where.line_number, text.empty() ? nullptr : intern(text));
+		}
+
+		// Text as a string or character literal's, quotes and escapes included.
+		std::string quoted_text(std::string_view text, char quote) {
+			std::string out(1, quote);
+			for (const char c : text) {
+				if (c == '\\' || c == quote) {
+					out += '\\';
+					out += c;
+				}
+				else if (c == '\n') {
+					out += "\\n";
+				}
+				else if (c == '\t') {
+					out += "\\t";
+				}
+				else if (c == '\r') {
+					out += "\\r";
+				}
+				else if (c == '\0') {
+					out += "\\0";
+				}
+				else {
+					out += c;
+				}
+			}
+			return out + quote;
+		}
+
+		std::string utf8(uint64_t code_point) {
+			std::string out;
+			if (code_point < 0x80) {
+				out += static_cast<char>(code_point);
+			}
+			else if (code_point < 0x800) {
+				out += static_cast<char>(0xc0 | (code_point >> 6));
+				out += static_cast<char>(0x80 | (code_point & 0x3f));
+			}
+			else if (code_point < 0x10000) {
+				out += static_cast<char>(0xe0 | (code_point >> 12));
+				out += static_cast<char>(0x80 | ((code_point >> 6) & 0x3f));
+				out += static_cast<char>(0x80 | (code_point & 0x3f));
+			}
+			else {
+				out += static_cast<char>(0xf0 | (code_point >> 18));
+				out += static_cast<char>(0x80 | ((code_point >> 12) & 0x3f));
+				out += static_cast<char>(0x80 | ((code_point >> 6) & 0x3f));
+				out += static_cast<char>(0x80 | (code_point & 0x3f));
+			}
+			return out;
+		}
+
+		/*
+		 * Copies a quote's tree, filling in its #inserts, with its nodes made in a program's NodeStore, whose
+		 * lock is held meanwhile.
+		 */
+		struct Copier {
+			ast::NodeStore& nodes;
+			ast::QuoteTable& quotes;
+			const std::vector<Spliced>& spliced;
+			// The next of spliced to put in place
+			size_t next = 0;
+
+			// A literal's node, negated with a unary minus when the value is negative, at where.
+			ast::Node* literal_node(const Token& where, TokenType type, const std::string& text, bool negative) {
+				ast::Node* literal = nodes.make(ast::NodeType::LITERAL, token_at(where, type, text));
+				if (!negative) {
+					return literal;
+				}
+				ast::Node* minus = nodes.make(ast::NodeType::UNARY_OPERATOR, token_at(where, TokenType::OPERATOR_MINUS, ""));
+				minus->children.push_back(literal);
+				return minus;
+			}
+
+			/*
+			 * What one #insert puts at where: a copy of a Code's tree, the type itself, or a literal. A type
+			 * node holds its type, so nothing is looked up by name for it.
+			 */
+			ast::Node* spliced_node(const Token& where, const Spliced& value) {
+				if (value.kind == Spliced::Kind::CODE) {
+					return value.tree != nullptr ? copy(value.tree, false) : nullptr;
+				}
+				else if (value.kind == Spliced::Kind::TYPE) {
+					ast::Node* type = nodes.make(ast::NodeType::TYPE, token_at(where, TokenType::IDENTIFIER, to_string(value.type)));
+					type->type = const_cast<TypeInfo*>(value.type);
+					return type;
+				}
+				else if (value.kind == Spliced::Kind::INTEGER) {
+					return literal_node(where, TokenType::LITERAL_INTEGER, std::to_string(value.magnitude), value.negative);
+				}
+				else if (value.kind == Spliced::Kind::FLOAT) {
+					std::string text = std::format("{}", std::fabs(value.floating));
+					if (text.find_first_of(".e") == std::string::npos) {
+						text += ".0";
+					}
+					else if (text.find('.') == std::string::npos) {
+						text.insert(text.find('e'), ".0");
+					}
+					return literal_node(where, TokenType::LITERAL_FLOATING_POINT, text, std::signbit(value.floating));
+				}
+				else if (value.kind == Spliced::Kind::BOOLEAN) {
+					return literal_node(where, value.magnitude != 0 ? TokenType::KEYWORD_TRUE : TokenType::KEYWORD_FALSE,
+						value.magnitude != 0 ? "true" : "false", false);
+				}
+				else if (value.kind == Spliced::Kind::CHARACTER) {
+					return literal_node(where, TokenType::LITERAL_CHAR, quoted_text(utf8(value.magnitude), '\''), false);
+				}
+				else if (value.kind == Spliced::Kind::STRING) {
+					return literal_node(where, TokenType::LITERAL_STRING, quoted_text(value.text, '"'), false);
+				}
+				else if (value.kind == Spliced::Kind::ENUM_MEMBER) {
+					// The enum, as its type, then .Member
+					ast::Node* name = nodes.make(ast::NodeType::IDENTIFIER, token_at(where, TokenType::IDENTIFIER, to_string(value.type)));
+					name->type = const_cast<TypeInfo*>(value.type);
+					name->children.push_back(nodes.make(ast::NodeType::DOT_ACCESS, token_at(where, TokenType::SYM_DOT, "")));
+					name->children.push_back(nodes.make(ast::NodeType::IDENTIFIER, token_at(where, TokenType::IDENTIFIER, value.text)));
+					return name;
+				}
+				return nullptr;
+			}
+
+			/*
+			 * A copy of node, with each #insert in it (not in a #code within it) replaced by the next spliced
+			 * value when splicing. Statements spliced into a block go in as its statements.
+			 */
+			ast::Node* copy(const ast::Node* node, bool splicing) {
+				ast::Node* result = nodes.make(node->node_type, node->value);
+				result->type = node->type;
+				const bool nested_quote = is_directive(node, "#code");
+				for (const ast::Node* child : node->children) {
+					if (splicing && !nested_quote && is_directive(child, "#insert") && child->children.empty()) {
+						if (next >= spliced.size()) {
+							continue;
+						}
+						ast::Node* value = spliced_node(child->value, spliced[next++]);
+						if (value == nullptr) {
+							continue;
+						}
+						if (ast::NodeType::BLOCK == node->node_type && ast::NodeType::BLOCK == value->node_type) {
+							for (ast::Node* statement : value->children) {
+								result->children.push_back(statement);
+							}
+							continue;
+						}
+						result->children.push_back(value);
+						continue;
+					}
+					result->children.push_back(copy(child, splicing && !nested_quote));
+				}
+				// A quote in the copy quotes the same tree, which never changes
+				if (nested_quote) {
+					quotes.set(result, quotes.get(node));
+				}
+				return result;
+			}
+		};
+	}
+
+	const ast::Node* make_code(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* quote,
+		const std::vector<Spliced>& spliced) {
+		const ast::Node* tree = quotes.get(quote);
+		if (tree == nullptr) {
+			return nullptr;
+		}
+		const std::unique_lock<std::mutex> lock = nodes.hold();
+		Copier copier{ nodes, quotes, spliced };
+		// The quote's own root can be an #insert, as in #code(#insert x)
+		if (is_directive(tree, "#insert") && tree->children.empty()) {
+			return spliced.empty() ? nullptr : copier.spliced_node(tree->value, spliced[0]);
+		}
+		return copier.copy(tree, true);
+	}
+
+	std::string code_source(const ast::Node* tree, const ast::QuoteTable& quotes) {
+		if (tree == nullptr) {
+			return "";
+		}
+		if (ast::NodeType::BLOCK == tree->node_type) {
+			return ast::source_of_statements(tree, &quotes);
+		}
+		return ast::source_of(tree, &quotes);
+	}
+
+}

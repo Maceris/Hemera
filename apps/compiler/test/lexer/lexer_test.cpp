@@ -233,6 +233,31 @@ TEST(LexerTests, SingleComplexTokenTest)
 	}
 }
 
+/*
+ * A line longer than a token's 16-bit column can count is an error (E2007), and cut short, so lexing
+ * still ends. It used to start over at column 0 and never end.
+ */
+TEST(LexerTests, VeryLongLine)
+{
+	hemera::disable_reporting_printing();
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	Allocator<> alloc;
+	MyVector<Token> output;
+
+	std::istringstream input_stream("a\n" + std::string(70000, 'b') + "\nc");
+	hemera::lexer::lex(input_stream, output, alloc, __FILE__);
+
+	ASSERT_EQ(hemera::error_count(), 1);
+	EXPECT_EQ(hemera::error_list()->at(0), hemera::ErrorCode::E2007);
+	ASSERT_EQ(output.size(), 4);
+	EXPECT_EQ(output[1].type, TokenType::IDENTIFIER);
+	EXPECT_EQ(output[1].line_number, 2);
+	EXPECT_EQ(output[2].type, TokenType::IDENTIFIER);
+	EXPECT_EQ(output[2].line_number, 3);
+	hemera::reset_reporting_storage();
+}
+
 TEST(LexerTests, ManyTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();

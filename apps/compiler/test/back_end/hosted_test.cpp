@@ -328,6 +328,12 @@ TEST(Hosted, UsesHashMaps)
 	run_hosted("maps", hemera::TargetStackCheck::Off);
 }
 
+// docs/compilation.md, Code Values: quotes made at compile time, with code, types and literals spliced in.
+TEST(Hosted, MakesCodeValues)
+{
+	run_hosted("code_values", hemera::TargetStackCheck::Off);
+}
+
 /*
  * std/io's printing, to standard output and error, and the standard logger the hosted context starts
  * with: what the program writes is in output.txt and error.txt in its scenario folder.

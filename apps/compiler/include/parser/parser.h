@@ -13,11 +13,13 @@ namespace hemera::parser {
 		MyVector<Token>& tokens;
 		Allocator<ast::Node> node_alloc;
 		std::string_view file_path;
+		// Where #code quotes' trees go, or null to leave them out
+		ast::QuoteTable* quotes;
 		bool has_errors;
 		const char _padding[7] = { 0 };
 
 		ParserState(std::string_view file_path, MyVector<Token>& tokens,
-			Allocator<ast::Node> node_alloc);
+			Allocator<ast::Node> node_alloc, ast::QuoteTable* quotes = nullptr);
 		ParserState(const ParserState&);
 		ParserState(ParserState&&) = delete;
 		ParserState& operator=(const ParserState&) = delete;
@@ -44,7 +46,11 @@ namespace hemera::parser {
 	
 	bool skip(ParserState* state, TokenType token);
 
-	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc);
+	/// <summary>
+	/// A file's tree. The trees of #code quotes in it go in quotes, if it's given.
+	/// </summary>
+	ast::Node* file(std::string_view file_path, MyVector<Token>& tokens, Allocator<ast::Node> node_alloc,
+		ast::QuoteTable* quotes = nullptr);
 	bool package_statement(ParserState* state, ast::Node& parent);
 	bool imports(ParserState* state, ast::Node& parent);
 	bool top_level_block(ParserState* state, ast::Node& parent);
@@ -102,6 +108,8 @@ namespace hemera::parser {
 	bool function_call(ParserState* state, ast::Node& parent);
 	bool function_call_input_list(ParserState* state, ast::Node& parent);
 	ExprResult cast_expression(ParserState* state);
+	ExprResult code_quote(ParserState* state, ast::Node& quote);
+	ExprResult insert_operand(ParserState* state);
 	ExprResult if_expression(ParserState* state);
 	bool for_loop(ParserState* state, ast::Node& parent);
 	bool loop(ParserState* state, ast::Node& parent);

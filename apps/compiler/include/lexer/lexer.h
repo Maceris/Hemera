@@ -59,7 +59,8 @@ namespace hemera {
 			uint32_t line_number;
 			uint16_t column_number;
 			uint8_t comment_depth;
-			const char _padding[1] = { 0 };
+			// The line just read was longer than a column can count, and was cut short (E2007)
+			bool line_too_long;
 
 			Tokenizer();
 			Tokenizer(const Tokenizer&) = delete;

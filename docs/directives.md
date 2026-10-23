@@ -65,6 +65,9 @@ An `if` whose condition `#is_compile_time` decides, alone or through `!`, `&&` a
 at compile time, like `compiler.report_error`, in a branch that only compile-time code takes, and still be used in the
 program. Both branches are checked.
 
+`#code(expression)` and `#code { statements }` quote code, giving a `compiler.Code`, and `#insert` in a quote puts a
+value there: code, a type or a literal (see [compilation.md](compilation.md#code-values)).
+
 `#run` specifies code should be run during compile time. It is followed by an expression to execute.
 
 When the `#run` directive appears at the top level of a file, it is executed when that file gets processed (each unique file should be processed once).

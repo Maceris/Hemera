@@ -3653,6 +3653,7 @@ namespace hemera {
 	}
 
 	static Progress check_expression_inner(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result);
+	static Progress check_quote(Checker& checker, ast::Node* node, Value& result);
 
 	static bool is_assign(const ast::Node* node);
 
@@ -3801,6 +3802,13 @@ namespace hemera {
 			return progress == Progress::FAILED ? Progress::DONE : progress;
 		}
 		if (ast::NodeType::DIRECTIVE == type) {
+			if (is_text(node->value.value, "#code")) {
+				return check_quote(checker, node, result);
+			}
+			if (is_text(node->value.value, "#insert")) {
+				result = error_at(checker, ErrorCode::E4024, node, "#insert outside a #code quote isn't supported yet");
+				return Progress::DONE;
+			}
 			if (is_text(node->value.value, "#caller_location")) {
 				TypeInfo* location = nullptr;
 				Progress progress = base_type(checker, node, "runtime", "SourceCodeLocation", location);
@@ -3859,6 +3867,52 @@ namespace hemera {
 		}
 		result = error_at(checker, ErrorCode::E4024, node, std::format("{} isn't supported in an expression yet",
 			ast::name_of(type)));
+		return Progress::DONE;
+	}
+
+	/*
+	 * #code (docs/compilation.md, Code Values): its children are what its #inserts splice, checked where
+	 * the quote is, each something code can hold: code, a type, or a literal's value. The quote itself
+	 * isn't checked until it's inserted. It's a compiler.Code, made by compiler.quote_code.
+	 */
+	static Progress check_quote(Checker& checker, ast::Node* node, Value& result) {
+		TypeInfo* code = nullptr;
+		Progress progress = base_type(checker, node, "compiler", "Code", code);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		for (ast::Node* splice : node->children) {
+			Value value;
+			progress = check_expression(checker, splice, nullptr, value);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ValueKind::POISONED == value.kind) {
+				continue;
+			}
+			TypeInfo* spliced = usual_type(value);
+			TypeInfo const* base_spliced = spliced != nullptr ? get_base_type(spliced) : nullptr;
+			const TypeInfoVariant variant = base_spliced != nullptr ? base_spliced->variant : TypeInfoVariant::VOID;
+			const bool fits = base_spliced == get_base_type(code)
+				|| TypeInfoVariant::TYPE == variant || TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant
+				|| TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::CHAR == variant || TypeInfoVariant::ENUM == variant
+				|| TypeInfoVariant::STRING == variant;
+			if (!fits) {
+				error_at(checker, ErrorCode::E4014, splice, std::format("{} can't be put into code: #insert takes a compiler.Code, a type, "
+					"or a number, boolean, character, string or enum member, which becomes a literal", describe(value)));
+			}
+		}
+		Declaration* quote_code = nullptr;
+		progress = base_declaration(checker.walk, node, "compiler", "quote_code", quote_code);
+		if (progress == Progress::DONE) {
+			progress = require_resolved(checker.walk, node, quote_code, Need::RESOLVED);
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		result = typed(code);
+		result.called = static_cast<TypeInfoFunction const*>(get_base_type(quote_code->value_type));
+		result.called_declaration = quote_code;
 		return Progress::DONE;
 	}
 
@@ -4968,6 +5022,10 @@ namespace hemera {
 				Value ignored;
 				return statement->children.empty() ? Progress::DONE
 					: check_expression(checker, statement->children[0], nullptr, ignored);
+			}
+			if (is_text(statement->value.value, "#insert")) {
+				error_at(checker, ErrorCode::E4024, statement, "#insert outside a #code quote isn't supported yet");
+				return Progress::DONE;
 			}
 			//TODO(ches) #if inside a function, which picks its branch at compile time
 			return Progress::DONE;

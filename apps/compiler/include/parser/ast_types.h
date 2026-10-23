@@ -1,7 +1,15 @@
 #pragma once
 
+#include <memory>
+#include <mutex>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
+#include <unordered_map>
+#include <vector>
 
 #include <cstdint>
 
@@ -104,5 +112,45 @@ namespace hemera::ast {
 	/// The tree under node, one node to a line, for debugging and tests.
 	/// </summary>
 	std::string dump(const Node* node);
+
+	/// <summary>
+	/// The trees #code quotes, by their #code nodes: kept apart from the #code node, whose children are only
+	/// the expressions spliced into it, so passes over a body see the quote as those expressions and never
+	/// its tree (docs/compilation.md, Code Values). Each #insert in a tree is left with no children; they're
+	/// filled in, in order, when the quote is evaluated. A program has one, which lasts as long as its trees.
+	/// </summary>
+	class QuoteTable {
+	public:
+		void set(const Node* quote, const Node* tree);
+		/// <summary>
+		/// The tree a #code node quotes, or null.
+		/// </summary>
+		const Node* get(const Node* quote) const;
+
+	private:
+		mutable std::mutex mutex;
+		std::unordered_map<const Node*, const Node*> trees;
+	};
+
+	/// <summary>
+	/// Nodes made while compiling rather than parsed, like the copies compile-time code's quotes make. A
+	/// program has one, which frees them with it.
+	/// </summary>
+	class NodeStore {
+	public:
+		/// <summary>
+		/// A new node, which lasts as long as the store. Called with hold's lock held.
+		/// </summary>
+		Node* make(NodeType type, Token value);
+
+		/// <summary>
+		/// The store's lock, held while making nodes.
+		/// </summary>
+		std::unique_lock<std::mutex> hold();
+
+	private:
+		std::mutex mutex;
+		std::vector<std::unique_ptr<Node>> nodes;
+	};
 
 }

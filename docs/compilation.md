@@ -89,6 +89,44 @@ imports, with its files, imports, functions, constants (with their values) and t
 `find_constant` in one, and `report_error` and `report_warning` at any location. `compiler.target_setting` reads a
 setting given on the command line as `--setting=name=value`.
 
+## Code Values
+
+Compile-time code can make code, as syntax trees, never as text: a `compiler.Code` is a tree the compiler keeps, which
+compile-time code holds by handle. A **quote** makes one from Hemera written in place, parsed but not checked, so the
+names in it needn't exist where it's written:
+
+```
+sum :: #code(a + b)          // one expression
+body :: #code {              // statements
+    total += item
+}
+```
+
+In a quote, `#insert` puts a value there when the quote is evaluated, worked out where the quote is:
+
+| What's inserted | Becomes |
+|---|---|
+| A `compiler.Code` | Its tree, copied; statements inserted among statements go in as statements |
+| A type | That type, as itself, so nothing is looked up by its name |
+| A number, boolean, character, string or enum member | A literal of it |
+
+```
+sum :: #code(a + b)
+n := 6 * 7
+product :: #code(#insert sum * #insert n)     // (a + b) * 42
+sized :: #code(size_of(#insert u64))          // size_of(u64)
+```
+
+`#insert`'s operand binds like a prefix operator's, so `#insert sum * #insert n` multiplies two insertions; anything
+bigger than a name, a call or a prefix operation goes in parentheses. An inserted tree gets the parentheses its operators
+need where it lands. An `#insert` in a quote inside a quote belongs to the inner one.
+
+`compiler.code_text(code)` gives the code as Hemera, formatted for reading, which parses back into the same tree.
+
+Only compile-time code has code: like a pointer, a `compiler.Code` can't be a constant of the program, and a function
+that quotes can only run at compile time. Putting code into the program with `#insert` outside a quote isn't supported
+yet.
+
 ## Build Packages
 
 A program whose compile-time code registers targets with `compiler.add_target` is a build package: it produces

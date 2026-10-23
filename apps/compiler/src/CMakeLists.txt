@@ -85,8 +85,10 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/middle_end/jit.h
   ${INCLUDE_DIR}/middle_end/reflection.h
   ${INCLUDE_DIR}/middle_end/build.h
+  ${INCLUDE_DIR}/middle_end/code_values.h
   ${INCLUDE_DIR}/parser/ast_types.h
   ${INCLUDE_DIR}/parser/parser.h
+  ${INCLUDE_DIR}/parser/printing.h
   ${INCLUDE_DIR}/types/primitives.h
   ${INCLUDE_DIR}/util/logger.h
   ${INCLUDE_DIR}/util/thread_pool.h
@@ -121,8 +123,10 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/middle_end/jit.cpp
   ${SOURCE_DIR}/middle_end/reflection.cpp
   ${SOURCE_DIR}/middle_end/build.cpp
+  ${SOURCE_DIR}/middle_end/code_values.cpp
   ${SOURCE_DIR}/parser/ast_types.cpp
   ${SOURCE_DIR}/parser/parser.cpp
+  ${SOURCE_DIR}/parser/printing.cpp
   ${SOURCE_DIR}/util/logger.cpp
   ${SOURCE_DIR}/util/thread_pool.cpp
 )
