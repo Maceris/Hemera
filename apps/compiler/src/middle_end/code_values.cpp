@@ -220,8 +220,9 @@ namespace hemera {
 								value->children.insert(value->children.begin(), copy(marker, false));
 							}
 						}
+						// Statements among statements, a list, and fields, variants, members, patterns or cases go in as their items
 						const bool statements = ast::NodeType::BLOCK == node->node_type && ast::NodeType::BLOCK == value->node_type;
-						if (statements || is_code_list(value)) {
+						if (statements || is_code_list(value) || is_named_contents(value)) {
 							for (ast::Node* item : value->children) {
 								result->children.push_back(item);
 							}
@@ -335,6 +336,16 @@ namespace hemera {
 			list->children.push_back(parameter);
 		}
 		return list;
+	}
+
+	bool is_named_contents(const ast::Node* tree) {
+		if (tree == nullptr || tree->value.value == nullptr) {
+			return false;
+		}
+		const std::string_view word(*tree->value.value);
+		return (ast::NodeType::STRUCT == tree->node_type && word == "fields") || (ast::NodeType::UNION == tree->node_type && word == "variants")
+			|| (ast::NodeType::ENUM == tree->node_type && word == "members")
+			|| (ast::NodeType::LIST == tree->node_type && (word == "patterns" || word == "cases"));
 	}
 
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,

@@ -195,6 +195,20 @@ Point :: struct {
 The words are only special right after `#code`, so `#code(Point.{})` and a struct's own `fields` mean what they always
 do.
 
+In a quote, they're spliced the same way: an `#insert` among a quoted `match`'s patterns, or a quoted struct's fields,
+puts each of the code's items there, so a generator can build a `match` from patterns it made:
+
+```
+#code {
+    classify :: fn(color: Color) -> int {
+        return match color {
+            #insert patterns()
+            case .Blue => 3
+        }
+    }
+}
+```
+
 ### Making and Inspecting Code
 
 In a quote, `#insert` also puts a declaration's name in place (`#insert name :: fn() {...}`), parameters in a

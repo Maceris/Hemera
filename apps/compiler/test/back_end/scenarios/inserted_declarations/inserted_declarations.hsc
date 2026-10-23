@@ -66,6 +66,20 @@ patterns :: fn() -> compiler.Code {
     }
 }
 
+// A function whose match is quoted, with patterns spliced among its arms
+classifier :: fn() -> compiler.Code {
+    return #code {
+        classify :: fn(color: Color) -> int {
+            return match color {
+                #insert patterns()
+                case .Blue => 3
+            }
+        }
+    }
+}
+
+#insert classifier()
+
 cases :: fn() -> compiler.Code {
     return #code cases {
     case 1:
@@ -97,6 +111,9 @@ main :: fn() -> int {
         case .Blue => 50
     }
     total += picked
+    if classify(Color.Green) != 2 || classify(Color.Blue) != 3 {
+        return 3
+    }
     n := 5
     k := 1
     switch k {

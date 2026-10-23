@@ -54,6 +54,12 @@ namespace hemera {
 	/// nodes of its own, and errors in them say where the code was written and where it was put. Hygienic for a
 	/// macro's expansion (docs/compilation.md, Macros).
 	/// </summary>
+	/// <summary>
+	/// Whether a tree is a quote of what goes inside something else (#code fields { ... }, and variants,
+	/// members, patterns and cases), whose items go in its place when it's spliced.
+	/// </summary>
+	bool is_named_contents(const ast::Node* tree);
+
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
 		const ast::InsertionSite& site, const ast::Origin* at, bool hygienic = false);
 

@@ -15,6 +15,18 @@ ABI_VERSION : u32 : 0
 Handle :: distinct alias u32
 NO_HANDLE : Handle : 0
 
+// A handle to one kind of object (decisions/0015). Calls that take any kind take a Handle: cast[Handle](port).
+Port :: distinct alias Handle
+Channel :: distinct alias Handle
+MemoryBudget :: distinct alias Handle
+Memory :: distinct alias Handle
+AddressSpace :: distinct alias Handle
+Process :: distinct alias Handle
+Thread :: distinct alias Handle
+Irq :: distinct alias Handle
+Platform :: distinct alias Handle
+Intercept :: distinct alias Handle
+
 // The kinds of kernel object (decisions/0034), as handle_info reports them.
 ObjectKind :: enum #backed_by(u8) {
     MemoryBudget = 1,
@@ -74,100 +86,132 @@ RIGHT_PROCESS_KILL : Rights : 1 << 12
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
-Syscall :: enum #backed_by(u32) {
-    // (handle) -> nothing. Closing an owning handle destroys the object.
-    HandleClose = 0,
-    // (handle, rights) -> a non-owning handle with those rights, which the handle must have.
-    HandleDuplicate = 1,
-    // (handle) -> its object's kind, and its rights.
-    HandleInfo = 2,
-    // () -> never returns: the calling thread ends.
-    ThreadExit = 3,
-    // (budget, address space, entry, stack, argument) -> an owning handle to a new thread there, started.
-    ThreadCreate = 4,
-    // (budget) -> an owning handle to a new process, a child of the caller's, whose budget it is.
-    ProcessCreate = 5,
-    // (budget) -> an owning handle to a new, empty address space.
-    AddressSpaceCreate = 6,
-    // () -> the monotonic clock, in nanoseconds (decisions/0009).
-    ClockMonotonic = 7,
-    // (budget) -> an owning handle to a new port.
-    PortCreate = 8,
-    // (port, key) -> nothing: a binding port_wake can raise.
-    PortBindWake = 9,
-    // (port, key, bits) -> nothing: a User packet for key's wake binding, its bits ORed into one already queued.
-    PortWake = 10,
-    // (port, key, deadline, slack) -> nothing: a Timer packet at deadline, binding key if it isn't yet.
-    PortSetTimer = 11,
-    // (port, key) -> nothing: the binding goes, with its packet if one is queued.
-    PortUnbind = 12,
-    /*
-     * (port, packets, capacity, deadline) -> how many packets it wrote at packets, up to capacity: once
-     * there's at least one, or 0 at deadline (NO_DEADLINE for none).
-     */
-    PortWait = 13,
-    // (budget, ring bytes, 0 for the default) -> owning handles to a new channel's two ends.
-    ChannelCreate = 14,
-    // (end, address space, address) -> nothing: the channel's rings, mapped at address.
-    ChannelMap = 15,
-    // (end) -> nothing: the end's rings, unmapped.
-    ChannelUnmap = 16,
-    // (end, signals) -> nothing: Readable or Writable, raised on the other end.
-    ChannelNotify = 17,
-    // (end, payload, size, batch) -> nothing: one message, written into the end's ring through the kernel.
-    ChannelWrite = 18,
-    // (end, buffer, capacity) -> the next message's size, and its flags and batch: read through the kernel.
-    ChannelRead = 19,
-    // (end, handles, count, batch) -> nothing: the handles, moved out of the caller's table into batch.
-    ChannelSendHandles = 20,
-    // (end, batch, handles, capacity) -> how many: the batch's handles, in the caller's table.
-    ChannelTakeHandles = 21,
-    // (end, signals, port, packets, capacity, deadline) -> as PortWait, after ChannelNotify.
-    ChannelNotifyAndWait = 22,
-    // (port, object, signals, key, mode) -> nothing: a Signal packet for key when the object raises any of signals.
-    PortBind = 23,
-    // (budget, limit) -> an owning handle to a child budget of limit bytes, carved out of the budget.
-    MemoryBudgetCreate = 24,
-    // (budget) -> its limit, and how much of it is charged, in bytes.
-    MemoryBudgetInfo = 25,
-    // (budget, size) -> an owning handle to a new memory object of size bytes, zero-filled as it's touched.
-    MemoryCreate = 26,
-    // (memory, address space, address, offset, size, protection) -> nothing: size bytes of it from offset, mapped at address.
-    MemoryMap = 27,
-    // (address space, address) -> nothing: the mapping that starts at address, unmapped.
-    MemoryUnmap = 28,
-    // (platform, kind, registers) -> the controller's number, and how many lines it has.
-    ControllerRegister = 29,
-    // (platform, budget, controller, line, IRQ_* flags) -> an owning handle to the line's IRQ, routed and unmasked.
-    IrqCreate = 30,
-    // (irq) -> nothing: a level-triggered line, unmasked again.
-    IrqAck = 31,
-    // (platform, budget, physical address, size, cache) -> an owning handle to device memory at that address.
-    MemoryCreatePhysical = 32,
-    // (memory, budget, offset, size) -> an owning handle to a window onto size bytes of it from offset.
-    MemoryCreateWindow = 33,
-    // (process, ids, capacity) -> how many of its subtree's threads there are: their IDs, up to capacity, at ids.
-    ProcessThreads = 34,
-    // (process, address space, address, buffer, size) -> nothing: size bytes of the space, one in the process's subtree, read into buffer.
-    ProcessReadMemory = 35,
-    // (process, address space, address, buffer, size) -> nothing: size bytes from buffer, written into the space.
-    ProcessWriteMemory = 36,
-    // (process, thread ID) -> nothing: the thread, stopped where it is until ThreadResume. A wait it's in goes on.
-    ThreadSuspend = 37,
-    // (process, thread ID) -> nothing: a suspended thread, going on.
-    ThreadResume = 38,
-    // (process, thread ID, registers) -> nothing: a stopped or suspended thread's THREAD_REGISTERS registers, written at registers.
-    ThreadReadRegisters = 39,
-    // (process, thread ID, registers) -> nothing: a stopped or suspended thread's registers, set from registers.
-    ThreadWriteRegisters = 40,
-    // (process, port, key, calls, points) -> an owning handle to an intercept of the process's subtree.
-    InterceptAttach = 41,
-    // (intercept, stop) -> nothing: the next stop not yet reported, written at stop.
-    InterceptNext = 42,
-    // (intercept, thread ID, action) -> nothing: a stopped thread, going on as action says.
-    InterceptResume = 43,
-    // (process) -> nothing: the process destroyed, with its subtree.
-    ProcessKill = 44,
+/*
+ * The system calls (knowledge/design/system-abi.md §4): a field's position is its number, which is
+ * append-only from v1. Everything else is generated from this table (syscall_table.hsc): the Syscall
+ * enum, a stub per call (slop_os.port_wait(...)), and the kernel's dispatch.
+ *
+ * Each argument is a register-sized value, a handle, an integer, an enum or a pointer, or a slice,
+ * which takes two registers; six registers in all. Each result is Result[T, E]: E an error enum, and T
+ * nothing, a register-sized value, or a struct of up to two of them.
+ */
+Syscalls :: struct {
+    // Closing an owning handle destroys the object.
+    handle_close : fn(handle: Handle) -> Result[void, HandleError],
+    // A non-owning handle with rights, which the handle must have.
+    handle_duplicate : fn(handle: Handle, rights: Rights) -> Result[Handle, HandleError],
+    handle_info : fn(handle: Handle) -> Result[HandleInfo, HandleError],
+    // The calling thread ends.
+    thread_exit : fn() #never_returns,
+    // A new thread in space, started at entry with stack and argument.
+    thread_create : fn(budget: MemoryBudget, space: AddressSpace, entry: u64, stack: u64, argument: u64) -> Result[Thread, HandleError],
+    // A new process, a child of the caller's, whose budget budget is.
+    process_create : fn(budget: MemoryBudget) -> Result[Process, HandleError],
+    // A new, empty address space.
+    address_space_create : fn(budget: MemoryBudget) -> Result[AddressSpace, HandleError],
+    // The monotonic clock, in nanoseconds (decisions/0009).
+    clock_monotonic : fn() -> Result[u64, HandleError],
+    port_create : fn(budget: MemoryBudget) -> Result[Port, HandleError],
+    // A binding port_wake can raise.
+    port_bind_wake : fn(port: Port, key: u64) -> Result[void, PortError],
+    // A User packet for key's wake binding, its bits ORed into one already queued.
+    port_wake : fn(port: Port, key: u64, bits: u64) -> Result[void, PortError],
+    // A Timer packet at deadline, binding key if it isn't yet.
+    port_set_timer : fn(port: Port, key: u64, deadline: u64) -> Result[void, PortError],
+    // The binding goes, with its packet if one is queued.
+    port_unbind : fn(port: Port, key: u64) -> Result[void, PortError],
+    // How many packets it wrote, up to packets.count: once there's at least one, or 0 at deadline (NO_DEADLINE for none).
+    port_wait : fn(port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, PortError],
+    // A new channel's two ends, with rings of ring_bytes each way, 0 for the default.
+    channel_create : fn(budget: MemoryBudget, ring_bytes: u32) -> Result[ChannelPair, ChannelError],
+    // The channel's rings, mapped at address.
+    channel_map : fn(end: Channel, space: AddressSpace, address: u64) -> Result[void, ChannelError],
+    channel_unmap : fn(end: Channel) -> Result[void, ChannelError],
+    // Readable or Writable, raised on the other end.
+    channel_notify : fn(end: Channel, signals: Signals) -> Result[void, ChannelError],
+    // One message, written into the end's ring through the kernel, with batch (NO_BATCH for none).
+    channel_write : fn(end: Channel, payload: u8[], batch: u32) -> Result[void, ChannelError],
+    // The next message, read through the kernel into buffer. Its size goes at size too, also when the buffer is too small.
+    channel_read : fn(end: Channel, buffer: mut u8[], size: ptr[mut u32]) -> Result[MessageInfo, ChannelError],
+    // The handles, moved out of the caller's table into batch.
+    channel_send_handles : fn(end: Channel, handles: Handle[], batch: u32) -> Result[void, ChannelError],
+    // How many: the batch's handles, in the caller's table. How many there are goes at count too, also when handles is too small.
+    channel_take_handles : fn(end: Channel, batch: u32, handles: mut Handle[], count: ptr[mut u32]) -> Result[u32, ChannelError],
+    // As port_wait, after channel_notify.
+    channel_notify_and_wait : fn(end: Channel, signals: Signals, port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, ChannelError],
+    // A Signal packet for key when the object raises any of signals, or an Irq packet for an IRQ's interrupts.
+    port_bind : fn(port: Port, object: Handle, signals: Signals, key: u64, mode: BindMode) -> Result[void, PortError],
+    // A child budget of limit bytes, carved out of the budget.
+    memory_budget_create : fn(budget: MemoryBudget, limit: u64) -> Result[MemoryBudget, HandleError],
+    memory_budget_info : fn(budget: MemoryBudget) -> Result[BudgetInfo, HandleError],
+    // A new memory object of size bytes, zero-filled as it's touched.
+    memory_create : fn(budget: MemoryBudget, size: u64) -> Result[Memory, MemoryError],
+    // size bytes of the memory from offset, mapped at address.
+    memory_map : fn(memory: Memory, space: AddressSpace, address: u64, offset: u64, size: u64, protection: Protection) -> Result[void, MemoryError],
+    // The mapping that starts at address, unmapped.
+    memory_unmap : fn(space: AddressSpace, address: u64) -> Result[void, MemoryError],
+    controller_register : fn(platform: Platform, kind: ControllerKind, registers: u64) -> Result[ControllerInfo, DeviceError],
+    // The line's IRQ, routed and unmasked; flags are IRQ_*.
+    irq_create : fn(platform: Platform, budget: MemoryBudget, controller: u32, line: u32, flags: u32) -> Result[Irq, DeviceError],
+    // A level-triggered line, unmasked again.
+    irq_ack : fn(irq: Irq) -> Result[void, HandleError],
+    // Device memory at a physical address.
+    memory_create_physical : fn(platform: Platform, budget: MemoryBudget, address: u64, size: u64, cache: CacheMode) -> Result[Memory, DeviceError],
+    // A window onto size bytes of the memory from offset.
+    memory_create_window : fn(memory: Memory, budget: MemoryBudget, offset: u64, size: u64) -> Result[Memory, MemoryError],
+    // How many threads the process's subtree has; up to ids.count of their IDs at ids.
+    process_threads : fn(process: Process, ids: mut u64[]) -> Result[u32, ControlError],
+    process_read_memory : fn(process: Process, space: AddressSpace, address: u64, buffer: mut u8[]) -> Result[void, ControlError],
+    process_write_memory : fn(process: Process, space: AddressSpace, address: u64, buffer: u8[]) -> Result[void, ControlError],
+    thread_suspend : fn(process: Process, thread: u64) -> Result[void, ControlError],
+    thread_resume : fn(process: Process, thread: u64) -> Result[void, ControlError],
+    // A stopped or suspended thread's THREAD_REGISTERS registers.
+    thread_read_registers : fn(process: Process, thread: u64, registers: mut u64[]) -> Result[void, ControlError],
+    thread_write_registers : fn(process: Process, thread: u64, registers: u64[]) -> Result[void, ControlError],
+    // An intercept of the process's subtree, reporting to port under key.
+    intercept_attach : fn(process: Process, port: Port, key: u64, calls: u64, points: u32) -> Result[Intercept, ControlError],
+    // The next stop not yet reported.
+    intercept_next : fn(intercept: Intercept, stop: ptr[mut StopInfo]) -> Result[void, ControlError],
+    intercept_resume : fn(intercept: Intercept, thread: u64, action: InterceptAction) -> Result[void, ControlError],
+    process_kill : fn(process: Process) -> Result[void, ControlError],
+}
+
+#insert syscall_numbers()
+#insert syscall_stubs()
+
+// A call's bit, for intercept_attach's calls, by its number (SYSCALL_<NAME>).
+syscall_bit :: fn(number: u32) -> u64 #no_context {
+    return cast[u64](1) << cast[u64](number)
+}
+
+// What handle_info gives.
+HandleInfo :: struct {
+    kind : ObjectKind,
+    rights : Rights,
+}
+
+// What channel_create gives.
+ChannelPair :: struct {
+    a : Channel,
+    b : Channel,
+}
+
+// What channel_read gives: the message's size, and its flags and batch (MessageHeader's).
+MessageInfo :: struct {
+    size : u32,
+    flags_and_batch : u32,
+}
+
+// What memory_budget_info gives: its limit, and how much of it is charged, in bytes.
+BudgetInfo :: struct {
+    limit : u64,
+    used : u64,
+}
+
+// What controller_register gives: the controller's number, and how many lines it has.
+ControllerInfo :: struct {
+    number : u32,
+    lines : u32,
 }
 
 // For InterceptAttach: where threads stop. calls is a bit per syscall number below 64.

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -303,11 +304,31 @@ namespace hemera::ast {
 			return NodeType::UNARY_OPERATOR == node->node_type && node->children.empty() && is_token(node, TokenType::SYM_QUESTION);
 		}
 
+		/*
+		 * The #insert placeholders in a quote's tree, in the order the parser gave their operands to the #code
+		 * node (find_splices): not counting those inside a #code within it.
+		 */
+		void find_placeholders(const Node* node, std::vector<const Node*>& found) {
+			for (const Node* child : node->children) {
+				if (NodeType::DIRECTIVE == child->node_type && text_of(child) == "#insert") {
+					found.push_back(child);
+					continue;
+				}
+				if (NodeType::DIRECTIVE == child->node_type && text_of(child) == "#code") {
+					continue;
+				}
+				find_placeholders(child, found);
+			}
+		}
+
 		struct Printer {
 			const QuoteTable* quote_table = nullptr;
 			size_t depth = 0;
-			// The #code quotes being printed, innermost last, each with the next of its splices to print
-			std::vector<std::pair<const Node*, size_t>> quotes;
+			/*
+			 * The #code quotes being printed, innermost last, each with what each of its placeholders splices:
+			 * by placeholder, so it doesn't matter in which order the printer reaches them.
+			 */
+			std::vector<std::unordered_map<const Node*, const Node*>> quotes;
 
 			std::string indent() const {
 				return std::string(depth * 4, ' ');
@@ -1427,14 +1448,14 @@ namespace hemera::ast {
 					out = "mut " + out;
 				}
 				if (text_of(node) == "#insert" && marked_only && !quotes.empty()) {
-					auto& [splicing, next] = quotes.back();
-					if (next < splicing->children.size()) {
-						const Node* spliced = splicing->children[next++];
+					auto found = quotes.back().find(node);
+					if (found != quotes.back().end()) {
+						const Node* spliced = found->second;
 						// It's printed in the quote around this one
-						const auto inner = quotes.back();
+						auto inner = std::move(quotes.back());
 						quotes.pop_back();
 						out += " " + expression(spliced, PREFIX);
-						quotes.push_back(inner);
+						quotes.push_back(std::move(inner));
 					}
 					return out;
 				}
@@ -1466,7 +1487,18 @@ namespace hemera::ast {
 				if (tree == nullptr) {
 					return "#code";
 				}
-				quotes.push_back({ node, 0 });
+				std::vector<const Node*> placeholders;
+				if (NodeType::DIRECTIVE == tree->node_type && text_of(tree) == "#insert") {
+					placeholders.push_back(tree);
+				}
+				else {
+					find_placeholders(tree, placeholders);
+				}
+				std::unordered_map<const Node*, const Node*> operands;
+				for (size_t i = 0; i < placeholders.size() && i < node->children.size(); ++i) {
+					operands[placeholders[i]] = node->children[i];
+				}
+				quotes.push_back(std::move(operands));
 				// What goes in something else is named by a word: fields, variants, members, patterns or cases
 				const std::string_view word = text_of(tree);
 				std::string out;
