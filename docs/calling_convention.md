@@ -568,8 +568,9 @@ system_call #calling_convention(.syscall_entry) :: fn(frame: ptr[mut x86_64.Regi
    between a `swapgs` and the `iretq` after it, it decides from `IA32_GS_BASE` instead of the saved `cs`: the kernel's
    is an upper-half address, and anything else is swapped;
 3. pushes every general register, completing the `RegisterFrame` on the stack the CPU switched to;
-4. clears `rbp`, so stack walks end at the entry, and the direction flag, then calls the body with a pointer to the
-   frame.
+4. clears `rbp`, so stack walks end at the entry, the direction flag, and the alignment-check flag (`AC`, which an
+   interrupt gate leaves as user code set it, and which with SMAP would let the kernel reach user memory), then calls
+   the body with a pointer to the frame.
 
 The function can't be called from Hemera code. Its addresses come from `x86_64.entry_points`, which the compiler
 expands into one small stub per vector (256 in all) that pushes the vector number and jumps to the function:

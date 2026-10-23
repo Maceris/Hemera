@@ -1041,10 +1041,13 @@ namespace hemera {
 
 	/*
 	 * The frame is complete: call the body with it. rbp is cleared so stack walks end here, and the
-	 * direction flag, which user code may have set, is cleared as the body expects.
+	 * direction flag, which user code may have set, is cleared as the body expects. So is the alignment
+	 * check flag: an interrupt gate leaves it as user code had it, and with SMAP it would let the kernel
+	 * reach user memory. Through the flags rather than clac, which CPUs without SMAP don't have.
 	 */
 	static std::string call_body(std::string_view body) {
-		return std::format("\txorl %ebp, %ebp\n\tcld\n\tmovq %rsp, %rdi\n\tcall {}\n", body);
+		return std::format("\txorl %ebp, %ebp\n\tcld\n\tpushfq\n\tandq $-262145, (%rsp)\n\tpopfq\n\tmovq %rsp, %rdi\n\tcall {}\n",
+			body);
 	}
 
 	/*
