@@ -644,6 +644,7 @@ namespace hemera::parser {
 				|| directive.value.value->compare("#target_features") == 0
 				|| directive.value.value->compare("#constant_time") == 0
 				|| directive.value.value->compare("#constraint") == 0
+				|| directive.value.value->compare("#macro") == 0
 				|| directive.value.value->compare("#release") == 0) {
 				expected = true;
 			}
@@ -1448,6 +1449,25 @@ namespace hemera::parser {
 		return true;
 	}
 
+	// =, or an operator and =, like +=.
+	static bool is_assign_operator(TokenType current) {
+		return current == TokenType::OPERATOR_ASSIGN
+			|| current == TokenType::OPERATOR_ASSIGN_ADD
+			|| current == TokenType::OPERATOR_ASSIGN_AND
+			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_AND
+			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_OR
+			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_XOR
+			|| current == TokenType::OPERATOR_ASSIGN_DIV
+			|| current == TokenType::OPERATOR_ASSIGN_LEFT_SHIFT
+			|| current == TokenType::OPERATOR_ASSIGN_MOD
+			|| current == TokenType::OPERATOR_ASSIGN_MUL
+			|| current == TokenType::OPERATOR_ASSIGN_OR
+			|| current == TokenType::OPERATOR_ASSIGN_REMAINDER
+			|| current == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC
+			|| current == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL
+			|| current == TokenType::OPERATOR_ASSIGN_SUB;
+	}
+
 	/*
 	 * One statement in a block, or the body of a match arm: an expression, return, defer,
 	 * break, continue, or a directive like #if.
@@ -1576,6 +1596,17 @@ namespace hemera::parser {
 				if (directive.value.value->compare("#insert") == 0 && expect(state, TokenType::SYM_COLON)) {
 					parent.children.pop_back();
 					return inserted_name_definition(state, parent, directive);
+				}
+				// An assignment to what's inserted, like #insert total += 1
+				if (directive.value.value->compare("#insert") == 0 && is_assign_operator(current_token(state).type)) {
+					parent.children.pop_back();
+					ast::Node& assignment = next_as_node(state, ast::NodeType::BINARY_OPERATOR, &parent);
+					assignment.children.push_back(&directive);
+					ExprResult rhs = expression_with_result(state, true);
+					if (!rhs.success) {
+						return false;
+					}
+					assignment.children.push_back(rhs.result);
 				}
 			}
 			return true;
@@ -2160,23 +2191,7 @@ namespace hemera::parser {
 
 		ast::Node* result = list;
 
-		const TokenType current = current_token(state).type;
-		if (current == TokenType::OPERATOR_ASSIGN
-			|| current == TokenType::OPERATOR_ASSIGN_ADD
-			|| current == TokenType::OPERATOR_ASSIGN_AND
-			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_AND
-			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_OR
-			|| current == TokenType::OPERATOR_ASSIGN_BITWISE_XOR
-			|| current == TokenType::OPERATOR_ASSIGN_DIV
-			|| current == TokenType::OPERATOR_ASSIGN_LEFT_SHIFT
-			|| current == TokenType::OPERATOR_ASSIGN_MOD
-			|| current == TokenType::OPERATOR_ASSIGN_MUL
-			|| current == TokenType::OPERATOR_ASSIGN_OR
-			|| current == TokenType::OPERATOR_ASSIGN_REMAINDER
-			|| current == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_ARITHMETIC
-			|| current == TokenType::OPERATOR_ASSIGN_RIGHT_SHIFT_LOGICAL
-			|| current == TokenType::OPERATOR_ASSIGN_SUB
-			) {
+		if (is_assign_operator(current_token(state).type)) {
 
 			result = &next_as_node(state, ast::NodeType::BINARY_OPERATOR);
 			result->children.push_back(list);
@@ -2801,8 +2816,14 @@ namespace hemera::parser {
 		while (expect(state, TokenType::SYM_LBRACK)
 			|| expect(state, TokenType::SYM_DOT)
 			|| expect(state, TokenType::SYM_LPAREN)
-			|| expect(state, TokenType::OPERATOR_DEREFERENCE)) {
+			|| expect(state, TokenType::OPERATOR_DEREFERENCE)
+			|| (expect(state, TokenType::OPERATOR_NOT) && TokenType::SYM_LPAREN == next_token(state).type)) {
 
+			// name!(arguments): a macro call, a ! before the arguments (docs/compilation.md, Macros)
+			if (expect(state, TokenType::OPERATOR_NOT)) {
+				accept(state, TokenType::OPERATOR_NOT, ast::NodeType::UNARY_OPERATOR, target);
+				continue;
+			}
 
 			if (accept(state, TokenType::OPERATOR_DEREFERENCE,
 				ast::NodeType::UNARY_OPERATOR, target)) {

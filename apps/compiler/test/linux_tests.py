@@ -30,6 +30,7 @@ TESTS = [
     ("maps", [], 42),
     ("code_values", [], 42),
     ("inserted_code", [], 42),
+    ("macros", [], 42),
     ("inserted_declarations", [], 42),
     ("generated_functions", [], 42),
     ("format", [], 42),

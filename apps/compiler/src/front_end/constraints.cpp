@@ -399,7 +399,8 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
-	bool is_constraint_function(const Declaration* declaration) {
+	// Whether a function's declaration has a directive after its name, like #constraint or #macro.
+	static bool function_declared_with(const Declaration* declaration, std::string_view directive) {
 		if (declaration == nullptr || DeclarationKind::FUNCTION != declaration->kind || declaration->node == nullptr
 			|| declaration->node->children.empty()) {
 			return false;
@@ -414,12 +415,20 @@ namespace hemera {
 				continue;
 			}
 			for (ast::Node* child : name->children) {
-				if (ast::NodeType::DIRECTIVE == child->node_type && is_text(child->value.value, "#constraint")) {
+				if (ast::NodeType::DIRECTIVE == child->node_type && is_text(child->value.value, directive)) {
 					return true;
 				}
 			}
 		}
 		return false;
+	}
+
+	bool is_constraint_function(const Declaration* declaration) {
+		return function_declared_with(declaration, "#constraint");
+	}
+
+	bool is_macro_function(const Declaration* declaration) {
+		return function_declared_with(declaration, "#macro");
 	}
 
 	Declaration* constraint_named(NameRegistry& names, const Declaration* context, const ast::Node* node) {

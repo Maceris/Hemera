@@ -132,7 +132,7 @@ namespace hemera {
 		const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
 		const ast::InsertionSite site{ origin != nullptr ? origin->file : file_path, insert->value.line_number,
 			insert->value.column_number };
-		const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site);
+		const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site, origin.get());
 		if (inserted == nullptr) {
 			return Progress::FAILED;
 		}

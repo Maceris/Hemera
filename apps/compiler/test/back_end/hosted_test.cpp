@@ -346,6 +346,12 @@ TEST(Hosted, InsertsDeclarations)
 	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off);
 }
 
+// docs/compilation.md, Macros: #macro functions called with !, their code put in place hygienically.
+TEST(Hosted, ExpandsMacros)
+{
+	run_hosted("macros", hemera::TargetStackCheck::Off);
+}
+
 // docs/compilation.md, Code Values: functions made from a table, with names, parameters and arguments made from data.
 TEST(Hosted, GeneratesFunctions)
 {

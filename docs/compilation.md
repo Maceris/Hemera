@@ -153,7 +153,8 @@ main :: fn() -> int {
 
 * **Statements** go in among the statements around them, so what they declare is seen after them. **An expression**
   goes where the `#insert` is, as one value, whatever its operators. Statements where an expression goes are an error.
-* **Names** in the code are looked up where it's put.
+* **Names** in the code are looked up where it's put, so it can use and declare the names around it. That's what
+  makes `#insert` the general tool; for code that keeps to itself, use a [macro](#macros).
 * **Each insertion is a copy**, so the same code inserted twice declares two sets of variables.
 * **Errors** in inserted code are reported where it was written, the quote, followed by where it was inserted.
 * **To see what was inserted**, `--show-inserted=file:line` prints the code each `#insert` on that line put there, as
@@ -247,6 +248,56 @@ At the top level, an `#insert` may declare any name, so a name the package doesn
 waits for an `#if` that may declare it. A name a file imports, or a builtin, is used without waiting; if code inserted
 in the package turns out to declare it too, that's an error, since the package's own would have been meant. Code an
 `#insert` runs can't need a name only that `#insert` declares, which is reported as a cycle.
+
+### Macros
+
+A **macro** is a function marked `#macro` that gives a `compiler.Code`, called with `!` after its name. The call is an
+`#insert` of what the function gives, run at compile time, with each argument for a `compiler.Code` parameter quoted as
+it's written, unchecked. Other arguments are values, worked out at compile time like any `#insert`'s:
+
+```
+swap #macro :: fn(a: compiler.Code, b: compiler.Code) -> compiler.Code {
+    return #code {
+        temporary := #insert a
+        #insert a = #insert b
+        #insert b = temporary
+    }
+}
+
+add #macro :: fn(target: compiler.Code, amount: int) -> compiler.Code {
+    return #code {
+        #insert target += #insert amount
+    }
+}
+
+main :: fn() -> int {
+    temporary := 1
+    total := 41
+    swap!(temporary, total)     // temporary is 41, total is 1: the macro's temporary is its own
+    add!(total, 41)
+    return total                // 42
+}
+```
+
+A macro is called as `name!(...)` or `package.name!(...)`, in a body, as statements or as an expression, and nothing
+follows the call. It's still a function, which other compile-time code can call without `!` to get its code.
+
+A macro's code is **hygienic**, unlike a plain `#insert`'s:
+
+* **What it declares is its own.** A local its code declares is seen only by code the same expansion wrote, so it
+  can't hide the caller's variables or be used by them, even one with the same name. Each expansion is apart from the
+  others, and from those of macros its code calls.
+* **Its names are the macro's.** A name its code uses that isn't one of those locals is looked up from the file the
+  macro was written in, with that file's imports, so the caller needn't import what the macro uses, and can't change
+  what it means by declaring the same name.
+* **The code it's given stays the caller's**, wherever the macro puts it: its names are looked up as they would be
+  where the call is written.
+
+So names reach the caller only through arguments: code a macro is given can name the caller's variables, and code a
+macro writes can't. A name made with `compiler.name` is code the macro wrote.
+
+Code a macro gives may call macros, including itself, but expansion stops with an error 64 insertions deep. Like any
+`#insert`, a macro call isn't supported in a generic's body yet.
 
 ## Build Packages
 

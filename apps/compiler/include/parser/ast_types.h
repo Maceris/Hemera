@@ -1,13 +1,10 @@
 #pragma once
 
-#include <memory>
-#include <mutex>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <vector>
 #include <unordered_map>
 #include <vector>
 
@@ -127,9 +124,11 @@ namespace hemera::ast {
 		struct Quoted {
 			const Node* tree = nullptr;
 			std::string file;
+			// A macro's argument, the caller's code, rather than code the macro wrote
+			bool from_caller = false;
 		};
 
-		void set(const Node* quote, const Node* tree, std::string_view file);
+		void set(const Node* quote, const Node* tree, std::string_view file, bool from_caller = false);
 		/// <summary>
 		/// The tree a #code node quotes, or null.
 		/// </summary>
@@ -138,6 +137,10 @@ namespace hemera::ast {
 		/// The file a #code node's tree is written in, or empty.
 		/// </summary>
 		std::string file_of(const Node* quote) const;
+		/// <summary>
+		/// Whether a #code node quotes a macro's argument, the caller's code.
+		/// </summary>
+		bool from_caller(const Node* quote) const;
 
 	private:
 		mutable std::mutex mutex;
@@ -160,6 +163,13 @@ namespace hemera::ast {
 	struct Origin {
 		std::string file;
 		std::vector<InsertionSite> inserted;
+		/*
+		 * Hygiene (docs/compilation.md, Macros): code a macro wrote has its expansion's mark, so its names see
+		 * only what that expansion declares, then what its file sees; 0 for code written where it is. Code
+		 * passed to a macro is from_caller until it's put back where the caller wrote it.
+		 */
+		uint32_t mark = 0;
+		bool from_caller = false;
 	};
 
 	/// <summary>
@@ -183,12 +193,21 @@ namespace hemera::ast {
 		/// </summary>
 		void set_origin(const Node* node, std::shared_ptr<const Origin> origin);
 		std::shared_ptr<const Origin> origin(const Node* node) const;
+		/// <summary>
+		/// A node's hygiene mark, 0 for code written where it is.
+		/// </summary>
+		uint32_t mark_of(const Node* node) const;
+		/// <summary>
+		/// A mark for one macro expansion, never 0.
+		/// </summary>
+		uint32_t new_mark();
 
 	private:
 		std::mutex mutex;
 		std::vector<std::unique_ptr<Node>> nodes;
 		mutable std::mutex origins_mutex;
 		std::unordered_map<const Node*, std::shared_ptr<const Origin>> origins;
+		std::atomic<uint32_t> marks{ 0 };
 	};
 
 }

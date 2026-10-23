@@ -70,3 +70,20 @@ describe :: fn(color: Color, n: int) -> int {
 }
 
 #insert declarations()
+
+// Macros (docs/compilation.md, Macros), and an assignment to what's inserted
+swap #macro :: fn(a: compiler.Code, b: compiler.Code) -> compiler.Code {
+    return #code {
+        temporary := #insert a
+        #insert a = #insert b
+        #insert b += temporary
+    }
+}
+
+use_macros :: fn() -> int {
+    a := 1
+    b := 2
+    swap!(a, b)
+    helpers.swap!(a, b)
+    return twice!(a + b) * !done
+}

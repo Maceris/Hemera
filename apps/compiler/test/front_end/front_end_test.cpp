@@ -886,7 +886,11 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "insert_in_generic_type", hemera::ErrorCode::E4024 },
 		{ "insert_needs_itself", hemera::ErrorCode::E4007 },
 		{ "insert_shadows_builtin", hemera::ErrorCode::E4012 },
-		{ "name_not_identifier", hemera::ErrorCode::E4029 }
+		{ "name_not_identifier", hemera::ErrorCode::E4029 },
+		// docs/compilation.md, Macros
+		{ "macro_call_not_macro", hemera::ErrorCode::E4039 },
+		{ "macro_expands_forever", hemera::ErrorCode::E4039 },
+		{ "macro_local_hidden", hemera::ErrorCode::E4008 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

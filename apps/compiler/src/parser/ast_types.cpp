@@ -100,9 +100,15 @@ namespace hemera::ast {
 		return out;
 	}
 
-	void QuoteTable::set(const Node* quote, const Node* tree, std::string_view file) {
+	void QuoteTable::set(const Node* quote, const Node* tree, std::string_view file, bool from_caller) {
 		std::scoped_lock<std::mutex> lock(mutex);
-		trees[quote] = Quoted{ tree, std::string(file) };
+		trees[quote] = Quoted{ tree, std::string(file), from_caller };
+	}
+
+	bool QuoteTable::from_caller(const Node* quote) const {
+		std::scoped_lock<std::mutex> lock(mutex);
+		auto iter = trees.find(quote);
+		return iter != trees.end() && iter->second.from_caller;
 	}
 
 	const Node* QuoteTable::get(const Node* quote) const {
@@ -135,6 +141,19 @@ namespace hemera::ast {
 		std::scoped_lock<std::mutex> lock(origins_mutex);
 		auto iter = origins.find(node);
 		return iter != origins.end() ? iter->second : nullptr;
+	}
+
+	uint32_t NodeStore::mark_of(const Node* node) const {
+		std::scoped_lock<std::mutex> lock(origins_mutex);
+		if (origins.empty()) {
+			return 0;
+		}
+		auto iter = origins.find(node);
+		return iter != origins.end() && iter->second != nullptr ? iter->second->mark : 0;
+	}
+
+	uint32_t NodeStore::new_mark() {
+		return marks.fetch_add(1) + 1;
 	}
 
 }

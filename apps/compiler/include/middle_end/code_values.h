@@ -50,11 +50,12 @@ namespace hemera {
 
 	/// <summary>
 	/// A copy of a Code's tree to put at site, an #insert, its nodes made in nodes, each with its origin
-	/// and site after the sites it already had: so each insertion has nodes of its own, and errors in
-	/// them say where the code was written and where it was put.
+	/// and site after the sites it already had and those at, the site's own origin, had: so each insertion has
+	/// nodes of its own, and errors in them say where the code was written and where it was put. Hygienic for a
+	/// macro's expansion (docs/compilation.md, Macros).
 	/// </summary>
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
-		const ast::InsertionSite& site);
+		const ast::InsertionSite& site, const ast::Origin* at, bool hygienic = false);
 
 	/// <summary>
 	/// The word a list of code is marked with, a LIST's: inserted, its items go in its place, each as one of

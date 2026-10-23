@@ -84,6 +84,10 @@ namespace hemera {
 			std::shared_ptr<const ast::Origin> base_origin;
 			// For a copy put somewhere by an #insert, where
 			const ast::InsertionSite* site = nullptr;
+			// How the site got where it is, when it was inserted itself
+			const ast::Origin* at = nullptr;
+			// For a macro's expansion, its mark, for what the macro wrote (docs/compilation.md, Macros)
+			uint32_t expansion = 0;
 			// The next of spliced to put in place
 			size_t next = 0;
 			// Each origin a copied node had, with site after it
@@ -102,13 +106,32 @@ namespace hemera {
 				if (origin == nullptr) {
 					origin = base_origin;
 				}
-				if (site == nullptr) {
+				// A macro's argument stays the caller's code, with the caller's mark
+				const bool to_caller = site == nullptr && base_origin->from_caller && !origin->from_caller;
+				if (site == nullptr && !to_caller) {
 					return origin;
 				}
 				std::shared_ptr<const ast::Origin>& derived = inserted_origins[origin.get()];
 				if (derived == nullptr) {
 					auto made = std::make_shared<ast::Origin>(*origin);
-					made->inserted.push_back(*site);
+					if (to_caller) {
+						made->from_caller = true;
+					}
+					else {
+						if (at != nullptr) {
+							made->inserted.insert(made->inserted.end(), at->inserted.begin(), at->inserted.end());
+						}
+						made->inserted.push_back(*site);
+						// Expanded, the caller's code is the caller's again, and what the macro wrote is marked
+						if (expansion != 0) {
+							if (made->from_caller) {
+								made->from_caller = false;
+							}
+							else {
+								made->mark = expansion;
+							}
+						}
+					}
 					derived = made;
 				}
 				return derived;
@@ -226,6 +249,7 @@ namespace hemera {
 		}
 		auto origin = std::make_shared<ast::Origin>();
 		origin->file = quotes.file_of(quote);
+		origin->from_caller = quotes.from_caller(quote);
 		const std::unique_lock<std::mutex> lock = nodes.hold();
 		Copier copier{ nodes, quotes, spliced, origin };
 		// The quote's own root can be an #insert, as in #code(#insert x)
@@ -314,15 +338,18 @@ namespace hemera {
 	}
 
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
-		const ast::InsertionSite& site) {
+		const ast::InsertionSite& site, const ast::Origin* at, bool hygienic) {
 		if (tree == nullptr) {
 			return nullptr;
 		}
 		auto origin = std::make_shared<ast::Origin>();
 		origin->file = site.file;
 		const std::vector<Spliced> none;
+		const uint32_t expansion = hygienic ? nodes.new_mark() : 0;
 		const std::unique_lock<std::mutex> lock = nodes.hold();
 		Copier copier{ nodes, quotes, none, origin, &site };
+		copier.at = at;
+		copier.expansion = expansion;
 		return copier.copy(tree, false);
 	}
 

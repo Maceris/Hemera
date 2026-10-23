@@ -187,6 +187,11 @@ namespace hemera {
 	bool is_constraint_function(const Declaration* declaration);
 
 	/// <summary>
+	/// Whether a declaration is a #macro function, called as name!(arguments) (docs/compilation.md, Macros).
+	/// </summary>
+	bool is_macro_function(const Declaration* declaration);
+
+	/// <summary>
 	/// The #constraint function a name in a generic's constraints is, from the generic's package
 	/// or its file's imports, or null if it isn't one. Takes the registry's lock.
 	/// </summary>

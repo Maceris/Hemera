@@ -247,7 +247,8 @@ namespace hemera::ast {
 			}
 			return NodeType::DOT_ACCESS == node->node_type || NodeType::ARRAY_DIMENSION == node->node_type
 				|| NodeType::PAREN_GROUP == node->node_type
-				|| (NodeType::UNARY_OPERATOR == node->node_type && is_token(node, TokenType::OPERATOR_DEREFERENCE));
+				|| (NodeType::UNARY_OPERATOR == node->node_type && (is_token(node, TokenType::OPERATOR_DEREFERENCE)
+					|| is_token(node, TokenType::OPERATOR_NOT)));
 		}
 
 		bool is_prefix(const Node* node) {
@@ -1198,8 +1199,9 @@ namespace hemera::ast {
 						out += expression(marker, ANY);
 						continue;
 					}
+					// ^, or a macro call's !
 					if (NodeType::UNARY_OPERATOR == marker->node_type) {
-						out += "^";
+						out += operator_text(marker->value.type);
 						continue;
 					}
 					if (NodeType::DOT_ACCESS == marker->node_type) {

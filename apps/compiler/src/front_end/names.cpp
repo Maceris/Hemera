@@ -663,7 +663,48 @@ namespace hemera {
 	 * one of the file's imports and the builtins. The package's own declaration always wins, so a
 	 * name it doesn't declare yet waits while it still may.
 	 */
+	/*
+	 * Hygiene (docs/compilation.md, Macros): a name a macro wrote is looked up from the file the macro was
+	 * written in, rather than where it's put. That file's walk, or null when it's this walk's own.
+	 */
+	static std::unique_ptr<Walk> home_walk(Walk& walk, const ast::Node* where) {
+		ProgramInfo* program = walk.executor.program_info;
+		const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(where);
+		if (origin == nullptr || origin->mark == 0) {
+			return nullptr;
+		}
+		// The file whose path that is (file_path_of), however its separators are written
+		auto normal = [](std::string_view path) { return std::filesystem::path(path).lexically_normal().generic_string(); };
+		const std::string wanted = normal(origin->file);
+		if (wanted == normal(walk.file_path)) {
+			return nullptr;
+		}
+		std::scoped_lock<std::mutex> lock(program->packages_mutex);
+		for (const auto& [package_path, package] : program->packages) {
+			std::scoped_lock<std::mutex> files_lock(package->files_mutex);
+			for (const auto& [file_name, file] : package->files) {
+				const std::string path = file_path_of(package_path, file_name);
+				if (normal(path) == wanted) {
+					return std::make_unique<Walk>(Walk{ walk.executor, package_path, file_name, file, walk.owner, nullptr, path,
+						walk.locals, {}, {}, {}, {} });
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	// What the home walk bound, for the walk it stands in for.
+	static Progress from_home(Walk& walk, const Walk& home, Progress progress) {
+		for (const auto& [node, declaration] : home.bindings) {
+			walk.bindings[node] = declaration;
+		}
+		return progress;
+	}
+
 	Progress require(Walk& walk, ast::Node* where, InternedString name, Need need) {
+		if (std::unique_ptr<Walk> home = home_walk(walk, where)) {
+			return from_home(walk, *home, require(*home, where, name, need));
+		}
 		if (name == nullptr || is_local(walk, name)) {
 			return Progress::DONE;
 		}
@@ -737,6 +778,9 @@ namespace hemera {
 		ast::Node* qualifier, Need need, bool& head_was_package) {
 
 		head_was_package = false;
+		if (std::unique_ptr<Walk> home = home_walk(walk, where)) {
+			return from_home(walk, *home, require_qualified(*home, where, head, qualifier, need, head_was_package));
+		}
 		if (qualifier != nullptr && !is_local(walk, head)) {
 			InternedString package = nullptr;
 			Progress progress = qualifier_package(walk, where, head, package);
@@ -801,6 +845,11 @@ namespace hemera {
 			if (ast::NodeType::DOT_ACCESS == child->node_type) {
 				++i; // the member's name isn't looked up here
 				continue;
+			}
+			// A macro call's arguments are code it's given, looked up where the macro puts them
+			if (ast::NodeType::UNARY_OPERATOR == child->node_type && TokenType::OPERATOR_NOT == child->value.type
+				&& child->children.empty()) {
+				break;
 			}
 			if (is_postfix_marker(child)) {
 				continue;
@@ -1844,7 +1893,7 @@ namespace hemera {
 			const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
 			const ast::InsertionSite site{ origin != nullptr ? origin->file : walk.file_path, insert->value.line_number,
 				insert->value.column_number };
-			const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site);
+			const ast::Node* inserted = copy_to_insert(program->made_nodes, program->quotes, tree, site, origin.get());
 			if (inserted == nullptr) {
 				return Progress::FAILED;
 			}

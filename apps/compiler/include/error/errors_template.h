@@ -89,6 +89,7 @@ E4035,Owner not released or moved
 E4036,Thread-bound value given to another thread
 E4037,Secret used where it could leak
 E4038,Default differs from the stated type
+E4039,Invalid macro call
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

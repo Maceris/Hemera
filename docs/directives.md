@@ -68,7 +68,7 @@ program. Both branches are checked.
 `#code(expression)` and `#code { statements }` quote code, giving a `compiler.Code`, and `#insert` in a quote puts a
 value there: code, a type or a literal. Outside a quote, `#insert` puts code into the program: in a body, at the top
 level of a file, or among a struct's, union's or enum's members or a `match`'s or `switch`'s cases (see
-[compilation.md](compilation.md#code-values)).
+[compilation.md](compilation.md#code-values)). A [`#macro`](#macro) call is an `#insert` of what the macro gives.
 
 `#run` specifies code should be run during compile time. It is followed by an expression to execute.
 
@@ -165,6 +165,21 @@ Equatable #constraint :: fn(T: type) {
 A constraint only runs at compile time, while generics that use it are checked, so it's made of `base/compiler`'s
 requirements (`compiler.require_*`, `compiler.require`, `compiler.note`, and `compiler.require_any` for
 alternatives), calls to other constraints, and what compile-time code can always do. It's never generated into the program.
+
+### `#macro`
+
+`#macro` after a function's name makes it a macro: a function giving a `compiler.Code`, called as `name!(...)`, whose
+code is put where the call is, hygienically (see [compilation.md](compilation.md#macros)):
+
+```
+swap #macro :: fn(a: compiler.Code, b: compiler.Code) -> compiler.Code {
+    return #code {
+        temporary := #insert a
+        #insert a = #insert b
+        #insert b = temporary
+    }
+}
+```
 
 `#export` on a function marks it as part of a library or program's public interface.
 This is placed after the identifier in a declaration.

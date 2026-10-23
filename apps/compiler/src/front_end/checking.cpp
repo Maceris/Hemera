@@ -30,6 +30,8 @@ namespace hemera {
 	struct Local {
 		InternedString name = nullptr;
 		Value value;
+		// Its name's hygiene mark: a macro's local is seen only by code the same expansion wrote (docs/compilation.md, Macros)
+		uint32_t mark = 0;
 	};
 
 	struct Scope {
@@ -169,9 +171,17 @@ namespace hemera {
 	}
 
 	std::string inserted_note(const ast::Origin& origin) {
+		// A long chain, from macros expanding many times, shows its latest sites and the first
+		static constexpr size_t SHOWN = 4;
 		std::string note;
-		for (auto site = origin.inserted.rbegin(); site != origin.inserted.rend(); ++site) {
-			note += std::format("; inserted at {}({},{})", site->file, site->line, site->column);
+		const size_t count = origin.inserted.size();
+		for (size_t i = count; i-- > 0;) {
+			if (count > SHOWN + 1 && i == count - SHOWN - 1) {
+				note += std::format("; ... {} more", count - SHOWN - 1);
+				i = 0;
+			}
+			const ast::InsertionSite& site = origin.inserted[i];
+			note += std::format("; inserted at {}({},{})", site.file, site.line, site.column);
 		}
 		return note;
 	}
@@ -227,13 +237,17 @@ namespace hemera {
 			store_checked(checker.record->nodes[static_cast<const ast::Node*>(at)], value);
 			checker.record->local_depths[at] = checker.scopes.size();
 		}
-		checker.scopes.back().locals.push_back({ name, std::move(value) });
+		const uint32_t mark = checker.walk.executor.program_info->made_nodes.mark_of(static_cast<const ast::Node*>(at));
+		checker.scopes.back().locals.push_back({ name, std::move(value), mark });
 	}
 
-	static const Local* find_local(const Checker& checker, InternedString name) {
+	// The local a name used at a node refers to, written by the same macro expansion as it, or null.
+	static const Local* find_local(const Checker& checker, const ast::Node* use) {
+		const InternedString name = use->value.value;
+		const uint32_t mark = checker.walk.executor.program_info->made_nodes.mark_of(use);
 		for (auto scope = checker.scopes.rbegin(); scope != checker.scopes.rend(); ++scope) {
 			for (auto local = scope->locals.rbegin(); local != scope->locals.rend(); ++local) {
-				if (*local->name == *name) {
+				if (local->mark == mark && *local->name == *name) {
 					return &*local;
 				}
 			}
@@ -703,7 +717,7 @@ namespace hemera {
 			result = type_value(node->type);
 			return Progress::DONE;
 		}
-		if (const Local* local = find_local(checker, name)) {
+		if (const Local* local = find_local(checker, node)) {
 			result = local->value;
 			return Progress::DONE;
 		}
@@ -1762,7 +1776,7 @@ namespace hemera {
 				&& parameter->type->children.empty();
 			if (compile_time && !takes_type && !positional.has_value) {
 				// A compile-time value: a constant, which the instance is made for (docs/types.md)
-				if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument->value.value) != nullptr
+				if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument) != nullptr
 					&& !checker.walk.generic_values.contains(text_of(argument->value.value))) {
 					error_at(checker, ErrorCode::E4010, argument, std::format("{} is passed to {}, a compile-time parameter, so it must be a constant, not a variable",
 						text_of(argument->value.value), name));
@@ -2403,7 +2417,7 @@ namespace hemera {
 			head.next = next;
 		}
 		if (type_head && next < node->children.size()
-			&& ast::NodeType::ARRAY_DIMENSION == node->children[next]->node_type && find_local(checker, node->value.value) == nullptr) {
+			&& ast::NodeType::ARRAY_DIMENSION == node->children[next]->node_type && find_local(checker, node) == nullptr) {
 			TypeInfo* type = nullptr;
 			progress = check_type(checker, node, Need::DECLARED, type);
 			if (progress == Progress::FAILED) {
@@ -2466,7 +2480,7 @@ namespace hemera {
 					// Generic arguments given explicitly, like empty[string]() or push[u8, 4](...)
 					for (ast::Node* argument : arguments) {
 						if (generic_takes_value(checker.walk.executor.program_info->names, value.declaration, value.generic_arguments.size())) {
-							if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument->value.value) != nullptr
+							if (ast::NodeType::IDENTIFIER == argument->node_type && find_local(checker, argument) != nullptr
 								&& !checker.walk.generic_values.contains(text_of(argument->value.value))) {
 								error_at(checker, ErrorCode::E4010, argument, std::format(
 									"{} is a variable, but a generic argument that's a value must be a constant", text_of(argument->value.value)));
@@ -3681,6 +3695,14 @@ namespace hemera {
 	static Progress check_quote(Checker& checker, ast::Node* node, Value& result);
 	static Progress insert_code(Checker& checker, ast::Node* insert, ast::Node*& inserted);
 	static void become(Checker& checker, ast::Node* node, const ast::Node* inserted);
+	static bool is_macro_call(const ast::Node* node);
+	static Progress expand_macro(Checker& checker, ast::Node* node);
+
+	// #insert, or the #expand a macro call becomes
+	static bool is_insertion(const ast::Node* node) {
+		return ast::NodeType::DIRECTIVE == node->node_type
+			&& (is_text(node->value.value, "#insert") || is_text(node->value.value, "#expand"));
+	}
 
 	static bool is_assign(const ast::Node* node);
 
@@ -3773,6 +3795,13 @@ namespace hemera {
 			return check_literal(checker, node, result);
 		}
 		if (ast::NodeType::IDENTIFIER == type) {
+			if (is_macro_call(node)) {
+				Progress progress = expand_macro(checker, node);
+				if (progress != Progress::DONE) {
+					return progress == Progress::FAILED ? Progress::DONE : progress;
+				}
+				return check_expression(checker, node, expected, result);
+			}
 			return check_postfix(checker, node, result);
 		}
 		if (ast::NodeType::TYPE == type) {
@@ -3832,7 +3861,7 @@ namespace hemera {
 			if (is_text(node->value.value, "#code")) {
 				return check_quote(checker, node, result);
 			}
-			if (is_text(node->value.value, "#insert")) {
+			if (is_insertion(node)) {
 				ast::Node* inserted = nullptr;
 				Progress progress = insert_code(checker, node, inserted);
 				if (progress != Progress::DONE) {
@@ -3840,8 +3869,9 @@ namespace hemera {
 					return progress == Progress::FAILED ? Progress::DONE : progress;
 				}
 				if (ast::NodeType::BLOCK == inserted->node_type || is_code_list(inserted)) {
-					result = error_at(checker, ErrorCode::E4014, node, std::format("#insert puts {} here, where an expression goes: "
-						"quote an expression, with #code(...)", is_code_list(inserted) ? "a list" : "statements"));
+					result = error_at(checker, ErrorCode::E4014, node, std::format("{} puts {} here, where an expression goes: "
+						"quote an expression, with #code(...)", is_text(node->value.value, "#expand") ? "the macro" : "#insert",
+						is_code_list(inserted) ? "a list" : "statements"));
 					return Progress::DONE;
 				}
 				become(checker, node, inserted);
@@ -3998,7 +4028,8 @@ namespace hemera {
 		const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
 		ast::InsertionSite site{ origin != nullptr ? origin->file : checker.walk.file_path, insert->value.line_number,
 			insert->value.column_number };
-		inserted = const_cast<ast::Node*>(copy_to_insert(program->made_nodes, program->quotes, tree, site));
+		inserted = const_cast<ast::Node*>(copy_to_insert(program->made_nodes, program->quotes, tree, site, origin.get(),
+			is_text(insert->value.value, "#expand")));
 		if (inserted == nullptr) {
 			return Progress::FAILED;
 		}
@@ -4014,6 +4045,153 @@ namespace hemera {
 		node->children = inserted->children;
 		ast::NodeStore& made = checker.walk.executor.program_info->made_nodes;
 		made.set_origin(node, made.origin(inserted));
+	}
+
+	// How many insertions deep code can be put, so a macro that expands to itself stops
+	static constexpr size_t MAX_INSERTION_DEPTH = 64;
+
+	// Where a macro call's ! is, name!(arguments) or package.name!(arguments), or the end if it isn't one.
+	static size_t macro_bang(const ast::Node* node) {
+		for (size_t i = 0; i + 1 < node->children.size(); ++i) {
+			const ast::Node* child = node->children[i];
+			if (ast::NodeType::UNARY_OPERATOR == child->node_type && TokenType::OPERATOR_NOT == child->value.type
+				&& child->children.empty() && ast::NodeType::PAREN_GROUP == node->children[i + 1]->node_type) {
+				return i;
+			}
+		}
+		return node->children.size();
+	}
+
+	static bool is_macro_call(const ast::Node* node) {
+		return ast::NodeType::IDENTIFIER == node->node_type && macro_bang(node) < node->children.size();
+	}
+
+	// The #inserts in a macro's argument, which splice into it as in a quote, not counting those in a #code within it.
+	static void argument_splices(ast::Node* node, std::vector<ast::Node*>& found) {
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::DIRECTIVE == child->node_type) {
+				if (is_text(child->value.value, "#insert")) {
+					found.push_back(child);
+					continue;
+				}
+				if (is_text(child->value.value, "#code")) {
+					continue;
+				}
+			}
+			argument_splices(child, found);
+		}
+	}
+
+	/*
+	 * A macro call, name!(arguments) (docs/compilation.md, Macros), becomes #expand of a call to the #macro
+	 * function, run at compile time like #insert's, each argument for a compiler.Code parameter quoted as
+	 * the caller's code. What it gives is put in place hygienically. FAILED once reported.
+	 */
+	static Progress expand_macro(Checker& checker, ast::Node* node) {
+		ProgramInfo* program = checker.walk.executor.program_info;
+		ast::NodeStore& made = program->made_nodes;
+		const size_t bang = macro_bang(node);
+		const std::shared_ptr<const ast::Origin> origin = made.origin(node);
+		if (origin != nullptr && origin->inserted.size() >= MAX_INSERTION_DEPTH) {
+			error_at(checker, ErrorCode::E4039, node, std::format("macros expand {} deep here; one may be expanding to itself",
+				MAX_INSERTION_DEPTH));
+			return Progress::FAILED;
+		}
+		ast::Node* qualifier = bang == 2 && ast::NodeType::DOT_ACCESS == node->children[0]->node_type
+			&& ast::NodeType::IDENTIFIER == node->children[1]->node_type ? node->children[1] : nullptr;
+		if (bang != 0 && qualifier == nullptr) {
+			error_at(checker, ErrorCode::E4039, node, "a macro is called by its name, or package.name: name!(...)");
+			return Progress::FAILED;
+		}
+		size_t end = bang + 2;
+		while (end < node->children.size() && !is_postfix_marker(node->children[end])) {
+			++end;
+		}
+		if (end != node->children.size()) {
+			error_at(checker, ErrorCode::E4039, node->children[end], "nothing can follow a macro call");
+			return Progress::FAILED;
+		}
+		bool head_was_package = false;
+		Progress progress = require_qualified(checker.walk, node, node->value.value, qualifier, Need::RESOLVED, head_was_package);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		const ast::Node* named = head_was_package ? qualifier : node;
+		auto bound = checker.walk.bindings.find(named);
+		Declaration* macro = bound != checker.walk.bindings.end() ? bound->second : nullptr;
+		if (macro == nullptr || !is_macro_function(macro)) {
+			error_at(checker, ErrorCode::E4039, node, std::format("{} isn't a #macro; call it without !", text_of(named->value.value)));
+			return Progress::FAILED;
+		}
+		auto function = static_cast<TypeInfoFunction const*>(macro->value_type != nullptr ? get_base_type(macro->value_type) : nullptr);
+		if (function == nullptr || TypeInfoVariant::FUNCTION != function->variant) {
+			error_at(checker, ErrorCode::E4024, node, "a generic macro isn't supported yet");
+			return Progress::FAILED;
+		}
+		TypeInfo* code = nullptr;
+		progress = base_type(checker, node, "compiler", "Code", code);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		// The call, without the !, its compiler.Code arguments quoted
+		const std::string file = origin != nullptr ? origin->file : checker.walk.file_path;
+		std::vector<ast::Node*> children(node->children.begin(), node->children.end());
+		children.erase(children.begin() + static_cast<std::ptrdiff_t>(bang));
+		size_t position = 0;
+		ast::Node* call = nullptr;
+		{
+			const std::unique_lock<std::mutex> lock = made.hold();
+			for (size_t i = bang + 1; i < children.size(); ++i) {
+				ast::Node** argument = &children[i];
+				TypeInfo* parameter = nullptr;
+				if (ast::NodeType::BINARY_OPERATOR == (*argument)->node_type && is_assign(*argument) && (*argument)->children.size() == 2
+					&& ast::NodeType::IDENTIFIER == (*argument)->children[0]->node_type) {
+					const InternedString name = (*argument)->children[0]->value.value;
+					for (const FunctionInput& input : function->input) {
+						if (input.name != nullptr && *input.name == *name) {
+							parameter = input.type;
+						}
+					}
+					argument = &(*argument)->children[1];
+				}
+				else if (position < function->input.size()) {
+					parameter = function->input[position++].type;
+				}
+				if (parameter == nullptr || get_base_type(parameter) != get_base_type(code)) {
+					continue;
+				}
+				Token word = (*argument)->value;
+				word.type = TokenType::DIRECTIVE;
+				word.value = intern(std::string("#code"));
+				ast::Node* quote = made.make(ast::NodeType::DIRECTIVE, word);
+				std::vector<ast::Node*> splices;
+				if (is_insertion(*argument)) {
+					splices.push_back(*argument);
+				}
+				else {
+					argument_splices(*argument, splices);
+				}
+				for (ast::Node* splice : splices) {
+					if (!splice->children.empty()) {
+						quote->children.push_back(splice->children.front());
+						splice->children.erase(splice->children.begin());
+					}
+				}
+				program->quotes.set(quote, *argument, file, true);
+				*argument = quote;
+			}
+			call = made.make(ast::NodeType::IDENTIFIER, node->value);
+			call->children.assign(children.begin(), children.end());
+		}
+		if (origin != nullptr) {
+			made.set_origin(call, origin);
+		}
+		node->node_type = ast::NodeType::DIRECTIVE;
+		node->value.type = TokenType::DIRECTIVE;
+		node->value.value = intern(std::string("#expand"));
+		node->children.clear();
+		node->children.push_back(call);
+		return Progress::DONE;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -5167,7 +5345,7 @@ namespace hemera {
 				return statement->children.empty() ? Progress::DONE
 					: check_expression(checker, statement->children[0], nullptr, ignored);
 			}
-			if (is_text(statement->value.value, "#insert")) {
+			if (is_insertion(statement)) {
 				ast::Node* inserted = nullptr;
 				Progress progress = insert_code(checker, statement, inserted);
 				if (progress != Progress::DONE) {
@@ -5252,9 +5430,18 @@ namespace hemera {
 		bool reported = false;
 		for (size_t i = 0; i < block->children.size(); ++i) {
 			ast::Node* statement = block->children[i];
+			// A macro call, as #insert of what the macro gives
+			if (is_macro_call(statement)) {
+				Progress progress = expand_macro(checker, statement);
+				if (progress == Progress::FAILED) {
+					continue;
+				}
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+			}
 			// #insert: the statements it puts here, among the block's, so what they define is seen after them
-			if (ast::NodeType::DIRECTIVE == statement->node_type && is_text(statement->value.value, "#insert")
-				&& !statement->children.empty()) {
+			if (is_insertion(statement) && !statement->children.empty()) {
 				ast::Node* inserted = nullptr;
 				Progress progress = insert_code(checker, statement, inserted);
 				if (progress == Progress::FAILED) {
@@ -5421,7 +5608,7 @@ namespace hemera {
 				 */
 				if (ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
 					auto derived = checker.walk.generic_values.find(text_of(parameter->value.value));
-					if (derived == checker.walk.generic_values.end() || find_local(checker, parameter->value.value) != nullptr) {
+					if (derived == checker.walk.generic_values.end() || find_local(checker, parameter) != nullptr) {
 						continue;
 					}
 					Value constant;
@@ -5447,7 +5634,7 @@ namespace hemera {
 				}
 				ast::Node* name = parameter->children[0];
 				auto value = checker.walk.generic_values.find(text_of(name->value.value));
-				if (value == checker.walk.generic_values.end() || find_local(checker, name->value.value) != nullptr) {
+				if (value == checker.walk.generic_values.end() || find_local(checker, name) != nullptr) {
 					continue;
 				}
 				TypeInfo* type = nullptr;
