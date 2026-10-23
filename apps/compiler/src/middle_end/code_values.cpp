@@ -182,7 +182,8 @@ namespace hemera {
 				result->type = node->type;
 				const bool nested_quote = is_directive(node, "#code");
 				for (const ast::Node* child : node->children) {
-					if (splicing && !nested_quote && is_directive(child, "#insert") && child->children.empty()) {
+					// Every #insert in a quote's tree is a place to splice, its operand gone to the #code node
+					if (splicing && !nested_quote && is_directive(child, "#insert")) {
 						if (next >= spliced.size()) {
 							continue;
 						}
@@ -190,9 +191,16 @@ namespace hemera {
 						if (value == nullptr) {
 							continue;
 						}
-						if (ast::NodeType::BLOCK == node->node_type && ast::NodeType::BLOCK == value->node_type) {
-							for (ast::Node* statement : value->children) {
-								result->children.push_back(statement);
+						// A type given with mut, like ptr[mut #insert T], is given with mut
+						for (const ast::Node* marker : child->children) {
+							if (ast::NodeType::MUTABLE == marker->node_type && ast::NodeType::TYPE == value->node_type) {
+								value->children.insert(value->children.begin(), copy(marker, false));
+							}
+						}
+						const bool statements = ast::NodeType::BLOCK == node->node_type && ast::NodeType::BLOCK == value->node_type;
+						if (statements || is_code_list(value)) {
+							for (ast::Node* item : value->children) {
+								result->children.push_back(item);
 							}
 							continue;
 						}
@@ -225,6 +233,84 @@ namespace hemera {
 			return spliced.empty() ? nullptr : copier.spliced_node(tree->value, spliced[0]);
 		}
 		return copier.copy(tree, true);
+	}
+
+	bool is_code_list(const ast::Node* tree) {
+		return tree != nullptr && ast::NodeType::LIST == tree->node_type && tree->value.value != nullptr
+			&& *tree->value.value == CODE_LIST;
+	}
+
+	namespace {
+		// A node of code made from a value, from file, at line.
+		ast::Node* made(ast::NodeStore& nodes, const std::shared_ptr<const ast::Origin>& origin, ast::NodeType type,
+			TokenType token_type, std::string_view text, uint32_t line) {
+			ast::Node* node = nodes.make(type, Token(token_type, 0, line, text.empty() ? nullptr : intern(std::string(text))));
+			nodes.set_origin(node, origin);
+			return node;
+		}
+
+		std::shared_ptr<const ast::Origin> origin_in(const std::string& file) {
+			auto origin = std::make_shared<ast::Origin>();
+			origin->file = file;
+			return origin;
+		}
+	}
+
+	const ast::Node* make_name(ast::NodeStore& nodes, std::string_view name, const std::string& file, uint32_t line) {
+		const std::unique_lock<std::mutex> lock = nodes.hold();
+		return made(nodes, origin_in(file), ast::NodeType::IDENTIFIER, TokenType::IDENTIFIER, name, line);
+	}
+
+	const ast::Node* make_value(ast::NodeStore& nodes, ast::QuoteTable& quotes, const Spliced& value, const std::string& file,
+		uint32_t line) {
+		const std::vector<Spliced> none;
+		const std::unique_lock<std::mutex> lock = nodes.hold();
+		Copier copier{ nodes, quotes, none, origin_in(file) };
+		return copier.spliced_node(Token(TokenType::IDENTIFIER, 0, line), value);
+	}
+
+	const ast::Node* make_list(ast::NodeStore& nodes, const std::vector<const ast::Node*>& items, const std::string& file,
+		uint32_t line) {
+		const std::unique_lock<std::mutex> lock = nodes.hold();
+		ast::Node* list = made(nodes, origin_in(file), ast::NodeType::LIST, TokenType::IDENTIFIER, CODE_LIST, line);
+		for (const ast::Node* item : items) {
+			// Trees never change once made, so a list can hold another Code's; statements are each an item
+			if (ast::NodeType::BLOCK == item->node_type || is_code_list(item)) {
+				for (ast::Node* statement : item->children) {
+					list->children.push_back(statement);
+				}
+				continue;
+			}
+			list->children.push_back(const_cast<ast::Node*>(item));
+		}
+		return list;
+	}
+
+	const ast::Node* make_parameters(ast::NodeStore& nodes, TypeInfoFunction const* function, bool as_arguments,
+		const std::string& file, uint32_t line) {
+		const std::unique_lock<std::mutex> lock = nodes.hold();
+		const std::shared_ptr<const ast::Origin> origin = origin_in(file);
+		ast::Node* list = made(nodes, origin, ast::NodeType::LIST, TokenType::IDENTIFIER, CODE_LIST, line);
+		for (size_t i = 0; i < function->input.size(); ++i) {
+			const FunctionInput& input = function->input[i];
+			const std::string name = input.name != nullptr ? std::string(*input.name) : std::format("p{}", i);
+			ast::Node* name_node = made(nodes, origin, ast::NodeType::IDENTIFIER, TokenType::IDENTIFIER, name, line);
+			if (as_arguments) {
+				list->children.push_back(name_node);
+				continue;
+			}
+			// name: Type, the type as itself
+			ast::Node* parameter = made(nodes, origin, ast::NodeType::COLON, TokenType::SYM_COLON, "", line);
+			ast::Node* type = made(nodes, origin, ast::NodeType::TYPE, TokenType::IDENTIFIER, to_string(input.type), line);
+			type->type = input.type;
+			parameter->children.push_back(name_node);
+			parameter->children.push_back(type);
+			if (input.is_varargs) {
+				parameter->children.push_back(made(nodes, origin, ast::NodeType::ELLIIPSIS, TokenType::SYM_ELLIPSIS, "", line));
+			}
+			list->children.push_back(parameter);
+		}
+		return list;
 	}
 
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,

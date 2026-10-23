@@ -57,6 +57,33 @@ namespace hemera {
 		const ast::InsertionSite& site);
 
 	/// <summary>
+	/// The word a list of code is marked with, a LIST's: inserted, its items go in its place, each as one of
+	/// what holds it (compiler.list).
+	/// </summary>
+	constexpr std::string_view CODE_LIST = "#list";
+
+	/// <summary>
+	/// Whether a tree is a list of code, whose items go where it's inserted.
+	/// </summary>
+	bool is_code_list(const ast::Node* tree);
+
+	/// <summary>
+	/// Code made from a value rather than quoted (compiler.name, literal, type_code, list, parameters,
+	/// arguments), its nodes made in nodes and coming from file, the code making it, at line.
+	/// </summary>
+	const ast::Node* make_name(ast::NodeStore& nodes, std::string_view name, const std::string& file, uint32_t line);
+	const ast::Node* make_value(ast::NodeStore& nodes, ast::QuoteTable& quotes, const Spliced& value, const std::string& file,
+		uint32_t line);
+	const ast::Node* make_list(ast::NodeStore& nodes, const std::vector<const ast::Node*>& items, const std::string& file,
+		uint32_t line);
+	/// <summary>
+	/// A function type's parameters, as a list of parameters (name: Type), or their names, as a list of
+	/// arguments. A parameter without a name is called p and its place, like p0.
+	/// </summary>
+	const ast::Node* make_parameters(ast::NodeStore& nodes, TypeInfoFunction const* function, bool as_arguments,
+		const std::string& file, uint32_t line);
+
+	/// <summary>
 	/// Prints what was inserted at site, if the command line asks to see what's inserted there
 	/// (--show-inserted=file:line).
 	/// </summary>

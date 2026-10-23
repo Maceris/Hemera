@@ -885,7 +885,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "insert_wrong_members", hemera::ErrorCode::E4014 },
 		{ "insert_in_generic_type", hemera::ErrorCode::E4024 },
 		{ "insert_needs_itself", hemera::ErrorCode::E4007 },
-		{ "insert_shadows_builtin", hemera::ErrorCode::E4012 }
+		{ "insert_shadows_builtin", hemera::ErrorCode::E4012 },
+		{ "name_not_identifier", hemera::ErrorCode::E4029 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

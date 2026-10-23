@@ -31,6 +31,7 @@ TESTS = [
     ("code_values", [], 42),
     ("inserted_code", [], 42),
     ("inserted_declarations", [], 42),
+    ("generated_functions", [], 42),
     ("format", [], 42),
     ("using_fields", [], 42),
     ("mut_arguments", [], 42),

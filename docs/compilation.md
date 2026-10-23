@@ -194,6 +194,55 @@ Point :: struct {
 The words are only special right after `#code`, so `#code(Point.{})` and a struct's own `fields` mean what they always
 do.
 
+### Making and Inspecting Code
+
+In a quote, `#insert` also puts a declaration's name in place (`#insert name :: fn() {...}`), parameters in a
+parameter list (`fn(#insert parameters)`), arguments in a call (`f(#insert arguments)`) and a type where one goes
+(`-> #insert T`, `ptr[mut #insert T]`). `base/compiler` makes the code for those from values, for what a quote can't say,
+like a name from a table:
+
+| Function | Makes |
+|---|---|
+| `compiler.name(text)` | A name, which is only ever an identifier: anything else is an error there |
+| `compiler.literal(value)` | A literal of a number, boolean, character, string or enum member |
+| `compiler.type_code(T)` | A type, as itself |
+| `compiler.list(items)` | A list, whose items go in its place, each one of what holds it: arguments, parameters, statements. Statements given are each an item |
+| `compiler.parameters(F)`, `compiler.arguments(F)` | A function type's parameters as a parameter list, and their names as arguments |
+| `compiler.described_type(info)` | The type a `ptr[TypeInfo]` describes, for what takes a `type` |
+
+Each comes from where it's called, which is where an error in it is reported. Text never becomes code any other way:
+there's no parsing a string, so what's generated is always Hemera the compiler has parsed or built.
+
+```
+Calls :: struct {
+    add : fn(a: int, b: int) -> int,
+    negate : fn(value: int) -> int,
+}
+
+// A function per call, passing its number and arguments on to dispatch
+stubs :: fn() -> compiler.Code {
+    info :: cast[ptr[compiler.TypeInfoStruct]](type_info_of(Calls))
+    made : compiler.Code[..]
+    for member, i in info.members {
+        function :: compiler.described_type(member.member_type)
+        array_add(&made, #code {
+            #insert compiler.name(member.name) :: fn(#insert compiler.parameters(function)) -> int {
+                return dispatch(#insert i, #insert compiler.arguments(function))
+            }
+        })
+    }
+    return compiler.list(made)
+}
+
+#insert stubs()     // add and negate
+```
+
+Code that takes code can look at it: `compiler.code_kind(code)` says what it is (an expression, statements, a name, a
+type, a literal, a list, or fields, variants, members, patterns or cases), `identifier_of` gives a name's text,
+`items_of` the items of statements, a list and the rest, and `location_of` where it was written or made.
+
+### The Top Level
+
 At the top level, an `#insert` may declare any name, so a name the package doesn't declare otherwise waits for it, as it
 waits for an `#if` that may declare it. A name a file imports, or a builtin, is used without waiting; if code inserted
 in the package turns out to declare it too, that's an error, since the package's own would have been meant. Code an

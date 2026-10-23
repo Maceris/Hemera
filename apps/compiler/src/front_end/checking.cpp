@@ -3839,9 +3839,9 @@ namespace hemera {
 					result = poisoned();
 					return progress == Progress::FAILED ? Progress::DONE : progress;
 				}
-				if (ast::NodeType::BLOCK == inserted->node_type) {
-					result = error_at(checker, ErrorCode::E4014, node, "#insert puts statements here, where an expression goes: "
-						"quote an expression, with #code(...)");
+				if (ast::NodeType::BLOCK == inserted->node_type || is_code_list(inserted)) {
+					result = error_at(checker, ErrorCode::E4014, node, std::format("#insert puts {} here, where an expression goes: "
+						"quote an expression, with #code(...)", is_code_list(inserted) ? "a list" : "statements"));
 					return Progress::DONE;
 				}
 				become(checker, node, inserted);
@@ -5265,7 +5265,7 @@ namespace hemera {
 				}
 				auto at = block->children.begin() + static_cast<std::ptrdiff_t>(i);
 				at = block->children.erase(at);
-				if (ast::NodeType::BLOCK == inserted->node_type) {
+				if (ast::NodeType::BLOCK == inserted->node_type || is_code_list(inserted)) {
 					block->children.insert(at, inserted->children.begin(), inserted->children.end());
 				}
 				else {

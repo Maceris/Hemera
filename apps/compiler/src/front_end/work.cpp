@@ -137,7 +137,7 @@ namespace hemera {
 			return Progress::FAILED;
 		}
 		show_inserted(executor.global_data->options, site, inserted, program->quotes);
-		if (ast::NodeType::BLOCK != inserted->node_type) {
+		if (ast::NodeType::BLOCK != inserted->node_type && !is_code_list(inserted)) {
 			report_at(ErrorCode::E4014, file_path, &program->made_nodes, inserted,
 				"#insert at the top level puts declarations there: quote them with #code { ... }");
 			return Progress::FAILED;

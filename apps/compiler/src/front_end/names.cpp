@@ -1809,8 +1809,10 @@ namespace hemera {
 		}
 		tree = evaluation->value.code;
 		if (tree == nullptr) {
-			report_at(ErrorCode::E4029, walk.file_path, &walk.executor.program_info->made_nodes, insert,
-				"#insert's code gave a compiler.Code that holds no code");
+			if (!evaluation->value.code_reported) {
+				report_at(ErrorCode::E4029, walk.file_path, &walk.executor.program_info->made_nodes, insert,
+					"#insert's code gave a compiler.Code that holds no code");
+			}
 			return Progress::FAILED;
 		}
 		return Progress::DONE;

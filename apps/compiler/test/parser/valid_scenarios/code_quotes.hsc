@@ -28,6 +28,13 @@ results :: #code patterns {
     }
     #insert others
 }
+// Names, parameters and types inserted, in a quote
+stub :: #code {
+    #insert name :: fn(#insert parameters, last: u8) -> #insert result {
+        pointer : ptr[mut #insert element]
+        return target(#insert arguments)
+    }
+}
 numbers :: #code cases {
     case 1, 2:
         small()

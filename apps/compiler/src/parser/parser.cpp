@@ -294,6 +294,7 @@ namespace hemera::parser {
 	}
 
 	static bool is_insert(ParserState* state);
+	static ExprResult insert_type(ParserState* state, ast::Node* mut);
 
 	// An import, unless import is the name of a declaration (import :: ..., import #export : ...).
 	static bool is_import(ParserState* state) {
@@ -484,6 +485,12 @@ namespace hemera::parser {
 						return false;
 					}
 					directive.children.push_back(expr.result);
+					if (directive.value.value->compare("#insert") == 0 && expect(state, TokenType::SYM_COLON)) {
+						parent.children.pop_back();
+						if (!inserted_name_definition(state, parent, directive)) {
+							return false;
+						}
+					}
 				}
 				continue;
 			}
@@ -865,6 +872,9 @@ namespace hemera::parser {
 			expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state);
 		}
+		if (is_insert(state)) {
+			return insert_type(state, nullptr);
+		}
 		// void as a type, like Result[void, MapError]: a result with nothing on success
 		if (expect(state, TokenType::KEYWORD_VOID)) {
 			return ExprResult{ true, &next_as_node(state, ast::NodeType::VOID) };
@@ -904,6 +914,9 @@ namespace hemera::parser {
 
 		if (expect(state, TokenType::KEYWORD_MUT)) {
 			mut = &next_as_node(state, ast::NodeType::MUTABLE);
+		}
+		if (is_insert(state)) {
+			return insert_type(state, mut);
 		}
 
 		if (!expect(state, TokenType::IDENTIFIER)) {
@@ -1087,7 +1100,16 @@ namespace hemera::parser {
 			|| TokenType::KEYWORD_MUT == token_type
 			|| TokenType::SYM_LPAREN == token_type
 			|| TokenType::KEYWORD_FN == token_type
+			|| is_insert(state)
 			) {
+
+			if (is_insert(state)) {
+				if (!insert_item(state, node)) {
+					return false;
+				}
+				token_type = current_token(state).type;
+				continue;
+			}
 
 			if (expect(state, TokenType::KEYWORD_FN)) {
 				// Missing paren for a function without an identifier
@@ -1190,6 +1212,7 @@ namespace hemera::parser {
 						&& !expect(state, TokenType::KEYWORD_MUT)
 						&& !expect(state, TokenType::IDENTIFIER)
 						&& !expect(state, TokenType::KEYWORD_FN)
+						&& !is_insert(state)
 						) {
 						report_error_on_last_token(state, ErrorCode::E3016);
 						return false;
@@ -1274,6 +1297,14 @@ namespace hemera::parser {
 	}
 
 	bool function_output_list(ParserState* state, ast::Node& parent) {
+		if (is_insert(state)) {
+			ExprResult inserted = insert_type(state, nullptr);
+			if (!inserted.success) {
+				return false;
+			}
+			parent.children.push_back(inserted.result);
+			return true;
+		}
 		if (expect(state, TokenType::KEYWORD_VOID)) {
 			accept(state, TokenType::KEYWORD_VOID, ast::NodeType::VOID, parent);
 			return true;
@@ -1542,6 +1573,10 @@ namespace hemera::parser {
 					return false;
 				}
 				directive.children.push_back(expr.result);
+				if (directive.value.value->compare("#insert") == 0 && expect(state, TokenType::SYM_COLON)) {
+					parent.children.pop_back();
+					return inserted_name_definition(state, parent, directive);
+				}
 			}
 			return true;
 		}
@@ -2569,6 +2604,38 @@ namespace hemera::parser {
 	}
 
 	/*
+	 * A definition whose name an #insert puts there, like #insert name :: fn() {...} in a quote: the
+	 * #insert, already parsed, is its names.
+	 */
+	bool inserted_name_definition(ParserState* state, ast::Node& parent, ast::Node& insert) {
+		ExprResult definition = definition_after_names(state, parent, insert);
+		if (!definition.success) {
+			return false;
+		}
+		if (expect(state, TokenType::SYM_COLON)) {
+			return const_definition_rhs(state, *definition.result);
+		}
+		if (expect(state, TokenType::OPERATOR_ASSIGN)) {
+			return mut_definition_rhs(state, *definition.result);
+		}
+		return true;
+	}
+
+	// An #insert where a type goes, given with mut if it was: a MUTABLE after its operand.
+	static ExprResult insert_type(ParserState* state, ast::Node* mut) {
+		ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE);
+		ExprResult operand = insert_operand(state);
+		if (!operand.success) {
+			return ExprResult{ false };
+		}
+		directive.children.push_back(operand.result);
+		if (mut != nullptr) {
+			directive.children.push_back(mut);
+		}
+		return ExprResult{ true, &directive };
+	}
+
+	/*
 	 * The #insert directives in a quote's tree, in order, not counting those inside a #code within it,
 	 * which belong to that quote.
 	 */
@@ -2659,11 +2726,12 @@ namespace hemera::parser {
 		else {
 			find_splices(tree, splices);
 		}
+		// Each operand goes to the #code node; what follows it, like a type's mut, stays
 		for (ast::Node* splice : splices) {
-			for (ast::Node* child : splice->children) {
-				quote.children.push_back(child);
+			if (!splice->children.empty()) {
+				quote.children.push_back(splice->children.front());
+				splice->children.erase(splice->children.begin());
 			}
-			splice->children.clear();
 		}
 		if (state->quotes != nullptr) {
 			state->quotes->set(&quote, tree, state->file_path);

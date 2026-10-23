@@ -111,6 +111,7 @@ namespace hemera::parser {
 	ExprResult code_quote(ParserState* state, ast::Node& quote);
 	ExprResult insert_operand(ParserState* state);
 	bool insert_item(ParserState* state, ast::Node& parent);
+	bool inserted_name_definition(ParserState* state, ast::Node& parent, ast::Node& insert);
 	bool match_arms(ParserState* state, ast::Node& cases);
 	bool switch_cases(ParserState* state, ast::Node& cases);
 	ExprResult if_expression(ParserState* state);

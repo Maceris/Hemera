@@ -2605,6 +2605,8 @@ namespace hemera {
 		 * within the run, so a handle doesn't depend on what ran meanwhile on other threads.
 		 */
 		std::vector<const ast::Node*> codes = {};
+		// One of base/compiler's code functions reported why it couldn't make code
+		bool code_reported = false;
 	};
 	static thread_local ServiceScope* service_scope = nullptr;
 
@@ -2775,6 +2777,7 @@ namespace hemera {
 							uint64_t handle = 0;
 							std::memcpy(&handle, bytes, sizeof(handle));
 							item.result->code = handle == 0 || handle > scope.codes.size() ? nullptr : scope.codes[handle - 1];
+							item.result->code_reported = scope.code_reported;
 							continue;
 						}
 						const bool kept = capture_pointed(generator, item.type, item.result->bytes.data(), 0, *item.result, item.node);
@@ -8476,6 +8479,7 @@ namespace hemera {
 			const TypeInfo* base_type = type != nullptr ? get_base_type(type) : nullptr;
 			if (base_type == nullptr || data == nullptr) {
 				report_error(ErrorCode::E4029, call.file, 0, 0, "#insert was given something without a type");
+				service_scope->code_reported = true;
 				return false;
 			}
 			const TypeInfo* code = code_type(call);
@@ -8513,6 +8517,7 @@ namespace hemera {
 				}
 				if (!std::isfinite(spliced.floating)) {
 					report_error(ErrorCode::E4029, call.file, 0, 0, std::format("#insert can't make a literal of {}", spliced.floating));
+					service_scope->code_reported = true;
 					return false;
 				}
 				return true;
@@ -8544,9 +8549,195 @@ namespace hemera {
 				}
 				report_error(ErrorCode::E4029, call.file, 0, 0, std::format("#insert was given {} {}, which isn't one of its members",
 					to_string(type), bits));
+				service_scope->code_reported = true;
 				return false;
 			}
 			report_error(ErrorCode::E4029, call.file, 0, 0, std::format("#insert can't put {} into code", to_string(type)));
+			service_scope->code_reported = true;
+			return false;
+		}
+
+		// A new Code this run made, holding tree: its handle, 0 for none.
+		uint64_t keep_code(const ast::Node* tree) {
+			if (tree == nullptr) {
+				return 0;
+			}
+			service_scope->codes.push_back(tree);
+			return service_scope->codes.size();
+		}
+
+		// Whether text is a name: letters, digits and _, not starting with a digit, and not a keyword or _ alone.
+		bool is_identifier(std::string_view text) {
+			static constexpr std::string_view KEYWORDS[] = {
+				"auto_cast", "bit_cast", "break", "case", "cast", "continue", "defer", "distinct", "else", "enum", "false",
+				"fn", "for", "if", "is_none", "is_some", "loop", "match", "mut", "null", "or_break", "or_continue",
+				"or_else", "or_return", "push_context", "return", "struct", "switch", "true", "union", "using", "void",
+				"while", "with",
+			};
+			if (text.empty() || text == "_" || std::isdigit(static_cast<unsigned char>(text[0])) != 0) {
+				return false;
+			}
+			for (const char c : text) {
+				if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
+					return false;
+				}
+			}
+			return std::find(std::begin(KEYWORDS), std::end(KEYWORDS), text) == std::end(KEYWORDS);
+		}
+
+		// What a piece of code is, base/compiler's CodeKind, by its tree's root.
+		uint64_t code_kind_of(const ast::Node* tree) {
+			const std::string_view word = tree->value.value != nullptr ? std::string_view(*tree->value.value) : std::string_view();
+			if (ast::NodeType::BLOCK == tree->node_type) {
+				return 1;
+			}
+			if (ast::NodeType::IDENTIFIER == tree->node_type && tree->children.empty() && tree->type == nullptr) {
+				return 2;
+			}
+			if (ast::NodeType::TYPE == tree->node_type) {
+				return 3;
+			}
+			if (ast::NodeType::LITERAL == tree->node_type || (ast::NodeType::UNARY_OPERATOR == tree->node_type
+				&& tree->children.size() == 1 && ast::NodeType::LITERAL == tree->children[0]->node_type)) {
+				return 4;
+			}
+			if (is_code_list(tree)) {
+				return 5;
+			}
+			if (ast::NodeType::STRUCT == tree->node_type && word == "fields") {
+				return 6;
+			}
+			if (ast::NodeType::UNION == tree->node_type && word == "variants") {
+				return 7;
+			}
+			if (ast::NodeType::ENUM == tree->node_type && word == "members") {
+				return 8;
+			}
+			if (ast::NodeType::LIST == tree->node_type && word == "patterns") {
+				return 9;
+			}
+			if (ast::NodeType::LIST == tree->node_type && word == "cases") {
+				return 10;
+			}
+			return 0;
+		}
+
+		/*
+		 * base/compiler's functions that make and look at code (docs/compilation.md, Code Values): whether name
+		 * is one of them, having carried it out.
+		 */
+		bool carry_out_code(Call& call) {
+			CompileTimeData& data = call.data;
+			const std::string_view name = call.name;
+			ProgramInfo* program = call.program;
+			const bool makes = name == "name" || name == "literal" || name == "type_code" || name == "list" || name == "parameters"
+				|| name == "arguments";
+			std::string file;
+			uint32_t line = 0;
+			uint16_t column = 0;
+			if (makes) {
+				read_location(call, 1, file, line, column);
+			}
+			if (name == "name") {
+				const std::string_view text = read_string(call.arguments[0]);
+				uint64_t handle = 0;
+				if (!is_identifier(text)) {
+					report_error(ErrorCode::E4029, file, line, column, std::format("compiler.name needs a name, not \"{}\"", text));
+					service_scope->code_reported = true;
+				}
+				else {
+					handle = keep_code(make_name(program->made_nodes, text, file, line));
+				}
+				CompileTimeData::write_number_at(call.result, 8, handle);
+				return true;
+			}
+			if (name == "literal") {
+				Spliced value;
+				uint64_t handle = 0;
+				if (read_spliced(call, call.arguments[0], value)) {
+					if (Spliced::Kind::CODE == value.kind || Spliced::Kind::TYPE == value.kind) {
+						report_error(ErrorCode::E4029, file, line, column,
+							"compiler.literal takes a number, boolean, character, string or enum member");
+						service_scope->code_reported = true;
+					}
+					else {
+						handle = keep_code(make_value(program->made_nodes, program->quotes, value, file, line));
+					}
+				}
+				CompileTimeData::write_number_at(call.result, 8, handle);
+				return true;
+			}
+			if (name == "type_code") {
+				Spliced value;
+				value.kind = Spliced::Kind::TYPE;
+				value.type = described(call, call.arguments[0]);
+				const uint64_t handle = value.type != nullptr ? keep_code(make_value(program->made_nodes, program->quotes, value, file, line)) : 0;
+				CompileTimeData::write_number_at(call.result, 8, handle);
+				return true;
+			}
+			if (name == "list") {
+				const uint8_t* items = call.arguments[0];
+				const uint64_t count = read_u64(items);
+				const uint8_t* handles = reinterpret_cast<const uint8_t*>(read_u64(items + 8));
+				std::vector<const ast::Node*> trees;
+				for (uint64_t i = 0; i < count; ++i) {
+					const ast::Node* tree = code_tree(read_u64(handles + i * 8));
+					if (tree != nullptr) {
+						trees.push_back(tree);
+					}
+				}
+				CompileTimeData::write_number_at(call.result, 8, keep_code(make_list(program->made_nodes, trees, file, line)));
+				return true;
+			}
+			// A type value is the address of its description, at compile time as in the program
+			if (name == "described_type") {
+				CompileTimeData::write_number_at(call.result, 8, read_u64(call.arguments[0]));
+				return true;
+			}
+			if (name == "parameters" || name == "arguments") {
+				const TypeInfo* type = described(call, call.arguments[0]);
+				const TypeInfo* function = type != nullptr ? get_base_type(type) : nullptr;
+				uint64_t handle = 0;
+				if (function == nullptr || TypeInfoVariant::FUNCTION != function->variant) {
+					report_error(ErrorCode::E4029, file, line, column, std::format("compiler.{} takes a function type, not {}", name,
+						type != nullptr ? to_string(type) : "nothing"));
+					service_scope->code_reported = true;
+				}
+				else {
+					handle = keep_code(make_parameters(program->made_nodes, static_cast<TypeInfoFunction const*>(function),
+						name == "arguments", file, line));
+				}
+				CompileTimeData::write_number_at(call.result, 8, handle);
+				return true;
+			}
+			if (name == "code_kind" || name == "identifier_of" || name == "items_of" || name == "location_of") {
+				const ast::Node* tree = code_tree(read_u64(call.arguments[0]));
+				if (name == "code_kind") {
+					CompileTimeData::write_number_at(call.result, call.type->output[0].type->size, tree != nullptr ? code_kind_of(tree) : 0);
+				}
+				else if (name == "identifier_of") {
+					const bool named = tree != nullptr && code_kind_of(tree) == 2 && tree->value.value != nullptr;
+					write_optional(call, named, [&](uint8_t* at, const TypeInfoStruct*) {
+						data.write_text_at(at, std::string_view(*tree->value.value));
+					});
+				}
+				else if (name == "items_of") {
+					const uint64_t kind = tree != nullptr ? code_kind_of(tree) : 0;
+					const bool has_items = kind == 1 || kind >= 5;
+					const size_t count = has_items ? tree->children.size() : 0;
+					auto handles = reinterpret_cast<uint64_t*>(data.allocate(8 * std::max<size_t>(count, 1), 8));
+					for (size_t i = 0; i < count; ++i) {
+						handles[i] = keep_code(tree->children[i]);
+					}
+					CompileTimeData::write_view_at(call.result, count > 0 ? handles : nullptr, count);
+				}
+				else {
+					const std::shared_ptr<const ast::Origin> origin = tree != nullptr ? program->made_nodes.origin(tree) : nullptr;
+					write_location(data, call.result, call.type->output[0].type, origin != nullptr ? origin->file : std::string_view(),
+						tree != nullptr ? tree->value.line_number : 0, tree != nullptr ? tree->value.column_number : 0);
+				}
+				return true;
+			}
 			return false;
 		}
 
@@ -8576,6 +8767,9 @@ namespace hemera {
 			}
 			if (name == "code_text") {
 				data.write_text_at(call.result, code_source(code_tree(read_u64(call.arguments[0])), call.program->quotes));
+				return;
+			}
+			if (carry_out_code(call)) {
 				return;
 			}
 			if (name == "report_error" || name == "report_warning") {

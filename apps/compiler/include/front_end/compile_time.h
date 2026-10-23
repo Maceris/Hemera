@@ -29,6 +29,10 @@ namespace hemera {
 		/// </summary>
 		bool wants_code = false;
 		const ast::Node* code = nullptr;
+		/// <summary>
+		/// The run reported why it couldn't make code, like a name that isn't one, so there's nothing more to say.
+		/// </summary>
+		bool code_reported = false;
 	};
 
 	/// <summary>

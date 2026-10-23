@@ -346,6 +346,12 @@ TEST(Hosted, InsertsDeclarations)
 	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off);
 }
 
+// docs/compilation.md, Code Values: functions made from a table, with names, parameters and arguments made from data.
+TEST(Hosted, GeneratesFunctions)
+{
+	run_hosted("generated_functions", hemera::TargetStackCheck::Off);
+}
+
 /*
  * std/io's printing, to standard output and error, and the standard logger the hosted context starts
  * with: what the program writes is in output.txt and error.txt in its scenario folder.

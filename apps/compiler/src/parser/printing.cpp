@@ -1,5 +1,6 @@
 #include "parser/printing.h"
 
+#include <algorithm>
 #include <format>
 #include <string_view>
 #include <utility>
@@ -375,6 +376,9 @@ namespace hemera::ast {
 			}
 
 			std::string names(const Node* node) {
+				if (NodeType::DIRECTIVE == node->node_type) {
+					return directive(node);
+				}
 				if (NodeType::LIST == node->node_type) {
 					std::string out;
 					for (size_t i = 0; i < node->children.size(); ++i) {
@@ -1138,6 +1142,12 @@ namespace hemera::ast {
 				else if (node->node_type == NodeType::BLOCK) {
 					return block(node);
 				}
+				else if (node->node_type == NodeType::LIST && text_of(node) == "#list") {
+					// A list of code compile-time code made: parameters, arguments, statements, ...
+					return list(node->children, [&](const Node* item) {
+						return NodeType::COLON == item->node_type ? parameter(item) : statement(item);
+					});
+				}
 				else if (node->node_type == NodeType::LIST) {
 					return list(node->children, [&](const Node* item) { return expression(item, FALLBACK); });
 				}
@@ -1407,8 +1417,13 @@ namespace hemera::ast {
 				if (out == "#code") {
 					return quote(node);
 				}
-				// An #insert in a quote's tree: what its #code splices next
-				if (out == "#insert" && node->children.empty() && !quotes.empty()) {
+				// An #insert in a quote's tree: what its #code splices next, after mut if it's given with mut
+				const bool marked_only = std::all_of(node->children.begin(), node->children.end(),
+					[](const Node* child) { return NodeType::MUTABLE == child->node_type; });
+				if (out == "#insert" && marked_only && !node->children.empty()) {
+					out = "mut " + out;
+				}
+				if (text_of(node) == "#insert" && marked_only && !quotes.empty()) {
 					auto& [splicing, next] = quotes.back();
 					if (next < splicing->children.size()) {
 						const Node* spliced = splicing->children[next++];
@@ -1432,10 +1447,15 @@ namespace hemera::ast {
 				}
 				// #insert's operand binds like a prefix operator's; #run's and #assert's is an expression
 				const int needed = out == "#insert" ? PREFIX : ANY;
+				bool given_mut = false;
 				for (const Node* child : node->children) {
+					if (NodeType::MUTABLE == child->node_type) {
+						given_mut = true;
+						continue;
+					}
 					out += " " + expression(child, needed);
 				}
-				return out;
+				return (given_mut ? "mut " : "") + out;
 			}
 			// #code(expression) or #code { statements }, with what it splices where its #inserts are.
 			std::string quote(const Node* node) {
