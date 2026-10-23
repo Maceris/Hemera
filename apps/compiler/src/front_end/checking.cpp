@@ -3330,6 +3330,14 @@ namespace hemera {
 				return Progress::DONE;
 			}
 			type = expected;
+			/*
+			 * As literal_type waits for a named type: the type expected, like a view's elements from a
+			 * signature, which only needs its types declared, may still be being laid out on another thread
+			 */
+			TypeInfo const* known = base_of(type);
+			if (known == nullptr || !known->complete) {
+				progress = require_complete(checker.walk, node, known != nullptr ? const_cast<TypeInfo*>(known) : type);
+			}
 		}
 		else {
 			progress = literal_type(checker, node, type);
