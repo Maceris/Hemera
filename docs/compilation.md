@@ -124,8 +124,41 @@ need where it lands. An `#insert` in a quote inside a quote belongs to the inner
 `compiler.code_text(code)` gives the code as Hemera, formatted for reading, which parses back into the same tree.
 
 Only compile-time code has code: like a pointer, a `compiler.Code` can't be a constant of the program, and a function
-that quotes can only run at compile time. Putting code into the program with `#insert` outside a quote isn't supported
-yet.
+that quotes can only run at compile time.
+
+### Inserting Code
+
+Outside a quote, `#insert` puts code into the program, in a function's body: its operand is compile-time code giving a
+`compiler.Code`, run once, like a `#run`, so it can call functions and use constants, but not the body's own variables.
+The code is checked and generated as if it were written there:
+
+```
+definitions :: fn() -> compiler.Code {
+    return #code {
+        total := 0
+        total += 40
+    }
+}
+
+seven :: fn() -> compiler.Code {
+    return #code(3 + 4)
+}
+
+main :: fn() -> int {
+    #insert definitions()            // total is declared from here on
+    total += #insert seven() - 5     // (3 + 4) - 5
+    return total                     // 42
+}
+```
+
+* **Statements** go in among the statements around them, so what they declare is seen after them. **An expression**
+  goes where the `#insert` is, as one value, whatever its operators. Statements where an expression goes are an error.
+* **Names** in the code are looked up where it's put.
+* **Each insertion is a copy**, so the same code inserted twice declares two sets of variables.
+* **Errors** in inserted code are reported where it was written, the quote, followed by where it was inserted.
+* **To see what was inserted**, `--show-inserted=file:line` prints the code each `#insert` on that line put there, as
+  Hemera. The file is matched by the end of its path.
+* `#insert` at the top level of a file, and in a generic's body, aren't supported yet.
 
 ## Build Packages
 

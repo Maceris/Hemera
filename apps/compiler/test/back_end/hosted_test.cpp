@@ -334,6 +334,12 @@ TEST(Hosted, MakesCodeValues)
 	run_hosted("code_values", hemera::TargetStackCheck::Off);
 }
 
+// docs/compilation.md, Code Values: code made at compile time, put in a body as statements and expressions.
+TEST(Hosted, InsertsCode)
+{
+	run_hosted("inserted_code", hemera::TargetStackCheck::Off);
+}
+
 /*
  * std/io's printing, to standard output and error, and the standard logger the hosted context starts
  * with: what the program writes is in output.txt and error.txt in its scenario folder.

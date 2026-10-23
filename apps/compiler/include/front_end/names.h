@@ -327,6 +327,10 @@ namespace hemera {
 		std::string file_path;
 		uint32_t line;
 		uint16_t column;
+		/// <summary>
+		/// For code #insert put there, where it was inserted, to follow what's reported (inserted_note).
+		/// </summary>
+		std::string note = {};
 	};
 
 	/// <summary>

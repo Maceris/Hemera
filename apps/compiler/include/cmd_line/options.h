@@ -520,6 +520,11 @@ namespace hemera {
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;
+        /// <summary>
+        /// --show-inserted=file:line: where to print the code #insert puts there (docs/compilation.md, Code
+        /// Values). A file matches when the inserting file's path ends with it.
+        /// </summary>
+        std::vector<std::pair<std::string, uint32_t>> show_inserted;
 
         Options();
         Options(const Options&) = delete;

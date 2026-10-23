@@ -2593,7 +2593,7 @@ namespace hemera::parser {
 			splice->children.clear();
 		}
 		if (state->quotes != nullptr) {
-			state->quotes->set(&quote, tree);
+			state->quotes->set(&quote, tree, state->file_path);
 		}
 		return ExprResult{ true, &quote };
 	}

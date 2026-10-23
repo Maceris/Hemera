@@ -2768,6 +2768,15 @@ namespace hemera {
 						item.result->bytes.assign(bytes, bytes + item.type->size);
 						const bool failed_before = generator.failed;
 						const size_t held_before = generator.held.size();
+						// An #insert's Code: the tree it holds, which belongs to the program and outlives the run
+						TypeInfo const* base_type = get_base_type(item.type);
+						if (item.result->wants_code && base_type != nullptr && TypeInfoVariant::STRUCT == base_type->variant
+							&& is_code_struct(generator, static_cast<TypeInfoStruct const*>(base_type))) {
+							uint64_t handle = 0;
+							std::memcpy(&handle, bytes, sizeof(handle));
+							item.result->code = handle == 0 || handle > scope.codes.size() ? nullptr : scope.codes[handle - 1];
+							continue;
+						}
 						const bool kept = capture_pointed(generator, item.type, item.result->bytes.data(), 0, *item.result, item.node);
 						if (item.captured != nullptr) {
 							// Left out on its own, without failing the others

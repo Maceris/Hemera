@@ -4,6 +4,7 @@
 #include <format>
 #include <mutex>
 #include <string_view>
+#include <unordered_map>
 
 #include "parser/printing.h"
 
@@ -77,16 +78,47 @@ namespace hemera {
 			ast::NodeStore& nodes;
 			ast::QuoteTable& quotes;
 			const std::vector<Spliced>& spliced;
+			// Where nodes that have no origin come from: the quote's file
+			std::shared_ptr<const ast::Origin> base_origin;
+			// For a copy put somewhere by an #insert, where
+			const ast::InsertionSite* site = nullptr;
 			// The next of spliced to put in place
 			size_t next = 0;
+			// Each origin a copied node had, with site after it
+			std::unordered_map<const ast::Origin*, std::shared_ptr<const ast::Origin>> inserted_origins = {};
+
+			// A new node, from the quote unless copy says otherwise.
+			ast::Node* make(ast::NodeType type, Token value) {
+				ast::Node* node = nodes.make(type, value);
+				nodes.set_origin(node, base_origin);
+				return node;
+			}
+
+			// Where the copy of original comes from: where original does, and the #insert putting it here.
+			std::shared_ptr<const ast::Origin> origin_of(const ast::Node* original) {
+				std::shared_ptr<const ast::Origin> origin = nodes.origin(original);
+				if (origin == nullptr) {
+					origin = base_origin;
+				}
+				if (site == nullptr) {
+					return origin;
+				}
+				std::shared_ptr<const ast::Origin>& derived = inserted_origins[origin.get()];
+				if (derived == nullptr) {
+					auto made = std::make_shared<ast::Origin>(*origin);
+					made->inserted.push_back(*site);
+					derived = made;
+				}
+				return derived;
+			}
 
 			// A literal's node, negated with a unary minus when the value is negative, at where.
 			ast::Node* literal_node(const Token& where, TokenType type, const std::string& text, bool negative) {
-				ast::Node* literal = nodes.make(ast::NodeType::LITERAL, token_at(where, type, text));
+				ast::Node* literal = make(ast::NodeType::LITERAL, token_at(where, type, text));
 				if (!negative) {
 					return literal;
 				}
-				ast::Node* minus = nodes.make(ast::NodeType::UNARY_OPERATOR, token_at(where, TokenType::OPERATOR_MINUS, ""));
+				ast::Node* minus = make(ast::NodeType::UNARY_OPERATOR, token_at(where, TokenType::OPERATOR_MINUS, ""));
 				minus->children.push_back(literal);
 				return minus;
 			}
@@ -100,7 +132,7 @@ namespace hemera {
 					return value.tree != nullptr ? copy(value.tree, false) : nullptr;
 				}
 				else if (value.kind == Spliced::Kind::TYPE) {
-					ast::Node* type = nodes.make(ast::NodeType::TYPE, token_at(where, TokenType::IDENTIFIER, to_string(value.type)));
+					ast::Node* type = make(ast::NodeType::TYPE, token_at(where, TokenType::IDENTIFIER, to_string(value.type)));
 					type->type = const_cast<TypeInfo*>(value.type);
 					return type;
 				}
@@ -129,10 +161,10 @@ namespace hemera {
 				}
 				else if (value.kind == Spliced::Kind::ENUM_MEMBER) {
 					// The enum, as its type, then .Member
-					ast::Node* name = nodes.make(ast::NodeType::IDENTIFIER, token_at(where, TokenType::IDENTIFIER, to_string(value.type)));
+					ast::Node* name = make(ast::NodeType::IDENTIFIER, token_at(where, TokenType::IDENTIFIER, to_string(value.type)));
 					name->type = const_cast<TypeInfo*>(value.type);
-					name->children.push_back(nodes.make(ast::NodeType::DOT_ACCESS, token_at(where, TokenType::SYM_DOT, "")));
-					name->children.push_back(nodes.make(ast::NodeType::IDENTIFIER, token_at(where, TokenType::IDENTIFIER, value.text)));
+					name->children.push_back(make(ast::NodeType::DOT_ACCESS, token_at(where, TokenType::SYM_DOT, "")));
+					name->children.push_back(make(ast::NodeType::IDENTIFIER, token_at(where, TokenType::IDENTIFIER, value.text)));
 					return name;
 				}
 				return nullptr;
@@ -144,6 +176,7 @@ namespace hemera {
 			 */
 			ast::Node* copy(const ast::Node* node, bool splicing) {
 				ast::Node* result = nodes.make(node->node_type, node->value);
+				nodes.set_origin(result, origin_of(node));
 				result->type = node->type;
 				const bool nested_quote = is_directive(node, "#code");
 				for (const ast::Node* child : node->children) {
@@ -168,7 +201,7 @@ namespace hemera {
 				}
 				// A quote in the copy quotes the same tree, which never changes
 				if (nested_quote) {
-					quotes.set(result, quotes.get(node));
+					quotes.set(result, quotes.get(node), quotes.file_of(node));
 				}
 				return result;
 			}
@@ -181,13 +214,28 @@ namespace hemera {
 		if (tree == nullptr) {
 			return nullptr;
 		}
+		auto origin = std::make_shared<ast::Origin>();
+		origin->file = quotes.file_of(quote);
 		const std::unique_lock<std::mutex> lock = nodes.hold();
-		Copier copier{ nodes, quotes, spliced };
+		Copier copier{ nodes, quotes, spliced, origin };
 		// The quote's own root can be an #insert, as in #code(#insert x)
 		if (is_directive(tree, "#insert") && tree->children.empty()) {
 			return spliced.empty() ? nullptr : copier.spliced_node(tree->value, spliced[0]);
 		}
 		return copier.copy(tree, true);
+	}
+
+	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
+		const ast::InsertionSite& site) {
+		if (tree == nullptr) {
+			return nullptr;
+		}
+		auto origin = std::make_shared<ast::Origin>();
+		origin->file = site.file;
+		const std::vector<Spliced> none;
+		const std::unique_lock<std::mutex> lock = nodes.hold();
+		Copier copier{ nodes, quotes, none, origin, &site };
+		return copier.copy(tree, false);
 	}
 
 	std::string code_source(const ast::Node* tree, const ast::QuoteTable& quotes) {

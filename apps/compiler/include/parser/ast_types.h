@@ -121,15 +121,45 @@ namespace hemera::ast {
 	/// </summary>
 	class QuoteTable {
 	public:
-		void set(const Node* quote, const Node* tree);
+		/// <summary>
+		/// The tree a #code node quotes, and the file it's written in.
+		/// </summary>
+		struct Quoted {
+			const Node* tree = nullptr;
+			std::string file;
+		};
+
+		void set(const Node* quote, const Node* tree, std::string_view file);
 		/// <summary>
 		/// The tree a #code node quotes, or null.
 		/// </summary>
 		const Node* get(const Node* quote) const;
+		/// <summary>
+		/// The file a #code node's tree is written in, or empty.
+		/// </summary>
+		std::string file_of(const Node* quote) const;
 
 	private:
 		mutable std::mutex mutex;
-		std::unordered_map<const Node*, const Node*> trees;
+		std::unordered_map<const Node*, Quoted> trees;
+	};
+
+	/// <summary>
+	/// Where an #insert put code: the #insert's file, line and column (docs/compilation.md, Code Values).
+	/// </summary>
+	struct InsertionSite {
+		std::string file;
+		uint32_t line = 0;
+		uint16_t column = 0;
+	};
+
+	/// <summary>
+	/// Where a node made while compiling comes from: the file its code is written in, a quote's, and each
+	/// #insert that put it where it is, the first first. Errors in it are reported there.
+	/// </summary>
+	struct Origin {
+		std::string file;
+		std::vector<InsertionSite> inserted;
 	};
 
 	/// <summary>
@@ -148,9 +178,17 @@ namespace hemera::ast {
 		/// </summary>
 		std::unique_lock<std::mutex> hold();
 
+		/// <summary>
+		/// Where a node comes from, for one made here, or one made into it in place; null for one parsed.
+		/// </summary>
+		void set_origin(const Node* node, std::shared_ptr<const Origin> origin);
+		std::shared_ptr<const Origin> origin(const Node* node) const;
+
 	private:
 		std::mutex mutex;
 		std::vector<std::unique_ptr<Node>> nodes;
+		mutable std::mutex origins_mutex;
+		std::unordered_map<const Node*, std::shared_ptr<const Origin>> origins;
 	};
 
 }

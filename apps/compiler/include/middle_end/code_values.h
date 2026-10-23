@@ -48,6 +48,14 @@ namespace hemera {
 		const std::vector<Spliced>& spliced);
 
 	/// <summary>
+	/// A copy of a Code's tree to put at site, an #insert, its nodes made in nodes, each with its origin
+	/// and site after the sites it already had: so each insertion has nodes of its own, and errors in
+	/// them say where the code was written and where it was put.
+	/// </summary>
+	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
+		const ast::InsertionSite& site);
+
+	/// <summary>
 	/// Hemera source for a Code's tree, as code_text gives it.
 	/// </summary>
 	std::string code_source(const ast::Node* tree, const ast::QuoteTable& quotes);

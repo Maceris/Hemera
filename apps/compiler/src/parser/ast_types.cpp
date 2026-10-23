@@ -100,15 +100,21 @@ namespace hemera::ast {
 		return out;
 	}
 
-	void QuoteTable::set(const Node* quote, const Node* tree) {
+	void QuoteTable::set(const Node* quote, const Node* tree, std::string_view file) {
 		std::scoped_lock<std::mutex> lock(mutex);
-		trees[quote] = tree;
+		trees[quote] = Quoted{ tree, std::string(file) };
 	}
 
 	const Node* QuoteTable::get(const Node* quote) const {
 		std::scoped_lock<std::mutex> lock(mutex);
 		auto iter = trees.find(quote);
-		return iter != trees.end() ? iter->second : nullptr;
+		return iter != trees.end() ? iter->second.tree : nullptr;
+	}
+
+	std::string QuoteTable::file_of(const Node* quote) const {
+		std::scoped_lock<std::mutex> lock(mutex);
+		auto iter = trees.find(quote);
+		return iter != trees.end() ? iter->second.file : std::string();
 	}
 
 	Node* NodeStore::make(NodeType type, Token value) {
@@ -118,6 +124,17 @@ namespace hemera::ast {
 
 	std::unique_lock<std::mutex> NodeStore::hold() {
 		return std::unique_lock<std::mutex>(mutex);
+	}
+
+	void NodeStore::set_origin(const Node* node, std::shared_ptr<const Origin> origin) {
+		std::scoped_lock<std::mutex> lock(origins_mutex);
+		origins[node] = std::move(origin);
+	}
+
+	std::shared_ptr<const Origin> NodeStore::origin(const Node* node) const {
+		std::scoped_lock<std::mutex> lock(origins_mutex);
+		auto iter = origins.find(node);
+		return iter != origins.end() ? iter->second : nullptr;
 	}
 
 }

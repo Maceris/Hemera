@@ -23,6 +23,12 @@ namespace hemera {
 	struct CompileTimeValue {
 		std::vector<uint8_t> bytes;
 		std::map<size_t, CompileTimeValue> pointed;
+		/// <summary>
+		/// For an #insert's operand, which gives a compiler.Code: set before it runs, so the Code can leave
+		/// the run, and then the tree it holds (docs/compilation.md, Code Values). A Code can't otherwise.
+		/// </summary>
+		bool wants_code = false;
+		const ast::Node* code = nullptr;
 	};
 
 	/// <summary>

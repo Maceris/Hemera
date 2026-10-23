@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "error/reporting.h"
+#include "front_end/checking.h"
 #include "front_end/front_end.h"
 #include "front_end/info.h"
 #include "front_end/walk.h"
@@ -98,7 +99,7 @@ namespace hemera {
 		};
 
 		void report_in_generic(ConstraintCheck& check, const ast::Node* node, std::string what) {
-			report_error(ErrorCode::E4014, check.inside.file_path, node->value.line_number, node->value.column_number, std::move(what));
+			report_at(ErrorCode::E4014, check.inside.file_path, &check.inside.executor.program_info->made_nodes, node, std::move(what));
 		}
 
 		/*
@@ -249,7 +250,7 @@ namespace hemera {
 			for (const std::string& line : lines) {
 				message += "\n    " + line;
 			}
-			report_error(ErrorCode::E4032, walk.file_path, where->value.line_number, where->value.column_number, message);
+			report_at(ErrorCode::E4032, walk.file_path, &walk.executor.program_info->made_nodes, where, message);
 		}
 	}
 
@@ -383,7 +384,7 @@ namespace hemera {
 
 	Progress evaluate_satisfies(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, ConstantValue& result) {
 		if (arguments.size() != 1) {
-			report_error(ErrorCode::E4018, walk.file_path, where->value.line_number, where->value.column_number,
+			report_at(ErrorCode::E4018, walk.file_path, &walk.executor.program_info->made_nodes, where,
 				"compiler.satisfies takes one constraint expression, like Hashable(Point) && Ordered(Point)");
 			return Progress::FAILED;
 		}

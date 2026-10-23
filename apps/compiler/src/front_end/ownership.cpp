@@ -131,7 +131,7 @@ namespace hemera {
 				return;
 			}
 			++analysis.errors;
-			report_error(ErrorCode::E4035, analysis.file_path, where->value.line_number, where->value.column_number, message);
+			report_at(ErrorCode::E4035, analysis.file_path, analysis.checked.made, where, message);
 		}
 
 		const CheckedNode* found_at(const Analysis& analysis, const ast::Node* node) {

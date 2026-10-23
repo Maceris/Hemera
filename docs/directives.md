@@ -66,7 +66,8 @@ at compile time, like `compiler.report_error`, in a branch that only compile-tim
 program. Both branches are checked.
 
 `#code(expression)` and `#code { statements }` quote code, giving a `compiler.Code`, and `#insert` in a quote puts a
-value there: code, a type or a literal (see [compilation.md](compilation.md#code-values)).
+value there: code, a type or a literal. Outside a quote, `#insert` puts code into a function's body (see
+[compilation.md](compilation.md#code-values)).
 
 `#run` specifies code should be run during compile time. It is followed by an expression to execute.
 

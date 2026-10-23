@@ -284,6 +284,9 @@ namespace hemera {
 		InternedString needed, ast::Node* reason) {
 
 		std::list<ParkedWork>& list = names.waiting[key];
+		// Code #insert put here is reported where it was written (docs/compilation.md, Code Values)
+		const std::shared_ptr<const ast::Origin> origin = where != nullptr
+			? walk.executor.program_info->made_nodes.origin(where) : nullptr;
 		list.push_back(ParkedWork{
 			walk.executor.current_work,
 			key,
@@ -291,9 +294,10 @@ namespace hemera {
 			walk.chain,
 			needed,
 			reason,
-			walk.file_path,
+			origin != nullptr ? origin->file : walk.file_path,
 			where != nullptr ? where->value.line_number : 0,
 			where != nullptr ? where->value.column_number : 0,
+			origin != nullptr ? inserted_note(*origin) : std::string(),
 		});
 		if (walk.owner != nullptr) {
 			names.parked_resolvers[walk.owner] = &list.back();
@@ -497,8 +501,7 @@ namespace hemera {
 		if (Found::PARKED == found) {
 			return Progress::PARKED;
 		}
-		report_error(ErrorCode::E4008, walk.file_path, where->value.line_number,
-			where->value.column_number, std::string(std::string_view(*name)));
+		report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, where, std::string(std::string_view(*name)));
 		return Progress::FAILED;
 	}
 
@@ -566,8 +569,7 @@ namespace hemera {
 				return use.file == walk.file && use.name == name && use.line == where->value.line_number
 					&& use.column == where->value.column_number;
 			});
-			report_error(ErrorCode::E4012, walk.file_path, where->value.line_number,
-				where->value.column_number,
+			report_at(ErrorCode::E4012, walk.file_path, &walk.executor.program_info->made_nodes, where,
 				builtin
 					? std::format("{} is a builtin, and declared by an imported package; qualify it (base. for the builtin)",
 						std::string_view(*name))
@@ -606,8 +608,7 @@ namespace hemera {
 			park_locked(walk, names, chain_key(chain), where, name, reason);
 			return Progress::PARKED;
 		}
-		report_error(ErrorCode::E4008, walk.file_path, where->value.line_number,
-			where->value.column_number, std::string(std::string_view(*name)));
+		report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, where, std::string(std::string_view(*name)));
 		return Progress::FAILED;
 	}
 
@@ -709,8 +710,7 @@ namespace hemera {
 						}
 						return Progress::DONE;
 					}
-					report_error(ErrorCode::E4008, walk.file_path, qualifier->value.line_number,
-						qualifier->value.column_number,
+					report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, qualifier,
 						std::format("base.{}", std::string_view(*qualifier->value.value)));
 					return Progress::FAILED;
 				}
@@ -1057,6 +1057,10 @@ namespace hemera {
 
 	static Progress walk_node(Walk& walk, ast::Node* node, Need need) {
 		const ast::NodeType type = node->node_type;
+		// A type #insert put here is itself, with nothing to look up (docs/compilation.md, Code Values)
+		if ((ast::NodeType::TYPE == type || ast::NodeType::IDENTIFIER == type) && node->type != nullptr) {
+			return ast::NodeType::IDENTIFIER == type ? walk_postfix(walk, node, 0, need) : Progress::DONE;
+		}
 		if (ast::NodeType::IDENTIFIER == type) {
 			return walk_identifier(walk, node, need);
 		}
@@ -1430,8 +1434,7 @@ namespace hemera {
 			return Progress::PARKED;
 		}
 		if (Found::NOTHING == result) {
-			report_error(ErrorCode::E4008, walk.file_path, where->value.line_number,
-				where->value.column_number, std::string(name));
+			report_at(ErrorCode::E4008, walk.file_path, &walk.executor.program_info->made_nodes, where, std::string(name));
 			return Progress::FAILED;
 		}
 		return Progress::DONE;
@@ -1670,6 +1673,80 @@ namespace hemera {
 			}
 		}
 		return run_or_wait(walk, node, evaluation, intern(std::string("#run")), result);
+	}
+
+	Progress code_to_insert(Walk& walk, ast::Node* insert, const ast::Node*& tree) {
+		tree = nullptr;
+		if (insert->children.empty()) {
+			return Progress::FAILED;
+		}
+		ast::Node* expression = insert->children[0];
+		NameRegistry& names = walk.executor.program_info->names;
+		Evaluation* evaluation = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			std::unique_ptr<Evaluation>& slot = names.evaluations[expression];
+			if (slot == nullptr) {
+				slot = std::make_unique<Evaluation>();
+				slot->node = expression;
+				slot->file_path = walk.file_path;
+				slot->value.wants_code = true;
+			}
+			evaluation = slot.get();
+		}
+		if (evaluation->checked == nullptr) {
+			auto checked = std::make_shared<CheckedBody>();
+			TypeInfo* type = nullptr;
+			Progress progress = check_compile_time_expression(walk, expression, checked.get(), type);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			Declaration* code = nullptr;
+			progress = base_declaration(walk, insert, "compiler", "Code", code);
+			if (progress == Progress::DONE) {
+				progress = require_resolved(walk, insert, code, Need::RESOLVED);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (type == nullptr || get_base_type(type) != get_base_type(code->type_value)) {
+				report_at(ErrorCode::E4015, walk.file_path, &walk.executor.program_info->made_nodes, expression,
+					std::format("#insert puts a compiler.Code in place, not {}", type != nullptr ? to_string(type) : "nothing"));
+				return Progress::FAILED;
+			}
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			if (evaluation->checked == nullptr) {
+				evaluation->type = type;
+				evaluation->checked = checked;
+			}
+		}
+		bool queue = false;
+		Evaluation::State state = Evaluation::State::WAITING;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			state = evaluation->state;
+			if (Evaluation::State::WAITING == state) {
+				queue = !evaluation->queued;
+				evaluation->queued = true;
+				park_locked(walk, names, evaluation_key(evaluation), insert, intern(std::string("#insert")), nullptr);
+			}
+		}
+		if (queue) {
+			walk.executor.create_work(WorkType::EXECUTION, WorkTarget(WorkTargetType::EVALUATION, { .evaluation = evaluation }));
+		}
+		if (Evaluation::State::WAITING == state) {
+			return Progress::PARKED;
+		}
+		if (Evaluation::State::FAILED == state) {
+			return Progress::FAILED;
+		}
+		tree = evaluation->value.code;
+		if (tree == nullptr) {
+			report_at(ErrorCode::E4029, walk.file_path, &walk.executor.program_info->made_nodes, insert,
+				"#insert's code gave a compiler.Code that holds no code");
+			return Progress::FAILED;
+		}
+		return Progress::DONE;
 	}
 
 	/*
@@ -2399,7 +2476,7 @@ namespace hemera {
 			}
 			seen.insert(where);
 			report_error(ErrorCode::E4008, parked->file_path, parked->line, parked->column,
-				std::string(std::string_view(*parked->key.name)));
+				std::string(std::string_view(*parked->key.name)) + parked->note);
 			++reported;
 		}
 

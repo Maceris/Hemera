@@ -331,7 +331,7 @@ namespace hemera {
 			if (!analysis.reporting || !analysis.reported.insert(where).second) {
 				return;
 			}
-			report_error(ErrorCode::E4030, analysis.file_path, where->value.line_number, where->value.column_number, details);
+			report_at(ErrorCode::E4030, analysis.file_path, analysis.checked.made, where, details);
 			++analysis.errors;
 		}
 

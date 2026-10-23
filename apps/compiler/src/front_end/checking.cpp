@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <format>
+#include <iostream>
 #include <map>
 #include <set>
 #include <unordered_set>
@@ -11,6 +12,7 @@
 #include "front_end/bounds.h"
 #include "front_end/ownership.h"
 #include "front_end/stack_pointers.h"
+#include "middle_end/code_values.h"
 #include "util/logger.h"
 
 namespace hemera {
@@ -151,9 +153,27 @@ namespace hemera {
 
 	// Reports an error at a node, and gives the POISONED value it leaves behind.
 	static Value error_at(Checker& checker, ErrorCode code, const ast::Node* where, std::string details) {
-		report_error(code, checker.walk.file_path, where->value.line_number, where->value.column_number,
-			std::move(details));
+		report_at(code, checker.walk.file_path, &checker.walk.executor.program_info->made_nodes, where, details);
 		return poisoned();
+	}
+
+	void report_at(ErrorCode code, const std::string& file_path, const ast::NodeStore* made, const ast::Node* where,
+		std::string_view details) {
+		const std::shared_ptr<const ast::Origin> origin = made != nullptr ? made->origin(where) : nullptr;
+		if (origin == nullptr) {
+			report_error(code, file_path, where->value.line_number, where->value.column_number, details);
+			return;
+		}
+		report_error(code, origin->file, where->value.line_number, where->value.column_number,
+			std::string(details) + inserted_note(*origin));
+	}
+
+	std::string inserted_note(const ast::Origin& origin) {
+		std::string note;
+		for (auto site = origin.inserted.rbegin(); site != origin.inserted.rend(); ++site) {
+			note += std::format("; inserted at {}({},{})", site->file, site->line, site->column);
+		}
+		return note;
 	}
 
 	static Value typed(TypeInfo* type) {
@@ -678,6 +698,11 @@ namespace hemera {
 	static Progress check_name(Checker& checker, ast::Node* node, Value& result, size_t& next) {
 		InternedString name = node->value.value;
 		next = 0;
+		// A type #insert put here, as itself, like an enum before .Member (docs/compilation.md, Code Values)
+		if (node->type != nullptr) {
+			result = type_value(node->type);
+			return Progress::DONE;
+		}
 		if (const Local* local = find_local(checker, name)) {
 			result = local->value;
 			return Progress::DONE;
@@ -3654,6 +3679,8 @@ namespace hemera {
 
 	static Progress check_expression_inner(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result);
 	static Progress check_quote(Checker& checker, ast::Node* node, Value& result);
+	static Progress insert_code(Checker& checker, ast::Node* insert, ast::Node*& inserted);
+	static void become(Checker& checker, ast::Node* node, const ast::Node* inserted);
 
 	static bool is_assign(const ast::Node* node);
 
@@ -3806,8 +3833,19 @@ namespace hemera {
 				return check_quote(checker, node, result);
 			}
 			if (is_text(node->value.value, "#insert")) {
-				result = error_at(checker, ErrorCode::E4024, node, "#insert outside a #code quote isn't supported yet");
-				return Progress::DONE;
+				ast::Node* inserted = nullptr;
+				Progress progress = insert_code(checker, node, inserted);
+				if (progress != Progress::DONE) {
+					result = poisoned();
+					return progress == Progress::FAILED ? Progress::DONE : progress;
+				}
+				if (ast::NodeType::BLOCK == inserted->node_type) {
+					result = error_at(checker, ErrorCode::E4014, node, "#insert puts statements here, where an expression goes: "
+						"quote an expression, with #code(...)");
+					return Progress::DONE;
+				}
+				become(checker, node, inserted);
+				return check_expression(checker, node, expected, result);
 			}
 			if (is_text(node->value.value, "#caller_location")) {
 				TypeInfo* location = nullptr;
@@ -3914,6 +3952,82 @@ namespace hemera {
 		result.called = static_cast<TypeInfoFunction const*>(get_base_type(quote_code->value_type));
 		result.called_declaration = quote_code;
 		return Progress::DONE;
+	}
+
+	// Whether the body being checked is a generic's, or an instance of one, which share one tree.
+	static bool in_generic(Checker& checker) {
+		Declaration* owner = checker.walk.owner;
+		if (!checker.walk.generic_types.empty() || !checker.walk.generic_values.empty()) {
+			return true;
+		}
+		if (owner == nullptr) {
+			return false;
+		}
+		if (owner->generic != nullptr) {
+			return true;
+		}
+		FunctionParts parts;
+		if (owner->node != nullptr && function_parts(owner->node, parts) && parts.signature != nullptr) {
+			for (const ast::Node* child : parts.signature->children) {
+				if (ast::NodeType::GENERIC_TAG == child->node_type) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/*
+	 * #insert outside a quote (docs/compilation.md, Code Values): its code, run once at compile time, copied
+	 * for this place, with where it was written and where it's put. FAILED once reported. Printed when the
+	 * command line asks to see what's inserted here (--show-inserted).
+	 */
+	static Progress insert_code(Checker& checker, ast::Node* insert, ast::Node*& inserted) {
+		inserted = nullptr;
+		// A generic's instances share its tree, which an insertion would change for all of them
+		if (in_generic(checker)) {
+			error_at(checker, ErrorCode::E4024, insert, "#insert in a generic's body isn't supported yet");
+			return Progress::FAILED;
+		}
+		const ast::Node* tree = nullptr;
+		Progress progress = code_to_insert(checker.walk, insert, tree);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		ProgramInfo* program = checker.walk.executor.program_info;
+		const std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(insert);
+		ast::InsertionSite site{ origin != nullptr ? origin->file : checker.walk.file_path, insert->value.line_number,
+			insert->value.column_number };
+		inserted = const_cast<ast::Node*>(copy_to_insert(program->made_nodes, program->quotes, tree, site));
+		if (inserted == nullptr) {
+			return Progress::FAILED;
+		}
+		const Options* options = checker.walk.executor.global_data->options;
+		if (options != nullptr) {
+			std::string file = site.file;
+			std::replace(file.begin(), file.end(), '\\', '/');
+			for (const auto& [wanted, line] : options->show_inserted) {
+				if (line == site.line && file.ends_with(wanted)) {
+					std::string source = code_source(inserted, program->quotes);
+					if (!source.ends_with('\n')) {
+						source += '\n';
+					}
+					std::cout << std::format("// Inserted at {}({},{}):\n{}", site.file, site.line, site.column, source);
+					std::cout.flush();
+				}
+			}
+		}
+		return Progress::DONE;
+	}
+
+	// The node becomes what was inserted at it, in place, so whatever holds it holds that.
+	static void become(Checker& checker, ast::Node* node, const ast::Node* inserted) {
+		node->node_type = inserted->node_type;
+		node->value = inserted->value;
+		node->type = inserted->type;
+		node->children = inserted->children;
+		ast::NodeStore& made = checker.walk.executor.program_info->made_nodes;
+		made.set_origin(node, made.origin(inserted));
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -5024,8 +5138,13 @@ namespace hemera {
 					: check_expression(checker, statement->children[0], nullptr, ignored);
 			}
 			if (is_text(statement->value.value, "#insert")) {
-				error_at(checker, ErrorCode::E4024, statement, "#insert outside a #code quote isn't supported yet");
-				return Progress::DONE;
+				ast::Node* inserted = nullptr;
+				Progress progress = insert_code(checker, statement, inserted);
+				if (progress != Progress::DONE) {
+					return progress == Progress::FAILED ? Progress::DONE : progress;
+				}
+				become(checker, statement, inserted);
+				return check_statement(checker, statement, continues);
 			}
 			//TODO(ches) #if inside a function, which picks its branch at compile time
 			return Progress::DONE;
@@ -5103,6 +5222,29 @@ namespace hemera {
 		bool reported = false;
 		for (size_t i = 0; i < block->children.size(); ++i) {
 			ast::Node* statement = block->children[i];
+			// #insert: the statements it puts here, among the block's, so what they define is seen after them
+			if (ast::NodeType::DIRECTIVE == statement->node_type && is_text(statement->value.value, "#insert")
+				&& !statement->children.empty()) {
+				ast::Node* inserted = nullptr;
+				Progress progress = insert_code(checker, statement, inserted);
+				if (progress == Progress::FAILED) {
+					continue;
+				}
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				auto at = block->children.begin() + static_cast<std::ptrdiff_t>(i);
+				at = block->children.erase(at);
+				if (ast::NodeType::BLOCK == inserted->node_type) {
+					block->children.insert(at, inserted->children.begin(), inserted->children.end());
+				}
+				else {
+					block->children.insert(at, inserted);
+				}
+				// Checked from where it was, which may now be nothing at all
+				--i;
+				continue;
+			}
 			if (!continues && !reported) {
 				error_at(checker, ErrorCode::E4025, statement, "this can't be reached");
 				reported = true;
@@ -5527,6 +5669,7 @@ namespace hemera {
 			}
 		}
 		auto checked = std::make_shared<CheckedBody>();
+		checked->made = &executor.program_info->made_nodes;
 		Checker checker(walk);
 		checker.record = checked.get();
 		const Options* options = executor.global_data->options;

@@ -157,7 +157,7 @@ namespace hemera {
 	}
 
 	static Progress type_error(Walk& walk, ErrorCode code, ast::Node* where, std::string details) {
-		report_error(code, walk.file_path, where->value.line_number, where->value.column_number,
+		report_at(code, walk.file_path, &walk.executor.program_info->made_nodes, where,
 			std::move(details));
 		return Progress::FAILED;
 	}
@@ -824,6 +824,11 @@ namespace hemera {
 	 * ARRAY_DIMENSION and ? children, and a qualified name as DOT_ACCESS then the IDENTIFIER.
 	 */
 	static Progress type_of_type_node(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
+		// A type #insert put here (docs/compilation.md, Code Values)
+		if (node->type != nullptr) {
+			result = node->type;
+			return Progress::DONE;
+		}
 		InternedString name = node->value.value;
 		ast::Node* binding = node;
 		std::vector<TypePart> parts;

@@ -47,6 +47,7 @@ namespace hemera {
 			PACKAGE_PATH,
 			RELOCATION_MODEL,
 			SETTING,
+			SHOW_INSERTED,
 			STACK_CHECK,
 			STOP_BEFORE_ASSEMBLY,
 			STOP_BEFORE_LOWERING,
@@ -148,6 +149,7 @@ namespace hemera {
 			{"--valgrind-secrets", Option::VALGRIND_SECRETS},
 			{"--time-phases", Option::TIME_PHASES},
 			{"--setting", Option::SETTING},
+			{"--show-inserted", Option::SHOW_INSERTED},
 		};
 
 		//NOTE(ches) these are in the order that we'll print them out in
@@ -188,6 +190,7 @@ namespace hemera {
 			{Option::PACKAGE_PATH, "Paths to builtin pacakge(s), written as \"package:path\"", HAS_ARGS, MULTIPLE_ARGS},
 			{Option::SETTING, "Settings compile-time code reads with compiler.target_setting, written as \"name=value\"", HAS_ARGS, MULTIPLE_ARGS},
 			{Option::ALLOW_RUN, "Let the build package's compile-time code run programs and write outside the output folder", NO_ARGS},
+			{Option::SHOW_INSERTED, "Print the code #insert puts at a place, written as \"file:line\", for reading what was made", HAS_ARGS, MULTIPLE_ARGS},
 		};
 
 		struct OptionWithValue {

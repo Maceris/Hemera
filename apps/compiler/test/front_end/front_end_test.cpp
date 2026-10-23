@@ -877,7 +877,10 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "generic_value_kind", hemera::ErrorCode::E4014 },
 		// docs/compilation.md, Code Values
 		{ "quote_unspliceable", hemera::ErrorCode::E4014 },
-		{ "insert_outside_quote", hemera::ErrorCode::E4024 },
+		{ "insert_not_code", hemera::ErrorCode::E4015 },
+		{ "insert_statements_as_expression", hemera::ErrorCode::E4014 },
+		{ "insert_in_generic", hemera::ErrorCode::E4024 },
+		{ "insert_undeclared_in_code", hemera::ErrorCode::E4008 },
 		{ "insert_at_top_level", hemera::ErrorCode::E4024 }
 	}) {
 		StringCacheGuard string_cache;

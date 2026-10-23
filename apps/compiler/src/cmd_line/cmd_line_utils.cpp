@@ -483,6 +483,7 @@ namespace hemera {
 			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::PACKAGE_PATH:
 			case hemera::arg_parse::SETTING:
+			case hemera::arg_parse::SHOW_INSERTED:
 			case hemera::arg_parse::RELOCATION_MODEL:
 			case hemera::arg_parse::STACK_CHECK:
 			case hemera::arg_parse::SUBARCHITECTURE:
@@ -952,6 +953,25 @@ namespace hemera {
 						return false;
 					}
 					output.settings.emplace_back(std::string(value.substr(0, equals)), std::string(value.substr(equals + 1)));
+				}
+				break;
+			case hemera::arg_parse::SHOW_INSERTED:
+				for (MyString value : option_with_value.values) {
+					// The last colon, since a Windows path has one of its own
+					const size_t colon = value.rfind(":");
+					uint32_t line = 0;
+					const bool numbered = colon != std::string::npos && colon > 0 && colon + 1 < value.size()
+						&& value.find_first_not_of("0123456789", colon + 1) == std::string::npos;
+					if (numbered) {
+						line = static_cast<uint32_t>(std::stoul(std::string(value.substr(colon + 1))));
+					}
+					if (!numbered || line == 0) {
+						cout << "Where to show inserted code is written file:line, not " << value << endl;
+						return false;
+					}
+					std::string file(value.substr(0, colon));
+					std::replace(file.begin(), file.end(), '\\', '/');
+					output.show_inserted.emplace_back(file, line);
 				}
 				break;
 			case hemera::arg_parse::PACKAGE_PATH:

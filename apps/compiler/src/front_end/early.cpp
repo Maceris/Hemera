@@ -1013,7 +1013,7 @@ namespace hemera {
 		for (const std::string& line : lines) {
 			message += "\n    " + line;
 		}
-		report_error(ErrorCode::E4033, walk.file_path, where->value.line_number, where->value.column_number, message);
+		report_at(ErrorCode::E4033, walk.file_path, &walk.executor.program_info->made_nodes, where, message);
 		return Progress::FAILED;
 	}
 }

@@ -234,6 +234,13 @@ namespace hemera {
 	Progress run_constraint(Walk& walk, ast::Node* where, const ConstraintRun& asked, const ConstraintRun*& result);
 
 	/// <summary>
+	/// The code an #insert puts in place (docs/compilation.md, Code Values): its operand, compile-time code
+	/// giving a compiler.Code, checked and run once, the walk waiting meanwhile. tree is what the Code holds;
+	/// FAILED, reported, when the operand isn't code or couldn't run.
+	/// </summary>
+	Progress code_to_insert(Walk& walk, ast::Node* insert, const ast::Node*& tree);
+
+	/// <summary>
 	/// Checks an instance's constraints where it's made, at where in walk's file: once for the
 	/// instance, reporting what isn't satisfied at each place it's used, unless quiet. FAILED when
 	/// they aren't.

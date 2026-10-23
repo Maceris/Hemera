@@ -188,7 +188,24 @@ namespace hemera {
 		/// What each compiler.satisfies worked out, by its call's node (docs/types.md, Constraints).
 		/// </summary>
 		std::unordered_map<const ast::Node*, bool> satisfied;
+		/// <summary>
+		/// The program's nodes made while compiling, which say where code #insert put in the body came from,
+		/// for reporting errors in it there (report_at).
+		/// </summary>
+		const ast::NodeStore* made = nullptr;
 	};
+
+	/// <summary>
+	/// Reports an error at a node: where it's written in file_path, or for code #insert put there, where
+	/// the code was written, with each place it was inserted (docs/compilation.md, Code Values).
+	/// </summary>
+	void report_at(ErrorCode code, const std::string& file_path, const ast::NodeStore* made, const ast::Node* where,
+		std::string_view details = "");
+
+	/// <summary>
+	/// Where code #insert put somewhere was inserted, each place, the last first, to follow an error's details.
+	/// </summary>
+	std::string inserted_note(const ast::Origin& origin);
 
 	/// <summary>
 	/// Checks a function's body, once its signature is resolved, with its generic parameters bound
