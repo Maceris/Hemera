@@ -667,6 +667,9 @@ namespace hemera {
 					finish_body(executor, target.value.declaration);
 				}
 				break;
+			case WorkTargetType::TYPE_DEFAULTS:
+				check_type_defaults(executor, target.value.declaration);
+				break;
 			case WorkTargetType::ASSERT:
 				check_top_level_assert(executor, target.value.node_location.file, target.value.node_location.node);
 				break;

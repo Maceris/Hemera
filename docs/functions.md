@@ -182,9 +182,11 @@ call_or :: fn(handler: (fn(n: int) -> int)?, n: int) -> int {
 
 ### Defaults in Function Types
 
-A function type can give its parameters defaults too, as [a function does](#default-values): checked where the type is
-written, with the names its package sees, and run in the caller, with the caller's context, each time a call leaves the
-parameter out. `base`'s `AllocatorFn` gives its location one, so a call through an allocator needn't pass it:
+A function type can give its parameters defaults too, as [a function does](#default-values), any expression that fits
+the parameter's type: checked with the names the package and file where the type is written see, and run in the caller,
+with the caller's context, each time a call leaves the parameter out. A named function type's defaults, like an
+alias's, are checked where it's declared; a type written in place, like a field's, has its checked with the first call
+that leaves one out. `base`'s `AllocatorFn` gives its location one, so a call through an allocator needn't pass it:
 
 ```
 AllocatorFn :: alias fn(allocator_data: rawptr, size: usize, alignment: usize, old_memory: rawptr, old_size: usize,
@@ -230,9 +232,6 @@ main :: fn() {
     println(twice(qux)) // 4: FooFn's
 }
 ```
-
-For now the compiler generates a function type's defaults when they're literals, constants, enum members, `.{}`,
-`#caller_location` or the context's fields; a function's own defaults can be any expression.
 
 ## Complicated Function Return Types
 

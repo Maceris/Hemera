@@ -1100,6 +1100,29 @@ TEST(FrontEnd, KeepsStatedTypesDefaults)
 }
 
 /*
+ * A declared function type's defaults are checked against their parameters where the type is declared, once,
+ * however many calls leave them out, and whether any does (docs/functions.md, Defaults in Function Types).
+ */
+TEST(FrontEnd, ChecksFunctionTypesDefaults)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("type_default_unfit"));
+	ASSERT_EQ(errors.size(), 2) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4015);
+	}
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	EXPECT_NE(all.find("this default needs int, not a string"), std::string::npos) << all;
+	EXPECT_NE(all.find("this default needs bool"), std::string::npos) << all;
+}
+
+/*
  * Values that can't leave their thread given to what sends them to another (docs/multitasking.md, Values
  * That Stay on Their Thread): a type marked #thread_bound, one bound by its argument, one reached through
  * a pointer, and one given to a #crosses_threads parameter of the program's own. One not bound can go.

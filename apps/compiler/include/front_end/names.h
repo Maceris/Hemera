@@ -417,6 +417,18 @@ namespace hemera {
 		/// object. Guarded by types_mutex.
 		/// </summary>
 		std::map<std::string, TypeInfo*> derived_types;
+		/// <summary>
+		/// What checking each function type's default found, by its expression, for the generator to use at
+		/// each call that leaves it out (docs/functions.md, Defaults in Function Types). Guarded by
+		/// type_defaults_mutex.
+		/// </summary>
+		std::mutex type_defaults_mutex;
+		std::map<const ast::Node*, std::shared_ptr<CheckedBody>> type_defaults;
+		/// <summary>
+		/// The work checking each default, the first to find it unchecked, so it's checked once and its errors
+		/// reported once; parked work comes back as the same Work. Guarded by type_defaults_mutex.
+		/// </summary>
+		std::map<const ast::Node*, const void*> type_default_checkers;
 	};
 
 	/// <summary>

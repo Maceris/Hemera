@@ -3702,9 +3702,27 @@ namespace hemera {
 			}
 		}
 		/*
-		 * Anything else, as checking the callee found it (check_parameter_defaults), here in the
-		 * caller, with the caller's context
+		 * Anything else, as checking found it, here in the caller, with the caller's context: a function
+		 * type's on its own (check_type_default), a function's with its body (check_parameter_defaults)
 		 */
+		if (node != nullptr && !input.default_in_body) {
+			std::shared_ptr<CheckedBody> checked;
+			{
+				std::scoped_lock<std::mutex> lock(generator.names.type_defaults_mutex);
+				auto found = generator.names.type_defaults.find(node);
+				if (found != generator.names.type_defaults.end()) {
+					checked = found->second;
+				}
+			}
+			if (checked != nullptr) {
+				FunctionState& state = *generator.state;
+				CheckedBody* outer = state.checked;
+				state.checked = checked.get();
+				mlir::Value result = emit_as(generator, node, type);
+				state.checked = outer;
+				return result;
+			}
+		}
 		if (callee != nullptr && callee->checked != nullptr && callee->checked->nodes.contains(node)) {
 			FunctionState& state = *generator.state;
 			CheckedBody* outer = state.checked;

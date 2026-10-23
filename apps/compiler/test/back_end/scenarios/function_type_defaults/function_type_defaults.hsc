@@ -2,12 +2,14 @@
  * Defaults in function types (docs/functions.md, Defaults in Function Types): a call through a
  * declaration's name uses the declaration's defaults, with what it inherits from a type it states, and
  * any other call its callee's type's: through a variable, a parameter, a field, an alias, a named
- * function type, and an Allocator's function, whose location is the caller's. main returns 42 if they
- * all worked.
+ * function type, and an Allocator's function, whose location is the caller's. A function type's
+ * default can be any expression: a call, arithmetic, and names from the package it's written in, which
+ * the caller doesn't import (scaled). main returns 42 if they all worked.
  */
 package function_type_defaults_test
 
 import runtime from "base"
+import scaled from "scaled"
 
 SECOND :: 1
 
@@ -39,6 +41,29 @@ through :: fn(f: FooFn) -> int {
 
 named :: fn(f: NamedFn) -> int {
     return f(1)
+}
+
+offset :: fn() -> int {
+    return 4
+}
+
+// Arithmetic and a call
+SumFn :: alias fn(a: int, b: int = SECOND * 3 + offset()) -> int
+
+add :: fn(a: int, b: int) -> int {
+    return a + b
+}
+
+summed :: fn(f: SumFn) -> int {
+    return f(1)
+}
+
+multiply :: fn(n: int, by: int) -> int {
+    return n * by
+}
+
+scale :: fn(f: scaled.ScaleFn) -> int {
+    return f(3)
 }
 
 line_of :: fn(f: (fn(location := #caller_location) -> u32)) -> u32 {
@@ -77,8 +102,12 @@ main :: fn() -> int {
         return 7
     }
     // The caller's location is where the call through the value is
-    if line_of(where) != 45 {
+    if line_of(where) != 70 {
         return 8
+    }
+    // 1 + (1 * 3 + 4), and 3 * (7 * 2)
+    if summed(add) != 8 || scale(multiply) != 42 {
+        return 10
     }
     bytes, error :: context.allocator.function(context.allocator.data, 16, 8, null, 0)
     if error != null || bytes.count != 16 {

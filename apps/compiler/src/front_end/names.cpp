@@ -1159,6 +1159,20 @@ namespace hemera {
 			|| (ast::NodeType::IDENTIFIER == node->node_type && is_assign(node));
 	}
 
+	// Whether a declared type is a function type, or an alias of one, that gives a parameter a default.
+	static bool has_type_defaults(TypeInfo const* type) {
+		TypeInfo const* base = get_base_type_or_alias(type);
+		if (base == nullptr || TypeInfoVariant::FUNCTION != base->variant) {
+			return false;
+		}
+		for (const FunctionInput& input : static_cast<TypeInfoFunction const*>(base)->input) {
+			if (input.default_value != nullptr && !input.default_in_body) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// The declarations of a DEFINITION's names, from the registry.
 	static std::vector<Declaration*> declarations_of(NameRegistry& names,
 		InternedString package_path, ast::Node* definition) {
@@ -1199,6 +1213,7 @@ namespace hemera {
 		}
 		NameRegistry& names = executor.program_info->names;
 		std::vector<Declaration*> bodies;
+		std::vector<Declaration*> defaults;
 		{
 			std::scoped_lock<std::mutex> lock(names.mutex);
 			for (Declaration* declaration : declarations) {
@@ -1208,6 +1223,10 @@ namespace hemera {
 					if (DeclarationKind::FUNCTION == declaration->kind && declaration->value_type != nullptr
 						&& function_body(declaration->generic != nullptr ? declaration->generic : declaration) != nullptr) {
 						bodies.push_back(declaration);
+					}
+					// And a function type's defaults, where it's declared
+					if (DeclarationKind::TYPE == declaration->kind && has_type_defaults(declaration->type_value)) {
+						defaults.push_back(declaration);
 					}
 				}
 				else {
@@ -1221,6 +1240,9 @@ namespace hemera {
 		}
 		for (Declaration* function : bodies) {
 			executor.create_work(WorkType::TYPE_CHECK, WorkTarget(WorkTargetType::BODY, { .declaration = function }));
+		}
+		for (Declaration* type : defaults) {
+			executor.create_work(WorkType::TYPE_CHECK, WorkTarget(WorkTargetType::TYPE_DEFAULTS, { .declaration = type }));
 		}
 		return progress;
 	}

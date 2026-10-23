@@ -220,6 +220,12 @@ namespace hemera {
 		/// </summary>
 		ast::Node* default_value = nullptr;
 		InternedString default_package = nullptr;
+		InternedString default_file = nullptr;
+		/// <summary>
+		/// The default is a function's own, checked with its body. Otherwise it's a function type's, checked on
+		/// its own the first time a call leaves it out (NameRegistry::type_defaults).
+		/// </summary>
+		bool default_in_body = false;
 		bool is_varargs = false;
 		/// <summary>
 		/// Marked #escaping, so the function may keep it after returning. This is part of the

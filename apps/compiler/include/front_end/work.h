@@ -26,6 +26,11 @@ namespace hemera {
 		/// </summary>
 		BODY,
 		/// <summary>
+		/// A declared function type's defaults, like an alias's, to check (docs/functions.md, Defaults in
+		/// Function Types).
+		/// </summary>
+		TYPE_DEFAULTS,
+		/// <summary>
 		/// A top-level #assert, to check.
 		/// </summary>
 		ASSERT,

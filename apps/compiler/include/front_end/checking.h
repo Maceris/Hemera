@@ -197,6 +197,12 @@ namespace hemera {
 	Progress check_body(WorkThreadData& executor, Declaration* function);
 
 	/// <summary>
+	/// Checks the defaults of a declared function type, like an alias's, where it's declared
+	/// (docs/functions.md, Defaults in Function Types).
+	/// </summary>
+	Progress check_type_defaults(WorkThreadData& executor, Declaration* type);
+
+	/// <summary>
 	/// The type of a constant's value, or for a literal, what kind of untyped value it is.
 	/// </summary>
 	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result,

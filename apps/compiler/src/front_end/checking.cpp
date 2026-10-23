@@ -1452,6 +1452,8 @@ namespace hemera {
 		(void)function;
 	}
 
+	Progress check_type_default(WorkThreadData& executor, const FunctionInput& input);
+
 	static Progress check_arguments(Checker& checker, ast::Node* where, TypeInfoFunction const* function,
 		const Arguments& arguments, const std::vector<InternedString>& names, const std::vector<Value>& piped) {
 
@@ -1576,6 +1578,63 @@ namespace hemera {
 				break;
 			}
 		}
+		// The defaults it leaves out that are a function type's, checked once each
+		for (size_t i = 0; i < function->input.size(); ++i) {
+			const FunctionInput& input = function->input[i];
+			if (!given[i] && input.default_value != nullptr && !input.default_in_body) {
+				Progress progress = check_type_default(checker.walk.executor, input);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+			}
+		}
+		return Progress::DONE;
+	}
+
+	/*
+	 * A function type's default (docs/functions.md, Defaults in Function Types), checked like a function's:
+	 * with the names the package and file it's written in see, with a context, and no locals. The
+	 * declaration naming the type checks it, or for a type written in place, the first call that leaves it
+	 * out; work that has to wait comes back to it. What checking finds is kept for the generator.
+	 */
+	Progress check_type_default(WorkThreadData& executor, const FunctionInput& input) {
+		NameRegistry& names = executor.program_info->names;
+		{
+			// Checked, or being checked by other work, which reports what's wrong with it
+			std::scoped_lock<std::mutex> lock(names.type_defaults_mutex);
+			if (names.type_defaults.contains(input.default_value)) {
+				return Progress::DONE;
+			}
+			auto [claim, claimed] = names.type_default_checkers.emplace(input.default_value, executor.current_work);
+			if (!claimed && claim->second != executor.current_work) {
+				return Progress::DONE;
+			}
+		}
+		Walk walk{
+			executor,
+			input.default_package,
+			input.default_file,
+			find_file(executor.program_info, input.default_package, input.default_file),
+			nullptr,
+			nullptr,
+			file_path_of(input.default_package, input.default_file),
+			{},
+			{},
+			{},
+		};
+		auto checked = std::make_shared<CheckedBody>();
+		Checker inner(walk);
+		inner.record = checked.get();
+		inner.has_context = true;
+		inner.scopes.emplace_back();
+		Value value;
+		Progress progress = check_expression(inner, input.default_value, input.type, value);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		require_fit(inner, value, input.type, input.default_value, "this default");
+		std::scoped_lock<std::mutex> lock(names.type_defaults_mutex);
+		names.type_defaults.emplace(input.default_value, checked);
 		return Progress::DONE;
 	}
 
@@ -5301,6 +5360,27 @@ namespace hemera {
 			}
 		}
 		return nullptr;
+	}
+
+	Progress check_type_defaults(WorkThreadData& executor, Declaration* type) {
+		TypeInfo const* base = get_base_type_or_alias(type->type_value);
+		if (base == nullptr || TypeInfoVariant::FUNCTION != base->variant) {
+			return Progress::DONE;
+		}
+		Progress result = Progress::DONE;
+		for (const FunctionInput& input : static_cast<TypeInfoFunction const*>(base)->input) {
+			if (input.default_value == nullptr || input.default_in_body) {
+				continue;
+			}
+			Progress progress = check_type_default(executor, input);
+			if (Progress::PARKED == progress) {
+				return progress;
+			}
+			if (Progress::FAILED == progress) {
+				result = progress;
+			}
+		}
+		return result;
 	}
 
 	Progress check_body(WorkThreadData& executor, Declaration* function) {

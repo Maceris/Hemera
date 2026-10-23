@@ -989,6 +989,29 @@ namespace hemera {
 		});
 	}
 
+	// The same function type, its defaults marked as checked with the function's body.
+	static TypeInfo* with_defaults_in_body(Walk& walk, TypeInfoFunction* function) {
+		bool any = false;
+		for (const FunctionInput& input : function->input) {
+			any = any || input.default_value != nullptr;
+		}
+		if (!any) {
+			return function;
+		}
+		return derived_type(walk, std::format("defaults in body {}", static_cast<const void*>(function)), [&] {
+			auto result = new TypeInfoFunction();
+			result->input = function->input;
+			for (FunctionInput& input : result->input) {
+				input.default_in_body = input.default_value != nullptr;
+			}
+			result->output = function->output;
+			result->never_returns = function->never_returns;
+			result->calling_convention = function->calling_convention;
+			result->no_context = function->no_context;
+			return result;
+		});
+	}
+
 	// Whether two expressions are written the same: the same nodes, with the same text.
 	static bool same_expression(const ast::Node* a, const ast::Node* b) {
 		if (a == nullptr || b == nullptr) {
@@ -1041,6 +1064,9 @@ namespace hemera {
 					mine.has_default = true;
 					mine.default_value = theirs.default_value;
 					mine.default_package = theirs.default_package;
+					mine.default_file = theirs.default_file;
+					// The type's, so checked on its own, not with this function's body
+					mine.default_in_body = false;
 					inherits = true;
 				}
 				continue;
@@ -1224,6 +1250,7 @@ namespace hemera {
 						if (has_default && parameter->children.size() == 2) {
 							input.default_value = parameter->children[1];
 							input.default_package = walk.package_path;
+							input.default_file = walk.file_name;
 						}
 						input.is_varargs = is_varargs;
 						for (ast::Node* directive : name->children) {
@@ -1887,6 +1914,10 @@ namespace hemera {
 			Progress progress = function_type(walk, signature, function);
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			// A function's own defaults are checked with its body
+			if (signature == value && has_body(definition)) {
+				function = with_defaults_in_body(walk, static_cast<TypeInfoFunction*>(function));
 			}
 			if (declared != nullptr && declared != signature) {
 				progress = defaults_from_stated_type(walk, declarations[0]->name, declared, function);
