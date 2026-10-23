@@ -41,10 +41,14 @@ RIGHT_DUPLICATE : Rights : 1 << 0
 RIGHT_TRANSFER : Rights : 1 << 1
 // An address space: may start threads in it.
 RIGHT_SPACE_THREADS : Rights : 1 << 8
+// An address space: may map things in it.
+RIGHT_SPACE_MAP : Rights : 1 << 9
 // A port: may wait on it.
 RIGHT_PORT_WAIT : Rights : 1 << 8
 // A port: may bind keys to it, set its timers and wake it.
 RIGHT_PORT_BIND : Rights : 1 << 9
+// A channel end: may map its rings. Without it, they're reached through ChannelRead and ChannelWrite (decisions/0024).
+RIGHT_CHANNEL_MAP : Rights : 1 << 8
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -80,6 +84,26 @@ Syscall :: enum #backed_by(u32) {
      * there's at least one, or 0 at deadline (NO_DEADLINE for none).
      */
     PortWait = 13,
+    // (ring bytes, 0 for the default) -> owning handles to a new channel's two ends.
+    ChannelCreate = 14,
+    // (end, address space, address) -> nothing: the channel's rings, mapped at address.
+    ChannelMap = 15,
+    // (end) -> nothing: the end's rings, unmapped.
+    ChannelUnmap = 16,
+    // (end, signals) -> nothing: Readable or Writable, raised on the other end.
+    ChannelNotify = 17,
+    // (end, payload, size, batch) -> nothing: one message, written into the end's ring through the kernel.
+    ChannelWrite = 18,
+    // (end, buffer, capacity) -> the next message's size, and its flags and batch: read through the kernel.
+    ChannelRead = 19,
+    // (end, handles, count, batch) -> nothing: the handles, moved out of the caller's table into batch.
+    ChannelSendHandles = 20,
+    // (end, batch, handles, capacity) -> how many: the batch's handles, in the caller's table.
+    ChannelTakeHandles = 21,
+    // (end, signals, port, packets, capacity, deadline) -> as PortWait, after ChannelNotify.
+    ChannelNotifyAndWait = 22,
+    // (port, object, signals, key, mode) -> nothing: a Signal packet for key when the object raises any of signals.
+    PortBind = 23,
 }
 
 // For PortWait: wait for as long as it takes.
@@ -105,6 +129,73 @@ Packet :: struct {
 }
 
 #assert size_of(Packet) == 32
+
+// What an object can raise, for a port binding to see.
+Signals :: distinct alias u32
+// A channel end: the other end wrote a message.
+SIGNAL_READABLE : Signals : 1 << 0
+// A channel end: the other end made room.
+SIGNAL_WRITABLE : Signals : 1 << 1
+// A channel end: the other end is closed. It stays raised.
+SIGNAL_PEER_CLOSED : Signals : 1 << 2
+
+BindMode :: enum #backed_by(u32) {
+    // Disarmed once its packet is queued; PortBind with the same key and object arms it again.
+    Once = 1,
+    Persistent = 2,
+}
+
+/*
+ * A channel's memory (knowledge/design/ipc.md §2), as ChannelMap maps it: each direction's indices,
+ * then end A's ring, which it writes and B reads, then B's. Rings are a power of two in size, so
+ * indices are byte counts that wrap, never reduced.
+ */
+CHANNEL_DEFAULT_RING : u32 : 1024
+CHANNEL_MIN_RING : u32 : 1024
+CHANNEL_MAX_RING : u32 : 131072
+CHANNEL_RINGS_OFFSET : u32 : 256
+
+// One direction's indices: the producer's and the consumer's on separate cache lines.
+RingIndices :: struct #align(64) {
+    // The producer's: bytes committed, and whether it waits for room.
+    tail : u32,
+    producer_waiting : u32,
+    reserved0 : u8[56],
+    // The consumer's: bytes consumed, and whether it waits for a message.
+    head : u32,
+    consumer_waiting : u32,
+    reserved1 : u8[56],
+}
+
+#assert size_of(RingIndices) == 128
+
+// Before every message in a ring, which is padded to 8 bytes.
+MessageHeader :: struct {
+    size : u32,
+    flags : u16,
+    // With MESSAGE_HAS_HANDLES: the batch its handles are in.
+    handle_batch : u16,
+}
+
+#assert size_of(MessageHeader) == 8
+
+MESSAGE_HAS_HANDLES : u16 : 1 << 0
+// For ChannelWrite: a message without handles.
+NO_BATCH : u32 : 0xffff
+// Handle batches in flight to each end, and the handles one holds.
+HANDLE_BATCHES : u32 : 16
+MAX_HANDLES_PER_BATCH : u32 : 64
+
+// The bytes ChannelMap maps for rings of ring_bytes.
+channel_memory_size :: fn(ring_bytes: u32) -> u64 {
+    return (cast[u64](CHANNEL_RINGS_OFFSET) + 2 * cast[u64](ring_bytes) + 4095) & ~cast[u64](4095)
+}
+
+// The largest payload a ring of ring_bytes takes: a message is at most half the ring, and 64 KiB.
+channel_max_payload :: fn(ring_bytes: u32) -> u32 {
+    half :: ring_bytes / 2
+    return (if half < 65536 { half } else { 65536 }) - cast[u32](size_of(MessageHeader))
+}
 
 // What a call on a handle can fail with.
 HandleError :: enum #backed_by(u32) {
@@ -136,4 +227,43 @@ PortError :: enum #backed_by(u32) {
     NoSuchKey = 9,
     // Packets would go somewhere the thread can't write.
     BadBuffer = 10,
+    // The object has as many bindings as it takes.
+    TooManyBindings = 11,
+}
+
+// What a call on a channel can fail with. Tags shared with HandleError and PortError mean the same.
+ChannelError :: enum #backed_by(u32) {
+    InvalidHandle = 1,
+    ObjectGone = 2,
+    MissingRight = 3,
+    WrongKind = 4,
+    TableFull = 5,
+    OutOfMemory = 6,
+    // Memory the call reads or writes isn't the caller's to.
+    BadBuffer = 10,
+    // The other end is closed.
+    PeerClosed = 12,
+    // No room in the ring for the message.
+    Full = 13,
+    // No message in the ring.
+    Empty = 14,
+    // More than the call takes: a message bigger than channel_max_payload, or a batch of more than MAX_HANDLES_PER_BATCH.
+    TooBig = 15,
+    // The message doesn't fit in the buffer; the call's first value is its size.
+    BufferTooSmall = 16,
+    // The end's rings are mapped already, or it can't be sent while they are.
+    Mapped = 17,
+    // Not a page-aligned user address, or something is mapped there.
+    BadAddress = 18,
+    // The batch is in use, or there's no such batch to take.
+    BatchInUse = 19,
+    NoSuchBatch = 20,
+    // The other end broke the ring: its indices or a header are impossible.
+    Corrupt = 21,
+    // A handle can't go through this channel: one of its own ends.
+    NotTransferable = 22,
+    // The end is in a batch in flight.
+    InFlight = 23,
+    // Rings must be a power of two from CHANNEL_MIN_RING to CHANNEL_MAX_RING.
+    InvalidSize = 24,
 }
