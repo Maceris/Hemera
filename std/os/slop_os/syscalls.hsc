@@ -49,6 +49,12 @@ RIGHT_PORT_WAIT : Rights : 1 << 8
 RIGHT_PORT_BIND : Rights : 1 << 9
 // A channel end: may map its rings. Without it, they're reached through ChannelRead and ChannelWrite (decisions/0024).
 RIGHT_CHANNEL_MAP : Rights : 1 << 8
+// A memory budget: may pay for what's created with it, and split off child budgets (decisions/0011).
+RIGHT_BUDGET_CHARGE : Rights : 1 << 8
+// A memory object: may map it readable, writable, executable.
+RIGHT_MEMORY_READ : Rights : 1 << 8
+RIGHT_MEMORY_WRITE : Rights : 1 << 9
+RIGHT_MEMORY_EXECUTE : Rights : 1 << 10
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -61,15 +67,15 @@ Syscall :: enum #backed_by(u32) {
     HandleInfo = 2,
     // () -> never returns: the calling thread ends.
     ThreadExit = 3,
-    // (address space, entry, stack, argument) -> an owning handle to a new thread there, started.
+    // (budget, address space, entry, stack, argument) -> an owning handle to a new thread there, started.
     ThreadCreate = 4,
-    // () -> an owning handle to a new process, a child of the caller's.
+    // (budget) -> an owning handle to a new process, a child of the caller's, whose budget it is.
     ProcessCreate = 5,
-    // () -> an owning handle to a new, empty address space.
+    // (budget) -> an owning handle to a new, empty address space.
     AddressSpaceCreate = 6,
     // () -> the monotonic clock, in nanoseconds (decisions/0009).
     ClockMonotonic = 7,
-    // () -> an owning handle to a new port.
+    // (budget) -> an owning handle to a new port.
     PortCreate = 8,
     // (port, key) -> nothing: a binding port_wake can raise.
     PortBindWake = 9,
@@ -84,7 +90,7 @@ Syscall :: enum #backed_by(u32) {
      * there's at least one, or 0 at deadline (NO_DEADLINE for none).
      */
     PortWait = 13,
-    // (ring bytes, 0 for the default) -> owning handles to a new channel's two ends.
+    // (budget, ring bytes, 0 for the default) -> owning handles to a new channel's two ends.
     ChannelCreate = 14,
     // (end, address space, address) -> nothing: the channel's rings, mapped at address.
     ChannelMap = 15,
@@ -104,7 +110,23 @@ Syscall :: enum #backed_by(u32) {
     ChannelNotifyAndWait = 22,
     // (port, object, signals, key, mode) -> nothing: a Signal packet for key when the object raises any of signals.
     PortBind = 23,
+    // (budget, limit) -> an owning handle to a child budget of limit bytes, carved out of the budget.
+    MemoryBudgetCreate = 24,
+    // (budget) -> its limit, and how much of it is charged, in bytes.
+    MemoryBudgetInfo = 25,
+    // (budget, size) -> an owning handle to a new memory object of size bytes, zero-filled as it's touched.
+    MemoryCreate = 26,
+    // (memory, address space, address, offset, size, protection) -> nothing: size bytes of it from offset, mapped at address.
+    MemoryMap = 27,
+    // (address space, address) -> nothing: the mapping that starts at address, unmapped.
+    MemoryUnmap = 28,
 }
+
+// For MemoryMap: how a mapping can be reached. Writable and executable at once is refused.
+Protection :: distinct alias u32
+PROTECTION_READ : Protection : 1 << 0
+PROTECTION_WRITE : Protection : 1 << 1
+PROTECTION_EXECUTE : Protection : 1 << 2
 
 // For PortWait: wait for as long as it takes.
 NO_DEADLINE : u64 : 0xffffffffffffffff
@@ -212,6 +234,8 @@ HandleError :: enum #backed_by(u32) {
     OutOfMemory = 6,
     // A number the kernel doesn't have.
     NoSuchCall = 7,
+    // The budget can't pay for it (decisions/0011).
+    BudgetExceeded = 25,
 }
 
 // What a call on a port can fail with. Tags shared with HandleError mean the same.
@@ -229,6 +253,7 @@ PortError :: enum #backed_by(u32) {
     BadBuffer = 10,
     // The object has as many bindings as it takes.
     TooManyBindings = 11,
+    BudgetExceeded = 25,
 }
 
 // What a call on a channel can fail with. Tags shared with HandleError and PortError mean the same.
@@ -266,4 +291,27 @@ ChannelError :: enum #backed_by(u32) {
     InFlight = 23,
     // Rings must be a power of two from CHANNEL_MIN_RING to CHANNEL_MAX_RING.
     InvalidSize = 24,
+    BudgetExceeded = 25,
 }
+
+// What a call on a memory budget or a memory object can fail with. Tags shared with the others mean the same.
+MemoryError :: enum #backed_by(u32) {
+    InvalidHandle = 1,
+    ObjectGone = 2,
+    MissingRight = 3,
+    WrongKind = 4,
+    TableFull = 5,
+    OutOfMemory = 6,
+    // Not a page-aligned user address range, or it overlaps a mapping.
+    BadAddress = 18,
+    // Not a whole number of pages, none at all, more than MAX_MEMORY_SIZE, or past the memory object's end.
+    InvalidSize = 24,
+    BudgetExceeded = 25,
+    // No mapping starts at that address.
+    NotMapped = 26,
+    // Writable and executable at once, or no access at all.
+    BadProtection = 27,
+}
+
+// The largest memory object, 1 GiB.
+MAX_MEMORY_SIZE : u64 : 1 << 30
