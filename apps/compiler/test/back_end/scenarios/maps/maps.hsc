@@ -5,6 +5,7 @@
 package maps_test
 
 import maps from "std"
+import runtime from "base"
 
 // A combination that's used often, by name
 StringMap :: alias[V] maps.HashMap[string, V, maps.hash_string]
@@ -72,5 +73,28 @@ main :: fn() -> int {
     maps.map_free(&squares)
     maps.map_free(&ages)
     maps.map_free(&cells)
+    return check_try_put()
+}
+
+// map_try_put grows when it can, and without memory gives the error and leaves the map as it was.
+check_try_put :: fn() -> int {
+    counts : maps.HashMap[u64, u64, maps.hash_integer[u64]]
+    for i in 0..<6 {
+        if maps.map_try_put(&counts, cast[u64](i), cast[u64](i) * 2) != null {
+            return 7
+        }
+    }
+    // Six of eight slots: a seventh needs more, which an allocator with no memory can't give
+    failed : runtime.AllocatorError? = null
+    push_context starved (allocator = runtime.FAILING_ALLOCATOR) {
+        failed = maps.map_try_put(&counts, 6, 12)
+    }
+    if failed == null || counts.count != 6 || maps.map_has(&counts, 6) || (maps.map_get(&counts, 5) or_else 0) != 10 {
+        return 8
+    }
+    if maps.map_try_put(&counts, 6, 12) != null || (maps.map_get(&counts, 6) or_else 0) != 12 {
+        return 9
+    }
+    maps.map_free(&counts)
     return 42
 }

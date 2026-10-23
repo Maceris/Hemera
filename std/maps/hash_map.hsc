@@ -168,11 +168,44 @@ map_free :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut H
 map_resize :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]], slots: usize,
     location := #caller_location) {
 
+    error :: map_try_resize(map, slots, location)
+    runtime.assert(error == null, "a hash map couldn't grow: out of memory", location)
+}
+
+/*
+ * Like map_put, but where growing needs memory the allocator doesn't have, gives its error and leaves the
+ * map as it was, for code that can't stop, like a kernel's on a request from user space.
+ */
+map_try_put :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]], key #escaping : K,
+    value #escaping : V, location := #caller_location) -> runtime.AllocatorError? {
+
+    if (map.count + 1) * 4 > map.used.count * 3 {
+        slots : usize = 8
+        if map.used.count >= slots {
+            slots = map.used.count * 2
+        }
+        error :: map_try_resize(map, slots, location)
+        if error != null {
+            return error
+        }
+    }
+    map_put(map, key, value, location)
+    return null
+}
+
+// Like map_resize, but without the memory, gives the allocator's error and leaves the map as it was.
+map_try_resize :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]], slots: usize,
+    location := #caller_location) -> runtime.AllocatorError? {
+
     keys, keys_error :: runtime.new_array(K, slots)
     values, values_error :: runtime.new_array(V, slots)
     used, used_error :: runtime.new_array(bool, slots)
-    runtime.assert(keys_error == null && values_error == null && used_error == null, "a hash map couldn't grow: out of memory",
-        location)
+    if keys_error != null || values_error != null || used_error != null {
+        runtime.free_array(keys)
+        runtime.free_array(values)
+        runtime.free_array(used)
+        return runtime.AllocatorError.OutOfMemory
+    }
     for slot in 0..<used.count {
         used[slot] = false
     }
@@ -189,4 +222,5 @@ map_resize :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut
     runtime.free_array(old.keys)
     runtime.free_array(old.values)
     runtime.free_array(old.used)
+    return null
 }
