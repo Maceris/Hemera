@@ -10,7 +10,8 @@ we stop the build and throw an error.
 ```
 
 The condition is worked out when compiling: literals and named constants, with arithmetic, comparisons, `&&` and `||`,
-the bitwise operators and shifts, `cast` from one integer type to another (which wraps, as at run time), builtins like
+the bitwise operators and shifts, `cast` from one integer type to another (which wraps, as at run time) or of an enum
+member to an integer type, builtins like
 `size_of` and `offset_of`, and calls, which are run at compile time.
 
 ```

@@ -8001,7 +8001,40 @@ namespace hemera {
 				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, prepares), mlir::ValueRange{ carrier });
 			}
 		}
-		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
+		std::vector<mlir::Value> main_arguments{ context };
+		if (slop_os) {
+			// Each parameter from the startup grant of its name (docs/compilation.md, Entry Parameters)
+			Declaration* finds = base_declaration_named(generator, "runtime", "os_entry_grant");
+			for (const FunctionInput& input : main_type->input) {
+				const EntryGrant grant = entry_grant_of(input.type);
+				if (finds == nullptr || grant.kind.empty()) {
+					unsupported(generator, main->node, "a SlopOS entry's parameters need base's runtime.os_entry_grant, and handle types");
+					break;
+				}
+				mlir::Value handle = LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, finds), mlir::ValueRange{
+					string_value(generator, text_of(input.name), BUILTIN_string), string_value(generator, grant.kind, BUILTIN_string),
+					constant_int(generator, llvm_type(generator, BUILTIN_bool), grant.optional ? 0 : 1) }).getResult();
+				mlir::Value slot = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
+					llvm_type(generator, input.type), one, static_cast<unsigned>(input.type->alignment));
+				store_zero(generator, input.type, slot);
+				if (grant.optional) {
+					// Some (0) with the handle, or None (1) without one
+					auto optional = static_cast<TypeInfoUnion const*>(base(input.type));
+					mlir::Type tag_type = llvm_type(generator, optional->tag_type);
+					mlir::Value missing = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, handle,
+						constant_int(generator, handle.getType(), 0));
+					LLVM::StoreOp::create(generator.builder, generator.loc, LLVM::ZExtOp::create(generator.builder, generator.loc, tag_type, missing),
+						slot);
+					LLVM::StoreOp::create(generator.builder, generator.loc, handle,
+						offset_address(generator, slot, optional->variants[0].offsets[0]));
+				}
+				else {
+					LLVM::StoreOp::create(generator.builder, generator.loc, handle, slot);
+				}
+				main_arguments.push_back(parameter_by_pointer(main_type, input) ? slot : load(generator, input.type, slot));
+			}
+		}
+		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, main_arguments);
 		// A real call, so main has a frame of its own: stack traces end at the entry's, which isn't recorded
 		call.setNoInlineAttr(generator.builder.getUnitAttr());
 		mlir::Value code = constant_int(generator, i32, 0);
@@ -9948,7 +9981,12 @@ namespace hemera {
 				entry = iter->second;
 			}
 		}
-		if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr) {
+		// Only a SlopOS program's entry takes parameters, its grants (docs/compilation.md, Entry Parameters)
+		const bool takes_parameters = entry != nullptr && entry->value_type != nullptr
+			&& TypeInfoVariant::FUNCTION == entry->value_type->variant
+			&& !static_cast<TypeInfoFunction const*>(entry->value_type)->input.empty();
+		if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr
+			|| (options.startup_code && takes_parameters && OSType::SlopOS != options.os)) {
 			report_error(ErrorCode::E5004, options.input.string(), 0, 0, options.startup_code
 				? std::format("a hosted program needs {} :: fn() or fn() -> int", options.entry)
 				: std::format("the entry function {} isn't declared", options.entry));

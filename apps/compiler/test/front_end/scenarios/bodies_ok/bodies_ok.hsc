@@ -258,3 +258,5 @@ WIDE : u64 : 1 << 40
 #assert cast[u32](FLAG_READ | FLAG_WRITE) == 3
 #assert (0xf0 & 0x3c) == 0x30 && (0xf0 ~ 0xff) == 0x0f && ~0 == -1
 #assert WIDE >> 38 == 4 && cast[u8](300) == 44 && cast[i8](200) == -56 && cast[u64](WIDE) == WIDE
+// And an enum member's value, the package's own or another's
+#assert cast[u8](Suit.Hearts) == 1 && cast[u32](runtime.LogLevel.WARN) == 30

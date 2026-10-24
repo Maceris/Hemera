@@ -485,6 +485,38 @@ namespace hemera {
 		return type;
 	}
 
+	EntryGrant entry_grant_of(TypeInfo const* type) {
+		EntryGrant grant;
+		TypeInfo const* held = type;
+		TypeInfo const* base = get_base_type(type);
+		if (base != nullptr && TypeInfoVariant::UNION == base->variant) {
+			auto optional = static_cast<TypeInfoUnion const*>(base);
+			const std::string_view name = optional->name != nullptr ? std::string_view(*optional->name) : std::string_view();
+			if (!name.starts_with("Optional[") || optional->null_is_none || optional->variants.empty()
+				|| optional->variants[0].types.size() != 1) {
+				return grant;
+			}
+			held = optional->variants[0].types[0];
+			grant.optional = true;
+		}
+		if (held == nullptr || held->size != 4) {
+			return grant;
+		}
+		InternedString name = nullptr;
+		if (TypeInfoVariant::ALIAS == held->variant && static_cast<TypeInfoAlias const*>(held)->distinct) {
+			name = static_cast<TypeInfoAlias const*>(held)->name;
+		}
+		else if (TypeInfoVariant::STRUCT == held->variant) {
+			name = static_cast<TypeInfoStruct const*>(held)->name;
+		}
+		if (name != nullptr) {
+			// A generic struct's instance, like Channel[Protocol], is named with its arguments
+			const std::string_view text(*name);
+			grant.kind = std::string(text.substr(0, text.find('[')));
+		}
+		return grant;
+	}
+
 	bool is_owned(TypeInfo const* type) {
 		type = get_base_type(type);
 		if (type == nullptr) {

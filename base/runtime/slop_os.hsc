@@ -3,8 +3,9 @@ package runtime
 import intrinsics from "base"
 
 /*
- * What the runtime needs from SlopOS, through its system calls: memory, the clock, and ending the
- * process. x86-64 only, so far. Threads, and waiting on an address, aren't here yet (wait.hsc).
+ * What the runtime needs from SlopOS, through its system calls and its startup block: memory, the clock,
+ * random bytes, the entry's parameters, and ending the process. Threads, and waiting on an address,
+ * aren't here yet (wait.hsc).
  */
 
 /*
@@ -19,6 +20,25 @@ SLOP_OS_CALL_MEMORY_MAP : u64 : 27
 SLOP_OS_CALL_MEMORY_UNMAP : u64 : 28
 SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
+// The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
+SLOP_OS_ABI_VERSION : u32 : 1
+SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
+SLOP_OS_KIND_MEMORY : u32 : 3
+SLOP_OS_KIND_ADDRESS_SPACE : u32 : 4
+SLOP_OS_KIND_THREAD : u32 : 5
+SLOP_OS_KIND_PROCESS : u32 : 6
+SLOP_OS_KIND_CHANNEL : u32 : 7
+SLOP_OS_KIND_PORT : u32 : 8
+SLOP_OS_KIND_IRQ : u32 : 9
+SLOP_OS_KIND_PLATFORM : u32 : 12
+SLOP_OS_KIND_INTERCEPT : u32 : 13
+SLOP_OS_KIND_DEBUG_LOG : u32 : 14
+/*
+ * How a process ends before its entry runs: started by a kernel of another ABI version, or without a
+ * grant its entry needs (os_entry_grant)
+ */
+SLOP_OS_EXIT_WRONG_ABI : u32 : 125
+SLOP_OS_EXIT_MISSING_GRANT : u32 : 126
 
 // The start of SlopOS's StartupBlock, which the process's entry is given.
 SlopOsStartup :: struct {
@@ -35,6 +55,19 @@ SlopOsStartup :: struct {
     // The first thread's stack, stack_size bytes from stack_base
     stack_base : u64,
     stack_size : u64,
+    // Where its grants are, as bytes from its start, and a random seed for the process
+    grants : u64,
+    seed : u8[32],
+}
+
+// One of the startup block's grants: a label, padded with zeros, its kind, and the handle.
+SlopOsGrant :: struct {
+    label : u8[32],
+    kind : u8,
+    reserved : u8[3],
+    handle : u32,
+    // The protocol a channel's grant speaks, or 0
+    tag : u64,
 }
 
 // A system call, and what it gives in the system ABI's three result registers, on each architecture
@@ -97,6 +130,10 @@ SlopOsStartup :: struct {
             return void
         }
         startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+        // A block of another version can't be read: the process ends before anything reads it
+        if startup.abi_version != SLOP_OS_ABI_VERSION || cast[u64](startup.size) < cast[u64](size_of(SlopOsStartup)) {
+            os_exit_process(SLOP_OS_EXIT_WRONG_ABI)
+        }
         if startup.stack_size <= STACK_RESERVE {
             return void
         }
@@ -135,6 +172,188 @@ SlopOsStartup :: struct {
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, handle)
     }
 
+    /*
+     * A parameter of the program's entry, which the compiler's entry asks for (docs/compilation.md, Entry
+     * Parameters): the handle of the startup grant labeled name, of the kind of the type named kind, like
+     * "DebugLog" or "Channel". 0 for an optional one that isn't there; a required one that isn't there, or is
+     * of another kind, ends the process with SLOP_OS_EXIT_MISSING_GRANT.
+     */
+    os_entry_grant #no_context :: fn(name: string, kind: string, required: bool) -> u32 {
+        wanted :: slop_os_kind_of(kind)
+        state :: intrinsics.process_state()
+        if state.startup_block != null && wanted != 0 {
+            startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+            with {
+                i : u64 = 0
+            }
+            loop {
+                grant :: cast[ptr[SlopOsGrant]](cast[u64](startup) + startup.grants + i * cast[u64](size_of(SlopOsGrant)))
+                if cast[u32](grant.kind) == wanted && label_is(&grant.label, name) {
+                    return grant.handle
+                }
+                i += 1
+            }
+            while i < cast[u64](startup.grant_count)
+        }
+        if required {
+            os_exit_process(SLOP_OS_EXIT_MISSING_GRANT)
+        }
+        return 0
+    }
+
+    // A grant's kind, by its type's name, or 0 for a type that isn't one.
+    slop_os_kind_of #no_context :: fn(kind: string) -> u32 {
+        if kind == "MemoryBudget" {
+            return SLOP_OS_KIND_MEMORY_BUDGET
+        }
+        if kind == "Memory" {
+            return SLOP_OS_KIND_MEMORY
+        }
+        if kind == "AddressSpace" {
+            return SLOP_OS_KIND_ADDRESS_SPACE
+        }
+        if kind == "Thread" {
+            return SLOP_OS_KIND_THREAD
+        }
+        if kind == "Process" {
+            return SLOP_OS_KIND_PROCESS
+        }
+        // A channel end, untyped or speaking a protocol, and a listener, which connections arrive on
+        if kind == "Channel" || kind == "Listener" {
+            return SLOP_OS_KIND_CHANNEL
+        }
+        if kind == "Port" {
+            return SLOP_OS_KIND_PORT
+        }
+        if kind == "Irq" {
+            return SLOP_OS_KIND_IRQ
+        }
+        if kind == "Platform" {
+            return SLOP_OS_KIND_PLATFORM
+        }
+        if kind == "Intercept" {
+            return SLOP_OS_KIND_INTERCEPT
+        }
+        if kind == "DebugLog" {
+            return SLOP_OS_KIND_DEBUG_LOG
+        }
+        return 0
+    }
+
+    // Whether a grant's label, padded with zeros, is name.
+    label_is #no_context :: fn(label: ptr[u8[32]], name: string) -> bool {
+        if name.count > label^.count {
+            return false
+        }
+        for byte, i in label^ {
+            if i < name.count {
+                if byte != cast[u8](name[i]) {
+                    return false
+                }
+            }
+            else if byte != 0 {
+                return false
+            }
+        }
+        return true
+    }
+
+    /*
+     * Random bytes from the startup block's seed: ChaCha20's keystream, each block's first half the next key
+     * ("fast key erasure"), so what was given can't be worked out later. Without a seed, it traps, as
+     * NO_RANDOM does.
+     */
+    SYSTEM_RANDOM :: Random.{
+        data = null,
+        fill = system_random_fill,
+    }
+
+    system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
+        state :: intrinsics.process_state()
+        loop {
+            intrinsics.spin_hint()
+        }
+        while intrinsics.interlocked_exchange_u32(&state.random_lock, 1) != 0
+        if state.random_seeded == 0 {
+            seeded := false
+            if state.startup_block != null {
+                startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+                state.random_key = startup.seed
+                for byte in startup.seed {
+                    seeded = seeded || byte != 0
+                }
+            }
+            if !seeded {
+                intrinsics.trap()
+            }
+            state.random_seeded = 1
+            state.random_used = 32
+        }
+        for &byte in bytes {
+            if state.random_used >= 32 {
+                chacha20_refill(&state.random_key, &state.random_output)
+                state.random_used = 0
+            }
+            used :: cast[usize](state.random_used)
+            if used < state.random_output.count {
+                byte^ = state.random_output[used]
+            }
+            state.random_used += 1
+        }
+        intrinsics.atomic_store_u32_release(&state.random_lock, 0)
+    }
+
+    // One ChaCha20 block of key's keystream: its first 32 bytes become key, its last 32 output.
+    chacha20_refill #no_context :: fn(key: ptr[mut u8[32]], output: ptr[mut u8[32]]) {
+        state : u32[16]
+        state[0] = 0x61707865
+        state[1] = 0x3320646e
+        state[2] = 0x79622d32
+        state[3] = 0x6b206574
+        for i in 0..<8 {
+            word : u32 = 0
+            for j in 0..<4 {
+                word = word | (cast[u32](key^[(4 * i + j) % 32]) << cast[u32](8 * j))
+            }
+            state[(4 + i) % 16] = word
+        }
+        x := state
+        for round in 0..<10 {
+            chacha_quarter(&x, 0, 4, 8, 12)
+            chacha_quarter(&x, 1, 5, 9, 13)
+            chacha_quarter(&x, 2, 6, 10, 14)
+            chacha_quarter(&x, 3, 7, 11, 15)
+            chacha_quarter(&x, 0, 5, 10, 15)
+            chacha_quarter(&x, 1, 6, 11, 12)
+            chacha_quarter(&x, 2, 7, 8, 13)
+            chacha_quarter(&x, 3, 4, 9, 14)
+        }
+        for &word, i in x {
+            word^ = word^ + state[i]
+        }
+        for &byte, i in key^ {
+            byte^ = cast[u8](x[(i / 4) % 16] >> cast[u32](8 * (i % 4)))
+        }
+        for &byte, i in output^ {
+            byte^ = cast[u8](x[(8 + i / 4) % 16] >> cast[u32](8 * (i % 4)))
+        }
+    }
+
+    chacha_quarter #no_context :: fn(x: ptr[mut u32[16]], a: usize, b: usize, c: usize, d: usize) {
+        x^[a % 16] = x^[a % 16] + x^[b % 16]
+        x^[d % 16] = rotate(x^[d % 16] ~ x^[a % 16], 16)
+        x^[c % 16] = x^[c % 16] + x^[d % 16]
+        x^[b % 16] = rotate(x^[b % 16] ~ x^[c % 16], 12)
+        x^[a % 16] = x^[a % 16] + x^[b % 16]
+        x^[d % 16] = rotate(x^[d % 16] ~ x^[a % 16], 8)
+        x^[c % 16] = x^[c % 16] + x^[d % 16]
+        x^[b % 16] = rotate(x^[b % 16] ~ x^[c % 16], 7)
+    }
+
+    rotate #no_context :: fn(value: u32, bits: u32) -> u32 {
+        return (value << bits) | (value >> (32 - bits))
+    }
+
     // No standard output or error yet
     os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
 
@@ -165,14 +384,14 @@ SlopOsStartup :: struct {
 
     /*
      * What a hosted program's main starts with: memory from the kernel, the standard logger and
-     * assertion handler, and the kernel's clock. Random numbers wait for an entropy source.
+     * assertion handler, the kernel's clock, and random bytes from the startup block's seed.
      */
     HOSTED_CONTEXT :: Context.{
         allocator = PAGES_ALLOCATOR,
         logger = &STANDARD_LOGGER,
         log_level = .INFO,
         clock = &SYSTEM_CLOCK,
-        random = &NO_RANDOM,
+        random = &SYSTEM_RANDOM,
         assertion_handler = printing_assertion_handler,
         user_data = null,
         extensions = null,

@@ -22,6 +22,15 @@ ProcessState :: struct {
     // On SlopOS, the startup block the entry was given, and how much of its free range the heap has mapped
     startup_block : rawptr,
     mapped : u64,
+    /*
+     * On SlopOS, the random generator seeded from the startup block (slop_os.hsc): its key, the bytes of its last
+     * block not given out yet from random_used, whether it's seeded, and its lock
+     */
+    random_key : u8[32],
+    random_output : u8[32],
+    random_used : u32,
+    random_seeded : u32,
+    random_lock : u32,
     // process_arguments: 0 until someone starts on them, 1 while they're worked out, 2 once they're there
     arguments_state : u32,
     arguments : string[],

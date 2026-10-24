@@ -30,7 +30,10 @@ StartupBlock :: struct {
     stack_size : u64,
     // Where the grants are: grant_count Grants, this many bytes from the block's start
     grants : u64,
-    // The boot's random seed, for the root task's entropy source; zeros for any other process (decisions/0012)
+    /*
+     * A random seed, which base's runtime seeds context.random from: the boot's for the root task, and one its
+     * loader drew for any other process (decisions/0012, 0068)
+     */
     seed : u8[32],
     cpu_features : CpuFeatures,
 }
@@ -40,16 +43,23 @@ GRANT_LABEL_SIZE :: 32
 
 /*
  * A handle the process starts with, besides its own, and what it's for: a label like "platform",
- * "debug_log" or "module:hello.elf", in UTF-8, padded with zeros.
+ * "debug_log" or "module:hello.elf", in UTF-8, padded with zeros. An entry parameter's grant is labeled
+ * with the parameter's name (decisions 0044, 0068).
  */
 Grant :: struct {
     label : u8[GRANT_LABEL_SIZE],
     kind : ObjectKind,
     reserved : u8[3],
     handle : Handle,
+    // For a channel end: the protocol it speaks, os.protocol_tag's, or 0 for none in particular
+    tag : u64,
 }
 
-#assert size_of(Grant) == 40
+#assert size_of(Grant) == 48
+
+// How a process ends before its entry runs: started by a kernel of another ABI version, or without a grant its entry needs.
+EXIT_WRONG_ABI : u32 : runtime.SLOP_OS_EXIT_WRONG_ABI
+EXIT_MISSING_GRANT : u32 : runtime.SLOP_OS_EXIT_MISSING_GRANT
 
 // The process's startup block, which its entry was given.
 startup_block :: fn() -> ptr[StartupBlock] #no_context {
@@ -96,7 +106,25 @@ find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> H
 #assert offset_of(StartupBlock, free_size) == offset_of(runtime.SlopOsStartup, free_size)
 #assert offset_of(StartupBlock, stack_base) == offset_of(runtime.SlopOsStartup, stack_base)
 #assert offset_of(StartupBlock, stack_size) == offset_of(runtime.SlopOsStartup, stack_size)
+#assert offset_of(StartupBlock, grants) == offset_of(runtime.SlopOsStartup, grants)
+#assert offset_of(StartupBlock, seed) == offset_of(runtime.SlopOsStartup, seed)
 #assert size_of(runtime.SlopOsStartup) <= size_of(StartupBlock)
+#assert size_of(runtime.SlopOsGrant) == size_of(Grant)
+#assert offset_of(Grant, kind) == offset_of(runtime.SlopOsGrant, kind)
+#assert offset_of(Grant, handle) == offset_of(runtime.SlopOsGrant, handle)
+#assert offset_of(Grant, tag) == offset_of(runtime.SlopOsGrant, tag)
+#assert ABI_VERSION == runtime.SLOP_OS_ABI_VERSION
+#assert cast[u32](ObjectKind.MemoryBudget) == runtime.SLOP_OS_KIND_MEMORY_BUDGET
+#assert cast[u32](ObjectKind.Memory) == runtime.SLOP_OS_KIND_MEMORY
+#assert cast[u32](ObjectKind.AddressSpace) == runtime.SLOP_OS_KIND_ADDRESS_SPACE
+#assert cast[u32](ObjectKind.Thread) == runtime.SLOP_OS_KIND_THREAD
+#assert cast[u32](ObjectKind.Process) == runtime.SLOP_OS_KIND_PROCESS
+#assert cast[u32](ObjectKind.Channel) == runtime.SLOP_OS_KIND_CHANNEL
+#assert cast[u32](ObjectKind.Port) == runtime.SLOP_OS_KIND_PORT
+#assert cast[u32](ObjectKind.Irq) == runtime.SLOP_OS_KIND_IRQ
+#assert cast[u32](ObjectKind.Platform) == runtime.SLOP_OS_KIND_PLATFORM
+#assert cast[u32](ObjectKind.Intercept) == runtime.SLOP_OS_KIND_INTERCEPT
+#assert cast[u32](ObjectKind.DebugLog) == runtime.SLOP_OS_KIND_DEBUG_LOG
 #assert cast[u64](SYSCALL_HANDLE_CLOSE) == runtime.SLOP_OS_CALL_HANDLE_CLOSE
 #assert cast[u64](SYSCALL_CLOCK_MONOTONIC) == runtime.SLOP_OS_CALL_CLOCK_MONOTONIC
 #assert cast[u64](SYSCALL_MEMORY_CREATE) == runtime.SLOP_OS_CALL_MEMORY_CREATE

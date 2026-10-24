@@ -541,5 +541,20 @@ namespace hemera {
 	/// </summary>
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type);
 
+	/// <summary>
+	/// What a parameter of a SlopOS program's entry is given from its startup grants (docs/compilation.md,
+	/// Entry Parameters): the name of its kind, a distinct alias's (DebugLog) or a struct's without its
+	/// arguments (Channel), and whether it's an optional, which a missing grant leaves None.
+	/// </summary>
+	struct EntryGrant {
+		/// <summary>
+		/// Empty for a type no grant can be: anything but a 4-byte handle type, or an optional of one.
+		/// </summary>
+		std::string kind;
+		bool optional = false;
+	};
+
+	EntryGrant entry_grant_of(TypeInfo const* type);
+
 	void initialize_builtin_types();
 }

@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 0
+ABI_VERSION : u32 : 1
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32

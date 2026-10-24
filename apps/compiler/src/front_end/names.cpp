@@ -2496,7 +2496,63 @@ namespace hemera {
 
 	static Progress evaluate(Walk& walk, ast::Node* node, ConstantValue& result);
 
-	// cast[T](x) of an integer to an integer type: x as a T holds it, wrapped to T's width.
+	/*
+	 * The value of an enum member written Enum.Member or package.Enum.Member, which evaluates to the member's
+	 * name alone, for a cast of it to an integer.
+	 */
+	static Progress enum_member_value(Walk& walk, ast::Node* node, int64_t& value) {
+		const size_t count = node->children.size();
+		if (count != 2 && count != 4) {
+			report_not_constant(walk.file_path, node, "only an enum member written Enum.Member or package.Enum.Member can be cast here");
+			return Progress::FAILED;
+		}
+		InternedString enum_name = 2 == count ? node->value.value : node->children[1]->value.value;
+		InternedString member = node->children[count - 1]->value.value;
+		Declaration* declaration = nullptr;
+		NameRegistry& names = walk.executor.program_info->names;
+		if (2 == count) {
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			Found found = declared_in_locked(walk, names, node, walk.package_path, enum_name, declaration);
+			if (Found::PARKED == found) {
+				return Progress::PARKED;
+			}
+			Progress progress = Found::DECLARATION == found
+				? check_locked(walk, names, node, declaration, Need::RESOLVED)
+				: require_from_imports_locked(walk, names, node, enum_name, Need::RESOLVED, declaration);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
+		else {
+			InternedString package = nullptr;
+			Progress progress = qualifier_package(walk, node, node->value.value, package);
+			if (progress == Progress::DONE && package != nullptr) {
+				progress = require_in(walk, node->children[1], package, enum_name, Need::RESOLVED);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (package != nullptr) {
+				std::scoped_lock<std::mutex> lock(names.mutex);
+				declaration = names.declarations[std::make_pair(package, enum_name)];
+			}
+		}
+		TypeInfo const* type = declaration != nullptr && DeclarationKind::TYPE == declaration->kind
+			? get_base_type(declaration->type_value) : nullptr;
+		if (type != nullptr && TypeInfoVariant::ENUM == type->variant) {
+			auto enumeration = static_cast<TypeInfoEnum const*>(type);
+			for (size_t i = 0; i < enumeration->members.size() && i < enumeration->values.size(); ++i) {
+				if (*enumeration->members[i] == *member) {
+					value = static_cast<int64_t>(enumeration->values[i]);
+					return Progress::DONE;
+				}
+			}
+		}
+		report_not_constant(walk.file_path, node, std::format("{} isn't a member of an enum here", std::string_view(*member)));
+		return Progress::FAILED;
+	}
+
+	// cast[T](x) of an integer, or an enum member, to an integer type: x as a T holds it, wrapped to T's width.
 	static Progress evaluate_cast(Walk& walk, ast::Node* node, ConstantValue& result) {
 		if (TokenType::KEYWORD_CAST != node->value.type || node->children.size() != 2) {
 			report_not_constant(walk.file_path, node, "only cast is supported among the casts here");
@@ -2510,6 +2566,11 @@ namespace hemera {
 		ConstantValue value;
 		if (progress == Progress::DONE) {
 			progress = evaluate(walk, node->children[1], value);
+		}
+		if (progress == Progress::DONE && ConstantValue::Kind::ENUM_MEMBER == value.kind
+			&& ast::NodeType::IDENTIFIER == node->children[1]->node_type) {
+			progress = enum_member_value(walk, node->children[1], value.integer);
+			value.kind = ConstantValue::Kind::INTEGER;
 		}
 		if (progress != Progress::DONE) {
 			return progress;

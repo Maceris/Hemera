@@ -432,6 +432,23 @@ runtime's process state for `runtime.process_arguments` and `std/os`'s environme
 finds them on the stack the kernel set up (`argc`, then `argv`'s pointers and a null, then `envp`'s); with it, libc
 passes them.
 
+### Entry Parameters
+
+On a system that starts each process with handles it's given by name, rather than with command-line arguments, the
+entry can take them as its parameters, and its signature says what the program needs to run:
+
+```
+main :: fn(log: Log?, storage: Channel[Storage]) -> int {
+    // ...
+}
+```
+
+Before `main` runs, the generated entry asks the runtime for each parameter, by its name and the name of its type
+(`runtime.os_entry_grant`), which finds the handle of that name and checks its kind. Each parameter is a handle: a
+4-byte distinct alias or struct, or an optional of one. An optional is `None` when the process wasn't given the handle;
+a process without one it needs ends before `main` with the runtime's code for that. Elsewhere the entry takes no
+parameters, and one that does is an error.
+
 ### Linux on AArch64
 
 `--arch=aarch64` with `--os=linux` builds the same programs for 64-bit Arm: the runtime and `std/os` make the generic
