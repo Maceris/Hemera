@@ -656,9 +656,13 @@ aarch64.isb()
    a system call path that switches threads, is `#never_returns`.
 
 Interrupts stay masked, as the CPU masks them on taking an exception. `aarch64.return_to_user(frame, kernel_stack)`
-restores every register from a frame and returns with `eret`, putting the stack pointer at `kernel_stack` first:
-AArch64 has no TSS, so the stack pointer at `eret` is where the next exception's frame goes. Interrupts must stay
-masked until it returns.
+restores every register from a frame and returns with `eret`, putting `SP_EL1` at `kernel_stack` first:
+AArch64 has no TSS, so the stack pointer at `eret` is where the next exception's frame goes. It selects `SP_EL1`
+before setting it, so it works from code running on `SP_EL0` too. Interrupts must stay masked until it returns.
+
+Every exception taken to EL1 runs on `SP_EL1`. A kernel a bootloader starts on `SP_EL0` (with `PSTATE.SP` clear, as
+Limine does) can keep running there, like on a boot stack, and give exceptions a stack of their own with
+`aarch64.write_sp_el1(stack)`, which switches to `SP_EL1` just long enough to set it.
 
 `base/intrinsics/aarch64` also has what a kernel needs around it: `read_system_register` and `write_system_register`,
 with the register as a compile-time argument (`aarch64.SystemRegister`, whose values are the registers' encodings,

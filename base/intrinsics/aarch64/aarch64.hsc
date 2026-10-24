@@ -294,7 +294,15 @@ semihosting : fn(operation: u64, parameter: rawptr) -> u64 : ---
 vector_table : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[VectorTable] : ---
 
 /*
- * Restore every register from frame, with the stack pointer at kernel_stack for the next exception, and
- * return with eret to where the frame says, usually user mode. Interrupts must stay masked until then.
+ * Set SP_EL1, the stack exceptions taken to EL1 run on, while running on SP_EL0 (PSTATE.SP clear), as code a
+ * bootloader entered that way does: msr spsel, #1, then mov sp, then msr spsel, #0, touching no stack. On
+ * SP_EL1 it would move the caller's own stack, so it isn't for that.
+ */
+write_sp_el1 : fn(stack: rawptr) : ---
+
+/*
+ * Restore every register from frame, with SP_EL1 at kernel_stack for the next exception (selected first,
+ * so this works from code running on SP_EL0 too), and return with eret to where the frame says, usually
+ * user mode. Interrupts must stay masked until then.
  */
 return_to_user #never_returns : fn(frame: ptr[RegisterFrame], kernel_stack: rawptr) : ---

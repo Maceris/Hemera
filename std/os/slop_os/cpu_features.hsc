@@ -56,6 +56,35 @@ CpuFeature :: enum #backed_by(u16) {
     X86Xsavec = 41,
     X86Xsaveopt = 42,
     X86FiveLevelPaging = 43,
+
+    // AArch64 (ID_AA64PFR0_EL1, ID_AA64ISAR0_EL1 and ID_AA64ISAR1_EL1): floating point and Advanced SIMD
+    Aarch64Fp = 64,
+    Aarch64AdvSimd = 65,
+    // ARMv8.1-A: the LSE atomics, and rounding doubling multiplies
+    Aarch64Atomics = 66,
+    Aarch64Rdm = 67,
+    // ARMv8.2-A and later
+    Aarch64DotProduct = 68,
+    Aarch64Fp16 = 69,
+    Aarch64Sve = 70,
+    // Cryptography
+    Aarch64Aes = 71,
+    Aarch64Pmull = 72,
+    Aarch64Sha1 = 73,
+    Aarch64Sha256 = 74,
+    Aarch64Sha512 = 75,
+    Aarch64Sha3 = 76,
+    Aarch64Crc32 = 77,
+    // Random numbers
+    Aarch64Rng = 78,
+    // Control-flow integrity: pointer authentication and branch target identification
+    Aarch64PointerAuthentication = 79,
+    Aarch64Bti = 80,
+    // System features, which only the kernel uses: Privileged Access Never, 16-bit ASIDs, and 1 GiB
+    // blocks with 4 KiB pages
+    Aarch64Pan = 81,
+    Aarch64Asid16 = 82,
+    Aarch64Pages1G = 83,
 }
 
 // A set of CpuFeature values.

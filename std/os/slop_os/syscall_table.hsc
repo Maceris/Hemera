@@ -1,6 +1,7 @@
 package slop_os
 
 import compiler from "base"
+import intrinsics from "base"
 import runtime from "base"
 
 #if TARGET_ARCH == .x86_64 {
@@ -33,6 +34,10 @@ system_call :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e
     #if TARGET_ARCH == .x86_64 {
         made :: x86_64.system_call(number, a, b, c, d, e, f)
         return SyscallAnswer.{tag = made.rax, first = made.rdx, second = made.r8}
+    }
+    #else {
+        // Only on x86-64 so far: other architectures' system call registers come with their user mode
+        intrinsics.trap()
     }
 }
 

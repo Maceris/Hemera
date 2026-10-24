@@ -10,7 +10,6 @@ package libc_test
 
 import intrinsics from "base"
 import runtime from "base"
-import x86_64 from "base/intrinsics"
 import fiber from "std"
 
 LIBC :: #library("c")
@@ -19,7 +18,21 @@ strlen #foreign(LIBC) : fn(text: rawptr) -> usize : ---
 getpid #foreign(LIBC) : fn() -> i32 : ---
 qsort #foreign(LIBC) : fn(items: rawptr, count: usize, size: usize, compare: rawptr) : ---
 
-SYS_GETPID : u64 : 39
+// getpid as a system call, to compare with C's
+#if TARGET_ARCH == .x86_64 {
+    import x86_64 from "base/intrinsics"
+
+    raw_getpid :: fn() -> u64 {
+        return x86_64.syscall(39)
+    }
+}
+#else_if TARGET_ARCH == .arm64 {
+    import aarch64 from "base/intrinsics"
+
+    raw_getpid :: fn() -> u64 {
+        return aarch64.syscall(172)
+    }
+}
 
 // What the checks found, through context.user_data.
 Results :: struct {
@@ -52,7 +65,7 @@ call_c :: fn(results: ptr[mut Results]) -> int {
     if strlen(cast[rawptr](&text[0])) != 6 {
         return 1
     }
-    if cast[u64](getpid()) != x86_64.syscall(SYS_GETPID) {
+    if cast[u64](getpid()) != raw_getpid() {
         return 2
     }
     before :: intrinsics.atomic_load_u64_acquire(&results.comparisons)

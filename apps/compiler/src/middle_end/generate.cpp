@@ -1189,9 +1189,9 @@ namespace hemera {
 		return text;
 	}
 
-	// aarch64.return_to_user(frame, kernel_stack): the stack pointer, then every register, then eret.
+	// aarch64.return_to_user(frame, kernel_stack): SP_EL1, selected, then every register, then eret.
 	static std::string return_to_user_assembly_aarch64() {
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n\tmov sp, x1\n", RETURN_TO_USER_SYMBOL);
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n\tmsr spsel, #1\n\tmov sp, x1\n", RETURN_TO_USER_SYMBOL);
 		text += std::format("\tldp x1, x2, [x0, #{}]\n\tmsr elr_el1, x1\n\tmsr spsr_el1, x2\n", AARCH64_FRAME_ELR);
 		text += std::format("\tldr x1, [x0, #{}]\n\tmsr sp_el0, x1\n", AARCH64_FRAME_SP_EL0);
 		text += aarch64_load_registers("x0");
@@ -4358,6 +4358,10 @@ namespace hemera {
 			result = value(LLVM::SelectOp::create(generator.builder, generator.loc, ready, some, none), type);
 			return true;
 		}
+		if (name == "write_sp_el1") {
+			instruction("msr spsel, #1\n\tmov sp, $0\n\tmsr spsel, #0", { arguments[0] });
+			return true;
+		}
 		if (name == "semihosting") {
 			result = intrinsic_value(assembly(generator, i64, arguments, "hlt #0xf000", "={x0},{x0},{x1},~{memory}"), function);
 			return true;
@@ -5410,6 +5414,20 @@ namespace hemera {
 		}
 		// Each architecture's instructions, from its own package (base/intrinsics/platform.hsc)
 		const std::string_view package = called->package_path != nullptr ? std::string_view(*called->package_path) : std::string_view();
+		/*
+		 * Another architecture's. In compile-time code, compiled for the machine the compiler runs on, like a
+		 * constant holding a function that uses it, it can't run, so it traps if it's ever called; anywhere else
+		 * it's an error
+		 */
+		const ArchType architecture = generator.options->architecture;
+		if ((package.ends_with("intrinsics/x86_64") && ArchType::x86_64 != architecture)
+			|| (package.ends_with("intrinsics/aarch64") && ArchType::aarch64 != architecture)) {
+			if (!generator.compile_time) {
+				unsupported(generator, where, std::format("{} is another architecture's instruction", full_name));
+			}
+			LLVM::Trap::create(b, l);
+			return result_type != nullptr ? value(zero_of(generator, llvm_type(generator, result_type)), result_type) : result;
+		}
 		if (package.ends_with("intrinsics/x86_64") && emit_x86_64(generator, name, arguments, function, result)) {
 			return result;
 		}

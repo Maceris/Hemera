@@ -82,7 +82,9 @@ compile-time code works out for reflection, like a constant `compiler.find_const
 
 Compile-time code is the program's own code, with the `#if` choices made for the target, compiled for the machine
 doing the compiling. Code that only computes runs the same either way; code that uses the operating system only works
-at compile time when the target's operating system is the one compiling it, as it is for a build package.
+at compile time when the target's operating system is the one compiling it, as it is for a build package. Another
+architecture's instructions, from `base/intrinsics`' package for it, are compiled as traps there: a constant holding a
+function that uses them gets compiled, but calling it at compile time stops with the trap.
 
 Compile-time code can look at the program through `base/compiler`: `compiler.package_info` for a package the file
 imports, with its files, imports, functions, constants (with their values) and types, `find_function` and
