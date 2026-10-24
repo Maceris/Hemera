@@ -10,6 +10,12 @@ HEMERA_LINUX_KEY is the SSH key to log in with (default ~/.ssh/hemera_linux_vm),
 compiler (default the Release build if there is one, otherwise Debug), and HEMERA_LINUX_SYSROOT a folder with the Linux machine's
 libc.so (a copy of libc.so.6), libm.so and ld-linux-x86-64.so.2, for the tests that link C. The
 programs go in ~/hemera-tests on the Linux machine.
+
+HEMERA_LINUX_ARCH=aarch64 builds them for AArch64 instead, run on an x86-64 Linux machine through
+user-mode QEMU (qemu-user-static and binfmt), with the C library from QEMU_LD_PREFIX
+(/usr/aarch64-linux-gnu, libc6-arm64-cross) and HEMERA_LINUX_SYSROOT_AARCH64 for linking it. They go in
+~/hemera-tests-aarch64, and the Valgrind tests are left out. HEMERA_LINUX_TESTS, names separated by
+commas, runs only those.
 """
 
 import os
@@ -112,33 +118,42 @@ def main() -> int:
     key = os.environ.get("HEMERA_LINUX_KEY", str(Path.home() / ".ssh" / "hemera_linux_vm"))
     release = COMPILER_DIR / "bin" / "Release" / "hemera.exe"
     compiler = os.environ.get("HEMERA", str(release if release.exists() else COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
-    sysroot = os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
+    architecture = os.environ.get("HEMERA_LINUX_ARCH", "x86_64")
+    aarch64 = architecture == "aarch64"
+    sysroot = os.environ.get("HEMERA_LINUX_SYSROOT_AARCH64", "D:/Programs/System Tools/linux-sysroot-aarch64") if aarch64         else os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
+    folder = "hemera-tests-aarch64" if aarch64 else "hemera-tests"
+    only = [name for name in os.environ.get("HEMERA_LINUX_TESTS", "").split(",") if name]
+    tests = [test for test in TESTS if (not only or test[0] in only) and not (aarch64 and test[0] in UNDER_VALGRIND)]
     ssh = ["ssh", "-i", key, "-o", "BatchMode=yes", host]
-    if run(ssh + ["mkdir -p ~/hemera-tests"]).returncode != 0:
+    if run(ssh + [f"mkdir -p ~/{folder}"]).returncode != 0:
         print(f"can't reach {host}")
         return 2
     failures = 0
     with tempfile.TemporaryDirectory(prefix="hemera-linux-tests-") as temporary:
-        for name, arguments, exit_code in TESTS:
+        for name, arguments, exit_code in tests:
             output = Path(temporary) / name
             arguments = [f"--sysroot={sysroot}" if argument == "SYSROOT" else argument for argument in arguments]
+            if aarch64:
+                arguments = ["--arch=aarch64", *arguments]
             scenario = SCENARIOS / SCENARIO_OF.get(name, name)
             built = run([compiler, "--os=linux", f"--output={output}", *arguments, str(scenario)])
             if built.returncode != 0 or not output.exists():
                 print(f"FAILED: {name} doesn't build\n{built.stdout}{built.stderr}")
                 failures += 1
                 continue
-            copied = run(["scp", "-q", "-i", key, str(output), f"{host}:hemera-tests/{name}"])
+            copied = run(["scp", "-q", "-i", key, str(output), f"{host}:{folder}/{name}"])
             if copied.returncode != 0:
                 print(f"FAILED: {name} couldn't be copied\n{copied.stderr}")
                 failures += 1
                 continue
             environment, program_arguments = RUN_WITH.get(name, ("", ""))
+            if aarch64:
+                environment = f"QEMU_LD_PREFIX=/usr/aarch64-linux-gnu {environment}"
             launch = f"timeout 120 ./{name}"
             if name in UNDER_VALGRIND:
                 launch = (f"if command -v valgrind > /dev/null; then timeout 1200 {VALGRIND} ./{name}; "
                           f"else echo 'valgrind not installed' >&2; exit {exit_code}; fi")
-            ran = run(ssh + [f"chmod +x ~/hemera-tests/{name} && cd ~/hemera-tests && "
+            ran = run(ssh + [f"chmod +x ~/{folder}/{name} && cd ~/{folder} && "
                              f"{environment} {launch} {program_arguments}"])
             problems = []
             if ran.returncode != exit_code:
@@ -165,7 +180,7 @@ def main() -> int:
             else:
                 print(f"FAILED: {name} {', '.join(problems)}\n{ran.stdout}{ran.stderr}")
                 failures += 1
-    print(f"{len(TESTS) - failures} of {len(TESTS)} passed")
+    print(f"{len(tests) - failures} of {len(tests)} passed")
     return 0 if failures == 0 else 1
 
 

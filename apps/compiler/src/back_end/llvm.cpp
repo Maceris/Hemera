@@ -467,7 +467,19 @@ namespace hemera {
 			report_error(ErrorCode::E6000, output_name, 0, 0, error_code.message());
 			return false;
 		}
-		
+		// LLVM's new code generation pipeline is only X86's so far: elsewhere, the optimizations, then the legacy one
+		if (!target_triple->isX86()) {
+			module_pass_manager.run(module, module_analysis_manager);
+			llvm::legacy::PassManager passes;
+			if (target_machine->addPassesToEmitFile(passes, destination, nullptr, llvm::CodeGenFileType::ObjectFile)) {
+				report_error(ErrorCode::E5001, output_name, 0, 0, "the target can't generate an object file");
+				return false;
+			}
+			passes.run(module);
+			destination.flush();
+			return true;
+		}
+
 		llvm::SourceMgr source_manager;
 		llvm::MCRegisterInfo* mc_register_info = target->createMCRegInfo(*target_triple);
 		llvm::MCTargetOptions mc_target_options;
@@ -646,7 +658,8 @@ namespace hemera {
 		const bool links_c = options.startup_code && OSType::Linux == options.os && !libraries.empty();
 		std::vector<std::string> args{ "-nostdlib" };
 		if (links_c) {
-			args.insert(args.end(), { "-dynamic-linker", "/lib64/ld-linux-x86-64.so.2" });
+			const bool aarch64 = ArchType::aarch64 == options.architecture;
+			args.insert(args.end(), { "-dynamic-linker", aarch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2" });
 			if (!options.sysroot.empty()) {
 				args.insert(args.end(), { "-L", options.sysroot.string() });
 			}
@@ -670,7 +683,8 @@ namespace hemera {
 			// A SlopOS program's loader relocates it, as Limine does a kernel
 			args.insert(args.end(), { "-pie", "--no-dynamic-linker" });
 		}
-		const bool linux_start = options.startup_code && OSType::Linux == options.os && ArchType::x86_64 == options.architecture;
+		const bool linux_start = options.startup_code && OSType::Linux == options.os
+			&& (ArchType::x86_64 == options.architecture || ArchType::aarch64 == options.architecture);
 		args.insert(args.end(), { "-e", linux_start ? LINUX_START_SYMBOL : options.startup_code ? HOSTED_ENTRY_SYMBOL : options.entry });
 		if (!options.linker_script.empty()) {
 			args.insert(args.end(), { "-T", options.linker_script.string() });

@@ -1330,6 +1330,96 @@ namespace hemera {
 		return text;
 	}
 
+	// A 64-bit constant into an AArch64 register, 16 bits at a time.
+	static std::string aarch64_move(std::string_view reg, uint64_t value) {
+		std::string text = std::format("\tmovz {}, #{}\n", reg, value & 0xffff);
+		for (int shift = 16; shift < 64; shift += 16) {
+			if ((value >> shift) & 0xffff) {
+				text += std::format("\tmovk {}, #{}, lsl #{}\n", reg, (value >> shift) & 0xffff, shift);
+			}
+		}
+		return text;
+	}
+
+	/*
+	 * morestack on AArch64, the same as on x86-64. The function's check has built a frame record and
+	 * passes the frame's size in x9, the stack parameters' size in x10 and the body in x11, and the
+	 * parameters are just above that frame record. morestack's own frame keeps the carrier's limit
+	 * and segment and x19 and x20, which it uses like rbx and r12; until the body runs it only changes
+	 * x9 to x17 besides those, which no parameter is in, and after, nothing a result is in. Without
+	 * memory it runs brk #1. With fp, it keeps q0 to q7 while allocating.
+	 */
+	static std::string morestack_assembly_aarch64(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate,
+		bool fp) {
+
+		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
+		const size_t segment_size = o.segment_size, next_free = o.next_free;
+		const uint64_t extra = header_and_guard + 32;
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", MORESTACK_SYMBOL);
+		text += "\tstp x29, x30, [sp, #-48]!\n\tmov x29, sp\n";
+		text += std::format("\tldr x12, [x28, #{}]\n\tldr x13, [x28, #{}]\n\tstp x12, x13, [x29, #16]\n\tstp x19, x20, [x29, #32]\n",
+			limit, segment);
+		text += aarch64_move("x19", extra) + "\tadd x19, x19, x9\n\tadd x19, x19, x10\n";
+		// The spare, if it's big enough, or the first cached segment, which must be
+		text += std::format("\tldr x20, [x28, #{}]\n\tcbz x20, 1f\n", spare);
+		text += std::format("\tldr w12, [x20, #{}]\n\tcmp x12, x19\n\tb.lo 1f\n", segment_size);
+		text += std::format("\tstr xzr, [x28, #{}]\n\tb 3f\n", spare);
+		text += std::format("1:\n\tldr x20, [x28, #{}]\n\tcbz x20, 9f\n", cache);
+		text += std::format("\tldr w12, [x20, #{}]\n\tcmp x12, x19\n\tb.lo 9f\n", segment_size);
+		text += std::format("\tldr x12, [x20, #{}]\n\tstr x12, [x28, #{}]\n", next_free, cache);
+		text += std::format("\tldr w12, [x28, #{0}]\n\tsub w12, w12, #1\n\tstr w12, [x28, #{0}]\n", cache_count);
+		// On it, as on x86-64; the parameters are copied from above the function's frame record
+		text += std::format("3:\n\tldr x12, [x28, #{}]\n\tcbnz x12, 11f\n\tldr x12, [x28, #{}]\n\tcbnz x12, 11f\n", segment, o.current_fiber);
+		text += std::format("\tmov x12, sp\n\tstr x12, [x28, #{}]\n", o.native_sp);
+		text += std::format("11:\n\tstr x20, [x28, #{}]\n", segment);
+		text += aarch64_move("x12", header_and_guard) + std::format("\tadd x12, x12, x20\n\tstr x12, [x28, #{}]\n", limit);
+		text += std::format("\tldr w13, [x20, #{}]\n\tadd x13, x13, x20\n\tsub x13, x13, x10\n\tand x13, x13, #-16\n", segment_size);
+		text += "\tldr x14, [x29]\n\tadd x14, x14, #16\n\tmov x15, xzr\n2:\n\tcmp x15, x10\n\tb.hs 4f\n";
+		text += "\tldr x12, [x14, x15]\n\tstr x12, [x13, x15]\n\tadd x15, x15, #8\n\tb 2b\n";
+		text += "4:\n\tldp x19, x20, [x29, #32]\n\tmov sp, x13\n";
+		// Where a body on a new segment returns: stack walks leave this frame out, and the check's too
+		text += std::format("\tblr x11\n{}:\n", MORESTACK_CONTINUE_SYMBOL);
+		// Back: the segment just left is the spare now, and an older spare goes to the cache
+		text += "\tmov sp, x29\n";
+		text += std::format("\tldr x12, [x28, #{}]\n\tldr x13, [x28, #{}]\n\tcbz x13, 5f\n", segment, spare);
+		text += std::format("\tldr x14, [x28, #{}]\n\tstr x14, [x13, #{}]\n\tstr x13, [x28, #{}]\n", cache, next_free, cache);
+		text += std::format("\tldr w14, [x28, #{0}]\n\tadd w14, w14, #1\n\tstr w14, [x28, #{0}]\n", cache_count);
+		text += std::format("5:\n\tstr x12, [x28, #{}]\n", spare);
+		text += std::format("\tldp x12, x13, [x29, #16]\n\tstr x12, [x28, #{}]\n\tstr x13, [x28, #{}]\n", limit, segment);
+		text += "\tldp x29, x30, [sp], #48\n\tret\n";
+		// None big enough: one from allocate, on the native stack, with the arguments and the body kept there
+		text += "9:\n\tmov x20, sp\n\tmov x12, sp\n";
+		text += std::format("\tldr w13, [x28, #{}]\n\tcbnz w13, 7f\n", o.foreign_depth);
+		text += std::format("\tldr x13, [x28, #{}]\n\tcbz x13, 6f\n\tldr x12, [x28, #{}]\n\tb 7f\n", o.current_fiber, o.scheduler_sp);
+		text += std::format("6:\n\tldr x13, [x28, #{}]\n\tcbz x13, 7f\n\tldr x12, [x28, #{}]\n", segment, o.native_sp);
+		text += "7:\n\tand sp, x12, #-16\n";
+		text += "\tsub sp, sp, #96\n\tstp x0, x1, [sp]\n\tstp x2, x3, [sp, #16]\n\tstp x4, x5, [sp, #32]\n\tstp x6, x7, [sp, #48]\n";
+		text += "\tstp x8, x10, [sp, #64]\n\tstr x11, [sp, #80]\n";
+		if (fp) {
+			text += "\tsub sp, sp, #128\n";
+			for (int i = 0; i < 8; i += 2) {
+				text += std::format("\tstp q{}, q{}, [sp, #{}]\n", i, i + 1, i * 16);
+			}
+		}
+		// No limit while it allocates, as on x86-64
+		text += std::format("\tldr x12, [x28, #{0}]\n\tstp x12, x20, [sp, #-16]!\n\tstr xzr, [x28, #{0}]\n", limit);
+		text += std::format("\tldr w12, [x28, #{0}]\n\tadd w12, w12, #1\n\tstr w12, [x28, #{0}]\n", o.foreign_depth);
+		text += std::format("\tmov x0, x19\n\tbl {}\n\tmov x12, x0\n", allocate);
+		text += std::format("\tldr w13, [x28, #{0}]\n\tsub w13, w13, #1\n\tstr w13, [x28, #{0}]\n", o.foreign_depth);
+		text += std::format("\tldp x13, x20, [sp], #16\n\tstr x13, [x28, #{}]\n", limit);
+		if (fp) {
+			for (int i = 0; i < 8; i += 2) {
+				text += std::format("\tldp q{}, q{}, [sp, #{}]\n", i, i + 1, i * 16);
+			}
+			text += "\tadd sp, sp, #128\n";
+		}
+		text += "\tldp x0, x1, [sp]\n\tldp x2, x3, [sp, #16]\n\tldp x4, x5, [sp, #32]\n\tldp x6, x7, [sp, #48]\n";
+		text += "\tldp x8, x10, [sp, #64]\n\tldr x11, [sp, #80]\n";
+		text += "\tmov sp, x20\n\tcbz x12, 8f\n\tmov x20, x12\n\tb 3b\n";
+		text += "8:\n\tbrk #1\n";
+		return text;
+	}
+
 	/*
 	 * Whether functions can call morestack: on x86-64 targets, with morestack made once. Reports why
 	 * not, the first time.
@@ -1338,7 +1428,8 @@ namespace hemera {
 		if (generator.module.lookupSymbol<LLVM::LLVMFuncOp>(MORESTACK_SYMBOL)) {
 			return true;
 		}
-		if (ArchType::x86_64 != generator.options->architecture) {
+		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+		if (ArchType::x86_64 != generator.options->architecture && !aarch64) {
 			return false;
 		}
 		MorestackOffsets o;
@@ -1369,6 +1460,12 @@ namespace hemera {
 		// Only the assembly calls it, which LLVM doesn't count as a use, so it's kept by being external
 		LLVM::LLVMFuncOp allocate_function = function_for(generator, allocate);
 		allocate_function.setLinkage(LLVM::Linkage::External);
+		if (aarch64) {
+			const bool fp = generator.options->cpu_features.find("-fp-armv8") == std::string::npos;
+			generator.module_assembly.push_back(morestack_assembly_aarch64(o, guard + header->type_value->size,
+				allocate_function.getSymName().str(), fp));
+			return true;
+		}
 		const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
 		generator.module_assembly.push_back(morestack_assembly(o, guard + header->type_value->size,
 			allocate_function.getSymName().str(), sse));
@@ -1391,6 +1488,9 @@ namespace hemera {
 	 * the native stack, which a foreign call from a fiber moved to, with foreign_depth still counting
 	 * it, so nothing yields. Windows only, so far.
 	 */
+	static const char* carrier_to_operand(const Generator& generator);
+	static const char* operand_to_carrier(const Generator& generator);
+
 	static void emit_callback_shim(Generator& generator, Declaration* declaration, LLVM::LLVMFuncOp shim, LLVM::LLVMFuncOp body,
 		TypeInfoFunction const* type) {
 
@@ -1400,13 +1500,15 @@ namespace hemera {
 		Declaration* find_carrier = base_declaration_named(generator, "runtime", "callback_carrier");
 		size_t foreign_depth = 0;
 		size_t foreign_context = 0;
-		const bool linux_c = OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture && generator.c_library;
+		const ArchType architecture = generator.options->architecture;
+		const bool linux_c = OSType::Linux == generator.options->os && generator.c_library
+			&& (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture);
 		if (!(system_v_on_windows(*generator.options) || linux_c) || carrier_declaration == nullptr || context_declaration == nullptr || hosted == nullptr
 			|| find_carrier == nullptr || carrier_declaration->type_value == nullptr || context_declaration->type_value == nullptr
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_depth", foreign_depth)
 			|| !runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
 			unsupported(generator, declaration->node,
-				"callbacks from foreign code (.c functions with a context) are only made for Windows x64, and Linux x86-64 linking C, so far");
+				"callbacks from foreign code (.c functions with a context) are only made for Windows x64, and Linux linking C, so far");
 			return;
 		}
 		TypeInfo* carrier_type = carrier_declaration->type_value;
@@ -1420,7 +1522,7 @@ namespace hemera {
 		state.entry = entry;
 		FunctionState* outer = generator.state;
 		generator.state = &state;
-		mlir::Value callers = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
+		mlir::Value callers = assembly(generator, integer_type(generator, 8), {}, carrier_to_operand(generator), "=r");
 		mlir::Type pointer = pointer_type(generator);
 		mlir::Value found = make_raw_slot(generator, pointer, 8);
 		LLVM::StoreOp::create(b, l, zero_of(generator, pointer), found);
@@ -1454,12 +1556,12 @@ namespace hemera {
 			mlir::Value temporary = make_slot(generator, carrier_type);
 			store_zero(generator, carrier_type, temporary);
 			LLVM::StoreOp::create(b, l, constant_int(generator, integer_type(generator, 4), 1), offset_address(generator, temporary, foreign_depth));
-			assembly(generator, mlir::Type(), { temporary }, "movq $0, %r14", "r,~{memory}");
+			assembly(generator, mlir::Type(), { temporary }, operand_to_carrier(generator), "r,~{memory}");
 			LLVM::StoreOp::create(b, l, LLVM::CallOp::create(b, l, function_for(generator, find_carrier), mlir::ValueRange{}).getResult(), found);
 			return false;
 		}, nullptr);
 		mlir::Value carrier = LLVM::LoadOp::create(b, l, pointer, found);
-		assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+		assembly(generator, mlir::Type(), { carrier }, operand_to_carrier(generator), "r,~{memory}");
 		// The context: the foreign call's, or HOSTED_CONTEXT
 		mlir::Value fallback = make_slot(generator, context_type);
 		store(generator, emit_constant_value(generator, hosted, context_type, nullptr), fallback);
@@ -1471,7 +1573,7 @@ namespace hemera {
 			arguments.push_back(argument);
 		}
 		auto call = LLVM::CallOp::create(b, l, body, arguments);
-		assembly(generator, mlir::Type(), { callers }, "movq $0, %r14", "r,~{memory}");
+		assembly(generator, mlir::Type(), { callers }, operand_to_carrier(generator), "r,~{memory}");
 		if (type->output.empty()) {
 			LLVM::ReturnOp::create(b, l, mlir::ValueRange{});
 		}
@@ -1566,8 +1668,58 @@ namespace hemera {
 	}
 
 	/*
+	 * The same for AAPCS64: the integers after the first eight and the floating-point values after the
+	 * first eight, each in an 8-byte slot, found above the shim's 32-byte frame.
+	 */
+	static std::vector<std::pair<int64_t, int64_t>> foreign_stack_arguments_aarch64(TypeInfoFunction const* type) {
+		std::vector<std::pair<int64_t, int64_t>> result;
+		size_t integers = 0;
+		size_t floats = 0;
+		for (const FunctionInput& input : type->input) {
+			const bool in_register = is_float(input.type) ? floats++ < 8 : integers++ < 8;
+			if (!in_register) {
+				const int64_t slot = static_cast<int64_t>(result.size()) * 8;
+				result.emplace_back(32 + slot, slot);
+			}
+		}
+		return result;
+	}
+
+	/*
+	 * The shim on AArch64, the same as on x86-64: x19 and x20 in place of rbx and r12, and x9 for
+	 * everything else, which no parameter or result is in.
+	 */
+	static std::string foreign_shim_assembly_aarch64(const std::string& shim, const std::string& symbol, const ForeignOffsets& o,
+		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments) {
+
+		const int64_t area = (static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", shim);
+		text += "\tstp x29, x30, [sp, #-32]!\n\tmov x29, sp\n\tstp x19, x20, [sp, #16]\n";
+		text += std::format("\tldr w9, [x28, #{0}]\n\tadd w9, w9, #1\n\tstr w9, [x28, #{0}]\n", o.foreign_depth);
+		text += std::format("\tldr x20, [x28, #{}]\n\tmov x19, sp\n", o.stack_limit);
+		// Already on the native stack, inside other foreign code or morestack's allocating: stay there
+		text += "\tcmp w9, #1\n\tb.ne 1f\n";
+		text += std::format("\tldr x9, [x28, #{}]\n\tcbz x9, 2f\n\tldr x9, [x28, #{}]\n\tb 3f\n", o.current_fiber, o.scheduler_sp);
+		text += std::format("2:\n\tldr x9, [x28, #{}]\n\tcbz x9, 1f\n\tldr x9, [x28, #{}]\n", o.stack_segment, o.native_sp);
+		text += "3:\n\tand sp, x9, #-16\n";
+		text += std::format("\tldr x9, [x28, #{}]\n\tstr x9, [x28, #{}]\n", o.native_stack_limit, o.stack_limit);
+		text += "1:\n";
+		if (area > 0) {
+			text += std::format("\tsub sp, sp, #{}\n", area);
+		}
+		for (const auto& [from, to] : stack_arguments) {
+			text += std::format("\tldr x9, [x29, #{}]\n\tstr x9, [sp, #{}]\n", from, to);
+		}
+		text += std::format("\tbl {}\n", symbol);
+		text += std::format("\tmov sp, x19\n\tstr x20, [x28, #{}]\n", o.stack_limit);
+		text += std::format("\tldr w9, [x28, #{0}]\n\tsub w9, w9, #1\n\tstr w9, [x28, #{0}]\n", o.foreign_depth);
+		text += "\tldp x19, x20, [sp, #16]\n\tldp x29, x30, [sp], #32\n\tret\n";
+		return text;
+	}
+
+	/*
 	 * A #foreign function: its shim, which is what Hemera code calls, made once, and its library,
-	 * for the linker. For now on x86-64, with parameters and a result that each fit a register.
+	 * for the linker. For now on x86-64 and AArch64, with parameters and a result that each fit a register.
 	 */
 	static LLVM::LLVMFuncOp foreign_function_for(Generator& generator, Declaration* declaration, TypeInfoFunction const* type) {
 		const std::string symbol = text_of(declaration->link_name);
@@ -1578,7 +1730,8 @@ namespace hemera {
 		 */
 		if (OSType::Linux == generator.options->os && !generator.c_library && is_base_package(declaration->package_path)) {
 			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
-				generator.module_assembly.push_back(std::format("\t.text\n\t.p2align 4\n{}:\n\tud2\n", shim));
+				const char* stop = ArchType::aarch64 == generator.options->architecture ? "brk #1" : "ud2";
+				generator.module_assembly.push_back(std::format("\t.text\n\t.p2align 4\n{}:\n\t{}\n", shim, stop));
 			}
 			LLVM::LLVMFuncOp unused = assembly_function(generator, shim, function_type(generator, type, false));
 			unused.setCConv(LLVM::cconv::CConv::C);
@@ -1587,14 +1740,15 @@ namespace hemera {
 		}
 		generator.libraries.insert(text_of(declaration->foreign_library));
 		ast::Node* where = declaration->node;
-		bool fits = ArchType::x86_64 == generator.options->architecture && type->output.size() <= 1;
+		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+		bool fits = (ArchType::x86_64 == generator.options->architecture || aarch64) && type->output.size() <= 1;
 		for (const FunctionInput& input : type->input) {
 			fits = fits && !input.is_varargs && input.type != nullptr && input.type->size <= 8
 				&& (is_float(input.type) || is_variant(input.type, TypeInfoVariant::INTEGER) || is_variant(input.type, TypeInfoVariant::POINTER)
 					|| is_variant(input.type, TypeInfoVariant::BOOLEAN) || is_variant(input.type, TypeInfoVariant::ENUM));
 		}
 		if (!fits) {
-			unsupported(generator, where, "a #foreign function can only take and give values that fit a register, on x86-64, so far");
+			unsupported(generator, where, "a #foreign function can only take and give values that fit a register, on x86-64 and AArch64, so far");
 		}
 		ForeignOffsets offsets;
 		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
@@ -1607,6 +1761,9 @@ namespace hemera {
 				&& runtime_offset(generator, "CarrierBlock", "native_sp", offsets.native_sp);
 			if (!found) {
 				unsupported(generator, where, "base/runtime's carrier block isn't what the compiler expects");
+			}
+			else if (fits && aarch64) {
+				generator.module_assembly.push_back(foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type)));
 			}
 			else if (fits) {
 				const bool windows = OSType::Win32 == generator.options->os;
@@ -1720,15 +1877,15 @@ namespace hemera {
 		const bool grows = TargetStackCheck::Morestack == generator.options->stack_check && morestack_ready(generator, declaration);
 		if ((TargetStackCheck::Trap == generator.options->stack_check || grows) && takes_context(generator, type, declaration)) {
 			/*
-			 * The prologue compares the stack pointer with the carrier block's stack_limit, at [r14],
-			 * and traps without room (apps/compiler/third-party/patches/llvm). Functions without a
-			 * context don't have a carrier yet.
+			 * The prologue compares the stack pointer with the carrier block's stack_limit, at [r14] or
+			 * [x28], and traps or grows without room (apps/compiler/third-party/patches/llvm). Functions
+			 * without a context don't have a carrier yet.
 			 */
 			auto pair = [&](std::string_view key, std::string_view text) {
 				return generator.builder.getArrayAttr({ generator.builder.getStringAttr(key), generator.builder.getStringAttr(text) });
 			};
 			attributes.push_back(generator.builder.getStringAttr("split-stack"));
-			attributes.push_back(pair("split-stack-limit-register", "r14"));
+			attributes.push_back(pair("split-stack-limit-register", ArchType::aarch64 == generator.options->architecture ? "x28" : "r14"));
 			attributes.push_back(pair("split-stack-limit-offset", "0"));
 			if (grows) {
 				attributes.push_back(pair("split-stack-morestack", MORESTACK_SYMBOL));
@@ -4033,6 +4190,49 @@ namespace hemera {
 	};
 
 	/*
+	 * An AArch64 instruction (base/intrinsics/aarch64). Returns false for a name that isn't one of them, or
+	 * isn't generated yet.
+	 */
+	static bool emit_aarch64(Generator& generator, std::string_view name, const std::vector<mlir::Value>& arguments,
+		TypeInfoFunction const* function, Emitted& result) {
+
+		mlir::Type i64 = integer_type(generator, 8);
+		if (name == "syscall") {
+			// Linux's convention: the number in x8, up to six arguments in x0 to x5, the result in x0
+			std::vector<mlir::Value> operands(arguments.begin() + 1, arguments.end());
+			operands.push_back(arguments[0]);
+			result = intrinsic_value(assembly(generator, i64, operands, "svc #0",
+				"={x0},{x0},{x1},{x2},{x3},{x4},{x5},{x8},~{memory}"), function);
+			return true;
+		}
+		if (name == "clone_thread") {
+			/*
+			 * As on x86-64: a stub leaves entry and argument at the top of the child's stack, and the child
+			 * calls entry there. Linux's clone takes flags, stack, parent_tid, tls and child_tid, in that order
+			 */
+			constexpr const char* CLONE_SYMBOL = "hemera.clone_thread";
+			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(CLONE_SYMBOL)) {
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.p2align 4\n{}:\n"
+					"\tsub x1, x1, #16\n\tstp x4, x5, [x1]\n"
+					"\tmov x4, x3\n\tmov x3, xzr\n\tmov x8, #220\n\tsvc #0\n"
+					"\tcbnz x0, 1f\n"
+					"\tmov x29, xzr\n\tmov x30, xzr\n\tldp x9, x0, [sp], #16\n\tblr x9\n\tbrk #1\n"
+					"1:\n\tret\n", CLONE_SYMBOL));
+			}
+			mlir::Type pointer = pointer_type(generator);
+			LLVM::LLVMFuncOp clone = assembly_function(generator, CLONE_SYMBOL,
+				LLVM::LLVMFunctionType::get(i64, { i64, pointer, pointer, pointer, pointer, pointer }));
+			clone.setCConv(LLVM::cconv::CConv::C);
+			auto call = LLVM::CallOp::create(generator.builder, generator.loc, clone, arguments);
+			call.setCConv(LLVM::cconv::CConv::C);
+			result = intrinsic_value(call.getResult(), function);
+			return true;
+		}
+		return false;
+	}
+
+	/*
 	 * An x86-64 instruction (base/intrinsics/x86_64). Returns false for a name that isn't one of
 	 * them, or isn't generated yet.
 	 */
@@ -4394,7 +4594,17 @@ namespace hemera {
 		size_t continuation = 0;
 	};
 
-	static SuspendedLayout suspended_layout(bool sse) {
+	/*
+	 * On AArch64: the top frame's x29, the limit and segment, x19 to x27, then fiber_suspend's x30, and
+	 * with fp, FPCR and d8 to d15 after it, so the offsets are the same either way.
+	 */
+	constexpr size_t AARCH64_SUSPENDED_SIZE = 112;
+	constexpr size_t AARCH64_SUSPENDED_FP_SIZE = 176;
+
+	static SuspendedLayout suspended_layout(bool sse, bool aarch64 = false) {
+		if (aarch64) {
+			return SuspendedLayout{ 0, 8, 16, 24, 96 };
+		}
 		const size_t floating = sse ? 16 : 0;
 		return SuspendedLayout{ floating, floating + 8, floating + 16, floating + 24, floating + 56 };
 	}
@@ -4494,6 +4704,108 @@ namespace hemera {
 		return text;
 	}
 
+	// Storing a fiber's state on AArch64, the fiber in x0.
+	static std::string set_state_aarch64(const FiberOffsets& o, uint64_t value) {
+		const char* store = o.state_size == 1 ? "strb w9" : o.state_size == 2 ? "strh w9" : o.state_size == 4 ? "str w9" : "str x9";
+		return aarch64_move("x9", value) + std::format("\t{}, [x0, #{}]\n", store, o.state);
+	}
+
+	/*
+	 * The fiber switches and the resume loop on AArch64 (docs/calling_convention.md, AArch64), as on
+	 * x86-64. The scheduler's state on its own stack, from scheduler_sp: x19 to x27, x29, x30, the
+	 * carrier's stack_limit, stack_segment and current_fiber, and with fp, FPCR and d8 to d15. A
+	 * suspended fiber's is suspended_layout's. Nothing is pushed by a call here, so the loop leaves the
+	 * stack pointer where it is: at the fiber's saved state the first time, and then at the bottom of
+	 * the frame that returned, below everything live. fiber_reenter puts the loop's address in the
+	 * frame record, which functions return through, and the loop keeps its state in x9 to x12, which
+	 * no function returns anything in. No guarded control stack or pointer authentication yet.
+	 */
+	static std::string fiber_assembly_aarch64(const FiberOffsets& o, std::string_view run, bool fp) {
+		const SuspendedLayout layout = suspended_layout(fp, true);
+		const size_t scheduler_size = fp ? 192 : 112;
+		const size_t suspended_size = fp ? AARCH64_SUSPENDED_FP_SIZE : AARCH64_SUSPENDED_SIZE;
+		// FPCR and d8 to d15 at offset, from sp
+		auto floating = [&](size_t offset, bool save) {
+			if (!fp) {
+				return std::string();
+			}
+			std::string text = save ? std::format("\tmrs x9, fpcr\n\tstr x9, [sp, #{}]\n", offset)
+				: std::format("\tldr x9, [sp, #{}]\n\tmsr fpcr, x9\n", offset);
+			for (int i = 8; i < 16; i += 2) {
+				text += std::format("\t{} d{}, d{}, [sp, #{}]\n", save ? "stp" : "ldp", i, i + 1, offset + 8 + static_cast<size_t>(i - 8) * 8);
+			}
+			return text;
+		};
+		std::string save_scheduler = std::format("\tsub sp, sp, #{}\n", scheduler_size);
+		save_scheduler += "\tstp x19, x20, [sp]\n\tstp x21, x22, [sp, #16]\n\tstp x23, x24, [sp, #32]\n\tstp x25, x26, [sp, #48]\n";
+		save_scheduler += std::format("\tstp x27, x29, [sp, #64]\n\tldr x9, [x28, #{}]\n\tstp x30, x9, [sp, #80]\n", o.carrier_limit);
+		save_scheduler += std::format("\tldr x9, [x28, #{}]\n\tldr x10, [x28, #{}]\n\tstp x9, x10, [sp, #96]\n", o.carrier_segment, o.current_fiber);
+		save_scheduler += floating(112, true);
+		save_scheduler += std::format("\tmov x9, sp\n\tstr x9, [x28, #{}]\n\tstr xzr, [x28, #{}]\n", o.scheduler_sp, o.shadow_stack_base);
+		auto back_to_scheduler = [&](int exit) {
+			std::string text = std::format("\tldr x9, [x28, #{}]\n\tmov sp, x9\n", o.scheduler_sp);
+			text += floating(112, false);
+			text += std::format("\tldp x9, x10, [sp, #96]\n\tstr x9, [x28, #{}]\n\tstr x10, [x28, #{}]\n", o.carrier_segment, o.current_fiber);
+			text += std::format("\tldp x30, x9, [sp, #80]\n\tstr x9, [x28, #{}]\n", o.carrier_limit);
+			text += "\tldp x19, x20, [sp]\n\tldp x21, x22, [sp, #16]\n\tldp x23, x24, [sp, #32]\n\tldp x25, x26, [sp, #48]\n";
+			text += std::format("\tldp x27, x29, [sp, #64]\n\tadd sp, sp, #{}\n\tmov w0, #{}\n\tret\n", scheduler_size, exit);
+			return text;
+		};
+		std::string text = "\t.text\n";
+		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
+		text += std::format("\t.p2align 4\n{}:\n", FIBER_START_SYMBOL);
+		text += save_scheduler;
+		text += std::format("\tstr x0, [x28, #{}]\n\tstr x2, [x28, #{}]\n\tstr xzr, [x28, #{}]\n\tstr xzr, [x28, #{}]\n",
+			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
+		text += set_state_aarch64(o, o.running);
+		text += "\tmov sp, x1\n\tmov x29, xzr\n\tbl hemera.fiber_entry\n\tbrk #1\n";
+		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
+		text += "\t.p2align 4\nhemera.fiber_entry:\n\tstp x29, x30, [sp, #-16]!\n\tmov x29, sp\n";
+		text += std::format("\tbl {}\n", run);
+		text += back_to_scheduler(1);
+		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
+		text += std::format("\t.p2align 4\n{}:\n", FIBER_RESUME_SYMBOL);
+		text += save_scheduler;
+		text += std::format("\tstr x0, [x28, #{}]\n", o.current_fiber);
+		text += set_state_aarch64(o, o.running);
+		text += std::format("\tldr x9, [x0, #{}]\n\tmov sp, x9\n", o.saved_sp);
+		text += std::format("\tldr x10, [sp, #{}]\n\tstr x10, [x28, #{}]\n", layout.segment, o.carrier_segment);
+		text += std::format("\tldr x10, [sp, #{}]\n\tstr x10, [x28, #{}]\n", layout.limit, o.carrier_limit);
+		text += std::format("\tldr x10, [sp, #{}]\n\tldr x11, [sp, #{}]\n\tmov w12, #1\n", layout.top_frame, layout.continuation);
+		text += "hemera.fiber_reenter_next:\n";
+		text += std::format("\tstr x10, [x28, #{}]\n", o.resume_frame);
+		text += std::format("\tldr x9, [x10, #8]\n\tstr x9, [x28, #{}]\n", o.resume_return);
+		text += std::format("\tldr x9, [x10]\n\tstr x9, [x28, #{}]\n", o.resume_parent);
+		text += "\tbl hemera.fiber_reenter\n";
+		// The frame returned, to here: on to its caller, whose frame bottom the stack pointer is at now
+		text += std::format("{}:\n", FIBER_LOOP_RETURN_SYMBOL);
+		text += std::format("\tldr x11, [x28, #{}]\n\tldr x10, [x28, #{}]\n", o.resume_return, o.resume_parent);
+		text += "\tmov w12, wzr\n\tb hemera.fiber_reenter_next\n";
+		// fiber_reenter: only reached by the bl above, whose return address the frame returns through now
+		text += "\t.p2align 4\nhemera.fiber_reenter:\n\tstr x30, [x10, #8]\n\tmov x29, x10\n\tcbz w12, 1f\n";
+		text += "\tldp x19, x20, [sp, #24]\n\tldp x21, x22, [sp, #40]\n\tldp x23, x24, [sp, #56]\n\tldp x25, x26, [sp, #72]\n";
+		text += "\tldr x27, [sp, #88]\n";
+		text += floating(104, false);
+		text += std::format("\tadd sp, sp, #{}\n", suspended_size);
+		text += "1:\n\tbr x11\n";
+		// fiber_suspend(fiber): its state on its own stack, where it is, and back to the scheduler
+		text += std::format("\t.p2align 4\n{}:\n", FIBER_SUSPEND_SYMBOL);
+		text += std::format("\tsub sp, sp, #{}\n", suspended_size);
+		text += std::format("\tldr x9, [x28, #{}]\n\tldr x10, [x28, #{}]\n\tstr x29, [sp]\n\tstp x9, x10, [sp, #8]\n",
+			o.carrier_limit, o.carrier_segment);
+		text += "\tstp x19, x20, [sp, #24]\n\tstp x21, x22, [sp, #40]\n\tstp x23, x24, [sp, #56]\n\tstp x25, x26, [sp, #72]\n";
+		text += "\tstp x27, x30, [sp, #88]\n";
+		text += floating(104, true);
+		text += std::format("\tmov x9, sp\n\tstr x9, [x0, #{}]\n", o.saved_sp);
+		// Suspended frames hold their real return addresses
+		text += std::format("\tldr x9, [x28, #{}]\n\tcbz x9, 1f\n", o.resume_frame);
+		text += std::format("\tldr x10, [x28, #{}]\n\tstr x10, [x9, #8]\n\tstr xzr, [x28, #{}]\n", o.resume_return, o.resume_frame);
+		text += "1:\n";
+		text += set_state_aarch64(o, o.suspended);
+		text += back_to_scheduler(0);
+		return text;
+	}
+
 	/*
 	 * What lower_to_llvm's stack walks need to follow fibers (define_stack_walker): the resume loop's
 	 * return address, and FIBER_WALK_SYMBOL: the offsets of the carrier's resume_return and of a
@@ -4502,7 +4814,7 @@ namespace hemera {
 	 */
 	static void fiber_walk_table(Generator& generator, const FiberOffsets& o, bool sse) {
 		assembly_function(generator, FIBER_LOOP_RETURN_SYMBOL, no_arguments(generator));
-		const SuspendedLayout layout = suspended_layout(sse);
+		const SuspendedLayout layout = suspended_layout(sse, ArchType::aarch64 == generator.options->architecture);
 		const std::vector<int64_t> values{ static_cast<int64_t>(o.resume_return), static_cast<int64_t>(o.saved_sp),
 			static_cast<int64_t>(o.state), static_cast<int64_t>(o.state_size), static_cast<int64_t>(o.suspended),
 			static_cast<int64_t>(layout.top_frame), static_cast<int64_t>(layout.continuation) };
@@ -4525,8 +4837,8 @@ namespace hemera {
 		if (name != "fiber_start" && name != "fiber_resume" && name != "fiber_suspend") {
 			return false;
 		}
-		if (ArchType::x86_64 != generator.options->architecture) {
-			unsupported(generator, where, "fibers are only made for x86-64 so far (docs/multitasking.md, Open Questions)");
+		if (ArchType::x86_64 != generator.options->architecture && ArchType::aarch64 != generator.options->architecture) {
+			unsupported(generator, where, "fibers are only made for x86-64 and AArch64 so far (docs/multitasking.md, Open Questions)");
 			result = intrinsic_value(zero_of(generator, llvm_type(generator, function->output.empty() ? BUILTIN_int : function->output[0].type)),
 				function);
 			return true;
@@ -4544,9 +4856,16 @@ namespace hemera {
 			LLVM::LLVMFuncOp run_function = function_for(generator, run);
 			run_function.setLinkage(LLVM::Linkage::External);
 			const std::string run_symbol = run_function.getSymName().str();
-			const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
-			generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse));
-			fiber_walk_table(generator, offsets, sse);
+			if (ArchType::aarch64 == generator.options->architecture) {
+				const bool fp = generator.options->cpu_features.find("-fp-armv8") == std::string::npos;
+				generator.module_assembly.push_back(fiber_assembly_aarch64(offsets, run_symbol, fp));
+				fiber_walk_table(generator, offsets, fp);
+			}
+			else {
+				const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
+				generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse));
+				fiber_walk_table(generator, offsets, sse);
+			}
 		}
 		mlir::Type pointer = pointer_type(generator);
 		mlir::Type i32 = integer_type(generator, 4);
@@ -4828,7 +5147,9 @@ namespace hemera {
 		}
 		// The carrier register, which nothing else uses (docs/calling_convention.md, Carrier Register)
 		if (name == "carrier") {
-			return value(assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}"), result_type);
+			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+			return value(assembly(generator, pointer_type(generator), {}, aarch64 ? "mov $0, x28" : "movq %r14, $0", "=r,~{memory}"),
+				result_type);
 		}
 		if (name == "uses_c_library") {
 			return value(boolean(generator, generator.c_library), result_type);
@@ -4850,7 +5171,8 @@ namespace hemera {
 			return value(LLVM::AddressOfOp::create(b, l, state), result_type);
 		}
 		if (name == "set_carrier") {
-			assembly(generator, mlir::Type(), arguments, "movq $0, %r14", "r,~{memory}");
+			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+			assembly(generator, mlir::Type(), arguments, aarch64 ? "mov x28, $0" : "movq $0, %r14", "r,~{memory}");
 			return result;
 		}
 		if (name.starts_with("volatile_load_")) {
@@ -4900,7 +5222,12 @@ namespace hemera {
 			LLVM::LLVMFuncOp address = function_for(generator, handler);
 			return value(entry_points_of(generator, address.getSymName().str()), result_type);
 		}
-		if (emit_x86_64(generator, name, arguments, function, result)) {
+		// Each architecture's instructions, from its own package (base/intrinsics/platform.hsc)
+		const std::string_view package = called->package_path != nullptr ? std::string_view(*called->package_path) : std::string_view();
+		if (package.ends_with("intrinsics/x86_64") && emit_x86_64(generator, name, arguments, function, result)) {
+			return result;
+		}
+		if (package.ends_with("intrinsics/aarch64") && emit_aarch64(generator, name, arguments, function, result)) {
 			return result;
 		}
 		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", full_name));
@@ -5295,7 +5622,7 @@ namespace hemera {
 		size_t foreign_context = 0;
 		if (by_name && called->foreign_library != nullptr && generator.state->context
 			&& runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
-			mlir::Value carrier = assembly(generator, pointer_type(generator), {}, "movq %r14, $0", "=r,~{memory}");
+			mlir::Value carrier = assembly(generator, pointer_type(generator), {}, carrier_to_operand(generator), "=r,~{memory}");
 			foreign_context_slot = offset_address(generator, carrier, foreign_context);
 			outer_foreign_context = LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), foreign_context_slot);
 			LLVM::StoreOp::create(generator.builder, generator.loc, generator.state->context, foreign_context_slot);
@@ -7320,6 +7647,24 @@ namespace hemera {
 	}
 
 	/*
+	 * The instructions moving the carrier register (docs/calling_convention.md, Carrier Register) into an
+	 * operand, and from one: r14 on x86-64, x28 on AArch64.
+	 */
+	static const char* carrier_to_operand(const Generator& generator) {
+		return ArchType::aarch64 == generator.options->architecture ? "mov $0, x28" : "movq %r14, $0";
+	}
+
+	static const char* operand_to_carrier(const Generator& generator) {
+		return ArchType::aarch64 == generator.options->architecture ? "mov x28, $0" : "movq $0, %r14";
+	}
+
+	// Whether the target is Linux on an architecture whose start and system calls the compiler knows.
+	static bool hosted_linux(const Generator& generator) {
+		const ArchType architecture = generator.options->architecture;
+		return OSType::Linux == generator.options->os && (ArchType::x86_64 == architecture || ArchType::aarch64 == architecture);
+	}
+
+	/*
 	 * A hosted program's entry: a zeroed context for main, whose result, if it has one, is the
 	 * exit code.
 	 */
@@ -7335,7 +7680,7 @@ namespace hemera {
 		 * On Linux the entry is called as C's main is, with argc, argv and envp: by libc when the
 		 * program links C, and by _start otherwise, which finds them on the stack the kernel set up
 		 */
-		const bool linux_x86 = OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture;
+		const bool linux_x86 = hosted_linux(generator);
 		/*
 		 * On SlopOS the entry is where the process starts, called as a function is with one argument, the
 		 * process's startup block, and nothing to return to: it ends the process with main's result
@@ -7387,7 +7732,8 @@ namespace hemera {
 		 */
 		Declaration* carrier_declaration = base_declaration_named(generator, "runtime", "CarrierBlock");
 		mlir::Value callers_carrier;
-		if (ArchType::x86_64 == generator.options->architecture && carrier_declaration != nullptr
+		if ((ArchType::x86_64 == generator.options->architecture || ArchType::aarch64 == generator.options->architecture)
+			&& carrier_declaration != nullptr
 			&& carrier_declaration->type_value != nullptr) {
 			TypeInfo* carrier_type = carrier_declaration->type_value;
 			mlir::Value carrier = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
@@ -7405,8 +7751,8 @@ namespace hemera {
 						offset_address(generator, carrier, segment_allocator));
 				}
 			}
-			callers_carrier = assembly(generator, integer_type(generator, 8), {}, "movq %r14, $0", "=r");
-			assembly(generator, mlir::Type(), { carrier }, "movq $0, %r14", "r,~{memory}");
+			callers_carrier = assembly(generator, integer_type(generator, 8), {}, carrier_to_operand(generator), "=r");
+			assembly(generator, mlir::Type(), { carrier }, operand_to_carrier(generator), "r,~{memory}");
 			// Where callbacks from foreign code find it, where the runtime has that
 			if (Declaration* registers = base_declaration_named(generator, "runtime", "register_carrier")) {
 				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, registers), mlir::ValueRange{ carrier });
@@ -7440,9 +7786,32 @@ namespace hemera {
 		}
 		if (!windows) {
 			if (callers_carrier) {
-				assembly(generator, mlir::Type(), { callers_carrier }, "movq $0, %r14", "r,~{memory}");
+				assembly(generator, mlir::Type(), { callers_carrier }, operand_to_carrier(generator), "r,~{memory}");
 			}
 			LLVM::ReturnOp::create(generator.builder, generator.loc, code);
+			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+			if (OSType::Linux == generator.options->os && aarch64 && generator.c_library) {
+				/*
+				 * As crt1.o's _start on AArch64: rtld_fini from x0, argc and argv from the stack, the stack
+				 * itself as stack_end, no init or fini of its own, and the entry as main
+				 */
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\tmov x29, xzr\n\tmov x30, xzr\n\tmov x5, x0\n"
+					"\tldr x1, [sp]\n\tadd x2, sp, #8\n\tmov x6, sp\n\tadrp x0, {1}\n\tadd x0, x0, :lo12:{1}\n"
+					"\tmov x3, xzr\n\tmov x4, xzr\n\tbl __libc_start_main\n\tbrk #1\n",
+					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
+			}
+			else if (OSType::Linux == generator.options->os && aarch64) {
+				/*
+				 * As on x86-64, with no C library: argc, argv and envp from the stack, which Linux leaves
+				 * 16-byte aligned, the entry called, then exit_group (94) with its result
+				 */
+				generator.module_assembly.push_back(std::format(
+					"\t.text\n\t.globl {0}\n\t.p2align 4\n{0}:\n\tmov x29, xzr\n\tmov x30, xzr\n"
+					"\tldr x0, [sp]\n\tadd x1, sp, #8\n\tadd x2, x1, x0, lsl #3\n\tadd x2, x2, #8\n"
+					"\tbl {1}\n\tmov x8, #94\n\tsvc #0\n\tbrk #1\n",
+					LINUX_START_SYMBOL, HOSTED_ENTRY_SYMBOL));
+			}
 			if (OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture && generator.c_library) {
 				/*
 				 * Linking C, the program starts through libc, which sets itself up first and calls the
@@ -9086,8 +9455,8 @@ namespace hemera {
 		result.red_zone = target.red_zone;
 		result.address_zero_is_memory = target.address_zero_is_memory;
 		result.startup_code = target.startup_code;
-		// Morestack where it's made: x86-64 targets; off elsewhere, for now
-		const bool grows = ArchType::x86_64 == result.architecture;
+		// Morestack where it's made: x86-64 and AArch64 targets; off elsewhere, for now
+		const bool grows = ArchType::x86_64 == result.architecture || ArchType::aarch64 == result.architecture;
 		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap
 			: target.stack_check_failure == "Morestack" && grows ? TargetStackCheck::Morestack : TargetStackCheck::Off;
 		if (!target.linker_script.empty()) {
@@ -9301,6 +9670,13 @@ namespace hemera {
 		if (ArchType::x86_64 == options.architecture) {
 			features += features.empty() ? "+reserve-r14" : ",+reserve-r14";
 		}
+		if (ArchType::aarch64 == options.architecture) {
+			// ARMv8.2-A with LSE atomics unless the CPU says otherwise, like x86-64-v3 for x86
+			if (options.cpu.empty() || options.cpu == "generic") {
+				features += features.empty() ? "+v8.2a,+lse" : ",+v8.2a,+lse";
+			}
+			features += features.empty() ? "+reserve-x28" : ",+reserve-x28";
+		}
 		return features;
 	}
 
@@ -9310,7 +9686,7 @@ namespace hemera {
 		Generator generator(program_info, module);
 		generator.options = &options;
 		generator.input_package = intern(options.input.string());
-		if (options.startup_code && OSType::Linux == options.os && ArchType::x86_64 == options.architecture) {
+		if (options.startup_code && hosted_linux(generator)) {
 			std::scoped_lock<std::mutex> lock(generator.names.mutex);
 			for (const auto& [key, declaration] : generator.names.declarations) {
 				if (declaration != nullptr && declaration->foreign_library != nullptr && !is_base_package(declaration->package_path)) {
@@ -9510,10 +9886,13 @@ namespace hemera {
 		llvm::Function* morestack_continue = nullptr;
 		// FIBER_WALK_SYMBOL's offsets, see fiber_walk_table
 		std::vector<uint64_t> offsets;
+		// The carrier register's name: r14 on x86-64, x28 on AArch64
+		const char* carrier_register = "r14";
 	};
 
-	static WalkSupport walk_support(llvm::Module& module) {
+	static WalkSupport walk_support(llvm::Module& module, const Options& options) {
 		WalkSupport support;
+		support.carrier_register = ArchType::aarch64 == options.architecture ? "x28" : "r14";
 		support.loop_return = module.getFunction(FIBER_LOOP_RETURN_SYMBOL);
 		support.morestack_continue = module.getFunction(MORESTACK_CONTINUE_SYMBOL);
 		llvm::GlobalVariable* table = module.getGlobalVariable(FIBER_WALK_SYMBOL, true);
@@ -9586,9 +9965,9 @@ namespace hemera {
 			builder.SetInsertPoint(through_loop);
 			llvm::Function* read_register = llvm::Intrinsic::getOrInsertDeclaration(function->getParent(),
 				llvm::Intrinsic::read_register, { size });
-			llvm::Value* r14 = builder.CreateCall(read_register, { llvm::MetadataAsValue::get(context,
-				llvm::MDNode::get(context, { llvm::MDString::get(context, "r14") })) });
-			llvm::Value* carrier = builder.CreateIntToPtr(r14, pointer);
+			llvm::Value* carrier_value = builder.CreateCall(read_register, { llvm::MetadataAsValue::get(context,
+				llvm::MDNode::get(context, { llvm::MDString::get(context, support.carrier_register) })) });
+			llvm::Value* carrier = builder.CreateIntToPtr(carrier_value, pointer);
 			llvm::Value* real = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), carrier, support.offsets[0]));
 			builder.CreateBr(found);
 			builder.SetInsertPoint(found);
@@ -9689,8 +10068,8 @@ namespace hemera {
 	 * saved frame pointers. A frame whose saved frame pointer is null is the entry function's, which
 	 * end_stack_at_entry made the end of the chain, so its return address isn't recorded.
 	 */
-	static void define_stack_walker(llvm::Module& module) {
-		const WalkSupport support = walk_support(module);
+	static void define_stack_walker(llvm::Module& module, const Options& options) {
+		const WalkSupport support = walk_support(module, options);
 		define_fiber_stack_walker(module, support);
 		llvm::Function* walker = module.getFunction(STACK_WALKER_SYMBOL);
 		if (walker == nullptr || !walker->isDeclaration()) {
@@ -9822,7 +10201,7 @@ namespace hemera {
 		}
 		define_memory_functions(*result);
 		define_stack_probe(*result, options);
-		define_stack_walker(*result);
+		define_stack_walker(*result, options);
 		end_stack_at_entry(*result, options);
 		return result;
 	}

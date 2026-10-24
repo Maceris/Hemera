@@ -430,6 +430,15 @@ runtime's process state for `runtime.process_arguments` and `std/os`'s environme
 finds them on the stack the kernel set up (`argc`, then `argv`'s pointers and a null, then `envp`'s); with it, libc
 passes them.
 
+### Linux on AArch64
+
+`--arch=aarch64` with `--os=linux` builds the same programs for 64-bit Arm: the runtime and `std/os` make the generic
+system call table's calls (`clone`, `dup3`, `ppoll` and `renameat2` where x86-64 has `fork`, `dup2`, `poll` and
+`renameat`), with `svc #0`, and threads, fibers, `morestack` and linking C all work as on x86-64. Without `--cpu`, code
+is for ARMv8.2-A with the LSE atomics, which every 64-bit Arm server and desktop CPU of the last several years has.
+The carrier register is `x28` (see [calling_convention.md](calling_convention.md#carrier-register)). An x86-64 Linux
+machine can run the programs with `qemu-user`, given the AArch64 C library for those that link it.
+
 ### Linking C on Linux
 
 A hosted Linux program is normally static, with no C library: the runtime makes its own system calls
@@ -444,7 +453,8 @@ A hosted Linux program is normally static, with no C library: the runtime makes 
 * Each thread's carrier block is in an ELF thread-local slot, where callbacks from foreign code find it, so `.c`
   functions with a context work, as on Windows.
 * It's linked against the target's own libraries, from the folder `--sysroot` names: `libc.so` (a copy of `libc.so.6`
-  does), the `lib<name>.so` of each other `#library`, and `ld-linux-x86-64.so.2`. No C runtime objects are needed.
+  does), the `lib<name>.so` of each other `#library`, and the dynamic linker (`ld-linux-x86-64.so.2`, or
+  `ld-linux-aarch64.so.1` on AArch64). No C runtime objects are needed.
 
 ## Generating Everything
 

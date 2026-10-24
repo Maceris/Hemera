@@ -6,7 +6,7 @@ import intrinsics from "base"
  * The process's heap (PageHeap, process.hsc) on systems where the runtime makes its own from pages the
  * system maps: map_pages and unmap_pages are each system's, in linux.hsc and slop_os.hsc.
  */
-#if (OS == .Linux || OS == .SlopOS) && TARGET_ARCH == .x86_64 {
+#if (OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) || (OS == .SlopOS && TARGET_ARCH == .x86_64) {
     /*
      * The process's PageHeap (process.hsc), which any thread can use. Blocks are zeroed, and any
      * alignment works: above 16, a block gets pages of its own.

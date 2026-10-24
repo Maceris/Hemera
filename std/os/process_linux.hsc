@@ -11,8 +11,6 @@ import runtime from "base"
  * a threaded process may only make system calls.
  */
 #if OS == .Linux && TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
-
     SYS_POLL : u64 : 7
     SYS_DUP2 : u64 : 33
     SYS_FORK : u64 : 57
@@ -20,6 +18,47 @@ import runtime from "base"
     SYS_WAIT4 : u64 : 61
     SYS_EXIT_GROUP : u64 : 231
     SYS_PIPE2 : u64 : 293
+
+    linux_fork :: fn() -> u64 {
+        return runtime.linux_syscall(SYS_FORK)
+    }
+
+    linux_dup2 :: fn(from: u64, to: u64) -> u64 {
+        return runtime.linux_syscall(SYS_DUP2, from, to)
+    }
+
+    // Until one of count descriptors at descriptors is ready, however long that takes
+    linux_poll :: fn(descriptors: u64, count: u64) -> u64 {
+        return runtime.linux_syscall(SYS_POLL, descriptors, count, 0xffff_ffff_ffff_ffff)
+    }
+}
+#else_if OS == .Linux && TARGET_ARCH == .arm64 {
+    // The generic table has no fork, dup2 or poll: clone, dup3 and ppoll do what they did
+    SYS_DUP3 : u64 : 24
+    SYS_PIPE2 : u64 : 59
+    SYS_PPOLL : u64 : 73
+    SYS_EXIT_GROUP : u64 : 94
+    SYS_CLONE : u64 : 220
+    SYS_EXECVE : u64 : 221
+    SYS_WAIT4 : u64 : 260
+    // The signal a child sends its parent when it ends
+    SIGCHLD : u64 : 17
+
+    linux_fork :: fn() -> u64 {
+        return runtime.linux_syscall(SYS_CLONE, SIGCHLD, 0, 0, 0, 0)
+    }
+
+    linux_dup2 :: fn(from: u64, to: u64) -> u64 {
+        return runtime.linux_syscall(SYS_DUP3, from, to, 0)
+    }
+
+    // Until one of count descriptors at descriptors is ready: no timeout, and no signal mask
+    linux_poll :: fn(descriptors: u64, count: u64) -> u64 {
+        return runtime.linux_syscall(SYS_PPOLL, descriptors, count, 0, 0, 8)
+    }
+}
+
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
 
     POLLIN : i16 : 1
     ENOENT : u64 : 2
@@ -67,7 +106,7 @@ import runtime from "base"
     // Reads what's in a pipe into buffer: whether it's done, at its end or broken.
     read_some :: fn(descriptor: u64, buffer: ptr[mut u8[..]]) -> bool {
         chunk : u8[4096]
-        count :: x86_64.syscall(SYS_READ, descriptor, cast[u64](&chunk[0]), 4096)
+        count :: runtime.linux_syscall(SYS_READ, descriptor, cast[u64](&chunk[0]), 4096)
         if failed(count) {
             return 0 - count != EINTR
         }
@@ -134,43 +173,43 @@ import runtime from "base"
         environment :: intrinsics.process_state().environment_pointers
 
         pipes : i32[6]
-        if failed(x86_64.syscall(SYS_PIPE2, cast[u64](&pipes[0]), O_CLOEXEC)) || failed(x86_64.syscall(SYS_PIPE2, cast[u64](&pipes[2]), O_CLOEXEC))
-            || failed(x86_64.syscall(SYS_PIPE2, cast[u64](&pipes[4]), O_CLOEXEC)) {
+        if failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[0]), O_CLOEXEC)) || failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[2]), O_CLOEXEC))
+            || failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[4]), O_CLOEXEC)) {
             return empty, ProcessError.FailedToStart
         }
-        child :: x86_64.syscall(SYS_FORK)
+        child :: linux_fork()
         if failed(child) {
             return empty, ProcessError.FailedToStart
         }
         if child == 0 {
             // The child: system calls only, then the program, or why it couldn't start on the third pipe
-            _ = x86_64.syscall(SYS_DUP2, cast[u64](pipes[1]), 1)
-            _ = x86_64.syscall(SYS_DUP2, cast[u64](pipes[3]), 2)
+            _ = linux_dup2(cast[u64](pipes[1]), 1)
+            _ = linux_dup2(cast[u64](pipes[3]), 2)
             if directory != null {
-                _ = x86_64.syscall(SYS_CHDIR, cast[u64](directory))
+                _ = runtime.linux_syscall(SYS_CHDIR, cast[u64](directory))
             }
             reason : u64 = ENOENT
             for candidate in candidates {
-                attempt :: x86_64.syscall(SYS_EXECVE, cast[u64](candidate), cast[u64](argument_pointers.data), cast[u64](environment))
+                attempt :: runtime.linux_syscall(SYS_EXECVE, cast[u64](candidate), cast[u64](argument_pointers.data), cast[u64](environment))
                 if 0 - attempt != ENOENT {
                     reason = 0 - attempt
                 }
             }
-            _ = x86_64.syscall(SYS_WRITE, cast[u64](pipes[5]), cast[u64](&reason), 8)
-            _ = x86_64.syscall(SYS_EXIT_GROUP, 127)
+            _ = runtime.linux_syscall(SYS_WRITE, cast[u64](pipes[5]), cast[u64](&reason), 8)
+            _ = runtime.linux_syscall(SYS_EXIT_GROUP, 127)
         }
         // The parent keeps the reading ends
-        _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[1]))
-        _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[3]))
-        _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[5]))
+        _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[1]))
+        _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[3]))
+        _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[5]))
         reason : u64 = 0
-        reported :: x86_64.syscall(SYS_READ, cast[u64](pipes[4]), cast[u64](&reason), 8)
-        _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[4]))
+        reported :: runtime.linux_syscall(SYS_READ, cast[u64](pipes[4]), cast[u64](&reason), 8)
+        _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[4]))
         status : i32 = 0
         if !failed(reported) && reported == 8 {
-            _ = x86_64.syscall(SYS_WAIT4, child, cast[u64](&status), 0, 0)
-            _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[0]))
-            _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[2]))
+            _ = runtime.linux_syscall(SYS_WAIT4, child, cast[u64](&status), 0, 0)
+            _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[0]))
+            _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[2]))
             return empty, if reason == ENOENT { ProcessError.NotFound } else { ProcessError.FailedToStart }
         }
 
@@ -184,7 +223,7 @@ import runtime from "base"
                 if watched[0].descriptor < 0 && watched[1].descriptor < 0 {
                     break
                 }
-                ready :: x86_64.syscall(SYS_POLL, cast[u64](&watched[0]), 2, 0xffff_ffff_ffff_ffff)
+                ready :: linux_poll(cast[u64](&watched[0]), 2)
                 if failed(ready) {
                     if 0 - ready == EINTR {
                         continue
@@ -199,9 +238,9 @@ import runtime from "base"
                 }
             }
         }
-        _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[0]))
-        _ = x86_64.syscall(SYS_CLOSE, cast[u64](pipes[2]))
-        _ = x86_64.syscall(SYS_WAIT4, child, cast[u64](&status), 0, 0)
+        _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[0]))
+        _ = runtime.linux_syscall(SYS_CLOSE, cast[u64](pipes[2]))
+        _ = runtime.linux_syscall(SYS_WAIT4, child, cast[u64](&status), 0, 0)
         // Exited: the code in the second byte; killed by a signal: 128 and the signal, as shells give
         code :: if status & 0x7f == 0 { (status >> 8) & 0xff } else { 128 + (status & 0x7f) }
         result := ProcessResult.{exit_code = cast[int](code), output = as_text(output), error_output = as_text(error_output)}

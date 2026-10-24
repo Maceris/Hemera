@@ -1,0 +1,247 @@
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+index 026f807124d2..266f5749c824 100644
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -224,6 +224,7 @@
+ #include "MCTargetDesc/AArch64MCTargetDesc.h"
+ #include "llvm/ADT/ScopeExit.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/StringSwitch.h"
+ #include "llvm/Analysis/ValueTracking.h"
+ #include "llvm/CodeGen/CFIInstBuilder.h"
+ #include "llvm/CodeGen/LivePhysRegs.h"
+@@ -938,6 +939,128 @@ AArch64FrameLowering::findScratchNonCalleeSaveRegister(MachineBasicBlock *MBB,
+   return AArch64::NoRegister;
+ }
+ 
++// "split-stack" with "split-stack-limit-register"="x28": the stack pointer less
++// the frame is compared against a limit read at an offset
++// ("split-stack-limit-offset", a multiple of 8, default 0) from a register the
++// program reserves for it (+reserve-x28), so any platform works, including
++// freestanding ones. Without room, "split-stack-failure"="trap" runs brk #1, and
++// "split-stack-morestack"="symbol" calls symbol with Hemera's protocol: a frame
++// record, the frame's size in x9, the stack arguments' size in x10, the body's
++// address in x11, and bl symbol, which runs the body on a new stack segment and
++// returns once it has; then back to the caller. x16 and x17, which nothing
++// holds at a function's entry, are the check's scratch registers, and x0 to x8
++// pass through untouched. LLVM has no other segmented stacks on AArch64.
++void AArch64FrameLowering::adjustForSegmentedStacks(
++    MachineFunction &MF, MachineBasicBlock &PrologueMBB) const {
++  const Function &Fn = MF.getFunction();
++  if (!Fn.hasFnAttribute("split-stack-limit-register"))
++    report_fatal_error(
++        "Segmented stacks on AArch64 need split-stack-limit-register");
++  if (Fn.isVarArg())
++    report_fatal_error("Segmented stacks do not support vararg functions.");
++  StringRef Name =
++      Fn.getFnAttribute("split-stack-limit-register").getValueAsString();
++  const Register LimitReg = StringSwitch<unsigned>(Name)
++                                .Case("x27", AArch64::X27)
++                                .Case("x28", AArch64::X28)
++                                .Default(0);
++  if (!LimitReg)
++    report_fatal_error("Unsupported split-stack-limit-register " + Name);
++  int64_t LimitOffset = 0;
++  if (Fn.hasFnAttribute("split-stack-limit-offset") &&
++      Fn.getFnAttribute("split-stack-limit-offset")
++          .getValueAsString()
++          .getAsInteger(0, LimitOffset))
++    report_fatal_error("Invalid split-stack-limit-offset");
++  if (LimitOffset < 0 || LimitOffset % 8 != 0 || LimitOffset / 8 > 4095)
++    report_fatal_error(
++        "split-stack-limit-offset must be a multiple of 8, from 0 to 32760");
++  const bool TrapOnFailure =
++      Fn.getFnAttribute("split-stack-failure").getValueAsString() == "trap";
++  const StringRef MorestackSymbol =
++      Fn.getFnAttribute("split-stack-morestack").getValueAsString();
++  if (!TrapOnFailure && MorestackSymbol.empty())
++    report_fatal_error("Segmented stacks on AArch64 need "
++                       "split-stack-failure=trap or split-stack-morestack");
++
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++  if (!MFI.needsSplitStackProlog())
++    return;
++  const AArch64InstrInfo &TII =
++      *MF.getSubtarget<AArch64Subtarget>().getInstrInfo();
++  const AArch64FunctionInfo *AFI = MF.getInfo<AArch64FunctionInfo>();
++  const uint64_t StackSize = MFI.getStackSize();
++  DebugLoc DL;
++
++  MachineBasicBlock *AllocMBB = MF.CreateMachineBasicBlock();
++  MachineBasicBlock *CheckMBB = MF.CreateMachineBasicBlock();
++  for (const auto &LI : PrologueMBB.liveins()) {
++    AllocMBB->addLiveIn(LI);
++    CheckMBB->addLiveIn(LI);
++  }
++  MF.push_front(AllocMBB);
++  MF.push_front(CheckMBB);
++
++  // x16, the limit; x17, the stack pointer less the frame
++  BuildMI(CheckMBB, DL, TII.get(AArch64::LDRXui), AArch64::X16)
++      .addReg(LimitReg)
++      .addImm(LimitOffset / 8);
++  if (StackSize < 4096) {
++    BuildMI(CheckMBB, DL, TII.get(AArch64::SUBXri), AArch64::X17)
++        .addReg(AArch64::SP)
++        .addImm(StackSize)
++        .addImm(0);
++  } else {
++    BuildMI(CheckMBB, DL, TII.get(AArch64::MOVi64imm), AArch64::X17)
++        .addImm(StackSize);
++    BuildMI(CheckMBB, DL, TII.get(AArch64::SUBXrx64), AArch64::X17)
++        .addReg(AArch64::SP)
++        .addReg(AArch64::X17, RegState::Kill)
++        .addImm(AArch64_AM::getArithExtendImm(AArch64_AM::UXTX, 0));
++  }
++  // Into the function when there's room: above the limit
++  BuildMI(CheckMBB, DL, TII.get(AArch64::SUBSXrr), AArch64::XZR)
++      .addReg(AArch64::X17, RegState::Kill)
++      .addReg(AArch64::X16, RegState::Kill);
++  BuildMI(CheckMBB, DL, TII.get(AArch64::Bcc))
++      .addImm(AArch64CC::HI)
++      .addMBB(&PrologueMBB);
++  CheckMBB->addSuccessor(AllocMBB, BranchProbability::getZero());
++  CheckMBB->addSuccessor(&PrologueMBB, BranchProbability::getOne());
++
++  if (TrapOnFailure) {
++    BuildMI(AllocMBB, DL, TII.get(AArch64::BRK)).addImm(1);
++    return;
++  }
++
++  PrologueMBB.setMachineBlockAddressTaken();
++  PrologueMBB.setLabelMustBeEmitted();
++  BuildMI(AllocMBB, DL, TII.get(AArch64::STPXpre), AArch64::SP)
++      .addReg(AArch64::FP)
++      .addReg(AArch64::LR)
++      .addReg(AArch64::SP)
++      .addImm(-2);
++  BuildMI(AllocMBB, DL, TII.get(AArch64::ADDXri), AArch64::FP)
++      .addReg(AArch64::SP)
++      .addImm(0)
++      .addImm(0);
++  BuildMI(AllocMBB, DL, TII.get(AArch64::MOVi64imm), AArch64::X9)
++      .addImm(StackSize);
++  BuildMI(AllocMBB, DL, TII.get(AArch64::MOVi64imm), AArch64::X10)
++      .addImm(AFI->getBytesInStackArgArea());
++  BuildMI(AllocMBB, DL, TII.get(AArch64::ADR), AArch64::X11)
++      .addMBB(&PrologueMBB);
++  BuildMI(AllocMBB, DL, TII.get(AArch64::BL))
++      .addExternalSymbol(MF.createExternalSymbolName(MorestackSymbol));
++  BuildMI(AllocMBB, DL, TII.get(AArch64::LDPXpost))
++      .addReg(AArch64::SP, RegState::Define)
++      .addReg(AArch64::FP, RegState::Define)
++      .addReg(AArch64::LR, RegState::Define)
++      .addReg(AArch64::SP)
++      .addImm(2);
++  BuildMI(AllocMBB, DL, TII.get(AArch64::RET)).addReg(AArch64::LR);
++}
++
+ bool AArch64FrameLowering::canUseAsPrologue(
+     const MachineBasicBlock &MBB) const {
+   const MachineFunction *MF = MBB.getParent();
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.h b/llvm/lib/Target/AArch64/AArch64FrameLowering.h
+index 19cc93d01013..f996fb104343 100644
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.h
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.h
+@@ -47,6 +47,11 @@ public:
+   void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+   void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+ 
++  /// A stack check before the prologue, against a limit read from a register
++  /// the program reserves ("split-stack-limit-register").
++  void adjustForSegmentedStacks(MachineFunction &MF,
++                                MachineBasicBlock &PrologueMBB) const override;
++
+   /// Harden the entire function with pac-ret.
+   ///
+   /// If pac-ret+leaf is requested, we want to harden as much code as possible.
+@@ -107,8 +112,10 @@ public:
+                             RegScavenger *RS) const override;
+ 
+   /// Returns true if the target will correctly handle shrink wrapping.
++  /// Segmented stacks only support the entry block as the prologue block, as
++  /// on X86: their check has to run before anything else.
+   bool enableShrinkWrapping(const MachineFunction &MF) const override {
+-    return true;
++    return !MF.shouldSplitStack();
+   }
+ 
+   bool enableStackSlotScavenging(const MachineFunction &MF) const override;
+diff --git a/llvm/test/CodeGen/AArch64/segmented-stacks-limit-register.ll b/llvm/test/CodeGen/AArch64/segmented-stacks-limit-register.ll
+new file mode 100644
+index 000000000000..80b789e172c1
+--- /dev/null
++++ b/llvm/test/CodeGen/AArch64/segmented-stacks-limit-register.ll
+@@ -0,0 +1,72 @@
++; RUN: llc < %s -mtriple=aarch64-unknown-none-elf -mattr=+reserve-x28 -verify-machineinstrs | FileCheck %s
++; RUN: llc < %s -mtriple=aarch64-linux-gnu -mattr=+reserve-x28 -verify-machineinstrs | FileCheck %s
++
++; Segmented stacks on AArch64, with the limit read at an offset from a reserved register,
++; as on X86: running out traps, or calls a symbol with Hemera's protocol. The stack pointer
++; less the frame is compared, whatever the frame's size.
++
++declare void @use(ptr)
++
++define void @big() "split-stack" "split-stack-limit-register"="x28" "split-stack-failure"="trap" {
++; CHECK-LABEL: big:
++; CHECK:       ldr x16, [x28]
++; CHECK-NEXT:  sub x17, sp, #{{[0-9]+}}
++; CHECK-NEXT:  cmp x17, x16
++; CHECK-NEXT:  b.ls [[TRAP:.LBB[0-9_]+]]
++; CHECK:       [[TRAP]]:
++; CHECK-NEXT:  brk #0x1
++  %buf = alloca [1024 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++define void @huge_with_offset() "split-stack" "split-stack-limit-register"="x28" "split-stack-limit-offset"="16" "split-stack-failure"="trap" {
++; CHECK-LABEL: huge_with_offset:
++; CHECK-DAG:   ldr x16, [x28, #16]
++; CHECK-DAG:   mov x17, #{{[0-9]+}}
++; CHECK:       sub x17, sp, x17
++; CHECK-NEXT:  cmp x17, x16
++; CHECK-NEXT:  b.ls
++  %buf = alloca [8192 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++; With "split-stack-morestack": a frame record, the frame size in x9, the stack parameters'
++; size in x10 and the body's address in x11, then bl symbol, and back to the caller.
++define void @grows() "split-stack" "split-stack-limit-register"="x28" "split-stack-morestack"="hemera.morestack" {
++; CHECK-LABEL: grows:
++; CHECK:       ldr x16, [x28]
++; CHECK-NEXT:  sub x17, sp, #{{[0-9]+}}
++; CHECK-NEXT:  cmp x17, x16
++; CHECK-NEXT:  b.ls [[GROW:.LBB[0-9_]+]]
++; CHECK:       [[GROW]]:
++; CHECK-NEXT:  stp x29, x30, [sp, #-16]!
++; CHECK-NEXT:  mov x29, sp
++; CHECK-NEXT:  mov x9, #{{[0-9]+}}
++; CHECK-NEXT:  mov x10, #0
++; CHECK-NEXT:  adr x11, {{.LBB[0-9_]+|.Ltmp[0-9]+}}
++; CHECK-NEXT:  bl hemera.morestack
++; CHECK-NEXT:  ldp x29, x30, [sp], #16
++; CHECK-NEXT:  ret
++  %buf = alloca [1024 x i8]
++  call void @use(ptr %buf)
++  ret void
++}
++
++; No shrink wrapping: the check comes before the early return, not just before the call.
++define void @early_return(ptr %p) "split-stack" "split-stack-limit-register"="x28" "split-stack-failure"="trap" {
++; CHECK-LABEL: early_return:
++; CHECK:       ldr x16, [x28]
++; CHECK-NEXT:  sub x17, sp, #{{[0-9]+}}
++; CHECK-NEXT:  cmp x17, x16
++; CHECK-NEXT:  b.ls
++; CHECK:       cbz x0
++  %null = icmp eq ptr %p, null
++  br i1 %null, label %done, label %call
++call:
++  call void @use(ptr %p)
++  br label %done
++done:
++  ret void
++}

@@ -6,11 +6,10 @@ import runtime from "base"
 /*
  * Linux's side of std/os: system calls made directly, so a program needs no C library for them
  * (one that links C makes the same calls). Paths are copied with a terminator into a buffer on the
- * stack, PATH_BUFFER_SIZE bytes, so a longer path is InvalidPath.
+ * stack, PATH_BUFFER_SIZE bytes, so a longer path is InvalidPath. On x86-64 and AArch64, whose calls,
+ * some flags and struct stat differ.
  */
 #if OS == .Linux && TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
-
     SYS_READ : u64 : 0
     SYS_WRITE : u64 : 1
     SYS_CLOSE : u64 : 3
@@ -24,6 +23,32 @@ import runtime from "base"
     SYS_UNLINKAT : u64 : 263
     SYS_RENAMEAT : u64 : 264
 
+    O_DIRECTORY : u64 : 0x10000
+    // struct stat on x86-64: 144 bytes, st_mode the low half of the fourth word, st_size the seventh
+    STAT_MODE_WORD :: 3
+}
+#else_if OS == .Linux && TARGET_ARCH == .arm64 {
+    // The generic table's numbers, which AArch64 uses: renameat is renameat2, given no flags
+    SYS_GETCWD : u64 : 17
+    SYS_MKDIRAT : u64 : 34
+    SYS_UNLINKAT : u64 : 35
+    SYS_CHDIR : u64 : 49
+    SYS_OPENAT : u64 : 56
+    SYS_CLOSE : u64 : 57
+    SYS_GETDENTS64 : u64 : 61
+    SYS_READ : u64 : 63
+    SYS_WRITE : u64 : 64
+    SYS_NEWFSTATAT : u64 : 79
+    SYS_FSTAT : u64 : 80
+    SYS_RENAMEAT : u64 : 276
+
+    O_DIRECTORY : u64 : 0x4000
+    // struct stat on AArch64: 128 bytes, st_mode the low half of the third word, st_size the seventh
+    STAT_MODE_WORD :: 2
+}
+
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+
     // openat and friends: relative paths start from the current directory
     AT_FDCWD : u64 : 0xffff_ffff_ffff_ff9c
     AT_REMOVEDIR : u64 : 0x200
@@ -34,13 +59,12 @@ import runtime from "base"
     O_CREAT : u64 : 0x40
     O_TRUNC : u64 : 0x200
     O_APPEND : u64 : 0x400
-    O_DIRECTORY : u64 : 0x10000
     O_CLOEXEC : u64 : 0x80000
 
     // A path's bytes and its terminator
     PATH_BUFFER_SIZE :: 4097
 
-    // struct stat on x86-64: 144 bytes, st_mode at 24 and st_size at 48
+    // struct stat, as large as x86-64's, with st_size the seventh word on both
     Stat :: struct {
         words : u64[18],
     }
@@ -145,7 +169,7 @@ import runtime from "base"
             flags = O_RDWR
         }
         // 0666, rw-rw-rw-, less the process's umask
-        result :: x86_64.syscall(SYS_OPENAT, AT_FDCWD, cast[u64](&buffer[0]), flags | O_CLOEXEC, 438)
+        result :: runtime.linux_syscall(SYS_OPENAT, AT_FDCWD, cast[u64](&buffer[0]), flags | O_CLOEXEC, 438)
         if failed(result) {
             return File.{0}, error_of(result)
         }
@@ -153,7 +177,7 @@ import runtime from "base"
     }
 
     system_close :: fn(file: File) {
-        x86_64.syscall(SYS_CLOSE, file.handle)
+        runtime.linux_syscall(SYS_CLOSE, file.handle)
     }
 
     system_read :: fn(file: File, buffer: mut u8[]) -> (count : usize, error : OsError?) {
@@ -161,7 +185,7 @@ import runtime from "base"
             return 0, null
         }
         loop {
-            result :: x86_64.syscall(SYS_READ, file.handle, cast[u64](buffer.data), cast[u64](buffer.count))
+            result :: runtime.linux_syscall(SYS_READ, file.handle, cast[u64](buffer.data), cast[u64](buffer.count))
             // EINTR: again
             if result == ~cast[u64](3) {
                 continue
@@ -175,7 +199,7 @@ import runtime from "base"
 
     system_write :: fn(file: File, bytes: rawptr, count: usize) -> (written : usize, error : OsError?) {
         loop {
-            result :: x86_64.syscall(SYS_WRITE, file.handle, cast[u64](bytes), cast[u64](count))
+            result :: runtime.linux_syscall(SYS_WRITE, file.handle, cast[u64](bytes), cast[u64](count))
             if result == ~cast[u64](3) {
                 continue
             }
@@ -188,7 +212,7 @@ import runtime from "base"
 
     system_file_size :: fn(file: File) -> (size : u64, error : OsError?) {
         status : Stat
-        result :: x86_64.syscall(SYS_FSTAT, file.handle, cast[u64](&status))
+        result :: runtime.linux_syscall(SYS_FSTAT, file.handle, cast[u64](&status))
         if failed(result) {
             return 0, error_of(result)
         }
@@ -200,7 +224,7 @@ import runtime from "base"
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
-        result :: x86_64.syscall(SYS_UNLINKAT, AT_FDCWD, cast[u64](&buffer[0]), 0)
+        result :: runtime.linux_syscall(SYS_UNLINKAT, AT_FDCWD, cast[u64](&buffer[0]), 0)
         if failed(result) {
             return error_of(result)
         }
@@ -213,7 +237,7 @@ import runtime from "base"
         if !terminated(from, source) || !terminated(to, target) {
             return OsError.InvalidPath
         }
-        result :: x86_64.syscall(SYS_RENAMEAT, AT_FDCWD, cast[u64](&source[0]), AT_FDCWD, cast[u64](&target[0]))
+        result :: runtime.linux_syscall(SYS_RENAMEAT, AT_FDCWD, cast[u64](&source[0]), AT_FDCWD, cast[u64](&target[0]))
         if failed(result) {
             return error_of(result)
         }
@@ -226,12 +250,11 @@ import runtime from "base"
             return .NOTHING
         }
         status : Stat
-        result :: x86_64.syscall(SYS_NEWFSTATAT, AT_FDCWD, cast[u64](&buffer[0]), cast[u64](&status), 0)
+        result :: runtime.linux_syscall(SYS_NEWFSTATAT, AT_FDCWD, cast[u64](&buffer[0]), cast[u64](&status), 0)
         if failed(result) {
             return .NOTHING
         }
-        // st_mode, the low half of the fourth word
-        mode :: cast[u32](status.words[3] & 0xffff_ffff)
+        mode :: cast[u32](status.words[STAT_MODE_WORD] & 0xffff_ffff)
         if mode & S_IFMT == S_IFDIR {
             return .DIRECTORY
         }
@@ -244,7 +267,7 @@ import runtime from "base"
             return OsError.InvalidPath
         }
         // 0777, rwxrwxrwx, less the process's umask
-        result :: x86_64.syscall(SYS_MKDIRAT, AT_FDCWD, cast[u64](&buffer[0]), 511)
+        result :: runtime.linux_syscall(SYS_MKDIRAT, AT_FDCWD, cast[u64](&buffer[0]), 511)
         if failed(result) {
             return error_of(result)
         }
@@ -256,7 +279,7 @@ import runtime from "base"
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
-        result :: x86_64.syscall(SYS_UNLINKAT, AT_FDCWD, cast[u64](&buffer[0]), AT_REMOVEDIR)
+        result :: runtime.linux_syscall(SYS_UNLINKAT, AT_FDCWD, cast[u64](&buffer[0]), AT_REMOVEDIR)
         if failed(result) {
             return error_of(result)
         }
@@ -272,15 +295,15 @@ import runtime from "base"
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
-        opened :: x86_64.syscall(SYS_OPENAT, AT_FDCWD, cast[u64](&buffer[0]), O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0)
+        opened :: runtime.linux_syscall(SYS_OPENAT, AT_FDCWD, cast[u64](&buffer[0]), O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0)
         if failed(opened) {
             return error_of(opened)
         }
-        defer x86_64.syscall(SYS_CLOSE, opened)
+        defer runtime.linux_syscall(SYS_CLOSE, opened)
         records : u64[256]
         start :: cast[rawptr](&records[0])
         loop {
-            filled :: x86_64.syscall(SYS_GETDENTS64, opened, cast[u64](start), cast[u64](size_of(u64[256])))
+            filled :: runtime.linux_syscall(SYS_GETDENTS64, opened, cast[u64](start), cast[u64](size_of(u64[256])))
             if failed(filled) {
                 return error_of(filled)
             }
@@ -320,11 +343,11 @@ import runtime from "base"
     // What name, terminated, is in the open folder directory: for file systems getdents64 gives no types for.
     system_path_kind_in :: fn(directory: u64, name: rawptr) -> PathKind {
         status : Stat
-        result :: x86_64.syscall(SYS_NEWFSTATAT, directory, cast[u64](name), cast[u64](&status), 0)
+        result :: runtime.linux_syscall(SYS_NEWFSTATAT, directory, cast[u64](name), cast[u64](&status), 0)
         if failed(result) {
             return .NOTHING
         }
-        if cast[u32](status.words[3] & 0xffff_ffff) & S_IFMT == S_IFDIR {
+        if cast[u32](status.words[STAT_MODE_WORD] & 0xffff_ffff) & S_IFMT == S_IFDIR {
             return .DIRECTORY
         }
         return .FILE
@@ -333,7 +356,7 @@ import runtime from "base"
     system_current_directory :: fn(allocator: runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         // The length with its terminator
-        result :: x86_64.syscall(SYS_GETCWD, cast[u64](&buffer[0]), cast[u64](size_of(u8[PATH_BUFFER_SIZE])))
+        result :: runtime.linux_syscall(SYS_GETCWD, cast[u64](&buffer[0]), cast[u64](size_of(u8[PATH_BUFFER_SIZE])))
         if failed(result) {
             return "", error_of(result)
         }
@@ -348,7 +371,7 @@ import runtime from "base"
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
-        result :: x86_64.syscall(SYS_CHDIR, cast[u64](&buffer[0]))
+        result :: runtime.linux_syscall(SYS_CHDIR, cast[u64](&buffer[0]))
         if failed(result) {
             return error_of(result)
         }

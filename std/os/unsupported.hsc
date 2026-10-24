@@ -3,7 +3,7 @@ package os
 import runtime from "base"
 
 // Targets without a file system or environment, like OS == .None: everything is Unsupported.
-#if OS != .Windows && !(OS == .Linux && TARGET_ARCH == .x86_64) {
+#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
     system_run_process :: fn(program: string, arguments: string[], working_directory: string?, allocator: runtime.Allocator)
         -> (result #unrestricted : ProcessResult, error : ProcessError?) {
 

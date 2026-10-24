@@ -4,7 +4,7 @@ import intrinsics from "base"
 
 /*
  * What the runtime needs from Linux, through system calls rather than a C library: memory, threads,
- * and waiting on an address. x86-64 only, so far.
+ * and waiting on an address. On x86-64 and AArch64, which number the calls differently.
  */
 #if OS == .Linux && TARGET_ARCH == .x86_64 {
     import x86_64 from "base/intrinsics"
@@ -17,6 +17,40 @@ import intrinsics from "base"
     SYS_CLOCK_GETTIME : u64 : 228
     SYS_EXIT_GROUP : u64 : 231
     SYS_GETRANDOM : u64 : 318
+
+    linux_syscall #no_context :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 {
+        return x86_64.syscall(number, a, b, c, d, e, f)
+    }
+
+    linux_clone_thread #no_context :: fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid: ptr[mut u32], entry: rawptr,
+        argument: rawptr) -> i64 {
+        return x86_64.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
+    }
+}
+#else_if OS == .Linux && TARGET_ARCH == .arm64 {
+    import aarch64 from "base/intrinsics"
+
+    // The generic table's numbers, which AArch64 uses
+    SYS_FUTEX : u64 : 98
+    SYS_WRITE : u64 : 64
+    SYS_EXIT : u64 : 93
+    SYS_EXIT_GROUP : u64 : 94
+    SYS_CLOCK_GETTIME : u64 : 113
+    SYS_MUNMAP : u64 : 215
+    SYS_MMAP : u64 : 222
+    SYS_GETRANDOM : u64 : 278
+
+    linux_syscall #no_context :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 {
+        return aarch64.syscall(number, a, b, c, d, e, f)
+    }
+
+    linux_clone_thread #no_context :: fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid: ptr[mut u32], entry: rawptr,
+        argument: rawptr) -> i64 {
+        return aarch64.clone_thread(flags, stack, parent_tid, child_tid, entry, argument)
+    }
+}
+
+#if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
 
     PROT_READ_WRITE : u64 : 3
     MAP_PRIVATE_ANONYMOUS : u64 : 0x22
@@ -33,7 +67,7 @@ import intrinsics from "base"
 
     // Pages of memory, zeroed, or null.
     map_pages #no_context :: fn(size: usize) -> rawptr {
-        result :: x86_64.syscall(SYS_MMAP, 0, cast[u64](size), PROT_READ_WRITE, MAP_PRIVATE_ANONYMOUS, 0xffff_ffff_ffff_ffff, 0)
+        result :: linux_syscall(SYS_MMAP, 0, cast[u64](size), PROT_READ_WRITE, MAP_PRIVATE_ANONYMOUS, 0xffff_ffff_ffff_ffff, 0)
         if syscall_failed(result) {
             return null
         }
@@ -41,7 +75,7 @@ import intrinsics from "base"
     }
 
     unmap_pages #no_context :: fn(address: rawptr, size: usize) {
-        x86_64.syscall(SYS_MUNMAP, cast[u64](address), cast[u64](size))
+        linux_syscall(SYS_MUNMAP, cast[u64](address), cast[u64](size))
     }
 
     /*
@@ -58,7 +92,7 @@ import intrinsics from "base"
             if done >= count {
                 break
             }
-            result :: x86_64.syscall(SYS_WRITE, descriptor, cast[u64](bytes + done), cast[u64](count - done))
+            result :: linux_syscall(SYS_WRITE, descriptor, cast[u64](bytes + done), cast[u64](count - done))
             // EINTR: again
             if result == ~cast[u64](3) {
                 continue
@@ -89,7 +123,7 @@ import intrinsics from "base"
 
     // Ends the process at once, with code, running nothing else: for a failed assertion.
     os_exit_process #no_context :: fn(code: u32) #never_returns {
-        x86_64.syscall(SYS_EXIT_GROUP, cast[u64](code))
+        linux_syscall(SYS_EXIT_GROUP, cast[u64](code))
         intrinsics.trap()
     }
 
@@ -111,7 +145,7 @@ import intrinsics from "base"
 
     system_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
         now : TimeSpec
-        if syscall_failed(x86_64.syscall(SYS_CLOCK_GETTIME, CLOCK_MONOTONIC, cast[u64](&now))) {
+        if syscall_failed(linux_syscall(SYS_CLOCK_GETTIME, CLOCK_MONOTONIC, cast[u64](&now))) {
             return 0
         }
         return cast[MonotonicTime](now.seconds * NANOSECONDS_PER_SECOND + now.nanoseconds)
@@ -119,7 +153,7 @@ import intrinsics from "base"
 
     system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
         now : TimeSpec
-        if syscall_failed(x86_64.syscall(SYS_CLOCK_GETTIME, CLOCK_REALTIME, cast[u64](&now))) {
+        if syscall_failed(linux_syscall(SYS_CLOCK_GETTIME, CLOCK_REALTIME, cast[u64](&now))) {
             return .Error(.Unavailable)
         }
         return .Ok(Instant.{now.seconds, cast[u32](now.nanoseconds)})
@@ -138,7 +172,7 @@ import intrinsics from "base"
             if done >= bytes.count {
                 break
             }
-            result :: x86_64.syscall(SYS_GETRANDOM, cast[u64](cast[rawptr](bytes.data) + done), cast[u64](bytes.count - done), 0)
+            result :: linux_syscall(SYS_GETRANDOM, cast[u64](cast[rawptr](bytes.data) + done), cast[u64](bytes.count - done), 0)
             // EINTR: again
             if result == ~cast[u64](3) {
                 continue
@@ -244,7 +278,7 @@ import intrinsics from "base"
             intrinsics.set_carrier(callers)
             return null
         }
-        x86_64.syscall(SYS_EXIT, 0)
+        linux_syscall(SYS_EXIT, 0)
         intrinsics.trap()
     }
 
@@ -270,7 +304,7 @@ import intrinsics from "base"
             return true
         }
         top :: cast[rawptr](cast[usize](stack) + THREAD_STACK_SIZE)
-        result :: x86_64.clone_thread(THREAD_CLONE_FLAGS, top, &thread.tid, &thread.tid, cast[rawptr](linux_thread_entry),
+        result :: linux_clone_thread(THREAD_CLONE_FLAGS, top, &thread.tid, &thread.tid, cast[rawptr](linux_thread_entry),
             cast[rawptr](thread))
         if result <= 0 {
             unmap_pages(stack, THREAD_STACK_SIZE)
@@ -294,20 +328,20 @@ import intrinsics from "base"
             if tid == 0 {
                 break
             }
-            x86_64.syscall(SYS_FUTEX, cast[u64](cast[rawptr](&thread.tid)), FUTEX_WAIT, cast[u64](tid))
+            linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](&thread.tid)), FUTEX_WAIT, cast[u64](tid))
         }
         unmap_pages(thread.stack_memory, THREAD_STACK_SIZE)
     }
 
     wait_on_value :: fn(address: ptr[u32], expected: u32) {
-        x86_64.syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAIT | FUTEX_PRIVATE, cast[u64](expected))
+        linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAIT | FUTEX_PRIVATE, cast[u64](expected))
     }
 
     wake_one :: fn(address: ptr[u32]) {
-        x86_64.syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAKE | FUTEX_PRIVATE, 1)
+        linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAKE | FUTEX_PRIVATE, 1)
     }
 
     wake_all :: fn(address: ptr[u32]) {
-        x86_64.syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAKE | FUTEX_PRIVATE, 0x7fff_ffff)
+        linux_syscall(SYS_FUTEX, cast[u64](cast[rawptr](address)), FUTEX_WAKE | FUTEX_PRIVATE, 0x7fff_ffff)
     }
 }

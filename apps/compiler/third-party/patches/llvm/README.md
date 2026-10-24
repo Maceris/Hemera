@@ -68,3 +68,28 @@ Elsewhere it changes nothing. A function with it can't be unwound through by Win
 exception handling and C++ exceptions can't pass through it.
 
 Includes `llvm/test/CodeGen/X86/win64-classic-frame.ll`.
+
+## 0003-aarch64-split-stack-limit-register.patch
+
+The same prologue stack check on AArch64, which LLVM has no segmented stacks for at all. It takes 0001's attributes,
+with `x27` or `x28` as the limit register (Hemera's carrier register is `x28`, reserved with `+reserve-x28`) and an
+offset that's a multiple of 8. `x16` and `x17`, which nothing holds at a function's entry, are its scratch registers:
+
+```
+    ldr     x16, [x28, #OFFSET]
+    sub     x17, sp, #FRAME
+    cmp     x17, x16
+    b.ls    .Lgrow
+    ...
+.Lgrow:
+    brk     #1                  ; "split-stack-failure"="trap"
+```
+
+With `"split-stack-morestack"="symbol"`, `.Lgrow` calls `symbol` with Hemera's protocol on AArch64: a frame record
+(`stp x29, x30, [sp, #-16]!`, `mov x29, sp`), the frame size in `x9`, the stack parameters' size in `x10`, the body's
+address in `x11`, `bl symbol`, `ldp x29, x30, [sp], #16`, `ret`. `x0` to `x8` pass through untouched.
+
+Functions with segmented stacks aren't shrink-wrapped, as on X86: the check has to come first, before any of the
+function's own code, rather than just before the part that needs the frame.
+
+Includes `llvm/test/CodeGen/AArch64/segmented-stacks-limit-register.ll`.

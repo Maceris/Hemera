@@ -1,13 +1,12 @@
 /*
  * Vectors (docs/types.md, Vectors): literals, lanes, operators lane by lane, vectors in structs and
- * arrays, bit_cast through v128, base/intrinsics' vector and bit functions, and on a CPU with AES-NI
- * and PCLMULQDQ, x86_64's AES and carryless multiply in #target_features functions, against FIPS-197's
- * AES-128 example. main returns 42 if they all worked.
+ * arrays, bit_cast through v128, base/intrinsics' vector and bit functions, and on an x86-64 CPU with
+ * AES-NI and PCLMULQDQ, x86_64's AES and carryless multiply in #target_features functions, against
+ * FIPS-197's AES-128 example. main returns 42 if they all worked.
  */
 package vectors_test
 
 import intrinsics from "base"
-import x86_64 from "base/intrinsics"
 
 Words :: vector[u32, 4]
 
@@ -102,82 +101,92 @@ vector_intrinsics :: fn() -> int {
     return errors
 }
 
-// The next AES-128 round key from this one and what aes_key_assist gave for it
-next_key :: fn(key: v128, assist: v128) -> v128 {
-    w := bit_cast[Words](key)
-    t := bit_cast[Words](assist)[3]
-    w[0] = w[0] ~ t
-    w[1] = w[1] ~ w[0]
-    w[2] = w[2] ~ w[1]
-    w[3] = w[3] ~ w[2]
-    return bit_cast[v128](w)
-}
+// x86-64's instructions, on x86-64 only
+#if TARGET_ARCH == .x86_64 {
+    import x86_64 from "base/intrinsics"
 
-expand #target_features("aes") :: fn(keys: ptr[mut v128[11]], key: v128) {
-    keys[0] = key
-    keys[1] = next_key(keys[0], x86_64.aes_key_assist(keys[0], 0x01))
-    keys[2] = next_key(keys[1], x86_64.aes_key_assist(keys[1], 0x02))
-    keys[3] = next_key(keys[2], x86_64.aes_key_assist(keys[2], 0x04))
-    keys[4] = next_key(keys[3], x86_64.aes_key_assist(keys[3], 0x08))
-    keys[5] = next_key(keys[4], x86_64.aes_key_assist(keys[4], 0x10))
-    keys[6] = next_key(keys[5], x86_64.aes_key_assist(keys[5], 0x20))
-    keys[7] = next_key(keys[6], x86_64.aes_key_assist(keys[6], 0x40))
-    keys[8] = next_key(keys[7], x86_64.aes_key_assist(keys[7], 0x80))
-    keys[9] = next_key(keys[8], x86_64.aes_key_assist(keys[8], 0x1b))
-    keys[10] = next_key(keys[9], x86_64.aes_key_assist(keys[9], 0x36))
-}
-
-encrypt #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 {
-    state := block ~ keys[0]
-    for round in 1..<10 {
-        state = x86_64.aes_encrypt_round(state, keys[round])
+    // The next AES-128 round key from this one and what aes_key_assist gave for it
+    next_key :: fn(key: v128, assist: v128) -> v128 {
+        w := bit_cast[Words](key)
+        t := bit_cast[Words](assist)[3]
+        w[0] = w[0] ~ t
+        w[1] = w[1] ~ w[0]
+        w[2] = w[2] ~ w[1]
+        w[3] = w[3] ~ w[2]
+        return bit_cast[v128](w)
     }
-    return x86_64.aes_encrypt_last(state, keys[10])
-}
 
-decrypt #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 {
-    state := block ~ keys[10]
-    for round in 1..<10 #reverse {
-        state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[round]))
+    expand #target_features("aes") :: fn(keys: ptr[mut v128[11]], key: v128) {
+        keys[0] = key
+        keys[1] = next_key(keys[0], x86_64.aes_key_assist(keys[0], 0x01))
+        keys[2] = next_key(keys[1], x86_64.aes_key_assist(keys[1], 0x02))
+        keys[3] = next_key(keys[2], x86_64.aes_key_assist(keys[2], 0x04))
+        keys[4] = next_key(keys[3], x86_64.aes_key_assist(keys[3], 0x08))
+        keys[5] = next_key(keys[4], x86_64.aes_key_assist(keys[4], 0x10))
+        keys[6] = next_key(keys[5], x86_64.aes_key_assist(keys[5], 0x20))
+        keys[7] = next_key(keys[6], x86_64.aes_key_assist(keys[6], 0x40))
+        keys[8] = next_key(keys[7], x86_64.aes_key_assist(keys[7], 0x80))
+        keys[9] = next_key(keys[8], x86_64.aes_key_assist(keys[8], 0x1b))
+        keys[10] = next_key(keys[9], x86_64.aes_key_assist(keys[9], 0x36))
     }
-    return x86_64.aes_decrypt_last(state, keys[0])
-}
 
-multiply #target_features("pclmul") :: fn(a: v128, b: v128) -> v128 {
-    return x86_64.carryless_multiply(a, b, 0x00)
-}
-
-same :: fn(a: v128, b: u8[16]) -> bool {
-    bytes := bit_cast[u8[16]](a)
-    for i in 0..<16 {
-        if bytes[i] != b[i] {
-            return false
+    encrypt #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 {
+        state := block ~ keys[0]
+        for round in 1..<10 {
+            state = x86_64.aes_encrypt_round(state, keys[round])
         }
+        return x86_64.aes_encrypt_last(state, keys[10])
     }
-    return true
-}
 
-aes :: fn() -> int {
-    features := x86_64.cpuid(1)
-    if (features.ecx & (1 << 25)) == 0 || (features.ecx & (1 << 1)) == 0 {
+    decrypt #target_features("aes") :: fn(keys: ptr[v128[11]], block: v128) -> v128 {
+        state := block ~ keys[10]
+        for round in 1..<10 #reverse {
+            state = x86_64.aes_decrypt_round(state, x86_64.aes_inverse_mix(keys[round]))
+        }
+        return x86_64.aes_decrypt_last(state, keys[0])
+    }
+
+    multiply #target_features("pclmul") :: fn(a: v128, b: v128) -> v128 {
+        return x86_64.carryless_multiply(a, b, 0x00)
+    }
+
+    same :: fn(a: v128, b: u8[16]) -> bool {
+        bytes := bit_cast[u8[16]](a)
+        for i in 0..<16 {
+            if bytes[i] != b[i] {
+                return false
+            }
+        }
+        return true
+    }
+
+    aes :: fn() -> int {
+        features := x86_64.cpuid(1)
+        if (features.ecx & (1 << 25)) == 0 || (features.ecx & (1 << 1)) == 0 {
+            return 0
+        }
+        keys : v128[11]
+        expand(&keys, bit_cast[v128](u8.[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]))
+        plain := u8.[0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]
+        cipher := encrypt(&keys, bit_cast[v128](plain))
+        if !same(cipher, u8.[0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a]) {
+            return 1
+        }
+        if !same(decrypt(&keys, cipher), plain) {
+            return 2
+        }
+        product := multiply(bit_cast[v128](vector[u64, 2].{0x8000_0000_0000_0001, 0}), bit_cast[v128](vector[u64, 2].{2, 0}))
+        lanes := bit_cast[vector[u64, 2]](product)
+        if lanes[0] != 2 || lanes[1] != 1 {
+            return 3
+        }
         return 0
     }
-    keys : v128[11]
-    expand(&keys, bit_cast[v128](u8.[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]))
-    plain := u8.[0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]
-    cipher := encrypt(&keys, bit_cast[v128](plain))
-    if !same(cipher, u8.[0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30, 0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a]) {
-        return 1
+}
+#else {
+    aes :: fn() -> int {
+        return 0
     }
-    if !same(decrypt(&keys, cipher), plain) {
-        return 2
-    }
-    product := multiply(bit_cast[v128](vector[u64, 2].{0x8000_0000_0000_0001, 0}), bit_cast[v128](vector[u64, 2].{2, 0}))
-    lanes := bit_cast[vector[u64, 2]](product)
-    if lanes[0] != 2 || lanes[1] != 1 {
-        return 3
-    }
-    return 0
 }
 
 main :: fn() -> int {

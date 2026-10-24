@@ -29,7 +29,7 @@ function the system starts the thread at, loads the carrier register with it fir
 copied context. It ends the thread with the system's exit call rather than returning, since it doesn't keep the carrier
 register for whatever called it. Once it reaches its stack's limit, `morestack` takes it onto segments.
 
-Threads start on Windows x64 (`base/runtime/windows.hsc`) and on Linux x86-64 (`base/runtime/linux.hsc`), where a
+Threads start on Windows x64 (`base/runtime/windows.hsc`) and on Linux x86-64 and AArch64 (`base/runtime/linux.hsc`), where a
 hosted program's `main` also starts with an allocator in `runtime.HOSTED_CONTEXT`: the process heap on Windows, and
 on Linux the runtime's own `PageHeap` (`base/runtime/process.hsc`), which keeps a free list for each size class from
 16 bytes to 2 KiB, carved from 64 KiB chunks of mapped pages, gives bigger blocks pages of their own, and has one
@@ -358,7 +358,7 @@ while it runs is in the carrier block, so the `Fiber` keeps only where they are.
 
 While suspended, the fiber's callee-saved registers and resume state are on its stack: 64 bytes for x86-64, or 80
 with SSE (Windows too, where Hemera's functions use System V's registers, see
-[calling_convention.md](calling_convention.md#windows-x64)), and 144 bytes plus the same resume state for AArch64.
+[calling_convention.md](calling_convention.md#windows-x64)), and 112 for AArch64, or 176 with floating point.
 
 A fiber that suspends with its frames inside the first segment costs exactly the block. One that suspends deeper
 holds another segment (`STACK_SEGMENT_SIZE`, 1 KiB by default) for each segment its frames reach into.

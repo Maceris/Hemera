@@ -8,3 +8,6 @@ package intrinsics
 #if TARGET_ARCH == .x86_64 {
     import x86_64 from "./x86_64"
 }
+#else_if TARGET_ARCH == .arm64 {
+    import aarch64 from "./aarch64"
+}
