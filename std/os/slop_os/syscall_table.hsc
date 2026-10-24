@@ -36,15 +36,6 @@ system_call :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e
     }
 }
 
-// A slice's first element's address, and how many it has, for a stub's registers.
-slice_address :: fn[T](items: T[]) -> u64 #no_context {
-    return cast[u64](cast[rawptr](items.data))
-}
-
-slice_count :: fn[T](items: T[]) -> usize #no_context {
-    return items.count
-}
-
 // A slice as the kernel gets it: where it is in the caller's memory, and how many elements.
 UserBuffer :: struct {
     address : u64,
@@ -131,8 +122,8 @@ argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string) -> 
     for input in function.input {
         argument :: compiler.name(input.name)
         if is_slice(input.type) {
-            array_add(&made, #code(slice_address(#insert argument)))
-            array_add(&made, #code(cast[u64](slice_count(#insert argument))))
+            array_add(&made, #code(cast[u64](cast[rawptr]((#insert argument).data))))
+            array_add(&made, #code(cast[u64]((#insert argument).count)))
         }
         else {
             array_add(&made, word_of(input.type, argument))
@@ -155,18 +146,18 @@ ok_result :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
             return .Ok(#insert value_of(type, #code(answer.first)))
         }
     }
-    // A struct's first two members, written where they are in it
+    // A struct's first two members
     members :: cast[ptr[compiler.TypeInfoStruct]](base).members
     stores : compiler.Code[..]
     for field, i in members {
         if i < 2 {
-            field_type :: compiler.type_code(compiler.described_type(field.member_type))
+            name :: compiler.name(field.name)
             register := #code(answer.second)
             if i == 0 {
                 register = #code(answer.first)
             }
             array_add(&stores, #code {
-                cast[ptr[mut #insert field_type]](cast[u64](&value) + #insert cast[u64](field.offset))^ = #insert value_of(field.member_type, register)
+                value.#insert name = #insert value_of(field.member_type, register)
             })
         }
     }
@@ -232,18 +223,15 @@ ok_answer :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
     words : compiler.Code[..]
     for field, i in members {
         if i < 2 {
-            field_type :: compiler.type_code(compiler.described_type(field.member_type))
-            array_add(&words, word_of(field.member_type, #code(cast[ptr[#insert field_type]](cast[u64](&kept) + #insert cast[u64](field.offset))^)))
+            name :: compiler.name(field.name)
+            array_add(&words, word_of(field.member_type, #code(value.#insert name)))
         }
     }
     if words.count < 2 {
         array_add(&words, #code(cast[u64](0)))
     }
     return #code patterns {
-        case Ok(value) => {
-            kept :: value
-            return answered(0, #insert compiler.list(words))
-        }
+        case Ok(value) => return answered(0, #insert compiler.list(words))
     }
 }
 

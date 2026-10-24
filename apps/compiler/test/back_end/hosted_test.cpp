@@ -346,6 +346,24 @@ TEST(Hosted, InsertsDeclarations)
 	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off);
 }
 
+// docs/operators.md, docs/functions.md: members of parentheses, generic variants, shorthands, nested functions.
+TEST(Hosted, HandlesExpressionForms)
+{
+	run_hosted("expression_forms", hemera::TargetStackCheck::Off);
+}
+
+// docs/types.md, Mutability: what can be changed only when given mut.
+TEST(Hosted, ChangesOnlyWhatsMut)
+{
+	run_hosted("mutability", hemera::TargetStackCheck::Off);
+}
+
+// docs/compilation.md, Code Values: enum members and fields named by #insert in a quote, and reached by one.
+TEST(Hosted, InsertsMemberNames)
+{
+	run_hosted("inserted_member_names", hemera::TargetStackCheck::Off);
+}
+
 // docs/compilation.md, Macros: #macro functions called with !, their code put in place hygienically.
 TEST(Hosted, ExpandsMacros)
 {

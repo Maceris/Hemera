@@ -319,10 +319,16 @@ namespace hemera {
 			[&] { return new TypeInfoVector(element, count, false); });
 	}
 
-	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count) {
+	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count, bool is_mutable) {
+		is_mutable = is_mutable && ArrayType::VIEW == array_type;
 		return derived_type(walk,
-			std::format("array {} {} {}", static_cast<const void*>(element), static_cast<int>(array_type), count),
-			[&] { return new TypeInfoArray(element, array_type, count); });
+			std::format("array {} {} {}{}", static_cast<const void*>(element), static_cast<int>(array_type), count,
+				is_mutable ? " mut" : ""),
+			[&] {
+				auto array = new TypeInfoArray(element, array_type, count);
+				array->is_mutable = is_mutable;
+				return array;
+			});
 	}
 
 	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
@@ -669,8 +675,8 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
-	// Array dimensions, outermost first: the last one written is the innermost.
-	static Progress apply_dimensions(Walk& walk, std::vector<TypePart>& dimensions, TypeInfo*& current) {
+	// Array dimensions, outermost first: the last one written is the innermost. Views are mut T[] if mutable_views.
+	static Progress apply_dimensions(Walk& walk, std::vector<TypePart>& dimensions, TypeInfo*& current, bool mutable_views) {
 		for (auto iter = dimensions.rbegin(); iter != dimensions.rend(); ++iter) {
 			ArrayType array_type = ArrayType::VIEW;
 			size_t count = 0;
@@ -691,18 +697,28 @@ namespace hemera {
 					}
 				}
 			}
-			current = array_of(walk, current, array_type, count);
+			current = array_of(walk, current, array_type, count, mutable_views);
 		}
 		dimensions.clear();
 		return Progress::DONE;
 	}
 
+	static Progress type_of_type_node(Walk& walk, ast::Node* node, Need need, TypeInfo*& result, bool own_mut = true);
+
+	Progress argument_type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
+		if (ast::NodeType::TYPE == node->node_type) {
+			return type_of_type_node(walk, node, need, result, false);
+		}
+		return type_of(walk, node, need, result);
+	}
+
 	/*
 	 * A type from its name and the parts after it: ptr[T] and the relative pointers, a generic
 	 * type's arguments, array dimensions and ?. binding is where the walker looked the name up.
+	 * Its views' elements can be changed through them if mutable_views, as in mut T[].
 	 */
 	static Progress compose_type(Walk& walk, ast::Node* where, ast::Node* binding, InternedString name,
-		std::vector<TypePart>& parts, Need need, TypeInfo*& result) {
+		std::vector<TypePart>& parts, Need need, TypeInfo*& result, bool mutable_views) {
 
 		const bool pointer = is_pointer_name(name_text(name)) && !walk.bindings.contains(binding)
 			&& !walk.generic_types.contains(name_text(name));
@@ -725,6 +741,10 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+			// T[] in a body checked before any instance, where T is promised mut
+			TypeInfo const* named = get_base_type(current);
+			mutable_views = mutable_views || (named != nullptr && TypeInfoVariant::ARCHETYPE == named->variant
+				&& (static_cast<TypeInfoArchetype const*>(named)->capabilities & CAPABILITY_MUTABLE) != 0);
 		}
 		// What isn't a static array holds its elements through a pointer
 		Need head_need = need;
@@ -760,7 +780,7 @@ namespace hemera {
 							std::format("{} takes one type, what it points to", name_text(name)));
 					}
 					TypeInfo* target = nullptr;
-					Progress progress = type_of(walk, part.arguments[0], Need::DECLARED, target);
+					Progress progress = argument_type_of(walk, part.arguments[0], Need::DECLARED, target);
 					if (progress != Progress::DONE) {
 						return progress;
 					}
@@ -778,7 +798,7 @@ namespace hemera {
 					std::vector<TypeInfo*> arguments;
 					std::vector<ConstantValue> values;
 					Progress progress = generic_type_arguments(walk, generic, part.arguments, [&](ast::Node* argument, TypeInfo*& type) {
-						return type_of(walk, argument, Need::DECLARED, type);
+						return argument_type_of(walk, argument, Need::DECLARED, type);
 					}, arguments, values);
 					if (progress != Progress::DONE) {
 						return progress;
@@ -798,7 +818,7 @@ namespace hemera {
 				dimensions.push_back(part);
 				continue;
 			}
-			Progress progress = apply_dimensions(walk, dimensions, current);
+			Progress progress = apply_dimensions(walk, dimensions, current, mutable_views);
 			if (progress == Progress::DONE) {
 				progress = optional_of(walk, part.node, current, need, current);
 			}
@@ -811,7 +831,7 @@ namespace hemera {
 				? std::format("{} needs its generic arguments", name_text(name))
 				: std::format("{} needs what it points to", name_text(name)));
 		}
-		Progress progress = apply_dimensions(walk, dimensions, current);
+		Progress progress = apply_dimensions(walk, dimensions, current, mutable_views);
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -823,10 +843,16 @@ namespace hemera {
 	 * A type in a type position, like a field's: a TYPE node named for its head, with GENERIC_TAG,
 	 * ARRAY_DIMENSION and ? children, and a qualified name as DOT_ACCESS then the IDENTIFIER.
 	 */
-	static Progress type_of_type_node(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
-		// A type #insert put here (docs/compilation.md, Code Values)
+	static Progress type_of_type_node(Walk& walk, ast::Node* node, Need need, TypeInfo*& result, bool own_mut) {
+		// A type #insert put here (docs/compilation.md, Code Values), a view given with mut a mut T[]
 		if (node->type != nullptr) {
 			result = node->type;
+			TypeInfo const* inserted = get_base_type_or_alias(result);
+			if (own_mut && has_child(node, ast::NodeType::MUTABLE) && inserted != nullptr && TypeInfoVariant::ARRAY == inserted->variant
+				&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(inserted)->array_type) {
+				auto view = static_cast<TypeInfoArray const*>(inserted);
+				result = array_of(walk, view->element_type, ArrayType::VIEW, 0, true);
+			}
 			return Progress::DONE;
 		}
 		InternedString name = node->value.value;
@@ -852,7 +878,15 @@ namespace hemera {
 				parts.push_back({ TypePart::Kind::OPTIONAL, child, {} });
 			}
 		}
-		return compose_type(walk, node, binding, name, parts, need, result);
+		// mut T[], or T[] where T was given mut (docs/types.md, Mutability)
+		const bool given_mut = own_mut && has_child(node, ast::NodeType::MUTABLE);
+		const bool mutable_views = given_mut || names_mutable_parameter(walk, node);
+		Progress progress = compose_type(walk, node, binding, name, parts, need, result, mutable_views);
+		// mut rawptr, which can change what it points to
+		if (Progress::DONE == progress && result == BUILTIN_rawptr && given_mut) {
+			result = pointer_to(walk, nullptr, true, false, POINTER_SIZE);
+		}
+		return progress;
 	}
 
 	/*
@@ -884,7 +918,25 @@ namespace hemera {
 			}
 			parts.push_back(std::move(part));
 		}
-		return compose_type(walk, node, binding, name, parts, need, result);
+		return compose_type(walk, node, binding, name, parts, need, result, names_mutable_parameter(walk, node));
+	}
+
+	Progress held_type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result) {
+		Progress progress = type_of(walk, node, need, result);
+		if (progress != Progress::DONE || !has_child(node, ast::NodeType::MUTABLE) || result == nullptr) {
+			return progress;
+		}
+		TypeInfo const* held = get_base_type_or_alias(result);
+		if (held != nullptr && TypeInfoVariant::ARRAY == held->variant && static_cast<TypeInfoArray const*>(held)->is_mutable) {
+			return Progress::DONE;
+		}
+		if (held != nullptr && TypeInfoVariant::POINTER == held->variant && static_cast<TypeInfoPointer const*>(held)->is_mutable
+			&& static_cast<TypeInfoPointer const*>(held)->base_type == nullptr) {
+			return Progress::DONE;
+		}
+		return type_error(walk, ErrorCode::E4014, node, std::format("mut here changes nothing, since {} is held as a value: "
+			"mut goes on what's reached through a type, a view's elements (mut T[]) or what a pointer points to (ptr[mut T]) "
+			"(docs/types.md, Mutability)", to_string(result)));
 	}
 
 	static Progress function_signature(Walk& walk, ast::Node* node, TypeInfoFunction* function);
@@ -1208,7 +1260,7 @@ namespace hemera {
 					if (ast::NodeType::COLON != names_and_type->node_type) {
 						// Just a type, in a function type like fn(int) -> bool
 						FunctionInput input;
-						Progress progress = type_of(walk, names_and_type, Need::DECLARED, input.type);
+						Progress progress = held_type_of(walk, names_and_type, Need::DECLARED, input.type);
 						if (progress != Progress::DONE) {
 							return progress;
 						}
@@ -1232,7 +1284,7 @@ namespace hemera {
 							is_varargs = true;
 						}
 						else {
-							Progress progress = type_of(walk, part, Need::DECLARED, parameter_type);
+							Progress progress = held_type_of(walk, part, Need::DECLARED, parameter_type);
 							if (progress != Progress::DONE) {
 								return progress;
 							}
@@ -1295,7 +1347,7 @@ namespace hemera {
 						continue;
 					}
 					TypeInfo* result_type = nullptr;
-					Progress progress = type_of(walk, part, Need::DECLARED, result_type);
+					Progress progress = held_type_of(walk, part, Need::DECLARED, result_type);
 					if (progress != Progress::DONE) {
 						return progress;
 					}
@@ -1316,7 +1368,7 @@ namespace hemera {
 			else if (ast::NodeType::TYPE == type || ast::NodeType::FUNCTION == type
 				|| ast::NodeType::IDENTIFIER == type || ast::NodeType::UNARY_OPERATOR == type) {
 				FunctionOutput output;
-				Progress progress = type_of(walk, child, Need::DECLARED, output.type);
+				Progress progress = held_type_of(walk, child, Need::DECLARED, output.type);
 				if (progress != Progress::DONE) {
 					return progress;
 				}
@@ -1349,7 +1401,7 @@ namespace hemera {
 
 	// A member's type, held by value, so complete.
 	static Progress member_type(Walk& walk, ast::Node* node, TypeInfo*& result) {
-		Progress progress = type_of(walk, node, Need::RESOLVED, result);
+		Progress progress = held_type_of(walk, node, Need::RESOLVED, result);
 		if (progress != Progress::DONE) {
 			return progress;
 		}

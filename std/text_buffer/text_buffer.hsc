@@ -16,14 +16,14 @@ import runtime from "base"
  * be kept on the heap (docs/memory.md, Scoped Structs).
  */
 TextBuffer :: struct #scoped {
-    bytes : u8[],
+    bytes : mut u8[],
     count : usize,
     truncated : bool,
 }
 
 DIGITS :: "0123456789abcdef"
 
-make :: fn(bytes: u8[]) -> TextBuffer {
+make :: fn(bytes: mut u8[]) -> TextBuffer {
     return TextBuffer.{bytes = bytes, count = 0, truncated = false}
 }
 

@@ -3,6 +3,8 @@ package compiler
 ArrayDimensions :: struct {
     type: ArrayType,
     count: usize,
+    // A view whose elements can be changed through it, mut T[].
+    is_mutable: bool,
 }
 
 ArrayType :: enum {

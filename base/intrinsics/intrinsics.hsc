@@ -2,11 +2,11 @@ package intrinsics
 
 import runtime from "base"
 
-mem_copy : fn(dest, source: rawptr, len: usize) : ---
-mem_copy_non_overlapping : fn(dest, source: rawptr, len: usize) : ---
-mem_zero : fn(target: rawptr, len: usize) : ---
+mem_copy : fn(dest: mut rawptr, source: rawptr, len: usize) : ---
+mem_copy_non_overlapping : fn(dest: mut rawptr, source: rawptr, len: usize) : ---
+mem_zero : fn(target: mut rawptr, len: usize) : ---
 // Zeros that are always written, even when nothing reads them after, for wiping secrets (docs/memory.md, Secrets).
-secure_zero : fn(target: rawptr, len: usize) : ---
+secure_zero : fn(target: mut rawptr, len: usize) : ---
 
 /*
  * Stop the program immediately by executing an illegal instruction (ud2 on x86-64, brk on AArch64),
@@ -62,7 +62,7 @@ spin_hint : fn() : ---
 // Print a log line, with format_string's placeholders filled in from params. ERROR and FATAL fail the build.
 compile_time_log : fn(level: runtime.LogLevel, format_string: string, params: any[], location: runtime.SourceCodeLocation) : ---
 // size bytes, aligned to alignment, that last until the compile-time code finishes; null if there's no memory.
-compile_time_allocate : fn(size: usize, alignment: usize) -> rawptr : ---
+compile_time_allocate : fn(size: usize, alignment: usize) -> mut rawptr : ---
 compile_time_free : fn(memory: rawptr) : ---
 // Fail the build with message at location, and stop the compile-time code there.
 compile_time_fail #never_returns : fn(message: string, location: runtime.SourceCodeLocation) : ---

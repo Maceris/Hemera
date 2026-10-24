@@ -120,7 +120,8 @@ main :: fn() {
 ```
 
 Nested functions cannot access local variables from the outer function.
-It's like the inner function being hoisted out into the global scope, but without the name being defined.
+It's like the inner function being hoisted out into the global scope, but without the name being defined. A nested
+function has one name, and can't be generic yet.
 
 ```
 foo :: fn() {
@@ -190,7 +191,7 @@ that leaves one out. `base`'s `AllocatorFn` gives its location one, so a call th
 
 ```
 AllocatorFn :: alias fn(allocator_data: rawptr, size: usize, alignment: usize, old_memory: rawptr, old_size: usize,
-    location := #caller_location) -> (u8[], AllocatorError?)
+    location := #caller_location) -> (mut u8[], AllocatorError?)
 
 memory, error :: context.allocator.function(context.allocator.data, 64, 8, null, 0)
 ```

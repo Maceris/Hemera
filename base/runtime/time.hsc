@@ -1,7 +1,7 @@
 package runtime
 
 Clock :: struct {
-    data : rawptr,
+    data : mut rawptr,
     monotonic : fn(data: mut rawptr) -> MonotonicTime,
     wall : fn(data: mut rawptr) -> Result[Instant, ClockError],
 }

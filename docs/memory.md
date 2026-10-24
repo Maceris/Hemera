@@ -10,7 +10,7 @@ The one function allocates, frees and resizes:
 
 ```
 AllocatorFn :: alias fn(allocator_data: rawptr, size: usize, alignment: usize, old_memory: rawptr, old_size: usize,
-    location := #caller_location) -> (u8[], AllocatorError?)
+    location := #caller_location) -> (mut u8[], AllocatorError?)
 ```
 
 * With `old_memory` null, it allocates `size` bytes aligned to `alignment`, a power of two.

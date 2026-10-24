@@ -3,7 +3,7 @@ package runtime
 import intrinsics from "base"
 
 Random :: struct {
-    data : rawptr,
+    data : mut rawptr,
     fill : fn(data: mut rawptr, bytes: mut u8[])
 }
 

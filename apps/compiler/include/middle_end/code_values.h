@@ -49,17 +49,24 @@ namespace hemera {
 		const std::vector<Spliced>& spliced);
 
 	/// <summary>
-	/// A copy of a Code's tree to put at site, an #insert, its nodes made in nodes, each with its origin
-	/// and site after the sites it already had and those at, the site's own origin, had: so each insertion has
-	/// nodes of its own, and errors in them say where the code was written and where it was put. Hygienic for a
-	/// macro's expansion (docs/compilation.md, Macros).
-	/// </summary>
-	/// <summary>
 	/// Whether a tree is a quote of what goes inside something else (#code fields { ... }, and variants,
 	/// members, patterns and cases), whose items go in its place when it's spliced.
 	/// </summary>
 	bool is_named_contents(const ast::Node* tree);
 
+	/// <summary>
+	/// The items inserted code puts among a type's or a match's or switch's: those of a quote of kind marked with
+	/// word (#code members { ... }), or of each such quote in a list of code (compiler.list). False if it's
+	/// anything else.
+	/// </summary>
+	bool named_items(const ast::Node* tree, ast::NodeType kind, std::string_view word, std::vector<ast::Node*>& items);
+
+	/// <summary>
+	/// A copy of a Code's tree to put at site, an #insert, its nodes made in nodes, each with its origin
+	/// and site after the sites it already had and those at, the site's own origin, had: so each insertion has
+	/// nodes of its own, and errors in them say where the code was written and where it was put. Hygienic for a
+	/// macro's expansion (docs/compilation.md, Macros).
+	/// </summary>
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,
 		const ast::InsertionSite& site, const ast::Origin* at, bool hygienic = false);
 

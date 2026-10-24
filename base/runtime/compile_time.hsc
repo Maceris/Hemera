@@ -83,8 +83,8 @@ compile_time_allocator_function : AllocatorFn : fn(
     old_memory: rawptr,
     old_size: usize,
     location := #caller_location,
-) -> (u8[], AllocatorError?) {
-    empty : u8[]
+) -> (mut u8[], AllocatorError?) {
+    empty : mut u8[]
     // The compiler's memory is only there at compile time
     if !#is_compile_time {
         return empty, AllocatorError.OutOfMemory

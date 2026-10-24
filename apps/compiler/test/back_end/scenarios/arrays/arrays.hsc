@@ -21,7 +21,7 @@ counting_function : runtime.AllocatorFn : fn(
     old_memory: rawptr,
     old_size: usize,
     location := #caller_location,
-) -> (u8[], runtime.AllocatorError?) {
+) -> (mut u8[], runtime.AllocatorError?) {
     counter :: cast[ptr[mut Counter]](allocator_data)
     if old_memory != null {
         counter.live -= 1

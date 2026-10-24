@@ -193,7 +193,7 @@ Point :: struct {
 ```
 
 The words are only special right after `#code`, so `#code(Point.{})` and a struct's own `fields` mean what they always
-do.
+do. A list of such quotes (`compiler.list`) puts each one's items there, so a generator can make them one at a time.
 
 In a quote, they're spliced the same way: an `#insert` among a quoted `match`'s patterns, or a quoted struct's fields,
 puts each of the code's items there, so a generator can build a `match` from patterns it made:
@@ -211,10 +211,11 @@ puts each of the code's items there, so a generator can build a `match` from pat
 
 ### Making and Inspecting Code
 
-In a quote, `#insert` also puts a declaration's name in place (`#insert name :: fn() {...}`), parameters in a
-parameter list (`fn(#insert parameters)`), arguments in a call (`f(#insert arguments)`) and a type where one goes
-(`-> #insert T`, `ptr[mut #insert T]`). `base/compiler` makes the code for those from values, for what a quote can't say,
-like a name from a table:
+In a quote, `#insert` also puts a declaration's name in place (`#insert name :: fn() {...}`), a member's name
+(`#insert name : int` among fields, `#insert name = 3` or `#insert name,` among an enum's members, `value.#insert name`
+and `.#insert name` to reach one), parameters in a parameter list (`fn(#insert parameters)`), arguments in a call
+(`f(#insert arguments)`) and a type where one goes (`-> #insert T`, `ptr[mut #insert T]`). `base/compiler` makes the
+code for those from values, for what a quote can't say, like a name from a table:
 
 | Function | Makes |
 |---|---|

@@ -19,7 +19,7 @@ AllocatorFn :: alias fn(
     old_memory: rawptr,
     old_size: usize,
     location:= #caller_location
-    )-> (u8[], AllocatorError?)
+    )-> (mut u8[], AllocatorError?)
 
 AllocatorError :: enum #backed_by(u8) {
     OutOfMemory,

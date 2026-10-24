@@ -61,8 +61,8 @@ import intrinsics from "base"
         old_memory: rawptr,
         old_size: usize,
         location := #caller_location,
-    ) -> (u8[], AllocatorError?) {
-        empty : u8[]
+    ) -> (mut u8[], AllocatorError?) {
+        empty : mut u8[]
         heap :: GetProcessHeap()
         result := empty
         if size > 0 {
@@ -81,7 +81,7 @@ import intrinsics from "base"
         }
         if old_memory != null {
             if size > 0 {
-                intrinsics.mem_copy(cast[rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
+                intrinsics.mem_copy(cast[mut rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
             }
             raw :: cast[ptr[usize]](cast[rawptr](cast[usize](old_memory) - 8))^
             HeapFree(heap, 0, cast[rawptr](raw))
@@ -155,7 +155,7 @@ import intrinsics from "base"
             return empty
         }
         utf8 :: string_of(&text[0], converted)
-        none : string[]
+        none : mut string[]
         count :: split_command_line(utf8, split, none)
         arguments, arguments_error :: new_array(string, count, allocator)
         if arguments_error != null {

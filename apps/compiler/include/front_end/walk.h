@@ -75,6 +75,12 @@ namespace hemera {
 	/// The instance of a generic type for these arguments, made (and its resolution started) the
 	/// first time it's asked for.
 	/// </summary>
+	/// <summary>
+	/// The declaration of a function declared inside a function, by its DEFINITION node: made the first
+	/// time, and resolved, checked and generated like any function's.
+	/// </summary>
+	Declaration* nested_declaration(Walk& walk, ast::Node* definition);
+
 	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments,
 		const std::vector<ConstantValue>& values = {});
 
@@ -136,6 +142,18 @@ namespace hemera {
 	/// </summary>
 	Progress type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
 
+	/// <summary>
+	/// The type of what's held as one, a parameter's, a result's, a field's or a local's: an error if it's given
+	/// mut that changes nothing, like mut int, rather than a view's elements, mut T[] (docs/types.md, Mutability).
+	/// </summary>
+	Progress held_type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
+
+	/// <summary>
+	/// The type a pointer points to, or a generic argument: a mut given with it is the pointer's or the argument's,
+	/// as in ptr[mut u8[]] or Box[mut Config], not its own.
+	/// </summary>
+	Progress argument_type_of(Walk& walk, ast::Node* node, Need need, TypeInfo*& result);
+
 	TypeInfo* pointer_to(Walk& walk, TypeInfo* base, bool is_mutable, bool is_relative, size_t size);
 
 	/// <summary>
@@ -154,7 +172,10 @@ namespace hemera {
 	/// A generic parameter bound in walk to argument: the type itself, with mut remembered by name.
 	/// </summary>
 	void bind_generic_type(Walk& walk, const std::string& name, TypeInfo* argument);
-	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count);
+	/// <summary>
+	/// An array type, the same object for the same one: a view is mutable, mut T[], when is_mutable says so.
+	/// </summary>
+	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count, bool is_mutable = false);
 	TypeInfo* vector_of(Walk& walk, TypeInfo* element, size_t count);
 	TypeInfo* plain_function_type(Walk& walk, const std::vector<TypeInfo*>& inputs, TypeInfo* output);
 	Progress vector_type(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, TypeInfo*& result);

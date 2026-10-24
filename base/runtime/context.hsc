@@ -70,7 +70,7 @@ copy_extensions :: fn(
     copy: ptr[mut Context],
     allocator := context.allocator,
     loc := #caller_location,
-) -> (ContextExtension[], AllocatorError?) {
+) -> (mut ContextExtension[], AllocatorError?) {
     count : usize = 0
     walk := copy.extensions
     loop {

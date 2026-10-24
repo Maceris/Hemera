@@ -384,6 +384,9 @@ namespace hemera {
 		}
 		if (TypeInfoVariant::POINTER == variant) {
 			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			if (pointer->base_type == nullptr && !pointer->is_relative && pointer->is_mutable) {
+				return "mut rawptr";
+			}
 			std::string kind = pointer->is_relative ? std::format("relptr{}", pointer->size * 8) : "ptr";
 			return std::format("{}[{}{}]", kind, pointer->is_mutable ? "mut " : "",
 				to_string(pointer->base_type));
@@ -397,7 +400,10 @@ namespace hemera {
 			const std::string dimension = ArrayType::STATIC == array->array_type
 				? std::format("[{}]", array->count)
 				: ArrayType::VIEW == array->array_type ? "[]" : "[..]";
-			return to_string(array->element_type) + dimension;
+			// mut T[], or a view of such views, mut T[][], written with the one mut
+			const std::string element = to_string(array->element_type);
+			const bool written_mut = array->is_mutable && !element.starts_with("mut ");
+			return (written_mut ? "mut " : "") + element + dimension;
 		}
 		if (TypeInfoVariant::FUNCTION == variant) {
 			auto function = static_cast<TypeInfoFunction const*>(type);
@@ -658,7 +664,8 @@ namespace hemera {
 		BUILTIN_q64 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 2, 4);
 		BUILTIN_q128 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 4, 4);
 		BUILTIN_q256 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 8, 4);
-		BUILTIN_rawptr = new TypeInfoPointer(nullptr, false, true, POINTER_SIZE);
+		// What it points to can only be read through it; mut rawptr can change it (docs/types.md, Mutability)
+		BUILTIN_rawptr = new TypeInfoPointer(nullptr, false, false, POINTER_SIZE);
 		BUILTIN_string = new TypeInfoString(false);
 		// A type value points to its type info
 		BUILTIN_type = new TypeInfo(TypeInfoVariant::TYPE, POINTER_SIZE, POINTER_SIZE);

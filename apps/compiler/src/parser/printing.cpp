@@ -312,6 +312,8 @@ namespace hemera::ast {
 			for (const Node* child : node->children) {
 				if (NodeType::DIRECTIVE == child->node_type && text_of(child) == "#insert") {
 					found.push_back(child);
+					// What follows its operand, like a member's value, can have its own
+					find_placeholders(child, found);
 					continue;
 				}
 				if (NodeType::DIRECTIVE == child->node_type && text_of(child) == "#code") {
@@ -1154,6 +1156,10 @@ namespace hemera::ast {
 					return typed_literal(node, ".[", "]");
 				}
 				else if (node->node_type == NodeType::ENUM_SHORTHAND) {
+					// .#insert name in a quote
+					if (!node->children.empty() && is_insert(node->children[0])) {
+						return "." + directive(node->children[0]) + chain(node, 1);
+					}
 					return "." + std::string(text_of(node)) + chain(node, 0);
 				}
 				else if (node->node_type == NodeType::IF) {
@@ -1229,7 +1235,8 @@ namespace hemera::ast {
 					if (NodeType::DOT_ACCESS == marker->node_type) {
 						out += ".";
 						if (i < children.size()) {
-							out += text_of(children[i]);
+							// value.#insert name in a quote
+							out += is_insert(children[i]) ? directive(children[i]) : std::string(text_of(children[i]));
 							++i;
 						}
 						continue;
@@ -1367,6 +1374,10 @@ namespace hemera::ast {
 
 			// cast[T](x), bit_cast[T](x) or auto_cast(x), and a chain after it.
 			std::string cast(const Node* node) {
+				// (x).member and the like
+				if (is_token(node, TokenType::SYM_LPAREN)) {
+					return node->children.empty() ? std::string("()") : "(" + expression(node->children[0], ANY) + ")" + chain(node, 1);
+				}
 				std::string out(operator_text(node->value.type));
 				size_t i = 0;
 				if (!is_token(node, TokenType::KEYWORD_AUTO_CAST) && i < node->children.size()) {
@@ -1447,15 +1458,18 @@ namespace hemera::ast {
 				if (out == "#insert" && marked_only && !node->children.empty()) {
 					out = "mut " + out;
 				}
-				if (text_of(node) == "#insert" && marked_only && !quotes.empty()) {
-					auto found = quotes.back().find(node);
-					if (found != quotes.back().end()) {
-						const Node* spliced = found->second;
-						// It's printed in the quote around this one
-						auto inner = std::move(quotes.back());
-						quotes.pop_back();
-						out += " " + expression(spliced, PREFIX);
-						quotes.push_back(std::move(inner));
+				if (text_of(node) == "#insert" && !quotes.empty() && quotes.back().contains(node)) {
+					const Node* spliced = quotes.back().find(node)->second;
+					// It's printed in the quote around this one
+					auto inner = std::move(quotes.back());
+					quotes.pop_back();
+					out += " " + expression(spliced, PREFIX);
+					quotes.push_back(std::move(inner));
+					// A member's value, as in #insert name = 3
+					for (const Node* child : node->children) {
+						if (is_token(child, TokenType::OPERATOR_ASSIGN) && !child->children.empty()) {
+							out += " = " + expression(child->children[0], ANY);
+						}
 					}
 					return out;
 				}
@@ -1499,29 +1513,39 @@ namespace hemera::ast {
 					operands[placeholders[i]] = node->children[i];
 				}
 				quotes.push_back(std::move(operands));
-				// What goes in something else is named by a word: fields, variants, members, patterns or cases
-				const std::string_view word = text_of(tree);
-				std::string out;
-				if (NodeType::STRUCT == tree->node_type && word == "fields") {
-					out = "#code " + struct_declaration(tree, "fields");
-				}
-				else if (NodeType::UNION == tree->node_type && word == "variants") {
-					out = "#code " + union_declaration(tree, "variants");
-				}
-				else if (NodeType::ENUM == tree->node_type && word == "members") {
-					out = "#code " + enum_declaration(tree, "members");
-				}
-				else if (NodeType::LIST == tree->node_type && word == "patterns") {
-					out = "#code patterns " + match_arms(tree);
-				}
-				else if (NodeType::LIST == tree->node_type && word == "cases") {
-					out = "#code cases " + switch_cases(tree);
+				std::string out = named_contents(tree);
+				if (!out.empty()) {
+					out = "#code " + out;
 				}
 				else {
 					out = NodeType::BLOCK == tree->node_type ? "#code " + block(tree) : "#code(" + expression(tree, ANY) + ")";
 				}
 				quotes.pop_back();
 				return out;
+			}
+
+			/*
+			 * What goes in something else, named by a word: fields, variants, members, patterns or cases, as
+			 * #code quotes them and code made from them is. Empty for anything else.
+			 */
+			std::string named_contents(const Node* tree) {
+				const std::string_view word = text_of(tree);
+				if (NodeType::STRUCT == tree->node_type && word == "fields") {
+					return struct_declaration(tree, "fields");
+				}
+				if (NodeType::UNION == tree->node_type && word == "variants") {
+					return union_declaration(tree, "variants");
+				}
+				if (NodeType::ENUM == tree->node_type && word == "members") {
+					return enum_declaration(tree, "members");
+				}
+				if (NodeType::LIST == tree->node_type && word == "patterns") {
+					return "patterns " + match_arms(tree);
+				}
+				if (NodeType::LIST == tree->node_type && word == "cases") {
+					return "cases " + switch_cases(tree);
+				}
+				return "";
 			}
 		};
 	}
@@ -1535,7 +1559,8 @@ namespace hemera::ast {
 		if (NodeType::FILE == node->node_type) {
 			return printer.file(node);
 		}
-		return printer.statement(node);
+		std::string contents = printer.named_contents(node);
+		return contents.empty() ? printer.statement(node) : contents;
 	}
 
 	std::string source_of_statements(const Node* block, const QuoteTable* quotes) {

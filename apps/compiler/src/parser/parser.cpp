@@ -1310,7 +1310,8 @@ namespace hemera::parser {
 			accept(state, TokenType::KEYWORD_VOID, ast::NodeType::VOID, parent);
 			return true;
 		}
-		if (expect(state, TokenType::IDENTIFIER)) {
+		// A type, like int, or a mut one, like mut u8[]
+		if (expect(state, TokenType::IDENTIFIER) || expect(state, TokenType::KEYWORD_MUT)) {
 			ExprResult id = simple_type(state);
 			if (!id.success) {
 				return false;
@@ -1843,16 +1844,31 @@ namespace hemera::parser {
 			|| TokenType::SYM_COLON == next || TokenType::SYM_COMMA == next);
 	}
 
+	static bool field_after_names(ParserState* state, ast::Node& parent, ast::Node& names);
+
 	bool struct_body(ParserState* state, ast::Node& parent) {
 		while (is_field_name(state)
 			|| expect(state, TokenType::KEYWORD_USING)
 			|| expect(state, TokenType::SYM_UNDERSCORE)
 			|| is_insert(state)) {
 
+			// An #insert of fields, or of one field's name, like #insert name : int in a quote
 			if (is_insert(state)) {
-				if (!insert_item(state, parent)) {
+				ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE);
+				ExprResult operand = insert_operand(state);
+				if (!operand.success) {
 					return false;
 				}
+				directive.children.push_back(operand.result);
+				if (expect(state, TokenType::SYM_COLON)) {
+					if (!field_after_names(state, parent, directive)) {
+						return false;
+					}
+				}
+				else {
+					parent.children.push_back(&directive);
+				}
+				skip(state, TokenType::SYM_COMMA);
 				continue;
 			}
 			// using value : ptr[T]: a named field whose members can be used as the struct's own
@@ -1930,14 +1946,18 @@ namespace hemera::parser {
 				return false;
 			}
 		}
+		return field_after_names(state, parent, *names);
+	}
 
+	// A field's : type, with an optional = default value, after its names.
+	static bool field_after_names(ParserState* state, ast::Node& parent, ast::Node& names) {
 		if (!expect(state, TokenType::SYM_COLON)) {
 			report_error_on_last_token(state, ErrorCode::E3010);
-			delete_node(state->node_alloc, names);
+			delete_node(state->node_alloc, &names);
 			return false;
 		}
 		ast::Node& definition = next_as_node(state, ast::NodeType::DEFINITION, &parent);
-		definition.children.push_back(names);
+		definition.children.push_back(&names);
 
 		const Token lparen = current_token(state);
 		const bool in_parens = skip(state, TokenType::SYM_LPAREN);
@@ -2019,13 +2039,23 @@ namespace hemera::parser {
 
 	bool enum_body(ParserState* state, ast::Node& parent) {
 		while (is_name(current_token(state).type) || is_insert(state)) {
+			/*
+			 * An #insert of members, or of one member's name, like #insert name = 3 in a quote: its value
+			 * goes after the operand, and goes to the name it inserts
+			 */
+			ast::Node* member_node = nullptr;
 			if (is_insert(state)) {
-				if (!insert_item(state, parent)) {
+				member_node = &next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
+				ExprResult operand = insert_operand(state);
+				if (!operand.success) {
 					return false;
 				}
-				continue;
+				member_node->children.push_back(operand.result);
 			}
-			ast::Node& member = next_as_node(state, ast::NodeType::IDENTIFIER, &parent);
+			else {
+				member_node = &next_as_node(state, ast::NodeType::IDENTIFIER, &parent);
+			}
+			ast::Node& member = *member_node;
 
 			// An explicit value, like TRACE = 0
 			if (expect(state, TokenType::OPERATOR_ASSIGN)) {
@@ -2474,6 +2504,18 @@ namespace hemera::parser {
 				delete_node(state->node_alloc, &result);
 				return ExprResult{ false };
 			}
+			/*
+			 * A member, an element or what it points to, like (x or_else y).limit: a cast to nothing, keeping its
+			 * value, so the chain after it is handled as after any cast. A call after it isn't, as a line in
+			 * parentheses can follow one that ends in them.
+			 */
+			const bool member = expect(state, TokenType::SYM_DOT) && TokenType::IDENTIFIER == next_token(state).type;
+			if (member || expect(state, TokenType::SYM_LBRACK) || expect(state, TokenType::OPERATOR_DEREFERENCE)) {
+				result.node_type = ast::NodeType::CAST;
+				if (!postfix_operations(state, result)) {
+					return ExprResult{ false };
+				}
+			}
 			return ExprResult{ true, &result };
 		}
 		else {
@@ -2679,6 +2721,10 @@ namespace hemera::parser {
 			if (ast::NodeType::DIRECTIVE == child->node_type && child->value.value != nullptr) {
 				if (child->value.value->compare("#insert") == 0) {
 					found.push_back(child);
+					// What follows its operand, like a member's value, can have its own
+					for (size_t index = 1; index < child->children.size(); ++index) {
+						find_splices(child->children[index], found);
+					}
 					continue;
 				}
 				if (child->value.value->compare("#code") == 0) {
@@ -2881,6 +2927,16 @@ namespace hemera::parser {
 			}
 			if (accept(state, TokenType::SYM_DOT, ast::NodeType::DOT_ACCESS,
 				target)) {
+				// A member named by an #insert, like value.#insert name in a quote
+				if (is_insert(state)) {
+					ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &target);
+					ExprResult operand = insert_operand(state);
+					if (!operand.success) {
+						return false;
+					}
+					directive.children.push_back(operand.result);
+					continue;
+				}
 				if (!accept_name(state, target)) {
 					report_error_on_last_token(state, ErrorCode::E3009);
 					return false;
@@ -3539,8 +3595,23 @@ namespace hemera::parser {
 	}
 
 	ExprResult enum_shorthand(ParserState* state) {
+		const Token dot = current_token(state);
 		if (!skip(state, TokenType::SYM_DOT)) {
 			return ExprResult{ false };
+		}
+		// A member named by an #insert, like .#insert name in a quote: the #insert first among its children
+		if (is_insert(state)) {
+			ast::Node* result = state->node_alloc.new_object<ast::Node>(ast::NodeType::ENUM_SHORTHAND, dot);
+			ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, result);
+			ExprResult operand = insert_operand(state);
+			if (operand.success) {
+				directive.children.push_back(operand.result);
+			}
+			if (!operand.success || !postfix_operations(state, *result)) {
+				delete_node(state->node_alloc, result);
+				return ExprResult{ false };
+			}
+			return ExprResult{ true, result };
 		}
 		if (!is_name(current_token(state).type)) {
 			report_error_on_last_token(state, ErrorCode::E3009);

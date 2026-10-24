@@ -1423,6 +1423,14 @@ namespace hemera {
 			{},
 			{},
 		};
+		// A function declared inside a function: like one at the top level, from its own definition
+		if (instance->generic == nullptr) {
+			Progress walked = walk_definition(walk, instance->node);
+			if (Progress::DONE == walked) {
+				walked = compute_declaration(walk, { instance }, instance->node);
+			}
+			return finish_resolving(executor, { instance }, walked);
+		}
 		// The generic's own names, with its parameters as locals, then its types with them bound
 		const Declaration* generic = instance->generic != nullptr ? instance->generic : instance;
 		ast::Node* value = generic_node(generic);
@@ -1493,6 +1501,28 @@ namespace hemera {
 			return value.member;
 		}
 		return "." + value.member;
+	}
+
+	Declaration* nested_declaration(Walk& walk, ast::Node* definition) {
+		NameRegistry& names = walk.executor.program_info->names;
+		Declaration* made = nullptr;
+		{
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			auto iter = names.nested.find(definition);
+			if (iter != names.nested.end()) {
+				return iter->second;
+			}
+			made = &names.storage.emplace_back();
+			made->name = definition->children.empty() ? nullptr : definition->children[0]->value.value;
+			made->package_path = walk.package_path;
+			made->file_name = walk.file_name;
+			made->file = walk.file;
+			made->node = definition;
+			classify_declaration(names, made);
+			names.nested[definition] = made;
+		}
+		walk.executor.create_work(WorkType::TYPE_CHECK, WorkTarget(WorkTargetType::INSTANCE, { .declaration = made }));
+		return made;
 	}
 
 	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments,
@@ -1905,13 +1935,14 @@ namespace hemera {
 				return Progress::FAILED;
 			}
 			show_inserted(walk.executor.global_data->options, site, inserted, program->quotes);
-			if (inserted->node_type != kind || inserted->value.value == nullptr || *inserted->value.value != word) {
+			std::vector<ast::Node*> items;
+			if (!named_items(inserted, kind, word, items)) {
 				report_at(ErrorCode::E4014, walk.file_path, &program->made_nodes, insert, std::format(
 					"#insert among {} puts {} there: quote them with #code {} {{ ... }}", holder, word, word));
 				return Progress::FAILED;
 			}
 			auto at = node->children.erase(node->children.begin() + static_cast<std::ptrdiff_t>(i));
-			node->children.insert(at, inserted->children.begin(), inserted->children.end());
+			node->children.insert(at, items.begin(), items.end());
 			// What was inserted is looked at from where it is, since it may hold #inserts of its own
 			--i;
 		}
@@ -2423,7 +2454,7 @@ namespace hemera {
 		std::vector<TypeInfo*> arguments;
 		std::vector<ConstantValue> values;
 		progress = generic_type_arguments(walk, generic, nodes, [&](ast::Node* argument, TypeInfo*& type) {
-			return type_of(walk, argument, Need::DECLARED, type);
+			return argument_type_of(walk, argument, Need::DECLARED, type);
 		}, arguments, values);
 		if (progress != Progress::DONE) {
 			return progress;

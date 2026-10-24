@@ -305,7 +305,7 @@ move :: fn(p: ptr[mut Point], by: int) {
 }
 
 // What a value formats as, through its any's type information, in storage the caller gives.
-formatted :: fn(storage: u8[], format: string, values: any...) -> string {
+formatted :: fn(storage: mut u8[], format: string, values: any...) -> string {
     if storage.count == 0 {
         return ""
     }
@@ -670,7 +670,7 @@ main :: fn() -> int {
     }
     // A view of an array refers to it, so changes through the view reach it
     numbers_to_change : int[3]
-    view : int[] = numbers_to_change
+    view : mut int[] = numbers_to_change
     view[1] = 5
     if numbers_to_change[1] != 5 {
         return 25

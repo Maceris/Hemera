@@ -3245,6 +3245,7 @@ namespace hemera {
 					ConstantStruct dimension(generator, element_type);
 					dimension.member("type", array_type_name(dimensions[i]->array_type));
 					dimension.number("count", dimensions[i]->count);
+					dimension.number("is_mutable", dimensions[i]->is_mutable);
 					return dimension.whole;
 				});
 				break;
@@ -5909,6 +5910,10 @@ namespace hemera {
 
 	// cast[T](x), bit_cast[T](x), auto_cast(x), then anything after it.
 	static Emitted emit_cast(Generator& generator, ast::Node* node) {
+		// (x).member and the like: x as it is, then the chain
+		if (TokenType::SYM_LPAREN == node->value.type) {
+			return emit_steps(generator, node, 1, emit_expression(generator, node->children[0], nullptr));
+		}
 		const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type;
 		ast::Node* value_node = node->children[automatic ? 0 : 1];
 		const size_t rest = automatic ? 1 : 2;
@@ -6660,8 +6665,8 @@ namespace hemera {
 				break;
 			}
 		}
+		// A nested function is generated as its own declaration, wherever it's used (checking.cpp, check_nested_function)
 		if (value_node != nullptr && ast::NodeType::FUNCTION == value_node->node_type) {
-			unsupported(generator, definition, "functions defined inside functions can't be generated yet");
 			return;
 		}
 		std::vector<TypeInfo*> types;

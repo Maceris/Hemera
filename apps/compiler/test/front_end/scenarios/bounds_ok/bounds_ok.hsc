@@ -73,7 +73,7 @@ last_part :: fn(path: string) -> string {
 }
 
 // A count kept below the room there is
-copy :: fn(from: string, to: u8[]) -> usize {
+copy :: fn(from: string, to: mut u8[]) -> usize {
     count : usize = 0
     for character in from {
         if count < to.count {

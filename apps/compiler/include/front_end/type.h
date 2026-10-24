@@ -155,6 +155,11 @@ namespace hemera {
 		TypeInfo* element_type;
 		ArrayType array_type;
 		size_t count;
+		/// <summary>
+		/// A view whose elements can be changed through it, mut T[] (docs/types.md, Mutability). A static or
+		/// dynamic array's elements change as whatever holds the array does, so this is only ever a view's.
+		/// </summary>
+		bool is_mutable = false;
 
 		TypeInfoArray(TypeInfo* element_type, ArrayType array_type, size_t count);
 	};

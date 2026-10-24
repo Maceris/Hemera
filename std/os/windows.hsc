@@ -129,7 +129,7 @@ import runtime from "base"
             return "", null
         }
         units :: view_of(cast[ptr[u16]](start), count)
-        none : u8[]
+        none : mut u8[]
         length :: runtime.utf16_to_utf8(units, none)
         bytes, error :: runtime.new_array(u8, length, allocator)
         if error != null || bytes.count == 0 {
@@ -333,7 +333,7 @@ import runtime from "base"
         defer free_wide(pattern)
         // units ends with its terminator, which the separator goes in place of
         length :: units.count - 1
-        intrinsics.mem_copy_non_overlapping(cast[rawptr](pattern.data), cast[rawptr](units.data), length * 2)
+        intrinsics.mem_copy_non_overlapping(cast[mut rawptr](pattern.data), cast[rawptr](units.data), length * 2)
         position := length
         if length > 0 && (units[length - 1] == cast[u16]('\\') || units[length - 1] == cast[u16]('/')) {
             position -= 1

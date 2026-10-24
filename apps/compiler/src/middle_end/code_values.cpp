@@ -211,8 +211,24 @@ namespace hemera {
 							continue;
 						}
 						ast::Node* value = spliced_node(child->value, spliced[next++]);
+						// What follows the operand, like = 3 after #insert name in an enum, goes to a name inserted
+						std::vector<ast::Node*> following;
+						for (const ast::Node* marker : child->children) {
+							if (ast::NodeType::MUTABLE != marker->node_type) {
+								following.push_back(copy(marker, true));
+							}
+						}
 						if (value == nullptr) {
 							continue;
+						}
+						const bool name = ast::NodeType::IDENTIFIER == value->node_type && value->children.empty();
+						// .#insert name: the shorthand's own name
+						if (name && ast::NodeType::ENUM_SHORTHAND == node->node_type && result->children.empty()) {
+							result->value = value->value;
+							continue;
+						}
+						if (name) {
+							value->children.insert(value->children.end(), following.begin(), following.end());
 						}
 						// A type given with mut, like ptr[mut #insert T], is given with mut
 						for (const ast::Node* marker : child->children) {
@@ -224,6 +240,11 @@ namespace hemera {
 						const bool statements = ast::NodeType::BLOCK == node->node_type && ast::NodeType::BLOCK == value->node_type;
 						if (statements || is_code_list(value) || is_named_contents(value)) {
 							for (ast::Node* item : value->children) {
+								// A list of quotes of fields, members, ..., each one's items
+								if (is_code_list(value) && is_named_contents(item)) {
+									result->children.insert(result->children.end(), item->children.begin(), item->children.end());
+									continue;
+								}
 								result->children.push_back(item);
 							}
 							continue;
@@ -346,6 +367,23 @@ namespace hemera {
 		return (ast::NodeType::STRUCT == tree->node_type && word == "fields") || (ast::NodeType::UNION == tree->node_type && word == "variants")
 			|| (ast::NodeType::ENUM == tree->node_type && word == "members")
 			|| (ast::NodeType::LIST == tree->node_type && (word == "patterns" || word == "cases"));
+	}
+
+	bool named_items(const ast::Node* tree, ast::NodeType kind, std::string_view word, std::vector<ast::Node*>& items) {
+		const auto quoted = [&](const ast::Node* code) {
+			return code != nullptr && code->node_type == kind && code->value.value != nullptr && *code->value.value == word;
+		};
+		if (quoted(tree)) {
+			items.insert(items.end(), tree->children.begin(), tree->children.end());
+			return true;
+		}
+		if (!is_code_list(tree) || !std::all_of(tree->children.begin(), tree->children.end(), quoted)) {
+			return false;
+		}
+		for (const ast::Node* code : tree->children) {
+			items.insert(items.end(), code->children.begin(), code->children.end());
+		}
+		return true;
 	}
 
 	const ast::Node* copy_to_insert(ast::NodeStore& nodes, ast::QuoteTable& quotes, const ast::Node* tree,

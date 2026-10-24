@@ -21,10 +21,10 @@ import runtime from "base"
  * string key's text, has to outlive the map. A zeroed HashMap is empty.
  */
 HashMap :: struct[K: compiler.Equatable, V, hash: fn(key: K) -> u64] {
-    keys : K[],
-    values : V[],
+    keys : mut K[],
+    values : mut V[],
     // Whether each slot holds a key
-    used : bool[],
+    used : mut bool[],
     count : usize,
 }
 

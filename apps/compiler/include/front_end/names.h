@@ -413,6 +413,11 @@ namespace hemera {
 		/// </summary>
 		std::map<std::pair<Declaration*, std::string>, Declaration*> instances;
 		/// <summary>
+		/// Each function declared inside a function, by its DEFINITION node: a declaration of its own, in no
+		/// package's names (docs/functions.md, Nesting Functions).
+		/// </summary>
+		std::map<const ast::Node*, Declaration*> nested;
+		/// <summary>
 		/// The declaration each declared type belongs to, for waiting on its layout.
 		/// </summary>
 		std::map<const TypeInfo*, Declaration*> type_declarations;

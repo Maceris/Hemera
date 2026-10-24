@@ -55,8 +55,8 @@ import intrinsics from "base"
         old_memory: rawptr,
         old_size: usize,
         location := #caller_location,
-    ) -> (u8[], AllocatorError?) {
-        empty : u8[]
+    ) -> (mut u8[], AllocatorError?) {
+        empty : mut u8[]
         result := empty
         if size > 0 {
             if alignment & (alignment - 1) != 0 {
@@ -70,7 +70,7 @@ import intrinsics from "base"
         }
         if old_memory != null {
             if size > 0 {
-                intrinsics.mem_copy(cast[rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
+                intrinsics.mem_copy(cast[mut rawptr](result.data), old_memory, if old_size < size { old_size } else { size })
             }
             heap_free(old_memory)
         }
@@ -146,7 +146,7 @@ import intrinsics from "base"
         }
         heap_unlock(heap)
         cast[ptr[mut usize]](header)^ = class
-        start :: cast[rawptr](cast[usize](header) + 16)
+        start :: cast[mut rawptr](cast[usize](header) + 16)
         intrinsics.mem_zero(start, size)
         return start
     }

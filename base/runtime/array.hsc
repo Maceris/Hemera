@@ -72,7 +72,7 @@ array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #
         context.assertion_handler(location, "out of memory")
     }
     if raw.count > 0 {
-        intrinsics.mem_copy_non_overlapping(cast[rawptr](memory.data), raw.data, raw.count * size_of(T))
+        intrinsics.mem_copy_non_overlapping(cast[mut rawptr](memory.data), raw.data, raw.count * size_of(T))
     }
     if raw.capacity > 0 {
         allocator.function(allocator.data, 0, align_of(T), raw.data, raw.capacity * size_of(T), location)
@@ -135,10 +135,11 @@ array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
  *     runtime.array_release(files, close_file)
  */
 array_release :: fn[T](array #escaping : T[..], release: (fn(value: T)), location := #caller_location) {
-    for i in 0..<array.count {
-        release(compiler.take(&array[i]))
-    }
+    // Its own now, to take the elements out of
     items := array
+    for &item in items {
+        release(compiler.take(item))
+    }
     array_free(&items, location)
     compiler.forget(items)
 }
@@ -156,7 +157,7 @@ array_remove :: fn[T](array: ptr[mut T[..]], position: usize, location := #calle
     }
     after :: raw.count - position - 1
     if after > 0 {
-        intrinsics.mem_copy(cast[rawptr](element_address(raw, position, T)), cast[rawptr](element_address(raw, position + 1, T)),
+        intrinsics.mem_copy(cast[mut rawptr](element_address(raw, position, T)), cast[rawptr](element_address(raw, position + 1, T)),
             after * size_of(T))
     }
     raw.count -= 1

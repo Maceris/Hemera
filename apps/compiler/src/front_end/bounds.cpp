@@ -1281,7 +1281,8 @@ namespace hemera {
 				return combine(analysis, facts, op, left, right, operand != nullptr && is_unsigned(operand->type));
 			}
 			if (ast::NodeType::CAST == type) {
-				const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type;
+				// auto_cast(x), and (x) before a chain, have no type before the value
+				const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type || TokenType::SYM_LPAREN == node->value.type;
 				const size_t value_index = automatic ? 0 : 1;
 				if (node->children.size() <= value_index) {
 					return Value{};

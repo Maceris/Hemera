@@ -890,7 +890,17 @@ TEST(FrontEnd, ReportsBodyErrors)
 		// docs/compilation.md, Macros
 		{ "macro_call_not_macro", hemera::ErrorCode::E4039 },
 		{ "macro_expands_forever", hemera::ErrorCode::E4039 },
-		{ "macro_local_hidden", hemera::ErrorCode::E4008 }
+		{ "macro_local_hidden", hemera::ErrorCode::E4008 },
+		// docs/functions.md, Nesting Functions
+		{ "nested_uses_outer_local", hemera::ErrorCode::E4008 },
+		{ "nested_generic", hemera::ErrorCode::E4024 },
+		// docs/types.md, Mutability
+		{ "view_read_only", hemera::ErrorCode::E4016 },
+		{ "view_from_read_only", hemera::ErrorCode::E4016 },
+		{ "view_loses_read_only", hemera::ErrorCode::E4016 },
+		{ "mut_changes_nothing", hemera::ErrorCode::E4014 },
+		{ "dynamic_array_parameter", hemera::ErrorCode::E4016 },
+		{ "rawptr_read_only", hemera::ErrorCode::E4015 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

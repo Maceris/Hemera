@@ -410,6 +410,9 @@ Unary operators have the highest precedence.
 Binary operators of the same precedence are evaluated left to right.
 For example, `a / b * c` is evaluated as `(a / b) * c`.
 
+An expression in parentheses can be followed by `.`, `[]` and `^` like a name can: `(a + b).count`,
+`(cast[ptr[Header]](address))^.size`.
+
 ## Line breaks
 
 Line breaks mean nothing, and there are no semicolons. An expression keeps going for as long as the next token can

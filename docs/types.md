@@ -82,7 +82,7 @@ More details:
 | q64      | 64-bit quaternion, composed of 4 i16 values                                                                                                  |
 | q128     | 128-bit quaternion, composed of 4 i32 values                                                                                                 |
 | q256     | 256-bit quaternion, composed of 4 i64 values                                                                                                 |
-| rawptr   | Pointer to an arbitrary type, equivalent to C's void *                                                                                       |
+| rawptr   | Pointer to an arbitrary type, equivalent to C's const void *; `mut rawptr` is C's void *                                                      |
 | relptr8  | 8-bit pointer which points relative to its own address                                                                                       |
 | relptr16 | 16-bit pointer which points relative to its own address                                                                                      |
 | relptr32 | 32-bit pointer which points relative to its own address                                                                                      |
@@ -221,9 +221,27 @@ Array views represent a view into data stored in an array, or a subsection of on
 a : int[]
 ```
 
-Both static and dynamic arrays will be auto-cast to array views if 
+Both static and dynamic arrays will be auto-cast to array views if
 provided to a function with an array view parameter. A view refers to the array's own elements, not a copy of
-them, so changing an element through the view changes the array.
+them.
+
+A view only reads its elements. One that can change them is written `mut T[]`, and changing an element through it
+changes the array:
+
+```
+clear :: fn(values: mut int[]) {
+    for &value in values {
+        value^ = 0
+    }
+}
+
+numbers : int[4]
+clear(numbers)          // numbers can be changed here, so it can be a mut int[]
+```
+
+A `mut T[]` can be given where a `T[]` is wanted, never the other way. An array becomes a `mut T[]` only where it
+can be changed itself (see [Mutability](#mutability)), so a parameter's copy of an array, or a constant, can't.
+Part of a view, like `values[1..<3]`, can change its elements if the view can.
 
 Arrays on the stack (including fields of structs on the stack) can be passed to functions as,
 or cast to, array views. Such a view can't outlive the array, which the compiler checks,
@@ -233,7 +251,7 @@ A view of memory that didn't come from a Hemera array, like a table a bootloader
 builtin `view_of(data: ptr[T], count: usize) -> T[]`: `count` elements of `T` starting at `data`, so
 `count × size_of(T)` bytes. `string_of(data: ptr[u8], count: usize) -> string` does the same for text. Neither is
 checked, like a cast to a pointer: the caller makes sure the elements are there for as long as the view is used. From a
-`ptr[mut T]`, the elements can be changed through the view.
+`ptr[mut T]`, it's a `mut T[]`.
 
 ```
 regions :: view_of(cast[ptr[MemoryRegion]](address), count)
@@ -428,6 +446,9 @@ Suit :: enum {
 ```
 
 Enum values can be accessed in an abbreviated way if the type can be inferred, using a syntax like `.EnumValue`. For example, `suit : Suit = .Clubs`.
+Where an optional of an enum or union is expected, the shorthand names the enum's or union's own members too:
+`trump : Suit? = .Hearts`. A generic function's argument can be a shorthand when another argument or the result decides
+its type.
 
 Enums are backed by a `uint` by default, but `#backed_by(x)` can be used used to specify the backing type, where `x` must be one of the unsigned integer types (u8, u16, u32, u64, u128). For example:
 
@@ -917,7 +938,19 @@ sets `TargetOptions.address_zero_is_memory`, so those accesses aren't assumed ne
 
 ### Mutability
 
-`ptr[T]` can only read what it points to, and `ptr[mut T]` can also change it.
+Nothing can be changed unless it's given `mut`, or declared where it can be:
+
+* **Locals** declared with `:` or `:=` can be changed; constants (`::`) and parameters, which are copies, can't.
+* **Pointers:** `ptr[T]` can only read what it points to, and `ptr[mut T]` can also change it. `rawptr` only reads too,
+  and `mut rawptr` can change what it points to; a `ptr[mut T]` can be given as either, and a `ptr[T]` only as a
+  `rawptr`.
+* **Views:** `T[]` only reads its elements, and `mut T[]` can change them (see [Array Views](#array-views)).
+* **Static and dynamic arrays** hold their elements, which can be changed where the array can be: in a local, or
+  through a `ptr[mut T]`. A function that changes a dynamic array's elements takes a `mut T[]` view of them, or a
+  `ptr[mut T[..]]` to change the array itself.
+
+`mut` goes on what's reached through a type. On a type whose value is held as itself, like a parameter's `n: mut int`
+or a field's `items : mut int[4]`, it would change nothing, so it's an error.
 
 A struct is mutable or immutable as a whole: every field, and everything stored inline in it (nested structs, static
 arrays), shares that. What a pointer field points to is different, its own type decides whether it can be changed:
@@ -930,7 +963,7 @@ Queue :: struct {
 ```
 
 So a pointer field is `ptr[mut T]` when the code using the struct changes what it points to, and `ptr[T]` when it
-only reads it. An immutable struct can't point its fields elsewhere, but can still hand out a `ptr[mut T]`.
+only reads it. A view field is the same: `bytes : mut u8[]` can be written through by whoever can read the struct. An immutable struct can't point its fields elsewhere, but can still hand out a `ptr[mut T]`.
 
 `new` returns a `ptr[mut T]`, since a new value has to be filled in. If it can't allocate one, it calls
 `context.assertion_handler`; `new_aligned` and `new_array` return the `AllocatorError` instead, for code that handles it. A function that changes something it's given
@@ -971,6 +1004,9 @@ Result :: union[T, E] {
     Error(E),
 }
 ```
+
+A variant can be named with the type's arguments, like `Result[int, string].Error("missing")`, where nothing
+says which `Result` is meant.
 
 There are a few [operators built in](operators.md#result-operators) to make life easier when dealing with result values.
 

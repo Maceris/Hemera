@@ -45,7 +45,7 @@ pattern :: fn(thread: usize, i: usize) -> u8 {
     return cast[u8]((thread * 31 + i * 7 + 1) % 251 + 1)
 }
 
-fill :: fn(block: u8[], value: u8) {
+fill :: fn(block: mut u8[], value: u8) {
     for i in 0..<block.count {
         block[i] = value
     }

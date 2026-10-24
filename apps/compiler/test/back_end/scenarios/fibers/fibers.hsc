@@ -32,9 +32,9 @@ arena_function : runtime.AllocatorFn : fn(
     old_memory: rawptr,
     old_size: usize,
     location := #caller_location,
-) -> (u8[], runtime.AllocatorError?) {
+) -> (mut u8[], runtime.AllocatorError?) {
     arena :: cast[ptr[mut Arena]](allocator_data)
-    empty : u8[]
+    empty : mut u8[]
     if size == 0 {
         if old_memory != null {
             arena.live -= 1

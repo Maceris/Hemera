@@ -135,7 +135,7 @@ read_entire_file :: fn(path: string, allocator := context.allocator) -> Result[s
     if size_error == null && size > 0 {
         capacity = cast[usize](size) + 1
     }
-    bytes : u8[]
+    bytes : mut u8[]
     count : usize = 0
     loop {
         if count == bytes.count {
@@ -150,7 +150,7 @@ read_entire_file :: fn(path: string, allocator := context.allocator) -> Result[s
                 return .Error(.OutOfMemory)
             }
             if count > 0 {
-                intrinsics.mem_copy_non_overlapping(cast[rawptr](larger.data), cast[rawptr](bytes.data), count)
+                intrinsics.mem_copy_non_overlapping(cast[mut rawptr](larger.data), cast[rawptr](bytes.data), count)
             }
             runtime.free_array(bytes, allocator)
             bytes = larger
@@ -181,7 +181,7 @@ read_entire_file :: fn(path: string, allocator := context.allocator) -> Result[s
         runtime.free_array(bytes, allocator)
         return .Error(.OutOfMemory)
     }
-    intrinsics.mem_copy_non_overlapping(cast[rawptr](contents.data), cast[rawptr](bytes.data), count)
+    intrinsics.mem_copy_non_overlapping(cast[mut rawptr](contents.data), cast[rawptr](bytes.data), count)
     runtime.free_array(bytes, allocator)
     return .Ok(string_of(&contents[0], contents.count))
 }
@@ -302,6 +302,6 @@ copy_string :: fn(bytes: string, allocator: runtime.Allocator) -> (copy #unrestr
     if error != null || memory.count == 0 {
         return "", OsError.OutOfMemory
     }
-    intrinsics.mem_copy_non_overlapping(cast[rawptr](memory.data), cast[rawptr](bytes.data), bytes.count)
+    intrinsics.mem_copy_non_overlapping(cast[mut rawptr](memory.data), cast[rawptr](bytes.data), bytes.count)
     return string_of(&memory[0], memory.count), null
 }

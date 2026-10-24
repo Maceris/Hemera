@@ -330,6 +330,7 @@ namespace hemera {
 				records("dimensions", dimensions.size(), [&](uint8_t* at, const TypeInfo* element_type, size_t i) {
 					write_member(at, as_struct(element_type), "type", array_type_name(dimensions[i]->array_type));
 					write_number(at, as_struct(element_type), "count", dimensions[i]->count);
+					write_number(at, as_struct(element_type), "is_mutable", dimensions[i]->is_mutable);
 				});
 				break;
 			}

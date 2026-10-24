@@ -86,7 +86,7 @@ new_array :: fn[T](
     count: usize,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (T[], AllocatorError?) {
+) -> (mut T[], AllocatorError?) {
     return new_array_aligned(T, count, align_of(T), allocator, loc)
 }
 
@@ -97,8 +97,8 @@ new_array_aligned :: fn[T](
     alignment: usize,
     allocator := context.allocator,
     loc := #caller_location,
-) -> (T[], AllocatorError?) {
-    empty : T[]
+) -> (mut T[], AllocatorError?) {
+    empty : mut T[]
     if count == 0 {
         return empty, null
     }
@@ -121,8 +121,8 @@ failing_allocator_function : AllocatorFn : fn(
     old_memory: rawptr,
     old_size: usize,
     location := #caller_location,
-) -> (u8[], AllocatorError?) {
-    empty : u8[]
+) -> (mut u8[], AllocatorError?) {
+    empty : mut u8[]
     if size == 0 {
         return empty, null
     }

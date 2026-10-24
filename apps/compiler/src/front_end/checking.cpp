@@ -422,10 +422,15 @@ namespace hemera {
 		if (TypeInfoVariant::ANY == target->variant) {
 			return true;
 		}
+		/*
+		 * An array as a view of its elements, and a mut T[] as a T[]. A view never becomes a mut T[]; an array
+		 * does if what holds it can be changed, which fits checks, having the value
+		 */
 		if (TypeInfoVariant::ARRAY == source->variant && TypeInfoVariant::ARRAY == target->variant) {
 			auto a = static_cast<TypeInfoArray const*>(source);
 			auto b = static_cast<TypeInfoArray const*>(target);
-			return ArrayType::VIEW == b->array_type && same_type(a->element_type, b->element_type);
+			const bool loses_nothing = !b->is_mutable || ArrayType::VIEW != a->array_type || a->is_mutable;
+			return ArrayType::VIEW == b->array_type && same_type(a->element_type, b->element_type) && loses_nothing;
 		}
 		if (TypeInfoVariant::POINTER == source->variant && TypeInfoVariant::POINTER == target->variant) {
 			auto a = static_cast<TypeInfoPointer const*>(source);
@@ -500,6 +505,28 @@ namespace hemera {
 	}
 
 	/*
+	 * Whether value is an array that can't be changed where it is, like a parameter's, wanted as a mut T[]
+	 * (docs/types.md, Mutability). A view that can't be changed isn't assignable to one at all.
+	 */
+	static bool elements_read_only(const Value& value, TypeInfo* type) {
+		TypeInfo const* source = value.type != nullptr ? base_of(value.type) : nullptr;
+		TypeInfo const* target = type != nullptr ? base_of(type) : nullptr;
+		if (source == nullptr || target == nullptr || TypeInfoVariant::ARRAY != source->variant
+			|| TypeInfoVariant::ARRAY != target->variant) {
+			return false;
+		}
+		auto wanted = static_cast<TypeInfoArray const*>(target);
+		auto given = static_cast<TypeInfoArray const*>(source);
+		if (ArrayType::VIEW != wanted->array_type || !wanted->is_mutable) {
+			return false;
+		}
+		if (ArrayType::VIEW == given->array_type) {
+			return !given->is_mutable;
+		}
+		return value.is_location && !value.is_mutable;
+	}
+
+	/*
 	 * Whether a value can be used as type, converting untyped literals: an integer becomes any
 	 * integer or float; a float any float; a string a string or cstring; true and false any boolean;
 	 * null any pointer, cstring, function or optional. A value fits an optional of its type, and
@@ -520,7 +547,7 @@ namespace hemera {
 				|| ValueKind::UNTYPED_BOOLEAN == kind || ValueKind::TYPE == kind;
 		}
 		if (ValueKind::VALUE == kind) {
-			return assignable(value.type, type);
+			return assignable(value.type, type) && !elements_read_only(value, type);
 		}
 		if (ValueKind::UNTYPED_INTEGER == kind) {
 			return (is_integer(type) && in_range(value, type)) || is_float(type) || promised(type, CAPABILITY_ARITHMETIC);
@@ -594,6 +621,12 @@ namespace hemera {
 			report_out_of_range(checker, value, type, where);
 			return false;
 		}
+		if (ValueKind::VALUE == value.kind && elements_read_only(value, type)) {
+			error_at(checker, ErrorCode::E4016, where, std::format("{} needs {}, whose elements can be changed, and these "
+				"can't be changed here: give a mut view, or the array from where it can be changed (docs/types.md, Mutability)",
+				what, to_string(type)));
+			return false;
+		}
 		error_at(checker, ErrorCode::E4015, where, std::format("{} needs {}, not {}", what, to_string(type),
 			describe(value)));
 		return false;
@@ -639,6 +672,15 @@ namespace hemera {
 			return progress;
 		}
 		return type_of(checker.walk, node, need, result);
+	}
+
+	// A local's type, written in a body: mut only where it changes something, as in mut T[].
+	static Progress check_held_type(Checker& checker, ast::Node* node, Need need, TypeInfo*& result) {
+		Progress progress = walk_names(checker.walk, node, need);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		return held_type_of(checker.walk, node, need, result);
 	}
 
 	// The value a declaration is, where its name is used.
@@ -1049,9 +1091,13 @@ namespace hemera {
 		}
 		TypeInfo* element = nullptr;
 		if (TypeInfoVariant::ARRAY == type->variant) {
+			/*
+			 * A view's elements can be changed if it's a mut T[]; a static or dynamic array's if what holds it
+			 * can be (docs/types.md, Mutability)
+			 */
 			element = static_cast<TypeInfoArray const*>(type)->element_type;
-			if (ArrayType::STATIC != static_cast<TypeInfoArray const*>(type)->array_type) {
-				is_mutable = true;
+			if (ArrayType::VIEW == static_cast<TypeInfoArray const*>(type)->array_type) {
+				is_mutable = static_cast<TypeInfoArray const*>(type)->is_mutable;
 			}
 		}
 		else if (TypeInfoVariant::STRING == type->variant) {
@@ -1114,7 +1160,8 @@ namespace hemera {
 				value = typed(const_cast<TypeInfo*>(type));
 				return Progress::DONE;
 			}
-			value = typed(array_of(checker.walk, element, ArrayType::VIEW, 0));
+			// Its elements can be changed through it if they can be through what it's part of
+			value = typed(array_of(checker.walk, element, ArrayType::VIEW, 0, is_mutable));
 			return Progress::DONE;
 		}
 		Value index_value;
@@ -1795,6 +1842,16 @@ namespace hemera {
 				bound_values[name] = constant;
 				return Progress::DONE;
 			}
+			/*
+			 * A shorthand, like .Second or .{x = 1}, has no type of its own to bind anything with: it's checked
+			 * once the instance's parameters say what it is
+			 */
+			const bool shorthand = !positional.has_value && (ast::NodeType::ENUM_SHORTHAND == argument->node_type
+				|| ((ast::NodeType::STRUCT_LITERAL == argument->node_type || ast::NodeType::ARRAY_LITERAL == argument->node_type)
+					&& TokenType::SYM_DOT == argument->value.type));
+			if (shorthand && !compile_time) {
+				return Progress::DONE;
+			}
 			Value value;
 			Progress progress = positional_value(checker, positional, nullptr, value);
 			if (progress != Progress::DONE) {
@@ -1819,6 +1876,13 @@ namespace hemera {
 			}
 			std::map<std::string, TypeInfo*> inferred;
 			unify(checker, parameter->type, type, inferred, bound_values, generics);
+			// view_of from a ptr[mut T] is view_of[mut T], whose elements can be changed (docs/types.md, Views of Memory)
+			TypeInfo const* pointer = type != nullptr ? base_of(type) : nullptr;
+			if (is_text(generic->name, "view_of") && is_compiler_provided(generic->package_path) && inferred.contains("T")
+				&& pointer != nullptr && TypeInfoVariant::POINTER == pointer->variant
+				&& static_cast<TypeInfoPointer const*>(pointer)->is_mutable) {
+				inferred["T"] = mutable_argument(checker.walk, inferred["T"]);
+			}
 			for (const auto& [generic_name, generic_type] : inferred) {
 				if (explicit_names.contains(generic_name)) {
 					report_warning(WarningCode::W4000, checker.walk.file_path, argument->value.line_number,
@@ -2418,6 +2482,32 @@ namespace hemera {
 		}
 		if (type_head && next < node->children.size()
 			&& ast::NodeType::ARRAY_DIMENSION == node->children[next]->node_type && find_local(checker, node) == nullptr) {
+			// A chain after the type and its arguments, like Result[T, E].Error(e): the type alone, then the chain
+			size_t end = next + 1;
+			while (end < node->children.size() && !is_postfix_marker(node->children[end])) {
+				++end;
+			}
+			if (end < node->children.size()) {
+				std::vector<ast::Node*> chain(node->children.begin() + static_cast<std::ptrdiff_t>(end), node->children.end());
+				node->children.erase(node->children.begin() + static_cast<std::ptrdiff_t>(end), node->children.end());
+				TypeInfo* type = nullptr;
+				progress = check_type(checker, node, Need::DECLARED, type);
+				node->children.insert(node->children.end(), chain.begin(), chain.end());
+				if (progress == Progress::FAILED) {
+					value = poisoned();
+					return Progress::DONE;
+				}
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				value = type_value(type);
+				if (checker.record != nullptr) {
+					CheckedNode& head = checker.record->heads[node];
+					store_checked(head, value);
+					head.next = end;
+				}
+				return apply_postfix(checker, node, end, value);
+			}
 			TypeInfo* type = nullptr;
 			progress = check_type(checker, node, Need::DECLARED, type);
 			if (progress == Progress::FAILED) {
@@ -2498,7 +2588,10 @@ namespace hemera {
 							continue;
 						}
 						TypeInfo* argument_type = nullptr;
-						progress = check_type(checker, argument, Need::DECLARED, argument_type);
+						progress = walk_names(checker.walk, argument, Need::DECLARED);
+						if (progress == Progress::DONE) {
+							progress = argument_type_of(checker.walk, argument, Need::DECLARED, argument_type);
+						}
 						if (progress != Progress::DONE) {
 							break;
 						}
@@ -3289,12 +3382,30 @@ namespace hemera {
 				|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::POINTER == variant
 				|| TypeInfoVariant::FUNCTION == variant;
 		};
+		// A view of the same elements, whether they can be changed or not, as a pointer can be cast to ptr[mut T]
+		const bool views = TypeInfoVariant::ARRAY == from->variant && TypeInfoVariant::ARRAY == to->variant
+			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(from)->array_type
+			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(to)->array_type
+			&& same_type(static_cast<TypeInfoArray const*>(from)->element_type, static_cast<TypeInfoArray const*>(to)->element_type);
 		return from == to || assignable(const_cast<TypeInfo*>(from), const_cast<TypeInfo*>(to))
-			|| (scalar(from) && scalar(to));
+			|| (scalar(from) && scalar(to)) || views;
 	}
 
 	// cast[T](x), bit_cast[T](x) and auto_cast(x), then anything after it, like ^ or .member.
 	static Progress check_cast(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
+		// (x).member and the like: x as it is, then the chain
+		if (TokenType::SYM_LPAREN == node->value.type) {
+			Value value;
+			Progress progress = check_expression(checker, node->children[0], expected, value);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (checker.record != nullptr) {
+				store_checked(checker.record->heads[node], ValueKind::VALUE == value.kind ? value : typed(default_type(value)));
+			}
+			result = value;
+			return apply_postfix(checker, node, 1, result);
+		}
 		const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type;
 		ast::Node* target_node = automatic ? nullptr : node->children[0];
 		ast::Node* value_node = node->children[automatic ? 0 : 1];
@@ -3563,6 +3674,14 @@ namespace hemera {
 	// .Name, or .Name(values): an enum member or a union variant of the type expected there.
 	static Progress check_enum_shorthand(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		InternedString name = node->value.value;
+		// Where an optional of an enum or union goes, a member of what it holds, but its own Some and None
+		if (builtin_union(expected, "Optional") != nullptr && !is_text(name, "Some") && !is_text(name, "None")) {
+			TypeInfo* held = held_value(expected);
+			TypeInfo const* inside = held != nullptr ? base_of(held) : nullptr;
+			if (inside != nullptr && (TypeInfoVariant::ENUM == inside->variant || TypeInfoVariant::UNION == inside->variant)) {
+				expected = held;
+			}
+		}
 		TypeInfo const* type = base_of(expected);
 		if (type == nullptr) {
 			result = error_at(checker, ErrorCode::E4015, node, std::format(".{} needs a known enum or union type here", text_of(name)));
@@ -4406,7 +4525,7 @@ namespace hemera {
 		const LocalDefinition parts = parts_of(definition);
 		TypeInfo* type = nullptr;
 		if (parts.type != nullptr) {
-			Progress progress = check_type(checker, parts.type, Need::RESOLVED, type);
+			Progress progress = check_held_type(checker, parts.type, Need::RESOLVED, type);
 			if (progress == Progress::FAILED) {
 				type = nullptr;
 			}
@@ -4472,7 +4591,17 @@ namespace hemera {
 			value.is_mutable = !parts.is_constant && ValueKind::VALUE == value.kind;
 			value.is_context = false;
 			value.is_secret = ValueKind::POISONED != value.kind && (secret || (ValueKind::VALUE == value.kind && is_secret_type(value.type)));
+			// A nested function is its declaration, called as one, not a local's storage
+			const bool nested_function = parts.value != nullptr && ast::NodeType::FUNCTION == parts.value->node_type
+				&& value.declaration != nullptr;
+			if (nested_function) {
+				value.is_location = false;
+				value.is_mutable = false;
+			}
 			declare_local(checker, parts.names[i], parts.names[i]->value.value, value);
+			if (nested_function && !checker.scopes.back().locals.empty()) {
+				checker.scopes.back().locals.back().value.local = nullptr;
+			}
 		}
 		return Progress::DONE;
 	}
@@ -4677,7 +4806,9 @@ namespace hemera {
 				element.is_secret = collection.is_secret || is_secret_type(element.type);
 				const bool elsewhere = ArrayType::STATIC != static_cast<TypeInfoArray const*>(type)->array_type;
 				by_reference_allowed = collection.is_location || elsewhere;
-				element_mutable = collection.is_mutable || elsewhere;
+				// A view's elements by its type; an array's by what holds it (docs/types.md, Mutability)
+				element_mutable = ArrayType::VIEW == static_cast<TypeInfoArray const*>(type)->array_type
+					? static_cast<TypeInfoArray const*>(type)->is_mutable : collection.is_mutable;
 			}
 			else if (type != nullptr && TypeInfoVariant::STRING == type->variant) {
 				element = typed(BUILTIN_char);
@@ -5009,14 +5140,15 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
-			if (ast::NodeType::LIST != inserted->node_type || inserted->value.value == nullptr || *inserted->value.value != word) {
+			std::vector<ast::Node*> items;
+			if (!named_items(inserted, ast::NodeType::LIST, word, items)) {
 				report_at(ErrorCode::E4014, checker.walk.file_path, &made, insert, std::format(
 					"#insert among a {}'s {} puts {} there: quote them with #code {} {{ ... }}",
 					word == "patterns" ? "match" : "switch", word, word, word));
 				return Progress::FAILED;
 			}
 			auto at = cases->children.erase(cases->children.begin() + static_cast<std::ptrdiff_t>(i));
-			cases->children.insert(at, inserted->children.begin(), inserted->children.end());
+			cases->children.insert(at, items.begin(), items.end());
 			--i;
 		}
 		return Progress::DONE;
@@ -5736,10 +5868,24 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
-	// A function defined inside another: like a top-level one, it can't use the outer one's locals.
+	/*
+	 * A function declared inside a function (docs/functions.md, Nesting Functions): a declaration of its own,
+	 * resolved, checked and generated as one at the top level would be, without its name in the package. It
+	 * sees the package's names, not the function's locals.
+	 */
 	static Progress check_nested_function(Checker& checker, ast::Node* definition, ast::Node* function, Value& result) {
-		TypeInfo* type = nullptr;
-		Progress progress = check_type(checker, function, Need::DECLARED, type);
+		for (const ast::Node* child : function->children) {
+			if (ast::NodeType::GENERIC_TAG == child->node_type) {
+				result = error_at(checker, ErrorCode::E4024, function, "a generic function declared inside a function isn't supported yet");
+				return Progress::DONE;
+			}
+		}
+		if (ast::NodeType::LIST == definition->children[0]->node_type) {
+			result = error_at(checker, ErrorCode::E4018, definition, "a function declared inside a function has one name");
+			return Progress::DONE;
+		}
+		Declaration* nested = nested_declaration(checker.walk, definition);
+		Progress progress = require_resolved(checker.walk, definition, nested, Need::RESOLVED);
 		if (progress == Progress::FAILED) {
 			result = poisoned();
 			return Progress::DONE;
@@ -5747,23 +5893,8 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
-		result = typed(type);
-		ast::Node* body = nullptr;
-		bool after = false;
-		for (ast::Node* child : definition->children) {
-			if (child == function) {
-				after = true;
-			}
-			else if (after && ast::NodeType::BLOCK == child->node_type) {
-				body = child;
-			}
-		}
-		if (body == nullptr) {
-			return Progress::DONE;
-		}
-		Checker nested(checker.walk);
-		nested.constant_time = marked_constant_time(definition);
-		return check_function_body(nested, function, body, static_cast<TypeInfoFunction const*>(type), definition);
+		result = declaration_value(checker, nested);
+		return Progress::DONE;
 	}
 
 	ast::Node* function_body(const Declaration* function) {

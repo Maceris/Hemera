@@ -938,7 +938,8 @@ namespace hemera {
 
 		// cast[T](x), bit_cast[T](x), auto_cast(x): the same pointer, still deep if it was, or an integer.
 		Evaluated evaluate_cast(Analysis& analysis, ast::Node* node) {
-			const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type;
+			// auto_cast(x), and (x) before a chain, have no type before the value
+			const bool automatic = TokenType::KEYWORD_AUTO_CAST == node->value.type || TokenType::SYM_LPAREN == node->value.type;
 			if (node->children.size() < (automatic ? 1u : 2u)) {
 				return Evaluated{};
 			}
