@@ -1739,6 +1739,19 @@ namespace hemera {
 		return value;
 	}
 
+	// Without a context, only what takes none can be called: intrinsics, and #no_context functions.
+	static void require_context_for(Checker& checker, const ast::Node* where, TypeInfoFunction const* function, Declaration* declaration) {
+		if (checker.has_context || function->no_context) {
+			return;
+		}
+		Declaration* written = declaration != nullptr && declaration->generic != nullptr ? declaration->generic : declaration;
+		const bool intrinsic = written != nullptr && is_base_package(written->package_path) && function_body(written) == nullptr;
+		if (!intrinsic) {
+			error_at(checker, ErrorCode::E4027, where,
+				"without a context, only intrinsics and #no_context functions can be called; push one with push_context ... from first");
+		}
+	}
+
 	// The value a call gives: nothing, its result, or its several results.
 	static Value call_result(TypeInfoFunction const* function, Declaration* declaration) {
 		Value value = call_result_of(function);
@@ -1971,6 +1984,7 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		require_context_for(checker, where, signature, instance);
 		callee = call_result(signature, instance);
 		return Progress::DONE;
 	}
@@ -2375,15 +2389,7 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		auto function = static_cast<TypeInfoFunction const*>(type);
-		// Without a context, only what takes none can be called: intrinsics, and #no_context functions
-		if (!checker.has_context && !function->no_context) {
-			const bool intrinsic = callee.declaration != nullptr && is_base_package(callee.declaration->package_path)
-				&& function_body(callee.declaration) == nullptr;
-			if (!intrinsic) {
-				error_at(checker, ErrorCode::E4027, where,
-					"without a context, only intrinsics and #no_context functions can be called; push one with push_context ... from first");
-			}
-		}
+		require_context_for(checker, where, function, callee.declaration);
 		std::vector<InternedString> names;
 		if (callee.declaration != nullptr && DeclarationKind::FUNCTION == callee.declaration->kind) {
 			if (ast::Node* node = function_node(callee.declaration)) {

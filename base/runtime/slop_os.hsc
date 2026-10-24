@@ -28,33 +28,62 @@ SlopOsStartup :: struct {
     process : u32,
     space : u32,
     budget : u32,
-    reserved : u32,
+    grant_count : u32,
     // Where the runtime maps its own memory: free_size bytes from free_base, which nothing else uses
     free_base : u64,
     free_size : u64,
+    // The first thread's stack, stack_size bytes from stack_base
+    stack_base : u64,
+    stack_size : u64,
 }
 
 #if OS == .SlopOS && TARGET_ARCH == .x86_64 {
     import x86_64 from "base/intrinsics"
 
     PAGE_SIZE : usize : 4096
+    // Room left below a thread's stack limit, for what runs before a stack check can, like an interrupted call
+    STACK_RESERVE : u64 : 8192
 
     /*
-     * Pages of memory, zeroed, or null: a memory object of their own, mapped in the startup block's free
-     * range, with a page in front holding its handle. Addresses taken from the range aren't reused.
+     * size bytes of the startup block's free range, page-aligned, for the program to map something at:
+     * its address, or null once the range is used up. Addresses taken from it aren't given out again.
      */
-    map_pages #no_context :: fn(size: usize) -> rawptr {
+    reserve_addresses #no_context :: fn(size: usize) -> u64? {
         state :: intrinsics.process_state()
         if state.startup_block == null {
             return null
         }
         startup :: cast[ptr[SlopOsStartup]](state.startup_block)
-        total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)) + cast[u64](PAGE_SIZE)
+        total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1))
         offset :: intrinsics.interlocked_exchange_add_u64(&state.mapped, total)
         if offset + total > startup.free_size || offset + total < offset {
             return null
         }
-        address :: startup.free_base + offset
+        return startup.free_base + offset
+    }
+
+    // The first thread's carrier block, before main: its stack's limit, from the startup block.
+    os_prepare_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
+        state :: intrinsics.process_state()
+        if state.startup_block == null {
+            return void
+        }
+        startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+        if startup.stack_size <= STACK_RESERVE {
+            return void
+        }
+        carrier.native_stack_limit = cast[rawptr](startup.stack_base + STACK_RESERVE)
+        carrier.stack_limit = carrier.native_stack_limit
+    }
+
+    /*
+     * Pages of memory, zeroed, or null: a memory object of their own, mapped in the startup block's free
+     * range, with a page in front holding its handle.
+     */
+    map_pages #no_context :: fn(size: usize) -> rawptr {
+        startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
+        total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)) + cast[u64](PAGE_SIZE)
+        address :: reserve_addresses(cast[usize](total)) or_return null
         created :: x86_64.system_call(SLOP_OS_CALL_MEMORY_CREATE, cast[u64](startup.budget), total)
         if created.rax != 0 {
             return null

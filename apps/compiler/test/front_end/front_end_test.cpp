@@ -815,6 +815,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "unbound_generic", hemera::ErrorCode::E4023 },
 		{ "return_count", hemera::ErrorCode::E4004 },
 		{ "no_context", hemera::ErrorCode::E4027 },
+		{ "no_context_generic", hemera::ErrorCode::E4027 },
 		{ "operator_types", hemera::ErrorCode::E4015 },
 		{ "match_assigned", hemera::ErrorCode::E4020 },
 		{ "call_without_context", hemera::ErrorCode::E4027 },

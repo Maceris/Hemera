@@ -26,6 +26,7 @@ Thread :: distinct alias Handle
 Irq :: distinct alias Handle
 Platform :: distinct alias Handle
 Intercept :: distinct alias Handle
+DebugLog :: distinct alias Handle
 
 // The kinds of kernel object (decisions/0034), as handle_info reports them.
 ObjectKind :: enum #backed_by(u8) {
@@ -44,6 +45,8 @@ ObjectKind :: enum #backed_by(u8) {
     Platform = 12,
     // A process's subtree intercepted: its threads stop at system calls and faults for a debugger (decisions/0017).
     Intercept = 13,
+    // Lines in the kernel's log, for programs to report before there's a console (decisions/0058).
+    DebugLog = 14,
 }
 
 /*
@@ -83,6 +86,8 @@ RIGHT_PROCESS_WRITE_STATE : Rights : 1 << 10
 RIGHT_PROCESS_INTERCEPT : Rights : 1 << 11
 // A process: destroy it, through a handle that isn't its owning one.
 RIGHT_PROCESS_KILL : Rights : 1 << 12
+// A debug log: write lines to it.
+RIGHT_DEBUG_LOG_WRITE : Rights : 1 << 8
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -176,7 +181,12 @@ Syscalls :: struct {
     process_kill : fn(process: Process) -> Result[void, ControlError],
     // The calling process ends, with its subtree, giving code to whoever watches it end.
     process_exit : fn(code: u32) #never_returns,
+    // A line of text in the kernel's log, its first DEBUG_LOG_LINE bytes.
+    debug_log : fn(log: DebugLog, text: u8[]) -> Result[void, HandleError],
 }
+
+// The most of a line debug_log writes.
+DEBUG_LOG_LINE : u64 : 200
 
 /*
  * How a process ended, in the data[1] of the Signal packet its SIGNAL_TERMINATED raises: the code it
@@ -396,6 +406,8 @@ HandleError :: enum #backed_by(u32) {
     OutOfMemory = 6,
     // A number the kernel doesn't have.
     NoSuchCall = 7,
+    // Memory the call reads isn't the caller's to.
+    BadBuffer = 10,
     // The budget can't pay for it (decisions/0011).
     BudgetExceeded = 25,
 }

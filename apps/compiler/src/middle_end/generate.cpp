@@ -7411,6 +7411,10 @@ namespace hemera {
 			if (Declaration* registers = base_declaration_named(generator, "runtime", "register_carrier")) {
 				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, registers), mlir::ValueRange{ carrier });
 			}
+			// Its stack's limit, where the runtime knows it, like SlopOS's from the startup block
+			if (Declaration* prepares = base_declaration_named(generator, "runtime", "os_prepare_carrier")) {
+				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, prepares), mlir::ValueRange{ carrier });
+			}
 		}
 		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, mlir::ValueRange{ context });
 		// A real call, so main has a frame of its own: stack traces end at the entry's, which isn't recorded
