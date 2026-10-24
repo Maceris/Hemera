@@ -10,6 +10,7 @@ types :: fn(
     callback: (fn(int) -> bool),
     sized_by_constant: ptr[Fiber][QUEUE_SIZE],
     sized_by_other_package: u8[runtime.STACK_GUARD],
+    sized_twice_by_other_package: u8[2][runtime.STACK_GUARD],
 ) -> (found: ptr[runtime.Fiber]?, count: int?) {
     return null, null
 }

@@ -969,23 +969,6 @@ namespace hemera::parser {
 		}
 	}
 
-	/*
-	 * Whether what's next is a name, maybe qualified (QUEUE_SIZE, net.MTU), followed by what's in
-	 * after: a name alone, rather than the start of arithmetic like CAPACITY * 2.
-	 */
-	static bool name_then(ParserState* state, std::initializer_list<TokenType> after) {
-		size_t at = state->current;
-		if (at >= state->tokens.size() || TokenType::IDENTIFIER != state->tokens[at].type) {
-			return false;
-		}
-		++at;
-		while (at + 1 < state->tokens.size() && TokenType::SYM_DOT == state->tokens[at].type
-			&& TokenType::IDENTIFIER == state->tokens[at + 1].type) {
-			at += 2;
-		}
-		return at < state->tokens.size() && std::find(after.begin(), after.end(), state->tokens[at].type) != after.end();
-	}
-
 	// Whether a token continues a name into arithmetic, making it a value rather than a type.
 	static bool is_arithmetic(TokenType type) {
 		return TokenType::OPERATOR_PLUS == type || TokenType::OPERATOR_MINUS == type || TokenType::OPERATOR_MULTIPLY == type
@@ -998,10 +981,10 @@ namespace hemera::parser {
 		ast::Node& dims = next_as_node(state, ast::NodeType::ARRAY_DIMENSION,
 			&parent);
 		const bool simple = expect(state, TokenType::OPERATOR_RANGE_ARRAY) || expect(state, TokenType::SYM_RBRACK)
-			|| (expect(state, TokenType::LITERAL_INTEGER) && TokenType::SYM_RBRACK == next_token(state).type)
-			|| name_then(state, { TokenType::SYM_RBRACK });
+			|| ((expect(state, TokenType::LITERAL_INTEGER) || expect(state, TokenType::IDENTIFIER))
+				&& TokenType::SYM_RBRACK == next_token(state).type);
 		if (!simple) {
-			// A constant expression, like [CAPACITY * 2] or [(bits + 63) / 64]
+			// A constant expression, like [CAPACITY * 2], [(bits + 63) / 64] or [package.SIZE]
 			ExprResult count = expression_with_result(state, true);
 			if (!count.success) {
 				return false;
@@ -1017,13 +1000,8 @@ namespace hemera::parser {
 				ast::NodeType::RANGE_ARRAY, dims);
 		}
 		else if (expect(state, TokenType::IDENTIFIER)) {
-			// A named constant, possibly from another package, like [QUEUE_SIZE]
+			// A named constant, like [QUEUE_SIZE]
 			accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, dims);
-			while (expect(state, TokenType::SYM_DOT)
-				&& TokenType::IDENTIFIER == next_token(state).type) {
-				accept(state, TokenType::SYM_DOT, ast::NodeType::DOT_ACCESS, dims);
-				accept(state, TokenType::IDENTIFIER, ast::NodeType::IDENTIFIER, dims);
-			}
 		}
 		if (!skip(state, TokenType::SYM_RBRACK)) {
 			report_error_on_last_token(state, ErrorCode::E3012, 

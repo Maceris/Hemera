@@ -1253,6 +1253,18 @@ namespace hemera {
 				for (ast::Node* child : node->children) {
 					evaluate(analysis, facts, child);
 				}
+				// x or_break and x or_continue leave with what's known here, as break and continue do
+				if (TokenType::KEYWORD_OR_BREAK == node->value.type && !analysis.loops.empty()) {
+					analysis.loops.back().breaks.push_back(facts);
+				}
+				else if (TokenType::KEYWORD_OR_CONTINUE == node->value.type) {
+					for (auto frame = analysis.loops.rbegin(); frame != analysis.loops.rend(); ++frame) {
+						if (!frame->is_switch) {
+							frame->continues.push_back(facts);
+							break;
+						}
+					}
+				}
 				return Value{};
 			}
 			if (ast::NodeType::BINARY_OPERATOR == type && node->children.size() == 2) {

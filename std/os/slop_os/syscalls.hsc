@@ -86,6 +86,8 @@ RIGHT_PROCESS_WRITE_STATE : Rights : 1 << 10
 RIGHT_PROCESS_INTERCEPT : Rights : 1 << 11
 // A process: destroy it, through a handle that isn't its owning one.
 RIGHT_PROCESS_KILL : Rights : 1 << 12
+// A process: start threads in it, and give it handles, for building it from an executable.
+RIGHT_PROCESS_THREADS : Rights : 1 << 13
 // A debug log: write lines to it.
 RIGHT_DEBUG_LOG_WRITE : Rights : 1 << 8
 // Every right, which an owning handle has.
@@ -183,6 +185,12 @@ Syscalls :: struct {
     process_exit : fn(code: u32) #never_returns,
     // A line of text in the kernel's log, its first DEBUG_LOG_LINE bytes.
     debug_log : fn(log: DebugLog, text: u8[]) -> Result[void, HandleError],
+    // A new thread in the process, in space, which must be in its subtree, started at entry with stack and argument: its ID.
+    thread_create_in : fn(process: Process, budget: MemoryBudget, space: AddressSpace, entry: u64, stack: u64, argument: u64) -> Result[u64, ControlError],
+    // The handles, moved out of the caller's table into the process's, and what each is there written at given.
+    process_give_handles : fn(process: Process, handles: Handle[], given: mut Handle[]) -> Result[void, ControlError],
+    // How big the memory object is, in bytes.
+    memory_size : fn(memory: Memory) -> Result[u64, HandleError],
 }
 
 // The most of a line debug_log writes.
@@ -508,8 +516,12 @@ ControlError :: enum #backed_by(u32) {
     BadBuffer = 10,
     // InterceptNext: no stop left to report.
     Empty = 14,
+    // ProcessGiveHandles: more than MAX_HANDLES_PER_BATCH handles.
+    TooBig = 15,
     // The address space isn't in the process's subtree, or the range isn't mapped.
     BadAddress = 18,
+    // ProcessGiveHandles: a handle that can't go to the process, such as an owning one to the process or above it.
+    NotTransferable = 22,
     BudgetExceeded = 25,
     // No thread with that ID in the subtree, or none the intercept stopped.
     NoSuchThread = 34,

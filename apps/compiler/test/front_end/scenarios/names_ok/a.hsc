@@ -11,6 +11,9 @@ Node :: struct {
     next : ptr[Node],
     value : Pair[int, Item],
     items : Item[],
+    // Sized by another package's constant, in any dimension
+    grid : u8[lib.VALUE][2],
+    rows : u8[2][lib.VALUE],
 }
 
 Pair :: struct[A, B] {
