@@ -37,9 +37,37 @@ SlopOsStartup :: struct {
     stack_size : u64,
 }
 
+// A system call, and what it gives in the system ABI's three result registers, on each architecture
 #if OS == .SlopOS && TARGET_ARCH == .x86_64 {
     import x86_64 from "base/intrinsics"
 
+    SlopOsAnswer :: struct {
+        tag : u64,
+        first : u64,
+        second : u64,
+    }
+
+    slop_os_call #no_context :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SlopOsAnswer {
+        made :: x86_64.system_call(number, a, b, c, d, e, f)
+        return SlopOsAnswer.{tag = made.rax, first = made.rdx, second = made.r8}
+    }
+}
+#else_if OS == .SlopOS && TARGET_ARCH == .arm64 {
+    import aarch64 from "base/intrinsics"
+
+    SlopOsAnswer :: struct {
+        tag : u64,
+        first : u64,
+        second : u64,
+    }
+
+    slop_os_call #no_context :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SlopOsAnswer {
+        made :: aarch64.system_call(number, a, b, c, d, e, f)
+        return SlopOsAnswer.{tag = made.x0, first = made.x1, second = made.x2}
+    }
+}
+
+#if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
     PAGE_SIZE : usize : 4096
     // Room left below a thread's stack limit, for what runs before a stack check can, like an interrupted call
     STACK_RESERVE : u64 : 8192
@@ -84,17 +112,17 @@ SlopOsStartup :: struct {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         total :: cast[u64]((size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)) + cast[u64](PAGE_SIZE)
         address :: reserve_addresses(cast[usize](total)) or_return null
-        created :: x86_64.system_call(SLOP_OS_CALL_MEMORY_CREATE, cast[u64](startup.budget), total)
-        if created.rax != 0 {
+        created :: slop_os_call(SLOP_OS_CALL_MEMORY_CREATE, cast[u64](startup.budget), total)
+        if created.tag != 0 {
             return null
         }
-        mapped :: x86_64.system_call(SLOP_OS_CALL_MEMORY_MAP, created.rdx, cast[u64](startup.space), address, 0, total,
+        mapped :: slop_os_call(SLOP_OS_CALL_MEMORY_MAP, created.first, cast[u64](startup.space), address, 0, total,
             SLOP_OS_PROTECTION_READ_WRITE)
-        if mapped.rax != 0 {
-            x86_64.system_call(SLOP_OS_CALL_HANDLE_CLOSE, created.rdx)
+        if mapped.tag != 0 {
+            slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, created.first)
             return null
         }
-        cast[ptr[mut u64]](cast[rawptr](address))^ = created.rdx
+        cast[ptr[mut u64]](cast[rawptr](address))^ = created.first
         return cast[rawptr](address + cast[u64](PAGE_SIZE))
     }
 
@@ -103,8 +131,8 @@ SlopOsStartup :: struct {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         start :: cast[u64](address) - cast[u64](PAGE_SIZE)
         handle :: cast[ptr[u64]](cast[rawptr](start))^
-        x86_64.system_call(SLOP_OS_CALL_MEMORY_UNMAP, cast[u64](startup.space), start)
-        x86_64.system_call(SLOP_OS_CALL_HANDLE_CLOSE, handle)
+        slop_os_call(SLOP_OS_CALL_MEMORY_UNMAP, cast[u64](startup.space), start)
+        slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, handle)
     }
 
     // No standard output or error yet
@@ -112,7 +140,7 @@ SlopOsStartup :: struct {
 
     // Ends the process, with code for whoever watches it end, running nothing else.
     os_exit_process #no_context :: fn(code: u32) #never_returns {
-        x86_64.system_call(SLOP_OS_CALL_PROCESS_EXIT, cast[u64](code))
+        slop_os_call(SLOP_OS_CALL_PROCESS_EXIT, cast[u64](code))
         intrinsics.trap()
     }
 
@@ -124,11 +152,11 @@ SlopOsStartup :: struct {
     }
 
     system_monotonic :: fn(data: mut rawptr) -> MonotonicTime {
-        answer :: x86_64.system_call(SLOP_OS_CALL_CLOCK_MONOTONIC)
-        if answer.rax != 0 {
+        answer :: slop_os_call(SLOP_OS_CALL_CLOCK_MONOTONIC)
+        if answer.tag != 0 {
             return 0
         }
-        return cast[MonotonicTime](answer.rdx)
+        return cast[MonotonicTime](answer.first)
     }
 
     system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {

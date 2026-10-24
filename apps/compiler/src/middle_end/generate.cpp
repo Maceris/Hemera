@@ -4358,6 +4358,40 @@ namespace hemera {
 			result = value(LLVM::SelectOp::create(generator.builder, generator.loc, ready, some, none), type);
 			return true;
 		}
+		if (name == "system_call") {
+			// x0, x1 and x2 go in as arguments and come back as results
+			mlir::Value all = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i64, i64 }), arguments,
+				"svc #0", "={x0},={x1},={x2},{x8},0,1,2,{x3},{x4},{x5},~{memory}");
+			TypeInfo* type = function->output[0].type;
+			mlir::Value registers = zero_of(generator, llvm_type(generator, type));
+			const std::vector<int64_t> elements = generator.member_elements[static_cast<TypeInfoStruct const*>(base(type))];
+			for (size_t i = 0; i < 3 && i < elements.size(); ++i) {
+				registers = insert(generator, registers, extract(generator, all, static_cast<int64_t>(i)), { elements[i] });
+			}
+			result = value(registers, type);
+			return true;
+		}
+		if (name == "save_fp_simd" || name == "restore_fp_simd") {
+			/*
+			 * STP or LDP of q registers, signed offset (opc 10): 0xad000000, or 0xad400000 for a load, with the offset
+			 * in 16s in bits 15 to 21, then Rt2, Rn (x0, so 0) and Rt; then FPCR and FPSR after them, at 512
+			 */
+			const bool save = name == "save_fp_simd";
+			std::string text;
+			if (!save) {
+				text += "ldr x1, [x0, #512]\n\tldr x2, [x0, #520]\n\tmsr s3_3_c4_c4_0, x1\n\tmsr s3_3_c4_c4_1, x2\n\t";
+			}
+			for (uint32_t pair = 0; pair < 16; ++pair) {
+				const uint32_t base_encoding = save ? 0xad000000u : 0xad400000u;
+				const uint32_t encoding = base_encoding | ((pair * 2) << 15) | ((pair * 2 + 1) << 10) | (pair * 2);
+				text += std::format(".inst {:#010x}\n\t", encoding);
+			}
+			if (save) {
+				text += "mrs x1, s3_3_c4_c4_0\n\tmrs x2, s3_3_c4_c4_1\n\tstr x1, [x0, #512]\n\tstr x2, [x0, #520]";
+			}
+			assembly(generator, mlir::Type(), { arguments[0] }, text, "{x0},~{x1},~{x2},~{memory}");
+			return true;
+		}
 		if (name == "write_sp_el1") {
 			instruction("msr spsel, #1\n\tmov sp, $0\n\tmsr spsel, #0", { arguments[0] });
 			return true;

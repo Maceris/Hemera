@@ -177,6 +177,19 @@ DAIF_DEBUG : u8 : 8
  */
 syscall : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 : ---
 
+// What system_call gives: x0, x1 and x2 after the call.
+SystemCallResult :: struct {
+    x0 : u64,
+    x1 : u64,
+    x2 : u64,
+}
+
+/*
+ * A system call that answers in up to three registers, like SlopOS's: svc #0, the number in x8, up to six
+ * arguments in x0 to x5, and x0, x1 and x2 after it. Every other register is kept. It doesn't use the stack.
+ */
+system_call : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SystemCallResult : ---
+
 /*
  * Linux's clone for a new thread, which starts on stack (its top) by calling entry(argument), with the C
  * convention; entry must end the thread with the exit system call rather than return. The kernel stores
@@ -267,6 +280,17 @@ at_s1e0w : fn(address: rawptr) : ---
  */
 rndr : fn() -> u64? : ---
 rndrrs : fn() -> u64? : ---
+
+// Floating point and SIMD
+
+/*
+ * Save v0 to v31, then FPCR and FPSR, to area: FP_SIMD_STATE_SIZE bytes, 16-byte aligned. Written as the
+ * instructions' encodings, so code built without floating point, like a kernel, can save a thread's. They
+ * trap unless CPACR_EL1 lets EL1 use floating point.
+ */
+save_fp_simd : fn(area: rawptr) : ---
+restore_fp_simd : fn(area: rawptr) : ---
+FP_SIMD_STATE_SIZE : usize : 528
 
 // Debugging
 

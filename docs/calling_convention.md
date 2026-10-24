@@ -667,7 +667,10 @@ Limine does) can keep running there, like on a boot stack, and give exceptions a
 `base/intrinsics/aarch64` also has what a kernel needs around it: `read_system_register` and `write_system_register`,
 with the register as a compile-time argument (`aarch64.SystemRegister`, whose values are the registers' encodings,
 or `read_system_register_encoded` for others), `daif_set` and `daif_clear`, `dsb`, `dmb` and `isb`, TLB, cache and
-address translation maintenance, `wfi` and `wfe`, `rndr`, `brk`, and `semihosting`.
+address translation maintenance, `wfi` and `wfe`, `rndr`, `brk`, and `semihosting`; and for user mode,
+`system_call`, which answers in x0, x1 and x2, and `save_fp_simd` and `restore_fp_simd`, which keep a thread's v0 to
+v31, FPCR and FPSR. Those two are written as the instructions' encodings, so a kernel built without floating
+point (`-fp-armv8`) can switch its threads' state.
 
 ### Functions Entered from Outside
 

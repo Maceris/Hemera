@@ -36,7 +36,7 @@ import intrinsics from "base"
 
 }
 
-#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) && !(OS == .SlopOS && TARGET_ARCH == .x86_64) {
+#if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {
     // No standard output or error to write to
     os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
 

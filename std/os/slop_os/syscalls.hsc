@@ -266,8 +266,14 @@ InterceptAction :: enum #backed_by(u32) {
 /*
  * ThreadReadRegisters' and ThreadWriteRegisters' registers, u64s, in this order on x86-64: rax, rbx, rcx,
  * rdx, rsi, rdi, rbp, rsp, r8 to r15, rip, rflags. Writing rflags changes only its status flags and DF.
+ * On AArch64: x0 to x30, sp, pc, pstate; writing pstate changes only its condition flags (NZCV).
  */
-THREAD_REGISTERS : u32 : 18
+#if TARGET_ARCH == .arm64 {
+    THREAD_REGISTERS : u32 : 34
+}
+#else {
+    THREAD_REGISTERS : u32 : 18
+}
 
 // For ControllerRegister: the kinds of interrupt controller.
 ControllerKind :: enum #backed_by(u32) {
