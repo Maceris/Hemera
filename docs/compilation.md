@@ -263,9 +263,11 @@ type, a literal, a list, or fields, variants, members, patterns or cases), `iden
 
 At the top level, an `#insert` may declare any name, so a name the package doesn't declare otherwise waits for it, as it
 waits for an `#if` that may declare it, and so does a name a file looks for in a package it imports whose `#insert` may
-declare it. A name a file imports from elsewhere, or a builtin, is used without waiting; if inserted code turns out to
-declare it too, that's an error, since the package's own would have been meant, or the use is ambiguous. Code an
-`#insert` runs can't need a name only that `#insert` declares, which is reported as a cycle.
+declare it. That includes a name one of the file's imports declares: the package's own declaration wins, so if the
+inserted code declares it too, that's the one used. A builtin, a name from base (like `array_add`), or a package a file
+imports under that name, is used without waiting, so the code an `#insert` runs can use them; if inserted code turns
+out to declare it too, that's an error, since the package's own would have been meant. Code an `#insert` runs can't need a name only that `#insert` declares, nor a name it may declare that an import
+also does, which is reported as a cycle.
 
 ### Macros
 

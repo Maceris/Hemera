@@ -616,6 +616,12 @@ namespace hemera {
 		}
 		ast::Node* reason = nullptr;
 		IfChain* chain = import_chain_locked(walk, names, name, Look::ANY_IMPORT, reason);
+		// The package's own #insert may still declare it, and its own would win: wait for that (docs/compilation.md,
+		// The Top Level). Builtins and base's names don't wait, so the code an #insert runs can use them
+		if (!builtin && found.size() == 1 && pending_insert != nullptr && !is_base_package(found[0]->package_path)) {
+			park_locked(walk, names, chain_key(pending_insert), where, name, pending_insert->branches.front());
+			return Progress::PARKED;
+		}
 		if (builtin || found.size() == 1) {
 			if ((chain != nullptr || pending_insert != nullptr || imported_insert != nullptr) && walk.file != nullptr) {
 				names.provisional_uses.push_back(ProvisionalUse{ walk.file, name, walk.file_path,

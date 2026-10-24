@@ -55,6 +55,37 @@ Grant :: struct {
 
 #assert size_of(Grant) == 40
 
+/*
+ * The root task's "firmware" grant (the SlopOS repository's decisions 0070, 0073): the firmware tables, which the
+ * kernel copies into read-only memory before the bootloader's memory is reclaimed. A FirmwareTables, then its count
+ * FirmwareTable entries, then the tables, each at its offset from the start. ACPI's are the RSDP ("RSDP"), every
+ * table its XSDT or RSDT lists, and the FADT's DSDT and FACS; a device tree's is its blob ("DTB "). physical is where
+ * the table was, which ACPI's tables use to point at one another.
+ */
+FirmwareTables :: struct {
+    magic : u64,
+    kind : FirmwareKind,
+    count : u32,
+}
+
+// "FWTABLES", in its bytes
+FIRMWARE_MAGIC : u64 : 0x53454c4241545746
+
+FirmwareKind :: enum #backed_by(u32) {
+    Acpi = 1,
+    DeviceTree = 2,
+}
+
+FirmwareTable :: struct {
+    signature : u8[4],
+    size : u32,
+    offset : u64,
+    physical : u64,
+}
+
+#assert size_of(FirmwareTables) == 16
+#assert size_of(FirmwareTable) == 24
+
 // How a process ends before its entry runs: started by a kernel of another ABI version, or without a grant its entry needs.
 EXIT_WRONG_ABI : u32 : runtime.SLOP_OS_EXIT_WRONG_ABI
 EXIT_MISSING_GRANT : u32 : runtime.SLOP_OS_EXIT_MISSING_GRANT

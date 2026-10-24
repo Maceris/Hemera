@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 2
+ABI_VERSION : u32 : 3
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -27,6 +27,8 @@ Irq :: distinct alias Handle
 Platform :: distinct alias Handle
 Intercept :: distinct alias Handle
 DebugLog :: distinct alias Handle
+Device :: distinct alias Handle
+DmaDomain :: distinct alias Handle
 
 // The kinds of kernel object (decisions/0034), as handle_info reports them.
 ObjectKind :: enum #backed_by(u8) {
@@ -40,13 +42,16 @@ ObjectKind :: enum #backed_by(u8) {
     Port = 8,
     Irq = 9,
     IoPortRange = 10,
-    IommuDomain = 11,
+    // Where devices' DMA reaches: without an IOMMU, all of memory, device addresses being physical ones.
+    DmaDomain = 11,
     // The authority over the machine's hardware, which the root task holds and gives the platform service (decisions/0039).
     Platform = 12,
     // A process's subtree intercepted: its threads stop at system calls and faults for a debugger (decisions/0017).
     Intercept = 13,
     // Lines in the kernel's log, for programs to report before there's a console (decisions/0058).
     DebugLog = 14,
+    // A PCIe function, for its message-signaled interrupts and its DMA domain.
+    Device = 15,
 }
 
 /*
@@ -193,6 +198,23 @@ Syscalls :: struct {
     memory_size : fn(memory: Memory) -> Result[u64, HandleError],
     // The protocol tag the end's channel was made with.
     channel_tag : fn(end: Channel) -> Result[u64, ChannelError],
+    /*
+     * A PCIe function at address (DEVICE_ADDRESS), whose message-signaled interrupts the interrupt controller knows
+     * as msi_source: on AArch64, the ITS's device ID, from the firmware tables' msi-map; unused on x86-64.
+     */
+    device_create : fn(platform: Platform, budget: MemoryBudget, address: u32, msi_source: u32) -> Result[Device, DeviceError],
+    // The device's DMA, in the domain: what an IOMMU will confine it to.
+    device_attach : fn(platform: Platform, device: Device, domain: DmaDomain) -> Result[void, DeviceError],
+    // An IRQ for one of the device's message-signaled interrupts, routed to a CPU the kernel picks.
+    irq_create_msi : fn(device: Device, budget: MemoryBudget) -> Result[Irq, DeviceError],
+    // What the device writes, and where, to raise a message-signaled IRQ.
+    irq_message : fn(irq: Irq) -> Result[MsiMessage, DeviceError],
+    // A new DMA domain; without an IOMMU, its device addresses are physical addresses.
+    dma_domain_create : fn(platform: Platform, budget: MemoryBudget) -> Result[DmaDomain, DeviceError],
+    // Memory for DMA in the domain: pinned, physically contiguous, zeroed, ending at or below limit (0 for none).
+    dma_memory_create : fn(domain: DmaDomain, budget: MemoryBudget, size: u64, limit: u64) -> Result[Memory, DeviceError],
+    // Where DMA memory is, to the devices in its domain.
+    memory_device_address : fn(memory: Memory) -> Result[u64, DeviceError],
 }
 
 // The most of a line debug_log writes.
@@ -240,6 +262,17 @@ BudgetInfo :: struct {
 ControllerInfo :: struct {
     number : u32,
     lines : u32,
+}
+
+// What irq_message gives: what a device writes, and where, to raise a message-signaled interrupt (PCIe MSI and MSI-X).
+MsiMessage :: struct {
+    address : u64,
+    data : u32,
+}
+
+// For DeviceCreate: a PCIe function's address, its segment, then its requester ID.
+device_address :: fn(segment: u16, bus: u8, device: u8, function: u8) -> u32 #no_context {
+    return cast[u32](segment) << 16 | cast[u32](bus) << 8 | (cast[u32](device) & 0x1f) << 3 | (cast[u32](function) & 7)
 }
 
 // For InterceptAttach: where threads stop. calls is a bit per syscall number below 64.
@@ -557,7 +590,18 @@ DeviceError :: enum #backed_by(u32) {
     LineInUse = 32,
     // No CPU has a device interrupt free.
     NoFreeInterrupt = 33,
+    // Not memory made for DMA (memory_device_address), or its domain is gone.
+    NotDmaMemory = 38,
+    // No interrupt controller here takes message-signaled interrupts.
+    NoMsi = 39,
+    // The device has as many message-signaled IRQs as it can (MAX_DEVICE_MSIS).
+    TooManyVectors = 40,
+    // Another device has that address, or, where the interrupt controller uses sources, that MSI source.
+    DeviceExists = 41,
 }
+
+// The most message-signaled IRQs one device has at once.
+MAX_DEVICE_MSIS : u32 : 32
 
 /*
  * Variable-size data in a protocol's message (the SlopOS repository's decisions 0040, 0071): count Ts after the

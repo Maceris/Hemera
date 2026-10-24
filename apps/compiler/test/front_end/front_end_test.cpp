@@ -456,6 +456,21 @@ TEST(FrontEnd, ResolvesNameCollisions)
 	}
 }
 
+// docs/compilation.md, The Top Level: a name the package's own #insert declares wins over an import's, once it's run
+TEST(FrontEnd, ResolvesInsertedNameOverImport)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("insert_shadows_import"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	hemera::Declaration* declaration = find_declaration(fixture, scenario("insert_shadows_import"), "USES_OWN");
+	ASSERT_NE(declaration, nullptr);
+	EXPECT_TRUE(declaration->resolved);
+}
+
 TEST(FrontEnd, ReportsAmbiguousName)
 {
 	hemera::disable_reporting_printing();
