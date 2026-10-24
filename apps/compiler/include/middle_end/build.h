@@ -92,7 +92,7 @@ namespace hemera {
 	/// A program that's checked: generated, lowered, assembled and linked, as far as its options say.
 	/// </summary>
 	/// <returns>Whether it worked.</returns>
-	bool finish_program(Options* options, ProgramInfo* program_info, mlir::ModuleOp mlir_module, Allocator<>& alloc);
+	bool finish_program(Options* options, ProgramInfo* program_info, mlir::ModuleOp mlir_module);
 
 	/// <summary>
 	/// A build package's targets, each compiled in turn in this process (checked, run through the build's checks,

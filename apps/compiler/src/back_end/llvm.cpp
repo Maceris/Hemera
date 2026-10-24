@@ -528,12 +528,16 @@ namespace hemera {
 	}
 
 	bool BackendLLVM::initialize(const Options& options) {
-		llvm::InitializeAllTargetInfos();
-		llvm::InitializeAllTargets();
-		llvm::InitializeAllTargetMCs();
-		llvm::InitializeAllAsmPrinters();
-		// For inline assembly, which intrinsics compile to
-		llvm::InitializeAllAsmParsers();
+		// Once for the process, since a build's targets may be generated at the same time (build.cpp)
+		static std::once_flag registered;
+		std::call_once(registered, [] {
+			llvm::InitializeAllTargetInfos();
+			llvm::InitializeAllTargets();
+			llvm::InitializeAllTargetMCs();
+			llvm::InitializeAllAsmPrinters();
+			// For inline assembly, which intrinsics compile to
+			llvm::InitializeAllAsmParsers();
+		});
 
 		llvm::Triple::ArchType arch_type = map_arch_type(options.architecture);
 		llvm::Triple::SubArchType sub_arch_type =

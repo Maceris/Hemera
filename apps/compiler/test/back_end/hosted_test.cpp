@@ -536,6 +536,96 @@ TEST(Build, BuildsTargets)
 	module.erase();
 }
 
+/*
+ * The parallel build scenario's build package, checked, then its targets built with jobs at once, the outputs in
+ * build_parallel's output folder: whether the build worked.
+ */
+static bool build_at_once(uint32_t jobs, bool broken) {
+	hemera::reset_reporting_storage();
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_parallel";
+	std::filesystem::create_directories(output_folder);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("build_parallel") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.jobs = jobs;
+	for (int i = 0; i < 4; ++i) {
+		const std::string output = (output_folder / std::format("app_{}", i)).string();
+		std::filesystem::remove(output + ".exe");
+		options.settings.emplace_back(std::format("output_{}", i), output);
+	}
+	options.settings.emplace_back("broken", broken ? "yes" : "no");
+	options.settings.emplace_back("broken_output", (output_folder / "broken").string());
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	if (hemera::error_count() != 0) {
+		module.erase();
+		return false;
+	}
+	hemera::Allocator<> alloc;
+	const bool built = hemera::build_targets(program_info.get(), options, alloc);
+	hemera::reset_build_registry();
+	module.erase();
+	return built;
+}
+
+static std::string parallel_output(int i) {
+	return (std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "build_parallel" / std::format("app_{}.exe", i)).string();
+}
+
+// docs/compilation.md, Build Packages: targets built at once, each with its own settings.
+TEST(Build, BuildsTargetsAtOnce)
+{
+	StringCacheGuard string_cache;
+	ASSERT_TRUE(build_at_once(4, false));
+	EXPECT_EQ(hemera::error_count(), 0);
+	for (int i = 0; i < 4; ++i) {
+		EXPECT_EQ(std::system(std::format("\"{}\"", parallel_output(i)).c_str()), 10 + i) << parallel_output(i);
+	}
+}
+
+// Built at once, the outputs are what they are built one at a time (docs/compilation.md, Deterministic Output).
+TEST(Build, BuildsTheSameAtOnce)
+{
+	StringCacheGuard string_cache;
+	ASSERT_TRUE(build_at_once(1, false));
+	std::vector<std::string> one_at_a_time;
+	for (int i = 0; i < 4; ++i) {
+		std::ifstream file(parallel_output(i), std::ios::binary);
+		one_at_a_time.emplace_back(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+	}
+	ASSERT_TRUE(build_at_once(4, false));
+	for (int i = 0; i < 4; ++i) {
+		std::ifstream file(parallel_output(i), std::ios::binary);
+		const std::string at_once((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+		EXPECT_FALSE(at_once.empty());
+		EXPECT_TRUE(at_once == one_at_a_time[static_cast<size_t>(i)]) << parallel_output(i) << " differs";
+	}
+}
+
+// A target that doesn't check fails the build, reporting its own error once, and the others still build.
+TEST(Build, ReportsEachTargetsErrors)
+{
+	StringCacheGuard string_cache;
+	hemera::disable_reporting_printing();
+	EXPECT_FALSE(build_at_once(4, true));
+	hemera::enable_reporting_printing();
+	ASSERT_NE(hemera::error_list(), nullptr);
+	EXPECT_EQ(hemera::error_list()->size(), 1u);
+	EXPECT_EQ(std::count(hemera::error_list()->begin(), hemera::error_list()->end(), hemera::ErrorCode::E4008), 1);
+	for (int i = 0; i < 4; ++i) {
+		EXPECT_EQ(std::system(std::format("\"{}\"", parallel_output(i)).c_str()), 10 + i) << parallel_output(i);
+	}
+}
+
 // A build package that finds what to build: it lists a folder's subfolders, loads each one, and builds the
 // packages that say they're programs.
 TEST(Build, BuildsDiscoveredTargets)

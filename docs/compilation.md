@@ -318,8 +318,8 @@ Code a macro gives may call macros, including itself, but expansion stops with a
 ## Build Packages
 
 A program whose compile-time code registers targets with `compiler.add_target` is a build package: it produces
-nothing itself, and once it's checked, the compiler builds each target it registered, in the same process, in the
-order they were registered. A target is a root package and its `BuildOptions`, usually started from
+nothing itself, and once it's checked, the compiler builds each target it registered, in the same process, several
+at once (see below). A target is a root package and its `BuildOptions`, usually started from
 `compiler.command_line_options()` so settings and options given on the command line carry over. Its `root`,
 `output_path` and `linker_script` are relative to the build package's folder.
 
@@ -364,11 +364,15 @@ with `compiler.add_step` runs, after the targets it depends on, with their outpu
 package's own functions, so they run with its types: a value from a target, like a constant in its `ProgramInfo`,
 has the target's types, which are compared by name (see `ConstantInfo`).
 
-Targets are built one at a time, and each is a program of its own: its files are read, parsed and checked for it,
-even ones another target already used, since its `#if` choices, settings and package paths can make them mean
-something else. The work within a target is spread across threads like any program's. Sharing parsed files between
-targets, and building targets that don't depend on each other at the same time, are planned; neither will change
-what a build produces (see Deterministic Output).
+Targets are built several at once, each a program of its own: its files are read, parsed and checked for it, even
+ones another target already used, since its `#if` choices, settings and package paths can make them mean something
+else, and the work within a target is spread across threads like any program's. `--jobs=N` says how many are built
+at once: 1 for one at a time, in the order they were registered, and by default a quarter of the machine's logical
+processors. The checks take turns, since they run the build package's own code. Either way, each target's outputs
+are the same (see Deterministic Output), and what it reports, its errors and warnings and `--time-phases`'s lines, is
+printed in one piece and in the order the targets were registered, once it and every target before it are done.
+A target's errors stop only it: the others are still built, and the build fails. Steps run once every target is done.
+Sharing parsed files between targets is planned.
 
 ## Compile-Time Permissions
 

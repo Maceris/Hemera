@@ -475,6 +475,7 @@ namespace hemera {
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::INSTALL_PATH:
+			case hemera::arg_parse::JOBS:
 			case hemera::arg_parse::LINKER_SCRIPT:
 			case hemera::arg_parse::SYSROOT:
 			case hemera::arg_parse::LIST:
@@ -931,6 +932,15 @@ namespace hemera {
 				cpu_features_seen = true;
 				output.cpu_features = option_with_value.values[0];
 				break;
+			case hemera::arg_parse::JOBS: {
+				const std::string value(option_with_value.values[0]);
+				if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos || value.size() > 4) {
+					cout << "--jobs takes a number, 0 for as many as suit the machine, not " << value << endl;
+					return false;
+				}
+				output.jobs = static_cast<uint32_t>(std::stoul(value));
+				break;
+			}
 			case hemera::arg_parse::INSTALL_PATH:
 				if (install_path_seen) {
 					cout << "Duplicate install path flag" << endl;

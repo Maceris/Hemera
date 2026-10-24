@@ -351,14 +351,15 @@ namespace hemera {
 	}
 
 	void kick_off_processing(ProgramInfo* program_info, const Options* options) {
-		initialize_builtin_types();
-		initialize_builtin_functions();
-
-		// About one a physical core, which is half the logical processors with two threads a core
-		THREAD_COUNT =
-			std::clamp(std::thread::hardware_concurrency() / 2, MIN_THREAD_COUNT, MAX_THREAD_COUNT);
-
-		MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
+		// Once for the process, since a build's targets may be checked at the same time (build.cpp)
+		static std::once_flag initialized;
+		std::call_once(initialized, [] {
+			initialize_builtin_types();
+			initialize_builtin_functions();
+			// About one a physical core, which is half the logical processors with two threads a core
+			THREAD_COUNT = std::clamp(std::thread::hardware_concurrency() / 2, MIN_THREAD_COUNT, MAX_THREAD_COUNT);
+			MAX_SEARCHERS = std::max(1u, THREAD_COUNT / 2);
+		});
 		
 		Allocator<> work_allocator{};
 		Allocator<> info_allocator{};
@@ -398,11 +399,19 @@ namespace hemera {
 		}
 
 		std::vector<std::jthread> threads;
+		// The threads report in the scope of whoever started the program, like a build's target
+		ReportScope* scope = report_scope();
 
-		threads.emplace_back(do_llvm_work, std::ref(*global_data.thread_data[0]));
+		threads.emplace_back([scope, &data = *global_data.thread_data[0]] {
+			set_report_scope(scope);
+			do_llvm_work(data);
+		});
 
 		for (size_t i = 1; i < static_cast<size_t>(THREAD_COUNT); ++i) {
-			threads.emplace_back(do_work, std::ref(*global_data.thread_data[i]));
+			threads.emplace_back([scope, &data = *global_data.thread_data[i]] {
+				set_report_scope(scope);
+				do_work(data);
+			});
 		}
 		//NOTE(ches) the destructors for the threads will .join() them here
 	}

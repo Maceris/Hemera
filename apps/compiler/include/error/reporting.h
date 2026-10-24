@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -70,6 +72,41 @@ namespace hemera {
 	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,
 		std::string_view kind, std::string_view text);
 
+	/// <summary>
+	/// What's reported while it's a thread's scope (set_report_scope): counted, not repeated, and kept rather
+	/// than printed, so work done at the same time, like a build's targets, can report each in one piece and in
+	/// order (print_report_scope). Errors still go in error_list too.
+	/// </summary>
+	struct ReportScope {
+		std::mutex mutex;
+		std::set<std::string> reported;
+		// What would have gone to standard output, then standard error (--time-phases)
+		std::string output;
+		std::string errors_output;
+		size_t errors = 0;
+	};
+
+	/// <summary>
+	/// The calling thread's scope, or null for none; threads a scope's work starts on take it on (front_end.cpp).
+	/// </summary>
+	void set_report_scope(ReportScope* scope);
+	ReportScope* report_scope();
+	/// <summary>
+	/// What a scope kept, printed, and then forgotten.
+	/// </summary>
+	void print_report_scope(ReportScope& scope);
+	/// <summary>
+	/// A line for standard error, like a phase's time, kept in the thread's scope if it has one.
+	/// </summary>
+	void report_to_standard_error(std::string_view line);
+	/// <summary>
+	/// Text for standard output, like code --show-inserted prints, kept in the thread's scope if it has one.
+	/// </summary>
+	void report_text(std::string_view text);
+
+	/// <summary>
+	/// Every error so far, or with a scope, the scope's.
+	/// </summary>
 	size_t error_count();
 	/// <summary>
 	/// How many errors this thread has reported, including ones already reported elsewhere: what checking one

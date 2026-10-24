@@ -88,7 +88,7 @@ namespace hemera {
 		else if (!build_registry().targets.empty() || !build_registry().steps.empty()) {
 			rc = build_targets(program_info, *options, main_alloc) ? 0 : -1;
 		}
-		else if (!finish_program(options, program_info, mlir_module, main_alloc)) {
+		else if (!finish_program(options, program_info, mlir_module)) {
 			rc = -1;
 		}
 

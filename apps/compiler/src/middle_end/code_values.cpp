@@ -8,6 +8,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "error/reporting.h"
 #include "parser/printing.h"
 
 namespace hemera {
@@ -415,8 +416,7 @@ namespace hemera {
 				if (!source.ends_with('\n')) {
 					source += '\n';
 				}
-				std::cout << std::format("// Inserted at {}({},{}):\n{}", site.file, site.line, site.column, source);
-				std::cout.flush();
+				report_text(std::format("// Inserted at {}({},{}):\n{}", site.file, site.line, site.column, source));
 			}
 		}
 	}

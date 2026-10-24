@@ -522,6 +522,11 @@ namespace hemera {
         /// </summary>
         bool time_phases = false;
         /// <summary>
+        /// --jobs=N: how many of a build package's targets are built at once, 0 for as many as suit the machine
+        /// (docs/compilation.md, Build Packages).
+        /// </summary>
+        uint32_t jobs = 0;
+        /// <summary>
         /// --setting=name=value, which compile-time code reads with compiler.target_setting.
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;

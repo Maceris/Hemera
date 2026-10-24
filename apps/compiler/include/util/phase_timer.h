@@ -1,8 +1,10 @@
 #pragma once
 
 #include <chrono>
-#include <cstdio>
+#include <format>
 #include <string>
+
+#include "error/reporting.h"
 
 namespace hemera {
 
@@ -26,7 +28,7 @@ namespace hemera {
 				return;
 			}
 			const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
-			std::fprintf(stderr, "phase %s: %lld ms\n", name.c_str(), static_cast<long long>(took.count()));
+			report_to_standard_error(std::format("phase {}: {} ms", name, took.count()));
 		}
 
 	private:
