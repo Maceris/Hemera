@@ -2327,6 +2327,10 @@ namespace hemera {
 	 * itself, not of a copy: changes through the view reach it, and a large constant isn't copied.
 	 */
 	static mlir::Value convert_emitted(Generator& generator, const Emitted& emitted, TypeInfo* type) {
+		// A variant without values written as Union.Variant, like a block's last expression
+		if (ValueKind::VARIANT == emitted.kind) {
+			return convert(generator, make_variant(generator, emitted.type, emitted.variant, {}, {}), emitted.type, type);
+		}
 		if (ValueKind::TYPE == emitted.kind) {
 			return convert(generator, value_of(generator, emitted), BUILTIN_type, type);
 		}
@@ -8013,6 +8017,7 @@ namespace hemera {
 				}
 				mlir::Value handle = LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, finds), mlir::ValueRange{
 					string_value(generator, text_of(input.name), BUILTIN_string), string_value(generator, grant.kind, BUILTIN_string),
+					string_value(generator, grant.protocol, BUILTIN_string),
 					constant_int(generator, llvm_type(generator, BUILTIN_bool), grant.optional ? 0 : 1) }).getResult();
 				mlir::Value slot = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
 					llvm_type(generator, input.type), one, static_cast<unsigned>(input.type->alignment));

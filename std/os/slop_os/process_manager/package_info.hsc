@@ -5,4 +5,4 @@ package process_manager
 
 import tiers from "std"
 
-PACKAGE_TIER :: tiers.Tier.Freestanding
+PACKAGE_TIER :: tiers.Tier.Os

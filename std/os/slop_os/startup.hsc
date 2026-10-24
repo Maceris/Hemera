@@ -51,11 +51,9 @@ Grant :: struct {
     kind : ObjectKind,
     reserved : u8[3],
     handle : Handle,
-    // For a channel end: the protocol it speaks, os.protocol_tag's, or 0 for none in particular
-    tag : u64,
 }
 
-#assert size_of(Grant) == 48
+#assert size_of(Grant) == 40
 
 // How a process ends before its entry runs: started by a kernel of another ABI version, or without a grant its entry needs.
 EXIT_WRONG_ABI : u32 : runtime.SLOP_OS_EXIT_WRONG_ABI
@@ -112,7 +110,7 @@ find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> H
 #assert size_of(runtime.SlopOsGrant) == size_of(Grant)
 #assert offset_of(Grant, kind) == offset_of(runtime.SlopOsGrant, kind)
 #assert offset_of(Grant, handle) == offset_of(runtime.SlopOsGrant, handle)
-#assert offset_of(Grant, tag) == offset_of(runtime.SlopOsGrant, tag)
+#assert cast[u64](SYSCALL_CHANNEL_TAG) == runtime.SLOP_OS_CALL_CHANNEL_TAG
 #assert ABI_VERSION == runtime.SLOP_OS_ABI_VERSION
 #assert cast[u32](ObjectKind.MemoryBudget) == runtime.SLOP_OS_KIND_MEMORY_BUDGET
 #assert cast[u32](ObjectKind.Memory) == runtime.SLOP_OS_KIND_MEMORY

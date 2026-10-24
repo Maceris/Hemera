@@ -3718,6 +3718,16 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	// Whether a VARIANT is one holding nothing, which is a value of its union as it's written.
+	static bool takes_no_values(const Value& value) {
+		TypeInfo const* union_type = base_of(value.type);
+		if (union_type == nullptr || TypeInfoVariant::UNION != union_type->variant) {
+			return false;
+		}
+		const std::vector<UnionVariant>& variants = static_cast<TypeInfoUnion const*>(union_type)->variants;
+		return value.variant < variants.size() && variants[value.variant].types.empty();
+	}
+
 	// if as an expression: each branch's block ends with its value.
 	static Progress check_if_expression(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		Value condition;
@@ -3746,6 +3756,10 @@ namespace hemera {
 			}
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			// A variant without values, written as Union.Variant, is a value of its union
+			if (ValueKind::VARIANT == value.kind && value.type != nullptr && takes_no_values(value)) {
+				value = typed(value.type);
 			}
 			if (type == nullptr && ValueKind::POISONED != value.kind) {
 				type = default_type(value);

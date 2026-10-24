@@ -33,24 +33,22 @@ package os
     }
 
     /*
-     * The tag of the protocol P (decisions/0040): a hash of its name, which the launcher puts in the grant
-     * of a Channel[P] or Listener[P], so a program can see it was given what it was built for (speaks).
+     * The tag of the protocol P (decisions/0040, 0071): FNV-1a of its name, which a channel for P is made with
+     * (channel_create), and which the end of a Channel[P] or Listener[P] has to have where it arrives: as an entry's
+     * parameter, or in a message.
      */
     protocol_tag :: fn[P]() -> u64 {
         return end_tag(type_info_of(Channel[P]))
     }
 
-    /*
-     * Whether a channel speaks P, as far as the process's startup grants say: false only for a grant of its
-     * end tagged with another protocol.
-     */
-    speaks :: fn[P](channel: Channel[P]) -> bool {
-        for &grant in slop_os.grants_of(slop_os.startup_block()) {
-            if grant.handle == cast[slop_os.Handle](channel.end) && grant.tag != 0 {
-                return grant.tag == protocol_tag[P]()
-            }
-        }
-        return true
+    // A new channel for P, with rings of ring_bytes each way, 0 for the default.
+    channel_for :: fn[P](budget: slop_os.MemoryBudget, ring_bytes: u32) -> Result[slop_os.ChannelPair, slop_os.ChannelError] {
+        return slop_os.channel_create(budget, ring_bytes, protocol_tag[P]())
+    }
+
+    // Whether a channel end was made for P.
+    speaks :: fn[P](end: slop_os.Channel) -> bool {
+        return (slop_os.channel_tag(end) or_else 0) == protocol_tag[P]()
     }
 
     // The tag of a Channel[P] or Listener[P] type, from P's name; 0 for another type.
@@ -193,17 +191,6 @@ package os
         return receive(end, port, reply, none)
     }
 
-    // The next connection to arrive on a listener, waiting on port (port_for) for it.
-    accept :: fn[P](listener: Listener[P], port: slop_os.Port) -> Result[Channel[P], slop_os.ChannelError] {
-        message : u64[2]
-        handles : slop_os.Handle[1]
-        received :: receive(listener.end, port, view_of(cast[ptr[mut u8]](&message[0]), 16), handles)?
-        if received.handle_count != 1 {
-            return .Error(.InvalidHandle)
-        }
-        return .Ok(Channel[P].{end = cast[slop_os.Channel](handles[0])})
-    }
-
     // A label in a grant's form: its bytes, then zeros.
     label_from :: fn(text: string) -> u8[slop_os.GRANT_LABEL_SIZE] {
         label : u8[slop_os.GRANT_LABEL_SIZE]
@@ -253,7 +240,7 @@ package os
     LaunchError :: enum {
         // The caller's budget couldn't pay for the program's
         NoBudget,
-        // More grants than a LoadRequest takes, or no handle for one
+        // More grants than a Load takes, or no handle for one
         BadGrants,
         // The manager didn't answer
         ManagerGone,
@@ -279,51 +266,56 @@ package os
         child :: slop_os.memory_budget_create(block.budget, budget) or_return .Error(.NoBudget)
         process :: slop_os.process_create(child) or_return .Error(.NoBudget)
         space :: slop_os.address_space_create(child) or_return .Error(.NoBudget)
-        request := process_manager.LoadRequest.{tag = process_manager.LOAD, name = label_from(name)}
-        handles : slop_os.Handle[process_manager.LOAD_HANDLES_AND_GRANTS]
+        load := process_manager.Load.{name = label_from(name), space = space}
         process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS) | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
-        handles[0] = slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights) or_return .Error(.BadGrants)
-        handles[1] = cast[slop_os.Handle](space)
+        load.process = cast[slop_os.Process](slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights) or_return .Error(.BadGrants))
         budget_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_BUDGET_CHARGE) | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
-        handles[2] = slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights) or_return .Error(.BadGrants)
+        load.budget = cast[slop_os.MemoryBudget](slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights) or_return .Error(.BadGrants))
         executable_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_TRANSFER))
-        handles[3] = slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights) or_return .Error(.BadGrants)
-        count : usize = process_manager.LOAD_HANDLES
+        load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights)
+            or_return .Error(.BadGrants))
         for member in cast[ptr[compiler.TypeInfoStruct]](type_info_of(G)).members {
-            held, handle :: grant_in(cast[u64](&grants) + cast[u64](member.offset), member.member_type)
+            handle :: grant_in(cast[u64](&grants) + cast[u64](member.offset), member.member_type)
             if handle == slop_os.NO_HANDLE {
                 continue
             }
-            index :: cast[usize](request.grant_count)
-            if index >= request.labels.count || index >= request.tags.count || count >= handles.count {
+            index :: cast[usize](load.grant_count)
+            if index >= load.labels.count || index >= load.grants.count {
                 return .Error(.BadGrants)
             }
-            request.labels[index] = label_from(member.name)
-            request.tags[index] = end_tag(held)
-            request.grant_count += 1
-            handles[count] = handle
-            count += 1
+            load.labels[index] = label_from(member.name)
+            load.grants[index] = handle
+            load.grant_count += 1
         }
-        reply := process_manager.LoadReply.{}
-        match call(manager.end, port, bytes_of(&request), view_of(&handles[0], count), mut_bytes_of(&reply)) {
-            case Ok(received) => {}
-            case Error(error) => return .Error(.ManagerGone)
+        out := Outgoing.{}
+        request :: begin[process_manager.Request](&out)
+        request^ = .Load(load)
+        match process_manager.send_request(manager.end, port, &out) {
+            case Some(error) => return .Error(.ManagerGone)
+            case None => {}
         }
-        if reply.status != .Loaded {
-            _ = slop_os.handle_close(cast[slop_os.Handle](process))
-            return .Error(.NotLoaded)
+        into := Incoming.{}
+        match process_manager.receive_response(manager.end, port, &into, true) {
+            case Received => {}
+            case _ => return .Error(.ManagerGone)
         }
-        return .Ok(Launched.{process = process, budget = child, thread = reply.thread})
+        match message_of[process_manager.Response](&into)^ {
+            case Loaded(thread) => return .Ok(Launched.{process = process, budget = child, thread = thread})
+            case _ => {
+                _ = slop_os.handle_close(cast[slop_os.Handle](process))
+                return .Error(.NotLoaded)
+            }
+        }
     }
 
-    // A grant's handle, a field of type at address: the handle, or NO_HANDLE for an optional's None, and its type.
-    grant_in :: fn(address: u64, type: ptr[compiler.TypeInfo]) -> (held: ptr[compiler.TypeInfo], handle: slop_os.Handle) {
+    // A grant's handle, a field of type at address: the handle, or NO_HANDLE for an optional's None.
+    grant_in :: fn(address: u64, type: ptr[compiler.TypeInfo]) -> slop_os.Handle {
         if type.variant == .UNION {
             optional :: cast[ptr[compiler.TypeInfoUnion]](type)
             if optional.variants.count == 0 || optional.variants[0].types.count == 0 || optional.variants[0].offsets.count == 0 {
-                return type, slop_os.NO_HANDLE
+                return slop_os.NO_HANDLE
             }
             // Some is the first variant, tagged 0, in a tag of its own width
             tag_size :: match optional.tag_type {
@@ -333,10 +325,10 @@ package os
             tag :: if tag_size == 1 { cast[u64](cast[ptr[u8]](address)^) } else if tag_size == 2 { cast[u64](cast[ptr[u16]](address)^) }
                 else { cast[u64](cast[ptr[u32]](address)^) }
             if tag != 0 {
-                return optional.variants[0].types[0], slop_os.NO_HANDLE
+                return slop_os.NO_HANDLE
             }
-            return optional.variants[0].types[0], cast[ptr[slop_os.Handle]](address + cast[u64](optional.variants[0].offsets[0]))^
+            return cast[ptr[slop_os.Handle]](address + cast[u64](optional.variants[0].offsets[0]))^
         }
-        return type, cast[ptr[slop_os.Handle]](address)^
+        return cast[ptr[slop_os.Handle]](address)^
     }
 }

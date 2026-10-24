@@ -19,9 +19,10 @@ SLOP_OS_CALL_MEMORY_CREATE : u64 : 26
 SLOP_OS_CALL_MEMORY_MAP : u64 : 27
 SLOP_OS_CALL_MEMORY_UNMAP : u64 : 28
 SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
+SLOP_OS_CALL_CHANNEL_TAG : u64 : 50
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
-SLOP_OS_ABI_VERSION : u32 : 1
+SLOP_OS_ABI_VERSION : u32 : 2
 SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
 SLOP_OS_KIND_MEMORY : u32 : 3
 SLOP_OS_KIND_ADDRESS_SPACE : u32 : 4
@@ -66,8 +67,6 @@ SlopOsGrant :: struct {
     kind : u8,
     reserved : u8[3],
     handle : u32,
-    // The protocol a channel's grant speaks, or 0
-    tag : u64,
 }
 
 // A system call, and what it gives in the system ABI's three result registers, on each architecture
@@ -175,10 +174,11 @@ SlopOsGrant :: struct {
     /*
      * A parameter of the program's entry, which the compiler's entry asks for (docs/compilation.md, Entry
      * Parameters): the handle of the startup grant labeled name, of the kind of the type named kind, like
-     * "DebugLog" or "Channel". 0 for an optional one that isn't there; a required one that isn't there, or is
-     * of another kind, ends the process with SLOP_OS_EXIT_MISSING_GRANT.
+     * "DebugLog" or "Channel", and for one generic over a protocol, a channel whose tag is that protocol's, by
+     * its name. 0 for an optional one that isn't there; a required one that isn't there, or is of another kind or
+     * protocol, ends the process with SLOP_OS_EXIT_MISSING_GRANT.
      */
-    os_entry_grant #no_context :: fn(name: string, kind: string, required: bool) -> u32 {
+    os_entry_grant #no_context :: fn(name: string, kind: string, protocol: string, required: bool) -> u32 {
         wanted :: slop_os_kind_of(kind)
         state :: intrinsics.process_state()
         if state.startup_block != null && wanted != 0 {
@@ -188,7 +188,7 @@ SlopOsGrant :: struct {
             }
             loop {
                 grant :: cast[ptr[SlopOsGrant]](cast[u64](startup) + startup.grants + i * cast[u64](size_of(SlopOsGrant)))
-                if cast[u32](grant.kind) == wanted && label_is(&grant.label, name) {
+                if cast[u32](grant.kind) == wanted && label_is(&grant.label, name) && speaks(grant.handle, protocol) {
                     return grant.handle
                 }
                 i += 1
@@ -199,6 +199,22 @@ SlopOsGrant :: struct {
             os_exit_process(SLOP_OS_EXIT_MISSING_GRANT)
         }
         return 0
+    }
+
+    /*
+     * Whether a channel end's tag is the protocol's, by its name: FNV-1a of the name, as std/os's protocol_tag
+     * says. Anything else has no protocol to speak.
+     */
+    speaks #no_context :: fn(handle: u32, protocol: string) -> bool {
+        if protocol.count == 0 {
+            return true
+        }
+        hash : u64 = 0xcbf29ce484222325
+        for character in protocol {
+            hash = (hash ~ cast[u64](cast[u8](character))) * 0x100000001b3
+        }
+        answer :: slop_os_call(SLOP_OS_CALL_CHANNEL_TAG, cast[u64](handle))
+        return answer.tag == 0 && answer.first == hash
     }
 
     // A grant's kind, by its type's name, or 0 for a type that isn't one.

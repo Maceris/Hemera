@@ -512,7 +512,13 @@ namespace hemera {
 		if (name != nullptr) {
 			// A generic struct's instance, like Channel[Protocol], is named with its arguments
 			const std::string_view text(*name);
-			grant.kind = std::string(text.substr(0, text.find('[')));
+			const size_t open = text.find('[');
+			grant.kind = std::string(text.substr(0, open));
+			if (open != std::string_view::npos && text.back() == ']') {
+				std::string_view argument = text.substr(open + 1, text.size() - open - 2);
+				const size_t dot = argument.rfind('.');
+				grant.protocol = std::string(dot == std::string_view::npos ? argument : argument.substr(dot + 1));
+			}
 		}
 		return grant;
 	}

@@ -551,6 +551,11 @@ namespace hemera {
 		/// Empty for a type no grant can be: anything but a 4-byte handle type, or an optional of one.
 		/// </summary>
 		std::string kind;
+		/// <summary>
+		/// For a struct generic over a protocol, like Channel[Storage]: the protocol's name, without its package, whose
+		/// tag the handle's channel has to have.
+		/// </summary>
+		std::string protocol;
 		bool optional = false;
 	};
 

@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 1
+ABI_VERSION : u32 : 2
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -129,8 +129,8 @@ Syscalls :: struct {
     port_unbind : fn(port: Port, key: u64) -> Result[void, PortError],
     // How many packets it wrote, up to packets.count: once there's at least one, or 0 at deadline (NO_DEADLINE for none).
     port_wait : fn(port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, PortError],
-    // A new channel's two ends, with rings of ring_bytes each way, 0 for the default.
-    channel_create : fn(budget: MemoryBudget, ring_bytes: u32) -> Result[ChannelPair, ChannelError],
+    // A new channel's two ends, with rings of ring_bytes each way, 0 for the default, speaking the protocol tag says, 0 for none.
+    channel_create : fn(budget: MemoryBudget, ring_bytes: u32, tag: u64) -> Result[ChannelPair, ChannelError],
     // The channel's rings, mapped at address.
     channel_map : fn(end: Channel, space: AddressSpace, address: u64) -> Result[void, ChannelError],
     channel_unmap : fn(end: Channel) -> Result[void, ChannelError],
@@ -191,6 +191,8 @@ Syscalls :: struct {
     process_give_handles : fn(process: Process, handles: Handle[], given: mut Handle[]) -> Result[void, ControlError],
     // How big the memory object is, in bytes.
     memory_size : fn(memory: Memory) -> Result[u64, HandleError],
+    // The protocol tag the end's channel was made with.
+    channel_tag : fn(end: Channel) -> Result[u64, ChannelError],
 }
 
 // The most of a line debug_log writes.
@@ -555,4 +557,36 @@ DeviceError :: enum #backed_by(u32) {
     LineInUse = 32,
     // No CPU has a device interrupt free.
     NoFreeInterrupt = 33,
+}
+
+/*
+ * Variable-size data in a protocol's message (the SlopOS repository's decisions 0040, 0071): count Ts after the
+ * message's fixed part, at offset bytes from the message's start, aligned for T. A message's generated validator
+ * checks it's inside the message before anything reads it (std/os's protocol_code). elements holds nothing; it
+ * names T for the validator.
+ */
+Relative :: struct[T] {
+    offset : u32,
+    count : u32,
+    elements : T[0],
+}
+
+// A handle field of a message as it travels: its index in the message's batch, or this for none.
+NO_HANDLE_INDEX : u32 : 0xffffffff
+
+/*
+ * What a protocol package says of itself, as its PROTOCOL (decisions/0040): its name, its major version, a new one
+ * for any change that isn't only appending, and who pays for the server's work (decisions/0037).
+ */
+Protocol :: struct {
+    name : string,
+    major_version : u32,
+    lending : Lending,
+}
+
+Lending :: enum {
+    // The client's budget, for each of its connections
+    PerConnection,
+    // The server's own
+    Server,
 }
