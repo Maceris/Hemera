@@ -2533,7 +2533,8 @@ namespace hemera {
 			return false;
 		}
 		for (const auto& [node, found] : declaration->checked->nodes) {
-			if (found.called != nullptr || (ast::NodeType::DIRECTIVE == node->node_type && is_text(node->value.value, "#run"))) {
+			if (found.called != nullptr || (declaration->checked->is_node(node) && ast::NodeType::DIRECTIVE == node->node_type
+				&& is_text(node->value.value, "#run"))) {
 				return true;
 			}
 		}
@@ -8508,7 +8509,10 @@ namespace hemera {
 			std::vector<std::pair<const ast::Node*, const CheckedNode*>> nodes;
 			if (function->checked != nullptr) {
 				for (const auto& [node, found] : function->checked->nodes) {
-					nodes.emplace_back(node, &found);
+					// Not a named result's local, whose key is its entry in the function's type
+					if (function->checked->is_node(node)) {
+						nodes.emplace_back(node, &found);
+					}
 				}
 			}
 			std::sort(nodes.begin(), nodes.end(), [](const auto& a, const auto& b) {

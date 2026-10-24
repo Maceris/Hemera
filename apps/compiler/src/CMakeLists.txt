@@ -90,6 +90,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/parser/printing.h
   ${INCLUDE_DIR}/types/primitives.h
+  ${INCLUDE_DIR}/util/crash_dump.h
   ${INCLUDE_DIR}/util/logger.h
   ${INCLUDE_DIR}/util/thread_pool.h
 )
@@ -127,6 +128,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/parser/ast_types.cpp
   ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/parser/printing.cpp
+  ${SOURCE_DIR}/util/crash_dump.cpp
   ${SOURCE_DIR}/util/logger.cpp
   ${SOURCE_DIR}/util/thread_pool.cpp
 )
@@ -241,6 +243,66 @@ IF(MSVC)
 ENDIF()
 
 ADD_DEPENDENCIES(Hemera HemeraGenerated)
+
+# The compiler with AddressSanitizer, for memory errors that only show now and then: hemera-asan.exe, with
+# -DHEMERA_ASAN=ON. Only Hemera's own code is instrumented; LLVM and MLIR are the libraries the compiler links, so
+# they aren't rebuilt for it. The ASan runtime's DLL has to be on the PATH, or next to it, to run.
+OPTION(HEMERA_ASAN "Also build hemera-asan, the compiler with AddressSanitizer" OFF)
+IF(HEMERA_ASAN)
+  ADD_LIBRARY(HemeraLibAsan
+    ${HEADER_FILES}
+    ${THIRD_PARTY_HEADER_FILES}
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
+    ${SOURCE_FILES}
+  )
+  ADD_EXECUTABLE(HemeraAsan
+    ${HEADER_FILES}
+    ${THIRD_PARTY_HEADER_FILES}
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+    ${SOURCE_DIR}/main.cpp
+  )
+  TARGET_LINK_LIBRARIES(HemeraLibAsan PUBLIC
+    ${llvm_libs}
+    HMIR
+    MLIRPass
+    MLIRBuiltinToLLVMIRTranslation
+    MLIRLLVMToLLVMIRTranslation
+    MLIRTargetLLVMIRExport
+  )
+  TARGET_INCLUDE_DIRECTORIES(HemeraLibAsan PUBLIC
+    ${INCLUDE_DIR}/
+    $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}>
+  )
+  TARGET_INCLUDE_DIRECTORIES(HemeraAsan PUBLIC ${INCLUDE_DIR}/)
+  TARGET_LINK_LIBRARIES(HemeraAsan HemeraLibAsan)
+  SET_TARGET_PROPERTIES(HemeraAsan PROPERTIES OUTPUT_NAME "hemera-asan")
+  # The standard library's container annotations off, as in the uninstrumented LLVM libraries, which the linker checks
+  SET(HEMERA_ASAN_DEFINITIONS _DISABLE_STRING_ANNOTATION _DISABLE_VECTOR_ANNOTATION)
+  TARGET_COMPILE_DEFINITIONS(HemeraLibAsan PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST} ${HEMERA_ASAN_DEFINITIONS})
+  TARGET_COMPILE_DEFINITIONS(HemeraAsan PRIVATE ${HEMERA_DEFINITIONS} ${HEMERA_ASAN_DEFINITIONS})
+  TARGET_COMPILE_OPTIONS(HemeraLibAsan PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS} -fsanitize=address)
+  TARGET_COMPILE_OPTIONS(HemeraAsan PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS} -fsanitize=address)
+  IF(MSVC)
+    # clang-cl's ASan runtime, from its own lib/clang/<version>/lib/windows: the dynamic one, as the CRT is; and a PDB
+    GET_FILENAME_COMPONENT(HEMERA_CLANG_BIN ${CMAKE_CXX_COMPILER} DIRECTORY)
+    FILE(GLOB HEMERA_ASAN_LIBRARY_DIRS ${HEMERA_CLANG_BIN}/../lib/clang/*/lib/windows)
+    LIST(GET HEMERA_ASAN_LIBRARY_DIRS 0 HEMERA_ASAN_LIBRARY_DIR)
+    TARGET_LINK_OPTIONS(HemeraAsan PRIVATE
+      ${HEMERA_ASAN_LIBRARY_DIR}/clang_rt.asan_dynamic-x86_64.lib
+      /wholearchive:${HEMERA_ASAN_LIBRARY_DIR}/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib
+      # Without folding identical data, which can put a string literal in another global's redzone
+      $<$<CONFIG:Release>:/DEBUG /OPT:NOICF>
+      # ASan's frames are several times larger: every thread's stack, reserved, is 64 MiB
+      /STACK:67108864)
+    # Its DLL next to the compiler, so it runs from there
+    ADD_CUSTOM_COMMAND(TARGET HemeraAsan POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HEMERA_ASAN_LIBRARY_DIR}/clang_rt.asan_dynamic-x86_64.dll $<TARGET_FILE_DIR:HemeraAsan>)
+  ENDIF()
+  ADD_DEPENDENCIES(HemeraAsan HemeraGenerated)
+ENDIF()
 
 enable_testing()
 

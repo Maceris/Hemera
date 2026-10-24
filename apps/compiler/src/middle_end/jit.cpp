@@ -46,6 +46,10 @@ namespace hemera {
 			volatile bool escaped = false;
 			volatile bool running = false;
 			std::string crash;
+			// For an access violation: where the instruction was, and the address it read or wrote, and which
+			uintptr_t crash_instruction = 0;
+			uintptr_t crash_address = 0;
+			bool crash_write = false;
 			// It registered functions to be called later, so it stays loaded
 			bool keep = false;
 		};
@@ -426,10 +430,34 @@ namespace hemera {
 		}
 
 #if defined(_WIN32)
-		// A crash in compile-time code: back to where it was entered, with what happened recorded.
+		/*
+		 * Whether an exception happened outside compile-time code: anywhere but compiled code, which is in no module,
+		 * and the C runtime's memory functions, which it calls itself. Compile-time code calls the compiler's
+		 * services, and those have destructors to run and locks to release, which jumping back to the entry would
+		 * skip; and under AddressSanitizer, the first touch of a page of shadow memory, wherever it is, is an access
+		 * violation its own handler deals with.
+		 */
+		// The C runtime's modules, found once when the handler is installed, so the handler itself calls nothing much
+		HMODULE c_runtime = nullptr;
+		HMODULE c_runtime_memory = nullptr;
+
+		bool in_compiler(void* address) {
+			MEMORY_BASIC_INFORMATION region{};
+			if (VirtualQuery(address, &region, sizeof(region)) == 0 || region.Type != MEM_IMAGE) {
+				return false;
+			}
+			const HMODULE module = static_cast<HMODULE>(region.AllocationBase);
+			return module != c_runtime && module != c_runtime_memory;
+		}
+
+		/*
+		 * A crash in compile-time code: back to where it was entered, with what happened recorded. One in the
+		 * compiler itself, even in a service compile-time code called, is the compiler's, and goes on to its
+		 * handlers (util/crash_dump.h).
+		 */
 		LONG CALLBACK on_exception(EXCEPTION_POINTERS* exception) {
 			Active* run = active;
-			if (run == nullptr || !run->running) {
+			if (run == nullptr || !run->running || in_compiler(exception->ExceptionRecord->ExceptionAddress)) {
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
 			const DWORD code = exception->ExceptionRecord->ExceptionCode;
@@ -445,6 +473,11 @@ namespace hemera {
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
 			run->crash = what;
+			if (code == EXCEPTION_ACCESS_VIOLATION && exception->ExceptionRecord->NumberParameters >= 2) {
+				run->crash_instruction = reinterpret_cast<uintptr_t>(exception->ExceptionRecord->ExceptionAddress);
+				run->crash_write = exception->ExceptionRecord->ExceptionInformation[0] == 1;
+				run->crash_address = static_cast<uintptr_t>(exception->ExceptionRecord->ExceptionInformation[1]);
+			}
 			run->escaped = true;
 			run->running = false;
 			*exception->ContextRecord = run->resume;
@@ -517,7 +550,10 @@ namespace hemera {
 				_resetstkoflw();
 			}
 #endif
-			report_error(ErrorCode::E4029, run.file_path, run.line, run.column, std::format("the compile-time code {}", state.crash));
+			// Where, for an access violation: the address, and the instruction's, in compiled code or what it called
+			const std::string where = state.crash_instruction == 0 ? std::string()
+				: std::format(" ({} {:#x}, at {:#x})", state.crash_write ? "writing" : "reading", state.crash_address, state.crash_instruction);
+			report_error(ErrorCode::E4029, run.file_path, run.line, run.column, std::format("the compile-time code {}{}", state.crash, where));
 		}
 		return RunResult::FAILED;
 	}
@@ -558,7 +594,10 @@ namespace hemera {
 			llvm::InitializeNativeTargetAsmPrinter();
 			llvm::InitializeNativeTargetAsmParser();
 #if defined(_WIN32)
-			AddVectoredExceptionHandler(1, on_exception);
+			c_runtime = GetModuleHandleA("ucrtbase.dll");
+			c_runtime_memory = GetModuleHandleA("vcruntime140.dll");
+			// Last, so handlers that deal with exceptions of their own, like AddressSanitizer's, see them first
+			AddVectoredExceptionHandler(0, on_exception);
 #endif
 		});
 	}

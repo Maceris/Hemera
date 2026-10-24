@@ -21,6 +21,7 @@
 #include "middle_end/build.h"
 #include "middle_end/generate.h"
 #include "memory/thread_safe_queue.h"
+#include "util/crash_dump.h"
 #include "util/logger.h"
 #include "util/phase_timer.h"
 #include "util/thread_pool.h"
@@ -109,5 +110,7 @@ int main(int argc, char* argv[])
 	_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
 	_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
+	// A dump if it crashes, for crashes that don't come again when they're looked for
+	hemera::install_crash_dump_handler(argc > 0 ? argv[0] : "hemera");
 	return hemera::main(argc, argv);
 }

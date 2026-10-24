@@ -61,6 +61,17 @@ Both can be built in the same `bin` folder, each with its own outputs.
 It's quite likely that you'll need to build a few times to get a full/clean build, 
 as some stages/tools depend on the outputs of others to be used as build tools.
 
+## Crashes and Memory Errors
+
+If the compiler crashes on Windows, it writes a minidump before it ends, `hemera-crash-<process ID>.dmp`, into the
+folder `HEMERA_CRASH_DUMPS` names, or the temporary folder, and says where on standard error, followed by a stack
+trace. Open it in Visual Studio or WinDbg with the compiler's PDB, which Release builds have too.
+
+For memory errors that only show now and then, configure with `-DHEMERA_ASAN=ON` to also build `hemera-asan`, the
+compiler with AddressSanitizer (`cmake --build . --config Release --target HemeraAsan`). Only the compiler's own code
+is instrumented, so LLVM isn't rebuilt for it. It runs like `hemera`, about twice as slowly, and stops at the first
+use of freed memory, overflow or other error it finds, with where the memory was allocated and freed.
+
 ## Build Issues
 
 **Paths too long on Windows**

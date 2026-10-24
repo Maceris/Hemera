@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -163,6 +164,10 @@ namespace hemera {
 	/// a.b(c)[d] is at the node after it: the member's name, the (, the [, or the ^.
 	/// </summary>
 	struct CheckedBody {
+		/// <summary>
+		/// By node, and a named result's local by its entry in the function's type, which isn't a node
+		/// (is_node tells them apart).
+		/// </summary>
 		std::unordered_map<const ast::Node*, CheckedNode> nodes;
 		/// <summary>
 		/// What a name alone is, before what follows it like .b(c), by the name's node; and for a
@@ -174,6 +179,13 @@ namespace hemera {
 		/// </summary>
 		std::vector<const void*> parameters;
 		std::vector<const void*> outputs;
+
+		/// <summary>
+		/// Whether a key of nodes is an AST node, rather than a named result's entry in the type.
+		/// </summary>
+		bool is_node(const ast::Node* key) const {
+			return std::find(outputs.begin(), outputs.end(), static_cast<const void*>(key)) == outputs.end();
+		}
 		/// <summary>
 		/// How deep in the function's scopes each local is defined: 1 for parameters, and more for
 		/// each block in. A variable lives as long as its scope (docs/memory.md, Pointers to the Stack).
