@@ -1131,6 +1131,74 @@ namespace hemera {
 		return text;
 	}
 
+	/*
+	 * On AArch64 (base/intrinsics/aarch64's RegisterFrame): x0 to x30, then sp_el0, elr, spsr, esr, far and
+	 * the vector, in a 304-byte frame, which keeps the stack pointer 16-byte aligned.
+	 */
+	constexpr int AARCH64_FRAME_SIZE = 304;
+	constexpr int AARCH64_FRAME_SP_EL0 = 248;
+	constexpr int AARCH64_FRAME_ELR = 256;
+	constexpr int AARCH64_FRAME_ESR = 272;
+	constexpr int AARCH64_FRAME_VECTOR = 288;
+
+	// x2 to x30 from the frame at base, which x0 and x1 aren't, being where they're loaded from last.
+	static std::string aarch64_load_registers(std::string_view base) {
+		std::string text;
+		for (int i = 2; i < 30; i += 2) {
+			text += std::format("\tldp x{}, x{}, [{}, #{}]\n", i, i + 1, base, i * 8);
+		}
+		return text + std::format("\tldr x30, [{}, #240]\n", base);
+	}
+
+	/*
+	 * An AArch64 entry function's code, which a vector table entry jumps to with the frame's room made, x0
+	 * and x1 in it, and the entry's index in x0: the rest of the frame, then the body with x29 cleared, so
+	 * stack walks end here. A body that returns is followed by the frame put back and eret, with a barrier
+	 * after it so nothing runs on past it speculatively.
+	 */
+	static std::string entry_assembly_aarch64(std::string_view symbol, std::string_view body, bool returns) {
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", symbol);
+		for (int i = 2; i < 30; i += 2) {
+			text += std::format("\tstp x{}, x{}, [sp, #{}]\n", i, i + 1, i * 8);
+		}
+		text += std::format("\tmrs x1, sp_el0\n\tstp x30, x1, [sp, #240]\n");
+		text += std::format("\tmrs x1, elr_el1\n\tmrs x2, spsr_el1\n\tstp x1, x2, [sp, #{}]\n", AARCH64_FRAME_ELR);
+		text += std::format("\tmrs x1, esr_el1\n\tmrs x2, far_el1\n\tstp x1, x2, [sp, #{}]\n", AARCH64_FRAME_ESR);
+		text += std::format("\tstr x0, [sp, #{}]\n", AARCH64_FRAME_VECTOR);
+		text += std::format("\tmov x29, xzr\n\tmov x30, xzr\n\tmov x0, sp\n\tbl {}\n", body);
+		if (!returns) {
+			return text + "\tbrk #1\n";
+		}
+		text += std::format("\tldp x1, x2, [sp, #{}]\n\tmsr elr_el1, x1\n\tmsr spsr_el1, x2\n", AARCH64_FRAME_ELR);
+		text += std::format("\tldr x1, [sp, #{}]\n\tmsr sp_el0, x1\n", AARCH64_FRAME_SP_EL0);
+		text += aarch64_load_registers("sp");
+		text += std::format("\tldp x0, x1, [sp]\n\tadd sp, sp, #{}\n\teret\n\tdsb nsh\n\tisb\n", AARCH64_FRAME_SIZE);
+		return text;
+	}
+
+	/*
+	 * aarch64.vector_table(handler): 16 entries of 128 bytes, 2 KiB-aligned, each making the frame's room,
+	 * saving x0 and x1, and jumping to handler's code with its index in x0.
+	 */
+	static std::string vector_table_aarch64(std::string_view symbol) {
+		std::string text = std::format("\t.text\n\t.p2align 11\n{}.vector_table:\n", symbol);
+		for (int index = 0; index < 16; ++index) {
+			text += std::format("\t.p2align 7\n\tsub sp, sp, #{}\n\tstp x0, x1, [sp]\n\tmov x0, #{}\n\tb {}\n",
+				AARCH64_FRAME_SIZE, index, symbol);
+		}
+		return text;
+	}
+
+	// aarch64.return_to_user(frame, kernel_stack): the stack pointer, then every register, then eret.
+	static std::string return_to_user_assembly_aarch64() {
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n\tmov sp, x1\n", RETURN_TO_USER_SYMBOL);
+		text += std::format("\tldp x1, x2, [x0, #{}]\n\tmsr elr_el1, x1\n\tmsr spsr_el1, x2\n", AARCH64_FRAME_ELR);
+		text += std::format("\tldr x1, [x0, #{}]\n\tmsr sp_el0, x1\n", AARCH64_FRAME_SP_EL0);
+		text += aarch64_load_registers("x0");
+		text += "\tldp x0, x1, [x0]\n\teret\n\tdsb nsh\n\tisb\n";
+		return text;
+	}
+
 	// A function defined in the module's assembly, declared so code can take its address or call it.
 	static LLVM::LLVMFuncOp assembly_function(Generator& generator, const std::string& symbol, LLVM::LLVMFunctionType type) {
 		if (auto existing = generator.module.lookupSymbol<LLVM::LLVMFuncOp>(symbol)) {
@@ -1208,8 +1276,17 @@ namespace hemera {
 			}
 		}
 		std::string text = exported ? std::format("\t.globl {}\n", symbol) : std::string();
-		text += has_convention(type, "syscall_entry") ? syscall_entry_assembly(symbol, body_symbol)
-			: entry_assembly(symbol, body_symbol, !type->never_returns);
+		if (ArchType::aarch64 == generator.options->architecture) {
+			if (has_convention(type, "syscall_entry")) {
+				unsupported(generator, declaration->node,
+					"#calling_convention(.syscall_entry) is x86-64's: on AArch64, svc reaches the .entry function in the vector table");
+			}
+			text += entry_assembly_aarch64(symbol, body_symbol, !type->never_returns);
+		}
+		else {
+			text += has_convention(type, "syscall_entry") ? syscall_entry_assembly(symbol, body_symbol)
+				: entry_assembly(symbol, body_symbol, !type->never_returns);
+		}
 		generator.module_assembly.push_back(text);
 		generator.functions[declaration] = address;
 		generator.entry_bodies[declaration] = body;
@@ -4193,10 +4270,99 @@ namespace hemera {
 	 * An AArch64 instruction (base/intrinsics/aarch64). Returns false for a name that isn't one of them, or
 	 * isn't generated yet.
 	 */
-	static bool emit_aarch64(Generator& generator, std::string_view name, const std::vector<mlir::Value>& arguments,
+	// A system register's name as the assembler takes any of them, from its encoding (aarch64.SystemRegister).
+	static std::string system_register_name(uint64_t encoding) {
+		return std::format("s{}_{}_c{}_c{}_{}", (encoding >> 14) & 3, (encoding >> 11) & 7, (encoding >> 7) & 15,
+			(encoding >> 3) & 15, encoding & 7);
+	}
+
+	/*
+	 * An AArch64 instruction (base/intrinsics/aarch64), with what's encoded in it from the compile-time
+	 * arguments called was instantiated with. Returns false for a name that isn't one of them.
+	 */
+	static bool emit_aarch64(Generator& generator, std::string_view name, Declaration* called, const std::vector<mlir::Value>& arguments,
 		TypeInfoFunction const* function, Emitted& result) {
 
 		mlir::Type i64 = integer_type(generator, 8);
+		auto generic_integer = [&](size_t index) {
+			const ConstantValue& constant = called->generic_values[index];
+			return static_cast<uint64_t>(ConstantValue::Kind::ENUM_MEMBER == constant.kind
+				? enum_value(function->input[index].type, intern(constant.member)) : constant.integer);
+		};
+		auto generic_member = [&](size_t index) { return called->generic_values[index].member; };
+		auto instruction = [&](const std::string& text, const std::vector<mlir::Value>& operands = {}) {
+			std::string constraints;
+			for (size_t i = 0; i < operands.size(); ++i) {
+				constraints += "r,";
+			}
+			assembly(generator, mlir::Type(), operands, text, constraints + "~{memory}");
+		};
+		const size_t generics = called->generic_values.size();
+		if (name.starts_with("read_system_register") && generics >= 1) {
+			uint64_t encoding = generic_integer(0);
+			if (generics == 5) {
+				encoding = generic_integer(0) << 14 | generic_integer(1) << 11 | generic_integer(2) << 7 | generic_integer(3) << 3
+					| generic_integer(4);
+			}
+			result = intrinsic_value(assembly(generator, i64, {}, std::format("mrs $0, {}", system_register_name(encoding)),
+				"=r,~{memory}"), function);
+			return true;
+		}
+		if (name.starts_with("write_system_register") && generics >= 1) {
+			uint64_t encoding = generic_integer(0);
+			if (generics == 5) {
+				encoding = generic_integer(0) << 14 | generic_integer(1) << 11 | generic_integer(2) << 7 | generic_integer(3) << 3
+					| generic_integer(4);
+			}
+			instruction(std::format("msr {}, $0", system_register_name(encoding)), { arguments.back() });
+			return true;
+		}
+		if ((name.starts_with("daif_set[") || name.starts_with("daif_clear[")) && generics == 1) {
+			instruction(std::format("msr {}, #{}", name.starts_with("daif_set") ? "daifset" : "daifclr", generic_integer(0) & 15));
+			return true;
+		}
+		if ((name.starts_with("dsb[") || name.starts_with("dmb[")) && generics == 1) {
+			std::string domain = generic_member(0);
+			std::transform(domain.begin(), domain.end(), domain.begin(), [](char c) { return static_cast<char>(std::tolower(c)); });
+			instruction(std::format("{} {}", name.substr(0, 3), domain));
+			return true;
+		}
+		if (name.starts_with("brk[") && generics == 1) {
+			instruction(std::format("brk #{}", generic_integer(0) & 0xffff));
+			return true;
+		}
+		// One instruction named after the function, with no operands or with the one it takes
+		if (name == "isb" || name == "wfi" || name == "wfe" || name == "sev" || name == "sevl" || name == "ic_iallu"
+			|| name == "ic_ialluis" || name == "tlbi_vmalle1" || name == "tlbi_vmalle1is") {
+			std::string text(name);
+			std::replace(text.begin(), text.end(), '_', ' ');
+			instruction(text);
+			return true;
+		}
+		if (name.starts_with("tlbi_") || name.starts_with("dc_") || name.starts_with("ic_") || name.starts_with("at_")) {
+			std::string text(name);
+			const size_t space = text.find('_');
+			text[space] = ' ';
+			instruction(text + ", $0", { arguments[0] });
+			return true;
+		}
+		if (name == "rndr" || name == "rndrrs") {
+			// The value, and whether it was ready: Z is set when it wasn't
+			mlir::Value both = assembly(generator, LLVM::LLVMStructType::getLiteral(generator.context, { i64, i64 }), {},
+				std::format("mrs $0, {}\n\tcset $1, ne", system_register_name(name == "rndr" ? 0xd920 : 0xd921)), "=r,=r,~{memory},~{cc}");
+			TypeInfo* type = function->output[0].type;
+			mlir::Value ready = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::ne,
+				extract(generator, both, 1), constant_int(generator, i64, 0));
+			mlir::Value some = make_variant(generator, type, 0, { extract(generator, both, 0) }, { BUILTIN_u64 });
+			mlir::Value none = make_variant(generator, type, variant_named(type, "None"), {}, {});
+			result = value(LLVM::SelectOp::create(generator.builder, generator.loc, ready, some, none), type);
+			return true;
+		}
+		if (name == "semihosting") {
+			result = intrinsic_value(assembly(generator, i64, arguments, "hlt #0xf000", "={x0},{x0},{x1},~{memory}"), function);
+			return true;
+		}
+
 		if (name == "syscall") {
 			// Linux's convention: the number in x8, up to six arguments in x0 to x5, the result in x0
 			std::vector<mlir::Value> operands(arguments.begin() + 1, arguments.end());
@@ -5201,16 +5367,22 @@ namespace hemera {
 		}
 		// Generated assembly, made once (docs/calling_convention.md, Entry Functions)
 		if (name == "return_to_user") {
+			const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
 			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(RETURN_TO_USER_SYMBOL)) {
-				generator.module_assembly.push_back(return_to_user_assembly());
+				generator.module_assembly.push_back(aarch64 ? return_to_user_assembly_aarch64() : return_to_user_assembly());
 			}
+			std::vector<mlir::Type> parameters(arguments.size(), pointer_type(generator));
 			LLVM::LLVMFuncOp helper = assembly_function(generator, std::string(RETURN_TO_USER_SYMBOL),
-				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), { pointer_type(generator) }));
-			LLVM::CallOp::create(b, l, helper, mlir::ValueRange{ arguments[0] });
+				LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(generator.context), parameters));
+			LLVM::CallOp::create(b, l, helper, mlir::ValueRange(arguments));
 			return never_returning();
 		}
 		if (emit_fiber_intrinsic(generator, name, function, arguments, where, result)) {
 			return result;
+		}
+		if (name.starts_with("entry_points[") && ArchType::x86_64 != generator.options->architecture) {
+			unsupported(generator, where, "entry_points is x86-64's: on AArch64, aarch64.vector_table makes an entry function's vector table");
+			return value(zero_of(generator, pointer_type(generator)), result_type);
 		}
 		if (name.starts_with("entry_points[") && called->generic_values.size() == 1) {
 			Declaration* handler = called->generic_values[0].function;
@@ -5222,12 +5394,26 @@ namespace hemera {
 			LLVM::LLVMFuncOp address = function_for(generator, handler);
 			return value(entry_points_of(generator, address.getSymName().str()), result_type);
 		}
+		if (name.starts_with("vector_table[") && called->generic_values.size() == 1) {
+			Declaration* handler = called->generic_values[0].function;
+			if (handler == nullptr || !is_entry_function(static_cast<TypeInfoFunction const*>(handler->value_type))) {
+				unsupported(generator, where, "vector_table takes a #calling_convention(.entry) function");
+				return value(zero_of(generator, pointer_type(generator)), result_type);
+			}
+			const std::string symbol = function_for(generator, handler).getSymName().str();
+			const std::string table = symbol + ".vector_table";
+			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(table)) {
+				generator.module_assembly.push_back(vector_table_aarch64(symbol));
+			}
+			LLVM::LLVMFuncOp address = assembly_function(generator, table, no_arguments(generator));
+			return value(LLVM::AddressOfOp::create(b, l, address), result_type);
+		}
 		// Each architecture's instructions, from its own package (base/intrinsics/platform.hsc)
 		const std::string_view package = called->package_path != nullptr ? std::string_view(*called->package_path) : std::string_view();
 		if (package.ends_with("intrinsics/x86_64") && emit_x86_64(generator, name, arguments, function, result)) {
 			return result;
 		}
-		if (package.ends_with("intrinsics/aarch64") && emit_aarch64(generator, name, arguments, function, result)) {
+		if (package.ends_with("intrinsics/aarch64") && emit_aarch64(generator, name, called, arguments, function, result)) {
 			return result;
 		}
 		unsupported(generator, where, std::format("the intrinsic {} can't be generated yet", full_name));
@@ -9671,9 +9857,12 @@ namespace hemera {
 			features += features.empty() ? "+reserve-r14" : ",+reserve-r14";
 		}
 		if (ArchType::aarch64 == options.architecture) {
-			// ARMv8.2-A with LSE atomics unless the CPU says otherwise, like x86-64-v3 for x86
+			/*
+			 * ARMv8.2-A with LSE atomics unless the CPU says otherwise, like x86-64-v3 for x86. First, so the
+			 * target's own features, like a kernel's -fp-armv8, come after and win
+			 */
 			if (options.cpu.empty() || options.cpu == "generic") {
-				features += features.empty() ? "+v8.2a,+lse" : ",+v8.2a,+lse";
+				features = features.empty() ? "+v8.2a,+lse" : "+v8.2a,+lse," + features;
 			}
 			features += features.empty() ? "+reserve-x28" : ",+reserve-x28";
 		}

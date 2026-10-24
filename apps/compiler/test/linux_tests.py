@@ -120,7 +120,10 @@ def main() -> int:
     compiler = os.environ.get("HEMERA", str(release if release.exists() else COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
     architecture = os.environ.get("HEMERA_LINUX_ARCH", "x86_64")
     aarch64 = architecture == "aarch64"
-    sysroot = os.environ.get("HEMERA_LINUX_SYSROOT_AARCH64", "D:/Programs/System Tools/linux-sysroot-aarch64") if aarch64         else os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
+    if aarch64:
+        sysroot = os.environ.get("HEMERA_LINUX_SYSROOT_AARCH64", "D:/Programs/System Tools/linux-sysroot-aarch64")
+    else:
+        sysroot = os.environ.get("HEMERA_LINUX_SYSROOT", "D:/Programs/System Tools/linux-sysroot")
     folder = "hemera-tests-aarch64" if aarch64 else "hemera-tests"
     only = [name for name in os.environ.get("HEMERA_LINUX_TESTS", "").split(",") if name]
     tests = [test for test in TESTS if (not only or test[0] in only) and not (aarch64 and test[0] in UNDER_VALGRIND)]

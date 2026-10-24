@@ -573,7 +573,7 @@ page_fault #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.InterruptFram
 
 ### Entry Functions
 
-Entry functions are how a kernel is entered from user mode, and returns to it (x86-64 only for now). Unlike an
+Entry functions are how a kernel is entered from user mode, and returns to it (x86-64 and AArch64). Unlike an
 [interrupt function](#interrupt-functions), an entry function gets every register of the interrupted code as data,
 in a `RegisterFrame`, and doesn't have to return to it: a kernel can save the frame, switch to another thread, and
 leave with `x86_64.return_to_user`.
@@ -630,6 +630,40 @@ layout is part of the convention version, a kernel may keep frames in its thread
 them.
 
 The compiler generates these sequences itself; Hemera has no inline assembly.
+
+#### AArch64
+
+On AArch64 every exception, a system call (`svc`) included, comes through one vector table, so there's only
+`#calling_convention(.entry)`, and the frame is an `aarch64.RegisterFrame`: `x0` to `x30`, `sp_el0`, `elr`, `spsr`,
+`esr`, `far`, and which of the table's 16 entries it came through (`vector`, a `VECTOR_*` plus an `ExceptionKind`),
+304 bytes in all. `aarch64.vector_table(handler)` gives the table for `VBAR_EL1`, 2 KiB-aligned, generated once per
+handler:
+
+```
+exception #calling_convention(.entry) :: fn(frame: ptr[mut aarch64.RegisterFrame]) {/* ... */}
+
+aarch64.write_system_register(.VBAR_EL1, cast[u64](aarch64.vector_table(exception)))
+aarch64.isb()
+```
+
+1. Each of the table's 16 entries makes room for the frame on the stack (`SP_EL1`, which every exception taken to EL1
+   uses), saves `x0` and `x1`, puts its index in `x0`, and branches to the function's generated code.
+2. That saves the rest: `x2` to `x30`, `sp_el0`, `elr_el1`, `spsr_el1`, `esr_el1`, `far_el1` and the index.
+3. It clears `x29` and `x30`, so stack walks end at the entry, and calls the body with a pointer to the frame. As on
+   x86-64, the body has no stack check, carrier block or context until it sets them up.
+4. A body that returns is followed by the frame restored and `eret`, with a barrier after it so nothing runs past it
+   speculatively. Here returning is the usual way out of an exception, not only for NMIs; one that never returns, like
+   a system call path that switches threads, is `#never_returns`.
+
+Interrupts stay masked, as the CPU masks them on taking an exception. `aarch64.return_to_user(frame, kernel_stack)`
+restores every register from a frame and returns with `eret`, putting the stack pointer at `kernel_stack` first:
+AArch64 has no TSS, so the stack pointer at `eret` is where the next exception's frame goes. Interrupts must stay
+masked until it returns.
+
+`base/intrinsics/aarch64` also has what a kernel needs around it: `read_system_register` and `write_system_register`,
+with the register as a compile-time argument (`aarch64.SystemRegister`, whose values are the registers' encodings,
+or `read_system_register_encoded` for others), `daif_set` and `daif_clear`, `dsb`, `dmb` and `isb`, TLB, cache and
+address translation maintenance, `wfi` and `wfe`, `rndr`, `brk`, and `semihosting`.
 
 ### Functions Entered from Outside
 

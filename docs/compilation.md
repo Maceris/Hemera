@@ -439,6 +439,11 @@ is for ARMv8.2-A with the LSE atomics, which every 64-bit Arm server and desktop
 The carrier register is `x28` (see [calling_convention.md](calling_convention.md#carrier-register)). An x86-64 Linux
 machine can run the programs with `qemu-user`, given the AArch64 C library for those that link it.
 
+A freestanding AArch64 program, like a kernel, builds the same way as on x86-64, usually with
+`--cpu-features=-fp-armv8,-neon` so nothing uses floating point or SIMD registers, which trap until `CPACR_EL1` enables
+them, and `+strict-align` for code that runs before the MMU is on, when memory is Device memory and unaligned accesses
+fault. `apps/compiler/test/freestanding_tests.py` boots one in QEMU's `virt` machine.
+
 ### Linking C on Linux
 
 A hosted Linux program is normally static, with no C library: the runtime makes its own system calls

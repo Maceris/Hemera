@@ -210,7 +210,8 @@ timer_interrupt #calling_convention(.interrupt) :: fn(frame: ptr[x86_64.Interrup
 ```
 
 `#calling_convention(.entry)` and `#calling_convention(.syscall_entry)` make a function a kernel entry point, which gets
-the interrupted code's registers as an `x86_64.RegisterFrame` (x86-64 only).
+the interrupted code's registers as an `x86_64.RegisterFrame`, or an `aarch64.RegisterFrame` on AArch64, which has
+`.entry` only.
 See [calling_convention.md](calling_convention.md#entry-functions).
 
 ### `#never_returns`
