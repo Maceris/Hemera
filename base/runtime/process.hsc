@@ -19,6 +19,9 @@ ProcessState :: struct {
     argument_count : usize,
     argument_pointers : rawptr,
     environment_pointers : rawptr,
+    // On SlopOS, the startup block the entry was given, and how much of its free range the heap has mapped
+    startup_block : rawptr,
+    mapped : u64,
     // process_arguments: 0 until someone starts on them, 1 while they're worked out, 2 once they're there
     arguments_state : u32,
     arguments : string[],

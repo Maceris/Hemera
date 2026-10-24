@@ -156,6 +156,8 @@ namespace hemera {
 			case OSType::MacOSX: return llvm::Triple::OSType::MacOSX;
 			case OSType::NetBSD: return llvm::Triple::OSType::NetBSD;
 			case OSType::OpenBSD: return llvm::Triple::OSType::OpenBSD;
+			// LLVM doesn't know it: code for no particular OS, in ELF
+			case OSType::SlopOS: return llvm::Triple::OSType::UnknownOS;
 			case OSType::UEFI: return llvm::Triple::OSType::UEFI;
 			case OSType::Win32: return llvm::Triple::OSType::Win32;
 		}
@@ -659,7 +661,9 @@ namespace hemera {
 		 * A position-independent executable relocates itself, which freestanding programs like a
 		 * relocatable kernel do; a hosted one has no C library to do it, so it's linked at a fixed address
 		 */
-		if (TargetRelocationModel::PositionIndependent == options.relocation_model && !options.startup_code) {
+		if (TargetRelocationModel::PositionIndependent == options.relocation_model
+			&& (!options.startup_code || OSType::SlopOS == options.os)) {
+			// A SlopOS program's loader relocates it, as Limine does a kernel
 			args.insert(args.end(), { "-pie", "--no-dynamic-linker" });
 		}
 		const bool linux_start = options.startup_code && OSType::Linux == options.os && ArchType::x86_64 == options.architecture;

@@ -249,3 +249,12 @@ later :: fn() {
 }
 
 #assert align_of(Point) == 8
+
+// Constants an #assert works out: bitwise operators, shifts, and casts between integer types, which wrap
+Flags :: distinct alias u32
+FLAG_READ : Flags : 1 << 0
+FLAG_WRITE : Flags : 1 << 1
+WIDE : u64 : 1 << 40
+#assert cast[u32](FLAG_READ | FLAG_WRITE) == 3
+#assert (0xf0 & 0x3c) == 0x30 && (0xf0 ~ 0xff) == 0x0f && ~0 == -1
+#assert WIDE >> 38 == 4 && cast[u8](300) == 44 && cast[i8](200) == -56 && cast[u64](WIDE) == WIDE

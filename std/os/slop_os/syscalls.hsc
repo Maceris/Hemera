@@ -174,7 +174,15 @@ Syscalls :: struct {
     intercept_next : fn(intercept: Intercept, stop: ptr[mut StopInfo]) -> Result[void, ControlError],
     intercept_resume : fn(intercept: Intercept, thread: u64, action: InterceptAction) -> Result[void, ControlError],
     process_kill : fn(process: Process) -> Result[void, ControlError],
+    // The calling process ends, with its subtree, giving code to whoever watches it end.
+    process_exit : fn(code: u32) #never_returns,
 }
+
+/*
+ * How a process ended, in the data[1] of the Signal packet its SIGNAL_TERMINATED raises: the code it
+ * gave process_exit, or EXIT_KILLED when it was killed, which no code can be.
+ */
+EXIT_KILLED : u64 : 1 << 32
 
 #insert syscall_numbers()
 #insert syscall_stubs()

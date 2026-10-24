@@ -315,6 +315,11 @@ namespace hemera {
         /// </summary>
         OpenBSD,
         /// <summary>
+        /// SlopOS: programs are position-independent ELF executables a loader relocates, started with
+        /// one argument, the process's startup block.
+        /// </summary>
+        SlopOS,
+        /// <summary>
         /// For building a low-level application, bootloader, or UEFI driver
         /// on top of UEFI.
         /// </summary>

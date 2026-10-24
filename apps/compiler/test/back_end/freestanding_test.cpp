@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <set>
@@ -19,6 +20,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "mlir/IR/BuiltinDialect.h"
 
@@ -26,13 +28,9 @@ static std::filesystem::path scenario(std::string_view name) {
 	return std::filesystem::path(__FILE__).remove_filename() / "scenarios" / name;
 }
 
-/*
- * Compiles the freestanding scenario the whole way to an ELF at output, the way SlopOS builds a
- * kernel: no startup code, no red zone, no SIMD, stack checks that trap, position-independent,
- * placed by a linker script.
- */
-static void build_kernel(const std::filesystem::path& output, hemera::TargetStackCheck stack_check = hemera::TargetStackCheck::Trap,
-	std::string_view name = "freestanding", bool generate_all = false) {
+// Compiles a scenario the whole way to an ELF at output, with the options configure sets.
+static void build_elf(const std::filesystem::path& output, std::string_view name, bool generate_all,
+	const std::function<void(hemera::Options&)>& configure) {
 	hemera::reset_reporting_storage();
 	StringCacheGuard string_cache;
 
@@ -51,16 +49,10 @@ static void build_kernel(const std::filesystem::path& output, hemera::TargetStac
 		std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path() / "std");
 	options.generate_all = generate_all;
 	options.output_name = output.string();
-	options.os = hemera::OSType::UnknownOS;
 	options.vendor = hemera::VendorType::UnknownVendor;
 	options.environment = hemera::EnvironmentType::UnknownEnvironment;
 	options.object_format = hemera::ObjectFormatType::ELF;
-	options.cpu_features = "-mmx,-sse,-sse2,-avx,-avx2,+soft-float";
-	options.red_zone = false;
-	options.stack_check = stack_check;
-	options.startup_code = false;
-	options.entry = "kernel_entry";
-	options.linker_script = std::filesystem::canonical(scenario("freestanding") / "linker.ld");
+	configure(options);
 	const std::string object_file = std::format("{}.o", options.output_name);
 	std::filesystem::remove(options.output_name);
 
@@ -79,6 +71,24 @@ static void build_kernel(const std::filesystem::path& output, hemera::TargetStac
 	backend.destroy();
 	ASSERT_EQ(hemera::error_count(), 0);
 	module.erase();
+}
+
+/*
+ * Compiles the freestanding scenario the whole way to an ELF at output, the way SlopOS builds a
+ * kernel: no startup code, no red zone, no SIMD, stack checks that trap, position-independent,
+ * placed by a linker script.
+ */
+static void build_kernel(const std::filesystem::path& output, hemera::TargetStackCheck stack_check = hemera::TargetStackCheck::Trap,
+	std::string_view name = "freestanding", bool generate_all = false) {
+	build_elf(output, name, generate_all, [&](hemera::Options& options) {
+		options.os = hemera::OSType::UnknownOS;
+		options.cpu_features = "-mmx,-sse,-sse2,-avx,-avx2,+soft-float";
+		options.red_zone = false;
+		options.stack_check = stack_check;
+		options.startup_code = false;
+		options.entry = "kernel_entry";
+		options.linker_script = std::filesystem::canonical(scenario("freestanding") / "linker.ld");
+	});
 }
 
 static std::string bytes_of(const std::filesystem::path& file) {
@@ -193,4 +203,50 @@ TEST(Freestanding, BuildsWithMorestack)
 		found = found || (name && *name == "hemera.morestack");
 	}
 	EXPECT_TRUE(found);
+}
+
+/*
+ * A program for SlopOS: a position-independent executable its loader relocates, whose only relocations
+ * are relative ones, entered at the generated entry, which takes the process's startup block.
+ */
+TEST(Freestanding, BuildsSlopOSProgram)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "slop_os_program" / "program.elf";
+	build_elf(output, "slop_os_program", false, [](hemera::Options& options) {
+		options.os = hemera::OSType::SlopOS;
+		options.cpu = "x86-64-v3";
+		options.relocation_model = hemera::TargetRelocationModel::PositionIndependent;
+	});
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
+	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
+	auto* elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(binary->getBinary());
+	ASSERT_NE(elf, nullptr);
+	EXPECT_EQ(elf->getELFFile().getHeader().e_type, llvm::ELF::ET_DYN);
+	uint64_t entry_address = 0;
+	for (const llvm::object::SymbolRef& symbol : elf->symbols()) {
+		auto name = symbol.getName();
+		auto address = symbol.getAddress();
+		if (name && address && *name == "hemera_entry") {
+			entry_address = *address;
+		}
+	}
+	auto start = elf->getStartAddress();
+	ASSERT_TRUE(static_cast<bool>(start));
+	EXPECT_NE(entry_address, 0u);
+	EXPECT_EQ(*start, entry_address);
+	size_t relocations = 0;
+	for (const llvm::object::SectionRef& section : elf->sections()) {
+		auto name = section.getName();
+		if (!name || *name != ".rela.dyn") {
+			continue;
+		}
+		for (const llvm::object::RelocationRef& relocation : section.relocations()) {
+			EXPECT_EQ(relocation.getType(), llvm::ELF::R_X86_64_RELATIVE);
+			++relocations;
+		}
+	}
+	EXPECT_GT(relocations, 0u);
 }

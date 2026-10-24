@@ -11,7 +11,7 @@ import intrinsics from "base"
  * A wait whose value already changed returns at once. Without an operating system to sleep on,
  * waiting just spins once, so callers loop the same either way.
  */
-// Windows' are in windows.hsc, and Linux's on x86-64 in linux.hsc
+// Windows' are in windows.hsc, and Linux's on x86-64 in linux.hsc; SlopOS has its own output, exit and context
 #if OS != .Windows && !(OS == .Linux && TARGET_ARCH == .x86_64) {
     wait_on_value :: fn(address: ptr[u32], expected: u32) {
         intrinsics.spin_hint()
@@ -34,6 +34,9 @@ import intrinsics from "base"
         return empty
     }
 
+}
+
+#if OS != .Windows && !(OS == .Linux && TARGET_ARCH == .x86_64) && !(OS == .SlopOS && TARGET_ARCH == .x86_64) {
     // No standard output or error to write to
     os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
 

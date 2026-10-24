@@ -96,7 +96,7 @@ stub :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
     words :: argument_words(function, member.name)
     if function.never_returns {
         return #code {
-            #insert compiler.name(member.name) :: fn() #never_returns #no_context {
+            #insert compiler.name(member.name) :: fn(#insert compiler.parameters(signature)) #never_returns #no_context {
                 _ = system_call(#insert number, #insert words)
                 loop {
                 }

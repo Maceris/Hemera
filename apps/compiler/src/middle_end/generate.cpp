@@ -7336,9 +7336,17 @@ namespace hemera {
 		 * program links C, and by _start otherwise, which finds them on the stack the kernel set up
 		 */
 		const bool linux_x86 = OSType::Linux == generator.options->os && ArchType::x86_64 == generator.options->architecture;
+		/*
+		 * On SlopOS the entry is where the process starts, called as a function is with one argument, the
+		 * process's startup block, and nothing to return to: it ends the process with main's result
+		 */
+		const bool slop_os = OSType::SlopOS == generator.options->os;
 		std::vector<mlir::Type> entry_parameters;
 		if (linux_x86) {
 			entry_parameters = { i32, pointer_type(generator), pointer_type(generator) };
+		}
+		else if (slop_os) {
+			entry_parameters = { pointer_type(generator) };
 		}
 		auto entry_function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, HOSTED_ENTRY_SYMBOL,
 			LLVM::LLVMFunctionType::get(i32, entry_parameters));
@@ -7346,11 +7354,16 @@ namespace hemera {
 		generator.builder.setInsertionPointToEnd(entry_block);
 		mlir::Value one = constant_int(generator, usize_type(generator), 1);
 		// What the process started with, for runtime.process_arguments and std/os's environment
-		LLVM::GlobalOp process = linux_x86 ? process_state_global(generator) : LLVM::GlobalOp();
+		LLVM::GlobalOp process = linux_x86 || slop_os ? process_state_global(generator) : LLVM::GlobalOp();
+		size_t startup_block = 0;
+		if (slop_os && process && runtime_offset(generator, "ProcessState", "startup_block", startup_block)) {
+			mlir::Value state = LLVM::AddressOfOp::create(generator.builder, generator.loc, process);
+			LLVM::StoreOp::create(generator.builder, generator.loc, entry_block->getArgument(0), offset_address(generator, state, startup_block));
+		}
 		size_t argument_count = 0;
 		size_t argument_pointers = 0;
 		size_t environment_pointers = 0;
-		if (process && runtime_offset(generator, "ProcessState", "argument_count", argument_count)
+		if (linux_x86 && process && runtime_offset(generator, "ProcessState", "argument_count", argument_count)
 			&& runtime_offset(generator, "ProcessState", "argument_pointers", argument_pointers)
 			&& runtime_offset(generator, "ProcessState", "environment_pointers", environment_pointers)) {
 			mlir::Value state = LLVM::AddressOfOp::create(generator.builder, generator.loc, process);
@@ -7412,6 +7425,14 @@ namespace hemera {
 			else if (width < 32) {
 				code = LLVM::SExtOp::create(generator.builder, generator.loc, i32, code);
 			}
+		}
+		// The process ends with main's result, through base/runtime, which knows the call
+		if (slop_os) {
+			if (Declaration* exits = base_declaration_named(generator, "runtime", "os_exit_process")) {
+				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, exits), mlir::ValueRange{ code });
+			}
+			LLVM::UnreachableOp::create(generator.builder, generator.loc);
+			return;
 		}
 		if (!windows) {
 			if (callers_carrier) {
@@ -8230,7 +8251,7 @@ namespace hemera {
 
 		const char* operating_system_name(OSType os) {
 			return OSType::Win32 == os ? "Windows" : OSType::Linux == os ? "Linux" : OSType::Darwin == os || OSType::MacOSX == os ? "Mac"
-				: OSType::UEFI == os ? "UEFI" : "None";
+				: OSType::UEFI == os ? "UEFI" : OSType::SlopOS == os ? "SlopOS" : "None";
 		}
 
 		// The options given on the command line, as BuildOptions.
@@ -9043,8 +9064,9 @@ namespace hemera {
 		if (target.os == "Windows") {
 			result.os = OSType::Win32;
 		}
-		else if (target.os == "Linux" || target.os == "None" || target.os == "UEFI") {
-			result.os = target.os == "Linux" ? OSType::Linux : target.os == "UEFI" ? OSType::UEFI : OSType::UnknownOS;
+		else if (target.os == "Linux" || target.os == "None" || target.os == "UEFI" || target.os == "SlopOS") {
+			result.os = target.os == "Linux" ? OSType::Linux : target.os == "UEFI" ? OSType::UEFI
+				: target.os == "SlopOS" ? OSType::SlopOS : OSType::UnknownOS;
 			result.object_format = target.os == "UEFI" ? ObjectFormatType::COFF : ObjectFormatType::ELF;
 			result.environment = EnvironmentType::UnknownEnvironment;
 			result.vendor = VendorType::UnknownVendor;

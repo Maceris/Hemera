@@ -9,6 +9,15 @@ we stop the build and throw an error.
 #assert size_of(Foo) >= size_of(Bar)
 ```
 
+The condition is worked out when compiling: literals and named constants, with arithmetic, comparisons, `&&` and `||`,
+the bitwise operators and shifts, `cast` from one integer type to another (which wraps, as at run time), builtins like
+`size_of` and `offset_of`, and calls, which are run at compile time.
+
+```
+#assert cast[u32](READ | WRITE) == 3
+#assert cast[u8](300) == 44
+```
+
 We also have a runtime assert, where the handler can be specified, and the compiler
 will behave similarly if you do a `#run assert(/*...*/, "Custom error here")`, but that version
 allows for a specific error message instead of the `#assert /* expression */` reporting style.

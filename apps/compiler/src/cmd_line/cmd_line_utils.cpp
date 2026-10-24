@@ -698,6 +698,10 @@ namespace hemera {
 					output.os = OSType::OpenBSD;
 					os_seen = true;
 				}
+				else if (strcmp("slopos", first_arg.c_str()) == 0) {
+					output.os = OSType::SlopOS;
+					os_seen = true;
+				}
 				else if (strcmp("uefi", first_arg.c_str()) == 0) {
 					output.os = OSType::UEFI;
 					os_seen = true;

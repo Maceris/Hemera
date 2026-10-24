@@ -1617,6 +1617,7 @@ namespace hemera {
 			case OSType::Darwin:
 			case OSType::MacOSX: return "Mac";
 			case OSType::UEFI: return "UEFI";
+			case OSType::SlopOS: return "SlopOS";
 			case OSType::UnknownOS:
 			case OSType::FreeBSD:
 			case OSType::NetBSD:
@@ -2349,6 +2350,12 @@ namespace hemera {
 			result.integer = -operand.integer;
 			return Progress::DONE;
 		}
+		// ~x, every bit flipped
+		if (TokenType::OPERATOR_BITWISE_XOR == op && ConstantValue::Kind::INTEGER == operand.kind) {
+			result.kind = ConstantValue::Kind::INTEGER;
+			result.integer = ~operand.integer;
+			return Progress::DONE;
+		}
 		report_not_constant(walk.file_path, node, "this operator isn't supported for that value");
 		return Progress::FAILED;
 	}
@@ -2403,6 +2410,18 @@ namespace hemera {
 			if (TokenType::OPERATOR_DIVIDE == op && b != 0) { result.integer = a / b; return Progress::DONE; }
 			if ((TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op) && b != 0) {
 				result.integer = a % b;
+				return Progress::DONE;
+			}
+			// The bitwise operators, and shifts by 0 to 63 bits
+			if (TokenType::SYM_AMPERSAND == op) { result.integer = a & b; return Progress::DONE; }
+			if (TokenType::OPERATOR_BITWISE_OR == op) { result.integer = a | b; return Progress::DONE; }
+			if (TokenType::OPERATOR_BITWISE_XOR == op) { result.integer = a ^ b; return Progress::DONE; }
+			const bool shift = TokenType::OPERATOR_LEFT_SHIFT == op || TokenType::OPERATOR_RIGHT_SHIFT_ARITHMETIC == op
+				|| TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op;
+			if (shift && b >= 0 && b < 64) {
+				const uint64_t bits = static_cast<uint64_t>(a);
+				result.integer = TokenType::OPERATOR_LEFT_SHIFT == op ? static_cast<int64_t>(bits << b)
+					: TokenType::OPERATOR_RIGHT_SHIFT_LOGICAL == op ? static_cast<int64_t>(bits >> b) : a >> b;
 				return Progress::DONE;
 			}
 		}
@@ -2475,6 +2494,45 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	static Progress evaluate(Walk& walk, ast::Node* node, ConstantValue& result);
+
+	// cast[T](x) of an integer to an integer type: x as a T holds it, wrapped to T's width.
+	static Progress evaluate_cast(Walk& walk, ast::Node* node, ConstantValue& result) {
+		if (TokenType::KEYWORD_CAST != node->value.type || node->children.size() != 2) {
+			report_not_constant(walk.file_path, node, "only cast is supported among the casts here");
+			return Progress::FAILED;
+		}
+		Progress progress = walk_node(walk, node->children[0], Need::RESOLVED);
+		TypeInfo* target = nullptr;
+		if (progress == Progress::DONE) {
+			progress = type_of(walk, node->children[0], Need::RESOLVED, target);
+		}
+		ConstantValue value;
+		if (progress == Progress::DONE) {
+			progress = evaluate(walk, node->children[1], value);
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		TypeInfo const* integer = target != nullptr ? get_base_type(target) : nullptr;
+		if (ConstantValue::Kind::INTEGER != value.kind || integer == nullptr || TypeInfoVariant::INTEGER != integer->variant) {
+			report_not_constant(walk.file_path, node, "only an integer cast to an integer type is supported here");
+			return Progress::FAILED;
+		}
+		result.kind = ConstantValue::Kind::INTEGER;
+		result.integer = value.integer;
+		const size_t bits = integer->size * 8;
+		if (bits < 64) {
+			const uint64_t mask = (uint64_t{ 1 } << bits) - 1;
+			uint64_t wrapped = static_cast<uint64_t>(value.integer) & mask;
+			if (static_cast<TypeInfoInteger const*>(integer)->is_signed && (wrapped >> (bits - 1)) != 0) {
+				wrapped |= ~mask;
+			}
+			result.integer = static_cast<int64_t>(wrapped);
+		}
+		return Progress::DONE;
+	}
+
 	static Progress evaluate(Walk& walk, ast::Node* node, ConstantValue& result) {
 		const TokenType token = node->value.type;
 		if (TokenType::KEYWORD_TRUE == token || TokenType::KEYWORD_FALSE == token) {
@@ -2532,6 +2590,9 @@ namespace hemera {
 		}
 		if (ast::NodeType::BINARY_OPERATOR == type && node->children.size() == 2) {
 			return evaluate_binary(walk, node, result);
+		}
+		if (ast::NodeType::CAST == type) {
+			return evaluate_cast(walk, node, result);
 		}
 		report_not_constant(walk.file_path, node, "not supported in a compile-time constant yet");
 		return Progress::FAILED;
