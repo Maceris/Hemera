@@ -31,7 +31,7 @@ letters :: fn(text: string) -> int {
     return found
 }
 
-// A constant's untyped string has a string's members, and is indexed as one
+// A constant's untyped string has a string's members, is indexed as one, and is gone through as one
 PUNCTUATION :: "-=[]"
 
 main :: fn() -> int {
@@ -41,6 +41,11 @@ main :: fn() -> int {
     errors += check(kind("") == 3 && kind("arm,gic-v") == 4 && kind("pci-host-ecam-generic!") == 4, 3)
     errors += check(letters("a") == 11 && letters("b") == 10 && letters("c") == 100, 4)
     errors += check(PUNCTUATION.count == 4 && PUNCTUATION[2] == '[', 5)
+    sum := 0
+    for character, i in PUNCTUATION {
+        sum += cast[int](character) * cast[int](i + 1)
+    }
+    errors += check(sum == 45 + 61 * 2 + 91 * 3 + 93 * 4, 6)
     if errors == 0 {
         return 42
     }

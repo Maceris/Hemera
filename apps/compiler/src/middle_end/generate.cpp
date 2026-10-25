@@ -812,6 +812,7 @@ namespace hemera {
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where);
 	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type);
 	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right);
+	static mlir::Value values_equal(Generator& generator, mlir::Value left, mlir::Value right, TypeInfo const* type);
 
 	/*
 	 * docs/types.md, Relative Pointers: the pointer a relative pointer of type at address holds, its offset from its own
@@ -6932,6 +6933,14 @@ namespace hemera {
 					return value(TokenType::OPERATOR_EQUAL == op ? equal : negate(generator, equal), BUILTIN_bool);
 				}
 			}
+			// Arrays element by element, structs member by member, tagged unions by their variant and its values
+			if ((TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) && (is_variant(type, TypeInfoVariant::STRUCT)
+				|| is_variant(type, TypeInfoVariant::UNION) || is_variant(type, TypeInfoVariant::ARRAY))) {
+				mlir::Value left_address = address_of(generator, emit_expression(generator, left_node, type));
+				mlir::Value right_address = address_of(generator, emit_expression(generator, right_node, type));
+				mlir::Value equal = values_equal(generator, left_address, right_address, type);
+				return value(TokenType::OPERATOR_EQUAL == op ? equal : negate(generator, equal), BUILTIN_bool);
+			}
 			if (is_variant(type, TypeInfoVariant::STRING) || is_variant(type, TypeInfoVariant::STRUCT) || is_variant(type, TypeInfoVariant::UNION)
 				|| is_variant(type, TypeInfoVariant::ARRAY)) {
 				unsupported(generator, node, std::format("comparing {} values can't be generated yet", to_string(type)));
@@ -7190,6 +7199,101 @@ namespace hemera {
 		mlir::Value same_bytes = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, difference.getResult(),
 			constant_int(generator, integer_type(generator, 4), 0));
 		return LLVM::AndOp::create(b, l, same_count, same_bytes);
+	}
+
+	// Whether a type's values are equal exactly when their bytes are: integers, booleans, characters, enums, pointers.
+	static bool equal_by_bytes(TypeInfo const* type) {
+		const TypeInfoVariant variant = base(type)->variant;
+		return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::CHAR == variant
+			|| TypeInfoVariant::ENUM == variant || TypeInfoVariant::POINTER == variant;
+	}
+
+	/*
+	 * Whether the values of type at left and right are equal, as an i1 (docs/types.md, Equality): a fixed array's
+	 * elements, by memcmp where their bytes say, otherwise one at a time; a struct's members, its padding not; a tagged
+	 * union's variant, then that variant's values; a string's bytes; anything else as == compares it.
+	 */
+	static mlir::Value values_equal(Generator& generator, mlir::Value left, mlir::Value right, TypeInfo const* type) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfo const* t = base(type);
+		if (TypeInfoVariant::ARRAY == t->variant) {
+			auto array = static_cast<TypeInfoArray const*>(t);
+			TypeInfo const* element = array->element_type;
+			if (equal_by_bytes(element)) {
+				mlir::Value bytes = constant_int(generator, usize_type(generator), static_cast<int64_t>(array->count * base(element)->size));
+				auto difference = LLVM::CallOp::create(b, l, memcmp_function(generator), mlir::ValueRange{ left, right, bytes });
+				return LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, difference.getResult(), constant_int(generator, integer_type(generator, 4), 0));
+			}
+			mlir::Value result = make_slot(generator, BUILTIN_bool);
+			store(generator, boolean(generator, true), result);
+			mlir::Value index = make_slot(generator, BUILTIN_usize);
+			store(generator, constant_int(generator, usize_type(generator), 0), index);
+			emit_loop(generator, true, [&]() {
+				mlir::Value at = load(generator, BUILTIN_usize, index);
+				mlir::Value done = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::uge, at,
+					constant_int(generator, usize_type(generator), static_cast<int64_t>(array->count)));
+				emit_if(generator, done, [&]() {
+					emit_break(generator, 1);
+					return true;
+				}, nullptr);
+				mlir::Value same = values_equal(generator, element_address(generator, left, element, at), element_address(generator, right, element, at), element);
+				emit_if(generator, negate(generator, same), [&]() {
+					store(generator, boolean(generator, false), result);
+					emit_break(generator, 1);
+					return true;
+				}, nullptr);
+				store(generator, LLVM::AddOp::create(b, l, at, constant_int(generator, usize_type(generator), 1)), index);
+				return false;
+			});
+			return load(generator, BUILTIN_bool, result);
+		}
+		if (TypeInfoVariant::STRUCT == t->variant) {
+			mlir::Value result = boolean(generator, true);
+			for (const StructMember& member : static_cast<TypeInfoStruct const*>(t)->members) {
+				mlir::Value same = values_equal(generator, offset_address(generator, left, member.offset), offset_address(generator, right, member.offset),
+					member.member_type);
+				result = LLVM::AndOp::create(b, l, result, same);
+			}
+			return result;
+		}
+		if (TypeInfoVariant::UNION == t->variant) {
+			auto union_type = static_cast<TypeInfoUnion const*>(t);
+			// An optional pointer is the pointer, null for None
+			if (union_type->null_is_none) {
+				mlir::Value left_pointer = LLVM::LoadOp::create(b, l, pointer_type(generator), left);
+				mlir::Value right_pointer = LLVM::LoadOp::create(b, l, pointer_type(generator), right);
+				return LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, left_pointer, right_pointer);
+			}
+			mlir::Value result = make_slot(generator, BUILTIN_bool);
+			mlir::Value left_tag = union_tag(generator, left, type);
+			mlir::Value same_tag = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, left_tag, union_tag(generator, right, type));
+			store(generator, same_tag, result);
+			emit_if(generator, same_tag, [&]() {
+				for (size_t v = 0; v < union_type->variants.size(); ++v) {
+					const UnionVariant& variant = union_type->variants[v];
+					if (variant.types.empty()) {
+						continue;
+					}
+					emit_if(generator, tag_is(generator, left, type, v, true), [&]() {
+						mlir::Value same = boolean(generator, true);
+						for (size_t k = 0; k < variant.types.size(); ++k) {
+							const size_t offset = k < variant.offsets.size() ? variant.offsets[k] : 0;
+							same = LLVM::AndOp::create(b, l, same, values_equal(generator, offset_address(generator, left, offset),
+								offset_address(generator, right, offset), variant.types[k]));
+						}
+						store(generator, same, result);
+						return false;
+					}, nullptr);
+				}
+				return false;
+			}, nullptr);
+			return load(generator, BUILTIN_bool, result);
+		}
+		if (TypeInfoVariant::STRING == t->variant && !static_cast<TypeInfoString const*>(t)->is_raw) {
+			return strings_equal(generator, load(generator, type, left), load(generator, type, right));
+		}
+		return compare(generator, TokenType::OPERATOR_EQUAL, load(generator, type, left), load(generator, type, right), type);
 	}
 
 	/*

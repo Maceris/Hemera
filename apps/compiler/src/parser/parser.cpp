@@ -1837,12 +1837,7 @@ namespace hemera::parser {
 		if (expect(state, TokenType::KEYWORD_MATCH)) {
 			return match_expression(state);
 		}
-		if (is_typed_literal(state, TokenType::SYM_LBRACE)) {
-			return struct_literal(state);
-		}
-		if (is_typed_literal(state, TokenType::SYM_LBRACK)) {
-			return array_literal(state);
-		}
+		// A typed literal is an operand like any other (expr_lvl_11), so Point.{1, 2} == p goes on past it
 		return expr_lvl_1(state, ignore_lists);
 	}
 

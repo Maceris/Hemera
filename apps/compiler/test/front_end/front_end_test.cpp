@@ -810,6 +810,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "stack_scoped_field", hemera::ErrorCode::E4014 },
 		{ "field_default_mismatch", hemera::ErrorCode::E4014 },
 		{ "complex_ordered", hemera::ErrorCode::E4020 },
+		// docs/types.md, Equality
+		{ "equality_of_view", hemera::ErrorCode::E4020 },
 		{ "quaternion_as_complex", hemera::ErrorCode::E4015 },
 		{ "jmag_of_complex", hemera::ErrorCode::E4015 },
 		// docs/functions.md, Variable Arguments

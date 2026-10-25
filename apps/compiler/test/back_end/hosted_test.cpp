@@ -336,6 +336,12 @@ TEST(Hosted, MatchesStrings)
 	run_hosted("string_cases", hemera::TargetStackCheck::Off);
 }
 
+// Fixed arrays, structs and tagged unions compared with == and != (docs/types.md, Equality).
+TEST(Hosted, ComparesArraysStructsAndUnions)
+{
+	run_hosted("equality", hemera::TargetStackCheck::Off);
+}
+
 // Two optionals compared, equal when both hold nothing or both hold equal values (docs/types.md, Optionals).
 TEST(Hosted, ComparesOptionals)
 {

@@ -180,6 +180,7 @@ cast[ptr[mut u32]](register)^ = 1
 <= less than or equal to
 ```
 
+Fixed arrays, structs and tagged unions take `==` and `!=`, comparing every part ([types.md](types.md#equality)).
 Complex numbers and quaternions only take `==` and `!=`, since they have no order
 (see [types.md](types.md#complex-numbers-and-quaternions)).
 

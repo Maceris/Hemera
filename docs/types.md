@@ -935,6 +935,23 @@ For boolean values, `true` is stored as `1`, and `false` is stored as `0`.
 
 All types are initialized to zero, unless the symbol `---` is used, which indicates that a value should remain uninitialized. For example, `x : ComplicatedType[100] = ---`.
 
+## Equality
+
+`==` and `!=` compare values of the same type:
+
+* Numbers, booleans, characters, enums, pointers and type values by their values; strings by their bytes.
+* Fixed arrays element by element: `guid == other`, where both are `u8[16]`.
+* Structs member by member. Padding between members isn't compared, so two structs built differently are equal
+  when their members are.
+* Tagged unions by their variant, then that variant's values: `.Circle(1.5) == .Circle(1.5)`, and any two values of a
+  variant that holds nothing are equal.
+* Optionals as [Optional Types](#optional-types) says: against `null`, against a value of what they hold, or each
+  other.
+
+Views and dynamic arrays can't be compared with `==` (whether two views are equal could mean the same memory or the
+same elements), and neither can `any`, `#union` structs, whose members share memory, or a struct, fixed array or union
+that holds one of them. Comparing them is an error when the program is checked.
+
 ## Number Formats
 
 Integers can be written as 

@@ -3175,6 +3175,59 @@ namespace hemera {
 		}
 	}
 
+	/*
+	 * What makes values of type not comparable with == (docs/types.md, Equality), or null if they are: a view or
+	 * dynamic array, a #union struct, an any, or a struct, fixed array or tagged union holding one.
+	 */
+	static TypeInfo const* not_equatable(TypeInfo const* type);
+
+	// An optional: a union of a Some holding one value and a None.
+	static bool is_optional_type(TypeInfo const* type) {
+		TypeInfo const* t = base_of(type);
+		if (t == nullptr || TypeInfoVariant::UNION != t->variant) {
+			return false;
+		}
+		auto union_type = static_cast<TypeInfoUnion const*>(t);
+		return union_type->variants.size() == 2 && union_type->variants[0].types.size() == 1 && union_type->variants[1].types.empty()
+			&& union_type->variants[1].name != nullptr && *union_type->variants[1].name == "None";
+	}
+
+	static TypeInfo const* not_equatable(TypeInfo const* type) {
+		TypeInfo const* t = base_of(type);
+		if (t == nullptr) {
+			return nullptr;
+		}
+		if (TypeInfoVariant::ANY == t->variant) {
+			return type;
+		}
+		if (TypeInfoVariant::ARRAY == t->variant) {
+			auto array = static_cast<TypeInfoArray const*>(t);
+			return ArrayType::STATIC != array->array_type ? type : not_equatable(array->element_type);
+		}
+		if (TypeInfoVariant::STRUCT == t->variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(t);
+			if (structure->is_union) {
+				return type;
+			}
+			for (const StructMember& member : structure->members) {
+				if (TypeInfo const* refused = not_equatable(member.member_type); refused != nullptr) {
+					return refused;
+				}
+			}
+			return nullptr;
+		}
+		if (TypeInfoVariant::UNION == t->variant) {
+			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(t)->variants) {
+				for (TypeInfo const* held : variant.types) {
+					if (TypeInfo const* refused = not_equatable(held); refused != nullptr) {
+						return refused;
+					}
+				}
+			}
+		}
+		return nullptr;
+	}
+
 	static Progress check_binary(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result) {
 		const TokenType op = node->value.type;
 		ast::Node* left_node = node->children[0];
@@ -3446,6 +3499,15 @@ namespace hemera {
 			if (ordered && (!(is_numeric(type) || is_enum(type) || is_variant(type, TypeInfoVariant::CHAR)) || is_composite(type))) {
 				result = error_at(checker, ErrorCode::E4020, node, std::format("{} values can't be ordered", to_string(type)));
 				return Progress::DONE;
+			}
+			// Against null, or an optional against what it holds, as optionals compare (docs/types.md, Optional Types)
+			if (!ordered && !is_untyped(shared) && ValueKind::NULL_VALUE != left.kind && ValueKind::NULL_VALUE != right.kind
+				&& !is_optional_type(type)) {
+				if (TypeInfo const* refused = not_equatable(type); refused != nullptr) {
+					result = error_at(checker, ErrorCode::E4020, node, std::format("{} values can't be compared with ==, as {} can't",
+						to_string(type), refused == type ? std::string("its parts") : to_string(refused)));
+					return Progress::DONE;
+				}
 			}
 			result = typed(BUILTIN_bool);
 			return Progress::DONE;
@@ -5132,6 +5194,10 @@ namespace hemera {
 			Progress progress = check_expression(checker, iterable, nullptr, collection);
 			if (progress != Progress::DONE) {
 				return progress;
+			}
+			// An untyped string, like a constant's, is gone through as a string
+			if (ValueKind::UNTYPED_STRING == collection.kind) {
+				collection = typed(default_type(collection));
 			}
 			TypeInfo const* type = ValueKind::VALUE == collection.kind ? base_of(collection.type) : nullptr;
 			if (type != nullptr && TypeInfoVariant::ARRAY == type->variant) {
