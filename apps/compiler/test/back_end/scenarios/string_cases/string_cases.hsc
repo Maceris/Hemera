@@ -31,12 +31,16 @@ letters :: fn(text: string) -> int {
     return found
 }
 
+// A constant's untyped string has a string's members, and is indexed as one
+PUNCTUATION :: "-=[]"
+
 main :: fn() -> int {
     errors := 0
     errors += check(kind("pci-host-ecam-generic") == 1, 1)
     errors += check(kind("arm,gic-v3-its") == 2 && kind("arm,gic-v3") == 2, 2)
     errors += check(kind("") == 3 && kind("arm,gic-v") == 4 && kind("pci-host-ecam-generic!") == 4, 3)
     errors += check(letters("a") == 11 && letters("b") == 10 && letters("c") == 100, 4)
+    errors += check(PUNCTUATION.count == 4 && PUNCTUATION[2] == '[', 5)
     if errors == 0 {
         return 42
     }

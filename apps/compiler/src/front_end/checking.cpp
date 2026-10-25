@@ -983,6 +983,11 @@ namespace hemera {
 				to_string(value.type), text_of(name)));
 			return Progress::DONE;
 		}
+		// An untyped string, like a constant's, has a string's members
+		if (ValueKind::UNTYPED_STRING == kind) {
+			value = typed(default_type(value));
+			return check_member(checker, where, name, value);
+		}
 		if (ValueKind::VALUE != kind) {
 			value = error_at(checker, ErrorCode::E4017, where, std::format("{} has no member {}",
 				describe(value), text_of(name)));

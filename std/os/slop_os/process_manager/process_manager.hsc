@@ -20,7 +20,7 @@ package process_manager
     RING_BYTES : u32 : 2048
 
     // The most grants a Load gives the new program.
-    MAX_GRANTS :: 12
+    MAX_GRANTS :: 16
 
     Request :: union {
         // Load a program into a process the requester made, which stays the requester's and is paid for by it.
