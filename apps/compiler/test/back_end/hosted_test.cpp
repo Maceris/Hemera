@@ -253,6 +253,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// Results whose types are in parentheses, like an optional view ((mut u8[])?), alone, named and listed.
+TEST(Hosted, ReturnsParenthesizedTypes)
+{
+	run_hosted("parenthesized_results", hemera::TargetStackCheck::Off);
+}
+
 // std/crypto's ChaCha20-Poly1305 and AES-256-GCM, with and without AES-NI, against known values.
 TEST(Hosted, AuthenticatedEncryption)
 {

@@ -242,7 +242,7 @@ Functions need to have parenthesis around the return type(s) if
 
 * There is more than one value
 * Any results are named
-* The result is a function
+* The result is a function, or a type in parentheses
 
 The parenthesis are to ensure an unambiguous definition, but do not represent tuples.
 Functions are always wrapped in parenthesis, even if in a list of types.
@@ -264,7 +264,14 @@ returning_int_and_fn    :: fn() -> (int, (fn() -> int)) {/* ... */}
 returning_fn_and_int    :: fn() -> ((fn() -> int), int) {/* ... */}
 returning_optional_fn   :: fn() -> (fn() -> int)? {/* ... */}
 named_fn_result         :: fn() -> (n: int, f: (fn() -> int)) {/* ... */}
+optional_view           :: fn() -> ((mut u8[])?) {/* ... */}
+named_optional_view     :: fn() -> (view: (mut u8[])?) {/* ... */}
+int_and_optional_view   :: fn() -> (int, (u8[])?) {/* ... */}
 ```
+
+A type in parentheses, like `(mut u8[])?`, an optional view, is written in the list of results as it is anywhere
+else, so alone it takes the list's parentheses too: `-> ((mut u8[])?)`. Without them, `-> (mut u8[])?` would be a
+list holding `mut u8[]`, followed by a `?` that belongs to nothing, which is an error.
 
 Some higher order function definitions can (should) be simplified quite a bit using type aliases.
 

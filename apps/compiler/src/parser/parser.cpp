@@ -1356,6 +1356,14 @@ namespace hemera::parser {
 		return true;
 	}
 
+	// Whether a type in parentheses comes next, like (mut u8[])? or mut (u8[]), and not a function type's (fn ...).
+	static bool is_parenthesized_type(ParserState* state) {
+		if (expect(state, TokenType::KEYWORD_MUT)) {
+			return TokenType::SYM_LPAREN == next_token(state).type && TokenType::KEYWORD_FN != next_token(state, 2).type;
+		}
+		return expect(state, TokenType::SYM_LPAREN) && TokenType::KEYWORD_FN != next_token(state).type;
+	}
+
 	bool function_output_list(ParserState* state, ast::Node& parent) {
 		if (is_insert(state)) {
 			ExprResult inserted = insert_type(state, nullptr);
@@ -1406,6 +1414,16 @@ namespace hemera::parser {
 							return false;
 						}
 						node.children.push_back(inserted.result);
+						skip(state, TokenType::SYM_COMMA);
+						continue;
+					}
+					// A type in parentheses, like ((mut u8[])?), an optional view (docs/functions.md)
+					if (is_parenthesized_type(state)) {
+						ExprResult grouped = type(state);
+						if (!grouped.success) {
+							return false;
+						}
+						node.children.push_back(grouped.result);
 						skip(state, TokenType::SYM_COMMA);
 						continue;
 					}
@@ -1471,6 +1489,16 @@ namespace hemera::parser {
 								return false;
 							}
 							node.children.push_back(inserted.result);
+							skip(state, TokenType::SYM_COMMA);
+							continue;
+						}
+						// view : (mut u8[])?, a named result of a type in parentheses
+						if (is_parenthesized_type(state)) {
+							ExprResult grouped = type(state);
+							if (!grouped.success) {
+								return false;
+							}
+							node.children.push_back(grouped.result);
 							skip(state, TokenType::SYM_COMMA);
 							continue;
 						}
