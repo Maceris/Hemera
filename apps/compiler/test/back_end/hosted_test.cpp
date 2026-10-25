@@ -304,6 +304,24 @@ TEST(Hosted, ReversesLoops)
 	run_hosted("reverse_loops", hemera::TargetStackCheck::Off);
 }
 
+// switch with #fall_through, chained, stopped by break, and in a loop (docs/control_flow.md, Switch).
+TEST(Hosted, FallsThroughCases)
+{
+	run_hosted("fall_through", hemera::TargetStackCheck::Off);
+}
+
+// b16, b32 and b64 with !, widened and as conditions (docs/types.md).
+TEST(Hosted, NegatesWideBooleans)
+{
+	run_hosted("wide_booleans", hemera::TargetStackCheck::Off);
+}
+
+// Multiline strings: their lines joined by newlines, as written (docs/types.md, Strings).
+TEST(Hosted, JoinsMultilineStrings)
+{
+	run_hosted("multiline_strings", hemera::TargetStackCheck::Off);
+}
+
 // Vectors, their intrinsics, and AES-NI and PCLMULQDQ where the CPU has them (docs/types.md, Vectors).
 TEST(Hosted, RunsVectors)
 {

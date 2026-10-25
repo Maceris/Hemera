@@ -861,6 +861,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "stack_unrestricted", hemera::ErrorCode::E4030 },
 		{ "stack_scoped_store", hemera::ErrorCode::E4030 },
 		{ "stack_scoped_and_unrestricted", hemera::ErrorCode::E4014 },
+		{ "stack_scoped_field", hemera::ErrorCode::E4014 },
+		{ "stack_scoped_in_array_field", hemera::ErrorCode::E4014 },
+		{ "fall_through_last", hemera::ErrorCode::E4002 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },
 		{ "stack_unrestricted_result", hemera::ErrorCode::E4030 },
 		{ "stack_return_variant_shorthand", hemera::ErrorCode::E4030 },
@@ -1089,7 +1092,7 @@ TEST(FrontEnd, ChecksOwners)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("owned_errors"));
-	ASSERT_EQ(errors.size(), 10) << codes(errors);
+	ASSERT_EQ(errors.size(), 12) << codes(errors);
 	for (hemera::ErrorCode error : errors) {
 		EXPECT_EQ(error, hemera::ErrorCode::E4035);
 	}
@@ -1108,6 +1111,8 @@ TEST(FrontEnd, ChecksOwners)
 		"this moves an owned value out of what holds it, which still would: take it out with compiler.take(&...)",
 		"file is part of what it came from, only borrowed here",
 		"files still owns its value where its scope ends, at line 77: release its elements and it with runtime.array_release(files, ...)",
+		"a still owns its value on one path to here, but not on another: move or release it on both",
+		"a is used after it was moved or released, at line 88",
 	}) {
 		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
 	}

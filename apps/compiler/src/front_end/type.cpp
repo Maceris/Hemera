@@ -558,6 +558,41 @@ namespace hemera {
 		return false;
 	}
 
+	TypeInfo const* scoped_part(TypeInfo const* type) {
+		TypeInfo const* found = get_base_type(type);
+		if (found == nullptr) {
+			return nullptr;
+		}
+		if (TypeInfoVariant::STRUCT == found->variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(found);
+			if (structure->is_scoped) {
+				return found;
+			}
+			for (const StructMember& member : structure->members) {
+				if (TypeInfo const* part = scoped_part(member.member_type)) {
+					return part;
+				}
+			}
+			return nullptr;
+		}
+		if (TypeInfoVariant::UNION == found->variant) {
+			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(found)->variants) {
+				for (TypeInfo* payload : variant.types) {
+					if (TypeInfo const* part = scoped_part(payload)) {
+						return part;
+					}
+				}
+			}
+			return nullptr;
+		}
+		if (TypeInfoVariant::ARRAY == found->variant) {
+			// A view only points to its elements; a static array holds them in place, and a dynamic one on the heap
+			auto array = static_cast<TypeInfoArray const*>(found);
+			return ArrayType::VIEW != array->array_type ? scoped_part(array->element_type) : nullptr;
+		}
+		return nullptr;
+	}
+
 	static TypeInfo const* thread_bound_part(TypeInfo const* type, std::vector<TypeInfo const*>& seen) {
 		TypeInfo const* base = get_base_type(type);
 		if (base == nullptr || std::find(seen.begin(), seen.end(), base) != seen.end()) {

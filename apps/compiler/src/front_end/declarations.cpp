@@ -1618,6 +1618,16 @@ namespace hemera {
 				}
 			}
 		}
+		// A #scoped struct is only ever held by another #scoped one (docs/memory.md, Scoped Structs)
+		if (!type->is_scoped) {
+			for (const StructMember& member : type->members) {
+				if (TypeInfo const* scoped = scoped_part(member.member_type)) {
+					return type_error(walk, ErrorCode::E4014, node, std::format("{} holds {}, which is #scoped, so it can only be held by "
+						"a #scoped struct: mark {} #scoped, or hold a pointer to it", name_text(type->name), to_string(scoped),
+						name_text(type->name)));
+				}
+			}
+		}
 		lay_out_struct(type);
 		return Progress::DONE;
 	}

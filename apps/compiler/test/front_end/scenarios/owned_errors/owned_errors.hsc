@@ -80,5 +80,19 @@ dropped_array :: fn() {
     runtime.array_free(&files)
 }
 
+// #fall_through goes on into the next case, so a is moved again there
+moved_by_fall_through :: fn(n: int) {
+    a := open(1)
+    switch n {
+        case 1:
+            close(a)
+        #fall_through
+        case 2:
+            close(a)
+        case _:
+            close(a)
+    }
+}
+
 main :: fn() {
 }

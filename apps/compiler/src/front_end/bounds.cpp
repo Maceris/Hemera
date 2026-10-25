@@ -148,22 +148,6 @@ namespace hemera {
 			return std::nullopt;
 		}
 
-		// A string literal's length in bytes, each escape one byte, as the generator writes it.
-		int64_t literal_length(InternedString literal) {
-			std::string text = text_of(literal);
-			if (text.size() >= 2 && (text.front() == '"' || text.front() == '\'')) {
-				text = text.substr(1, text.size() - 2);
-			}
-			int64_t length = 0;
-			for (size_t i = 0; i < text.size(); ++i) {
-				if (text[i] == '\\' && i + 1 < text.size()) {
-					++i;
-				}
-				++length;
-			}
-			return length;
-		}
-
 		bool parse_integer(std::string_view text, int64_t& value) {
 			std::string digits;
 			for (char c : text) {
@@ -848,7 +832,7 @@ namespace hemera {
 				&& is_variant(found->type, TypeInfoVariant::STRING)) {
 				ast::Node* value = definition_value(declaration->node);
 				if (value != nullptr && ast::NodeType::LITERAL == value->node_type && TokenType::LITERAL_STRING == value->value.type) {
-					chain.count = constant(literal_length(value->value.value));
+					chain.count = constant(static_cast<int64_t>(ast::string_value(value).size()));
 				}
 			}
 			return chain;
@@ -1998,6 +1982,22 @@ namespace hemera {
 			return result;
 		}
 
+		// Whether a #fall_through follows a switch's case, so the case after it runs next.
+		bool falls_through(ast::Node* node, ast::Node* entry) {
+			for (ast::Node* list : node->children) {
+				if (ast::NodeType::LIST != list->node_type) {
+					continue;
+				}
+				for (size_t i = 0; i + 1 < list->children.size(); ++i) {
+					if (list->children[i] == entry) {
+						return ast::NodeType::DIRECTIVE == list->children[i + 1]->node_type
+							&& is_text(list->children[i + 1]->value.value, "#fall_through");
+					}
+				}
+			}
+			return false;
+		}
+
 		void walk_match(Analysis& analysis, Facts& facts, ast::Node* node, bool cases) {
 			evaluate(analysis, facts, node->children[0]);
 			Facts after = unreachable();
@@ -2006,6 +2006,8 @@ namespace hemera {
 				frame.is_switch = true;
 				analysis.loops.push_back(frame);
 			}
+			// What the case before a #fall_through ends with goes into the next case, not after the switch
+			Facts fell = unreachable();
 			for (ast::Node* entry : entries_of(node, cases)) {
 				Facts arm = facts;
 				for (size_t i = 0; i + 1 < entry->children.size(); ++i) {
@@ -2015,6 +2017,8 @@ namespace hemera {
 						evaluate(analysis, arm, pattern);
 					}
 				}
+				arm = join(analysis, arm, fell);
+				fell = unreachable();
 				ast::Node* outcome = entry->children.back();
 				if (ast::NodeType::BLOCK == outcome->node_type) {
 					walk_block(analysis, arm, outcome);
@@ -2022,8 +2026,14 @@ namespace hemera {
 				else {
 					walk_statement(analysis, arm, outcome);
 				}
-				after = join(analysis, after, arm);
+				if (cases && falls_through(node, entry)) {
+					fell = arm;
+				}
+				else {
+					after = join(analysis, after, arm);
+				}
 			}
+			after = join(analysis, after, fell);
 			if (cases) {
 				LoopFrame frame = std::move(analysis.loops.back());
 				analysis.loops.pop_back();

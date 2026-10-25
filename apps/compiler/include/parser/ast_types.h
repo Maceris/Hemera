@@ -106,6 +106,12 @@ namespace hemera::ast {
 	std::string_view name_of(NodeType type);
 
 	/// <summary>
+	/// The bytes a string literal stands for: a quoted string's text with its escapes worked out, or a
+	/// multiline string's lines, joined by newlines.
+	/// </summary>
+	std::string string_value(const Node* literal);
+
+	/// <summary>
 	/// The tree under node, one node to a line, for debugging and tests.
 	/// </summary>
 	std::string dump(const Node* node);

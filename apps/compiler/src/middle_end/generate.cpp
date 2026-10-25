@@ -2147,7 +2147,7 @@ namespace hemera {
 		const TokenType token = node->value.type;
 		mlir::Type target = llvm_type(generator, type);
 		if (TokenType::LITERAL_STRING == token) {
-			return string_value(generator, literal_text(node->value.value), type);
+			return string_value(generator, ast::string_value(node), type);
 		}
 		if (TokenType::LITERAL_CHAR == token) {
 			const std::string text = literal_text(node->value.value);
@@ -6225,8 +6225,13 @@ namespace hemera {
 		mlir::Value operand = emit_as(generator, operand_node, result_type);
 		mlir::Type type = operand.getType();
 		if (TokenType::OPERATOR_NOT == op) {
-			return value(LLVM::XOrOp::create(generator.builder, generator.loc, operand,
-				constant_int(generator, type, type.getIntOrFloatBitWidth() == 1 ? 1 : -1)), result_type);
+			if (type.getIntOrFloatBitWidth() == 1) {
+				return value(LLVM::XOrOp::create(generator.builder, generator.loc, operand, constant_int(generator, type, 1)), result_type);
+			}
+			// A b16, b32 or b64 is 0 or 1 in a wider integer: true when it's 0
+			mlir::Value zero = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, operand,
+				constant_int(generator, type, 0));
+			return value(LLVM::ZExtOp::create(generator.builder, generator.loc, type, zero), result_type);
 		}
 		if (TokenType::OPERATOR_MINUS == op) {
 			// A vector's lanes decide, like -v on floats
@@ -7012,17 +7017,49 @@ namespace hemera {
 		return slot ? location(slot, type) : Emitted{};
 	}
 
-	// One case of a switch, and the ones after it in its else.
-	static void emit_cases(Generator& generator, const std::vector<ast::Node*>& cases, size_t index, const Emitted& subject,
-		mlir::Value address) {
+	// Whether a #fall_through follows a switch's case, before the next case.
+	static bool falls_through(ast::Node* node, ast::Node* entry) {
+		for (ast::Node* list : node->children) {
+			if (ast::NodeType::LIST != list->node_type) {
+				continue;
+			}
+			for (size_t i = 0; i < list->children.size(); ++i) {
+				if (list->children[i] == entry) {
+					return i + 1 < list->children.size() && ast::NodeType::DIRECTIVE == list->children[i + 1]->node_type
+						&& is_text(list->children[i + 1]->value.value, "#fall_through");
+				}
+			}
+		}
+		return false;
+	}
+
+	/*
+	 * One case of a switch, and the ones after it in its else. A case before a #fall_through sets fell
+	 * when it runs, and the next case is tried after it rather than in its else, running when fell is set
+	 * whatever its values are.
+	 */
+	static void emit_cases(Generator& generator, ast::Node* node, const std::vector<ast::Node*>& cases, size_t index,
+		const Emitted& subject, mlir::Value address, mlir::Value fell) {
 
 		ast::Node* entry = cases[index];
-		emit_if(generator, arm_matches(generator, entry, subject, address), [&]() {
-			return emit_block(generator, entry->children.back(), mlir::Value(), nullptr);
-		}, index + 1 == cases.size() ? std::function<bool()>() : [&]() {
-			emit_cases(generator, cases, index + 1, subject, address);
+		const bool falls = falls_through(node, entry) && index + 1 < cases.size();
+		mlir::Value condition = arm_matches(generator, entry, subject, address);
+		if (index > 0 && falls_through(node, cases[index - 1])) {
+			condition = LLVM::OrOp::create(generator.builder, generator.loc, condition, load(generator, BUILTIN_bool, fell));
+		}
+		emit_if(generator, condition, [&]() {
+			const bool ended = emit_block(generator, entry->children.back(), mlir::Value(), nullptr);
+			if (falls && !ended) {
+				store(generator, boolean(generator, true), fell);
+			}
+			return ended;
+		}, falls || index + 1 == cases.size() ? std::function<bool()>() : [&]() {
+			emit_cases(generator, node, cases, index + 1, subject, address, fell);
 			return false;
 		});
+		if (falls) {
+			emit_cases(generator, node, cases, index + 1, subject, address, fell);
+		}
 	}
 
 	// switch: a loop that runs once, so break leaves it; the first case that matches runs.
@@ -7030,9 +7067,11 @@ namespace hemera {
 		Emitted subject = emit_expression(generator, node->children[0], nullptr);
 		mlir::Value address = address_of(generator, subject);
 		const std::vector<ast::Node*> cases = entries_of(node, true);
+		mlir::Value fell = make_slot(generator, BUILTIN_bool);
+		store(generator, boolean(generator, false), fell);
 		emit_loop(generator, false, [&]() {
 			if (!cases.empty()) {
-				emit_cases(generator, cases, 0, subject, address);
+				emit_cases(generator, node, cases, 0, subject, address, fell);
 			}
 			emit_break(generator, 1);
 			return true;

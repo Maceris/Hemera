@@ -729,6 +729,22 @@ namespace hemera {
 			return result;
 		}
 
+		// Whether a #fall_through follows a switch's case, so the case after it runs next.
+		bool falls_through(ast::Node* node, ast::Node* entry) {
+			for (ast::Node* list : node->children) {
+				if (ast::NodeType::LIST != list->node_type) {
+					continue;
+				}
+				for (size_t i = 0; i + 1 < list->children.size(); ++i) {
+					if (list->children[i] == entry) {
+						return ast::NodeType::DIRECTIVE == list->children[i + 1]->node_type
+							&& is_text(list->children[i + 1]->value.value, "#fall_through");
+					}
+				}
+			}
+			return false;
+		}
+
 		// The locals a pattern binds, like point in Some(point).
 		void bindings_of(const Analysis& analysis, ast::Node* pattern, std::vector<ast::Node*>& names) {
 			for (ast::Node* child : pattern->children) {
@@ -754,8 +770,11 @@ namespace hemera {
 				frame.scopes = analysis.scopes.size();
 				analysis.loops.push_back(frame);
 			}
+			// What the case before a #fall_through ends with goes into the next case, not after the switch
+			State fell = unreachable();
 			for (ast::Node* entry : entries_of(node, cases)) {
-				State arm = state;
+				State arm = join(analysis, state, fell, entry);
+				fell = unreachable();
 				analysis.scopes.emplace_back();
 				for (size_t i = 0; i + 1 < entry->children.size(); ++i) {
 					std::vector<ast::Node*> names;
@@ -783,8 +802,14 @@ namespace hemera {
 					arm.slots.erase(local);
 				}
 				analysis.scopes.pop_back();
-				after = join(analysis, after, arm, node);
+				if (cases && falls_through(node, entry)) {
+					fell = arm;
+				}
+				else {
+					after = join(analysis, after, arm, node);
+				}
 			}
+			after = join(analysis, after, fell, node);
 			if (cases) {
 				LoopFrame frame = std::move(analysis.loops.back());
 				analysis.loops.pop_back();
@@ -799,7 +824,16 @@ namespace hemera {
 						}
 					}
 				}
-				after = join(analysis, after, state, node);
+				// A switch with case _ always runs a case; without one, it may run none and go on
+				bool covers_all = false;
+				for (ast::Node* entry : entries_of(node, cases)) {
+					for (size_t i = 0; i + 1 < entry->children.size(); ++i) {
+						covers_all = covers_all || ast::NodeType::UNDERSCORE == entry->children[i]->node_type;
+					}
+				}
+				if (!covers_all) {
+					after = join(analysis, after, state, node);
+				}
 			}
 			state = after;
 		}

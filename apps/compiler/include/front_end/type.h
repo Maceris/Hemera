@@ -507,6 +507,12 @@ namespace hemera {
 	bool is_owned(TypeInfo const* type);
 
 	/// <summary>
+	/// The #scoped struct a value of type holds in place, in a static or dynamic array, or in a union's
+	/// payload, or null if there's none (docs/memory.md, Scoped Structs): only a #scoped struct can hold one.
+	/// </summary>
+	TypeInfo const* scoped_part(TypeInfo const* type);
+
+	/// <summary>
 	/// The #thread_bound type a value of type can reach, through its fields, arrays, unions, pointers and views,
 	/// or null if there's none: then it can be given to another thread.
 	/// </summary>

@@ -1462,10 +1462,7 @@ namespace hemera {
 	 * value, its options are well formed, and they suit the value's type.
 	 */
 	static void check_format_string(Checker& checker, ast::Node* literal, const std::vector<std::pair<ast::Node*, Value>>& values) {
-		std::string text = text_of(literal->value.value);
-		if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
-			text = text.substr(1, text.size() - 2);
-		}
+		const std::string text = ast::string_value(literal);
 		for (const FormatPlaceholder& placeholder : format_placeholders(text)) {
 			const std::string written = text.substr(placeholder.offset, placeholder.length);
 			if (!placeholder.valid) {
@@ -5310,6 +5307,19 @@ namespace hemera {
 					return progress;
 				}
 				any_continues = any_continues || case_continues || has_break(entry->children.back(), 0);
+			}
+		}
+		// Once every case is checked, so it's reported once: a #fall_through goes on into the case after it
+		for (ast::Node* list : node->children) {
+			if (ast::NodeType::LIST != list->node_type) {
+				continue;
+			}
+			for (size_t at = 0; at < list->children.size(); ++at) {
+				ast::Node* entry = list->children[at];
+				if (ast::NodeType::DIRECTIVE == entry->node_type && is_text(entry->value.value, "#fall_through")
+					&& (at + 1 == list->children.size() || ast::NodeType::SWITCH_CASE != list->children[at + 1]->node_type)) {
+					error_at(checker, ErrorCode::E4002, entry, "#fall_through needs a case after it to fall through to");
+				}
 			}
 		}
 		continues = any_continues || !covered.contains("_");

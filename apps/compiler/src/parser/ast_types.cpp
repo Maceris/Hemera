@@ -94,6 +94,44 @@ namespace hemera::ast {
 		}
 	}
 
+	/*
+	 * A quoted string's text, with its escapes, or a multiline string's lines (docs/types.md, Strings):
+	 * each line's text after its \\, as it is, joined by newlines, with no newline after the last.
+	 */
+	std::string string_value(const Node* literal) {
+		const std::string_view first = literal->value.value != nullptr ? std::string_view(*literal->value.value) : std::string_view();
+		if (first.starts_with("\\\\")) {
+			std::string result;
+			auto add_line = [&](std::string_view line) {
+				line.remove_prefix(2);
+				while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+					line.remove_suffix(1);
+				}
+				result += line;
+			};
+			add_line(first);
+			for (const Node* line : literal->children) {
+				result += '\n';
+				add_line(line->value.value != nullptr ? std::string_view(*line->value.value) : std::string_view("\\\\"));
+			}
+			return result;
+		}
+		std::string_view text = first;
+		if (text.size() >= 2 && text.front() == '"') {
+			text = text.substr(1, text.size() - 2);
+		}
+		std::string result;
+		for (size_t i = 0; i < text.size(); ++i) {
+			if (text[i] != '\\' || i + 1 >= text.size()) {
+				result += text[i];
+				continue;
+			}
+			const char escaped = text[++i];
+			result += escaped == 'n' ? '\n' : escaped == 't' ? '\t' : escaped == 'r' ? '\r' : escaped == '0' ? '\0' : escaped;
+		}
+		return result;
+	}
+
 	std::string dump(const Node* node) {
 		std::string out;
 		dump(node, 0, out);

@@ -1024,6 +1024,9 @@ example : string :
     \\ so these won't mess up function indentation
 ```
 
+The string is each line's text after its `\\`, exactly as written, with the lines joined by newlines and no newline
+after the last. Escapes aren't worked out in them, so `\\a\n` is the three characters `a`, `\` and `n`.
+
 ## Structs
 
 Structs are user defined groups of data. Structs cannot have any "private" fields, everything is public. Members are accessed using the `.` operator.
