@@ -8,6 +8,9 @@ mem_zero : fn(target: mut rawptr, len: usize) : ---
 // Zeros that are always written, even when nothing reads them after, for wiping secrets (docs/memory.md, Secrets).
 secure_zero : fn(target: mut rawptr, len: usize) : ---
 
+// The square root of a float, as an f16, f32 or f64: the nearest to it, NaN for a negative one.
+square_root : fn[F](x: F) -> F : ---
+
 /*
  * Stop the program immediately by executing an illegal instruction (ud2 on x86-64, brk on AArch64),
  * which the OS treats as an abnormal termination. Doesn't depend on the OS, so it works in

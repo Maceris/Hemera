@@ -14,10 +14,10 @@ u8 u16 u32 u64 u128 uint uintptr usize // Unsigned
 f16 f32 f64
 
 // Complex numbers
-c16 c32 c64 c128
+c32 c64 c128
 
 // Quaternions
-q32 q64 q128 q256
+q64 q128 q256
 
 // Endian specific integers
 i16be i32be i64be i128be u16be u32be u64be u128be // big endian
@@ -48,10 +48,9 @@ More details:
 | b32      | 32-bit boolean                                                                                                                               |
 | b64      | 64-bit boolean                                                                                                                               |
 | bool     | Boolean value (true or false), equivalent to b8                                                                                              |
-| c16      | 16-bit complex number, composed of 2 i8 values                                                                                               |
-| c32      | 32-bit complex number, composed of 2 i16 values                                                                                              |
-| c64      | 64-bit complex number, composed of 2 i32 values                                                                                              |
-| c128     | 128-bit complex number, composed of 2 i64 values                                                                                             |
+| c32      | 32-bit complex number, composed of 2 f16 values                                                                                              |
+| c64      | 64-bit complex number, composed of 2 f32 values                                                                                              |
+| c128     | 128-bit complex number, composed of 2 f64 values                                                                                             |
 | char     | One byte of utf-8 text (a code unit)                                                                                                         |
 | cstring  | C-style null-terminated string                                                                                                               |
 | f16      | 16-bit (half-precision) IEEE-754 floating point number                                                                                       |
@@ -78,10 +77,9 @@ More details:
 | i128le   | 128-bit signed integer, little endian                                                                                                        |
 | int      | Signed integer that is the standard size of a register on the system, guaranteed that size_of(int) >= size_of(uintptr). Same size as uint.   |
 | ptr      | A typed pointer                                                                                                                              |
-| q32      | 32-bit quaternion, composed of 4 i8 values                                                                                                   |
-| q64      | 64-bit quaternion, composed of 4 i16 values                                                                                                  |
-| q128     | 128-bit quaternion, composed of 4 i32 values                                                                                                 |
-| q256     | 256-bit quaternion, composed of 4 i64 values                                                                                                 |
+| q64      | 64-bit quaternion, composed of 4 f16 values                                                                                                  |
+| q128     | 128-bit quaternion, composed of 4 f32 values                                                                                                 |
+| q256     | 256-bit quaternion, composed of 4 f64 values                                                                                                 |
 | rawptr   | Pointer to an arbitrary type, equivalent to C's const void *; `mut rawptr` is C's void *                                                      |
 | relptr8  | 8-bit pointer which points relative to its own address                                                                                       |
 | relptr16 | 16-bit pointer which points relative to its own address                                                                                      |
@@ -157,6 +155,9 @@ a : int[5]    // Array of 5 ints
 b : f64[2]    // Array of 2 f64s
 c : i8[10][5] // 2D array of i8s
 ```
+
+A count is any compile-time constant, like `int[CAPACITY * 2]` or `int[#run fib(5)]`, and an array type with several
+dimensions is a type wherever a value can be one too: `size_of(i8[10][5])` is 50.
 
 Arrays know their size, and you can access it with `array.count`.
 
@@ -859,6 +860,37 @@ Shape :: union {
 
 Enums are the size of their backing type, `uint` unless `#backed_by` gives another.
 
+## Complex Numbers and Quaternions
+
+A complex number is two floats, its real and imaginary parts: `c32` of `f16`s, `c64` of `f32`s, `c128` of `f64`s. A
+quaternion is four, a real part and three imaginary ones: `q64`, `q128` and `q256`, of `f16`s, `f32`s and `f64`s. They
+are laid out as Odin's are, a complex number's real part first, then its imaginary part, and a quaternion's three
+imaginary parts first, then its real part, so a `q128` is a graphics library's `(x, y, z, w)`.
+
+An imaginary number is a number with `i`, `j` or `k` after it: `2i`, `1.5j`, `1e3k`. Arithmetic on numbers and imaginary
+numbers is a complex number, or with a `j` or `k`, a quaternion. Like any literal it takes the type it's used as, and
+where nothing decides that, a complex number is a `c128` and a quaternion a `q256`. A real number given as one is its
+real part.
+
+```
+z : c64 = 1 + 2i
+q : q128 = 1 + 2i + 3j + 4k
+w := 0.5 - 1i           // a c128
+```
+
+Their parts are `.real` and `.imag`, and a quaternion's other two `.jmag` and `.kmag`, each a float, which can be set.
+
+* `+` and `-` work part by part, and `-z` negates every part.
+* `*` is the complex product, or for quaternions the Hamilton product, so `i * j == k` but `j * i == -k`. `/` multiplies
+  by the divisor's conjugate and divides by its norm, the sum of its parts' squares.
+* `==` and `!=` compare every part. They have no order, so `<` and the like are errors.
+* A real number of the parts' type, or one that converts to it implicitly, takes part in arithmetic as a complex number
+  or a quaternion with only a real part: `z * 2.0` and `scale + z`, with `scale` an `f32` and `z` a `c64`.
+* `cast` turns one into another size, part by part, and a real number into one.
+
+`std/math` has `conjugate(z)`, with its imaginary parts negated, and `magnitude(z)`, the square root of the sum of its
+parts' squares, as a float of its parts' type; `part_of(T)` is that type.
+
 ## Endian-Specific Types
 
 `u16be` to `u128be`, `i16be` to `i128be`, `f16be` to `f64be`, and their `le` versions, are stored in that byte order
@@ -934,7 +966,8 @@ Optional :: union[T] {
 There are a few [operators built in](operators.md#optional-operators) to make life easier when dealing with optional values.
 
 An optional compared with `==` or `!=` to a value of the type it holds is equal when it holds that value: `found == 3`
-is false when `found` is `None`, and `error != OsError.NotFound` is true when there's no error at all.
+is false when `found` is `None`, and `error != OsError.NotFound` is true when there's no error at all. Two optionals
+are equal when both are `None`, or both hold values that are equal.
 
 An optional of a pointer that's never null, `ptr[T]?`, `cstring?` or an optional function, is just the pointer, with
 `None` as a null pointer. It has no tag and the same size and layout as the pointer, so it matches a nullable pointer
@@ -1095,6 +1128,8 @@ example : string :
 The string is each line's text after its `\\`, exactly as written, with the lines joined by newlines and no newline
 after the last. Escapes aren't worked out in them, so `\\a\n` is the three characters `a`, `\` and `n`.
 
+A string literal, or a constant one, has a string's members and bytes: `"abc".count` is 3 and `"abc"[1]` is `'b'`.
+
 ## Structs
 
 Structs are user defined groups of data. Structs cannot have any "private" fields, everything is public. Members are accessed using the `.` operator.
@@ -1102,8 +1137,10 @@ Structs are user defined groups of data. Structs cannot have any "private" field
 Structs do not have any methods or member functions, though they can store functions as a member since they are first-class entities.
 
 All values are initialized to zero, except where default values are provided for a field. A default is a compile-time
-constant: a literal, a named constant, arithmetic on those, or an enum member. A struct that holds another starts that
-one with its own defaults too.
+constant: a literal, a named constant, arithmetic on integers, or an enum member. A named constant can be of any type
+the field takes, a struct's literal included, and a function named is the field's function, so `op : fn(x: int) -> int =
+twice` calls `twice` until it's set to something else. A struct that holds another starts that one with its own
+defaults too.
 
 ```
 Rectangle :: struct {
@@ -1328,13 +1365,10 @@ considered the "same" type.
 
 ### Comparing Type Values
 
-Type values (of type `type`) can be compared at compile time and through reflection. There are two comparisons:
-
-* `==` is exact. Every alias is its own type value, distinct or not, so `index == int` is false. Only the diagonal
-  of the table above compares equal.
-* `types_are_aliases(a, b)` is the looser comparison from the table: whether the compiler treats `a` and `b` as the
-  same type, following aliases that aren't distinct. `types_are_aliases(ind, int)` is true,
-  `types_are_aliases(counter, int)` is false.
+Type values (of type `type`) can be compared at compile time, in `#assert` and `#if` too, and at run time. `==` and
+`!=` compare them as the table above does: an alias that isn't distinct is the type it names, so `ind == int` is true,
+and a distinct one is a type of its own, so `counter == int` is false. `types_are_aliases(a, b)` says the same, for code
+that wants to say it's following aliases; it takes type values worked out at run time too.
 
 ### Generic Aliases
 

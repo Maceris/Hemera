@@ -285,6 +285,11 @@ namespace hemera {
 			|| is_variant(type, TypeInfoVariant::QUATERNION);
 	}
 
+	// A complex number or a quaternion (docs/types.md, Complex Numbers and Quaternions).
+	static bool is_composite(TypeInfo const* type) {
+		return is_variant(type, TypeInfoVariant::COMPLEX) || is_variant(type, TypeInfoVariant::QUATERNION);
+	}
+
 	static bool is_boolean(TypeInfo const* type) {
 		return is_variant(type, TypeInfoVariant::BOOLEAN);
 	}
@@ -376,6 +381,12 @@ namespace hemera {
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
 			return "a floating point number";
+		}
+		if (ValueKind::UNTYPED_COMPLEX == kind) {
+			return "a complex number";
+		}
+		if (ValueKind::UNTYPED_QUATERNION == kind) {
+			return "a quaternion";
 		}
 		if (ValueKind::UNTYPED_STRING == kind) {
 			return "a string";
@@ -545,16 +556,24 @@ namespace hemera {
 		if (TypeInfoVariant::ANY == base_of(type)->variant) {
 			return ValueKind::VALUE == kind || ValueKind::UNTYPED_INTEGER == kind
 				|| ValueKind::UNTYPED_FLOAT == kind || ValueKind::UNTYPED_STRING == kind
+				|| ValueKind::UNTYPED_COMPLEX == kind || ValueKind::UNTYPED_QUATERNION == kind
 				|| ValueKind::UNTYPED_BOOLEAN == kind || ValueKind::TYPE == kind;
 		}
 		if (ValueKind::VALUE == kind) {
 			return assignable(value.type, type) && !elements_read_only(value, type);
 		}
+		// A real number is a complex number's or a quaternion's real part
 		if (ValueKind::UNTYPED_INTEGER == kind) {
-			return (is_integer(type) && in_range(value, type)) || is_float(type) || promised(type, CAPABILITY_ARITHMETIC);
+			return (is_integer(type) && in_range(value, type)) || is_float(type) || is_composite(type) || promised(type, CAPABILITY_ARITHMETIC);
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
-			return is_float(type) || promised(type, CAPABILITY_FLOAT);
+			return is_float(type) || is_composite(type) || promised(type, CAPABILITY_FLOAT);
+		}
+		if (ValueKind::UNTYPED_COMPLEX == kind) {
+			return is_composite(type);
+		}
+		if (ValueKind::UNTYPED_QUATERNION == kind) {
+			return is_variant(type, TypeInfoVariant::QUATERNION);
 		}
 		if (ValueKind::UNTYPED_STRING == kind) {
 			return is_variant(type, TypeInfoVariant::STRING);
@@ -590,6 +609,12 @@ namespace hemera {
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
 			return BUILTIN_f64;
+		}
+		if (ValueKind::UNTYPED_COMPLEX == kind) {
+			return BUILTIN_c128;
+		}
+		if (ValueKind::UNTYPED_QUATERNION == kind) {
+			return BUILTIN_q256;
 		}
 		if (ValueKind::UNTYPED_STRING == kind) {
 			return BUILTIN_string;
@@ -714,6 +739,8 @@ namespace hemera {
 			: Untyped::FLOAT == untyped ? ValueKind::UNTYPED_FLOAT
 			: Untyped::STRING == untyped ? ValueKind::UNTYPED_STRING
 			: Untyped::BOOLEAN == untyped ? ValueKind::UNTYPED_BOOLEAN
+			: Untyped::COMPLEX == untyped ? ValueKind::UNTYPED_COMPLEX
+			: Untyped::QUATERNION == untyped ? ValueKind::UNTYPED_QUATERNION
 			: ValueKind::POISONED;
 		(void)checker;
 		return value;
@@ -983,8 +1010,8 @@ namespace hemera {
 				to_string(value.type), text_of(name)));
 			return Progress::DONE;
 		}
-		// An untyped string, like a constant's, has a string's members
-		if (ValueKind::UNTYPED_STRING == kind) {
+		// An untyped string, complex number or quaternion, like a constant's, has its type's members
+		if (ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_COMPLEX == kind || ValueKind::UNTYPED_QUATERNION == kind) {
 			value = typed(default_type(value));
 			return check_member(checker, where, name, value);
 		}
@@ -1042,6 +1069,15 @@ namespace hemera {
 			}
 			if (member == "data" && ArrayType::STATIC != array->array_type) {
 				value = typed(BUILTIN_rawptr);
+				return Progress::DONE;
+			}
+		}
+		else if (TypeInfoVariant::COMPLEX == type->variant || TypeInfoVariant::QUATERNION == type->variant) {
+			// Its parts: real and imag, and a quaternion's jmag and kmag (docs/types.md, Complex Numbers and Quaternions)
+			if (composite_part(type, member) >= 0) {
+				value = typed(static_cast<TypeInfoComposite const*>(type)->part_type);
+				value.is_location = is_location;
+				value.is_mutable = is_mutable;
 				return Progress::DONE;
 			}
 		}
@@ -2071,13 +2107,17 @@ namespace hemera {
 				expected_count, expected_count == 1 ? "" : "s"));
 			return Progress::DONE;
 		}
-		// type_info_of also takes a type value, like an any's type
+		// type_info_of and types_are_aliases also take type values, like an any's type
 		const bool takes_type = name != "type_of";
-		const bool type_value_given = name == "type_info_of" && ValueKind::VALUE == values[0].kind
-			&& is_variant(values[0].type, TypeInfoVariant::TYPE);
-		if (takes_type && ValueKind::TYPE != values[0].kind && ValueKind::POISONED != values[0].kind && !type_value_given) {
-			callee = error_at(checker, ErrorCode::E4015, arguments[0], std::format("{} takes a type", name));
-			return Progress::DONE;
+		const bool takes_type_values = name == "type_info_of" || name == "types_are_aliases";
+		const size_t typed_count = name == "types_are_aliases" ? 2 : 1;
+		for (size_t i = 0; i < typed_count; ++i) {
+			const bool type_value_given = takes_type_values && ValueKind::VALUE == values[i].kind
+				&& is_variant(values[i].type, TypeInfoVariant::TYPE);
+			if (takes_type && ValueKind::TYPE != values[i].kind && ValueKind::POISONED != values[i].kind && !type_value_given) {
+				callee = error_at(checker, ErrorCode::E4015, arguments[i], std::format("{} takes a type", name));
+				return Progress::DONE;
+			}
 		}
 		if (name == "size_of" || name == "align_of" || name == "offset_of") {
 			if (ValueKind::TYPE == values[0].kind) {
@@ -2529,9 +2569,13 @@ namespace hemera {
 		}
 		if (type_head && next < node->children.size()
 			&& ast::NodeType::ARRAY_DIMENSION == node->children[next]->node_type && find_local(checker, node) == nullptr) {
-			// A chain after the type and its arguments, like Result[T, E].Error(e): the type alone, then the chain
+			/*
+			 * A chain after the type and its arguments, like Result[T, E].Error(e): the type alone, then the chain. Every
+			 * bracket right after a type is the type's, like i8[10][5]'s, since a type can't be indexed
+			 */
 			size_t end = next + 1;
-			while (end < node->children.size() && !is_postfix_marker(node->children[end])) {
+			while (end < node->children.size() && (ast::NodeType::ARRAY_DIMENSION == node->children[end]->node_type
+				|| !is_postfix_marker(node->children[end]))) {
 				++end;
 			}
 			if (end < node->children.size()) {
@@ -2717,7 +2761,14 @@ namespace hemera {
 		const ValueKind kind = value.kind;
 		return ValueKind::UNTYPED_INTEGER == kind || ValueKind::UNTYPED_FLOAT == kind
 			|| ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_BOOLEAN == kind
+			|| ValueKind::UNTYPED_COMPLEX == kind || ValueKind::UNTYPED_QUATERNION == kind
 			|| ValueKind::NULL_VALUE == kind;
+	}
+
+	// An untyped number's place among them: an integer, a float, a complex number, a quaternion; -1 if it isn't one.
+	static int number_rank(ValueKind kind) {
+		return ValueKind::UNTYPED_INTEGER == kind ? 0 : ValueKind::UNTYPED_FLOAT == kind ? 1
+			: ValueKind::UNTYPED_COMPLEX == kind ? 2 : ValueKind::UNTYPED_QUATERNION == kind ? 3 : -1;
 	}
 
 	/*
@@ -2729,11 +2780,13 @@ namespace hemera {
 			result = left;
 			// Not the left's value: an operator's is worked out by fold_result
 			result.integer_known = false;
-			if (ValueKind::UNTYPED_FLOAT == right.kind) {
-				result.kind = ValueKind::UNTYPED_FLOAT;
+			// Numbers take the widest kind among them: 1 + 0.5 is a float, 1 + 2i complex
+			const int left_rank = number_rank(left.kind);
+			const int right_rank = number_rank(right.kind);
+			if (right_rank > left_rank) {
+				result.kind = right.kind;
 			}
-			return left.kind == right.kind || (ValueKind::UNTYPED_INTEGER == left.kind || ValueKind::UNTYPED_FLOAT == left.kind)
-				== (ValueKind::UNTYPED_INTEGER == right.kind || ValueKind::UNTYPED_FLOAT == right.kind);
+			return left.kind == right.kind || (left_rank >= 0 && right_rank >= 0);
 		}
 		if (is_untyped(left)) {
 			result = typed(right.type);
@@ -3202,6 +3255,25 @@ namespace hemera {
 			fold_result(checker, node, op, left, right, result);
 			return Progress::DONE;
 		}
+		/*
+		 * A complex number or a quaternion with a real number in arithmetic, like z * 2.0: the real number as one, of
+		 * the float its parts are, or a number that converts to it
+		 */
+		const bool arithmetic_op = TokenType::OPERATOR_PLUS == op || TokenType::OPERATOR_MINUS == op
+			|| TokenType::OPERATOR_MULTIPLY == op || TokenType::OPERATOR_DIVIDE == op;
+		for (const auto& [composite, real] : { std::pair<const Value*, const Value*>{ &left, &right }, { &right, &left } }) {
+			if (arithmetic_op && ValueKind::VALUE == composite->kind && is_composite(composite->type) && ValueKind::VALUE == real->kind
+				&& (is_float(real->type) || is_integer(real->type))) {
+				TypeInfo* part = static_cast<TypeInfoComposite const*>(base_of(composite->type))->part_type;
+				if (!can_implicitly_convert_to(real->type, part)) {
+					result = error_at(checker, ErrorCode::E4015, node, std::format("{} and {} don't go together: the parts of {} are {}",
+						describe(left), describe(right), to_string(composite->type), to_string(part)));
+					return Progress::DONE;
+				}
+				result = typed(composite->type);
+				return Progress::DONE;
+			}
+		}
 		Value shared;
 		if (!common_type(left, right, shared)) {
 			// A literal with an archetype that isn't promised to be a number
@@ -3237,7 +3309,7 @@ namespace hemera {
 		}
 		if (is_comparison(op)) {
 			const bool ordered = TokenType::OPERATOR_EQUAL != op && TokenType::OPERATOR_NOT_EQUAL != op;
-			if (ordered && !(is_numeric(type) || is_enum(type) || is_variant(type, TypeInfoVariant::CHAR))) {
+			if (ordered && (!(is_numeric(type) || is_enum(type) || is_variant(type, TypeInfoVariant::CHAR)) || is_composite(type))) {
 				result = error_at(checker, ErrorCode::E4020, node, std::format("{} values can't be ordered", to_string(type)));
 				return Progress::DONE;
 			}
@@ -3439,8 +3511,11 @@ namespace hemera {
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(from)->array_type
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(to)->array_type
 			&& same_type(static_cast<TypeInfoArray const*>(from)->element_type, static_cast<TypeInfoArray const*>(to)->element_type);
+		// Complex numbers to another size, quaternions too, and a real number to either, as its real part
+		const bool composites = is_composite(to) && (from->variant == to->variant
+			|| TypeInfoVariant::INTEGER == from->variant || TypeInfoVariant::FLOAT == from->variant);
 		return from == to || assignable(const_cast<TypeInfo*>(from), const_cast<TypeInfo*>(to))
-			|| (scalar(from) && scalar(to)) || views;
+			|| (scalar(from) && scalar(to)) || views || composites;
 	}
 
 	// cast[T](x), bit_cast[T](x) and auto_cast(x), then anything after it, like ^ or .member.
@@ -3859,6 +3934,11 @@ namespace hemera {
 		else if (TokenType::LITERAL_FLOATING_POINT == token) {
 			result.kind = ValueKind::UNTYPED_FLOAT;
 		}
+		else if (TokenType::LITERAL_IMAGINARY == token) {
+			// 2i is complex; 2j and 2k only a quaternion has
+			const std::string text = text_of(node->value.value);
+			result.kind = !text.empty() && text.back() == 'i' ? ValueKind::UNTYPED_COMPLEX : ValueKind::UNTYPED_QUATERNION;
+		}
 		else if (TokenType::LITERAL_STRING == token) {
 			result.kind = ValueKind::UNTYPED_STRING;
 		}
@@ -4092,6 +4172,11 @@ namespace hemera {
 			}
 			if (is_text(node->value.value, "#is_compile_time")) {
 				result = typed(BUILTIN_bool);
+				return Progress::DONE;
+			}
+			if (is_text(node->value.value, "#file_path")) {
+				// The path of the file it's in, as a string
+				result = typed(BUILTIN_string);
 				return Progress::DONE;
 			}
 			if (is_text(node->value.value, "#file_data")) {

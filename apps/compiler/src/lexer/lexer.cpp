@@ -1,3 +1,4 @@
+#include <cctype>
 #include <concepts>
 #include <format>
 #include <limits>
@@ -439,6 +440,13 @@ namespace hemera::lexer {
 					next_char(tokenizer, input_stream);
 				}
 				goto switch_start;
+			case 'i': case 'j': case 'k':
+				// An imaginary literal, unless the letter starts a name
+				if (!std::isalnum(static_cast<unsigned char>(peek_char(tokenizer, 1))) && peek_char(tokenizer, 1) != '_') {
+					result_type = TokenType::LITERAL_IMAGINARY;
+					next_char(tokenizer, input_stream);
+				}
+				break;
 			default:
 				break;
 			}
@@ -466,6 +474,13 @@ namespace hemera::lexer {
 				//NOTE(ches) just pretend underscore isn't there
 				next_char(tokenizer, input_stream);
 				goto switch_start;
+			case 'i': case 'j': case 'k':
+				// An imaginary literal, unless the letter starts a name
+				if (!std::isalnum(static_cast<unsigned char>(peek_char(tokenizer, 1))) && peek_char(tokenizer, 1) != '_') {
+					result_type = TokenType::LITERAL_IMAGINARY;
+					next_char(tokenizer, input_stream);
+				}
+				break;
 			default:
 				break;
 			}
@@ -520,6 +535,13 @@ namespace hemera::lexer {
 					next_char(tokenizer, input_stream);
 				}
 				goto switch_start;
+			case 'i': case 'j': case 'k':
+				// An imaginary literal, unless the letter starts a name
+				if (!std::isalnum(static_cast<unsigned char>(peek_char(tokenizer, 1))) && peek_char(tokenizer, 1) != '_') {
+					result_type = TokenType::LITERAL_IMAGINARY;
+					next_char(tokenizer, input_stream);
+				}
+				break;
 			default:
 				break;
 			}
@@ -1081,6 +1103,7 @@ namespace hemera::lexer {
 		case TokenType::LITERAL_CHAR:
 		case TokenType::LITERAL_INTEGER:
 		case TokenType::LITERAL_FLOATING_POINT:
+		case TokenType::LITERAL_IMAGINARY:
 		case TokenType::LITERAL_STRING:
 		case TokenType::PIPE_REORDER_IDENTIFIER:
 		{

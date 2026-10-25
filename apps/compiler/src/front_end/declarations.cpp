@@ -162,6 +162,74 @@ namespace hemera {
 		return Progress::FAILED;
 	}
 
+	/*
+	 * A field's default that isn't an integer, a boolean or an enum member (docs/types.md, Structs): a float or a
+	 * string literal, or a function or a constant named, of any type the field takes. extra stays INTEGER otherwise.
+	 */
+	static Progress other_default(Walk& walk, ast::Node* node, TypeInfo* field_type, StructMember& extra) {
+		TypeInfo const* field = get_base_type(field_type);
+		ast::Node* literal = node;
+		const bool negated = ast::NodeType::UNARY_OPERATOR == node->node_type && TokenType::OPERATOR_MINUS == node->value.type
+			&& node->children.size() == 1;
+		if (negated) {
+			literal = node->children[0];
+		}
+		if (ast::NodeType::LITERAL == literal->node_type && TokenType::LITERAL_FLOATING_POINT == literal->value.type) {
+			if (field == nullptr || TypeInfoVariant::FLOAT != field->variant) {
+				return type_error(walk, ErrorCode::E4014, node, std::format("a float can't be the default of a {} field", to_string(field_type)));
+			}
+			std::string text(std::string_view(*literal->value.value));
+			std::erase(text, '_');
+			extra.default_kind = StructMember::Default::FLOAT;
+			extra.default_float = negated ? -std::stod(text) : std::stod(text);
+			return Progress::DONE;
+		}
+		if (negated) {
+			return Progress::DONE;
+		}
+		if (ast::NodeType::LITERAL == node->node_type && TokenType::LITERAL_STRING == node->value.type) {
+			if (field == nullptr || TypeInfoVariant::STRING != field->variant) {
+				return type_error(walk, ErrorCode::E4014, node, std::format("a string can't be the default of a {} field", to_string(field_type)));
+			}
+			extra.default_kind = StructMember::Default::TEXT;
+			extra.default_text = ast::string_value(node);
+			return Progress::DONE;
+		}
+		Declaration* named = nullptr;
+		Progress progress = named_declaration_in(walk, node, named);
+		if (progress != Progress::DONE || named == nullptr) {
+			return progress;
+		}
+		if (DeclarationKind::FUNCTION == named->kind) {
+			if (!can_implicitly_convert_to(named->value_type, field_type)) {
+				return type_error(walk, ErrorCode::E4014, node, std::format("{} is a {}, which a {} field can't hold",
+					std::string_view(*named->name), to_string(named->value_type), to_string(field_type)));
+			}
+			extra.default_kind = StructMember::Default::DECLARATION;
+			extra.default_declaration = named;
+			return Progress::DONE;
+		}
+		if (DeclarationKind::VALUE != named->kind || named->type_value != nullptr || named->externally_initialized) {
+			return Progress::DONE;
+		}
+		// An integer, a boolean or an enum member is worked out as before
+		TypeInfo const* held = get_base_type(named->value_type);
+		if (Untyped::INTEGER == named->untyped || Untyped::BOOLEAN == named->untyped || (Untyped::NONE == named->untyped && held != nullptr
+			&& (TypeInfoVariant::INTEGER == held->variant || TypeInfoVariant::BOOLEAN == held->variant || TypeInfoVariant::ENUM == held->variant))) {
+			return Progress::DONE;
+		}
+		const bool fits = Untyped::STRING == named->untyped ? field != nullptr && TypeInfoVariant::STRING == field->variant
+			: Untyped::FLOAT == named->untyped ? field != nullptr && TypeInfoVariant::FLOAT == field->variant
+			: can_implicitly_convert_to(named->value_type, field_type);
+		if (!fits) {
+			return type_error(walk, ErrorCode::E4014, node, std::format("{} can't be the default of a {} field",
+				std::string_view(*named->name), to_string(field_type)));
+		}
+		extra.default_kind = StructMember::Default::DECLARATION;
+		extra.default_declaration = named;
+		return Progress::DONE;
+	}
+
 	// A type made from others, like ptr[int] or int[4], the same object each time it's asked for.
 	template<typename Make>
 	static TypeInfo* derived_type(Walk& walk, const std::string& key, Make make) {
@@ -1554,18 +1622,37 @@ namespace hemera {
 					[](const ast::Node* part) { return is_assign(part); }) ? definition_value(child) : nullptr;
 				const bool has_value = default_node != nullptr && ast::NodeType::UNINITIALIZED != default_node->node_type;
 				ConstantValue default_value{ ConstantValue::Kind::INTEGER, false, 0, std::string(), nullptr };
+				// Beyond integers, booleans and enum members: a float or string literal, or a function or constant named
+				StructMember extra;
 				if (has_value) {
-					progress = evaluate_in(walk, default_node, default_value);
+					progress = other_default(walk, default_node, field_type, extra);
 					if (progress != Progress::DONE) {
 						return progress;
 					}
-					if (ConstantValue::Kind::FUNCTION == default_value.kind) {
-						return type_error(walk, ErrorCode::E4014, default_node, "a field's default can't be a function yet");
+				}
+				if (has_value && StructMember::Default::INTEGER == extra.default_kind) {
+					progress = evaluate_in(walk, default_node, default_value);
+					if (progress != Progress::DONE) {
+						return progress;
 					}
 				}
 				const int64_t default_integer = ConstantValue::Kind::BOOLEAN == default_value.kind ? (default_value.boolean ? 1 : 0)
 					: default_value.integer;
 				const std::string default_member = ConstantValue::Kind::ENUM_MEMBER == default_value.kind ? default_value.member : std::string();
+				const auto with_default = [&](InternedString name, bool is_using) {
+					StructMember member = extra;
+					member.name = name;
+					member.member_type = field_type;
+					member.has_value = has_value;
+					member.is_using = is_using;
+					member.default_integer = default_integer;
+					member.default_member = default_member;
+					member.default_kind = extra.default_kind;
+					member.default_float = extra.default_float;
+					member.default_text = extra.default_text;
+					member.default_declaration = extra.default_declaration;
+					return member;
+				};
 				ast::Node* names_node = child->children[0];
 				// using value : ptr[T], or : Inner: a named field whose members are the struct's own (docs/types.md, Structs)
 				const bool named_using = ast::NodeType::USING == child->children.back()->node_type;
@@ -1577,19 +1664,19 @@ namespace hemera {
 						return type_error(walk, ErrorCode::E4014, names_node, std::format("using needs one field, a struct or a pointer to something, not {}",
 							to_string(field_type)));
 					}
-					type->members.push_back({ names_node->value.value, field_type, 0, has_value, true, default_integer, default_member });
+					type->members.push_back(with_default(names_node->value.value, true));
 				}
 				else if (ast::NodeType::UNDERSCORE == names_node->node_type) {
 					// Its members are the struct's own
-					type->members.push_back({ nullptr, field_type, 0, has_value, true, default_integer, default_member });
+					type->members.push_back(with_default(nullptr, true));
 				}
 				else if (ast::NodeType::LIST == names_node->node_type) {
 					for (ast::Node* name : names_node->children) {
-						type->members.push_back({ name->value.value, field_type, 0, has_value, false, default_integer, default_member });
+						type->members.push_back(with_default(name->value.value, false));
 					}
 				}
 				else {
-					type->members.push_back({ names_node->value.value, field_type, 0, has_value, false, default_integer, default_member });
+					type->members.push_back(with_default(names_node->value.value, false));
 				}
 			}
 			else if (ast::NodeType::USING == child_type && !child->children.empty()) {
@@ -1611,7 +1698,11 @@ namespace hemera {
 					return type_error(walk, ErrorCode::E4014, binding,
 						std::format("using needs a struct, and {} isn't one", to_string(included)));
 				}
-				type->members.push_back({ binding->value.value, included, 0, false, true, 0, std::string() });
+				StructMember used;
+				used.name = binding->value.value;
+				used.member_type = included;
+				used.is_using = true;
+				type->members.push_back(used);
 			}
 		}
 		/*
@@ -2101,6 +2192,8 @@ namespace hemera {
 				: ValueKind::UNTYPED_FLOAT == constant.kind ? Untyped::FLOAT
 				: ValueKind::UNTYPED_STRING == constant.kind ? Untyped::STRING
 				: ValueKind::UNTYPED_BOOLEAN == constant.kind ? Untyped::BOOLEAN
+				: ValueKind::UNTYPED_COMPLEX == constant.kind ? Untyped::COMPLEX
+				: ValueKind::UNTYPED_QUATERNION == constant.kind ? Untyped::QUATERNION
 				: Untyped::NONE;
 			for (Declaration* each : declarations) {
 				each->untyped = untyped;

@@ -1376,6 +1376,12 @@ namespace hemera::ast {
 			std::string cast(const Node* node) {
 				// (x).member and the like
 				if (is_token(node, TokenType::SYM_LPAREN)) {
+					// A string literal's chain, like "abc".count, has no parentheses: the node is where the literal is
+					const Node* first = node->children.empty() ? nullptr : node->children[0];
+					if (first != nullptr && ast::NodeType::LITERAL == first->node_type && first->value.line_number == node->value.line_number
+						&& first->value.column_number == node->value.column_number) {
+						return expression(first, ANY) + chain(node, 1);
+					}
 					return node->children.empty() ? std::string("()") : "(" + expression(node->children[0], ANY) + ")" + chain(node, 1);
 				}
 				std::string out(operator_text(node->value.type));

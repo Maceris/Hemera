@@ -72,6 +72,12 @@ namespace hemera {
 	Progress evaluate_in(Walk& walk, ast::Node* expression, ConstantValue& result);
 
 	/// <summary>
+	/// The declaration a name, or package.name, refers to in the walk's scope, resolved; null if it isn't one
+	/// of those, or names nothing.
+	/// </summary>
+	Progress named_declaration_in(Walk& walk, ast::Node* name, struct Declaration*& declaration);
+
+	/// <summary>
 	/// The instance of a generic type for these arguments, made (and its resolution started) the
 	/// first time it's asked for.
 	/// </summary>

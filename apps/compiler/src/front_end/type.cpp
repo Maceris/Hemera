@@ -67,9 +67,11 @@ namespace hemera {
 		: TypeInfo{ TypeInfoVariant::BOOLEAN, size_, size_ }
 	{}
 
-	TypeInfoComposite::TypeInfoComposite(TypeInfoVariant variant_, size_t part_size_, size_t parts)
-		: TypeInfo{ variant_, part_size_ * parts, part_size_ }
-		, part_size{ part_size_ }
+	TypeInfoComposite::TypeInfoComposite(TypeInfoVariant variant_, TypeInfo* part_type_, size_t parts_)
+		: TypeInfo{ variant_, part_type_->size * parts_, part_type_->size }
+		, part_size{ part_type_->size }
+		, parts{ parts_ }
+		, part_type{ part_type_ }
 	{}
 
 	TypeInfoEnum::TypeInfoEnum(InternedString name_)
@@ -339,7 +341,6 @@ namespace hemera {
 	TypeInfo* BUILTIN_b32;
 	TypeInfo* BUILTIN_b64;
 	TypeInfo* BUILTIN_bool;
-	TypeInfo* BUILTIN_c16;
 	TypeInfo* BUILTIN_c32;
 	TypeInfo* BUILTIN_c64;
 	TypeInfo* BUILTIN_c128;
@@ -368,7 +369,6 @@ namespace hemera {
 	TypeInfo* BUILTIN_i128be;
 	TypeInfo* BUILTIN_i128le;
 	TypeInfo* BUILTIN_int;
-	TypeInfo* BUILTIN_q32;
 	TypeInfo* BUILTIN_q64;
 	TypeInfo* BUILTIN_q128;
 	TypeInfo* BUILTIN_q256;
@@ -403,7 +403,7 @@ namespace hemera {
 		{ "any", &BUILTIN_any },
 		{ "b8", &BUILTIN_b8 }, { "b16", &BUILTIN_b16 }, { "b32", &BUILTIN_b32 }, { "b64", &BUILTIN_b64 },
 		{ "bool", &BUILTIN_bool },
-		{ "c16", &BUILTIN_c16 }, { "c32", &BUILTIN_c32 }, { "c64", &BUILTIN_c64 }, { "c128", &BUILTIN_c128 },
+		{ "c32", &BUILTIN_c32 }, { "c64", &BUILTIN_c64 }, { "c128", &BUILTIN_c128 },
 		{ "char", &BUILTIN_char },
 		{ "cstring", &BUILTIN_cstring },
 		{ "f16", &BUILTIN_f16 }, { "f16be", &BUILTIN_f16be }, { "f16le", &BUILTIN_f16le },
@@ -415,7 +415,7 @@ namespace hemera {
 		{ "i64", &BUILTIN_i64 }, { "i64be", &BUILTIN_i64be }, { "i64le", &BUILTIN_i64le },
 		{ "i128", &BUILTIN_i128 }, { "i128be", &BUILTIN_i128be }, { "i128le", &BUILTIN_i128le },
 		{ "int", &BUILTIN_int },
-		{ "q32", &BUILTIN_q32 }, { "q64", &BUILTIN_q64 }, { "q128", &BUILTIN_q128 }, { "q256", &BUILTIN_q256 },
+		{ "q64", &BUILTIN_q64 }, { "q128", &BUILTIN_q128 }, { "q256", &BUILTIN_q256 },
 		{ "rawptr", &BUILTIN_rawptr },
 		{ "string", &BUILTIN_string },
 		{ "type", &BUILTIN_type },
@@ -558,6 +558,17 @@ namespace hemera {
 			type = static_cast<TypeInfoAlias const*>(type)->base_type;
 		}
 		return type;
+	}
+
+	int composite_part(TypeInfo const* type, std::string_view member) {
+		type = get_base_type(type);
+		if (type != nullptr && TypeInfoVariant::COMPLEX == type->variant) {
+			return member == "real" ? 0 : member == "imag" ? 1 : -1;
+		}
+		if (type != nullptr && TypeInfoVariant::QUATERNION == type->variant) {
+			return member == "imag" ? 0 : member == "jmag" ? 1 : member == "kmag" ? 2 : member == "real" ? 3 : -1;
+		}
+		return -1;
 	}
 
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type) {
@@ -798,11 +809,6 @@ namespace hemera {
 		BUILTIN_b32 = new TypeInfoBoolean(4);
 		BUILTIN_b64 = new TypeInfoBoolean(8);
 		BUILTIN_bool = new TypeInfoBoolean(1);
-		// Complex numbers are two integers, quaternions four (docs/types.md)
-		BUILTIN_c16 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 1, 2);
-		BUILTIN_c32 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 2, 2);
-		BUILTIN_c64 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 4, 2);
-		BUILTIN_c128 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, 8, 2);
 		BUILTIN_char = new TypeInfo(TypeInfoVariant::CHAR, 1, 1);
 		BUILTIN_cstring = new TypeInfoString(true);
 		BUILTIN_f16 = new TypeInfoFloat(Endianness::SYSTEM, 2);
@@ -828,10 +834,13 @@ namespace hemera {
 		BUILTIN_i128be = new TypeInfoInteger(true, Endianness::BIG, 16);
 		BUILTIN_i128le = new TypeInfoInteger(true, Endianness::LITTLE, 16);
 		BUILTIN_int = new TypeInfoInteger(true, Endianness::SYSTEM, POINTER_SIZE);
-		BUILTIN_q32 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 1, 4);
-		BUILTIN_q64 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 2, 4);
-		BUILTIN_q128 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 4, 4);
-		BUILTIN_q256 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, 8, 4);
+		// Complex numbers are two floats, quaternions four, after the floats they're made of (docs/types.md)
+		BUILTIN_c32 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, BUILTIN_f16, 2);
+		BUILTIN_c64 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, BUILTIN_f32, 2);
+		BUILTIN_c128 = new TypeInfoComposite(TypeInfoVariant::COMPLEX, BUILTIN_f64, 2);
+		BUILTIN_q64 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, BUILTIN_f16, 4);
+		BUILTIN_q128 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, BUILTIN_f32, 4);
+		BUILTIN_q256 = new TypeInfoComposite(TypeInfoVariant::QUATERNION, BUILTIN_f64, 4);
 		// What it points to can only be read through it; mut rawptr can change it (docs/types.md, Mutability)
 		BUILTIN_rawptr = new TypeInfoPointer(nullptr, false, false, POINTER_SIZE);
 		BUILTIN_string = new TypeInfoString(false);

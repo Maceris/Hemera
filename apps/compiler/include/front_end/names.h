@@ -110,6 +110,10 @@ namespace hemera {
 			/// (docs/types.md, Checked Bodies): its name in member, its generic in function.
 			/// </summary>
 			UNKNOWN,
+			/// <summary>
+			/// A type value, like int or an alias: compared exactly with ==, or by types_are_aliases.
+			/// </summary>
+			TYPE,
 		};
 		Kind kind;
 		bool boolean = false;
@@ -119,6 +123,10 @@ namespace hemera {
 		/// For a FUNCTION, its declaration.
 		/// </summary>
 		struct Declaration* function = nullptr;
+		/// <summary>
+		/// For a TYPE, the type.
+		/// </summary>
+		TypeInfo* type = nullptr;
 	};
 
 	/// <summary>
@@ -151,6 +159,8 @@ namespace hemera {
 		FLOAT,
 		STRING,
 		BOOLEAN,
+		COMPLEX,
+		QUATERNION,
 	};
 
 	struct Declaration {

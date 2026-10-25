@@ -197,6 +197,11 @@ TEST(LexerTests, SingleComplexTokenTest)
 	inputs.push_back(std::make_tuple("1_234_567.456", TokenType::LITERAL_FLOATING_POINT));
 	inputs.push_back(std::make_tuple("1e-5", TokenType::LITERAL_FLOATING_POINT));
 	inputs.push_back(std::make_tuple("2E10", TokenType::LITERAL_FLOATING_POINT));
+	// Imaginary numbers, a complex number's or a quaternion's parts
+	inputs.push_back(std::make_tuple("2i", TokenType::LITERAL_IMAGINARY));
+	inputs.push_back(std::make_tuple("1.5j", TokenType::LITERAL_IMAGINARY));
+	inputs.push_back(std::make_tuple("1e3k", TokenType::LITERAL_IMAGINARY));
+	inputs.push_back(std::make_tuple("1_000i", TokenType::LITERAL_IMAGINARY));
 
 	for (const auto& input : inputs) {
 

@@ -317,6 +317,11 @@ namespace hemera {
 		return is_variant(type, TypeInfoVariant::FLOAT);
 	}
 
+	// A complex number or a quaternion, an array of its float parts (TypeInfoComposite).
+	static bool is_composite(TypeInfo const* type) {
+		return is_variant(type, TypeInfoVariant::COMPLEX) || is_variant(type, TypeInfoVariant::QUATERNION);
+	}
+
 	static bool is_raw_string(TypeInfo const* type) {
 		return is_variant(type, TypeInfoVariant::STRING) && static_cast<TypeInfoString const*>(base(type))->is_raw;
 	}
@@ -440,8 +445,9 @@ namespace hemera {
 			result = mlir::VectorType::get({ static_cast<int64_t>(vector->count) }, lane);
 		}
 		else if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
+			// Its float parts, in order (TypeInfoComposite)
 			auto composite = static_cast<TypeInfoComposite const*>(type);
-			result = LLVM::LLVMArrayType::get(integer_type(generator, composite->part_size), type->size / composite->part_size);
+			result = LLVM::LLVMArrayType::get(llvm_type(generator, composite->part_type), composite->parts);
 		}
 		else if (TypeInfoVariant::STRUCT == variant) {
 			result = struct_type(generator, static_cast<TypeInfoStruct const*>(type));
@@ -931,12 +937,15 @@ namespace hemera {
 	static bool is_untyped(ValueKind kind) {
 		return ValueKind::UNTYPED_INTEGER == kind || ValueKind::UNTYPED_FLOAT == kind
 			|| ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_BOOLEAN == kind
+			|| ValueKind::UNTYPED_COMPLEX == kind || ValueKind::UNTYPED_QUATERNION == kind
 			|| ValueKind::NULL_VALUE == kind;
 	}
 
-	// The type an untyped value takes where nothing else decides: an int, an f64, a string, a bool.
+	// The type an untyped value takes where nothing else decides: an int, an f64, a c128, a q256, a string, a bool.
 	static TypeInfo* usual(ValueKind kind) {
 		return ValueKind::UNTYPED_FLOAT == kind ? BUILTIN_f64
+			: ValueKind::UNTYPED_COMPLEX == kind ? BUILTIN_c128
+			: ValueKind::UNTYPED_QUATERNION == kind ? BUILTIN_q256
 			: ValueKind::UNTYPED_STRING == kind ? BUILTIN_string
 			: ValueKind::UNTYPED_BOOLEAN == kind ? BUILTIN_bool
 			: ValueKind::NULL_VALUE == kind ? BUILTIN_rawptr
@@ -950,12 +959,19 @@ namespace hemera {
 			return false;
 		}
 		const TypeInfoVariant variant = target->variant;
+		const bool composite = TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant;
 		if (ValueKind::UNTYPED_INTEGER == kind) {
 			return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::FLOAT == variant
-				|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::ENUM == variant;
+				|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::ENUM == variant || composite;
 		}
 		if (ValueKind::UNTYPED_FLOAT == kind) {
-			return TypeInfoVariant::FLOAT == variant;
+			return TypeInfoVariant::FLOAT == variant || composite;
+		}
+		if (ValueKind::UNTYPED_COMPLEX == kind) {
+			return composite;
+		}
+		if (ValueKind::UNTYPED_QUATERNION == kind) {
+			return TypeInfoVariant::QUATERNION == variant;
 		}
 		if (ValueKind::UNTYPED_STRING == kind) {
 			return TypeInfoVariant::STRING == variant;
@@ -2236,6 +2252,27 @@ namespace hemera {
 	static mlir::Value emit_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
 		const TokenType token = node->value.type;
 		mlir::Type target = llvm_type(generator, type);
+		/*
+		 * A number as a complex number or a quaternion: an imaginary one, like 2i, 2j or 2k, its part, and a real one its
+		 * real part, the rest 0
+		 */
+		if (is_composite(type) && (TokenType::LITERAL_INTEGER == token || TokenType::LITERAL_FLOATING_POINT == token
+			|| TokenType::LITERAL_IMAGINARY == token)) {
+			auto composite = static_cast<TypeInfoComposite const*>(base(type));
+			std::string text = text_of(node->value.value);
+			std::erase(text, '_');
+			int part = composite_part(type, "real");
+			if (TokenType::LITERAL_IMAGINARY == token && !text.empty()) {
+				part = composite_part(type, text.back() == 'i' ? "imag" : text.back() == 'j' ? "jmag" : "kmag");
+				text.pop_back();
+			}
+			mlir::Type part_type = llvm_type(generator, composite->part_type);
+			llvm::APFloat number(std::stod(text));
+			bool lost = false;
+			number.convert(llvm::cast<mlir::FloatType>(part_type).getFloatSemantics(), llvm::APFloat::rmNearestTiesToEven, &lost);
+			return insert(generator, zero_of(generator, target), LLVM::ConstantOp::create(generator.builder, generator.loc, part_type, number),
+				{ static_cast<int64_t>(part) });
+		}
 		if (TokenType::LITERAL_STRING == token) {
 			return string_value(generator, ast::string_value(node), type);
 		}
@@ -2304,6 +2341,25 @@ namespace hemera {
 		TypeInfo const* destination = base(to);
 		if (source == destination) {
 			return v;
+		}
+		/*
+		 * To a complex number or a quaternion: one of another size part by part, or a real number as its real part
+		 * (docs/types.md, Complex Numbers and Quaternions)
+		 */
+		if (is_composite(destination) && source->variant == destination->variant) {
+			auto from_parts = static_cast<TypeInfoComposite const*>(source);
+			auto to_parts = static_cast<TypeInfoComposite const*>(destination);
+			mlir::Value result = zero_of(generator, llvm_type(generator, destination));
+			for (size_t i = 0; i < to_parts->parts; ++i) {
+				result = insert(generator, result, convert(generator, extract(generator, v, static_cast<int64_t>(i)), from_parts->part_type,
+					to_parts->part_type), { static_cast<int64_t>(i) });
+			}
+			return result;
+		}
+		if (is_composite(destination) && (TypeInfoVariant::INTEGER == source->variant || TypeInfoVariant::FLOAT == source->variant)) {
+			auto to_parts = static_cast<TypeInfoComposite const*>(destination);
+			return insert(generator, zero_of(generator, llvm_type(generator, destination)), convert(generator, v, from, to_parts->part_type),
+				{ static_cast<int64_t>(composite_part(destination, "real")) });
 		}
 		/*
 		 * docs/types.md, Endian-Specific Types: a value of one is its bytes in its order, as an integer, swapped and
@@ -2846,8 +2902,8 @@ namespace hemera {
 		if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
 			auto composite = static_cast<TypeInfoComposite const*>(type);
 			mlir::Value result = zero_of(generator, llvm);
-			mlir::Type part = integer_type(generator, composite->part_size);
-			for (size_t i = 0; i < type->size / composite->part_size; ++i) {
+			mlir::Type part = llvm_type(generator, composite->part_type);
+			for (size_t i = 0; i < composite->parts; ++i) {
 				result = insert(generator, result, constant_number(generator, part, at + i * composite->part_size, composite->part_size),
 					{ static_cast<int64_t>(i) });
 			}
@@ -3841,6 +3897,16 @@ namespace hemera {
 			return location(offset_address(generator, address_of(generator, current), offset), member_type);
 		}
 		const std::string member = text_of(name);
+		// A complex number's or a quaternion's part, an element of its array of floats
+		if (TypeInfoVariant::COMPLEX == type->variant || TypeInfoVariant::QUATERNION == type->variant) {
+			const int part = composite_part(type, member);
+			TypeInfo* part_type = static_cast<TypeInfoComposite const*>(type)->part_type;
+			if (!current.address) {
+				return value(extract(generator, current.value, part), part_type);
+			}
+			return location(offset_address(generator, address_of(generator, current),
+				static_cast<size_t>(part) * static_cast<TypeInfoComposite const*>(type)->part_size), part_type);
+		}
 		if (TypeInfoVariant::ARRAY == type->variant && ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
 			return value(constant_int(generator, usize_type(generator),
 				static_cast<int64_t>(static_cast<TypeInfoArray const*>(type)->count)), BUILTIN_usize);
@@ -4280,6 +4346,60 @@ namespace hemera {
 				return value(type_descriptor(generator, found->type), result_type);
 			}
 			return value(value_of(generator, emit_expression(generator, arguments[0], nullptr)), result_type);
+		}
+		/*
+		 * Whether two types are the same once aliases that aren't distinct are followed: known when both are named,
+		 * or else by following each descriptor's base_type while it's such an alias, and comparing where they end
+		 */
+		if (name == "types_are_aliases" && arguments.size() == 2) {
+			const CheckedNode* left = checked(generator, arguments[0]);
+			const CheckedNode* right = checked(generator, arguments[1]);
+			if (left != nullptr && right != nullptr && ValueKind::TYPE == left->kind && ValueKind::TYPE == right->kind) {
+				return value(boolean(generator, same_type(left->type, right->type)), BUILTIN_bool);
+			}
+			Declaration* alias = base_declaration_named(generator, "compiler", "TypeInfoAlias");
+			TypeInfo const* layout = alias != nullptr ? base(alias->type_value) : nullptr;
+			if (layout == nullptr || TypeInfoVariant::STRUCT != layout->variant) {
+				unsupported(generator, paren, "compiler.TypeInfoAlias isn't available for types_are_aliases");
+				return value(boolean(generator, false), BUILTIN_bool);
+			}
+			auto structure = static_cast<TypeInfoStruct const*>(layout);
+			size_t variant_offset = 0, base_offset = 0, distinct_offset = 0;
+			TypeInfo* variant_type = nullptr;
+			TypeInfo* base_type = nullptr;
+			TypeInfo* distinct_type = nullptr;
+			std::vector<int64_t> path;
+			find_member(generator, structure, intern(std::string("variant")), variant_offset, variant_type, path);
+			find_member(generator, structure, intern(std::string("base_type")), base_offset, base_type, path);
+			find_member(generator, structure, intern(std::string("is_distinct")), distinct_offset, distinct_type, path);
+			const auto unaliased = [&](ast::Node* argument) {
+				mlir::Value slot = make_slot(generator, BUILTIN_rawptr);
+				const CheckedNode* found = checked(generator, argument);
+				store(generator, found != nullptr && ValueKind::TYPE == found->kind ? type_descriptor(generator, found->type)
+					: value_of(generator, emit_expression(generator, argument, BUILTIN_type)), slot);
+				emit_loop(generator, true, [&]() {
+					mlir::Value at = load(generator, BUILTIN_rawptr, slot);
+					// compiler.TypeInfoVariant.ALIAS is its first member, 0
+					mlir::Value variant = load(generator, variant_type, offset_address(generator, at, variant_offset));
+					mlir::Value is_alias = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, variant,
+						constant_int(generator, variant.getType(), 0));
+					emit_if(generator, negate(generator, is_alias), [&]() {
+						emit_break(generator, 1);
+						return true;
+					}, nullptr);
+					mlir::Value distinct = load(generator, distinct_type, offset_address(generator, at, distinct_offset));
+					emit_if(generator, distinct, [&]() {
+						emit_break(generator, 1);
+						return true;
+					}, nullptr);
+					store(generator, load(generator, BUILTIN_rawptr, offset_address(generator, at, base_offset)), slot);
+					return false;
+				});
+				return load(generator, BUILTIN_rawptr, slot);
+			};
+			mlir::Value a = unaliased(arguments[0]);
+			mlir::Value b = unaliased(arguments[1]);
+			return value(LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, a, b), BUILTIN_bool);
 		}
 		if ((name == "size_of" || name == "align_of" || name == "offset_of") && !arguments.empty()) {
 			TypeInfo const* of = emit_expression(generator, arguments[0], nullptr).type;
@@ -5418,6 +5538,10 @@ namespace hemera {
 		if (Emitted vector_result; emit_vector_intrinsic(generator, name.substr(0, name.find('[')), function, arguments, vector_result)) {
 			return vector_result;
 		}
+		if (name.substr(0, name.find('[')) == "square_root" && arguments.size() == 1) {
+			return value(LLVM::SqrtOp::create(generator.builder, generator.loc, arguments[0]), function->output.empty() ? nullptr
+				: function->output[0].type);
+		}
 		if (name == "spin_hint") {
 			const ArchType architecture = generator.options != nullptr ? generator.options->architecture : ArchType::x86_64;
 			if (ArchType::x86_64 == architecture || ArchType::x86 == architecture) {
@@ -5843,6 +5967,8 @@ namespace hemera {
 				const ValueKind kind = spliced->kind;
 				expected = ValueKind::UNTYPED_INTEGER == kind ? BUILTIN_int
 					: ValueKind::UNTYPED_FLOAT == kind ? BUILTIN_f64
+					: ValueKind::UNTYPED_COMPLEX == kind ? BUILTIN_c128
+					: ValueKind::UNTYPED_QUATERNION == kind ? BUILTIN_q256
 					: ValueKind::UNTYPED_STRING == kind ? BUILTIN_string
 					: ValueKind::UNTYPED_BOOLEAN == kind ? BUILTIN_bool
 					: ValueKind::TYPE == kind ? BUILTIN_type
@@ -6193,14 +6319,29 @@ namespace hemera {
 		if (right_typed) {
 			return right_type;
 		}
+		// The widest kind of number: an integer, a float, a complex number, a quaternion
+		const auto rank = [](ValueKind each) {
+			return ValueKind::UNTYPED_FLOAT == each ? 1 : ValueKind::UNTYPED_COMPLEX == each ? 2 : ValueKind::UNTYPED_QUATERNION == each ? 3 : 0;
+		};
 		ValueKind kind = left_checked != nullptr ? left_checked->kind : ValueKind::UNTYPED_INTEGER;
-		if (right_checked != nullptr && ValueKind::UNTYPED_FLOAT == right_checked->kind) {
-			kind = ValueKind::UNTYPED_FLOAT;
+		if (right_checked != nullptr && rank(right_checked->kind) > rank(kind)) {
+			kind = right_checked->kind;
 		}
 		return untyped_as(kind, expected);
 	}
 
 	static mlir::Value compare(Generator& generator, TokenType op, mlir::Value left, mlir::Value right, TypeInfo const* type) {
+		// A complex number or a quaternion: equal when every part is
+		if (is_composite(type)) {
+			auto composite = static_cast<TypeInfoComposite const*>(base(type));
+			mlir::Value equal;
+			for (size_t i = 0; i < composite->parts; ++i) {
+				mlir::Value same = compare(generator, TokenType::OPERATOR_EQUAL, extract(generator, left, static_cast<int64_t>(i)),
+					extract(generator, right, static_cast<int64_t>(i)), composite->part_type);
+				equal = equal ? static_cast<mlir::Value>(LLVM::AndOp::create(generator.builder, generator.loc, equal, same)) : same;
+			}
+			return TokenType::OPERATOR_NOT_EQUAL == op ? negate(generator, equal) : equal;
+		}
 		if (is_float(type)) {
 			const LLVM::FCmpPredicate predicate = TokenType::OPERATOR_EQUAL == op ? LLVM::FCmpPredicate::oeq
 				: TokenType::OPERATOR_NOT_EQUAL == op ? LLVM::FCmpPredicate::une
@@ -6220,12 +6361,90 @@ namespace hemera {
 		return LLVM::ICmpOp::create(generator.builder, generator.loc, predicate, left, right);
 	}
 
+	/*
+	 * +, -, * or / on two complex numbers or two quaternions (docs/types.md, Complex Numbers and Quaternions): + and - part
+	 * by part, * the complex or the Hamilton product, and / the product with the divisor's conjugate, over its norm
+	 */
+	static mlir::Value composite_arithmetic(Generator& generator, TokenType op, mlir::Value left, mlir::Value right, TypeInfo const* type,
+		const ast::Node* where) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		auto composite = static_cast<TypeInfoComposite const*>(base(type));
+		const auto add = [&](mlir::Value x, mlir::Value y) { return static_cast<mlir::Value>(LLVM::FAddOp::create(b, l, x, y)); };
+		const auto sub = [&](mlir::Value x, mlir::Value y) { return static_cast<mlir::Value>(LLVM::FSubOp::create(b, l, x, y)); };
+		const auto mul = [&](mlir::Value x, mlir::Value y) { return static_cast<mlir::Value>(LLVM::FMulOp::create(b, l, x, y)); };
+		const auto div = [&](mlir::Value x, mlir::Value y) { return static_cast<mlir::Value>(LLVM::FDivOp::create(b, l, x, y)); };
+		const auto parts_of = [&](mlir::Value whole) {
+			std::vector<mlir::Value> parts;
+			for (size_t i = 0; i < composite->parts; ++i) {
+				parts.push_back(extract(generator, whole, static_cast<int64_t>(i)));
+			}
+			return parts;
+		};
+		const auto whole_of = [&](const std::vector<mlir::Value>& parts) {
+			mlir::Value whole = zero_of(generator, llvm_type(generator, type));
+			for (size_t i = 0; i < parts.size(); ++i) {
+				whole = insert(generator, whole, parts[i], { static_cast<int64_t>(i) });
+			}
+			return whole;
+		};
+		std::vector<mlir::Value> x = parts_of(left);
+		std::vector<mlir::Value> y = parts_of(right);
+		if (TokenType::OPERATOR_PLUS == op || TokenType::OPERATOR_MINUS == op) {
+			std::vector<mlir::Value> result;
+			for (size_t i = 0; i < x.size(); ++i) {
+				result.push_back(TokenType::OPERATOR_PLUS == op ? add(x[i], y[i]) : sub(x[i], y[i]));
+			}
+			return whole_of(result);
+		}
+		if (TokenType::OPERATOR_MULTIPLY != op && TokenType::OPERATOR_DIVIDE != op) {
+			unsupported(generator, where, "this operator on complex numbers and quaternions can't be generated yet");
+			return left;
+		}
+		if (TypeInfoVariant::COMPLEX == composite->variant) {
+			// (a + bi)(c + di) = (ac - bd) + (ad + bc)i; over c + di, times c - di and over c^2 + d^2
+			mlir::Value a = x[0], bi = x[1], c = y[0], d = y[1];
+			if (TokenType::OPERATOR_MULTIPLY == op) {
+				return whole_of({ sub(mul(a, c), mul(bi, d)), add(mul(a, d), mul(bi, c)) });
+			}
+			mlir::Value norm = add(mul(c, c), mul(d, d));
+			return whole_of({ div(add(mul(a, c), mul(bi, d)), norm), div(sub(mul(bi, c), mul(a, d)), norm) });
+		}
+		// Quaternions are imag, jmag, kmag, then real: x, y, z and w
+		mlir::Value x1 = x[0], y1 = x[1], z1 = x[2], w1 = x[3];
+		mlir::Value x2 = y[0], y2 = y[1], z2 = y[2], w2 = y[3];
+		mlir::Value norm;
+		if (TokenType::OPERATOR_DIVIDE == op) {
+			// The divisor's conjugate, its imaginary parts negated, and its norm
+			norm = add(add(mul(w2, w2), mul(x2, x2)), add(mul(y2, y2), mul(z2, z2)));
+			x2 = LLVM::FNegOp::create(b, l, x2);
+			y2 = LLVM::FNegOp::create(b, l, y2);
+			z2 = LLVM::FNegOp::create(b, l, z2);
+		}
+		std::vector<mlir::Value> product{
+			add(sub(add(mul(w1, x2), mul(x1, w2)), mul(z1, y2)), mul(y1, z2)),
+			add(add(sub(mul(w1, y2), mul(x1, z2)), mul(y1, w2)), mul(z1, x2)),
+			add(sub(add(mul(w1, z2), mul(x1, y2)), mul(y1, x2)), mul(z1, w2)),
+			sub(sub(sub(mul(w1, w2), mul(x1, x2)), mul(y1, y2)), mul(z1, z2)),
+		};
+		if (TokenType::OPERATOR_DIVIDE == op) {
+			for (mlir::Value& part : product) {
+				part = div(part, norm);
+			}
+		}
+		return whole_of(product);
+	}
+
 	// An arithmetic, bitwise or shift operator on two values of type.
 	static mlir::Value arithmetic(Generator& generator, TokenType op, mlir::Value left, mlir::Value right, TypeInfo const* type,
 		const ast::Node* where) {
 
 		mlir::OpBuilder& b = generator.builder;
 		const mlir::Location l = generator.loc;
+		if (is_composite(type)) {
+			return composite_arithmetic(generator, op, left, right, type, where);
+		}
 		if (is_float(type)) {
 			if (TokenType::OPERATOR_PLUS == op) {
 				return LLVM::FAddOp::create(b, l, left, right);
@@ -6398,6 +6617,16 @@ namespace hemera {
 			// A vector's lanes decide, like -v on floats
 			TypeInfo const* scalar = is_variant(result_type, TypeInfoVariant::VECTOR)
 				? static_cast<TypeInfoVector const*>(base(result_type))->element_type : result_type;
+			// Every part of a complex number or a quaternion negated
+			if (is_composite(scalar)) {
+				auto composite = static_cast<TypeInfoComposite const*>(base(scalar));
+				mlir::Value negated = operand;
+				for (size_t i = 0; i < composite->parts; ++i) {
+					negated = insert(generator, negated, LLVM::FNegOp::create(generator.builder, generator.loc,
+						extract(generator, operand, static_cast<int64_t>(i))), { static_cast<int64_t>(i) });
+				}
+				return value(negated, result_type);
+			}
 			if (is_float(scalar)) {
 				return value(LLVM::FNegOp::create(generator.builder, generator.loc, operand), result_type);
 			}
@@ -6579,6 +6808,27 @@ namespace hemera {
 				};
 				const bool left_optional = optional(left_type);
 				const bool right_optional = optional(right_type);
+				// Two optionals: equal when both hold nothing, or both hold values that are equal
+				if (left_optional && right_optional && !is_variant(static_cast<TypeInfoUnion const*>(base(type))->variants[0].types[0], TypeInfoVariant::STRUCT)
+					&& !is_variant(static_cast<TypeInfoUnion const*>(base(type))->variants[0].types[0], TypeInfoVariant::UNION)) {
+					TypeInfo* held_type = static_cast<TypeInfoUnion const*>(base(type))->variants[0].types[0];
+					mlir::Value left_address = address_of(generator, emit_expression(generator, left_node, type));
+					mlir::Value right_address = address_of(generator, emit_expression(generator, right_node, type));
+					mlir::Value left_some = tag_is(generator, left_address, type, 0, true);
+					mlir::Value right_some = tag_is(generator, right_address, type, 0, true);
+					mlir::Value slot = make_slot(generator, BUILTIN_bool);
+					// Both or neither hold a value; if neither, that's equal
+					store(generator, compare(generator, TokenType::OPERATOR_EQUAL, left_some, right_some, BUILTIN_bool), slot);
+					emit_if(generator, LLVM::AndOp::create(generator.builder, generator.loc, left_some, right_some), [&]() {
+						mlir::Value left = value_of(generator, held_value(generator, left_address, type));
+						mlir::Value right = value_of(generator, held_value(generator, right_address, type));
+						store(generator, is_variant(held_type, TypeInfoVariant::STRING) && !static_cast<TypeInfoString const*>(base(held_type))->is_raw
+							? strings_equal(generator, left, right) : compare(generator, TokenType::OPERATOR_EQUAL, left, right, held_type), slot);
+						return false;
+					}, nullptr);
+					mlir::Value equal = load(generator, BUILTIN_bool, slot);
+					return value(TokenType::OPERATOR_EQUAL == op ? equal : negate(generator, equal), BUILTIN_bool);
+				}
 				if (left_optional != right_optional) {
 					ast::Node* optional_node = left_optional ? left_node : right_node;
 					ast::Node* other_node = left_optional ? right_node : left_node;
@@ -6682,6 +6932,23 @@ namespace hemera {
 	// A struct member's default value (StructMember::has_value), a constant.
 	static mlir::Value default_of(Generator& generator, const StructMember& member) {
 		mlir::Type type = llvm_type(generator, member.member_type);
+		if (StructMember::Default::TEXT == member.default_kind) {
+			return string_value(generator, member.default_text, member.member_type);
+		}
+		if (StructMember::Default::FLOAT == member.default_kind && mlir::isa<mlir::FloatType>(type)) {
+			llvm::APFloat number(member.default_float);
+			bool lost = false;
+			number.convert(llvm::cast<mlir::FloatType>(type).getFloatSemantics(), llvm::APFloat::rmNearestTiesToEven, &lost);
+			return LLVM::ConstantOp::create(generator.builder, generator.loc, type, number);
+		}
+		// A function's address, or a constant's value, as the field's type
+		if (StructMember::Default::DECLARATION == member.default_kind && member.default_declaration != nullptr) {
+			Declaration* declaration = member.default_declaration;
+			if (DeclarationKind::FUNCTION == declaration->kind) {
+				return LLVM::AddressOfOp::create(generator.builder, generator.loc, function_for(generator, declaration));
+			}
+			return emit_constant_value(generator, declaration, member.member_type, nullptr);
+		}
 		if (!member.default_member.empty() && is_variant(member.member_type, TypeInfoVariant::ENUM)) {
 			return constant_int(generator, type, enum_value(member.member_type, intern(member.default_member)));
 		}
@@ -7041,6 +7308,9 @@ namespace hemera {
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#file_data")) {
 			return value(emit_file_data(generator, node, result_type), result_type);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#file_path")) {
+			return value(string_value(generator, current_file(generator), BUILTIN_string), BUILTIN_string);
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
 			return value(boolean(generator, generator.compile_time), BUILTIN_bool);

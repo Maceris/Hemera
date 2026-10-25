@@ -71,6 +71,8 @@ TESTS = [
     ("files", [], 42),
     ("system", [], 42),
     ("constraints", [], 42),
+    # Floats in parts, f16 among them, which AArch64 computes natively
+    ("composites", [], 42),
     # runtime.ASSERTION_EXIT_CODE
     ("assertion", [], 134),
     # The same with debug info, its frames named and symbolized from its DWARF

@@ -170,6 +170,7 @@ namespace hemera::parser {
 			|| TokenType::KEYWORD_CAST == type
 			|| TokenType::LITERAL_CHAR == type
 			|| TokenType::LITERAL_FLOATING_POINT == type
+			|| TokenType::LITERAL_IMAGINARY == type
 			|| TokenType::LITERAL_INTEGER == type
 			|| TokenType::LITERAL_STRING == type
 			|| TokenType::KEYWORD_TRUE == type
@@ -222,6 +223,7 @@ namespace hemera::parser {
 			|| TokenType::KEYWORD_AUTO_CAST == type
 			|| TokenType::LITERAL_CHAR == type
 			|| TokenType::LITERAL_FLOATING_POINT == type
+			|| TokenType::LITERAL_IMAGINARY == type
 			|| TokenType::LITERAL_INTEGER == type
 			|| TokenType::LITERAL_STRING == type
 			|| TokenType::OPERATOR_PLUS == type
@@ -276,6 +278,11 @@ namespace hemera::parser {
 	static bool is_word(ParserState* state, std::string_view text, size_t offset = 0) {
 		const Token& token = offset == 0 ? current_token(state) : next_token(state, offset);
 		return TokenType::IDENTIFIER == token.type && token.value != nullptr && *token.value == text;
+	}
+
+	// Whether a token is #run, whose value is a constant wherever a constant goes, like an array's count.
+	static bool is_run(const Token& token) {
+		return TokenType::DIRECTIVE == token.type && token.value != nullptr && *token.value == "#run";
 	}
 
 	// Whether a token can be a name where only a name can go: an identifier, or any keyword.
@@ -943,6 +950,7 @@ namespace hemera::parser {
 			const bool is_dimension = next == TokenType::LITERAL_INTEGER
 				|| next == TokenType::OPERATOR_RANGE_ARRAY
 				|| next == TokenType::SYM_RBRACK
+				|| is_run(next_token(state))
 				;
 			if (!is_dimension && !generic_tag(state, type, false)) {
 				delete_node(state->node_alloc, &type);
@@ -1493,6 +1501,7 @@ namespace hemera::parser {
 		case TokenType::KEYWORD_WITH:
 		case TokenType::LITERAL_CHAR:
 		case TokenType::LITERAL_FLOATING_POINT:
+		case TokenType::LITERAL_IMAGINARY:
 		case TokenType::LITERAL_INTEGER:
 		case TokenType::LITERAL_STRING:
 		case TokenType::OPERATOR_BITWISE_XOR:
@@ -1803,6 +1812,7 @@ namespace hemera::parser {
 		const TokenType current = current_token(state).type;
 		if (current == TokenType::LITERAL_CHAR
 			|| current == TokenType::LITERAL_FLOATING_POINT
+			|| current == TokenType::LITERAL_IMAGINARY
 			|| current == TokenType::LITERAL_INTEGER
 			|| current == TokenType::LITERAL_STRING
 			|| current == TokenType::KEYWORD_TRUE
@@ -2119,6 +2129,7 @@ namespace hemera::parser {
 					|| TokenType::SYM_DOT == current
 					|| TokenType::OPERATOR_MINUS == current
 					|| TokenType::SYM_LPAREN == current
+					|| is_run(current_token(state))
 					|| name_into_arithmetic);
 			if (is_value) {
 				// A constant value, like Ring[u8, 4096]. Named constants parse as types.
@@ -2587,6 +2598,7 @@ namespace hemera::parser {
 		
 		if (current == TokenType::LITERAL_CHAR
 			|| current == TokenType::LITERAL_FLOATING_POINT
+			|| current == TokenType::LITERAL_IMAGINARY
 			|| current == TokenType::LITERAL_INTEGER
 			|| current == TokenType::LITERAL_STRING
 			|| current == TokenType::KEYWORD_TRUE
@@ -2598,6 +2610,18 @@ namespace hemera::parser {
 			// Each line of a multiline string is its own token, the rest become children
 			while (is_multiline && is_multiline_string_line(current_token(state))) {
 				next_as_node(state, ast::NodeType::LITERAL, &result);
+			}
+			// A string's member or byte, like "abc".count or "abc"[1]: as after parentheses, a cast to nothing
+			const bool member = expect(state, TokenType::SYM_DOT) && TokenType::IDENTIFIER == next_token(state).type;
+			if (current == TokenType::LITERAL_STRING && (member || expect(state, TokenType::SYM_LBRACK))) {
+				Token around = result.value;
+				around.type = TokenType::SYM_LPAREN;
+				ast::Node* group = state->node_alloc.new_object<ast::Node>(ast::NodeType::CAST, around);
+				group->children.push_back(&result);
+				if (!postfix_operations(state, *group)) {
+					return ExprResult{ false };
+				}
+				return ExprResult{ true, group };
 			}
 			return ExprResult{ true , &result };
 		}

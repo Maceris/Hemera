@@ -1291,6 +1291,11 @@ namespace hemera {
 				chain.type = head != nullptr ? head->type : nullptr;
 				chain.pathless = true;
 				chain.value = integer ? value : Value{};
+				// A string literal's count is its length, like "abc"[1]'s
+				ast::Node* operand = node->children[value_index];
+				if (ast::NodeType::LITERAL == operand->node_type && TokenType::LITERAL_STRING == operand->value.type) {
+					chain.count = constant(static_cast<int64_t>(ast::string_value(operand).size()));
+				}
 				return evaluate_steps(analysis, facts, node, automatic ? 1 : 2, chain).value;
 			}
 			if (ast::NodeType::IF == type) {

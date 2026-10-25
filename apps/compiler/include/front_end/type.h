@@ -185,12 +185,18 @@ namespace hemera {
 	};
 
 	/// <summary>
-	/// Complex numbers (two parts) and quaternions (four), of integers of a part's size.
+	/// Complex numbers (two parts, real then imag) and quaternions (four: imag, jmag, kmag, then real), of floats of a
+	/// part's size, as Odin lays them out (docs/types.md, Complex Numbers and Quaternions).
 	/// </summary>
 	struct TypeInfoComposite : public TypeInfo {
 		size_t part_size;
+		size_t parts;
+		/// <summary>
+		/// The float each part is: f16, f32 or f64.
+		/// </summary>
+		TypeInfo* part_type;
 
-		TypeInfoComposite(TypeInfoVariant variant, size_t part_size, size_t parts);
+		TypeInfoComposite(TypeInfoVariant variant, TypeInfo* part_type, size_t parts);
 	};
 
 	struct TypeInfoEnum : public TypeInfo {
@@ -310,8 +316,9 @@ namespace hemera {
 		size_t offset = 0;
 		/// <summary>
 		/// It has a default value (= value), a compile-time constant worked out when the struct is
-		/// declared: default_integer for an integer or a boolean (0 or 1), or default_member for an
-		/// enum member, by name.
+		/// declared: default_integer for an integer or a boolean (0 or 1), default_member for an
+		/// enum member, by name, default_float for a float literal, default_text for a string literal,
+		/// or default_declaration for a function or a constant named, of any type.
 		/// </summary>
 		bool has_value = false;
 		/// <summary>
@@ -320,6 +327,10 @@ namespace hemera {
 		bool is_using = false;
 		int64_t default_integer = 0;
 		std::string default_member;
+		enum class Default : uint8_t { INTEGER, FLOAT, TEXT, DECLARATION } default_kind = Default::INTEGER;
+		double default_float = 0;
+		std::string default_text;
+		struct Declaration* default_declaration = nullptr;
 	};
 
 	struct TypeInfoStruct : public TypeInfo {
@@ -427,7 +438,6 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_b32;
 	extern TypeInfo* BUILTIN_b64;
 	extern TypeInfo* BUILTIN_bool;
-	extern TypeInfo* BUILTIN_c16;
 	extern TypeInfo* BUILTIN_c32;
 	extern TypeInfo* BUILTIN_c64;
 	extern TypeInfo* BUILTIN_c128;
@@ -456,7 +466,6 @@ namespace hemera {
 	extern TypeInfo* BUILTIN_i128be;
 	extern TypeInfo* BUILTIN_i128le;
 	extern TypeInfo* BUILTIN_int;
-	extern TypeInfo* BUILTIN_q32;
 	extern TypeInfo* BUILTIN_q64;
 	extern TypeInfo* BUILTIN_q128;
 	extern TypeInfo* BUILTIN_q256;
@@ -546,6 +555,12 @@ namespace hemera {
 	/// either not an alias, or the nearest distinct alias this refers to.
 	/// </summary>
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type);
+
+	/// <summary>
+	/// Which part of a complex number or a quaternion a member names, by its place in memory: real and imag for a
+	/// complex number (0 and 1); imag, jmag, kmag and real for a quaternion (0 to 3). -1 for any other name.
+	/// </summary>
+	int composite_part(TypeInfo const* type, std::string_view member);
 
 	/// <summary>
 	/// The relative pointer type is, or holds as an optional, or null (docs/types.md, Relative Pointers).

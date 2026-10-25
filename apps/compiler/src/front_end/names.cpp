@@ -35,9 +35,9 @@ namespace hemera {
 		// Floating point numbers
 		"f16", "f32", "f64",
 		// Complex numbers
-		"c16", "c32", "c64", "c128",
+		"c32", "c64", "c128",
 		// Quaternions
-		"q32", "q64", "q128", "q256",
+		"q64", "q128", "q256",
 		// Endian specific integers
 		"i16be", "i32be", "i64be", "i128be", "u16be", "u32be", "u64be", "u128be",
 		"i16le", "i32le", "i64le", "i128le", "u16le", "u32le", "u64le", "u128le",
@@ -2198,10 +2198,31 @@ namespace hemera {
 		return evaluate(inner, value, result);
 	}
 
+	static Progress evaluate_maybe_type(Walk& walk, ast::Node* node, ConstantValue& result);
+
 	// size_of(T), align_of(T) or offset_of(T, member): what the compiler knows of a type's layout.
 	static Progress evaluate_builtin_call(Walk& walk, ast::Node* node, ConstantValue& result) {
 		const std::string name(std::string_view(*node->value.value));
 		std::vector<ast::Node*> arguments(node->children.begin() + 1, node->children.end());
+		// Whether two types are the same, following aliases that aren't distinct
+		if (name == "types_are_aliases" && arguments.size() == 2) {
+			ConstantValue a;
+			ConstantValue b;
+			Progress progress = evaluate_maybe_type(walk, arguments[0], a);
+			if (progress == Progress::DONE) {
+				progress = evaluate_maybe_type(walk, arguments[1], b);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ConstantValue::Kind::TYPE != a.kind || ConstantValue::Kind::TYPE != b.kind) {
+				report_not_constant(walk.file_path, node, "types_are_aliases needs two types");
+				return Progress::FAILED;
+			}
+			result.kind = ConstantValue::Kind::BOOLEAN;
+			result.boolean = same_type(a.type, b.type);
+			return Progress::DONE;
+		}
 		const bool known = name == "size_of" || name == "align_of" || name == "offset_of";
 		if (!known || arguments.size() != (name == "offset_of" ? 2u : 1u)) {
 			report_not_constant(walk.file_path, node, std::format("{} isn't something the compiler can compute here",
@@ -2339,6 +2360,34 @@ namespace hemera {
 		return evaluate_declaration(walk, node, declaration, result);
 	}
 
+	/*
+	 * An operand that may be a type, where types are compared (== and != on them, types_are_aliases): a type named, as
+	 * itself, or else any other constant.
+	 */
+	static Progress evaluate_maybe_type(Walk& walk, ast::Node* node, ConstantValue& result) {
+		const bool plain_name = ast::NodeType::IDENTIFIER == node->node_type || (ast::NodeType::TYPE == node->node_type && node->children.empty());
+		if (plain_name && node->children.empty()) {
+			if (TypeInfo* builtin = builtin_type(std::string_view(*node->value.value))) {
+				result.kind = ConstantValue::Kind::TYPE;
+				result.type = builtin;
+				return Progress::DONE;
+			}
+		}
+		Declaration* declaration = nullptr;
+		if (ast::NodeType::IDENTIFIER == node->node_type) {
+			Progress progress = named_declaration_in(walk, node, declaration);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
+		if (declaration != nullptr && DeclarationKind::TYPE == declaration->kind && declaration->type_value != nullptr) {
+			result.kind = ConstantValue::Kind::TYPE;
+			result.type = declaration->type_value;
+			return Progress::DONE;
+		}
+		return evaluate(walk, node, result);
+	}
+
 	static Progress evaluate_unary(Walk& walk, ast::Node* node, ConstantValue& result) {
 		ConstantValue operand;
 		Progress progress = evaluate(walk, node->children[0], operand);
@@ -2368,11 +2417,13 @@ namespace hemera {
 
 	static Progress evaluate_binary(Walk& walk, ast::Node* node, ConstantValue& result) {
 		ConstantValue left;
-		Progress progress = evaluate(walk, node->children[0], left);
+		const TokenType op = node->value.type;
+		// == and != compare types too
+		const bool equality = TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op;
+		Progress progress = equality ? evaluate_maybe_type(walk, node->children[0], left) : evaluate(walk, node->children[0], left);
 		if (progress != Progress::DONE) {
 			return progress;
 		}
-		const TokenType op = node->value.type;
 		// && and || only evaluate the right side when it decides the result
 		if (ConstantValue::Kind::BOOLEAN == left.kind
 			&& ((TokenType::OPERATOR_AND == op && !left.boolean)
@@ -2381,7 +2432,7 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		ConstantValue right;
-		progress = evaluate(walk, node->children[1], right);
+		progress = equality ? evaluate_maybe_type(walk, node->children[1], right) : evaluate(walk, node->children[1], right);
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -2391,8 +2442,10 @@ namespace hemera {
 		}
 		result.kind = ConstantValue::Kind::BOOLEAN;
 		if (TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) {
+			// Types exactly: an alias is a type of its own
 			bool equal = left.kind == ConstantValue::Kind::BOOLEAN ? left.boolean == right.boolean
 				: left.kind == ConstantValue::Kind::INTEGER ? left.integer == right.integer
+				: left.kind == ConstantValue::Kind::TYPE ? get_base_type_or_alias(left.type) == get_base_type_or_alias(right.type)
 				: left.member == right.member;
 			result.boolean = TokenType::OPERATOR_EQUAL == op ? equal : !equal;
 			return Progress::DONE;
@@ -2667,6 +2720,42 @@ namespace hemera {
 
 	Progress evaluate_in(Walk& walk, ast::Node* expression, ConstantValue& result) {
 		return evaluate(walk, expression, result);
+	}
+
+	Progress named_declaration_in(Walk& walk, ast::Node* node, Declaration*& declaration) {
+		declaration = nullptr;
+		if (ast::NodeType::IDENTIFIER != node->node_type) {
+			return Progress::DONE;
+		}
+		InternedString name = node->value.value;
+		NameRegistry& names = walk.executor.program_info->names;
+		if (node->children.empty()) {
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			Found found = declared_in_locked(walk, names, node, walk.package_path, name, declaration);
+			if (Found::PARKED == found) {
+				return Progress::PARKED;
+			}
+			return Found::DECLARATION == found ? check_locked(walk, names, node, declaration, Need::RESOLVED)
+				: require_from_imports_locked(walk, names, node, name, Need::RESOLVED, declaration);
+		}
+		// package.name
+		if (node->children.size() != 2 || ast::NodeType::DOT_ACCESS != node->children[0]->node_type
+			|| ast::NodeType::IDENTIFIER != node->children[1]->node_type) {
+			return Progress::DONE;
+		}
+		InternedString package = nullptr;
+		Progress progress = qualifier_package(walk, node, name, package);
+		if (progress != Progress::DONE || package == nullptr || is_compiler_provided(package)) {
+			return progress;
+		}
+		ast::Node* last = node->children[1];
+		progress = require_in(walk, last, package, last->value.value, Need::RESOLVED);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		std::scoped_lock<std::mutex> lock(names.mutex);
+		declaration = names.declarations[std::make_pair(package, last->value.value)];
+		return Progress::DONE;
 	}
 
 	Progress code_at_top_level(WorkThreadData& executor, IfChain* chain, FileInfo* file, const ast::Node*& tree) {

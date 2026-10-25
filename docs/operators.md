@@ -175,6 +175,9 @@ cast[ptr[mut u32]](register)^ = 1
 <= less than or equal to
 ```
 
+Complex numbers and quaternions only take `==` and `!=`, since they have no order
+(see [types.md](types.md#complex-numbers-and-quaternions)).
+
 ## Function operators
 ```
 |> pipe operator for function chaining

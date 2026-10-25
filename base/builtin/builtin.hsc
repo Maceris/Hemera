@@ -57,14 +57,12 @@ f64   :: alias f64
 f64be :: alias f64be
 f64le :: alias f64le
 
-// Complex numbers
-c16  :: alias c16
+// Complex numbers, of two f16s, f32s or f64s
 c32  :: alias c32
 c64  :: alias c64
 c128 :: alias c128
 
-// Quaternions
-q32  :: alias q32
+// Quaternions, of four f16s, f32s or f64s
 q64  :: alias q64
 q128 :: alias q128
 q256 :: alias q256

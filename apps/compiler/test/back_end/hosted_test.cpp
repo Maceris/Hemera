@@ -336,6 +336,36 @@ TEST(Hosted, MatchesStrings)
 	run_hosted("string_cases", hemera::TargetStackCheck::Off);
 }
 
+// Two optionals compared, equal when both hold nothing or both hold equal values (docs/types.md, Optionals).
+TEST(Hosted, ComparesOptionals)
+{
+	run_hosted("optional_comparisons", hemera::TargetStackCheck::Off);
+}
+
+// Type values with == and types_are_aliases, at compile time and run time (docs/types.md, Comparing Type Values).
+TEST(Hosted, ComparesTypeValues)
+{
+	run_hosted("type_values", hemera::TargetStackCheck::Off);
+}
+
+// Struct fields defaulting to floats, strings, functions and named constants of any type (docs/types.md, Structs).
+TEST(Hosted, DefaultsFieldsToAnyConstant)
+{
+	run_hosted("field_defaults", hemera::TargetStackCheck::Off);
+}
+
+// #run as an array's count, multi-dimensional array types as values, a string literal's members, #file_path.
+TEST(Hosted, ComputesConstantSizes)
+{
+	run_hosted("constant_sizes", hemera::TargetStackCheck::Off);
+}
+
+// Complex numbers and quaternions: imaginary literals, arithmetic, parts, mixing, casts, std's conjugate and magnitude.
+TEST(Hosted, ComputesWithComplexNumbersAndQuaternions)
+{
+	run_hosted("composites", hemera::TargetStackCheck::Off);
+}
+
 // #union struct literals, setting the member they name (docs/types.md, Structs).
 TEST(Hosted, BuildsUnionLiterals)
 {

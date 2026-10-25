@@ -36,6 +36,12 @@ namespace hemera {
 		UNTYPED_STRING,
 		UNTYPED_BOOLEAN,
 		/// <summary>
+		/// A number with an imaginary part, like 1 + 2i, which takes the complex or quaternion type it's used as;
+		/// one with a j or k part only a quaternion.
+		/// </summary>
+		UNTYPED_COMPLEX,
+		UNTYPED_QUATERNION,
+		/// <summary>
 		/// null, which any pointer, cstring or optional can be.
 		/// </summary>
 		NULL_VALUE,

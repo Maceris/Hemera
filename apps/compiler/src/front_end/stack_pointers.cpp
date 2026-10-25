@@ -68,6 +68,7 @@ namespace hemera {
 
 		bool is_untyped(ValueKind kind) {
 			return ValueKind::UNTYPED_INTEGER == kind || ValueKind::UNTYPED_FLOAT == kind
+				|| ValueKind::UNTYPED_COMPLEX == kind || ValueKind::UNTYPED_QUATERNION == kind
 				|| ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_BOOLEAN == kind
 				|| ValueKind::NULL_VALUE == kind;
 		}

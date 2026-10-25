@@ -50,6 +50,8 @@ namespace hemera {
 		KEYWORD_WITH,
 		LITERAL_CHAR,
 		LITERAL_FLOATING_POINT,
+		/// An imaginary number, like 2i, 1.5j or 3k: a complex number's imaginary part, or a quaternion's
+		LITERAL_IMAGINARY,
 		LITERAL_INTEGER,
 		LITERAL_STRING,
 		OPERATOR_AND,
