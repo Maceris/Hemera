@@ -203,6 +203,7 @@ directive_with_arguments = directive , [ SYM_LPAREN , [ function_call_input_list
 # alias is required after distinct, so that the word makes sense, and is otherwise optional,
 # showing the value is meant to be a type without writing : type. A generic alias has its own generic parameters
 # after alias, and can have a where clause after the type, like Named :: alias[V] Pair[string, V].
+# After several names, a list of values, one each, like x, y := 1, 2, or one for them all, like a call's results.
 decl_rhs = expression_with_result
     | function_decl
     | struct_decl
@@ -219,8 +220,10 @@ union_decl = KEYWORD_union , [ generic_parameters ] , [ where_clause ] , SYM_LBR
 where_clause = "where" , expression_with_result ;
 enum_decl = KEYWORD_enum , { directive_with_arguments } , SYM_LBRACE , enum_body , SYM_RBRACE ;
 
+# A type in parentheses keeps its own mut, like (mut u8[]) in ptr[mut (mut u8[])]; a mut before it is the outer type's
 type = simple_type
     | ( complicated_type , [ SYM_QUESTION ] )
+    | ( [ KEYWORD_mut ] , SYM_LPAREN , type , SYM_RPAREN , [ SYM_QUESTION ] )
     ;
 type_in_list = simple_type
     | ( SYM_LPAREN , complicated_type , SYM_RPAREN )

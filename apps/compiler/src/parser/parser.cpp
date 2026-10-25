@@ -442,6 +442,44 @@ namespace hemera::parser {
 		return true;
 	}
 
+	// A copy of a tree, for a part several definitions share once they're split apart.
+	static ast::Node* clone_tree(ParserState* state, const ast::Node* node) {
+		ast::Node* copy = state->node_alloc.new_object<ast::Node>(node->node_type, node->value);
+		copy->type = node->type;
+		for (const ast::Node* child : node->children) {
+			copy->children.push_back(clone_tree(state, child));
+		}
+		return copy;
+	}
+
+	/*
+	 * Several names at the top level, each with its value, like P, Q :: 4, 5 or R, S : u8 : 6, 7: a definition each, as if
+	 * written apart, so each name's value is its own. Several names for one value, like a call's results, stay together.
+	 */
+	static void split_definition(ParserState* state, ast::Node& parent) {
+		ast::Node* definition = parent.children.empty() ? nullptr : parent.children.back();
+		if (definition == nullptr || ast::NodeType::DEFINITION != definition->node_type || definition->children.size() < 3) {
+			return;
+		}
+		ast::Node* names = definition->children[0];
+		ast::Node* values = definition->children.back();
+		if (ast::NodeType::LIST != names->node_type || ast::NodeType::LIST != values->node_type
+			|| names->children.size() != values->children.size()) {
+			return;
+		}
+		parent.children.pop_back();
+		for (size_t i = 0; i < names->children.size(); ++i) {
+			ast::Node* single = state->node_alloc.new_object<ast::Node>(ast::NodeType::DEFINITION, definition->value);
+			single->children.push_back(names->children[i]);
+			// The type and the separator between, and any annotations after the value
+			for (size_t j = 1; j + 1 < definition->children.size(); ++j) {
+				single->children.push_back(clone_tree(state, definition->children[j]));
+			}
+			single->children.push_back(values->children[i]);
+			parent.children.push_back(single);
+		}
+	}
+
 	bool const_definitions(ParserState* state, ast::Node& parent) {
 		while ((expect(state, TokenType::IDENTIFIER) && !is_import(state))
 			|| expect(state, TokenType::DIRECTIVE)
@@ -522,6 +560,7 @@ namespace hemera::parser {
 			if (!const_definition_rhs(state, *decl.result)) {
 				return false;
 			}
+			split_definition(state, parent);
 		}
 		return true;
 	}
@@ -745,7 +784,9 @@ namespace hemera::parser {
 			}
 			return where_clause(state, *first);
 		}
-		ExprResult rhs = expression_with_result(state, true);
+		// Several names take a value each, like x, y := 1, 2, or one for them all
+		const bool several = !parent.children.empty() && ast::NodeType::LIST == parent.children[0]->node_type;
+		ExprResult rhs = expression_with_result(state, !several);
 		if (!rhs.success) {
 			return false;
 		}
@@ -874,8 +915,37 @@ namespace hemera::parser {
 		return true;
 	}
 
+	/*
+	 * A type in parentheses, like (mut u8[]) in ptr[mut (mut u8[])]: a PAREN_GROUP holding it, whose own mut, if mut
+	 * comes before it, is a MUTABLE child after it, so the type inside keeps its own (docs/types.md, Mutability).
+	 */
+	static ExprResult parenthesized_type(ParserState* state, ast::Node* mut) {
+		const Token lparen = current_token(state);
+		ast::Node& group = next_as_node(state, ast::NodeType::PAREN_GROUP);
+		ExprResult inner = type(state);
+		if (!inner.success) {
+			return inner;
+		}
+		group.children.push_back(inner.result);
+		if (!skip(state, TokenType::SYM_RPAREN)) {
+			report_error_on_last_token(state, ErrorCode::E3015,
+				std::format("Opening parenthesis was at ({},{})", lparen.line_number, lparen.column_number));
+			return ExprResult{ false };
+		}
+		if (mut != nullptr) {
+			group.children.push_back(mut);
+		}
+		accept(state, TokenType::SYM_QUESTION, ast::NodeType::UNARY_OPERATOR, group);
+		return ExprResult{ true, &group };
+	}
+
 	ExprResult type(ParserState* state) {
 
+		if (expect(state, TokenType::KEYWORD_MUT) && TokenType::SYM_LPAREN == next_token(state).type
+			&& TokenType::KEYWORD_FN != next_token(state, 2).type) {
+			ast::Node* mut = &next_as_node(state, ast::NodeType::MUTABLE);
+			return parenthesized_type(state, mut);
+		}
 		if (expect(state, TokenType::KEYWORD_MUT) ||
 			expect(state, TokenType::IDENTIFIER)) {
 			return simple_type(state);
@@ -896,6 +966,9 @@ namespace hemera::parser {
 			return result;
 		}
 		// (fn(n: int) -> int)?: a function type in parentheses, so a ? after it is the function's, not its result's
+		else if (expect(state, TokenType::SYM_LPAREN) && TokenType::KEYWORD_FN != next_token(state).type) {
+			return parenthesized_type(state, nullptr);
+		}
 		else if (expect(state, TokenType::SYM_LPAREN) && TokenType::KEYWORD_FN == next_token(state).type) {
 			const Token lparen = current_token(state);
 			skip(state, TokenType::SYM_LPAREN);
@@ -2122,7 +2195,12 @@ namespace hemera::parser {
 				}
 				name_into_arithmetic = at < state->tokens.size() && is_arithmetic(state->tokens[at].type);
 			}
-			const bool is_value = !is_declaration
+			// What a pointer points to is always a type, and so is one in parentheses with mut, like (mut u8[])
+			const bool pointer_argument = parent.value.value != nullptr && (*parent.value.value == "ptr"
+				|| std::string_view(*parent.value.value).starts_with("relptr"));
+			const bool parenthesized_type = TokenType::SYM_LPAREN == current && (pointer_argument
+				|| TokenType::KEYWORD_MUT == next_token(state).type);
+			const bool is_value = !is_declaration && !parenthesized_type
 				&& (TokenType::LITERAL_INTEGER == current
 					|| TokenType::KEYWORD_TRUE == current
 					|| TokenType::KEYWORD_FALSE == current

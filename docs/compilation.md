@@ -161,7 +161,10 @@ main :: fn() -> int {
 * **Errors** in inserted code are reported where it was written, the quote, followed by where it was inserted.
 * **To see what was inserted**, `--show-inserted=file:line` prints the code each `#insert` on that line put there, as
   Hemera. The file is matched by the end of its path.
-* `#insert` in a generic's body or a generic type isn't supported yet.
+* **In a generic function's body**, each instance has a tree of its own, so what's inserted is worked out with that
+  instance's types and values, like `T` and `capacity` in `fn[T, capacity: usize]`. A constrained generic whose body
+  inserts code is checked at its instances, rather than once before them (see [types.md](types.md#checked-bodies)).
+  `#insert` in a generic type isn't supported yet.
 
 ### Declarations, Members and Cases
 
@@ -317,7 +320,7 @@ So names reach the caller only through arguments: code a macro is given can name
 macro writes can't. A name made with `compiler.name` is code the macro wrote.
 
 Code a macro gives may call macros, including itself, but expansion stops with an error 64 insertions deep. Like any
-`#insert`, a macro call isn't supported in a generic's body yet.
+`#insert`, a macro call in a generic function's body is expanded for each instance.
 
 ## Build Packages
 

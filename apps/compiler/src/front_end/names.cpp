@@ -725,6 +725,12 @@ namespace hemera {
 		}
 		NameRegistry& names = walk.executor.program_info->names;
 		std::scoped_lock<std::mutex> lock(names.mutex);
+		// A type declared in the function, the innermost first
+		for (auto local = walk.local_types.rbegin(); local != walk.local_types.rend(); ++local) {
+			if (*local->first == *name) {
+				return check_locked(walk, names, where, local->second, need);
+			}
+		}
 
 		Declaration* own = nullptr;
 		IfChain* pending_insert = nullptr;
@@ -1431,8 +1437,18 @@ namespace hemera {
 			{},
 			{},
 		};
-		// A function declared inside a function: like one at the top level, from its own definition
+		// A function or a type declared inside a function: like one at the top level, from its own definition
+		walk.local_types = instance->local_types;
 		if (instance->generic == nullptr) {
+			// In a generic's instance, its generic parameters are names it sees, as in the generic's own body
+			walk.generic_types = instance->outer_generic_types;
+			walk.generic_values = instance->outer_generic_values;
+			for (const auto& [name, type] : walk.generic_types) {
+				walk.locals.push_back(intern(name));
+			}
+			for (const auto& [name, value] : walk.generic_values) {
+				walk.locals.push_back(intern(name));
+			}
 			Progress walked = walk_definition(walk, instance->node);
 			if (Progress::DONE == walked) {
 				walked = compute_declaration(walk, { instance }, instance->node);
@@ -1514,9 +1530,17 @@ namespace hemera {
 	Declaration* nested_declaration(Walk& walk, ast::Node* definition) {
 		NameRegistry& names = walk.executor.program_info->names;
 		Declaration* made = nullptr;
+		// In a generic's instance, one for each instance, with its generic arguments
+		std::string instance_key;
+		for (const auto& [name, type] : walk.generic_types) {
+			instance_key += std::format("{}={} ", name, static_cast<const void*>(get_base_type_or_alias(type)));
+		}
+		for (const auto& [name, value] : walk.generic_values) {
+			instance_key += std::format("{}={} ", name, constant_text(value));
+		}
 		{
 			std::scoped_lock<std::mutex> lock(names.mutex);
-			auto iter = names.nested.find(definition);
+			auto iter = names.nested.find(std::make_pair(definition, instance_key));
 			if (iter != names.nested.end()) {
 				return iter->second;
 			}
@@ -1526,11 +1550,54 @@ namespace hemera {
 			made->file_name = walk.file_name;
 			made->file = walk.file;
 			made->node = definition;
+			made->local_types = walk.local_types;
+			made->outer_generic_types = walk.generic_types;
+			made->outer_generic_values = walk.generic_values;
 			classify_declaration(names, made);
-			names.nested[definition] = made;
+			names.nested[std::make_pair(definition, instance_key)] = made;
 		}
 		walk.executor.create_work(WorkType::TYPE_CHECK, WorkTarget(WorkTargetType::INSTANCE, { .declaration = made }));
 		return made;
+	}
+
+	bool inserts_code(const ast::Node* node) {
+		if (node == nullptr) {
+			return false;
+		}
+		if (ast::NodeType::DIRECTIVE == node->node_type && (is_text(node->value.value, "#insert") || is_text(node->value.value, "#expand"))) {
+			return true;
+		}
+		// A macro call, name!(arguments)
+		for (size_t i = 0; i + 1 < node->children.size(); ++i) {
+			const ast::Node* child = node->children[i];
+			if (ast::NodeType::IDENTIFIER == node->node_type && ast::NodeType::UNARY_OPERATOR == child->node_type
+				&& TokenType::OPERATOR_NOT == child->value.type && child->children.empty()
+				&& ast::NodeType::PAREN_GROUP == node->children[i + 1]->node_type) {
+				return true;
+			}
+		}
+		for (const ast::Node* child : node->children) {
+			if (inserts_code(child)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// A copy of a tree, with where each node came from and what each #code quotes, for an instance of its own.
+	static ast::Node* copy_tree(ProgramInfo* program, const ast::Node* node) {
+		ast::Node* copy = program->made_nodes.make(node->node_type, node->value);
+		copy->type = node->type;
+		if (std::shared_ptr<const ast::Origin> origin = program->made_nodes.origin(node)) {
+			program->made_nodes.set_origin(copy, origin);
+		}
+		if (const ast::Node* quoted = program->quotes.get(node)) {
+			program->quotes.set(copy, quoted, program->quotes.file_of(node), program->quotes.from_caller(node));
+		}
+		for (const ast::Node* child : node->children) {
+			copy->children.push_back(copy_tree(program, child));
+		}
+		return copy;
 	}
 
 	Declaration* instance_of(Walk& walk, Declaration* generic, const std::vector<TypeInfo*>& arguments,
@@ -1567,7 +1634,18 @@ namespace hemera {
 			instance->package_path = generic->package_path;
 			instance->file_name = generic->file_name;
 			instance->file = generic->file;
-			instance->node = generic->node;
+			/*
+			 * A function whose body inserts code, with #insert or a macro call, has a tree of its own for each instance,
+			 * since inserting changes the tree in place (docs/compilation.md, Code Values)
+			 */
+			if (DeclarationKind::FUNCTION == generic->kind && inserts_code(generic->node)) {
+				ProgramInfo* program = walk.executor.program_info;
+				std::unique_lock<std::mutex> making = program->made_nodes.hold();
+				instance->node = copy_tree(program, generic->node);
+			}
+			else {
+				instance->node = generic->node;
+			}
 			instance->generic = generic;
 			instance->generic_arguments = arguments;
 			instance->generic_values = values;

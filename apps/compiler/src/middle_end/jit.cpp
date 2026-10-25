@@ -1,5 +1,6 @@
 #include "middle_end/jit.h"
 
+#include <charconv>
 #include <cstring>
 #include <format>
 #include <map>
@@ -29,6 +30,62 @@
 namespace hemera {
 
 	namespace {
+
+		/*
+		 * A float's shortest digits, as {:e} writes them (d.ddde±XX), laid out as std's text_buffer does: fixed, like 0.001
+		 * or 123456, unless scientific is shorter, like 1e-04 or 1e+21, a whole number's shortest digits padded with zeros.
+		 */
+		// A float's shortest digits that read back as it, in scientific notation, d.ddde±XX.
+		template <typename Float>
+		std::string scientific_of(Float value) {
+			char buffer[64];
+			const auto [end, error] = std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::scientific);
+			return error == std::errc{} ? std::string(buffer, end) : std::string();
+		}
+
+		std::string shortest_text(const std::string& scientific) {
+			const size_t e = scientific.find('e');
+			if (e == std::string::npos) {
+				return scientific; // inf or nan
+			}
+			const bool negative = !scientific.empty() && scientific[0] == '-';
+			std::string digits;
+			for (size_t i = negative ? 1 : 0; i < e; ++i) {
+				if (scientific[i] != '.') {
+					digits += scientific[i];
+				}
+			}
+			while (digits.size() > 1 && digits.back() == '0') {
+				digits.pop_back();
+			}
+			if (digits == "0") {
+				return negative ? "-0" : "0";
+			}
+			const int exponent = std::stoi(scientific.substr(e + 1));
+			const long long count = static_cast<long long>(digits.size());
+			const long long k = exponent + 1;
+			const long long magnitude = exponent < 0 ? -exponent : exponent;
+			const long long fixed_length = k <= 0 ? 2 - k + count : k >= count ? k : count + 1;
+			const long long scientific_length = count + (count > 1 ? 1 : 0) + 2 + (magnitude >= 100 ? 3 : 2);
+			std::string out = negative ? "-" : "";
+			if (fixed_length <= scientific_length) {
+				if (k <= 0) {
+					out += "0." + std::string(static_cast<size_t>(-k), '0') + digits;
+				}
+				else if (k >= count) {
+					out += digits + std::string(static_cast<size_t>(k - count), '0');
+				}
+				else {
+					out += digits.substr(0, static_cast<size_t>(k)) + "." + digits.substr(static_cast<size_t>(k));
+				}
+				return out;
+			}
+			out += digits.substr(0, 1);
+			if (count > 1) {
+				out += "." + digits.substr(1);
+			}
+			return out + std::format("e{}{:02}", exponent < 0 ? '-' : '+', magnitude);
+		}
 
 		/*
 		 * The compile-time code running on this thread: what the services it calls need, and where to go back
@@ -126,12 +183,12 @@ namespace hemera {
 				if (type->size == 4) {
 					float value;
 					std::memcpy(&value, data, 4);
-					out += std::format("{}", value);
+					out += shortest_text(scientific_of(value));
 				}
 				else if (type->size == 8) {
 					double value;
 					std::memcpy(&value, data, 8);
-					out += std::format("{}", value);
+					out += shortest_text(scientific_of(value));
 				}
 				else {
 					out += "<f16>";
@@ -289,15 +346,17 @@ namespace hemera {
 			}
 			if (TypeInfoVariant::FLOAT == variant && (base->size == 4 || base->size == 8)) {
 				double value = 0;
+				float narrow = 0;
 				if (base->size == 4) {
-					float narrow;
 					std::memcpy(&narrow, data, 4);
 					value = static_cast<double>(narrow);
 				}
 				else {
 					std::memcpy(&value, data, 8);
 				}
-				const std::string written = std::format("{:.{}f}", value, spec.has_precision ? spec.precision : size_t{ 6 });
+				// The shortest text that reads back as the same value, as std's text_buffer writes it, or a precision's decimals
+				const std::string written = spec.has_precision ? std::format("{:.{}f}", value, spec.precision)
+					: base->size == 4 ? shortest_text(scientific_of(narrow)) : shortest_text(scientific_of(value));
 				const bool negative = !written.empty() && written[0] == '-';
 				out += format_padded(spec, negative ? "-" : spec.plus ? "+" : "", "", negative ? std::string_view(written).substr(1)
 					: std::string_view(written), true);

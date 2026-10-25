@@ -13,7 +13,7 @@ BuildOptions :: struct {
     name : string,
     /*
      * Folder of the target's root package, relative to the build package, or absolute,
-     * like the canonical PackageInfo.path that find_packages returns.
+     * like the canonical PackageInfo.path that subfolders and load_package give.
      */
     root : string,
     // Where the output is written. Empty means the default output folder, using name.

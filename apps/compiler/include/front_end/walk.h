@@ -46,6 +46,11 @@ namespace hemera {
 		/// points to (docs/types.md, Mutability).
 		/// </summary>
 		std::set<std::string> generic_mutable{};
+		/// <summary>
+		/// The types declared in the function being walked so far, innermost last, which its names see before the
+		/// package's (docs/types.md, Types Declared in Functions).
+		/// </summary>
+		std::vector<std::pair<InternedString, Declaration*>> local_types{};
 	};
 
 	/// <summary>
@@ -401,4 +406,9 @@ namespace hemera {
 	/// for a function without a body (---) is its declared type.
 	/// </summary>
 	ast::Node* generic_node(const Declaration* generic);
+
+	/// <summary>
+	/// Whether a tree inserts code: an #insert or #expand, or a macro call, name!(arguments), anywhere in it.
+	/// </summary>
+	bool inserts_code(const ast::Node* node);
 }

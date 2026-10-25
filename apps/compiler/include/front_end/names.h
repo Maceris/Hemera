@@ -166,6 +166,16 @@ namespace hemera {
 	struct Declaration {
 		InternedString name = nullptr;
 		/// <summary>
+		/// For one declared in a function, a type or a function: the types declared before it there, which its names see
+		/// before the package's (docs/types.md, Types Declared in Functions).
+		/// </summary>
+		std::vector<std::pair<InternedString, Declaration*>> local_types;
+		/// <summary>
+		/// For one declared in a generic function's instance, the instance's generic arguments, which its names see.
+		/// </summary>
+		std::map<std::string, TypeInfo*> outer_generic_types;
+		std::map<std::string, ConstantValue> outer_generic_values;
+		/// <summary>
 		/// The canonical path of the package it's declared in.
 		/// </summary>
 		InternedString package_path = nullptr;
@@ -426,7 +436,11 @@ namespace hemera {
 		/// Each function declared inside a function, by its DEFINITION node: a declaration of its own, in no
 		/// package's names (docs/functions.md, Nesting Functions).
 		/// </summary>
-		std::map<const ast::Node*, Declaration*> nested;
+		/// <summary>
+		/// What's declared inside functions, by its definition and, in a generic's instance, the instance's generic
+		/// arguments as text, so each instance has its own.
+		/// </summary>
+		std::map<std::pair<const ast::Node*, std::string>, Declaration*> nested;
 		/// <summary>
 		/// The declaration each declared type belongs to, for waiting on its layout.
 		/// </summary>

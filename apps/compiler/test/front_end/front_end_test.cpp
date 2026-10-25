@@ -819,6 +819,13 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "variadic_default_positional", hemera::ErrorCode::E4015 },
 		// docs/operators.md: ~ of an untyped constant
 		{ "complement_out_of_range", hemera::ErrorCode::E4015 },
+		// docs/functions.md, Several Names in One Declaration
+		{ "several_names_counts", hemera::ErrorCode::E4018 },
+		// docs/types.md, Mutability: a pointer to a mut view
+		{ "mut_view_pointer_read_only", hemera::ErrorCode::E4016 },
+		// docs/types.md, Types Declared in Functions
+		{ "local_type_outside_block", hemera::ErrorCode::E4008 },
+		{ "local_type_generic", hemera::ErrorCode::E4024 },
 		{ "stack_scoped_in_array_field", hemera::ErrorCode::E4014 },
 		{ "fall_through_last", hemera::ErrorCode::E4002 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },
@@ -856,7 +863,6 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "quote_unspliceable", hemera::ErrorCode::E4014 },
 		{ "insert_not_code", hemera::ErrorCode::E4015 },
 		{ "insert_statements_as_expression", hemera::ErrorCode::E4014 },
-		{ "insert_in_generic", hemera::ErrorCode::E4024 },
 		{ "insert_undeclared_in_code", hemera::ErrorCode::E4008 },
 		{ "insert_top_level_expression", hemera::ErrorCode::E4014 },
 		{ "insert_wrong_members", hemera::ErrorCode::E4014 },

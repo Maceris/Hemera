@@ -36,6 +36,8 @@ namespace hemera {
 
 	struct Scope {
 		std::vector<Local> locals;
+		// How many types the function had declared when it began, which it leaves when it ends
+		size_t local_types = 0;
 	};
 
 	struct Checker {
@@ -62,6 +64,10 @@ namespace hemera {
 		/// decides on is only known there (docs/types.md, Checked Bodies).
 		/// </summary>
 		bool undecided = false;
+		/// <summary>
+		/// The body is an instance's own tree, which code can be inserted into (names.cpp, instance_of).
+		/// </summary>
+		bool own_tree = false;
 		/// <summary>
 		/// What the left of |> gave, for the call on its right to take first.
 		/// </summary>
@@ -266,6 +272,19 @@ namespace hemera {
 	static bool is_variant(TypeInfo const* type, TypeInfoVariant variant) {
 		type = base_of(type);
 		return type != nullptr && variant == type->variant;
+	}
+
+	// A block's scope, whose locals and types are seen until it ends.
+	static void push_scope(Checker& checker) {
+		checker.scopes.emplace_back();
+		checker.scopes.back().local_types = checker.walk.local_types.size();
+	}
+
+	static void pop_scope(Checker& checker) {
+		if (!checker.scopes.empty()) {
+			checker.walk.local_types.resize(std::min(checker.walk.local_types.size(), checker.scopes.back().local_types));
+			checker.scopes.pop_back();
+		}
 	}
 
 	static bool is_integer(TypeInfo const* type) {
@@ -3993,9 +4012,9 @@ namespace hemera {
 			}
 			else {
 				bool continues = true;
-				checker.scopes.emplace_back();
+				push_scope(checker);
 				progress = check_block(checker, branch, continues, &value, type);
-				checker.scopes.pop_back();
+				pop_scope(checker);
 			}
 			if (progress != Progress::DONE) {
 				return progress;
@@ -4406,9 +4425,9 @@ namespace hemera {
 	 */
 	static Progress insert_code(Checker& checker, ast::Node* insert, ast::Node*& inserted) {
 		inserted = nullptr;
-		// A generic's instances share its tree, which an insertion would change for all of them
-		if (in_generic(checker)) {
-			error_at(checker, ErrorCode::E4024, insert, "#insert in a generic's body isn't supported yet");
+		// A generic's instances share its tree, which an insertion would change for all of them, unless they have their own
+		if (in_generic(checker) && !checker.own_tree) {
+			error_at(checker, ErrorCode::E4024, insert, "#insert in a generic type isn't supported yet");
 			return Progress::FAILED;
 		}
 		const ast::Node* tree = nullptr;
@@ -4804,6 +4823,29 @@ namespace hemera {
 
 	static Progress check_nested_function(Checker& checker, ast::Node* definition, ast::Node* function, Value& result);
 
+	static Progress check_local_type(Checker& checker, ast::Node* definition, const LocalDefinition& parts) {
+		if (parts.names.size() != 1 || ast::NodeType::IDENTIFIER != parts.names[0]->node_type) {
+			error_at(checker, ErrorCode::E4018, definition, "a type declared inside a function has one name");
+			return Progress::DONE;
+		}
+		for (const ast::Node* child : parts.value->children) {
+			if (ast::NodeType::GENERIC_TAG == child->node_type) {
+				error_at(checker, ErrorCode::E4024, parts.value, "a generic type declared inside a function isn't supported yet");
+				return Progress::DONE;
+			}
+		}
+		Declaration* local = nested_declaration(checker.walk, definition);
+		Progress progress = require_resolved(checker.walk, definition, local, Need::RESOLVED);
+		if (progress == Progress::FAILED) {
+			return Progress::DONE;
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		checker.walk.local_types.emplace_back(parts.names[0]->value.value, local);
+		return Progress::DONE;
+	}
+
 	// x : T = value, x := value, x :: value, x : T : value, x : T (docs/functions.md, types.md).
 	static Progress check_definition(Checker& checker, ast::Node* definition) {
 		const LocalDefinition parts = parts_of(definition);
@@ -4826,10 +4868,15 @@ namespace hemera {
 			}
 			values.push_back(function);
 		}
-		else if (parts.value != nullptr && (ast::NodeType::STRUCT == parts.value->node_type
-			|| ast::NodeType::UNION == parts.value->node_type || ast::NodeType::ENUM == parts.value->node_type)) {
-			error_at(checker, ErrorCode::E4024, parts.value, "types declared inside a function aren't supported yet");
-			values.push_back(poisoned());
+		else if (parts.value != nullptr && parts.is_constant && (ast::NodeType::STRUCT == parts.value->node_type
+			|| ast::NodeType::UNION == parts.value->node_type || ast::NodeType::ENUM == parts.value->node_type
+			|| ast::NodeType::KEYWORD_ALIAS == parts.value->node_type || ast::NodeType::KEYWORD_DISTINCT == parts.value->node_type)) {
+			/*
+			 * A type declared in the function: a declaration of its own, resolved as one at the top level would be,
+			 * seen by what comes after it in its block, the types and functions declared there among them
+			 * (docs/types.md, Types Declared in Functions)
+			 */
+			return check_local_type(checker, definition, parts);
 		}
 		else if (parts.value != nullptr && ast::NodeType::UNINITIALIZED == parts.value->node_type) {
 			values.push_back(typed(type));
@@ -5004,9 +5051,9 @@ namespace hemera {
 				progress = check_if(checker, branch, branch_continues);
 			}
 			else {
-				checker.scopes.emplace_back();
+				push_scope(checker);
 				progress = check_block(checker, branch, branch_continues, nullptr, nullptr);
-				checker.scopes.pop_back();
+				pop_scope(checker);
 			}
 			if (progress != Progress::DONE) {
 				return progress;
@@ -5116,7 +5163,7 @@ namespace hemera {
 					describe(collection)));
 			}
 		}
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		for (size_t i = 0; i < names.size(); ++i) {
 			ast::Node* name = names[i];
 			if (i == 1) {
@@ -5145,7 +5192,7 @@ namespace hemera {
 		Progress progress = check_block(checker, body, continues, nullptr, nullptr);
 		checker.loops -= 1;
 		checker.breakables -= 1;
-		checker.scopes.pop_back();
+		pop_scope(checker);
 		return progress;
 	}
 
@@ -5180,7 +5227,7 @@ namespace hemera {
 
 	// loop, with with and while (docs/control_flow.md, While).
 	static Progress check_loop(Checker& checker, ast::Node* node, bool& continues) {
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		ast::Node* body = nullptr;
 		ast::Node* condition = nullptr;
 		for (ast::Node* child : node->children) {
@@ -5190,7 +5237,7 @@ namespace hemera {
 						bool ignored = true;
 						Progress progress = check_statement(checker, statement, ignored);
 						if (progress != Progress::DONE) {
-							checker.scopes.pop_back();
+							pop_scope(checker);
 							return progress;
 						}
 					}
@@ -5210,14 +5257,14 @@ namespace hemera {
 		if (progress == Progress::DONE && body != nullptr) {
 			checker.loops += 1;
 			checker.breakables += 1;
-			checker.scopes.emplace_back();
+			push_scope(checker);
 			bool body_continues = true;
 			progress = check_block(checker, body, body_continues, nullptr, nullptr);
-			checker.scopes.pop_back();
+			pop_scope(checker);
 			checker.loops -= 1;
 			checker.breakables -= 1;
 		}
-		checker.scopes.pop_back();
+		pop_scope(checker);
 		// A loop without a condition only ends with a break
 		continues = condition != nullptr || (body != nullptr && has_break(body, 0));
 		return progress;
@@ -5478,11 +5525,11 @@ namespace hemera {
 				if (arm->children.empty()) {
 					continue;
 				}
-				checker.scopes.emplace_back();
+				push_scope(checker);
 				for (size_t i = 0; i + 1 < arm->children.size(); ++i) {
 					progress = check_case_value(checker, arm->children[i], subject, covered);
 					if (progress != Progress::DONE) {
-						checker.scopes.pop_back();
+						pop_scope(checker);
 						return progress;
 					}
 				}
@@ -5491,9 +5538,9 @@ namespace hemera {
 				Value value = nothing();
 				const ast::NodeType outcome_type = outcome->node_type;
 				if (ast::NodeType::BLOCK == outcome_type) {
-					checker.scopes.emplace_back();
+					push_scope(checker);
 					progress = check_block(checker, outcome, arm_continues, result != nullptr ? &value : nullptr, type);
-					checker.scopes.pop_back();
+					pop_scope(checker);
 				}
 				else if (ast::NodeType::RETURN == outcome_type || ast::NodeType::BREAK == outcome_type
 					|| ast::NodeType::CONTINUE == outcome_type || is_assignment(outcome)) {
@@ -5503,7 +5550,7 @@ namespace hemera {
 					progress = check_expression(checker, outcome, type, value);
 					arm_continues = !value.never_returns;
 				}
-				checker.scopes.pop_back();
+				pop_scope(checker);
 				if (progress != Progress::DONE) {
 					return progress;
 				}
@@ -5560,11 +5607,11 @@ namespace hemera {
 				if (ast::NodeType::SWITCH_CASE != entry->node_type || entry->children.empty()) {
 					continue;
 				}
-				checker.scopes.emplace_back();
+				push_scope(checker);
 				for (size_t i = 0; i + 1 < entry->children.size(); ++i) {
 					progress = check_case_value(checker, entry->children[i], subject, covered);
 					if (progress != Progress::DONE) {
-						checker.scopes.pop_back();
+						pop_scope(checker);
 						return progress;
 					}
 				}
@@ -5572,7 +5619,7 @@ namespace hemera {
 				checker.breakables += 1;
 				progress = check_block(checker, entry->children.back(), case_continues, nullptr, nullptr);
 				checker.breakables -= 1;
-				checker.scopes.pop_back();
+				pop_scope(checker);
 				if (progress != Progress::DONE) {
 					return progress;
 				}
@@ -5667,7 +5714,7 @@ namespace hemera {
 			}
 			require_fit(checker, value, context, part, "push_context ... from");
 		}
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		Value named = typed(context);
 		named.is_location = true;
 		named.is_context = true;
@@ -5679,7 +5726,7 @@ namespace hemera {
 		progress = body != nullptr && ast::NodeType::BLOCK == body->node_type
 			? check_block(checker, body, continues, nullptr, nullptr) : Progress::DONE;
 		checker.has_context = had_context;
-		checker.scopes.pop_back();
+		pop_scope(checker);
 		return progress;
 	}
 
@@ -5754,9 +5801,9 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		if (ast::NodeType::BLOCK == type) {
-			checker.scopes.emplace_back();
+			push_scope(checker);
 			Progress progress = check_block(checker, statement, continues, nullptr, nullptr);
-			checker.scopes.pop_back();
+			pop_scope(checker);
 			return progress;
 		}
 		if (ast::NodeType::MATCH == type) {
@@ -6203,20 +6250,20 @@ namespace hemera {
 			report_relative(checker, function_node, output.type, "a result");
 		}
 		check_variadic_boundaries(checker, function_node, type);
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		declare_parameters(checker, function_node, type);
 		Progress declared = declare_generic_values(checker, function_node);
 		if (declared != Progress::DONE) {
-			checker.scopes.pop_back();
+			pop_scope(checker);
 			return declared;
 		}
 		checker.function = const_cast<TypeInfoFunction*>(type);
 		checker.has_context = !starts_without_context(type);
 		bool continues = true;
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		Progress progress = check_block(checker, body, continues, nullptr, nullptr);
-		checker.scopes.pop_back();
-		checker.scopes.pop_back();
+		pop_scope(checker);
+		pop_scope(checker);
 		if (progress != Progress::DONE) {
 			return progress;
 		}
@@ -6309,8 +6356,21 @@ namespace hemera {
 			{},
 			{},
 		};
-		ast::Node* function_node_ = function_node(generic);
-		ast::Node* body = function_body(generic);
+		// A function declared in a function sees the types declared before it there, and in an instance, its arguments
+		walk.local_types = function->local_types;
+		if (function->generic == nullptr) {
+			for (const auto& [name, type] : function->outer_generic_types) {
+				walk.generic_types[name] = type;
+				walk.locals.push_back(intern(name));
+			}
+			for (const auto& [name, value] : function->outer_generic_values) {
+				walk.generic_values[name] = value;
+				walk.locals.push_back(intern(name));
+			}
+		}
+		// An instance's own tree, if it has one, or else the generic's, which its instances share
+		ast::Node* function_node_ = function_node(function);
+		ast::Node* body = function_body(function);
 		auto type = static_cast<TypeInfoFunction const*>(function->value_type);
 		if (function_node_ == nullptr || body == nullptr || type == nullptr) {
 			return Progress::DONE;
@@ -6407,6 +6467,7 @@ namespace hemera {
 			}
 		}
 		checker.constant_time = marked_constant_time(generic->node);
+		checker.own_tree = function->generic != nullptr && function->node != function->generic->node;
 		// A secret parameter or result is working with secrets, used or not (docs/memory.md, Secrets)
 		for (const FunctionInput& input : type->input) {
 			checker.saw_secret = checker.saw_secret || reaches_secret(input.type);
@@ -6486,7 +6547,7 @@ namespace hemera {
 		Walk inner = walk;
 		Checker checker(inner);
 		checker.record = record;
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		const size_t errors_before = thread_error_count();
 		Value value;
 		Progress progress = check_expression(checker, expression, nullptr, value);
@@ -6511,7 +6572,7 @@ namespace hemera {
 			{},
 		};
 		Checker checker(walk);
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		return check_assert(checker, node);
 	}
 
@@ -6522,7 +6583,7 @@ namespace hemera {
 	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result, CheckedBody* record_into) {
 		Checker checker(walk);
 		checker.record = record_into;
-		checker.scopes.emplace_back();
+		push_scope(checker);
 		Progress progress = check_expression(checker, value, expected, result);
 		if (progress == Progress::DONE && expected != nullptr) {
 			require_fit(checker, result, expected, value, "the constant's value");

@@ -1060,6 +1060,20 @@ Nothing can be changed unless it's given `mut`, or declared where it can be:
   through a `ptr[mut T]`. A function that changes a dynamic array's elements takes a `mut T[]` view of them, or a
   `ptr[mut T[..]]` to change the array itself.
 
+In `ptr[mut T]` the `mut` is the pointer's, so `ptr[mut u8[]]` can change the view it points to, but the view's
+elements only read. A type in parentheses keeps its own `mut`: `ptr[mut (mut u8[])]` can change the view and its
+elements, and `ptr[(mut u8[])]` only its elements, not which elements it views.
+
+```
+advance :: fn(view: ptr[mut (mut u8[])]) {
+    current := view^
+    if current.count > 0 {
+        current[0] = 0
+        view^ = current[1..<current.count]
+    }
+}
+```
+
 `mut` goes on what's reached through a type. On a type whose value is held as itself, like a parameter's `n: mut int`
 or a field's `items : mut int[4]`, it would change nothing, so it's an error.
 
@@ -1303,6 +1317,27 @@ Below is a breakdown of the locations that each variable would refer to in MoreC
 |              d               |
 |------|-------|-------|-------|
 ```
+
+## Types Declared in Functions
+
+A struct, union, enum or alias can be declared inside a function, like one at the top level. It's seen from where
+it's declared to the end of its block, by the types and functions declared after it there too, and it hides a type of
+the same name from the package while it's seen. Two functions' types with one name are two types.
+
+```
+measure :: fn() -> int {
+    Point :: struct { x : int, y : int }
+    Line :: struct { from : Point, to : Point }   // made of the one above
+
+    length :: fn(line: Line) -> int {               // a function declared after them sees them
+        return line.to.x - line.from.x
+    }
+    return length(Line.{from = Point.{x = 1, y = 0}, to = Point.{x = 4, y = 0}})
+}
+```
+
+In a generic function, each instance has its own, so they can use its generic parameters, like `T[count]` in
+`fn[T, count: usize]`. A type declared inside a function can't be generic itself yet.
 
 ## Type Aliases
 

@@ -74,7 +74,8 @@ text_sink_byte :: fn(target: rawptr, byte: u8) {
 
 /*
  * A value with options (docs/format_strings.md): integers, and characters, booleans, enums and
- * pointers as numbers, worked out with them; floats with their precision as decimals; anything else
+ * pointers as numbers, worked out with them; floats with their precision as decimals, or without one, as
+ * the shortest text that reads back as the same value; anything else
  * as append_value writes it, then padded.
  */
 append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.FormatSpec) {
@@ -116,15 +117,18 @@ append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.For
             // Its digits, then the sign split off, so zeros go after it
             storage : u8[64]
             digits := make(storage)
-            decimals :: if spec.has_precision { spec.precision } else { DEFAULT_DECIMALS }
-            if info.size == 2 {
-                append_float_bits(&digits, cast[u64](cast[ptr[u16]](data)^), 5, 10, decimals)
+            // The shortest text that reads back as the same value, or a precision's decimals
+            if !spec.has_precision {
+                append_float_data(&digits, data, info.size)
+            }
+            else if info.size == 2 {
+                append_float_bits(&digits, cast[u64](cast[ptr[u16]](data)^), 5, 10, spec.precision)
             }
             else if info.size == 4 {
-                append_float_bits(&digits, cast[u64](cast[ptr[u32]](data)^), 8, 23, decimals)
+                append_float_bits(&digits, cast[u64](cast[ptr[u32]](data)^), 8, 23, spec.precision)
             }
             else {
-                append_float_bits(&digits, cast[ptr[u64]](data)^, 11, 52, decimals)
+                append_float_bits(&digits, cast[ptr[u64]](data)^, 11, 52, spec.precision)
             }
             written :: as_string(&digits)
             negative :: written.count > 0 && written[0] == '-'
@@ -314,16 +318,16 @@ append_enum :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.Ty
     append(text, ")")
 }
 
-// A float of size bytes at data. Floats are read as their bits, so no floating-point code is needed.
+// A float of size bytes at data, as the shortest text that reads back as it (append_shortest_bits).
 append_float_data :: fn(text: ptr[mut TextBuffer], data: rawptr, size: usize) {
     if size == 2 {
-        append_float_bits(text, cast[u64](cast[ptr[u16]](data)^), 5, 10, DEFAULT_DECIMALS)
+        append_shortest_bits(text, cast[u64](cast[ptr[u16]](data)^), 5, 10)
     }
     else if size == 4 {
-        append_float_bits(text, cast[u64](cast[ptr[u32]](data)^), 8, 23, DEFAULT_DECIMALS)
+        append_shortest_bits(text, cast[u64](cast[ptr[u32]](data)^), 8, 23)
     }
     else {
-        append_float_bits(text, cast[ptr[u64]](data)^, 11, 52, DEFAULT_DECIMALS)
+        append_shortest_bits(text, cast[ptr[u64]](data)^, 11, 52)
     }
 }
 
@@ -337,9 +341,19 @@ DEFAULT_DECIMALS :: 6
  * It's worked out from the bits with integer arithmetic only, so it works on targets without
  * floating-point hardware, like kernels built with soft-float.
  */
-//TODO(claude) the shortest text that reads back as the same value, like Ryu
 append_float :: fn(text: ptr[mut TextBuffer], value: f64, decimals: usize = DEFAULT_DECIMALS) {
     append_float_bits(text, bit_cast[u64](value), 11, 52, decimals)
+}
+
+// value as the shortest text that reads back as it, like 0.1, 1.5, 100 or 1e+21 (append_shortest_bits).
+append_shortest :: fn(text: ptr[mut TextBuffer], value: f64) {
+    append_shortest_bits(text, bit_cast[u64](value), 11, 52)
+}
+
+// A float's bits as the shortest text that reads back as it, as base's runtime.format_shortest_float writes it.
+append_shortest_bits :: fn(text: ptr[mut TextBuffer], bits: u64, exponent_bits: u64, fraction_bits: u64) {
+    sink :: runtime.FormatSink.{target = cast[rawptr](text), emit = text_sink_byte}
+    runtime.format_shortest_float(sink, bits, exponent_bits, fraction_bits)
 }
 
 /*

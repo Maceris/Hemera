@@ -1246,6 +1246,18 @@ namespace hemera {
 			result = BUILTIN_void;
 			return Progress::DONE;
 		}
+		// (T): the type inside with its own mut, like a mut view's in ptr[mut (mut u8[])], then ? after it
+		if (ast::NodeType::PAREN_GROUP == type && !node->children.empty()) {
+			Progress progress = held_type_of(walk, node->children[0], need, result);
+			if (progress == Progress::DONE && result != nullptr) {
+				for (ast::Node* child : node->children) {
+					if (ast::NodeType::UNARY_OPERATOR == child->node_type && TokenType::SYM_QUESTION == child->value.type) {
+						progress = optional_of(walk, child, result, need, result);
+					}
+				}
+			}
+			return progress;
+		}
 		if (ast::NodeType::TYPE == type) {
 			return type_of_type_node(walk, node, need, result);
 		}

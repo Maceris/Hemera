@@ -4027,9 +4027,8 @@ namespace hemera {
 		if (function == nullptr) {
 			return result;
 		}
-		Declaration* generic = function->generic != nullptr ? function->generic : function;
 		ast::Node* node = nullptr;
-		for (ast::Node* child : generic->node->children) {
+		for (ast::Node* child : function->node->children) {
 			if (ast::NodeType::FUNCTION == child->node_type) {
 				node = child;
 			}
@@ -8354,7 +8353,8 @@ namespace hemera {
 		state.declaration = declaration;
 		state.checked = declaration->checked.get();
 		state.type = type;
-		ast::Node* body = function_body(declaration->generic != nullptr ? declaration->generic : declaration);
+		// An instance's own tree, if it has one, or else the generic's (names.cpp, instance_of)
+		ast::Node* body = function_body(declaration);
 		mlir::OpBuilder::InsertionGuard guard(generator.builder);
 		mlir::Block* entry = function.addEntryBlock(generator.builder);
 		state.entry = entry;
@@ -10203,7 +10203,6 @@ namespace hemera {
 				registry.steps.push_back(std::move(callback));
 				return;
 			}
-			// find_packages loads packages the program doesn't import
 			report_error(ErrorCode::E4024, call.file, 0, 0, std::format("compiler.{} isn't supported yet", name));
 		}
 	}

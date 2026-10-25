@@ -378,6 +378,36 @@ TEST(Hosted, ComplementsConstantsInTheirType)
 	run_hosted("complement_constants", hemera::TargetStackCheck::Off);
 }
 
+// Several names in one declaration, each with its value (docs/functions.md).
+TEST(Hosted, DeclaresSeveralNames)
+{
+	run_hosted("several_names", hemera::TargetStackCheck::Off);
+}
+
+// Pointers to mut views, the view's own mut kept in parentheses (docs/types.md, Mutability).
+TEST(Hosted, PointsToMutViews)
+{
+	run_hosted("mut_view_pointers", hemera::TargetStackCheck::Off);
+}
+
+// #insert and macro calls in generic bodies, expanded for each instance (docs/compilation.md, Code Values).
+TEST(Hosted, InsertsIntoGenericBodies)
+{
+	run_hosted("generic_insertions", hemera::TargetStackCheck::Off);
+}
+
+// Types declared inside functions, seen in their blocks, each generic instance's its own (docs/types.md).
+TEST(Hosted, DeclaresTypesInFunctions)
+{
+	run_hosted("local_types", hemera::TargetStackCheck::Off);
+}
+
+// std/reflection's as_text, numbers written into storage the caller gives.
+TEST(Hosted, WritesValuesAsText)
+{
+	run_hosted("reflection_text", hemera::TargetStackCheck::Off);
+}
+
 // #union struct literals, setting the member they name (docs/types.md, Structs).
 TEST(Hosted, BuildsUnionLiterals)
 {

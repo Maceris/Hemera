@@ -20,7 +20,7 @@ for compile-time logging and `compiler.require`'s messages (see [types.md](types
 | Value | Written as |
 |---|---|
 | Integers | Decimal |
-| Floats | Six decimals, rounded: `2.500000` (std and compile time only) |
+| Floats | The shortest text that reads back as the same value, as C++'s `to_chars` writes it: in fixed notation, like `0.1`, `2.5` or `100`, unless scientific is shorter, like `1e-04` or `1e+21` (a whole number's digits past its shortest are zeros; a precision, std and compile time only) |
 | Booleans, characters, strings | As they are: `true`, `x`, `text` |
 | Enum members | By name: `GREEN`, or `Color(7)` for a value that isn't a member |
 | Pointers and functions | Their address in hexadecimal, `0x...`, or `null` |

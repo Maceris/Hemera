@@ -59,17 +59,6 @@ ProgramInfo :: struct {
 }
 
 /*
- * Find the packages in folder and its subfolders. If declares isn't empty, only packages
- * that declare a constant with that name are returned.
- *
- * Constants are evaluated as part of the program doing the finding (usually the build package),
- * so their values and types are the ones of that program, not of a target later built from the package.
- */
-//NOTE: not implemented, and may be removed in favor of subfolders and load_package, which leave the
-//choosing to the build's own code. Kept until there's evidence which is the better path.
-find_packages : fn(folder: string, declares := "") -> PackageInfo[] : ---
-
-/*
  * The folders directly inside folder, by their canonical paths, in order. folder is relative to the
  * calling file's package, or absolute. For a build package to find what to build, with load_package.
  */

@@ -31,8 +31,64 @@ as_string :: fn(value: any) -> (result: string, valid: bool) {
         text :: name or_else ""
         return text, true
     }
-    //TODO numbers, which need std's string conversions, and so an allocator
+    // Numbers need somewhere to be written: as_text
     return "", false
+}
+
+/*
+ * What as_string gives, and numbers too, written into storage: an integer in decimal, a float as the shortest text that
+ * reads back as it (runtime.format_shortest_float). valid is false for anything else, or a number storage can't hold.
+ */
+as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
+    text, valid :: as_string(value)
+    if valid {
+        return text, true
+    }
+    info :: unaliased(type_info_of(value.type))
+    written := StorageSink.{bytes = storage}
+    sink :: runtime.FormatSink.{target = cast[rawptr](&written), emit = storage_sink_byte}
+    if info.variant == .INTEGER && info.size <= 8 {
+        raw :: cast[u64](read_unsigned(value.data, info.size))
+        if cast[ptr[compiler.TypeInfoInteger]](info).is_signed {
+            // Its sign carried up from its top bit
+            shift :: 64 - cast[u64](info.size) * 8
+            signed :: bit_cast[i64](raw << shift) >> shift
+            runtime.format_integer(sink, runtime.FormatSpec.{}, signed < 0, if signed < 0 { 0 - bit_cast[u64](signed) } else { raw })
+        }
+        else {
+            runtime.format_integer(sink, runtime.FormatSpec.{}, false, raw)
+        }
+    }
+    else if info.variant == .FLOAT && (info.size == 2 || info.size == 4 || info.size == 8) {
+        exponent_bits : u64 = if info.size == 2 { 5 } else if info.size == 4 { 8 } else { 11 }
+        fraction_bits : u64 = if info.size == 2 { 10 } else if info.size == 4 { 23 } else { 52 }
+        runtime.format_shortest_float(sink, cast[u64](read_unsigned(value.data, info.size)), exponent_bits, fraction_bits)
+    }
+    else {
+        return "", false
+    }
+    if written.overflowed || written.count == 0 || storage.count == 0 {
+        return "", false
+    }
+    return string_of(&storage[0], written.count), true
+}
+
+// Bytes written into a view, and whether more came than it holds; #scoped, since the view may be of the stack.
+StorageSink :: struct #scoped {
+    bytes : mut u8[],
+    count : usize,
+    overflowed : bool,
+}
+
+storage_sink_byte :: fn(target: rawptr, byte: u8) {
+    sink :: cast[ptr[mut StorageSink]](target)
+    if sink.count < sink.bytes.count {
+        sink.bytes[sink.count] = byte
+        sink.count += 1
+    }
+    else {
+        sink.overflowed = true
+    }
 }
 
 /*

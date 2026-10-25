@@ -857,7 +857,8 @@ namespace hemera {
 		ast::Node* function = generic_node(generic);
 		if (generic->generic != nullptr || function == nullptr || ast::NodeType::FUNCTION != function->node_type
 			|| function_body(generic) == nullptr || generic_parameters(generic).empty() || is_constraint_function(generic)
-			|| !has_constraints(names, generic)) {
+			|| !has_constraints(names, generic) || inserts_code(function_body(generic))) {
+			// A body that inserts code is only checked at its instances, each with a tree of its own to insert into
 			return;
 		}
 		auto check = std::make_shared<EarlyCheck>();

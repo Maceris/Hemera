@@ -302,6 +302,14 @@ output_value :: fn(buffer: ptr[mut OutputBuffer], value: any) {
             output_address(buffer, address)
         }
     }
+    else if variant == .FLOAT && (info.size == 2 || info.size == 4 || info.size == 8) {
+        // The shortest text that reads back as the same value (format_shortest_float)
+        sink :: FormatSink.{target = cast[rawptr](buffer), emit = output_sink_byte}
+        bits :: read_unsigned(data, info.size)
+        exponent_bits : u64 = if info.size == 2 { 5 } else if info.size == 4 { 8 } else { 11 }
+        fraction_bits : u64 = if info.size == 2 { 10 } else if info.size == 4 { 23 } else { 52 }
+        format_shortest_float(sink, bits, exponent_bits, fraction_bits)
+    }
     else if variant == .STRUCT {
         output_text(buffer, "<struct ")
         output_text(buffer, cast[ptr[compiler.TypeInfoStruct]](info).name)

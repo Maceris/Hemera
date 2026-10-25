@@ -286,6 +286,10 @@ namespace hemera::ast {
 		}
 
 		bool is_type_node(const Node* node) {
+			// A type in parentheses, like (mut u8[]), holds one
+			if (NodeType::PAREN_GROUP == node->node_type && !node->children.empty()) {
+				return is_type_node(node->children[0]);
+			}
 			return NodeType::TYPE == node->node_type || NodeType::FUNCTION == node->node_type || NodeType::VOID == node->node_type;
 		}
 
@@ -655,6 +659,20 @@ namespace hemera::ast {
 				}
 				else if (node->node_type == NodeType::TYPE) {
 					return simple_type(node);
+				}
+				// (T), with mut before it if it's the pointer's, and ? after it
+				else if (node->node_type == NodeType::PAREN_GROUP && !node->children.empty()) {
+					std::string before;
+					std::string after;
+					for (size_t i = 1; i < node->children.size(); ++i) {
+						if (node->children[i]->node_type == NodeType::MUTABLE) {
+							before = "mut ";
+						}
+						else if (is_question(node->children[i])) {
+							after = "?";
+						}
+					}
+					return before + "(" + type(node->children[0], false) + ")" + after;
 				}
 				// An anonymous struct member's, like _ : struct #packed { ... }
 				else if (node->node_type == NodeType::STRUCT) {

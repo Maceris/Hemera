@@ -121,7 +121,9 @@ main :: fn() {
 
 Nested functions cannot access local variables from the outer function.
 It's like the inner function being hoisted out into the global scope, but without the name being defined. A nested
-function has one name, and can't be generic yet.
+function has one name, and can't be generic yet. It does see the types declared before it in the function (see
+[types.md](types.md#types-declared-in-functions)), and in a generic function's instance, that instance's generic
+parameters.
 
 ```
 foo :: fn() {
@@ -270,6 +272,21 @@ Some higher order function definitions can (should) be simplified quite a bit us
 AbsurdFnType : type : fn(fn(int) -> int) -> (fn(int) -> (result, error: int))
 nicer_definition :: fn() -> AbsurdFnType {/* ... */}
 ```
+
+# Several Names in One Declaration
+
+A declaration can name several things at once: each takes its own value, in order, or one value gives them all, like
+a call's several results. A type written once is each one's.
+
+```
+x, y, z := 0, 1, 2
+width, height : u32 = 640, 480
+MIN, MAX :: -10, 10          // at the top level too, as if written apart
+quotient, remainder := divide(7, 2)
+low, high, extra := divide(7, 2), 9
+```
+
+The values have to match the names: as many as there are, counting a call's results, or one.
 
 # Ignoring Return Values
 If a function has multiple return values, you can indicate that you'd like to

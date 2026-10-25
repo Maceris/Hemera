@@ -78,5 +78,18 @@ main :: fn() -> int {
         runtime.write_output("\n")
         ok = false
     }
+    // Without a precision, the shortest text that reads back as the same value, fixed unless scientific is shorter
+    tenth_f32 : f32 = 0.1
+    tenth_f16 : f16 = 0.1
+    largest_f16 : f16 = 65504
+    shortest : u8[128]
+    floats := text_buffer.make(shortest)
+    text_buffer.append_format(&floats, "% % % % % % % % % % %", 0.1, 1.5, 100.0, 0.001, 0.0001, 1e21, 123456.0, -0.0,
+        tenth_f32, tenth_f16, largest_f16)
+    if text_buffer.as_string(&floats) != "0.1 1.5 100 0.001 1e-04 1e+21 123456 -0 0.1 0.1 65500" {
+        runtime.write_output(text_buffer.as_string(&floats))
+        runtime.write_output("\n")
+        ok = false
+    }
     return if ok { 42 } else { 1 }
 }
