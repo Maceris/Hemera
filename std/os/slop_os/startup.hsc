@@ -59,8 +59,9 @@ Grant :: struct {
  * The root task's "firmware" grant (the SlopOS repository's decisions 0070, 0073): the firmware tables, which the
  * kernel copies into read-only memory before the bootloader's memory is reclaimed. A FirmwareTables, then its count
  * FirmwareTable entries, then the tables, each at its offset from the start. ACPI's are the RSDP ("RSDP"), every
- * table its XSDT or RSDT lists, and the FADT's DSDT and FACS; a device tree's is its blob ("DTB "). physical is where
- * the table was, which ACPI's tables use to point at one another.
+ * table its XSDT or RSDT lists, and the FADT's DSDT and FACS; a device tree's is its blob ("DTB "). Then, on both, the
+ * kernel's own "RAM ", PhysicalRanges of the RAM it owns. physical is where the table was (0 for "RAM "), which ACPI's
+ * tables use to point at one another.
  */
 FirmwareTables :: struct {
     magic : u64,
@@ -81,6 +82,12 @@ FirmwareTable :: struct {
     size : u32,
     offset : u64,
     physical : u64,
+}
+
+// The "RAM " table's entries: the RAM the kernel owns, which nothing else may claim for a device.
+PhysicalRange :: struct {
+    base : u64,
+    size : u64,
 }
 
 #assert size_of(FirmwareTables) == 16
@@ -154,6 +161,8 @@ find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> H
 #assert cast[u32](ObjectKind.Platform) == runtime.SLOP_OS_KIND_PLATFORM
 #assert cast[u32](ObjectKind.Intercept) == runtime.SLOP_OS_KIND_INTERCEPT
 #assert cast[u32](ObjectKind.DebugLog) == runtime.SLOP_OS_KIND_DEBUG_LOG
+#assert cast[u32](ObjectKind.DmaDomain) == runtime.SLOP_OS_KIND_DMA_DOMAIN
+#assert cast[u32](ObjectKind.Device) == runtime.SLOP_OS_KIND_DEVICE
 #assert cast[u64](SYSCALL_HANDLE_CLOSE) == runtime.SLOP_OS_CALL_HANDLE_CLOSE
 #assert cast[u64](SYSCALL_CLOCK_MONOTONIC) == runtime.SLOP_OS_CALL_CLOCK_MONOTONIC
 #assert cast[u64](SYSCALL_MEMORY_CREATE) == runtime.SLOP_OS_CALL_MEMORY_CREATE

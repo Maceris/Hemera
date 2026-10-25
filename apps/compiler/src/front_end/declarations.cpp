@@ -683,6 +683,15 @@ namespace hemera {
 			if (!iter->arguments.empty()) {
 				if (ast::NodeType::RANGE_ARRAY == iter->arguments[0]->node_type) {
 					array_type = ArrayType::DYNAMIC;
+					/*
+					 * Its elements are on the heap, where a #scoped struct never is (docs/memory.md, Scoped Structs). A
+					 * struct's own fields are checked with the struct, which may not be laid out yet here
+					 */
+					if (TypeInfo const* scoped = current->complete ? scoped_part(current) : nullptr) {
+						return type_error(walk, ErrorCode::E4014, iter->node, std::format(
+							"a dynamic array's elements are on the heap, and {} is #scoped, so it's only held where it can point "
+							"into the stack: in a static array, or by a #scoped struct", to_string(scoped)));
+					}
 				}
 				else {
 					array_type = ArrayType::STATIC;

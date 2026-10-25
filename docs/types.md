@@ -1219,6 +1219,10 @@ v1.x = 5 // r and s are now also 5, they share the same offset
 v1.y = 2 // g and t are now also 2
 ```
 
+A literal sets the members it names, in order, over zeros, so a later one overwrites what it overlaps:
+`Overlay.{word = 0x01020304}`. The other members' defaults are left out once any member is given, since they'd
+overwrite it. A constant's literal can't name a member that overlaps another yet.
+
 The `using` directive works as well if structs are already defined.
 
 ```

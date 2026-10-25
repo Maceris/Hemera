@@ -6754,6 +6754,16 @@ namespace hemera {
 		}
 		std::set<std::string> given;
 		size_t position = 0;
+		/*
+		 * A #union struct's members overlap, so it has no LLVM element for each: built in memory instead, zeroed,
+		 * each value stored where its member is, in order, so a later one overwrites what it overlaps
+		 */
+		const bool overlapping = structure->is_union && in_function(generator);
+		mlir::Value slot;
+		if (overlapping) {
+			slot = make_slot(generator, type);
+			store_zero(generator, type, slot);
+		}
 		for (ast::Node* element : elements) {
 			const bool named = ast::NodeType::BINARY_OPERATOR == element->node_type && is_assign(element)
 				&& element->children.size() == 2;
@@ -6772,8 +6782,13 @@ namespace hemera {
 				given.insert(text_of(structure->members[position].name));
 				++position;
 			}
+			if (overlapping) {
+				store(generator, emit_as(generator, named ? element->children[1] : element, member_type),
+					offset_address(generator, slot, offset));
+				continue;
+			}
 			if (std::find(path.begin(), path.end(), -1) != path.end()) {
-				unsupported(generator, element, "a #union struct's literal can't be generated yet");
+				unsupported(generator, element, "a constant #union struct's literal can't be generated yet");
 				continue;
 			}
 			result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result,
@@ -6786,12 +6801,22 @@ namespace hemera {
 				TypeInfo* member_type = nullptr;
 				std::vector<int64_t> path;
 				find_member(generator, structure, member.name, offset, member_type, path);
+				// The members given overlap the rest: their defaults would overwrite them
+				if (overlapping) {
+					if (given.empty()) {
+						store(generator, default_of(generator, member), offset_address(generator, slot, offset));
+					}
+					continue;
+				}
 				if (std::find(path.begin(), path.end(), -1) != path.end()) {
-					unsupported(generator, node, "a #union struct's defaults can't be generated yet");
+					unsupported(generator, node, "a constant #union struct's defaults can't be generated yet");
 					continue;
 				}
 				result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result, default_of(generator, member), path);
 			}
+		}
+		if (overlapping) {
+			return location(slot, type);
 		}
 		return value(result, type);
 	}
@@ -7108,8 +7133,12 @@ namespace hemera {
 			}
 			return tag_is(generator, address, type, index, true);
 		}
+		// A string matches one with the same bytes (docs/control_flow.md, Match and Switch); a cstring isn't compared yet
+		if (TypeInfoVariant::STRING == type->variant && !static_cast<TypeInfoString const*>(type)->is_raw) {
+			return strings_equal(generator, load(generator, subject.type, address), emit_as(generator, pattern, subject.type));
+		}
 		if (TypeInfoVariant::STRING == type->variant) {
-			unsupported(generator, pattern, "matching strings can't be generated yet");
+			unsupported(generator, pattern, "matching cstrings can't be generated yet");
 			return boolean(generator, false);
 		}
 		mlir::Value v = load(generator, subject.type, address);

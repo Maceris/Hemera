@@ -330,6 +330,18 @@ TEST(Hosted, RefusesARelativePointerToItself)
 	EXPECT_NE(written.error.find("relative_to_itself.hsc:19:"), std::string::npos) << written.error;
 }
 
+// match and switch on strings, including #fall_through and case _ (docs/control_flow.md).
+TEST(Hosted, MatchesStrings)
+{
+	run_hosted("string_cases", hemera::TargetStackCheck::Off);
+}
+
+// #union struct literals, setting the member they name (docs/types.md, Structs).
+TEST(Hosted, BuildsUnionLiterals)
+{
+	run_hosted("union_literals", hemera::TargetStackCheck::Off);
+}
+
 // b16, b32 and b64 with !, widened and as conditions (docs/types.md).
 TEST(Hosted, NegatesWideBooleans)
 {

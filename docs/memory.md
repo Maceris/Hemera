@@ -250,8 +250,9 @@ parse :: fn() {
 ```
 
 * Every value of a `#scoped` type is local, and pointers to one are deep, so anything loaded through them is local.
-* A `#scoped` type can't be stored on the heap: in a field of an ordinary struct, in heap-allocated arrays,
-   in an `any` that escapes, or passed to an `#escaping` parameter.
+* A `#scoped` type can't be stored on the heap: in a field of an ordinary struct, in a dynamic array (whose elements
+   are always on the heap, wherever the array itself is), in an `any` that escapes, or passed to an `#escaping`
+   parameter.
 * Through a pointer to a `#scoped` type, a function may store unrestricted values, and local values whose origin is
   that same pointer (usually ones it loaded through it). Storing values with any other origin is an error, since
   they might not live as long as the struct.

@@ -31,9 +31,11 @@ SLOP_OS_KIND_PROCESS : u32 : 6
 SLOP_OS_KIND_CHANNEL : u32 : 7
 SLOP_OS_KIND_PORT : u32 : 8
 SLOP_OS_KIND_IRQ : u32 : 9
+SLOP_OS_KIND_DMA_DOMAIN : u32 : 11
 SLOP_OS_KIND_PLATFORM : u32 : 12
 SLOP_OS_KIND_INTERCEPT : u32 : 13
 SLOP_OS_KIND_DEBUG_LOG : u32 : 14
+SLOP_OS_KIND_DEVICE : u32 : 15
 /*
  * How a process ends before its entry runs: started by a kernel of another ABI version, or without a
  * grant its entry needs (os_entry_grant)
@@ -252,6 +254,12 @@ SlopOsGrant :: struct {
         }
         if kind == "DebugLog" {
             return SLOP_OS_KIND_DEBUG_LOG
+        }
+        if kind == "DmaDomain" {
+            return SLOP_OS_KIND_DMA_DOMAIN
+        }
+        if kind == "Device" {
+            return SLOP_OS_KIND_DEVICE
         }
         return 0
     }

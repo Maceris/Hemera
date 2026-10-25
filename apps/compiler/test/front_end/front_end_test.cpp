@@ -873,7 +873,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "relative_assigned_whole", hemera::ErrorCode::E4040 },
 		{ "relative_to_stack", hemera::ErrorCode::E4030 },
 		{ "endian_compound", hemera::ErrorCode::E4020 },
-		{ "endian_from_native", hemera::ErrorCode::E4015 }
+		{ "endian_from_native", hemera::ErrorCode::E4015 },
+		// docs/memory.md, Scoped Structs
+		{ "scoped_dynamic_local", hemera::ErrorCode::E4014 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;
