@@ -233,6 +233,8 @@ result2 : int = match bar {
 
 * Like `switch`, each arm starts with `case`, so arms need no separators. Commas only separate the values of one
   arm, like `case 2, 3`.
+* What's matched is a name, a member or a call, and `?` after it unwraps a result first, as it does anywhere else:
+  `match find(key)? { ... }` returns an error from the function, and matches on the value.
 * An arm's result can be a block, and an arm can also be a statement like `return`:
 
 ```

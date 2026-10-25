@@ -3908,6 +3908,12 @@ namespace hemera::parser {
 			delete_node(state->node_alloc, &match_node);
 			return ExprResult{ false };
 		}
+		// A result unwrapped first, like match find(key)? { ... }, as ? unwraps one anywhere else
+		if (expect(state, TokenType::SYM_QUESTION)) {
+			ast::Node* unwrap = &next_as_node(state, ast::NodeType::UNARY_OPERATOR);
+			unwrap->children.push_back(subject.result);
+			subject.result = unwrap;
+		}
 		match_node.children.push_back(subject.result);
 
 		if (!expect(state, TokenType::SYM_LBRACE)) {

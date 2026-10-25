@@ -286,6 +286,21 @@ attempt_twice :: fn(fail: bool) -> Result[void, Fault] {
     return .Ok
 }
 
+lookup_size :: fn(fail: bool) -> Result[int?, Fault] {
+    if fail {
+        return .Error(.Busy)
+    }
+    return .Ok(7)
+}
+
+// A result unwrapped where it's matched on
+sized :: fn(fail: bool) -> Result[int, Fault] {
+    match lookup_size(fail)? {
+        case Some(size) => return .Ok(size)
+        case None => return .Ok(0)
+    }
+}
+
 successes :: fn() -> int {
     count := 0
     for i in 0..<5 {
@@ -745,6 +760,17 @@ main :: fn() -> int {
     attempt(true) or_else count_up(&failures)
     attempt(false) or_else count_up(&failures)
     if !failed_twice || successes() != 2 || failures != 1 {
+        return 39
+    }
+    sized_ok := match sized(false) {
+        case Ok(size) => size == 7
+        case Error(fault) => false
+    }
+    sized_failed := match sized(true) {
+        case Ok(size) => false
+        case Error(fault) => true
+    }
+    if !sized_ok || !sized_failed {
         return 39
     }
     // Type information: an any's type, type values, and descriptors
