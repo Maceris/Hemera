@@ -4789,7 +4789,7 @@ namespace hemera {
 		mlir::Type i32 = integer_type(generator, 4);
 		mlir::Type i64 = integer_type(generator, 8);
 		const std::pair<std::string_view, std::string_view> plain[] = {
-			{ "cli", "cli" }, { "sti", "sti" }, { "hlt", "hlt" }, { "pause", "pause" }, { "swapgs", "swapgs" },
+			{ "cli", "cli" }, { "sti", "sti" }, { "hlt", "hlt" }, { "pause", "pause" }, { "swapgs", "swapgs" }, { "mfence", "mfence" },
 		};
 		for (const auto& [intrinsic, instruction] : plain) {
 			if (name == intrinsic) {
@@ -4924,6 +4924,10 @@ namespace hemera {
 		}
 		if (name == "invlpg") {
 			assembly(generator, mlir::Type(), arguments, "invlpg ($0)", "r,~{memory}");
+			return true;
+		}
+		if (name == "clflush") {
+			assembly(generator, mlir::Type(), arguments, "clflush ($0)", "r,~{memory}");
 			return true;
 		}
 		if (name == "xsave" || name == "xsavec" || name == "xsaveopt" || name == "xrstor") {

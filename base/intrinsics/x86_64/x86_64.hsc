@@ -173,6 +173,11 @@ read_cr4 : fn() -> u64 : ---
 write_cr4 : fn(value: u64) : ---
 // Flush the TLB entry for the page containing address.
 invlpg : fn(address: rawptr) : ---
+// Write the cache line containing address back to memory, if it's dirty, and drop it from every cache, for a
+// device that reads memory without snooping caches.
+clflush : fn(address: rawptr) : ---
+// Order every load and store before it before every one after it, clflush's among them.
+mfence : fn() : ---
 
 // Entry and return
 
