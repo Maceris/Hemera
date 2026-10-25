@@ -374,8 +374,6 @@ time), and `fiber_yield()` may do nothing. Functions see the same interface eith
 
 ## Open Questions
 
-* **LLVM:** reserving the carrier register, and emitting the prologue stack check and the `morestack` protocol
-  described in [calling_convention.md](calling_convention.md).
 * **Return addresses of suspended fibers.** While a fiber is suspended, its return addresses are in ordinary memory and
   are trusted when it resumes. IBT and BTI limit where they can lead, and the runtime could also check them against a
   table of call sites. A hardened mode with a shadow stack per fiber is possible, at a much higher memory cost.

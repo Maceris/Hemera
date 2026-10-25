@@ -84,6 +84,11 @@ namespace hemera {
 		/// </summary>
 		bool is_mutable = false;
 		/// <summary>
+		/// For a location whose type differs from what's stored there, what is: a relative pointer, read as
+		/// the pointer it holds (docs/types.md, Relative Pointers), which & points to.
+		/// </summary>
+		TypeInfo* stored_type = nullptr;
+		/// <summary>
 		/// The context or part of it, which can never be changed (docs/control_flow.md).
 		/// </summary>
 		bool is_context = false;
@@ -141,6 +146,10 @@ namespace hemera {
 	struct CheckedNode {
 		ValueKind kind = ValueKind::POISONED;
 		TypeInfo* type = nullptr;
+		/// <summary>
+		/// For a relative pointer's place, the relative pointer stored there, which type is read as.
+		/// </summary>
+		TypeInfo* stored_type = nullptr;
 		Declaration* declaration = nullptr;
 		const void* local = nullptr;
 		TypeInfoFunction const* called = nullptr;

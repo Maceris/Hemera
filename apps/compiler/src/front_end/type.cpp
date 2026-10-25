@@ -173,7 +173,10 @@ namespace hemera {
 	 * docs/types.md, Unions: the tag at offset 0, then each variant's values like a struct's
 	 * members, all variants overlapping. The tag is the smallest unsigned integer that counts them.
 	 */
-	// A pointer that's never null: ptr[T] (not rawptr or a relative pointer), cstring, or a function.
+	/*
+	 * A pointer that's never null: ptr[T] and the relative pointers (not rawptr), cstring, or a function. A relative
+	 * pointer's optional is None at offset 0, since one that points at itself is never useful (docs/types.md).
+	 */
 	static bool is_never_null(TypeInfo const* type) {
 		while (type != nullptr && TypeInfoVariant::ALIAS == type->variant) {
 			type = static_cast<TypeInfoAlias const*>(type)->base_type;
@@ -183,12 +186,95 @@ namespace hemera {
 		}
 		if (TypeInfoVariant::POINTER == type->variant) {
 			auto pointer = static_cast<TypeInfoPointer const*>(type);
-			return pointer->base_type != nullptr && !pointer->is_relative;
+			return pointer->base_type != nullptr;
 		}
 		if (TypeInfoVariant::STRING == type->variant) {
 			return static_cast<TypeInfoString const*>(type)->is_raw;
 		}
 		return TypeInfoVariant::FUNCTION == type->variant;
+	}
+
+	TypeInfoPointer const* relative_pointer_of(TypeInfo const* type) {
+		type = get_base_type_or_alias(type);
+		if (type != nullptr && TypeInfoVariant::UNION == type->variant) {
+			auto optional = static_cast<TypeInfoUnion const*>(type);
+			if (!optional->null_is_none || optional->variants.empty() || optional->variants[0].types.size() != 1) {
+				return nullptr;
+			}
+			type = get_base_type_or_alias(optional->variants[0].types[0]);
+		}
+		if (type == nullptr || TypeInfoVariant::POINTER != type->variant) {
+			return nullptr;
+		}
+		auto pointer = static_cast<TypeInfoPointer const*>(type);
+		return pointer->is_relative ? pointer : nullptr;
+	}
+
+	static Endianness endianness_of(TypeInfo const* type) {
+		type = get_base_type_or_alias(type);
+		if (type != nullptr && TypeInfoVariant::INTEGER == type->variant) {
+			return static_cast<TypeInfoInteger const*>(type)->endianness;
+		}
+		if (type != nullptr && TypeInfoVariant::FLOAT == type->variant) {
+			return static_cast<TypeInfoFloat const*>(type)->endianness;
+		}
+		return Endianness::SYSTEM;
+	}
+
+	TypeInfo* native_of(TypeInfo* type) {
+		if (type == nullptr) {
+			return nullptr;
+		}
+		TypeInfo const* found = get_base_type_or_alias(type);
+		if (Endianness::SYSTEM == endianness_of(found)) {
+			return type;
+		}
+		if (TypeInfoVariant::FLOAT == found->variant) {
+			return found->size == 2 ? BUILTIN_f16 : found->size == 4 ? BUILTIN_f32 : BUILTIN_f64;
+		}
+		const bool is_signed = static_cast<TypeInfoInteger const*>(found)->is_signed;
+		switch (found->size) {
+			case 2: return is_signed ? BUILTIN_i16 : BUILTIN_u16;
+			case 4: return is_signed ? BUILTIN_i32 : BUILTIN_u32;
+			case 8: return is_signed ? BUILTIN_i64 : BUILTIN_u64;
+			default: return is_signed ? BUILTIN_i128 : BUILTIN_u128;
+		}
+	}
+
+	bool is_byte_swapped(TypeInfo const* type) {
+		return Endianness::BIG == endianness_of(type);
+	}
+
+	bool holds_relative(TypeInfo const* type) {
+		type = get_base_type_or_alias(type);
+		if (type == nullptr) {
+			return false;
+		}
+		if (TypeInfoVariant::POINTER == type->variant) {
+			return static_cast<TypeInfoPointer const*>(type)->is_relative;
+		}
+		if (TypeInfoVariant::ARRAY == type->variant) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			return ArrayType::STATIC == array->array_type && holds_relative(array->element_type);
+		}
+		if (TypeInfoVariant::STRUCT == type->variant) {
+			for (const StructMember& member : static_cast<TypeInfoStruct const*>(type)->members) {
+				if (holds_relative(member.member_type)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		if (TypeInfoVariant::UNION == type->variant) {
+			for (const UnionVariant& variant : static_cast<TypeInfoUnion const*>(type)->variants) {
+				for (TypeInfo* held : variant.types) {
+					if (holds_relative(held)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	void lay_out_union(TypeInfoUnion* type) {
@@ -670,14 +756,23 @@ namespace hemera {
 			if (is_one_of(to, { BUILTIN_uintptr, BUILTIN_usize })) {
 				return false;
 			}
-			// Widening only, keeping the signedness and endianness; 128-bit doesn't fit int
-			return a->is_signed == b->is_signed && a->endianness == b->endianness
-				&& a->size < b->size;
+			/*
+			 * An endian-specific integer to its native type or a wider one, swapping if it must; a native one
+			 * becomes endian-specific only with a cast, so a swapping store shows (docs/types.md)
+			 */
+			if (Endianness::SYSTEM != a->endianness) {
+				return Endianness::SYSTEM == b->endianness && a->is_signed == b->is_signed && a->size <= b->size;
+			}
+			// Widening only, keeping the signedness; 128-bit doesn't fit int
+			return a->is_signed == b->is_signed && Endianness::SYSTEM == b->endianness && a->size < b->size;
 		}
 		if (TypeInfoVariant::FLOAT == from->variant) {
 			auto a = static_cast<TypeInfoFloat const*>(from);
 			auto b = static_cast<TypeInfoFloat const*>(to);
-			return a->endianness == b->endianness && a->size < b->size;
+			if (Endianness::SYSTEM != a->endianness) {
+				return Endianness::SYSTEM == b->endianness && a->size <= b->size;
+			}
+			return Endianness::SYSTEM == b->endianness && a->size < b->size;
 		}
 		if (TypeInfoVariant::BOOLEAN == from->variant) {
 			return from->size < to->size;

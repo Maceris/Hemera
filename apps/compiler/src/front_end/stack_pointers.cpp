@@ -114,7 +114,7 @@ namespace hemera {
 				return false;
 			}
 			if (TypeInfoVariant::POINTER == type->variant) {
-				return !static_cast<TypeInfoPointer const*>(type)->is_relative;
+				return true;
 			}
 			if (TypeInfoVariant::ANY == type->variant || TypeInfoVariant::STRING == type->variant) {
 				return true;
@@ -1243,7 +1243,14 @@ namespace hemera {
 				Evaluated target = evaluate(analysis, targets[i], nullptr);
 				// a += b keeps what a points to: only plain assignment stores something new
 				if (is_assign(node)) {
-					store(analysis, target.place, convert(analysis, given, types[i], node), node);
+					const Reach stored = convert(analysis, given, types[i], node);
+					// A relative pointer is only for memory that's shared or on disk (docs/types.md, Relative Pointers)
+					const CheckedNode* place = found_at(analysis, targets[i]);
+					if (place != nullptr && place->stored_type != nullptr && stored.local) {
+						report(analysis, node, "a relative pointer can't point into the stack (docs/types.md, Relative Pointers)");
+						continue;
+					}
+					store(analysis, target.place, stored, node);
 				}
 			}
 		}

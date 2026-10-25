@@ -209,6 +209,7 @@ namespace hemera {
 	static void store_checked(CheckedNode& checked, const Value& value) {
 		checked.kind = value.kind;
 		checked.type = value.type;
+		checked.stored_type = value.stored_type;
 		checked.declaration = value.declaration;
 		checked.local = value.local;
 		checked.called = value.called;
@@ -893,6 +894,43 @@ namespace hemera {
 	}
 
 	// .name on a value: a struct's field (through one pointer), or an array's or string's count.
+	/*
+	 * docs/types.md, Relative Pointers: a relative pointer in a field, an element or what a pointer points to is read
+	 * where it's stored, as the pointer it holds, a ptr[T], or for an optional one a ptr[T]?. The place keeps what's
+	 * stored there, which & points to and an assignment stores into.
+	 */
+	static Progress read_place(Checker& checker, ast::Node* where, Value& value) {
+		TypeInfoPointer const* relative = ValueKind::VALUE == value.kind ? relative_pointer_of(value.type) : nullptr;
+		if (relative == nullptr) {
+			return Progress::DONE;
+		}
+		TypeInfo* stored = value.type;
+		TypeInfo* read = pointer_to(checker.walk, relative->base_type, relative->is_mutable, false, POINTER_SIZE);
+		if (TypeInfoVariant::UNION == base_of(stored)->variant) {
+			Progress progress = optional_of(checker.walk, where, read, Need::RESOLVED, read);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
+		value.type = read;
+		value.stored_type = stored;
+		return Progress::DONE;
+	}
+
+	/*
+	 * A value with a relative pointer in it can't be one of its own (docs/types.md, Relative Pointers): what's
+	 * reported, for what it would be, or false if type has none.
+	 */
+	static bool report_relative(Checker& checker, ast::Node* where, TypeInfo const* type, std::string_view what) {
+		if (type == nullptr || !holds_relative(type)) {
+			return false;
+		}
+		error_at(checker, ErrorCode::E4040, where, std::format(
+			"{} would be a copy of {}, which has a relative pointer in it: one means something only where it's stored, so set it "
+			"there (docs/types.md, Relative Pointers)", what, to_string(type)));
+		return true;
+	}
+
 	static Progress check_member(Checker& checker, ast::Node* where, InternedString name, Value& value) {
 		const ValueKind kind = value.kind;
 		if (ValueKind::POISONED == kind) {
@@ -981,7 +1019,7 @@ namespace hemera {
 				value.is_location = is_location;
 				value.is_mutable = is_mutable && !is_context;
 				value.is_context = is_context;
-				return Progress::DONE;
+				return read_place(checker, where, value);
 			}
 			// Through a using pointer field, which decides whether it can be changed
 			if (const StructMember* forwarding = forwarding_member(static_cast<TypeInfoStruct const*>(type), name)) {
@@ -1177,7 +1215,7 @@ namespace hemera {
 		value = typed(element);
 		value.is_location = true;
 		value.is_mutable = is_mutable;
-		return Progress::DONE;
+		return read_place(checker, where, value);
 	}
 
 	// A function's parameters, from its FUNCTION node: their names, types and defaults.
@@ -2441,16 +2479,16 @@ namespace hemera {
 	}
 
 	// x^: what a pointer points to.
-	static void dereference(Checker& checker, ast::Node* where, Value& value) {
+	static Progress dereference(Checker& checker, ast::Node* where, Value& value) {
 		if (ValueKind::POISONED == value.kind) {
-			return;
+			return Progress::DONE;
 		}
 		TypeInfo const* type = ValueKind::VALUE == value.kind ? base_of(value.type) : nullptr;
 		if (type == nullptr || TypeInfoVariant::POINTER != type->variant
 			|| static_cast<TypeInfoPointer const*>(type)->base_type == nullptr) {
 			value = error_at(checker, ErrorCode::E4020, where, std::format("{} can't be dereferenced; ^ needs a typed pointer",
 				describe(value)));
-			return;
+			return Progress::DONE;
 		}
 		if (value.is_secret) {
 			error_at(checker, ErrorCode::E4037, where, "a secret can't decide which memory is read, which would show in how long it takes");
@@ -2459,6 +2497,7 @@ namespace hemera {
 		value = typed(pointer->base_type);
 		value.is_location = true;
 		value.is_mutable = pointer->is_mutable;
+		return read_place(checker, where, value);
 	}
 
 	/*
@@ -2635,7 +2674,7 @@ namespace hemera {
 				}
 			}
 			else {
-				dereference(checker, child, value);
+				progress = dereference(checker, child, value);
 			}
 			if (progress == Progress::FAILED) {
 				value = poisoned();
@@ -3115,10 +3154,15 @@ namespace hemera {
 			check_vector_binary(checker, node, op, left, right, result);
 			return Progress::DONE;
 		}
-		// Raw and relative pointers allow arithmetic with integers (docs/types.md, Pointers)
+		// Endian-specific values are computed as their native types (docs/types.md, Endian-Specific Types)
+		for (Value* operand : { &left, &right }) {
+			if (ValueKind::VALUE == operand->kind) {
+				operand->type = native_of(operand->type);
+			}
+		}
+		// Raw pointers allow arithmetic with integers (docs/types.md, Pointers)
 		const bool raw_left = ValueKind::VALUE == left.kind && is_pointer(left.type)
-			&& (static_cast<TypeInfoPointer const*>(base_of(left.type))->base_type == nullptr
-				|| static_cast<TypeInfoPointer const*>(base_of(left.type))->is_relative);
+			&& static_cast<TypeInfoPointer const*>(base_of(left.type))->base_type == nullptr;
 		if (raw_left && (TokenType::OPERATOR_PLUS == op || TokenType::OPERATOR_MINUS == op)
 			&& (is_integer(default_type(right)))) {
 			result = typed(left.type);
@@ -3306,16 +3350,16 @@ namespace hemera {
 				error_at(checker, ErrorCode::E4037, node, std::format(
 					"a pointer to {} would lose that this is a secret; give it a #secret type", to_string(operand.type)));
 			}
-			result = typed(pointer_to(checker.walk, operand.type, operand.is_mutable && !operand.is_context, false,
-				POINTER_SIZE));
+			// A relative pointer's place: a pointer to the relative pointer stored there
+			TypeInfo* pointed = operand.stored_type != nullptr ? operand.stored_type : operand.type;
+			result = typed(pointer_to(checker.walk, pointed, operand.is_mutable && !operand.is_context, false, POINTER_SIZE));
 			return Progress::DONE;
 		}
 		if (TokenType::OPERATOR_DEREFERENCE == op) {
 			result = operand;
-			dereference(checker, node, result);
-			return Progress::DONE;
+			return dereference(checker, node, result);
 		}
-		TypeInfo* type = default_type(operand);
+		TypeInfo* type = native_of(default_type(operand));
 		// -v on integer or float lanes, ~v on integer or bool lanes, or the bits of v128 to v512
 		if (TypeInfoVector const* vector = vector_type_of(operand); vector != nullptr) {
 			const bool integer_lanes = is_integer(vector->element_type);
@@ -3437,7 +3481,7 @@ namespace hemera {
 		if (checker.record != nullptr) {
 			store_checked(checker.record->heads[node], typed(target));
 		}
-		if (ValueKind::POISONED == value.kind) {
+		if (ValueKind::POISONED == value.kind || report_relative(checker, node, target, "this cast")) {
 			result = typed(target);
 			return apply_postfix(checker, node, rest, result);
 		}
@@ -3561,6 +3605,7 @@ namespace hemera {
 		if (progress != Progress::DONE) {
 			return progress;
 		}
+		report_relative(checker, node, type, "this literal");
 		TypeInfo const* base = base_of(type);
 		ast::Node* list = nullptr;
 		for (ast::Node* child : node->children) {
@@ -4061,7 +4106,7 @@ namespace hemera {
 				return Progress::DONE;
 			}
 			if (is_text(node->value.value, "#run") && !node->children.empty()) {
-				//TODO(ches) run it; for now it has the type of what it runs
+				// The type of what it runs; it's run when its code is generated, once, as a constant
 				return check_expression(checker, node->children[0], expected, result);
 			}
 		}
@@ -4486,7 +4531,18 @@ namespace hemera {
 			require_secret_fits(checker, value.is_secret, types[i], target_values[i].is_secret, targets[i],
 				"what's assigned to");
 			if (TokenType::INVALID == op) {
+				// A relative pointer's place takes the pointer it's set to; anything else with one in it isn't copied
+				if (target_values[i].stored_type == nullptr && report_relative(checker, targets[i], types[i], "this assignment")) {
+					continue;
+				}
 				require_fit(checker, value, types[i], targets[i], "this assignment");
+				continue;
+			}
+			// An endian-specific integer is computed as its native type, and stored with a cast that shows the swap
+			if (types[i] != nullptr && native_of(types[i]) != types[i]) {
+				error_at(checker, ErrorCode::E4020, targets[i], std::format(
+					"{} has no arithmetic of its own: compute in {}, and store with a cast (docs/types.md, Endian-Specific Types)",
+					to_string(types[i]), to_string(native_of(types[i]))));
 				continue;
 			}
 			Value shared;
@@ -4614,6 +4670,9 @@ namespace hemera {
 			if (nested_function) {
 				value.is_location = false;
 				value.is_mutable = false;
+			}
+			if (ValueKind::VALUE == value.kind && !parts.is_constant) {
+				report_relative(checker, parts.names[i], value.type, std::format("variable {}", text_of(parts.names[i]->value.value)));
 			}
 			declare_local(checker, parts.names[i], parts.names[i]->value.value, value);
 			if (nested_function && !checker.scopes.back().locals.empty()) {
@@ -5516,7 +5575,7 @@ namespace hemera {
 				become(checker, statement, inserted);
 				return check_statement(checker, statement, continues);
 			}
-			//TODO(ches) #if inside a function, which picks its branch at compile time
+			// An #if chain is decided where its block is checked (check_block); any other directive here has nothing to check
 			return Progress::DONE;
 		}
 		Value value;
@@ -5868,6 +5927,13 @@ namespace hemera {
 		Progress defaults = check_parameter_defaults(checker, function_node, type);
 		if (defaults != Progress::DONE) {
 			return defaults;
+		}
+		for (const FunctionInput& input : type->input) {
+			report_relative(checker, function_node, input.type, input.name != nullptr
+				? std::format("parameter {}", text_of(input.name)) : std::string("a parameter"));
+		}
+		for (const FunctionOutput& output : type->output) {
+			report_relative(checker, function_node, output.type, "a result");
 		}
 		checker.scopes.emplace_back();
 		declare_parameters(checker, function_node, type);

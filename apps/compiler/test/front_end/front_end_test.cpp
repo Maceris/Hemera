@@ -12,7 +12,6 @@
 #include "error/reporting.h"
 #include "front_end/front_end.h"
 #include "front_end/info.h"
-#include "front_end/mlir_generation.h"
 #include "front_end/names.h"
 #include "hmir/hmir_dialect.h"
 #include "lexer/lexer.h"
@@ -148,59 +147,6 @@ TEST(FrontEnd, ReportsElseWithoutIf)
 
 	ASSERT_EQ(errors.size(), 1) << codes(errors);
 	EXPECT_EQ(errors[0], hemera::ErrorCode::E4002);
-}
-
-TEST(FrontEnd, GeneratesValidFunctions)
-{
-	hemera::reset_reporting_storage();
-	hemera::disable_reporting_printing();
-	StringCacheGuard string_cache;
-	FrontEndFixture fixture;
-
-	std::string file_path = (scenario("functions") / "functions.hsc").generic_string();
-	std::ifstream file(file_path);
-	ASSERT_TRUE(file.is_open());
-
-	Allocator<> token_alloc;
-	MyVector<Token> tokens;
-	hemera::lexer::lex(file, tokens, token_alloc, file_path);
-	hemera::ast::Node* ast = hemera::parser::file(file_path, tokens,
-		fixture.program_info->node_alloc);
-	ASSERT_NE(ast, nullptr);
-	ASSERT_EQ(hemera::error_count(), 0);
-
-	hemera::FileInfo file_info;
-	file_info.full_path = hemera::intern(file_path);
-
-	std::vector<hemera::FunctionInfo*> functions;
-	for (hemera::ast::Node* child : ast->children) {
-		if (hemera::ast::NodeType::DEFINITION != child->node_type) {
-			continue;
-		}
-		hemera::FunctionInfo* function = new hemera::FunctionInfo();
-		function->node = child;
-		function->file = &file_info;
-		functions.push_back(function);
-
-		EXPECT_TRUE(hemera::mlir_process_function(fixture.program_info, function));
-	}
-
-	EXPECT_TRUE(mlir::succeeded(mlir::verify(fixture.module)));
-
-	mlir::func::FuncOp answer = fixture.module.lookupSymbol<mlir::func::FuncOp>("answer");
-	ASSERT_TRUE(answer);
-	EXPECT_FALSE(answer.isExternal());
-
-	mlir::func::FuncOp values = fixture.module.lookupSymbol<mlir::func::FuncOp>("values");
-	EXPECT_TRUE(values);
-
-	mlir::func::FuncOp trap = fixture.module.lookupSymbol<mlir::func::FuncOp>("trap");
-	ASSERT_TRUE(trap);
-	EXPECT_TRUE(trap.isExternal());
-
-	for (hemera::FunctionInfo* function : functions) {
-		delete function;
-	}
 }
 
 static hemera::Declaration* find_declaration(FrontEndFixture& fixture,
@@ -920,7 +866,14 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "view_loses_read_only", hemera::ErrorCode::E4016 },
 		{ "mut_changes_nothing", hemera::ErrorCode::E4014 },
 		{ "dynamic_array_parameter", hemera::ErrorCode::E4016 },
-		{ "rawptr_read_only", hemera::ErrorCode::E4015 }
+		{ "rawptr_read_only", hemera::ErrorCode::E4015 },
+		// docs/types.md, Relative Pointers and Endian-Specific Types
+		{ "relative_copied", hemera::ErrorCode::E4040 },
+		{ "relative_parameter", hemera::ErrorCode::E4040 },
+		{ "relative_assigned_whole", hemera::ErrorCode::E4040 },
+		{ "relative_to_stack", hemera::ErrorCode::E4030 },
+		{ "endian_compound", hemera::ErrorCode::E4020 },
+		{ "endian_from_native", hemera::ErrorCode::E4015 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

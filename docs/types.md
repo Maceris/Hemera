@@ -784,9 +784,10 @@ Will implicitly cast:
 
 * i8, i16, i32, i64 will cast up to signed integers of a larger size, or int
 * u8, u16, u32, u64 will cast up to unsigned integers of a larger size, or uint
-* The endian-specific versions of integers will cast up to larger fixed sizes of the same endianness and signed-ness
+* The endian-specific versions of integers will cast to their native type (`u32be` to `u32`), or a larger native
+  integer of the same signed-ness, swapping their bytes if they must
 * Floating point types will cast to larger versions
-* The endian-specific versions of floating point types will cast up to larger versions of the same endianness
+* The endian-specific versions of floating point types will cast to their native type, or a larger native one
 * b8, b16, b32, b64 will cast up to booleans of a larger size
 * uintptr and usize will cast to uint
 * Structs will implicitly cast to any structs included inside with the `using` keyword
@@ -796,6 +797,9 @@ Will not implicitly cast:
 * i128 won't implicitly cast to int, other than on a hypothetical 128-bit platform
 * u128 won't implicitly cast to uint, other than on a hypothetical 128-bit platform
 * uintptr will not implicitly cast to or from usize
+* A native integer or float won't implicitly cast to an endian-specific one, so a store that swaps bytes shows as a
+  `cast` (see [Endian-Specific Types](#endian-specific-types)); a literal is fine
+* Endian-specific types won't implicitly cast to each other
 * Complex numbers will not implicitly cast between sizes
 * Quaternions will not implicitly cast between sizes
 
@@ -854,6 +858,34 @@ Shape :: union {
 ```
 
 Enums are the size of their backing type, `uint` unless `#backed_by` gives another.
+
+## Endian-Specific Types
+
+`u16be` to `u128be`, `i16be` to `i128be`, `f16be` to `f64be`, and their `le` versions, are stored in that byte order
+in memory, always: a `bit_cast`, a `#packed` struct's field, or a view over a device's buffer sees the bytes that
+way. They're for layouts something else decides, like a network header (big-endian), virtio (little-endian), or a
+disk format, and mean the same on every target. A `u32le` is its own type even on a little-endian target, laid out
+like a `u32` there.
+
+```
+Header :: struct #packed {
+    kind : u8,
+    length : u32be,
+}
+
+next_length :: fn(header: ptr[mut Header]) {
+    length : u32 = header.length            // read as a u32, swapped
+    header.length = cast[u32be](length + 1) // stored with a cast, so the swap shows
+}
+```
+
+* They have no arithmetic of their own: in an operator, each is its native type (`u32` for `u32be`), so
+  `header.length + 1` is a `u32`, and `+=` on one is an error. Comparing two, with `==` or `<`, compares their values.
+* One converts implicitly to its native type and to wider native ones, swapping if it must, and a native value
+  becomes one only with a `cast`. A literal needs no cast: `length : u32be = 300` stores 300 in big-endian order.
+* Given as an `any`, one is its native value, so formatting it shows the number.
+
+Every target Hemera has is little-endian, so it's the `be` types that are swapped, with one instruction.
 
 ## Notes On Types
 
@@ -926,15 +958,51 @@ ptr[int][3]   array of 3 pointers to ints
 relptr8[int]  8-bit relative pointer to an int
 ```
 
-Relative pointers refer to an address relative to their own, and have different sizes.
-An 8-bit relative pointer is quite small, but can only refer to things 128 bytes below and 127 bytes above their own address.
-
-There is no pointer arithmetic on regular pointers, though raw pointers and relative pointers (being closer to integers) do allow it.
+There is no pointer arithmetic on regular pointers or relative pointers, though raw pointers (being closer to
+integers) do allow it.
 
 A `ptr[T]` is never null, so nothing in a program is ever at address 0 through one. On targets where address 0 is
 memory, like an embedded vector table, code reaches it through a `rawptr` and the volatile intrinsics, and the target
 sets `TargetOptions.address_zero_is_memory`, so those accesses aren't assumed never to happen
 (`--address-zero-is-memory` on the command line).
+
+### Relative Pointers
+
+A relative pointer, `relptr8[T]` to `relptr64[T]`, holds where something is as an offset from its own address, in 1 to
+8 bytes. It means the same wherever the memory holding it is mapped or copied to, so it's for memory that's shared
+between processes, or written to disk: an IPC ring, a file's structures. An 8-bit one reaches 128 bytes below its own
+address and 127 above.
+
+```
+Node :: struct {
+    value : int,
+    next : relptr32[Node],
+    // None is offset 0, since a relative pointer to itself is never useful
+    previous : relptr32[Node]?,
+}
+
+link :: fn(node: ptr[mut Node], after: ptr[Node]) {
+    node.next = after          // the offset from node.next's address to after's
+    node.previous = null
+}
+
+following :: fn(node: ptr[Node]) -> ptr[Node] {
+    return node.next           // node.next's address, plus its offset
+}
+```
+
+* **Setting one**: assigning a `ptr[T]` to a relative pointer stores the difference between the address it points to
+  and the relative pointer's own address. If that doesn't fit in its bits, or is 0, a pointer to the relative pointer
+  itself, the program stops through `context.assertion_handler` (or traps, without a context).
+* **Reading one**: a relative pointer is read where it's stored, a field, an element or what a pointer points to, as
+  the `ptr[T]` it holds, or for `relptrN[T]?`, a `ptr[T]?`. `&node.next` is a pointer to the relative pointer itself.
+* **Never null**, like `ptr[T]`. Its optional, `relptrN[T]?`, is the same size, with offset 0 for `None`.
+* **Never a value of its own**: a relative pointer means something only where it's stored, so a variable,
+  parameter, result, literal or cast can't be one, or have one in it, and a struct with one in it isn't assigned
+  whole: its fields are set where it is. Memory holding them can still be copied as bytes, and the copy's relative
+  pointers lead around the copy.
+* **Never into the stack**: setting one to a local's address is an error, as storing it through a pointer is (see
+  [Pointers to the Stack](memory.md#pointers-to-the-stack)).
 
 ### Mutability
 
@@ -1078,7 +1146,8 @@ vec_length :: fn(v : MyVec2) -> f32 {
 }
 
 foo :: fn() {
-    vec3 : MyVec3 = Vec3.{1, 2, 3}
+    // The included struct is one field of the literal
+    vec3 : MyVec3 = MyVec3.{MyVec2.{1, 2}, 3}
     // Works fine, since it contains the vec2 fields explicitly
     vec_length(vec3)
 }

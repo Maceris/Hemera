@@ -8,10 +8,8 @@
 #include "front_end/base_sources.h"
 #include "front_end/checking.h"
 #include "front_end/front_end.h"
-#include "front_end/mlir_generation.h"
 #include "front_end/names.h"
 #include "front_end/walk.h"
-#include "front_end/type_checking.h"
 #include "front_end/work.h"
 #include "middle_end/code_values.h"
 #include "middle_end/generate.h"
@@ -203,10 +201,6 @@ namespace hemera {
 		if (decide_if_chain(executor, chain) != Progress::PARKED) {
 			end_if_chain(executor, chain);
 		}
-	}
-
-	void work_function_code_generation(WorkThreadData& executor, FunctionInfo* function) {
-		mlir_process_function(executor.program_info, function);
 	}
 
 	// The text of a string literal, without the quotes the lexer keeps.
@@ -729,8 +723,7 @@ namespace hemera {
 				check_top_level_assert(executor, target.value.node_location.file, target.value.node_location.node);
 				break;
 			case WorkTargetType::EXPRESSION:
-				type_check_expression(executor, target.value.node_location.file,
-					nullptr, target.value.node_location.node);
+				LOG_ERROR("Trying to type check an expression, which is IF_ELSE or EXECUTION work");
 				break;
 			case WorkTargetType::EVALUATION:
 				LOG_ERROR("Trying to type check compile-time code, which is EXECUTION work");
@@ -739,15 +732,8 @@ namespace hemera {
 				LOG_ERROR("Trying to type check a file");
 				break;
 			case WorkTargetType::FUNCTION:
-			{
-				FunctionInfo* function = target.value.function;
-				FileLocation file_location{
-					function->package != nullptr ? function->package->full_path : nullptr,
-					function->file != nullptr ? function->file->full_path : nullptr,
-				};
-				type_check_function(executor, file_location, nullptr, function);
+				LOG_ERROR("Trying to type check a FunctionInfo; a function's body is checked as BODY work");
 				break;
-			}
 			case WorkTargetType::PACKAGE:
 				LOG_ERROR("Trying to type check a package");
 				break;

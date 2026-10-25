@@ -548,6 +548,29 @@ namespace hemera {
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type);
 
 	/// <summary>
+	/// The relative pointer type is, or holds as an optional, or null (docs/types.md, Relative Pointers).
+	/// </summary>
+	TypeInfoPointer const* relative_pointer_of(TypeInfo const* type);
+
+	/// <summary>
+	/// Whether a value of type has a relative pointer in it, in a field or element rather than through a
+	/// pointer: it means something only where it's stored, so it's never a value of its own.
+	/// </summary>
+	bool holds_relative(TypeInfo const* type);
+
+	/// <summary>
+	/// An endian-specific integer's or float's native type, like u32 for u32be, which it computes as; or the type
+	/// itself (docs/types.md, Endian-Specific Types).
+	/// </summary>
+	TypeInfo* native_of(TypeInfo* type);
+
+	/// <summary>
+	/// Whether a value of type is stored in the other byte order from the target's, so it's swapped to be read.
+	/// Every target Hemera has is little-endian.
+	/// </summary>
+	bool is_byte_swapped(TypeInfo const* type);
+
+	/// <summary>
 	/// What a parameter of a SlopOS program's entry is given from its startup grants (docs/compilation.md,
 	/// Entry Parameters): the name of its kind, a distinct alias's (DebugLog) or a struct's without its
 	/// arguments (Channel), and whether it's an optional, which a missing grant leaves None.

@@ -119,7 +119,7 @@ namespace hemera {
 		if (global_data.thread_data.empty()) {
 			return;
 		}
-		if (WorkType::EXECUTION == type || WorkType::FUNCTION_CODE_GENERATION == type) {
+		if (WorkType::EXECUTION == type) {
 			signal_thread(*global_data.thread_data[0]);
 			return;
 		}
@@ -144,7 +144,6 @@ namespace hemera {
 				global_data->general_queue.enqueue(std::move(work));
 				break;
 			case WorkType::EXECUTION:
-			case WorkType::FUNCTION_CODE_GENERATION:
 				global_data->llvm_queue.enqueue(std::move(work));
 				break;
 		}
@@ -204,7 +203,6 @@ namespace hemera {
 				global_data.general_queue.enqueue(std::move(work));
 				break;
 			case WorkType::EXECUTION:
-			case WorkType::FUNCTION_CODE_GENERATION:
 				global_data.llvm_queue.enqueue(std::move(work));
 				break;
 		}
@@ -271,7 +269,6 @@ namespace hemera {
 				data.current_work = to_do;
 				switch (to_do->type) {
 					case WorkType::EXECUTION:
-					case WorkType::FUNCTION_CODE_GENERATION:
 						LOG_FATAL("Someone put LLVM work in the general queue");
 						break;
 					case WorkType::IF_ELSE:
@@ -331,10 +328,6 @@ namespace hemera {
 				switch (to_do->type) {
 				case WorkType::EXECUTION:
 					work_execution(data, to_do->work_target);
-					break;
-				case WorkType::FUNCTION_CODE_GENERATION:
-					work_function_code_generation(data,
-						to_do->work_target.value.function);
 					break;
 				case WorkType::IF_ELSE:
 				case WorkType::IMPORT:
@@ -443,7 +436,6 @@ namespace hemera {
 		bool llvm_work = false;
 		switch (work->type) {
 		case WorkType::EXECUTION:
-		case WorkType::FUNCTION_CODE_GENERATION:
 			llvm_work = true;
 			break;
 		case WorkType::IF_ELSE:

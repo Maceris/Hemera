@@ -568,8 +568,8 @@ caller whose frame was reused (see [calling_convention.md](calling_convention.md
 
 ## Target Options on the Command Line
 
-Until a build package can set `TargetOptions` (it needs `#run`), the compiler takes the ones freestanding programs
-need as flags:
+A build package sets `TargetOptions` for each target it adds (see [Build Packages](#build-packages)). Building a
+package directly, the compiler takes the ones freestanding programs need as flags:
 
 | Flag | `TargetOptions` |
 |---|---|

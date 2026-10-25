@@ -94,6 +94,11 @@ namespace hemera {
 		/// A call to a function that never returns.
 		/// </summary>
 		bool never_returns = false;
+		/// <summary>
+		/// For a relative pointer's place, the relative pointer stored at address, which reads as type, the pointer it
+		/// holds (docs/types.md, Relative Pointers). & and assignment use the place itself.
+		/// </summary>
+		TypeInfo* relative = nullptr;
 	};
 
 	struct Breakable {
@@ -391,6 +396,10 @@ namespace hemera {
 			// bool is an i1, which takes a byte in memory; b16 to b64 are integers
 			result = type->size == 1 ? mlir::IntegerType::get(generator.context, 1) : integer_type(generator, type->size);
 		}
+		else if (TypeInfoVariant::FLOAT == variant && native_of(const_cast<TypeInfo*>(type)) != type) {
+			// An endian-specific float is its bytes, in its order, until it's read as its native type
+			result = integer_type(generator, type->size);
+		}
 		else if (TypeInfoVariant::FLOAT == variant) {
 			result = type->size == 2 ? static_cast<mlir::Type>(mlir::Float16Type::get(generator.context))
 				: type->size == 4 ? static_cast<mlir::Type>(mlir::Float32Type::get(generator.context))
@@ -438,8 +447,9 @@ namespace hemera {
 			result = struct_type(generator, static_cast<TypeInfoStruct const*>(type));
 		}
 		else if (TypeInfoVariant::UNION == variant && static_cast<TypeInfoUnion const*>(type)->null_is_none) {
-			// An optional of a pointer that's never null: the pointer, null for None
-			result = pointer_type(generator);
+			// An optional of a pointer that's never null: the pointer, null for None; a relative one's offset, 0 for None
+			TypeInfoPointer const* relative = relative_pointer_of(type);
+			result = relative != nullptr ? integer_type(generator, relative->size) : pointer_type(generator);
 		}
 		else if (TypeInfoVariant::UNION == variant) {
 			// The tag, then the bytes every variant's values share
@@ -775,10 +785,18 @@ namespace hemera {
 		return result;
 	}
 
+	static mlir::Value value_of(Generator& generator, const Emitted& emitted);
+
 	// A value's address: its own, for a location, or a new slot holding it.
 	static mlir::Value address_of(Generator& generator, const Emitted& emitted) {
-		if (emitted.address) {
+		// A relative pointer's place holds an offset: what's read from it, in a slot of its own
+		if (emitted.address && emitted.relative == nullptr) {
 			return emitted.address;
+		}
+		if (emitted.relative != nullptr) {
+			mlir::Value slot = make_slot(generator, emitted.type);
+			store(generator, value_of(generator, emitted), slot);
+			return slot;
 		}
 		mlir::Value slot = make_slot(generator, emitted.type);
 		store(generator, emitted.value, slot);
@@ -788,6 +806,72 @@ namespace hemera {
 	static mlir::Value emit_constant_value(Generator& generator, Declaration* declaration, TypeInfo* type, const ast::Node* where);
 	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type);
 	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right);
+
+	/*
+	 * docs/types.md, Relative Pointers: the pointer a relative pointer of type at address holds, its offset from its own
+	 * address added to that address; for an optional one, null at offset 0.
+	 */
+	static mlir::Value read_relative(Generator& generator, TypeInfo const* type, mlir::Value address) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfoPointer const* relative = relative_pointer_of(type);
+		mlir::Type wide = usize_type(generator);
+		mlir::Value offset = LLVM::LoadOp::create(b, l, integer_type(generator, relative->size), address);
+		mlir::Value distance = relative->size < POINTER_SIZE ? static_cast<mlir::Value>(LLVM::SExtOp::create(b, l, wide, offset)) : offset;
+		mlir::Value at = LLVM::PtrToIntOp::create(b, l, wide, address);
+		mlir::Value pointer = LLVM::IntToPtrOp::create(b, l, pointer_type(generator), static_cast<mlir::Value>(LLVM::AddOp::create(b, l, at, distance)));
+		if (TypeInfoVariant::UNION != base(type)->variant) {
+			return pointer;
+		}
+		mlir::Value none = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, offset, constant_int(generator, offset.getType(), 0));
+		return LLVM::SelectOp::create(b, l, none, zero_of(generator, pointer_type(generator)), pointer);
+	}
+
+	static void fail_check(Generator& generator, const ast::Node* where, const std::string& message);
+	static void emit_if(Generator& generator, mlir::Value condition, const std::function<bool()>& then,
+		const std::function<bool()>& otherwise);
+
+	/*
+	 * Set the relative pointer of type at address to pointer: the difference between where it points and the
+	 * relative pointer's own address, or for an optional one, 0 for null. A difference too large for it, or 0, which
+	 * points at the relative pointer itself and would read as None, fails the check, at where.
+	 */
+	static void write_relative(Generator& generator, TypeInfo const* type, mlir::Value pointer, mlir::Value address,
+		const ast::Node* where) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfoPointer const* relative = relative_pointer_of(type);
+		mlir::Type wide = usize_type(generator);
+		mlir::Type narrow = integer_type(generator, relative->size);
+		mlir::Value distance = LLVM::SubOp::create(b, l, LLVM::PtrToIntOp::create(b, l, wide, pointer),
+			LLVM::PtrToIntOp::create(b, l, wide, address));
+		mlir::Value offset = relative->size < POINTER_SIZE ? static_cast<mlir::Value>(LLVM::TruncOp::create(b, l, narrow, distance))
+			: distance;
+		if (in_function(generator)) {
+			// It fits, and isn't 0: a relative pointer to itself, which an optional one would read as None
+			mlir::Value fits = relative->size < POINTER_SIZE
+				? static_cast<mlir::Value>(LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, LLVM::SExtOp::create(b, l, wide, offset), distance))
+				: constant_int(generator, integer_type(generator, 1), 1);
+			mlir::Value elsewhere = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::ne, distance, constant_int(generator, wide, 0));
+			mlir::Value good = LLVM::AndOp::create(b, l, fits, elsewhere);
+			if (TypeInfoVariant::UNION == base(type)->variant) {
+				mlir::Value null = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, pointer, zero_of(generator, pointer_type(generator)));
+				good = LLVM::OrOp::create(b, l, good, null);
+			}
+			mlir::Value bad = LLVM::XOrOp::create(b, l, good, constant_int(generator, good.getType(), 1));
+			emit_if(generator, bad, [&]() {
+				fail_check(generator, where, std::format("a relative pointer is set to point at itself, or further than its {} "
+					"bits of offset from where it's stored reach", relative->size * 8));
+				return true;
+			}, nullptr);
+		}
+		if (TypeInfoVariant::UNION == base(type)->variant) {
+			mlir::Value null = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::eq, pointer, zero_of(generator, pointer_type(generator)));
+			offset = LLVM::SelectOp::create(b, l, null, constant_int(generator, narrow, 0), offset);
+		}
+		LLVM::StoreOp::create(b, l, offset, address);
+	}
 
 	static mlir::Value value_of(Generator& generator, const Emitted& emitted) {
 		if (emitted.value) {
@@ -799,6 +883,12 @@ namespace hemera {
 		}
 		if (emitted.constant != nullptr && !in_function(generator)) {
 			return emit_constant_value(generator, emitted.constant, emitted.constant->value_type, nullptr);
+		}
+		if (emitted.address && emitted.relative != nullptr) {
+			return read_relative(generator, emitted.relative, emitted.address);
+		}
+		if (emitted.address && emitted.type != nullptr && relative_pointer_of(emitted.type) != nullptr) {
+			return read_relative(generator, emitted.type, emitted.address);
 		}
 		if (emitted.address && emitted.type != nullptr) {
 			return load(generator, emitted.type, emitted.address);
@@ -2215,6 +2305,28 @@ namespace hemera {
 		if (source == destination) {
 			return v;
 		}
+		/*
+		 * docs/types.md, Endian-Specific Types: a value of one is its bytes in its order, as an integer, swapped and
+		 * reinterpreted to and from its native type, through which it converts to and from any other number
+		 */
+		const auto numeric = [](TypeInfo const* type) {
+			return TypeInfoVariant::INTEGER == type->variant || TypeInfoVariant::FLOAT == type->variant;
+		};
+		if (TypeInfo* native = native_of(const_cast<TypeInfo*>(from)); native != from && (numeric(destination)
+			|| TypeInfoVariant::ANY == destination->variant)) {
+			mlir::Value bits = is_byte_swapped(from) ? static_cast<mlir::Value>(LLVM::ByteSwapOp::create(generator.builder, generator.loc, v)) : v;
+			if (is_float(native)) {
+				bits = LLVM::BitcastOp::create(generator.builder, generator.loc, llvm_type(generator, native), bits);
+			}
+			return convert(generator, bits, native, to);
+		}
+		if (TypeInfo* native = native_of(const_cast<TypeInfo*>(to)); native != to && numeric(source)) {
+			mlir::Value bits = convert(generator, v, from, native);
+			if (is_float(native)) {
+				bits = LLVM::BitcastOp::create(generator.builder, generator.loc, llvm_type(generator, to), bits);
+			}
+			return is_byte_swapped(to) ? static_cast<mlir::Value>(LLVM::ByteSwapOp::create(generator.builder, generator.loc, bits)) : bits;
+		}
 		mlir::Type target = llvm_type(generator, to);
 		// Into an any: a pointer to a copy of it, and its type
 		if (TypeInfoVariant::ANY == destination->variant) {
@@ -2346,7 +2458,15 @@ namespace hemera {
 	 * same type, is copied with memmove (it may be the same place), which LLVM handles far better
 	 * than loading and storing it whole.
 	 */
-	static void store_emitted(Generator& generator, const Emitted& emitted, TypeInfo* type, mlir::Value address) {
+	static void store_emitted(Generator& generator, const Emitted& emitted, TypeInfo* type, mlir::Value address,
+		const ast::Node* where = nullptr) {
+
+		// A relative pointer's place: what the pointer given points to, relative to it (docs/types.md, Relative Pointers)
+		if (type != nullptr && relative_pointer_of(type) != nullptr) {
+			mlir::Value pointer = ValueKind::NULL_VALUE == emitted.kind ? zero_of(generator, pointer_type(generator)) : value_of(generator, emitted);
+			write_relative(generator, type, pointer, address, where);
+			return;
+		}
 		if (emitted.address && in_function(generator) && type != nullptr && emitted.type != nullptr
 			&& base(emitted.type) == base(type) && type->size > LARGEST_WHOLE_STORE) {
 			LLVM::MemmoveOp::create(generator.builder, generator.loc, address, emitted.address,
@@ -3897,6 +4017,43 @@ namespace hemera {
 			}
 		}
 		return result;
+	}
+
+	/*
+	 * A check generated code makes that failed, like a relative pointer set too far away: context.assertion_handler,
+	 * with where and what, which ends the program; or without a context, a trap. Never returns.
+	 */
+	static void fail_check(Generator& generator, const ast::Node* where, const std::string& message) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		Declaration* handler_type = base_declaration_named(generator, "runtime", "AssertionHandler");
+		size_t offset = 0;
+		TypeInfoFunction const* function = handler_type != nullptr && handler_type->type_value != nullptr
+			&& is_variant(handler_type->type_value, TypeInfoVariant::FUNCTION)
+			? static_cast<TypeInfoFunction const*>(base(handler_type->type_value)) : nullptr;
+		if (generator.state == nullptr || !generator.state->context || function == nullptr || function->input.size() != 2
+			|| where == nullptr || !runtime_offset(generator, "Context", "assertion_handler", offset)) {
+			LLVM::Trap::create(b, l);
+			LLVM::UnreachableOp::create(b, l);
+			return;
+		}
+		mlir::Value handler = LLVM::LoadOp::create(b, l, pointer_type(generator), offset_address(generator, generator.state->context, offset));
+		std::vector<mlir::Value> operands{ handler, generator.state->context };
+		const mlir::Value parts[] = { caller_location(generator, function->input[0].type, where),
+			string_value(generator, message, function->input[1].type) };
+		for (size_t i = 0; i < 2; ++i) {
+			const FunctionInput& input = function->input[i];
+			if (parameter_by_pointer(function, input)) {
+				mlir::Value slot = make_slot(generator, input.type);
+				store(generator, parts[i], slot);
+				operands.push_back(slot);
+				continue;
+			}
+			operands.push_back(parts[i]);
+		}
+		auto call = LLVM::CallOp::create(b, l, function_type(generator, function, true), operands);
+		call.setCConv(convention_of(generator, function));
+		LLVM::UnreachableOp::create(b, l);
 	}
 
 	/*
@@ -5975,6 +6132,8 @@ namespace hemera {
 				if (found->type != nullptr) {
 					current.type = found->type;
 				}
+				// A relative pointer's place: read as the pointer it holds, through what's stored there
+				current.relative = current.address ? found->stored_type : nullptr;
 			}
 		}
 		return current;
@@ -6020,10 +6179,11 @@ namespace hemera {
 		const bool left_typed = left_checked != nullptr && !is_untyped(left_checked->kind);
 		const bool right_typed = right_checked != nullptr && !is_untyped(right_checked->kind);
 		// A type, like int in a.type == int, is a type value
+		// Endian-specific values are compared as their native types (docs/types.md, Endian-Specific Types)
 		TypeInfo* left_type = left_typed && ValueKind::TYPE == left_checked->kind ? BUILTIN_type
-			: left_typed ? left_checked->type : nullptr;
+			: left_typed ? native_of(left_checked->type) : nullptr;
 		TypeInfo* right_type = right_typed && ValueKind::TYPE == right_checked->kind ? BUILTIN_type
-			: right_typed ? right_checked->type : nullptr;
+			: right_typed ? native_of(right_checked->type) : nullptr;
 		if (left_typed && right_typed) {
 			return can_implicitly_convert_to(right_type, left_type) ? left_type : right_type;
 		}
@@ -6216,7 +6376,8 @@ namespace hemera {
 		}
 		if (TokenType::SYM_AMPERSAND == op) {
 			Emitted operand = emit_expression(generator, operand_node, nullptr);
-			return value(address_of(generator, operand), result_type);
+			// A relative pointer's place: a pointer to the relative pointer
+			return value(operand.relative != nullptr ? operand.address : address_of(generator, operand), result_type);
 		}
 		if (TokenType::OPERATOR_DEREFERENCE == op) {
 			Emitted operand = emit_expression(generator, operand_node, nullptr);
@@ -6796,6 +6957,12 @@ namespace hemera {
 		const CheckedNode* found = checked(generator, node);
 		const ast::NodeType type = node->node_type;
 		TypeInfo* result_type = type_at(generator, node, expected);
+		// A number as an endian-specific type: made as its native type, then put in its byte order
+		if (TypeInfo* native = native_of(result_type); native != result_type
+			&& (ast::NodeType::LITERAL == type || (found != nullptr && found->integer_known))) {
+			mlir::Value made = ast::NodeType::LITERAL == type ? emit_literal(generator, node, native) : known_integer(generator, *found, native);
+			return value(convert(generator, made, native, result_type), result_type);
+		}
 		if (ast::NodeType::LITERAL == type) {
 			return value(emit_literal(generator, node, result_type), result_type);
 		}
@@ -7182,7 +7349,7 @@ namespace hemera {
 				continue;
 			}
 			if (TokenType::INVALID == op) {
-				store_emitted(generator, given, target.type, target.address);
+				store_emitted(generator, given, target.relative != nullptr ? target.relative : target.type, target.address, targets[i]);
 				continue;
 			}
 			mlir::Value v;

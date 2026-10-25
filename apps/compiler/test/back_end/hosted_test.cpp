@@ -310,6 +310,26 @@ TEST(Hosted, FallsThroughCases)
 	run_hosted("fall_through", hemera::TargetStackCheck::Off);
 }
 
+// Endian-specific integers and floats in their own byte order, read and computed as their native types (docs/types.md).
+TEST(Hosted, StoresEndianSpecificTypesInTheirOrder)
+{
+	run_hosted("endian_types", hemera::TargetStackCheck::Off);
+}
+
+// A ring linked by relative pointers, copied whole and walked at its new address (docs/types.md, Relative Pointers).
+TEST(Hosted, FollowsRelativePointersWhereTheyAre)
+{
+	run_hosted("relative_pointers", hemera::TargetStackCheck::Off);
+}
+
+// A relative pointer set to point at itself, offset 0, fails the store's check (docs/types.md, Relative Pointers).
+TEST(Hosted, RefusesARelativePointerToItself)
+{
+	const HostedOutput written = run_hosted("relative_to_itself", hemera::TargetStackCheck::Off, 134);
+	EXPECT_TRUE(written.error.starts_with("assertion failed: a relative pointer is set to point at itself")) << written.error;
+	EXPECT_NE(written.error.find("relative_to_itself.hsc:19:"), std::string::npos) << written.error;
+}
+
 // b16, b32 and b64 with !, widened and as conditions (docs/types.md).
 TEST(Hosted, NegatesWideBooleans)
 {

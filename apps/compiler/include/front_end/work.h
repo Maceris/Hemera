@@ -94,7 +94,6 @@ namespace hemera {
 		/// and actually doing so.
 		/// </summary>
 		IF_ELSE,
-		FUNCTION_CODE_GENERATION,
 		IMPORT,
 		PARSE,
 		TYPE_CHECK,
