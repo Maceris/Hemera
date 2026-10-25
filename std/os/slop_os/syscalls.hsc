@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 5
+ABI_VERSION : u32 : 6
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -211,8 +211,11 @@ Syscalls :: struct {
     irq_create_msi : fn(device: Device, budget: MemoryBudget) -> Result[Irq, DeviceError],
     // What the device writes, and where, to raise a message-signaled IRQ.
     irq_message : fn(irq: Irq) -> Result[MsiMessage, DeviceError],
-    // A new DMA domain; without an IOMMU, its device addresses are physical addresses.
-    dma_domain_create : fn(platform: Platform, budget: MemoryBudget) -> Result[DmaDomain, DeviceError],
+    /*
+     * A new DMA domain; without an IOMMU, its device addresses are physical addresses, and only a domain made trusted
+     * (DMA_DOMAIN_TRUSTED in flags) has DMA memory.
+     */
+    dma_domain_create : fn(platform: Platform, budget: MemoryBudget, flags: u32) -> Result[DmaDomain, DeviceError],
     // Memory for DMA in the domain: pinned, physically contiguous, zeroed, ending at or below limit (0 for none).
     dma_memory_create : fn(domain: DmaDomain, budget: MemoryBudget, size: u64, limit: u64) -> Result[Memory, DeviceError],
     // Where DMA memory is, to the devices in its domain.
@@ -334,6 +337,9 @@ ControllerKind :: enum #backed_by(u32) {
     Plic = 3,
 }
 
+// For DmaDomainCreate: the domain's DMA memory may be made where no IOMMU confines its devices, for a trusted driver.
+DMA_DOMAIN_TRUSTED : u32 : 1 << 0
+
 // For IommuRegister: the kinds of IOMMU.
 IommuKind :: enum #backed_by(u32) {
     VtD = 1,
@@ -398,6 +404,8 @@ SIGNAL_WRITABLE : Signals : 1 << 1
 SIGNAL_PEER_CLOSED : Signals : 1 << 2
 // A process or a thread: destroyed. It stays raised.
 SIGNAL_TERMINATED : Signals : 1 << 3
+// A Device: an IOMMU blocked its DMA, at the device address in the Signal packet's data[1].
+SIGNAL_DMA_FAULT : Signals : 1 << 4
 
 BindMode :: enum #backed_by(u32) {
     // Disarmed once its packet is queued; PortBind with the same key and object arms it again.
@@ -621,6 +629,8 @@ DeviceError :: enum #backed_by(u32) {
     TooManyIommus = 43,
     // The device isn't behind the IOMMU its domain's other devices are, or behind none where they're behind one.
     WrongIommu = 44,
+    // DMA memory in a domain no IOMMU translates, which wasn't made trusted (DMA_DOMAIN_TRUSTED).
+    Untrusted = 45,
 }
 
 // The most message-signaled IRQs one device has at once.
