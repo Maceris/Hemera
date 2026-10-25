@@ -49,6 +49,11 @@ Except for shift operations, if one operand is an untyped constant
 and the other operand is not, the constant is implicitly converted to
 the type of the other operand (if possible).
 
+`~` of an untyped constant is worked out in the type it's used as, so `x & ~MASK`, with `x` a `u64` and `MASK :: 0xff`,
+clears `x`'s low byte: there `~MASK` is `0xffff_ffff_ffff_ff00`, and in a `u8` it's `0`. It fits a type when what it
+flips does, so `~0x1ff` is an error in a `u8`. Alone, like `NOT_MASK :: ~0xff`, it's the untyped `-256`, which a
+signed type takes as it is and an unsigned one doesn't.
+
 In a shift expression, the right operand must have an unsigned integer type
 or be an untyped constant that will be implicitly converted to
 an unsigned integer.

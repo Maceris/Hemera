@@ -817,6 +817,8 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "variadic_groups_overlap", hemera::ErrorCode::E4014 },
 		{ "variadic_between", hemera::ErrorCode::E4014 },
 		{ "variadic_default_positional", hemera::ErrorCode::E4015 },
+		// docs/operators.md: ~ of an untyped constant
+		{ "complement_out_of_range", hemera::ErrorCode::E4015 },
 		{ "stack_scoped_in_array_field", hemera::ErrorCode::E4014 },
 		{ "fall_through_last", hemera::ErrorCode::E4002 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },

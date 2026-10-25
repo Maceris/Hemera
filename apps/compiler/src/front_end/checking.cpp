@@ -510,6 +510,10 @@ namespace hemera {
 			return true;
 		}
 		auto integer = static_cast<TypeInfoInteger const*>(base_of(type));
+		// ~m in an unsigned type is m's bits flipped there, which fits when m does
+		if (value.complement && !integer->is_signed) {
+			return value.complemented <= integer_max(integer);
+		}
 		if (value.integer_negative) {
 			return value.integer_magnitude <= integer_min_magnitude(integer);
 		}
@@ -651,6 +655,11 @@ namespace hemera {
 	static void report_out_of_range(Checker& checker, const Value& value, TypeInfo* type, const ast::Node* where) {
 		auto integer = static_cast<TypeInfoInteger const*>(base_of(type));
 		const uint64_t smallest = integer_min_magnitude(integer);
+		if (value.complement && !integer->is_signed) {
+			error_at(checker, ErrorCode::E4015, where, std::format("~{:#x} in a {} needs {:#x} to be one, and it's out of {}'s range, 0 to {}",
+				value.complemented, to_string(type), value.complemented, to_string(type), integer_max(integer)));
+			return;
+		}
 		error_at(checker, ErrorCode::E4015, where, std::format("{}{} is out of {}'s range, {}{} to {}",
 			value.integer_negative ? "-" : "", value.integer_magnitude, to_string(type), smallest == 0 ? "" : "-", smallest,
 			integer_max(integer)));
@@ -3117,6 +3126,8 @@ namespace hemera {
 	static void fold_result(Checker& checker, ast::Node* node, TokenType op, const Value& left, const Value& right,
 		Value& result) {
 
+		// Only ~ itself is worked out in the type it's used as
+		result.complement = false;
 		const bool right_known = ValueKind::UNTYPED_INTEGER == right.kind && right.integer_known;
 		const bool divides = TokenType::OPERATOR_DIVIDE == op || TokenType::OPERATOR_MODULUS == op
 			|| TokenType::OPERATOR_REMAINDER == op;
@@ -3576,6 +3587,12 @@ namespace hemera {
 			return Progress::DONE;
 		}
 		result = is_untyped(operand) ? operand : typed(type);
+		result.complement = false;
+		if (ValueKind::UNTYPED_INTEGER == result.kind && TokenType::OPERATOR_BITWISE_XOR == op && result.integer_known
+			&& !result.integer_negative) {
+			result.complement = true;
+			result.complemented = result.integer_magnitude;
+		}
 		if (ValueKind::UNTYPED_INTEGER == result.kind && TokenType::OPERATOR_MINUS == op) {
 			result.integer_negative = !result.integer_negative && result.integer_magnitude != 0;
 		}

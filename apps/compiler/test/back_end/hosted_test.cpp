@@ -372,6 +372,12 @@ TEST(Hosted, SplitsVariadicGroups)
 	run_hosted("variadic_groups", hemera::TargetStackCheck::Off);
 }
 
+// ~ of an untyped constant, worked out in the type it's used as (docs/operators.md).
+TEST(Hosted, ComplementsConstantsInTheirType)
+{
+	run_hosted("complement_constants", hemera::TargetStackCheck::Off);
+}
+
 // #union struct literals, setting the member they name (docs/types.md, Structs).
 TEST(Hosted, BuildsUnionLiterals)
 {

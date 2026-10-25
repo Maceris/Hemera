@@ -141,6 +141,12 @@ namespace hemera {
 		bool integer_negative = false;
 		uint64_t integer_magnitude = 0;
 		/// <summary>
+		/// For an untyped integer that's ~ of a known one that isn't negative, like ~0xff: that one, which decides whether
+		/// it fits an integer type, worked out in that type, so ~0xff is a u64's 0xffff_ffff_ffff_ff00 (docs/operators.md).
+		/// </summary>
+		bool complement = false;
+		uint64_t complemented = 0;
+		/// <summary>
 		/// A secret: of a #secret type, or worked out from one (docs/memory.md, Secrets).
 		/// </summary>
 		bool is_secret = false;
