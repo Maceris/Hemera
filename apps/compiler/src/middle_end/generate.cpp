@@ -6130,6 +6130,15 @@ namespace hemera {
 		const bool lowered = !is_intrinsic(called);
 		std::vector<mlir::Value> arguments;
 		size_t next = 0;
+		// Which parameter each positional argument went to, where the checker split them around a variadic one
+		const std::vector<uint32_t>* split = nullptr;
+		if (generator.state != nullptr && generator.state->checked != nullptr) {
+			auto found_split = generator.state->checked->argument_parameters.find(paren);
+			split = found_split != generator.state->checked->argument_parameters.end() ? &found_split->second : nullptr;
+		}
+		const auto belongs = [&](size_t argument, size_t parameter) {
+			return split == nullptr || (argument < split->size() && (*split)[argument] == parameter);
+		};
 		for (size_t i = 0; i < function->input.size(); ++i) {
 			const FunctionInput& input = function->input[i];
 			if (input.is_varargs) {
@@ -6137,7 +6146,7 @@ namespace hemera {
 				 * A view of them passed on, with the values after it going to the parameters after
 				 * the varargs, or the rest in order, in a stack array whose view is passed
 				 */
-				if (next < positional.size()) {
+				if (next < positional.size() && belongs(next, i)) {
 					const CallArgument& first = positional[next];
 					TypeInfo* first_type = first.has_value ? first.given.type : type_at(generator, first.node, nullptr);
 					if (is_variant(first_type, TypeInfoVariant::ARRAY)
@@ -6150,7 +6159,7 @@ namespace hemera {
 					}
 				}
 				std::vector<mlir::Value> values;
-				for (; next < positional.size(); ++next) {
+				for (; next < positional.size() && belongs(next, i); ++next) {
 					values.push_back(argument_as(generator, positional[next], input.type));
 				}
 				mlir::Value data = zero_of(generator, pointer_type(generator));
@@ -6167,7 +6176,7 @@ namespace hemera {
 				continue;
 			}
 			const bool by_pointer = lowered && parameter_by_pointer(function, input);
-			if (next < positional.size()) {
+			if (next < positional.size() && belongs(next, i)) {
 				arguments.push_back(by_pointer ? argument_copy(generator, positional[next++], input.type)
 					: argument_as(generator, positional[next++], input.type));
 				continue;

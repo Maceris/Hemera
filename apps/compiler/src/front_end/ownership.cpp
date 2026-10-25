@@ -316,9 +316,15 @@ namespace hemera {
 				const bool any = base != nullptr && TypeInfoVariant::ANY == base->variant;
 				return any && input->is_escaping ? Use::MOVE : Use::BORROW;
 			};
+			// Which parameter each positional argument went to, where the checker split them around a variadic one
+			auto found_split = analysis.checked.argument_parameters.find(paren);
+			const std::vector<uint32_t>* split = found_split != analysis.checked.argument_parameters.end() ? &found_split->second : nullptr;
 			for (size_t i = 0; i < positional.size(); ++i) {
 				const FunctionInput* input = nullptr;
-				if (function != nullptr && !function->input.empty()) {
+				if (function != nullptr && split != nullptr && i < split->size() && (*split)[i] < function->input.size()) {
+					input = &function->input[(*split)[i]];
+				}
+				else if (function != nullptr && !function->input.empty()) {
 					input = &function->input[std::min(i, function->input.size() - 1)];
 					if (i >= function->input.size() && !input->is_varargs) {
 						input = nullptr;

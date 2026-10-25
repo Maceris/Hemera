@@ -598,6 +598,26 @@ namespace hemera {
 		return false;
 	}
 
+	/*
+	 * Whether a value given for one type could be taken for the other: one converts to the other implicitly, or a
+	 * literal fits both, like 3 an int and an f32 (docs/functions.md, Variable Arguments).
+	 */
+	static bool could_be_either(TypeInfo* a, TypeInfo* b) {
+		if (assignable(a, b) || assignable(b, a)) {
+			return true;
+		}
+		for (ValueKind kind : { ValueKind::UNTYPED_INTEGER, ValueKind::UNTYPED_FLOAT, ValueKind::UNTYPED_STRING, ValueKind::UNTYPED_BOOLEAN,
+			ValueKind::NULL_VALUE, ValueKind::UNTYPED_COMPLEX, ValueKind::UNTYPED_QUATERNION }) {
+			Value literal;
+			literal.kind = kind;
+			literal.integer_known = true;
+			if (fits(literal, a) && fits(literal, b)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// The type an untyped value has where nothing else decides it: 5 is an int, 0.5 an f64.
 	static TypeInfo* default_type(const Value& value) {
 		const ValueKind kind = value.kind;
@@ -1622,6 +1642,15 @@ namespace hemera {
 
 	Progress check_type_default(WorkThreadData& executor, const FunctionInput& input);
 
+	static size_t next_positional(const std::vector<FunctionInput>& inputs, size_t parameter);
+
+	// A value whose type comes from where it goes: .{...}, .Member, .[...] or null.
+	static bool takes_type_from_place(const ast::Node* node) {
+		const ast::NodeType type = node->node_type;
+		return ast::NodeType::ENUM_SHORTHAND == type || TokenType::KEYWORD_NULL == node->value.type
+			|| ((ast::NodeType::STRUCT_LITERAL == type || ast::NodeType::ARRAY_LITERAL == type) && TokenType::SYM_DOT == node->value.type);
+	}
+
 	static Progress check_arguments(Checker& checker, ast::Node* where, TypeInfoFunction const* function,
 		const Arguments& arguments, const std::vector<InternedString>& names, const std::vector<Value>& piped) {
 
@@ -1640,6 +1669,8 @@ namespace hemera {
 		std::vector<bool> given(function->input.size(), false);
 		size_t parameter = 0;
 		(void)piped;
+		// Which parameter each positional argument goes to, kept when a variadic parameter has others after it
+		std::vector<uint32_t> argument_parameters;
 		/*
 		 * A format_string parameter followed by any... values, like log_info's: a constant one is checked
 		 * against them (docs/format_strings.md), unless they're passed on as a view
@@ -1661,42 +1692,60 @@ namespace hemera {
 					to_string(function), function->input.size()));
 				return Progress::DONE;
 			}
-			const FunctionInput& input = function->input[parameter];
-			TypeInfo* expected = input.type;
-			if (input.is_varargs && expected != nullptr) {
+			Value value;
+			bool checked_already = false;
+			if (function->input[parameter].is_varargs && function->input[parameter].type != nullptr) {
 				/*
-				 * Each remaining value is one of the varargs, unless the first is a view of them,
-				 * which is passed on whole, and the values after it go to the parameters after
-				 * the varargs (docs/functions.md, Variable Arguments).
+				 * Each value is one of the varargs while it fits them, unless the first is a view of them, which is
+				 * passed on whole; the first value after them that doesn't goes to the parameter after them. A value
+				 * that takes its type from where it goes, like .{...}, is the varargs' (docs/functions.md, Variable
+				 * Arguments).
 				 */
-				Value value;
-				Progress progress = positional_value(checker, positional, expected, value);
+				const bool followed = next_positional(function->input, parameter) < function->input.size();
+				const bool placed = positional.node != nullptr && takes_type_from_place(positional.node);
+				Progress progress = positional_value(checker, positional, followed && !placed ? nullptr : function->input[parameter].type,
+					value);
 				if (progress != Progress::DONE) {
 					return progress;
 				}
 				TypeInfo const* passed = ValueKind::VALUE == value.kind ? base_of(value.type) : nullptr;
 				const bool passed_on = !given[parameter] && passed != nullptr && TypeInfoVariant::ARRAY == passed->variant
 					&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(passed)->array_type
-					&& same_type(static_cast<TypeInfoArray const*>(passed)->element_type, expected);
-				given[parameter] = true;
+					&& same_type(static_cast<TypeInfoArray const*>(passed)->element_type, function->input[parameter].type);
 				if (passed_on) {
+					given[parameter] = true;
 					format_values_known = false;
+					argument_parameters.push_back(static_cast<uint32_t>(parameter));
 					++parameter;
 					continue;
 				}
-				format_values.emplace_back(argument, value);
-				require_fit(checker, value, expected, argument, std::format("{}", text_of(input.name)));
-				if (!checker.intrinsic_arguments) {
-					require_secret_fits(checker, value.is_secret, expected, false, argument, std::format("{}", text_of(input.name)));
+				while (function->input[parameter].is_varargs && next_positional(function->input, parameter) < function->input.size()
+					&& !placed && ValueKind::POISONED != value.kind && !fits(value, function->input[parameter].type)) {
+					parameter = next_positional(function->input, parameter);
 				}
-				require_stays(checker, value, input, function, argument);
-				continue;
+				const FunctionInput& input = function->input[parameter];
+				if (input.is_varargs) {
+					given[parameter] = true;
+					argument_parameters.push_back(static_cast<uint32_t>(parameter));
+					format_values.emplace_back(argument, value);
+					require_fit(checker, value, input.type, argument, std::format("{}", text_of(input.name)));
+					if (!checker.intrinsic_arguments) {
+						require_secret_fits(checker, value.is_secret, input.type, false, argument, std::format("{}", text_of(input.name)));
+					}
+					require_stays(checker, value, input, function, argument);
+					continue;
+				}
+				checked_already = true;
 			}
-			Value value;
-			Progress progress = positional_value(checker, positional, expected, value);
-			if (progress != Progress::DONE) {
-				return progress;
+			const FunctionInput& input = function->input[parameter];
+			TypeInfo* expected = input.type;
+			if (!checked_already) {
+				Progress progress = positional_value(checker, positional, expected, value);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 			}
+			argument_parameters.push_back(static_cast<uint32_t>(parameter));
 			require_fit(checker, value, expected, argument,
 				input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the argument"));
 			if (!checker.intrinsic_arguments) {
@@ -1713,6 +1762,13 @@ namespace hemera {
 		}
 		if (format_literal != nullptr && format_values_known) {
 			check_format_string(checker, format_literal, format_values);
+		}
+		bool split = false;
+		for (size_t i = 0; i + 1 < function->input.size(); ++i) {
+			split = split || function->input[i].is_varargs;
+		}
+		if (split && checker.record != nullptr) {
+			checker.record->argument_parameters[where] = std::move(argument_parameters);
 		}
 		for (const auto& [name, argument] : arguments.named) {
 			size_t index = function->input.size();
@@ -6059,6 +6115,62 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	/*
+	 * The parameter a positional value goes to after parameter's, past any with defaults that follow a variadic one,
+	 * which are only given by name; inputs.size() if there's none (docs/functions.md, Variable Arguments).
+	 */
+	static size_t next_positional(const std::vector<FunctionInput>& inputs, size_t parameter) {
+		bool after_variadic = inputs[parameter].is_varargs;
+		size_t next = parameter + 1;
+		while (next < inputs.size() && after_variadic && inputs[next].has_default) {
+			++next;
+		}
+		return next;
+	}
+
+	/*
+	 * Variadic parameters with others after them are only allowed where a call can always tell where each one's values
+	 * end: its type and those of the parameters a value after them could go to can't be taken for each other, up to the
+	 * first one that isn't variadic, since each variadic one may be given nothing; and a parameter between two groups
+	 * can't be taken for the variadic one after it. A parameter with a default after a variadic one is only given by name,
+	 * so it's left out (docs/functions.md, Variable Arguments). A type a generic's body doesn't know yet is checked at each
+	 * instance.
+	 */
+	static void check_variadic_boundaries(Checker& checker, ast::Node* where, TypeInfoFunction const* type) {
+		const std::vector<FunctionInput>& inputs = type->input;
+		const auto known = [](TypeInfo* each) {
+			return each != nullptr && archetype_of(each) == nullptr;
+		};
+		const auto check_pair = [&](size_t first, size_t second) {
+			if (!known(inputs[first].type) || !known(inputs[second].type) || !could_be_either(inputs[first].type, inputs[second].type)) {
+				return;
+			}
+			const size_t variadic = inputs[first].is_varargs ? first : second;
+			error_at(checker, ErrorCode::E4014, where, std::format("{} and {} can't be next to each other: a value could be taken "
+				"for a {} or a {}, so a call couldn't tell where {}'s values end (docs/functions.md, Variable Arguments)",
+				text_of(inputs[first].name), text_of(inputs[second].name), to_string(inputs[first].type), to_string(inputs[second].type),
+				text_of(inputs[variadic].name)));
+		};
+		bool after_group = false;
+		for (size_t i = 0; i < inputs.size(); ++i) {
+			if (!inputs[i].is_varargs) {
+				// One between two groups, like b in fn(a: A..., b: B, c: C...)
+				if (after_group && !inputs[i].has_default && i + 1 < inputs.size() && inputs[i + 1].is_varargs) {
+					check_pair(i, i + 1);
+				}
+				after_group = after_group && inputs[i].has_default;
+				continue;
+			}
+			after_group = true;
+			for (size_t j = next_positional(inputs, i); j < inputs.size(); j = next_positional(inputs, j)) {
+				check_pair(i, j);
+				if (!inputs[j].is_varargs) {
+					break;
+				}
+			}
+		}
+	}
+
 	static Progress check_function_body(Checker& checker, ast::Node* function_node, ast::Node* body,
 		TypeInfoFunction const* type, const ast::Node* where) {
 
@@ -6073,6 +6185,7 @@ namespace hemera {
 		for (const FunctionOutput& output : type->output) {
 			report_relative(checker, function_node, output.type, "a result");
 		}
+		check_variadic_boundaries(checker, function_node, type);
 		checker.scopes.emplace_back();
 		declare_parameters(checker, function_node, type);
 		Progress declared = declare_generic_values(checker, function_node);

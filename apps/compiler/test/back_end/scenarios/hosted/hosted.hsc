@@ -147,13 +147,13 @@ sign :: fn(n: int) -> int {
     return if n > 0 { 1 } else if n < 0 { -1 } else { 0 }
 }
 
-// A varargs view passed on, with a value after it for the next parameter
-count_with :: fn(values: int..., extra: int) -> int {
-    return cast[int](values.count) + extra
+// A varargs view passed on, with a value after it for the next parameter, of a type an int can't be taken for
+count_with :: fn(values: int..., extra: string) -> int {
+    return cast[int](values.count) + cast[int](extra.count)
 }
 
 forward :: fn(values: int...) -> int {
-    return count_with(values, 10)
+    return count_with(values, "ten characters")
 }
 
 // A file's bytes, from next to this one
@@ -665,7 +665,7 @@ main :: fn() -> int {
         return 23
     }
     _ = double(3)
-    if forward(1, 2, 3) != 13 {
+    if forward(1, 2, 3) != 17 {
         return 24
     }
     // A view of an array refers to it, so changes through the view reach it

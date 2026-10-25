@@ -340,13 +340,36 @@ The variable argument can be passed to another function's variable arguments of 
 
 ```
 foo :: fn(format: string, numbers: int...) {
-    bar(true, numbers, 0.4)
+    bar(true, numbers, false)
 }
 
-bar :: fn(fiz: bool, some_numbers: int..., fuzz: f32) {
+bar :: fn(fiz: bool, some_numbers: int..., fuzz: bool) {
     // ...
 }
 ```
+
+A variadic parameter can have others after it, more variadic ones among them, as long as a call can always tell
+where each one's values end. It takes the values that fit it, in order, and the first that doesn't goes to the
+parameter after it, so its type and the types of the parameters a value after it could go to can't be taken for each
+other: neither converts to the other implicitly, and no literal fits both. That runs up to the first parameter after it
+that isn't variadic, since each variadic one may be given nothing. A parameter between two groups can't be taken for
+the variadic one after it either.
+
+```
+bar(false, 1, 2, 3, true)   // some_numbers is 1, 2, 3; fuzz is true
+bar(false, true)            // some_numbers is empty
+
+groups :: fn(names: string..., numbers: int..., flags: bool...)   // fine: no two can be taken for each other
+around :: fn(names: string..., middle: int, points: Point...)      // fine
+
+bad :: fn(fiz: bool, some_numbers: int..., fuzz: f32)        // error: an untyped 3 could be an int or the f32
+worse :: fn(names: string..., numbers: int..., more: string...)  // error: with no numbers, a string could be either
+```
+
+A value that takes its type from where it goes, like `.{x = 1}`, `.Member` or `null`, is the variadic parameter's
+while it's taking values. A parameter with a default right after a variadic one is only given by name, or left to its
+default, so it's never the boundary: `log_info(format_string: string, params: any..., location := #caller_location)`
+gives every value after the format to `params`.
 
 ## Functions Still to Write
 

@@ -216,6 +216,11 @@ namespace hemera {
 		/// </summary>
 		std::unordered_map<const ast::Node*, bool> satisfied;
 		/// <summary>
+		/// For a call to a function with parameters after a variadic one, which parameter each positional argument went
+		/// to, by its call's node; a call without it gives a variadic the rest (docs/functions.md, Variable Arguments).
+		/// </summary>
+		std::unordered_map<const ast::Node*, std::vector<uint32_t>> argument_parameters;
+		/// <summary>
 		/// The program's nodes made while compiling, which say where code #insert put in the body came from,
 		/// for reporting errors in it there (report_at).
 		/// </summary>

@@ -697,11 +697,19 @@ namespace hemera {
 				}
 				result = join(result, reach);
 			};
+			// Which parameter each positional argument went to, where the checker split them around a variadic one
+			auto found_split = analysis.checked.argument_parameters.find(paren);
+			const std::vector<uint32_t>* split = found_split != analysis.checked.argument_parameters.end() ? &found_split->second : nullptr;
 			size_t next = 0;
+			size_t parameter = 0;
 			for (const FunctionInput& input : function->input) {
+				const size_t this_parameter = parameter++;
+				const auto mine = [&](size_t argument) {
+					return split == nullptr || (argument < split->size() && (*split)[argument] == this_parameter);
+				};
 				if (input.is_varargs) {
 					// A view of them passed on, or the rest in a stack array whose view is passed
-					if (next < positional.size()) {
+					if (next < positional.size() && mine(next)) {
 						const Argument& first = positional[next];
 						TypeInfo* first_type = first.given ? first.value.type : type_at(analysis, first.node, nullptr);
 						if (is_array(first_type, ArrayType::VIEW) && base(element_of(first_type)) == base(input.type)) {
@@ -713,7 +721,7 @@ namespace hemera {
 					}
 					Reach values;
 					bool any = false;
-					for (; next < positional.size(); ++next) {
+					for (; next < positional.size() && mine(next); ++next) {
 						const Argument& each = positional[next];
 						values = join(values, convert(analysis, evaluate_argument(analysis, each, input.type), input.type,
 							each.node != nullptr ? each.node : paren));
@@ -727,7 +735,7 @@ namespace hemera {
 					pass(values, input, paren);
 					continue;
 				}
-				if (next < positional.size()) {
+				if (next < positional.size() && mine(next)) {
 					const Argument& each = positional[next++];
 					pass(convert(analysis, evaluate_argument(analysis, each, input.type), input.type, each.node != nullptr ? each.node : paren),
 						input, each.node != nullptr ? each.node : paren);

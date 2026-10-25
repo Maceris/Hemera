@@ -366,6 +366,12 @@ TEST(Hosted, ComputesWithComplexNumbersAndQuaternions)
 	run_hosted("composites", hemera::TargetStackCheck::Off);
 }
 
+// Variadic parameters with others after them, split where a value stops fitting (docs/functions.md, Variable Arguments).
+TEST(Hosted, SplitsVariadicGroups)
+{
+	run_hosted("variadic_groups", hemera::TargetStackCheck::Off);
+}
+
 // #union struct literals, setting the member they name (docs/types.md, Structs).
 TEST(Hosted, BuildsUnionLiterals)
 {
