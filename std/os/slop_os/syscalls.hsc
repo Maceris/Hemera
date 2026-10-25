@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 4
+ABI_VERSION : u32 : 5
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -217,6 +217,13 @@ Syscalls :: struct {
     dma_memory_create : fn(domain: DmaDomain, budget: MemoryBudget, size: u64, limit: u64) -> Result[Memory, DeviceError],
     // Where DMA memory is, to the devices in its domain.
     memory_device_address : fn(memory: Memory) -> Result[u64, DeviceError],
+    /*
+     * The IOMMU of kind whose registers are the device memory registers, from the firmware tables, covering count
+     * requester IDs from first (DEVICE_ADDRESS, its segment then its requester ID), which it knows as streams from
+     * stream: its number. The same IOMMU registered again, its registers at the same place, gives the same number,
+     * and covers those requester IDs too. A device is attached through the IOMMU that covers it most narrowly.
+     */
+    iommu_register : fn(platform: Platform, kind: IommuKind, registers: Memory, first: u32, count: u32, stream: u32) -> Result[u32, DeviceError],
 }
 
 // The most of a line debug_log writes.
@@ -325,6 +332,14 @@ ControllerKind :: enum #backed_by(u32) {
     IoApic = 1,
     GicDistributor = 2,
     Plic = 3,
+}
+
+// For IommuRegister: the kinds of IOMMU.
+IommuKind :: enum #backed_by(u32) {
+    VtD = 1,
+    AmdVi = 2,
+    Smmuv3 = 3,
+    RiscV = 4,
 }
 
 // For IrqCreate: how the line signals, from the firmware tables. Edge-triggered and active-high without them.
@@ -600,6 +615,12 @@ DeviceError :: enum #backed_by(u32) {
     TooManyVectors = 40,
     // Another device has that address, or, where the interrupt controller uses sources, that MSI source.
     DeviceExists = 41,
+    // No IOMMU of that kind there, or none the kernel can drive.
+    NoIommu = 42,
+    // Every IOMMU the kernel takes is registered, or every range of requester IDs one covers.
+    TooManyIommus = 43,
+    // The device isn't behind the IOMMU its domain's other devices are, or behind none where they're behind one.
+    WrongIommu = 44,
 }
 
 // The most message-signaled IRQs one device has at once.

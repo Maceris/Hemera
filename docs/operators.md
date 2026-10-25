@@ -279,7 +279,7 @@ example :: fn() {
 There are built in operators for optional types (`T?`).
 
 ```
-is_none      a is_none      evaluates to false if the optional does not have a value, or false if it does
+is_none      a is_none      evaluates to true if the optional does not have a value, or false if it does
 is_some      a is_some      evaluates to true if the optional value a is some value, or false if it is not
 or_break     a or_break     breaks if an optional is not present, otherwise evaluates to the value
 or_continue  a or_continue  continues if an optional is not present, otherwise evaluates to the value
@@ -366,10 +366,10 @@ f2 :: fn() -> Result[string, MyError] {
     if result {
         return .Ok("test")
     }
-    return .Ok("value")
-}
-```
-
+    return .Ok("value")
+}
+```
+
 ### Results with Nothing on Success
 
 `Result[void, E]` is the result of something that either works or fails with an `E`, with nothing to give back when
