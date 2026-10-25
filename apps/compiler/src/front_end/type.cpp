@@ -560,15 +560,19 @@ namespace hemera {
 		return type;
 	}
 
-	int composite_part(TypeInfo const* type, std::string_view member) {
+	int composite_part(TypeInfo const* type, std::string_view part) {
 		type = get_base_type(type);
 		if (type != nullptr && TypeInfoVariant::COMPLEX == type->variant) {
-			return member == "real" ? 0 : member == "imag" ? 1 : -1;
+			return part == "real" ? 0 : part == "imag" ? 1 : -1;
 		}
 		if (type != nullptr && TypeInfoVariant::QUATERNION == type->variant) {
-			return member == "imag" ? 0 : member == "jmag" ? 1 : member == "kmag" ? 2 : member == "real" ? 3 : -1;
+			return part == "imag" ? 0 : part == "jmag" ? 1 : part == "kmag" ? 2 : part == "real" ? 3 : -1;
 		}
 		return -1;
+	}
+
+	int quaternion_field(std::string_view member) {
+		return member == "x" ? 0 : member == "y" ? 1 : member == "z" ? 2 : member == "w" ? 3 : -1;
 	}
 
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type) {

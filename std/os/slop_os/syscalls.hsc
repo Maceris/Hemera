@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 3
+ABI_VERSION : u32 : 4
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -200,9 +200,11 @@ Syscalls :: struct {
     channel_tag : fn(end: Channel) -> Result[u64, ChannelError],
     /*
      * A PCIe function at address (DEVICE_ADDRESS), whose message-signaled interrupts the interrupt controller knows
-     * as msi_source: on AArch64, the ITS's device ID, from the firmware tables' msi-map; unused on x86-64.
+     * as msi_source: on AArch64, the ITS's device ID, from the firmware tables' msi-map; unused on x86-64. config is
+     * the physical address of its 4 KiB of configuration space, where the kernel turns its DMA off (Bus Master
+     * Enable) when the Device is destroyed.
      */
-    device_create : fn(platform: Platform, budget: MemoryBudget, address: u32, msi_source: u32) -> Result[Device, DeviceError],
+    device_create : fn(platform: Platform, budget: MemoryBudget, address: u32, msi_source: u32, config: u64) -> Result[Device, DeviceError],
     // The device's DMA, in the domain: what an IOMMU will confine it to.
     device_attach : fn(platform: Platform, device: Device, domain: DmaDomain) -> Result[void, DeviceError],
     // An IRQ for one of the device's message-signaled interrupts, routed to a CPU the kernel picks.

@@ -746,10 +746,15 @@ namespace hemera {
 		return value;
 	}
 
+	// real, imag, jmag, kmag, conj and abs, on numbers rather than types (docs/types.md, Complex Numbers and Quaternions).
+	static bool is_number_builtin(std::string_view name) {
+		return name == "real" || name == "imag" || name == "jmag" || name == "kmag" || name == "conj" || name == "abs";
+	}
+
 	static bool is_builtin_function(std::string_view name) {
 		return name == "size_of" || name == "align_of" || name == "offset_of" || name == "type_of"
 			|| name == "type_info_of" || name == "types_are_aliases" || name == "max_value"
-			|| name == "min_value" || name == "todo";
+			|| name == "min_value" || name == "todo" || is_number_builtin(name);
 	}
 
 	static bool is_pointer_name(std::string_view name) {
@@ -1010,8 +1015,8 @@ namespace hemera {
 				to_string(value.type), text_of(name)));
 			return Progress::DONE;
 		}
-		// An untyped string, complex number or quaternion, like a constant's, has its type's members
-		if (ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_COMPLEX == kind || ValueKind::UNTYPED_QUATERNION == kind) {
+		// An untyped string or quaternion, like a constant's, has its type's members
+		if (ValueKind::UNTYPED_STRING == kind || ValueKind::UNTYPED_QUATERNION == kind) {
 			value = typed(default_type(value));
 			return check_member(checker, where, name, value);
 		}
@@ -1072,10 +1077,11 @@ namespace hemera {
 				return Progress::DONE;
 			}
 		}
-		else if (TypeInfoVariant::COMPLEX == type->variant || TypeInfoVariant::QUATERNION == type->variant) {
-			// Its parts: real and imag, and a quaternion's jmag and kmag (docs/types.md, Complex Numbers and Quaternions)
-			if (composite_part(type, member) >= 0) {
-				value = typed(static_cast<TypeInfoComposite const*>(type)->part_type);
+		else if (TypeInfoVariant::QUATERNION == type->variant) {
+			// x, y and z, its imaginary parts, w its real part, and xyz the three as an array (docs/types.md, Quaternions)
+			TypeInfo* part = static_cast<TypeInfoComposite const*>(type)->part_type;
+			if (quaternion_field(member) >= 0 || member == "xyz") {
+				value = typed(member == "xyz" ? array_of(checker.walk, part, ArrayType::STATIC, 3) : part);
 				value.is_location = is_location;
 				value.is_mutable = is_mutable;
 				return Progress::DONE;
@@ -2065,6 +2071,34 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	/*
+	 * real(x), imag(x), jmag(q) and kmag(q), a complex number's or a quaternion's part; conj(x), its conjugate; abs(x),
+	 * its magnitude, as its parts' float, or an integer's or a float's absolute value (docs/types.md, Complex Numbers and
+	 * Quaternions). An untyped number is the type it defaults to.
+	 */
+	static Progress check_number_builtin(Checker& checker, ast::Node* argument, const std::string& name, const Value& given,
+		Value& callee) {
+
+		if (ValueKind::POISONED == given.kind) {
+			callee = poisoned();
+			return Progress::DONE;
+		}
+		TypeInfo* type = native_of(default_type(given));
+		const bool quaternion = is_variant(type, TypeInfoVariant::QUATERNION);
+		if (name == "abs" && (is_integer(type) || is_float(type))) {
+			callee = typed(type);
+			return Progress::DONE;
+		}
+		if (!is_composite(type) || ((name == "jmag" || name == "kmag") && !quaternion)) {
+			const std::string takes = name == "abs" ? "a number" : name == "jmag" || name == "kmag" ? "a quaternion"
+				: "a complex number or a quaternion";
+			callee = error_at(checker, ErrorCode::E4015, argument, std::format("{} takes {}, not {}", name, takes, describe(given)));
+			return Progress::DONE;
+		}
+		callee = name == "conj" ? typed(type) : typed(static_cast<TypeInfoComposite const*>(base_of(type))->part_type);
+		return Progress::DONE;
+	}
+
 	// size_of, align_of and the other builtin functions (docs/types.md).
 	static Progress check_builtin_call(Checker& checker, ast::Node* where, Value& callee,
 		const std::vector<ast::Node*>& arguments) {
@@ -2106,6 +2140,9 @@ namespace hemera {
 			callee = error_at(checker, ErrorCode::E4018, where, std::format("{} takes {} argument{}", name,
 				expected_count, expected_count == 1 ? "" : "s"));
 			return Progress::DONE;
+		}
+		if (is_number_builtin(name)) {
+			return check_number_builtin(checker, arguments[0], name, values[0], callee);
 		}
 		// type_info_of and types_are_aliases also take type values, like an any's type
 		const bool takes_type = name != "type_of";
@@ -3271,6 +3308,17 @@ namespace hemera {
 					return Progress::DONE;
 				}
 				result = typed(composite->type);
+				return Progress::DONE;
+			}
+		}
+		// A float with an untyped imaginary number, like im * 1i: the complex number or quaternion of that float
+		for (const auto& [real, imaginary] : { std::pair<const Value*, const Value*>{ &left, &right }, { &right, &left } }) {
+			if (arithmetic_op && ValueKind::VALUE == real->kind && is_float(real->type)
+				&& (ValueKind::UNTYPED_COMPLEX == imaginary->kind || ValueKind::UNTYPED_QUATERNION == imaginary->kind)) {
+				const size_t size = base_of(real->type)->size;
+				const bool quaternion = ValueKind::UNTYPED_QUATERNION == imaginary->kind;
+				result = typed(size == 2 ? (quaternion ? BUILTIN_q64 : BUILTIN_c32) : size == 4 ? (quaternion ? BUILTIN_q128 : BUILTIN_c64)
+					: (quaternion ? BUILTIN_q256 : BUILTIN_c128));
 				return Progress::DONE;
 			}
 		}

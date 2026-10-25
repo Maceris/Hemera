@@ -3897,15 +3897,28 @@ namespace hemera {
 			return location(offset_address(generator, address_of(generator, current), offset), member_type);
 		}
 		const std::string member = text_of(name);
-		// A complex number's or a quaternion's part, an element of its array of floats
-		if (TypeInfoVariant::COMPLEX == type->variant || TypeInfoVariant::QUATERNION == type->variant) {
-			const int part = composite_part(type, member);
-			TypeInfo* part_type = static_cast<TypeInfoComposite const*>(type)->part_type;
-			if (!current.address) {
-				return value(extract(generator, current.value, part), part_type);
+		/*
+		 * A quaternion's x, y, z or w, an element of its array of floats, or xyz, the first three as an array, where they
+		 * are
+		 */
+		if (TypeInfoVariant::QUATERNION == type->variant) {
+			auto composite = static_cast<TypeInfoComposite const*>(type);
+			if (member == "xyz") {
+				if (current.address) {
+					return location(address_of(generator, current), result_type);
+				}
+				mlir::Value parts = zero_of(generator, llvm_type(generator, result_type));
+				for (int64_t i = 0; i < 3; ++i) {
+					parts = insert(generator, parts, extract(generator, current.value, i), { i });
+				}
+				return value(parts, result_type);
 			}
-			return location(offset_address(generator, address_of(generator, current),
-				static_cast<size_t>(part) * static_cast<TypeInfoComposite const*>(type)->part_size), part_type);
+			const int part = quaternion_field(member);
+			if (!current.address) {
+				return value(extract(generator, current.value, part), composite->part_type);
+			}
+			return location(offset_address(generator, address_of(generator, current), static_cast<size_t>(part) * composite->part_size),
+				composite->part_type);
 		}
 		if (TypeInfoVariant::ARRAY == type->variant && ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
 			return value(constant_int(generator, usize_type(generator),
@@ -4329,6 +4342,51 @@ namespace hemera {
 		return result;
 	}
 
+	/*
+	 * real(x), imag(x), jmag(q), kmag(q): the part; conj(x): the imaginary parts negated; abs(x): the square root of the
+	 * sum of the parts' squares, or an integer's or float's absolute value (docs/types.md, Complex Numbers and Quaternions)
+	 */
+	static Emitted emit_number_builtin(Generator& generator, ast::Node* paren, const std::string& name, ast::Node* argument) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfo* result_type = type_at(generator, paren, nullptr);
+		const CheckedNode* found = checked(generator, argument);
+		TypeInfo* type = found != nullptr && is_untyped(found->kind) ? usual(found->kind)
+			: native_of(type_at(generator, argument, nullptr));
+		mlir::Value operand = emit_as(generator, argument, type);
+		if (!is_composite(type)) {
+			// abs of an integer or a float
+			if (is_float(type)) {
+				return value(LLVM::FAbsOp::create(b, l, operand), result_type);
+			}
+			mlir::Value zero = constant_int(generator, operand.getType(), 0);
+			mlir::Value negative = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::slt, operand, zero);
+			return value(LLVM::SelectOp::create(b, l, negative, LLVM::SubOp::create(b, l, zero, operand), operand), result_type);
+		}
+		auto composite = static_cast<TypeInfoComposite const*>(base(type));
+		const int real = composite_part(type, "real");
+		if (name == "conj") {
+			mlir::Value result = operand;
+			for (size_t i = 0; i < composite->parts; ++i) {
+				if (static_cast<int>(i) != real) {
+					result = insert(generator, result, LLVM::FNegOp::create(b, l, extract(generator, operand, static_cast<int64_t>(i))),
+						{ static_cast<int64_t>(i) });
+				}
+			}
+			return value(result, result_type);
+		}
+		if (name == "abs") {
+			mlir::Value sum;
+			for (size_t i = 0; i < composite->parts; ++i) {
+				mlir::Value part = extract(generator, operand, static_cast<int64_t>(i));
+				mlir::Value square = LLVM::FMulOp::create(b, l, part, part);
+				sum = sum ? static_cast<mlir::Value>(LLVM::FAddOp::create(b, l, sum, square)) : square;
+			}
+			return value(LLVM::SqrtOp::create(b, l, sum), result_type);
+		}
+		return value(extract(generator, operand, composite_part(type, name)), result_type);
+	}
+
 	// A builtin function's call: size_of, align_of, offset_of, todo.
 	static Emitted emit_builtin_call(Generator& generator, ast::Node* paren, const std::vector<ast::Node*>& arguments,
 		const Emitted& callee) {
@@ -4400,6 +4458,9 @@ namespace hemera {
 			mlir::Value a = unaliased(arguments[0]);
 			mlir::Value b = unaliased(arguments[1]);
 			return value(LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, a, b), BUILTIN_bool);
+		}
+		if ((name == "real" || name == "imag" || name == "jmag" || name == "kmag" || name == "conj" || name == "abs") && arguments.size() == 1) {
+			return emit_number_builtin(generator, paren, name, arguments[0]);
 		}
 		if ((name == "size_of" || name == "align_of" || name == "offset_of") && !arguments.empty()) {
 			TypeInfo const* of = emit_expression(generator, arguments[0], nullptr).type;

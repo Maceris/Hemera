@@ -22,7 +22,7 @@ SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
 SLOP_OS_CALL_CHANNEL_TAG : u64 : 50
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
-SLOP_OS_ABI_VERSION : u32 : 3
+SLOP_OS_ABI_VERSION : u32 : 4
 SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
 SLOP_OS_KIND_MEMORY : u32 : 3
 SLOP_OS_KIND_ADDRESS_SPACE : u32 : 4

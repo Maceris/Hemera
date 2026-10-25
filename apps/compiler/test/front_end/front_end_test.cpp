@@ -811,6 +811,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "field_default_mismatch", hemera::ErrorCode::E4014 },
 		{ "complex_ordered", hemera::ErrorCode::E4020 },
 		{ "quaternion_as_complex", hemera::ErrorCode::E4015 },
+		{ "jmag_of_complex", hemera::ErrorCode::E4015 },
 		{ "stack_scoped_in_array_field", hemera::ErrorCode::E4014 },
 		{ "fall_through_last", hemera::ErrorCode::E4002 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },

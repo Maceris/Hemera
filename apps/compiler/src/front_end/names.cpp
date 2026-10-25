@@ -58,6 +58,8 @@ namespace hemera {
 		// Functions
 		"align_of", "size_of", "offset_of", "type_of", "type_info_of", "types_are_aliases",
 		"max_value", "min_value", "todo",
+		// Complex numbers' and quaternions' parts, conjugates and magnitudes, and any number's absolute value
+		"real", "imag", "jmag", "kmag", "conj", "abs",
 		// Views over raw memory (base/builtin/views.hsc)
 		"view_of", "string_of",
 		// Constants

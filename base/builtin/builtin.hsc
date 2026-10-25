@@ -102,10 +102,22 @@ type_of : fn(x: expr) -> type : ---
 // Cast the result to the variant's struct (TypeInfoStruct, TypeInfoEnum, ...) to read its details.
 type_info_of : fn[T](T: type) -> ptr[TypeInfo] : ---
 /*
- * Whether the compiler treats a and b as the same type, following aliases that aren't distinct.
- * == on type values is exact instead, so every alias compares different from what it aliases.
+ * Whether the compiler treats a and b as the same type, following aliases that aren't distinct, as == on type values
+ * does too.
  */
 types_are_aliases : fn(a, b: type) -> bool : ---
+
+/*
+ * A complex number's or a quaternion's parts, as Odin names them: real and imag, and a quaternion's jmag and kmag, each
+ * its parts' float. conj(x) is x with its imaginary parts negated, and abs(x) its magnitude, the square root of the sum
+ * of its parts' squares, or an integer's or a float's absolute value (docs/types.md, Complex Numbers and Quaternions).
+ */
+real : fn(x: expr) -> any : ---
+imag : fn(x: expr) -> any : ---
+jmag : fn(q: expr) -> any : ---
+kmag : fn(q: expr) -> any : ---
+conj : fn(x: expr) -> any : ---
+abs : fn(x: expr) -> any : ---
 
 max_value : fn[T](T: type) -> T : ---
 min_value : fn[T](T: type) -> T : ---

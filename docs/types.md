@@ -864,7 +864,7 @@ Enums are the size of their backing type, `uint` unless `#backed_by` gives anoth
 
 A complex number is two floats, its real and imaginary parts: `c32` of `f16`s, `c64` of `f32`s, `c128` of `f64`s. A
 quaternion is four, a real part and three imaginary ones: `q64`, `q128` and `q256`, of `f16`s, `f32`s and `f64`s. They
-are laid out as Odin's are, a complex number's real part first, then its imaginary part, and a quaternion's three
+are laid out with a complex number's real part first, then its imaginary part, and a quaternion's three
 imaginary parts first, then its real part, so a `q128` is a graphics library's `(x, y, z, w)`.
 
 An imaginary number is a number with `i`, `j` or `k` after it: `2i`, `1.5j`, `1e3k`. Arithmetic on numbers and imaginary
@@ -878,7 +878,20 @@ q : q128 = 1 + 2i + 3j + 4k
 w := 0.5 - 1i           // a c128
 ```
 
-Their parts are `.real` and `.imag`, and a quaternion's other two `.jmag` and `.kmag`, each a float, which can be set.
+There are builtins for the parts and the magnitude floats of the parts' type:
+
+* `real(x)`, the real part, and `imag(x)`, the `i` imaginary part
+* `jmag(q)` and `kmag(q)`, a quaternion's `j` and `k` imaginary parts
+* `conj(x)`, the conjugate, with its imaginary parts negated (of the same type)
+* `abs(x)`, the magnitude, the square root of the sum of its parts' squares; of an integer or a float, its absolute
+  value
+
+A quaternion's parts are also its fields, which can be set: `x`, `y` and `z`, its imaginary parts, and `w`, its real
+part. `xyz` is the vector part, the three imaginary parts as an array of three floats. A complex number has no fields;
+one is made from parts by arithmetic, like `re + im * 1i`: a float with an imaginary number is the complex number, or
+quaternion, of that float, so with `f64`s that's a `c128`.
+
+Their operators:
 
 * `+` and `-` work part by part, and `-z` negates every part.
 * `*` is the complex product, or for quaternions the Hamilton product, so `i * j == k` but `j * i == -k`. `/` multiplies
@@ -887,9 +900,6 @@ Their parts are `.real` and `.imag`, and a quaternion's other two `.jmag` and `.
 * A real number of the parts' type, or one that converts to it implicitly, takes part in arithmetic as a complex number
   or a quaternion with only a real part: `z * 2.0` and `scale + z`, with `scale` an `f32` and `z` a `c64`.
 * `cast` turns one into another size, part by part, and a real number into one.
-
-`std/math` has `conjugate(z)`, with its imaginary parts negated, and `magnitude(z)`, the square root of the sum of its
-parts' squares, as a float of its parts' type; `part_of(T)` is that type.
 
 ## Endian-Specific Types
 

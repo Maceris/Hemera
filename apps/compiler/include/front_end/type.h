@@ -557,10 +557,16 @@ namespace hemera {
 	TypeInfo const* get_base_type_or_alias(TypeInfo const* type);
 
 	/// <summary>
-	/// Which part of a complex number or a quaternion a member names, by its place in memory: real and imag for a
-	/// complex number (0 and 1); imag, jmag, kmag and real for a quaternion (0 to 3). -1 for any other name.
+	/// Where a part of a complex number or a quaternion is, by its place in memory: real and imag for a complex number
+	/// (0 and 1); imag, jmag, kmag and real for a quaternion (0 to 3), as the builtins name them. -1 for any other.
 	/// </summary>
-	int composite_part(TypeInfo const* type, std::string_view member);
+	int composite_part(TypeInfo const* type, std::string_view part);
+
+	/// <summary>
+	/// Which of a quaternion's parts a field names: x, y and z its imaginary parts (0 to 2), w its real part (3); -1 for
+	/// any other name.
+	/// </summary>
+	int quaternion_field(std::string_view member);
 
 	/// <summary>
 	/// The relative pointer type is, or holds as an optional, or null (docs/types.md, Relative Pointers).
