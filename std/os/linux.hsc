@@ -154,6 +154,11 @@ import runtime from "base"
     }
 
     system_open :: fn(path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+        return open_at(AT_FDCWD, path, mode)
+    }
+
+    // The file at path, from the directory at, as system_open opens it.
+    open_at :: fn(at: u64, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return File.{0}, OsError.InvalidPath
@@ -169,11 +174,44 @@ import runtime from "base"
             flags = O_RDWR
         }
         // 0666, rw-rw-rw-, less the process's umask
-        result :: runtime.linux_syscall(SYS_OPENAT, AT_FDCWD, cast[u64](&buffer[0]), flags | O_CLOEXEC, 438)
+        result :: runtime.linux_syscall(SYS_OPENAT, at, cast[u64](&buffer[0]), flags | O_CLOEXEC, 438)
         if failed(result) {
             return File.{0}, error_of(result)
         }
         return File.{result}, null
+    }
+
+    system_open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+        return open_at(directory.handle, path, mode)
+    }
+
+    // A directory, as a file descriptor of its own, which reads nothing: what the *at calls start from.
+    open_directory_at :: fn(at: u64, path: string) -> (directory : Directory, error : OsError?) {
+        buffer : u8[PATH_BUFFER_SIZE]
+        if !terminated(path, buffer) {
+            return Directory.{0}, OsError.InvalidPath
+        }
+        result :: runtime.linux_syscall(SYS_OPENAT, at, cast[u64](&buffer[0]), O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0)
+        if failed(result) {
+            return Directory.{0}, error_of(result)
+        }
+        return Directory.{result}, null
+    }
+
+    system_open_directory :: fn(path: string) -> (directory : Directory, error : OsError?) {
+        return open_directory_at(AT_FDCWD, path)
+    }
+
+    system_working_directory :: fn() -> (directory : Directory, error : OsError?) {
+        return open_directory_at(AT_FDCWD, ".")
+    }
+
+    system_open_directory_in :: fn(directory: Directory, path: string) -> (opened : Directory, error : OsError?) {
+        return open_directory_at(directory.handle, path)
+    }
+
+    system_close_directory :: fn(directory: Directory) {
+        runtime.linux_syscall(SYS_CLOSE, directory.handle)
     }
 
     system_close :: fn(file: File) {
@@ -220,11 +258,23 @@ import runtime from "base"
     }
 
     system_delete_file :: fn(path: string) -> OsError? {
+        return unlink_at(AT_FDCWD, path, 0)
+    }
+
+    system_delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+        return unlink_at(directory.handle, path, 0)
+    }
+
+    system_remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+        return unlink_at(directory.handle, path, AT_REMOVEDIR)
+    }
+
+    unlink_at :: fn(at: u64, path: string, flags: u64) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
-        result :: runtime.linux_syscall(SYS_UNLINKAT, AT_FDCWD, cast[u64](&buffer[0]), 0)
+        result :: runtime.linux_syscall(SYS_UNLINKAT, at, cast[u64](&buffer[0]), flags)
         if failed(result) {
             return error_of(result)
         }
@@ -232,12 +282,20 @@ import runtime from "base"
     }
 
     system_rename :: fn(from: string, to: string) -> OsError? {
+        return rename_at(AT_FDCWD, from, to)
+    }
+
+    system_rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+        return rename_at(directory.handle, from, to)
+    }
+
+    rename_at :: fn(at: u64, from: string, to: string) -> OsError? {
         source : u8[PATH_BUFFER_SIZE]
         target : u8[PATH_BUFFER_SIZE]
         if !terminated(from, source) || !terminated(to, target) {
             return OsError.InvalidPath
         }
-        result :: runtime.linux_syscall(SYS_RENAMEAT, AT_FDCWD, cast[u64](&source[0]), AT_FDCWD, cast[u64](&target[0]))
+        result :: runtime.linux_syscall(SYS_RENAMEAT, at, cast[u64](&source[0]), at, cast[u64](&target[0]))
         if failed(result) {
             return error_of(result)
         }
@@ -245,29 +303,36 @@ import runtime from "base"
     }
 
     system_path_kind :: fn(path: string) -> PathKind {
+        return path_kind_at(AT_FDCWD, path)
+    }
+
+    system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+        return path_kind_at(directory.handle, path)
+    }
+
+    path_kind_at :: fn(at: u64, path: string) -> PathKind {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return .NOTHING
         }
-        status : Stat
-        result :: runtime.linux_syscall(SYS_NEWFSTATAT, AT_FDCWD, cast[u64](&buffer[0]), cast[u64](&status), 0)
-        if failed(result) {
-            return .NOTHING
-        }
-        mode :: cast[u32](status.words[STAT_MODE_WORD] & 0xffff_ffff)
-        if mode & S_IFMT == S_IFDIR {
-            return .DIRECTORY
-        }
-        return .FILE
+        return kind_at(at, cast[rawptr](&buffer[0]))
     }
 
     system_make_directory :: fn(path: string) -> OsError? {
+        return make_directory_at(AT_FDCWD, path)
+    }
+
+    system_make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+        return make_directory_at(directory.handle, path)
+    }
+
+    make_directory_at :: fn(at: u64, path: string) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
         // 0777, rwxrwxrwx, less the process's umask
-        result :: runtime.linux_syscall(SYS_MKDIRAT, AT_FDCWD, cast[u64](&buffer[0]), 511)
+        result :: runtime.linux_syscall(SYS_MKDIRAT, at, cast[u64](&buffer[0]), 511)
         if failed(result) {
             return error_of(result)
         }
@@ -291,11 +356,20 @@ import runtime from "base"
     DT_DIR : u8 : 4
 
     system_list_directory :: fn(path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+        return list_at(AT_FDCWD, path, entries, allocator)
+    }
+
+    // A path of "" is the directory itself, opened again for its own listing.
+    system_list_directory_in :: fn(directory: Directory, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+        return list_at(directory.handle, if path.count == 0 { "." } else { path }, entries, allocator)
+    }
+
+    list_at :: fn(at: u64, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
         }
-        opened :: runtime.linux_syscall(SYS_OPENAT, AT_FDCWD, cast[u64](&buffer[0]), O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0)
+        opened :: runtime.linux_syscall(SYS_OPENAT, at, cast[u64](&buffer[0]), O_RDONLY | O_DIRECTORY | O_CLOEXEC, 0)
         if failed(opened) {
             return error_of(opened)
         }
@@ -332,7 +406,7 @@ import runtime from "base"
                 }
                 is_folder := kind == DT_DIR
                 if kind == DT_UNKNOWN {
-                    is_folder = system_path_kind_in(opened, record + 19) == .DIRECTORY
+                    is_folder = kind_at(opened, record + 19) == .DIRECTORY
                 }
                 runtime.array_add(entries, DirectoryEntry.{name = copy, is_directory = is_folder})
             }
@@ -341,7 +415,7 @@ import runtime from "base"
     }
 
     // What name, terminated, is in the open folder directory: for file systems getdents64 gives no types for.
-    system_path_kind_in :: fn(directory: u64, name: rawptr) -> PathKind {
+    kind_at :: fn(directory: u64, name: rawptr) -> PathKind {
         status : Stat
         result :: runtime.linux_syscall(SYS_NEWFSTATAT, directory, cast[u64](name), cast[u64](&status), 0)
         if failed(result) {

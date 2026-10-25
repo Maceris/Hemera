@@ -336,6 +336,12 @@ TEST(Hosted, MatchesStrings)
 	run_hosted("string_cases", hemera::TargetStackCheck::Off);
 }
 
+// OS and TARGET_ARCH compared where the program runs, and in constants, as #if compares them.
+TEST(Hosted, ComparesTargetConstants)
+{
+	run_hosted("target_constants", hemera::TargetStackCheck::Off);
+}
+
 // Fixed arrays, structs and tagged unions compared with == and != (docs/types.md, Equality).
 TEST(Hosted, ComparesArraysStructsAndUnions)
 {

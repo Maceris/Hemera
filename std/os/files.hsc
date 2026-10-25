@@ -130,6 +130,11 @@ read_entire_file :: fn(path: string, allocator := context.allocator) -> Result[s
         case None => {}
     }
     defer close(file)
+    return read_all(file, allocator)
+}
+
+// Everything in an open file from where it's read, in a new string from allocator: read_entire_file's reading.
+read_all :: fn(file: File, allocator: runtime.Allocator) -> Result[string, OsError] #unrestricted {
     size, size_error :: system_file_size(file)
     capacity : usize = 4096
     if size_error == null && size > 0 {
@@ -291,6 +296,170 @@ current_directory :: fn(allocator := context.allocator) -> Result[string, OsErro
 // Makes path the current directory, which relative paths start from, for the whole process.
 set_current_directory :: fn(path: string) -> OsError? {
     return system_set_current_directory(path)
+}
+
+// Directories, and paths beneath them
+
+/*
+ * An open directory, from open_directory, working_directory or open_directory_in, which close_directory closes. The
+ * _in functions take one, and a path beneath it: relative, its components separated by '/', none of them empty, "."
+ * or "..", so nothing it names is above the directory (on Windows, '\\' and ':' aren't allowed either). They open
+ * relative to the directory itself, not to its path, so they reach it wherever it's moved to: through openat and its
+ * kin on Linux, NtCreateFile with the directory as the root on Windows, and the directory's own connection on SlopOS,
+ * which has no paths but these (the SlopOS repository's decisions 0046, 0087):
+ *
+ *     assets :: os.open_directory("assets") or_return
+ *     defer os.close_directory(assets)
+ *     text :: os.read_entire_file_in(assets, "fonts/readme.txt") or_return
+ *
+ * Symbolic links within the directory are followed, so on Linux and Windows one can lead outside it.
+ */
+Directory :: struct #unrestricted {
+    handle : u64,
+}
+
+// Backslashes and colons separate a path's parts on Windows, and only there
+SEPARATORS_ON_WINDOWS :: OS == .Windows
+
+// Whether a path is one the _in functions take: beneath the directory it's given with.
+is_beneath :: fn(path: string) -> bool {
+    if path.count == 0 {
+        return false
+    }
+    start : usize = 0
+    for i in 0..<path.count + 1 {
+        if i < path.count {
+            character :: path[i]
+            if character == cast[char](0) || (SEPARATORS_ON_WINDOWS && (character == '\\' || character == ':')) {
+                return false
+            }
+            if character != '/' {
+                continue
+            }
+        }
+        component :: string_of(cast[ptr[u8]](cast[u64](path.data) + cast[u64](start)), i - start)
+        if component.count == 0 || component == "." || component == ".." {
+            return false
+        }
+        start = i + 1
+    }
+    return true
+}
+
+// Opens the directory at path, as open opens a file.
+open_directory :: fn(path: string) -> Result[Directory, OsError] {
+    directory, error :: system_open_directory(path)
+    return as_result(directory, error)
+}
+
+/*
+ * The directory relative paths start from, open: the current directory on Linux and Windows, and on SlopOS the
+ * directory the program was given as its "working_directory" grant, or NotFound without one.
+ */
+working_directory :: fn() -> Result[Directory, OsError] {
+    directory, error :: system_working_directory()
+    return as_result(directory, error)
+}
+
+// The directory at path beneath directory, open.
+open_directory_in :: fn(directory: Directory, path: string) -> Result[Directory, OsError] {
+    if !is_beneath(path) {
+        return .Error(.InvalidPath)
+    }
+    opened, error :: system_open_directory_in(directory, path)
+    return as_result(opened, error)
+}
+
+close_directory :: fn(directory: Directory) {
+    system_close_directory(directory)
+}
+
+// Opens the file at path beneath directory, as open does.
+open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> Result[File, OsError] {
+    if !is_beneath(path) {
+        return .Error(.InvalidPath)
+    }
+    file, error :: system_open_in(directory, path, mode)
+    return as_result(file, error)
+}
+
+// Everything in the file at path beneath directory, as read_entire_file reads it.
+read_entire_file_in :: fn(directory: Directory, path: string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
+    file :: open_in(directory, path, .READ)?
+    defer close(file)
+    return read_all(file, allocator)
+}
+
+// Replaces what's in the file at path beneath directory with contents, making it if it isn't there.
+write_entire_file_in :: fn(directory: Directory, path: string, contents: string) -> OsError? {
+    if !is_beneath(path) {
+        return OsError.InvalidPath
+    }
+    file, open_error :: system_open_in(directory, path, .WRITE)
+    if open_error != null {
+        return open_error
+    }
+    error :: write(file, contents)
+    close(file)
+    return error
+}
+
+delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+    if !is_beneath(path) {
+        return OsError.InvalidPath
+    }
+    return system_delete_file_in(directory, path)
+}
+
+// Moves what's at from to to, both beneath directory, replacing a file that's there.
+rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+    if !is_beneath(from) || !is_beneath(to) {
+        return OsError.InvalidPath
+    }
+    return system_rename_in(directory, from, to)
+}
+
+// What's at path beneath directory: a file, a folder, or nothing.
+path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+    if !is_beneath(path) {
+        return .NOTHING
+    }
+    return system_path_kind_in(directory, path)
+}
+
+// Makes a folder at path beneath directory. Its parent must be there already.
+make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    if !is_beneath(path) {
+        return OsError.InvalidPath
+    }
+    return system_make_directory_in(directory, path)
+}
+
+// Removes the folder at path beneath directory, which must be empty.
+remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    if !is_beneath(path) {
+        return OsError.InvalidPath
+    }
+    return system_remove_directory_in(directory, path)
+}
+
+// What's in the folder at path beneath directory, or with "", in directory itself, as list_directory lists it.
+list_directory_in :: fn(directory: Directory, path: string, allocator := context.allocator) -> Result[DirectoryEntry[..], OsError] #unrestricted {
+    if path.count != 0 && !is_beneath(path) {
+        return .Error(.InvalidPath)
+    }
+    listing : DirectoryEntry[..]
+    push_context listing_context (allocator = allocator) {
+        error :: system_list_directory_in(directory, path, &listing, allocator)
+        match error {
+            case Some(failure) => {
+                free_directory_listing(listing, allocator)
+                return .Error(failure)
+            }
+            case None => {}
+        }
+    }
+    return .Ok(listing)
 }
 
 // bytes as a string in memory from allocator, or OutOfMemory: for names and values the system gave.

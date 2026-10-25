@@ -813,6 +813,7 @@ namespace hemera {
 	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type);
 	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right);
 	static mlir::Value values_equal(Generator& generator, mlir::Value left, mlir::Value right, TypeInfo const* type);
+	static std::optional<uint64_t> target_member(Generator& generator, InternedString name, TypeInfo const* type);
 
 	/*
 	 * docs/types.md, Relative Pointers: the pointer a relative pointer of type at address holds, its offset from its own
@@ -3363,6 +3364,12 @@ namespace hemera {
 			return location(state.context, found->type);
 		}
 		if (declaration == nullptr) {
+			// OS and TARGET_ARCH: the target's member of their enum, as #if compares them
+			if (ValueKind::VALUE == found->kind && (is_text(node->value.value, "OS") || is_text(node->value.value, "TARGET_ARCH"))) {
+				if (auto target = target_member(generator, node->value.value, found->type)) {
+					return value(constant_int(generator, llvm_type(generator, found->type), static_cast<int64_t>(*target)), found->type);
+				}
+			}
 			if (ValueKind::VALUE == found->kind) {
 				unsupported(generator, node, std::format("{} can't be generated yet", text_of(node->value.value)));
 				return value(zero_of(generator, llvm_type(generator, found->type)), found->type);
@@ -7182,6 +7189,44 @@ namespace hemera {
 					{ pointer_type(generator), pointer_type(generator), usize_type(generator) }));
 		}
 		return function;
+	}
+
+	// The value of the target's member of OS's enum (compiler.OperatingSystem) or TARGET_ARCH's, named as #if names them.
+	static std::optional<uint64_t> target_member(Generator& generator, InternedString name, TypeInfo const* type) {
+		auto enumeration = static_cast<TypeInfoEnum const*>(base(type));
+		if (enumeration == nullptr || TypeInfoVariant::ENUM != enumeration->variant) {
+			return std::nullopt;
+		}
+		std::string member;
+		if (is_text(name, "OS")) {
+			switch (generator.options->os) {
+				case OSType::Win32: member = "Windows"; break;
+				case OSType::Linux: member = "Linux"; break;
+				case OSType::Darwin:
+				case OSType::MacOSX: member = "Mac"; break;
+				case OSType::UEFI: member = "UEFI"; break;
+				case OSType::SlopOS: member = "SlopOS"; break;
+				case OSType::UnknownOS:
+				case OSType::FreeBSD:
+				case OSType::NetBSD:
+				case OSType::OpenBSD: member = "None"; break;
+			}
+		}
+		else {
+			switch (generator.options->architecture) {
+				case ArchType::arm: member = "arm"; break;
+				case ArchType::aarch64:
+				case ArchType::aarch64_32: member = "arm64"; break;
+				case ArchType::x86: member = "x86"; break;
+				case ArchType::x86_64: member = "x86_64"; break;
+			}
+		}
+		for (size_t i = 0; i < enumeration->members.size() && i < enumeration->values.size(); ++i) {
+			if (enumeration->members[i] != nullptr && std::string_view(*enumeration->members[i]) == member) {
+				return enumeration->values[i];
+			}
+		}
+		return std::nullopt;
 	}
 
 	/*

@@ -366,6 +366,13 @@ throughout:
   `read_entire_file` and `write_entire_file`.
 * Paths: `delete_file`, `rename`, `path_kind`, `exists` and `is_directory`; folders: `make_directory`,
   `remove_directory` and `list_directory`; and `current_directory` and `set_current_directory`.
+* Directories held open: `open_directory(path)` and `working_directory()` give an `os.Directory`, which
+  `close_directory` closes, and the path functions have forms that take one first and resolve beneath it:
+  `open_in`, `read_entire_file_in`, `write_entire_file_in`, `delete_file_in`, `rename_in`, `path_kind_in`,
+  `make_directory_in`, `remove_directory_in`, `open_directory_in` and `list_directory_in`, where `""` is the directory
+  itself. A path that isn't beneath it, absolute or climbing out with `..`, fails with `.InvalidPath` (`os.is_beneath`
+  says which are, by the path's text, not where a link in it leads), and a Directory keeps naming the same directory when it's renamed or moved. On Linux these are
+  `openat` and the other `*at` calls; on Windows, opens relative to the directory's handle.
 
 What gives something back gives a `Result[T, os.OsError]`, `#unrestricted` when it's memory from the allocator, and
 what doesn't gives an `os.OsError?`:

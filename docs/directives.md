@@ -62,11 +62,14 @@ Also used with `#else_if` and `#else`.
 
 ```
 foo :: fn() {
-    #if OS == .WINDOWS {
+    #if OS == .Windows {
         init_socket() 
     }
 }
 ```
+
+`OS` and `TARGET_ARCH`, the target's members of `compiler.OperatingSystem` and `compiler.Architecture`, are values
+as well, so they can be compared in ordinary code and constants too (`ON_WINDOWS :: OS == .Windows`).
 
 `#is_compile_time` evaluates to `true` during compile time and `false` during run time.
 

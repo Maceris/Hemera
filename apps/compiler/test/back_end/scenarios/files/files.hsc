@@ -1,6 +1,7 @@
 /*
- * std/os in a hosted program: its arguments, an environment variable, and files and folders in a
- * folder it makes in the current directory and removes again. The test runs it as
+ * std/os in a hosted program: its arguments, an environment variable, files and folders in a folder it makes in
+ * the current directory and removes again, and the same through an open directory, which keeps working after the
+ * folder it is is renamed. The test runs it as
  *
  *     files alpha "two words" ""
  *
@@ -164,6 +165,103 @@ check_files :: fn() -> int {
     return 0
 }
 
+MOVING :: "hemera_directory_test"
+MOVED :: "hemera_directory_moved"
+
+// Through an open directory: paths beneath it, which reach it after it's renamed, and none above it.
+check_directories :: fn() -> int {
+    if os.make_directory(MOVING) != null {
+        return 1
+    }
+    directory :: os.open_directory(MOVING) or_return 2
+    if os.write_entire_file_in(directory, "inside.txt", "beneath") != null || os.make_directory_in(directory, "sub") != null {
+        return 3
+    }
+    if os.make_directory_in(directory, "sub") != OsError.AlreadyExists || os.make_directory_in(directory, "none/sub") == null {
+        return 4
+    }
+    // Renamed, the directory is still the one open
+    if os.rename(MOVING, MOVED) != null || os.exists(MOVING) {
+        return 5
+    }
+    contents :: os.read_entire_file_in(directory, "inside.txt") or_else ""
+    if !strings.equal(contents, "beneath") {
+        return 6
+    }
+    strings.free_string(contents)
+    if os.path_kind_in(directory, "sub") != .DIRECTORY || os.path_kind_in(directory, "inside.txt") != .FILE
+        || os.path_kind_in(directory, "nothing") != .NOTHING {
+        return 7
+    }
+    sub :: os.open_directory_in(directory, "sub") or_return 8
+    if os.write_entire_file_in(sub, "deeper.txt", "deeper") != null {
+        return 9
+    }
+    match os.open_in(directory, "sub/deeper.txt", .APPEND) {
+        case Ok(appending) => {
+            failed :: os.write(appending, " still") != null
+            os.close(appending)
+            if failed {
+                return 10
+            }
+        }
+        case Error(_) => return 10
+    }
+    deeper :: os.read_entire_file_in(sub, "deeper.txt") or_else ""
+    if !strings.equal(deeper, "deeper still") {
+        return 11
+    }
+    strings.free_string(deeper)
+    // Nothing above it, nor absolute
+    for refused in string.["../hemera_directory_moved/inside.txt", "/inside.txt", "sub//deeper.txt", "./inside.txt", "sub/..", ""] {
+        match os.open_in(directory, refused, .READ) {
+            case Ok(opened) => {
+                os.close(opened)
+                return 12
+            }
+            case Error(error) => {
+                if error != .InvalidPath {
+                    return 13
+                }
+            }
+        }
+    }
+    // Listing it, and a directory beneath it
+    entries :: os.list_directory_in(directory, "") or_else empty_listing()
+    if entries.count != 2 {
+        return 14
+    }
+    os.free_directory_listing(entries)
+    beneath :: os.list_directory_in(directory, "sub") or_else empty_listing()
+    if beneath.count != 1 || !strings.equal(beneath[0].name, "deeper.txt") {
+        return 15
+    }
+    os.free_directory_listing(beneath)
+    // Moved within it, then removed
+    if os.rename_in(directory, "inside.txt", "sub/moved.txt") != null || os.path_kind_in(directory, "sub/moved.txt") != .FILE {
+        return 16
+    }
+    if os.remove_directory_in(directory, "sub") != OsError.DirectoryNotEmpty {
+        return 17
+    }
+    if os.delete_file_in(directory, "sub/moved.txt") != null || os.delete_file_in(sub, "deeper.txt") != null {
+        return 18
+    }
+    os.close_directory(sub)
+    if os.remove_directory_in(directory, "sub") != null {
+        return 19
+    }
+    os.close_directory(directory)
+    // The working directory, which the moved one is in
+    working :: os.working_directory() or_return 20
+    kind :: os.path_kind_in(working, MOVED)
+    os.close_directory(working)
+    if kind != .DIRECTORY || os.remove_directory(MOVED) != null {
+        return 21
+    }
+    return 0
+}
+
 main :: fn() -> int {
     failure := check_arguments()
     if failure != 0 {
@@ -182,6 +280,16 @@ main :: fn() -> int {
     failure = check_files()
     if failure != 0 {
         return 50 + failure
+    }
+    os.delete_file("hemera_directory_moved/inside.txt")
+    os.delete_file("hemera_directory_moved/sub/deeper.txt")
+    os.delete_file("hemera_directory_moved/sub/moved.txt")
+    os.remove_directory("hemera_directory_moved/sub")
+    os.remove_directory(MOVED)
+    os.remove_directory(MOVING)
+    failure = check_directories()
+    if failure != 0 {
+        return 70 + failure
     }
     return 42
 }
