@@ -7,6 +7,7 @@
 
 #include "error/reporting.h"
 #include "front_end/type.h"
+#include "util/crash_dump.h"
 #include "util/logger.h"
 
 int main(int argc, char* argv[])
@@ -19,6 +20,8 @@ int main(int argc, char* argv[])
 	_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
 	_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
+	// A crash on a worker thread, which gtest doesn't catch, leaves a dump as hemera's own do (util/crash_dump.cpp)
+	hemera::install_crash_dump_handler(argc > 0 ? argv[0] : "HemeraTest");
 	Logger::init();
 
 	hemera::initialize_builtin_types();
