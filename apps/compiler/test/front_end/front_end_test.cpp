@@ -36,6 +36,15 @@ static std::string codes(const std::vector<hemera::ErrorCode>& errors) {
 	return result;
 }
 
+// The reported errors' codes and their messages, one to a line, for failure messages that say what went wrong.
+static std::string reported(const std::vector<hemera::ErrorCode>& errors) {
+	std::string result = codes(errors);
+	for (const std::string& message : *hemera::error_messages()) {
+		result += "\n" + message;
+	}
+	return result;
+}
+
 static std::filesystem::path scenario(std::string_view name) {
 	return std::filesystem::path(__FILE__).remove_filename() / "scenarios" / name;
 }
@@ -829,6 +838,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "local_type_outside_block", hemera::ErrorCode::E4008 },
 		{ "local_type_generic", hemera::ErrorCode::E4024 },
 		{ "stack_scoped_in_array_field", hemera::ErrorCode::E4014 },
+		// Known before the struct's body is, which a slow #insert holds back
+		{ "scoped_known_before_body", hemera::ErrorCode::E4014 },
+		{ "owned_known_before_body", hemera::ErrorCode::E4035 },
 		{ "fall_through_last", hemera::ErrorCode::E4002 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },
 		{ "stack_unrestricted_result", hemera::ErrorCode::E4030 },
@@ -1066,7 +1078,7 @@ TEST(FrontEnd, ChecksOwners)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("owned_errors"));
-	ASSERT_EQ(errors.size(), 12) << codes(errors);
+	ASSERT_EQ(errors.size(), 12) << reported(errors);
 	for (hemera::ErrorCode error : errors) {
 		EXPECT_EQ(error, hemera::ErrorCode::E4035);
 	}

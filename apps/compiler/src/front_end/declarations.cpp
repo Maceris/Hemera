@@ -95,14 +95,33 @@ namespace hemera {
 						static_cast<TypeInfoStruct*>(type)->instance = declaration;
 					}
 					/*
-					 * #secret is known from when the type is declared, since what only points to it, like a
-					 * ptr[Key] parameter, may be checked before its body is (docs/memory.md, Secrets)
+					 * #secret, #scoped, #owned and #thread_bound are known from when the type is declared, since
+					 * what only points to it or holds it on the heap, like a ptr[Key] parameter or a Parser[..]
+					 * field, may be checked before its body is (docs/memory.md). One with a condition, for the
+					 * instances it's true for, waits for the body, which works the condition out
 					 */
 					if (ast::NodeType::STRUCT == value_type) {
+						auto structure = static_cast<TypeInfoStruct*>(type);
 						for (const ast::Node* child : value->children) {
-							if (ast::NodeType::DIRECTIVE == child->node_type && child->value.value != nullptr
-								&& std::string_view(*child->value.value) == "#secret") {
-								static_cast<TypeInfoStruct*>(type)->is_secret = true;
+							if (ast::NodeType::DIRECTIVE != child->node_type || child->value.value == nullptr) {
+								continue;
+							}
+							const std::string_view directive(*child->value.value);
+							size_t arguments = 0;
+							for (const ast::Node* argument : child->children) {
+								arguments += ast::NodeType::PAREN_GROUP != argument->node_type ? 1 : 0;
+							}
+							if (directive == "#secret") {
+								structure->is_secret = true;
+							}
+							else if (directive == "#scoped") {
+								structure->is_scoped = true;
+							}
+							else if (directive == "#owned" && arguments == 1) {
+								structure->is_owned = true;
+							}
+							else if (directive == "#thread_bound" && arguments == 0) {
+								structure->is_thread_bound = true;
 							}
 						}
 					}
