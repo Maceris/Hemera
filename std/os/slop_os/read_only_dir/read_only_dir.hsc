@@ -27,6 +27,8 @@ package read_only_dir
         Select(slop_os.Relative[u8]),
         Features,
         Connect(os.Channel[ReadOnlyDir]),
+        // The first change beneath this directory at or after a cursor, as dir has it
+        Changes(u64),
     }
 
     Response :: union {
@@ -40,6 +42,9 @@ package read_only_dir
         Supports(files.Features),
         Failed(files.FileError),
         Unsupported,
+        Changed(files.Change),
+        UpToDate(u64),
+        Resync(u64),
     }
 
     is_idempotent :: fn(request: ptr[Request]) -> bool {
@@ -51,6 +56,7 @@ package read_only_dir
             case Select(_) => true
             case Features => true
             case Connect(_) => true
+            case Changes(_) => true
         }
     }
 

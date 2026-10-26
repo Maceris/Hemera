@@ -54,6 +54,22 @@ package dir
         Sync,
         Features,
         Connect(os.Channel[Dir]),
+        /*
+         * A transaction (the SlopOS repository's decisions 0046, 0089): a connection speaking dir beneath this
+         * directory, whose changes are kept, in the memory given, until Commit applies them all at once, or none
+         * of them; Abort, or closing it, drops them. Reads on it see the directory as it is, not its own changes
+         * before they're committed.
+         */
+        Begin(slop_os.Memory),
+        // On a transaction's connection: its changes applied whole and made durable, or Conflict if anything it read
+        // or changed was changed meanwhile
+        Commit,
+        Abort,
+        // A new file to replace the file at a path whole: written through the file connection given, and swapped in
+        // with that connection's Install; a reader of the old one keeps reading it until it's done
+        Replace(slop_os.Relative[u8]),
+        // The first change beneath this directory at or after a cursor (decisions/0089)
+        Changes(u64),
     }
 
     Response :: union {
@@ -70,6 +86,12 @@ package dir
         Supports(files.Features),
         Failed(files.FileError),
         Unsupported,
+        Began(os.Channel[Dir]),
+        Changed(files.Change),
+        // No change since the cursor; the cursor to ask from next
+        UpToDate(u64),
+        // The cursor is older than what's kept: list again, and ask from the cursor given
+        Resync(u64),
     }
 
     // A rename or a removal done again finds nothing to do, which is reported, so they aren't sent again.
@@ -87,6 +109,11 @@ package dir
             case Sync => true
             case Features => true
             case Connect(_) => true
+            case Begin(_) => false
+            case Commit => false
+            case Abort => true
+            case Replace(_) => false
+            case Changes(_) => true
         }
     }
 

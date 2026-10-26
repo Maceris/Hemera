@@ -31,6 +31,8 @@ package file
         Narrow,
         // Serve another client, on its end
         Connect(os.Channel[File]),
+        // On a connection Replace gave: this file swapped in for the one at its path, whole, and made durable
+        Install,
     }
 
     Response :: union {
@@ -53,6 +55,7 @@ package file
             case Sync => true
             case Narrow => true
             case Connect(_) => true
+            case Install => false
         }
     }
 

@@ -39,6 +39,8 @@ package files
         Corrupt = 10,
         // A Read or Write before UseBuffer, or past the buffer's end
         NoBuffer = 11,
+        // A transaction's commit found something it read or changed changed by someone else since
+        Conflict = 12,
     }
 
     // How OpenFile treats what's at its path.
@@ -75,6 +77,27 @@ package files
         name : slop_os.Relative[u8],
         kind : Kind,
         size : u64,
+        next : u64,
+    }
+
+    // What a change cursor found (decisions/0089): what happened to a name.
+    ChangeKind :: enum #backed_by(u32) {
+        Created = 1,
+        // A file's bytes or size
+        Written = 2,
+        Removed = 3,
+        // Moved away from the name, or to it
+        MovedOut = 4,
+        MovedIn = 5,
+        // A file's contents swapped for new ones, whole
+        Replaced = 6,
+    }
+
+    // One change beneath a directory: what happened, to the name (relative to the directory the cursor is on, as far as
+    // it's known), and the cursor after it.
+    Change :: struct {
+        kind : ChangeKind,
+        name : slop_os.Relative[u8],
         next : u64,
     }
 

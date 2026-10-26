@@ -59,6 +59,7 @@ package os
             case .DeviceError => OsError.Other
             case .Corrupt => OsError.Other
             case .NoBuffer => OsError.Other
+            case .Conflict => OsError.Other
         }
     }
 
