@@ -602,6 +602,14 @@ namespace hemera {
 				}
 			}
 		}
+		/*
+		 * The package's own #insert may still declare it, and its own would win over every import: wait for that
+		 * before calling it ambiguous, or whether it is would depend on which was done first
+		 */
+		if (found.size() + (builtin ? 1 : 0) > 1 && pending_insert != nullptr) {
+			park_locked(walk, names, chain_key(pending_insert), where, name, pending_insert->branches.front());
+			return Progress::PARKED;
+		}
 		if (found.size() + (builtin ? 1 : 0) > 1) {
 			// Reported now, so not again once everything is decided
 			std::erase_if(names.provisional_uses, [&](const ProvisionalUse& use) {

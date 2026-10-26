@@ -1666,7 +1666,13 @@ namespace hemera::parser {
 		case TokenType::DIRECTIVE:
 		{
 			ast::Node& directive = next_as_node(state, ast::NodeType::DIRECTIVE, &parent);
-			
+
+			// A quote starting a statement, like a block's value in if b { #code(1) } else { #code(2) }, is the quote
+			// it is in an expression, not a directive with what follows as a statement of its own
+			if (directive.value.value->compare("#code") == 0) {
+				return code_quote(state, directive).success;
+			}
+
 			bool is_an_if = false;
 
 			if (directive.value.value->compare("#if") == 0

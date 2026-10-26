@@ -492,6 +492,12 @@ TEST(Hosted, InsertsDeclarations)
 	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off);
 }
 
+// A name two imports declare, which the package's own #insert declares too: its own, whenever the insert is done.
+TEST(Hosted, PrefersInsertedOverImports)
+{
+	run_hosted("inserted_over_imports", hemera::TargetStackCheck::Off);
+}
+
 // docs/operators.md, docs/functions.md: members of parentheses, generic variants, shorthands, nested functions.
 TEST(Hosted, HandlesExpressionForms)
 {
