@@ -3785,6 +3785,82 @@ namespace hemera {
 	}
 
 	/*
+	 * The types a descriptor holds by value that aren't laid out yet, which compile-time code waits for, like a
+	 * function type's Result instance whose variants another thread is still working out: their declarations, in
+	 * unchecked. What's behind a pointer, a view or a dynamic array isn't waited for, since it may be the very
+	 * type whose #insert is asking, like Node's own in Node :: struct { #insert fields_from(Edge) } with
+	 * Edge :: struct { from : ptr[Node] }; its descriptor is made again once it's laid out (reflection.cpp).
+	 */
+	static void wait_for_described(Generator& generator, TypeInfo const* type, std::set<TypeInfo const*>& seen) {
+		type = get_base_type_or_alias(type);
+		if (type == nullptr || !seen.insert(type).second) {
+			return;
+		}
+		// One not laid out yet is waited for, not looked into, since another thread may still be filling it in
+		if (!type->complete) {
+			NameRegistry& names = generator.program->names;
+			std::scoped_lock<std::mutex> lock(names.mutex);
+			auto found = names.type_declarations.find(const_cast<TypeInfo*>(type));
+			if (found != names.type_declarations.end() && !found->second->resolved && !found->second->failed) {
+				generator.unchecked.push_back(found->second);
+			}
+			return;
+		}
+		switch (type->variant) {
+			case TypeInfoVariant::STRUCT:
+				for (const StructMember& member : static_cast<const TypeInfoStruct*>(type)->members) {
+					wait_for_described(generator, member.member_type, seen);
+				}
+				break;
+			case TypeInfoVariant::UNION:
+				for (const UnionVariant& variant : static_cast<const TypeInfoUnion*>(type)->variants) {
+					for (TypeInfo const* payload : variant.types) {
+						wait_for_described(generator, payload, seen);
+					}
+				}
+				break;
+			case TypeInfoVariant::ARRAY: {
+				auto array = static_cast<const TypeInfoArray*>(type);
+				if (ArrayType::STATIC == array->array_type) {
+					wait_for_described(generator, array->element_type, seen);
+				}
+				break;
+			}
+			case TypeInfoVariant::ALIAS:
+				wait_for_described(generator, static_cast<const TypeInfoAlias*>(type)->base_type, seen);
+				break;
+			case TypeInfoVariant::VECTOR:
+				wait_for_described(generator, static_cast<const TypeInfoVector*>(type)->element_type, seen);
+				break;
+			case TypeInfoVariant::FUNCTION: {
+				auto function = static_cast<const TypeInfoFunction*>(type);
+				for (const FunctionInput& input : function->input) {
+					wait_for_described(generator, input.type, seen);
+				}
+				for (const FunctionOutput& output : function->output) {
+					wait_for_described(generator, output.type, seen);
+				}
+				break;
+			}
+			// What a pointer points to isn't held, and the rest hold no other types
+			case TypeInfoVariant::POINTER:
+			case TypeInfoVariant::ENUM:
+			case TypeInfoVariant::ANY:
+			case TypeInfoVariant::ARCHETYPE:
+			case TypeInfoVariant::BOOLEAN:
+			case TypeInfoVariant::CHAR:
+			case TypeInfoVariant::COMPLEX:
+			case TypeInfoVariant::FLOAT:
+			case TypeInfoVariant::INTEGER:
+			case TypeInfoVariant::QUATERNION:
+			case TypeInfoVariant::STRING:
+			case TypeInfoVariant::TYPE:
+			case TypeInfoVariant::VOID:
+				break;
+		}
+	}
+
+	/*
 	 * The address of a type's descriptor, made the first time it's asked for: a read-only TypeInfo,
 	 * or the struct for its variant that includes one, like a TypeInfoEnum. A type value is this
 	 * address, so two type values are equal when they're the same type. A plain alias is the type
@@ -3801,6 +3877,10 @@ namespace hemera {
 		}
 		// Compile-time code uses the compiler's descriptors, so a type from reflection equals the same type here
 		if (generator.compile_time) {
+			if (generator.collecting) {
+				std::set<TypeInfo const*> seen;
+				wait_for_described(generator, type, seen);
+			}
 			const uint8_t* described = compile_time_data(generator.program).descriptor(type);
 			if (described == nullptr) {
 				unsupported(generator, nullptr, std::format("base/compiler isn't laid out yet, for {}'s type information", to_string(type)));

@@ -272,7 +272,13 @@ namespace hemera {
 			return nullptr;
 		}
 		auto iter = descriptors.find(type);
-		if (iter != descriptors.end()) {
+		/*
+		 * One being made returns as it is, like a struct's own through a pointer to it, as does one made whole. One
+		 * made partial, of a type not laid out then or reaching one through a pointer, is made again, so what asks
+		 * later sees it whole (generate.cpp's wait_for_described waits for what's held by value)
+		 */
+		if (iter != descriptors.end() && (describing.contains(type) || !partial.contains(type))) {
+			reached_partial = reached_partial || (describing.contains(type) && !type->complete);
 			return iter->second;
 		}
 		const TypeInfoStruct* layout = compiler_struct(descriptor_struct(type->variant));
@@ -283,12 +289,26 @@ namespace hemera {
 		// Before its fields, which may refer to it, like a struct with a pointer to its own type
 		descriptors[type] = record;
 		types[reinterpret_cast<uintptr_t>(record)] = type;
+		const bool outer_reached_partial = reached_partial;
+		reached_partial = false;
+		describing.insert(type);
 		describe(type, record, layout);
+		describing.erase(type);
+		const bool is_partial = !type->complete || reached_partial;
+		if (is_partial) {
+			partial.insert(type);
+		}
+		else {
+			partial.erase(type);
+		}
+		reached_partial = outer_reached_partial || is_partial;
 		return record;
 	}
 
 	// The fields a type's descriptor has, as generate.cpp's descriptors do for the program.
 	void CompileTimeData::describe(const TypeInfo* type, uint8_t* record, const TypeInfoStruct* layout) {
+		// A type not laid out yet gets its name and variant, not its lists, which another thread may be filling in
+		const bool laid_out = type->complete;
 		write_member(record, layout, "variant", variant_name(type->variant));
 		write_number(record, layout, "size", type->size);
 		size_t offset = 0;
@@ -338,6 +358,9 @@ namespace hemera {
 			case TypeInfoVariant::ENUM: {
 				auto enumeration = static_cast<const TypeInfoEnum*>(type);
 				write_text(record, layout, "name", text_of(enumeration->name));
+				if (!laid_out) {
+					break;
+				}
 				write_type(record, layout, "backing_type", enumeration->backing_type != nullptr ? enumeration->backing_type : BUILTIN_uint);
 				records("members", enumeration->members.size(), [&](uint8_t* at, const TypeInfo*, size_t i) {
 					write_text_at(at, text_of(enumeration->members[i]));
@@ -384,6 +407,9 @@ namespace hemera {
 			case TypeInfoVariant::STRUCT: {
 				auto structure = static_cast<const TypeInfoStruct*>(type);
 				write_text(record, layout, "name", text_of(structure->name));
+				if (!laid_out) {
+					break;
+				}
 				records("members", structure->members.size(), [&](uint8_t* at, const TypeInfo* element_type, size_t i) {
 					const TypeInfoStruct* member_layout = as_struct(element_type);
 					const StructMember& member = structure->members[i];
@@ -403,6 +429,9 @@ namespace hemera {
 			case TypeInfoVariant::UNION: {
 				auto union_type = static_cast<const TypeInfoUnion*>(type);
 				write_text(record, layout, "name", text_of(union_type->name));
+				if (!laid_out) {
+					break;
+				}
 				records("variants", union_type->variants.size(), [&](uint8_t* at, const TypeInfo* element_type, size_t i) {
 					const TypeInfoStruct* variant_layout = as_struct(element_type);
 					const UnionVariant& variant = union_type->variants[i];

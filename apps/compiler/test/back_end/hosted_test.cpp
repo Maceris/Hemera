@@ -498,6 +498,21 @@ TEST(Hosted, PrefersInsertedOverImports)
 	run_hosted("inserted_over_imports", hemera::TargetStackCheck::Off);
 }
 
+// Compile-time code describing a type waits for what's held by value, like a call's Result and its Ok's struct.
+TEST(Hosted, DescribesWhenLaidOut)
+{
+	run_hosted("described_when_laid_out", hemera::TargetStackCheck::Off, 22);
+}
+
+/*
+ * An #insert describing a type that points back at the struct it's in: not waited for, and that struct's
+ * description, made while it was still being made, is made again once it's whole.
+ */
+TEST(Hosted, DescribesWhileInserting)
+{
+	run_hosted("described_while_inserting", hemera::TargetStackCheck::Off);
+}
+
 // docs/operators.md, docs/functions.md: members of parentheses, generic variants, shorthands, nested functions.
 TEST(Hosted, HandlesExpressionForms)
 {

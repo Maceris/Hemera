@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -109,6 +110,13 @@ namespace hemera {
 		size_t free_size = 0;
 		std::map<const TypeInfo*, uint8_t*> descriptors;
 		std::map<uintptr_t, const TypeInfo*> types;
+		/// <summary>
+		/// Descriptors made partial, of a type not laid out then or reaching one through a pointer, made again
+		/// when asked for; those being made now; and whether what's being made has reached a partial one.
+		/// </summary>
+		std::set<const TypeInfo*> partial;
+		std::set<const TypeInfo*> describing;
+		bool reached_partial = false;
 	};
 
 	/// <summary>
