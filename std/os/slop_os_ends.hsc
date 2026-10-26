@@ -314,20 +314,26 @@ package os
     grant_in :: fn(address: u64, type: ptr[compiler.TypeInfo]) -> slop_os.Handle {
         if type.variant == .UNION {
             optional :: cast[ptr[compiler.TypeInfoUnion]](type)
-            if optional.variants.count == 0 || optional.variants[0].types.count == 0 || optional.variants[0].offsets.count == 0 {
+            some := optional.variants.count
+            for variant, i in optional.variants {
+                if variant.name == "Some" {
+                    some = i
+                }
+            }
+            if some >= optional.variants.count || optional.variants[some].types.count == 0 || optional.variants[some].offsets.count == 0 {
                 return slop_os.NO_HANDLE
             }
-            // Some is the first variant, tagged 0, in a tag of its own width
+            // Some is tagged with its index, in a tag of its own width
             tag_size :: match optional.tag_type {
                 case Some(tag) => tag.size
                 case None => cast[usize](4)
             }
             tag :: if tag_size == 1 { cast[u64](cast[ptr[u8]](address)^) } else if tag_size == 2 { cast[u64](cast[ptr[u16]](address)^) }
                 else { cast[u64](cast[ptr[u32]](address)^) }
-            if tag != 0 {
+            if tag != cast[u64](some) {
                 return slop_os.NO_HANDLE
             }
-            return cast[ptr[slop_os.Handle]](address + cast[u64](optional.variants[0].offsets[0]))^
+            return cast[ptr[slop_os.Handle]](address + cast[u64](optional.variants[some].offsets[0]))^
         }
         return cast[ptr[slop_os.Handle]](address)^
     }

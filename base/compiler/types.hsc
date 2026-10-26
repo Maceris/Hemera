@@ -165,7 +165,7 @@ TypeInfoUnion :: struct {
     // None when null_is_none.
     tag_type: ptr[TypeInfo]?,
     // An optional of a pointer that's never null, like ptr[T]? or cstring?: just the pointer,
-    // null for None (the second variant) and anything else for Some, with no tag.
+    // null for None and anything else for Some, with no tag.
     null_is_none: bool,
 }
 

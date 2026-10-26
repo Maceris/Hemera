@@ -988,7 +988,13 @@ namespace hemera {
 	// The type an optional or result holds: Some's or Ok's.
 	static TypeInfo* held_type(TypeInfo const* type) {
 		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
-		return !union_type->variants.empty() && !union_type->variants[0].types.empty() ? union_type->variants[0].types[0] : nullptr;
+		const size_t some = union_type->value_index();
+		return some < union_type->variants.size() && !union_type->variants[some].types.empty() ? union_type->variants[some].types[0] : nullptr;
+	}
+
+	// Which variant of an optional or a result holds its value: Some or Ok.
+	static size_t value_variant(TypeInfo const* type) {
+		return static_cast<TypeInfoUnion const*>(base(type))->value_index();
 	}
 
 	// The type an untyped value is generated as, where it's used as expected.
@@ -2195,10 +2201,11 @@ namespace hemera {
 		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
 		if (union_type->null_is_none) {
 			// Some is the pointer itself, None is null
-			if (variant != 0 || values.empty()) {
+			const size_t some = union_type->value_index();
+			if (variant != some || values.empty()) {
 				return zero_of(generator, pointer_type(generator));
 			}
-			return convert(generator, values[0], value_types[0], union_type->variants[0].types[0]);
+			return convert(generator, values[0], value_types[0], union_type->variants[some].types[0]);
 		}
 		mlir::Value tag = constant_int(generator, llvm_type(generator, union_type->tag_type), static_cast<int64_t>(variant));
 		if (values.empty()) {
@@ -2325,11 +2332,12 @@ namespace hemera {
 	static mlir::Value union_tag(Generator& generator, mlir::Value address, TypeInfo const* type) {
 		auto union_type = static_cast<TypeInfoUnion const*>(base(type));
 		if (union_type->null_is_none) {
-			// Some (0) unless the pointer is null, then None (1)
+			// Some's tag unless the pointer is null, then None's: whichever of 0 and 1 says it's there
 			mlir::Value pointer = LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), address);
-			mlir::Value is_null = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, pointer,
-				zero_of(generator, pointer_type(generator)));
-			return LLVM::ZExtOp::create(generator.builder, generator.loc, llvm_type(generator, union_type->tag_type), is_null);
+			const bool some_is_one = union_type->value_index() == 1;
+			mlir::Value present = LLVM::ICmpOp::create(generator.builder, generator.loc,
+				some_is_one ? LLVM::ICmpPredicate::ne : LLVM::ICmpPredicate::eq, pointer, zero_of(generator, pointer_type(generator)));
+			return LLVM::ZExtOp::create(generator.builder, generator.loc, llvm_type(generator, union_type->tag_type), present);
 		}
 		return load(generator, union_type->tag_type, address);
 	}
@@ -2412,7 +2420,7 @@ namespace hemera {
 		TypeInfo const* held = TypeInfoVariant::UNION == destination->variant ? held_type(destination) : nullptr;
 		if (TypeInfoVariant::UNION == destination->variant
 			&& (TypeInfoVariant::UNION != source->variant || (held != nullptr && base(held) == source))) {
-			return make_variant(generator, const_cast<TypeInfo*>(to), 0, { v }, { const_cast<TypeInfo*>(from) });
+			return make_variant(generator, const_cast<TypeInfo*>(to), value_variant(to), { v }, { const_cast<TypeInfo*>(from) });
 		}
 		// Through a using, the struct it includes
 		if (TypeInfoVariant::STRUCT == source->variant && TypeInfoVariant::STRUCT == destination->variant) {
@@ -6634,7 +6642,7 @@ namespace hemera {
 
 	// What an optional or result holds, where it is.
 	static Emitted held_value(Generator& generator, mlir::Value address, TypeInfo const* type) {
-		const UnionVariant& some = static_cast<TypeInfoUnion const*>(base(type))->variants[0];
+		const UnionVariant& some = static_cast<TypeInfoUnion const*>(base(type))->variants[value_variant(type)];
 		// Result[void, E]'s Ok holds nothing
 		if (some.types.empty()) {
 			return Emitted{};
@@ -6658,9 +6666,9 @@ namespace hemera {
 			Emitted operand = emit_expression(generator, operand_node, nullptr);
 			mlir::Value address = address_of(generator, operand);
 			if (TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op) {
-				return value(tag_is(generator, address, operand.type, 0, TokenType::KEYWORD_IS_SOME == op), BUILTIN_bool);
+				return value(tag_is(generator, address, operand.type, value_variant(operand.type), TokenType::KEYWORD_IS_SOME == op), BUILTIN_bool);
 			}
-			emit_if(generator, tag_is(generator, address, operand.type, 0, false), [&]() {
+			emit_if(generator, tag_is(generator, address, operand.type, value_variant(operand.type), false), [&]() {
 				if (TokenType::KEYWORD_OR_BREAK == op) {
 					emit_break(generator, 1);
 				}
@@ -6801,7 +6809,7 @@ namespace hemera {
 			mlir::Value address = address_of(generator, left);
 			Emitted held = held_value(generator, address, left.type);
 			if (TokenType::KEYWORD_OR_RETURN == op) {
-				emit_if(generator, tag_is(generator, address, left.type, 0, false), [&]() {
+				emit_if(generator, tag_is(generator, address, left.type, value_variant(left.type), false), [&]() {
 					TypeInfoFunction const* function = generator.state->type;
 					if (function->output.empty()) {
 						emit_return(generator, {});
@@ -6815,7 +6823,7 @@ namespace hemera {
 			}
 			// Result[void, E]: on an error, the default runs, for what it does
 			if (held.type == nullptr) {
-				emit_if(generator, tag_is(generator, address, left.type, 0, false), [&]() {
+				emit_if(generator, tag_is(generator, address, left.type, value_variant(left.type), false), [&]() {
 					if (emit_expression(generator, right_node, nullptr).never_returns) {
 						LLVM::UnreachableOp::create(generator.builder, generator.loc);
 						return true;
@@ -6825,7 +6833,7 @@ namespace hemera {
 				return Emitted{};
 			}
 			mlir::Value slot = make_slot(generator, held.type);
-			emit_if(generator, tag_is(generator, address, left.type, 0, true), [&]() {
+			emit_if(generator, tag_is(generator, address, left.type, value_variant(left.type), true), [&]() {
 				store(generator, value_of(generator, held), slot);
 				return false;
 			}, [&]() {
@@ -6871,7 +6879,7 @@ namespace hemera {
 				&& right_node != nullptr && (left_null || TokenType::KEYWORD_NULL == right_node->value.type)) {
 				Emitted operand = emit_expression(generator, left_null ? right_node : left_node, type);
 				mlir::Value address = address_of(generator, operand);
-				return value(tag_is(generator, address, operand.type, 0, TokenType::OPERATOR_NOT_EQUAL == op), BUILTIN_bool);
+				return value(tag_is(generator, address, operand.type, value_variant(operand.type), TokenType::OPERATOR_NOT_EQUAL == op), BUILTIN_bool);
 			}
 			/*
 			 * An optional against a value of what it holds, like error != OsError.NotFound: equal when it
@@ -6885,26 +6893,28 @@ namespace hemera {
 						return false;
 					}
 					auto union_type = static_cast<TypeInfoUnion const*>(base(t));
-					return union_type->variants.size() == 2 && variant_named(t, "None") == 1 && union_type->variants[0].types.size() == 1;
+					const size_t some = union_type->value_index();
+					return union_type->variants.size() == 2 && variant_named(t, "None") < 2 && variant_named(t, "None") != some
+						&& union_type->variants[some].types.size() == 1;
 				};
 				const bool left_optional = optional(left_type);
 				const bool right_optional = optional(right_type);
 				// Two optionals: equal when both hold nothing, or both hold values that are equal
-				if (left_optional && right_optional && !is_variant(static_cast<TypeInfoUnion const*>(base(type))->variants[0].types[0], TypeInfoVariant::STRUCT)
-					&& !is_variant(static_cast<TypeInfoUnion const*>(base(type))->variants[0].types[0], TypeInfoVariant::UNION)) {
-					TypeInfo* held_type = static_cast<TypeInfoUnion const*>(base(type))->variants[0].types[0];
+				if (left_optional && right_optional && !is_variant(held_type(type), TypeInfoVariant::STRUCT)
+					&& !is_variant(held_type(type), TypeInfoVariant::UNION)) {
+					TypeInfo* held = held_type(type);
 					mlir::Value left_address = address_of(generator, emit_expression(generator, left_node, type));
 					mlir::Value right_address = address_of(generator, emit_expression(generator, right_node, type));
-					mlir::Value left_some = tag_is(generator, left_address, type, 0, true);
-					mlir::Value right_some = tag_is(generator, right_address, type, 0, true);
+					mlir::Value left_some = tag_is(generator, left_address, type, value_variant(type), true);
+					mlir::Value right_some = tag_is(generator, right_address, type, value_variant(type), true);
 					mlir::Value slot = make_slot(generator, BUILTIN_bool);
 					// Both or neither hold a value; if neither, that's equal
 					store(generator, compare(generator, TokenType::OPERATOR_EQUAL, left_some, right_some, BUILTIN_bool), slot);
 					emit_if(generator, LLVM::AndOp::create(generator.builder, generator.loc, left_some, right_some), [&]() {
 						mlir::Value left = value_of(generator, held_value(generator, left_address, type));
 						mlir::Value right = value_of(generator, held_value(generator, right_address, type));
-						store(generator, is_variant(held_type, TypeInfoVariant::STRING) && !static_cast<TypeInfoString const*>(base(held_type))->is_raw
-							? strings_equal(generator, left, right) : compare(generator, TokenType::OPERATOR_EQUAL, left, right, held_type), slot);
+						store(generator, is_variant(held, TypeInfoVariant::STRING) && !static_cast<TypeInfoString const*>(base(held))->is_raw
+							? strings_equal(generator, left, right) : compare(generator, TokenType::OPERATOR_EQUAL, left, right, held), slot);
 						return false;
 					}, nullptr);
 					mlir::Value equal = load(generator, BUILTIN_bool, slot);
@@ -6914,13 +6924,13 @@ namespace hemera {
 					ast::Node* optional_node = left_optional ? left_node : right_node;
 					ast::Node* other_node = left_optional ? right_node : left_node;
 					TypeInfo* optional_type = left_optional ? left_type : right_type;
-					TypeInfo* held_type = static_cast<TypeInfoUnion const*>(base(optional_type))->variants[0].types[0];
+					TypeInfo* held_type = static_cast<TypeInfoUnion const*>(base(optional_type))->variants[value_variant(optional_type)].types[0];
 					Emitted operand = emit_expression(generator, optional_node, optional_type);
 					mlir::Value address = address_of(generator, operand);
 					mlir::Value other = emit_as(generator, other_node, held_type);
 					mlir::Value slot = make_slot(generator, BUILTIN_bool);
 					store(generator, boolean(generator, false), slot);
-					emit_if(generator, tag_is(generator, address, optional_type, 0, true), [&]() {
+					emit_if(generator, tag_is(generator, address, optional_type, value_variant(optional_type), true), [&]() {
 						mlir::Value held = value_of(generator, held_value(generator, address, optional_type));
 						mlir::Value same;
 						if (is_variant(held_type, TypeInfoVariant::STRING) && !static_cast<TypeInfoString const*>(base(held_type))->is_raw) {
@@ -8754,12 +8764,14 @@ namespace hemera {
 					// Some (0) with the handle, or None (1) without one
 					auto optional = static_cast<TypeInfoUnion const*>(base(input.type));
 					mlir::Type tag_type = llvm_type(generator, optional->tag_type);
-					mlir::Value missing = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::eq, handle,
-						constant_int(generator, handle.getType(), 0));
-					LLVM::StoreOp::create(generator.builder, generator.loc, LLVM::ZExtOp::create(generator.builder, generator.loc, tag_type, missing),
+					// Some's tag for a handle, None's for none, whichever of 0 and 1 each is
+					const size_t some = optional->value_index();
+					mlir::Value tagged = LLVM::ICmpOp::create(generator.builder, generator.loc,
+						some == 1 ? LLVM::ICmpPredicate::ne : LLVM::ICmpPredicate::eq, handle, constant_int(generator, handle.getType(), 0));
+					LLVM::StoreOp::create(generator.builder, generator.loc, LLVM::ZExtOp::create(generator.builder, generator.loc, tag_type, tagged),
 						slot);
 					LLVM::StoreOp::create(generator.builder, generator.loc, handle,
-						offset_address(generator, slot, optional->variants[0].offsets[0]));
+						offset_address(generator, slot, optional->variants[some].offsets[0]));
 				}
 				else {
 					LLVM::StoreOp::create(generator.builder, generator.loc, handle, slot);
@@ -9051,11 +9063,11 @@ namespace hemera {
 			const TypeInfo* optional = call.type->output[0].type;
 			auto union_type = static_cast<const TypeInfoUnion*>(get_base_type(optional));
 			if (!some) {
-				CompileTimeData::write_number_at(call.result, union_type->tag_type->size, 1);
+				CompileTimeData::write_number_at(call.result, union_type->tag_type->size, union_type->none_index());
 				return;
 			}
 			uint8_t* value = CompileTimeData::write_some_at(call.result, optional);
-			fill(value, struct_of(union_type->variants[0].types[0]));
+			fill(value, struct_of(union_type->variants[union_type->value_index()].types[0]));
 		}
 
 		// A SourceCodeLocation record's fields.

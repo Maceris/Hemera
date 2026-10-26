@@ -135,6 +135,24 @@ namespace hemera {
 		complete = false;
 	}
 
+	size_t TypeInfoUnion::value_index() const {
+		for (size_t i = 0; i < variants.size(); ++i) {
+			if (variants[i].name != nullptr && (*variants[i].name == "Some" || *variants[i].name == "Ok")) {
+				return i;
+			}
+		}
+		return 0;
+	}
+
+	size_t TypeInfoUnion::none_index() const {
+		for (size_t i = 0; i < variants.size(); ++i) {
+			if (variants[i].name != nullptr && *variants[i].name == "None") {
+				return i;
+			}
+		}
+		return variants.size();
+	}
+
 	static size_t round_up(size_t value, size_t alignment) {
 		return alignment == 0 ? value : (value + alignment - 1) / alignment * alignment;
 	}
@@ -200,10 +218,11 @@ namespace hemera {
 		type = get_base_type_or_alias(type);
 		if (type != nullptr && TypeInfoVariant::UNION == type->variant) {
 			auto optional = static_cast<TypeInfoUnion const*>(type);
-			if (!optional->null_is_none || optional->variants.empty() || optional->variants[0].types.size() != 1) {
+			const size_t some = optional->value_index();
+			if (!optional->null_is_none || some >= optional->variants.size() || optional->variants[some].types.size() != 1) {
 				return nullptr;
 			}
-			type = get_base_type_or_alias(optional->variants[0].types[0]);
+			type = get_base_type_or_alias(optional->variants[some].types[0]);
 		}
 		if (type == nullptr || TypeInfoVariant::POINTER != type->variant) {
 			return nullptr;
@@ -282,14 +301,16 @@ namespace hemera {
 	void lay_out_union(TypeInfoUnion* type) {
 		// An optional of a pointer that's never null is the pointer, null for None
 		const std::string_view name = type->name != nullptr ? std::string_view(*type->name) : std::string_view();
-		if (name.starts_with("Optional[") && type->variants.size() == 2 && type->variants[0].types.size() == 1
-			&& type->variants[1].types.empty() && is_never_null(type->variants[0].types[0])) {
+		const size_t some = type->value_index();
+		const size_t none = type->none_index();
+		if (name.starts_with("Optional[") && type->variants.size() == 2 && some < 2 && none < 2 && some != none
+			&& type->variants[some].types.size() == 1 && type->variants[none].types.empty() && is_never_null(type->variants[some].types[0])) {
 			type->null_is_none = true;
 			type->tag_type = BUILTIN_u8;
-			type->variants[0].offsets = { 0 };
-			type->variants[1].offsets.clear();
-			type->size = type->variants[0].types[0]->size;
-			type->alignment = type->variants[0].types[0]->alignment;
+			type->variants[some].offsets = { 0 };
+			type->variants[none].offsets.clear();
+			type->size = type->variants[some].types[0]->size;
+			type->alignment = type->variants[some].types[0]->alignment;
 			type->contains_pointers = true;
 			type->complete = true;
 			return;
@@ -593,11 +614,12 @@ namespace hemera {
 		if (base != nullptr && TypeInfoVariant::UNION == base->variant) {
 			auto optional = static_cast<TypeInfoUnion const*>(base);
 			const std::string_view name = optional->name != nullptr ? std::string_view(*optional->name) : std::string_view();
-			if (!name.starts_with("Optional[") || optional->null_is_none || optional->variants.empty()
-				|| optional->variants[0].types.size() != 1) {
+			const size_t some = optional->value_index();
+			if (!name.starts_with("Optional[") || optional->null_is_none || some >= optional->variants.size()
+				|| optional->variants[some].types.size() != 1) {
 				return grant;
 			}
-			held = optional->variants[0].types[0];
+			held = optional->variants[some].types[0];
 			grant.optional = true;
 		}
 		if (held == nullptr || held->size != 4) {

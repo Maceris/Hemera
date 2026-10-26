@@ -409,6 +409,16 @@ namespace hemera {
 		bool null_is_none = false;
 
 		explicit TypeInfoUnion(InternedString name);
+
+		/// <summary>
+		/// The variant that holds a value: an optional's Some or a result's Ok, by name, or the first otherwise.
+		/// An optional's None comes first, so a zeroed optional is None (docs/types.md, Optional Types).
+		/// </summary>
+		size_t value_index() const;
+		/// <summary>
+		/// The variant named None, or variants.size() if there's none.
+		/// </summary>
+		size_t none_index() const;
 	};
 
 	/// <summary>

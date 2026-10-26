@@ -5,10 +5,10 @@
  */
 package builtin
 
-// Optional values: T? is Optional[T]
+// Optional values: T? is Optional[T]. None comes first, so an optional that starts zeroed is None.
 Optional :: union[T] {
-    Some(T),
     None,
+    Some(T),
 }
 
 Result :: union[T, E] {

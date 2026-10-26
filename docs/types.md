@@ -985,10 +985,14 @@ This is a built-in union type similar to this structure, where `Optional[Foo]` i
 
 ```
 Optional :: union[T] {
-    Some(T),
     None,
+    Some(T),
 }
 ```
+
+`None` comes first, so its tag is 0, and an optional that starts zeroed, as every value does (see [Structs](#structs)),
+is `None`: a field left out of a struct's literal, an element of an array that's zeroed, or `found : int?` declared
+without a value.
 
 There are a few [operators built in](operators.md#optional-operators) to make life easier when dealing with optional values.
 

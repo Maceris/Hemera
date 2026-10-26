@@ -253,6 +253,12 @@ TEST(Hosted, TakesOptionalFunctions)
 	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
 }
 
+// Optionals that start zeroed are None: left out of a literal, in an array, declared without a value (docs/types.md, Optional Types).
+TEST(Hosted, StartsOptionalsAsNone)
+{
+	run_hosted("optional_defaults", hemera::TargetStackCheck::Off);
+}
+
 // Results whose types are in parentheses, like an optional view ((mut u8[])?), alone, named and listed.
 TEST(Hosted, ReturnsParenthesizedTypes)
 {

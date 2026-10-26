@@ -380,10 +380,11 @@ namespace hemera {
 			return nullptr;
 		}
 		// Result[void, E]'s Ok holds nothing
-		if (holder->variants[0].types.empty()) {
+		const size_t some = holder->value_index();
+		if (some >= holder->variants.size() || holder->variants[some].types.empty()) {
 			return builtin_union(type, "Result") != nullptr ? BUILTIN_void : nullptr;
 		}
-		return holder->variants[0].types[0];
+		return holder->variants[some].types[0];
 	}
 
 	static std::string describe(const Value& value) {
@@ -3188,8 +3189,10 @@ namespace hemera {
 			return false;
 		}
 		auto union_type = static_cast<TypeInfoUnion const*>(t);
-		return union_type->variants.size() == 2 && union_type->variants[0].types.size() == 1 && union_type->variants[1].types.empty()
-			&& union_type->variants[1].name != nullptr && *union_type->variants[1].name == "None";
+		const size_t some = union_type->value_index();
+		const size_t none = union_type->none_index();
+		return union_type->variants.size() == 2 && none < 2 && some != none && union_type->variants[some].types.size() == 1
+			&& union_type->variants[none].types.empty();
 	}
 
 	static TypeInfo const* not_equatable(TypeInfo const* type) {

@@ -181,7 +181,12 @@ namespace hemera {
 			if (type == nullptr || TypeInfoVariant::UNION != type->variant) {
 				return nullptr;
 			}
-			const UnionVariant& some = static_cast<TypeInfoUnion const*>(type)->variants[0];
+			auto union_type = static_cast<TypeInfoUnion const*>(type);
+			const size_t index = union_type->value_index();
+			if (index >= union_type->variants.size()) {
+				return nullptr;
+			}
+			const UnionVariant& some = union_type->variants[index];
 			return some.types.empty() ? nullptr : some.types[0];
 		}
 

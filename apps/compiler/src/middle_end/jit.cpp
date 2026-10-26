@@ -253,7 +253,7 @@ namespace hemera {
 				size_t index = 0;
 				const uint8_t* values = data;
 				if (union_type->null_is_none) {
-					index = read_unsigned(data, 8) == 0 ? 1 : 0;
+					index = read_unsigned(data, 8) == 0 ? union_type->none_index() : union_type->value_index();
 				}
 				else {
 					index = static_cast<size_t>(read_unsigned(data, union_type->tag_type->size));
@@ -263,13 +263,14 @@ namespace hemera {
 					return;
 				}
 				const UnionVariant& chosen = union_type->variants[index];
-				const std::string_view first = union_type->variants.empty() ? "" : text_of(union_type->variants[0].name);
-				const bool optional_or_result = union_type->variants.size() == 2 && (first == "Some" || first == "Ok");
-				if (optional_or_result && index == 1 && first == "Some") {
+				const size_t held = union_type->value_index();
+				const std::string_view value_name = held < union_type->variants.size() ? text_of(union_type->variants[held].name) : "";
+				const bool optional_or_result = union_type->variants.size() == 2 && (value_name == "Some" || value_name == "Ok");
+				if (optional_or_result && index != held && value_name == "Some") {
 					out += "none";
 					return;
 				}
-				if (!optional_or_result || index != 0) {
+				if (!optional_or_result || index != held) {
 					out += text_of(chosen.name);
 					if (chosen.types.empty()) {
 						return;
@@ -283,7 +284,7 @@ namespace hemera {
 					out += i > 0 ? ", " : "";
 					format_value(chosen.types[i], values + (union_type->null_is_none ? 0 : chosen.offsets[i]), out, depth + 1);
 				}
-				if (!optional_or_result || index != 0) {
+				if (!optional_or_result || index != held) {
 					out += ")";
 				}
 			}

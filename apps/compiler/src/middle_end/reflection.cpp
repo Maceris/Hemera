@@ -176,8 +176,9 @@ namespace hemera {
 		if (optional->null_is_none) {
 			return at;
 		}
-		write_number_at(at, optional->tag_type->size, 0);
-		return at + (optional->variants.empty() || optional->variants[0].offsets.empty() ? 0 : optional->variants[0].offsets[0]);
+		const size_t some = optional->value_index();
+		write_number_at(at, optional->tag_type->size, some);
+		return at + (some >= optional->variants.size() || optional->variants[some].offsets.empty() ? 0 : optional->variants[some].offsets[0]);
 	}
 
 	void CompileTimeData::write_number(uint8_t* record, const TypeInfoStruct* type, std::string_view field, uint64_t value) {

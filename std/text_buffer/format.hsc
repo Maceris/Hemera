@@ -587,12 +587,22 @@ append_array :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
  * Variant(values).
  */
 append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoUnion]) {
+    // The variant holding a value, an optional's Some or a result's Ok, by name
+    held := info.variants.count
+    is_optional := false
+    is_result := false
+    for each, i in info.variants {
+        if each.name == "Some" || each.name == "Ok" {
+            held = i
+            is_optional = info.variants.count == 2 && each.name == "Some"
+            is_result = info.variants.count == 2 && each.name == "Ok"
+        }
+    }
     index : usize = 0
     if info.null_is_none {
         pointer :: cast[ptr[u64]](data)
-        if pointer^ == 0 {
-            index = 1
-        }
+        // Some's when the pointer isn't null, None's, the other of the two, when it is
+        index = if pointer^ != 0 { held } else { 1 - held }
     }
     else {
         match info.tag_type {
@@ -606,13 +616,11 @@ append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
         return void
     }
     variant :: &info.variants[index]
-    is_optional :: info.variants.count == 2 && info.variants[0].name == "Some" && info.variants[1].name == "None"
-    is_result :: info.variants.count == 2 && info.variants[0].name == "Ok" && info.variants[1].name == "Error"
-    if is_optional && index == 1 {
+    if is_optional && index != held {
         append(text, "none")
         return void
     }
-    if (is_optional || is_result) && index == 0 {
+    if (is_optional || is_result) && index == held {
         if variant.types.count == 0 {
             append(text, "ok")
         }
