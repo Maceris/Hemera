@@ -61,4 +61,23 @@ package read_only_dir
     }
 
     #insert os.protocol_code(Request, Response)
+
+    /*
+     * A new connection to the directory end reaches, the same directory: a channel for ReadOnlyDir, one end sent in a
+     * Connect, the other given back, or null.
+     */
+    connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[ReadOnlyDir]? {
+        pair :: os.channel_for[ReadOnlyDir](budget, 0) or_return null
+        out := os.Outgoing.{}
+        request :: os.begin[Request](&out)
+        request^ = .Connect(os.Channel[ReadOnlyDir].{end = pair.a})
+        match send_request(end, port, &out) {
+            case Some(error) => {
+                _ = slop_os.handle_close(cast[slop_os.Handle](pair.a))
+                _ = slop_os.handle_close(cast[slop_os.Handle](pair.b))
+                return null
+            }
+            case None => return os.Channel[ReadOnlyDir].{end = pair.b}
+        }
+    }
 }
