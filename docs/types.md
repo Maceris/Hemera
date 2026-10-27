@@ -360,6 +360,9 @@ about an element's fields is forgotten when its index changes, as well as when t
   as long as it isn't negative (a loop's name from 0 isn't, even when it's signed)
 * a difference compared with a constant, like `data.count - at >= 16`, which says `at + 16 <= data.count`, once `at` is
   known to be at most `data.count` (and, if signed, at least 0), so the difference can't wrap
+* a sum of two values compared as it is, like `if at + i < into.count { into[at + i] = 1 }`: what's known of the sum,
+  wrapped or not, holds for an index that's the same sum, until either value changes
+* the count of a fixed array through a pointer, like `p.count` with `p` a `ptr[u8[8]]`, which is the constant 8
 
 A loop keeps what holds every time around it: a counter that only goes down keeps its upper bound, and one that's
 kept below a count keeps that.
@@ -374,8 +377,8 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
   the caller: check it, or state it with `runtime.assert`, which documents the contract and checks it at run time.
 * Memory reached through a pointer, after anything that could write it: a call, or a store through a pointer.
   `info.cpus.count` is forgotten across a call; a copy of the view in a local, `cpus :: info.cpus`, isn't.
-* Relations between more than two values that aren't bounded by constants, like `i + j < n`, or products of two
-  variables. Compute the index into a
+* Relations between more than two values that aren't bounded by constants, like `i + j < n`, beyond a sum compared and
+  indexed as it is, or products of two variables. Compute the index into a
   local and compare that, or loop with an index that counts the way the code needs.
 * Invariants of a data structure, like a struct's array having one entry per frame. Compare against the array's own
   count, rather than a field that's meant to equal it.
@@ -1303,7 +1306,8 @@ v1.y = 2 // g and t are now also 2
 
 A literal sets the members it names, in order, over zeros, so a later one overwrites what it overlaps:
 `Overlay.{word = 0x01020304}`. The other members' defaults are left out once any member is given, since they'd
-overwrite it. A constant's literal can't name a member that overlaps another yet.
+overwrite it. A constant's literal works the same way, as long as what it gives is numbers, booleans, enums, or
+structs and fixed arrays of them, whose bytes are known before the program is linked.
 
 The `using` directive works as well if structs are already defined.
 
@@ -1358,7 +1362,9 @@ measure :: fn() -> int {
 ```
 
 In a generic function, each instance has its own, so they can use its generic parameters, like `T[count]` in
-`fn[T, count: usize]`. A type declared inside a function can't be generic itself yet.
+`fn[T, count: usize]`. A type declared inside a function can be generic itself, like `Pair :: struct[U] { ... }`, and
+used with its arguments, `Pair[int]`, after it; in a generic function, it can use both its own parameters and the
+function's.
 
 ## Type Aliases
 

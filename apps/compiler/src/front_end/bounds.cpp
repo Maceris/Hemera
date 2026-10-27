@@ -34,7 +34,9 @@
  * reporting.
  *
  * Integers wrap, so i + 1 is only known to be one more than i, and a comparison of i + 1 only says
- * something about i, when i is bounded by a count or a constant already.
+ * something about i, when i is bounded by a count or a constant already. A sum of two terms, like at + i,
+ * is a term of its own too, standing for the sum as it's computed, wrapped or not: what a comparison of
+ * it says holds for an index that's the same sum, until either changes.
  */
 
 namespace hemera {
@@ -100,15 +102,27 @@ namespace hemera {
 			return type != nullptr && TypeInfoVariant::INTEGER == type->variant && !static_cast<TypeInfoInteger const*>(type)->is_signed;
 		}
 
-		// An array's or string's elements: static arrays have a count that's a constant.
+		/*
+		 * An array's or string's elements: static arrays have a count that's a constant, which is so through a pointer
+		 * too, like p[i] with p a ptr[u8[8]]; a view or dynamic array through a pointer may change, and isn't followed.
+		 */
 		bool is_indexable(TypeInfo const* type) {
 			type = base(type);
+			if (type != nullptr && TypeInfoVariant::POINTER == type->variant) {
+				TypeInfo const* pointed = base(static_cast<TypeInfoPointer const*>(type)->base_type);
+				return pointed != nullptr && TypeInfoVariant::ARRAY == pointed->variant
+					&& ArrayType::STATIC == static_cast<TypeInfoArray const*>(pointed)->array_type;
+			}
 			return type != nullptr && (TypeInfoVariant::ARRAY == type->variant
 				|| (TypeInfoVariant::STRING == type->variant && !static_cast<TypeInfoString const*>(type)->is_raw));
 		}
 
+		// Through a pointer too, like p[i] with p a ptr[u8[8]], which indexes what it points to.
 		std::optional<int64_t> static_count(TypeInfo const* type) {
 			type = base(type);
+			if (type != nullptr && TypeInfoVariant::POINTER == type->variant) {
+				type = base(static_cast<TypeInfoPointer const*>(type)->base_type);
+			}
 			if (type != nullptr && TypeInfoVariant::ARRAY == type->variant
 				&& ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
 				return static_cast<int64_t>(static_cast<TypeInfoArray const*>(type)->count);
@@ -197,6 +211,8 @@ namespace hemera {
 			COUNT,
 			// A count through members or a pointer, like p.items.count
 			PATH,
+			// A sum of two terms, like at + i, as it's computed
+			SUM,
 		};
 
 		struct TermInfo {
@@ -246,6 +262,8 @@ namespace hemera {
 			// Or at most a term and an offset, like x % n being at most n - 1
 			std::optional<std::pair<Term, int64_t>> at_most_term;
 			bool nonnegative = false;
+			// For a sum of two terms, like at + i, the term that's exactly it, whatever else is known
+			std::optional<Term> sum;
 		};
 
 		Value constant(int64_t c) {
@@ -297,6 +315,8 @@ namespace hemera {
 			size_t quiet = 0;
 			// The locals a path's indexes are, like i in items[i].count, which change what it's about
 			std::map<Term, std::vector<const void*>> indexed_by;
+			// Each sum term's two terms, which changing either forgets it
+			std::map<Term, std::pair<Term, Term>> sums;
 		};
 
 		void report(Analysis& analysis, const ast::Node* where, const std::string& details) {
@@ -342,6 +362,43 @@ namespace hemera {
 
 		Term local_term(Analysis& analysis, const void* local, TypeInfo const* type) {
 			return bounded_by_type(analysis, term_for(analysis, TermKind::LOCAL, local, "", is_unsigned(type)), type);
+		}
+
+		/*
+		 * The term for a + b, as it's computed: about the locals they're about, and through a pointer if either is, so
+		 * what changes either forgets it. Not negative if neither is, as it wraps to what's still unsigned.
+		 */
+		Term sum_term(Analysis& analysis, Term a, Term b) {
+			if (a > b) {
+				std::swap(a, b);
+			}
+			const std::string key = std::format("{}+{}", a, b);
+			auto iter = analysis.term_keys.find({ TermKind::SUM, key });
+			if (iter != analysis.term_keys.end()) {
+				return iter->second;
+			}
+			const TermInfo& left = analysis.terms[a];
+			const TermInfo& right = analysis.terms[b];
+			TermInfo info{ TermKind::SUM, nullptr, left.nonnegative && right.nonnegative, left.through_pointer || right.through_pointer,
+				false, std::nullopt };
+			std::vector<const void*> locals;
+			for (Term each : { a, b }) {
+				const TermInfo& part = analysis.terms[each];
+				if (part.local != nullptr) {
+					locals.push_back(part.local);
+					info.through_pointer = info.through_pointer || analysis.address_taken.contains(part.local);
+				}
+				auto indexes = analysis.indexed_by.find(each);
+				if (indexes != analysis.indexed_by.end()) {
+					locals.insert(locals.end(), indexes->second.begin(), indexes->second.end());
+				}
+			}
+			const Term term = analysis.terms.size();
+			analysis.terms.push_back(info);
+			analysis.term_keys[{ TermKind::SUM, key }] = term;
+			analysis.indexed_by[term] = locals;
+			analysis.sums[term] = { a, b };
+			return term;
 		}
 
 		// The shortest-path closure of the facts: dist[a][b] is the least c known for b - a <= c.
@@ -581,6 +638,11 @@ namespace hemera {
 				moved[pair] = adjusted;
 			}
 			facts.bounds = std::move(moved);
+			// A sum it's part of was what it was
+			forget(facts, [&](Term each) {
+				auto parts = analysis.sums.find(each);
+				return parts != analysis.sums.end() && (parts->second.first == term || parts->second.second == term);
+			});
 		}
 
 		// ---------------------------------------------------------------------------------------------
@@ -767,9 +829,18 @@ namespace hemera {
 			return value.nonnegative;
 		}
 
+		// A value as its sum term, for a sum of two terms, or itself.
+		Value as_sum(const Value& value) {
+			return value.sum.has_value() ? of_term(*value.sum) : value;
+		}
+
 		void check_index(Analysis& analysis, const Facts& facts, const Chain& collection, ast::Node* index, const Value& value) {
 			const Value count = count_of(analysis, collection);
-			if (!at_least_zero(analysis, facts, value) || !below(analysis, facts, value, count, -1)) {
+			// What's known of a sum, like at + i, as itself, if what's known of its terms doesn't do
+			const auto fits = [&](const Value& each) {
+				return at_least_zero(analysis, facts, each) && below(analysis, facts, each, count, -1);
+			};
+			if (!fits(value) && !(value.sum.has_value() && fits(as_sum(value)))) {
 				report(analysis, index, "this index isn't proven to be in bounds: check it against the count first, "
 					"or loop over the elements (docs/types.md, Bounds Checking)");
 			}
@@ -796,9 +867,11 @@ namespace hemera {
 					}
 				}
 			}
-			// 0 <= low <= high <= count
-			const bool fits = at_least_zero(analysis, facts, low) && below(analysis, facts, low, high, 0)
-				&& below(analysis, facts, high, count, 0);
+			// 0 <= low <= high <= count, with a sum as itself, if what's known of its terms doesn't do
+			const auto holds = [&](const Value& from, const Value& to) {
+				return at_least_zero(analysis, facts, from) && below(analysis, facts, from, to, 0) && below(analysis, facts, to, count, 0);
+			};
+			const bool fits = holds(low, high) || holds(as_sum(low), high) || holds(low, as_sum(high)) || holds(as_sum(low), as_sum(high));
 			if (!fits) {
 				report(analysis, index, "this slice isn't proven to be in bounds: its start must be at least 0, at most its end, "
 					"and its end at most the count (docs/types.md, Bounds Checking)");
@@ -1288,7 +1361,13 @@ namespace hemera {
 				Value left = evaluate(analysis, facts, node->children[0]);
 				Value right = evaluate(analysis, facts, node->children[1]);
 				const CheckedNode* operand = found_at(analysis, node->children[0]);
-				return combine(analysis, facts, op, left, right, operand != nullptr && is_unsigned(operand->type));
+				Value result = combine(analysis, facts, op, left, right, operand != nullptr && is_unsigned(operand->type));
+				// Two terms added, like at + i: also the term that's exactly that sum
+				if (TokenType::OPERATOR_PLUS == op && left.known && right.known && ZERO != left.term && ZERO != right.term
+					&& 0 == left.offset && 0 == right.offset && 0 == left.spread && 0 == right.spread) {
+					result.sum = sum_term(analysis, left.term, right.term);
+				}
+				return result;
 			}
 			if (ast::NodeType::CAST == type) {
 				// auto_cast(x), and (x) before a chain, have no type before the value
@@ -1371,7 +1450,17 @@ namespace hemera {
 		}
 
 		// From x op y: what holds of their terms. A value spread over a range gives what holds for all of it.
+		void compare_values(Analysis& analysis, Facts& facts, TokenType op, const Value& left, const Value& right);
+
+		// left op right, and the same of any sum in it as itself, like at + i < count about at + i.
 		void compare(Analysis& analysis, Facts& facts, TokenType op, const Value& left, const Value& right) {
+			compare_values(analysis, facts, op, left, right);
+			if (left.sum.has_value() || right.sum.has_value()) {
+				compare_values(analysis, facts, op, as_sum(left), as_sum(right));
+			}
+		}
+
+		void compare_values(Analysis& analysis, Facts& facts, TokenType op, const Value& left, const Value& right) {
 			// x + c wraps for x near the top of its range, so it only says something about a bounded x
 			if ((left.known && left.offset + left.spread > 0 && !is_bounded(analysis, facts, left.term))
 				|| (right.known && right.offset + right.spread > 0 && !is_bounded(analysis, facts, right.term))) {
@@ -2254,7 +2343,7 @@ namespace hemera {
 	}
 
 	bool check_bounds(const CheckedBody& checked, ast::Node* body, TypeInfoFunction const* type, const std::string& file_path) {
-		Analysis analysis{ checked, type, file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0, {} };
+		Analysis analysis{ checked, type, file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0, {}, {} };
 		find_address_taken(analysis, body);
 		Facts facts;
 		walk_block(analysis, facts, body);

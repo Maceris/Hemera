@@ -218,3 +218,20 @@ tiles :: fn(grid: ptr[u8[64]]) -> u32 {
 floored :: fn(ring: ptr[int[16]], i: int) -> int {
     return ring[i %% 16]
 }
+
+// A sum of two terms compared as it is, then indexed by the same sum
+sum_written_out :: fn(into: mut u8[], at: usize) {
+    for i in cast[usize](0)..<4 {
+        if at + i < into.count {
+            into[at + i] = 1
+        }
+    }
+}
+
+// The count of a fixed array through a pointer is a constant
+through_pointer :: fn(p: ptr[u8[8]], i: usize) -> u8 {
+    if i < p.count {
+        return p[i]
+    }
+    return 0
+}

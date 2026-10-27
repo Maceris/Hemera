@@ -7241,6 +7241,110 @@ namespace hemera {
 		}
 	}
 
+	/*
+	 * A value's bytes, little-endian, each an i8 at its offset in bytes from at, for a constant that has no memory to
+	 * store it in, like a #union struct's literal: numbers by shifting, aggregates part by part, which LLVM folds into
+	 * constants. False for what has no bytes known before it's linked, like a pointer.
+	 */
+	static bool value_bytes(Generator& generator, mlir::Value value, TypeInfo const* type, size_t at, std::vector<mlir::Value>& bytes) {
+		type = base(type);
+		const TypeInfoVariant variant = type->variant;
+		if (TypeInfoVariant::INTEGER == variant || TypeInfoVariant::CHAR == variant || TypeInfoVariant::ENUM == variant
+			|| TypeInfoVariant::BOOLEAN == variant || TypeInfoVariant::FLOAT == variant) {
+			mlir::Type wide = integer_type(generator, type->size);
+			mlir::Value bits = value;
+			if (TypeInfoVariant::FLOAT == variant) {
+				bits = LLVM::BitcastOp::create(generator.builder, generator.loc, wide, value);
+			}
+			else if (value.getType().getIntOrFloatBitWidth() < type->size * 8) {
+				bits = LLVM::ZExtOp::create(generator.builder, generator.loc, wide, value);
+			}
+			for (size_t k = 0; k < type->size; ++k) {
+				mlir::Value shifted = k == 0 ? bits : static_cast<mlir::Value>(LLVM::LShrOp::create(generator.builder, generator.loc, bits,
+					constant_int(generator, wide, static_cast<int64_t>(8 * k))));
+				bytes[at + k] = type->size == 1 ? shifted
+					: static_cast<mlir::Value>(LLVM::TruncOp::create(generator.builder, generator.loc, integer_type(generator, 1), shifted));
+			}
+			return true;
+		}
+		if (TypeInfoVariant::STRUCT == variant) {
+			auto structure = static_cast<TypeInfoStruct const*>(type);
+			if (structure->is_union) {
+				for (size_t k = 0; k < type->size; ++k) {
+					bytes[at + k] = LLVM::ExtractValueOp::create(generator.builder, generator.loc, value,
+						llvm::ArrayRef<int64_t>{ 0, static_cast<int64_t>(k) });
+				}
+				return true;
+			}
+			llvm_type(generator, structure);
+			const std::vector<int64_t> elements = generator.member_elements[structure];
+			for (size_t i = 0; i < structure->members.size(); ++i) {
+				const StructMember& member = structure->members[i];
+				if (!value_bytes(generator, extract(generator, value, elements[i]), member.member_type, at + member.offset, bytes)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		if (TypeInfoVariant::ARRAY == variant && ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
+			auto array = static_cast<TypeInfoArray const*>(type);
+			for (size_t i = 0; i < array->count; ++i) {
+				if (!value_bytes(generator, extract(generator, value, static_cast<int64_t>(i)), array->element_type,
+					at + i * array->element_type->size, bytes)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	/*
+	 * A constant #union struct's literal: its bytes, zero but for what's given, each value written where its member
+	 * is, in order, so a later one overwrites what it overlaps, as in a function. Its defaults when nothing is given.
+	 */
+	static Emitted emit_union_constant(Generator& generator, ast::Node* node, TypeInfo* type, const std::vector<ast::Node*>& elements) {
+		auto structure = static_cast<TypeInfoStruct const*>(base(type));
+		std::vector<mlir::Value> bytes(type->size);
+		size_t position = 0;
+		const auto write = [&](ast::Node* where, mlir::Value part, TypeInfo* member_type, size_t offset) {
+			if (!value_bytes(generator, part, member_type, offset, bytes)) {
+				unsupported(generator, where, std::format("a constant #union struct's {} member can't be generated yet",
+					to_string(member_type)));
+			}
+		};
+		for (ast::Node* element : elements) {
+			const bool named = ast::NodeType::BINARY_OPERATOR == element->node_type && is_assign(element)
+				&& element->children.size() == 2;
+			size_t offset = 0;
+			TypeInfo* member_type = nullptr;
+			std::vector<int64_t> path;
+			if (named) {
+				find_member(generator, structure, element->children[0]->value.value, offset, member_type, path);
+			}
+			else {
+				offset = structure->members[position].offset;
+				member_type = structure->members[position].member_type;
+				++position;
+			}
+			write(element, emit_as(generator, named ? element->children[1] : element, member_type), member_type, offset);
+		}
+		if (elements.empty()) {
+			for (const StructMember& member : structure->members) {
+				if (member.has_value) {
+					write(node, default_of(generator, member), member.member_type, member.offset);
+				}
+			}
+		}
+		mlir::Value result = zero_of(generator, llvm_type(generator, type));
+		for (size_t k = 0; k < bytes.size(); ++k) {
+			if (bytes[k] != nullptr) {
+				result = insert(generator, result, bytes[k], { 0, static_cast<int64_t>(k) });
+			}
+		}
+		return value(result, type);
+	}
+
 	// Type.{values} or Type.{name = value}: built as a value, part by part.
 	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
 		// A vector's lanes, in order
@@ -7267,6 +7371,9 @@ namespace hemera {
 			if (ast::NodeType::LIST == child->node_type) {
 				elements.assign(child->children.begin(), child->children.end());
 			}
+		}
+		if (structure->is_union && !in_function(generator)) {
+			return emit_union_constant(generator, node, type, elements);
 		}
 		std::set<std::string> given;
 		size_t position = 0;
@@ -7788,12 +7895,12 @@ namespace hemera {
 			}
 			return tag_is(generator, address, type, index, true);
 		}
-		// A string matches one with the same bytes (docs/control_flow.md, Match and Switch); a cstring isn't compared yet
+		// A string matches one with the same bytes (docs/control_flow.md, Match and Switch); a cstring is refused when checked
 		if (TypeInfoVariant::STRING == type->variant && !static_cast<TypeInfoString const*>(type)->is_raw) {
 			return strings_equal(generator, load(generator, subject.type, address), emit_as(generator, pattern, subject.type));
 		}
 		if (TypeInfoVariant::STRING == type->variant) {
-			unsupported(generator, pattern, "matching cstrings can't be generated yet");
+			unsupported(generator, pattern, "a cstring isn't matched");
 			return boolean(generator, false);
 		}
 		mlir::Value v = load(generator, subject.type, address);

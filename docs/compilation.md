@@ -164,7 +164,8 @@ main :: fn() -> int {
 * **In a generic function's body**, each instance has a tree of its own, so what's inserted is worked out with that
   instance's types and values, like `T` and `capacity` in `fn[T, capacity: usize]`. A constrained generic whose body
   inserts code is checked at its instances, rather than once before them (see [types.md](types.md#checked-bodies)).
-  `#insert` in a generic type isn't supported yet.
+  So does a generic type's instance, for `#insert` among its fields or variants, which can use its parameters, like
+  `value : T` in `struct[T]`.
 
 ### Declarations, Members and Cases
 

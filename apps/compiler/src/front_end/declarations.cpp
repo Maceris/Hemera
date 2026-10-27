@@ -2314,8 +2314,9 @@ namespace hemera {
 
 	Progress compute_instance(Walk& walk, Declaration* instance) {
 		ast::Node* value = generic_node(instance->generic != nullptr ? instance->generic : instance);
-		// Bind the generic parameters to the instance's arguments
-		walk.generic_types.clear();
+		// Bind the generic parameters to the instance's arguments, with a function's around one declared in it
+		walk.generic_types = instance->outer_generic_types;
+		walk.generic_values = instance->outer_generic_values;
 		size_t index = 0;
 		for (ast::Node* child : value->children) {
 			if (ast::NodeType::GENERIC_TAG != child->node_type) {
@@ -2373,9 +2374,11 @@ namespace hemera {
 		if (TypeInfoVariant::ALIAS == instance->type_value->variant) {
 			return alias_body(walk, instance->node, static_cast<TypeInfoAlias*>(instance->type_value));
 		}
+		// A type with a tree of its own, whose members it inserted, lays that out
+		ast::Node* members = instance->generic != nullptr && instance->node != instance->generic->node ? generic_node(instance) : value;
 		if (TypeInfoVariant::STRUCT == instance->type_value->variant) {
-			return struct_body(walk, value, static_cast<TypeInfoStruct*>(instance->type_value));
+			return struct_body(walk, members, static_cast<TypeInfoStruct*>(instance->type_value));
 		}
-		return union_body(walk, value, static_cast<TypeInfoUnion*>(instance->type_value));
+		return union_body(walk, members, static_cast<TypeInfoUnion*>(instance->type_value));
 	}
 }

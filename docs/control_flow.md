@@ -243,7 +243,7 @@ The cases can be any of these types:
 
 * Integer (including ranges)
 * Character (including ranges)
-* String
+* String (a `string`, which knows its length; a `cstring` is made one first, with std's `c_string.to_string`)
 * Enums
 * Unions
 * Boolean
@@ -464,7 +464,7 @@ Like C, a case runs every statement up to the next case, so a case with several 
 The cases can be any of these types:
 * Integer (including ranges)
 * Character (including ranges)
-* String
+* String (a `string`, which knows its length; a `cstring` is made one first, with std's `c_string.to_string`)
 * Enums
 
 Example:

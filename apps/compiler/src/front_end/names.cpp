@@ -1447,25 +1447,25 @@ namespace hemera {
 		};
 		// A function or a type declared inside a function: like one at the top level, from its own definition
 		walk.local_types = instance->local_types;
+		// In a generic's instance, its generic parameters are names it sees, as in the generic's own body
+		walk.generic_types = instance->outer_generic_types;
+		walk.generic_values = instance->outer_generic_values;
+		for (const auto& [name, type] : walk.generic_types) {
+			walk.locals.push_back(intern(name));
+		}
+		for (const auto& [name, value] : walk.generic_values) {
+			walk.locals.push_back(intern(name));
+		}
 		if (instance->generic == nullptr) {
-			// In a generic's instance, its generic parameters are names it sees, as in the generic's own body
-			walk.generic_types = instance->outer_generic_types;
-			walk.generic_values = instance->outer_generic_values;
-			for (const auto& [name, type] : walk.generic_types) {
-				walk.locals.push_back(intern(name));
-			}
-			for (const auto& [name, value] : walk.generic_values) {
-				walk.locals.push_back(intern(name));
-			}
 			Progress walked = walk_definition(walk, instance->node);
 			if (Progress::DONE == walked) {
 				walked = compute_declaration(walk, { instance }, instance->node);
 			}
 			return finish_resolving(executor, { instance }, walked);
 		}
-		// The generic's own names, with its parameters as locals, then its types with them bound
+		// The generic's own names, with its parameters as locals, then its types with them bound; its tree, or its own
 		const Declaration* generic = instance->generic != nullptr ? instance->generic : instance;
-		ast::Node* value = generic_node(generic);
+		ast::Node* value = generic_node(instance->node != generic->node ? instance : generic);
 		Progress progress = Progress::FAILED;
 		if (is_early_instance(instance)) {
 			Progress promised = promise_archetypes(walk, instance);
@@ -1642,11 +1642,16 @@ namespace hemera {
 			instance->package_path = generic->package_path;
 			instance->file_name = generic->file_name;
 			instance->file = generic->file;
+			// One declared in a function sees what its generic does there
+			instance->local_types = generic->local_types;
+			instance->outer_generic_types = generic->outer_generic_types;
+			instance->outer_generic_values = generic->outer_generic_values;
 			/*
-			 * A function whose body inserts code, with #insert or a macro call, has a tree of its own for each instance,
-			 * since inserting changes the tree in place (docs/compilation.md, Code Values)
+			 * A function whose body inserts code, with #insert or a macro call, or a type whose members do, has a tree of
+			 * its own for each instance, since inserting changes the tree in place (docs/compilation.md, Code Values)
 			 */
-			if (DeclarationKind::FUNCTION == generic->kind && inserts_code(generic->node)) {
+			if ((DeclarationKind::FUNCTION == generic->kind || DeclarationKind::GENERIC_TYPE == generic->kind)
+				&& inserts_code(generic->node)) {
 				ProgramInfo* program = walk.executor.program_info;
 				std::unique_lock<std::mutex> making = program->made_nodes.hold();
 				instance->node = copy_tree(program, generic->node);
@@ -2010,10 +2015,18 @@ namespace hemera {
 			if (ast::NodeType::DIRECTIVE != insert->node_type || !is_text(insert->value.value, "#insert") || insert->children.empty()) {
 				continue;
 			}
-			// A generic type's instances share its tree, which an insertion would change for all of them
+			/*
+			 * A generic type's instance inserts into a tree of its own, with its arguments; the generic's own tree is
+			 * what each instance copies, so it's left as it is. Anything else in a generic shares its tree.
+			 */
 			const bool generic = std::any_of(node->children.begin(), node->children.end(),
 				[](const ast::Node* child) { return ast::NodeType::GENERIC_TAG == child->node_type; });
-			if (generic || !walk.generic_types.empty()) {
+			const Declaration* owner = walk.owner;
+			const bool own_tree = owner != nullptr && owner->generic != nullptr && owner->node != owner->generic->node;
+			if (generic && !own_tree) {
+				return Progress::DONE;
+			}
+			if (!own_tree && !walk.generic_types.empty()) {
 				report_at(ErrorCode::E4024, walk.file_path, &program->made_nodes, insert, "#insert in a generic type isn't supported yet");
 				return Progress::FAILED;
 			}

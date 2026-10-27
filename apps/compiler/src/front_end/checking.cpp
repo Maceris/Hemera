@@ -2684,6 +2684,26 @@ namespace hemera {
 	 * A name and what follows it, flat: .member, (arguments), [index] or [type arguments], and ^.
 	 * A type with brackets after it, like ptr[int] or Pair[int, string], is a type.
 	 */
+	/*
+	 * A chain's head and the brackets after it, like Result[T, E] of Result[T, E].Error(e), as a node of its own:
+	 * a generic function's instances share its tree, and may be checked at once, so it isn't cut in place.
+	 */
+	static ast::Node* head_alone(Checker& checker, ast::Node* node, size_t end) {
+		ast::NodeStore& made = checker.walk.executor.program_info->made_nodes;
+		std::unique_lock<std::mutex> making = made.hold();
+		ast::Node* head = made.make(node->node_type, node->value);
+		head->parent = node->parent;
+		head->type = node->type;
+		// Where it was written, for a name a macro wrote to be looked up there (docs/compilation.md, Macros)
+		if (std::shared_ptr<const ast::Origin> origin = made.origin(node)) {
+			made.set_origin(head, origin);
+		}
+		for (size_t i = 0; i < end; ++i) {
+			head->children.push_back(node->children[i]);
+		}
+		return head;
+	}
+
 	static Progress check_postfix(Checker& checker, ast::Node* node, Value& value) {
 		size_t next = 0;
 		Progress progress = check_name(checker, node, value, next);
@@ -2714,11 +2734,8 @@ namespace hemera {
 				++end;
 			}
 			if (end < node->children.size()) {
-				std::vector<ast::Node*> chain(node->children.begin() + static_cast<std::ptrdiff_t>(end), node->children.end());
-				node->children.erase(node->children.begin() + static_cast<std::ptrdiff_t>(end), node->children.end());
 				TypeInfo* type = nullptr;
-				progress = check_type(checker, node, Need::DECLARED, type);
-				node->children.insert(node->children.end(), chain.begin(), chain.end());
+				progress = check_type(checker, head_alone(checker, node, end), Need::DECLARED, type);
 				if (progress == Progress::FAILED) {
 					value = poisoned();
 					return Progress::DONE;
@@ -4927,12 +4944,6 @@ namespace hemera {
 			error_at(checker, ErrorCode::E4018, definition, "a type declared inside a function has one name");
 			return Progress::DONE;
 		}
-		for (const ast::Node* child : parts.value->children) {
-			if (ast::NodeType::GENERIC_TAG == child->node_type) {
-				error_at(checker, ErrorCode::E4024, parts.value, "a generic type declared inside a function isn't supported yet");
-				return Progress::DONE;
-			}
-		}
 		Declaration* local = nested_declaration(checker.walk, definition);
 		Progress progress = require_resolved(checker.walk, definition, local, Need::RESOLVED);
 		if (progress == Progress::FAILED) {
@@ -5001,6 +5012,10 @@ namespace hemera {
 					require_fit(checker, value, type, parts.value, text_of(parts.names[i]->value.value));
 				}
 				value = typed(type);
+			}
+			// A variant without values, like Maybe[int].Empty, is a value of its union
+			else if (ValueKind::VARIANT == value.kind && takes_no_values(value)) {
+				value = typed(value.type);
 			}
 			else if (ValueKind::NOTHING == value.kind || ValueKind::PACKAGE == value.kind
 				|| ValueKind::BUILTIN_FUNCTION == value.kind || ValueKind::VARIANT == value.kind) {
@@ -5595,8 +5610,15 @@ namespace hemera {
 		}
 		const TypeInfoVariant variant = type->variant;
 		return TypeInfoVariant::INTEGER == variant || TypeInfoVariant::CHAR == variant
-			|| TypeInfoVariant::STRING == variant || TypeInfoVariant::ENUM == variant
-			|| TypeInfoVariant::BOOLEAN == variant || (unions && TypeInfoVariant::UNION == variant);
+			|| (TypeInfoVariant::STRING == variant && !static_cast<TypeInfoString const*>(type)->is_raw)
+			|| TypeInfoVariant::ENUM == variant || TypeInfoVariant::BOOLEAN == variant
+			|| (unions && TypeInfoVariant::UNION == variant);
+	}
+
+	// A cstring, which match and switch don't go through: a string, which knows its length, does.
+	static bool is_cstring_subject(const Value& subject) {
+		TypeInfo const* type = ValueKind::VALUE == subject.kind ? base_of(subject.type) : nullptr;
+		return type != nullptr && TypeInfoVariant::STRING == type->variant && static_cast<TypeInfoString const*>(type)->is_raw;
 	}
 
 	/*
@@ -5669,7 +5691,11 @@ namespace hemera {
 			return progress;
 		}
 		require_public(checker, node->children[0], "which arm of a match runs");
-		if (!can_match_on(subject, true)) {
+		if (is_cstring_subject(subject)) {
+			error_at(checker, ErrorCode::E4020, node->children[0],
+				"match doesn't go through a cstring: make it a string, which knows its length, with std's c_string.to_string, and match that");
+		}
+		else if (!can_match_on(subject, true)) {
 			error_at(checker, ErrorCode::E4020, node->children[0], std::format("match goes through integers, characters, strings, enums, unions and booleans, not {}",
 				describe(subject)));
 		}
@@ -5756,7 +5782,11 @@ namespace hemera {
 			return progress;
 		}
 		require_public(checker, node->children[0], "which case of a switch runs");
-		if (!can_match_on(subject, false)) {
+		if (is_cstring_subject(subject)) {
+			error_at(checker, ErrorCode::E4020, node->children[0],
+				"switch doesn't go through a cstring: make it a string, which knows its length, with std's c_string.to_string, and switch on that");
+		}
+		else if (!can_match_on(subject, false)) {
 			error_at(checker, ErrorCode::E4020, node->children[0], std::format("switch goes through integers, characters, strings and enums, not {}",
 				describe(subject)));
 		}

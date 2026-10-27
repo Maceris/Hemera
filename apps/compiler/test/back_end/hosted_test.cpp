@@ -525,6 +525,33 @@ TEST(Hosted, ComputesValues)
 	run_hosted("compute_blocks", hemera::TargetStackCheck::Off);
 }
 
+// docs/compilation.md, Code Values: #insert among a generic struct's fields and a generic union's variants.
+TEST(Hosted, InsertsIntoGenericTypes)
+{
+	run_hosted("generic_type_insertions", hemera::TargetStackCheck::Off);
+}
+
+/*
+ * docs/types.md, Types Declared in Functions: generic types declared in a function, generic or not, using the
+ * function's parameters, with two of its instances checked at once.
+ */
+TEST(Hosted, DeclaresGenericTypesInFunctions)
+{
+	run_hosted("local_generic_types", hemera::TargetStackCheck::Off);
+}
+
+// std's c_string: a cstring's length and text, looking no further than a limit for its zero.
+TEST(Hosted, ReadsCStringsWithinALimit)
+{
+	run_hosted("c_strings", hemera::TargetStackCheck::Off);
+}
+
+// docs/types.md, Structs (#union): constants of #union structs, given members overlapping others.
+TEST(Hosted, MakesUnionConstants)
+{
+	run_hosted("union_constants", hemera::TargetStackCheck::Off);
+}
+
 // docs/operators.md, Optional operators: a member, an element or a chain of them after ?, like f()?.x.
 TEST(Hosted, ReadsWhatUnwrapGives)
 {

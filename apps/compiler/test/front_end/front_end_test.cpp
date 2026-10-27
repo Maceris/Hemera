@@ -836,7 +836,6 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "mut_view_pointer_read_only", hemera::ErrorCode::E4016 },
 		// docs/types.md, Types Declared in Functions
 		{ "local_type_outside_block", hemera::ErrorCode::E4008 },
-		{ "local_type_generic", hemera::ErrorCode::E4024 },
 		{ "stack_scoped_in_array_field", hemera::ErrorCode::E4014 },
 		// Known before the struct's body is, which a slow #insert holds back
 		{ "scoped_known_before_body", hemera::ErrorCode::E4014 },
@@ -867,6 +866,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_field_grown", hemera::ErrorCode::E4031 },
 		{ "bounds_field_aliased", hemera::ErrorCode::E4031 },
 		{ "bounds_index_changed", hemera::ErrorCode::E4031 },
+		{ "bounds_sum_changed", hemera::ErrorCode::E4031 },
 		{ "bounds_element_changed", hemera::ErrorCode::E4031 },
 		{ "bounds_difference_wraps", hemera::ErrorCode::E4031 },
 		{ "bounds_signed_modulus", hemera::ErrorCode::E4031 },
@@ -881,7 +881,6 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "insert_undeclared_in_code", hemera::ErrorCode::E4008 },
 		{ "insert_top_level_expression", hemera::ErrorCode::E4014 },
 		{ "insert_wrong_members", hemera::ErrorCode::E4014 },
-		{ "insert_in_generic_type", hemera::ErrorCode::E4024 },
 		{ "insert_needs_itself", hemera::ErrorCode::E4007 },
 		{ "insert_shadows_builtin", hemera::ErrorCode::E4012 },
 		{ "name_not_identifier", hemera::ErrorCode::E4029 },
@@ -914,7 +913,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "give_outside_compute", hemera::ErrorCode::E4022 },
 		{ "compute_falls_through", hemera::ErrorCode::E4019 },
 		{ "give_in_defer", hemera::ErrorCode::E4022 },
-		{ "give_wrong_type", hemera::ErrorCode::E4015 }
+		{ "give_wrong_type", hemera::ErrorCode::E4015 },
+		// docs/control_flow.md, Match
+		{ "match_on_cstring", hemera::ErrorCode::E4020 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;
