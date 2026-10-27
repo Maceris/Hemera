@@ -150,13 +150,22 @@ finish_argument :: fn(bytes #escaping : mut u8[], arguments: mut string[], count
     return count + 1
 }
 
-// Bytes up to the first 0, as a string, without copying.
-cstring_view :: fn(start: rawptr) -> string {
+// The longest argument or environment string Linux passes a program, with its 0 (MAX_ARG_STRLEN).
+ARGUMENT_TEXT_LIMIT :: 131072
+
+/*
+ * Bytes up to the first 0, as a string, without copying, looking at no more than limit of them: None if there's no 0
+ * among them, so what isn't text ending where it should isn't read on past where it could end. Empty for null.
+ */
+cstring_view :: fn(start: rawptr, limit: usize) -> string? {
     if start == null {
         return ""
     }
     length : usize = 0
     loop {
+        if length >= limit {
+            return null
+        }
         if cast[ptr[u8]](start + length)^ == 0 {
             break
         }

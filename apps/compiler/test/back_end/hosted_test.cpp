@@ -649,6 +649,11 @@ TEST(Hosted, UsesStdLibrary)
  */
 TEST(Hosted, UsesFilesAndArguments)
 {
+	// What a run that stopped part way left behind, which the program would find already there
+	for (const char* left : { "hemera_files_test", "hemera_directory_test", "hemera_directory_moved" }) {
+		std::error_code ignored;
+		std::filesystem::remove_all(left, ignored);
+	}
 	_wputenv_s(L"HEMERA_FILES_TEST", L"h\u00e9llo");
 	run_hosted("files", hemera::TargetStackCheck::Off, 42, "alpha \"two words\" \"\"");
 	_wputenv_s(L"HEMERA_FILES_TEST", L"");

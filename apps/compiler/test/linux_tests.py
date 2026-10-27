@@ -77,6 +77,16 @@ TESTS = [
     ("assertion", [], 134),
     # The same with debug info, its frames named and symbolized from its DWARF
     ("assertion_debug", ["--debug"], 134),
+    # Compute blocks, what a function gives back pointers from, ?.member, secrets in optionals and results, generic
+    # types inserting code and declared in functions, #union constants, and C strings within a limit
+    ("compute_blocks", [], 42),
+    ("returns_from_heap", [], 42),
+    ("unwrap_member", [], 42),
+    ("secret_holders", [], 42),
+    ("generic_type_insertions", [], 42),
+    ("local_generic_types", [], 42),
+    ("union_constants", [], 42),
+    ("c_strings", [], 42),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--stack-check=morestack", "SYSROOT"], 42),
 ]

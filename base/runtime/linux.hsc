@@ -116,7 +116,7 @@ import intrinsics from "base"
             return empty
         }
         for &argument, index in arguments {
-            argument^ = cstring_view(cast[ptr[rawptr]](state.argument_pointers + index * 8)^)
+            argument^ = cstring_view(cast[ptr[rawptr]](state.argument_pointers + index * 8)^, ARGUMENT_TEXT_LIMIT) or_else ""
         }
         return arguments
     }

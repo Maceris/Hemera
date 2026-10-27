@@ -135,7 +135,7 @@ import runtime from "base"
                 break
             }
             index += 1
-            text :: runtime.cstring_view(entry)
+            text :: runtime.cstring_view(entry, runtime.ARGUMENT_TEXT_LIMIT) or_continue
             // name=value
             if text.count > name.count && text[name.count] == '=' {
                 matches := true
@@ -391,12 +391,13 @@ import runtime from "base"
                 }
                 record :: start + offset
                 length :: cast[usize](cast[ptr[u16]](record + 16)^)
-                kind :: cast[ptr[u8]](record + 18)^
-                name :: runtime.cstring_view(record + 19)
-                offset += length
-                if length == 0 {
+                // A record holds its name and that name's 0 after the 19 bytes before it
+                if length <= 19 || offset + length > cast[usize](filled) {
                     return OsError.Other
                 }
+                kind :: cast[ptr[u8]](record + 18)^
+                name :: runtime.cstring_view(record + 19, length - 19) or_return OsError.Other
+                offset += length
                 if (name.count == 1 && name[0] == '.') || (name.count == 2 && name[0] == '.' && name[1] == '.') {
                     continue
                 }
