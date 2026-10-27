@@ -263,11 +263,24 @@ namespace hemera {
 		}
 
 		// A loop, or a switch, which break leaves: what's known where each break and continue is.
+		// A loop, a switch, or a compute block, whose gives are its breaks, and which break and continue pass through.
 		struct LoopFrame {
 			std::vector<Facts> breaks;
 			std::vector<Facts> continues;
 			bool is_switch = false;
+			bool computes = false;
 		};
+
+		// The loops and switches, innermost last, past the compute blocks between.
+		std::vector<LoopFrame*> breakables_of(std::vector<LoopFrame>& loops) {
+			std::vector<LoopFrame*> result;
+			for (LoopFrame& frame : loops) {
+				if (!frame.computes) {
+					result.push_back(&frame);
+				}
+			}
+			return result;
+		}
 
 		struct Analysis {
 			const CheckedBody& checked;
@@ -1238,12 +1251,13 @@ namespace hemera {
 					evaluate(analysis, facts, child);
 				}
 				// x or_break and x or_continue leave with what's known here, as break and continue do
-				if (TokenType::KEYWORD_OR_BREAK == node->value.type && !analysis.loops.empty()) {
-					analysis.loops.back().breaks.push_back(facts);
+				std::vector<LoopFrame*> breakables = breakables_of(analysis.loops);
+				if (TokenType::KEYWORD_OR_BREAK == node->value.type && !breakables.empty()) {
+					breakables.back()->breaks.push_back(facts);
 				}
 				else if (TokenType::KEYWORD_OR_CONTINUE == node->value.type) {
 					for (auto frame = analysis.loops.rbegin(); frame != analysis.loops.rend(); ++frame) {
-						if (!frame->is_switch) {
+						if (!frame->is_switch && !frame->computes) {
 							frame->continues.push_back(facts);
 							break;
 						}
@@ -1304,6 +1318,21 @@ namespace hemera {
 			}
 			if (ast::NodeType::MATCH == type) {
 				walk_statement(analysis, facts, node);
+				return Value{};
+			}
+			// compute[T] { ... }: its block, left by give with what's known there, joined after it
+			if (ast::NodeType::COMPUTE == type && node->children.size() == 2) {
+				LoopFrame compute;
+				compute.computes = true;
+				analysis.loops.push_back(std::move(compute));
+				walk_block(analysis, facts, node->children[1]);
+				LoopFrame frame = std::move(analysis.loops.back());
+				analysis.loops.pop_back();
+				Facts after = unreachable();
+				for (const Facts& each : frame.breaks) {
+					after = join(analysis, after, each);
+				}
+				facts = after;
 				return Value{};
 			}
 			if (ast::NodeType::DIRECTIVE == type) {
@@ -2085,21 +2114,34 @@ namespace hemera {
 				}
 				facts = unreachable();
 			}
+			else if (ast::NodeType::GIVE == type) {
+				for (ast::Node* child : statement->children) {
+					evaluate(analysis, facts, child);
+				}
+				for (auto frame = analysis.loops.rbegin(); frame != analysis.loops.rend(); ++frame) {
+					if (frame->computes) {
+						frame->breaks.push_back(facts);
+						break;
+					}
+				}
+				facts = unreachable();
+			}
 			else if (ast::NodeType::BREAK == type) {
+				std::vector<LoopFrame*> breakables = breakables_of(analysis.loops);
 				size_t depth = 1;
 				if (!statement->children.empty()) {
 					const ast::Node* count = statement->children[0];
-					depth = ast::NodeType::KEYWORD_ALL == count->node_type ? analysis.loops.size()
+					depth = ast::NodeType::KEYWORD_ALL == count->node_type ? breakables.size()
 						: static_cast<size_t>(std::strtoull(text_of(count->value.value).c_str(), nullptr, 10));
 				}
-				if (depth >= 1 && depth <= analysis.loops.size()) {
-					analysis.loops[analysis.loops.size() - depth].breaks.push_back(facts);
+				if (depth >= 1 && depth <= breakables.size()) {
+					breakables[breakables.size() - depth]->breaks.push_back(facts);
 				}
 				facts = unreachable();
 			}
 			else if (ast::NodeType::CONTINUE == type) {
 				for (auto frame = analysis.loops.rbegin(); frame != analysis.loops.rend(); ++frame) {
-					if (!frame->is_switch) {
+					if (!frame->is_switch && !frame->computes) {
 						frame->continues.push_back(facts);
 						break;
 					}

@@ -516,6 +516,15 @@ TEST(Hosted, ReturnsFromTheHeap)
 	run_hosted("returns_from_heap", hemera::TargetStackCheck::Off);
 }
 
+/*
+ * docs/control_flow.md, Compute Blocks: give from loops and nested blocks, break and continue passing through, what's
+ * deferred running as give leaves, or_else's fallback that returns, and a match arm's value.
+ */
+TEST(Hosted, ComputesValues)
+{
+	run_hosted("compute_blocks", hemera::TargetStackCheck::Off);
+}
+
 // docs/operators.md, Optional operators: a member, an element or a chain of them after ?, like f()?.x.
 TEST(Hosted, ReadsWhatUnwrapGives)
 {

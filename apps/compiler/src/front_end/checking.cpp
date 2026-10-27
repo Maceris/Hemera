@@ -56,6 +56,10 @@ namespace hemera {
 		/// </summary>
 		size_t breakables = 0;
 		/// <summary>
+		/// The type of each compute block it's in, innermost last, for give (docs/control_flow.md, Compute Blocks).
+		/// </summary>
+		std::vector<TypeInfo*> computes;
+		/// <summary>
 		/// Whether there's a context: false in entry points until they push one.
 		/// </summary>
 		bool has_context = true;
@@ -741,6 +745,8 @@ namespace hemera {
 	// Expressions
 
 	static Progress check_expression(Checker& checker, ast::Node* node, TypeInfo* expected, Value& result);
+	static Progress check_compute(Checker& checker, ast::Node* node, Value& result);
+	static Progress check_give(Checker& checker, ast::Node* node);
 	static Progress check_block(Checker& checker, ast::Node* block, bool& continues, Value* last_value,
 		TypeInfo* expected);
 	static Progress check_statement(Checker& checker, ast::Node* statement, bool& continues);
@@ -4322,6 +4328,9 @@ namespace hemera {
 		if (ast::NodeType::PAREN_GROUP == type && node->children.size() == 1) {
 			return check_expression(checker, node->children[0], expected, result);
 		}
+		if (ast::NodeType::COMPUTE == type) {
+			return check_compute(checker, node, result);
+		}
 		if (ast::NodeType::CAST == type) {
 			return check_cast(checker, node, expected, result);
 		}
@@ -5030,6 +5039,65 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	/*
+	 * compute[T] { ... }: a block that runs and gives a value of type T with give, every path through it giving one or
+	 * leaving, by return, break, continue or a call that never returns (docs/control_flow.md, Compute Blocks).
+	 */
+	static Progress check_compute(Checker& checker, ast::Node* node, Value& result) {
+		if (node->children.size() != 2) {
+			result = error_at(checker, ErrorCode::E4020, node, "compute needs a type and a block");
+			return Progress::DONE;
+		}
+		TypeInfo* type = nullptr;
+		Progress progress = check_type(checker, node->children[0], Need::RESOLVED, type);
+		if (progress == Progress::FAILED || type == nullptr) {
+			result = poisoned();
+			return Progress::DONE;
+		}
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		checker.computes.push_back(type);
+		bool continues = true;
+		push_scope(checker);
+		progress = check_block(checker, node->children[1], continues, nullptr, nullptr);
+		pop_scope(checker);
+		checker.computes.pop_back();
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		if (continues) {
+			error_at(checker, ErrorCode::E4019, node->children[1],
+				"this compute block can finish without giving its value: end every path with give, or leave it");
+		}
+		result = typed(type);
+		return Progress::DONE;
+	}
+
+	// give x: the innermost compute block's value, which it leaves.
+	static Progress check_give(Checker& checker, ast::Node* node) {
+		if (checker.computes.empty()) {
+			error_at(checker, ErrorCode::E4022, node, "give is only in a compute block");
+			return Progress::DONE;
+		}
+		TypeInfo* type = checker.computes.back();
+		if (node->children.size() != 1) {
+			error_at(checker, ErrorCode::E4004, node, "give gives one value");
+			return Progress::DONE;
+		}
+		Value value;
+		Progress progress = check_expression(checker, node->children[0], type, value);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		if (ValueKind::POISONED == value.kind) {
+			return Progress::DONE;
+		}
+		require_fit(checker, value, type, node->children[0], "the value given");
+		require_secret_fits(checker, value.is_secret, type, false, node->children[0], "the compute block's value");
+		return Progress::DONE;
+	}
+
 	static Progress check_return(Checker& checker, ast::Node* node) {
 		if (checker.function == nullptr) {
 			error_at(checker, ErrorCode::E4020, node, "return is only in a function");
@@ -5636,7 +5704,7 @@ namespace hemera {
 					progress = check_block(checker, outcome, arm_continues, result != nullptr ? &value : nullptr, type);
 					pop_scope(checker);
 				}
-				else if (ast::NodeType::RETURN == outcome_type || ast::NodeType::BREAK == outcome_type
+				else if (ast::NodeType::RETURN == outcome_type || ast::NodeType::GIVE == outcome_type || ast::NodeType::BREAK == outcome_type
 					|| ast::NodeType::CONTINUE == outcome_type || is_assignment(outcome)) {
 					progress = check_statement(checker, outcome, arm_continues);
 				}
@@ -5855,6 +5923,10 @@ namespace hemera {
 			continues = false;
 			return check_return(checker, statement);
 		}
+		if (ast::NodeType::GIVE == type) {
+			continues = false;
+			return check_give(checker, statement);
+		}
 		if (ast::NodeType::BREAK == type || ast::NodeType::CONTINUE == type) {
 			continues = false;
 			const size_t available = ast::NodeType::BREAK == type ? checker.breakables : checker.loops;
@@ -5886,12 +5958,17 @@ namespace hemera {
 		}
 		if (ast::NodeType::DEFER == type) {
 			bool ignored = true;
+			// What's deferred runs as a block is left, so it can't give the block's value
+			std::vector<TypeInfo*> computes;
+			computes.swap(checker.computes);
 			for (ast::Node* deferred : statement->children) {
 				Progress progress = check_statement(checker, deferred, ignored);
 				if (progress != Progress::DONE) {
+					computes.swap(checker.computes);
 					return progress;
 				}
 			}
+			computes.swap(checker.computes);
 			return Progress::DONE;
 		}
 		if (ast::NodeType::BLOCK == type) {
@@ -6086,7 +6163,7 @@ namespace hemera {
 			}
 			const bool is_last = i + 1 == block->children.size();
 			if (is_last && last_value != nullptr && ast::NodeType::DEFINITION != statement->node_type
-				&& !is_assignment(statement) && ast::NodeType::RETURN != statement->node_type
+				&& !is_assignment(statement) && ast::NodeType::RETURN != statement->node_type && ast::NodeType::GIVE != statement->node_type
 				&& ast::NodeType::BREAK != statement->node_type && ast::NodeType::CONTINUE != statement->node_type
 				&& ast::NodeType::FOR_LOOP != statement->node_type && ast::NodeType::LOOP != statement->node_type
 				&& ast::NodeType::BLOCK != statement->node_type) {

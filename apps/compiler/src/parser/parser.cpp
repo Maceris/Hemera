@@ -218,6 +218,7 @@ namespace hemera::parser {
 			|| TokenType::KEYWORD_TRUE == type
 			|| TokenType::KEYWORD_FALSE == type
 			|| TokenType::KEYWORD_NULL == type
+			|| TokenType::KEYWORD_COMPUTE == type
 			|| TokenType::KEYWORD_CAST == type
 			|| TokenType::KEYWORD_BIT_CAST == type
 			|| TokenType::KEYWORD_AUTO_CAST == type
@@ -1584,6 +1585,7 @@ namespace hemera::parser {
 		switch (current_token(state).type) {
 		case TokenType::IDENTIFIER:
 		case TokenType::KEYWORD_NULL:
+		case TokenType::KEYWORD_COMPUTE:
 		case TokenType::KEYWORD_CAST:
 		case TokenType::KEYWORD_BIT_CAST:
 		case TokenType::KEYWORD_AUTO_CAST:
@@ -1637,6 +1639,17 @@ namespace hemera::parser {
 					ret.children.push_back(another_expr.result);
 				}
 			}
+			return true;
+		}
+		case TokenType::KEYWORD_GIVE:
+		{
+			// give x: the innermost compute block's value, and leaving it
+			ast::Node& give = next_as_node(state, ast::NodeType::GIVE, &parent);
+			ExprResult expr = expression_with_result(state, true);
+			if (!expr.success) {
+				return false;
+			}
+			give.children.push_back(expr.result);
 			return true;
 		}
 		case TokenType::KEYWORD_DEFER:
@@ -2683,6 +2696,9 @@ namespace hemera::parser {
 			|| current == TokenType::KEYWORD_AUTO_CAST) {
 			return cast_expression(state);
 		}
+		if (current == TokenType::KEYWORD_COMPUTE) {
+			return compute_expression(state);
+		}
 		// .{...}: a struct literal of the type expected there
 		if (current == TokenType::SYM_DOT && TokenType::SYM_LBRACE == next_token(state).type) {
 			return struct_literal(state);
@@ -3388,6 +3404,36 @@ namespace hemera::parser {
 		return true;
 	}
 	
+	// compute[T] { ... }: its type, then its block, in which give gives its value.
+	ExprResult compute_expression(ParserState* state) {
+		ast::Node* root = &next_as_node(state, ast::NodeType::COMPUTE);
+		const Token& lbrack = current_token(state);
+		if (!skip(state, TokenType::SYM_LBRACK)) {
+			report_error_on_last_token(state, ErrorCode::E3011);
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+		ExprResult type_result = type(state);
+		if (!type_result.success) {
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+		root->children.push_back(type_result.result);
+		if (!skip(state, TokenType::SYM_RBRACK)) {
+			report_error_on_last_token(state, ErrorCode::E3012,
+				std::format("Opening bracket was at ({},{})", lbrack.line_number, lbrack.column_number));
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+		ExprResult body = block(state);
+		if (!body.success) {
+			delete_node(state->node_alloc, root);
+			return ExprResult{ false };
+		}
+		root->children.push_back(body.result);
+		return ExprResult{ true, root };
+	}
+
 	ExprResult cast_expression(ParserState* state) {
 		const TokenType current_token_type = current_token(state).type;
 		

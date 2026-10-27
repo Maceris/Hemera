@@ -107,6 +107,7 @@ namespace hemera::parser {
 	bool literal_type(ParserState* state, ast::Node& literal);
 	bool function_call(ParserState* state, ast::Node& parent);
 	bool function_call_input_list(ParserState* state, ast::Node& parent);
+	ExprResult compute_expression(ParserState* state);
 	ExprResult cast_expression(ParserState* state);
 	ExprResult code_quote(ParserState* state, ast::Node& quote);
 	ExprResult insert_operand(ParserState* state);

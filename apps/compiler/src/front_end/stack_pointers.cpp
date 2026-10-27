@@ -328,6 +328,8 @@ namespace hemera {
 			const ReturnSources& sources;
 			// Which of its own parameters it gives back pointers from, found as it's walked
 			std::vector<bool> returns_from;
+			// The compute blocks being walked, innermost last: what's given each, and its type
+			std::vector<std::pair<Reach, TypeInfo*>> computes;
 			std::unordered_map<const void*, Variable> variables;
 			// A match arm's values, which are where they are in what's matched
 			std::unordered_map<const void*, Place> aliases;
@@ -1155,7 +1157,7 @@ namespace hemera {
 				if (ast::NodeType::BLOCK == outcome_type) {
 					result = join(result, walk_block(analysis, outcome, type, as_value));
 				}
-				else if (ast::NodeType::RETURN == outcome_type || ast::NodeType::BREAK == outcome_type
+				else if (ast::NodeType::RETURN == outcome_type || ast::NodeType::GIVE == outcome_type || ast::NodeType::BREAK == outcome_type
 					|| ast::NodeType::CONTINUE == outcome_type || is_assignment(outcome) || !as_value) {
 					walk_statement(analysis, outcome);
 				}
@@ -1234,6 +1236,14 @@ namespace hemera {
 			}
 			if (ast::NodeType::IF == type) {
 				return value_of_type(walk_if(analysis, node, result_type, true), result_type);
+			}
+			// compute[T] { ... }: what every give in it gives
+			if (ast::NodeType::COMPUTE == type && node->children.size() == 2) {
+				analysis.computes.emplace_back(Reach{}, result_type);
+				walk_block(analysis, node->children[1], nullptr, false);
+				Reach given = analysis.computes.back().first;
+				analysis.computes.pop_back();
+				return value_of_type(given, result_type);
 			}
 			if (ast::NodeType::MATCH == type) {
 				return value_of_type(walk_match(analysis, node, result_type, true, false), result_type);
@@ -1492,6 +1502,14 @@ namespace hemera {
 			else if (ast::NodeType::RETURN == type) {
 				walk_return(analysis, statement);
 			}
+			else if (ast::NodeType::GIVE == type) {
+				if (!analysis.computes.empty() && !statement->children.empty()) {
+					auto& [given, compute_type] = analysis.computes.back();
+					ast::Node* value_node = statement->children[0];
+					given = join(given, convert(analysis, evaluate(analysis, value_node, compute_type), compute_type, value_node));
+				}
+				return;
+			}
 			else if (ast::NodeType::BREAK == type || ast::NodeType::CONTINUE == type) {
 				return;
 			}
@@ -1557,7 +1575,7 @@ namespace hemera {
 				}
 				const ast::NodeType type = statement->node_type;
 				if (as_value && i + 1 == block->children.size() && ast::NodeType::DEFINITION != type && !is_assignment(statement)
-					&& ast::NodeType::RETURN != type && ast::NodeType::BREAK != type && ast::NodeType::CONTINUE != type
+					&& ast::NodeType::RETURN != type && ast::NodeType::GIVE != type && ast::NodeType::BREAK != type && ast::NodeType::CONTINUE != type
 					&& ast::NodeType::FOR_LOOP != type && ast::NodeType::LOOP != type && ast::NodeType::BLOCK != type) {
 					result = join(result, convert(analysis, evaluate(analysis, statement, result_type), result_type, statement));
 					continue;
@@ -1579,7 +1597,7 @@ namespace hemera {
 		const CheckedBody& checked = *function.checked;
 		TypeInfoFunction const* type = function.type;
 		ast::Node* body = function.body;
-		Analysis analysis{ checked, type, function.file_path, sources, std::vector<bool>(type->input.size(), false),
+		Analysis analysis{ checked, type, function.file_path, sources, std::vector<bool>(type->input.size(), false), {},
 			{}, {}, {}, false, false, 0, {} };
 		/*
 		 * Parameters hold what the caller passed: local, from that parameter, unless it's #escaping. An

@@ -107,6 +107,13 @@ namespace hemera {
 		/// are hmir.loop, so break and continue count both.
 		/// </summary>
 		bool continues;
+		/// <summary>
+		/// A compute block's, also an hmir.loop, which give leaves, and break and continue pass through on their
+		/// way to a loop or switch: where its value goes, and its type (docs/control_flow.md, Compute Blocks).
+		/// </summary>
+		bool computes = false;
+		mlir::Value slot = mlir::Value();
+		TypeInfo* type = nullptr;
 	};
 
 	struct FunctionState {
@@ -2644,7 +2651,61 @@ namespace hemera {
 
 	// break: leaves depth loops and switches.
 	static void emit_break(Generator& generator, uint64_t depth) {
-		::hmir::HemeraBreakOp::create(generator.builder, generator.loc, depth);
+		// depth counts loops and switches; the hmir.loops between them include compute blocks', which it passes
+		uint64_t passed = 0;
+		uint64_t counted = 0;
+		for (auto each = generator.state->breakables.rbegin(); each != generator.state->breakables.rend() && counted < depth; ++each) {
+			++passed;
+			if (!each->computes) {
+				++counted;
+			}
+		}
+		::hmir::HemeraBreakOp::create(generator.builder, generator.loc, passed);
+	}
+
+	// How many loops and switches the statement being generated is in, for break all.
+	static uint64_t loops_and_switches(Generator& generator) {
+		uint64_t count = 0;
+		for (const Breakable& each : generator.state->breakables) {
+			count += each.computes ? 0 : 1;
+		}
+		return count;
+	}
+
+	// give x: x as the innermost compute block's type, into its slot, and that block left.
+	static void emit_give(Generator& generator, ast::Node* statement) {
+		uint64_t passed = 0;
+		for (auto each = generator.state->breakables.rbegin(); each != generator.state->breakables.rend(); ++each) {
+			++passed;
+			if (each->computes) {
+				if (!statement->children.empty()) {
+					store(generator, emit_as(generator, statement->children[0], each->type), each->slot);
+				}
+				::hmir::HemeraBreakOp::create(generator.builder, generator.loc, passed);
+				return;
+			}
+		}
+	}
+
+	// compute[T] { ... }: its block, in a loop that give leaves, and the value given.
+	static Emitted emit_compute(Generator& generator, ast::Node* node) {
+		TypeInfo* type = type_at(generator, node, nullptr);
+		mlir::Value slot = make_slot(generator, type);
+		auto op = ::hmir::HemeraLoopOp::create(generator.builder, generator.loc);
+		Breakable compute{ false };
+		compute.computes = true;
+		compute.slot = slot;
+		compute.type = type;
+		generator.state->breakables.push_back(compute);
+		fill_region(generator, op.getBodyRegion(), [&]() {
+			// Every path gives or leaves, as checking found; one that doesn't would loop, so it leaves too
+			if (!emit_block(generator, node->children[1], mlir::Value(), nullptr)) {
+				::hmir::HemeraBreakOp::create(generator.builder, generator.loc, 1);
+			}
+			return true;
+		});
+		generator.state->breakables.pop_back();
+		return value(load(generator, type, slot), type);
 	}
 
 	// continue: the innermost loop, past any switches inside it.
@@ -7604,6 +7665,9 @@ namespace hemera {
 		if (ast::NodeType::CAST == type) {
 			return emit_cast(generator, node);
 		}
+		if (ast::NodeType::COMPUTE == type) {
+			return emit_compute(generator, node);
+		}
 		if (ast::NodeType::STRUCT_LITERAL == type) {
 			return emit_struct_literal(generator, node, result_type);
 		}
@@ -7775,7 +7839,7 @@ namespace hemera {
 			if (ast::NodeType::BLOCK == outcome_type) {
 				return emit_block(generator, outcome, slot, type);
 			}
-			if (ast::NodeType::RETURN == outcome_type || ast::NodeType::BREAK == outcome_type
+			if (ast::NodeType::RETURN == outcome_type || ast::NodeType::GIVE == outcome_type || ast::NodeType::BREAK == outcome_type
 				|| ast::NodeType::CONTINUE == outcome_type || is_assignment(outcome) || !slot) {
 				return emit_statement(generator, outcome);
 			}
@@ -8394,11 +8458,15 @@ namespace hemera {
 			emit_return_statement(generator, statement);
 			return true;
 		}
+		if (ast::NodeType::GIVE == type) {
+			emit_give(generator, statement);
+			return true;
+		}
 		if (ast::NodeType::BREAK == type) {
 			uint64_t depth = 1;
 			if (!statement->children.empty()) {
 				const ast::Node* count = statement->children[0];
-				depth = ast::NodeType::KEYWORD_ALL == count->node_type ? generator.state->breakables.size()
+				depth = ast::NodeType::KEYWORD_ALL == count->node_type ? loops_and_switches(generator)
 					: std::stoull(text_of(count->value.value));
 			}
 			emit_break(generator, depth);
@@ -8511,7 +8579,7 @@ namespace hemera {
 			}
 			const ast::NodeType type = statement->node_type;
 			if (i + 1 == block->children.size() && result_slot && ast::NodeType::DEFINITION != type && !is_assignment(statement)
-				&& ast::NodeType::RETURN != type && ast::NodeType::BREAK != type && ast::NodeType::CONTINUE != type
+				&& ast::NodeType::RETURN != type && ast::NodeType::GIVE != type && ast::NodeType::BREAK != type && ast::NodeType::CONTINUE != type
 				&& ast::NodeType::FOR_LOOP != type && ast::NodeType::LOOP != type && ast::NodeType::BLOCK != type) {
 				Emitted result = emit_expression(generator, statement, result_type);
 				if (result.never_returns) {
@@ -10092,8 +10160,8 @@ namespace hemera {
 		// Whether text is a name: letters, digits and _, not starting with a digit, and not a keyword or _ alone.
 		bool is_identifier(std::string_view text) {
 			static constexpr std::string_view KEYWORDS[] = {
-				"auto_cast", "bit_cast", "break", "case", "cast", "continue", "defer", "distinct", "else", "enum", "false",
-				"fn", "for", "if", "is_error", "is_none", "is_ok", "is_some", "loop", "match", "mut", "null", "or_break", "or_continue",
+				"auto_cast", "bit_cast", "break", "case", "cast", "compute", "continue", "defer", "distinct", "else", "enum", "false",
+				"fn", "for", "give", "if", "is_error", "is_none", "is_ok", "is_some", "loop", "match", "mut", "null", "or_break", "or_continue",
 				"or_else", "or_return", "push_context", "return", "struct", "switch", "true", "union", "using", "void",
 				"while", "with",
 			};

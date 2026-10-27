@@ -202,6 +202,39 @@ loop {
 while false
 ```
 
+## Compute Blocks
+
+A block doesn't evaluate to its last expression: putting statements in braces never changes what they mean. When a
+value takes statements to work out, `compute[T] { ... }` runs them, and `give` gives its value, of type `T`, leaving the
+block:
+
+```
+total :: compute[u64] {
+    sum : u64 = 0
+    for each in sizes {
+        sum += each
+    }
+    give sum
+}
+
+key :: lookup(name) or_else compute[Key] {
+    log_line.write(to, "no key for %", name)
+    return .Error(.NotFound)
+}
+```
+
+* `give` leaves the innermost compute block it's in, from inside loops, `if`s and other blocks in it, and what's
+  deferred in them runs as it does, as for `break`.
+* Every path through the block gives a value or leaves it some other way: by `return`, by `break` or `continue` to a
+  loop around the block (which they pass through, since a compute block isn't a loop), or by a call that never
+  returns. A block that can finish without either is an error, as a function that can finish without returning is.
+* What's given has the block's type, as what's returned has the function's.
+* What's deferred can't `give`, since it runs as the block is left.
+
+It's an expression like any other: a variable's value, a function's argument, a match arm's value, or `or_else`'s
+fallback, where a block that only leaves, like the one above, is how a missing value returns from the function after
+doing something first.
+
 ## Match
 
 Match expressions evaluate to a value using pattern matching.

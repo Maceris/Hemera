@@ -909,7 +909,12 @@ TEST(FrontEnd, ReportsBodyErrors)
 		// docs/memory.md, Scoped Structs
 		{ "scoped_dynamic_local", hemera::ErrorCode::E4014 },
 		// docs/operators.md, Optional operators
-		{ "result_test_on_optional", hemera::ErrorCode::E4020 }
+		{ "result_test_on_optional", hemera::ErrorCode::E4020 },
+		// docs/control_flow.md, Compute Blocks
+		{ "give_outside_compute", hemera::ErrorCode::E4022 },
+		{ "compute_falls_through", hemera::ErrorCode::E4019 },
+		{ "give_in_defer", hemera::ErrorCode::E4022 },
+		{ "give_wrong_type", hemera::ErrorCode::E4015 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

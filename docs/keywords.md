@@ -21,6 +21,8 @@ parameter, constant, function or type:
 * `fn` - For defining functions
 * `for` - For "for" loops
 * `if` - For conditional statements
+* `compute` - A block that gives a value with give (see [control_flow.md](control_flow.md#compute-blocks))
+* `give` - Gives a compute block its value, leaving it
 * `is_error` - Checks if a result holds an error
 * `is_none` - Checks if an optional is missing a value
 * `is_ok` - Checks if a result holds a value

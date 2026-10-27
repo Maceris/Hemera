@@ -99,13 +99,6 @@ namespace hemera {
 			std::vector<ast::Node*> defers;
 		};
 
-		struct LoopFrame {
-			std::vector<State> breaks;
-			std::vector<State> continues;
-			size_t scopes = 0;
-			bool is_switch = false;
-		};
-
 		enum class Use : uint8_t {
 			// Given away: the owner can't be used again
 			MOVE,
@@ -113,6 +106,19 @@ namespace hemera {
 			BORROW,
 			// Not kept by anything: an owned value here is dropped
 			DISCARD,
+		};
+
+		/*
+		 * A loop, a switch, or a compute block, whose gives are its breaks, which break and continue pass through,
+		 * and whose value is used as the compute expression is.
+		 */
+		struct LoopFrame {
+			std::vector<State> breaks;
+			std::vector<State> continues;
+			size_t scopes = 0;
+			bool is_switch = false;
+			bool computes = false;
+			Use given = Use::DISCARD;
 		};
 
 		struct Analysis {
@@ -487,6 +493,23 @@ namespace hemera {
 				}
 				return;
 			}
+			// compute[T] { ... }: the block, left only by give, return, break or continue; it goes on from what gave
+			if (ast::NodeType::COMPUTE == type && node->children.size() == 2) {
+				LoopFrame frame;
+				frame.scopes = analysis.scopes.size();
+				frame.computes = true;
+				frame.given = use;
+				analysis.loops.push_back(std::move(frame));
+				walk_block(analysis, state, node->children[1]);
+				std::vector<State> gives = std::move(analysis.loops.back().breaks);
+				analysis.loops.pop_back();
+				State after = unreachable();
+				for (const State& each : gives) {
+					after = join(analysis, after, each, node);
+				}
+				state = after;
+				return;
+			}
 			if (ast::NodeType::IF == type && node->children.size() >= 2) {
 				evaluate(analysis, state, node->children[0], Use::BORROW);
 				State otherwise = state;
@@ -858,20 +881,43 @@ namespace hemera {
 			else if (ast::NodeType::RETURN == type) {
 				walk_return(analysis, state, statement);
 			}
+			else if (ast::NodeType::GIVE == type) {
+				// The innermost compute block's value, used as it is, then that block left
+				for (auto frame = analysis.loops.rbegin(); frame != analysis.loops.rend(); ++frame) {
+					if (frame->computes) {
+						const size_t index = static_cast<size_t>(analysis.loops.rend() - frame) - 1;
+						if (!statement->children.empty()) {
+							evaluate(analysis, state, statement->children[0], frame->given);
+						}
+						State leaving = state;
+						leave(analysis, leaving, analysis.loops[index].scopes, statement);
+						analysis.loops[index].breaks.push_back(leaving);
+						break;
+					}
+				}
+				state = unreachable();
+			}
 			else if (ast::NodeType::BREAK == type || ast::NodeType::CONTINUE == type) {
+				// Loops and switches, counted past the compute blocks between
+				std::vector<size_t> breakables;
+				for (size_t i = 0; i < analysis.loops.size(); ++i) {
+					if (!analysis.loops[i].computes) {
+						breakables.push_back(i);
+					}
+				}
 				size_t depth = 1;
 				if (ast::NodeType::BREAK == type && !statement->children.empty()) {
 					const ast::Node* count = statement->children[0];
-					depth = ast::NodeType::KEYWORD_ALL == count->node_type ? analysis.loops.size()
+					depth = ast::NodeType::KEYWORD_ALL == count->node_type ? breakables.size()
 						: static_cast<size_t>(std::strtoull(text_of(count->value.value).c_str(), nullptr, 10));
 				}
 				LoopFrame* target = nullptr;
-				if (ast::NodeType::BREAK == type && depth >= 1 && depth <= analysis.loops.size()) {
-					target = &analysis.loops[analysis.loops.size() - depth];
+				if (ast::NodeType::BREAK == type && depth >= 1 && depth <= breakables.size()) {
+					target = &analysis.loops[breakables[breakables.size() - depth]];
 				}
 				else if (ast::NodeType::CONTINUE == type) {
 					for (auto frame = analysis.loops.rbegin(); frame != analysis.loops.rend(); ++frame) {
-						if (!frame->is_switch) {
+						if (!frame->is_switch && !frame->computes) {
 							target = &*frame;
 							break;
 						}
@@ -948,6 +994,7 @@ namespace hemera {
 				// A block's last expression is its value
 				const bool is_value = i + 1 == block->children.size() && Use::DISCARD != last
 					&& ast::NodeType::DEFINITION != statement->node_type && ast::NodeType::RETURN != statement->node_type
+					&& ast::NodeType::GIVE != statement->node_type
 					&& ast::NodeType::BREAK != statement->node_type && ast::NodeType::CONTINUE != statement->node_type;
 				if (is_value) {
 					evaluate(analysis, state, statement, last);

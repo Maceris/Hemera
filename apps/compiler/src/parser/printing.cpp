@@ -901,6 +901,9 @@ namespace hemera::ast {
 				else if (node->node_type == NodeType::DEFER) {
 					return "defer " + (node->children.empty() ? std::string() : statement(node->children[0]));
 				}
+				else if (node->node_type == NodeType::GIVE) {
+					return "give " + (node->children.empty() ? std::string() : expression(node->children[0], ANY));
+				}
 				else if (node->node_type == NodeType::BREAK) {
 					std::string out = "break";
 					for (const Node* child : node->children) {
@@ -1173,6 +1176,9 @@ namespace hemera::ast {
 				else if (node->node_type == NodeType::CAST) {
 					return cast(node);
 				}
+				else if (node->node_type == NodeType::COMPUTE && node->children.size() == 2) {
+					return "compute[" + type(node->children[0], false) + "] " + block(node->children[1]);
+				}
 				else if (node->node_type == NodeType::STRUCT_LITERAL) {
 					return typed_literal(node, ".{", "}");
 				}
@@ -1215,7 +1221,7 @@ namespace hemera::ast {
 				}
 				// Statements, which a match arm's body can be
 				else if (node->node_type == NodeType::RETURN || node->node_type == NodeType::DEFER
-					|| node->node_type == NodeType::BREAK || node->node_type == NodeType::CONTINUE
+					|| node->node_type == NodeType::BREAK || node->node_type == NodeType::CONTINUE || node->node_type == NodeType::GIVE
 					|| node->node_type == NodeType::FOR_LOOP || node->node_type == NodeType::LOOP
 					|| node->node_type == NodeType::PUSH_CONTEXT || node->node_type == NodeType::SWITCH
 					|| node->node_type == NodeType::USING) {

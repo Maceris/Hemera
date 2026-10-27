@@ -106,6 +106,8 @@ KEYWORD_or_return = "or_return" ;
 KEYWORD_package = "package" ;
 KEYWORD_push_context = "push_context" ;
 KEYWORD_return = "return" ;
+KEYWORD_compute = "compute" ;
+KEYWORD_give = "give" ;
 KEYWORD_struct = "struct" ;
 KEYWORD_switch = "switch" ;
 KEYWORD_true = "true" ;
@@ -301,6 +303,7 @@ block = SYM_LBRACE , { statement } , SYM_RBRACE ;
 # Also the body of a match arm or switch case
 statement = expression
     | ( KEYWORD_return , ( KEYWORD_void | ( expression_with_result , { SYM_COMMA , expression_with_result } ) ) )
+    | ( KEYWORD_give , expression_with_result )
     | ( KEYWORD_defer , expression )
     | ( KEYWORD_break , [ literal_integer | KEYWORD_all ] )
     | KEYWORD_continue
@@ -421,6 +424,7 @@ expr_lvl_10 = ( OPERATOR_plus , expr_lvl_11 )
 expr_lvl_11 = literal
     | ( location , { OPERATOR_pipe , function_call } )
     | ( cast_expression , postfix_operations )
+    | ( KEYWORD_compute , SYM_LBRACK , type , SYM_RBRACK , block )
     | ( enum_shorthand , postfix_operations )
     | ( directive , [ expression_with_result ] )
     ;

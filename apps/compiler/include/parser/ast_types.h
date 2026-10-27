@@ -24,9 +24,12 @@ namespace hemera::ast {
 		BREAK,
 		CAST,
 		COLON,
+		// compute[T] { ... give x }: a block that gives a value (docs/control_flow.md, Compute Blocks)
+		COMPUTE,
 		CONTINUE,
 		DEFER,
 		DEFINITION,
+		GIVE,
 		// A generic parameter the generic works out from the others, like E = element_of(C): the
 		// name is its token, and its child the expression (docs/types.md, Derived Parameters)
 		DERIVED_PARAMETER,

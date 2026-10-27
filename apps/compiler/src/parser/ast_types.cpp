@@ -21,6 +21,8 @@ namespace hemera::ast {
 		if (NodeType::BINARY_OPERATOR == type) { return "BINARY_OPERATOR"; }
 		if (NodeType::BLOCK == type) { return "BLOCK"; }
 		if (NodeType::BREAK == type) { return "BREAK"; }
+		if (NodeType::COMPUTE == type) { return "COMPUTE"; }
+		if (NodeType::GIVE == type) { return "GIVE"; }
 		if (NodeType::CAST == type) { return "CAST"; }
 		if (NodeType::COLON == type) { return "COLON"; }
 		if (NodeType::CONTINUE == type) { return "CONTINUE"; }
