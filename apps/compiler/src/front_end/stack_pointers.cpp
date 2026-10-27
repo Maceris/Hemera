@@ -318,10 +318,16 @@ namespace hemera {
 			Reach holds;
 		};
 
+		// Which parameters each function gives back pointers from, by its declaration.
+		using ReturnSources = std::unordered_map<const Declaration*, std::vector<bool>>;
+
 		struct Analysis {
 			const CheckedBody& checked;
 			TypeInfoFunction const* function;
 			const std::string& file_path;
+			const ReturnSources& sources;
+			// Which of its own parameters it gives back pointers from, found as it's walked
+			std::vector<bool> returns_from;
 			std::unordered_map<const void*, Variable> variables;
 			// A match arm's values, which are where they are in what's matched
 			std::unordered_map<const void*, Place> aliases;
@@ -483,6 +489,19 @@ namespace hemera {
 			report(analysis, where, "stores a pointer into the stack through a pointer: only a #scoped struct can hold one there");
 		}
 
+		// What a parameter points to, given back, or maybe: that one, or any, for several or one unknown.
+		void gives_back(Analysis& analysis, const Reach& value) {
+			if (!value.local || PARAMETER != value.origin) {
+				return;
+			}
+			if (value.parameter >= 0 && static_cast<size_t>(value.parameter) < analysis.returns_from.size()) {
+				analysis.returns_from[static_cast<size_t>(value.parameter)] = true;
+			}
+			else {
+				std::fill(analysis.returns_from.begin(), analysis.returns_from.end(), true);
+			}
+		}
+
 		void check_returned(Analysis& analysis, const Reach& value, const ast::Node* where, const FunctionOutput* output = nullptr) {
 			// An #unrestricted result can't be anything the function was given, either
 			if (output != nullptr && output->is_unrestricted && value.local) {
@@ -494,6 +513,7 @@ namespace hemera {
 			if (value.local && PARAMETER != value.origin) {
 				report(analysis, where, "returns a pointer into this function's stack");
 			}
+			gives_back(analysis, value);
 		}
 
 		// ---------------------------------------------------------------------------------------------
@@ -692,15 +712,28 @@ namespace hemera {
 					positional.push_back({ argument, false, {} });
 				}
 			}
-			// What the call gives is local if anything it was given to keep only for the call was
+			/*
+			 * What the call gives is local if something it was given to keep only for the call was, and the callee
+			 * gives back pointers from that parameter, as its body says; any, if what it is isn't known
+			 */
+			const std::vector<bool>* gives_back = nullptr;
+			if (found != nullptr && found->called_declaration != nullptr) {
+				auto known = analysis.sources.find(found->called_declaration);
+				if (known != analysis.sources.end()) {
+					gives_back = &known->second;
+				}
+			}
 			Reach result;
+			size_t passing = 0;
 			auto pass = [&](const Reach& reach, const FunctionInput& input, const ast::Node* where) {
 				if (input.is_escaping && reach.local) {
 					report(analysis, where, std::format("passes a pointer into the stack to #escaping parameter `{}`: copy it to the heap first",
 						text_of(input.name)));
 					return;
 				}
-				result = join(result, reach);
+				if (gives_back == nullptr || (passing < gives_back->size() && (*gives_back)[passing])) {
+					result = join(result, reach);
+				}
 			};
 			// Which parameter each positional argument went to, where the checker split them around a variadic one
 			auto found_split = analysis.checked.argument_parameters.find(paren);
@@ -709,6 +742,7 @@ namespace hemera {
 			size_t parameter = 0;
 			for (const FunctionInput& input : function->input) {
 				const size_t this_parameter = parameter++;
+				passing = this_parameter;
 				const auto mine = [&](size_t argument) {
 					return split == nullptr || (argument < split->size() && (*split)[argument] == this_parameter);
 				};
@@ -969,6 +1003,13 @@ namespace hemera {
 			Evaluated result = value_of_type(source, target);
 			if (result.value.local) {
 				result.value.deep = result.value.deep || source.deep;
+			}
+			/*
+			 * A pointer from a parameter made an integer, like string_of's cast[usize](data), isn't followed any
+			 * further: what it came from may be given back, made a pointer again
+			 */
+			else if (source.local) {
+				gives_back(analysis, source);
 			}
 			return evaluate_steps(analysis, node, automatic ? 1 : 2, result);
 		}
@@ -1528,10 +1569,18 @@ namespace hemera {
 
 	}
 
-	bool check_stack_pointers(const CheckedBody& checked, ast::Node* body, TypeInfoFunction const* type,
-		const std::string& file_path) {
+	namespace {
 
-		Analysis analysis{ checked, type, file_path, {}, {}, {}, false, false, 0, {} };
+	/*
+	 * A function's body walked, until what its variables hold settles, then once more, reporting if it's
+	 * asked to: which of its parameters it gives back pointers from, and whether it reported nothing.
+	 */
+	bool analyze(const StackCheck& function, const ReturnSources& sources, bool reporting, std::vector<bool>& returns_from) {
+		const CheckedBody& checked = *function.checked;
+		TypeInfoFunction const* type = function.type;
+		ast::Node* body = function.body;
+		Analysis analysis{ checked, type, function.file_path, sources, std::vector<bool>(type->input.size(), false),
+			{}, {}, {}, false, false, 0, {} };
 		/*
 		 * Parameters hold what the caller passed: local, from that parameter, unless it's #escaping. An
 		 * any, a pointer to a #scoped struct or a varargs view may be deep.
@@ -1552,10 +1601,46 @@ namespace hemera {
 				break;
 			}
 		}
-		analysis.reporting = true;
+		analysis.reporting = reporting;
 		analysis.aliases.clear();
 		walk_block(analysis, body, nullptr, false);
+		returns_from = analysis.returns_from;
 		return analysis.errors == 0;
+	}
+
+	}
+
+	bool check_all_stack_pointers(std::vector<StackCheck>& functions) {
+		/*
+		 * Which parameters each function gives back pointers from: none to begin with, and more as calls are found
+		 * to give them back, until nothing changes. They only grow, so it settles; a loop of calls is no different.
+		 */
+		ReturnSources sources;
+		for (const StackCheck& function : functions) {
+			sources[function.declaration] = std::vector<bool>(function.type->input.size(), false);
+		}
+		std::vector<bool> found;
+		for (size_t round = 0; round < 64; ++round) {
+			bool changed = false;
+			for (const StackCheck& function : functions) {
+				analyze(function, sources, false, found);
+				std::vector<bool>& known = sources[function.declaration];
+				for (size_t i = 0; i < found.size() && i < known.size(); ++i) {
+					if (found[i] && !known[i]) {
+						known[i] = true;
+						changed = true;
+					}
+				}
+			}
+			if (!changed) {
+				break;
+			}
+		}
+		bool clean = true;
+		for (const StackCheck& function : functions) {
+			clean = analyze(function, sources, true, found) && clean;
+		}
+		return clean;
 	}
 
 }

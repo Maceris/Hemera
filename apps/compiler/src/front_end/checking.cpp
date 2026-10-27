@@ -6589,9 +6589,16 @@ namespace hemera {
 					"{} is #constant_time, but works with no secret: no #secret parameter or result, and none in its body",
 					text_of(function->name)));
 		}
-		// Then what points into the stack, once everything in the body is known (docs/memory.md)
+		/*
+		 * Then what points into the stack (docs/memory.md), once every body is checked, since it depends on which
+		 * parameters what this calls gives back pointers from (stack_pointers.h)
+		 */
 		if (progress == Progress::DONE && thread_error_count() == errors_before) {
-			check_stack_pointers(*checked, body, type, checker.walk.file_path);
+			{
+				ProgramInfo* program = checker.walk.executor.program_info;
+				std::scoped_lock<std::mutex> lock(program->stack_checks_mutex);
+				program->stack_checks.push_back(StackCheck{ checked, body, type, checker.walk.file_path, function });
+			}
 			// And that every index is in bounds (docs/types.md, Bounds Checking)
 			check_bounds(*checked, body, type, checker.walk.file_path);
 			/*

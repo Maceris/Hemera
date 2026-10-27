@@ -22,6 +22,19 @@ namespace hemera {
 
 	struct FileInfo;
 	struct PackageInfo;
+	struct CheckedBody;
+
+	/// <summary>
+	/// A function whose body checked cleanly, waiting for the checks on pointers to the stack, which every body is
+	/// checked for at once, once all of them are (front_end/stack_pointers.h).
+	/// </summary>
+	struct StackCheck {
+		std::shared_ptr<CheckedBody> checked;
+		ast::Node* body;
+		TypeInfoFunction const* type;
+		std::string file_path;
+		const Declaration* declaration;
+	};
 
 	enum class IdentifierKind : uint8_t {
 		UNKNOWN,
@@ -225,6 +238,12 @@ namespace hemera {
 		/// </summary>
 		std::shared_ptr<void> compile_time_library;
 		std::mutex compile_time_library_mutex;
+
+		/// <summary>
+		/// Every function waiting for the checks on pointers to the stack, and their mutex.
+		/// </summary>
+		std::vector<StackCheck> stack_checks;
+		std::mutex stack_checks_mutex;
 
 		ProgramInfo(mlir::MLIRContext* mlir_context, 
 			mlir::OpBuilder* mlir_op_builder,

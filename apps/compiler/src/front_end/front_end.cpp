@@ -7,6 +7,7 @@
 #include "util/logger.h"
 #include "front_end/front_end.h"
 #include "front_end/names.h"
+#include "front_end/stack_pointers.h"
 
 namespace hemera {
 	constexpr uint32_t MIN_THREAD_COUNT = 2;
@@ -224,6 +225,8 @@ namespace hemera {
 			}
 			else {
 				check_provisional_uses(data);
+				// Pointers to the stack, in every body at once, now that all are checked (stack_pointers.h)
+				check_all_stack_pointers(data.program_info->stack_checks);
 			}
 		}
 		return true;

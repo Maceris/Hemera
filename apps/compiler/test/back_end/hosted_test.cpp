@@ -507,6 +507,15 @@ TEST(Hosted, HoldsSecrets)
 	run_hosted("secret_holders", hemera::TargetStackCheck::Off);
 }
 
+/*
+ * docs/memory.md, Pointers to the Stack: what calls give back, from their bodies: given views of the stack, giving back
+ * what's on the heap, kept by an #escaping parameter and returned, through calls that call each other.
+ */
+TEST(Hosted, ReturnsFromTheHeap)
+{
+	run_hosted("returns_from_heap", hemera::TargetStackCheck::Off);
+}
+
 // docs/operators.md, Optional operators: a member, an element or a chain of them after ?, like f()?.x.
 TEST(Hosted, ReadsWhatUnwrapGives)
 {

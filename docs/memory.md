@@ -58,7 +58,8 @@ A value is local if it is, or was computed from:
 * a parameter that isn't marked `#escaping`
 * any value of a `#scoped` type
 * a value loaded through a deep pointer (below)
-* the result of a call, when any argument to a non-`#escaping` parameter was local (see [Returning](#returning))
+* the result of a call, when an argument was local to a non-`#escaping` parameter the function may give back
+  pointers from (see [Returning](#returning))
 
 Everything else is unrestricted, including results of `new`, values loaded through other pointers,
 and `#escaping` parameters.
@@ -179,16 +180,25 @@ points into a stack frame.
 Functions often return views of what they were given, like `trim(s: string) -> string`. That needs no annotation:
 
 * Inside the function, returning a value whose origin is a parameter is allowed.
-* At the call site, the result is local if any argument to a non-`#escaping` parameter was local, with the
-  shortest-lived origin among them. It's unrestricted otherwise.
+* At the call site, the result is local if an argument was local to a non-`#escaping` parameter the function may give
+  back pointers from, with the shortest-lived origin among them. It's unrestricted otherwise.
 
-This is conservative. `lookup(table: ptr[Map], key: string) -> ptr[Value]` called with a key on the stack returns a
-local value, even if it really points into the table's heap memory. That only matters when storing the result
-somewhere that outlives the key. You can however copy the key to the heap first.
+Which parameters a function may give back pointers from is worked out from its body: those whose origin a value it
+returns has, through what it calls in turn. So `lookup(table: ptr[Map], key: string) -> ptr[Value]` called with a key
+on the stack gives back an unrestricted pointer when its body returns what it loaded from the table's heap memory,
+which the key has nothing to do with; and `make(name: u8[]) -> ptr[mut Box]`, which returns what `new` made, gives
+back an unrestricted pointer whatever `name` was.
 
-A pointer to a local variable counts the same way: `take(&arena, count)` gives a local view, whatever memory the arena
-hands out. When what's returned really comes from elsewhere, keep the stack out of the call: pass the state by value
-or keep it somewhere other than the stack, or make the handle `#unrestricted` (below) and pass it by value.
+Where the body can't say, it's taken that it may give back pointers from every parameter: a call through a function
+value, a foreign function, and a body that makes a pointer from a parameter an integer, like `string_of`'s
+`cast[usize](data)`, since the integer may become a pointer again. Since a function's checks depend on what the bodies
+it calls give back, the checks on pointers to the stack are made once every body in the program is checked, and their
+errors are reported then.
+
+A pointer to a local variable counts the same way: `take(&arena, count)` gives a local view when `take` returns memory
+from inside the arena. When what's returned really comes from elsewhere but the body can't show it, keep the stack out
+of the call: pass the state by value or keep it somewhere other than the stack, or make the handle `#unrestricted`
+(below) and pass it by value.
 
 ### Unrestricted Results
 

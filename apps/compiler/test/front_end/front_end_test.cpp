@@ -843,6 +843,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "owned_known_before_body", hemera::ErrorCode::E4035 },
 		{ "fall_through_last", hemera::ErrorCode::E4002 },
 		{ "stack_escaping_function", hemera::ErrorCode::E4015 },
+		{ "stack_returned_through_call", hemera::ErrorCode::E4030 },
 		{ "stack_unrestricted_result", hemera::ErrorCode::E4030 },
 		{ "stack_return_variant_shorthand", hemera::ErrorCode::E4030 },
 		{ "stack_unrestricted_all_results", hemera::ErrorCode::E4030 },
