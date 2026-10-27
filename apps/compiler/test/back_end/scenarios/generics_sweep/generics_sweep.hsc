@@ -68,8 +68,8 @@ instantiate_all :: fn(number: int, point: Point) {
     _ = runtime.get_extension(Point)
     // std/memory
     ok : Result[int, string] = .Ok(number)
-    _ = memory.is_ok(ok)
-    _ = memory.is_error(ok)
+    _ = ok is_ok
+    _ = ok is_error
     shared :: memory.make_shared(point)
     other :: memory.share(&shared)
     weak :: memory.weaken(&other)

@@ -107,6 +107,9 @@ type_info_of : fn[T](T: type) -> ptr[TypeInfo] : ---
  */
 types_are_aliases : fn(a, b: type) -> bool : ---
 
+// Whether a type's values are secrets: it's #secret, or an array or vector of one (docs/memory.md, Secrets).
+is_secret_type : fn(T: type) -> bool : ---
+
 /*
  * A complex number's or a quaternion's parts, as Odin names them: real and imag, and a quaternion's jmag and kmag, each
  * its parts' float. conj(x) is x with its imaginary parts negated, and abs(x) its magnitude, the square root of the sum

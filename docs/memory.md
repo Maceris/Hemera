@@ -367,7 +367,11 @@ signatures: a parameter, a result, or something assigned to, has to be of a `#se
 like a field of a secret or a local made from one. Taking a pointer to a secret that isn't of a `#secret` type, like
 `&key.bytes`, would lose that it's one, so that's an error too, and so is casting a pointer to a secret, like a
 `ptr[Key]`, to a pointer to what isn't. `bit_cast` of a secret gives a secret, so it needs nothing more. `.count` and
-`.capacity` aren't secrets.
+`.capacity` aren't secrets, and neither is a view's or a dynamic array's `.data`, which says where its elements are.
+
+An optional or a result whose value is of a `#secret` type, like `Key?` or `Result[Key, E]`, can hold a secret: whether
+it holds one is public, so it can be branched on, with `is_some`, `match` or `?`, and what it holds is a secret, as its
+type says. So a function that may not have a key to give, like one that opens a sealed one, gives a `Key?`.
 
 A `rawptr` is the way past these on purpose: what's read through one, or copied with `intrinsics.mem_copy`, isn't
 tracked, so `cast[rawptr](&key)` is where a reviewer looks.
@@ -407,6 +411,10 @@ larger #constant_time :: fn(a: Word, b: Word) -> Word {
 * Intrinsics take secrets wherever they're given them, since each is an instruction or two that takes the same time
   whatever it's given, and give a secret back for one.
 * `intrinsics.secure_zero(target, len)` writes zeros even when nothing reads them after, for wiping a secret.
+* `runtime.free`, `free_array` and `array_free`, given a `#secret` type, wipe its memory before giving it back, so no
+  key is left where the allocator hands the memory out again.
+* `is_secret_type(T)` says whether a type's values are secrets, for a generic that treats them differently, as
+  `runtime.free` does.
 
 The compiler checks the source; LLVM has no way to promise what the machine code does. `select` keeps its own
 masks from becoming branches, but other code is only as constant time as LLVM leaves it.

@@ -277,17 +277,23 @@ example :: fn() {
 
 ## Optional operators
 
-There are built in operators for optional types (`T?`).
+There are built in operators for optional types (`T?`), and for results (`Result[T, E]`), which `?`, `or_else`,
+`or_return`, `or_break` and `or_continue` take as they take optionals, an `Error` as a `None`.
 
 ```
 is_none      a is_none      evaluates to true if the optional does not have a value, or false if it does
 is_some      a is_some      evaluates to true if the optional value a is some value, or false if it is not
+is_error     a is_error     evaluates to true if the result a holds an error, or false if it holds a value
+is_ok        a is_ok        evaluates to true if the result a holds a value, or false if it holds an error
 or_break     a or_break     breaks if an optional is not present, otherwise evaluates to the value
 or_continue  a or_continue  continues if an optional is not present, otherwise evaluates to the value
 ?            a?             evaluates to an optionals value if present, or returns an empty optional if not
 or_else      a or_else b    evaluates to an optionals value if present, or the provided default if not
 or_return    a or_return b  evaluates to an optionals value if present, or returns a default value if not
 ```
+
+What `?` unwraps can be read on from directly: `f()?.x` is `(f()?).x`, the member `x` of `f()`'s value, or `f()`'s
+error or nothing returned first; so are an element, `f()?[1]`, and a chain, `f()?.to.y`.
 
 Some examples of usage:
 ```
@@ -410,7 +416,7 @@ Precedence   Operator
      5       &&
      4       ||
      3       ..=  ..<
-     2       if  is_none  is_some  or_break  or_continue  or_else  or_return
+     2       if  is_none  is_some  is_ok  is_error  or_break  or_continue  or_else  or_return
      1       = += &&= &= |= ~= /= <<= %= *= ||= %%= >>= >>>= -=
 ```
 

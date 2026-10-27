@@ -131,14 +131,21 @@ namespace hemera {
 		}
 	}
 
+	static TypeInfo* held_value(TypeInfo const* type);
+
 	/*
-	 * Whether a secret can go where a value of type does: a #secret type, or a place that already holds
-	 * secrets, like a secret local. Otherwise it's said why, and how to get past it.
+	 * Whether a secret can go where a value of type does: a #secret type, an optional or a result whose value is one
+	 * (whether it holds one is public, what it holds stays secret: docs/memory.md, Secrets), or a place that already
+	 * holds secrets, like a secret local. Otherwise it's said why, and how to get past it.
 	 */
 	static bool require_secret_fits(Checker& checker, bool secret, TypeInfo const* type, bool secret_place, const ast::Node* where,
 		std::string_view what) {
 
 		if (!secret || secret_place || type == nullptr || is_secret_type(type)) {
+			return true;
+		}
+		TypeInfo const* held = held_value(type);
+		if (held != nullptr && is_secret_type(held)) {
 			return true;
 		}
 		error_at(checker, ErrorCode::E4037, where, std::format(
@@ -802,7 +809,7 @@ namespace hemera {
 
 	static bool is_builtin_function(std::string_view name) {
 		return name == "size_of" || name == "align_of" || name == "offset_of" || name == "type_of"
-			|| name == "type_info_of" || name == "types_are_aliases" || name == "max_value"
+			|| name == "type_info_of" || name == "types_are_aliases" || name == "is_secret_type" || name == "max_value"
 			|| name == "min_value" || name == "todo" || is_number_builtin(name);
 	}
 
@@ -2253,7 +2260,7 @@ namespace hemera {
 		else if (name == "type_of") {
 			callee = typed(BUILTIN_type);
 		}
-		else if (name == "types_are_aliases") {
+		else if (name == "types_are_aliases" || name == "is_secret_type") {
 			callee = typed(BUILTIN_bool);
 		}
 		else if (name == "type_info_of") {
@@ -2750,11 +2757,16 @@ namespace hemera {
 			if (ast::NodeType::PAREN_GROUP == type && arguments.empty() && !child->children.empty()) {
 				arguments.assign(child->children.begin(), child->children.end());
 			}
-			// A secret's members and elements are secrets, but not how many it has (docs/memory.md, Secrets)
-			// What a pointer points to counts, like key.bytes through a ptr[Key]
+			// A secret's members and elements are secrets, but not how many it has, or where a view's or dynamic array's
+			// elements are (docs/memory.md, Secrets). What a pointer points to counts, like key.bytes through a ptr[Key]
 			const bool was_secret = value.is_secret || (ValueKind::VALUE == value.kind && reaches_secret(value.type));
+			TypeInfo const* held_array = ValueKind::VALUE == value.kind ? base_of(value.type) : nullptr;
+			const bool elements_at = held_array != nullptr && TypeInfoVariant::ARRAY == held_array->variant
+				&& ArrayType::STATIC != static_cast<TypeInfoArray const*>(held_array)->array_type
+				&& !arguments.empty() && is_text(arguments[0]->value.value, "data");
 			const bool keeps_secret = was_secret && (ast::NodeType::ARRAY_DIMENSION == type || (ast::NodeType::DOT_ACCESS == type
-				&& !arguments.empty() && !is_text(arguments[0]->value.value, "count") && !is_text(arguments[0]->value.value, "capacity")));
+				&& !arguments.empty() && !is_text(arguments[0]->value.value, "count") && !is_text(arguments[0]->value.value, "capacity")
+				&& !elements_at));
 			if (ast::NodeType::DOT_ACCESS == type) {
 				if (arguments.empty()) {
 					value = error_at(checker, ErrorCode::E4017, child, "a member's name is missing");
@@ -3604,6 +3616,15 @@ namespace hemera {
 			result = typed(BUILTIN_bool);
 			return Progress::DONE;
 		}
+		if (TokenType::KEYWORD_IS_OK == op || TokenType::KEYWORD_IS_ERROR == op) {
+			if (ValueKind::VALUE != operand.kind || builtin_union(operand.type, "Result") == nullptr) {
+				result = error_at(checker, ErrorCode::E4020, node, std::format("is_ok and is_error need a result, not {}",
+					describe(operand)));
+				return Progress::DONE;
+			}
+			result = typed(BUILTIN_bool);
+			return Progress::DONE;
+		}
 		if (TokenType::KEYWORD_OR_BREAK == op || TokenType::KEYWORD_OR_CONTINUE == op) {
 			TypeInfo* held = ValueKind::VALUE == operand.kind ? held_value(operand.type) : nullptr;
 			if (held == nullptr) {
@@ -4187,6 +4208,10 @@ namespace hemera {
 		if (ast::NodeType::BINARY_OPERATOR == type) {
 			if (is_assign(node) || TokenType::OPERATOR_PIPE == op) {
 				return false;
+			}
+			// or_return's right side is returned, never its value, which is what's on the left
+			if (TokenType::KEYWORD_OR_RETURN == op) {
+				return !node->children.empty() && is_secret_node(checker, node->children[0]);
 			}
 			return std::any_of(node->children.begin(), node->children.end(), [&](const ast::Node* child) {
 				return is_secret_node(checker, child);

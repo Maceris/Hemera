@@ -498,6 +498,21 @@ TEST(Hosted, PrefersInsertedOverImports)
 	run_hosted("inserted_over_imports", hemera::TargetStackCheck::Off);
 }
 
+/*
+ * docs/memory.md, Secrets: an optional and a result of a #secret type given back and branched on, or_return's fallback
+ * leaving what it gives public, and a #secret type's memory wiped before it's freed.
+ */
+TEST(Hosted, HoldsSecrets)
+{
+	run_hosted("secret_holders", hemera::TargetStackCheck::Off);
+}
+
+// docs/operators.md, Optional operators: a member, an element or a chain of them after ?, like f()?.x.
+TEST(Hosted, ReadsWhatUnwrapGives)
+{
+	run_hosted("unwrap_member", hemera::TargetStackCheck::Off);
+}
+
 // Compile-time code describing a type waits for what's held by value, like a call's Result and its Ok's struct.
 TEST(Hosted, DescribesWhenLaidOut)
 {

@@ -21,7 +21,9 @@ parameter, constant, function or type:
 * `fn` - For defining functions
 * `for` - For "for" loops
 * `if` - For conditional statements
+* `is_error` - Checks if a result holds an error
 * `is_none` - Checks if an optional is missing a value
+* `is_ok` - Checks if a result holds a value
 * `is_some` - Checks if an optional has a value
 * `loop` - For creating a loop
 * `match` - For pattern matching

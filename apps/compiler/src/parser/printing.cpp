@@ -180,6 +180,12 @@ namespace hemera::ast {
 			else if (type == TokenType::KEYWORD_IS_SOME) {
 				return "is_some";
 			}
+			else if (type == TokenType::KEYWORD_IS_OK) {
+				return "is_ok";
+			}
+			else if (type == TokenType::KEYWORD_IS_ERROR) {
+				return "is_error";
+			}
 			else if (type == TokenType::KEYWORD_OR_BREAK) {
 				return "or_break";
 			}

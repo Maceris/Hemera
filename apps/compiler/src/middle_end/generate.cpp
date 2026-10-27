@@ -4500,6 +4500,11 @@ namespace hemera {
 			}
 			return value(value_of(generator, emit_expression(generator, arguments[0], nullptr)), result_type);
 		}
+		// Whether a type's values are secrets: known from the type, which is named
+		if (name == "is_secret_type" && arguments.size() == 1) {
+			const CheckedNode* given = checked(generator, arguments[0]);
+			return value(boolean(generator, given != nullptr && ValueKind::TYPE == given->kind && is_secret_type(given->type)), BUILTIN_bool);
+		}
 		/*
 		 * Whether two types are the same once aliases that aren't distinct are followed: known when both are named,
 		 * or else by following each descriptor's base_type while it's such an alias, and comparing where they end
@@ -6742,11 +6747,15 @@ namespace hemera {
 			return type;
 		}
 		if (TokenType::SYM_QUESTION == op || TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op
+			|| TokenType::KEYWORD_IS_OK == op || TokenType::KEYWORD_IS_ERROR == op
 			|| TokenType::KEYWORD_OR_BREAK == op || TokenType::KEYWORD_OR_CONTINUE == op) {
 			Emitted operand = emit_expression(generator, operand_node, nullptr);
 			mlir::Value address = address_of(generator, operand);
-			if (TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op) {
-				return value(tag_is(generator, address, operand.type, value_variant(operand.type), TokenType::KEYWORD_IS_SOME == op), BUILTIN_bool);
+			if (TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op || TokenType::KEYWORD_IS_OK == op
+				|| TokenType::KEYWORD_IS_ERROR == op) {
+				// is_some and is_ok are whether it holds a value, is_none and is_error whether it doesn't
+				const bool holds = TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_OK == op;
+				return value(tag_is(generator, address, operand.type, value_variant(operand.type), holds), BUILTIN_bool);
 			}
 			emit_if(generator, tag_is(generator, address, operand.type, value_variant(operand.type), false), [&]() {
 				if (TokenType::KEYWORD_OR_BREAK == op) {
@@ -10084,7 +10093,7 @@ namespace hemera {
 		bool is_identifier(std::string_view text) {
 			static constexpr std::string_view KEYWORDS[] = {
 				"auto_cast", "bit_cast", "break", "case", "cast", "continue", "defer", "distinct", "else", "enum", "false",
-				"fn", "for", "if", "is_none", "is_some", "loop", "match", "mut", "null", "or_break", "or_continue",
+				"fn", "for", "if", "is_error", "is_none", "is_ok", "is_some", "loop", "match", "mut", "null", "or_break", "or_continue",
 				"or_else", "or_return", "push_context", "return", "struct", "switch", "true", "union", "using", "void",
 				"while", "with",
 			};

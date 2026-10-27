@@ -61,8 +61,14 @@ namespace hemera::lexer {
 		if (identifier.compare("if") == 0) {
 			return TokenType::KEYWORD_IF;
 		}
+		if (identifier.compare("is_error") == 0) {
+			return TokenType::KEYWORD_IS_ERROR;
+		}
 		if (identifier.compare("is_none") == 0) {
 			return TokenType::KEYWORD_IS_NONE;
+		}
+		if (identifier.compare("is_ok") == 0) {
+			return TokenType::KEYWORD_IS_OK;
 		}
 		if (identifier.compare("is_some") == 0) {
 			return TokenType::KEYWORD_IS_SOME;
@@ -1132,7 +1138,9 @@ namespace hemera::lexer {
 		case TokenType::KEYWORD_FN:
 		case TokenType::KEYWORD_FOR:
 		case TokenType::KEYWORD_IF:
+		case TokenType::KEYWORD_IS_ERROR:
 		case TokenType::KEYWORD_IS_NONE:
+		case TokenType::KEYWORD_IS_OK:
 		case TokenType::KEYWORD_IS_SOME:
 		case TokenType::KEYWORD_LOOP:
 		case TokenType::KEYWORD_MATCH:

@@ -906,7 +906,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "endian_compound", hemera::ErrorCode::E4020 },
 		{ "endian_from_native", hemera::ErrorCode::E4015 },
 		// docs/memory.md, Scoped Structs
-		{ "scoped_dynamic_local", hemera::ErrorCode::E4014 }
+		{ "scoped_dynamic_local", hemera::ErrorCode::E4014 },
+		// docs/operators.md, Optional operators
+		{ "result_test_on_optional", hemera::ErrorCode::E4020 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

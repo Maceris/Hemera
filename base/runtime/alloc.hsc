@@ -1,9 +1,12 @@
 package runtime
 
+import intrinsics from "base"
+
 /*
  * Freeing passes the block's size and alignment, as it was allocated (docs/memory.md, Allocators): free and
  * free_array give back what new and new_array made, and free_aligned and free_array_aligned what new_aligned
- * and new_array_aligned made, with the same alignment.
+ * and new_array_aligned made, with the same alignment. Memory of a #secret type is zeroed first, so no key is
+ * left where the allocator gives it out again (docs/memory.md, Secrets).
  */
 
 // Give back a T from new, to the allocator it came from.
@@ -12,6 +15,9 @@ free :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) {
+    if is_secret_type(T) {
+        intrinsics.secure_zero(cast[mut rawptr](cast[rawptr](pointer)), size_of(T))
+    }
     allocator.function(allocator.data, 0, align_of(T), cast[rawptr](pointer), size_of(T), loc)
 }
 
@@ -22,6 +28,9 @@ free_aligned :: fn[T](
     allocator := context.allocator,
     loc := #caller_location,
 ) {
+    if is_secret_type(T) {
+        intrinsics.secure_zero(cast[mut rawptr](cast[rawptr](pointer)), size_of(T))
+    }
     allocator.function(allocator.data, 0, alignment, cast[rawptr](pointer), size_of(T), loc)
 }
 
@@ -50,6 +59,9 @@ free_array_aligned :: fn[T](
 ) {
     if array.count == 0 {
         return void
+    }
+    if is_secret_type(T) {
+        intrinsics.secure_zero(cast[mut rawptr](cast[rawptr](array.data)), array.count * size_of(T))
     }
     allocator.function(allocator.data, 0, alignment, cast[rawptr](array.data), array.count * size_of(T), loc)
 }

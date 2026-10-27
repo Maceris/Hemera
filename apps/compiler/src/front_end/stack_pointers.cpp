@@ -867,9 +867,11 @@ namespace hemera {
 				return type;
 			}
 			if (TokenType::SYM_QUESTION == op || TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op
+				|| TokenType::KEYWORD_IS_OK == op || TokenType::KEYWORD_IS_ERROR == op
 				|| TokenType::KEYWORD_OR_BREAK == op || TokenType::KEYWORD_OR_CONTINUE == op) {
 				Evaluated operand = evaluate(analysis, operand_node, nullptr);
-				if (TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op) {
+				if (TokenType::KEYWORD_IS_SOME == op || TokenType::KEYWORD_IS_NONE == op || TokenType::KEYWORD_IS_OK == op
+					|| TokenType::KEYWORD_IS_ERROR == op) {
 					return value_of_type(Reach{}, BUILTIN_bool);
 				}
 				return held(operand, result_type);

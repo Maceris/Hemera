@@ -175,7 +175,7 @@ check_memory :: fn() -> int {
     memory.release_weak(weak)
     runtime.free(seen)
     ok : Result[int, int] = .Ok(1)
-    if !memory.is_ok(ok) || memory.is_error(ok) {
+    if !(ok is_ok) || (ok is_error) {
         return 3
     }
     return 0

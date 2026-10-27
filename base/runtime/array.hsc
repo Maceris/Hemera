@@ -121,6 +121,10 @@ array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
 array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
     raw :: resizable(array)
     if raw.capacity > 0 {
+        // A #secret type's elements, zeroed first, as free_array does (alloc.hsc)
+        if is_secret_type(T) {
+            intrinsics.secure_zero(cast[mut rawptr](raw.data), raw.capacity * size_of(T))
+        }
         raw.allocator.function(raw.allocator.data, 0, align_of(T), raw.data, raw.capacity * size_of(T), location)
     }
     raw.data = null

@@ -1735,7 +1735,9 @@ namespace hemera::parser {
 		case TokenType::KEYWORD_ELSE:
 		case TokenType::KEYWORD_ENUM:
 		case TokenType::KEYWORD_FN:
+		case TokenType::KEYWORD_IS_ERROR:
 		case TokenType::KEYWORD_IS_NONE:
+		case TokenType::KEYWORD_IS_OK:
 		case TokenType::KEYWORD_IS_SOME:
 		case TokenType::KEYWORD_MUT:
 		case TokenType::KEYWORD_OR_BREAK:
@@ -2368,6 +2370,8 @@ namespace hemera::parser {
 		const TokenType current = current_token(state).type;
 		if (TokenType::KEYWORD_IS_NONE == current
 			|| TokenType::KEYWORD_IS_SOME == current
+			|| TokenType::KEYWORD_IS_OK == current
+			|| TokenType::KEYWORD_IS_ERROR == current
 			|| TokenType::KEYWORD_OR_BREAK == current
 			|| TokenType::KEYWORD_OR_CONTINUE == current
 			) {
@@ -2652,6 +2656,19 @@ namespace hemera::parser {
 			ast::Node* unwrap = &next_as_node(state, ast::NodeType::UNARY_OPERATOR);
 			unwrap->children.push_back(result);
 			result = unwrap;
+			// A member, an element or what it points to of what's unwrapped, like f()?.limit: as (f()?).limit is,
+			// a cast to nothing that parentheses make
+			const bool member = expect(state, TokenType::SYM_DOT) && TokenType::IDENTIFIER == next_token(state).type;
+			if (member || expect(state, TokenType::SYM_LBRACK) || expect(state, TokenType::OPERATOR_DEREFERENCE)) {
+				Token parenthesis = unwrap->value;
+				parenthesis.type = TokenType::SYM_LPAREN;
+				ast::Node* kept = state->node_alloc.new_object<ast::Node>(ast::NodeType::CAST, parenthesis);
+				kept->children.push_back(unwrap);
+				if (!postfix_operations(state, *kept)) {
+					return ExprResult{ false };
+				}
+				result = kept;
+			}
 		}
 
 		return ExprResult{ true, result };

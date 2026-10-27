@@ -56,7 +56,7 @@ namespace hemera {
 		// Structs
 		"Optional", "Result",
 		// Functions
-		"align_of", "size_of", "offset_of", "type_of", "type_info_of", "types_are_aliases",
+		"align_of", "size_of", "offset_of", "type_of", "type_info_of", "types_are_aliases", "is_secret_type",
 		"max_value", "min_value", "todo",
 		// Complex numbers' and quaternions' parts, conjugates and magnitudes, and any number's absolute value
 		"real", "imag", "jmag", "kmag", "conj", "abs",
@@ -2309,6 +2309,21 @@ namespace hemera {
 			}
 			result.kind = ConstantValue::Kind::BOOLEAN;
 			result.boolean = same_type(a.type, b.type);
+			return Progress::DONE;
+		}
+		// Whether a type's values are secrets (docs/memory.md, Secrets), as a generic asks of what it's given
+		if (name == "is_secret_type" && arguments.size() == 1) {
+			ConstantValue given;
+			Progress progress = evaluate_maybe_type(walk, arguments[0], given);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			if (ConstantValue::Kind::TYPE != given.kind) {
+				report_not_constant(walk.file_path, node, "is_secret_type needs a type");
+				return Progress::FAILED;
+			}
+			result.kind = ConstantValue::Kind::BOOLEAN;
+			result.boolean = is_secret_type(given.type);
 			return Progress::DONE;
 		}
 		const bool known = name == "size_of" || name == "align_of" || name == "offset_of";

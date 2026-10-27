@@ -91,7 +91,9 @@ KEYWORD_from = "from" ;
 KEYWORD_if = "if" ;
 KEYWORD_import = "import" ;
 KEYWORD_in = "in" ;
+KEYWORD_is_error = "is_error" ;
 KEYWORD_is_none = "is_none" ;
+KEYWORD_is_ok = "is_ok" ;
 KEYWORD_is_some = "is_some" ;
 KEYWORD_loop = "loop" ;
 KEYWORD_match = "match" ;
@@ -357,6 +359,8 @@ expr_lvl_1 = assign_target , { SYM_COMMA , assign_target } , [ ( OPERATOR_assign
 expr_lvl_2 = if_expression
     | ( expr_lvl_3 , KEYWORD_is_none )
     | ( expr_lvl_3 , KEYWORD_is_some )
+    | ( expr_lvl_3 , KEYWORD_is_ok )
+    | ( expr_lvl_3 , KEYWORD_is_error )
     | ( expr_lvl_3 , KEYWORD_or_break )
     | ( expr_lvl_3 , KEYWORD_or_continue )
     | ( expr_lvl_3 , KEYWORD_or_else , expression_with_result )
