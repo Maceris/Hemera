@@ -619,7 +619,12 @@ namespace hemera {
 			args.push_back(std::format("{}.lib", library));
 		}
 		if (options.debug_info) {
-			args.push_back("/debug");
+			/*
+			 * The PDB named in the program by its file's name alone, and the sources in it as the program names them
+			 * (relative, under ".", rather than made absolute with the folder the compiler ran in), so where the
+			 * sources were doesn't change the PDB, or the program's reference to it
+			 */
+			args.insert(args.end(), { "/debug", "/pdbaltpath:%_PDB%", "/pdbsourcepath:." });
 		}
 		if (options.startup_code) {
 			args.insert(args.end(), { std::format("/entry:{}", HOSTED_ENTRY_SYMBOL), "/subsystem:console", "/nodefaultlib", "kernel32.lib" });

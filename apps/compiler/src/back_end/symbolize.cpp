@@ -111,12 +111,17 @@ namespace hemera {
 				const std::string function = frame.FunctionName == llvm::DILineInfo::BadString ? "??" : frame.FunctionName;
 				std::string where;
 				if (frame.FileName != llvm::DILineInfo::BadString) {
-					// base's files are named <base>/..., which a PDB has made into a path on a drive
+					// Files are named as the program names them: <base>/..., <std>/..., or relative to its package
 					std::string file = frame.FileName;
-					const size_t embedded = file.find("<base>");
-					if (embedded != std::string::npos) {
-						file = file.substr(embedded);
-						std::replace(file.begin(), file.end(), '\\', '/');
+					std::replace(file.begin(), file.end(), '\\', '/');
+					for (const char* root : { "<base>", "<std>" }) {
+						const size_t embedded = file.find(root);
+						if (embedded != std::string::npos) {
+							file = file.substr(embedded);
+						}
+					}
+					if (file.starts_with("./")) {
+						file = file.substr(2);
 					}
 					where = frame.Column > 0 ? std::format(" at {}:{}:{}", file, frame.Line, frame.Column)
 						: std::format(" at {}:{}", file, frame.Line);

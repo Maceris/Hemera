@@ -45,9 +45,18 @@ File Import --> Parse --> Type Check <--\
 ## Deterministic Output
 
 The same inputs (source, `base` and `std`, options and settings, and the same compiler) give the
-same output, byte for byte, wherever it's written and however the work was spread across threads.
-That lets you check that two builds of a commit match, see only real changes when comparing two
-compilers' output, and cache or bisect builds.
+same output, byte for byte, wherever the sources are, on whichever host builds it, and however the
+work was spread across threads. That lets you check that two builds of a commit match, name a build
+by the hash of its bytes, see only real changes when comparing two compilers' output, and cache or
+bisect builds.
+
+What the program says about its sources names them the same wherever they are: `#caller_location`'s
+`file_path` and debug info give `base`'s files as `<base>/...`, `std`'s as `<std>/...`, and every other
+file relative to the folder of the package being built, with `/` throughout, like
+`../shared/parse.hsc`. Error messages keep the path on disk. A PE/COFF program with debug info names its
+PDB by the file's name alone, and the PDB names the sources the same way, though the PDB also records
+the command that linked it, so it and the program's reference to it match only when written to the same
+place; an ELF program's debug info is in the program, and matches wherever it's written.
 
 Work happens on many threads, in whatever order its dependencies allow, so nothing the compiler
 writes may depend on that order or on memory addresses. Where the compiler walks a collection to

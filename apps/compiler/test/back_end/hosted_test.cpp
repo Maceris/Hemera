@@ -124,6 +124,89 @@ TEST(Hosted, RunsProgram)
 }
 
 /*
+ * A package built from the folder its sources are in, to output_name, for Windows or Linux, with or without debug info,
+ * without running it: whether it built.
+ */
+static bool build_from(const std::filesystem::path& sources, const std::filesystem::path& output_name, bool linux, bool debug_info)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "copied");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	std::filesystem::create_directories(output_name.parent_path());
+	hemera::Options options;
+	options.input = std::filesystem::canonical(sources);
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.output_name = output_name.string();
+	options.stack_check = hemera::TargetStackCheck::Off;
+	options.debug_info = debug_info;
+	if (linux) {
+		options.os = hemera::OSType::Linux;
+		options.object_format = hemera::ObjectFormatType::ELF;
+		options.vendor = hemera::VendorType::UnknownVendor;
+		options.environment = hemera::EnvironmentType::GNU;
+	}
+	const std::string object_file = std::format("{}.o", options.output_name);
+	hemera::kick_off_processing(program_info.get(), &options);
+	if (hemera::error_count() != 0 || !hemera::generate_program(program_info.get(), options, module)) {
+		return false;
+	}
+	llvm::LLVMContext llvm_context;
+	std::unique_ptr<llvm::Module> lowered = hemera::lower_to_llvm(module, llvm_context, options);
+	if (lowered == nullptr) {
+		return false;
+	}
+	hemera::BackendLLVM backend;
+	const bool built = backend.initialize(options) && backend.generate_object_file(options, *lowered, object_file);
+	if (built) {
+		backend.link(options, object_file);
+	}
+	backend.destroy();
+	module.erase();
+	return built && hemera::error_count() == 0;
+}
+
+/*
+ * docs/compilation.md, Deterministic Output: one package's sources in two folders, at different depths, built to the
+ * same output path for Windows and for Linux, with and without debug info, give the same bytes, PDB and all. Its
+ * #caller_location and debug info name its files relative to it, and base's and std's as <base>/... and <std>/....
+ */
+TEST(Hosted, BuildsTheSameWhereverTheSourcesAre)
+{
+	const std::filesystem::path root = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "sources_anywhere";
+	std::filesystem::remove_all(root);
+	const std::filesystem::path first = root / "first" / "assertion";
+	const std::filesystem::path second = root / "second" / "deeper" / "assertion";
+	for (const std::filesystem::path& copy : { first, second }) {
+		std::filesystem::create_directories(copy);
+		std::filesystem::copy(scenario("assertion"), copy, std::filesystem::copy_options::recursive);
+	}
+	for (const bool linux : { false, true }) {
+		for (const bool debug_info : { false, true }) {
+			const std::filesystem::path output = root / "out" / "program";
+			const std::filesystem::path program = linux ? output : std::filesystem::path(output.string() + ".exe");
+			const std::filesystem::path pdb = std::filesystem::path(output.string() + ".pdb");
+			ASSERT_TRUE(build_from(first, output, linux, debug_info));
+			const std::string built = read_file(program);
+			const std::string debug = !linux && debug_info ? read_file(pdb) : std::string();
+			ASSERT_FALSE(built.empty());
+			ASSERT_TRUE(build_from(second, output, linux, debug_info));
+			EXPECT_TRUE(read_file(program) == built) << (linux ? "Linux" : "Windows") << (debug_info ? ", debug info" : "");
+			if (!linux && debug_info) {
+				EXPECT_TRUE(read_file(pdb) == debug) << "the PDB differs";
+			}
+			// Nothing in it says where the sources were
+			EXPECT_EQ(built.find("sources_anywhere"), std::string::npos) << (linux ? "Linux" : "Windows") << (debug_info ? ", debug info" : "");
+		}
+	}
+}
+
+/*
  * A program large enough to be generated in parts, with debug info, built twice the same way: the program and
  * its PDB are the same bytes each time, with no link time in them (docs/compilation.md, Generating in Parallel).
  */

@@ -287,6 +287,43 @@ namespace hemera {
 		return declaration != nullptr ? file_path_of(declaration->package_path, declaration->file_name) : generator.file_path;
 	}
 
+	/*
+	 * A source file as what the program says about it names it (docs/compilation.md, Deterministic Output): the same
+	 * wherever the sources are. base's are <base>/..., std's <std>/..., and anything else relative to the folder of the
+	 * package being built, with / throughout. Error messages keep the path on disk.
+	 */
+	static std::string source_name(Generator& generator, const std::string& path) {
+		std::filesystem::path file(path);
+		if (!file.is_absolute() || generator.options == nullptr) {
+			std::string kept = path;
+			std::replace(kept.begin(), kept.end(), '\\', '/');
+			return kept;
+		}
+		file = file.lexically_normal();
+		const auto beneath = [&](const std::filesystem::path& folder) -> std::optional<std::string> {
+			if (folder.empty()) {
+				return std::nullopt;
+			}
+			const std::filesystem::path relative = file.lexically_relative(std::filesystem::absolute(folder).lexically_normal());
+			if (relative.empty() || *relative.begin() == "..") {
+				return std::nullopt;
+			}
+			return relative.generic_string();
+		};
+		auto std_folder = generator.options->builtin_paths.find(BuiltinPackage::STD);
+		if (std_folder != generator.options->builtin_paths.end()) {
+			if (std::optional<std::string> inside = beneath(std_folder->second)) {
+				return "<std>/" + *inside;
+			}
+		}
+		std::filesystem::path root = std::filesystem::absolute(generator.options->input).lexically_normal();
+		if (!std::filesystem::is_directory(root)) {
+			root = root.parent_path();
+		}
+		const std::filesystem::path relative = file.lexically_relative(root);
+		return relative.empty() ? file.filename().generic_string() : relative.generic_string();
+	}
+
 	// Reports what code generation can't do yet; the caller carries on with a placeholder.
 	static void unsupported(Generator& generator, const ast::Node* node, std::string what) {
 		generator.failed = true;
@@ -4238,7 +4275,7 @@ namespace hemera {
 			const std::string name = text_of(member.name);
 			mlir::Value part;
 			if (name == "file_path") {
-				part = string_value(generator, file, member.member_type);
+				part = string_value(generator, source_name(generator, file), member.member_type);
 			}
 			else if (name == "function") {
 				part = string_value(generator, function, member.member_type);
@@ -8712,22 +8749,15 @@ namespace hemera {
 		if (iter != generator.debug_files.end()) {
 			return iter->second;
 		}
-		const std::filesystem::path file(path);
-		// base's files are named <base>/..., not on disk: kept whole, so tools don't put a folder in front
-		LLVM::DIFileAttr result = file.is_absolute()
-			? LLVM::DIFileAttr::get(generator.context, file.filename().string(), file.parent_path().string())
-			: LLVM::DIFileAttr::get(generator.context, file.generic_string(), "");
+		// Named as source_name names it, with no folder, so the program says nothing about where its sources were
+		LLVM::DIFileAttr result = LLVM::DIFileAttr::get(generator.context, path, "");
 		generator.debug_files.emplace(path, result);
 		return result;
 	}
 
-	// The file being generated, for debug info: base's <base>/... names with / throughout.
+	// The file being generated, for debug info, as source_name names it.
 	static std::string debug_path(Generator& generator) {
-		std::string path = current_file(generator);
-		if (!std::filesystem::path(path).is_absolute()) {
-			std::replace(path.begin(), path.end(), '\\', '/');
-		}
-		return path;
+		return source_name(generator, current_file(generator));
 	}
 
 	// Where node is, in the file being generated, or the location so far if it has none.
