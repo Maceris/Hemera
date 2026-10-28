@@ -167,6 +167,12 @@ The bytes start with `HSCH` and the format's version, then the number of types, 
 first. Each type refers to the others by their place among them, counted in the order they're first reached, so a type
 that refers to itself is described once.
 
+`schema.write_value` writes a value for something that reads it elsewhere with its schema: its bytes in its own
+layout, then what it points to after it, each pointer replaced by the distance from the value's start to what it
+pointed to, or 0 for null. A string's bytes, an array view's or a dynamic array's elements, and what a pointer points
+to are followed; a `rawptr`, a function, a type value, an `any`, and a `#union` struct holding pointers are written as
+0, so nothing written says where anything was in the writer's memory.
+
 ## Arrays
 
 There are a few types of arrays.

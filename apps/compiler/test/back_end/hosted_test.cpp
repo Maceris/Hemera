@@ -540,6 +540,12 @@ TEST(Hosted, DeclaresGenericTypesInFunctions)
 	run_hosted("local_generic_types", hemera::TargetStackCheck::Off);
 }
 
+// runtime.in_image: whether an address is in the program's image, from its headers, as a literal is and the heap isn't.
+TEST(Hosted, FindsWhatsInTheImage)
+{
+	run_hosted("in_image", hemera::TargetStackCheck::Off);
+}
+
 // docs/types.md, Schemas: std's schema, a type's canonical description and its hash, alike at compile and run time.
 TEST(Hosted, HashesSchemas)
 {

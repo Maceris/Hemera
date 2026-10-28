@@ -54,3 +54,55 @@ image_offset #no_context :: fn(address: rawptr) -> usize {
     }
     return cast[usize](address) - base
 }
+
+/*
+ * Whether an address is in the program's image (intrinsics.image_base), from the image's own headers: the span of an
+ * ELF image's loaded segments, or a PE/COFF image's SizeOfImage. A string literal is; what's on the heap or the stack
+ * isn't. False wherever the image's start isn't known, like an ELF image whose headers aren't in memory.
+ */
+in_image #no_context :: fn(address: rawptr) -> bool {
+    base :: cast[usize](intrinsics.image_base())
+    target :: cast[usize](address)
+    if base == 0 || target < base {
+        return false
+    }
+    return target - base < image_size(base)
+}
+
+// How many bytes the image starting at base spans, or 0 if its headers aren't ones this reads.
+image_size #no_context :: fn(base: usize) -> usize {
+    header :: cast[ptr[u8]](base)
+    if read_at[u32](base, 0) == 0x464c457f {
+        // ELF: the loaded segments, from the lowest address any has to the highest it reaches
+        program_headers :: base + cast[usize](read_at[u64](base, 0x20))
+        entry_size :: cast[usize](read_at[u16](base, 0x36))
+        count :: cast[usize](read_at[u16](base, 0x38))
+        lowest := ~cast[u64](0)
+        highest : u64 = 0
+        for i in cast[usize](0)..<count {
+            at :: program_headers + i * entry_size
+            // PT_LOAD
+            if read_at[u32](at, 0) != 1 {
+                continue
+            }
+            start :: read_at[u64](at, 0x10)
+            end :: start + read_at[u64](at, 0x28)
+            lowest = if start < lowest { start } else { lowest }
+            highest = if end > highest { end } else { highest }
+        }
+        return if highest > lowest { cast[usize](highest - lowest) } else { 0 }
+    }
+    if header^ == 0x4d && read_at[u8](base, 1) == 0x5a {
+        // PE/COFF: SizeOfImage, in the optional header after the "PE\0\0" signature and the file header
+        signature :: base + cast[usize](read_at[u32](base, 0x3c))
+        if read_at[u32](signature, 0) != 0x00004550 {
+            return 0
+        }
+        return cast[usize](read_at[u32](signature, 24 + 56))
+    }
+    return 0
+}
+
+read_at #no_context :: fn[T](base: usize, offset: usize) -> T {
+    return cast[ptr[T]](base + offset)^
+}

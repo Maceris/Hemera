@@ -2077,6 +2077,28 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	// A function's type with what's after its name, which is the type's: #never_returns, #no_context, #calling_convention.
+	static TypeInfo* with_name_directives(Walk& walk, ast::Node* definition, TypeInfo* function) {
+		if (definition == nullptr || definition->children.empty() || function == nullptr
+			|| TypeInfoVariant::FUNCTION != function->variant) {
+			return function;
+		}
+		for (ast::Node* directive : definition->children[0]->children) {
+			if (is_text(directive->value.value, "#never_returns")) {
+				function = never_returning(walk, static_cast<TypeInfoFunction*>(function));
+			}
+			else if (is_text(directive->value.value, "#no_context")) {
+				function = without_context(walk, static_cast<TypeInfoFunction*>(function));
+			}
+			else if (is_text(directive->value.value, "#calling_convention")) {
+				ast::Node* convention = directive_argument(directive);
+				function = with_convention(walk, static_cast<TypeInfoFunction*>(function),
+					convention != nullptr ? convention->value.value : nullptr);
+			}
+		}
+		return function;
+	}
+
 	Progress compute_declaration(Walk& walk, const std::vector<Declaration*>& declarations,
 		ast::Node* definition) {
 
@@ -2152,19 +2174,7 @@ namespace hemera {
 				function = with_convention(walk, static_cast<TypeInfoFunction*>(without_context(walk, static_cast<TypeInfoFunction*>(function))),
 					intern(std::string("c")));
 			}
-			for (ast::Node* directive : definition->children[0]->children) {
-				if (is_text(directive->value.value, "#never_returns")) {
-					function = never_returning(walk, static_cast<TypeInfoFunction*>(function));
-				}
-				else if (is_text(directive->value.value, "#no_context")) {
-					function = without_context(walk, static_cast<TypeInfoFunction*>(function));
-				}
-				else if (is_text(directive->value.value, "#calling_convention")) {
-					ast::Node* convention = directive_argument(directive);
-					function = with_convention(walk, static_cast<TypeInfoFunction*>(function),
-						convention != nullptr ? convention->value.value : nullptr);
-				}
-			}
+			function = with_name_directives(walk, definition, function);
 			for (Declaration* each : declarations) {
 				each->value_type = function;
 			}
@@ -2368,7 +2378,13 @@ namespace hemera {
 			}
 		}
 		if (ast::NodeType::FUNCTION == value->node_type) {
-			return function_type(walk, value, instance->value_type);
+			Progress progress = function_type(walk, value, instance->value_type);
+			if (progress == Progress::DONE) {
+				// What's after the generic's name is each instance's too, like #no_context
+				Declaration* written = instance->generic != nullptr ? instance->generic : instance;
+				instance->value_type = with_name_directives(walk, written->node, instance->value_type);
+			}
+			return progress;
 		}
 		// A generic alias's instance: what it names, with the instance's arguments
 		if (TypeInfoVariant::ALIAS == instance->type_value->variant) {

@@ -87,6 +87,8 @@ TESTS = [
     ("local_generic_types", [], 42),
     ("union_constants", [], 42),
     ("c_strings", [], 42),
+    ("schemas", [], 42),
+    ("in_image", [], 42),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--stack-check=morestack", "SYSROOT"], 42),
 ]
