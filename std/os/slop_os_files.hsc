@@ -60,6 +60,9 @@ package os
             case .Corrupt => OsError.Other
             case .NoBuffer => OsError.Other
             case .Conflict => OsError.Other
+            case .Revoked => OsError.AccessDenied
+            case .Unavailable => OsError.Other
+            case .IsALink => OsError.Other
         }
     }
 

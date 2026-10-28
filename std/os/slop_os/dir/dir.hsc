@@ -7,6 +7,7 @@ package dir
     import file from "std/os/slop_os"
     import file_set from "std/os/slop_os"
     import files from "std/os/slop_os"
+    import grant from "std/os/slop_os"
     import read_only_dir from "std/os/slop_os"
     import read_only_file from "std/os/slop_os"
 
@@ -33,6 +34,18 @@ package dir
     Rename :: struct {
         from : slop_os.Relative[u8],
         to : slop_os.Relative[u8],
+    }
+
+    // What's at a path beneath this directory granted, to write as well as read if write.
+    GrantOf :: struct {
+        path : slop_os.Relative[u8],
+        write : bool,
+    }
+
+    // A grant kept as a stored link at a path beneath this directory.
+    LinkTo :: struct {
+        path : slop_os.Relative[u8],
+        grant : os.Channel[grant.Grant],
     }
 
     Request :: union {
@@ -70,6 +83,17 @@ package dir
         Replace(slop_os.Relative[u8]),
         // The first change beneath this directory at or after a cursor (decisions/0089)
         Changes(u64),
+        /*
+         * Stored links (the SlopOS repository's roadmap 8f, design/security.md §8): what's at a path granted, for a
+         * directory in another volume to keep with Link; a link opens as what it leads to, wherever it's on a path, and
+         * Remove and Rename act on the link. The links issued for what's beneath this directory, from a cursor, and one
+         * of them revoked by its number. What was reached through a link can't be granted on, and its links aren't
+         * listed or revoked through it (ReadOnly).
+         */
+        Grant(GrantOf),
+        Link(LinkTo),
+        Links(u64),
+        Revoke(u64),
     }
 
     Response :: union {
@@ -92,6 +116,8 @@ package dir
         UpToDate(u64),
         // The cursor is older than what's kept: list again, and ask from the cursor given
         Resync(u64),
+        Granted(os.Channel[grant.Grant]),
+        Issued(files.IssuedLink),
     }
 
     // A rename or a removal done again finds nothing to do, which is reported, so they aren't sent again.
@@ -114,6 +140,10 @@ package dir
             case Abort => true
             case Replace(_) => false
             case Changes(_) => true
+            case Grant(_) => false
+            case Link(_) => false
+            case Links(_) => true
+            case Revoke(_) => false
         }
     }
 

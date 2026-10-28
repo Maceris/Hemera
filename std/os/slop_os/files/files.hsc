@@ -17,6 +17,8 @@ package files
     Kind :: enum #backed_by(u32) {
         File = 1,
         Directory = 2,
+        // A stored link to a file or a directory in another volume (the SlopOS repository's roadmap 8f), opened as either
+        Link = 3,
     }
 
     FileError :: enum #backed_by(u32) {
@@ -41,6 +43,12 @@ package files
         NoBuffer = 11,
         // A transaction's commit found something it read or changed changed by someone else since
         Conflict = 12,
+        // A stored link whose grant was revoked
+        Revoked = 13,
+        // A stored link into a volume that isn't open, or that can't be reached
+        Unavailable = 14,
+        // A stored link where it isn't followed: inside what another link leads to, or in a transaction
+        IsALink = 15,
     }
 
     // How OpenFile treats what's at its path.
@@ -98,6 +106,16 @@ package files
     Change :: struct {
         kind : ChangeKind,
         name : slop_os.Relative[u8],
+        next : u64,
+    }
+
+    // A link a directory's volume issued (Links), the path, beneath that directory, to what it leads to, and the cursor after it.
+    IssuedLink :: struct {
+        number : u64,
+        path : slop_os.Relative[u8],
+        write : bool,
+        // When it was issued, as its granter's clock said
+        created : u64,
         next : u64,
     }
 
