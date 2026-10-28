@@ -142,6 +142,31 @@ along with every type that description refers to.
 `int`, `uint`, `usize` and `uintptr` are described like the fixed-size integers they're laid out as;
 comparing type values tells them apart.
 
+### Schemas
+
+`std`'s `schema` package writes a type's description as bytes that are the same in every build, every program and on
+every host (`schema.write`), and names the type by their BLAKE3-256 hash (`schema.hash`). It's how a value's type can be
+named outside the program, by something that reads the value later or elsewhere. The same code runs in `#run` and at
+run time, so a hash worked out when compiling matches one worked out while running.
+
+```
+POINT_SCHEMA :: #run schema.hash(type_info_of(Point))
+
+matches :: fn(value: any) -> bool {
+    return schema.hash(type_info_of(value.type)) == POINT_SCHEMA
+}
+```
+
+A schema covers a value's layout and its names: each type's kind and size, the names of structs, unions, enums and
+distinct aliases, their members, variants and enum values in order, with their offsets, and the types they hold. It
+doesn't cover where a type was declared or its documentation. So two types laid out alike under the same names have
+the same schema, and changing a name, a member's order or a member's type changes it. A plain alias has the schema of
+the type it names; a distinct alias has its own. `int` has the same schema as `i64`, as it's laid out the same way.
+
+The bytes start with `HSCH` and the format's version, then the number of types, then each type, the one described
+first. Each type refers to the others by their place among them, counted in the order they're first reached, so a type
+that refers to itself is described once.
+
 ## Arrays
 
 There are a few types of arrays.

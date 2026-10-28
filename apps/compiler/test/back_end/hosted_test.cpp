@@ -540,6 +540,12 @@ TEST(Hosted, DeclaresGenericTypesInFunctions)
 	run_hosted("local_generic_types", hemera::TargetStackCheck::Off);
 }
 
+// docs/types.md, Schemas: std's schema, a type's canonical description and its hash, alike at compile and run time.
+TEST(Hosted, HashesSchemas)
+{
+	run_hosted("schemas", hemera::TargetStackCheck::Off);
+}
+
 // std's c_string: a cstring's length and text, looking no further than a limit for its zero.
 TEST(Hosted, ReadsCStringsWithinALimit)
 {

@@ -248,7 +248,7 @@ knows which parts of `std` it can use.
 | Tier | Needs | Packages |
 |---|---|---|
 | `Freestanding` | Nothing but `base` | `c_string`, `concurrency`, `containers`, `random`, `reflection`, `slop_os`, `text_buffer`, `tiers` |
-| `Allocating` | An `Allocator` in `context` | `maps`, `memory`, `strings` |
+| `Allocating` | An `Allocator` in `context` | `maps`, `memory`, `schema`, `strings` |
 | `Os` | System calls | `fiber`, `io`, `logger`, `os`, `time` |
 
 A package's tier is the highest any of its files needs, and it's declared in the package's `package_info.hsc`
