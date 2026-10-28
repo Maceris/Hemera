@@ -30,6 +30,15 @@ namespace hemera {
 	};
 
 	/// <summary>
+	/// A compiler.LinkedLibrary: another target, by its name, or a package's folder and a library's file.
+	/// </summary>
+	struct BuildLibrary {
+		std::string target;
+		std::string root;
+		std::string file;
+	};
+
+	/// <summary>
 	/// A target: compiler.BuildOptions, read from the build package's value.
 	/// </summary>
 	struct BuildTarget {
@@ -40,6 +49,7 @@ namespace hemera {
 		std::string entry;
 		std::vector<std::pair<std::string, std::string>> settings;
 		std::vector<std::pair<std::string, std::string>> package_paths;
+		std::vector<BuildLibrary> libraries;
 		std::string optimization_level;
 		bool debug_info = false;
 		std::string architecture;

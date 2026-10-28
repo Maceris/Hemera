@@ -151,7 +151,7 @@ namespace hemera {
 				return false;
 			}
 			target.built = true;
-			target.output = OSType::Win32 == options->os ? options->output_name + ".exe" : options->output_name;
+			target.output = OSType::Win32 == options->os ? options->output_name + (options->typed_library ? ".dll" : ".exe") : options->output_name;
 			return true;
 		};
 

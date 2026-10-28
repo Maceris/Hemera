@@ -3,6 +3,7 @@
 #include "util/phase_timer.h"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -271,6 +272,19 @@ namespace hemera {
 		std::vector<std::pair<LLVM::LLVMFuncOp, std::string>> named_functions;
 		LLVM::GlobalOp function_names;
 		TypeInfo* function_names_type = nullptr;
+		/// <summary>
+		/// Typed libraries (docs/compilation.md, Typed Libraries): each export of a library the program calls, with
+		/// the slot its calls go through and the library's file, and intrinsics.library_imports' table once the
+		/// runtime asks for it.
+		/// </summary>
+		struct LinkedImport {
+			Declaration* declaration = nullptr;
+			LLVM::GlobalOp slot;
+			std::string library;
+		};
+		std::vector<LinkedImport> linked_imports;
+		LLVM::GlobalOp library_imports;
+		TypeInfo* library_imports_type = nullptr;
 
 		Generator(ProgramInfo* program_, mlir::ModuleOp module_)
 			: program{ program_ }
@@ -1456,6 +1470,9 @@ namespace hemera {
 	// Growing the stack (docs/calling_convention.md, Growing the Stack: morestack)
 
 	constexpr std::string_view MORESTACK_SYMBOL = "hemera.morestack";
+	// base/runtime/libraries.hsc's LIBRARY_MAGIC ("HEMERAI1") and LIBRARY_CONVENTION, which a record must match
+	constexpr uint64_t LIBRARY_MAGIC = 0x31494152454d4548ULL;
+	constexpr uint64_t LIBRARY_CONVENTION = 1;
 
 	// A member's offset in one of base/runtime's structs.
 	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset);
@@ -2058,12 +2075,76 @@ namespace hemera {
 	 * The function a declaration is, declared now and generated later. Exported functions and the
 	 * freestanding entry keep their own names, for the linker and other languages.
 	 */
+	/*
+	 * The library a declaration's calls go through (docs/compilation.md, Typed Libraries): one the program links, if
+	 * it's an #export function of that library's package. Generic functions are instantiated in the program as ever.
+	 */
+	static const LinkedLibrary* linked_library_of(Generator& generator, Declaration* declaration) {
+		if (generator.options == nullptr || generator.options->libraries.empty() || generator.compile_time
+			|| DeclarationKind::FUNCTION != declaration->kind || declaration->generic != nullptr || declaration->package_path == nullptr
+			|| declaration->node == nullptr || declaration->foreign_library != nullptr || !has_name_directive(declaration, "#export")) {
+			return nullptr;
+		}
+		const std::filesystem::path package = std::filesystem::path(std::string_view(*declaration->package_path)).lexically_normal();
+		for (const LinkedLibrary& library : generator.options->libraries) {
+			if (package == library.root.lexically_normal()) {
+				return &library;
+			}
+		}
+		return nullptr;
+	}
+
+	/*
+	 * A call to a library's export: a function of the export's own type that calls through its slot, which the
+	 * runtime fills before main (runtime.bind_libraries), inlined into each call, so a call is one load and an
+	 * indirect call. Nothing of the export's own is generated here.
+	 */
+	static LLVM::LLVMFuncOp import_for(Generator& generator, Declaration* declaration, const LinkedLibrary& library) {
+		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::OpBuilder::InsertionGuard guard(b);
+		b.setInsertionPointToEnd(generator.module.getBody());
+		const std::string name = symbol_for(generator, declaration);
+		auto slot = LLVM::GlobalOp::create(b, l, pointer_type(generator), false, LLVM::Linkage::Internal, name + ".slot",
+			mlir::Attribute(), 8);
+		{
+			mlir::OpBuilder::InsertionGuard initializing(b);
+			b.setInsertionPointToStart(b.createBlock(&slot.getInitializerRegion()));
+			LLVM::ReturnOp::create(b, l, zero_of(generator, pointer_type(generator)));
+		}
+		LLVM::LLVMFunctionType signature = function_type(generator, type, takes_context(generator, type, declaration));
+		auto stub = LLVM::LLVMFuncOp::create(b, l, name, signature, LLVM::Linkage::Internal);
+		stub.setCConv(convention_of(generator, type));
+		stub.setPassthroughAttr(b.getArrayAttr({ b.getStringAttr("alwaysinline") }));
+		generator.functions[declaration] = stub;
+		mlir::Block* body = stub.addEntryBlock(b);
+		b.setInsertionPointToEnd(body);
+		std::vector<mlir::Value> operands{ LLVM::LoadOp::create(b, l, pointer_type(generator), LLVM::AddressOfOp::create(b, l, slot)) };
+		for (mlir::BlockArgument argument : body->getArguments()) {
+			operands.push_back(argument);
+		}
+		auto call = LLVM::CallOp::create(b, l, signature, operands);
+		call.setCConv(convention_of(generator, type));
+		if (llvm::isa<LLVM::LLVMVoidType>(signature.getReturnType())) {
+			LLVM::ReturnOp::create(b, l, mlir::ValueRange{});
+		}
+		else {
+			LLVM::ReturnOp::create(b, l, call.getResult());
+		}
+		generator.linked_imports.push_back({ declaration, slot, library.file });
+		return stub;
+	}
+
 	static LLVM::LLVMFuncOp function_for(Generator& generator, Declaration* declaration) {
 		auto iter = generator.functions.find(declaration);
 		if (iter != generator.functions.end()) {
 			return iter->second;
 		}
 		auto type = static_cast<TypeInfoFunction const*>(declaration->value_type);
+		if (const LinkedLibrary* library = linked_library_of(generator, declaration)) {
+			return import_for(generator, declaration, *library);
+		}
 		if (is_entry_function(type)) {
 			return entry_function_for(generator, declaration, type);
 		}
@@ -5857,6 +5938,20 @@ namespace hemera {
 		 * The table of functions' starts and names, for stack traces: filled in once every function
 		 * is generated (generate_function_names), and empty without debug info
 		 */
+		// The program's import table, filled in once every function is generated (generate_library_imports)
+		if (name == "library_imports") {
+			if (generator.compile_time || result_type == nullptr) {
+				return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
+			}
+			if (!generator.library_imports) {
+				mlir::OpBuilder::InsertionGuard guard(generator.builder);
+				generator.builder.setInsertionPointToEnd(generator.module.getBody());
+				generator.library_imports = LLVM::GlobalOp::create(generator.builder, generator.loc, llvm_type(generator, result_type),
+					true, LLVM::Linkage::Internal, "hemera.library_imports", mlir::Attribute(), 8);
+				generator.library_imports_type = result_type;
+			}
+			return value(load(generator, result_type, LLVM::AddressOfOp::create(b, l, generator.library_imports)), result_type);
+		}
 		if (name == "function_names") {
 			if (generator.compile_time || result_type == nullptr) {
 				return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
@@ -9037,6 +9132,17 @@ namespace hemera {
 				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, prepares), mlir::ValueRange{ carrier });
 			}
 		}
+		// Every typed library the program calls loaded and checked, and its imports bound, before main
+		if (!generator.options->libraries.empty()) {
+			if (Declaration* binds = base_declaration_named(generator, "runtime", "bind_libraries")) {
+				LLVM::LLVMFuncOp bind = function_for(generator, binds);
+				auto call = LLVM::CallOp::create(generator.builder, generator.loc, bind, mlir::ValueRange{ context });
+				call.setCConv(bind.getCConv());
+			}
+			else {
+				unsupported(generator, main->node, "a program calling a typed library needs base's runtime.bind_libraries");
+			}
+		}
 		std::vector<mlir::Value> main_arguments{ context };
 		if (slop_os) {
 			// Each parameter from the startup grant of its name (docs/compilation.md, Entry Parameters)
@@ -9276,6 +9382,227 @@ namespace hemera {
 		view = insert(generator, view, table ? static_cast<mlir::Value>(LLVM::AddressOfOp::create(generator.builder, generator.loc, table))
 			: zero_of(generator, pointer_type(generator)), { 1 });
 		LLVM::ReturnOp::create(generator.builder, generator.loc, view);
+	}
+
+	// A declaration in one of std's packages, like schema's hash, if the program has that package.
+	static Declaration* std_declaration_named(Generator& generator, std::string_view folder, std::string_view name) {
+		auto std_folder = generator.options->builtin_paths.find(BuiltinPackage::STD);
+		if (std_folder == generator.options->builtin_paths.end()) {
+			return nullptr;
+		}
+		std::error_code error;
+		const std::filesystem::path package = std::filesystem::canonical(std_folder->second / folder, error);
+		if (error) {
+			return nullptr;
+		}
+		std::scoped_lock<std::mutex> lock(generator.names.mutex);
+		auto iter = generator.names.declarations.find(std::make_pair(intern(package.string()), intern(std::string(name))));
+		return iter != generator.names.declarations.end() ? iter->second : nullptr;
+	}
+
+	/*
+	 * Each type's schema hash (docs/types.md, Schemas), from std's schema.hash, run while compiling as #run code is, so
+	 * the compiler and the program can't disagree on it. Empty, reported, if it can't be run.
+	 */
+	static std::vector<std::array<uint8_t, 32>> schema_hashes(Generator& generator, const std::vector<TypeInfo const*>& types) {
+		Declaration* hash = std_declaration_named(generator, "schema", "hash");
+		auto signature = hash != nullptr ? static_cast<TypeInfoFunction const*>(hash->value_type) : nullptr;
+		if (signature == nullptr || TypeInfoVariant::FUNCTION != signature->variant || signature->output.size() != 1
+			|| signature->output[0].type == nullptr || signature->output[0].type->size != 32) {
+			unsupported(generator, nullptr, "typed libraries need std's schema.hash, for their types' hashes");
+			return {};
+		}
+		std::vector<CompileTimeValue> values(types.size());
+		std::vector<CompileTimeItem> items;
+		for (size_t i = 0; i < types.size(); ++i) {
+			CompileTimeItem item{ nullptr, signature->output[0].type, nullptr, hash, &values[i] };
+			TypeInfo const* type = types[i];
+			item.emit = [hash, signature, type, i](Generator& compiled) {
+				mlir::Value destination = LLVM::LoadOp::create(compiled.builder, compiled.loc, pointer_type(compiled),
+					offset_address(compiled, compiled.state->entry->getArgument(0), i * 8));
+				std::vector<mlir::Value> arguments{ destination };
+				if (takes_context(compiled, signature, hash)) {
+					arguments.push_back(compiled.state->context);
+				}
+				arguments.push_back(type_descriptor(compiled, type));
+				LLVM::LLVMFuncOp function = function_for(compiled, hash);
+				auto call = LLVM::CallOp::create(compiled.builder, compiled.loc, function, arguments);
+				call.setCConv(function.getCConv());
+			};
+			items.push_back(std::move(item));
+		}
+		std::vector<Declaration*> unchecked;
+		if (items.empty()) {
+			return {};
+		}
+		if (!run_items(generator, items, &unchecked, false, nullptr) || !unchecked.empty()) {
+			unsupported(generator, nullptr, "std's schema.hash couldn't be run for a typed library's types");
+			return {};
+		}
+		std::vector<std::array<uint8_t, 32>> result(types.size());
+		for (size_t i = 0; i < types.size(); ++i) {
+			for (size_t j = 0; j < 32 && j < values[i].bytes.size(); ++j) {
+				result[i][j] = values[i].bytes[j];
+			}
+		}
+		return result;
+	}
+
+	// 32 bytes as a constant u8[32].
+	static mlir::Value hash_value(Generator& generator, const std::array<uint8_t, 32>& hash) {
+		mlir::Type type = LLVM::LLVMArrayType::get(integer_type(generator, 1), 32);
+		return LLVM::ConstantOp::create(generator.builder, generator.loc, type,
+			generator.builder.getStringAttr(llvm::StringRef(reinterpret_cast<const char*>(hash.data()), hash.size())));
+	}
+
+	// A view's value: count, then a pointer to its elements, or null.
+	static mlir::Value view_value(Generator& generator, mlir::Type type, size_t count, mlir::Value elements) {
+		mlir::Value view = LLVM::UndefOp::create(generator.builder, generator.loc, type);
+		view = insert(generator, view, constant_int(generator, usize_type(generator), static_cast<int64_t>(count)), { 0 });
+		return insert(generator, view, elements ? elements : zero_of(generator, pointer_type(generator)), { 1 });
+	}
+
+	// A base/runtime struct's type, or null, reported, if base doesn't have it.
+	static TypeInfo* runtime_struct(Generator& generator, std::string_view name) {
+		Declaration* declaration = base_declaration_named(generator, "runtime", name);
+		TypeInfo* type = declaration != nullptr ? declaration->type_value : nullptr;
+		if (type == nullptr || TypeInfoVariant::STRUCT != type->variant) {
+			unsupported(generator, nullptr, std::format("typed libraries need base's runtime.{}", name));
+			return nullptr;
+		}
+		return type;
+	}
+
+	/*
+	 * A typed library's interface record (docs/compilation.md, Typed Libraries), the global hemera_interface: each
+	 * #export function of its package, by name, with its type's schema hash and its address, and the calling
+	 * convention and Context's schema hash it's built for.
+	 */
+	static void generate_interface(Generator& generator) {
+		std::vector<Declaration*> exports;
+		{
+			std::scoped_lock<std::mutex> lock(generator.names.mutex);
+			for (const auto& [key, declaration] : generator.names.declarations) {
+				if (declaration != nullptr && declaration->package_path == generator.input_package && DeclarationKind::FUNCTION == declaration->kind
+					&& declaration->generic == nullptr && declaration->node != nullptr && declaration->value_type != nullptr
+					&& TypeInfoVariant::FUNCTION == declaration->value_type->variant && has_name_directive(declaration, "#export")) {
+					exports.push_back(declaration);
+				}
+			}
+		}
+		std::sort(exports.begin(), exports.end(), [](Declaration* a, Declaration* b) { return text_of(a->name) < text_of(b->name); });
+		TypeInfo* interface_type = runtime_struct(generator, "LibraryInterface");
+		TypeInfo* export_type = runtime_struct(generator, "LibraryExport");
+		TypeInfo* context_type = runtime_struct(generator, "Context");
+		if (interface_type == nullptr || export_type == nullptr || context_type == nullptr) {
+			return;
+		}
+		std::vector<TypeInfo const*> types{ context_type };
+		for (Declaration* each : exports) {
+			types.push_back(each->value_type);
+		}
+		const std::vector<std::array<uint8_t, 32>> hashes = schema_hashes(generator, types);
+		if (hashes.size() != types.size()) {
+			return;
+		}
+		mlir::OpBuilder& b = generator.builder;
+		mlir::OpBuilder::InsertionGuard guard(b);
+		b.setInsertionPointToEnd(generator.module.getBody());
+		LLVM::GlobalOp table;
+		if (!exports.empty()) {
+			mlir::Type table_type = LLVM::LLVMArrayType::get(llvm_type(generator, export_type), exports.size());
+			table = LLVM::GlobalOp::create(b, generator.loc, table_type, true, LLVM::Linkage::Internal, "hemera.interface_exports",
+				mlir::Attribute(), 8);
+			mlir::OpBuilder::InsertionGuard initializing(b);
+			b.setInsertionPointToStart(b.createBlock(&table.getInitializerRegion()));
+			mlir::Value entries = LLVM::UndefOp::create(b, generator.loc, table_type);
+			for (size_t i = 0; i < exports.size(); ++i) {
+				ConstantStruct entry(generator, export_type);
+				entry.text("name", text_of(exports[i]->name));
+				entry.set("type_hash", [&](TypeInfo*) { return hash_value(generator, hashes[i + 1]); });
+				entry.set("function", [&](TypeInfo*) {
+					return LLVM::AddressOfOp::create(b, generator.loc, function_for(generator, exports[i])).getResult();
+				});
+				entries = insert(generator, entries, entry.whole, { static_cast<int64_t>(i) });
+			}
+			LLVM::ReturnOp::create(b, generator.loc, entries);
+		}
+		b.setInsertionPointToEnd(generator.module.getBody());
+		auto record = LLVM::GlobalOp::create(b, generator.loc, llvm_type(generator, interface_type), true, LLVM::Linkage::External,
+			"hemera_interface", mlir::Attribute(), 8);
+		b.setInsertionPointToStart(b.createBlock(&record.getInitializerRegion()));
+		ConstantStruct interface(generator, interface_type);
+		interface.number("magic", LIBRARY_MAGIC);
+		interface.number("convention", LIBRARY_CONVENTION);
+		interface.set("context_hash", [&](TypeInfo*) { return hash_value(generator, hashes[0]); });
+		interface.set("exports", [&](TypeInfo* field) {
+			return view_value(generator, llvm_type(generator, field), exports.size(),
+				table ? static_cast<mlir::Value>(LLVM::AddressOfOp::create(b, generator.loc, table)) : mlir::Value());
+		});
+		LLVM::ReturnOp::create(b, generator.loc, interface.whole);
+		generator.used.push_back(record);
+	}
+
+	/*
+	 * The program's import table (intrinsics.library_imports), once every function is generated: each export of a
+	 * library it calls, with its library's file, its name, its type's schema hash and its slot, and the calling
+	 * convention and Context's schema hash it was built for.
+	 */
+	static void generate_library_imports(Generator& generator) {
+		if (!generator.library_imports) {
+			return;
+		}
+		mlir::OpBuilder& b = generator.builder;
+		mlir::OpBuilder::InsertionGuard guard(b);
+		TypeInfo* imports_type = generator.library_imports_type;
+		TypeInfo* import_type = runtime_struct(generator, "LibraryImport");
+		TypeInfo* context_type = runtime_struct(generator, "Context");
+		if (import_type == nullptr || context_type == nullptr) {
+			return;
+		}
+		std::vector<TypeInfo const*> types{ context_type };
+		for (const Generator::LinkedImport& each : generator.linked_imports) {
+			types.push_back(each.declaration->value_type);
+		}
+		std::vector<std::array<uint8_t, 32>> hashes;
+		if (!generator.linked_imports.empty()) {
+			hashes = schema_hashes(generator, types);
+			if (hashes.size() != types.size()) {
+				return;
+			}
+		}
+		const size_t count = generator.linked_imports.size();
+		LLVM::GlobalOp table;
+		if (count > 0) {
+			b.setInsertionPointToEnd(generator.module.getBody());
+			mlir::Type table_type = LLVM::LLVMArrayType::get(llvm_type(generator, import_type), count);
+			table = LLVM::GlobalOp::create(b, generator.loc, table_type, true, LLVM::Linkage::Internal, "hemera.library_import_table",
+				mlir::Attribute(), 8);
+			mlir::OpBuilder::InsertionGuard initializing(b);
+			b.setInsertionPointToStart(b.createBlock(&table.getInitializerRegion()));
+			mlir::Value entries = LLVM::UndefOp::create(b, generator.loc, table_type);
+			for (size_t i = 0; i < count; ++i) {
+				const Generator::LinkedImport& each = generator.linked_imports[i];
+				ConstantStruct entry(generator, import_type);
+				entry.text("library", each.library);
+				entry.text("name", text_of(each.declaration->name));
+				entry.set("type_hash", [&](TypeInfo*) { return hash_value(generator, hashes[i + 1]); });
+				entry.set("slot", [&](TypeInfo*) { return LLVM::AddressOfOp::create(b, generator.loc, each.slot).getResult(); });
+				entries = insert(generator, entries, entry.whole, { static_cast<int64_t>(i) });
+			}
+			LLVM::ReturnOp::create(b, generator.loc, entries);
+		}
+		b.setInsertionPointToStart(b.createBlock(&generator.library_imports.getInitializerRegion()));
+		ConstantStruct imports(generator, imports_type);
+		imports.number("convention", LIBRARY_CONVENTION);
+		if (count > 0) {
+			imports.set("context_hash", [&](TypeInfo*) { return hash_value(generator, hashes[0]); });
+		}
+		imports.set("imports", [&](TypeInfo* field) {
+			return view_value(generator, llvm_type(generator, field), count,
+				table ? static_cast<mlir::Value>(LLVM::AddressOfOp::create(b, generator.loc, table)) : mlir::Value());
+		});
+		LLVM::ReturnOp::create(b, generator.loc, imports.whole);
 	}
 
 	// llvm.used, which keeps globals that nothing refers to, like Limine's requests, through linking.
@@ -9841,6 +10168,16 @@ namespace hemera {
 			target.settings = read_pairs(record, layout, "settings", "name", "value");
 			target.package_paths = read_pairs(record, layout, "package_paths", "location", "path");
 			const TypeInfo* type = nullptr;
+			// Each LinkedLibrary: a target, or a package's folder and a file
+			if (const uint8_t* at = field_at(record, layout, "libraries", type)) {
+				const TypeInfoStruct* element = struct_of(static_cast<const TypeInfoArray*>(get_base_type(type))->element_type);
+				const uint8_t* elements = reinterpret_cast<const uint8_t*>(read_u64(at + 8));
+				for (uint64_t i = 0; i < read_u64(at) && elements != nullptr; ++i) {
+					const uint8_t* each = elements + i * element->size;
+					target.libraries.push_back({ read_text(each, element, "target"), read_text(each, element, "root"),
+						read_text(each, element, "file") });
+				}
+			}
 			if (const uint8_t* backend = field_at(record, layout, "backend_options", type)) {
 				target.optimization_level = read_member(backend, struct_of(type), "optimization_level");
 				target.debug_info = read_number(backend, struct_of(type), "debug_info") != 0;
@@ -10710,6 +11047,12 @@ namespace hemera {
 		return given.is_absolute() ? given : build.input / given;
 	}
 
+	// Where a target's output goes: its output_path, or its name (or its root's folder's) in the current folder.
+	static std::string target_output_name(const Options& build, const BuildTarget& target, const std::filesystem::path& root) {
+		return !target.output_path.empty() ? from_build(build, target.output_path).string()
+			: (std::filesystem::current_path() / (target.name.empty() ? root.filename().string() : target.name)).string();
+	}
+
 	bool target_options(const BuildTarget& target, const Options& build, Options& result) {
 		auto refuse = [&](const std::string& why) {
 			report_error(ErrorCode::E4029, target.location.file, target.location.line, target.location.column,
@@ -10722,8 +11065,7 @@ namespace hemera {
 			return refuse(std::format("its root package {} isn't a folder", target.root));
 		}
 		result.input = root;
-		result.output_name = !target.output_path.empty() ? from_build(build, target.output_path).string()
-			: (std::filesystem::current_path() / (target.name.empty() ? root.filename().string() : target.name)).string();
+		result.output_name = target_output_name(build, target, root);
 		result.entry = target.entry.empty() ? "main" : target.entry;
 		result.install_path = build.install_path;
 		result.builtin_paths = build.builtin_paths;
@@ -10768,6 +11110,39 @@ namespace hemera {
 		result.red_zone = target.red_zone;
 		result.address_zero_is_memory = target.address_zero_is_memory;
 		result.startup_code = target.startup_code;
+		// A typed library (docs/compilation.md, Typed Libraries): no startup code, and code that works wherever it's loaded
+		if (target.output_type == "DynamicLibrary") {
+			result.typed_library = true;
+			result.startup_code = false;
+			result.relocation_model = TargetRelocationModel::PositionIndependent;
+		}
+		const char* library_extension = OSType::Win32 == result.os ? ".dll" : "";
+		for (const BuildLibrary& library : target.libraries) {
+			if (!library.target.empty()) {
+				// Another target of the build: its root, and its output's file, which goes beside the program
+				const BuildTarget* found = nullptr;
+				for (const BuildTarget& each : build_registry().targets) {
+					if (each.name == library.target) {
+						found = &each;
+					}
+				}
+				std::error_code missing;
+				const std::filesystem::path library_root = found != nullptr ? std::filesystem::canonical(from_build(build, found->root), missing)
+					: std::filesystem::path();
+				if (found == nullptr || found->output_type != "DynamicLibrary" || missing) {
+					return refuse(std::format("it calls the library {}, which isn't a DynamicLibrary target of the build", library.target));
+				}
+				const std::string output = target_output_name(build, *found, library_root);
+				result.libraries.push_back({ library_root, std::filesystem::path(output).filename().string() + library_extension });
+				continue;
+			}
+			std::error_code missing;
+			const std::filesystem::path library_root = std::filesystem::canonical(from_build(build, library.root), missing);
+			if (library.root.empty() || missing || library.file.empty()) {
+				return refuse(std::format("the library at {} needs its package's folder and its file", library.root));
+			}
+			result.libraries.push_back({ library_root, library.file });
+		}
 		// Morestack where it's made: x86-64 and AArch64 targets; off elsewhere, for now
 		const bool grows = ArchType::x86_64 == result.architecture || ArchType::aarch64 == result.architecture;
 		result.stack_check = target.stack_check_failure == "Trap" ? TargetStackCheck::Trap
@@ -11023,17 +11398,21 @@ namespace hemera {
 		const bool takes_parameters = entry != nullptr && entry->value_type != nullptr
 			&& TypeInfoVariant::FUNCTION == entry->value_type->variant
 			&& !static_cast<TypeInfoFunction const*>(entry->value_type)->input.empty();
-		if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr
+		if (options.typed_library) {
+			// A library has no entry: its #export functions are what it's for
+			generate_interface(generator);
+		}
+		else if (entry == nullptr || DeclarationKind::FUNCTION != entry->kind || entry->value_type == nullptr
 			|| (options.startup_code && takes_parameters && OSType::SlopOS != options.os)) {
 			report_error(ErrorCode::E5004, options.input.string(), 0, 0, options.startup_code
 				? std::format("a hosted program needs {} :: fn() or fn() -> int", options.entry)
 				: std::format("the entry function {} isn't declared", options.entry));
 			return false;
 		}
-		if (options.startup_code) {
+		if (!options.typed_library && options.startup_code) {
 			generate_entry(generator, entry, OSType::Win32 == options.os);
 		}
-		else {
+		else if (!options.typed_library) {
 			// A freestanding program starts at its entry function itself
 			function_for(generator, entry);
 		}
@@ -11043,6 +11422,7 @@ namespace hemera {
 			generator.pending.pop_back();
 			generate_function(generator, next);
 		}
+		generate_library_imports(generator);
 		generate_function_names(generator);
 		generate_used(generator);
 		finish_module(generator);

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace hemera {
 
@@ -443,6 +444,15 @@ namespace hemera {
 		Morestack,
 	};
 
+	/// <summary>
+	/// A typed library a program calls (docs/compilation.md, Typed Libraries): the folder of its package, whose
+	/// #export functions the program calls through it, and the file the program loads when it starts.
+	/// </summary>
+	struct LinkedLibrary {
+		std::filesystem::path root;
+		std::string file;
+	};
+
 	struct Options {
 		BuildExtent build_extent;
 		OptimizationLevel optimization_level;
@@ -485,6 +495,14 @@ namespace hemera {
         /// </summary>
         std::filesystem::path sysroot;
         bool debug_info;
+        /// <summary>
+        /// Build a typed library, whose input package's #export functions are its interface, rather than a program.
+        /// </summary>
+        bool typed_library = false;
+        /// <summary>
+        /// The typed libraries the program calls, each loaded and checked before main.
+        /// </summary>
+        std::vector<LinkedLibrary> libraries;
         /// <summary>
         /// Generate every function the program's packages declare, not only those it uses (generic
         /// ones aside, which need their type arguments), so what can't be generated yet shows up

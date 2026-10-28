@@ -47,6 +47,12 @@ image_base : fn() -> rawptr : ---
 function_names : fn() -> runtime.FunctionName[] : ---
 
 /*
+ * The program's import table (docs/compilation.md, Typed Libraries): each export of a typed library it calls, which
+ * runtime.bind_libraries binds before main. Empty for a program that calls none.
+ */
+library_imports : fn() -> runtime.LibraryImports : ---
+
+/*
  * The stack pointer, for code that sets up its own stack limit, like a kernel's entry before it
  * has a carrier block. Frames below it may change at any call.
  */

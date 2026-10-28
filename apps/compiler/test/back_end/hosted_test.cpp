@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 
 #include "back_end/back_end.h"
+#include "back_end/check_interface.h"
 #include "back_end/symbolize.h"
 #include "cmd_line/options.h"
 #include "error/reporting.h"
@@ -860,6 +861,107 @@ TEST(Build, BuildsTargets)
 	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
 
 	hemera::reset_build_registry();
+	module.erase();
+}
+
+// A typed library built from the package in sources to output_name, for Windows, in the caller's string cache: whether it built.
+static bool build_typed_library(const std::filesystem::path& sources, const std::string& output_name)
+{
+	hemera::reset_reporting_storage();
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "library");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+	hemera::Options options;
+	options.input = std::filesystem::canonical(sources);
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.output_name = output_name;
+	options.stack_check = hemera::TargetStackCheck::Off;
+	options.typed_library = true;
+	options.startup_code = false;
+	options.relocation_model = hemera::TargetRelocationModel::PositionIndependent;
+	const std::string object_file = std::format("{}.o", output_name);
+	hemera::kick_off_processing(program_info.get(), &options);
+	if (hemera::error_count() != 0 || !hemera::generate_program(program_info.get(), options, module)) {
+		return false;
+	}
+	llvm::LLVMContext llvm_context;
+	std::unique_ptr<llvm::Module> lowered = hemera::lower_to_llvm(module, llvm_context, options);
+	if (lowered == nullptr) {
+		return false;
+	}
+	hemera::BackendLLVM backend;
+	const bool built = backend.initialize(options) && backend.generate_object_file(options, *lowered, object_file);
+	if (built) {
+		backend.link(options, object_file);
+	}
+	backend.destroy();
+	module.erase();
+	return built && hemera::error_count() == 0;
+}
+
+/*
+ * docs/compilation.md, Typed Libraries: a build package that builds a typed library and a program calling it, which
+ * loads the library, checks its imports against the library's interface record and calls through it.
+ */
+TEST(Build, LinksTypedLibraries)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "typed_libraries";
+	std::filesystem::create_directories(output_folder);
+	const std::string library = (output_folder / "maths").string();
+	const std::string program = (output_folder / "program").string();
+	std::filesystem::remove(library + ".dll");
+	std::filesystem::remove(program + ".exe");
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("typed_libraries") / "build");
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.output_name = (output_folder / "build").string();
+	options.settings = { { "library", library }, { "program", program } };
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	ASSERT_EQ(hemera::build_registry().targets.size(), 2u);
+	hemera::Allocator<> alloc;
+	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
+	EXPECT_EQ(hemera::error_count(), 0);
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", program).c_str()), 42);
+
+	// Kept, to check the others against
+	const std::string first = (output_folder / "first_maths.dll").string();
+	std::filesystem::copy_file(library + ".dll", first, std::filesystem::copy_options::overwrite_existing);
+	std::ostringstream same;
+	EXPECT_EQ(hemera::check_interface(first, library + ".dll", same), 0) << same.str();
+
+	// Built again with one more export: it can stand in, and the program runs with it
+	hemera::reset_build_registry();
+	ASSERT_TRUE(build_typed_library(scenario("typed_libraries") / "grown_maths", library));
+	std::ostringstream grown;
+	EXPECT_EQ(hemera::check_interface(first, library + ".dll", grown), 0) << grown.str();
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", program).c_str()), 42);
+
+	// Built again with add's type changed, where the program loads it: refused, naming add, and by the check too
+	hemera::reset_build_registry();
+	ASSERT_TRUE(build_typed_library(scenario("typed_libraries") / "changed_maths", library));
+	std::ostringstream changed;
+	EXPECT_EQ(hemera::check_interface(first, library + ".dll", changed), 1);
+	EXPECT_NE(changed.str().find("add: its type changed"), std::string::npos) << changed.str();
+	const std::filesystem::path error_file = output_folder / "error.txt";
+	EXPECT_EQ(std::system(std::format("\"\"{}.exe\" 2> \"{}\"\"", program, error_file.string()).c_str()), 1);
+	const std::string error = read_file(error_file);
+	EXPECT_NE(error.find("can't bind add from the library maths.dll: it exports it with another type"), std::string::npos) << error;
 	module.erase();
 }
 

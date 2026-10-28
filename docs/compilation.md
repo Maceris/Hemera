@@ -495,6 +495,53 @@ A hosted Linux program is normally static, with no C library: the runtime makes 
   does), the `lib<name>.so` of each other `#library`, and the dynamic linker (`ld-linux-x86-64.so.2`, or
   `ld-linux-aarch64.so.1` on AArch64). No C runtime objects are needed.
 
+## Typed Libraries
+
+A typed library is a package built on its own, which programs call into without compiling it in. Its `#export`
+functions are its interface, and every call to one is checked when the program starts: by name, by the schema hash of
+the function's type (`std`'s `schema`, [types.md](types.md#schemas)), and by the calling convention and `Context` it was
+built for, which every call passes. A library whose export changed type can't be called by a program built against the
+old one: the program stops before `main`, naming the export, rather than crashing in a call.
+
+A build package makes one with `OutputType.DynamicLibrary`, and a target calls one by listing it in `libraries`: another
+target of the build by its name, or a library built elsewhere by its package's folder and its file.
+
+```
+build :: fn() {
+    maths := compiler.command_line_options()
+    maths.name = "maths"
+    maths.root = "../maths"
+    maths.target_options.output_type = .DynamicLibrary
+    _ = compiler.add_target(maths)
+
+    app := compiler.command_line_options()
+    app.name = "app"
+    app.root = "../app"
+    runtime.array_add(&app.libraries, compiler.LinkedLibrary.{target = "maths"})
+    _ = compiler.add_target(app)
+}
+```
+
+The program imports the library's package as it imports any other, for its types, constants and generic functions,
+which it compiles itself as ever. Only calls to the package's `#export` functions that aren't generic go through the
+library, each through a slot in the program's import table, and none is inlined, so a library built again with a fix
+reaches every program that calls it. Anything else of the package the program uses is compiled into the program.
+
+* A library is position-independent, with no entry and no startup code. It refers to nothing outside itself, so its
+  only relocations are relative ones. Its interface record is the global `hemera_interface`: on ELF, the library's
+  entry is its address; a DLL exports it by name.
+* Before `main`, `runtime.bind_libraries` loads each library the import table names, beside the program unless the name
+  has a folder in it, checks every import against the library's record, and fills its slot. On Windows, Windows' own
+  loader loads the DLL; on Linux, where Hemera's programs have no C library, `base`'s runtime maps the library itself.
+  Nothing is bound later, and nothing by its name alone. A library that can't be loaded, or an import that doesn't
+  match, stops the program with exit code 1 and says which.
+* Each process has its own copy of a library's globals, and the library's own copy of whatever of `base` it uses.
+
+`hemera --check-interface=<old> <new>` says whether one build of a library can stand in for another, from the files
+alone: it can if it's built for the same calling convention and `Context` and has every export of the old one, by
+name, with the same type, and it may export more. A function type's schema covers every type it reaches, so a struct
+in an export's signature that changed in any way is a different type, and the check refuses it.
+
 ## Generating Everything
 
 `--generate-all` generates every function the program's packages declare, used or not, but those that only run at

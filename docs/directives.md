@@ -195,7 +195,8 @@ swap #macro :: fn(a: compiler.Code, b: compiler.Code) -> compiler.Code {
 ```
 
 `#export` on a function marks it as part of a library or program's public interface.
-This is placed after the identifier in a declaration.
+This is placed after the identifier in a declaration. A typed library's `#export` functions are its interface, which
+programs call through it (see [compilation.md](compilation.md#typed-libraries)).
 
 ```
 example #export :: fn() {/* ... */}

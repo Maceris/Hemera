@@ -89,6 +89,7 @@ namespace hemera {
 		cout << "Usage: hemera [<optional flags>...] <package path>" << endl;
 		cout << "       hemera --list=<type(s)>" << endl;
 		cout << "       hemera --symbolize=<program> <offset>...   Files and lines of a stack trace's offsets" << endl;
+		cout << "       hemera --check-interface=<old> <new>       Whether a typed library can stand in for an older one" << endl;
 		cout << "Flags:" << endl;
 
 		static const char* ARG_STRING = "=value";

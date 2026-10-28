@@ -124,6 +124,38 @@ def run(command: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(command, capture_output=True, text=True)
 
 
+def typed_libraries(compiler: str, aarch64: bool, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
+    """
+    docs/compilation.md, Typed Libraries: a library and a program calling it, built by a build package, which loads it
+    with base's own ELF loader and calls through it; then the library built again with add's type changed, which the
+    program refuses, naming add. What went wrong, or "" if nothing did.
+    """
+    scenario = SCENARIOS / "typed_libraries"
+    library = temporary / "maths"
+    program = temporary / "typed_program"
+    architecture = ["--arch=aarch64"] if aarch64 else []
+    built = run([compiler, "--os=linux", *architecture, f"--setting=library={library.as_posix()},program={program.as_posix()}",
+                 str(scenario / "build")])
+    if built.returncode != 0 or not library.exists() or not program.exists():
+        return f"doesn't build\n{built.stdout}{built.stderr}"
+    prefix = "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu " if aarch64 else ""
+    for file in (library, program):
+        if run(["scp", "-q", "-i", key, str(file), f"{host}:{folder}/{file.name}"]).returncode != 0:
+            return f"couldn't copy {file.name}"
+    ran = run(ssh + [f"chmod +x ~/{folder}/typed_program && cd ~/{folder} && {prefix}timeout 120 ./typed_program"])
+    if ran.returncode != 42:
+        return f"exited with {ran.returncode}\n{ran.stdout}{ran.stderr}"
+    changed = run([compiler, "--os=linux", *architecture, f"--setting=library={library.as_posix()}", str(scenario / "build_changed")])
+    if changed.returncode != 0:
+        return f"the changed library doesn't build\n{changed.stdout}{changed.stderr}"
+    if run(["scp", "-q", "-i", key, str(library), f"{host}:{folder}/maths"]).returncode != 0:
+        return "couldn't copy the changed library"
+    refused = run(ssh + [f"cd ~/{folder} && {prefix}timeout 120 ./typed_program"])
+    if refused.returncode != 1 or "can't bind add from the library maths: it exports it with another type" not in refused.stderr:
+        return f"took the changed library: exited with {refused.returncode}\n{refused.stdout}{refused.stderr}"
+    return ""
+
+
 def main() -> int:
     host = os.environ.get("HEMERA_LINUX_HOST")
     if not host:
@@ -197,7 +229,16 @@ def main() -> int:
             else:
                 print(f"FAILED: {name} {', '.join(problems)}\n{ran.stdout}{ran.stderr}")
                 failures += 1
-    print(f"{len(tests) - failures} of {len(tests)} passed")
+        count = len(tests)
+        if not only or "typed_libraries" in only:
+            count += 1
+            problem = typed_libraries(compiler, aarch64, Path(temporary), ssh, key, host, folder)
+            if problem:
+                print(f"FAILED: typed_libraries {problem}")
+                failures += 1
+            else:
+                print("passed: typed_libraries")
+    print(f"{count - failures} of {count} passed")
     return 0 if failures == 0 else 1
 
 

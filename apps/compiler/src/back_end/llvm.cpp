@@ -626,13 +626,17 @@ namespace hemera {
 			 */
 			args.insert(args.end(), { "/debug", "/pdbaltpath:%_PDB%", "/pdbsourcepath:." });
 		}
-		if (options.startup_code) {
+		if (options.typed_library) {
+			// A typed library (docs/compilation.md, Typed Libraries): no entry, and its interface record found by name
+			args.insert(args.end(), { "/dll", "/noentry", "/export:hemera_interface,DATA", "/nodefaultlib", "kernel32.lib" });
+		}
+		else if (options.startup_code) {
 			args.insert(args.end(), { std::format("/entry:{}", HOSTED_ENTRY_SYMBOL), "/subsystem:console", "/nodefaultlib", "kernel32.lib" });
 		}
 		else {
 			args.insert(args.end(), { std::format("/entry:{}", options.entry), "/nodefaultlib" });
 		}
-		args.push_back(std::format("/out:{}.exe", options.output_name));
+		args.push_back(std::format("/out:{}.{}", options.output_name, options.typed_library ? "dll" : "exe"));
 		switch (options.architecture) {
 		case ArchType::arm:
 			args.push_back("/machine:arm");
@@ -662,6 +666,19 @@ namespace hemera {
 		 */
 		const bool links_c = options.startup_code && OSType::Linux == options.os && !libraries.empty();
 		std::vector<std::string> args{ "-nostdlib" };
+		if (options.typed_library) {
+			/*
+			 * A typed library (docs/compilation.md, Typed Libraries): shared, its references to itself bound within
+			 * it and nothing left undefined, so its only relocations are relative ones, and its entry its interface
+			 * record, where the runtime's loader looks
+			 */
+			args.insert(args.end(), { "-shared", "-Bsymbolic", "-z", "defs", "-e", "hemera_interface" });
+			if (!options.debug_info) {
+				args.push_back("--strip-debug");
+			}
+			args.insert(args.end(), { "-o", options.output_name });
+			return args;
+		}
 		if (links_c) {
 			const bool aarch64 = ArchType::aarch64 == options.architecture;
 			args.insert(args.end(), { "-dynamic-linker", aarch64 ? "/lib/ld-linux-aarch64.so.1" : "/lib64/ld-linux-x86-64.so.2" });

@@ -11,6 +11,7 @@
 
 #include "job.h"
 #include "back_end/back_end.h"
+#include "back_end/check_interface.h"
 #include "back_end/symbolize.h"
 #include "cmd_line/arg_parsing.h"
 #include "cmd_line/cmd_line_utils.h"
@@ -43,6 +44,11 @@ namespace hemera {
 		if (argc >= 2 && std::string_view(argv[1]).starts_with("--symbolize=")) {
 			std::vector<std::string> offsets(argv + 2, argv + argc);
 			return symbolize(std::string(std::string_view(argv[1]).substr(std::string_view("--symbolize=").size())), offsets, std::cout);
+		}
+		// hemera --check-interface=<old library> <new library>: whether the new typed library can stand in for the old
+		if (argc == 3 && std::string_view(argv[1]).starts_with("--check-interface=")) {
+			return check_interface(std::string(std::string_view(argv[1]).substr(std::string_view("--check-interface=").size())), argv[2],
+				std::cout);
 		}
 		Logger::init();
 		Allocator<> main_alloc;

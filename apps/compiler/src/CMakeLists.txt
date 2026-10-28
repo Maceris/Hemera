@@ -57,6 +57,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/version.h
   ${INCLUDE_DIR}/back_end/back_end.h
   ${INCLUDE_DIR}/back_end/symbolize.h
+  ${INCLUDE_DIR}/back_end/check_interface.h
   ${INCLUDE_DIR}/cmd_line/arg_parsing.h
   ${INCLUDE_DIR}/cmd_line/cmd_line_utils.h
   ${INCLUDE_DIR}/cmd_line/options.h
@@ -96,6 +97,7 @@ SET(HEADER_FILES
 SET(SOURCE_FILES
   ${SOURCE_DIR}/back_end/llvm.cpp
   ${SOURCE_DIR}/back_end/symbolize.cpp
+  ${SOURCE_DIR}/back_end/check_interface.cpp
   ${SOURCE_DIR}/cmd_line/arg_parsing.cpp
   ${SOURCE_DIR}/cmd_line/cmd_line_utils.cpp
   ${SOURCE_DIR}/cmd_line/options.cpp

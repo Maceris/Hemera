@@ -27,9 +27,25 @@ BuildOptions :: struct {
     package_paths : PackagePath[..],
     // Per-target values that the target's code reads with target_setting().
     settings : TargetSetting[..],
+    // The typed libraries the target calls (docs/compilation.md, Typed Libraries).
+    libraries : LinkedLibrary[..],
     backend_options : BackendOptions,
     configuration : Configuration,
     target_options : TargetOptions,
+}
+
+/*
+ * A typed library a target calls (docs/compilation.md, Typed Libraries): another target of the build, by its name, or
+ * a library built elsewhere, by the folder of its package and its file. The target's code imports the library's package
+ * as any other; its #export functions are called through the library.
+ */
+LinkedLibrary :: struct {
+    // A target of this build, an OutputType.DynamicLibrary, whose root and output are used
+    target : string,
+    // Otherwise the folder of the library's package, relative to the build package, or absolute
+    root : string,
+    // And the library's file: what the program loads, from beside itself unless it names a folder
+    file : string,
 }
 
 BackendOptions :: struct {

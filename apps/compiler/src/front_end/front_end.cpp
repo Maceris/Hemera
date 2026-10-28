@@ -365,9 +365,31 @@ namespace hemera {
 
 		InternedString input_package = intern(options->input.string());
 
+		/*
+		 * std's schema, for a typed library's interface record or a program's imports, whose types the compiler
+		 * hashes with it (docs/compilation.md, Typed Libraries)
+		 */
+		InternedString schema_package = nullptr;
+		auto std_folder = options->builtin_paths.find(BuiltinPackage::STD);
+		if ((options->typed_library || !options->libraries.empty()) && std_folder != options->builtin_paths.end()) {
+			std::error_code error;
+			const std::filesystem::path schema = std::filesystem::canonical(std_folder->second / "schema", error);
+			if (!error) {
+				schema_package = intern(schema.string());
+			}
+		}
+
 		// The input package, and base/builtin's generic types (Optional and Result), which every
 		// file can use
-		global_data.outstanding_work = 3;
+		global_data.outstanding_work = schema_package != nullptr ? 4 : 3;
+		if (schema_package != nullptr) {
+			global_data.general_queue.enqueue(
+				std::move(global_data.work_allocator->new_object<Work>(
+					WorkType::IMPORT,
+					WorkTarget{ WorkTargetType::PACKAGE, {.name = schema_package}}
+				))
+			);
+		}
 		global_data.general_queue.enqueue(
 			std::move(global_data.work_allocator->new_object<Work>(
 				WorkType::IMPORT,
