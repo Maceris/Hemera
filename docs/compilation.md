@@ -45,8 +45,8 @@ File Import --> Parse --> Type Check <--\
 ## Deterministic Output
 
 The same inputs (source, `base` and `std`, options and settings, and the same compiler) give the
-same output, byte for byte, wherever the sources are, on whichever host builds it, and however the
-work was spread across threads. That lets you check that two builds of a commit match, name a build
+same output, byte for byte, wherever the sources are, and however the work was spread across
+threads. That lets you check that two builds of a commit match, name a build
 by the hash of its bytes, see only real changes when comparing two compilers' output, and cache or
 bisect builds.
 
