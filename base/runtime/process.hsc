@@ -37,9 +37,13 @@ ProcessState :: struct {
     // On SlopOS, the clock page the wall clock is read from (slop_os.hsc), once it's mapped, and how far that's got
     clock_page : rawptr,
     clock_state : u32,
+    // On SlopOS, what the logger keeps for the events service (slop_os_events.hsc), once its ring is mapped, and how
+    // far that's got, as clock_state
+    events_log : rawptr,
+    events_state : u32,
 }
 
-// ProcessState's clock_state: not looked for yet, being mapped, mapped, or there's none.
+// ProcessState's clock_state and events_state: not looked for yet, being mapped, mapped, or there's none.
 CLOCK_PAGE_UNTRIED : u32 : 0
 CLOCK_PAGE_MAPPING : u32 : 1
 CLOCK_PAGE_MAPPED : u32 : 2

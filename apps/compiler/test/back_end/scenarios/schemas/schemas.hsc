@@ -2,13 +2,15 @@ package schemas
 
 import compiler from "base"
 import runtime from "base"
+import crypto from "std"
 import schema from "std"
 
 /*
  * std's schema: a type's description serialized canonically, and its hash, the same at compile time and at run time.
  * A plain alias is the type it names, a distinct one isn't; what's laid out alike under the same names hashes alike,
  * and a different name, member order or member type doesn't; a type that refers to itself is described once. A value
- * written for elsewhere has what it points to after it, at distances from its start, and no address of the writer's.
+ * written for elsewhere has what it points to after it, at distances from its start, and no address of the writer's,
+ * and reads back as the text base's output_format gives it. base's own BLAKE3, which hashes schemas, agrees with std's.
  * main returns 42 if each holds.
  */
 
@@ -117,7 +119,98 @@ main :: fn() -> int {
             return 8
         }
     }
-    return check_values()
+    values :: check_values()
+    if values != 42 {
+        return values
+    }
+    hashes :: check_blake3()
+    if hashes != 42 {
+        return hashes
+    }
+    return check_render()
+}
+
+// base's BLAKE3, for schemas, against std's, across chunk and block edges.
+check_blake3 :: fn() -> int {
+    data : u8[5000]
+    for i in cast[usize](0)..<data.count {
+        data[i] = cast[u8](i * 7 + i / 251)
+    }
+    for count in usize.[0, 1, 63, 64, 65, 1023, 1024, 1025, 2048, 3073, 4096, 5000] {
+        expected : u8[32]
+        if count > data.count {
+            return 21
+        }
+        crypto.blake3(data[0..<count], expected)
+        if !same(runtime.hash_blake3(data[0..<count]), expected) {
+            return 20
+        }
+    }
+    return 42
+}
+
+Mood :: enum {
+    Calm = 3,
+    Busy = 9,
+}
+
+// What output_format writes for a value, and what render gives from its schema and value written elsewhere.
+renders_alike :: fn(format_string: string, value: any) -> bool {
+    expected_buffer := runtime.output_buffer(.OUTPUT)
+    expected_buffer.capture = true
+    runtime.output_format(&expected_buffer, format_string, value)
+    expected :: string_of(&expected_buffer.bytes[0], expected_buffer.count)
+    schema_bytes : u8[..]
+    defer runtime.array_free(&schema_bytes)
+    value_bytes : u8[..]
+    defer runtime.array_free(&value_bytes)
+    schema.write(type_info_of(value.type), &schema_bytes)
+    schema.write_value(value, &value_bytes)
+    rendered : u8[..]
+    defer runtime.array_free(&rendered)
+    arguments :: schema.Argument.[schema.Argument.{schema = schema_bytes, value = value_bytes}]
+    schema.render(format_string, arguments, &rendered)
+    return rendered.count == expected.count && (rendered.count == 0 || string_of(&rendered[0], rendered.count) == expected)
+}
+
+check_render :: fn() -> int {
+    if !renders_alike("count % of", cast[u32](1234)) || !renders_alike("[%]", cast[i16](-300)) || !renders_alike("%", true) {
+        return 30
+    }
+    if !renders_alike("name: %!", "second") || !renders_alike("%{>8}|", "right") || !renders_alike("%{08x}", cast[u64](0xbeef)) {
+        return 31
+    }
+    if !renders_alike("% and %", Mood.Busy) || !renders_alike("%", cast[Mood](4)) || !renders_alike("%", Color.Green) {
+        return 32
+    }
+    if !renders_alike("%", 1.5) || !renders_alike("%", cast[f32](0.1)) || !renders_alike("%", Point.{x = 1, y = 2}) {
+        return 33
+    }
+    if !renders_alike("%{+d} 100%%", cast[i8](-5)) || !renders_alike("%", 'x') || !renders_alike("%{x}", Color.Red) {
+        return 34
+    }
+    // Two arguments, by number
+    first : u8[..]
+    defer runtime.array_free(&first)
+    second : u8[..]
+    defer runtime.array_free(&second)
+    first_schema : u8[..]
+    defer runtime.array_free(&first_schema)
+    second_schema : u8[..]
+    defer runtime.array_free(&second_schema)
+    schema.write(type_info_of(int), &first_schema)
+    schema.write_value(cast[int](7), &first)
+    schema.write(type_info_of(string), &second_schema)
+    schema.write_value("seven", &second)
+    rendered : u8[..]
+    defer runtime.array_free(&rendered)
+    arguments :: schema.Argument.[schema.Argument.{schema = first_schema, value = first},
+        schema.Argument.{schema = second_schema, value = second}]
+    schema.render("%2 is %1, %3", arguments, &rendered)
+    if rendered.count == 0 || string_of(&rendered[0], rendered.count) != "seven is 7, %!" {
+        return 35
+    }
+    return 42
 }
 
 word_at :: fn(bytes: u8[], at: usize) -> u64 {

@@ -630,7 +630,8 @@ TEST(Hosted, FindsWhatsInTheImage)
 	run_hosted("in_image", hemera::TargetStackCheck::Off);
 }
 
-// docs/types.md, Schemas: std's schema, a type's canonical description and its hash, alike at compile and run time.
+// docs/types.md, Schemas: std's schema, a type's canonical description and its hash, alike at compile and run time;
+// values rendered back by their schemas; and base's BLAKE3 against std's.
 TEST(Hosted, HashesSchemas)
 {
 	run_hosted("schemas", hemera::TargetStackCheck::Off);

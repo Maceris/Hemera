@@ -149,6 +149,8 @@ find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> H
 #assert offset_of(Grant, kind) == offset_of(runtime.SlopOsGrant, kind)
 #assert offset_of(Grant, handle) == offset_of(runtime.SlopOsGrant, handle)
 #assert cast[u64](SYSCALL_CHANNEL_TAG) == runtime.SLOP_OS_CALL_CHANNEL_TAG
+#assert cast[u64](SYSCALL_CHANNEL_WRITE) == runtime.SLOP_OS_CALL_CHANNEL_WRITE
+#assert cast[u64](NO_BATCH) == runtime.SLOP_OS_NO_BATCH
 #assert ABI_VERSION == runtime.SLOP_OS_ABI_VERSION
 #assert cast[u32](ObjectKind.MemoryBudget) == runtime.SLOP_OS_KIND_MEMORY_BUDGET
 #assert cast[u32](ObjectKind.Memory) == runtime.SLOP_OS_KIND_MEMORY

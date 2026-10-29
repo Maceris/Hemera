@@ -191,6 +191,18 @@ package os
         return receive(end, port, reply, none)
     }
 
+    // A grant added to what a Load gives, labeled label: false if it has as many as it holds.
+    add_grant :: fn(load: ptr[mut process_manager.Load], label: string, handle: slop_os.Handle) -> bool {
+        index :: cast[usize](load.grant_count)
+        if index >= load.labels.count || index >= load.grants.count {
+            return false
+        }
+        load.labels[index] = label_from(label)
+        load.grants[index] = handle
+        load.grant_count += 1
+        return true
+    }
+
     // A label in a grant's form: its bytes, then zeros.
     label_from :: fn(text: string) -> u8[slop_os.GRANT_LABEL_SIZE] {
         label : u8[slop_os.GRANT_LABEL_SIZE]
@@ -258,12 +270,20 @@ package os
      * What a launch does beyond its grants: watch the program's end from before it starts; run it on a CPU budget
      * (RIGHT_CPU_BUDGET_BIND) from its first instruction rather than on the launcher's; and give it the clock page (a
      * read-only memory object the clock service keeps, base's runtime.SlopOsClockPage), as the grant "clock", which
-     * base's runtime reads the wall clock from, whatever the program's entry takes.
+     * base's runtime reads the wall clock from, whatever the program's entry takes; and give it a ring for its log
+     * records and the ring's doorbell (LaunchEvents), as the grants "events", which base's logger writes to.
      */
     LaunchOptions :: struct {
         watch : LaunchWatch?,
         cpu_budget : slop_os.CpuBudget?,
         clock : slop_os.Memory?,
+        events : LaunchEvents?,
+    }
+
+    // A program's log records' ring and its doorbell, which the events service gives (base's runtime.SlopOsEventsRing).
+    LaunchEvents :: struct {
+        ring : slop_os.Memory,
+        doorbell : slop_os.Channel,
     }
 
     // A program launch started, in a process the caller owns, with a budget split off its own.
@@ -278,8 +298,8 @@ package os
      * budget of budget bytes split off the caller's: grants, a G whose fields are entry's parameters, each a
      * handle moved to the program, or None for an optional one it goes without. name is for the manager's log. options
      * (LaunchOptions) can watch its end from before it starts, so even a program that ends at once is seen to, put it on a
-     * CPU budget, and give it the clock page; the budget's handle is closed once it's on it, and the clock page's is the
-     * program's.
+     * CPU budget, and give it the clock page and its events ring; the budget's handle is closed once it's on it, and the
+     * clock page's and the ring's are the program's.
      */
     launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
         budget: u64, entry: F, grants: G, options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
@@ -324,14 +344,15 @@ package os
             load.grant_count += 1
         }
         match options.clock {
-            case Some(page) => {
-                index :: cast[usize](load.grant_count)
-                if index >= load.labels.count || index >= load.grants.count {
-                    return .Error(.BadGrants)
-                }
-                load.labels[index] = label_from("clock")
-                load.grants[index] = cast[slop_os.Handle](page)
-                load.grant_count += 1
+            case Some(page) => if !add_grant(&load, "clock", cast[slop_os.Handle](page)) {
+                return .Error(.BadGrants)
+            }
+            case None => {}
+        }
+        match options.events {
+            case Some(events) => if !add_grant(&load, "events", cast[slop_os.Handle](events.ring))
+                || !add_grant(&load, "events", cast[slop_os.Handle](events.doorbell)) {
+                return .Error(.BadGrants)
             }
             case None => {}
         }

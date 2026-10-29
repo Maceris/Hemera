@@ -20,6 +20,8 @@ SLOP_OS_CALL_MEMORY_MAP : u64 : 27
 SLOP_OS_CALL_MEMORY_UNMAP : u64 : 28
 SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
 SLOP_OS_CALL_CHANNEL_TAG : u64 : 50
+SLOP_OS_CALL_CHANNEL_WRITE : u64 : 18
+SLOP_OS_NO_BATCH : u64 : 0xffff
 SLOP_OS_PROTECTION_READ : u64 : 1
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
@@ -497,12 +499,13 @@ SlopOsGrant :: struct {
     }
 
     /*
-     * What a hosted program's main starts with: memory from the kernel, the standard logger and
-     * assertion handler, the kernel's clock, and random bytes from the startup block's seed.
+     * What a hosted program's main starts with: memory from the kernel, the logger that writes records for the
+     * events service (slop_os_events.hsc), the standard assertion handler, the kernel's clock, and random bytes from
+     * the startup block's seed.
      */
     HOSTED_CONTEXT :: Context.{
         allocator = PAGES_ALLOCATOR,
-        logger = &STANDARD_LOGGER,
+        logger = &SLOP_OS_LOGGER,
         log_level = .INFO,
         clock = &SYSTEM_CLOCK,
         random = &SYSTEM_RANDOM,

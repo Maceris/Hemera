@@ -173,6 +173,10 @@ pointed to, or 0 for null. A string's bytes, an array view's or a dynamic array'
 to are followed; a `rawptr`, a function, a type value, an `any`, and a `#union` struct holding pointers are written as
 0, so nothing written says where anything was in the writer's memory.
 
+`schema.render` reads values written so back as text, by their schemas, the way a format string writes them where
+they were: it takes a format string and each argument's schema and value, and gives what `log_info` would have
+written. A pointer comes back as `<pointer>`, its address gone.
+
 ## Arrays
 
 There are a few types of arrays.
