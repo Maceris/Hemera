@@ -248,6 +248,12 @@ package os
         NotLoaded,
     }
 
+    // Where a launch says the program ended: a Once binding of its process's SIGNAL_TERMINATED to port, under key.
+    LaunchWatch :: struct {
+        port : slop_os.Port,
+        key : u64,
+    }
+
     // A program launch started, in a process the caller owns, with a budget split off its own.
     Launched :: struct {
         process : slop_os.Process,
@@ -258,13 +264,19 @@ package os
     /*
      * The program in executable, started through the process manager in a process of the caller's, with a
      * budget of budget bytes split off the caller's: grants, a G whose fields are entry's parameters, each a
-     * handle moved to the program, or None for an optional one it goes without. name is for the manager's log.
+     * handle moved to the program, or None for an optional one it goes without. name is for the manager's log. With watch,
+     * its end is watched from before it starts, so even a program that ends at once is seen to.
      */
     launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
-        budget: u64, entry: F, grants: G) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
+        budget: u64, entry: F, grants: G, watch: LaunchWatch? = null) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
         block :: slop_os.startup_block()
         child :: slop_os.memory_budget_create(block.budget, budget) or_return .Error(.NoBudget)
         process :: slop_os.process_create(child) or_return .Error(.NoBudget)
+        match watch {
+            case Some(watching) => slop_os.port_bind(watching.port, cast[slop_os.Handle](process), slop_os.SIGNAL_TERMINATED, watching.key, .Once)
+                or_return .Error(.NoBudget)
+            case None => {}
+        }
         space :: slop_os.address_space_create(child) or_return .Error(.NoBudget)
         load := process_manager.Load.{name = label_from(name), space = space}
         process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS) | cast[u32](slop_os.RIGHT_DUPLICATE)

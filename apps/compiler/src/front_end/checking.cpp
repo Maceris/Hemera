@@ -994,6 +994,15 @@ namespace hemera {
 	 * stored there, which & points to and an assignment stores into.
 	 */
 	static Progress read_place(Checker& checker, ast::Node* where, Value& value) {
+		// An optional's variants are read to see whether it holds a relative pointer, so it's laid out first: another
+		// thread may still be filling them in
+		TypeInfo const* held = ValueKind::VALUE == value.kind ? get_base_type_or_alias(value.type) : nullptr;
+		if (held != nullptr && TypeInfoVariant::UNION == held->variant && !held->complete) {
+			Progress progress = require_complete(checker.walk, where, value.type);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+		}
 		TypeInfoPointer const* relative = ValueKind::VALUE == value.kind ? relative_pointer_of(value.type) : nullptr;
 		if (relative == nullptr) {
 			return Progress::DONE;

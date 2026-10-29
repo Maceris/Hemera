@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 6
+ABI_VERSION : u32 : 7
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -28,6 +28,8 @@ Platform :: distinct alias Handle
 Intercept :: distinct alias Handle
 DebugLog :: distinct alias Handle
 Device :: distinct alias Handle
+CpuBudget :: distinct alias Handle
+IoPortRange :: distinct alias Handle
 DmaDomain :: distinct alias Handle
 
 // The kinds of kernel object (decisions/0034), as handle_info reports them.
@@ -95,6 +97,14 @@ RIGHT_PROCESS_KILL : Rights : 1 << 12
 RIGHT_PROCESS_THREADS : Rights : 1 << 13
 // A debug log: write lines to it.
 RIGHT_DEBUG_LOG_WRITE : Rights : 1 << 8
+// A CPU budget: may split child budgets off it (cpu_budget_create).
+RIGHT_CPU_BUDGET_SPLIT : Rights : 1 << 8
+// A CPU budget: may change its parameters (cpu_budget_set).
+RIGHT_CPU_BUDGET_SET : Rights : 1 << 9
+// A CPU budget: may have processes' threads run on it (process_set_cpu_budget).
+RIGHT_CPU_BUDGET_BIND : Rights : 1 << 10
+// A range of I/O ports: may read and write them.
+RIGHT_IO_PORTS_ACCESS : Rights : 1 << 8
 // Every right, which an owning handle has.
 RIGHTS_ALL : Rights : 0xffffffff
 
@@ -227,6 +237,49 @@ Syscalls :: struct {
      * and covers those requester IDs too. A device is attached through the IOMMU that covers it most narrowly.
      */
     iommu_register : fn(platform: Platform, kind: IommuKind, registers: Memory, first: u32, count: u32, stream: u32) -> Result[u32, DeviceError],
+    /*
+     * CPU budgets (the SlopOS repository's decisions 0037, 0093): a child of parent, charged to budget, whose threads
+     * get time nanoseconds of CPU every period nanoseconds at priority, then run in the background band until it
+     * comes back. Its share, time over period, comes out of its parent's, which its children's together can't pass;
+     * its priority is at most its parent's (BudgetExceeded, InvalidArgument). Destroyed, what ran on it runs on its
+     * parent.
+     */
+    cpu_budget_create : fn(parent: CpuBudget, budget: MemoryBudget, priority: u32, period: u64, time: u64) -> Result[CpuBudget, HandleError],
+    // The budget's priority, period and time changed, within its parent's as cpu_budget_create's are.
+    cpu_budget_set : fn(budget: CpuBudget, priority: u32, period: u64, time: u64) -> Result[void, HandleError],
+    // What the budget is, into info (CpuBudgetInfo, as CPU_BUDGET_INFO_WORDS words; see cpu_budget_describe).
+    cpu_budget_info : fn(budget: CpuBudget, info: mut u64[]) -> Result[void, HandleError],
+    // The process's threads, now and later, run on budget.
+    process_set_cpu_budget : fn(process: Process, budget: CpuBudget) -> Result[void, HandleError],
+    // The I/O ports first to first + count - 1, on an architecture that has them (x86-64), as an object.
+    io_ports_create : fn(platform: Platform, budget: MemoryBudget, first: u32, count: u32) -> Result[IoPortRange, DeviceError],
+    // A read of width bytes (1, 2 or 4) from the port at offset in the range.
+    io_port_read : fn(ports: IoPortRange, offset: u32, width: u32) -> Result[u32, DeviceError],
+    // A write of width bytes (1, 2 or 4) of value to the port at offset in the range.
+    io_port_write : fn(ports: IoPortRange, offset: u32, width: u32, value: u32) -> Result[void, DeviceError],
+}
+
+/*
+ * What cpu_budget_info gives: its priority, its period and time in nanoseconds, and the share of it its children have,
+ * in millionths of a CPU, against its own share in the same units.
+ */
+CpuBudgetInfo :: struct {
+    priority : u64,
+    period : u64,
+    time : u64,
+    share : u64,
+    children_share : u64,
+}
+
+CPU_BUDGET_INFO_WORDS :: 5
+
+// cpu_budget_info's words, as a CpuBudgetInfo.
+cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
+    words : u64[CPU_BUDGET_INFO_WORDS]
+    if cpu_budget_info(budget, words) is_error {
+        return null
+    }
+    return CpuBudgetInfo.{priority = words[0], period = words[1], time = words[2], share = words[3], children_share = words[4]}
 }
 
 // The most of a line debug_log writes.
@@ -484,6 +537,8 @@ HandleError :: enum #backed_by(u32) {
     BadBuffer = 10,
     // The budget can't pay for it (decisions/0011).
     BudgetExceeded = 25,
+    // A number the call can't take, like a CPU budget's period of 0.
+    InvalidArgument = 46,
 }
 
 // What a call on a port can fail with. Tags shared with HandleError mean the same.
@@ -631,6 +686,8 @@ DeviceError :: enum #backed_by(u32) {
     WrongIommu = 44,
     // DMA memory in a domain no IOMMU translates, which wasn't made trusted (DMA_DOMAIN_TRUSTED).
     Untrusted = 45,
+    // Ports outside the range, a width that isn't 1, 2 or 4, or ports where the architecture has none.
+    InvalidArgument = 46,
 }
 
 // The most message-signaled IRQs one device has at once.

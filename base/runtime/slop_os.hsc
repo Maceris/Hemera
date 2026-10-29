@@ -22,8 +22,9 @@ SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
 SLOP_OS_CALL_CHANNEL_TAG : u64 : 50
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
-SLOP_OS_ABI_VERSION : u32 : 6
+SLOP_OS_ABI_VERSION : u32 : 7
 SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
+SLOP_OS_KIND_CPU_BUDGET : u32 : 2
 SLOP_OS_KIND_MEMORY : u32 : 3
 SLOP_OS_KIND_ADDRESS_SPACE : u32 : 4
 SLOP_OS_KIND_THREAD : u32 : 5
@@ -31,6 +32,7 @@ SLOP_OS_KIND_PROCESS : u32 : 6
 SLOP_OS_KIND_CHANNEL : u32 : 7
 SLOP_OS_KIND_PORT : u32 : 8
 SLOP_OS_KIND_IRQ : u32 : 9
+SLOP_OS_KIND_IO_PORT_RANGE : u32 : 10
 SLOP_OS_KIND_DMA_DOMAIN : u32 : 11
 SLOP_OS_KIND_PLATFORM : u32 : 12
 SLOP_OS_KIND_INTERCEPT : u32 : 13
@@ -260,6 +262,12 @@ SlopOsGrant :: struct {
         }
         if kind == "Device" {
             return SLOP_OS_KIND_DEVICE
+        }
+        if kind == "CpuBudget" {
+            return SLOP_OS_KIND_CPU_BUDGET
+        }
+        if kind == "IoPortRange" {
+            return SLOP_OS_KIND_IO_PORT_RANGE
         }
         return 0
     }
