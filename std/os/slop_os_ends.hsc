@@ -254,6 +254,18 @@ package os
         key : u64,
     }
 
+    /*
+     * What a launch does beyond its grants: watch the program's end from before it starts; run it on a CPU budget
+     * (RIGHT_CPU_BUDGET_BIND) from its first instruction rather than on the launcher's; and give it the clock page (a
+     * read-only memory object the clock service keeps, base's runtime.SlopOsClockPage), as the grant "clock", which
+     * base's runtime reads the wall clock from, whatever the program's entry takes.
+     */
+    LaunchOptions :: struct {
+        watch : LaunchWatch?,
+        cpu_budget : slop_os.CpuBudget?,
+        clock : slop_os.Memory?,
+    }
+
     // A program launch started, in a process the caller owns, with a budget split off its own.
     Launched :: struct {
         process : slop_os.Process,
@@ -264,17 +276,27 @@ package os
     /*
      * The program in executable, started through the process manager in a process of the caller's, with a
      * budget of budget bytes split off the caller's: grants, a G whose fields are entry's parameters, each a
-     * handle moved to the program, or None for an optional one it goes without. name is for the manager's log. With watch,
-     * its end is watched from before it starts, so even a program that ends at once is seen to.
+     * handle moved to the program, or None for an optional one it goes without. name is for the manager's log. options
+     * (LaunchOptions) can watch its end from before it starts, so even a program that ends at once is seen to, put it on a
+     * CPU budget, and give it the clock page; the budget's handle is closed once it's on it, and the clock page's is the
+     * program's.
      */
     launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
-        budget: u64, entry: F, grants: G, watch: LaunchWatch? = null) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
+        budget: u64, entry: F, grants: G, options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
         block :: slop_os.startup_block()
         child :: slop_os.memory_budget_create(block.budget, budget) or_return .Error(.NoBudget)
         process :: slop_os.process_create(child) or_return .Error(.NoBudget)
-        match watch {
+        match options.watch {
             case Some(watching) => slop_os.port_bind(watching.port, cast[slop_os.Handle](process), slop_os.SIGNAL_TERMINATED, watching.key, .Once)
                 or_return .Error(.NoBudget)
+            case None => {}
+        }
+        match options.cpu_budget {
+            case Some(cpu) => {
+                put :: slop_os.process_set_cpu_budget(process, cpu)
+                _ = slop_os.handle_close(cast[slop_os.Handle](cpu))
+                put or_return .Error(.BadGrants)
+            }
             case None => {}
         }
         space :: slop_os.address_space_create(child) or_return .Error(.NoBudget)
@@ -300,6 +322,18 @@ package os
             load.labels[index] = label_from(member.name)
             load.grants[index] = handle
             load.grant_count += 1
+        }
+        match options.clock {
+            case Some(page) => {
+                index :: cast[usize](load.grant_count)
+                if index >= load.labels.count || index >= load.grants.count {
+                    return .Error(.BadGrants)
+                }
+                load.labels[index] = label_from("clock")
+                load.grants[index] = cast[slop_os.Handle](page)
+                load.grant_count += 1
+            }
+            case None => {}
         }
         out := Outgoing.{}
         request :: begin[process_manager.Request](&out)

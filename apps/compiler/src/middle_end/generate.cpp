@@ -826,6 +826,37 @@ namespace hemera {
 		return LLVM::InsertValueOp::create(generator.builder, generator.loc, whole, part, path);
 	}
 
+	// The types of an LLVM struct's or array's elements.
+	static std::vector<mlir::Type> element_types(mlir::Type type) {
+		if (auto structure = mlir::dyn_cast<LLVM::LLVMStructType>(type)) {
+			return std::vector<mlir::Type>(structure.getBody().begin(), structure.getBody().end());
+		}
+		if (auto array = mlir::dyn_cast<LLVM::LLVMArrayType>(type)) {
+			return std::vector<mlir::Type>(array.getNumElements(), array.getElementType());
+		}
+		return {};
+	}
+
+	/*
+	 * A constant's part put in its element of whole. A part may have a shape of its own, like a union's variant
+	 * (make_variant), which isn't the element's type: then whole is remade as a packed struct with the part's
+	 * shape in its place, which is laid out the same, and a global takes as its type (global_for).
+	 */
+	static mlir::Value insert_shaped(Generator& generator, mlir::Value whole, mlir::Value part, int64_t index) {
+		std::vector<mlir::Type> elements = element_types(whole.getType());
+		if (index < 0 || static_cast<size_t>(index) >= elements.size() || elements[static_cast<size_t>(index)] == part.getType()) {
+			return insert(generator, whole, part, { index });
+		}
+		elements[static_cast<size_t>(index)] = part.getType();
+		mlir::Value result = zero_of(generator, packed(generator, elements));
+		for (size_t i = 0; i < elements.size(); ++i) {
+			if (static_cast<int64_t>(i) != index) {
+				result = insert(generator, result, extract(generator, whole, static_cast<int64_t>(i)), { static_cast<int64_t>(i) });
+			}
+		}
+		return insert(generator, result, part, { index });
+	}
+
 	// A count and a pointer, as a string or view.
 	static mlir::Value make_view(Generator& generator, mlir::Value count, mlir::Value data) {
 		mlir::Value result = LLVM::UndefOp::create(generator.builder, generator.loc, view_type(generator));
@@ -7546,8 +7577,8 @@ namespace hemera {
 				unsupported(generator, element, "a constant #union struct's literal can't be generated yet");
 				continue;
 			}
-			result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result,
-				emit_as(generator, named ? element->children[1] : element, member_type), path);
+			mlir::Value part = emit_as(generator, named ? element->children[1] : element, member_type);
+			result = path.size() == 1 ? insert_shaped(generator, result, part, path[0]) : insert(generator, result, part, path);
 		}
 		// The others have their defaults, or zero
 		for (const StructMember& member : structure->members) {
@@ -7567,7 +7598,8 @@ namespace hemera {
 					unsupported(generator, node, "a constant #union struct's defaults can't be generated yet");
 					continue;
 				}
-				result = LLVM::InsertValueOp::create(generator.builder, generator.loc, result, default_of(generator, member), path);
+				mlir::Value part = default_of(generator, member);
+				result = path.size() == 1 ? insert_shaped(generator, result, part, path[0]) : insert(generator, result, part, path);
 			}
 		}
 		if (overlapping) {
@@ -7793,7 +7825,19 @@ namespace hemera {
 				return value(dense, type);
 			}
 		}
-		mlir::Value result = zero_of(generator, array_type);
+		/*
+		 * A constant's elements may have shapes of their own, like a union's variants (make_variant): then it's a
+		 * packed struct of them, laid out as the array is (insert_shaped)
+		 */
+		std::vector<mlir::Type> shapes = element_types(array_type);
+		bool shaped = false;
+		for (size_t i = 0; i < elements.size() && i < shapes.size(); ++i) {
+			if (shapes[i] != elements[i].getType()) {
+				shapes[i] = elements[i].getType();
+				shaped = true;
+			}
+		}
+		mlir::Value result = zero_of(generator, shaped ? packed(generator, shapes) : array_type);
 		for (size_t i = 0; i < elements.size(); ++i) {
 			result = insert(generator, result, elements[i], { static_cast<int64_t>(i) });
 		}

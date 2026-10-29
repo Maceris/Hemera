@@ -34,7 +34,16 @@ ProcessState :: struct {
     // process_arguments: 0 until someone starts on them, 1 while they're worked out, 2 once they're there
     arguments_state : u32,
     arguments : string[],
+    // On SlopOS, the clock page the wall clock is read from (slop_os.hsc), once it's mapped, and how far that's got
+    clock_page : rawptr,
+    clock_state : u32,
 }
+
+// ProcessState's clock_state: not looked for yet, being mapped, mapped, or there's none.
+CLOCK_PAGE_UNTRIED : u32 : 0
+CLOCK_PAGE_MAPPING : u32 : 1
+CLOCK_PAGE_MAPPED : u32 : 2
+CLOCK_PAGE_NONE : u32 : 3
 
 // Size classes of PageHeap's small blocks: 16 bytes, doubling, to 2 KiB.
 PAGE_HEAP_CLASSES :: 8

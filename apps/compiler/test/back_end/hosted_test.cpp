@@ -648,6 +648,12 @@ TEST(Hosted, MakesUnionConstants)
 	run_hosted("union_constants", hemera::TargetStackCheck::Off);
 }
 
+// docs/types.md, Optionals: constants holding optionals of structs, in structs and arrays, which take each Some's shape.
+TEST(Hosted, MakesOptionalConstants)
+{
+	run_hosted("optional_constants", hemera::TargetStackCheck::Off);
+}
+
 // docs/operators.md, Optional operators: a member, an element or a chain of them after ?, like f()?.x.
 TEST(Hosted, ReadsWhatUnwrapGives)
 {

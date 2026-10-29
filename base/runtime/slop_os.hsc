@@ -20,6 +20,7 @@ SLOP_OS_CALL_MEMORY_MAP : u64 : 27
 SLOP_OS_CALL_MEMORY_UNMAP : u64 : 28
 SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
 SLOP_OS_CALL_CHANNEL_TAG : u64 : 50
+SLOP_OS_PROTECTION_READ : u64 : 1
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
 SLOP_OS_ABI_VERSION : u32 : 7
@@ -63,6 +64,19 @@ SlopOsStartup :: struct {
     // Where its grants are, as bytes from its start, and a random seed for the process
     grants : u64,
     seed : u8[32],
+}
+
+/*
+ * The clock page: a page of memory a process is given read-only as its grant "clock", which the wall clock is read
+ * from. It holds the UTC time at a monotonic reading, which its writer keeps as the system's time is read and set,
+ * under a sequence it makes odd while it writes and even again once it's done; the sequence is 0 until the time is
+ * known.
+ */
+SlopOsClockPage :: struct {
+    sequence : u64,
+    // Nanoseconds since 1970-01-01T00:00:00Z, at the monotonic reading at
+    utc : i64,
+    at : u64,
 }
 
 // One of the startup block's grants: a label, padded with zeros, its kind, and the handle.
@@ -395,7 +409,7 @@ SlopOsGrant :: struct {
         intrinsics.trap()
     }
 
-    // The kernel's monotonic clock; there's no wall clock yet.
+    // The kernel's monotonic clock, and the wall clock from the clock page, if the process was given one.
     SYSTEM_CLOCK :: Clock.{
         data = null,
         monotonic = system_monotonic,
@@ -410,8 +424,76 @@ SlopOsGrant :: struct {
         return cast[MonotonicTime](answer.first)
     }
 
+    // The time on the clock page (SlopOsClockPage), read again if it was being written.
     system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
-        return .Error(.Unavailable)
+        page :: clock_page() or_return .Error(.Unavailable)
+        loop {
+            before :: intrinsics.atomic_load_u64_acquire(&page.sequence)
+            if before == 0 {
+                return .Error(.NotSynchronized)
+            }
+            if (before & 1) != 0 {
+                continue
+            }
+            utc :: intrinsics.atomic_load_i64_no_fence(&page.utc)
+            at :: intrinsics.atomic_load_u64_no_fence(&page.at)
+            intrinsics.fence_acquire()
+            if intrinsics.atomic_load_u64_no_fence(&page.sequence) != before {
+                continue
+            }
+            nanoseconds :: utc + (cast[i64](system_monotonic(data)) - cast[i64](at))
+            seconds := nanoseconds / 1_000_000_000
+            nanos := nanoseconds % 1_000_000_000
+            if nanos < 0 {
+                seconds -= 1
+                nanos += 1_000_000_000
+            }
+            return .Ok(Instant.{seconds = seconds, nanos = cast[u32](nanos)})
+        }
+    }
+
+    // The clock page, mapped read-only the first time it's asked for, or null if the process wasn't given one.
+    clock_page #no_context :: fn() -> ptr[SlopOsClockPage]? {
+        state :: intrinsics.process_state()
+        loop {
+            match intrinsics.atomic_load_u32_acquire(&state.clock_state) {
+                case CLOCK_PAGE_MAPPED => return cast[ptr[SlopOsClockPage]](state.clock_page)
+                case CLOCK_PAGE_NONE => return null
+                case CLOCK_PAGE_MAPPING => continue
+                case _ => {}
+            }
+            _, claimed :: intrinsics.interlocked_compare_exchange_u32(&state.clock_state, CLOCK_PAGE_MAPPING, CLOCK_PAGE_UNTRIED)
+            if claimed {
+                break
+            }
+        }
+        state.clock_page = map_clock_page()
+        if state.clock_page == null {
+            intrinsics.atomic_store_u32_release(&state.clock_state, CLOCK_PAGE_NONE)
+            return null
+        }
+        intrinsics.atomic_store_u32_release(&state.clock_state, CLOCK_PAGE_MAPPED)
+        return cast[ptr[SlopOsClockPage]](state.clock_page)
+    }
+
+    // The process's grant "clock", mapped read-only, or null.
+    map_clock_page #no_context :: fn() -> rawptr {
+        state :: intrinsics.process_state()
+        if state.startup_block == null {
+            return null
+        }
+        startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+        handle :: os_entry_grant("clock", "Memory", "", false)
+        if handle == 0 {
+            return null
+        }
+        address :: reserve_addresses(PAGE_SIZE) or_return null
+        mapped :: slop_os_call(SLOP_OS_CALL_MEMORY_MAP, cast[u64](handle), cast[u64](startup.space), address, 0, cast[u64](PAGE_SIZE),
+            SLOP_OS_PROTECTION_READ)
+        if mapped.tag != 0 {
+            return null
+        }
+        return cast[rawptr](address)
     }
 
     /*
