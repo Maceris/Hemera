@@ -332,6 +332,11 @@ namespace hemera {
 		return is_variant(type, TypeInfoVariant::POINTER);
 	}
 
+	// A pointer or a function value: an address
+	static bool is_address(TypeInfo const* type) {
+		return is_pointer(type) || is_variant(type, TypeInfoVariant::FUNCTION);
+	}
+
 	// A constrained generic's type parameter, while its body is checked before any instance (docs/types.md, Checked Bodies).
 	static TypeInfoArchetype const* archetype_of(TypeInfo const* type) {
 		type = base_of(type);
@@ -3764,6 +3769,13 @@ namespace hemera {
 				|| TypeInfoVariant::CHAR == variant || TypeInfoVariant::POINTER == variant
 				|| TypeInfoVariant::FUNCTION == variant;
 		};
+		// An address, a pointer or a function value, casts only to and from what can hold one: an integer or an enum
+		auto holds_address = [](TypeInfo const* type) {
+			return is_address(type) || TypeInfoVariant::INTEGER == type->variant || TypeInfoVariant::ENUM == type->variant;
+		};
+		if ((is_address(from) || is_address(to)) && !(holds_address(from) && holds_address(to))) {
+			return from == to || assignable(const_cast<TypeInfo*>(from), const_cast<TypeInfo*>(to));
+		}
 		// A view of the same elements, whether they can be changed or not, as a pointer can be cast to ptr[mut T]
 		const bool views = TypeInfoVariant::ARRAY == from->variant && TypeInfoVariant::ARRAY == to->variant
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(from)->array_type
@@ -3839,7 +3851,11 @@ namespace hemera {
 					to_string(source), source->size, to_string(target), target->size));
 			}
 		}
-		else if (!is_untyped(value) && !castable(source, target)) {
+		/*
+		 * An untyped constant becomes what it's cast to, except an address: only an integer is one, so 1.5 or "text"
+		 * cast to a pointer is checked as its own type
+		 */
+		else if ((!is_untyped(value) || is_address(target)) && !castable(source, target)) {
 			TypeInfoArchetype const* archetype = archetype_of(source) != nullptr ? archetype_of(source) : archetype_of(target);
 			if (archetype != nullptr) {
 				not_promised(checker, node, archetype, "a cast", CAPABILITY_ARITHMETIC);

@@ -160,6 +160,11 @@ auto_cast(value)    automatically converts the value to the necessary type, if p
 
 Note that `auto_cast` is intended for prototypes, and generally discouraged. But we aren't the casting police.
 
+An address, a pointer or a function value, casts only to and from what can hold one: an integer, an enum, or another
+address. A float, a `bool` or a `char` isn't one, so `cast[ptr[u8]](1.5)` or `cast[bool](pointer)` is an error (E4020);
+whether a pointer is null is `pointer != null`, and a float's bits are `bit_cast`'s. An untyped constant cast to an
+address is checked as its own type, so `cast[ptr[u8]](0x1000)` works and `cast[ptr[u8]]("text")` doesn't.
+
 Since the value is already in parentheses, the result of a cast can be used directly, without wrapping the cast in
 more parentheses like C needs:
 

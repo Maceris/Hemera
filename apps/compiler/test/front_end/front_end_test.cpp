@@ -916,7 +916,14 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "give_in_defer", hemera::ErrorCode::E4022 },
 		{ "give_wrong_type", hemera::ErrorCode::E4015 },
 		// docs/control_flow.md, Match
-		{ "match_on_cstring", hemera::ErrorCode::E4020 }
+		{ "match_on_cstring", hemera::ErrorCode::E4020 },
+		// docs/operators.md, Casting operators: an address casts only to and from an integer, an enum or an address
+		{ "cast_float_to_pointer", hemera::ErrorCode::E4020 },
+		{ "cast_pointer_to_float", hemera::ErrorCode::E4020 },
+		{ "cast_bool_to_pointer", hemera::ErrorCode::E4020 },
+		{ "cast_pointer_to_bool", hemera::ErrorCode::E4020 },
+		{ "cast_untyped_float_to_pointer", hemera::ErrorCode::E4020 },
+		{ "cast_untyped_string_to_pointer", hemera::ErrorCode::E4020 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

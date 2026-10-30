@@ -260,3 +260,15 @@ WIDE : u64 : 1 << 40
 #assert WIDE >> 38 == 4 && cast[u8](300) == 44 && cast[i8](200) == -56 && cast[u64](WIDE) == WIDE
 // And an enum member's value, the package's own or another's
 #assert cast[u8](Suit.Hearts) == 1 && cast[u32](runtime.LogLevel.WARN) == 30
+
+// An address casts to and from an integer, an enum and another address; an untyped integer is an address too
+addresses :: fn(value: ptr[u64]) -> u64 {
+    as_integer :: cast[uintptr](value)
+    back :: cast[ptr[u64]](as_integer)
+    bytes :: cast[ptr[u8]](back)
+    suit :: cast[Suit](cast[u8](cast[uintptr](bytes)))
+    from_suit :: cast[ptr[u8]](suit)
+    to_suit :: cast[Suit](from_suit)
+    fixed :: cast[ptr[u8]](0x1000)
+    return cast[u64](fixed) + cast[u64](to_suit)
+}
