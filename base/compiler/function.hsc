@@ -19,6 +19,8 @@ FunctionInfo :: struct {
     calls : FunctionCall[],
     // Every type the body uses, once each at its first use. Empty without a body.
     used_types : TypeUse[],
+    // Every value the body discards with _ =, its type, at the _, in source order. Empty without a body.
+    discards : TypeUse[],
 }
 
 FunctionCall :: struct {

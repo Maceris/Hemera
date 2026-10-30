@@ -222,6 +222,10 @@ namespace hemera {
 		/// </summary>
 		std::unordered_map<const ast::Node*, bool> satisfied;
 		/// <summary>
+		/// The type of each value an assignment discards, by its _ (FunctionInfo.discards).
+		/// </summary>
+		std::unordered_map<const ast::Node*, TypeInfo*> discards;
+		/// <summary>
 		/// For a call to a function with parameters after a variadic one, which parameter each positional argument went
 		/// to, by its call's node; a call without it gives a variadic the rest (docs/functions.md, Variable Arguments).
 		/// </summary>

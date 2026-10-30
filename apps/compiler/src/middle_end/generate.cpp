@@ -9991,6 +9991,20 @@ namespace hemera {
 				data.write_type(at, use, "type", used[i].second);
 				write_location_field(data, at, use, file, used[i].first);
 			});
+			std::vector<std::pair<const ast::Node*, const TypeInfo*>> discards;
+			if (function->checked != nullptr) {
+				for (const auto& [node, discarded] : function->checked->discards) {
+					discards.emplace_back(node, discarded);
+				}
+			}
+			std::sort(discards.begin(), discards.end(), [](const auto& a, const auto& b) {
+				return std::make_pair(a.first->value.line_number, a.first->value.column_number)
+					< std::make_pair(b.first->value.line_number, b.first->value.column_number);
+			});
+			write_records(data, record, layout, "discards", discards.size(), [&](uint8_t* at, const TypeInfoStruct* use, size_t i) {
+				data.write_type(at, use, "type", discards[i].second);
+				write_location_field(data, at, use, file, discards[i].first);
+			});
 		}
 
 		// Constants' types and values, worked out already: constant_values's, for many packages at once.

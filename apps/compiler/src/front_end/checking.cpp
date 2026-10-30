@@ -4881,6 +4881,10 @@ namespace hemera {
 		for (size_t i = 0; i < targets.size(); ++i) {
 			const Value& value = values.size() == 1 ? values[0] : values[i];
 			if (ValueKind::POISONED == target_values[i].kind) {
+				if (ast::NodeType::UNDERSCORE == targets[i]->node_type && checker.record != nullptr && ValueKind::VALUE == value.kind
+					&& value.type != nullptr) {
+					checker.record->discards[targets[i]] = value.type;
+				}
 				continue;
 			}
 			require_secret_fits(checker, value.is_secret, types[i], target_values[i].is_secret, targets[i],

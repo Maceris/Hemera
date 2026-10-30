@@ -393,8 +393,11 @@ reflected_constants :: fn() -> bool {
     info :: compiler.package_info("runtime") or_else compiler.PackageInfo.{}
     segment :: compiler.find_constant(&info, "STACK_SEGMENT_SIZE") or_else compiler.ConstantInfo.{}
     logger :: compiler.find_constant(&info, "STANDARD_LOGGER") or_else compiler.ConstantInfo.{}
+    // What a body discards with _ =: schema_reach's first is a usize, at its line
+    reach :: compiler.find_function(&info, "schema_reach") or_else compiler.FunctionInfo.{}
+    discarded :: reach.discards.count > 0 && reach.discards[0].type == usize && reach.discards[0].location.line > reach.location.line
     return segment.value.type == int && segment.value.data != null && logger.name == "STANDARD_LOGGER"
-        && logger.value.data == null
+        && logger.value.data == null && discarded
 }
 
 REFLECTED_CONSTANTS :: reflected_constants()
