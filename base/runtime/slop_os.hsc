@@ -208,7 +208,7 @@ SlopOsGrant :: struct {
             }
             loop {
                 grant :: cast[ptr[SlopOsGrant]](cast[u64](startup) + startup.grants + i * cast[u64](size_of(SlopOsGrant)))
-                if cast[u32](grant.kind) == wanted && label_is(&grant.label, name) && speaks(grant.handle, protocol) {
+                if cast[u32](grant.kind) == wanted && label_is(&grant.label, name) && speaks(grant.handle, protocol_of(kind, protocol)) {
                     return grant.handle
                 }
                 i += 1
@@ -219,6 +219,14 @@ SlopOsGrant :: struct {
             os_exit_process(SLOP_OS_EXIT_MISSING_GRANT)
         }
         return 0
+    }
+
+    /*
+     * The protocol a grant of kind speaks: its generic argument's, or for a Config[T], a connection to a value of type
+     * T, the config protocol's, ConfigValue, whatever T is (the SlopOS repository's decisions 0107, 0109).
+     */
+    protocol_of #no_context :: fn(kind: string, argument: string) -> string {
+        return if kind == "Config" { "ConfigValue" } else { argument }
     }
 
     /*
@@ -254,8 +262,8 @@ SlopOsGrant :: struct {
         if kind == "Process" {
             return SLOP_OS_KIND_PROCESS
         }
-        // A channel end, untyped or speaking a protocol, and a listener, which connections arrive on
-        if kind == "Channel" || kind == "Listener" {
+        // A channel end, untyped or speaking a protocol, a listener, which connections arrive on, and a Config[T], a channel
+        if kind == "Channel" || kind == "Listener" || kind == "Config" {
             return SLOP_OS_KIND_CHANNEL
         }
         if kind == "Port" {
