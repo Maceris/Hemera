@@ -3478,9 +3478,21 @@ namespace hemera {
 			if (ran.has_value()) {
 				result = std::move(*ran);
 			}
-			else if (!run_at_compile_time(generator, directive ? definition->children[0] : definition, declaration->value_type,
-				declaration->checked.get(), declaration, result)) {
-				return zero_of(generator, llvm_type(generator, type));
+			else {
+				/*
+				 * Compile-time code still collecting what it reaches waits for what this constant's value reaches
+				 * too, as for its own calls: a function checking hasn't got to yet is waited for, not an error
+				 */
+				std::vector<Declaration*> waiting;
+				const bool ran_now = run_at_compile_time(generator, directive ? definition->children[0] : definition,
+					declaration->value_type, declaration->checked.get(), declaration, result, generator.collecting ? &waiting : nullptr);
+				if (!waiting.empty()) {
+					generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
+					return zero_of(generator, llvm_type(generator, type));
+				}
+				if (!ran_now) {
+					return zero_of(generator, llvm_type(generator, type));
+				}
 			}
 			iter = generator.compile_time_values.emplace(declaration, std::move(result)).first;
 		}

@@ -17,10 +17,10 @@ package process_manager
     PROTOCOL :: slop_os.Protocol.{name = "process_manager", major_version = 2, lending = .PerConnection}
 
     // The rings a connection to the manager needs, for a Load (channel_create's ring bytes).
-    RING_BYTES : u32 : 2048
+    RING_BYTES : u32 : 4096
 
     // The most grants a Load gives the new program.
-    MAX_GRANTS :: 24
+    MAX_GRANTS :: 32
 
     Request :: union {
         // Load a program into a process the requester made, which stays the requester's and is paid for by it.
