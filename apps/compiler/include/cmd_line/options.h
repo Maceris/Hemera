@@ -561,4 +561,10 @@ namespace hemera {
         Options& operator=(Options&&) = delete;
         ~Options();
 	};
+
+	/// <summary>
+	/// An output name without the extension linking gives it, .exe or .dll on Windows, if it ends with that already:
+	/// every output's file is named from output_name, and the linked one by adding its extension.
+	/// </summary>
+	std::string output_stem(const std::string& name, OSType os, bool typed_library);
 }

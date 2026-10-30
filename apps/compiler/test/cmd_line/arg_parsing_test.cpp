@@ -3,6 +3,7 @@
 #include "gtest/gtest.h"
 
 #include "cmd_line/arg_parsing.h"
+#include "cmd_line/options.h"
 
 using hemera::arg_parse::Option;
 using hemera::arg_parse::UnprocessedOptions;
@@ -156,4 +157,18 @@ TEST(ArgParsingTest, ErrorUnknownFlag)
 	bool result = hemera::arg_parse::parse_arguments(2, arguments, output, alloc);
 
 	EXPECT_FALSE(result);
+}
+
+// --output=program.exe names program.exe, not program.exe.exe: the extension linking adds is taken off first
+TEST(ArgParsingTest, OutputStemDropsTheLinkedExtension)
+{
+	using hemera::OSType;
+	EXPECT_EQ(hemera::output_stem("program.exe", OSType::Win32, false), "program");
+	EXPECT_EQ(hemera::output_stem("Program.EXE", OSType::Win32, false), "Program");
+	EXPECT_EQ(hemera::output_stem("maths.dll", OSType::Win32, true), "maths");
+	EXPECT_EQ(hemera::output_stem("program", OSType::Win32, false), "program");
+	EXPECT_EQ(hemera::output_stem("program.v2", OSType::Win32, false), "program.v2");
+	EXPECT_EQ(hemera::output_stem("maths.dll", OSType::Win32, false), "maths.dll");
+	EXPECT_EQ(hemera::output_stem(".exe", OSType::Win32, false), ".exe");
+	EXPECT_EQ(hemera::output_stem("program.exe", OSType::Linux, false), "program.exe");
 }

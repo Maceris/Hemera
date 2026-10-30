@@ -340,6 +340,10 @@ at once (see below). A target is a root package and its `BuildOptions`, usually 
 `compiler.command_line_options()` so settings and options given on the command line carry over. Its `root`,
 `output_path` and `linker_script` are relative to the build package's folder.
 
+An output's name, `output_path` or `--output`, names every file made from it: `name.mlir`, `name.o`, and on Windows
+`name.exe` or `name.dll` once it's linked. A name that already ends with that extension keeps just the one, so
+`--output=tool.exe` makes `tool.exe`.
+
 ```
 package build
 

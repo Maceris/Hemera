@@ -29,4 +29,21 @@ namespace hemera {
 		, address_zero_is_memory{ false }
 	{}
 	Options::~Options() = default;
+
+	std::string output_stem(const std::string& name, OSType os, bool typed_library) {
+		if (OSType::Win32 != os) {
+			return name;
+		}
+		const std::string_view extension = typed_library ? ".dll" : ".exe";
+		if (name.size() <= extension.size()) {
+			return name;
+		}
+		for (size_t i = 0; i < extension.size(); ++i) {
+			const char given = name[name.size() - extension.size() + i];
+			if ((given >= 'A' && given <= 'Z' ? given - 'A' + 'a' : given) != extension[i]) {
+				return name;
+			}
+		}
+		return name.substr(0, name.size() - extension.size());
+	}
 }

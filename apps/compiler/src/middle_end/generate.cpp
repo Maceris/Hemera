@@ -11175,6 +11175,7 @@ namespace hemera {
 			result.startup_code = false;
 			result.relocation_model = TargetRelocationModel::PositionIndependent;
 		}
+		result.output_name = output_stem(result.output_name, result.os, result.typed_library);
 		const char* library_extension = OSType::Win32 == result.os ? ".dll" : "";
 		for (const BuildLibrary& library : target.libraries) {
 			if (!library.target.empty()) {
@@ -11191,7 +11192,7 @@ namespace hemera {
 				if (found == nullptr || found->output_type != "DynamicLibrary" || missing) {
 					return refuse(std::format("it calls the library {}, which isn't a DynamicLibrary target of the build", library.target));
 				}
-				const std::string output = target_output_name(build, *found, library_root);
+				const std::string output = output_stem(target_output_name(build, *found, library_root), result.os, true);
 				result.libraries.push_back({ library_root, std::filesystem::path(output).filename().string() + library_extension });
 				continue;
 			}

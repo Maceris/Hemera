@@ -1184,6 +1184,7 @@ namespace hemera {
 			std::string last_folderish = output.input.filename().stem().string();
 			output.output_name = last_folderish;
 		}
+		output.output_name = output_stem(output.output_name, output.os, output.typed_library);
 
 		if (!output.builtin_paths.contains(BuiltinPackage::BASE)) {
 			output.builtin_paths.insert(std::make_pair(BuiltinPackage::BASE, 
