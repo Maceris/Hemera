@@ -20,3 +20,8 @@ view_of :: fn[T](data: ptr[T], count: usize) -> T[] {
 string_of :: fn(data: ptr[u8], count: usize) -> string {
     return bit_cast[string](usize.[count, cast[usize](data)])
 }
+
+// A string's bytes, as a view of them: the same memory, for as long as the string's.
+string_bytes :: fn(text: string) -> u8[] {
+    return bit_cast[u8[]](usize.[text.count, cast[usize](text.data)])
+}

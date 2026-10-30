@@ -813,6 +813,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "stack_parameter_address", hemera::ErrorCode::E4030 },
 		{ "stack_named_result", hemera::ErrorCode::E4030 },
 		{ "stack_view_of_holders", hemera::ErrorCode::E4030 },
+		{ "stack_string_bytes_escaping", hemera::ErrorCode::E4030 },
 		{ "stack_unrestricted", hemera::ErrorCode::E4030 },
 		{ "stack_scoped_store", hemera::ErrorCode::E4030 },
 		{ "stack_scoped_and_unrestricted", hemera::ErrorCode::E4014 },

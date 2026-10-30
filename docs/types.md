@@ -289,6 +289,10 @@ builtin `view_of(data: ptr[T], count: usize) -> T[]`: `count` elements of `T` st
 checked, like a cast to a pointer: the caller makes sure the elements are there for as long as the view is used. From a
 `ptr[mut T]`, it's a `mut T[]`.
 
+`string_bytes(text: string) -> u8[]` goes the other way: a string's bytes, as a view of the same memory, for code that
+works with bytes, without reading the string's `data` as a `rawptr`. The view lasts as long as the string's memory
+does, which the compiler checks the same way.
+
 ```
 regions :: view_of(cast[ptr[MemoryRegion]](address), count)
 ```

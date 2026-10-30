@@ -883,5 +883,12 @@ main :: fn() -> int {
     if max_value(f32) <= 3.0e38 || min_value(f64) >= -1.0e308 {
         return 61
     }
+    // A string made at run time, and its bytes through string_bytes
+    made_storage : u8[16]
+    made :: formatted(made_storage, "ab%", 7)
+    made_bytes :: string_bytes(made)
+    if made_bytes.count != 3 || made_bytes[0] != cast[u8]('a') || made_bytes[2] != cast[u8]('7') || string_bytes("").count != 0 {
+        return 62
+    }
     return 42
 }

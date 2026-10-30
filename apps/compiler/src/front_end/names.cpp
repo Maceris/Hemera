@@ -61,7 +61,7 @@ namespace hemera {
 		// Complex numbers' and quaternions' parts, conjugates and magnitudes, and any number's absolute value
 		"real", "imag", "jmag", "kmag", "conj", "abs",
 		// Views over raw memory (base/builtin/views.hsc)
-		"view_of", "string_of",
+		"view_of", "string_of", "string_bytes",
 		// Constants
 		"OS", "TARGET_ARCH",
 	};
