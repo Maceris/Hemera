@@ -9920,6 +9920,7 @@ namespace hemera {
 				return;
 			}
 			data.write_number(record, layout, "never_returns", type->never_returns);
+			data.write_type(record, layout, "type", type);
 			write_records(data, record, layout, "parameters", type->input.size(), [&](uint8_t* at, const TypeInfoStruct* parameter, size_t i) {
 				const FunctionInput& input = type->input[i];
 				data.write_text(at, parameter, "name", text_of(input.name));

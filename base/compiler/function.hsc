@@ -10,6 +10,8 @@ FunctionInfo :: struct {
     has_body : bool,
     // Marked #never_returns.
     never_returns : bool,
+    // The function's own type, its signature as a type, like type_of(function) gives.
+    type : type,
     generic_bindings : GenericBinding[],
     parameters : FunctionParameter[],
     return_values : FunctionReturnValue[],

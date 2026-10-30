@@ -369,6 +369,11 @@ reflected_parameters :: fn() -> int {
     if info.name != "text_buffer" || digits.type != string || !format.has_body || (compiler.package_info("missing") is_some) {
         return -1
     }
+    // Its own type: a function's, with the same parameters
+    signature :: type_info_of(format.type)
+    if signature.variant != .FUNCTION || cast[ptr[compiler.TypeInfoFunction]](signature).input.count != format.parameters.count {
+        return -1
+    }
     // An import's from is the literal's text, without its quotes
     for &edge in info.imports {
         if edge.alias == "runtime" && edge.from != "base" {
