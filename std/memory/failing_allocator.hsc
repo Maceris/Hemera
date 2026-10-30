@@ -26,8 +26,9 @@ FailingAllocator :: struct {
     allocations : u64,
     // Blocks given out and not yet freed: a run that frees all it took ends where it started
     live : i64,
-    // Whether the fail_at'th allocation has come, and failed
+    // Whether the fail_at'th allocation has come, and failed, and where it was asked for
     failed : bool,
+    failed_at : runtime.SourceCodeLocation,
 }
 
 /*
@@ -65,6 +66,7 @@ failing_function : runtime.AllocatorFn : fn(
         count :: intrinsics.interlocked_exchange_add_u64(&failing.allocations, 1) + 1
         if count == failing.fail_at {
             failing.failed = true
+            failing.failed_at = location
             empty : mut u8[]
             return empty, runtime.AllocatorError.OutOfMemory
         }
