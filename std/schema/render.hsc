@@ -234,6 +234,10 @@ add_bytes :: fn(into: ptr[mut u8[..]], bytes: u8[], at: usize, count: usize) {
 }
 
 add_unsigned :: fn(into: ptr[mut u8[..]], value: u64) {
+    if value == 0 {
+        runtime.array_add(into, cast[u8]('0'))
+        return void
+    }
     digits : u8[20]
     count : usize = 0
     left := value

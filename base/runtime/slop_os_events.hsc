@@ -18,6 +18,8 @@ import intrinsics from "base"
  * publishes what it wrote by moving written on, and the reader what it's read by moving read on; both only grow. A
  * full ring drops the newest records, which are counted, and reported in a Dropped entry once there's room. A reader
  * that sets waiting before it waits is woken by a one-byte message on the doorbell, the next time anything's written.
+ * A reader that takes a ring over from one that ended moves reader on, and the writer gives every format string and
+ * schema again from its next record, as the new reader knows none of them.
  */
 
 SLOP_OS_EVENTS_MAGIC : u32 : 0x52545645
@@ -35,7 +37,8 @@ SlopOsEventsRing :: struct {
     read : u64,
     // 1 while the reader waits for the doorbell; the writer clears it, and rings
     waiting : u32,
-    reserved : u32,
+    // Which reader's: moved on by each that takes the ring over
+    reader : u32,
     unused : u64[3],
 }
 
@@ -122,6 +125,8 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         ring : ptr[mut SlopOsEventsRing],
         doorbell : u32,
         lock : u32,
+        // The ring's reader when formats and types were given
+        reader : u32,
         // Records dropped and not reported yet
         dropped : u64,
         // Offsets given, plus 1, so 0 is a free place
@@ -185,6 +190,15 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         }
         while intrinsics.interlocked_exchange_u32(&log.lock, 1) != 0
         array_reset(&log.entries)
+        // A new reader, which knows none of what was given
+        reader :: intrinsics.atomic_load_u32_acquire(&log.ring.reader)
+        if reader != log.reader {
+            for i in 0..<log.formats.count {
+                log.formats[i] = 0
+            }
+            log.type_count = 0
+            log.reader = reader
+        }
         if log.dropped > 0 {
             dropped :: events_begin(&log.entries, SLOP_OS_EVENTS_DROPPED, size_of(SlopOsEventsDropped))
             cast[ptr[mut SlopOsEventsDropped]](events_at(&log.entries, dropped)).count = log.dropped

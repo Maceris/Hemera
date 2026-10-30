@@ -174,6 +174,9 @@ renders_alike :: fn(format_string: string, value: any) -> bool {
 }
 
 check_render :: fn() -> int {
+    if !renders_alike("count % of", cast[u32](0)) || !renders_alike("%", cast[i64](0)) || !renders_alike("%{#018x}", cast[u64](0x4100000)) {
+        return 36
+    }
     if !renders_alike("count % of", cast[u32](1234)) || !renders_alike("[%]", cast[i16](-300)) || !renders_alike("%", true) {
         return 30
     }

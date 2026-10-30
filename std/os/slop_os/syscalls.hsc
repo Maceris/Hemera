@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 9
+ABI_VERSION : u32 : 10
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -161,7 +161,10 @@ Syscalls :: struct {
     channel_take_handles : fn(end: Channel, batch: u32, handles: mut Handle[], count: ptr[mut u32]) -> Result[u32, ChannelError],
     // As port_wait, after channel_notify.
     channel_notify_and_wait : fn(end: Channel, signals: Signals, port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, ChannelError],
-    // A Signal packet for key when the object raises any of signals, or an Irq packet for an IRQ's interrupts.
+    /*
+     * A Signal packet for key when the object raises any of signals, or an Irq packet for an IRQ's interrupts. A channel
+     * end's packet comes at once for PeerClosed if its peer is closed, and for Readable if messages are waiting in it.
+     */
     port_bind : fn(port: Port, object: Handle, signals: Signals, key: u64, mode: BindMode) -> Result[void, PortError],
     // A child budget of limit bytes, carved out of the budget.
     memory_budget_create : fn(budget: MemoryBudget, limit: u64) -> Result[MemoryBudget, HandleError],
@@ -274,6 +277,14 @@ Syscalls :: struct {
     memory_read : fn(memory: Memory, offset: u64, buffer: mut u8[]) -> Result[void, MemoryError],
     // Bytes copied into anonymous memory from offset, through the kernel (RIGHT_MEMORY_WRITE).
     memory_write : fn(memory: Memory, offset: u64, bytes: u8[]) -> Result[void, MemoryError],
+    /*
+     * The CPUs the budget's threads may run on, a bit per CPU's index (RIGHT_CPU_BUDGET_SET): one of them online,
+     * within its parent's, and over each of its children's (InvalidArgument, BudgetExceeded). A child starts with its
+     * parent's; the root's are every CPU. Its threads move at their next tick (the SlopOS repository's decisions/0099).
+     */
+    cpu_budget_set_cpus : fn(budget: CpuBudget, cpus: u64) -> Result[void, HandleError],
+    // A message-signaled IRQ routed to the CPU with index cpu instead, one of the caller's CPU budget's CPUs.
+    irq_set_cpu : fn(irq: Irq, cpu: u32) -> Result[void, DeviceError],
 }
 
 /*
@@ -286,9 +297,11 @@ CpuBudgetInfo :: struct {
     time : u64,
     share : u64,
     children_share : u64,
+    // The CPUs its threads may run on, a bit per CPU's index
+    cpus : u64,
 }
 
-CPU_BUDGET_INFO_WORDS :: 5
+CPU_BUDGET_INFO_WORDS :: 6
 
 // cpu_budget_info's words, as a CpuBudgetInfo.
 cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
@@ -296,7 +309,8 @@ cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
     if cpu_budget_info(budget, words) is_error {
         return null
     }
-    return CpuBudgetInfo.{priority = words[0], period = words[1], time = words[2], share = words[3], children_share = words[4]}
+    return CpuBudgetInfo.{priority = words[0], period = words[1], time = words[2], share = words[3], children_share = words[4],
+        cpus = words[5]}
 }
 
 // The most of a line debug_log writes.
@@ -709,7 +723,10 @@ DeviceError :: enum #backed_by(u32) {
     WrongIommu = 44,
     // DMA memory in a domain no IOMMU translates, which wasn't made trusted (DMA_DOMAIN_TRUSTED).
     Untrusted = 45,
-    // Ports outside the range, a width that isn't 1, 2 or 4, or ports where the architecture has none.
+    /*
+     * Ports outside the range, a width that isn't 1, 2 or 4, or ports where the architecture has none; or a CPU that
+     * isn't online, or isn't the caller's CPU budget's
+     */
     InvalidArgument = 46,
 }
 

@@ -25,7 +25,7 @@ SLOP_OS_NO_BATCH : u64 : 0xffff
 SLOP_OS_PROTECTION_READ : u64 : 1
 SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
 // The startup block's version, and a grant's kinds by name (os_entry_grant): ObjectKind's values
-SLOP_OS_ABI_VERSION : u32 : 9
+SLOP_OS_ABI_VERSION : u32 : 10
 SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
 SLOP_OS_KIND_CPU_BUDGET : u32 : 2
 SLOP_OS_KIND_MEMORY : u32 : 3
