@@ -56,12 +56,23 @@ element_address :: fn[T](raw: ptr[ResizableArray], index: usize, T: type) -> ptr
 
 /*
  * Makes room for at least new_capacity elements, keeping the ones there are. Does nothing if
- * there's room already.
+ * there's room already. Without the memory, calls context.assertion_handler, which ends the program;
+ * array_try_reserve gives the error instead.
  */
 array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #caller_location) {
+    if array_try_reserve(array, new_capacity, location) != null {
+        context.assertion_handler(location, "out of memory")
+    }
+}
+
+/*
+ * Like array_reserve, but without the memory, gives the allocator's error and leaves the array as it was, for code
+ * that handles running out, as map_try_put does for maps.
+ */
+array_try_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #caller_location) -> AllocatorError? {
     raw :: resizable(array)
     if new_capacity <= raw.capacity {
-        return void
+        return null
     }
     if cast[rawptr](raw.allocator.function) == null {
         raw.allocator = context.allocator
@@ -69,7 +80,7 @@ array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #
     allocator :: raw.allocator
     memory, error :: allocator.function(allocator.data, new_capacity * size_of(T), align_of(T), null, 0, location)
     if error != null {
-        context.assertion_handler(location, "out of memory")
+        return error
     }
     if raw.count > 0 {
         intrinsics.mem_copy_non_overlapping(cast[mut rawptr](memory.data), raw.data, raw.count * size_of(T))
@@ -79,6 +90,7 @@ array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #
     }
     raw.data = cast[rawptr](memory.data)
     raw.capacity = new_capacity
+    return null
 }
 
 // Adds value at the end, growing the array if it's full.
@@ -90,6 +102,33 @@ array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #call
     }
     element_address(raw, raw.count, T)^ = value
     raw.count += 1
+}
+
+// Like array_add, but without the memory to grow, gives the allocator's error and leaves the array as it was.
+array_try_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) -> AllocatorError? {
+    raw :: resizable(array)
+    if raw.count == raw.capacity {
+        doubled :: raw.capacity * 2
+        error :: array_try_reserve(array, if doubled > ARRAY_MINIMUM_CAPACITY { doubled } else { ARRAY_MINIMUM_CAPACITY }, location)
+        if error != null {
+            return error
+        }
+    }
+    array_add(array, value, location)
+    return null
+}
+
+// Like array_copy, but without the memory, gives the allocator's error and leaves target as it was.
+array_try_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_location) -> AllocatorError? {
+    raw :: resizable(target)
+    if raw.count + source.count > raw.capacity {
+        error :: array_try_reserve(target, raw.count + source.count, location)
+        if error != null {
+            return error
+        }
+    }
+    array_copy(source, target, location)
+    return null
 }
 
 // Adds each of source's elements at the end of target, in order.

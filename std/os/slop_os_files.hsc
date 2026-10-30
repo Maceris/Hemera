@@ -63,6 +63,7 @@ package os
             case .Revoked => OsError.AccessDenied
             case .Unavailable => OsError.Other
             case .IsALink => OsError.Other
+            case .NoMemory => OsError.OutOfMemory
         }
     }
 

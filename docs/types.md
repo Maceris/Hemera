@@ -861,6 +861,10 @@ Strings, array views and dynamic arrays are small structs pointing at their cont
 Functions that change a dynamic array take a pointer to it, so the change reaches the caller's array:
 `array_add(&names, name)`. Functions that only read one take an array view, which dynamic arrays convert to.
 
+Growing takes memory: `array_add`, `array_reserve` and `array_copy` end the program through `context.assertion_handler`
+when there's none, and `array_try_add`, `array_try_reserve` and `array_try_copy` give the allocator's error instead,
+leaving the array as it was, for code that handles running out, as `map_try_put` does for maps.
+
 Static arrays are their elements, one after another, with nothing else.
 
 Sizes, on the 64-bit targets Hemera supports:

@@ -7,6 +7,7 @@ package hosted
 import compiler from "base"
 import intrinsics from "base"
 import runtime from "base"
+import memory from "std"
 import text_buffer from "std"
 
 Point :: struct {
@@ -888,7 +889,56 @@ main :: fn() -> int {
     made :: formatted(made_storage, "ab%", 7)
     made_bytes :: string_bytes(made)
     if made_bytes.count != 3 || made_bytes[0] != cast[u8]('a') || made_bytes[2] != cast[u8]('7') || string_bytes("").count != 0 {
-        return 62
+        return 64
+    }
+    // The second allocation through a FailingAllocator fails, and the rest go through, each counted
+    if !fails_the_second() {
+        return 65
+    }
+    // array_try_add gives the error, and the array stays as it was
+    if !arrays_try() {
+        return 66
     }
     return 42
+}
+
+// A FailingAllocator with fail_at 2: the first allocation works, the second fails, the third works; two blocks live
+fails_the_second :: fn() -> bool {
+    failing :: memory.make_failing(2) or_return false
+    defer memory.free_failing(failing)
+    first : mut u8[]
+    third : mut u8[]
+    first_error : runtime.AllocatorError?
+    second_error : runtime.AllocatorError?
+    third_error : runtime.AllocatorError?
+    push_context failing_context (allocator = memory.failing_allocator(failing)) {
+        first, first_error = runtime.new_array(u8, 16)
+        _, second_error = runtime.new_array(u8, 16)
+        third, third_error = runtime.new_array(u8, 16)
+    }
+    held :: failing.live
+    if first_error == null {
+        runtime.free_array(first)
+    }
+    if third_error == null {
+        runtime.free_array(third)
+    }
+    return first_error == null && second_error != null && third_error == null && failing.allocations == 3 && failing.failed && held == 2
+}
+
+// array_try_add and array_try_reserve, through a FailingAllocator failing the first allocation: errors, the array unchanged
+arrays_try :: fn() -> bool {
+    failing :: memory.make_failing(1) or_return false
+    defer memory.free_failing(failing)
+    held := true
+    push_context failing_context (allocator = memory.failing_allocator(failing)) {
+        numbers : int[..]
+        added :: runtime.array_try_add(&numbers, 7)
+        held = added != null && numbers.count == 0 && numbers.capacity == 0
+        // The second allocation works
+        reserved :: runtime.array_try_reserve(&numbers, 4)
+        held = held && reserved == null && numbers.capacity == 4 && runtime.array_try_add(&numbers, 8) == null && numbers.count == 1
+        runtime.array_free(&numbers)
+    }
+    return held && failing.allocations == 2 && failing.live == 0
 }

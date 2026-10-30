@@ -49,6 +49,8 @@ package files
         Unavailable = 14,
         // A stored link where it isn't followed: inside what another link leads to, or in a transaction
         IsALink = 15,
+        // The server hadn't the memory to do it, and changed nothing
+        NoMemory = 16,
     }
 
     // How OpenFile treats what's at its path.

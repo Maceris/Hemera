@@ -29,6 +29,19 @@ block, error :: new_array_aligned(u8, 4096, 64)
 free_array_aligned(block, 64)
 ```
 
+To run the paths a failed allocation takes, `std`'s `memory.FailingAllocator` wraps another allocator and fails its
+`fail_at`'th allocation (counting from 1) with `OutOfMemory`; with `fail_at` 0 it only counts. It also counts the blocks
+it gave that weren't freed, so a test can fail each allocation in turn and check every run frees what it took:
+
+```
+failing :: memory.make_failing(n) or_return 1
+defer memory.free_failing(failing)
+push_context failing_context (allocator = memory.failing_allocator(failing)) {
+    result = run_the_test()
+}
+// failing.allocations, failing.live, failing.failed
+```
+
 # Pointers to the Stack
 
 Pointers and views can refer to stack memory: `&local_variable`, a stack array passed as an array view,
