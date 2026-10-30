@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 8
+ABI_VERSION : u32 : 9
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -267,6 +267,13 @@ Syscalls :: struct {
     memory_page_wanted : fn(memory: Memory) -> Result[u64, MemoryError],
     // The page at offset of paged memory, copied from the page of source at source_offset, and whoever waited for it woken.
     memory_supply : fn(memory: Memory, offset: u64, source: Memory, source_offset: u64) -> Result[void, MemoryError],
+    /*
+     * Bytes of anonymous memory from offset copied into buffer, through the kernel, with no mapping (RIGHT_MEMORY_READ):
+     * for memory another process owns, whose end is only ObjectGone, never a fault (the SlopOS repository's decisions/0098).
+     */
+    memory_read : fn(memory: Memory, offset: u64, buffer: mut u8[]) -> Result[void, MemoryError],
+    // Bytes copied into anonymous memory from offset, through the kernel (RIGHT_MEMORY_WRITE).
+    memory_write : fn(memory: Memory, offset: u64, bytes: u8[]) -> Result[void, MemoryError],
 }
 
 /*
