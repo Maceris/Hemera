@@ -7,6 +7,7 @@ package hosted
 import compiler from "base"
 import intrinsics from "base"
 import runtime from "base"
+import concurrency from "std"
 import memory from "std"
 import text_buffer from "std"
 
@@ -899,6 +900,10 @@ main :: fn() -> int {
     if !arrays_try() {
         return 66
     }
+    // Ranked locks: in order, out of order, and two of one rank by address
+    if !ranks_hold() {
+        return 67
+    }
     return 42
 }
 
@@ -941,4 +946,21 @@ arrays_try :: fn() -> bool {
         runtime.array_free(&numbers)
     }
     return held && failing.allocations == 2 && failing.live == 0
+}
+
+// lock_ranked and unlock_ranked: a higher rank after a lower is in order, a lower after a higher isn't
+ranks_hold :: fn() -> bool {
+    held : concurrency.HeldRanks
+    locks : concurrency.SpinLock[3]
+    first :: concurrency.lock_ranked(&locks[0], 10, &held)
+    second :: concurrency.lock_ranked(&locks[1], 20, &held)
+    // Lower than what's held: out of order
+    inverted :: concurrency.lock_ranked(&locks[2], 5, &held)
+    released :: concurrency.unlock_ranked(&locks[2], 5, &held) && concurrency.unlock_ranked(&locks[1], 20, &held)
+    // Of the same rank, at a higher address, after: in order; and the first given back last
+    same :: concurrency.lock_ranked_after(&locks[1], 10, &held)
+    all :: concurrency.unlock_ranked(&locks[1], 10, &held) && concurrency.unlock_ranked(&locks[0], 10, &held)
+    // Nothing held now: giving back what isn't held says so
+    stray :: concurrency.unlock_ranked(&locks[0], 10, &held)
+    return first && second && !inverted && released && same && all && !stray && held.count == 0
 }
