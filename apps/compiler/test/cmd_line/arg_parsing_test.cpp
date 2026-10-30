@@ -67,6 +67,29 @@ TEST(ArgParsingTest, OutputArg)
 	EXPECT_EQ(output.input.size(), 0);
 }
 
+// -o value, as well as -o=value: the next argument is the value, and what follows is the input
+TEST(ArgParsingTest, OutputArgSeparate)
+{
+	Allocator<> alloc;
+
+	char application[] = "hemera.exe";
+	char flag[] = "-o";
+	char value[] = "example.exe";
+	char input[] = "program";
+
+	char* arguments[] = { application, flag, value, input };
+	UnprocessedOptions output{ alloc };
+
+	bool result = hemera::arg_parse::parse_arguments(4, arguments, output, alloc);
+
+	EXPECT_TRUE(result);
+	EXPECT_EQ(output.options.size(), 0);
+	ASSERT_EQ(output.options_with_values.size(), 1);
+	EXPECT_EQ(output.options_with_values[0].option, Option::OUTPUT);
+	EXPECT_EQ(strcmp(output.options_with_values[0].values[0].c_str(), "example.exe"), 0);
+	EXPECT_EQ(strcmp(output.input.c_str(), "program"), 0);
+}
+
 TEST(ArgParsingTest, ErrorStartingWithEquals)
 {
 	Allocator<> alloc;

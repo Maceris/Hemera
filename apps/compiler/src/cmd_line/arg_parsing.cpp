@@ -74,6 +74,19 @@ namespace hemera::arg_parse {
 		bool all_fine = true;
 		bool started_input = false;
 
+		// An option's value, from -o=value or -o value
+		auto add_value = [&](const OptionDescription* description, const char* value) {
+			OptionWithValue& option_with_value = output.options_with_values.emplace_back();
+			option_with_value.option = description->option;
+			// Only options taking several values are lists; others, like --cpu-features=+a,-b, keep their commas
+			if (description->multiple_args) {
+				split_on_char(value, ',', option_with_value.values);
+			}
+			else {
+				option_with_value.values.emplace_back(value);
+			}
+		};
+
 		//NOTE(ches) Skip the first argument, hoping it's the program name
 		for (int i = 1; i < argc; ++i) {
 			const char* raw_arg = argv[i];
@@ -109,25 +122,13 @@ namespace hemera::arg_parse {
 					continue;
 				}
 
-				const Option& option = maybe_option.value()->option;
-
 				if (!maybe_option.value()->has_args) {
 					LOG_WARNING(std::format("Unexpected arguments provided in option {}", raw_arg));
 					all_fine = false;
 					continue;
 				}
 
-				OptionWithValue& option_with_value =
-					output.options_with_values.emplace_back();
-				option_with_value.option = option;
-				// Only options taking several values are lists; others, like --cpu-features=+a,-b, keep their commas
-				if (maybe_option.value()->multiple_args) {
-					split_on_char(raw_arg + found_equals.location + 1, ',',
-						option_with_value.values);
-				}
-				else {
-					option_with_value.values.emplace_back(raw_arg + found_equals.location + 1);
-				}
+				add_value(maybe_option.value(), raw_arg + found_equals.location + 1);
 
 			}
 			else {
@@ -135,7 +136,7 @@ namespace hemera::arg_parse {
 
 				if (!maybe_option) {
 					if (raw_arg[0] == '-') {
-						LOG_WARNING("Flags after input, something is probably wrong");
+						LOG_WARNING(std::format("Unrecognized option {}", raw_arg));
 						all_fine = false;
 						continue;
 					}
@@ -152,9 +153,15 @@ namespace hemera::arg_parse {
 
 				const Option& option = maybe_option.value()->option;
 
+				// -o value: the next argument is the value, whatever it starts with, as -o=value's would be
 				if (maybe_option.value()->has_args) {
-					LOG_WARNING(std::format("Expected arguments for option {}", raw_arg));
-					all_fine = false;
+					if (i + 1 >= argc) {
+						LOG_WARNING(std::format("{} needs a value: {} value, or {}=value", raw_arg, raw_arg, raw_arg));
+						all_fine = false;
+						continue;
+					}
+					++i;
+					add_value(maybe_option.value(), argv[i]);
 					continue;
 				}
 
