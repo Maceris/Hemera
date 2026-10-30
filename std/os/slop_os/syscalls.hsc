@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 7
+ABI_VERSION : u32 : 8
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -257,6 +257,16 @@ Syscalls :: struct {
     io_port_read : fn(ports: IoPortRange, offset: u32, width: u32) -> Result[u32, DeviceError],
     // A write of width bytes (1, 2 or 4) of value to the port at offset in the range.
     io_port_write : fn(ports: IoPortRange, offset: u32, width: u32, value: u32) -> Result[void, DeviceError],
+    /*
+     * A memory object of size bytes whose pages its pager supplies (the SlopOS repository's decisions/0094): a touch of
+     * one that isn't there yet waits, and raises key's wake binding on port, which the pager made. It can be mapped
+     * only to read or execute; only a handle that may write it (RIGHT_MEMORY_WRITE) asks what's wanted and supplies.
+     */
+    memory_create_paged : fn(budget: MemoryBudget, port: Port, key: u64, size: u64) -> Result[Memory, MemoryError],
+    // The offset of a page of paged memory that a touch is waiting for, each reported once; NothingWanted otherwise.
+    memory_page_wanted : fn(memory: Memory) -> Result[u64, MemoryError],
+    // The page at offset of paged memory, copied from the page of source at source_offset, and whoever waited for it woken.
+    memory_supply : fn(memory: Memory, offset: u64, source: Memory, source_offset: u64) -> Result[void, MemoryError],
 }
 
 /*
@@ -614,6 +624,12 @@ MemoryError :: enum #backed_by(u32) {
     NotMapped = 26,
     // Writable and executable at once, or no access at all.
     BadProtection = 27,
+    // The port has no wake binding with that key, or is gone.
+    NoPager = 28,
+    // No page of the paged memory is waited for that hasn't been reported.
+    NothingWanted = 29,
+    // Not paged memory.
+    NotPaged = 30,
 }
 
 // The largest memory object, 1 GiB.
