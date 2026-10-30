@@ -327,9 +327,11 @@ package os
         budget_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_BUDGET_CHARGE) | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
         load.budget = cast[slop_os.MemoryBudget](slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights) or_return .Error(.BadGrants))
+        // To execute too, where the caller may, so the manager can map its read-only segments straight from it
         executable_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_TRANSFER))
-        load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights)
-            or_return .Error(.BadGrants))
+        executing :: cast[slop_os.Rights](cast[u32](executable_rights) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE))
+        load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executing)
+            or_else (slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights) or_return .Error(.BadGrants)))
         for member in cast[ptr[compiler.TypeInfoStruct]](type_info_of(G)).members {
             handle :: grant_in(cast[u64](&grants) + cast[u64](member.offset), member.member_type)
             if handle == slop_os.NO_HANDLE {
