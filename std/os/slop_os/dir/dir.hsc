@@ -23,6 +23,11 @@ package dir
     OpenFile :: struct {
         path : slop_os.Relative[u8],
         creation : files.Creation,
+        /*
+         * A typed file's schema hash (the SlopOS repository's 0046, 0108): one made has it, one there already must have it
+         * (WrongType); all zeros asks for neither
+         */
+        schema : u8[32],
     }
 
     OpenDirectory :: struct {

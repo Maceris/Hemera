@@ -64,6 +64,7 @@ package os
             case .Unavailable => OsError.Other
             case .IsALink => OsError.Other
             case .NoMemory => OsError.OutOfMemory
+            case .WrongType => OsError.WrongType
         }
     }
 
@@ -265,6 +266,15 @@ package os
     }
 
     system_open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+        untyped : u8[32]
+        return open_with_schema(directory, path, mode, untyped)
+    }
+
+    /*
+     * The file at path beneath directory, as system_open_in opens it, with a schema hash (all zeros for none): one made
+     * has the type, and one there must have it, or it's WrongType (the SlopOS repository's 0046, 0108).
+     */
+    open_with_schema :: fn(directory: Directory, path: string, mode: OpenMode, schema: u8[32]) -> (file : File, error : OsError?) {
         state :: directory_of(directory)
         out := Outgoing.{}
         request :: begin[dir.Request](&out)
@@ -279,7 +289,7 @@ package os
             else if mode == .APPEND {
                 creation = .Either
             }
-            request^ = .OpenFile(dir.OpenFile.{path = relative_path(&out, path), creation = creation})
+            request^ = .OpenFile(dir.OpenFile.{path = relative_path(&out, path), creation = creation, schema = schema})
         }
         into := Incoming.{}
         if !ask_directory(state, &out, &into) {
@@ -299,6 +309,14 @@ package os
         made, made_error :: file_on(end, writes)
         if made_error != null {
             return File.{0}, made_error
+        }
+        // Read-only opens ask for no type, so it's checked once it's open
+        if !writes && !all_zero(schema) {
+            size, held, info_error :: file_info(made)
+            if info_error != null || held != schema {
+                system_close(made)
+                return File.{0}, if info_error != null { info_error } else { OsError.WrongType }
+            }
         }
         // Appending starts at the end
         if mode == .APPEND {
@@ -395,6 +413,13 @@ package os
     }
 
     system_file_size :: fn(handle: File) -> (size : u64, error : OsError?) {
+        size, schema, error :: file_info(handle)
+        return size, error
+    }
+
+    // A file's size and schema hash (all zeros for an untyped one).
+    file_info :: fn(handle: File) -> (size : u64, schema : u8[32], error : OsError?) {
+        none : u8[32]
         state :: file_of(handle)
         out := Outgoing.{}
         if state.writes {
@@ -407,20 +432,29 @@ package os
         }
         into := Incoming.{}
         if !ask_file(state, &out, &into) {
-            return 0, OsError.Other
+            return 0, none, OsError.Other
         }
         if state.writes {
             match message_of[file.Response](&into)^ {
-                case Described(info) => return info.size, null
-                case Failed(failure) => return 0, error_of_file(failure)
-                case _ => return 0, OsError.Other
+                case Described(info) => return info.size, info.schema, null
+                case Failed(failure) => return 0, none, error_of_file(failure)
+                case _ => return 0, none, OsError.Other
             }
         }
         match message_of[read_only_file.Response](&into)^ {
-            case Described(info) => return info.size, null
-            case Failed(failure) => return 0, error_of_file(failure)
-            case _ => return 0, OsError.Other
+            case Described(info) => return info.size, info.schema, null
+            case Failed(failure) => return 0, none, error_of_file(failure)
+            case _ => return 0, none, OsError.Other
         }
+    }
+
+    all_zero :: fn(bytes: u8[32]) -> bool {
+        for byte in bytes {
+            if byte != 0 {
+                return false
+            }
+        }
+        return true
     }
 
     // A Remove or Rename's answer, Done or why not.

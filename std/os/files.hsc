@@ -29,6 +29,8 @@ OsError :: enum {
     // The path can't be used: it's too long, or has a character the system doesn't allow
     InvalidPath,
     OutOfMemory,
+    // A typed file isn't of the type asked for, or the file system keeps no types
+    WrongType,
     // The target has no file system, like OS == .None
     Unsupported,
     // Anything else the system reported

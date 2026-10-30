@@ -51,6 +51,8 @@ package files
         IsALink = 15,
         // The server hadn't the memory to do it, and changed nothing
         NoMemory = 16,
+        // The file's type isn't the one asked for, or the file system keeps no types (the SlopOS repository's 0046, 0108)
+        WrongType = 17,
     }
 
     // How OpenFile treats what's at its path.
@@ -80,6 +82,8 @@ package files
         kind : Kind,
         size : u64,
         name : slop_os.Relative[u8],
+        // A typed file's schema hash (0046): its bytes are a value of that type; all zeros for bytes alone
+        schema : u8[32],
     }
 
     // One entry of a directory, as List gives them, and the cursor to list from next.
