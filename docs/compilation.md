@@ -540,6 +540,9 @@ reaches every program that calls it. Anything else of the package the program us
   Nothing is bound later, and nothing by its name alone. A library that can't be loaded, or an import that doesn't
   match, stops the program with exit code 1 and says which.
 * Each process has its own copy of a library's globals, and the library's own copy of whatever of `base` it uses.
+  That copy shares the program's process state (`intrinsics.process_state()`), which binding hands the library through
+  its record, so what `base` keeps for the process, like the arguments or, on SlopOS, its startup block and the
+  addresses it's reserved, is one for both.
 
 `hemera --check-interface=<old> <new>` says whether one build of a library can stand in for another, from the files
 alone: it can if it's built for the same calling convention and `Context` and has every export of the old one, by

@@ -9,13 +9,13 @@ import intrinsics from "base"
  * an import table: for each export it calls, the library's file, the export's name and type hash, and the slot its
  * calls go through. Before main, bind_libraries loads each library the table names, checks every import against the
  * library's record, and fills its slot, or stops the program, naming the import that doesn't match. Nothing is bound
- * later, and nothing by its name alone.
+ * later, and nothing by its name alone. A library's base shares the program's process state, which binding hands it.
  */
 
 // The calling convention's version, which a library and the programs calling it must share.
 LIBRARY_CONVENTION : u64 : 1
-// "HEMERAI1", the start of every interface record.
-LIBRARY_MAGIC : u64 : 0x3149_4152_454d_4548
+// "HEMERAI2", the start of every interface record.
+LIBRARY_MAGIC : u64 : 0x3249_4152_454d_4548
 
 LibraryExport :: struct {
     name : string,
@@ -29,6 +29,8 @@ LibraryInterface :: struct {
     convention : u64,
     context_hash : u8[32],
     exports : LibraryExport[],
+    // Where the library's intrinsics.process_state() looks: its own state at first, the program's once it's bound
+    process_state : ptr[mut ptr[mut ProcessState]],
 }
 
 LibraryImport :: struct {
@@ -87,6 +89,8 @@ bind_libraries :: fn() {
             if record.convention != table.convention || !same_hash(record.context_hash, table.context_hash) {
                 refuse_library(each, "was built for another calling convention or Context")
             }
+            // The library's base sees the program's process state, its startup block and what it's reserved, as its own
+            record.process_state^ = intrinsics.process_state()
             if loaded_count < loaded.count {
                 loaded[loaded_count] = LoadedLibrary.{name = each.library, interface = record}
                 loaded_count += 1

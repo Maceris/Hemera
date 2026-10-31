@@ -1501,8 +1501,8 @@ namespace hemera {
 	// Growing the stack (docs/calling_convention.md, Growing the Stack: morestack)
 
 	constexpr std::string_view MORESTACK_SYMBOL = "hemera.morestack";
-	// base/runtime/libraries.hsc's LIBRARY_MAGIC ("HEMERAI1") and LIBRARY_CONVENTION, which a record must match
-	constexpr uint64_t LIBRARY_MAGIC = 0x31494152454d4548ULL;
+	// base/runtime/libraries.hsc's LIBRARY_MAGIC ("HEMERAI2") and LIBRARY_CONVENTION, which a record must match
+	constexpr uint64_t LIBRARY_MAGIC = 0x32494152454d4548ULL;
 	constexpr uint64_t LIBRARY_CONVENTION = 1;
 
 	// A member's offset in one of base/runtime's structs.
@@ -2100,6 +2100,24 @@ namespace hemera {
 			LLVM::ReturnOp::create(generator.builder, generator.loc, zero_of(generator, type));
 		}
 		return state;
+	}
+
+	/*
+	 * A typed library's pointer to its process state (docs/compilation.md, Typed Libraries): its own at first, the
+	 * program's once runtime.bind_libraries binds it, through the interface record's process_state.
+	 */
+	static LLVM::GlobalOp process_state_pointer_global(Generator& generator, LLVM::GlobalOp state) {
+		constexpr const char* POINTER_SYMBOL = "hemera.process_state_pointer";
+		LLVM::GlobalOp shared = generator.module.lookupSymbol<LLVM::GlobalOp>(POINTER_SYMBOL);
+		if (!shared) {
+			mlir::OpBuilder::InsertionGuard guard(generator.builder);
+			generator.builder.setInsertionPointToEnd(generator.module.getBody());
+			shared = LLVM::GlobalOp::create(generator.builder, generator.loc, pointer_type(generator), false, LLVM::Linkage::Internal,
+				POINTER_SYMBOL, mlir::Attribute(), 8);
+			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&shared.getInitializerRegion()));
+			LLVM::ReturnOp::create(generator.builder, generator.loc, LLVM::AddressOfOp::create(generator.builder, generator.loc, state).getResult());
+		}
+		return shared;
 	}
 
 	/*
@@ -6052,12 +6070,16 @@ namespace hemera {
 			}
 			return result;
 		}
-		// One global, the program's, zeroed, which only the runtime uses
+		// One global, the program's, zeroed, which only the runtime uses; a library's is the program's, once it's bound
 		if (name == "process_state") {
 			LLVM::GlobalOp state = process_state_global(generator);
 			if (!state) {
 				unsupported(generator, nullptr, "base/runtime's ProcessState isn't what the compiler expects");
 				return value(zero_of(generator, pointer_type(generator)), result_type);
+			}
+			if (generator.options->typed_library) {
+				LLVM::GlobalOp shared = process_state_pointer_global(generator, state);
+				return value(LLVM::LoadOp::create(b, l, pointer_type(generator), LLVM::AddressOfOp::create(b, l, shared)), result_type);
 			}
 			return value(LLVM::AddressOfOp::create(b, l, state), result_type);
 		}
@@ -9595,6 +9617,11 @@ namespace hemera {
 			return view_value(generator, llvm_type(generator, field), exports.size(),
 				table ? static_cast<mlir::Value>(LLVM::AddressOfOp::create(b, generator.loc, table)) : mlir::Value());
 		});
+		LLVM::GlobalOp state = process_state_global(generator);
+		if (state) {
+			LLVM::GlobalOp shared = process_state_pointer_global(generator, state);
+			interface.set("process_state", [&](TypeInfo*) { return LLVM::AddressOfOp::create(b, generator.loc, shared).getResult(); });
+		}
 		LLVM::ReturnOp::create(b, generator.loc, interface.whole);
 		generator.used.push_back(record);
 	}

@@ -1,5 +1,7 @@
 package maths
 
+import intrinsics from "base"
+
 import runtime from "base"
 
 /*
@@ -35,4 +37,9 @@ ordered #export :: fn(a: int, b: int) -> Pair {
 
 twice :: fn[T](value: T) -> T {
     return value + value
+}
+
+// Where its base finds the process's state: the program's, once the library's bound
+process_state_address #export :: fn() -> u64 {
+    return cast[u64](cast[uintptr](intrinsics.process_state()))
 }

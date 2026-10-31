@@ -1,5 +1,7 @@
 package maths
 
+import intrinsics from "base"
+
 import runtime from "base"
 
 /*
@@ -40,4 +42,9 @@ twice :: fn[T](value: T) -> T {
 // What this build adds: a library that exports more can stand in for the one before it
 subtract #export :: fn(a: int, b: int) -> int {
     return a - b
+}
+
+// Where its base finds the process's state: the program's, once the library's bound
+process_state_address #export :: fn() -> u64 {
+    return cast[u64](cast[uintptr](intrinsics.process_state()))
 }

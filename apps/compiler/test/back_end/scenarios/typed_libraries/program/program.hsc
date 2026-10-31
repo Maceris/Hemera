@@ -1,5 +1,6 @@
 package program
 
+import intrinsics from "base"
 import maths from "../maths"
 
 /*
@@ -23,6 +24,10 @@ main :: fn() -> int {
     adds := maths.add
     if adds(1, 2) != 3 || maths.twice(21) != 42 {
         return 4
+    }
+    // The library's base shares the program's process state
+    if maths.process_state_address() != cast[u64](cast[uintptr](intrinsics.process_state())) {
+        return 5
     }
     return 42
 }

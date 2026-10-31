@@ -17,8 +17,8 @@
 
 namespace hemera {
 	namespace {
-		// base/runtime/libraries.hsc's LIBRARY_MAGIC, "HEMERAI1"
-		constexpr uint64_t LIBRARY_MAGIC = 0x31494152454d4548ULL;
+		// base/runtime/libraries.hsc's LIBRARY_MAGIC, "HEMERAI2"
+		constexpr uint64_t LIBRARY_MAGIC = 0x32494152454d4548ULL;
 		// Where LibraryInterface's and LibraryExport's fields are, as base/runtime/libraries.hsc lays them out
 		constexpr uint64_t INTERFACE_CONVENTION = 8;
 		constexpr uint64_t INTERFACE_CONTEXT_HASH = 16;

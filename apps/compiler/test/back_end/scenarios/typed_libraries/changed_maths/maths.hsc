@@ -1,5 +1,7 @@
 package maths
 
+import intrinsics from "base"
+
 /*
  * The maths library built again with add's type changed, i32s where it had ints, under the same name: a program built
  * against the first refuses it when it starts, naming add, rather than calling it.
@@ -21,4 +23,9 @@ Pair :: struct {
 
 ordered #export :: fn(a: int, b: int) -> Pair {
     return Pair.{low = a, high = b, sum = a + b}
+}
+
+// Where its base finds the process's state: the program's, once the library's bound
+process_state_address #export :: fn() -> u64 {
+    return cast[u64](cast[uintptr](intrinsics.process_state()))
 }
