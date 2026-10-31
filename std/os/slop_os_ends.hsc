@@ -278,6 +278,15 @@ package os
         cpu_budget : slop_os.CpuBudget?,
         clock : slop_os.Memory?,
         events : LaunchEvents?,
+        // The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime binds
+        // before main (the SlopOS repository's decisions 0119, 0120); the program's to own
+        libraries : LaunchLibrary[],
+    }
+
+    // A typed library a launched program imports: its file's name, as the program's import table names it, and its bytes.
+    LaunchLibrary :: struct {
+        name : string,
+        memory : slop_os.Memory,
     }
 
     // A program's log records' ring and its doorbell, which the events service gives (base's runtime.SlopOsEventsRing).
@@ -357,6 +366,22 @@ package os
                 return .Error(.BadGrants)
             }
             case None => {}
+        }
+        for library in options.libraries {
+            label : u8[slop_os.GRANT_LABEL_SIZE]
+            count := cast[usize](0)
+            for text in string.["library:", library.name] {
+                for byte in string_bytes(text) {
+                    if count >= label.count {
+                        return .Error(.BadGrants)
+                    }
+                    label[count] = byte
+                    count += 1
+                }
+            }
+            if !add_grant(&load, string_of(&label[0], count), cast[slop_os.Handle](library.memory)) {
+                return .Error(.BadGrants)
+            }
         }
         out := Outgoing.{}
         request :: begin[process_manager.Request](&out)

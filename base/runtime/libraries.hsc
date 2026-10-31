@@ -169,8 +169,8 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
         return linux_load_library(name)
     }
 }
-#else {
-    // Nothing loads typed libraries here yet
+#else_if OS != .SlopOS {
+    // Nothing loads typed libraries here yet; SlopOS's loader is slop_os_libraries.hsc's
     os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
         return null
     }
