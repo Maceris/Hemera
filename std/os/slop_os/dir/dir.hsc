@@ -99,6 +99,8 @@ package dir
         Link(LinkTo),
         Links(u64),
         Revoke(u64),
+        // How much room the volume this directory is on has, and how big it is
+        Room,
     }
 
     Response :: union {
@@ -123,6 +125,7 @@ package dir
         Resync(u64),
         Granted(os.Channel[grant.Grant]),
         Issued(files.IssuedLink),
+        Room(files.Room),
     }
 
     // A rename or a removal done again finds nothing to do, which is reported, so they aren't sent again.
@@ -149,6 +152,7 @@ package dir
             case Link(_) => false
             case Links(_) => true
             case Revoke(_) => false
+            case Room => true
         }
     }
 

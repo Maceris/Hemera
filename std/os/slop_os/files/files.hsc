@@ -126,6 +126,12 @@ package files
     }
 
     // What a file system does beyond the protocols' least (decisions/0046): FAT does none of it but ignoring case.
+    // A volume's room: the bytes free to write new data in, and its size, as Room answers.
+    Room :: struct {
+        free : u64,
+        size : u64,
+    }
+
     Features :: struct {
         ignores_case : bool,
         atomic_replace : bool,
