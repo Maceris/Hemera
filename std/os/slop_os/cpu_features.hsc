@@ -80,11 +80,12 @@ CpuFeature :: enum #backed_by(u16) {
     // Control-flow integrity: pointer authentication and branch target identification
     Aarch64PointerAuthentication = 79,
     Aarch64Bti = 80,
-    // System features, which only the kernel uses: Privileged Access Never, 16-bit ASIDs, and 1 GiB
-    // blocks with 4 KiB pages
+    // System features, which only the kernel uses: Privileged Access Never, 16-bit ASIDs, 1 GiB
+    // blocks with 4 KiB pages, and the access flag kept by the hardware (FEAT_HAFDBS)
     Aarch64Pan = 81,
     Aarch64Asid16 = 82,
     Aarch64Pages1G = 83,
+    Aarch64HardwareAccessFlag = 84,
 }
 
 // A set of CpuFeature values.

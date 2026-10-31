@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 10
+ABI_VERSION : u32 : 11
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -285,7 +285,27 @@ Syscalls :: struct {
     cpu_budget_set_cpus : fn(budget: CpuBudget, cpus: u64) -> Result[void, HandleError],
     // A message-signaled IRQ routed to the CPU with index cpu instead, one of the caller's CPU budget's CPUs.
     irq_set_cpu : fn(irq: Irq, cpu: u32) -> Result[void, DeviceError],
+    /*
+     * The budget's pressure threshold (RIGHT_BUDGET_CHARGE), in bytes, 0 for none: SIGNAL_PRESSURE is raised as what
+     * it has charged reaches it, and again each time it does after falling below it; at once, if it's there already
+     * (the SlopOS repository's decisions/0111).
+     */
+    memory_budget_set_threshold : fn(budget: MemoryBudget, threshold: u64) -> Result[void, HandleError],
+    /*
+     * The page at offset of paged memory given back (RIGHT_MEMORY_WRITE): unmapped everywhere, its frame freed and its
+     * charge returned, so the next touch waits for its pager again. NotSupplied if it isn't there; MappedWidely if more
+     * spaces map it than one call takes it from (MAX_EVICT_SPACES), which only a less shared page avoids.
+     */
+    memory_evict : fn(memory: Memory, offset: u64) -> Result[void, MemoryError],
+    /*
+     * Whether the page at offset of paged memory was touched since the last time this asked, through any mapping, and
+     * the marks that say so cleared (RIGHT_MEMORY_WRITE): 1 or 0. Where the hardware doesn't keep them, always 0.
+     */
+    memory_page_accessed : fn(memory: Memory, offset: u64) -> Result[u64, MemoryError],
 }
+
+// The most address spaces memory_evict takes a page from at once.
+MAX_EVICT_SPACES :: 16
 
 /*
  * What cpu_budget_info gives: its priority, its period and time in nanoseconds, and the share of it its children have,
@@ -490,6 +510,8 @@ SIGNAL_PEER_CLOSED : Signals : 1 << 2
 SIGNAL_TERMINATED : Signals : 1 << 3
 // A Device: an IOMMU blocked its DMA, at the device address in the Signal packet's data[1].
 SIGNAL_DMA_FAULT : Signals : 1 << 4
+// A MemoryBudget: what it has charged reached its threshold (memory_budget_set_threshold).
+SIGNAL_PRESSURE : Signals : 1 << 5
 
 BindMode :: enum #backed_by(u32) {
     // Disarmed once its packet is queued; PortBind with the same key and object arms it again.
@@ -651,6 +673,10 @@ MemoryError :: enum #backed_by(u32) {
     NothingWanted = 29,
     // Not paged memory.
     NotPaged = 30,
+    // A page of paged memory that hasn't been supplied.
+    NotSupplied = 31,
+    // A page mapped in more address spaces than memory_evict takes it from at once.
+    MappedWidely = 32,
 }
 
 // The largest memory object, 1 GiB.
