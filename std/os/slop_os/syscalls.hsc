@@ -9,7 +9,7 @@ package slop_os
  * r8). Error tags start at 1.
  */
 
-ABI_VERSION : u32 : 11
+ABI_VERSION : u32 : 12
 
 // A handle as user space sees it: opaque, chosen by the kernel. 0 is never one.
 Handle :: distinct alias u32
@@ -302,6 +302,12 @@ Syscalls :: struct {
      * the marks that say so cleared (RIGHT_MEMORY_WRITE): 1 or 0. Where the hardware doesn't keep them, always 0.
      */
     memory_page_accessed : fn(memory: Memory, offset: u64) -> Result[u64, MemoryError],
+    /*
+     * The calling thread on budget from now on (RIGHT_CPU_BUDGET_BIND), or on its process's again with NO_HANDLE: a
+     * server running a connection's work on the budget its client lent it (the SlopOS repository's decisions 0037,
+     * 0130). Destroyed while a thread runs on it, the thread runs on its parent.
+     */
+    thread_use_cpu_budget : fn(budget: CpuBudget) -> Result[void, HandleError],
 }
 
 // The most address spaces memory_evict takes a page from at once.

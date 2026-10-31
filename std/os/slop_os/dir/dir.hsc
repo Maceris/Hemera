@@ -101,6 +101,12 @@ package dir
         Revoke(u64),
         // How much room the volume this directory is on has, and how big it is
         Room,
+        /*
+         * A CPU budget lent for this connection's work, and that of what's opened through it, from now on (the SlopOS
+         * repository's decisions 0037, 0130): the server runs it on the budget, and serves what's waiting by the
+         * budget's priority. Done; Unsupported by a server that doesn't take loans.
+         */
+        Lend(slop_os.CpuBudget),
     }
 
     Response :: union {
@@ -135,6 +141,7 @@ package dir
             case OpenReadOnlyFile(_) => true
             case OpenDirectory(_) => true
             case List(_) => true
+            case Lend(_) => true
             case Info => true
             case Remove(_) => false
             case Rename(_) => false
