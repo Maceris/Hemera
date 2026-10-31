@@ -223,10 +223,11 @@ SlopOsGrant :: struct {
 
     /*
      * The protocol a grant of kind speaks: its generic argument's, or for a Config[T], a connection to a value of type
-     * T, the config protocol's, ConfigValue, whatever T is (the SlopOS repository's decisions 0107, 0109).
+     * T, the config protocol's, ConfigValue, whatever T is (the SlopOS repository's decisions 0107, 0109); for an
+     * AppData, an installation's data directory, Dir's (0113).
      */
     protocol_of #no_context :: fn(kind: string, argument: string) -> string {
-        return if kind == "Config" { "ConfigValue" } else { argument }
+        return if kind == "Config" { "ConfigValue" } else if kind == "AppData" { "Dir" } else { argument }
     }
 
     /*
@@ -262,8 +263,8 @@ SlopOsGrant :: struct {
         if kind == "Process" {
             return SLOP_OS_KIND_PROCESS
         }
-        // A channel end, untyped or speaking a protocol, a listener, which connections arrive on, and a Config[T], a channel
-        if kind == "Channel" || kind == "Listener" || kind == "Config" {
+        // A channel end, untyped or speaking a protocol, a listener, which connections arrive on, a Config[T] and an AppData, channels
+        if kind == "Channel" || kind == "Listener" || kind == "Config" || kind == "AppData" {
             return SLOP_OS_KIND_CHANNEL
         }
         if kind == "Port" {
