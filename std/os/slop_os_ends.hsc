@@ -203,6 +203,31 @@ package os
         return true
     }
 
+    // A typed library's grant's label starts with this, then its file's name.
+    LIBRARY_PREFIX :: "library:"
+
+    // Whether one of libraries is the one a grant labeled label gives.
+    library_named :: fn(libraries: LaunchLibrary[], label: string) -> bool {
+        bytes :: string_bytes(label)
+        for library in libraries {
+            if bytes.count != LIBRARY_PREFIX.count + library.name.count {
+                continue
+            }
+            same := true
+            for byte, i in string_bytes(library.name) {
+                at :: LIBRARY_PREFIX.count + i
+                if at >= bytes.count || bytes[at] != byte {
+                    same = false
+                    break
+                }
+            }
+            if same {
+                return true
+            }
+        }
+        return false
+    }
+
     // A label in a grant's form: its bytes, then zeros.
     label_from :: fn(text: string) -> u8[slop_os.GRANT_LABEL_SIZE] {
         label : u8[slop_os.GRANT_LABEL_SIZE]
@@ -279,7 +304,8 @@ package os
         clock : slop_os.Memory?,
         events : LaunchEvents?,
         // The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime binds
-        // before main (the SlopOS repository's decisions 0119, 0120); the program's to own
+        // before main (the SlopOS repository's decisions 0119, 0120); the program's to own. Every library the launcher
+        // was given itself is given too, but those named here (0121).
         libraries : LaunchLibrary[],
     }
 
@@ -370,7 +396,7 @@ package os
         for library in options.libraries {
             label : u8[slop_os.GRANT_LABEL_SIZE]
             count := cast[usize](0)
-            for text in string.["library:", library.name] {
+            for text in string.[LIBRARY_PREFIX, library.name] {
                 for byte in string_bytes(text) {
                     if count >= label.count {
                         return .Error(.BadGrants)
@@ -381,6 +407,22 @@ package os
             }
             if !add_grant(&load, string_of(&label[0], count), cast[slop_os.Handle](library.memory)) {
                 return .Error(.BadGrants)
+            }
+        }
+        // The launcher's own libraries, which it may share on and run
+        library_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE)
+            | cast[u32](slop_os.RIGHT_DUPLICATE) | cast[u32](slop_os.RIGHT_TRANSFER))
+        for &grant in slop_os.grants_of(block) {
+            label :: slop_os.label_of(grant)
+            if grant.kind != .Memory || !starts_with(label, LIBRARY_PREFIX) || library_named(options.libraries, label) {
+                continue
+            }
+            match slop_os.handle_duplicate(grant.handle, library_rights) {
+                case Ok(copy) => if !add_grant(&load, label, copy) {
+                    _ = slop_os.handle_close(copy)
+                    return .Error(.BadGrants)
+                }
+                case Error(error) => {}
             }
         }
         out := Outgoing.{}
