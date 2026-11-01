@@ -32,11 +32,10 @@ points at, directly or through `pNext`, comes from an allocator: a pointer to a 
 whose address is then taken (docs/memory.md, Deep Pointers). `std`'s `memory.Arena` suits this, reset each frame;
 `examples/vulkan_info` builds a `pNext` chain from one.
 
+Calls through the loaded `PFN_` pointers (`VulkanInstanceProcs` and `VulkanDeviceProcs`) go through a shim onto the
+thread's own stack, as calls to the `#foreign` commands do (docs/calling_convention.md, Calls to Foreign Code).
+
 ## Not done yet
 
-* Calls through the loaded `PFN_` pointers (`VulkanInstanceProcs` and `VulkanDeviceProcs`) don't go through the shim
-  that moves foreign calls onto the thread's native stack, which only `#foreign` functions get, so a driver's code would
-  run on whatever stack the caller is on, a stack segment or a fiber's stack included. Function values with `.c` need
-  that shim too.
 * Platform extensions (Win32 surfaces and the like) and the video extensions are left out.
 * Bitfields are one `u32` per group, with no accessors.

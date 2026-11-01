@@ -92,6 +92,11 @@ CarrierBlock :: struct #align(64) {
     resume_frame : rawptr,
     resume_return : rawptr,
     resume_parent : rawptr,
+    /*
+     * The function a call through a C function value is calling, which it leaves here for the shim that moves it onto
+     * the thread's own stack (docs/calling_convention.md, Calls to Foreign Code).
+     */
+    foreign_target : rawptr,
 }
 
 /*

@@ -285,8 +285,12 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
 * The program is linked with every library its foreign functions come from: `name.lib` for PE/COFF outputs, and
   `-lname` for ELF. On Linux that also links the C library, dynamically (see
   [compilation.md](compilation.md#linking-c-on-linux)).
+* A parameter that's a function, or an optional one, is a function C calls with its own convention, so its type has
+  to be a `.c` function's, like `fn(name: cstring) -> b32 #calling_convention(.c)`: a Hemera function given there
+  would be entered as if it were one.
 * Calls go through a shim that runs the function on the thread's own stack, see
-  [calling_convention.md](calling_convention.md#calls-to-foreign-code). For now each parameter and the result have
+  [calling_convention.md](calling_convention.md#calls-to-foreign-code). So do calls through a `.c` function value
+  without a context, like one a library hands out by name. For now each parameter and the result have
   to fit a register (integers, floating-point values, booleans, enums, and pointers: `cstring`s, function values and
   optional pointers included, null for None), there are no variadic foreign functions, and only x86-64 and AArch64
   are supported.

@@ -3,9 +3,10 @@
  * carrier: main returns 42 if everything worked, or the number of the first check that failed.
  * Built with stack_check = .Morestack, so a fiber that recurses deeply grows onto segments.
  *
- * Foreign calls run on the thread's own stack, from main and from a fiber. Foreign code calls back
- * into Hemera, with the caller's context, from main, from a fiber, and on a thread Hemera didn't
- * start. Memory comes from an arena in main's frame.
+ * Foreign calls run on the thread's own stack, from main and from a fiber, both to #foreign functions
+ * and through function values GetProcAddress gives. Foreign code calls back into Hemera, with the
+ * caller's context, from main, from a fiber, and on a thread Hemera didn't start. Memory comes from
+ * an arena in main's frame.
  */
 package fibers
 
@@ -139,6 +140,19 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
     wide_count: i32,
 ) -> i32 : ---
 RtlCaptureContext #foreign(NTDLL) : fn(context: ptr[mut WindowsContext]) : ---
+GetModuleHandleA #foreign(KERNEL32) : fn(name: cstring) -> rawptr : ---
+GetProcAddress #foreign(KERNEL32) : fn(module: rawptr, name: cstring) -> rawptr : ---
+
+// The same functions as values, found by name, which calls through go through a shim too
+MultiByteToWideChar :: alias fn(code_page: u32, flags: u32, text: rawptr, count: i32, wide: ptr[mut u16], wide_count: i32) -> i32
+    #calling_convention(.c) #no_context
+CaptureContext :: alias fn(context: ptr[mut WindowsContext]) #calling_convention(.c) #no_context
+EnumCodePages :: alias fn(callback: rawptr, flags: u32) -> i32 #calling_convention(.c) #no_context
+
+// A function of a library's, by its name, as the value of type F
+found :: fn[F](F: type, library: cstring, name: cstring) -> F {
+    return bit_cast[F](GetProcAddress(GetModuleHandleA(library), name))
+}
 
 // Windows' CONTEXT, of which only the stack pointer is read.
 WindowsContext :: struct #align(16) {
@@ -168,6 +182,12 @@ call_foreign :: fn(thread: u32) -> int {
     // CP_UTF8
     if multi_byte_to_wide_char(65001, 0, text.data, 6, &wide[0], 8) != 6 || wide[0] != 102 || wide[5] != 115 {
         return 3
+    }
+    // Through a value, the last two arguments on the stack again
+    through :: found(MultiByteToWideChar, "kernel32.dll", "MultiByteToWideChar")
+    again : u16[8]
+    if through(65001, 0, text.data, 6, &again[0], 8) != 6 || again[0] != 102 || again[5] != 115 {
+        return 6
     }
     return 0
 }
@@ -240,6 +260,19 @@ worker_foreign : runtime.ThreadFunction : fn(data #escaping : any) {
     }
     if turns.foreign_failure == 0 && intrinsics.carrier().stack_limit != limit {
         turns.foreign_failure = 5
+    }
+    // Through values: on the thread's own stack too, and calling back with this fiber's context
+    capture :: found(CaptureContext, "ntdll.dll", "RtlCaptureContext")
+    capture(&turns.windows_context)
+    if turns.foreign_failure == 0 && captured_rsp(&turns.windows_context) >= turns.arena_start {
+        turns.foreign_failure = 7
+    }
+    enumerate :: found(EnumCodePages, "kernel32.dll", "EnumSystemCodePagesA")
+    counted :: turns.fiber_code_pages
+    turns.code_pages = 0
+    enumerate(cast[rawptr](code_page), CP_INSTALLED)
+    if turns.foreign_failure == 0 && (turns.code_pages != counted || intrinsics.carrier().foreign_depth != 0) {
+        turns.foreign_failure = 8
     }
 }
 

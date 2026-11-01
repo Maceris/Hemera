@@ -368,6 +368,13 @@ Not done yet: allocating a native stack on systems that don't give threads one.
 Each call to a foreign function also keeps the caller's context in the carrier block's `foreign_context` for the
 call, and puts back what was there after, so callbacks from inside it run with the caller's context.
 
+A call through a function value whose type is `.c` without a context, like a function a library hands out by name
+(`GetProcAddress`, `dlsym`, Vulkan's `vkGetDeviceProcAddr`), is a call to foreign code too, and goes through the same
+kind of shim, keeping the context the same way. The call leaves the function in the carrier block's `foreign_target`,
+and the shim calls what's there once it's on the native stack. Since its stack arguments are copied by their count
+alone, there's one such shim for each count, `hemera.foreign_indirect.N`, which every signature with N stack arguments
+shares. A call from a function without a context, which has no carrier block, calls the value directly.
+
 Hemera functions that foreign code can call (`.c` functions with a context) get an entry shim, which has the
 function's symbol and is what its value points to:
 

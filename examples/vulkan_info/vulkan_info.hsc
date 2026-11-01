@@ -69,8 +69,17 @@ main :: fn() -> int {
             features.features.geometryShader)
     }
 
+    // Commands the loader doesn't export, found by name, and called through their pointers
     procs : vk.VulkanInstanceProcs
     vk.load_instance_procs(instance, &procs)
     printf("vkCreateDebugUtilsMessengerEXT found: %\n", procs.vkCreateDebugUtilsMessengerEXT is_some)
+    match procs.vkGetPhysicalDeviceToolPropertiesEXT {
+        case Some(tool_properties) => {
+            tools : u32 = 0
+            tools_result :: tool_properties(devices[0], &tools, null)
+            printf("tools on device 0: % (%)\n", tools, tools_result)
+        }
+        case None => {}
+    }
     return 0
 }

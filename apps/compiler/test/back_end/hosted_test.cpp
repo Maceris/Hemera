@@ -1069,6 +1069,40 @@ TEST(Build, BuildsTheSameAtOnce)
 	}
 }
 
+/*
+ * A #foreign function that can't be generated yet, generated apart from any body (--generate-all): its error names the
+ * file it's declared in.
+ */
+TEST(Hosted, ReportsForeignFunctionsInTheirOwnFile)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "foreign_by_value");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("foreign_by_value"));
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.output_name = (std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "foreign_by_value").string();
+	options.generate_all = true;
+
+	hemera::ReportScope scope;
+	hemera::set_report_scope(&scope);
+	hemera::kick_off_processing(program_info.get(), &options);
+	EXPECT_EQ(hemera::error_count(), 0);
+	EXPECT_FALSE(hemera::generate_program(program_info.get(), options, module));
+	hemera::set_report_scope(nullptr);
+	const std::string reported = scope.output + scope.errors_output;
+	EXPECT_NE(reported.find("foreign_by_value.hsc(14,30): error E5002"), std::string::npos) << reported;
+
+	module.erase();
+}
+
 // A target that doesn't check fails the build, reporting its own error once, and the others still build.
 TEST(Build, ReportsEachTargetsErrors)
 {

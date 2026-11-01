@@ -339,15 +339,21 @@ namespace hemera {
 	}
 
 	// Reports what code generation can't do yet; the caller carries on with a placeholder.
-	static void unsupported(Generator& generator, const ast::Node* node, std::string what) {
+	// What can't be generated yet, at node in file.
+	static void unsupported_in(Generator& generator, const std::string& file, const ast::Node* node, std::string what) {
 		generator.failed = true;
 		if (generator.collecting) {
-			generator.held.push_back({ current_file(generator), node != nullptr ? node->value.line_number : 0,
+			generator.held.push_back({ file, node != nullptr ? node->value.line_number : 0,
 				node != nullptr ? node->value.column_number : uint16_t(0), std::move(what) });
 			return;
 		}
-		report_error(ErrorCode::E5002, current_file(generator), node != nullptr ? node->value.line_number : 0,
+		report_error(ErrorCode::E5002, file, node != nullptr ? node->value.line_number : 0,
 			node != nullptr ? node->value.column_number : 0, std::move(what));
+	}
+
+	// What can't be generated yet, at node in the file being generated.
+	static void unsupported(Generator& generator, const ast::Node* node, std::string what) {
+		unsupported_in(generator, current_file(generator), node, std::move(what));
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -1879,6 +1885,8 @@ namespace hemera {
 		size_t native_stack_limit = 0;
 		size_t stack_segment = 0;
 		size_t native_sp = 0;
+		// Where a call through a function value leaves the function for the shim (indirect_foreign_shim)
+		size_t foreign_target = 0;
 	};
 
 	static bool runtime_offset(Generator& generator, std::string_view type_name, std::string_view member, size_t& offset);
@@ -1945,7 +1953,8 @@ namespace hemera {
 		for (const auto& [from, to] : stack_arguments) {
 			text += std::format("\tmovq {}(%rbp), %rax\n\tmovq %rax, {}(%rsp)\n", from, to);
 		}
-		text += std::format("\tcallq {}\n", symbol);
+		// A function's symbol, or for a shim for function values (an empty symbol), the function left in the carrier block
+		text += symbol.empty() ? std::format("\tcallq *{}(%r14)\n", o.foreign_target) : std::format("\tcallq {}\n", symbol);
 		text += std::format("\tmovq %rbx, %rsp\n\tmovq %r12, {}(%r14)\n\tdecl {}(%r14)\n", o.stack_limit, o.foreign_depth);
 		text += "\tpopq %r12\n\tpopq %rbx\n\tpopq %rbp\n\tretq\n";
 		return text;
@@ -1994,11 +2003,84 @@ namespace hemera {
 		for (const auto& [from, to] : stack_arguments) {
 			text += std::format("\tldr x9, [x29, #{}]\n\tstr x9, [sp, #{}]\n", from, to);
 		}
-		text += std::format("\tbl {}\n", symbol);
+		text += symbol.empty() ? std::format("\tldr x9, [x28, #{}]\n\tblr x9\n", o.foreign_target) : std::format("\tbl {}\n", symbol);
 		text += std::format("\tmov sp, x19\n\tstr x20, [x28, #{}]\n", o.stack_limit);
 		text += std::format("\tldr w9, [x28, #{0}]\n\tsub w9, w9, #1\n\tstr w9, [x28, #{0}]\n", o.foreign_depth);
 		text += "\tldp x19, x20, [sp, #16]\n\tldp x29, x30, [sp], #32\n\tret\n";
 		return text;
+	}
+
+	/*
+	 * Whether a function C's convention calls can go through a shim: on x86-64 and AArch64, with parameters and a result
+	 * that each fit a register, which the shim leaves where they are.
+	 */
+	static bool foreign_fits(Generator& generator, TypeInfoFunction const* type) {
+		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
+		bool fits = (ArchType::x86_64 == generator.options->architecture || aarch64) && type->output.size() <= 1;
+		const auto in_register = [](TypeInfo const* value) {
+			TypeInfo const* held = base(value);
+			// Pointers of every kind are one register: cstrings, function values, and optional pointers, null for None
+			const bool pointer = held != nullptr && (TypeInfoVariant::POINTER == held->variant || TypeInfoVariant::FUNCTION == held->variant
+				|| (TypeInfoVariant::STRING == held->variant && static_cast<TypeInfoString const*>(held)->is_raw)
+				|| (TypeInfoVariant::UNION == held->variant && static_cast<TypeInfoUnion const*>(held)->null_is_none));
+			return value != nullptr && value->size <= 8 && (is_float(value) || is_variant(value, TypeInfoVariant::INTEGER) || pointer
+				|| is_variant(value, TypeInfoVariant::BOOLEAN) || is_variant(value, TypeInfoVariant::ENUM));
+		};
+		for (const FunctionInput& input : type->input) {
+			fits = fits && !input.is_varargs && in_register(input.type);
+		}
+		return fits;
+	}
+
+	// Where the shims find what they use in the carrier block, false if base/runtime's isn't what the compiler expects.
+	static bool foreign_offsets(Generator& generator, ForeignOffsets& offsets) {
+		return runtime_offset(generator, "CarrierBlock", "stack_limit", offsets.stack_limit)
+			&& runtime_offset(generator, "CarrierBlock", "foreign_depth", offsets.foreign_depth)
+			&& runtime_offset(generator, "CarrierBlock", "current_fiber", offsets.current_fiber)
+			&& runtime_offset(generator, "CarrierBlock", "scheduler_sp", offsets.scheduler_sp)
+			&& runtime_offset(generator, "CarrierBlock", "native_stack_limit", offsets.native_stack_limit)
+			&& runtime_offset(generator, "CarrierBlock", "stack_segment", offsets.stack_segment)
+			&& runtime_offset(generator, "CarrierBlock", "native_sp", offsets.native_sp)
+			&& runtime_offset(generator, "CarrierBlock", "foreign_target", offsets.foreign_target);
+	}
+
+	// A shim's assembly, for the target's architecture: for symbol, or for function values when it's empty.
+	static std::string foreign_shim_for(Generator& generator, const std::string& shim, const std::string& symbol,
+		const ForeignOffsets& offsets, TypeInfoFunction const* type) {
+
+		if (ArchType::aarch64 == generator.options->architecture) {
+			return foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type));
+		}
+		const bool windows = OSType::Win32 == generator.options->os;
+		return foreign_shim_assembly(shim, symbol, offsets, foreign_stack_arguments(type, windows), windows);
+	}
+
+	/*
+	 * The shim a call through a function value of C's convention goes through (docs/calling_convention.md, Calls to
+	 * Foreign Code), as a call to a #foreign function does: the same, but calling the function the call left in the
+	 * carrier block's foreign_target. Its stack arguments are copied by their count alone, so there's one shim for each
+	 * count, which every signature with that many shares. Its address, or null when it can't be made.
+	 */
+	static mlir::Value indirect_foreign_shim(Generator& generator, TypeInfoFunction const* type, const ast::Node* where) {
+		if (!foreign_fits(generator, type)) {
+			unsupported(generator, where, "a call through a C function value can only pass values that fit a register, on x86-64 "
+				"and AArch64, so far");
+			return mlir::Value();
+		}
+		ForeignOffsets offsets;
+		if (!foreign_offsets(generator, offsets)) {
+			unsupported(generator, where, "base/runtime's carrier block isn't what the compiler expects");
+			return mlir::Value();
+		}
+		const size_t stack = ArchType::aarch64 == generator.options->architecture ? foreign_stack_arguments_aarch64(type).size()
+			: foreign_stack_arguments(type, OSType::Win32 == generator.options->os).size();
+		const std::string shim = std::format("hemera.foreign_indirect.{}", stack);
+		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
+			generator.module_assembly.push_back(foreign_shim_for(generator, shim, std::string(), offsets, type));
+		}
+		// Declared without a type of its own, since each call gives it the one it's called with
+		LLVM::LLVMFuncOp function = assembly_function(generator, shim, no_arguments(generator));
+		return LLVM::AddressOfOp::create(generator.builder, generator.loc, function);
 	}
 
 	/*
@@ -2024,40 +2106,19 @@ namespace hemera {
 		}
 		generator.libraries.insert(text_of(declaration->foreign_library));
 		ast::Node* where = declaration->node;
-		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
-		bool fits = (ArchType::x86_64 == generator.options->architecture || aarch64) && type->output.size() <= 1;
-		for (const FunctionInput& input : type->input) {
-			TypeInfo const* held = base(input.type);
-			// Pointers of every kind are one register: cstrings, function values, and optional pointers, null for None
-			const bool pointer = held != nullptr && (TypeInfoVariant::POINTER == held->variant || TypeInfoVariant::FUNCTION == held->variant
-				|| (TypeInfoVariant::STRING == held->variant && static_cast<TypeInfoString const*>(held)->is_raw)
-				|| (TypeInfoVariant::UNION == held->variant && static_cast<TypeInfoUnion const*>(held)->null_is_none));
-			fits = fits && !input.is_varargs && input.type != nullptr && input.type->size <= 8
-				&& (is_float(input.type) || is_variant(input.type, TypeInfoVariant::INTEGER) || pointer
-					|| is_variant(input.type, TypeInfoVariant::BOOLEAN) || is_variant(input.type, TypeInfoVariant::ENUM));
-		}
+		const bool fits = foreign_fits(generator, type);
 		if (!fits) {
-			unsupported(generator, where, "a #foreign function can only take and give values that fit a register, on x86-64 and AArch64, so far");
+			// At the declaration, in its own file, which needn't be the one being generated, or any (--generate-all)
+			unsupported_in(generator, file_path_of(declaration->package_path, declaration->file_name), where,
+				"a #foreign function can only take and give values that fit a register, on x86-64 and AArch64, so far");
 		}
 		ForeignOffsets offsets;
 		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
-			const bool found = runtime_offset(generator, "CarrierBlock", "stack_limit", offsets.stack_limit)
-				&& runtime_offset(generator, "CarrierBlock", "foreign_depth", offsets.foreign_depth)
-				&& runtime_offset(generator, "CarrierBlock", "current_fiber", offsets.current_fiber)
-				&& runtime_offset(generator, "CarrierBlock", "scheduler_sp", offsets.scheduler_sp)
-				&& runtime_offset(generator, "CarrierBlock", "native_stack_limit", offsets.native_stack_limit)
-				&& runtime_offset(generator, "CarrierBlock", "stack_segment", offsets.stack_segment)
-				&& runtime_offset(generator, "CarrierBlock", "native_sp", offsets.native_sp);
-			if (!found) {
+			if (!foreign_offsets(generator, offsets)) {
 				unsupported(generator, where, "base/runtime's carrier block isn't what the compiler expects");
 			}
-			else if (fits && aarch64) {
-				generator.module_assembly.push_back(foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type)));
-			}
 			else if (fits) {
-				const bool windows = OSType::Win32 == generator.options->os;
-				generator.module_assembly.push_back(foreign_shim_assembly(shim, symbol, offsets,
-					foreign_stack_arguments(type, windows), windows));
+				generator.module_assembly.push_back(foreign_shim_for(generator, shim, symbol, offsets, type));
 			}
 		}
 		LLVM::LLVMFuncOp function = assembly_function(generator, shim, function_type(generator, type, false));
@@ -6616,9 +6677,27 @@ namespace hemera {
 		mlir::Value foreign_context_slot;
 		mlir::Value outer_foreign_context;
 		size_t foreign_context = 0;
-		if (by_name && called->foreign_library != nullptr && generator.state->context
+		/*
+		 * A call through a function value of C's convention, without a context, is foreign code's, as a #foreign
+		 * function's is: through a shim that runs it on the thread's own stack, given the function in the carrier
+		 * block. From a function without a context there's no carrier block, and it's called directly.
+		 */
+		mlir::Value indirect_shim;
+		mlir::Value carrier;
+		if (!by_name && text_of(function->calling_convention) == "c" && !takes_context(generator, function, nullptr)
+			&& generator.state->context) {
+			indirect_shim = indirect_foreign_shim(generator, function, paren);
+			size_t foreign_target = 0;
+			if (indirect_shim && runtime_offset(generator, "CarrierBlock", "foreign_target", foreign_target)) {
+				carrier = assembly(generator, pointer_type(generator), {}, carrier_to_operand(generator), "=r,~{memory}");
+				LLVM::StoreOp::create(generator.builder, generator.loc, value_of(generator, callee), offset_address(generator, carrier, foreign_target));
+			}
+		}
+		if (((by_name && called->foreign_library != nullptr) || indirect_shim) && generator.state->context
 			&& runtime_offset(generator, "CarrierBlock", "foreign_context", foreign_context)) {
-			mlir::Value carrier = assembly(generator, pointer_type(generator), {}, carrier_to_operand(generator), "=r,~{memory}");
+			if (!carrier) {
+				carrier = assembly(generator, pointer_type(generator), {}, carrier_to_operand(generator), "=r,~{memory}");
+			}
 			foreign_context_slot = offset_address(generator, carrier, foreign_context);
 			outer_foreign_context = LLVM::LoadOp::create(generator.builder, generator.loc, pointer_type(generator), foreign_context_slot);
 			LLVM::StoreOp::create(generator.builder, generator.loc, generator.state->context, foreign_context_slot);
@@ -6631,6 +6710,13 @@ namespace hemera {
 				target = body->second;
 			}
 			call = LLVM::CallOp::create(generator.builder, generator.loc, target, arguments);
+		}
+		else if (indirect_shim) {
+			// Through the shim, which calls what's in foreign_target, with the arguments where the function takes them
+			std::vector<mlir::Value> operands{ indirect_shim };
+			operands.insert(operands.end(), arguments.begin(), arguments.end());
+			call = LLVM::CallOp::create(generator.builder, generator.loc, function_type(generator, function, false), operands);
+			call.setCConv(LLVM::cconv::CConv::C);
 		}
 		else {
 			// Through a function value: its pointer first

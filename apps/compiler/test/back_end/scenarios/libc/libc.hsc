@@ -17,6 +17,12 @@ LIBC :: #library("c")
 strlen #foreign(LIBC) : fn(text: rawptr) -> usize : ---
 getpid #foreign(LIBC) : fn() -> i32 : ---
 qsort #foreign(LIBC) : fn(items: rawptr, count: usize, size: usize, compare: rawptr) : ---
+// In libc.so.6 since glibc 2.34; null for its handle is RTLD_DEFAULT, every library's symbols
+dlsym #foreign(LIBC) : fn(handle: rawptr, name: cstring) -> rawptr : ---
+
+// getpid and qsort as values dlsym finds, which calls through go through a shim, as calls to #foreign functions do
+Getpid :: alias fn() -> i32 #calling_convention(.c) #no_context
+Qsort :: alias fn(items: rawptr, count: usize, size: usize, compare: rawptr) #calling_convention(.c) #no_context
 
 // getpid as a system call, to compare with C's
 #if TARGET_ARCH == .x86_64 {
@@ -86,6 +92,24 @@ call_c :: fn(results: ptr[mut Results]) -> int {
     }
     if intrinsics.atomic_load_u64_acquire(&results.comparisons) == before {
         return 4
+    }
+    // Through values: C's own convention, on the thread's own stack, calling back with this context
+    through_getpid :: bit_cast[Getpid](dlsym(null, "getpid"))
+    if cast[u64](through_getpid()) != raw_getpid() {
+        return 5
+    }
+    through_qsort :: bit_cast[Qsort](dlsym(null, "qsort"))
+    sorted :: intrinsics.atomic_load_u64_acquire(&results.comparisons)
+    numbers[0] = 6
+    numbers[7] = 0
+    through_qsort(cast[rawptr](&numbers[0]), 8, 4, cast[rawptr](compare_ints))
+    for i in 0..<7 {
+        if numbers[i] > numbers[i + 1] {
+            return 6
+        }
+    }
+    if intrinsics.atomic_load_u64_acquire(&results.comparisons) == sorted {
+        return 7
     }
     return 0
 }

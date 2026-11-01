@@ -1930,6 +1930,33 @@ namespace hemera {
 	}
 
 	/*
+	 * A #foreign function's parameters that are functions, or optional ones, which C calls with its own convention, so
+	 * each has to be a .c function's type (docs/directives.md, #foreign): a Hemera function given there would be
+	 * entered as if it were one.
+	 */
+	static Progress foreign_callbacks(Walk& walk, ast::Node* definition, TypeInfoFunction* function) {
+		for (const FunctionInput& input : function->input) {
+			TypeInfo const* held = input.type != nullptr ? get_base_type(input.type) : nullptr;
+			if (held != nullptr && TypeInfoVariant::UNION == held->variant && static_cast<TypeInfoUnion const*>(held)->null_is_none) {
+				auto optional = static_cast<TypeInfoUnion const*>(held);
+				const size_t some = optional->value_index();
+				held = some < optional->variants.size() && !optional->variants[some].types.empty()
+					? get_base_type(optional->variants[some].types[0]) : nullptr;
+			}
+			if (held == nullptr || TypeInfoVariant::FUNCTION != held->variant) {
+				continue;
+			}
+			InternedString convention = static_cast<TypeInfoFunction const*>(held)->calling_convention;
+			if (convention == nullptr || std::string_view(*convention) != "c") {
+				return type_error(walk, ErrorCode::E4014, definition, std::format(
+					"{} is a function C calls, so its type needs #calling_convention(.c), like fn(...) #calling_convention(.c)",
+					name_text(input.name)));
+			}
+		}
+		return Progress::DONE;
+	}
+
+	/*
 	 * #foreign(LIBRARY) and #link_name("symbol") on a function without a body (docs/directives.md,
 	 * #foreign): the library comes from LIBRARY :: #library("name"), in this package or an imported one.
 	 */
@@ -2171,6 +2198,10 @@ namespace hemera {
 				return progress;
 			}
 			if (declarations[0]->foreign_library != nullptr) {
+				progress = foreign_callbacks(walk, definition, static_cast<TypeInfoFunction*>(function));
+				if (progress != Progress::DONE) {
+					return progress;
+				}
 				function = with_convention(walk, static_cast<TypeInfoFunction*>(without_context(walk, static_cast<TypeInfoFunction*>(function))),
 					intern(std::string("c")));
 			}
