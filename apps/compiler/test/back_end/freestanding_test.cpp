@@ -97,6 +97,52 @@ static std::string bytes_of(const std::filesystem::path& file) {
 }
 
 /*
+ * A UEFI application's calls through .c function values, like the firmware's services, go through the shim for foreign
+ * code, which follows UEFI's C convention, Microsoft's x64 one: five arguments leave one on the stack, above 32 bytes of
+ * shadow space (docs/calling_convention.md, Calls to Foreign Code). System V's would leave none, and no shadow space for
+ * the firmware to write its home area into. Running one takes firmware, like OVMF under QEMU; here the shim is checked.
+ */
+TEST(Freestanding, CallsUEFIFunctionValuesWithMicrosoftsConvention)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "uefi_function_values");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("uefi_function_values"));
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(
+		std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path() / "std");
+	options.output_name = (std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "uefi_function_values" / "uefi_function_values").string();
+	options.os = hemera::OSType::UEFI;
+	options.object_format = hemera::ObjectFormatType::COFF;
+	options.vendor = hemera::VendorType::UnknownVendor;
+	options.environment = hemera::EnvironmentType::UnknownEnvironment;
+	options.generate_all = true;
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0);
+	ASSERT_TRUE(hemera::generate_program(program_info.get(), options, module));
+	llvm::LLVMContext llvm_context;
+	std::unique_ptr<llvm::Module> lowered = hemera::lower_to_llvm(module, llvm_context, options);
+	ASSERT_NE(lowered, nullptr);
+	const std::string assembly = lowered->getModuleInlineAsm();
+	const size_t shim = assembly.find("hemera.foreign_indirect.1:");
+	ASSERT_NE(shim, std::string::npos) << assembly;
+	const std::string body = assembly.substr(shim, assembly.find("retq", shim) - shim);
+	// 32 bytes of shadow space and the stack argument, and the argument copied above the shadow space
+	EXPECT_NE(body.find("subq $48, %rsp"), std::string::npos) << body;
+	EXPECT_NE(body.find("movq 48(%rbp), %rax"), std::string::npos) << body;
+	EXPECT_NE(body.find("movq %rax, 32(%rsp)"), std::string::npos) << body;
+	module.erase();
+}
+
+/*
  * A freestanding kernel. Booting it takes Limine and QEMU, which SlopOS's harness has; here the ELF
  * is checked: its entry, and Limine's requests in their sections.
  */

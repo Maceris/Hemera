@@ -2051,7 +2051,8 @@ namespace hemera {
 		if (ArchType::aarch64 == generator.options->architecture) {
 			return foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type));
 		}
-		const bool windows = OSType::Win32 == generator.options->os;
+		// C's convention on Windows and UEFI is Microsoft's x64 one, with shadow space; elsewhere System V's
+		const bool windows = OSType::Win32 == generator.options->os || OSType::UEFI == generator.options->os;
 		return foreign_shim_assembly(shim, symbol, offsets, foreign_stack_arguments(type, windows), windows);
 	}
 
@@ -2073,7 +2074,7 @@ namespace hemera {
 			return mlir::Value();
 		}
 		const size_t stack = ArchType::aarch64 == generator.options->architecture ? foreign_stack_arguments_aarch64(type).size()
-			: foreign_stack_arguments(type, OSType::Win32 == generator.options->os).size();
+			: foreign_stack_arguments(type, OSType::Win32 == generator.options->os || OSType::UEFI == generator.options->os).size();
 		const std::string shim = std::format("hemera.foreign_indirect.{}", stack);
 		if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
 			generator.module_assembly.push_back(foreign_shim_for(generator, shim, std::string(), offsets, type));

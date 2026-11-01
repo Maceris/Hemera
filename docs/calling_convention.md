@@ -353,7 +353,8 @@ which Hemera code calls with the platform's convention, so the arguments are alr
 On x86-64 the shim builds a frame like any other, so the frame chain continues through it, saves `rbx` and `r12`, and
 only uses `rax` until the call. On a fiber (the carrier's `current_fiber` isn't null), it moves to the scheduler's
 stack pointer, aligned down to 16 bytes, and sets `stack_limit` to the carrier's `native_stack_limit`; elsewhere it
-stays where it is. Either way it copies the stack arguments: on Windows x64, the ones after the first four, above
+stays where it is. Either way it copies the stack arguments: on Windows x64 and x86-64 UEFI, whose C convention is
+Microsoft's, the ones after the first four, above
 the 32 bytes of shadow space it leaves; on System V, the integers after the first six and the floating-point values
 after the first eight, in order. Results come back in `rax` or `xmm0`, untouched. On Windows the native stack is also
 the stack the thread environment block describes, so system functions that check where they're running, and
