@@ -19,6 +19,9 @@ ProcessState :: struct {
     argument_count : usize,
     argument_pointers : rawptr,
     environment_pointers : rawptr,
+    // On UEFI, the image's handle and the system table the entry was given (uefi.hsc)
+    uefi_image : rawptr,
+    uefi_system_table : rawptr,
     // On SlopOS, the startup block the entry was given, and how much of its free range the heap has mapped
     startup_block : rawptr,
     mapped : u64,

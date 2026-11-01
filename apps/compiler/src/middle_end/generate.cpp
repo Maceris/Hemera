@@ -9134,6 +9134,11 @@ namespace hemera {
 		 * process's startup block, and nothing to return to: it ends the process with main's result
 		 */
 		const bool slop_os = OSType::SlopOS == generator.options->os;
+		/*
+		 * On UEFI the entry is the image's, called by the firmware with its handle and the system table, in UEFI's
+		 * convention, which is LLVM's C convention for the target; it ends the program with main's result through Exit
+		 */
+		const bool uefi = OSType::UEFI == generator.options->os;
 		std::vector<mlir::Type> entry_parameters;
 		if (linux_x86) {
 			entry_parameters = { i32, pointer_type(generator), pointer_type(generator) };
@@ -9141,13 +9146,24 @@ namespace hemera {
 		else if (slop_os) {
 			entry_parameters = { pointer_type(generator) };
 		}
+		else if (uefi) {
+			entry_parameters = { pointer_type(generator), pointer_type(generator) };
+		}
 		auto entry_function = LLVM::LLVMFuncOp::create(generator.builder, generator.loc, HOSTED_ENTRY_SYMBOL,
 			LLVM::LLVMFunctionType::get(i32, entry_parameters));
 		mlir::Block* entry_block = entry_function.addEntryBlock(generator.builder);
 		generator.builder.setInsertionPointToEnd(entry_block);
 		mlir::Value one = constant_int(generator, usize_type(generator), 1);
 		// What the process started with, for runtime.process_arguments and std/os's environment
-		LLVM::GlobalOp process = linux_x86 || slop_os ? process_state_global(generator) : LLVM::GlobalOp();
+		LLVM::GlobalOp process = linux_x86 || slop_os || uefi ? process_state_global(generator) : LLVM::GlobalOp();
+		size_t uefi_image = 0;
+		size_t uefi_system_table = 0;
+		if (uefi && process && runtime_offset(generator, "ProcessState", "uefi_image", uefi_image)
+			&& runtime_offset(generator, "ProcessState", "uefi_system_table", uefi_system_table)) {
+			mlir::Value state = LLVM::AddressOfOp::create(generator.builder, generator.loc, process);
+			LLVM::StoreOp::create(generator.builder, generator.loc, entry_block->getArgument(0), offset_address(generator, state, uefi_image));
+			LLVM::StoreOp::create(generator.builder, generator.loc, entry_block->getArgument(1), offset_address(generator, state, uefi_system_table));
+		}
 		size_t startup_block = 0;
 		if (slop_os && process && runtime_offset(generator, "ProcessState", "startup_block", startup_block)) {
 			mlir::Value state = LLVM::AddressOfOp::create(generator.builder, generator.loc, process);
@@ -9272,7 +9288,7 @@ namespace hemera {
 			}
 		}
 		// The process ends with main's result, through base/runtime, which knows the call
-		if (slop_os) {
+		if (slop_os || uefi) {
 			if (Declaration* exits = base_declaration_named(generator, "runtime", "os_exit_process")) {
 				LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, exits), mlir::ValueRange{ code });
 			}
@@ -11580,7 +11596,8 @@ namespace hemera {
 	 */
 	//SPEC: compiler-rt lib/builtins/x86_64/chkstk.S
 	static void define_stack_probe(llvm::Module& module, const Options& options) {
-		if (OSType::Win32 != options.os || ArchType::x86_64 != options.architecture) {
+		// UEFI's code is Windows' too, whose firmware has the stack committed already, so the probe only touches it
+		if ((OSType::Win32 != options.os && OSType::UEFI != options.os) || ArchType::x86_64 != options.architecture) {
 			return;
 		}
 		module.appendModuleInlineAsm(
@@ -12001,6 +12018,17 @@ namespace hemera {
 		}
 		define_memory_functions(*result);
 		define_stack_probe(*result, options);
+		/*
+		 * A UEFI application on AArch64 is Windows' code, whose functions get SEH unwind information unless they can't
+		 * unwind, and Hemera's prologue, with its stack check, isn't one SEH describes: nothing of Hemera's unwinds
+		 * through an exception, so none has any
+		 */
+		if (OSType::UEFI == options.os && ArchType::aarch64 == options.architecture) {
+			for (llvm::Function& function : *result) {
+				function.addFnAttr(llvm::Attribute::NoUnwind);
+				function.setUWTableKind(llvm::UWTableKind::None);
+			}
+		}
 		define_stack_walker(*result, options);
 		end_stack_at_entry(*result, options);
 		return result;

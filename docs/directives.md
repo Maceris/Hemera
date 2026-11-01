@@ -219,6 +219,17 @@ the interrupted code's registers as an `x86_64.RegisterFrame`, or an `aarch64.Re
 `.entry` only.
 See [calling_convention.md](calling_convention.md#entry-functions).
 
+A function type written on its own takes the same directives after its results, so a pointer to a function in another
+convention, like one in a table the firmware hands a UEFI program, says how it's called. A call through it follows
+that convention, as a call to a declared function with it does:
+
+```
+TextOutput :: struct {
+    reset : fn(this: rawptr, extended: bool) -> usize #calling_convention(.c) #no_context,
+    output_string : fn(this: rawptr, text: ptr[u16]) -> usize #calling_convention(.c) #no_context,
+}
+```
+
 ### `#never_returns`
 
 `#never_returns` marks a function that never returns to its caller, like `os.exit` or `intrinsics.trap`.

@@ -243,9 +243,9 @@ complicated_type = function_signature
 
 array_dimension = SYM_LBRACK , [ literal_integer | OPERATOR_range_array | ( identifier , { SYM_DOT , identifier } ) ] , SYM_RBRACK ;
 
-# A directive at the end is part of the function's type: only #never_returns, #no_context and #unrestricted (every result),
-# so any other directive starts the next statement
-function_signature = KEYWORD_fn , [ generic_parameters ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , [ directive ] , [ where_clause ] ;
+# Directives at the end are part of the function's type: only #never_returns, #no_context, #unrestricted (every result)
+# and #calling_convention(...), so any other directive starts the next statement
+function_signature = KEYWORD_fn , [ generic_parameters ] , SYM_LPAREN , [ function_parameter_list ] , SYM_RPAREN , [ SYM_ARROW , function_output_list ] , { directive_with_arguments } , [ where_clause ] ;
 function_parameter_list = function_parameter , [ OPERATOR_assign , default_value ] , { SYM_COMMA , function_parameter , [ OPERATOR_assign , default_value ] }
     ;
 function_output_list = KEYWORD_void 

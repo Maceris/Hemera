@@ -442,6 +442,25 @@ The object format follows the target's OS:
 | `Mac` | Mach-O |
 
 `TargetOptions.linker_script` places sections, for outputs loaded at fixed addresses like kernels.
+
+### UEFI Applications
+
+A program for `OS == .UEFI` is an application the firmware runs on its boot services, like a bootloader: a PE32+
+image with the EFI application subsystem, for x86-64 or AArch64, named as `output_path` says, like `BOOTX64.EFI`. Its
+entry is the image's, which the firmware calls with the image's handle and the system table, in UEFI's convention;
+`base`'s runtime keeps both (`runtime.uefi_system_table()`), and then:
+
+* the context's allocator is the boot services' pool, and the logger writes to the firmware's console, as UTF-16,
+  standard error to its standard error where it has one;
+* the program ends with `main`'s result through the boot services' `Exit`, `EFI_SUCCESS` for 0 and `EFI_ABORTED`
+  for anything else;
+* there are no threads, clock or random numbers yet.
+
+`std/os/uefi` has the firmware's other tables and protocols as they're needed, like the runtime services, whose
+`ResetSystem` `uefi.reset(.Shutdown)` calls. The firmware's functions are reached through the pointers in its tables,
+typed with their convention (see [directives.md](directives.md#functions)). On x86-64 a frame bigger than a page
+calls `__chkstk`, which the compiler provides as it does for Windows; on AArch64 no function has unwind information,
+which Windows' code would otherwise have.
 `OutputType.FlatBinary` links the same way, then keeps only the loadable bytes.
 
 ### Starting on Linux

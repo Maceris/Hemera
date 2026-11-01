@@ -630,13 +630,19 @@ namespace hemera {
 			// A typed library (docs/compilation.md, Typed Libraries): no entry, and its interface record found by name
 			args.insert(args.end(), { "/dll", "/noentry", "/export:hemera_interface,DATA", "/nodefaultlib", "kernel32.lib" });
 		}
+		else if (options.startup_code && OSType::UEFI == options.os) {
+			// A UEFI application (docs/compilation.md, UEFI Applications): the firmware starts it at the entry, with nothing to link
+			args.insert(args.end(), { std::format("/entry:{}", HOSTED_ENTRY_SYMBOL), "/subsystem:efi_application", "/nodefaultlib" });
+		}
 		else if (options.startup_code) {
 			args.insert(args.end(), { std::format("/entry:{}", HOSTED_ENTRY_SYMBOL), "/subsystem:console", "/nodefaultlib", "kernel32.lib" });
 		}
 		else {
 			args.insert(args.end(), { std::format("/entry:{}", options.entry), "/nodefaultlib" });
 		}
-		args.push_back(std::format("/out:{}.{}", options.output_name, options.typed_library ? "dll" : "exe"));
+		// A UEFI application keeps the name it's given, like BOOTX64.EFI
+		args.push_back(OSType::UEFI == options.os ? std::format("/out:{}", options.output_name)
+			: std::format("/out:{}.{}", options.output_name, options.typed_library ? "dll" : "exe"));
 		switch (options.architecture) {
 		case ArchType::arm:
 			args.push_back("/machine:arm");
