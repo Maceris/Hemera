@@ -171,6 +171,12 @@ read_cr3 : fn() -> u64 : ---
 write_cr3 : fn(value: u64) : ---
 read_cr4 : fn() -> u64 : ---
 write_cr4 : fn(value: u64) : ---
+/*
+ * A bootloader's last step: page_table loaded into CR3, the stack pointer set to stack, 16-byte aligned, and entry jumped
+ * to with argument as its first argument in the C convention of ELF programs (rdi), and a zero return address above
+ * it, never to come back.
+ */
+enter : fn(page_table: u64, stack: u64, entry: u64, argument: u64) #never_returns : ---
 // Flush the TLB entry for the page containing address.
 invlpg : fn(address: rawptr) : ---
 // Write the cache line containing address back to memory, if it's dirty, and drop it from every cache, for a

@@ -5263,6 +5263,13 @@ namespace hemera {
 			assembly(generator, mlir::Type(), arguments, text, "r,~{memory}");
 			return true;
 		}
+		if (name == "enter") {
+			// The operands in registers the sequence doesn't overwrite before it's done with them
+			assembly(generator, mlir::Type(), arguments,
+				"movq $0, %cr3\n\tmovq $1, %rsp\n\txorl %ebp, %ebp\n\tpushq $$0\n\tmovq $3, %rdi\n\tjmpq *$2",
+				"{rax},{rbx},{rcx},{rdx},~{memory}");
+			return true;
+		}
 		if (name == "invlpg") {
 			assembly(generator, mlir::Type(), arguments, "invlpg ($0)", "r,~{memory}");
 			return true;
