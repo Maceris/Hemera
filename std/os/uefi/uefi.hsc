@@ -133,6 +133,20 @@ import runtime from "base"
         unload : rawptr,
     }
 
+    // EFI_INPUT_KEY: a key that isn't a character has a scan code, and unicode 0
+    InputKey :: struct {
+        scan_code : u16,
+        unicode : u16,
+    }
+
+    // EFI_SIMPLE_TEXT_INPUT_PROTOCOL
+    TextInput :: struct {
+        reset : fn(this: ptr[TextInput], extended: bool) -> Status #calling_convention(.c) #no_context,
+        // NOT_READY when no key is waiting
+        read_key_stroke : fn(this: ptr[TextInput], key: ptr[mut InputKey]) -> Status #calling_convention(.c) #no_context,
+        wait_for_key : rawptr,
+    }
+
     // EFI_SIMPLE_FILE_SYSTEM_PROTOCOL
     SimpleFileSystem :: struct {
         revision : u64,
@@ -311,6 +325,20 @@ import runtime from "base"
             return null
         }
         return cast[ptr[T]](found)
+    }
+
+    // A key the console's input has waiting, taken, without waiting for one; null if there's none.
+    key_waiting :: fn() -> InputKey? {
+        table :: system_table() or_return null
+        if table.console_in == null {
+            return null
+        }
+        input :: cast[ptr[TextInput]](table.console_in)
+        key := InputKey.{}
+        if input.read_key_stroke(input, &key) != SUCCESS {
+            return null
+        }
+        return key
     }
 
     // The machine reset or turned off, as kind says, through the runtime services.
