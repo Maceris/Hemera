@@ -7563,22 +7563,17 @@ namespace hemera {
 			});
 			return;
 		}
+		/*
+		 * Each member where it is, by its own offset: one included with using, named or not, and an anonymous struct,
+		 * hold their own members' defaults like any other struct a member holds
+		 */
 		auto structure = static_cast<TypeInfoStruct const*>(base(type));
 		for (const StructMember& member : structure->members) {
-			if (member.name == nullptr) {
-				continue;
-			}
-			size_t offset = 0;
-			TypeInfo* member_type = nullptr;
-			std::vector<int64_t> path;
-			if (!find_member(generator, structure, member.name, offset, member_type, path)) {
-				continue;
-			}
 			if (member.has_value) {
-				store(generator, default_of(generator, member), offset_address(generator, address, offset));
+				store(generator, default_of(generator, member), offset_address(generator, address, member.offset));
 			}
-			else if (!member.is_using && has_defaults(member.member_type)) {
-				store_defaults(generator, member.member_type, offset_address(generator, address, offset));
+			else if (has_defaults(member.member_type)) {
+				store_defaults(generator, member.member_type, offset_address(generator, address, member.offset));
 			}
 		}
 	}
@@ -7728,6 +7723,44 @@ namespace hemera {
 		if (overlapping) {
 			slot = make_slot(generator, type);
 			store_zero(generator, type, slot);
+		}
+		/*
+		 * A member left out that holds defaults of its own, a struct or a static array of them, included with using
+		 * or not, starts with those, before what's given, which may set some of them, like Plain.{a = 1} for a
+		 * using Base whose a has a default. Made in memory, so only in a function's body.
+		 */
+		if (in_function(generator)) {
+			std::set<std::string> named_here;
+			size_t counted = 0;
+			for (ast::Node* element : elements) {
+				if (ast::NodeType::BINARY_OPERATOR == element->node_type && is_assign(element) && element->children.size() == 2) {
+					named_here.insert(text_of(element->children[0]->value.value));
+				}
+				else if (counted < structure->members.size()) {
+					named_here.insert(text_of(structure->members[counted++].name));
+				}
+			}
+			llvm_type(generator, structure);
+			for (size_t i = 0; i < structure->members.size(); ++i) {
+				const StructMember& member = structure->members[i];
+				if (member.has_value || !has_defaults(member.member_type)
+					|| (member.name != nullptr && named_here.contains(text_of(member.name)))) {
+					continue;
+				}
+				if (overlapping) {
+					if (elements.empty()) {
+						store_defaults(generator, member.member_type, offset_address(generator, slot, member.offset));
+					}
+					continue;
+				}
+				const int64_t index = generator.member_elements[structure][i];
+				if (index < 0) {
+					continue;
+				}
+				mlir::Value made = make_slot(generator, member.member_type);
+				store_defaults(generator, member.member_type, made);
+				result = insert_shaped(generator, result, load(generator, member.member_type, made), index);
+			}
 		}
 		for (ast::Node* element : elements) {
 			const bool named = ast::NodeType::BINARY_OPERATOR == element->node_type && is_assign(element)

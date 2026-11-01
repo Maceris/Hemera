@@ -575,7 +575,8 @@ namespace hemera {
 			}
 			else if (TypeInfoVariant::STRUCT == variant) {
 				for (const StructMember& member : static_cast<TypeInfoStruct const*>(type)->members) {
-					if (member.has_value || (!member.is_using && has_defaults(member.member_type))) {
+					// A struct included with using holds its defaults too; a pointer included with using has none
+					if (member.has_value || has_defaults(member.member_type)) {
 						return true;
 					}
 				}

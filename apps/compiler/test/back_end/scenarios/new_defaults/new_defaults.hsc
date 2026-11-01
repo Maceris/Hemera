@@ -24,6 +24,22 @@ Plain :: struct {
 
 Level :: distinct alias Setting
 
+// Included with using, named or not, and an anonymous struct: their members' defaults are the struct's
+Named :: struct {
+    using setting : Setting,
+    extra : u32,
+}
+Unnamed :: struct {
+    using Setting,
+    extra : u32,
+}
+Anonymous :: struct {
+    _ : struct {
+        depth : u32 = 5,
+    },
+    extra : u32,
+}
+
 // Its relative pointer can't be copied, so new writes its defaults where it is
 Ring :: struct {
     size : u32 = 16,
@@ -88,6 +104,29 @@ main :: fn() -> int {
     }
     if starting(Setting).level != 7 || starting(Setting[2])[1].level != 7 {
         return 10
+    }
+
+    // Through using and anonymous structs, as variables, from new, and in literals that leave them out
+    named : Named
+    unnamed : Unnamed
+    anonymous : Anonymous
+    if named.setting.level != 7 || unnamed.level != 7 || unnamed.name != "setting" || anonymous.depth != 5 {
+        return 13
+    }
+    if runtime.new(Named).level != 7 || runtime.new(Unnamed).level != 7 || runtime.new(Anonymous).depth != 5
+        || !has_defaults(Named) || !has_defaults(Unnamed) || !has_defaults(Anonymous) {
+        return 14
+    }
+    named_literal := Named.{extra = 1}
+    held_literal := Holder.{count = 2}
+    anonymous_literal := Anonymous.{extra = 1}
+    if named_literal.level != 7 || held_literal.settings[2].level != 7 || anonymous_literal.depth != 5 {
+        return 15
+    }
+    // What's given wins over the defaults it's inside
+    given := Unnamed.{level = 1}
+    if given.level != 1 || given.name != "setting" {
+        return 16
     }
 
     // Types without defaults are still zeroed
