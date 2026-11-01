@@ -479,6 +479,7 @@ namespace hemera {
 			case hemera::arg_parse::JOBS:
 			case hemera::arg_parse::LINKER_SCRIPT:
 			case hemera::arg_parse::SYSROOT:
+			case hemera::arg_parse::LIBRARY_PATH:
 			case hemera::arg_parse::LIST:
 			case hemera::arg_parse::OBJECT_FORMAT:
 			case hemera::arg_parse::OS:
@@ -1128,6 +1129,16 @@ namespace hemera {
 					return false;
 				}
 				output.linker_script = std::filesystem::canonical(output.linker_script);
+				break;
+			case hemera::arg_parse::LIBRARY_PATH:
+				for (MyString value : option_with_value.values) {
+					std::filesystem::path folder{ std::string(value) };
+					if (!std::filesystem::is_directory(folder)) {
+						cout << "Library path " << folder << " is not a folder!" << endl;
+						return false;
+					}
+					output.library_paths.push_back(std::filesystem::canonical(folder));
+				}
 				break;
 			case hemera::arg_parse::SYSROOT:
 				output.sysroot = std::filesystem::path(option_with_value.values[0]);

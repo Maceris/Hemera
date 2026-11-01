@@ -10453,6 +10453,14 @@ namespace hemera {
 				target.red_zone = read_number(options, target_layout, "red_zone") != 0;
 				target.address_zero_is_memory = read_number(options, target_layout, "address_zero_is_memory") != 0;
 				target.linker_script = read_text(options, target_layout, "linker_script");
+				const TypeInfo* paths_type = nullptr;
+				if (const uint8_t* paths = field_at(options, target_layout, "library_paths", paths_type)) {
+					const uint8_t* elements = reinterpret_cast<const uint8_t*>(read_u64(paths + 8));
+					for (uint64_t i = 0; i < read_u64(paths) && elements != nullptr; ++i) {
+						// Each a string, 16 bytes (docs/types.md, Memory Layout)
+						target.library_paths.emplace_back(read_string(elements + i * 16));
+					}
+				}
 				target.startup_code = read_number(options, target_layout, "startup_code") != 0;
 				target.stack_check_failure = read_member(options, target_layout, "stack_check_failure");
 			}
@@ -11413,6 +11421,15 @@ namespace hemera {
 				return refuse(std::format("its linker script {} isn't there", target.linker_script));
 			}
 		}
+		// The target's own library folders, then the command line's, which carry over like its settings
+		for (const std::string& path : target.library_paths) {
+			const std::filesystem::path folder = std::filesystem::canonical(from_build(build, path), error);
+			if (error || !std::filesystem::is_directory(folder)) {
+				return refuse(std::format("its library path {} isn't a folder", path));
+			}
+			result.library_paths.push_back(folder);
+		}
+		result.library_paths.insert(result.library_paths.end(), build.library_paths.begin(), build.library_paths.end());
 		return true;
 	}
 

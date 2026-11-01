@@ -23,6 +23,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Object/COFFImportFile.h"
 #include "mlir/IR/BuiltinDialect.h"
 
 static std::filesystem::path scenario(std::string_view name) {
@@ -53,7 +54,8 @@ struct HostedOutput {
  * if everything it checks worked, or the number of the first check that failed.
  */
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
-	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false)
+	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false,
+	const std::vector<std::filesystem::path>& library_paths = {})
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -77,6 +79,7 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.debug_info = debug_info;
 	options.generate_all = generate_all;
 	options.valgrind_secrets = valgrind_secrets;
+	options.library_paths = library_paths;
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
 	result.executable = executable;
@@ -1100,6 +1103,64 @@ TEST(Hosted, ReportsForeignFunctionsInTheirOwnFile)
 	const std::string reported = scope.output + scope.errors_output;
 	EXPECT_NE(reported.find("foreign_by_value.hsc(14,30): error E5002"), std::string::npos) << reported;
 
+	module.erase();
+}
+
+/*
+ * A folder of its own holding hemera_library_paths.lib, an import library for kernel32's GetCurrentProcessId, which
+ * scenarios/library_paths calls: a library the linker finds only when it's told where.
+ */
+static std::filesystem::path library_paths_folder() {
+	const std::filesystem::path folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "library_paths" / "libs";
+	std::filesystem::create_directories(folder);
+	llvm::object::COFFShortExport process_id;
+	process_id.Name = "GetCurrentProcessId";
+	llvm::Error error = llvm::object::writeImportLibrary("kernel32.dll", (folder / "hemera_library_paths.lib").string(), { process_id },
+		llvm::COFF::IMAGE_FILE_MACHINE_AMD64, false);
+	EXPECT_FALSE(static_cast<bool>(error)) << llvm::toString(std::move(error));
+	return std::filesystem::canonical(folder);
+}
+
+// docs/compilation.md, Linking: --library-path's folders, where the linker finds a #library's import library.
+TEST(Hosted, FindsLibrariesInLibraryPaths)
+{
+	run_hosted("library_paths", hemera::TargetStackCheck::Off, 42, "", false, false, false, { library_paths_folder() });
+}
+
+// A target's library_paths, which a build package gives, reaching its linker.
+TEST(Build, PassesLibraryPathsToTargets)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path libraries = library_paths_folder();
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "library_paths" / "build";
+	std::filesystem::create_directories(output_folder);
+	const std::string output = (output_folder / "library_paths").string();
+	std::filesystem::remove(output + ".exe");
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("library_paths_build") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
+	options.settings = { { "output", output }, { "libs", libraries.string() } };
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	ASSERT_EQ(hemera::build_registry().targets.size(), 1u);
+	hemera::Allocator<> alloc;
+	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
+	EXPECT_EQ(hemera::error_count(), 0);
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 42);
+
+	hemera::reset_build_registry();
 	module.erase();
 }
 

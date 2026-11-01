@@ -443,6 +443,19 @@ The object format follows the target's OS:
 
 `TargetOptions.linker_script` places sections, for outputs loaded at fixed addresses like kernels.
 
+The libraries `#foreign` functions come from (`name.lib` for PE/COFF, `libname.so` or `libname.a` for ELF) are found in
+the folders given with `--library-path=<folder>`, as many as needed, before the ones the linker looks in itself. A
+build package gives a target its own with `TargetOptions.library_paths`, relative to the build package's folder, and
+those given on the command line come after them:
+
+```
+options := compiler.command_line_options()
+runtime.array_add(&options.target_options.library_paths, "../third_party/vulkan/lib")
+```
+
+On Windows, lld-link finds the Windows SDK's libraries itself when the `LIB` environment variable isn't set, and only
+looks where `LIB` says when it is, so a library path is the way to add a folder.
+
 ### UEFI Applications
 
 A program for `OS == .UEFI` is an application the firmware runs on its boot services, like a bootloader: a PE32+

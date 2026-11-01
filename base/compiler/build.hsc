@@ -94,6 +94,11 @@ TargetOptions :: struct {
     address_zero_is_memory : bool = false,
     // Linker script for section placement. Empty uses the linker's default layout.
     linker_script : string,
+    /*
+     * Folders the linker looks in for the libraries #foreign functions come from, before its own, relative to the
+     * build package's folder. Those given on the command line with --library-path come after them.
+     */
+    library_paths : string[..],
     // Linker to run. Empty uses the default for the target, see docs/compilation.md (Linking).
     linker : string,
     /*

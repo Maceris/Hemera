@@ -494,6 +494,11 @@ namespace hemera {
         /// will do), libm.so and the like, and ld-linux-x86-64.so.2. Empty without any.
         /// </summary>
         std::filesystem::path sysroot;
+        /// <summary>
+        /// Folders the linker looks in for the libraries #foreign functions come from, before the ones it finds itself
+        /// (docs/compilation.md, Linking).
+        /// </summary>
+        std::vector<std::filesystem::path> library_paths;
         bool debug_info;
         /// <summary>
         /// Build a typed library, whose input package's #export functions are its interface, rather than a program.

@@ -62,6 +62,7 @@ namespace hemera {
 		bool red_zone = true;
 		bool address_zero_is_memory = false;
 		std::string linker_script;
+		std::vector<std::string> library_paths;
 		bool startup_code = true;
 		std::string stack_check_failure;
 		BuildLocation location;

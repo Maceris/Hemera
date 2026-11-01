@@ -614,6 +614,10 @@ namespace hemera {
 	static std::vector<std::string> coff_arguments(const Options& options, const std::vector<std::string>& libraries) {
 		// /Brepro: no link time in the program or its PDB, so the same program builds to the same bytes every time
 		std::vector<std::string> args{ "/Brepro" };
+		// Folders to find them in, given with --library-path or a target's library_paths, before lld-link's own
+		for (const std::filesystem::path& folder : options.library_paths) {
+			args.push_back(std::format("/libpath:{}", folder.string()));
+		}
 		// Each #foreign function's library, by its import library
 		for (const std::string& library : libraries) {
 			args.push_back(std::format("{}.lib", library));
@@ -695,6 +699,9 @@ namespace hemera {
 		}
 		else {
 			args.push_back("-static");
+		}
+		for (const std::filesystem::path& folder : options.library_paths) {
+			args.insert(args.end(), { "-L", folder.string() });
 		}
 		// Each #foreign function's library
 		for (const std::string& library : libraries) {

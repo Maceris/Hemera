@@ -18,11 +18,11 @@ Run both after updating the SDK. The module docstring of `generate.py` says how 
 
 ## Linking
 
-Programs link the loader's import library, `vulkan-1.lib`, which lld-link finds through the `LIB` environment
-variable. Setting `LIB` replaces the folders the linker would otherwise search, so it lists the Windows SDK's too:
+Programs link the loader's import library, `vulkan-1.lib`, from the Vulkan SDK's `Lib` folder, given to the linker
+with `--library-path`, or a build package's `TargetOptions.library_paths` (docs/compilation.md, Linking):
 
 ```bash
-LIB="C:\VulkanSDK\1.3.268.0\Lib;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\um\x64" hemera examples/vulkan_info
+hemera --library-path=C:/VulkanSDK/1.3.268.0/Lib examples/vulkan_info
 ```
 
 ## Building structs for commands
