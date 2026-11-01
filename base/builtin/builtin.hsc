@@ -111,6 +111,12 @@ types_are_aliases : fn(a, b: type) -> bool : ---
 is_secret_type : fn(T: type) -> bool : ---
 
 /*
+ * Whether a type's values start with something other than zero: a struct with a field's default, in it or in a struct or
+ * static array it holds, or a static array of one (docs/types.md, Structs). new and new_array store them when it's true.
+ */
+has_defaults : fn(T: type) -> bool : ---
+
+/*
  * A complex number's or a quaternion's parts, as Odin names them: real and imag, and a quaternion's jmag and kmag, each
  * its parts' float. conj(x) is x with its imaginary parts negated, and abs(x) its magnitude, the square root of the sum
  * of its parts' squares, or an integer's or a float's absolute value (docs/types.md, Complex Numbers and Quaternions).

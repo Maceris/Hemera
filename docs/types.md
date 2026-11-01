@@ -1252,9 +1252,15 @@ r = Rectangle.{1, 2, 10, 10} // All values must be provided, in order, if any ar
 // Order is not important here
 r = Rectangle.{y=2, x=1}
 
-r2 : ptr[Rectangle] = new(Rectangle)
+r2 : ptr[Rectangle] = new(Rectangle) // width and height are 10, as in Rectangle.{}
 r2^ = r
 ```
+
+Every value that isn't given one starts the same way, with its fields' defaults: a variable declared without a value,
+what `new` and `new_array` make, and each element of a static array of such structs, or of one a struct holds.
+`has_defaults(T)` says whether a type has any, in it or in a struct or static array it holds, which is how `new`
+knows to store them, with `intrinsics.store_defaults(pointer)`, in place, so a relative pointer in the struct stays
+where it's stored; the memory from an allocator is zeroed, which is the rest.
 
 Structs can also be included in other structs, including all the fields and allowing implicit casting.
 

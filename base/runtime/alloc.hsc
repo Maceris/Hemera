@@ -67,8 +67,9 @@ free_array_aligned :: fn[T](
 }
 
 /*
- * A new T, from the allocator. If it can't be allocated, calls context.assertion_handler, which ends
- * the program; new_aligned and new_array return the error instead, for code that handles it.
+ * A new T, from the allocator, with its fields' defaults as a variable starts with them (docs/types.md, Structs). If it
+ * can't be allocated, calls context.assertion_handler, which ends the program; new_aligned and new_array return the
+ * error instead, for code that handles it.
  */
 new :: fn[T](
     T: type,
@@ -90,7 +91,14 @@ new_aligned :: fn[T](
     loc := #caller_location,
 ) -> (ptr[mut T], AllocatorError?) {
     memory, error :: allocator.function(allocator.data, size_of(T), alignment, null, 0, loc)
-    return cast[ptr[mut T]](memory.data), error
+    made :: cast[ptr[mut T]](memory.data)
+    // Allocators give zeroed memory, so only a type with defaults needs them stored (docs/types.md, Structs)
+    #if has_defaults(T) {
+        if error == null {
+            intrinsics.store_defaults(made)
+        }
+    }
+    return made, error
 }
 
 new_array :: fn[T](
@@ -118,7 +126,13 @@ new_array_aligned :: fn[T](
     if error != null {
         return empty, error
     }
-    return view_of(cast[ptr[mut T]](memory.data), count), null
+    made :: view_of(cast[ptr[mut T]](memory.data), count)
+    #if has_defaults(T) {
+        for &element in made {
+            intrinsics.store_defaults(element)
+        }
+    }
+    return made, null
 }
 
 /*

@@ -722,6 +722,7 @@ namespace hemera {
 	}
 
 	static mlir::Value offset_address(Generator& generator, mlir::Value address, size_t offset);
+	static void store_defaults(Generator& generator, TypeInfo* type, mlir::Value address);
 
 	// Whether nothing after op in its block, up to where code is being generated, could write memory.
 	static bool nothing_written_since(Generator& generator, mlir::Operation* op) {
@@ -4750,6 +4751,11 @@ namespace hemera {
 			const CheckedNode* given = checked(generator, arguments[0]);
 			return value(boolean(generator, given != nullptr && ValueKind::TYPE == given->kind && is_secret_type(given->type)), BUILTIN_bool);
 		}
+		// Whether a type's values start with defaults: known from the type, which is named
+		if (name == "has_defaults" && arguments.size() == 1) {
+			const CheckedNode* given = checked(generator, arguments[0]);
+			return value(boolean(generator, given != nullptr && ValueKind::TYPE == given->kind && has_defaults(given->type)), BUILTIN_bool);
+		}
 		/*
 		 * Whether two types are the same once aliases that aren't distinct are followed: known when both are named,
 		 * or else by following each descriptor's base_type while it's such an alias, and comparing where they end
@@ -5987,6 +5993,14 @@ namespace hemera {
 		}
 		if (name == "mem_copy_non_overlapping") {
 			LLVM::MemcpyOp::create(b, l, arguments[0], arguments[1], arguments[2], false);
+			return result;
+		}
+		// What a T starts with, where it is, rather than copied there, so a relative pointer in it stays in place
+		if (name.substr(0, name.find('[')) == "store_defaults" && arguments.size() == 1 && function->input.size() == 1) {
+			TypeInfo const* pointer = base(function->input[0].type);
+			if (pointer != nullptr && TypeInfoVariant::POINTER == pointer->variant) {
+				store_defaults(generator, static_cast<TypeInfoPointer const*>(pointer)->base_type, arguments[0]);
+			}
 			return result;
 		}
 		if (name == "mem_zero") {
@@ -7439,7 +7453,28 @@ namespace hemera {
 	 */
 	static void store_defaults(Generator& generator, TypeInfo* type, mlir::Value address) {
 		store_zero(generator, type, address);
-		if (!is_variant(type, TypeInfoVariant::STRUCT)) {
+		if (!has_defaults(type)) {
+			return;
+		}
+		if (is_variant(type, TypeInfoVariant::ARRAY)) {
+			// Each element's, counting through them
+			auto array = static_cast<TypeInfoArray const*>(base(type));
+			TypeInfo* element = array->element_type;
+			mlir::Value index = make_slot(generator, BUILTIN_usize);
+			store(generator, constant_int(generator, usize_type(generator), 0), index);
+			emit_loop(generator, true, [&]() {
+				mlir::Value at = load(generator, BUILTIN_usize, index);
+				mlir::Value done = LLVM::ICmpOp::create(generator.builder, generator.loc, LLVM::ICmpPredicate::uge, at,
+					constant_int(generator, usize_type(generator), static_cast<int64_t>(array->count)));
+				emit_if(generator, done, [&]() {
+					emit_break(generator, 1);
+					return true;
+				}, nullptr);
+				store_defaults(generator, element, element_address(generator, address, element, at));
+				store(generator, LLVM::AddOp::create(generator.builder, generator.loc, at, constant_int(generator, usize_type(generator), 1)),
+					index);
+				return false;
+			});
 			return;
 		}
 		auto structure = static_cast<TypeInfoStruct const*>(base(type));
@@ -7456,7 +7491,7 @@ namespace hemera {
 			if (member.has_value) {
 				store(generator, default_of(generator, member), offset_address(generator, address, offset));
 			}
-			else if (is_variant(member.member_type, TypeInfoVariant::STRUCT) && !member.is_using) {
+			else if (!member.is_using && has_defaults(member.member_type)) {
 				store_defaults(generator, member.member_type, offset_address(generator, address, offset));
 			}
 		}

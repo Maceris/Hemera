@@ -7,6 +7,8 @@ mem_copy_non_overlapping : fn(dest: mut rawptr, source: rawptr, len: usize) : --
 mem_zero : fn(target: mut rawptr, len: usize) : ---
 // Zeros that are always written, even when nothing reads them after, for wiping secrets (docs/memory.md, Secrets).
 secure_zero : fn(target: mut rawptr, len: usize) : ---
+// Writes what a T starts with where target points: zeros, but for its fields' defaults (docs/types.md, Structs).
+store_defaults : fn[T](target: ptr[mut T]) : ---
 
 // The square root of a float, as an f16, f32 or f64: the nearest to it, NaN for a negative one.
 square_root : fn[F](x: F) -> F : ---

@@ -465,6 +465,13 @@ TEST(Hosted, ComparesTypeValues)
 	run_hosted("type_values", hemera::TargetStackCheck::Off);
 }
 
+// new's and new_array's values, static arrays of structs and generics' variables start with their fields' defaults, as
+// has_defaults says (docs/types.md, Structs).
+TEST(Hosted, StartsNewValuesWithDefaults)
+{
+	run_hosted("new_defaults", hemera::TargetStackCheck::Off);
+}
+
 // Struct fields defaulting to floats, strings, functions and named constants of any type (docs/types.md, Structs).
 TEST(Hosted, DefaultsFieldsToAnyConstant)
 {

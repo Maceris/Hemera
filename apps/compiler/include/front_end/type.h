@@ -544,6 +544,12 @@ namespace hemera {
 	bool is_secret_type(TypeInfo const* type);
 
 	/// <summary>
+	/// Whether values of type start with something other than zero: a struct with a member's default, in it or in a
+	/// struct or static array it holds, or a static array of one (docs/types.md, Structs).
+	/// </summary>
+	bool has_defaults(TypeInfo const* type);
+
+	/// <summary>
 	/// Whether a value of type holds or reaches a secret, through pointers too, like a ptr[Key] parameter.
 	/// </summary>
 	bool reaches_secret(TypeInfo const* type);

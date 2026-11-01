@@ -560,6 +560,34 @@ namespace hemera {
 		return false;
 	}
 
+	bool has_defaults(TypeInfo const* type) {
+		while (type != nullptr) {
+			const TypeInfoVariant variant = type->variant;
+			if (TypeInfoVariant::ALIAS == variant) {
+				type = static_cast<TypeInfoAlias const*>(type)->base_type;
+			}
+			else if (TypeInfoVariant::ARRAY == variant) {
+				auto array = static_cast<TypeInfoArray const*>(type);
+				if (ArrayType::STATIC != array->array_type) {
+					return false;
+				}
+				type = array->element_type;
+			}
+			else if (TypeInfoVariant::STRUCT == variant) {
+				for (const StructMember& member : static_cast<TypeInfoStruct const*>(type)->members) {
+					if (member.has_value || (!member.is_using && has_defaults(member.member_type))) {
+						return true;
+					}
+				}
+				return false;
+			}
+			else {
+				return false;
+			}
+		}
+		return false;
+	}
+
 	bool reaches_secret(TypeInfo const* type) {
 		for (int depth = 0; type != nullptr && depth < 16; ++depth) {
 			if (is_secret_type(type)) {

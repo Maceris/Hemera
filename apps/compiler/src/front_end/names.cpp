@@ -57,7 +57,7 @@ namespace hemera {
 		"Optional", "Result",
 		// Functions
 		"align_of", "size_of", "offset_of", "type_of", "type_info_of", "types_are_aliases", "is_secret_type",
-		"max_value", "min_value", "todo",
+		"has_defaults", "max_value", "min_value", "todo",
 		// Complex numbers' and quaternions' parts, conjugates and magnitudes, and any number's absolute value
 		"real", "imag", "jmag", "kmag", "conj", "abs",
 		// Views over raw memory (base/builtin/views.hsc)
@@ -2337,6 +2337,24 @@ namespace hemera {
 			}
 			result.kind = ConstantValue::Kind::BOOLEAN;
 			result.boolean = is_secret_type(given.type);
+			return Progress::DONE;
+		}
+		// Whether a type's values start with defaults (docs/types.md, Structs), as a generic asks of what it's given
+		if (name == "has_defaults" && arguments.size() == 1) {
+			// Resolved as size_of's type is, so a generic's own parameter works too, and complete, for its members
+			TypeInfo* type = nullptr;
+			Progress progress = walk_node(walk, arguments[0], Need::RESOLVED);
+			if (progress == Progress::DONE) {
+				progress = type_of(walk, arguments[0], Need::RESOLVED, type);
+			}
+			if (progress == Progress::DONE) {
+				progress = require_complete(walk, arguments[0], type);
+			}
+			if (progress != Progress::DONE) {
+				return progress;
+			}
+			result.kind = ConstantValue::Kind::BOOLEAN;
+			result.boolean = has_defaults(type);
 			return Progress::DONE;
 		}
 		const bool known = name == "size_of" || name == "align_of" || name == "offset_of";

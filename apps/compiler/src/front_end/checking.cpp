@@ -820,7 +820,8 @@ namespace hemera {
 
 	static bool is_builtin_function(std::string_view name) {
 		return name == "size_of" || name == "align_of" || name == "offset_of" || name == "type_of"
-			|| name == "type_info_of" || name == "types_are_aliases" || name == "is_secret_type" || name == "max_value"
+			|| name == "type_info_of" || name == "types_are_aliases" || name == "is_secret_type" || name == "has_defaults"
+			|| name == "max_value"
 			|| name == "min_value" || name == "todo" || is_number_builtin(name);
 	}
 
@@ -2280,7 +2281,7 @@ namespace hemera {
 		else if (name == "type_of") {
 			callee = typed(BUILTIN_type);
 		}
-		else if (name == "types_are_aliases" || name == "is_secret_type") {
+		else if (name == "types_are_aliases" || name == "is_secret_type" || name == "has_defaults") {
 			callee = typed(BUILTIN_bool);
 		}
 		else if (name == "type_info_of") {
