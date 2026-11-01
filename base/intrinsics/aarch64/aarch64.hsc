@@ -223,6 +223,17 @@ dmb : fn[domain](domain: BarrierDomain) : ---
 // Instruction synchronization barrier: instructions after it are fetched again, seeing system register changes.
 isb : fn() : ---
 
+/*
+ * A bootloader's last step: the memory attributes, the translation control and both tables loaded, the TLB flushed, the
+ * stack pointer set to stack, and entry branched to with argument in x0 and zero frame and link registers, never to
+ * come back.
+ */
+enter : fn(mair: u64, tcr: u64, ttbr0: u64, ttbr1: u64, stack: u64, entry: u64, argument: u64) #never_returns : ---
+
+// A call to the hypervisor's or the firmware's PSCI, function in w0 and its arguments in x1 to x3: x0 as it comes back.
+hvc : fn(function: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0) -> u64 : ---
+smc : fn(function: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0) -> u64 : ---
+
 // Waiting
 
 // Wait for an interrupt.

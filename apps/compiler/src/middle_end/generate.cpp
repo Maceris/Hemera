@@ -5015,6 +5015,18 @@ namespace hemera {
 			return true;
 		}
 		// One instruction named after the function, with no operands or with the one it takes
+		if (name == "enter") {
+			assembly(generator, mlir::Type(), arguments, "msr mair_el1, x0\n\tmsr tcr_el1, x1\n\tmsr ttbr0_el1, x2\n\tmsr ttbr1_el1, x3\n\tisb\n\ttlbi vmalle1\n\tdsb nsh\n\tisb\n\tmov sp, x4\n\tmov x0, x6\n\tmov x29, xzr\n\tmov x30, xzr\n\tbr x5",
+				"{x0},{x1},{x2},{x3},{x4},{x5},{x6},~{memory}");
+			return true;
+		}
+		// x0 in and out, x1 to x3 in, and every register PSCI may change, as the SMC Calling Convention says
+		if (name == "hvc" || name == "smc") {
+			result = intrinsic_value(assembly(generator, integer_type(generator, 8), arguments, std::format("{} #0", name),
+				"={x0},{x0},{x1},{x2},{x3},~{x4},~{x5},~{x6},~{x7},~{x8},~{x9},~{x10},~{x11},~{x12},~{x13},~{x14},~{x15},~{x16},~{x17},~{memory}"),
+				function);
+			return true;
+		}
 		if (name == "isb" || name == "wfi" || name == "wfe" || name == "sev" || name == "sevl" || name == "ic_iallu"
 			|| name == "ic_ialluis" || name == "tlbi_vmalle1" || name == "tlbi_vmalle1is") {
 			std::string text(name);

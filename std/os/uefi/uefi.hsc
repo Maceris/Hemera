@@ -210,11 +210,34 @@ import runtime from "base"
         pixels_per_scan_line : u32,
     }
 
+    // EFI_MP_SERVICES_PROTOCOL, as far as listing the processors
+    MpServices :: struct {
+        get_number_of_processors : fn(this: ptr[MpServices], count: ptr[mut usize], enabled: ptr[mut usize]) -> Status
+            #calling_convention(.c) #no_context,
+        get_processor_info : fn(this: ptr[MpServices], number: usize, info: ptr[mut ProcessorInfo]) -> Status #calling_convention(.c) #no_context,
+    }
+
+    // EFI_PROCESSOR_INFORMATION, with room for the extended information newer firmware may write after it
+    ProcessorInfo :: struct {
+        // The local APIC ID on x86-64, MPIDR's affinity fields on AArch64
+        id : u64,
+        // PROCESSOR_AS_BSP_BIT, PROCESSOR_ENABLED_BIT, PROCESSOR_HEALTH_STATUS_BIT
+        status : u32,
+        package : u32,
+        core : u32,
+        thread : u32,
+        extended : u32[6],
+    }
+
+    PROCESSOR_BOOT : u32 : 1
+    PROCESSOR_ENABLED : u32 : 2
+
     LOADED_IMAGE_GUID :: Guid.{0x5b1b31a1, 0x9562, 0x11d2, u8.[0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]}
     SIMPLE_FILE_SYSTEM_GUID :: Guid.{0x964e5b22, 0x6459, 0x11d2, u8.[0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]}
     FILE_INFO_GUID :: Guid.{0x09576e92, 0x6d3f, 0x11d2, u8.[0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]}
     RNG_GUID :: Guid.{0x3152bca5, 0xeade, 0x433d, u8.[0x86, 0x2e, 0xc0, 0x1c, 0xdc, 0x29, 0x1f, 0x44]}
     GRAPHICS_OUTPUT_GUID :: Guid.{0x9042a9de, 0x23dc, 0x4a38, u8.[0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a]}
+    MP_SERVICES_GUID :: Guid.{0x3fdda605, 0xa76e, 0x4f46, u8.[0xad, 0x29, 0x12, 0xf4, 0x53, 0x1b, 0x3d, 0x08]}
     // Configuration tables
     ACPI_20_GUID :: Guid.{0x8868e871, 0xe4f1, 0x11d3, u8.[0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81]}
     ACPI_10_GUID :: Guid.{0xeb9d2d30, 0x2d88, 0x11d3, u8.[0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d]}
