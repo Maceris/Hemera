@@ -90,8 +90,27 @@ PhysicalRange :: struct {
     size : u64,
 }
 
+/*
+ * The "FB  " table: the first framebuffer the boot found, at the table entry's physical address, its pixels pitch times
+ * height bytes, each color's bits where its size and shift say. A kernel without a framebuffer has no such table.
+ */
+FramebufferLayout :: struct {
+    width : u32,
+    height : u32,
+    // Bytes from the start of one row to the start of the next
+    pitch : u32,
+    bits_per_pixel : u16,
+    red_size : u8,
+    red_shift : u8,
+    green_size : u8,
+    green_shift : u8,
+    blue_size : u8,
+    blue_shift : u8,
+}
+
 #assert size_of(FirmwareTables) == 16
 #assert size_of(FirmwareTable) == 24
+#assert size_of(FramebufferLayout) == 20
 
 // How a process ends before its entry runs: started by a kernel of another ABI version, or without a grant its entry needs.
 EXIT_WRONG_ABI : u32 : runtime.SLOP_OS_EXIT_WRONG_ABI
