@@ -2026,8 +2026,13 @@ namespace hemera {
 		const bool aarch64 = ArchType::aarch64 == generator.options->architecture;
 		bool fits = (ArchType::x86_64 == generator.options->architecture || aarch64) && type->output.size() <= 1;
 		for (const FunctionInput& input : type->input) {
+			TypeInfo const* held = base(input.type);
+			// Pointers of every kind are one register: cstrings, function values, and optional pointers, null for None
+			const bool pointer = held != nullptr && (TypeInfoVariant::POINTER == held->variant || TypeInfoVariant::FUNCTION == held->variant
+				|| (TypeInfoVariant::STRING == held->variant && static_cast<TypeInfoString const*>(held)->is_raw)
+				|| (TypeInfoVariant::UNION == held->variant && static_cast<TypeInfoUnion const*>(held)->null_is_none));
 			fits = fits && !input.is_varargs && input.type != nullptr && input.type->size <= 8
-				&& (is_float(input.type) || is_variant(input.type, TypeInfoVariant::INTEGER) || is_variant(input.type, TypeInfoVariant::POINTER)
+				&& (is_float(input.type) || is_variant(input.type, TypeInfoVariant::INTEGER) || pointer
 					|| is_variant(input.type, TypeInfoVariant::BOOLEAN) || is_variant(input.type, TypeInfoVariant::ENUM));
 		}
 		if (!fits) {

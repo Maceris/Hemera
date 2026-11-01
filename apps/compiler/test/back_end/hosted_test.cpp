@@ -283,6 +283,15 @@ TEST(Hosted, RunsThreads)
 	run_hosted("threads", hemera::TargetStackCheck::Morestack);
 }
 
+/*
+ * #foreign functions taking a cstring, optional pointers and a function value C calls back, each one register as C
+ * sees them (docs/directives.md, #foreign).
+ */
+TEST(Hosted, PassesPointersToForeignFunctions)
+{
+	run_hosted("foreign_pointers", hemera::TargetStackCheck::Off);
+}
+
 // The hosted context's allocator, from several threads at once.
 TEST(Hosted, AllocatesFromThreads)
 {
