@@ -99,13 +99,31 @@ arena_mark :: fn(arena: ptr[Arena]) -> ArenaMark {
 
 /*
  * Gives back everything allocated since mark was taken, with the chunks taken since. A mark taken before the arena had
- * a chunk gives back every chunk. Marks taken after this one can't be restored to afterwards.
+ * a chunk gives back every chunk. Where the arena already gave back what the mark covers, by a reset or by restoring an
+ * earlier mark, there's nothing more to give back, and it's left as it is.
  */
 arena_restore :: fn(arena: ptr[mut Arena], mark: ArenaMark) {
+    if !arena_after(arena, mark) {
+        return void
+    }
     arena.last = 0
     arena_free_chunks(arena, mark.chunk)
     chunk :: mark.chunk or_return void
     chunk.used = mark.used
+}
+
+// Whether the arena is past mark: mark's chunk is still one of its chunks, with no less of it used than then.
+arena_after :: fn(arena: ptr[Arena], mark: ArenaMark) -> bool {
+    marked :: mark.chunk or_return true
+    next := arena.current
+    loop {
+        chunk :: next or_break
+        if chunk == marked {
+            return chunk != arena.current || chunk.used >= mark.used
+        }
+        next = chunk.previous
+    }
+    return false
 }
 
 // How many bytes the arena has given out and not given back, across its chunks.

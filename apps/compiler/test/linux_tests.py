@@ -47,6 +47,8 @@ TESTS = [
     ("mut_arguments", [], 42),
     ("owned", [], 42),
     ("shared", [], 42),
+    ("arena", [], 42),
+    ("new_defaults", [], 42),
     ("optional_functions", [], 42),
     ("large_values", ["--stack-check=morestack"], 42),
     ("integer_ranges", [], 42),

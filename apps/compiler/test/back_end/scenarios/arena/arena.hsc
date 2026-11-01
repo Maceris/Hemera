@@ -101,6 +101,16 @@ main :: fn() -> int {
         return 15
     }
 
+    // A mark from before the reset, whose chunks it gave back: nothing more to give back
+    _, _ = runtime.new_array(u8, 5000, allocator)
+    stale :: memory.arena_mark(arena)
+    memory.reset_arena(arena)
+    kept :: memory.arena_used(arena)
+    memory.arena_restore(arena, stale)
+    if counting.live != 2 || memory.arena_used(arena) != kept {
+        return 19
+    }
+
     // Out of memory when the backing allocator is
     counting.fail_at = counting.allocations + 1
     _, failed :: runtime.new_array(u8, 100000, allocator)
