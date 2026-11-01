@@ -331,6 +331,12 @@ TEST(Hosted, ReleasesOwners)
 	run_hosted("owned", hemera::TargetStackCheck::Off);
 }
 
+// std/unicode: UTF-8, every case of the UCD's GraphemeBreakTest.txt, and the columns clusters take.
+TEST(Hosted, SplitsGraphemeClusters)
+{
+	run_hosted("unicode", hemera::TargetStackCheck::Off);
+}
+
 // std/memory's Arena: bumping, giving back the newest block, chunks, marks and resets (docs/memory.md, Allocators).
 TEST(Hosted, AllocatesFromArenas)
 {
