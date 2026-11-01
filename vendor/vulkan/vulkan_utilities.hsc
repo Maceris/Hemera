@@ -1,12 +1,26 @@
 package vulkan
 
-vk_is_null_handle :: fn[HandleType](handle: HandleType) -> bool {
-    if (types_are_aliases(HandleType, VkHandle)) {
-        return cast[VkHandle](handle) == VK_NULL_HANDLE
-    }
-    else if (types_are_aliases(HandleType, VkNonDispatchableHandle)) {
-        return cast[VkNonDispatchableHandle](handle) == VK_NULL_NON_DISPATCHABLE_HANDLE
-    }
+// What the generator doesn't make: C macros, and the null handles
 
-    return false
+VK_NULL_HANDLE : VkHandle : null
+VK_NULL_NON_DISPATCHABLE_HANDLE : VkNonDispatchableHandle : 0
+
+VK_MAKE_API_VERSION :: fn(variant, major, minor, patch: u32) -> u32 {
+    return (variant << 29) | (major << 22) | (minor << 12) | patch
+}
+
+VK_API_VERSION_VARIANT :: fn(version: u32) -> u32 {
+    return version >> 29
+}
+
+VK_API_VERSION_MAJOR :: fn(version: u32) -> u32 {
+    return (version >> 22) & 0x7F
+}
+
+VK_API_VERSION_MINOR :: fn(version: u32) -> u32 {
+    return (version >> 12) & 0x3FF
+}
+
+VK_API_VERSION_PATCH :: fn(version: u32) -> u32 {
+    return version & 0xFFF
 }
