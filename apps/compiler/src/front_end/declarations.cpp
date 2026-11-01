@@ -1936,12 +1936,31 @@ namespace hemera {
 	 */
 	static Progress foreign_callbacks(Walk& walk, ast::Node* definition, TypeInfoFunction* function) {
 		for (const FunctionInput& input : function->input) {
+			/*
+			 * Each type is waited on until it's resolved, an alias's included: an optional's null_is_none is only set once
+			 * what it holds is laid out, so an optional is told by its shape, as lay_out_union tells it
+			 */
+			Progress progress = require_complete(walk, definition, input.type);
+			if (progress != Progress::DONE) {
+				return progress;
+			}
 			TypeInfo const* held = input.type != nullptr ? get_base_type(input.type) : nullptr;
-			if (held != nullptr && TypeInfoVariant::UNION == held->variant && static_cast<TypeInfoUnion const*>(held)->null_is_none) {
+			if (held != nullptr && TypeInfoVariant::UNION == held->variant) {
 				auto optional = static_cast<TypeInfoUnion const*>(held);
 				const size_t some = optional->value_index();
-				held = some < optional->variants.size() && !optional->variants[some].types.empty()
-					? get_base_type(optional->variants[some].types[0]) : nullptr;
+				const size_t none = optional->none_index();
+				const bool shaped = optional->name != nullptr && std::string_view(*optional->name).starts_with("Optional[")
+					&& optional->variants.size() == 2 && some < 2 && none < 2 && some != none
+					&& optional->variants[some].types.size() == 1 && optional->variants[none].types.empty();
+				if (!shaped) {
+					continue;
+				}
+				TypeInfo* inner = optional->variants[some].types[0];
+				progress = require_complete(walk, definition, inner);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				held = get_base_type(inner);
 			}
 			if (held == nullptr || TypeInfoVariant::FUNCTION != held->variant) {
 				continue;
