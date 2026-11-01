@@ -328,6 +328,12 @@ TEST(Hosted, ReleasesOwners)
 	run_hosted("owned", hemera::TargetStackCheck::Off);
 }
 
+// std/memory's Arena: bumping, giving back the newest block, chunks, marks and resets (docs/memory.md, Allocators).
+TEST(Hosted, AllocatesFromArenas)
+{
+	run_hosted("arena", hemera::TargetStackCheck::Off);
+}
+
 // std/memory's SharedPtr, WeakPtr and LocalPtr (docs/memory.md, Shared Ownership).
 TEST(Hosted, SharesOwnership)
 {

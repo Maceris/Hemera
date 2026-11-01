@@ -42,6 +42,22 @@ push_context failing_context (allocator = memory.failing_allocator(failing)) {
 // failing.allocations, failing.live, failing.failed
 ```
 
+For memory that's all given back at once, like what a frame or a request builds, `std`'s `memory.Arena` is a bump
+allocator over chunks it takes from another allocator. Freeing gives back only the newest block; everything else stays
+until `reset_arena`, which keeps the first chunk, or `arena_restore` to a mark taken with `arena_mark`. Its blocks are
+zeroed. Memory from it is like any allocator's, so structs pointing into it can be kept in dynamic arrays and on the
+heap, and `&` works on them, where structs pointing at locals would need to be `#scoped` (see
+[Deep Pointers](#deep-pointers)). `memory.new_value` makes a value in it from a literal:
+
+```
+frame :: memory.make_arena() or_return 1
+defer memory.free_arena(frame)
+next :: memory.new_value(Features.{}, memory.arena_allocator(frame))
+info := Info.{next = next}            // a local pointing into the arena: &info is fine
+submit(&info)
+memory.reset_arena(frame)
+```
+
 # Pointers to the Stack
 
 Pointers and views can refer to stack memory: `&local_variable`, a stack array passed as an array view,
