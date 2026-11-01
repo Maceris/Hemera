@@ -44,6 +44,11 @@ ProcessState :: struct {
     // far that's got, as clock_state
     events_log : rawptr,
     events_state : u32,
+    // On SlopOS, whether the lifecycle channel asked the program to stop, and the port and key to wake when it does
+    // (slop_os_lifecycle.hsc)
+    stop_requested : u32,
+    stop_port : u64,
+    stop_key : u64,
 }
 
 // ProcessState's clock_state and events_state: not looked for yet, being mapped, mapped, or there's none.

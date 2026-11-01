@@ -296,13 +296,15 @@ package os
      * (RIGHT_CPU_BUDGET_BIND) from its first instruction rather than on the launcher's; and give it the clock page (a
      * read-only memory object the clock service keeps, base's runtime.SlopOsClockPage), as the grant "clock", which
      * base's runtime reads the wall clock from, whatever the program's entry takes; and give it a ring for its log
-     * records and the ring's doorbell (LaunchEvents), as the grants "events", which base's logger writes to.
+     * records and the ring's doorbell (LaunchEvents), as the grants "events", which base's logger writes to; and give it
+     * its end of a lifecycle channel (std/os/slop_os's lifecycle), as the grant "lifecycle", which base's runtime serves.
      */
     LaunchOptions :: struct {
         watch : LaunchWatch?,
         cpu_budget : slop_os.CpuBudget?,
         clock : slop_os.Memory?,
         events : LaunchEvents?,
+        lifecycle : slop_os.Channel?,
         // The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime binds
         // before main (the SlopOS repository's decisions 0119, 0120); the program's to own. Every library the launcher
         // was given itself is given too, but those named here (0121).
@@ -389,6 +391,12 @@ package os
         match options.events {
             case Some(events) => if !add_grant(&load, "events", cast[slop_os.Handle](events.ring))
                 || !add_grant(&load, "events", cast[slop_os.Handle](events.doorbell)) {
+                return .Error(.BadGrants)
+            }
+            case None => {}
+        }
+        match options.lifecycle {
+            case Some(end) => if !add_grant(&load, "lifecycle", cast[slop_os.Handle](end)) {
                 return .Error(.BadGrants)
             }
             case None => {}

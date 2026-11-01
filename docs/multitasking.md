@@ -44,6 +44,10 @@ lock. The runtime keeps its state for the whole process, like that heap's, in on
   (`CLONE_CHILD_CLEARTID`), and `wait_on_value` is a private `futex` wait. A program that links C starts threads
   with `pthread_create` instead, on the same mapped stacks, so C works on them (see
   [compilation.md](compilation.md#linking-c-on-linux)).
+* On a system where a thread starts with only the stack pointer and argument it's given, the runtime maps the
+  thread's stack itself (256 KiB, or the `Fixed` size asked for), its entry loads the carrier register before anything
+  else, and `thread_join` waits for the system to say the thread ended, then unmaps the stack. Where the system has no
+  wait on an address, `wait_on_value` spins, as without an operating system.
 
 ## Values That Stay on Their Thread
 

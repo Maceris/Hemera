@@ -158,6 +158,8 @@ SlopOsGrant :: struct {
         }
         carrier.native_stack_limit = cast[rawptr](startup.stack_base + STACK_RESERVE)
         carrier.stack_limit = carrier.native_stack_limit
+        // The lifecycle channel served from here on, before main (slop_os_lifecycle.hsc)
+        slop_os_start_lifecycle()
     }
 
     /*

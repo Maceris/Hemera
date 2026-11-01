@@ -3,7 +3,7 @@ package runtime
 // A thread's data came through thread_create's #escaping data, so it never points into a stack
 ThreadFunction :: fn(data #escaping : any) -> void
 
-// Windows' is in windows.hsc
+// Windows' is in windows.hsc, and SlopOS's in slop_os_threads.hsc
 #if OS == .Mac {
     ThreadSpecificOS :: struct {
 
@@ -15,11 +15,6 @@ ThreadFunction :: fn(data #escaping : any) -> void
     }
 }
 #else_if OS == .None {
-    ThreadSpecificOS :: struct {
-
-    }
-}
-#else_if OS == .SlopOS {
     ThreadSpecificOS :: struct {
 
     }
