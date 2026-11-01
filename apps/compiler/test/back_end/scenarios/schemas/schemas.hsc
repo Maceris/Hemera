@@ -3,6 +3,7 @@ package schemas
 import compiler from "base"
 import runtime from "base"
 import crypto from "std"
+import memory from "std"
 import schema from "std"
 
 /*
@@ -11,7 +12,8 @@ import schema from "std"
  * and a different name, member order or member type doesn't; a type that refers to itself is described once. A value
  * written for elsewhere has what it points to after it, at distances from its start, and no address of the writer's,
  * and reads back as the text base's output_format gives it. base's own BLAKE3, which hashes schemas, agrees with std's.
- * main returns 42 if each holds.
+ * Without the memory, try_write and try_write_value give the error and leave what they write to as it was, as the
+ * SlopOS logger needs to drop a record rather than end the process. main returns 42 if each holds.
  */
 
 Point :: struct {
@@ -127,7 +129,51 @@ main :: fn() -> int {
     if hashes != 42 {
         return hashes
     }
-    return check_render()
+    rendered :: check_render()
+    if rendered != 42 {
+        return rendered
+    }
+    return check_running_out()
+}
+
+// try_write and try_write_value with each of their allocations failing in turn, then with none failing.
+check_running_out :: fn() -> int {
+    first := Item.{id = 7, name = "first"}
+    second := Item.{id = 9, name = "second", next = &first}
+    fail_at : u64 = 1
+    loop {
+        failing :: memory.make_failing(fail_at) or_return 40
+        schema_bytes : u8[..]
+        value_bytes : u8[..]
+        schema_error : runtime.AllocatorError? = null
+        value_error : runtime.AllocatorError? = null
+        push_context failing_context (allocator = memory.failing_allocator(failing)) {
+            schema_error = schema.try_write(type_info_of(Item), &schema_bytes)
+            value_error = schema.try_write_value(second, &value_bytes)
+        }
+        failed :: failing.failed
+        written :: schema_error == null && value_error == null
+        schema_kept :: schema_error == null || schema_bytes.count == 0
+        value_kept :: value_error == null || value_bytes.count == 0
+        whole :: !written || (same(runtime.hash_blake3(schema_bytes), hash_of(Item)) && word_at(value_bytes, 0) & 0xffffffff == 9)
+        runtime.array_free(&schema_bytes)
+        runtime.array_free(&value_bytes)
+        live :: failing.live
+        memory.free_failing(failing)
+        if failed == written || !schema_kept || !value_kept {
+            return 41
+        }
+        if !whole || live != 0 {
+            return 43
+        }
+        if !failed {
+            return 42
+        }
+        fail_at += 1
+        if fail_at > 1000 {
+            return 44
+        }
+    }
 }
 
 // base's BLAKE3, for schemas, against std's, across chunk and block edges.

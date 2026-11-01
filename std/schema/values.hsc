@@ -21,6 +21,11 @@ MAX_DEPTH :: runtime.SCHEMA_MAX_DEPTH
 CSTRING_LIMIT : usize : runtime.SCHEMA_CSTRING_LIMIT
 
 // A value written to the end of into, with what it points to after it.
-write_value :: fn(value: any, into: ptr[mut u8[..]]) {
-    runtime.schema_write_value(value, into)
+write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_location) {
+    runtime.schema_write_value(value, into, location)
+}
+
+// Like write_value, but without the memory, gives the allocator's error and leaves into's count as it was.
+try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
+    return runtime.schema_try_write_value(value, into)
 }

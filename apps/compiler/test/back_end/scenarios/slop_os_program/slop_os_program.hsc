@@ -4,7 +4,7 @@ import runtime from "base"
 
 /*
  * A program for SlopOS, built but not run here: its heap maps memory in the range its startup block
- * gives, and main's result is the process's exit code.
+ * gives, and main's result is the process's exit code. It logs a usize, whose schema the SlopOS logger writes.
  */
 main :: fn() -> int {
     values, error :: runtime.new_array(u64, 100)
@@ -15,5 +15,6 @@ main :: fn() -> int {
     for &value, i in values {
         value^ = cast[u64](i)
     }
+    runtime.log_info("% values", values.count)
     return 0
 }

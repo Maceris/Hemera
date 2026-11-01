@@ -173,7 +173,11 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         slop_os_log(.FATAL, "fatal", format_string, params)
     }
 
-    // A record for the events service, or, for a process given no ring, a line as the standard logger writes it.
+    /*
+     * A record for the events service, or, for a process given no ring, a line as the standard logger writes it. A
+     * record the ring hasn't room for, or that there isn't the memory to put together, is dropped and counted: logging
+     * never ends the process.
+     */
     slop_os_log :: fn(level: LogLevel, label: string, format_string: string, params: any[]) {
         if cast[int](level) < cast[int](context.log_level) {
             return void
@@ -189,7 +193,6 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
             intrinsics.spin_hint()
         }
         while intrinsics.interlocked_exchange_u32(&log.lock, 1) != 0
-        array_reset(&log.entries)
         // A new reader, which knows none of what was given
         reader :: intrinsics.atomic_load_u32_acquire(&log.ring.reader)
         if reader != log.reader {
@@ -199,8 +202,23 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
             log.type_count = 0
             log.reader = reader
         }
+        if events_write(log, level, format_string, params) {
+            log.dropped = 0
+        }
+        else {
+            log.dropped += 1
+        }
+        intrinsics.atomic_store_u32_release(&log.lock, 0)
+    }
+
+    /*
+     * The record put in the ring, after a Dropped entry if any were dropped and what's given for the first time; false,
+     * with nothing put, if the ring hasn't room for them or there isn't the memory to put them together in entries.
+     */
+    events_write :: fn(log: ptr[mut SlopOsEventsLog], level: LogLevel, format_string: string, params: any[]) -> bool {
+        array_reset(&log.entries)
         if log.dropped > 0 {
-            dropped :: events_begin(&log.entries, SLOP_OS_EVENTS_DROPPED, size_of(SlopOsEventsDropped))
+            dropped :: events_begin(&log.entries, SLOP_OS_EVENTS_DROPPED, size_of(SlopOsEventsDropped)) or_return false
             cast[ptr[mut SlopOsEventsDropped]](events_at(&log.entries, dropped)).count = log.dropped
         }
         // What's given for the first time, before the record
@@ -208,12 +226,16 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         offset :: cast[u64](image_offset(cast[rawptr](format_string.data)))
         new_format :: named && !events_knows_format(log, offset)
         if new_format {
-            at :: events_begin(&log.entries, SLOP_OS_EVENTS_FORMAT, size_of(SlopOsEventsFormat))
-            events_bytes(&log.entries, cast[rawptr](format_string.data), format_string.count)
+            at :: events_begin(&log.entries, SLOP_OS_EVENTS_FORMAT, size_of(SlopOsEventsFormat)) or_return false
+            if !events_bytes(&log.entries, cast[rawptr](format_string.data), format_string.count) {
+                return false
+            }
             format :: cast[ptr[mut SlopOsEventsFormat]](events_at(&log.entries, at))
             format.offset = offset
             format.count = cast[u32](format_string.count)
-            events_end(&log.entries, at)
+            if !events_end(&log.entries, at) {
+                return false
+            }
         }
         arguments : any[SLOP_OS_EVENTS_MAX_ARGUMENTS]
         argument_count : usize = 0
@@ -237,30 +259,37 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
                 case Some(known) => types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS].hash = known
                 case None => {
                     array_reset(&log.scratch)
-                    schema_write(type, &log.scratch)
+                    if schema_try_write(type, &log.scratch) != null {
+                        return false
+                    }
                     types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS].hash = hash_blake3(log.scratch)
-                    at :: events_begin(&log.entries, SLOP_OS_EVENTS_SCHEMA, size_of(SlopOsEventsSchema))
-                    events_bytes(&log.entries, cast[rawptr](log.scratch.data), log.scratch.count)
+                    at :: events_begin(&log.entries, SLOP_OS_EVENTS_SCHEMA, size_of(SlopOsEventsSchema)) or_return false
+                    if !events_bytes(&log.entries, cast[rawptr](log.scratch.data), log.scratch.count) {
+                        return false
+                    }
                     schema :: cast[ptr[mut SlopOsEventsSchema]](events_at(&log.entries, at))
                     schema.hash = types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS].hash
                     schema.count = cast[u32](log.scratch.count)
-                    events_end(&log.entries, at)
+                    if !events_end(&log.entries, at) {
+                        return false
+                    }
                     new_types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS] = true
                 }
             }
         }
-        record_at :: events_begin(&log.entries, SLOP_OS_EVENTS_RECORD, size_of(SlopOsEventsRecord))
+        record_at :: events_begin(&log.entries, SLOP_OS_EVENTS_RECORD, size_of(SlopOsEventsRecord)) or_return false
         for i in cast[usize](0)..<argument_count {
-            argument_at :: log.entries.count
-            for byte in 0..<size_of(SlopOsEventsArgument) {
-                array_add(&log.entries, cast[u8](0))
-            }
+            argument_at :: events_zeroes(&log.entries, size_of(SlopOsEventsArgument)) or_return false
             value_at :: log.entries.count
-            schema_write_value(arguments[i % SLOP_OS_EVENTS_MAX_ARGUMENTS], &log.entries)
+            if schema_try_write_value(arguments[i % SLOP_OS_EVENTS_MAX_ARGUMENTS], &log.entries) != null {
+                return false
+            }
             argument :: cast[ptr[mut SlopOsEventsArgument]](events_at(&log.entries, argument_at))
             argument.hash = types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS].hash
             argument.count = cast[u32](log.entries.count - value_at)
-            events_pad(&log.entries)
+            if !events_pad(&log.entries) {
+                return false
+            }
         }
         record :: cast[ptr[mut SlopOsEventsRecord]](events_at(&log.entries, record_at))
         record.time = cast[u64](system_monotonic(null))
@@ -268,23 +297,19 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         record.argument_count = cast[u8](argument_count)
         record.named = if named { cast[u8](1) } else { cast[u8](0) }
         record.format = if named { offset } else { 0 }
-        events_end(&log.entries, record_at)
-        if events_put(log, log.entries) {
-            log.dropped = 0
-            // Known from here, now that the ring has them
-            if new_format {
-                events_remember_format(log, offset)
-            }
-            for i in cast[usize](0)..<argument_count {
-                if new_types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS] {
-                    events_remember_type(log, types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS])
-                }
+        if !events_end(&log.entries, record_at) || !events_put(log, log.entries) {
+            return false
+        }
+        // Known from here, now that the ring has them
+        if new_format {
+            events_remember_format(log, offset)
+        }
+        for i in cast[usize](0)..<argument_count {
+            if new_types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS] {
+                events_remember_type(log, types[i % SLOP_OS_EVENTS_MAX_ARGUMENTS])
             }
         }
-        else {
-            log.dropped += 1
-        }
-        intrinsics.atomic_store_u32_release(&log.lock, 0)
+        return true
     }
 
     // The process's ring, mapped the first time it's asked for, or null if it wasn't given one.
@@ -377,12 +402,14 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         }
     }
 
+    /*
+     * What puts entries together. Each makes room first, so its array_adds never grow entries, and gives false, or
+     * none, with nothing added, when there isn't the memory for it.
+     */
+
     // An entry of kind begun at the end of entries, header bytes of it zeroed: where it starts.
-    events_begin :: fn(entries: ptr[mut u8[..]], kind: u16, header: usize) -> usize {
-        at :: entries.count
-        for i in 0..<header {
-            array_add(entries, cast[u8](0))
-        }
+    events_begin :: fn(entries: ptr[mut u8[..]], kind: u16, header: usize) -> usize? {
+        at :: events_zeroes(entries, header) or_return null
         entry :: cast[ptr[mut SlopOsEventsEntry]](events_at(entries, at))
         entry.kind = kind
         entry.size = cast[u32](header)
@@ -390,24 +417,49 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     }
 
     // The entry begun at `at`, padded, its size set to what's after it.
-    events_end :: fn(entries: ptr[mut u8[..]], at: usize) {
-        events_pad(entries)
+    events_end :: fn(entries: ptr[mut u8[..]], at: usize) -> bool {
+        if !events_pad(entries) {
+            return false
+        }
         cast[ptr[mut SlopOsEventsEntry]](events_at(entries, at)).size = cast[u32](entries.count - at)
+        return true
     }
 
-    events_pad :: fn(entries: ptr[mut u8[..]]) {
-        loop {
-            if (entries.count & 7) == 0 {
-                break
-            }
+    events_pad :: fn(entries: ptr[mut u8[..]]) -> bool {
+        return events_zeroes(entries, cast[usize](slop_os_events_padded(cast[u64](entries.count))) - entries.count) != null
+    }
+
+    // count zeroed bytes added at the end of entries: where they start.
+    events_zeroes :: fn(entries: ptr[mut u8[..]], count: usize) -> usize? {
+        at :: entries.count
+        if !events_room(entries, count) {
+            return null
+        }
+        for i in 0..<count {
             array_add(entries, cast[u8](0))
         }
+        return at
     }
 
-    events_bytes :: fn(entries: ptr[mut u8[..]], data: rawptr, count: usize) {
+    events_bytes :: fn(entries: ptr[mut u8[..]], data: rawptr, count: usize) -> bool {
+        if !events_room(entries, count) {
+            return false
+        }
         for byte in view_of(cast[ptr[u8]](data), count) {
             array_add(entries, byte)
         }
+        return true
+    }
+
+    // Room for count more bytes, growing entries by doubling, as array_add does.
+    events_room :: fn(entries: ptr[mut u8[..]], count: usize) -> bool {
+        needed :: entries.count + count
+        capacity :: resizable(entries).capacity
+        if needed <= capacity {
+            return true
+        }
+        doubled :: capacity * 2
+        return array_try_reserve(entries, if doubled > needed { doubled } else { needed }) == null
     }
 
     events_at #no_context :: fn(entries: ptr[u8[..]], at: usize) -> rawptr {

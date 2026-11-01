@@ -25,8 +25,13 @@ VERSION : u16 : runtime.SCHEMA_VERSION
 Kind :: alias runtime.SchemaKind
 
 // A type's schema written to the end of into.
-write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) {
-    runtime.schema_write(type, into)
+write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]], location := #caller_location) {
+    runtime.schema_write(type, into, location)
+}
+
+// Like write, but without the memory, gives the allocator's error and leaves into's count as it was.
+try_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
+    return runtime.schema_try_write(type, into)
 }
 
 // A type's schema hash: BLAKE3-256 of its schema's bytes.
