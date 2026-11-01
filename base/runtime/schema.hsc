@@ -41,29 +41,52 @@ SchemaKind :: enum #backed_by(u8) {
     Void = 18,
 }
 
-// A type's schema written to the end of into.
-schema_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) {
+// The bytes being written, and the first error growing them or the types, after which nothing more is added;
+// #scoped, since the array may be on the stack.
+SchemaBytes :: struct #scoped {
+    into : ptr[mut u8[..]],
+    error : AllocatorError?,
+}
+
+// A type's schema written to the end of into. Without the memory, calls context.assertion_handler, as array_add does.
+schema_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]], location := #caller_location) {
+    if schema_try_write(type, into) != null {
+        context.assertion_handler(location, "out of memory")
+    }
+}
+
+/*
+ * Like schema_write, but without the memory, gives the allocator's error and leaves into's count as it was, for code
+ * that handles running out, like the SlopOS logger, which drops a record rather than end the process.
+ */
+schema_try_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> AllocatorError? {
+    start :: into.count
+    out := SchemaBytes.{into = into, error = null}
     // Each type by its address, as a number, so where they're kept isn't a question
     types : uintptr[..]
     defer array_free(&types)
-    array_add(&types, cast[uintptr](schema_plain(type)))
+    _ = schema_place(type, &types, &out)
     // Each type reached, from the first, adds those it refers to that are new
     at : usize = 0
     loop {
-        if at >= types.count {
+        if at >= types.count || out.error != null {
             break
         }
-        schema_reach(cast[ptr[compiler.TypeInfo]](types[at]), &types)
+        schema_reach(cast[ptr[compiler.TypeInfo]](types[at]), &types, &out)
         at += 1
     }
     for byte in u8.[0x48, 0x53, 0x43, 0x48] {
-        array_add(into, byte)
+        schema_add(&out, byte)
     }
-    schema_number(into, cast[u64](SCHEMA_VERSION), 2)
-    schema_number(into, cast[u64](types.count), 4)
+    schema_number(&out, cast[u64](SCHEMA_VERSION), 2)
+    schema_number(&out, cast[u64](types.count), 4)
     for each in types {
-        schema_describe(cast[ptr[compiler.TypeInfo]](each), &types, into)
+        schema_describe(cast[ptr[compiler.TypeInfo]](each), &types, &out)
     }
+    if out.error != null {
+        resizable(into).count = start
+    }
+    return out.error
 }
 
 // A type's schema hash: BLAKE3-256 of its schema's bytes.
@@ -89,180 +112,185 @@ schema_plain :: fn(type: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     }
 }
 
-// A type's place among types, added at the end if it's new.
-schema_place :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]]) -> usize {
+// A type's place among types, added at the end if it's new: 0, and out's error, without the memory to add it.
+schema_place :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], out: ptr[mut SchemaBytes]) -> usize {
     found :: cast[uintptr](schema_plain(type))
     for each, i in types^ {
         if each == found {
             return i
         }
     }
-    array_add(types, found)
+    if out.error == null {
+        out.error = array_try_add(types, found)
+    }
+    if out.error != null {
+        return 0
+    }
     return types.count - 1
 }
 
 // Every type a type refers to, given a place.
-schema_reach :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]]) {
+schema_reach :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], out: ptr[mut SchemaBytes]) {
     variant :: type.variant
     if variant == .ALIAS {
-        _ = schema_place(cast[ptr[compiler.TypeInfoAlias]](type).base_type, types)
+        _ = schema_place(cast[ptr[compiler.TypeInfoAlias]](type).base_type, types, out)
     }
     else if variant == .ARRAY {
-        _ = schema_place(cast[ptr[compiler.TypeInfoArray]](type).base_type, types)
+        _ = schema_place(cast[ptr[compiler.TypeInfoArray]](type).base_type, types, out)
     }
     else if variant == .ENUM {
-        _ = schema_place(cast[ptr[compiler.TypeInfoEnum]](type).backing_type, types)
+        _ = schema_place(cast[ptr[compiler.TypeInfoEnum]](type).backing_type, types, out)
     }
     else if variant == .FUNCTION {
         function :: cast[ptr[compiler.TypeInfoFunction]](type)
         for input in function.input {
-            _ = schema_place(input.type, types)
+            _ = schema_place(input.type, types, out)
         }
         for output in function.output {
-            _ = schema_place(output.type, types)
+            _ = schema_place(output.type, types, out)
         }
     }
     else if variant == .POINTER {
         pointer :: cast[ptr[compiler.TypeInfoPointer]](type)
         match pointer.base_type {
-            case Some(pointed) => _ = schema_place(pointed, types)
+            case Some(pointed) => _ = schema_place(pointed, types, out)
             case None => {}
         }
     }
     else if variant == .STRUCT {
         for member in cast[ptr[compiler.TypeInfoStruct]](type).members {
-            _ = schema_place(member.member_type, types)
+            _ = schema_place(member.member_type, types, out)
         }
     }
     else if variant == .UNION {
         union_info :: cast[ptr[compiler.TypeInfoUnion]](type)
         match union_info.tag_type {
-            case Some(tag) => _ = schema_place(tag, types)
+            case Some(tag) => _ = schema_place(tag, types, out)
             case None => {}
         }
         for each_variant in union_info.variants {
             for held in each_variant.types {
-                _ = schema_place(held, types)
+                _ = schema_place(held, types, out)
             }
         }
     }
     else if variant == .VECTOR {
-        _ = schema_place(cast[ptr[compiler.TypeInfoVector]](type).element_type, types)
+        _ = schema_place(cast[ptr[compiler.TypeInfoVector]](type).element_type, types, out)
     }
 }
 
 // One type's part of the bytes.
-schema_describe :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], into: ptr[mut u8[..]]) {
+schema_describe :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], out: ptr[mut SchemaBytes]) {
     variant :: type.variant
-    array_add(into, cast[u8](schema_kind_of(variant)))
-    schema_number(into, cast[u64](type.size), 8)
+    schema_add(out, cast[u8](schema_kind_of(variant)))
+    schema_number(out, cast[u64](type.size), 8)
     if variant == .ALIAS {
         alias :: cast[ptr[compiler.TypeInfoAlias]](type)
-        schema_name(into, alias.name)
-        schema_reference(into, alias.base_type, types)
+        schema_name(out, alias.name)
+        schema_reference(out, alias.base_type, types)
     }
     else if variant == .ARRAY {
         array :: cast[ptr[compiler.TypeInfoArray]](type)
-        schema_reference(into, array.base_type, types)
-        schema_number(into, cast[u64](array.dimensions.count), 4)
+        schema_reference(out, array.base_type, types)
+        schema_number(out, cast[u64](array.dimensions.count), 4)
         for dimension in array.dimensions {
             kind : u8 = if dimension.type == .STATIC { 1 } else if dimension.type == .DYNAMIC { 2 } else { 3 }
-            array_add(into, kind)
-            schema_number(into, cast[u64](dimension.count), 8)
-            schema_flag(into, dimension.is_mutable)
+            schema_add(out, kind)
+            schema_number(out, cast[u64](dimension.count), 8)
+            schema_flag(out, dimension.is_mutable)
         }
     }
     else if variant == .ENUM {
         enumeration :: cast[ptr[compiler.TypeInfoEnum]](type)
-        schema_name(into, enumeration.name)
-        schema_reference(into, enumeration.backing_type, types)
-        schema_number(into, cast[u64](enumeration.members.count), 4)
+        schema_name(out, enumeration.name)
+        schema_reference(out, enumeration.backing_type, types)
+        schema_number(out, cast[u64](enumeration.members.count), 4)
         for member, i in enumeration.members {
-            schema_name(into, member)
+            schema_name(out, member)
             value : u128 = if i < enumeration.values.count { enumeration.values[i] } else { 0 }
-            schema_number(into, cast[u64](value), 8)
-            schema_number(into, cast[u64](value >> 64), 8)
+            schema_number(out, cast[u64](value), 8)
+            schema_number(out, cast[u64](value >> 64), 8)
         }
     }
     else if variant == .FLOAT {
-        schema_endianness(into, cast[ptr[compiler.TypeInfoFloat]](type).endianness)
+        schema_endianness(out, cast[ptr[compiler.TypeInfoFloat]](type).endianness)
     }
     else if variant == .FUNCTION {
         function :: cast[ptr[compiler.TypeInfoFunction]](type)
-        schema_number(into, cast[u64](function.input.count), 4)
+        schema_number(out, cast[u64](function.input.count), 4)
         for input in function.input {
-            schema_name(into, input.name)
-            schema_reference(into, input.type, types)
-            schema_flag(into, input.is_varargs)
-            schema_flag(into, input.is_escaping)
+            schema_name(out, input.name)
+            schema_reference(out, input.type, types)
+            schema_flag(out, input.is_varargs)
+            schema_flag(out, input.is_escaping)
         }
-        schema_number(into, cast[u64](function.output.count), 4)
+        schema_number(out, cast[u64](function.output.count), 4)
         for output in function.output {
-            schema_reference(into, output.type, types)
+            schema_reference(out, output.type, types)
         }
-        schema_flag(into, function.never_returns)
+        schema_flag(out, function.never_returns)
     }
     else if variant == .INTEGER {
         integer :: cast[ptr[compiler.TypeInfoInteger]](type)
-        schema_flag(into, integer.is_signed)
-        schema_endianness(into, integer.endianness)
+        schema_flag(out, integer.is_signed)
+        schema_endianness(out, integer.endianness)
     }
     else if variant == .POINTER {
         pointer :: cast[ptr[compiler.TypeInfoPointer]](type)
         match pointer.base_type {
             case Some(pointed) => {
-                schema_flag(into, true)
-                schema_reference(into, pointed, types)
+                schema_flag(out, true)
+                schema_reference(out, pointed, types)
             }
-            case None => schema_flag(into, false)
+            case None => schema_flag(out, false)
         }
-        schema_flag(into, pointer.is_relative)
-        schema_flag(into, pointer.is_mutable)
+        schema_flag(out, pointer.is_relative)
+        schema_flag(out, pointer.is_mutable)
     }
     else if variant == .STRING {
-        schema_flag(into, cast[ptr[compiler.TypeInfoString]](type).is_raw)
+        schema_flag(out, cast[ptr[compiler.TypeInfoString]](type).is_raw)
     }
     else if variant == .STRUCT {
         structure :: cast[ptr[compiler.TypeInfoStruct]](type)
-        schema_name(into, structure.name)
-        schema_number(into, cast[u64](structure.alignment), 8)
-        schema_flag(into, structure.is_packed)
-        schema_flag(into, structure.is_union)
-        schema_number(into, cast[u64](structure.members.count), 4)
+        schema_name(out, structure.name)
+        schema_number(out, cast[u64](structure.alignment), 8)
+        schema_flag(out, structure.is_packed)
+        schema_flag(out, structure.is_union)
+        schema_number(out, cast[u64](structure.members.count), 4)
         for member in structure.members {
-            schema_name(into, member.name)
-            schema_reference(into, member.member_type, types)
-            schema_number(into, cast[u64](member.offset), 8)
-            schema_flag(into, member.is_using)
+            schema_name(out, member.name)
+            schema_reference(out, member.member_type, types)
+            schema_number(out, cast[u64](member.offset), 8)
+            schema_flag(out, member.is_using)
         }
     }
     else if variant == .UNION {
         union_info :: cast[ptr[compiler.TypeInfoUnion]](type)
-        schema_name(into, union_info.name)
-        schema_flag(into, union_info.null_is_none)
+        schema_name(out, union_info.name)
+        schema_flag(out, union_info.null_is_none)
         match union_info.tag_type {
             case Some(tag) => {
-                schema_flag(into, true)
-                schema_reference(into, tag, types)
+                schema_flag(out, true)
+                schema_reference(out, tag, types)
             }
-            case None => schema_flag(into, false)
+            case None => schema_flag(out, false)
         }
-        schema_number(into, cast[u64](union_info.variants.count), 4)
+        schema_number(out, cast[u64](union_info.variants.count), 4)
         for each_variant in union_info.variants {
-            schema_name(into, each_variant.name)
-            schema_number(into, cast[u64](each_variant.types.count), 4)
+            schema_name(out, each_variant.name)
+            schema_number(out, cast[u64](each_variant.types.count), 4)
             for held, i in each_variant.types {
-                schema_reference(into, held, types)
+                schema_reference(out, held, types)
                 offset : usize = if i < each_variant.offsets.count { each_variant.offsets[i] } else { 0 }
-                schema_number(into, cast[u64](offset), 8)
+                schema_number(out, cast[u64](offset), 8)
             }
         }
     }
     else if variant == .VECTOR {
         vector :: cast[ptr[compiler.TypeInfoVector]](type)
-        schema_reference(into, vector.element_type, types)
-        schema_number(into, cast[u64](vector.count), 8)
-        schema_flag(into, vector.is_bits)
+        schema_reference(out, vector.element_type, types)
+        schema_number(out, cast[u64](vector.count), 8)
+        schema_flag(out, vector.is_bits)
     }
 }
 
@@ -290,30 +318,30 @@ schema_kind_of :: fn(variant: compiler.TypeInfoVariant) -> SchemaKind {
 }
 
 // A number's lowest bytes, little-endian.
-schema_number :: fn(into: ptr[mut u8[..]], value: u64, bytes: usize) {
+schema_number :: fn(out: ptr[mut SchemaBytes], value: u64, bytes: usize) {
     for i in cast[usize](0)..<bytes {
-        array_add(into, cast[u8]((value >> (8 * i)) & 0xff))
+        schema_add(out, cast[u8]((value >> (8 * i)) & 0xff))
     }
 }
 
-schema_flag :: fn(into: ptr[mut u8[..]], value: bool) {
-    array_add(into, if value { cast[u8](1) } else { cast[u8](0) })
+schema_flag :: fn(out: ptr[mut SchemaBytes], value: bool) {
+    schema_add(out, if value { cast[u8](1) } else { cast[u8](0) })
 }
 
-schema_name :: fn(into: ptr[mut u8[..]], text: string) {
-    schema_number(into, cast[u64](text.count), 4)
+schema_name :: fn(out: ptr[mut SchemaBytes], text: string) {
+    schema_number(out, cast[u64](text.count), 4)
     for byte in view_of(cast[ptr[u8]](text.data), text.count) {
-        array_add(into, byte)
+        schema_add(out, byte)
     }
 }
 
-schema_endianness :: fn(into: ptr[mut u8[..]], value: compiler.Endianness) {
-    array_add(into, if value == .BIG { cast[u8](1) } else if value == .LITTLE { cast[u8](2) } else { cast[u8](3) })
+schema_endianness :: fn(out: ptr[mut SchemaBytes], value: compiler.Endianness) {
+    schema_add(out, if value == .BIG { cast[u8](1) } else if value == .LITTLE { cast[u8](2) } else { cast[u8](3) })
 }
 
 // A type it refers to, by its place, which reach gave it.
-schema_reference :: fn(into: ptr[mut u8[..]], type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]]) {
-    schema_number(into, cast[u64](schema_place(type, types)), 4)
+schema_reference :: fn(out: ptr[mut SchemaBytes], type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]]) {
+    schema_number(out, cast[u64](schema_place(type, types, out)), 4)
 }
 
 /*
@@ -334,23 +362,45 @@ SCHEMA_MAX_DEPTH :: 8
 // The most bytes of a cstring followed, its zero included.
 SCHEMA_CSTRING_LIMIT : usize : 4096
 
-// A value written to the end of into, with what it points to after it.
-schema_write_value :: fn(value: any, into: ptr[mut u8[..]]) {
-    info :: type_info_of(value.type)
-    start :: into.count
-    schema_copy_in(into, value.data, info.size)
-    schema_fix(into, start, start, info, 0)
-}
-
-// count bytes from data appended.
-schema_copy_in :: fn(into: ptr[mut u8[..]], data: rawptr, count: usize) {
-    for byte in view_of(cast[ptr[u8]](data), count) {
-        array_add(into, byte)
+/*
+ * A value written to the end of into, with what it points to after it. Without the memory, calls
+ * context.assertion_handler, as array_add does.
+ */
+schema_write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_location) {
+    if schema_try_write_value(value, into) != null {
+        context.assertion_handler(location, "out of memory")
     }
 }
 
-schema_word :: fn(into: ptr[mut u8[..]], at: usize) -> u64 {
-    bytes : u8[] = into^
+// Like schema_write_value, but without the memory, gives the allocator's error and leaves into's count as it was.
+schema_try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> AllocatorError? {
+    info :: type_info_of(value.type)
+    start :: into.count
+    out := SchemaBytes.{into = into, error = null}
+    schema_copy_in(&out, value.data, info.size)
+    schema_fix(&out, start, start, info, 0)
+    if out.error != null {
+        resizable(into).count = start
+    }
+    return out.error
+}
+
+// A byte added at the end, unless adding one has failed already.
+schema_add :: fn(out: ptr[mut SchemaBytes], byte: u8) {
+    if out.error == null {
+        out.error = array_try_add(out.into, byte)
+    }
+}
+
+// count bytes from data appended.
+schema_copy_in :: fn(out: ptr[mut SchemaBytes], data: rawptr, count: usize) {
+    for byte in view_of(cast[ptr[u8]](data), count) {
+        schema_add(out, byte)
+    }
+}
+
+schema_word :: fn(out: ptr[mut SchemaBytes], at: usize) -> u64 {
+    bytes : u8[] = out.into^
     result : u64 = 0
     for i in cast[usize](0)..<8 {
         j :: at + i
@@ -361,8 +411,8 @@ schema_word :: fn(into: ptr[mut u8[..]], at: usize) -> u64 {
     return result
 }
 
-schema_set_word :: fn(into: ptr[mut u8[..]], at: usize, value: u64) {
-    bytes : mut u8[] = into^
+schema_set_word :: fn(out: ptr[mut SchemaBytes], at: usize, value: u64) {
+    bytes : mut u8[] = out.into^
     for i in cast[usize](0)..<8 {
         j :: at + i
         if j < bytes.count {
@@ -371,8 +421,8 @@ schema_set_word :: fn(into: ptr[mut u8[..]], at: usize, value: u64) {
     }
 }
 
-schema_zero :: fn(into: ptr[mut u8[..]], at: usize, count: usize) {
-    bytes : mut u8[] = into^
+schema_zero :: fn(out: ptr[mut SchemaBytes], at: usize, count: usize) {
+    bytes : mut u8[] = out.into^
     for i in cast[usize](0)..<count {
         j :: at + i
         if j < bytes.count {
@@ -383,16 +433,19 @@ schema_zero :: fn(into: ptr[mut u8[..]], at: usize, count: usize) {
 
 /*
  * The pointer word at `at` replaced by what it pointed to, count bytes of it, copied to the end: its distance from
- * start, or 0 if it was null. Where the copy is, or null if there's none to follow into.
+ * start, or 0 if it was null. Where the copy is, or null if there's none to follow into, or no memory for it.
  */
-schema_follow :: fn(into: ptr[mut u8[..]], start: usize, at: usize, count: usize) -> usize? {
-    pointer :: schema_word(into, at)
-    if pointer == 0 {
+schema_follow :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, count: usize) -> usize? {
+    pointer :: schema_word(out, at)
+    if pointer == 0 || out.error != null {
         return null
     }
-    copied :: into.count
-    schema_copy_in(into, cast[rawptr](cast[uintptr](pointer)), count)
-    schema_set_word(into, at, cast[u64](copied - start))
+    copied :: out.into.count
+    schema_copy_in(out, cast[rawptr](cast[uintptr](pointer)), count)
+    if out.error != null {
+        return null
+    }
+    schema_set_word(out, at, cast[u64](copied - start))
     return copied
 }
 
@@ -400,12 +453,12 @@ schema_follow :: fn(into: ptr[mut u8[..]], start: usize, at: usize, count: usize
  * The pointers in the part of into at `at`, a value of type, each followed or written as 0. Positions are kept as
  * indices, since into grows as what's followed is appended.
  */
-schema_fix :: fn(into: ptr[mut u8[..]], start: usize, at: usize, type: ptr[compiler.TypeInfo], depth: int) {
+schema_fix :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, type: ptr[compiler.TypeInfo], depth: int) {
     info :: schema_unaliased(type)
     variant :: info.variant
     if variant == .STRING {
         if cast[ptr[compiler.TypeInfoString]](info).is_raw {
-            pointer :: schema_word(into, at)
+            pointer :: schema_word(out, at)
             if pointer != 0 {
                 bytes :: view_of(cast[ptr[u8]](cast[uintptr](pointer)), SCHEMA_CSTRING_LIMIT)
                 length := SCHEMA_CSTRING_LIMIT
@@ -415,33 +468,33 @@ schema_fix :: fn(into: ptr[mut u8[..]], start: usize, at: usize, type: ptr[compi
                         break
                     }
                 }
-                _ = schema_follow(into, start, at, length)
+                _ = schema_follow(out, start, at, length)
             }
             return void
         }
         // count, then data
-        _ = schema_follow(into, start, at + 8, cast[usize](schema_word(into, at)))
+        _ = schema_follow(out, start, at + 8, cast[usize](schema_word(out, at)))
     }
     else if variant == .ARRAY {
-        schema_fix_array(into, start, at, cast[ptr[compiler.TypeInfoArray]](info), 0, depth)
+        schema_fix_array(out, start, at, cast[ptr[compiler.TypeInfoArray]](info), 0, depth)
     }
     else if variant == .POINTER {
         pointer :: cast[ptr[compiler.TypeInfoPointer]](info)
         if pointer.is_relative {
             return void
         }
-        schema_fix_pointer(into, start, at, pointer.base_type, depth)
+        schema_fix_pointer(out, start, at, pointer.base_type, depth)
     }
     else if variant == .STRUCT {
         structure :: cast[ptr[compiler.TypeInfoStruct]](info)
         if structure.is_union {
             if schema_holds_pointers(info, 0) {
-                schema_zero(into, at, info.size)
+                schema_zero(out, at, info.size)
             }
             return void
         }
         for member in structure.members {
-            schema_fix(into, start, at + member.offset, member.member_type, depth)
+            schema_fix(out, start, at + member.offset, member.member_type, depth)
         }
     }
     else if variant == .UNION {
@@ -450,7 +503,7 @@ schema_fix :: fn(into: ptr[mut u8[..]], start: usize, at: usize, type: ptr[compi
             // Just the pointer: Some's only value
             for each in union_info.variants {
                 if each.types.count == 1 {
-                    schema_fix(into, start, at, each.types[0], depth)
+                    schema_fix(out, start, at, each.types[0], depth)
                     break
                 }
             }
@@ -460,40 +513,40 @@ schema_fix :: fn(into: ptr[mut u8[..]], start: usize, at: usize, type: ptr[compi
             case Some(tag) => tag.size
             case None => cast[usize](0)
         }
-        tag :: cast[usize](schema_word(into, at) & schema_mask_of(tag_size))
+        tag :: cast[usize](schema_word(out, at) & schema_mask_of(tag_size))
         if tag >= union_info.variants.count {
             return void
         }
         chosen :: union_info.variants[tag]
         for held, i in chosen.types {
             if i < chosen.offsets.count {
-                schema_fix(into, start, at + chosen.offsets[i], held, depth)
+                schema_fix(out, start, at + chosen.offsets[i], held, depth)
             }
         }
     }
     else if variant == .ANY || variant == .FUNCTION || variant == .TYPE {
-        schema_zero(into, at, info.size)
+        schema_zero(out, at, info.size)
     }
 }
 
 // What a pointer at `at` points to, of type pointed, followed, unless it's a rawptr or too deep.
-schema_fix_pointer :: fn(into: ptr[mut u8[..]], start: usize, at: usize, pointed: ptr[compiler.TypeInfo]?, depth: int) {
+schema_fix_pointer :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, pointed: ptr[compiler.TypeInfo]?, depth: int) {
     if (pointed is_none) || depth >= SCHEMA_MAX_DEPTH {
-        schema_set_word(into, at, 0)
+        schema_set_word(out, at, 0)
         return void
     }
     target :: pointed or_return void
-    match schema_follow(into, start, at, target.size) {
-        case Some(copied) => schema_fix(into, start, copied, target, depth + 1)
+    match schema_follow(out, start, at, target.size) {
+        case Some(copied) => schema_fix(out, start, copied, target, depth + 1)
         case None => {}
     }
 }
 
 // The array at `at`, from dimension on: a static one's elements in place, a view's or dynamic one's copied after.
-schema_fix_array :: fn(into: ptr[mut u8[..]], start: usize, at: usize, info: ptr[compiler.TypeInfoArray], dimension: usize, depth: int) {
+schema_fix_array :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, info: ptr[compiler.TypeInfoArray], dimension: usize, depth: int) {
     dimensions :: info.dimensions
     if dimension >= dimensions.count {
-        schema_fix(into, start, at, info.base_type, depth)
+        schema_fix(out, start, at, info.base_type, depth)
         return void
     }
     element_size :: schema_dimension_element_size(info, dimension)
@@ -502,17 +555,17 @@ schema_fix_array :: fn(into: ptr[mut u8[..]], start: usize, at: usize, info: ptr
     count := dimensions[dimension].count
     if array_type == .VIEW || array_type == .DYNAMIC {
         // count, then data; a dynamic array's capacity and allocator after them mean nothing elsewhere
-        count = cast[usize](schema_word(into, at))
+        count = cast[usize](schema_word(out, at))
         if array_type == .DYNAMIC {
-            schema_zero(into, at + 16, size_of(ResizableArray) - 16)
+            schema_zero(out, at + 16, size_of(ResizableArray) - 16)
         }
-        elements = schema_follow(into, start, at + 8, count * element_size) or_return void
+        elements = schema_follow(out, start, at + 8, count * element_size) or_return void
     }
     if !schema_holds_pointers_array(info, dimension) {
         return void
     }
     for index in cast[usize](0)..<count {
-        schema_fix_array(into, start, elements + index * element_size, info, dimension + 1, depth)
+        schema_fix_array(out, start, elements + index * element_size, info, dimension + 1, depth)
     }
 }
 
