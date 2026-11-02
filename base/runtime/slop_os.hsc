@@ -489,6 +489,48 @@ SlopOsGrant :: struct {
         return cast[ptr[SlopOsClockPage]](state.clock_page)
     }
 
+    // The process's grant "locale", a page holding the locale's name up to its first zero, read the first time it's asked for.
+    slop_os_locale_name :: fn() -> string {
+        state :: intrinsics.process_state()
+        loop {
+            match intrinsics.atomic_load_u32_acquire(&state.locale_state) {
+                case CLOCK_PAGE_MAPPED => return string_of(&state.locale_name[0], state.locale_name_count)
+                case CLOCK_PAGE_NONE => return ""
+                case CLOCK_PAGE_MAPPING => continue
+                case _ => {}
+            }
+            _, claimed :: intrinsics.interlocked_compare_exchange_u32(&state.locale_state, CLOCK_PAGE_MAPPING, CLOCK_PAGE_UNTRIED)
+            if claimed {
+                break
+            }
+        }
+        handle :: os_entry_grant("locale", "Memory", "", false)
+        address :: if handle == 0 || state.startup_block == null { cast[u64](0) } else { reserve_addresses(PAGE_SIZE) or_else 0 }
+        if address == 0 {
+            intrinsics.atomic_store_u32_release(&state.locale_state, CLOCK_PAGE_NONE)
+            return ""
+        }
+        startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+        mapped :: slop_os_call(SLOP_OS_CALL_MEMORY_MAP, cast[u64](handle), cast[u64](startup.space), address, 0, cast[u64](PAGE_SIZE),
+            SLOP_OS_PROTECTION_READ)
+        if mapped.tag != 0 {
+            intrinsics.atomic_store_u32_release(&state.locale_state, CLOCK_PAGE_NONE)
+            return ""
+        }
+        page :: view_of(cast[ptr[u8]](address), LOCALE_NAME_BYTES)
+        count : usize = 0
+        for byte in page {
+            if byte == 0 || count >= state.locale_name.count {
+                break
+            }
+            state.locale_name[count] = byte
+            count += 1
+        }
+        state.locale_name_count = count
+        intrinsics.atomic_store_u32_release(&state.locale_state, CLOCK_PAGE_MAPPED)
+        return string_of(&state.locale_name[0], state.locale_name_count)
+    }
+
     // The process's grant "clock", mapped read-only, or null.
     map_clock_page #no_context :: fn() -> rawptr {
         state :: intrinsics.process_state()

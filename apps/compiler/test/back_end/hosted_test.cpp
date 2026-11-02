@@ -337,6 +337,12 @@ TEST(Hosted, SplitsGraphemeClusters)
 	run_hosted("unicode", hemera::TargetStackCheck::Off);
 }
 
+// std/locale: numbers, dates and times as each locale writes them, and the locale in effect from the context.
+TEST(Hosted, FormatsForLocales)
+{
+	run_hosted("locale", hemera::TargetStackCheck::Off);
+}
+
 // std/memory's Arena: bumping, giving back the newest block, chunks, marks and resets (docs/memory.md, Allocators).
 TEST(Hosted, AllocatesFromArenas)
 {

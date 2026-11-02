@@ -295,6 +295,8 @@ push_context with_connection (extensions = &node) {
 * `get_extension` walks the chain, so it costs one step per node. A hot path can look an extension up once and
   pass the pointer down.
 * Adding extension types never changes `Context`'s layout, so it doesn't break separately compiled code.
+* `std/locale` keeps the `Locale` human-facing text is written in this way: set for a scope, and otherwise the
+  process's own (`runtime.locale_name`), so nothing that isn't meant for a person changes with it.
 
 ## Assertion Handlers
 

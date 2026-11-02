@@ -49,6 +49,28 @@ ProcessState :: struct {
     stop_requested : u32,
     stop_port : u64,
     stop_key : u64,
+    // On SlopOS, the name of the locale the process was given (its grant "locale"), once it's read, and how far that's
+    // got, as clock_state
+    locale_name : u8[LOCALE_NAME_BYTES],
+    locale_name_count : usize,
+    locale_state : u32,
+}
+
+// The most bytes of a locale's name the process keeps, as "en-GB" is 5.
+LOCALE_NAME_BYTES :: 32
+
+/*
+ * The name of the locale the process was given, or "" for none: on SlopOS, what its grant "locale" holds, which whoever
+ * launched it gave it (std/os's LaunchOptions.locale); elsewhere none. Only std/locale reads it, for human-facing text:
+ * nothing else in base changes with it.
+ */
+locale_name :: fn() -> string {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+        return slop_os_locale_name()
+    }
+    #else {
+        return ""
+    }
 }
 
 // ProcessState's clock_state and events_state: not looked for yet, being mapped, mapped, or there's none.

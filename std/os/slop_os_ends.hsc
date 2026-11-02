@@ -297,7 +297,9 @@ package os
      * read-only memory object the clock service keeps, base's runtime.SlopOsClockPage), as the grant "clock", which
      * base's runtime reads the wall clock from, whatever the program's entry takes; and give it a ring for its log
      * records and the ring's doorbell (LaunchEvents), as the grants "events", which base's logger writes to; and give it
-     * its end of a lifecycle channel (std/os/slop_os's lifecycle), as the grant "lifecycle", which base's runtime serves.
+     * its end of a lifecycle channel (std/os/slop_os's lifecycle), as the grant "lifecycle", which base's runtime serves;
+     * and give it a page holding its locale's name, as the grant "locale", which base's runtime.locale_name reads and
+     * std/locale formats human-facing text by.
      */
     LaunchOptions :: struct {
         watch : LaunchWatch?,
@@ -305,6 +307,7 @@ package os
         clock : slop_os.Memory?,
         events : LaunchEvents?,
         lifecycle : slop_os.Channel?,
+        locale : slop_os.Memory?,
         // The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime binds
         // before main (the SlopOS repository's decisions 0119, 0120); the program's to own. Every library the launcher
         // was given itself is given too, but those named here (0121).
@@ -397,6 +400,12 @@ package os
         }
         match options.lifecycle {
             case Some(end) => if !add_grant(&load, "lifecycle", cast[slop_os.Handle](end)) {
+                return .Error(.BadGrants)
+            }
+            case None => {}
+        }
+        match options.locale {
+            case Some(page) => if !add_grant(&load, "locale", cast[slop_os.Handle](page)) {
                 return .Error(.BadGrants)
             }
             case None => {}
