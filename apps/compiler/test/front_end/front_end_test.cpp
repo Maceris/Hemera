@@ -805,6 +805,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "foreign_not_library", hemera::ErrorCode::E4014 },
 		{ "foreign_convention", hemera::ErrorCode::E4014 },
 		{ "foreign_hemera_callback", hemera::ErrorCode::E4014 },
+		{ "secret_field_in_any", hemera::ErrorCode::E4037 },
 		{ "link_name_alone", hemera::ErrorCode::E4014 },
 		{ "stack_return_local", hemera::ErrorCode::E4030 },
 		{ "stack_outlives_block", hemera::ErrorCode::E4030 },

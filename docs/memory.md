@@ -408,6 +408,11 @@ like a field of a secret or a local made from one. Taking a pointer to a secret 
 `ptr[Key]`, to a pointer to what isn't. `bit_cast` of a secret gives a secret, so it needs nothing more. `.count` and
 `.capacity` aren't secrets, and neither is a view's or a dynamic array's `.data`, which says where its elements are.
 
+An `any` loses its value's type, and is what formatting and logging take (`strings.format`, `runtime.log_info`), so
+nothing that holds a secret can become one: not a secret, not a struct with a secret field or an array of secrets, and
+not a pointer to any of them. Passing one where an `any` goes is an error; what's public in it is passed instead, or
+`compiler.declassify`d where it's public by design.
+
 An optional or a result whose value is of a `#secret` type, like `Key?` or `Result[Key, E]`, can hold a secret: whether
 it holds one is public, so it can be branched on, with `is_some`, `match` or `?`, and what it holds is a secret, as its
 type says. So a function that may not have a key to give, like one that opens a sealed one, gives a `Key?`.

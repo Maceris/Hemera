@@ -158,6 +158,25 @@ namespace hemera {
 		return false;
 	}
 
+	/*
+	 * Whether a value can become an any: not when it holds or reaches a secret, a #secret field in it or a pointer to
+	 * one, since an any is formatted, logged and kept where its type is lost (docs/memory.md, Secrets). A secret value
+	 * itself is require_secret_fits's to refuse.
+	 */
+	static bool require_no_secret_in_any(Checker& checker, const Value& value, TypeInfo const* type, const ast::Node* where,
+		std::string_view what) {
+
+		TypeInfo const* held = type != nullptr ? get_base_type(type) : nullptr;
+		if (held == nullptr || TypeInfoVariant::ANY != held->variant || ValueKind::VALUE != value.kind || value.is_secret
+			|| value.type == nullptr || is_secret_type(value.type) || !holds_secret(value.type)) {
+			return true;
+		}
+		error_at(checker, ErrorCode::E4037, where, std::format(
+			"{} is an any, and this holds or points to a secret, which would be formatted or logged with its type lost; "
+			"pass what's public in it, or compiler.declassify what's public by design", what));
+		return false;
+	}
+
 	static std::string text_of(InternedString value) {
 		return value != nullptr ? std::string(std::string_view(*value)) : std::string("_");
 	}
@@ -1788,6 +1807,7 @@ namespace hemera {
 					require_fit(checker, value, input.type, argument, std::format("{}", text_of(input.name)));
 					if (!checker.intrinsic_arguments) {
 						require_secret_fits(checker, value.is_secret, input.type, false, argument, std::format("{}", text_of(input.name)));
+						require_no_secret_in_any(checker, value, input.type, argument, std::format("{}", text_of(input.name)));
 					}
 					require_stays(checker, value, input, function, argument);
 					continue;
@@ -1807,6 +1827,8 @@ namespace hemera {
 				input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the argument"));
 			if (!checker.intrinsic_arguments) {
 				require_secret_fits(checker, value.is_secret, expected, false, argument,
+					input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the parameter"));
+				require_no_secret_in_any(checker, value, expected, argument,
 					input.name != nullptr ? std::format("{}", text_of(input.name)) : std::string("the parameter"));
 			}
 			require_stays(checker, value, input, function, argument);

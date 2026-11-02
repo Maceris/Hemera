@@ -550,6 +550,12 @@ namespace hemera {
 	bool has_defaults(TypeInfo const* type);
 
 	/// <summary>
+	/// Whether a value of type holds a secret anywhere in it: is one, or has one in a field, an element or an optional's
+	/// value, or points to one (docs/memory.md, Secrets), which an any can't carry.
+	/// </summary>
+	bool holds_secret(TypeInfo const* type);
+
+	/// <summary>
 	/// Whether a value of type holds or reaches a secret, through pointers too, like a ptr[Key] parameter.
 	/// </summary>
 	bool reaches_secret(TypeInfo const* type);
