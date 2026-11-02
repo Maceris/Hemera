@@ -163,7 +163,8 @@ Syscalls :: struct {
     channel_notify_and_wait : fn(end: Channel, signals: Signals, port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, ChannelError],
     /*
      * A Signal packet for key when the object raises any of signals, or an Irq packet for an IRQ's interrupts. A channel
-     * end's packet comes at once for PeerClosed if its peer is closed, and for Readable if messages are waiting in it.
+     * end's packet comes at once for PeerClosed if its peer is closed, and for Readable if messages are waiting in it;
+     * bound for Readable while it's empty, its next message raises Readable, as if a read had found it empty.
      */
     port_bind : fn(port: Port, object: Handle, signals: Signals, key: u64, mode: BindMode) -> Result[void, PortError],
     // A child budget of limit bytes, carved out of the budget.
