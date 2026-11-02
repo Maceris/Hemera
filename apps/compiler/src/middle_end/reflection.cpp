@@ -424,6 +424,7 @@ namespace hemera {
 				write_number(record, layout, "is_unrestricted", structure->is_unrestricted);
 				write_number(record, layout, "is_packed", structure->is_packed);
 				write_number(record, layout, "is_union", structure->is_union);
+				write_number(record, layout, "is_secret", is_secret_type(type));
 				break;
 			}
 			case TypeInfoVariant::UNION: {

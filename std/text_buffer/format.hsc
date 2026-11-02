@@ -212,7 +212,14 @@ append_data :: fn(text: ptr[mut TextBuffer], data: rawptr, type_info: ptr[compil
         }
     }
     else if variant == .STRUCT {
-        append_struct(text, data, cast[ptr[compiler.TypeInfoStruct]](info))
+        structure :: cast[ptr[compiler.TypeInfoStruct]](info)
+        // One that reached here as an any or through a rawptr, which the compiler couldn't refuse
+        if structure.is_secret {
+            append(text, "<secret>")
+        }
+        else {
+            append_struct(text, data, structure)
+        }
     }
     else if variant == .ARRAY {
         array_info :: cast[ptr[compiler.TypeInfoArray]](info)

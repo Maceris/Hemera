@@ -4058,6 +4058,7 @@ namespace hemera {
 				info.flag("is_unrestricted", structure->is_unrestricted);
 				info.flag("is_packed", structure->is_packed);
 				info.flag("is_union", structure->is_union);
+				info.flag("is_secret", is_secret_type(type));
 				break;
 			}
 			case TypeInfoVariant::UNION: {

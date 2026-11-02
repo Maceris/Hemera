@@ -155,6 +155,8 @@ TypeInfoStruct :: struct {
     is_packed: bool,
     // Marked #union, so every member is at offset 0 and they share memory.
     is_union: bool,
+    // Marked #secret, so its values are secrets, which formatting shows as <secret> (docs/memory.md, Secrets).
+    is_secret: bool,
 }
 
 TypeInfoUnion :: struct {

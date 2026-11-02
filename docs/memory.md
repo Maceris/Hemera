@@ -411,7 +411,8 @@ like a field of a secret or a local made from one. Taking a pointer to a secret 
 An `any` loses its value's type, and is what formatting and logging take (`strings.format`, `runtime.log_info`), so
 nothing that holds a secret can become one: not a secret, not a struct with a secret field or an array of secrets, and
 not a pointer to any of them. Passing one where an `any` goes is an error; what's public in it is passed instead, or
-`compiler.declassify`d where it's public by design.
+`compiler.declassify`d where it's public by design. Should one reach the formatter anyway, a `#secret` struct's type
+information says so (`TypeInfoStruct.is_secret`), and it's written as `<secret>`.
 
 An optional or a result whose value is of a `#secret` type, like `Key?` or `Result[Key, E]`, can hold a secret: whether
 it holds one is public, so it can be branched on, with `is_some`, `match` or `?`, and what it holds is a secret, as its
