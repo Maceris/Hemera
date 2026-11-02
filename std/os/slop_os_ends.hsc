@@ -339,16 +339,34 @@ package os
      * handle moved to the program, or None for an optional one it goes without. name is for the manager's log. options
      * (LaunchOptions) can watch its end from before it starts, so even a program that ends at once is seen to, put it on a
      * CPU budget, and give it the clock page and its events ring; the budget's handle is closed once it's on it, and the
-     * clock page's and the ring's are the program's.
+     * clock page's and the ring's are the program's. A launch that fails gives back what it made for the program (its
+     * budget, its process, the watch on its end, and the handles it made for the manager), so none of it stays charged
+     * to the caller.
      */
     launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
         budget: u64, entry: F, grants: G, options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
         block :: slop_os.startup_block()
         child :: slop_os.memory_budget_create(block.budget, budget) or_return .Error(.NoBudget)
-        process :: slop_os.process_create(child) or_return .Error(.NoBudget)
+        load := process_manager.Load.{name = label_from(name)}
+        process := cast[slop_os.Process](slop_os.NO_HANDLE)
+        watch : LaunchWatch? = null
+        // Whether the Load's gone to the manager, whose its handles are then, and where its own copies of the
+        // launcher's libraries start among its grants, none until they're added (the grants before are the caller's)
+        sent := false
+        copies_from := load.grants.count
+        started := false
+        defer {
+            if !started {
+                give_back(&load, sent, copies_from, watch, process, child)
+            }
+        }
+        process = slop_os.process_create(child) or_return .Error(.NoBudget)
         match options.watch {
-            case Some(watching) => slop_os.port_bind(watching.port, cast[slop_os.Handle](process), slop_os.SIGNAL_TERMINATED, watching.key, .Once)
-                or_return .Error(.NoBudget)
+            case Some(watching) => {
+                slop_os.port_bind(watching.port, cast[slop_os.Handle](process), slop_os.SIGNAL_TERMINATED, watching.key, .Once)
+                    or_return .Error(.NoBudget)
+                watch = watching
+            }
             case None => {}
         }
         match options.cpu_budget {
@@ -359,8 +377,7 @@ package os
             }
             case None => {}
         }
-        space :: slop_os.address_space_create(child) or_return .Error(.NoBudget)
-        load := process_manager.Load.{name = label_from(name), space = space}
+        load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
         process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS) | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
         load.process = cast[slop_os.Process](slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights) or_return .Error(.BadGrants))
@@ -427,6 +444,7 @@ package os
             }
         }
         // The launcher's own libraries, which it may share on and run
+        copies_from = cast[usize](load.grant_count)
         library_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE)
             | cast[u32](slop_os.RIGHT_DUPLICATE) | cast[u32](slop_os.RIGHT_TRANSFER))
         for &grant in slop_os.grants_of(block) {
@@ -449,18 +467,49 @@ package os
             case Some(error) => return .Error(.ManagerGone)
             case None => {}
         }
+        sent = true
         into := Incoming.{}
         match process_manager.receive_response(manager.end, port, &into, true) {
             case Received => {}
             case _ => return .Error(.ManagerGone)
         }
         match message_of[process_manager.Response](&into)^ {
-            case Loaded(thread) => return .Ok(Launched.{process = process, budget = child, thread = thread})
-            case _ => {
-                _ = slop_os.handle_close(cast[slop_os.Handle](process))
-                return .Error(.NotLoaded)
+            case Loaded(thread) => {
+                started = true
+                return .Ok(Launched.{process = process, budget = child, thread = thread})
+            }
+            case _ => return .Error(.NotLoaded)
+        }
+    }
+
+    /*
+     * What launch made for a program that didn't start, given back: the handles it made for the Load, unless it was
+     * sent, which made them the manager's; the watch on the process's end, whose key a fired or unfired binding would
+     * keep; the process; and its budget, which charged the caller's for all of it.
+     */
+    give_back :: fn(load: ptr[process_manager.Load], sent: bool, copies_from: usize, watch: LaunchWatch?, process: slop_os.Process,
+        child: slop_os.MemoryBudget) {
+        if !sent {
+            for handle in slop_os.Handle.[cast[slop_os.Handle](load.process), cast[slop_os.Handle](load.space), cast[slop_os.Handle](load.budget),
+                cast[slop_os.Handle](load.executable)] {
+                if handle != slop_os.NO_HANDLE {
+                    _ = slop_os.handle_close(handle)
+                }
+            }
+            for i in copies_from..<cast[usize](load.grant_count) {
+                if i < load.grants.count && load.grants[i] != slop_os.NO_HANDLE {
+                    _ = slop_os.handle_close(load.grants[i])
+                }
             }
         }
+        match watch {
+            case Some(watching) => _ = slop_os.port_unbind(watching.port, watching.key)
+            case None => {}
+        }
+        if cast[slop_os.Handle](process) != slop_os.NO_HANDLE {
+            _ = slop_os.handle_close(cast[slop_os.Handle](process))
+        }
+        _ = slop_os.handle_close(cast[slop_os.Handle](child))
     }
 
     // A grant's handle, a field of type at address: the handle, or NO_HANDLE for an optional's None.
