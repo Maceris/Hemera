@@ -14,13 +14,13 @@ package process_manager
     // The protocol, for os.Channel[ProcessManager]: its name is its tag's (os.protocol_tag).
     ProcessManager :: struct {}
 
-    PROTOCOL :: slop_os.Protocol.{name = "process_manager", major_version = 2, lending = .PerConnection}
+    PROTOCOL :: slop_os.Protocol.{name = "process_manager", major_version = 3, lending = .PerConnection}
 
     // The rings a connection to the manager needs, for a Load (channel_create's ring bytes).
     RING_BYTES : u32 : 4096
 
-    // The most grants a Load gives the new program.
-    MAX_GRANTS :: 32
+    // The most grants a Load gives the new program: with the Load's own four handles, within the 64 a message carries.
+    MAX_GRANTS :: 48
 
     Request :: union {
         // Load a program into a process the requester made, which stays the requester's and is paid for by it.
