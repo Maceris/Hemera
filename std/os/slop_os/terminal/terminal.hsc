@@ -175,6 +175,11 @@ kind_of :: fn(event: Event) -> EventKind? {
      * break is the only character in it that does anything: anything else that doesn't show is shown as a visible
      * substitute. A program that draws its whole screen asks for one with Screen, and moves the cursor and clears in it.
      *
+     * The program reading input can hand the terminal the line it's editing (InputLine), which the terminal keeps below
+     * everything written, by any client, and draws again after it, with the cursor where the program says: output that
+     * comes while a line's being typed goes above it, as a shell's line editor does. An empty one takes it away; the
+     * program writes the line itself once it's done with it, if it wants it kept.
+     *
      * Output isn't answered. Describe is answered with Described; Read is held until there's input, then answered with
      * Events. Connections arrive on the terminal service's listener as Connects.
      */
@@ -194,6 +199,12 @@ kind_of :: fn(event: Event) -> EventKind? {
         text : slop_os.Relative[u8],
     }
 
+    // The line being edited, UTF-8, shown plain, and the cursor in it, as a byte offset at a cluster's start.
+    InputLine :: struct {
+        text : slop_os.Relative[u8],
+        cursor : u32,
+    }
+
     Request :: union {
         Write(Text),
         // The cursor, in the screen Screen gave; in lines, its column on the line being written
@@ -211,6 +222,8 @@ kind_of :: fn(event: Event) -> EventKind? {
         Describe,
         // Input, as many events as this at most; held until there's some
         Read(u32),
+        // The line the reader's editing, kept below what's written; ignored from a client that isn't reading input
+        InputLine(InputLine),
         // Serve another client, on its end
         Connect(os.Channel[Terminal]),
     }
@@ -233,6 +246,7 @@ kind_of :: fn(event: Event) -> EventKind? {
             case Bell => false
             case Describe => true
             case Read(_) => false
+            case InputLine(_) => true
             case Connect(_) => true
         }
     }
@@ -309,6 +323,14 @@ kind_of :: fn(event: Event) -> EventKind? {
     send :: fn(end: slop_os.Channel, port: slop_os.Port, request: Request) -> bool {
         out := os.Outgoing.{}
         os.begin[Request](&out)^ = request
+        return send_request(end, port, &out) == null
+    }
+
+    // The line being edited, with the cursor at a byte offset in it, handed to the terminal; whether it went.
+    input_line :: fn(end: slop_os.Channel, port: slop_os.Port, text: u8[], cursor: usize) -> bool {
+        out := os.Outgoing.{}
+        request :: os.begin[Request](&out)
+        request^ = .InputLine(InputLine.{text = os.append(&out, text), cursor = cast[u32](cursor)})
         return send_request(end, port, &out) == null
     }
 
