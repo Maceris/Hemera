@@ -349,6 +349,12 @@ TEST(Hosted, ReadsTimeZones)
 	run_hosted("time_zones", hemera::TargetStackCheck::Off);
 }
 
+// std/regex: linear-time matching, leftmost-first, with captures, classes, anchors, repetition and errors.
+TEST(Hosted, MatchesRegularExpressions)
+{
+	run_hosted("regex", hemera::TargetStackCheck::Off);
+}
+
 // std/memory's Arena: bumping, giving back the newest block, chunks, marks and resets (docs/memory.md, Allocators).
 TEST(Hosted, AllocatesFromArenas)
 {
