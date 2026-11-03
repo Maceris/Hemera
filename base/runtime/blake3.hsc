@@ -17,12 +17,12 @@ HASH_BLAKE3_ROOT : u32 : 8
 HASH_BLAKE3_START :: u32.[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
 HASH_BLAKE3_PERMUTATION :: usize.[2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]
 
-// A chaining value, kept on the stack of finished subtrees.
+/** A chaining value, kept on the stack of finished subtrees. */
 HashBlake3Chain :: struct {
     words : u32[8],
 }
 
-// What a compression is given: kept for the last one, which can be the root's.
+/** What a compression is given: kept for the last one, which can be the root's. */
 HashBlake3Output :: struct {
     chain : u32[8],
     words : u32[16],
@@ -31,7 +31,7 @@ HashBlake3Output :: struct {
     flags : u32,
 }
 
-// The BLAKE3-256 digest of data.
+/** The BLAKE3-256 digest of data. */
 hash_blake3 #no_context :: fn(data: u8[]) -> u8[32] {
     chunks :: if data.count == 0 { cast[usize](1) } else { (data.count + HASH_BLAKE3_CHUNK - 1) / HASH_BLAKE3_CHUNK }
     // Enough for 2^54 chunks
@@ -69,7 +69,7 @@ hash_blake3 #no_context :: fn(data: u8[]) -> u8[32] {
     return digest
 }
 
-// A chunk's last compression, which makes its chaining value, after every block before it.
+/** A chunk's last compression, which makes its chaining value, after every block before it. */
 hash_blake3_chunk #no_context :: fn(data: u8[], chunk: usize) -> HashBlake3Output {
     start :: chunk * HASH_BLAKE3_CHUNK
     end :: if start + HASH_BLAKE3_CHUNK < data.count { start + HASH_BLAKE3_CHUNK } else { data.count }
@@ -98,7 +98,7 @@ hash_blake3_parent #no_context :: fn(left: u32[8], right: u32[8]) -> HashBlake3O
     return output
 }
 
-// length bytes of data from at, as a block's words, zeros after them.
+/** length bytes of data from at, as a block's words, zeros after them. */
 hash_blake3_words #no_context :: fn(data: u8[], at: usize, length: usize) -> u32[16] {
     words : u32[16]
     for i in cast[usize](0)..<length {

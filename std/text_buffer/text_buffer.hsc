@@ -2,7 +2,7 @@ package text_buffer
 
 import runtime from "base"
 
-/*
+/**
  * Text built up in bytes the caller provides. Appending past the end keeps what fits and sets
  * truncated, so a message that's too long is cut short rather than lost.
  *
@@ -27,7 +27,7 @@ make :: fn(bytes: mut u8[]) -> TextBuffer {
     return TextBuffer.{bytes = bytes, count = 0, truncated = false}
 }
 
-// What's been appended so far.
+/** What's been appended so far. */
 as_string :: fn(text: ptr[TextBuffer]) -> string {
     if text.count == 0 || text.bytes.count == 0 {
         return ""
@@ -55,7 +55,7 @@ append :: fn(text: ptr[mut TextBuffer], value: string) {
     }
 }
 
-/*
+/**
  * value in base (2 to 16), with at least minimum_digits digits, padded with zeros.
  * Hexadecimal digits are lowercase, with no prefix.
  */
@@ -88,7 +88,7 @@ append_signed :: fn(text: ptr[mut TextBuffer], value: i64, base: u64 = 10, minim
     append_unsigned(text, cast[u64](value), base, minimum_digits)
 }
 
-// value as 0x followed by 16 hexadecimal digits, the way addresses are usually shown.
+/** value as 0x followed by 16 hexadecimal digits, the way addresses are usually shown. */
 append_address :: fn(text: ptr[mut TextBuffer], value: u64) {
     append(text, "0x")
     append_unsigned(text, value, 16, 16)

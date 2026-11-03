@@ -11,7 +11,7 @@ import runtime from "base"
     BUFFER_TOO_SMALL : Status : 0x8000000000000005
     NOT_FOUND : Status : 0x800000000000000e
 
-    // An EFI_GUID, which names a protocol or a configuration table.
+    /** An EFI_GUID, which names a protocol or a configuration table. */
     Guid :: struct {
         data1 : u32,
         data2 : u16,
@@ -31,7 +31,7 @@ import runtime from "base"
         return true
     }
 
-    // EFI_RUNTIME_SERVICES, as far as ResetSystem, the functions before it kept as addresses
+    /** EFI_RUNTIME_SERVICES, as far as ResetSystem, the functions before it kept as addresses */
     RuntimeServices :: struct {
         header : runtime.UefiTableHeader,
         // GetTime to GetNextHighMonotonicCount
@@ -39,21 +39,21 @@ import runtime from "base"
         reset_system : fn(kind: u32, status: Status, data_size: usize, data: rawptr) #calling_convention(.c) #no_context,
     }
 
-    // EFI_RESET_TYPE
+    /** EFI_RESET_TYPE */
     ResetKind :: enum #backed_by(u32) {
         Cold,
         Warm,
         Shutdown,
     }
 
-    // EFI_ALLOCATE_TYPE
+    /** EFI_ALLOCATE_TYPE */
     AllocateKind :: enum #backed_by(u32) {
         AnyPages,
         MaxAddress,
         Address,
     }
 
-    // EFI_MEMORY_TYPE
+    /** EFI_MEMORY_TYPE */
     MemoryKind :: enum #backed_by(u32) {
         Reserved,
         LoaderCode,
@@ -73,7 +73,7 @@ import runtime from "base"
         Unaccepted,
     }
 
-    // EFI_MEMORY_DESCRIPTOR; the firmware's may be longer (GetMemoryMap's descriptor size)
+    /** EFI_MEMORY_DESCRIPTOR; the firmware's may be longer (GetMemoryMap's descriptor size) */
     MemoryDescriptor :: struct {
         kind : u32,
         padding : u32,
@@ -83,7 +83,7 @@ import runtime from "base"
         attribute : u64,
     }
 
-    // EFI_BOOT_SERVICES, the functions used here typed, the rest kept as addresses
+    /** EFI_BOOT_SERVICES, the functions used here typed, the rest kept as addresses */
     BootServices :: struct {
         header : runtime.UefiTableHeader,
         raise_tpl : rawptr,
@@ -110,13 +110,13 @@ import runtime from "base"
         locate_protocol : fn(protocol: ptr[Guid], registration: rawptr, interface: ptr[mut rawptr]) -> Status #calling_convention(.c) #no_context,
     }
 
-    // EFI_CONFIGURATION_TABLE
+    /** EFI_CONFIGURATION_TABLE */
     ConfigurationTable :: struct {
         vendor : Guid,
         table : rawptr,
     }
 
-    // EFI_LOADED_IMAGE_PROTOCOL
+    /** EFI_LOADED_IMAGE_PROTOCOL */
     LoadedImage :: struct {
         revision : u32,
         parent : rawptr,
@@ -133,13 +133,13 @@ import runtime from "base"
         unload : rawptr,
     }
 
-    // EFI_INPUT_KEY: a key that isn't a character has a scan code, and unicode 0
+    /** EFI_INPUT_KEY: a key that isn't a character has a scan code, and unicode 0 */
     InputKey :: struct {
         scan_code : u16,
         unicode : u16,
     }
 
-    // EFI_SIMPLE_TEXT_INPUT_PROTOCOL
+    /** EFI_SIMPLE_TEXT_INPUT_PROTOCOL */
     TextInput :: struct {
         reset : fn(this: ptr[TextInput], extended: bool) -> Status #calling_convention(.c) #no_context,
         // NOT_READY when no key is waiting
@@ -147,17 +147,19 @@ import runtime from "base"
         wait_for_key : rawptr,
     }
 
-    // EFI_SIMPLE_FILE_SYSTEM_PROTOCOL
+    /** EFI_SIMPLE_FILE_SYSTEM_PROTOCOL */
     SimpleFileSystem :: struct {
         revision : u64,
-        // root's a File, which the caller closes
+        /** root's a File, which the caller closes */
         open_volume : fn(this: ptr[SimpleFileSystem], root: ptr[mut rawptr]) -> Status #calling_convention(.c) #no_context,
     }
 
-    // EFI_FILE_PROTOCOL
+    /** EFI_FILE_PROTOCOL */
     File :: struct {
         revision : u64,
-        // opened's a File, which the caller closes; name is UTF-16, its folders separated by backslashes, ending in a zero
+        /**
+         * opened's a File, which the caller closes; name is UTF-16, its folders separated by backslashes, ending in a zero
+         */
         open : fn(this: ptr[File], opened: ptr[mut rawptr], name: ptr[u16], mode: u64, attributes: u64) -> Status
             #calling_convention(.c) #no_context,
         close : fn(this: ptr[File]) -> Status #calling_convention(.c) #no_context,
@@ -175,10 +177,10 @@ import runtime from "base"
     FILE_READ : u64 : 1
     FILE_WRITE : u64 : 2
     FILE_CREATE : u64 : 0x8000000000000000
-    // EFI_FILE_DIRECTORY
+    /** EFI_FILE_DIRECTORY */
     FILE_DIRECTORY : u64 : 0x10
 
-    // EFI_FILE_INFO, before its name, which follows it as UTF-16 ending in a zero
+    /** EFI_FILE_INFO, before its name, which follows it as UTF-16 ending in a zero */
     FileInfo :: struct {
         size : u64,
         file_size : u64,
@@ -187,14 +189,14 @@ import runtime from "base"
         attribute : u64,
     }
 
-    // EFI_RNG_PROTOCOL
+    /** EFI_RNG_PROTOCOL */
     Rng :: struct {
         get_info : rawptr,
-        // algorithm null for the firmware's default
+        /** algorithm null for the firmware's default */
         get_rng : fn(this: ptr[Rng], algorithm: rawptr, length: usize, value: ptr[mut u8]) -> Status #calling_convention(.c) #no_context,
     }
 
-    // EFI_GRAPHICS_OUTPUT_PROTOCOL, and its mode
+    /** EFI_GRAPHICS_OUTPUT_PROTOCOL, and its mode */
     GraphicsOutput :: struct {
         query_mode : rawptr,
         set_mode : rawptr,
@@ -211,7 +213,7 @@ import runtime from "base"
         frame_buffer_size : usize,
     }
 
-    // EFI_GRAPHICS_PIXEL_FORMAT: 0 red, green, blue in bytes; 1 the other way; 2 by masks; 3 no frame buffer
+    /** EFI_GRAPHICS_PIXEL_FORMAT: 0 red, green, blue in bytes; 1 the other way; 2 by masks; 3 no frame buffer */
     GraphicsModeInfo :: struct {
         version : u32,
         width : u32,
@@ -224,16 +226,16 @@ import runtime from "base"
         pixels_per_scan_line : u32,
     }
 
-    // EFI_MP_SERVICES_PROTOCOL, as far as listing the processors
+    /** EFI_MP_SERVICES_PROTOCOL, as far as listing the processors */
     MpServices :: struct {
         get_number_of_processors : fn(this: ptr[MpServices], count: ptr[mut usize], enabled: ptr[mut usize]) -> Status
             #calling_convention(.c) #no_context,
         get_processor_info : fn(this: ptr[MpServices], number: usize, info: ptr[mut ProcessorInfo]) -> Status #calling_convention(.c) #no_context,
     }
 
-    // EFI_PROCESSOR_INFORMATION, with room for the extended information newer firmware may write after it
+    /** EFI_PROCESSOR_INFORMATION, with room for the extended information newer firmware may write after it */
     ProcessorInfo :: struct {
-        // The local APIC ID on x86-64, MPIDR's affinity fields on AArch64
+        /** The local APIC ID on x86-64, MPIDR's affinity fields on AArch64 */
         id : u64,
         // PROCESSOR_AS_BSP_BIT, PROCESSOR_ENABLED_BIT, PROCESSOR_HEALTH_STATUS_BIT
         status : u32,
@@ -259,23 +261,23 @@ import runtime from "base"
     SMBIOS3_GUID :: Guid.{0xf2fd1544, 0x9794, 0x4a2c, u8.[0x99, 0x2e, 0xe5, 0xbb, 0xcf, 0x20, 0xe3, 0x94]}
     DEVICE_TREE_GUID :: Guid.{0xb1b621d5, 0xf19c, 0x41a5, u8.[0x83, 0x0b, 0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0]}
 
-    // The system table the program was started with, or null outside a UEFI program's run.
+    /** The system table the program was started with, or null outside a UEFI program's run. */
     system_table :: fn() -> ptr[runtime.UefiSystemTable]? {
         return runtime.uefi_system_table()
     }
 
-    // The image's handle, which the entry was given.
+    /** The image's handle, which the entry was given. */
     image :: fn() -> rawptr {
         return intrinsics.process_state().uefi_image
     }
 
-    // The boot services, all of them, until the program leaves them.
+    /** The boot services, all of them, until the program leaves them. */
     boot_services :: fn() -> ptr[BootServices]? {
         table :: system_table() or_return null
         return cast[ptr[BootServices]](cast[rawptr](table.boot_services))
     }
 
-    // The runtime services, from the system table.
+    /** The runtime services, from the system table. */
     runtime_services :: fn() -> ptr[RuntimeServices]? {
         table :: system_table() or_return null
         if table.runtime_services == null {
@@ -284,7 +286,7 @@ import runtime from "base"
         return cast[ptr[RuntimeServices]](table.runtime_services)
     }
 
-    // The firmware's configuration tables: ACPI's, SMBIOS's, the device tree's, by their GUIDs.
+    /** The firmware's configuration tables: ACPI's, SMBIOS's, the device tree's, by their GUIDs. */
     configuration_tables :: fn() -> ConfigurationTable[] {
         none : ConfigurationTable[]
         table :: system_table() or_return none
@@ -294,7 +296,7 @@ import runtime from "base"
         return view_of(cast[ptr[ConfigurationTable]](table.configuration_table), table.table_entries)
     }
 
-    // The configuration table with guid, or null.
+    /** The configuration table with guid, or null. */
     configuration_table :: fn(guid: Guid) -> rawptr? {
         wanted := guid
         for &entry in configuration_tables() {
@@ -305,7 +307,7 @@ import runtime from "base"
         return null
     }
 
-    // The protocol guid names on handle, or null.
+    /** The protocol guid names on handle, or null. */
     protocol_of :: fn[T](handle: rawptr, guid: Guid) -> ptr[T]? {
         services :: boot_services() or_return null
         wanted := guid
@@ -316,7 +318,7 @@ import runtime from "base"
         return cast[ptr[T]](found)
     }
 
-    // The first instance of the protocol guid names, or null.
+    /** The first instance of the protocol guid names, or null. */
     locate :: fn[T](guid: Guid) -> ptr[T]? {
         services :: boot_services() or_return null
         wanted := guid
@@ -327,7 +329,7 @@ import runtime from "base"
         return cast[ptr[T]](found)
     }
 
-    // A key the console's input has waiting, taken, without waiting for one; null if there's none.
+    /** A key the console's input has waiting, taken, without waiting for one; null if there's none. */
     key_waiting :: fn() -> InputKey? {
         table :: system_table() or_return null
         if table.console_in == null {
@@ -341,7 +343,7 @@ import runtime from "base"
         return key
     }
 
-    // The machine reset or turned off, as kind says, through the runtime services.
+    /** The machine reset or turned off, as kind says, through the runtime services. */
     reset :: fn(kind: ResetKind) #never_returns {
         match runtime_services() {
             case Some(services) => services.reset_system(cast[u32](kind), SUCCESS, 0, null)

@@ -3,7 +3,7 @@ package runtime
 import compiler from "base"
 import intrinsics from "base"
 
-/*
+/**
  * Text for the process's standard output and standard error, where there are some: WriteFile on
  * Windows, and the write system call on Linux. Elsewhere, like in a kernel, the text goes nowhere.
  *
@@ -27,10 +27,10 @@ write_error #no_context :: fn(text: string) {
     os_write(.ERROR, cast[rawptr](text.data), text.count)
 }
 
-// Bytes an OutputBuffer holds before it writes them.
+/** Bytes an OutputBuffer holds before it writes them. */
 OUTPUT_BUFFER_SIZE : usize : 512
 
-/*
+/**
  * Text built a piece at a time on the stack, then written whole, for the standard logger and the
  * assertion handler, which can't count on an allocator. Writes what it has when it fills up.
  *
@@ -42,7 +42,7 @@ OutputBuffer :: struct {
     bytes : u8[OUTPUT_BUFFER_SIZE],
     count : usize,
     stream : OutputStream,
-    // Keeps what it's given rather than writing it, dropping what doesn't fit, to pad it afterwards
+    /** Keeps what it's given rather than writing it, dropping what doesn't fit, to pad it afterwards */
     capture : bool,
 }
 
@@ -53,7 +53,7 @@ output_buffer #no_context :: fn(stream: OutputStream) -> OutputBuffer {
     return buffer
 }
 
-// Writes what the buffer has, and empties it.
+/** Writes what the buffer has, and empties it. */
 output_flush #no_context :: fn(buffer: ptr[mut OutputBuffer]) {
     count :: if buffer.count < OUTPUT_BUFFER_SIZE { buffer.count } else { OUTPUT_BUFFER_SIZE }
     if count > 0 {
@@ -82,7 +82,7 @@ output_text #no_context :: fn(buffer: ptr[mut OutputBuffer], text: string) {
     }
 }
 
-// value in decimal. Once at least, so 0 has its digit.
+/** value in decimal. Once at least, so 0 has its digit. */
 output_unsigned #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     digits : u8[20]
     count : usize = 0
@@ -115,7 +115,7 @@ output_signed #no_context :: fn(buffer: ptr[mut OutputBuffer], value: i64) {
     }
 }
 
-// value in hexadecimal, as 0x and at least one digit.
+/** value in hexadecimal, as 0x and at least one digit. */
 output_address #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     output_text(buffer, "0x")
     started := false
@@ -128,7 +128,7 @@ output_address #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     }
 }
 
-/*
+/**
  * format_string with each % replaced by the next value, %1, %2 and so on by that one, and %% by %:
  * a smaller version of std's text_buffer.append_format, for base. Integers are in decimal, booleans,
  * characters and strings as they are, enum members by name, and pointers as addresses; other values
@@ -185,12 +185,12 @@ output_sink_byte :: fn(target: rawptr, byte: u8) {
     output_byte(cast[ptr[mut OutputBuffer]](target), byte)
 }
 
-// Whether options change anything about how a value is written.
+/** Whether options change anything about how a value is written. */
 is_plain_format :: fn(spec: FormatSpec) -> bool {
     return spec.width == 0 && spec.kind == 0 && !spec.plus && !spec.prefix && !spec.has_precision
 }
 
-// A value with options: numbers worked out with them, anything else written, then padded.
+/** A value with options: numbers worked out with them, anything else written, then padded. */
 output_value_with :: fn(buffer: ptr[mut OutputBuffer], value: any, spec: FormatSpec) {
     if is_plain_format(spec) {
         output_value(buffer, value)
@@ -320,7 +320,7 @@ output_value :: fn(buffer: ptr[mut OutputBuffer], value: any) {
     }
 }
 
-// Bytes up to the first 0.
+/** Bytes up to the first 0. */
 output_cstring #no_context :: fn(buffer: ptr[mut OutputBuffer], start: rawptr) {
     if start == null {
         output_text(buffer, "null")
@@ -337,7 +337,7 @@ output_cstring #no_context :: fn(buffer: ptr[mut OutputBuffer], start: rawptr) {
     }
 }
 
-// An integer of size bytes at data, up to 8.
+/** An integer of size bytes at data, up to 8. */
 read_unsigned #no_context :: fn(data: rawptr, size: usize) -> u64 {
     if size == 1 {
         return cast[u64](cast[ptr[u8]](data)^)
@@ -365,7 +365,7 @@ read_signed #no_context :: fn(data: rawptr, size: usize) -> i64 {
     return cast[ptr[i64]](data)^
 }
 
-/*
+/**
  * The logger hosted programs start with: each message on a line of its own on standard error, after
  * its level, like
  *
@@ -421,10 +421,10 @@ standard_log :: fn(level: LogLevel, label: string, format_string: string, params
     output_flush(&buffer)
 }
 
-// The exit code of a program a failed assertion ended, from printing_assertion_handler.
+/** The exit code of a program a failed assertion ended, from printing_assertion_handler. */
 ASSERTION_EXIT_CODE : u32 : 134
 
-/*
+/**
  * The assertion handler hosted programs start with: it writes the failure to standard error, where
  * it was and the stack that led there, then ends the process with ASSERTION_EXIT_CODE.
  *

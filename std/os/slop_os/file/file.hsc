@@ -7,7 +7,7 @@ package file
     import files from "std/os/slop_os"
     import read_only_file from "std/os/slop_os"
 
-    /*
+    /**
      * A file to read and write (the SlopOS repository's decisions 0015, 0046, 0087). The client gives the connection a
      * buffer, a memory object it has mapped, once; Read and Write name where in it. Writing past the end grows the file.
      */
@@ -16,22 +16,22 @@ package file
     PROTOCOL :: slop_os.Protocol.{name = "file", major_version = 1, lending = .PerConnection}
 
     Request :: union {
-        // The memory Read and Write move bytes through, from now on
+        /** The memory Read and Write move bytes through, from now on */
         UseBuffer(slop_os.Memory),
-        // Bytes of the file into the buffer: how many, fewer at its end
+        /** Bytes of the file into the buffer: how many, fewer at its end */
         Read(files.Transfer),
-        // Bytes from the buffer into the file: how many
+        /** Bytes from the buffer into the file: how many */
         Write(files.Transfer),
-        // The file this many bytes long: shorter, cut; longer, zeros after its end
+        /** The file this many bytes long: shorter, cut; longer, zeros after its end */
         SetSize(u64),
         Info,
-        // Everything written before it, on stable storage
+        /** Everything written before it, on stable storage */
         Sync,
-        // A connection to the same file that only reads
+        /** A connection to the same file that only reads */
         Narrow,
-        // Serve another client, on its end
+        /** Serve another client, on its end */
         Connect(os.Channel[File]),
-        // On a connection Replace gave: this file swapped in for the one at its path, whole, and made durable
+        /** On a connection Replace gave: this file swapped in for the one at its path, whole, and made durable */
         Install,
     }
 
@@ -44,7 +44,7 @@ package file
         Unsupported,
     }
 
-    // Writing the same bytes to the same place again, or setting the same size, changes nothing more.
+    /** Writing the same bytes to the same place again, or setting the same size, changes nothing more. */
     is_idempotent :: fn(request: ptr[Request]) -> bool {
         return match request^ {
             case UseBuffer(_) => true

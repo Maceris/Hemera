@@ -44,47 +44,47 @@ import compiler from "base"
 
 #insert atomic_operations()
 
-/*
+/**
  * Later loads/stores cannot move before earlier loads, but only for compiler
  * reordering. Does not emit instructions.
  */
 compiler_fence_acquire : fn() : ---
-/*
+/**
  * Later loads/stores cannot move before earlier loads, and also
  * earlier loads/stores cannot move after later stores, but only for compiler
  * reordering. Does not emit instructions.
  */
 compiler_fence_acquire_release : fn() : ---
-/*
+/**
  * Earlier loads/stores cannot move after later stores, but only for compiler
  * reordering. Does not emit instructions.
  */
 compiler_fence_release : fn() : ---
-/*
+/**
  * A full barrier, including store->load ordering, but only for compiler
  * reordering. Does not emit instructions.
  */
 compiler_fence_sequentially_consistent : fn() : ---
 
-/*
+/**
  * Later loads/stores cannot move before earlier loads.
  */
 fence_acquire : fn() : ---
-/*
+/**
  * Later loads/stores cannot move before earlier loads, and also
  * earlier loads/stores cannot move after later stores.
  */
 fence_acquire_release : fn() : ---
-/*
+/**
  * Earlier loads/stores cannot move after later stores.
  */
 fence_release : fn() : ---
-/*
+/**
  * A full barrier, including store->load ordering.
  */
 fence_sequentially_consistent : fn() : ---
 
-/*
+/**
  * The atomic operations, made from three lists: the types they come in, the orderings each kind of
  * operation takes, and the operations themselves, each with its signature.
  */
@@ -138,7 +138,7 @@ atomic_operations :: fn() -> compiler.Code {
     return compiler.list(made.codes)
 }
 
-// The declarations atomic_operations makes, in the first count of codes.
+/** The declarations atomic_operations makes, in the first count of codes. */
 AtomicDeclarations :: struct {
     codes : compiler.Code[1024],
     count : usize,

@@ -1,6 +1,6 @@
 package runtime
 
-/*
+/**
  * Options in a format string (docs/format_strings.md): % or %2 can be followed by {...}, like
  * %{08x} or %2{>10}. The formatters in base and std, output_format and text_buffer's append_format,
  * read and apply them here, so a format string means the same in each:
@@ -22,11 +22,11 @@ FormatSpec :: struct {
     width : usize,
     has_precision : bool,
     precision : usize,
-    // d x X b o, or 0 for the value's own way
+    /** d x X b o, or 0 for the value's own way */
     kind : u8,
 }
 
-// Where formatted bytes go: a buffer, and a function that adds one byte to it.
+/** Where formatted bytes go: a buffer, and a function that adds one byte to it. */
 FormatSink :: struct {
     target : rawptr,
     emit : fn(target: rawptr, byte: u8),
@@ -44,7 +44,7 @@ is_format_digit #no_context :: fn(character: char) -> bool {
     return character >= '0' && character <= '9'
 }
 
-/*
+/**
  * The options in format at start, just after the placeholder: {...}, or none. Gives them, where the
  * format goes on after them, and whether they were well formed; when they aren't, what follows
  * starts after the closing brace, if there is one.
@@ -130,7 +130,7 @@ format_emit_repeated :: fn(sink: FormatSink, byte: u8, count: usize) {
     }
 }
 
-/*
+/**
  * sign, prefix and body, made spec's width: for a number with 0 and no alignment, zeros between its
  * prefix and body; otherwise the fill on the side its alignment says.
  */
@@ -153,7 +153,7 @@ format_padded :: fn(sink: FormatSink, spec: FormatSpec, sign: string, prefix: st
     format_emit_repeated(sink, spec.fill, padding - before)
 }
 
-// Text, cut to spec's precision when it has one, and padded.
+/** Text, cut to spec's precision when it has one, and padded. */
 format_text :: fn(sink: FormatSink, spec: FormatSpec, text: string) {
     kept := text
     if spec.has_precision && spec.precision < text.count && text.count > 0 {
@@ -164,7 +164,7 @@ format_text :: fn(sink: FormatSink, spec: FormatSpec, text: string) {
 
 FORMAT_DIGITS :: "0123456789abcdef0123456789ABCDEF"
 
-/*
+/**
  * An integer, negative or not, of magnitude, in the base spec's kind says (decimal by default),
  * with its sign, prefix and padding.
  */
@@ -209,7 +209,7 @@ format_wide_of :: fn(value: u64) -> FormatWide {
     return result
 }
 
-// number × factor, a small one like 2 or 10.
+/** number × factor, a small one like 2 or 10. */
 format_wide_times :: fn(number: ptr[mut FormatWide], factor: u64) {
     carry : u64 = 0
     for &limb in number.limbs {
@@ -237,7 +237,7 @@ format_wide_add :: fn(a: FormatWide, b: FormatWide) -> FormatWide {
     return result
 }
 
-// a - b, which a is at least.
+/** a - b, which a is at least. */
 format_wide_subtract :: fn(a: ptr[mut FormatWide], b: FormatWide) {
     borrow : u64 = 0
     for &limb, index in a.limbs {
@@ -253,7 +253,7 @@ format_wide_subtract :: fn(a: ptr[mut FormatWide], b: FormatWide) {
     }
 }
 
-// -1, 0 or 1 as a is less than, equal to or more than b.
+/** -1, 0 or 1 as a is less than, equal to or more than b. */
 format_wide_compare :: fn(a: FormatWide, b: FormatWide) -> int {
     for limb, index in a.limbs #reverse {
         if limb != b.limbs[index] {
@@ -270,7 +270,7 @@ format_wide_compare :: fn(a: FormatWide, b: FormatWide) -> int {
  * one: in fixed notation, like 0.001, 1.5 or 123456, unless scientific is shorter, like 1e-04 or 1e+21, with two digits
  * of exponent at least.
  */
-//SPEC: Steele and White, "How to Print Floating-Point Numbers Accurately" (PLDI 1990), FPP2
+/** SPEC: Steele and White, "How to Print Floating-Point Numbers Accurately" (PLDI 1990), FPP2 */
 format_shortest_float :: fn(sink: FormatSink, bits: u64, exponent_bits: u64, fraction_bits: u64) {
     one : u64 = 1
     exponent_mask :: (one << exponent_bits) - 1
@@ -409,7 +409,7 @@ format_shortest_float :: fn(sink: FormatSink, bits: u64, exponent_bits: u64, fra
     format_digits_shortest(sink, view_of(&digits[0], count), k)
 }
 
-/*
+/**
  * Decimal digits d1 d2 ... dn, the value 0.d1d2...dn × 10^k, in fixed notation, unless scientific, d1.d2...dne±XX, is
  * shorter, as C++'s to_chars does it.
  */

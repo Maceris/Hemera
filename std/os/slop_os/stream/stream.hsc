@@ -33,13 +33,13 @@ package stream
 
     PROTOCOL :: slop_os.Protocol.{name = "Stream", major_version = 1, lending = .Server}
 
-    // How big a stream's ring is, unless it's asked to be bigger
+    /** How big a stream's ring is, unless it's asked to be bigger */
     RING_BYTES : u64 : 64 * 1024
     // A record's header: its value's bytes, and its kind
     RECORD_HEADER : u64 : 8
     KIND_RECORD : u32 : 0
     KIND_WRAP : u32 : 1
-    // The most of the writer's Wrotes not answered yet: it says one each quarter of the ring, and waits for room
+    /** The most of the writer's Wrotes not answered yet: it says one each quarter of the ring, and waits for room */
     MAX_MARKS :: 64
 
     Opening :: struct {
@@ -50,16 +50,16 @@ package stream
 
     Request :: union {
         Open(Opening),
-        // How many bytes the writer has written in all
+        /** How many bytes the writer has written in all */
         Wrote(u64),
-        // The writer's done, with its status, 0 for success
+        /** The writer's done, with its status, 0 for success */
         Ended(u32),
     }
 
     Response :: union {
-        // How many bytes the reader has read in all
+        /** How many bytes the reader has read in all */
         Consumed(u64),
-        // Open's answer when the reader reads another type
+        /** Open's answer when the reader reads another type */
         WrongType,
         Unsupported,
     }
@@ -75,16 +75,18 @@ package stream
     #insert os.protocol_code(Request, Response)
 
     StreamError :: enum {
-        // The other end's gone
+        /** The other end's gone */
         Gone,
-        // The reader reads another type than the writer writes
+        /** The reader reads another type than the writer writes */
         WrongType,
-        // A record bigger than the ring
+        /** A record bigger than the ring */
         TooBig,
         NoMemory,
     }
 
-    // A stream's writing end, open: its ring, mapped, how much it has written and the reader has read, and its scratch.
+    /**
+     * A stream's writing end, open: its ring, mapped, how much it has written and the reader has read, and its scratch.
+     */
     Writer :: struct[T] {
         end : slop_os.Channel,
         port : slop_os.Port,
@@ -99,7 +101,7 @@ package stream
         scratch : u8[..],
     }
 
-    // A stream's reading end, open.
+    /** A stream's reading end, open. */
     Reader :: struct[T] {
         end : slop_os.Channel,
         port : slop_os.Port,
@@ -117,7 +119,7 @@ package stream
         status : u32,
     }
 
-    // A new stream's two ends.
+    /** A new stream's two ends. */
     Pair :: struct[T] {
         sink : os.Sink[T],
         stream : os.Stream[T],
@@ -128,7 +130,7 @@ package stream
         return .Ok(Pair[T].{sink = os.Sink[T].{end = ends.a}, stream = os.Stream[T].{end = ends.b}})
     }
 
-    /*
+    /**
      * A stream's writing end opened: a ring of ring_bytes (RING_BYTES for 0) made and mapped, and offered to the
      * reader, whose answer is waited for.
      */
@@ -136,14 +138,14 @@ package stream
         return opened_writer[T](sink.end, runtime.schema_hash(type_info_of(T)), ring_bytes, true)
     }
 
-    /*
+    /**
      * A stream's records known only by their schema, for code that meets their type as it runs, like a shell reading a
      * program's output by its manifest: a writer of them puts each one's bytes, as std/schema's write_value writes one
      * (put), and a reader of them takes each one's (next_bytes).
      */
     Untyped :: struct {}
 
-    /*
+    /**
      * A stream's writing end opened, for records whose type's schema hash is schema. Unless it waits, the reader's
      * answer to Open is taken with its others, as the writer waits for room or finishes: for a writer that does
      * something else before the reader opens its end, like a shell starting a program that opens its output first.
@@ -152,7 +154,7 @@ package stream
         return opened_writer[Untyped](end, schema, ring_bytes, waits)
     }
 
-    // writer_on's, for records whose type's schema hash is schema.
+    /** writer_on's, for records whose type's schema hash is schema. */
     opened_writer :: fn[T](end: slop_os.Channel, schema: u8[32], ring_bytes: u64, waits: bool) -> Result[Writer[T], StreamError] {
         block :: slop_os.startup_block()
         size :: if ring_bytes == 0 { RING_BYTES } else { (ring_bytes + 4095) & ~cast[u64](4095) }
@@ -184,7 +186,7 @@ package stream
         return .Ok(writer)
     }
 
-    // A record of T written, waiting for room if the ring's full.
+    /** A record of T written, waiting for room if the ring's full. */
     write :: fn[T](writer: ptr[mut Writer[T]], value: T) -> StreamError? {
         runtime.array_reset(&writer.scratch)
         if runtime.schema_try_write_value(value, &writer.scratch) != null {
@@ -193,12 +195,12 @@ package stream
         return put(writer, writer.scratch)
     }
 
-    // Bytes written to a byte stream, as one record.
+    /** Bytes written to a byte stream, as one record. */
     write_bytes :: fn(writer: ptr[mut Writer[u8]], bytes: u8[]) -> StreamError? {
         return put(writer, bytes)
     }
 
-    // A record's value bytes put in the ring, after a wrap if it wouldn't fit before the ring's end.
+    /** A record's value bytes put in the ring, after a wrap if it wouldn't fit before the ring's end. */
     put :: fn[T](writer: ptr[mut Writer[T]], value: u8[]) -> StreamError? {
         need :: RECORD_HEADER + padded(cast[u64](value.count))
         if need > writer.ring_bytes / 2 {
@@ -233,7 +235,7 @@ package stream
         return null
     }
 
-    // What's been written, said to the reader.
+    /** What's been written, said to the reader. */
     flush :: fn[T](writer: ptr[mut Writer[T]]) -> StreamError? {
         if writer.produced == writer.announced {
             return null
@@ -248,7 +250,7 @@ package stream
         return null
     }
 
-    // Room for count more bytes, waited for: the reader's answers taken until it has read enough.
+    /** Room for count more bytes, waited for: the reader's answers taken until it has read enough. */
     room :: fn[T](writer: ptr[mut Writer[T]], count: u64) -> StreamError? {
         loop {
             if writer.produced + count - writer.consumed <= writer.ring_bytes {
@@ -269,7 +271,7 @@ package stream
         }
     }
 
-    // One of the reader's answers, waited for.
+    /** One of the reader's answers, waited for. */
     take_answer :: fn[T](writer: ptr[mut Writer[T]]) -> StreamError? {
         response :: answer(writer.end, writer.port) or_return .Gone
         match response {
@@ -282,7 +284,7 @@ package stream
         }
     }
 
-    /*
+    /**
      * The stream ended, with status: what's written said, Ended sent, and every answer waited for, so the reader has
      * read everything; then the ring and the end closed.
      */
@@ -309,7 +311,7 @@ package stream
         }
     }
 
-    /*
+    /**
      * The stream ended, with status, without waiting for the reader to read what's written: for a writer with more to do
      * meanwhile, like a shell reading what the reader writes in turn. It's closed with close_writer once the reader's
      * done.
@@ -335,17 +337,17 @@ package stream
         runtime.array_free(&writer.scratch)
     }
 
-    // A stream's reading end opened: the writer's Open waited for, its type checked, and its ring mapped to read.
+    /** A stream's reading end opened: the writer's Open waited for, its type checked, and its ring mapped to read. */
     reader_on :: fn[T](source: os.Stream[T]) -> Result[Reader[T], StreamError] {
         return opened_reader[T](source.end, runtime.schema_hash(type_info_of(T)))
     }
 
-    // A stream's reading end opened, for records whose type's schema hash is schema.
+    /** A stream's reading end opened, for records whose type's schema hash is schema. */
     untyped_reader_on :: fn(end: slop_os.Channel, schema: u8[32]) -> Result[Reader[Untyped], StreamError] {
         return opened_reader[Untyped](end, schema)
     }
 
-    // reader_on's, for records whose type's schema hash is schema.
+    /** reader_on's, for records whose type's schema hash is schema. */
     opened_reader :: fn[T](end: slop_os.Channel, schema: u8[32]) -> Result[Reader[T], StreamError] {
         block :: slop_os.startup_block()
         reader := Reader[T].{end = end}
@@ -371,7 +373,7 @@ package stream
         return .Ok(reader)
     }
 
-    /*
+    /**
      * The next record's value bytes, waited for, as they are in the ring until the next call: null once the writer has
      * ended and everything's read.
      */
@@ -419,7 +421,7 @@ package stream
         }
     }
 
-    // The next record, waited for, copied to the heap: null once the writer has ended and everything's read.
+    /** The next record, waited for, copied to the heap: null once the writer has ended and everything's read. */
     next :: fn[T](reader: ptr[mut Reader[T]]) -> T? {
         bytes :: next_bytes(reader) or_return null
         value : T
@@ -429,7 +431,7 @@ package stream
         return value
     }
 
-    // The Wrotes, and the Ended, whose bytes the reader has read, answered with how far it has.
+    /** The Wrotes, and the Ended, whose bytes the reader has read, answered with how far it has. */
     answer_marks :: fn[T](reader: ptr[mut Reader[T]]) {
         done : usize = 0
         for mark, i in reader.marks {
@@ -469,7 +471,7 @@ package stream
         return true
     }
 
-    // The reading end let go of: its ring unmapped and closed, and its end closed, which the writer sees as Gone.
+    /** The reading end let go of: its ring unmapped and closed, and its end closed, which the writer sees as Gone. */
     close_reader :: fn[T](reader: ptr[mut Reader[T]]) {
         answer_marks(reader)
         _ = slop_os.memory_unmap(slop_os.startup_block().space, reader.address)
@@ -478,7 +480,7 @@ package stream
         _ = slop_os.handle_close(cast[slop_os.Handle](reader.end))
     }
 
-    // A response waited for on end, or null if the end's gone.
+    /** A response waited for on end, or null if the end's gone. */
     answer :: fn(end: slop_os.Channel, port: slop_os.Port) -> Response? {
         into := os.Incoming.{}
         loop {
@@ -490,7 +492,7 @@ package stream
         }
     }
 
-    // A request waited for on end, into into, or null if the end's gone.
+    /** A request waited for on end, into into, or null if the end's gone. */
     take_request :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut os.Incoming]) -> Request? {
         loop {
             match receive_request(end, port, into, true) {

@@ -6,7 +6,7 @@ package read_only_file
     import slop_os from "std/os"
     import files from "std/os/slop_os"
 
-    /*
+    /**
      * A file to read (the SlopOS repository's decisions 0015, 0087): the reading subset of file. The client gives the
      * connection a buffer, a memory object it has mapped, once; Read names where in it.
      */
@@ -15,12 +15,12 @@ package read_only_file
     PROTOCOL :: slop_os.Protocol.{name = "read_only_file", major_version = 1, lending = .PerConnection}
 
     Request :: union {
-        // The memory Read and Write move bytes through, from now on
+        /** The memory Read and Write move bytes through, from now on */
         UseBuffer(slop_os.Memory),
-        // Bytes of the file into the buffer: how many, fewer at its end
+        /** Bytes of the file into the buffer: how many, fewer at its end */
         Read(files.Transfer),
         Info,
-        // Serve another client, on its end
+        /** Serve another client, on its end */
         Connect(os.Channel[ReadOnlyFile]),
     }
 

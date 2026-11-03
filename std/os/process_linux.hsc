@@ -27,7 +27,7 @@ import runtime from "base"
         return runtime.linux_syscall(SYS_DUP2, from, to)
     }
 
-    // Until one of count descriptors at descriptors is ready, however long that takes
+    /** Until one of count descriptors at descriptors is ready, however long that takes */
     linux_poll :: fn(descriptors: u64, count: u64) -> u64 {
         return runtime.linux_syscall(SYS_POLL, descriptors, count, 0xffff_ffff_ffff_ffff)
     }
@@ -70,7 +70,7 @@ import runtime from "base"
         returned : i16,
     }
 
-    /*
+    /**
      * first, second and third joined, with a terminator after them, from the context's allocator, as
      * execve takes, kept in made so they're freed together.
      */
@@ -103,7 +103,7 @@ import runtime from "base"
         return cast[rawptr](&bytes[0])
     }
 
-    // Reads what's in a pipe into buffer: whether it's done, at its end or broken.
+    /** Reads what's in a pipe into buffer: whether it's done, at its end or broken. */
     read_some :: fn(descriptor: u64, buffer: ptr[mut u8[..]]) -> bool {
         chunk : u8[4096]
         count :: runtime.linux_syscall(SYS_READ, descriptor, cast[u64](&chunk[0]), 4096)

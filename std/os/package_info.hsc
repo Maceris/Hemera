@@ -1,4 +1,4 @@
-/*
+/**
  * Access to the operating system.
  */
 package os

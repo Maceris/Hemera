@@ -3,7 +3,7 @@ package maps
 import compiler from "base"
 import runtime from "base"
 
-/*
+/**
  * A map from keys of K to values of V, which finds each key by hash, a function it's made with.
  * There's no overloading, so the map's type says which (docs/types.md, Checked Bodies):
  *
@@ -28,7 +28,7 @@ HashMap :: struct[K: compiler.Equatable, V, hash: fn(key: K) -> u64] {
     count : usize,
 }
 
-// FNV-1a over a string's bytes.
+/** FNV-1a over a string's bytes. */
 hash_string :: fn(text: string) -> u64 {
     result : u64 = 0xcbf29ce484222325
     for character in text {
@@ -37,7 +37,7 @@ hash_string :: fn(text: string) -> u64 {
     return result
 }
 
-// An integer's bits, mixed so that nearby values land far apart.
+/** An integer's bits, mixed so that nearby values land far apart. */
 hash_integer :: fn[T: compiler.Integer](value: T) -> u64 {
     mixed : u64 = cast[u64](value)
     mixed = (mixed ~ (mixed >> 33)) * 0xff51afd7ed558ccd
@@ -45,7 +45,7 @@ hash_integer :: fn[T: compiler.Integer](value: T) -> u64 {
     return mixed ~ (mixed >> 33)
 }
 
-/*
+/**
  * Where key is, or the free slot it would go in, and whether it's there. The map is never full, so
  * there's always a free slot to stop at.
  */
@@ -68,7 +68,7 @@ map_slot :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashM
     return 0, false
 }
 
-// The value for key, or null if the map doesn't have it.
+/** The value for key, or null if the map doesn't have it. */
 map_get :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashMap[K, V, hash]], key: K) -> V? {
     at, found :: map_slot(map, key)
     values :: map.values
@@ -109,7 +109,7 @@ map_put :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut Ha
     }
 }
 
-/*
+/**
  * Takes key out, if the map has it, and whether it did. The keys after it that would have been found
  * from its slot or before move back, so finding them still stops at the first free slot.
  */
@@ -146,7 +146,7 @@ map_remove :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut
     return true
 }
 
-// Empties the map, keeping its slots for what's added next.
+/** Empties the map, keeping its slots for what's added next. */
 map_clear :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]]) {
     used :: map.used
     for slot in 0..<used.count {
@@ -155,7 +155,7 @@ map_clear :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut 
     map.count = 0
 }
 
-// Gives back the map's slots, leaving it empty.
+/** Gives back the map's slots, leaving it empty. */
 map_free :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]]) {
     runtime.free_array(map.keys)
     runtime.free_array(map.values)
@@ -164,7 +164,7 @@ map_free :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut H
     map^ = empty
 }
 
-// Moves everything into a new set of slots, which have to be more than it holds.
+/** Moves everything into a new set of slots, which have to be more than it holds. */
 map_resize :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]], slots: usize,
     location := #caller_location) {
 
@@ -193,7 +193,7 @@ map_try_put :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mu
     return null
 }
 
-// Like map_resize, but without the memory, gives the allocator's error and leaves the map as it was.
+/** Like map_resize, but without the memory, gives the allocator's error and leaves the map as it was. */
 map_try_resize :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]], slots: usize,
     location := #caller_location) -> runtime.AllocatorError? {
 

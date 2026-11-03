@@ -1,6 +1,6 @@
 package runtime
 
-/*
+/**
  * A library that foreign functions come from, made by #library("name"), which #foreign names
  * (docs/directives.md, #foreign):
  *

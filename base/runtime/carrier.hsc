@@ -2,7 +2,7 @@ package runtime
 
 import intrinsics from "base"
 
-/*
+/**
  * Per-OS-thread execution state, owned by the runtime.
  *
  * Hemera code keeps a pointer to this in the carrier register (r14 on x86-64, x28 on AArch64,
@@ -16,41 +16,41 @@ import intrinsics from "base"
  * so don't reorder them. stack_limit must stay first.
  */
 CarrierBlock :: struct #align(64) {
-    /*
+    /**
      * Lowest address the stack pointer may reach before a function has to call morestack.
      * STACK_GUARD bytes above the real end of the current segment or thread stack.
      */
     stack_limit : rawptr,
-    /*
+    /**
      * The segment the stack pointer is in, null for a fiber's first segment
      * or the thread's own stack.
      */
     stack_segment : ptr[mut StackSegment]?,
-    /*
+    /**
      * The segment most recently left by morestack, kept so a call that keeps
      * crossing a segment boundary doesn't allocate each time.
      */
     spare_segment : ptr[mut StackSegment]?,
-    // Number of foreign calls currently on the stack. Yields decline while this is non-zero.
+    /** Number of foreign calls currently on the stack. Yields decline while this is non-zero. */
     foreign_depth : u32,
-    // Number of no-yield regions currently entered. Yields decline while this is non-zero.
+    /** Number of no-yield regions currently entered. Yields decline while this is non-zero. */
     no_yield_depth : u32,
-    // The fiber running on this carrier, if any.
+    /** The fiber running on this carrier, if any. */
     current_fiber : ptr[mut Fiber]?,
-    /*
+    /**
      * Installed by a fiber scheduler running on this thread, called by fiber_yield
      * when yielding is allowed. Null on plain threads.
      */
     yield_function : fn(carrier: ptr[mut CarrierBlock])?,
-    // Scheduler-defined data for this carrier, installed by yield_function.
+    /** Scheduler-defined data for this carrier, installed by yield_function. */
     scheduler_data : rawptr,
-    // The scheduler's stack pointer while a fiber runs. Foreign calls run just below it.
+    /** The scheduler's stack pointer while a fiber runs. Foreign calls run just below it. */
     scheduler_sp : rawptr,
-    // The shadow stack pointer when the current fiber was resumed, 0 without shadow stacks.
+    /** The shadow stack pointer when the current fiber was resumed, 0 without shadow stacks. */
     shadow_stack_base : uintptr,
-    // stack_limit for this thread's own stack.
+    /** stack_limit for this thread's own stack. */
     native_stack_limit : rawptr,
-    /*
+    /**
      * The context foreign callbacks run with: the caller's, which each call to a foreign function
      * saves here for the call, and puts back after.
      */
@@ -58,27 +58,27 @@ CarrierBlock :: struct #align(64) {
     // Free stack segments, linked through StackSegment.next_free.
     segment_cache : ptr[mut StackSegment]?,
     segment_cache_count : u32,
-    // Small index identifying this OS thread, for logging and diagnostics.
+    /** Small index identifying this OS thread, for logging and diagnostics. */
     index : usize,
-    // Set while an assertion handler runs on this carrier, so a failure inside it traps immediately.
+    /** Set while an assertion handler runs on this carrier, so a failure inside it traps immediately. */
     asserting : bool,
-    // Freestanding programs' own per-carrier data, like a kernel's per-CPU block. Unused by the runtime.
+    /** Freestanding programs' own per-carrier data, like a kernel's per-CPU block. Unused by the runtime. */
     program_data : rawptr,
-    /*
+    /**
      * Installed by a fiber scheduler, like yield_function: what park calls to suspend the current
      * fiber until wake(waiter), which then queues it with the fiber's wake_function. Null on plain
      * threads, which block instead.
      */
     park_function : fn(carrier: ptr[mut CarrierBlock], waiter #escaping : ptr[mut Waiter])?,
-    // The thread's own waiter, for park when it isn't running a fiber.
+    /** The thread's own waiter, for park when it isn't running a fiber. */
     thread_waiter : Waiter,
-    /*
+    /**
      * Where a thread's stack pointer was when morestack first took it off its native stack onto a
      * segment, so foreign calls and allocating segments can go back below it. Only meaningful while
      * a thread not running a fiber is on a segment.
      */
     native_sp : rawptr,
-    /*
+    /**
      * Where morestack gets segments when the cache has none big enough: set when the thread starts,
      * from its context's allocator. Without one (no function), it traps instead.
      */
@@ -92,14 +92,14 @@ CarrierBlock :: struct #align(64) {
     resume_frame : rawptr,
     resume_return : rawptr,
     resume_parent : rawptr,
-    /*
+    /**
      * The function a call through a C function value is calling, which it leaves here for the shim that moves it onto
      * the thread's own stack (docs/calling_convention.md, Calls to Foreign Code).
      */
     foreign_target : rawptr,
 }
 
-/*
+/**
  * Index of the OS thread currently running the caller.
  * On a fiber, this could be different after any call that might yield.
  */
@@ -107,7 +107,7 @@ current_thread_index :: fn() -> usize {
     return intrinsics.carrier().index
 }
 
-/*
+/**
  * Enter a no-yield region: until the matching no_yield_exit, fiber_yield declines,
  * so the code stays on the same carrier and pointers from intrinsics.carrier() stay valid.
  *
@@ -124,7 +124,7 @@ no_yield_exit :: fn() {
     carrier.no_yield_depth -= 1
 }
 
-/*
+/**
  * Signals that now would be a good time to do other work.
  *
  * Only a hint: returns immediately on plain threads, at compile time, with foreign frames

@@ -2,7 +2,7 @@ package containers
 
 import compiler from "base"
 
-/*
+/**
  * Up to capacity values of T, in order, in the array itself: like a dynamic array that never
  * allocates, and fails to add once it's full.
  *
@@ -15,7 +15,7 @@ FixedArray :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
     count : usize,
 }
 
-// Add value at the end, unless it's full.
+/** Add value at the end, unless it's full. */
 fixed_push :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]], value #escaping : T) -> bool {
     if array.count >= capacity {
         return false
@@ -25,7 +25,7 @@ fixed_push :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]], va
     return true
 }
 
-// Take the last value, if there is one.
+/** Take the last value, if there is one. */
 fixed_pop :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> T? {
     if array.count == 0 || array.count > capacity {
         return null
@@ -36,7 +36,7 @@ fixed_pop :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> 
     return value
 }
 
-/*
+/**
  * Remove the value at index by moving the last one into its place, so it doesn't keep the order.
  * False if there's nothing at index.
  */
@@ -50,7 +50,7 @@ fixed_remove_swap :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacit
     return true
 }
 
-// The values it holds, as a view into it: valid until it changes.
+/** The values it holds, as a view into it: valid until it changes. */
 fixed_view :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> T[] {
     count :: if array.count < capacity { array.count } else { capacity }
     return view_of(&array.items[0], count)

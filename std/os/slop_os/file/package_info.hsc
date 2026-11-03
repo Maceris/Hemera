@@ -1,4 +1,4 @@
-/*
+/**
  * The file protocol, which std/os's files speak on SlopOS.
  */
 package file

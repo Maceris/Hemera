@@ -1,4 +1,4 @@
-/*
+/**
  * The process manager's protocol, which std/os's launch speaks on SlopOS.
  */
 package process_manager

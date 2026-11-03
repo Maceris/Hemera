@@ -1,4 +1,4 @@
-/*
+/**
  * A type's schema: its description serialized the same way in every build and every program, and the hash that names
  * it.
  */

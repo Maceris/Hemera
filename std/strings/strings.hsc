@@ -3,13 +3,13 @@ package strings
 import runtime from "base"
 import text_buffer from "std"
 
-/*
+/**
  * Bytes format tries on the stack first, which most results fit in. A longer result is formatted
  * again into memory from the allocator, twice as big each time until it fits.
  */
 FORMAT_STACK_SIZE :: 256
 
-/*
+/**
  * format_string with its values filled in, as text_buffer.append_format does it, in a new string
  * from allocator, which free_string gives back:
  *
@@ -47,7 +47,7 @@ format :: fn(format_string: string, values: any..., allocator := context.allocat
     }
 }
 
-// A copy of text, in a new string from allocator, which free_string gives back. An empty one allocates nothing.
+/** A copy of text, in a new string from allocator, which free_string gives back. An empty one allocates nothing. */
 clone :: fn(text: string, allocator := context.allocator) -> Result[string, runtime.AllocatorError] #unrestricted {
     if text.count == 0 {
         return .Ok("")
@@ -68,7 +68,7 @@ clone :: fn(text: string, allocator := context.allocator) -> Result[string, runt
     return .Ok(string_of(&bytes[0], bytes.count))
 }
 
-// Gives back a string from format or clone, to the allocator it came from.
+/** Gives back a string from format or clone, to the allocator it came from. */
 free_string :: fn(text: string, allocator := context.allocator) {
     if text.count == 0 {
         return void
@@ -76,7 +76,7 @@ free_string :: fn(text: string, allocator := context.allocator) {
     runtime.free_array(bit_cast[u8[]](text), allocator)
 }
 
-// Whether a and b have the same bytes.
+/** Whether a and b have the same bytes. */
 equal :: fn(a: string, b: string) -> bool {
     if a.count != b.count {
         return false
@@ -89,7 +89,7 @@ equal :: fn(a: string, b: string) -> bool {
     return true
 }
 
-/*
+/**
  * The bytes of text from start up to end, not including end, without copying. Both are clamped
  * to the text, so a range past its end is cut short, and an empty or backwards one is "".
  */
@@ -109,7 +109,7 @@ ends_with :: fn(text: string, suffix: string) -> bool {
     return suffix.count <= text.count && equal(slice(text, text.count - suffix.count, text.count), suffix)
 }
 
-// Where part first starts in text, from start on, or none. An empty part is found at start.
+/** Where part first starts in text, from start on, or none. An empty part is found at start. */
 find :: fn(text: string, part: string, start: usize = 0) -> usize? {
     if part.count > text.count {
         return null
@@ -126,12 +126,12 @@ contains :: fn(text: string, part: string) -> bool {
     return find(text, part) != null
 }
 
-// Spaces, tabs, carriage returns and newlines.
+/** Spaces, tabs, carriage returns and newlines. */
 is_space :: fn(character: char) -> bool {
     return character == ' ' || character == '\t' || character == '\r' || character == '\n'
 }
 
-// text without the spaces (is_space) at either end, without copying.
+/** text without the spaces (is_space) at either end, without copying. */
 trim :: fn(text: string) -> string {
     start : usize = 0
     end := text.count
@@ -150,7 +150,7 @@ trim :: fn(text: string) -> string {
     return slice(text, start, end)
 }
 
-/*
+/**
  * The pieces of text between each separator, a piece at a time, without copying:
  *
  *     pieces := strings.split("a,b,,c", ",")

@@ -5,7 +5,7 @@ import runtime from "base"
 Instant :: runtime.Instant
 Duration :: runtime.Duration
 
-/*
+/**
  * The current wall-clock time, from context.clock: the system's in a hosted program, and
  * ClockError.Unavailable in MINIMAL_CONTEXT. It can jump, when the system's time is set; measure
  * how long something takes with monotonic instead.
@@ -14,7 +14,7 @@ now :: fn() -> Result[Instant, runtime.ClockError] {
     return context.clock.wall(context.clock.data)
 }
 
-/*
+/**
  * A time that only goes forward, for measuring how long things take, in nanoseconds from some
  * point the system chose, like when it started:
  *
@@ -26,12 +26,12 @@ monotonic :: fn() -> runtime.MonotonicTime {
     return context.clock.monotonic(context.clock.data)
 }
 
-// How long it's been since start, a monotonic time.
+/** How long it's been since start, a monotonic time. */
 since :: fn(start: runtime.MonotonicTime) -> Duration {
     return runtime.duration_between(start, monotonic())
 }
 
-/*
+/**
  * A moment as a calendar date and time of day, in UTC, on the proleptic Gregorian calendar
  * (the Gregorian calendar extended back before it was adopted, with a year 0).
  *
@@ -40,23 +40,23 @@ since :: fn(start: runtime.MonotonicTime) -> Duration {
  */
 DateTime :: struct {
     year : i64,
-    // 1 to 12
+    /** 1 to 12 */
     month : int,
-    // 1 to 31
+    /** 1 to 31 */
     day : int,
-    // 0 to 23
+    /** 0 to 23 */
     hour : int,
-    // 0 to 59
+    /** 0 to 59 */
     minute : int,
-    // 0 to 59: leap seconds aren't counted, as in Unix time
+    /** 0 to 59: leap seconds aren't counted, as in Unix time */
     second : int,
-    // 0 to 999,999,999
+    /** 0 to 999,999,999 */
     nanosecond : int,
 }
 
 SECONDS_PER_DAY : i64 : 86400
 
-// a / b rounded down, rather than toward zero, for a negative a. b is positive.
+/** a / b rounded down, rather than toward zero, for a negative a. b is positive. */
 floor_divide :: fn(a: i64, b: i64) -> i64 {
     quotient :: a / b
     if a % b < 0 {
@@ -65,7 +65,7 @@ floor_divide :: fn(a: i64, b: i64) -> i64 {
     return quotient
 }
 
-/*
+/**
  * The date of a day, counted from 1970-01-01 (day 0), negative before it. From Howard Hinnant's
  * civil_from_days: the year starts in March, so February's leap day is at its end, and 400-year
  * eras repeat exactly.
@@ -93,7 +93,7 @@ civil_from_days :: fn(days: i64) -> (year: i64, month: int, day: int) {
     return year, cast[int](month), cast[int](day)
 }
 
-// The day a date is, counted from 1970-01-01 (day 0): civil_from_days the other way.
+/** The day a date is, counted from 1970-01-01 (day 0): civil_from_days the other way. */
 days_from_civil :: fn(year: i64, month: int, day: int) -> i64 {
     march_year := year
     if month <= 2 {
@@ -110,7 +110,7 @@ days_from_civil :: fn(year: i64, month: int, day: int) -> i64 {
     return era * 146097 + day_of_era - 719468
 }
 
-// The moment t is, as a date and time in UTC.
+/** The moment t is, as a date and time in UTC. */
 utc :: fn(t: Instant) -> DateTime {
     days :: floor_divide(t.seconds, SECONDS_PER_DAY)
     of_day :: t.seconds - days * SECONDS_PER_DAY
@@ -126,7 +126,7 @@ utc :: fn(t: Instant) -> DateTime {
     }
 }
 
-/*
+/**
  * The moment a date and time in UTC is: utc the other way. Fields out of their range carry over,
  * like a second of 60 being the next minute, except month and day, which must be a real date.
  */
@@ -161,7 +161,7 @@ Weekday :: enum {
     SUNDAY,
 }
 
-// The day of the week of t, in UTC.
+/** The day of the week of t, in UTC. */
 weekday :: fn(t: Instant) -> Weekday {
     // 1970-01-01 was a Thursday
     index :: floor_divide(t.seconds, SECONDS_PER_DAY) + 3
@@ -172,7 +172,7 @@ weekday :: fn(t: Instant) -> Weekday {
     return cast[Weekday](remainder)
 }
 
-/*
+/**
  * t moved by duration, and extra_nanos more (which may be negative), so later for a positive
  * duration and earlier for a negative one.
  */
@@ -182,14 +182,14 @@ add :: fn(t: Instant, duration: Duration, extra_nanos: i64 = 0) -> Instant {
     return Instant.{t.seconds + duration.seconds + carry, cast[u32](nanos - carry * runtime.NANOSECONDS_PER_SECOND)}
 }
 
-// The time from start to end, negative if end is earlier.
+/** The time from start to end, negative if end is earlier. */
 between :: fn(start: Instant, end: Instant) -> Duration {
     nanos :: cast[i64](end.nanos) - cast[i64](start.nanos)
     carry :: floor_divide(nanos, runtime.NANOSECONDS_PER_SECOND)
     return Duration.{end.seconds - start.seconds + carry, cast[u32](nanos - carry * runtime.NANOSECONDS_PER_SECOND)}
 }
 
-// Whether a is before b.
+/** Whether a is before b. */
 is_before :: fn(a: Instant, b: Instant) -> bool {
     return a.seconds < b.seconds || (a.seconds == b.seconds && a.nanos < b.nanos)
 }

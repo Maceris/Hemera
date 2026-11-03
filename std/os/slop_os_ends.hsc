@@ -20,7 +20,7 @@ package os
     import slop_os from "std/os"
     import process_manager from "std/os/slop_os"
 
-    /*
+    /**
      * A channel end that speaks protocol P, a type named after it, like process_manager.ProcessManager, and
      * one that connections to a P arrive on, each a message with the connection's end as its one handle.
      * An entry parameter of either is the grant of its name.
@@ -33,7 +33,7 @@ package os
         end : slop_os.Channel,
     }
 
-    /*
+    /**
      * A stream's two ends (std/os/slop_os's stream): a Stream[T] reads records of T, and the Sink[T] at its other end
      * writes them. Their channel is tagged with the stream protocol, whatever T is, and T is checked when the stream
      * opens. records is no bytes, there so T is in their schemas: a manifest says what records a program reads and
@@ -49,7 +49,7 @@ package os
         records : T[0],
     }
 
-    /*
+    /**
      * The tag of the protocol P (decisions/0040, 0071): FNV-1a of its name, which a channel for P is made with
      * (channel_create), and which the end of a Channel[P] or Listener[P] has to have where it arrives: as an entry's
      * parameter, or in a message.
@@ -58,17 +58,19 @@ package os
         return end_tag(type_info_of(Channel[P]))
     }
 
-    // A new channel for P, with rings of ring_bytes each way, 0 for the default.
+    /** A new channel for P, with rings of ring_bytes each way, 0 for the default. */
     channel_for :: fn[P](budget: slop_os.MemoryBudget, ring_bytes: u32) -> Result[slop_os.ChannelPair, slop_os.ChannelError] {
         return slop_os.channel_create(budget, ring_bytes, protocol_tag[P]())
     }
 
-    // Whether a channel end was made for P.
+    /** Whether a channel end was made for P. */
     speaks :: fn[P](end: slop_os.Channel) -> bool {
         return (slop_os.channel_tag(end) or_else 0) == protocol_tag[P]()
     }
 
-    // The tag of a Channel[P] or Listener[P] type, from P's name, or a Stream[T]'s or Sink[T]'s, the stream protocol's; 0 for another type.
+    /**
+     * The tag of a Channel[P] or Listener[P] type, from P's name, or a Stream[T]'s or Sink[T]'s, the stream protocol's; 0 for another type.
+     */
     end_tag :: fn(type: ptr[compiler.TypeInfo]) -> u64 {
         if type.variant != .STRUCT {
             return 0
@@ -103,7 +105,7 @@ package os
         return hash
     }
 
-    // FNV-1a of a protocol's name, its channels' tag.
+    /** FNV-1a of a protocol's name, its channels' tag. */
     name_tag :: fn(name: string) -> u64 {
         hash : u64 = 0xcbf29ce484222325
         for character in name {
@@ -118,13 +120,13 @@ package os
 
     // ---- Messages: fixed-layout structs, sent as their bytes
 
-    // What receive gives: the message's size, and how many handles came with it.
+    /** What receive gives: the message's size, and how many handles came with it. */
     Received :: struct {
         size : u32,
         handle_count : u32,
     }
 
-    // A message's bytes.
+    /** A message's bytes. */
     bytes_of :: fn[T](message: ptr[T]) -> u8[] {
         return view_of(cast[ptr[u8]](message), size_of(T))
     }
@@ -133,7 +135,7 @@ package os
         return view_of(cast[ptr[mut u8]](message), size_of(T))
     }
 
-    /*
+    /**
      * bytes, with handles in a batch the other end has free, moved out of the caller's table. Waits on
      * port, bound to the end (port_for), while the ring is full.
      */
@@ -167,7 +169,7 @@ package os
         }
     }
 
-    /*
+    /**
      * The next message, its bytes in buffer and its handles in handles, without waiting: Empty if there's
      * none yet, which leaves the end's next write raising SIGNAL_READABLE.
      */
@@ -180,7 +182,7 @@ package os
         return .Ok(received)
     }
 
-    // The next message, as try_receive, waiting on port (port_for) for it.
+    /** The next message, as try_receive, waiting on port (port_for) for it. */
     receive :: fn(end: slop_os.Channel, port: slop_os.Port, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
         loop {
             match try_receive(end, buffer, handles) {
@@ -196,7 +198,9 @@ package os
         }
     }
 
-    // A port for one end, which SIGNAL_READABLE, SIGNAL_WRITABLE and SIGNAL_PEER_CLOSED wake, for send and receive to wait on.
+    /**
+     * A port for one end, which SIGNAL_READABLE, SIGNAL_WRITABLE and SIGNAL_PEER_CLOSED wake, for send and receive to wait on.
+     */
     port_for :: fn(budget: slop_os.MemoryBudget, end: slop_os.Channel) -> slop_os.Port? {
         port :: slop_os.port_create(budget) or_return null
         signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_WRITABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
@@ -209,7 +213,7 @@ package os
         }
     }
 
-    // A request, then its reply, on an end and its port_for.
+    /** A request, then its reply, on an end and its port_for. */
     call :: fn(end: slop_os.Channel, port: slop_os.Port, request: u8[], handles: slop_os.Handle[], reply: mut u8[])
         -> Result[Received, slop_os.ChannelError] {
         match send(end, port, request, handles) {
@@ -220,7 +224,7 @@ package os
         return receive(end, port, reply, none)
     }
 
-    // A grant added to what a Load gives, labeled label: false if it has as many as it holds.
+    /** A grant added to what a Load gives, labeled label: false if it has as many as it holds. */
     add_grant :: fn(load: ptr[mut process_manager.Load], label: string, handle: slop_os.Handle) -> bool {
         index :: cast[usize](load.grant_count)
         if index >= load.labels.count || index >= load.grants.count {
@@ -232,10 +236,10 @@ package os
         return true
     }
 
-    // A typed library's grant's label starts with this, then its file's name.
+    /** A typed library's grant's label starts with this, then its file's name. */
     LIBRARY_PREFIX :: "library:"
 
-    // Whether one of libraries is the one a grant labeled label gives.
+    /** Whether one of libraries is the one a grant labeled label gives. */
     library_named :: fn(libraries: LaunchLibrary[], label: string) -> bool {
         bytes :: string_bytes(label)
         for library in libraries {
@@ -257,7 +261,7 @@ package os
         return false
     }
 
-    // A label in a grant's form: its bytes, then zeros.
+    /** A label in a grant's form: its bytes, then zeros. */
     label_from :: fn(text: string) -> u8[slop_os.GRANT_LABEL_SIZE] {
         label : u8[slop_os.GRANT_LABEL_SIZE]
         for byte, i in text {
@@ -270,7 +274,7 @@ package os
 
     // ---- Launching programs
 
-    /*
+    /**
      * A program's grants, G, for its entry, F: a struct with a field for each of the entry's parameters,
      * of the same name and type.
      */
@@ -304,23 +308,23 @@ package os
     }
 
     LaunchError :: enum {
-        // The caller's budget couldn't pay for the program's
+        /** The caller's budget couldn't pay for the program's */
         NoBudget,
-        // More grants than a Load takes, or no handle for one
+        /** More grants than a Load takes, or no handle for one */
         BadGrants,
-        // The manager didn't answer
+        /** The manager didn't answer */
         ManagerGone,
-        // The manager couldn't load it: the executable isn't a program, or it ran out of memory
+        /** The manager couldn't load it: the executable isn't a program, or it ran out of memory */
         NotLoaded,
     }
 
-    // Where a launch says the program ended: a Once binding of its process's SIGNAL_TERMINATED to port, under key.
+    /** Where a launch says the program ended: a Once binding of its process's SIGNAL_TERMINATED to port, under key. */
     LaunchWatch :: struct {
         port : slop_os.Port,
         key : u64,
     }
 
-    /*
+    /**
      * What a launch does beyond its grants: watch the program's end from before it starts; run it on a CPU budget
      * (RIGHT_CPU_BUDGET_BIND) from its first instruction rather than on the launcher's; and give it the clock page (a
      * read-only memory object the clock service keeps, base's runtime.SlopOsClockPage), as the grant "clock", which
@@ -337,25 +341,31 @@ package os
         events : LaunchEvents?,
         lifecycle : slop_os.Channel?,
         locale : slop_os.Memory?,
-        // The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime binds
-        // before main (the SlopOS repository's decisions 0119, 0120); the program's to own. Every library the launcher
-        // was given itself is given too, but those named here (0121).
+        /**
+         * The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime binds
+         * before main (the SlopOS repository's decisions 0119, 0120); the program's to own. Every library the launcher
+         * was given itself is given too, but those named here (0121).
+         */
         libraries : LaunchLibrary[],
     }
 
-    // A typed library a launched program imports: its file's name, as the program's import table names it, and its bytes.
+    /**
+     * A typed library a launched program imports: its file's name, as the program's import table names it, and its bytes.
+     */
     LaunchLibrary :: struct {
         name : string,
         memory : slop_os.Memory,
     }
 
-    // A program's log records' ring and its doorbell, which the events service gives (base's runtime.SlopOsEventsRing).
+    /**
+     * A program's log records' ring and its doorbell, which the events service gives (base's runtime.SlopOsEventsRing).
+     */
     LaunchEvents :: struct {
         ring : slop_os.Memory,
         doorbell : slop_os.Channel,
     }
 
-    // A program launch started, in a process the caller owns, with a budget split off its own.
+    /** A program launch started, in a process the caller owns, with a budget split off its own. */
     Launched :: struct {
         process : slop_os.Process,
         budget : slop_os.MemoryBudget,
@@ -396,13 +406,13 @@ package os
         return launch_given(manager, port, name, executable, budget, view_of(&given[0], given_count), page, options)
     }
 
-    // A grant given by its label: a handle a launch moves to the program, as the parameter of its name.
+    /** A grant given by its label: a handle a launch moves to the program, as the parameter of its name. */
     NamedGrant :: struct {
         label : string,
         handle : slop_os.Handle,
     }
 
-    /*
+    /**
      * A value a launch writes for the program, as the parameter of its name: the schema hash of the parameter's type,
      * and the value as std/schema's write_value writes one of it.
      */
@@ -608,7 +618,7 @@ package os
         _ = slop_os.handle_close(cast[slop_os.Handle](child))
     }
 
-    /*
+    /**
      * Whether a field of a program's grants is a handle, given as the grant of its name, or a value, written in its grant
      * "arguments": a handle is a 4-byte distinct alias or struct whose name, without its generic arguments, is a kind of
      * handle base's runtime knows, or an optional of one, as the compiler decides for the entry's parameter.
@@ -648,7 +658,7 @@ package os
         return name.count > 0 && runtime.slop_os_kind_of(name) != 0
     }
 
-    /*
+    /**
      * The values among grants, of type G, written as a page for the grant "arguments" (base's runtime.os_entry_value
      * reads them): null if there are none.
      */
@@ -712,7 +722,7 @@ package os
         end : usize,
     }
 
-    /*
+    /**
      * Values written as a page for the grant "arguments" (docs/compilation.md, Entry Parameters): its header
      * (runtime.SlopOsArguments), then each value's (runtime.SlopOsArgument), its name and its bytes, each padded to 8
      * bytes; null if there are none.
@@ -752,7 +762,7 @@ package os
         return .Ok(memory)
     }
 
-    // Where a launch's grants are, as a number: they're read field by field, by their type's description.
+    /** Where a launch's grants are, as a number: they're read field by field, by their type's description. */
     address_of :: fn(grants: any) -> u64 {
         return cast[u64](cast[uintptr](grants.data))
     }
@@ -763,7 +773,7 @@ package os
         }
     }
 
-    // into padded with zeros to a multiple of 8 bytes.
+    /** into padded with zeros to a multiple of 8 bytes. */
     pad :: fn(into: ptr[mut u8[..]]) {
         loop {
             if into.count % 8 == 0 {
@@ -773,7 +783,7 @@ package os
         }
     }
 
-    // A grant's handle, a field of type at address: the handle, or NO_HANDLE for an optional's None.
+    /** A grant's handle, a field of type at address: the handle, or NO_HANDLE for an optional's None. */
     grant_in :: fn(address: u64, type: ptr[compiler.TypeInfo]) -> slop_os.Handle {
         if type.variant == .UNION {
             optional :: cast[ptr[compiler.TypeInfoUnion]](type)

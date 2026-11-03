@@ -25,14 +25,14 @@ import runtime from "base"
  * struct's first two members.
  */
 
-// What a call gives back, in the system ABI's three result registers.
+/** What a call gives back, in the system ABI's three result registers. */
 SyscallAnswer :: struct {
     tag : u64,
     first : u64,
     second : u64,
 }
 
-// A call by number, with up to six words.
+/** A call by number, with up to six words. */
 system_call :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SyscallAnswer #no_context {
     #if TARGET_ARCH == .x86_64 {
         made :: x86_64.system_call(number, a, b, c, d, e, f)
@@ -48,16 +48,16 @@ system_call :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e
     }
 }
 
-// A slice as the kernel gets it: where it is in the caller's memory, and how many elements.
+/** A slice as the kernel gets it: where it is in the caller's memory, and how many elements. */
 UserBuffer :: struct {
     address : u64,
     count : u64,
 }
 
-// The registers a call has for arguments.
+/** The registers a call has for arguments. */
 SYSCALL_ARGUMENT_WORDS :: 6
 
-// SYSCALL_<NAME> :: number, for each call.
+/** SYSCALL_<NAME> :: number, for each call. */
 syscall_numbers :: fn() -> compiler.Code {
     made : compiler.Code[..]
     for member, i in table().members {
@@ -70,7 +70,7 @@ syscall_numbers :: fn() -> compiler.Code {
     return compiler.list(made)
 }
 
-// A stub for each call.
+/** A stub for each call. */
 syscall_stubs :: fn() -> compiler.Code {
     made : compiler.Code[..]
     for member, i in table().members {
@@ -79,7 +79,7 @@ syscall_stubs :: fn() -> compiler.Code {
     return compiler.list(made)
 }
 
-/*
+/**
  * The kernel's dispatch: for the call whose number is number, its handler sys_<name> called with the
  * caller (thread) and the arguments decoded from registers, and its answer returned. Where it's
  * inserted provides registers, thread and number, and these:
@@ -128,7 +128,7 @@ stub :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
     }
 }
 
-// The words a call's arguments take, from its parameters' names.
+/** The words a call's arguments take, from its parameters' names. */
 argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string) -> compiler.Code {
     made : compiler.Code[..]
     for input in function.input {
@@ -147,7 +147,7 @@ argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string) -> 
     return compiler.list(made)
 }
 
-// Return .Ok with the value in answer's first and second registers.
+/** Return .Ok with the value in answer's first and second registers. */
 ok_result :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
     type :: ok or_return #code {
         return .Ok
@@ -220,7 +220,7 @@ dispatch :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
     }
 }
 
-// The Ok case of a handler's result, as the answer's registers.
+/** The Ok case of a handler's result, as the answer's registers. */
 ok_answer :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
     type :: ok or_return #code patterns {
         case Ok => return answered(0, 0, 0)
@@ -247,7 +247,7 @@ ok_answer :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
     }
 }
 
-// A call's result type: its function's last output, which is its only one.
+/** A call's result type: its function's last output, which is its only one. */
 result_of :: fn(function: ptr[compiler.TypeInfoFunction]) -> ptr[compiler.TypeInfo] {
     result := cast[ptr[compiler.TypeInfo]](0)
     for output in function.output {
@@ -256,7 +256,7 @@ result_of :: fn(function: ptr[compiler.TypeInfoFunction]) -> ptr[compiler.TypeIn
     return result
 }
 
-// A Result's Ok type, none for void, and its error type, which must be an enum.
+/** A Result's Ok type, none for void, and its error type, which must be an enum. */
 result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[compiler.TypeInfo]?, error: ptr[compiler.TypeInfo]) {
     union_info :: cast[ptr[compiler.TypeInfoUnion]](underlying(result))
     ok : ptr[compiler.TypeInfo]? = null
@@ -277,7 +277,7 @@ result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[com
     return ok, error
 }
 
-// value, of a register-sized type, as a word.
+/** value, of a register-sized type, as a word. */
 word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code) -> compiler.Code {
     if type.variant == .ALIAS {
         base :: cast[ptr[compiler.TypeInfoAlias]](type).base_type
@@ -299,7 +299,7 @@ word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code) -> compiler.Co
     return #code(cast[u64](#insert value))
 }
 
-// A word, as a value of a register-sized type.
+/** A word, as a value of a register-sized type. */
 value_of :: fn(type: ptr[compiler.TypeInfo], word: compiler.Code) -> compiler.Code {
     made :: compiler.type_code(compiler.described_type(type))
     if type.variant == .ALIAS {
@@ -315,7 +315,7 @@ value_of :: fn(type: ptr[compiler.TypeInfo], word: compiler.Code) -> compiler.Co
     return #code(cast[#insert made](#insert word))
 }
 
-// The type an alias stands for, through every alias.
+/** The type an alias stands for, through every alias. */
 underlying :: fn(type: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     current := type
     for depth in 0..<16 {
@@ -336,7 +336,7 @@ is_slice :: fn(type: ptr[compiler.TypeInfo]) -> bool {
     return dimensions.count == 1 && dimensions[0].type == .VIEW
 }
 
-// name, upper case, in upper's bytes: port_wait becomes PORT_WAIT.
+/** name, upper case, in upper's bytes: port_wait becomes PORT_WAIT. */
 upper_name :: fn(name: string, upper: ptr[mut u8[64]]) -> string {
     count := cast[usize](0)
     for character in name {

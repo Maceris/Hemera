@@ -95,22 +95,22 @@ type :: alias type
 // Functions
 align_of : fn[T](T: type) -> usize : ---
 size_of  : fn[T](T: type) -> usize : ---
-// Byte offset of a struct member from the start of the struct, like offset_of(Header, magic).
+/** Byte offset of a struct member from the start of the struct, like offset_of(Header, magic). */
 offset_of : fn[T](T: type, member: expr) -> usize : ---
 
 type_of : fn(x: expr) -> type : ---
-// Cast the result to the variant's struct (TypeInfoStruct, TypeInfoEnum, ...) to read its details.
+/** Cast the result to the variant's struct (TypeInfoStruct, TypeInfoEnum, ...) to read its details. */
 type_info_of : fn[T](T: type) -> ptr[TypeInfo] : ---
-/*
+/**
  * Whether the compiler treats a and b as the same type, following aliases that aren't distinct, as == on type values
  * does too.
  */
 types_are_aliases : fn(a, b: type) -> bool : ---
 
-// Whether a type's values are secrets: it's #secret, or an array or vector of one (docs/memory.md, Secrets).
+/** Whether a type's values are secrets: it's #secret, or an array or vector of one (docs/memory.md, Secrets). */
 is_secret_type : fn(T: type) -> bool : ---
 
-/*
+/**
  * Whether a type's values start with something other than zero: a struct with a field's default, in it or in a struct or
  * static array it holds, or a static array of one (docs/types.md, Structs). new and new_array store them when it's true.
  */
@@ -131,7 +131,7 @@ abs : fn(x: expr) -> any : ---
 max_value : fn[T](T: type) -> T : ---
 min_value : fn[T](T: type) -> T : ---
 
-/*
+/**
  * Marks code still to write. Reaching it calls context.assertion_handler with message, so it never
  * returns, and a function whose body is todo() needs no return.
  */

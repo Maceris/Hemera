@@ -38,37 +38,37 @@ Span :: struct {
 }
 
 ErrorKind :: enum {
-    // A ( without its ), or a ) without its (
+    /** A ( without its ), or a ) without its ( */
     UnmatchedParenthesis,
-    // A [ without its ]
+    /** A [ without its ] */
     UnclosedClass,
-    // *, +, ? or {n,m} with nothing to repeat
+    /** *, +, ? or {n,m} with nothing to repeat */
     NothingToRepeat,
-    // A {n,m} that isn't one, or past MAX_REPEAT
+    /** A {n,m} that isn't one, or past MAX_REPEAT */
     BadRepeat,
-    // A \ at the end, or before what can't be escaped
+    /** A \ at the end, or before what can't be escaped */
     BadEscape,
-    // A range whose end comes before its start
+    /** A range whose end comes before its start */
     BadRange,
-    // More instructions than MAX_INSTRUCTIONS
+    /** More instructions than MAX_INSTRUCTIONS */
     TooBig,
     NoMemory,
 }
 
 RegexError :: struct {
     kind : ErrorKind,
-    // The pattern's byte where it was found
+    /** The pattern's byte where it was found */
     at : usize,
 }
 
 Opcode :: enum {
-    // A code point within one of the class's ranges (or outside all of them, if it's negated)
+    /** A code point within one of the class's ranges (or outside all of them, if it's negated) */
     Class,
     Any,
-    // Go on at first, and at second, preferring first
+    /** Go on at first, and at second, preferring first */
     Split,
     Jump,
-    // Keep where the text is, in a capture slot
+    /** Keep where the text is, in a capture slot */
     Save,
     AssertStart,
     AssertEnd,
@@ -96,7 +96,7 @@ Range :: struct {
 Regex :: struct {
     program : Instruction[..],
     ranges : Range[..],
-    // Groups, the whole match counted: each has two slots
+    /** Groups, the whole match counted: each has two slots */
     groups : usize,
 }
 
@@ -104,7 +104,7 @@ Flags :: struct {
     ignore_case : bool,
 }
 
-// A pattern compiled.
+/** A pattern compiled. */
 compile :: fn(pattern: string, flags := Flags.{}) -> Result[Regex, RegexError] {
     parser := Parser.{text = string_bytes(pattern), fold = flags.ignore_case, groups = 1}
     made := Regex.{groups = 1}
@@ -133,12 +133,12 @@ free :: fn(pattern: ptr[mut Regex]) {
     runtime.array_free(&pattern.ranges)
 }
 
-// Whether the pattern matches anywhere in text.
+/** Whether the pattern matches anywhere in text. */
 is_match :: fn(pattern: ptr[Regex], text: string) -> bool {
     return find(pattern, text) is_some
 }
 
-// The leftmost-first match in text, from from on.
+/** The leftmost-first match in text, from from on. */
 find :: fn(pattern: ptr[Regex], text: string, from: usize = 0) -> Span? {
     spans : Span[1]
     if !run(pattern, string_bytes(text), from, spans[0..<1]) {
@@ -147,7 +147,7 @@ find :: fn(pattern: ptr[Regex], text: string, from: usize = 0) -> Span? {
     return spans[0]
 }
 
-/*
+/**
  * The leftmost-first match from from on, and its groups' spans into groups, as many as fit: group 0 the whole match, a
  * group that didn't take part an empty span at the text's end. Whether there was one.
  */
@@ -155,7 +155,7 @@ captures :: fn(pattern: ptr[Regex], text: string, groups: mut Span[], from: usiz
     return run(pattern, string_bytes(text), from, groups)
 }
 
-// How many groups the pattern has, the whole match counted.
+/** How many groups the pattern has, the whole match counted. */
 group_count :: fn(pattern: ptr[Regex]) -> usize {
     return pattern.groups
 }
@@ -192,13 +192,13 @@ peek :: fn(parser: ptr[Parser]) -> u8 {
     return if parser.at < parser.text.count { parser.text[parser.at] } else { 0 }
 }
 
-// The byte after the next, or 0.
+/** The byte after the next, or 0. */
 peek_after :: fn(parser: ptr[Parser]) -> u8 {
     at :: parser.at + 1
     return if at < parser.text.count { parser.text[at] } else { 0 }
 }
 
-/*
+/**
  * x|y|...: the first alternative with a split before it, to it or past it, and a jump after it past the rest, which is
  * itself an alternation.
  */
@@ -224,7 +224,7 @@ set_second :: fn(parser: ptr[mut Parser], at: usize, target: usize) {
     }
 }
 
-// An instruction put in at at, those after it moved along, and every target past it moved with them.
+/** An instruction put in at at, those after it moved along, and every target past it moved with them. */
 insert :: fn(parser: ptr[mut Parser], at: usize, instruction: Instruction) {
     regex :: parser.regex
     runtime.array_add(&regex.program, instruction)
@@ -259,7 +259,7 @@ insert :: fn(parser: ptr[mut Parser], at: usize, instruction: Instruction) {
     }
 }
 
-// A sequence of repeated atoms, up to | or ) or the end.
+/** A sequence of repeated atoms, up to | or ) or the end. */
 sequence :: fn(parser: ptr[mut Parser]) {
     loop {
         if (parser.error is_some) || parser.at >= parser.text.count {
@@ -273,7 +273,7 @@ sequence :: fn(parser: ptr[mut Parser]) {
     }
 }
 
-// An atom, and its repetition if one follows.
+/** An atom, and its repetition if one follows. */
 repeated :: fn(parser: ptr[mut Parser]) {
     byte :: peek(parser)
     if byte == cast[u8]('*') || byte == cast[u8]('+') || byte == cast[u8]('?') || byte == cast[u8]('{') {
@@ -313,7 +313,7 @@ lazy_follows :: fn(parser: ptr[mut Parser]) -> bool {
     return false
 }
 
-// What starts at start, any number of times: a split before it, a jump back after.
+/** What starts at start, any number of times: a split before it, a jump back after. */
 star :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     insert(parser, start, Instruction.{opcode = .Split})
     emit(parser, Instruction.{opcode = .Jump, first = start})
@@ -321,27 +321,27 @@ star :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     prefer(parser, start, start + 1, after, lazy)
 }
 
-// Once, then any number of times: a split after it, back to it.
+/** Once, then any number of times: a split after it, back to it. */
 plus :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     split :: emit(parser, Instruction.{opcode = .Split})
     prefer(parser, split, start, split + 1, lazy)
 }
 
-// Once or not at all: a split before it.
+/** Once or not at all: a split before it. */
 optional :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     insert(parser, start, Instruction.{opcode = .Split})
     after :: parser.regex.program.count
     prefer(parser, start, start + 1, after, lazy)
 }
 
-// A split's two ways, the repeating one first unless it's lazy.
+/** A split's two ways, the repeating one first unless it's lazy. */
 prefer :: fn(parser: ptr[mut Parser], split: usize, repeat: usize, leave: usize, lazy: bool) {
     if split < parser.regex.program.count {
         parser.regex.program[split] = Instruction.{opcode = .Split, first = if lazy { leave } else { repeat }, second = if lazy { repeat } else { leave }}
     }
 }
 
-/*
+/**
  * {n}, {n,}, {n,m}: the atom's code, from start to end, copied: n times, then m - n optional ones, or any number for
  * {n,}.
  */
@@ -387,7 +387,7 @@ counted :: fn(parser: ptr[mut Parser], start: usize, end: usize) {
     }
 }
 
-// A copy of code that was at from appended, its targets moved to where it is now.
+/** A copy of code that was at from appended, its targets moved to where it is now. */
 append_copy :: fn(parser: ptr[mut Parser], code: Instruction[..], from: usize) {
     to :: parser.regex.program.count
     for each in code {
@@ -417,7 +417,7 @@ number :: fn(parser: ptr[mut Parser]) -> usize? {
     return if digits > 0 { value } else { null }
 }
 
-// One atom: a group, a class, ., an anchor, an escape, or a code point.
+/** One atom: a group, a class, ., an anchor, an escape, or a code point. */
 atom :: fn(parser: ptr[mut Parser]) {
     byte :: peek(parser)
     if byte == cast[u8]('(') {
@@ -448,14 +448,14 @@ atom :: fn(parser: ptr[mut Parser]) {
     }
 }
 
-// A class of one code point.
+/** A class of one code point. */
 single :: fn(parser: ptr[mut Parser], point: u32) {
     start :: parser.regex.ranges.count
     runtime.array_add(&parser.regex.ranges, Range.{low = point, high = point})
     emit(parser, Instruction.{opcode = .Class, ranges_start = start, ranges_count = 1, folded = parser.fold})
 }
 
-// (x), (?:x), or (?i) on its own.
+/** (x), (?:x), or (?i) on its own. */
 group :: fn(parser: ptr[mut Parser]) {
     open :: parser.at
     parser.at += 1
@@ -494,7 +494,7 @@ group :: fn(parser: ptr[mut Parser]) {
     }
 }
 
-// \d \w \s and their negations, \b \B, and escaped characters.
+/** \d \w \s and their negations, \b \B, and escaped characters. */
 escape :: fn(parser: ptr[mut Parser]) {
     parser.at += 1
     if parser.at >= parser.text.count {
@@ -528,7 +528,7 @@ escape :: fn(parser: ptr[mut Parser]) {
     single(parser, point)
 }
 
-// \d \w \s's ranges added, or \D \W \S's: whether they're negated, or null for another escape.
+/** \d \w \s's ranges added, or \D \W \S's: whether they're negated, or null for another escape. */
 class_escape :: fn(parser: ptr[mut Parser], byte: u8) -> bool? {
     lower :: if byte >= cast[u8]('A') && byte <= cast[u8]('Z') { byte + 32 } else { byte }
     ranges :: &parser.regex.ranges
@@ -552,7 +552,7 @@ class_escape :: fn(parser: ptr[mut Parser], byte: u8) -> bool? {
     return lower != byte
 }
 
-// The code point an escape stands for: \n \t \r, or one of the characters that mean something unescaped.
+/** The code point an escape stands for: \n \t \r, or one of the characters that mean something unescaped. */
 escaped_point :: fn(byte: u8) -> u32? {
     if byte == cast[u8]('n') {
         return 10
@@ -571,7 +571,7 @@ escaped_point :: fn(byte: u8) -> u32? {
     return null
 }
 
-// [ranges], or [^ranges]: code points, a-b ranges, and \d \w \s within.
+/** [ranges], or [^ranges]: code points, a-b ranges, and \d \w \s within. */
 class :: fn(parser: ptr[mut Parser]) {
     open :: parser.at
     parser.at += 1
@@ -645,20 +645,20 @@ class :: fn(parser: ptr[mut Parser]) {
 
 // ---- Running: a Pike VM
 
-// A thread: where it is in the program, and its capture slots, in the VM's slot store.
+/** A thread: where it is in the program, and its capture slots, in the VM's slot store. */
 Thread :: struct {
     pc : usize,
     slots : usize,
 }
 
-// The threads at one position, in priority order, each place in the program at most once.
+/** The threads at one position, in priority order, each place in the program at most once. */
 ThreadList :: struct {
     threads : Thread[..],
-    // For each place in the program, the generation it was last added in, which makes it there once per step
+    /** For each place in the program, the generation it was last added in, which makes it there once per step */
     seen : u64[..],
 }
 
-// What a run reads: the program, its classes' ranges, and the text.
+/** What a run reads: the program, its classes' ranges, and the text. */
 Input :: struct #scoped {
     program : Instruction[],
     ranges : Range[],
@@ -673,7 +673,7 @@ VM :: struct {
     generation : u64,
 }
 
-// The leftmost-first match from from on, its groups' spans into groups: whether there was one.
+/** The leftmost-first match from from on, its groups' spans into groups: whether there was one. */
 run :: fn(pattern: ptr[Regex], text: u8[], from: usize, groups: mut Span[]) -> bool {
     input := Input.{program = pattern.program[0..<pattern.program.count], ranges = pattern.ranges[0..<pattern.ranges.count], text = text}
     vm := VM.{slot_count = pattern.groups * 2}
@@ -765,7 +765,7 @@ free_list :: fn(list: ptr[mut ThreadList]) {
     runtime.array_free(&list.seen)
 }
 
-/*
+/**
  * A thread at pc added to list, at position at, following jumps, splits (the first way first) and saves, and checking
  * assertions, so list holds only threads at instructions that consume or match.
  */
@@ -828,7 +828,7 @@ add :: fn(vm: ptr[mut VM], input: ptr[Input], list: ptr[mut ThreadList], pc: usi
     }
 }
 
-// Whether an instruction that consumes takes point.
+/** Whether an instruction that consumes takes point. */
 consumes :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool {
     if instruction.opcode == .Any {
         return point != 10
@@ -864,7 +864,7 @@ is_word :: fn(byte: u8) -> bool {
         || (byte >= cast[u8]('a') && byte <= cast[u8]('z')) || byte == cast[u8]('_')
 }
 
-// A thread's slots: a block of slot_count in the store, every slot not set yet.
+/** A thread's slots: a block of slot_count in the store, every slot not set yet. */
 new_slots :: fn(vm: ptr[mut VM]) -> usize {
     block := cast[usize](0)
     if vm.free_slots.count > 0 {

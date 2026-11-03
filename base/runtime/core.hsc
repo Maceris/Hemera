@@ -1,6 +1,6 @@
 package runtime
 
-// #unrestricted: what's allocated through one can be kept anywhere (docs/memory.md, Unrestricted Structs)
+/** #unrestricted: what's allocated through one can be kept anywhere (docs/memory.md, Unrestricted Structs) */
 Allocator :: struct #unrestricted {
     function : AllocatorFn,
     data : rawptr,

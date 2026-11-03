@@ -24,18 +24,18 @@ import intrinsics from "base"
 
 SLOP_OS_EVENTS_MAGIC : u32 : 0x52545645
 SLOP_OS_EVENTS_VERSION : u32 : 1
-// A ring's bytes, its header's included, as the events service makes it
+/** A ring's bytes, its header's included, as the events service makes it */
 SLOP_OS_EVENTS_RING_BYTES : u64 : 16384
 
 SlopOsEventsRing :: struct {
     magic : u32,
     version : u32,
-    // Bytes of entries after the header
+    /** Bytes of entries after the header */
     size : u64,
     // Bytes ever written, which the writer moves on, and ever read, which the reader does
     written : u64,
     read : u64,
-    // 1 while the reader waits for the doorbell; the writer clears it, and rings
+    /** 1 while the reader waits for the doorbell; the writer clears it, and rings */
     waiting : u32,
     // Which reader's: moved on by each that takes the ring over
     reader : u32,
@@ -58,7 +58,7 @@ SLOP_OS_EVENTS_SCHEMA : u16 : 3
 SLOP_OS_EVENTS_RECORD : u16 : 4
 SLOP_OS_EVENTS_DROPPED : u16 : 5
 
-// A format string's text, then count bytes of it.
+/** A format string's text, then count bytes of it. */
 SlopOsEventsFormat :: struct {
     entry : SlopOsEventsEntry,
     // Its offset in the program's image
@@ -67,7 +67,7 @@ SlopOsEventsFormat :: struct {
     reserved : u32,
 }
 
-// A type's schema (schema_write), then count bytes of it.
+/** A type's schema (schema_write), then count bytes of it. */
 SlopOsEventsSchema :: struct {
     entry : SlopOsEventsEntry,
     hash : u8[32],
@@ -75,10 +75,10 @@ SlopOsEventsSchema :: struct {
     reserved : u32,
 }
 
-// A record, then its arguments, each a SlopOsEventsArgument and count bytes of its value, padded to 8.
+/** A record, then its arguments, each a SlopOsEventsArgument and count bytes of its value, padded to 8. */
 SlopOsEventsRecord :: struct {
     entry : SlopOsEventsEntry,
-    // The monotonic clock's nanoseconds when it was written
+    /** The monotonic clock's nanoseconds when it was written */
     time : u64,
     // A LogLevel
     level : u8,
@@ -96,16 +96,16 @@ SlopOsEventsArgument :: struct {
     reserved : u32,
 }
 
-// How many records were dropped while the ring was full.
+/** How many records were dropped while the ring was full. */
 SlopOsEventsDropped :: struct {
     entry : SlopOsEventsEntry,
     count : u64,
 }
 
-// The most arguments a record holds, its format string's among them; any after them aren't written.
+/** The most arguments a record holds, its format string's among them; any after them aren't written. */
 SLOP_OS_EVENTS_MAX_ARGUMENTS :: 32
 
-// A number rounded up to 8.
+/** A number rounded up to 8. */
 slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     return (count + 7) & ~cast[u64](7)
 }
@@ -120,14 +120,14 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         hash : u8[32],
     }
 
-    // What the process's logger keeps, in pages of its own (ProcessState's events_log).
+    /** What the process's logger keeps, in pages of its own (ProcessState's events_log). */
     SlopOsEventsLog :: struct {
         ring : ptr[mut SlopOsEventsRing],
         doorbell : u32,
         lock : u32,
-        // The ring's reader when formats and types were given
+        /** The ring's reader when formats and types were given */
         reader : u32,
-        // Records dropped and not reported yet
+        /** Records dropped and not reported yet */
         dropped : u64,
         // Offsets given, plus 1, so 0 is a free place
         formats : u64[SLOP_OS_EVENTS_FORMATS],
@@ -173,7 +173,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         slop_os_log(.FATAL, "fatal", format_string, params)
     }
 
-    /*
+    /**
      * A record for the events service, or, for a process given no ring, a line as the standard logger writes it. A
      * record the ring hasn't room for, or that there isn't the memory to put together, is dropped and counted: logging
      * never ends the process.
@@ -211,7 +211,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         intrinsics.atomic_store_u32_release(&log.lock, 0)
     }
 
-    /*
+    /**
      * The record put in the ring, after a Dropped entry if any were dropped and what's given for the first time; false,
      * with nothing put, if the ring hasn't room for them or there isn't the memory to put them together in entries.
      */
@@ -312,7 +312,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         return true
     }
 
-    // The process's ring, mapped the first time it's asked for, or null if it wasn't given one.
+    /** The process's ring, mapped the first time it's asked for, or null if it wasn't given one. */
     events_log #no_context :: fn() -> ptr[mut SlopOsEventsLog]? {
         state :: intrinsics.process_state()
         loop {
@@ -336,7 +336,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         return cast[ptr[mut SlopOsEventsLog]](state.events_log)
     }
 
-    // The process's grants "events", a ring and its doorbell, mapped with what the logger keeps, or null.
+    /** The process's grants "events", a ring and its doorbell, mapped with what the logger keeps, or null. */
     map_events_log #no_context :: fn() -> rawptr {
         state :: intrinsics.process_state()
         if state.startup_block == null {
@@ -407,7 +407,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * none, with nothing added, when there isn't the memory for it.
      */
 
-    // An entry of kind begun at the end of entries, header bytes of it zeroed: where it starts.
+    /** An entry of kind begun at the end of entries, header bytes of it zeroed: where it starts. */
     events_begin :: fn(entries: ptr[mut u8[..]], kind: u16, header: usize) -> usize? {
         at :: events_zeroes(entries, header) or_return null
         entry :: cast[ptr[mut SlopOsEventsEntry]](events_at(entries, at))
@@ -416,7 +416,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         return at
     }
 
-    // The entry begun at `at`, padded, its size set to what's after it.
+    /** The entry begun at `at`, padded, its size set to what's after it. */
     events_end :: fn(entries: ptr[mut u8[..]], at: usize) -> bool {
         if !events_pad(entries) {
             return false
@@ -429,7 +429,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         return events_zeroes(entries, cast[usize](slop_os_events_padded(cast[u64](entries.count))) - entries.count) != null
     }
 
-    // count zeroed bytes added at the end of entries: where they start.
+    /** count zeroed bytes added at the end of entries: where they start. */
     events_zeroes :: fn(entries: ptr[mut u8[..]], count: usize) -> usize? {
         at :: entries.count
         if !events_room(entries, count) {
@@ -451,7 +451,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         return true
     }
 
-    // Room for count more bytes, growing entries by doubling, as array_add does.
+    /** Room for count more bytes, growing entries by doubling, as array_add does. */
     events_room :: fn(entries: ptr[mut u8[..]], count: usize) -> bool {
         needed :: entries.count + count
         capacity :: resizable(entries).capacity
@@ -466,7 +466,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
         return cast[rawptr](cast[uintptr](entries.data) + cast[uintptr](at))
     }
 
-    /*
+    /**
      * The entries put in the ring whole, and published, and its reader woken if it's waiting; false, with nothing
      * put, if there isn't room for them all.
      */

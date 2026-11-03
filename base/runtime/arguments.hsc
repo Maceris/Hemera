@@ -2,7 +2,7 @@ package runtime
 
 import intrinsics from "base"
 
-/*
+/**
  * The process's command-line arguments, the program's name first, as UTF-8. They're worked out the
  * first time they're asked for, from any thread, and kept for the rest of the process, in memory
  * from HOSTED_CONTEXT's allocator, so there's nothing to free:
@@ -30,7 +30,7 @@ process_arguments :: fn() -> string[] {
     return state.arguments
 }
 
-/*
+/**
  * The arguments in a Windows command line, as the C runtime splits it, into bytes (at least as
  * many as the command line has) and arguments, giving back how many there are: only what fits is
  * written, so a first call with an empty arguments counts them. The arguments view bytes, so bytes
@@ -137,7 +137,7 @@ split_command_line :: fn(line: string, bytes #escaping : mut u8[], arguments: mu
     return count
 }
 
-// The argument in bytes from start to end as arguments[count], if both fit, giving back the next count.
+/** The argument in bytes from start to end as arguments[count], if both fit, giving back the next count. */
 finish_argument :: fn(bytes #escaping : mut u8[], arguments: mut string[], count: usize, start: usize, end: usize) -> usize {
     if count < arguments.count && end <= bytes.count {
         if end > start && start < bytes.count {
@@ -150,10 +150,10 @@ finish_argument :: fn(bytes #escaping : mut u8[], arguments: mut string[], count
     return count + 1
 }
 
-// The longest argument or environment string Linux passes a program, with its 0 (MAX_ARG_STRLEN).
+/** The longest argument or environment string Linux passes a program, with its 0 (MAX_ARG_STRLEN). */
 ARGUMENT_TEXT_LIMIT :: 131072
 
-/*
+/**
  * Bytes up to the first 0, as a string, without copying, looking at no more than limit of them: None if there's no 0
  * among them, so what isn't text ending where it should isn't read on past where it could end. Empty for null.
  */

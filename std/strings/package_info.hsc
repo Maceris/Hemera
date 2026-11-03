@@ -1,4 +1,4 @@
-/*
+/**
  * Working with strings: formatting into new strings, parsing numbers, and finding, comparing,
  * trimming and splitting text. Only format and clone allocate.
  */

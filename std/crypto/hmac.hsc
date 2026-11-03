@@ -119,14 +119,14 @@ hmac_sha512 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte
     return hmac_sha512_finish(&hmac)
 }
 
-// HKDF's first step: a pseudorandom key from what was agreed, with a public salt, which may be empty.
+/** HKDF's first step: a pseudorandom key from what was agreed, with a public salt, which may be empty. */
 hkdf_sha256_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[32] {
     hmac := hmac_sha256_start(as_secret(salt))
     hmac_sha256_update_secret(&hmac, input)
     return hmac_sha256_finish(&hmac)
 }
 
-/*
+/**
  * HKDF's second step: output filled with keys from the pseudorandom key, for what info says they're
  * for. False, with nothing written, for more than 255 hashes' worth.
  */

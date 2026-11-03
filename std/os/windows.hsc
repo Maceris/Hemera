@@ -53,7 +53,7 @@ import runtime from "base"
     ERROR_BROKEN_PIPE : u32 : 109
     ERROR_ENVVAR_NOT_FOUND : u32 : 203
 
-    // The OsError for GetLastError's code.
+    /** The OsError for GetLastError's code. */
     error_of :: fn(code: u32) -> OsError {
         // FILE_NOT_FOUND, PATH_NOT_FOUND, INVALID_DRIVE, BAD_NETPATH, ENVVAR_NOT_FOUND
         if code == 2 || code == 3 || code == 15 || code == 53 || code == 203 {
@@ -90,7 +90,9 @@ import runtime from "base"
         return error_of(GetLastError())
     }
 
-    // text as UTF-16 with a terminator, from the context's allocator, which free_wide gives back. Empty if memory ran out.
+    /**
+     * text as UTF-16 with a terminator, from the context's allocator, which free_wide gives back. Empty if memory ran out.
+     */
     wide :: fn(text: string) -> u16[] {
         units, error :: runtime.new_array(u16, text.count + 1, context.allocator)
         if error != null {
@@ -108,7 +110,7 @@ import runtime from "base"
         runtime.free_array(units, context.allocator)
     }
 
-    // A path as UTF-16, or InvalidPath for one holding a 0, which would cut it short.
+    /** A path as UTF-16, or InvalidPath for one holding a 0, which would cut it short. */
     wide_path :: fn(path: string) -> (units : u16[], error : OsError?) {
         empty : u16[]
         for character in path {
@@ -123,7 +125,7 @@ import runtime from "base"
         return units, null
     }
 
-    // count UTF-16 units at start as UTF-8, from allocator.
+    /** count UTF-16 units at start as UTF-8, from allocator. */
     narrow :: fn(start: rawptr, count: usize, allocator: runtime.Allocator) -> (text #unrestricted : string, error : OsError?) {
         if count == 0 {
             return "", null
@@ -203,7 +205,7 @@ import runtime from "base"
         CloseHandle(cast[rawptr](file.handle))
     }
 
-    // At most this many bytes a ReadFile or WriteFile, which take a u32
+    /** At most this many bytes a ReadFile or WriteFile, which take a u32 */
     MOST_PER_CALL : usize : 0x40000000
 
     system_read :: fn(file: File, buffer: mut u8[]) -> (count : usize, error : OsError?) {
@@ -309,7 +311,7 @@ import runtime from "base"
         return null
     }
 
-    /*
+    /**
      * WIN32_FIND_DATAW: 592 bytes, the attributes first and the name, 260 UTF-16 units with a
      * terminator, at 44.
      */
@@ -417,7 +419,7 @@ import runtime from "base"
         }
         return null
     }
-    /*
+    /**
      * Directories, and paths beneath them (files.hsc): opened relative to the directory's handle with ntdll's
      * NtCreateFile, its ObjectAttributes' root, so they reach the directory wherever it's moved to; a path's '/' are
      * '\' to it. Listing reads the open directory with GetFileInformationByHandleEx.
@@ -430,7 +432,7 @@ import runtime from "base"
     NtSetInformationFile #foreign(NTDLL) : fn(handle: rawptr, status: rawptr, information: rawptr, length: u32, class: u32) -> i32 : ---
     GetFileInformationByHandleEx #foreign(KERNEL32) : fn(handle: rawptr, class: u32, buffer: rawptr, size: u32) -> i32 : ---
 
-    // UNICODE_STRING: its length and room in bytes, without a terminator, and its units.
+    /** UNICODE_STRING: its length and room in bytes, without a terminator, and its units. */
     UnicodeString :: struct #scoped {
         length : u16,
         maximum : u16,
@@ -438,7 +440,7 @@ import runtime from "base"
         buffer : rawptr,
     }
 
-    // OBJECT_ATTRIBUTES: the name, relative to root.
+    /** OBJECT_ATTRIBUTES: the name, relative to root. */
     ObjectAttributes :: struct #scoped {
         length : u32,
         padding : u32,
@@ -450,7 +452,7 @@ import runtime from "base"
         quality : rawptr,
     }
 
-    // IO_STATUS_BLOCK
+    /** IO_STATUS_BLOCK */
     IoStatus :: struct {
         status : u64,
         information : u64,
@@ -486,7 +488,7 @@ import runtime from "base"
     LISTING_BYTES :: 65536
     DIRECTORY_ACCESS :: FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE
 
-    // The OsError for an NTSTATUS that failed.
+    /** The OsError for an NTSTATUS that failed. */
     status_error :: fn(status: i32) -> OsError {
         code :: cast[u32](status)
         // NO_SUCH_FILE, OBJECT_NAME_NOT_FOUND, OBJECT_PATH_NOT_FOUND
@@ -520,7 +522,7 @@ import runtime from "base"
         return .Other
     }
 
-    // A path beneath a directory as NT wants it: UTF-16, '/' as '\', from the context's allocator.
+    /** A path beneath a directory as NT wants it: UTF-16, '/' as '\', from the context's allocator. */
     relative_name :: fn(path: string) -> (units : u16[], error : OsError?) {
         units, error :: wide_path(path)
         if error != null {
@@ -534,7 +536,7 @@ import runtime from "base"
         return units, null
     }
 
-    // NtCreateFile of path relative to root: the handle, or the error.
+    /** NtCreateFile of path relative to root: the handle, or the error. */
     open_relative :: fn(root: rawptr, path: string, access: u32, disposition: u32, options: u32) -> (handle : rawptr, error : OsError?) {
         units, path_error :: relative_name(path)
         if path_error != null {
@@ -622,7 +624,7 @@ import runtime from "base"
         return null
     }
 
-    // What's at path, a file or a directory as options says, deleted: marked to go, and gone once it's closed.
+    /** What's at path, a file or a directory as options says, deleted: marked to go, and gone once it's closed. */
     delete_relative :: fn(directory: Directory, path: string, options: u32) -> OsError? {
         handle, error :: open_relative(cast[rawptr](directory.handle), path, DELETE, FILE_OPEN, options)
         if error != null {
@@ -648,7 +650,7 @@ import runtime from "base"
         return delete_relative(directory, path, FILE_DIRECTORY_FILE)
     }
 
-    /*
+    /**
      * from opened for deleting, then given to as its new name relative to the directory, replacing a file there:
      * FILE_RENAME_INFORMATION's ReplaceIfExists, padded, its root at 8, the name's bytes at 16 and the name at 20.
      */
@@ -681,7 +683,7 @@ import runtime from "base"
         return null
     }
 
-    // FILE_BASIC_INFORMATION: four times, then the attributes at 32.
+    /** FILE_BASIC_INFORMATION: four times, then the attributes at 32. */
     system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
         units, path_error :: relative_name(path)
         if path_error != null {

@@ -2,7 +2,7 @@ package concurrency
 
 import runtime from "base"
 
-/*
+/**
  * A lock that waits without spinning: a fiber that has to wait parks, so its carrier runs other
  * fibers meanwhile, and a thread blocks (runtime.park). Waiters are served in order, and unlocking
  * hands the lock straight to the first of them, so nobody waits forever.

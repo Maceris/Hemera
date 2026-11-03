@@ -3,7 +3,7 @@ package memory
 import intrinsics from "base"
 import runtime from "base"
 
-/*
+/**
  * An arena: a bump allocator over chunks it takes from another allocator, for memory that's all given back at once,
  * like what a frame or a request builds and drops. Allocating moves a chunk's offset on; freeing gives back only the
  * newest block, so temporaries made and freed in turn unwind, and anything else stays until the arena is reset, restored
@@ -21,35 +21,37 @@ import runtime from "base"
  */
 Arena :: struct {
     backing : runtime.Allocator,
-    // The size of each chunk taken from backing, header included; a larger block gets a chunk of its own size
+    /** The size of each chunk taken from backing, header included; a larger block gets a chunk of its own size */
     chunk_size : usize,
-    // The newest chunk, which blocks come from, holding the one before it
+    /** The newest chunk, which blocks come from, holding the one before it */
     current : ptr[mut ArenaChunk]?,
-    // The newest block's address, which freeing gives back and resizing grows in place, or 0
+    /** The newest block's address, which freeing gives back and resizing grows in place, or 0 */
     last : usize,
 }
 
-// A chunk of an arena: this header, then the bytes blocks are taken from.
+/** A chunk of an arena: this header, then the bytes blocks are taken from. */
 ArenaChunk :: struct {
     previous : ptr[mut ArenaChunk]?,
-    // Bytes after the header
+    /** Bytes after the header */
     capacity : usize,
-    // Bytes after the header given out so far
+    /** Bytes after the header given out so far */
     used : usize,
 }
 
-// Where an arena was, for arena_restore to go back to.
+/** Where an arena was, for arena_restore to go back to. */
 ArenaMark :: struct {
     chunk : ptr[mut ArenaChunk]?,
     used : usize,
 }
 
-// The header before each chunk's bytes, kept a multiple of 16 so blocks of up to 16-byte alignment pack from the start.
+/**
+ * The header before each chunk's bytes, kept a multiple of 16 so blocks of up to 16-byte alignment pack from the start.
+ */
 ARENA_CHUNK_HEADER :: (size_of(ArenaChunk) + 15) & ~cast[usize](15)
 
 ARENA_DEFAULT_CHUNK_SIZE : usize : 64 * 1024
 
-/*
+/**
  * An arena taking chunks of chunk_size bytes from backing, made with backing, since the allocator it is holds it
  * (arena_allocator): null if there's no memory for it. It takes no chunk until something is allocated. free_arena gives
  * it back.
@@ -63,18 +65,18 @@ make_arena :: fn(chunk_size := ARENA_DEFAULT_CHUNK_SIZE, backing := context.allo
     return made
 }
 
-// Gives back every chunk and the arena itself.
+/** Gives back every chunk and the arena itself. */
 free_arena :: fn(arena: ptr[mut Arena]) {
     arena_free_chunks(arena, null)
     runtime.free_aligned(arena, align_of(Arena), arena.backing)
 }
 
-// The allocator an Arena is, which it must outlive.
+/** The allocator an Arena is, which it must outlive. */
 arena_allocator :: fn(arena #escaping : ptr[mut Arena]) -> runtime.Allocator {
     return runtime.Allocator.{arena_function, cast[rawptr](arena)}
 }
 
-/*
+/**
  * Gives back everything allocated from the arena, keeping its first chunk to allocate from again and giving the others
  * back to the backing allocator.
  */
@@ -91,13 +93,13 @@ reset_arena :: fn(arena: ptr[mut Arena]) {
     chunk.used = 0
 }
 
-// Where the arena is now, to give back what's allocated after it with arena_restore.
+/** Where the arena is now, to give back what's allocated after it with arena_restore. */
 arena_mark :: fn(arena: ptr[Arena]) -> ArenaMark {
     chunk :: arena.current or_return ArenaMark.{}
     return ArenaMark.{chunk = chunk, used = chunk.used}
 }
 
-/*
+/**
  * Gives back everything allocated since mark was taken, with the chunks taken since. A mark taken before the arena had
  * a chunk gives back every chunk. Where the arena already gave back what the mark covers, by a reset or by restoring an
  * earlier mark, there's nothing more to give back, and it's left as it is.
@@ -112,7 +114,7 @@ arena_restore :: fn(arena: ptr[mut Arena], mark: ArenaMark) {
     chunk.used = mark.used
 }
 
-// Whether the arena is past mark: mark's chunk is still one of its chunks, with no less of it used than then.
+/** Whether the arena is past mark: mark's chunk is still one of its chunks, with no less of it used than then. */
 arena_after :: fn(arena: ptr[Arena], mark: ArenaMark) -> bool {
     marked :: mark.chunk or_return true
     next := arena.current
@@ -126,7 +128,7 @@ arena_after :: fn(arena: ptr[Arena], mark: ArenaMark) -> bool {
     return false
 }
 
-// How many bytes the arena has given out and not given back, across its chunks.
+/** How many bytes the arena has given out and not given back, across its chunks. */
 arena_used :: fn(arena: ptr[Arena]) -> usize {
     total : usize = 0
     next := arena.current
@@ -138,7 +140,7 @@ arena_used :: fn(arena: ptr[Arena]) -> usize {
     return total
 }
 
-/*
+/**
  * A new T from allocator, holding value, like a literal with some of its fields given: runtime.new, then the value
  * stored. If it can't be allocated, calls context.assertion_handler, as new does.
  */
@@ -148,7 +150,7 @@ new_value :: fn[T](value #escaping : T, allocator := context.allocator, loc := #
     return made
 }
 
-// Gives back the chunks newer than keep, all of them when keep is null, leaving keep the newest.
+/** Gives back the chunks newer than keep, all of them when keep is null, leaving keep the newest. */
 arena_free_chunks :: fn(arena: ptr[mut Arena], keep: ptr[mut ArenaChunk]?) {
     loop {
         chunk :: arena.current or_break
@@ -161,7 +163,7 @@ arena_free_chunks :: fn(arena: ptr[mut Arena], keep: ptr[mut ArenaChunk]?) {
     }
 }
 
-// size zeroed bytes aligned to align from the newest chunk, or null if it has no room.
+/** size zeroed bytes aligned to align from the newest chunk, or null if it has no room. */
 arena_take_from_newest :: fn(arena: ptr[mut Arena], size: usize, align: usize) -> rawptr {
     chunk :: arena.current or_return null
     start :: arena_chunk_start(chunk)
@@ -175,14 +177,14 @@ arena_take_from_newest :: fn(arena: ptr[mut Arena], size: usize, align: usize) -
     return cast[rawptr](at)
 }
 
-// Gives back the newest block, block.
+/** Gives back the newest block, block. */
 arena_give_back_newest :: fn(arena: ptr[mut Arena], block: rawptr) {
     arena.last = 0
     chunk :: arena.current or_return void
     chunk.used = cast[usize](block) - arena_chunk_start(chunk)
 }
 
-// Resizes the newest block, block, where it is: false if its chunk has no room.
+/** Resizes the newest block, block, where it is: false if its chunk has no room. */
 arena_resize_newest :: fn(arena: ptr[mut Arena], block: rawptr, old_size: usize, size: usize) -> bool {
     chunk :: arena.current or_return false
     offset :: cast[usize](block) - arena_chunk_start(chunk)
@@ -196,12 +198,12 @@ arena_resize_newest :: fn(arena: ptr[mut Arena], block: rawptr, old_size: usize,
     return true
 }
 
-// The start of a chunk's bytes.
+/** The start of a chunk's bytes. */
 arena_chunk_start :: fn(chunk: ptr[ArenaChunk]) -> usize {
     return cast[usize](chunk) + ARENA_CHUNK_HEADER
 }
 
-/*
+/**
  * size zeroed bytes aligned to alignment from the newest chunk, or a new one when they don't fit: null if backing has no
  * memory for it.
  */

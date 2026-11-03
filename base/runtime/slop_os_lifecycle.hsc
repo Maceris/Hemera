@@ -24,17 +24,17 @@ import intrinsics from "base"
     SLOP_OS_LIFECYCLE_PONG : u32 : 3
     SLOP_OS_LIFECYCLE_STOPPING : u32 : 4
 
-    // The lifecycle thread's stack, which needs little: it calls the kernel, and nothing else
+    /** The lifecycle thread's stack, which needs little: it calls the kernel, and nothing else */
     SLOP_OS_LIFECYCLE_STACK : usize : 16 * 1024
 
-    // What the lifecycle thread starts with: its carrier block and its end of the channel.
+    /** What the lifecycle thread starts with: its carrier block and its end of the channel. */
     SlopOsLifecycle :: struct {
         carrier : CarrierBlock,
         channel : u64,
         stack : rawptr,
     }
 
-    /*
+    /**
      * The lifecycle thread, if the program was given a "lifecycle" channel: started before main, from the entry, which
      * has no context yet; nothing it does needs one.
      */
@@ -55,7 +55,7 @@ import intrinsics from "base"
         _ = slop_os_start_thread(cast[rawptr](slop_os_lifecycle_entry), stack, SLOP_OS_LIFECYCLE_STACK, cast[u64](cast[uintptr](lifecycle)))
     }
 
-    // The lifecycle thread: every message answered, until the other end closes, when the thread ends.
+    /** The lifecycle thread: every message answered, until the other end closes, when the thread ends. */
     slop_os_lifecycle_entry #calling_convention(.c) #no_context :: fn(argument: u64) #never_returns {
         lifecycle :: cast[ptr[mut SlopOsLifecycle]](cast[rawptr](cast[uintptr](argument)))
         intrinsics.set_carrier(&lifecycle.carrier)
@@ -105,7 +105,7 @@ import intrinsics from "base"
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, port.first)
     }
 
-    // The stop asked for: remembered, and the port the program asked for a packet on, if any, woken.
+    /** The stop asked for: remembered, and the port the program asked for a packet on, if any, woken. */
     slop_os_request_stop #no_context :: fn() {
         state :: intrinsics.process_state()
         intrinsics.atomic_store_u32_release(&state.stop_requested, 1)
@@ -115,12 +115,12 @@ import intrinsics from "base"
         }
     }
 
-    // Whether whoever started the program has asked it to stop.
+    /** Whether whoever started the program has asked it to stop. */
     slop_os_stop_requested #no_context :: fn() -> bool {
         return intrinsics.atomic_load_u32_acquire(&intrinsics.process_state().stop_requested) != 0
     }
 
-    /*
+    /**
      * A User packet for key on port, which a wake binding for key must be made on first (port_bind_wake), once a stop's
      * asked for, or at once if it has been.
      */

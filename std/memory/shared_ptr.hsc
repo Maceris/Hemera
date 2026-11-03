@@ -4,7 +4,7 @@ import compiler from "base"
 import intrinsics from "base"
 import runtime from "base"
 
-/*
+/**
  * Shared ownership (docs/memory.md, Owned Types): a value on the heap with several owners, released
  * when the last one is done with it.
  *
@@ -29,10 +29,10 @@ SharedPtr :: struct[T, atomic = true] #owned(release) #unrestricted #thread_boun
     using shared_value : ptr[T],
 }
 
-// A SharedPtr that counts without atomics, for values that stay on one thread.
+/** A SharedPtr that counts without atomics, for values that stay on one thread. */
 LocalPtr :: alias[T] SharedPtr[T, false]
 
-/*
+/**
  * A reference that doesn't keep the value: upgrade gives a SharedPtr while there's still one, and
  * null once the last is released. The block stays until the weak references are released too.
  */
@@ -44,10 +44,10 @@ WeakPtr :: struct[T, atomic = true] #owned(release_weak) #unrestricted #thread_b
  * Before the value, in the same allocation. weak counts the weak references, and one more for all
  * the strong ones together, so the block goes when both are done.
  */
-// What runs when the last owner is done: given the value, by its address
+/** What runs when the last owner is done: given the value, by its address */
 Destroy :: alias fn(value: rawptr)
 
-// A destroy function for one type's values
+/** A destroy function for one type's values */
 DestroyValue :: alias[T] fn(value: ptr[mut T])
 
 SharedHeader :: struct {
@@ -60,17 +60,17 @@ SharedHeader :: struct {
     alignment : usize,
 }
 
-// The header before a value in its block.
+/** The header before a value in its block. */
 header_of :: fn[T](value: ptr[T]) -> ptr[mut SharedHeader] {
     return cast[ptr[mut SharedHeader]](cast[rawptr](value) - size_of(SharedHeader))
 }
 
-// Releases an #owned value in a block, for one made without its own destroy.
+/** Releases an #owned value in a block, for one made without its own destroy. */
 release_in_place :: fn[T](value: rawptr) {
     compiler.release(compiler.take(cast[ptr[mut T]](value)))
 }
 
-/*
+/**
  * value, moved into a new block with its counts, and its first owner. destroy runs when the last owner
  * releases it; without one, a value whose type is #owned is released with its own release function,
  * and anything else needs nothing.
@@ -106,12 +106,12 @@ make_shared :: fn[T, atomic = true](value #escaping : T, destroy : DestroyValue[
     return SharedPtr[mut T, atomic].{shared_value = at}
 }
 
-// The value's address, for passing on: a SharedPtr isn't a pointer itself.
+/** The value's address, for passing on: a SharedPtr isn't a pointer itself. */
 pointer_of :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> ptr[T] {
     return shared.shared_value
 }
 
-// Another owner of the same value.
+/** Another owner of the same value. */
 share :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> SharedPtr[T, atomic] {
     header :: header_of(shared.shared_value)
     #if atomic {
@@ -124,7 +124,7 @@ share :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> SharedPtr[T, 
     return compiler.duplicate(shared)
 }
 
-// Drops the block's weak count, freeing it when it's the last.
+/** Drops the block's weak count, freeing it when it's the last. */
 release_block :: fn[atomic: bool](header: ptr[mut SharedHeader]) {
     last := false
     #if atomic {
@@ -143,7 +143,7 @@ release_block :: fn[atomic: bool](header: ptr[mut SharedHeader]) {
     }
 }
 
-/*
+/**
  * Drops an owner. The last one destroys the value, then lets the block go, once the weak references
  * have too. A zeroed SharedPtr owns nothing.
  */
@@ -175,7 +175,7 @@ release :: fn[T, atomic: bool](shared: SharedPtr[T, atomic]) {
     compiler.forget(shared)
 }
 
-// A weak reference to a shared value.
+/** A weak reference to a shared value. */
 weaken :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> WeakPtr[T, atomic] {
     header :: header_of(shared.shared_value)
     #if atomic {
@@ -187,7 +187,7 @@ weaken :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> WeakPtr[T, a
     return WeakPtr[T, atomic].{shared_value = shared.shared_value}
 }
 
-// An owner of the value, if any owner is left; null once the last was released.
+/** An owner of the value, if any owner is left; null once the last was released. */
 upgrade :: fn[T, atomic: bool](weak: ptr[WeakPtr[T, atomic]]) -> SharedPtr[T, atomic]? {
     header :: header_of(weak.shared_value)
     #if atomic {

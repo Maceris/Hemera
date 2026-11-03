@@ -3,7 +3,7 @@ package runtime
 import compiler from "base"
 import intrinsics from "base"
 
-/*
+/**
  * How strings, array views and dynamic arrays are laid out in memory, for code that works
  * through rawptr and type info, like std's reflection. See docs/types.md (Memory Layout).
  */
@@ -44,17 +44,17 @@ ResizableArray :: struct {
 
 ARRAY_MINIMUM_CAPACITY : usize : 4
 
-// The array's fields, as ResizableArray.
+/** The array's fields, as ResizableArray. */
 resizable :: fn[T](array: ptr[mut T[..]]) -> ptr[mut ResizableArray] {
     return cast[ptr[mut ResizableArray]](cast[rawptr](array))
 }
 
-// Where element index is.
+/** Where element index is. */
 element_address :: fn[T](raw: ptr[ResizableArray], index: usize, T: type) -> ptr[mut T] {
     return cast[ptr[mut T]](raw.data + index * size_of(T))
 }
 
-/*
+/**
  * Makes room for at least new_capacity elements, keeping the ones there are. Does nothing if
  * there's room already. Without the memory, calls context.assertion_handler, which ends the program;
  * array_try_reserve gives the error instead.
@@ -65,7 +65,7 @@ array_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location := #
     }
 }
 
-/*
+/**
  * Like array_reserve, but without the memory, gives the allocator's error and leaves the array as it was, for code
  * that handles running out, as map_try_put does for maps.
  */
@@ -93,7 +93,7 @@ array_try_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location 
     return null
 }
 
-// Adds value at the end, growing the array if it's full.
+/** Adds value at the end, growing the array if it's full. */
 array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) {
     raw :: resizable(array)
     if raw.count == raw.capacity {
@@ -104,7 +104,7 @@ array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #call
     raw.count += 1
 }
 
-// Like array_add, but without the memory to grow, gives the allocator's error and leaves the array as it was.
+/** Like array_add, but without the memory to grow, gives the allocator's error and leaves the array as it was. */
 array_try_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) -> AllocatorError? {
     raw :: resizable(array)
     if raw.count == raw.capacity {
@@ -118,7 +118,7 @@ array_try_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #
     return null
 }
 
-// Like array_copy, but without the memory, gives the allocator's error and leaves target as it was.
+/** Like array_copy, but without the memory, gives the allocator's error and leaves target as it was. */
 array_try_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_location) -> AllocatorError? {
     raw :: resizable(target)
     if raw.count + source.count > raw.capacity {
@@ -131,7 +131,7 @@ array_try_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller
     return null
 }
 
-// Adds each of source's elements at the end of target, in order.
+/** Adds each of source's elements at the end of target, in order. */
 array_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_location) {
     raw :: resizable(target)
     if source.count == 0 {
@@ -146,7 +146,7 @@ array_copy :: fn[T](source: T[], target: ptr[mut T[..]], location := #caller_loc
     }
 }
 
-// Where value first is in array, or none.
+/** Where value first is in array, or none. */
 array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
     for element, index in array {
         if element == value {
@@ -156,7 +156,7 @@ array_find :: fn[T: compiler.Equatable](array: T[], value: T) -> usize? {
     return null
 }
 
-// Gives the array's memory back to its allocator, leaving it empty. It keeps the allocator.
+/** Gives the array's memory back to its allocator, leaving it empty. It keeps the allocator. */
 array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
     raw :: resizable(array)
     if raw.capacity > 0 {
@@ -171,7 +171,7 @@ array_free :: fn[T](array: ptr[mut T[..]], location := #caller_location) {
     raw.capacity = 0
 }
 
-/*
+/**
  * An array of owned values (docs/memory.md, Owned Types), given up: each element released with release,
  * then the array's memory given back.
  *
@@ -187,12 +187,12 @@ array_release :: fn[T](array #escaping : T[..], release: (fn(value: T)), locatio
     compiler.forget(items)
 }
 
-// Empties the array, keeping its memory for what's added next.
+/** Empties the array, keeping its memory for what's added next. */
 array_reset :: fn[T](array: ptr[mut T[..]]) {
     resizable(array).count = 0
 }
 
-// Removes the element at position, moving the ones after it down one, so their order is kept.
+/** Removes the element at position, moving the ones after it down one, so their order is kept. */
 array_remove :: fn[T](array: ptr[mut T[..]], position: usize, location := #caller_location) {
     raw :: resizable(array)
     if position >= raw.count {
@@ -206,7 +206,7 @@ array_remove :: fn[T](array: ptr[mut T[..]], position: usize, location := #calle
     raw.count -= 1
 }
 
-// Removes the element at position by moving the last element into its place: faster, but the order changes.
+/** Removes the element at position by moving the last element into its place: faster, but the order changes. */
 array_remove_fast :: fn[T](array: ptr[mut T[..]], position: usize, location := #caller_location) {
     raw :: resizable(array)
     if position >= raw.count {
@@ -219,7 +219,7 @@ array_remove_fast :: fn[T](array: ptr[mut T[..]], position: usize, location := #
     raw.count = last
 }
 
-// The last element. The array mustn't be empty.
+/** The last element. The array mustn't be empty. */
 peek :: fn[T](array: T[], location := #caller_location) -> T {
     if array.count == 0 {
         context.assertion_handler(location, "peek at an empty array")
@@ -227,7 +227,7 @@ peek :: fn[T](array: T[], location := #caller_location) -> T {
     return array[array.count - 1]
 }
 
-// Removes the last element and gives it back. The array mustn't be empty.
+/** Removes the last element and gives it back. The array mustn't be empty. */
 pop :: fn[T](array: ptr[mut T[..]], location := #caller_location) -> T {
     raw :: resizable(array)
     if raw.count == 0 {

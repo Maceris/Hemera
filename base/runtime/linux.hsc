@@ -60,12 +60,12 @@ import intrinsics from "base"
     FUTEX_PRIVATE : u64 : 128
     PAGE_SIZE : usize : 4096
 
-    // A system call's result is an error when it's -4095 to -1.
+    /** A system call's result is an error when it's -4095 to -1. */
     syscall_failed #no_context :: fn(result: u64) -> bool {
         return result > 0xffff_ffff_ffff_f000
     }
 
-    // Pages of memory, zeroed, or null.
+    /** Pages of memory, zeroed, or null. */
     map_pages #no_context :: fn(size: usize) -> rawptr {
         result :: linux_syscall(SYS_MMAP, 0, cast[u64](size), PROT_READ_WRITE, MAP_PRIVATE_ANONYMOUS, 0xffff_ffff_ffff_ffff, 0)
         if syscall_failed(result) {
@@ -78,7 +78,7 @@ import intrinsics from "base"
         linux_syscall(SYS_MUNMAP, cast[u64](address), cast[u64](size))
     }
 
-    /*
+    /**
      * Bytes to standard output (1) or error (2), a write at a time until they're all written, or
      * one fails. Written directly, so text from C's stdio, which buffers, can come out after it.
      */
@@ -104,7 +104,7 @@ import intrinsics from "base"
         }
     }
 
-    // argv, from the entry, as strings viewing the kernel's copies, which last as long as the process.
+    /** argv, from the entry, as strings viewing the kernel's copies, which last as long as the process. */
     os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
         empty : string[]
         state :: intrinsics.process_state()
@@ -121,13 +121,13 @@ import intrinsics from "base"
         return arguments
     }
 
-    // Ends the process at once, with code, running nothing else: for a failed assertion.
+    /** Ends the process at once, with code, running nothing else: for a failed assertion. */
     os_exit_process #no_context :: fn(code: u32) #never_returns {
         linux_syscall(SYS_EXIT_GROUP, cast[u64](code))
         intrinsics.trap()
     }
 
-    // The system's clocks, from clock_gettime: CLOCK_MONOTONIC, and CLOCK_REALTIME for the wall clock.
+    /** The system's clocks, from clock_gettime: CLOCK_MONOTONIC, and CLOCK_REALTIME for the wall clock. */
     SYSTEM_CLOCK :: Clock.{
         data = null,
         monotonic = system_monotonic,
@@ -137,7 +137,7 @@ import intrinsics from "base"
     CLOCK_REALTIME : u64 : 0
     CLOCK_MONOTONIC : u64 : 1
 
-    // struct timespec
+    /** struct timespec */
     TimeSpec :: struct {
         seconds : i64,
         nanoseconds : i64,
@@ -159,13 +159,13 @@ import intrinsics from "base"
         return .Ok(Instant.{now.seconds, cast[u32](now.nanoseconds)})
     }
 
-    // The system's random numbers, from getrandom, which waits until the kernel's generator is ready.
+    /** The system's random numbers, from getrandom, which waits until the kernel's generator is ready. */
     SYSTEM_RANDOM :: Random.{
         data = null,
         fill = system_random_fill,
     }
 
-    // Fills bytes, a getrandom at a time; stops the program if it can't, since fill can't report it.
+    /** Fills bytes, a getrandom at a time; stops the program if it can't, since fill can't report it. */
     system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
         done : usize = 0
         loop {
@@ -184,7 +184,7 @@ import intrinsics from "base"
         }
     }
 
-    /*
+    /**
      * What a hosted program's main starts with: memory from the kernel, the standard logger and
      * assertion handler, and the system's clock and random numbers.
      */
@@ -199,17 +199,17 @@ import intrinsics from "base"
         extensions = null,
     }
 
-    // Each thread's own stack, which Linux doesn't make for a thread clone starts.
+    /** Each thread's own stack, which Linux doesn't make for a thread clone starts. */
     THREAD_STACK_SIZE : usize : 1048576
-    // Room left below stack_limit on a thread's own stack, for code that runs where Hemera's doesn't.
+    /** Room left below stack_limit on a thread's own stack, for code that runs where Hemera's doesn't. */
     NATIVE_STACK_RESERVE :: 65536
 
     ThreadSpecificOS :: struct {
-        // The thread's ID, which the kernel clears once it has exited
+        /** The thread's ID, which the kernel clears once it has exited */
         tid : u32,
-        // Its own stack, THREAD_STACK_SIZE bytes
+        /** Its own stack, THREAD_STACK_SIZE bytes */
         stack_memory : rawptr,
-        // Linking C: the thread's pthread_t
+        /** Linking C: the thread's pthread_t */
         pthread : u64,
     }
 
@@ -224,17 +224,17 @@ import intrinsics from "base"
     pthread_create #foreign(LIBC) : fn(thread: ptr[mut u64], attributes: rawptr, start: rawptr, argument: rawptr) -> i32 : ---
     pthread_join #foreign(LIBC) : fn(thread: u64, result: rawptr) -> i32 : ---
 
-    // pthread_attr_t, 56 bytes on x86-64, with room to spare.
+    /** pthread_attr_t, 56 bytes on x86-64, with room to spare. */
     PthreadAttributes :: struct #align(16) {
         bytes : u8[64],
     }
 
-    // Where callbacks from foreign code find a thread's carrier block, linking C (callback_carrier).
+    /** Where callbacks from foreign code find a thread's carrier block, linking C (callback_carrier). */
     register_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
         intrinsics.set_thread_carrier(carrier)
     }
 
-    /*
+    /**
      * The carrier block of a thread a callback from foreign code found none on: a thread Hemera didn't
      * start, which gets one of its own, from the runtime's heap, kept for the rest of its life. Its
      * stack's bounds aren't known, so it has no limit. Callback shims call this with a temporary one
@@ -251,7 +251,7 @@ import intrinsics from "base"
         return carrier
     }
 
-    /*
+    /**
      * Where a thread starts, on its new stack: its carrier block first, since every prologue reads it,
      * with its stack's limit, then its function with the context it was created with. Started by
      * clone, it ends with the exit system call, which ends only this thread; started by
@@ -282,7 +282,7 @@ import intrinsics from "base"
         intrinsics.trap()
     }
 
-    // CLONE_VM, FS, FILES, SIGHAND, THREAD, SYSVSEM, PARENT_SETTID and CHILD_CLEARTID: a thread of this process.
+    /** CLONE_VM, FS, FILES, SIGHAND, THREAD, SYSVSEM, PARENT_SETTID and CHILD_CLEARTID: a thread of this process. */
     THREAD_CLONE_FLAGS : u64 : 0x350f00
 
     os_thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {
@@ -313,7 +313,7 @@ import intrinsics from "base"
         return true
     }
 
-    /*
+    /**
      * Until the kernel has cleared the thread's ID, which it does once the thread has exited, waking
      * this. Not a private futex: the kernel's wake for it isn't.
      */

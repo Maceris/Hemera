@@ -1,4 +1,4 @@
-/*
+/**
  * Inspecting program and type information at run time and compile time.
  */
 package reflection

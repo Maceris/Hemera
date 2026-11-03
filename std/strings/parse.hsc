@@ -9,7 +9,7 @@ package strings
  *     strings.parse_bool("true")         // true
  */
 
-// The value of a digit in base (2 to 36, with letters either case past 9), or none.
+/** The value of a digit in base (2 to 36, with letters either case past 9), or none. */
 digit_value :: fn(character: char, base: u64) -> u64? {
     value : u64 = 36
     if character >= '0' && character <= '9' {
@@ -29,7 +29,7 @@ digit_value :: fn(character: char, base: u64) -> u64? {
 
 MAX_U64 : u64 : 0xffff_ffff_ffff_ffff
 
-// Digits in base (2 to 36), with no sign.
+/** Digits in base (2 to 36), with no sign. */
 parse_unsigned :: fn(text: string, base: u64 = 10) -> u64? {
     if text.count == 0 || base < 2 || base > 36 {
         return null
@@ -49,7 +49,7 @@ parse_unsigned :: fn(text: string, base: u64 = 10) -> u64? {
     return result
 }
 
-// Digits in base (2 to 36), after a - or + if there is one.
+/** Digits in base (2 to 36), after a - or + if there is one. */
 parse_signed :: fn(text: string, base: u64 = 10) -> i64? {
     negative :: starts_with(text, "-")
     digits := text
@@ -75,7 +75,7 @@ parse_signed :: fn(text: string, base: u64 = 10) -> i64? {
     }
 }
 
-// "true" or "false".
+/** "true" or "false". */
 parse_bool :: fn(text: string) -> bool? {
     if equal(text, "true") {
         return true

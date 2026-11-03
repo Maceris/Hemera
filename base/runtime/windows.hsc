@@ -8,9 +8,9 @@ import intrinsics from "base"
  */
 #if OS == .Windows {
     KERNEL32 :: #library("kernel32")
-    // BCryptGenRandom, the system's random numbers
+    /** BCryptGenRandom, the system's random numbers */
     BCRYPT :: #library("bcrypt")
-    // WaitOnAddress and its wakes, from the API set kernelbase implements
+    /** WaitOnAddress and its wakes, from the API set kernelbase implements */
     SYNCHRONIZATION :: #library("synchronization")
 
     GetProcessHeap #foreign(KERNEL32) : fn() -> rawptr : ---
@@ -91,7 +91,7 @@ import intrinsics from "base"
 
     HEAP_ALLOCATOR :: Allocator.{heap_allocator_function, null}
 
-    /*
+    /**
      * Bytes to standard output or error, a WriteFile at a time until they're all written. Nothing
      * happens without one, like in a program started with it closed.
      */
@@ -120,13 +120,13 @@ import intrinsics from "base"
         }
     }
 
-    // Ends the process at once, with code, running nothing else: for a failed assertion.
+    /** Ends the process at once, with code, running nothing else: for a failed assertion. */
     os_exit_process #no_context :: fn(code: u32) #never_returns {
         TerminateProcess(GetCurrentProcess(), code)
         intrinsics.trap()
     }
 
-    /*
+    /**
      * GetCommandLineW, as UTF-8, split as the C runtime splits it (split_command_line), in memory
      * from allocator kept for the rest of the process. None if memory runs out.
      */
@@ -165,7 +165,7 @@ import intrinsics from "base"
         return arguments
     }
 
-    /*
+    /**
      * The system's clocks: the performance counter for monotonic time, which counts at a frequency
      * that's fixed while the system runs, and the precise system time for the wall clock, in 100
      * nanosecond ticks since 1601.
@@ -190,7 +190,7 @@ import intrinsics from "base"
         return cast[MonotonicTime](seconds * NANOSECONDS_PER_SECOND + left * NANOSECONDS_PER_SECOND / frequency)
     }
 
-    // 100 nanosecond ticks from 1601-01-01 to 1970-01-01
+    /** 100 nanosecond ticks from 1601-01-01 to 1970-01-01 */
     FILETIME_TO_UNIX : u64 : 116444736000000000
 
     system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
@@ -203,7 +203,7 @@ import intrinsics from "base"
         return .Ok(Instant.{cast[i64](since / 10000000), cast[u32](since % 10000000 * 100)})
     }
 
-    // The system's random numbers, from its preferred generator, which is suitable for keys.
+    /** The system's random numbers, from its preferred generator, which is suitable for keys. */
     SYSTEM_RANDOM :: Random.{
         data = null,
         fill = system_random_fill,
@@ -211,7 +211,7 @@ import intrinsics from "base"
 
     BCRYPT_USE_SYSTEM_PREFERRED_RNG : u32 : 2
 
-    // Fills bytes, a BCryptGenRandom at a time; stops the program if it can't, since fill can't report it.
+    /** Fills bytes, a BCryptGenRandom at a time; stops the program if it can't, since fill can't report it. */
     system_random_fill :: fn(data: mut rawptr, bytes: mut u8[]) {
         done : usize = 0
         loop {
@@ -227,7 +227,7 @@ import intrinsics from "base"
         }
     }
 
-    /*
+    /**
      * What a hosted program's main starts with: the process heap, the standard logger and assertion
      * handler, and the system's clock and random numbers.
      */
@@ -242,14 +242,14 @@ import intrinsics from "base"
         extensions = null,
     }
 
-    // Room left below stack_limit on a thread's own stack, for foreign code and the system.
+    /** Room left below stack_limit on a thread's own stack, for foreign code and the system. */
     NATIVE_STACK_RESERVE :: 65536
 
     ThreadSpecificOS :: struct {
         handle : rawptr,
     }
 
-    /*
+    /**
      * Where a thread starts: its carrier block first, since every prologue reads it, with its own
      * stack's limit, then its function with the context it was created with. It ends with
      * ExitThread rather than returning, since it doesn't keep the carrier register for its caller.
@@ -275,7 +275,7 @@ import intrinsics from "base"
         ExitThread(0)
     }
 
-    /*
+    /**
      * Store a thread's carrier block in its thread-local storage, where callbacks from foreign code
      * look for it, allocating the slot the first time. The program's entry does this for the main
      * thread before any other starts.
@@ -288,7 +288,7 @@ import intrinsics from "base"
         TlsSetValue(slot^ - 1, cast[rawptr](carrier))
     }
 
-    /*
+    /**
      * The carrier block of the thread a callback from foreign code is on, which callback shims call
      * with a temporary one loaded (counting a foreign call, so nothing here moves stacks or yields).
      * A thread Hemera didn't start gets one of its own the first time, from the process heap, with

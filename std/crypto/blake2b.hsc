@@ -25,11 +25,11 @@ Blake2bState :: struct #secret {
     block: u8[128],
 }
 
-// A block's words, and the working words a compression mixes.
+/** A block's words, and the working words a compression mixes. */
 Blake2bWords :: distinct alias u64[16] #secret
-// v's four rows, a vector of four words each, for compressing with AVX2.
+/** v's four rows, a vector of four words each, for compressing with AVX2. */
 Blake2bRows :: distinct alias vector[u64, 4][4] #secret
-// The message words for four G at once, x then y.
+/** The message words for four G at once, x then y. */
 Blake2bMessageLanes :: distinct alias vector[u64, 4][2] #secret
 
 Blake2b :: struct {
@@ -38,7 +38,7 @@ Blake2b :: struct {
     buffered: usize,
     total: u64,
     size: usize,
-    // Whether blocks are compressed with AVX2, as vectors_wide() says when it starts
+    /** Whether blocks are compressed with AVX2, as vectors_wide() says when it starts */
     wide: bool,
 }
 
@@ -47,7 +47,7 @@ BLAKE2B_START :: u64.[
     0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 ]
 
-// Which of a block's words each round mixes, in order.
+/** Which of a block's words each round mixes, in order. */
 BLAKE2B_SIGMA :: usize.[
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3,
@@ -61,12 +61,12 @@ BLAKE2B_SIGMA :: usize.[
     10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0,
 ]
 
-// A hasher for a digest of size bytes, from 1 to 64, or null for another size.
+/** A hasher for a digest of size bytes, from 1 to 64, or null for another size. */
 blake2b_start :: fn(size: usize) -> Blake2b? {
     return blake2b_start_keyed(size, as_secret(u8.[]))
 }
 
-// A keyed hasher, for a key of up to 64 bytes, or null for a longer one or a size that isn't 1 to 64.
+/** A keyed hasher, for a key of up to 64 bytes, or null for a longer one or a size that isn't 1 to 64. */
 blake2b_start_keyed #constant_time :: fn(size: usize, key: SecretByte[]) -> Blake2b? {
     if size == 0 || size > 64 || key.count > 64 {
         return null
@@ -99,7 +99,7 @@ blake2b_mix #constant_time :: fn(v: ptr[mut Blake2bWords], a: usize, b: usize, c
     v[b % 16] = intrinsics.rotate_right(v[b % 16] ~ v[c % 16], 63)
 }
 
-// The block into the words, with how many bytes there have been, and whether it's the last.
+/** The block into the words, with how many bytes there have been, and whether it's the last. */
 blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, last: bool, wide: bool) {
     m : Blake2bWords
     for i in 0..<16 {
@@ -159,7 +159,7 @@ blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr
         }
     }
 
-    // G on each of the rows' four columns at once, with the message words from the round's sigma at s, from k.
+    /** G on each of the rows' four columns at once, with the message words from the round's sigma at s, from k. */
     blake2b_mix_rows #constant_time #target_features("avx2") :: fn(r: ptr[mut Blake2bRows], m: ptr[Blake2bWords], s: usize, k: usize) {
         lanes : Blake2bMessageLanes
         blake2b_message_lanes(&lanes, m, s, k)
@@ -217,7 +217,7 @@ blake2b_update_secret #constant_time :: fn(hasher: ptr[mut Blake2b], data: Secre
     blake2b_absorb(hasher, data)
 }
 
-/*
+/**
  * data, bytes or secret ones, into the hasher: into the block until it's full, then whole blocks straight
  * from data while more comes after them, since the last block is compressed differently, then the rest
  * into the block.
@@ -251,7 +251,7 @@ blake2b_absorb :: fn[T](hasher: ptr[mut Blake2b], data: T[]) {
     while at < data.count
 }
 
-// The digest, its size's worth of output's bytes, or as many as fit.
+/** The digest, its size's worth of output's bytes, or as many as fit. */
 blake2b_finish_secret #constant_time :: fn(hasher: ptr[mut Blake2b], output: mut SecretByte[]) {
     hasher.total += cast[u64](hasher.buffered)
     for i in hasher.buffered..<BLAKE2B_BLOCK {
@@ -273,7 +273,7 @@ blake2b_finish :: fn(hasher: ptr[mut Blake2b], output: mut u8[]) {
     }
 }
 
-// A digest of output's size, from 1 to 64 bytes, or false for another size.
+/** A digest of output's size, from 1 to 64 bytes, or false for another size. */
 blake2b :: fn(data: u8[], output: mut u8[]) -> bool {
     hasher := blake2b_start(output.count) or_return false
     blake2b_update(&hasher, data)

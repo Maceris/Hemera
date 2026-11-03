@@ -1,4 +1,4 @@
-/*
+/**
  * SlopOS's system ABI: the syscall table, handle and error types, channel ring and port packet
  * layouts, the startup block, and the ABI version. The kernel and std's OS layer for
  * OS == .SlopOS both import it, so it stays freestanding.

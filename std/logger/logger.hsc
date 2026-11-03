@@ -4,7 +4,7 @@ import runtime from "base"
 import text_buffer from "std"
 import time from "std"
 
-/*
+/**
  * A logger that puts what its options ask for in front of each message, on a line of its own:
  *
  *     [warn] 14:03:27.412 loader.hsc:88 load_file [thread 2] missing 3 files
@@ -22,15 +22,15 @@ import time from "std"
  * allocated, and each line is one write. Lines longer than LINE_SIZE bytes are cut short.
  */
 Options :: struct {
-    // The time of day in UTC, from context.clock, when it has one
+    /** The time of day in UTC, from context.clock, when it has one */
     time : bool,
-    // The file's name (without its folders) and line
+    /** The file's name (without its folders) and line */
     location : bool,
-    // The function's name
+    /** The function's name */
     function : bool,
-    // The thread's index (runtime.current_thread_index)
+    /** The thread's index (runtime.current_thread_index) */
     thread : bool,
-    // Where lines go: standard error, unless this says otherwise
+    /** Where lines go: standard error, unless this says otherwise */
     stream : runtime.OutputStream,
 }
 
@@ -38,14 +38,14 @@ DEFAULT_OPTIONS :: Options.{time = true, location = true, function = false, thre
 
 LINE_SIZE :: 1024
 
-// A logger and its options, in one block, so the logger's data points at its own copy of the options.
+/** A logger and its options, in one block, so the logger's data points at its own copy of the options. */
 LoggerBlock :: struct {
     // First, so a pointer to it is a pointer to the block
     logger : runtime.Logger,
     options : Options,
 }
 
-// A logger with options, from allocator, which destroy gives back.
+/** A logger with options, from allocator, which destroy gives back. */
 create :: fn(options: Options, allocator := context.allocator) -> ptr[mut runtime.Logger] {
     block :: runtime.new(LoggerBlock, allocator)
     block.options = options
@@ -62,7 +62,7 @@ create :: fn(options: Options, allocator := context.allocator) -> ptr[mut runtim
     return &block.logger
 }
 
-// Gives back a logger from create, to the allocator it came from.
+/** Gives back a logger from create, to the allocator it came from. */
 destroy :: fn(logger: ptr[runtime.Logger], allocator := context.allocator) {
     runtime.free(cast[ptr[LoggerBlock]](cast[rawptr](logger)), allocator)
 }
@@ -91,7 +91,7 @@ log_fatal : runtime.LogFunction : fn(format_string: string, params: any..., loca
     log_line(.FATAL, "fatal", format_string, params, location)
 }
 
-// The part of path after its last folder separator, / or \.
+/** The part of path after its last folder separator, / or \. */
 file_name :: fn(path: string) -> string {
     start : usize = 0
     for character, index in path {

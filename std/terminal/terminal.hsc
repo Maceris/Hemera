@@ -23,7 +23,7 @@ import unicode from "std"
     import lifecycle from "std/os/slop_os"
     import terminal as protocol from "std/os/slop_os"
 
-    // The port key a stop's asked for on, beside the terminal's binding
+    /** The port key a stop's asked for on, beside the terminal's binding */
     STOP_KEY : u64 : 1
 
     Terminal :: struct {
@@ -35,22 +35,22 @@ import unicode from "std"
         next : usize,
         text : u8[protocol.MAX_EVENT_TEXT],
         text_count : usize,
-        // Whether a Read is held
+        /** Whether a Read is held */
         reading : bool,
-        // Whether it's gone, or asked to stop
+        /** Whether it's gone, or asked to stop */
         hung_up : bool,
     }
 
-    // What next_event gives: an event and its text, or why there's none.
+    /** What next_event gives: an event and its text, or why there's none. */
     Input :: union {
         Event(protocol.Event, u8[]),
-        // The terminal's gone
+        /** The terminal's gone */
         HangUp,
-        // The program was asked to stop on its lifecycle channel
+        /** The program was asked to stop on its lifecycle channel */
         Stop,
     }
 
-    // A terminal client on a connection, its port made and a stop asked to wake it.
+    /** A terminal client on a connection, its port made and a stop asked to wake it. */
     open :: fn(connection: os.Channel[protocol.Terminal]) -> Terminal? {
         made := Terminal.{end = connection.end}
         made.port = os.port_for(slop_os.startup_block().budget, connection.end) or_return null
@@ -66,12 +66,12 @@ import unicode from "std"
         return protocol.write(terminal.end, terminal.port, text, style) && protocol.write(terminal.end, terminal.port, "\n")
     }
 
-    // The line being edited, below what's written, the cursor a byte offset in it.
+    /** The line being edited, below what's written, the cursor a byte offset in it. */
     show_input :: fn(terminal: ptr[mut Terminal], text: u8[], cursor: usize) -> bool {
         return protocol.input_line(terminal.end, terminal.port, text, cursor)
     }
 
-    /*
+    /**
      * The next event, waited for: its text is the terminal's until the next call. A Read is held for more once what came
      * is used up; HangUp once the terminal's gone, Stop once the program's asked to stop.
      */
@@ -161,7 +161,7 @@ import unicode from "std"
     MAX_HISTORY :: 200
     MAX_LINE_BYTES :: 4096
 
-    /*
+    /**
      * A completion: the candidates for the text from start to the cursor, which it's replaced with. A completer fills
      * one in for a line and its cursor; data is what the editor was given for it.
      */
@@ -172,7 +172,7 @@ import unicode from "std"
 
     Completer :: fn(data: rawptr, line: u8[], cursor: usize, into: ptr[mut Completions])
 
-    /*
+    /**
      * A line editor: the line being typed and the cursor in it, as a byte offset at a grapheme cluster's start; history,
      * oldest first, its lines the editor's own; and a completer, if there's one.
      */
@@ -187,17 +187,17 @@ import unicode from "std"
         completer_data : rawptr,
     }
 
-    // What read_line gives.
+    /** What read_line gives. */
     LineResult :: union {
-        // A line, the caller's to free
+        /** A line, the caller's to free */
         Line(string),
-        // Ctrl-C: the line dropped
+        /** Ctrl-C: the line dropped */
         Interrupted,
         HangUp,
         Stop,
     }
 
-    /*
+    /**
      * A line read, edited as it's typed: shown after prompt as the terminal's input line. Left and Right move a grapheme
      * cluster, Home and End (or Ctrl-A, Ctrl-E) to the ends; Backspace and Delete take one out, Ctrl-U and Ctrl-K what's
      * before or after the cursor, Ctrl-W the word before it; Up and Down go through history; Tab completes; Enter ends
@@ -245,7 +245,7 @@ import unicode from "std"
         }
     }
 
-    // One key: whether it ended the line.
+    /** One key: whether it ended the line. */
     key :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], event: protocol.Event, text: u8[]) -> bool {
         control :: event.modifiers & protocol.CONTROL != 0
         code :: event.code
@@ -316,7 +316,7 @@ import unicode from "std"
         return false
     }
 
-    // bytes put in at the cursor, which moves past them.
+    /** bytes put in at the cursor, which moves past them. */
     insert :: fn(editor: ptr[mut LineEditor], bytes: u8[]) {
         for byte in bytes {
             if editor.line.count >= MAX_LINE_BYTES {
@@ -339,7 +339,7 @@ import unicode from "std"
         }
     }
 
-    // The bytes from start to end taken out.
+    /** The bytes from start to end taken out. */
     remove :: fn(editor: ptr[mut LineEditor], start: usize, end: usize) {
         if start >= end || end > editor.line.count {
             return void
@@ -357,7 +357,7 @@ import unicode from "std"
         }
     }
 
-    // The previous or next line of history in place of the one typed, which is kept to come back to.
+    /** The previous or next line of history in place of the one typed, which is kept to come back to. */
     through_history :: fn(editor: ptr[mut LineEditor], back: bool) {
         if back {
             if editor.browsing == 0 {
@@ -385,7 +385,7 @@ import unicode from "std"
         editor.cursor = editor.line.count
     }
 
-    /*
+    /**
      * Tab: the completer's candidates for the text before the cursor; one is put in its place, several put in what they
      * all start with, or if that's nothing more, are written above the line.
      */
@@ -430,7 +430,7 @@ import unicode from "std"
         runtime.array_free(&found.candidates)
     }
 
-    // A line ended kept in history, unless it's empty or the same as the last; the oldest dropped past MAX_HISTORY.
+    /** A line ended kept in history, unless it's empty or the same as the last; the oldest dropped past MAX_HISTORY. */
     remember :: fn(editor: ptr[mut LineEditor]) {
         if editor.line.count == 0 {
             return void
@@ -449,7 +449,7 @@ import unicode from "std"
         runtime.array_add(&editor.history, copy_text(editor.line))
     }
 
-    // The input line drawn: the prompt, then the line, the cursor in it.
+    /** The input line drawn: the prompt, then the line, the cursor in it. */
     show :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], prompt: string) {
         shown : u8[..]
         defer runtime.array_free(&shown)
@@ -462,7 +462,7 @@ import unicode from "std"
         _ = show_input(terminal, shown[0..<shown.count], prompt.count + editor.cursor)
     }
 
-    // The line's free, and its history's.
+    /** The line's free, and its history's. */
     free_editor :: fn(editor: ptr[mut LineEditor]) {
         runtime.array_free(&editor.line)
         runtime.array_free(&editor.typed)
@@ -490,7 +490,7 @@ import unicode from "std"
     }
 }
 
-// Where the grapheme cluster before at starts, or 0.
+/** Where the grapheme cluster before at starts, or 0. */
 previous_cluster :: fn(line: u8[], at: usize) -> usize {
     if at == 0 || at > line.count {
         return 0
@@ -508,7 +508,7 @@ previous_cluster :: fn(line: u8[], at: usize) -> usize {
     return last
 }
 
-// Where the grapheme cluster at at ends, or at at the line's end.
+/** Where the grapheme cluster at at ends, or at at the line's end. */
 next_cluster :: fn(line: u8[], at: usize) -> usize {
     if at >= line.count {
         return line.count

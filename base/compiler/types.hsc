@@ -3,7 +3,7 @@ package compiler
 ArrayDimensions :: struct {
     type: ArrayType,
     count: usize,
-    // A view whose elements can be changed through it, mut T[].
+    /** A view whose elements can be changed through it, mut T[]. */
     is_mutable: bool,
 }
 
@@ -23,7 +23,7 @@ FunctionInput :: struct {
     type: ptr[TypeInfo],
     name: string,
     is_varargs: bool,
-    // Marked #escaping, which is part of the function's type.
+    /** Marked #escaping, which is part of the function's type. */
     is_escaping: bool,
 }
 
@@ -33,17 +33,19 @@ FunctionOutput :: struct {
 
 UnionVariant :: struct {
     name: string,
-    // The types of the variant's values, like int and string for Pair(int, string); none for a
-    // variant without values.
+    /**
+     * The types of the variant's values, like int and string for Pair(int, string); none for a
+     * variant without values.
+     */
     types: ptr[TypeInfo][],
-    // Each value's byte offset from the start of the union, after the tag, in the same order.
+    /** Each value's byte offset from the start of the union, after the tag, in the same order. */
     offsets: usize[],
 }
 
 StructMember :: struct {
     name: string,
     member_type: ptr[TypeInfo],
-    // Byte offset from the start of the struct, 0 for every member of a #union.
+    /** Byte offset from the start of the struct, 0 for every member of a #union. */
     offset: usize,
     // The default value, if has_value. Not filled in at run time yet: an empty any.
     value: any,
@@ -87,7 +89,7 @@ TypeInfoAlias :: struct {
 TypeInfoArray :: struct {
     using TypeInfo,
     base_type: ptr[TypeInfo],
-    // Outermost first, the one indexed first.
+    /** Outermost first, the one indexed first. */
     dimensions: ArrayDimensions[],
 }
 
@@ -97,7 +99,7 @@ TypeInfoEnum :: struct {
     // From #backed_by, uint if it wasn't given.
     backing_type: ptr[TypeInfo],
     members: string[],
-    // The value of each member, in the same order as members.
+    /** The value of each member, in the same order as members. */
     values: u128[],
 }
 
@@ -110,7 +112,7 @@ TypeInfoFunction :: struct {
     using TypeInfo,
     input: FunctionInput[],
     output: FunctionOutput[],
-    // Marked #never_returns.
+    /** Marked #never_returns. */
     never_returns: bool,
 }
 
@@ -128,7 +130,7 @@ TypeInfoPointer :: struct {
     is_mutable: bool,
 }
 
-// vector[T, n], or v128 to v512 (is_bits), which are lanes of u64 (docs/types.md, Vectors).
+/** vector[T, n], or v128 to v512 (is_bits), which are lanes of u64 (docs/types.md, Vectors). */
 TypeInfoVector :: struct {
     using TypeInfo,
     element_type: ptr[TypeInfo],
@@ -145,17 +147,17 @@ TypeInfoStruct :: struct {
     using TypeInfo,
     name: string,
     members: StructMember[],
-    // In bytes, from #align(n) if it was given, otherwise the natural alignment.
+    /** In bytes, from #align(n) if it was given, otherwise the natural alignment. */
     alignment: usize,
-    // Marked #scoped, so values hold pointers into the stack and can't be stored on the heap.
+    /** Marked #scoped, so values hold pointers into the stack and can't be stored on the heap. */
     is_scoped: bool,
-    // Marked #unrestricted, so values never point into the stack and can be stored anywhere.
+    /** Marked #unrestricted, so values never point into the stack and can be stored anywhere. */
     is_unrestricted: bool,
-    // Marked #packed, so there is no padding between members.
+    /** Marked #packed, so there is no padding between members. */
     is_packed: bool,
-    // Marked #union, so every member is at offset 0 and they share memory.
+    /** Marked #union, so every member is at offset 0 and they share memory. */
     is_union: bool,
-    // Marked #secret, so its values are secrets, which formatting shows as <secret> (docs/memory.md, Secrets).
+    /** Marked #secret, so its values are secrets, which formatting shows as <secret> (docs/memory.md, Secrets). */
     is_secret: bool,
 }
 
@@ -163,11 +165,15 @@ TypeInfoUnion :: struct {
     using TypeInfo,
     name: string,
     variants: UnionVariant[],
-    // The unsigned integer at offset 0 saying which variant a value is: its index in variants.
-    // None when null_is_none.
+    /**
+     * The unsigned integer at offset 0 saying which variant a value is: its index in variants.
+     * None when null_is_none.
+     */
     tag_type: ptr[TypeInfo]?,
-    // An optional of a pointer that's never null, like ptr[T]? or cstring?: just the pointer,
-    // null for None and anything else for Some, with no tag.
+    /**
+     * An optional of a pointer that's never null, like ptr[T]? or cstring?: just the pointer,
+     * null for None and anything else for Some, with no tag.
+     */
     null_is_none: bool,
 }
 

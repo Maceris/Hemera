@@ -11,12 +11,12 @@ package runtime
 
 REPLACEMENT_CHARACTER : u32 : 0xfffd
 
-// The most UTF-8 bytes count UTF-16 units can need: 3 each, since a pair of surrogates needs 4.
+/** The most UTF-8 bytes count UTF-16 units can need: 3 each, since a pair of surrogates needs 4. */
 utf8_capacity_for_utf16 :: fn(count: usize) -> usize {
     return count * 3
 }
 
-// Writes byte at index if it fits, and gives back the next index.
+/** Writes byte at index if it fits, and gives back the next index. */
 put_byte :: fn(bytes: mut u8[], index: usize, byte: u32) -> usize {
     if index < bytes.count {
         bytes[index] = cast[u8](byte)
@@ -31,7 +31,7 @@ put_unit :: fn(units: mut u16[], index: usize, unit: u32) -> usize {
     return index + 1
 }
 
-// code_point as UTF-8 at index, giving back the index after it.
+/** code_point as UTF-8 at index, giving back the index after it. */
 put_utf8 :: fn(bytes: mut u8[], index: usize, code_point: u32) -> usize {
     if code_point < 0x80 {
         return put_byte(bytes, index, code_point)
@@ -51,7 +51,7 @@ put_utf8 :: fn(bytes: mut u8[], index: usize, code_point: u32) -> usize {
     return put_byte(bytes, third, 0x80 | (code_point & 0x3f))
 }
 
-/*
+/**
  * units as UTF-8 in bytes, giving back how many bytes it takes, which can be more than bytes holds
  * (utf8_capacity_for_utf16 is always enough): only what fits is written.
  */
@@ -83,7 +83,7 @@ utf16_to_utf8 :: fn(units: u16[], bytes: mut u8[]) -> usize {
     return written
 }
 
-/*
+/**
  * text as UTF-16 in units, giving back how many units it takes, which is never more than
  * text.count: only what fits is written.
  */

@@ -9,85 +9,85 @@ package aarch64
  * it, so use it from architecture-specific code only.
  */
 
-/*
+/**
  * The system registers read_system_register and write_system_register reach by name, each the
  * register's encoding: op0 << 14 | op1 << 11 | CRn << 7 | CRm << 3 | op2, as in the instruction.
  * Others are reached with read_system_register_encoded and write_system_register_encoded.
  */
 SystemRegister :: enum #backed_by(u32) {
-    // Which CPU this is: implementer, part and revision
+    /** Which CPU this is: implementer, part and revision */
     MIDR_EL1 = 0xc000,
-    // This CPU's affinity levels, for telling CPUs apart
+    /** This CPU's affinity levels, for telling CPUs apart */
     MPIDR_EL1 = 0xc005,
     ID_AA64PFR0_EL1 = 0xc020,
-    // Instruction set features: atomics, CRC, AES, SHA, and RNDR (bits 60 to 63)
+    /** Instruction set features: atomics, CRC, AES, SHA, and RNDR (bits 60 to 63) */
     ID_AA64ISAR0_EL1 = 0xc030,
     ID_AA64ISAR1_EL1 = 0xc031,
-    // Memory model features: physical address size, granules and ASID bits
+    /** Memory model features: physical address size, granules and ASID bits */
     ID_AA64MMFR0_EL1 = 0xc038,
     ID_AA64MMFR1_EL1 = 0xc039,
-    // System control: the MMU (bit 0), alignment checks, caches, WXN
+    /** System control: the MMU (bit 0), alignment checks, caches, WXN */
     SCTLR_EL1 = 0xc080,
-    // Whether floating point and SIMD trap (FPEN, bits 20 and 21)
+    /** Whether floating point and SIMD trap (FPEN, bits 20 and 21) */
     CPACR_EL1 = 0xc082,
-    // The lower half's translation table, and its ASID
+    /** The lower half's translation table, and its ASID */
     TTBR0_EL1 = 0xc100,
-    // The upper half's translation table
+    /** The upper half's translation table */
     TTBR1_EL1 = 0xc101,
-    // Translation control: each half's size, granule, cacheability and shareability
+    /** Translation control: each half's size, granule, cacheability and shareability */
     TCR_EL1 = 0xc102,
     SPSR_EL1 = 0xc200,
     ELR_EL1 = 0xc201,
     SP_EL0 = 0xc208,
     SPSel = 0xc210,
-    // The exception level, in bits 2 and 3
+    /** The exception level, in bits 2 and 3 */
     CurrentEL = 0xc212,
-    // The interrupt masks: debug, SError, IRQ and FIQ (bits 9 to 6)
+    /** The interrupt masks: debug, SError, IRQ and FIQ (bits 9 to 6) */
     DAIF = 0xda11,
-    // GICv3: the priority mask
+    /** GICv3: the priority mask */
     ICC_PMR_EL1 = 0xc230,
     FPCR = 0xda20,
     FPSR = 0xda21,
-    // Why the last exception was taken
+    /** Why the last exception was taken */
     ESR_EL1 = 0xc290,
-    // The address that faulted
+    /** The address that faulted */
     FAR_EL1 = 0xc300,
-    // The result of an address translation instruction (at_*)
+    /** The result of an address translation instruction (at_*) */
     PAR_EL1 = 0xc3a0,
-    // The memory attributes translation table entries index
+    /** The memory attributes translation table entries index */
     MAIR_EL1 = 0xc510,
-    // The exception vector table (vector_table)
+    /** The exception vector table (vector_table) */
     VBAR_EL1 = 0xc600,
-    // Which interrupts are pending
+    /** Which interrupts are pending */
     ISR_EL1 = 0xc608,
     ICC_DIR_EL1 = 0xc659,
     ICC_RPR_EL1 = 0xc65b,
-    // GICv3: sends a software-generated interrupt to other CPUs
+    /** GICv3: sends a software-generated interrupt to other CPUs */
     ICC_SGI1R_EL1 = 0xc65d,
-    // GICv3: acknowledges the highest-priority pending interrupt, giving its ID
+    /** GICv3: acknowledges the highest-priority pending interrupt, giving its ID */
     ICC_IAR1_EL1 = 0xc660,
-    // GICv3: ends an interrupt
+    /** GICv3: ends an interrupt */
     ICC_EOIR1_EL1 = 0xc661,
     ICC_BPR1_EL1 = 0xc663,
     ICC_CTLR_EL1 = 0xc664,
-    // GICv3: enables the system register interface
+    /** GICv3: enables the system register interface */
     ICC_SRE_EL1 = 0xc665,
-    // GICv3: enables group 1 interrupts
+    /** GICv3: enables group 1 interrupts */
     ICC_IGRPEN1_EL1 = 0xc667,
     CONTEXTIDR_EL1 = 0xc681,
-    // Free for the kernel, like a per-CPU pointer
+    /** Free for the kernel, like a per-CPU pointer */
     TPIDR_EL1 = 0xc684,
-    // Free for user code, like its thread pointer
+    /** Free for user code, like its thread pointer */
     TPIDR_EL0 = 0xde82,
-    // Read-only to user code
+    /** Read-only to user code */
     TPIDRRO_EL0 = 0xde83,
-    // Which timer registers user code may read
+    /** Which timer registers user code may read */
     CNTKCTL_EL1 = 0xc708,
-    // The generic timer's frequency
+    /** The generic timer's frequency */
     CNTFRQ_EL0 = 0xdf00,
-    // The physical count
+    /** The physical count */
     CNTPCT_EL0 = 0xdf01,
-    // The virtual count
+    /** The virtual count */
     CNTVCT_EL0 = 0xdf02,
     CNTP_TVAL_EL0 = 0xdf10,
     CNTP_CTL_EL0 = 0xdf11,
@@ -98,7 +98,7 @@ SystemRegister :: enum #backed_by(u32) {
     MDSCR_EL1 = 0x8012,
 }
 
-/*
+/**
  * The domains of dsb and dmb, each its CRm value: the full system (SY), or the inner shareable (ISH),
  * outer shareable (OSH) or non-shareable (NSH) domain, for all accesses or only stores (ST) or loads (LD).
  */
@@ -117,7 +117,7 @@ BarrierDomain :: enum #backed_by(u8) {
     SY = 15,
 }
 
-/*
+/**
  * The interrupted code's registers, saved by the generated code of entry functions
  * (#calling_convention(.entry), through vector_table) and restored by return_to_user, from the lowest
  * address up. Its layout is part of the calling convention version.
@@ -157,7 +157,7 @@ ESR_CLASS_DATA_ABORT_LOWER : u64 : 0x24
 ESR_CLASS_DATA_ABORT : u64 : 0x25
 ESR_CLASS_BRK : u64 : 0x3c
 
-// The 2 KiB-aligned vector table vector_table makes, for VBAR_EL1: 16 entries of 32 instructions.
+/** The 2 KiB-aligned vector table vector_table makes, for VBAR_EL1: 16 entries of 32 instructions. */
 VectorTable :: struct {
     instructions : u32[512],
 }
@@ -170,21 +170,21 @@ DAIF_DEBUG : u8 : 8
 
 // System calls, from user mode
 
-/*
+/**
  * A system call with Linux's AArch64 convention: svc #0, the number in x8, up to six arguments in x0 to
  * x5, and the result in x0, where -4095 to -1 are errors (-errno). It doesn't use the stack, so it works on
  * a fiber's small one.
  */
 syscall : fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> u64 : ---
 
-// What system_call gives: x0, x1 and x2 after the call.
+/** What system_call gives: x0, x1 and x2 after the call. */
 SystemCallResult :: struct {
     x0 : u64,
     x1 : u64,
     x2 : u64,
 }
 
-/*
+/**
  * A system call that answers in up to three registers, like SlopOS's: svc #0, the number in x8, up to six
  * arguments in x0 to x5, and x0, x1 and x2 after it. Every other register is kept. It doesn't use the stack.
  */
@@ -202,9 +202,9 @@ clone_thread : fn(flags: u64, stack: rawptr, parent_tid: ptr[mut u32], child_tid
 
 // System registers
 
-// mrs: a system register's value.
+/** mrs: a system register's value. */
 read_system_register : fn[system_register](system_register: SystemRegister) -> u64 : ---
-// msr: sets a system register. Changes that affect the instructions after it need an isb.
+/** msr: sets a system register. Changes that affect the instructions after it need an isb. */
 write_system_register : fn[system_register](system_register: SystemRegister, value: u64) : ---
 // The same for a register SystemRegister doesn't name, by its encoding's parts.
 read_system_register_encoded : fn[op0, op1, crn, crm, op2](op0: u8, op1: u8, crn: u8, crm: u8, op2: u8) -> u64 : ---
@@ -216,14 +216,14 @@ daif_clear : fn[mask](mask: u8) : ---
 
 // Barriers
 
-// Data synchronization barrier: every access before it, in domain, completes before anything after it.
+/** Data synchronization barrier: every access before it, in domain, completes before anything after it. */
 dsb : fn[domain](domain: BarrierDomain) : ---
-// Data memory barrier: accesses before it, in domain, are seen before the ones after it.
+/** Data memory barrier: accesses before it, in domain, are seen before the ones after it. */
 dmb : fn[domain](domain: BarrierDomain) : ---
-// Instruction synchronization barrier: instructions after it are fetched again, seeing system register changes.
+/** Instruction synchronization barrier: instructions after it are fetched again, seeing system register changes. */
 isb : fn() : ---
 
-/*
+/**
  * A bootloader's last step: the memory attributes, the translation control and both tables loaded, the TLB flushed, the
  * stack pointer set to stack, and entry branched to with argument in x0 and zero frame and link registers, never to
  * come back.
@@ -236,9 +236,9 @@ smc : fn(function: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0) -> u64 : ---
 
 // Waiting
 
-// Wait for an interrupt.
+/** Wait for an interrupt. */
 wfi : fn() : ---
-// Wait for an event, or an interrupt.
+/** Wait for an event, or an interrupt. */
 wfe : fn() : ---
 // Send an event to every CPU, or only this one (sevl).
 sev : fn() : ---
@@ -265,13 +265,13 @@ tlbi_aside1is : fn(operand: u64) : ---
 
 // Cache maintenance, by the address of a byte in the line
 
-// Clean data to the point of unification, as code written as data needs before ic_ivau.
+/** Clean data to the point of unification, as code written as data needs before ic_ivau. */
 dc_cvau : fn(address: rawptr) : ---
-// Clean data to the point of coherency, as a device without coherent access needs.
+/** Clean data to the point of coherency, as a device without coherent access needs. */
 dc_cvac : fn(address: rawptr) : ---
-// Clean and invalidate data to the point of coherency.
+/** Clean and invalidate data to the point of coherency. */
 dc_civac : fn(address: rawptr) : ---
-// Invalidate data to the point of coherency, losing anything not written back.
+/** Invalidate data to the point of coherency, losing anything not written back. */
 dc_ivac : fn(address: rawptr) : ---
 // Invalidate instructions to the point of unification: one line, all of this CPU's (iallu), or every CPU's (ialluis).
 ic_ivau : fn(address: rawptr) : ---
@@ -305,10 +305,10 @@ FP_SIMD_STATE_SIZE : usize : 528
 
 // Debugging
 
-// A breakpoint exception, with immediate in ESR_EL1's low 16 bits.
+/** A breakpoint exception, with immediate in ESR_EL1's low 16 bits. */
 brk : fn[immediate](immediate: u16) : ---
 
-/*
+/**
  * A semihosting call (hlt #0xf000), for code running under a debugger or QEMU's -semihosting: operation in
  * x0, parameter in x1, and the result in x0. SYS_EXIT (0x18) ends QEMU, with parameter pointing at two
  * words: 0x20026 (ADP_Stopped_ApplicationExit) and the exit code.
@@ -317,7 +317,7 @@ semihosting : fn(operation: u64, parameter: rawptr) -> u64 : ---
 
 // Entry and return
 
-/*
+/**
  * The vector table for handler, an entry function (#calling_convention(.entry)), for VBAR_EL1: each of its
  * 16 entries makes room for a RegisterFrame on the stack, saves x0 and x1, records which entry it is, and
  * enters handler's generated code, which saves the rest. handler may return: the frame is restored and the
@@ -328,14 +328,14 @@ semihosting : fn(operation: u64, parameter: rawptr) -> u64 : ---
  */
 vector_table : fn[handler](handler: (fn(frame: ptr[mut RegisterFrame]))) -> ptr[VectorTable] : ---
 
-/*
+/**
  * Set SP_EL1, the stack exceptions taken to EL1 run on, while running on SP_EL0 (PSTATE.SP clear), as code a
  * bootloader entered that way does: msr spsel, #1, then mov sp, then msr spsel, #0, touching no stack. On
  * SP_EL1 it would move the caller's own stack, so it isn't for that.
  */
 write_sp_el1 : fn(stack: rawptr) : ---
 
-/*
+/**
  * Restore every register from frame, with SP_EL1 at kernel_stack for the next exception (selected first,
  * so this works from code running on SP_EL0 too), and return with eret to where the frame says, usually
  * user mode. Interrupts must stay masked until then.

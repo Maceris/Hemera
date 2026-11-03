@@ -1,4 +1,4 @@
-/*
+/**
  * The dir protocol, which std/os's files speak on SlopOS.
  */
 package dir

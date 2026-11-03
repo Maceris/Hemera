@@ -19,13 +19,13 @@ package unicode
  * Bytes that aren't UTF-8 are each a cluster of their own, one column wide, as a terminal shows them with U+FFFD.
  */
 
-// The code point shown in place of bytes that aren't UTF-8.
+/** The code point shown in place of bytes that aren't UTF-8. */
 REPLACEMENT : u32 : 0xfffd
 
-// The largest code point.
+/** The largest code point. */
 MAX_CODE_POINT : u32 : 0x10ffff
 
-// A code point's Grapheme_Cluster_Break property (UAX #29), as the tables number it.
+/** A code point's Grapheme_Cluster_Break property (UAX #29), as the tables number it. */
 GraphemeBreak :: enum #backed_by(u8) {
     Other = 0,
     CR = 1,
@@ -43,7 +43,7 @@ GraphemeBreak :: enum #backed_by(u8) {
     LVT = 13,
 }
 
-// A code point's Indic_Conjunct_Break property, which joins consonants across a virama (UAX #29's GB9c).
+/** A code point's Indic_Conjunct_Break property, which joins consonants across a virama (UAX #29's GB9c). */
 ConjunctBreak :: enum #backed_by(u8) {
     None = 0,
     Linker = 1,
@@ -56,7 +56,7 @@ CONJUNCT_SHIFT : u16 : 5
 WIDTH_SHIFT : u16 : 7
 DEFAULT_IGNORABLE : u16 : 1 << 9
 
-/*
+/**
  * The code point at at in bytes, and how many bytes it takes; length 0 where the bytes there aren't UTF-8 (cut short,
  * overlong, a surrogate or past U+10FFFF) or at is past the end.
  */
@@ -108,7 +108,7 @@ decode :: fn(bytes: u8[], at: usize) -> (point: u32, length: usize) {
     return point, length
 }
 
-// point as UTF-8 at the start of into: how many bytes it took, 0 if it isn't a code point or into has no room.
+/** point as UTF-8 at the start of into: how many bytes it took, 0 if it isn't a code point or into has no room. */
 encode :: fn(point: u32, into: mut u8[]) -> usize {
     if point > MAX_CODE_POINT || (point >= 0xd800 && point <= 0xdfff) {
         return 0
@@ -131,7 +131,7 @@ encode :: fn(point: u32, into: mut u8[]) -> usize {
     return length
 }
 
-// The tables' properties of point: the run it's in, found by binary search.
+/** The tables' properties of point: the run it's in, found by binary search. */
 properties :: fn(point: u32) -> u16 {
     low : usize = 0
     high : usize = RUN_STARTS.count
@@ -156,12 +156,12 @@ conjunct_break :: fn(point: u32) -> ConjunctBreak {
     return cast[ConjunctBreak](cast[u8]((properties(point) >> CONJUNCT_SHIFT) & 3))
 }
 
-// Whether point is Extended_Pictographic: an emoji, or a symbol that may be one.
+/** Whether point is Extended_Pictographic: an emoji, or a symbol that may be one. */
 is_extended_pictographic :: fn(point: u32) -> bool {
     return properties(point) & EXTENDED_PICTOGRAPHIC != 0
 }
 
-/*
+/**
  * Whether point is a Default_Ignorable_Code_Point, which shows nothing where it isn't supported: joiners, variation
  * selectors, the bidirectional controls, soft hyphens, tags and the like. UTS #39 counts them as invisible.
  */
@@ -169,18 +169,18 @@ is_default_ignorable :: fn(point: u32) -> bool {
     return properties(point) & DEFAULT_IGNORABLE != 0
 }
 
-// Whether point is one of the bidirectional formatting characters (UAX #9's explicit formatting, and the marks).
+/** Whether point is one of the bidirectional formatting characters (UAX #9's explicit formatting, and the marks). */
 is_bidi_control :: fn(point: u32) -> bool {
     return point == 0x061c || point == 0x200e || point == 0x200f || (point >= 0x202a && point <= 0x202e)
         || (point >= 0x2066 && point <= 0x2069)
 }
 
-// Whether point is a C0 or C1 control, or DEL.
+/** Whether point is a C0 or C1 control, or DEL. */
 is_control :: fn(point: u32) -> bool {
     return point < 0x20 || (point >= 0x7f && point <= 0x9f)
 }
 
-/*
+/**
  * The columns point takes on its own: 2 for East Asian wide and fullwidth ones, 0 for those that combine with the one
  * before or show nothing (marks, formats, controls, default ignorables, Hangul's medial vowels and final consonants),
  * and 1 for the rest, ambiguous ones included.
@@ -189,7 +189,7 @@ width :: fn(point: u32) -> usize {
     return cast[usize]((properties(point) >> WIDTH_SHIFT) & 3)
 }
 
-/*
+/**
  * Where the grapheme cluster that starts at at in bytes ends: the index after its last byte, bytes.count at most. A byte
  * that isn't UTF-8 is a cluster of its own. at at or past the end gives bytes.count.
  */
@@ -289,7 +289,7 @@ joins :: fn(before: GraphemeBreak, after: GraphemeBreak, point: u32, indicators:
     return false
 }
 
-/*
+/**
  * The columns one grapheme cluster takes: the widest of its code points, at most 2; 2 for an emoji with emoji
  * presentation asked for (U+FE0F) and for a flag, and 1 for an emoji with text presentation asked for (U+FE0E). Bytes
  * that aren't UTF-8 take 1, as U+FFFD would.
@@ -329,7 +329,7 @@ grapheme_width :: fn(cluster: u8[]) -> usize {
     return if widest > 2 { cast[usize](2) } else { widest }
 }
 
-// The columns text takes, a grapheme cluster at a time.
+/** The columns text takes, a grapheme cluster at a time. */
 text_width :: fn(text: u8[]) -> usize {
     columns : usize = 0
     at : usize = 0

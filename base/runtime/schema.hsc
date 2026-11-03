@@ -19,7 +19,7 @@ import compiler from "base"
 
 SCHEMA_VERSION : u16 : 1
 
-// What each kind is in the bytes: fixed, whatever compiler.TypeInfoVariant's order becomes.
+/** What each kind is in the bytes: fixed, whatever compiler.TypeInfoVariant's order becomes. */
 SchemaKind :: enum #backed_by(u8) {
     Alias = 1,
     Any = 2,
@@ -41,21 +41,25 @@ SchemaKind :: enum #backed_by(u8) {
     Void = 18,
 }
 
-// The bytes being written, and the first error growing them or the types, after which nothing more is added;
-// #scoped, since the array may be on the stack.
+/**
+ * The bytes being written, and the first error growing them or the types, after which nothing more is added;
+ * #scoped, since the array may be on the stack.
+ */
 SchemaBytes :: struct #scoped {
     into : ptr[mut u8[..]],
     error : AllocatorError?,
 }
 
-// A type's schema written to the end of into. Without the memory, calls context.assertion_handler, as array_add does.
+/**
+ * A type's schema written to the end of into. Without the memory, calls context.assertion_handler, as array_add does.
+ */
 schema_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]], location := #caller_location) {
     if schema_try_write(type, into) != null {
         context.assertion_handler(location, "out of memory")
     }
 }
 
-/*
+/**
  * Like schema_write, but without the memory, gives the allocator's error and leaves into's count as it was, for code
  * that handles running out, like the SlopOS logger, which drops a record rather than end the process.
  */
@@ -89,7 +93,7 @@ schema_try_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> A
     return out.error
 }
 
-// A type's schema hash: BLAKE3-256 of its schema's bytes.
+/** A type's schema hash: BLAKE3-256 of its schema's bytes. */
 schema_hash :: fn(type: ptr[compiler.TypeInfo]) -> u8[32] {
     bytes : u8[..]
     defer array_free(&bytes)
@@ -97,7 +101,7 @@ schema_hash :: fn(type: ptr[compiler.TypeInfo]) -> u8[32] {
     return hash_blake3(bytes)
 }
 
-// The type a plain alias names, through any number of them.
+/** The type a plain alias names, through any number of them. */
 schema_plain :: fn(type: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     result := type
     loop {
@@ -112,7 +116,7 @@ schema_plain :: fn(type: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     }
 }
 
-// A type's place among types, added at the end if it's new: 0, and out's error, without the memory to add it.
+/** A type's place among types, added at the end if it's new: 0, and out's error, without the memory to add it. */
 schema_place :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], out: ptr[mut SchemaBytes]) -> usize {
     found :: cast[uintptr](schema_plain(type))
     for each, i in types^ {
@@ -129,7 +133,7 @@ schema_place :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], ou
     return types.count - 1
 }
 
-// Every type a type refers to, given a place.
+/** Every type a type refers to, given a place. */
 schema_reach :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], out: ptr[mut SchemaBytes]) {
     variant :: type.variant
     if variant == .ALIAS {
@@ -179,7 +183,7 @@ schema_reach :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], ou
     }
 }
 
-// One type's part of the bytes.
+/** One type's part of the bytes. */
 schema_describe :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], out: ptr[mut SchemaBytes]) {
     variant :: type.variant
     schema_add(out, cast[u8](schema_kind_of(variant)))
@@ -317,7 +321,7 @@ schema_kind_of :: fn(variant: compiler.TypeInfoVariant) -> SchemaKind {
     }
 }
 
-// A number's lowest bytes, little-endian.
+/** A number's lowest bytes, little-endian. */
 schema_number :: fn(out: ptr[mut SchemaBytes], value: u64, bytes: usize) {
     for i in cast[usize](0)..<bytes {
         schema_add(out, cast[u8]((value >> (8 * i)) & 0xff))
@@ -339,7 +343,7 @@ schema_endianness :: fn(out: ptr[mut SchemaBytes], value: compiler.Endianness) {
     schema_add(out, if value == .BIG { cast[u8](1) } else if value == .LITTLE { cast[u8](2) } else { cast[u8](3) })
 }
 
-// A type it refers to, by its place, which reach gave it.
+/** A type it refers to, by its place, which reach gave it. */
 schema_reference :: fn(out: ptr[mut SchemaBytes], type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]]) {
     schema_number(out, cast[u64](schema_place(type, types, out)), 4)
 }
@@ -357,12 +361,12 @@ schema_reference :: fn(out: ptr[mut SchemaBytes], type: ptr[compiler.TypeInfo], 
  * which member it holds isn't known. A relative pointer is a distance already, and is written as it is.
  */
 
-// How many pointers deep a value is followed, so one that points to itself is written once per level, and ends.
+/** How many pointers deep a value is followed, so one that points to itself is written once per level, and ends. */
 SCHEMA_MAX_DEPTH :: 8
-// The most bytes of a cstring followed, its zero included.
+/** The most bytes of a cstring followed, its zero included. */
 SCHEMA_CSTRING_LIMIT : usize : 4096
 
-/*
+/**
  * A value written to the end of into, with what it points to after it. Without the memory, calls
  * context.assertion_handler, as array_add does.
  */
@@ -372,7 +376,7 @@ schema_write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_
     }
 }
 
-// Like schema_write_value, but without the memory, gives the allocator's error and leaves into's count as it was.
+/** Like schema_write_value, but without the memory, gives the allocator's error and leaves into's count as it was. */
 schema_try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> AllocatorError? {
     info :: type_info_of(value.type)
     start :: into.count
@@ -385,7 +389,7 @@ schema_try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> AllocatorErro
     return out.error
 }
 
-// A value at data, of the type described by type, written as schema_try_write_value writes one.
+/** A value at data, of the type described by type, written as schema_try_write_value writes one. */
 schema_try_write_value_at :: fn(data: rawptr, type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> AllocatorError? {
     start :: into.count
     out := SchemaBytes.{into = into, error = null}
@@ -397,7 +401,7 @@ schema_try_write_value_at :: fn(data: rawptr, type: ptr[compiler.TypeInfo], into
     return out.error
 }
 
-/*
+/**
  * A value read back from bytes, written as schema_write_value writes one, as a value of type, whose schema it was
  * written with: copied to the heap, each distance in it from its start made a pointer into the copy again, and the
  * value itself stored at into, its pointers into the copy, which stays. False if a distance points past what was
@@ -430,7 +434,7 @@ schema_read_value :: fn(bytes: u8[], type: ptr[compiler.TypeInfo], into: rawptr)
     return true
 }
 
-// The word at `at` in a copy read back.
+/** The word at `at` in a copy read back. */
 schema_read_word :: fn(copy: u8[], at: usize) -> u64 {
     result : u64 = 0
     for i in cast[usize](0)..<8 {
@@ -451,7 +455,7 @@ schema_write_word :: fn(copy: mut u8[], at: usize, value: u64) {
     }
 }
 
-/*
+/**
  * The distance at `at`, to count bytes, made a pointer into copy: where in copy they are, or null for a null one;
  * false, in ok, if they'd be past its end.
  */
@@ -468,7 +472,9 @@ schema_relocate_word :: fn(copy: mut u8[], at: usize, count: usize, ok: ptr[mut 
     return cast[usize](distance)
 }
 
-// The pointers of the value of type at `at` in copy made pointers again, as schema_fix made them distances: whether they all fit.
+/**
+ * The pointers of the value of type at `at` in copy made pointers again, as schema_fix made them distances: whether they all fit.
+ */
 schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], depth: int) -> bool {
     if depth > SCHEMA_MAX_DEPTH || at + type.size > copy.count {
         return false
@@ -539,7 +545,7 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
     return true
 }
 
-// The array at `at` in copy, from dimension on, its pointers made pointers again.
+/** The array at `at` in copy, from dimension on, its pointers made pointers again. */
 schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeInfoArray], dimension: usize, depth: int) -> bool {
     dimensions :: info.dimensions
     if dimension >= dimensions.count {
@@ -571,14 +577,14 @@ schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeIn
     return true
 }
 
-// A byte added at the end, unless adding one has failed already.
+/** A byte added at the end, unless adding one has failed already. */
 schema_add :: fn(out: ptr[mut SchemaBytes], byte: u8) {
     if out.error == null {
         out.error = array_try_add(out.into, byte)
     }
 }
 
-// count bytes from data appended.
+/** count bytes from data appended. */
 schema_copy_in :: fn(out: ptr[mut SchemaBytes], data: rawptr, count: usize) {
     for byte in view_of(cast[ptr[u8]](data), count) {
         schema_add(out, byte)
@@ -617,7 +623,7 @@ schema_zero :: fn(out: ptr[mut SchemaBytes], at: usize, count: usize) {
     }
 }
 
-/*
+/**
  * The pointer word at `at` replaced by what it pointed to, count bytes of it, copied to the end: its distance from
  * start, or 0 if it was null. Where the copy is, or null if there's none to follow into, or no memory for it.
  */
@@ -635,7 +641,7 @@ schema_follow :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, count: u
     return copied
 }
 
-/*
+/**
  * The pointers in the part of into at `at`, a value of type, each followed or written as 0. Positions are kept as
  * indices, since into grows as what's followed is appended.
  */
@@ -715,7 +721,7 @@ schema_fix :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, type: ptr[c
     }
 }
 
-// What a pointer at `at` points to, of type pointed, followed, unless it's a rawptr or too deep.
+/** What a pointer at `at` points to, of type pointed, followed, unless it's a rawptr or too deep. */
 schema_fix_pointer :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, pointed: ptr[compiler.TypeInfo]?, depth: int) {
     if (pointed is_none) || depth >= SCHEMA_MAX_DEPTH {
         schema_set_word(out, at, 0)
@@ -728,7 +734,7 @@ schema_fix_pointer :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, poi
     }
 }
 
-// The array at `at`, from dimension on: a static one's elements in place, a view's or dynamic one's copied after.
+/** The array at `at`, from dimension on: a static one's elements in place, a view's or dynamic one's copied after. */
 schema_fix_array :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, info: ptr[compiler.TypeInfoArray], dimension: usize, depth: int) {
     dimensions :: info.dimensions
     if dimension >= dimensions.count {
@@ -755,7 +761,7 @@ schema_fix_array :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, info:
     }
 }
 
-// The bits of a tag of size bytes.
+/** The bits of a tag of size bytes. */
 schema_mask_of :: fn(size: usize) -> u64 {
     if size >= 8 {
         return 0xffffffffffffffff
@@ -763,7 +769,7 @@ schema_mask_of :: fn(size: usize) -> u64 {
     return (cast[u64](1) << (8 * size)) - 1
 }
 
-// Whether a value of type holds anything fix changes, looking no deeper than SCHEMA_MAX_DEPTH types in.
+/** Whether a value of type holds anything fix changes, looking no deeper than SCHEMA_MAX_DEPTH types in. */
 schema_holds_pointers :: fn(type: ptr[compiler.TypeInfo], depth: int) -> bool {
     if depth >= SCHEMA_MAX_DEPTH {
         return true
@@ -795,7 +801,7 @@ schema_holds_pointers_array :: fn(info: ptr[compiler.TypeInfoArray], dimension: 
     return schema_holds_pointers(info.base_type, 0)
 }
 
-// The type an alias names, distinct or not, through any number of them.
+/** The type an alias names, distinct or not, through any number of them. */
 schema_unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     result := info
     loop {
@@ -806,7 +812,7 @@ schema_unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     }
 }
 
-// The bytes of each element of an array's dimension.
+/** The bytes of each element of an array's dimension. */
 schema_dimension_element_size :: fn(info: ptr[compiler.TypeInfoArray], dimension: usize) -> usize {
     inner :: dimension + 1
     if inner >= info.dimensions.count {

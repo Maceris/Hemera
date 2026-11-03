@@ -2,7 +2,7 @@ package concurrency
 
 import intrinsics from "base"
 
-/*
+/**
  * A ticket lock: whoever takes the lock gets a ticket and is served in order, so nobody waits
  * forever while others keep taking it. It spins rather than sleeping, so it suits short critical
  * sections where nothing else could run meanwhile, like a kernel with interrupts disabled.

@@ -38,7 +38,7 @@ package os
     MESSAGE_WORDS :: 512
     MESSAGE_BYTES :: MESSAGE_WORDS * 8
 
-    // A message being built: its bytes so far, and the handles it moves, gathered as it's sent.
+    /** A message being built: its bytes so far, and the handles it moves, gathered as it's sent. */
     Outgoing :: struct {
         words : u64[MESSAGE_WORDS],
         used : u32,
@@ -46,7 +46,7 @@ package os
         handle_count : u32,
     }
 
-    // A message received: its bytes, zeros past its size up to its type's, and the handles that came with it.
+    /** A message received: its bytes, zeros past its size up to its type's, and the handles that came with it. */
     Incoming :: struct {
         words : u64[MESSAGE_WORDS],
         size : u32,
@@ -54,36 +54,36 @@ package os
         handle_count : u32,
     }
 
-    // What receiving a message gave.
+    /** What receiving a message gave. */
     Arrival :: union {
-        // A valid message, which message_of reads
+        /** A valid message, which message_of reads */
         Received,
-        // None yet, without waiting
+        /** None yet, without waiting */
         Empty,
-        // A request whose variant this side doesn't know, which answer_unsupported answers
+        /** A request whose variant this side doesn't know, which answer_unsupported answers */
         Unsupported,
-        // A message that breaks its type's rules: out of bounds, an impossible tag or value, a missing handle
+        /** A message that breaks its type's rules: out of bounds, an impossible tag or value, a missing handle */
         Invalid,
-        // A channel in it, or arriving where one was expected, speaks another protocol
+        /** A channel in it, or arriving where one was expected, speaks another protocol */
         WrongProtocol,
         Failed(slop_os.ChannelError),
     }
 
-    // What a message's validator found.
+    /** What a message's validator found. */
     Validity :: enum {
         Valid,
         Unknown,
         Invalid,
     }
 
-    // A message of T started in out, zeroed: where to write it. Its variable-size data goes after it (append).
+    /** A message of T started in out, zeroed: where to write it. Its variable-size data goes after it (append). */
     begin :: fn[T](out: ptr[mut Outgoing]) -> ptr[mut T] {
         out^ = Outgoing.{}
         out.used = cast[u32]((size_of(T) + 7) & ~cast[usize](7))
         return cast[ptr[mut T]](&out.words[0])
     }
 
-    // items, after what out has so far, aligned for E: where they are, for a Relative field.
+    /** items, after what out has so far, aligned for E: where they are, for a Relative field. */
     append :: fn[E](out: ptr[mut Outgoing], items: E[]) -> slop_os.Relative[E] {
         alignment :: cast[u32](align_of(E))
         start :: (out.used + alignment - 1) & ~(alignment - 1)
@@ -99,24 +99,24 @@ package os
         return slop_os.Relative[E].{offset = start, count = cast[u32](items.count)}
     }
 
-    // The message received, as its type: only once its receive function said Received.
+    /** The message received, as its type: only once its receive function said Received. */
     message_of :: fn[T](into: ptr[Incoming]) -> ptr[T] {
         return cast[ptr[T]](&into.words[0])
     }
 
-    // A Relative's items, in a message received and validated.
+    /** A Relative's items, in a message received and validated. */
     items :: fn[E](into: ptr[Incoming], relative: slop_os.Relative[E]) -> E[] {
         return view_of(cast[ptr[E]](cast[u64](&into.words[0]) + cast[u64](relative.offset)), cast[usize](relative.count))
     }
 
     // ---- What the generated code calls
 
-    // A message's bytes, for its validator.
+    /** A message's bytes, for its validator. */
     bytes_of_incoming :: fn(into: ptr[Incoming]) -> u8[] {
         return view_of(cast[ptr[u8]](&into.words[0]), MESSAGE_BYTES)
     }
 
-    // A little-endian integer of size bytes at offset in message, 0 past its end.
+    /** A little-endian integer of size bytes at offset in message, 0 past its end. */
     read_message :: fn(message: u8[], offset: usize, size: usize) -> u64 {
         value : u64 = 0
         for i in 0..<size {
@@ -128,7 +128,9 @@ package os
         return value
     }
 
-    // Whether a Relative at offset in a message of size bytes, of element_size and alignment, is after its fixed part and inside it.
+    /**
+     * Whether a Relative at offset in a message of size bytes, of element_size and alignment, is after its fixed part and inside it.
+     */
     relative_fits :: fn(message: u8[], size: u32, offset: usize, fixed: usize, element_size: usize, alignment: usize) -> bool {
         start :: read_message(message, offset, 4)
         count :: read_message(message, offset + 4, 4)
@@ -139,13 +141,13 @@ package os
         return start >= cast[u64](fixed) && start % cast[u64](alignment) == 0 && count <= cast[u64](MESSAGE_BYTES) && end <= cast[u64](size)
     }
 
-    // Whether a handle's index at offset is in the batch, or none.
+    /** Whether a handle's index at offset is in the batch, or none. */
     index_fits :: fn(message: u8[], offset: usize, handle_count: u32) -> bool {
         index :: cast[u32](read_message(message, offset, 4))
         return index == slop_os.NO_HANDLE_INDEX || index < handle_count
     }
 
-    // Sending: the handle at offset in out goes in its batch, and its index takes its place.
+    /** Sending: the handle at offset in out goes in its batch, and its index takes its place. */
     encode_handle :: fn(out: ptr[mut Outgoing], offset: usize) {
         at :: cast[ptr[mut u32]](cast[u64](&out.words[0]) + cast[u64](offset))
         handle :: at^
@@ -161,7 +163,7 @@ package os
         }
     }
 
-    // Receiving: the handle whose index is at offset in into takes its place, and whether it speaks tag, if not 0.
+    /** Receiving: the handle whose index is at offset in into takes its place, and whether it speaks tag, if not 0. */
     decode_handle :: fn(into: ptr[mut Incoming], offset: usize, tag: u64) -> bool {
         at :: cast[ptr[mut u32]](cast[u64](&into.words[0]) + cast[u64](offset))
         index :: cast[usize](at^)
@@ -178,7 +180,9 @@ package os
         return speaking == tag
     }
 
-    // A message read into into, zeroed past its size, with its handles taken (Received), or Empty without waiting if none's there.
+    /**
+     * A message read into into, zeroed past its size, with its handles taken (Received), or Empty without waiting if none's there.
+     */
     arrive :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut Incoming], wait: bool) -> Arrival {
         into^ = Incoming.{}
         buffer :: view_of(cast[ptr[mut u8]](&into.words[0]), MESSAGE_BYTES)
@@ -201,7 +205,7 @@ package os
         return .Received
     }
 
-    // The handles a refused message brought, closed.
+    /** The handles a refused message brought, closed. */
     refuse :: fn(into: ptr[mut Incoming]) {
         for handle, i in into.handles {
             if i < cast[usize](into.handle_count) {
@@ -211,7 +215,7 @@ package os
         into.handle_count = 0
     }
 
-    // out's message, with its handles, through end.
+    /** out's message, with its handles, through end. */
     send_outgoing :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut Outgoing]) -> slop_os.ChannelError? {
         bytes :: view_of(cast[ptr[u8]](&out.words[0]), cast[usize](out.used))
         return send(end, port, bytes, view_of(&out.handles[0], cast[usize](out.handle_count)))
@@ -219,7 +223,7 @@ package os
 
     // ---- The generator
 
-    // What a message's type needs checked, and its handles: one per field that needs either.
+    /** What a message's type needs checked, and its handles: one per field that needs either. */
     FieldKind :: enum {
         Bool,
         Enum,
@@ -234,11 +238,11 @@ package os
         size : usize,
         alignment : usize,
         values : u128[],
-        // A typed channel's protocol tag, 0 for a plain handle
+        /** A typed channel's protocol tag, 0 for a plain handle */
         tag : u64,
     }
 
-    /*
+    /**
      * The code a protocol package inserts at its top level: its validators, send and receive functions for
      * Request and Response, unions of its messages, and answer_unsupported, from Response's Unsupported variant,
      * which every Response needs (decisions/0040).
@@ -270,7 +274,7 @@ package os
         return cast[ptr[compiler.TypeInfoUnion]](info)
     }
 
-    // validate_<side>, send_<side> and receive_<side> for one of the unions.
+    /** validate_<side>, send_<side> and receive_<side> for one of the unions. */
     side_code :: fn(T: type, side: string) -> compiler.Code {
         info :: union_of(T)
         tag_size :: match info.tag_type {
@@ -358,7 +362,7 @@ package os
         }
     }
 
-    // The checks a variant's fields need, in a message whose fixed part is fixed bytes.
+    /** The checks a variant's fields need, in a message whose fixed part is fixed bytes. */
     checks_of :: fn(fields: FieldCheck[], fixed: usize) -> compiler.Code {
         made : compiler.Code[..]
         for field in fields {
@@ -402,7 +406,7 @@ package os
         return compiler.list(made)
     }
 
-    // Each handle field's encoding into out's batch when sending, or decoding from into's when receiving.
+    /** Each handle field's encoding into out's batch when sending, or decoding from into's when receiving. */
     handles_of :: fn(fields: FieldCheck[], sending: bool) -> compiler.Code {
         made : compiler.Code[..]
         for field in fields {
@@ -422,7 +426,7 @@ package os
         return compiler.list(made)
     }
 
-    // What type, at offset in a message, needs: added to fields. Anything a message can't hold stops the build.
+    /** What type, at offset in a message, needs: added to fields. Anything a message can't hold stops the build. */
     collect :: fn(type: ptr[compiler.TypeInfo], offset: usize, fields: ptr[mut FieldCheck[..]]) {
         if type.variant == .INTEGER || type.variant == .FLOAT || type.variant == .CHAR {
             return void
@@ -487,7 +491,7 @@ package os
         runtime.assert(false, "a message holds plain data, handles and Relatives only: no pointers, strings, views, unions or functions")
     }
 
-    // Whether type is one of slop_os's handle types: a distinct alias of Handle, or Handle itself.
+    /** Whether type is one of slop_os's handle types: a distinct alias of Handle, or Handle itself. */
     is_handle :: fn(type: ptr[compiler.TypeInfo]) -> bool {
         at := type
         loop {
@@ -502,7 +506,7 @@ package os
         }
     }
 
-    // The alignment a type has in a message, from its size: what Hemera gives integers of that size, up to 8.
+    /** The alignment a type has in a message, from its size: what Hemera gives integers of that size, up to 8. */
     alignment_of :: fn(type: ptr[compiler.TypeInfo]) -> usize {
         if type.variant == .STRUCT {
             return cast[ptr[compiler.TypeInfoStruct]](type).alignment

@@ -12,9 +12,9 @@ import intrinsics from "base"
  * later, and nothing by its name alone. A library's base shares the program's process state, which binding hands it.
  */
 
-// The calling convention's version, which a library and the programs calling it must share.
+/** The calling convention's version, which a library and the programs calling it must share. */
 LIBRARY_CONVENTION : u64 : 1
-// "HEMERAI2", the start of every interface record.
+/** "HEMERAI2", the start of every interface record. */
 LIBRARY_MAGIC : u64 : 0x3249_4152_454d_4548
 
 LibraryExport :: struct {
@@ -23,13 +23,13 @@ LibraryExport :: struct {
     function : rawptr,
 }
 
-// A library's interface record, its symbol hemera_interface.
+/** A library's interface record, its symbol hemera_interface. */
 LibraryInterface :: struct {
     magic : u64,
     convention : u64,
     context_hash : u8[32],
     exports : LibraryExport[],
-    // Where the library's intrinsics.process_state() looks: its own state at first, the program's once it's bound
+    /** Where the library's intrinsics.process_state() looks: its own state at first, the program's once it's bound */
     process_state : ptr[mut ptr[mut ProcessState]],
 }
 
@@ -41,23 +41,23 @@ LibraryImport :: struct {
     slot : ptr[mut rawptr],
 }
 
-// A program's import table (intrinsics.library_imports), empty for one that calls no library.
+/** A program's import table (intrinsics.library_imports), empty for one that calls no library. */
 LibraryImports :: struct {
     convention : u64,
     context_hash : u8[32],
     imports : LibraryImport[],
 }
 
-// The interface record of a library loaded, by the name it was loaded as.
+/** The interface record of a library loaded, by the name it was loaded as. */
 LoadedLibrary :: struct {
     name : string,
     interface : ptr[LibraryInterface],
 }
 
-// The most libraries one program loads.
+/** The most libraries one program loads. */
 MAX_LIBRARIES :: 32
 
-/*
+/**
  * Every import the program's table has bound to the export of its name in its library, checked: the library built for
  * the same calling convention and Context as the program, and the export's type the same as the import's. Stops the
  * program, saying why, if a library can't be loaded or an import doesn't match.
@@ -124,7 +124,7 @@ same_hash #no_context :: fn(a: u8[32], b: u8[32]) -> bool {
     return true
 }
 
-// The program stopped, as an import can't be bound: "library: name why".
+/** The program stopped, as an import can't be bound: "library: name why". */
 refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_returns {
     buffer := output_buffer(.ERROR)
     output_text(&buffer, "can't bind ")
@@ -142,7 +142,7 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
     LoadLibraryA #foreign(KERNEL32) : fn(name: rawptr) -> rawptr : ---
     GetProcAddress #foreign(KERNEL32) : fn(module: rawptr, name: rawptr) -> rawptr : ---
 
-    // A library loaded by Windows' loader, which looks beside the program first, and its record by name.
+    /** A library loaded by Windows' loader, which looks beside the program first, and its record by name. */
     os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
         path : u8[1024]
         if name.count + 1 > path.count {

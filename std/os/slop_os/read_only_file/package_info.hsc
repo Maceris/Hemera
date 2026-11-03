@@ -1,4 +1,4 @@
-/*
+/**
  * The read_only_file protocol, which std/os's files speak on SlopOS.
  */
 package read_only_file

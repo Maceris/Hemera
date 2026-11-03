@@ -1,15 +1,15 @@
 package compiler
 
-/*
+/**
  * A package as seen by compile-time code, for discovering targets and checking house rules.
  *
  * These are copies the compiler makes for compile-time code, separate from what it tracks
  * internally, so they stay more stable than the compiler's internal interface.
  */
 PackageInfo :: struct {
-    // From the package statement.
+    /** From the package statement. */
     name : string,
-    // Canonical path of the package's folder.
+    /** Canonical path of the package's folder. */
     path : string,
     // The package statement in the first of files, for errors about the package as a whole.
     location : SourceCodeLocation,
@@ -21,16 +21,16 @@ PackageInfo :: struct {
 }
 
 ImportInfo :: struct {
-    // Canonical path of the imported package's folder.
+    /** Canonical path of the imported package's folder. */
     path : string,
-    // The name it was imported as, which is the package name if there was no alias.
+    /** The name it was imported as, which is the package name if there was no alias. */
     alias : string,
     // The from part, like "base", "../" or "" if there was none.
     from : string,
     location : SourceCodeLocation,
 }
 
-/*
+/**
  * Values are typed by the program the constant was evaluated in. Types from one program don't
  * exist in another, so a check can't cast a target's value to its own copy of the type;
  * compare by name instead (reflection.enum_member_name in std). Type values from the same
@@ -41,7 +41,7 @@ ConstantInfo :: struct {
     type : type,
     value : any,
     location : SourceCodeLocation,
-    // Its documentation comment, parsed; empty without one (docs/documentation.md).
+    /** Its documentation comment, parsed; empty without one (docs/documentation.md). */
     documentation : Documentation,
 }
 
@@ -54,13 +54,13 @@ TypeDeclaration :: struct {
     members : MemberDocumentation[],
 }
 
-// A field's, an enum member's or a union variant's documentation, by its name.
+/** A field's, an enum member's or a union variant's documentation, by its name. */
 MemberDocumentation :: struct {
     name : string,
     documentation : Documentation,
 }
 
-/*
+/**
  * Every package in a target's program, once it has been type checked.
  * This is what a CheckFunction receives.
  */
@@ -69,13 +69,13 @@ ProgramInfo :: struct {
     packages : PackageInfo[],
 }
 
-/*
+/**
  * The folders directly inside folder, by their canonical paths, in order. folder is relative to the
  * calling file's package, or absolute. For a build package to find what to build, with load_package.
  */
 subfolders : fn(folder: string) -> string[] : ---
 
-/*
+/**
  * Info for the package in folder, relative to the calling file's package or absolute, or none if there's
  * no package there. A package the calling program has is its own; any other is checked on its own, as the
  * root of a program of its own, so its constants' values have that program's types, which are compared by
@@ -83,13 +83,13 @@ subfolders : fn(folder: string) -> string[] : ---
  */
 load_package : fn(folder: string) -> PackageInfo? : ---
 
-/*
+/**
  * Info for a package imported by the calling file, by its alias or name.
  */
 package_info : fn(import_name: string) -> PackageInfo? : ---
 
-// The constant called name in package, if it declares one.
+/** The constant called name in package, if it declares one. */
 find_constant : fn(package: ptr[PackageInfo], name: string) -> ConstantInfo? : ---
 
-// The function called name in package, if it declares one.
+/** The function called name in package, if it declares one. */
 find_function : fn(package: ptr[PackageInfo], name: string) -> FunctionInfo? : ---

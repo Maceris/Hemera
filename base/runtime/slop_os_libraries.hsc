@@ -27,7 +27,7 @@ import intrinsics from "base"
     LIBRARY_DT_REL : u64 : 17
     LIBRARY_DT_JMPREL : u64 : 23
     LIBRARY_DT_RELR : u64 : 36
-    // The most loadable segments a library has
+    /** The most loadable segments a library has */
     LIBRARY_MAX_SEGMENTS :: 8
 
     #if TARGET_ARCH == .x86_64 {
@@ -73,13 +73,13 @@ import intrinsics from "base"
         addend : i64,
     }
 
-    // A written segment's pages, copied for this program: where they are, from the library's base
+    /** A written segment's pages, copied for this program: where they are, from the library's base */
     LibraryCopy :: struct {
         start : u64,
         end : u64,
     }
 
-    // The library given as the grant library:<name>, loaded: its interface record, or null.
+    /** The library given as the grant library:<name>, loaded: its interface record, or null. */
     os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
         state :: intrinsics.process_state()
         if state.startup_block == null {
@@ -188,7 +188,9 @@ import intrinsics from "base"
         return cast[ptr[LibraryInterface]](cast[uintptr](base + elf.entry))
     }
 
-    // The library's dynamic section at address applied: its relative relocations, each within a copy, and nothing else.
+    /**
+     * The library's dynamic section at address applied: its relative relocations, each within a copy, and nothing else.
+     */
     relocate_library :: fn(base: u64, address: u64, copies: LibraryCopy[]) -> bool {
         if !within_copies(address, 16, copies) {
             return false
@@ -236,7 +238,7 @@ import intrinsics from "base"
         return true
     }
 
-    // Whether bytes at offset, from the library's base, are all within one of its copies.
+    /** Whether bytes at offset, from the library's base, are all within one of its copies. */
     within_copies :: fn(offset: u64, bytes: u64, copies: LibraryCopy[]) -> bool {
         for copy in copies {
             if offset >= copy.start && offset + bytes <= copy.end {

@@ -8,7 +8,7 @@ package read_only_dir
     import files from "std/os/slop_os"
     import read_only_file from "std/os/slop_os"
 
-    /*
+    /**
      * A directory to read (the SlopOS repository's decisions 0015, 0046, 0087): the subset of dir that changes nothing,
      * and whose opens give only connections that read.
      */
@@ -18,16 +18,16 @@ package read_only_dir
 
     Request :: union {
         OpenReadOnlyFile(slop_os.Relative[u8]),
-        // The directory at a path beneath this one
+        /** The directory at a path beneath this one */
         OpenDirectory(slop_os.Relative[u8]),
-        // The entry at or after a cursor, from 0
+        /** The entry at or after a cursor, from 0 */
         List(u64),
         Info,
-        // The files of this directory whose names match a pattern (file_set)
+        /** The files of this directory whose names match a pattern (file_set) */
         Select(slop_os.Relative[u8]),
         Features,
         Connect(os.Channel[ReadOnlyDir]),
-        // The first change beneath this directory at or after a cursor, as dir has it
+        /** The first change beneath this directory at or after a cursor, as dir has it */
         Changes(u64),
     }
 
@@ -35,7 +35,7 @@ package read_only_dir
         OpenedReadOnlyFile(os.Channel[read_only_file.ReadOnlyFile]),
         OpenedDirectory(os.Channel[ReadOnlyDir]),
         Listed(files.Listing),
-        // No entry at or after the cursor
+        /** No entry at or after the cursor */
         End,
         Described(files.Info),
         Selected(os.Channel[file_set.FileSet]),
@@ -62,7 +62,7 @@ package read_only_dir
 
     #insert os.protocol_code(Request, Response)
 
-    /*
+    /**
      * A new connection to the directory end reaches, the same directory: a channel for ReadOnlyDir, one end sent in a
      * Connect, the other given back, or null.
      */

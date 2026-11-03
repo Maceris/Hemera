@@ -18,7 +18,7 @@ Sha512State :: struct #secret {
 
 Sha512Schedule :: distinct alias u64[80] #secret
 
-// A compression's eight working words, a to h, then b ~ c, which the next round's majority uses.
+/** A compression's eight working words, a to h, then b ~ c, which the next round's majority uses. */
 Sha512Working :: distinct alias u64[9] #secret
 
 Sha512 :: struct {
@@ -59,7 +59,7 @@ sha512_start :: fn() -> Sha512 {
     return hasher
 }
 
-// The block in the state into its words.
+/** The block in the state into its words. */
 sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
     w : Sha512Schedule
     for i in 0..<16 {
@@ -72,7 +72,7 @@ sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
     sha512_compress_words(state, &w)
 }
 
-// A block, its 16 words in w's first, into the state's words.
+/** A block, its 16 words in w's first, into the state's words. */
 sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[mut Sha512Schedule]) {
     sha512_schedule(w)
     v : Sha512Working
@@ -97,7 +97,7 @@ sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[m
     }
 }
 
-/*
+/**
  * Round r of eight: a is v's word at (8 - r) % 8, b the one after, and so on, so the round only writes the two
  * words it changes, e = d + t1 into d's place and a = t1 + t2 into h's, and the next round reads one place back.
  * v[8] is b ~ c, which this round's a ~ b becomes for the next.
@@ -127,7 +127,7 @@ sha512_round #constant_time :: fn(v: ptr[mut Sha512Working], r: usize, w: ptr[Sh
     v[(15 - r) % 8] = t1 + s0 + majority
 }
 
-/*
+/**
  * w's other 64 words, worked out from its first 16, then each round's constant added to its word, so a round
  * reads one value rather than two.
  */
@@ -142,7 +142,7 @@ sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
     }
 }
 
-// One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it.
+/** One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it. */
 sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
     hasher.state.block[hasher.buffered % SHA512_BLOCK] = byte
     hasher.buffered += 1
@@ -160,7 +160,9 @@ sha512_update_secret #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretB
     sha512_absorb(hasher, data)
 }
 
-// data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+/**
+ * data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+ */
 sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
     at : usize = 0
     loop {
@@ -196,7 +198,7 @@ sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) 
     hasher.total += cast[u64](data.count)
 }
 
-// The padding and the length in bits, as 128 bits of which the high 64 are 0, then the words.
+/** The padding and the length in bits, as 128 bits of which the high 64 are 0, then the words. */
 sha512_finish_secret #constant_time :: fn(hasher: ptr[mut Sha512]) -> SecretByte[64] {
     bits := hasher.total * 8
     sha512_byte(hasher, 0x80)

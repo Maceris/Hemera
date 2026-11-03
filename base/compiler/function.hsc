@@ -4,41 +4,41 @@ FunctionInfo :: struct {
     package : string,
     name : string,
     location : SourceCodeLocation,
-    // Marked #export, so part of the library's or program's public interface.
+    /** Marked #export, so part of the library's or program's public interface. */
     is_exported : bool,
-    // False for bodiless --- declarations, like intrinsics and interface packages.
+    /** False for bodiless --- declarations, like intrinsics and interface packages. */
     has_body : bool,
-    // Marked #never_returns.
+    /** Marked #never_returns. */
     never_returns : bool,
     // The function's own type, its signature as a type, like type_of(function) gives.
     type : type,
     generic_bindings : GenericBinding[],
     parameters : FunctionParameter[],
     return_values : FunctionReturnValue[],
-    // Every call in the body, in source order. Empty without a body.
+    /** Every call in the body, in source order. Empty without a body. */
     calls : FunctionCall[],
-    // Every type the body uses, once each at its first use. Empty without a body.
+    /** Every type the body uses, once each at its first use. Empty without a body. */
     used_types : TypeUse[],
-    // Every value the body discards with _ =, its type, at the _, in source order. Empty without a body.
+    /** Every value the body discards with _ =, its type, at the _, in source order. Empty without a body. */
     discards : TypeUse[],
-    // Its documentation comment, parsed; empty without one (docs/documentation.md).
+    /** Its documentation comment, parsed; empty without one (docs/documentation.md). */
     documentation : Documentation,
 }
 
-/*
+/**
  * A declaration's documentation comment (docs/documentation.md), parsed: everything empty for one without a comment.
  */
 Documentation :: struct {
-    // Its summary: its @brief, or its first sentence.
+    /** Its summary: its @brief, or its first sentence. */
     brief : string,
-    // The rest of its text, its paragraphs separated by blank lines.
+    /** The rest of its text, its paragraphs separated by blank lines. */
     details : string,
-    // Its tags, @brief's aside, in order.
+    /** Its tags, @brief's aside, in order. */
     tags : DocumentationTag[],
 }
 
 DocumentationTag :: struct {
-    // Its name without the @: param, tparam, return, error, note, see, example, deprecated or since.
+    /** Its name without the @: param, tparam, return, error, note, see, example, deprecated or since. */
     tag : string,
     // What it documents, for @param, @tparam and @error; empty for the others.
     name : string,
@@ -46,9 +46,9 @@ DocumentationTag :: struct {
 }
 
 FunctionCall :: struct {
-    // Canonical path of the called function's package, empty for a call through a function value.
+    /** Canonical path of the called function's package, empty for a call through a function value. */
     package_path : string,
-    // Empty for a call through a function value.
+    /** Empty for a call through a function value. */
     name : string,
     // The called function's type, which is all that is known for a call through a function value.
     type : type,
@@ -67,7 +67,7 @@ FunctionParameter :: struct {
     // Marked #escaping, so the function may keep it after returning.
     is_escaping : bool,
     is_varargs : bool,
-    // Its function's documentation's @param for it; empty without one.
+    /** Its function's documentation's @param for it; empty without one. */
     documentation : string,
 }
 

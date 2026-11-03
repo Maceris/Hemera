@@ -22,20 +22,20 @@ import intrinsics from "base"
  * a kernel without vector state calls argon2id_keyed_with with wide = false.
  */
 
-// m, t and p: the memory in KiB, at least 8 per lane, how many passes over it, and how many lanes.
+/** m, t and p: the memory in KiB, at least 8 per lane, how many passes over it, and how many lanes. */
 Argon2Parameters :: struct {
     memory_kib: u32,
     passes: u32,
     lanes: u32,
 }
 
-// One of the memory's 1 KiB blocks.
+/** One of the memory's 1 KiB blocks. */
 Argon2Block :: distinct alias u64[128] #secret
 
 ARGON2_VERSION :: 0x13
 ARGON2_ID :: 2
 
-// How many blocks parameters needs: the memory, rounded down to a multiple of 4 per lane.
+/** How many blocks parameters needs: the memory, rounded down to a multiple of 4 per lane. */
 argon2_blocks_needed :: fn(parameters: Argon2Parameters) -> usize {
     lanes := cast[usize](parameters.lanes)
     if lanes == 0 {
@@ -44,14 +44,14 @@ argon2_blocks_needed :: fn(parameters: Argon2Parameters) -> usize {
     return 4 * lanes * (cast[usize](parameters.memory_kib) / (4 * lanes))
 }
 
-// v[a] + v[b] + 2 * their low halves multiplied, Argon2's change to BLAKE2b's adding, into v[a].
+/** v[a] + v[b] + 2 * their low halves multiplied, Argon2's change to BLAKE2b's adding, into v[a]. */
 argon2_add #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize) {
     x := v[a % 128]
     y := v[b % 128]
     v[a % 128] = x + y + 2 * (x & 0xffff_ffff) * (y & 0xffff_ffff)
 }
 
-// BLAKE2b's G with argon2_add, on four of the block's words.
+/** BLAKE2b's G with argon2_add, on four of the block's words. */
 argon2_mix #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize, c: usize, d: usize) {
     argon2_add(v, a, b)
     v[d % 128] = intrinsics.rotate_right(v[d % 128] ~ v[a % 128], 32)
@@ -63,7 +63,7 @@ argon2_mix #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize, c: 
     v[b % 128] = intrinsics.rotate_right(v[b % 128] ~ v[c % 128], 63)
 }
 
-// The permutation P on sixteen of the block's words, at at[0], at[1], and so on.
+/** The permutation P on sixteen of the block's words, at at[0], at[1], and so on. */
 argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
     argon2_mix(v, at[0], at[4], at[8], at[12])
     argon2_mix(v, at[1], at[5], at[9], at[13])
@@ -76,7 +76,7 @@ argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
 }
 
 #if TARGET_ARCH == .x86_64 {
-    // Argon2's G on the rows' four columns at once: BLAKE2b's, with argon2_add's multiplications, and no message.
+    /** Argon2's G on the rows' four columns at once: BLAKE2b's, with argon2_add's multiplications, and no message. */
     argon2_mix_rows #constant_time #target_features("avx2") :: fn(r: ptr[mut Blake2bRows]) {
         low := intrinsics.splat[vector[u64, 4]](0xffff_ffff)
         product := (r[0] & low) * (r[1] & low)
@@ -150,7 +150,7 @@ argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
     }
 }
 
-/*
+/**
  * The compression G: R = x ~ y, P on each of R's eight rows of sixteen words, then on each of its eight
  * columns of two words a row, and that ~ R, into out, or ~'d into what's there, as passes after the first do.
  */
@@ -195,7 +195,7 @@ argon2_le32 :: fn(value: u32) -> u8[4] {
     return u8.[cast[u8](value), cast[u8](value >> 8), cast[u8](value >> 16), cast[u8](value >> 24)]
 }
 
-/*
+/**
  * H', the hash of any length (RFC 9106, 3.3): BLAKE2b of output's size, then the count and input, for 64
  * bytes or fewer; for more, 32 bytes of each in a chain of 64-byte hashes, and the rest from the last.
  */
@@ -256,18 +256,18 @@ argon2_block_of #constant_time :: fn(bytes: ptr[SecretByte[1024]]) -> Argon2Bloc
     return block
 }
 
-// Where the memory is, and how it's laid out: lanes of columns blocks, each four segments long.
+/** Where the memory is, and how it's laid out: lanes of columns blocks, each four segments long. */
 Argon2Memory :: struct #scoped {
     blocks: mut Argon2Block[],
     lanes: usize,
     columns: usize,
     segment: usize,
     passes: usize,
-    // Whether compressing uses AVX2
+    /** Whether compressing uses AVX2 */
     wide: bool,
 }
 
-/*
+/**
  * One lane's segment of a slice in a pass (RFC 9106, 3.4): each block from the one before it and one
  * chosen earlier, from this lane or, after the first slice, another.
  */

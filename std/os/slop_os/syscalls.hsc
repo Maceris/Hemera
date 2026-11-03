@@ -32,7 +32,7 @@ CpuBudget :: distinct alias Handle
 IoPortRange :: distinct alias Handle
 DmaDomain :: distinct alias Handle
 
-// The kinds of kernel object (decisions/0034), as handle_info reports them.
+/** The kinds of kernel object (decisions/0034), as handle_info reports them. */
 ObjectKind :: enum #backed_by(u8) {
     MemoryBudget = 1,
     CpuBudget = 2,
@@ -44,71 +44,75 @@ ObjectKind :: enum #backed_by(u8) {
     Port = 8,
     Irq = 9,
     IoPortRange = 10,
-    // Where devices' DMA reaches: without an IOMMU, all of memory, device addresses being physical ones.
+    /** Where devices' DMA reaches: without an IOMMU, all of memory, device addresses being physical ones. */
     DmaDomain = 11,
-    // The authority over the machine's hardware, which the root task holds and gives the platform service (decisions/0039).
+    /**
+     * The authority over the machine's hardware, which the root task holds and gives the platform service (decisions/0039).
+     */
     Platform = 12,
-    // A process's subtree intercepted: its threads stop at system calls and faults for a debugger (decisions/0017).
+    /** A process's subtree intercepted: its threads stop at system calls and faults for a debugger (decisions/0017). */
     Intercept = 13,
-    // Lines in the kernel's log, for programs to report before there's a console (decisions/0058).
+    /** Lines in the kernel's log, for programs to report before there's a console (decisions/0058). */
     DebugLog = 14,
-    // A PCIe function, for its message-signaled interrupts and its DMA domain.
+    /** A PCIe function, for its message-signaled interrupts and its DMA domain. */
     Device = 15,
 }
 
-/*
+/**
  * Rights on a handle (decisions/0010): two for every kind, and the rest per kind. Duplicating a handle
  * can keep or drop rights, never add them.
  */
 Rights :: distinct alias u32
-// May make another handle to the object.
+/** May make another handle to the object. */
 RIGHT_DUPLICATE : Rights : 1 << 0
-// May send the handle to another process.
+/** May send the handle to another process. */
 RIGHT_TRANSFER : Rights : 1 << 1
-// An address space: may start threads in it.
+/** An address space: may start threads in it. */
 RIGHT_SPACE_THREADS : Rights : 1 << 8
-// An address space: may map things in it.
+/** An address space: may map things in it. */
 RIGHT_SPACE_MAP : Rights : 1 << 9
-// A port: may wait on it.
+/** A port: may wait on it. */
 RIGHT_PORT_WAIT : Rights : 1 << 8
-// A port: may bind keys to it, set its timers and wake it.
+/** A port: may bind keys to it, set its timers and wake it. */
 RIGHT_PORT_BIND : Rights : 1 << 9
-// A channel end: may map its rings. Without it, they're reached through ChannelRead and ChannelWrite (decisions/0024).
+/**
+ * A channel end: may map its rings. Without it, they're reached through ChannelRead and ChannelWrite (decisions/0024).
+ */
 RIGHT_CHANNEL_MAP : Rights : 1 << 8
-// A memory budget: may pay for what's created with it, and split off child budgets (decisions/0011).
+/** A memory budget: may pay for what's created with it, and split off child budgets (decisions/0011). */
 RIGHT_BUDGET_CHARGE : Rights : 1 << 8
 // A memory object: may map it readable, writable, executable.
 RIGHT_MEMORY_READ : Rights : 1 << 8
 RIGHT_MEMORY_WRITE : Rights : 1 << 9
 RIGHT_MEMORY_EXECUTE : Rights : 1 << 10
-// An IRQ: may acknowledge it, unmasking a level-triggered line.
+/** An IRQ: may acknowledge it, unmasking a level-triggered line. */
 RIGHT_IRQ_ACK : Rights : 1 << 8
-// A process, over its whole subtree (decisions/0017): list its threads and read their registers.
+/** A process, over its whole subtree (decisions/0017): list its threads and read their registers. */
 RIGHT_PROCESS_INSPECT : Rights : 1 << 8
-// A process: read its memory.
+/** A process: read its memory. */
 RIGHT_PROCESS_READ_MEMORY : Rights : 1 << 9
-// A process: write its memory and its threads' registers, and suspend and resume them.
+/** A process: write its memory and its threads' registers, and suspend and resume them. */
 RIGHT_PROCESS_WRITE_STATE : Rights : 1 << 10
-// A process: intercept its threads' system calls, and take their faults.
+/** A process: intercept its threads' system calls, and take their faults. */
 RIGHT_PROCESS_INTERCEPT : Rights : 1 << 11
-// A process: destroy it, through a handle that isn't its owning one.
+/** A process: destroy it, through a handle that isn't its owning one. */
 RIGHT_PROCESS_KILL : Rights : 1 << 12
-// A process: start threads in it, and give it handles, for building it from an executable.
+/** A process: start threads in it, and give it handles, for building it from an executable. */
 RIGHT_PROCESS_THREADS : Rights : 1 << 13
-// A debug log: write lines to it.
+/** A debug log: write lines to it. */
 RIGHT_DEBUG_LOG_WRITE : Rights : 1 << 8
-// A CPU budget: may split child budgets off it (cpu_budget_create).
+/** A CPU budget: may split child budgets off it (cpu_budget_create). */
 RIGHT_CPU_BUDGET_SPLIT : Rights : 1 << 8
-// A CPU budget: may change its parameters (cpu_budget_set).
+/** A CPU budget: may change its parameters (cpu_budget_set). */
 RIGHT_CPU_BUDGET_SET : Rights : 1 << 9
-// A CPU budget: may have processes' threads run on it (process_set_cpu_budget).
+/** A CPU budget: may have processes' threads run on it (process_set_cpu_budget). */
 RIGHT_CPU_BUDGET_BIND : Rights : 1 << 10
-// A range of I/O ports: may read and write them.
+/** A range of I/O ports: may read and write them. */
 RIGHT_IO_PORTS_ACCESS : Rights : 1 << 8
-// Every right, which an owning handle has.
+/** Every right, which an owning handle has. */
 RIGHTS_ALL : Rights : 0xffffffff
 
-/*
+/**
  * The system calls (knowledge/design/system-abi.md §4): a field's position is its number, which is
  * append-only from v1. Everything else is generated from this table (syscall_table.hsc): the Syscall
  * enum, a stub per call (slop_os.port_wait(...)), and the kernel's dispatch.
@@ -118,50 +122,58 @@ RIGHTS_ALL : Rights : 0xffffffff
  * nothing, a register-sized value, or a struct of up to two of them.
  */
 Syscalls :: struct {
-    // Closing an owning handle destroys the object.
+    /** Closing an owning handle destroys the object. */
     handle_close : fn(handle: Handle) -> Result[void, HandleError],
     // A non-owning handle with rights, which the handle must have.
     handle_duplicate : fn(handle: Handle, rights: Rights) -> Result[Handle, HandleError],
     handle_info : fn(handle: Handle) -> Result[HandleInfo, HandleError],
-    // The calling thread ends.
+    /** The calling thread ends. */
     thread_exit : fn() #never_returns,
-    // A new thread in space, started at entry with stack and argument.
+    /** A new thread in space, started at entry with stack and argument. */
     thread_create : fn(budget: MemoryBudget, space: AddressSpace, entry: u64, stack: u64, argument: u64) -> Result[Thread, HandleError],
-    // A new process, a child of the caller's, whose budget budget is.
+    /** A new process, a child of the caller's, whose budget budget is. */
     process_create : fn(budget: MemoryBudget) -> Result[Process, HandleError],
-    // A new, empty address space.
+    /** A new, empty address space. */
     address_space_create : fn(budget: MemoryBudget) -> Result[AddressSpace, HandleError],
     // The monotonic clock, in nanoseconds (decisions/0009).
     clock_monotonic : fn() -> Result[u64, HandleError],
     port_create : fn(budget: MemoryBudget) -> Result[Port, HandleError],
-    // A binding port_wake can raise.
+    /** A binding port_wake can raise. */
     port_bind_wake : fn(port: Port, key: u64) -> Result[void, PortError],
-    // A User packet for key's wake binding, its bits ORed into one already queued.
+    /** A User packet for key's wake binding, its bits ORed into one already queued. */
     port_wake : fn(port: Port, key: u64, bits: u64) -> Result[void, PortError],
-    // A Timer packet at deadline, binding key if it isn't yet.
+    /** A Timer packet at deadline, binding key if it isn't yet. */
     port_set_timer : fn(port: Port, key: u64, deadline: u64) -> Result[void, PortError],
-    // The binding goes, with its packet if one is queued.
+    /** The binding goes, with its packet if one is queued. */
     port_unbind : fn(port: Port, key: u64) -> Result[void, PortError],
-    // How many packets it wrote, up to packets.count: once there's at least one, or 0 at deadline (NO_DEADLINE for none).
+    /**
+     * How many packets it wrote, up to packets.count: once there's at least one, or 0 at deadline (NO_DEADLINE for none).
+     */
     port_wait : fn(port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, PortError],
-    // A new channel's two ends, with rings of ring_bytes each way, 0 for the default, speaking the protocol tag says, 0 for none.
+    /**
+     * A new channel's two ends, with rings of ring_bytes each way, 0 for the default, speaking the protocol tag says, 0 for none.
+     */
     channel_create : fn(budget: MemoryBudget, ring_bytes: u32, tag: u64) -> Result[ChannelPair, ChannelError],
     // The channel's rings, mapped at address.
     channel_map : fn(end: Channel, space: AddressSpace, address: u64) -> Result[void, ChannelError],
     channel_unmap : fn(end: Channel) -> Result[void, ChannelError],
-    // Readable or Writable, raised on the other end.
+    /** Readable or Writable, raised on the other end. */
     channel_notify : fn(end: Channel, signals: Signals) -> Result[void, ChannelError],
-    // One message, written into the end's ring through the kernel, with batch (NO_BATCH for none).
+    /** One message, written into the end's ring through the kernel, with batch (NO_BATCH for none). */
     channel_write : fn(end: Channel, payload: u8[], batch: u32) -> Result[void, ChannelError],
-    // The next message, read through the kernel into buffer. Its size goes at size too, also when the buffer is too small.
+    /**
+     * The next message, read through the kernel into buffer. Its size goes at size too, also when the buffer is too small.
+     */
     channel_read : fn(end: Channel, buffer: mut u8[], size: ptr[mut u32]) -> Result[MessageInfo, ChannelError],
-    // The handles, moved out of the caller's table into batch.
+    /** The handles, moved out of the caller's table into batch. */
     channel_send_handles : fn(end: Channel, handles: Handle[], batch: u32) -> Result[void, ChannelError],
-    // How many: the batch's handles, in the caller's table. How many there are goes at count too, also when handles is too small.
+    /**
+     * How many: the batch's handles, in the caller's table. How many there are goes at count too, also when handles is too small.
+     */
     channel_take_handles : fn(end: Channel, batch: u32, handles: mut Handle[], count: ptr[mut u32]) -> Result[u32, ChannelError],
-    // As port_wait, after channel_notify.
+    /** As port_wait, after channel_notify. */
     channel_notify_and_wait : fn(end: Channel, signals: Signals, port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, ChannelError],
-    /*
+    /**
      * A Signal packet for key when the object raises any of signals, or an Irq packet for an IRQ's interrupts. A channel
      * end's packet comes at once for PeerClosed if its peer is closed, and for Readable if messages are waiting in it;
      * bound for Readable while it's empty, its next message raises Readable, as if a read had found it empty.
@@ -170,20 +182,20 @@ Syscalls :: struct {
     // A child budget of limit bytes, carved out of the budget.
     memory_budget_create : fn(budget: MemoryBudget, limit: u64) -> Result[MemoryBudget, HandleError],
     memory_budget_info : fn(budget: MemoryBudget) -> Result[BudgetInfo, HandleError],
-    // A new memory object of size bytes, zero-filled as it's touched.
+    /** A new memory object of size bytes, zero-filled as it's touched. */
     memory_create : fn(budget: MemoryBudget, size: u64) -> Result[Memory, MemoryError],
-    // size bytes of the memory from offset, mapped at address.
+    /** size bytes of the memory from offset, mapped at address. */
     memory_map : fn(memory: Memory, space: AddressSpace, address: u64, offset: u64, size: u64, protection: Protection) -> Result[void, MemoryError],
     // The mapping that starts at address, unmapped.
     memory_unmap : fn(space: AddressSpace, address: u64) -> Result[void, MemoryError],
     controller_register : fn(platform: Platform, kind: ControllerKind, registers: u64) -> Result[ControllerInfo, DeviceError],
-    // The line's IRQ, routed and unmasked; flags are IRQ_*.
+    /** The line's IRQ, routed and unmasked; flags are IRQ_*. */
     irq_create : fn(platform: Platform, budget: MemoryBudget, controller: u32, line: u32, flags: u32) -> Result[Irq, DeviceError],
-    // A level-triggered line, unmasked again.
+    /** A level-triggered line, unmasked again. */
     irq_ack : fn(irq: Irq) -> Result[void, HandleError],
-    // Device memory at a physical address.
+    /** Device memory at a physical address. */
     memory_create_physical : fn(platform: Platform, budget: MemoryBudget, address: u64, size: u64, cache: CacheMode) -> Result[Memory, DeviceError],
-    // A window onto size bytes of the memory from offset.
+    /** A window onto size bytes of the memory from offset. */
     memory_create_window : fn(memory: Memory, budget: MemoryBudget, offset: u64, size: u64) -> Result[Memory, MemoryError],
     // How many threads the process's subtree has; up to ids.count of their IDs at ids.
     process_threads : fn(process: Process, ids: mut u64[]) -> Result[u32, ControlError],
@@ -194,54 +206,56 @@ Syscalls :: struct {
     // A stopped or suspended thread's THREAD_REGISTERS registers.
     thread_read_registers : fn(process: Process, thread: u64, registers: mut u64[]) -> Result[void, ControlError],
     thread_write_registers : fn(process: Process, thread: u64, registers: u64[]) -> Result[void, ControlError],
-    // An intercept of the process's subtree, reporting to port under key.
+    /** An intercept of the process's subtree, reporting to port under key. */
     intercept_attach : fn(process: Process, port: Port, key: u64, calls: u64, points: u32) -> Result[Intercept, ControlError],
     // The next stop not yet reported.
     intercept_next : fn(intercept: Intercept, stop: ptr[mut StopInfo]) -> Result[void, ControlError],
     intercept_resume : fn(intercept: Intercept, thread: u64, action: InterceptAction) -> Result[void, ControlError],
     process_kill : fn(process: Process) -> Result[void, ControlError],
-    // The calling process ends, with its subtree, giving code to whoever watches it end.
+    /** The calling process ends, with its subtree, giving code to whoever watches it end. */
     process_exit : fn(code: u32) #never_returns,
-    // A line of text in the kernel's log, its first DEBUG_LOG_LINE bytes.
+    /** A line of text in the kernel's log, its first DEBUG_LOG_LINE bytes. */
     debug_log : fn(log: DebugLog, text: u8[]) -> Result[void, HandleError],
-    // A new thread in the process, in space, which must be in its subtree, started at entry with stack and argument: its ID.
+    /**
+     * A new thread in the process, in space, which must be in its subtree, started at entry with stack and argument: its ID.
+     */
     thread_create_in : fn(process: Process, budget: MemoryBudget, space: AddressSpace, entry: u64, stack: u64, argument: u64) -> Result[u64, ControlError],
-    // The handles, moved out of the caller's table into the process's, and what each is there written at given.
+    /** The handles, moved out of the caller's table into the process's, and what each is there written at given. */
     process_give_handles : fn(process: Process, handles: Handle[], given: mut Handle[]) -> Result[void, ControlError],
-    // How big the memory object is, in bytes.
+    /** How big the memory object is, in bytes. */
     memory_size : fn(memory: Memory) -> Result[u64, HandleError],
-    // The protocol tag the end's channel was made with.
+    /** The protocol tag the end's channel was made with. */
     channel_tag : fn(end: Channel) -> Result[u64, ChannelError],
-    /*
+    /**
      * A PCIe function at address (DEVICE_ADDRESS), whose message-signaled interrupts the interrupt controller knows
      * as msi_source: on AArch64, the ITS's device ID, from the firmware tables' msi-map; unused on x86-64. config is
      * the physical address of its 4 KiB of configuration space, where the kernel turns its DMA off (Bus Master
      * Enable) when the Device is destroyed.
      */
     device_create : fn(platform: Platform, budget: MemoryBudget, address: u32, msi_source: u32, config: u64) -> Result[Device, DeviceError],
-    // The device's DMA, in the domain: what an IOMMU will confine it to.
+    /** The device's DMA, in the domain: what an IOMMU will confine it to. */
     device_attach : fn(platform: Platform, device: Device, domain: DmaDomain) -> Result[void, DeviceError],
-    // An IRQ for one of the device's message-signaled interrupts, routed to a CPU the kernel picks.
+    /** An IRQ for one of the device's message-signaled interrupts, routed to a CPU the kernel picks. */
     irq_create_msi : fn(device: Device, budget: MemoryBudget) -> Result[Irq, DeviceError],
-    // What the device writes, and where, to raise a message-signaled IRQ.
+    /** What the device writes, and where, to raise a message-signaled IRQ. */
     irq_message : fn(irq: Irq) -> Result[MsiMessage, DeviceError],
-    /*
+    /**
      * A new DMA domain; without an IOMMU, its device addresses are physical addresses, and only a domain made trusted
      * (DMA_DOMAIN_TRUSTED in flags) has DMA memory.
      */
     dma_domain_create : fn(platform: Platform, budget: MemoryBudget, flags: u32) -> Result[DmaDomain, DeviceError],
-    // Memory for DMA in the domain: pinned, physically contiguous, zeroed, ending at or below limit (0 for none).
+    /** Memory for DMA in the domain: pinned, physically contiguous, zeroed, ending at or below limit (0 for none). */
     dma_memory_create : fn(domain: DmaDomain, budget: MemoryBudget, size: u64, limit: u64) -> Result[Memory, DeviceError],
-    // Where DMA memory is, to the devices in its domain.
+    /** Where DMA memory is, to the devices in its domain. */
     memory_device_address : fn(memory: Memory) -> Result[u64, DeviceError],
-    /*
+    /**
      * The IOMMU of kind whose registers are the device memory registers, from the firmware tables, covering count
      * requester IDs from first (DEVICE_ADDRESS, its segment then its requester ID), which it knows as streams from
      * stream: its number. The same IOMMU registered again, its registers at the same place, gives the same number,
      * and covers those requester IDs too. A device is attached through the IOMMU that covers it most narrowly.
      */
     iommu_register : fn(platform: Platform, kind: IommuKind, registers: Memory, first: u32, count: u32, stream: u32) -> Result[u32, DeviceError],
-    /*
+    /**
      * CPU budgets (the SlopOS repository's decisions 0037, 0093): a child of parent, charged to budget, whose threads
      * get time nanoseconds of CPU every period nanoseconds at priority, then run in the background band until it
      * comes back. Its share, time over period, comes out of its parent's, which its children's together can't pass;
@@ -249,61 +263,65 @@ Syscalls :: struct {
      * parent.
      */
     cpu_budget_create : fn(parent: CpuBudget, budget: MemoryBudget, priority: u32, period: u64, time: u64) -> Result[CpuBudget, HandleError],
-    // The budget's priority, period and time changed, within its parent's as cpu_budget_create's are.
+    /** The budget's priority, period and time changed, within its parent's as cpu_budget_create's are. */
     cpu_budget_set : fn(budget: CpuBudget, priority: u32, period: u64, time: u64) -> Result[void, HandleError],
-    // What the budget is, into info (CpuBudgetInfo, as CPU_BUDGET_INFO_WORDS words; see cpu_budget_describe).
+    /** What the budget is, into info (CpuBudgetInfo, as CPU_BUDGET_INFO_WORDS words; see cpu_budget_describe). */
     cpu_budget_info : fn(budget: CpuBudget, info: mut u64[]) -> Result[void, HandleError],
-    // The process's threads, now and later, run on budget.
+    /** The process's threads, now and later, run on budget. */
     process_set_cpu_budget : fn(process: Process, budget: CpuBudget) -> Result[void, HandleError],
-    // The I/O ports first to first + count - 1, on an architecture that has them (x86-64), as an object.
+    /** The I/O ports first to first + count - 1, on an architecture that has them (x86-64), as an object. */
     io_ports_create : fn(platform: Platform, budget: MemoryBudget, first: u32, count: u32) -> Result[IoPortRange, DeviceError],
-    // A read of width bytes (1, 2 or 4) from the port at offset in the range.
+    /** A read of width bytes (1, 2 or 4) from the port at offset in the range. */
     io_port_read : fn(ports: IoPortRange, offset: u32, width: u32) -> Result[u32, DeviceError],
-    // A write of width bytes (1, 2 or 4) of value to the port at offset in the range.
+    /** A write of width bytes (1, 2 or 4) of value to the port at offset in the range. */
     io_port_write : fn(ports: IoPortRange, offset: u32, width: u32, value: u32) -> Result[void, DeviceError],
-    /*
+    /**
      * A memory object of size bytes whose pages its pager supplies (the SlopOS repository's decisions/0094): a touch of
      * one that isn't there yet waits, and raises key's wake binding on port, which the pager made. It can be mapped
      * only to read or execute; only a handle that may write it (RIGHT_MEMORY_WRITE) asks what's wanted and supplies.
      */
     memory_create_paged : fn(budget: MemoryBudget, port: Port, key: u64, size: u64) -> Result[Memory, MemoryError],
-    // The offset of a page of paged memory that a touch is waiting for, each reported once; NothingWanted otherwise.
+    /**
+     * The offset of a page of paged memory that a touch is waiting for, each reported once; NothingWanted otherwise.
+     */
     memory_page_wanted : fn(memory: Memory) -> Result[u64, MemoryError],
-    // The page at offset of paged memory, copied from the page of source at source_offset, and whoever waited for it woken.
+    /**
+     * The page at offset of paged memory, copied from the page of source at source_offset, and whoever waited for it woken.
+     */
     memory_supply : fn(memory: Memory, offset: u64, source: Memory, source_offset: u64) -> Result[void, MemoryError],
-    /*
+    /**
      * Bytes of anonymous memory from offset copied into buffer, through the kernel, with no mapping (RIGHT_MEMORY_READ):
      * for memory another process owns, whose end is only ObjectGone, never a fault (the SlopOS repository's decisions/0098).
      */
     memory_read : fn(memory: Memory, offset: u64, buffer: mut u8[]) -> Result[void, MemoryError],
-    // Bytes copied into anonymous memory from offset, through the kernel (RIGHT_MEMORY_WRITE).
+    /** Bytes copied into anonymous memory from offset, through the kernel (RIGHT_MEMORY_WRITE). */
     memory_write : fn(memory: Memory, offset: u64, bytes: u8[]) -> Result[void, MemoryError],
-    /*
+    /**
      * The CPUs the budget's threads may run on, a bit per CPU's index (RIGHT_CPU_BUDGET_SET): one of them online,
      * within its parent's, and over each of its children's (InvalidArgument, BudgetExceeded). A child starts with its
      * parent's; the root's are every CPU. Its threads move at their next tick (the SlopOS repository's decisions/0099).
      */
     cpu_budget_set_cpus : fn(budget: CpuBudget, cpus: u64) -> Result[void, HandleError],
-    // A message-signaled IRQ routed to the CPU with index cpu instead, one of the caller's CPU budget's CPUs.
+    /** A message-signaled IRQ routed to the CPU with index cpu instead, one of the caller's CPU budget's CPUs. */
     irq_set_cpu : fn(irq: Irq, cpu: u32) -> Result[void, DeviceError],
-    /*
+    /**
      * The budget's pressure threshold (RIGHT_BUDGET_CHARGE), in bytes, 0 for none: SIGNAL_PRESSURE is raised as what
      * it has charged reaches it, and again each time it does after falling below it; at once, if it's there already
      * (the SlopOS repository's decisions/0111).
      */
     memory_budget_set_threshold : fn(budget: MemoryBudget, threshold: u64) -> Result[void, HandleError],
-    /*
+    /**
      * The page at offset of paged memory given back (RIGHT_MEMORY_WRITE): unmapped everywhere, its frame freed and its
      * charge returned, so the next touch waits for its pager again. NotSupplied if it isn't there; MappedWidely if more
      * spaces map it than one call takes it from (MAX_EVICT_SPACES), which only a less shared page avoids.
      */
     memory_evict : fn(memory: Memory, offset: u64) -> Result[void, MemoryError],
-    /*
+    /**
      * Whether the page at offset of paged memory was touched since the last time this asked, through any mapping, and
      * the marks that say so cleared (RIGHT_MEMORY_WRITE): 1 or 0. Where the hardware doesn't keep them, always 0.
      */
     memory_page_accessed : fn(memory: Memory, offset: u64) -> Result[u64, MemoryError],
-    /*
+    /**
      * The calling thread on budget from now on (RIGHT_CPU_BUDGET_BIND), or on its process's again with NO_HANDLE: a
      * server running a connection's work on the budget its client lent it (the SlopOS repository's decisions 0037,
      * 0130). Destroyed while a thread runs on it, the thread runs on its parent.
@@ -311,10 +329,10 @@ Syscalls :: struct {
     thread_use_cpu_budget : fn(budget: CpuBudget) -> Result[void, HandleError],
 }
 
-// The most address spaces memory_evict takes a page from at once.
+/** The most address spaces memory_evict takes a page from at once. */
 MAX_EVICT_SPACES :: 16
 
-/*
+/**
  * What cpu_budget_info gives: its priority, its period and time in nanoseconds, and the share of it its children have,
  * in millionths of a CPU, against its own share in the same units.
  */
@@ -324,13 +342,13 @@ CpuBudgetInfo :: struct {
     time : u64,
     share : u64,
     children_share : u64,
-    // The CPUs its threads may run on, a bit per CPU's index
+    /** The CPUs its threads may run on, a bit per CPU's index */
     cpus : u64,
 }
 
 CPU_BUDGET_INFO_WORDS :: 6
 
-// cpu_budget_info's words, as a CpuBudgetInfo.
+/** cpu_budget_info's words, as a CpuBudgetInfo. */
 cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
     words : u64[CPU_BUDGET_INFO_WORDS]
     if cpu_budget_info(budget, words) is_error {
@@ -340,10 +358,10 @@ cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
         cpus = words[5]}
 }
 
-// The most of a line debug_log writes.
+/** The most of a line debug_log writes. */
 DEBUG_LOG_LINE : u64 : 200
 
-/*
+/**
  * How a process ended, in the data[1] of the Signal packet its SIGNAL_TERMINATED raises: the code it
  * gave process_exit, or EXIT_KILLED when it was killed, which no code can be.
  */
@@ -352,48 +370,50 @@ EXIT_KILLED : u64 : 1 << 32
 #insert syscall_numbers()
 #insert syscall_stubs()
 
-// A call's bit, for intercept_attach's calls, by its number (SYSCALL_<NAME>).
+/** A call's bit, for intercept_attach's calls, by its number (SYSCALL_<NAME>). */
 syscall_bit :: fn(number: u32) -> u64 #no_context {
     return cast[u64](1) << cast[u64](number)
 }
 
-// What handle_info gives.
+/** What handle_info gives. */
 HandleInfo :: struct {
     kind : ObjectKind,
     rights : Rights,
 }
 
-// What channel_create gives.
+/** What channel_create gives. */
 ChannelPair :: struct {
     a : Channel,
     b : Channel,
 }
 
-// What channel_read gives: the message's size, and its flags and batch (MessageHeader's).
+/** What channel_read gives: the message's size, and its flags and batch (MessageHeader's). */
 MessageInfo :: struct {
     size : u32,
     flags_and_batch : u32,
 }
 
-// What memory_budget_info gives: its limit, and how much of it is charged, in bytes.
+/** What memory_budget_info gives: its limit, and how much of it is charged, in bytes. */
 BudgetInfo :: struct {
     limit : u64,
     used : u64,
 }
 
-// What controller_register gives: the controller's number, and how many lines it has.
+/** What controller_register gives: the controller's number, and how many lines it has. */
 ControllerInfo :: struct {
     number : u32,
     lines : u32,
 }
 
-// What irq_message gives: what a device writes, and where, to raise a message-signaled interrupt (PCIe MSI and MSI-X).
+/**
+ * What irq_message gives: what a device writes, and where, to raise a message-signaled interrupt (PCIe MSI and MSI-X).
+ */
 MsiMessage :: struct {
     address : u64,
     data : u32,
 }
 
-// For DeviceCreate: a PCIe function's address, its segment, then its requester ID.
+/** For DeviceCreate: a PCIe function's address, its segment, then its requester ID. */
 device_address :: fn(segment: u16, bus: u8, device: u8, function: u8) -> u32 #no_context {
     return cast[u32](segment) << 16 | cast[u32](bus) << 8 | (cast[u32](device) & 0x1f) << 3 | (cast[u32](function) & 7)
 }
@@ -401,7 +421,7 @@ device_address :: fn(segment: u16, bus: u8, device: u8, function: u8) -> u32 #no
 // For InterceptAttach: where threads stop. calls is a bit per syscall number below 64.
 STOP_SYSCALL_ENTRY : u32 : 1 << 0
 STOP_SYSCALL_EXIT : u32 : 1 << 1
-// A fault the thread's memory doesn't resolve, which would otherwise destroy it.
+/** A fault the thread's memory doesn't resolve, which would otherwise destroy it. */
 STOP_FAULT : u32 : 1 << 2
 
 StopPoint :: enum #backed_by(u32) {
@@ -410,22 +430,24 @@ StopPoint :: enum #backed_by(u32) {
     Fault = 3,
 }
 
-// One stop, as InterceptNext writes it.
+/** One stop, as InterceptNext writes it. */
 StopInfo :: struct {
     thread : u64,
     point : StopPoint,
-    // The system call's number, or for a fault, how it accessed: 0 read, 1 write, 2 execute.
+    /** The system call's number, or for a fault, how it accessed: 0 read, 1 write, 2 execute. */
     number : u32,
-    // For a fault: the address it touched.
+    /** For a fault: the address it touched. */
     address : u64,
 }
 
 InterceptAction :: enum #backed_by(u32) {
-    // Run the system call, with any registers changed (entry); return to user mode (exit); retry the access (fault).
+    /**
+     * Run the system call, with any registers changed (entry); return to user mode (exit); retry the access (fault).
+     */
     Continue = 1,
-    // Entry only: don't run the system call; return with the registers as written.
+    /** Entry only: don't run the system call; return with the registers as written. */
     Skip = 2,
-    // Destroy the thread.
+    /** Destroy the thread. */
     Kill = 3,
 }
 
@@ -441,17 +463,19 @@ InterceptAction :: enum #backed_by(u32) {
     THREAD_REGISTERS : u32 : 18
 }
 
-// For ControllerRegister: the kinds of interrupt controller.
+/** For ControllerRegister: the kinds of interrupt controller. */
 ControllerKind :: enum #backed_by(u32) {
     IoApic = 1,
     GicDistributor = 2,
     Plic = 3,
 }
 
-// For DmaDomainCreate: the domain's DMA memory may be made where no IOMMU confines its devices, for a trusted driver.
+/**
+ * For DmaDomainCreate: the domain's DMA memory may be made where no IOMMU confines its devices, for a trusted driver.
+ */
 DMA_DOMAIN_TRUSTED : u32 : 1 << 0
 
-// For IommuRegister: the kinds of IOMMU.
+/** For IommuRegister: the kinds of IOMMU. */
 IommuKind :: enum #backed_by(u32) {
     VtD = 1,
     AmdVi = 2,
@@ -463,11 +487,11 @@ IommuKind :: enum #backed_by(u32) {
 IRQ_LEVEL : u32 : 1 << 0
 IRQ_ACTIVE_LOW : u32 : 1 << 1
 
-// For MemoryCreatePhysical: how device memory is cached.
+/** For MemoryCreatePhysical: how device memory is cached. */
 CacheMode :: enum #backed_by(u32) {
     WriteBack = 1,
     WriteCombining = 2,
-    // Uncached and strongly ordered, for device registers.
+    /** Uncached and strongly ordered, for device registers. */
     Device = 3,
 }
 
@@ -477,25 +501,27 @@ PROTECTION_READ : Protection : 1 << 0
 PROTECTION_WRITE : Protection : 1 << 1
 PROTECTION_EXECUTE : Protection : 1 << 2
 
-// For PortWait: wait for as long as it takes.
+/** For PortWait: wait for as long as it takes. */
 NO_DEADLINE : u64 : 0xffffffffffffffff
-// The most packets one PortWait gives.
+/** The most packets one PortWait gives. */
 MAX_PACKETS_PER_WAIT : u32 : 64
 
 PacketKind :: enum #backed_by(u32) {
-    // An object's signals: data[0] is the signals seen.
+    /** An object's signals: data[0] is the signals seen. */
     Signal = 1,
-    // A timer's deadline came: data[0] is the deadline.
+    /** A timer's deadline came: data[0] is the deadline. */
     Timer = 2,
-    // port_wake: data[0] is every bit raised since the packet was last taken.
+    /** port_wake: data[0] is every bit raised since the packet was last taken. */
     User = 3,
-    // An IRQ's: data[0] is how many interrupts arrived since the packet was last taken.
+    /** An IRQ's: data[0] is how many interrupts arrived since the packet was last taken. */
     Irq = 4,
-    // An intercept's: data[0] is how many threads stopped since the packet was last taken (InterceptNext reports them).
+    /**
+     * An intercept's: data[0] is how many threads stopped since the packet was last taken (InterceptNext reports them).
+     */
     Stop = 5,
 }
 
-// One event, as PortWait writes it (knowledge/design/ipc.md §3).
+/** One event, as PortWait writes it (knowledge/design/ipc.md §3). */
 Packet :: struct {
     key : u64,
     kind : PacketKind,
@@ -505,23 +531,23 @@ Packet :: struct {
 
 #assert size_of(Packet) == 32
 
-// What an object can raise, for a port binding to see.
+/** What an object can raise, for a port binding to see. */
 Signals :: distinct alias u32
-// A channel end: the other end wrote a message.
+/** A channel end: the other end wrote a message. */
 SIGNAL_READABLE : Signals : 1 << 0
-// A channel end: the other end made room.
+/** A channel end: the other end made room. */
 SIGNAL_WRITABLE : Signals : 1 << 1
-// A channel end: the other end is closed. It stays raised.
+/** A channel end: the other end is closed. It stays raised. */
 SIGNAL_PEER_CLOSED : Signals : 1 << 2
-// A process or a thread: destroyed. It stays raised.
+/** A process or a thread: destroyed. It stays raised. */
 SIGNAL_TERMINATED : Signals : 1 << 3
-// A Device: an IOMMU blocked its DMA, at the device address in the Signal packet's data[1].
+/** A Device: an IOMMU blocked its DMA, at the device address in the Signal packet's data[1]. */
 SIGNAL_DMA_FAULT : Signals : 1 << 4
-// A MemoryBudget: what it has charged reached its threshold (memory_budget_set_threshold).
+/** A MemoryBudget: what it has charged reached its threshold (memory_budget_set_threshold). */
 SIGNAL_PRESSURE : Signals : 1 << 5
 
 BindMode :: enum #backed_by(u32) {
-    // Disarmed once its packet is queued; PortBind with the same key and object arms it again.
+    /** Disarmed once its packet is queued; PortBind with the same key and object arms it again. */
     Once = 1,
     Persistent = 2,
 }
@@ -536,7 +562,7 @@ CHANNEL_MIN_RING : u32 : 1024
 CHANNEL_MAX_RING : u32 : 131072
 CHANNEL_RINGS_OFFSET : u32 : 256
 
-// One direction's indices: the producer's and the consumer's on separate cache lines.
+/** One direction's indices: the producer's and the consumer's on separate cache lines. */
 RingIndices :: struct #align(64) {
     // The producer's: bytes committed, and whether it waits for room.
     tail : u32,
@@ -550,76 +576,76 @@ RingIndices :: struct #align(64) {
 
 #assert size_of(RingIndices) == 128
 
-// Before every message in a ring, which is padded to 8 bytes.
+/** Before every message in a ring, which is padded to 8 bytes. */
 MessageHeader :: struct {
     size : u32,
     flags : u16,
-    // With MESSAGE_HAS_HANDLES: the batch its handles are in.
+    /** With MESSAGE_HAS_HANDLES: the batch its handles are in. */
     handle_batch : u16,
 }
 
 #assert size_of(MessageHeader) == 8
 
 MESSAGE_HAS_HANDLES : u16 : 1 << 0
-// For ChannelWrite: a message without handles.
+/** For ChannelWrite: a message without handles. */
 NO_BATCH : u32 : 0xffff
 // Handle batches in flight to each end, and the handles one holds.
 HANDLE_BATCHES : u32 : 16
 MAX_HANDLES_PER_BATCH : u32 : 64
 
-// The bytes ChannelMap maps for rings of ring_bytes.
+/** The bytes ChannelMap maps for rings of ring_bytes. */
 channel_memory_size :: fn(ring_bytes: u32) -> u64 {
     return (cast[u64](CHANNEL_RINGS_OFFSET) + 2 * cast[u64](ring_bytes) + 4095) & ~cast[u64](4095)
 }
 
-// The largest payload a ring of ring_bytes takes: a message is at most half the ring, and 64 KiB.
+/** The largest payload a ring of ring_bytes takes: a message is at most half the ring, and 64 KiB. */
 channel_max_payload :: fn(ring_bytes: u32) -> u32 {
     half :: ring_bytes / 2
     return (if half < 65536 { half } else { 65536 }) - cast[u32](size_of(MessageHeader))
 }
 
-// What a call on a handle can fail with.
+/** What a call on a handle can fail with. */
 HandleError :: enum #backed_by(u32) {
-    // Not a handle of this process, or one already closed.
+    /** Not a handle of this process, or one already closed. */
     InvalidHandle = 1,
-    // The object was destroyed.
+    /** The object was destroyed. */
     ObjectGone = 2,
-    // The handle lacks a right the call needs.
+    /** The handle lacks a right the call needs. */
     MissingRight = 3,
-    // The handle isn't to the kind of object the call takes.
+    /** The handle isn't to the kind of object the call takes. */
     WrongKind = 4,
-    // The process's handle table is full.
+    /** The process's handle table is full. */
     TableFull = 5,
     OutOfMemory = 6,
-    // A number the kernel doesn't have.
+    /** A number the kernel doesn't have. */
     NoSuchCall = 7,
-    // Memory the call reads isn't the caller's to.
+    /** Memory the call reads isn't the caller's to. */
     BadBuffer = 10,
-    // The budget can't pay for it (decisions/0011).
+    /** The budget can't pay for it (decisions/0011). */
     BudgetExceeded = 25,
-    // A number the call can't take, like a CPU budget's period of 0.
+    /** A number the call can't take, like a CPU budget's period of 0. */
     InvalidArgument = 46,
 }
 
-// What a call on a port can fail with. Tags shared with HandleError mean the same.
+/** What a call on a port can fail with. Tags shared with HandleError mean the same. */
 PortError :: enum #backed_by(u32) {
     InvalidHandle = 1,
     ObjectGone = 2,
     MissingRight = 3,
     WrongKind = 4,
     OutOfMemory = 6,
-    // The key is bound already.
+    /** The key is bound already. */
     KeyInUse = 8,
-    // No binding has that key, or not one of that kind.
+    /** No binding has that key, or not one of that kind. */
     NoSuchKey = 9,
-    // Packets would go somewhere the thread can't write.
+    /** Packets would go somewhere the thread can't write. */
     BadBuffer = 10,
-    // The object has as many bindings as it takes.
+    /** The object has as many bindings as it takes. */
     TooManyBindings = 11,
     BudgetExceeded = 25,
 }
 
-// What a call on a channel can fail with. Tags shared with HandleError and PortError mean the same.
+/** What a call on a channel can fail with. Tags shared with HandleError and PortError mean the same. */
 ChannelError :: enum #backed_by(u32) {
     InvalidHandle = 1,
     ObjectGone = 2,
@@ -627,37 +653,39 @@ ChannelError :: enum #backed_by(u32) {
     WrongKind = 4,
     TableFull = 5,
     OutOfMemory = 6,
-    // Memory the call reads or writes isn't the caller's to.
+    /** Memory the call reads or writes isn't the caller's to. */
     BadBuffer = 10,
-    // The other end is closed.
+    /** The other end is closed. */
     PeerClosed = 12,
-    // No room in the ring for the message.
+    /** No room in the ring for the message. */
     Full = 13,
-    // No message in the ring.
+    /** No message in the ring. */
     Empty = 14,
-    // More than the call takes: a message bigger than channel_max_payload, or a batch of more than MAX_HANDLES_PER_BATCH.
+    /**
+     * More than the call takes: a message bigger than channel_max_payload, or a batch of more than MAX_HANDLES_PER_BATCH.
+     */
     TooBig = 15,
-    // The message doesn't fit in the buffer; the call's first value is its size.
+    /** The message doesn't fit in the buffer; the call's first value is its size. */
     BufferTooSmall = 16,
-    // The end's rings are mapped already, or it can't be sent while they are.
+    /** The end's rings are mapped already, or it can't be sent while they are. */
     Mapped = 17,
-    // Not a page-aligned user address, or something is mapped there.
+    /** Not a page-aligned user address, or something is mapped there. */
     BadAddress = 18,
-    // The batch is in use, or there's no such batch to take.
+    /** The batch is in use, or there's no such batch to take. */
     BatchInUse = 19,
     NoSuchBatch = 20,
-    // The other end broke the ring: its indices or a header are impossible.
+    /** The other end broke the ring: its indices or a header are impossible. */
     Corrupt = 21,
-    // A handle can't go through this channel: one of its own ends.
+    /** A handle can't go through this channel: one of its own ends. */
     NotTransferable = 22,
-    // The end is in a batch in flight.
+    /** The end is in a batch in flight. */
     InFlight = 23,
-    // Rings must be a power of two from CHANNEL_MIN_RING to CHANNEL_MAX_RING.
+    /** Rings must be a power of two from CHANNEL_MIN_RING to CHANNEL_MAX_RING. */
     InvalidSize = 24,
     BudgetExceeded = 25,
 }
 
-// What a call on a memory budget or a memory object can fail with. Tags shared with the others mean the same.
+/** What a call on a memory budget or a memory object can fail with. Tags shared with the others mean the same. */
 MemoryError :: enum #backed_by(u32) {
     InvalidHandle = 1,
     ObjectGone = 2,
@@ -665,31 +693,31 @@ MemoryError :: enum #backed_by(u32) {
     WrongKind = 4,
     TableFull = 5,
     OutOfMemory = 6,
-    // Not a page-aligned user address range, or it overlaps a mapping.
+    /** Not a page-aligned user address range, or it overlaps a mapping. */
     BadAddress = 18,
-    // Not a whole number of pages, none at all, more than MAX_MEMORY_SIZE, or past the memory object's end.
+    /** Not a whole number of pages, none at all, more than MAX_MEMORY_SIZE, or past the memory object's end. */
     InvalidSize = 24,
     BudgetExceeded = 25,
-    // No mapping starts at that address.
+    /** No mapping starts at that address. */
     NotMapped = 26,
-    // Writable and executable at once, or no access at all.
+    /** Writable and executable at once, or no access at all. */
     BadProtection = 27,
-    // The port has no wake binding with that key, or is gone.
+    /** The port has no wake binding with that key, or is gone. */
     NoPager = 28,
-    // No page of the paged memory is waited for that hasn't been reported.
+    /** No page of the paged memory is waited for that hasn't been reported. */
     NothingWanted = 29,
-    // Not paged memory.
+    /** Not paged memory. */
     NotPaged = 30,
-    // A page of paged memory that hasn't been supplied.
+    /** A page of paged memory that hasn't been supplied. */
     NotSupplied = 31,
-    // A page mapped in more address spaces than memory_evict takes it from at once.
+    /** A page mapped in more address spaces than memory_evict takes it from at once. */
     MappedWidely = 32,
 }
 
-// The largest memory object, 1 GiB.
+/** The largest memory object, 1 GiB. */
 MAX_MEMORY_SIZE : u64 : 1 << 30
 
-// What process control can fail with. Tags shared with the others mean the same.
+/** What process control can fail with. Tags shared with the others mean the same. */
 ControlError :: enum #backed_by(u32) {
     InvalidHandle = 1,
     ObjectGone = 2,
@@ -697,28 +725,30 @@ ControlError :: enum #backed_by(u32) {
     WrongKind = 4,
     TableFull = 5,
     OutOfMemory = 6,
-    // Memory the call reads or writes isn't there, or isn't the caller's to.
+    /** Memory the call reads or writes isn't there, or isn't the caller's to. */
     BadBuffer = 10,
-    // InterceptNext: no stop left to report.
+    /** InterceptNext: no stop left to report. */
     Empty = 14,
-    // ProcessGiveHandles: more than MAX_HANDLES_PER_BATCH handles.
+    /** ProcessGiveHandles: more than MAX_HANDLES_PER_BATCH handles. */
     TooBig = 15,
-    // The address space isn't in the process's subtree, or the range isn't mapped.
+    /** The address space isn't in the process's subtree, or the range isn't mapped. */
     BadAddress = 18,
-    // ProcessGiveHandles: a handle that can't go to the process, such as an owning one to the process or above it.
+    /** ProcessGiveHandles: a handle that can't go to the process, such as an owning one to the process or above it. */
     NotTransferable = 22,
     BudgetExceeded = 25,
-    // No thread with that ID in the subtree, or none the intercept stopped.
+    /** No thread with that ID in the subtree, or none the intercept stopped. */
     NoSuchThread = 34,
-    // The thread isn't stopped or suspended, or (Skip) isn't stopped at a system call's entry.
+    /** The thread isn't stopped or suspended, or (Skip) isn't stopped at a system call's entry. */
     NotStopped = 35,
-    // The process is intercepted already.
+    /** The process is intercepted already. */
     AlreadyIntercepted = 36,
-    // A register value user mode can't have.
+    /** A register value user mode can't have. */
     BadRegisters = 37,
 }
 
-// What registering a controller, making an IRQ or device memory can fail with. Tags shared with the others mean the same.
+/**
+ * What registering a controller, making an IRQ or device memory can fail with. Tags shared with the others mean the same.
+ */
 DeviceError :: enum #backed_by(u32) {
     InvalidHandle = 1,
     ObjectGone = 2,
@@ -726,47 +756,47 @@ DeviceError :: enum #backed_by(u32) {
     WrongKind = 4,
     TableFull = 5,
     OutOfMemory = 6,
-    // Not page-aligned, or memory the kernel owns.
+    /** Not page-aligned, or memory the kernel owns. */
     BadAddress = 18,
     InvalidSize = 24,
     BudgetExceeded = 25,
-    // No controller of that kind there, or the architecture has none of that kind.
+    /** No controller of that kind there, or the architecture has none of that kind. */
     NoController = 28,
-    // Every controller the kernel takes is registered.
+    /** Every controller the kernel takes is registered. */
     TooManyControllers = 29,
     NoSuchController = 30,
     NoSuchLine = 31,
-    // The line already has an IRQ.
+    /** The line already has an IRQ. */
     LineInUse = 32,
-    // No CPU has a device interrupt free.
+    /** No CPU has a device interrupt free. */
     NoFreeInterrupt = 33,
-    // Not memory made for DMA (memory_device_address), or its domain is gone.
+    /** Not memory made for DMA (memory_device_address), or its domain is gone. */
     NotDmaMemory = 38,
-    // No interrupt controller here takes message-signaled interrupts.
+    /** No interrupt controller here takes message-signaled interrupts. */
     NoMsi = 39,
-    // The device has as many message-signaled IRQs as it can (MAX_DEVICE_MSIS).
+    /** The device has as many message-signaled IRQs as it can (MAX_DEVICE_MSIS). */
     TooManyVectors = 40,
-    // Another device has that address, or, where the interrupt controller uses sources, that MSI source.
+    /** Another device has that address, or, where the interrupt controller uses sources, that MSI source. */
     DeviceExists = 41,
-    // No IOMMU of that kind there, or none the kernel can drive.
+    /** No IOMMU of that kind there, or none the kernel can drive. */
     NoIommu = 42,
-    // Every IOMMU the kernel takes is registered, or every range of requester IDs one covers.
+    /** Every IOMMU the kernel takes is registered, or every range of requester IDs one covers. */
     TooManyIommus = 43,
-    // The device isn't behind the IOMMU its domain's other devices are, or behind none where they're behind one.
+    /** The device isn't behind the IOMMU its domain's other devices are, or behind none where they're behind one. */
     WrongIommu = 44,
-    // DMA memory in a domain no IOMMU translates, which wasn't made trusted (DMA_DOMAIN_TRUSTED).
+    /** DMA memory in a domain no IOMMU translates, which wasn't made trusted (DMA_DOMAIN_TRUSTED). */
     Untrusted = 45,
-    /*
+    /**
      * Ports outside the range, a width that isn't 1, 2 or 4, or ports where the architecture has none; or a CPU that
      * isn't online, or isn't the caller's CPU budget's
      */
     InvalidArgument = 46,
 }
 
-// The most message-signaled IRQs one device has at once.
+/** The most message-signaled IRQs one device has at once. */
 MAX_DEVICE_MSIS : u32 : 32
 
-/*
+/**
  * Variable-size data in a protocol's message (the SlopOS repository's decisions 0040, 0071): count Ts after the
  * message's fixed part, at offset bytes from the message's start, aligned for T. A message's generated validator
  * checks it's inside the message before anything reads it (std/os's protocol_code). elements holds nothing; it
@@ -778,10 +808,10 @@ Relative :: struct[T] {
     elements : T[0],
 }
 
-// A handle field of a message as it travels: its index in the message's batch, or this for none.
+/** A handle field of a message as it travels: its index in the message's batch, or this for none. */
 NO_HANDLE_INDEX : u32 : 0xffffffff
 
-/*
+/**
  * What a protocol package says of itself, as its PROTOCOL (decisions/0040): its name, its major version, a new one
  * for any change that isn't only appending, and who pays for the server's work (decisions/0037).
  */
@@ -792,8 +822,8 @@ Protocol :: struct {
 }
 
 Lending :: enum {
-    // The client's budget, for each of its connections
+    /** The client's budget, for each of its connections */
     PerConnection,
-    // The server's own
+    /** The server's own */
     Server,
 }

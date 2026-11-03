@@ -1,4 +1,4 @@
-/*
+/**
  * The grant protocol, which a directory's Grant gives and its Link takes, on SlopOS.
  */
 package grant

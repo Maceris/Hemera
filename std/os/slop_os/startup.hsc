@@ -3,21 +3,21 @@ package slop_os
 import intrinsics from "base"
 import runtime from "base"
 
-/*
+/**
  * What a process starts with (knowledge/design/system-abi.md §6, docs/specs/programs.md): its first
  * thread's argument points at this, in memory its loader mapped into it, read-only, which stays for the
  * life of the process. The entry point's typed arguments are still to come (roadmap M6, 6d).
  */
 StartupBlock :: struct {
-    // The ABI_VERSION of the kernel that started the process
+    /** The ABI_VERSION of the kernel that started the process */
     abi_version : u32,
-    // size_of(StartupBlock) as its writer knew it
+    /** size_of(StartupBlock) as its writer knew it */
     size : u32,
     // The process itself, its address space, and its memory budget
     process : Process,
     space : AddressSpace,
     budget : MemoryBudget,
-    // How many grants there are
+    /** How many grants there are */
     grant_count : u32,
     /*
      * Where the process's runtime maps its own memory, its heap and its threads' stacks: free_size bytes
@@ -28,7 +28,7 @@ StartupBlock :: struct {
     // The first thread's stack: stack_size bytes from stack_base, the top its stack pointer started near
     stack_base : u64,
     stack_size : u64,
-    // Where the grants are: grant_count Grants, this many bytes from the block's start
+    /** Where the grants are: grant_count Grants, this many bytes from the block's start */
     grants : u64,
     /*
      * A random seed, which base's runtime seeds context.random from: the boot's for the root task, and one its
@@ -38,10 +38,10 @@ StartupBlock :: struct {
     cpu_features : CpuFeatures,
 }
 
-// The most bytes of a grant's label.
+/** The most bytes of a grant's label. */
 GRANT_LABEL_SIZE :: 32
 
-/*
+/**
  * A handle the process starts with, besides its own, and what it's for: a label like "platform",
  * "debug_log" or "module:hello.elf", in UTF-8, padded with zeros. An entry parameter's grant is labeled
  * with the parameter's name (decisions 0044, 0068).
@@ -55,7 +55,7 @@ Grant :: struct {
 
 #assert size_of(Grant) == 40
 
-/*
+/**
  * The root task's "firmware" grant (the SlopOS repository's decisions 0070, 0073): the firmware tables, which the
  * kernel copies into read-only memory before the bootloader's memory is reclaimed. A FirmwareTables, then its count
  * FirmwareTable entries, then the tables, each at its offset from the start. ACPI's are the RSDP ("RSDP"), every
@@ -69,7 +69,7 @@ FirmwareTables :: struct {
     count : u32,
 }
 
-// "FWTABLES", in its bytes
+/** "FWTABLES", in its bytes */
 FIRMWARE_MAGIC : u64 : 0x53454c4241545746
 
 FirmwareKind :: enum #backed_by(u32) {
@@ -84,13 +84,13 @@ FirmwareTable :: struct {
     physical : u64,
 }
 
-// The "RAM " table's entries: the RAM the kernel owns, which nothing else may claim for a device.
+/** The "RAM " table's entries: the RAM the kernel owns, which nothing else may claim for a device. */
 PhysicalRange :: struct {
     base : u64,
     size : u64,
 }
 
-/*
+/**
  * The "FB  " table: the first framebuffer the boot found, at the table entry's physical address, its pixels pitch times
  * height bytes, each color's bits where its size and shift say. A kernel without a framebuffer has no such table.
  */
@@ -116,17 +116,17 @@ FramebufferLayout :: struct {
 EXIT_WRONG_ABI : u32 : runtime.SLOP_OS_EXIT_WRONG_ABI
 EXIT_MISSING_GRANT : u32 : runtime.SLOP_OS_EXIT_MISSING_GRANT
 
-// The process's startup block, which its entry was given.
+/** The process's startup block, which its entry was given. */
 startup_block :: fn() -> ptr[StartupBlock] #no_context {
     return cast[ptr[StartupBlock]](intrinsics.process_state().startup_block)
 }
 
-// The block's grants.
+/** The block's grants. */
 grants_of :: fn(block: ptr[StartupBlock]) -> Grant[] {
     return view_of(cast[ptr[Grant]](cast[u64](block) + block.grants), cast[usize](block.grant_count))
 }
 
-// A grant's label, without its padding.
+/** A grant's label, without its padding. */
 label_of :: fn(grant: ptr[Grant]) -> string {
     count : usize = 0
     for byte in grant.label {
@@ -138,7 +138,7 @@ label_of :: fn(grant: ptr[Grant]) -> string {
     return string_of(&grant.label[0], count)
 }
 
-// The grant labeled label, of kind, or null.
+/** The grant labeled label, of kind, or null. */
 find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> Handle? {
     for &grant in grants_of(block) {
         if grant.kind == kind && label_of(grant) == label {

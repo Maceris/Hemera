@@ -2,7 +2,7 @@ package concurrency
 
 import runtime from "base"
 
-/*
+/**
  * Waiting for something a Mutex guards to change, like a queue getting an item. A fiber waiting
  * parks and a thread blocks (runtime.park), the same as for the mutex.
  *
@@ -18,14 +18,14 @@ import runtime from "base"
  * wait can end without a signal for it, when another waiter got there first, so wait in a loop.
  */
 Condition :: struct {
-    // Guards the list, for a few instructions at a time
+    /** Guards the list, for a few instructions at a time */
     guard : SpinLock,
     // Waiting, first to be woken first, linked through Waiter.next
     first : ptr[mut runtime.Waiter]?,
     last : ptr[mut runtime.Waiter]?,
 }
 
-/*
+/**
  * Unlock the mutex and wait for a signal, then lock it again. It joins the list before unlocking,
  * so a signal from whoever takes the mutex next isn't missed.
  */
@@ -46,7 +46,7 @@ condition_wait :: fn(condition: ptr[mut Condition], mutex: ptr[mut Mutex]) {
     mutex_lock(mutex)
 }
 
-// Wake the first waiter, if there is one.
+/** Wake the first waiter, if there is one. */
 condition_signal :: fn(condition: ptr[mut Condition]) {
     lock(&condition.guard)
     next :: condition.first
@@ -66,7 +66,7 @@ condition_signal :: fn(condition: ptr[mut Condition]) {
     }
 }
 
-// Wake every waiter.
+/** Wake every waiter. */
 condition_broadcast :: fn(condition: ptr[mut Condition]) {
     lock(&condition.guard)
     walk := condition.first

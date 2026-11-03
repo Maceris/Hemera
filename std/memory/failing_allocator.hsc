@@ -3,7 +3,7 @@ package memory
 import intrinsics from "base"
 import runtime from "base"
 
-/*
+/**
  * An allocator that fails on purpose, for running the error paths that a failed allocation takes (as Linux's failslab
  * does): it passes every request on to the allocator it wraps, except the fail_at'th allocation, counting from 1, which
  * fails with OutOfMemory as if memory had run out. With fail_at 0 it fails nothing and only counts, so a test can learn
@@ -22,16 +22,16 @@ import runtime from "base"
 FailingAllocator :: struct {
     inner : runtime.Allocator,
     fail_at : u64,
-    // Allocations asked for so far, the failed one among them
+    /** Allocations asked for so far, the failed one among them */
     allocations : u64,
-    // Blocks given out and not yet freed: a run that frees all it took ends where it started
+    /** Blocks given out and not yet freed: a run that frees all it took ends where it started */
     live : i64,
     // Whether the fail_at'th allocation has come, and failed, and where it was asked for
     failed : bool,
     failed_at : runtime.SourceCodeLocation,
 }
 
-/*
+/**
  * A FailingAllocator wrapping inner and failing its fail_at'th allocation, made with inner, since the allocator it is
  * holds it (failing_allocator): null if there's no memory for it. free_failing gives it back.
  */
@@ -48,7 +48,7 @@ free_failing :: fn(failing: ptr[mut FailingAllocator]) {
     runtime.free_aligned(failing, align_of(FailingAllocator), failing.inner)
 }
 
-// The allocator a FailingAllocator is, which it must outlive.
+/** The allocator a FailingAllocator is, which it must outlive. */
 failing_allocator :: fn(failing #escaping : ptr[mut FailingAllocator]) -> runtime.Allocator {
     return runtime.Allocator.{failing_function, cast[rawptr](failing)}
 }

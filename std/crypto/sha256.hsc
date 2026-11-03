@@ -23,16 +23,16 @@ import intrinsics from "base"
 SHA256_SIZE :: 32
 SHA256_BLOCK :: 64
 
-// The words and the block being filled, which hold what was hashed, so they're secrets.
+/** The words and the block being filled, which hold what was hashed, so they're secrets. */
 Sha256State :: struct #secret {
     words: u32[8],
     block: u8[64],
 }
 
-// Four message words at a time, for the SHA extensions
+/** Four message words at a time, for the SHA extensions */
 Sha256Lanes :: distinct alias vector[u32, 4][4] #secret
 
-// Sha256State's schedule, worked out from a block.
+/** Sha256State's schedule, worked out from a block. */
 Sha256Schedule :: distinct alias u32[64] #secret
 
 Sha256 :: struct {
@@ -40,8 +40,10 @@ Sha256 :: struct {
     // How much of block is filled, and how many bytes there have been in all
     buffered: usize,
     total: u64,
-    // Whether blocks are compressed with the SHA extensions, as sha_hardware() says when it starts; a kernel
-    // without vector state sets it to false
+    /**
+     * Whether blocks are compressed with the SHA extensions, as sha_hardware() says when it starts; a kernel
+     * without vector state sets it to false
+     */
     hardware: bool,
 }
 
@@ -66,7 +68,7 @@ sha256_start :: fn() -> Sha256 {
     return hasher
 }
 
-// One block into the words: with the SHA extensions when hardware says so, otherwise in software.
+/** One block into the words: with the SHA extensions when hardware says so, otherwise in software. */
 sha256_compress #constant_time :: fn(state: ptr[mut Sha256State], hardware: bool) {
     #if TARGET_ARCH == .x86_64 {
         if hardware {
@@ -122,7 +124,7 @@ sha256_compress_software #constant_time :: fn(state: ptr[mut Sha256State]) {
     state.words[7] += h
 }
 
-// One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it.
+/** One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it. */
 sha256_byte :: fn(hasher: ptr[mut Sha256], byte: u8) {
     hasher.state.block[hasher.buffered % SHA256_BLOCK] = byte
     hasher.buffered += 1
@@ -140,7 +142,9 @@ sha256_update_secret #constant_time :: fn(hasher: ptr[mut Sha256], data: SecretB
     sha256_absorb(hasher, data)
 }
 
-// data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+/**
+ * data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+ */
 sha256_absorb #constant_time :: fn(hasher: ptr[mut Sha256], data: SecretByte[]) {
     at : usize = 0
     loop {
@@ -170,7 +174,7 @@ sha256_absorb #constant_time :: fn(hasher: ptr[mut Sha256], data: SecretByte[]) 
     hasher.total += cast[u64](data.count)
 }
 
-// The padding and length, then the words, as a secret.
+/** The padding and length, then the words, as a secret. */
 sha256_finish_secret #constant_time :: fn(hasher: ptr[mut Sha256]) -> SecretByte[32] {
     bits := hasher.total * 8
     sha256_byte(hasher, 0x80)
@@ -210,12 +214,12 @@ sha256 :: fn(data: u8[]) -> u8[32] {
 #if TARGET_ARCH == .x86_64 {
     import x86_64 from "base/intrinsics"
 
-    // Whether the CPU has the SHA extensions (cpuid leaf 7, ebx bit 29).
+    /** Whether the CPU has the SHA extensions (cpuid leaf 7, ebx bit 29). */
     sha_hardware :: fn() -> bool {
         return (x86_64.cpuid(7).ebx & (1 << 29)) != 0
     }
 
-    // The round constants four at a time, as the SHA extensions add them to the message words
+    /** The round constants four at a time, as the SHA extensions add them to the message words */
     SHA256_ROUND4 :: vector[u32, 4].[
         vector[u32, 4].{0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5},
         vector[u32, 4].{0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5},
@@ -235,7 +239,7 @@ sha256 :: fn(data: u8[]) -> u8[32] {
         vector[u32, 4].{0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2},
     ]
 
-    /*
+    /**
      * One block into the words with the SHA extensions (Intel's SHA-NI sample code, as a loop): four rounds a
      * step, two per sha256_rounds2, with the message's next four words worked out alongside. Lane shuffles are
      * vector literals of the lanes, which LLVM turns into shuffles.

@@ -1,4 +1,4 @@
-/*
+/**
  * Memory related utilities.
  */
 package memory

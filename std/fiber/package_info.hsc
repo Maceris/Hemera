@@ -1,4 +1,4 @@
-/*
+/**
  * Fiber related implementations, including a default scheduler.
  */
 package fiber

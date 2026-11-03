@@ -22,7 +22,7 @@ package os
     FILE_BUFFER_BYTES : u64 : 64 * 1024
     WORKING_DIRECTORY :: "working_directory"
 
-    // What a File is: its connection, whether it writes, its buffer, and where it's at.
+    /** What a File is: its connection, whether it writes, its buffer, and where it's at. */
     SlopFile :: struct {
         end : slop_os.Channel,
         port : slop_os.Port,
@@ -32,7 +32,7 @@ package os
         offset : u64,
     }
 
-    // What a Directory is: its connection.
+    /** What a Directory is: its connection. */
     SlopDirectory :: struct {
         end : slop_os.Channel,
         port : slop_os.Port,
@@ -68,7 +68,7 @@ package os
         }
     }
 
-    // A connection's end, as a Directory with a port of its own.
+    /** A connection's end, as a Directory with a port of its own. */
     directory_on :: fn(end: slop_os.Channel) -> (directory : Directory, error : OsError?) {
         block :: slop_os.startup_block()
         port :: port_for(block.budget, end) or_else cast[slop_os.Port](slop_os.NO_HANDLE)
@@ -82,7 +82,9 @@ package os
         return Directory.{cast[u64](state)}, null
     }
 
-    // One request on a directory's connection, sent from out, and its answer, into into; false if the connection's gone.
+    /**
+     * One request on a directory's connection, sent from out, and its answer, into into; false if the connection's gone.
+     */
     ask_directory :: fn(state: ptr[SlopDirectory], out: ptr[mut Outgoing], into: ptr[mut Incoming]) -> bool {
         if dir.send_request(state.end, state.port, out) is_some {
             return false
@@ -96,7 +98,7 @@ package os
         }
     }
 
-    // The path's bytes appended to out, as a Relative.
+    /** The path's bytes appended to out, as a Relative. */
     relative_path :: fn(out: ptr[mut Outgoing], path: string) -> slop_os.Relative[u8] {
         return append(out, view_of(cast[ptr[u8]](path.data), path.count))
     }
@@ -155,7 +157,7 @@ package os
         runtime.free(state)
     }
 
-    /*
+    /**
      * A file connection's end, as a File: a port of its own, and a buffer, made, mapped and given to its server.
      * Closed on failure.
      */
@@ -213,7 +215,7 @@ package os
         return made, null
     }
 
-    // One request on a file's connection, in whichever protocol it speaks, and its answer.
+    /** One request on a file's connection, in whichever protocol it speaks, and its answer. */
     ask_file :: fn(state: ptr[SlopFile], out: ptr[mut Outgoing], into: ptr[mut Incoming]) -> bool {
         if state.writes {
             if file.send_request(state.end, state.port, out) is_some {
@@ -270,7 +272,7 @@ package os
         return open_with_schema(directory, path, mode, untyped)
     }
 
-    /*
+    /**
      * The file at path beneath directory, as system_open_in opens it, with a schema hash (all zeros for none): one made
      * has the type, and one there must have it, or it's WrongType (the SlopOS repository's 0046, 0108).
      */
@@ -417,7 +419,7 @@ package os
         return size, error
     }
 
-    // A file's size and schema hash (all zeros for an untyped one).
+    /** A file's size and schema hash (all zeros for an untyped one). */
     file_info :: fn(handle: File) -> (size : u64, schema : u8[32], error : OsError?) {
         none : u8[32]
         state :: file_of(handle)
@@ -457,7 +459,7 @@ package os
         return true
     }
 
-    // A Remove or Rename's answer, Done or why not.
+    /** A Remove or Rename's answer, Done or why not. */
     finished :: fn(state: ptr[SlopDirectory], out: ptr[mut Outgoing]) -> OsError? {
         into := Incoming.{}
         if !ask_directory(state, out, &into) {
@@ -496,7 +498,7 @@ package os
         }
     }
 
-    // What's at path, removed: a file only, or a directory only, as directory says.
+    /** What's at path, removed: a file only, or a directory only, as directory says. */
     remove_in :: fn(directory: Directory, path: string, is_directory: bool) -> OsError? {
         kind :: system_path_kind_in(directory, path)
         if kind == .NOTHING {
@@ -531,7 +533,7 @@ package os
         return finished(state, &out)
     }
 
-    // A directory, its parent there already, and nothing at path yet.
+    /** A directory, its parent there already, and nothing at path yet. */
     system_make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
         if system_path_kind_in(directory, path) != .NOTHING {
             return OsError.AlreadyExists
@@ -575,7 +577,7 @@ package os
         return list_of(directory, entries, allocator)
     }
 
-    // Every entry of an open directory, from the start.
+    /** Every entry of an open directory, from the start. */
     list_of :: fn(listed: Directory, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
         state :: directory_of(listed)
         cursor := cast[u64](0)
@@ -678,7 +680,7 @@ package os
         return system_list_directory_in(working, path, entries, allocator)
     }
 
-    // No paths above the working directory, so no current directory to give or change.
+    /** No paths above the working directory, so no current directory to give or change. */
     system_current_directory :: fn(allocator: runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
         return "", OsError.Unsupported
     }

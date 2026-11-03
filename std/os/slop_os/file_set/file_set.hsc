@@ -8,7 +8,7 @@ package file_set
     import files from "std/os/slop_os"
     import read_only_file from "std/os/slop_os"
 
-    /*
+    /**
      * A set of files (the SlopOS repository's decision 0018): a directory and a pattern, which List and the opens
      * apply, so files made while a program runs match too. The pattern matches a name as a whole: '*' any run of
      * characters, '?' any one, anything else itself, as the directory compares names. A set selected from a
@@ -18,14 +18,14 @@ package file_set
 
     PROTOCOL :: slop_os.Protocol.{name = "file_set", major_version = 1, lending = .PerConnection}
 
-    // A name in the set, and how OpenFile treats what's there.
+    /** A name in the set, and how OpenFile treats what's there. */
     OpenFile :: struct {
         name : slop_os.Relative[u8],
         creation : files.Creation,
     }
 
     Request :: union {
-        // The entry at or after a cursor, from 0, that matches
+        /** The entry at or after a cursor, from 0, that matches */
         List(u64),
         OpenFile(OpenFile),
         OpenReadOnlyFile(slop_os.Relative[u8]),
@@ -35,7 +35,7 @@ package file_set
 
     Response :: union {
         Listed(files.Listing),
-        // No entry at or after the cursor matches
+        /** No entry at or after the cursor matches */
         End,
         OpenedFile(os.Channel[file.File]),
         OpenedReadOnlyFile(os.Channel[read_only_file.ReadOnlyFile]),
@@ -56,7 +56,7 @@ package file_set
 
     #insert os.protocol_code(Request, Response)
 
-    // Whether name matches pattern: '*' any run of characters, '?' any one, compared as same says.
+    /** Whether name matches pattern: '*' any run of characters, '?' any one, compared as same says. */
     matches :: fn(pattern: string, name: string, same: (fn(a: u8, b: u8) -> bool)) -> bool {
         // The last '*' seen, and where in name it was tried from, to try again one further
         star := pattern.count

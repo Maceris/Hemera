@@ -46,11 +46,11 @@ log_fatal :: fn(format_string: string, params: any..., location := #caller_locat
     context.logger.fatal(format_string, params, location)
 }
 
-// A log function that does nothing, for DISCARDING_LOGGER.
+/** A log function that does nothing, for DISCARDING_LOGGER. */
 discard_log : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
 }
 
-// A logger that drops every message, for MINIMAL_CONTEXT.
+/** A logger that drops every message, for MINIMAL_CONTEXT. */
 DISCARDING_LOGGER :: Logger.{
     data = null,
     trace = discard_log,

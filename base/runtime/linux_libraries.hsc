@@ -39,7 +39,7 @@ package runtime
     DT_REL : u64 : 17
     DT_JMPREL : u64 : 23
     DT_RELR : u64 : 36
-    // The most program headers read, and the bytes of the file's start read for them
+    /** The most program headers read, and the bytes of the file's start read for them */
     HEADER_BYTES : usize : 4096
 
     ElfHeader :: struct {
@@ -76,7 +76,7 @@ package runtime
         addend : i64,
     }
 
-    // A library at path, or beside the program if it's a bare name, loaded: its interface record, or null.
+    /** A library at path, or beside the program if it's a bare name, loaded: its interface record, or null. */
     linux_load_library :: fn(name: string) -> ptr[LibraryInterface]? {
         path : u8[4096]
         length :: library_path(name, path) or_return null
@@ -161,7 +161,7 @@ package runtime
         return cast[ptr[LibraryInterface]](cast[uintptr](base + elf.entry))
     }
 
-    // Where a library is: its name as it is if it has a folder in it, else beside the program. Its length in path.
+    /** Where a library is: its name as it is if it has a folder in it, else beside the program. Its length in path. */
     library_path :: fn(name: string, path: mut u8[]) -> usize? {
         if path.count == 0 {
             return null
@@ -195,7 +195,7 @@ package runtime
         return at
     }
 
-    // count bytes of the file from offset into into: all of them, or, if short is allowed, as many as there are.
+    /** count bytes of the file from offset into into: all of them, or, if short is allowed, as many as there are. */
     read_exactly :: fn(descriptor: u64, into: rawptr, count: usize, offset: u64, short: bool) -> bool {
         done : usize = 0
         loop {
@@ -213,7 +213,7 @@ package runtime
         }
     }
 
-    // The library's dynamic section at address applied: its relative relocations, and nothing else.
+    /** The library's dynamic section at address applied: its relative relocations, and nothing else. */
     relocate :: fn(base: u64, address: u64) -> bool {
         relocations : u64 = 0
         bytes : u64 = 0

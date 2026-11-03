@@ -1,6 +1,6 @@
 package containers
 
-/*
+/**
  * An intrusive doubly linked list: each value has a ListLink in it, and the list links those, so
  * adding and removing never allocates. A value can be in as many lists as it has links.
  *
@@ -48,7 +48,7 @@ list_push_front :: fn(list: ptr[mut List], link #escaping : ptr[mut ListLink]) {
     list.count += 1
 }
 
-// Take a link out of the list it's in, which has to be this one.
+/** Take a link out of the list it's in, which has to be this one. */
 list_remove :: fn(list: ptr[mut List], link: ptr[mut ListLink]) {
     match link.previous {
         case Some(previous) => previous.next = link.next
@@ -71,7 +71,7 @@ list_pop_front :: fn(list: ptr[mut List]) -> ptr[mut ListLink]? {
     return first
 }
 
-// The value a link is in, given where the link is in it: offset_of(T, the link's field).
+/** The value a link is in, given where the link is in it: offset_of(T, the link's field). */
 entry_of :: fn[T](link: ptr[mut ListLink], offset: usize) -> ptr[mut T] {
     return cast[ptr[mut T]](cast[rawptr](cast[usize](link) - offset))
 }

@@ -11,7 +11,7 @@ import intrinsics from "base"
  * There's no wait on an address in the kernel yet, so wait_on_value spins once, as without an operating system.
  */
 #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
-    // A thread's stack when it doesn't ask for a fixed one
+    /** A thread's stack when it doesn't ask for a fixed one */
     SLOP_OS_THREAD_STACK : usize : 256 * 1024
 
     SLOP_OS_CALL_THREAD_EXIT : u64 : 3
@@ -27,7 +27,7 @@ import intrinsics from "base"
     SLOP_OS_BIND_ONCE : u64 : 1
     SLOP_OS_BIND_PERSISTENT : u64 : 2
     SLOP_OS_NO_DEADLINE : u64 : 0xffffffffffffffff
-    // A port packet, as the kernel writes it: its key, kind, and two words
+    /** A port packet, as the kernel writes it: its key, kind, and two words */
     SLOP_OS_PACKET_WORDS :: 4
 
     ThreadSpecificOS :: struct {
@@ -64,7 +64,7 @@ import intrinsics from "base"
         unmap_pages(thread.stack_pages, thread.stack_bytes)
     }
 
-    /*
+    /**
      * A kernel thread at entry, on size bytes of stack, given argument in its first argument register: its owning handle,
      * or 0 if it couldn't be made.
      */
@@ -77,7 +77,7 @@ import intrinsics from "base"
         return if made.tag == 0 { made.first } else { cast[u64](0) }
     }
 
-    // Until the thread whose handle this is has ended.
+    /** Until the thread whose handle this is has ended. */
     slop_os_wait_for_thread #no_context :: fn(handle: u64) {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         port :: slop_os_call(SLOP_OS_CALL_PORT_CREATE, cast[u64](startup.budget))
@@ -92,7 +92,7 @@ import intrinsics from "base"
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, port.first)
     }
 
-    /*
+    /**
      * Where a thread starts: its carrier block loaded, with its stack's limit, then its function with the context it was
      * made with; then the kernel thread ends, since there's nothing to return to.
      */
@@ -124,7 +124,7 @@ import intrinsics from "base"
 
     wake_all :: fn(address: ptr[u32]) {}
 
-    // No command line: the kernel's is a grant, for those given it
+    /** No command line: the kernel's is a grant, for those given it */
     os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
         empty : string[]
         return empty

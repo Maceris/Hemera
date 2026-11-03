@@ -15,17 +15,17 @@ import runtime from "base"
  * which member it holds isn't known. A relative pointer is a distance already, and is written as it is.
  */
 
-// How many pointers deep a value is followed, so one that points to itself is written once per level, and ends.
+/** How many pointers deep a value is followed, so one that points to itself is written once per level, and ends. */
 MAX_DEPTH :: runtime.SCHEMA_MAX_DEPTH
-// The most bytes of a cstring followed, its zero included.
+/** The most bytes of a cstring followed, its zero included. */
 CSTRING_LIMIT : usize : runtime.SCHEMA_CSTRING_LIMIT
 
-// A value written to the end of into, with what it points to after it.
+/** A value written to the end of into, with what it points to after it. */
 write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_location) {
     runtime.schema_write_value(value, into, location)
 }
 
-// Like write_value, but without the memory, gives the allocator's error and leaves into's count as it was.
+/** Like write_value, but without the memory, gives the allocator's error and leaves into's count as it was. */
 try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
     return runtime.schema_try_write_value(value, into)
 }

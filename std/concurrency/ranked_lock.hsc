@@ -13,7 +13,7 @@ package concurrency
  * Locks of the same rank are taken in the same order, by address, with lock_ranked_after, which checks that order.
  */
 
-// The most locks one holder holds at once that HeldRanks keeps; more are taken, but not checked.
+/** The most locks one holder holds at once that HeldRanks keeps; more are taken, but not checked. */
 MAX_HELD_RANKS :: 16
 
 HeldRanks :: struct {
@@ -23,7 +23,7 @@ HeldRanks :: struct {
     count : u32,
 }
 
-// The highest rank held, and its lock's address, or none.
+/** The highest rank held, and its lock's address, or none. */
 highest_held :: fn(held: ptr[HeldRanks]) -> (rank: u32, lock: u64, any: bool) {
     count :: cast[usize](held.count)
     if count == 0 || count > MAX_HELD_RANKS {
@@ -36,7 +36,7 @@ highest_held :: fn(held: ptr[HeldRanks]) -> (rank: u32, lock: u64, any: bool) {
     return held.ranks[top], held.locks[top], true
 }
 
-// Takes spin_lock, of rank, and whether every rank held was below it.
+/** Takes spin_lock, of rank, and whether every rank held was below it. */
 lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks]) -> bool {
     highest, highest_lock, any :: highest_held(held)
     in_order :: !any || highest < rank
@@ -45,7 +45,7 @@ lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRan
     return in_order
 }
 
-/*
+/**
  * Like lock_ranked, but a lock of the same rank as the highest held may be taken too, if its address is above that
  * one's: the order for two locks of one kind, like two budgets.
  */
@@ -67,7 +67,7 @@ push_held :: fn(held: ptr[mut HeldRanks], rank: u32, address: u64) {
     held.count += 1
 }
 
-/*
+/**
  * Gives back spin_lock, of rank, taken with lock_ranked: whether it was held, as the holder's records say. Locks needn't
  * be given back in the order they were taken.
  */

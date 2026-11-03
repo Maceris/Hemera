@@ -1,4 +1,4 @@
-/*
+/**
  * The file_set protocol: a directory and a pattern, for globs.
  */
 package file_set

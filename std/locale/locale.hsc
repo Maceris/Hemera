@@ -30,7 +30,7 @@ FirstDay :: enum {
 }
 
 Locale :: struct {
-    // Its name, as "en-GB"; "" for NEUTRAL
+    /** Its name, as "en-GB"; "" for NEUTRAL */
     name : string,
     // Between a number's whole part and its fraction, and between each group of three digits ("" for no groups)
     decimal : string,
@@ -42,7 +42,7 @@ Locale :: struct {
     first_day : FirstDay,
 }
 
-// No locale's own ways: ISO 8601's dates, a point and no groups, and a 24-hour clock.
+/** No locale's own ways: ISO 8601's dates, a point and no groups, and a 24-hour clock. */
 NEUTRAL :: Locale.{name = "", decimal = ".", grouping = "", date_order = .YearMonthDay, date_separator = "-", hours_24 = true,
     first_day = .Monday}
 
@@ -52,10 +52,10 @@ EN_US :: Locale.{name = "en-US", decimal = ".", grouping = ",", date_order = .Mo
 EN_GB :: Locale.{name = "en-GB", decimal = ".", grouping = ",", date_order = .DayMonthYear, date_separator = "/", hours_24 = true,
     first_day = .Monday}
 
-// Every locale there is, by name.
+/** Every locale there is, by name. */
 LOCALES :: Locale.[EN_US, EN_GB]
 
-// The locale named name, or null.
+/** The locale named name, or null. */
 find :: fn(name: string) -> Locale? {
     for each in LOCALES {
         if each.name == name {
@@ -65,7 +65,7 @@ find :: fn(name: string) -> Locale? {
     return null
 }
 
-// The locale in effect: the context's, or the process's, or NEUTRAL.
+/** The locale in effect: the context's, or the process's, or NEUTRAL. */
 current :: fn() -> Locale {
     match runtime.get_extension(Locale) {
         case Some(found) => return found^
@@ -74,12 +74,12 @@ current :: fn() -> Locale {
     return find(runtime.locale_name()) or_else NEUTRAL
 }
 
-// value, with the locale's groups: 1,234,567.
+/** value, with the locale's groups: 1,234,567. */
 append_integer :: fn(text: ptr[mut text_buffer.TextBuffer], value: i64, locale := current()) {
     append_fixed(text, value, 0, locale)
 }
 
-/*
+/**
  * value with places digits after the decimal mark, value being that many times ten bigger than the number written:
  * append_fixed(&text, 123456789, 2) writes 1,234,567.89 in en-US.
  */
@@ -121,7 +121,7 @@ append_fixed :: fn(text: ptr[mut text_buffer.TextBuffer], value: i64, places: u3
     }
 }
 
-// A date in the locale's order: 12/31/2026 in en-US, 31/12/2026 in en-GB, 2026-12-31 in NEUTRAL.
+/** A date in the locale's order: 12/31/2026 in en-US, 31/12/2026 in en-GB, 2026-12-31 in NEUTRAL. */
 append_date :: fn(text: ptr[mut text_buffer.TextBuffer], date: time.DateTime, locale := current()) {
     separator :: locale.date_separator
     match locale.date_order {
@@ -149,7 +149,7 @@ append_date :: fn(text: ptr[mut text_buffer.TextBuffer], date: time.DateTime, lo
     }
 }
 
-// A time of day to the minute: 14:05 on a 24-hour clock, 2:05 pm on a 12-hour one.
+/** A time of day to the minute: 14:05 on a 24-hour clock, 2:05 pm on a 12-hour one. */
 append_time :: fn(text: ptr[mut text_buffer.TextBuffer], date: time.DateTime, locale := current()) {
     if locale.hours_24 {
         text_buffer.append_unsigned(text, cast[u64](date.hour), 10, 2)

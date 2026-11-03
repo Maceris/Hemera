@@ -13,19 +13,19 @@ package lifecycle
      */
 
     Answer :: enum {
-        // To a Ping, with its sequence
+        /** To a Ping, with its sequence */
         Pong,
-        // To a Stop: the program's been told
+        /** To a Stop: the program's been told */
         Stopping,
     }
 
-    // An answer, and the sequence of what it answers.
+    /** An answer, and the sequence of what it answers. */
     Reply :: struct {
         answer : Answer,
         sequence : u32,
     }
 
-    // A new lifecycle channel: the launcher's end, a, and the program's, b, for LaunchOptions.lifecycle.
+    /** A new lifecycle channel: the launcher's end, a, and the program's, b, for LaunchOptions.lifecycle. */
     make :: fn(budget: slop_os.MemoryBudget) -> slop_os.ChannelPair? {
         match slop_os.channel_create(budget, 0, 0) {
             case Ok(pair) => return pair
@@ -33,12 +33,12 @@ package lifecycle
         }
     }
 
-    // A Ping with sequence, which the program answers with a Pong with it; whether it went.
+    /** A Ping with sequence, which the program answers with a Pong with it; whether it went. */
     ping :: fn(end: slop_os.Channel, sequence: u32) -> bool {
         return send(end, runtime.SLOP_OS_LIFECYCLE_PING, sequence)
     }
 
-    // A Stop: the program's asked to end, as it chooses to; whether it went.
+    /** A Stop: the program's asked to end, as it chooses to; whether it went. */
     stop :: fn(end: slop_os.Channel) -> bool {
         return send(end, runtime.SLOP_OS_LIFECYCLE_STOP, 0)
     }
@@ -52,7 +52,7 @@ package lifecycle
         }
     }
 
-    // The program's next answer; null if there's none yet, or the program's end is gone.
+    /** The program's next answer; null if there's none yet, or the program's end is gone. */
     read :: fn(end: slop_os.Channel) -> Reply? {
         message := runtime.SlopOsLifecycleMessage.{}
         buffer :: view_of(cast[ptr[mut u8]](&message), size_of(runtime.SlopOsLifecycleMessage))
@@ -70,12 +70,12 @@ package lifecycle
         return null
     }
 
-    // In the program: whether whoever launched it has asked it to stop.
+    /** In the program: whether whoever launched it has asked it to stop. */
     stop_requested :: fn() -> bool {
         return runtime.slop_os_stop_requested()
     }
 
-    /*
+    /**
      * In the program: a User packet for key on port once it's asked to stop, or at once if it has been, for a program
      * waiting on its port to notice.
      */

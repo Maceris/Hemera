@@ -49,7 +49,7 @@ SLOP_OS_KIND_DEVICE : u32 : 15
 SLOP_OS_EXIT_WRONG_ABI : u32 : 125
 SLOP_OS_EXIT_MISSING_GRANT : u32 : 126
 
-// The start of SlopOS's StartupBlock, which the process's entry is given.
+/** The start of SlopOS's StartupBlock, which the process's entry is given. */
 SlopOsStartup :: struct {
     abi_version : u32,
     size : u32,
@@ -69,7 +69,7 @@ SlopOsStartup :: struct {
     seed : u8[32],
 }
 
-/*
+/**
  * The clock page: a page of memory a process is given read-only as its grant "clock", which the wall clock is read
  * from. It holds the UTC time at a monotonic reading, which its writer keeps as the system's time is read and set,
  * under a sequence it makes odd while it writes and even again once it's done; the sequence is 0 until the time is
@@ -82,7 +82,7 @@ SlopOsClockPage :: struct {
     at : u64,
 }
 
-// One of the startup block's grants: a label, padded with zeros, its kind, and the handle.
+/** One of the startup block's grants: a label, padded with zeros, its kind, and the handle. */
 SlopOsGrant :: struct {
     label : u8[32],
     kind : u8,
@@ -122,10 +122,10 @@ SlopOsGrant :: struct {
 
 #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
     PAGE_SIZE : usize : 4096
-    // Room left below a thread's stack limit, for what runs before a stack check can, like an interrupted call
+    /** Room left below a thread's stack limit, for what runs before a stack check can, like an interrupted call */
     STACK_RESERVE : u64 : 8192
 
-    /*
+    /**
      * size bytes of the startup block's free range, page-aligned, for the program to map something at:
      * its address, or null once the range is used up. Addresses taken from it aren't given out again.
      */
@@ -143,7 +143,7 @@ SlopOsGrant :: struct {
         return startup.free_base + offset
     }
 
-    // The first thread's carrier block, before main: its stack's limit, from the startup block.
+    /** The first thread's carrier block, before main: its stack's limit, from the startup block. */
     os_prepare_carrier #no_context :: fn(carrier: ptr[mut CarrierBlock]) {
         state :: intrinsics.process_state()
         if state.startup_block == null {
@@ -163,7 +163,7 @@ SlopOsGrant :: struct {
         slop_os_start_lifecycle()
     }
 
-    /*
+    /**
      * Pages of memory, zeroed, or null: a memory object of their own, mapped in the startup block's free
      * range, with a page in front holding its handle.
      */
@@ -185,7 +185,7 @@ SlopOsGrant :: struct {
         return cast[rawptr](address + cast[u64](PAGE_SIZE))
     }
 
-    // The pages map_pages gave, unmapped, and their memory object closed.
+    /** The pages map_pages gave, unmapped, and their memory object closed. */
     unmap_pages #no_context :: fn(address: rawptr, size: usize) {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         start :: cast[u64](address) - cast[u64](PAGE_SIZE)
@@ -194,7 +194,7 @@ SlopOsGrant :: struct {
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, handle)
     }
 
-    /*
+    /**
      * A parameter of the program's entry, which the compiler's entry asks for (docs/compilation.md, Entry
      * Parameters): the handle of the startup grant labeled name, of the kind of the type named kind, like
      * "DebugLog" or "Channel", and for one generic over a protocol, a channel whose tag is that protocol's, by
@@ -224,7 +224,7 @@ SlopOsGrant :: struct {
         return 0
     }
 
-    /*
+    /**
      * The protocol a grant of kind speaks: its generic argument's, or for a Config[T], a connection to a value of type
      * T, the config protocol's, ConfigValue, whatever T is (the SlopOS repository's decisions 0107, 0109); for an
      * AppData, an installation's data directory, Dir's (0113); for a Stream[T] or a Sink[T], a stream's ends, the
@@ -235,7 +235,7 @@ SlopOsGrant :: struct {
             else { argument }
     }
 
-    /*
+    /**
      * Whether a channel end's tag is the protocol's, by its name: FNV-1a of the name, as std/os's protocol_tag
      * says. Anything else has no protocol to speak.
      */
@@ -251,7 +251,7 @@ SlopOsGrant :: struct {
         return answer.tag == 0 && answer.first == hash
     }
 
-    // A grant's kind, by its type's name, or 0 for a type that isn't one.
+    /** A grant's kind, by its type's name, or 0 for a type that isn't one. */
     slop_os_kind_of #no_context :: fn(kind: string) -> u32 {
         if kind == "MemoryBudget" {
             return SLOP_OS_KIND_MEMORY_BUDGET
@@ -302,7 +302,7 @@ SlopOsGrant :: struct {
         return 0
     }
 
-    // Whether a grant's label, padded with zeros, is name.
+    /** Whether a grant's label, padded with zeros, is name. */
     label_is #no_context :: fn(label: ptr[u8[32]], name: string) -> bool {
         if name.count > label^.count {
             return false
@@ -320,7 +320,7 @@ SlopOsGrant :: struct {
         return true
     }
 
-    /*
+    /**
      * Random bytes from the startup block's seed: ChaCha20's keystream, each block's first half the next key
      * ("fast key erasure"), so what was given can't be worked out later. Without a seed, it traps, as
      * NO_RANDOM does.
@@ -365,7 +365,7 @@ SlopOsGrant :: struct {
         intrinsics.atomic_store_u32_release(&state.random_lock, 0)
     }
 
-    // One ChaCha20 block of key's keystream: its first 32 bytes become key, its last 32 output.
+    /** One ChaCha20 block of key's keystream: its first 32 bytes become key, its last 32 output. */
     chacha20_refill #no_context :: fn(key: ptr[mut u8[32]], output: ptr[mut u8[32]]) {
         state : u32[16]
         state[0] = 0x61707865
@@ -416,16 +416,16 @@ SlopOsGrant :: struct {
         return (value << bits) | (value >> (32 - bits))
     }
 
-    // No standard output or error yet
+    /** No standard output or error yet */
     os_write #no_context :: fn(stream: OutputStream, bytes: rawptr, count: usize) {}
 
-    // Ends the process, with code for whoever watches it end, running nothing else.
+    /** Ends the process, with code for whoever watches it end, running nothing else. */
     os_exit_process #no_context :: fn(code: u32) #never_returns {
         slop_os_call(SLOP_OS_CALL_PROCESS_EXIT, cast[u64](code))
         intrinsics.trap()
     }
 
-    // The kernel's monotonic clock, and the wall clock from the clock page, if the process was given one.
+    /** The kernel's monotonic clock, and the wall clock from the clock page, if the process was given one. */
     SYSTEM_CLOCK :: Clock.{
         data = null,
         monotonic = system_monotonic,
@@ -440,7 +440,7 @@ SlopOsGrant :: struct {
         return cast[MonotonicTime](answer.first)
     }
 
-    // The time on the clock page (SlopOsClockPage), read again if it was being written.
+    /** The time on the clock page (SlopOsClockPage), read again if it was being written. */
     system_wall :: fn(data: mut rawptr) -> Result[Instant, ClockError] {
         page :: clock_page() or_return .Error(.Unavailable)
         loop {
@@ -468,7 +468,7 @@ SlopOsGrant :: struct {
         }
     }
 
-    // The clock page, mapped read-only the first time it's asked for, or null if the process wasn't given one.
+    /** The clock page, mapped read-only the first time it's asked for, or null if the process wasn't given one. */
     clock_page #no_context :: fn() -> ptr[SlopOsClockPage]? {
         state :: intrinsics.process_state()
         loop {
@@ -492,7 +492,9 @@ SlopOsGrant :: struct {
         return cast[ptr[SlopOsClockPage]](state.clock_page)
     }
 
-    // The process's grant "locale", a page holding the locale's name up to its first zero, read the first time it's asked for.
+    /**
+     * The process's grant "locale", a page holding the locale's name up to its first zero, read the first time it's asked for.
+     */
     slop_os_locale_name :: fn() -> string {
         state :: intrinsics.process_state()
         loop {
@@ -534,7 +536,7 @@ SlopOsGrant :: struct {
         return string_of(&state.locale_name[0], state.locale_name_count)
     }
 
-    // The process's grant "clock", mapped read-only, or null.
+    /** The process's grant "clock", mapped read-only, or null. */
     map_clock_page #no_context :: fn() -> rawptr {
         state :: intrinsics.process_state()
         if state.startup_block == null {
@@ -563,18 +565,18 @@ SlopOsGrant :: struct {
     SlopOsArguments :: struct {
         magic : u32,
         count : u32,
-        // Every byte of it, the header's too
+        /** Every byte of it, the header's too */
         total : u64,
     }
 
-    // A value's header: its parameter's name's bytes, its own, and its type's schema hash.
+    /** A value's header: its parameter's name's bytes, its own, and its type's schema hash. */
     SlopOsArgument :: struct {
         name_bytes : u32,
         value_bytes : u32,
         hash : u8[32],
     }
 
-    /*
+    /**
      * A parameter of the program's entry that isn't a handle, which the compiler's entry asks for (docs/compilation.md,
      * Entry Parameters): the value of its name in the grant "arguments", if it was written as a value of type, copied
      * to the heap with its pointers made pointers again, and stored at into. An optional's is None when it isn't there;
@@ -632,7 +634,7 @@ SlopOsGrant :: struct {
         }
     }
 
-    // The value written for the parameter named name, if it's of type: its bytes, in the grant "arguments".
+    /** The value written for the parameter named name, if it's of type: its bytes, in the grant "arguments". */
     slop_os_argument :: fn(name: string, type: ptr[compiler.TypeInfo]) -> u8[]? {
         page :: slop_os_arguments() or_return null
         if page.count < size_of(SlopOsArguments) {
@@ -673,7 +675,7 @@ SlopOsGrant :: struct {
         return (count + 7) & ~cast[usize](7)
     }
 
-    // The grant "arguments", mapped to read the first time, or null without one.
+    /** The grant "arguments", mapped to read the first time, or null without one. */
     slop_os_arguments :: fn() -> u8[]? {
         state :: intrinsics.process_state()
         if !state.entry_arguments_tried {
@@ -711,7 +713,7 @@ SlopOsGrant :: struct {
         return view_of(cast[ptr[u8]](state.entry_arguments), cast[usize](state.entry_arguments_bytes))
     }
 
-    /*
+    /**
      * What a hosted program's main starts with: memory from the kernel, the logger that writes records for the
      * events service (slop_os_events.hsc), the standard assertion handler, the kernel's clock, and random bytes from
      * the startup block's seed.

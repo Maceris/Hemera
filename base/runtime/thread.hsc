@@ -1,6 +1,6 @@
 package runtime
 
-// A thread's data came through thread_create's #escaping data, so it never points into a stack
+/** A thread's data came through thread_create's #escaping data, so it never points into a stack */
 ThreadFunction :: fn(data #escaping : any) -> void
 
 // Windows' is in windows.hsc, and SlopOS's in slop_os_threads.hsc
@@ -25,18 +25,18 @@ ThreadFunction :: fn(data #escaping : any) -> void
     }
 }
 
-// How a thread's stack is set up, see docs/multitasking.md (Stacks).
+/** How a thread's stack is set up, see docs/multitasking.md (Stacks). */
 ThreadStack :: union {
-    // Hemera code runs on segments, which grow as needed. The default.
+    /** Hemera code runs on segments, which grow as needed. The default. */
     Segmented(SegmentedStack),
-    // One fixed stack of this many bytes. Running out of it is an error.
+    /** One fixed stack of this many bytes. Running out of it is an error. */
     Fixed(usize),
 }
 
 SegmentedStack :: struct {
-    // Size of the first segment, allocated with the thread.
+    /** Size of the first segment, allocated with the thread. */
     first_segment : usize = 1024,
-    /*
+    /**
      * Size of the native stack for foreign calls, on systems that don't give every thread a stack.
      * It's allocated on the thread's first foreign call. Ignored where the system provides one.
      */
@@ -46,16 +46,16 @@ SegmentedStack :: struct {
 DEFAULT_THREAD_STACK : ThreadStack : .Segmented(SegmentedStack.{})
 
 Thread :: struct {
-    // The thread's carrier block, from when it starts until it's joined
+    /** The thread's carrier block, from when it starts until it's joined */
     carrier : CarrierBlock,
     // For the thread's carrier block, which code on the thread can read with current_thread_index
     index : usize,
     stack : ThreadStack,
     function : ThreadFunction,
     data : any?,
-    // A copy of the creating thread's context, which the new thread starts with
+    /** A copy of the creating thread's context, which the new thread starts with */
     starting_context : Context,
-    // starting_context's own copy of its extension chain
+    /** starting_context's own copy of its extension chain */
     extensions : ContextExtension[],
     using ThreadSpecificOS,
 }
@@ -79,7 +79,7 @@ thread_create :: fn(
     return result
 }
 
-/*
+/**
  * Start running the thread: its entry loads the carrier register with the thread's carrier block,
  * sets stack_limit and native_stack_limit from its own stack, and calls function(data) with
  * starting_context. False if the system couldn't start it.
@@ -92,7 +92,7 @@ thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {
     return os_thread_start(thread)
 }
 
-// Wait for the thread to finish, then free it, with the allocator that was current when it was made.
+/** Wait for the thread to finish, then free it, with the allocator that was current when it was made. */
 thread_join :: fn(thread: ptr[mut Thread], allocator := context.allocator, loc := #caller_location) {
     os_thread_join(thread)
     free_array(thread.extensions, allocator, loc)

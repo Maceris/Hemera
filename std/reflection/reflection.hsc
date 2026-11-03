@@ -3,7 +3,7 @@ package reflection
 import compiler from "base"
 import runtime from "base"
 
-/*
+/**
  * Strings, booleans and enum member names, without allocating.
  * valid is false for anything else.
  */
@@ -35,7 +35,7 @@ as_string :: fn(value: any) -> (result: string, valid: bool) {
     return "", false
 }
 
-/*
+/**
  * What as_string gives, and numbers too, written into storage: an integer in decimal, a float as the shortest text that
  * reads back as it (runtime.format_shortest_float). valid is false for anything else, or a number storage can't hold.
  */
@@ -73,7 +73,7 @@ as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
     return string_of(&storage[0], written.count), true
 }
 
-// Bytes written into a view, and whether more came than it holds; #scoped, since the view may be of the stack.
+/** Bytes written into a view, and whether more came than it holds; #scoped, since the view may be of the stack. */
 StorageSink :: struct #scoped {
     bytes : mut u8[],
     count : usize,
@@ -91,7 +91,7 @@ storage_sink_byte :: fn(target: rawptr, byte: u8) {
     }
 }
 
-/*
+/**
  * The name of the enum member value holds, or none if it isn't an enum or matches no member.
  * Lets compile-time checks compare enum values from another program by name, since the
  * enum type itself differs between programs.
@@ -111,7 +111,7 @@ enum_member_name :: fn(value: any) -> string? {
     return null
 }
 
-/*
+/**
  * Whether a and b have the same type and value.
  *
  * Strings compare by contents, arrays element by element, and structs member by member.
@@ -176,7 +176,7 @@ values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {
     return bytes_equal(a, b, info.size)
 }
 
-// Compares the arrays a and b point to, from dimension onwards.
+/** Compares the arrays a and b point to, from dimension onwards. */
 arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: usize) -> bool {
     if dimension >= info.dimensions.count {
         return values_equal(a, b, info.base_type)
@@ -216,7 +216,7 @@ arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: u
     return true
 }
 
-// Size of one element of the array at dimension, which is itself an array unless it's the last one.
+/** Size of one element of the array at dimension, which is itself an array unless it's the last one. */
 dimension_element_size :: fn(info: ptr[compiler.TypeInfoArray], dimension: usize) -> usize {
     inner :: dimension + 1
     if inner >= info.dimensions.count {
@@ -285,7 +285,7 @@ bytes_equal :: fn(a, b: rawptr, count: usize) -> bool {
     return true
 }
 
-// An unsigned integer of size bytes at data, like an enum's or boolean's backing value.
+/** An unsigned integer of size bytes at data, like an enum's or boolean's backing value. */
 read_unsigned :: fn(data: rawptr, size: usize) -> u128 {
     if size == 1 {
         value :: cast[ptr[u8]](data)
@@ -307,7 +307,7 @@ read_unsigned :: fn(data: rawptr, size: usize) -> u128 {
     return value^
 }
 
-// Follows aliases, including distinct ones, to the type they're based on.
+/** Follows aliases, including distinct ones, to the type they're based on. */
 unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     result := info
     loop {

@@ -8,7 +8,7 @@ package builtin
  * A view and a string are laid out as the count, then the address of the first element.
  */
 
-/*
+/**
  * A view of count elements of T, starting at data, so count × size_of(T) bytes. From a
  * ptr[mut T], the elements can be changed through the view.
  */
@@ -16,12 +16,12 @@ view_of :: fn[T](data: ptr[T], count: usize) -> T[] {
     return bit_cast[T[]](usize.[count, cast[usize](data)])
 }
 
-// The text of count bytes, starting at data.
+/** The text of count bytes, starting at data. */
 string_of :: fn(data: ptr[u8], count: usize) -> string {
     return bit_cast[string](usize.[count, cast[usize](data)])
 }
 
-// A string's bytes, as a view of them: the same memory, for as long as the string's.
+/** A string's bytes, as a view of them: the same memory, for as long as the string's. */
 string_bytes :: fn(text: string) -> u8[] {
     return bit_cast[u8[]](usize.[text.count, cast[usize](text.data)])
 }

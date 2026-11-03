@@ -6,10 +6,10 @@ package intrinsics
  * and a lane is one of V's. An argument named count or amount that has to be a constant says so.
  */
 
-// lane in every lane of V: splat[vector[u32, 4]](1).
+/** lane in every lane of V: splat[vector[u32, 4]](1). */
 splat : fn[V](lane: any) -> V : ---
 
-/*
+/**
  * Each lane from chosen where mask's lane is true, otherwise from otherwise, without a branch: mask is a
  * vector of bools with as many lanes. Or for integers and bools, chosen when condition is true, otherwise
  * otherwise, worked out with a mask the optimizer can't see through, so never with a branch either
@@ -17,8 +17,10 @@ splat : fn[V](lane: any) -> V : ---
  */
 select : fn[V](mask: any, chosen: V, otherwise: V) -> V : ---
 
-// The lanes moved down by count, a constant: lane i is vector's lane i + count, the first ones coming
-// round to the end. rotate_lanes(vector[u32, 4].{a, b, c, d}, 1) is .{b, c, d, a}.
+/**
+ * The lanes moved down by count, a constant: lane i is vector's lane i + count, the first ones coming
+ * round to the end. rotate_lanes(vector[u32, 4].{a, b, c, d}, 1) is .{b, c, d, a}.
+ */
 rotate_lanes : fn[V](vector: V, count: usize) -> V : ---
 
 // The lanes of a vector of integers added, and'ed, or'ed or xor'ed together, as one lane.
@@ -35,5 +37,5 @@ all_true : fn[V](mask: V) -> bool : ---
 rotate_left : fn[T](value: T, amount: u32) -> T : ---
 rotate_right : fn[T](value: T, amount: u32) -> T : ---
 
-// An integer's bytes in the other order, or each lane's: 0x1122_3344 becomes 0x4433_2211.
+/** An integer's bytes in the other order, or each lane's: 0x1122_3344 becomes 0x4433_2211. */
 byte_swap : fn[T](value: T) -> T : ---

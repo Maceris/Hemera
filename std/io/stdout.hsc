@@ -3,7 +3,7 @@ package io
 import runtime from "base"
 import text_buffer from "std"
 
-/*
+/**
  * Text to standard output, or standard error for the e versions, as runtime.write_output writes it:
  * nowhere where there's none, like in a kernel.
  *

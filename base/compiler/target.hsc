@@ -11,11 +11,11 @@ Architecture :: enum {
 OperatingSystem :: enum {
     Linux,
     Mac,
-    // Freestanding, with no operating system underneath, like a kernel.
+    /** Freestanding, with no operating system underneath, like a kernel. */
     None,
-    // lol. lmao, even.
+    /** lol. lmao, even. */
     SlopOS,
-    // A UEFI application, like a bootloader, using boot services instead of an operating system.
+    /** A UEFI application, like a bootloader, using boot services instead of an operating system. */
     UEFI,
     Windows,
 }

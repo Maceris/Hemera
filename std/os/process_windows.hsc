@@ -59,7 +59,7 @@ import runtime from "base"
         thread_id : u32,
     }
 
-    // One argument, quoted so the C runtime's splitting gives it back as it is.
+    /** One argument, quoted so the C runtime's splitting gives it back as it is. */
     append_argument :: fn(line: ptr[mut u8[..]], argument: string) {
         plain := argument.count > 0
         for character in argument {
@@ -95,7 +95,7 @@ import runtime from "base"
         runtime.array_add(line, cast[u8]('"'))
     }
 
-    // What's waiting in a pipe, added to buffer: whether there was any, and whether the pipe is done.
+    /** What's waiting in a pipe, added to buffer: whether there was any, and whether the pipe is done. */
     drain :: fn(pipe: rawptr, buffer: ptr[mut u8[..]]) -> (read_any : bool, finished : bool) {
         available : u32 = 0
         if PeekNamedPipe(pipe, null, 0, null, &available, null) == 0 {

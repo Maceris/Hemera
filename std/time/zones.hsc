@@ -16,8 +16,10 @@ import runtime from "base"
  * otherwise. Leap seconds are ignored, as POSIX time ignores them.
  */
 
-// A local time type: its offset from UTC in seconds, east positive, whether it's daylight saving time, and where its
-// abbreviation starts in the zone's abbreviations.
+/**
+ * A local time type: its offset from UTC in seconds, east positive, whether it's daylight saving time, and where its
+ * abbreviation starts in the zone's abbreviations.
+ */
 ZoneType :: struct {
     offset : i32,
     dst : bool,
@@ -25,11 +27,11 @@ ZoneType :: struct {
 }
 
 RuleDateKind :: enum {
-    // Jn: day n of the year, 1 to 365, February 29 never counted
+    /** Jn: day n of the year, 1 to 365, February 29 never counted */
     Julian,
-    // n: day n of the year, 0 to 365, February 29 counted in leap years
+    /** n: day n of the year, 0 to 365, February 29 counted in leap years */
     Zero,
-    // Mm.w.d: weekday d (0 for Sunday) of week w (1 to 5, 5 the last) of month m
+    /** Mm.w.d: weekday d (0 for Sunday) of week w (1 to 5, 5 the last) of month m */
     MonthWeek,
 }
 
@@ -39,13 +41,15 @@ RuleDate :: struct {
     month : int,
     week : int,
     weekday : int,
-    // When on that day it changes, in seconds from midnight of the local time in effect before it
+    /** When on that day it changes, in seconds from midnight of the local time in effect before it */
     time : i64,
 }
 
 NAME_BYTES :: 16
 
-// A POSIX TZ rule: standard time's name and offset, and daylight saving time's, if it has any, and when it starts and ends.
+/**
+ * A POSIX TZ rule: standard time's name and offset, and daylight saving time's, if it has any, and when it starts and ends.
+ */
 Rule :: struct {
     standard : u8[NAME_BYTES],
     standard_bytes : usize,
@@ -69,17 +73,19 @@ Zone :: struct {
 }
 
 ZoneError :: enum {
-    // Not TZif data
+    /** Not TZif data */
     NotTZif,
-    // It ends before what its header says it has
+    /** It ends before what its header says it has */
     Truncated,
-    // A type or a transition that refers to nothing
+    /** A type or a transition that refers to nothing */
     Invalid,
     NoMemory,
 }
 
-// What local time is at an instant: the date and time, the offset from UTC in seconds, whether it's daylight saving
-// time, and its abbreviation, the zone's.
+/**
+ * What local time is at an instant: the date and time, the offset from UTC in seconds, whether it's daylight saving
+ * time, and its abbreviation, the zone's.
+ */
 LocalTime :: struct {
     date_time : DateTime,
     offset : i32,
@@ -87,7 +93,7 @@ LocalTime :: struct {
     abbreviation : string,
 }
 
-// A zone from TZif data, its tables copied out with the context's allocator.
+/** A zone from TZif data, its tables copied out with the context's allocator. */
 parse_zone :: fn(bytes: u8[]) -> Result[Zone, ZoneError] {
     if bytes.count < 44 || bytes[0] != cast[u8]('T') || bytes[1] != cast[u8]('Z') || bytes[2] != cast[u8]('i') || bytes[3] != cast[u8]('f') {
         return .Error(.NotTZif)
@@ -173,7 +179,7 @@ free_zone :: fn(zone: ptr[mut Zone]) {
     runtime.array_free(&zone.abbreviations)
 }
 
-/*
+/**
  * The offset from UTC at an instant, whether it's daylight saving time, and its abbreviation: the type the last
  * transition at or before it started; before the first, the first type; after the last, the footer's rule if there's
  * one.
@@ -216,7 +222,7 @@ offset_of :: fn(zone: ptr[Zone], t: Instant) -> (offset : i32, dst : bool, abbre
     return found.offset, found.dst, abbreviation_at(zone, cast[usize](found.abbreviation))
 }
 
-// Local time at an instant in a zone.
+/** Local time at an instant in a zone. */
 local :: fn(zone: ptr[Zone], t: Instant) -> LocalTime {
     offset, dst, abbreviation :: offset_of(zone, t)
     shifted :: Instant.{seconds = t.seconds + cast[i64](offset), nanos = t.nanos}
@@ -237,7 +243,9 @@ abbreviation_at :: fn(zone: ptr[Zone], start: usize) -> string {
     return string_of(&zone.abbreviations[start], end - start)
 }
 
-// The offset under a POSIX TZ rule at an instant: standard time's, unless it's within the year's daylight saving time.
+/**
+ * The offset under a POSIX TZ rule at an instant: standard time's, unless it's within the year's daylight saving time.
+ */
 rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, abbreviation : string) {
     standard :: string_of(&rule.standard[0], rule.standard_bytes)
     if !rule.has_dst {
@@ -253,7 +261,7 @@ rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, a
     return if in_dst { rule.daylight_offset } else { rule.standard_offset }, in_dst, if in_dst { daylight } else { standard }
 }
 
-// When a rule's date and time falls in a year, as local seconds since the epoch.
+/** When a rule's date and time falls in a year, as local seconds since the epoch. */
 rule_moment :: fn(date: ptr[RuleDate], year: i64) -> i64 {
     leap :: (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
     january_first :: days_from_civil(year, 1, 1)
@@ -286,7 +294,7 @@ month_days :: fn(year: i64, month: int) -> int {
     return if month == 2 { if leap { 29 } else { 28 } } else if month == 4 || month == 6 || month == 9 || month == 11 { 30 } else { 31 }
 }
 
-/*
+/**
  * A POSIX TZ rule, as a TZif footer has it: std offset [dst [offset] [,start[/time],end[/time]]], a name alphabetic or
  * in <angle brackets>, an offset hours west of UTC ([+-]hh[:mm[:ss]]); without dates, the United States' rules.
  */
@@ -322,7 +330,7 @@ parse_rule :: fn(text: u8[]) -> Rule? {
     return rule
 }
 
-// A name: letters, or anything but > in <angle brackets>: how many bytes it has, copied into name.
+/** A name: letters, or anything but > in <angle brackets>: how many bytes it has, copied into name. */
 name_at :: fn(text: u8[], at: ptr[mut usize], name: ptr[mut u8[NAME_BYTES]]) -> usize? {
     count : usize = 0
     if at^ < text.count && byte_at(text, at^) == cast[u8]('<') {
@@ -361,7 +369,7 @@ name_at :: fn(text: u8[], at: ptr[mut usize], name: ptr[mut u8[NAME_BYTES]]) -> 
     return if count >= 3 { count } else { null }
 }
 
-// [+-]hh[:mm[:ss]], in seconds, west of UTC positive, as POSIX writes them.
+/** [+-]hh[:mm[:ss]], in seconds, west of UTC positive, as POSIX writes them. */
 offset_at :: fn(text: u8[], at: ptr[mut usize]) -> i32? {
     sign := cast[i32](1)
     if at^ < text.count && (byte_at(text, at^) == cast[u8]('+') || byte_at(text, at^) == cast[u8]('-')) {
@@ -372,7 +380,7 @@ offset_at :: fn(text: u8[], at: ptr[mut usize]) -> i32? {
     return sign * cast[i32](seconds)
 }
 
-// hh[:mm[:ss]], in seconds; hours may be up to 167, as a rule's times can be.
+/** hh[:mm[:ss]], in seconds; hours may be up to 167, as a rule's times can be. */
 time_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
     total := cast[i64](0)
     for unit in i64.[3600, 60, 1] {
@@ -388,7 +396,7 @@ time_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
     return total
 }
 
-// Jn, n or Mm.w.d, then /time if it's there (2:00 otherwise).
+/** Jn, n or Mm.w.d, then /time if it's there (2:00 otherwise). */
 date_at :: fn(text: u8[], at: ptr[mut usize]) -> RuleDate? {
     date := RuleDate.{time = 7200}
     if at^ < text.count && byte_at(text, at^) == cast[u8]('J') {
@@ -444,7 +452,7 @@ number_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
     return if digits > 0 { value } else { null }
 }
 
-// The six counts a TZif header has, at the header starting at start.
+/** The six counts a TZif header has, at the header starting at start. */
 ZoneCounts :: struct {
     utc_flags : usize,
     standard_flags : usize,
@@ -466,7 +474,7 @@ field :: fn(bytes: u8[], at: usize) -> usize {
     return cast[usize](big_endian(bytes, at, 4))
 }
 
-// How many bytes a block of data has after its header, with time_bytes to a time.
+/** How many bytes a block of data has after its header, with time_bytes to a time. */
 data_bytes :: fn(counts: ZoneCounts, time_bytes: usize) -> usize {
     return counts.times * time_bytes + counts.times + counts.types * 6 + counts.characters + counts.leaps * (time_bytes + 4)
         + counts.standard_flags + counts.utc_flags

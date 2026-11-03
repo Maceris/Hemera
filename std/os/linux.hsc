@@ -24,7 +24,7 @@ import runtime from "base"
     SYS_RENAMEAT : u64 : 264
 
     O_DIRECTORY : u64 : 0x10000
-    // struct stat on x86-64: 144 bytes, st_mode the low half of the fourth word, st_size the seventh
+    /** struct stat on x86-64: 144 bytes, st_mode the low half of the fourth word, st_size the seventh */
     STAT_MODE_WORD :: 3
 }
 #else_if OS == .Linux && TARGET_ARCH == .arm64 {
@@ -61,22 +61,22 @@ import runtime from "base"
     O_APPEND : u64 : 0x400
     O_CLOEXEC : u64 : 0x80000
 
-    // A path's bytes and its terminator
+    /** A path's bytes and its terminator */
     PATH_BUFFER_SIZE :: 4097
 
-    // struct stat, as large as x86-64's, with st_size the seventh word on both
+    /** struct stat, as large as x86-64's, with st_size the seventh word on both */
     Stat :: struct {
         words : u64[18],
     }
     S_IFMT : u32 : 0xf000
     S_IFDIR : u32 : 0x4000
 
-    // A system call's result, which is -errno when it fails.
+    /** A system call's result, which is -errno when it fails. */
     failed :: fn(result: u64) -> bool {
         return result > 0xffff_ffff_ffff_f000
     }
 
-    // The OsError for a failed system call's result.
+    /** The OsError for a failed system call's result. */
     error_of :: fn(result: u64) -> OsError {
         errno :: 0 - result
         if errno == 2 {
@@ -106,7 +106,7 @@ import runtime from "base"
         return .Other
     }
 
-    // path with a terminator in buffer, or false if it doesn't fit or holds a 0 byte.
+    /** path with a terminator in buffer, or false if it doesn't fit or holds a 0 byte. */
     terminated :: fn(path: string, buffer: mut u8[]) -> bool {
         if path.count + 1 > buffer.count {
             return false
@@ -157,7 +157,7 @@ import runtime from "base"
         return open_at(AT_FDCWD, path, mode)
     }
 
-    // The file at path, from the directory at, as system_open opens it.
+    /** The file at path, from the directory at, as system_open opens it. */
     open_at :: fn(at: u64, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
@@ -185,7 +185,7 @@ import runtime from "base"
         return open_at(directory.handle, path, mode)
     }
 
-    // A directory, as a file descriptor of its own, which reads nothing: what the *at calls start from.
+    /** A directory, as a file descriptor of its own, which reads nothing: what the *at calls start from. */
     open_directory_at :: fn(at: u64, path: string) -> (directory : Directory, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
@@ -359,7 +359,7 @@ import runtime from "base"
         return list_at(AT_FDCWD, path, entries, allocator)
     }
 
-    // A path of "" is the directory itself, opened again for its own listing.
+    /** A path of "" is the directory itself, opened again for its own listing. */
     system_list_directory_in :: fn(directory: Directory, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
         return list_at(directory.handle, if path.count == 0 { "." } else { path }, entries, allocator)
     }
@@ -415,7 +415,7 @@ import runtime from "base"
         return null
     }
 
-    // What name, terminated, is in the open folder directory: for file systems getdents64 gives no types for.
+    /** What name, terminated, is in the open folder directory: for file systems getdents64 gives no types for. */
     kind_at :: fn(directory: u64, name: rawptr) -> PathKind {
         status : Stat
         result :: runtime.linux_syscall(SYS_NEWFSTATAT, directory, cast[u64](name), cast[u64](&status), 0)

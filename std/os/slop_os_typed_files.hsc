@@ -16,32 +16,38 @@ package os
     import schema from "std"
     import slop_os from "std/os"
 
-    // T's schema hash, as a typed file of T carries it.
+    /** T's schema hash, as a typed file of T carries it. */
     schema_hash_of :: fn[T]() -> u8[32] {
         return schema.hash(type_info_of(T))
     }
 
-    // A value's bytes, built in out as a message is (begin, then append), for a typed file.
+    /** A value's bytes, built in out as a message is (begin, then append), for a typed file. */
     value_bytes :: fn(out: ptr[Outgoing]) -> u8[] {
         return view_of(cast[ptr[u8]](&out.words[0]), cast[usize](out.used))
     }
 
-    // A Relative's items, in a typed file's bytes that holds_value checked: from the value's start, as in a message.
+    /**
+     * A Relative's items, in a typed file's bytes that holds_value checked: from the value's start, as in a message.
+     */
     items_of :: fn[E](bytes: u8[], relative: slop_os.Relative[E]) -> E[] {
         return view_of(cast[ptr[E]](cast[u64](bytes.data) + cast[u64](relative.offset)), cast[usize](relative.count))
     }
 
-    // Whether bytes hold a T, checked as a message's value is: booleans and enums in range, Relatives within the bytes.
+    /**
+     * Whether bytes hold a T, checked as a message's value is: booleans and enums in range, Relatives within the bytes.
+     */
     holds_value :: fn[T](bytes: u8[]) -> bool {
         return value_holds(type_info_of(T), bytes)
     }
 
-    // The T at the start of bytes that holds_value checked.
+    /** The T at the start of bytes that holds_value checked. */
     typed_value :: fn[T](bytes: u8[]) -> ptr[T] {
         return cast[ptr[T]](bytes.data)
     }
 
-    // Whether bytes hold a value of type, as holds_value checks it: what protocol_code's checks check, from type's info.
+    /**
+     * Whether bytes hold a value of type, as holds_value checks it: what protocol_code's checks check, from type's info.
+     */
     value_holds :: fn(type: ptr[compiler.TypeInfo], bytes: u8[]) -> bool {
         if bytes.count < type.size || cast[u64](bytes.count) > 0xffffffff {
             return false
@@ -49,7 +55,9 @@ package os
         return part_holds(type, 0, bytes, type.size)
     }
 
-    // Whether the part of type at offset holds: a file can't hold a handle, a pointer, a view or a union, so none does.
+    /**
+     * Whether the part of type at offset holds: a file can't hold a handle, a pointer, a view or a union, so none does.
+     */
     part_holds :: fn(type: ptr[compiler.TypeInfo], offset: usize, bytes: u8[], fixed: usize) -> bool {
         if type.variant == .INTEGER || type.variant == .FLOAT || type.variant == .CHAR {
             return true
@@ -112,7 +120,7 @@ package os
         return false
     }
 
-    // Whether every value of type is one: integers, floats and characters, and arrays and structs of only those.
+    /** Whether every value of type is one: integers, floats and characters, and arrays and structs of only those. */
     plain :: fn(type: ptr[compiler.TypeInfo]) -> bool {
         if type.variant == .INTEGER || type.variant == .FLOAT || type.variant == .CHAR {
             return true
@@ -138,7 +146,7 @@ package os
         return false
     }
 
-    // The file of T at path beneath directory, opened as mode: one made has T's type; one there must have it.
+    /** The file of T at path beneath directory, opened as mode: one made has T's type; one there must have it. */
     open_typed_in :: fn[T](directory: Directory, path: string, mode: OpenMode) -> Result[File, OsError] {
         if !is_beneath(path) {
             return .Error(.InvalidPath)
@@ -147,7 +155,7 @@ package os
         return as_result(file, error)
     }
 
-    // The bytes of the file of T at path beneath directory, checked to hold a T (WrongType if they don't).
+    /** The bytes of the file of T at path beneath directory, checked to hold a T (WrongType if they don't). */
     read_typed_in :: fn[T](directory: Directory, path: string, allocator := context.allocator) -> Result[u8[], OsError] #unrestricted {
         file :: open_typed_in[T](directory, path, .READ)?
         defer close(file)
@@ -160,7 +168,7 @@ package os
         return .Ok(bytes)
     }
 
-    // The file of T at path beneath directory made, or replaced, with value's bytes, which must hold a T.
+    /** The file of T at path beneath directory made, or replaced, with value's bytes, which must hold a T. */
     write_typed_in :: fn[T](directory: Directory, path: string, value: u8[]) -> OsError? {
         if !holds_value[T](value) {
             return OsError.WrongType

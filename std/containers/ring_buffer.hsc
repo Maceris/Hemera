@@ -2,7 +2,7 @@ package containers
 
 import compiler from "base"
 
-/*
+/**
  * A queue of up to capacity values of T, in the buffer itself: added at the back, taken from the
  * front, in the order they were added. Not safe to share between threads by itself (for that,
  * std/concurrency's Channel).
@@ -37,7 +37,7 @@ ring_pop :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) -> T?
     return value
 }
 
-// The oldest value, without taking it.
+/** The oldest value, without taking it. */
 ring_peek :: fn[T, capacity: usize](ring: ptr[RingBuffer[T, capacity]]) -> T? {
     if ring.count == 0 {
         return null

@@ -2,7 +2,7 @@ package runtime
 
 import intrinsics from "base"
 
-/*
+/**
  * The context compile-time code runs with (docs/compilation.md, Compile-Time Execution): what it logs is
  * printed by the compiler, with errors failing the build; it gets memory that lasts until it finishes; and a
  * failed assertion fails the build. The compiler pushes it before running the code.

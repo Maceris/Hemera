@@ -5,15 +5,15 @@ import runtime from "base"
 mem_copy : fn(dest: mut rawptr, source: rawptr, len: usize) : ---
 mem_copy_non_overlapping : fn(dest: mut rawptr, source: rawptr, len: usize) : ---
 mem_zero : fn(target: mut rawptr, len: usize) : ---
-// Zeros that are always written, even when nothing reads them after, for wiping secrets (docs/memory.md, Secrets).
+/** Zeros that are always written, even when nothing reads them after, for wiping secrets (docs/memory.md, Secrets). */
 secure_zero : fn(target: mut rawptr, len: usize) : ---
-// Writes what a T starts with where target points: zeros, but for its fields' defaults (docs/types.md, Structs).
+/** Writes what a T starts with where target points: zeros, but for its fields' defaults (docs/types.md, Structs). */
 store_defaults : fn[T](target: ptr[mut T]) : ---
 
-// The square root of a float, as an f16, f32 or f64: the nearest to it, NaN for a negative one.
+/** The square root of a float, as an f16, f32 or f64: the nearest to it, NaN for a negative one. */
 square_root : fn[F](x: F) -> F : ---
 
-/*
+/**
  * Stop the program immediately by executing an illegal instruction (ud2 on x86-64, brk on AArch64),
  * which the OS treats as an abnormal termination. Doesn't depend on the OS, so it works in
  * freestanding builds too.
@@ -22,7 +22,7 @@ square_root : fn[F](x: F) -> F : ---
  */
 trap #never_returns : fn() : ---
 
-/*
+/**
  * Fill addresses with the return addresses of the current call stack, innermost first,
  * starting with the caller of the function that calls this (skipping `skip` more frames).
  * Returns how many were written, at most addresses.count.
@@ -35,32 +35,32 @@ trap #never_returns : fn() : ---
  */
 capture_stack_trace : fn(addresses: mut rawptr[], skip: usize = 0) -> usize : ---
 
-/*
+/**
  * Where the program's image starts in memory, so an address can be given relative to it, which is
  * the same every run: PE/COFF's __ImageBase, or ELF's __ehdr_start. Null where it isn't known,
  * like an ELF image whose headers a linker script left out of memory.
  */
 image_base : fn() -> rawptr : ---
 
-/*
+/**
  * The start and name of each Hemera function in a program built with debug info (--debug), for
  * naming the frames of a stack trace (runtime.function_at). Empty otherwise.
  */
 function_names : fn() -> runtime.FunctionName[] : ---
 
-/*
+/**
  * The program's import table (docs/compilation.md, Typed Libraries): each export of a typed library it calls, which
  * runtime.bind_libraries binds before main. Empty for a program that calls none.
  */
 library_imports : fn() -> runtime.LibraryImports : ---
 
-/*
+/**
  * The stack pointer, for code that sets up its own stack limit, like a kernel's entry before it
  * has a carrier block. Frames below it may change at any call.
  */
 stack_pointer : fn() -> rawptr : ---
 
-/*
+/**
  * Hint that the caller is spinning, waiting for another thread or CPU to change something:
  * pause on x86-64, yield on AArch64. Nothing on targets without such an instruction.
  */
@@ -70,15 +70,15 @@ spin_hint : fn() : ---
  * The compiler's services to compile-time code (docs/compilation.md, Compile-Time Execution), which
  * runtime.COMPILE_TIME_CONTEXT is made of. Only compile-time code can call them.
  */
-// Print a log line, with format_string's placeholders filled in from params. ERROR and FATAL fail the build.
+/** Print a log line, with format_string's placeholders filled in from params. ERROR and FATAL fail the build. */
 compile_time_log : fn(level: runtime.LogLevel, format_string: string, params: any[], location: runtime.SourceCodeLocation) : ---
 // size bytes, aligned to alignment, that last until the compile-time code finishes; null if there's no memory.
 compile_time_allocate : fn(size: usize, alignment: usize) -> mut rawptr : ---
 compile_time_free : fn(memory: rawptr) : ---
-// Fail the build with message at location, and stop the compile-time code there.
+/** Fail the build with message at location, and stop the compile-time code there. */
 compile_time_fail #never_returns : fn(message: string, location: runtime.SourceCodeLocation) : ---
 
-/*
+/**
  * Same as capture_stack_trace, for a suspended fiber, starting from its innermost frame.
  * Returns 0 for a fiber that is running, finished, or hasn't started.
  * For debugging stuck fibers.

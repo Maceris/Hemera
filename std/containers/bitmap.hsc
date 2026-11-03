@@ -2,7 +2,7 @@ package containers
 
 import compiler from "base"
 
-/*
+/**
  * size bits, all clear to start, in 64-bit words in the bitmap itself: for things like which
  * frames or IDs are in use. Bits at or past size are left alone by everything here.
  *
@@ -36,17 +36,17 @@ bit_test :: fn[size: usize](bitmap: ptr[Bitmap[size]], index: usize) -> bool {
     return (bitmap.words[word] >> cast[u64](index % 64)) & 1 != 0
 }
 
-// The first set bit at or after from, if there is one.
+/** The first set bit at or after from, if there is one. */
 bit_find_set :: fn[size: usize](bitmap: ptr[Bitmap[size]], from: usize) -> usize? {
     return find_bit(bitmap.words, size, from, false)
 }
 
-// The first clear bit at or after from, if there is one.
+/** The first clear bit at or after from, if there is one. */
 bit_find_clear :: fn[size: usize](bitmap: ptr[Bitmap[size]], from: usize) -> usize? {
     return find_bit(bitmap.words, size, from, true)
 }
 
-// How many bits are set.
+/** How many bits are set. */
 bit_count :: fn[size: usize](bitmap: ptr[Bitmap[size]]) -> usize {
     count : usize = 0
     for i in 0..<bitmap.words.count {
@@ -69,7 +69,7 @@ bit_clear_all :: fn[size: usize](bitmap: ptr[mut Bitmap[size]]) {
     }
 }
 
-/*
+/**
  * The first bit at or after from, below size, that's clear (looking_for_clear) or set: a word at a
  * time, skipping words with nothing to find.
  */

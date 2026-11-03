@@ -1,6 +1,6 @@
 package runtime
 
-/*
+/**
  * Passed implicitly to every function call. It follows the logical call chain:
  * threads and fibers get a copy of their creator's context, and it can only be
  * replaced for a scope with push_context, never modified.
@@ -15,13 +15,13 @@ Context :: struct {
     clock : ptr[Clock],
     random : ptr[Random],
     assertion_handler : AssertionHandler,
-    // One slot for a program's own data, for programs like kernels where one owner is enough.
+    /** One slot for a program's own data, for programs like kernels where one owner is enough. */
     user_data: rawptr,
-    // Typed per-scope state from any number of libraries, see ContextExtension.
+    /** Typed per-scope state from any number of libraries, see ContextExtension. */
     extensions : ptr[ContextExtension]?,
 }
 
-/*
+/**
  * One link in the context's chain of extensions, which lets libraries keep their own state in
  * the context without changing its layout. See docs/multitasking.md (Context Extensions).
  *
@@ -43,12 +43,12 @@ ContextExtension :: struct {
     next : ptr[ContextExtension]?,
 }
 
-// A node for data, in front of the current context's chain.
+/** A node for data, in front of the current context's chain. */
 extension_node :: fn[T](data: ptr[T]) -> ContextExtension {
     return ContextExtension.{T, data, context.extensions}
 }
 
-// The innermost extension of type T in the current context, if there is one.
+/** The innermost extension of type T in the current context, if there is one. */
 get_extension :: fn[T](T: type) -> ptr[T]? {
     node := context.extensions
     loop {
@@ -100,7 +100,7 @@ copy_extensions :: fn(
     return nodes, null
 }
 
-/*
+/**
  * A context made only of constants, for code that has to push one before it has anything real:
  * freestanding entry points, like a kernel's, before there's a heap, a logger or a clock.
  * Allocations fail, log messages are dropped, the clock has no time, asking for random bytes

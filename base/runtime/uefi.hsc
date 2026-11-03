@@ -15,7 +15,7 @@ import intrinsics from "base"
     // EFI_SUCCESS, and EFI_ABORTED, which a program that ends with anything but 0 gives its caller
     UEFI_SUCCESS : UefiStatus : 0
     UEFI_ABORTED : UefiStatus : 0x8000000000000015
-    // EfiLoaderData, what the pool gives a program
+    /** EfiLoaderData, what the pool gives a program */
     UEFI_LOADER_DATA : u32 : 2
 
     UefiTableHeader :: struct {
@@ -26,7 +26,7 @@ import intrinsics from "base"
         reserved : u32,
     }
 
-    // EFI_SYSTEM_TABLE
+    /** EFI_SYSTEM_TABLE */
     UefiSystemTable :: struct {
         header : UefiTableHeader,
         firmware_vendor : rawptr,
@@ -43,13 +43,13 @@ import intrinsics from "base"
         configuration_table : rawptr,
     }
 
-    // EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, as far as its first two functions
+    /** EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, as far as its first two functions */
     UefiTextOutput :: struct {
         reset : fn(this: rawptr, extended: bool) -> UefiStatus #calling_convention(.c) #no_context,
         output_string : fn(this: rawptr, text: ptr[u16]) -> UefiStatus #calling_convention(.c) #no_context,
     }
 
-    // EFI_BOOT_SERVICES, as far as Exit, the functions the runtime doesn't call kept as addresses
+    /** EFI_BOOT_SERVICES, as far as Exit, the functions the runtime doesn't call kept as addresses */
     UefiBootServices :: struct {
         header : UefiTableHeader,
         // RaiseTPL to GetMemoryMap
@@ -61,7 +61,7 @@ import intrinsics from "base"
         exit : fn(image: rawptr, status: UefiStatus, data_size: usize, data: rawptr) -> UefiStatus #calling_convention(.c) #no_context,
     }
 
-    // The system table the entry was given, or null before it.
+    /** The system table the entry was given, or null before it. */
     uefi_system_table #no_context :: fn() -> ptr[UefiSystemTable]? {
         table :: intrinsics.process_state().uefi_system_table
         if table == null {
@@ -114,7 +114,7 @@ import intrinsics from "base"
 
     POOL_ALLOCATOR :: Allocator.{pool_allocator_function, null}
 
-    /*
+    /**
      * Bytes to the console, as UTF-16 a buffer at a time, each line ended with a carriage return as well, which the
      * console wants; a character outside the Basic Multilingual Plane, or bytes that aren't UTF-8, as '?'.
      */
@@ -176,12 +176,12 @@ import intrinsics from "base"
         }
     }
 
-    // The byte at index of bytes, read without a context.
+    /** The byte at index of bytes, read without a context. */
     byte_at #no_context :: fn(bytes: rawptr, index: usize) -> u8 {
         return cast[ptr[u8]](cast[rawptr](cast[usize](bytes) + index))^
     }
 
-    // The program ended through the boot services' Exit, with EFI_SUCCESS for 0 and EFI_ABORTED for anything else.
+    /** The program ended through the boot services' Exit, with EFI_SUCCESS for 0 and EFI_ABORTED for anything else. */
     os_exit_process #no_context :: fn(code: u32) #never_returns {
         match uefi_system_table() {
             case Some(table) => _ = table.boot_services.exit(intrinsics.process_state().uefi_image, if code == 0 { UEFI_SUCCESS } else { UEFI_ABORTED }, 0, null)
@@ -190,7 +190,9 @@ import intrinsics from "base"
         intrinsics.trap()
     }
 
-    // What a UEFI program's main starts with: the pool, the standard logger and assertion handler, and no clock or randomness.
+    /**
+     * What a UEFI program's main starts with: the pool, the standard logger and assertion handler, and no clock or randomness.
+     */
     HOSTED_CONTEXT :: Context.{
         allocator = POOL_ALLOCATOR,
         logger = &STANDARD_LOGGER,

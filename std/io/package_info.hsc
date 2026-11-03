@@ -1,4 +1,4 @@
-/*
+/**
  * Standard input and output.
  */
 package io

@@ -6,16 +6,16 @@ package compiler
  * functions make and end owners outside those rules, and how general code releases one.
  */
 
-// Ends an owner without anything happening: nothing releases what it owned.
+/** Ends an owner without anything happening: nothing releases what it owned. */
 forget :: fn[T](value: T) {
 }
 
-// A second owner of the same value, without its type knowing: for a type's own share function.
+/** A second owner of the same value, without its type knowing: for a type's own share function. */
 duplicate :: fn[T](value: ptr[T]) -> T {
     return value^
 }
 
-// What place owns, leaving it empty: zero, which owns nothing.
+/** What place owns, leaving it empty: zero, which owns nothing. */
 take :: fn[T](place: ptr[mut T]) -> T {
     value :: place^
     empty : T
@@ -23,5 +23,5 @@ take :: fn[T](place: ptr[mut T]) -> T {
     return value
 }
 
-// Releases value with the function its type names in #owned(...).
+/** Releases value with the function its type names in #owned(...). */
 release : fn[T](value: T) : ---

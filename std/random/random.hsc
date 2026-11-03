@@ -11,7 +11,7 @@ package random
  * MINIMAL_CONTEXT's generator stops the program instead, since predictable numbers would be worse.
  */
 
-// bytes, filled with random bytes.
+/** bytes, filled with random bytes. */
 fill :: fn(bytes: mut u8[]) {
     context.random.fill(context.random.data, bytes)
 }
@@ -22,7 +22,7 @@ next_u64 :: fn() -> u64 {
     return bit_cast[u64](bytes)
 }
 
-/*
+/**
  * A number from 0 up to limit, not including it, each as likely as the others: draws that would
  * make the low numbers likelier are drawn again. 0 for a limit of 0.
  */
@@ -40,7 +40,7 @@ below :: fn(limit: u64) -> u64 {
     }
 }
 
-// A number from low to high, both included, each as likely. low if high is below it.
+/** A number from low to high, both included, each as likely. low if high is below it. */
 between :: fn(low: i64, high: i64) -> i64 {
     if high <= low {
         return low

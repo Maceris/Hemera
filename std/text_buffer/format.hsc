@@ -13,7 +13,7 @@ import reflection from "std"
 
 FORMAT_PLACEHOLDER : char : '%'
 
-/*
+/**
  * format_string, with each % replaced by the next value, formatted by append_value. %1, %2 and so on
  * are the first, second... value instead, and %% is a %. Each can have options, like %{08x} or
  * %2{>10} (docs/format_strings.md). A placeholder without a value, or with options that aren't well
@@ -72,7 +72,7 @@ text_sink_byte :: fn(target: rawptr, byte: u8) {
     append_byte(cast[ptr[mut TextBuffer]](target), byte)
 }
 
-/*
+/**
  * A value with options (docs/format_strings.md): integers, and characters, booleans, enums and
  * pointers as numbers, worked out with them; floats with their precision as decimals, or without one, as
  * the shortest text that reads back as the same value; anything else
@@ -145,7 +145,7 @@ append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.For
     runtime.format_text(sink, spec, as_string(&scratch))
 }
 
-// text without its first start bytes.
+/** text without its first start bytes. */
 strings_after :: fn(text: string, start: usize) -> string {
     if start >= text.count || text.count == 0 {
         return ""
@@ -157,7 +157,7 @@ is_digit :: fn(character: char) -> bool {
     return character >= '0' && character <= '9'
 }
 
-/*
+/**
  * value as text: numbers in decimal, strings and characters as they are, enum members by name,
  * pointers as addresses, structs as Name{member = value, ...}, arrays as [a, b, ...], optionals as
  * their value or none, other unions as Variant(values), and types by name. Pointers aren't
@@ -173,7 +173,7 @@ append_value :: fn(text: ptr[mut TextBuffer], value: any) {
     append_data(text, value.data, info)
 }
 
-// The value of the type info describes at data.
+/** The value of the type info describes at data. */
 append_data :: fn(text: ptr[mut TextBuffer], data: rawptr, type_info: ptr[compiler.TypeInfo]) {
     info :: reflection.unaliased(type_info)
     variant :: info.variant
@@ -310,7 +310,7 @@ append_string :: fn(text: ptr[mut TextBuffer], data: rawptr, is_raw: bool) {
     }
 }
 
-// An enum member's name, or the enum's name and the value if it matches no member.
+/** An enum member's name, or the enum's name and the value if it matches no member. */
 append_enum :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoEnum]) {
     raw :: reflection.read_unsigned(data, info.size)
     for member_value, index in info.values {
@@ -325,7 +325,7 @@ append_enum :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.Ty
     append(text, ")")
 }
 
-// A float of size bytes at data, as the shortest text that reads back as it (append_shortest_bits).
+/** A float of size bytes at data, as the shortest text that reads back as it (append_shortest_bits). */
 append_float_data :: fn(text: ptr[mut TextBuffer], data: rawptr, size: usize) {
     if size == 2 {
         append_shortest_bits(text, cast[u64](cast[ptr[u16]](data)^), 5, 10)
@@ -340,7 +340,7 @@ append_float_data :: fn(text: ptr[mut TextBuffer], data: rawptr, size: usize) {
 
 DEFAULT_DECIMALS :: 6
 
-/*
+/**
  * value with decimals digits after the point (at most 9), rounded. Numbers of more than 20 digits
  * are written as a digit, six more, and an exponent, like 1.500000e+30, cut short rather than
  * rounded.
@@ -352,18 +352,18 @@ append_float :: fn(text: ptr[mut TextBuffer], value: f64, decimals: usize = DEFA
     append_float_bits(text, bit_cast[u64](value), 11, 52, decimals)
 }
 
-// value as the shortest text that reads back as it, like 0.1, 1.5, 100 or 1e+21 (append_shortest_bits).
+/** value as the shortest text that reads back as it, like 0.1, 1.5, 100 or 1e+21 (append_shortest_bits). */
 append_shortest :: fn(text: ptr[mut TextBuffer], value: f64) {
     append_shortest_bits(text, bit_cast[u64](value), 11, 52)
 }
 
-// A float's bits as the shortest text that reads back as it, as base's runtime.format_shortest_float writes it.
+/** A float's bits as the shortest text that reads back as it, as base's runtime.format_shortest_float writes it. */
 append_shortest_bits :: fn(text: ptr[mut TextBuffer], bits: u64, exponent_bits: u64, fraction_bits: u64) {
     sink :: runtime.FormatSink.{target = cast[rawptr](text), emit = text_sink_byte}
     runtime.format_shortest_float(sink, bits, exponent_bits, fraction_bits)
 }
 
-/*
+/**
  * An IEEE 754 binary float's bits: a sign bit, then exponent_bits of exponent, then
  * fraction_bits of fraction.
  */
@@ -433,7 +433,7 @@ append_decimals :: fn(text: ptr[mut TextBuffer], decimal: u64, places: usize) {
     }
 }
 
-/*
+/**
  * mantissa × 2^shift, a whole number of up to 1077 bits, in decimal. It's built in 32-bit limbs,
  * lowest first, then divided by 10^9 repeatedly for its digits, nine at a time. Returns whether it
  * was too long, and written with an exponent.
@@ -556,7 +556,7 @@ append_struct :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.
     append(text, "}")
 }
 
-// The array info describes at data, from dimension onwards, as [a, b, ...].
+/** The array info describes at data, from dimension onwards, as [a, b, ...]. */
 append_array :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoArray], dimension: usize) {
     if dimension >= info.dimensions.count {
         append_data(text, data, info.base_type)
@@ -589,7 +589,7 @@ append_array :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
     append(text, "]")
 }
 
-/*
+/**
  * An optional as its value or none, a result as its value or Error(error), and other unions as
  * Variant(values).
  */
@@ -659,7 +659,7 @@ append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
     append(text, ")")
 }
 
-// A type's name, the way it's written: int, ptr[mut Point], string[], Color, fn(...).
+/** A type's name, the way it's written: int, ptr[mut Point], string[], Color, fn(...). */
 append_type_name :: fn(text: ptr[mut TextBuffer], type_info: ptr[compiler.TypeInfo]) {
     variant :: type_info.variant
     size :: type_info.size

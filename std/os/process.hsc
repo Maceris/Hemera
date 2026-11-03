@@ -5,20 +5,20 @@ import runtime from "base"
 
 ProcessResult :: struct {
     exit_code : int,
-    // Everything the process wrote to standard output, allocated with context.allocator.
+    /** Everything the process wrote to standard output, allocated with context.allocator. */
     output : string,
-    // Everything the process wrote to standard error, allocated with context.allocator.
+    /** Everything the process wrote to standard error, allocated with context.allocator. */
     error_output : string,
 }
 
 ProcessError :: enum {
-    // Running processes at compile time needs --allow-run on the command line.
+    /** Running processes at compile time needs --allow-run on the command line. */
     NotPermitted,
-    // program wasn't found, or isn't executable.
+    /** program wasn't found, or isn't executable. */
     NotFound,
-    // The program was found, but the OS couldn't start it.
+    /** The program was found, but the OS couldn't start it. */
     FailedToStart,
-    // The target has no processes, like OS == .None.
+    /** The target has no processes, like OS == .None. */
     Unsupported,
 }
 
@@ -54,14 +54,14 @@ run_process :: fn(
     }
 }
 
-// Bytes added to a growing buffer, for what a process writes.
+/** Bytes added to a growing buffer, for what a process writes. */
 append_bytes :: fn(buffer: ptr[mut u8[..]], bytes: rawptr, count: usize) {
     for i in 0..<count {
         runtime.array_add(buffer, cast[ptr[u8]](bytes + i)^)
     }
 }
 
-// A buffer's bytes as a string, which then owns them.
+/** A buffer's bytes as a string, which then owns them. */
 as_text :: fn(buffer #escaping : u8[..]) -> string #unrestricted {
     if buffer.count == 0 {
         return ""

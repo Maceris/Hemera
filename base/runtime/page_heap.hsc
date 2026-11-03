@@ -42,7 +42,7 @@ import intrinsics from "base"
 
     PAGES_ALLOCATOR :: Allocator.{pages_allocator_function, null}
 
-    // The smallest class whose blocks hold size bytes, or PAGE_HEAP_CLASSES if none does.
+    /** The smallest class whose blocks hold size bytes, or PAGE_HEAP_CLASSES if none does. */
     heap_class #no_context :: fn(size: usize) -> usize {
         class : usize = 0
         block : usize = 16
@@ -70,7 +70,7 @@ import intrinsics from "base"
         intrinsics.atomic_store_u32_release(&heap.lock, 0)
     }
 
-    // size zeroed bytes, aligned to alignment (a power of two, or 0), or null without memory.
+    /** size zeroed bytes, aligned to alignment (a power of two, or 0), or null without memory. */
     heap_allocate #no_context :: fn(size: usize, alignment: usize) -> rawptr {
         class :: heap_class(size)
         if class >= PAGE_HEAP_CLASSES || alignment > 16 {

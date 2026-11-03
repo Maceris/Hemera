@@ -3,7 +3,7 @@ package runtime
 import compiler from "base"
 import intrinsics from "base"
 
-/*
+/**
  * Called by assert when an assertion fails, through context.assertion_handler.
  *
  * Handlers end the program, after reporting the failure however they like.
@@ -15,7 +15,7 @@ import intrinsics from "base"
  */
 AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #never_returns
 
-/*
+/**
  * If assertion is false, calls context.assertion_handler, which should end the program.
  * Never returns after a failed assertion.
  *
@@ -41,7 +41,7 @@ assert :: fn(assertion: bool, message: string, location := #caller_location) {
     intrinsics.trap()
 }
 
-/*
+/**
  * Stops the program without reporting anything.
  * The default until something better is installed, like std's default handler.
  */

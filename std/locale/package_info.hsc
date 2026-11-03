@@ -1,4 +1,4 @@
-/*
+/**
  * Locales: how human-facing text writes numbers, dates and times, as a context value, and formatters that read it.
  * Nothing allocates.
  */

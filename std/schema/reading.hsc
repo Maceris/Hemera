@@ -10,7 +10,7 @@ import runtime from "base"
  * that type (hash_rooted), so a value of it can be written for a reader that checks its hash.
  */
 
-// A schema read: its own copy of the bytes, and its types in their order. free gives them back.
+/** A schema read: its own copy of the bytes, and its types in their order. free gives them back. */
 Schema :: struct {
     bytes : u8[..],
     types : Type[..],
@@ -19,9 +19,11 @@ Schema :: struct {
 Type :: struct {
     kind : Kind,
     size : u64,
-    // A struct's, union's, enum's or distinct alias's name
+    /** A struct's, union's, enum's or distinct alias's name */
     name : string,
-    // An alias's type, an array's or a vector's elements', a pointer's (NOWHERE for a rawptr) or an enum's backing type
+    /**
+     * An alias's type, an array's or a vector's elements', a pointer's (NOWHERE for a rawptr) or an enum's backing type
+     */
     base : usize,
     // An integer's and a float's: 0 native, 1 little, 2 big
     endianness : u8,
@@ -34,7 +36,7 @@ Type :: struct {
     is_bits : bool,
     null_is_none : bool,
     never_returns : bool,
-    // A struct's alignment, a vector's count
+    /** A struct's alignment, a vector's count */
     count : u64,
     // A union's tag type, NOWHERE for none
     tag : usize,
@@ -57,7 +59,7 @@ Member :: struct {
     is_using : bool,
 }
 
-// A function's parameter.
+/** A function's parameter. */
 Input :: struct {
     name : string,
     type : usize,
@@ -65,7 +67,7 @@ Input :: struct {
     is_escaping : bool,
 }
 
-// An enum's member: its value's low and high 64 bits.
+/** An enum's member: its value's low and high 64 bits. */
 Constant :: struct {
     name : string,
     value : u64,
@@ -77,7 +79,7 @@ Variant :: struct {
     held : Held[..],
 }
 
-// What a union's variant holds: its type, and where it is in the union.
+/** What a union's variant holds: its type, and where it is in the union. */
 Held :: struct {
     type : usize,
     offset : u64,
@@ -95,10 +97,10 @@ Dimension :: struct {
     is_mutable : bool,
 }
 
-// The most types a schema read has.
+/** The most types a schema read has. */
 MAX_TYPES : usize : 65536
 
-/*
+/**
  * bytes read as a schema: null if they aren't one, of this version, every place in them one of its types, and nothing
  * after its last.
  */
@@ -114,7 +116,7 @@ parse :: fn(bytes: u8[]) -> Schema? {
     return schema
 }
 
-// What a schema read holds, given back.
+/** What a schema read holds, given back. */
 free :: fn(schema: ptr[mut Schema]) {
     for &type in schema.types {
         runtime.array_free(&type.members)
@@ -132,7 +134,7 @@ free :: fn(schema: ptr[mut Schema]) {
     runtime.array_free(&schema.bytes)
 }
 
-// The type at a place, or null.
+/** The type at a place, or null. */
 type_in :: fn(schema: ptr[Schema], place: usize) -> ptr[Type]? {
     if place >= schema.types.count {
         return null
@@ -140,7 +142,7 @@ type_in :: fn(schema: ptr[Schema], place: usize) -> ptr[Type]? {
     return &schema.types[place]
 }
 
-// The place of the type at a place, through its aliases, distinct ones too: NOWHERE for none.
+/** The place of the type at a place, through its aliases, distinct ones too: NOWHERE for none. */
 unaliased_place :: fn(schema: ptr[Schema], place: usize) -> usize {
     at := place
     for step in 0..<ALIAS_LIMIT {
@@ -153,7 +155,7 @@ unaliased_place :: fn(schema: ptr[Schema], place: usize) -> usize {
     return NOWHERE
 }
 
-/*
+/**
  * The schema of the type at a place among a schema's, written to the end of into, as schema.write writes it for that
  * type: the types it reaches, numbered again from it. Without the memory, the allocator's error, into as it was.
  */
@@ -232,7 +234,7 @@ write_rooted :: fn(schema: ptr[Schema], place: usize, into: ptr[mut u8[..]]) -> 
     return error
 }
 
-// The schema hash of the type at a place among a schema's, as schema.hash gives it for that type.
+/** The schema hash of the type at a place among a schema's, as schema.hash gives it for that type. */
 hash_rooted :: fn(schema: ptr[Schema], place: usize) -> u8[32] {
     bytes : u8[..]
     defer runtime.array_free(&bytes)
@@ -263,7 +265,7 @@ add_number :: fn(into: ptr[mut u8[..]], value: u64, count: usize) -> runtime.All
     return null
 }
 
-// The types of a schema's bytes, each read in turn: whether they're all there, and nothing after them.
+/** The types of a schema's bytes, each read in turn: whether they're all there, and nothing after them. */
 read_types :: fn(schema: ptr[mut Schema]) -> bool {
     bytes :: schema.bytes
     if first_type(bytes) == NOWHERE {
@@ -286,7 +288,7 @@ read_types :: fn(schema: ptr[mut Schema]) -> bool {
     return at == bytes.count
 }
 
-/*
+/**
  * The type described at `at`, into made: where its description ends, NOWHERE if it's cut short, of a kind there isn't,
  * or refers to a place past count.
  */
@@ -427,7 +429,7 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
     return at
 }
 
-// count bytes at `at`, little-endian, and `at` moved past them; NOWHERE in `at`, and 0, if they aren't there.
+/** count bytes at `at`, little-endian, and `at` moved past them; NOWHERE in `at`, and 0, if they aren't there. */
 number_at :: fn(bytes: u8[], at: ptr[mut usize], count: usize) -> u64 {
     if at^ == NOWHERE || !fits(bytes, at^, count) {
         at^ = NOWHERE
@@ -438,7 +440,7 @@ number_at :: fn(bytes: u8[], at: ptr[mut usize], count: usize) -> u64 {
     return value
 }
 
-// A name at `at`: its count, then its bytes, which it's a view of.
+/** A name at `at`: its count, then its bytes, which it's a view of. */
 name_at :: fn(schema: ptr[Schema], at: ptr[mut usize]) -> string {
     count :: cast[usize](number_at(schema.bytes, at, 4))
     if at^ == NOWHERE || !fits(schema.bytes, at^, count) {
@@ -452,7 +454,7 @@ name_at :: fn(schema: ptr[Schema], at: ptr[mut usize]) -> string {
     return name
 }
 
-// A place at `at`, noted as one of made's references: NOWHERE in `at` if it's past count.
+/** A place at `at`, noted as one of made's references: NOWHERE in `at` if it's past count. */
 reference_at :: fn(schema: ptr[Schema], made: ptr[mut Type], at: ptr[mut usize], count: usize) -> usize {
     position :: at^
     place :: cast[usize](number_at(schema.bytes, at, 4))

@@ -11,7 +11,7 @@ package dir
     import read_only_dir from "std/os/slop_os"
     import read_only_file from "std/os/slop_os"
 
-    /*
+    /**
      * A directory (the SlopOS repository's decisions 0015, 0046, 0087): a tree beneath it, every path resolved within
      * it, and nothing above it. Opening a file or a directory gives a connection of its own; Narrow gives this
      * directory as a read_only_dir.
@@ -23,7 +23,7 @@ package dir
     OpenFile :: struct {
         path : slop_os.Relative[u8],
         creation : files.Creation,
-        /*
+        /**
          * A typed file's schema hash (the SlopOS repository's 0046, 0108): one made has it, one there already must have it
          * (WrongType); all zeros asks for neither
          */
@@ -32,7 +32,7 @@ package dir
 
     OpenDirectory :: struct {
         path : slop_os.Relative[u8],
-        // Made, with any missing directory before it, if it isn't there
+        /** Made, with any missing directory before it, if it isn't there */
         create : bool,
     }
 
@@ -41,13 +41,13 @@ package dir
         to : slop_os.Relative[u8],
     }
 
-    // What's at a path beneath this directory granted, to write as well as read if write.
+    /** What's at a path beneath this directory granted, to write as well as read if write. */
     GrantOf :: struct {
         path : slop_os.Relative[u8],
         write : bool,
     }
 
-    // A grant kept as a stored link at a path beneath this directory.
+    /** A grant kept as a stored link at a path beneath this directory. */
     LinkTo :: struct {
         path : slop_os.Relative[u8],
         grant : os.Channel[grant.Grant],
@@ -57,38 +57,42 @@ package dir
         OpenFile(OpenFile),
         OpenReadOnlyFile(slop_os.Relative[u8]),
         OpenDirectory(OpenDirectory),
-        // The entry at or after a cursor, from 0
+        /** The entry at or after a cursor, from 0 */
         List(u64),
         Info,
-        // A file, or an empty directory, at a path beneath this one, removed
+        /** A file, or an empty directory, at a path beneath this one, removed */
         Remove(slop_os.Relative[u8]),
-        // What's at one path beneath this one moved to another, replacing a file there
+        /** What's at one path beneath this one moved to another, replacing a file there */
         Rename(Rename),
-        // This directory, only to read
+        /** This directory, only to read */
         Narrow,
-        // The files of this directory whose names match a pattern (file_set)
+        /** The files of this directory whose names match a pattern (file_set) */
         Select(slop_os.Relative[u8]),
-        // Everything changed beneath it before this, on stable storage
+        /** Everything changed beneath it before this, on stable storage */
         Sync,
         Features,
         Connect(os.Channel[Dir]),
-        /*
+        /**
          * A transaction (the SlopOS repository's decisions 0046, 0089): a connection speaking dir beneath this
          * directory, whose changes are kept, in the memory given, until Commit applies them all at once, or none
          * of them; Abort, or closing it, drops them. Reads on it see the directory as it is, not its own changes
          * before they're committed.
          */
         Begin(slop_os.Memory),
-        // On a transaction's connection: its changes applied whole and made durable, or Conflict if anything it read
-        // or changed was changed meanwhile
+        /**
+         * On a transaction's connection: its changes applied whole and made durable, or Conflict if anything it read
+         * or changed was changed meanwhile
+         */
         Commit,
         Abort,
-        // A new file to replace the file at a path whole: written through the file connection given, and swapped in
-        // with that connection's Install; a reader of the old one keeps reading it until it's done
+        /**
+         * A new file to replace the file at a path whole: written through the file connection given, and swapped in
+         * with that connection's Install; a reader of the old one keeps reading it until it's done
+         */
         Replace(slop_os.Relative[u8]),
-        // The first change beneath this directory at or after a cursor (decisions/0089)
+        /** The first change beneath this directory at or after a cursor (decisions/0089) */
         Changes(u64),
-        /*
+        /**
          * Stored links (the SlopOS repository's roadmap 8f, design/security.md §8): what's at a path granted, for a
          * directory in another volume to keep with Link; a link opens as what it leads to, wherever it's on a path, and
          * Remove and Rename act on the link. The links issued for what's beneath this directory, from a cursor, and one
@@ -99,9 +103,9 @@ package dir
         Link(LinkTo),
         Links(u64),
         Revoke(u64),
-        // How much room the volume this directory is on has, and how big it is
+        /** How much room the volume this directory is on has, and how big it is */
         Room,
-        /*
+        /**
          * A CPU budget lent for this connection's work, and that of what's opened through it, from now on (the SlopOS
          * repository's decisions 0037, 0130): the server runs it on the budget, and serves what's waiting by the
          * budget's priority. Done; Unsupported by a server that doesn't take loans.
@@ -115,7 +119,7 @@ package dir
         OpenedReadOnlyFile(os.Channel[read_only_file.ReadOnlyFile]),
         OpenedDirectory(os.Channel[Dir]),
         Listed(files.Listing),
-        // No entry at or after the cursor
+        /** No entry at or after the cursor */
         End,
         Described(files.Info),
         Narrowed(os.Channel[read_only_dir.ReadOnlyDir]),
@@ -125,16 +129,16 @@ package dir
         Unsupported,
         Began(os.Channel[Dir]),
         Changed(files.Change),
-        // No change since the cursor; the cursor to ask from next
+        /** No change since the cursor; the cursor to ask from next */
         UpToDate(u64),
-        // The cursor is older than what's kept: list again, and ask from the cursor given
+        /** The cursor is older than what's kept: list again, and ask from the cursor given */
         Resync(u64),
         Granted(os.Channel[grant.Grant]),
         Issued(files.IssuedLink),
         Room(files.Room),
     }
 
-    // A rename or a removal done again finds nothing to do, which is reported, so they aren't sent again.
+    /** A rename or a removal done again finds nothing to do, which is reported, so they aren't sent again. */
     is_idempotent :: fn(request: ptr[Request]) -> bool {
         return match request^ {
             case OpenFile(open) => open.creation != .New
@@ -165,7 +169,7 @@ package dir
 
     #insert os.protocol_code(Request, Response)
 
-    /*
+    /**
      * A new connection to the directory end reaches, the same directory: a channel for Dir, one end sent in a
      * Connect, the other given back, or null.
      */
