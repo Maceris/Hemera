@@ -349,6 +349,12 @@ TEST(Hosted, ReadsTimeZones)
 	run_hosted("time_zones", hemera::TargetStackCheck::Off);
 }
 
+// docs/documentation.md: documentation comments read back at compile time, through reflection.
+TEST(Hosted, ReadsDocumentation)
+{
+	run_hosted("documentation", hemera::TargetStackCheck::Off);
+}
+
 // std/regex: linear-time matching, leftmost-first, with captures, classes, anchors, repetition and errors.
 TEST(Hosted, MatchesRegularExpressions)
 {

@@ -925,7 +925,16 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "cast_bool_to_pointer", hemera::ErrorCode::E4020 },
 		{ "cast_pointer_to_bool", hemera::ErrorCode::E4020 },
 		{ "cast_untyped_float_to_pointer", hemera::ErrorCode::E4020 },
-		{ "cast_untyped_string_to_pointer", hemera::ErrorCode::E4020 }
+		{ "cast_untyped_string_to_pointer", hemera::ErrorCode::E4020 },
+		// docs/documentation.md: malformed, and not matching what it documents
+		{ "doc_unknown_tag", hemera::ErrorCode::E3034 },
+		{ "doc_unnamed_param", hemera::ErrorCode::E3034 },
+		{ "doc_documents_nothing", hemera::ErrorCode::E3034 },
+		{ "doc_twice", hemera::ErrorCode::E3034 },
+		{ "doc_param_not_there", hemera::ErrorCode::E4041 },
+		{ "doc_tparam_not_there", hemera::ErrorCode::E4041 },
+		{ "doc_error_not_there", hemera::ErrorCode::E4041 },
+		{ "doc_error_without_result", hemera::ErrorCode::E4041 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

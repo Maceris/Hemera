@@ -7,6 +7,7 @@
 #include "error/reporting.h"
 #include "front_end/base_sources.h"
 #include "front_end/checking.h"
+#include "front_end/documentation.h"
 #include "front_end/front_end.h"
 #include "front_end/names.h"
 #include "front_end/walk.h"
@@ -667,7 +668,9 @@ namespace hemera {
 		PackageInfo* package_info, FileInfo* file_info, std::istream& file, const std::string& file_path) {
 
 		Allocator<> token_alloc;
-		lexer::lex(file, file_info->tokens, token_alloc, file_path);
+		// With its comments, whose documentation comments are kept for reflection, and the rest dropped
+		lexer::lex(file, file_info->tokens, token_alloc, file_path, true);
+		keep_documentation(file_path, file_info->tokens, executor.program_info->check_documentation);
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
 			executor.program_info->node_alloc, &executor.program_info->quotes);

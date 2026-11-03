@@ -226,6 +226,11 @@ namespace hemera {
 		bool debug_build;
 
 		/// <summary>
+		/// Whether malformed documentation comments are errors (Options::check_documentation).
+		/// </summary>
+		bool check_documentation = true;
+
+		/// <summary>
 		/// What the compiler makes for compile-time code (middle_end/reflection.h), made the first time it's
 		/// needed, and its mutex.
 		/// </summary>

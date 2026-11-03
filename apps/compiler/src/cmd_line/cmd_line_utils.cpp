@@ -421,6 +421,9 @@ namespace hemera {
 			case hemera::arg_parse::TIME_PHASES:
 				output.time_phases = true;
 				break;
+			case hemera::arg_parse::NO_DOCUMENTATION_CHECKS:
+				output.check_documentation = false;
+				break;
 			case hemera::arg_parse::GENERATE_ALL:
 				output.generate_all = true;
 				break;
@@ -1152,6 +1155,7 @@ namespace hemera {
 			case hemera::arg_parse::GENERATE_ALL:
 			case hemera::arg_parse::VALGRIND_SECRETS:
 			case hemera::arg_parse::TIME_PHASES:
+			case hemera::arg_parse::NO_DOCUMENTATION_CHECKS:
 			case hemera::arg_parse::NO_RED_ZONE:
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 			case hemera::arg_parse::ALLOW_RUN:

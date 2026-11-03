@@ -2184,8 +2184,15 @@ namespace hemera {
 		if (DeclarationKind::FUNCTION == declaration->kind) {
 			ast::Node* signature = value != nullptr && ast::NodeType::FUNCTION == value->node_type
 				? value : declared;
+			// Its documentation comment checked against it, its errors' too once its type's known
+			FunctionParts parts;
+			const bool documented = walk.executor.program_info->check_documentation && signature != nullptr
+				&& function_parts(definition, parts);
 			if (signature == nullptr || has_child(signature, ast::NodeType::GENERIC_TAG)) {
 				// A generic function's types are worked out for each call
+				if (documented) {
+					check_function_documentation(walk.file_path, parts.name, signature, nullptr);
+				}
 				return Progress::DONE;
 			}
 			TypeInfo* function = nullptr;
@@ -2227,6 +2234,9 @@ namespace hemera {
 			function = with_name_directives(walk, definition, function);
 			for (Declaration* each : declarations) {
 				each->value_type = function;
+			}
+			if (documented) {
+				check_function_documentation(walk.file_path, parts.name, signature, nullptr);
 			}
 			return Progress::DONE;
 		}

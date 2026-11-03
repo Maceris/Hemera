@@ -67,6 +67,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/front_end/base_sources.h
   ${INCLUDE_DIR}/front_end/bounds.h
   ${INCLUDE_DIR}/front_end/checking.h
+  ${INCLUDE_DIR}/front_end/documentation.h
   ${INCLUDE_DIR}/front_end/stack_pointers.h
   ${INCLUDE_DIR}/front_end/event.h
   ${INCLUDE_DIR}/front_end/front_end.h
@@ -109,6 +110,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/front_end/ownership.cpp
   ${SOURCE_DIR}/front_end/checking.cpp
   ${SOURCE_DIR}/front_end/declarations.cpp
+  ${SOURCE_DIR}/front_end/documentation.cpp
   ${SOURCE_DIR}/front_end/front_end.cpp
   ${SOURCE_DIR}/front_end/names.cpp
   ${SOURCE_DIR}/front_end/stack_pointers.cpp

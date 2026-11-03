@@ -16,6 +16,7 @@
 
 #include "error/reporting.h"
 #include "front_end/checking.h"
+#include "front_end/documentation.h"
 #include "front_end/front_end.h"
 #include "front_end/walk.h"
 #include "hmir/hmir_dialect.h"
@@ -10151,6 +10152,10 @@ namespace hemera {
 			return result;
 		}
 
+		std::optional<Documentation> declaration_documentation(Declaration* declaration);
+		void write_documentation(CompileTimeData& data, uint8_t* record, const TypeInfoStruct* layout, std::string_view field,
+			const std::optional<Documentation>& documentation);
+
 		void write_constant(Call& call, uint8_t* record, const TypeInfoStruct* layout, Declaration* constant, const TypeInfo* type,
 			const uint8_t* value) {
 
@@ -10158,13 +10163,103 @@ namespace hemera {
 			call.data.write_type(record, layout, "type", type);
 			call.data.write_any(record, layout, "value", value, value != nullptr ? type : nullptr);
 			write_location_field(call.data, record, layout, declaration_file(constant), constant->node);
+			write_documentation(call.data, record, layout, "documentation", declaration_documentation(constant));
 		}
 
 		// A function's FunctionInfo: its signature, and what its checked body calls and uses.
+		// A declaration's documentation, in a Documentation field of record.
+		void write_documentation(CompileTimeData& data, uint8_t* record, const TypeInfoStruct* layout, std::string_view field,
+			const std::optional<Documentation>& documentation) {
+
+			size_t offset = 0;
+			const TypeInfo* field_type = nullptr;
+			if (!documentation.has_value() || !CompileTimeData::find_field(layout, field, offset, field_type)) {
+				return;
+			}
+			uint8_t* at = record + offset;
+			const TypeInfoStruct* fields = struct_of(field_type);
+			data.write_text(at, fields, "brief", documentation->brief);
+			data.write_text(at, fields, "details", documentation->details);
+			write_records(data, at, fields, "tags", documentation->tags.size(), [&](uint8_t* tag_at, const TypeInfoStruct* tag, size_t i) {
+				data.write_text(tag_at, tag, "tag", documentation->tags[i].tag);
+				data.write_text(tag_at, tag, "name", documentation->tags[i].name);
+				data.write_text(tag_at, tag, "text", documentation->tags[i].text);
+			});
+		}
+
+		// The first node named name under node, itself included, in the order they're written.
+		const ast::Node* first_named(const ast::Node* node, std::string_view name) {
+			if (node == nullptr) {
+				return nullptr;
+			}
+			if (ast::NodeType::IDENTIFIER == node->node_type && node->value.value != nullptr && std::string_view(*node->value.value) == name) {
+				return node;
+			}
+			for (const ast::Node* child : node->children) {
+				if (const ast::Node* found = first_named(child, name)) {
+					return found;
+				}
+			}
+			return nullptr;
+		}
+
+		// A type's fields', enum members' or union variants' documentation, each found by its name in its declaration.
+		void write_member_documentation(CompileTimeData& data, uint8_t* record, const TypeInfoStruct* layout, Declaration* declaration) {
+			const TypeInfo* type = declaration->type_value;
+			std::vector<std::string> names;
+			if (type != nullptr && TypeInfoVariant::STRUCT == type->variant) {
+				for (const StructMember& member : static_cast<const TypeInfoStruct*>(type)->members) {
+					names.push_back(text_of(member.name));
+				}
+			}
+			else if (type != nullptr && TypeInfoVariant::ENUM == type->variant) {
+				for (InternedString member : static_cast<const TypeInfoEnum*>(type)->members) {
+					names.push_back(text_of(member));
+				}
+			}
+			else if (type != nullptr && TypeInfoVariant::UNION == type->variant) {
+				for (const UnionVariant& variant : static_cast<const TypeInfoUnion*>(type)->variants) {
+					names.push_back(text_of(variant.name));
+				}
+			}
+			const ast::Node* value = definition_value(declaration->node);
+			const std::string file = declaration_file(declaration);
+			std::vector<std::pair<std::string, Documentation>> documented;
+			for (const std::string& name : names) {
+				const ast::Node* found = first_named(value, name);
+				if (found == nullptr) {
+					continue;
+				}
+				std::optional<Documentation> documentation = documentation_at(file, found->value.line_number, found->value.column_number);
+				if (documentation.has_value()) {
+					documented.emplace_back(name, std::move(*documentation));
+				}
+			}
+			write_records(data, record, layout, "members", documented.size(), [&](uint8_t* at, const TypeInfoStruct* member, size_t i) {
+				data.write_text(at, member, "name", documented[i].first);
+				write_documentation(data, at, member, "documentation", documented[i].second);
+			});
+		}
+
+		// A declaration's documentation comment, by where its name is.
+		std::optional<Documentation> declaration_documentation(Declaration* declaration) {
+			// Its name: the DEFINITION's first child
+			const ast::Node* name = declaration->node;
+			if (name != nullptr && ast::NodeType::DEFINITION == name->node_type && !name->children.empty()) {
+				name = name->children[0];
+			}
+			if (name == nullptr) {
+				return std::nullopt;
+			}
+			return documentation_at(declaration_file(declaration), name->value.line_number, name->value.column_number);
+		}
+
 		void write_function(Call& call, uint8_t* record, const TypeInfoStruct* layout, Declaration* function) {
 			CompileTimeData& data = call.data;
 			auto type = static_cast<TypeInfoFunction const*>(function->value_type);
 			const std::string file = declaration_file(function);
+			const std::optional<Documentation> documentation = declaration_documentation(function);
+			write_documentation(data, record, layout, "documentation", documentation);
 			data.write_text(record, layout, "package", text_of(function->package_path));
 			data.write_text(record, layout, "name", text_of(function->name));
 			write_location_field(data, record, layout, file, function->node);
@@ -10181,6 +10276,11 @@ namespace hemera {
 				data.write_type(at, parameter, "type", input.type);
 				data.write_number(at, parameter, "is_escaping", input.is_escaping);
 				data.write_number(at, parameter, "is_varargs", input.is_varargs);
+				if (documentation.has_value() && input.name != nullptr) {
+					if (const DocumentationTag* tag = documentation->tag_named("param", *input.name)) {
+						data.write_text(at, parameter, "documentation", tag->text);
+					}
+				}
 				//TODO(claude) default values, which need running each default
 				size_t offset = 0;
 				const TypeInfo* field_type = nullptr;
@@ -10354,6 +10454,8 @@ namespace hemera {
 				data.write_text(at, type_layout, "name", text_of(types[i]->name));
 				data.write_type(at, type_layout, "type", types[i]->type_value);
 				write_location_field(data, at, type_layout, declaration_file(types[i]), types[i]->node);
+				write_documentation(data, at, type_layout, "documentation", declaration_documentation(types[i]));
+				write_member_documentation(data, at, type_layout, types[i]);
 			});
 		}
 
@@ -11398,6 +11500,7 @@ namespace hemera {
 		result.settings = target.settings;
 		result.build_extent = build.build_extent;
 		result.time_phases = build.time_phases;
+		result.check_documentation = build.check_documentation;
 		result.optimization_level = target.optimization_level == "O0" ? OptimizationLevel::O0 : target.optimization_level == "O1" ? OptimizationLevel::O1
 			: target.optimization_level == "O3" ? OptimizationLevel::O3 : OptimizationLevel::O2;
 		result.debug_info = target.debug_info;

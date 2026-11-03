@@ -41,12 +41,23 @@ ConstantInfo :: struct {
     type : type,
     value : any,
     location : SourceCodeLocation,
+    // Its documentation comment, parsed; empty without one (docs/documentation.md).
+    documentation : Documentation,
 }
 
 TypeDeclaration :: struct {
     name : string,
     type : type,
     location : SourceCodeLocation,
+    // Its documentation comment, and each of its fields', enum members' or union variants' that has one.
+    documentation : Documentation,
+    members : MemberDocumentation[],
+}
+
+// A field's, an enum member's or a union variant's documentation, by its name.
+MemberDocumentation :: struct {
+    name : string,
+    documentation : Documentation,
 }
 
 /*

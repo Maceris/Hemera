@@ -57,6 +57,7 @@ namespace hemera {
 			SUBARCHITECTURE,
 			VALGRIND_SECRETS,
 			TIME_PHASES,
+			NO_DOCUMENTATION_CHECKS,
 			VENDOR,
 			VERSION,
 		};
@@ -151,6 +152,7 @@ namespace hemera {
 			{"--allow-run", Option::ALLOW_RUN},
 			{"--valgrind-secrets", Option::VALGRIND_SECRETS},
 			{"--time-phases", Option::TIME_PHASES},
+			{"--no-documentation-checks", Option::NO_DOCUMENTATION_CHECKS},
 			{"--jobs", Option::JOBS},
 			{"--setting", Option::SETTING},
 			{"--show-inserted", Option::SHOW_INSERTED},
@@ -173,6 +175,7 @@ namespace hemera {
 			{Option::GENERATE_ALL, "Generate every function the packages declare, used or not", NO_ARGS},
 			{Option::VALGRIND_SECRETS, "Tell Valgrind's Memcheck secrets are undefined, so it reports branches and addresses that depend on them", NO_ARGS},
 			{Option::TIME_PHASES, "Print how long each phase of compiling took, on standard error", NO_ARGS},
+			{Option::NO_DOCUMENTATION_CHECKS, "Don't report malformed documentation comments, or ones that don't match what they document", NO_ARGS},
 			{Option::JOBS, "How many of a build package's targets are built at once: 1 for one at a time, 0 (the default) for as many as suit the machine", HAS_ARGS},
 			{Option::ARCHITECTURE, "Specify the target architecture", HAS_ARGS},
 			{Option::SUBARCHITECTURE, "Specify the target subarchitecture", HAS_ARGS},

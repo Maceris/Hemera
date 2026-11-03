@@ -300,4 +300,10 @@ namespace hemera {
 	 * file's folder (docs/directives.md, Values). Empty if the argument isn't a string literal.
 	 */
 	std::filesystem::path file_data_path(std::string_view including_file, const ast::Node* directive);
+	/// <summary>
+	/// A function's documentation comment, if it has one, checked against it, once: each param tag naming one of its
+	/// parameters, each tparam tag one of its generic parameters, and, given its type, each error tag one of the variants
+	/// of its Result's error type (E4041). name is its name's node, and function its fn node.
+	/// </summary>
+	void check_function_documentation(std::string_view file, const ast::Node* name, ast::Node* function, const TypeInfoFunction* type);
 }

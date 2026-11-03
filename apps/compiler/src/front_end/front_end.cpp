@@ -359,6 +359,7 @@ namespace hemera {
 		
 		Allocator<> work_allocator{};
 		Allocator<> info_allocator{};
+		program_info->check_documentation = options == nullptr || options->check_documentation;
 
 		GlobalThreadData global_data{ program_info, options, &work_allocator, 
 			&info_allocator };

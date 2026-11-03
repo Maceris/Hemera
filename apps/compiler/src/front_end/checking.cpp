@@ -7,6 +7,7 @@
 
 #include "error/reporting.h"
 #include "front_end/checking.h"
+#include "front_end/documentation.h"
 #include "front_end/format_spec.h"
 #include "front_end/front_end.h"
 #include "front_end/bounds.h"
@@ -1441,6 +1442,83 @@ namespace hemera {
 			}
 		}
 		return result;
+	}
+
+	void check_function_documentation(std::string_view file, const ast::Node* name, ast::Node* function, const TypeInfoFunction* type) {
+		// Its parameters' names when it's declared, and its errors once its body's checked, when its types are whole
+		const uint16_t pass = type != nullptr ? 0x8000 : 0;
+		if (name == nullptr || function == nullptr
+			|| !first_documentation_check(file, name->value.line_number, static_cast<uint16_t>(name->value.column_number | pass))) {
+			return;
+		}
+		const std::optional<Documentation> documentation = documentation_at(file, name->value.line_number, name->value.column_number);
+		if (!documentation.has_value()) {
+			return;
+		}
+		const std::vector<Parameter> parameters = parameters_of(function);
+		const std::vector<std::string> generics = generic_names(function);
+		// The error type's variants, if it returns a Result whose error is an enum or a union
+		const std::vector<InternedString>* error_members = nullptr;
+		std::vector<InternedString> variant_names;
+		bool returns_result = false;
+		if (type != nullptr && !type->output.empty()) {
+			const TypeInfo* result = get_base_type(type->output[0].type);
+			if (result != nullptr && TypeInfoVariant::UNION == result->variant) {
+				auto result_union = static_cast<const TypeInfoUnion*>(result);
+				returns_result = result_union->name != nullptr && std::string_view(*result_union->name).starts_with("Result[");
+				for (const UnionVariant& variant : result_union->variants) {
+					if (!returns_result || variant.name == nullptr || *variant.name != "Error" || variant.types.size() != 1) {
+						continue;
+					}
+					const TypeInfo* error = get_base_type(variant.types[0]);
+					if (error != nullptr && TypeInfoVariant::ENUM == error->variant) {
+						error_members = &static_cast<const TypeInfoEnum*>(error)->members;
+					}
+					else if (error != nullptr && TypeInfoVariant::UNION == error->variant) {
+						for (const UnionVariant& each : static_cast<const TypeInfoUnion*>(error)->variants) {
+							variant_names.push_back(each.name);
+						}
+						error_members = &variant_names;
+					}
+				}
+			}
+		}
+		for (const DocumentationTag& tag : documentation->tags) {
+			// One without a name is malformed, and reported as such
+			if (tag.name.empty()) {
+				continue;
+			}
+			if (tag.tag == "param" && type == nullptr) {
+				bool found = false;
+				for (const Parameter& parameter : parameters) {
+					found = found || (parameter.name != nullptr && std::string_view(*parameter.name) == tag.name);
+				}
+				if (!found) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@param {}: there's no parameter named so", tag.name));
+				}
+			}
+			else if (tag.tag == "tparam" && type == nullptr) {
+				if (std::find(generics.begin(), generics.end(), tag.name) == generics.end()) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@tparam {}: there's no generic parameter named so", tag.name));
+				}
+			}
+			else if (tag.tag == "error" && type != nullptr) {
+				if (!returns_result) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@error {}: the function doesn't return a Result", tag.name));
+					continue;
+				}
+				if (error_members == nullptr) {
+					continue;
+				}
+				bool found = false;
+				for (InternedString member : *error_members) {
+					found = found || (member != nullptr && std::string_view(*member) == tag.name);
+				}
+				if (!found) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@error {}: its error type has no variant named so", tag.name));
+				}
+			}
+		}
 	}
 
 	/*
@@ -6753,6 +6831,12 @@ namespace hemera {
 		 * parameters what this calls gives back pointers from (stack_pointers.h)
 		 */
 		if (progress == Progress::DONE && thread_error_count() == errors_before) {
+			// Its documentation's errors, against its Result's error type, whole now
+			FunctionParts parts;
+			if (function->generic == nullptr && checker.walk.executor.program_info->check_documentation
+				&& function_parts(function->node, parts)) {
+				check_function_documentation(checker.walk.file_path, parts.name, function_node_, type);
+			}
 			{
 				ProgramInfo* program = checker.walk.executor.program_info;
 				std::scoped_lock<std::mutex> lock(program->stack_checks_mutex);

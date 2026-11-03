@@ -49,6 +49,7 @@ E3030,Expected a dot before or after identifier, plain identifiers are not allow
 E3031,Expected a double arrow after match value(s)
 E3032,Expected case before match value(s)
 E3033,Expected alias after distinct
+E3034,Malformed documentation comment
 // E4000-E4999 Lowering to MLIR and compile time execution
 E4000,Failed to open file
 E4001,Unexpected node type
@@ -91,6 +92,7 @@ E4037,Secret used where it could leak
 E4038,Default differs from the stated type
 E4039,Invalid macro call
 E4040,Relative pointer not in place
+E4041,Documentation doesn't match its declaration
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

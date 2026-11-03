@@ -545,6 +545,11 @@ namespace hemera {
         /// </summary>
         bool time_phases = false;
         /// <summary>
+        /// --no-documentation-checks turns this off: whether a documentation comment that's malformed, or that names a
+        /// parameter, generic parameter or error that isn't there, is an error (docs/documentation.md).
+        /// </summary>
+        bool check_documentation = true;
+        /// <summary>
         /// --jobs=N: how many of a build package's targets are built at once, 0 for as many as suit the machine
         /// (docs/compilation.md, Build Packages).
         /// </summary>

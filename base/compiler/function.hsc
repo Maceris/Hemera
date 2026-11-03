@@ -21,6 +21,28 @@ FunctionInfo :: struct {
     used_types : TypeUse[],
     // Every value the body discards with _ =, its type, at the _, in source order. Empty without a body.
     discards : TypeUse[],
+    // Its documentation comment, parsed; empty without one (docs/documentation.md).
+    documentation : Documentation,
+}
+
+/*
+ * A declaration's documentation comment (docs/documentation.md), parsed: everything empty for one without a comment.
+ */
+Documentation :: struct {
+    // Its summary: its @brief, or its first sentence.
+    brief : string,
+    // The rest of its text, its paragraphs separated by blank lines.
+    details : string,
+    // Its tags, @brief's aside, in order.
+    tags : DocumentationTag[],
+}
+
+DocumentationTag :: struct {
+    // Its name without the @: param, tparam, return, error, note, see, example, deprecated or since.
+    tag : string,
+    // What it documents, for @param, @tparam and @error; empty for the others.
+    name : string,
+    text : string,
 }
 
 FunctionCall :: struct {
@@ -45,6 +67,8 @@ FunctionParameter :: struct {
     // Marked #escaping, so the function may keep it after returning.
     is_escaping : bool,
     is_varargs : bool,
+    // Its function's documentation's @param for it; empty without one.
+    documentation : string,
 }
 
 FunctionReturnValue :: struct {
