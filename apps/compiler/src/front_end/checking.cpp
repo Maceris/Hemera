@@ -1444,9 +1444,11 @@ namespace hemera {
 		return result;
 	}
 
-	void check_function_documentation(std::string_view file, const ast::Node* name, ast::Node* function, const TypeInfoFunction* type) {
-		// Its parameters' names when it's declared, and its errors once its body's checked, when its types are whole
-		const uint16_t pass = type != nullptr ? 0x8000 : 0;
+	void check_function_documentation(std::string_view file, const ast::Node* name, ast::Node* function, const TypeInfoFunction* type,
+		bool after_body) {
+
+		// Its parameters and results when it's declared, and its errors once its body's checked, when its types are whole
+		const uint16_t pass = after_body ? 0x8000 : 0;
 		if (name == nullptr || function == nullptr
 			|| !first_documentation_check(file, name->value.line_number, static_cast<uint16_t>(name->value.column_number | pass))) {
 			return;
@@ -1483,12 +1485,48 @@ namespace hemera {
 				}
 			}
 		}
+		// Its results: a return tag for each, in turn; a named one's starting with its name
+		if (!after_body && type != nullptr) {
+			size_t returns = 0;
+			std::vector<std::string> named;
+			for (const FunctionOutput& output : type->output) {
+				if (output.name != nullptr) {
+					named.push_back(text_of(output.name));
+				}
+			}
+			const bool all_named = !type->output.empty() && named.size() == type->output.size();
+			std::vector<std::string> seen;
+			for (const DocumentationTag& tag : documentation->tags) {
+				if (tag.tag != "return") {
+					continue;
+				}
+				returns += 1;
+				if (returns > type->output.size()) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column, type->output.empty()
+						? std::string("@return: the function returns nothing")
+						: std::format("@return: the function returns {} {}", type->output.size(), type->output.size() == 1 ? "value" : "values"));
+					continue;
+				}
+				if (!all_named) {
+					continue;
+				}
+				const std::string first(tag.text.substr(0, tag.text.find_first_of(" \t\n")));
+				if (std::find(named.begin(), named.end(), first) == named.end()) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column,
+						std::format("@return: its results are named, and its text starts with {}, which isn't one of them", first.empty() ? "nothing" : first));
+				}
+				else if (std::find(seen.begin(), seen.end(), first) != seen.end()) {
+					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@return {} is given twice", first));
+				}
+				seen.push_back(first);
+			}
+		}
 		for (const DocumentationTag& tag : documentation->tags) {
 			// One without a name is malformed, and reported as such
 			if (tag.name.empty()) {
 				continue;
 			}
-			if (tag.tag == "param" && type == nullptr) {
+			if (tag.tag == "param" && !after_body) {
 				bool found = false;
 				for (const Parameter& parameter : parameters) {
 					found = found || (parameter.name != nullptr && std::string_view(*parameter.name) == tag.name);
@@ -1497,12 +1535,12 @@ namespace hemera {
 					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@param {}: there's no parameter named so", tag.name));
 				}
 			}
-			else if (tag.tag == "tparam" && type == nullptr) {
+			else if (tag.tag == "tparam" && !after_body) {
 				if (std::find(generics.begin(), generics.end(), tag.name) == generics.end()) {
 					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@tparam {}: there's no generic parameter named so", tag.name));
 				}
 			}
-			else if (tag.tag == "error" && type != nullptr) {
+			else if (tag.tag == "error" && after_body && type != nullptr) {
 				if (!returns_result) {
 					report_error(ErrorCode::E4041, file, tag.line, tag.column, std::format("@error {}: the function doesn't return a Result", tag.name));
 					continue;
@@ -6835,7 +6873,7 @@ namespace hemera {
 			FunctionParts parts;
 			if (function->generic == nullptr && checker.walk.executor.program_info->check_documentation
 				&& function_parts(function->node, parts)) {
-				check_function_documentation(checker.walk.file_path, parts.name, function_node_, type);
+				check_function_documentation(checker.walk.file_path, parts.name, function_node_, type, true);
 			}
 			{
 				ProgramInfo* program = checker.walk.executor.program_info;

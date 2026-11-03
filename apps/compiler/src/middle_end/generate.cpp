@@ -10289,8 +10289,17 @@ namespace hemera {
 					CompileTimeData::write_number_at(at + offset, optional->tag_type->size, 1);
 				}
 			});
+			std::vector<std::string> result_names;
+			for (const FunctionOutput& each : type->output) {
+				result_names.push_back(each.name != nullptr ? text_of(each.name) : std::string());
+			}
+			const std::vector<std::string> results = documentation.has_value() ? result_documentation(*documentation, result_names)
+				: std::vector<std::string>(result_names.size());
 			write_records(data, record, layout, "return_values", type->output.size(), [&](uint8_t* at, const TypeInfoStruct* output, size_t i) {
 				data.write_type(at, output, "type", type->output[i].type);
+				if (i < results.size()) {
+					data.write_text(at, output, "documentation", results[i]);
+				}
 				size_t offset = 0;
 				const TypeInfo* field_type = nullptr;
 				if (CompileTimeData::find_field(output, "name", offset, field_type)) {

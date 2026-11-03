@@ -68,6 +68,13 @@ namespace hemera {
 	Documentation parse_documentation(std::string_view text, uint32_t line, uint16_t column, std::vector<DocumentationTag>* problems);
 
 	/// <summary>
+	/// What a function's documentation says of each of its results, named names (all empty for unnamed ones): with
+	/// names, the return tag whose text starts with each one's name, the rest of its text; without, each return tag in
+	/// turn. Empty for a result none says anything of.
+	/// </summary>
+	std::vector<std::string> result_documentation(const Documentation& documentation, const std::vector<std::string>& names);
+
+	/// <summary>
 	/// Whether a declaration's documentation, at its name's line and column in a file, is to be checked: the first time
 	/// it's asked, and not again, for a declaration that's resolved more than once.
 	/// </summary>

@@ -934,7 +934,9 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "doc_param_not_there", hemera::ErrorCode::E4041 },
 		{ "doc_tparam_not_there", hemera::ErrorCode::E4041 },
 		{ "doc_error_not_there", hemera::ErrorCode::E4041 },
-		{ "doc_error_without_result", hemera::ErrorCode::E4041 }
+		{ "doc_error_without_result", hemera::ErrorCode::E4041 },
+		{ "doc_return_not_named", hemera::ErrorCode::E4041 },
+		{ "doc_return_too_many", hemera::ErrorCode::E4041 }
 	}) {
 		StringCacheGuard string_cache;
 		FrontEndFixture fixture;

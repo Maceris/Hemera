@@ -39,6 +39,16 @@ checked :: fn() -> int {
     if briefed.documentation.brief != "Stated. And more." {
         return 8
     }
+    // Each of several results' @return: a named one's by its name, an unnamed one's in turn
+    reading :: compiler.find_function(&info, "read_some") or_else compiler.FunctionInfo.{}
+    if reading.return_values.count != 2 || reading.return_values[0].documentation != "How many were read."
+        || reading.return_values[1].documentation != "Why it stopped, or null." {
+        return 12
+    }
+    halving :: compiler.find_function(&info, "halves") or_else compiler.FunctionInfo.{}
+    if halving.return_values.count != 2 || halving.return_values[1].documentation != "Its low half." {
+        return 13
+    }
     // A type's, and its members' that have one, before them or after them on their lines
     reasons :: compiler.TypeDeclaration.{}
     for each in info.types {

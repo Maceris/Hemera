@@ -74,6 +74,8 @@ FunctionParameter :: struct {
 FunctionReturnValue :: struct {
     name : string?,
     type : type,
+    // What its function's documentation says of it: its @return's text, without its name; empty without one.
+    documentation : string,
 }
 
 GenericBinding :: struct {

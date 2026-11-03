@@ -1,5 +1,6 @@
 #include "front_end/documentation.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <map>
@@ -189,7 +190,7 @@ namespace hemera {
 				made.text = std::string(rest);
 				for (const DocumentationTag& before : result.tags) {
 					if (before.tag == made.tag && before.name == made.name
-						&& (!made.name.empty() || tag == "return" || tag == "brief" || tag == "deprecated" || tag == "since")) {
+						&& (!made.name.empty() || tag == "brief" || tag == "deprecated" || tag == "since")) {
 						problem(problems, number, column, made.name.empty() ? std::format("@{} is given twice", tag)
 							: std::format("@{} {} is given twice", tag, made.name));
 					}
@@ -302,6 +303,30 @@ namespace hemera {
 		tokens = std::move(without);
 		std::scoped_lock<std::mutex> lock(files_mutex);
 		files()[key_of(file_path)] = std::move(kept);
+	}
+
+	std::vector<std::string> result_documentation(const Documentation& documentation, const std::vector<std::string>& names) {
+		std::vector<std::string> result(names.size());
+		const bool named = !names.empty() && std::all_of(names.begin(), names.end(), [](const std::string& name) { return !name.empty(); });
+		size_t position = 0;
+		for (const DocumentationTag& tag : documentation.tags) {
+			if (tag.tag != "return") {
+				continue;
+			}
+			if (named) {
+				auto [first, rest] = first_word(tag.text);
+				for (size_t i = 0; i < names.size(); ++i) {
+					if (names[i] == first) {
+						result[i] = std::string(rest);
+					}
+				}
+			}
+			else if (position < result.size()) {
+				result[position] = tag.text;
+			}
+			position += 1;
+		}
+		return result;
 	}
 
 	bool first_documentation_check(std::string_view file_path, uint32_t line, uint16_t column) {

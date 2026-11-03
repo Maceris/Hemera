@@ -39,3 +39,25 @@ plain :: fn() -> int {
 stated :: fn() -> int {
     return 2
 }
+
+/**
+ * Read some bytes.
+ *
+ * @param from Where to read.
+ * @return count How many were read.
+ * @return error Why it stopped, or null.
+ */
+read_some :: fn(from: string) -> (count : usize, error : string?) {
+    return 0, null
+}
+
+/**
+ * Split a number.
+ *
+ * @param number The number.
+ * @return Its high half.
+ * @return Its low half.
+ */
+halves :: fn(number: u64) -> (u32, u32) {
+    return cast[u32](number >> 32), cast[u32](number)
+}
