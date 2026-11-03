@@ -177,6 +177,11 @@ to are followed; a `rawptr`, a function, a type value, an `any`, and a `#union` 
 they were: it takes a format string and each argument's schema and value, and gives what `log_info` would have
 written. A pointer comes back as `<pointer>`, its address gone.
 
+`schema.parse` reads a schema's bytes back into its types, for code that meets a type only as it runs: each type's
+kind, size and name, its members, parameters, enum members, union variants or array dimensions, and the places among
+the types it refers to. `schema.hash_rooted` gives the hash of any one of them as `schema.hash` would, so a value can be
+written for a reader that checks it.
+
 ## Arrays
 
 There are a few types of arrays.

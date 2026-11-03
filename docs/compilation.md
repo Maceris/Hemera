@@ -509,7 +509,8 @@ main :: fn(log: Log?, pattern: string, ignore_case: bool?, limit: u64) -> int {
 
 Whoever starts the program writes the values in one page it gives as the grant `arguments`: each under its
 parameter's name, with its type's schema hash, as `schema.write_value` writes a value (`std/os`'s `launch` does this
-for a grants struct's fields that aren't handles). The entry reads each (`runtime.os_entry_value`): a value whose
+for a grants struct's fields that aren't handles, and `launch_named` for values written already, by a launcher that
+knows the entry only from its manifest). The entry reads each (`runtime.os_entry_value`): a value whose
 schema hash isn't its parameter type's isn't taken, and it's copied to the heap, its pointers made pointers again. An
 optional is `None` when there's no value for it; a required one that's missing ends the process as a missing handle
 does. Elsewhere the entry takes no parameters, and one that does is an error.
