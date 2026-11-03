@@ -343,6 +343,12 @@ TEST(Hosted, FormatsForLocales)
 	run_hosted("locale", hemera::TargetStackCheck::Off);
 }
 
+// std/time's zones: TZif data parsed, and offsets from its transitions and its footer's POSIX TZ rule, north and south.
+TEST(Hosted, ReadsTimeZones)
+{
+	run_hosted("time_zones", hemera::TargetStackCheck::Off);
+}
+
 // std/memory's Arena: bumping, giving back the newest block, chunks, marks and resets (docs/memory.md, Allocators).
 TEST(Hosted, AllocatesFromArenas)
 {
