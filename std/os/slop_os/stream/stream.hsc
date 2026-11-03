@@ -133,10 +133,31 @@ package stream
      * reader, whose answer is waited for.
      */
     writer_on :: fn[T](sink: os.Sink[T], ring_bytes: u64 = 0) -> Result[Writer[T], StreamError] {
+        return opened_writer[T](sink.end, runtime.schema_hash(type_info_of(T)), ring_bytes, true)
+    }
+
+    /*
+     * A stream's records known only by their schema, for code that meets their type as it runs, like a shell reading a
+     * program's output by its manifest: a writer of them puts each one's bytes, as std/schema's write_value writes one
+     * (put), and a reader of them takes each one's (next_bytes).
+     */
+    Untyped :: struct {}
+
+    /*
+     * A stream's writing end opened, for records whose type's schema hash is schema. Unless it waits, the reader's
+     * answer to Open is taken with its others, as the writer waits for room or finishes: for a writer that does
+     * something else before the reader opens its end, like a shell starting a program that opens its output first.
+     */
+    untyped_writer_on :: fn(end: slop_os.Channel, schema: u8[32], ring_bytes: u64 = 0, waits: bool = true) -> Result[Writer[Untyped], StreamError] {
+        return opened_writer[Untyped](end, schema, ring_bytes, waits)
+    }
+
+    // writer_on's, for records whose type's schema hash is schema.
+    opened_writer :: fn[T](end: slop_os.Channel, schema: u8[32], ring_bytes: u64, waits: bool) -> Result[Writer[T], StreamError] {
         block :: slop_os.startup_block()
         size :: if ring_bytes == 0 { RING_BYTES } else { (ring_bytes + 4095) & ~cast[u64](4095) }
-        writer := Writer[T].{end = sink.end, ring_bytes = size}
-        writer.port = os.port_for(block.budget, sink.end) or_return .Error(.NoMemory)
+        writer := Writer[T].{end = end, ring_bytes = size}
+        writer.port = os.port_for(block.budget, end) or_return .Error(.NoMemory)
         writer.ring = slop_os.memory_create(block.budget, size) or_return .Error(.NoMemory)
         writer.address = runtime.reserve_addresses(cast[usize](size)) or_return .Error(.NoMemory)
         read_write :: cast[slop_os.Protection](cast[u32](slop_os.PROTECTION_READ) | cast[u32](slop_os.PROTECTION_WRITE))
@@ -144,9 +165,13 @@ package stream
         rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_TRANSFER))
         given :: cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](writer.ring), rights) or_return .Error(.NoMemory))
         out := os.Outgoing.{}
-        os.begin[Request](&out)^ = .Open(Opening.{ring = given, ring_bytes = size, schema = runtime.schema_hash(type_info_of(T))})
+        os.begin[Request](&out)^ = .Open(Opening.{ring = given, ring_bytes = size, schema = schema})
         if send_request(writer.end, writer.port, &out) != null {
             return .Error(.Gone)
+        }
+        if !waits {
+            writer.waiting = 1
+            return .Ok(writer)
         }
         match answer(writer.end, writer.port) {
             case Some(response) => match response {
@@ -284,6 +309,24 @@ package stream
         }
     }
 
+    /*
+     * The stream ended, with status, without waiting for the reader to read what's written: for a writer with more to do
+     * meanwhile, like a shell reading what the reader writes in turn. It's closed with close_writer once the reader's
+     * done.
+     */
+    end_without_waiting :: fn[T](writer: ptr[mut Writer[T]], status: u32) -> StreamError? {
+        match flush(writer) {
+            case Some(error) => return error
+            case None => {}
+        }
+        out := os.Outgoing.{}
+        os.begin[Request](&out)^ = .Ended(status)
+        if send_request(writer.end, writer.port, &out) != null {
+            return .Gone
+        }
+        return null
+    }
+
     close_writer :: fn[T](writer: ptr[mut Writer[T]]) {
         _ = slop_os.memory_unmap(slop_os.startup_block().space, writer.address)
         _ = slop_os.handle_close(cast[slop_os.Handle](writer.ring))
@@ -294,9 +337,19 @@ package stream
 
     // A stream's reading end opened: the writer's Open waited for, its type checked, and its ring mapped to read.
     reader_on :: fn[T](source: os.Stream[T]) -> Result[Reader[T], StreamError] {
+        return opened_reader[T](source.end, runtime.schema_hash(type_info_of(T)))
+    }
+
+    // A stream's reading end opened, for records whose type's schema hash is schema.
+    untyped_reader_on :: fn(end: slop_os.Channel, schema: u8[32]) -> Result[Reader[Untyped], StreamError] {
+        return opened_reader[Untyped](end, schema)
+    }
+
+    // reader_on's, for records whose type's schema hash is schema.
+    opened_reader :: fn[T](end: slop_os.Channel, schema: u8[32]) -> Result[Reader[T], StreamError] {
         block :: slop_os.startup_block()
-        reader := Reader[T].{end = source.end}
-        reader.port = os.port_for(block.budget, source.end) or_return .Error(.NoMemory)
+        reader := Reader[T].{end = end}
+        reader.port = os.port_for(block.budget, end) or_return .Error(.NoMemory)
         into := os.Incoming.{}
         opening :: match take_request(reader.end, reader.port, &into) {
             case Some(request) => match request {
@@ -305,7 +358,7 @@ package stream
             }
             case None => return .Error(.Gone)
         }
-        if !same_hash(opening.schema, runtime.schema_hash(type_info_of(T))) {
+        if !same_hash(opening.schema, schema) {
             _ = slop_os.handle_close(cast[slop_os.Handle](opening.ring))
             reply(reader.end, reader.port, .WrongType)
             return .Error(.WrongType)

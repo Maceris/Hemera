@@ -36,14 +36,17 @@ package os
     /*
      * A stream's two ends (std/os/slop_os's stream): a Stream[T] reads records of T, and the Sink[T] at its other end
      * writes them. Their channel is tagged with the stream protocol, whatever T is, and T is checked when the stream
-     * opens.
+     * opens. records is no bytes, there so T is in their schemas: a manifest says what records a program reads and
+     * writes, for a launcher, like a shell, that connects them, checks they're the same, and reads them.
      */
-    Stream :: struct[T] {
+    Stream :: struct[T] #packed #align(4) {
         end : slop_os.Channel,
+        records : T[0],
     }
 
-    Sink :: struct[T] {
+    Sink :: struct[T] #packed #align(4) {
         end : slop_os.Channel,
+        records : T[0],
     }
 
     /*
@@ -373,22 +376,24 @@ package os
      */
     launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
         budget: u64, entry: F, grants: G, options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
-        given : NamedGrant[..]
-        defer runtime.array_free(&given)
+        // Gathered without the heap, so launching takes no longer than it did
+        given : NamedGrant[process_manager.MAX_GRANTS]
+        given_count : usize = 0
         for member in cast[ptr[compiler.TypeInfoStruct]](type_info_of(G)).members {
             if !is_grant(member.member_type) {
                 continue
             }
             handle :: grant_in(address_of(grants) + cast[u64](member.offset), member.member_type)
-            if handle != slop_os.NO_HANDLE {
-                runtime.array_add(&given, NamedGrant.{label = member.name, handle = handle})
+            if handle != slop_os.NO_HANDLE && given_count < given.count {
+                given[given_count] = NamedGrant.{label = member.name, handle = handle}
+                given_count += 1
             }
         }
         page :: match arguments_of(grants) {
             case Ok(made) => made
             case Error(error) => return .Error(.NoBudget)
         }
-        return launch_given(manager, port, name, executable, budget, given, page, options)
+        return launch_given(manager, port, name, executable, budget, view_of(&given[0], given_count), page, options)
     }
 
     // A grant given by its label: a handle a launch moves to the program, as the parameter of its name.
