@@ -710,7 +710,7 @@ namespace hemera {
 			const size_t open = text.find('[');
 			// Only the kinds of handle base's runtime knows (runtime.slop_os_kind_of); anything else is a value
 			static constexpr std::string_view KINDS[] = { "MemoryBudget", "Memory", "AddressSpace", "Thread", "Process", "Channel",
-				"Listener", "Config", "AppData", "Port", "Irq", "Platform", "Intercept", "DebugLog", "DmaDomain", "Device", "CpuBudget",
+				"Listener", "Config", "AppData", "Stream", "Sink", "Port", "Irq", "Platform", "Intercept", "DebugLog", "DmaDomain", "Device", "CpuBudget",
 				"IoPortRange" };
 			const std::string_view kind = text.substr(0, open);
 			if (std::find(std::begin(KINDS), std::end(KINDS), kind) == std::end(KINDS)) {

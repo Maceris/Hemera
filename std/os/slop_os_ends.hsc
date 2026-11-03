@@ -34,6 +34,19 @@ package os
     }
 
     /*
+     * A stream's two ends (std/os/slop_os's stream): a Stream[T] reads records of T, and the Sink[T] at its other end
+     * writes them. Their channel is tagged with the stream protocol, whatever T is, and T is checked when the stream
+     * opens.
+     */
+    Stream :: struct[T] {
+        end : slop_os.Channel,
+    }
+
+    Sink :: struct[T] {
+        end : slop_os.Channel,
+    }
+
+    /*
      * The tag of the protocol P (decisions/0040, 0071): FNV-1a of its name, which a channel for P is made with
      * (channel_create), and which the end of a Channel[P] or Listener[P] has to have where it arrives: as an entry's
      * parameter, or in a message.
@@ -52,13 +65,16 @@ package os
         return (slop_os.channel_tag(end) or_else 0) == protocol_tag[P]()
     }
 
-    // The tag of a Channel[P] or Listener[P] type, from P's name; 0 for another type.
+    // The tag of a Channel[P] or Listener[P] type, from P's name, or a Stream[T]'s or Sink[T]'s, the stream protocol's; 0 for another type.
     end_tag :: fn(type: ptr[compiler.TypeInfo]) -> u64 {
         if type.variant != .STRUCT {
             return 0
         }
         name :: cast[ptr[compiler.TypeInfoStruct]](type).name
         start : usize = 0
+        if starts_with(name, "Stream[") || starts_with(name, "Sink[") {
+            return name_tag("Stream")
+        }
         if starts_with(name, "Channel[") {
             start = 8
         }
@@ -80,6 +96,15 @@ package os
         hash : u64 = 0xcbf29ce484222325
         for i in from..<end {
             hash = (hash ~ cast[u64](cast[u8](name[i]))) * 0x100000001b3
+        }
+        return hash
+    }
+
+    // FNV-1a of a protocol's name, its channels' tag.
+    name_tag :: fn(name: string) -> u64 {
+        hash : u64 = 0xcbf29ce484222325
+        for character in name {
+            hash = (hash ~ cast[u64](cast[u8](character))) * 0x100000001b3
         }
         return hash
     }
