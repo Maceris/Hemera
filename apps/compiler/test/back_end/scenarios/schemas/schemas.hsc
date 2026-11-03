@@ -57,6 +57,9 @@ Color :: enum #backed_by(u8) {
 
 Handler :: alias fn(name: string, count: int) -> bool
 
+// An entry, as a manifest has it: read back, each parameter's type hashes as its own schema does.
+Entry :: alias fn(count: u64, label: string, item: Item, shape: Shape?, color: Color, node: Node) -> int
+
 // An any's fields, to make one that points to the heap
 AnyParts :: struct {
     data : rawptr,
@@ -132,6 +135,10 @@ main :: fn() -> int {
     rendered :: check_render()
     if rendered != 42 {
         return rendered
+    }
+    reading :: check_reading()
+    if reading != 42 {
+        return reading
     }
     return check_running_out()
 }
@@ -334,4 +341,80 @@ check_values :: fn() -> int {
         }
     }
     return 42
+}
+
+// Schemas read back: an entry's parameters, their names, kinds and members, and each one's schema written alone.
+check_reading :: fn() -> int {
+    bytes : u8[..]
+    defer runtime.array_free(&bytes)
+    schema.write(type_info_of(Entry), &bytes)
+    read := schema.parse(bytes) or_return 50
+    defer schema.free(&read)
+    entry :: schema.type_in(&read, 0) or_return 51
+    if entry.kind != .Function || entry.inputs.count != 6 || entry.outputs.count != 1 {
+        return 52
+    }
+    names :: string.["count", "label", "item", "shape", "color", "node"]
+    for input, i in entry.inputs {
+        if i >= names.count || input.name != names[i] || !same(schema.hash_rooted(&read, input.type), entry_hash(i)) {
+            return 53
+        }
+    }
+    if !same(schema.hash_rooted(&read, 0), hash_of(Entry)) {
+        return 54
+    }
+    item :: schema.type_in(&read, input_type(entry, 2)) or_return 55
+    if item.kind != .Struct || item.name != "Item" || item.members.count != 5 || item.members[1].name != "name"
+        || item.members[1].offset != cast[u64](offset_in_item("name")) {
+        return 56
+    }
+    color :: schema.type_in(&read, input_type(entry, 4)) or_return 57
+    if color.kind != .Enum || color.constants.count != 2 || color.constants[1].name != "Green" || color.constants[1].value != 2 {
+        return 58
+    }
+    count :: schema.type_in(&read, input_type(entry, 0)) or_return 59
+    if count.kind != .Integer || count.is_signed || count.size != 8 {
+        return 60
+    }
+    shape :: schema.type_in(&read, input_type(entry, 3)) or_return 61
+    if shape.kind != .Union || shape.variants.count != 2 || shape.variants[1].name != "Some" {
+        return 62
+    }
+    // Cut short, or with something after it, it isn't a schema
+    shorter : u8[..]
+    defer runtime.array_free(&shorter)
+    for byte, i in bytes {
+        if i + 1 < bytes.count {
+            runtime.array_add(&shorter, byte)
+        }
+    }
+    if schema.parse(shorter) is_some {
+        return 63
+    }
+    longer : u8[..]
+    defer runtime.array_free(&longer)
+    for byte in bytes {
+        runtime.array_add(&longer, byte)
+    }
+    runtime.array_add(&longer, cast[u8](0))
+    if schema.parse(longer) is_some {
+        return 64
+    }
+    return 42
+}
+
+// The schema hash of Entry's parameter i's type.
+entry_hash :: fn(i: usize) -> u8[32] {
+    return if i == 0 { hash_of(u64) } else if i == 1 { hash_of(string) } else if i == 2 { hash_of(Item) } else if i == 3 { hash_of(Shape?) }
+        else if i == 4 { hash_of(Color) } else { hash_of(Node) }
+}
+
+// The place of a function's parameter i's type.
+input_type :: fn(entry: ptr[schema.Type], i: usize) -> usize {
+    for input, j in entry.inputs {
+        if j == i {
+            return input.type
+        }
+    }
+    return schema.NOWHERE
 }

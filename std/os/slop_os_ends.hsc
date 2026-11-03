@@ -373,6 +373,68 @@ package os
      */
     launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
         budget: u64, entry: F, grants: G, options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
+        given : NamedGrant[..]
+        defer runtime.array_free(&given)
+        for member in cast[ptr[compiler.TypeInfoStruct]](type_info_of(G)).members {
+            if !is_grant(member.member_type) {
+                continue
+            }
+            handle :: grant_in(address_of(grants) + cast[u64](member.offset), member.member_type)
+            if handle != slop_os.NO_HANDLE {
+                runtime.array_add(&given, NamedGrant.{label = member.name, handle = handle})
+            }
+        }
+        page :: match arguments_of(grants) {
+            case Ok(made) => made
+            case Error(error) => return .Error(.NoBudget)
+        }
+        return launch_given(manager, port, name, executable, budget, given, page, options)
+    }
+
+    // A grant given by its label: a handle a launch moves to the program, as the parameter of its name.
+    NamedGrant :: struct {
+        label : string,
+        handle : slop_os.Handle,
+    }
+
+    /*
+     * A value a launch writes for the program, as the parameter of its name: the schema hash of the parameter's type,
+     * and the value as std/schema's write_value writes one of it.
+     */
+    NamedValue :: struct {
+        name : string,
+        hash : u8[32],
+        value : u8[],
+    }
+
+    /*
+     * launch, for a launcher that knows the program's entry only as it runs, from its manifest, like a shell: its grants
+     * each a handle and the label of its parameter, and its values each written already, with its type's schema hash,
+     * which the program checks against its parameter's. The handles are the program's once it's started, and the
+     * caller's still if it isn't.
+     */
+    launch_named :: fn(manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
+        budget: u64, grants: NamedGrant[], values: NamedValue[], options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] {
+        page :: match arguments_page(values) {
+            case Ok(made) => made
+            case Error(error) => return .Error(.NoBudget)
+        }
+        return launch_given(manager, port, name, executable, budget, grants, page, options)
+    }
+
+    // A launch of grants, and of values written in arguments, a page that's the launch's to give or to close.
+    launch_given :: fn(manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
+        budget: u64, grants: NamedGrant[], arguments: slop_os.Memory?, options: LaunchOptions) -> Result[Launched, LaunchError] {
+        // The page's the Load's once it's among its grants
+        page_kept := false
+        defer {
+            if !page_kept {
+                match arguments {
+                    case Some(memory) => _ = slop_os.handle_close(cast[slop_os.Handle](memory))
+                    case None => {}
+                }
+            }
+        }
         block :: slop_os.startup_block()
         child :: slop_os.memory_budget_create(block.budget, budget) or_return .Error(.NoBudget)
         load := process_manager.Load.{name = label_from(name)}
@@ -417,21 +479,10 @@ package os
         executing :: cast[slop_os.Rights](cast[u32](executable_rights) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE))
         load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executing)
             or_else (slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights) or_return .Error(.BadGrants)))
-        for member in cast[ptr[compiler.TypeInfoStruct]](type_info_of(G)).members {
-            if !is_grant(member.member_type) {
-                continue
-            }
-            handle :: grant_in(address_of(grants) + cast[u64](member.offset), member.member_type)
-            if handle == slop_os.NO_HANDLE {
-                continue
-            }
-            index :: cast[usize](load.grant_count)
-            if index >= load.labels.count || index >= load.grants.count {
+        for grant in grants {
+            if !add_grant(&load, grant.label, grant.handle) {
                 return .Error(.BadGrants)
             }
-            load.labels[index] = label_from(member.name)
-            load.grants[index] = handle
-            load.grant_count += 1
         }
         match options.clock {
             case Some(page) => if !add_grant(&load, "clock", cast[slop_os.Handle](page)) {
@@ -476,17 +527,14 @@ package os
         }
         // The launcher's own libraries, which it may share on and run, and the values written for it
         copies_from = cast[usize](load.grant_count)
-        match arguments_of(grants) {
-            case Ok(page) => {
-                match page {
-                    case Some(memory) => if !add_grant(&load, "arguments", cast[slop_os.Handle](memory)) {
-                        _ = slop_os.handle_close(cast[slop_os.Handle](memory))
-                        return .Error(.BadGrants)
-                    }
-                    case None => {}
+        match arguments {
+            case Some(memory) => {
+                if !add_grant(&load, "arguments", cast[slop_os.Handle](memory)) {
+                    return .Error(.BadGrants)
                 }
+                page_kept = true
             }
-            case Error(error) => return .Error(.NoBudget)
+            case None => {}
         }
         library_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE)
             | cast[u32](slop_os.RIGHT_DUPLICATE) | cast[u32](slop_os.RIGHT_TRANSFER))
@@ -601,10 +649,11 @@ package os
      */
     arguments_of :: fn(grants: any) -> Result[slop_os.Memory?, slop_os.MemoryError] {
         type :: type_info_of(grants.type)
+        // Every value's bytes, one after another, and where each one's are, made views once they're all written
         written : u8[..]
         defer runtime.array_free(&written)
-        header := runtime.SlopOsArguments.{magic = runtime.SLOP_OS_ARGUMENTS_MAGIC}
-        add_bytes(&written, view_of(cast[ptr[u8]](&header), size_of(runtime.SlopOsArguments)))
+        found : WrittenValue[..]
+        defer runtime.array_free(&found)
         for member in cast[ptr[compiler.TypeInfoStruct]](type).members {
             if is_grant(member.member_type) {
                 continue
@@ -632,26 +681,53 @@ package os
                 value_type = chosen.types[0]
                 value_at += cast[u64](chosen.offsets[0])
             }
-            argument := runtime.SlopOsArgument.{name_bytes = cast[u32](member.name.count), hash = runtime.schema_hash(value_type)}
-            header_at :: written.count
-            add_bytes(&written, view_of(cast[ptr[u8]](&argument), size_of(runtime.SlopOsArgument)))
-            add_bytes(&written, string_bytes(member.name))
-            pad(&written)
-            value_start :: written.count
+            start :: written.count
             if runtime.schema_try_write_value_at(cast[rawptr](value_at), value_type, &written) != null {
                 return .Error(.OutOfMemory)
             }
-            argument.value_bytes = cast[u32](written.count - value_start)
-            for byte, i in view_of(cast[ptr[u8]](&argument), size_of(runtime.SlopOsArgument)) {
-                if header_at + i < written.count {
-                    written[header_at + i] = byte
-                }
-            }
-            pad(&written)
-            header.count += 1
+            runtime.array_add(&found, WrittenValue.{name = member.name, hash = runtime.schema_hash(value_type), start = start,
+                end = written.count})
         }
-        if header.count == 0 {
+        values : NamedValue[..]
+        defer runtime.array_free(&values)
+        for each in found {
+            value : u8[]
+            if each.end > each.start && each.end <= written.count {
+                value = written[each.start..<each.end]
+            }
+            runtime.array_add(&values, NamedValue.{name = each.name, hash = each.hash, value = value})
+        }
+        return arguments_page(values)
+    }
+
+    WrittenValue :: struct {
+        name : string,
+        hash : u8[32],
+        start : usize,
+        end : usize,
+    }
+
+    /*
+     * Values written as a page for the grant "arguments" (docs/compilation.md, Entry Parameters): its header
+     * (runtime.SlopOsArguments), then each value's (runtime.SlopOsArgument), its name and its bytes, each padded to 8
+     * bytes; null if there are none.
+     */
+    arguments_page :: fn(values: NamedValue[]) -> Result[slop_os.Memory?, slop_os.MemoryError] {
+        if values.count == 0 {
             return .Ok(null)
+        }
+        written : u8[..]
+        defer runtime.array_free(&written)
+        header := runtime.SlopOsArguments.{magic = runtime.SLOP_OS_ARGUMENTS_MAGIC, count = cast[u32](values.count)}
+        add_bytes(&written, view_of(cast[ptr[u8]](&header), size_of(runtime.SlopOsArguments)))
+        for each in values {
+            argument := runtime.SlopOsArgument.{name_bytes = cast[u32](each.name.count), value_bytes = cast[u32](each.value.count),
+                hash = each.hash}
+            add_bytes(&written, view_of(cast[ptr[u8]](&argument), size_of(runtime.SlopOsArgument)))
+            add_bytes(&written, string_bytes(each.name))
+            pad(&written)
+            add_bytes(&written, each.value)
+            pad(&written)
         }
         header.total = cast[u64](written.count)
         for byte, i in view_of(cast[ptr[u8]](&header), size_of(runtime.SlopOsArguments)) {
