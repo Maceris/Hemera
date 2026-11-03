@@ -495,10 +495,24 @@ main :: fn(log: Log?, storage: Channel[Storage]) -> int {
 ```
 
 Before `main` runs, the generated entry asks the runtime for each parameter, by its name and the name of its type
-(`runtime.os_entry_grant`), which finds the handle of that name and checks its kind. Each parameter is a handle: a
-4-byte distinct alias or struct, or an optional of one. An optional is `None` when the process wasn't given the handle;
-a process without one it needs ends before `main` with the runtime's code for that. Elsewhere the entry takes no
-parameters, and one that does is an error.
+(`runtime.os_entry_grant`), which finds the handle of that name and checks its kind. A handle parameter is a 4-byte
+distinct alias or struct named for a kind of handle the runtime knows, or an optional of one. An optional is `None`
+when the process wasn't given the handle; a process without one it needs ends before `main` with the runtime's code
+for that.
+
+Any other parameter is a value, of any type a schema describes (not a function, a type, an `any` or a `rawptr`, nor
+anything holding one):
+
+```
+main :: fn(log: Log?, pattern: string, ignore_case: bool?, limit: u64) -> int {
+```
+
+Whoever starts the program writes the values in one page it gives as the grant `arguments`: each under its
+parameter's name, with its type's schema hash, as `schema.write_value` writes a value (`std/os`'s `launch` does this
+for a grants struct's fields that aren't handles). The entry reads each (`runtime.os_entry_value`): a value whose
+schema hash isn't its parameter type's isn't taken, and it's copied to the heap, its pointers made pointers again. An
+optional is `None` when there's no value for it; a required one that's missing ends the process as a missing handle
+does. Elsewhere the entry takes no parameters, and one that does is an error.
 
 ### Linux on AArch64
 

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
+#include <iterator>
 #include <utility>
 
 #include "util/logger.h"
@@ -706,7 +708,16 @@ namespace hemera {
 			// A generic struct's instance, like Channel[Protocol], is named with its arguments
 			const std::string_view text(*name);
 			const size_t open = text.find('[');
-			grant.kind = std::string(text.substr(0, open));
+			// Only the kinds of handle base's runtime knows (runtime.slop_os_kind_of); anything else is a value
+			static constexpr std::string_view KINDS[] = { "MemoryBudget", "Memory", "AddressSpace", "Thread", "Process", "Channel",
+				"Listener", "Config", "AppData", "Port", "Irq", "Platform", "Intercept", "DebugLog", "DmaDomain", "Device", "CpuBudget",
+				"IoPortRange" };
+			const std::string_view kind = text.substr(0, open);
+			if (std::find(std::begin(KINDS), std::end(KINDS), kind) == std::end(KINDS)) {
+				grant.optional = false;
+				return grant;
+			}
+			grant.kind = std::string(kind);
 			if (open != std::string_view::npos && text.back() == ']') {
 				std::string_view argument = text.substr(open + 1, text.size() - open - 2);
 				const size_t dot = argument.rfind('.');
@@ -714,6 +725,49 @@ namespace hemera {
 			}
 		}
 		return grant;
+	}
+
+	bool is_entry_value_type(TypeInfo const* type) {
+		std::vector<TypeInfo const*> seen;
+		std::function<bool(TypeInfo const*)> writable = [&](TypeInfo const* each) -> bool {
+			each = get_base_type(each);
+			if (each == nullptr) {
+				return false;
+			}
+			if (std::find(seen.begin(), seen.end(), each) != seen.end()) {
+				return true;
+			}
+			seen.push_back(each);
+			const TypeInfoVariant variant = each->variant;
+			if (TypeInfoVariant::FUNCTION == variant || TypeInfoVariant::TYPE == variant || TypeInfoVariant::ANY == variant) {
+				return false;
+			}
+			if (TypeInfoVariant::POINTER == variant) {
+				auto pointer = static_cast<TypeInfoPointer const*>(each);
+				return pointer->base_type != nullptr && writable(pointer->base_type);
+			}
+			if (TypeInfoVariant::ARRAY == variant) {
+				return writable(static_cast<TypeInfoArray const*>(each)->element_type);
+			}
+			if (TypeInfoVariant::STRUCT == variant) {
+				for (const StructMember& member : static_cast<TypeInfoStruct const*>(each)->members) {
+					if (!writable(member.member_type)) {
+						return false;
+					}
+				}
+			}
+			if (TypeInfoVariant::UNION == variant) {
+				for (const UnionVariant& held : static_cast<TypeInfoUnion const*>(each)->variants) {
+					for (TypeInfo const* inner : held.types) {
+						if (!writable(inner)) {
+							return false;
+						}
+					}
+				}
+			}
+			return true;
+		};
+		return writable(type);
 	}
 
 	bool is_owned(TypeInfo const* type) {

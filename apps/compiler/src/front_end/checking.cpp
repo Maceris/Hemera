@@ -6706,15 +6706,15 @@ namespace hemera {
 				"{} is where the program starts, without a context: mark it #no_context (with #calling_convention(.c))",
 				text_of(function->name)));
 		}
-		// A SlopOS program's entry takes its grants as parameters (docs/compilation.md, Entry Parameters)
+		// A SlopOS program's entry takes its grants, and values, as parameters (docs/compilation.md, Entry Parameters)
 		const bool slop_os_entry = options != nullptr && options->startup_code && OSType::SlopOS == options->os
 			&& function->generic == nullptr && text_of(function->name) == options->entry
 			&& *function->package_path == *intern(options->input.string());
 		if (slop_os_entry) {
 			for (const FunctionInput& input : type->input) {
-				if (entry_grant_of(input.type).kind.empty()) {
+				if (entry_grant_of(input.type).kind.empty() && !is_entry_value_type(input.type)) {
 					error_at(checker, ErrorCode::E4014, function->node, std::format(
-						"{} is given from the program's startup grants, so it's a handle: a 4-byte distinct alias or struct, or an optional of one, not {}",
+						"{} is given to the program, as a handle or as a value written for it, so it can't be a function, a type, an any or a rawptr, as {} is or holds",
 						text_of(input.name), to_string(input.type)));
 				}
 			}

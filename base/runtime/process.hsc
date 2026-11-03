@@ -54,6 +54,11 @@ ProcessState :: struct {
     locale_name : u8[LOCALE_NAME_BYTES],
     locale_name_count : usize,
     locale_state : u32,
+    // On SlopOS, the grant "arguments" the entry's value parameters are read from, once it's mapped, and its bytes
+    // (slop_os.hsc, os_entry_value); mapped by the entry, before main
+    entry_arguments : rawptr,
+    entry_arguments_bytes : u64,
+    entry_arguments_tried : bool,
 }
 
 // The most bytes of a locale's name the process keeps, as "en-GB" is 5.

@@ -9419,12 +9419,31 @@ namespace hemera {
 		}
 		std::vector<mlir::Value> main_arguments{ context };
 		if (slop_os) {
-			// Each parameter from the startup grant of its name (docs/compilation.md, Entry Parameters)
+			/*
+			* Each handle parameter from the startup grant of its name, and each other one from the value of its name in
+			* the grant "arguments" (docs/compilation.md, Entry Parameters)
+			*/
 			Declaration* finds = base_declaration_named(generator, "runtime", "os_entry_grant");
+			Declaration* values = base_declaration_named(generator, "runtime", "os_entry_value");
 			for (const FunctionInput& input : main_type->input) {
 				const EntryGrant grant = entry_grant_of(input.type);
-				if (finds == nullptr || grant.kind.empty()) {
-					unsupported(generator, main->node, "a SlopOS entry's parameters need base's runtime.os_entry_grant, and handle types");
+				if (grant.kind.empty()) {
+					if (values == nullptr) {
+						unsupported(generator, main->node, "a SlopOS entry's value parameters need base's runtime.os_entry_value");
+						break;
+					}
+					mlir::Value slot = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
+						llvm_type(generator, input.type), one, static_cast<unsigned>(input.type->alignment));
+					store_zero(generator, input.type, slot);
+					LLVM::LLVMFuncOp decode = function_for(generator, values);
+					auto call = LLVM::CallOp::create(generator.builder, generator.loc, decode, mlir::ValueRange{ context,
+						string_value(generator, text_of(input.name), BUILTIN_string), type_descriptor(generator, input.type), slot });
+					call.setCConv(decode.getCConv());
+					main_arguments.push_back(parameter_by_pointer(main_type, input) ? slot : load(generator, input.type, slot));
+					continue;
+				}
+				if (finds == nullptr) {
+					unsupported(generator, main->node, "a SlopOS entry's parameters need base's runtime.os_entry_grant");
 					break;
 				}
 				mlir::Value handle = LLVM::CallOp::create(generator.builder, generator.loc, function_for(generator, finds), mlir::ValueRange{

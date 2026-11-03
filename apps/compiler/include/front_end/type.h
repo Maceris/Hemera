@@ -616,11 +616,13 @@ namespace hemera {
 	/// <summary>
 	/// What a parameter of a SlopOS program's entry is given from its startup grants (docs/compilation.md,
 	/// Entry Parameters): the name of its kind, a distinct alias's (DebugLog) or a struct's without its
-	/// arguments (Channel), and whether it's an optional, which a missing grant leaves None.
+	/// arguments (Channel), one of the kinds of handle the runtime knows, and whether it's an optional, which a
+	/// missing grant leaves None. A parameter of any other type is a value, from the grant "arguments".
 	/// </summary>
 	struct EntryGrant {
 		/// <summary>
-		/// Empty for a type no grant can be: anything but a 4-byte handle type, or an optional of one.
+		/// Empty for a type no grant can be: anything but a 4-byte handle type of a kind the runtime knows, or an optional
+		/// of one.
 		/// </summary>
 		std::string kind;
 		/// <summary>
@@ -632,6 +634,13 @@ namespace hemera {
 	};
 
 	EntryGrant entry_grant_of(TypeInfo const* type);
+
+	/// <summary>
+	/// Whether a SlopOS entry's parameter that isn't a handle can be given as a value (docs/compilation.md, Entry
+	/// Parameters): any type a schema describes and a value can be written for elsewhere, so not a function, a type,
+	/// an any, a rawptr, or a type holding one.
+	/// </summary>
+	bool is_entry_value_type(TypeInfo const* type);
 
 	void initialize_builtin_types();
 }

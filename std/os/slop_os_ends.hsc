@@ -16,6 +16,7 @@ package os
  */
 #if OS == .SlopOS {
     import compiler from "base"
+    import runtime from "base"
     import slop_os from "std/os"
     import process_manager from "std/os/slop_os"
 
@@ -336,7 +337,9 @@ package os
     /*
      * The program in executable, started through the process manager in a process of the caller's, with a
      * budget of budget bytes split off the caller's: grants, a G whose fields are entry's parameters, each a
-     * handle moved to the program, or None for an optional one it goes without. name is for the manager's log. options
+     * handle moved to the program, or None for an optional one it goes without; a field that isn't a handle is a
+     * value, written for the program in its grant "arguments" (docs/compilation.md, Entry Parameters), and an
+     * optional one that's None isn't written. name is for the manager's log. options
      * (LaunchOptions) can watch its end from before it starts, so even a program that ends at once is seen to, put it on a
      * CPU budget, and give it the clock page and its events ring; the budget's handle is closed once it's on it, and the
      * clock page's and the ring's are the program's. A launch that fails gives back what it made for the program (its
@@ -390,7 +393,10 @@ package os
         load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executing)
             or_else (slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights) or_return .Error(.BadGrants)))
         for member in cast[ptr[compiler.TypeInfoStruct]](type_info_of(G)).members {
-            handle :: grant_in(cast[u64](&grants) + cast[u64](member.offset), member.member_type)
+            if !is_grant(member.member_type) {
+                continue
+            }
+            handle :: grant_in(address_of(grants) + cast[u64](member.offset), member.member_type)
             if handle == slop_os.NO_HANDLE {
                 continue
             }
@@ -443,8 +449,20 @@ package os
                 return .Error(.BadGrants)
             }
         }
-        // The launcher's own libraries, which it may share on and run
+        // The launcher's own libraries, which it may share on and run, and the values written for it
         copies_from = cast[usize](load.grant_count)
+        match arguments_of(grants) {
+            case Ok(page) => {
+                match page {
+                    case Some(memory) => if !add_grant(&load, "arguments", cast[slop_os.Handle](memory)) {
+                        _ = slop_os.handle_close(cast[slop_os.Handle](memory))
+                        return .Error(.BadGrants)
+                    }
+                    case None => {}
+                }
+            }
+            case Error(error) => return .Error(.NoBudget)
+        }
         library_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE)
             | cast[u32](slop_os.RIGHT_DUPLICATE) | cast[u32](slop_os.RIGHT_TRANSFER))
         for &grant in slop_os.grants_of(block) {
@@ -510,6 +528,143 @@ package os
             _ = slop_os.handle_close(cast[slop_os.Handle](process))
         }
         _ = slop_os.handle_close(cast[slop_os.Handle](child))
+    }
+
+    /*
+     * Whether a field of a program's grants is a handle, given as the grant of its name, or a value, written in its grant
+     * "arguments": a handle is a 4-byte distinct alias or struct whose name, without its generic arguments, is a kind of
+     * handle base's runtime knows, or an optional of one, as the compiler decides for the entry's parameter.
+     */
+    is_grant :: fn(type: ptr[compiler.TypeInfo]) -> bool {
+        held := type
+        if type.variant == .UNION {
+            optional :: cast[ptr[compiler.TypeInfoUnion]](type)
+            if optional.null_is_none {
+                return false
+            }
+            for variant in optional.variants {
+                if variant.name == "Some" && variant.types.count == 1 {
+                    held = variant.types[0]
+                }
+            }
+            if held == type {
+                return false
+            }
+        }
+        if held.size != 4 {
+            return false
+        }
+        name := ""
+        if held.variant == .ALIAS && cast[ptr[compiler.TypeInfoAlias]](held).is_distinct {
+            name = cast[ptr[compiler.TypeInfoAlias]](held).name
+        }
+        else if held.variant == .STRUCT {
+            name = cast[ptr[compiler.TypeInfoStruct]](held).name
+        }
+        for character, i in name {
+            if character == '[' && i <= name.count {
+                name = name[0..<i]
+                break
+            }
+        }
+        return name.count > 0 && runtime.slop_os_kind_of(name) != 0
+    }
+
+    /*
+     * The values among grants, of type G, written as a page for the grant "arguments" (base's runtime.os_entry_value
+     * reads them): null if there are none.
+     */
+    arguments_of :: fn(grants: any) -> Result[slop_os.Memory?, slop_os.MemoryError] {
+        type :: type_info_of(grants.type)
+        written : u8[..]
+        defer runtime.array_free(&written)
+        header := runtime.SlopOsArguments.{magic = runtime.SLOP_OS_ARGUMENTS_MAGIC}
+        add_bytes(&written, view_of(cast[ptr[u8]](&header), size_of(runtime.SlopOsArguments)))
+        for member in cast[ptr[compiler.TypeInfoStruct]](type).members {
+            if is_grant(member.member_type) {
+                continue
+            }
+            // An optional's Some value, or nothing for its None
+            value_type := member.member_type
+            value_at := address_of(grants) + cast[u64](member.offset)
+            if value_type.variant == .UNION && !cast[ptr[compiler.TypeInfoUnion]](value_type).null_is_none {
+                optional :: cast[ptr[compiler.TypeInfoUnion]](value_type)
+                tag_size :: match optional.tag_type {
+                    case Some(tag) => tag.size
+                    case None => cast[usize](0)
+                }
+                tag := cast[u64](0)
+                for byte, i in view_of(cast[ptr[u8]](value_at), tag_size) {
+                    tag |= cast[u64](byte) << (8 * i)
+                }
+                if tag >= cast[u64](optional.variants.count) {
+                    continue
+                }
+                chosen :: optional.variants[cast[usize](tag)]
+                if chosen.name != "Some" || chosen.types.count != 1 || chosen.offsets.count != 1 {
+                    continue
+                }
+                value_type = chosen.types[0]
+                value_at += cast[u64](chosen.offsets[0])
+            }
+            argument := runtime.SlopOsArgument.{name_bytes = cast[u32](member.name.count), hash = runtime.schema_hash(value_type)}
+            header_at :: written.count
+            add_bytes(&written, view_of(cast[ptr[u8]](&argument), size_of(runtime.SlopOsArgument)))
+            add_bytes(&written, string_bytes(member.name))
+            pad(&written)
+            value_start :: written.count
+            if runtime.schema_try_write_value_at(cast[rawptr](value_at), value_type, &written) != null {
+                return .Error(.OutOfMemory)
+            }
+            argument.value_bytes = cast[u32](written.count - value_start)
+            for byte, i in view_of(cast[ptr[u8]](&argument), size_of(runtime.SlopOsArgument)) {
+                if header_at + i < written.count {
+                    written[header_at + i] = byte
+                }
+            }
+            pad(&written)
+            header.count += 1
+        }
+        if header.count == 0 {
+            return .Ok(null)
+        }
+        header.total = cast[u64](written.count)
+        for byte, i in view_of(cast[ptr[u8]](&header), size_of(runtime.SlopOsArguments)) {
+            if i < written.count {
+                written[i] = byte
+            }
+        }
+        size :: (cast[u64](written.count) + 4095) & ~cast[u64](4095)
+        memory :: slop_os.memory_create(slop_os.startup_block().budget, size)?
+        match slop_os.memory_write(memory, 0, written) {
+            case Ok => {}
+            case Error(error) => {
+                _ = slop_os.handle_close(cast[slop_os.Handle](memory))
+                return .Error(error)
+            }
+        }
+        return .Ok(memory)
+    }
+
+    // Where a launch's grants are, as a number: they're read field by field, by their type's description.
+    address_of :: fn(grants: any) -> u64 {
+        return cast[u64](cast[uintptr](grants.data))
+    }
+
+    add_bytes :: fn(into: ptr[mut u8[..]], bytes: u8[]) {
+        for byte in bytes {
+            runtime.array_add(into, byte)
+        }
+    }
+
+    // into padded with zeros to a multiple of 8 bytes.
+    pad :: fn(into: ptr[mut u8[..]]) {
+        loop {
+            if into.count % 8 == 0 {
+                break
+            }
+            runtime.array_add(into, cast[u8](0))
+        }
     }
 
     // A grant's handle, a field of type at address: the handle, or NO_HANDLE for an optional's None.

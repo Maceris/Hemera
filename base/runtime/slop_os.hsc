@@ -1,5 +1,6 @@
 package runtime
 
+import compiler from "base"
 import intrinsics from "base"
 
 /*
@@ -549,6 +550,163 @@ SlopOsGrant :: struct {
             return null
         }
         return cast[rawptr](address)
+    }
+
+    /*
+     * The grant "arguments" (docs/compilation.md, Entry Parameters): the values of an entry's parameters that aren't
+     * handles, which whoever launched the program wrote (std/os's launch). Its header, then each value: the header of
+     * its parameter, the parameter's name, and the value as schema_write_value writes one, each padded to 8 bytes.
+     */
+    SLOP_OS_ARGUMENTS_MAGIC : u32 : 0x47524148
+    SlopOsArguments :: struct {
+        magic : u32,
+        count : u32,
+        // Every byte of it, the header's too
+        total : u64,
+    }
+
+    // A value's header: its parameter's name's bytes, its own, and its type's schema hash.
+    SlopOsArgument :: struct {
+        name_bytes : u32,
+        value_bytes : u32,
+        hash : u8[32],
+    }
+
+    /*
+     * A parameter of the program's entry that isn't a handle, which the compiler's entry asks for (docs/compilation.md,
+     * Entry Parameters): the value of its name in the grant "arguments", if it was written as a value of type, copied
+     * to the heap with its pointers made pointers again, and stored at into. An optional's is None when it isn't there;
+     * a required one that isn't there, or isn't of its type, ends the process with SLOP_OS_EXIT_MISSING_GRANT.
+     */
+    os_entry_value :: fn(name: string, type: ptr[compiler.TypeInfo], into: rawptr) {
+        // An optional's value is its Some's
+        held := type
+        optional : ptr[compiler.TypeInfoUnion]? = null
+        some : usize = 0
+        none : usize = 0
+        info :: schema_unaliased(type)
+        if info.variant == .UNION {
+            union_info :: cast[ptr[compiler.TypeInfoUnion]](info)
+            for each, i in union_info.variants {
+                if each.name == "Some" && each.types.count == 1 {
+                    some = i
+                    held = each.types[0]
+                    optional = union_info
+                }
+                else if each.name == "None" {
+                    none = i
+                }
+            }
+            if union_info.null_is_none || union_info.variants.count != 2 {
+                optional = null
+                held = type
+            }
+        }
+        match optional {
+            case Some(union_info) => {
+                offset :: if some < union_info.variants.count && union_info.variants[some].offsets.count > 0 { union_info.variants[some].offsets[0] }
+                    else { cast[usize](0) }
+                found := false
+                match slop_os_argument(name, held) {
+                    case Some(bytes) => found = schema_read_value(bytes, held, cast[rawptr](cast[uintptr](into) + cast[uintptr](offset)))
+                    case None => {}
+                }
+                tag_size :: match union_info.tag_type {
+                    case Some(tag) => tag.size
+                    case None => cast[usize](0)
+                }
+                tag :: if found { some } else { none }
+                tag_bytes :: view_of(cast[ptr[mut u8]](into), tag_size)
+                for i in cast[usize](0)..<tag_bytes.count {
+                    tag_bytes[i] = cast[u8]((cast[u64](tag) >> (8 * i)) & 0xff)
+                }
+            }
+            case None => {
+                bytes :: slop_os_argument(name, type) or_else u8.[]
+                if bytes.count == 0 || !schema_read_value(bytes, type, into) {
+                    os_exit_process(SLOP_OS_EXIT_MISSING_GRANT)
+                }
+            }
+        }
+    }
+
+    // The value written for the parameter named name, if it's of type: its bytes, in the grant "arguments".
+    slop_os_argument :: fn(name: string, type: ptr[compiler.TypeInfo]) -> u8[]? {
+        page :: slop_os_arguments() or_return null
+        if page.count < size_of(SlopOsArguments) {
+            return null
+        }
+        base :: cast[u64](cast[uintptr](page.data))
+        header :: cast[ptr[SlopOsArguments]](cast[uintptr](base))
+        if header.magic != SLOP_OS_ARGUMENTS_MAGIC {
+            return null
+        }
+        expected :: schema_hash(type)
+        at := size_of(SlopOsArguments)
+        for i in cast[u32](0)..<header.count {
+            if at + size_of(SlopOsArgument) > page.count {
+                return null
+            }
+            argument :: cast[ptr[SlopOsArgument]](cast[uintptr](base + cast[u64](at)))
+            name_at :: at + size_of(SlopOsArgument)
+            value_at :: name_at + slop_os_padded(cast[usize](argument.name_bytes))
+            next :: value_at + slop_os_padded(cast[usize](argument.value_bytes))
+            if next > page.count || name_at + cast[usize](argument.name_bytes) > page.count {
+                return null
+            }
+            if string_of(cast[ptr[u8]](cast[uintptr](base + cast[u64](name_at))), cast[usize](argument.name_bytes)) == name {
+                for byte, j in expected {
+                    if j >= argument.hash.count || argument.hash[j] != byte {
+                        return null
+                    }
+                }
+                return view_of(cast[ptr[u8]](cast[uintptr](base + cast[u64](value_at))), cast[usize](argument.value_bytes))
+            }
+            at = next
+        }
+        return null
+    }
+
+    slop_os_padded #no_context :: fn(count: usize) -> usize {
+        return (count + 7) & ~cast[usize](7)
+    }
+
+    // The grant "arguments", mapped to read the first time, or null without one.
+    slop_os_arguments :: fn() -> u8[]? {
+        state :: intrinsics.process_state()
+        if !state.entry_arguments_tried {
+            state.entry_arguments_tried = true
+            handle :: os_entry_grant("arguments", "Memory", "", false)
+            if handle == 0 || state.startup_block == null {
+                return null
+            }
+            startup :: cast[ptr[SlopOsStartup]](state.startup_block)
+            // Its header first, which says how much more there is
+            first :: reserve_addresses(PAGE_SIZE) or_return null
+            if slop_os_call(SLOP_OS_CALL_MEMORY_MAP, cast[u64](handle), cast[u64](startup.space), first, 0, cast[u64](PAGE_SIZE),
+                SLOP_OS_PROTECTION_READ).tag != 0 {
+                return null
+            }
+            header :: cast[ptr[SlopOsArguments]](cast[uintptr](first))
+            total :: (header.total + cast[u64](PAGE_SIZE) - 1) & ~(cast[u64](PAGE_SIZE) - 1)
+            if header.magic != SLOP_OS_ARGUMENTS_MAGIC || total == 0 || total > cast[u64](1) << 24 {
+                return null
+            }
+            address := first
+            if total > cast[u64](PAGE_SIZE) {
+                address = reserve_addresses(cast[usize](total)) or_return null
+                if slop_os_call(SLOP_OS_CALL_MEMORY_MAP, cast[u64](handle), cast[u64](startup.space), address, 0, total,
+                    SLOP_OS_PROTECTION_READ).tag != 0 {
+                    return null
+                }
+            }
+            state.entry_arguments = cast[rawptr](cast[uintptr](address))
+            state.entry_arguments_bytes = header.total
+        }
+        if state.entry_arguments == null {
+            return null
+        }
+        return view_of(cast[ptr[u8]](state.entry_arguments), cast[usize](state.entry_arguments_bytes))
     }
 
     /*
