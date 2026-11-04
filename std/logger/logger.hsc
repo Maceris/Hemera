@@ -33,17 +33,14 @@ Options :: struct {
     function : bool,
     /** Whether to write the thread's index (runtime.current_thread_index). */
     thread : bool,
-    /**
-     * Whether lines go to standard output, for a program whose log is what it produces. False, the zero value a
-     * literal leaving it out gets, sends them to standard error, as logs usually go.
-     */
-    to_output : bool,
+    /** Where lines go: standard error, as logs usually go, unless a literal says OUTPUT. */
+    stream : runtime.OutputStream = .ERROR,
 }
 
 /**
  * The options used when the context's logger has no options of its own: the time and location, to standard error.
  */
-DEFAULT_OPTIONS :: Options.{time = true, location = true, function = false, thread = false, to_output = false}
+DEFAULT_OPTIONS :: Options.{time = true, location = true, function = false, thread = false, stream = .ERROR}
 
 /**
  * The most bytes one line has, its newline included, formatted on the stack. Past it, the message is cut short, but
@@ -240,7 +237,7 @@ log_line :: fn(level: runtime.LogLevel, label: string, format_string: string, pa
     }
     text_buffer.append_byte(&text, cast[u8]('\n'))
     line :: text_buffer.as_string(&text)
-    if options.to_output {
+    if options.stream == .OUTPUT {
         runtime.write_output(line)
     }
     else {
