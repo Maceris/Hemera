@@ -424,6 +424,10 @@ namespace hemera {
 			case hemera::arg_parse::NO_DOCUMENTATION_CHECKS:
 				output.check_documentation = false;
 				break;
+			case hemera::arg_parse::TEST:
+				output.test = true;
+				output.entry = std::string(TEST_ENTRY);
+				break;
 			case hemera::arg_parse::GENERATE_ALL:
 				output.generate_all = true;
 				break;
@@ -476,6 +480,7 @@ namespace hemera {
 			case hemera::arg_parse::CPU:
 			case hemera::arg_parse::CPU_FEATURES:
 			case hemera::arg_parse::ENTRY:
+			case hemera::arg_parse::TEST_FILTER:
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::INSTALL_PATH:
@@ -1112,6 +1117,9 @@ namespace hemera {
 					return false;
 				}
 				break;
+			case hemera::arg_parse::TEST_FILTER:
+				output.test_filter = option_with_value.values[0];
+				break;
 			case hemera::arg_parse::ENTRY:
 				if (entry_seen) {
 					cout << "Duplicate entry flag" << endl;
@@ -1156,6 +1164,7 @@ namespace hemera {
 			case hemera::arg_parse::VALGRIND_SECRETS:
 			case hemera::arg_parse::TIME_PHASES:
 			case hemera::arg_parse::NO_DOCUMENTATION_CHECKS:
+			case hemera::arg_parse::TEST:
 			case hemera::arg_parse::NO_RED_ZONE:
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 			case hemera::arg_parse::ALLOW_RUN:

@@ -55,7 +55,7 @@ struct HostedOutput {
  */
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
 	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false,
-	const std::vector<std::filesystem::path>& library_paths = {})
+	const std::vector<std::filesystem::path>& library_paths = {}, bool test = false, std::string_view test_filter = "")
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -80,6 +80,12 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.generate_all = generate_all;
 	options.valgrind_secrets = valgrind_secrets;
 	options.library_paths = library_paths;
+	// hemera --test: the package's #test functions run in place of its entry (docs/testing.md)
+	if (test) {
+		options.test = true;
+		options.entry = std::string(hemera::TEST_ENTRY);
+		options.test_filter = test_filter;
+	}
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
 	result.executable = executable;
@@ -341,6 +347,23 @@ TEST(Hosted, SplitsGraphemeClusters)
 TEST(Hosted, FormatsForLocales)
 {
 	run_hosted("locale", hemera::TargetStackCheck::Off);
+}
+
+// std/testing: #test functions found through reflection, their assertions, and the runner's report (docs/testing.md).
+TEST(Hosted, RunsTests)
+{
+	run_hosted("testing", hemera::TargetStackCheck::Off);
+}
+
+// hemera --test: the same package's tests run by the entry --test adds, reported to standard output, 1 when one failed.
+TEST(Hosted, BuildsTestPrograms)
+{
+	const HostedOutput all = run_hosted("testing", hemera::TargetStackCheck::Off, 1, "", false, false, false, {}, true);
+	EXPECT_NE(all.output.find("test reports_failures ... FAILED\n"), std::string::npos) << all.output;
+	EXPECT_NE(all.output.find("        expected 13, got 12\n"), std::string::npos) << all.output;
+	EXPECT_NE(all.output.find("2 tests: 1 passed, 1 failed\n"), std::string::npos) << all.output;
+	const HostedOutput filtered = run_hosted("testing", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true, "digits");
+	EXPECT_EQ(filtered.output, "test parses_digits ... ok\n1 tests: 1 passed, 0 failed, 1 skipped\n");
 }
 
 // std/time_zones: TZif data parsed, and offsets from its transitions and its footer's POSIX TZ rule, north and south.

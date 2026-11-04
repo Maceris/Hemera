@@ -10264,6 +10264,7 @@ namespace hemera {
 			data.write_text(record, layout, "name", text_of(function->name));
 			write_location_field(data, record, layout, file, function->node);
 			data.write_number(record, layout, "is_exported", has_name_directive(function, "#export"));
+			data.write_number(record, layout, "is_test", has_name_directive(function, "#test"));
 			data.write_number(record, layout, "has_body", function_body(function) != nullptr);
 			if (type == nullptr) {
 				return;

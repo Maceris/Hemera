@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace hemera {
@@ -453,6 +454,11 @@ namespace hemera {
 		std::string file;
 	};
 
+	/// <summary>
+	/// The entry --test builds a program around, which the file it adds to the root package declares (docs/testing.md).
+	/// </summary>
+	inline constexpr std::string_view TEST_ENTRY = "hemera_test_entry";
+
 	struct Options {
 		BuildExtent build_extent;
 		OptimizationLevel optimization_level;
@@ -549,6 +555,15 @@ namespace hemera {
         /// parameter, generic parameter or error that isn't there, is an error (docs/documentation.md).
         /// </summary>
         bool check_documentation = true;
+        /// <summary>
+        /// --test: build a program whose entry runs the root package's #test functions and reports them to standard
+        /// output, in place of the package's own entry (docs/testing.md).
+        /// </summary>
+        bool test = false;
+        /// <summary>
+        /// --test-filter=text: with --test, only the tests whose names contain text are run; empty runs them all.
+        /// </summary>
+        std::string test_filter;
         /// <summary>
         /// --jobs=N: how many of a build package's targets are built at once, 0 for as many as suit the machine
         /// (docs/compilation.md, Build Packages).

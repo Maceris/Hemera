@@ -13,6 +13,8 @@ FunctionInfo :: struct {
     location : SourceCodeLocation,
     /** Marked #export, so part of the library's or program's public interface. */
     is_exported : bool,
+    /** Marked #test, so a test a runner finds (docs/testing.md); it's compiled into a program only if something calls it. */
+    is_test : bool,
     /** False for bodiless --- declarations, like intrinsics and interface packages. */
     has_body : bool,
     /** Marked #never_returns. */

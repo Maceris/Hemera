@@ -353,6 +353,65 @@ namespace hemera {
 		return false;
 	}
 
+	/*
+	 * The file --test adds to the root package (docs/testing.md): an entry, TEST_ENTRY, that runs the package's #test
+	 * functions and reports them to standard output, its exit code 0 if every one passed and 1 otherwise. Its package
+	 * statement names the package as another of its files does.
+	 */
+	static constexpr std::string_view TEST_ENTRY_FILE = "<hemera --test>.hsc";
+
+	// Whether a package is the one --test adds its entry to: the root, when the build is one of its tests.
+	static bool gets_test_entry(WorkThreadData& executor, InternedString package_path) {
+		const Options* options = executor.global_data->options;
+		return options != nullptr && options->test && std::string_view(*package_path) == options->input.string();
+	}
+
+	/*
+	 * The name a package's files give it: the first line of one of its .hsc files that starts "package ". Empty if
+	 * none does, which leaves the generated file without a package statement, an error that says so.
+	 */
+	static std::string package_name_in(const std::filesystem::path& folder) {
+		std::error_code error;
+		for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
+			if (entry.path().extension() != ".hsc") {
+				continue;
+			}
+			std::ifstream file(entry.path());
+			std::string line;
+			while (std::getline(file, line)) {
+				if (line.starts_with("package ")) {
+					std::string name = line.substr(std::string_view("package ").size());
+					while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back()))) {
+						name.pop_back();
+					}
+					return name;
+				}
+			}
+		}
+		return {};
+	}
+
+	// The source of the file --test adds, with its filter written in as a string literal.
+	static std::string test_entry_source(const Options& options) {
+		const std::string package_name = package_name_in(options.input);
+		std::string filter;
+		for (char character : options.test_filter) {
+			if (character == '"' || character == '\\') {
+				filter += '\\';
+			}
+			filter += character;
+		}
+		return std::format(
+			"{}"
+			"import compiler from \"base\"\n"
+			"import testing from \"std\"\n"
+			"\n"
+			"{} :: fn() -> int {{\n"
+			"    tests :: #insert testing.tests_of(compiler.load_package(\".\"))\n"
+			"    return if testing.run(tests, testing.STANDARD_OUTPUT, \"{}\") == 0 {{ 0 }} else {{ 1 }}\n"
+			"}}\n", package_name.empty() ? std::string() : std::format("package {}\n\n", package_name), TEST_ENTRY, filter);
+	}
+
 	// Creates a PARSE work for each source file in a package.
 	static void list_package_files(WorkThreadData& executor, InternedString package_path_text,
 		PackageInfo* package_info) {
@@ -368,15 +427,16 @@ namespace hemera {
 				report_error(ErrorCode::E4005, *package_path_text, 0, 0, error.message());
 				return;
 			}
+			std::vector<InternedString> file_names;
 			for (const auto& entry : files) {
-				if (!entry.is_regular_file(error)) {
-					continue;
+				if (entry.is_regular_file(error) && entry.path().extension() == ".hsc") {
+					file_names.push_back(intern(entry.path().filename().string()));
 				}
-				if (entry.path().extension() != ".hsc") {
-					continue;
-				}
-
-				InternedString file_name = intern(entry.path().filename().string());
+			}
+			if (gets_test_entry(executor, package_path_text)) {
+				file_names.push_back(intern(std::string(TEST_ENTRY_FILE)));
+			}
+			for (InternedString file_name : file_names) {
 				
 				FileInfo* file_info = INFO_ALLOC->new_object<FileInfo>();
 				package_info->files.insert(std::make_pair(file_name, file_info));
@@ -639,6 +699,12 @@ namespace hemera {
 				}
 			}
 			report_error(ErrorCode::E4000, file_path, 0, 0);
+			return;
+		}
+
+		if (*location.file_name == TEST_ENTRY_FILE && gets_test_entry(executor, location.package_path)) {
+			std::istringstream file(test_entry_source(*executor.global_data->options));
+			parse_and_process(executor, location, package_info, file_info, file, file_path_of(location.package_path, location.file_name));
 			return;
 		}
 

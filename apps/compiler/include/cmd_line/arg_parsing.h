@@ -58,6 +58,8 @@ namespace hemera {
 			VALGRIND_SECRETS,
 			TIME_PHASES,
 			NO_DOCUMENTATION_CHECKS,
+			TEST,
+			TEST_FILTER,
 			VENDOR,
 			VERSION,
 		};
@@ -156,6 +158,8 @@ namespace hemera {
 			{"--jobs", Option::JOBS},
 			{"--setting", Option::SETTING},
 			{"--show-inserted", Option::SHOW_INSERTED},
+			{"--test", Option::TEST},
+			{"--test-filter", Option::TEST_FILTER},
 		};
 
 		//NOTE(ches) these are in the order that we'll print them out in
@@ -176,6 +180,8 @@ namespace hemera {
 			{Option::VALGRIND_SECRETS, "Tell Valgrind's Memcheck secrets are undefined, so it reports branches and addresses that depend on them", NO_ARGS},
 			{Option::TIME_PHASES, "Print how long each phase of compiling took, on standard error", NO_ARGS},
 			{Option::NO_DOCUMENTATION_CHECKS, "Don't report malformed documentation comments, or ones that don't match what they document", NO_ARGS},
+			{Option::TEST, "Build a program that runs the package's #test functions and reports them, in place of its entry (docs/testing.md)", NO_ARGS},
+			{Option::TEST_FILTER, "With --test, run only the tests whose names contain this text", HAS_ARGS},
 			{Option::JOBS, "How many of a build package's targets are built at once: 1 for one at a time, 0 (the default) for as many as suit the machine", HAS_ARGS},
 			{Option::ARCHITECTURE, "Specify the target architecture", HAS_ARGS},
 			{Option::SUBARCHITECTURE, "Specify the target subarchitecture", HAS_ARGS},

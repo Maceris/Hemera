@@ -295,6 +295,11 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
   optional pointers included, null for None), there are no variadic foreign functions, and only x86-64 and AArch64
   are supported.
 
+### `#test`
+
+`#test` after a function's name marks it as a test, which a runner finds through reflection (`FunctionInfo.is_test`)
+and runs: `parses #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome`. See [testing.md](testing.md).
+
 ### `#constant_time`
 
 A function whose parameters or results are secrets is marked `#constant_time`, like
