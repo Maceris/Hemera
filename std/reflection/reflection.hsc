@@ -4,8 +4,15 @@ import compiler from "base"
 import runtime from "base"
 
 /**
- * Strings, booleans and enum member names, without allocating.
- * valid is false for anything else.
+ * Give a string, boolean or enum value as text, without allocating.
+ *
+ * Numbers need somewhere to be written, so they're left to as_text.
+ *
+ * @param value The value, of any type; aliases are followed to the type they're based on.
+ * @return result The text: a string as it is, a view of the value's own bytes, good while they are; "true" or "false";
+ *     or an enum member's name, from the type information, good for the program's life. Empty when valid is false.
+ * @return valid Whether the value could be given as text: false for any other type, a cstring, or an enum value that
+ *     matches no member.
  */
 as_string :: fn(value: any) -> (result: string, valid: bool) {
     info :: unaliased(type_info_of(value.type))
@@ -36,8 +43,19 @@ as_string :: fn(value: any) -> (result: string, valid: bool) {
 }
 
 /**
- * What as_string gives, and numbers too, written into storage: an integer in decimal, a float as the shortest text that
- * reads back as it (runtime.format_shortest_float). valid is false for anything else, or a number storage can't hold.
+ * Give a value as text as as_string does, and numbers too, written into storage.
+ *
+ * An integer is written in decimal, with a - when it's negative, and a float as the shortest text that reads back as
+ * it (runtime.format_shortest_float).
+ *
+ * @param value The value, of any type; aliases are followed to the type they're based on.
+ * @param storage Where a number's text is written; untouched for what as_string gives. An integer takes at most 20
+ *     bytes, sign included.
+ * @return result The text: as as_string gives it, or a view of storage, good while storage is. Empty when valid is
+ *     false.
+ * @return valid Whether the value could be given as text: false for other types, integers wider than 8 bytes, floats
+ *     other than 16, 32 and 64 bits, or a number storage is too small for (in which case some of storage may have been
+ *     written).
  */
 as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
     text, valid :: as_string(value)
@@ -75,11 +93,20 @@ as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
 
 /** Bytes written into a view, and whether more came than it holds; #scoped, since the view may be of the stack. */
 StorageSink :: struct #scoped {
+    /** Where the bytes go. */
     bytes : mut u8[],
+    /** How many bytes have been written, from bytes' start, up to bytes.count. */
     count : usize,
+    /** Whether a byte came with no room left for it, and was dropped. */
     overflowed : bool,
 }
 
+/**
+ * Write one byte to a StorageSink: the emit function of a runtime.FormatSink over one.
+ *
+ * @param target The StorageSink, as a ptr[mut StorageSink].
+ * @param byte The byte, added after those written, or dropped, setting overflowed, if there's no room.
+ */
 storage_sink_byte :: fn(target: rawptr, byte: u8) {
     sink :: cast[ptr[mut StorageSink]](target)
     if sink.count < sink.bytes.count {
@@ -92,9 +119,14 @@ storage_sink_byte :: fn(target: rawptr, byte: u8) {
 }
 
 /**
- * The name of the enum member value holds, or none if it isn't an enum or matches no member.
- * Lets compile-time checks compare enum values from another program by name, since the
- * enum type itself differs between programs.
+ * Find the name of the enum member a value holds.
+ *
+ * This lets compile-time checks compare enum values from another program by name, since the enum type itself differs
+ * between programs.
+ *
+ * @param value The value, of any type; aliases are followed to the type they're based on.
+ * @return The member's name, from the type information, good for the program's life; the first member's when several
+ *     have the value. Null if the value isn't an enum, or matches no member, like flags combined.
  */
 enum_member_name :: fn(value: any) -> string? {
     info :: unaliased(type_info_of(value.type))
@@ -112,12 +144,16 @@ enum_member_name :: fn(value: any) -> string? {
 }
 
 /**
- * Whether a and b have the same type and value.
+ * Tell whether two values have the same type and value.
  *
- * Strings compare by contents, arrays element by element, and structs member by member.
- * Pointers compare by address, and aren't followed, so cycles can't recurse forever.
- * Floats compare with ==, so NaN never equals anything. #union structs and unions compare
- * their bytes, since type info doesn't say which variant is in use.
+ * Strings compare by contents, arrays element by element, and structs member by member. Pointers compare by address,
+ * and aren't followed, so cycles can't recurse forever. Floats compare with ==, so NaN never equals anything. #union
+ * structs and unions compare their bytes, since type info doesn't say which variant is in use, so padding and bytes
+ * an unused variant left can make equal values unequal. Values in an any are compared by what they hold.
+ *
+ * @param a One value.
+ * @param b The other.
+ * @return True if their types are the same, not just alike, and their values are equal as above; false otherwise.
  */
 equal :: fn(a, b: any) -> bool {
     if a.type != b.type {
@@ -126,6 +162,14 @@ equal :: fn(a, b: any) -> bool {
     return values_equal(a.data, b.data, type_info_of(a.type))
 }
 
+/**
+ * Tell whether two values of one type are equal, as equal compares them.
+ *
+ * @param a The first value's address.
+ * @param b The second value's address.
+ * @param type_info Their type.
+ * @return True if they're equal.
+ */
 values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {
     info :: unaliased(type_info)
     if info.variant == .VOID {
@@ -176,7 +220,15 @@ values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {
     return bytes_equal(a, b, info.size)
 }
 
-/** Compares the arrays a and b point to, from dimension onwards. */
+/**
+ * Compare two arrays element by element, from a dimension onwards.
+ *
+ * @param a The first array's address: of a fixed array's elements, or of a view or a dynamic array.
+ * @param b The second array's address, of the same type.
+ * @param info Their type.
+ * @param dimension Which dimension a and b are at, from 0 for the outermost; at the last, the elements are compared.
+ * @return True if they have the same counts and every element is equal; false otherwise.
+ */
 arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: usize) -> bool {
     if dimension >= info.dimensions.count {
         return values_equal(a, b, info.base_type)
@@ -216,7 +268,14 @@ arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: u
     return true
 }
 
-/** Size of one element of the array at dimension, which is itself an array unless it's the last one. */
+/**
+ * Find the size of one element of an array at a dimension, which is itself an array unless it's the last one.
+ *
+ * @param info The array's type.
+ * @param dimension The dimension, from 0 for the outermost.
+ * @return The element's size in bytes: the base type's at the last dimension, a view's or dynamic array's header when
+ *     the next dimension is one, and otherwise a fixed array's count times its element's size.
+ */
 dimension_element_size :: fn(info: ptr[compiler.TypeInfoArray], dimension: usize) -> usize {
     inner :: dimension + 1
     if inner >= info.dimensions.count {
@@ -232,6 +291,14 @@ dimension_element_size :: fn(info: ptr[compiler.TypeInfoArray], dimension: usize
     return info.dimensions[inner].count * dimension_element_size(info, inner)
 }
 
+/**
+ * Tell whether two strings have the same bytes.
+ *
+ * @param a The first string's address: of a string, or of a cstring.
+ * @param b The second string's address, of the same type.
+ * @param is_raw True for cstrings, which are compared up to their zero bytes, and must have them.
+ * @return True if their bytes are the same; false otherwise.
+ */
 strings_equal :: fn(a, b: rawptr, is_raw: bool) -> bool {
     if is_raw {
         // cstrings: pointers to bytes ending at the first 0
@@ -255,6 +322,14 @@ strings_equal :: fn(a, b: rawptr, is_raw: bool) -> bool {
     return string_a.count == string_b.count && bytes_equal(string_a.data, string_b.data, string_a.count)
 }
 
+/**
+ * Tell whether two floats are equal, as == compares them.
+ *
+ * @param a The first float's address.
+ * @param b The second float's address.
+ * @param size Their size in bytes: 2, 4 or 8. Other sizes compare their bytes.
+ * @return True if they're equal: never for NaN, and always for 0 and -0.
+ */
 floats_equal :: fn(a, b: rawptr, size: usize) -> bool {
     if size == 2 {
         float_a :: cast[ptr[f16]](a)
@@ -274,6 +349,14 @@ floats_equal :: fn(a, b: rawptr, size: usize) -> bool {
     return bytes_equal(a, b, size)
 }
 
+/**
+ * Tell whether two runs of bytes are the same.
+ *
+ * @param a The first run's start.
+ * @param b The second run's start.
+ * @param count How many bytes to compare; 0 is always equal.
+ * @return True if every byte is the same; false otherwise.
+ */
 bytes_equal :: fn(a, b: rawptr, count: usize) -> bool {
     for index in 0..<count {
         byte_a :: cast[ptr[u8]](a + index)
@@ -285,7 +368,13 @@ bytes_equal :: fn(a, b: rawptr, count: usize) -> bool {
     return true
 }
 
-/** An unsigned integer of size bytes at data, like an enum's or boolean's backing value. */
+/**
+ * Read an unsigned integer, like an enum's or boolean's backing value.
+ *
+ * @param data Where it is.
+ * @param size Its size in bytes: 1, 2, 4 or 8; anything else reads 16 bytes.
+ * @return Its value, zero-extended.
+ */
 read_unsigned :: fn(data: rawptr, size: usize) -> u128 {
     if size == 1 {
         value :: cast[ptr[u8]](data)
@@ -307,7 +396,12 @@ read_unsigned :: fn(data: rawptr, size: usize) -> u128 {
     return value^
 }
 
-/** Follows aliases, including distinct ones, to the type they're based on. */
+/**
+ * Follow aliases, including distinct ones, to the type they're based on.
+ *
+ * @param info A type.
+ * @return The type it's based on; info itself when it isn't an alias.
+ */
 unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     result := info
     loop {

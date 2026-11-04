@@ -13,12 +13,23 @@ import runtime from "base"
 
 /** An argument to render: its schema's bytes, and its value's. */
 Argument :: struct {
+    /** The argument's type's schema, as schema.write wrote it; borrowed, and only read. */
     schema : u8[],
+    /** The argument's value, as write_value wrote it; borrowed, and only read. */
     value : u8[],
 }
 
 /**
- * format_string with each % replaced by the next argument, %1, %2 and so on by that one, and %% by %, added to into.
+ * Render a format string with its arguments, as base's formatting would have where they were written.
+ *
+ * Without the memory, calls context.assertion_handler, as array_add does.
+ *
+ * @param format_string The text, with each % replaced by the next argument, %1, %2 and so on by that one (which
+ *     doesn't move on which is next), and %% by %. Options after one, like %{08x}, work as they do in base's
+ *     formatting.
+ * @param arguments The arguments, each a schema and a value. A % past the last, %0, or one with options that don't
+ *     parse, is written as %!.
+ * @param into The array the text is added to, grown with its own allocator; what it held already is left as it is.
  */
 render :: fn(format_string: string, arguments: Argument[], into: ptr[mut u8[..]]) {
     next : usize = 0
@@ -65,7 +76,15 @@ render :: fn(format_string: string, arguments: Argument[], into: ptr[mut u8[..]]
     }
 }
 
-/** One argument with options: numbers worked out with them, anything else rendered, then padded. */
+/**
+ * Render one argument with options: numbers worked out with them, anything else rendered, then padded.
+ *
+ * Without the memory, calls context.assertion_handler, as array_add does.
+ *
+ * @param into The array the text is added to.
+ * @param argument The argument's schema and value.
+ * @param spec The options, as runtime.parse_format_spec read them; with none, the argument is rendered as it is.
+ */
 render_with :: fn(into: ptr[mut u8[..]], argument: Argument, spec: runtime.FormatSpec) {
     if spec.width == 0 && spec.kind == 0 && !spec.plus && !spec.prefix && !spec.has_precision {
         render_value(into, argument.schema, first_type(argument.schema), argument.value, 0)
@@ -106,23 +125,45 @@ render_with :: fn(into: ptr[mut u8[..]], argument: Argument, spec: runtime.Forma
     runtime.format_text(sink, spec, text)
 }
 
-/** Where a type's description isn't. */
+/** Where a type's description isn't, or a place that refers to no type: the largest usize, never an offset or place. */
 NOWHERE : usize : 0xffffffffffffffff
 
-/** How many aliases deep a type is followed before it's taken as a loop. */
+/** How many aliases deep a type is followed before it's taken as a loop, and as no type. */
 ALIAS_LIMIT :: 64
 
+/**
+ * Add a byte to an array, as a runtime.FormatSink's emit, for base's formatting to write into.
+ *
+ * @param target The array, a ptr[mut u8[..]] given as the sink's target; without the memory to grow it, calls
+ *     context.assertion_handler.
+ * @param byte The byte.
+ */
 sink_byte :: fn(target: rawptr, byte: u8) {
     runtime.array_add(cast[ptr[mut u8[..]]](target), byte)
 }
 
+/**
+ * Add text's bytes to the end of an array. Without the memory, calls context.assertion_handler.
+ *
+ * @param into The array, grown with its own allocator.
+ * @param text The text, copied.
+ */
 add_text :: fn(into: ptr[mut u8[..]], text: string) {
     for byte in view_of(cast[ptr[u8]](text.data), text.count) {
         runtime.array_add(into, byte)
     }
 }
 
-/** The value of type at `at` in value, added to into. */
+/**
+ * Render a value as text, without options, and add it to an array. Without the memory, calls
+ * context.assertion_handler.
+ *
+ * @param into The array the text is added to.
+ * @param schema The schema's bytes.
+ * @param given Where the value's type is described among them, or NOWHERE; aliases are followed.
+ * @param value The written value's bytes, where pointers are distances from its start.
+ * @param at Where the value starts in value, in bytes. A type that isn't described, or a value cut short, is <?>.
+ */
 render_value :: fn(into: ptr[mut u8[..]], schema: u8[], given: usize, value: u8[], at: usize) {
     type :: unaliased(schema, given)
     if type == NOWHERE {
@@ -219,7 +260,13 @@ render_value :: fn(into: ptr[mut u8[..]], schema: u8[], given: usize, value: u8[
     }
 }
 
-/** The string at `at` in value: its count, then the distance to its bytes; "" if they aren't there. */
+/**
+ * Read a string written in a value: its count, then the distance to its bytes.
+ *
+ * @param value The written value's bytes.
+ * @param at Where the string is in them, in bytes.
+ * @return The text, a view of value's bytes; "" if it's empty or its bytes aren't all there.
+ */
 text_of :: fn(value: u8[], at: usize) -> string {
     count :: cast[usize](read(value, at, 8))
     distance :: cast[usize](read(value, at + 8, 8))
@@ -229,12 +276,26 @@ text_of :: fn(value: u8[], at: usize) -> string {
     return string_of(&value[distance], count)
 }
 
+/**
+ * Add a run of bytes to the end of an array. Without the memory, calls context.assertion_handler.
+ *
+ * @param into The array, grown with its own allocator.
+ * @param bytes Where the run is.
+ * @param at Where it starts in bytes.
+ * @param count How many bytes; any past the end of bytes are added as 0.
+ */
 add_bytes :: fn(into: ptr[mut u8[..]], bytes: u8[], at: usize, count: usize) {
     for i in at..<at + count {
         runtime.array_add(into, byte_at(bytes, i))
     }
 }
 
+/**
+ * Add a number's decimal digits to the end of an array. Without the memory, calls context.assertion_handler.
+ *
+ * @param into The array, grown with its own allocator.
+ * @param value The number, written without a sign or leading zeros; 0 is "0".
+ */
 add_unsigned :: fn(into: ptr[mut u8[..]], value: u64) {
     if value == 0 {
         runtime.array_add(into, cast[u8]('0'))
@@ -254,7 +315,13 @@ add_unsigned :: fn(into: ptr[mut u8[..]], value: u64) {
     }
 }
 
-/** The byte at `at`, or 0 past the end. */
+/**
+ * Read one byte, safely past the end.
+ *
+ * @param bytes The bytes.
+ * @param at Where the byte is.
+ * @return The byte; 0 when at is past the end.
+ */
 byte_at :: fn(bytes: u8[], at: usize) -> u8 {
     if at >= bytes.count {
         return 0
@@ -262,12 +329,26 @@ byte_at :: fn(bytes: u8[], at: usize) -> u8 {
     return bytes[at]
 }
 
-/** Whether count bytes from at are in bytes. */
+/**
+ * Tell whether a run of bytes is all there, without overflowing however large at and count are.
+ *
+ * @param bytes The bytes.
+ * @param at Where the run starts.
+ * @param count How many bytes it is; 0 fits anywhere up to the end.
+ * @return True when every byte of the run is in bytes.
+ */
 fits :: fn(bytes: u8[], at: usize, count: usize) -> bool {
     return at <= bytes.count && count <= bytes.count - at
 }
 
-/** count bytes from at, little-endian, or 0 if they aren't all there. */
+/**
+ * Read a little-endian number.
+ *
+ * @param bytes The bytes.
+ * @param at Where the number starts.
+ * @param count How many bytes it is; only the first 8 count toward the result.
+ * @return The number; 0 if its bytes aren't all there.
+ */
 read :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
     if !fits(bytes, at, count) {
         return 0
@@ -281,7 +362,13 @@ read :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
     return result
 }
 
-/** A size bytes wide signed number's bits, sign-extended. */
+/**
+ * Sign-extend a signed number read as bits.
+ *
+ * @param bits The number's bits, in the low size bytes.
+ * @param size How many bytes wide it is. 8 or more, or 0, takes the bits as they are.
+ * @return The number, negative when its top bit was set.
+ */
 extend :: fn(bits: u64, size: usize) -> i64 {
     if size >= 8 || size == 0 {
         return cast[i64](bits)
@@ -290,7 +377,12 @@ extend :: fn(bits: u64, size: usize) -> i64 {
     return cast[i64](bits << shift) >> shift
 }
 
-/** Where the first type's description starts: after "HSCH", the version and the count. */
+/**
+ * Find where the first type's description starts: after "HSCH", the version and the count.
+ *
+ * @param schema The schema's bytes.
+ * @return 10; NOWHERE if they don't start with "HSCH" and this VERSION, or are shorter than that.
+ */
 first_type :: fn(schema: u8[]) -> usize {
     if schema.count < 10 || byte_at(schema, 0) != 0x48 || byte_at(schema, 1) != 0x53 || byte_at(schema, 2) != 0x43 || byte_at(schema, 3) != 0x48
         || read(schema, 4, 2) != cast[u64](VERSION) {
@@ -299,7 +391,14 @@ first_type :: fn(schema: u8[]) -> usize {
     return 10
 }
 
-/** The type at `at`, through its plain and distinct aliases, or NOWHERE. */
+/**
+ * Follow a type's plain and distinct aliases to the type they name.
+ *
+ * @param schema The schema's bytes.
+ * @param at Where a type's description starts, or NOWHERE.
+ * @return Where the first type that isn't an alias is described: at itself when it isn't one. NOWHERE for NOWHERE,
+ *     a description cut short, or aliases more than ALIAS_LIMIT deep.
+ */
 unaliased :: fn(schema: u8[], at: usize) -> usize {
     type := at
     for step in 0..<ALIAS_LIMIT {
@@ -316,7 +415,13 @@ unaliased :: fn(schema: u8[], at: usize) -> usize {
     return NOWHERE
 }
 
-/** Where the type at a place among the schema's types is described, or NOWHERE. */
+/**
+ * Find where the type at a place among the schema's types is described, by going past each before it.
+ *
+ * @param schema The schema's bytes.
+ * @param place The type's place, from 0.
+ * @return Where its description starts; NOWHERE for a place past the last type, or bytes that aren't a schema.
+ */
 type_at :: fn(schema: u8[], place: usize) -> usize {
     count :: cast[usize](read(schema, 6, 4))
     if place >= count {
@@ -329,7 +434,13 @@ type_at :: fn(schema: u8[], place: usize) -> usize {
     return at
 }
 
-/** Where the description after the one at `at` starts, or NOWHERE. */
+/**
+ * Find where the description after one starts.
+ *
+ * @param schema The schema's bytes.
+ * @param at Where a type's description starts, or NOWHERE.
+ * @return Where the next one starts; NOWHERE for NOWHERE, or a description cut short.
+ */
 after_type :: fn(schema: u8[], at: usize) -> usize {
     if at == NOWHERE || !fits(schema, at, 9) {
         return NOWHERE
@@ -402,7 +513,13 @@ after_type :: fn(schema: u8[], at: usize) -> usize {
     return cursor
 }
 
-/** Past a name: its count, then its bytes. */
+/**
+ * Go past a name: its count (u32), then its bytes.
+ *
+ * @param schema The schema's bytes.
+ * @param at Where the name starts.
+ * @return Where its bytes end, which may be past the end of schema when it's cut short.
+ */
 skip_name :: fn(schema: u8[], at: usize) -> usize {
     return at + 4 + cast[usize](read(schema, at, 4))
 }

@@ -9,28 +9,43 @@ package compiler
  * command line, and override only what differs.
  */
 BuildOptions :: struct {
-    /** Name used in error messages ([kernel] ...) and as the default output file name. */
+    /**
+     * Name used in error messages ([kernel] ...), as the default output file name, and by which a LinkedLibrary or a
+     * TargetOutput names the target. Empty from command_line_options.
+     */
     name : string,
     /**
      * Folder of the target's root package, relative to the build package, or absolute,
      * like the canonical PackageInfo.path that subfolders and load_package give.
      */
     root : string,
-    /** Where the output is written. Empty means the default output folder, using name. */
+    /**
+     * Where the output is written, relative to the build package's folder; every file made from it is named after it,
+     * with its own extension. Empty means the default output folder, using name.
+     */
     output_path : string,
     /**
      * The function the target starts in. Empty means main for executables,
      * and no entry for libraries.
      */
     entry : string,
-    /** Overrides for where imports from "base", "std", etc. are found. */
+    /** Overrides for where imports from "base", "std", etc. are found; empty uses the compiler's own. */
     package_paths : PackagePath[..],
-    /** Per-target values that the target's code reads with target_setting(). */
+    /**
+     * Per-target values that the target's code reads with target_setting(). From command_line_options, those given on
+     * the command line; a later one of the same name wins.
+     */
     settings : TargetSetting[..],
-    // The typed libraries the target calls (docs/compilation.md, Typed Libraries).
+    /** The typed libraries the target calls (docs/compilation.md, Typed Libraries); empty for none. */
     libraries : LinkedLibrary[..],
+    /** How code is generated: the optimization level and debug info. */
     backend_options : BackendOptions,
+    /**
+     * Debug when the options have debug info, Release otherwise, as command_line_options gives it. add_target doesn't
+     * read it: backend_options decides.
+     */
     configuration : Configuration,
+    /** What the target is compiled for and how it's linked. */
     target_options : TargetOptions,
 }
 
@@ -40,77 +55,116 @@ BuildOptions :: struct {
  * as any other; its #export functions are called through the library.
  */
 LinkedLibrary :: struct {
-    /** A target of this build, an OutputType.DynamicLibrary, whose root and output are used */
+    /** A target of this build, by its name, an OutputType.DynamicLibrary, whose root and output are used; or empty. */
     target : string,
-    /** Otherwise the folder of the library's package, relative to the build package, or absolute */
+    /** When target is empty, the folder of the library's package, relative to the build package, or absolute. */
     root : string,
-    /** And the library's file: what the program loads, from beside itself unless it names a folder */
+    /**
+     * When target is empty, the library's file: what the program loads, from beside itself unless it names a
+     * folder.
+     */
     file : string,
 }
 
+/** How a target's code is generated. */
 BackendOptions :: struct {
+    /** Which code generator: only LLVM so far. */
     backend_type : BackendType,
+    /** How much the optimizer does; O2 unless the command line says otherwise. */
     optimization_level : OptimizationLevel,
+    /**
+     * Whether the output has debug info (--debug, docs/compilation.md, Debug Info): DWARF or CodeView, and the table
+     * of functions' names stack traces use.
+     */
     debug_info : bool,
+    /** LLVM's own options, of which there are none yet. */
     llvm_options : LLVMOptions,
 }
 
+/** LLVM's own options for a target, of which there are none yet. */
 LLVMOptions :: struct {
 
 }
 
+/** The code generators a target can be built with. */
 BackendType :: enum {
+    /** LLVM, the only one. */
     LLVM,
 }
 
+/** Whether a build is for debugging or for release, which follows from whether it has debug info. */
 Configuration :: enum {
+    /** Built with debug info. */
     Debug,
+    /** Built without debug info. */
     Release
 }
 
+/** How much the optimizer does, as LLVM's levels. */
 OptimizationLevel :: enum {
+    /** No optimization: fastest to compile, and easiest to debug. */
     O0,
+    /** Light optimization. */
     O1,
+    /** The usual optimization, the command line's default. */
     O2,
+    /** The most optimization, trading size and compile time for speed. */
     O3,
 }
 
+/** What a target is compiled for, and how it's linked and started. */
 TargetOptions :: struct {
+    /** The processor architecture, which TARGET_ARCH is in the target's code. */
     architecture : Architecture,
+    /** The operating system, which OS is in the target's code; None also makes the output ELF. */
     os : OperatingSystem,
+    /** What kind of file is made. */
     output_type : OutputType,
     /** Processor to generate code for. Empty or "generic" uses the architecture's default. */
     cpu : string,
-    // Comma-separated features to enable or disable, like "+avx2,-sse".
+    /** Comma-separated features to enable or disable, like "+avx2,-sse". Empty leaves the cpu's own. */
     cpu_features : string,
+    /** How far apart code and data may be. */
     code_model : CodeModel,
+    /** Whether addresses are fixed when linking or relative. */
     relocation_model : RelocationModel,
-    /** Kernel code needs this off, since interrupts can write below the stack pointer. */
+    /**
+     * Whether functions may use the 128 bytes below the stack pointer without moving it, on x86-64. Kernel code needs
+     * this off, since interrupts can write below the stack pointer.
+     */
     red_zone : bool = true,
     /**
      * Address 0 is memory on this target, like an embedded one's vector table. Accesses to it go
      * through a rawptr (docs/types.md, Pointers), and are kept rather than assumed never to happen.
      */
     address_zero_is_memory : bool = false,
-    /** Linker script for section placement. Empty uses the linker's default layout. */
+    /**
+     * Linker script for section placement, relative to the build package's folder. Empty uses the linker's default
+     * layout.
+     */
     linker_script : string,
     /**
      * Folders the linker looks in for the libraries #foreign functions come from, before its own, relative to the
      * build package's folder. Those given on the command line with --library-path come after them.
      */
     library_paths : string[..],
-    /** Linker to run. Empty uses the default for the target, see docs/compilation.md (Linking). */
+    /**
+     * Linker to run. Empty uses the default for the target, see docs/compilation.md (Linking). add_target doesn't read
+     * it yet, so every target uses the default.
+     */
     linker : string,
-    /*
+    /**
      * Whether the output includes Hemera's startup code, which sets up the first carrier block
      * and context before calling entry. Freestanding programs like kernels turn this off and
      * do it themselves, with intrinsics.set_carrier and push_context.
      */
     startup_code : bool = true,
+    /** What a function's prologue does when its stack check finds too little room. */
     stack_check_failure : StackCheckFailure,
     /**
      * Largest stack frame, in bytes, any function may have. A larger one is a compile error.
-     * 0 means no limit. For programs with small fixed stacks, like a kernel.
+     * 0 means no limit. For programs with small fixed stacks, like a kernel. add_target doesn't read it yet, so no
+     * target has a limit.
      */
     max_frame_size : usize,
 }
@@ -175,15 +229,20 @@ RelocationModel :: enum {
     PIE,
 }
 
+/** What kind of file a target makes. */
 OutputType :: enum {
+    /** A library loaded when a program runs, a DLL or a shared object, as a typed library is. */
     DynamicLibrary,
+    /** A program to run, starting at its entry. */
     Executable,
     /**
      * The loadable bytes only, with no headers, laid out by the linker script and meant
      * to be loaded at a fixed address. For boot sectors and firmware images.
      */
     FlatBinary,
+    /** No output: a build package, whose compile-time code registers the targets. */
     Nothing,
+    /** An archive of object files, for linking into other programs. */
     StaticLibrary,
 }
 
@@ -192,7 +251,9 @@ OutputType :: enum {
  * like --package=std:../my_std on the command line.
  */
 PackagePath :: struct {
+    /** The import location's name, like "std", without quotes. */
     location : string,
+    /** The folder it's found in, relative to the build package's folder, or absolute. */
     path : string,
 }
 
@@ -202,11 +263,16 @@ PackagePath :: struct {
  * can differ), so a type from one doesn't exist in the other.
  */
 TargetSetting :: struct {
+    /** What target_setting looks it up by. */
     name : string,
+    /** What target_setting gives for it, which the target's code parses as it needs. */
     value : string,
 }
 
-/** A target or step registered by build code, which later steps can depend on. */
+/**
+ * A target or step registered by build code, which later steps can depend on: a number the compiler gives each in
+ * turn, from add_target and add_step.
+ */
 BuildNode :: distinct alias u32
 
 /**
@@ -214,22 +280,32 @@ BuildNode :: distinct alias u32
  * have no outputs of their own, so they don't appear here.
  */
 TargetOutput :: struct {
+    /** The target, as add_target gave it. */
     node : BuildNode,
+    /** The target's name, from its BuildOptions. */
     name : string,
+    /** Where its output was written. */
     path : string,
+    /** What kind of file it is. */
     output_type : OutputType,
 }
 
 /**
- * Run after everything it depends on has finished. Returning false fails the build,
- * after reporting why with report_error.
+ * A step's function: run after everything it depends on has finished.
+ *
+ * @param inputs The output of each target it depends on; steps it depends on have no outputs, so they aren't here.
+ * @return True to go on; false fails the build, after reporting why with report_error.
  */
 StepFunction :: alias fn(inputs: TargetOutput[]) -> bool
 
 /**
- * Run on each target once it has been type checked, before code generation.
+ * A check's function: run on each target once it has been type checked, before code generation.
  * Errors are reported with report_error, and the check should keep going so every
- * problem is reported. Returning false fails that target.
+ * problem is reported.
+ *
+ * @param target The target's options.
+ * @param program The target's whole program; its values have the target's types, compared by name (see ConstantInfo).
+ * @return True when the target passes; false fails that target, as reporting an error does.
  */
 CheckFunction :: alias fn(target: ptr[BuildOptions], program: ptr[ProgramInfo]) -> bool
 
@@ -240,7 +316,9 @@ CheckFunction :: alias fn(target: ptr[BuildOptions], program: ptr[ProgramInfo]) 
  * #run code in other packages always gets neither (docs/compilation.md).
  */
 BuildPermissions :: struct {
+    /** Whether it may run other programs, as os.run_process does. */
     run_processes : bool,
+    /** Whether it may write files outside the output folder. */
     write_outside_output : bool,
 }
 
@@ -250,46 +328,89 @@ BuildPermissions :: struct {
  */
 
 /**
- * The options given on the command line, as defaults for the targets of a build.
- * name, root and entry are empty, and output_type is the one of the program being compiled.
+ * Give the options given on the command line, as defaults for the targets of a build.
+ *
+ * @return The options, with name, root and entry empty and output_type .Executable, so a target only sets what
+ *     differs. Its settings are those the command line gave.
  */
 command_line_options : fn() -> BuildOptions : ---
 
 /**
- * The options of the target currently being compiled. During a build package's own #run code,
- * this is the build package itself.
+ * Give the options of the target currently being compiled.
+ *
+ * @return The target's options, with its name, entry and output path. During a build package's own #run code, they're
+ *     the build package's own.
  */
 current_build_options : fn() -> BuildOptions : ---
 
-/** Register a target, which is built once the build package has finished compiling. */
+/**
+ * Register a target, which is built once the build package has finished compiling.
+ *
+ * @param options The target's options, copied, so they can be changed or reused after.
+ * @param location Where the target is reported as registered, for its errors; the caller's own by default.
+ * @return The target's node, for steps to depend on.
+ */
 add_target : fn(options: BuildOptions, location := #caller_location) -> BuildNode : ---
 
-/** Register a step, run after everything in after has finished successfully. */
+/**
+ * Register a step, run after everything in after has finished successfully; steps run once every target is done.
+ *
+ * @param step The function to run, given the outputs of the targets in after. Returning false fails the build.
+ * @param after The targets and steps it waits for, copied.
+ * @param location Where the step is reported as registered; the caller's own by default.
+ * @return The step's node, for later steps to depend on.
+ */
 add_step : fn(step: StepFunction, after: BuildNode[], location := #caller_location) -> BuildNode : ---
 
-/** Every target registered so far. */
+/**
+ * Give every target registered so far.
+ *
+ * @return Their nodes, in the order they were registered; empty before the first add_target. A copy: targets added
+ *     later aren't in it.
+ */
 all_targets : fn() -> BuildNode[] : ---
 
-/** Register a check that runs on every target once it has been type checked. */
+/**
+ * Register a check that runs on every target once it has been type checked, before code generation.
+ *
+ * @param check The function to run, given the target's options and its whole program. Returning false, or reporting
+ *     an error, stops that target.
+ * @param location Where the check is reported as registered; the caller's own by default.
+ */
 add_check : fn(check: CheckFunction, location := #caller_location) : ---
 
 /**
- * The value of a setting for the target currently being compiled, or default if the
- * target doesn't have that setting.
+ * Give the value of a setting for the target currently being compiled.
+ *
+ * @param name The setting's name, compared exactly.
+ * @param default What to give when the target doesn't have that setting.
+ * @return The setting's value, the last one given if it was given more than once; default if it wasn't given.
  */
 target_setting : fn(name: string, default := "") -> string : ---
 
 /**
- * What the compile-time code calling this is allowed to do outside the compiler.
- * Nothing is granted outside execution the build package started.
+ * Give what the compile-time code calling this is allowed to do outside the compiler.
+ *
+ * @return Both granted when the command line gave --allow-run and the build package started this execution; neither
+ *     otherwise, as in #run code of any other package.
  */
 build_permissions : fn() -> BuildPermissions : ---
 
 /**
  * Report a compile error at location, without stopping compile-time execution, so every
  * problem can be reported. The build fails once the current target is done.
+ *
+ * @param location Where the error is reported, like #caller_location for an error in what the caller gave.
+ * @param format_string The message, with placeholders (docs/format_strings.md).
+ * @param params The values for the placeholders, in order.
  */
 report_error : fn(location: SourceCodeLocation, format_string: string, params: any...) : ---
 
-/** Report a warning at location, which doesn't fail the build. */
+/**
+ * Report a warning at location, which doesn't fail the build.
+ *
+ * @param location Where the warning is reported.
+ * @param format_string The message, with placeholders (docs/format_strings.md).
+ * @param params The values for the placeholders, in order.
+ */
 report_warning : fn(location: SourceCodeLocation, format_string: string, params: any...) : ---

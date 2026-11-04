@@ -26,38 +26,66 @@ import intrinsics from "base"
  * ED_BASE_ODD for verifying); signing reads each entry by looking at every entry it could be.
  */
 
-/** An Ed25519 secret key, 32 random bytes, which RFC 8032 calls the seed. */
+/**
+ * An Ed25519 secret key, 32 random bytes from a secure generator, which RFC 8032 calls the seed. Any 32 bytes will do.
+ */
 Ed25519SecretKey :: distinct alias u8[32] #secret
-/** An Ed25519 public key, an encoded point. */
+/** An Ed25519 public key: an encoded point (RFC 8032, section 5.1.2), public. */
 Ed25519PublicKey :: distinct alias u8[32]
-/** An Ed25519 signature: a point, R, then a number, S. */
+/** An Ed25519 signature: a point, R, encoded in 32 bytes, then a number, S, 32 little-endian bytes below L. */
 Ed25519Signature :: distinct alias u8[64]
 
 /** A point on the curve, in extended coordinates: x = X / Z, y = Y / Z, and x * y = T / Z. */
 EdPoint :: struct {
+    /** X. */
     x: Fe,
+    /** Y. */
     y: Fe,
+    /** Z, never 0 for a point on the curve. */
     z: Fe,
+    /** T, X * Y / Z. */
     t: Fe,
 }
 
+/** The curve's constant d, -121665 / 121666 mod p, in limbs. */
 ED_D :: u64.[0x3_4dca_1359_78a3, 0x1_a828_3b15_6ebd, 0x5_e7a2_6001_c029, 0x7_39c6_63a0_3cbb, 0x5_2036_cee2_b6ff]
+/** 2d, in limbs, as adding points uses it. */
 ED_D2 :: u64.[0x6_9b94_26b2_f159, 0x3_5050_762a_dd7a, 0x3_cf44_c003_8052, 0x6_738c_c740_7977, 0x2_406d_9dc5_6dff]
+/** A square root of -1 mod p, 2^((p - 1) / 4), in limbs, for square roots. */
 ED_SQRT_M1 :: u64.[0x6_1b27_4a0e_a0b0, 0x0_d5a5_fc8f_189d, 0x7_ef5e_9cbd_0c60, 0x7_8595_a680_4c9e, 0x2_b832_4804_fc1d]
+/** The base point B's x coordinate, in limbs. */
 ED_BASE_X :: u64.[0x6_2d60_8f25_d51a, 0x4_12a4_b4f6_592a, 0x7_5b71_71a4_b31d, 0x1_ff60_5271_18fe, 0x2_1693_6d3c_d6e5]
+/** The base point B's y coordinate, 4 / 5 mod p, in limbs. */
 ED_BASE_Y :: u64.[0x6_6666_6666_6658, 0x4_cccc_cccc_cccc, 0x1_9999_9999_9999, 0x3_3333_3333_3333, 0x6_6666_6666_6666]
+/** The base point B's x * y, in limbs. */
 ED_BASE_T :: u64.[0x6_8ab3_a5b7_dda3, 0x0_0eea_2a5e_adbb, 0x2_af8d_f483_c27e, 0x3_32b3_7527_4732, 0x6_7875_f0fd_78b7]
 
+/**
+ * Make the group's identity, the neutral point (0, 1).
+ *
+ * @return The identity, in extended coordinates.
+ */
 ed_identity #constant_time :: fn() -> EdPoint {
     return EdPoint.{x = fe_of(u64.[0, 0, 0, 0, 0]), y = fe_of(u64.[1, 0, 0, 0, 0]), z = fe_of(u64.[1, 0, 0, 0, 0]),
         t = fe_of(u64.[0, 0, 0, 0, 0])}
 }
 
+/**
+ * Make the base point B (RFC 8032, section 5.1).
+ *
+ * @return B, in extended coordinates.
+ */
 ed_base #constant_time :: fn() -> EdPoint {
     return EdPoint.{x = fe_of(ED_BASE_X), y = fe_of(ED_BASE_Y), z = fe_of(u64.[1, 0, 0, 0, 0]), t = fe_of(ED_BASE_T)}
 }
 
-/** p + q (RFC 8032, 5.1.4), which works for any two points, the same or not, so doubling uses it too. */
+/**
+ * Add two points (RFC 8032, section 5.1.4), in constant time.
+ *
+ * @param p The first point.
+ * @param q The second point, which may be p: the formula works for any two points.
+ * @return The sum, p + q.
+ */
 ed_add #constant_time :: fn(p: EdPoint, q: EdPoint) -> EdPoint {
     a := fe_multiply(fe_subtract(p.y, p.x), fe_subtract(q.y, q.x))
     b := fe_multiply(fe_add(p.y, p.x), fe_add(q.y, q.x))
@@ -70,7 +98,13 @@ ed_add #constant_time :: fn(p: EdPoint, q: EdPoint) -> EdPoint {
     return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
 }
 
-/** 2p (RFC 8032, 5.1.4's doubling): four multiplications and four squarings, rather than an addition's nine. */
+/**
+ * Double a point (RFC 8032, section 5.1.4's doubling): four multiplications and four squarings, rather than an
+ * addition's nine.
+ *
+ * @param p The point.
+ * @return The double, 2p.
+ */
 ed_double #constant_time :: fn(p: EdPoint) -> EdPoint {
     a := fe_square(p.x)
     b := fe_square(p.y)
@@ -82,6 +116,12 @@ ed_double #constant_time :: fn(p: EdPoint) -> EdPoint {
     return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
 }
 
+/**
+ * Negate a point: x and t negated.
+ *
+ * @param p The point.
+ * @return The negation, -p.
+ */
 ed_negate #constant_time :: fn(p: EdPoint) -> EdPoint {
     return EdPoint.{x = fe_negate(p.x), y = p.y, z = p.z, t = fe_negate(p.t)}
 }
@@ -91,12 +131,21 @@ ed_negate #constant_time :: fn(p: EdPoint) -> EdPoint {
  * costs one multiplication fewer an addition (ref10's "Niels" form).
  */
 EdNiels :: struct {
+    /** y + x. */
     sum: Fe,
+    /** y - x. */
     difference: Fe,
+    /** 2d * x * y. */
     product: Fe,
 }
 
-/** p + q, q in Niels form: seven multiplications. */
+/**
+ * Add a point in Niels form to another: seven multiplications.
+ *
+ * @param p The point added to.
+ * @param q The point added, in Niels form.
+ * @return The sum, p + q.
+ */
 ed_add_niels #constant_time :: fn(p: EdPoint, q: EdNiels) -> EdPoint {
     a := fe_multiply(fe_subtract(p.y, p.x), q.difference)
     b := fe_multiply(fe_add(p.y, p.x), q.sum)
@@ -115,6 +164,11 @@ ed_add_niels #constant_time :: fn(p: EdPoint, q: EdNiels) -> EdPoint {
  */
 ED_BASE_TABLE :: #run ed_base_table()
 
+/**
+ * Work out ED_BASE_TABLE, while compiling.
+ *
+ * @return For each j from 0 to 31, the multiples 1 to 8 of 256^j * B, as their Niels forms' limbs, 15 each.
+ */
 ed_base_table :: fn() -> u64[3840] {
     points : EdPoint[256]
     position := ed_base()
@@ -135,9 +189,14 @@ ed_base_table :: fn() -> u64[3840] {
 }
 
 /**
- * Points, as the limbs of their Niels forms, 15 each, into table, for a table worked out while compiling:
- * every z inverted at once (Montgomery's trick: one inversion, and three multiplications a point), as
- * inverting is most of the work.
+ * Write points as the limbs of their Niels forms, for a table worked out while compiling.
+ *
+ * Every z is inverted at once (Montgomery's trick: one inversion, and three multiplications a point), as inverting
+ * is most of the work. The limbs are declassified, as the table is public.
+ *
+ * @param points The points, 1 to 256 of them; with none or more, nothing is written.
+ * @param table Where the limbs go, 15 a point (y + x, y - x and 2d * x * y, 5 limbs each), in the points' order; it
+ *     should have room for them all.
  */
 ed_niels_limbs :: fn(points: EdPoint[], table: mut u64[]) {
     if points.count == 0 || points.count > 256 || table.count == 0 {
@@ -172,8 +231,12 @@ ed_niels_limbs :: fn(points: EdPoint[], table: mut u64[]) {
 }
 
 /**
- * digit * 256^j * B, for a digit from -8 to 8, read from the table without the digit deciding what's read:
- * every one of position j's entries looked at, the right one kept with a mask, then negated if the digit is.
+ * Look up a multiple of the base point in ED_BASE_TABLE without the digit deciding what's read: every one of
+ * position j's entries is looked at, the right one kept with a mask, then negated if the digit is.
+ *
+ * @param j The position, 0 to 31: the multiple is of 256^j * B.
+ * @param digit The multiple, -8 to 8, as a u64 in two's complement; secret.
+ * @return The multiple, digit * 256^j * B, in Niels form; the identity for 0.
  */
 ed_table_select #constant_time :: fn(j: int, digit: SecretWord) -> EdNiels {
     d := cast[u64](digit)
@@ -200,9 +263,13 @@ ed_table_select #constant_time :: fn(j: int, digit: SecretWord) -> EdNiels {
 }
 
 /**
- * scalar times the base point with the table (ref10's ge_scalarmult_base): the scalar as 64 signed digits
- * from -8 to 8 in base 16, the odd ones' multiples added, times 16, then the even ones'. scalar's top bit is 0,
- * as a clamped or reduced scalar's is.
+ * Multiply the base point by a secret scalar, in constant time, with ED_BASE_TABLE (ref10's ge_scalarmult_base).
+ *
+ * The scalar is taken as 64 signed digits from -8 to 8 in base 16: the odd ones' multiples are added, the sum
+ * multiplied by 16, then the even ones' added.
+ *
+ * @param scalar The scalar, 32 little-endian bytes, its top bit 0, as a clamped or reduced scalar's is.
+ * @return The product, scalar * B.
  */
 ed_multiply_base #constant_time :: fn(scalar: SecretByte[32]) -> EdPoint {
     // Two digits a byte, kept as u64s in two's complement
@@ -235,23 +302,44 @@ ed_multiply_base #constant_time :: fn(scalar: SecretByte[32]) -> EdPoint {
  * added many times (ref10's "cached" form).
  */
 EdCached :: struct {
+    /** Y + X. */
     sum: Fe,
+    /** Y - X. */
     difference: Fe,
+    /** Z. */
     z: Fe,
+    /** 2d * T. */
     product: Fe,
 }
 
+/**
+ * Put a point in cached form, for adding it many times.
+ *
+ * @param p The point.
+ * @return The same point, cached.
+ */
 ed_cached #constant_time :: fn(p: EdPoint) -> EdCached {
     return EdCached.{sum = fe_add(p.y, p.x), difference = fe_subtract(p.y, p.x), z = p.z,
         product = fe_multiply(p.t, fe_of(ED_D2))}
 }
 
-/** -p, cached: x and t negated, so y + x and y - x swap. */
+/**
+ * Negate a cached point: x and t negated, so y + x and y - x swap.
+ *
+ * @param q The point, cached.
+ * @return The negation, -q, cached.
+ */
 ed_cached_negate #constant_time :: fn(q: EdCached) -> EdCached {
     return EdCached.{sum = q.difference, difference = q.sum, z = q.z, product = fe_negate(q.product)}
 }
 
-/** p + q, q cached: eight multiplications. */
+/**
+ * Add a cached point to another: eight multiplications.
+ *
+ * @param p The point added to.
+ * @param q The point added, cached.
+ * @return The sum, p + q.
+ */
 ed_add_cached #constant_time :: fn(p: EdPoint, q: EdCached) -> EdPoint {
     a := fe_multiply(fe_subtract(p.y, p.x), q.difference)
     b := fe_multiply(fe_add(p.y, p.x), q.sum)
@@ -265,6 +353,12 @@ ed_add_cached #constant_time :: fn(p: EdPoint, q: EdCached) -> EdPoint {
     return EdPoint.{x = fe_multiply(e, f), y = fe_multiply(g, h), z = fe_multiply(f, g), t = fe_multiply(e, h)}
 }
 
+/**
+ * Negate a point in Niels form: y + x and y - x swap, and x * y is negated.
+ *
+ * @param q The point, in Niels form.
+ * @return The negation, -q, in Niels form.
+ */
 ed_niels_negate #constant_time :: fn(q: EdNiels) -> EdNiels {
     return EdNiels.{sum = q.difference, difference = q.sum, product = fe_negate(q.product)}
 }
@@ -275,6 +369,11 @@ ed_niels_negate #constant_time :: fn(q: EdNiels) -> EdNiels {
  */
 ED_BASE_ODD :: #run ed_base_odd_table()
 
+/**
+ * Work out ED_BASE_ODD, while compiling.
+ *
+ * @return B, 3B, 5B, up to 15B, as their Niels forms' limbs, 15 each.
+ */
 ed_base_odd_table :: fn() -> u64[120] {
     points : EdPoint[8]
     twice := ed_double(ed_base())
@@ -288,7 +387,13 @@ ed_base_odd_table :: fn() -> u64[120] {
     return table
 }
 
-/** (2k + 1)B, from the table. */
+/**
+ * Look up an odd multiple of the base point in ED_BASE_ODD, for verifying: k decides what's read, so it has to be
+ * public.
+ *
+ * @param k Which odd multiple, 0 to 7.
+ * @return The multiple, (2k + 1)B, in Niels form.
+ */
 ed_base_odd :: fn(k: int) -> EdNiels {
     values : Fe[3]
     for v in 0..<3 {
@@ -300,8 +405,12 @@ ed_base_odd :: fn(k: int) -> EdNiels {
 }
 
 /**
- * A public scalar as 256 signed digits, the sum of digit[i] * 2^i: most of them 0, the others odd, from -15 to
- * 15, with at least four 0s after each (ref10's slide). Each nonzero digit is one addition.
+ * Write a public scalar as sliding-window digits (ref10's slide), not in constant time. Each nonzero digit is one
+ * addition.
+ *
+ * @param scalar The scalar, 32 little-endian bytes, below L, as k and S are, so a carry never goes past the top.
+ * @return The 256 signed digits whose sum of digit[i] * 2^i is the scalar: most of them 0, the others odd, from -15 to
+ *     15, with at least four 0s after each.
  */
 ed_sliding_digits :: fn(scalar: u8[32]) -> int[256] {
     r : int[256]
@@ -344,8 +453,13 @@ ed_sliding_digits :: fn(scalar: u8[32]) -> int[256] {
 }
 
 /**
- * a * point + b * B, for public a and b, not in constant time: both scalars' digits added along one chain of
- * doublings (Straus), point's odd multiples worked out first and B's from ED_BASE_ODD.
+ * Work out a * point + b * B, not in constant time: both scalars' digits are added along one chain of doublings
+ * (Straus), point's odd multiples worked out first and B's from ED_BASE_ODD.
+ *
+ * @param a The point's scalar, 32 little-endian bytes below L, public.
+ * @param point The point, public.
+ * @param b The base point's scalar, 32 little-endian bytes below L, public.
+ * @return The sum, a * point + b * B.
  */
 ed_double_multiply :: fn(a: u8[32], point: EdPoint, b: u8[32]) -> EdPoint {
     a_digits := ed_sliding_digits(a)
@@ -385,7 +499,13 @@ ed_double_multiply :: fn(a: u8[32], point: EdPoint, b: u8[32]) -> EdPoint {
     return q
 }
 
-/** y, with x's low bit as the top bit (RFC 8032, 5.1.2). */
+/**
+ * Encode a point (RFC 8032, section 5.1.2).
+ *
+ * @param p The point.
+ * @return The encoding: y, 32 little-endian bytes reduced below p, with x's low bit as the top bit; secret until the
+ *     caller declassifies it.
+ */
 ed_encode #constant_time :: fn(p: EdPoint) -> SecretByte[32] {
     inverse := fe_invert(p.z)
     x := fe_to_bytes(fe_multiply(p.x, inverse))
@@ -395,8 +515,14 @@ ed_encode #constant_time :: fn(p: EdPoint) -> SecretByte[32] {
 }
 
 /**
- * The point bytes encode, into point (RFC 8032, 5.1.3), or false if they don't encode one: y isn't
- * below p, or x^2 has no square root, or x is 0 but said to be odd.
+ * Decode a point (RFC 8032, section 5.1.3), refusing any encoding but the one way a point should be written.
+ *
+ * The bytes are public, so whether they decode, and how, is declassified as it's worked out.
+ *
+ * @param bytes The encoding: y, little-endian, with x's low bit as the top bit.
+ * @param point Where the point goes, with z = 1; left as it was when false is returned.
+ * @return True, or false if the bytes don't encode a point: y isn't below p, or x^2 has no square root, or x is 0 but
+ *     said to be odd.
  */
 ed_decode #constant_time :: fn(bytes: u8[32], point: ptr[mut EdPoint]) -> bool {
     y_bytes : SecretByte[32]
@@ -438,7 +564,7 @@ ed_decode #constant_time :: fn(bytes: u8[32], point: ptr[mut EdPoint]) -> bool {
     return true
 }
 
-/** A scalar's 64 signed digits, each a u64 in two's complement */
+/** A scalar's 64 signed digits in base 16, -8 to 8, each a u64 in two's complement; secret. */
 EdDigits :: distinct alias u64[64] #secret
 
 /** A number mod the group's order, L = 2^252 + 27742317777372353535851937790883648493, in 64-bit limbs. */
@@ -446,9 +572,16 @@ Scalar :: distinct alias u64[4] #secret
 /** A product, or a hash, before it's reduced mod L. */
 ScalarWide :: distinct alias u64[8] #secret
 
+/** The group's order, L = 2^252 + 27742317777372353535851937790883648493, in 64-bit limbs, least significant first. */
 ED_ORDER :: u64.[0x5812_631a_5cf5_d3ed, 0x14de_f9de_a2f7_9cd6, 0, 0x1000_0000_0000_0000]
 
-/** s - L, and whether that went below 0, so s was below L. */
+/**
+ * Subtract L from a number, in constant time, to tell whether it was below L.
+ *
+ * @param s The number, any 256-bit value.
+ * @param below Where whether s was below L goes, secret: whether the subtraction went below 0.
+ * @return The difference, s - L, modulo 2^256.
+ */
 scalar_less_order #constant_time :: fn(s: Scalar, below: ptr[mut SecretBool]) -> Scalar {
     difference : Scalar
     borrow := compiler.secret(cast[u64](0))
@@ -462,9 +595,14 @@ scalar_less_order #constant_time :: fn(s: Scalar, below: ptr[mut SecretBool]) ->
 }
 
 /**
- * x mod L, a byte at a time from the top: r times 256 plus the byte, less q * L for q its bits from 252 up,
- * under 2^9. That leaves it below 2^252, so below L, and above -q * (L - 2^252), above -2^134, so adding L
- * once if it went below 0 brings it back between 0 and L - 1.
+ * Reduce a 512-bit number modulo L, in constant time.
+ *
+ * It goes a byte at a time from the top: r times 256 plus the byte, less q * L for q its bits from 252 up, under
+ * 2^9. That leaves it below 2^252, so below L, and above -q * (L - 2^252), above -2^134, so adding L once if it went
+ * below 0 brings it back between 0 and L - 1.
+ *
+ * @param x The number, like a SHA-512 hash or a product, any 512-bit value.
+ * @return The remainder, x mod L, from 0 to L - 1.
  */
 scalar_reduce #constant_time :: fn(x: ScalarWide) -> Scalar {
     r : Scalar
@@ -504,7 +642,12 @@ scalar_reduce #constant_time :: fn(x: ScalarWide) -> Scalar {
     return r
 }
 
-/** 64 little-endian bytes, like a hash, as a number to reduce. */
+/**
+ * Read 64 little-endian bytes, like a hash, as a number to reduce.
+ *
+ * @param bytes The bytes.
+ * @return The number, in 64-bit limbs, least significant first.
+ */
 scalar_wide_of #constant_time :: fn(bytes: SecretByte[64]) -> ScalarWide {
     wide : ScalarWide
     for i in 0..<8 {
@@ -515,6 +658,12 @@ scalar_wide_of #constant_time :: fn(bytes: SecretByte[64]) -> ScalarWide {
     return wide
 }
 
+/**
+ * Read 32 little-endian bytes as a scalar, without reducing it.
+ *
+ * @param bytes The bytes.
+ * @return The number, in 64-bit limbs, least significant first; it may be L or more.
+ */
 scalar_of #constant_time :: fn(bytes: SecretByte[32]) -> Scalar {
     s : Scalar
     for i in 0..<4 {
@@ -525,6 +674,12 @@ scalar_of #constant_time :: fn(bytes: SecretByte[32]) -> Scalar {
     return s
 }
 
+/**
+ * Write a scalar as 32 little-endian bytes: scalar_of the other way.
+ *
+ * @param s The scalar.
+ * @return Its bytes, secret.
+ */
 scalar_bytes #constant_time :: fn(s: Scalar) -> SecretByte[32] {
     bytes : SecretByte[32]
     for i in 0..<4 {
@@ -535,7 +690,14 @@ scalar_bytes #constant_time :: fn(s: Scalar) -> SecretByte[32] {
     return bytes
 }
 
-/** (k * a + r) mod L, for k and r below L and a below 2^255. */
+/**
+ * Work out S = (k * a + r) mod L, as signing does, in constant time.
+ *
+ * @param k The challenge, below L.
+ * @param a The secret scalar, below 2^255.
+ * @param r The nonce, below L.
+ * @return The result, (k * a + r) mod L, from 0 to L - 1.
+ */
 scalar_multiply_add #constant_time :: fn(k: Scalar, a: Scalar, r: Scalar) -> Scalar {
     wide : ScalarWide
     for i in 0..<4 {
@@ -558,7 +720,14 @@ scalar_multiply_add #constant_time :: fn(k: Scalar, a: Scalar, r: Scalar) -> Sca
     return scalar_reduce(wide)
 }
 
-// A secret key's scalar, clamped, and the prefix that makes each message's nonce (RFC 8032, 5.1.5).
+/**
+ * Expand a secret key into its scalar and prefix (RFC 8032, section 5.1.5): its SHA-512 hash's halves. The copies of
+ * the key and the hash made on the way are wiped.
+ *
+ * @param secret_key The secret key.
+ * @param scalar Where the clamped scalar goes: the hash's first half, a multiple of 8 with bit 254 set and 255 clear.
+ * @param prefix Where the prefix that makes each message's nonce goes: the hash's second half.
+ */
 ed25519_expand #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], scalar: ptr[mut SecretByte[32]],
     prefix: ptr[mut SecretByte[32]]) {
 
@@ -579,7 +748,13 @@ ed25519_expand #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], scalar: p
     intrinsics.secure_zero(&digest, size_of(SecretByte[64]))
 }
 
-/** The public key going with a secret one. */
+/**
+ * Work out the public key that goes with an Ed25519 secret key (RFC 8032, section 5.1.5). What's derived from the
+ * secret key on the way is wiped.
+ *
+ * @param secret_key The secret key.
+ * @return The public key, to give to whoever checks the signatures.
+ */
 ed25519_public_key #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed25519PublicKey {
     scalar : SecretByte[32]
     prefix : SecretByte[32]
@@ -594,7 +769,15 @@ ed25519_public_key #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed
     return public_key
 }
 
-/** The hash of R, the public key and the message, reduced: what the signature's S answers for. */
+/**
+ * Work out a signature's challenge, k: the SHA-512 hash of R, the public key and the message, reduced modulo L.
+ * It's what the signature's S answers for.
+ *
+ * @param r The signature, whose first 32 bytes, R, are read.
+ * @param public_key The signer's public key.
+ * @param message The message.
+ * @return The challenge k, from 0 to L - 1, secret until the caller declassifies it.
+ */
 ed25519_challenge #constant_time :: fn(r: ptr[Ed25519Signature], public_key: ptr[Ed25519PublicKey], message: u8[]) -> Scalar {
     r_bytes : u8[32]
     for i in 0..<32 {
@@ -619,12 +802,21 @@ ed25519_challenge #constant_time :: fn(r: ptr[Ed25519Signature], public_key: ptr
  * intrinsics.secure_zero when done.
  */
 Ed25519KeyPair :: struct {
-    // The clamped scalar and the nonce's prefix (RFC 8032, 5.1.5)
+    /** The clamped scalar (RFC 8032, section 5.1.5). */
     scalar: SecretByte[32],
+    /** The prefix that makes each message's nonce (RFC 8032, section 5.1.5). */
     prefix: SecretByte[32],
+    /** The public key, which signing hashes in. */
     public_key: Ed25519PublicKey,
 }
 
+/**
+ * Expand a secret key into a key pair, for signing many messages with ed25519_sign_with.
+ *
+ * @param secret_key The secret key.
+ * @return The key pair, secret; the caller zeros it with intrinsics.secure_zero when done. What else is derived from
+ *     the secret key on the way is wiped.
+ */
 ed25519_key_pair #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed25519KeyPair {
     pair : Ed25519KeyPair
     ed25519_expand(secret_key, &pair.scalar, &pair.prefix)
@@ -635,7 +827,16 @@ ed25519_key_pair #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed25
     return pair
 }
 
-/** message signed with secret_key (RFC 8032, 5.1.6). */
+/**
+ * Sign a message with Ed25519 (RFC 8032, section 5.1.6), in constant time.
+ *
+ * Signing is deterministic: the same key and message always give the same signature, with no randomness needed. The
+ * key pair it expands on the way is wiped.
+ *
+ * @param secret_key The secret key.
+ * @param message The message, of any length.
+ * @return The signature, public.
+ */
 ed25519_sign #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], message: u8[]) -> Ed25519Signature {
     pair := ed25519_key_pair(secret_key)
     signature := ed25519_sign_with(&pair, message)
@@ -643,7 +844,14 @@ ed25519_sign #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], message: u8
     return signature
 }
 
-/** message signed with a key pair's secret key: the same signature ed25519_sign gives. */
+/**
+ * Sign a message with a key pair (RFC 8032, section 5.1.6), in constant time: about half the work of ed25519_sign,
+ * as the public key is already worked out.
+ *
+ * @param pair The key pair, from ed25519_key_pair.
+ * @param message The message, of any length.
+ * @return The signature, public: the same one ed25519_sign gives with the pair's secret key.
+ */
 ed25519_sign_with #constant_time :: fn(pair: ptr[Ed25519KeyPair], message: u8[]) -> Ed25519Signature {
     // r, the nonce, from the prefix and the message, so the same message always gets the same one
     hasher := sha512_start()
@@ -665,8 +873,17 @@ ed25519_sign_with #constant_time :: fn(pair: ptr[Ed25519KeyPair], message: u8[])
 }
 
 /**
- * Whether signature is public_key's for message (RFC 8032, 5.1.7): S below L, and [S]B = R + [k]A, as
- * the encoding of [S]B - [k]A matching R's bytes.
+ * Check an Ed25519 signature (RFC 8032, section 5.1.7). Everything it works with is public, so it isn't constant
+ * time.
+ *
+ * It checks [S]B = R + [k]A without multiplying by the cofactor, as the encoding of [S]B - [k]A matching R's bytes,
+ * so R has to be encoded the one way it should be too.
+ *
+ * @param public_key The signer's public key, which has to decode to a point, written the one way it should be.
+ * @param message The message, of any length.
+ * @param signature The signature.
+ * @return Whether the signature was made with public_key's secret key for this message: false too when the public
+ *     key doesn't decode, S isn't below L, or R isn't encoded canonically.
  */
 ed25519_verify :: fn(public_key: ptr[Ed25519PublicKey], message: u8[], signature: ptr[Ed25519Signature]) -> bool {
     a : EdPoint

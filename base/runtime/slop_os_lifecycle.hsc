@@ -12,31 +12,57 @@ import intrinsics from "base"
  * mapping or protocol code for them; std/os/slop_os's lifecycle is the other end.
  */
 #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+    /** The kernel's error for a channel read whose other end has closed, which ends the lifecycle thread's serving. */
     SLOP_OS_ERROR_PEER_CLOSED : u64 : 12
 
+    /** A message on the lifecycle channel, either way: 8 bytes, written and read whole through the kernel's copy. */
     SlopOsLifecycleMessage :: struct {
+        /** What the message is: one of the SLOP_OS_LIFECYCLE_ constants; one of any other kind is ignored. */
         kind : u32,
+        /**
+         * The asker's number for the message, chosen by the other end; an answer carries its question's, so the other
+         * end can tell which question a Pong or Stopping answers.
+         */
         sequence : u32,
     }
 
+    /** A question from the other end: is the program still answering? Answered with SLOP_OS_LIFECYCLE_PONG. */
     SLOP_OS_LIFECYCLE_PING : u32 : 1
+    /**
+     * A request from the other end that the program end. Remembered for slop_os_stop_requested, and answered with
+     * SLOP_OS_LIFECYCLE_STOPPING.
+     */
     SLOP_OS_LIFECYCLE_STOP : u32 : 2
+    /** The runtime's answer to SLOP_OS_LIFECYCLE_PING, with the ping's sequence. */
     SLOP_OS_LIFECYCLE_PONG : u32 : 3
+    /**
+     * The runtime's answer to SLOP_OS_LIFECYCLE_STOP, with the stop's sequence. It says the request was passed on to
+     * the program, not that the program has stopped or will.
+     */
     SLOP_OS_LIFECYCLE_STOPPING : u32 : 4
 
-    /** The lifecycle thread's stack, which needs little: it calls the kernel, and nothing else */
+    /** The lifecycle thread's stack, in bytes, which needs little: it calls the kernel, and nothing else. */
     SLOP_OS_LIFECYCLE_STACK : usize : 16 * 1024
 
-    /** What the lifecycle thread starts with: its carrier block and its end of the channel. */
+    /**
+     * What the lifecycle thread starts with: its carrier block and its end of the channel. It's in mapped pages of its
+     * own, kept for the rest of the process, since the thread has no one to give them back to.
+     */
     SlopOsLifecycle :: struct {
+        /** The lifecycle thread's carrier block, its stack limits set from its own stack. */
         carrier : CarrierBlock,
+        /** The handle of the program's end of the lifecycle channel, from its startup grant. */
         channel : u64,
+        /** The lowest address of the thread's SLOP_OS_LIFECYCLE_STACK bytes of stack, from map_pages. */
         stack : rawptr,
     }
 
     /**
-     * The lifecycle thread, if the program was given a "lifecycle" channel: started before main, from the entry, which
-     * has no context yet; nothing it does needs one.
+     * Start the lifecycle thread, if the program was given a "lifecycle" channel.
+     *
+     * Called before main, from the entry, which has no context yet; nothing it does needs one. Without the grant,
+     * nothing happens. If the thread's block or stack can't be mapped, or the kernel won't make the thread, the program
+     * runs without its channel being served, and nothing reports it; whatever was mapped stays mapped.
      */
     slop_os_start_lifecycle #no_context :: fn() {
         channel :: os_entry_grant("lifecycle", "Channel", "", false)
@@ -55,7 +81,14 @@ import intrinsics from "base"
         _ = slop_os_start_thread(cast[rawptr](slop_os_lifecycle_entry), stack, SLOP_OS_LIFECYCLE_STACK, cast[u64](cast[uintptr](lifecycle)))
     }
 
-    /** The lifecycle thread: every message answered, until the other end closes, when the thread ends. */
+    /**
+     * Run the lifecycle thread: load its carrier block, answer every message until the other end closes, then end the
+     * thread.
+     *
+     * It's the kernel thread's entry, so it never returns; its stack and block stay mapped after it ends.
+     *
+     * @param argument The address of the thread's SlopOsLifecycle, as slop_os_start_lifecycle gave it.
+     */
     slop_os_lifecycle_entry #calling_convention(.c) #no_context :: fn(argument: u64) #never_returns {
         lifecycle :: cast[ptr[mut SlopOsLifecycle]](cast[rawptr](cast[uintptr](argument)))
         intrinsics.set_carrier(&lifecycle.carrier)
@@ -66,6 +99,16 @@ import intrinsics from "base"
         }
     }
 
+    /**
+     * Answer the lifecycle channel's messages until its other end closes.
+     *
+     * Between reads it waits on a port of its own, bound to the channel's readable and peer-closed signals. Ping is
+     * answered with Pong, and Stop is passed on through slop_os_request_stop and answered with Stopping, each with the
+     * question's sequence; a message of any other kind is dropped without an answer. If the port can't be made or
+     * bound, it returns at once and the channel goes unanswered. The port is closed at the end; the channel isn't.
+     *
+     * @param channel The handle of the program's end of the lifecycle channel, which has to stay open while this runs.
+     */
     slop_os_serve_lifecycle #no_context :: fn(channel: u64) {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         port :: slop_os_call(SLOP_OS_CALL_PORT_CREATE, cast[u64](startup.budget))
@@ -105,7 +148,12 @@ import intrinsics from "base"
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, port.first)
     }
 
-    /** The stop asked for: remembered, and the port the program asked for a packet on, if any, woken. */
+    /**
+     * Record that a stop was asked for, and wake the port the program asked for a packet on, if it asked for one.
+     *
+     * Safe from any thread: the request is stored with release ordering, so a thread that sees it through
+     * slop_os_stop_requested sees everything before it. Asking again wakes the port again.
+     */
     slop_os_request_stop #no_context :: fn() {
         state :: intrinsics.process_state()
         intrinsics.atomic_store_u32_release(&state.stop_requested, 1)
@@ -115,14 +163,26 @@ import intrinsics from "base"
         }
     }
 
-    /** Whether whoever started the program has asked it to stop. */
+    /**
+     * Tell whether whoever started the program has asked it to stop.
+     *
+     * @return True once a Stop has come on the lifecycle channel, and from then on; false before, and always for a
+     *     program given no lifecycle channel.
+     */
     slop_os_stop_requested #no_context :: fn() -> bool {
         return intrinsics.atomic_load_u32_acquire(&intrinsics.process_state().stop_requested) != 0
     }
 
     /**
-     * A User packet for key on port, which a wake binding for key must be made on first (port_bind_wake), once a stop's
-     * asked for, or at once if it has been.
+     * Ask for a User packet for key on port once a stop's asked for, or at once if it has been already.
+     *
+     * Only one port is remembered: a later call replaces an earlier one's port and key. The packet comes through the
+     * port's wake binding, so a wake binding for key has to be made on the port first (port_bind_wake), or the wake is
+     * lost.
+     *
+     * @param port The handle of a port of the program's, which has to stay open for as long as a stop may come; 0
+     *     asks for no packet from then on.
+     * @param key The key the packet carries, so the program can tell it from its port's other packets.
      */
     slop_os_on_stop #no_context :: fn(port: u64, key: u64) {
         state :: intrinsics.process_state()

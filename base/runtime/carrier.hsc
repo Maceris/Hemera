@@ -17,7 +17,7 @@ import intrinsics from "base"
  */
 CarrierBlock :: struct #align(64) {
     /**
-     * Lowest address the stack pointer may reach before a function has to call morestack.
+     * The lowest address the stack pointer may reach before a function has to call morestack:
      * STACK_GUARD bytes above the real end of the current segment or thread stack.
      */
     stack_limit : rawptr,
@@ -28,37 +28,38 @@ CarrierBlock :: struct #align(64) {
     stack_segment : ptr[mut StackSegment]?,
     /**
      * The segment most recently left by morestack, kept so a call that keeps
-     * crossing a segment boundary doesn't allocate each time.
+     * crossing a segment boundary doesn't allocate each time; null when there's none.
      */
     spare_segment : ptr[mut StackSegment]?,
-    /** Number of foreign calls currently on the stack. Yields decline while this is non-zero. */
+    /** The number of foreign calls currently on the stack. Yields and parks decline while this is non-zero. */
     foreign_depth : u32,
-    /** Number of no-yield regions currently entered. Yields decline while this is non-zero. */
+    /** The number of no-yield regions currently entered. Yields and parks decline while this is non-zero. */
     no_yield_depth : u32,
-    /** The fiber running on this carrier, if any. */
+    /** The fiber running on this carrier, or null when the thread isn't running one. */
     current_fiber : ptr[mut Fiber]?,
     /**
      * Installed by a fiber scheduler running on this thread, called by fiber_yield
-     * when yielding is allowed. Null on plain threads.
+     * when yielding is allowed. Null on plain threads, where fiber_yield does nothing.
      */
     yield_function : fn(carrier: ptr[mut CarrierBlock])?,
-    /** Scheduler-defined data for this carrier, installed by yield_function. */
+    /** Scheduler-defined data for this carrier, installed with yield_function; the runtime doesn't read it. */
     scheduler_data : rawptr,
     /** The scheduler's stack pointer while a fiber runs. Foreign calls run just below it. */
     scheduler_sp : rawptr,
     /** The shadow stack pointer when the current fiber was resumed, 0 without shadow stacks. */
     shadow_stack_base : uintptr,
-    /** stack_limit for this thread's own stack. */
+    /** The stack_limit for this thread's own stack, set when the thread starts. */
     native_stack_limit : rawptr,
     /**
      * The context foreign callbacks run with: the caller's, which each call to a foreign function
-     * saves here for the call, and puts back after.
+     * saves here for the call, and puts back after. Null outside any foreign call.
      */
     foreign_context : ptr[Context]?,
-    // Free stack segments, linked through StackSegment.next_free.
+    /** The free stack segments, linked through StackSegment.next_free; null when there are none. */
     segment_cache : ptr[mut StackSegment]?,
+    /** How many segments segment_cache holds. */
     segment_cache_count : u32,
-    /** Small index identifying this OS thread, for logging and diagnostics. */
+    /** A small index identifying this OS thread, for logging and diagnostics; current_thread_index gives it. */
     index : usize,
     /** Set while an assertion handler runs on this carrier, so a failure inside it traps immediately. */
     asserting : bool,
@@ -84,13 +85,14 @@ CarrierBlock :: struct #align(64) {
      */
     segment_allocator : Allocator,
     /*
-     * The resume loop's state for the fiber running here (docs/calling_convention.md, Resuming):
-     * the frame it re-entered last, whose return address slot points into the loop, null if none;
-     * that slot's real contents; and that frame's caller's base pointer, saved before the frame
-     * could be popped.
+     * The resume loop's state for the fiber running here (docs/calling_convention.md, Resuming), in the three fields
+     * below.
      */
+    /** The frame the resume loop re-entered last, whose return address slot points into the loop; null if none. */
     resume_frame : rawptr,
+    /** The real contents of resume_frame's return address slot, where the frame returns once the loop is done. */
     resume_return : rawptr,
+    /** The base pointer of resume_frame's caller, saved before the frame could be popped. */
     resume_parent : rawptr,
     /**
      * The function a call through a C function value is calling, which it leaves here for the shim that moves it onto
@@ -100,18 +102,22 @@ CarrierBlock :: struct #align(64) {
 }
 
 /**
- * Index of the OS thread currently running the caller.
- * On a fiber, this could be different after any call that might yield.
+ * Fetch the index of the OS thread currently running the caller.
+ *
+ * @return The carrier's index, a small number identifying the thread for logging and diagnostics. On a fiber, this
+ *     could be different after any call that might yield.
  */
 current_thread_index :: fn() -> usize {
     return intrinsics.carrier().index
 }
 
 /**
- * Enter a no-yield region: until the matching no_yield_exit, fiber_yield declines,
+ * Enter a no-yield region: until the matching no_yield_exit, fiber_yield and park decline to suspend,
  * so the code stays on the same carrier and pointers from intrinsics.carrier() stay valid.
  *
- * no_yield_enter()
+ * Regions nest; each enter needs its own exit.
+ *
+ * @example no_yield_enter()
  * defer no_yield_exit()
  */
 no_yield_enter :: fn() {
@@ -119,13 +125,18 @@ no_yield_enter :: fn() {
     carrier.no_yield_depth += 1
 }
 
+/**
+ * Leave the no-yield region the matching no_yield_enter entered; yielding is allowed again once every region is left.
+ *
+ * It has to match a no_yield_enter on the same carrier: it only takes one from the carrier's count of regions.
+ */
 no_yield_exit :: fn() {
     carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
     carrier.no_yield_depth -= 1
 }
 
 /**
- * Signals that now would be a good time to do other work.
+ * Signal that now would be a good time to do other work.
  *
  * Only a hint: returns immediately on plain threads, at compile time, with foreign frames
  * on the stack, inside no-yield regions, or when the scheduler has nothing better to run.

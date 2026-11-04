@@ -283,6 +283,10 @@ namespace hemera {
 			while (next < tokens.size() && (TokenType::COMMENT_BLOCK == tokens[next].type || TokenType::COMMENT_LINE == tokens[next].type)) {
 				next += 1;
 			}
+			// A field included with using is documented by its name, after the keyword
+			if (next + 1 < tokens.size() && TokenType::KEYWORD_USING == tokens[next].type) {
+				next += 1;
+			}
 			if (next >= tokens.size() || TokenType::IDENTIFIER != tokens[next].type) {
 				if (check) {
 					report_error(ErrorCode::E3034, file_path, token.line_number, token.column_number,

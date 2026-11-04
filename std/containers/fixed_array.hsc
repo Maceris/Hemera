@@ -3,19 +3,35 @@ package containers
 import compiler from "base"
 
 /**
- * Up to capacity values of T, in order, in the array itself: like a dynamic array that never
- * allocates, and fails to add once it's full.
+ * Up to capacity values of T, in order, in the array itself: like a dynamic array that never allocates, and fails to
+ * add once it's full.
+ *
+ * Its zero value is empty. Nothing in it is atomic, so threads sharing one need a lock.
  *
  *     ids : FixedArray[u32, 16]
  *     fixed_push(&ids, 7)          // false once it's full
  *     for id in fixed_view(&ids) {}
+ *
+ * @tparam T The values' type.
+ * @tparam capacity The most values it holds: at least 1. They're kept in the array itself, so it's capacity values
+ *     large.
  */
 FixedArray :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
+    /** The values: the first count of them are in use, the rest left as they were. */
     items : T[capacity],
+    /** How many values it holds, from 0 to capacity. */
     count : usize,
 }
 
-/** Add value at the end, unless it's full. */
+/**
+ * Add a value at the end, unless it's full.
+ *
+ * @tparam T The values' type.
+ * @tparam capacity The most values it holds.
+ * @param array The array.
+ * @param value The value, copied in.
+ * @return True if it was added; false if the array was full, leaving it unchanged.
+ */
 fixed_push :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]], value #escaping : T) -> bool {
     if array.count >= capacity {
         return false
@@ -25,7 +41,14 @@ fixed_push :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]], va
     return true
 }
 
-/** Take the last value, if there is one. */
+/**
+ * Take the last value, if there is one.
+ *
+ * @tparam T The values' type.
+ * @tparam capacity The most values it holds.
+ * @param array The array.
+ * @return The last value, removed; null if the array is empty.
+ */
 fixed_pop :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> T? {
     if array.count == 0 || array.count > capacity {
         return null
@@ -37,8 +60,14 @@ fixed_pop :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> 
 }
 
 /**
- * Remove the value at index by moving the last one into its place, so it doesn't keep the order.
- * False if there's nothing at index.
+ * Remove the value at an index by moving the last one into its place, so it doesn't keep the order but takes constant
+ * time.
+ *
+ * @tparam T The values' type.
+ * @tparam capacity The most values it holds.
+ * @param array The array.
+ * @param index The value's index, below the count.
+ * @return True if it was removed; false if there's nothing at index, leaving the array unchanged.
  */
 fixed_remove_swap :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]], index: usize) -> bool {
     if index >= array.count || array.count > capacity {
@@ -50,12 +79,27 @@ fixed_remove_swap :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacit
     return true
 }
 
-/** The values it holds, as a view into it: valid until it changes. */
+/**
+ * View the values the array holds, without copying them.
+ *
+ * @tparam T The values' type.
+ * @tparam capacity The most values it holds.
+ * @param array The array.
+ * @return A view into it of its count values, in order, empty for an empty array: valid until it changes, and no
+ *     longer than the array lives.
+ */
 fixed_view :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> T[] {
     count :: if array.count < capacity { array.count } else { capacity }
     return view_of(&array.items[0], count)
 }
 
+/**
+ * Empty the array. The values aren't cleared or released, only forgotten.
+ *
+ * @tparam T The values' type.
+ * @tparam capacity The most values it holds.
+ * @param array The array.
+ */
 fixed_clear :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) {
     array.count = 0
 }

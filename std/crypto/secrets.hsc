@@ -9,14 +9,25 @@ SecretBool :: distinct alias bool #secret
 /** A 64-bit word that's a secret, for helpers that work on one, like a bit-plane of bitsliced AES. */
 SecretWord :: distinct alias u64 #secret
 
-/** Public bytes, like a message, seen as secret ones, for what takes secrets. */
+/**
+ * View public bytes, like a message, as secret ones, for what takes secrets.
+ *
+ * @param data The bytes. Nothing is copied.
+ * @return The same bytes as SecretByte, a view of data's memory that's good as long as data is.
+ */
 as_secret #constant_time :: fn(data: u8[]) -> SecretByte[] {
     return bit_cast[SecretByte[]](data)
 }
 
 /**
- * Whether a secret, like a computed tag, matches what was given, looking at every byte whatever it
- * finds, so how long it takes says nothing about where they differ. False when their counts differ.
+ * Compare a secret, like a computed tag, with what was given, in constant time.
+ *
+ * Every byte is looked at whatever is found, so how long it takes says nothing about where they differ; only the
+ * counts, which aren't secret, and the answer are revealed.
+ *
+ * @param secret The secret, like a tag computed from the message.
+ * @param given The public bytes to check it against, like the tag that came with the message.
+ * @return Whether they're the same bytes: false when their counts differ, true when both are empty.
  */
 equal #constant_time :: fn(secret: SecretByte[], given: u8[]) -> bool {
     if secret.count != given.count {

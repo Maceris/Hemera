@@ -11,20 +11,40 @@ package crypto
  *     _ = crypto.hkdf_sha256_expand(pseudo_random, "session keys", keys)
  */
 
+/**
+ * An HMAC-SHA-256 computation in progress, for a message that comes in parts: from hmac_sha256_start, fed with
+ * hmac_sha256_update, and ended with hmac_sha256_finish. Its state is secret, as it's derived from the key.
+ */
 HmacSha256 :: struct {
+    /** The inner hash, started with the key XOR ipad (0x36), which the message goes into. */
     inner: Sha256,
+    /** The outer hash, started with the key XOR opad (0x5c), which the inner hash's digest goes into. */
     outer: Sha256,
 }
 
+/**
+ * An HMAC-SHA-512 computation in progress, for a message that comes in parts: from hmac_sha512_start, fed with
+ * hmac_sha512_update, and ended with hmac_sha512_finish. Its state is secret, as it's derived from the key.
+ */
 HmacSha512 :: struct {
+    /** The inner hash, started with the key XOR ipad (0x36), which the message goes into. */
     inner: Sha512,
+    /** The outer hash, started with the key XOR opad (0x5c), which the inner hash's digest goes into. */
     outer: Sha512,
 }
 
-// A key padded to a block, hashed first if it's longer, as HMAC uses it.
+/** A key padded with zeros to SHA-256's 64-byte block, hashed first if it's longer, as HMAC uses it. */
 HmacSha256Block :: distinct alias u8[64] #secret
+/** A key padded with zeros to SHA-512's 128-byte block, hashed first if it's longer, as HMAC uses it. */
 HmacSha512Block :: distinct alias u8[128] #secret
 
+/**
+ * Start an HMAC-SHA-256 computation (RFC 2104) with a key.
+ *
+ * @param key The key, of any length: one longer than SHA-256's 64-byte block is hashed first, and a shorter one padded
+ *     with zeros, as RFC 2104 says. RFC 2104 recommends at least 32 bytes. Not kept: only what's derived from it is.
+ * @return The computation, ready for the message; its state is secret.
+ */
 hmac_sha256_start #constant_time :: fn(key: SecretByte[]) -> HmacSha256 {
     padded : HmacSha256Block
     if key.count > SHA256_BLOCK {
@@ -52,26 +72,60 @@ hmac_sha256_start #constant_time :: fn(key: SecretByte[]) -> HmacSha256 {
     return hmac
 }
 
+/**
+ * Add public bytes to the message an HMAC-SHA-256 computation authenticates.
+ *
+ * @param hmac The computation, not yet finished.
+ * @param message The next part of the message, of any length, empty included; it's hashed, not kept.
+ */
 hmac_sha256_update :: fn(hmac: ptr[mut HmacSha256], message: u8[]) {
     sha256_update(&hmac.inner, message)
 }
 
+/**
+ * Add secret bytes to the message an HMAC-SHA-256 computation authenticates, in constant time.
+ *
+ * @param hmac The computation, not yet finished.
+ * @param message The next part of the message, of any length; its count isn't secret, its bytes are.
+ */
 hmac_sha256_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha256], message: SecretByte[]) {
     sha256_update_secret(&hmac.inner, message)
 }
 
+/**
+ * Finish an HMAC-SHA-256 computation.
+ *
+ * @param hmac The computation. It's spent afterwards: it can't be updated or finished again, and its state isn't
+ *     wiped.
+ * @return The 32-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
 hmac_sha256_finish #constant_time :: fn(hmac: ptr[mut HmacSha256]) -> SecretByte[32] {
     inner := sha256_finish_secret(&hmac.inner)
     sha256_update_secret(&hmac.outer, inner)
     return sha256_finish_secret(&hmac.outer)
 }
 
+/**
+ * Compute a message's HMAC-SHA-256 tag (RFC 2104), when the whole message is at hand.
+ *
+ * @param key The key, of any length; one longer than 64 bytes is hashed first. RFC 2104 recommends at least 32 bytes.
+ * @param message The message, of any length.
+ * @return The 32-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
 hmac_sha256 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte[32] {
     hmac := hmac_sha256_start(key)
     hmac_sha256_update(&hmac, message)
     return hmac_sha256_finish(&hmac)
 }
 
+/**
+ * Start an HMAC-SHA-512 computation (RFC 2104) with a key.
+ *
+ * @param key The key, of any length: one longer than SHA-512's 128-byte block is hashed first, and a shorter one
+ *     padded with zeros, as RFC 2104 says. RFC 2104 recommends at least 64 bytes. Not kept: only what's derived from
+ *     it is.
+ * @return The computation, ready for the message; its state is secret.
+ */
 hmac_sha512_start #constant_time :: fn(key: SecretByte[]) -> HmacSha512 {
     padded : HmacSha512Block
     if key.count > SHA512_BLOCK {
@@ -99,27 +153,61 @@ hmac_sha512_start #constant_time :: fn(key: SecretByte[]) -> HmacSha512 {
     return hmac
 }
 
+/**
+ * Add public bytes to the message an HMAC-SHA-512 computation authenticates.
+ *
+ * @param hmac The computation, not yet finished.
+ * @param message The next part of the message, of any length, empty included; it's hashed, not kept.
+ */
 hmac_sha512_update :: fn(hmac: ptr[mut HmacSha512], message: u8[]) {
     sha512_update(&hmac.inner, message)
 }
 
+/**
+ * Add secret bytes to the message an HMAC-SHA-512 computation authenticates, in constant time.
+ *
+ * @param hmac The computation, not yet finished.
+ * @param message The next part of the message, of any length; its count isn't secret, its bytes are.
+ */
 hmac_sha512_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha512], message: SecretByte[]) {
     sha512_update_secret(&hmac.inner, message)
 }
 
+/**
+ * Finish an HMAC-SHA-512 computation.
+ *
+ * @param hmac The computation. It's spent afterwards: it can't be updated or finished again, and its state isn't
+ *     wiped.
+ * @return The 64-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
 hmac_sha512_finish #constant_time :: fn(hmac: ptr[mut HmacSha512]) -> SecretByte[64] {
     inner := sha512_finish_secret(&hmac.inner)
     sha512_update_secret(&hmac.outer, inner)
     return sha512_finish_secret(&hmac.outer)
 }
 
+/**
+ * Compute a message's HMAC-SHA-512 tag (RFC 2104), when the whole message is at hand.
+ *
+ * @param key The key, of any length; one longer than 128 bytes is hashed first. RFC 2104 recommends at least 64
+ *     bytes.
+ * @param message The message, of any length.
+ * @return The 64-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
 hmac_sha512 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte[64] {
     hmac := hmac_sha512_start(key)
     hmac_sha512_update(&hmac, message)
     return hmac_sha512_finish(&hmac)
 }
 
-/** HKDF's first step: a pseudorandom key from what was agreed, with a public salt, which may be empty. */
+/**
+ * Extract a pseudorandom key from input keying material: HKDF-SHA-256's first step (RFC 5869, section 2.2).
+ *
+ * @param salt A public, ideally random, value, of any length. Empty is allowed, and is the same as RFC 5869's default
+ *     of 32 zero bytes.
+ * @param input The input keying material, like a shared secret from a key agreement.
+ * @return The 32-byte pseudorandom key, secret, for hkdf_sha256_expand.
+ */
 hkdf_sha256_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[32] {
     hmac := hmac_sha256_start(as_secret(salt))
     hmac_sha256_update_secret(&hmac, input)
@@ -127,8 +215,14 @@ hkdf_sha256_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> Sec
 }
 
 /**
- * HKDF's second step: output filled with keys from the pseudorandom key, for what info says they're
- * for. False, with nothing written, for more than 255 hashes' worth.
+ * Expand a pseudorandom key into keys: HKDF-SHA-256's second step (RFC 5869, section 2.3).
+ *
+ * @param pseudo_random The pseudorandom key, from hkdf_sha256_extract, or another uniformly random key of at least 32
+ *     bytes.
+ * @param info Public context that says what the keys are for, of any length, empty included; different info gives
+ *     unrelated keys from the same pseudorandom key.
+ * @param output Where the keys go, filled entirely: up to 255 * 32 = 8160 bytes.
+ * @return True once output is filled; false, with nothing written, when output is longer than 8160 bytes.
  */
 hkdf_sha256_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[], output: mut SecretByte[]) -> bool {
     if output.count > 255 * SHA256_SIZE {
@@ -157,12 +251,30 @@ hkdf_sha256_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[],
     return true
 }
 
+/**
+ * Extract a pseudorandom key from input keying material: HKDF-SHA-512's first step (RFC 5869, section 2.2).
+ *
+ * @param salt A public, ideally random, value, of any length. Empty is allowed, and is the same as RFC 5869's default
+ *     of 64 zero bytes.
+ * @param input The input keying material, like a shared secret from a key agreement.
+ * @return The 64-byte pseudorandom key, secret, for hkdf_sha512_expand.
+ */
 hkdf_sha512_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[64] {
     hmac := hmac_sha512_start(as_secret(salt))
     hmac_sha512_update_secret(&hmac, input)
     return hmac_sha512_finish(&hmac)
 }
 
+/**
+ * Expand a pseudorandom key into keys: HKDF-SHA-512's second step (RFC 5869, section 2.3).
+ *
+ * @param pseudo_random The pseudorandom key, from hkdf_sha512_extract, or another uniformly random key of at least 64
+ *     bytes.
+ * @param info Public context that says what the keys are for, of any length, empty included; different info gives
+ *     unrelated keys from the same pseudorandom key.
+ * @param output Where the keys go, filled entirely: up to 255 * 64 = 16320 bytes.
+ * @return True once output is filled; false, with nothing written, when output is longer than 16320 bytes.
+ */
 hkdf_sha512_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[], output: mut SecretByte[]) -> bool {
     if output.count > 255 * SHA512_SIZE {
         return false

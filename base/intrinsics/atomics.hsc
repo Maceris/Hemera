@@ -45,48 +45,56 @@ import compiler from "base"
 #insert atomic_operations()
 
 /**
- * Later loads/stores cannot move before earlier loads, but only for compiler
- * reordering. Does not emit instructions.
+ * Keep the compiler from moving later loads and stores before earlier loads, without ordering what the CPU does.
+ *
+ * It emits no instructions: it's for memory only this CPU sees, like what an interrupt handler on it shares with the
+ * code it interrupts.
  */
 compiler_fence_acquire : fn() : ---
 /**
- * Later loads/stores cannot move before earlier loads, and also
- * earlier loads/stores cannot move after later stores, but only for compiler
- * reordering. Does not emit instructions.
+ * Keep the compiler from moving later loads and stores before earlier loads, or earlier loads and stores after later
+ * stores, without ordering what the CPU does.
+ *
+ * It emits no instructions: it's for memory only this CPU sees.
  */
 compiler_fence_acquire_release : fn() : ---
 /**
- * Earlier loads/stores cannot move after later stores, but only for compiler
- * reordering. Does not emit instructions.
+ * Keep the compiler from moving earlier loads and stores after later stores, without ordering what the CPU does.
+ *
+ * It emits no instructions: it's for memory only this CPU sees.
  */
 compiler_fence_release : fn() : ---
 /**
- * A full barrier, including store->load ordering, but only for compiler
- * reordering. Does not emit instructions.
+ * Keep the compiler from moving any load or store across it, store-to-load included, without ordering what the CPU
+ * does.
+ *
+ * It emits no instructions: it's for memory only this CPU sees.
  */
 compiler_fence_sequentially_consistent : fn() : ---
 
-/**
- * Later loads/stores cannot move before earlier loads.
- */
+/** Keep later loads and stores from moving before earlier loads, for the compiler and the CPU. */
 fence_acquire : fn() : ---
 /**
- * Later loads/stores cannot move before earlier loads, and also
- * earlier loads/stores cannot move after later stores.
+ * Keep later loads and stores from moving before earlier loads, and earlier loads and stores from moving after later
+ * stores, for the compiler and the CPU.
  */
 fence_acquire_release : fn() : ---
-/**
- * Earlier loads/stores cannot move after later stores.
- */
+/** Keep earlier loads and stores from moving after later stores, for the compiler and the CPU. */
 fence_release : fn() : ---
 /**
- * A full barrier, including store->load ordering.
+ * Make a full barrier, for the compiler and the CPU: no load or store moves across it, store-to-load ordering
+ * included, which acquire and release fences don't give.
  */
 fence_sequentially_consistent : fn() : ---
 
 /**
- * The atomic operations, made from three lists: the types they come in, the orderings each kind of
+ * Make the atomic operations' declarations, from three lists: the types they come in, the orderings each kind of
  * operation takes, and the operations themselves, each with its signature.
+ *
+ * It runs when the package is compiled, through the #insert above; a list longer than AtomicDeclarations holds fails
+ * the build.
+ *
+ * @return A declaration for each operation, in each type and each ordering, as one list of code.
  */
 atomic_operations :: fn() -> compiler.Code {
     types :: compiler.Code.[
@@ -140,10 +148,19 @@ atomic_operations :: fn() -> compiler.Code {
 
 /** The declarations atomic_operations makes, in the first count of codes. */
 AtomicDeclarations :: struct {
+    /** Room for the declarations, each one's code; those past count hold no code. */
     codes : compiler.Code[1024],
+    /** How many of codes are made, from 0 to 1024. */
     count : usize,
 }
 
+/**
+ * Add a declaration to those atomic_operations makes.
+ *
+ * @param made Where it goes, after the count already there.
+ * @param code The declaration. If made is already full, it's left out, and the build fails with an error at the
+ *     caller.
+ */
 add_atomic :: fn(made: ptr[mut AtomicDeclarations], code: compiler.Code) {
     if made.count < made.codes.count {
         made.codes[made.count] = code

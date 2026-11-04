@@ -4,4 +4,5 @@
  */
 package tiers
 
+/** This package's own tier: it needs only base, so any package may import it. */
 PACKAGE_TIER :: Tier.Freestanding

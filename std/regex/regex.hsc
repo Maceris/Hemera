@@ -18,8 +18,8 @@ import unicode from "std"
  *     x* x+ x?     repetition; x{n} x{n,} x{n,m} counted, up to 1000; each followed by ? to prefer fewer
  *     (?i)         ignore ASCII case from here, as compile's ignore_case does for all of it
  *
- * Matches are leftmost-first, as Perl's and RE2's are: the earliest start, and at it, the alternative and repetition the
- * pattern prefers.
+ * Matches are leftmost-first, as Perl's and RE2's are: the earliest start, and at it, the alternative and repetition
+ * the pattern prefers.
  *
  *     pattern := regex.compile("(\\w+)@(\\w+)\\.com")?
  *     defer regex.free(&pattern)
@@ -28,83 +28,132 @@ import unicode from "std"
  *     regex.captures(&pattern, text, groups[0..<3])            // groups[1], groups[2]
  */
 
-// The most a counted repetition repeats, and the most instructions a program has.
+/** The most a counted repetition repeats: n and m in x{n,m} can be 0 to this. */
 MAX_REPEAT :: 1000
+/**
+ * The most instructions a compiled pattern has, which bounds the memory a match takes: counted repetitions copy what
+ * they repeat, so (x{1000}){1000} is too big.
+ */
 MAX_INSTRUCTIONS :: 100_000
 
+/** Where a match, or a group of one, is in the text: byte offsets, start inclusive, end exclusive. */
 Span :: struct {
+    /** The byte offset of its first byte, at a code point's start. */
     start : usize,
+    /** The byte offset just past its last byte; equal to start for an empty match. */
     end : usize,
 }
 
+/** Why a pattern doesn't compile. */
 ErrorKind :: enum {
-    /** A ( without its ), or a ) without its ( */
+    /** A ( without its ), a ) without its (, or (? followed by something other than : or i). */
     UnmatchedParenthesis,
-    /** A [ without its ] */
+    /** A [ without its ]. */
     UnclosedClass,
-    /** *, +, ? or {n,m} with nothing to repeat */
+    /** *, +, ? or {n,m} with nothing to repeat, like at the pattern's start or after |. */
     NothingToRepeat,
-    /** A {n,m} that isn't one, or past MAX_REPEAT */
+    /** A {n,m} that isn't one, or past MAX_REPEAT, or with m less than n. */
     BadRepeat,
-    /** A \ at the end, or before what can't be escaped */
+    /** A \ at the end, before what can't be escaped, or \D \W \S inside a class. */
     BadEscape,
-    /** A range whose end comes before its start */
+    /** A range whose end comes before its start. */
     BadRange,
-    /** More instructions than MAX_INSTRUCTIONS */
+    /** More instructions than MAX_INSTRUCTIONS. */
     TooBig,
+    /** Out of memory; never given yet, since compile calls context.assertion_handler instead. */
     NoMemory,
 }
 
+/** Why a pattern doesn't compile, and where. */
 RegexError :: struct {
+    /** What's wrong. */
     kind : ErrorKind,
-    /** The pattern's byte where it was found */
+    /** The pattern's byte where it was found: for a parenthesis, class or repetition, where it opens. */
     at : usize,
 }
 
+/** What an instruction of a compiled pattern does. */
 Opcode :: enum {
-    /** A code point within one of the class's ranges (or outside all of them, if it's negated) */
+    /** A code point within one of the class's ranges (or outside all of them, if it's negated). */
     Class,
+    /** Any code point but a line feed. */
     Any,
-    /** Go on at first, and at second, preferring first */
+    /** Go on at first, and at second, preferring first. */
     Split,
+    /** Go on at first. */
     Jump,
-    /** Keep where the text is, in a capture slot */
+    /** Keep where the text is, in capture slot first: a group's start is slot 2n, its end 2n + 1. */
     Save,
+    /** Only where the text starts, at byte 0. */
     AssertStart,
+    /** Only where the text ends. */
     AssertEnd,
+    /** Only between a word character ([0-9A-Za-z_]) and something else, or the text's start or end. */
     WordBoundary,
+    /** Only where there's no word boundary. */
     NotWordBoundary,
+    /** The pattern has matched. */
     Match,
 }
 
+/** One instruction of a compiled pattern. */
 Instruction :: struct {
+    /** What it does. */
     opcode : Opcode,
+    /** A Split's or Jump's target, the instruction's index, or a Save's slot. */
     first : usize,
+    /** A Split's second target, the one it prefers less. */
     second : usize,
-    // A class's ranges, in ranges, and whether it's negated and ignores case
+    /** Where a Class's ranges start in the pattern's ranges. */
     ranges_start : usize,
+    /** How many ranges a Class has. */
     ranges_count : usize,
+    /** Whether a Class takes what's outside its ranges instead. */
     negated : bool,
+    /** Whether a Class ignores ASCII case. */
     folded : bool,
 }
 
+/** A run of code points a class takes, both ends included. */
 Range :: struct {
+    /** The first code point. */
     low : u32,
+    /** The last code point, at least low. */
     high : u32,
 }
 
+/** A compiled pattern, from compile; free gives back its memory. Matching only reads it, so threads can share one. */
 Regex :: struct {
+    /** Its instructions, which a match runs from the first. */
     program : Instruction[..],
+    /** Its classes' ranges, which instructions refer to. */
     ranges : Range[..],
-    /** Groups, the whole match counted: each has two slots */
+    /** Groups, the whole match counted: each has two slots. */
     groups : usize,
 }
 
+/** Options for compile. */
 Flags :: struct {
+    /** Ignore ASCII case in the whole pattern, as (?i) at its start does; other letters still match only themselves. */
     ignore_case : bool,
 }
 
-/** A pattern compiled. */
+/**
+ * Compile a pattern, for matching any number of texts.
+ *
+ * Its memory comes from context.allocator; without it, calls context.assertion_handler, as array_add does.
+ *
+ * @param pattern The pattern, in the syntax above, as UTF-8.
+ * @param flags Options, none by default.
+ * @return The compiled pattern, which free gives back.
+ * @error UnmatchedParenthesis A ( without its ), a ) without its (, or (? not followed by : or i).
+ * @error UnclosedClass A [ without its ].
+ * @error NothingToRepeat A repetition with nothing before it to repeat.
+ * @error BadRepeat A {n,m} that isn't one, past MAX_REPEAT, or with m less than n.
+ * @error BadEscape A \ at the end, before what can't be escaped, or \D \W \S inside a class.
+ * @error BadRange A class's range whose end comes before its start.
+ * @error TooBig More instructions than MAX_INSTRUCTIONS, as large counted repetitions make.
+ */
 compile :: fn(pattern: string, flags := Flags.{}) -> Result[Regex, RegexError] {
     parser := Parser.{text = string_bytes(pattern), fold = flags.ignore_case, groups = 1}
     made := Regex.{groups = 1}
@@ -128,17 +177,37 @@ compile :: fn(pattern: string, flags := Flags.{}) -> Result[Regex, RegexError] {
     return .Ok(made)
 }
 
+/**
+ * Give back a compiled pattern's memory.
+ *
+ * @param pattern The pattern, from compile; it can't be matched with after.
+ */
 free :: fn(pattern: ptr[mut Regex]) {
     runtime.array_free(&pattern.program)
     runtime.array_free(&pattern.ranges)
 }
 
-/** Whether the pattern matches anywhere in text. */
+/**
+ * Tell whether a pattern matches anywhere in a text.
+ *
+ * @param pattern The compiled pattern.
+ * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
+ * @return True when it matches somewhere, an empty match included.
+ */
 is_match :: fn(pattern: ptr[Regex], text: string) -> bool {
     return find(pattern, text) is_some
 }
 
-/** The leftmost-first match in text, from from on. */
+/**
+ * Find the leftmost-first match in a text.
+ *
+ * The time it takes grows linearly with the text's length times the pattern's size, whatever the pattern.
+ *
+ * @param pattern The compiled pattern.
+ * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
+ * @param from The byte offset to search from, at a code point's start; ^ still matches only at 0, not here.
+ * @return The match's span, in byte offsets into text; null when there's none, or from is past the text's end.
+ */
 find :: fn(pattern: ptr[Regex], text: string, from: usize = 0) -> Span? {
     spans : Span[1]
     if !run(pattern, string_bytes(text), from, spans[0..<1]) {
@@ -148,36 +217,69 @@ find :: fn(pattern: ptr[Regex], text: string, from: usize = 0) -> Span? {
 }
 
 /**
- * The leftmost-first match from from on, and its groups' spans into groups, as many as fit: group 0 the whole match, a
- * group that didn't take part an empty span at the text's end. Whether there was one.
+ * Find the leftmost-first match in a text, and where each of its groups matched.
+ *
+ * @param pattern The compiled pattern.
+ * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
+ * @param groups Where the groups' spans go, as many as fit: group 0 the whole match, then each ( in the pattern's
+ *     order. A group that didn't take part, or one past the pattern's, is an empty span at the text's end. Left as
+ *     they were when there's no match.
+ * @param from The byte offset to search from, at a code point's start; ^ still matches only at 0, not here.
+ * @return True when there was a match.
  */
 captures :: fn(pattern: ptr[Regex], text: string, groups: mut Span[], from: usize = 0) -> bool {
     return run(pattern, string_bytes(text), from, groups)
 }
 
-/** How many groups the pattern has, the whole match counted. */
+/**
+ * Give how many groups a pattern has, so captures can be given room for all of them.
+ *
+ * @param pattern The compiled pattern.
+ * @return Its captured groups plus 1 for the whole match, so at least 1; (?:x) groups aren't counted.
+ */
 group_count :: fn(pattern: ptr[Regex]) -> usize {
     return pattern.groups
 }
 
 // ---- Parsing, by recursive descent, straight to the program
 
+/** A pattern being compiled: where parsing is, and the program it's emitting into. */
 Parser :: struct #scoped {
+    /** The pattern's bytes, borrowed from compile's caller. */
     text : u8[],
+    /** Where parsing is, a byte offset into text. */
     at : usize,
+    /** The pattern being made, on compile's stack. */
     regex : ptr[mut Regex],
+    /** Groups numbered so far, the whole match counted, so the next ( is this one. */
     groups : usize,
+    /** Whether classes made from here on ignore ASCII case, from Flags.ignore_case or (?i). */
     fold : bool,
+    /** The first error found; once it's set, the rest is parsed only as far as it takes to stop. */
     error : RegexError?,
+    /** How many groups deep parsing is. */
     depth : usize,
 }
 
+/**
+ * Note an error at where parsing is, unless one was noted already, so the first is the one reported.
+ *
+ * @param parser The parser; its at is where the error is reported.
+ * @param kind What's wrong.
+ */
 fail :: fn(parser: ptr[mut Parser], kind: ErrorKind) {
     if (parser.error is_none) {
         parser.error = RegexError.{kind = kind, at = parser.at}
     }
 }
 
+/**
+ * Add an instruction to the end of the program. Without the memory, calls context.assertion_handler.
+ *
+ * @param parser The parser. With MAX_INSTRUCTIONS already, nothing is added and it fails with TooBig.
+ * @param instruction The instruction.
+ * @return Its index, where it went or would have gone.
+ */
 emit :: fn(parser: ptr[mut Parser], instruction: Instruction) -> usize {
     at :: parser.regex.program.count
     if at >= MAX_INSTRUCTIONS {
@@ -188,19 +290,32 @@ emit :: fn(parser: ptr[mut Parser], instruction: Instruction) -> usize {
     return at
 }
 
+/**
+ * Look at the next byte of the pattern without moving past it.
+ *
+ * @param parser The parser.
+ * @return The byte at at, or 0 at the end, which nothing in the syntax is.
+ */
 peek :: fn(parser: ptr[Parser]) -> u8 {
     return if parser.at < parser.text.count { parser.text[parser.at] } else { 0 }
 }
 
-/** The byte after the next, or 0. */
+/**
+ * Look at the byte after the next, without moving.
+ *
+ * @param parser The parser.
+ * @return The byte at at + 1, or 0 past the end.
+ */
 peek_after :: fn(parser: ptr[Parser]) -> u8 {
     at :: parser.at + 1
     return if at < parser.text.count { parser.text[at] } else { 0 }
 }
 
 /**
- * x|y|...: the first alternative with a split before it, to it or past it, and a jump after it past the rest, which is
- * itself an alternation.
+ * Parse x|y|..., up to ) or the end: the first alternative with a split before it, to it or past it, and a jump after
+ * it past the rest, which is itself an alternation.
+ *
+ * @param parser The parser, at the alternation's start; left at the ) or the end after it, or where an error was.
  */
 alternation :: fn(parser: ptr[mut Parser]) {
     start :: parser.regex.program.count
@@ -218,13 +333,27 @@ alternation :: fn(parser: ptr[mut Parser]) {
     }
 }
 
+/**
+ * Set a split's second target.
+ *
+ * @param parser The parser.
+ * @param at The split's index; past the program's end, as after TooBig, nothing is set.
+ * @param target The instruction it goes on at.
+ */
 set_second :: fn(parser: ptr[mut Parser], at: usize, target: usize) {
     if at < parser.regex.program.count {
         parser.regex.program[at].second = target
     }
 }
 
-/** An instruction put in at at, those after it moved along, and every target past it moved with them. */
+/**
+ * Put an instruction in at an index, those after it moved along, and every target past it moved with them, so code
+ * already emitted can be wrapped in a split.
+ *
+ * @param parser The parser. Without the memory, calls context.assertion_handler.
+ * @param at Where it goes: it's at this index after, and a target of at from code before it now means it.
+ * @param instruction The instruction; its own targets aren't moved.
+ */
 insert :: fn(parser: ptr[mut Parser], at: usize, instruction: Instruction) {
     regex :: parser.regex
     runtime.array_add(&regex.program, instruction)
@@ -259,7 +388,11 @@ insert :: fn(parser: ptr[mut Parser], at: usize, instruction: Instruction) {
     }
 }
 
-/** A sequence of repeated atoms, up to | or ) or the end. */
+/**
+ * Parse a sequence of atoms, each maybe repeated, up to | or ) or the end.
+ *
+ * @param parser The parser; left at the | or ) or the end, or where an error was.
+ */
 sequence :: fn(parser: ptr[mut Parser]) {
     loop {
         if (parser.error is_some) || parser.at >= parser.text.count {
@@ -273,7 +406,11 @@ sequence :: fn(parser: ptr[mut Parser]) {
     }
 }
 
-/** An atom, and its repetition if one follows. */
+/**
+ * Parse an atom, and its repetition if one follows.
+ *
+ * @param parser The parser, at the atom; it fails with NothingToRepeat if a repetition is there instead.
+ */
 repeated :: fn(parser: ptr[mut Parser]) {
     byte :: peek(parser)
     if byte == cast[u8]('*') || byte == cast[u8]('+') || byte == cast[u8]('?') || byte == cast[u8]('{') {
@@ -305,6 +442,12 @@ repeated :: fn(parser: ptr[mut Parser]) {
     }
 }
 
+/**
+ * Move past the ? that makes a repetition lazy, if there is one.
+ *
+ * @param parser The parser, just after the repetition.
+ * @return True when there was a ?, so the repetition prefers fewer.
+ */
 lazy_follows :: fn(parser: ptr[mut Parser]) -> bool {
     if peek(parser) == cast[u8]('?') {
         parser.at += 1
@@ -313,7 +456,13 @@ lazy_follows :: fn(parser: ptr[mut Parser]) -> bool {
     return false
 }
 
-/** What starts at start, any number of times: a split before it, a jump back after. */
+/**
+ * Make the code from start to the program's end repeat any number of times: a split before it, a jump back after.
+ *
+ * @param parser The parser.
+ * @param start Where the code repeated starts.
+ * @param lazy Whether to prefer fewer repetitions.
+ */
 star :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     insert(parser, start, Instruction.{opcode = .Split})
     emit(parser, Instruction.{opcode = .Jump, first = start})
@@ -321,20 +470,40 @@ star :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     prefer(parser, start, start + 1, after, lazy)
 }
 
-/** Once, then any number of times: a split after it, back to it. */
+/**
+ * Make the code from start to the program's end repeat once, then any number of times: a split after it, back to it.
+ *
+ * @param parser The parser.
+ * @param start Where the code repeated starts.
+ * @param lazy Whether to prefer fewer repetitions.
+ */
 plus :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     split :: emit(parser, Instruction.{opcode = .Split})
     prefer(parser, split, start, split + 1, lazy)
 }
 
-/** Once or not at all: a split before it. */
+/**
+ * Make the code from start to the program's end match once or not at all: a split before it.
+ *
+ * @param parser The parser.
+ * @param start Where the code starts.
+ * @param lazy Whether to prefer leaving it out.
+ */
 optional :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
     insert(parser, start, Instruction.{opcode = .Split})
     after :: parser.regex.program.count
     prefer(parser, start, start + 1, after, lazy)
 }
 
-/** A split's two ways, the repeating one first unless it's lazy. */
+/**
+ * Set a split's two ways, the repeating one first unless it's lazy.
+ *
+ * @param parser The parser.
+ * @param split The split's index; past the program's end, as after TooBig, nothing is set.
+ * @param repeat Where the repeated code starts.
+ * @param leave Where the code after the repetition starts.
+ * @param lazy Whether leaving is preferred.
+ */
 prefer :: fn(parser: ptr[mut Parser], split: usize, repeat: usize, leave: usize, lazy: bool) {
     if split < parser.regex.program.count {
         parser.regex.program[split] = Instruction.{opcode = .Split, first = if lazy { leave } else { repeat }, second = if lazy { repeat } else { leave }}
@@ -342,8 +511,16 @@ prefer :: fn(parser: ptr[mut Parser], split: usize, repeat: usize, leave: usize,
 }
 
 /**
- * {n}, {n,}, {n,m}: the atom's code, from start to end, copied: n times, then m - n optional ones, or any number for
- * {n,}.
+ * Parse {n}, {n,} or {n,m} after an atom: the atom's code, from start to end, copied n times, then m - n optional ones,
+ * or any number for {n,}.
+ *
+ * A copy of the atom's code is kept on context.allocator while it runs; without the memory, calls
+ * context.assertion_handler.
+ *
+ * @param parser The parser, at the {. Fails with BadRepeat, at the {, for one that isn't a repetition, past
+ *     MAX_REPEAT, or with m less than n.
+ * @param start Where the atom's code starts.
+ * @param end Where it ends, the program's end.
  */
 counted :: fn(parser: ptr[mut Parser], start: usize, end: usize) {
     open :: parser.at
@@ -387,7 +564,13 @@ counted :: fn(parser: ptr[mut Parser], start: usize, end: usize) {
     }
 }
 
-/** A copy of code that was at from appended, its targets moved to where it is now. */
+/**
+ * Append a copy of code that was at an index, its targets moved to where it is now.
+ *
+ * @param parser The parser.
+ * @param code The code, whose targets are all within it.
+ * @param from The index it was at.
+ */
 append_copy :: fn(parser: ptr[mut Parser], code: Instruction[..], from: usize) {
     to :: parser.regex.program.count
     for each in code {
@@ -402,6 +585,13 @@ append_copy :: fn(parser: ptr[mut Parser], code: Instruction[..], from: usize) {
     }
 }
 
+/**
+ * Parse a repetition's count, in decimal.
+ *
+ * @param parser The parser, moved past the digits read.
+ * @return The number; null when there's no digit. At most 6 digits are read, so it can't overflow, and anything past
+ *     MAX_REPEAT is left for counted to refuse.
+ */
 number :: fn(parser: ptr[mut Parser]) -> usize? {
     value : usize = 0
     digits := 0
@@ -417,7 +607,11 @@ number :: fn(parser: ptr[mut Parser]) -> usize? {
     return if digits > 0 { value } else { null }
 }
 
-/** One atom: a group, a class, ., an anchor, an escape, or a code point. */
+/**
+ * Parse one atom: a group, a class, ., an anchor, an escape, or a code point.
+ *
+ * @param parser The parser, at the atom. A byte that isn't UTF-8 is taken as a code point of its own.
+ */
 atom :: fn(parser: ptr[mut Parser]) {
     byte :: peek(parser)
     if byte == cast[u8]('(') {
@@ -448,14 +642,24 @@ atom :: fn(parser: ptr[mut Parser]) {
     }
 }
 
-/** A class of one code point. */
+/**
+ * Emit a class of one code point, which ignores case if the parser does.
+ *
+ * @param parser The parser. Without the memory, calls context.assertion_handler.
+ * @param point The code point.
+ */
 single :: fn(parser: ptr[mut Parser], point: u32) {
     start :: parser.regex.ranges.count
     runtime.array_add(&parser.regex.ranges, Range.{low = point, high = point})
     emit(parser, Instruction.{opcode = .Class, ranges_start = start, ranges_count = 1, folded = parser.fold})
 }
 
-/** (x), (?:x), or (?i) on its own. */
+/**
+ * Parse (x), (?:x), or (?i) on its own, which makes the rest of the pattern ignore ASCII case, past the group it's in.
+ *
+ * @param parser The parser, at the (. Fails with UnmatchedParenthesis, at the (, when there's no ), or for (? followed
+ *     by anything but : or i).
+ */
 group :: fn(parser: ptr[mut Parser]) {
     open :: parser.at
     parser.at += 1
@@ -494,7 +698,11 @@ group :: fn(parser: ptr[mut Parser]) {
     }
 }
 
-/** \d \w \s and their negations, \b \B, and escaped characters. */
+/**
+ * Parse an escape: \d \w \s and their negations, \b \B, and escaped characters.
+ *
+ * @param parser The parser, at the \. Fails with BadEscape at the end, or before what can't be escaped.
+ */
 escape :: fn(parser: ptr[mut Parser]) {
     parser.at += 1
     if parser.at >= parser.text.count {
@@ -528,7 +736,14 @@ escape :: fn(parser: ptr[mut Parser]) {
     single(parser, point)
 }
 
-/** \d \w \s's ranges added, or \D \W \S's: whether they're negated, or null for another escape. */
+/**
+ * Add the ranges of a class escape, \d \w \s, or of \D \W \S, which the class then negates.
+ *
+ * @param parser The parser, whose pattern the ranges are added to. Without the memory, calls
+ *     context.assertion_handler.
+ * @param byte The byte after the \.
+ * @return Whether the class is negated, true for the capitals; null for another escape, with nothing added.
+ */
 class_escape :: fn(parser: ptr[mut Parser], byte: u8) -> bool? {
     lower :: if byte >= cast[u8]('A') && byte <= cast[u8]('Z') { byte + 32 } else { byte }
     ranges :: &parser.regex.ranges
@@ -552,7 +767,13 @@ class_escape :: fn(parser: ptr[mut Parser], byte: u8) -> bool? {
     return lower != byte
 }
 
-/** The code point an escape stands for: \n \t \r, or one of the characters that mean something unescaped. */
+/**
+ * Give the code point an escape stands for: \n \t \r, or one of the characters that mean something unescaped.
+ *
+ * @param byte The byte after the \.
+ * @return The code point: 10, 9 or 13 for n, t and r, the byte itself for any of \.+*?()|[]{}^$-/, and null for
+ *     anything else.
+ */
 escaped_point :: fn(byte: u8) -> u32? {
     if byte == cast[u8]('n') {
         return 10
@@ -571,7 +792,13 @@ escaped_point :: fn(byte: u8) -> u32? {
     return null
 }
 
-/** [ranges], or [^ranges]: code points, a-b ranges, and \d \w \s within. */
+/**
+ * Parse [ranges], or [^ranges]: code points, a-b ranges, and \d \w \s within. A ] first is a member, as is a - first
+ * or last.
+ *
+ * @param parser The parser, at the [. Fails with UnclosedClass at the [ without its ], BadEscape for a bad escape or
+ *     \D \W \S within, and BadRange for a range whose end comes before its start.
+ */
 class :: fn(parser: ptr[mut Parser]) {
     open :: parser.at
     parser.at += 1
@@ -647,33 +874,55 @@ class :: fn(parser: ptr[mut Parser]) {
 
 /** A thread: where it is in the program, and its capture slots, in the VM's slot store. */
 Thread :: struct {
+    /** The index of the instruction it's at, one that consumes or matches. */
     pc : usize,
+    /** Where its block of slots starts in the VM's store. */
     slots : usize,
 }
 
 /** The threads at one position, in priority order, each place in the program at most once. */
 ThreadList :: struct {
+    /** The threads, the most preferred first. */
     threads : Thread[..],
-    /** For each place in the program, the generation it was last added in, which makes it there once per step */
+    /** For each place in the program, the generation it was last added in, which makes it there once per step. */
     seen : u64[..],
 }
 
-/** What a run reads: the program, its classes' ranges, and the text. */
+/** What a run reads: the program, its classes' ranges, and the text, all borrowed from run's caller. */
 Input :: struct #scoped {
+    /** The pattern's instructions. */
     program : Instruction[],
+    /** The pattern's classes' ranges. */
     ranges : Range[],
+    /** The text, as bytes. */
     text : u8[],
 }
 
+/** A run's state, apart from its thread lists: the capture slots and the step it's at. */
 VM :: struct {
+    /** How many slots a thread has: two for each group. */
     slot_count : usize,
-    // Slots for every thread, slot_count each, handed out and given back
+    /** Slots for every thread, slot_count each, handed out and given back. NO_SLOT for one not set. */
     store : usize[..],
+    /** Where each block given back starts, to hand out again. */
     free_slots : usize[..],
+    /** Which step the run is at, counted up so a ThreadList's seen needn't be cleared. */
     generation : u64,
 }
 
-/** The leftmost-first match from from on, its groups' spans into groups: whether there was one. */
+/**
+ * Run a pattern on a text: the leftmost-first match from a position on, and its groups' spans.
+ *
+ * Its threads and slots are kept on context.allocator while it runs, and freed before it returns; without the memory,
+ * calls context.assertion_handler.
+ *
+ * @param pattern The compiled pattern.
+ * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
+ * @param from The byte offset to search from; past the text's end, there's no match.
+ * @param groups Where the groups' spans go, as many as fit; a group that didn't take part, or past the pattern's, is
+ *     an empty span at the text's end. Left as they were when there's no match.
+ * @return True when there was a match.
+ */
 run :: fn(pattern: ptr[Regex], text: u8[], from: usize, groups: mut Span[]) -> bool {
     input := Input.{program = pattern.program[0..<pattern.program.count], ranges = pattern.ranges[0..<pattern.ranges.count], text = text}
     vm := VM.{slot_count = pattern.groups * 2}
@@ -758,16 +1007,32 @@ run :: fn(pattern: ptr[Regex], text: u8[], from: usize, groups: mut Span[]) -> b
     return matched
 }
 
+/** A capture slot not set: the largest usize, never a byte offset into a text. */
 NO_SLOT : usize : 0xffffffffffffffff
 
+/**
+ * Give back a thread list's memory.
+ *
+ * @param list The list; its threads' slots aren't given back to the VM, which run does itself.
+ */
 free_list :: fn(list: ptr[mut ThreadList]) {
     runtime.array_free(&list.threads)
     runtime.array_free(&list.seen)
 }
 
 /**
- * A thread at pc added to list, at position at, following jumps, splits (the first way first) and saves, and checking
+ * Add a thread at pc to a list, at a position, following jumps, splits (the first way first) and saves, and checking
  * assertions, so list holds only threads at instructions that consume or match.
+ *
+ * Without the memory for the list or slots, calls context.assertion_handler.
+ *
+ * @param vm The run's state, whose slots are handed out and given back.
+ * @param input What the run reads.
+ * @param list The list it goes in. A place already in it this generation is a less preferred way there, so the thread
+ *     is dropped.
+ * @param pc The instruction it's at.
+ * @param at The byte offset in the text it's at, which saves record and assertions check.
+ * @param slots Its block of slots, which this takes over: kept by the thread added, or given back.
  */
 add :: fn(vm: ptr[mut VM], input: ptr[Input], list: ptr[mut ThreadList], pc: usize, at: usize, slots: usize) {
     if pc >= input.program.count || pc >= list.seen.count {
@@ -828,7 +1093,14 @@ add :: fn(vm: ptr[mut VM], input: ptr[Input], list: ptr[mut ThreadList], pc: usi
     }
 }
 
-/** Whether an instruction that consumes takes point. */
+/**
+ * Tell whether an instruction that consumes takes a code point.
+ *
+ * @param input What the run reads, for the class's ranges.
+ * @param instruction The instruction: Any or a Class; any other takes nothing.
+ * @param point The code point at the thread's position.
+ * @return True when it takes it, so the thread moves on past it.
+ */
 consumes :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool {
     if instruction.opcode == .Any {
         return point != 10
@@ -849,6 +1121,14 @@ consumes :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool 
     return inside != instruction.negated
 }
 
+/**
+ * Tell whether a code point is in one of a class's ranges, without its negation or case folding.
+ *
+ * @param input What the run reads, for the ranges.
+ * @param instruction The Class instruction.
+ * @param point The code point.
+ * @return True when one of its ranges holds it.
+ */
 in_ranges :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool {
     for i in 0..<instruction.ranges_count {
         index :: instruction.ranges_start + i
@@ -859,12 +1139,24 @@ in_ranges :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool
     return false
 }
 
+/**
+ * Tell whether a byte is a word character, for \b and \B: [0-9A-Za-z_], ASCII only.
+ *
+ * @param byte The byte.
+ * @return True for a word character.
+ */
 is_word :: fn(byte: u8) -> bool {
     return (byte >= cast[u8]('0') && byte <= cast[u8]('9')) || (byte >= cast[u8]('A') && byte <= cast[u8]('Z'))
         || (byte >= cast[u8]('a') && byte <= cast[u8]('z')) || byte == cast[u8]('_')
 }
 
-/** A thread's slots: a block of slot_count in the store, every slot not set yet. */
+/**
+ * Hand out a thread's slots: a block of slot_count in the store, every slot not set yet.
+ *
+ * @param vm The run's state; a block given back is used again, otherwise the store grows. Without the memory, calls
+ *     context.assertion_handler.
+ * @return Where the block starts in the store.
+ */
 new_slots :: fn(vm: ptr[mut VM]) -> usize {
     block := cast[usize](0)
     if vm.free_slots.count > 0 {
@@ -884,10 +1176,23 @@ new_slots :: fn(vm: ptr[mut VM]) -> usize {
     return block
 }
 
+/**
+ * Give back a thread's slots, to be handed out again.
+ *
+ * @param vm The run's state. Without the memory to note it, calls context.assertion_handler.
+ * @param block Where the block starts; it mustn't be used after.
+ */
 release :: fn(vm: ptr[mut VM], block: usize) {
     runtime.array_add(&vm.free_slots, block)
 }
 
+/**
+ * Copy one thread's slots over another's.
+ *
+ * @param vm The run's state.
+ * @param from Where the block copied starts.
+ * @param to Where the block written starts.
+ */
 copy_slots :: fn(vm: ptr[mut VM], from: usize, to: usize) {
     for i in 0..<vm.slot_count {
         if from + i < vm.store.count && to + i < vm.store.count {
@@ -896,12 +1201,28 @@ copy_slots :: fn(vm: ptr[mut VM], from: usize, to: usize) {
     }
 }
 
+/**
+ * Set one of a thread's slots.
+ *
+ * @param vm The run's state.
+ * @param block Where the thread's block starts.
+ * @param index Which slot, less than slot_count; one past it is ignored.
+ * @param value The byte offset to keep.
+ */
 set_slot :: fn(vm: ptr[mut VM], block: usize, index: usize, value: usize) {
     if index < vm.slot_count && block + index < vm.store.count {
         vm.store[block + index] = value
     }
 }
 
+/**
+ * Read one of a thread's slots.
+ *
+ * @param vm The run's state.
+ * @param block Where the thread's block starts.
+ * @param index Which slot.
+ * @return The byte offset kept there; NO_SLOT if it isn't set, or index is past slot_count.
+ */
 slot :: fn(vm: ptr[VM], block: usize, index: usize) -> usize {
     return if index < vm.slot_count && block + index < vm.store.count { vm.store[block + index] } else { NO_SLOT }
 }

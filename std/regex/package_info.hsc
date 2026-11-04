@@ -6,4 +6,5 @@ package regex
 
 import tiers from "std"
 
+/** This package's tier: compiling and matching allocate, so it needs an Allocator in context, but no system calls. */
 PACKAGE_TIER :: tiers.Tier.Allocating

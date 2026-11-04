@@ -4,8 +4,10 @@ import compiler from "base"
 import intrinsics from "base"
 
 /**
- * Text for the process's standard output and standard error, where there are some: WriteFile on
- * Windows, and the write system call on Linux. Elsewhere, like in a kernel, the text goes nowhere.
+ * Which of the process's standard streams text goes to, where there are some.
+ *
+ * Text goes by WriteFile on Windows, the write system call on Linux, and the console under UEFI. Elsewhere, like in
+ * a kernel, the text goes nowhere.
  *
  *     runtime.write_output("hello\n")
  *     runtime.write_error("something went wrong\n")
@@ -15,19 +17,33 @@ import intrinsics from "base"
  * threads written whole don't mix.
  */
 OutputStream :: enum {
-    OUTPUT,
-    ERROR,
+    OUTPUT, /**< Standard output, for what the program produces. */
+    ERROR, /**< Standard error, for diagnostics, logs and failures. */
 }
 
+/**
+ * Write text to standard output, as it is, where there is one.
+ *
+ * A failure to write isn't reported: there's nowhere to report it, so the text is lost.
+ *
+ * @param text The bytes, with nothing added: no newline, and no translation. Empty writes nothing.
+ */
 write_output #no_context :: fn(text: string) {
     os_write(.OUTPUT, cast[rawptr](text.data), text.count)
 }
 
+/**
+ * Write text to standard error, as it is, where there is one.
+ *
+ * A failure to write isn't reported: there's nowhere to report it, so the text is lost.
+ *
+ * @param text The bytes, with nothing added: no newline, and no translation. Empty writes nothing.
+ */
 write_error #no_context :: fn(text: string) {
     os_write(.ERROR, cast[rawptr](text.data), text.count)
 }
 
-/** Bytes an OutputBuffer holds before it writes them. */
+/** Bytes an OutputBuffer holds before it writes them; small, since a buffer is kept on the stack. */
 OUTPUT_BUFFER_SIZE : usize : 512
 
 /**
@@ -39,13 +55,26 @@ OUTPUT_BUFFER_SIZE : usize : 512
  *     runtime.output_flush(&buffer)
  */
 OutputBuffer :: struct {
+    /** The text not yet written; only the first count bytes mean anything. */
     bytes : u8[OUTPUT_BUFFER_SIZE],
+    /** How many of bytes hold text, from 0 to OUTPUT_BUFFER_SIZE. */
     count : usize,
+    /** Where the text is written when the buffer fills or is flushed. */
     stream : OutputStream,
-    /** Keeps what it's given rather than writing it, dropping what doesn't fit, to pad it afterwards */
+    /**
+     * Whether the buffer keeps what it's given rather than writing it, dropping what doesn't fit, so the text can be
+     * padded afterwards; false for a buffer from output_buffer.
+     */
     capture : bool,
 }
 
+/**
+ * Make an empty buffer that writes to a stream.
+ *
+ * @param stream Where its text is written.
+ * @return The buffer, empty and not capturing, to keep on the stack; it holds no memory, so it needs no freeing,
+ *     but what's in it is lost unless it's flushed.
+ */
 output_buffer #no_context :: fn(stream: OutputStream) -> OutputBuffer {
     buffer : OutputBuffer
     buffer.count = 0
@@ -53,7 +82,11 @@ output_buffer #no_context :: fn(stream: OutputStream) -> OutputBuffer {
     return buffer
 }
 
-/** Writes what the buffer has, and empties it. */
+/**
+ * Write what a buffer has to its stream, and empty it.
+ *
+ * @param buffer The buffer; written even when it captures. When it's empty, nothing is written.
+ */
 output_flush #no_context :: fn(buffer: ptr[mut OutputBuffer]) {
     count :: if buffer.count < OUTPUT_BUFFER_SIZE { buffer.count } else { OUTPUT_BUFFER_SIZE }
     if count > 0 {
@@ -62,6 +95,13 @@ output_flush #no_context :: fn(buffer: ptr[mut OutputBuffer]) {
     buffer.count = 0
 }
 
+/**
+ * Add a byte to a buffer.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ *     A capturing buffer that's full drops the byte.
+ * @param byte The byte, as it is.
+ */
 output_byte #no_context :: fn(buffer: ptr[mut OutputBuffer], byte: u8) {
     if buffer.count >= OUTPUT_BUFFER_SIZE && buffer.capture {
         return void
@@ -76,13 +116,24 @@ output_byte #no_context :: fn(buffer: ptr[mut OutputBuffer], byte: u8) {
     }
 }
 
+/**
+ * Add text to a buffer, as it is.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param text The bytes, which may be empty.
+ */
 output_text #no_context :: fn(buffer: ptr[mut OutputBuffer], text: string) {
     for i in 0..<text.count {
         output_byte(buffer, cast[u8](text[i]))
     }
 }
 
-/** value in decimal. Once at least, so 0 has its digit. */
+/**
+ * Add an unsigned integer to a buffer in decimal.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param value The integer, any u64; 0 is written as one digit.
+ */
 output_unsigned #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     digits : u8[20]
     count : usize = 0
@@ -104,6 +155,12 @@ output_unsigned #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     }
 }
 
+/**
+ * Add a signed integer to a buffer in decimal, with a - when it's negative.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param value The integer, any i64, the most negative one included.
+ */
 output_signed #no_context :: fn(buffer: ptr[mut OutputBuffer], value: i64) {
     if value < 0 {
         output_byte(buffer, cast[u8]('-'))
@@ -115,7 +172,12 @@ output_signed #no_context :: fn(buffer: ptr[mut OutputBuffer], value: i64) {
     }
 }
 
-/** value in hexadecimal, as 0x and at least one digit. */
+/**
+ * Add an address to a buffer in hexadecimal, as 0x and at least one digit, in lower case without leading zeros.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param value The address, any u64; 0 is written 0x0.
+ */
 output_address #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
     output_text(buffer, "0x")
     started := false
@@ -129,11 +191,17 @@ output_address #no_context :: fn(buffer: ptr[mut OutputBuffer], value: u64) {
 }
 
 /**
- * format_string with each % replaced by the next value, %1, %2 and so on by that one, and %% by %:
- * a smaller version of std's text_buffer.append_format, for base. Integers are in decimal, booleans,
+ * Add formatted text to a buffer: a smaller version of std's text_buffer.append_format, for base.
+ *
+ * Each % is replaced by the next value, %1, %2 and so on by that one, and %% by %. Integers are in decimal, booleans,
  * characters and strings as they are, enum members by name, and pointers as addresses; other values
  * only by their kind, like <struct Name>. Each can have options, like %{08x} (docs/format_strings.md).
- * A % without a value left, or with options that aren't well formed, is written as %!.
+ * A % without a value left, %0, or one with options that aren't well formed, is written as %!.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param format_string The text, with its placeholders; everything else is written as it is.
+ * @param values The values the placeholders take, in order; a numbered one doesn't move the next unnumbered one on,
+ *     and values no placeholder takes are left out.
  */
 output_format :: fn(buffer: ptr[mut OutputBuffer], format_string: string, values: any...) {
     next : usize = 0
@@ -181,16 +249,38 @@ output_format :: fn(buffer: ptr[mut OutputBuffer], format_string: string, values
     }
 }
 
+/**
+ * Add a byte to an OutputBuffer, as a FormatSink's emit.
+ *
+ * @param target The OutputBuffer, as a ptr[mut OutputBuffer].
+ * @param byte The byte, as output_byte adds it.
+ */
 output_sink_byte :: fn(target: rawptr, byte: u8) {
     output_byte(cast[ptr[mut OutputBuffer]](target), byte)
 }
 
-/** Whether options change anything about how a value is written. */
+/**
+ * Check whether options change nothing about how a value is written, so it can be written the plain way.
+ *
+ * @param spec The options.
+ * @return Whether there's no width, kind, +, # or precision; a fill, alignment or 0 alone change nothing.
+ */
 is_plain_format :: fn(spec: FormatSpec) -> bool {
     return spec.width == 0 && spec.kind == 0 && !spec.plus && !spec.prefix && !spec.has_precision
 }
 
-/** A value with options: numbers worked out with them, anything else written, then padded. */
+/**
+ * Add a value with options to a buffer: numbers worked out with them, anything else written, then padded.
+ *
+ * Integers up to 64 bits, and characters, booleans and enums with a kind, are written as numbers with the options;
+ * pointers and functions that aren't null as addresses, in hexadecimal with 0x unless a kind is given; strings cut
+ * to the precision and padded. Anything else is written as output_value writes it, at most OUTPUT_BUFFER_SIZE bytes
+ * of it, then padded.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param value The value; its type's aliases are seen through, up to 64 deep.
+ * @param spec The options; when they change nothing, the value is written as output_value writes it.
+ */
 output_value_with :: fn(buffer: ptr[mut OutputBuffer], value: any, spec: FormatSpec) {
     if is_plain_format(spec) {
         output_value(buffer, value)
@@ -242,6 +332,18 @@ output_value_with :: fn(buffer: ptr[mut OutputBuffer], value: any, spec: FormatS
     format_text(sink, spec, text)
 }
 
+/**
+ * Add a value to a buffer, written as output_format writes it without options.
+ *
+ * Integers are in decimal, booleans true or false, characters as one byte, strings and cstrings as they are,
+ * enum members by name (or the enum's name and the number, like Color(7), for a value that's no member), pointers and
+ * functions as addresses or null, and floats of 16, 32 and 64 bits as the shortest text that reads back as the same
+ * value. A struct is only <struct Name>, anything else <value>, and a value with no type <nothing>. Integers and enums
+ * wider than 64 bits are written by their low 64.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param value The value; its type's aliases are seen through.
+ */
 output_value :: fn(buffer: ptr[mut OutputBuffer], value: any) {
     given :: type_info_of(value.type)
     if cast[rawptr](given) == null {
@@ -320,7 +422,12 @@ output_value :: fn(buffer: ptr[mut OutputBuffer], value: any) {
     }
 }
 
-/** Bytes up to the first 0. */
+/**
+ * Add a cstring's bytes to a buffer, up to its first 0.
+ *
+ * @param buffer The buffer, which writes what it holds to its stream when it fills, unless it captures.
+ * @param start The cstring's first byte, read up to its 0, which has to be there; null is written as null.
+ */
 output_cstring #no_context :: fn(buffer: ptr[mut OutputBuffer], start: rawptr) {
     if start == null {
         output_text(buffer, "null")
@@ -337,7 +444,13 @@ output_cstring #no_context :: fn(buffer: ptr[mut OutputBuffer], start: rawptr) {
     }
 }
 
-/** An integer of size bytes at data, up to 8. */
+/**
+ * Read an unsigned integer from memory, widened to a u64.
+ *
+ * @param data Where it is, size bytes that can be read.
+ * @param size Its size in bytes: 1, 2 or 4, and anything else is read as 8, so only the low half of a 128-bit one.
+ * @return The integer, zero-extended.
+ */
 read_unsigned #no_context :: fn(data: rawptr, size: usize) -> u64 {
     if size == 1 {
         return cast[u64](cast[ptr[u8]](data)^)
@@ -352,6 +465,13 @@ read_unsigned #no_context :: fn(data: rawptr, size: usize) -> u64 {
     return cast[ptr[u64]](data)^
 }
 
+/**
+ * Read a signed integer from memory, widened to an i64.
+ *
+ * @param data Where it is, size bytes that can be read.
+ * @param size Its size in bytes: 1, 2 or 4, and anything else is read as 8, so only the low half of a 128-bit one.
+ * @return The integer, sign-extended.
+ */
 read_signed #no_context :: fn(data: rawptr, size: usize) -> i64 {
     if size == 1 {
         return cast[i64](cast[ptr[i8]](data)^)
@@ -384,30 +504,83 @@ STANDARD_LOGGER :: Logger.{
     name = "standard",
 }
 
+/**
+ * Log a message at the trace level, as STANDARD_LOGGER does.
+ *
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ * @param location Where the call is; the standard logger doesn't write it.
+ */
 standard_log_trace : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
     standard_log(.TRACE, "trace", format_string, params)
 }
 
+/**
+ * Log a message at the debug level, as STANDARD_LOGGER does.
+ *
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ * @param location Where the call is; the standard logger doesn't write it.
+ */
 standard_log_debug : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
     standard_log(.DEBUG, "debug", format_string, params)
 }
 
+/**
+ * Log a message at the info level, as STANDARD_LOGGER does.
+ *
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ * @param location Where the call is; the standard logger doesn't write it.
+ */
 standard_log_info : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
     standard_log(.INFO, "info", format_string, params)
 }
 
+/**
+ * Log a message at the warning level, as STANDARD_LOGGER does.
+ *
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ * @param location Where the call is; the standard logger doesn't write it.
+ */
 standard_log_warn : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
     standard_log(.WARN, "warn", format_string, params)
 }
 
+/**
+ * Log a message at the error level, as STANDARD_LOGGER does.
+ *
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ * @param location Where the call is; the standard logger doesn't write it.
+ */
 standard_log_error : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
     standard_log(.ERROR, "error", format_string, params)
 }
 
+/**
+ * Log a message at the fatal level, as STANDARD_LOGGER does; it doesn't end the program.
+ *
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ * @param location Where the call is; the standard logger doesn't write it.
+ */
 standard_log_fatal : LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
     standard_log(.FATAL, "fatal", format_string, params)
 }
 
+/**
+ * Write a log message on a line of its own on standard error, after its level, unless it's below context.log_level.
+ *
+ * The line is built in an OutputBuffer and written in one write when it fits, so lines from several threads don't
+ * mix; a longer one is written in pieces of OUTPUT_BUFFER_SIZE bytes.
+ *
+ * @param level The message's level, compared with context.log_level.
+ * @param label What's written in brackets before the message, like info.
+ * @param format_string The message, formatted by output_format.
+ * @param params The values its placeholders take.
+ */
 standard_log :: fn(level: LogLevel, label: string, format_string: string, params: any[]) {
     if cast[int](level) < cast[int](context.log_level) {
         return void
@@ -421,12 +594,15 @@ standard_log :: fn(level: LogLevel, label: string, format_string: string, params
     output_flush(&buffer)
 }
 
-/** The exit code of a program a failed assertion ended, from printing_assertion_handler. */
+/**
+ * The exit code of a program a failed assertion ended, from printing_assertion_handler: 134, what a shell reports
+ * for a process ended by SIGABRT.
+ */
 ASSERTION_EXIT_CODE : u32 : 134
 
 /**
- * The assertion handler hosted programs start with: it writes the failure to standard error, where
- * it was and the stack that led there, then ends the process with ASSERTION_EXIT_CODE.
+ * Write a failed assertion to standard error, where it was and the stack that led there, then end the process with
+ * ASSERTION_EXIT_CODE: the assertion handler hosted programs start with.
  *
  *     assertion failed: count must be positive
  *         at main.hsc:12:5, in check
@@ -437,7 +613,10 @@ ASSERTION_EXIT_CODE : u32 : 134
  * The stack is its return addresses, innermost first, starting in assert (or where it was
  * inlined), as offsets into the program's image, which are the same every run. With debug info,
  * each is followed by the Hemera function it's in (function_at), and hemera --symbolize turns
- * them into files and lines, inlined calls included.
+ * them into files and lines, inlined calls included. At most 32 are written.
+ *
+ * @param location Where the assertion is: its file, line and column, and its function when that's known.
+ * @param message What failed, written after "assertion failed: ".
  */
 printing_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
     buffer := output_buffer(.ERROR)

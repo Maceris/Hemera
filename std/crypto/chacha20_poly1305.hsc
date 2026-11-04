@@ -18,17 +18,31 @@ import intrinsics from "base"
  * wide = false, and builds without SSE, so the 128-bit vectors are worked out in ordinary registers.
  */
 
-/** A 32-byte key, for ChaCha20-Poly1305 or AES-256-GCM. */
+/** A 32-byte key, for ChaCha20-Poly1305 or AES-256-GCM: secret, and best made by a random generator or a KDF. */
 Key256 :: distinct alias u8[32] #secret
-/** A 12-byte nonce, used once per key. */
+/**
+ * A 12-byte nonce, public, which must never be used twice with one key: with either cipher, a repeat gives away the
+ * XOR of the two plaintexts and lets tags be forged.
+ */
 Nonce96 :: distinct alias u8[12]
-/** A 16-byte tag. */
+/** A 16-byte authentication tag, public: sent with the ciphertext, and checked when it's opened. */
 Tag128 :: distinct alias u8[16]
 
+/** ChaCha20's state of sixteen 32-bit words, or a block of keystream made from it; secret, as the key is in it. */
 ChaChaWords :: distinct alias u32[16] #secret
 
+/** ChaCha20's four constant words, "expand 32-byte k" as little-endian words (RFC 8439, section 2.3). */
 CHACHA_CONSTANTS :: u32.[0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]
 
+/**
+ * Do ChaCha20's quarter round on four of the state's words (RFC 8439, section 2.1).
+ *
+ * @param x The state, four of whose words are changed in place.
+ * @param a The index, 0 to 15, of the quarter round's first word.
+ * @param b The index of its second word.
+ * @param c The index of its third word.
+ * @param d The index of its fourth word.
+ */
 chacha_quarter #constant_time :: fn(x: ptr[mut ChaChaWords], a: usize, b: usize, c: usize, d: usize) {
     x[a % 16] = x[a % 16] + x[b % 16]
     x[d % 16] = intrinsics.rotate_left(x[d % 16] ~ x[a % 16], 16)
@@ -40,7 +54,14 @@ chacha_quarter #constant_time :: fn(x: ptr[mut ChaChaWords], a: usize, b: usize,
     x[b % 16] = intrinsics.rotate_left(x[b % 16] ~ x[c % 16], 7)
 }
 
-/** The words a block starts from: the constants, the key, the block's counter and the nonce. */
+/**
+ * Set up the state a block of keystream starts from (RFC 8439, section 2.3).
+ *
+ * @param key The key, read as eight little-endian words.
+ * @param counter The block's number in the keystream: 0 for Poly1305's key, 1 on for the message.
+ * @param nonce The nonce, read as three little-endian words.
+ * @return The constants, the key, the counter and the nonce, in that order; secret.
+ */
 chacha_state #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Nonce96]) -> ChaChaWords {
     state : ChaChaWords
     for i in 0..<4 {
@@ -64,7 +85,14 @@ chacha_state #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Non
     return state
 }
 
-/** One 64-byte block of keystream, as words. */
+/**
+ * Make one 64-byte block of keystream with ChaCha20's block function (RFC 8439, section 2.3): 20 rounds.
+ *
+ * @param key The key.
+ * @param counter The block's number in the keystream.
+ * @param nonce The nonce.
+ * @return The block as sixteen words, whose little-endian bytes are the keystream's; secret.
+ */
 chacha20_block #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Nonce96]) -> ChaChaWords {
     state := chacha_state(key, counter, nonce)
     x := state
@@ -84,7 +112,13 @@ chacha20_block #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[N
     return x
 }
 
-/** A keystream block's byte. */
+/**
+ * Fetch one byte of a keystream block.
+ *
+ * @param block The block, from chacha20_block.
+ * @param at The byte's index in the block, 0 to 63.
+ * @return The byte, secret.
+ */
 chacha_byte #constant_time :: fn(block: ptr[ChaChaWords], at: usize) -> SecretByte {
     return cast[SecretByte](block[(at / 4) % 16] >> (8 * cast[u32](at % 4)))
 }
@@ -94,14 +128,28 @@ chacha_byte #constant_time :: fn(block: ptr[ChaChaWords], at: usize) -> SecretBy
  * the same for any width, so a template, made for four lanes and for eight; each width has its own rounds
  * calling it, so it's inlined into the AVX2 one and compiled with AVX2.
  */
+/** Four blocks' states at once, in 128-bit vectors: word i of every block in vector i, a block a lane. */
 ChaChaLanes4 :: distinct alias vector[u32, 4][16] #secret
+/** Eight blocks' states at once, in AVX2's 256-bit vectors: word i of every block in vector i, a block a lane. */
 ChaChaLanes8 :: distinct alias vector[u32, 8][16] #secret
 
-// Keystream for eight blocks, made four or eight at a time, and as the words they're made as.
+/** How many bytes of keystream are made at a time: eight 64-byte blocks. */
 CHACHA_STREAM :: 512
+/** Eight blocks of keystream, in order, as bytes. */
 ChaChaStream :: distinct alias u8[512] #secret
+/** Eight blocks of keystream, in order, as the words they're made as. */
 ChaChaStreamWords :: distinct alias u32[128] #secret
 
+/**
+ * Do ChaCha20's quarter round on four of the state's words, for every block in the lanes at once.
+ *
+ * @tparam T The lanes' type: ChaChaLanes4 or ChaChaLanes8.
+ * @param x The blocks' states, four of whose vectors are changed in place.
+ * @param a The index, 0 to 15, of the quarter round's first word.
+ * @param b The index of its second word.
+ * @param c The index of its third word.
+ * @param d The index of its fourth word.
+ */
 chacha_quarter_lanes :: fn[T](x: ptr[mut T], a: usize, b: usize, c: usize, d: usize) {
     x[a % 16] = x[a % 16] + x[b % 16]
     x[d % 16] = intrinsics.rotate_left(x[d % 16] ~ x[a % 16], 16)
@@ -113,7 +161,13 @@ chacha_quarter_lanes :: fn[T](x: ptr[mut T], a: usize, b: usize, c: usize, d: us
     x[b % 16] = intrinsics.rotate_left(x[b % 16] ~ x[c % 16], 7)
 }
 
-/** Four blocks from state's counter on, into the keystream's 64 words from at. */
+/**
+ * Make four blocks of keystream at once, in 128-bit vectors.
+ *
+ * @param state The first block's state; the others' counters follow its, wrapping past 2^32 - 1.
+ * @param words Where the blocks' 64 words go.
+ * @param at The word in words the first block goes at: 0 or 64.
+ */
 chacha20_blocks4 #constant_time :: fn(state: ptr[ChaChaWords], words: ptr[mut ChaChaStreamWords], at: usize) {
     x : ChaChaLanes4
     for i in 0..<16 {
@@ -140,8 +194,16 @@ chacha20_blocks4 #constant_time :: fn(state: ptr[ChaChaWords], words: ptr[mut Ch
 }
 
 /**
- * The keystream's eight blocks from state's counter on, as the stream's 512 bytes. They're made as words,
- * whose bytes are the keystream's in order on a little-endian CPU, as every one Hemera targets is.
+ * Make eight blocks of keystream, 512 bytes, from a state's counter on.
+ *
+ * They're made as words, whose bytes are the keystream's in order on a little-endian CPU, as every one Hemera
+ * targets is.
+ *
+ * @param state The first block's state. When the blocks are made four at a time its counter is left 4 further on,
+ *     so it isn't reused for the next eight.
+ * @param wide Whether to make them eight at a time with AVX2, which only a CPU and OS that allow it, as vectors_wide
+ *     says, may be told; on targets other than x86-64 it's ignored.
+ * @param stream Where the keystream goes, all 512 bytes.
  */
 chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool, stream: ptr[mut ChaChaStream]) {
     words : ChaChaStreamWords
@@ -163,7 +225,12 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
 #if TARGET_ARCH == .x86_64 {
     import x86_64 from "base/intrinsics"
 
-    /** Whether AVX2 can be used: the CPU has it, and the OS saves the YMM registers it uses (XCR0's bits 1 and 2). */
+    /**
+     * Check whether AVX2 can be used.
+     *
+     * @return Whether the CPU has AVX2 and OSXSAVE, and the OS saves the YMM registers it uses (XCR0's bits 1 and 2).
+     *     A kernel that keeps no vector state passes false to the _with functions instead of asking.
+     */
     vectors_wide :: fn() -> bool {
         if (x86_64.cpuid(1).ecx & (1 << 27)) == 0 {
             return false
@@ -174,7 +241,13 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
         return (x86_64.cpuid(7).ebx & (1 << 5)) != 0
     }
 
-    /** Eight blocks from state's counter on, with AVX2's 256-bit vectors. */
+    /**
+     * Make eight blocks of keystream at once, with AVX2's 256-bit vectors.
+     *
+     * @param state The first block's state; the others' counters follow its, wrapping past 2^32 - 1. The CPU has to
+     *     have AVX2, as vectors_wide says.
+     * @param words Where the blocks' 128 words go.
+     */
     chacha20_blocks8 #constant_time #target_features("avx2") :: fn(state: ptr[ChaChaWords], words: ptr[mut ChaChaStreamWords]) {
         x : ChaChaLanes8
         for i in 0..<16 {
@@ -201,6 +274,11 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
     }
 }
 #else {
+    /**
+     * Check whether AVX2 can be used, which only an x86-64 CPU can have.
+     *
+     * @return False: other targets use 128-bit vectors.
+     */
     vectors_wide :: fn() -> bool {
         return false
     }
@@ -211,23 +289,45 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
  * three limbs of 44, 44 and 42 bits, whose products fit a u128; its s; and the bytes of a block being filled.
  */
 Poly1305State :: struct #secret {
+    /** The key's r, clamped as RFC 8439 says, in limbs of 44, 44 and 42 bits. */
     r: u64[3],
+    /** The key's s, added at the end, as two little-endian 64-bit halves. */
     s: u64[2],
+    /** The sum, in limbs of 44, 44 and 42 bits, only partly carried: reduced modulo 2^130 - 5 at the end. */
     h: u64[3],
+    /** The block being filled. */
     block: u8[16],
 }
 
+/**
+ * A Poly1305 authentication in progress: from poly1305_start, fed with poly1305_update, and ended with
+ * poly1305_finish.
+ */
 Poly1305 :: struct {
+    /** The key and the sum, secret, and the block being filled. */
     state: Poly1305State,
+    /** How many bytes of the block are filled, 0 to 15. */
     buffered: usize,
 }
 
+/**
+ * A Poly1305 key, r then s, 16 bytes each: a one-time key, which must authenticate only one message, as
+ * ChaCha20-Poly1305 makes a new one for each from the key and nonce.
+ */
 Poly1305Key :: distinct alias u8[32] #secret
 
+/** The low 44 bits, a full limb of the first two. */
 POLY_MASK44 :: 0xfff_ffff_ffff
+/** The low 42 bits, a full third limb, which takes the sum to 130 bits. */
 POLY_MASK42 :: 0x3ff_ffff_ffff
 
-/** Eight of a secret key's bytes, from at, as a little-endian word that's still a secret. */
+/**
+ * Read eight of a secret key's bytes as a little-endian word.
+ *
+ * @param key The key.
+ * @param at The first byte's index, 0 to 24.
+ * @return The word, still a secret.
+ */
 poly_key_word #constant_time :: fn(key: ptr[Poly1305Key], at: usize) -> SecretWord {
     word := compiler.secret(cast[u64](0))
     for j in 0..<8 {
@@ -236,6 +336,12 @@ poly_key_word #constant_time :: fn(key: ptr[Poly1305Key], at: usize) -> SecretWo
     return cast[SecretWord](word)
 }
 
+/**
+ * Start a Poly1305 authentication (RFC 8439, section 2.5).
+ *
+ * @param key The one-time key: r, clamped here, and s. It's copied into the state, not kept.
+ * @return The authentication, with a sum of 0 and nothing buffered.
+ */
 poly1305_start #constant_time :: fn(key: ptr[Poly1305Key]) -> Poly1305 {
     poly := Poly1305.{}
     t0 := cast[u64](poly_key_word(key, 0))
@@ -250,7 +356,13 @@ poly1305_start #constant_time :: fn(key: ptr[Poly1305Key]) -> Poly1305 {
 }
 
 /**
- * A block, as two little-endian words, into the sum: h = (h + block) * r, mod 2^130 - 5. high is 2^128's bit, 1 << 40.
+ * Add a block into the sum: h = (h + block) * r, modulo 2^130 - 5, partly carried.
+ *
+ * @param state The state, whose sum is updated.
+ * @param t0 The block's first eight bytes, as a little-endian word.
+ * @param t1 The block's last eight bytes, as a little-endian word.
+ * @param high The bit above the block's 128 in the third limb: 1 << 40 for a full block, and 0 for a last, partial
+ *     one, whose 1 is already among its bytes.
  */
 poly1305_add_block #constant_time :: fn(state: ptr[mut Poly1305State], t0: SecretWord, t1: SecretWord, high: u64) {
     m0 := cast[u64](t0)
@@ -280,7 +392,12 @@ poly1305_add_block #constant_time :: fn(state: ptr[mut Poly1305State], t0: Secre
     state.h[1] = state.h[1] + (h0 >> 44)
 }
 
-/** The buffered block into the sum. */
+/**
+ * Add the block being filled into the sum.
+ *
+ * @param state The state, its block full or padded.
+ * @param high The bit above the block's 128 in the third limb: 1 << 40 for a full block, and 0 for a padded one.
+ */
 poly1305_blocks #constant_time :: fn(state: ptr[mut Poly1305State], high: u64) {
     t0 := compiler.secret(cast[u64](0))
     t1 := compiler.secret(cast[u64](0))
@@ -291,6 +408,12 @@ poly1305_blocks #constant_time :: fn(state: ptr[mut Poly1305State], high: u64) {
     poly1305_add_block(state, cast[SecretWord](t0), cast[SecretWord](t1), high)
 }
 
+/**
+ * Add public bytes to the message a Poly1305 authentication authenticates.
+ *
+ * @param poly The authentication, not yet finished.
+ * @param data The next bytes, of any number, none included; they're added, not kept.
+ */
 poly1305_update :: fn(poly: ptr[mut Poly1305], data: u8[]) {
     at : usize = 0
     // Filling a block already started, a byte at a time
@@ -325,7 +448,11 @@ poly1305_update :: fn(poly: ptr[mut Poly1305], data: u8[]) {
     while at < data.count
 }
 
-/** Zeros up to the next 16 bytes, as ChaCha20-Poly1305 pads what it authenticates. */
+/**
+ * Add zeros up to the next 16 bytes, as ChaCha20-Poly1305 pads what it authenticates.
+ *
+ * @param poly The authentication; nothing is added when what it has is already a multiple of 16 bytes.
+ */
 poly1305_pad :: fn(poly: ptr[mut Poly1305]) {
     loop {
         poly1305_update(poly, u8.[0])
@@ -333,6 +460,13 @@ poly1305_pad :: fn(poly: ptr[mut Poly1305]) {
     while poly.buffered != 0
 }
 
+/**
+ * Finish a Poly1305 authentication: a last, partial block added, the sum reduced modulo 2^130 - 5, and s added.
+ *
+ * @param poly The authentication. It's spent afterwards: it can't be updated or finished again, and its state isn't
+ *     wiped.
+ * @return The 16-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
 poly1305_finish #constant_time :: fn(poly: ptr[mut Poly1305]) -> SecretByte[16] {
     // A last, partial block: a 1 after it, then zeros, and no 2^128
     if poly.buffered > 0 {
@@ -397,7 +531,18 @@ poly1305_finish #constant_time :: fn(poly: ptr[mut Poly1305]) -> SecretByte[16] 
     return tag
 }
 
-/** Poly1305's key for a message: the first 32 bytes of the keystream's block 0. */
+/**
+ * Compute ChaCha20-Poly1305's tag (RFC 8439, section 2.8).
+ *
+ * Poly1305's one-time key is the first 32 bytes of the keystream's block 0; it authenticates the associated data and
+ * the ciphertext, each padded with zeros to 16 bytes, then their lengths as little-endian 64-bit numbers.
+ *
+ * @param key The key.
+ * @param nonce The nonce the ciphertext was sealed with.
+ * @param associated The associated data.
+ * @param ciphertext The ciphertext.
+ * @return The 16-byte tag, a secret until it's compared or sent.
+ */
 chacha20_poly1305_tag #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], associated: u8[], ciphertext: u8[]) -> SecretByte[16] {
     block := chacha20_block(key, 0, nonce)
     one_time : Poly1305Key
@@ -418,12 +563,25 @@ chacha20_poly1305_tag #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96]
     return poly1305_finish(&poly)
 }
 
-/** The most a message can be: 2^32 - 1 blocks of 64 bytes, the counter starting at 1. */
+/** The most bytes a message can have: 2^32 - 1 blocks of 64 bytes, the counter starting at 1, just under 256 GiB. */
 CHACHA20_POLY1305_MOST :: 274_877_906_880
 
-/*
- * plaintext encrypted into ciphertext, of the same count, and its tag. False, with nothing written, when
- * the counts differ or it's longer than 256 GiB.
+/**
+ * Encrypt and authenticate a message with ChaCha20-Poly1305 (RFC 8439, section 2.8).
+ *
+ * AVX2 is used when vectors_wide says the CPU and the OS allow it; a kernel without vector state calls
+ * chacha20_poly1305_seal_with instead.
+ *
+ * @param key The key.
+ * @param nonce The nonce, which must never have been used with this key before: a repeat gives away the XOR of the
+ *     two plaintexts and lets tags be forged. A counter, or 12 random bytes, will do.
+ * @param plaintext The message, up to CHACHA20_POLY1305_MOST bytes; empty is allowed.
+ * @param associated Data authenticated with the message but not encrypted, like a header sent in the clear, of any
+ *     length; empty for none.
+ * @param ciphertext Where the encrypted message goes, which has to have plaintext's count. It's public.
+ * @param tag Where the tag goes, to be sent with the ciphertext.
+ * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
+ *     is longer than CHACHA20_POLY1305_MOST.
  */
 chacha20_poly1305_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
     ciphertext: mut u8[], tag: ptr[mut Tag128]) -> bool {
@@ -431,9 +589,21 @@ chacha20_poly1305_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96
     return chacha20_poly1305_seal_with(key, nonce, plaintext, associated, ciphertext, tag, vectors_wide())
 }
 
-/*
- * ciphertext decrypted into plaintext, of the same count, once its tag and the associated data are
- * found to be what was sealed. False, with nothing written, when they aren't, or the counts differ.
+/**
+ * Check and decrypt a message sealed with ChaCha20-Poly1305 (RFC 8439, section 2.8).
+ *
+ * The tag is checked first, in constant time, and the plaintext is only written once the ciphertext and the
+ * associated data are found to be what was sealed. AVX2 is used when vectors_wide says the CPU and the OS allow it.
+ *
+ * @param key The key it was sealed with.
+ * @param nonce The nonce it was sealed with.
+ * @param ciphertext The encrypted message.
+ * @param associated The associated data it was sealed with, which has to be the same bytes.
+ * @param tag The tag that came with it.
+ * @param plaintext Where the message goes, which has to have ciphertext's count.
+ * @return True with plaintext written, or false, with nothing written, when the tag doesn't match (the ciphertext,
+ *     the associated data, the nonce, the key or the tag is wrong: forged or damaged), the counts differ, or the
+ *     ciphertext is longer than CHACHA20_POLY1305_MOST.
  */
 chacha20_poly1305_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
     tag: ptr[Tag128], plaintext: mut SecretByte[]) -> bool {
@@ -441,10 +611,22 @@ chacha20_poly1305_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96
     return chacha20_poly1305_open_with(key, nonce, ciphertext, associated, tag, plaintext, vectors_wide())
 }
 
-/*
- * Like chacha20_poly1305_seal, with AVX2 only when wide says to, which only works where vectors_wide() is true.
- * Without, it uses 128-bit vectors, which a target without them, like a kernel built without vector state,
- * works out with ordinary registers.
+/**
+ * Encrypt and authenticate a message with ChaCha20-Poly1305, choosing whether AVX2 may be used.
+ *
+ * Without AVX2 it uses 128-bit vectors, which a target without them, like a kernel built without vector state, works
+ * out with ordinary registers. The result is the same either way.
+ *
+ * @param key The key.
+ * @param nonce The nonce, which must never have been used with this key before: a repeat gives away the XOR of the
+ *     two plaintexts and lets tags be forged.
+ * @param plaintext The message, up to CHACHA20_POLY1305_MOST bytes; empty is allowed.
+ * @param associated Data authenticated with the message but not encrypted, of any length; empty for none.
+ * @param ciphertext Where the encrypted message goes, which has to have plaintext's count. It's public.
+ * @param tag Where the tag goes, to be sent with the ciphertext.
+ * @param wide Whether to use AVX2, which only works where vectors_wide() is true.
+ * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
+ *     is longer than CHACHA20_POLY1305_MOST.
  */
 chacha20_poly1305_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
     ciphertext: mut u8[], tag: ptr[mut Tag128], wide: bool) -> bool {
@@ -476,7 +658,21 @@ chacha20_poly1305_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[No
     return true
 }
 
-// Like chacha20_poly1305_open, with AVX2 only when wide says to (see chacha20_poly1305_seal_with).
+/**
+ * Check and decrypt a message sealed with ChaCha20-Poly1305, choosing whether AVX2 may be used.
+ *
+ * The tag is checked first, in constant time, and the plaintext is only written once it matches.
+ *
+ * @param key The key it was sealed with.
+ * @param nonce The nonce it was sealed with.
+ * @param ciphertext The encrypted message.
+ * @param associated The associated data it was sealed with, which has to be the same bytes.
+ * @param tag The tag that came with it.
+ * @param plaintext Where the message goes, which has to have ciphertext's count.
+ * @param wide Whether to use AVX2, which only works where vectors_wide() is true; see chacha20_poly1305_seal_with.
+ * @return True with plaintext written, or false, with nothing written, when the tag doesn't match (forged or
+ *     damaged), the counts differ, or the ciphertext is longer than CHACHA20_POLY1305_MOST.
+ */
 chacha20_poly1305_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
     tag: ptr[Tag128], plaintext: mut SecretByte[], wide: bool) -> bool {
 

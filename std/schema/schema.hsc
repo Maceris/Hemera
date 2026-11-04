@@ -19,22 +19,50 @@ import runtime from "base"
  * The code is base's (runtime.schema_write and the rest, schema.hsc), which the SlopOS logger writes records with.
  */
 
+/** The version of the schema format, written after "HSCH"; it changes when the bytes for the same type would. */
 VERSION : u16 : runtime.SCHEMA_VERSION
 
 /** What each kind is in the bytes: fixed, whatever compiler.TypeInfoVariant's order becomes. */
 Kind :: alias runtime.SchemaKind
 
-/** A type's schema written to the end of into. */
+/**
+ * Write a type's schema to the end of an array.
+ *
+ * Without the memory, calls context.assertion_handler, as array_add does; try_write is for code that handles running
+ * out.
+ *
+ * @param type The type whose schema is written, as type_info_of gives it; a plain alias is described as the type it
+ *     names.
+ * @param into The array the bytes are added to, grown with its own allocator; what it held already is left as it is.
+ * @param location Where the call is, given to the assertion handler; the caller's location by default.
+ */
 write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]], location := #caller_location) {
     runtime.schema_write(type, into, location)
 }
 
-/** Like write, but without the memory, gives the allocator's error and leaves into's count as it was. */
+/**
+ * Write a type's schema to the end of an array, giving back the error when there isn't the memory.
+ *
+ * A list of the types reached is kept on context.allocator while it runs, and freed before it returns.
+ *
+ * @param type The type whose schema is written; a plain alias is described as the type it names.
+ * @param into The array the bytes are added to, grown with its own allocator; what it held already is left as it is.
+ * @return Null when the whole schema was written; otherwise the allocator's error, and into's count is as it was, so
+ *     nothing of the schema is left in it.
+ */
 try_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
     return runtime.schema_try_write(type, into)
 }
 
-/** A type's schema hash: BLAKE3-256 of its schema's bytes. */
+/**
+ * Compute a type's schema hash, which names the type the same in every build, program and host.
+ *
+ * The schema's bytes are kept on context.allocator while they're hashed, and freed after. Without the memory for
+ * them, calls context.assertion_handler, as write does.
+ *
+ * @param type The type whose schema is hashed; a plain alias hashes as the type it names.
+ * @return BLAKE3-256 of the type's schema's bytes: equal for two types exactly when their schemas are.
+ */
 hash :: fn(type: ptr[compiler.TypeInfo]) -> u8[32] {
     return runtime.schema_hash(type)
 }

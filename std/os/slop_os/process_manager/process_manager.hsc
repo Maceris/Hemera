@@ -1,6 +1,6 @@
 package process_manager
 
-// Only for SlopOS, where std/os has what its generated code needs: base.OS, since the #insert in it could declare an OS of its own
+// Only for SlopOS, where std/os has what its generated code needs (base.OS: the #insert could declare an OS of its own)
 #if base.OS == .SlopOS {
     import os from "std"
     import slop_os from "std/os"
@@ -14,9 +14,16 @@ package process_manager
     /** The protocol, for os.Channel[ProcessManager]: its name is its tag's (os.protocol_tag). */
     ProcessManager :: struct {}
 
+    /**
+     * What the protocol says of itself: its name, which its channels' tag is made from, its major version, and that the
+     * client's budget pays for the server's work, for each of its connections.
+     */
     PROTOCOL :: slop_os.Protocol.{name = "process_manager", major_version = 3, lending = .PerConnection}
 
-    /** The rings a connection to the manager needs, for a Load (channel_create's ring bytes). */
+    /**
+     * The bytes of each of the rings a connection to the manager needs, each way, so a Load fits in one message
+     * (channel_create's ring bytes).
+     */
     RING_BYTES : u32 : 4096
 
     /**
@@ -24,52 +31,79 @@ package process_manager
      */
     MAX_GRANTS :: 48
 
+    /** What a client asks of the process manager. */
     Request :: union {
-        /** Load a program into a process the requester made, which stays the requester's and is paid for by it. */
+        /**
+         * Load a program into a process the requester made, which stays the requester's and is paid for by it. Its
+         * handles move to the manager with it. Answered with Loaded, or NotLoaded and why.
+         */
         Load(Load),
-        /** Serve another client, on its end. */
+        /** Serve another client, on the end given, which moves to the manager. Not answered. */
         Connect(os.Channel[ProcessManager]),
     }
 
     /**
-     * The process (RIGHT_PROCESS_THREADS, RIGHT_DUPLICATE and RIGHT_TRANSFER), its address space (owning, which goes to
-     * the process), its memory budget (RIGHT_BUDGET_CHARGE, RIGHT_DUPLICATE and RIGHT_TRANSFER), the executable (a memory
-     * object, RIGHT_MEMORY_READ), and grant_count grants, each labeled by labels, with RIGHT_TRANSFER. The manager keeps
-     * none of them.
+     * What a Load gives the manager, every handle of it moved with the message; the manager keeps none of them once
+     * it's done.
      */
     Load :: struct {
-        // The program's name, for the manager's log
+        /** The program's name, for the manager's log only: UTF-8, padded with zeros. */
         name : u8[slop_os.GRANT_LABEL_SIZE],
+        /**
+         * The process to load into, made by the requester, with RIGHT_PROCESS_THREADS, RIGHT_DUPLICATE and
+         * RIGHT_TRANSFER: a duplicate, so the requester keeps the process.
+         */
         process : slop_os.Process,
+        /** The process's address space, empty, an owning handle, which goes to the process. */
         space : slop_os.AddressSpace,
+        /**
+         * The memory budget that pays for the program's memory, with RIGHT_BUDGET_CHARGE, RIGHT_DUPLICATE and
+         * RIGHT_TRANSFER.
+         */
         budget : slop_os.MemoryBudget,
+        /** The executable, a memory object holding the program's file, with RIGHT_MEMORY_READ. */
         executable : slop_os.Memory,
+        /** How many of grants and labels are used, from the first: 0 to MAX_GRANTS. */
         grant_count : u32,
+        /**
+         * Each grant's label, which the program finds it by in its startup block: UTF-8, padded with zeros; the first
+         * grant_count are used.
+         */
         labels : u8[MAX_GRANTS][slop_os.GRANT_LABEL_SIZE],
+        /** The handles the program starts with, each with RIGHT_TRANSFER; the first grant_count are used. */
         grants : slop_os.Handle[MAX_GRANTS],
     }
 
+    /** Why a Load failed, as NotLoaded says. */
     LoadStatus :: enum #backed_by(u32) {
-        /** Not a Load's handles, or too many grants */
+        /** Not a Load's handles, or too many grants. */
         BadRequest = 2,
-        /** The executable isn't one the loader takes */
+        /** The executable isn't one the loader takes. */
         NotAProgram = 3,
-        /** The budget couldn't pay, or there was no room */
+        /** The budget couldn't pay, or there was no room. */
         NoMemory = 4,
-        /** The entropy service didn't answer */
+        /** The entropy service didn't answer, so the program's seed couldn't be drawn. */
         NoRandom = 5,
-        /** A call failed building it */
+        /** A call failed building it. */
         Failed = 6,
     }
 
+    /** What the process manager answers. */
     Response :: union {
-        /** Loaded, with its first thread's ID */
+        /** The answer to Load when the program's loaded: its first thread's ID. */
         Loaded(u64),
+        /** The answer to Load when it failed, and why. */
         NotLoaded(LoadStatus),
+        /** The answer to a request the manager doesn't know, as from a newer client; every protocol has it. */
         Unsupported,
     }
 
-    /** Every request can be sent again after a reconnect: a Load the manager didn't answer built nothing that stays. */
+    /**
+     * Tell whether a request may be sent again, after a reconnect, without doing more than sending it once did.
+     *
+     * @param request The request, which isn't changed.
+     * @return True for every request: a Load the manager didn't answer built nothing that stays.
+     */
     is_idempotent :: fn(request: ptr[Request]) -> bool {
         return match request^ {
             case Load(_) => true
@@ -82,8 +116,16 @@ package process_manager
     #assert cast[u32](size_of(Request)) <= slop_os.channel_max_payload(RING_BYTES)
 
     /**
-     * A new connection to the manager that end reaches: a channel for ProcessManager, one end sent in a Connect, the other
-     * given back, or null.
+     * Make a new connection to the process manager a connection reaches, with a Connect.
+     *
+     * The new channel's rings are RING_BYTES each way, so a Load fits. The Connect isn't answered, so a manager that
+     * won't take the connection is learned of only when the new end finds its other end closed.
+     *
+     * @param end A connection to the manager, kept by the caller; only the Connect is sent on it.
+     * @param port A port bound to end (port_for), waited on while end's ring is full.
+     * @param budget The memory budget that pays for the new channel.
+     * @return The new connection's end, which the caller owns and closes; null if the channel couldn't be made or the
+     *     Connect couldn't be sent, and then nothing is left open.
      */
     connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[ProcessManager]? {
         pair :: os.channel_for[ProcessManager](budget, RING_BYTES) or_return null

@@ -18,60 +18,93 @@ import intrinsics from "base"
  * hasher's wide says so, otherwise four. A kernel without vector state sets wide to false after starting.
  */
 
+/** How many bytes a BLAKE3 block has: a chunk's blocks are compressed one at a time. */
 BLAKE3_BLOCK :: 64
+/** How many bytes a BLAKE3 chunk has: the leaves of the tree its chaining values are merged in. */
 BLAKE3_CHUNK :: 1024
+/** How many bytes a BLAKE3 key has, exactly. */
 BLAKE3_KEY :: 32
-/** Enough for 2^54 chunks, as many as a 64-bit count of bytes holds */
+/** How many chaining values the stack holds: enough for 2^54 chunks, as many as a 64-bit count of bytes holds. */
 BLAKE3_STACK :: 54
 
+/** The flag for a chunk's first block. */
 BLAKE3_CHUNK_START :: 1
+/** The flag for a chunk's last block. */
 BLAKE3_CHUNK_END :: 2
+/** The flag for a parent node's compression, of two chaining values. */
 BLAKE3_PARENT :: 4
+/** The flag for the root's compressions, which make the output. */
 BLAKE3_ROOT :: 8
+/** The flag on every compression of a keyed hash. */
 BLAKE3_KEYED_HASH :: 16
 
-/** A chaining value, or the key, which hold what was hashed */
+/** A chaining value, or the key, which hold what was hashed, so they're secrets. */
 Blake3Chain :: distinct alias u32[8] #secret
-// A block as words, and the words a compression mixes
+/** A block as 16 little-endian words, or the words a compression mixes. */
 Blake3Words :: distinct alias u32[16] #secret
+/** A block of input, as bytes. */
 Blake3Block :: distinct alias u8[64] #secret
 
+/** What a BLAKE3 hasher holds that's secret: the key, the chunk being hashed, and the tree's chaining values. */
 Blake3State :: struct #secret {
+    /** The key's words, or the initialization vector for an unkeyed hash; every chunk and parent starts from it. */
     key: Blake3Chain,
+    /** The chaining value of the chunk being hashed, so far. */
     chunk: Blake3Chain,
+    /** The block being filled. */
     block: Blake3Block,
+    /** The chaining values of the subtrees not yet merged, the oldest and largest first; depth of them are used. */
     stack: Blake3Chain[54],
 }
 
+/**
+ * A BLAKE3 hash in progress: from blake3_start or blake3_start_keyed, fed with blake3_update, and read with
+ * blake3_finish, which leaves it as it was.
+ */
 Blake3 :: struct {
+    /** The key, the chunk, the block and the stack, secret. */
     state: Blake3State,
-    /** KEYED_HASH for a keyed hasher */
+    /** BLAKE3_KEYED_HASH for a keyed hasher, 0 otherwise: the flags every compression gets. */
     flags: u32,
-    // How much of block is filled, how many of the chunk's blocks were compressed, which chunk this
-    // is, and how many chaining values are on the stack
+    /** How many bytes of the block are filled, 0 to 64: a full block stays until more comes. */
     buffered: usize,
+    /** How many of the chunk's blocks were compressed, 0 to 15. */
     blocks: usize,
+    /** Which chunk is being hashed, counted from 0: how many chunks are on or merged into the stack. */
     chunk_counter: u64,
+    /** How many chaining values are on the stack, 0 to BLAKE3_STACK. */
     depth: usize,
     /**
      * Whether whole chunks go eight at a time with AVX2, as vectors_wide() says when it starts; a kernel
-     * without vector state sets it to false, and they go four at a time with what the target has
+     * without vector state sets it to false, and they go four at a time with what the target has.
      */
     wide: bool,
 }
 
-/** What a compression is given, kept to make the root's output, or a chaining value, from */
+/** What a compression is given, kept to make the root's output, or a chaining value, from. */
 Blake3Output :: struct #secret {
+    /** The chaining value the compression starts from. */
     chain: Blake3Chain,
+    /** The block, as words, zero-padded. */
     words: Blake3Words,
+    /** The chunk's number, or 0 for a parent. */
     counter: u64,
+    /** How many of the block's bytes are input, 0 to 64. */
     length: u32,
+    /** The compression's flags, BLAKE3_ROOT aside, which is added when it's the root. */
     flags: u32,
 }
 
+/** BLAKE3's initialization vector, the same as SHA-256's initial hash value. */
 BLAKE3_START :: u32.[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+/** BLAKE3's message permutation, applied to the block's words after each round. */
 BLAKE3_PERMUTATION :: usize.[2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]
 
+/**
+ * Start an unkeyed BLAKE3 hash.
+ *
+ * @return The hasher, with nothing hashed yet, and wide set to whether AVX2 can be used.
+ */
 blake3_start :: fn() -> Blake3 {
     hasher := Blake3.{wide = vectors_wide()}
     for i in 0..<8 {
@@ -81,7 +114,13 @@ blake3_start :: fn() -> Blake3 {
     return hasher
 }
 
-/** A keyed hasher, for a key of exactly 32 bytes, or null for another size. */
+/**
+ * Start a keyed BLAKE3 hash, which makes it a message authentication code or a pseudorandom function.
+ *
+ * @param key The key, exactly 32 bytes, which should be uniformly random; it's copied into the hasher's secret
+ *     state.
+ * @return The hasher, with wide set to whether AVX2 can be used, or None if the key isn't 32 bytes.
+ */
 blake3_start_keyed #constant_time :: fn(key: SecretByte[]) -> Blake3? {
     if key.count != BLAKE3_KEY {
         return null
@@ -98,6 +137,18 @@ blake3_start_keyed #constant_time :: fn(key: SecretByte[]) -> Blake3? {
     return hasher
 }
 
+/**
+ * Mix four of the working words with two message words: BLAKE3's G.
+ *
+ * @param v The working words, four of which are mixed in place.
+ * @param a The index in v, 0 to 15, of G's first word.
+ * @param b The index in v of G's second word.
+ * @param c The index in v of G's third word.
+ * @param d The index in v of G's fourth word.
+ * @param x The block's message words.
+ * @param xi The index in x, 0 to 15, of the first message word.
+ * @param yi The index in x of the second message word.
+ */
 blake3_mix #constant_time :: fn(v: ptr[mut Blake3Words], a: usize, b: usize, c: usize, d: usize, x: ptr[Blake3Words],
     xi: usize, yi: usize) {
 
@@ -111,7 +162,14 @@ blake3_mix #constant_time :: fn(v: ptr[mut Blake3Words], a: usize, b: usize, c: 
     v[b % 16] = intrinsics.rotate_right(v[b % 16] ~ v[c % 16], 7)
 }
 
-/** The 16 words of a compression: the first 8 a chaining value, all 16 the root's output. */
+/**
+ * Do BLAKE3's compression function: seven rounds over a block.
+ *
+ * @param output What's compressed: the chaining value, the block, its length and its flags.
+ * @param counter The counter: the chunk's number for a chaining value, or which 64 bytes of the root's output.
+ * @param extra_flags Flags added to output's: BLAKE3_ROOT for the root's output, 0 otherwise.
+ * @return The 16 words: the first 8 are a chaining value, and all 16 are 64 bytes of the root's output.
+ */
 blake3_compress #constant_time :: fn(output: ptr[Blake3Output], counter: u64, extra_flags: u32) -> Blake3Words {
     v : Blake3Words
     for i in 0..<8 {
@@ -147,6 +205,12 @@ blake3_compress #constant_time :: fn(output: ptr[Blake3Output], counter: u64, ex
     return v
 }
 
+/**
+ * Compress to a chaining value, for a block within a chunk, a chunk, or a parent that isn't the root.
+ *
+ * @param output What's compressed; its counter, the chunk's number, is declassified, as it isn't secret.
+ * @return The chaining value, secret.
+ */
 blake3_chaining_value #constant_time :: fn(output: ptr[Blake3Output]) -> Blake3Chain {
     // Which chunk it is, which isn't a secret
     words := blake3_compress(output, compiler.declassify(output.counter), 0)
@@ -157,7 +221,13 @@ blake3_chaining_value #constant_time :: fn(output: ptr[Blake3Output]) -> Blake3C
     return chain
 }
 
-/** The block being filled as words, for compressing: its first length bytes, then zeros. */
+/**
+ * Read the block being filled as words, for compressing.
+ *
+ * @param block The block.
+ * @param length How many of its bytes are input, 0 to 64; the rest are read as zeros, whatever they hold.
+ * @return The 16 little-endian words.
+ */
 blake3_block_words #constant_time :: fn(block: ptr[Blake3Block], length: usize) -> Blake3Words {
     words : Blake3Words
     for i in 0..<16 {
@@ -173,7 +243,12 @@ blake3_block_words #constant_time :: fn(block: ptr[Blake3Block], length: usize) 
     return words
 }
 
-/** The chunk being filled, as what makes its chaining value. */
+/**
+ * Take the chunk being filled as what makes its chaining value, or the root's output when it's the only chunk.
+ *
+ * @param hasher The hasher, which isn't changed.
+ * @return Its last block's compression input, flagged as the chunk's end, and as its start when it's its first.
+ */
 blake3_chunk_output #constant_time :: fn(hasher: ptr[Blake3]) -> Blake3Output {
     start : u32 = 0
     if hasher.blocks == 0 {
@@ -188,7 +263,15 @@ blake3_chunk_output #constant_time :: fn(hasher: ptr[Blake3]) -> Blake3Output {
     }
 }
 
-/** Two chaining values' parent, as what makes its own. */
+/**
+ * Make two chaining values' parent node, as what makes its own chaining value, or the root's output.
+ *
+ * @param key The key, or the initialization vector, the parent's compression starts from.
+ * @param left The left child's chaining value, the older.
+ * @param right The right child's chaining value.
+ * @param flags The hasher's flags; BLAKE3_PARENT is added.
+ * @return The parent's compression input.
+ */
 blake3_parent_output #constant_time :: fn(key: ptr[Blake3Chain], left: ptr[Blake3Chain], right: ptr[Blake3Chain], flags: u32) -> Blake3Output {
     output := Blake3Output.{chain = key^, counter = 0, length = BLAKE3_BLOCK, flags = flags | BLAKE3_PARENT}
     for i in 0..<8 {
@@ -198,13 +281,22 @@ blake3_parent_output #constant_time :: fn(key: ptr[Blake3Chain], left: ptr[Blake
     return output
 }
 
-/** A full chunk's chaining value onto the stack. */
+/**
+ * End a full chunk: its chaining value onto the stack, and a new chunk started.
+ *
+ * @param hasher The hasher, its chunk full and more input coming.
+ */
 blake3_end_chunk #constant_time :: fn(hasher: ptr[mut Blake3]) {
     output := blake3_chunk_output(hasher)
     blake3_push_chain(hasher, blake3_chaining_value(&output))
 }
 
-/** A chunk's chaining value onto the stack, merged with those it completes a subtree with, and a new chunk started. */
+/**
+ * Push a chunk's chaining value onto the stack, merged with those it completes a subtree with, and start a new chunk.
+ *
+ * @param hasher The hasher, whose chunk counter says which chunk this was.
+ * @param chunk_chain The chunk's chaining value.
+ */
 blake3_push_chain #constant_time :: fn(hasher: ptr[mut Blake3], chunk_chain: Blake3Chain) {
     chain := chunk_chain
     total := hasher.chunk_counter + 1
@@ -223,7 +315,12 @@ blake3_push_chain #constant_time :: fn(hasher: ptr[mut Blake3], chunk_chain: Bla
     hasher.buffered = 0
 }
 
-/** Room for one more byte: a full chunk ended, and a full block compressed, only once more comes. */
+/**
+ * Make room for one more byte: a full chunk ended, and a full block compressed. It's only done once more comes, as
+ * the last block and chunk are compressed differently.
+ *
+ * @param hasher The hasher, about to take a byte.
+ */
 blake3_make_room #constant_time :: fn(hasher: ptr[mut Blake3]) {
     if hasher.blocks * BLAKE3_BLOCK + hasher.buffered == BLAKE3_CHUNK {
         blake3_end_chunk(hasher)
@@ -237,10 +334,22 @@ blake3_make_room #constant_time :: fn(hasher: ptr[mut Blake3]) {
     }
 }
 
+/**
+ * Add public bytes to what a BLAKE3 hasher hashes.
+ *
+ * @param hasher The hasher.
+ * @param data The next bytes, of any number, none included; they're hashed, not kept.
+ */
 blake3_update :: fn(hasher: ptr[mut Blake3], data: u8[]) {
     blake3_absorb(hasher, as_secret(data))
 }
 
+/**
+ * Add secret bytes to what a BLAKE3 hasher hashes, in constant time.
+ *
+ * @param hasher The hasher.
+ * @param data The next bytes, of any number; how many isn't secret, what they are is.
+ */
 blake3_update_secret #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
     blake3_absorb(hasher, data)
 }
@@ -249,15 +358,31 @@ blake3_update_secret #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretB
  * Whole chunks several at a time, in vectors: a chunk a lane, each of its 16 blocks compressed in turn in every
  * lane at once. Only chunks with more input after them, since the last chunk may be the root.
  */
+/** Sixteen words of four chunks at once, in 128-bit vectors: word i of every chunk in vector i, a chunk a lane. */
 Blake3Lanes4 :: distinct alias vector[u32, 4][16] #secret
+/** Sixteen words of eight chunks at once, in AVX2's 256-bit vectors: word i of every chunk in vector i. */
 Blake3Lanes8 :: distinct alias vector[u32, 8][16] #secret
 
-// Up to eight chunks' bytes, and their chaining values
+/** How many bytes a batch of chunks can have: eight chunks. */
 BLAKE3_BATCH :: 8192
+/** Up to eight chunks' bytes, one after another. */
 Blake3Batch :: distinct alias u8[8192] #secret
+/** Up to eight chunks' chaining values, 8 words each, one after another. */
 Blake3Chains :: distinct alias u32[64] #secret
 
-/** BLAKE3's G on the same words of every lane: a template, made for four lanes and for eight. */
+/**
+ * Do BLAKE3's G on the same words of every lane: a template, made for four lanes and for eight.
+ *
+ * @tparam T The lanes' type: Blake3Lanes4 or Blake3Lanes8.
+ * @param v The working words, four of whose vectors are mixed in place.
+ * @param a The index in v, 0 to 15, of G's first word.
+ * @param b The index in v of G's second word.
+ * @param c The index in v of G's third word.
+ * @param d The index in v of G's fourth word.
+ * @param x The blocks' message words.
+ * @param xi The index in x, 0 to 15, of the first message word.
+ * @param yi The index in x of the second message word.
+ */
 blake3_mix_lanes :: fn[T](v: ptr[mut T], a: usize, b: usize, c: usize, d: usize, x: ptr[T], xi: usize, yi: usize) {
     v[a % 16] = v[a % 16] + v[b % 16] + x[xi % 16]
     v[d % 16] = intrinsics.rotate_right(v[d % 16] ~ v[a % 16], 16)
@@ -269,7 +394,13 @@ blake3_mix_lanes :: fn[T](v: ptr[mut T], a: usize, b: usize, c: usize, d: usize,
     v[b % 16] = intrinsics.rotate_right(v[b % 16] ~ v[c % 16], 7)
 }
 
-/** The chaining values of 4 whole chunks at once, the batch's first 4096 bytes, a chunk a lane. */
+/**
+ * Work out the chaining values of four whole chunks at once, a chunk a lane, in 128-bit vectors.
+ *
+ * @param hasher The hasher, for its key, flags and chunk counter, the first chunk's number; it isn't changed.
+ * @param batch The chunks, its first 4096 bytes.
+ * @param chains Where the four chaining values go, its first 32 words.
+ */
 blake3_chunks4 #constant_time :: fn(hasher: ptr[Blake3], batch: ptr[Blake3Batch], chains: ptr[mut Blake3Chains]) {
     cv : Blake3Lanes4
     for i in 0..<8 {
@@ -344,7 +475,14 @@ blake3_chunks4 #constant_time :: fn(hasher: ptr[Blake3], batch: ptr[Blake3Batch]
 }
 
 #if TARGET_ARCH == .x86_64 {
-    /** The chaining values of 8 whole chunks at once, the batch's first 8192 bytes, a chunk a lane. */
+    /**
+     * Work out the chaining values of eight whole chunks at once, a chunk a lane, with AVX2.
+     *
+     * @param hasher The hasher, for its key, flags and chunk counter, the first chunk's number; it isn't changed.
+     *     The CPU has to have AVX2, as vectors_wide says.
+     * @param batch The chunks, all 8192 bytes.
+     * @param chains Where the eight chaining values go.
+     */
     blake3_chunks8 #constant_time #target_features("avx2") :: fn(hasher: ptr[Blake3], batch: ptr[Blake3Batch], chains: ptr[mut Blake3Chains]) {
         cv : Blake3Lanes8
         for i in 0..<8 {
@@ -419,7 +557,12 @@ blake3_chunks4 #constant_time :: fn(hasher: ptr[Blake3], batch: ptr[Blake3Batch]
     }
 }
 
-/** How many chunks a batch takes: eight with AVX2, four otherwise. */
+/**
+ * Count the chunks a batch takes.
+ *
+ * @param hasher The hasher, whose wide decides.
+ * @return Eight with AVX2, on x86-64 when wide is set; four otherwise.
+ */
 blake3_batch_chunks :: fn(hasher: ptr[Blake3]) -> usize {
     #if TARGET_ARCH == .x86_64 {
         if hasher.wide {
@@ -429,7 +572,13 @@ blake3_batch_chunks :: fn(hasher: ptr[Blake3]) -> usize {
     return 4
 }
 
-/** A batch of whole chunks, data's first batch_chunks * 1024 bytes, onto the stack. */
+/**
+ * Hash a batch of whole chunks, and push their chaining values onto the stack.
+ *
+ * @param hasher The hasher, at a chunk's start.
+ * @param data The input from there, with more than blake3_batch_chunks * 1024 bytes, as none of the batch's chunks
+ *     may be the last; only that many are taken.
+ */
 blake3_batch #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
     count := blake3_batch_chunks(hasher)
     batch : Blake3Batch
@@ -459,7 +608,13 @@ blake3_batch #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
     }
 }
 
-/** data into the hasher: whole chunks a batch at a time where there's more after them, the rest a byte at a time. */
+/**
+ * Add bytes to what a BLAKE3 hasher hashes: whole chunks a batch at a time where there's more after them, the rest a
+ * byte at a time.
+ *
+ * @param hasher The hasher.
+ * @param data The bytes, of any number.
+ */
 blake3_absorb #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
     at : usize = 0
     loop {
@@ -483,7 +638,13 @@ blake3_absorb #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) 
 }
 
 
-/** output filled with the hash, as long as output is. The hasher isn't changed, so more can follow. */
+/**
+ * Read a BLAKE3 hash, keeping it a secret. The hasher isn't changed, so more input can follow, and be hashed again.
+ *
+ * @param hasher The hasher.
+ * @param output Where the hash goes, as long as output is: any length, none included. A longer output's first bytes
+ *     are a shorter one's.
+ */
 blake3_finish_secret #constant_time :: fn(hasher: ptr[Blake3], output: mut SecretByte[]) {
     root := blake3_chunk_output(hasher)
     for level in 0..<hasher.depth #reverse {
@@ -504,6 +665,13 @@ blake3_finish_secret #constant_time :: fn(hasher: ptr[Blake3], output: mut Secre
     }
 }
 
+/**
+ * Read a BLAKE3 hash. The hasher isn't changed, so more input can follow, and be hashed again.
+ *
+ * @param hasher The hasher.
+ * @param output Where the hash goes, as long as output is: any length, none included, though 32 bytes is BLAKE3's
+ *     usual. A longer output's first bytes are a shorter one's.
+ */
 blake3_finish :: fn(hasher: ptr[Blake3], output: mut u8[]) {
     block : SecretByte[64]
     for start in 0..<output.count {
@@ -519,7 +687,13 @@ blake3_finish :: fn(hasher: ptr[Blake3], output: mut u8[]) {
     }
 }
 
-/** 64 bytes of the output, the block'th of them */
+/**
+ * Read 64 bytes of a BLAKE3 hash's output, from anywhere in it. The hasher isn't changed.
+ *
+ * @param hasher The hasher.
+ * @param block_index Which 64 bytes: the output's bytes from 64 * block_index on.
+ * @param block Where they go: its first 64 bytes, or as many as it has.
+ */
 blake3_finish_from #constant_time :: fn(hasher: ptr[Blake3], block_index: usize, block: mut SecretByte[]) {
     root := blake3_chunk_output(hasher)
     for level in 0..<hasher.depth #reverse {
@@ -534,6 +708,12 @@ blake3_finish_from #constant_time :: fn(hasher: ptr[Blake3], block_index: usize,
     }
 }
 
+/**
+ * Hash bytes with unkeyed BLAKE3, when they're all at hand.
+ *
+ * @param data The bytes, of any number, none included.
+ * @param output Where the hash goes, as long as output is: any length, though 32 bytes is BLAKE3's usual.
+ */
 blake3 :: fn(data: u8[], output: mut u8[]) {
     hasher := blake3_start()
     blake3_update(&hasher, data)

@@ -49,6 +49,13 @@ checked :: fn() -> int {
     if halving.return_values.count != 2 || halving.return_values[1].documentation != "Its low half." {
         return 13
     }
+    // A field included with using is documented as any other
+    for each in info.types {
+        if each.name == "Wrapped" && (each.members.count != 1 || each.members[0].name != "inner"
+            || each.members[0].documentation.brief != "The count inside, whose fields are the wrapper's.") {
+            return 14
+        }
+    }
     // A type's, and its members' that have one, before them or after them on their lines
     reasons :: compiler.TypeDeclaration.{}
     for each in info.types {

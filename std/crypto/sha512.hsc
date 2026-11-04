@@ -8,25 +8,39 @@ import intrinsics from "base"
  * Ed25519 is defined with it.
  */
 
+/** How many bytes a SHA-512 digest has. */
 SHA512_SIZE :: 64
+/** How many bytes a SHA-512 block has: what's hashed is compressed this many bytes at a time. */
 SHA512_BLOCK :: 128
 
+/** The words and the block being filled, which hold what was hashed, so they're secrets. */
 Sha512State :: struct #secret {
+    /** The eight 64-bit chaining words, H0 to H7, which become the digest. */
     words: u64[8],
+    /** The block being filled, compressed into the words once it's full. */
     block: u8[128],
 }
 
+/** A block's schedule of 80 words, each with its round's constant added. */
 Sha512Schedule :: distinct alias u64[80] #secret
 
 /** A compression's eight working words, a to h, then b ~ c, which the next round's majority uses. */
 Sha512Working :: distinct alias u64[9] #secret
 
+/**
+ * A SHA-512 hash in progress, for what comes in parts: from sha512_start, fed with sha512_update, and ended with
+ * sha512_finish.
+ */
 Sha512 :: struct {
+    /** The chaining words and the block being filled, secret. */
     state: Sha512State,
+    /** How many bytes of the block are filled, 0 to 127. */
     buffered: usize,
+    /** How many bytes have been hashed in all, which the padding ends with, in bits. */
     total: u64,
 }
 
+/** SHA-512's 80 round constants, K0 to K79 (FIPS 180-4, section 4.2.3). */
 SHA512_ROUND :: u64.[
     0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc, 0x3956c25bf348b538,
     0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118, 0xd807aa98a3030242, 0x12835b0145706fbe,
@@ -46,11 +60,17 @@ SHA512_ROUND :: u64.[
     0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
 ]
 
+/** SHA-512's initial hash value, H0 to H7 (FIPS 180-4, section 5.3.5). */
 SHA512_START :: u64.[
     0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
     0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 ]
 
+/**
+ * Start a SHA-512 hash (FIPS 180-4).
+ *
+ * @return The hasher, with nothing hashed yet.
+ */
 sha512_start :: fn() -> Sha512 {
     hasher := Sha512.{}
     for i in 0..<8 {
@@ -59,7 +79,11 @@ sha512_start :: fn() -> Sha512 {
     return hasher
 }
 
-/** The block in the state into its words. */
+/**
+ * Compress the state's block into its chaining words.
+ *
+ * @param state The state, its block full; its words are updated, and its block left as it was.
+ */
 sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
     w : Sha512Schedule
     for i in 0..<16 {
@@ -72,7 +96,13 @@ sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
     sha512_compress_words(state, &w)
 }
 
-/** A block, its 16 words in w's first, into the state's words. */
+/**
+ * Compress a block, already read as words, into the state's chaining words (FIPS 180-4, section 6.4.2).
+ *
+ * @param state The state; only its words are used and updated.
+ * @param w The block's 16 big-endian words in its first 16; the rest of the schedule is worked out in it, so it's
+ *     overwritten.
+ */
 sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[mut Sha512Schedule]) {
     sha512_schedule(w)
     v : Sha512Working
@@ -98,10 +128,16 @@ sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[m
 }
 
 /**
- * Round r of eight: a is v's word at (8 - r) % 8, b the one after, and so on, so the round only writes the two
- * words it changes, e = d + t1 into d's place and a = t1 + t2 into h's, and the next round reads one place back.
- * v[8] is b ~ c, which this round's a ~ b becomes for the next.
- * i is the round's number, of 80, for its schedule word, which has the round's constant added.
+ * Do one round of SHA-512's compression, with the working words renamed rather than moved.
+ *
+ * a is v's word at (8 - r) % 8, b the one after, and so on, so the round only writes the two words it changes,
+ * e = d + t1 into d's place and a = t1 + t2 into h's, and the next round reads one place back.
+ *
+ * @param v The working words, a to h in the rotation r says, then b ~ c in v[8], which this round's a ~ b becomes
+ *     for the next.
+ * @param r Which round of eight this is, 0 to 7, which says where a is in v.
+ * @param w The block's schedule, each word with its round's constant added, as sha512_schedule leaves it.
+ * @param i The round's number, 0 to 79, for its schedule word.
  */
 sha512_round #constant_time :: fn(v: ptr[mut Sha512Working], r: usize, w: ptr[Sha512Schedule], i: usize) {
     a := v[(8 - r) % 8]
@@ -128,8 +164,10 @@ sha512_round #constant_time :: fn(v: ptr[mut Sha512Working], r: usize, w: ptr[Sh
 }
 
 /**
- * w's other 64 words, worked out from its first 16, then each round's constant added to its word, so a round
- * reads one value rather than two.
+ * Work out a block's schedule: w's other 64 words from its first 16, then each round's constant added to its word,
+ * so a round reads one value rather than two.
+ *
+ * @param w The schedule, the block's 16 big-endian words in its first 16; all 80 are written.
  */
 sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
     for i in 16..<80 {
@@ -142,7 +180,12 @@ sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
     }
 }
 
-/** One byte into the block, compressing it once it's full. total doesn't count it: the caller adds it. */
+/**
+ * Add one byte to the block, compressing it once it's full.
+ *
+ * @param hasher The hasher. Its total doesn't count the byte: the caller adds it, as padding isn't counted.
+ * @param byte The byte.
+ */
 sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
     hasher.state.block[hasher.buffered % SHA512_BLOCK] = byte
     hasher.buffered += 1
@@ -152,16 +195,32 @@ sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
     }
 }
 
+/**
+ * Add public bytes to what a SHA-512 hasher hashes.
+ *
+ * @param hasher The hasher, not yet finished.
+ * @param data The next bytes, of any number, none included; they're hashed, not kept.
+ */
 sha512_update :: fn(hasher: ptr[mut Sha512], data: u8[]) {
     sha512_absorb(hasher, as_secret(data))
 }
 
+/**
+ * Add secret bytes to what a SHA-512 hasher hashes, in constant time.
+ *
+ * @param hasher The hasher, not yet finished.
+ * @param data The next bytes, of any number; how many isn't secret, what they are is.
+ */
 sha512_update_secret #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
     sha512_absorb(hasher, data)
 }
 
 /**
- * data into the hasher: a block already started filled a byte at a time, then whole blocks straight from data, then the rest buffered.
+ * Add bytes to what a SHA-512 hasher hashes: a block already started is filled a byte at a time, then whole blocks
+ * are compressed straight from data, then the rest is buffered.
+ *
+ * @param hasher The hasher, not yet finished; its total grows by data's count.
+ * @param data The bytes, of any number.
  */
 sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
     at : usize = 0
@@ -198,7 +257,14 @@ sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) 
     hasher.total += cast[u64](data.count)
 }
 
-/** The padding and the length in bits, as 128 bits of which the high 64 are 0, then the words. */
+/**
+ * Finish a SHA-512 hash, keeping the digest a secret: the padding and the length in bits, as 128 bits of which the
+ * high 64 are 0, are added, then the words are the digest.
+ *
+ * @param hasher The hasher, after fewer than 2^61 bytes in all. It's spent afterwards: it can't be updated or
+ *     finished again, and its state isn't wiped.
+ * @return The 64-byte digest, big-endian words, as a secret.
+ */
 sha512_finish_secret #constant_time :: fn(hasher: ptr[mut Sha512]) -> SecretByte[64] {
     bits := hasher.total * 8
     sha512_byte(hasher, 0x80)
@@ -223,6 +289,13 @@ sha512_finish_secret #constant_time :: fn(hasher: ptr[mut Sha512]) -> SecretByte
     return digest
 }
 
+/**
+ * Finish a SHA-512 hash.
+ *
+ * @param hasher The hasher, after fewer than 2^61 bytes in all. It's spent afterwards: it can't be updated or
+ *     finished again.
+ * @return The 64-byte digest, public.
+ */
 sha512_finish :: fn(hasher: ptr[mut Sha512]) -> u8[64] {
     secret := sha512_finish_secret(hasher)
     digest : u8[64]
@@ -232,6 +305,12 @@ sha512_finish :: fn(hasher: ptr[mut Sha512]) -> u8[64] {
     return digest
 }
 
+/**
+ * Hash bytes with SHA-512 (FIPS 180-4), when they're all at hand.
+ *
+ * @param data The bytes, of any number, none included.
+ * @return The 64-byte digest.
+ */
 sha512 :: fn(data: u8[]) -> u8[64] {
     hasher := sha512_start()
     sha512_update(&hasher, data)

@@ -12,15 +12,20 @@ import intrinsics from "base"
  * A handler may be called by several threads or fibers at once, since they inherit it from the
  * context they were created with, so it must be thread-safe. While it runs, the current fiber
  * won't be suspended (it runs in a no-yield region).
+ *
+ * The handler is given location, where the assertion is in the source, and message, what failed.
  */
 AssertionHandler :: alias fn(location: SourceCodeLocation, message: string) #never_returns
 
 /**
- * If assertion is false, calls context.assertion_handler, which should end the program.
- * Never returns after a failed assertion.
+ * Check that something is true, and end the program through context.assertion_handler if it isn't.
  *
- * A failed assertion inside a handler (on the same OS thread) traps immediately,
- * instead of calling the handler again.
+ * Never returns after a failed assertion. A failed assertion inside a handler (on the same OS thread) traps
+ * immediately, instead of calling the handler again.
+ *
+ * @param assertion What has to be true; when it's false, the program ends.
+ * @param message What failed, given to the handler to report; only read when the assertion fails.
+ * @param location Where the assertion is, given to the handler; the caller's location by default.
  */
 assert :: fn(assertion: bool, message: string, location := #caller_location) {
     if assertion {
@@ -42,8 +47,12 @@ assert :: fn(assertion: bool, message: string, location := #caller_location) {
 }
 
 /**
- * Stops the program without reporting anything.
+ * Stop the program without reporting anything.
+ *
  * The default until something better is installed, like std's default handler.
+ *
+ * @param location Ignored; nothing is reported.
+ * @param message Ignored; nothing is reported.
  */
 trap_assertion_handler : AssertionHandler : fn(location: SourceCodeLocation, message: string) #never_returns {
     intrinsics.trap()

@@ -7,4 +7,5 @@ package text_buffer
 
 import tiers from "std"
 
+/** This package's tier: it never allocates or makes system calls, so it works anywhere, interrupt handlers too. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

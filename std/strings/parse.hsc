@@ -9,7 +9,13 @@ package strings
  *     strings.parse_bool("true")         // true
  */
 
-/** The value of a digit in base (2 to 36, with letters either case past 9), or none. */
+/**
+ * Find the value of a digit in a base.
+ *
+ * @param character The digit: 0 to 9, then letters, either case, for 10 to 35.
+ * @param base The base, 2 to 36; a larger one accepts no more than 36 does.
+ * @return The digit's value, below base; null if it isn't a digit, or isn't one in base.
+ */
 digit_value :: fn(character: char, base: u64) -> u64? {
     value : u64 = 36
     if character >= '0' && character <= '9' {
@@ -27,9 +33,17 @@ digit_value :: fn(character: char, base: u64) -> u64? {
     return value
 }
 
+/** The largest u64, which parse_unsigned checks against so a value that doesn't fit is none rather than wrapped. */
 MAX_U64 : u64 : 0xffff_ffff_ffff_ffff
 
-/** Digits in base (2 to 36), with no sign. */
+/**
+ * Parse an unsigned integer: digits in a base, with no sign.
+ *
+ * @param text The whole text, all digits: no sign, spaces, prefix like 0x, or separators like _.
+ * @param base The base, 2 to 36; 16 takes digits 0 to 9 and a to f, either case.
+ * @return The value; null if text is empty, has anything but digits of base, is larger than MAX_U64, or base is
+ *     outside 2 to 36.
+ */
 parse_unsigned :: fn(text: string, base: u64 = 10) -> u64? {
     if text.count == 0 || base < 2 || base > 36 {
         return null
@@ -49,7 +63,14 @@ parse_unsigned :: fn(text: string, base: u64 = 10) -> u64? {
     return result
 }
 
-/** Digits in base (2 to 36), after a - or + if there is one. */
+/**
+ * Parse a signed integer: digits in a base, after a - or + if there is one.
+ *
+ * @param text The whole text: an optional - or +, then digits, with no spaces or prefix.
+ * @param base The base, 2 to 36.
+ * @return The value, from the most negative i64 to the largest; null if text has no digits, anything but digits of
+ *     base after the sign, a value that doesn't fit an i64, or base is outside 2 to 36.
+ */
 parse_signed :: fn(text: string, base: u64 = 10) -> i64? {
     negative :: starts_with(text, "-")
     digits := text
@@ -75,7 +96,12 @@ parse_signed :: fn(text: string, base: u64 = 10) -> i64? {
     }
 }
 
-/** "true" or "false". */
+/**
+ * Parse a boolean.
+ *
+ * @param text The whole text, which must be "true" or "false" exactly: lowercase, no spaces.
+ * @return true or false; null for any other text.
+ */
 parse_bool :: fn(text: string) -> bool? {
     if equal(text, "true") {
         return true

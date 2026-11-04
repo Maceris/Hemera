@@ -19,46 +19,81 @@ package unicode
  * Bytes that aren't UTF-8 are each a cluster of their own, one column wide, as a terminal shows them with U+FFFD.
  */
 
-/** The code point shown in place of bytes that aren't UTF-8. */
+/** The code point shown in place of bytes that aren't UTF-8, U+FFFD REPLACEMENT CHARACTER. */
 REPLACEMENT : u32 : 0xfffd
 
-/** The largest code point. */
+/** The largest code point, U+10FFFF. */
 MAX_CODE_POINT : u32 : 0x10ffff
 
-/** A code point's Grapheme_Cluster_Break property (UAX #29), as the tables number it. */
+/**
+ * A code point's Grapheme_Cluster_Break property (UAX #29), as the tables number it: the low four bits of a run's
+ * properties.
+ */
 GraphemeBreak :: enum #backed_by(u8) {
+    /** Any code point without another value. */
     Other = 0,
+    /** Carriage return, U+000D. */
     CR = 1,
+    /** Line feed, U+000A. */
     LF = 2,
+    /** A control or separator other than CR and LF, which is a cluster of its own. */
     Control = 3,
+    /** A combining mark or other extender that joins the code point before it. */
     Extend = 4,
+    /** Zero width joiner, U+200D, which can join emoji into one (GB11). */
     ZWJ = 5,
+    /** A regional indicator symbol, two of which make a flag. */
     RegionalIndicator = 6,
+    /** A prepended concatenation mark, which joins the code point after it. */
     Prepend = 7,
+    /** A spacing combining mark, which joins the code point before it. */
     SpacingMark = 8,
+    /** A Hangul leading consonant (choseong). */
     L = 9,
+    /** A Hangul vowel (jungseong). */
     V = 10,
+    /** A Hangul trailing consonant (jongseong). */
     T = 11,
+    /** A precomposed Hangul syllable of a leading consonant and a vowel. */
     LV = 12,
+    /** A precomposed Hangul syllable of a leading consonant, a vowel and a trailing consonant. */
     LVT = 13,
 }
 
-/** A code point's Indic_Conjunct_Break property, which joins consonants across a virama (UAX #29's GB9c). */
+/**
+ * A code point's Indic_Conjunct_Break property, which joins consonants across a virama (UAX #29's GB9c), as the tables
+ * number it: bits 5 and 6 of a run's properties.
+ */
 ConjunctBreak :: enum #backed_by(u8) {
+    /** Not part of a conjunct. */
     None = 0,
+    /** A virama that links the consonants on either side of it. */
     Linker = 1,
+    /** A consonant that can start or end a conjunct. */
     Consonant = 2,
+    /** A mark that can come between a conjunct's consonant and its linker. */
     Extend = 3,
 }
 
+/** The bit of a run's properties that says its code points are Extended_Pictographic. */
 EXTENDED_PICTOGRAPHIC : u16 : 1 << 4
+/** How far a run's properties are shifted right to bring its ConjunctBreak, two bits, to the bottom. */
 CONJUNCT_SHIFT : u16 : 5
+/** How far a run's properties are shifted right to bring its width, two bits (0 to 2 columns), to the bottom. */
 WIDTH_SHIFT : u16 : 7
+/** The bit of a run's properties that says its code points are Default_Ignorable_Code_Point. */
 DEFAULT_IGNORABLE : u16 : 1 << 9
 
 /**
- * The code point at at in bytes, and how many bytes it takes; length 0 where the bytes there aren't UTF-8 (cut short,
- * overlong, a surrogate or past U+10FFFF) or at is past the end.
+ * Decode one UTF-8 code point.
+ *
+ * Only well-formed UTF-8 is accepted, as the Unicode standard defines it: a sequence cut short, a continuation byte
+ * where a sequence should start, an overlong encoding, a surrogate or a code point past U+10FFFF is rejected.
+ *
+ * @param bytes The text.
+ * @param at The byte index the code point starts at.
+ * @return point The code point, or 0 where length is 0.
+ * @return length How many bytes it takes, 1 to 4; 0 where the bytes at at aren't UTF-8, or at is at or past the end.
  */
 decode :: fn(bytes: u8[], at: usize) -> (point: u32, length: usize) {
     if at >= bytes.count {
@@ -108,7 +143,15 @@ decode :: fn(bytes: u8[], at: usize) -> (point: u32, length: usize) {
     return point, length
 }
 
-/** point as UTF-8 at the start of into: how many bytes it took, 0 if it isn't a code point or into has no room. */
+/**
+ * Encode a code point as UTF-8.
+ *
+ * @param point The code point: up to U+10FFFF, and not a surrogate (U+D800 to U+DFFF).
+ * @param into Where its bytes go, from the start; nothing after them is touched, and nothing at all when 0 is
+ *     returned.
+ * @return How many bytes it took, 1 to 4, or 0 if point isn't a code point that can be encoded or into has too few
+ *     bytes for it.
+ */
 encode :: fn(point: u32, into: mut u8[]) -> usize {
     if point > MAX_CODE_POINT || (point >= 0xd800 && point <= 0xdfff) {
         return 0
@@ -131,7 +174,12 @@ encode :: fn(point: u32, into: mut u8[]) -> usize {
     return length
 }
 
-/** The tables' properties of point: the run it's in, found by binary search. */
+/**
+ * Look a code point's properties up in the tables: those of the run it's in, found by binary search.
+ *
+ * @param point The code point; one past U+10FFFF gets the last run's.
+ * @return Its properties, packed as RUN_PROPERTIES describes.
+ */
 properties :: fn(point: u32) -> u16 {
     low : usize = 0
     high : usize = RUN_STARTS.count
@@ -148,50 +196,92 @@ properties :: fn(point: u32) -> u16 {
     return if low < RUN_PROPERTIES.count { RUN_PROPERTIES[low] } else { cast[u16](0) }
 }
 
+/**
+ * Look up a code point's Grapheme_Cluster_Break property.
+ *
+ * @param point The code point.
+ * @return Its property, Other for one the tables give none.
+ */
 grapheme_break :: fn(point: u32) -> GraphemeBreak {
     return cast[GraphemeBreak](cast[u8](properties(point) & 0xf))
 }
 
+/**
+ * Look up a code point's Indic_Conjunct_Break property.
+ *
+ * @param point The code point.
+ * @return Its property, None for one that isn't part of a conjunct.
+ */
 conjunct_break :: fn(point: u32) -> ConjunctBreak {
     return cast[ConjunctBreak](cast[u8]((properties(point) >> CONJUNCT_SHIFT) & 3))
 }
 
-/** Whether point is Extended_Pictographic: an emoji, or a symbol that may be one. */
+/**
+ * Check whether a code point is Extended_Pictographic: an emoji, or a symbol that may be one.
+ *
+ * @param point The code point.
+ * @return Whether it has the Extended_Pictographic property.
+ */
 is_extended_pictographic :: fn(point: u32) -> bool {
     return properties(point) & EXTENDED_PICTOGRAPHIC != 0
 }
 
 /**
- * Whether point is a Default_Ignorable_Code_Point, which shows nothing where it isn't supported: joiners, variation
- * selectors, the bidirectional controls, soft hyphens, tags and the like. UTS #39 counts them as invisible.
+ * Check whether a code point is a Default_Ignorable_Code_Point, which shows nothing where it isn't supported: joiners,
+ * variation selectors, the bidirectional controls, soft hyphens, tags and the like. UTS #39 counts them as invisible.
+ *
+ * @param point The code point.
+ * @return Whether it has the Default_Ignorable_Code_Point property.
  */
 is_default_ignorable :: fn(point: u32) -> bool {
     return properties(point) & DEFAULT_IGNORABLE != 0
 }
 
-/** Whether point is one of the bidirectional formatting characters (UAX #9's explicit formatting, and the marks). */
+/**
+ * Check whether a code point is one of the bidirectional formatting characters (UAX #9).
+ *
+ * @param point The code point.
+ * @return Whether it's one of the explicit formatting characters (U+202A to U+202E, the embeddings and overrides, and
+ *     U+2066 to U+2069, the isolates) or the marks (U+061C, U+200E and U+200F).
+ */
 is_bidi_control :: fn(point: u32) -> bool {
     return point == 0x061c || point == 0x200e || point == 0x200f || (point >= 0x202a && point <= 0x202e)
         || (point >= 0x2066 && point <= 0x2069)
 }
 
-/** Whether point is a C0 or C1 control, or DEL. */
+/**
+ * Check whether a code point is a control character.
+ *
+ * @param point The code point.
+ * @return Whether it's a C0 control (U+0000 to U+001F), DEL (U+007F) or a C1 control (U+0080 to U+009F).
+ */
 is_control :: fn(point: u32) -> bool {
     return point < 0x20 || (point >= 0x7f && point <= 0x9f)
 }
 
 /**
- * The columns point takes on its own: 2 for East Asian wide and fullwidth ones, 0 for those that combine with the one
- * before or show nothing (marks, formats, controls, default ignorables, Hangul's medial vowels and final consonants),
- * and 1 for the rest, ambiguous ones included.
+ * Find how many terminal columns a code point takes on its own.
+ *
+ * A code point in a cluster with others is measured with grapheme_width instead, which can differ.
+ *
+ * @param point The code point.
+ * @return Two for East Asian wide and fullwidth ones, 0 for those that combine with the one before or show nothing
+ *     (marks, formats, controls, default ignorables, Hangul's medial vowels and final consonants), and 1 for the rest,
+ *     East Asian ambiguous ones included.
  */
 width :: fn(point: u32) -> usize {
     return cast[usize]((properties(point) >> WIDTH_SHIFT) & 3)
 }
 
 /**
- * Where the grapheme cluster that starts at at in bytes ends: the index after its last byte, bytes.count at most. A byte
- * that isn't UTF-8 is a cluster of its own. at at or past the end gives bytes.count.
+ * Find where an extended grapheme cluster ends, by UAX #29's rules.
+ *
+ * A byte that isn't UTF-8 is a cluster of its own, and a cluster also ends before one.
+ *
+ * @param bytes The text, UTF-8 or not.
+ * @param at The byte index the cluster starts at, which should be a cluster's start: the text's, or an end this gave.
+ * @return The index after the cluster's last byte, more than at and bytes.count at most; bytes.count when at is at or
+ *     past the end.
  */
 grapheme_end :: fn(bytes: u8[], at: usize) -> usize {
     if at >= bytes.count {
@@ -245,11 +335,18 @@ grapheme_end :: fn(bytes: u8[], at: usize) -> usize {
     return end
 }
 
-/*
- * Whether there's no break between a code point whose property is before and the next, point, whose property is after
- * (UAX #29's rules GB3 to GB13): indicators is how many regional indicators run up to the first, pictographic_joined
- * whether the first is a ZWJ after an Extended_Pictographic and Extends, and conjunct_linked whether a conjunct's
- * consonant and a linker come before, with only Extends and Linkers since.
+/**
+ * Decide whether two code points in a row are in the same grapheme cluster, by UAX #29's rules GB3 to GB13.
+ *
+ * @param before The first code point's Grapheme_Cluster_Break property.
+ * @param after The second code point's Grapheme_Cluster_Break property.
+ * @param point The second code point, for its Indic_Conjunct_Break and Extended_Pictographic properties.
+ * @param indicators How many regional indicators run up to and including the first code point, for pairing them into
+ *     flags (GB12, GB13).
+ * @param pictographic_joined Whether the first is a ZWJ after an Extended_Pictographic and only Extends (GB11).
+ * @param conjunct_linked Whether a conjunct's consonant and a linker come before the second, with only Extends and
+ *     Linkers since (GB9c).
+ * @return Whether there's no break between them.
  */
 joins :: fn(before: GraphemeBreak, after: GraphemeBreak, point: u32, indicators: usize, pictographic_joined: bool,
     conjunct_linked: bool) -> bool {
@@ -290,9 +387,13 @@ joins :: fn(before: GraphemeBreak, after: GraphemeBreak, point: u32, indicators:
 }
 
 /**
- * The columns one grapheme cluster takes: the widest of its code points, at most 2; 2 for an emoji with emoji
- * presentation asked for (U+FE0F) and for a flag, and 1 for an emoji with text presentation asked for (U+FE0E). Bytes
- * that aren't UTF-8 take 1, as U+FFFD would.
+ * Find how many terminal columns one grapheme cluster takes.
+ *
+ * @param cluster The cluster's bytes, as grapheme_end divides text. More than one cluster is measured as if it were
+ *     one, and measuring stops at bytes that aren't UTF-8.
+ * @return The widest of its code points' widths, at most 2; but 2 for an emoji with emoji presentation asked for
+ *     (U+FE0F) and for a flag, and 1 for an emoji with text presentation asked for (U+FE0E). 1 when the cluster starts
+ *     with bytes that aren't UTF-8, as U+FFFD would take, and 0 when it's empty.
  */
 grapheme_width :: fn(cluster: u8[]) -> usize {
     first, first_length :: decode(cluster, 0)
@@ -329,7 +430,13 @@ grapheme_width :: fn(cluster: u8[]) -> usize {
     return if widest > 2 { cast[usize](2) } else { widest }
 }
 
-/** The columns text takes, a grapheme cluster at a time. */
+/**
+ * Find how many terminal columns text takes, measuring it a grapheme cluster at a time.
+ *
+ * @param text The text, UTF-8 or not: each byte that isn't takes one column.
+ * @return The sum of its clusters' widths, 0 for empty text. Control characters and line breaks take none, so it's
+ *     only a line's width for text without them.
+ */
 text_width :: fn(text: u8[]) -> usize {
     columns : usize = 0
     at : usize = 0

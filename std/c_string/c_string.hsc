@@ -1,8 +1,14 @@
 package c_string
 
 /**
- * How many bytes come before text's zero byte, looking at no more than limit of them: None if there's no zero among
- * them, so text that isn't what it should be, unterminated or not text at all, isn't read on past where it could end.
+ * Count the bytes before a C string's zero byte, looking at no more than a limit of them.
+ *
+ * The limit means text that isn't what it should be, unterminated or not text at all, isn't read on past where it
+ * could end.
+ *
+ * @param text The C string, which must be readable for limit bytes or up to its zero byte, whichever comes first.
+ * @param limit The most bytes to look at, in bytes.
+ * @return How many bytes come before the zero byte, below limit; null if there's no zero among the first limit bytes.
  */
 length :: fn(text: cstring, limit: usize) -> usize? {
     bytes :: bit_cast[ptr[u8]](text)
@@ -15,8 +21,12 @@ length :: fn(text: cstring, limit: usize) -> usize? {
 }
 
 /**
- * text as a string, without its zero byte, looking at no more than limit bytes for it: None if there's no zero among
- * them. It refers to text's bytes rather than copying them.
+ * View a C string as a string, without its zero byte, looking at no more than a limit of bytes for it.
+ *
+ * @param text The C string, which must be readable for limit bytes or up to its zero byte, whichever comes first.
+ * @param limit The most bytes to look at for the zero byte.
+ * @return A string over text's bytes rather than a copy, good as long as they are; null if there's no zero among the
+ *     first limit bytes.
  */
 to_string :: fn(text: cstring, limit: usize) -> string? {
     count :: length(text, limit) or_return null

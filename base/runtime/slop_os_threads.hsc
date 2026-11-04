@@ -11,32 +11,62 @@ import intrinsics from "base"
  * There's no wait on an address in the kernel yet, so wait_on_value spins once, as without an operating system.
  */
 #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
-    /** A thread's stack when it doesn't ask for a fixed one */
+    /**
+     * A thread's stack, in bytes, when it doesn't ask for a fixed one: a Segmented stack gets this much, since its
+     * first segment isn't used yet.
+     */
     SLOP_OS_THREAD_STACK : usize : 256 * 1024
 
+    /** The kernel call that ends the calling thread; it doesn't return. */
     SLOP_OS_CALL_THREAD_EXIT : u64 : 3
+    /** The kernel call that makes a thread: from a budget, in an address space, at an entry, on a stack, with a word. */
     SLOP_OS_CALL_THREAD_CREATE : u64 : 4
+    /** The kernel call that makes a port, paid for from a budget. */
     SLOP_OS_CALL_PORT_CREATE : u64 : 8
+    /** The kernel call that queues a User packet for a key on a port, through the port's wake binding for the key. */
     SLOP_OS_CALL_PORT_WAKE : u64 : 10
+    /** The kernel call that waits for packets on a port, until a deadline. */
     SLOP_OS_CALL_PORT_WAIT : u64 : 13
+    /** The kernel call that reads a message from a channel, failing at once when there's none. */
     SLOP_OS_CALL_CHANNEL_READ : u64 : 19
+    /** The kernel call that binds a handle's signals to a port, so they come to it as packets. */
     SLOP_OS_CALL_PORT_BIND : u64 : 23
+    /** The signal of a channel with a message to read. */
     SLOP_OS_SIGNAL_READABLE : u64 : 1
+    /** The signal of a channel whose other end has closed. */
     SLOP_OS_SIGNAL_PEER_CLOSED : u64 : 4
+    /** The signal of a thread that has ended. */
     SLOP_OS_SIGNAL_TERMINATED : u64 : 8
+    /** A binding that gives one packet, then is gone. */
     SLOP_OS_BIND_ONCE : u64 : 1
+    /** A binding that gives a packet each time its signals are raised, for as long as it lasts. */
     SLOP_OS_BIND_PERSISTENT : u64 : 2
+    /** A wait's deadline that never comes: wait as long as it takes. */
     SLOP_OS_NO_DEADLINE : u64 : 0xffffffffffffffff
-    /** A port packet, as the kernel writes it: its key, kind, and two words */
+    /** The words (u64s) of a port packet, as the kernel writes it: its key, kind, and two words. */
     SLOP_OS_PACKET_WORDS :: 4
 
+    /** What a Thread has on SlopOS: set by os_thread_start, and given back by os_thread_join. */
     ThreadSpecificOS :: struct {
-        // The kernel thread's owning handle, and the stack it runs on
+        /** The kernel thread's owning handle, which os_thread_join closes. */
         kernel_thread : u64,
+        /** The lowest address of the stack the thread runs on, from map_pages. */
         stack_pages : rawptr,
+        /** The stack's size in bytes, a whole number of pages. */
         stack_bytes : usize,
     }
 
+    /**
+     * Start a thread as a kernel thread of this process, on a stack mapped for it.
+     *
+     * A Fixed stack's size is rounded up to whole pages; a Segmented stack gets SLOP_OS_THREAD_STACK bytes. The stack
+     * and the kernel thread are paid for from the program's budget.
+     *
+     * @param thread The thread to start, from thread_create, which has to stay where it is until it's joined, since
+     *     the new thread runs on its carrier block.
+     * @return True if it started; false if its stack couldn't be mapped or the kernel wouldn't make the thread, and
+     *     then nothing is left mapped.
+     */
     os_thread_start :: fn(thread #escaping : ptr[mut Thread]) -> bool {
         size := SLOP_OS_THREAD_STACK
         match thread.stack {
@@ -58,6 +88,12 @@ import intrinsics from "base"
         return true
     }
 
+    /**
+     * Wait for a thread to end, then close its kernel thread's handle and unmap its stack.
+     *
+     * @param thread A thread os_thread_start started, joined only once; the Thread itself is left for the caller to
+     *     free.
+     */
     os_thread_join :: fn(thread: ptr[mut Thread]) {
         slop_os_wait_for_thread(thread.kernel_thread)
         slop_os_call(SLOP_OS_CALL_HANDLE_CLOSE, thread.kernel_thread)
@@ -65,8 +101,18 @@ import intrinsics from "base"
     }
 
     /**
-     * A kernel thread at entry, on size bytes of stack, given argument in its first argument register: its owning handle,
-     * or 0 if it couldn't be made.
+     * Make a kernel thread of this process that starts at entry.
+     *
+     * The thread is paid for from the program's budget. Its stack pointer starts at the stack's top, rounded down to 16
+     * bytes, as both architectures' calls want it.
+     *
+     * @param entry Where the thread starts: a function of the C calling convention taking one u64, which never returns
+     *     but ends the thread with SLOP_OS_CALL_THREAD_EXIT.
+     * @param stack The lowest address of the thread's stack, which the caller owns and has to keep mapped until the
+     *     thread has ended.
+     * @param size The stack's size in bytes.
+     * @param argument What the thread is given in its first argument register.
+     * @return The kernel thread's owning handle, which the caller closes, or 0 if the kernel wouldn't make it.
      */
     slop_os_start_thread #no_context :: fn(entry: rawptr, stack: rawptr, size: usize, argument: u64) -> u64 {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
@@ -77,7 +123,14 @@ import intrinsics from "base"
         return if made.tag == 0 { made.first } else { cast[u64](0) }
     }
 
-    /** Until the thread whose handle this is has ended. */
+    /**
+     * Wait until a kernel thread has ended, on a port made for the wait and closed after it.
+     *
+     * If the port can't be made, it returns at once without waiting; if it can't be bound to the thread, it closes the
+     * port and returns without waiting.
+     *
+     * @param handle A handle of the kernel thread, which stays open; the caller closes it.
+     */
     slop_os_wait_for_thread #no_context :: fn(handle: u64) {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
         port :: slop_os_call(SLOP_OS_CALL_PORT_CREATE, cast[u64](startup.budget))
@@ -93,8 +146,10 @@ import intrinsics from "base"
     }
 
     /**
-     * Where a thread starts: its carrier block loaded, with its stack's limit, then its function with the context it was
-     * made with; then the kernel thread ends, since there's nothing to return to.
+     * Run a thread: load its carrier block, with its stack's limit, call its function with the context it was made
+     * with, then end the kernel thread, since there's nothing to return to.
+     *
+     * @param argument The address of the thread's Thread, as os_thread_start gave it.
      */
     slop_os_thread_entry #calling_convention(.c) #no_context :: fn(argument: u64) #never_returns {
         thread :: cast[ptr[mut Thread]](cast[rawptr](cast[uintptr](argument)))
@@ -116,15 +171,37 @@ import intrinsics from "base"
         }
     }
 
+    /**
+     * Wait for a value to change: here, since the kernel has no wait on an address yet, spin once and return, as
+     * without an operating system (wait.hsc), so callers loop the same either way.
+     *
+     * @param address The value to watch, which isn't read here.
+     * @param expected The value it had when the caller decided to wait.
+     */
     wait_on_value :: fn(address: ptr[u32], expected: u32) {
         intrinsics.spin_hint()
     }
 
+    /**
+     * Wake one thread waiting on a value: here nothing, since wait_on_value doesn't sleep.
+     *
+     * @param address The value waited on.
+     */
     wake_one :: fn(address: ptr[u32]) {}
 
+    /**
+     * Wake every thread waiting on a value: here nothing, since wait_on_value doesn't sleep.
+     *
+     * @param address The value waited on.
+     */
     wake_all :: fn(address: ptr[u32]) {}
 
-    /** No command line: the kernel's is a grant, for those given it */
+    /**
+     * Give the program's command line: none on SlopOS, where the kernel's is a grant, for those given it.
+     *
+     * @param allocator Unused, since nothing is allocated.
+     * @return An empty array, always.
+     */
     os_command_line_arguments :: fn(allocator: Allocator) -> string[] {
         empty : string[]
         return empty

@@ -3,33 +3,43 @@ package intrinsics
 import runtime from "base"
 
 /**
- * The current thread's carrier block, from the carrier register.
- *
- * A fiber can move to another carrier during any call that might yield, so only use
- * the result until then, or inside runtime.no_yield_enter() / runtime.no_yield_exit().
+ * Give the current thread's carrier block, from the carrier register.
  *
  * At compile time the compiler supplies its own carrier block, with no yield_function.
+ *
+ * @return The carrier block, never null where Hemera's startup code or set_carrier has set the register. A fiber can
+ *     move to another carrier during any call that might yield, so only use it until then, or inside
+ *     runtime.no_yield_enter() / runtime.no_yield_exit().
  */
 carrier : fn() -> ptr[mut runtime.CarrierBlock] : ---
 
 /**
- * The runtime's state for the whole process, like which thread-local storage slot holds each
- * thread's carrier block, and the heap's: one global, the program's, zeroed when it starts. Only
- * the runtime uses it; programs have no mutable globals (docs/faq.md).
+ * Give the runtime's state for the whole process, like which thread-local storage slot holds each
+ * thread's carrier block, and the heap's.
+ *
+ * Only the runtime uses it; programs have no mutable globals (docs/faq.md).
+ *
+ * @return The one global, the program's, zeroed when it starts and good for the whole run. Every thread gets the same
+ *     one, so changes to it need the runtime's own locking.
  */
 process_state : fn() -> ptr[mut runtime.ProcessState] : ---
 
 /**
- * Whether the program links the C library: a hosted Linux program that declares #foreign functions
- * of its own (docs/compilation.md, Linking C on Linux). The runtime then starts threads through
- * pthreads, since C sets up its own state on each thread, and keeps each carrier block where
- * callbacks find it. A constant.
+ * Tell whether the program links the C library (docs/compilation.md, Linking C on Linux).
+ *
+ * When it does, the runtime starts threads through pthreads, since C sets up its own state on each thread, and keeps
+ * each carrier block where callbacks find it.
+ *
+ * @return True for a hosted Linux program that declares #foreign functions of its own; false otherwise. A constant,
+ *     the same for the whole build.
  */
 uses_c_library : fn() -> bool : ---
 
 /**
  * Keep a thread's carrier block in thread-local storage, for callbacks from foreign code to find,
  * where the program links the C library on Linux. Does nothing anywhere else.
+ *
+ * @param carrier The calling thread's carrier block, which has to stay alive as long as the thread runs.
  */
 set_thread_carrier : fn(carrier: ptr[mut runtime.CarrierBlock]) : ---
 
@@ -38,7 +48,8 @@ set_thread_carrier : fn(carrier: ptr[mut runtime.CarrierBlock]) : ---
  * setting it up: entry points of freestanding programs, interrupt functions, and threads on
  * systems without thread-local storage.
  *
- * Every prologue reads block.stack_limit, so set that first.
+ * @param block The carrier block for this thread from now on, which has to stay alive while it's in the register.
+ *     Every prologue reads block.stack_limit, so set that first.
  */
 set_carrier : fn(block: ptr[mut runtime.CarrierBlock]) : ---
 
@@ -49,9 +60,10 @@ set_carrier : fn(block: ptr[mut runtime.CarrierBlock]) : ---
  * records the shadow stack pointer, makes this fiber the carrier's current fiber,
  * switches the stack pointer to the top of the fiber's first segment, and calls fiber_entry.
  *
- * Returns .Yielded once the fiber suspends, or .Finished once its function returns.
- *
  * Intended for fiber schedulers.
+ *
+ * @param fiber The fiber, set up with its function, data and first segment, and not started before.
+ * @return .Yielded once the fiber suspends, or .Finished once its function returns.
  */
 fiber_start : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
 
@@ -62,9 +74,10 @@ fiber_start : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
  * innermost frame with a real call, so that the frame later returns into the resume loop.
  * Each time a re-entered frame returns, the loop re-enters its caller the same way.
  *
- * Returns .Yielded once the fiber suspends again, or .Finished once its function returns.
- *
  * Intended for fiber schedulers.
+ *
+ * @param fiber The fiber, suspended by fiber_suspend, and not running on any other carrier.
+ * @return .Yielded once the fiber suspends again, or .Finished once its function returns.
  */
 fiber_resume : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
 
@@ -83,11 +96,13 @@ fiber_resume : fn(fiber: ptr[mut runtime.Fiber]) -> runtime.FiberExit : ---
  * must not use anything it got from carrier() before this.
  *
  * Intended for fiber schedulers.
+ *
+ * @param fiber The current fiber, the one running this call.
  */
 fiber_suspend : fn(fiber: ptr[mut runtime.Fiber]) : ---
 
 /**
- * Never called directly, but needs a name.
+ * Run a fiber's function: never called directly, but needs a name.
  *
  * The bottom frame of every fiber. Builds a normal frame, calls function(data) with the
  * fiber's root context, and when that returns, marks the fiber .Finished and switches back
@@ -99,7 +114,7 @@ fiber_suspend : fn(fiber: ptr[mut runtime.Fiber]) : ---
 fiber_entry : fn() : ---
 
 /**
- * Never called directly, but needs a name.
+ * Give a function a new stack segment: never called directly, but needs a name.
  *
  * Called by every function's prologue when it doesn't have room left on the current stack
  * segment. Takes a new segment (the carrier's spare, its cache, or a new allocation),

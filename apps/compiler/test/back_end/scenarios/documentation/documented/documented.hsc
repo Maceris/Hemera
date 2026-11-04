@@ -61,3 +61,15 @@ read_some :: fn(from: string) -> (count : usize, error : string?) {
 halves :: fn(number: u64) -> (u32, u32) {
     return cast[u32](number >> 32), cast[u32](number)
 }
+
+/** A count, wrapped. */
+Wrapped :: struct {
+    /** The count inside, whose fields are the wrapper's. */
+    using inner : Inner,
+}
+
+/** What a Wrapped holds. */
+Inner :: struct {
+    /** How many there are, from 0. */
+    count : int,
+}

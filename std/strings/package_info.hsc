@@ -6,4 +6,5 @@ package strings
 
 import tiers from "std"
 
+/** This package's tier: format and clone allocate, so it needs an Allocator in context. */
 PACKAGE_TIER :: tiers.Tier.Allocating

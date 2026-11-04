@@ -17,9 +17,11 @@ import intrinsics from "base"
  * The shared secret isn't a key yet: put it through HKDF with what both sides saw.
  */
 
-/** An X25519 secret key, 32 random bytes. */
+/**
+ * An X25519 secret key: 32 random bytes from a secure generator. Any 32 bytes will do, as they're clamped when used.
+ */
 X25519SecretKey :: distinct alias u8[32] #secret
-/** An X25519 public key, a point's u coordinate. */
+/** An X25519 public key: a point's u coordinate, 32 little-endian bytes, public. */
 X25519PublicKey :: distinct alias u8[32]
 
 /**
@@ -32,11 +34,18 @@ Fe :: distinct alias u64[5] #secret
 /** Five limbs' worth of products, before they're carried down. */
 FeWide :: distinct alias u128[5] #secret
 
+/** The low 51 bits: a limb, fully carried. */
 FE_MASK :: 0x7_ffff_ffff_ffff
 
 /** 4p, in limbs, added before subtracting so no limb goes below 0. */
 FE_FOUR_P :: u64.[0x1f_ffff_ffff_ffb4, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc]
 
+/**
+ * Make a field element from public limbs, like a constant.
+ *
+ * @param limbs The five limbs, least significant first, each under 2^54 for what's done with it after.
+ * @return The element, secret.
+ */
 fe_of #constant_time :: fn(limbs: u64[5]) -> Fe {
     f : Fe
     for i in 0..<5 {
@@ -45,7 +54,13 @@ fe_of #constant_time :: fn(limbs: u64[5]) -> Fe {
     return f
 }
 
-/** Each limb's carry into the next, and the top one's, times 19, into the first, as 2^255 is 19 mod p. */
+/**
+ * Carry a field element's limbs: each limb's carry into the next, and the top one's, times 19, into the first, as
+ * 2^255 is 19 mod p.
+ *
+ * @param f The element.
+ * @return The same number mod p, its limbs carried to 51 bits but the first, which may be a little over.
+ */
 fe_carry #constant_time :: fn(f: Fe) -> Fe {
     h := f
     for i in 0..<4 {
@@ -58,7 +73,14 @@ fe_carry #constant_time :: fn(f: Fe) -> Fe {
     return h
 }
 
-/** Not carried: what it gives goes into a multiplication, a square or fe_to_bytes, or one more addition first. */
+/**
+ * Add two field elements, without carrying.
+ *
+ * @param f The first addend.
+ * @param g The second addend.
+ * @return The sum, f + g mod p, not carried: it goes into a multiplication, a square or fe_to_bytes, or one more
+ *     addition first, but no more than that.
+ */
 fe_add #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
@@ -67,7 +89,14 @@ fe_add #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     return h
 }
 
-/** g's limbs under 2^53, at most two additions' worth, so adding 4p first keeps each limb from going below 0. */
+/**
+ * Subtract one field element from another.
+ *
+ * @param f The element subtracted from.
+ * @param g The element subtracted, its limbs under 2^53, at most two additions' worth, so adding 4p to f first keeps
+ *     each limb from going below 0.
+ * @return The difference, f - g mod p, carried.
+ */
 fe_subtract #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
@@ -76,11 +105,22 @@ fe_subtract #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     return fe_carry(h)
 }
 
+/**
+ * Negate a field element.
+ *
+ * @param f The element, its limbs under 2^53.
+ * @return The negation, -f mod p, carried.
+ */
 fe_negate #constant_time :: fn(f: Fe) -> Fe {
     return fe_subtract(fe_of(u64.[0, 0, 0, 0, 0]), f)
 }
 
-/** Wide limbs carried down to 51 bits each, the top one's carry times 19 into the first. */
+/**
+ * Carry wide limbs down to 51 bits each, the top one's carry times 19 into the first.
+ *
+ * @param r The products, each limb under 2^128 less what its carry in can add.
+ * @return The element, its limbs carried to 51 bits but the second, which may be a little over.
+ */
 fe_carry_wide #constant_time :: fn(r: FeWide) -> Fe {
     c := r
     h : Fe
@@ -95,7 +135,15 @@ fe_carry_wide #constant_time :: fn(r: FeWide) -> Fe {
     return h
 }
 
-/** Each product of 64-bit limbs is one 64 by 64 multiplication: the 19s are applied before widening. */
+/**
+ * Multiply two field elements.
+ *
+ * Each product of 64-bit limbs is one 64 by 64 multiplication: the 19s are applied before widening.
+ *
+ * @param f The first factor, its limbs under 2^54.
+ * @param g The second factor, its limbs under 2^54.
+ * @return The product, f * g mod p, carried.
+ */
 fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     f0 := cast[u128](f[0])
     f1 := cast[u128](f[1])
@@ -120,7 +168,13 @@ fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
     return fe_carry_wide(r)
 }
 
-/** f * f, with the products that come twice worked out once and doubled: 15 multiplications rather than 25. */
+/**
+ * Square a field element, with the products that come twice worked out once and doubled: 15 multiplications rather
+ * than 25.
+ *
+ * @param f The element, its limbs under 2^54.
+ * @return The square, f * f mod p, carried.
+ */
 fe_square #constant_time :: fn(f: Fe) -> Fe {
     f0 := cast[u128](f[0])
     f1 := cast[u128](f[1])
@@ -140,7 +194,13 @@ fe_square #constant_time :: fn(f: Fe) -> Fe {
     return fe_carry_wide(r)
 }
 
-/** f squared count times. */
+/**
+ * Square a field element repeatedly.
+ *
+ * @param f The element, its limbs under 2^54.
+ * @param count How many times to square it; 0 or less gives f back.
+ * @return The power, f^(2^count) mod p.
+ */
 fe_square_times #constant_time :: fn(f: Fe, count: int) -> Fe {
     h := f
     for i in 0..<count {
@@ -149,6 +209,13 @@ fe_square_times #constant_time :: fn(f: Fe, count: int) -> Fe {
     return h
 }
 
+/**
+ * Multiply a field element by a small public number.
+ *
+ * @param f The element, its limbs under 2^54.
+ * @param n The number, small enough that each limb's product and carry fit in 128 bits, like X25519_A24.
+ * @return The product, f * n mod p, carried.
+ */
 fe_multiply_small #constant_time :: fn(f: Fe, n: u64) -> Fe {
     r : FeWide
     for i in 0..<5 {
@@ -157,7 +224,13 @@ fe_multiply_small #constant_time :: fn(f: Fe, n: u64) -> Fe {
     return fe_carry_wide(r)
 }
 
-/** f^(2^250 - 1), and f^11 into eleven, which inverting and square roots both start from. */
+/**
+ * Raise a field element to 2^250 - 1, which inverting and square roots both start from.
+ *
+ * @param f The element.
+ * @param eleven Where f^11, made on the way, goes, for inverting.
+ * @return The power, f^(2^250 - 1) mod p.
+ */
 fe_power_250 #constant_time :: fn(f: Fe, eleven: ptr[mut Fe]) -> Fe {
     f2 := fe_square(f)
     f9 := fe_multiply(fe_square_times(f2, 2), f)
@@ -173,21 +246,38 @@ fe_power_250 #constant_time :: fn(f: Fe, eleven: ptr[mut Fe]) -> Fe {
     return fe_multiply(fe_square_times(f_200, 50), f_50)
 }
 
-/** 1 / f, as f^(p - 2); 0 for 0. */
+/**
+ * Invert a field element, as f^(p - 2), in constant time.
+ *
+ * @param f The element.
+ * @return The inverse, 1 / f mod p, or 0 for 0.
+ */
 fe_invert #constant_time :: fn(f: Fe) -> Fe {
     f11 : Fe
     f_250 := fe_power_250(f, &f11)
     return fe_multiply(fe_square_times(f_250, 5), f11)
 }
 
-/** f^((p - 5) / 8), for square roots. */
+/**
+ * Raise a field element to (p - 5) / 8, for square roots (RFC 8032, section 5.1.3).
+ *
+ * @param f The element.
+ * @return The power, f^((p - 5) / 8) mod p.
+ */
 fe_power_p58 #constant_time :: fn(f: Fe) -> Fe {
     f11 : Fe
     f_250 := fe_power_250(f, &f11)
     return fe_multiply(fe_square_times(f_250, 2), f)
 }
 
-/** chosen if condition, otherwise otherwise, without a branch. */
+/**
+ * Choose between two field elements without a branch.
+ *
+ * @param condition Which to choose, secret.
+ * @param chosen The element chosen when condition is true.
+ * @param otherwise The element chosen when it's false.
+ * @return Either chosen or otherwise, as condition says.
+ */
 fe_select #constant_time :: fn(condition: SecretBool, chosen: Fe, otherwise: Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
@@ -196,7 +286,13 @@ fe_select #constant_time :: fn(condition: SecretBool, chosen: Fe, otherwise: Fe)
     return h
 }
 
-/** 32 little-endian bytes, the top bit dropped. */
+/**
+ * Read a field element from 32 little-endian bytes.
+ *
+ * @param bytes The bytes. The top bit, 255, is dropped, as RFC 7748 says; a number from p to 2^255 - 1 isn't
+ *     rejected, and is the same as it less p.
+ * @return The element, carried.
+ */
 fe_from_bytes #constant_time :: fn(bytes: SecretByte[32]) -> Fe {
     words := compiler.secret(u64.[0, 0, 0, 0])
     for i in 0..<4 {
@@ -213,7 +309,12 @@ fe_from_bytes #constant_time :: fn(bytes: SecretByte[32]) -> Fe {
     return f
 }
 
-/** The 32 little-endian bytes of f, reduced below p, so each number has one encoding. */
+/**
+ * Write a field element as bytes.
+ *
+ * @param f The element, its limbs under 2^54.
+ * @return Its 32 little-endian bytes, reduced below p, so each number has one encoding; the top bit is 0.
+ */
 fe_to_bytes #constant_time :: fn(f: Fe) -> SecretByte[32] {
     h := fe_carry(fe_carry(f))
     // Under 2p now: whether it's p or more is whether adding 19 carries out of 2^255
@@ -241,7 +342,12 @@ fe_to_bytes #constant_time :: fn(f: Fe) -> SecretByte[32] {
     return bytes
 }
 
-/** Whether f is 0 mod p. */
+/**
+ * Check whether a field element is 0, in constant time.
+ *
+ * @param f The element.
+ * @return Whether it's 0 mod p, secret.
+ */
 fe_is_zero #constant_time :: fn(f: Fe) -> SecretBool {
     bytes := fe_to_bytes(f)
     bits := compiler.secret(cast[u8](0))
@@ -251,7 +357,12 @@ fe_is_zero #constant_time :: fn(f: Fe) -> SecretBool {
     return cast[SecretBool](bits == 0)
 }
 
-/** Whether f, reduced, is odd, which Ed25519 calls negative. */
+/**
+ * Check whether a field element is negative, as Ed25519 means it: odd once reduced below p.
+ *
+ * @param f The element.
+ * @return Whether its reduced value is odd, secret.
+ */
 fe_is_negative #constant_time :: fn(f: Fe) -> SecretBool {
     bytes := fe_to_bytes(f)
     return cast[SecretBool]((cast[u8](bytes[0]) & 1) == 1)
@@ -261,8 +372,13 @@ fe_is_negative #constant_time :: fn(f: Fe) -> SecretBool {
 X25519_A24 :: 121665
 
 /**
- * The u coordinate of scalar times the point with u coordinate u (RFC 7748, 5): the Montgomery
- * ladder, one step a bit, swapping without branching.
+ * Multiply a point by a scalar on Curve25519, with the Montgomery ladder (RFC 7748, section 5): one step a bit,
+ * swapping without branching, in constant time.
+ *
+ * @param scalar The scalar, 32 little-endian bytes, already clamped; bit 255 isn't read.
+ * @param u The point's u coordinate.
+ * @return The u coordinate of scalar times the point, 32 little-endian bytes, secret; all zeros when the point has
+ *     low order.
  */
 x25519_ladder #constant_time :: fn(scalar: SecretByte[32], u: Fe) -> SecretByte[32] {
     x1 := u
@@ -301,7 +417,12 @@ x25519_ladder #constant_time :: fn(scalar: SecretByte[32], u: Fe) -> SecretByte[
     return fe_to_bytes(fe_multiply(x2, fe_invert(z2)))
 }
 
-/** A secret key's bytes as its scalar: a multiple of 8, with bit 254 set and 255 clear (RFC 7748, 5). */
+/**
+ * Clamp a secret key into its scalar (RFC 7748, section 5).
+ *
+ * @param secret_key The secret key.
+ * @return Its bytes as the scalar: a multiple of 8, with bit 254 set and 255 clear; secret.
+ */
 x25519_clamped #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> SecretByte[32] {
     scalar : SecretByte[32]
     for i in 0..<32 {
@@ -312,7 +433,12 @@ x25519_clamped #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> SecretB
     return scalar
 }
 
-/** The public key going with a secret one, to send to the other side. */
+/**
+ * Work out the public key that goes with an X25519 secret key: the clamped key times the base point, u = 9.
+ *
+ * @param secret_key The secret key.
+ * @return The public key, to send to the other side.
+ */
 x25519_public_key #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> X25519PublicKey {
     base : SecretByte[32]
     base[0] = 9
@@ -324,9 +450,18 @@ x25519_public_key #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> X255
     return public_key
 }
 
-/*
- * The secret shared with whoever has public_key's secret key, into shared. False, with shared all
- * zeros, when public_key is a low-order point, which gives the same answer whatever the secret key.
+/**
+ * Agree on a shared secret with X25519 (RFC 7748, section 6.1): one side's secret key and the other's public key give
+ * both the same secret.
+ *
+ * The shared secret isn't a key yet: put it through HKDF with what both sides saw.
+ *
+ * @param secret_key This side's secret key.
+ * @param public_key The other side's public key. Any 32 bytes are taken: the top bit is dropped, and a value of p or
+ *     more is reduced.
+ * @param shared Where the shared secret goes, 32 bytes; written whatever happens.
+ * @return True, or false, with shared all zeros, when public_key is a low-order point, which would give the same
+ *     answer whatever the secret key: the exchange should be abandoned.
  */
 x25519 #constant_time :: fn(secret_key: ptr[X25519SecretKey], public_key: ptr[X25519PublicKey],
     shared: ptr[mut SecretByte[32]]) -> bool {

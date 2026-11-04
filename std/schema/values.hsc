@@ -15,17 +15,38 @@ import runtime from "base"
  * which member it holds isn't known. A relative pointer is a distance already, and is written as it is.
  */
 
-/** How many pointers deep a value is followed, so one that points to itself is written once per level, and ends. */
+/**
+ * How many pointers deep a value is followed, so one that points to itself is written once per level, and ends.
+ * A pointer deeper than this is written as 0.
+ */
 MAX_DEPTH :: runtime.SCHEMA_MAX_DEPTH
-/** The most bytes of a cstring followed, its zero included. */
+/** The most bytes of a cstring followed, its zero included; a longer one is cut to this many, without its zero. */
 CSTRING_LIMIT : usize : runtime.SCHEMA_CSTRING_LIMIT
 
-/** A value written to the end of into, with what it points to after it. */
+/**
+ * Write a value to the end of an array, with what it points to after it, for something that reads it elsewhere.
+ *
+ * Without the memory, calls context.assertion_handler, as array_add does; try_write_value is for code that handles
+ * running out.
+ *
+ * @param value The value; every pointer in it that's followed has to point to memory that can be read.
+ * @param into The array the bytes are added to, grown with its own allocator; what it held already is left as it is,
+ *     and distances in what's written are from where the value starts in it.
+ * @param location Where the call is, given to the assertion handler; the caller's location by default.
+ */
 write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_location) {
     runtime.schema_write_value(value, into, location)
 }
 
-/** Like write_value, but without the memory, gives the allocator's error and leaves into's count as it was. */
+/**
+ * Write a value to the end of an array, with what it points to after it, giving back the error when there isn't the
+ * memory.
+ *
+ * @param value The value; every pointer in it that's followed has to point to memory that can be read.
+ * @param into The array the bytes are added to, grown with its own allocator; what it held already is left as it is,
+ *     and distances in what's written are from where the value starts in it.
+ * @return Null when the whole value was written; otherwise the allocator's error, and into's count is as it was.
+ */
 try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
     return runtime.schema_try_write_value(value, into)
 }

@@ -2,14 +2,20 @@ package runtime
 
 import intrinsics from "base"
 
-/** Size of each additional stack segment, unless a single frame needs more. */
+/**
+ * The size in bytes of each additional stack segment, header included, unless a single frame needs more; then the
+ * segment is as big as that frame asks.
+ */
 STACK_SEGMENT_SIZE :: 1024
-/** Bytes between stack_limit and the real end of a segment. */
+/**
+ * The bytes between stack_limit and the real end of a segment or stack, which a function may use below stack_limit
+ * without checking, so small leaf frames and morestack's own call fit before the end.
+ */
 STACK_GUARD :: 256
-/** Usable stack in a fiber's first segment, before it needs another segment. */
+/** The usable stack in a fiber's first segment, in bytes, before it needs another segment. */
 FIBER_INITIAL_STACK_SIZE :: 1024
 /**
- * Each fiber is one allocation of this size: the Fiber struct (which includes its root context),
+ * The size in bytes of the one allocation each fiber is: the Fiber struct (which includes its root context),
  * then its first stack segment, which is the guard plus the usable stack.
  *
  * Fiber is 16-byte aligned, so this stays a multiple of 16. It comes to about 1.4 KiB,
@@ -19,11 +25,16 @@ FIBER_INITIAL_STACK_SIZE :: 1024
 FIBER_BLOCK_SIZE :: size_of(Fiber) + STACK_GUARD + FIBER_INITIAL_STACK_SIZE
 
 /**
- * A stack segment of at least size bytes, header included, for morestack when the carrier has none
- * to spare (docs/calling_convention.md, Growing the Stack): from the carrier's segment_allocator, and
- * at least STACK_SEGMENT_SIZE. morestack calls it on the thread's native stack, and the function it's
- * growing may have no context to give, so it runs the allocator with MINIMAL_CONTEXT. Null without
- * an allocator or memory, and morestack traps.
+ * Allocate a stack segment for morestack when the carrier has none to spare.
+ *
+ * The segment comes from the carrier's segment_allocator (docs/calling_convention.md, Growing the Stack). morestack
+ * calls this on the thread's native stack, and the function it's growing may have no context to give, so it runs the
+ * allocator with MINIMAL_CONTEXT pushed. The segment is 16-byte aligned, its header's size set and its next_free null.
+ *
+ * @param size The bytes the segment needs, its StackSegment header included. Anything smaller than
+ *     STACK_SEGMENT_SIZE, zero too, gets STACK_SEGMENT_SIZE; the size is then rounded up to a multiple of 16.
+ * @return The new segment, owned by the carrier from then on, or null when the carrier has no segment_allocator (its
+ *     function is null) or the allocator has no memory; morestack then traps.
  */
 allocate_stack_segment #no_context :: fn(size: usize) -> ptr[mut StackSegment]? {
     carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
@@ -51,27 +62,38 @@ allocate_stack_segment #no_context :: fn(size: usize) -> ptr[mut StackSegment]? 
 
 /**
  * A fiber, and the start of its FIBER_BLOCK_SIZE allocation.
+ *
  * Its first stack segment is the rest of the allocation, growing down from the end
  * toward this struct, with stack_limit at (address of this struct) + size_of(Fiber) + STACK_GUARD.
  *
  * The fiber intrinsics read resume using fixed offsets, so keep it first.
  */
 Fiber :: struct #align(16) {
+    /** Where the fiber continues while it's suspended; meaningless while it runs or before it starts. */
     resume : FiberResumeState,
+    /** What the fiber runs, given data, once a scheduler starts it; the fiber is Finished when it returns. */
     function : ThreadFunction,
-    /** What function is given; an empty any (a null type) when there's none */
+    /** What function is given; an empty any (a null type) when there's none. */
     data : any,
-    /** Copied from the context of whoever created the fiber */
+    /** The fiber's root context, copied from the context of whoever created the fiber. */
     context : Context,
-    // context's own copy of its extension chain: extension_count nodes
+    /**
+     * The fiber's own copy of context's extension chain, extension_count nodes in one array from copy_extensions,
+     * freed by fiber_destroy; null when the chain was empty.
+     */
     extension_nodes : rawptr,
+    /** How many nodes extension_nodes holds, 0 when the creator's context had no extensions. */
     extension_count : u32,
+    /** Where the fiber is in its life, from NotStarted to Finished. */
     state : FiberState,
-    /** Intrusive link for scheduler queues, owned by whichever scheduler holds the fiber */
+    /** Intrusive link for scheduler queues, owned by whichever scheduler holds the fiber; null at the end of one. */
     next : ptr[mut Fiber]?,
-    /** The fiber's waiter, for park (park.hsc) */
+    /** The fiber's waiter, for park (park.hsc), which current_waiter gives while the fiber runs. */
     waiter : Waiter,
-    /** Set by the scheduler that runs the fiber, for wake to queue it again once it's parked */
+    /**
+     * Set by the scheduler that runs the fiber, for wake to queue it again once it's parked; null until then, and wake
+     * then does nothing for a parked fiber.
+     */
     scheduler : ptr[mut FiberScheduler]?,
 }
 
@@ -80,6 +102,10 @@ Fiber :: struct #align(16) {
  * parked fiber again, from any thread.
  */
 FiberScheduler :: struct {
+    /**
+     * Queue a parked fiber to run again. wake calls it from whichever thread wakes the fiber, so it has to be safe to
+     * call from any thread, concurrently with the scheduler.
+     */
     wake_function : fn(fiber #escaping : ptr[mut Fiber]),
 }
 
@@ -99,39 +125,59 @@ FiberScheduler :: struct {
  * The fiber intrinsics and stack walks read these using fixed offsets.
  */
 FiberResumeState :: struct {
-    /** Stack pointer after fiber_suspend pushed everything above */
+    /** The fiber's stack pointer after fiber_suspend pushed everything above. */
     saved_sp : rawptr,
 }
 
 /**
- * Header at the low end of an additional stack segment, which grows down toward it.
+ * The header at the low end of an additional stack segment, which grows down toward it.
+ *
  * The segment's stack_limit is (address of this) + size_of(StackSegment) + STACK_GUARD.
  * These are similar to how Go used to handle stacks for goroutines, before they
  * switched to stack copying.
  */
 StackSegment :: struct #align(16) {
-    /** Total size of the segment in bytes, including this header */
+    /** The total size of the segment in bytes, including this header; at least STACK_SEGMENT_SIZE. */
     size : u32,
-    /** Link for the carrier's segment cache, while the segment is free */
+    /** The link for the carrier's segment cache while the segment is free; null at the cache's end or in use. */
     next_free : ptr[mut StackSegment]?,
 }
 
+/** Where a fiber is in its life. */
 FiberState :: enum #backed_by(u8) {
+    /** Made by fiber_create, and not yet started by a scheduler. */
     NotStarted,
+    /** Running on a carrier now. */
     Running,
+    /** Switched away from, by a yield or a park, to be resumed later, possibly on another carrier. */
     Suspended,
+    /** Its function returned; all that's left is fiber_destroy. */
     Finished,
 }
 
+/** Why a fiber switched back to its scheduler. */
 FiberExit :: enum {
+    /** It suspended, by a yield or a park, and can be resumed. */
     Yielded,
+    /** Its function returned, and it can't be resumed. */
     Finished,
 }
 
-/*
+/**
  * Make a fiber that will run function(data), starting with a copy of the current context.
- * Nothing runs until a scheduler starts it with intrinsics.fiber_start.
- * data is kept in the fiber, so it can't point into the caller's stack.
+ *
+ * Nothing runs until a scheduler starts it with intrinsics.fiber_start. The fiber, its first stack segment and its
+ * copy of the context's extension chain are allocated from allocator, which fiber_destroy has to be given too.
+ *
+ * @param function What the fiber runs, once started.
+ * @param data What function is given, or null for an empty any. It's kept in the fiber until it runs, maybe on
+ *     another thread, so it can't point into the caller's stack.
+ * @param allocator Where the fiber's memory comes from: one FIBER_BLOCK_SIZE block, 16-byte aligned, and an array of
+ *     the context's extensions.
+ * @param loc The caller's location, given to the allocator.
+ * @return The fiber, NotStarted and with no scheduler yet, owned by the caller until it's given to one; null on an
+ *     error.
+ * @return The allocator's error when either allocation failed, with nothing left allocated; null on success.
  */
 fiber_create :: fn(
     function: ThreadFunction,
@@ -168,9 +214,12 @@ fiber_create :: fn(
 }
 
 /**
- * The body of every fiber: its function, given its data, with its root context. fiber_entry calls
- * this on the fiber's first stack segment, and switches back to the scheduler with .Finished once
+ * Run the body of a fiber: its function, given its data, with its root context pushed.
+ *
+ * fiber_entry calls this on the fiber's first stack segment, and switches back to the scheduler with .Finished once
  * it returns (docs/calling_convention.md, Suspending and Resuming a Fiber).
+ *
+ * @param fiber The fiber to run, which is set Finished when its function returns.
  */
 fiber_run #no_context :: fn(fiber: ptr[mut Fiber]) {
     push_context fiber_context from fiber.context {
@@ -179,10 +228,16 @@ fiber_run #no_context :: fn(fiber: ptr[mut Fiber]) {
     fiber.state = .Finished
 }
 
-/*
+/**
  * Free a fiber that has finished, or never started.
+ *
  * Its first stack segment is part of the same allocation, and it doesn't hold any others
- * once it isn't running.
+ * once it isn't running. A fiber that's suspended can't be freed this way: its stack may still reach other segments.
+ *
+ * @param fiber The fiber, from fiber_create; it and its copy of the context's extensions are gone after this, so
+ *     no scheduler may still hold it.
+ * @param allocator The allocator fiber_create was given.
+ * @param loc The caller's location, given to the allocator.
  */
 fiber_destroy :: fn(
     fiber: ptr[Fiber],

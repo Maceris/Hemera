@@ -6,4 +6,5 @@ package unicode
 
 import tiers from "std"
 
+/** The package's tier, Freestanding: it needs only base, and allocates nothing. */
 PACKAGE_TIER :: tiers.Tier.Freestanding
