@@ -54,8 +54,11 @@ Test :: struct {
 
 /**
  * Where a runner's report goes: a line at a time, each ending with its newline, written by write with target.
+ *
+ * It's #scoped, since its target is usually something on the stack, like a buffer the report is caught in: it's passed
+ * by value to run, and can't be kept on the heap (docs/memory.md, Scoped Structs).
  */
-Reporter :: struct {
+Reporter :: struct #scoped {
     /** What write writes to, passed to it; null for a writer that needs nothing, like standard output's. */
     target : rawptr,
     /** Write text, which is good only during the call; it can't fail, so a writer with nowhere to put it drops it. */

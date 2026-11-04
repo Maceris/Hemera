@@ -16,16 +16,67 @@ import compiler from "base"
  * @return An expression, a Test[] literal; testing has to be imported, as testing, where it's inserted.
  */
 tests_of :: fn(package: compiler.PackageInfo?) -> compiler.Code {
-    made : compiler.Code[..]
     found :: package or_return #code(testing.Test.[])
-    for &function in found.functions {
+    // The tests' indices in found.functions, put in the order they're declared, as reflection gives another
+    tests : usize[..]
+    for &function, i in found.functions {
         if !function.is_test || !is_test_signature(function) {
             continue
         }
-        reached :: compiler.name(function.name)
-        runtime.array_add(&made, #code(testing.Test.{name = #insert function.name, run = #insert reached}))
+        // After every test declared before it
+        at : usize = 0
+        for other in tests {
+            if other < found.functions.count && declared_before(found.functions[other].location, function.location) {
+                at += 1
+            }
+        }
+        runtime.array_add(&tests, i)
+        // Moved down from the end to at
+        place := tests.count - 1
+        loop {
+            if place <= at || place >= tests.count {
+                break
+            }
+            below :: place - 1
+            moved :: tests[below]
+            tests[below] = tests[place]
+            if place < tests.count {
+                tests[place] = moved
+            }
+            place = below
+        }
+    }
+    made : compiler.Code[..]
+    for index in tests {
+        if index < found.functions.count {
+            name :: found.functions[index].name
+            reached :: compiler.name(name)
+            runtime.array_add(&made, #code(testing.Test.{name = #insert name, run = #insert reached}))
+        }
     }
     return #code(testing.Test.[#insert compiler.list(made)])
+}
+
+/**
+ * Tell whether one place is before another: in a file whose path sorts first, byte by byte, or earlier in the same one.
+ *
+ * @param a The place that may come first.
+ * @param b The place it's compared with.
+ * @return True if a comes before b.
+ */
+declared_before :: fn(a: runtime.SourceCodeLocation, b: runtime.SourceCodeLocation) -> bool {
+    for character, i in a.file_path {
+        if i >= b.file_path.count {
+            return false
+        }
+        if character != b.file_path[i] {
+            return cast[u8](character) < cast[u8](b.file_path[i])
+        }
+    }
+    if a.file_path.count != b.file_path.count {
+        return true
+    }
+    return a.line < b.line
 }
 
 /**
