@@ -2,8 +2,8 @@
  * Clocks, calendar dates and time zones.
  *
  * Freestanding: time comes from context.clock, which every context has (a freestanding program's may be NO_CLOCK, or
- * its own), and the rest is arithmetic. Dates are on the proleptic Gregorian calendar in UTC, and time zones are read
- * from TZif data (RFC 8536) that the caller supplies.
+ * its own), and the rest is arithmetic. Dates are on the proleptic Gregorian calendar in UTC. Time zones, which
+ * allocate, are time_zones'.
  */
 package time
 

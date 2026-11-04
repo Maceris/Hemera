@@ -1,20 +1,7 @@
-package time
+package time_zones
 
 import runtime from "base"
-
-/*
- * Time zones, from TZif data (RFC 8536): the transitions a zone has had, the local time type each one starts, and the
- * POSIX TZ rule in its footer, which says how local time goes after the last transition. parse_zone reads a TZif file's
- * bytes, which whoever has the zone files gives it, and offset_of and local give the offset from UTC at an instant, and
- * the local time there.
- *
- *     zone := time.parse_zone(bytes)?
- *     defer time.free_zone(&zone)
- *     here :: time.local(&zone, time.now()?)       // here.date_time, here.abbreviation, here.offset
- *
- * Only version 2 and later data is read when a file has it (64-bit times); a version 1 file's 32-bit times are read
- * otherwise. Leap seconds are ignored, as POSIX time ignores them.
- */
+import time from "std"
 
 /** A local time type, one of a zone's: the offset from UTC it has, and how it's named. */
 ZoneType :: struct {
@@ -139,7 +126,7 @@ ZoneError :: enum {
 /** What local time is at an instant in a zone. */
 LocalTime :: struct {
     /** The local date and time. */
-    date_time : DateTime,
+    date_time : time.DateTime,
     /** The offset from UTC in seconds, east positive: local time is UTC plus this. */
     offset : i32,
     /** Whether it's daylight saving time. */
@@ -271,7 +258,7 @@ free_zone :: fn(zone: ptr[mut Zone]) {
  * @return abbreviation The local time's abbreviation, or empty if the zone gives none: a view of the zone's memory,
  *     good until the zone is freed or moved.
  */
-offset_of :: fn(zone: ptr[Zone], t: Instant) -> (offset : i32, dst : bool, abbreviation : string) {
+offset_of :: fn(zone: ptr[Zone], t: time.Instant) -> (offset : i32, dst : bool, abbreviation : string) {
     seconds :: t.seconds
     count :: zone.transitions.count
     newest := cast[i64](0)
@@ -317,10 +304,10 @@ offset_of :: fn(zone: ptr[Zone], t: Instant) -> (offset : i32, dst : bool, abbre
  * @return The local date and time, its offset, whether it's daylight saving time, and its abbreviation, which is a
  *     view of the zone's memory, good until the zone is freed or moved.
  */
-local :: fn(zone: ptr[Zone], t: Instant) -> LocalTime {
+local :: fn(zone: ptr[Zone], t: time.Instant) -> LocalTime {
     offset, dst, abbreviation :: offset_of(zone, t)
-    shifted :: Instant.{seconds = t.seconds + cast[i64](offset), nanos = t.nanos}
-    return LocalTime.{date_time = utc(shifted), offset = offset, dst = dst, abbreviation = abbreviation}
+    shifted :: time.Instant.{seconds = t.seconds + cast[i64](offset), nanos = t.nanos}
+    return LocalTime.{date_time = time.utc(shifted), offset = offset, dst = dst, abbreviation = abbreviation}
 }
 
 /**
@@ -366,7 +353,7 @@ rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, a
     }
     daylight :: string_of(&rule.daylight[0], rule.daylight_bytes)
     // The year, in standard time
-    year, month, day :: civil_from_days(floor_divide(seconds + cast[i64](rule.standard_offset), 86400))
+    year, month, day :: time.civil_from_days(time.floor_divide(seconds + cast[i64](rule.standard_offset), 86400))
     // Daylight saving time starts at its local standard time, and ends at its local daylight time
     starts :: rule_moment(&rule.start, year) - cast[i64](rule.standard_offset)
     ends :: rule_moment(&rule.end, year) - cast[i64](rule.daylight_offset)
@@ -384,7 +371,7 @@ rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, a
  */
 rule_moment :: fn(date: ptr[RuleDate], year: i64) -> i64 {
     leap :: (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-    january_first :: days_from_civil(year, 1, 1)
+    january_first :: time.days_from_civil(year, 1, 1)
     days := january_first
     if date.kind == .Julian {
         days += cast[i64](date.day - 1) + (if leap && date.day > 59 { cast[i64](1) } else { cast[i64](0) })
@@ -393,7 +380,7 @@ rule_moment :: fn(date: ptr[RuleDate], year: i64) -> i64 {
         days += cast[i64](date.day)
     }
     else {
-        first :: days_from_civil(year, date.month, 1)
+        first :: time.days_from_civil(year, date.month, 1)
         // 1970-01-01 was a Thursday
         first_weekday :: cast[int]((first % 7 + 7 + 4) % 7)
         day := 1 + (date.weekday - first_weekday + 7) % 7 + (date.week - 1) * 7
@@ -404,7 +391,7 @@ rule_moment :: fn(date: ptr[RuleDate], year: i64) -> i64 {
             }
             day -= 7
         }
-        days = days_from_civil(year, date.month, day)
+        days = time.days_from_civil(year, date.month, day)
     }
     return days * 86400 + date.time
 }

@@ -358,21 +358,25 @@ import runtime from "base"
     /**
      * Close a directory's descriptor; a failure is ignored.
      *
-     * @param directory The open directory, which isn't good afterwards. Not the zero Directory, whose handle is
-     *     descriptor 0, standard input, which this would close.
+     * @param directory The open directory, which isn't good afterwards. The zero Directory, a failed open's, closes
+     *     nothing: its handle would be descriptor 0, standard input.
      */
     system_close_directory :: fn(directory: Directory) {
-        runtime.linux_syscall(SYS_CLOSE, directory.handle)
+        if directory.handle != 0 {
+            runtime.linux_syscall(SYS_CLOSE, directory.handle)
+        }
     }
 
     /**
      * Close a file's descriptor; a failure is ignored.
      *
-     * @param file The open file, which isn't good afterwards. Not the zero File, whose handle is descriptor 0,
-     *     standard input, which this would close.
+     * @param file The open file, which isn't good afterwards. The zero File, a failed open's, closes nothing: its
+     *     handle would be descriptor 0, standard input.
      */
     system_close :: fn(file: File) {
-        runtime.linux_syscall(SYS_CLOSE, file.handle)
+        if file.handle != 0 {
+            runtime.linux_syscall(SYS_CLOSE, file.handle)
+        }
     }
 
     /**

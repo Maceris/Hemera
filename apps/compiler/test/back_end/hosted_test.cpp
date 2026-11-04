@@ -343,7 +343,7 @@ TEST(Hosted, FormatsForLocales)
 	run_hosted("locale", hemera::TargetStackCheck::Off);
 }
 
-// std/time's zones: TZif data parsed, and offsets from its transitions and its footer's POSIX TZ rule, north and south.
+// std/time_zones: TZif data parsed, and offsets from its transitions and its footer's POSIX TZ rule, north and south.
 TEST(Hosted, ReadsTimeZones)
 {
 	run_hosted("time_zones", hemera::TargetStackCheck::Off);

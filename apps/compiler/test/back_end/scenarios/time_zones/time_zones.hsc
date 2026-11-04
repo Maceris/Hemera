@@ -1,24 +1,25 @@
 /*
- * std/time's zones: TZif data parsed, and the offset, daylight saving time and abbreviation at instants before, between
+ * std/time_zones: TZif data parsed, and the offset, daylight saving time and abbreviation at instants before, between
  * and after a zone's transitions, the last from its footer's POSIX TZ rule, in a northern zone and a southern one; and a
  * rule alone. main returns 42 if everything worked, or the number of the first check that failed.
  */
 package time_zones_test
 
 import time from "std"
+import time_zones from "std"
 
 at :: fn(year: i64, month: int, day: int, hour: int, minute: int) -> time.Instant {
     return time.from_utc(time.DateTime.{year = year, month = month, day = day, hour = hour, minute = minute})
 }
 
-check :: fn(zone: ptr[time.Zone], t: time.Instant, offset: i32, dst: bool, abbreviation: string) -> bool {
-    found, daylight, name :: time.offset_of(zone, t)
+check :: fn(zone: ptr[time_zones.Zone], t: time.Instant, offset: i32, dst: bool, abbreviation: string) -> bool {
+    found, daylight, name :: time_zones.offset_of(zone, t)
     return found == offset && daylight == dst && name == abbreviation
 }
 
 main :: fn() -> int {
-    london := time.parse_zone(LONDON[0..<LONDON.count]) or_return 1
-    defer time.free_zone(&london)
+    london := time_zones.parse_zone(LONDON[0..<LONDON.count]) or_return 1
+    defer time_zones.free_zone(&london)
     // Between transitions, from the table
     if !check(&london, at(1990, 7, 1, 12, 0), 3600, true, "BST") {
         return 2
@@ -37,13 +38,13 @@ main :: fn() -> int {
         return 6
     }
     // Local time
-    summer :: time.local(&london, at(2026, 7, 1, 12, 30))
+    summer :: time_zones.local(&london, at(2026, 7, 1, 12, 30))
     if summer.date_time.hour != 13 || summer.date_time.minute != 30 || summer.abbreviation != "BST" {
         return 7
     }
     // A southern zone: daylight saving time over the year's turn
-    sydney := time.parse_zone(SYDNEY[0..<SYDNEY.count]) or_return 8
-    defer time.free_zone(&sydney)
+    sydney := time_zones.parse_zone(SYDNEY[0..<SYDNEY.count]) or_return 8
+    defer time_zones.free_zone(&sydney)
     if !check(&sydney, at(2026, 1, 15, 0, 0), 39600, true, "AEDT") || !check(&sydney, at(2026, 7, 1, 0, 0), 36000, false, "AEST") {
         return 9
     }
@@ -51,14 +52,14 @@ main :: fn() -> int {
         return 10
     }
     // A rule alone, as a footer has one: the United States' eastern time
-    rule := time.parse_rule(string_bytes("EST5EDT,M3.2.0,M11.1.0")) or_return 11
-    summer_offset, summer_dst, summer_name :: time.rule_offset(&rule, at(2026, 7, 1, 12, 0).seconds)
-    winter_offset, winter_dst, winter_name :: time.rule_offset(&rule, at(2026, 12, 1, 12, 0).seconds)
+    rule := time_zones.parse_rule(string_bytes("EST5EDT,M3.2.0,M11.1.0")) or_return 11
+    summer_offset, summer_dst, summer_name :: time_zones.rule_offset(&rule, at(2026, 7, 1, 12, 0).seconds)
+    winter_offset, winter_dst, winter_name :: time_zones.rule_offset(&rule, at(2026, 12, 1, 12, 0).seconds)
     if summer_offset != -14400 || !summer_dst || summer_name != "EDT" || winter_offset != -18000 || winter_dst || winter_name != "EST" {
         return 12
     }
     // Not TZif
-    if time.parse_zone(string_bytes("not a zone")) is_ok {
+    if time_zones.parse_zone(string_bytes("not a zone")) is_ok {
         return 13
     }
     return 42

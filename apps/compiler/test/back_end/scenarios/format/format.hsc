@@ -91,5 +91,19 @@ main :: fn() -> int {
         runtime.write_output("\n")
         ok = false
     }
+    /*
+     * Past 20 digits, with an exponent, cut short: 1e27's top group of nine digits is one digit, which the exponent
+     * counts once; 2^100 is exact
+     */
+    large : u8[64]
+    scientific := text_buffer.make(large)
+    text_buffer.append_float(&scientific, 1e27, 0)
+    text_buffer.append(&scientific, " ")
+    text_buffer.append_float(&scientific, 1267650600228229401496703205376.0, 0)
+    if text_buffer.as_string(&scientific) != "1.000000e+27 1.267650e+30" {
+        runtime.write_output(text_buffer.as_string(&scientific))
+        runtime.write_output("\n")
+        ok = false
+    }
     return if ok { 42 } else { 1 }
 }

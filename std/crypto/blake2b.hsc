@@ -376,13 +376,13 @@ blake2b_finish_secret #constant_time :: fn(hasher: ptr[mut Blake2b], output: mut
  * @param hasher The hasher, after fewer than 2^64 bytes in all. It's spent afterwards: it can't be updated or
  *     finished again, and its state isn't wiped.
  * @param output Where the digest goes, which should have the size the hasher was started with: a shorter one gets
- *     the digest's first bytes, and a longer one zeros after it, up to 64 bytes, with the 64 repeated past that.
+ *     the digest's first bytes, and a longer one zeros after it, however long it is.
  */
 blake2b_finish :: fn(hasher: ptr[mut Blake2b], output: mut u8[]) {
     digest : SecretByte[64]
     blake2b_finish_secret(hasher, digest)
     for i in 0..<output.count {
-        output[i] = compiler.declassify(digest[i % 64])
+        output[i] = if i < digest.count { compiler.declassify(digest[i]) } else { cast[u8](0) }
     }
 }
 

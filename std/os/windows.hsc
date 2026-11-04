@@ -81,17 +81,6 @@ import runtime from "base"
      */
     WriteFile #foreign(KERNEL32) : fn(file: rawptr, bytes: rawptr, count: u32, written: ptr[mut u32], overlapped: rawptr) -> i32 : ---
     /**
-     * Move a file's offset.
-     *
-     * @param file An open handle to a file on disk, whose offset the next ReadFile or WriteFile uses; only used, not
-     *     closed. A pipe or console has no offset, so it fails.
-     * @param distance How far to move it in bytes, which may be negative.
-     * @param position Where the new offset is stored, or null.
-     * @param method What distance is from, like FILE_END.
-     * @return Nonzero if it worked; 0 if not.
-     */
-    SetFilePointerEx #foreign(KERNEL32) : fn(file: rawptr, distance: i64, position: rawptr, method: u32) -> i32 : ---
-    /**
      * Give a file's size.
      *
      * @param file An open handle to the file, opened with at least the right to read its attributes; only used, not
@@ -198,8 +187,6 @@ import runtime from "base"
     FILE_ATTRIBUTE_DIRECTORY : u32 : 0x10
     /** What GetFileAttributesW gives on failure. */
     INVALID_FILE_ATTRIBUTES : u32 : 0xffffffff
-    /** SetFilePointerEx's method for a distance from the file's end. */
-    FILE_END : u32 : 2
     /** MoveFileExW's flag to replace a file at the new path. */
     MOVEFILE_REPLACE_EXISTING : u32 : 1
     /** MoveFileExW's flag to move to another volume by copying, then deleting. */
@@ -282,6 +269,21 @@ import runtime from "base"
             units[count] = 0
         }
         return units
+    }
+
+    /**
+     * Count the units wide converted, up to its first 0: for text that isn't ASCII, fewer than units.count - 1.
+     *
+     * @param units What wide, wide_path or relative_name gave.
+     * @return How many units come before the first 0; units.count if there's none.
+     */
+    wide_length :: fn(units: u16[]) -> usize {
+        for unit, i in units {
+            if unit == 0 {
+                return i
+            }
+        }
+        return units.count
     }
 
     /**
@@ -378,9 +380,9 @@ import runtime from "base"
      * Open a file, relative to the current directory unless its path is absolute, with CreateFileW.
      *
      * Others may read, write, delete and rename it while it's open. READ opens what's there to read; WRITE makes it,
-     * or empties what's there, to write; APPEND opens or makes it to write, its offset moved to the end once, here,
-     * not before each write; READ_WRITE opens what's there for both. The handle isn't inherited by programs
-     * run_process starts.
+     * or empties what's there, to write; APPEND opens or makes it only to append, so every write goes at the end, even
+     * after another process has written there; READ_WRITE opens what's there for both. The handle isn't inherited by
+     * programs run_process starts.
      *
      * @param path The file's path, UTF-8.
      * @param mode How it's opened.
@@ -403,7 +405,8 @@ import runtime from "base"
             disposition = CREATE_ALWAYS
         }
         else if mode == .APPEND {
-            access = GENERIC_WRITE
+            // Appending only: every write goes at the end
+            access = FILE_APPEND_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE
             disposition = OPEN_ALWAYS
         }
         else if mode == .READ_WRITE {
@@ -417,9 +420,6 @@ import runtime from "base"
                 return File.{0}, OsError.IsADirectory
             }
             return File.{0}, error_of(code)
-        }
-        if mode == .APPEND {
-            SetFilePointerEx(handle, 0, null, FILE_END)
         }
         return File.{cast[u64](handle)}, null
     }
@@ -643,17 +643,17 @@ import runtime from "base"
             return OsError.OutOfMemory
         }
         defer free_wide(pattern)
-        // units ends with its terminator, which the separator goes in place of
-        length :: units.count - 1
+        // The separator goes in place of the converted path's terminator
+        length :: wide_length(units)
         intrinsics.mem_copy_non_overlapping(cast[mut rawptr](pattern.data), cast[rawptr](units.data), length * 2)
-        position := length
-        if length > 0 && (units[length - 1] == cast[u16]('\\') || units[length - 1] == cast[u16]('/')) {
-            position -= 1
-        }
-        if position + 2 < pattern.count {
-            pattern[position] = cast[u16]('\\')
-            pattern[position + 1] = cast[u16]('*')
-            pattern[position + 2] = 0
+        last :: if length > 0 && length <= units.count { units[length - 1] } else { cast[u16](0) }
+        position :: if last == cast[u16]('\\') || last == cast[u16]('/') { length - 1 } else { length }
+        // pattern has two units more than units, so all three fit
+        for unit, k in u16.[cast[u16]('\\'), cast[u16]('*'), 0] {
+            at :: position + k
+            if at < pattern.count {
+                pattern[at] = unit
+            }
         }
         data : FindData
         search :: FindFirstFileW(cast[rawptr](pattern.data), cast[rawptr](&data))
@@ -983,8 +983,8 @@ import runtime from "base"
             return null, path_error
         }
         defer free_wide(units)
-        // Its bytes, without the terminator
-        bytes :: (units.count - 1) * 2
+        // Its bytes, without the terminator, or the 0s after it that a path not in ASCII leaves
+        bytes :: wide_length(units) * 2
         if bytes > 0xfffe {
             return null, OsError.InvalidPath
         }
@@ -1190,7 +1190,7 @@ import runtime from "base"
             return path_error
         }
         defer free_wide(units)
-        bytes :: (units.count - 1) * 2
+        bytes :: wide_length(units) * 2
         information, allocation_error :: runtime.new_array(u8, 20 + bytes, context.allocator)
         if allocation_error != null || information.count < 20 + bytes {
             return OsError.OutOfMemory
@@ -1214,9 +1214,10 @@ import runtime from "base"
      * FILE_BASIC_INFORMATION: four times, then the attributes at 32.
      *
      * @param directory The open directory, which stays the caller's.
-     * @param path The path beneath it. Unlike open_relative's, its length isn't checked.
+     * @param path The path beneath it.
      * @return DIRECTORY for a folder, FILE for anything else that's there, and NOTHING when nothing is, it can't be
-     *     looked at, the path holds a 0 byte, or its conversion couldn't be allocated.
+     *     looked at, the path holds a 0 byte or is more than 32767 UTF-16 units, as open_relative refuses, or its
+     *     conversion couldn't be allocated.
      */
     system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
         units, path_error :: relative_name(path)
@@ -1224,7 +1225,10 @@ import runtime from "base"
             return .NOTHING
         }
         defer free_wide(units)
-        bytes :: (units.count - 1) * 2
+        bytes :: wide_length(units) * 2
+        if bytes > 0xfffe {
+            return .NOTHING
+        }
         name := UnicodeString.{length = cast[u16](bytes), maximum = cast[u16](bytes), buffer = cast[rawptr](units.data)}
         attributes := ObjectAttributes.{length = cast[u32](size_of(ObjectAttributes)), root = cast[rawptr](directory.handle),
             name = cast[rawptr](&name), attributes = OBJ_CASE_INSENSITIVE}

@@ -338,17 +338,18 @@ SlopOsGrant :: struct {
         state :: intrinsics.process_state()
         if state.startup_block != null && wanted != 0 {
             startup :: cast[ptr[SlopOsStartup]](state.startup_block)
-            with {
-                i : u64 = 0
-            }
+            // Checked before each grant is read, so a block with none reads nothing past its end
+            i : u64 = 0
             loop {
+                if i >= cast[u64](startup.grant_count) {
+                    break
+                }
                 grant :: cast[ptr[SlopOsGrant]](cast[u64](startup) + startup.grants + i * cast[u64](size_of(SlopOsGrant)))
                 if cast[u32](grant.kind) == wanted && label_is(&grant.label, name) && speaks(grant.handle, protocol_of(kind, protocol)) {
                     return grant.handle
                 }
                 i += 1
             }
-            while i < cast[u64](startup.grant_count)
         }
         if required {
             os_exit_process(SLOP_OS_EXIT_MISSING_GRANT)

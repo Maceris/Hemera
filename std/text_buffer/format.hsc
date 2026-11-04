@@ -638,18 +638,18 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
  * Count a number's decimal digits.
  *
  * @param value Any u64, 0 to 18,446,744,073,709,551,615.
- * @return Its digit count for 10 and above; for 0 to 9 it gives 2, not 1, since the loop runs once before checking.
+ * @return Its digit count, 1 to 20: 1 for 0 to 9, as 0 is written "0".
  */
 digit_count :: fn(value: u64) -> usize {
     count : usize = 1
-    with {
-        rest := value
-    }
+    rest := value
     loop {
+        if rest < 10 {
+            break
+        }
         rest /= 10
         count += 1
     }
-    while rest >= 10
     return count
 }
 

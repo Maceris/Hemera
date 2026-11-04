@@ -183,7 +183,7 @@ check_memory :: fn() -> int {
 
 // What the logger puts on each line: no time, which changes from run to run
 DETAILED :: logger.Options.{time = false, location = true, function = true, thread = true}
-PLAIN :: logger.Options.{time = false, location = false, function = false, thread = false, stream = .OUTPUT}
+PLAIN :: logger.Options.{time = false, location = false, function = false, thread = false, to_output = true}
 
 main :: fn() -> int {
     failure := check_strings()

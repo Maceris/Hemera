@@ -114,6 +114,17 @@ check_files :: fn() -> int {
         }
         case Error(_) => return 9
     }
+    // Two appending at once: every write goes at the end, not where the other's started
+    first_appender :: os.open("notes.txt", .APPEND) or_return 20
+    second_appender :: os.open("notes.txt", .APPEND) or_return 20
+    appended :: os.write(first_appender, "a") == null && os.write(second_appender, "b") == null && os.write(first_appender, "c") == null
+    os.close(first_appender)
+    os.close(second_appender)
+    both :: os.read_entire_file("notes.txt") or_else ""
+    if !appended || !strings.equal(both, "first line\nsecond line\nabc") {
+        return 21
+    }
+    strings.free_string(both)
     match os.open("missing.txt", .READ) {
         case Ok(_) => return 11
         case Error(error) => {
@@ -192,6 +203,21 @@ check_directories :: fn() -> int {
     if os.path_kind_in(directory, "sub") != .DIRECTORY || os.path_kind_in(directory, "inside.txt") != .FILE
         || os.path_kind_in(directory, "nothing") != .NOTHING {
         return 7
+    }
+    // A name beyond ASCII beneath it: made, found, listed by its name, and deleted
+    if os.write_entire_file_in(directory, "ünïcode.txt", "") != null || os.path_kind_in(directory, "ünïcode.txt") != .FILE {
+        return 22
+    }
+    listed :: os.list_directory_in(directory, "") or_else empty_listing()
+    found_unicode := false
+    for entry in listed {
+        if strings.equal(entry.name, "ünïcode.txt") {
+            found_unicode = true
+        }
+    }
+    os.free_directory_listing(listed)
+    if !found_unicode || os.delete_file_in(directory, "ünïcode.txt") != null || os.path_kind_in(directory, "ünïcode.txt") != .NOTHING {
+        return 23
     }
     sub :: os.open_directory_in(directory, "sub") or_return 8
     if os.write_entire_file_in(sub, "deeper.txt", "deeper") != null {
@@ -282,6 +308,7 @@ main :: fn() -> int {
         return 50 + failure
     }
     os.delete_file("hemera_directory_moved/inside.txt")
+    os.delete_file("hemera_directory_moved/ünïcode.txt")
     os.delete_file("hemera_directory_moved/sub/deeper.txt")
     os.delete_file("hemera_directory_moved/sub/moved.txt")
     os.remove_directory("hemera_directory_moved/sub")
