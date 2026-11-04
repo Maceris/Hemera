@@ -29,6 +29,13 @@ BuildOptions :: struct {
      * and no entry for libraries.
      */
     entry : string,
+    /**
+     * Whether the target is a test program: its root package's #test functions run, and are reported to standard
+     * output, in place of entry, as hemera --test builds one (docs/testing.md).
+     */
+    test : bool,
+    /** With test, only the tests whose names contain this are run; empty runs them all. */
+    test_filter : string,
     /** Overrides for where imports from "base", "std", etc. are found; empty uses the compiler's own. */
     package_paths : PackagePath[..],
     /**

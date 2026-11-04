@@ -47,6 +47,11 @@ namespace hemera {
 		std::string root;
 		std::string output_path;
 		std::string entry;
+		/// <summary>
+		/// BuildOptions.test and test_filter: a program of the root package's #test functions (docs/testing.md).
+		/// </summary>
+		bool test = false;
+		std::string test_filter;
 		std::vector<std::pair<std::string, std::string>> settings;
 		std::vector<std::pair<std::string, std::string>> package_paths;
 		std::vector<BuildLibrary> libraries;

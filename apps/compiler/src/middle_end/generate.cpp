@@ -10590,6 +10590,8 @@ namespace hemera {
 			target.root = read_text(record, layout, "root");
 			target.output_path = read_text(record, layout, "output_path");
 			target.entry = read_text(record, layout, "entry");
+			target.test = read_number(record, layout, "test") != 0;
+			target.test_filter = read_text(record, layout, "test_filter");
 			target.settings = read_pairs(record, layout, "settings", "name", "value");
 			target.package_paths = read_pairs(record, layout, "package_paths", "location", "path");
 			const TypeInfo* type = nullptr;
@@ -10719,6 +10721,8 @@ namespace hemera {
 				data.write_text(record, layout, "name", std::filesystem::path(options.output_name).filename().string());
 				data.write_text(record, layout, "root", options.input.string());
 				data.write_text(record, layout, "entry", options.entry);
+				data.write_number(record, layout, "test", options.test);
+				data.write_text(record, layout, "test_filter", options.test_filter);
 			}
 			data.write_text(record, layout, "output_path", current ? options.output_name : "");
 			// Settings, as a dynamic array that uses the calling code's allocator, so it can be added to
@@ -11500,6 +11504,11 @@ namespace hemera {
 		result.input = root;
 		result.output_name = target_output_name(build, target, root);
 		result.entry = target.entry.empty() ? "main" : target.entry;
+		if (target.test) {
+			result.test = true;
+			result.entry = std::string(TEST_ENTRY);
+			result.test_filter = target.test_filter;
+		}
 		result.install_path = build.install_path;
 		result.builtin_paths = build.builtin_paths;
 		for (const auto& [location, path] : target.package_paths) {
