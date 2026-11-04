@@ -259,7 +259,8 @@ Syscalls :: struct {
      * replacing the deadline if it's a timer already.
      *
      * @param port The port, which needs RIGHT_PORT_BIND.
-     * @param key The timer's key.
+     * @param key Any key: one not bound on the port yet is bound as a timer, and a timer's has its deadline replaced.
+     *     The Timer packet carries it.
      * @param deadline When, in the monotonic clock's nanoseconds; one that has passed fires at once.
      * @error KeyInUse The key is bound already, to something other than a timer.
      */
@@ -268,7 +269,8 @@ Syscalls :: struct {
      * Remove a binding, of any kind, with its packet if one is queued.
      *
      * @param port The port, which needs RIGHT_PORT_BIND.
-     * @param key The binding's key.
+     * @param key The key of the binding to remove, of whatever kind: a wake binding, a timer, or an object's
+     *     (port_bind).
      * @error NoSuchKey No binding has the key.
      */
     port_unbind : fn(port: Port, key: u64) -> Result[void, PortError],
@@ -773,7 +775,8 @@ Syscalls :: struct {
      * @param first The first requester ID it covers (DEVICE_ADDRESS, its segment then its requester ID).
      * @param count How many requester IDs it covers from first.
      * @param stream What the IOMMU knows first as: the stream ID requester IDs map to, counting up from it.
-     * @return The IOMMU's number.
+     * @return The number the kernel knows the IOMMU by, its place among those registered, from 0; the same IOMMU
+     *     registered again gives the same number.
      * @error NoIommu No IOMMU of that kind there, or none the kernel can drive.
      * @error BadAddress The registers isn't device memory itself.
      * @error InvalidSize The registers is bigger than the IOMMU's registers can be.

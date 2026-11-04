@@ -159,7 +159,8 @@ add_text :: fn(into: ptr[mut u8[..]], text: string) {
  * context.assertion_handler.
  *
  * @param into The array the text is added to.
- * @param schema The schema's bytes.
+ * @param schema The schema the value was written with, as schema.write wrote it; only read, and not trusted: a type it
+ *     doesn't describe whole renders as <?>.
  * @param given Where the value's type is described among them, or NOWHERE; aliases are followed.
  * @param value The written value's bytes, where pointers are distances from its start.
  * @param at Where the value starts in value, in bytes. A type that isn't described, or a value cut short, is <?>.
@@ -380,7 +381,8 @@ extend :: fn(bits: u64, size: usize) -> i64 {
 /**
  * Find where the first type's description starts: after "HSCH", the version and the count.
  *
- * @param schema The schema's bytes.
+ * @param schema The bytes that should be a schema, starting with "HSCH" and this VERSION; any bytes, empty included,
+ *     and only read.
  * @return 10; NOWHERE if they don't start with "HSCH" and this VERSION, or are shorter than that.
  */
 first_type :: fn(schema: u8[]) -> usize {
@@ -394,7 +396,7 @@ first_type :: fn(schema: u8[]) -> usize {
 /**
  * Follow a type's plain and distinct aliases to the type they name.
  *
- * @param schema The schema's bytes.
+ * @param schema The schema, as schema.write wrote it; only read, and not trusted: each read is checked against its end.
  * @param at Where a type's description starts, or NOWHERE.
  * @return Where the first type that isn't an alias is described: at itself when it isn't one. NOWHERE for NOWHERE,
  *     a description cut short, or aliases more than ALIAS_LIMIT deep.
@@ -418,7 +420,7 @@ unaliased :: fn(schema: u8[], at: usize) -> usize {
 /**
  * Find where the type at a place among the schema's types is described, by going past each before it.
  *
- * @param schema The schema's bytes.
+ * @param schema The schema, as schema.write wrote it; only read, and not trusted: each read is checked against its end.
  * @param place The type's place, from 0.
  * @return Where its description starts; NOWHERE for a place past the last type, or bytes that aren't a schema.
  */
@@ -437,7 +439,7 @@ type_at :: fn(schema: u8[], place: usize) -> usize {
 /**
  * Find where the description after one starts.
  *
- * @param schema The schema's bytes.
+ * @param schema The schema, as schema.write wrote it; only read, and not trusted: each read is checked against its end.
  * @param at Where a type's description starts, or NOWHERE.
  * @return Where the next one starts; NOWHERE for NOWHERE, or a description cut short.
  */
@@ -516,7 +518,7 @@ after_type :: fn(schema: u8[], at: usize) -> usize {
 /**
  * Go past a name: its count (u32), then its bytes.
  *
- * @param schema The schema's bytes.
+ * @param schema The schema, only read; the name's count is read at at, as 0 when it's cut short.
  * @param at Where the name starts.
  * @return Where its bytes end, which may be past the end of schema when it's cut short.
  */

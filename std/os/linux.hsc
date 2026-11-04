@@ -239,7 +239,8 @@ import runtime from "base"
     /**
      * Open a file, relative to the current directory unless its path is absolute.
      *
-     * @param path The file's path.
+     * @param path The file's path, relative to the current directory unless it's absolute; links in it are followed.
+     *     Over 4096 bytes, or holding a 0 byte, it isn't tried, and the error is InvalidPath.
      * @param mode How it's opened, as open_at takes it.
      * @return file The open file, a descriptor the caller closes with system_close; the zero File on failure.
      * @return error As open_at's.
@@ -323,7 +324,8 @@ import runtime from "base"
     /**
      * Open a directory, relative to the current directory unless its path is absolute.
      *
-     * @param path The directory's path.
+     * @param path The directory's path, relative to the current directory unless it's absolute. Over 4096 bytes, or
+     *     holding a 0 byte, it isn't tried, and the error is InvalidPath; a file's gives NotADirectory.
      * @return directory The open directory, which the caller closes; the zero Directory on failure.
      * @return error As open_directory_at's.
      */
@@ -625,7 +627,8 @@ import runtime from "base"
     /**
      * Remove an empty folder, relative to the current directory unless its path is absolute.
      *
-     * @param path The folder's path.
+     * @param path The path of the folder to remove, relative to the current directory unless it's absolute; the folder
+     *     has to be empty. Over 4096 bytes, or holding a 0 byte, it isn't tried.
      * @return Null once it's gone; InvalidPath for a path over 4096 bytes or holding a 0 byte; otherwise unlinkat's
      *     error (error_of): DirectoryNotEmpty for a folder with something in it, NotADirectory for a file,
      *     NotFound, AccessDenied, and so on.
@@ -651,7 +654,8 @@ import runtime from "base"
     /**
      * List a folder, relative to the current directory unless its path is absolute.
      *
-     * @param path The folder's path.
+     * @param path The folder's path, relative to the current directory unless it's absolute. Over 4096 bytes, or
+     *     holding a 0 byte, it isn't listed, and the error is InvalidPath.
      * @param entries Where the entries are added, after what it holds already.
      * @param allocator Where the entries' names are allocated.
      * @return As list_at's.

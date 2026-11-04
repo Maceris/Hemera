@@ -303,7 +303,8 @@ StepFunction :: alias fn(inputs: TargetOutput[]) -> bool
  * Errors are reported with report_error, and the check should keep going so every
  * problem is reported.
  *
- * @param target The target's options.
+ * @param target The options the target is built with, written out once for its checks; every check on it is given the
+ *     same copy, so changing it changes nothing about the build.
  * @param program The target's whole program; its values have the target's types, compared by name (see ConstantInfo).
  * @return True when the target passes; false fails that target, as reporting an error does.
  */

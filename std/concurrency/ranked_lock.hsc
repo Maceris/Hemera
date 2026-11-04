@@ -33,7 +33,7 @@ HeldRanks :: struct {
 /**
  * Find the newest lock held, which has the highest rank when they were taken in order.
  *
- * @param held The holder's ranks.
+ * @param held The ranks of the holder looked at, this CPU's or thread's; only read.
  * @return rank The newest lock's rank, or 0 if there's none to look at.
  * @return lock The newest lock's address, or 0 if there's none to look at.
  * @return any Whether there's one: false when nothing's held, or more is held than MAX_HELD_RANKS keeps, so the newest
@@ -77,7 +77,8 @@ lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRan
  * two budgets.
  *
  * @param spin_lock The lock, which this spins for.
- * @param rank The lock's rank.
+ * @param rank The lock's rank: higher ranks are taken after lower ones, and a lock of the same rank as the newest held
+ *     is in order only at a higher address than it.
  * @param held The holder's ranks, this CPU's or thread's.
  * @return True if it was in order: nothing was held, the newest rank held was below rank, or it was rank and its lock
  *     was at a lower address; also true when more is held than MAX_HELD_RANKS keeps.
@@ -94,8 +95,9 @@ lock_ranked_after :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut H
 /**
  * Record a lock as held, as the newest.
  *
- * @param held The holder's ranks.
- * @param rank The lock's rank.
+ * @param held The holder's ranks, this CPU's or thread's: its count goes up by one, and rank and address are kept as
+ *     the newest while fewer than MAX_HELD_RANKS were held.
+ * @param rank The rank the lock was taken with, which later locks are checked against while it's the newest.
  * @param address The lock's address. Past MAX_HELD_RANKS locks, it's counted but not kept.
  */
 push_held :: fn(held: ptr[mut HeldRanks], rank: u32, address: u64) {

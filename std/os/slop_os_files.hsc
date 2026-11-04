@@ -128,7 +128,8 @@ package os
     /**
      * Send one request on a directory's connection and wait for its answer.
      *
-     * @param state The directory's record.
+     * @param state The directory's record, whose connection end the request goes out on and whose port the answer is
+     *     waited for on; neither is changed or closed, even when the connection's gone.
      * @param out The request, built with begin[dir.Request]; its handles are moved out when it's sent.
      * @param into Where the answer goes, for message_of[dir.Response].
      * @return True once the answer is in into; false if sending or receiving failed, as when the connection's gone.
@@ -653,7 +654,8 @@ package os
     /**
      * Send a request whose answer is Done or Failed, like Remove or Rename, and wait for it.
      *
-     * @param state The directory's record.
+     * @param state The directory's record, whose connection the request is sent and answered on, as ask_directory does
+     *     it; not changed.
      * @param out The request, built with begin[dir.Request].
      * @return Null for Done; the server's error (error_of_file); or Other if the connection failed or answered
      *     wrongly.

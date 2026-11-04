@@ -230,7 +230,9 @@ refuse_library #no_context :: fn(import: LibraryImport, why: string) #never_retu
      * Load a library and find its interface record, with linux_libraries.hsc's loader of its own, since Hemera's Linux
      * programs have no C library.
      *
-     * @param name The library's file.
+     * @param name The library's path, used as it is when it has a / in it; a bare file name is looked for beside the
+     *     program, in the folder of /proc/self/exe's target. The whole path has to be under 4096 bytes, or nothing is
+     *     loaded.
      * @return Its interface record, in the library's memory, or null when it couldn't be loaded or has none.
      */
     os_load_library :: fn(name: string) -> ptr[LibraryInterface]? {

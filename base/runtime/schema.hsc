@@ -707,7 +707,8 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
  *
  * @param copy The copy being read back.
  * @param at Where in copy the array starts, in bytes.
- * @param info The array's type.
+ * @param info The array's type information, not null and only read: its dimensions, outermost first, each static, a
+ *     view or dynamic, and the base type of its elements.
  * @param dimension The first dimension handled, from 0; past the last, the array's element is handled.
  * @param depth How many pointers deep the array is, as schema_relocate counts it.
  * @return Whether every distance fit inside the copy, as schema_relocate gives it; false too when a view's or
@@ -965,7 +966,8 @@ schema_fix_pointer :: fn(out: ptr[mut SchemaBytes], start: usize, at: usize, poi
  * @param out The bytes being written.
  * @param start Where the whole value being written starts in them, from which distances are measured.
  * @param at Where the array starts in them, in bytes.
- * @param info The array's type.
+ * @param info The array's type information, not null and only read: its dimensions, outermost first, each static, a
+ *     view or dynamic, and the base type of its elements.
  * @param dimension The first dimension handled, from 0; past the last, the array's element is handled.
  * @param depth How many pointers deep the array is, as schema_fix counts it.
  */
@@ -1041,7 +1043,8 @@ schema_holds_pointers :: fn(type: ptr[compiler.TypeInfo], depth: int) -> bool {
 /**
  * Find whether an array holds anything schema_fix changes, from one of its dimensions on.
  *
- * @param info The array's type.
+ * @param info The array's type information, not null and only read: its dimensions, outermost first, each static, a
+ *     view or dynamic, and the base type of its elements.
  * @param dimension The first dimension looked at, from 0.
  * @return Whether a dimension from there on is a view or a dynamic array, or its element holds pointers.
  */
@@ -1073,7 +1076,8 @@ schema_unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
 /**
  * Compute the size of each element of one of an array's dimensions.
  *
- * @param info The array's type.
+ * @param info The array's type information, not null and only read: its dimensions, outermost first, each static, a
+ *     view or dynamic, and the base type of its elements.
  * @param dimension The dimension, from 0, whose elements are the next dimension's arrays or, for the last, the base
  *     type's values.
  * @return The size in bytes: the base type's for the last dimension, an ArrayView's or a ResizableArray's when the

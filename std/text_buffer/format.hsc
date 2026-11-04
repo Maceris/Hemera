@@ -658,7 +658,8 @@ digit_count :: fn(value: u64) -> usize {
  *
  * @param text The buffer. If it fills, what fits is kept, the rest dropped, and truncated set.
  * @param data Where the struct is.
- * @param info The struct's type.
+ * @param info The struct's type information, only read: its name is written first, then each member at its offset in
+ *     data, in the order they're declared.
  */
 append_struct :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoStruct]) {
     append(text, info.name)
@@ -679,7 +680,8 @@ append_struct :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.
  *
  * @param text The buffer. If it fills, the elements stop there, with the ] still tried, and truncated set.
  * @param data Where the array is: a static array's elements, or a view's or dynamic array's count and address.
- * @param info The array's type.
+ * @param info The array's type information, only read: its dimensions, outermost first, say how data is laid out at
+ *     each, and its base type how each element is written.
  * @param dimension Which dimension data is at, 0 for the outermost; past the last, data is an element.
  */
 append_array :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoArray], dimension: usize) {

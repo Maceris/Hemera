@@ -83,7 +83,8 @@ import runtime from "base"
     /**
      * Move a file's offset.
      *
-     * @param file The file's handle.
+     * @param file An open handle to a file on disk, whose offset the next ReadFile or WriteFile uses; only used, not
+     *     closed. A pipe or console has no offset, so it fails.
      * @param distance How far to move it in bytes, which may be negative.
      * @param position Where the new offset is stored, or null.
      * @param method What distance is from, like FILE_END.
@@ -93,7 +94,8 @@ import runtime from "base"
     /**
      * Give a file's size.
      *
-     * @param file The file's handle.
+     * @param file An open handle to the file, opened with at least the right to read its attributes; only used, not
+     *     closed.
      * @param size Where its size in bytes is stored.
      * @return Nonzero if it worked; 0 if not, as for a pipe, with GetLastError saying why.
      */

@@ -71,7 +71,8 @@ import runtime from "base"
     /**
      * Give a process's exit code.
      *
-     * @param process The process's handle.
+     * @param process A handle to the process, like the one CreateProcessW gave, with the right to query it; only used,
+     *     not closed, so the code can still be read once the process has ended.
      * @param code Where the code is stored: what it exited with, or STILL_ACTIVE (259) while it runs.
      * @return Nonzero if it worked; 0 if not, and code is left as it was.
      */

@@ -67,7 +67,8 @@ extension_node :: fn[T](data: ptr[T]) -> ContextExtension {
  * Find the innermost extension of type T in the current context.
  *
  * @tparam T The extension's type, matched exactly against each node's key.
- * @param T The extension's type.
+ * @param T The extension's type, given as a value: what T is, and what each node's key, which extension_node set to the
+ *     type of its data, is compared with.
  * @return The data of the innermost node with T for its key, or null when the chain has none.
  */
 get_extension :: fn[T](T: type) -> ptr[T]? {

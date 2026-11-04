@@ -176,7 +176,8 @@ package os
     /**
      * Read a little-endian integer from a message.
      *
-     * @param message The message's bytes.
+     * @param message The bytes to read from, as bytes_of_incoming gives them, only read; they may end before offset +
+     *     size.
      * @param offset Where the integer starts, in bytes from the message's start.
      * @param size How many bytes it has, from 0 to 8.
      * @return Its value; bytes past the message's end read as 0.
@@ -195,7 +196,8 @@ package os
     /**
      * Check whether a Relative in a message points after the message's fixed part and inside it.
      *
-     * @param message The message's bytes.
+     * @param message The message's bytes, as bytes_of_incoming gives them, only read: the Relative's start and count, 4
+     *     bytes each, are read at offset.
      * @param size The message's size in bytes, which the Relative's items have to end within.
      * @param offset Where the Relative field is, in bytes from the message's start.
      * @param fixed The size of the message's fixed part in bytes, which its items have to start at or after.
@@ -217,7 +219,8 @@ package os
     /**
      * Check whether a handle field's index is in the message's batch.
      *
-     * @param message The message's bytes.
+     * @param message The message's bytes, as bytes_of_incoming gives them, only read: the handle field's 4-byte index
+     *     is read at offset.
      * @param offset Where the handle field is, in bytes from the message's start.
      * @param handle_count How many handles came with the message.
      * @return True if the index is below handle_count, or is NO_HANDLE_INDEX, for none.

@@ -142,7 +142,9 @@ CodeKind :: enum {
  * Tell what a piece of code is.
  *
  * @param code Any piece of code, quoted or made by one of these functions.
- * @return Its kind.
+ * @return Its kind, by its outermost form, whether it was quoted or made: #code(x) is a Name and #code(-1) a Literal,
+ *     as name() and literal() would make them; Expression for any other single expression, and for a value that isn't
+ *     code at all.
  */
 code_kind : fn(code: Code) -> CodeKind : ---
 

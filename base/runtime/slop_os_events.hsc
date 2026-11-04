@@ -336,7 +336,8 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      * What's given is remembered only once it's in the ring. The caller holds the log's lock.
      *
      * @param log The process's log, its ring mapped.
-     * @param level The record's level.
+     * @param level Stored in the record as its number, from TRACE's 0 to FATAL's 50; it isn't compared with
+     *     context.log_level here, as its caller has done that.
      * @param format_string The record's format string: named by its offset if it's in the program's image, otherwise
      *     the record's first argument.
      * @param params The format string's arguments; any past SLOP_OS_EVENTS_MAX_ARGUMENTS, with the format string's,
@@ -515,7 +516,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     /**
      * Check whether the ring has been given a format string's text.
      *
-     * @param log The process's log.
+     * @param log The process's log; only its formats, where each offset given is kept plus 1, are read.
      * @param offset The format string's offset in the program's image.
      * @return True if it was remembered as given to this reader; false if it wasn't, or was past
      *     SLOP_OS_EVENTS_FORMATS and so never remembered.
@@ -532,7 +533,8 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     /**
      * Remember that the ring has been given a format string's text, in the first free place.
      *
-     * @param log The process's log.
+     * @param log The process's log, whose first free place in formats, one still 0, gets offset + 1; nothing else of it
+     *     changes.
      * @param offset The format string's offset in the program's image. With every place used, it isn't remembered,
      *     and is given again with each record.
      */
@@ -548,7 +550,7 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     /**
      * Find a type the ring has been given the schema of.
      *
-     * @param log The process's log.
+     * @param log The process's log; only its types, the first type_count of them, are read.
      * @param type The type, compared by address.
      * @return Its schema hash if it was remembered as given to this reader; null if it wasn't, or was past
      *     SLOP_OS_EVENTS_TYPES and so never remembered.
@@ -565,7 +567,8 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     /**
      * Remember that the ring has been given a type's schema.
      *
-     * @param log The process's log.
+     * @param log The process's log, whose types gets known at type_count, which goes up by one, while types has room;
+     *     nothing else of it changes.
      * @param known The type and its hash. With SLOP_OS_EVENTS_TYPES remembered already, it isn't, and its schema is
      *     given again with each record.
      */

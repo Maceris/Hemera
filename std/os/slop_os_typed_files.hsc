@@ -76,7 +76,8 @@ package os
      * Check whether bytes hold a value of type, as holds_value checks it: what protocol_code's checks check, from
      * type's info.
      *
-     * @param type The value's type.
+     * @param type The type checked for, not null and only read: its size is the value's fixed part, and its parts are
+     *     checked as part_holds checks them.
      * @param bytes The bytes; only read.
      * @return True if they're at least type's size and at most 4 GiB, and every part of it holds (part_holds).
      */
@@ -92,9 +93,11 @@ package os
      *
      * A file can't hold a handle, a channel, a pointer, a view or a union, so none does.
      *
-     * @param type The part's type.
+     * @param type The part's type, not null and only read; an alias is checked as what it stands for, unless it's a
+     *     handle, which never holds.
      * @param offset Where the part is, in bytes from the value's start.
-     * @param bytes The value's bytes.
+     * @param bytes The whole value's bytes, only read; offset is counted from their start, and a part past their end
+     *     reads as 0.
      * @param fixed The size of the value's fixed part in bytes, which Relatives' items start at or after.
      * @return True for integers, floats and characters; bools of 0 or 1; enums holding one of their members' values;
      *     static arrays and structs whose parts all hold; and Relatives of plain data within the bytes. false for

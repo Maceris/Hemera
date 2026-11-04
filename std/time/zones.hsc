@@ -696,7 +696,7 @@ big_endian :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
  * Read a byte without going past the end.
  *
  * @param bytes The bytes to read from, of any length, empty included; only read.
- * @param at The byte's index.
+ * @param at The byte's index in bytes, from 0; any value, as one at or past their end isn't read.
  * @return The byte, or 0 if at is past the end.
  */
 byte_at :: fn(bytes: u8[], at: usize) -> u8 {

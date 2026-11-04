@@ -870,7 +870,8 @@ package os
      * Decide whether a field of a program's grants is a handle, given as the grant of its name, or a value, written in
      * its grant "arguments", as the compiler decides it for the entry's parameter.
      *
-     * @param type The field's type.
+     * @param type The field's type, as the entry's parameter has it, not null and only read; an optional that isn't a
+     *     nullable pointer is looked through to what it holds.
      * @return True for a 4-byte distinct alias or struct whose name, without its generic arguments, is a kind of handle
      *     base's runtime knows, or an optional (not a nullable pointer) of one; false for anything else, a value.
      */

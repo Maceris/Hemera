@@ -80,7 +80,8 @@ resizable :: fn[T](array: ptr[mut T[..]]) -> ptr[mut ResizableArray] {
  * Find where an element of a dynamic array is.
  *
  * @tparam T The element type.
- * @param raw The array's fields.
+ * @param raw The dynamic array's fields, as resizable gives them; only data is read, and it isn't checked, so for an
+ *     array with no memory yet the address is counted from null.
  * @param index Which element, counted from 0. It isn't checked against count or capacity, so it may be past the
  *     end, as for the place array_add stores into.
  * @param T The element type, given as a value, whose size the address is counted in.

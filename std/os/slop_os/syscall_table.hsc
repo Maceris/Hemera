@@ -156,7 +156,8 @@ table :: fn() -> ptr[compiler.TypeInfoStruct] {
  *
  * @param member The call's member of Syscalls, whose type is the call's function type.
  * @param number The call's number, its member's index.
- * @return The stub's declaration.
+ * @return Statements code declaring the stub, a function named as the member with its parameters, for syscall_stubs to
+ *     gather into the list it inserts at the top level.
  */
 stub :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
     function :: cast[ptr[compiler.TypeInfoFunction]](member.member_type)
@@ -391,7 +392,8 @@ result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[com
  * An alias converts as what it stands for, an enum through its backing type, a bool to 1 or 0, a pointer to its
  * address, and an integer of at most 8 bytes by a cast. Reports a compile error for anything else.
  *
- * @param type The value's type.
+ * @param type The value's type, not null and only read: an alias, enum, bool, pointer, or integer of at most 8 bytes.
+ *     Anything else reports a compile error, and value is cast as if it were an integer.
  * @param value The expression to convert.
  * @return An expression of type u64.
  */

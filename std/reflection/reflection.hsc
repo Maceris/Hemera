@@ -271,7 +271,8 @@ arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: u
 /**
  * Find the size of one element of an array at a dimension, which is itself an array unless it's the last one.
  *
- * @param info The array's type.
+ * @param info The array's type information, not null and only read: its dimensions, outermost first, each static, a
+ *     view or dynamic, and the base type of its elements.
  * @param dimension The dimension, from 0 for the outermost.
  * @return The element's size in bytes: the base type's at the last dimension, a view's or dynamic array's header when
  *     the next dimension is one, and otherwise a fixed array's count times its element's size.
