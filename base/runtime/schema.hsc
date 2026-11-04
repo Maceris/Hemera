@@ -567,9 +567,9 @@ schema_read_value :: fn(bytes: u8[], type: ptr[compiler.TypeInfo], into: rawptr)
 /**
  * Read a little-endian 64-bit word from a copy being read back.
  *
- * @param copy The copy.
+ * @param copy The bytes being read back, only read; they may end before at + 8.
  * @param at Where in copy the word starts, in bytes; bytes past the copy's end read as 0.
- * @return The word.
+ * @return The 8 bytes from at, the first the lowest; any past the copy's end count as 0.
  */
 schema_read_word :: fn(copy: u8[], at: usize) -> u64 {
     result : u64 = 0
@@ -585,9 +585,9 @@ schema_read_word :: fn(copy: u8[], at: usize) -> u64 {
 /**
  * Write a little-endian 64-bit word into a copy being read back.
  *
- * @param copy The copy.
+ * @param copy The bytes being read back, changed in place from at; their count doesn't change.
  * @param at Where in copy the word starts, in bytes; bytes that would be past the copy's end aren't written.
- * @param value The word.
+ * @param value Any 64-bit value, written lowest byte first.
  */
 schema_write_word :: fn(copy: mut u8[], at: usize, value: u64) {
     for i in cast[usize](0)..<8 {
@@ -748,7 +748,7 @@ schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeIn
  * Add a byte at the end of the bytes being written, unless adding one has failed already.
  *
  * @param out The bytes being written, whose error is set when there isn't the memory for this one.
- * @param byte The byte.
+ * @param byte Any byte, added after the last one; not added once out's error is set.
  */
 schema_add :: fn(out: ptr[mut SchemaBytes], byte: u8) {
     if out.error == null {
@@ -774,7 +774,7 @@ schema_copy_in :: fn(out: ptr[mut SchemaBytes], data: rawptr, count: usize) {
  *
  * @param out The bytes being written.
  * @param at Where in them the word starts, in bytes from the array's start; bytes past its end read as 0.
- * @return The word.
+ * @return The 8 bytes from at, the first the lowest; any past the array's end count as 0.
  */
 schema_word :: fn(out: ptr[mut SchemaBytes], at: usize) -> u64 {
     bytes : u8[] = out.into^
@@ -794,7 +794,7 @@ schema_word :: fn(out: ptr[mut SchemaBytes], at: usize) -> u64 {
  * @param out The bytes being written, whose count doesn't change.
  * @param at Where in them the word starts, in bytes from the array's start; bytes that would be past its end aren't
  *     written.
- * @param value The word.
+ * @param value Any 64-bit value, written lowest byte first.
  */
 schema_set_word :: fn(out: ptr[mut SchemaBytes], at: usize, value: u64) {
     bytes : mut u8[] = out.into^
@@ -1011,7 +1011,7 @@ schema_mask_of :: fn(size: usize) -> u64 {
 /**
  * Find whether a value of a type holds anything schema_fix changes, so a value without any can be skipped.
  *
- * @param type The type.
+ * @param type A type's information, not null, only read; its aliases are seen through.
  * @param depth How many types in the search is, 0 at the start; at SCHEMA_MAX_DEPTH, the answer is true, the safe one.
  * @return Whether it holds a string, pointer, any, function, type value or union, or an array other than a static
  *     one, directly or in a member; true too when the search goes too deep to tell.
@@ -1057,7 +1057,7 @@ schema_holds_pointers_array :: fn(info: ptr[compiler.TypeInfoArray], dimension: 
 /**
  * Find the type an alias names, distinct or not, through any number of them, since a value's layout is its base type's.
  *
- * @param info The type, which may be an alias or anything else.
+ * @param info A type's information, not null, only read; it may be an alias or anything else.
  * @return The first type that isn't an alias: info itself when it isn't one.
  */
 schema_unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {

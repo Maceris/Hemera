@@ -498,7 +498,8 @@ package os
     /**
      * Read from a file at its offset, through its buffer, moving the offset past what was read.
      *
-     * @param handle The open file.
+     * @param handle A File system_open gave, not the zero one and not yet closed (system_close); its offset advances by
+     *     what's read.
      * @param buffer Where the bytes go. At most FILE_BUFFER_BYTES are read in one call, however big it is.
      * @return count How many bytes were read: 0 for an empty buffer, or at the file's end; fewer than asked when less
      *     is left. 0 on failure.
@@ -550,7 +551,8 @@ package os
     /**
      * Write to a file at its offset, through its buffer, moving the offset past what was written.
      *
-     * @param handle The open file.
+     * @param handle A File system_open gave, not the zero one and not yet closed (system_close); its offset advances by
+     *     what the server wrote.
      * @param bytes The bytes to write, count of them, copied into the buffer before the request.
      * @param count How many bytes there are. At most FILE_BUFFER_BYTES are written in one call.
      * @return written How many bytes the server wrote, which can be fewer than count; 0 on failure.
@@ -584,7 +586,8 @@ package os
     /**
      * Ask a file's server for the file's size.
      *
-     * @param handle The open file.
+     * @param handle A File system_open gave, not the zero one and not yet closed (system_close); its offset isn't
+     *     moved.
      * @return size The size in bytes, or 0 on failure.
      * @return error As file_info's, or null.
      */
@@ -596,7 +599,8 @@ package os
     /**
      * Ask a file's server for the file's size and type, with its protocol's Info.
      *
-     * @param handle The open file.
+     * @param handle A File system_open gave, not the zero one and not yet closed (system_close); its offset isn't
+     *     moved.
      * @return size The size in bytes, or 0 on failure.
      * @return schema The file's schema hash: all zeros for an untyped one, or on failure.
      * @return error The server's error (error_of_file); Other if the connection failed or answered wrongly; or null.
@@ -634,7 +638,7 @@ package os
     /**
      * Tell whether a schema hash is all zeros, the hash of no type.
      *
-     * @param bytes The hash.
+     * @param bytes A schema hash, as a file's Info gives one; read and not kept.
      * @return True if every byte is 0.
      */
     all_zero :: fn(bytes: u8[32]) -> bool {

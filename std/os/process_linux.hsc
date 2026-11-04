@@ -139,7 +139,8 @@ import runtime from "base"
      * Join up to three strings, with a terminator after them, as execve takes its strings.
      *
      * @param made Where the copy is kept, so every copy is freed together; the caller frees each, then made.
-     * @param first The first part.
+     * @param first What the copy starts with, its bytes copied as they are; it can be empty, and a 0 byte in it ends
+     *     the string execve sees early.
      * @param second The second part, or "" for none.
      * @param third The third part, or "" for none.
      * @return The copy's first byte, in memory from the context's allocator that made holds, good until that's

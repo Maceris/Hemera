@@ -21,7 +21,8 @@ import runtime from "base"
     /**
      * Change a handle's flags, like whether a child process inherits it.
      *
-     * @param handle The handle.
+     * @param handle A handle of the caller's to an object that takes flags, like a pipe's end from CreatePipe; it stays
+     *     open and the caller's.
      * @param mask Which flags change, like HANDLE_FLAG_INHERIT.
      * @param flags Their new values, under mask: 0 to clear them.
      * @return Nonzero once they're changed; 0 if not.

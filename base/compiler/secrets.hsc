@@ -12,7 +12,7 @@ package compiler
  * Memcheck the value is defined again.
  *
  * @tparam T The secret's type.
- * @param value The secret.
+ * @param value A value the checker treats as a secret; its bits come back unchanged.
  * @return value, no longer a secret, as a type that isn't #secret: a #secret alias gives what it aliases. A #secret
  *     struct has no public form, so declassifying one is an error; declassify what's in it.
  */
@@ -25,7 +25,7 @@ declassify : fn[T](value: T) -> any : ---
  * undefined, so Memcheck reports what depends on it.
  *
  * @tparam T The value's type.
- * @param value The value.
+ * @param value Any value, public or secret already; its bits come back unchanged.
  * @return value, as a secret, of the same type.
  */
 secret : fn[T](value: T) -> T : ---

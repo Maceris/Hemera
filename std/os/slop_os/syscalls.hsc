@@ -462,8 +462,10 @@ Syscalls :: struct {
     /**
      * Register an interrupt controller the firmware tables describe, for its lines' IRQs.
      *
-     * @param platform The platform authority.
-     * @param kind What kind of controller.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     * @param kind What kind of controller is at registers; a kind not there, or one the architecture hasn't, gives
+     *     NoController.
      * @param registers The physical address of its registers, page-aligned, not in the kernel's memory.
      * @return The controller's number, for irq_create, and how many lines it has.
      * @error NoController No controller of that kind there, or the architecture has none of that kind.
@@ -474,7 +476,8 @@ Syscalls :: struct {
     /**
      * Make an IRQ for a controller's line, routed and unmasked, for a driver to bind to a port.
      *
-     * @param platform The platform authority.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param controller A number controller_register gave.
      * @param line The line, below the controller's count of lines.
@@ -494,7 +497,8 @@ Syscalls :: struct {
     /**
      * Make a memory object of device memory at a physical address, to map a device's registers or memory.
      *
-     * @param platform The platform authority.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param address The physical address, page-aligned, not in the kernel's memory.
      * @param size Its size in bytes, a whole number of pages.
@@ -681,7 +685,8 @@ Syscalls :: struct {
     /**
      * Make a Device for a PCIe function, for its message-signaled interrupts and its DMA domain.
      *
-     * @param platform The platform authority.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param address The function's address (device_address).
      * @param msi_source What the interrupt controller knows its message-signaled interrupts as: on AArch64, the ITS's
@@ -696,7 +701,8 @@ Syscalls :: struct {
     /**
      * Put a device's DMA in a domain: what an IOMMU will confine it to.
      *
-     * @param platform The platform authority.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
      * @param device The device; no right is needed.
      * @param domain The domain; no right is needed.
      * @error WrongIommu The device isn't behind the IOMMU its domain's other devices are, or behind none where
@@ -726,7 +732,8 @@ Syscalls :: struct {
      * Make a DMA domain. Without an IOMMU, its device addresses are physical addresses, and only a domain made
      * trusted has DMA memory.
      *
-     * @param platform The platform authority.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
      * @param flags DMA_DOMAIN_TRUSTED, or 0.
      * @return An owning handle to the domain.
@@ -758,8 +765,9 @@ Syscalls :: struct {
      * The same IOMMU registered again, its registers at the same place, gives the same number, and covers those
      * requester IDs too. A device is attached through the IOMMU that covers it most narrowly.
      *
-     * @param platform The platform authority.
-     * @param kind What kind of IOMMU.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
+     * @param kind What kind of IOMMU is at registers; a kind not there, or one the kernel can't drive, gives NoIommu.
      * @param registers Its registers: device memory itself (memory_create_physical, cached as Device), not a window
      *     onto it.
      * @param first The first requester ID it covers (DEVICE_ADDRESS, its segment then its requester ID).
@@ -820,9 +828,11 @@ Syscalls :: struct {
     /**
      * Make an object of a range of I/O ports, on an architecture that has them (x86-64).
      *
-     * @param platform The platform authority.
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     holds and passes on; a handle to another kind of object gives WrongKind.
      * @param budget The memory budget that pays for it.
-     * @param first The first port.
+     * @param first The number of the range's first port; the range can't run past the last port there is (0xffff on
+     *     x86-64).
      * @param count How many ports, from first to first + count - 1.
      * @return An owning handle to the range.
      * @error InvalidArgument Ports past the last one, none, or an architecture without ports.
@@ -1081,8 +1091,9 @@ MsiMessage :: struct {
 /**
  * Make a PCIe function's address, for device_create: its segment, then its requester ID.
  *
- * @param segment The PCI segment group.
- * @param bus The bus number.
+ * @param segment The PCI segment group the function is in, as the firmware tables number it, put in the high 16 bits; 0
+ *     on a machine with one.
+ * @param bus The bus number within the segment, 0 to 255, put in bits 8 to 15.
  * @param device The device number, 0 to 31; higher bits are dropped.
  * @param function The function number, 0 to 7; higher bits are dropped.
  * @return The address: segment in the high 16 bits, then bus, device and function.

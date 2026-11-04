@@ -416,7 +416,7 @@ requeue_fiber :: fn(fiber #escaping : ptr[mut runtime.Fiber]) {
 /**
  * Find this carrier's part of a pool, if this thread is running one of the pool's fibers.
  *
- * @param pool The pool.
+ * @param pool A pool from create_fiber_pool, not yet destroyed; only read.
  * @return This carrier's part of pool; null when called outside a fiber, from a fiber of another scheduler, or from
  *     one of another pool's fibers.
  */
@@ -685,8 +685,8 @@ take_shared :: fn(here: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
 /**
  * Pick the smaller of two counts.
  *
- * @param a One count.
- * @param b The other.
+ * @param a A count, in any unit, as long as b's is the same.
+ * @param b The count compared with a, in a's unit.
  * @return Whichever is smaller; either when they're equal.
  */
 min_of :: fn(a, b: u64) -> u64 {

@@ -41,7 +41,7 @@ make :: fn(bytes: mut u8[]) -> TextBuffer {
 /**
  * Give what's been appended so far.
  *
- * @param text The buffer.
+ * @param text A buffer from make; only read.
  * @return The text, a view of the buffer's bytes, not a copy: what's appended or cleared after changes what it holds.
  *     It's cut wherever it ran out of room, which can be in the middle of a UTF-8 character.
  */
@@ -66,7 +66,7 @@ clear :: fn(text: ptr[mut TextBuffer]) {
  * Append one byte, if there's room.
  *
  * @param text The buffer. When it's full, the byte is dropped and truncated is set.
- * @param byte The byte.
+ * @param byte Any byte, 0 to 255, zero included; it isn't checked to be valid UTF-8.
  */
 append_byte :: fn(text: ptr[mut TextBuffer], byte: u8) {
     if text.count >= text.bytes.count {
@@ -93,7 +93,7 @@ append :: fn(text: ptr[mut TextBuffer], value: string) {
  * Append an unsigned number's digits, as many as fit.
  *
  * @param text The buffer. If it fills, the digits that fit are kept, the rest dropped, and truncated set.
- * @param value The number.
+ * @param value Any u64, written without a sign.
  * @param base The base, from 2 to 16; digits past 9 are lowercase, with no prefix. Any other base calls
  *     context.assertion_handler.
  * @param minimum_digits The fewest digits written, padded with leading zeros; at most 64 are ever written. At least

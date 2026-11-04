@@ -166,7 +166,7 @@ package os
     /**
      * View a received message's bytes, for its validator.
      *
-     * @param into The message.
+     * @param into A message arrive has read in, whether validated yet or not; it isn't changed.
      * @return All MESSAGE_BYTES of its words, not only its size, good as long as into is.
      */
     bytes_of_incoming :: fn(into: ptr[Incoming]) -> u8[] {
@@ -252,7 +252,8 @@ package os
     /**
      * Decode a handle field of a received message: the handle whose index is there takes its place.
      *
-     * @param into The message received.
+     * @param into A message received and validated, its handle fields checked by index_fits. The field at offset is
+     *     overwritten with the handle, or 0; the handle stays in into's batch, the caller's to keep or close.
      * @param offset Where the handle field is, in bytes from the message's start. An index for no handle, or past the
      *     batch, leaves 0, no handle.
      * @param tag The protocol tag the handle's channel has to have, or 0 for a handle of any kind.
@@ -559,7 +560,8 @@ package os
      * @param fields The variant's fields that need checking, from collect; only its handles are used.
      * @param sending True for the encoding, for send_<side>; false for the decoding, for receive_<side>, which clears
      *     speaks when a handle's channel speaks another protocol.
-     * @return The code.
+     * @return The code: a list of statements, one per handle field, for where out is in scope when sending, or into and
+     *     speaks when receiving; empty when fields has no handles.
      */
     handles_of :: fn(fields: FieldCheck[], sending: bool) -> compiler.Code {
         made : compiler.Code[..]
@@ -659,7 +661,7 @@ package os
      * Check whether type is one of slop_os's handle types: Handle itself, or an alias of it, through any number of
      * aliases.
      *
-     * @param type The type.
+     * @param type Any type, followed through its aliases; it isn't changed.
      * @return True for Handle or an alias of it; false for anything else.
      */
     is_handle :: fn(type: ptr[compiler.TypeInfo]) -> bool {
@@ -679,7 +681,7 @@ package os
     /**
      * Find the alignment a type has in a message.
      *
-     * @param type The type.
+     * @param type A type a message can hold, as collect takes one.
      * @return A struct's own alignment; for anything else, what Hemera gives integers of its size: 1, 2, 4 or 8 bytes,
      *     never more.
      */

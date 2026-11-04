@@ -30,7 +30,7 @@ RingBuffer :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param ring The buffer.
+ * @param ring A buffer to add to; when it has room, its count grows by one.
  * @param value The value, copied in.
  * @return True if it was added; false if the buffer was full, leaving it unchanged.
  */
@@ -48,7 +48,8 @@ ring_push :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]], valu
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param ring The buffer.
+ * @param ring A buffer to take from; when it isn't empty, its head moves on by one, wrapping around, and its count
+ *     shrinks by one.
  * @return The oldest value, removed; null if the buffer is empty.
  */
 ring_pop :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) -> T? {
@@ -66,7 +67,7 @@ ring_pop :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) -> T?
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param ring The buffer.
+ * @param ring A buffer to look in; it isn't changed.
  * @return A copy of the oldest value; null if the buffer is empty.
  */
 ring_peek :: fn[T, capacity: usize](ring: ptr[RingBuffer[T, capacity]]) -> T? {
@@ -81,7 +82,7 @@ ring_peek :: fn[T, capacity: usize](ring: ptr[RingBuffer[T, capacity]]) -> T? {
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param ring The buffer.
+ * @param ring A buffer to empty; its head and count become 0.
  */
 ring_clear :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) {
     ring.head = 0

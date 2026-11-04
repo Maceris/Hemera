@@ -184,7 +184,7 @@ sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
  * Add one byte to the block, compressing it once it's full.
  *
  * @param hasher The hasher. Its total doesn't count the byte: the caller adds it, as padding isn't counted.
- * @param byte The byte.
+ * @param byte Any byte, message or padding, put in the block's next free position.
  */
 sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
     hasher.state.block[hasher.buffered % SHA512_BLOCK] = byte

@@ -23,7 +23,7 @@ Bitmap :: struct[size: usize] where compiler.AtLeastOne(size) {
  * Set a bit.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
+ * @param bitmap A bitmap to set the bit in; no other bit changes.
  * @param index The bit, from 0; at or past size, nothing happens.
  */
 bit_set :: fn[size: usize](bitmap: ptr[mut Bitmap[size]], index: usize) {
@@ -37,7 +37,7 @@ bit_set :: fn[size: usize](bitmap: ptr[mut Bitmap[size]], index: usize) {
  * Clear a bit.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
+ * @param bitmap A bitmap to clear the bit in; no other bit changes.
  * @param index The bit, from 0; at or past size, nothing happens.
  */
 bit_clear :: fn[size: usize](bitmap: ptr[mut Bitmap[size]], index: usize) {
@@ -51,8 +51,8 @@ bit_clear :: fn[size: usize](bitmap: ptr[mut Bitmap[size]], index: usize) {
  * Tell whether a bit is set.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
- * @param index The bit, from 0.
+ * @param bitmap A bitmap to read; it isn't changed.
+ * @param index The bit, from 0; at or past size, it reads as clear.
  * @return True if it's set; false if it's clear, or index is at or past size.
  */
 bit_test :: fn[size: usize](bitmap: ptr[Bitmap[size]], index: usize) -> bool {
@@ -67,7 +67,7 @@ bit_test :: fn[size: usize](bitmap: ptr[Bitmap[size]], index: usize) -> bool {
  * Find the first set bit at or after an index.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
+ * @param bitmap A bitmap to search; it isn't changed.
  * @param from The index to start at, from 0.
  * @return The first set bit's index, below size; null if none is set from there on, or from is at or past size.
  */
@@ -79,7 +79,7 @@ bit_find_set :: fn[size: usize](bitmap: ptr[Bitmap[size]], from: usize) -> usize
  * Find the first clear bit at or after an index.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
+ * @param bitmap A bitmap to search; it isn't changed.
  * @param from The index to start at, from 0.
  * @return The first clear bit's index, below size; null if every bit from there on is set, or from is at or past size.
  */
@@ -91,7 +91,8 @@ bit_find_clear :: fn[size: usize](bitmap: ptr[Bitmap[size]], from: usize) -> usi
  * Count the bits that are set.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
+ * @param bitmap A bitmap to count in; it isn't changed. Bits at or past size are counted too, so they must be clear, as
+ *     nothing here sets them.
  * @return How many are set, from 0 to size.
  */
 bit_count :: fn[size: usize](bitmap: ptr[Bitmap[size]]) -> usize {
@@ -114,7 +115,7 @@ bit_count :: fn[size: usize](bitmap: ptr[Bitmap[size]]) -> usize {
  * Clear every bit.
  *
  * @tparam size How many bits the bitmap holds.
- * @param bitmap The bitmap.
+ * @param bitmap A bitmap to clear; every word of it becomes 0.
  */
 bit_clear_all :: fn[size: usize](bitmap: ptr[mut Bitmap[size]]) {
     for i in 0..<bitmap.words.count {

@@ -224,7 +224,7 @@ blake3_chaining_value #constant_time :: fn(output: ptr[Blake3Output]) -> Blake3C
 /**
  * Read the block being filled as words, for compressing.
  *
- * @param block The block.
+ * @param block The hasher's 64-byte block buffer; read, not changed.
  * @param length How many of its bytes are input, 0 to 64; the rest are read as zeros, whatever they hold.
  * @return The 16 little-endian words.
  */
@@ -337,7 +337,7 @@ blake3_make_room #constant_time :: fn(hasher: ptr[mut Blake3]) {
 /**
  * Add public bytes to what a BLAKE3 hasher hashes.
  *
- * @param hasher The hasher.
+ * @param hasher A hasher from blake3_start or blake3_start_keyed, read from already or not; its state advances by data.
  * @param data The next bytes, of any number, none included; they're hashed, not kept.
  */
 blake3_update :: fn(hasher: ptr[mut Blake3], data: u8[]) {
@@ -347,7 +347,7 @@ blake3_update :: fn(hasher: ptr[mut Blake3], data: u8[]) {
 /**
  * Add secret bytes to what a BLAKE3 hasher hashes, in constant time.
  *
- * @param hasher The hasher.
+ * @param hasher A hasher from blake3_start or blake3_start_keyed, read from already or not; its state advances by data.
  * @param data The next bytes, of any number; how many isn't secret, what they are is.
  */
 blake3_update_secret #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
@@ -612,7 +612,8 @@ blake3_batch #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
  * Add bytes to what a BLAKE3 hasher hashes: whole chunks a batch at a time where there's more after them, the rest a
  * byte at a time.
  *
- * @param hasher The hasher.
+ * @param hasher The hasher, which takes data: chunks with more input after them are compressed and their chaining
+ *     values pushed, and the rest is left buffered, as the last chunk may be the root.
  * @param data The bytes, of any number.
  */
 blake3_absorb #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) {
@@ -641,7 +642,7 @@ blake3_absorb #constant_time :: fn(hasher: ptr[mut Blake3], data: SecretByte[]) 
 /**
  * Read a BLAKE3 hash, keeping it a secret. The hasher isn't changed, so more input can follow, and be hashed again.
  *
- * @param hasher The hasher.
+ * @param hasher A hasher after any number of updates, none included; read, not changed.
  * @param output Where the hash goes, as long as output is: any length, none included. A longer output's first bytes
  *     are a shorter one's.
  */
@@ -668,7 +669,7 @@ blake3_finish_secret #constant_time :: fn(hasher: ptr[Blake3], output: mut Secre
 /**
  * Read a BLAKE3 hash. The hasher isn't changed, so more input can follow, and be hashed again.
  *
- * @param hasher The hasher.
+ * @param hasher A hasher after any number of updates, none included; read, not changed.
  * @param output Where the hash goes, as long as output is: any length, none included, though 32 bytes is BLAKE3's
  *     usual. A longer output's first bytes are a shorter one's.
  */
@@ -690,7 +691,7 @@ blake3_finish :: fn(hasher: ptr[Blake3], output: mut u8[]) {
 /**
  * Read 64 bytes of a BLAKE3 hash's output, from anywhere in it. The hasher isn't changed.
  *
- * @param hasher The hasher.
+ * @param hasher A hasher after any number of updates, none included; read, not changed.
  * @param block_index Which 64 bytes: the output's bytes from 64 * block_index on.
  * @param block Where they go: its first 64 bytes, or as many as it has.
  */

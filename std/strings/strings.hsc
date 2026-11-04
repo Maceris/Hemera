@@ -101,8 +101,8 @@ free_string :: fn(text: string, allocator := context.allocator) {
 /**
  * Tell whether two strings have the same bytes.
  *
- * @param a One string.
- * @param b The other.
+ * @param a One string, only read.
+ * @param b The string to compare it with, only read; which of the two is which doesn't matter.
  * @return True if they have the same count and bytes, byte for byte: no Unicode normalization or case folding.
  */
 equal :: fn(a: string, b: string) -> bool {
@@ -120,7 +120,7 @@ equal :: fn(a: string, b: string) -> bool {
 /**
  * Take the bytes of text from start up to end, without copying.
  *
- * @param text The text.
+ * @param text The string to take from; it isn't copied, so the view is good only as long as its bytes are.
  * @param start The byte index of the first byte.
  * @param end The byte index past the last, not included. Both are clamped to the text, so a range past its end is cut
  *     short.
@@ -138,7 +138,7 @@ slice :: fn(text: string, start: usize, end: usize) -> string {
 /**
  * Tell whether text starts with a prefix.
  *
- * @param text The text.
+ * @param text The string to check, only read.
  * @param prefix The prefix; an empty one starts every text.
  * @return True if text's first bytes are prefix's.
  */
@@ -149,7 +149,7 @@ starts_with :: fn(text: string, prefix: string) -> bool {
 /**
  * Tell whether text ends with a suffix.
  *
- * @param text The text.
+ * @param text The string to check, only read.
  * @param suffix The suffix; an empty one ends every text.
  * @return True if text's last bytes are suffix's.
  */
@@ -192,7 +192,7 @@ contains :: fn(text: string, part: string) -> bool {
 /**
  * Tell whether a character is a space, as trim takes them.
  *
- * @param character The character.
+ * @param character One byte of text: the bytes of a UTF-8 character past ASCII are never spaces.
  * @return True for a space, tab, carriage return or newline; false for anything else, other Unicode spaces included.
  */
 is_space :: fn(character: char) -> bool {
@@ -202,7 +202,7 @@ is_space :: fn(character: char) -> bool {
 /**
  * Take text without the spaces (is_space) at either end, without copying.
  *
- * @param text The text.
+ * @param text The string to trim; it isn't copied, so the view is good only as long as its bytes are.
  * @return A view of text's bytes, good while they are; "" if it's all spaces.
  */
 trim :: fn(text: string) -> string {

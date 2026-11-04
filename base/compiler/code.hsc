@@ -68,7 +68,7 @@ literal : fn(value: any, location := #caller_location) -> Code : ---
 /**
  * Make code of a type, as itself, so nothing is looked up by its name where it goes.
  *
- * @param T The type.
+ * @param T Any type; the code stands for the type itself, not for a name looked up where it's inserted.
  * @param location Where an error in it is reported; the caller's own by default.
  * @return The type's code, for where a type goes, like -> #insert T.
  */
@@ -141,7 +141,7 @@ CodeKind :: enum {
 /**
  * Tell what a piece of code is.
  *
- * @param code The code.
+ * @param code Any piece of code, quoted or made by one of these functions.
  * @return Its kind.
  */
 code_kind : fn(code: Code) -> CodeKind : ---
@@ -149,7 +149,7 @@ code_kind : fn(code: Code) -> CodeKind : ---
 /**
  * Give a name's text.
  *
- * @param code The code.
+ * @param code Any code; only a Name has text to give.
  * @return The name's text when code is a Name; none for other code.
  */
 identifier_of : fn(code: Code) -> string? : ---
@@ -157,7 +157,7 @@ identifier_of : fn(code: Code) -> string? : ---
 /**
  * Give the items of code that has them.
  *
- * @param code The code.
+ * @param code Any code; only statements, a list, fields, variants, members, patterns or cases have items.
  * @return Each item of statements, a list, fields, variants, members, patterns or cases, in order, each its own Code;
  *     empty for other code.
  */
@@ -166,7 +166,7 @@ items_of : fn(code: Code) -> Code[] : ---
 /**
  * Give where code was written, or made.
  *
- * @param code The code.
+ * @param code Any code, quoted or made.
  * @return The quote's location, or for code from name, literal and the like, where that was called.
  */
 location_of : fn(code: Code) -> SourceCodeLocation : ---

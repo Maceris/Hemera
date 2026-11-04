@@ -163,7 +163,7 @@ log_fatal : runtime.LogFunction : fn(format_string: string, params: any..., loca
 /**
  * Take the part of a path after its last folder separator, / or \.
  *
- * @param path The path.
+ * @param path Any path, with / or \ separators or both, empty included; only read.
  * @return A view of path's bytes, good while they are: the whole path when it has no separator; "" when it ends with
  *     one.
  */

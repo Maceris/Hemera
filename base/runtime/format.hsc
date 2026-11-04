@@ -79,7 +79,7 @@ is_format_digit #no_context :: fn(character: char) -> bool {
  *
  * A width or precision too large for a usize isn't caught, and wraps.
  *
- * @param format The format string.
+ * @param format The whole format string, only read; the options are looked for from start.
  * @param start Where in format the options would start, in bytes: just after the % and its argument number. It may
  *     be format.count, at the end.
  * @return The options. Without a { at start, the defaults, with a space for the fill; when they aren't well
@@ -174,7 +174,7 @@ format_emit_text :: fn(sink: FormatSink, text: string) {
  * Add one byte to a sink a number of times, for padding.
  *
  * @param sink Where they go.
- * @param byte The byte.
+ * @param byte Any byte, added count times; for padding, the spec's fill.
  * @param count How many times, which may be 0.
  */
 format_emit_repeated :: fn(sink: FormatSink, byte: u8, count: usize) {
@@ -324,8 +324,8 @@ format_wide_shift :: fn(number: ptr[mut FormatWide], bits: u64) {
 /**
  * Add two wide integers.
  *
- * @param a One of them.
- * @param b The other.
+ * @param a One addend, up to 2^1280 - 1; it isn't changed.
+ * @param b The other addend, the same way; which is which doesn't matter.
  * @return Their sum; a carry out of the top limb is dropped, which the numbers a float needs never make.
  */
 format_wide_add :: fn(a: FormatWide, b: FormatWide) -> FormatWide {
@@ -343,7 +343,7 @@ format_wide_add :: fn(a: FormatWide, b: FormatWide) -> FormatWide {
  * Subtract a wide integer from another, in place.
  *
  * @param a The integer subtracted from, replaced by a - b; it has to be at least b, or the result wraps.
- * @param b The integer subtracted.
+ * @param b What's taken from a, at most a; it isn't changed.
  */
 format_wide_subtract :: fn(a: ptr[mut FormatWide], b: FormatWide) {
     borrow : u64 = 0
@@ -363,8 +363,8 @@ format_wide_subtract :: fn(a: ptr[mut FormatWide], b: FormatWide) {
 /**
  * Compare two wide integers.
  *
- * @param a The first.
- * @param b The second.
+ * @param a The left side of the comparison.
+ * @param b The right side, which a is compared against.
  * @return -1, 0 or 1 as a is less than, equal to or more than b.
  */
 format_wide_compare :: fn(a: FormatWide, b: FormatWide) -> int {

@@ -279,7 +279,8 @@ package runtime
      *
      * The file's position isn't moved. A read interrupted by a signal fails like any other.
      *
-     * @param descriptor The open file.
+     * @param descriptor A file descriptor open for reading that pread works on, like a regular file's; it's neither
+     *     moved nor closed.
      * @param into Where the bytes go, room for count of them, which only has to stay valid for the call.
      * @param count How many bytes; 0 reads nothing and succeeds.
      * @param offset Where in the file to start, in bytes from its start.

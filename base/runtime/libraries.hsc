@@ -141,8 +141,8 @@ bind_libraries :: fn() {
 /**
  * Compare two schema hashes.
  *
- * @param a One hash.
- * @param b The other.
+ * @param a One 32-byte schema hash, only read.
+ * @param b The hash a is compared with, only read; which is which doesn't matter.
  * @return True when all 32 bytes are the same. Not constant-time: hashes here aren't secret.
  */
 same_hash #no_context :: fn(a: u8[32], b: u8[32]) -> bool {

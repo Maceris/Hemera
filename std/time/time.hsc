@@ -195,7 +195,7 @@ from_utc :: fn(moment: DateTime) -> Instant {
 /**
  * Find the date of an instant in UTC.
  *
- * @param t The instant.
+ * @param t Any instant, before or after the epoch; the fraction of its second doesn't change the date.
  * @return year The year, numbered astronomically: 0 is 1 BC, and earlier years are negative.
  * @return month The month, 1 to 12.
  * @return day The day of the month, 1 to 31.
@@ -221,7 +221,7 @@ clock :: fn(t: Instant) -> (hour: int, minute: int, second: int) {
 /**
  * Find the time of day of an instant in UTC, to the nanosecond.
  *
- * @param t The instant.
+ * @param t Any instant, before or after the epoch.
  * @return hour The hour, 0 to 23.
  * @return minute The minute, 0 to 59.
  * @return second The second, 0 to 59: leap seconds aren't counted.

@@ -268,7 +268,8 @@ package stream
      * @param schema The records' type's schema hash.
      * @param ring_bytes The ring's size in bytes, rounded up to a multiple of 4096; 0 for RING_BYTES.
      * @param waits Whether to wait for the reader's answer to Open; if not, it's counted as waiting, and taken later.
-     * @return The open writer.
+     * @return The open writer, its ring mapped and offered to the reader, and, when it waits, accepted; the caller's to
+     *     end with finish, or with end_without_waiting and then close_writer.
      * @error NoMemory The port or the ring couldn't be made, or the ring couldn't be mapped.
      * @error Gone The Open couldn't be sent; or, when it waits, the reader's end went, or answered something else.
      * @error WrongType The reader reads another type; only when it waits.
@@ -311,7 +312,8 @@ package stream
      * waiting, or when the writer finishes.
      *
      * @tparam T The records' type.
-     * @param writer The open writer.
+     * @param writer A writer from writer_on that hasn't been finished or closed; its scratch is overwritten, and what
+     *     it has written advances by the record.
      * @param value The record, copied into the ring; nothing of it is kept.
      * @return Null once it's in the ring; NoMemory if its bytes couldn't be made, TooBig if they're more than half the
      *     ring, or Gone if the reader went while it waited for room.
@@ -327,7 +329,8 @@ package stream
     /**
      * Write bytes to a byte stream, as one record, which the reader's next_bytes gives whole.
      *
-     * @param writer The open writer.
+     * @param writer A byte stream's writer that hasn't been finished or closed; what it has written advances by the
+     *     record.
      * @param bytes The bytes, copied into the ring; empty makes an empty record.
      * @return Null once they're in the ring; TooBig if they're more than half the ring with their header, or Gone if
      *     the reader went while it waited for room.
@@ -342,7 +345,8 @@ package stream
      * It waits while the ring has no room for it, and says Wrote once a quarter of the ring is written and unsaid.
      *
      * @tparam T The Writer's type parameter.
-     * @param writer The open writer.
+     * @param writer A writer that hasn't been finished or closed; what it has written advances by the record, and by a
+     *     wrap first if one's put.
      * @param value The value's bytes, as std/schema's write_value writes one, copied into the ring.
      * @return Null once they're in the ring; TooBig if they're more than half the ring with their header, or Gone if
      *     the reader went, or broke the protocol, while it waited for room.
@@ -385,7 +389,8 @@ package stream
      * Tell the reader what's been written since it was last told, with a Wrote, if anything has.
      *
      * @tparam T The Writer's type parameter.
-     * @param writer The open writer.
+     * @param writer A writer that hasn't been finished or closed; when a Wrote is sent, what it has announced catches
+     *     up with what it has written, and it waits for one more answer.
      * @return Null if it was told, or there was nothing to tell; Gone if the Wrote couldn't be sent.
      */
     flush :: fn[T](writer: ptr[mut Writer[T]]) -> StreamError? {
@@ -406,7 +411,8 @@ package stream
      * Wait for room for count more bytes in the ring, taking the reader's answers until it has read enough.
      *
      * @tparam T The Writer's type parameter.
-     * @param writer The open writer.
+     * @param writer A writer that hasn't been finished or closed; what's written but unsaid is flushed, and how far the
+     *     reader has read is updated from the answers taken.
      * @param count The bytes needed, at most the ring's size.
      * @return Null once there's room; Gone if the reader went, broke the protocol, or has nothing left to answer while
      *     the ring is still full.
@@ -492,7 +498,8 @@ package stream
      * The writer isn't closed: it's closed with close_writer once the reader's done, and nothing more is written to it.
      *
      * @tparam T The Writer's type parameter.
-     * @param writer The open writer.
+     * @param writer A writer that hasn't been finished or ended; what's unsaid is flushed first, and the writer is
+     *     still the caller's to close with close_writer.
      * @param status The writer's status, for the reader: 0 for success, any other value the writer's own.
      * @return Null once the Ended is sent; Gone if it, or the Wrote before it, couldn't be.
      */
@@ -547,7 +554,8 @@ package stream
      * @param end The channel's reading end, which the reader keeps from now on, and closes in close_reader. On an
      *     error the end isn't closed, and the port made for it by then isn't let go of.
      * @param schema The schema hash of the type to read, which has to be the writer's.
-     * @return The open reader.
+     * @return The open reader, the writer's ring mapped to read and its Open answered; the caller's to close with
+     *     close_reader.
      * @error NoMemory The port couldn't be made, or the ring couldn't be mapped.
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
@@ -564,7 +572,8 @@ package stream
      * @param end The channel's reading end, which the reader keeps from now on. On an error the end isn't closed, and
      *     the port made for it by then isn't let go of.
      * @param schema The schema hash of the type to read.
-     * @return The open reader.
+     * @return The open reader, the writer's ring mapped to read and its Open answered; the caller's to close with
+     *     close_reader.
      * @error NoMemory The port couldn't be made, or the ring couldn't be mapped.
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
@@ -600,7 +609,8 @@ package stream
      * Before reading, it answers the writer's Wrotes it has read past, so the writer has room again.
      *
      * @tparam T The Reader's type parameter.
-     * @param reader The open reader.
+     * @param reader A reader that hasn't been closed; how far it has read advances past the record, and each Wrote or
+     *     Ended it takes is remembered to answer.
      * @return The record's value bytes, as they are in the ring: good only until the next call, or close_reader, after
      *     which the writer may write over them. Null once the writer has ended, or its end has gone, and everything's
      *     read; null too for a record whose header says it runs past the ring's end.
@@ -653,7 +663,7 @@ package stream
      * Read the next record, waiting for the writer to write one, and copy its value out of the ring.
      *
      * @tparam T The records' type.
-     * @param reader The open reader.
+     * @param reader A reader from reader_on that hasn't been closed; how far it has read advances past the record.
      * @return The record, its value's memory, if it has any, from context's allocator and the caller's to free; null
      *     once the writer has ended and everything's read, or if the record's bytes aren't a value of T.
      */
@@ -672,7 +682,7 @@ package stream
      * An answer that can't be sent is dropped.
      *
      * @tparam T The Reader's type parameter.
-     * @param reader The open reader.
+     * @param reader A reader that hasn't been closed; the marks it has read past are answered and taken off its list.
      */
     answer_marks :: fn[T](reader: ptr[mut Reader[T]]) {
         done : usize = 0
@@ -700,7 +710,7 @@ package stream
      * Remember a Wrote, or the Ended, to answer once the reader has read as far as it says.
      *
      * @tparam T The Reader's type parameter.
-     * @param reader The open reader.
+     * @param reader A reader that hasn't been closed; the mark goes at the end of its list, if there's room.
      * @param mark How many bytes the writer had written in all when it sent it. Past MAX_MARKS waiting, it's dropped,
      *     and never answered.
      */
@@ -715,8 +725,8 @@ package stream
     /**
      * Tell whether two schema hashes are the same.
      *
-     * @param a One hash.
-     * @param b The other.
+     * @param a A schema hash, as runtime.schema_hash gives one, read and not kept.
+     * @param b The hash compared with a, byte by byte, also not kept; which side is which doesn't matter.
      * @return True if every byte is the same.
      */
     same_hash :: fn(a: u8[32], b: u8[32]) -> bool {
@@ -821,7 +831,7 @@ package stream
     /**
      * Round a byte count up to a multiple of 8, as each record is padded to in the ring.
      *
-     * @param count The bytes.
+     * @param count A byte count, at most 2^64 - 8; past that, rounding wraps around to a small result.
      * @return The least multiple of 8 at least count; 0 for 0.
      */
     padded :: fn(count: u64) -> u64 {

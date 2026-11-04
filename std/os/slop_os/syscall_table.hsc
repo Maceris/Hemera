@@ -262,7 +262,8 @@ ok_result :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
  *
  * @param member The call's member of Syscalls, whose type is the call's function type.
  * @param number The call's number, its member's index.
- * @return The if statement.
+ * @return Code for one if statement, inserted where the kernel dispatches, using the registers, thread and number
+ *     there: when number matches, it returns the call's answer from the function it's in; otherwise it does nothing.
  */
 dispatch :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
     function :: cast[ptr[compiler.TypeInfoFunction]](member.member_type)
@@ -311,7 +312,8 @@ dispatch :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
  * register, with the second 0.
  *
  * @param ok The Ok type, or None when the call's Ok carries nothing, which answers 0, 0, 0.
- * @return The match case.
+ * @return Code for one case pattern, Ok or Ok(value), to insert in a match on the handler's result; it returns from the
+ *     function it's in.
  */
 ok_answer :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
     type :: ok or_return #code patterns {

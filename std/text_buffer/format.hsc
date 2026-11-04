@@ -167,7 +167,8 @@ append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.For
 /**
  * Give text without its first bytes.
  *
- * @param text The text.
+ * @param text Any text, empty included; only read, and the result views its bytes, so it stays good as long as text's
+ *     do.
  * @param start How many bytes to leave out.
  * @return The rest, a view of text's bytes; "" when start is the text's count or more.
  */
@@ -181,7 +182,7 @@ strings_after :: fn(text: string, start: usize) -> string {
 /**
  * Tell whether a character is an ASCII digit, 0 to 9.
  *
- * @param character The character.
+ * @param character Any character; only the ten ASCII digits count, not other scripts' digits.
  * @return True for a digit.
  */
 is_digit :: fn(character: char) -> bool {
@@ -431,7 +432,7 @@ append_float :: fn(text: ptr[mut TextBuffer], value: f64, decimals: usize = DEFA
  * Append a float as the shortest text that reads back as it, like 0.1, 1.5, 100 or 1e+21 (append_shortest_bits).
  *
  * @param text The buffer. If it fills, what fits is kept, the rest dropped, and truncated set.
- * @param value The number.
+ * @param value Any f64: NaN is written nan whatever its sign, infinity inf or -inf, and zero 0 or -0.
  */
 append_shortest :: fn(text: ptr[mut TextBuffer], value: f64) {
     append_shortest_bits(text, bit_cast[u64](value), 11, 52)
@@ -636,7 +637,7 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
 /**
  * Count a number's decimal digits.
  *
- * @param value The number.
+ * @param value Any u64, 0 to 18,446,744,073,709,551,615.
  * @return Its digit count for 10 and above; for 0 to 9 it gives 2, not 1, since the loop runs once before checking.
  */
 digit_count :: fn(value: u64) -> usize {
@@ -912,7 +913,8 @@ append_type_name :: fn(text: ptr[mut TextBuffer], type_info: ptr[compiler.TypeIn
  * Append the suffix of a number type's byte order: be, le, or nothing for the target's own.
  *
  * @param text The buffer. If it fills, what fits is kept, the rest dropped, and truncated set.
- * @param endianness The byte order.
+ * @param endianness The byte order, from the type's information: BIG gives be, LITTLE le, and SYSTEM nothing, as a type
+ *     without either suffix has the target's order.
  */
 append_endianness :: fn(text: ptr[mut TextBuffer], endianness: compiler.Endianness) {
     if endianness == .BIG {

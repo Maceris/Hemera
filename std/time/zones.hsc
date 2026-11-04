@@ -326,7 +326,7 @@ local :: fn(zone: ptr[Zone], t: Instant) -> LocalTime {
 /**
  * Fetch an abbreviation from a zone's abbreviations.
  *
- * @param zone The zone.
+ * @param zone A zone from parse_zone, not yet freed; only read.
  * @param start The byte index in the zone's abbreviations it starts at.
  * @return The bytes from start to the next zero byte or the abbreviations' end, a view of the zone's array, good
  *     until the zone is freed; empty when start is past the end or at a zero byte.
@@ -352,7 +352,7 @@ abbreviation_at :: fn(zone: ptr[Zone], start: usize) -> string {
  * The year is the one it is in standard time. Daylight saving time that ends earlier in the year than it starts, as in
  * the southern hemisphere, runs over the year's end.
  *
- * @param rule The rule.
+ * @param rule A rule from parse_rule; only read, and the abbreviation returned views its arrays.
  * @param seconds The instant, in seconds since the epoch.
  * @return offset The offset from UTC in seconds, east positive.
  * @return dst Whether it's daylight saving time.
@@ -467,7 +467,7 @@ parse_rule :: fn(text: u8[]) -> Rule? {
 /**
  * Parse a time zone name in a POSIX TZ rule: letters, or anything but > in <angle brackets>.
  *
- * @param text The rule.
+ * @param text The rule being parsed; only read.
  * @param at Where in text the name starts, in bytes; moved past it, and past the closing bracket of a quoted one.
  * @param name Where the name is copied, without its brackets; bytes past NAME_BYTES are dropped.
  * @return How many bytes were copied into name, 3 to NAME_BYTES, or None if fewer than 3 were, or a quoted name has
@@ -514,7 +514,7 @@ name_at :: fn(text: u8[], at: ptr[mut usize], name: ptr[mut u8[NAME_BYTES]]) -> 
 /**
  * Parse an offset in a POSIX TZ rule: [+-]hh[:mm[:ss]].
  *
- * @param text The rule.
+ * @param text The rule being parsed; only read.
  * @param at Where in text the offset starts, in bytes; moved past it.
  * @return The offset in seconds, west of UTC positive, as POSIX writes them, or None if there are no hours.
  */
@@ -531,7 +531,7 @@ offset_at :: fn(text: u8[], at: ptr[mut usize]) -> i32? {
 /**
  * Parse a time in a POSIX TZ rule: hh[:mm[:ss]], without a sign.
  *
- * @param text The rule.
+ * @param text The rule being parsed; only read.
  * @param at Where in text the time starts, in bytes; moved past it.
  * @return The time in seconds, or None if there are no hours, or a colon has no number after it. No part's range is
  *     checked, so hours may go past 24, up to the 167 a rule's times can have.
@@ -554,7 +554,7 @@ time_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
 /**
  * Parse a date in a POSIX TZ rule: Jn, n or Mm.w.d, then /time if it's there.
  *
- * @param text The rule.
+ * @param text The rule being parsed; only read.
  * @param at Where in text the date starts, in bytes; moved past it and its time.
  * @return The date, at 2:00 when no time is given, or None if it's malformed, or a Mm.w.d date's month isn't 1 to 12,
  *     its week 1 to 5, or its weekday 0 to 6. A Jn or n date's day isn't range-checked.
@@ -603,7 +603,7 @@ date_at :: fn(text: u8[], at: ptr[mut usize]) -> RuleDate? {
 /**
  * Parse an unsigned decimal number.
  *
- * @param text The text.
+ * @param text The text holding the number, read at at; only read.
  * @param at Where in text the number starts, in bytes; moved past its digits, at most 9 of them.
  * @return The number, 0 to 999,999,999, or None if there's no digit at at. Digits past the ninth are left unread.
  */
@@ -640,7 +640,7 @@ ZoneCounts :: struct {
 /**
  * Read the counts of a TZif header.
  *
- * @param bytes The TZif data.
+ * @param bytes A TZif file's bytes, from its first; only read, and a header past their end gives None.
  * @param start Where in bytes the 44-byte header starts.
  * @return The header's counts, or None if the header doesn't fit in bytes or doesn't start with a T. The rest of its
  *     magic isn't checked.
@@ -656,9 +656,9 @@ counts_at :: fn(bytes: u8[], start: usize) -> ZoneCounts? {
 /**
  * Read one of a TZif header's counts: a 32-bit big-endian unsigned integer.
  *
- * @param bytes The TZif data.
+ * @param bytes A TZif file's bytes, from its first; only read.
  * @param at Where in bytes the count starts; bytes past the end read as 0.
- * @return The count.
+ * @return The count, 0 to 4,294,967,295, as stored; bytes past the end count as zeros.
  */
 field :: fn(bytes: u8[], at: usize) -> usize {
     return cast[usize](big_endian(bytes, at, 4))
@@ -679,7 +679,7 @@ data_bytes :: fn(counts: ZoneCounts, time_bytes: usize) -> usize {
 /**
  * Read a big-endian unsigned integer.
  *
- * @param bytes The data.
+ * @param bytes The bytes to read from, such as a TZif file's; only read.
  * @param at Where in bytes the integer starts; bytes past the end read as 0.
  * @param count How many bytes it has, 1 to 8.
  * @return The integer, zero-extended; a signed one is cast by the caller.
@@ -695,7 +695,7 @@ big_endian :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
 /**
  * Read a byte without going past the end.
  *
- * @param bytes The data.
+ * @param bytes The bytes to read from, of any length, empty included; only read.
  * @param at The byte's index.
  * @return The byte, or 0 if at is past the end.
  */

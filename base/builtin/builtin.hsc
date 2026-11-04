@@ -280,7 +280,7 @@ types_are_aliases : fn(a, b: type) -> bool : ---
  * Tell whether a type's values are secrets (docs/memory.md, Secrets), for a generic that treats them differently, as
  * runtime.free does by wiping them.
  *
- * @param T The type.
+ * @param T Any type; one that isn't #secret, nor an array or vector of one, gives false.
  * @return True when it's #secret, or an array or vector of one; false otherwise.
  */
 is_secret_type : fn(T: type) -> bool : ---
@@ -291,7 +291,7 @@ is_secret_type : fn(T: type) -> bool : ---
  * new and new_array store the defaults, with intrinsics.store_defaults, when it's true; when it's false, the zeroed
  * memory an allocator gives is the whole value.
  *
- * @param T The type.
+ * @param T Any type; only a struct, or a static array of one, can give true.
  * @return True for a struct with a field's default, in it or in a struct or static array it holds, or a static array
  *     of such a struct; false otherwise.
  */

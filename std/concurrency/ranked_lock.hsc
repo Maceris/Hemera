@@ -112,9 +112,11 @@ push_held :: fn(held: ptr[mut HeldRanks], rank: u32, address: u64) {
  *
  * Locks needn't be given back in the order they were taken. The lock is unlocked even if the records don't have it.
  *
- * @param spin_lock The lock.
+ * @param spin_lock A spin lock held by this holder, taken with rank; it's unlocked whatever the records say, so it must
+ *     not be used through this holder afterwards.
  * @param rank The rank it was taken with.
- * @param held The holder's ranks.
+ * @param held The ranks of the holder that took the lock, this CPU's or thread's; its record of the lock is removed,
+ *     the newer ones moving down.
  * @return True if it was held, as the holder's records say, or more was held than MAX_HELD_RANKS keeps, so it can't be
  *     told; false if the records had no lock of that rank and address, which leaves them unchanged.
  */

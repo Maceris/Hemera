@@ -41,7 +41,7 @@ HashMap :: struct[K: compiler.Equatable, V, hash: fn(key: K) -> u64] {
 /**
  * Hash a string's bytes with FNV-1a, for a HashMap with string keys.
  *
- * @param text The string.
+ * @param text Any string, its bytes only read; an empty one hashes to FNV-1a's offset basis, 0xcbf29ce484222325.
  * @return The 64-bit FNV-1a hash of its bytes: the same for the same bytes, in every program, so not for keys an
  *     attacker chooses to collide.
  */
@@ -59,7 +59,7 @@ hash_string :: fn(text: string) -> u64 {
  * It's MurmurHash3's 64-bit finalizer, which maps distinct 64-bit values to distinct hashes.
  *
  * @tparam T The integer's type, of up to 64 bits, converted to u64 first.
- * @param value The integer.
+ * @param value Any value of T. It's converted to u64 with cast, so values that convert to the same u64 hash alike.
  * @return Its hash: the same for the same value, in every program.
  */
 hash_integer :: fn[T: compiler.Integer](value: T) -> u64 {
@@ -77,8 +77,8 @@ hash_integer :: fn[T: compiler.Integer](value: T) -> u64 {
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
- * @param key The key.
+ * @param map A map to look in, only read; one with no slots has no key.
+ * @param key The key to look for, found by its hash and compared with ==.
  * @return The slot's index: key's, or the free one it would go in; 0 when the map has no slots.
  * @return True if key is there; false if it isn't, or the map has no slots.
  */
@@ -107,8 +107,8 @@ map_slot :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashM
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
- * @param key The key.
+ * @param map A map to look in, only read.
+ * @param key The key to look for, found by its hash and compared with ==.
  * @return A copy of key's value; null if the map doesn't have it.
  */
 map_get :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashMap[K, V, hash]], key: K) -> V? {
@@ -126,8 +126,8 @@ map_get :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashMa
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
- * @param key The key.
+ * @param map A map to look in, only read.
+ * @param key The key to look for, found by its hash and compared with ==.
  * @return True if the map has it.
  */
 map_has :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashMap[K, V, hash]], key: K) -> bool {
@@ -145,7 +145,8 @@ map_has :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[HashMa
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
+ * @param map A map, zeroed or from earlier calls here. Growing moves its keys and values to new slots from
+ *     context.allocator, and adding a key adds one to its count.
  * @param key The key, kept by value; what it points to has to outlive the map. A key already there isn't replaced,
  *     only its value.
  * @param value The value, kept by value, replacing any the key had.
@@ -185,8 +186,9 @@ map_put :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut Ha
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
- * @param key The key.
+ * @param map A map to take the key out of. When it has it, its count shrinks by one, and keys after it may move to
+ *     other slots.
+ * @param key The key to take out, found by its hash and compared with ==.
  * @return True if the map had it; false if it didn't, leaving the map unchanged.
  */
 map_remove :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]], key: K) -> bool {
@@ -228,7 +230,7 @@ map_remove :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
+ * @param map A map to empty: its count becomes 0 and every slot is free, but the slots stay allocated.
  */
 map_clear :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut HashMap[K, V, hash]]) {
     used :: map.used
@@ -265,7 +267,8 @@ map_free :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut H
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
+ * @param map A map whose slots came from context.allocator, or that has none yet. Its keys and values move to the new
+ *     slots, and the old ones are freed.
  * @param slots How many slots to have. It should be more than four thirds of what the map holds, or moving the keys in
  *     grows it again.
  * @param location Where the call is, for the report if it fails.
@@ -286,10 +289,12 @@ map_resize :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mut
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
+ * @param map A map, zeroed or from earlier calls here. Growing moves its keys and values to new slots from
+ *     context.allocator, and adding a key adds one to its count.
  * @param key The key, kept by value; what it points to has to outlive the map.
  * @param value The value, kept by value, replacing any the key had.
- * @param location Where the call is.
+ * @param location Where the call is, the caller's by default; it's passed on, but an error is returned rather than
+ *     reported.
  * @return Null once the value is set; OutOfMemory if the map needed to grow and the memory couldn't be had, leaving
  *     the map as it was, the key not added.
  */
@@ -317,9 +322,11 @@ map_try_put :: fn[K: compiler.Equatable, V, hash: fn(key: K) -> u64](map: ptr[mu
  * @tparam K The keys' type, compared with ==.
  * @tparam V The values' type.
  * @tparam hash The map's hash function.
- * @param map The map.
+ * @param map A map whose slots came from context.allocator, or that has none yet. Once the new slots are had, its keys
+ *     and values move to them and the old ones are freed.
  * @param slots How many slots to have, more than four thirds of what the map holds.
- * @param location Where the call is.
+ * @param location Where the call is, for the report if moving the keys in makes the map grow again, as too few slots
+ *     do, and that fails.
  * @return Null once it's moved; OutOfMemory if any of the new slots' arrays couldn't be allocated, leaving the map as
  *     it was.
  */

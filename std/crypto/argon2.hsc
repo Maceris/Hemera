@@ -69,7 +69,7 @@ argon2_blocks_needed :: fn(parameters: Argon2Parameters) -> usize {
  * Add two of a block's words the way Argon2 does, its change to BLAKE2b's adding (RFC 9106, section 3.6): v[a] + v[b]
  * + 2 * their low 32 bits multiplied, modulo 2^64.
  *
- * @param v The block.
+ * @param v A block of 128 64-bit words; only word a % 128 is changed, to the sum.
  * @param a The index, 0 to 127, of the word that's added to and holds the sum.
  * @param b The index of the word added to it.
  */
@@ -260,7 +260,7 @@ argon2_compress #constant_time :: fn(x: ptr[Argon2Block], y: ptr[Argon2Block], o
 /**
  * Encode a number as Argon2 hashes it: 32 bits, little-endian.
  *
- * @param value The number.
+ * @param value Any 32-bit value: a length, a parameter or a counter, as RFC 9106 has them hashed.
  * @return Its four bytes, least significant first.
  */
 argon2_le32 :: fn(value: u32) -> u8[4] {
@@ -318,7 +318,7 @@ argon2_hash_long #constant_time :: fn(input: SecretByte[], output: mut SecretByt
 /**
  * Encode a block as bytes: its words, little-endian.
  *
- * @param block The block.
+ * @param block The block to encode, any 128 words; read, not changed.
  * @return Its 1024 bytes, secret; the caller wipes them when they're done.
  */
 argon2_block_bytes #constant_time :: fn(block: ptr[Argon2Block]) -> SecretByte[1024] {
@@ -335,7 +335,7 @@ argon2_block_bytes #constant_time :: fn(block: ptr[Argon2Block]) -> SecretByte[1
  * Decode a block from bytes: argon2_block_bytes the other way.
  *
  * @param bytes The 1024 bytes, little-endian words.
- * @return The block.
+ * @return The block, word i from bytes 8 * i to 8 * i + 7, least significant first; secret, as the bytes were.
  */
 argon2_block_of #constant_time :: fn(bytes: ptr[SecretByte[1024]]) -> Argon2Block {
     block : Argon2Block

@@ -28,7 +28,7 @@ FixedArray :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param array The array.
+ * @param array An array to add to; when it has room, its count grows by one.
  * @param value The value, copied in.
  * @return True if it was added; false if the array was full, leaving it unchanged.
  */
@@ -46,7 +46,7 @@ fixed_push :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]], va
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param array The array.
+ * @param array An array to take from; when it isn't empty, its count shrinks by one.
  * @return The last value, removed; null if the array is empty.
  */
 fixed_pop :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> T? {
@@ -65,7 +65,8 @@ fixed_pop :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) -> 
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param array The array.
+ * @param array An array to remove from; when index is in it, its count shrinks by one and its last value moves to
+ *     index.
  * @param index The value's index, below the count.
  * @return True if it was removed; false if there's nothing at index, leaving the array unchanged.
  */
@@ -84,7 +85,7 @@ fixed_remove_swap :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacit
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param array The array.
+ * @param array An array to view; viewing it doesn't change it.
  * @return A view into it of its count values, in order, empty for an empty array: valid until it changes, and no
  *     longer than the array lives.
  */
@@ -98,7 +99,7 @@ fixed_view :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) ->
  *
  * @tparam T The values' type.
  * @tparam capacity The most values it holds.
- * @param array The array.
+ * @param array An array to empty; its count becomes 0.
  */
 fixed_clear :: fn[T, capacity: usize](array: ptr[mut FixedArray[T, capacity]]) {
     array.count = 0

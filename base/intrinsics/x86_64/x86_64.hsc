@@ -475,7 +475,7 @@ aes_encrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
  *
  * @param state The 16-byte block so far.
  * @param round_key The last round's key.
- * @return The encrypted block.
+ * @return The block after the last round: the ciphertext, when the earlier rounds used the same key schedule.
  */
 aes_encrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
 /**
@@ -491,7 +491,7 @@ aes_decrypt_round : fn(state: v128, round_key: v128) -> v128 : ---
  *
  * @param state The 16-byte block so far.
  * @param round_key The first encryption round key, as it is, not through aes_inverse_mix.
- * @return The decrypted block.
+ * @return The block after the last round: the plaintext, when the earlier rounds used the decryption schedule.
  */
 aes_decrypt_last : fn(state: v128, round_key: v128) -> v128 : ---
 /**
@@ -540,7 +540,7 @@ sha256_rounds2 : fn(cdgh: vector[u32, 4], abef: vector[u32, 4], message: vector[
  * Do the first half of working out the next four message words from the last eight (sha256msg1).
  *
  * @param earlier The oldest four of the eight words.
- * @param later The next four.
+ * @param later The four words after earlier; only its lowest lane, the fifth oldest word, is used.
  * @return The partial sums, to add words 7 back to and give sha256_message2.
  */
 sha256_message1 : fn(earlier: vector[u32, 4], later: vector[u32, 4]) -> vector[u32, 4] : ---

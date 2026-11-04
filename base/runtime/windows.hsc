@@ -74,7 +74,7 @@ import intrinsics from "base"
     /**
      * Close a handle, which mustn't be used after.
      *
-     * @param handle The handle.
+     * @param handle An open handle of a kind CloseHandle closes; not a pseudo-handle or a standard handle.
      * @return Nonzero if it was closed; 0 if not.
      */
     CloseHandle #foreign(KERNEL32) : fn(handle: rawptr) -> i32 : ---
@@ -102,7 +102,7 @@ import intrinsics from "base"
      * Set the calling thread's value in a thread-local storage slot.
      *
      * @param slot The slot's index, from TlsAlloc.
-     * @param value The value.
+     * @param value Any pointer-sized value, null included; it's stored, not read through.
      * @return Nonzero if it was set; 0 if not.
      */
     TlsSetValue #foreign(KERNEL32) : fn(slot: u32, value: rawptr) -> i32 : ---
@@ -118,7 +118,7 @@ import intrinsics from "base"
      * Write bytes to a file or device, synchronously.
      *
      * @param file The handle written to.
-     * @param bytes The first byte.
+     * @param bytes Where the count bytes written start; only read, and only during the call.
      * @param count How many bytes, at most 4 GiB less one.
      * @param written Where how many were written is stored, which may be fewer than count.
      * @param overlapped Null, for a synchronous write.
@@ -178,7 +178,7 @@ import intrinsics from "base"
     /**
      * Sleep while a value is the same as compare's, until woken, time runs out, or spuriously.
      *
-     * @param address The value watched.
+     * @param address Where the value watched is, size bytes aligned to size; it's read, not changed.
      * @param compare The value it's compared with, of size bytes.
      * @param size The value's size in bytes: 1, 2, 4 or 8.
      * @param milliseconds How long to wait at most, or INFINITE for as long as it takes.

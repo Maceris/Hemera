@@ -88,9 +88,9 @@ chacha_state #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Non
 /**
  * Make one 64-byte block of keystream with ChaCha20's block function (RFC 8439, section 2.3): 20 rounds.
  *
- * @param key The key.
+ * @param key The 32-byte secret key, the state's words 4 to 11; read, not changed.
  * @param counter The block's number in the keystream.
- * @param nonce The nonce.
+ * @param nonce The 12-byte nonce, the state's words 13 to 15; read, not changed.
  * @return The block as sixteen words, whose little-endian bytes are the keystream's; secret.
  */
 chacha20_block #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Nonce96]) -> ChaChaWords {
@@ -324,7 +324,7 @@ POLY_MASK42 :: 0x3ff_ffff_ffff
 /**
  * Read eight of a secret key's bytes as a little-endian word.
  *
- * @param key The key.
+ * @param key Poly1305's 32-byte one-time key: r in its first 16 bytes, s in its last 16; read, not changed.
  * @param at The first byte's index, 0 to 24.
  * @return The word, still a secret.
  */
@@ -537,10 +537,12 @@ poly1305_finish #constant_time :: fn(poly: ptr[mut Poly1305]) -> SecretByte[16] 
  * Poly1305's one-time key is the first 32 bytes of the keystream's block 0; it authenticates the associated data and
  * the ciphertext, each padded with zeros to 16 bytes, then their lengths as little-endian 64-bit numbers.
  *
- * @param key The key.
+ * @param key The 32-byte secret key; block 0 of its keystream for nonce gives Poly1305's one-time key.
  * @param nonce The nonce the ciphertext was sealed with.
- * @param associated The associated data.
- * @param ciphertext The ciphertext.
+ * @param associated The associated data, of any length, empty for none; authenticated first, padded with zeros to a
+ *     multiple of 16 bytes.
+ * @param ciphertext The ciphertext, up to CHACHA20_POLY1305_MOST bytes, empty allowed; authenticated after the
+ *     associated data, padded the same way, then both lengths in bytes.
  * @return The 16-byte tag, a secret until it's compared or sent.
  */
 chacha20_poly1305_tag #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], associated: u8[], ciphertext: u8[]) -> SecretByte[16] {
@@ -572,7 +574,7 @@ CHACHA20_POLY1305_MOST :: 274_877_906_880
  * AVX2 is used when vectors_wide says the CPU and the OS allow it; a kernel without vector state calls
  * chacha20_poly1305_seal_with instead.
  *
- * @param key The key.
+ * @param key The 32-byte secret key, which whoever opens the message has too; read, not changed.
  * @param nonce The nonce, which must never have been used with this key before: a repeat gives away the XOR of the
  *     two plaintexts and lets tags be forged. A counter, or 12 random bytes, will do.
  * @param plaintext The message, up to CHACHA20_POLY1305_MOST bytes; empty is allowed.
@@ -597,7 +599,7 @@ chacha20_poly1305_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96
  *
  * @param key The key it was sealed with.
  * @param nonce The nonce it was sealed with.
- * @param ciphertext The encrypted message.
+ * @param ciphertext The encrypted message as sealing wrote it, up to CHACHA20_POLY1305_MOST bytes; empty is allowed.
  * @param associated The associated data it was sealed with, which has to be the same bytes.
  * @param tag The tag that came with it.
  * @param plaintext Where the message goes, which has to have ciphertext's count.
@@ -617,7 +619,7 @@ chacha20_poly1305_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96
  * Without AVX2 it uses 128-bit vectors, which a target without them, like a kernel built without vector state, works
  * out with ordinary registers. The result is the same either way.
  *
- * @param key The key.
+ * @param key The 32-byte secret key, which whoever opens the message has too; read, not changed.
  * @param nonce The nonce, which must never have been used with this key before: a repeat gives away the XOR of the
  *     two plaintexts and lets tags be forged.
  * @param plaintext The message, up to CHACHA20_POLY1305_MOST bytes; empty is allowed.
@@ -665,7 +667,7 @@ chacha20_poly1305_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[No
  *
  * @param key The key it was sealed with.
  * @param nonce The nonce it was sealed with.
- * @param ciphertext The encrypted message.
+ * @param ciphertext The encrypted message as sealing wrote it, up to CHACHA20_POLY1305_MOST bytes; empty is allowed.
  * @param associated The associated data it was sealed with, which has to be the same bytes.
  * @param tag The tag that came with it.
  * @param plaintext Where the message goes, which has to have ciphertext's count.

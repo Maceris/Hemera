@@ -252,9 +252,9 @@ import intrinsics from "base"
     /**
      * Read a byte, without a context.
      *
-     * @param bytes The first byte of what's read.
+     * @param bytes Where what's read starts; nothing is checked, so the byte at index has to be readable.
      * @param index How far from bytes, in bytes; nothing is checked, so it has to be in range.
-     * @return The byte.
+     * @return The byte at bytes + index, any value from 0 to 255.
      */
     byte_at #no_context :: fn(bytes: rawptr, index: usize) -> u8 {
         return cast[ptr[u8]](cast[rawptr](cast[usize](bytes) + index))^

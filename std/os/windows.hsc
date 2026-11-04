@@ -52,7 +52,8 @@ import runtime from "base"
     /**
      * Close a handle, which mustn't be used after.
      *
-     * @param handle The handle.
+     * @param handle An open handle of the process's, like one CreateFileW or CreatePipe gave; once this returns
+     *     nonzero, it's no good.
      * @return Nonzero if it was closed; 0 if not.
      */
     CloseHandle #foreign(KERNEL32) : fn(handle: rawptr) -> i32 : ---
@@ -72,7 +73,7 @@ import runtime from "base"
      * Write to a file or pipe, waiting for it.
      *
      * @param file The handle, opened to write.
-     * @param bytes The bytes.
+     * @param bytes The first of count bytes to write; they're read, not kept past the call.
      * @param count How many bytes to write.
      * @param written Where how many bytes were written is stored.
      * @param overlapped Null, for a handle that isn't overlapped.
@@ -482,7 +483,7 @@ import runtime from "base"
     /**
      * Give a file's size, with GetFileSizeEx.
      *
-     * @param file The open file.
+     * @param file A File system_open gave that isn't closed; its offset isn't moved.
      * @return size Its size in bytes; 0 on failure.
      * @return error GetFileSizeEx's error (error_of), like Other for a pipe or a console; or null.
      */

@@ -190,7 +190,7 @@ free :: fn(pattern: ptr[mut Regex]) {
 /**
  * Tell whether a pattern matches anywhere in a text.
  *
- * @param pattern The compiled pattern.
+ * @param pattern A pattern from compile, not freed yet; it's only read.
  * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
  * @return True when it matches somewhere, an empty match included.
  */
@@ -203,7 +203,7 @@ is_match :: fn(pattern: ptr[Regex], text: string) -> bool {
  *
  * The time it takes grows linearly with the text's length times the pattern's size, whatever the pattern.
  *
- * @param pattern The compiled pattern.
+ * @param pattern A pattern from compile, not freed yet; it's only read.
  * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
  * @param from The byte offset to search from, at a code point's start; ^ still matches only at 0, not here.
  * @return The match's span, in byte offsets into text; null when there's none, or from is past the text's end.
@@ -219,7 +219,7 @@ find :: fn(pattern: ptr[Regex], text: string, from: usize = 0) -> Span? {
 /**
  * Find the leftmost-first match in a text, and where each of its groups matched.
  *
- * @param pattern The compiled pattern.
+ * @param pattern A pattern from compile, not freed yet; it's only read. group_count says how many groups it has.
  * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
  * @param groups Where the groups' spans go, as many as fit: group 0 the whole match, then each ( in the pattern's
  *     order. A group that didn't take part, or one past the pattern's, is an empty span at the text's end. Left as
@@ -234,7 +234,7 @@ captures :: fn(pattern: ptr[Regex], text: string, groups: mut Span[], from: usiz
 /**
  * Give how many groups a pattern has, so captures can be given room for all of them.
  *
- * @param pattern The compiled pattern.
+ * @param pattern A pattern from compile, not freed yet; it's only read.
  * @return Its captured groups plus 1 for the whole match, so at least 1; (?:x) groups aren't counted.
  */
 group_count :: fn(pattern: ptr[Regex]) -> usize {
@@ -277,7 +277,7 @@ fail :: fn(parser: ptr[mut Parser], kind: ErrorKind) {
  * Add an instruction to the end of the program. Without the memory, calls context.assertion_handler.
  *
  * @param parser The parser. With MAX_INSTRUCTIONS already, nothing is added and it fails with TooBig.
- * @param instruction The instruction.
+ * @param instruction What to add, copied in as it is: its targets aren't moved.
  * @return Its index, where it went or would have gone.
  */
 emit :: fn(parser: ptr[mut Parser], instruction: Instruction) -> usize {
@@ -293,7 +293,7 @@ emit :: fn(parser: ptr[mut Parser], instruction: Instruction) -> usize {
 /**
  * Look at the next byte of the pattern without moving past it.
  *
- * @param parser The parser.
+ * @param parser A parser of a pattern, only read: its at isn't moved.
  * @return The byte at at, or 0 at the end, which nothing in the syntax is.
  */
 peek :: fn(parser: ptr[Parser]) -> u8 {
@@ -303,7 +303,7 @@ peek :: fn(parser: ptr[Parser]) -> u8 {
 /**
  * Look at the byte after the next, without moving.
  *
- * @param parser The parser.
+ * @param parser A parser of a pattern, only read: its at isn't moved.
  * @return The byte at at + 1, or 0 past the end.
  */
 peek_after :: fn(parser: ptr[Parser]) -> u8 {
@@ -336,7 +336,7 @@ alternation :: fn(parser: ptr[mut Parser]) {
 /**
  * Set a split's second target.
  *
- * @param parser The parser.
+ * @param parser A parser whose program has the split; no other instruction changes.
  * @param at The split's index; past the program's end, as after TooBig, nothing is set.
  * @param target The instruction it goes on at.
  */
@@ -459,7 +459,8 @@ lazy_follows :: fn(parser: ptr[mut Parser]) -> bool {
 /**
  * Make the code from start to the program's end repeat any number of times: a split before it, a jump back after.
  *
- * @param parser The parser.
+ * @param parser A parser whose program ends with the code repeated. A split goes in at start, moving that code along by
+ *     one, and a jump back is added at the end; without the memory, calls context.assertion_handler.
  * @param start Where the code repeated starts.
  * @param lazy Whether to prefer fewer repetitions.
  */
@@ -473,7 +474,8 @@ star :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
 /**
  * Make the code from start to the program's end repeat once, then any number of times: a split after it, back to it.
  *
- * @param parser The parser.
+ * @param parser A parser whose program ends with the code repeated; a split back to it is added at the end. Without the
+ *     memory, calls context.assertion_handler.
  * @param start Where the code repeated starts.
  * @param lazy Whether to prefer fewer repetitions.
  */
@@ -485,8 +487,9 @@ plus :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
 /**
  * Make the code from start to the program's end match once or not at all: a split before it.
  *
- * @param parser The parser.
- * @param start Where the code starts.
+ * @param parser A parser whose program ends with the code. A split goes in at start, moving that code along by one;
+ *     without the memory, calls context.assertion_handler.
+ * @param start Where the code starts, its index in the program.
  * @param lazy Whether to prefer leaving it out.
  */
 optional :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
@@ -498,7 +501,8 @@ optional :: fn(parser: ptr[mut Parser], start: usize, lazy: bool) {
 /**
  * Set a split's two ways, the repeating one first unless it's lazy.
  *
- * @param parser The parser.
+ * @param parser A parser whose program has the split; it's replaced by a Split to repeat and leave, and no other
+ *     instruction changes.
  * @param split The split's index; past the program's end, as after TooBig, nothing is set.
  * @param repeat Where the repeated code starts.
  * @param leave Where the code after the repetition starts.
@@ -567,7 +571,8 @@ counted :: fn(parser: ptr[mut Parser], start: usize, end: usize) {
 /**
  * Append a copy of code that was at an index, its targets moved to where it is now.
  *
- * @param parser The parser.
+ * @param parser A parser; the copy is emitted at its program's end, and past MAX_INSTRUCTIONS, the rest isn't added and
+ *     it fails with TooBig, as emit does.
  * @param code The code, whose targets are all within it.
  * @param from The index it was at.
  */
@@ -646,7 +651,7 @@ atom :: fn(parser: ptr[mut Parser]) {
  * Emit a class of one code point, which ignores case if the parser does.
  *
  * @param parser The parser. Without the memory, calls context.assertion_handler.
- * @param point The code point.
+ * @param point The code point to match, U+0000 to U+10FFFF; atom gives 0 for a byte that isn't UTF-8.
  */
 single :: fn(parser: ptr[mut Parser], point: u32) {
     start :: parser.regex.ranges.count
@@ -916,7 +921,8 @@ VM :: struct {
  * Its threads and slots are kept on context.allocator while it runs, and freed before it returns; without the memory,
  * calls context.assertion_handler.
  *
- * @param pattern The compiled pattern.
+ * @param pattern A pattern from compile, not freed yet; it's only read. Its group count sets how many slots each thread
+ *     has.
  * @param text The text, as UTF-8; bytes that aren't are taken one at a time.
  * @param from The byte offset to search from; past the text's end, there's no match.
  * @param groups Where the groups' spans go, as many as fit; a group that didn't take part, or past the pattern's, is
@@ -1027,10 +1033,11 @@ free_list :: fn(list: ptr[mut ThreadList]) {
  * Without the memory for the list or slots, calls context.assertion_handler.
  *
  * @param vm The run's state, whose slots are handed out and given back.
- * @param input What the run reads.
+ * @param input What the run reads: the program, its ranges and the text, only read.
  * @param list The list it goes in. A place already in it this generation is a less preferred way there, so the thread
  *     is dropped.
- * @param pc The instruction it's at.
+ * @param pc The index in the program of the instruction it's at; past the program's end, the thread is dropped and its
+ *     slots given back.
  * @param at The byte offset in the text it's at, which saves record and assertions check.
  * @param slots Its block of slots, which this takes over: kept by the thread added, or given back.
  */
@@ -1125,8 +1132,9 @@ consumes :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool 
  * Tell whether a code point is in one of a class's ranges, without its negation or case folding.
  *
  * @param input What the run reads, for the ranges.
- * @param instruction The Class instruction.
- * @param point The code point.
+ * @param instruction A Class instruction of the run's program: its ranges_start and ranges_count pick its ranges out of
+ *     input's, any past their end skipped.
+ * @param point The code point to look for, as it is: it isn't case folded here.
  * @return True when one of its ranges holds it.
  */
 in_ranges :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool {
@@ -1142,7 +1150,7 @@ in_ranges :: fn(input: ptr[Input], instruction: Instruction, point: u32) -> bool
 /**
  * Tell whether a byte is a word character, for \b and \B: [0-9A-Za-z_], ASCII only.
  *
- * @param byte The byte.
+ * @param byte A byte of the text: any byte of a code point past ASCII is never a word character.
  * @return True for a word character.
  */
 is_word :: fn(byte: u8) -> bool {
@@ -1189,7 +1197,8 @@ release :: fn(vm: ptr[mut VM], block: usize) {
 /**
  * Copy one thread's slots over another's.
  *
- * @param vm The run's state.
+ * @param vm The run's state, whose store holds both blocks; only the block at to changes, and slots past the store's
+ *     end are skipped.
  * @param from Where the block copied starts.
  * @param to Where the block written starts.
  */
@@ -1204,7 +1213,7 @@ copy_slots :: fn(vm: ptr[mut VM], from: usize, to: usize) {
 /**
  * Set one of a thread's slots.
  *
- * @param vm The run's state.
+ * @param vm The run's state, whose store holds the block; only that one slot changes.
  * @param block Where the thread's block starts.
  * @param index Which slot, less than slot_count; one past it is ignored.
  * @param value The byte offset to keep.
@@ -1218,9 +1227,9 @@ set_slot :: fn(vm: ptr[mut VM], block: usize, index: usize, value: usize) {
 /**
  * Read one of a thread's slots.
  *
- * @param vm The run's state.
+ * @param vm The run's state, only read.
  * @param block Where the thread's block starts.
- * @param index Which slot.
+ * @param index Which slot, from 0: a group's start is slot 2n, its end 2n + 1.
  * @return The byte offset kept there; NO_SLOT if it isn't set, or index is past slot_count.
  */
 slot :: fn(vm: ptr[VM], block: usize, index: usize) -> usize {

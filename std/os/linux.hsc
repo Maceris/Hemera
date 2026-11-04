@@ -427,7 +427,7 @@ import runtime from "base"
     /**
      * Give a file's size, from fstat.
      *
-     * @param file The open file.
+     * @param file A File system_open gave that isn't closed; its offset isn't moved.
      * @return size Its size in bytes as fstat gives st_size: for a pipe or a terminal, usually 0. 0 on failure.
      * @return error What fstat failed with (error_of), like Other for a descriptor that isn't open; or null.
      */
@@ -544,7 +544,8 @@ import runtime from "base"
     /**
      * Find what's at a path, relative to the current directory unless it's absolute.
      *
-     * @param path The path.
+     * @param path The path, relative to the current directory unless it's absolute; links are followed. One too long
+     *     for PATH_BUFFER_SIZE, or holding a 0 byte, gives NOTHING.
      * @return As path_kind_at's.
      */
     system_path_kind :: fn(path: string) -> PathKind {

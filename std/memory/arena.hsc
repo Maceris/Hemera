@@ -211,7 +211,8 @@ new_value :: fn[T](value #escaping : T, allocator := context.allocator, loc := #
 /**
  * Give back the chunks newer than keep to the backing allocator, leaving keep the newest.
  *
- * @param arena The arena.
+ * @param arena An arena from make_arena, not yet freed; each chunk given back leaves its list, and
+ *     blocks in them are no longer valid.
  * @param keep The chunk to stop at, kept with everything older; null gives back all of them. A chunk that isn't the
  *     arena's gives back all of them too.
  */
@@ -230,7 +231,8 @@ arena_free_chunks :: fn(arena: ptr[mut Arena], keep: ptr[mut ArenaChunk]?) {
 /**
  * Take a block from the newest chunk, if it has room.
  *
- * @param arena The arena.
+ * @param arena An arena from make_arena, not yet freed; when a block is taken, its newest chunk's
+ *     used grows by the block and its padding.
  * @param size The block's size in bytes.
  * @param align The block's alignment in bytes: a power of two, at least 1.
  * @return The block, zeroed, or null if the arena has no chunk or its newest has no room, in which case nothing
@@ -252,7 +254,8 @@ arena_take_from_newest :: fn(arena: ptr[mut Arena], size: usize, align: usize) -
 /**
  * Give back the newest block, rewinding its chunk to where the block started.
  *
- * @param arena The arena.
+ * @param arena An arena from make_arena whose newest block is block; its last is cleared and its
+ *     newest chunk's used rewound.
  * @param block The newest block, which must be in the newest chunk. Afterwards the arena has no newest block, so a
  *     further free gives nothing back until something is allocated.
  */
@@ -265,7 +268,8 @@ arena_give_back_newest :: fn(arena: ptr[mut Arena], block: rawptr) {
 /**
  * Resize the newest block where it is, zeroing any bytes it grows by.
  *
- * @param arena The arena.
+ * @param arena An arena from make_arena whose newest block is block; on success its newest chunk's
+ *     used moves to the block's new end.
  * @param block The newest block, which must be in the newest chunk.
  * @param old_size The block's size now, in bytes.
  * @param size Its new size, in bytes.
@@ -287,7 +291,7 @@ arena_resize_newest :: fn(arena: ptr[mut Arena], block: rawptr, old_size: usize,
 /**
  * Find the start of a chunk's bytes, after its header.
  *
- * @param chunk The chunk.
+ * @param chunk A chunk of an arena, at the start of its header; only its address is used.
  * @return The address of its first byte for blocks, ARENA_CHUNK_HEADER bytes past the chunk.
  */
 arena_chunk_start :: fn(chunk: ptr[ArenaChunk]) -> usize {
@@ -300,7 +304,8 @@ arena_chunk_start :: fn(chunk: ptr[ArenaChunk]) -> usize {
  * A new chunk is chunk_size bytes, or bigger when the block needs it, and becomes the newest; what was left in the one
  * before stays unused until a reset or restore.
  *
- * @param arena The arena.
+ * @param arena An arena from make_arena, not yet freed; a new chunk, when one is taken, becomes its
+ *     newest.
  * @param size The block's size in bytes.
  * @param alignment The block's alignment in bytes: a power of two; 0 is taken as 1.
  * @return The block, zeroed; or null if backing has no memory for a new chunk, or size is too big to fit any.

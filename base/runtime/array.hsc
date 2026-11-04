@@ -67,7 +67,8 @@ ARRAY_MINIMUM_CAPACITY : usize : 4
  * View a dynamic array's fields, as a ResizableArray.
  *
  * @tparam T The element type.
- * @param array The array.
+ * @param array The dynamic array, which isn't changed by the call; it has to stay where it is while the result is
+ *     used.
  * @return Its fields, at the same address as the array, so changing them changes the array; good for as long as
  *     array is.
  */

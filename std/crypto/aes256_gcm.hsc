@@ -204,7 +204,7 @@ aes_sbox_planes #constant_time :: fn(q: ptr[mut AesPlanes]) {
 /**
  * Put one byte through AES's S-box, in constant time, as one bit of each plane.
  *
- * @param x The byte.
+ * @param x The byte to substitute, any of the 256 values; secret, and nothing branches on it or indexes with it.
  * @return Its substitution, secret.
  */
 aes_sbox #constant_time :: fn(x: SecretByte) -> SecretByte {
@@ -223,7 +223,7 @@ aes_sbox #constant_time :: fn(x: SecretByte) -> SecretByte {
 /**
  * Multiply by 2 in AES's field, GF(2^8) modulo x^8 + x^4 + x^3 + x + 1 (FIPS 197's xtime), without a branch.
  *
- * @param a The field element.
+ * @param a Any byte, read as a polynomial over GF(2), bit k the coefficient of x^k; secret.
  * @return The product, a times 2, secret.
  */
 aes_double #constant_time :: fn(a: SecretByte) -> SecretByte {
@@ -331,7 +331,7 @@ aes_gather #constant_time :: fn(word: SecretWord) -> SecretWord {
 /**
  * Pack four blocks into bit planes, as bitsliced AES lays them out: byte position p of block b is bit 4 * p + b.
  *
- * @param blocks The four blocks.
+ * @param blocks The 64 bytes to pack, block b at bytes 16 * b to 16 * b + 15; read, not changed.
  * @param q Where the planes go, all eight overwritten.
  */
 aes_pack #constant_time :: fn(blocks: ptr[AesBlocks4], q: ptr[mut AesPlanes]) {
@@ -355,7 +355,7 @@ aes_pack #constant_time :: fn(blocks: ptr[AesBlocks4], q: ptr[mut AesPlanes]) {
 /**
  * Unpack bit planes into four blocks: aes_pack the other way.
  *
- * @param q The planes.
+ * @param q The planes to unpack, laid out as aes_pack lays them out; read, not changed.
  * @param blocks Where the four blocks go, all 64 bytes overwritten.
  */
 aes_unpack #constant_time :: fn(q: ptr[AesPlanes], blocks: ptr[mut AesBlocks4]) {
@@ -389,8 +389,8 @@ aes_shift_rows #constant_time :: fn(q: ptr[mut AesPlanes]) {
 /**
  * Move each column's rows up by 1, wrapping: row r + 1's nibble into row r's, within the column's 16 bits.
  *
- * @param word A plane.
- * @return The plane with its rows moved.
+ * @param word A plane: four 16-bit columns, each holding four 4-bit rows, row 0 in its lowest nibble.
+ * @return The plane with each column's row r holding what row r + 1 held, and row 3 what row 0 held.
  */
 aes_rows_up1 #constant_time :: fn(word: SecretWord) -> SecretWord {
     x := cast[u64](word)
@@ -400,8 +400,8 @@ aes_rows_up1 #constant_time :: fn(word: SecretWord) -> SecretWord {
 /**
  * Move each column's rows up by 2, wrapping: row r + 2's nibble into row r's, within the column's 16 bits.
  *
- * @param word A plane.
- * @return The plane with its rows moved.
+ * @param word A plane: four 16-bit columns, each holding four 4-bit rows, row 0 in its lowest nibble.
+ * @return The plane with each column's row r holding what row r + 2 held, and rows 2 and 3 what rows 0 and 1 held.
  */
 aes_rows_up2 #constant_time :: fn(word: SecretWord) -> SecretWord {
     x := cast[u64](word)
@@ -411,8 +411,8 @@ aes_rows_up2 #constant_time :: fn(word: SecretWord) -> SecretWord {
 /**
  * Move each column's rows up by 3, wrapping: row r + 3's nibble into row r's, within the column's 16 bits.
  *
- * @param word A plane.
- * @return The plane with its rows moved.
+ * @param word A plane: four 16-bit columns, each holding four 4-bit rows, row 0 in its lowest nibble.
+ * @return The plane with each column's row r holding what row r + 3 held, and rows 1 to 3 what rows 0 to 2 held.
  */
 aes_rows_up3 #constant_time :: fn(word: SecretWord) -> SecretWord {
     x := cast[u64](word)
@@ -495,7 +495,7 @@ aes256_encrypt4_software #constant_time :: fn(sliced: ptr[AesSlicedSchedule], bl
 /**
  * Reverse a word's bits.
  *
- * @param word The word.
+ * @param word Any 64-bit value, all of it read; secret, and nothing branches on it.
  * @return Its 64 bits in the other order: bit 0 becomes bit 63.
  */
 ghash_reverse #constant_time :: fn(word: SecretWord) -> SecretWord {
@@ -511,8 +511,8 @@ ghash_reverse #constant_time :: fn(word: SecretWord) -> SecretWord {
  *
  * Each operand is split into every fourth bit, so the carries a multiply makes land in bits the masks throw away.
  *
- * @param a The first word.
- * @param b The second word.
+ * @param a One factor, any 64-bit value, read as a polynomial over GF(2), bit k the coefficient of x^k; secret.
+ * @param b The other factor, read the same way; the product doesn't depend on which is which.
  * @return The low 64 bits of their carry-less product.
  */
 ghash_bmul64 #constant_time :: fn(a: SecretWord, b: SecretWord) -> SecretWord {
@@ -540,8 +540,9 @@ ghash_bmul64 #constant_time :: fn(a: SecretWord, b: SecretWord) -> SecretWord {
  * Three 64-bit products for the low halves and three for the high ones, the latter from the bits reversed
  * (Karatsuba), then shifted and reduced by x^128 + x^7 + x^2 + x + 1.
  *
- * @param x The first factor.
- * @param y The second factor.
+ * @param x One factor, any GHASH value, as GCM orders its bits: high's top bit is x^0's coefficient.
+ * @param y The other factor, any GHASH value; GCM passes H or one of its powers here, though the product doesn't depend
+ *     on which is which.
  * @return Their product, as NIST SP 800-38D defines it.
  */
 ghash_multiply_software #constant_time :: fn(x: Ghash, y: Ghash) -> Ghash {
@@ -586,11 +587,12 @@ ghash_multiply_software #constant_time :: fn(x: Ghash, y: Ghash) -> Ghash {
 /**
  * Multiply in GHASH's field: with PCLMULQDQ when hardware says so, otherwise in software.
  *
- * @param x The first factor.
- * @param y The second factor.
+ * @param x One factor, any GHASH value, as GCM orders its bits: high's top bit is x^0's coefficient.
+ * @param y The other factor, any GHASH value; GCM passes H or one of its powers here, though the product doesn't depend
+ *     on which is which.
  * @param hardware Whether to use PCLMULQDQ, which only an x86-64 CPU that has it may be told; on other targets it's
  *     ignored.
- * @return Their product.
+ * @return Their product, as NIST SP 800-38D defines it; the same whether worked out with PCLMULQDQ or in software.
  */
 ghash_multiply #constant_time :: fn(x: Ghash, y: Ghash, hardware: bool) -> Ghash {
     #if TARGET_ARCH == .x86_64 {
@@ -628,7 +630,8 @@ aes256_encrypt_block #constant_time :: fn(gcm: ptr[Aes256Gcm], block: ptr[mut Ae
  * Make four blocks of GCM's keystream: the counter blocks for count to count + 3, encrypted.
  *
  * @param gcm The state, whose round keys are used.
- * @param nonce The nonce.
+ * @param nonce The 12-byte nonce the message is sealed with: the first 12 bytes of every counter block; read, not
+ *     changed.
  * @param count The first block's counter: 2 for the message's first block, as 1 is the tag's. It wraps past
  *     2^32 - 1, which AES256_GCM_MOST keeps a message from reaching.
  * @param stream Where the 64 bytes of keystream go.
@@ -669,7 +672,7 @@ aes_hardware :: fn() -> bool {
 /**
  * Read a block as a GHASH value.
  *
- * @param block The 16 bytes.
+ * @param block Any 16 bytes: bytes 0 to 7 become the high half, 8 to 15 the low; read, not changed.
  * @return The value, its halves read big-endian.
  */
 ghash_of #constant_time :: fn(block: ptr[AesBlock]) -> Ghash {
@@ -684,7 +687,7 @@ ghash_of #constant_time :: fn(block: ptr[AesBlock]) -> Ghash {
 /**
  * Set up AES-256-GCM's state for a key: the round keys, and GHASH's key H and its powers.
  *
- * @param key The key.
+ * @param key The 32-byte secret key, read only while the state is made: the state keeps its expansion, not the pointer.
  * @param hardware Whether AES-NI and PCLMULQDQ are used, which only a CPU that has them, as aes_hardware says, may be
  *     told.
  * @return The state, secret throughout; nothing wipes it when it's done with.
@@ -751,7 +754,7 @@ ghash_update #constant_time :: fn(gcm: ptr[Aes256Gcm], value: ptr[mut Ghash], da
 /**
  * Make a GCM counter block: the nonce, then a 32-bit big-endian count.
  *
- * @param nonce The nonce.
+ * @param nonce The 12-byte nonce, copied into the block's first 12 bytes.
  * @param count The count: 1 for the block that masks the tag (J0), and 2 on for the message's blocks.
  * @return The counter block, to be encrypted.
  */
@@ -772,8 +775,10 @@ gcm_counter #constant_time :: fn(nonce: ptr[Nonce96], count: u32) -> AesBlock {
  *
  * @param gcm The state for the key.
  * @param nonce The nonce the ciphertext was sealed with.
- * @param associated The associated data.
- * @param ciphertext The ciphertext.
+ * @param associated The associated data, of any length, empty for none; hashed first, padded with zeros to whole
+ *     blocks, and its length in bits goes into the last block.
+ * @param ciphertext The ciphertext, up to AES256_GCM_MOST bytes, empty allowed; hashed after the associated data,
+ *     padded the same way, its length in bits beside the other's.
  * @return The 16-byte tag, a secret until it's compared or sent.
  */
 gcm_tag #constant_time :: fn(gcm: ptr[Aes256Gcm], nonce: ptr[Nonce96], associated: u8[], ciphertext: u8[]) -> SecretByte[16] {
@@ -806,7 +811,8 @@ AES256_GCM_MOST :: 68_719_476_704
  * AES-NI and PCLMULQDQ are used when aes_hardware says the CPU has them; otherwise AES and GHASH are worked out in
  * software, in constant time. A kernel without vector state calls aes256_gcm_seal_with instead.
  *
- * @param key The key.
+ * @param key The 32-byte secret key, which whoever opens the message has too; read, not changed. Its expanded copy on
+ *     the stack isn't wiped.
  * @param nonce The nonce, which must never have been used with this key before: a repeat gives away the XOR of the
  *     two plaintexts and GHASH's key, which lets tags be forged. A counter, or 12 random bytes, will do.
  * @param plaintext The message, up to AES256_GCM_MOST bytes; empty is allowed.
@@ -832,7 +838,7 @@ aes256_gcm_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plai
  *
  * @param key The key it was sealed with.
  * @param nonce The nonce it was sealed with.
- * @param ciphertext The encrypted message.
+ * @param ciphertext The encrypted message as sealing wrote it, up to AES256_GCM_MOST bytes; empty is allowed.
  * @param associated The associated data it was sealed with, which has to be the same bytes.
  * @param tag The tag that came with it.
  * @param plaintext Where the message goes, which has to have ciphertext's count.
@@ -849,7 +855,8 @@ aes256_gcm_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciph
 /**
  * Encrypt and authenticate a message with AES-256-GCM, choosing whether AES-NI and PCLMULQDQ may be used.
  *
- * @param key The key.
+ * @param key The 32-byte secret key, which whoever opens the message has too; read, not changed. Its expanded copy on
+ *     the stack isn't wiped.
  * @param nonce The nonce, which must never have been used with this key before: a repeat gives away the XOR of the
  *     two plaintexts and GHASH's key, which lets tags be forged.
  * @param plaintext The message, up to AES256_GCM_MOST bytes; empty is allowed.
@@ -898,7 +905,7 @@ aes256_gcm_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
  *
  * @param key The key it was sealed with.
  * @param nonce The nonce it was sealed with.
- * @param ciphertext The encrypted message.
+ * @param ciphertext The encrypted message as sealing wrote it, up to AES256_GCM_MOST bytes; empty is allowed.
  * @param associated The associated data it was sealed with, which has to be the same bytes.
  * @param tag The tag that came with it.
  * @param plaintext Where the message goes, which has to have ciphertext's count.
@@ -995,9 +1002,10 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
      * Multiply in GHASH's field with PCLMULQDQ (Intel's carry-less multiplication white paper), on values held as one
      * 128-bit big-endian integer, its low half in lane 0: the product, then reduced.
      *
-     * @param x The first factor.
-     * @param y The second factor. The CPU has to have PCLMULQDQ, as aes_hardware says.
-     * @return Their product.
+     * @param x One factor, any GHASH value.
+     * @param y The other factor, any GHASH value; the product doesn't depend on which is which. The CPU has to have
+     *     PCLMULQDQ, as aes_hardware says.
+     * @return Their product, reduced: the same value ghash_multiply_software gives.
      */
     ghash_multiply_hardware #constant_time #target_features("pclmul") :: fn(x: Ghash, y: Ghash) -> Ghash {
         return ghash_reduce_hardware(ghash_product_hardware(x, y))
@@ -1006,8 +1014,8 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
     /**
      * Multiply two GHASH values carry-lessly with PCLMULQDQ, without reducing the product.
      *
-     * @param x The first factor.
-     * @param y The second factor.
+     * @param x One factor, any GHASH value; for GHASH, a block of data, the first with the running value added.
+     * @param y The other factor, any GHASH value; for GHASH, H or one of its powers. The CPU has to have PCLMULQDQ.
      * @return Their 256-bit carry-less product, for ghash_reduce_hardware; products can be XORed together before one
      *     reduction, as reducing is linear.
      */
@@ -1029,7 +1037,8 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
      * Reduce a carry-less product modulo x^128 + x^7 + x^2 + x + 1, as GHASH's bit order has it.
      *
      * @param wide The product, from ghash_product_hardware, or several XORed together.
-     * @return The reduced value.
+     * @return The product reduced modulo x^128 + x^7 + x^2 + x + 1, a GHASH value; for several products XORed together,
+     *     the XOR of their reductions.
      */
     ghash_reduce_hardware #constant_time #target_features("pclmul") :: fn(wide: GhashWide) -> Ghash {
         t3 := wide[0]

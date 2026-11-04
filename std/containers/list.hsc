@@ -36,7 +36,7 @@ List :: struct {
 /**
  * Add a link at the back of a list.
  *
- * @param list The list.
+ * @param list A list to add to, not the one the link is in already; its count grows by one.
  * @param link The link, which must not be in a list already; it stays in this one until removed, so its value has to
  *     outlive its place in it.
  */
@@ -54,7 +54,7 @@ list_push_back :: fn(list: ptr[mut List], link #escaping : ptr[mut ListLink]) {
 /**
  * Add a link at the front of a list.
  *
- * @param list The list.
+ * @param list A list to add to, not the one the link is in already; its count grows by one.
  * @param link The link, which must not be in a list already; it stays in this one until removed, so its value has to
  *     outlive its place in it.
  */
@@ -94,7 +94,8 @@ list_remove :: fn(list: ptr[mut List], link: ptr[mut ListLink]) {
 /**
  * Take the first link out of a list.
  *
- * @param list The list.
+ * @param list A list to take from; when it isn't empty, its second link becomes its first, and its count shrinks by
+ *     one.
  * @return The first link, unlinked; null if the list is empty.
  */
 list_pop_front :: fn(list: ptr[mut List]) -> ptr[mut ListLink]? {

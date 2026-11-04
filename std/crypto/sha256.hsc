@@ -157,7 +157,7 @@ sha256_compress_software #constant_time :: fn(state: ptr[mut Sha256State]) {
  * Add one byte to the block, compressing it once it's full.
  *
  * @param hasher The hasher. Its total doesn't count the byte: the caller adds it, as padding isn't counted.
- * @param byte The byte.
+ * @param byte Any byte, message or padding, put in the block's next free position.
  */
 sha256_byte :: fn(hasher: ptr[mut Sha256], byte: u8) {
     hasher.state.block[hasher.buffered % SHA256_BLOCK] = byte

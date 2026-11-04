@@ -90,7 +90,7 @@ DEFAULT_IGNORABLE : u16 : 1 << 9
  * Only well-formed UTF-8 is accepted, as the Unicode standard defines it: a sequence cut short, a continuation byte
  * where a sequence should start, an overlong encoding, a surrogate or a code point past U+10FFFF is rejected.
  *
- * @param bytes The text.
+ * @param bytes The text, only read: the code point's sequence is read from at, and nothing past it.
  * @param at The byte index the code point starts at.
  * @return point The code point, or 0 where length is 0.
  * @return length How many bytes it takes, 1 to 4; 0 where the bytes at at aren't UTF-8, or at is at or past the end.
@@ -199,7 +199,8 @@ properties :: fn(point: u32) -> u16 {
 /**
  * Look up a code point's Grapheme_Cluster_Break property.
  *
- * @param point The code point.
+ * @param point A code point, U+0000 to U+10FFFF; a value past that gets the tables' last run's property, as properties
+ *     says.
  * @return Its property, Other for one the tables give none.
  */
 grapheme_break :: fn(point: u32) -> GraphemeBreak {
@@ -209,7 +210,8 @@ grapheme_break :: fn(point: u32) -> GraphemeBreak {
 /**
  * Look up a code point's Indic_Conjunct_Break property.
  *
- * @param point The code point.
+ * @param point A code point, U+0000 to U+10FFFF; a value past that gets the tables' last run's property, as properties
+ *     says.
  * @return Its property, None for one that isn't part of a conjunct.
  */
 conjunct_break :: fn(point: u32) -> ConjunctBreak {
@@ -219,7 +221,8 @@ conjunct_break :: fn(point: u32) -> ConjunctBreak {
 /**
  * Check whether a code point is Extended_Pictographic: an emoji, or a symbol that may be one.
  *
- * @param point The code point.
+ * @param point A code point, U+0000 to U+10FFFF; a value past that gets the tables' last run's property, as properties
+ *     says.
  * @return Whether it has the Extended_Pictographic property.
  */
 is_extended_pictographic :: fn(point: u32) -> bool {
@@ -230,7 +233,8 @@ is_extended_pictographic :: fn(point: u32) -> bool {
  * Check whether a code point is a Default_Ignorable_Code_Point, which shows nothing where it isn't supported: joiners,
  * variation selectors, the bidirectional controls, soft hyphens, tags and the like. UTS #39 counts them as invisible.
  *
- * @param point The code point.
+ * @param point A code point, U+0000 to U+10FFFF; a value past that gets the tables' last run's property, as properties
+ *     says.
  * @return Whether it has the Default_Ignorable_Code_Point property.
  */
 is_default_ignorable :: fn(point: u32) -> bool {
@@ -240,7 +244,7 @@ is_default_ignorable :: fn(point: u32) -> bool {
 /**
  * Check whether a code point is one of the bidirectional formatting characters (UAX #9).
  *
- * @param point The code point.
+ * @param point Any value; only the code points listed below give true, so one past U+10FFFF gives false.
  * @return Whether it's one of the explicit formatting characters (U+202A to U+202E, the embeddings and overrides, and
  *     U+2066 to U+2069, the isolates) or the marks (U+061C, U+200E and U+200F).
  */
@@ -252,7 +256,7 @@ is_bidi_control :: fn(point: u32) -> bool {
 /**
  * Check whether a code point is a control character.
  *
- * @param point The code point.
+ * @param point Any value; only the code points listed below give true, so one past U+10FFFF gives false.
  * @return Whether it's a C0 control (U+0000 to U+001F), DEL (U+007F) or a C1 control (U+0080 to U+009F).
  */
 is_control :: fn(point: u32) -> bool {
@@ -264,7 +268,8 @@ is_control :: fn(point: u32) -> bool {
  *
  * A code point in a cluster with others is measured with grapheme_width instead, which can differ.
  *
- * @param point The code point.
+ * @param point A code point, U+0000 to U+10FFFF; a value past that gets the tables' last run's width, as properties
+ *     says.
  * @return Two for East Asian wide and fullwidth ones, 0 for those that combine with the one before or show nothing
  *     (marks, formats, controls, default ignorables, Hangul's medial vowels and final consonants), and 1 for the rest,
  *     East Asian ambiguous ones included.

@@ -29,7 +29,7 @@ view_of :: fn[T](data: ptr[T], count: usize) -> T[] {
  * Nothing is checked: not that the bytes are there, nor that they're UTF-8. The caller makes sure they stay there
  * while the string is used.
  *
- * @param data The first byte.
+ * @param data Where the string's first byte is; it isn't read here, and may be null when count is 0.
  * @param count How many bytes, without any terminating 0. 0 gives an empty string.
  * @return The string of those bytes, sharing that memory, not a copy.
  */

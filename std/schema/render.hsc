@@ -136,7 +136,7 @@ ALIAS_LIMIT :: 64
  *
  * @param target The array, a ptr[mut u8[..]] given as the sink's target; without the memory to grow it, calls
  *     context.assertion_handler.
- * @param byte The byte.
+ * @param byte Any byte, 0 to 255, added as it is.
  */
 sink_byte :: fn(target: rawptr, byte: u8) {
     runtime.array_add(cast[ptr[mut u8[..]]](target), byte)
@@ -318,8 +318,8 @@ add_unsigned :: fn(into: ptr[mut u8[..]], value: u64) {
 /**
  * Read one byte, safely past the end.
  *
- * @param bytes The bytes.
- * @param at Where the byte is.
+ * @param bytes Any bytes, empty included; only read.
+ * @param at The byte's index in bytes, from 0; any value, as one past the end reads as 0.
  * @return The byte; 0 when at is past the end.
  */
 byte_at :: fn(bytes: u8[], at: usize) -> u8 {
@@ -332,8 +332,8 @@ byte_at :: fn(bytes: u8[], at: usize) -> u8 {
 /**
  * Tell whether a run of bytes is all there, without overflowing however large at and count are.
  *
- * @param bytes The bytes.
- * @param at Where the run starts.
+ * @param bytes Any bytes, empty included; only read.
+ * @param at The run's first byte's index in bytes, from 0; up to bytes' count fits an empty run.
  * @param count How many bytes it is; 0 fits anywhere up to the end.
  * @return True when every byte of the run is in bytes.
  */
@@ -344,8 +344,8 @@ fits :: fn(bytes: u8[], at: usize, count: usize) -> bool {
 /**
  * Read a little-endian number.
  *
- * @param bytes The bytes.
- * @param at Where the number starts.
+ * @param bytes Any bytes, empty included; only read.
+ * @param at The number's first byte's index in bytes, from 0; any value, as a run past the end reads as 0.
  * @param count How many bytes it is; only the first 8 count toward the result.
  * @return The number; 0 if its bytes aren't all there.
  */

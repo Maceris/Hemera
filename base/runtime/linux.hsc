@@ -31,11 +31,11 @@ import intrinsics from "base"
      *
      * @param number The call's number on this architecture, one of the SYS_ constants.
      * @param a The call's first argument, as a word: a pointer or descriptor is cast to u64.
-     * @param b The second argument.
-     * @param c The third argument.
-     * @param d The fourth argument.
-     * @param e The fifth argument.
-     * @param f The sixth argument.
+     * @param b The call's second argument, as a word the way a is; 0 when the call takes fewer.
+     * @param c The call's third argument, the same way.
+     * @param d The call's fourth argument, the same way.
+     * @param e The call's fifth argument, the same way.
+     * @param f The call's sixth argument, the same way.
      * @return The kernel's result as it gives it: from -4095 to -1, as a u64, is the negated errno of a failure
      *     (syscall_failed tells), and anything else is the call's own result.
      */
@@ -89,11 +89,11 @@ import intrinsics from "base"
      *
      * @param number The call's number on this architecture, one of the SYS_ constants.
      * @param a The call's first argument, as a word: a pointer or descriptor is cast to u64.
-     * @param b The second argument.
-     * @param c The third argument.
-     * @param d The fourth argument.
-     * @param e The fifth argument.
-     * @param f The sixth argument.
+     * @param b The call's second argument, as a word the way a is; 0 when the call takes fewer.
+     * @param c The call's third argument, the same way.
+     * @param d The call's fourth argument, the same way.
+     * @param e The call's fifth argument, the same way.
+     * @param f The call's sixth argument, the same way.
      * @return The kernel's result as it gives it: from -4095 to -1, as a u64, is the negated errno of a failure
      *     (syscall_failed tells), and anything else is the call's own result.
      */

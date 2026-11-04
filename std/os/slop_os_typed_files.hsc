@@ -165,7 +165,7 @@ package os
     /**
      * Check whether every bit pattern of type is a value of it, so its items needn't be checked one by one.
      *
-     * @param type The type.
+     * @param type Any type, followed through its aliases and into its arrays and structs; it isn't changed.
      * @return True for integers, floats and characters, and arrays and structs of only those; false for anything else,
      *     handles, channels and Relatives among them.
      */

@@ -108,7 +108,7 @@ import intrinsics from "base"
      * A block of up to 2 KiB, aligned to at most 16, comes from its class's free list, which a new 64 KiB chunk fills
      * when it's empty; anything else gets pages of its own.
      *
-     * @param size The bytes wanted.
+     * @param size How many bytes the block has to hold, which may be 0; above 2 KiB, it gets pages of its own.
      * @param alignment The alignment wanted, a power of two, or 0 for 16; above 16, the block gets pages of its own.
      * @return The block's first byte, after its 16-byte header, which heap_free takes back; or null when the system
      *     has no pages to map.

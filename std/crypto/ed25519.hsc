@@ -82,7 +82,7 @@ ed_base #constant_time :: fn() -> EdPoint {
 /**
  * Add two points (RFC 8032, section 5.1.4), in constant time.
  *
- * @param p The first point.
+ * @param p One point on the curve, in extended coordinates, carried as every function here leaves them.
  * @param q The second point, which may be p: the formula works for any two points.
  * @return The sum, p + q.
  */
@@ -102,7 +102,7 @@ ed_add #constant_time :: fn(p: EdPoint, q: EdPoint) -> EdPoint {
  * Double a point (RFC 8032, section 5.1.4's doubling): four multiplications and four squarings, rather than an
  * addition's nine.
  *
- * @param p The point.
+ * @param p Any point on the curve, in extended coordinates, the identity included.
  * @return The double, 2p.
  */
 ed_double #constant_time :: fn(p: EdPoint) -> EdPoint {
@@ -119,7 +119,7 @@ ed_double #constant_time :: fn(p: EdPoint) -> EdPoint {
 /**
  * Negate a point: x and t negated.
  *
- * @param p The point.
+ * @param p Any point on the curve, its x and t limbs under 2^53, as fe_negate takes them.
  * @return The negation, -p.
  */
 ed_negate #constant_time :: fn(p: EdPoint) -> EdPoint {
@@ -315,7 +315,7 @@ EdCached :: struct {
 /**
  * Put a point in cached form, for adding it many times.
  *
- * @param p The point.
+ * @param p Any point on the curve, in extended coordinates; z is kept as it is, not made 1.
  * @return The same point, cached.
  */
 ed_cached #constant_time :: fn(p: EdPoint) -> EdCached {
@@ -326,7 +326,7 @@ ed_cached #constant_time :: fn(p: EdPoint) -> EdCached {
 /**
  * Negate a cached point: x and t negated, so y + x and y - x swap.
  *
- * @param q The point, cached.
+ * @param q Any point in cached form, from ed_cached or from this.
  * @return The negation, -q, cached.
  */
 ed_cached_negate #constant_time :: fn(q: EdCached) -> EdCached {
@@ -502,7 +502,7 @@ ed_double_multiply :: fn(a: u8[32], point: EdPoint, b: u8[32]) -> EdPoint {
 /**
  * Encode a point (RFC 8032, section 5.1.2).
  *
- * @param p The point.
+ * @param p Any point on the curve, in extended coordinates; z isn't 0, as it's divided by.
  * @return The encoding: y, 32 little-endian bytes reduced below p, with x's low bit as the top bit; secret until the
  *     caller declassifies it.
  */
@@ -645,7 +645,7 @@ scalar_reduce #constant_time :: fn(x: ScalarWide) -> Scalar {
 /**
  * Read 64 little-endian bytes, like a hash, as a number to reduce.
  *
- * @param bytes The bytes.
+ * @param bytes Any 64 bytes, like a SHA-512 hash: a number from 0 to 2^512 - 1, least significant byte first.
  * @return The number, in 64-bit limbs, least significant first.
  */
 scalar_wide_of #constant_time :: fn(bytes: SecretByte[64]) -> ScalarWide {
@@ -661,7 +661,7 @@ scalar_wide_of #constant_time :: fn(bytes: SecretByte[64]) -> ScalarWide {
 /**
  * Read 32 little-endian bytes as a scalar, without reducing it.
  *
- * @param bytes The bytes.
+ * @param bytes Any 32 bytes: a number from 0 to 2^256 - 1, least significant byte first.
  * @return The number, in 64-bit limbs, least significant first; it may be L or more.
  */
 scalar_of #constant_time :: fn(bytes: SecretByte[32]) -> Scalar {
@@ -677,7 +677,8 @@ scalar_of #constant_time :: fn(bytes: SecretByte[32]) -> Scalar {
 /**
  * Write a scalar as 32 little-endian bytes: scalar_of the other way.
  *
- * @param s The scalar.
+ * @param s Any 256-bit number, in 64-bit limbs, least significant first; nothing's reduced, so one of L or more is
+ *     written as it is.
  * @return Its bytes, secret.
  */
 scalar_bytes #constant_time :: fn(s: Scalar) -> SecretByte[32] {
@@ -724,7 +725,7 @@ scalar_multiply_add #constant_time :: fn(k: Scalar, a: Scalar, r: Scalar) -> Sca
  * Expand a secret key into its scalar and prefix (RFC 8032, section 5.1.5): its SHA-512 hash's halves. The copies of
  * the key and the hash made on the way are wiped.
  *
- * @param secret_key The secret key.
+ * @param secret_key The secret key, any 32 bytes; read, not changed.
  * @param scalar Where the clamped scalar goes: the hash's first half, a multiple of 8 with bit 254 set and 255 clear.
  * @param prefix Where the prefix that makes each message's nonce goes: the hash's second half.
  */
@@ -752,7 +753,7 @@ ed25519_expand #constant_time :: fn(secret_key: ptr[Ed25519SecretKey], scalar: p
  * Work out the public key that goes with an Ed25519 secret key (RFC 8032, section 5.1.5). What's derived from the
  * secret key on the way is wiped.
  *
- * @param secret_key The secret key.
+ * @param secret_key The secret key, any 32 bytes; read, not changed.
  * @return The public key, to give to whoever checks the signatures.
  */
 ed25519_public_key #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed25519PublicKey {
@@ -775,7 +776,7 @@ ed25519_public_key #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed
  *
  * @param r The signature, whose first 32 bytes, R, are read.
  * @param public_key The signer's public key.
- * @param message The message.
+ * @param message The message signed, of any length, empty included; hashed, not kept.
  * @return The challenge k, from 0 to L - 1, secret until the caller declassifies it.
  */
 ed25519_challenge #constant_time :: fn(r: ptr[Ed25519Signature], public_key: ptr[Ed25519PublicKey], message: u8[]) -> Scalar {
@@ -813,7 +814,7 @@ Ed25519KeyPair :: struct {
 /**
  * Expand a secret key into a key pair, for signing many messages with ed25519_sign_with.
  *
- * @param secret_key The secret key.
+ * @param secret_key The secret key, any 32 bytes; read, not changed.
  * @return The key pair, secret; the caller zeros it with intrinsics.secure_zero when done. What else is derived from
  *     the secret key on the way is wiped.
  */
@@ -833,7 +834,7 @@ ed25519_key_pair #constant_time :: fn(secret_key: ptr[Ed25519SecretKey]) -> Ed25
  * Signing is deterministic: the same key and message always give the same signature, with no randomness needed. The
  * key pair it expands on the way is wiped.
  *
- * @param secret_key The secret key.
+ * @param secret_key The secret key, any 32 bytes; read, not changed.
  * @param message The message, of any length.
  * @return The signature, public.
  */
@@ -881,7 +882,8 @@ ed25519_sign_with #constant_time :: fn(pair: ptr[Ed25519KeyPair], message: u8[])
  *
  * @param public_key The signer's public key, which has to decode to a point, written the one way it should be.
  * @param message The message, of any length.
- * @param signature The signature.
+ * @param signature The 64-byte signature: R's encoding, then S. Any bytes are taken, and refused unless they're written
+ *     the one way they should be.
  * @return Whether the signature was made with public_key's secret key for this message: false too when the public
  *     key doesn't decode, S isn't below L, or R isn't encoded canonically.
  */

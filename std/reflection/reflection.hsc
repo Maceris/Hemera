@@ -151,8 +151,8 @@ enum_member_name :: fn(value: any) -> string? {
  * structs and unions compare their bytes, since type info doesn't say which variant is in use, so padding and bytes
  * an unused variant left can make equal values unequal. Values in an any are compared by what they hold.
  *
- * @param a One value.
- * @param b The other.
+ * @param a A value of any type, its data only read; either side of the comparison, as equal is symmetric.
+ * @param b The value compared with a, of any type; its data only read.
  * @return True if their types are the same, not just alike, and their values are equal as above; false otherwise.
  */
 equal :: fn(a, b: any) -> bool {

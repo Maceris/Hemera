@@ -85,7 +85,8 @@ import unicode from "std"
      *
      * It goes in as many Writes as it takes, each ending where a grapheme cluster does.
      *
-     * @param terminal The client.
+     * @param terminal A client open made, used by one thread or fiber at a time; it isn't changed, and a failed Write
+     *     doesn't mark it hung up.
      * @param text The text, UTF-8, of any length. Nothing is added: no line break.
      * @param style How it's shown; the default is the terminal's plain style.
      * @return True if every Write went; false if one failed, the terminal most likely gone, with what came before it
@@ -98,7 +99,8 @@ import unicode from "std"
     /**
      * Write text to the terminal, styled, then a line break.
      *
-     * @param terminal The client.
+     * @param terminal A client open made, used by one thread or fiber at a time; it isn't changed, and a failed Write
+     *     doesn't mark it hung up.
      * @param text The text, UTF-8, of any length, without the line break.
      * @param style How the text is shown; the line break is written in the plain style.
      * @return True if all of it went; false if a Write failed, the line break not written if the text wasn't.
@@ -110,7 +112,7 @@ import unicode from "std"
     /**
      * Show the line being edited, below what's written, replacing the one shown before.
      *
-     * @param terminal The client.
+     * @param terminal A client open made, used by one thread or fiber at a time; it isn't changed.
      * @param text The line, UTF-8, prompt included; empty to take the input line away.
      * @param cursor Where the cursor is, as a byte offset in text, from 0 to text.count.
      * @return True if it was handed to the terminal; false if the request failed.
@@ -125,7 +127,8 @@ import unicode from "std"
      * Events left from the last Input come first; once they're used up, a Read is held for more, and the thread waits
      * on the client's port until they come. A Stop asked for wakes the wait too.
      *
-     * @param terminal The client.
+     * @param terminal A client open made, used by one thread or fiber at a time. It moves on to its next event, holds a
+     *     Read when its events are used up, and is marked hung up, for good, once a request or its connection fails.
      * @return The next Event, its text the client's until the next call; HangUp once the terminal's gone, and every
      *     time after; Stop once the program's been asked to stop, and every time after, unless it's hung up first.
      */
@@ -354,7 +357,8 @@ import unicode from "std"
     /**
      * Act on one key: move the cursor, edit the line, go through history, complete, or type what it carries.
      *
-     * @param editor The editor.
+     * @param editor An editor read_line is reading with, its cursor at a grapheme cluster's start; its line, cursor and
+     *     place in history change as the key says.
      * @param terminal The client, for completion's candidates.
      * @param event The Key event. With Ctrl or Alt held, a key without a binding types nothing.
      * @param text The bytes the key types; control characters among them are dropped.
@@ -433,7 +437,8 @@ import unicode from "std"
     /**
      * Put bytes in at the cursor, which moves past them.
      *
-     * @param editor The editor.
+     * @param editor An editor whose cursor is from 0 to its line's count; its line grows by what's put in, with
+     *     context.allocator, and the cursor moves past it.
      * @param bytes The bytes; those that would take the line past MAX_LINE_BYTES are dropped.
      */
     insert :: fn(editor: ptr[mut LineEditor], bytes: u8[]) {
@@ -461,7 +466,8 @@ import unicode from "std"
     /**
      * Take bytes out of the line, keeping the cursor inside it.
      *
-     * @param editor The editor.
+     * @param editor An editor whose line loses the bytes from start to end; its cursor isn't moved, unless it's then
+     *     past the line's end, when it goes to the end.
      * @param start The byte offset of the first to take out.
      * @param end The byte offset past the last. Nothing happens when it isn't past start, or is past the line's end.
      */
@@ -487,7 +493,8 @@ import unicode from "std"
      *
      * The cursor goes to the line's end. Nothing happens past either end of history.
      *
-     * @param editor The editor.
+     * @param editor An editor read_line is reading with. Its line is replaced and its cursor goes to the end; the line
+     *     typed is kept in typed when Up first leaves it.
      * @param back True for the previous (older) line, false for the next, ending at the line typed.
      */
     through_history :: fn(editor: ptr[mut LineEditor], back: bool) {
@@ -523,7 +530,8 @@ import unicode from "std"
      * One candidate is put in its place; several put in what they all start with, or if that's nothing more than what's
      * typed, are written above the line. Without a completer, or with no candidates, nothing happens.
      *
-     * @param editor The editor.
+     * @param editor An editor read_line is reading with, which calls its completer, if it has one; the text from the
+     *     completion's start to the cursor may be replaced, the cursor moving past what's put in.
      * @param terminal The client, where the candidates are written.
      */
     complete :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal]) {
@@ -579,7 +587,8 @@ import unicode from "std"
      * The oldest line is dropped once there are MAX_HISTORY. The line is copied with context.allocator; if that fails,
      * an empty line is kept.
      *
-     * @param editor The editor.
+     * @param editor An editor whose line was just ended; the line isn't changed, and a copy of it may be added to its
+     *     history, which may drop its oldest.
      */
     remember :: fn(editor: ptr[mut LineEditor]) {
         if editor.line.count == 0 {
@@ -602,8 +611,8 @@ import unicode from "std"
     /**
      * Draw the input line: the prompt, then the line, the cursor in it.
      *
-     * @param editor The editor.
-     * @param terminal The client.
+     * @param editor An editor whose line and cursor are drawn; it isn't changed.
+     * @param terminal A client open made, whose input line is replaced with this one.
      * @param prompt What's shown before the line, UTF-8.
      */
     show :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], prompt: string) {
@@ -635,7 +644,7 @@ import unicode from "std"
     /**
      * Copy bytes into a new string.
      *
-     * @param bytes The bytes.
+     * @param bytes The bytes to copy, UTF-8 or not; read and not kept.
      * @return The copy, allocated with context.allocator and the caller's to free; empty, allocating nothing, for no
      *     bytes or when there's no memory.
      */
@@ -655,7 +664,7 @@ import unicode from "std"
     /**
      * View bytes as a string, without copying them.
      *
-     * @param bytes The bytes.
+     * @param bytes The bytes to view, UTF-8 or not, which the string shares.
      * @return A string over the same bytes, good while they are and the array isn't resized; empty for no bytes.
      */
     as_text :: fn(bytes: u8[..]) -> string {

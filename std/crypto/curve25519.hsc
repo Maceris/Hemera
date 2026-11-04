@@ -58,7 +58,7 @@ fe_of #constant_time :: fn(limbs: u64[5]) -> Fe {
  * Carry a field element's limbs: each limb's carry into the next, and the top one's, times 19, into the first, as
  * 2^255 is 19 mod p.
  *
- * @param f The element.
+ * @param f An element, its limbs under 2^54, as everything here leaves them, so the carries can't overflow.
  * @return The same number mod p, its limbs carried to 51 bits but the first, which may be a little over.
  */
 fe_carry #constant_time :: fn(f: Fe) -> Fe {
@@ -76,8 +76,8 @@ fe_carry #constant_time :: fn(f: Fe) -> Fe {
 /**
  * Add two field elements, without carrying.
  *
- * @param f The first addend.
- * @param g The second addend.
+ * @param f One addend: carried, or one addition's sum at most, its limbs under 2^52.
+ * @param g The other addend, under the same bound; the order doesn't matter.
  * @return The sum, f + g mod p, not carried: it goes into a multiplication, a square or fe_to_bytes, or one more
  *     addition first, but no more than that.
  */
@@ -227,7 +227,7 @@ fe_multiply_small #constant_time :: fn(f: Fe, n: u64) -> Fe {
 /**
  * Raise a field element to 2^250 - 1, which inverting and square roots both start from.
  *
- * @param f The element.
+ * @param f Any element, its limbs under 2^54; 0 gives 0.
  * @param eleven Where f^11, made on the way, goes, for inverting.
  * @return The power, f^(2^250 - 1) mod p.
  */
@@ -249,7 +249,7 @@ fe_power_250 #constant_time :: fn(f: Fe, eleven: ptr[mut Fe]) -> Fe {
 /**
  * Invert a field element, as f^(p - 2), in constant time.
  *
- * @param f The element.
+ * @param f Any element, its limbs under 2^54; 0 gives 0.
  * @return The inverse, 1 / f mod p, or 0 for 0.
  */
 fe_invert #constant_time :: fn(f: Fe) -> Fe {
@@ -261,7 +261,7 @@ fe_invert #constant_time :: fn(f: Fe) -> Fe {
 /**
  * Raise a field element to (p - 5) / 8, for square roots (RFC 8032, section 5.1.3).
  *
- * @param f The element.
+ * @param f Any element, its limbs under 2^54; 0 gives 0.
  * @return The power, f^((p - 5) / 8) mod p.
  */
 fe_power_p58 #constant_time :: fn(f: Fe) -> Fe {
@@ -345,7 +345,7 @@ fe_to_bytes #constant_time :: fn(f: Fe) -> SecretByte[32] {
 /**
  * Check whether a field element is 0, in constant time.
  *
- * @param f The element.
+ * @param f Any element, its limbs under 2^54; it's reduced below p first, so p reads as 0 too.
  * @return Whether it's 0 mod p, secret.
  */
 fe_is_zero #constant_time :: fn(f: Fe) -> SecretBool {
@@ -360,7 +360,7 @@ fe_is_zero #constant_time :: fn(f: Fe) -> SecretBool {
 /**
  * Check whether a field element is negative, as Ed25519 means it: odd once reduced below p.
  *
- * @param f The element.
+ * @param f Any element, its limbs under 2^54; it's reduced below p before its low bit is read.
  * @return Whether its reduced value is odd, secret.
  */
 fe_is_negative #constant_time :: fn(f: Fe) -> SecretBool {
@@ -420,7 +420,7 @@ x25519_ladder #constant_time :: fn(scalar: SecretByte[32], u: Fe) -> SecretByte[
 /**
  * Clamp a secret key into its scalar (RFC 7748, section 5).
  *
- * @param secret_key The secret key.
+ * @param secret_key Any 32 bytes, from a secure generator; read, not changed, as the clamping is done to a copy.
  * @return Its bytes as the scalar: a multiple of 8, with bit 254 set and 255 clear; secret.
  */
 x25519_clamped #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> SecretByte[32] {
@@ -436,7 +436,7 @@ x25519_clamped #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> SecretB
 /**
  * Work out the public key that goes with an X25519 secret key: the clamped key times the base point, u = 9.
  *
- * @param secret_key The secret key.
+ * @param secret_key This side's secret key, any 32 random bytes, clamped as it's used; read, not changed.
  * @return The public key, to send to the other side.
  */
 x25519_public_key #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> X25519PublicKey {

@@ -199,7 +199,7 @@ free :: fn(schema: ptr[mut Schema]) {
 /**
  * Find the type at a place among a schema's.
  *
- * @param schema The schema.
+ * @param schema A schema from parse, not yet freed; only read.
  * @param place The type's place, from 0, as types refer to each other.
  * @return The type, good until the schema is freed; null for NOWHERE or any place past the last type.
  */
@@ -213,7 +213,7 @@ type_in :: fn(schema: ptr[Schema], place: usize) -> ptr[Type]? {
 /**
  * Find the type an alias names, through every alias, distinct ones too.
  *
- * @param schema The schema.
+ * @param schema A schema from parse, not yet freed; only read.
  * @param place The place to start from, which may or may not be an alias.
  * @return The place of the first type that isn't an alias: place itself when it isn't one. NOWHERE if place, or an
  *     alias on the way, refers to no type, or the aliases go more than ALIAS_LIMIT deep, as a loop of them would.
@@ -554,7 +554,7 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
 /**
  * Read a little-endian number from the bytes and move past it.
  *
- * @param bytes The bytes.
+ * @param bytes The bytes being read, such as a schema's; only read.
  * @param at Where it is, moved past it; NOWHERE given stays NOWHERE.
  * @param count How many bytes, 1 to 8.
  * @return The number; 0, with NOWHERE in at, if at was NOWHERE already or the bytes aren't all there.

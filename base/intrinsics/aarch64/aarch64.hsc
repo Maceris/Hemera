@@ -511,25 +511,27 @@ ic_ialluis : fn() : ---
 /**
  * Translate an address as a read at EL1 would (at s1e1r), into PAR_EL1. Read PAR_EL1 after an isb.
  *
- * @param address The virtual address.
+ * @param address Any virtual address, mapped or not; it isn't accessed, and a fault is reported in PAR_EL1, not taken.
  */
 at_s1e1r : fn(address: rawptr) : ---
 /**
  * Translate an address as a write at EL1 would (at s1e1w), into PAR_EL1. Read PAR_EL1 after an isb.
  *
- * @param address The virtual address.
+ * @param address Any virtual address, mapped or not; it isn't written, and a fault is reported in PAR_EL1, not taken.
  */
 at_s1e1w : fn(address: rawptr) : ---
 /**
  * Translate an address as a read at EL0 would (at s1e0r), into PAR_EL1, as checking a user pointer does.
  *
- * @param address The virtual address.
+ * @param address Any virtual address, like a user pointer; it isn't accessed, and a fault is reported in PAR_EL1, not
+ *     taken.
  */
 at_s1e0r : fn(address: rawptr) : ---
 /**
  * Translate an address as a write at EL0 would (at s1e0w), into PAR_EL1, as checking a user pointer does.
  *
- * @param address The virtual address.
+ * @param address Any virtual address, like a user pointer; it isn't written, and a fault is reported in PAR_EL1, not
+ *     taken.
  */
 at_s1e0w : fn(address: rawptr) : ---
 

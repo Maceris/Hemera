@@ -262,7 +262,7 @@ output_sink_byte :: fn(target: rawptr, byte: u8) {
 /**
  * Check whether options change nothing about how a value is written, so it can be written the plain way.
  *
- * @param spec The options.
+ * @param spec Options as parse_format_spec reads them; only read.
  * @return Whether there's no width, kind, +, # or precision; a fill, alignment or 0 alone change nothing.
  */
 is_plain_format :: fn(spec: FormatSpec) -> bool {
