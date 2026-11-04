@@ -10,6 +10,8 @@
 #include "llvm/TargetParser/Triple.h"
 
 namespace hemera {
+	struct LargeFrames;
+
 	struct Backend {
 		Backend();
 		Backend(const Backend&) = delete;
@@ -53,6 +55,12 @@ namespace hemera {
 			std::string_view object_file) override;
 
 	private:
+		/*
+		 * generate_object_file's work, with what it finds over the module's max_frame_size kept in frames, or null
+		 * without a limit.
+		 */
+		bool generate(const Options& options, llvm::Module& module, std::string_view output_name, LargeFrames* frames);
+
 		const llvm::Target* target;
 		llvm::Triple* target_triple;
 		llvm::TargetMachine* target_machine;

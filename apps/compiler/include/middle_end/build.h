@@ -52,6 +52,7 @@ namespace hemera {
 		std::vector<BuildLibrary> libraries;
 		std::string optimization_level;
 		bool debug_info = false;
+		std::string configuration;
 		std::string architecture;
 		std::string os;
 		std::string output_type;
@@ -63,8 +64,10 @@ namespace hemera {
 		bool address_zero_is_memory = false;
 		std::string linker_script;
 		std::vector<std::string> library_paths;
+		std::string linker;
 		bool startup_code = true;
 		std::string stack_check_failure;
+		uint64_t max_frame_size = 0;
 		BuildLocation location;
 		// Once built: whether it worked, and the output's path
 		bool built = false;

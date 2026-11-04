@@ -10062,20 +10062,23 @@ namespace hemera {
 		}
 
 		/*
-		 * Constants' values, worked out in one run: each one's type (an untyped one's default) and a copy of its
-		 * value in the compile-time data. Values that can't be worked out are left null.
+		 * Values for reflection, worked out in one run: each item's type and a copy of its value in the compile-time
+		 * data, or a null value for one that can't be worked out, or kept, like one holding a function. An item
+		 * without a type isn't run. Each is kept by its key, so it only runs once however often it's asked for.
 		 */
-		std::vector<std::pair<const TypeInfo*, const uint8_t*>> constant_values(Call& call, const std::vector<Declaration*>& constants) {
-			std::vector<std::pair<const TypeInfo*, const uint8_t*>> result(constants.size(), { nullptr, nullptr });
-			if (constants.empty()) {
+		std::vector<std::pair<const TypeInfo*, const uint8_t*>> worked_out(Call& call, const std::vector<const void*>& keys,
+			std::vector<CompileTimeItem> items) {
+
+			std::vector<std::pair<const TypeInfo*, const uint8_t*>> result(keys.size(), { nullptr, nullptr });
+			if (keys.empty()) {
 				return result;
 			}
 			// The ones worked out already
-			std::vector<bool> known(constants.size(), false);
+			std::vector<bool> known(keys.size(), false);
 			{
 				std::scoped_lock<std::mutex> lock(call.data.constant_values_mutex);
-				for (size_t i = 0; i < constants.size(); ++i) {
-					auto found = call.data.constant_values.find(constants[i]);
+				for (size_t i = 0; i < keys.size(); ++i) {
+					auto found = call.data.constant_values.find(keys[i]);
 					if (found != call.data.constant_values.end()) {
 						result[i] = found->second;
 						known[i] = true;
@@ -10085,36 +10088,28 @@ namespace hemera {
 			// What's worked out now is kept for next time, values or not
 			auto remember = [&]() {
 				std::scoped_lock<std::mutex> lock(call.data.constant_values_mutex);
-				for (size_t i = 0; i < constants.size(); ++i) {
+				for (size_t i = 0; i < keys.size(); ++i) {
 					if (!known[i]) {
-						call.data.constant_values[constants[i]] = result[i];
+						call.data.constant_values[keys[i]] = result[i];
 					}
 				}
 			};
-			std::vector<CompileTimeValue> values(constants.size());
+			std::vector<CompileTimeValue> values(keys.size());
 			// Whether each value could be kept: one holding a function, say, can't, and is left out
-			std::unique_ptr<bool[]> kept(new bool[constants.size()]());
-			std::vector<CompileTimeItem> items;
+			std::unique_ptr<bool[]> kept(new bool[keys.size()]());
+			std::vector<CompileTimeItem> running;
 			std::vector<size_t> positions;
-			for (size_t i = 0; i < constants.size(); ++i) {
-				Declaration* constant = constants[i];
-				if (known[i]) {
+			for (size_t i = 0; i < keys.size(); ++i) {
+				if (known[i] || items[i].type == nullptr) {
 					continue;
 				}
-				TypeInfo* type = constant->value_type;
-				if (type == nullptr) {
-					type = Untyped::INTEGER == constant->untyped ? BUILTIN_int : Untyped::FLOAT == constant->untyped ? BUILTIN_f64
-						: Untyped::STRING == constant->untyped ? BUILTIN_string : Untyped::BOOLEAN == constant->untyped ? BUILTIN_bool : nullptr;
-				}
-				if (type == nullptr || constant->externally_initialized) {
-					continue;
-				}
-				result[i].first = type;
-				items.push_back(CompileTimeItem{ definition_value(constant->node), type, constant->checked.get(), constant, &values[i] });
-				items.back().captured = &kept[i];
+				result[i].first = items[i].type;
+				running.push_back(items[i]);
+				running.back().result = &values[i];
+				running.back().captured = &kept[i];
 				positions.push_back(i);
 			}
-			if (items.empty()) {
+			if (running.empty()) {
 				remember();
 				return result;
 			}
@@ -10134,7 +10129,7 @@ namespace hemera {
 				return ran;
 			};
 			std::function<void(size_t, size_t)> run_range = [&](size_t from, size_t to) {
-				std::vector<CompileTimeItem> batch(items.begin() + static_cast<std::ptrdiff_t>(from), items.begin() + static_cast<std::ptrdiff_t>(to));
+				std::vector<CompileTimeItem> batch(running.begin() + static_cast<std::ptrdiff_t>(from), running.begin() + static_cast<std::ptrdiff_t>(to));
 				if (run(batch)) {
 					for (size_t j = from; j < to; ++j) {
 						if (kept[positions[j]]) {
@@ -10147,9 +10142,98 @@ namespace hemera {
 					run_range(from + (to - from) / 2, to);
 				}
 			};
-			run_range(0, items.size());
+			run_range(0, running.size());
 			remember();
 			return result;
+		}
+
+		/*
+		 * Constants' values, worked out in one run: each one's type (an untyped one's default) and a copy of its
+		 * value in the compile-time data. Values that can't be worked out are left null.
+		 */
+		std::vector<std::pair<const TypeInfo*, const uint8_t*>> constant_values(Call& call, const std::vector<Declaration*>& constants) {
+			std::vector<const void*> keys;
+			std::vector<CompileTimeItem> items;
+			for (Declaration* constant : constants) {
+				TypeInfo* type = constant->value_type;
+				if (type == nullptr) {
+					type = Untyped::INTEGER == constant->untyped ? BUILTIN_int : Untyped::FLOAT == constant->untyped ? BUILTIN_f64
+						: Untyped::STRING == constant->untyped ? BUILTIN_string : Untyped::BOOLEAN == constant->untyped ? BUILTIN_bool : nullptr;
+				}
+				keys.push_back(constant);
+				items.push_back(CompileTimeItem{ definition_value(constant->node), constant->externally_initialized ? nullptr : type,
+					constant->checked.get(), constant, nullptr });
+			}
+			return worked_out(call, keys, std::move(items));
+		}
+
+		/*
+		 * Whether a default, as checked, is the same every time, so reflection can give its value: not
+		 * #caller_location, the context, or a call, which may give something else each time.
+		 */
+		bool constant_default(const ast::Node* node, const CheckedBody& checked) {
+			if ((ast::NodeType::DIRECTIVE == node->node_type && is_text(node->value.value, "#caller_location"))
+				|| (ast::NodeType::IDENTIFIER == node->node_type && is_text(node->value.value, "context"))) {
+				return false;
+			}
+			auto found = checked.nodes.find(node);
+			if (found != checked.nodes.end() && found->second.called != nullptr) {
+				return false;
+			}
+			for (const ast::Node* child : node->children) {
+				if (!constant_default(child, checked)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/*
+		 * Functions' parameters' defaults that are constant, worked out in one run, each kept by its default's node:
+		 * a function's own, checked with its body, or one from a function type it states, checked on its own.
+		 */
+		void work_out_defaults(Call& call, const std::vector<Declaration*>& functions) {
+			std::vector<const void*> keys;
+			std::vector<CompileTimeItem> items;
+			for (Declaration* function : functions) {
+				auto type = static_cast<TypeInfoFunction const*>(function->value_type);
+				if (type == nullptr || DeclarationKind::FUNCTION != function->kind) {
+					continue;
+				}
+				for (const FunctionInput& input : type->input) {
+					if (input.default_value == nullptr) {
+						continue;
+					}
+					std::shared_ptr<CheckedBody> own;
+					CheckedBody* checked = nullptr;
+					if (input.default_in_body) {
+						checked = function->checked.get();
+					}
+					else {
+						std::scoped_lock<std::mutex> lock(call.program->names.type_defaults_mutex);
+						auto found = call.program->names.type_defaults.find(input.default_value);
+						if (found != call.program->names.type_defaults.end()) {
+							own = found->second;
+							checked = own.get();
+						}
+					}
+					// Not checked yet, like a function compile-time code asks about before its body is: left for later
+					if (checked == nullptr) {
+						continue;
+					}
+					const bool constant = checked->nodes.contains(input.default_value) && constant_default(input.default_value, *checked);
+					keys.push_back(input.default_value);
+					items.push_back(CompileTimeItem{ input.default_value, constant ? input.type : nullptr, checked, function, nullptr });
+				}
+			}
+			worked_out(call, keys, std::move(items));
+		}
+
+		// A default work_out_defaults worked out: its value, or null for one that isn't constant, or wasn't worked out.
+		const uint8_t* default_value(Call& call, const ast::Node* node) {
+			std::scoped_lock<std::mutex> lock(call.data.constant_values_mutex);
+			auto found = call.data.constant_values.find(node);
+			return found != call.data.constant_values.end() ? found->second.second : nullptr;
 		}
 
 		std::optional<Documentation> declaration_documentation(Declaration* declaration);
@@ -10270,6 +10354,30 @@ namespace hemera {
 			}
 			data.write_number(record, layout, "never_returns", type->never_returns);
 			data.write_type(record, layout, "type", type);
+			// An instance's type parameters, as its generic writes them, each with its argument; not its value ones
+			std::vector<std::pair<std::string, const TypeInfo*>> bindings;
+			const ast::Node* generic = function->generic != nullptr ? generic_node(function->generic) : nullptr;
+			if (generic != nullptr) {
+				size_t index = 0;
+				for (const ast::Node* child : generic->children) {
+					if (ast::NodeType::GENERIC_TAG != child->node_type) {
+						continue;
+					}
+					for (const ast::Node* parameter : child->children) {
+						const bool named = ast::NodeType::COLON == parameter->node_type && !parameter->children.empty();
+						if (index < function->generic_arguments.size() && function->generic_arguments[index] != nullptr) {
+							bindings.emplace_back(text_of(named ? parameter->children[0]->value.value : parameter->value.value),
+								function->generic_arguments[index]);
+						}
+						++index;
+					}
+				}
+			}
+			write_records(data, record, layout, "generic_bindings", bindings.size(), [&](uint8_t* at, const TypeInfoStruct* binding, size_t i) {
+				data.write_text(at, binding, "original_name", bindings[i].first);
+				data.write_type(at, binding, "value", bindings[i].second);
+			});
+			work_out_defaults(call, { function });
 			write_records(data, record, layout, "parameters", type->input.size(), [&](uint8_t* at, const TypeInfoStruct* parameter, size_t i) {
 				const FunctionInput& input = type->input[i];
 				data.write_text(at, parameter, "name", text_of(input.name));
@@ -10281,12 +10389,18 @@ namespace hemera {
 						data.write_text(at, parameter, "documentation", tag->text);
 					}
 				}
-				//TODO(claude) default values, which need running each default
+				// Its default's value when it's constant, from work_out_defaults; None otherwise
 				size_t offset = 0;
 				const TypeInfo* field_type = nullptr;
 				if (CompileTimeData::find_field(parameter, "default_value", offset, field_type)) {
-					auto optional = static_cast<const TypeInfoUnion*>(get_base_type(field_type));
-					CompileTimeData::write_number_at(at + offset, optional->tag_type->size, 1);
+					const uint8_t* value = input.default_value != nullptr ? default_value(call, input.default_value) : nullptr;
+					if (value != nullptr) {
+						data.write_any_at(CompileTimeData::write_some_at(at + offset, field_type), value, input.type);
+					}
+					else {
+						auto optional = static_cast<const TypeInfoUnion*>(get_base_type(field_type));
+						CompileTimeData::write_number_at(at + offset, optional->tag_type->size, optional->none_index());
+					}
 				}
 			});
 			std::vector<std::string> result_names;
@@ -10308,7 +10422,7 @@ namespace hemera {
 					}
 					else {
 						auto optional = static_cast<const TypeInfoUnion*>(get_base_type(field_type));
-						CompileTimeData::write_number_at(at + offset, optional->tag_type->size, 1);
+						CompileTimeData::write_number_at(at + offset, optional->tag_type->size, optional->none_index());
 					}
 				}
 			});
@@ -10443,6 +10557,8 @@ namespace hemera {
 					constants.push_back(declaration);
 				}
 			}
+			// Their constant defaults worked out in one run
+			work_out_defaults(call, functions);
 			write_records(data, record, layout, "functions", functions.size(), [&](uint8_t* at, const TypeInfoStruct* function_layout, size_t i) {
 				write_function(call, at, function_layout, functions[i]);
 			});
@@ -10502,7 +10618,16 @@ namespace hemera {
 		Declaration* declared(Call& call, std::string_view path, std::string_view name) {
 			std::scoped_lock<std::mutex> lock(call.program->names.mutex);
 			auto iter = call.program->names.declarations.find(std::make_pair(intern(std::string(path)), intern(std::string(name))));
-			return iter != call.program->names.declarations.end() ? iter->second : nullptr;
+			if (iter != call.program->names.declarations.end()) {
+				return iter->second;
+			}
+			// An instance of a generic, by the name a FunctionCall gives it, like swap[int]
+			for (const auto& [key, instance] : call.program->names.instances) {
+				if (std::string_view(*instance->name) == name && std::string_view(*instance->package_path) == path) {
+					return instance;
+				}
+			}
+			return nullptr;
 		}
 
 		// A SourceCodeLocation argument's file, line and column.
@@ -10606,6 +10731,7 @@ namespace hemera {
 				target.optimization_level = read_member(backend, struct_of(type), "optimization_level");
 				target.debug_info = read_number(backend, struct_of(type), "debug_info") != 0;
 			}
+			target.configuration = read_member(record, layout, "configuration");
 			if (const uint8_t* options = field_at(record, layout, "target_options", type)) {
 				const TypeInfoStruct* target_layout = struct_of(type);
 				target.architecture = read_member(options, target_layout, "architecture");
@@ -10626,8 +10752,10 @@ namespace hemera {
 						target.library_paths.emplace_back(read_string(elements + i * 16));
 					}
 				}
+				target.linker = read_text(options, target_layout, "linker");
 				target.startup_code = read_number(options, target_layout, "startup_code") != 0;
 				target.stack_check_failure = read_member(options, target_layout, "stack_check_failure");
+				target.max_frame_size = read_number(options, target_layout, "max_frame_size");
 			}
 		}
 
@@ -10745,7 +10873,8 @@ namespace hemera {
 				data.write_member(at, backend, "optimization_level", level);
 				data.write_number(at, backend, "debug_info", options.debug_info);
 			}
-			data.write_member(record, layout, "configuration", options.debug_info ? "Debug" : "Release");
+			data.write_member(record, layout, "configuration", !options.configuration.empty() ? options.configuration
+				: options.debug_info ? "Debug" : "Release");
 			if (CompileTimeData::find_field(layout, "target_options", offset, field_type)) {
 				const TypeInfoStruct* target = struct_of(field_type);
 				uint8_t* at = record + offset;
@@ -10761,8 +10890,10 @@ namespace hemera {
 				data.write_number(at, target, "red_zone", options.red_zone);
 				data.write_number(at, target, "address_zero_is_memory", options.address_zero_is_memory);
 				data.write_text(at, target, "linker_script", options.linker_script.empty() ? std::string() : options.linker_script.string());
+				data.write_text(at, target, "linker", options.linker);
 				data.write_number(at, target, "startup_code", options.startup_code);
 				data.write_member(at, target, "stack_check_failure", TargetStackCheck::Trap == options.stack_check ? "Trap" : "Morestack");
+				data.write_number(at, target, "max_frame_size", options.max_frame_size);
 			}
 		}
 
@@ -11513,6 +11644,8 @@ namespace hemera {
 		result.optimization_level = target.optimization_level == "O0" ? OptimizationLevel::O0 : target.optimization_level == "O1" ? OptimizationLevel::O1
 			: target.optimization_level == "O3" ? OptimizationLevel::O3 : OptimizationLevel::O2;
 		result.debug_info = target.debug_info;
+		// What the target's code is told it's built for, which needn't follow its debug info
+		result.configuration = target.configuration;
 		if (target.architecture == "x86_64") {
 			result.architecture = ArchType::x86_64;
 		}
@@ -11596,6 +11729,18 @@ namespace hemera {
 			result.library_paths.push_back(folder);
 		}
 		result.library_paths.insert(result.library_paths.end(), build.library_paths.begin(), build.library_paths.end());
+		// A linker named by its path is relative to the build package's folder; one named alone is found on the PATH
+		if (target.linker.find_first_of("/\\") != std::string::npos) {
+			const std::filesystem::path linker = std::filesystem::canonical(from_build(build, target.linker), error);
+			if (error || !std::filesystem::is_regular_file(linker)) {
+				return refuse(std::format("its linker {} isn't there", target.linker));
+			}
+			result.linker = linker.string();
+		}
+		else {
+			result.linker = target.linker;
+		}
+		result.max_frame_size = target.max_frame_size;
 		return true;
 	}
 
@@ -11654,6 +11799,16 @@ namespace hemera {
 			constants.insert(constants.end(), found.begin(), found.end());
 		}
 		const auto values = constant_values(call, constants);
+		// And their functions' constant defaults
+		std::vector<Declaration*> functions;
+		for (hemera::PackageInfo* package : packages) {
+			for (Declaration* declaration : declarations_of(target, text_of(package->full_path))) {
+				if (DeclarationKind::FUNCTION == declaration->kind) {
+					functions.push_back(declaration);
+				}
+			}
+		}
+		work_out_defaults(call, functions);
 		KnownConstants known;
 		for (size_t i = 0; i < constants.size(); ++i) {
 			known[constants[i]] = values[i];

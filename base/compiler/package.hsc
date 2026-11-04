@@ -127,10 +127,12 @@ package_info : fn(import_name: string) -> PackageInfo? : ---
 find_constant : fn(package: ptr[PackageInfo], name: string) -> ConstantInfo? : ---
 
 /**
- * Find a function a package declares.
+ * Find a function a package declares, or an instance of one of its generic functions.
  *
  * @param package The package, from package_info, load_package or a ProgramInfo.
- * @param name The function's name, compared exactly.
- * @return The function, or none if the package declares no function of that name.
+ * @param name The function's name, compared exactly; for an instance, the name a FunctionCall gives it, like
+ *     pick[int].
+ * @return The function, or none if the package declares no function of that name, or the program has no such
+ *     instance, as before anything calls it.
  */
 find_function : fn(package: ptr[PackageInfo], name: string) -> FunctionInfo? : ---
