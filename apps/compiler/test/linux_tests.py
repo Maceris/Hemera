@@ -91,6 +91,8 @@ TESTS = [
     ("c_strings", ["--test"], 0),
     ("schemas", ["--test"], 0),
     ("in_image", ["--test"], 0),
+    # Instances of a generic whose parameter is an optional of a generic alias, each with its own
+    ("generic_alias_arguments", ["--test"], 0),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--test", "--stack-check=morestack", "SYSROOT"], 0),
 ]

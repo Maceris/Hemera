@@ -350,6 +350,17 @@ TEST(Hosted, FormatsForLocales)
 	run_hosted("locale", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
+/*
+ * Two instances of a generic whose parameter is an optional of a generic alias, each with its own: the instances once
+ * shared one about half the time, when an alias was keyed before it knew what it named, so it's built several times.
+ */
+TEST(Hosted, KeepsGenericAliasArgumentsApart)
+{
+	for (int build = 0; build < 8; ++build) {
+		run_hosted("generic_alias_arguments", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	}
+}
+
 // std/testing: #test functions found through reflection, their assertions, and the runner's report (docs/testing.md).
 TEST(Hosted, RunsTests)
 {

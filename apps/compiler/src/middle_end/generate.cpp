@@ -3329,8 +3329,34 @@ namespace hemera {
 		std::vector<const ast::Node*> codes = {};
 		// One of base/compiler's code functions reported why it couldn't make code
 		bool code_reported = false;
+		/*
+		 * Functions of the program reflection was asked to describe before their types were resolved, which other
+		 * threads may still be doing: what it wrote of them was partial, so the run is done again once they are
+		 */
+		std::vector<Declaration*> unresolved = {};
+		// What compiler.report_error and report_warning reported, held until the run is known to count
+		struct Report {
+			bool error;
+			std::string file;
+			uint32_t line;
+			uint16_t column;
+			std::string message;
+		};
+		std::vector<Report> reports = {};
 	};
 	static thread_local ServiceScope* service_scope = nullptr;
+
+	// Report what compile-time code reported during a run that counts, as compiler.report_error and report_warning do.
+	static void report_held(const ServiceScope& scope) {
+		for (const ServiceScope::Report& report : scope.reports) {
+			if (report.error) {
+				report_error(ErrorCode::E4029, report.file, report.line, report.column, report.message);
+			}
+			else {
+				report_warning(WarningCode::W4001, report.file, report.line, report.column, report.message);
+			}
+		}
+	}
 
 	/*
 	 * Run compile-time code, each item in turn in one run, capturing each one's value. When unchecked is given,
@@ -3516,6 +3542,12 @@ namespace hemera {
 				}
 			}, run, error, compiled.links);
 		service_scope = outer_scope;
+		// Reflection described functions before they were resolved: the run doesn't count, and is done again once they are
+		if (!scope.unresolved.empty() && unchecked != nullptr) {
+			*unchecked = scope.unresolved;
+			return false;
+		}
+		report_held(scope);
 		if (RunResult::NOT_COMPILED == ran) {
 			unsupported(generator, first, std::format("compile-time code couldn't run: {}", error));
 			return false;
@@ -10341,6 +10373,16 @@ namespace hemera {
 		void write_function(Call& call, uint8_t* record, const TypeInfoStruct* layout, Declaration* function) {
 			CompileTimeData& data = call.data;
 			auto type = static_cast<TypeInfoFunction const*>(function->value_type);
+			/*
+			 * A function of this program not resolved yet: what's written is partial, and the run waits for it. A
+			 * generic's own declaration is resolved without a type, as only its instances have one
+			 */
+			if (type == nullptr && service_scope != nullptr && call.program == service_scope->program) {
+				std::scoped_lock<std::mutex> lock(call.program->names.mutex);
+				if (!function->resolved && !function->failed) {
+					service_scope->unresolved.push_back(function);
+				}
+			}
 			const std::string file = declaration_file(function);
 			const std::optional<Documentation> documentation = declaration_documentation(function);
 			write_documentation(data, record, layout, "documentation", documentation);
@@ -11418,7 +11460,11 @@ namespace hemera {
 				read_location(call, 0, file, line, column);
 				const std::string message = format_compile_time(read_string(call.arguments[1]),
 					reinterpret_cast<const void*>(read_u64(call.arguments[2] + 8)), read_u64(call.arguments[2]));
-				if (name == "report_error") {
+				// Held until the run is known to count: one that described a function too early is run again
+				if (service_scope != nullptr) {
+					service_scope->reports.push_back({ name == "report_error", file, line, column, message });
+				}
+				else if (name == "report_error") {
 					report_error(ErrorCode::E4029, file, line, column, message);
 				}
 				else {
@@ -11773,6 +11819,8 @@ namespace hemera {
 		service_scope = &scope;
 		const RunResult ran = call_loaded(callback.caller, frame.data(), run);
 		service_scope = outer;
+		// Called once the target's checked, so nothing it describes is waited for: what it reported counts
+		report_held(scope);
 		return RunResult::RAN == ran && reinterpret_cast<const uint8_t*>(frame.data())[result_offset] != 0;
 	}
 

@@ -66,6 +66,13 @@ namespace hemera {
 	Progress require_complete(Walk& walk, ast::Node* where, TypeInfo* type);
 
 	/// <summary>
+	/// Requires every alias among a generic's arguments to know what it names, parking the walk's work until each is
+	/// resolved: an instance is keyed by what its arguments' aliases name, which an alias only declared doesn't know
+	/// yet, so two different ones would share an instance (instance_of).
+	/// </summary>
+	Progress require_aliases_resolved(Walk& walk, ast::Node* where, const std::vector<TypeInfo*>& arguments);
+
+	/// <summary>
 	/// Waits until what compile-time code runs with is resolved: base/runtime's CarrierBlock, Context and
 	/// COMPILE_TIME_CONTEXT (docs/compilation.md, Compile-Time Execution).
 	/// </summary>

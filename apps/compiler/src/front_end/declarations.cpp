@@ -520,6 +520,10 @@ namespace hemera {
 				++index;
 			}
 		}
+		Progress aliases = require_aliases_resolved(walk, where, arguments);
+		if (aliases != Progress::DONE) {
+			return aliases;
+		}
 		Declaration* instance = instance_of(walk, generic, arguments, values);
 		// Its constraints, and the functions it's given, checked where it's used (docs/types.md, Constraints)
 		Progress progress = check_constraints(walk, where, generic, instance);

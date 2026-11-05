@@ -1519,6 +1519,36 @@ namespace hemera {
 		return check_locked(walk, names, where, iter->second, Need::RESOLVED);
 	}
 
+	Progress require_aliases_resolved(Walk& walk, ast::Node* where, const std::vector<TypeInfo*>& arguments) {
+		NameRegistry& names = walk.executor.program_info->names;
+		for (TypeInfo* argument : arguments) {
+			// Through every alias to what it names, waiting at the first that doesn't know yet
+			TypeInfo* type = argument;
+			while (type != nullptr && TypeInfoVariant::ALIAS == type->variant && !is_mutable_argument(type)) {
+				auto alias = static_cast<TypeInfoAlias*>(type);
+				if (alias->distinct) {
+					break;
+				}
+				if (alias->base_type == nullptr) {
+					std::scoped_lock<std::mutex> lock(names.mutex);
+					auto iter = names.type_declarations.find(type);
+					if (iter == names.type_declarations.end()) {
+						break;
+					}
+					Progress progress = check_locked(walk, names, where, iter->second, Need::RESOLVED);
+					if (progress != Progress::DONE) {
+						return progress;
+					}
+					if (alias->base_type == nullptr) {
+						break;
+					}
+				}
+				type = alias->base_type;
+			}
+		}
+		return Progress::DONE;
+	}
+
 	std::string constant_text(const ConstantValue& value) {
 		if (ConstantValue::Kind::BOOLEAN == value.kind) {
 			return value.boolean ? "true" : "false";
@@ -2668,6 +2698,10 @@ namespace hemera {
 		progress = generic_type_arguments(walk, generic, nodes, [&](ast::Node* argument, TypeInfo*& type) {
 			return argument_type_of(walk, argument, Need::DECLARED, type);
 		}, arguments, values);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		progress = require_aliases_resolved(walk, node, arguments);
 		if (progress != Progress::DONE) {
 			return progress;
 		}

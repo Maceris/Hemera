@@ -1612,7 +1612,21 @@ namespace hemera {
 		}
 		TypeInfo* current = actual;
 		if (optional) {
-			current = held_value(current);
+			TypeInfo* held = held_value(current);
+			/*
+			 * An optional not laid out yet, which another thread may still be doing, has no variants to look in: what it
+			 * holds is its instance's argument, known since it was made
+			 */
+			if (held == nullptr) {
+				NameRegistry& names = checker.walk.executor.program_info->names;
+				std::scoped_lock<std::mutex> lock(names.mutex);
+				auto iter = names.type_declarations.find(base_of(current));
+				if (iter != names.type_declarations.end() && iter->second->generic != nullptr
+					&& text_of(iter->second->generic->name) == "Optional" && iter->second->generic_arguments.size() == 1) {
+					held = iter->second->generic_arguments[0];
+				}
+			}
+			current = held;
 			if (current == nullptr) {
 				return;
 			}
@@ -2282,6 +2296,10 @@ namespace hemera {
 				return Progress::DONE;
 			}
 			instance_arguments.push_back(iter->second);
+		}
+		Progress aliases = require_aliases_resolved(checker.walk, where, instance_arguments);
+		if (aliases != Progress::DONE) {
+			return aliases;
 		}
 		Declaration* instance = instance_of(checker.walk, generic, instance_arguments, instance_values);
 		// Its constraints, and the functions it's given, checked here, where it's made (docs/types.md, Constraints)
@@ -3012,6 +3030,9 @@ namespace hemera {
 					 * function value (docs/functions.md)
 					 */
 					const bool called = i + 1 < node->children.size() && ast::NodeType::PAREN_GROUP == node->children[i + 1]->node_type;
+					if (progress == Progress::DONE && !called) {
+						progress = require_aliases_resolved(checker.walk, child, value.generic_arguments);
+					}
 					if (progress == Progress::DONE && !called) {
 						Declaration* generic = value.declaration;
 						value.generic_values.resize(value.generic_arguments.size());
