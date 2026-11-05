@@ -534,8 +534,13 @@ schema_try_write_value_at :: fn(data: rawptr, type: ptr[compiler.TypeInfo], into
  *     though its pointers still don't point outside the copy.
  * @param into Where the value goes: type.size bytes that can be written, left as they were when it fails.
  * @return Whether the value was read. False, with nothing stored, when bytes are fewer than the type's size or
- *     empty, when there isn't the memory for the copy, when a distance points past what was written, when a union's
- *     tag names no variant, or when pointers go more than SCHEMA_MAX_DEPTH deep; the copy is freed then.
+ *     empty, when there isn't the memory for the copy, when a distance points past what was written, when a string or
+ *     view that isn't empty is null, when a C string has no 0 byte before the end of what was written, when what a
+ *     pointer points to doesn't come after the value and all that pointers before it point to, as the writer lays
+ *     them out, so no byte is read as two things, when a union's tag names no variant, or when pointers go more than SCHEMA_MAX_DEPTH deep; the copy is freed then. What the
+ *     writer writes as 0 is read as 0 whatever the bytes say, as they may come from a program that isn't the writer:
+ *     a rawptr, a relative pointer, a function, a type value, an any, a #union struct holding pointers, and a dynamic
+ *     array's capacity and allocator, so its first add moves its elements to memory of its own.
  */
 schema_read_value :: fn(bytes: u8[], type: ptr[compiler.TypeInfo], into: rawptr) -> bool {
     size :: type.size
@@ -551,7 +556,9 @@ schema_read_value :: fn(bytes: u8[], type: ptr[compiler.TypeInfo], into: rawptr)
             copy[i] = byte
         }
     }
-    if !schema_relocate(copy, 0, type, 0) {
+    // What pointers point to comes after the value, as the writer puts it there
+    next := size
+    if !schema_relocate(copy, 0, type, 0, &next) {
         free_array(copy)
         return false
     }
@@ -599,25 +606,44 @@ schema_write_word :: fn(copy: mut u8[], at: usize, value: u64) {
 }
 
 /**
+ * Zero bytes of a copy being read back.
+ *
+ * @param copy The copy.
+ * @param at Where the bytes start.
+ * @param count How many; those past the copy's end are left alone.
+ */
+schema_zero_copy :: fn(copy: mut u8[], at: usize, count: usize) {
+    for index in at..<at + count {
+        if index < copy.count {
+            copy[index] = 0
+        }
+    }
+}
+
+/**
  * Make the distance written at a place in a copy a pointer into the copy again.
  *
  * @param copy The copy being read back, whose address the pointer is made from, so it has to stay where it is.
  * @param at Where in copy the distance is, in bytes; it's replaced by the pointer.
  * @param count How many bytes what it points to takes, all of which have to be inside the copy.
- * @param ok Set to false when the distance, its word or what it points to would be past the copy's end; never set
- *     to true, so one flag gathers every failure.
+ * @param ok Set to false when the distance, its word or what it points to would be past the copy's end, or when it
+ *     points before next; never set to true, so one flag gathers every failure.
+ * @param next Where what it points to can start, at or after it, as the writer puts each thing after the last; moved
+ *     past what it points to.
  * @return Where in the copy what it points to starts, in bytes. None for a distance of 0, a null pointer, which is
  *     left as it is, and when it doesn't fit, which leaves the word as it was.
  */
-schema_relocate_word :: fn(copy: mut u8[], at: usize, count: usize, ok: ptr[mut bool]) -> usize? {
+schema_relocate_word :: fn(copy: mut u8[], at: usize, count: usize, ok: ptr[mut bool], next: ptr[mut usize]) -> usize? {
     distance :: schema_read_word(copy, at)
     if distance == 0 {
         return null
     }
-    if distance >= cast[u64](copy.count) || cast[u64](count) > cast[u64](copy.count) - distance || at + 8 > copy.count {
+    if distance >= cast[u64](copy.count) || cast[u64](count) > cast[u64](copy.count) - distance || at + 8 > copy.count
+        || distance < cast[u64](next^) {
         ok^ = false
         return null
     }
+    next^ = cast[usize](distance) + count
     schema_write_word(copy, at, cast[u64](cast[uintptr](&copy[0])) + distance)
     return cast[usize](distance)
 }
@@ -629,10 +655,13 @@ schema_relocate_word :: fn(copy: mut u8[], at: usize, count: usize, ok: ptr[mut 
  * @param at Where in copy the value starts, in bytes.
  * @param type The value's type, which says where its distances are.
  * @param depth How many pointers deep the value is, 0 for the value read; deeper than SCHEMA_MAX_DEPTH fails.
- * @return Whether every distance fit inside the copy; false too when the value runs past the copy's end, when a
- *     union's tag names no variant, or when it's too deep. Distances made pointers before a failure stay pointers.
+ * @param next Where in copy what the next pointer points to can start, at or after it, past what's been reached so
+ *     far; moved past each thing a pointer points to.
+ * @return Whether every distance fit inside the copy, each after what came before it; false too when the value runs
+ *     past the copy's end, when a union's tag names no variant, or when it's too deep. Distances made pointers before
+ *     a failure stay pointers.
  */
-schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], depth: int) -> bool {
+schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], depth: int, next: ptr[mut usize]) -> bool {
     if depth > SCHEMA_MAX_DEPTH || at + type.size > copy.count {
         return false
     }
@@ -641,33 +670,59 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
     variant :: info.variant
     if variant == .STRING {
         if cast[ptr[compiler.TypeInfoString]](info).is_raw {
-            _ = schema_relocate_word(copy, at, 1, &ok)
-            return ok
+            // Its bytes, through the 0 that ends them, have to be in the copy, as reading it goes on until that 0
+            match schema_relocate_word(copy, at, 1, &ok, next) {
+                case Some(start) => {
+                    for index in start..<copy.count {
+                        if copy[index] == 0 {
+                            next^ = index + 1
+                            return ok
+                        }
+                    }
+                    return false
+                }
+                case None => return ok
+            }
         }
-        _ = schema_relocate_word(copy, at + 8, cast[usize](schema_read_word(copy, at)), &ok)
+        count :: cast[usize](schema_read_word(copy, at))
+        // A null string is an empty one: one with a count would be read from address 0
+        if count > 0 && schema_read_word(copy, at + 8) == 0 {
+            return false
+        }
+        _ = schema_relocate_word(copy, at + 8, count, &ok, next)
         return ok
     }
+    // What's written as 0, as nothing in it means anything in another program, is read as 0 too
+    if variant == .ANY || variant == .FUNCTION || variant == .TYPE {
+        schema_zero_copy(copy, at, info.size)
+        return true
+    }
     if variant == .ARRAY {
-        return schema_relocate_array(copy, at, cast[ptr[compiler.TypeInfoArray]](info), 0, depth)
+        return schema_relocate_array(copy, at, cast[ptr[compiler.TypeInfoArray]](info), 0, depth, next)
     }
     if variant == .POINTER {
         pointer :: cast[ptr[compiler.TypeInfoPointer]](info)
-        if pointer.is_relative {
+        // Neither a relative pointer nor a rawptr is followed when it's written, so neither points to anything read
+        if pointer.is_relative || (pointer.base_type is_none) {
+            schema_zero_copy(copy, at, info.size)
             return true
         }
         target :: pointer.base_type or_return true
-        match schema_relocate_word(copy, at, target.size, &ok) {
-            case Some(copied) => return ok && schema_relocate(copy, copied, target, depth + 1)
+        match schema_relocate_word(copy, at, target.size, &ok, next) {
+            case Some(copied) => return ok && schema_relocate(copy, copied, target, depth + 1, next)
             case None => return ok
         }
     }
     if variant == .STRUCT {
         structure :: cast[ptr[compiler.TypeInfoStruct]](info)
         if structure.is_union {
+            if schema_holds_pointers(info, 0) {
+                schema_zero_copy(copy, at, info.size)
+            }
             return true
         }
         for member in structure.members {
-            if !schema_relocate(copy, at + member.offset, member.member_type, depth) {
+            if !schema_relocate(copy, at + member.offset, member.member_type, depth, next) {
                 return false
             }
         }
@@ -678,7 +733,7 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
         if union_info.null_is_none {
             for each in union_info.variants {
                 if each.types.count == 1 {
-                    return schema_relocate(copy, at, each.types[0], depth)
+                    return schema_relocate(copy, at, each.types[0], depth, next)
                 }
             }
             return true
@@ -693,7 +748,7 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
         }
         chosen :: union_info.variants[tag]
         for held, i in chosen.types {
-            if i < chosen.offsets.count && !schema_relocate(copy, at + chosen.offsets[i], held, depth) {
+            if i < chosen.offsets.count && !schema_relocate(copy, at + chosen.offsets[i], held, depth, next) {
                 return false
             }
         }
@@ -711,13 +766,14 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
  *     view or dynamic, and the base type of its elements.
  * @param dimension The first dimension handled, from 0; past the last, the array's element is handled.
  * @param depth How many pointers deep the array is, as schema_relocate counts it.
+ * @param next Where what the next pointer points to can start, as schema_relocate takes it.
  * @return Whether every distance fit inside the copy, as schema_relocate gives it; false too when a view's or
  *     dynamic array's count is more elements than the whole copy could hold.
  */
-schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeInfoArray], dimension: usize, depth: int) -> bool {
+schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeInfoArray], dimension: usize, depth: int, next: ptr[mut usize]) -> bool {
     dimensions :: info.dimensions
     if dimension >= dimensions.count {
-        return schema_relocate(copy, at, info.base_type, depth)
+        return schema_relocate(copy, at, info.base_type, depth, next)
     }
     element_size :: schema_dimension_element_size(info, dimension)
     array_type :: dimensions[dimension].type
@@ -729,7 +785,15 @@ schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeIn
         if element_size > 0 && count > copy.count / element_size {
             return false
         }
-        match schema_relocate_word(copy, at + 8, count * element_size, &ok) {
+        // A null array is an empty one: one with a count would be read from address 0
+        if count > 0 && element_size > 0 && schema_read_word(copy, at + 8) == 0 {
+            return false
+        }
+        // Its capacity and allocator are another program's, if they're anything: none, so it owns no memory yet
+        if array_type == .DYNAMIC {
+            schema_zero_copy(copy, at + 16, size_of(ResizableArray) - 16)
+        }
+        match schema_relocate_word(copy, at + 8, count * element_size, &ok, next) {
             case Some(copied) => elements = copied
             case None => return ok
         }
@@ -738,7 +802,7 @@ schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeIn
         return true
     }
     for index in cast[usize](0)..<count {
-        if !schema_relocate_array(copy, elements + index * element_size, info, dimension + 1, depth) {
+        if !schema_relocate_array(copy, elements + index * element_size, info, dimension + 1, depth, next) {
             return false
         }
     }

@@ -153,6 +153,19 @@ array_try_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location 
 }
 
 /**
+ * Give the capacity a full array grows to: twice its own, at least ARRAY_MINIMUM_CAPACITY, and room for one more than
+ * it has.
+ *
+ * @param raw The array, only read; its count may be past its capacity, as a schema's reader leaves one.
+ * @return The capacity, in elements.
+ */
+grown_capacity :: fn(raw: ptr[ResizableArray]) -> usize {
+    doubled :: raw.capacity * 2
+    wanted :: if doubled > ARRAY_MINIMUM_CAPACITY { doubled } else { ARRAY_MINIMUM_CAPACITY }
+    return if wanted > raw.count { wanted } else { raw.count + 1 }
+}
+
+/**
  * Add a value at the end of a dynamic array, growing it if it's full.
  *
  * A full array grows to twice its capacity, or to ARRAY_MINIMUM_CAPACITY from empty. Without the memory, calls
@@ -166,9 +179,9 @@ array_try_reserve :: fn[T](array: ptr[mut T[..]], new_capacity: usize, location 
  */
 array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) {
     raw :: resizable(array)
-    if raw.count == raw.capacity {
-        doubled :: raw.capacity * 2
-        array_reserve(array, if doubled > ARRAY_MINIMUM_CAPACITY { doubled } else { ARRAY_MINIMUM_CAPACITY }, location)
+    // Past its capacity, an array owns none of its elements' memory, like one read back with a schema
+    if raw.count >= raw.capacity {
+        array_reserve(array, grown_capacity(raw), location)
     }
     element_address(raw, raw.count, T)^ = value
     raw.count += 1
@@ -186,9 +199,8 @@ array_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #call
  */
 array_try_add :: fn[T](array: ptr[mut T[..]], value #escaping : T, location := #caller_location) -> AllocatorError? {
     raw :: resizable(array)
-    if raw.count == raw.capacity {
-        doubled :: raw.capacity * 2
-        error :: array_try_reserve(array, if doubled > ARRAY_MINIMUM_CAPACITY { doubled } else { ARRAY_MINIMUM_CAPACITY }, location)
+    if raw.count >= raw.capacity {
+        error :: array_try_reserve(array, grown_capacity(raw), location)
         if error != null {
             return error
         }
