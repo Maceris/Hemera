@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -21,6 +22,9 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
+#include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/DiagnosticHandler.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
@@ -269,6 +273,47 @@ namespace hemera {
 	}
 
 	/*
+	 * The functions whose frames are larger than the target's max_frame_size (docs/compilation.md, Freestanding
+	 * Programs). LLVM measures each frame once it's laid out, and reports one larger than its function's
+	 * warn-stack-size, from whichever thread generates it, so they're kept here and reported as errors after.
+	 */
+	struct LargeFrames {
+		struct Frame {
+			std::string function;
+			// Where the function is, from its debug info; empty without any
+			std::string file;
+			unsigned line = 0;
+			uint64_t size = 0;
+		};
+		std::mutex mutex;
+		std::vector<Frame> frames;
+	};
+
+	// What a context reports about a frame too large, kept in frames; anything else is LLVM's usual handling.
+	class FrameSizeHandler : public llvm::DiagnosticHandler {
+	public:
+		explicit FrameSizeHandler(LargeFrames& frames) : frames(frames) {}
+
+		bool handleDiagnostics(const llvm::DiagnosticInfo& info) override {
+			auto* stack = llvm::dyn_cast<llvm::DiagnosticInfoStackSize>(&info);
+			if (stack == nullptr) {
+				return false;
+			}
+			LargeFrames::Frame frame{ stack->getFunction().getName().str(), std::string(), 0, stack->getStackSize() };
+			if (const llvm::DISubprogram* subprogram = stack->getFunction().getSubprogram()) {
+				frame.file = (std::filesystem::path(subprogram->getDirectory().str()) / subprogram->getFilename().str()).string();
+				frame.line = subprogram->getLine();
+			}
+			std::scoped_lock<std::mutex> lock(frames.mutex);
+			frames.frames.push_back(std::move(frame));
+			return true;
+		}
+
+	private:
+		LargeFrames& frames;
+	};
+
+	/*
 	 * How many parts to generate machine code for at once: one for a small module, since splitting costs a
 	 * copy of the module for each part, and for an object file asked for on its own (-c), which is one file.
 	 */
@@ -297,7 +342,8 @@ namespace hemera {
 	 * is the same every time.
 	 */
 	static bool generate_in_parts(const llvm::Target* target, const llvm::TargetMachine* machine, llvm::Module& module,
-		unsigned parts, llvm::OptimizationLevel level, std::string_view output_name, std::vector<std::string>& objects) {
+		unsigned parts, llvm::OptimizationLevel level, std::string_view output_name, std::vector<std::string>& objects,
+		LargeFrames* frames) {
 
 		/*
 		 * The module's assembly, which goes in the first part, defines functions others call, like #foreign
@@ -338,6 +384,9 @@ namespace hemera {
 		for (size_t i = 0; i < bitcode.size(); ++i) {
 			threads.emplace_back([&, i]() {
 				llvm::LLVMContext context;
+				if (frames != nullptr) {
+					context.setDiagnosticHandler(std::make_unique<FrameSizeHandler>(*frames));
+				}
 				llvm::Expected<std::unique_ptr<llvm::Module>> part = llvm::parseBitcodeFile(
 					llvm::MemoryBufferRef(llvm::StringRef(bitcode[i].data(), bitcode[i].size()), "part"), context);
 				if (!part) {
@@ -382,8 +431,41 @@ namespace hemera {
 		return true;
 	}
 
+	/*
+	 * With a max_frame_size, each function is generated with it as its warn-stack-size, and each frame larger is an
+	 * error, at the function when there's debug info to say where it is.
+	 */
 	bool BackendLLVM::generate_object_file(const Options& options,
 		llvm::Module& module, std::string_view output_name) {
+
+		if (options.max_frame_size == 0) {
+			return generate(options, module, output_name, nullptr);
+		}
+		const std::string limit = std::to_string(options.max_frame_size);
+		for (llvm::Function& function : module) {
+			if (!function.isDeclaration()) {
+				function.addFnAttr("warn-stack-size", limit);
+			}
+		}
+		LargeFrames frames;
+		llvm::LLVMContext& context = module.getContext();
+		std::unique_ptr<llvm::DiagnosticHandler> previous = context.getDiagnosticHandler();
+		context.setDiagnosticHandler(std::make_unique<FrameSizeHandler>(frames));
+		const bool generated = generate(options, module, output_name, &frames);
+		context.setDiagnosticHandler(std::move(previous));
+		// By function, since parts generated at once find them in any order
+		std::sort(frames.frames.begin(), frames.frames.end(), [](const LargeFrames::Frame& a, const LargeFrames::Frame& b) {
+			return a.function < b.function;
+		});
+		for (const LargeFrames::Frame& frame : frames.frames) {
+			report_error(ErrorCode::E6001, frame.file.empty() ? std::string(output_name) : frame.file, frame.line, 0,
+				std::format("{}'s stack frame is {} bytes, more than the target's max_frame_size of {}", frame.function,
+					frame.size, options.max_frame_size));
+		}
+		return generated && frames.frames.empty();
+	}
+
+	bool BackendLLVM::generate(const Options& options, llvm::Module& module, std::string_view output_name, LargeFrames* frames) {
 		// Optimize the IR
 
 		module.setTargetTriple(target_machine->getTargetTriple());
@@ -451,7 +533,7 @@ namespace hemera {
 				simplification.run(module, module_analysis_manager);
 			}
 			PhaseTimer timer(options.time_phases, std::format("  optimize and assemble {} in {} parts", std::filesystem::path(output_name).filename().string(), parts));
-			return generate_in_parts(target, target_machine, module, parts, optimization_level, output_name, objects);
+			return generate_in_parts(target, target_machine, module, parts, optimization_level, output_name, objects, frames);
 		}
 
 		llvm::ModulePassManager module_pass_manager =
@@ -733,7 +815,7 @@ namespace hemera {
 
 	/*
 	 * The linker run directly, rather than through a shell, which on Windows starts cmd.exe first: about 60 ms
-	 * of every build. The linker is found on the PATH.
+	 * of every build. The linker is found on the PATH, unless the target names one by its path.
 	 */
 	void BackendLLVM::link(const Options& options,
 		std::string_view object_file) {
@@ -755,7 +837,12 @@ namespace hemera {
 			return;
 		}
 		args.insert(args.end(), files.begin(), files.end());
-		llvm::ErrorOr<std::string> program = llvm::sys::findProgramByName(linker);
+		// The target's own, given the same arguments: a path, made absolute by add_target, or a name to find on the PATH
+		if (!options.linker.empty()) {
+			linker = options.linker;
+		}
+		llvm::ErrorOr<std::string> program = std::filesystem::path(linker).is_absolute() ? llvm::ErrorOr<std::string>(linker)
+			: llvm::sys::findProgramByName(linker);
 		if (!program) {
 			report_error(ErrorCode::E7000, object_file, 0, 0, std::format("{} isn't on the PATH", linker));
 		}

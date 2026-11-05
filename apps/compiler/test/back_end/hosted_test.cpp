@@ -24,6 +24,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Object/COFFImportFile.h"
+#include "llvm/Support/Program.h"
 #include "mlir/IR/BuiltinDialect.h"
 
 static std::filesystem::path scenario(std::string_view name) {
@@ -1265,6 +1266,70 @@ TEST(Build, BuildsDiscoveredTargets)
 	EXPECT_TRUE(hemera::build_targets(program_info.get(), options, alloc));
 	EXPECT_EQ(hemera::error_count(), 0);
 	EXPECT_EQ(std::system(std::format("\"{}.exe\"", output).c_str()), 11);
+
+	hemera::reset_build_registry();
+	module.erase();
+}
+
+/*
+ * What add_target reads that only shows in what's built: a configuration that doesn't follow the debug info, which the
+ * target's code reads; a linker by its path, here lld-link copied under a name of its own, and one by a name not on the
+ * PATH, whose target fails to link; and a max_frame_size that a function's frame is larger than, which is its target's
+ * error. The other targets still build.
+ */
+TEST(Build, ReadsTargetOptions)
+{
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	hemera::reset_build_registry();
+
+	mlir::MLIRContext context;
+	context.loadDialect<mlir::BuiltinDialect>();
+	context.loadDialect<hmir::HemeraDialect>();
+	mlir::OpBuilder builder(&context);
+	mlir::ModuleOp module = mlir::ModuleOp::create(builder, builder.getUnknownLoc(), "build");
+	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
+
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "target_options";
+	std::filesystem::create_directories(output_folder / "linker");
+	// lld picks its flavor from its name, which ends in link
+	llvm::ErrorOr<std::string> lld_link = llvm::sys::findProgramByName("lld-link");
+	ASSERT_TRUE(static_cast<bool>(lld_link));
+	const std::filesystem::path linker = output_folder / "linker" / "custom-link.exe";
+	std::filesystem::copy_file(*lld_link, linker, std::filesystem::copy_options::overwrite_existing);
+	const std::string configured = (output_folder / "configured").string();
+	const std::string unlinked = (output_folder / "unlinked").string();
+	const std::string framed = (output_folder / "framed").string();
+	for (const std::string& output : { configured, unlinked, framed }) {
+		std::filesystem::remove(output + ".exe");
+	}
+	hemera::Options options;
+	options.input = std::filesystem::canonical(scenario("target_options") / "build");
+	options.output_name = (output_folder / "build").string();
+	options.settings = { { "configured_output", configured }, { "unlinked_output", unlinked }, { "framed_output", framed },
+		{ "linker", linker.string() } };
+
+	hemera::kick_off_processing(program_info.get(), &options);
+	ASSERT_EQ(hemera::error_count(), 0) << "first error: " << static_cast<int>(hemera::error_list()->front());
+	ASSERT_EQ(hemera::build_registry().targets.size(), 3u);
+	hemera::disable_reporting_printing();
+	hemera::Allocator<> alloc;
+	EXPECT_FALSE(hemera::build_targets(program_info.get(), options, alloc));
+	hemera::enable_reporting_printing();
+	ASSERT_NE(hemera::error_list(), nullptr);
+	std::string reported;
+	for (const std::string& message : *hemera::error_messages()) {
+		reported += message + '\n';
+	}
+	EXPECT_EQ(hemera::error_list()->size(), 2u) << reported;
+	EXPECT_EQ(std::count(hemera::error_list()->begin(), hemera::error_list()->end(), hemera::ErrorCode::E7000), 1) << reported;
+	EXPECT_EQ(std::count(hemera::error_list()->begin(), hemera::error_list()->end(), hemera::ErrorCode::E6001), 1) << reported;
+	EXPECT_NE(reported.find("hemera-no-such-linker isn't on the PATH"), std::string::npos) << reported;
+	EXPECT_NE(reported.find("framed.fill's stack frame is"), std::string::npos) << reported;
+	EXPECT_NE(reported.find("more than the target's max_frame_size of 16384"), std::string::npos) << reported;
+	EXPECT_FALSE(std::filesystem::exists(unlinked + ".exe"));
+	EXPECT_FALSE(std::filesystem::exists(framed + ".exe"));
+	EXPECT_EQ(std::system(std::format("\"{}.exe\"", configured).c_str()), 42);
 
 	hemera::reset_build_registry();
 	module.erase();

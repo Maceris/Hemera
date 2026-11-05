@@ -48,8 +48,9 @@ BuildOptions :: struct {
     /** How code is generated: the optimization level and debug info. */
     backend_options : BackendOptions,
     /**
-     * Debug when the options have debug info, Release otherwise, as command_line_options gives it. add_target doesn't
-     * read it: backend_options decides.
+     * Whether the target is built for debugging or for release, which its code reads with current_build_options.
+     * command_line_options gives Debug when the options have debug info, and Release otherwise. It changes nothing
+     * about the code generated, which backend_options decides, so a release build can still have debug info.
      */
     configuration : Configuration,
     /** What the target is compiled for and how it's linked. */
@@ -99,11 +100,14 @@ BackendType :: enum {
     LLVM,
 }
 
-/** Whether a build is for debugging or for release, which follows from whether it has debug info. */
+/**
+ * Whether a build is for debugging or for release: what a build package gives its target, or from the command line,
+ * whether it has debug info.
+ */
 Configuration :: enum {
-    /** Built with debug info. */
+    /** For debugging: what the command line gives with debug info. */
     Debug,
-    /** Built without debug info. */
+    /** For release: what the command line gives without debug info. */
     Release
 }
 
@@ -156,8 +160,9 @@ TargetOptions :: struct {
      */
     library_paths : string[..],
     /**
-     * Linker to run. Empty uses the default for the target, see docs/compilation.md (Linking). add_target doesn't read
-     * it yet, so every target uses the default.
+     * Linker to run: a program's name, found on the PATH, or, when it has a / or \ in it, its path, relative to the
+     * build package's folder. It's given the default's arguments, lld-link's for PE/COFF and ld.lld's for ELF, so it
+     * has to take those. Empty uses the default (docs/compilation.md, Linking).
      */
     linker : string,
     /**
@@ -169,9 +174,9 @@ TargetOptions :: struct {
     /** What a function's prologue does when its stack check finds too little room. */
     stack_check_failure : StackCheckFailure,
     /**
-     * Largest stack frame, in bytes, any function may have. A larger one is a compile error.
-     * 0 means no limit. For programs with small fixed stacks, like a kernel. add_target doesn't read it yet, so no
-     * target has a limit.
+     * Largest stack frame, in bytes, any function may have; a larger one is a compile error (E6001) naming the
+     * function. 0 means no limit. For programs with small fixed stacks, like a kernel. Frames are measured as the
+     * machine code is generated, so after optimization, at the target's optimization_level.
      */
     max_frame_size : usize,
 }

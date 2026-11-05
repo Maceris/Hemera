@@ -505,7 +505,23 @@ namespace hemera {
         /// (docs/compilation.md, Linking).
         /// </summary>
         std::vector<std::filesystem::path> library_paths;
+        /// <summary>
+        /// The linker to run, from a build package's TargetOptions.linker: a program's name, found on the PATH, or
+        /// its path. Empty for the default, ld.lld for ELF and lld-link for PE/COFF (docs/compilation.md, Linking).
+        /// It's given the arguments of the default for the object format.
+        /// </summary>
+        std::string linker;
+        /// <summary>
+        /// The largest stack frame, in bytes, any function may have, from a build package's
+        /// TargetOptions.max_frame_size; a larger one is a compile error. 0 for no limit.
+        /// </summary>
+        uint64_t max_frame_size = 0;
         bool debug_info;
+        /// <summary>
+        /// Whether the build is for debugging or for release, "Debug" or "Release", as compiler.current_build_options
+        /// gives it to the program's code: a build package's BuildOptions.configuration. Empty follows debug_info.
+        /// </summary>
+        std::string configuration;
         /// <summary>
         /// Build a typed library, whose input package's #export functions are its interface, rather than a program.
         /// </summary>

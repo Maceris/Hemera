@@ -424,16 +424,19 @@ kernel_entry #calling_convention(.c) #no_context :: fn() #never_returns {/* ... 
    a logger and a clock (see [control_flow.md](control_flow.md#pushing-a-whole-context)).
 
 Programs with small fixed-size stacks, like kernels, can also set `TargetOptions.max_frame_size`: any function whose
-stack frame is larger is a compile error, so a large stack buffer is caught when building rather than when the stack
-runs out.
+stack frame is larger is a compile error (E6001), so a large stack buffer is caught when building rather than when the
+stack runs out. Frames are measured as the machine code is generated, after optimization, so what's inlined into a
+function counts toward its frame. The error names the function, and with debug info is at its declaration.
 
 Freestanding programs usually also set `TargetOptions.stack_check_failure` to `.Trap`, since they have no allocator
 for `morestack`.
 
 ## Linking
 
-The compiler links the output itself, with the linker in `TargetOptions.linker`, or LLVM's `lld` if that's empty.
-The object format follows the target's OS:
+The compiler links the output itself, with LLVM's `lld`: `lld-link` for PE/COFF and `ld.lld` for ELF, found on the
+PATH. A build package can give a target another with `TargetOptions.linker`: a program's name, found on the PATH, or
+its path, relative to the build package's folder. It's given the same arguments `lld` would be, so it has to take them,
+as `link.exe` does `lld-link`'s. The object format follows the target's OS:
 
 | OS | Format |
 |---|---|

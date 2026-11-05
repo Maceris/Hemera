@@ -21,7 +21,11 @@ FunctionInfo :: struct {
     never_returns : bool,
     /** The function's own type, its signature as a type, like type_of(function) gives. */
     type : type,
-    /** Its generic parameters, each with what it's bound to; the compiler doesn't fill these in yet, so it's empty. */
+    /**
+     * For an instance of a generic function, like the pick[int] a FunctionCall names, each generic parameter that
+     * takes a type, in the order the generic declares them, with the type it's bound to. A parameter that takes a
+     * compile-time value isn't in it. Empty for a function that isn't an instance, the generic itself included.
+     */
     generic_bindings : GenericBinding[],
     /** Each parameter, in order. */
     parameters : FunctionParameter[],
@@ -85,7 +89,12 @@ FunctionParameter :: struct {
     name : string,
     /** Its type. */
     type : type,
-    /** Its default value; None for now, even for a parameter with one, since defaults aren't worked out yet. */
+    /**
+     * Its default's value, of the parameter's type, for a default that's the same at every call: a literal, a
+     * constant, an enum member, a struct literal of those. None without a default, for one that can differ between
+     * calls (#caller_location, the context, or a call), for one that can't be kept, like a function, and while the
+     * function's body isn't checked yet, as when its own package's #run code asks.
+     */
     default_value : any?,
     /** Marked #escaping, so the function may keep it after returning. */
     is_escaping : bool,
