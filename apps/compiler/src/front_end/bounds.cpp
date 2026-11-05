@@ -317,6 +317,13 @@ namespace hemera {
 			std::map<Term, std::vector<const void*>> indexed_by;
 			// Each sum term's two terms, which changing either forgets it
 			std::map<Term, std::pair<Term, Term>> sums;
+			/*
+			 * Locals a defer assigns, which change wherever its block is left, a loop's every turn included: nothing is
+			 * known of them, so each read is a value of its own (find_deferred_writes)
+			 */
+			std::unordered_set<const void*> deferred_writes = {};
+			// How many such reads there have been, which numbers each one's term
+			size_t unknown_reads = 0;
 		};
 
 		void report(Analysis& analysis, const ast::Node* where, const std::string& details) {
@@ -904,7 +911,11 @@ namespace hemera {
 			if (found->local != nullptr) {
 				chain.local = found->local;
 				if (is_variant(found->type, TypeInfoVariant::INTEGER) || (found->type == nullptr && ValueKind::UNTYPED_INTEGER == found->kind)) {
-					chain.value = of_term(local_term(analysis, found->local, found->type));
+					// One a defer assigns is whatever its type allows, a term of its own each time it's read
+					chain.value = analysis.deferred_writes.contains(found->local)
+						? of_term(bounded_by_type(analysis, term_for(analysis, TermKind::LOCAL, found->local,
+							std::format("#read{}", analysis.unknown_reads++), is_unsigned(found->type)), found->type))
+						: of_term(local_term(analysis, found->local, found->type));
 				}
 				return chain;
 			}
@@ -2340,11 +2351,31 @@ namespace hemera {
 			}
 		}
 
+		/*
+		 * Locals a defer assigns, anywhere in it: x = ..., x += ... and the like, whose target is the local itself. They
+		 * change as the defer's block is left, which the walk doesn't follow.
+		 */
+		void find_deferred_writes(Analysis& analysis, ast::Node* node, bool deferred) {
+			const bool inside = deferred || ast::NodeType::DEFER == node->node_type;
+			if (inside && is_assignment(node) && !node->children.empty()) {
+				ast::Node* target = node->children[0];
+				const CheckedNode* head = head_of(analysis, target);
+				const CheckedNode* found = head != nullptr ? head : found_at(analysis, target);
+				if (found != nullptr && found->local != nullptr) {
+					analysis.deferred_writes.insert(found->local);
+				}
+			}
+			for (ast::Node* child : node->children) {
+				find_deferred_writes(analysis, child, inside);
+			}
+		}
+
 	}
 
 	bool check_bounds(const CheckedBody& checked, ast::Node* body, TypeInfoFunction const* type, const std::string& file_path) {
 		Analysis analysis{ checked, type, file_path, { TermInfo{} }, {}, {}, {}, 0, {}, 0, {}, {} };
 		find_address_taken(analysis, body);
+		find_deferred_writes(analysis, body, false);
 		Facts facts;
 		walk_block(analysis, facts, body);
 		return analysis.errors == 0;

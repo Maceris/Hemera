@@ -874,6 +874,7 @@ TEST(FrontEnd, ReportsBodyErrors)
 		{ "bounds_difference_wraps", hemera::ErrorCode::E4031 },
 		{ "bounds_signed_modulus", hemera::ErrorCode::E4031 },
 		{ "bounds_after_or_break", hemera::ErrorCode::E4031 },
+		{ "bounds_deferred_write", hemera::ErrorCode::E4031 },
 		{ "generic_value_variable", hemera::ErrorCode::E4010 },
 		{ "generic_value_given_type", hemera::ErrorCode::E4010 },
 		{ "generic_value_kind", hemera::ErrorCode::E4014 },
