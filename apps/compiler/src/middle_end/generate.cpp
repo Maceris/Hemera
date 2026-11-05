@@ -1141,8 +1141,8 @@ namespace hemera {
 		return unique;
 	}
 
-	// Whether a declaration's name has a directive after it, like main #export.
-	static bool has_name_directive(Declaration* declaration, std::string_view directive) {
+	// The directive after a declaration's name, like #export in main #export, or null if it has none of that name.
+	static ast::Node* name_directive(Declaration* declaration, std::string_view directive) {
 		ast::Node* names_node = declaration->node->children[0];
 		std::vector<ast::Node*> names{ names_node };
 		if (ast::NodeType::LIST == names_node->node_type) {
@@ -1154,11 +1154,30 @@ namespace hemera {
 			}
 			for (ast::Node* child : name->children) {
 				if (is_text(child->value.value, directive)) {
-					return true;
+					return child;
 				}
 			}
 		}
-		return false;
+		return nullptr;
+	}
+
+	// Whether a declaration's name has a directive after it, like main #export.
+	static bool has_name_directive(Declaration* declaration, std::string_view directive) {
+		return name_directive(declaration, directive) != nullptr;
+	}
+
+	// The name a #test(CASES) directive gives its cases by, like DIGEST_CASES; empty for a #test without them.
+	static std::string test_cases_of(Declaration* declaration) {
+		ast::Node* directive = name_directive(declaration, "#test");
+		if (directive == nullptr) {
+			return {};
+		}
+		for (ast::Node* argument : directive->children) {
+			if (ast::NodeType::PAREN_GROUP != argument->node_type && argument->value.value != nullptr) {
+				return text_of(argument->value.value);
+			}
+		}
+		return {};
 	}
 
 	static bool has_convention(TypeInfoFunction const* function, std::string_view convention) {
@@ -10391,6 +10410,7 @@ namespace hemera {
 			write_location_field(data, record, layout, file, function->node);
 			data.write_number(record, layout, "is_exported", has_name_directive(function, "#export"));
 			data.write_number(record, layout, "is_test", has_name_directive(function, "#test"));
+			data.write_text(record, layout, "test_cases", test_cases_of(function));
 			data.write_number(record, layout, "has_body", function_body(function) != nullptr);
 			if (type == nullptr) {
 				return;

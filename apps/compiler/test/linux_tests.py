@@ -93,6 +93,8 @@ TESTS = [
     ("in_image", ["--test"], 0),
     # Instances of a generic whose parameter is an optional of a generic alias, each with its own
     ("generic_alias_arguments", ["--test"], 0),
+    # #test(CASES), each case a test of its own
+    ("test_cases", [], 42),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--test", "--stack-check=morestack", "SYSROOT"], 0),
 ]

@@ -361,6 +361,12 @@ TEST(Hosted, KeepsGenericAliasArgumentsApart)
 	}
 }
 
+// #test(CASES): a test run once for each case of a constant array, each its own test (docs/testing.md).
+TEST(Hosted, RunsTestsOverCases)
+{
+	run_hosted("test_cases", hemera::TargetStackCheck::Off);
+}
+
 // std/testing: #test functions found through reflection, their assertions, and the runner's report (docs/testing.md).
 TEST(Hosted, RunsTests)
 {

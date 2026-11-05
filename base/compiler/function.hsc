@@ -15,6 +15,11 @@ FunctionInfo :: struct {
     is_exported : bool,
     /** Marked #test, so a test a runner finds (docs/testing.md); it's compiled into a program only if something calls it. */
     is_test : bool,
+    /**
+     * For #test(CASES), the name its cases are given by, a constant array of its package's, each run as a test of its
+     * own (docs/testing.md, Tests Over Cases); empty for a #test without them, or a function that isn't one.
+     */
+    test_cases : string,
     /** False for bodiless --- declarations, like intrinsics and interface packages. */
     has_body : bool,
     /** Marked #never_returns. */

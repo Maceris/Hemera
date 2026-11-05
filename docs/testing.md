@@ -29,6 +29,28 @@ parses_a_duration #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
 A function marked `#test` whose signature is anything else is an error where the runner's table is made (`tests_of`),
 at the function.
 
+### Tests Over Cases
+
+`#test(CASES)` runs a test once for each case of `CASES`, a constant fixed array of the test's package, and each run
+is a test of its own: it passes, fails, skips and is filtered by itself, and a `require_` assertion ends only its own
+case. The function takes the case after `t`:
+
+```
+DIGESTS :: Digest.[
+    Digest.{name = "empty", input = "", hex = "e3b0c442..."},
+    Digest.{name = "abc", input = "abc", hex = "ba7816bf..."},
+]
+
+hashes_to_the_published_digest #test(DIGESTS) :: fn(t: ptr[mut testing.T], item: Digest) -> testing.Outcome {
+    testing.expect_eq(t, hex_of(sha256(item.input)), item.hex, "the digest is the one published")
+    return .Ok
+}
+```
+
+Each case's test is named after the function and the case: by the case's `name`, when its type has a `name` string,
+like `hashes_to_the_published_digest[abc]`, or by its index otherwise, like `squares[2]`. A filter of `[abc]` runs
+that case alone. The cases' type has to be the second parameter's; anything else is an error at the function.
+
 Tests sit beside the code they test, in its package, or in a test package of their own that imports it. They're
 compiled only into programs that ask for them: an ordinary build leaves them out like any function nothing calls.
 
@@ -88,7 +110,8 @@ check_less :: fn(actual: int, bound: int, message #format(actual, bound) : strin
 
 ### Notes
 
-A failure in a loop, or in a helper, can say which case it was on with a note: `testing.note(t, format, values...)`
+A failure in a loop, or in a helper, can say which case it was on with a note (for cases that should each be a test of
+their own, see [Tests Over Cases](#tests-over-cases)): `testing.note(t, format, values...)`
 adds a line that every failure from there on reports, until `testing.end_note(t)` takes it away. Notes nest, the
 newest last.
 

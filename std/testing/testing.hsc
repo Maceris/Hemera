@@ -624,6 +624,23 @@ end_note :: fn(t: ptr[mut T]) {
 }
 
 /**
+ * Run a test over cases with one of them: what the function tests_of makes for each case calls.
+ *
+ * @param t The test's state.
+ * @param test The #test(CASES) function.
+ * @param cases Its cases.
+ * @param index Which case, from 0.
+ * @return What test gave; Error(Failed), the failure recorded, if index is past the cases, which tests_of doesn't make.
+ */
+run_case_at :: fn[C](t: ptr[mut T], test: (fn(t: ptr[mut T], item: C) -> Outcome), cases: C[], index: usize) -> Outcome {
+    if index >= cases.count {
+        fail(t, "the case is one of the test's cases")
+        return .Error(.Failed)
+    }
+    return test(t, cases[index])
+}
+
+/**
  * Turn whether an expect_ assertion held into an Outcome, for its require_ form, as a test's own assertions can too.
  *
  * @param held What the expect_ assertion gave.
