@@ -2975,6 +2975,17 @@ namespace hemera::parser {
 	}
 
 	/*
+	 * An argument or index in parentheses, like f((a == b), c): a cast to nothing, as (x).member is. Arguments sit
+	 * flat beside the parentheses or brackets that mark them, so a group of its own would read as another call.
+	 */
+	static ast::Node* kept_apart(ast::Node* argument) {
+		if (argument != nullptr && ast::NodeType::PAREN_GROUP == argument->node_type) {
+			argument->node_type = ast::NodeType::CAST;
+		}
+		return argument;
+	}
+
+	/*
 	 * What goes between the brackets when indexing: an expression, a range with an
 	 * open start (..<5, ..=5) or end (5..), or for a type used as a value, .. for a
 	 * dynamic array or a type argument that isn't an expression, like mut int.
@@ -3059,7 +3070,7 @@ namespace hemera::parser {
 					if (!index.success) {
 						return false;
 					}
-					target.children.push_back(index.result);
+					target.children.push_back(kept_apart(index.result));
 
 					// Several type arguments, like Result[int, string] used as a value
 					while (skip(state, TokenType::SYM_COMMA)) {
@@ -3067,7 +3078,7 @@ namespace hemera::parser {
 						if (!argument.success) {
 							return false;
 						}
-						target.children.push_back(argument.result);
+						target.children.push_back(kept_apart(argument.result));
 					}
 				}
 				if (!skip(state, TokenType::SYM_RBRACK)) {
@@ -3399,7 +3410,7 @@ namespace hemera::parser {
 					delete_node(state->node_alloc, expr.result);
 					return false;
 				}
-				to_add_to->children.push_back(expr.result);
+				to_add_to->children.push_back(kept_apart(expr.result));
 			}
 			
 			if (!skip(state, TokenType::SYM_COMMA)) {
