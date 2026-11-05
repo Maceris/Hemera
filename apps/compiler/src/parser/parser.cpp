@@ -1226,8 +1226,11 @@ namespace hemera::parser {
 				if (its_a_name) {
 					// identifier, possibly a list of them
 					ast::Node& name = next_as_node(state, ast::NodeType::IDENTIFIER);
+					// Its directives, some with arguments, like #format(actual, expected)
 					while (expect(state, TokenType::DIRECTIVE)) {
-						next_as_node(state, ast::NodeType::DIRECTIVE, &name);
+						if (!directive_with_arguments(state, &name).success) {
+							return false;
+						}
 					}
 
 					ast::Node* name_part = nullptr;

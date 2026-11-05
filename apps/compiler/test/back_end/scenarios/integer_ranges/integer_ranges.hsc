@@ -34,7 +34,7 @@ keeps_literals_at_their_types_edges #test :: fn(t: ptr[mut testing.T]) -> testin
     testing.expect_eq(t, b, -128, "an i8's smallest value")
     testing.expect_eq(t, c, 127, "an i8's largest value")
     testing.expect_eq(t, d, 0xffff_ffff_ffff_ffff, "a u64's largest value")
-    testing.expect(t, e < 0, "an i64's smallest value is kept negative, not wrapped")
+    testing.expect_lt(t, e, 0, "an i64's smallest value is kept negative, not wrapped")
     testing.expect_eq(t, f, 0, "-0 is 0, in range of an unsigned type")
     testing.expect_eq(t, g, 5, "a negated negative is positive")
     testing.expect_eq(t, h, 255, "eight binary ones")
@@ -43,7 +43,7 @@ keeps_literals_at_their_types_edges #test :: fn(t: ptr[mut testing.T]) -> testin
     testing.expect_eq(t, w, cast[u128](d), "a u128 holds a u64's largest value exactly")
     testing.expect_eq(t, v, cast[i128](d), "an i128 holds a u64's largest value exactly")
     testing.expect_eq(t, w >> 64, 0, "the u128 has nothing above its low 64 bits")
-    testing.expect(t, v >= 0, "an i128 is wide enough that a u64's largest value is positive in it")
+    testing.expect_ge(t, v, 0, "an i128 is wide enough that a u64's largest value is positive in it")
     return .Ok
 }
 
@@ -98,7 +98,7 @@ folds_operators_on_known_integers #test :: fn(t: ptr[mut testing.T]) -> testing.
     testing.expect_eq(t, q, 300, "an integer product given to a float")
     testing.expect_eq(t, r, 255, "255 + 1 - 1 is in range once worked out, though 256 isn't")
     testing.expect_eq(t, s, 0xffff_ffff_ffff_ffff, "a u64's largest value less 1 and plus 1 again")
-    testing.expect(t, u < 0, "an i64's smallest value, made by subtracting, is negative")
+    testing.expect_lt(t, u, 0, "an i64's smallest value, made by subtracting, is negative")
     testing.expect_eq(t, u + 1, -9223372036854775807, "one above an i64's smallest value")
     return .Ok
 }

@@ -44,7 +44,7 @@ refuses_a_program_that_isnt_there #test :: fn(t: ptr[mut testing.T]) -> testing.
 passes_arguments_as_they_were_given #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     // Arguments that need quoting arrive as they were given: this program, run again, gives them back
     arguments :: os.arguments()
-    testing.require(t, arguments.count > 0, "a program is given its own path, to run itself again")?
+    testing.require_gt(t, arguments.count, 0, "a program is given its own path, to run itself again")?
     if arguments.count == 0 {
         return .Ok
     }

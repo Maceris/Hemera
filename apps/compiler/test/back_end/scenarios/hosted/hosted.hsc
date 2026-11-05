@@ -884,7 +884,7 @@ formats_values_by_their_types #test :: fn(t: ptr[mut testing.T]) -> testing.Outc
     none : ptr[Link]? = null
     shape_storage, colors_storage, point_storage, pointer_storage : u8[128]
     shape_text :: formatted(shape_storage, "% %", Shape.Rectangle(2, 3), first.next)
-    testing.expect(t, shape_text.count >= 16, "a variant with values and a pointer, each written out")
+    testing.expect_ge(t, shape_text.count, 16, "a variant with values and a pointer, each written out")
     colors :: formatted(colors_storage, "%2 %1 %%", Color.Green, true)
     testing.expect_eq(t, colors, "true Green %", "numbered %s pick values, and %% is a %")
     point :: formatted(point_storage, "%", Point.{1, -2})
@@ -922,8 +922,8 @@ knows_each_numbers_limits #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome 
     testing.expect_eq(t, min_value(i8), -128, "the smallest i8")
     testing.expect_eq(t, max_value(u64), 0xffff_ffff_ffff_ffff, "the largest u64")
     testing.expect_eq(t, min_value(u16), 0, "the smallest unsigned value is 0")
-    testing.expect(t, max_value(f32) > 3.0e38, "the largest f32 is about 3.4e38")
-    testing.expect(t, min_value(f64) < -1.0e308, "the smallest f64 is about -1.8e308")
+    testing.expect_gt(t, max_value(f32), 3.0e38, "the largest f32 is about 3.4e38")
+    testing.expect_lt(t, min_value(f64), -1.0e308, "the smallest f64 is about -1.8e308")
     return .Ok
 }
 

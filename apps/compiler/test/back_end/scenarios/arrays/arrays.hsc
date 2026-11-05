@@ -172,7 +172,7 @@ gives_back_every_block #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
         _ = copies_from_views_and_arrays(t)
     }
     testing.expect_eq(t, counter.live, 0, "each array is freed, and growing gives back the block it outgrew")
-    testing.expect(t, counter.allocations >= 8, "the arrays grew several times, through the context's allocator")
+    testing.expect_ge(t, counter.allocations, 8, "the arrays grew several times, through the context's allocator")
     return .Ok
 }
 
@@ -189,7 +189,7 @@ keeps_the_allocator_it_started_with #test :: fn(t: ptr[mut testing.T]) -> testin
     for i in 0..<10 {
         runtime.array_add(&held, i)
     }
-    testing.expect(t, counter.allocations > before, "growing outside the push_context still goes through the counter")
+    testing.expect_gt(t, counter.allocations, before, "growing outside the push_context still goes through the counter")
     testing.expect_eq(t, counter.live, 1, "the block outgrown is given back to it too")
     runtime.array_free(&held)
     testing.expect_eq(t, counter.live, 0, "freeing gives the last block back to it")

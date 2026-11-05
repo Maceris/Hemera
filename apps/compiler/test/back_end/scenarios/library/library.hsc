@@ -256,30 +256,6 @@ matches_nested_patterns #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     return .Ok
 }
 
-/** Where the tests' report goes until it's known whether any failed: a buffer, written out only then. */
-Captured :: struct {
-    /** The report's bytes, up to their count; what doesn't fit is dropped. */
-    bytes : u8[8192],
-    /** How many of bytes are used. */
-    count : usize,
-}
-
-/**
- * Keep a line of the report, a reporter's write.
- *
- * @param target The Captured, as a rawptr.
- * @param text The line, as much of it as fits copied.
- */
-capture :: fn(target: rawptr, text: string) {
-    captured :: cast[ptr[mut Captured]](target)
-    for character in text {
-        if captured.count < captured.bytes.count {
-            captured.bytes[captured.count] = cast[u8](character)
-            captured.count += 1
-        }
-    }
-}
-
 /** What the detailed logger puts on each line: no time, which changes from run to run. */
 DETAILED :: logger.Options.{time = false, location = true, function = true, thread = true}
 /** What the plain logger puts on each line: only the level and message, on standard output. */
@@ -287,12 +263,11 @@ PLAIN :: logger.Options.{time = false, location = false, function = false, threa
 
 main :: fn() -> int {
     // Kept quiet unless something failed, since what's written is compared
-    captured := Captured.{}
-    reporter :: testing.Reporter.{target = cast[rawptr](&captured), write = capture}
-    if testing.run(#insert testing.tests_of(compiler.load_package(".")), reporter) != 0 {
-        if captured.count > 0 {
-            runtime.write_output(string_of(&captured.bytes[0], captured.count))
-        }
+    storage : u8[8192]
+    caught := testing.BufferReporter.{bytes = storage}
+    failed :: testing.run(#insert testing.tests_of(compiler.load_package(".")), testing.reporter_of(&caught))
+    testing.write_report_if_failed(&caught, failed, testing.STANDARD_OUTPUT)
+    if failed != 0 {
         return 1
     }
     detailed :: logger.create(DETAILED)

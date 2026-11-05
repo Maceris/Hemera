@@ -71,7 +71,7 @@ bumps_aligned_zeroed_blocks_from_one_chunk #test :: fn(t: ptr[mut testing.T]) ->
     if 7 < aligned.count {
         testing.expect_eq(t, aligned[7], 0, "a new block is zeroed")
     }
-    testing.expect(t, memory.arena_used(r.arena) <= 3 + 64 + 8, "blocks are packed: no more than alignment between them")
+    testing.expect_le(t, memory.arena_used(r.arena), 3 + 64 + 8, "blocks are packed: no more than alignment between them")
     return .Ok
 }
 
@@ -86,7 +86,7 @@ gives_back_the_newest_block #test :: fn(t: ptr[mut testing.T]) -> testing.Outcom
     }
     used :: memory.arena_used(r.arena)
     runtime.free_array_aligned(aligned, 64, r.allocator)
-    testing.expect(t, memory.arena_used(r.arena) < used, "freeing the newest block moves the offset back")
+    testing.expect_lt(t, memory.arena_used(r.arena), used, "freeing the newest block moves the offset back")
     again, again_error :: runtime.new_array_aligned(u8, 8, 64, r.allocator)
     testing.require(t, again_error == null, "the space given back is there to take")?
     testing.expect_eq(t, again.count, 8, "the block is as long as asked")

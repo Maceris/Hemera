@@ -1098,6 +1098,33 @@ TEST(FrontEnd, ChecksFormatStrings)
 }
 
 /*
+ * A #format(...) parameter's string, checked against the parameters it names, and #format naming what isn't another
+ * parameter or put on what isn't a string.
+ */
+TEST(FrontEnd, ChecksFormatParameters)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("format_parameters"));
+	EXPECT_EQ(std::count(errors.begin(), errors.end(), hemera::ErrorCode::E4034), 2) << codes(errors);
+	EXPECT_EQ(std::count(errors.begin(), errors.end(), hemera::ErrorCode::E4014), 2) << codes(errors);
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"%3 is for value 3, but there are only 2",
+		"%1{.2} has a precision, which is for floats and strings, not int",
+		"#format names missing, which isn't another of the function's parameters",
+		"#format is for a string parameter, a format string",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
+/*
  * Owners that aren't released or moved on every path, or are used once they were (docs/memory.md, Owned
  * Types): each reported where it's found, with what to do about it.
  */

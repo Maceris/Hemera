@@ -373,9 +373,9 @@ TEST(Hosted, BuildsTestPrograms)
 	const HostedOutput all = run_hosted("testing", hemera::TargetStackCheck::Off, 1, "", false, false, false, {}, true);
 	EXPECT_NE(all.output.find("test reports_failures ... FAILED\n"), std::string::npos) << all.output;
 	EXPECT_NE(all.output.find("        expected 13, got 12\n"), std::string::npos) << all.output;
-	EXPECT_NE(all.output.find("2 tests: 1 passed, 1 failed\n"), std::string::npos) << all.output;
+	EXPECT_NE(all.output.find("4 tests: 1 passed, 2 failed, 1 skipped\n"), std::string::npos) << all.output;
 	const HostedOutput filtered = run_hosted("testing", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true, "digits");
-	EXPECT_EQ(filtered.output, "test parses_digits ... ok\n1 tests: 1 passed, 0 failed, 1 skipped\n");
+	EXPECT_EQ(filtered.output, "test parses_digits ... ok\n1 test: 1 passed, 0 failed, 3 filtered out\n");
 }
 
 // std/time_zones: TZif data parsed, and offsets from its transitions and its footer's POSIX TZ rule, north and south.

@@ -13,14 +13,16 @@ import compiler from "base"
  *
  * @param package The package whose tests these are, the inserting file's own, from compiler.load_package("."); none
  *     gives an empty table.
+ * @param file Only the tests declared in this file, by its name, like "accounts_check.hsc", or a path ending in it;
+ *     empty for every file's, as a test package wants. One file's suits checks kept in one file of a bigger package.
  * @return An expression, a Test[] literal; testing has to be imported, as testing, where it's inserted.
  */
-tests_of :: fn(package: compiler.PackageInfo?) -> compiler.Code {
+tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Code {
     found :: package or_return #code(testing.Test.[])
     // The tests' indices in found.functions, put in the order they're declared, as reflection gives another
     tests : usize[..]
     for &function, i in found.functions {
-        if !function.is_test || !is_test_signature(function) {
+        if !function.is_test || !in_file(function.location.file_path, file) || !is_test_signature(function) {
             continue
         }
         // After every test declared before it
@@ -55,6 +57,43 @@ tests_of :: fn(package: compiler.PackageInfo?) -> compiler.Code {
         }
     }
     return #code(testing.Test.[#insert compiler.list(made)])
+}
+
+/**
+ * Tell whether a function's file is the one asked for.
+ *
+ * @param path The function's file, as reflection gives it: a full path, with / or, on Windows, \ between its parts.
+ * @param file The file asked for, by name or by a path's end with / between its parts; empty for any.
+ * @return True if file is empty, is path, or is path's last parts, after a separator.
+ */
+in_file :: fn(path: string, file: string) -> bool {
+    if file.count == 0 || path == file {
+        return true
+    }
+    if file.count >= path.count {
+        return false
+    }
+    start :: path.count - file.count
+    if start == 0 || start > path.count || (path[start - 1] != '/' && path[start - 1] != '\\') {
+        return false
+    }
+    // Each / of file matches either separator of path
+    for character, i in file {
+        at :: start + i
+        if at >= path.count {
+            return false
+        }
+        found :: path[at]
+        if character == '/' {
+            if found != '/' && found != '\\' {
+                return false
+            }
+        }
+        else if found != character {
+            return false
+        }
+    }
+    return true
 }
 
 /**

@@ -8,7 +8,6 @@ package wycheproof_test
 import compiler from "base"
 import crypto from "std"
 import testing from "std"
-import text_buffer from "std"
 
 BUFFER :: 16384
 
@@ -186,13 +185,9 @@ hmac_case #constant_time :: fn(size: int, b: ptr[mut Buffers], key_hex: string, 
  * @param location Where the check is; the caller's own.
  */
 expect_case :: fn(t: ptr[mut testing.T], held: bool, index: usize, message: string, location := #caller_location) {
-    if held {
-        return void
-    }
-    storage : u8[testing.TEXT_BYTES]
-    detail := text_buffer.make(storage)
-    text_buffer.append_format(&detail, "case % didn't", index)
-    testing.record(t, message, text_buffer.as_string(&detail), location)
+    testing.note(t, "case %", index)
+    testing.expect(t, held, message, location)
+    testing.end_note(t)
 }
 
 // Extracted and expanded to the expected output, or refused for a size too large

@@ -1884,6 +1884,9 @@ namespace hemera {
 		ast::Node* format_literal = nullptr;
 		std::vector<std::pair<ast::Node*, Value>> format_values;
 		bool format_values_known = true;
+		// Each positional argument by the parameter it went to, for a #format parameter's string, which names them
+		std::vector<std::pair<ast::Node*, Value>> parameter_values(function->input.size());
+		std::vector<bool> parameter_given(function->input.size(), false);
 		auto takes_format = [&](size_t index) {
 			const FunctionInput& input = function->input[index];
 			return input.name != nullptr && text_of(input.name) == "format_string" && is_variant(input.type, TypeInfoVariant::STRING)
@@ -1966,11 +1969,33 @@ namespace hemera {
 				&& TokenType::LITERAL_STRING == positional.node->value.type) {
 				format_literal = positional.node;
 			}
+			parameter_values[parameter] = { argument, value };
+			parameter_given[parameter] = true;
 			given[parameter] = true;
 			++parameter;
 		}
 		if (format_literal != nullptr && format_values_known) {
 			check_format_string(checker, format_literal, format_values);
+		}
+		// A #format(a, b) parameter's string written in place, against what a and b were given
+		for (size_t i = 0; i < function->input.size(); ++i) {
+			const FunctionInput& input = function->input[i];
+			ast::Node* written = parameter_given[i] ? parameter_values[i].first : nullptr;
+			if (input.format_of.empty() || written == nullptr || ast::NodeType::LITERAL != written->node_type
+				|| TokenType::LITERAL_STRING != written->value.type) {
+				continue;
+			}
+			std::vector<std::pair<ast::Node*, Value>> formatted;
+			bool known = true;
+			for (uint32_t index : input.format_of) {
+				known = known && index < parameter_given.size() && parameter_given[index];
+				if (known) {
+					formatted.push_back(parameter_values[index]);
+				}
+			}
+			if (known) {
+				check_format_string(checker, written, formatted);
+			}
 		}
 		bool split = false;
 		for (size_t i = 0; i + 1 < function->input.size(); ++i) {

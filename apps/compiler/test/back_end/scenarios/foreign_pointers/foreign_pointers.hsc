@@ -35,7 +35,7 @@ passes_optional_pointers #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, GetModuleHandleA("kernel32.dll") != null, "an optional cstring holding a name reaches C as that name")
     frequency : i64 = 0
     testing.expect(t, cast[bool](QueryPerformanceFrequency(&frequency)), "an optional pointer holding one reaches C as that pointer")
-    testing.expect(t, frequency > 0, "C wrote the counter's frequency through the pointer")
+    testing.expect_gt(t, frequency, 0, "C wrote the counter's frequency through the pointer")
     // Without a buffer it gives false, and the size the name needs
     size : u32 = 0
     testing.expect(t, !cast[bool](GetComputerNameA(null, &size)), "a null buffer is too small for the computer's name")

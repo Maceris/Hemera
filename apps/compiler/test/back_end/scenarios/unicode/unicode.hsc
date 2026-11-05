@@ -102,7 +102,7 @@ splits_every_case_of_grapheme_break_test #test :: fn(t: ptr[mut testing.T]) -> t
     }
     while at < TESTS.count
     // Unicode 17.0.0's file has 766 cases
-    testing.expect(t, lines >= 700, "the whole file is read, 766 cases in Unicode 17.0.0")
+    testing.expect_ge(t, lines, 700, "the whole file is read, 766 cases in Unicode 17.0.0")
     return .Ok
 }
 

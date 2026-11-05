@@ -133,7 +133,7 @@ writes_a_types_bytes #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     defer runtime.array_free(&bytes)
     schema.write(type_info_of(Point), &bytes)
     expected :: u8.[0x48, 0x53, 0x43, 0x48, 1, 0, 2, 0, 0, 0, 14, 8, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0x50, 0x6f, 0x69, 0x6e, 0x74]
-    testing.require(t, bytes.count >= expected.count, "a struct's schema has its header, kind, size and name, at least")?
+    testing.require_ge(t, bytes.count, expected.count, "a struct's schema has its header, kind, size and name, at least")?
     for byte, i in expected {
         if i < bytes.count {
             testing.expect_eq(t, bytes[i], byte, "the header, two types, a struct of 8 bytes, then its name")
@@ -446,6 +446,6 @@ leaves_output_alone_when_memory_runs_out #test :: fn(t: ptr[mut testing.T]) -> t
             return .Ok
         }
         fail_at += 1
-        testing.require(t, fail_at <= 1000, "writing needs fewer than 1000 allocations, so it ends without failing")?
+        testing.require_le(t, fail_at, 1000, "writing needs fewer than 1000 allocations, so it ends without failing")?
     }
 }

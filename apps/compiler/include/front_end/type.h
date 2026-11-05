@@ -248,6 +248,12 @@ namespace hemera {
 		/// #thread_bound (docs/multitasking.md, Values That Stay on Their Thread).
 		/// </summary>
 		bool crosses_threads = false;
+		/// <summary>
+		/// #format(a, b): a string of this parameter is a format string over those parameters, by their places in
+		/// the function's inputs, so one written in place is checked against the arguments given them
+		/// (docs/format_strings.md, Checking). Not part of the function's type.
+		/// </summary>
+		std::vector<uint32_t> format_of;
 	};
 
 	struct FunctionOutput {

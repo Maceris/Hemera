@@ -1357,6 +1357,8 @@ namespace hemera {
 		function->output.clear();
 		bool seen_parameters = false;
 		bool all_unrestricted = false;
+		// Each #format's parameter, by its place, and the directive naming what it formats, resolved once all are known
+		std::vector<std::pair<size_t, ast::Node*>> formats;
 		for (ast::Node* child : node->children) {
 			const ast::NodeType type = child->node_type;
 			if (ast::NodeType::LIST == type && !seen_parameters) {
@@ -1429,8 +1431,35 @@ namespace hemera {
 							if (is_text(directive->value.value, "#escaping")) {
 								input.is_escaping = true;
 							}
+							if (is_text(directive->value.value, "#format")) {
+								formats.emplace_back(function->input.size(), directive);
+							}
 						}
 						function->input.push_back(input);
+					}
+				}
+				// #format(a, b): what each formats, by the parameters' places; it's a string, and they're its parameters
+				for (const auto& [index, directive] : formats) {
+					TypeInfo const* format_type = get_base_type(function->input[index].type);
+					if (format_type == nullptr || TypeInfoVariant::STRING != format_type->variant) {
+						return type_error(walk, ErrorCode::E4014, directive, "#format is for a string parameter, a format string");
+					}
+					for (ast::Node* argument : directive->children) {
+						if (ast::NodeType::PAREN_GROUP == argument->node_type) {
+							continue;
+						}
+						size_t found = function->input.size();
+						for (size_t i = 0; i < function->input.size(); ++i) {
+							if (function->input[i].name != nullptr && argument->value.value != nullptr
+								&& *function->input[i].name == *argument->value.value) {
+								found = i;
+							}
+						}
+						if (found == function->input.size() || found == index) {
+							return type_error(walk, ErrorCode::E4014, argument, std::format("#format names {}, which isn't another of the function's parameters",
+								argument->value.value != nullptr ? name_text(argument->value.value) : std::string("nothing")));
+						}
+						function->input[index].format_of.push_back(static_cast<uint32_t>(found));
 					}
 				}
 			}

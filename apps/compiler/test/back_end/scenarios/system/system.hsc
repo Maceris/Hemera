@@ -19,21 +19,21 @@ reads_the_wall_clock #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     read :: time.now()
     now :: testing.require_ok(t, read, "the system gives the time")?
     moment :: time.utc(now)
-    testing.expect(t, now.seconds >= 1792281600, "it's after this test was written, 2026-10-18")
+    testing.expect_ge(t, now.seconds, 1792281600, "it's after this test was written, 2026-10-18")
     testing.expect(t, moment.year >= 2026 && moment.year < 2200, "its year is after this was written and well before 2200")
-    testing.expect(t, now.nanos < 1000000000, "nanoseconds stay below a second")
+    testing.expect_lt(t, now.nanos, 1000000000, "nanoseconds stay below a second")
     return .Ok
 }
 
 reads_monotonic_time_going_forward #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     start :: time.monotonic()
-    testing.expect(t, cast[i64](start) > 0, "monotonic time counts up from some point before the program")
+    testing.expect_gt(t, cast[i64](start), 0, "monotonic time counts up from some point before the program")
     total : u64 = 0
     for i in 0..<200000 {
         total += cast[u64](i)
     }
     later :: time.monotonic()
-    testing.expect(t, cast[i64](later) >= cast[i64](start), "monotonic time never goes back")
+    testing.expect_ge(t, cast[i64](later), cast[i64](start), "monotonic time never goes back")
     testing.expect_ne(t, total, 0, "the work between the readings was done")
     took :: time.since(start)
     testing.expect(t, took.seconds >= 0 && took.seconds <= 60, "a short loop takes no time below zero, nor a minute")
