@@ -925,7 +925,13 @@ namespace hemera {
 			next = 2;
 		}
 		auto bound = checker.walk.bindings.find(binding);
-		if (bound != checker.walk.bindings.end()) {
+		/*
+		 * Finding OS's or TARGET_ARCH's enum, below, binds this node to it, so checked again, as a generic call's arguments
+		 * are, it's bound to a declaration with another name: the target's value, not the enum. One named OS is the package's.
+		 */
+		const bool target_value = (is_text(name, "OS") || is_text(name, "TARGET_ARCH")) && bound != checker.walk.bindings.end()
+			&& bound->second->name != name;
+		if (bound != checker.walk.bindings.end() && !target_value) {
 			result = declaration_value(checker, bound->second);
 			return Progress::DONE;
 		}

@@ -361,6 +361,12 @@ TEST(Hosted, KeepsGenericAliasArgumentsApart)
 	}
 }
 
+// Arguments and indexes in parentheses, and OS compared with an enum as a generic's argument.
+TEST(Hosted, TakesParenthesizedArguments)
+{
+	run_hosted("parenthesized_arguments", hemera::TargetStackCheck::Off);
+}
+
 // #test(CASES): a test run once for each case of a constant array, each its own test (docs/testing.md).
 TEST(Hosted, RunsTestsOverCases)
 {
