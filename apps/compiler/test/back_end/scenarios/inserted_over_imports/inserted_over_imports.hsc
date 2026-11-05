@@ -1,12 +1,12 @@
 /*
  * A name two imported packages declare, which code an #insert puts in this package declares too: this package's own
  * wins, wherever it's used, however the #insert's code and the uses are scheduled (docs/packages.md, Name Collision;
- * docs/compilation.md, The Top Level). Uses come first, and the inserted code takes a while to make. main returns 42
- * if every use found this package's own.
+ * docs/compilation.md, The Top Level). Uses come first, and the inserted code takes a while to make.
  */
 package inserted_over_imports
 
 import compiler from "base"
+import testing from "std"
 import one from "./one"
 import two from "./two"
 
@@ -170,10 +170,12 @@ use_39 :: fn() -> int {
     return pick()
 }
 
-main :: fn() -> int {
+finds_its_own_declaration_over_imports #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     total :: use_0() + use_1() + use_2() + use_3() + use_4() + use_5() + use_6() + use_7() + use_8() + use_9() + use_10() + use_11() + use_12() + use_13() + use_14() + use_15() + use_16() + use_17() + use_18() + use_19() + use_20() + use_21() + use_22() + use_23() + use_24() + use_25() + use_26() + use_27() + use_28() + use_29() + use_30() + use_31() + use_32() + use_33() + use_34() + use_35() + use_36() + use_37() + use_38() + use_39()
-    // 40 uses, each this package's 1, and one's and two's, qualified, still theirs
-    return if total == 40 && one.pick() == 1 && two.pick() == 2 { 42 } else { total }
+    testing.expect_eq(t, total, 40, "each of the 40 uses finds this package's pick, which gives 1")
+    testing.expect_eq(t, one.pick(), 1, "one's pick, qualified, is still one's")
+    testing.expect_eq(t, two.pick(), 2, "two's pick, qualified, is still two's")
+    return .Ok
 }
 
 // The declaration, made slowly, so the uses above are looked up while it's still being made

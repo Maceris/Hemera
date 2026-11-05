@@ -1,10 +1,11 @@
 package compute_blocks
 
+import testing from "std"
+
 /*
  * Compute blocks (docs/control_flow.md, Compute Blocks): compute[T] { ... } runs its statements and gives a value of T
  * with give, which leaves it from inside loops and other blocks; break and continue pass through it to their loop;
- * what's deferred in it runs as give leaves; and or_else takes one that leaves the function. main returns 42 if
- * everything worked.
+ * what's deferred in it runs as give leaves; and or_else takes one that leaves the function.
  */
 
 sum_to :: fn(limit: int) -> int {
@@ -102,28 +103,42 @@ area :: fn(shape: Shape) -> int {
     }
 }
 
-main :: fn() -> int {
-    if sum_to(5) != 10 {
-        return 1
-    }
-    if first_over(int.[1, 4, 9, 16], 5) != 9 || first_over(int.[1, 2], 5) != -1 {
-        return 2
-    }
-    if nested() != 10 {
-        return 3
-    }
-    if counted() != 6 {
-        return 4
-    }
+gives_a_value #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, sum_to(5), 10, "give gives the total the block's loop made: 0 + 1 + 2 + 3 + 4")
+    return .Ok
+}
+
+gives_from_inside_a_loop #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, first_over(int.[1, 4, 9, 16], 5), 9, "give leaves the loop at the first value past 5")
+    testing.expect_eq(t, first_over(int.[1, 2], 5), -1, "with none past it, the loop ends and the give after it gives")
+    return .Ok
+}
+
+gives_only_from_its_own_block #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, nested(), 10, "the inner give leaves only the inner block, which the outer doubles")
+    return .Ok
+}
+
+passes_break_and_continue_to_the_loop #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, counted(), 6, "continue skips 3 and break stops at 7, leaving 0 to 6 but 3")
+    return .Ok
+}
+
+runs_whats_deferred_as_give_leaves #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     recorder := Recorder.{}
-    if deferring(&recorder) != 3 || recorder.deferred != 1 {
-        return 5
-    }
-    if or_leave(true) != 9 || or_leave(false) != -1 {
-        return 6
-    }
-    if area(Shape.Circle(2)) != 12 || area(Shape.Square(3)) != 9 {
-        return 7
-    }
-    return 42
+    testing.expect_eq(t, deferring(&recorder), 3, "the deferred statement doesn't change what's given")
+    testing.expect_eq(t, recorder.deferred, 1, "the deferred statement ran once, as give left")
+    return .Ok
+}
+
+leaves_the_function_from_or_else #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, or_leave(true), 9, "with a value, or_else's block doesn't run")
+    testing.expect_eq(t, or_leave(false), -1, "without one, the block's return leaves the function")
+    return .Ok
+}
+
+gives_a_match_arms_value #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, area(Shape.Circle(2)), 12, "the arm's block gives 3 times the radius squared")
+    testing.expect_eq(t, area(Shape.Square(3)), 9, "the other arm is a plain expression")
+    return .Ok
 }

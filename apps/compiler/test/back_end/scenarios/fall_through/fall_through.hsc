@@ -2,18 +2,13 @@
  * switch with #fall_through (docs/control_flow.md, Switch): a case that falls through runs the next
  * case's statements too, whatever that case's values are, and chains of them; a case that leaves with
  * break doesn't fall through; one that doesn't match falls into nothing; and inside a loop, each
- * switch starts over; and an owner the case after a #fall_through releases is released on every path. main returns 42 if they all went that way, or the number of the first that didn't.
+ * switch starts over; and an owner the case after a #fall_through releases is released on every path.
+ * Run with hemera --test.
  */
 package fall_through
 
 import compiler from "base"
-
-check :: fn(ok: bool, code: int) -> int {
-    if ok {
-        return 0
-    }
-    return code
-}
+import testing from "std"
 
 // Digits for each case that ran, in order
 run :: fn(value: int, stop: bool) -> int {
@@ -74,18 +69,29 @@ closes_once :: fn(value: int) -> int {
     return result
 }
 
-main :: fn() -> int {
-    errors := 0
-    errors += check(run(1, false) == 123, 1)    // 1 falls into 2, which falls into 4
-    errors += check(run(2, false) == 23, 2)
-    errors += check(run(3, true) == 2, 3)       // break leaves before falling through
-    errors += check(run(1, true) == 12, 4)
-    errors += check(run(4, false) == 3, 5)      // 4 doesn't fall through, so 5 doesn't run
-    errors += check(run(5, false) == 4, 6)
-    errors += check(run(9, false) == 5, 7)
-    errors += check(level(.High) == 11 && level(.Low) == 1 && level(.Off) == 0, 8)
+runs_the_cases_it_falls_into #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, run(1, false), 123, "1 falls into 2, which falls into 4, whatever their values")
+    testing.expect_eq(t, run(2, false), 23, "a case in the middle of the chain falls into the rest of it")
+    testing.expect_eq(t, run(4, false), 3, "4 doesn't fall through, so 5's case doesn't run")
+    testing.expect_eq(t, run(5, false), 4, "a case without #fall_through runs alone")
+    testing.expect_eq(t, run(9, false), 5, "a value no case names goes to case _ and falls into nothing")
+    return .Ok
+}
 
-    // Falling through in one time around doesn't carry over to the next
+stops_falling_through_at_break #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, run(3, true), 2, "break leaves before falling through")
+    testing.expect_eq(t, run(1, true), 12, "a case fallen into can still break before falling further")
+    return .Ok
+}
+
+falls_through_enum_cases #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, level(.High), 11, "High falls into Low")
+    testing.expect_eq(t, level(.Low), 1, "Low runs alone")
+    testing.expect_eq(t, level(.Off), 0, "Off runs nothing")
+    return .Ok
+}
+
+starts_each_switch_in_a_loop_over #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     total := 0
     for i in 0..<4 {
         switch i {
@@ -95,10 +101,12 @@ main :: fn() -> int {
             case _: total += 1
         }
     }
-    errors += check(total == 122, 9)
-    errors += check(closes_once(1) == 2 && closes_once(5) == 5, 10)
-    if errors == 0 {
-        return 42
-    }
-    return errors
+    testing.expect_eq(t, total, 122, "falling through in one time around doesn't carry over to the next: 110, 10, 1, 1")
+    return .Ok
+}
+
+releases_an_owner_on_every_path #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, closes_once(1), 2, "the case that falls through leaves the handle to the one after, which reads it")
+    testing.expect_eq(t, closes_once(5), 5, "the case after the #fall_through, reached directly, has the handle too")
+    return .Ok
 }

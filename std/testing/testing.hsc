@@ -334,11 +334,20 @@ require_ne :: fn[V](t: ptr[mut T], actual: V, unexpected: V, message: string, lo
  * @return The Ok value; Error(Failed), the failure recorded with the error, if it was an Error.
  */
 require_ok :: fn[V, E](t: ptr[mut T], result: Result[V, E], message: string, location := #caller_location) -> Result[V, Stopped] {
-    match result {
-        case Ok(value) => return .Ok(value)
-        case Error(error) => {
-            _ = expect_ok(t, result, message, location)
-            return .Error(.Failed)
+    // A Result[void, E]'s Ok holds nothing, so it's checked without taking a value out
+    #if size_of(V) == 0 {
+        if expect_ok(t, result, message, location) {
+            return .Ok
+        }
+        return .Error(.Failed)
+    }
+    #else {
+        match result {
+            case Ok(value) => return .Ok(value)
+            case Error(error) => {
+                _ = expect_ok(t, result, message, location)
+                return .Error(.Failed)
+            }
         }
     }
 }

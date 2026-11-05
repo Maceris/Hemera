@@ -1,18 +1,11 @@
 /*
  * #insert and macro calls in a generic function's body (docs/compilation.md, Code Values): each instance has a tree of
- * its own, so what's inserted is worked out with its own types and values. main returns 42 if they all held, or the
- * number of the first that didn't.
+ * its own, so what's inserted is worked out with its own types and values. Run with hemera --test.
  */
 package generic_insertions
 
 import compiler from "base"
-
-check :: fn(ok: bool, code: int) -> int {
-    if ok {
-        return 0
-    }
-    return code
-}
+import testing from "std"
 
 add #macro :: fn(target: compiler.Code, amount: int) -> compiler.Code {
     return #code {
@@ -53,17 +46,26 @@ bumped :: fn[T](value: T) -> T where compiler.Numeric(T) {
     return result
 }
 
-main :: fn() -> int {
-    errors := 0
+inserts_with_each_instances_types_and_values #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     numbers :: filled[int, 3](7)
-    errors += check(numbers.count == 3 && numbers[0] == 7 && numbers[2] == 7, 1)
+    testing.expect_eq(t, numbers.count, 3, "the int instance's array has its capacity, 3")
+    testing.expect_eq(t, numbers[0], 7, "the inserted loop filled the int instance's first element")
+    testing.expect_eq(t, numbers[2], 7, "the inserted loop filled the int instance's last element")
     words :: filled[string, 2]("hi")
-    errors += check(words.count == 2 && words[1] == "hi", 2)
-    errors += check(grown(5) == 4 && grown(5.0) == 4.0, 3)
-    errors += check(grown(cast[u8](9)) == 6, 4)
-    errors += check(bumped(41) == 42 && bumped(0.5) == 1.5, 5)
-    if errors == 0 {
-        return 42
-    }
-    return errors
+    testing.expect_eq(t, words.count, 2, "the string instance's array has its own capacity, 2")
+    testing.expect_eq(t, words[1], "hi", "the inserted loop filled the string instance's elements with strings")
+    return .Ok
+}
+
+works_out_code_from_the_instances_type #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, grown(5), 4, "for an int, add! makes 8 and halved shifts it: 4")
+    testing.expect_eq(t, grown(5.0), 4.0, "for a float, add! makes 8.0 and halved divides it: 4.0")
+    testing.expect_eq(t, grown(cast[u8](9)), 6, "for a u8, its own instance: 12 shifted is 6")
+    return .Ok
+}
+
+checks_a_constrained_function_at_its_instances #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, bumped(41), 42, "the int instance's add! adds 1")
+    testing.expect_eq(t, bumped(0.5), 1.5, "the float instance's add! adds 1 to a float")
+    return .Ok
 }

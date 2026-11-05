@@ -1,13 +1,13 @@
 /*
  * Owned types (docs/memory.md, Owned Types): owners released by defer, #release and compiler.release,
  * moved into functions and out of them, taken from fields, shared with duplicate, kept in a dynamic
- * array released with array_release, and given to a match's bindings. main returns 42 if each
- * worked, or the number of the first check that didn't.
+ * array released with array_release, and given to a match's bindings.
  */
 package owned_test
 
 import compiler from "base"
 import runtime from "base"
+import testing from "std"
 
 File :: struct #owned(close) {
     handle : int,
@@ -70,37 +70,35 @@ copies :: fn[T: compiler.Copyable](value: T) -> T {
 
 #assert compiler.satisfies(compiler.Copyable(int)) && !compiler.satisfies(compiler.Copyable(File))
 
-main :: fn() -> int {
+moves_and_releases_owners #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     a := open(10)
     defer compiler.release(a)
     b #release :: open(20)
     c := open(5)
-    if consume(pass_on(c)) + handle_of(&a) + b.handle != 35 {
-        return 1
-    }
+    testing.expect_eq(t, consume(pass_on(c)) + handle_of(&a) + b.handle, 35,
+        "an owner moved in and out of a function is still the file it was, beside one borrowed and one released at the end")
     holder := Holder.{file = open(1)}
     compiler.release(holder)
     shared := share(&a)
     handle :: shared.handle
     compiler.forget(shared)
-    if handle != 10 {
-        return 2
-    }
+    testing.expect_eq(t, handle, 10, "a duplicated owner holds the same file")
+    return .Ok
+}
+
+keeps_owners_in_arrays_and_matches #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     files : File[..]
     runtime.array_add(&files, open(3))
     runtime.array_add(&files, open(4))
-    if total_of(&files) != 7 {
-        runtime.array_release(files, close)
-        return 3
-    }
+    testing.expect_eq(t, total_of(&files), 7, "a dynamic array of owners holds each one added")
     runtime.array_release(files, close)
     total := 0
     match maybe_open(7) {
         case Some(file) => total = consume(file)
         case None => total = 0
     }
-    if total != 7 || copies(42) != 42 {
-        return 4
-    }
-    return 42
+    testing.expect_eq(t, total, 7, "a match's binding takes the owner an optional held")
+    testing.expect_eq(t, copies(42), 42, "a Copyable value passes through a generic constrained to them")
+    return .Ok
 }
+

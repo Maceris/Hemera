@@ -2,11 +2,11 @@ package inserted_member_names
 
 import compiler from "base"
 import runtime from "base"
+import testing from "std"
 
 /*
  * Members named by #insert in a quote (docs/compilation.md, Code Values): an enum's members, with and without
- * a value, a struct's fields, and reaching them with value.#insert name and .#insert name. main returns 42 if
- * the named members work.
+ * a value, a struct's fields, and reaching them with value.#insert name and .#insert name.
  */
 
 // Two members named from text, the first with a value that's inserted too
@@ -98,16 +98,27 @@ printing_works :: fn() -> bool {
 
 PRINTING_WORKS :: printing_works()
 
-main :: fn() -> int {
-    pair := Pair.{first = 1, second = 20}
-    // 20 + 11
-    total := read(pair)
-    if cast[int](Level.High) != 10 || Level.Low == Level.Top || cast[int](Call.CALL_negate) != 1 {
-        return 1
-    }
+names_enum_members #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, cast[int](Level.High), 10, "High's value was inserted beside its name")
+    testing.expect_ne(t, Level.Low, Level.Top, "Top, named without a value, is a member of its own after High")
+    testing.expect_eq(t, cast[int](Call.CALL_negate), 1, "a member per field of Calls, numbered as the table orders them")
+    is_top := false
     match Level.Top {
-        case .Top => total += 11
-        case _ => return 2
+        case .Top => is_top = true
+        case _ => {}
     }
-    return if PRINTING_WORKS { total } else { 3 }
+    testing.expect(t, is_top, "a pattern reaches a member whose name was inserted")
+    return .Ok
 }
+
+reaches_fields_and_members_by_inserted_names #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    pair := Pair.{first = 1, second = 20}
+    testing.expect_eq(t, read(pair), 31, "pair.#insert field is second's 20, and .#insert member is Top's 11")
+    return .Ok
+}
+
+prints_inserted_names #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, PRINTING_WORKS, "quotes naming members print as written; a mismatch is logged while compiling")
+    return .Ok
+}
+

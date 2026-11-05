@@ -1,16 +1,10 @@
 /*
  * Types declared inside a function (docs/types.md, Types Declared in Functions): a struct, enum, union or alias seen by
- * what comes after it in its block, the types and functions declared there among them, and not outside it. main returns
- * 42 if they all held, or the number of the first that didn't.
+ * what comes after it in its block, the types and functions declared there among them, and not outside it.
  */
 package local_types
 
-check :: fn(ok: bool, code: int) -> int {
-    if ok {
-        return 0
-    }
-    return code
-}
+import testing from "std"
 
 // A package-level Point, which the local ones below hide where they're seen
 Point :: struct {
@@ -88,14 +82,15 @@ boxed :: fn[T, count: usize](value: T) -> usize {
     return size_of(Box)
 }
 
-main :: fn() -> int {
-    errors := 0
-    errors += check(measured() == 57, 1)
-    errors += check(other() == 4, 2)
-    errors += check(blocks(), 3)
-    errors += check(boxed[u8, 3](7) == 3 && boxed[u64, 2](7) == 16, 4)
-    if errors == 0 {
-        return 42
-    }
-    return errors
+sees_local_types_after_their_declarations #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, measured(), 57, "the local Line runs 5 across and 7 up, as span sees the local types")
+    return .Ok
+}
+
+keeps_each_functions_types_its_own #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, other(), 4, "other's Point is one u8, 1 byte, holding 3")
+    testing.expect(t, blocks(), "a block's Point is seen in it, and the package's after it")
+    testing.expect_eq(t, boxed[u8, 3](7), 3, "Box is made with the instance's u8 and 3")
+    testing.expect_eq(t, boxed[u64, 2](7), 16, "and with another instance's u64 and 2")
+    return .Ok
 }

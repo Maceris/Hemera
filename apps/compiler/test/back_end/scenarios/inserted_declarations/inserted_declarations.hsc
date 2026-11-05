@@ -1,10 +1,11 @@
 package inserted_declarations
 
 import compiler from "base"
+import testing from "std"
 
 /*
  * #insert at the top level, among fields, variants and members, and among a match's patterns and a switch's
- * cases (docs/compilation.md, Code Values). main returns 42 if everything inserted did what it should.
+ * cases (docs/compilation.md, Code Values).
  */
 
 // Declarations, one of which inserts code of its own
@@ -89,31 +90,34 @@ cases :: fn() -> compiler.Code {
     }
 }
 
-main :: fn() -> int {
-    // 30 + 2
-    total := add_two(ANSWER)
+inserts_top_level_declarations #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, ANSWER, 30, "the inserted constant is a declaration of the package")
+    testing.expect_eq(t, add_two(ANSWER), 32, "the inserted function adds the 2 its own #insert put in it")
+    return .Ok
+}
+
+inserts_fields_variants_and_members #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     point := Point.{x = 1, z = 3}
-    if point.x + point.y + point.z != 6 {
-        return 1
-    }
+    testing.expect_eq(t, point.x + point.y + point.z, 6, "the inserted fields are Point's, y with its default of 2")
     shape := Shape.Circle(4)
     radius := match shape {
         case Circle(r) => r
         case _ => 0
     }
-    if radius != 4 || cast[int](Color.Blue) != 6 {
-        return 2
-    }
+    testing.expect_eq(t, radius, 4, "the inserted Circle variant holds its value")
+    testing.expect_eq(t, cast[int](Color.Blue), 6, "Blue follows the inserted Green = 5")
+    return .Ok
+}
+
+inserts_patterns_and_cases #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     color := Color.Green
-    // 2
     picked := match color {
         #insert patterns()
         case .Blue => 50
     }
-    total += picked
-    if classify(Color.Green) != 2 || classify(Color.Blue) != 3 {
-        return 3
-    }
+    testing.expect_eq(t, picked, 2, "the inserted pattern for Green is among the match's arms")
+    testing.expect_eq(t, classify(Color.Green), 2, "a quoted match takes inserted patterns too")
+    testing.expect_eq(t, classify(Color.Blue), 3, "the quoted match's own arm follows the inserted ones")
     n := 5
     k := 1
     switch k {
@@ -121,6 +125,6 @@ main :: fn() -> int {
         n += 50
     #insert cases()
     }
-    // 32 + 2 + 8
-    return total + n
+    testing.expect_eq(t, n, 8, "the inserted case 1 adds 3, and the case before it isn't taken")
+    return .Ok
 }

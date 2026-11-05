@@ -1,12 +1,13 @@
 /*
  * Secrets (docs/memory.md, Secrets): a #secret struct and alias, a comparison that looks at every byte,
  * intrinsics.select choosing without a branch, for words and lanes, compiler.secret and declassify, and
- * secure_zero. main returns 42 if they all gave the right answers.
+ * secure_zero.
  */
 package secrets_test
 
 import compiler from "base"
 import intrinsics from "base"
+import testing from "std"
 
 Key :: struct #secret {
     bytes: u8[16],
@@ -43,33 +44,30 @@ lanes #constant_time :: fn(key: ptr[Key]) -> u32 {
     return compiler.declassify(intrinsics.reduce_add(picked))
 }
 
-main :: fn() -> int {
+compares_keys_byte_by_byte #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     first := Key.{bytes = u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]}
     second := first
-    if !keys_equal(&first, &second) {
-        return 1
-    }
+    testing.expect(t, keys_equal(&first, &second), "a copy of a key is equal to it")
     second.bytes[15] = 0
-    if keys_equal(&first, &second) {
-        return 2
-    }
-    if compiler.declassify(larger(cast[Word](3), cast[Word](9))) != 9 {
-        return 3
-    }
-    if compiler.declassify(larger(cast[Word](12), cast[Word](9))) != 12 {
-        return 4
-    }
+    testing.expect(t, !keys_equal(&first, &second), "keys differing only in their last byte differ: every byte is looked at")
+    return .Ok
+}
+
+chooses_without_branching #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, compiler.declassify(larger(cast[Word](3), cast[Word](9))), 9, "select gives the second when the first isn't larger")
+    testing.expect_eq(t, compiler.declassify(larger(cast[Word](12), cast[Word](9))), 12, "select gives the first when it's larger")
     mixed := compiler.declassify(mix(cast[Word](1), 2))
     expected := intrinsics.rotate_left(intrinsics.rotate_left(cast[u32](1), 7) ~ 0x9e37_79b9, 7) ~ 0x9e37_79b9
-    if mixed != expected {
-        return 5
-    }
-    if lanes(&first) != 2 + 3 + 4 {
-        return 6
-    }
+    testing.expect_eq(t, mixed, expected, "a secret word rotates and mixes as a plain u32 does")
+    first := Key.{bytes = u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]}
+    testing.expect_eq(t, lanes(&first), 2 + 3 + 4, "select on lanes keeps only the bytes above 1, of the first four")
+    return .Ok
+}
+
+zeroes_a_secret #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    first := Key.{bytes = u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]}
     intrinsics.secure_zero(&first, size_of(Key))
-    if compiler.declassify(first.bytes[0]) != 0 || compiler.declassify(first.bytes[15]) != 0 {
-        return 7
-    }
-    return 42
+    testing.expect_eq(t, compiler.declassify(first.bytes[0]), 0, "secure_zero clears the key's first byte")
+    testing.expect_eq(t, compiler.declassify(first.bytes[15]), 0, "and its last, all size_of(Key) of it")
+    return .Ok
 }

@@ -1,9 +1,11 @@
 /*
  * Optional function types written in place (docs/functions.md, First Class Functions): in parentheses, the
- * ? is the function's, (fn(n: int) -> int)?, and without them the result's, fn(n: int) -> int?. main
- * returns 42 if they worked. Results too: functions returned in parentheses, optional or not, alone, listed or named.
+ * ? is the function's, (fn(n: int) -> int)?, and without them the result's, fn(n: int) -> int?. Results too:
+ * functions returned in parentheses, optional or not, alone, listed or named.
  */
 package optional_functions_test
+
+import testing from "std"
 
 double :: fn(n: int) -> int {
     return n * 2
@@ -106,11 +108,17 @@ named_functions :: fn() -> int {
     return total
 }
 
-main :: fn() -> int {
-    if returned_functions() != 56 || named_functions() != 46 {
-        return 1
-    }
+returns_functions_of_every_kind #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, returned_functions(), 56, "each kind of function result is called through, adding its share")
+    testing.expect_eq(t, named_functions(), 46, "each kind of named function result is called through, adding its share")
+    return .Ok
+}
+
+calls_optional_functions #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     handler := Handler.{on_value = double, maybe = halve}
     none : (fn(n: int) -> int)? = null
-    return call_or(handler.on_value, 20) + call_or(none, 2)
+    testing.expect_eq(t, call_or(handler.on_value, 20), 40, "an optional function field holding double doubles")
+    testing.expect_eq(t, call_or(none, 2), 2, "an empty optional function isn't called")
+    testing.expect_eq(t, handler.maybe(9) or_else 0, 4, "a function with an optional result is called directly")
+    return .Ok
 }

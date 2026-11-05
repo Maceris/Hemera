@@ -1,30 +1,29 @@
 package in_image
 
 import runtime from "base"
+import testing from "std"
 
 /*
  * runtime.in_image: whether an address is in the program's image, from the image's own headers. A string literal and a
  * function are; what's on the heap or the stack isn't. It reads the headers through a generic #no_context function,
- * whose instances are #no_context too. main returns 42 if each is where it should be.
+ * whose instances are #no_context too.
  */
 
+/** A string literal, whose bytes the linker puts in the image's read-only data. */
 LITERAL :: "a literal, in the image's read-only data"
 
-main :: fn() -> int {
-    if !runtime.in_image(cast[rawptr](LITERAL.data)) {
-        return 1
-    }
-    if !runtime.in_image(cast[rawptr](main)) {
-        return 2
-    }
+finds_literals_and_functions_in_the_image #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, runtime.in_image(cast[rawptr](LITERAL.data)), "a literal's bytes are in the image's read-only data")
+    testing.expect(t, runtime.in_image(cast[rawptr](finds_literals_and_functions_in_the_image)),
+        "a function's code is in the image's text")
+    return .Ok
+}
+
+finds_the_heap_and_stack_outside_the_image #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     on_heap := runtime.new(int)
     defer runtime.free(on_heap)
-    if runtime.in_image(cast[rawptr](on_heap)) {
-        return 3
-    }
+    testing.expect(t, !runtime.in_image(cast[rawptr](on_heap)), "the heap is memory allocated after the image is loaded")
     on_stack := 5
-    if runtime.in_image(cast[rawptr](&on_stack)) {
-        return 4
-    }
-    return 42
+    testing.expect(t, !runtime.in_image(cast[rawptr](&on_stack)), "the stack is the thread's, not the image's")
+    return .Ok
 }

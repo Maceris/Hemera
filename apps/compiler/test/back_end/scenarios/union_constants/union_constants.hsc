@@ -1,9 +1,11 @@
 package union_constants
 
+import testing from "std"
+
 /*
  * Constants of #union structs (docs/types.md, Structs (#union)): each given member written where it is, over
  * zeros, a later one overwriting what it overlaps, with numbers, floats, arrays, a nested struct, a bool, and
- * defaults when nothing is given. main returns 42 if every constant has the bytes it should.
+ * defaults when nothing is given.
  */
 
 Bits :: struct #union {
@@ -37,13 +39,13 @@ PAIR :: Mixed.{ pair = Pair.{ a = 9, b = 0x0102 } }
 FLAG :: Mixed.{ flag = true }
 DEFAULTED :: Defaulted.{}
 
-main :: fn() -> int {
-    if LOW.whole != 7 { return 1 }
-    if WHOLE.whole != 0x11225566 { return 2 }
-    if BYTES.whole != 0x04030201 { return 3 }
-    if REAL.whole != 0x3f800000 { return 4 }
-    if PAIR.raw != 0x01020009 { return 5 }
-    if FLAG.raw != 1 { return 6 }
-    if DEFAULTED.low != 4 { return 7 }
-    return 42
+writes_each_given_member_where_it_is #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, LOW.whole, 7, "a u16 given alone is the low half, over zeros")
+    testing.expect_eq(t, WHOLE.whole, 0x11225566, "a later member overwrites the bytes it overlaps, and only those")
+    testing.expect_eq(t, BYTES.whole, 0x04030201, "an array's bytes are in place, little-endian")
+    testing.expect_eq(t, REAL.whole, 0x3f800000, "a float is written as its bits")
+    testing.expect_eq(t, PAIR.raw, 0x01020009, "a nested struct is written with its padding zero")
+    testing.expect_eq(t, FLAG.raw, 1, "true is the byte 1, over zeros")
+    testing.expect_eq(t, DEFAULTED.low, 4, "with nothing given, the default is written, its low byte read through another member")
+    return .Ok
 }

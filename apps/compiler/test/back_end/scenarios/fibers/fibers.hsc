@@ -1,18 +1,19 @@
 /*
  * Fibers in a hosted program on Windows, run by a std/fiber pool with this thread as its one
- * carrier: main returns 42 if everything worked, or the number of the first check that failed.
- * Built with stack_check = .Morestack, so a fiber that recurses deeply grows onto segments.
+ * carrier, run with hemera --test. Built with stack_check = .Morestack, so a fiber that recurses
+ * deeply grows onto segments.
  *
- * Foreign calls run on the thread's own stack, from main and from a fiber, both to #foreign functions
- * and through function values GetProcAddress gives. Foreign code calls back into Hemera, with the
- * caller's context, from main, from a fiber, and on a thread Hemera didn't start. Memory comes from
- * an arena in main's frame.
+ * Foreign calls run on the thread's own stack, from a test and from a fiber, both to #foreign
+ * functions and through function values GetProcAddress gives. Foreign code calls back into Hemera,
+ * with the caller's context, from a test, from a fiber, and on a thread Hemera didn't start. The
+ * fibers' memory comes from an arena in their test's frame.
  */
 package fibers
 
 import intrinsics from "base"
 import runtime from "base"
 import fiber from "std"
+import testing from "std"
 
 ARENA_SIZE :: 131072
 SEGMENT_SIZE :: 4096
@@ -70,8 +71,10 @@ Turns :: struct {
     arena_start : u64,
     // main's thread, which the fibers run on too
     thread : u32,
-    // From the fiber that calls foreign functions: 0 once they all worked, or the first that didn't
-    foreign_failure : int,
+    // The test the fibers record their failures in, a ptr[mut testing.T] on the runner's stack, which Turns can't hold as one
+    t : rawptr,
+    // Whether the fiber that calls foreign functions ran
+    foreign_ran : bool,
     // Callbacks counted, and what the fiber's enumeration counted
     code_pages : u64,
     fiber_code_pages : u64,
@@ -167,29 +170,26 @@ captured_rsp :: fn(context: ptr[WindowsContext]) -> u64 {
 
 /*
  * Foreign calls, with a result, with arguments on the stack, and keeping the thread's last error
- * between calls: 0 if they all worked, or the number of the first that didn't.
+ * between calls, each checked in t.
  */
-call_foreign :: fn(thread: u32) -> int {
-    if GetCurrentThreadId() != thread {
-        return 1
-    }
+call_foreign :: fn(t: ptr[mut testing.T], thread: u32) {
+    testing.expect_eq(t, GetCurrentThreadId(), thread, "foreign calls run on the thread that makes them")
     SetLastError(1234)
-    if GetLastError() != 1234 {
-        return 2
-    }
+    testing.expect_eq(t, GetLastError(), 1234, "nothing between two foreign calls changes the thread's last error")
     text : string : "fibers"
     wide : u16[8]
     // CP_UTF8
-    if multi_byte_to_wide_char(65001, 0, text.data, 6, &wide[0], 8) != 6 || wide[0] != 102 || wide[5] != 115 {
-        return 3
-    }
+    converted :: multi_byte_to_wide_char(65001, 0, text.data, 6, &wide[0], 8)
+    testing.expect_eq(t, converted, 6, "six ASCII bytes are six UTF-16 units, the last two arguments passed on the stack")
+    testing.expect_eq(t, wide[0], 102, "the first unit is the f the text starts with")
+    testing.expect_eq(t, wide[5], 115, "the last unit is the s it ends with")
     // Through a value, the last two arguments on the stack again
     through :: found(MultiByteToWideChar, "kernel32.dll", "MultiByteToWideChar")
     again : u16[8]
-    if through(65001, 0, text.data, 6, &again[0], 8) != 6 || again[0] != 102 || again[5] != 115 {
-        return 6
-    }
-    return 0
+    converted_again :: through(65001, 0, text.data, 6, &again[0], 8)
+    testing.expect_eq(t, converted_again, 6, "the same conversion through a function value converts the same six units")
+    testing.expect_eq(t, again[0], 102, "the first unit through a function value is the f")
+    testing.expect_eq(t, again[5], 115, "the last unit through a function value is the s")
 }
 
 // What the fibers write, in the order taking turns gives: b keeps running once it's alone.
@@ -250,30 +250,28 @@ climb :: fn(depth: u64) -> u64 {
 // Foreign calls from a fiber: they run below the arena, on the thread's own stack, not on the fiber's.
 worker_foreign : runtime.ThreadFunction : fn(data #escaping : any) {
     turns :: cast[ptr[mut Turns]](context.user_data)
+    t :: cast[ptr[mut testing.T]](turns.t)
+    turns.foreign_ran = true
     limit :: intrinsics.carrier().stack_limit
-    turns.foreign_failure = call_foreign(turns.thread)
+    call_foreign(t, turns.thread)
     // Called back on the thread's own stack, with this fiber's context
     turns.fiber_code_pages = count_code_pages(turns)
     RtlCaptureContext(&turns.windows_context)
-    if turns.foreign_failure == 0 && captured_rsp(&turns.windows_context) >= turns.arena_start {
-        turns.foreign_failure = 4
-    }
-    if turns.foreign_failure == 0 && intrinsics.carrier().stack_limit != limit {
-        turns.foreign_failure = 5
-    }
+    testing.expect(t, captured_rsp(&turns.windows_context) < turns.arena_start,
+        "a foreign call from a fiber runs on the thread's own stack, below the arena the fibers' stacks are in")
+    testing.expect(t, intrinsics.carrier().stack_limit == limit, "back from foreign calls, the fiber's stack limit is its own again")
     // Through values: on the thread's own stack too, and calling back with this fiber's context
     capture :: found(CaptureContext, "ntdll.dll", "RtlCaptureContext")
     capture(&turns.windows_context)
-    if turns.foreign_failure == 0 && captured_rsp(&turns.windows_context) >= turns.arena_start {
-        turns.foreign_failure = 7
-    }
+    testing.expect(t, captured_rsp(&turns.windows_context) < turns.arena_start,
+        "a foreign call through a function value runs on the thread's own stack too")
     enumerate :: found(EnumCodePages, "kernel32.dll", "EnumSystemCodePagesA")
     counted :: turns.fiber_code_pages
     turns.code_pages = 0
     enumerate(cast[rawptr](code_page), CP_INSTALLED)
-    if turns.foreign_failure == 0 && (turns.code_pages != counted || intrinsics.carrier().foreign_depth != 0) {
-        turns.foreign_failure = 8
-    }
+    testing.expect_eq(t, turns.code_pages, counted,
+        "called through a function value, the callback has this fiber's context, so it counts into the same Turns")
+    testing.expect_eq(t, intrinsics.carrier().foreign_depth, 0, "every foreign call has returned")
 }
 
 worker_deep : runtime.ThreadFunction : fn(data #escaping : any) {
@@ -324,7 +322,86 @@ same_trace :: fn(turns: ptr[Turns]) -> bool {
     return true
 }
 
-main :: fn() -> int {
+calls_foreign_functions_on_the_threads_stack #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    call_foreign(t, GetCurrentThreadId())
+    return .Ok
+}
+
+calls_back_with_the_callers_context #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    turns :: runtime.new(Turns)
+    defer runtime.free(turns)
+    counted : u64 = 0
+    push_context with_turns (user_data = cast[rawptr](turns)) {
+        counted = count_code_pages(turns)
+    }
+    testing.expect_ne(t, counted, 0, "the callback has the caller's context, so it finds the Turns it counts installed code pages in")
+    return .Ok
+}
+
+gives_a_thread_it_didnt_start_a_carrier_and_context #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    turns :: runtime.new(Turns)
+    defer runtime.free(turns)
+    thread :: create_thread(null, 0, cast[rawptr](foreign_thread), cast[rawptr](turns), 0, null)
+    testing.require(t, thread != null, "Windows starts a thread running foreign_thread")?
+    WaitForSingleObject(thread, 0xffffffff)
+    CloseHandle(thread)
+    testing.expect_eq(t, turns.foreign_thread_value, 8,
+        "the thread's new allocated from the process heap, and its context, HOSTED_CONTEXT, has no user_data")
+    testing.expect_ne(t, turns.foreign_thread_carrier, 0, "the thread was given a carrier block")
+    testing.expect_ne(t, turns.foreign_thread_carrier, cast[u64](intrinsics.carrier()), "the thread's carrier block is its own, not this one's")
+    return .Ok
+}
+
+/*
+ * The fibers' part of runs_fibers_taking_turns_on_one_carrier, with the arena as the context's allocator: segments
+ * cached on carrier, then four fibers run to their ends and the pool destroyed.
+ */
+run_fibers :: fn(t: ptr[mut testing.T], arena: ptr[mut Arena], carrier: ptr[mut runtime.CarrierBlock]) -> testing.Outcome {
+    cached_before :: segments_cached(carrier)
+    testing.require(t, cache_segments(carrier), "the arena has room for the segments morestack takes")?
+    turns :: runtime.new(Turns)
+    turns.count = 0
+    turns.deep_sum = 0
+    turns.deep_on_segment = false
+    turns.arena_start = cast[u64](&arena.bytes)
+    turns.thread = GetCurrentThreadId()
+    turns.t = cast[rawptr](cast[usize](t))
+    turns.foreign_ran = false
+    main_code_pages : u64 = 0
+    push_context with_turns (user_data = cast[rawptr](turns)) {
+        main_code_pages = count_code_pages(turns)
+    }
+    live_before :: arena.live
+    pool :: fiber.create_fiber_pool()
+    spawned := true
+    push_context with_turns (user_data = cast[rawptr](turns)) {
+        _, error_a :: fiber.spawn(pool, worker_a)
+        _, error_b :: fiber.spawn(pool, worker_b)
+        _, error_deep :: fiber.spawn(pool, worker_deep)
+        _, error_foreign :: fiber.spawn(pool, worker_foreign)
+        spawned = error_a == null && error_b == null && error_deep == null && error_foreign == null
+    }
+    testing.require(t, spawned, "the arena has room for four fibers")?
+    fiber.close_pool(pool)
+    fiber.run_carrier(pool)
+    testing.expect_eq(t, string_of(&turns.marks[0], turns.count), EXPECTED_MARKS,
+        "the deep fiber runs between a's and b's turns: ab, then its own, then AB, and C once b is alone")
+    testing.expect(t, same_trace(turns), "a's frames, down at the bottom of its calls, are where they were before it yielded")
+    testing.expect_eq(t, turns.deep_sum, 32896, "every frame of the deep recursion kept its local: 1 + 2 + ... + 256")
+    testing.expect(t, turns.deep_on_segment, "the deepest call is past the fiber's first segment, on one morestack gave it")
+    testing.expect_eq(t, segments_cached(carrier), cached_before + SEGMENT_COUNT, "every segment morestack took went back to the cache")
+    // Each fiber was freed once it finished, and the pool and its carrier's part now
+    fiber.destroy_fiber_pool(pool)
+    testing.expect_eq(t, arena.live, live_before, "the fibers, the pool and its carrier's part are all freed")
+    testing.expect(t, carrier.current_fiber == null, "with the pool done, the thread runs no fiber")
+    testing.expect(t, carrier.yield_function == null, "with the pool done, nothing is installed to yield to")
+    testing.expect(t, turns.foreign_ran, "the fiber that calls foreign functions ran")
+    testing.expect_eq(t, carrier.foreign_depth, 0, "every foreign call has returned")
+    testing.expect_eq(t, turns.fiber_code_pages, main_code_pages, "a callback from a fiber counts as many code pages as one from outside")
+    return .Ok
+}
+
+runs_fibers_taking_turns_on_one_carrier #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     arena : Arena
     arena.used = 0
     arena.live = 0
@@ -333,82 +410,17 @@ main :: fn() -> int {
      * stack (docs/memory.md, Unrestricted Structs), so its address goes through an integer
      */
     arena_address :: cast[rawptr](cast[usize](&arena))
+    carrier :: intrinsics.carrier()
+    // The segments cache_segments adds are in the arena, which this frame takes with it: put back as they were after
+    cache :: carrier.segment_cache
+    cache_count :: carrier.segment_cache_count
+    spare :: carrier.spare_segment
+    outcome := testing.Outcome.Ok
     push_context with_arena (allocator = runtime.Allocator.{arena_function, arena_address}) {
-        carrier :: intrinsics.carrier()
-        if !cache_segments(carrier) {
-            return 1
-        }
-        turns :: runtime.new(Turns)
-        turns.count = 0
-        turns.deep_sum = 0
-        turns.deep_on_segment = false
-        turns.arena_start = cast[u64](&arena.bytes)
-        turns.thread = GetCurrentThreadId()
-        turns.foreign_failure = -1
-        // From main, on the thread's stack already
-        if call_foreign(turns.thread) != 0 {
-            return 9
-        }
-        main_code_pages : u64 = 0
-        push_context with_turns (user_data = cast[rawptr](turns)) {
-            main_code_pages = count_code_pages(turns)
-        }
-        if main_code_pages == 0 {
-            return 21
-        }
-        thread :: create_thread(null, 0, cast[rawptr](foreign_thread), cast[rawptr](turns), 0, null)
-        if thread == null {
-            return 22
-        }
-        WaitForSingleObject(thread, 0xffffffff)
-        CloseHandle(thread)
-        if turns.foreign_thread_value != 8 || turns.foreign_thread_carrier == 0 || turns.foreign_thread_carrier == cast[u64](carrier) {
-            return 23
-        }
-        live_before :: arena.live
-        pool :: fiber.create_fiber_pool()
-        push_context with_turns (user_data = cast[rawptr](turns)) {
-            _, error_a :: fiber.spawn(pool, worker_a)
-            _, error_b :: fiber.spawn(pool, worker_b)
-            _, error_deep :: fiber.spawn(pool, worker_deep)
-            _, error_foreign :: fiber.spawn(pool, worker_foreign)
-            if error_a != null || error_b != null || error_deep != null || error_foreign != null {
-                return 2
-            }
-        }
-        fiber.close_pool(pool)
-        fiber.run_carrier(pool)
-        // The deep fiber runs between a's and b's turns: "ab", then its own, then "AB" and "C"
-        if string_of(&turns.marks[0], turns.count) != EXPECTED_MARKS {
-            return 3
-        }
-        if !same_trace(turns) {
-            return 4
-        }
-        // 1 + 2 + ... + 256
-        if turns.deep_sum != 32896 || !turns.deep_on_segment {
-            return 5
-        }
-        if segments_cached(carrier) != SEGMENT_COUNT {
-            return 6
-        }
-        // Each fiber was freed once it finished, and the pool and its carrier's part now
-        fiber.destroy_fiber_pool(pool)
-        if arena.live != live_before {
-            return 7
-        }
-        if carrier.current_fiber != null || carrier.yield_function != null {
-            return 8
-        }
-        if turns.foreign_failure != 0 {
-            return 10 + turns.foreign_failure
-        }
-        if carrier.foreign_depth != 0 {
-            return 20
-        }
-        if turns.fiber_code_pages != main_code_pages {
-            return 24
-        }
+        outcome = run_fibers(t, &arena, carrier)
     }
-    return 42
+    carrier.segment_cache = cache
+    carrier.segment_cache_count = cache_count
+    carrier.spare_segment = spare
+    return outcome
 }

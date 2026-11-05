@@ -1,136 +1,114 @@
 /*
- * std/containers, which need no allocator: main returns 42 if everything worked, or the number of
- * the first check that failed.
+ * std/containers, which need no allocator: a fixed array, a ring buffer, a bitmap and an intrusive list.
  */
 package containers_test
 
 import runtime from "base"
 import containers from "std"
+import testing from "std"
 
+/** Something queued on an intrusive list. */
 Task :: struct {
+    /** Which task it is; any value. */
     id : u32,
+    /** Its place in a list. */
     queue_link : containers.ListLink,
 }
 
-fixed_array :: fn() -> int {
+fills_and_empties_a_fixed_array #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     array : containers.FixedArray[u32, 4]
     for i in 0..<4 {
-        if !containers.fixed_push(&array, cast[u32](i * 10)) {
-            return 1
-        }
+        testing.require(t, containers.fixed_push(&array, cast[u32](i * 10)), "a fixed array of four has room for four")?
     }
-    // Full now
-    if containers.fixed_push(&array, 99) || array.count != 4 {
-        return 2
-    }
+    testing.expect(t, !containers.fixed_push(&array, 99), "a fifth doesn't fit")
+    testing.expect_eq(t, array.count, 4, "and isn't counted")
     // 0, 10, 20, 30, then 10 replaced by the last
-    if !containers.fixed_remove_swap(&array, 1) || containers.fixed_remove_swap(&array, 7) {
-        return 3
-    }
+    testing.expect(t, containers.fixed_remove_swap(&array, 1), "the second is there to remove")
+    testing.expect(t, !containers.fixed_remove_swap(&array, 7), "there's no eighth to remove")
     view :: containers.fixed_view(&array)
-    if view.count != 3 || view[0] != 0 || view[1] != 30 || view[2] != 20 {
-        return 4
+    testing.require_eq(t, view.count, 3, "one of four was removed")?
+    if view.count == 3 {
+        kept :: u32.[view[0], view[1], view[2]]
+        testing.expect_eq(t, kept, u32.[0, 30, 20], "removing by swapping moves the last into the gap")
     }
-    last :: containers.fixed_pop(&array) or_return 5
-    if last != 20 || array.count != 2 {
-        return 6
-    }
+    last :: testing.require_some(t, containers.fixed_pop(&array), "three are left to pop")?
+    testing.expect_eq(t, last, 20, "pop takes the last")
+    testing.expect_eq(t, array.count, 2, "leaving two")
     containers.fixed_clear(&array)
-    if containers.fixed_pop(&array) != null {
-        return 7
-    }
-    return 0
+    testing.expect_none(t, containers.fixed_pop(&array), "a cleared array has nothing to pop")
+    return .Ok
 }
 
-ring_buffer :: fn() -> int {
+goes_around_a_ring_buffer_in_order #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     ring : containers.RingBuffer[u32, 3]
     // Around the end several times, in order
     next_in : u32 = 1
     next_out : u32 = 1
     for round in 0..<5 {
         for i in 0..<3 {
-            if !containers.ring_push(&ring, next_in) {
-                return 11
-            }
+            testing.require(t, containers.ring_push(&ring, next_in), "an emptied ring of three has room for three")?
             next_in += 1
         }
-        if containers.ring_push(&ring, 0) {
-            return 12
-        }
-        peeked :: containers.ring_peek(&ring) or_return 13
-        if peeked != next_out {
-            return 14
-        }
+        testing.expect(t, !containers.ring_push(&ring, 0), "a full ring takes no more")
+        peeked :: testing.require_some(t, containers.ring_peek(&ring), "a full ring has a first to peek at")?
+        testing.expect_eq(t, peeked, next_out, "peek sees the oldest")
         for i in 0..<2 {
-            value :: containers.ring_pop(&ring) or_return 15
-            if value != next_out {
-                return 16
-            }
+            value :: testing.require_some(t, containers.ring_pop(&ring), "a full ring has values to pop")?
+            testing.expect_eq(t, value, next_out, "values come out in the order they went in")
             next_out += 1
         }
         // One left, taken before the next round
-        value :: containers.ring_pop(&ring) or_return 17
-        if value != next_out {
-            return 18
-        }
+        value :: testing.require_some(t, containers.ring_pop(&ring), "one is left")?
+        testing.expect_eq(t, value, next_out, "the last comes out last")
         next_out += 1
     }
-    if containers.ring_pop(&ring) != null {
-        return 19
-    }
-    return 0
+    testing.expect_none(t, containers.ring_pop(&ring), "everything pushed was popped")
+    return .Ok
 }
 
-bitmap :: fn() -> int {
+sets_finds_and_counts_bits #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     bits : containers.Bitmap[130]
-    if bits.words.count != 3 || containers.bit_count(&bits) != 0 {
-        return 21
-    }
+    testing.expect_eq(t, bits.words.count, 3, "130 bits take three 64-bit words")
+    testing.expect_eq(t, containers.bit_count(&bits), 0, "a new bitmap is clear")
     containers.bit_set(&bits, 0)
     containers.bit_set(&bits, 64)
     containers.bit_set(&bits, 129)
     // Past the end: nothing
     containers.bit_set(&bits, 130)
-    if !containers.bit_test(&bits, 64) || containers.bit_test(&bits, 63) || containers.bit_test(&bits, 130)
-        || containers.bit_count(&bits) != 3 {
-        return 22
-    }
-    first_set :: containers.bit_find_set(&bits, 1) or_return 23
-    second_set :: containers.bit_find_set(&bits, 65) or_return 24
-    if first_set != 64 || second_set != 129 || containers.bit_find_set(&bits, 130) != null {
-        return 25
-    }
-    first_clear :: containers.bit_find_clear(&bits, 0) or_return 26
-    if first_clear != 1 {
-        return 27
-    }
+    testing.expect(t, containers.bit_test(&bits, 64), "a bit set in the second word")
+    testing.expect(t, !containers.bit_test(&bits, 63), "the bit before it isn't")
+    testing.expect(t, !containers.bit_test(&bits, 130), "a bit past the end is never set")
+    testing.expect_eq(t, containers.bit_count(&bits), 3, "setting past the end did nothing")
+    testing.expect_eq(t, containers.bit_find_set(&bits, 1), cast[usize?](64), "the first set from 1 is across a word")
+    testing.expect_eq(t, containers.bit_find_set(&bits, 65), cast[usize?](129), "the last bit is found")
+    testing.expect_none(t, containers.bit_find_set(&bits, 130), "nothing is found from past the end")
+    testing.expect_eq(t, containers.bit_find_clear(&bits, 0), cast[usize?](1), "0 is set, so 1 is the first clear")
     // All set but one, which is found
     for i in 0..<cast[usize](130) {
         containers.bit_set(&bits, i)
     }
     containers.bit_clear(&bits, 100)
-    found :: containers.bit_find_clear(&bits, 0) or_return 28
-    if found != 100 || containers.bit_count(&bits) != 129 {
-        return 29
-    }
+    testing.expect_eq(t, containers.bit_find_clear(&bits, 0), cast[usize?](100), "the one bit cleared")
+    testing.expect_eq(t, containers.bit_count(&bits), 129, "all but that one")
     containers.bit_set(&bits, 100)
-    if containers.bit_find_clear(&bits, 0) != null {
-        return 30
-    }
+    testing.expect_none(t, containers.bit_find_clear(&bits, 0), "with every bit set, none is clear: the unused ones don't count")
     containers.bit_clear_all(&bits)
-    if containers.bit_count(&bits) != 0 {
-        return 31
-    }
-    return 0
+    testing.expect_eq(t, containers.bit_count(&bits), 0, "clearing all clears every word")
+    return .Ok
 }
 
-list :: fn() -> int {
+links_a_list_through_its_entries #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     ready : containers.List
     tasks : ptr[mut Task][4]
     for i in 0..<4 {
         task :: runtime.new(Task)
         task.id = cast[u32](i + 1)
         tasks[i] = task
+    }
+    defer {
+        for i in 0..<4 {
+            runtime.free(tasks[i])
+        }
     }
     // 2, 1, 3, 4
     containers.list_push_back(&ready, &tasks[0].queue_link)
@@ -139,39 +117,14 @@ list :: fn() -> int {
     containers.list_push_back(&ready, &tasks[3].queue_link)
     // Out of the middle: 2, 3, 4
     containers.list_remove(&ready, &tasks[0].queue_link)
-    if ready.count != 3 {
-        return 41
-    }
-    expected : u32[3]
-    expected[0] = 2
-    expected[1] = 3
-    expected[2] = 4
-    for i in 0..<3 {
-        link :: containers.list_pop_front(&ready) or_return 42
+    testing.expect_eq(t, ready.count, 3, "one of four was removed")
+    expected :: u32.[2, 3, 4]
+    for id in expected {
+        link :: testing.require_some(t, containers.list_pop_front(&ready), "three are left to pop")?
         task :: containers.entry_of[Task](link, offset_of(Task, queue_link))
-        if task.id != expected[i] {
-            return 43
-        }
+        testing.expect_eq(t, task.id, id, "pushed to the front, then the back in order, less the one removed")
     }
-    if containers.list_pop_front(&ready) != null || ready.count != 0 {
-        return 44
-    }
-    for i in 0..<4 {
-        runtime.free(tasks[i])
-    }
-    return 0
-}
-
-main :: fn() -> int {
-    failure := fixed_array()
-    if failure == 0 {
-        failure = ring_buffer()
-    }
-    if failure == 0 {
-        failure = bitmap()
-    }
-    if failure == 0 {
-        failure = list()
-    }
-    return if failure == 0 { 42 } else { failure }
+    testing.expect_none(t, containers.list_pop_front(&ready), "all three were popped")
+    testing.expect_eq(t, ready.count, 0, "and the count says so")
+    return .Ok
 }

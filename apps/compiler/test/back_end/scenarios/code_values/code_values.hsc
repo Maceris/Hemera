@@ -2,11 +2,12 @@ package code_values
 
 import compiler from "base"
 import runtime from "base"
+import testing from "std"
 
 /*
  * Code values (docs/compilation.md, Code Values): quotes, made at compile time, with what #insert puts in
- * them, checked by their text. A quote isn't checked itself, so the names in it needn't exist. main
- * returns 42 if every quote came out as it should; a wrong one fails the build.
+ * them, checked by their text. A quote isn't checked itself, so the names in it needn't exist. A wrong
+ * quote fails the build.
  */
 
 Color :: enum {
@@ -71,6 +72,13 @@ first_handle :: fn() -> u64 {
 FIRST :: first_handle()
 FIRST_AGAIN :: first_handle()
 
-main :: fn() -> int {
-    return if QUOTES_WORK && FIRST == 1 && FIRST_AGAIN == 1 { 42 } else { 1 }
+quotes_come_out_as_written #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, QUOTES_WORK, "every quote was checked by its text at compile time, where a wrong one fails the build")
+    return .Ok
+}
+
+numbers_codes_within_the_code_that_made_them #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, FIRST, 1, "the first Code a run of compile-time code makes is its first")
+    testing.expect_eq(t, FIRST_AGAIN, 1, "another run numbers its own from the start, whatever ran before it")
+    return .Ok
 }

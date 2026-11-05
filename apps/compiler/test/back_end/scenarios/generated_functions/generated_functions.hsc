@@ -2,11 +2,12 @@ package generated_functions
 
 import compiler from "base"
 import runtime from "base"
+import testing from "std"
 
 /*
  * Code made from data (docs/compilation.md, Code Values): a function per member of a table of function
  * types, named with compiler.name and given the member's parameters and arguments; and the functions that
- * make and look at code, checked at compile time. main returns 42 if the generated functions work.
+ * make and look at code, checked at compile time. Run with hemera --test.
  */
 
 Calls :: struct {
@@ -89,16 +90,21 @@ making_code_works :: fn() -> bool {
         expect(items[1], "second()")
     }
     // The line count is made on
-    if compiler.location_of(count).line != 53 {
-        runtime.log_error("location_of gave line %, not 53", compiler.location_of(count).line)
+    if compiler.location_of(count).line != 54 {
+        runtime.log_error("location_of gave line %, not 54", compiler.location_of(count).line)
     }
     return true
 }
 
 MAKING_CODE_WORKS :: making_code_works()
 
-main :: fn() -> int {
-    // 0 * 100 + 30 + 4, then 1 * 100 - 92
-    total := add(30, 4) + negate(-92)
-    return if MAKING_CODE_WORKS { total } else { 1 }
+calls_functions_made_from_a_table #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, add(30, 4), 34, "add, Calls' first member, passes 0 and its arguments on: 0 * 100 + 30 + 4")
+    testing.expect_eq(t, negate(-92), 8, "negate, Calls' second member, passes 1 and its argument on: 1 * 100 - 92")
+    return .Ok
+}
+
+makes_and_looks_at_code_at_compile_time #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, MAKING_CODE_WORKS, "making_code_works ran at compile time, where anything wrong fails the build")
+    return .Ok
 }

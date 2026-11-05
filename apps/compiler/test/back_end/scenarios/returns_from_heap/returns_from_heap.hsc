@@ -1,6 +1,7 @@
 package returns_from_heap
 
 import runtime from "base"
+import testing from "std"
 
 /*
  * Where a call's result points, from what the callee's body gives back (docs/memory.md, Pointers to the Stack): these
@@ -46,15 +47,16 @@ from_frame :: fn() -> ptr[mut Box] {
     return make(bytes[0..<5], counts[0..<2])
 }
 
-main :: fn() -> int {
+keeps_what_calls_give_back_from_the_heap #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     holder := Holder.{}
     bytes : u8[8]
     keep(&holder, even(4, bytes[0..<3]))
     first :: holder.box.value
     runtime.free(holder.box)
+    testing.expect_eq(t, first, 3, "a box made through calls that call each other, given a view of this stack, is kept")
     second :: from_frame()
-    total :: first + second.value
+    value :: second.value
     runtime.free(second)
-    // 3 and 7
-    return 32 + total
+    testing.expect_eq(t, value, 7, "a box made from a view of a callee's stack outlives that stack")
+    return .Ok
 }

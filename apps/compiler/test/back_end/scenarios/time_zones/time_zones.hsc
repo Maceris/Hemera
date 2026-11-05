@@ -1,68 +1,106 @@
 /*
  * std/time_zones: TZif data parsed, and the offset, daylight saving time and abbreviation at instants before, between
  * and after a zone's transitions, the last from its footer's POSIX TZ rule, in a northern zone and a southern one; and a
- * rule alone. main returns 42 if everything worked, or the number of the first check that failed.
+ * rule alone.
  */
 package time_zones_test
 
+import testing from "std"
+import text_buffer from "std"
 import time from "std"
 import time_zones from "std"
 
+/**
+ * Make an instant from a UTC date and time.
+ *
+ * @param year The year, like 2026.
+ * @param month The month, 1 to 12.
+ * @param day The day of the month, from 1.
+ * @param hour The hour, 0 to 23.
+ * @param minute The minute, 0 to 59.
+ * @return The instant, at the minute's start.
+ */
 at :: fn(year: i64, month: int, day: int, hour: int, minute: int) -> time.Instant {
     return time.from_utc(time.DateTime.{year = year, month = month, day = day, hour = hour, minute = minute})
 }
 
-check :: fn(zone: ptr[time_zones.Zone], t: time.Instant, offset: i32, dst: bool, abbreviation: string) -> bool {
-    found, daylight, name :: time_zones.offset_of(zone, t)
-    return found == offset && daylight == dst && name == abbreviation
+/**
+ * Check what a zone says of an instant, reporting what it said if it isn't what's expected.
+ *
+ * @param t The test's state, which a failure is recorded in.
+ * @param zone The zone.
+ * @param instant The instant.
+ * @param offset Its offset from UTC, in seconds, east positive.
+ * @param dst Whether it's daylight saving time.
+ * @param abbreviation The zone's abbreviation for it, like "BST".
+ * @param message Why the zone should say so, for whoever reads a failure.
+ * @param location Where the check is; the caller's own.
+ * @return True if the zone said all three; false, the failure recorded, if not.
+ */
+expect_zone :: fn(t: ptr[mut testing.T], zone: ptr[time_zones.Zone], instant: time.Instant, offset: i32, dst: bool,
+    abbreviation: string, message: string, location := #caller_location) -> bool {
+    found, daylight, name :: time_zones.offset_of(zone, instant)
+    if found == offset && daylight == dst && name == abbreviation {
+        return true
+    }
+    storage : u8[testing.TEXT_BYTES]
+    detail := text_buffer.make(storage)
+    text_buffer.append_format(&detail, "expected % % %, got % % %", offset, dst, abbreviation, found, daylight, name)
+    testing.record(t, message, text_buffer.as_string(&detail), location)
+    return false
 }
 
-main :: fn() -> int {
-    london := time_zones.parse_zone(LONDON[0..<LONDON.count]) or_return 1
+reads_a_northern_zone #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    parsed :: time_zones.parse_zone(LONDON[0..<LONDON.count])
+    london := testing.require_ok(t, parsed, "tzdata's Europe/London is TZif")?
     defer time_zones.free_zone(&london)
     // Between transitions, from the table
-    if !check(&london, at(1990, 7, 1, 12, 0), 3600, true, "BST") {
-        return 2
-    }
-    if !check(&london, at(1990, 1, 15, 12, 0), 0, false, "GMT") {
-        return 3
-    }
+    expect_zone(t, &london, at(1990, 7, 1, 12, 0), 3600, true, "BST", "a summer between the table's transitions is BST")
+    expect_zone(t, &london, at(1990, 1, 15, 12, 0), 0, false, "GMT", "a winter between the table's transitions is GMT")
     // After the table, from the footer's rule: the last Sunday of March at 1:00 UTC
-    if !check(&london, at(2026, 1, 15, 12, 0), 0, false, "GMT") || !check(&london, at(2026, 7, 1, 12, 0), 3600, true, "BST") {
-        return 4
-    }
-    if !check(&london, at(2026, 3, 29, 0, 59), 0, false, "GMT") || !check(&london, at(2026, 3, 29, 1, 0), 3600, true, "BST") {
-        return 5
-    }
-    if !check(&london, at(2100, 7, 1, 12, 0), 3600, true, "BST") {
-        return 6
-    }
+    expect_zone(t, &london, at(2026, 1, 15, 12, 0), 0, false, "GMT", "past the table, the footer's rule gives winter GMT")
+    expect_zone(t, &london, at(2026, 7, 1, 12, 0), 3600, true, "BST", "past the table, the footer's rule gives summer BST")
+    expect_zone(t, &london, at(2026, 3, 29, 0, 59), 0, false, "GMT", "a minute before 1:00 UTC on March's last Sunday is still GMT")
+    expect_zone(t, &london, at(2026, 3, 29, 1, 0), 3600, true, "BST", "at 1:00 UTC on March's last Sunday it's BST")
+    expect_zone(t, &london, at(2100, 7, 1, 12, 0), 3600, true, "BST", "the rule goes on, with no end, to 2100")
     // Local time
     summer :: time_zones.local(&london, at(2026, 7, 1, 12, 30))
-    if summer.date_time.hour != 13 || summer.date_time.minute != 30 || summer.abbreviation != "BST" {
-        return 7
-    }
-    // A southern zone: daylight saving time over the year's turn
-    sydney := time_zones.parse_zone(SYDNEY[0..<SYDNEY.count]) or_return 8
+    testing.expect_eq(t, summer.date_time.hour, 13, "local summer time is an hour ahead of UTC")
+    testing.expect_eq(t, summer.date_time.minute, 30, "the minutes are UTC's")
+    testing.expect_eq(t, summer.abbreviation, "BST", "local time has the zone's abbreviation")
+    return .Ok
+}
+
+reads_a_southern_zone #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // Daylight saving time over the year's turn
+    parsed :: time_zones.parse_zone(SYDNEY[0..<SYDNEY.count])
+    sydney := testing.require_ok(t, parsed, "tzdata's Australia/Sydney is TZif")?
     defer time_zones.free_zone(&sydney)
-    if !check(&sydney, at(2026, 1, 15, 0, 0), 39600, true, "AEDT") || !check(&sydney, at(2026, 7, 1, 0, 0), 36000, false, "AEST") {
-        return 9
-    }
-    if !check(&sydney, at(2100, 1, 15, 0, 0), 39600, true, "AEDT") {
-        return 10
-    }
-    // A rule alone, as a footer has one: the United States' eastern time
-    rule := time_zones.parse_rule(string_bytes("EST5EDT,M3.2.0,M11.1.0")) or_return 11
+    expect_zone(t, &sydney, at(2026, 1, 15, 0, 0), 39600, true, "AEDT", "January is the southern summer, AEDT")
+    expect_zone(t, &sydney, at(2026, 7, 1, 0, 0), 36000, false, "AEST", "July is the southern winter, AEST")
+    expect_zone(t, &sydney, at(2100, 1, 15, 0, 0), 39600, true, "AEDT", "the rule over the year's turn goes on to 2100")
+    return .Ok
+}
+
+reads_a_rule_alone #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // As a footer has one: the United States' eastern time
+    parsed :: time_zones.parse_rule(string_bytes("EST5EDT,M3.2.0,M11.1.0"))
+    rule := testing.require_some(t, parsed, "a POSIX TZ rule parses alone")?
     summer_offset, summer_dst, summer_name :: time_zones.rule_offset(&rule, at(2026, 7, 1, 12, 0).seconds)
     winter_offset, winter_dst, winter_name :: time_zones.rule_offset(&rule, at(2026, 12, 1, 12, 0).seconds)
-    if summer_offset != -14400 || !summer_dst || summer_name != "EDT" || winter_offset != -18000 || winter_dst || winter_name != "EST" {
-        return 12
-    }
-    // Not TZif
-    if time_zones.parse_zone(string_bytes("not a zone")) is_ok {
-        return 13
-    }
-    return 42
+    testing.expect_eq(t, summer_offset, -14400, "EDT is four hours behind UTC")
+    testing.expect(t, summer_dst, "July is between March's second Sunday and November's first")
+    testing.expect_eq(t, summer_name, "EDT", "summer is called EDT")
+    testing.expect_eq(t, winter_offset, -18000, "EST is five hours behind UTC")
+    testing.expect(t, !winter_dst, "December is after November's first Sunday")
+    testing.expect_eq(t, winter_name, "EST", "winter is called EST")
+    return .Ok
+}
+
+refuses_what_isnt_tzif #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    parsed :: time_zones.parse_zone(string_bytes("not a zone"))
+    testing.expect(t, parsed is_error, "TZif starts with its magic, which text doesn't")
+    return .Ok
 }
 
 // Europe/London, from tzdata 2025c

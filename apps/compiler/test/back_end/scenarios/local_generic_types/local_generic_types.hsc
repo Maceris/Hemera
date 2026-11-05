@@ -1,12 +1,20 @@
 package local_generic_types
 
+import testing from "std"
+
 /*
  * Generic types declared in a function (docs/types.md, Types Declared in Functions): a struct and a union with
  * their own parameters, using the generic function's T and a type declared before them, in a nested function's
- * signature, and with a variant without values, Either[u8].Neither, in two instances checked at once. main
- * returns 42 if every instance is laid out and works as its arguments say.
+ * signature, and with a variant without values, Either[u8].Neither, in two instances checked at once.
  */
 
+/**
+ * Build values of generic types declared here, with this function's T, and add up what they hold.
+ *
+ * @param value Held as the struct's outer, of the instance's T; only its type matters.
+ * @param extra Held as the struct's inner, an int.
+ * @return extra + 1 (the tag's mark) + 2 (a Left) + 3 (a Neither) + 1 (the struct has a size): extra + 7.
+ */
 wrapped :: fn[T](value: T, extra: int) -> int {
     Tag :: struct {
         mark : int,
@@ -40,7 +48,11 @@ wrapped :: fn[T](value: T, extra: int) -> int {
     return sum(both) + from_left + from_nothing + cast[int](size_of(Both[u8]) > 0)
 }
 
-// In a function that isn't generic, a generic type of its own
+/**
+ * Build a value of a generic type declared in a function that isn't generic.
+ *
+ * @return 3, the sum of the pair's two u8s.
+ */
 plain :: fn() -> int {
     Pair :: struct[U] {
         a : U,
@@ -50,7 +62,13 @@ plain :: fn() -> int {
     return cast[int](small.a + small.b)
 }
 
-main :: fn() -> int {
-    // 30 + 1 + 2 + 3 + 1 and 0 + 1 + 2 + 3 + 1, less 5, and plain's 3
-    return wrapped(cast[u8](9), 30) + wrapped(true, 0) - 5 + plain()
+lays_out_each_instances_local_types #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, wrapped(cast[u8](9), 30), 37, "30 + 1 + 2 + 3 + 1, with T a u8")
+    testing.expect_eq(t, wrapped(true, 0), 7, "0 + 1 + 2 + 3 + 1, with T a bool: an instance's types are its own")
+    return .Ok
+}
+
+declares_generic_types_in_plain_functions #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, plain(), 3, "the Pair[u8] holds 1 and 2")
+    return .Ok
 }

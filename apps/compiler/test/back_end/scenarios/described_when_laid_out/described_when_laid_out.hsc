@@ -1,6 +1,7 @@
 package described_when_laid_out
 
 import compiler from "base"
+import testing from "std"
 
 // Compile-time code describing a type waits for what the description holds by value: here Table's call's
 // Result, whose Ok holds Pair, which a slow #insert is still making
@@ -45,7 +46,7 @@ described :: fn() -> int {
 
 DESCRIBED :: #run described()
 
-main :: fn() -> int {
-    // 22: two variants, and Pair's two fields
-    return DESCRIBED
+waits_for_what_a_description_holds_by_value #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, DESCRIBED, 22, "the Result's two variants, and both of Pair's fields, made once its #insert was done")
+    return .Ok
 }

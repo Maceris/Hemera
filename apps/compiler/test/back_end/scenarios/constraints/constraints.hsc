@@ -1,12 +1,13 @@
 /*
- * Generics with constraints (docs/types.md, Constraints), derived parameters and generic aliases, used the ways they allow: main returns
- * 42 if they all gave what they should, or the number of the first check that didn't.
+ * Generics with constraints (docs/types.md, Constraints), derived parameters and generic aliases, used the ways they
+ * allow.
  */
 package constraints_test
 
 import compiler from "base"
 import runtime from "base"
 import containers from "std"
+import testing from "std"
 
 HasCount #constraint :: fn(T: type) {
     compiler.require_field(T, "count", usize)
@@ -103,56 +104,61 @@ second_of :: fn(pair: Pair[string, int]) -> int {
     return pair.second
 }
 
-main :: fn() -> int {
-    if largest(3, 9) != 9 || largest(2.5, 1.5) != 2.5 || largest(cast[u8](200), cast[u8](7)) != 200 {
-        return 1
-    }
-    if count_of(Counted.{count = 5}) != 5 || scaled[8](3) != 24 {
-        return 2
-    }
+calls_constrained_generics #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, largest(3, 9), 9, "ints are Ordered Integers")
+    testing.expect_eq(t, largest(2.5, 1.5), 2.5, "floats are Ordered Floats")
+    testing.expect_eq(t, largest(cast[u8](200), cast[u8](7)), 200, "u8s compare unsigned")
+    testing.expect_eq(t, count_of(Counted.{count = 5}), 5, "a struct with a usize count is HasCount")
+    testing.expect_eq(t, scaled[8](3), 24, "8 is a power of two, so the where clause holds")
+    return .Ok
+}
+
+uses_constrained_containers #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     // std's constrained containers and base's array_find
     ring : containers.RingBuffer[int, 4]
-    if !containers.ring_push(&ring, 11) {
-        return 3
-    }
+    testing.expect(t, containers.ring_push(&ring, 11), "an empty ring of four has room")
     numbers : int[..]
+    defer runtime.array_free(&numbers)
     runtime.array_add(&numbers, 4)
     runtime.array_add(&numbers, 8)
-    match runtime.array_find(numbers, 8) {
-        case Some(index) => {
-            if index != 1 {
-                return 4
-            }
-        }
-        case None => return 4
-    }
-    runtime.array_free(&numbers)
-    if describe(3) != 10 || describe(2.5) != 20 || describe(Counted.{count = 1}) != 20 {
-        return 5
-    }
-    if width_of(cast[u16](1)) != 2 || width_of('c') != size_of(char) || width_of(1.5) != 8 {
-        return 6
-    }
+    found :: runtime.array_find(numbers, 8)
+    testing.expect_eq(t, found, cast[usize?](1), "8 was added second")
+    return .Ok
+}
+
+chooses_by_what_holds #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, describe(3), 10, "an int's instance takes the Integer branch")
+    testing.expect_eq(t, describe(2.5), 20, "a float's takes the other")
+    testing.expect_eq(t, describe(Counted.{count = 1}), 20, "so does a struct's")
+    testing.expect_eq(t, width_of(cast[u16](1)), 2, "a u16 is an Integer, one of require_any's")
+    testing.expect_eq(t, width_of('c'), size_of(char), "a char is a Character, another")
+    testing.expect_eq(t, width_of(1.5), 8, "an untyped float is an f64, a Float")
+    return .Ok
+}
+
+derives_parameters #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     bytes : u8[2]
     bytes[0] = 200
     bytes[1] = 100
     view : u8[] = bytes
+    testing.expect_eq(t, sum(view), 44, "the total is derived as the elements' u8, so 300 wraps to 44")
     // Given instead of derived, a u64 total doesn't wrap
-    if sum(view) != 44 || sum[u8[], u8, u64](view) != 300 || bits_of(cast[u16](1)) != 16 {
-        return 7
-    }
+    testing.expect_eq(t, sum[u8[], u8, u64](view), 300, "given a u64 total, it doesn't wrap")
+    testing.expect_eq(t, bits_of(cast[u16](1)), 16, "bits is derived from the type's size")
     linked : Linked[int]
-    if linked.pointer != null {
-        return 8
-    }
+    testing.expect(t, linked.pointer == null, "B is derived as ptr[int], and a zeroed optional is empty")
+    return .Ok
+}
+
+uses_generic_aliases #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     named : Named[int]
     named.first = "answer"
     named.second = 42
+    testing.expect_eq(t, second_of(named), 42, "Named[int] is Pair[string, int] itself")
     small : SmallRing[u8, 16]
+    testing.expect(t, containers.ring_push(&small, 7), "16 is small enough for a SmallRing, which is a RingBuffer")
     twin : Twin[int]
     twin.first = 1
-    if second_of(named) != 42 || !containers.ring_push(&small, 7) || twin.first != 1 {
-        return 9
-    }
-    return 42
+    testing.expect_eq(t, twin.first, 1, "a distinct alias keeps Pair's fields")
+    return .Ok
 }

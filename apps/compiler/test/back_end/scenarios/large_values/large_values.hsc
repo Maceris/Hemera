@@ -2,10 +2,11 @@
  * Values too large for registers (docs/calling_convention.md, Large Values): results written through a pointer
  * the caller passes, and parameters passed as a pointer to the caller's copy, called by name, through function
  * values, with named and default arguments, through |>, recursively and with several results, and the original
- * never changed by what the callee does with its copy. main returns 42 if each worked, or the number of the first
- * check that didn't.
+ * never changed by what the callee does with its copy.
  */
 package large_values_test
+
+import testing from "std"
 
 // 4 KiB: far too large for registers
 Big :: struct {
@@ -79,56 +80,69 @@ add_small :: fn(x: Small, y: Small) -> Small {
     return Small.{a = x.a + y.a, b = x.b + y.b, c = x.c + y.c}
 }
 
-main :: fn() -> int {
+returns_and_passes_large_values #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     big := big_of(2)
-    if big.tag != 2 || big.words[0] != 2000 || big.words[511] != 2511 {
-        return 1
-    }
+    testing.expect_eq(t, big.tag, 2, "the result was written whole through the caller's pointer")
+    testing.expect_eq(t, big.words[0], 2000, "the first word of the result")
+    testing.expect_eq(t, big.words[511], 2511, "the last word of the result")
     expected : u64 = 0
     for i in 0..<512 {
         expected += 2000 + cast[u64](i)
     }
-    if sum(big) != expected + 2 {
-        return 2
-    }
+    testing.expect_eq(t, sum(big), expected + 2, "the parameter is the caller's whole value, every word and the tag")
+    return .Ok
+}
+
+leaves_the_callers_copy_unchanged #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    big := big_of(2)
     other := changed(big)
-    if big.words[0] != 2000 || big.tag != 2 || other.words[0] != 7 || other.tag != 9 || other.words[5] != 2005 {
-        return 3
-    }
+    testing.expect_eq(t, big.words[0], 2000, "the callee changed its own copy, not the caller's")
+    testing.expect_eq(t, big.tag, 2, "nor the caller's tag")
+    testing.expect_eq(t, other.words[0], 7, "the callee's change is in its result")
+    testing.expect_eq(t, other.tag, 9, "with its tag")
+    testing.expect_eq(t, other.words[5], 2005, "and what it didn't change is the caller's")
+    deep := countdown(big, 20)
+    testing.expect_eq(t, deep.words[1], 2021, "each of 20 levels of recursion added 1 to its own copy")
+    testing.expect_eq(t, big.words[1], 2001, "and none of them changed the caller's")
+    return .Ok
+}
+
+gives_several_large_results #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    big := big_of(2)
     first, rest, last := split(big)
-    if first != 2000 || rest.words[511] != 2511 || last.a != 2001 || last.b != 2511 || last.c != 2 {
-        return 4
-    }
-    if maybe(0) != null {
-        return 5
-    }
-    found := maybe(4) or_return 6
-    if found.words[3] != 4003 {
-        return 7
-    }
+    testing.expect_eq(t, first, 2000, "the first result, in a register")
+    testing.expect_eq(t, rest.words[511], 2511, "the second, a Big, whole")
+    testing.expect_eq(t, last.a, 2001, "the third, a Small, its first field")
+    testing.expect_eq(t, last.b, 2511, "its second field")
+    testing.expect_eq(t, last.c, 2, "its last field, past two registers")
+    s := add_small(small_of(1), small_of(2))
+    testing.expect_eq(t, s.a, 3, "Smalls passed and returned through pointers add up, first field")
+    testing.expect_eq(t, s.b, 6, "second field")
+    testing.expect_eq(t, s.c, 2, "third field")
+    return .Ok
+}
+
+gives_large_optionals #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    nothing :: maybe(0)
+    testing.expect(t, nothing == null, "seed 0 gives no Big")
+    given :: maybe(4)
+    found :: testing.require_some(t, given, "seed 4 gives a Big")?
+    testing.expect_eq(t, found.words[3], 4003, "the optional holds the whole Big")
+    return .Ok
+}
+
+calls_with_large_values_every_way #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    big := big_of(2)
     // Through a function value
     make : fn(seed: u64) -> Big = big_of
     total : fn(big: Big) -> u64 = sum
-    if total(make(1)) != sum(big_of(1)) {
-        return 8
-    }
-    if with_default(1) != 4 || with_default(1, big = big) != 2003 || with_default(count = 2, big = big_of(1)) != 1003 {
-        return 9
-    }
-    if (big_of(3) |> sum()) != sum(big_of(3)) {
-        return 10
-    }
-    deep := countdown(big, 20)
-    if deep.words[1] != 2021 || big.words[1] != 2001 {
-        return 11
-    }
-    s := add_small(small_of(1), small_of(2))
-    if s.a != 3 || s.b != 6 || s.c != 2 {
-        return 12
-    }
+    testing.expect_eq(t, total(make(1)), sum(big_of(1)), "function values pass and return large values as names do")
+    testing.expect_eq(t, with_default(1), 4, "the default Big's tag is 3, and its words 0")
+    testing.expect_eq(t, with_default(1, big = big), 2003, "a large argument given by name")
+    testing.expect_eq(t, with_default(count = 2, big = big_of(1)), 1003, "both by name, the large one a call's result")
+    testing.expect_eq(t, big_of(3) |> sum(), sum(big_of(3)), "|> passes a large result on as the first argument")
     // A result used straight away, its fields read where the callee wrote it
-    if big_of(5).words[10] != 5010 || changed(big_of(5)).tag != 9 {
-        return 13
-    }
-    return 42
+    testing.expect_eq(t, big_of(5).words[10], 5010, "a field of a result never stored in a local")
+    testing.expect_eq(t, changed(big_of(5)).tag, 9, "a result passed straight to another call")
+    return .Ok
 }

@@ -1,40 +1,51 @@
 /*
  * b16, b32 and b64 (docs/types.md): true is 1 and false 0, in a wider integer, and ! gives the other,
- * through a widening and as a condition. main returns 42 if they all held, or the number of the first that
- * didn't.
+ * through a widening and as a condition.
  */
 package wide_booleans
 
-check :: fn(ok: b64, code: int) -> int {
+import testing from "std"
+
+/**
+ * Tell whether a wide boolean is true, taking it widened to b64 and testing it as a condition.
+ *
+ * @param ok Any wide boolean, widened to b64 where it's passed.
+ * @return True if ok is.
+ */
+holds :: fn(ok: b64) -> bool {
     if ok {
-        return 0
+        return true
     }
-    return code
+    return false
 }
 
+/**
+ * Negate a b32, through a call.
+ *
+ * @param value Any b32.
+ * @return !value.
+ */
 flip :: fn(value: b32) -> b32 {
     return !value
 }
 
-main :: fn() -> int {
-    errors := 0
+negates_wide_booleans #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     a : b16 = true
     b : b32 = true
     c : b64 = true
     off : b16 = false
-    errors += check(!(!a), 1)
-    errors += check(!(!b), 2)
-    errors += check(!(!c), 3)
-    errors += check(!off, 4)
-    errors += check(bit_cast[u16](!a) == 0 && bit_cast[u16](!off) == 1, 5)
+    testing.expect(t, holds(!(!a)), "a b16's double negation is itself, widened to b64")
+    testing.expect(t, holds(!(!b)), "a b32's double negation is itself, widened to b64")
+    testing.expect(t, holds(!(!c)), "a b64's double negation is itself")
+    testing.expect(t, holds(!off), "false negated is true, widened to b64")
+    testing.expect_eq(t, bit_cast[u16](!a), 0, "true negated is 0 in all 16 bits")
+    testing.expect_eq(t, bit_cast[u16](!off), 1, "false negated is 1, not all ones")
     wide : b64 = a
-    errors += check(!(!wide), 6)
-    errors += check(bit_cast[u32](flip(true)) == 0 && bit_cast[u32](flip(false)) == 1, 7)
+    testing.expect(t, holds(!(!wide)), "a b16 widened to b64 keeps its truth")
+    testing.expect_eq(t, bit_cast[u32](flip(true)), 0, "true negated through a call is 0")
+    testing.expect_eq(t, bit_cast[u32](flip(false)), 1, "false negated through a call is 1")
     if !c {
-        errors += 8
+        testing.fail(t, "a true b64's negation, as a condition, isn't taken")
     }
-    if errors == 0 {
-        return 42
-    }
-    return errors
+    return .Ok
 }

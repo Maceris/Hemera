@@ -1,6 +1,6 @@
 /*
- * A hosted program for the back end's test: main returns 42 if everything worked, or the number
- * of the first check that failed.
+ * A hosted program for the back end's test, of the language's everyday forms: main runs the
+ * package's tests, reporting to standard output, and returns 42 if they all passed.
  */
 package hosted
 
@@ -9,6 +9,7 @@ import intrinsics from "base"
 import runtime from "base"
 import concurrency from "std"
 import memory from "std"
+import testing from "std"
 import text_buffer from "std"
 
 Point :: struct {
@@ -572,68 +573,29 @@ scaled :: fn(value: int, factor: int = LIMIT * 2 + 1, offset: int = sum_to(LIMIT
     return value * factor + offset
 }
 
-main :: fn() -> int {
+matches_unions_and_enums #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     p := Point.{3, 4}
     shapes := Shape.[.Circle(2), .Rectangle(p.x, p.y), .Empty]
     total := 0
     for shape in shapes {
         total += area(shape)
     }
-    if total != 24 {
-        return 1
-    }
-    if sum_to(5) != 10 {
-        return 2
-    }
-    n := 0
-    bump(&n)
-    if n != 11 {
-        return 3
-    }
-    if order() != 21 {
-        return 4
-    }
-    if count_odd(10) != 5 {
-        return 5
-    }
-    if classify(4) + classify(1) + classify(9) != 60 {
-        return 6
-    }
+    testing.expect_eq(t, total, 24, "12 for the circle, 12 for the rectangle, 0 for Empty")
     c : Color = .Blue
     color_value := match c {
         case .Red => 1
         case .Green => 2
         case .Blue => 3
     }
-    if color_value != 3 {
-        return 7
-    }
-    if 10 - 3 - 2 != 5 || 100 / 10 / 5 != 2 {
-        return 8
-    }
-    a, b := two()
-    if a != 7 || !b {
-        return 9
-    }
-    if sum(1, 2, 3, LIMIT) != 10 {
-        return 10
-    }
-    numbers := int.[5, 6, 7]
-    if first(numbers) != 5 {
-        return 11
-    }
-    if (quarter(8) or_else 0) != 2 || (quarter(6) or_else 99) != 99 {
-        return 12
-    }
-    labeled := Labeled.{Point.{1, 2}, 3}
-    if labeled.x + labeled.y + labeled.weight != 6 {
-        return 13
-    }
-    moved := ORIGIN
-    move(&moved, 5)
-    if moved.x != 15 || moved.y != 15 {
-        return 14
-    }
+    testing.expect_eq(t, color_value, 3, "a match on an enum takes Blue's arm")
+    testing.expect_eq(t, area(PICKED), 12, "a constant union with values, built without memory: a 3 by 4 rectangle")
+    testing.expect_eq(t, area(ROUND), 75, "and a circle of radius 5")
+    return .Ok
+}
+
+loops_and_breaks #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, sum_to(5), 10, "0 + 1 + 2 + 3 + 4")
+    testing.expect_eq(t, count_odd(10), 5, "a loop with a with block and a while after it, continuing past evens")
     hits := 0
     for i in 0..<5 {
         for j in 0..<5 {
@@ -646,16 +608,20 @@ main :: fn() -> int {
             hits += 1
         }
     }
-    if hits != 6 {
-        return 15
-    }
+    testing.expect_eq(t, hits, 6, "two inner rounds for each of three outer ones, before break 2 leaves both")
     fixed : int[3]
     for &slot, index in fixed {
         slot^ = cast[int](index) * 10
     }
-    if fixed[2] != 20 {
-        return 16
-    }
+    testing.expect_eq(t, fixed[2], 20, "a loop over pointers to elements writes them")
+    return .Ok
+}
+
+runs_deferred_statements #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    n := 0
+    bump(&n)
+    testing.expect_eq(t, n, 11, "the deferred += 10 runs after the += 1, as bump returns")
+    testing.expect_eq(t, order(), 21, "deferred statements run last first: 2, then 1")
     deferred := 0
     for i in 0..<4 {
         defer deferred += 1
@@ -663,249 +629,329 @@ main :: fn() -> int {
             continue
         }
     }
-    if deferred != 4 {
-        return 17
-    }
-    text := "hello"
-    if text.count != 5 {
-        return 18
-    }
+    testing.expect_eq(t, deferred, 4, "a loop body's defer runs each round, continue or not")
+    return .Ok
+}
+
+branches #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, classify(4) + classify(1) + classify(9), 60, "a switch's range, list and default cases: 20 + 10 + 30")
+    a, b := two()
+    choice := if a > 5 { 1 } else { 2 }
+    testing.expect_eq(t, choice, 1, "an if expression takes its first branch for 7")
+    testing.expect_eq(t, grade(95), 4, "each else belongs to the if before it: over 90")
+    testing.expect_eq(t, grade(85), 3, "over 80")
+    testing.expect_eq(t, grade(75), 2, "over 70")
+    testing.expect_eq(t, grade(5), 1, "the last else")
+    testing.expect_eq(t, sign(5), 1, "an if expression with else if: positive")
+    testing.expect_eq(t, sign(-5), -1, "negative")
+    testing.expect_eq(t, sign(0), 0, "zero")
+    return .Ok
+}
+
+works_out_operators #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, 10 - 3 - 2, 5, "- is left associative")
+    testing.expect_eq(t, 100 / 10 / 5, 2, "/ is left associative")
     f := double
-    if f(4) |> double() != 16 {
-        return 19
-    }
+    testing.expect_eq(t, f(4) |> double(), 16, "a function value's result piped to another call")
     shift : u8 = 1
     shift <<= 3
-    if shift != 8 || -7 %% 3 != 2 || -7 % 3 != -1 {
-        return 20
-    }
-    choice := if a > 5 { 1 } else { 2 }
-    if choice != 1 {
-        return 21
-    }
-    if grade(95) != 4 || grade(85) != 3 || grade(75) != 2 || grade(5) != 1 {
-        return 22
-    }
-    if sign(5) != 1 || sign(-5) != -1 || sign(0) != 0 {
-        return 23
-    }
+    testing.expect_eq(t, shift, 8, "<<= shifts in place")
+    testing.expect_eq(t, -7 %% 3, 2, "%% takes the divisor's sign")
+    testing.expect_eq(t, -7 % 3, -1, "% takes the dividend's sign")
     _ = double(3)
-    if forward(1, 2, 3) != 17 {
-        return 24
+    return .Ok
+}
+
+gives_several_results_and_takes_varargs #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    a, b := two()
+    testing.expect_eq(t, a, 7, "the first of two results")
+    testing.expect(t, b, "the second")
+    testing.expect_eq(t, sum(1, 2, 3, LIMIT), 10, "varargs, a constant among them")
+    testing.expect_eq(t, forward(1, 2, 3), 17, "a varargs view passed on whole, then a string: 3 values and 14 characters")
+    _, second :: two_results()
+    first, _ := two_results()
+    testing.expect(t, second, "_ drops the first result, and the second is kept")
+    testing.expect_eq(t, first, 3, "_ drops the second result, and the first is kept")
+    return .Ok
+}
+
+instantiates_generics #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    numbers := int.[5, 6, 7]
+    testing.expect_eq(t, first(numbers), 5, "a generic function given an int view")
+    ring : Ring[u8, RING_SIZE * 1]
+    push[u8, 2](&ring, cast[u8](1))
+    push(&ring, cast[u8](2))
+    push(&ring, cast[u8](3))
+    testing.expect_eq(t, ring.head, 2, "a ring of capacity 2 refuses the third push")
+    testing.expect_eq(t, ring.items[1], 2, "the second push, with its arguments inferred, is kept")
+    testing.expect_eq(t, size_of(Ring[u8, 2]), 16, "two u8s and a usize, aligned")
+    nines :: filled[4](cast[u8](9))
+    bits : Bits[130]
+    testing.expect_eq(t, nines.count, 4, "a value given only explicitly sizes the result")
+    testing.expect_eq(t, nines[3], 9, "and the local it was filled in")
+    testing.expect_eq(t, verbosity[true](), 2, "a bool value picks an #if branch")
+    testing.expect_eq(t, verbosity[false](), 1, "and the other")
+    testing.expect_eq(t, bits.words.count, 3, "(130 + 63) / 64 words, arithmetic in a generic type's argument")
+    return .Ok
+}
+
+unwraps_optionals #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, quarter(8) or_else 0, 2, "8 halves twice")
+    testing.expect_eq(t, quarter(6) or_else 99, 99, "6 halves to 3, which ? passes on as none")
+    is_quiet := false
+    match quiet() {
+        case Some(found) => is_quiet = true
+        case None => {}
     }
+    testing.expect(t, is_quiet, "a variant without values, as an optional, is some")
+    testing.expect_eq(t, value_or_stop(7), 7, "or_else with a #never_returns call isn't taken for a value")
+    testing.expect_eq(t, described(Point.{8, 9}), 8, "a struct given for an optional parameter")
+    testing.expect_eq(t, apply(twice, 5), 10, "an optional function value given a function")
+    testing.expect_eq(t, apply(null, 5), 5, "and given null")
+    // A match's values are copies: changing what was matched doesn't change them
+    held : int? = 5
+    match held {
+        case Some(value) => {
+            held = null
+            testing.expect_eq(t, value, 5, "the matched value is a copy, kept when the optional is emptied")
+        }
+        case None => testing.fail(t, "held holds 5")
+    }
+    return .Ok
+}
+
+keeps_optional_pointers_as_pointers #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    last := Link.{null, 3}
+    first := Link.{&last, 4}
+    none : ptr[Link]? = null
+    testing.expect_eq(t, chain_total(&first), 7, "or_break walks the chain to its null end")
+    testing.expect(t, !(none is_some), "a null optional pointer is none")
+    testing.expect(t, !(first.next is_none), "a pointer in an optional pointer is some")
+    // None is a null pointer in memory
+    testing.expect_eq(t, cast[ptr[u64]](&last)^, 0, "the last link's next, none, is stored as a null pointer")
+    return .Ok
+}
+
+uses_structs #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    labeled := Labeled.{Point.{1, 2}, 3}
+    testing.expect_eq(t, labeled.x + labeled.y + labeled.weight, 6, "using reaches Point's fields through Labeled")
+    moved := ORIGIN
+    move(&moved, 5)
+    testing.expect_eq(t, moved.x, 15, "a constant's copy changed through a pointer")
+    testing.expect_eq(t, moved.y, 15, "both fields")
+    big : Big
+    big.values[31] = 5
+    copy := big
+    big.values[31] = 6
+    testing.expect_eq(t, copy.values[31], 5, "a struct big enough for memmove is copied, not shared")
+    testing.expect_eq(t, POINTS[1].y, 4, "an array constant of structs")
+    return .Ok
+}
+
+takes_any_word_as_a_name #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    origin := Origin.{package = "hosted", match = 2}
+    direction : Direction = .else
+    testing.expect_eq(t, origin.match, 2, "match is a field's name")
+    testing.expect_eq(t, origin.package.count, 6, "and package")
+    testing.expect_eq(t, direction, Direction.else, "else is a member's name")
+    testing.expect_eq(t, total_of(1, 2, 3, 4), 10, "contextual keywords are parameters' names")
+    return .Ok
+}
+
+starts_with_defaults #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    declared : Defaults
+    empty :: Defaults.{}
+    some :: Defaults.{height = 7, plain = 1}
+    framed : Framed
+    testing.expect_eq(t, declared.width, 10, "a declaration starts with a field's default")
+    testing.expect_eq(t, declared.height, 20, "a default from a constant declared after it, WIDE / 2")
+    testing.expect(t, declared.shown, "a bool default")
+    testing.expect_eq(t, declared.color, Color.Blue, "an enum default")
+    testing.expect_eq(t, declared.plain, 0, "a field without a default is zero")
+    testing.expect_eq(t, empty.width, 10, "an empty literal starts with the defaults")
+    testing.expect_eq(t, empty.height, 20, "every one")
+    testing.expect_eq(t, some.height, 7, "a field given in a literal replaces its default")
+    testing.expect_eq(t, some.width, 10, "and the rest keep theirs")
+    testing.expect_eq(t, some.plain, 1, "a field without a default, given")
+    testing.expect_eq(t, framed.inner.height, 20, "a struct field holds its own defaults")
+    testing.expect_eq(t, framed.border, 3, "beside the outer struct's")
+    // Green is 1, Empty's area 0, the default width 10
+    testing.expect_eq(t, painted(), 1010, "parameter defaults: an enum member, a variant without values, a struct's defaults")
+    testing.expect_eq(t, painted(.Red, .Circle(1)), 310, "the defaults given: Red 0, a circle's area 3, the width 10")
+    // 2 * 9 + (0 + 1 + 2 + 3), then with the factor given
+    testing.expect_eq(t, scaled(2), 24, "defaults that are expressions run in the caller")
+    testing.expect_eq(t, scaled(2, 1), 8, "the factor given, the offset's default still worked out")
+    return .Ok
+}
+
+views_arrays_and_strings #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    text := "hello"
+    testing.expect_eq(t, text.count, 5, "a literal's count")
     // A view of an array refers to it, so changes through the view reach it
     numbers_to_change : int[3]
     view : mut int[] = numbers_to_change
     view[1] = 5
-    if numbers_to_change[1] != 5 {
-        return 25
-    }
-    if sum_bytes(PRIMES) != 28 {
-        return 26
-    }
-    if frames_above() == 0 {
-        return 27
-    }
+    testing.expect_eq(t, numbers_to_change[1], 5, "a change through a view reaches the array it views")
+    testing.expect_eq(t, sum_bytes(PRIMES), 28, "a table of integer constants, as a view")
     word : u8[] = WORD
-    if word.count != 6 || word[0] != 0x48 || WORD[5] != 0x41 {
-        return 28
+    testing.expect_eq(t, word.count, 6, "#file_data holds word.txt's six bytes")
+    testing.expect_eq(t, word[0], 0x48, "its first, H")
+    testing.expect_eq(t, WORD[5], 0x41, "its last, A")
+    greeting := "hello world"
+    if 5 <= greeting.count {
+        prefix :: greeting[0..<5]
+        testing.expect_eq(t, prefix, "hello", "a slice of a string compares by its bytes")
     }
+    testing.expect_ne(t, greeting, "hello", "a string and its prefix differ")
+    testing.expect_eq(t, DIGITS[3], '3', "a constant string indexed")
+    // A string made at run time, and its bytes through string_bytes
+    made_storage : u8[16]
+    made :: formatted(made_storage, "ab%", 7)
+    made_bytes :: string_bytes(made)
+    testing.expect_eq(t, made_bytes.count, 3, "string_bytes views a string made at run time")
+    if 2 < made_bytes.count {
+        testing.expect_eq(t, made_bytes[0], cast[u8]('a'), "its first byte")
+        testing.expect_eq(t, made_bytes[2], cast[u8]('7'), "its last, the formatted 7")
+    }
+    testing.expect_eq(t, string_bytes("").count, 0, "an empty string has no bytes")
+    return .Ok
+}
+
+uses_the_stack #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_ne(t, frames_above(), 0, "a stack trace sees at least this function's callers")
+    testing.expect_eq(t, big_frame(), 3, "a frame bigger than a page is probed and used")
+    return .Ok
+}
+
+holds_any_type_in_a_variant #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     counted := 1
     event : Event = .Counter(&counted)
     match event {
         case Counter(target) => target^ += 1
         case _ => {}
     }
-    if counted != 2 {
-        return 29
-    }
-    if POINTS[1].y != 4 {
-        return 30
-    }
-    is_quiet := false
-    match quiet() {
-        case Some(found) => is_quiet = true
-        case None => {}
-    }
-    if !is_quiet || value_or_stop(7) != 7 {
-        return 31
-    }
-    if larger(if counted > 1 { 10 } else { 0 }, 5) != 10 {
-        return 32
-    }
-    if described(Point.{8, 9}) != 8 {
-        return 33
-    }
-    greeting := "hello world"
-    if greeting[0..<5] != "hello" || greeting == "hello" || DIGITS[3] != '3' {
-        return 34
-    }
-    big : Big
-    big.values[31] = 5
-    copy := big
-    big.values[31] = 6
-    if copy.values[31] != 5 {
-        return 35
-    }
-    origin := Origin.{package = "hosted", match = 2}
-    direction : Direction = .else
-    if origin.match != 2 || origin.package.count != 6 || direction != Direction.else || total_of(1, 2, 3, 4) != 10 {
-        return 36
-    }
-    last := Link.{null, 3}
-    first := Link.{&last, 4}
-    none : ptr[Link]? = null
-    // None is a null pointer in memory
-    if chain_total(&first) != 7 || (none is_some) || (first.next is_none) || cast[ptr[u64]](&last)^ != 0 {
-        return 37
-    }
-    if apply(twice, 5) != 10 || apply(null, 5) != 5 {
-        return 38
-    }
-    failed_twice := match attempt_twice(true) {
-        case Ok => false
-        case Error(fault) => true
-    }
+    testing.expect_eq(t, counted, 2, "a variant holding a pointer writes through it")
+    testing.expect_eq(t, larger(if counted > 1 { 10 } else { 0 }, 5), 10, "an if expression as an argument")
+    return .Ok
+}
+
+handles_results #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_error(t, attempt_twice(true), Fault.Busy, "? passes the second attempt's error on")
     failures := 0
     attempt(true) or_else count_up(&failures)
     attempt(false) or_else count_up(&failures)
-    if !failed_twice || successes() != 2 || failures != 1 {
-        return 39
-    }
-    sized_ok := match sized(false) {
-        case Ok(size) => size == 7
-        case Error(fault) => false
-    }
-    sized_failed := match sized(true) {
-        case Ok(size) => false
-        case Error(fault) => true
-    }
-    if !sized_ok || !sized_failed {
-        return 39
-    }
-    // Type information: an any's type, type values, and descriptors
+    testing.expect_eq(t, failures, 1, "or_else runs only for the error")
+    testing.expect_eq(t, successes(), 2, "or_continue skips the three failed attempts of five")
+    sized_ok :: sized(false)
+    size :: testing.require_ok(t, sized_ok, "a result unwrapped where it's matched on")?
+    testing.expect_eq(t, size, 7, "and the optional in it matched")
+    testing.expect_error(t, sized(true), Fault.Busy, "? in a match's subject passes the error on")
+    return .Ok
+}
+
+reflects_types #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     color_info :: cast[ptr[compiler.TypeInfoEnum]](info_of(Color.Blue))
-    if color_info.variant != .ENUM || color_info.name != "Color" || color_info.members[2] != "Blue" || color_info.values[2] != 2 {
-        return 40
+    testing.expect_eq(t, color_info.variant, compiler.TypeInfoVariant.ENUM, "an any's type information says it's an enum")
+    testing.expect_eq(t, color_info.name, "Color", "named as declared")
+    if 2 < color_info.members.count && 2 < color_info.values.count {
+        member :: color_info.members[2]
+        value :: color_info.values[2]
+        testing.expect_eq(t, member, "Blue", "its third member's name")
+        testing.expect_eq(t, value, 2, "and value")
+    }
+    else {
+        testing.fail(t, "Color has three members")
     }
     labeled_info :: cast[ptr[compiler.TypeInfoStruct]](type_info_of(Labeled))
-    if labeled_info.members.count != 2 || !labeled_info.members[0].is_using || labeled_info.members[1].offset != 16 {
-        return 41
+    testing.require_eq(t, labeled_info.members.count, 2, "Labeled has a using Point and a weight")?
+    if 1 < labeled_info.members.count {
+        point :: labeled_info.members[0]
+        weight :: labeled_info.members[1]
+        testing.expect(t, point.is_using, "the first is using")
+        testing.expect_eq(t, weight.offset, 16, "the weight is after the Point's two ints")
     }
     some_number : any = 5
-    if some_number.type != int || some_number.type == i64 || type_of(origin) != Origin {
-        return 43
-    }
+    testing.expect(t, some_number.type == int, "an untyped integer in an any is an int")
+    testing.expect(t, some_number.type != i64, "int is a type of its own, not i64")
+    origin := Origin.{package = "hosted", match = 2}
+    testing.expect(t, type_of(origin) == Origin, "type_of gives a value's type")
+    return .Ok
+}
+
+formats_values_by_their_types #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    last := Link.{null, 3}
+    first := Link.{&last, 4}
+    none : ptr[Link]? = null
     shape_storage, colors_storage, point_storage, pointer_storage : u8[128]
     shape_text :: formatted(shape_storage, "% %", Shape.Rectangle(2, 3), first.next)
-    if formatted(colors_storage, "%2 %1 %%", Color.Green, true) != "true Green %" || shape_text.count < 16 {
-        return 44
-    }
-    if formatted(point_storage, "%", Point.{1, -2}) != "Point{x = 1, y = -2}"
-        || formatted(pointer_storage, "% %", ptr[mut Point], none) != "ptr[mut Point] none" {
-        return 45
-    }
-    _, second :: two_results()
-    first, _ := two_results()
-    if !second || first != 3 {
-        return 46
-    }
-    if big_frame() != 3 {
-        return 47
-    }
-    if FIBONACCI_20 != 6765 || #run fibonacci(10) != 55 || SQUARES.count != 4 || SQUARES[3] != 16 {
-        return 48
-    }
-    if LABELED.y != 10 || LABELED.weight != 15 || WHEN != "compiling" || compile_time_name() != "running" {
-        return 49
-    }
-    fibonacci_bytes : u8[FIBONACCI_7]
-    if fibonacci_bytes.count != 13 || size_name() != "large" {
-        return 50
-    }
-    if SQUARES_SUM != 55 {
-        return 51
-    }
-    if !tables_hold() {
-        return 62
-    }
-    if !REFLECTED_CONSTANTS {
-        return 63
-    }
-    if REFLECTED_PARAMETERS != 3 {
-        return 52
-    }
-    ring : Ring[u8, RING_SIZE * 1]
-    push[u8, 2](&ring, cast[u8](1))
-    push(&ring, cast[u8](2))
-    push(&ring, cast[u8](3))
-    if ring.head != 2 || ring.items[1] != 2 || size_of(Ring[u8, 2]) != 16 {
-        return 53
-    }
-    nines :: filled[4](cast[u8](9))
-    bits : Bits[130]
-    if nines.count != 4 || nines[3] != 9 || verbosity[true]() != 2 || verbosity[false]() != 1 || bits.words.count != 3 {
-        return 54
-    }
-    // A match's values are copies: changing what was matched doesn't change them
-    held : int? = 5
-    match held {
-        case Some(value) => {
-            held = null
-            if value != 5 {
-                return 55
-            }
-        }
-        case None => return 55
-    }
-    declared : Defaults
-    empty :: Defaults.{}
-    some :: Defaults.{height = 7, plain = 1}
-    framed : Framed
-    if declared.width != 10 || declared.height != 20 || !declared.shown || declared.color != .Blue || declared.plain != 0
-        || empty.width != 10 || empty.height != 20 || some.height != 7 || some.width != 10 || some.plain != 1
-        || framed.inner.height != 20 || framed.border != 3 {
-        return 56
-    }
-    if area(PICKED) != 12 || area(ROUND) != 75 {
-        return 57
-    }
-    // Green is 1, Empty's area 0, the default width 10
-    if painted() != 1010 || painted(.Red, .Circle(1)) != 310 {
-        return 58
-    }
-    // 2 * 9 + (0 + 1 + 2 + 3), then with the factor given
-    if scaled(2) != 24 || scaled(2, 1) != 8 {
-        return 59
-    }
-    // The most and least each kind of number holds
-    if max_value(u8) != 255 || min_value(i8) != -128 || max_value(u64) != 0xffff_ffff_ffff_ffff || min_value(u16) != 0 {
-        return 60
-    }
-    if max_value(f32) <= 3.0e38 || min_value(f64) >= -1.0e308 {
-        return 61
-    }
-    // A string made at run time, and its bytes through string_bytes
-    made_storage : u8[16]
-    made :: formatted(made_storage, "ab%", 7)
-    made_bytes :: string_bytes(made)
-    if made_bytes.count != 3 || made_bytes[0] != cast[u8]('a') || made_bytes[2] != cast[u8]('7') || string_bytes("").count != 0 {
-        return 64
-    }
-    // The second allocation through a FailingAllocator fails, and the rest go through, each counted
-    if !fails_the_second() {
-        return 65
-    }
-    // array_try_add gives the error, and the array stays as it was
-    if !arrays_try() {
-        return 66
-    }
-    // Ranked locks: in order, out of order, and two of one rank by address
-    if !ranks_hold() {
-        return 67
-    }
-    return 42
+    testing.expect(t, shape_text.count >= 16, "a variant with values and a pointer, each written out")
+    colors :: formatted(colors_storage, "%2 %1 %%", Color.Green, true)
+    testing.expect_eq(t, colors, "true Green %", "numbered %s pick values, and %% is a %")
+    point :: formatted(point_storage, "%", Point.{1, -2})
+    testing.expect_eq(t, point, "Point{x = 1, y = -2}", "a struct is written with its fields' names")
+    pointer :: formatted(pointer_storage, "% %", ptr[mut Point], none)
+    testing.expect_eq(t, pointer, "ptr[mut Point] none", "a type is written by name, and an empty optional as none")
+    return .Ok
 }
+
+runs_code_while_compiling #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, FIBONACCI_20, 6765, "a constant whose value calls a function")
+    testing.expect_eq(t, #run fibonacci(10), 55, "#run in an expression")
+    testing.expect_eq(t, SQUARES.count, 4, "a constant view made by a function")
+    squares :: SQUARES
+    if 3 < squares.count {
+        last :: squares[3]
+        testing.expect_eq(t, last, 16, "its last element")
+    }
+    testing.expect_eq(t, LABELED.y, 10, "a struct with using made while compiling")
+    testing.expect_eq(t, LABELED.weight, 15, "its own field")
+    testing.expect_eq(t, WHEN, "compiling", "#is_compile_time is true while compiling")
+    testing.expect_eq(t, compile_time_name(), "running", "and false at run time")
+    fibonacci_bytes : u8[FIBONACCI_7]
+    testing.expect_eq(t, fibonacci_bytes.count, 13, "an array's count worked out while checking")
+    testing.expect_eq(t, size_name(), "large", "an #if on a constant worked out while checking")
+    testing.expect_eq(t, SQUARES_SUM, 55, "compile-time code allocates from its context: 0 + 1 + 4 + 9 + 16 + 25")
+    testing.expect(t, tables_hold(), "tables of thousands of numbers, worked out while compiling, hold each value")
+    testing.expect(t, REFLECTED_CONSTANTS, "a package's constants are worked out together, a logger's without a value")
+    testing.expect_eq(t, REFLECTED_PARAMETERS, 3, "reflection finds text_buffer's append_format and its three parameters")
+    return .Ok
+}
+
+knows_each_numbers_limits #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, max_value(u8), 255, "the largest u8")
+    testing.expect_eq(t, min_value(i8), -128, "the smallest i8")
+    testing.expect_eq(t, max_value(u64), 0xffff_ffff_ffff_ffff, "the largest u64")
+    testing.expect_eq(t, min_value(u16), 0, "the smallest unsigned value is 0")
+    testing.expect(t, max_value(f32) > 3.0e38, "the largest f32 is about 3.4e38")
+    testing.expect(t, min_value(f64) < -1.0e308, "the smallest f64 is about -1.8e308")
+    return .Ok
+}
+
+fails_allocations_on_purpose #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // The second allocation through a FailingAllocator fails, and the rest go through, each counted
+    testing.expect(t, fails_the_second(), "a FailingAllocator fails only the allocation it's told to")
+    // array_try_add gives the error, and the array stays as it was
+    testing.expect(t, arrays_try(), "array_try_add and array_try_reserve give the error and leave the array as it was")
+    return .Ok
+}
+
+ranks_locks #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // Ranked locks: in order, out of order, and two of one rank by address
+    testing.expect(t, ranks_hold(), "a lower rank after a higher is refused, and one rank is taken in address order")
+    return .Ok
+}
+
+/**
+ * Run the package's tests, reporting to standard output. It's a program, not only tests, so the back end's test can
+ * also build it as one.
+ *
+ * @return 42 if every test passed; 1 if any failed.
+ */
+main :: fn() -> int {
+    failed :: testing.run(#insert testing.tests_of(compiler.load_package(".")), testing.STANDARD_OUTPUT)
+    return if failed == 0 { 42 } else { 1 }
+}
+
 
 // A FailingAllocator with fail_at 2: the first allocation works, the second fails, the third works; two blocks live
 fails_the_second :: fn() -> bool {

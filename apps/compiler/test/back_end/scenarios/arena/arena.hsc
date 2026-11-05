@@ -2,133 +2,225 @@
  * std/memory's Arena: blocks bumped from chunks, aligned and zeroed; the newest one given back or resized in place;
  * blocks bigger than a chunk; a mark restored to, and a reset keeping the first chunk; a dynamic array and a struct
  * holding pointers into it; new_value's defaults; and running out. Its chunks come from a FailingAllocator, which counts
- * the chunks taken and not given back. main returns 42 if each worked, or the number of the first check that didn't.
+ * the chunks taken and not given back: one block for the arena itself, and one for each chunk.
  */
 package arena_test
 
 import memory from "std"
 import runtime from "base"
+import testing from "std"
 
+/** A struct with defaults and a pointer, kept in the arena. */
 Node :: struct {
+    /** Any value; 7 unless given. */
     value : u32 = 7,
+    /** The node after this one, or none. */
     next : ptr[Node]?,
 }
 
-main :: fn() -> int {
-    counting :: memory.make_failing(0) or_return 1
-    defer memory.free_failing(counting)
-    arena :: memory.make_arena(4096, memory.failing_allocator(counting)) or_return 2
-    allocator :: memory.arena_allocator(arena)
+/** An arena of 4096-byte chunks over a FailingAllocator counting them, for a test. */
+Rig :: struct {
+    /** What the arena takes its chunks from, and counts them; freed by close. */
+    counting : ptr[mut memory.FailingAllocator],
+    /** The arena, with no chunk until its first allocation; freed by close. */
+    arena : ptr[mut memory.Arena],
+    /** The arena as an allocator. */
+    allocator : runtime.Allocator,
+}
 
-    // Aligned and zeroed, packed one after another in the first chunk
-    small, small_error :: runtime.new_array_aligned(u8, 3, 1, allocator)
-    aligned, aligned_error :: runtime.new_array_aligned(u8, 8, 64, allocator)
-    if small_error != null || aligned_error != null || counting.live != 2 {
-        return 3
+/**
+ * Make an arena over a counting allocator, for a test.
+ *
+ * @param t The test's state, which a failure is recorded in.
+ * @return The rig, which the caller gives back with close; Error if either couldn't be made, the failure recorded.
+ */
+rig :: fn(t: ptr[mut testing.T]) -> Result[Rig, testing.Stopped] {
+    counting :: testing.require_some(t, memory.make_failing(0), "the counting allocator is allocated")?
+    made :: memory.make_arena(4096, memory.failing_allocator(counting))
+    if made is_none {
+        memory.free_failing(counting)
+        testing.fail(t, "the arena is allocated")
+        return .Error(.Failed)
     }
-    if aligned.count != 8 || cast[usize](aligned.data) % 64 != 0 || aligned[7] != 0 || memory.arena_used(arena) > 3 + 64 + 8 {
-        return 4
-    }
-    aligned[7] = 9
+    arena :: made or_return .Error(.Failed)
+    return .Ok(Rig.{counting = counting, arena = arena, allocator = memory.arena_allocator(arena)})
+}
 
-    // The newest block is given back, and comes back zeroed
-    used :: memory.arena_used(arena)
-    runtime.free_array_aligned(aligned, 64, allocator)
-    if memory.arena_used(arena) >= used {
-        return 5
-    }
-    again, again_error :: runtime.new_array_aligned(u8, 8, 64, allocator)
-    if again_error != null || again.count != 8 || again.data != aligned.data || again[7] != 0 {
-        return 6
-    }
+/**
+ * Free a rig's arena, checking it gave back every chunk and itself, then its counting allocator.
+ *
+ * @param t The test's state, which a failure is recorded in.
+ * @param made The rig, not used after.
+ */
+close :: fn(t: ptr[mut testing.T], made: Rig) {
+    memory.free_arena(made.arena)
+    testing.expect_eq(t, made.counting.live, 0, "freeing an arena gives back every chunk, and the arena")
+    memory.free_failing(made.counting)
+}
 
-    // A dynamic array growing from it: the newest block grows where it is
+bumps_aligned_zeroed_blocks_from_one_chunk #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    small, small_error :: runtime.new_array_aligned(u8, 3, 1, r.allocator)
+    aligned, aligned_error :: runtime.new_array_aligned(u8, 8, 64, r.allocator)
+    testing.require(t, small_error == null, "a 3-byte block fits a 4096-byte chunk")?
+    testing.require(t, aligned_error == null, "and an aligned 8-byte one after it")?
+    testing.expect_eq(t, r.counting.live, 2, "both come from the first chunk, beside the arena itself")
+    testing.require_eq(t, aligned.count, 8, "the block is as long as asked")?
+    testing.expect_eq(t, cast[usize](aligned.data) % 64, 0, "the block is aligned as asked")
+    if 7 < aligned.count {
+        testing.expect_eq(t, aligned[7], 0, "a new block is zeroed")
+    }
+    testing.expect(t, memory.arena_used(r.arena) <= 3 + 64 + 8, "blocks are packed: no more than alignment between them")
+    return .Ok
+}
+
+gives_back_the_newest_block #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    _, _ = runtime.new_array_aligned(u8, 3, 1, r.allocator)
+    aligned, aligned_error :: runtime.new_array_aligned(u8, 8, 64, r.allocator)
+    testing.require(t, aligned_error == null, "an aligned block fits the first chunk")?
+    if 7 < aligned.count {
+        aligned[7] = 9
+    }
+    used :: memory.arena_used(r.arena)
+    runtime.free_array_aligned(aligned, 64, r.allocator)
+    testing.expect(t, memory.arena_used(r.arena) < used, "freeing the newest block moves the offset back")
+    again, again_error :: runtime.new_array_aligned(u8, 8, 64, r.allocator)
+    testing.require(t, again_error == null, "the space given back is there to take")?
+    testing.expect_eq(t, again.count, 8, "the block is as long as asked")
+    testing.expect(t, again.data == aligned.data, "the next block takes the place given back")
+    if 7 < again.count {
+        testing.expect_eq(t, again[7], 0, "and comes back zeroed, though 9 was written there")
+    }
+    return .Ok
+}
+
+grows_the_newest_block_in_place #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
     numbers : u32[..]
-    push_context from_arena (allocator = allocator) {
+    push_context from_arena (allocator = r.allocator) {
         for i in 0..<100 {
             runtime.array_add(&numbers, cast[u32](i))
         }
     }
-    if numbers.count != 100 || numbers[99] != 99 || counting.live != 2 {
-        return 7
+    testing.require_eq(t, numbers.count, 100, "every number added is kept")?
+    if 99 < numbers.count {
+        testing.expect_eq(t, numbers[99], 99, "the last one added is last")
     }
+    testing.expect_eq(t, r.counting.live, 2, "growing the newest block stays in the first chunk")
+    return .Ok
+}
 
-    // What's freed that isn't the newest stays until a reset
-    mark :: memory.arena_mark(arena)
-    before :: memory.arena_used(arena)
-    runtime.free_array_aligned(small, 1, allocator)
-    if memory.arena_used(arena) != before {
-        return 8
-    }
+keeps_a_freed_block_that_isnt_the_newest #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    small, small_error :: runtime.new_array_aligned(u8, 3, 1, r.allocator)
+    testing.require(t, small_error == null, "a small block fits the first chunk")?
+    _, _ = runtime.new_array(u8, 16, r.allocator)
+    before :: memory.arena_used(r.arena)
+    runtime.free_array_aligned(small, 1, r.allocator)
+    testing.expect_eq(t, memory.arena_used(r.arena), before, "only the newest block can be given back, before a reset")
+    return .Ok
+}
 
-    // A block bigger than a chunk gets one of its own, and the arena carries on from it
-    big, big_error :: runtime.new_array(u8, 10000, allocator)
-    if big_error != null || big.count != 10000 || big[9999] != 0 || counting.live != 3 {
-        return 9
+gives_a_block_bigger_than_a_chunk_its_own #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    _, _ = runtime.new_array(u8, 16, r.allocator)
+    big, big_error :: runtime.new_array(u8, 10000, r.allocator)
+    testing.require(t, big_error == null, "a block bigger than a chunk is still allocated")?
+    testing.require_eq(t, big.count, 10000, "as long as asked")?
+    if 9999 < big.count {
+        testing.expect_eq(t, big[9999], 0, "zeroed to its end")
     }
+    testing.expect_eq(t, r.counting.live, 3, "in a chunk of its own, beside the first")
     for i in 0..<50 {
-        _ = runtime.new(u64, allocator)
+        _ = runtime.new(u64, r.allocator)
     }
-    if counting.live != 4 {
-        return 10
-    }
+    testing.expect_eq(t, r.counting.live, 4, "the arena carries on from the big block's chunk, which is full, in a new one")
+    return .Ok
+}
 
-    // Back to the mark: the chunks taken since are given back
-    memory.arena_restore(arena, mark)
-    if counting.live != 2 || memory.arena_used(arena) != before {
-        return 11
+restores_a_mark #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    _, _ = runtime.new_array(u8, 16, r.allocator)
+    mark :: memory.arena_mark(r.arena)
+    before :: memory.arena_used(r.arena)
+    _, _ = runtime.new_array(u8, 10000, r.allocator)
+    for i in 0..<50 {
+        _ = runtime.new(u64, r.allocator)
     }
+    memory.arena_restore(r.arena, mark)
+    testing.expect_eq(t, r.counting.live, 2, "the chunks taken since the mark are given back")
+    testing.expect_eq(t, memory.arena_used(r.arena), before, "the first chunk's offset is back where it was")
+    return .Ok
+}
 
-    // Structs holding pointers into it, kept where a pointer into the stack couldn't be
-    tail :: memory.new_value(Node.{value = 1}, allocator)
-    head :: memory.new_value(Node.{next = tail}, allocator)
+keeps_structs_pointing_into_it #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    // Kept where a pointer into the stack couldn't be
+    tail :: memory.new_value(Node.{value = 1}, r.allocator)
+    head :: memory.new_value(Node.{next = tail}, r.allocator)
     list : Node[..]
-    push_context from_arena (allocator = allocator) {
+    push_context from_arena (allocator = r.allocator) {
         runtime.array_add(&list, head^)
     }
-    if head.value != 7 || list.count != 1 || (list[0].next or_return 12).value != 1 {
-        return 13
+    testing.expect_eq(t, head.value, 7, "new_value keeps the defaults of members it isn't given")
+    testing.require_eq(t, list.count, 1, "the copy is added")?
+    if 0 < list.count {
+        next :: testing.require_some(t, list[0].next, "the copy points at the tail, as the head does")?
+        testing.expect_eq(t, next.value, 1, "the tail is still there to point at")
     }
+    return .Ok
+}
 
-    // A reset keeps only the first chunk
-    _, _ = runtime.new_array(u8, 5000, allocator)
-    memory.reset_arena(arena)
-    if counting.live != 2 || memory.arena_used(arena) != 0 {
-        return 14
-    }
-    first, first_error :: runtime.new_array(u8, 16, allocator)
-    if first_error != null || counting.live != 2 {
-        return 15
-    }
+resets_to_its_first_chunk #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    _, _ = runtime.new_array(u8, 16, r.allocator)
+    _, _ = runtime.new_array(u8, 5000, r.allocator)
+    memory.reset_arena(r.arena)
+    testing.expect_eq(t, r.counting.live, 2, "a reset gives back every chunk but the first")
+    testing.expect_eq(t, memory.arena_used(r.arena), 0, "and empties that one")
+    _, first_error :: runtime.new_array(u8, 16, r.allocator)
+    testing.expect(t, first_error == null, "the kept chunk is used again")
+    testing.expect_eq(t, r.counting.live, 2, "with no new chunk")
+    return .Ok
+}
 
-    // A mark from before the reset, whose chunks it gave back: nothing more to give back
-    _, _ = runtime.new_array(u8, 5000, allocator)
-    stale :: memory.arena_mark(arena)
-    memory.reset_arena(arena)
-    kept :: memory.arena_used(arena)
-    memory.arena_restore(arena, stale)
-    if counting.live != 2 || memory.arena_used(arena) != kept {
-        return 19
-    }
+ignores_a_mark_from_before_a_reset #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    _, _ = runtime.new_array(u8, 16, r.allocator)
+    _, _ = runtime.new_array(u8, 5000, r.allocator)
+    stale :: memory.arena_mark(r.arena)
+    memory.reset_arena(r.arena)
+    kept :: memory.arena_used(r.arena)
+    memory.arena_restore(r.arena, stale)
+    testing.expect_eq(t, r.counting.live, 2, "the reset gave back the mark's chunks already: nothing more to give back")
+    testing.expect_eq(t, memory.arena_used(r.arena), kept, "and the first chunk's offset isn't moved")
+    return .Ok
+}
 
-    // Out of memory when the backing allocator is
-    counting.fail_at = counting.allocations + 1
-    _, failed :: runtime.new_array(u8, 100000, allocator)
-    if failed != runtime.AllocatorError.OutOfMemory {
-        return 16
-    }
-    counting.fail_at = 0
+runs_out_when_its_backing_does #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    r.counting.fail_at = r.counting.allocations + 1
+    _, failed :: runtime.new_array(u8, 100000, r.allocator)
+    testing.expect(t, failed == runtime.AllocatorError.OutOfMemory, "the chunk this needs can't be taken")
+    r.counting.fail_at = 0
+    return .Ok
+}
 
-    // An alignment that isn't a power of two
-    _, refused :: runtime.new_array_aligned(u8, 4, 3, allocator)
-    if refused != runtime.AllocatorError.InvalidArgument {
-        return 17
-    }
-
-    // Freeing gives back every chunk and the arena
-    memory.free_arena(arena)
-    if counting.live != 0 {
-        return 18
-    }
-    return 42
+refuses_an_alignment_that_isnt_a_power_of_two #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    r :: rig(t)?
+    defer close(t, r)
+    _, refused :: runtime.new_array_aligned(u8, 4, 3, r.allocator)
+    testing.expect(t, refused == runtime.AllocatorError.InvalidArgument, "3 isn't a power of two")
+    return .Ok
 }

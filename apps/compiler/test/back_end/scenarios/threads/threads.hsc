@@ -1,16 +1,15 @@
 /*
- * Threads and fiber pools in a hosted program on Windows: main returns 42 if everything worked, or
- * the number of the first check that failed.
+ * Threads and fiber pools in a hosted program on Windows, run by one test.
  *
- * main runs no pool. Threads 1 and 2 share the first pool, threads 3 to 5 the second, and thread 6
- * runs none. The pools' threads start before there's any work, so they go to sleep, and main's
+ * The test's thread, the program's main one, runs no pool. Threads 1 and 2 share the first pool, threads 3 to 5 the second, and thread 6
+ * runs none. The pools' threads start before there's any work, so they go to sleep, and the test's
  * spawning wakes them. Each fiber takes TURNS turns, yielding after each, and records which threads
  * it ran on: it has to stay on its own pool's threads, every thread of a pool has to run some, and
  * some have to move between threads, which fibers that have taken their turns wait for
  * (take_turns), so it doesn't depend on timing.
  *
  * Every turn also adds one to a counter behind a std/concurrency Mutex, yielding while it holds it,
- * so other fibers park waiting for it, and main and thread 6 add to it too, blocking instead.
+ * so other fibers park waiting for it, and the test and thread 6 add to it too, blocking instead.
  *
  * Values go through a std/concurrency Channel of 8, from PRODUCERS fibers of the first pool to
  * CONSUMERS fibers of the second and to thread 6, so senders and receivers both wait, on fibers and
@@ -26,6 +25,7 @@ import intrinsics from "base"
 import runtime from "base"
 import fiber from "std"
 import concurrency from "std"
+import testing from "std"
 
 FIRST_FIBERS :: 40
 SECOND_FIBERS :: 60
@@ -39,7 +39,7 @@ SECOND_THREADS : u64 : 0b111000
 POOL_THREADS :: 5
 // Thread 6 runs no pool
 PLAIN_THREAD :: 6
-// What main and thread 6 each add to the counter
+// What the test and thread 6 each add to the counter
 PLAIN_ADDS :: 500
 // About 64 bytes a call: 192 KiB on a fiber, and 4 MiB on thread 6, whose own stack is 1 MiB
 FIBER_DEPTH :: 3000
@@ -133,8 +133,8 @@ add_one :: fn(test: ptr[mut ThreadTest]) {
     test.counter = before + 1
 }
 
-main :: fn() -> int {
-    // main runs no pool: yielding does nothing
+shares_work_among_threads_and_fiber_pools #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // The main thread runs no pool: yielding does nothing
     runtime.fiber_yield()
     test :: runtime.new(ThreadTest)
     test.first = fiber.create_fiber_pool()
@@ -144,9 +144,7 @@ main :: fn() -> int {
         for i in 1..<7 {
             thread :: runtime.thread_create(if i == PLAIN_THREAD { plain_main } else { carrier_main })
             thread.index = cast[usize](i)
-            if !runtime.thread_start(thread) {
-                return 1
-            }
+            testing.require(t, runtime.thread_start(thread), "the system starts each of six threads")?
             threads[i] = cast[rawptr](thread)
         }
         // Once the pools' threads have started, and gone to sleep, the work
@@ -155,36 +153,26 @@ main :: fn() -> int {
         }
         while intrinsics.atomic_load_u64_acquire(&test.started) < POOL_THREADS
         _, deep_error :: fiber.spawn(test.first, deep_worker)
-        if deep_error != null {
-            return 2
-        }
+        testing.require(t, deep_error == null, "the deep fiber is spawned")?
         for i in 0..<PRODUCERS {
             _, error :: fiber.spawn(test.first, producer_worker)
-            if error != null {
-                return 2
-            }
+            testing.require(t, error == null, "each producer fiber is spawned")?
         }
         for i in 0..<CONSUMERS {
             _, error :: fiber.spawn(test.second, consumer_worker)
-            if error != null {
-                return 2
-            }
+            testing.require(t, error == null, "each consumer fiber is spawned")?
         }
         for i in 0..<FIRST_FIBERS {
             _, error :: fiber.spawn(test.first, first_worker)
-            if error != null {
-                return 2
-            }
+            testing.require(t, error == null, "each of the first pool's fibers is spawned")?
         }
         for i in 0..<SECOND_FIBERS {
             _, error :: fiber.spawn(test.second, second_worker)
-            if error != null {
-                return 2
-            }
+            testing.require(t, error == null, "each of the second pool's fibers is spawned")?
         }
         fiber.close_pool(test.first)
         fiber.close_pool(test.second)
-        // main runs no pool, so it blocks when it has to wait
+        // The main thread runs no pool, so it blocks when it has to wait
         for i in 0..<PLAIN_ADDS {
             add_one(test)
         }
@@ -192,37 +180,36 @@ main :: fn() -> int {
     for i in 1..<7 {
         runtime.thread_join(cast[ptr[mut runtime.Thread]](threads[i]))
     }
-    if !counts_ok(&test.first_counts, FIRST_FIBERS, FIRST_THREADS) {
-        return 3
-    }
-    if !counts_ok(&test.second_counts, SECOND_FIBERS, SECOND_THREADS) {
-        return 4
-    }
-    if test.first_counts.moves + test.second_counts.moves == 0 {
-        return 5
-    }
-    if test.plain_index != PLAIN_THREAD || test.plain_yielded != 1 {
-        return 6
-    }
-    if test.counter != (FIRST_FIBERS + SECOND_FIBERS) * TURNS + 2 * PLAIN_ADDS {
-        return 7
-    }
-    if test.fiber_sum != FIBER_DEPTH * (FIBER_DEPTH + 1) / 2 {
-        return 8
-    }
-    if test.thread_sum != THREAD_DEPTH * (THREAD_DEPTH + 1) / 2 {
-        return 9
-    }
-    if test.received_count != PRODUCERS * ITEMS_EACH || test.received_sum != PRODUCERS * ITEMS_EACH * (ITEMS_EACH + 1) / 2 {
-        return 10
-    }
+    expect_counts(t, &test.first_counts, FIRST_FIBERS, FIRST_THREADS)
+    expect_counts(t, &test.second_counts, SECOND_FIBERS, SECOND_THREADS)
+    testing.expect_ne(t, test.first_counts.moves + test.second_counts.moves, 0, "fibers waiting for a move make some move between threads")
+    testing.expect_eq(t, test.plain_index, PLAIN_THREAD, "the thread without a pool has the index it was given")
+    testing.expect_eq(t, test.plain_yielded, 1, "yielding without a pool comes straight back")
+    testing.expect_eq(t, test.counter, (FIRST_FIBERS + SECOND_FIBERS) * TURNS + 2 * PLAIN_ADDS,
+        "the mutex lets no addition be lost, though each yields between its read and its write")
+    testing.expect_eq(t, test.fiber_sum, FIBER_DEPTH * (FIBER_DEPTH + 1) / 2, "a fiber's stack grows onto new segments for deep calls")
+    testing.expect_eq(t, test.thread_sum, THREAD_DEPTH * (THREAD_DEPTH + 1) / 2, "a thread's stack grows well past what the system gave it")
+    testing.expect_eq(t, test.received_count, PRODUCERS * ITEMS_EACH, "every value sent through the channel is received once")
+    testing.expect_eq(t, test.received_sum, PRODUCERS * ITEMS_EACH * (ITEMS_EACH + 1) / 2, "each value is received as it was sent")
     fiber.destroy_fiber_pool(test.first)
     fiber.destroy_fiber_pool(test.second)
-    return 42
+    return .Ok
 }
 
-counts_ok :: fn(counts: ptr[PoolCounts], fibers: u64, threads: u64) -> bool {
-    return counts.turns == fibers * TURNS && counts.strays == 0 && counts.threads == threads
+/**
+ * Check what one pool's fibers recorded: every turn taken, none away from the pool's threads, and every one of them used.
+ *
+ * @param t The test's state, which failures are recorded in.
+ * @param counts What the pool's fibers recorded.
+ * @param fibers How many fibers the pool ran.
+ * @param threads The pool's threads, a bit per thread index.
+ * @param location Where the check is, the caller's own, which tells the pools apart.
+ */
+expect_counts :: fn(t: ptr[mut testing.T], counts: ptr[PoolCounts], fibers: u64, threads: u64,
+    location := #caller_location) {
+    testing.expect_eq(t, counts.turns, fibers * TURNS, "every fiber takes all its turns", location)
+    testing.expect_eq(t, counts.strays, 0, "a fiber stays on its own pool's threads", location)
+    testing.expect_eq(t, counts.threads, threads, "every thread of a pool runs some of its fibers, and only those", location)
 }
 
 // A pool's thread: the pool its index says, until it's closed and its fibers have finished.

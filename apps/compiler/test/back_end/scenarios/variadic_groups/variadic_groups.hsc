@@ -1,16 +1,11 @@
 /*
  * Variadic parameters with others after them (docs/functions.md, Variable Arguments): a variadic one takes the values
  * that fit it, and the first that doesn't goes to the next parameter, which a call can always tell since neither type
- * can be taken for the other. main returns 42 if they all held, or the number of the first that didn't.
+ * can be taken for the other.
  */
 package variadic_groups
 
-check :: fn(ok: bool, code: int) -> int {
-    if ok {
-        return 0
-    }
-    return code
-}
+import testing from "std"
 
 // A bool after ints: true or false says where the ints end
 counted :: fn(fiz: bool, numbers: int..., fuzz: bool) -> int {
@@ -45,16 +40,24 @@ passed_on :: fn(numbers: int...) -> int {
     return counted(true, numbers, true)
 }
 
-main :: fn() -> int {
-    errors := 0
-    errors += check(counted(false, 1, 2, 3, true) == 603 && counted(false, true) == 0 && counted(true, 7, false) == -1, 1)
-    errors += check(groups("a", "b", 1, 2, 3, true) == 231 && groups(true, false) == 2 && groups("a", true) == 101, 2)
-    errors += check(groups() == 0 && groups(1) == 10 && groups("a", "b", "c") == 300, 3)
+ends_a_variadic_at_the_first_value_that_doesnt_fit #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, counted(false, 1, 2, 3, true), 603, "the ints go to numbers, and the bool after them to fuzz")
+    testing.expect_eq(t, counted(false, true), 0, "a bool straight after fiz leaves numbers empty")
+    testing.expect_eq(t, counted(true, 7, false), -1, "the last bool is fuzz, whatever fiz was")
+    testing.expect_eq(t, passed_on(4, 5), 902, "a caller's variadic view passes on whole, with the next parameter after it")
+    return .Ok
+}
+
+fills_several_variadics #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, groups("a", "b", 1, 2, 3, true), 231, "each type goes to its own variadic, in order")
+    testing.expect_eq(t, groups(true, false), 2, "the first two can be given nothing")
+    testing.expect_eq(t, groups("a", true), 101, "the middle one can be given nothing")
+    testing.expect_eq(t, groups(), 0, "all of them can be given nothing")
+    testing.expect_eq(t, groups(1), 10, "an int alone goes to numbers")
+    testing.expect_eq(t, groups("a", "b", "c"), 300, "strings alone go to names")
     // A struct literal without its type is the variadic's
-    errors += check(around("a", 5, .{x = 1, y = 2}, Point.{x = 3, y = 4}) == 5110 && around(7) == 7000, 4)
-    errors += check(passed_on(4, 5) == 902, 5)
-    if errors == 0 {
-        return 42
-    }
-    return errors
+    testing.expect_eq(t, around("a", 5, .{x = 1, y = 2}, Point.{x = 3, y = 4}), 5110,
+        "the one int is middle, and the points after it, one a literal without its type, are points")
+    testing.expect_eq(t, around(7), 7000, "with the variadics on either side empty, the int is middle")
+    return .Ok
 }

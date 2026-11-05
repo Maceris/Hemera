@@ -1,11 +1,12 @@
 /*
  * #foreign functions taking pointers that aren't ptr[T] or rawptr, which are each one register as C sees them:
  * a cstring, an optional pointer and an optional cstring (null for None), and a function value C calls back.
- * main returns 42 if everything worked, or the number of the first check that failed.
+ * Run with hemera --test.
  */
 package foreign_pointers
 
 import runtime from "base"
+import testing from "std"
 
 KERNEL32 :: #library("kernel32")
 
@@ -24,35 +25,34 @@ count_code_page #calling_convention(.c) :: fn(code_page: cstring) -> b32 {
     return true
 }
 
-main :: fn() -> int {
-    if lstrlenA("hello") != 5 {
-        return 1
-    }
-    // None is null: the program's own module
-    if GetModuleHandleA(null) == null {
-        return 2
-    }
-    if GetModuleHandleA("kernel32.dll") == null {
-        return 3
-    }
+passes_a_cstring #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, lstrlenA("hello"), 5, "C finds the string's five bytes before its terminator")
+    return .Ok
+}
+
+passes_optional_pointers #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, GetModuleHandleA(null) != null, "an optional cstring's None is null, which names the program's own module")
+    testing.expect(t, GetModuleHandleA("kernel32.dll") != null, "an optional cstring holding a name reaches C as that name")
     frequency : i64 = 0
-    if !QueryPerformanceFrequency(&frequency) || frequency <= 0 {
-        return 4
-    }
+    testing.expect(t, cast[bool](QueryPerformanceFrequency(&frequency)), "an optional pointer holding one reaches C as that pointer")
+    testing.expect(t, frequency > 0, "C wrote the counter's frequency through the pointer")
     // Without a buffer it gives false, and the size the name needs
     size : u32 = 0
-    if GetComputerNameA(null, &size) || size == 0 {
-        return 5
-    }
+    testing.expect(t, !cast[bool](GetComputerNameA(null, &size)), "a null buffer is too small for the computer's name")
+    testing.expect_ne(t, size, 0, "C wrote the size the name needs through the pointer after the null one")
+    return .Ok
+}
+
+passes_a_function_c_calls_back #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     count := runtime.new(u64)
+    defer runtime.free(count)
+    enumerated := false
     push_context with_count (user_data = cast[rawptr](count)) {
         // CP_INSTALLED
-        if !EnumSystemCodePagesA(count_code_page, 1) {
-            return 6
-        }
+        enumerated = cast[bool](EnumSystemCodePagesA(count_code_page, 1))
     }
-    if count^ == 0 {
-        return 7
-    }
-    return 42
+    testing.expect(t, enumerated, "C can call the function value back")
+    testing.expect_ne(t, count^, 0, "the callback, with this context, counted each installed code page")
+    return .Ok
 }
+

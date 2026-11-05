@@ -2,6 +2,7 @@ package described_while_inserting
 
 import compiler from "base"
 import runtime from "base"
+import testing from "std"
 
 // Node's #insert describes Edge, which points back at Node: what's behind a pointer isn't waited for, since
 // Node can't be laid out until this is done
@@ -45,8 +46,10 @@ node_fields :: fn() -> int {
 
 NODE_FIELDS :: #run node_fields()
 
-main :: fn() -> int {
+describes_a_struct_again_once_its_whole #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     node := Node.{from = 30, to = 8}
-    // 42: 30 and 8, and two for each of Node's two fields
-    return node.from + node.to + 2 * NODE_FIELDS
+    testing.expect_eq(t, node.from, 30, "Node has an int field for Edge's pointer from")
+    testing.expect_eq(t, node.to, 8, "and one for its pointer to")
+    testing.expect_eq(t, NODE_FIELDS, 2, "described once laid out, Node has both fields, not the none it had mid-#insert")
+    return .Ok
 }

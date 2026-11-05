@@ -1,19 +1,27 @@
 /*
  * Dynamic arrays: growing, removing, finding and copying, with ints, strings and structs, and
- * every block given back to the allocator it came from. main returns 42 if everything worked, or
- * the number of the first check that failed.
+ * every block given back to the allocator it came from.
  */
 package arrays_test
 
 import runtime from "base"
+import testing from "std"
 
-// How many blocks a counting allocator has handed out and not had back.
+/** What a counting allocator passes requests on to, and what it's counted. */
 Counter :: struct {
+    /** The allocator requests are passed on to. */
     parent : runtime.Allocator,
+    /** Blocks handed out and not had back. */
     live : int,
+    /** Blocks handed out in all, resized ones among them. */
     allocations : int,
 }
 
+/**
+ * Pass a request on to the Counter's parent, counting the blocks handed out and had back.
+ *
+ * As runtime.AllocatorFn says; allocator_data is the Counter.
+ */
 counting_function : runtime.AllocatorFn : fn(
     allocator_data: rawptr,
     size: usize,
@@ -34,128 +42,145 @@ counting_function : runtime.AllocatorFn : fn(
     return memory, error
 }
 
+/** A struct held in an array. */
 Point :: struct {
+    /** Any value. */
     x : int,
+    /** Any value. */
     y : int,
 }
 
-// Ints: growth, pop, removal in order and out of order, finding. 0 if it all worked.
-check_ints :: fn() -> int {
+grows_removes_and_finds_ints #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     numbers : int[..]
+    defer runtime.array_free(&numbers)
     for i in 0..<100 {
         runtime.array_add(&numbers, i)
     }
-    if numbers.count != 100 || numbers.capacity != 128 {
-        return 1
-    }
+    testing.expect_eq(t, numbers.count, 100, "every number added is kept")
+    testing.expect_eq(t, numbers.capacity, 128, "the capacity doubles, to the power of two past 100")
     total := 0
     for number in numbers {
         total += number
     }
-    if total != 4950 {
-        return 2
-    }
-    if runtime.pop(&numbers) != 99 || runtime.peek(numbers) != 98 || numbers.count != 99 {
-        return 3
-    }
+    testing.expect_eq(t, total, 4950, "0 to 99 add to 4950: each is there once")
+    testing.expect_eq(t, runtime.pop(&numbers), 99, "pop takes the last added")
+    testing.expect_eq(t, runtime.peek(numbers), 98, "peek sees the new last")
+    testing.expect_eq(t, numbers.count, 99, "pop took one")
     // 0 1 2 3 ... 98: removing 0 keeps the order, so 1 is first
     runtime.array_remove(&numbers, 0)
-    if numbers.count != 98 || numbers.count == 0 || numbers[0] != 1 || runtime.peek(numbers) != 98 {
-        return 4
+    testing.require_eq(t, numbers.count, 98, "array_remove takes one")?
+    if 0 < numbers.count {
+        testing.expect_eq(t, numbers[0], 1, "removing in order moves the rest down")
     }
+    testing.expect_eq(t, runtime.peek(numbers), 98, "and leaves the last where it was")
     // Removing the first quickly moves the last, 98, into its place
     runtime.array_remove_fast(&numbers, 0)
-    if numbers.count != 97 || numbers.count == 0 || numbers[0] != 98 || runtime.peek(numbers) != 97 {
-        return 5
+    testing.require_eq(t, numbers.count, 97, "array_remove_fast takes one")?
+    if 0 < numbers.count {
+        testing.expect_eq(t, numbers[0], 98, "removing fast moves the last into the gap")
     }
-    match runtime.array_find(numbers, 50) {
-        case Some(index) => {
-            if index >= numbers.count || numbers[index] != 50 {
-                return 6
-            }
-        }
-        case None => return 6
+    testing.expect_eq(t, runtime.peek(numbers), 97, "so the one before it is last")
+    found :: runtime.array_find(numbers, 50)
+    index :: testing.require_some(t, found, "50 is still there")?
+    if index < numbers.count {
+        testing.expect_eq(t, numbers[index], 50, "array_find gives where it is")
     }
-    if runtime.array_find(numbers, 1000) != null {
-        return 7
+    else {
+        testing.fail(t, "array_find gives an index inside the array")
     }
+    missing :: runtime.array_find(numbers, 1000)
+    testing.expect_none(t, missing, "1000 was never added")
     // Reset keeps the memory
     runtime.array_reset(&numbers)
-    if numbers.count != 0 || numbers.capacity != 128 {
-        return 8
-    }
+    testing.expect_eq(t, numbers.count, 0, "a reset empties the array")
+    testing.expect_eq(t, numbers.capacity, 128, "but keeps its memory")
     runtime.array_free(&numbers)
-    if numbers.count != 0 || numbers.capacity != 0 {
-        return 9
-    }
-    return 0
+    testing.expect_eq(t, numbers.count, 0, "a freed array is empty")
+    testing.expect_eq(t, numbers.capacity, 0, "and has no memory")
+    return .Ok
 }
 
-// Strings and structs, and copying from views and other arrays. 0 if it all worked.
-check_elements :: fn() -> int {
+holds_strings_and_structs #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     names : string[..]
+    defer runtime.array_free(&names)
     runtime.array_add(&names, "alpha")
     runtime.array_add(&names, "beta")
     runtime.array_add(&names, "gamma")
-    if names.count != 3 || names[1].count != 4 || names[2].count == 0 || names[2][0] != 'g' {
-        return 1
+    testing.require_eq(t, names.count, 3, "three names added")?
+    if names.count == 3 {
+        // Read before any call, which could change the array
+        second :: names[1]
+        third :: names[2]
+        // Open slices: from an index to the end, and from the start to one
+        start : usize = 2
+        from_second :: names[1..].count
+        before_second :: names[..<1].count
+        through_second :: names[..=1].count
+        from_start :: names[start..].count
+        testing.expect_eq(t, second.count, 4, "the second is beta")
+        testing.expect_eq(t, third, "gamma", "the third is gamma")
+        testing.expect_eq(t, from_second, 2, "from the second to the end")
+        testing.expect_eq(t, before_second, 1, "up to the second, not including it")
+        testing.expect_eq(t, through_second, 2, "up to the second, including it")
+        testing.expect_eq(t, from_start, 1, "from a variable index to the end")
     }
-    // Open slices: from an index to the end, and from the start to one
-    if names[1..].count != 2 || names[..<1].count != 1 || names[..=1].count != 2 {
-        return 1
-    }
-    start : usize = 2
-    if names[start..].count != 1 {
-        return 1
-    }
-    runtime.array_free(&names)
 
     points : Point[..]
+    defer runtime.array_free(&points)
     runtime.array_reserve(&points, 10)
-    if points.capacity != 10 || points.count != 0 {
-        return 2
-    }
+    testing.expect_eq(t, points.capacity, 10, "reserve makes room for as many as asked")
+    testing.expect_eq(t, points.count, 0, "without adding any")
     for i in 0..<10 {
         runtime.array_add(&points, Point.{x = i, y = i * i})
     }
     // Still in the memory reserve made
-    if points.capacity != 10 || points.count != 10 || points[9].y != 81 {
-        return 3
+    testing.expect_eq(t, points.capacity, 10, "ten fit the room reserved, so it doesn't grow")
+    testing.require_eq(t, points.count, 10, "all ten are added")?
+    if 9 < points.count {
+        testing.expect_eq(t, points[9].y, 81, "the last struct is whole")
     }
+    return .Ok
+}
+
+copies_from_views_and_arrays #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     fixed : int[3]
     fixed[0] = 7
     fixed[1] = 8
     fixed[2] = 9
     copied : int[..]
+    defer runtime.array_free(&copied)
     runtime.array_copy(fixed, &copied)
     runtime.array_copy(copied, &copied)
-    if copied.count != 6 || copied[3] != 7 || copied[5] != 9 {
-        return 4
+    testing.require_eq(t, copied.count, 6, "a fixed array's three, then the array's own three again")?
+    if copied.count == 6 {
+        fourth :: copied[3]
+        sixth :: copied[5]
+        testing.expect_eq(t, fourth, 7, "copying an array onto itself starts its copy after its end")
+        testing.expect_eq(t, sixth, 9, "and copies all it had")
     }
-    runtime.array_free(&copied)
-    runtime.array_free(&points)
-    return 0
+    return .Ok
 }
 
-main :: fn() -> int {
+gives_back_every_block #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     counter :: runtime.new(Counter)
+    defer runtime.free(counter)
     counter.parent = context.allocator
     counting :: runtime.Allocator.{counting_function, cast[rawptr](counter)}
     push_context counted (allocator = counting) {
-        failure := check_ints()
-        if failure != 0 {
-            return 10 + failure
-        }
-        failure = check_elements()
-        if failure != 0 {
-            return 20 + failure
-        }
+        _ = grows_removes_and_finds_ints(t)
+        _ = holds_strings_and_structs(t)
+        _ = copies_from_views_and_arrays(t)
     }
-    // Every block given back, after growing several times
-    if counter.live != 0 || counter.allocations < 8 {
-        return 30
-    }
-    // The array keeps the allocator it started with, even where the context's is another
+    testing.expect_eq(t, counter.live, 0, "each array is freed, and growing gives back the block it outgrew")
+    testing.expect(t, counter.allocations >= 8, "the arrays grew several times, through the context's allocator")
+    return .Ok
+}
+
+keeps_the_allocator_it_started_with #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    counter :: runtime.new(Counter)
+    defer runtime.free(counter)
+    counter.parent = context.allocator
+    counting :: runtime.Allocator.{counting_function, cast[rawptr](counter)}
     held : int[..]
     push_context counted (allocator = counting) {
         runtime.array_add(&held, 1)
@@ -164,13 +189,9 @@ main :: fn() -> int {
     for i in 0..<10 {
         runtime.array_add(&held, i)
     }
-    if counter.allocations <= before || counter.live != 1 {
-        return 31
-    }
+    testing.expect(t, counter.allocations > before, "growing outside the push_context still goes through the counter")
+    testing.expect_eq(t, counter.live, 1, "the block outgrown is given back to it too")
     runtime.array_free(&held)
-    if counter.live != 0 {
-        return 32
-    }
-    runtime.free(counter)
-    return 42
+    testing.expect_eq(t, counter.live, 0, "freeing gives the last block back to it")
+    return .Ok
 }

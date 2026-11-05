@@ -222,13 +222,13 @@ TEST(Hosted, BuildsTheSameWhereverTheSourcesAre)
  */
 TEST(Hosted, BuildsTheSameEveryTime)
 {
-	const HostedOutput first = run_hosted("curves", hemera::TargetStackCheck::Off, 42, "", true);
+	const HostedOutput first = run_hosted("curves", hemera::TargetStackCheck::Off, 0, "", true, false, false, {}, true);
 	const std::filesystem::path pdb = std::filesystem::path(first.executable).replace_extension(".pdb");
 	const std::string program = read_file(first.executable);
 	const std::string debug_info = read_file(pdb);
 	ASSERT_FALSE(program.empty());
 	ASSERT_FALSE(debug_info.empty());
-	const HostedOutput second = run_hosted("curves", hemera::TargetStackCheck::Off, 42, "", true);
+	const HostedOutput second = run_hosted("curves", hemera::TargetStackCheck::Off, 0, "", true, false, false, {}, true);
 	EXPECT_TRUE(read_file(second.executable) == program) << "the program differs from the first build";
 	EXPECT_TRUE(read_file(pdb) == debug_info) << "its PDB differs from the first build";
 }
@@ -236,7 +236,7 @@ TEST(Hosted, BuildsTheSameEveryTime)
 // Results and parameters too large for registers, through pointers (docs/calling_convention.md, Large Values).
 TEST(Hosted, PassesLargeValues)
 {
-	run_hosted("large_values", hemera::TargetStackCheck::Off);
+	run_hosted("large_values", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // An object file in a folder that isn't there is reported (E6000), rather than written to a stream that never opened.
@@ -279,7 +279,7 @@ TEST(Hosted, ReportsUnwritableOutput)
  */
 TEST(Hosted, RunsFibers)
 {
-	run_hosted("fibers", hemera::TargetStackCheck::Morestack);
+	run_hosted("fibers", hemera::TargetStackCheck::Morestack, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -289,7 +289,7 @@ TEST(Hosted, RunsFibers)
  */
 TEST(Hosted, RunsThreads)
 {
-	run_hosted("threads", hemera::TargetStackCheck::Morestack);
+	run_hosted("threads", hemera::TargetStackCheck::Morestack, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -298,55 +298,55 @@ TEST(Hosted, RunsThreads)
  */
 TEST(Hosted, PassesPointersToForeignFunctions)
 {
-	run_hosted("foreign_pointers", hemera::TargetStackCheck::Off);
+	run_hosted("foreign_pointers", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // The hosted context's allocator, from several threads at once.
 TEST(Hosted, AllocatesFromThreads)
 {
-	run_hosted("heap", hemera::TargetStackCheck::Off);
+	run_hosted("heap", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/containers, which need no allocator.
 TEST(Hosted, UsesContainers)
 {
-	run_hosted("containers", hemera::TargetStackCheck::Off);
+	run_hosted("containers", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Format string options, in base's output_format and std's text_buffer (docs/format_strings.md).
 TEST(Hosted, FormatsWithOptions)
 {
-	run_hosted("format", hemera::TargetStackCheck::Off);
+	run_hosted("format", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // using on named fields: through pointers, and structs held in place (docs/types.md, Structs).
 TEST(Hosted, UsesThroughFields)
 {
-	run_hosted("using_fields", hemera::TargetStackCheck::Off);
+	run_hosted("using_fields", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Generic arguments given with mut, and instances given mut becoming read-only (docs/types.md, Mutability).
 TEST(Hosted, GivesMutToGenerics)
 {
-	run_hosted("mut_arguments", hemera::TargetStackCheck::Off);
+	run_hosted("mut_arguments", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Owned types: released, moved, taken, shared, in arrays and matches (docs/memory.md, Owned Types).
 TEST(Hosted, ReleasesOwners)
 {
-	run_hosted("owned", hemera::TargetStackCheck::Off);
+	run_hosted("owned", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/unicode: UTF-8, every case of the UCD's GraphemeBreakTest.txt, and the columns clusters take.
 TEST(Hosted, SplitsGraphemeClusters)
 {
-	run_hosted("unicode", hemera::TargetStackCheck::Off);
+	run_hosted("unicode", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/locale: numbers, dates and times as each locale writes them, and the locale in effect from the context.
 TEST(Hosted, FormatsForLocales)
 {
-	run_hosted("locale", hemera::TargetStackCheck::Off);
+	run_hosted("locale", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/testing: #test functions found through reflection, their assertions, and the runner's report (docs/testing.md).
@@ -369,73 +369,73 @@ TEST(Hosted, BuildsTestPrograms)
 // std/time_zones: TZif data parsed, and offsets from its transitions and its footer's POSIX TZ rule, north and south.
 TEST(Hosted, ReadsTimeZones)
 {
-	run_hosted("time_zones", hemera::TargetStackCheck::Off);
+	run_hosted("time_zones", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/documentation.md: documentation comments read back at compile time, through reflection.
 TEST(Hosted, ReadsDocumentation)
 {
-	run_hosted("documentation", hemera::TargetStackCheck::Off);
+	run_hosted("documentation", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/regex: linear-time matching, leftmost-first, with captures, classes, anchors, repetition and errors.
 TEST(Hosted, MatchesRegularExpressions)
 {
-	run_hosted("regex", hemera::TargetStackCheck::Off);
+	run_hosted("regex", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/memory's Arena: bumping, giving back the newest block, chunks, marks and resets (docs/memory.md, Allocators).
 TEST(Hosted, AllocatesFromArenas)
 {
-	run_hosted("arena", hemera::TargetStackCheck::Off);
+	run_hosted("arena", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/memory's SharedPtr, WeakPtr and LocalPtr (docs/memory.md, Shared Ownership).
 TEST(Hosted, SharesOwnership)
 {
-	run_hosted("shared", hemera::TargetStackCheck::Off);
+	run_hosted("shared", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Defaults in function types: through names, values, fields and an Allocator (docs/functions.md).
 TEST(Hosted, UsesFunctionTypesDefaults)
 {
-	run_hosted("function_type_defaults", hemera::TargetStackCheck::Off);
+	run_hosted("function_type_defaults", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Optional function types written in place: (fn(n: int) -> int)? (docs/functions.md).
 TEST(Hosted, TakesOptionalFunctions)
 {
-	run_hosted("optional_functions", hemera::TargetStackCheck::Off);
+	run_hosted("optional_functions", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Optionals that start zeroed are None: left out of a literal, in an array, declared without a value (docs/types.md, Optional Types).
 TEST(Hosted, StartsOptionalsAsNone)
 {
-	run_hosted("optional_defaults", hemera::TargetStackCheck::Off);
+	run_hosted("optional_defaults", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Results whose types are in parentheses, like an optional view ((mut u8[])?), alone, named and listed.
 TEST(Hosted, ReturnsParenthesizedTypes)
 {
-	run_hosted("parenthesized_results", hemera::TargetStackCheck::Off);
+	run_hosted("parenthesized_results", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/crypto's ChaCha20-Poly1305 and AES-256-GCM, with and without AES-NI, against known values.
 TEST(Hosted, AuthenticatedEncryption)
 {
-	run_hosted("aead", hemera::TargetStackCheck::Off);
+	run_hosted("aead", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.
 TEST(Hosted, Curves)
 {
-	run_hosted("curves", hemera::TargetStackCheck::Off);
+	run_hosted("curves", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/crypto's Argon2id against known values, its memory from new_array, and bad parameters refused.
 TEST(Hosted, PasswordHashes)
 {
-	run_hosted("argon2", hemera::TargetStackCheck::Off);
+	run_hosted("argon2", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -450,43 +450,43 @@ TEST(Hosted, MarksSecretsForValgrind)
 // std/crypto against Project Wycheproof's vectors: X25519, Ed25519, both AEADs, HMAC and HKDF.
 TEST(Hosted, Wycheproof)
 {
-	run_hosted("wycheproof", hemera::TargetStackCheck::Off);
+	run_hosted("wycheproof", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
 TEST(Hosted, Hashes)
 {
-	run_hosted("hashes", hemera::TargetStackCheck::Off);
+	run_hosted("hashes", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Secrets: constant-time comparisons, choices without a branch, and wiping (docs/memory.md, Secrets).
 TEST(Hosted, KeepsSecrets)
 {
-	run_hosted("secrets", hemera::TargetStackCheck::Off);
+	run_hosted("secrets", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // for loops with #reverse, last to first (docs/control_flow.md, Range-based for).
 TEST(Hosted, ReversesLoops)
 {
-	run_hosted("reverse_loops", hemera::TargetStackCheck::Off);
+	run_hosted("reverse_loops", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // switch with #fall_through, chained, stopped by break, and in a loop (docs/control_flow.md, Switch).
 TEST(Hosted, FallsThroughCases)
 {
-	run_hosted("fall_through", hemera::TargetStackCheck::Off);
+	run_hosted("fall_through", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Endian-specific integers and floats in their own byte order, read and computed as their native types (docs/types.md).
 TEST(Hosted, StoresEndianSpecificTypesInTheirOrder)
 {
-	run_hosted("endian_types", hemera::TargetStackCheck::Off);
+	run_hosted("endian_types", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // A ring linked by relative pointers, copied whole and walked at its new address (docs/types.md, Relative Pointers).
 TEST(Hosted, FollowsRelativePointersWhereTheyAre)
 {
-	run_hosted("relative_pointers", hemera::TargetStackCheck::Off);
+	run_hosted("relative_pointers", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // A relative pointer set to point at itself, offset 0, fails the store's check (docs/types.md, Relative Pointers).
@@ -500,128 +500,128 @@ TEST(Hosted, RefusesARelativePointerToItself)
 // match and switch on strings, including #fall_through and case _ (docs/control_flow.md).
 TEST(Hosted, MatchesStrings)
 {
-	run_hosted("string_cases", hemera::TargetStackCheck::Off);
+	run_hosted("string_cases", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // OS and TARGET_ARCH compared where the program runs, and in constants, as #if compares them.
 TEST(Hosted, ComparesTargetConstants)
 {
-	run_hosted("target_constants", hemera::TargetStackCheck::Off);
+	run_hosted("target_constants", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Fixed arrays, structs and tagged unions compared with == and != (docs/types.md, Equality).
 TEST(Hosted, ComparesArraysStructsAndUnions)
 {
-	run_hosted("equality", hemera::TargetStackCheck::Off);
+	run_hosted("equality", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Two optionals compared, equal when both hold nothing or both hold equal values (docs/types.md, Optionals).
 TEST(Hosted, ComparesOptionals)
 {
-	run_hosted("optional_comparisons", hemera::TargetStackCheck::Off);
+	run_hosted("optional_comparisons", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Type values with == and types_are_aliases, at compile time and run time (docs/types.md, Comparing Type Values).
 TEST(Hosted, ComparesTypeValues)
 {
-	run_hosted("type_values", hemera::TargetStackCheck::Off);
+	run_hosted("type_values", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // new's and new_array's values, static arrays of structs and generics' variables start with their fields' defaults, as
 // has_defaults says (docs/types.md, Structs).
 TEST(Hosted, StartsNewValuesWithDefaults)
 {
-	run_hosted("new_defaults", hemera::TargetStackCheck::Off);
+	run_hosted("new_defaults", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Struct fields defaulting to floats, strings, functions and named constants of any type (docs/types.md, Structs).
 TEST(Hosted, DefaultsFieldsToAnyConstant)
 {
-	run_hosted("field_defaults", hemera::TargetStackCheck::Off);
+	run_hosted("field_defaults", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // #run as an array's count, multi-dimensional array types as values, a string literal's members, #file_path.
 TEST(Hosted, ComputesConstantSizes)
 {
-	run_hosted("constant_sizes", hemera::TargetStackCheck::Off);
+	run_hosted("constant_sizes", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Complex numbers and quaternions: imaginary literals, arithmetic, parts, mixing, casts, std's conjugate and magnitude.
 TEST(Hosted, ComputesWithComplexNumbersAndQuaternions)
 {
-	run_hosted("composites", hemera::TargetStackCheck::Off);
+	run_hosted("composites", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Variadic parameters with others after them, split where a value stops fitting (docs/functions.md, Variable Arguments).
 TEST(Hosted, SplitsVariadicGroups)
 {
-	run_hosted("variadic_groups", hemera::TargetStackCheck::Off);
+	run_hosted("variadic_groups", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // ~ of an untyped constant, worked out in the type it's used as (docs/operators.md).
 TEST(Hosted, ComplementsConstantsInTheirType)
 {
-	run_hosted("complement_constants", hemera::TargetStackCheck::Off);
+	run_hosted("complement_constants", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Several names in one declaration, each with its value (docs/functions.md).
 TEST(Hosted, DeclaresSeveralNames)
 {
-	run_hosted("several_names", hemera::TargetStackCheck::Off);
+	run_hosted("several_names", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Pointers to mut views, the view's own mut kept in parentheses (docs/types.md, Mutability).
 TEST(Hosted, PointsToMutViews)
 {
-	run_hosted("mut_view_pointers", hemera::TargetStackCheck::Off);
+	run_hosted("mut_view_pointers", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // #insert and macro calls in generic bodies, expanded for each instance (docs/compilation.md, Code Values).
 TEST(Hosted, InsertsIntoGenericBodies)
 {
-	run_hosted("generic_insertions", hemera::TargetStackCheck::Off);
+	run_hosted("generic_insertions", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Types declared inside functions, seen in their blocks, each generic instance's its own (docs/types.md).
 TEST(Hosted, DeclaresTypesInFunctions)
 {
-	run_hosted("local_types", hemera::TargetStackCheck::Off);
+	run_hosted("local_types", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/reflection's as_text, numbers written into storage the caller gives.
 TEST(Hosted, WritesValuesAsText)
 {
-	run_hosted("reflection_text", hemera::TargetStackCheck::Off);
+	run_hosted("reflection_text", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // #union struct literals, setting the member they name (docs/types.md, Structs).
 TEST(Hosted, BuildsUnionLiterals)
 {
-	run_hosted("union_literals", hemera::TargetStackCheck::Off);
+	run_hosted("union_literals", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // b16, b32 and b64 with !, widened and as conditions (docs/types.md).
 TEST(Hosted, NegatesWideBooleans)
 {
-	run_hosted("wide_booleans", hemera::TargetStackCheck::Off);
+	run_hosted("wide_booleans", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Multiline strings: their lines joined by newlines, as written (docs/types.md, Strings).
 TEST(Hosted, JoinsMultilineStrings)
 {
-	run_hosted("multiline_strings", hemera::TargetStackCheck::Off);
+	run_hosted("multiline_strings", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Vectors, their intrinsics, and AES-NI and PCLMULQDQ where the CPU has them (docs/types.md, Vectors).
 TEST(Hosted, RunsVectors)
 {
-	run_hosted("vectors", hemera::TargetStackCheck::Off);
+	run_hosted("vectors", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Integer literals at the edges of their types' ranges, kept exactly (docs/types.md, Number Formats).
 TEST(Hosted, KeepsIntegerLiterals)
 {
-	run_hosted("integer_ranges", hemera::TargetStackCheck::Off);
+	run_hosted("integer_ranges", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std/os's run_process: output, error output, exit codes, a missing program, and quoting.
@@ -633,31 +633,31 @@ TEST(Hosted, RunsProcesses)
 // std/maps' HashMap, made with the hash function it uses: std's, and one of its own.
 TEST(Hosted, UsesHashMaps)
 {
-	run_hosted("maps", hemera::TargetStackCheck::Off);
+	run_hosted("maps", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Code Values: quotes made at compile time, with code, types and literals spliced in.
 TEST(Hosted, MakesCodeValues)
 {
-	run_hosted("code_values", hemera::TargetStackCheck::Off);
+	run_hosted("code_values", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Code Values: code made at compile time, put in a body as statements and expressions.
 TEST(Hosted, InsertsCode)
 {
-	run_hosted("inserted_code", hemera::TargetStackCheck::Off);
+	run_hosted("inserted_code", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Code Values: declarations at the top level, fields, variants, members, patterns and cases.
 TEST(Hosted, InsertsDeclarations)
 {
-	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off);
+	run_hosted("inserted_declarations", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // A name two imports declare, which the package's own #insert declares too: its own, whenever the insert is done.
 TEST(Hosted, PrefersInsertedOverImports)
 {
-	run_hosted("inserted_over_imports", hemera::TargetStackCheck::Off);
+	run_hosted("inserted_over_imports", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -666,7 +666,7 @@ TEST(Hosted, PrefersInsertedOverImports)
  */
 TEST(Hosted, HoldsSecrets)
 {
-	run_hosted("secret_holders", hemera::TargetStackCheck::Off);
+	run_hosted("secret_holders", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -675,7 +675,7 @@ TEST(Hosted, HoldsSecrets)
  */
 TEST(Hosted, ReturnsFromTheHeap)
 {
-	run_hosted("returns_from_heap", hemera::TargetStackCheck::Off);
+	run_hosted("returns_from_heap", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -684,13 +684,13 @@ TEST(Hosted, ReturnsFromTheHeap)
  */
 TEST(Hosted, ComputesValues)
 {
-	run_hosted("compute_blocks", hemera::TargetStackCheck::Off);
+	run_hosted("compute_blocks", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Code Values: #insert among a generic struct's fields and a generic union's variants.
 TEST(Hosted, InsertsIntoGenericTypes)
 {
-	run_hosted("generic_type_insertions", hemera::TargetStackCheck::Off);
+	run_hosted("generic_type_insertions", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -699,50 +699,50 @@ TEST(Hosted, InsertsIntoGenericTypes)
  */
 TEST(Hosted, DeclaresGenericTypesInFunctions)
 {
-	run_hosted("local_generic_types", hemera::TargetStackCheck::Off);
+	run_hosted("local_generic_types", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // runtime.in_image: whether an address is in the program's image, from its headers, as a literal is and the heap isn't.
 TEST(Hosted, FindsWhatsInTheImage)
 {
-	run_hosted("in_image", hemera::TargetStackCheck::Off);
+	run_hosted("in_image", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/types.md, Schemas: std's schema, a type's canonical description and its hash, alike at compile and run time;
 // values rendered back by their schemas; and base's BLAKE3 against std's.
 TEST(Hosted, HashesSchemas)
 {
-	run_hosted("schemas", hemera::TargetStackCheck::Off);
+	run_hosted("schemas", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // std's c_string: a cstring's length and text, looking no further than a limit for its zero.
 TEST(Hosted, ReadsCStringsWithinALimit)
 {
-	run_hosted("c_strings", hemera::TargetStackCheck::Off);
+	run_hosted("c_strings", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/types.md, Structs (#union): constants of #union structs, given members overlapping others.
 TEST(Hosted, MakesUnionConstants)
 {
-	run_hosted("union_constants", hemera::TargetStackCheck::Off);
+	run_hosted("union_constants", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/types.md, Optionals: constants holding optionals of structs, in structs and arrays, which take each Some's shape.
 TEST(Hosted, MakesOptionalConstants)
 {
-	run_hosted("optional_constants", hemera::TargetStackCheck::Off);
+	run_hosted("optional_constants", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/operators.md, Optional operators: a member, an element or a chain of them after ?, like f()?.x.
 TEST(Hosted, ReadsWhatUnwrapGives)
 {
-	run_hosted("unwrap_member", hemera::TargetStackCheck::Off);
+	run_hosted("unwrap_member", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Compile-time code describing a type waits for what's held by value, like a call's Result and its Ok's struct.
 TEST(Hosted, DescribesWhenLaidOut)
 {
-	run_hosted("described_when_laid_out", hemera::TargetStackCheck::Off, 22);
+	run_hosted("described_when_laid_out", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -751,37 +751,37 @@ TEST(Hosted, DescribesWhenLaidOut)
  */
 TEST(Hosted, DescribesWhileInserting)
 {
-	run_hosted("described_while_inserting", hemera::TargetStackCheck::Off);
+	run_hosted("described_while_inserting", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/operators.md, docs/functions.md: members of parentheses, generic variants, shorthands, nested functions.
 TEST(Hosted, HandlesExpressionForms)
 {
-	run_hosted("expression_forms", hemera::TargetStackCheck::Off);
+	run_hosted("expression_forms", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/types.md, Mutability: what can be changed only when given mut.
 TEST(Hosted, ChangesOnlyWhatsMut)
 {
-	run_hosted("mutability", hemera::TargetStackCheck::Off);
+	run_hosted("mutability", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Code Values: enum members and fields named by #insert in a quote, and reached by one.
 TEST(Hosted, InsertsMemberNames)
 {
-	run_hosted("inserted_member_names", hemera::TargetStackCheck::Off);
+	run_hosted("inserted_member_names", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Macros: #macro functions called with !, their code put in place hygienically.
 TEST(Hosted, ExpandsMacros)
 {
-	run_hosted("macros", hemera::TargetStackCheck::Off);
+	run_hosted("macros", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // docs/compilation.md, Code Values: functions made from a table, with names, parameters and arguments made from data.
 TEST(Hosted, GeneratesFunctions)
 {
-	run_hosted("generated_functions", hemera::TargetStackCheck::Off);
+	run_hosted("generated_functions", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*
@@ -798,19 +798,19 @@ TEST(Hosted, WritesOutput)
 // Generics with constraints, used the ways they allow, generated and run.
 TEST(Hosted, UsesConstrainedGenerics)
 {
-	run_hosted("constraints", hemera::TargetStackCheck::Off);
+	run_hosted("constraints", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // The hosted context's clock and random numbers, from the system.
 TEST(Hosted, UsesSystemClockAndRandom)
 {
-	run_hosted("system", hemera::TargetStackCheck::Off);
+	run_hosted("system", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 // Dynamic arrays, from a counting allocator that checks every block is given back.
 TEST(Hosted, UsesDynamicArrays)
 {
-	run_hosted("arrays", hemera::TargetStackCheck::Off);
+	run_hosted("arrays", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
 /*

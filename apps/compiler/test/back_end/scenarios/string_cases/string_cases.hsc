@@ -1,16 +1,17 @@
 /*
  * match and switch on strings (docs/control_flow.md): a string case matches a string with the same bytes, whatever
- * their length, and `case _` the rest. main returns 42 if they all held, or the number of the first that didn't.
+ * their length, and `case _` the rest.
  */
 package string_cases
 
-check :: fn(ok: bool, code: int) -> int {
-    if ok {
-        return 0
-    }
-    return code
-}
+import testing from "std"
 
+/**
+ * Sort a devicetree compatible string, through match on strings.
+ *
+ * @param compatible Any text.
+ * @return 1 for PCI's generic host, 2 for either GICv3 name, 3 for "", 4 for anything else.
+ */
 kind :: fn(compatible: string) -> int {
     return match compatible {
         case "pci-host-ecam-generic" => 1
@@ -20,6 +21,12 @@ kind :: fn(compatible: string) -> int {
     }
 }
 
+/**
+ * Sort a letter, through switch on strings with a case that falls through.
+ *
+ * @param text Any text.
+ * @return 11 for "a", which falls through to "b"'s case; 10 for "b"; 100 for anything else.
+ */
 letters :: fn(text: string) -> int {
     found := 0
     switch text {
@@ -31,23 +38,33 @@ letters :: fn(text: string) -> int {
     return found
 }
 
-// A constant's untyped string has a string's members, is indexed as one, and is gone through as one
+/** A constant's untyped string, which has a string's members, is indexed as one, and is gone through as one. */
 PUNCTUATION :: "-=[]"
 
-main :: fn() -> int {
-    errors := 0
-    errors += check(kind("pci-host-ecam-generic") == 1, 1)
-    errors += check(kind("arm,gic-v3-its") == 2 && kind("arm,gic-v3") == 2, 2)
-    errors += check(kind("") == 3 && kind("arm,gic-v") == 4 && kind("pci-host-ecam-generic!") == 4, 3)
-    errors += check(letters("a") == 11 && letters("b") == 10 && letters("c") == 100, 4)
-    errors += check(PUNCTUATION.count == 4 && PUNCTUATION[2] == '[', 5)
+matches_strings_by_their_bytes #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, kind("pci-host-ecam-generic"), 1, "a string with the case's bytes matches it")
+    testing.expect_eq(t, kind("arm,gic-v3-its"), 2, "a case of two strings matches the second")
+    testing.expect_eq(t, kind("arm,gic-v3"), 2, "and the first, a prefix of the second")
+    testing.expect_eq(t, kind(""), 3, "the empty string matches its own case")
+    testing.expect_eq(t, kind("arm,gic-v"), 4, "a prefix of a case's string isn't it")
+    testing.expect_eq(t, kind("pci-host-ecam-generic!"), 4, "nor is a case's string with more after it")
+    return .Ok
+}
+
+switches_on_strings #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, letters("a"), 11, "\"a\" falls through into \"b\"'s case")
+    testing.expect_eq(t, letters("b"), 10, "\"b\" runs only its own case")
+    testing.expect_eq(t, letters("c"), 100, "anything else goes to case _")
+    return .Ok
+}
+
+uses_a_constant_string_as_a_string #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, PUNCTUATION.count, 4, "an untyped string constant has a count")
+    testing.expect_eq(t, PUNCTUATION[2], '[', "and is indexed by byte")
     sum := 0
     for character, i in PUNCTUATION {
         sum += cast[int](character) * cast[int](i + 1)
     }
-    errors += check(sum == 45 + 61 * 2 + 91 * 3 + 93 * 4, 6)
-    if errors == 0 {
-        return 42
-    }
-    return errors
+    testing.expect_eq(t, sum, 45 + 61 * 2 + 91 * 3 + 93 * 4, "and is gone through byte by byte, in order")
+    return .Ok
 }

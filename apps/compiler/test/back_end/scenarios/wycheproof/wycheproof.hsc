@@ -1,12 +1,14 @@
 /*
  * std/crypto against Project Wycheproof's test vectors (github.com/C2SP/wycheproof, testvectors_v1,
  * Apache License 2.0), generated from them: 518 X25519, 139 ED25519, 316 CHACHA, 66 AES, 174 HMAC256, 86 HKDF256, 174 HMAC512, 83 HKDF512.
- * Skipped, as the types can't hold them: 12 Ed25519, signatures not 64 bytes, 9 chacha20_poly1305, sizes the types can't hold, 250 aes_gcm, sizes the types can't hold. main returns 42 if every case did what it should.
+ * Skipped, as the types can't hold them: 12 Ed25519, signatures not 64 bytes, 9 chacha20_poly1305, sizes the types can't hold, 250 aes_gcm, sizes the types can't hold.
  */
 package wycheproof_test
 
 import compiler from "base"
 import crypto from "std"
+import testing from "std"
+import text_buffer from "std"
 
 BUFFER :: 16384
 
@@ -172,6 +174,25 @@ hmac_case #constant_time :: fn(size: int, b: ptr[mut Buffers], key_hex: string, 
     }
     tag := crypto.hmac_sha512(crypto.as_secret(b.a[0..<key_count]), b.b[0..<message_count])
     return crypto.equal(tag[0..<tag_count % 65], b.c[0..<tag_count]) == valid
+}
+
+/**
+ * Check that a case did what Wycheproof says it should, reporting which case it was if not.
+ *
+ * @param t The test's state, which a failure is recorded in.
+ * @param held Whether the case did.
+ * @param index The case's index among its kind's, from 0, as its table lists them.
+ * @param message What the cases check, for whoever reads a failure.
+ * @param location Where the check is; the caller's own.
+ */
+expect_case :: fn(t: ptr[mut testing.T], held: bool, index: usize, message: string, location := #caller_location) {
+    if held {
+        return void
+    }
+    storage : u8[testing.TEXT_BYTES]
+    detail := text_buffer.make(storage)
+    text_buffer.append_format(&detail, "case % didn't", index)
+    testing.record(t, message, text_buffer.as_string(&detail), location)
 }
 
 // Extracted and expanded to the expected output, or refused for a size too large
@@ -1778,57 +1799,88 @@ HKDF512_CASES :: string.[
     "ddba77f227f237c791c07ee7e1ce9d933ecad3614212cc98d4f12afc90a3b21f4c7c3b4c54f44ad7d1e8ce45cd36aad5cb0bbf84e90cb054a1e7dc558690c5fa", "1264271934b6a446000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "6b478027231379b6bbed6c61732aad5636b5aab2", "32", "a2d9e9a4248a1f7f42ba1f58119012d9bfac2693d8a7a7570bee13221ede1f98", "valid",
 ]
 
-main :: fn() -> int {
+agrees_on_x25519 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     b := Buffers.{}
-    failures := 0
     for i in 0..<X25519_CASES.count / 3 {
-        if !x25519_case(&b, X25519_CASES[3 * i], X25519_CASES[3 * i + 1], X25519_CASES[3 * i + 2]) {
-            failures += 1
-        }
+        expect_case(t, x25519_case(&b, X25519_CASES[3 * i], X25519_CASES[3 * i + 1], X25519_CASES[3 * i + 2]), i,
+            "each shared secret is Wycheproof's, and a low-order point's is refused")
     }
+    return .Ok
+}
+
+agrees_on_ed25519 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
     for i in 0..<ED25519_CASES.count / 4 {
-        if !ed25519_case(&b, ED25519_CASES[4 * i], ED25519_CASES[4 * i + 1], ED25519_CASES[4 * i + 2], ED25519_CASES[4 * i + 3] == "valid") {
-            failures += 1
-        }
+        expect_case(t, ed25519_case(&b, ED25519_CASES[4 * i], ED25519_CASES[4 * i + 1], ED25519_CASES[4 * i + 2], ED25519_CASES[4 * i + 3] == "valid"), i,
+            "each signature verifies exactly when Wycheproof says it's valid")
     }
+    return .Ok
+}
+
+agrees_on_chacha20_poly1305 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
     for i in 0..<CHACHA_CASES.count / 7 {
-        if !aead_case(.CHACHA, &b, CHACHA_CASES[7 * i], CHACHA_CASES[7 * i + 1], CHACHA_CASES[7 * i + 2], CHACHA_CASES[7 * i + 3],
-            CHACHA_CASES[7 * i + 4], CHACHA_CASES[7 * i + 5], CHACHA_CASES[7 * i + 6] == "valid") {
-            failures += 1
-        }
+        expect_case(t, aead_case(.CHACHA, &b, CHACHA_CASES[7 * i], CHACHA_CASES[7 * i + 1], CHACHA_CASES[7 * i + 2], CHACHA_CASES[7 * i + 3],
+            CHACHA_CASES[7 * i + 4], CHACHA_CASES[7 * i + 5], CHACHA_CASES[7 * i + 6] == "valid"), i,
+            "a valid case seals to Wycheproof's ciphertext and tag and opens again; an invalid one is refused, writing nothing")
     }
-    for kind in Aead.[.AES, .AES_SOFTWARE] {
-        for i in 0..<AES_CASES.count / 7 {
-            if !aead_case(kind, &b, AES_CASES[7 * i], AES_CASES[7 * i + 1], AES_CASES[7 * i + 2], AES_CASES[7 * i + 3],
-                AES_CASES[7 * i + 4], AES_CASES[7 * i + 5], AES_CASES[7 * i + 6] == "valid") {
-                failures += 1
-            }
-        }
+    return .Ok
+}
+
+agrees_on_aes256_gcm #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<AES_CASES.count / 7 {
+        expect_case(t, aead_case(.AES, &b, AES_CASES[7 * i], AES_CASES[7 * i + 1], AES_CASES[7 * i + 2], AES_CASES[7 * i + 3],
+            AES_CASES[7 * i + 4], AES_CASES[7 * i + 5], AES_CASES[7 * i + 6] == "valid"), i,
+            "with the CPU's AES where it has it, as the case says, sealed and opened or refused")
     }
+    return .Ok
+}
+
+agrees_on_aes256_gcm_in_software #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<AES_CASES.count / 7 {
+        expect_case(t, aead_case(.AES_SOFTWARE, &b, AES_CASES[7 * i], AES_CASES[7 * i + 1], AES_CASES[7 * i + 2], AES_CASES[7 * i + 3],
+            AES_CASES[7 * i + 4], AES_CASES[7 * i + 5], AES_CASES[7 * i + 6] == "valid"), i,
+            "in software, as the case says, sealed and opened or refused")
+    }
+    return .Ok
+}
+
+agrees_on_hmac_sha256 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
     for i in 0..<HMAC256_CASES.count / 4 {
-        if !hmac_case(256, &b, HMAC256_CASES[4 * i], HMAC256_CASES[4 * i + 1], HMAC256_CASES[4 * i + 2], HMAC256_CASES[4 * i + 3] == "valid") {
-            failures += 1
-        }
+        expect_case(t, hmac_case(256, &b, HMAC256_CASES[4 * i], HMAC256_CASES[4 * i + 1], HMAC256_CASES[4 * i + 2], HMAC256_CASES[4 * i + 3] == "valid"), i,
+            "the tag, maybe truncated, matches exactly when Wycheproof says it's valid")
     }
+    return .Ok
+}
+
+agrees_on_hmac_sha512 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
     for i in 0..<HMAC512_CASES.count / 4 {
-        if !hmac_case(512, &b, HMAC512_CASES[4 * i], HMAC512_CASES[4 * i + 1], HMAC512_CASES[4 * i + 2], HMAC512_CASES[4 * i + 3] == "valid") {
-            failures += 1
-        }
+        expect_case(t, hmac_case(512, &b, HMAC512_CASES[4 * i], HMAC512_CASES[4 * i + 1], HMAC512_CASES[4 * i + 2], HMAC512_CASES[4 * i + 3] == "valid"), i,
+            "the tag, maybe truncated, matches exactly when Wycheproof says it's valid")
     }
+    return .Ok
+}
+
+agrees_on_hkdf_sha256 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
     for i in 0..<HKDF256_CASES.count / 6 {
-        if !hkdf_case(256, &b, HKDF256_CASES[6 * i], HKDF256_CASES[6 * i + 1], HKDF256_CASES[6 * i + 2], HKDF256_CASES[6 * i + 3],
-            HKDF256_CASES[6 * i + 4], HKDF256_CASES[6 * i + 5] == "valid") {
-            failures += 1
-        }
+        expect_case(t, hkdf_case(256, &b, HKDF256_CASES[6 * i], HKDF256_CASES[6 * i + 1], HKDF256_CASES[6 * i + 2], HKDF256_CASES[6 * i + 3],
+            HKDF256_CASES[6 * i + 4], HKDF256_CASES[6 * i + 5] == "valid"), i,
+            "extracted and expanded to Wycheproof's output, or refused for a size too large")
     }
+    return .Ok
+}
+
+agrees_on_hkdf_sha512 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
     for i in 0..<HKDF512_CASES.count / 6 {
-        if !hkdf_case(512, &b, HKDF512_CASES[6 * i], HKDF512_CASES[6 * i + 1], HKDF512_CASES[6 * i + 2], HKDF512_CASES[6 * i + 3],
-            HKDF512_CASES[6 * i + 4], HKDF512_CASES[6 * i + 5] == "valid") {
-            failures += 1
-        }
+        expect_case(t, hkdf_case(512, &b, HKDF512_CASES[6 * i], HKDF512_CASES[6 * i + 1], HKDF512_CASES[6 * i + 2], HKDF512_CASES[6 * i + 3],
+            HKDF512_CASES[6 * i + 4], HKDF512_CASES[6 * i + 5] == "valid"), i,
+            "extracted and expanded to Wycheproof's output, or refused for a size too large")
     }
-    if failures == 0 {
-        return 42
-    }
-    return failures
+    return .Ok
 }

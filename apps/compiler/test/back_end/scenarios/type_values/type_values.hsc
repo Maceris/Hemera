@@ -1,8 +1,10 @@
 /*
  * Type values compared with == and types_are_aliases, which both follow plain aliases and stop at distinct ones, at
- * compile time and at run time (docs/types.md, Comparing Type Values). main returns 42 if they all held, or the number of the first that didn't.
+ * compile time and at run time (docs/types.md, Comparing Type Values).
  */
 package type_values
+
+import testing from "std"
 
 Index :: alias int
 Ind :: alias Index
@@ -15,29 +17,26 @@ Counter :: distinct alias int
 #assert !types_are_aliases(Counter, int)
 #assert types_are_aliases(Counter, Counter)
 
-check :: fn(ok: bool, code: int) -> int {
-    if ok {
-        return 0
-    }
-    return code
-}
-
 // Type values known only at run time
 loosely :: fn(a: type, b: type) -> bool {
     return types_are_aliases(a, b)
 }
 
-main :: fn() -> int {
-    errors := 0
-    errors += check(types_are_aliases(Ind, int) && !types_are_aliases(Counter, int), 1)
-    errors += check(loosely(Ind, int) && loosely(int, Index) && loosely(Counter, Counter), 2)
-    errors += check(!loosely(Counter, int) && !loosely(u8, int), 3)
-    errors += check(Index == int && Counter != int && Counter == Counter, 4)
+follows_plain_aliases_and_stops_at_distinct_ones #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, types_are_aliases(Ind, int), "an alias of an alias of int is int")
+    testing.expect(t, !types_are_aliases(Counter, int), "a distinct alias isn't what it's made from")
+    testing.expect(t, Index == int && Counter != int && Counter == Counter, "== follows plain aliases and stops at distinct ones")
+    return .Ok
+}
+
+compares_types_known_only_at_run_time #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect(t, loosely(Ind, int) && loosely(int, Index), "plain aliases are aliases at run time, either way round")
+    testing.expect(t, loosely(Counter, Counter), "a distinct type is an alias of itself")
+    testing.expect(t, !loosely(Counter, int), "a distinct alias isn't what it's made from, at run time either")
+    testing.expect(t, !loosely(u8, int), "different types aren't aliases")
     plain : type = Ind
     counted : type = Counter
-    errors += check(plain == int && counted != int, 5)
-    if errors == 0 {
-        return 42
-    }
-    return errors
+    testing.expect(t, plain == int, "a type variable holding an alias of int is int")
+    testing.expect(t, counted != int, "one holding a distinct alias isn't")
+    return .Ok
 }
