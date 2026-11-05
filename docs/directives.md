@@ -300,6 +300,12 @@ multi_byte_to_wide_char #foreign(KERNEL32) #link_name("MultiByteToWideChar") : f
 `#test` after a function's name marks it as a test, which a runner finds through reflection (`FunctionInfo.is_test`)
 and runs: `parses #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome`. See [testing.md](testing.md).
 
+### `#tags`
+
+`#tags(...)` after `#test` names the test's tags, constants of type `testing.Tag`, which decide whether a run includes
+it: `downloads #test #tags(testing.SLOW) :: fn(...)`. Reflection gives each as the code that names it
+(`FunctionInfo.test_tags`). See [testing.md](testing.md#tags).
+
 ### `#constant_time`
 
 A function whose parameters or results are secrets is marked `#constant_time`, like

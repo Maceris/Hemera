@@ -52,6 +52,10 @@ namespace hemera {
 		/// </summary>
 		bool test = false;
 		std::string test_filter;
+		std::string test_tags;
+		uint64_t test_seed = 0;
+		bool test_seeded = false;
+		uint64_t test_runs = 0;
 		std::vector<std::pair<std::string, std::string>> settings;
 		std::vector<std::pair<std::string, std::string>> package_paths;
 		std::vector<BuildLibrary> libraries;

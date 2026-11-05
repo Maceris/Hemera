@@ -10,11 +10,13 @@ import text_buffer from "std"
  * wanted, like tests :: #insert (testing.tests_of(compiler.load_package("."))).
  *
  * Each function the package marks #test is a Test, in the order the package declares them, named as the function and
- * reached by its name, so the table has to be inserted in the tests' own package. A #test(CASES) function is a Test for
- * each of its cases, in their order, named name[i], or name[<the case's name>] when its type has a name string: the
- * table is then a compute block declaring a function for each case, which calls the test with it. A #test function
- * whose signature isn't fn(t: ptr[mut T]) -> Outcome, or fn(t: ptr[mut T], item: C) -> Outcome for cases a constant
- * array of C, or that's generic, is reported as an error at it, and left out.
+ * reached by its name, so the table has to be inserted in the tests' own package; its #tags(...) are its Test's tags,
+ * named where it is, like SLOW or testing.SLOW. A property test, fn(t: ptr[mut T], source: ptr[mut Source]) ->
+ * Outcome, is run through check_property, by a function the table's compute block declares for it. A #test(CASES)
+ * function is a Test for each of its cases, in their order, named name[i], or name[<the case's name>] when its type has
+ * a name string, each run by a function the compute block declares, which calls the test with it. A #test function
+ * whose signature is none of these, fn(t: ptr[mut T], item: C) -> Outcome for cases a constant array of C included,
+ * or that's generic, is reported as an error at it, and left out.
  *
  * @param package The package whose tests these are, the inserting file's own, from compiler.load_package("."); none
  *     gives an empty table.
@@ -61,9 +63,34 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
             continue
         }
         function :: &found.functions[index]
+        // Its tags, as #tags names them, each a testing.Tag constant where the table goes, the rest of their room empty
+        tags : compiler.Code[..]
+        for tag in function.test_tags {
+            runtime.array_add(&tags, tag)
+        }
+        if tags.count > MAX_TAGS {
+            compiler.report_error(function.location, "% has % tags; a test can have at most %", function.name, tags.count, MAX_TAGS)
+            continue
+        }
+        tag_count :: tags.count
+        for index in tag_count..<MAX_TAGS {
+            runtime.array_add(&tags, #code(testing.Tag.{}))
+        }
+        tag_list :: compiler.list(tags)
+        if is_property(function) {
+            property :: compiler.name(function.name)
+            wrapper :: compiler.name(function.name, "_property")
+            runtime.array_add(&wrappers, #code {
+                #insert wrapper :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+                    return testing.check_property(t, #insert property)
+                }
+            })
+            runtime.array_add(&made, entry(function.name, wrapper, tag_list, tag_count))
+            continue
+        }
         if function.test_cases.count == 0 {
             reached :: compiler.name(function.name)
-            runtime.array_add(&made, #code(testing.Test.{name = #insert function.name, run = #insert reached}))
+            runtime.array_add(&made, entry(function.name, reached, tag_list, tag_count))
             continue
         }
         cases :: cases_of(found.constants, function.test_cases) or_else Cases.{}
@@ -80,7 +107,7 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
                 }
             })
             label :: case_label(function.name, &cases, case_index)
-            runtime.array_add(&made, #code(testing.Test.{name = #insert label, run = #insert wrapper}))
+            runtime.array_add(&made, entry(label, wrapper, tag_list, tag_count))
         }
     }
     if wrappers.count == 0 {
@@ -90,6 +117,22 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
         #insert compiler.list(wrappers)
         give testing.Test.[#insert compiler.list(made)]
     })
+}
+
+/**
+ * Make a table's entry for a test.
+ *
+ * @param name The test's name, as it's reported.
+ * @param run The code naming the function the runner calls.
+ * @param tags The code of its tags, MAX_TAGS of them, those past count empty.
+ * @param count How many tags it has.
+ * @return The code of a testing.Test.
+ */
+entry :: fn(name: string, run: compiler.Code, tags: compiler.Code, count: usize) -> compiler.Code {
+    if count == 0 {
+        return #code(testing.Test.{name = #insert name, run = #insert run})
+    }
+    return #code(testing.Test.{name = #insert name, run = #insert run, tags = testing.Tag.[#insert tags], tag_count = #insert count})
 }
 
 /** A #test(CASES) function's cases, as compile-time code reads them from the constant. */
@@ -243,6 +286,16 @@ declared_before :: fn(a: runtime.SourceCodeLocation, b: runtime.SourceCodeLocati
 }
 
 /**
+ * Tell whether a #test function is a property test: it takes a Source after its T, and has no cases.
+ *
+ * @param function The function, marked #test.
+ * @return Whether its second parameter is a ptr[mut Source], and it isn't #test(CASES).
+ */
+is_property :: fn(function: ptr[compiler.FunctionInfo]) -> bool {
+    return function.test_cases.count == 0 && function.parameters.count == 2 && function.parameters[1].type == ptr[mut Source]
+}
+
+/**
  * Check a #test function's signature, reporting it at the function if it isn't a test's.
  *
  * @param function The function, marked #test.
@@ -251,14 +304,14 @@ declared_before :: fn(a: runtime.SourceCodeLocation, b: runtime.SourceCodeLocati
  *     CASES a constant fixed array of C; and not generic.
  */
 is_test_signature :: fn(function: ptr[compiler.FunctionInfo], constants: compiler.ConstantInfo[]) -> bool {
-    takes :: if function.test_cases.count == 0 { cast[usize](1) } else { cast[usize](2) }
+    takes :: if function.test_cases.count == 0 && !is_property(function) { cast[usize](1) } else { cast[usize](2) }
     right := function.generic_bindings.count == 0 && function.parameters.count == takes && function.return_values.count == 1
     if right && function.parameters.count >= 1 && function.return_values.count == 1 {
         right = function.parameters[0].type == ptr[mut T] && function.return_values[0].type == Outcome
     }
     if function.test_cases.count == 0 {
         if !right {
-            compiler.report_error(function.location, "% is marked #test, so it has to be fn(t: ptr[mut testing.T]) -> testing.Outcome",
+            compiler.report_error(function.location, "% is marked #test, so it has to be fn(t: ptr[mut testing.T]) -> testing.Outcome, or for a property test, fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome",
                 function.name)
         }
         return right

@@ -9,6 +9,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "error/reporting.h"
@@ -25,6 +26,8 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DiagnosticHandler.h"
 #include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
@@ -465,7 +468,102 @@ namespace hemera {
 		return generated && frames.frames.empty();
 	}
 
+	/*
+	 * A fuzzing build's coverage (docs/testing.md, Fuzzing): a counter for each basic block, bumped where the block
+	 * starts, all in one array, which intrinsics.coverage_counters gives as a view through COVERAGE_SYMBOL. Done before
+	 * optimizing, so the counters are of the code as written, and so nothing folds the view's empty initializer. A
+	 * program that never asks for the counters isn't instrumented.
+	 */
+	// The most constants instrument_coverage gives the fuzzer, the first found; a program with more has them in its own code
+	static constexpr size_t MAX_COVERAGE_CONSTANTS = 4096;
+
+	static void instrument_coverage(llvm::Module& module) {
+		llvm::GlobalVariable* view = module.getGlobalVariable(COVERAGE_SYMBOL, true);
+		auto* view_type = view != nullptr ? llvm::dyn_cast<llvm::StructType>(view->getValueType()) : nullptr;
+		if (view_type == nullptr || view_type->getNumElements() != 2) {
+			return;
+		}
+		std::vector<llvm::BasicBlock*> blocks;
+		for (llvm::Function& function : module) {
+			if (function.isDeclaration() || function.hasFnAttribute(llvm::Attribute::Naked)) {
+				continue;
+			}
+			for (llvm::BasicBlock& block : function) {
+				if (block.getFirstInsertionPt() != block.end()) {
+					blocks.push_back(&block);
+				}
+			}
+		}
+		llvm::Type* byte = llvm::Type::getInt8Ty(module.getContext());
+		auto* array_type = llvm::ArrayType::get(byte, std::max<size_t>(blocks.size(), 1));
+		auto* counters = new llvm::GlobalVariable(module, array_type, false, llvm::GlobalValue::InternalLinkage,
+			llvm::ConstantAggregateZero::get(array_type), "hemera.coverage_counters");
+		for (size_t i = 0; i < blocks.size(); ++i) {
+			llvm::IRBuilder<> builder(&*blocks[i]->getFirstInsertionPt());
+			llvm::Value* counter = builder.CreateConstInBoundsGEP2_64(array_type, counters, 0, i);
+			llvm::Value* count = builder.CreateLoad(byte, counter);
+			builder.CreateStore(builder.CreateAdd(count, llvm::ConstantInt::get(byte, 1)), counter);
+		}
+		// A view is its count, then where its elements are
+		view->setInitializer(llvm::ConstantStruct::get(view_type,
+			{ llvm::ConstantInt::get(view_type->getElementType(0), blocks.size()), counters }));
+		/*
+		 * And the integer constants it compares with for equality, or switches on, a dictionary for the fuzzer to put in
+		 * its inputs, as no change of a byte or two at random comes on a magic number
+		 */
+		llvm::GlobalVariable* constants_view = module.getGlobalVariable(COVERAGE_CONSTANTS_SYMBOL, true);
+		auto* constants_type = constants_view != nullptr ? llvm::dyn_cast<llvm::StructType>(constants_view->getValueType()) : nullptr;
+		if (constants_type == nullptr || constants_type->getNumElements() != 2) {
+			return;
+		}
+		std::vector<uint64_t> found;
+		std::unordered_set<uint64_t> known;
+		auto add = [&](const llvm::ConstantInt* constant) {
+			if (constant == nullptr || found.size() >= MAX_COVERAGE_CONSTANTS) {
+				return;
+			}
+			const unsigned bits = constant->getBitWidth();
+			if (bits != 8 && bits != 16 && bits != 32 && bits != 64) {
+				return;
+			}
+			const uint64_t number = constant->getZExtValue();
+			// 0 and 1 are where any input starts, and what every byte flipped comes on
+			if (number > 1 && known.insert(number).second) {
+				found.push_back(number);
+			}
+		};
+		for (llvm::Function& function : module) {
+			for (llvm::Instruction& instruction : llvm::instructions(function)) {
+				if (auto* compare = llvm::dyn_cast<llvm::ICmpInst>(&instruction); compare != nullptr && compare->isEquality()) {
+					add(llvm::dyn_cast<llvm::ConstantInt>(compare->getOperand(0)));
+					add(llvm::dyn_cast<llvm::ConstantInt>(compare->getOperand(1)));
+				}
+				else if (auto* choice = llvm::dyn_cast<llvm::SwitchInst>(&instruction)) {
+					for (const auto& option : choice->cases()) {
+						add(option.getCaseValue());
+					}
+				}
+			}
+		}
+		llvm::Type* word = llvm::Type::getInt64Ty(module.getContext());
+		auto* table_type = llvm::ArrayType::get(word, std::max<size_t>(found.size(), 1));
+		std::vector<llvm::Constant*> elements;
+		for (uint64_t number : found) {
+			elements.push_back(llvm::ConstantInt::get(word, number));
+		}
+		if (elements.empty()) {
+			elements.push_back(llvm::ConstantInt::get(word, 0));
+		}
+		auto* table = new llvm::GlobalVariable(module, table_type, true, llvm::GlobalValue::InternalLinkage,
+			llvm::ConstantArray::get(table_type, elements), "hemera.coverage_constant_table");
+		constants_view->setInitializer(llvm::ConstantStruct::get(constants_type,
+			{ llvm::ConstantInt::get(constants_type->getElementType(0), found.size()), table }));
+	}
+
 	bool BackendLLVM::generate(const Options& options, llvm::Module& module, std::string_view output_name, LargeFrames* frames) {
+		if (!options.fuzz.empty()) {
+			instrument_coverage(module);
+		}
 		// Optimize the IR
 
 		module.setTargetTriple(target_machine->getTargetTriple());

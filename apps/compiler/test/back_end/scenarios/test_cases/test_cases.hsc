@@ -63,7 +63,7 @@ main :: fn() -> int {
     // One case, filtered by its name
     other : u8[256]
     one := testing.BufferReporter.{bytes = other}
-    _ = testing.run(#insert testing.tests_of(compiler.load_package(".")), testing.reporter_of(&one), "[word]")
+    _ = testing.run(#insert testing.tests_of(compiler.load_package(".")), testing.reporter_of(&one), testing.RunOptions.{filter = "[word]"})
     if testing.report_text(&one) != "test measures_text[word] ... ok\n1 test: 1 passed, 0 failed, 6 filtered out\n" {
         runtime.write_output(testing.report_text(&one))
         return 2

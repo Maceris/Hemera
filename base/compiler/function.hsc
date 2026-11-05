@@ -20,6 +20,12 @@ FunctionInfo :: struct {
      * own (docs/testing.md, Tests Over Cases); empty for a #test without them, or a function that isn't one.
      */
     test_cases : string,
+    /**
+     * For a #test with #tags(...), each tag as the code that names it, like SLOW or testing.SLOW, in the order written:
+     * inserted in the test's own package, each names a testing.Tag constant (docs/testing.md, Tags). Empty without
+     * #tags. Like any Code, only good in the compile-time code that read it.
+     */
+    test_tags : Code[],
     /** False for bodiless --- declarations, like intrinsics and interface packages. */
     has_body : bool,
     /** Marked #never_returns. */

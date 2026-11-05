@@ -113,6 +113,24 @@ function_names : fn() -> runtime.FunctionName[] : ---
 library_imports : fn() -> runtime.LibraryImports : ---
 
 /**
+ * Give the program's coverage counters, for a fuzzer (docs/testing.md, Fuzzing): one for each basic block of the
+ * program's code, each bumped every time the block runs, wrapping past 255.
+ *
+ * @return The counters, which the fuzzer zeroes before an input and reads after; empty unless the program was built
+ *     with hemera --fuzz, and in compile-time code.
+ */
+coverage_counters : fn() -> mut u8[] : ---
+
+/**
+ * Give the integer constants the program's code compares with for equality, or switches on, for a fuzzer to put in its
+ * inputs (docs/testing.md, Fuzzing): magic numbers, tags and the like, which changing bytes at random seldom comes on.
+ *
+ * @return Each constant once, as a u64, its bits zero-extended, at most 4096 of them, those past 1 only; empty unless
+ *     the program was built with hemera --fuzz, and in compile-time code.
+ */
+coverage_constants : fn() -> u64[] : ---
+
+/**
  * Give the stack pointer, for code that sets up its own stack limit, like a kernel's entry before it
  * has a carrier block.
  *

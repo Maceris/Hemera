@@ -691,6 +691,7 @@ namespace hemera::parser {
 				|| directive.value.value->compare("#target_features") == 0
 				|| directive.value.value->compare("#constant_time") == 0
 				|| directive.value.value->compare("#test") == 0
+				|| directive.value.value->compare("#tags") == 0
 				|| directive.value.value->compare("#constraint") == 0
 				|| directive.value.value->compare("#macro") == 0
 				|| directive.value.value->compare("#release") == 0) {

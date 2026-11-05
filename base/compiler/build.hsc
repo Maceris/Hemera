@@ -36,6 +36,17 @@ BuildOptions :: struct {
     test : bool,
     /** With test, only the tests whose names contain this are run; empty runs them all. */
     test_filter : string,
+    /**
+     * With test, which tags' tests are run, as words separated by commas, like "+slow,-network", as
+     * testing.RunOptions.tags says; empty runs each test none of whose tags is left out by default.
+     */
+    test_tags : string,
+    /** With test and test_seeded, the seed every property test draws its cases from; otherwise not used. */
+    test_seed : u64,
+    /** With test, whether test_seed is given; without it, each property test has its own seed, from its name. */
+    test_seeded : bool,
+    /** With test, how many cases each property test draws; 0 for testing.DEFAULT_RUNS. */
+    test_runs : u64,
     /** Overrides for where imports from "base", "std", etc. are found; empty uses the compiler's own. */
     package_paths : PackagePath[..],
     /**

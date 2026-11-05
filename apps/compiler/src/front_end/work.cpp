@@ -392,15 +392,34 @@ namespace hemera {
 	}
 
 	// The source of the file --test adds, with its filter written in as a string literal.
+	// Text as a string literal's contents: its quotes and backslashes escaped.
+	static std::string escaped(std::string_view text) {
+		std::string result;
+		for (char character : text) {
+			if (character == '"' || character == '\\') {
+				result += '\\';
+			}
+			result += character;
+		}
+		return result;
+	}
+
 	static std::string test_entry_source(const Options& options) {
 		const std::string package_name = package_name_in(options.input);
-		std::string filter;
-		for (char character : options.test_filter) {
-			if (character == '"' || character == '\\') {
-				filter += '\\';
-			}
-			filter += character;
+		// A fuzzing build's entry fuzzes the one test, its input the counters' coverage guides
+		if (!options.fuzz.empty()) {
+			return std::format(
+				"{}"
+				"import fuzzing from \"std\"\n"
+				"\n"
+				"{} :: fn() -> int {{\n"
+				"    options :: fuzzing.FuzzOptions.{{seconds = {}, runs = {}, folder = \"{}\", seed = {}}}\n"
+				"    return fuzzing.fuzz({}, \"{}\", options)\n"
+				"}}\n", package_name.empty() ? std::string() : std::format("package {}\n\n", package_name), TEST_ENTRY,
+				options.fuzz_seconds, options.fuzz_runs, escaped(options.fuzz_folder), options.fuzz_seed, options.fuzz,
+				escaped(options.fuzz));
 		}
+		const std::string seed = options.test_seeded ? std::format("{}", options.test_seed) : "null";
 		return std::format(
 			"{}"
 			"import compiler from \"base\"\n"
@@ -408,8 +427,10 @@ namespace hemera {
 			"\n"
 			"{} :: fn() -> int {{\n"
 			"    tests :: #insert testing.tests_of(compiler.load_package(\".\"))\n"
-			"    return if testing.run(tests, testing.STANDARD_OUTPUT, \"{}\") == 0 {{ 0 }} else {{ 1 }}\n"
-			"}}\n", package_name.empty() ? std::string() : std::format("package {}\n\n", package_name), TEST_ENTRY, filter);
+			"    options :: testing.RunOptions.{{filter = \"{}\", tags = \"{}\", seed = {}, runs = {}}}\n"
+			"    return if testing.run(tests, testing.STANDARD_OUTPUT, options) == 0 {{ 0 }} else {{ 1 }}\n"
+			"}}\n", package_name.empty() ? std::string() : std::format("package {}\n\n", package_name), TEST_ENTRY,
+			escaped(options.test_filter), escaped(options.test_tags), seed, options.test_runs);
 	}
 
 	// Creates a PARSE work for each source file in a package.

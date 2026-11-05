@@ -581,6 +581,43 @@ namespace hemera {
         /// </summary>
         std::string test_filter;
         /// <summary>
+        /// --test-tags=words: with --test, which tags' tests are run, as testing.RunOptions.tags says; empty for the
+        /// default, each test none of whose tags is left out by default.
+        /// </summary>
+        std::string test_tags;
+        /// <summary>
+        /// --test-seed=N: with --test, the seed every property test draws its cases from, when test_seeded; otherwise
+        /// each test has its own, from its name, the same in every run.
+        /// </summary>
+        uint64_t test_seed = 0;
+        bool test_seeded = false;
+        /// <summary>
+        /// --test-runs=N: with --test, how many cases each property test draws; 0 for testing.DEFAULT_RUNS.
+        /// </summary>
+        uint64_t test_runs = 0;
+        /// <summary>
+        /// --fuzz=name: build a program that fuzzes the root package's property test of that name, its code counting
+        /// which blocks each input reaches, in place of its entry (docs/testing.md, Fuzzing); empty for none. Sets test.
+        /// </summary>
+        std::string fuzz;
+        /// <summary>
+        /// --fuzz-seconds=N: with fuzz, how long the program fuzzes; 0 for no limit.
+        /// </summary>
+        uint64_t fuzz_seconds = 60;
+        /// <summary>
+        /// --fuzz-runs=N: with fuzz, how many inputs the program tries at most; 0 for no limit.
+        /// </summary>
+        uint64_t fuzz_runs = 0;
+        /// <summary>
+        /// --fuzz-folder=path: with fuzz, where the program keeps its corpus and what it finds; empty for fuzz/<name>,
+        /// from where it runs.
+        /// </summary>
+        std::string fuzz_folder;
+        /// <summary>
+        /// --fuzz-seed=N: with fuzz, the seed the program's changes to inputs come from; 0 for one from the clock.
+        /// </summary>
+        uint64_t fuzz_seed = 0;
+        /// <summary>
         /// --jobs=N: how many of a build package's targets are built at once, 0 for as many as suit the machine
         /// (docs/compilation.md, Build Packages).
         /// </summary>

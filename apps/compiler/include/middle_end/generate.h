@@ -62,6 +62,13 @@ namespace hemera {
 	constexpr const char* MORESTACK_CONTINUE_SYMBOL = "hemera.morestack_continue";
 	constexpr const char* FIBER_WALK_SYMBOL = "hemera.fiber_walk";
 	/*
+	 * What intrinsics.coverage_counters reads, a view of the program's coverage counters: empty as generated, and filled
+	 * in by the back end's instrument_coverage in a fuzzing build (docs/testing.md, Fuzzing)
+	 */
+	constexpr const char* COVERAGE_SYMBOL = "hemera.coverage";
+	// What intrinsics.coverage_constants reads, a view of the constants the program compares with, filled in the same way
+	constexpr const char* COVERAGE_CONSTANTS_SYMBOL = "hemera.coverage_constants";
+	/*
 	 * The libraries #foreign functions come from: the MLIR module's attribute, then the LLVM module's
 	 * named metadata, a string each, which the back end links.
 	 */

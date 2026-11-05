@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <filesystem>
 #include <iostream>
 #include <ranges>
@@ -481,6 +482,14 @@ namespace hemera {
 			case hemera::arg_parse::CPU_FEATURES:
 			case hemera::arg_parse::ENTRY:
 			case hemera::arg_parse::TEST_FILTER:
+			case hemera::arg_parse::TEST_TAGS:
+			case hemera::arg_parse::TEST_SEED:
+			case hemera::arg_parse::TEST_RUNS:
+			case hemera::arg_parse::FUZZ:
+			case hemera::arg_parse::FUZZ_SECONDS:
+			case hemera::arg_parse::FUZZ_RUNS:
+			case hemera::arg_parse::FUZZ_FOLDER:
+			case hemera::arg_parse::FUZZ_SEED:
 			case hemera::arg_parse::ENVIRONMENT:
 			case hemera::arg_parse::HELP:
 			case hemera::arg_parse::INSTALL_PATH:
@@ -1120,6 +1129,54 @@ namespace hemera {
 			case hemera::arg_parse::TEST_FILTER:
 				output.test_filter = option_with_value.values[0];
 				break;
+			case hemera::arg_parse::TEST_TAGS:
+				output.test_tags = option_with_value.values[0];
+				break;
+			case hemera::arg_parse::FUZZ:
+				output.fuzz = option_with_value.values[0];
+				output.test = true;
+				output.entry = std::string(TEST_ENTRY);
+				break;
+			case hemera::arg_parse::FUZZ_FOLDER:
+				output.fuzz_folder = option_with_value.values[0];
+				break;
+			case hemera::arg_parse::TEST_SEED:
+			case hemera::arg_parse::TEST_RUNS:
+			case hemera::arg_parse::FUZZ_SECONDS:
+			case hemera::arg_parse::FUZZ_RUNS:
+			case hemera::arg_parse::FUZZ_SEED: {
+				// A number, in decimal or after 0x in hexadecimal
+				const std::string value(std::string_view(option_with_value.values[0]));
+				const bool hex = value.starts_with("0x");
+				const char* start = value.data() + (hex ? 2 : 0);
+				const char* end = value.data() + value.size();
+				uint64_t number = 0;
+				const auto [parsed, error] = std::from_chars(start, end, number, hex ? 16 : 10);
+				if (start == end || error != std::errc() || parsed != end) {
+					const hemera::arg_parse::Option option = option_with_value.option;
+					cout << std::format("{} needs a number, like 42 or 0x2a, not {}", hemera::arg_parse::TEST_SEED == option ? "--test-seed"
+						: hemera::arg_parse::TEST_RUNS == option ? "--test-runs" : hemera::arg_parse::FUZZ_SECONDS == option ? "--fuzz-seconds"
+						: hemera::arg_parse::FUZZ_SEED == option ? "--fuzz-seed" : "--fuzz-runs", value) << endl;
+					return false;
+				}
+				if (hemera::arg_parse::TEST_SEED == option_with_value.option) {
+					output.test_seed = number;
+					output.test_seeded = true;
+				}
+				else if (hemera::arg_parse::TEST_RUNS == option_with_value.option) {
+					output.test_runs = number;
+				}
+				else if (hemera::arg_parse::FUZZ_SECONDS == option_with_value.option) {
+					output.fuzz_seconds = number;
+				}
+				else if (hemera::arg_parse::FUZZ_SEED == option_with_value.option) {
+					output.fuzz_seed = number;
+				}
+				else {
+					output.fuzz_runs = number;
+				}
+				break;
+			}
 			case hemera::arg_parse::ENTRY:
 				if (entry_seen) {
 					cout << "Duplicate entry flag" << endl;

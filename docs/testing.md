@@ -51,6 +51,79 @@ Each case's test is named after the function and the case: by the case's `name`,
 like `hashes_to_the_published_digest[abc]`, or by its index otherwise, like `squares[2]`. A filter of `[abc]` runs
 that case alone. The cases' type has to be the second parameter's; anything else is an error at the function.
 
+### Property Tests
+
+A property test checks something that should hold for every input, on inputs it draws: it takes a
+`source: ptr[mut testing.Source]` after `t`, and the runner calls it on case after case, 100 by default.
+
+```
+reverses_back #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    words :: testing.draw[u32[8]](source)
+    testing.expect_eq(t, reverse(reverse(words)), words, "reversing twice gives the words back")
+    return .Ok
+}
+```
+
+| Draw | Gives |
+|---|---|
+| `draw[V](source)` | Any value of a type made of numbers, booleans, characters and enums: those alone, or in structs, fixed arrays, vectors and unions. Integers and floats favor their edges now and then: 0, 1, the least and the most, and for floats the infinities and NaN |
+| `draw_between(source, low, high)` | An integer from `low` to `high`, both included |
+| `draw_below(source, bound)` | A `u64` from 0 to `bound - 1` |
+| `draw_bool(source)` | A boolean |
+| `draw_count(source, most)` | A count from 0 to `most`, for a test that draws that many things itself |
+| `draw_bytes(source, most)` | Up to `most` bytes, a view of the source's own that lasts until the case ends |
+
+A type holding a string, a pointer, a view, a dynamic array, an `any` or a function can't be drawn, as there's nothing
+to say what it should point to or how much there should be; drawing one is a failure at the draw. A test draws what
+such a value holds, and builds it.
+
+A case is the bytes its draws read, fresh random ones from a seed. When a case fails, the runner makes it as small as
+it can while it still fails, taking bytes out and lowering them, then runs the test on that once more, and reports that
+run: each failure with the values drawn, and how the case was found.
+
+```
+test stays_below_500 ... FAILED
+    limits.hsc:59: the value is below 500
+        expected less than 500, got 500
+        note: drew 500
+    found by case 2 of 100 (seed 7), shrunk from 2 bytes to 2 in 63 runs
+```
+
+Every draw reads bytes so that fewer and lower bytes give smaller values, and zeros the smallest, so shrinking the
+bytes shrinks the values, however they were drawn and built, with nothing for a test to write. Each test draws from its
+own seed, from its name, the same in every run, so a failure comes back until it's fixed; `--test-seed=N` draws every
+test's cases from another, and `--test-runs=N` draws more or fewer of them.
+
+A case that doesn't fit what the test checks is discarded with `testing.assume(t, condition, why)?`, and drawn again;
+a test whose cases are all discarded is skipped. A property test can't have cases of its own (`#test(CASES)`), and it
+can't keep its source, or what it drew from it, past its return. A case reads at most `testing.MAX_CASE_BYTES`, 1024;
+past them, every draw gives zeros. The same test can be fuzzed ([Fuzzing](#fuzzing)).
+
+### Tags
+
+`#tags(...)` after `#test` names a test's tags: constants of type `testing.Tag`, each a name a run asks for it by, and
+whether its tests run when a run doesn't ask. A misspelled tag is an undeclared name, rather than a tag nothing asks
+for. A test can have up to `testing.MAX_TAGS`.
+
+```
+NETWORK :: testing.Tag.{name = "network", by_default = .Included}
+
+downloads_the_index #test #tags(NETWORK, testing.SLOW) :: fn(t: ptr[mut testing.T]) -> testing.Outcome { ... }
+```
+
+`std/testing` has `testing.SLOW` and `testing.PERFORMANCE`, both left out of a run unless it asks for them. A run's
+tags are words separated by commas, as `--test-tags` takes them:
+
+| Words | Run |
+|---|---|
+| (none) | Each test none of whose tags is left out by default |
+| `+slow` | The slow tests too |
+| `-network` | Not the tests tagged `network` |
+| `all` | Every tag's tests, less those a `-` word leaves out |
+| `performance` | Only the tests with a bare word's tag, whatever its default, less those a `-` word leaves out |
+
+A test the tags leave out is counted apart, as `, 2 left out by tag`, so a summary always says something didn't run.
+
 Tests sit beside the code they test, in its package, or in a test package of their own that imports it. They're
 compiled only into programs that ask for them: an ordinary build leaves them out like any function nothing calls.
 
@@ -163,7 +236,8 @@ how many tests there were. A test that failed before skipping is reported as fai
 
 Nothing allocates: a test's failures go into fixed space in `T`, the first `testing.MAX_FAILURES` of them in full and
 a count of any more, each message, value and note cut at `testing.TEXT_BYTES`, and up to `testing.MAX_NOTES` notes at
-once. So assertions work in freestanding code with no allocator, like a kernel's.
+once, and a property test's cases go in `testing.Case`s on the runner's stack, a few at once while one is shrunk. So
+tests work in freestanding code with no allocator, like a kernel's.
 
 ## Running Tests
 
@@ -180,8 +254,9 @@ test reads_the_zone_files ... skipped: no zoneinfo
 ```
 
 Its exit code is 0 when no test failed and 1 otherwise. `--test-filter=text` runs only the tests whose names contain
-`text`; the summary says how many it left out, as `, 2 filtered out`. A build package asks for the same with
-`BuildOptions.test` and `test_filter`.
+`text`; the summary says how many it left out, as `, 2 filtered out`. `--test-tags` says which tags' tests run
+([Tags](#tags)), and `--test-seed` and `--test-runs` which cases property tests draw, and how many. A build package
+asks for the same with `BuildOptions.test`, `test_filter`, `test_tags`, `test_seed` and `test_runs`.
 
 A program with an entry of its own, like a kernel or a program run under another operating system's test harness,
 runs its tests itself:
@@ -195,11 +270,53 @@ failed :: testing.run(tests, reporter)
   of `package`, in the order it declares them, reached by its name, so it's inserted in the tests' own package. Given
   a file, like `"accounts_check.hsc"`, only that file's tests: for checks kept in one file of a bigger package. It
   reports a `#test` function with the wrong signature as an error.
-* `testing.run(tests, reporter, filter)` runs each test whose name contains `filter` with a fresh `T`, reports it,
-  and gives how many failed.
+* `testing.run(tests, reporter, options)` runs each test `options` includes with a fresh `T`, reports it, and gives
+  how many failed. `testing.RunOptions` has the filter, tags, seed and runs `--test` takes; its zero value runs every
+  test not left out by a tag.
 * A `testing.Reporter` is where lines go: a function taking text, and a target for it. `testing.STANDARD_OUTPUT`
   writes to standard output; a kernel gives one writing to its console, a service one writing to its log. Lines are
   in the form above, so a script reading them can tell what passed and what didn't without exit codes.
 * A `testing.BufferReporter` catches the report in bytes the caller gives (`testing.reporter_of(&buffer)`), to be
   compared (`testing.report_text`), or passed on only if a test failed (`testing.write_report_if_failed`), for a
   program whose output is compared and shouldn't show a report that says all is well.
+
+## Fuzzing
+
+A property test draws its cases at random, so it seldom comes on an input that only a few bytes in a row reach, like a
+magic number, a length that matches, or a tag past several checks. A fuzzer searches for those by what they reach:
+`hemera --fuzz=<test> <package>` builds a program that runs one of the package's property tests on input after input,
+each made by changing one it has kept, and keeps those that reach code no input before them did.
+
+```
+fuzz reads_only_inside_the_copy: 4 inputs to start from, coverage 576
+fuzz reads_only_inside_the_copy: 45504 inputs, coverage 1240, corpus 82, 45504 a second
+test reads_only_inside_the_copy ... FAILED
+    messages.hsc:88: the name is in the copy
+        it points outside the copy
+        note: drew [59, 250, 0, 0, 0, 0, 0, 0]
+    found by fuzzing, 17213 inputs in, shrunk from 216 bytes to 6 in 194 runs
+    kept as fuzz/reads_only_inside_the_copy/findings/8849598b3e9c4022, which hemera --fuzz=reads_only_inside_the_copy runs first, until the test passes on it
+```
+
+The program's code counts, in each basic block, how many times it ran, and the fuzzer zeroes the counts before each
+input and reads them after. An input whose counts reach a block, or a block a number of times (1, 2, 3, 4 to 7, up to
+128 and more), that no input before it did, is kept. Changes flip bits, set bytes, put in or take out bytes, copy some
+of an input elsewhere in it or bring in some of another's, and put in values at the edges of integers and the
+constants the program's code compares with or switches on, which the compiler gathers as it adds the counters.
+
+The test is the same function a run of tests calls, its source giving the fuzzer's input rather than random bytes:
+whatever the test draws, the input is the bytes it reads. A fuzz target is often a property that should hold for any
+bytes at all, like a parser that never reads outside what it's given, so it draws them with `testing.draw_bytes`.
+
+* It keeps its inputs in a folder, `fuzz/<test>` from where it runs unless `--fuzz-folder` says otherwise: `corpus`,
+  the inputs it keeps, which a later run starts from, and `findings`, the inputs a test failed on.
+* It stops when the test fails, after `--fuzz-seconds` (60 by default, 0 for no limit), or after `--fuzz-runs`
+  inputs. Its exit code is 0 if the test passed on every input and 1 if it failed on one.
+* A failing input is shrunk as a property test's is, reported as a test that failed is, and kept in `findings`; a
+  later run runs those first, and stops at the first that still fails, so a fix is checked against what was found.
+* An assertion that fails in the test ends the program, as it ends any program, with the input kept in `findings` as
+  it was, as there's no going on to shrink it.
+* Its changes come from the clock, so each run searches differently; `--fuzz-seed=N` repeats one.
+
+It needs files, so the fuzzing program is a hosted one (`std/fuzzing`), while the test itself can be anywhere a
+property test can.

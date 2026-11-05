@@ -56,7 +56,8 @@ struct HostedOutput {
  */
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
 	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false,
-	const std::vector<std::filesystem::path>& library_paths = {}, bool test = false, std::string_view test_filter = "")
+	const std::vector<std::filesystem::path>& library_paths = {}, bool test = false, std::string_view test_filter = "",
+	std::string_view fuzz = "")
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -86,6 +87,21 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 		options.test = true;
 		options.entry = std::string(hemera::TEST_ENTRY);
 		options.test_filter = test_filter;
+	}
+	/*
+	 * hemera --fuzz: the one test fuzzed from a fixed seed, a few seconds at most, its folder made afresh beside the
+	 * program, so a run finds what it finds the same way every time
+	 */
+	if (!fuzz.empty()) {
+		options.test = true;
+		options.entry = std::string(hemera::TEST_ENTRY);
+		options.fuzz = fuzz;
+		options.fuzz_seed = 1;
+		options.fuzz_seconds = 60;
+		options.fuzz_runs = 2'000'000;
+		const std::filesystem::path folder = output_folder / "fuzz";
+		std::filesystem::remove_all(folder);
+		options.fuzz_folder = folder.generic_string();
 	}
 	const std::string object_file = std::format("{}.o", options.output_name);
 	const std::string executable = std::format("{}.exe", options.output_name);
@@ -365,6 +381,31 @@ TEST(Hosted, KeepsGenericAliasArgumentsApart)
 TEST(Hosted, TakesParenthesizedArguments)
 {
 	run_hosted("parenthesized_arguments", hemera::TargetStackCheck::Off);
+}
+
+// #tags(...) and property tests: which tags a run leaves out, and failing cases shrunk to the smallest (docs/testing.md).
+TEST(Hosted, RunsPropertyTestsAndTags)
+{
+	run_hosted("property_tests", hemera::TargetStackCheck::Off);
+}
+
+// Fuzz targets run as property tests: the schema reader's, and one only fuzzing finds a failure in.
+TEST(Hosted, RunsFuzzTargetsAsTests)
+{
+	run_hosted("fuzz_targets", hemera::TargetStackCheck::Off);
+}
+
+/*
+ * hemera --fuzz: coverage guides the fuzzer to four bytes in a row, which inputs drawn at random would take billions
+ * of tries to come on, and the input it reports is shrunk to just them.
+ */
+TEST(Hosted, FuzzesWithCoverage)
+{
+	const HostedOutput fuzzed = run_hosted("fuzz_targets", hemera::TargetStackCheck::Off, 1, "", false, false, false, {}, false, "",
+		"finds_the_magic");
+	EXPECT_NE(fuzzed.output.find("test finds_the_magic ... FAILED"), std::string::npos) << fuzzed.output;
+	EXPECT_NE(fuzzed.output.find("note: drew [72, 69, 77, 82]"), std::string::npos) << fuzzed.output;
+	EXPECT_NE(fuzzed.output.find("found by fuzzing"), std::string::npos) << fuzzed.output;
 }
 
 // #test(CASES): a test run once for each case of a constant array, each its own test (docs/testing.md).

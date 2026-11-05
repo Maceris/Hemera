@@ -95,6 +95,11 @@ TESTS = [
     ("generic_alias_arguments", ["--test"], 0),
     # #test(CASES), each case a test of its own
     ("test_cases", [], 42),
+    # #tags and property tests, shrinking included
+    ("property_tests", [], 42),
+    # Fuzz targets run as property tests, then fuzzed with coverage from a fixed seed, which finds the magic bytes
+    ("fuzz_targets", [], 42),
+    ("fuzz_magic", ["--fuzz=finds_the_magic", "--fuzz-seed=1", "--fuzz-runs=2000000", "--fuzz-folder=fuzz_magic_inputs"], 1),
     # Links C, against HEMERA_LINUX_SYSROOT
     ("libc", ["--test", "--stack-check=morestack", "SYSROOT"], 0),
 ]
@@ -112,6 +117,7 @@ VALGRIND = "valgrind -q --error-exitcode=99 --track-origins=yes"
 # A test that builds another's scenario, with different arguments
 SCENARIO_OF = {
     "assertion_debug": "assertion",
+    "fuzz_magic": "fuzz_targets",
 }
 
 # What hemera --symbolize says about assertion_debug's first frame: assert inlined into check, into main

@@ -104,7 +104,7 @@ main :: fn() -> int {
     // Filtered, only the one that passes runs
     other_storage : u8[256]
     again := testing.BufferReporter.{bytes = other_storage}
-    if testing.run(tests, testing.reporter_of(&again), "digits") != 0 {
+    if testing.run(tests, testing.reporter_of(&again), testing.RunOptions.{filter = "digits"}) != 0 {
         return 4
     }
     if testing.report_text(&again) != "test parses_digits ... ok\n1 test: 1 passed, 0 failed, 3 filtered out\n" {

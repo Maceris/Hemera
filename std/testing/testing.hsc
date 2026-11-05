@@ -61,7 +61,47 @@ T :: struct {
     skipped : bool,
     /** Why it skipped itself, as skip was given. */
     skip_reason : Text,
+    /** For a property test, the seed its cases are drawn from (check_property); the runner sets it. */
+    seed : u64,
+    /** For a property test, how many cases it draws, 0 for DEFAULT_RUNS; the runner sets it. */
+    runs : usize,
+    /** For a property test that failed, how its case was found and shrunk, reported after its failures; empty else. */
+    found : Text,
 }
+
+/** Whether a runner runs the tests with a tag when it isn't asked about the tag (RunOptions.tags). */
+Inclusion :: enum {
+    /** They're run, unless asked to leave the tag out. */
+    Included,
+    /** They're left out, unless asked for the tag, or for all. */
+    Excluded,
+}
+
+/**
+ * A kind of test, which a runner can be asked to leave out or to run alone: a constant a #test function names in
+ * #tags(...) (docs/testing.md, Tags). It's a constant, not text, so a misspelled tag doesn't compile.
+ */
+Tag :: struct {
+    /**
+     * What it's asked for by, in RunOptions.tags and hemera --test-tags: a word, like "slow", without commas, + or -;
+     * "all" is taken. Two tags with the same name are the same tag.
+     */
+    name : string,
+    /** Whether its tests are run when the runner isn't asked about it. */
+    by_default : Inclusion,
+}
+
+/** Tests that take long enough to be left out of a run unless asked for: hemera --test --test-tags=+slow. */
+SLOW :: Tag.{name = "slow", by_default = .Excluded}
+
+/**
+ * Tests that check how fast something is, so are only meaningful on a quiet machine and an optimized build: left out
+ * unless asked for, like hemera --test --test-tags=performance.
+ */
+PERFORMANCE :: Tag.{name = "performance", by_default = .Excluded}
+
+/** How many tags a test can have, in #tags(...); more is an error at the test. */
+MAX_TAGS :: 4
 
 /** A test a runner runs: a #test function, and its name. */
 Test :: struct {
@@ -69,6 +109,40 @@ Test :: struct {
     name : string,
     /** The function, which takes the test's state and gives back how it ended. */
     run : fn(t: ptr[mut T]) -> Outcome,
+    /** Its tags, from #tags(...), which decide whether a run includes it: the first tag_count. */
+    tags : Tag[MAX_TAGS],
+    /** How many of tags it has, 0 to MAX_TAGS. */
+    tag_count : usize,
+}
+
+/**
+ * Give a test's tags.
+ *
+ * @param test The test, only read.
+ * @return Its tags, a view of its own, good while it's unchanged; empty for none.
+ */
+tags_of :: fn(test: ptr[Test]) -> Tag[] {
+    if test.tag_count <= test.tags.count {
+        return test.tags[0..<test.tag_count]
+    }
+    return test.tags[0..<test.tags.count]
+}
+
+/** Which of a table's tests a runner runs (run). The zero value runs each test none of whose tags is Excluded. */
+RunOptions :: struct {
+    /** Only tests whose names contain it are run; empty for every name. */
+    filter : string,
+    /**
+     * Which tags' tests are run, as words separated by commas, like "+slow,-network". "+name" runs the tests with that
+     * tag, though it's Excluded by default; "-name" leaves them out; "all" is +name for every tag. A bare name runs only
+     * the tests with it, or with any bare name given, whatever their tags' defaults, less those "-name" leaves out.
+     * Empty runs each test none of whose tags is Excluded. A test left out by a tag is counted apart, as left out.
+     */
+    tags : string,
+    /** The seed every property test draws its cases from; null for each test's own, from its name (seed_of). */
+    seed : u64?,
+    /** How many cases each property test draws; 0 for DEFAULT_RUNS. */
+    runs : usize,
 }
 
 /**
@@ -939,29 +1013,174 @@ plural :: fn(count: usize) -> string {
 }
 
 /**
+ * Tell whether part of some text is a word.
+ *
+ * @param text The text.
+ * @param start Where the part starts, a byte index.
+ * @param end Where it ends, the byte after it; one before start, or past text, is no part, and matches nothing.
+ * @param word The word.
+ * @return Whether the part is word, byte for byte.
+ */
+word_is :: fn(text: string, start: usize, end: usize, word: string) -> bool {
+    if end < start || end > text.count || end - start != word.count {
+        return false
+    }
+    for character, i in word {
+        if start + i >= text.count || text[start + i] != character {
+            return false
+        }
+    }
+    return true
+}
+
+/**
+ * Tell whether a list of words separated by commas, as RunOptions.tags is, has a word.
+ *
+ * @param words The list, like "+slow,-network"; empty has none.
+ * @param word The word looked for, with its + or - if it has one, like "-network".
+ * @return Whether one of the list's words is word, byte for byte.
+ */
+has_word :: fn(words: string, word: string) -> bool {
+    start : usize = 0
+    for at in 0..=words.count {
+        if at < words.count && words[at] != ',' {
+            continue
+        }
+        if word_is(words, start, at, word) {
+            return true
+        }
+        start = at + 1
+    }
+    return false
+}
+
+/**
+ * Tell whether a list of words separated by commas has a bare one: a word without + or -, other than "all".
+ *
+ * @param words The list, as RunOptions.tags is.
+ * @return Whether a run with it runs only the tests with the bare words' tags.
+ */
+has_bare_word :: fn(words: string) -> bool {
+    start : usize = 0
+    for at in 0..=words.count {
+        if at < words.count && words[at] != ',' {
+            continue
+        }
+        if at > start && start < words.count && words[start] != '+' && words[start] != '-' && !word_is(words, start, at, "all") {
+            return true
+        }
+        start = at + 1
+    }
+    return false
+}
+
+/**
+ * Put a tag's name after a sign, as RunOptions.tags writes it, like "-slow".
+ *
+ * @param into The buffer, emptied first; a name that doesn't fit is cut, and then matches nothing it shouldn't.
+ * @param sign "+" or "-".
+ * @param tag The tag.
+ * @return The word, good while into is unchanged.
+ */
+signed_word :: fn(into: ptr[mut text_buffer.TextBuffer], sign: string, tag: Tag) -> string {
+    into.count = 0
+    text_buffer.append(into, sign)
+    text_buffer.append(into, tag.name)
+    return text_buffer.as_string(into)
+}
+
+/**
+ * Tell whether a run includes a test, by its tags.
+ *
+ * @param tags The test's tags.
+ * @param asked The run's tags, as RunOptions.tags gives them.
+ * @return Whether it's run: false when asked leaves one of its tags out, gives bare names none of its tags has, or
+ *     doesn't ask for one of its tags that's Excluded by default.
+ */
+included_by_tags :: fn(tags: Tag[], asked: string) -> bool {
+    storage : u8[64]
+    word := text_buffer.make(storage)
+    for tag in tags {
+        if has_word(asked, signed_word(&word, "-", tag)) {
+            return false
+        }
+    }
+    if has_bare_word(asked) {
+        for tag in tags {
+            if has_word(asked, tag.name) {
+                return true
+            }
+        }
+        return false
+    }
+    for tag in tags {
+        if tag.by_default == .Excluded && !has_word(asked, "all") && !has_word(asked, signed_word(&word, "+", tag)) {
+            return false
+        }
+    }
+    return true
+}
+
+/**
+ * Report a test that failed, as run does: "test <name> ... FAILED", then for each failure kept, its file and line and
+ * message, the values found and the notes in force, indented beneath; "and N more failures" past MAX_FAILURES; and for
+ * a property test, how its case was found.
+ *
+ * @param reporter Where the lines go.
+ * @param t The test's state once it's run, only read.
+ */
+report_failed :: fn(reporter: Reporter, t: ptr[T]) {
+    report(reporter, "test % ... FAILED", t.name)
+    for &failure, i in t.failures {
+        if i >= t.failure_count {
+            break
+        }
+        report(reporter, "    %:%: %", failure.location.file_path, failure.location.line, text_of(&failure.message))
+        if failure.detail.count > 0 {
+            report(reporter, "        %", text_of(&failure.detail))
+        }
+        if failure.notes.count > 0 {
+            report(reporter, "        note: %", text_of(&failure.notes))
+        }
+    }
+    if t.failure_count > t.failures.count {
+        more :: t.failure_count - t.failures.count
+        report(reporter, "    and % more failure%", more, plural(more))
+    }
+    if t.found.count > 0 {
+        report(reporter, "    found by %", text_of(&t.found))
+    }
+}
+
+/**
  * Run tests in order, each with a fresh T, reporting each as it ends and a summary after.
  *
  * For each test: "test <name> ... ok"; "test <name> ... skipped: <reason>"; or "test <name> ... FAILED" then, for each
  * failure kept, its file and line and message, the values found and the notes in force, indented beneath; "and N more
- * failures" past MAX_FAILURES. Last, "N tests: P passed, F failed", with ", S skipped" when some skipped themselves and
- * ", L filtered out" when the filter left some out.
+ * failures" past MAX_FAILURES. Last, "N tests: P passed, F failed", with ", S skipped" when some skipped themselves,
+ * ", L filtered out" when the filter left some out, and ", X left out by tag" when their tags did.
  *
  * @param tests The tests, as tests_of makes them.
  * @param reporter Where the report goes.
- * @param filter Only tests whose names contain it are run; empty runs every test.
+ * @param options Which tests are run; the default runs each test none of whose tags is Excluded by default.
  * @return How many tests failed: 0 when all that ran passed or skipped themselves.
  */
-run :: fn(tests: Test[], reporter: Reporter, filter: string = "") -> usize {
+run :: fn(tests: Test[], reporter: Reporter, options: RunOptions = RunOptions.{}) -> usize {
     passed_count : usize = 0
     failed_count : usize = 0
     skipped_count : usize = 0
     filtered : usize = 0
-    for test in tests {
-        if !contains(test.name, filter) {
+    left_out : usize = 0
+    for &test in tests {
+        if !contains(test.name, options.filter) {
             filtered += 1
             continue
         }
-        t := T.{name = test.name}
+        if !included_by_tags(tags_of(test), options.tags) {
+            left_out += 1
+            continue
+        }
+        t := T.{name = test.name, seed = options.seed or_else seed_of(test.name), runs = options.runs}
         _ = test.run(&t)
         if t.failure_count == 0 && t.skipped {
             skipped_count += 1
@@ -974,23 +1193,7 @@ run :: fn(tests: Test[], reporter: Reporter, filter: string = "") -> usize {
             continue
         }
         failed_count += 1
-        report(reporter, "test % ... FAILED", test.name)
-        for &failure, i in t.failures {
-            if i >= t.failure_count {
-                break
-            }
-            report(reporter, "    %:%: %", failure.location.file_path, failure.location.line, text_of(&failure.message))
-            if failure.detail.count > 0 {
-                report(reporter, "        %", text_of(&failure.detail))
-            }
-            if failure.notes.count > 0 {
-                report(reporter, "        note: %", text_of(&failure.notes))
-            }
-        }
-        if t.failure_count > t.failures.count {
-            more :: t.failure_count - t.failures.count
-            report(reporter, "    and % more failure%", more, plural(more))
-        }
+        report_failed(reporter, &t)
     }
     total :: passed_count + failed_count + skipped_count
     storage : u8[128]
@@ -1001,6 +1204,9 @@ run :: fn(tests: Test[], reporter: Reporter, filter: string = "") -> usize {
     }
     if filtered > 0 {
         text_buffer.append_format(&summary, ", % filtered out", filtered)
+    }
+    if left_out > 0 {
+        text_buffer.append_format(&summary, ", % left out by tag", left_out)
     }
     report(reporter, "%", text_buffer.as_string(&summary))
     return failed_count

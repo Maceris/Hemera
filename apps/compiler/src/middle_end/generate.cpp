@@ -1180,6 +1180,21 @@ namespace hemera {
 		return {};
 	}
 
+	// The arguments of a #tags(...) directive, like SLOW and testing.NETWORK, each a tree; none without one.
+	static std::vector<const ast::Node*> test_tags_of(Declaration* declaration) {
+		std::vector<const ast::Node*> tags;
+		ast::Node* directive = name_directive(declaration, "#tags");
+		if (directive == nullptr) {
+			return tags;
+		}
+		for (ast::Node* argument : directive->children) {
+			if (ast::NodeType::PAREN_GROUP != argument->node_type) {
+				tags.push_back(argument);
+			}
+		}
+		return tags;
+	}
+
 	static bool has_convention(TypeInfoFunction const* function, std::string_view convention) {
 		return text_of(function->calling_convention).find(convention) != std::string::npos;
 	}
@@ -6166,6 +6181,27 @@ namespace hemera {
 			}
 			return value(load(generator, result_type, LLVM::AddressOfOp::create(b, l, generator.library_imports)), result_type);
 		}
+		/*
+		 * The coverage counters, and the constants the program compares with: empty views the back end fills in when it
+		 * instruments the program (instrument_coverage)
+		 */
+		if (name == "coverage_counters" || name == "coverage_constants") {
+			if (generator.compile_time || result_type == nullptr) {
+				return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
+			}
+			const char* symbol = name == "coverage_counters" ? COVERAGE_SYMBOL : COVERAGE_CONSTANTS_SYMBOL;
+			const mlir::Type view_type = llvm_type(generator, result_type);
+			LLVM::GlobalOp counters = generator.module.lookupSymbol<LLVM::GlobalOp>(symbol);
+			if (!counters) {
+				mlir::OpBuilder::InsertionGuard guard(generator.builder);
+				generator.builder.setInsertionPointToEnd(generator.module.getBody());
+				counters = LLVM::GlobalOp::create(generator.builder, generator.loc, view_type, false, LLVM::Linkage::Internal,
+					symbol, mlir::Attribute(), 8);
+				generator.builder.setInsertionPointToStart(generator.builder.createBlock(&counters.getInitializerRegion()));
+				LLVM::ReturnOp::create(generator.builder, generator.loc, zero_of(generator, view_type));
+			}
+			return value(load(generator, result_type, LLVM::AddressOfOp::create(b, l, counters)), result_type);
+		}
 		if (name == "function_names") {
 			if (generator.compile_time || result_type == nullptr) {
 				return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
@@ -10411,6 +10447,13 @@ namespace hemera {
 			data.write_number(record, layout, "is_exported", has_name_directive(function, "#export"));
 			data.write_number(record, layout, "is_test", has_name_directive(function, "#test"));
 			data.write_text(record, layout, "test_cases", test_cases_of(function));
+			// Each tag as the code that names it, for a runner's table to put where the test is
+			const std::vector<const ast::Node*> tags = service_scope != nullptr ? test_tags_of(function) : std::vector<const ast::Node*>{};
+			write_records(data, record, layout, "test_tags", tags.size(), [&](uint8_t* at, const TypeInfoStruct* code, size_t i) {
+				// A Code this run made, as keep_code does
+				service_scope->codes.push_back(tags[i]);
+				data.write_number(at, code, "handle", service_scope->codes.size());
+			});
 			data.write_number(record, layout, "has_body", function_body(function) != nullptr);
 			if (type == nullptr) {
 				return;
@@ -10779,6 +10822,10 @@ namespace hemera {
 			target.entry = read_text(record, layout, "entry");
 			target.test = read_number(record, layout, "test") != 0;
 			target.test_filter = read_text(record, layout, "test_filter");
+			target.test_tags = read_text(record, layout, "test_tags");
+			target.test_seed = read_number(record, layout, "test_seed");
+			target.test_seeded = read_number(record, layout, "test_seeded") != 0;
+			target.test_runs = read_number(record, layout, "test_runs");
 			target.settings = read_pairs(record, layout, "settings", "name", "value");
 			target.package_paths = read_pairs(record, layout, "package_paths", "location", "path");
 			const TypeInfo* type = nullptr;
@@ -10913,6 +10960,10 @@ namespace hemera {
 				data.write_text(record, layout, "entry", options.entry);
 				data.write_number(record, layout, "test", options.test);
 				data.write_text(record, layout, "test_filter", options.test_filter);
+				data.write_text(record, layout, "test_tags", options.test_tags);
+				data.write_number(record, layout, "test_seed", options.test_seed);
+				data.write_number(record, layout, "test_seeded", options.test_seeded);
+				data.write_number(record, layout, "test_runs", options.test_runs);
 			}
 			data.write_text(record, layout, "output_path", current ? options.output_name : "");
 			// Settings, as a dynamic array that uses the calling code's allocator, so it can be added to
@@ -11705,6 +11756,10 @@ namespace hemera {
 			result.test = true;
 			result.entry = std::string(TEST_ENTRY);
 			result.test_filter = target.test_filter;
+			result.test_tags = target.test_tags;
+			result.test_seed = target.test_seed;
+			result.test_seeded = target.test_seeded;
+			result.test_runs = target.test_runs;
 		}
 		result.install_path = build.install_path;
 		result.builtin_paths = build.builtin_paths;
