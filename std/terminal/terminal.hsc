@@ -50,7 +50,20 @@ import unicode from "std"
         reading : bool,
         /** Whether the terminal's gone: a request failed or its connection broke. Once set, it stays. */
         hung_up : bool,
+        /**
+         * Packets its port's waits brought under keys other than its own, kept for next_event to give back as Other,
+         * oldest first; other_count of them are filled in.
+         */
+        others : slop_os.Packet[OTHERS],
+        /** How many of others are kept, up to OTHERS. */
+        other_count : usize,
     }
+
+    /**
+     * The most packets under other keys kept between calls: one wait's worth. A wait that brings more than there's
+     * room for drops the newest.
+     */
+    OTHERS :: 4
 
     /** What next_event gives: an event and its text, or why there's none. */
     Input :: union {
@@ -63,6 +76,11 @@ import unicode from "std"
         HangUp,
         /** The program was asked to stop on its lifecycle channel. */
         Stop,
+        /**
+         * A packet on the client's port under a key that isn't the client's own (0 for its connection, STOP_KEY), for a
+         * program that waits for other things on the same port, like the ends of programs it watches.
+         */
+        Other(slop_os.Packet),
     }
 
     /**
@@ -125,12 +143,14 @@ import unicode from "std"
      * Wait for the next event the terminal sends.
      *
      * Events left from the last Input come first; once they're used up, a Read is held for more, and the thread waits
-     * on the client's port until they come. A Stop asked for wakes the wait too.
+     * on the client's port until they come. A Stop asked for wakes the wait too, and a packet under another key ends
+     * it, given back as Other: the program can bind what else it waits for to the client's port, with keys of its own.
      *
      * @param terminal A client open made, used by one thread or fiber at a time. It moves on to its next event, holds a
      *     Read when its events are used up, and is marked hung up, for good, once a request or its connection fails.
      * @return The next Event, its text the client's until the next call; HangUp once the terminal's gone, and every
-     *     time after; Stop once the program's been asked to stop, and every time after, unless it's hung up first.
+     *     time after; Stop once the program's been asked to stop, and every time after, unless it's hung up first; Other
+     *     for a packet under another key, the oldest kept first.
      */
     next_event :: fn(terminal: ptr[mut Terminal]) -> Input {
         loop {
@@ -139,6 +159,16 @@ import unicode from "std"
             }
             if lifecycle.stop_requested() {
                 return .Stop
+            }
+            if terminal.other_count > 0 {
+                other :: terminal.others[0]
+                for i in 1..<terminal.other_count {
+                    if i < terminal.others.count {
+                        terminal.others[i - 1] = terminal.others[i]
+                    }
+                }
+                terminal.other_count -= 1
+                return .Other(other)
             }
             if terminal.next < terminal.event_count && terminal.next < terminal.events.count {
                 event :: terminal.events[terminal.next]
@@ -160,8 +190,9 @@ import unicode from "std"
             match protocol.receive_response(terminal.end, terminal.port, &into, false) {
                 case Received => {}
                 case Empty => {
-                    packets : slop_os.Packet[4]
-                    _ = slop_os.port_wait(terminal.port, packets, slop_os.NO_DEADLINE)
+                    packets : slop_os.Packet[OTHERS]
+                    taken :: cast[usize](slop_os.port_wait(terminal.port, packets, slop_os.NO_DEADLINE) or_else 0)
+                    keep_others(terminal, packets, taken)
                     continue
                 }
                 case Failed(error) => {
@@ -170,26 +201,106 @@ import unicode from "std"
                 }
                 case _ => continue
             }
-            match os.message_of[protocol.Response](&into)^ {
-                case Input(given) => {
-                    terminal.reading = false
-                    terminal.next = 0
-                    terminal.event_count = 0
-                    terminal.text_count = 0
-                    for event, i in os.items(&into, given.events) {
-                        if i < terminal.events.count {
-                            terminal.events[i] = event
-                            terminal.event_count = i + 1
-                        }
-                    }
-                    for byte, i in os.items(&into, given.text) {
-                        if i < terminal.text.count {
-                            terminal.text[i] = byte
-                            terminal.text_count = i + 1
-                        }
+            take_input(terminal, &into)
+        }
+    }
+
+    /**
+     * Keep the packets of a wait that aren't the client's own, for next_event to give back as Other.
+     *
+     * @param terminal The client, whose others grow by them; those past OTHERS are dropped.
+     * @param packets What a wait on the client's port brought.
+     * @param taken How many of packets the wait filled in, from the first.
+     */
+    keep_others :: fn(terminal: ptr[mut Terminal], packets: slop_os.Packet[], taken: usize) {
+        for packet, i in packets {
+            if i < taken && packet.key != 0 && packet.key != STOP_KEY && terminal.other_count < terminal.others.count {
+                terminal.others[terminal.other_count] = packet
+                terminal.other_count += 1
+            }
+        }
+    }
+
+    /**
+     * Take a response the client received: an Input's events and text, which next_event gives from then on; any other
+     * response is ignored.
+     *
+     * @param terminal The client, holding a Read that an Input answers; its events, text and next are replaced, and it
+     *     holds no Read after.
+     * @param into The response received, only read.
+     */
+    take_input :: fn(terminal: ptr[mut Terminal], into: ptr[os.Incoming]) {
+        match os.message_of[protocol.Response](into)^ {
+            case Input(given) => {
+                terminal.reading = false
+                terminal.next = 0
+                terminal.event_count = 0
+                terminal.text_count = 0
+                for event, i in os.items(into, given.events) {
+                    if i < terminal.events.count {
+                        terminal.events[i] = event
+                        terminal.event_count = i + 1
                     }
                 }
-                case _ => {}
+                for byte, i in os.items(into, given.text) {
+                    if i < terminal.text.count {
+                        terminal.text[i] = byte
+                        terminal.text_count = i + 1
+                    }
+                }
+            }
+            case _ => {}
+        }
+    }
+
+    /**
+     * Tell whether Ctrl-C has been pressed, without waiting: for a program busy with something else, like waiting for a
+     * program it runs, that still wants to hear an Interrupt.
+     *
+     * A Read is held when no events are left, and an Input that's come is taken. An Interrupt among the events left is
+     * taken with the events before it, as a terminal drops what's typed ahead of Ctrl-C; the events after it, and events
+     * left without one, stay for next_event. While events are left no Read is held, so an Interrupt typed after them is
+     * seen once they're used.
+     *
+     * @param terminal A client open made, used by one thread or fiber at a time; it's marked hung up if a request or its
+     *     connection fails.
+     * @return True if an Interrupt was taken; false if none has come, or the terminal's gone.
+     */
+    interrupted :: fn(terminal: ptr[mut Terminal]) -> bool {
+        loop {
+            if terminal.hung_up {
+                return false
+            }
+            for i in terminal.next..<terminal.event_count {
+                if i >= terminal.events.count {
+                    break
+                }
+                match protocol.kind_of(terminal.events[i]) {
+                    case Some(kind) => if kind == .Interrupt {
+                        terminal.next = i + 1
+                        return true
+                    }
+                    case None => {}
+                }
+            }
+            if terminal.next < terminal.event_count {
+                return false
+            }
+            if !terminal.reading {
+                if !protocol.read(terminal.end, terminal.port) {
+                    terminal.hung_up = true
+                    return false
+                }
+                terminal.reading = true
+            }
+            into := os.Incoming.{}
+            match protocol.receive_response(terminal.end, terminal.port, &into, false) {
+                case Received => take_input(terminal, &into)
+                case Failed(error) => {
+                    terminal.hung_up = true
+                    return false
+                }
+                case _ => return false
             }
         }
     }
@@ -248,6 +359,11 @@ import unicode from "std"
          * the array, is allocated with context.allocator, and the editor frees them.
          */
         candidates : string[..],
+        /**
+         * What each candidate is, at its candidate's index, written beside it when they're listed; shorter than
+         * candidates, or empty, for those without one. Allocated as candidates are, and freed by the editor.
+         */
+        descriptions : string[..],
     }
 
     /**
@@ -280,10 +396,30 @@ import unicode from "std"
         browsing : usize,
         /** The line typed before Up first went into history, to come back to with Down. */
         typed : u8[..],
-        /** What fills in completions when Tab is pressed; null to have Tab do nothing. */
+        /** What fills in completions when Tab is pressed; null to have Tab do nothing. set_completer sets it. */
         completer : Completer?,
         /** What the completer is given as its data. */
         completer_data : rawptr,
+        /**
+         * Whether a line's being typed that read_line gave back Other in the middle of, so the next read_line goes on
+         * with it rather than starting a new one.
+         */
+        pending : bool,
+    }
+
+    /**
+     * Give an editor a completer over data of its own type, so a program needn't hold its data as a rawptr.
+     *
+     * @tparam D The data's type.
+     * @param editor The editor, whose completer and completer_data are replaced.
+     * @param completer What fills in completions when Tab is pressed, given data, the line, the cursor and the
+     *     completions to fill in, as Completer is.
+     * @param data What completer is given, kept by the editor, so it has to live as long as the editor's used.
+     */
+    set_completer :: fn[D](editor: ptr[mut LineEditor], completer: (fn(data: ptr[mut D], line: u8[], cursor: usize, into: ptr[mut Completions])),
+        data #escaping : ptr[mut D]) {
+        editor.completer = bit_cast[Completer](completer)
+        editor.completer_data = cast[rawptr](data)
     }
 
     /** What read_line gives. */
@@ -296,6 +432,11 @@ import unicode from "std"
         HangUp,
         /** The program was asked to stop on its lifecycle channel. */
         Stop,
+        /**
+         * A packet under a key of the program's own on the terminal client's port (next_event's Other), given back in
+         * the middle of the line, which the next read_line goes on with.
+         */
+        Other(slop_os.Packet),
     }
 
     /**
@@ -306,21 +447,30 @@ import unicode from "std"
      * history; Tab completes; Enter ends the line, which is written after the prompt, as typed, and kept in history;
      * Ctrl-C drops it. A paste's line breaks and tabs become spaces, so a paste never ends the line.
      *
-     * @param editor The editor, whose line is emptied to start; its history is kept from call to call.
+     * @param editor The editor, whose line is emptied to start, unless the last read_line gave back Other, when it goes
+     *     on with that line where it was; its history is kept from call to call.
      * @param terminal The client to read from and show the line on.
      * @param prompt What's shown before the line, UTF-8.
-     * @return The line, Interrupted for Ctrl-C, HangUp once the terminal's gone, or Stop once the program's asked to
-     *     stop. A line that couldn't be copied for lack of memory comes back empty.
+     * @return The line, Interrupted for Ctrl-C, HangUp once the terminal's gone, Stop once the program's asked to stop,
+     *     or Other for a packet of the program's on the client's port, the line still shown, to go on with. A line that
+     *     couldn't be copied for lack of memory comes back empty.
      */
     read_line :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], prompt: string) -> LineResult {
-        runtime.array_reset(&editor.line)
-        editor.cursor = 0
-        editor.browsing = editor.history.count
+        if !editor.pending {
+            runtime.array_reset(&editor.line)
+            editor.cursor = 0
+            editor.browsing = editor.history.count
+        }
+        editor.pending = false
         show(editor, terminal, prompt)
         loop {
             match next_event(terminal) {
                 case HangUp => return .HangUp
                 case Stop => return .Stop
+                case Other(packet) => {
+                    editor.pending = true
+                    return .Other(packet)
+                }
                 case Event(event, text) => {
                     kind :: protocol.kind_of(event) or_continue
                     if kind == .Interrupt {
@@ -527,8 +677,11 @@ import unicode from "std"
     /**
      * Complete the text before the cursor, for Tab, with the completer's candidates.
      *
-     * One candidate is put in its place; several put in what they all start with, or if that's nothing more than what's
-     * typed, are written above the line. Without a completer, or with no candidates, nothing happens.
+     * One candidate is put in its place, with a space after it unless it ends with /, so what's typed next starts the
+     * next word, and a directory's path goes on into its entries; several put in what they all start with, or if that's
+     * nothing more than what's typed, are written above the line, one a line, each with its description after it, the
+     * descriptions lined up two columns past the widest candidate. Without a completer, or with no candidates, nothing
+     * happens.
      *
      * @param editor An editor read_line is reading with, which calls its completer, if it has one; the text from the
      *     completion's start to the cursor may be replaced, the cursor moving past what's put in.
@@ -559,26 +712,54 @@ import unicode from "std"
             remove(editor, found.start, editor.cursor)
             editor.cursor = found.start
             insert(editor, shared)
+            if found.candidates.count == 1 && (shared.count == 0 || shared[shared.count - 1] != cast[u8]('/')) {
+                insert(editor, u8.[0x20])
+            }
             return void
         }
-        // Nothing more they share: they're shown
+        // Nothing more they share: they're shown, each with its description
         _ = show_input(terminal, u8.[], 0)
+        widest : usize = 0
         for candidate in found.candidates {
-            _ = write_line(terminal, candidate)
+            width :: unicode.text_width(string_bytes(candidate))
+            widest = if width > widest { width } else { widest }
+        }
+        for candidate, i in found.candidates {
+            description :: if i < found.descriptions.count { found.descriptions[i] } else { "" }
+            if description.count == 0 {
+                _ = write_line(terminal, candidate)
+                continue
+            }
+            shown : u8[..]
+            defer runtime.array_free(&shown)
+            for byte in string_bytes(candidate) {
+                runtime.array_add(&shown, byte)
+            }
+            for column in unicode.text_width(string_bytes(candidate))..<widest + 2 {
+                runtime.array_add(&shown, cast[u8](' '))
+            }
+            for byte in string_bytes(description) {
+                runtime.array_add(&shown, byte)
+            }
+            _ = write_line(terminal, as_text(shown))
         }
     }
 
     /**
-     * Free a completer's candidates, each one's text and the array.
+     * Free a completer's candidates and descriptions, each one's text and the arrays.
      *
-     * @param found The completions, filled in by a completer with context.allocator; its candidates are empty
-     *     afterwards.
+     * @param found The completions, filled in by a completer with context.allocator; its candidates and descriptions
+     *     are empty afterwards.
      */
     free_completions :: fn(found: ptr[mut Completions]) {
         for candidate in found.candidates {
             runtime.free_array(bit_cast[u8[]](candidate))
         }
         runtime.array_free(&found.candidates)
+        for description in found.descriptions {
+            runtime.free_array(bit_cast[u8[]](description))
+        }
+        runtime.array_free(&found.descriptions)
     }
 
     /**

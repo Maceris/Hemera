@@ -617,7 +617,77 @@ package stream
      */
     next_bytes :: fn[T](reader: ptr[mut Reader[T]]) -> u8[]? {
         loop {
-            // Each Wrote the reader has read up to, answered
+            match buffered_bytes(reader) {
+                case Record(bytes) => return bytes
+                case End => return null
+                case Waiting => {}
+            }
+            into := os.Incoming.{}
+            match take_request(reader.end, reader.port, &into) {
+                case Some(request) => take_writes(reader, request)
+                case None => {
+                    reader.ended = true
+                    reader.status = 0xffffffff
+                }
+            }
+        }
+    }
+
+    /** What next_bytes_before gave: a record, the stream's end, or nothing yet when the deadline came. */
+    NextBytes :: union {
+        /** The record's value bytes, as next_bytes gives them: good only until the next read, or close_reader. */
+        Record(u8[]),
+        /** The writer has ended, or its end has gone, and everything's read; or a record ran past the ring's end. */
+        End,
+        /** No record came before the deadline; reading again goes on where this left off. */
+        Waiting,
+    }
+
+    /**
+     * Read the next record's value bytes as next_bytes does, but waiting no later than a deadline, for a reader that
+     * has other things to see to while the writer's slow, like a shell watching for Ctrl-C.
+     *
+     * @tparam T The Reader's type parameter.
+     * @param reader A reader that hasn't been closed; it advances as next_bytes's does.
+     * @param deadline When to stop waiting, in the monotonic clock's nanoseconds; one past already reads what's come,
+     *     without waiting.
+     * @return The record, End, or Waiting if none came by the deadline.
+     */
+    next_bytes_before :: fn[T](reader: ptr[mut Reader[T]], deadline: u64) -> NextBytes {
+        loop {
+            match buffered_bytes(reader) {
+                case Record(bytes) => return .Record(bytes)
+                case End => return .End
+                case Waiting => {}
+            }
+            into := os.Incoming.{}
+            match receive_request(reader.end, reader.port, &into, false) {
+                case Received => take_writes(reader, os.message_of[Request](&into)^)
+                case Empty => {
+                    packets : slop_os.Packet[4]
+                    if (slop_os.port_wait(reader.port, packets, deadline) or_else 0) == 0 {
+                        return .Waiting
+                    }
+                }
+                case Failed(error) => {
+                    reader.ended = true
+                    reader.status = 0xffffffff
+                }
+                case _ => {}
+            }
+        }
+    }
+
+    /**
+     * Take the next record the reader has been told of, without waiting, after answering the Wrotes read past.
+     *
+     * @tparam T The Reader's type parameter.
+     * @param reader A reader that hasn't been closed; how far it has read advances past a record taken.
+     * @return The record's value bytes, as next_bytes gives them; End once the writer has ended and everything's read,
+     *     or for a record running past the ring's end; Waiting when it's to wait for the writer.
+     */
+    buffered_bytes :: fn[T](reader: ptr[mut Reader[T]]) -> NextBytes {
+        loop {
             answer_marks(reader)
             if reader.read < reader.produced {
                 at :: reader.read % reader.ring_bytes
@@ -629,33 +699,38 @@ package stream
                 }
                 size :: RECORD_HEADER + padded(cast[u64](count))
                 if at + size > reader.ring_bytes {
-                    return null
+                    return .End
                 }
                 reader.read += size
-                return view_of(cast[ptr[u8]](cast[uintptr](start + RECORD_HEADER)), cast[usize](count))
+                return .Record(view_of(cast[ptr[u8]](cast[uintptr](start + RECORD_HEADER)), cast[usize](count)))
             }
             if reader.ended {
-                return null
+                return .End
             }
-            into := os.Incoming.{}
-            match take_request(reader.end, reader.port, &into) {
-                case Some(request) => match request {
-                    case Wrote(count) => {
-                        reader.produced = count
-                        add_mark(reader, count)
-                    }
-                    case Ended(status) => {
-                        reader.ended = true
-                        reader.status = status
-                        add_mark(reader, reader.produced)
-                    }
-                    case _ => {}
-                }
-                case None => {
-                    reader.ended = true
-                    reader.status = 0xffffffff
-                }
+            return .Waiting
+        }
+    }
+
+    /**
+     * Take what a writer's request says: how far it has written, or that it's ended.
+     *
+     * @tparam T The Reader's type parameter.
+     * @param reader A reader that hasn't been closed, whose produced, ended and status change, and whose marks to answer
+     *     grow.
+     * @param request The writer's request; any other than Wrote and Ended is ignored.
+     */
+    take_writes :: fn[T](reader: ptr[mut Reader[T]], request: Request) {
+        match request {
+            case Wrote(count) => {
+                reader.produced = count
+                add_mark(reader, count)
             }
+            case Ended(status) => {
+                reader.ended = true
+                reader.status = status
+                add_mark(reader, reader.produced)
+            }
+            case _ => {}
         }
     }
 

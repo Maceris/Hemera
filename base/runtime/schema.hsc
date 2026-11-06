@@ -537,8 +537,9 @@ schema_try_write_value_at :: fn(data: rawptr, type: ptr[compiler.TypeInfo], into
  *     empty, when there isn't the memory for the copy, when a distance points past what was written, when a string or
  *     view that isn't empty is null, when a C string has no 0 byte before the end of what was written, when what a
  *     pointer points to doesn't come after the value and all that pointers before it point to, as the writer lays
- *     them out, so no byte is read as two things, when a union's tag names no variant, or when pointers go more than SCHEMA_MAX_DEPTH deep; the copy is freed then. What the
- *     writer writes as 0 is read as 0 whatever the bytes say, as they may come from a program that isn't the writer:
+ *     them out, so no byte is read as two things, when a union's tag names no variant, or when pointers go more than
+ *     SCHEMA_MAX_DEPTH deep; the copy is freed then. What the writer writes as 0 is read as 0 whatever the bytes say,
+ *     as they may come from a program that isn't the writer:
  *     a rawptr, a relative pointer, a function, a type value, an any, a #union struct holding pointers, and a dynamic
  *     array's capacity and allocator, so its first add moves its elements to memory of its own.
  */

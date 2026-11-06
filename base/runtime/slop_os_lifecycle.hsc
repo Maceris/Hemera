@@ -40,6 +40,11 @@ import intrinsics from "base"
      * the program, not that the program has stopped or will.
      */
     SLOP_OS_LIFECYCLE_STOPPING : u32 : 4
+    /**
+     * From the program, unasked: how far along its work is, its sequence the thousandths done, 0 to 1000. Written by
+     * the program's own code (std/os/slop_os's lifecycle.report_progress), never by the lifecycle thread.
+     */
+    SLOP_OS_LIFECYCLE_PROGRESS : u32 : 5
 
     /** The lifecycle thread's stack, in bytes, which needs little: it calls the kernel, and nothing else. */
     SLOP_OS_LIFECYCLE_STACK : usize : 16 * 1024

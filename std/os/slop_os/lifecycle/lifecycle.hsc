@@ -21,6 +21,8 @@ package lifecycle
          * whoever launched it decides how long to wait.
          */
         Stopping,
+        /** Not an answer: the program saying how far along it is, its sequence the thousandths done, 0 to 1000. */
+        Progress,
     }
 
     /** An answer, and the sequence of what it answers. */
@@ -99,8 +101,9 @@ package lifecycle
      * Take the program's next answer, without waiting for one.
      *
      * @param end The launcher's end of the lifecycle channel, kept by the caller.
-     * @return The answer and the sequence of what it answers; null if there's none yet, if the program's end is gone,
-     *     or if the message isn't a Pong or a Stopping, which is then dropped.
+     * @return The answer and the sequence of what it answers, or a Progress and its thousandths; null if there's none
+     *     yet, if the program's end is gone, or if the message isn't a Pong, a Stopping or a Progress, which is then
+     *     dropped.
      */
     read :: fn(end: slop_os.Channel) -> Reply? {
         message := runtime.SlopOsLifecycleMessage.{}
@@ -116,7 +119,34 @@ package lifecycle
         if message.kind == runtime.SLOP_OS_LIFECYCLE_STOPPING {
             return Reply.{answer = .Stopping, sequence = message.sequence}
         }
+        if message.kind == runtime.SLOP_OS_LIFECYCLE_PROGRESS {
+            return Reply.{answer = .Progress, sequence = if message.sequence > 1000 { 1000 } else { message.sequence }}
+        }
         return null
+    }
+
+    /**
+     * In the program: say how far along its work is, on its lifecycle channel, for whoever launched it to show, as a
+     * shell does for a job.
+     *
+     * It doesn't wait, and nothing answers it. Called again, the launcher sees the newest when it reads them all.
+     *
+     * @param done How much is done, in any unit; past total, it's taken as total.
+     * @param total How much there is in all, in the same unit; 0 says nothing's known, and reports 0.
+     * @return True if it went; false for a program given no lifecycle channel, or if it couldn't be written, as when
+     *     the launcher hasn't read the ones before and the ring's full.
+     */
+    report_progress :: fn(done: u64, total: u64) -> bool {
+        // Below total, done times 1000 can't overflow while total's small, and over a thousandth of a large one is near 1000
+        scaled :: if total == 0 { cast[u64](0) } else if done >= total { cast[u64](1000) } else if total < 1_000_000 { done * 1000 / total }
+            else { done / (total / 1000) }
+        thousandths :: if scaled > 1000 { cast[u64](1000) } else { scaled }
+        for &grant in slop_os.grants_of(slop_os.startup_block()) {
+            if grant.kind == .Channel && slop_os.label_of(grant) == "lifecycle" {
+                return send(cast[slop_os.Channel](grant.handle), runtime.SLOP_OS_LIFECYCLE_PROGRESS, cast[u32](thousandths))
+            }
+        }
+        return false
     }
 
     /**
