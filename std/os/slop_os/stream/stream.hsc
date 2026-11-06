@@ -669,11 +669,11 @@ package stream
                         return .Waiting
                     }
                 }
-                case Failed(error) => {
+                // Gone, or what came isn't the protocol (the SlopOS repository's decisions 0177): the stream's over
+                case _ => {
                     reader.ended = true
                     reader.status = 0xffffffff
                 }
-                case _ => {}
             }
         }
     }
@@ -830,38 +830,34 @@ package stream
     }
 
     /**
-     * Wait for the next response on an end, skipping any that isn't one: unknown, invalid, or of another protocol.
+     * Wait for the next response on an end.
      *
      * @param end The end to read, kept by the caller.
      * @param port A port bound to end, waited on until a response comes.
-     * @return The response; null if the end's gone, or reading it failed.
+     * @return The response; null if the end's gone, reading it failed, or what came isn't the protocol: unknown,
+     *     invalid, or of another protocol, which ends the stream (the SlopOS repository's decisions 0177).
      */
     answer :: fn(end: slop_os.Channel, port: slop_os.Port) -> Response? {
         into := os.Incoming.{}
-        loop {
-            match receive_response(end, port, &into, true) {
-                case Received => return os.message_of[Response](&into)^
-                case Failed(error) => return null
-                case _ => continue
-            }
+        return match receive_response(end, port, &into, true) {
+            case Received => os.message_of[Response](&into)^
+            case _ => null
         }
     }
 
     /**
-     * Wait for the next request on an end, skipping any that isn't one: unknown, invalid, or of another protocol.
+     * Wait for the next request on an end.
      *
      * @param end The end to read, kept by the caller.
      * @param port A port bound to end, waited on until a request comes.
      * @param into Where the message is received, with any handles it brought, which are the caller's from then on.
-     * @return The request, copied out of into; null if the end's gone, or reading it failed.
+     * @return The request, copied out of into; null if the end's gone, reading it failed, or what came isn't the
+     *     protocol, which ends the stream (the SlopOS repository's decisions 0177).
      */
     take_request :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut os.Incoming]) -> Request? {
-        loop {
-            match receive_request(end, port, into, true) {
-                case Received => return os.message_of[Request](into)^
-                case Failed(error) => return null
-                case _ => continue
-            }
+        return match receive_request(end, port, into, true) {
+            case Received => os.message_of[Request](into)^
+            case _ => null
         }
     }
 

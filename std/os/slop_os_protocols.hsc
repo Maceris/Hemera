@@ -1,8 +1,9 @@
 package os
 
 /*
- * SlopOS's protocols (the SlopOS repository's decisions 0040, 0071): a protocol is a package with a Request and a
- * Response union, a type named after the protocol for os.Channel[P], and, at its top level,
+ * SlopOS's protocols (the SlopOS repository's decisions 0040, 0071, 0177): a protocol is a package with a Request and
+ * a Response union, a type named after the protocol for os.Channel[P], its PROTOCOL (slop_os.Protocol), and, at its
+ * top level,
  *
  *     #insert os.protocol_code(Request, Response)
  *
@@ -21,8 +22,13 @@ package os
  *     match storage.receive_request(end, port, &into, true) {
  *         case Received => handle(os.message_of[storage.Request](&into), &into)
  *         case Unsupported => _ = storage.answer_unsupported(end, port)
- *         case _ => {}
+ *         case _ => drop(end)
  *     }
+ *
+ * A message that isn't the protocol (invalid, of another protocol, or for a response, of a variant the client doesn't
+ * know) ends the connection: receiving one logs it (report_broken), and the side that got it closes its end, as it does
+ * when the connection fails, so the other side sees the end gone rather than waiting for an answer that won't come. A
+ * request of a variant the server doesn't know is the protocol's evolution, not a break, and is answered Unsupported.
  *
  * A message's types hold only plain data (integers, floats, characters, bools, enums, and structs and arrays of
  * them), handles (slop_os's handle types, os.Channel[P] and os.Listener[P]) and Relative[T]s of plain data;
@@ -312,6 +318,18 @@ package os
     }
 
     /**
+     * Log a message that isn't its protocol, which ends its connection (the SlopOS repository's decisions 0177): the
+     * side that got it closes its end, which the caller of receive_request or receive_response does.
+     *
+     * @param protocol The protocol's name, its PROTOCOL's.
+     * @param side "request" or "response", what the message was to be.
+     * @param why What's wrong with it, after "a request" or "a response", as a phrase for the log.
+     */
+    report_broken :: fn(protocol: string, side: string, why: string) {
+        runtime.log_info("% protocol: a % came %, so the connection's closed", protocol, side, why)
+    }
+
+    /**
      * Close the handles a refused message brought.
      *
      * @param into The message; its handle_count is 0 afterwards.
@@ -493,13 +511,22 @@ package os
                 validity :: validate(os.bytes_of_incoming(into), into.size, into.handle_count)
                 if validity != .Valid {
                     os.refuse(into)
-                    return if validity == .Unknown { os.Arrival.Unsupported } else { os.Arrival.Invalid }
+                    if validity == .Unknown {
+                        // A request of a newer client's is answered Unsupported; a response the client can't read breaks it
+                        if #insert side == "response" {
+                            os.report_broken(PROTOCOL.name, #insert side, "of a variant this side doesn't know")
+                        }
+                        return .Unsupported
+                    }
+                    os.report_broken(PROTOCOL.name, #insert side, "that breaks the protocol's rules")
+                    return .Invalid
                 }
                 tag :: os.read_message(os.bytes_of_incoming(into), 0, #insert tag_size)
                 speaks := true
                 #insert compiler.list(decoding)
                 if !speaks {
                     os.refuse(into)
+                    os.report_broken(PROTOCOL.name, #insert side, "with a channel of another protocol in it")
                     return .WrongProtocol
                 }
                 return .Received

@@ -142,7 +142,7 @@ package os
             match dir.receive_response(state.end, state.port, into, true) {
                 case Received => return true
                 case Failed(error) => return false
-                case _ => continue
+                case _ => return false
             }
         }
     }
@@ -325,7 +325,7 @@ package os
                 match file.receive_response(state.end, state.port, into, true) {
                     case Received => return true
                     case Failed(error) => return false
-                    case _ => continue
+                    case _ => return false
                 }
             }
         }
@@ -336,7 +336,7 @@ package os
             match read_only_file.receive_response(state.end, state.port, into, true) {
                 case Received => return true
                 case Failed(error) => return false
-                case _ => continue
+                case _ => return false
             }
         }
     }

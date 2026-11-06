@@ -978,6 +978,16 @@ Syscalls :: struct {
      * @error ObjectGone The budget was destroyed.
      */
     thread_use_cpu_budget : fn(budget: CpuBudget) -> Result[void, HandleError],
+    /**
+     * Count who holds a memory object besides its owner (the SlopOS repository's decisions/0178): handles to it that
+     * aren't the owning one, in any process or on their way in a channel, its mappings, and its windows. A pager that
+     * gives its memory out, like a store, closes it when no one does.
+     *
+     * @param memory The memory, its owning handle: only its owner asks.
+     * @return How many hold it; 0 when only its owner does, as SIGNAL_UNHELD says when it falls to 0.
+     * @error MissingRight Not the owning handle.
+     */
+    memory_holders : fn(memory: Memory) -> Result[u64, MemoryError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
@@ -1267,6 +1277,11 @@ SIGNAL_TERMINATED : Signals : 1 << 3
 SIGNAL_DMA_FAULT : Signals : 1 << 4
 /** A MemoryBudget: what it has charged reached its threshold (memory_budget_set_threshold). */
 SIGNAL_PRESSURE : Signals : 1 << 5
+/**
+ * A Memory, bound through its owning handle: no one holds it besides its owner any more (memory_holders fell to 0): no
+ * other handle to it, no mapping, no window (the SlopOS repository's decisions/0178). Raised each time it falls to 0.
+ */
+SIGNAL_UNHELD : Signals : 1 << 6
 
 /** How long a port binding lasts. */
 BindMode :: enum #backed_by(u32) {

@@ -27,25 +27,25 @@ import unicode from "std"
     STOP_KEY : u64 : 1
 
     /**
-     * A terminal's client: its connection, the port it waits on, and the events the last Input brought, read from next.
+     * A terminal's client: its connection, the port it waits on, and the events Inputs brought that are still to be read,
+     * from next.
      *
-     * One thread or fiber uses it at a time; nothing in it is locked.
+     * One thread or fiber uses it at a time; nothing in it is locked. Its events and text grow with context.allocator.
      */
     Terminal :: struct {
         /** The connection to the terminal, which requests go on and responses come back on. */
         end : slop_os.Channel,
         /** The port the client waits on, for responses and for a stop. */
         port : slop_os.Port,
-        /** The events the last Input brought; event_count of them are filled in. */
-        events : protocol.Event[protocol.MAX_EVENTS],
-        /** How many of events the last Input brought, up to protocol.MAX_EVENTS; more than that are dropped. */
-        event_count : usize,
+        /**
+         * The events Inputs brought, oldest first: those before next are read, and the rest wait. Emptied once all are
+         * read and another Input comes; until then, another's are added after them.
+         */
+        events : protocol.Event[..],
         /** The index in events of the next event next_event gives. */
         next : usize,
-        /** The text the last Input's events refer to, by their text_start and text_bytes. */
-        text : u8[protocol.MAX_EVENT_TEXT],
-        /** How many bytes of text are filled in, up to protocol.MAX_EVENT_TEXT; more than that are dropped. */
-        text_count : usize,
+        /** The text events refer to, by their text_start and text_bytes, each Input's after the one before's. */
+        text : u8[..],
         /** Whether a Read is held, waiting for the terminal's Input. */
         reading : bool,
         /** Whether the terminal's gone: a request failed or its connection broke. Once set, it stays. */
@@ -115,16 +115,31 @@ import unicode from "std"
     }
 
     /**
-     * Write text to the terminal, styled, then a line break.
+     * Write text to the terminal, styled, then a line break, together: in the same Writes, so another client's text
+     * can't land between the line and its break.
      *
      * @param terminal A client open made, used by one thread or fiber at a time; it isn't changed, and a failed Write
      *     doesn't mark it hung up.
      * @param text The text, UTF-8, of any length, without the line break.
-     * @param style How the text is shown; the line break is written in the plain style.
-     * @return True if all of it went; false if a Write failed, the line break not written if the text wasn't.
+     * @param style How the text is shown, and the line break; a break shows nothing, so its style doesn't show.
+     * @return True if all of it went; false if a Write failed, or there wasn't the memory to join the text and its
+     *     break, when nothing's written.
      */
     write_line :: fn(terminal: ptr[mut Terminal], text: string, style := protocol.Style.{}) -> bool {
-        return protocol.write(terminal.end, terminal.port, text, style) && protocol.write(terminal.end, terminal.port, "\n")
+        joined, error :: runtime.new_array(u8, text.count + 1)
+        if error != null || joined.count == 0 {
+            return false
+        }
+        defer runtime.free_array(joined)
+        for byte, i in string_bytes(text) {
+            if i < joined.count {
+                joined[i] = byte
+            }
+        }
+        if text.count < joined.count {
+            joined[text.count] = 0x0a
+        }
+        return protocol.write(terminal.end, terminal.port, string_of(&joined[0], joined.count), style)
     }
 
     /**
@@ -148,9 +163,9 @@ import unicode from "std"
      *
      * @param terminal A client open made, used by one thread or fiber at a time. It moves on to its next event, holds a
      *     Read when its events are used up, and is marked hung up, for good, once a request or its connection fails.
-     * @return The next Event, its text the client's until the next call; HangUp once the terminal's gone, and every
-     *     time after; Stop once the program's been asked to stop, and every time after, unless it's hung up first; Other
-     *     for a packet under another key, the oldest kept first.
+     * @return The next Event, its text the client's until the next call, or interrupted; HangUp once the terminal's gone,
+     *     or answers with what isn't the protocol, and every time after; Stop once the program's been asked to stop, and
+     *     every time after, unless it's hung up first; Other for a packet under another key, the oldest kept first.
      */
     next_event :: fn(terminal: ptr[mut Terminal]) -> Input {
         loop {
@@ -170,13 +185,12 @@ import unicode from "std"
                 terminal.other_count -= 1
                 return .Other(other)
             }
-            if terminal.next < terminal.event_count && terminal.next < terminal.events.count {
+            if terminal.next < terminal.events.count {
                 event :: terminal.events[terminal.next]
                 terminal.next += 1
                 start :: cast[usize](event.text_start)
                 end :: start + cast[usize](event.text_bytes)
-                text :: if start <= end && end <= terminal.text_count && end <= terminal.text.count { terminal.text[start..<end] }
-                    else { terminal.text[0..<0] }
+                text :: if start <= end && end <= terminal.text.count { terminal.text[start..<end] } else { terminal.text[0..<0] }
                 return .Event(event, text)
             }
             if !terminal.reading {
@@ -195,11 +209,10 @@ import unicode from "std"
                     keep_others(terminal, packets, taken)
                     continue
                 }
-                case Failed(error) => {
+                case _ => {
                     terminal.hung_up = true
                     continue
                 }
-                case _ => continue
             }
             take_input(terminal, &into)
         }
@@ -222,31 +235,31 @@ import unicode from "std"
     }
 
     /**
-     * Take a response the client received: an Input's events and text, which next_event gives from then on; any other
-     * response is ignored.
+     * Take a response the client received: an Input's events and text, added after the events still to be read, which
+     * next_event gives in turn; any other response is ignored.
      *
-     * @param terminal The client, holding a Read that an Input answers; its events, text and next are replaced, and it
-     *     holds no Read after.
+     * @param terminal The client, holding a Read that an Input answers. Its events and text are emptied first if every
+     *     event's been read, so they don't grow for good; its new events' text_start are moved past the text before
+     *     them. It holds no Read after.
      * @param into The response received, only read.
      */
     take_input :: fn(terminal: ptr[mut Terminal], into: ptr[os.Incoming]) {
         match os.message_of[protocol.Response](into)^ {
             case Input(given) => {
                 terminal.reading = false
-                terminal.next = 0
-                terminal.event_count = 0
-                terminal.text_count = 0
-                for event, i in os.items(into, given.events) {
-                    if i < terminal.events.count {
-                        terminal.events[i] = event
-                        terminal.event_count = i + 1
-                    }
+                if terminal.next >= terminal.events.count {
+                    runtime.array_reset(&terminal.events)
+                    runtime.array_reset(&terminal.text)
+                    terminal.next = 0
                 }
-                for byte, i in os.items(into, given.text) {
-                    if i < terminal.text.count {
-                        terminal.text[i] = byte
-                        terminal.text_count = i + 1
-                    }
+                before :: cast[u32](terminal.text.count)
+                for event in os.items(into, given.events) {
+                    moved := event
+                    moved.text_start += before
+                    runtime.array_add(&terminal.events, moved)
+                }
+                for byte in os.items(into, given.text) {
+                    runtime.array_add(&terminal.text, byte)
                 }
             }
             case _ => {}
@@ -257,10 +270,9 @@ import unicode from "std"
      * Tell whether Ctrl-C has been pressed, without waiting: for a program busy with something else, like waiting for a
      * program it runs, that still wants to hear an Interrupt.
      *
-     * A Read is held when no events are left, and an Input that's come is taken. An Interrupt among the events left is
-     * taken with the events before it, as a terminal drops what's typed ahead of Ctrl-C; the events after it, and events
-     * left without one, stay for next_event. While events are left no Read is held, so an Interrupt typed after them is
-     * seen once they're used.
+     * A Read is held, and an Input that's come is taken, after the events still to be read, so an Interrupt typed after
+     * them is seen too. An Interrupt among them is taken with the events before it, as a terminal drops what's typed
+     * ahead of Ctrl-C; the events after it, and events without one, stay for next_event.
      *
      * @param terminal A client open made, used by one thread or fiber at a time; it's marked hung up if a request or its
      *     connection fails.
@@ -271,20 +283,17 @@ import unicode from "std"
             if terminal.hung_up {
                 return false
             }
-            for i in terminal.next..<terminal.event_count {
-                if i >= terminal.events.count {
-                    break
+            for event, i in terminal.events {
+                if i < terminal.next {
+                    continue
                 }
-                match protocol.kind_of(terminal.events[i]) {
+                match protocol.kind_of(event) {
                     case Some(kind) => if kind == .Interrupt {
                         terminal.next = i + 1
                         return true
                     }
                     case None => {}
                 }
-            }
-            if terminal.next < terminal.event_count {
-                return false
             }
             if !terminal.reading {
                 if !protocol.read(terminal.end, terminal.port) {
