@@ -296,3 +296,32 @@ TEST(Freestanding, BuildsSlopOSProgram)
 	}
 	EXPECT_GT(relocations, 0u);
 }
+
+/*
+ * A SlopOS program whose main gives back a Result too large for registers builds: the entry makes the memory it's
+ * given back through, and hands it to the runtime's os_entry_result (docs/compilation.md, Entry Results).
+ */
+TEST(Freestanding, BuildsSlopOSProgramGivingAResult)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "slop_os_result" / "program.elf";
+	build_elf(output, "slop_os_result", false, [](hemera::Options& options) {
+		options.os = hemera::OSType::SlopOS;
+		options.cpu = "x86-64-v3";
+		options.relocation_model = hemera::TargetRelocationModel::PositionIndependent;
+	});
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
+	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
+	auto* elf = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(binary->getBinary());
+	ASSERT_NE(elf, nullptr);
+	bool has_entry = false;
+	for (const llvm::object::SymbolRef& symbol : elf->symbols()) {
+		auto name = symbol.getName();
+		if (name && *name == "hemera_entry") {
+			has_entry = true;
+		}
+	}
+	EXPECT_TRUE(has_entry);
+}

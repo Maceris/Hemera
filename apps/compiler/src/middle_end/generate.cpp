@@ -9560,11 +9560,42 @@ namespace hemera {
 				main_arguments.push_back(parameter_by_pointer(main_type, input) ? slot : load(generator, input.type, slot));
 			}
 		}
+		/*
+		 * On SlopOS a main that gives back anything but an integer gives a value for its launcher: where results too
+		 * large for registers go, or stored after the call, then handed to base's runtime.os_entry_result, which writes
+		 * it in the grant "result" and gives the exit code (docs/compilation.md, Entry Results)
+		 */
+		const bool gives_value = slop_os && main_type->output.size() == 1 && main_type->output[0].type != nullptr
+			&& !is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER);
+		Declaration* results_writer = gives_value ? base_declaration_named(generator, "runtime", "os_entry_result") : nullptr;
+		if (gives_value && results_writer == nullptr) {
+			unsupported(generator, main->node, "a SlopOS entry that gives back a value needs base's runtime.os_entry_result");
+		}
+		mlir::Value given_slot;
+		if (result_through_pointer(main_type)) {
+			// The wrapper has no function state of its own for results_slot, so its slot's made here
+			given_slot = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator),
+				results_type(generator, main_type), one, static_cast<unsigned>(std::max<size_t>(main_type->output[0].type->alignment, 1)));
+			main_arguments.insert(main_arguments.begin(), given_slot);
+		}
 		auto call = LLVM::CallOp::create(generator.builder, generator.loc, main_function, main_arguments);
 		// A real call, so main has a frame of its own: stack traces end at the entry's, which isn't recorded
 		call.setNoInlineAttr(generator.builder.getUnitAttr());
 		mlir::Value code = constant_int(generator, i32, 0);
-		if (main_type->output.size() == 1 && is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER)) {
+		if (gives_value && results_writer != nullptr) {
+			TypeInfo const* given_type = main_type->output[0].type;
+			if (!given_slot) {
+				given_slot = LLVM::AllocaOp::create(generator.builder, generator.loc, pointer_type(generator), llvm_type(generator, given_type), one,
+					static_cast<unsigned>(given_type->alignment));
+				LLVM::StoreOp::create(generator.builder, generator.loc, call.getResult(), given_slot);
+			}
+			LLVM::LLVMFuncOp writes = function_for(generator, results_writer);
+			auto written = LLVM::CallOp::create(generator.builder, generator.loc, writes, mlir::ValueRange{ context,
+				type_descriptor(generator, given_type), given_slot });
+			written.setCConv(writes.getCConv());
+			code = written.getResult();
+		}
+		else if (main_type->output.size() == 1 && is_variant(main_type->output[0].type, TypeInfoVariant::INTEGER)) {
 			code = call.getResult();
 			const unsigned width = code.getType().getIntOrFloatBitWidth();
 			if (width > 32) {

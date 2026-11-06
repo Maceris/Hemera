@@ -518,6 +518,21 @@ schema hash isn't its parameter type's isn't taken, and it's copied to the heap,
 optional is `None` when there's no value for it; a required one that's missing ends the process as a missing handle
 does. Elsewhere the entry takes no parameters, and one that does is an error.
 
+### Entry Results
+
+On the same systems `main` can give back a value instead of an exit code: any type a schema describes, and most
+usefully a `Result`, whose error a launcher can show for what it is rather than as a number:
+
+```
+main :: fn(source: ReadOnlyFile, into: Dir) -> Result[Copied, CopyError] {
+```
+
+The generated entry hands the value to the runtime (`runtime.os_entry_result`), which writes it in the memory its
+launcher gave as the grant `result`, if it gave one: a header (`runtime.SlopOsResultHeader`: a magic number, whether
+it's an `Error`, the value's size and its type's schema hash), then the value as `schema.write_value` writes one. The
+process's exit code is 1 for a `Result`'s `Error` and 0 for anything else. A launcher reads it back once the program has
+ended (`std/os`'s `entry_result`) and decodes it by the entry's schema, which its type is part of.
+
 ### Linux on AArch64
 
 `--arch=aarch64` with `--os=linux` builds the same programs for 64-bit Arm: the runtime and `std/os` make the generic

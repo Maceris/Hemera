@@ -523,6 +523,13 @@ package os
         /** The page with its locale's name, given as the grant "locale" and then the program's; null for none. */
         locale : slop_os.Memory?,
         /**
+         * Memory the program writes what its entry gives back in, given as the grant "result" (Hemera's
+         * docs/compilation.md, Entry Results): a handle the launcher made, with RIGHT_MEMORY_WRITE, whose memory it
+         * keeps and reads once the program's ended (entry_result); null for none, when what it gives back is only its
+         * exit code.
+         */
+        result : slop_os.Memory?,
+        /**
          * The typed libraries the program imports, each given as the grant library:<its file>, which base's runtime
          * binds before main (the SlopOS repository's decisions 0119, 0120); the program's to own. Every library the
          * launcher was given itself is given too, but those named here (0121). Empty for none.
@@ -616,6 +623,58 @@ package os
         label : string,
         /** The handle, the program's once it's started. */
         handle : slop_os.Handle,
+    }
+
+    /** What a program's entry gave back, read from the memory given it as the grant "result" (entry_result). */
+    EntryResult :: struct {
+        /** Whether it's a Result's Error, which the program's exit code says too. */
+        error : bool,
+        /** The schema hash of the entry's result type, which the value was written as. */
+        schema : u8[32],
+        /** The value's bytes, as schema.write_value writes one, from context's allocator: the caller's to free. */
+        value : u8[..],
+    }
+
+    /**
+     * In what an entry gives back as its error, the parameter the error came from, by its name: a launcher that reads
+     * the error by its schema, like a shell, shows it with the parameter, as --name.
+     */
+    ParameterName :: struct {
+        /** The parameter's name, as the entry declares it. */
+        name : string,
+    }
+
+    /** The most bytes of value entry_result reads: 1 MiB. */
+    MAX_ENTRY_RESULT : u64 : 1 << 20
+
+    /**
+     * Read what a program's entry gave back, once it's ended, from the memory its launcher gave it as the grant
+     * "result" (Hemera's docs/compilation.md, Entry Results).
+     *
+     * @param memory The memory, the launcher's, kept; it needs RIGHT_MEMORY_READ, and is read through the kernel.
+     * @return What it gave back; null if it wrote nothing (no header, as from a program whose entry gives an exit code,
+     *     or one that ended before it got there), its size is past the memory's or MAX_ENTRY_RESULT, or it couldn't be
+     *     read.
+     */
+    entry_result :: fn(memory: slop_os.Memory) -> EntryResult? {
+        header := runtime.SlopOsResultHeader.{}
+        header_bytes :: view_of(cast[ptr[mut u8]](&header), size_of(runtime.SlopOsResultHeader))
+        if (slop_os.memory_read(memory, 0, header_bytes) is_error) || header.magic != runtime.SLOP_OS_RESULT_MAGIC {
+            return null
+        }
+        available :: slop_os.memory_size(memory) or_return null
+        if header.size > MAX_ENTRY_RESULT || header.size > available - cast[u64](size_of(runtime.SlopOsResultHeader)) {
+            return null
+        }
+        made := EntryResult.{error = header.error != 0, schema = header.schema}
+        for i in cast[u64](0)..<header.size {
+            runtime.array_add(&made.value, cast[u8](0))
+        }
+        if made.value.count > 0 && (slop_os.memory_read(memory, cast[u64](size_of(runtime.SlopOsResultHeader)), made.value[0..<made.value.count]) is_error) {
+            runtime.array_free(&made.value)
+            return null
+        }
+        return made
     }
 
     /**
@@ -761,6 +820,12 @@ package os
         }
         match options.locale {
             case Some(page) => if !add_grant(&load, "locale", cast[slop_os.Handle](page)) {
+                return .Error(.BadGrants)
+            }
+            case None => {}
+        }
+        match options.result {
+            case Some(memory) => if !add_grant(&load, "result", cast[slop_os.Handle](memory)) {
                 return .Error(.BadGrants)
             }
             case None => {}

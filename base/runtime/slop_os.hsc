@@ -29,6 +29,8 @@ SLOP_OS_CALL_MEMORY_MAP : u64 : 27
 SLOP_OS_CALL_MEMORY_UNMAP : u64 : 28
 /** The system call that ends the process, with an exit code. */
 SLOP_OS_CALL_PROCESS_EXIT : u64 : 45
+/** The system call that copies bytes into anonymous memory: its handle, an offset, the bytes' address and count. */
+SLOP_OS_CALL_MEMORY_WRITE : u64 : 70
 /** The system call that gives a channel end's protocol tag, in its answer's first result. */
 SLOP_OS_CALL_CHANNEL_TAG : u64 : 50
 /** The system call that writes a message to a channel end: its handle, the bytes' address, their count, a batch. */
@@ -86,6 +88,30 @@ SLOP_OS_EXIT_WRONG_ABI : u32 : 125
  * or type (os_entry_grant, os_entry_value).
  */
 SLOP_OS_EXIT_MISSING_GRANT : u32 : 126
+/**
+ * The exit code of a program whose entry gave back a Result's Error (os_entry_result); its value is in the grant
+ * "result", for a launcher that gave one.
+ */
+SLOP_OS_EXIT_ERROR : u32 : 1
+/** The grant "result"'s first four bytes, "HRES" read as a little-endian u32, once os_entry_result has written it. */
+SLOP_OS_RESULT_MAGIC : u32 : 0x53455248
+
+/**
+ * The header at the start of the grant "result" (docs/compilation.md, Entry Results), which the value's bytes follow,
+ * written as schema_write_value writes one.
+ */
+SlopOsResultHeader :: struct {
+    /** SLOP_OS_RESULT_MAGIC. */
+    magic : u32,
+    /** 1 if the value is a Result's Error, 0 otherwise. */
+    error : u32,
+    /** How many bytes of value follow the header. */
+    size : u64,
+    /** The schema hash of the entry's result type (schema_hash). */
+    schema : u8[32],
+}
+
+#assert size_of(SlopOsResultHeader) == 48
 
 /**
  * The start of SlopOS's StartupBlock, which the process's entry is given.
@@ -884,6 +910,71 @@ SlopOsGrant :: struct {
                 }
             }
         }
+    }
+
+    /**
+     * Give the value the program's entry gave back to its launcher, which the compiler's entry calls for a main that
+     * gives back anything but an integer (docs/compilation.md, Entry Results): written in the grant "result", if the
+     * launcher gave one, and the process's exit code made from it.
+     *
+     * The grant is a memory object the launcher can read: SlopOsResultHeader, then the value as schema_write_value
+     * writes one. A value that doesn't fit, or can't be written for want of memory, leaves the grant as it was; the exit
+     * code still says Ok or Error.
+     *
+     * @param type The entry's result type.
+     * @param value Where the result is: type.size bytes, read and not kept.
+     * @return SLOP_OS_EXIT_ERROR for a Result's Error (a union whose variant is named Error); 0 otherwise.
+     */
+    os_entry_result :: fn(type: ptr[compiler.TypeInfo], value: rawptr) -> u32 {
+        error :: is_error_result(type, value)
+        code :: if error { SLOP_OS_EXIT_ERROR } else { cast[u32](0) }
+        handle :: os_entry_grant("result", "Memory", "", false)
+        if handle == 0 {
+            return code
+        }
+        bytes : u8[..]
+        defer array_free(&bytes)
+        if schema_try_write_value_at(value, type, &bytes) != null {
+            return code
+        }
+        header := SlopOsResultHeader.{magic = SLOP_OS_RESULT_MAGIC, error = if error { cast[u32](1) } else { cast[u32](0) },
+            size = cast[u64](bytes.count), schema = schema_hash(type)}
+        // The value first, so a launcher never finds a header before what it says is there
+        if bytes.count > 0 {
+            written :: slop_os_call(SLOP_OS_CALL_MEMORY_WRITE, cast[u64](handle), cast[u64](size_of(SlopOsResultHeader)),
+                cast[u64](cast[uintptr](bytes.data)), cast[u64](bytes.count))
+            if written.tag != 0 {
+                return code
+            }
+        }
+        _ = slop_os_call(SLOP_OS_CALL_MEMORY_WRITE, cast[u64](handle), 0, cast[u64](cast[uintptr](&header)), cast[u64](size_of(SlopOsResultHeader)))
+        return code
+    }
+
+    /**
+     * Tell whether an entry's result is a Result's Error: a union with a variant named Error, holding that one.
+     *
+     * @param type The result's type, aliases followed.
+     * @param value Where the result is.
+     * @return True if its tag is its Error variant's; false for any other type or variant.
+     */
+    is_error_result :: fn(type: ptr[compiler.TypeInfo], value: rawptr) -> bool {
+        info :: schema_unaliased(type)
+        if info.variant != .UNION {
+            return false
+        }
+        union_info :: cast[ptr[compiler.TypeInfoUnion]](info)
+        tag_type :: union_info.tag_type or_return false
+        tag := cast[u64](0)
+        for i in cast[usize](0)..<tag_type.size {
+            tag |= cast[u64](cast[ptr[u8]](cast[uintptr](value) + cast[uintptr](i))^) << (8 * cast[u64](i))
+        }
+        for each, i in union_info.variants {
+            if cast[u64](i) == tag {
+                return each.name == "Error"
+            }
+        }
+        return false
     }
 
     /**
