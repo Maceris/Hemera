@@ -277,6 +277,9 @@ kind_of :: fn(event: Event) -> EventKind? {
      *
      * Output isn't answered. Describe is answered with Described; Read is held until there's input, then answered with
      * Events. Connections arrive on the terminal service's listener as Connects.
+     *
+     * The first client to read owns the input until its connection goes, or it gives it up with ReleaseInput, as a
+     * shell does while a program it started on the terminal runs: the next client to read owns it then.
      */
     Terminal :: struct {}
 
@@ -349,6 +352,12 @@ kind_of :: fn(event: Event) -> EventKind? {
         InputLine(InputLine),
         /** Serve another client, on the end given, which moves to the terminal. Not answered. */
         Connect(os.Channel[Terminal]),
+        /**
+         * Give up the input, from the client that owns it, so the next client to read owns it; its line is taken
+         * away, and a Read it holds is answered with an Input of no events. Ignored from a client that doesn't own it.
+         * Not answered otherwise.
+         */
+        ReleaseInput,
     }
 
     /** What a terminal answers. */
@@ -382,6 +391,7 @@ kind_of :: fn(event: Event) -> EventKind? {
             case Read(_) => false
             case InputLine(_) => true
             case Connect(_) => true
+            case ReleaseInput => true
         }
     }
 

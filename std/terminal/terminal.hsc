@@ -235,6 +235,19 @@ import unicode from "std"
     }
 
     /**
+     * Give up the terminal's input, so the next client to read owns it, as a shell does while a program it started on
+     * the terminal runs (protocol.Request.ReleaseInput). The client reads again with next_event, or a line editor, and
+     * owns the input again once no other client does.
+     *
+     * @param terminal A client open made, which owns the input or not; one that doesn't is ignored by the terminal. A
+     *     Read it holds is answered with no events, which next_event takes when it's next called.
+     * @return True if it went; false if it couldn't be sent, the terminal most likely gone.
+     */
+    release_input :: fn(terminal: ptr[mut Terminal]) -> bool {
+        return protocol.send(terminal.end, terminal.port, .ReleaseInput)
+    }
+
+    /**
      * Take a response the client received: an Input's events and text, added after the events still to be read, which
      * next_event gives in turn; any other response is ignored.
      *

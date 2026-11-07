@@ -585,6 +585,45 @@ package os
     }
 
     /**
+     * Move where a file's next read or write starts.
+     *
+     * @param handle A File system_open gave, not the zero one and not yet closed (system_close).
+     * @param offset Where, in bytes from the file's start; past its end, a read reads nothing and a write leaves zeros
+     *     between, as the server keeps them.
+     */
+    file_seek :: fn(handle: File, offset: u64) {
+        file_of(handle).offset = offset
+    }
+
+    /**
+     * Make a file a size: cut short, or made longer with zeros, by its protocol's SetSize. Where it's read and written
+     * from isn't moved.
+     *
+     * @param handle A File opened to write (file_on with writes, or system_open with a writing mode), not yet closed.
+     * @param size The size, in bytes.
+     * @return Null once it's that size; AccessDenied for a File that only reads; the server's error (error_of_file);
+     *     Other if the connection failed or answered wrongly.
+     */
+    file_set_size :: fn(handle: File, size: u64) -> OsError? {
+        state :: file_of(handle)
+        if !state.writes {
+            return OsError.AccessDenied
+        }
+        out := Outgoing.{}
+        request :: begin[file.Request](&out)
+        request^ = .SetSize(size)
+        into := Incoming.{}
+        if !ask_file(state, &out, &into) {
+            return OsError.Other
+        }
+        return match message_of[file.Response](&into)^ {
+            case Done => null
+            case Failed(failure) => error_of_file(failure)
+            case _ => OsError.Other
+        }
+    }
+
+    /**
      * Ask a file's server for the file's size.
      *
      * @param handle A File system_open gave, not the zero one and not yet closed (system_close); its offset isn't
