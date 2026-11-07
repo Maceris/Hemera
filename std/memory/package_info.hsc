@@ -1,5 +1,6 @@
 /**
- * Memory related utilities: arenas, shared ownership, and an allocator that fails on purpose for testing.
+ * Memory related utilities: arenas, shared ownership, an allocator that fails on purpose for testing, and ByteCount,
+ * a number of bytes.
  */
 package memory
 
