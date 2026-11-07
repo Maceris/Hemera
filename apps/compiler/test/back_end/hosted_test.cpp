@@ -354,7 +354,8 @@ TEST(Hosted, ReleasesOwners)
 	run_hosted("owned", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
-// std/unicode: UTF-8, every case of the UCD's GraphemeBreakTest.txt, and the columns clusters take.
+// std/unicode: UTF-8, every case of the UCD's GraphemeBreakTest.txt, the columns clusters take, and normalization
+// against NormalizationTest.txt, with case folding.
 TEST(Hosted, SplitsGraphemeClusters)
 {
 	run_hosted("unicode", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
