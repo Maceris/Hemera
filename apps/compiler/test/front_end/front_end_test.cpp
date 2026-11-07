@@ -1368,3 +1368,19 @@ TEST(FrontEnd, ChecksBodies)
 
 	EXPECT_TRUE(errors.empty()) << codes(errors);
 }
+
+/*
+ * An assignment whose right side calls something given &out, as a call on its left is, is warned of once (W4003): the
+ * right side runs first. Written in order, given another variable, or with no call on the left, it isn't.
+ */
+TEST(FrontEnd, WarnsOfAssignmentOrder)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("assignment_order"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	EXPECT_EQ(std::count(hemera::warning_list()->begin(), hemera::warning_list()->end(), hemera::WarningCode::W4003), 1);
+}

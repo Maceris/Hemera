@@ -13,6 +13,7 @@ W0000,TBD warning
 W4000,Redundant generic argument
 W4001,Compile-time code warned
 W4002,#constant_time function without secrets
+W4003,Assignment order changes what the left side sees
 // W5000-W5999 Lowering MLIR to LLVM IR
 // W6000-W6999 Assembling LLVM IR
 // W7000-W7999 Linking

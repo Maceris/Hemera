@@ -147,6 +147,19 @@ x, y <<= y, x += 3 * 1 - 1
 // The compiler will satisfy your dark desires but I am not happy about it
 ```
 
+An assignment's right side is evaluated before its left, so a call on the left runs after every call on the right.
+When both are given the address of the same variable, the right one changes it before the left one sees it, which is
+warned of (W4003):
+
+```
+// begin starts a message in out, and append adds data after what out holds: here append runs first
+begin(&out)^ = .Named(append(&out, name))   // W4003
+
+// Call the left side's first, and assign through what it gives
+message :: begin(&out)
+message^ = .Named(append(&out, name))
+```
+
 As an expression, the result is considered to be the final value after
 being assigned to the left-most side.
 

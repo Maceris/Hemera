@@ -5029,10 +5029,50 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	// The variables a call in an expression is given the address of, as an argument: &name's names, call by call.
+	static void addressed_by_calls(ast::Node* node, std::vector<std::string>& names) {
+		bool called = false;
+		for (ast::Node* child : node->children) {
+			if (ast::NodeType::PAREN_GROUP == child->node_type) {
+				called = true;
+				continue;
+			}
+			if (called && ast::NodeType::UNARY_OPERATOR == child->node_type && TokenType::SYM_AMPERSAND == child->value.type
+				&& child->children.size() == 1 && ast::NodeType::IDENTIFIER == child->children[0]->node_type) {
+				names.push_back(text_of(child->children[0]->value.value));
+			}
+			addressed_by_calls(child, names);
+		}
+	}
+
+	/*
+	 * An assignment's right side runs before its left (docs/operators.md, Assignment operators), so a call on the
+	 * right given &x runs before a call on the left given &x too: as in begin(&out)^ = .Some(append(&out, items)), where
+	 * the append goes before begin starts the message. Warned of, at the left side, naming x.
+	 */
+	static void warn_of_order(Checker& checker, ast::Node* left_node, ast::Node* right_node) {
+		std::vector<std::string> left;
+		addressed_by_calls(left_node, left);
+		if (left.empty()) {
+			return;
+		}
+		std::vector<std::string> right;
+		addressed_by_calls(right_node, right);
+		for (const std::string& name : left) {
+			if (std::find(right.begin(), right.end(), name) != right.end()) {
+				report_warning(WarningCode::W4003, checker.walk.file_path, left_node->value.line_number, left_node->value.column_number,
+					std::format("the right side runs first, and a call there is given &{0} as a call here is, so it changes {0} "
+						"before this call sees it; call this one first, and assign through what it gives", name));
+				return;
+			}
+		}
+	}
+
 	// a = b, a, b = b, a, and a += b (docs/operators.md, Assignment operators).
 	static Progress check_assignment(Checker& checker, ast::Node* node) {
 		ast::Node* left_node = node->children[0];
 		ast::Node* right_node = node->children[1];
+		warn_of_order(checker, left_node, right_node);
 		std::vector<ast::Node*> targets;
 		if (ast::NodeType::LIST == left_node->node_type) {
 			targets.assign(left_node->children.begin(), left_node->children.end());
