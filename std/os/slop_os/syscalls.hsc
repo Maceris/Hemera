@@ -898,23 +898,28 @@ Syscalls :: struct {
      */
     memory_supply : fn(memory: Memory, offset: u64, source: Memory, source_offset: u64) -> Result[void, MemoryError],
     /**
-     * Copy bytes of anonymous memory into a buffer, through the kernel, with no mapping: for memory another process
-     * owns, whose end is only ObjectGone, never a fault (the SlopOS repository's decisions/0098).
+     * Copy bytes of memory into a buffer, through the kernel, with no mapping: for memory another process owns, whose
+     * end is only ObjectGone, never a fault (the SlopOS repository's decisions/0098). Anonymous, DMA, contiguous, boot
+     * module or paged memory, or a window onto one; a page of paged memory that isn't there is waited for from its
+     * pager, the calling thread blocked until it's supplied.
      *
      * @param memory The memory, which needs RIGHT_MEMORY_READ.
      * @param offset Where in it to start, in bytes; any offset.
      * @param buffer Where the bytes go; it's filled.
-     * @error WrongKind Not anonymous memory: device, paged, DMA memory, or a window.
+     * @error ObjectGone The memory was destroyed, or its pager is gone.
+     * @error WrongKind Device memory.
      * @error InvalidSize The range runs past the memory's end.
      */
     memory_read : fn(memory: Memory, offset: u64, buffer: mut u8[]) -> Result[void, MemoryError],
     /**
-     * Copy bytes into anonymous memory, through the kernel, with no mapping.
+     * Copy bytes into memory, through the kernel, with no mapping, as memory_read reads it: anonymous, DMA or
+     * contiguous memory, or a window onto one whose parent's handle allowed writing.
      *
      * @param memory The memory, which needs RIGHT_MEMORY_WRITE.
      * @param offset Where in it to start, in bytes; any offset.
      * @param bytes The bytes to write.
-     * @error WrongKind Not anonymous memory: device, paged, DMA memory, or a window.
+     * @error ObjectGone The memory was destroyed.
+     * @error WrongKind Device, paged or boot module memory, or a window that isn't writable.
      * @error InvalidSize The range runs past the memory's end.
      */
     memory_write : fn(memory: Memory, offset: u64, bytes: u8[]) -> Result[void, MemoryError],

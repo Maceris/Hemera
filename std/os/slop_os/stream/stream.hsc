@@ -2,8 +2,9 @@ package stream
 
 /*
  * A stream's two ends (std/os's Sink[T] and Stream[T]) are one channel, tagged with this protocol. The writer makes a
- * ring of shared memory and sends Open with it, the ring's size and T's schema hash; the reader maps it, answering
- * Consumed(0), or WrongType for another T. The writer puts records in the ring, each its byte count, its kind and its
+ * ring of shared memory and sends Open with it, the ring's size and T's schema hash; the reader keeps it, answering
+ * Consumed(0), or WrongType for another T. The reader copies what it reads out of the ring through memory_read rather
+ * than mapping it, so a writer that ends while its ring is being read ends the stream, not the reader. The writer puts records in the ring, each its byte count, its kind and its
  * value, written as base's schema_write_value writes one (for a Stream[u8], the bytes themselves), padded to 8 bytes; a
  * record that wouldn't fit before the ring's end is preceded by a wrap, and starts again at the ring's start. Wrote
  * says how many bytes it has written in all, once a quarter of the ring is waiting or it flushes; the reader answers
@@ -45,6 +46,8 @@ package stream
     RING_BYTES : u64 : 64 * 1024
     /** The bytes of a record's header in the ring: its value's byte count, then its kind, each a u32. */
     RECORD_HEADER : u64 : 8
+    /** The bytes a reader's scratch has room for when it's opened; it grows for a longer record. */
+    SCRATCH_BYTES : u64 : 256
     /** A record's kind: a value, its byte count of bytes after the header. */
     KIND_RECORD : u32 : 0
     /** A record's kind: a wrap, so the next record is at the ring's start; the rest of the ring before it is unused. */
@@ -159,10 +162,13 @@ package stream
         end : slop_os.Channel,
         /** A port bound to end, the reader's own, waited on for the writer's requests. */
         port : slop_os.Port,
-        /** The writer's ring, a read-only handle, the reader's own. */
+        /** The writer's ring, a read-only handle, the reader's own, read through memory_read; it isn't mapped. */
         ring : slop_os.Memory,
-        /** Where the ring is mapped, read-only, in the process's address space. */
-        address : u64,
+        /**
+         * Where the last record's value is copied out of the ring, from the allocator that was context's when the
+         * reader was opened, whatever context's is as it reads; freed on closing.
+         */
+        scratch : u8[..],
         /** The ring's size in bytes, as the writer's Open said. */
         ring_bytes : u64,
         /** How many bytes of the ring it has read in all, headers, padding and wraps included; only grows. */
@@ -533,13 +539,13 @@ package stream
     }
 
     /**
-     * Open a stream's reading end: wait for the writer's Open, check its type, map its ring to read, and answer it.
+     * Open a stream's reading end: wait for the writer's Open, check its type, keep its ring to read, and answer it.
      *
      * @tparam T The records' type, whose schema hash has to be the writer's.
      * @param source The reading end, which the reader keeps from now on, and closes in close_reader. On an error the
      *     end isn't closed, and the port made for it by then isn't let go of.
      * @return The open reader, to read with next, and then close.
-     * @error NoMemory The port couldn't be made, or the ring couldn't be mapped.
+     * @error NoMemory The port, or the scratch records are copied to, couldn't be made.
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
      */
@@ -554,9 +560,9 @@ package stream
      * @param end The channel's reading end, which the reader keeps from now on, and closes in close_reader. On an
      *     error the end isn't closed, and the port made for it by then isn't let go of.
      * @param schema The schema hash of the type to read, which has to be the writer's.
-     * @return The open reader, the writer's ring mapped to read and its Open answered; the caller's to close with
+     * @return The open reader, the writer's ring kept to read and its Open answered; the caller's to close with
      *     close_reader.
-     * @error NoMemory The port couldn't be made, or the ring couldn't be mapped.
+     * @error NoMemory The port, or the scratch records are copied to, couldn't be made.
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
      */
@@ -572,9 +578,9 @@ package stream
      * @param end The channel's reading end, which the reader keeps from now on. On an error the end isn't closed, and
      *     the port made for it by then isn't let go of.
      * @param schema The schema hash of the type to read.
-     * @return The open reader, the writer's ring mapped to read and its Open answered; the caller's to close with
+     * @return The open reader, the writer's ring kept to read and its Open answered; the caller's to close with
      *     close_reader.
-     * @error NoMemory The port couldn't be made, or the ring couldn't be mapped.
+     * @error NoMemory The port, or the scratch records are copied to, couldn't be made.
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
      */
@@ -597,8 +603,11 @@ package stream
         }
         reader.ring = opening.ring
         reader.ring_bytes = opening.ring_bytes
-        reader.address = runtime.reserve_addresses(cast[usize](opening.ring_bytes)) or_return .Error(.NoMemory)
-        slop_os.memory_map(reader.ring, block.space, reader.address, 0, opening.ring_bytes, slop_os.PROTECTION_READ) or_return .Error(.NoMemory)
+        // Its scratch takes the allocator it's opened with, so a reader that resets an arena as it reads keeps it
+        if runtime.array_try_reserve(&reader.scratch, cast[usize](SCRATCH_BYTES)) != null {
+            _ = slop_os.handle_close(cast[slop_os.Handle](opening.ring))
+            return .Error(.NoMemory)
+        }
         reply(reader.end, reader.port, .Consumed(0))
         return .Ok(reader)
     }
@@ -611,9 +620,9 @@ package stream
      * @tparam T The Reader's type parameter.
      * @param reader A reader that hasn't been closed; how far it has read advances past the record, and each Wrote or
      *     Ended it takes is remembered to answer.
-     * @return The record's value bytes, as they are in the ring: good only until the next call, or close_reader, after
-     *     which the writer may write over them. Null once the writer has ended, or its end has gone, and everything's
-     *     read; null too for a record whose header says it runs past the ring's end.
+     * @return The record's value bytes, copied out of the ring: good only until the next call, or close_reader. Null
+     *     once the writer has ended, or its end has gone, and everything's read; null too for a record whose header
+     *     says it runs past the ring's end, or once the ring can't be read, its writer gone.
      */
     next_bytes :: fn[T](reader: ptr[mut Reader[T]]) -> u8[]? {
         loop {
@@ -684,31 +693,56 @@ package stream
      * @tparam T The Reader's type parameter.
      * @param reader A reader that hasn't been closed; how far it has read advances past a record taken.
      * @return The record's value bytes, as next_bytes gives them; End once the writer has ended and everything's read,
-     *     or for a record running past the ring's end; Waiting when it's to wait for the writer.
+     *     for a record running past the ring's end, or once the ring can't be read (its writer gone, or no memory to
+     *     copy it), the reader then ended with 0xffffffff; Waiting when it's to wait for the writer.
      */
     buffered_bytes :: fn[T](reader: ptr[mut Reader[T]]) -> NextBytes {
         loop {
             answer_marks(reader)
             if reader.read < reader.produced {
                 at :: reader.read % reader.ring_bytes
-                start :: reader.address + at
-                count, kind :: record_header(start)
-                if kind == KIND_WRAP {
+                words : u32[2]
+                if slop_os.memory_read(reader.ring, at, view_of(cast[ptr[mut u8]](&words[0]), cast[usize](RECORD_HEADER))) is_error {
+                    return gone(reader)
+                }
+                count :: cast[u64](words[0])
+                if words[1] == KIND_WRAP {
                     reader.read += reader.ring_bytes - at
                     continue
                 }
-                size :: RECORD_HEADER + padded(cast[u64](count))
+                size :: RECORD_HEADER + padded(count)
                 if at + size > reader.ring_bytes {
                     return .End
                 }
+                if count > 0 && runtime.array_try_reserve(&reader.scratch, cast[usize](count)) != null {
+                    return gone(reader)
+                }
+                value :: view_of(cast[ptr[mut u8]](reader.scratch.data), cast[usize](count))
+                if count > 0 && (slop_os.memory_read(reader.ring, at + RECORD_HEADER, value) is_error) {
+                    return gone(reader)
+                }
                 reader.read += size
-                return .Record(view_of(cast[ptr[u8]](cast[uintptr](start + RECORD_HEADER)), cast[usize](count)))
+                return .Record(value)
             }
             if reader.ended {
                 return .End
             }
             return .Waiting
         }
+    }
+
+    /**
+     * End a reader whose ring can't be read: its writer gone, which destroyed it, or no memory to copy a record into.
+     *
+     * @tparam T The Reader's type parameter.
+     * @param reader The reader, ended with 0xffffffff, as when its writer's end goes without an Ended.
+     * @return End, for buffered_bytes to give.
+     */
+    gone :: fn[T](reader: ptr[mut Reader[T]]) -> NextBytes {
+        reader.ended = true
+        reader.status = 0xffffffff
+        reader.read = reader.produced
+        return .End
     }
 
     /**
@@ -814,7 +848,7 @@ package stream
     }
 
     /**
-     * Let go of a reader: answer what it has read, unmap and close its ring, and close its port and its end.
+     * Let go of a reader: answer what it has read, close its ring, free its scratch, and close its port and its end.
      *
      * A writer still writing, or waiting in finish for the rest to be read, sees the end gone (Gone).
      *
@@ -823,7 +857,7 @@ package stream
      */
     close_reader :: fn[T](reader: ptr[mut Reader[T]]) {
         answer_marks(reader)
-        _ = slop_os.memory_unmap(slop_os.startup_block().space, reader.address)
+        runtime.array_free(&reader.scratch)
         _ = slop_os.handle_close(cast[slop_os.Handle](reader.ring))
         _ = slop_os.handle_close(cast[slop_os.Handle](reader.port))
         _ = slop_os.handle_close(cast[slop_os.Handle](reader.end))
@@ -885,18 +919,6 @@ package stream
         words :: cast[ptr[mut u32[2]]](cast[uintptr](address))
         words^[0] = count
         words^[1] = kind
-    }
-
-    /**
-     * Read a record's header from the ring.
-     *
-     * @param address Where the header is in the mapped ring, 8-byte aligned.
-     * @return count The record's value's byte count, without padding, as the writer wrote it; not checked.
-     * @return kind KIND_RECORD or KIND_WRAP, as the writer wrote it; not checked.
-     */
-    record_header :: fn(address: u64) -> (count : u32, kind : u32) {
-        words :: cast[ptr[u32[2]]](cast[uintptr](address))
-        return words^[0], words^[1]
     }
 
     /**
