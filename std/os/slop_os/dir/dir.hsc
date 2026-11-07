@@ -169,6 +169,25 @@ package dir
          * doesn't take loans.
          */
         Lend(slop_os.CpuBudget),
+        /**
+         * A snapshot of this directory's whole volume taken now, holding everything changed before it, durable before
+         * it's answered (the SlopOS repository's decisions 0090, 0179); it's seen only through OpenSnapshot, beneath a
+         * directory. Answered with Snapshotted, or Failed: ReadOnly on a connection reached through a stored link.
+         * Unsupported on a file system without snapshots.
+         */
+        Snapshot,
+        /**
+         * The volume's snapshot at or after a cursor, oldest first: 0 for the first, then each Snapshot's next.
+         * Answered with SnapshotListed, End once none is left, or Failed.
+         */
+        Snapshots(u64),
+        /**
+         * This directory as it was in a snapshot named as Snapshots names it, read only, on a new connection. Answered
+         * with Narrowed, or Failed: NotFound for no such snapshot, or a directory that wasn't there yet when it was
+         * taken; ReadOnly on a connection reached through a stored link; Unavailable if the snapshot couldn't be
+         * served.
+         */
+        OpenSnapshot(slop_os.Relative[u8]),
     }
 
     /** What a directory's server answers. */
@@ -211,17 +230,24 @@ package dir
         Issued(files.IssuedLink),
         /** The answer to Room. */
         Room(files.Room),
+        /** The answer to Snapshot: the snapshot taken, its name in the message's variable-size data. */
+        Snapshotted(files.Snapshot),
+        /**
+         * The answer to Snapshots: a snapshot, its name in the message's variable-size data, and the cursor for the
+         * next.
+         */
+        SnapshotListed(files.Snapshot),
     }
 
     /**
      * Tell whether a request may be sent again, after a reconnect, without doing more than sending it once did.
      *
      * A rename or a removal done again finds nothing to do, which is reported, so they aren't sent again; nor are those
-     * that make something once: a transaction's, Replace, and the link requests that change what's issued.
+     * that make something once: a transaction's, Replace, the link requests that change what's issued, and Snapshot.
      *
      * @param request The request, which isn't changed.
-     * @return False for Remove, Rename, Begin, Commit, Replace, Grant, Link and Revoke, and an OpenFile of a New file;
-     *     true for the rest.
+     * @return False for Remove, Rename, Begin, Commit, Replace, Grant, Link, Revoke and Snapshot, and an OpenFile of a
+     *     New file; true for the rest.
      */
     is_idempotent :: fn(request: ptr[Request]) -> bool {
         return match request^ {
@@ -248,6 +274,9 @@ package dir
             case Links(_) => true
             case Revoke(_) => false
             case Room => true
+            case Snapshot => false
+            case Snapshots(_) => true
+            case OpenSnapshot(_) => true
         }
     }
 

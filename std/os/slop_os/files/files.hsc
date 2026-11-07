@@ -165,6 +165,19 @@ package files
         next : u64,
     }
 
+    /**
+     * A snapshot of a directory's volume (the SlopOS repository's decisions 0090, 0179), as Snapshot and Snapshots
+     * answer: its name, when it was taken, and the cursor after it.
+     */
+    Snapshot :: struct {
+        /** Its name, UTF-8, which OpenSnapshot takes. */
+        name : slop_os.Relative[u8],
+        /** When it was taken, as its taker's wall clock said, in nanoseconds since 1970. */
+        taken : u64,
+        /** For Snapshots, the cursor to give the next, for the snapshot after this one; 0 from Snapshot. */
+        next : u64,
+    }
+
     /** A volume's room, as Room answers, in bytes. */
     Room :: struct {
         /** The bytes free to write new data in. */
