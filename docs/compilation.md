@@ -675,6 +675,26 @@ can name its functions and lines:
   each frame while it runs, with `runtime.function_at`. `runtime.printing_assertion_handler` does.
 * With CodeView, `switch`-like branches don't use jump tables, since LLVM describes a table it has optimized away
   with a label that's never defined.
+* Each local and parameter is a variable of its function, with its location and its type: base, struct, union,
+  enum, pointer and array types, so a debugger shows its value. Every local has a stack slot of its own, which the
+  optimizer may still move into registers; where it has, the variable's location says so, range by range. A
+  tagged union is described as a struct of its tag and every variant's values, overlapping; an optional that's just
+  a pointer as that pointer; an enum as its backing integer, by its name. A pointer to a struct or a union points to
+  its declaration alone, which debuggers find by name, so no description refers back to itself.
+
+A program for the `SlopOS` target, with startup code, keeps none of it: it's linked twice, with its DWARF and without,
+and its debug info goes in `<name>.debug` beside it, where its name's extension is replaced, for a debugger to be
+given when it needs it. The debug file is little-endian:
+
+* `"HDBG"`, the version (a `u16`, 1) and two bytes of 0, the size of what follows (a `u64`), and the program linked
+  with its DWARF: an ELF whose code and data are the program's, byte for byte.
+* Then the debug table, which names each local's type as a [schema](types.md#schemas), so a debugger can show
+  unions, optionals and views as Hemera values rather than as DWARF's approximations of them: `"HDBT"`, the version
+  (a `u16`, 1), the schemas (a `u32` count, then each as a `u32` size and its bytes, as `schema.write` writes them),
+  and the functions (a `u32` count, then each its symbol, the `DW_AT_linkage_name` its DWARF has, and its locals: a
+  `u32` count, then each one's name, line (a `u32`), argument number (a `u32`, from 1, or 0 for a local that isn't a
+  parameter) and schema (a `u32`, its place among the schemas)). A name or a symbol is its length, a `u32`, and its
+  bytes.
 
 Stack traces give their frames as offsets into the program's image (`runtime.image_offset`), which are the same every
 run, wherever the system loaded it. `hemera --symbolize` turns them into functions, files and lines, from the

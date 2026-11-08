@@ -74,4 +74,10 @@ namespace hemera {
 	 */
 	constexpr const char* LIBRARIES_ATTRIBUTE = "hmir.libraries";
 	constexpr const char* LIBRARIES_METADATA = "hemera.libraries";
+	/*
+	 * The debug table (docs/compilation.md, Debug Info), its bytes: the MLIR module's string attribute, then the LLVM
+	 * module's named metadata, one string, which the back end writes in the debug file.
+	 */
+	constexpr const char* DEBUG_TABLE_ATTRIBUTE = "hmir.debug_table";
+	constexpr const char* DEBUG_TABLE_METADATA = "hemera.debug_table";
 }

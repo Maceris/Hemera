@@ -42,6 +42,7 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "middle_end/jit.h"
 #include "middle_end/reflection.h"
+#include "middle_end/schema_writer.h"
 #include "middle_end/build.h"
 
 namespace hemera {
@@ -124,6 +125,11 @@ namespace hemera {
 		/// It has a DISubprogram, so each statement sets the location of what it generates.
 		/// </summary>
 		bool debug_info = false;
+		/// <summary>
+		/// With debug_info, the DISubprogram its locals are scoped to, and its symbol, which the debug table names it by.
+		/// </summary>
+		LLVM::DISubprogramAttr subprogram;
+		std::string symbol;
 		CheckedBody* checked = nullptr;
 		TypeInfoFunction const* type = nullptr;
 		/// <summary>
@@ -266,6 +272,24 @@ namespace hemera {
 		/// </summary>
 		LLVM::DICompileUnitAttr compile_unit;
 		std::map<std::string, LLVM::DIFileAttr> debug_files;
+		/// <summary>
+		/// Each type's DWARF description, made once (debug_type), and a struct's or union's declaration alone, which
+		/// pointers to it refer to, so no description refers back to itself.
+		/// </summary>
+		std::map<TypeInfo const*, LLVM::DITypeAttr> debug_types;
+		std::map<TypeInfo const*, LLVM::DITypeAttr> debug_declarations;
+		/// <summary>
+		/// Each local described to the debugger, in the order they're generated: its function's symbol, its name, its
+		/// line, its argument number (0 for a local that isn't a parameter) and its type, for the debug table.
+		/// </summary>
+		struct DebugVariable {
+			std::string function;
+			std::string name;
+			unsigned line = 0;
+			unsigned arg = 0;
+			TypeInfo const* type = nullptr;
+		};
+		std::vector<DebugVariable> debug_variables;
 		/// <summary>
 		/// The functions with debug info and their names, for intrinsics.function_names' table, and
 		/// that table's view once the program asks for it.
@@ -3021,6 +3045,8 @@ namespace hemera {
 
 	static void generate_function(Generator& generator, Declaration* declaration);
 	static void finish_module(Generator& generator);
+	static void describe_local(Generator& generator, const ast::Node* name, TypeInfo const* type, mlir::Value address,
+		unsigned arg = 0);
 	static mlir::Value constant_global(Generator& generator, mlir::Type type, size_t alignment, const std::string& name,
 		const std::function<mlir::Value()>& build);
 	static mlir::Value dense_integer_array(Generator& generator, mlir::Type array_type, mlir::Type element_type,
@@ -8360,6 +8386,7 @@ namespace hemera {
 						mlir::Value copy = make_slot(generator, held);
 						store(generator, load(generator, held, held_address), copy);
 						generator.state->slots[part] = copy;
+						describe_local(generator, part, held, copy);
 						continue;
 					}
 					/*
@@ -8682,9 +8709,300 @@ namespace hemera {
 	 * Whether a local of type can be kept as a value: a scalar, held in a register, with nothing of it to
 	 * take the address of (docs/types.md, Memory Layout), and nothing assigning to it.
 	 */
+	// ---------------------------------------------------------------------------------------------
+	// Debug info for locals (docs/compilation.md, Debug Info): DWARF variables and types, and the debug table
+
+	static LLVM::DIFileAttr debug_file(Generator& generator, const std::string& path);
+	static std::string debug_path(Generator& generator);
+	static mlir::Location source_location(Generator& generator, const ast::Node* node);
+	static LLVM::DITypeAttr debug_type(Generator& generator, TypeInfo const* type);
+
+	static mlir::StringAttr debug_name(Generator& generator, std::string_view name) {
+		return name.empty() ? mlir::StringAttr() : mlir::StringAttr::get(generator.context, name);
+	}
+
+	static LLVM::DITypeAttr debug_basic(Generator& generator, std::string_view name, size_t size, unsigned encoding) {
+		return LLVM::DIBasicTypeAttr::get(generator.context, llvm::dwarf::DW_TAG_base_type, debug_name(generator, name), size * 8,
+			encoding);
+	}
+
+	// A typedef, tag DW_TAG_typedef, or a pointer, DW_TAG_pointer_type, to a type, which is null for nothing in particular.
+	static LLVM::DITypeAttr debug_derived(Generator& generator, unsigned tag, std::string_view name, LLVM::DITypeAttr to,
+		size_t size) {
+		return LLVM::DIDerivedTypeAttr::get(generator.context, tag, debug_name(generator, name), LLVM::DIFileAttr(), 0,
+			LLVM::DIScopeAttr(), to, size * 8, 0, 0, std::nullopt, LLVM::DIFlags::Zero, mlir::Attribute());
+	}
+
+	static LLVM::DINodeAttr debug_member(Generator& generator, std::string_view name, LLVM::DITypeAttr type, size_t size,
+		size_t offset) {
+		return LLVM::DIDerivedTypeAttr::get(generator.context, llvm::dwarf::DW_TAG_member, debug_name(generator, name),
+			LLVM::DIFileAttr(), 0, LLVM::DIScopeAttr(), type, size * 8, 0, offset * 8, std::nullopt, LLVM::DIFlags::Zero,
+			mlir::Attribute());
+	}
+
+	static LLVM::DITypeAttr debug_composite(Generator& generator, unsigned tag, std::string_view name, size_t size, size_t alignment,
+		LLVM::DITypeAttr base, LLVM::DIFlags flags, llvm::ArrayRef<LLVM::DINodeAttr> elements) {
+		return LLVM::DICompositeTypeAttr::get(generator.context, tag, debug_name(generator, name), LLVM::DIFileAttr(), 0,
+			LLVM::DIScopeAttr(), base, flags, size * 8, alignment * 8, LLVM::DIExpressionAttr(), LLVM::DIExpressionAttr(),
+			LLVM::DIExpressionAttr(), LLVM::DIExpressionAttr(), mlir::StringAttr(), LLVM::DIDerivedTypeAttr(), elements);
+	}
+
+	/*
+	 * A pointer to a type, null for rawptr: a struct or union pointed to is its declaration alone, which a debugger finds
+	 * by name, so no description refers back to itself, as a list's node would.
+	 */
+	static LLVM::DITypeAttr debug_pointer(Generator& generator, TypeInfo const* to) {
+		TypeInfo const* base = get_base_type(to);
+		LLVM::DITypeAttr pointed;
+		if (base != nullptr && (TypeInfoVariant::STRUCT == base->variant
+			|| (TypeInfoVariant::UNION == base->variant && !static_cast<TypeInfoUnion const*>(base)->null_is_none))) {
+			auto iter = generator.debug_declarations.find(base);
+			if (iter != generator.debug_declarations.end()) {
+				pointed = iter->second;
+			}
+			else {
+				const bool is_union = TypeInfoVariant::STRUCT == base->variant && static_cast<TypeInfoStruct const*>(base)->is_union;
+				pointed = debug_composite(generator, is_union ? llvm::dwarf::DW_TAG_union_type : llvm::dwarf::DW_TAG_structure_type,
+					to_string(base), 0, 0, LLVM::DITypeAttr(), LLVM::DIFlags::FwdDecl, {});
+				generator.debug_declarations.emplace(base, pointed);
+			}
+		}
+		else if (base != nullptr && TypeInfoVariant::VOID != base->variant) {
+			pointed = debug_type(generator, to);
+		}
+		return debug_derived(generator, llvm::dwarf::DW_TAG_pointer_type, "", pointed, POINTER_SIZE);
+	}
+
+	// A count and a pointer, as a string or a view is, with the rest of a dynamic array's after them when there are any.
+	static LLVM::DITypeAttr debug_counted(Generator& generator, TypeInfo const* type, TypeInfo const* element, bool dynamic) {
+		LLVM::DITypeAttr usize = debug_type(generator, BUILTIN_usize);
+		LLVM::DITypeAttr raw = debug_derived(generator, llvm::dwarf::DW_TAG_pointer_type, "", LLVM::DITypeAttr(), POINTER_SIZE);
+		std::vector<LLVM::DINodeAttr> members{ debug_member(generator, "count", usize, 8, 0),
+			debug_member(generator, "data", debug_pointer(generator, element), 8, 8) };
+		if (dynamic) {
+			members.push_back(debug_member(generator, "capacity", usize, 8, 16));
+			members.push_back(debug_member(generator, "allocator_function", raw, 8, 24));
+			members.push_back(debug_member(generator, "allocator_data", raw, 8, 32));
+		}
+		return debug_composite(generator, llvm::dwarf::DW_TAG_structure_type, to_string(type), type->size, 8, LLVM::DITypeAttr(),
+			LLVM::DIFlags::Zero, members);
+	}
+
+	static LLVM::DITypeAttr debug_array(Generator& generator, std::string_view name, TypeInfo const* type, TypeInfo const* element,
+		size_t count) {
+		mlir::Attribute counted = mlir::IntegerAttr::get(mlir::IntegerType::get(generator.context, 64), static_cast<int64_t>(count));
+		return debug_composite(generator, llvm::dwarf::DW_TAG_array_type, name, type->size, std::max<size_t>(type->alignment, 1),
+			debug_type(generator, element), LLVM::DIFlags::Zero,
+			{ LLVM::DISubrangeAttr::get(generator.context, counted, mlir::Attribute(), mlir::Attribute(), mlir::Attribute()) });
+	}
+
+	static LLVM::DITypeAttr describe_debug_type(Generator& generator, TypeInfo const* type) {
+		using namespace llvm::dwarf;
+		const std::string name = to_string(type);
+		switch (type->variant) {
+			case TypeInfoVariant::ALIAS: {
+				auto alias = static_cast<TypeInfoAlias const*>(type);
+				return debug_derived(generator, DW_TAG_typedef, text_of(alias->name), debug_type(generator, alias->base_type), 0);
+			}
+			case TypeInfoVariant::INTEGER:
+				return debug_basic(generator, name, type->size,
+					static_cast<TypeInfoInteger const*>(type)->is_signed ? DW_ATE_signed : DW_ATE_unsigned);
+			case TypeInfoVariant::BOOLEAN:
+				return debug_basic(generator, name, type->size, DW_ATE_boolean);
+			case TypeInfoVariant::CHAR:
+				return debug_basic(generator, name, type->size, DW_ATE_UTF);
+			case TypeInfoVariant::FLOAT:
+				return debug_basic(generator, name, type->size, DW_ATE_float);
+			case TypeInfoVariant::COMPLEX:
+				return debug_basic(generator, name, type->size, DW_ATE_complex_float);
+			case TypeInfoVariant::ENUM: {
+				// MLIR has no enumerators, so an enum is its backing integer, by its name
+				auto enumeration = static_cast<TypeInfoEnum const*>(type);
+				return debug_derived(generator, DW_TAG_typedef, name,
+					debug_type(generator, enumeration->backing_type != nullptr ? enumeration->backing_type : BUILTIN_uint), 0);
+			}
+			case TypeInfoVariant::POINTER: {
+				auto pointer = static_cast<TypeInfoPointer const*>(type);
+				if (pointer->is_relative) {
+					return debug_basic(generator, name, type->size, DW_ATE_signed);
+				}
+				return debug_pointer(generator, pointer->base_type);
+			}
+			case TypeInfoVariant::FUNCTION:
+			case TypeInfoVariant::TYPE: {
+				// Its parameters aren't described, so a struct holding a function that takes the struct isn't circular
+				LLVM::DITypeAttr pointed = TypeInfoVariant::FUNCTION == type->variant
+					? LLVM::DITypeAttr(LLVM::DISubroutineTypeAttr::get(generator.context, llvm::ArrayRef<LLVM::DITypeAttr>())) : LLVM::DITypeAttr();
+				return debug_derived(generator, DW_TAG_typedef, name,
+					debug_derived(generator, DW_TAG_pointer_type, "", pointed, POINTER_SIZE), 0);
+			}
+			case TypeInfoVariant::STRING:
+				if (static_cast<TypeInfoString const*>(type)->is_raw) {
+					return debug_derived(generator, DW_TAG_typedef, name, debug_pointer(generator, BUILTIN_u8), 0);
+				}
+				return debug_counted(generator, type, BUILTIN_u8, false);
+			case TypeInfoVariant::ANY: {
+				LLVM::DITypeAttr raw = debug_derived(generator, DW_TAG_pointer_type, "", LLVM::DITypeAttr(), POINTER_SIZE);
+				return debug_composite(generator, DW_TAG_structure_type, name, type->size, 8, LLVM::DITypeAttr(), LLVM::DIFlags::Zero,
+					{ debug_member(generator, "data", raw, 8, 0), debug_member(generator, "type", raw, 8, 8) });
+			}
+			case TypeInfoVariant::ARRAY: {
+				auto array = static_cast<TypeInfoArray const*>(type);
+				if (ArrayType::STATIC != array->array_type) {
+					return debug_counted(generator, type, array->element_type, ArrayType::DYNAMIC == array->array_type);
+				}
+				return debug_array(generator, "", type, array->element_type, array->count);
+			}
+			case TypeInfoVariant::VECTOR: {
+				auto vector = static_cast<TypeInfoVector const*>(type);
+				return debug_array(generator, name, type, vector->element_type, vector->count);
+			}
+			case TypeInfoVariant::QUATERNION: {
+				auto composite = static_cast<TypeInfoComposite const*>(type);
+				return debug_array(generator, name, type, composite->part_type, composite->parts);
+			}
+			case TypeInfoVariant::STRUCT: {
+				auto structure = static_cast<TypeInfoStruct const*>(type);
+				std::vector<LLVM::DINodeAttr> members;
+				for (const StructMember& member : structure->members) {
+					members.push_back(debug_member(generator, text_of(member.name), debug_type(generator, member.member_type),
+						member.member_type != nullptr ? member.member_type->size : 0, member.offset));
+				}
+				return debug_composite(generator, structure->is_union ? DW_TAG_union_type : DW_TAG_structure_type, name, type->size,
+					std::max<size_t>(type->alignment, 1), LLVM::DITypeAttr(), LLVM::DIFlags::Zero, members);
+			}
+			case TypeInfoVariant::UNION: {
+				auto union_type = static_cast<TypeInfoUnion const*>(type);
+				const size_t some = union_type->value_index();
+				if (union_type->null_is_none || union_type->tag_type == nullptr) {
+					// Just the pointer, null for None
+					TypeInfo const* held = some < union_type->variants.size() && !union_type->variants[some].types.empty()
+						? union_type->variants[some].types[0] : nullptr;
+					return debug_derived(generator, DW_TAG_typedef, name, held != nullptr ? debug_type(generator, held) : LLVM::DITypeAttr(), 0);
+				}
+				// The tag, then each variant's values where they are, as a struct's members that overlap
+				std::vector<LLVM::DINodeAttr> members{ debug_member(generator, "tag", debug_type(generator, union_type->tag_type),
+					union_type->tag_type->size, 0) };
+				for (const UnionVariant& variant : union_type->variants) {
+					for (size_t i = 0; i < variant.types.size() && i < variant.offsets.size(); ++i) {
+						const std::string member = variant.types.size() == 1 ? std::string(text_of(variant.name))
+							: std::format("{}.{}", text_of(variant.name), i);
+						members.push_back(debug_member(generator, member, debug_type(generator, variant.types[i]), variant.types[i]->size,
+							variant.offsets[i]));
+					}
+				}
+				return debug_composite(generator, DW_TAG_structure_type, name, type->size, std::max<size_t>(type->alignment, 1),
+					LLVM::DITypeAttr(), LLVM::DIFlags::Zero, members);
+			}
+			case TypeInfoVariant::ARCHETYPE:
+			case TypeInfoVariant::VOID:
+				return LLVM::DITypeAttr();
+		}
+		return LLVM::DITypeAttr();
+	}
+
+	/*
+	 * A type's DWARF description, made once: base, struct, union, enum, pointer, array and subroutine types, so a
+	 * debugger that reads DWARF shows a local's value. Hemera's own debuggers read its schema instead, from the debug
+	 * table (debug_table). A plain alias is the type it names, as in a schema; null for void.
+	 */
+	static LLVM::DITypeAttr debug_type(Generator& generator, TypeInfo const* type) {
+		type = get_base_type_or_alias(type);
+		if (type == nullptr || TypeInfoVariant::VOID == type->variant || TypeInfoVariant::ARCHETYPE == type->variant) {
+			return LLVM::DITypeAttr();
+		}
+		auto iter = generator.debug_types.find(type);
+		if (iter != generator.debug_types.end()) {
+			return iter->second;
+		}
+		LLVM::DITypeAttr made = describe_debug_type(generator, type);
+		generator.debug_types.emplace(type, made);
+		return made;
+	}
+
+	/*
+	 * Describe a local to the debugger, with --debug: a DWARF variable at its slot, and a row of the debug table, which
+	 * names its type's schema. arg is a parameter's number, from 1, or 0 for any other local.
+	 */
+	static void describe_local(Generator& generator, const ast::Node* name, TypeInfo const* type, mlir::Value address,
+		unsigned arg) {
+		FunctionState* state = generator.state;
+		if (state == nullptr || !state->debug_info || !state->subprogram || name == nullptr || type == nullptr || !address
+			|| ast::NodeType::IDENTIFIER != name->node_type || name->value.value == nullptr) {
+			return;
+		}
+		const std::string text(*name->value.value);
+		const unsigned line = name->value.line_number;
+		auto variable = LLVM::DILocalVariableAttr::get(generator.context, state->subprogram, debug_name(generator, text),
+			debug_file(generator, debug_path(generator)), line, arg, 0, debug_type(generator, type), LLVM::DIFlags::Zero);
+		LLVM::DbgDeclareOp::create(generator.builder, source_location(generator, name), address, variable,
+			LLVM::DIExpressionAttr::get(generator.context, {}));
+		generator.debug_variables.push_back({ state->symbol, text, line, arg, type });
+	}
+
+	/*
+	 * The debug table (docs/compilation.md, Debug Info), for a program whose debug info goes in a file of its own: each
+	 * local's function, name, line, argument number and type, its type as a schema, written by write_schema. "HDBT", the
+	 * version (u16), the schemas (u32 count, then each as a u32 size and its bytes), then the functions (u32 count, each
+	 * its symbol, its locals' count (u32), and each local: its name, line (u32), argument number (u32, 0 for a local that
+	 * isn't a parameter) and schema (u32, its place among the schemas)). A name is its length (u32) and its bytes; every
+	 * number is little-endian.
+	 */
+	static std::string debug_table(Generator& generator) {
+		std::string out = "HDBT";
+		auto number = [&](uint64_t value, size_t count) {
+			for (size_t i = 0; i < count; ++i) {
+				out.push_back(static_cast<char>((value >> (8 * i)) & 0xff));
+			}
+		};
+		auto name = [&](std::string_view text) {
+			number(text.size(), 4);
+			out.append(text);
+		};
+		number(1, 2);
+		std::map<TypeInfo const*, size_t> places;
+		std::vector<std::vector<uint8_t>> schemas;
+		for (const Generator::DebugVariable& variable : generator.debug_variables) {
+			TypeInfo const* plain = get_base_type_or_alias(variable.type);
+			if (!places.contains(plain)) {
+				places.emplace(plain, schemas.size());
+				schemas.push_back(write_schema(plain));
+			}
+		}
+		number(schemas.size(), 4);
+		for (const std::vector<uint8_t>& schema : schemas) {
+			number(schema.size(), 4);
+			out.append(reinterpret_cast<const char*>(schema.data()), schema.size());
+		}
+		// Each function's locals together, in the order the functions were generated
+		std::vector<std::string> functions;
+		std::map<std::string, std::vector<const Generator::DebugVariable*>> locals;
+		for (const Generator::DebugVariable& variable : generator.debug_variables) {
+			auto [iter, added] = locals.try_emplace(variable.function);
+			if (added) {
+				functions.push_back(variable.function);
+			}
+			iter->second.push_back(&variable);
+		}
+		number(functions.size(), 4);
+		for (const std::string& function : functions) {
+			name(function);
+			const std::vector<const Generator::DebugVariable*>& each = locals[function];
+			number(each.size(), 4);
+			for (const Generator::DebugVariable* variable : each) {
+				name(variable->name);
+				number(variable->line, 4);
+				number(variable->arg, 4);
+				number(places[get_base_type_or_alias(variable->type)], 4);
+			}
+		}
+		return out;
+	}
+
 	static bool kept_as_value(Generator& generator, const void* key, TypeInfo* type) {
 		TypeInfo const* held = base(type);
-		if (held == nullptr || key == nullptr || generator.state->in_slot.contains(key)) {
+		// With debug info, every local is in a slot, where its DWARF variable says it is (describe_local)
+		if (held == nullptr || key == nullptr || generator.state->in_slot.contains(key) || generator.state->debug_info) {
 			return false;
 		}
 		const TypeInfoVariant variant = held->variant;
@@ -8757,6 +9075,7 @@ namespace hemera {
 				store_emitted(generator, given, types[i], slot);
 			}
 			generator.state->slots[names[i]] = slot;
+			describe_local(generator, names[i], types[i], slot);
 		}
 	}
 
@@ -8900,6 +9219,15 @@ namespace hemera {
 					store(generator, load(generator, element, element_address(generator, data, element, index)), slot);
 				}
 				generator.state->slots[name] = slot;
+				if (i != 1 && !is_range && ast::NodeType::UNARY_OPERATOR != names[i]->node_type) {
+					describe_local(generator, name, element, slot);
+				}
+				else if (i == 1) {
+					describe_local(generator, name, BUILTIN_usize, slot);
+				}
+				else if (is_range) {
+					describe_local(generator, name, index_type, slot);
+				}
 			}
 			emit_scope(generator, [&]() {
 				return emit_block(generator, body, mlir::Value(), nullptr);
@@ -9216,9 +9544,9 @@ namespace hemera {
 	 * locations of what's generated in it become line information (DWARF, or CodeView for PE/COFF)
 	 * and stack traces and debuggers can name its frames. Compile-time code has none.
 	 */
-	static bool attach_subprogram(Generator& generator, LLVM::LLVMFuncOp function, Declaration* declaration) {
+	static LLVM::DISubprogramAttr attach_subprogram(Generator& generator, LLVM::LLVMFuncOp function, Declaration* declaration) {
 		if (generator.options == nullptr || !generator.options->debug_info || generator.compile_time || declaration->node == nullptr) {
-			return false;
+			return LLVM::DISubprogramAttr();
 		}
 		mlir::MLIRContext* context = generator.context;
 		const std::string path = debug_path(generator);
@@ -9239,8 +9567,17 @@ namespace hemera {
 		mlir::Location start = mlir::FileLineColLoc::get(generator.builder.getStringAttr(path), line, declaration->node->value.column_number);
 		function->setLoc(mlir::FusedLoc::get(context, { start }, subprogram));
 		generator.loc = start;
-		generator.named_functions.emplace_back(function, name);
-		return true;
+		/*
+		 * Named in intrinsics.function_names' table too, but not where the debug info goes in a file of its own (the back
+		 * end's splits_debug_info): there the debug file names functions, and a table naming every function keeps each
+		 * alive after it's inlined, several times the program's code
+		 */
+		const bool split = OSType::SlopOS == generator.options->os && generator.options->startup_code
+			&& !generator.options->typed_library;
+		if (!split) {
+			generator.named_functions.emplace_back(function, name);
+		}
+		return subprogram;
 	}
 
 	static void generate_function(Generator& generator, Declaration* declaration) {
@@ -9262,7 +9599,9 @@ namespace hemera {
 		generator.state = &state;
 		// Each statement's location, under the function's subprogram, with debug info
 		const mlir::Location outer_location = generator.loc;
-		state.debug_info = attach_subprogram(generator, function, declaration);
+		state.subprogram = attach_subprogram(generator, function, declaration);
+		state.debug_info = static_cast<bool>(state.subprogram);
+		state.symbol = function.getSymName().str();
 		if (generator.collecting && state.checked == nullptr && body != nullptr) {
 			// Compile-time code that runs once this is checked
 			generator.unchecked.push_back(declaration);
@@ -9291,8 +9630,10 @@ namespace hemera {
 		 */
 		for (size_t i = 0; i < state.checked->parameters.size() && i < type->input.size(); ++i) {
 			mlir::Value argument = entry->getArgument(static_cast<unsigned>(i) + first);
+			const auto* parameter = static_cast<const ast::Node*>(state.checked->parameters[i]);
 			if (parameter_by_pointer(type, type->input[i])) {
 				state.slots[state.checked->parameters[i]] = argument;
+				describe_local(generator, parameter, type->input[i].type, argument, static_cast<unsigned>(i) + 1);
 				continue;
 			}
 			if (kept_as_value(generator, state.checked->parameters[i], type->input[i].type)) {
@@ -9302,6 +9643,7 @@ namespace hemera {
 			mlir::Value slot = make_raw_slot(generator, argument.getType(), std::max<size_t>(type->input[i].type->alignment, 1));
 			store(generator, argument, slot);
 			state.slots[state.checked->parameters[i]] = slot;
+			describe_local(generator, parameter, type->input[i].type, slot, static_cast<unsigned>(i) + 1);
 		}
 		for (size_t i = 0; i < state.checked->outputs.size() && i < type->output.size(); ++i) {
 			if (state.checked->outputs[i] != nullptr) {
@@ -12189,6 +12531,9 @@ namespace hemera {
 		generate_function_names(generator);
 		generate_used(generator);
 		finish_module(generator);
+		if (options.debug_info && !generator.debug_variables.empty()) {
+			module->setAttr(DEBUG_TABLE_ATTRIBUTE, generator.builder.getStringAttr(debug_table(generator)));
+		}
 		if (generator.failed) {
 			return false;
 		}
@@ -12609,6 +12954,11 @@ namespace hemera {
 			for (mlir::Attribute library : libraries) {
 				list->addOperand(llvm::MDNode::get(context, { llvm::MDString::get(context, llvm::cast<mlir::StringAttr>(library).getValue()) }));
 			}
+		}
+		// The debug table (debug_table), for the back end to put in the debug file
+		if (auto table = module->getAttrOfType<mlir::StringAttr>(DEBUG_TABLE_ATTRIBUTE)) {
+			result->getOrInsertNamedMetadata(DEBUG_TABLE_METADATA)->addOperand(
+				llvm::MDNode::get(context, { llvm::MDString::get(context, table.getValue()) }));
 		}
 		/*
 		 * Debug info for PE/COFF is CodeView, which lld-link puts in a PDB; LLVM picks it by this flag,

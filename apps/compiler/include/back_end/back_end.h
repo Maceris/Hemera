@@ -66,6 +66,8 @@ namespace hemera {
 		llvm::TargetMachine* target_machine;
 		// The libraries the module's #foreign functions come from, from generate_object_file, for link
 		std::vector<std::string> libraries;
+		// The debug table (generate.cpp's debug_table) from generate_object_file, which link writes in the debug file
+		std::string debug_table;
 		/*
 		 * The object files generate_object_file wrote, for link: the one it was asked for, or when the module
 		 * was split to generate in parallel, one for each part.

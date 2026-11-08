@@ -3,9 +3,11 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 
@@ -249,6 +251,117 @@ TEST(Freestanding, BuildsWithMorestack)
 		found = found || (name && *name == "hemera.morestack");
 	}
 	EXPECT_TRUE(found);
+}
+
+// A number of count bytes, little-endian, at at in bytes, moving at past it; 0 past the end.
+static uint64_t read_number(const std::string& bytes, size_t& at, size_t count) {
+	uint64_t value = 0;
+	for (size_t i = 0; i < count && at + i < bytes.size(); ++i) {
+		value |= static_cast<uint64_t>(static_cast<uint8_t>(bytes[at + i])) << (8 * i);
+	}
+	at += count;
+	return value;
+}
+
+static std::string read_name(const std::string& bytes, size_t& at) {
+	const size_t count = read_number(bytes, at, 4);
+	const std::string name = at + count <= bytes.size() ? bytes.substr(at, count) : std::string();
+	at += count;
+	return name;
+}
+
+/*
+ * A SlopOS program built with debug info keeps none of it (docs/compilation.md, Debug Info): its DWARF goes in
+ * <name>.debug beside it, an ELF of the program linked with it, after "HDBG", and then the debug table, which has main's
+ * parameters with their argument numbers, each with its type's schema.
+ */
+TEST(Freestanding, SplitsSlopOSDebugInfo)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "slop_os_debug" / "program.elf";
+	const std::filesystem::path debug = std::filesystem::path(output).replace_extension(".debug");
+	std::filesystem::remove(debug);
+	build_elf(output, "slop_os_program", false, [](hemera::Options& options) {
+		options.os = hemera::OSType::SlopOS;
+		options.cpu = "x86-64-v3";
+		options.relocation_model = hemera::TargetRelocationModel::PositionIndependent;
+		options.debug_info = true;
+	});
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	auto has_dwarf = [](const std::filesystem::path& file) {
+		auto binary = llvm::object::ObjectFile::createObjectFile(file.string());
+		if (!binary) {
+			llvm::consumeError(binary.takeError());
+			return false;
+		}
+		for (const llvm::object::SectionRef& section : binary->getBinary()->sections()) {
+			auto name = section.getName();
+			if (name && *name == ".debug_info") {
+				return true;
+			}
+		}
+		return false;
+	};
+	EXPECT_FALSE(has_dwarf(output)) << "the program keeps its DWARF";
+	const std::string bytes = bytes_of(debug);
+	ASSERT_GE(bytes.size(), 16u) << "no debug file";
+	EXPECT_EQ(bytes.substr(0, 4), "HDBG");
+	size_t at = 4;
+	EXPECT_EQ(read_number(bytes, at, 2), 1u);
+	at = 8;
+	const size_t elf_size = read_number(bytes, at, 8);
+	ASSERT_LE(16 + elf_size, bytes.size());
+	const std::filesystem::path elf = std::filesystem::path(output).replace_extension(".debug.elf");
+	{
+		std::ofstream out(elf, std::ios::binary | std::ios::trunc);
+		out << bytes.substr(16, elf_size);
+	}
+	EXPECT_TRUE(has_dwarf(elf)) << "the debug file's ELF has no DWARF";
+	// The table
+	at = 16 + elf_size;
+	ASSERT_EQ(bytes.substr(at, 4), "HDBT");
+	at += 4;
+	EXPECT_EQ(read_number(bytes, at, 2), 1u);
+	std::vector<std::string> schemas(read_number(bytes, at, 4));
+	for (std::string& schema : schemas) {
+		const size_t size = read_number(bytes, at, 4);
+		schema = bytes.substr(at, size);
+		at += size;
+		EXPECT_EQ(schema.substr(0, 4), "HSCH");
+	}
+	std::map<std::string, std::pair<uint64_t, std::string>> main_locals;
+	const size_t functions = read_number(bytes, at, 4);
+	for (size_t i = 0; i < functions && at < bytes.size(); ++i) {
+		const std::string function = read_name(bytes, at);
+		const size_t locals = read_number(bytes, at, 4);
+		for (size_t j = 0; j < locals && at < bytes.size(); ++j) {
+			const std::string name = read_name(bytes, at);
+			read_number(bytes, at, 4);
+			const uint64_t arg = read_number(bytes, at, 4);
+			const size_t place = read_number(bytes, at, 4);
+			ASSERT_LT(place, schemas.size());
+			if (function.find("main") != std::string::npos && function.find("slop_os_program") != std::string::npos) {
+				main_locals[name] = { arg, schemas[place] };
+			}
+		}
+	}
+	EXPECT_EQ(at, bytes.size()) << "the table has bytes after its functions";
+	ASSERT_TRUE(main_locals.contains("count")) << "main's count isn't in the table";
+	EXPECT_EQ(main_locals["count"].first, 1u);
+	EXPECT_EQ(main_locals["label"].first, 2u);
+	EXPECT_EQ(main_locals["verbose"].first, 3u);
+	ASSERT_TRUE(main_locals.contains("values"));
+	EXPECT_EQ(main_locals["values"].first, 0u);
+	// usize: an Integer (10) of 8 bytes, unsigned, the system's endianness
+	const std::string usize = main_locals["count"].second;
+	ASSERT_EQ(usize.size(), 4u + 2 + 4 + 1 + 8 + 2);
+	EXPECT_EQ(static_cast<uint8_t>(usize[10]), 10u);
+	EXPECT_EQ(static_cast<uint8_t>(usize[11]), 8u);
+	EXPECT_EQ(static_cast<uint8_t>(usize[19]), 0u);
+	EXPECT_EQ(static_cast<uint8_t>(usize[20]), 3u);
+	// bool?: a Union (16) holding a Boolean
+	EXPECT_EQ(static_cast<uint8_t>(main_locals["verbose"].second[10]), 16u);
 }
 
 /*

@@ -84,6 +84,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/middle_end/generate.h
   ${INCLUDE_DIR}/middle_end/jit.h
   ${INCLUDE_DIR}/middle_end/reflection.h
+  ${INCLUDE_DIR}/middle_end/schema_writer.h
   ${INCLUDE_DIR}/middle_end/build.h
   ${INCLUDE_DIR}/middle_end/code_values.h
   ${INCLUDE_DIR}/parser/ast_types.h
@@ -123,6 +124,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/middle_end/generate.cpp
   ${SOURCE_DIR}/middle_end/jit.cpp
   ${SOURCE_DIR}/middle_end/reflection.cpp
+  ${SOURCE_DIR}/middle_end/schema_writer.cpp
   ${SOURCE_DIR}/middle_end/build.cpp
   ${SOURCE_DIR}/middle_end/code_values.cpp
   ${SOURCE_DIR}/parser/ast_types.cpp

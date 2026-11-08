@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -569,6 +570,14 @@ namespace hemera {
 		module.setTargetTriple(target_machine->getTargetTriple());
 		module.setDataLayout(target_machine->createDataLayout());
 		libraries.clear();
+		debug_table.clear();
+		if (llvm::NamedMDNode* table = module.getNamedMetadata(DEBUG_TABLE_METADATA)) {
+			if (table->getNumOperands() == 1 && table->getOperand(0)->getNumOperands() == 1) {
+				if (auto* bytes = llvm::dyn_cast<llvm::MDString>(table->getOperand(0)->getOperand(0))) {
+					debug_table = bytes->getString().str();
+				}
+			}
+		}
 		if (llvm::NamedMDNode* list = module.getNamedMetadata(LIBRARIES_METADATA)) {
 			for (llvm::MDNode* library : list->operands()) {
 				if (library->getNumOperands() == 1) {
@@ -849,7 +858,8 @@ namespace hemera {
 	 * ld.lld's arguments, for ELF: static, without the C runtime, and a position-independent executable for
 	 * position-independent code, like a relocatable kernel.
 	 */
-	static std::vector<std::string> elf_arguments(const Options& options, const std::vector<std::string>& libraries) {
+	static std::vector<std::string> elf_arguments(const Options& options, const std::vector<std::string>& libraries,
+		const std::string& output_name, bool strip) {
 		/*
 		 * A hosted Linux program with #foreign libraries links C dynamically, against the sysroot's
 		 * libraries, and starts through libc; any other is static, with no C library
@@ -863,10 +873,10 @@ namespace hemera {
 			 * record, where the runtime's loader looks
 			 */
 			args.insert(args.end(), { "-shared", "-Bsymbolic", "-z", "defs", "-e", "hemera_interface" });
-			if (!options.debug_info) {
+			if (strip) {
 				args.push_back("--strip-debug");
 			}
-			args.insert(args.end(), { "-o", options.output_name });
+			args.insert(args.end(), { "-o", output_name });
 			return args;
 		}
 		if (links_c) {
@@ -904,11 +914,46 @@ namespace hemera {
 		if (!options.linker_script.empty()) {
 			args.insert(args.end(), { "-T", options.linker_script.string() });
 		}
-		if (!options.debug_info) {
+		if (strip) {
 			args.push_back("--strip-debug");
 		}
-		args.insert(args.end(), { "-o", options.output_name });
+		args.insert(args.end(), { "-o", output_name });
 		return args;
+	}
+
+	/*
+	 * Whether the program's debug info goes in a file of its own (docs/compilation.md, Debug Info): a SlopOS program's
+	 * does, so the program is loaded without it and a debugger is given it.
+	 */
+	static bool splits_debug_info(const Options& options) {
+		return options.debug_info && options.startup_code && OSType::SlopOS == options.os
+			&& ObjectFormatType::ELF == options.object_format && !options.typed_library;
+	}
+
+	/*
+	 * The debug file (docs/compilation.md, Debug Info): "HDBG", the version (u16) and 2 bytes of 0, the size of the ELF
+	 * that follows (u64), the program linked with its DWARF, then the debug table, if the program has one. Its ELF is
+	 * read from linked, which is removed.
+	 */
+	static void write_debug_file(const std::string& linked, const std::string& output_name, const std::string& table) {
+		std::ifstream in(linked, std::ios::binary);
+		const std::string elf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+		in.close();
+		std::error_code ignored;
+		std::filesystem::remove(linked, ignored);
+		const std::string path = std::filesystem::path(output_name).replace_extension(".debug").string();
+		std::ofstream out(path, std::ios::binary | std::ios::trunc);
+		std::string header = "HDBG";
+		const uint64_t size = elf.size();
+		header.push_back(1);
+		header.append(3, '\0');
+		for (size_t i = 0; i < 8; ++i) {
+			header.push_back(static_cast<char>((size >> (8 * i)) & 0xff));
+		}
+		out << header << elf << table;
+		if (!out) {
+			report_error(ErrorCode::E6000, path, 0, 0, "the debug file couldn't be written");
+		}
 	}
 
 	/*
@@ -922,9 +967,16 @@ namespace hemera {
 		const std::vector<std::string> files = objects.empty() ? std::vector<std::string>{ std::string(object_file) } : objects;
 		std::string linker;
 		std::vector<std::string> args;
+		// A program whose debug info is split is linked twice: with its DWARF, for the debug file, then without
+		const bool split = splits_debug_info(options);
+		const std::string with_debug = options.output_name + ".with-debug";
+		std::vector<std::string> debug_args;
 		if (ObjectFormatType::ELF == options.object_format) {
 			linker = "ld.lld";
-			args = elf_arguments(options, libraries);
+			args = elf_arguments(options, libraries, options.output_name, !options.debug_info || split);
+			if (split) {
+				debug_args = elf_arguments(options, libraries, with_debug, false);
+			}
 		}
 		else if (ObjectFormatType::COFF == options.object_format) {
 			linker = "lld-link";
@@ -935,6 +987,7 @@ namespace hemera {
 			return;
 		}
 		args.insert(args.end(), files.begin(), files.end());
+		debug_args.insert(debug_args.end(), files.begin(), files.end());
 		// The target's own, given the same arguments: a path, made absolute by add_target, or a name to find on the PATH
 		if (!options.linker.empty()) {
 			linker = options.linker;
@@ -945,19 +998,25 @@ namespace hemera {
 			report_error(ErrorCode::E7000, object_file, 0, 0, std::format("{} isn't on the PATH", linker));
 		}
 		else {
-			std::vector<llvm::StringRef> argv{ *program };
-			for (const std::string& arg : args) {
-				argv.push_back(arg);
-			}
-			std::string message;
-			const int result = llvm::sys::ExecuteAndWait(*program, argv, std::nullopt, {}, 0, 0, &message);
-			if (result != 0) {
-				if (message.empty()) {
-					report_error(ErrorCode::E7000, object_file, 0, 0);
+			auto run = [&](const std::vector<std::string>& given) {
+				std::vector<llvm::StringRef> argv{ *program };
+				for (const std::string& arg : given) {
+					argv.push_back(arg);
 				}
-				else {
-					report_error(ErrorCode::E7000, object_file, 0, 0, message);
+				std::string message;
+				const int result = llvm::sys::ExecuteAndWait(*program, argv, std::nullopt, {}, 0, 0, &message);
+				if (result != 0) {
+					if (message.empty()) {
+						report_error(ErrorCode::E7000, object_file, 0, 0);
+					}
+					else {
+						report_error(ErrorCode::E7000, object_file, 0, 0, message);
+					}
 				}
+				return result == 0;
+			};
+			if (run(args) && split && run(debug_args)) {
+				write_debug_file(with_debug, options.output_name, debug_table);
 			}
 		}
 
