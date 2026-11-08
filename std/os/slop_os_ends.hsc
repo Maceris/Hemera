@@ -511,9 +511,9 @@ package os
         watch : LaunchWatch?,
         /**
          * Where the program's faults are reported: an intercept of its faults alone (slop_os.intercept_attach with
-         * STOP_FAULT and STOP_FAULT_LIMITED, so a fault not seen to within a second ends the program anyway), attached
-         * before it starts, so even its first instruction's is; null for none, when a fault the kernel can't resolve
-         * ends the program.
+         * STOP_FAULT and STOP_FAULT_LIMITED, so a fault not seen to within a second ends the program anyway), or a
+         * debugger's (LaunchFaults.debugging), attached before it starts, so even its first instruction's is; null for
+         * none, when a fault the kernel can't resolve ends the program.
          */
         faults : LaunchFaults?,
         /**
@@ -571,6 +571,12 @@ package os
         port : slop_os.Port,
         /** The key the stops' packets carry. */
         key : u64,
+        /**
+         * Whether a debugger holds it: then it stops at faults for as long as it looks, not STOP_FAULT_LIMITED, and
+         * at every system call's entry too, so the program's first call stops it before its main runs; the debugger
+         * changes that with intercept_set. False for crash reports.
+         */
+        debugging : bool,
     }
 
     /** What a launch with LaunchOptions.faults gives to report the program's faults with. */
@@ -828,8 +834,9 @@ package os
         load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
         match options.faults {
             case Some(reported) => {
-                points :: slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED
-                intercept :: slop_os.intercept_attach(process, reported.port, reported.key, 0, points)
+                points :: if reported.debugging { slop_os.STOP_FAULT | slop_os.STOP_SYSCALL_ENTRY } else { slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED }
+                calls :: if reported.debugging { ~cast[u64](0) } else { cast[u64](0) }
+                intercept :: slop_os.intercept_attach(process, reported.port, reported.key, calls, points)
                     or_return .Error(.NoBudget)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
                 kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), cast[slop_os.Rights](0)) or_return .Error(.BadGrants)
