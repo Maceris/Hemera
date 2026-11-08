@@ -510,6 +510,12 @@ package os
         /** Where the program's end is reported, bound before it starts; null for no watch. */
         watch : LaunchWatch?,
         /**
+         * Where the program's faults are reported: an intercept of its faults alone (slop_os.intercept_attach with
+         * STOP_FAULT), attached before it starts, so even its first instruction's is; null for none, when a fault the
+         * kernel can't resolve ends the program.
+         */
+        faults : LaunchFaults?,
+        /**
          * The CPU budget it runs on, whose handle the launch closes once it has tried to put the process on it; null
          * to run on the launcher's.
          */
@@ -558,6 +564,28 @@ package os
         doorbell : slop_os.Channel,
     }
 
+    /** Where a launched program's faults are reported (LaunchOptions.faults). */
+    LaunchFaults :: struct {
+        /** The port the intercept's stops are reported on, as packets of kind Stop. */
+        port : slop_os.Port,
+        /** The key the stops' packets carry. */
+        key : u64,
+    }
+
+    /** What a launch with LaunchOptions.faults gives to report the program's faults with. */
+    LaunchedFaults :: struct {
+        /**
+         * The intercept of the program's faults, a handle the caller owns: intercept_next reads each stop, and
+         * intercept_resume lets it go. Closing it lets every stopped thread go on, which faults again.
+         */
+        intercept : slop_os.Intercept,
+        /**
+         * The program's address space, a handle the caller owns with no rights, for process_read_memory, which needs
+         * none on it.
+         */
+        space : slop_os.AddressSpace,
+    }
+
     /** A program launch started, in a process the caller owns, with a budget split off its own. */
     Launched :: struct {
         /** The program's process, a handle the caller owns: to watch, to kill, or to close. */
@@ -566,6 +594,10 @@ package os
         budget : slop_os.MemoryBudget,
         /** The ID of the program's first thread, as the manager gave it. */
         thread : u64,
+        /** The address the program's image was loaded at, its relocations applied for, in its address space. */
+        image : u64,
+        /** Its fault intercept and address space, when LaunchOptions.faults asked; null otherwise. */
+        faults : LaunchedFaults?,
     }
 
     /**
@@ -589,7 +621,7 @@ package os
      * @param grants The handles and values the program's entry takes. The handles are the program's once it's
      *     started; if the launch fails before the Load is sent, they're still the caller's.
      * @param options What the launch does beyond its grants (LaunchOptions).
-     * @return The started program's process, budget and first thread.
+     * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
      * @error NoBudget The caller's budget couldn't pay, or the arguments page couldn't be written.
      * @error BadGrants The grants don't fit a Load, or a handle couldn't be duplicated.
      * @error ManagerGone The manager couldn't be asked, or didn't answer.
@@ -703,7 +735,7 @@ package os
      *     started, and the caller's still if it isn't.
      * @param values Its values, each written already, with its type's schema hash; none gives no "arguments" grant.
      * @param options What the launch does beyond its grants (LaunchOptions).
-     * @return The started program's process, budget and first thread.
+     * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
      * @error NoBudget The caller's budget couldn't pay, or the arguments page couldn't be written.
      * @error BadGrants The grants don't fit a Load, or a handle couldn't be duplicated.
      * @error ManagerGone The manager couldn't be asked, or didn't answer.
@@ -730,9 +762,9 @@ package os
      * @param arguments The page of the values written for the program, or null for none. It's the launch's: given to
      *     the program as the grant "arguments", or closed.
      * @param options What the launch does beyond its grants (LaunchOptions).
-     * @return The started program's process, budget and first thread.
+     * @return The started program's process, budget, first thread and image's address, and its faults' intercept.
      * @error NoBudget The caller's budget couldn't pay for the program's budget, process or address space, or the
-     *     watch couldn't be bound.
+     *     watch or the fault intercept couldn't be made.
      * @error BadGrants The grants don't fit a Load, a label is too long, a handle couldn't be duplicated, or the
      *     process couldn't be put on the CPU budget.
      * @error ManagerGone The manager couldn't be sent the Load, or didn't answer it.
@@ -755,6 +787,7 @@ package os
         load := process_manager.Load.{name = label_from(name)}
         process := cast[slop_os.Process](slop_os.NO_HANDLE)
         watch : LaunchWatch? = null
+        faults : LaunchedFaults? = null
         // Whether the Load's gone to the manager, whose its handles are then, and where its own copies of the
         // launcher's libraries start among its grants, none until they're added (the grants before are the caller's)
         sent := false
@@ -763,6 +796,15 @@ package os
         defer {
             if !started {
                 give_back(&load, sent, copies_from, watch, process, child)
+                match faults {
+                    case Some(made) => {
+                        _ = slop_os.handle_close(cast[slop_os.Handle](made.intercept))
+                        if cast[slop_os.Handle](made.space) != slop_os.NO_HANDLE {
+                            _ = slop_os.handle_close(cast[slop_os.Handle](made.space))
+                        }
+                    }
+                    case None => {}
+                }
             }
         }
         process = slop_os.process_create(child) or_return .Error(.NoBudget)
@@ -783,6 +825,16 @@ package os
             case None => {}
         }
         load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
+        match options.faults {
+            case Some(reported) => {
+                intercept :: slop_os.intercept_attach(process, reported.port, reported.key, 0, slop_os.STOP_FAULT)
+                    or_return .Error(.NoBudget)
+                faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
+                kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), cast[slop_os.Rights](0)) or_return .Error(.BadGrants)
+                faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](kept)}
+            }
+            case None => {}
+        }
         process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS) | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
         load.process = cast[slop_os.Process](slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights) or_return .Error(.BadGrants))
@@ -886,9 +938,9 @@ package os
             case _ => return .Error(.ManagerGone)
         }
         match message_of[process_manager.Response](&into)^ {
-            case Loaded(thread) => {
+            case Loaded(loaded) => {
                 started = true
-                return .Ok(Launched.{process = process, budget = child, thread = thread})
+                return .Ok(Launched.{process = process, budget = child, thread = loaded.thread, image = loaded.image, faults = faults})
             }
             case _ => return .Error(.NotLoaded)
         }

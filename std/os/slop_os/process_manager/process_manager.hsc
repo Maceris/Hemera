@@ -88,10 +88,18 @@ package process_manager
         Failed = 6,
     }
 
+    /** A program the manager started, as Loaded says. */
+    Started :: struct {
+        /** Its first thread's ID, not a handle. */
+        thread : u64,
+        /** The address its image was loaded at, which its relocations were applied for, in its address space. */
+        image : u64,
+    }
+
     /** What the process manager answers. */
     Response :: union {
-        /** The answer to Load when the program's loaded: its first thread's ID. */
-        Loaded(u64),
+        /** The answer to Load when the program's loaded: its first thread, and where its image is. */
+        Loaded(Started),
         /** The answer to Load when it failed, and why. */
         NotLoaded(LoadStatus),
         /** The answer to a request the manager doesn't know, as from a newer client; every protocol has it. */

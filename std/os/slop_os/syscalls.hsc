@@ -1197,10 +1197,57 @@ StopInfo :: struct {
     thread : u64,
     /** Where it stopped. */
     point : StopPoint,
-    /** The system call's number, or for a fault, how it accessed: 0 read, 1 write, 2 execute. */
+    /** The system call's number, or for a fault, its kind: one of the FAULT_ constants. */
     number : u32,
     /** For a fault: the address it touched. Meaningless otherwise. */
     address : u64,
+}
+
+// A fault's kind, StopInfo's number at a fault
+/** A page fault reading memory that isn't mapped, or that its mapping doesn't let it read. */
+FAULT_READ : u32 : 0
+/** A page fault writing memory that isn't mapped, or that its mapping doesn't let it write. */
+FAULT_WRITE : u32 : 1
+/** A page fault running code in memory that isn't mapped, or that its mapping doesn't let it run. */
+FAULT_EXECUTE : u32 : 2
+/** An instruction the CPU doesn't recognize; the address is meaningless. */
+FAULT_INVALID_INSTRUCTION : u32 : 3
+/** A breakpoint instruction; the address is meaningless. */
+FAULT_BREAKPOINT : u32 : 4
+/** A single step completed; the address is meaningless. */
+FAULT_SINGLE_STEP : u32 : 5
+/** Integer division by zero or overflow, where the architecture traps on it; the address is meaningless. */
+FAULT_ARITHMETIC : u32 : 6
+/** A misaligned access, where the architecture traps on it; the address is meaningless. */
+FAULT_ALIGNMENT : u32 : 7
+/**
+ * A privileged instruction, or an address the architecture rejects outright (x86-64's non-canonical ones); the
+ * address is meaningless.
+ */
+FAULT_PROTECTION : u32 : 8
+/** An unmasked floating-point or vector exception; the address is meaningless. */
+FAULT_FLOATING_POINT : u32 : 9
+
+/**
+ * Name a fault's kind, for a person reading a report.
+ *
+ * @param kind StopInfo's number at a fault: one of the FAULT_ constants.
+ * @return Its name in lowercase words, as "invalid instruction"; "unknown fault" for any other number. Static.
+ */
+fault_name :: fn(kind: u32) -> string #no_context {
+    match kind {
+        case FAULT_READ => return "read fault"
+        case FAULT_WRITE => return "write fault"
+        case FAULT_EXECUTE => return "execute fault"
+        case FAULT_INVALID_INSTRUCTION => return "invalid instruction"
+        case FAULT_BREAKPOINT => return "breakpoint"
+        case FAULT_SINGLE_STEP => return "single step"
+        case FAULT_ARITHMETIC => return "arithmetic fault"
+        case FAULT_ALIGNMENT => return "alignment fault"
+        case FAULT_PROTECTION => return "protection fault"
+        case FAULT_FLOATING_POINT => return "floating-point fault"
+        case _ => return "unknown fault"
+    }
 }
 
 /** What a thread stopped by an intercept does next, for intercept_resume. */
