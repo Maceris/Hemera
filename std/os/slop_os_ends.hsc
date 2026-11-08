@@ -511,8 +511,9 @@ package os
         watch : LaunchWatch?,
         /**
          * Where the program's faults are reported: an intercept of its faults alone (slop_os.intercept_attach with
-         * STOP_FAULT), attached before it starts, so even its first instruction's is; null for none, when a fault the
-         * kernel can't resolve ends the program.
+         * STOP_FAULT and STOP_FAULT_LIMITED, so a fault not seen to within a second ends the program anyway), attached
+         * before it starts, so even its first instruction's is; null for none, when a fault the kernel can't resolve
+         * ends the program.
          */
         faults : LaunchFaults?,
         /**
@@ -827,7 +828,8 @@ package os
         load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
         match options.faults {
             case Some(reported) => {
-                intercept :: slop_os.intercept_attach(process, reported.port, reported.key, 0, slop_os.STOP_FAULT)
+                points :: slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED
+                intercept :: slop_os.intercept_attach(process, reported.port, reported.key, 0, points)
                     or_return .Error(.NoBudget)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
                 kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), cast[slop_os.Rights](0)) or_return .Error(.BadGrants)

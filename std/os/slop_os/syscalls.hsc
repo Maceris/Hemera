@@ -1180,6 +1180,12 @@ STOP_SYSCALL_ENTRY : u32 : 1 << 0
 STOP_SYSCALL_EXIT : u32 : 1 << 1
 /** A fault the thread's memory doesn't resolve, which would otherwise destroy it. */
 STOP_FAULT : u32 : 1 << 2
+/**
+ * With STOP_FAULT: a thread stopped at a fault that isn't let go within a second ends its process, as a fault without
+ * an intercept does, so a holder busy elsewhere, perhaps waiting on that very process, can't keep it stopped for good.
+ * For crash reports; a debugger leaves it out, to keep a thread stopped at a fault for as long as it looks.
+ */
+STOP_FAULT_LIMITED : u32 : 1 << 3
 
 /** Where a thread stopped, in a StopInfo. */
 StopPoint :: enum #backed_by(u32) {
