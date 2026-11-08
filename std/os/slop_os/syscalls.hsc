@@ -1073,6 +1073,16 @@ Syscalls :: struct {
      * @param points STOP_ bits: where threads stop from now.
      */
     intercept_set : fn(intercept: Intercept, calls: u64, points: u32) -> Result[void, ControlError],
+    /**
+     * Set what a process's threads trap on (decisions/0183, 12c): TRAP_COUNTER for reading the CPU's counter in user
+     * mode, for a recording. A trapped read is run by the kernel, and then is a fault stop, FAULT_COUNTER, for an
+     * intercept that takes faults; without one, the thread goes on as if it hadn't trapped.
+     *
+     * @param process The process, which needs RIGHT_PROCESS_WRITE_STATE; only its own threads trap, not its subtree's.
+     * @param traps TRAP_ bits: what traps, from each of its threads' next return from the kernel; 0 for nothing, as a
+     *     process starts.
+     */
+    process_set_traps : fn(process: Process, traps: u32) -> Result[void, ControlError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
@@ -1208,6 +1218,14 @@ STOP_SYSCALL_EXIT : u32 : 1 << 1
 /** A fault the thread's memory doesn't resolve, which would otherwise destroy it. */
 STOP_FAULT : u32 : 1 << 2
 /**
+ * With STOP_SYSCALL_ENTRY or STOP_SYSCALL_EXIT: every system call stops there, whatever intercept_attach's calls say,
+ * those numbered 64 and up too, as a recording needs.
+ */
+STOP_ALL_CALLS : u32 : 1 << 4
+
+/** For process_set_traps: reading the CPU's counter in user mode (x86-64's RDTSC, AArch64's CNTVCT_EL0 and CNTPCT_EL0). */
+TRAP_COUNTER : u32 : 1 << 0
+/**
  * With STOP_FAULT: a thread stopped at a fault that isn't let go within a second ends its process, as a fault without
  * an intercept does, so a holder busy elsewhere, perhaps waiting on that very process, can't keep it stopped for good.
  * For crash reports; a debugger leaves it out, to keep a thread stopped at a fault for as long as it looks.
@@ -1262,6 +1280,12 @@ FAULT_PROTECTION : u32 : 8
 FAULT_FLOATING_POINT : u32 : 9
 /** A hardware watchpoint was hit (thread_set_debug); the address is the one accessed, within the slot's. */
 FAULT_WATCHPOINT : u32 : 10
+/**
+ * A trapped read of the CPU's counter (process_set_traps' TRAP_COUNTER), which the kernel has run: its value is the
+ * address, and it's in the instruction's destination already, x86-64's edx and eax, or the register AArch64's MRS
+ * names, the thread past it. A debugger can change that register before the thread goes on.
+ */
+FAULT_COUNTER : u32 : 11
 
 /** How many hardware breakpoints and watchpoints a thread can have, as ThreadDebug's slots. */
 DEBUG_SLOTS :: 4
@@ -1315,6 +1339,7 @@ fault_name :: fn(kind: u32) -> string #no_context {
         case FAULT_PROTECTION => return "protection fault"
         case FAULT_FLOATING_POINT => return "floating-point fault"
         case FAULT_WATCHPOINT => return "watchpoint"
+        case FAULT_COUNTER => return "counter read"
         case _ => return "unknown fault"
     }
 }
