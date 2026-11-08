@@ -179,7 +179,25 @@ import intrinsics from "base"
      * @param expected The value it had when the caller decided to wait.
      */
     wait_on_value :: fn(address: ptr[u32], expected: u32) {
+        deterministic_turn()
         intrinsics.spin_hint()
+    }
+
+    /**
+     * Tell whether the process runs in the deterministic mode: whether it was given a grant "deterministic", looked
+     * up the first time and remembered.
+     *
+     * @return True in the mode.
+     */
+    slop_os_deterministic #no_context :: fn() -> bool {
+        state :: intrinsics.process_state()
+        known :: intrinsics.atomic_load_u32_acquire(&state.deterministic)
+        if known != 0 {
+            return known == 2
+        }
+        found :: os_entry_grant("deterministic", "Memory", "", false) != 0
+        intrinsics.atomic_store_u32_release(&state.deterministic, if found { 2 } else { 1 })
+        return found
     }
 
     /**

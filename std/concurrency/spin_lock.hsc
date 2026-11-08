@@ -1,6 +1,7 @@
 package concurrency
 
 import intrinsics from "base"
+import runtime from "base"
 
 /**
  * A ticket lock: whoever takes the lock gets a ticket and is served in order, so nobody waits forever while others
@@ -29,6 +30,8 @@ SpinLock :: struct {
 lock :: fn(spin_lock: ptr[mut SpinLock]) {
     ticket :: intrinsics.interlocked_exchange_add_u32_no_fence(&spin_lock.next_ticket, 1)
     loop {
+        // A recording's turn, in the deterministic mode, so the holder can run
+        runtime.deterministic_turn()
         intrinsics.spin_hint()
     }
     while intrinsics.atomic_load_u32_acquire(&spin_lock.now_serving) != ticket

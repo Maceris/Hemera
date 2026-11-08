@@ -523,6 +523,17 @@ package os
         cpu_budget : slop_os.CpuBudget?,
         /** The clock page, given as the grant "clock" and then the program's; null to give none. */
         clock : slop_os.Memory?,
+        /**
+         * The seeds it's built with, the process manager's Load's: as a recording's, so a replay is the same program
+         * to its layout and its context.random; null for the manager's own.
+         */
+        seeds : u8[64]?,
+        /**
+         * Whether it runs in the deterministic mode (base's runtime.deterministic_turn), for a recording: given as a
+         * page that's the grant "deterministic", its spins make system calls, so one that runs one thread at a time
+         * can switch between them.
+         */
+        deterministic : bool,
         /** Its log records' ring and doorbell, given as the grants "events" and then the program's; null for none. */
         events : LaunchEvents?,
         /** Its end of a lifecycle channel, given as the grant "lifecycle" and then the program's; null for none. */
@@ -573,10 +584,15 @@ package os
         key : u64,
         /**
          * Whether a debugger holds it: then it stops at faults for as long as it looks, not STOP_FAULT_LIMITED, and
-         * at every system call's entry too, so the program's first call stops it before its main runs; the debugger
-         * changes that with intercept_set. False for crash reports.
+         * at every system call's entry too, those numbered 64 and up too (STOP_ALL_CALLS), so the program's first
+         * call stops it before its main runs; the debugger changes that with intercept_set. False for crash reports.
          */
         debugging : bool,
+        /**
+         * The intercept's STOP_ bits, every call among them, for a recorder (with STOP_ALL_CALLS and
+         * STOP_THREAD_START, the SlopOS repository's decisions/0183); 0 for what debugging says.
+         */
+        points : u32,
     }
 
     /** What a launch with LaunchOptions.faults gives to report the program's faults with. */
@@ -605,6 +621,8 @@ package os
         image : u64,
         /** Its fault intercept and address space, when LaunchOptions.faults asked; null otherwise. */
         faults : LaunchedFaults?,
+        /** The seeds it was built with (LaunchOptions.seeds), given or the manager's. */
+        seeds : u8[64],
     }
 
     /**
@@ -834,8 +852,9 @@ package os
         load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
         match options.faults {
             case Some(reported) => {
-                points :: if reported.debugging { slop_os.STOP_FAULT | slop_os.STOP_SYSCALL_ENTRY } else { slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED }
-                calls :: if reported.debugging { ~cast[u64](0) } else { cast[u64](0) }
+                points :: if reported.points != 0 { reported.points } else if reported.debugging {
+                    slop_os.STOP_FAULT | slop_os.STOP_SYSCALL_ENTRY | slop_os.STOP_ALL_CALLS } else { slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED }
+                calls :: if reported.debugging || reported.points != 0 { ~cast[u64](0) } else { cast[u64](0) }
                 intercept :: slop_os.intercept_attach(process, reported.port, reported.key, calls, points)
                     or_return .Error(.NoBudget)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
@@ -884,6 +903,20 @@ package os
                 return .Error(.BadGrants)
             }
             case None => {}
+        }
+        match options.seeds {
+            case Some(given) => {
+                load.seeds = given
+                load.seeded = true
+            }
+            case None => {}
+        }
+        if options.deterministic {
+            page :: slop_os.memory_create(child, 4096) or_return .Error(.NoBudget)
+            if !add_grant(&load, "deterministic", cast[slop_os.Handle](page)) {
+                _ = slop_os.handle_close(cast[slop_os.Handle](page))
+                return .Error(.BadGrants)
+            }
         }
         match options.result {
             case Some(memory) => if !add_grant(&load, "result", cast[slop_os.Handle](memory)) {
@@ -949,7 +982,8 @@ package os
         match message_of[process_manager.Response](&into)^ {
             case Loaded(loaded) => {
                 started = true
-                return .Ok(Launched.{process = process, budget = child, thread = loaded.thread, image = loaded.image, faults = faults})
+                return .Ok(Launched.{process = process, budget = child, thread = loaded.thread, image = loaded.image, faults = faults,
+                    seeds = loaded.seeds})
             }
             case _ => return .Error(.NotLoaded)
         }

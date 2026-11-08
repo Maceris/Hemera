@@ -31,6 +31,11 @@ ProcessState :: struct {
     /** On SlopOS, the startup block the entry was given. Null elsewhere, or when there was none. */
     startup_block : rawptr,
     /**
+     * On SlopOS, whether the process runs in the deterministic mode (deterministic_turn): 0 before it's looked up,
+     * 1 off, 2 on. Written atomically; 0 elsewhere, where the mode isn't.
+     */
+    deterministic : u32,
+    /**
      * On SlopOS, how many bytes of the startup block's free range of addresses have been handed out, for the heap and
      * other mappings; only grows, atomically.
      */

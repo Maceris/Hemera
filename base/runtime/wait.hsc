@@ -11,6 +11,22 @@ import intrinsics from "base"
  * A wait whose value already changed returns at once. Without an operating system to sleep on,
  * waiting just spins once, so callers loop the same either way.
  */
+/**
+ * Give a recording its turn, where a thread waits for another without a system call: in the deterministic mode
+ * (SlopOS's grant "deterministic", the SlopOS repository's decisions/0183), a system call, the cheapest there is, at
+ * which a recorder or replayer that runs one thread at a time can switch to another, so a thread spinning for a
+ * value another thread is to change doesn't spin for good. Elsewhere, or out of the mode, nothing.
+ *
+ * wait_on_value calls it, and so does each spin of std's locks and fiber pools.
+ */
+deterministic_turn :: fn() #no_context {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+        if slop_os_deterministic() {
+            _ = slop_os_call(SLOP_OS_CALL_CLOCK_MONOTONIC)
+        }
+    }
+}
+
 // Windows' are in windows.hsc, Linux's on x86-64 and AArch64 in linux.hsc, and SlopOS's in slop_os_threads.hsc
 #if OS != .Windows && !(OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64))
     && !(OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64)) {

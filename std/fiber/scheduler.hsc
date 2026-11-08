@@ -276,6 +276,7 @@ run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
                 }
                 idle += 1
                 if idle < IDLE_SPINS {
+                    runtime.deterministic_turn()
                     intrinsics.spin_hint()
                 }
                 else {

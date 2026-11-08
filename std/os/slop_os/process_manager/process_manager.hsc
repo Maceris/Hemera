@@ -72,6 +72,14 @@ package process_manager
         labels : u8[MAX_GRANTS][slop_os.GRANT_LABEL_SIZE],
         /** The handles the program starts with, each with RIGHT_TRANSFER; the first grant_count are used. */
         grants : slop_os.Handle[MAX_GRANTS],
+        /**
+         * The seeds to build it with, when seeded: the program's own 32 bytes (its context.random), then the 32 its
+         * layout's drawn from; so a replay is the recording's program to the byte (the SlopOS repository's
+         * decisions/0183). Unused otherwise, when the manager draws them.
+         */
+        seeds : u8[64],
+        /** Whether seeds are given; false for the manager's own, from the entropy service. */
+        seeded : bool,
     }
 
     /** Why a Load failed, as NotLoaded says. */
@@ -94,6 +102,8 @@ package process_manager
         thread : u64,
         /** The address its image was loaded at, which its relocations were applied for, in its address space. */
         image : u64,
+        /** The seeds it was built with, given or drawn (Load's seeds). */
+        seeds : u8[64],
     }
 
     /** What the process manager answers. */

@@ -1222,6 +1222,8 @@ STOP_FAULT : u32 : 1 << 2
  * those numbered 64 and up too, as a recording needs.
  */
 STOP_ALL_CALLS : u32 : 1 << 4
+/** A new thread, before its first instruction, so a recording can run one thread at a time from the start. */
+STOP_THREAD_START : u32 : 1 << 5
 
 /** For process_set_traps: reading the CPU's counter in user mode (x86-64's RDTSC, AArch64's CNTVCT_EL0 and CNTPCT_EL0). */
 TRAP_COUNTER : u32 : 1 << 0
@@ -1240,6 +1242,8 @@ StopPoint :: enum #backed_by(u32) {
     SyscallExit = 2,
     /** At a fault (STOP_FAULT). */
     Fault = 3,
+    /** A new thread, before its first instruction (STOP_THREAD_START). */
+    ThreadStart = 4,
 }
 
 /** One stop, as intercept_next writes it. */
