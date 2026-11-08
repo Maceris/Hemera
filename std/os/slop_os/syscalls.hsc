@@ -1046,6 +1046,33 @@ Syscalls :: struct {
      * @error NoSuchController No controller is registered with that number.
      */
     controller_set_source : fn(platform: Platform, controller: u32, source: u32) -> Result[void, DeviceError],
+    /**
+     * Set a parked thread's debugging state (decisions/0183, 12b): whether it stops after each instruction it runs,
+     * and its hardware breakpoints and watchpoints. Each is a fault stop for an intercept that takes faults:
+     * FAULT_SINGLE_STEP after a step, FAULT_BREAKPOINT at an Execute slot's address, before the instruction there
+     * runs, and FAULT_WATCHPOINT at a data slot's, at the access, which on some architectures is before it's done and
+     * on others after. The state is the thread's, on whatever CPU it runs, until it's set again; a thread starts with
+     * none. Without such an intercept, a stop ends the thread's process, as any fault does.
+     *
+     * @param process The process, which needs RIGHT_PROCESS_WRITE_STATE.
+     * @param thread The thread's ID, as process_threads gives it.
+     * @param debug What's set; all of it replaces what the thread had.
+     * @error NoSuchThread No live thread with that ID in the subtree.
+     * @error NotStopped The thread isn't parked: stopped or suspended, and off its CPU.
+     * @error BadBuffer debug isn't memory the caller can read.
+     * @error BadRegisters A slot the architecture can't set: an address outside user memory, a data slot's size not 1,
+     *     2, 4 or 8 or its address not a multiple of it, or more slots of a kind than the CPU has.
+     */
+    thread_set_debug : fn(process: Process, thread: u64, debug: ptr[ThreadDebug]) -> Result[void, ControlError],
+    /**
+     * Change where an intercept stops threads, as intercept_attach's calls and points say; threads stopped already
+     * stay stopped until they're let go.
+     *
+     * @param intercept The intercept; no right is needed.
+     * @param calls Which system calls stop at entry or exit from now: a bit per call number below 64 (syscall_bit).
+     * @param points STOP_ bits: where threads stop from now.
+     */
+    intercept_set : fn(intercept: Intercept, calls: u64, points: u32) -> Result[void, ControlError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
@@ -1233,6 +1260,41 @@ FAULT_ALIGNMENT : u32 : 7
 FAULT_PROTECTION : u32 : 8
 /** An unmasked floating-point or vector exception; the address is meaningless. */
 FAULT_FLOATING_POINT : u32 : 9
+/** A hardware watchpoint was hit (thread_set_debug); the address is the one accessed, within the slot's. */
+FAULT_WATCHPOINT : u32 : 10
+
+/** How many hardware breakpoints and watchpoints a thread can have, as ThreadDebug's slots. */
+DEBUG_SLOTS :: 4
+
+/** What a DebugSlot watches. */
+DebugSlotKind :: enum #backed_by(u8) {
+    /** Nothing: the slot's unused. */
+    Off = 0,
+    /** Running the instruction at its address: a breakpoint. */
+    Execute = 1,
+    /** Writes to its bytes: a watchpoint. */
+    Write = 2,
+    /** Reads and writes of its bytes: a watchpoint. */
+    ReadWrite = 3,
+}
+
+/** A hardware breakpoint or watchpoint, for thread_set_debug. */
+DebugSlot :: struct {
+    /** The instruction's address, or the first byte watched; a user address. */
+    address : u64,
+    /** What it watches; Off for nothing. */
+    kind : DebugSlotKind,
+    /** How many bytes a watchpoint watches, 1, 2, 4 or 8, its address a multiple of it; ignored for Execute. */
+    size : u8,
+}
+
+/** A thread's debugging state, for thread_set_debug. */
+ThreadDebug :: struct {
+    /** Whether it stops after each instruction it runs, as a FAULT_SINGLE_STEP. */
+    step : bool,
+    /** Its hardware breakpoints and watchpoints; slots that are Off are unused. */
+    slots : DebugSlot[DEBUG_SLOTS],
+}
 
 /**
  * Name a fault's kind, for a person reading a report.
@@ -1252,6 +1314,7 @@ fault_name :: fn(kind: u32) -> string #no_context {
         case FAULT_ALIGNMENT => return "alignment fault"
         case FAULT_PROTECTION => return "protection fault"
         case FAULT_FLOATING_POINT => return "floating-point fault"
+        case FAULT_WATCHPOINT => return "watchpoint"
         case _ => return "unknown fault"
     }
 }

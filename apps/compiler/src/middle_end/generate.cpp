@@ -5406,12 +5406,13 @@ namespace hemera {
 			result = intrinsic_value(pair_result(generator, {}, "rdtsc", "={eax},={edx},~{memory}"), function);
 			return true;
 		}
-		if (name.starts_with("read_cr")) {
+		// read_cr0 to read_cr4, and the debug registers read_dr0 to read_dr7
+		if (name.starts_with("read_cr") || name.starts_with("read_dr")) {
 			const std::string text = std::format("movq %{}, $0", name.substr(5));
 			result = intrinsic_value(assembly(generator, i64, {}, text, "=r,~{memory}"), function);
 			return true;
 		}
-		if (name.starts_with("write_cr")) {
+		if (name.starts_with("write_cr") || name.starts_with("write_dr")) {
 			const std::string text = std::format("movq $0, %{}", name.substr(6));
 			assembly(generator, mlir::Type(), arguments, text, "r,~{memory}");
 			return true;

@@ -320,6 +320,54 @@ read_cr4 : fn() -> u64 : ---
  */
 write_cr4 : fn(value: u64) : ---
 /**
+ * Read a debug register: DR0 to DR3, the breakpoints' linear addresses.
+ *
+ * @return Its address.
+ */
+read_dr0 : fn() -> u64 : ---
+/** Read DR1, as read_dr0. */
+read_dr1 : fn() -> u64 : ---
+/** Read DR2, as read_dr0. */
+read_dr2 : fn() -> u64 : ---
+/** Read DR3, as read_dr0. */
+read_dr3 : fn() -> u64 : ---
+/**
+ * Read DR6, the debug status.
+ *
+ * @return Its bits: B0 to B3 (0 to 3) for the breakpoints that matched, BS (14) for a single step.
+ */
+read_dr6 : fn() -> u64 : ---
+/**
+ * Read DR7, the debug control.
+ *
+ * @return Its bits: each breakpoint's local enable (bit 2n), and its condition and length (bits 16 + 4n on).
+ */
+read_dr7 : fn() -> u64 : ---
+/**
+ * Write a debug register: DR0 to DR3, the breakpoints' linear addresses.
+ *
+ * @param value The address.
+ */
+write_dr0 : fn(value: u64) : ---
+/** Write DR1, as write_dr0. */
+write_dr1 : fn(value: u64) : ---
+/** Write DR2, as write_dr0. */
+write_dr2 : fn(value: u64) : ---
+/** Write DR3, as write_dr0. */
+write_dr3 : fn(value: u64) : ---
+/**
+ * Write DR6, the debug status, which the CPU never clears itself.
+ *
+ * @param value Its new bits; 0xffff0ff0 clears what a debug exception set.
+ */
+write_dr6 : fn(value: u64) : ---
+/**
+ * Write DR7, the debug control.
+ *
+ * @param value Its new bits; 0x400 (bit 10 is always 1) turns every breakpoint off.
+ */
+write_dr7 : fn(value: u64) : ---
+/**
  * Leave a bootloader for what it loaded, never to come back: page_table loaded into CR3, the stack pointer set to
  * stack, and entry jumped to with argument as its first argument in the C convention of ELF programs (rdi), and a
  * zero return address above it.
