@@ -139,6 +139,8 @@ RIGHT_PROCESS_KILL : Rights : 1 << 12
 RIGHT_PROCESS_THREADS : Rights : 1 << 13
 /** A debug log: write lines to it. */
 RIGHT_DEBUG_LOG_WRITE : Rights : 1 << 8
+/** A debug log: may turn the kernel's trace on and read it (trace_set, trace_read), which shows every process's scheduling. */
+RIGHT_DEBUG_LOG_TRACE : Rights : 1 << 9
 /** A CPU budget: may split child budgets off it (cpu_budget_create). */
 RIGHT_CPU_BUDGET_SPLIT : Rights : 1 << 8
 /** A CPU budget: may change its parameters (cpu_budget_set, cpu_budget_set_cpus). */
@@ -1083,6 +1085,45 @@ Syscalls :: struct {
      *     process starts.
      */
     process_set_traps : fn(process: Process, traps: u32) -> Result[void, ControlError],
+    /**
+     * Turn the kernel's trace on or off (decisions/0183, 12d): each CPU keeps the last TRACE_EVENTS of its scheduler's
+     * events, a thread switched to and a thread made ready, for trace_read. It shows every process's scheduling, so it
+     * takes the kernel's debug log with RIGHT_DEBUG_LOG_TRACE, which the system's supervisor holds.
+     *
+     * @param log The kernel's debug log, with RIGHT_DEBUG_LOG_TRACE.
+     * @param on Whether it traces from now.
+     * @error OutOfMemory The kernel had no memory for a CPU's ring, the first time it's turned on.
+     */
+    trace_set : fn(log: DebugLog, on: bool) -> Result[void, DeviceError],
+    /**
+     * Take the trace's events not yet taken, each CPU's in turn, oldest first within a CPU; a CPU's older than its last
+     * TRACE_EVENTS are gone.
+     *
+     * @param log The kernel's debug log, with RIGHT_DEBUG_LOG_TRACE.
+     * @param events Where they go; as many as fit, the rest left for the next read.
+     * @return How many were written.
+     * @error BadAddress events isn't memory the caller can write.
+     */
+    trace_read : fn(log: DebugLog, events: mut TraceEvent[]) -> Result[u32, DeviceError],
+    /**
+     * Sample an intercept's subtree, or stop (decisions/0183, 12d): at each tick of a CPU running one of its threads in
+     * user mode, the thread, its program counter and the return addresses its frame pointers chain, up to
+     * SAMPLE_FRAMES, kept for intercept_samples, the last SAMPLES of them.
+     *
+     * @param intercept The intercept; no right is needed, as its holder controls the subtree already.
+     * @param on Whether it samples from now.
+     * @error OutOfMemory The kernel had no memory for its samples, the first time it's turned on.
+     */
+    intercept_sample : fn(intercept: Intercept, on: bool) -> Result[void, ControlError],
+    /**
+     * Take an intercept's samples not yet taken, oldest first.
+     *
+     * @param intercept The intercept.
+     * @param samples Where they go; as many as fit, the rest left for the next read.
+     * @return How many were written.
+     * @error BadBuffer samples isn't memory the caller can write.
+     */
+    intercept_samples : fn(intercept: Intercept, samples: mut Sample[]) -> Result[u32, ControlError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
@@ -1224,6 +1265,46 @@ STOP_FAULT : u32 : 1 << 2
 STOP_ALL_CALLS : u32 : 1 << 4
 /** A new thread, before its first instruction, so a recording can run one thread at a time from the start. */
 STOP_THREAD_START : u32 : 1 << 5
+
+/** How many of its scheduler's events each CPU keeps for trace_read: the last of them. */
+TRACE_EVENTS :: 1024
+
+/** What a TraceEvent is. */
+TraceKind :: enum #backed_by(u32) {
+    /** A CPU switched to a thread: other is 0. */
+    Switch = 1,
+    /** A thread was made ready, as a wake or a preemption does: other is the CPU it was queued on. */
+    Wake = 2,
+}
+
+/** One of the kernel's trace's events (trace_read). */
+TraceEvent :: struct {
+    /** When, in nanoseconds of the monotonic clock. */
+    time : u64,
+    /** What happened. */
+    kind : TraceKind,
+    /** The CPU it happened on, by its index. */
+    cpu : u32,
+    /** The thread's ID. */
+    thread : u64,
+    /** What else, as kind says. */
+    other : u64,
+}
+
+/** How many return addresses a Sample holds, its program counter among them. */
+SAMPLE_FRAMES :: 8
+/** How many samples an intercept keeps for intercept_samples: the last of them. */
+SAMPLES :: 1024
+
+/** A sample of a thread's stack at a tick (intercept_sample). */
+Sample :: struct {
+    /** The thread's ID. */
+    thread : u64,
+    /** How many of frames are used, 1 or more. */
+    count : u32,
+    /** Its program counter, then each caller's return address, innermost first, as its frame pointers chain them. */
+    frames : u64[SAMPLE_FRAMES],
+}
 
 /** For process_set_traps: reading the CPU's counter in user mode (x86-64's RDTSC, AArch64's CNTVCT_EL0 and CNTPCT_EL0). */
 TRAP_COUNTER : u32 : 1 << 0
