@@ -281,11 +281,13 @@ Syscalls :: struct {
      * the deadline does.
      *
      * @param port The port, which needs RIGHT_PORT_WAIT.
-     * @param packets Where packets are written, at most MAX_PACKETS_PER_WAIT of them however big it is. Empty, the
-     *     call returns 0 at once.
+     * @param packets Where packets are written: room for at least one, and at most MAX_PACKETS_PER_WAIT are written
+     *     however big it is.
      * @param deadline When to give up, in the monotonic clock's nanoseconds, or NO_DEADLINE to wait for as long as it
      *     takes.
      * @return How many packets it wrote at the start of packets: at least 1, or 0 when the deadline came first.
+     * @error BufferTooSmall The packets are empty. A wait that could take nothing is refused at once rather than
+     *     waited; to pause until a deadline, wait with room for a packet on a port nothing is bound to.
      * @error BadBuffer The packets aren't memory the caller can write.
      */
     port_wait : fn(port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, PortError],
@@ -394,6 +396,7 @@ Syscalls :: struct {
      * @param deadline When to give up, as port_wait's.
      * @return How many packets it wrote, as port_wait's.
      * @error PeerClosed The other end is closed; nothing is waited for.
+     * @error BufferTooSmall The packets are empty, as port_wait's; nothing is raised or waited for.
      * @error BadBuffer The packets aren't memory the caller can write.
      */
     channel_notify_and_wait : fn(end: Channel, signals: Signals, port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, ChannelError],
@@ -1696,6 +1699,8 @@ PortError :: enum #backed_by(u32) {
     BadBuffer = 10,
     /** The object has as many bindings as it takes. */
     TooManyBindings = 11,
+    /** A port_wait's packets have no room for one, so it could take nothing. */
+    BufferTooSmall = 16,
     /** The budget can't pay for it (decisions/0011). */
     BudgetExceeded = 25,
 }
@@ -1727,7 +1732,10 @@ ChannelError :: enum #backed_by(u32) {
      * MAX_HANDLES_PER_BATCH.
      */
     TooBig = 15,
-    /** The message doesn't fit in the buffer; the call's first value is its size. */
+    /**
+     * The message doesn't fit in the buffer, when the call's first value is its size; or channel_notify_and_wait's
+     * packets are empty, as PortError's.
+     */
     BufferTooSmall = 16,
     /** The end's rings are mapped already, or it can't be sent while they are. */
     Mapped = 17,
