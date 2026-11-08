@@ -993,6 +993,47 @@ Syscalls :: struct {
      * @error MissingRight Not the owning handle.
      */
     memory_holders : fn(memory: Memory) -> Result[u64, MemoryError],
+    /**
+     * Tell the kernel how this machine turns off (the SlopOS repository's decisions/0182), where it needs the firmware
+     * to know: on x86-64, ACPI's PM1 control registers and the sleep type of S5, `\_S5`'s values. Read-modify-written
+     * at the end, with SLP_EN set, after every other CPU has stopped. Calling it again replaces what was set, as an
+     * ACPI service started again does.
+     *
+     * @param platform A handle to the Platform object, the authority over the machine's hardware, which the root task
+     *     is given; no right is needed.
+     * @param control_a The PM1a control register's I/O port, 1 to 65535.
+     * @param control_b The PM1b control register's I/O port, 1 to 65535; 0 where there's no PM1b block.
+     * @param sleep_a The sleep type written to PM1a's SLP_TYP for S5, 0 to 7.
+     * @param sleep_b The sleep type written to PM1b's SLP_TYP for S5, 0 to 7; ignored without a PM1b block.
+     * @error InvalidArgument A control_a of 0, or a sleep type over 7; or an architecture that turns off without
+     *     the firmware's tables, as AArch64 does through PSCI.
+     */
+    power_set_off : fn(platform: Platform, control_a: u32, control_b: u32, sleep_a: u32, sleep_b: u32) -> Result[void, DeviceError],
+    /**
+     * Tell the kernel how this machine resets (decisions/0182), where the firmware says: on x86-64, the FADT's reset
+     * register when it's an I/O port. Without it, the kernel resets x86-64 through the chipset's register, 0xcf9.
+     * Calling it again replaces what was set.
+     *
+     * @param platform A handle to the Platform object; no right is needed.
+     * @param port The reset register's I/O port, 1 to 65535.
+     * @param value The byte written to it to reset, 0 to 255.
+     * @error InvalidArgument A port of 0 or over 65535, or a value over 255; or an architecture without I/O ports or
+     *     that resets through PSCI.
+     */
+    power_set_reset : fn(platform: Platform, port: u32, value: u32) -> Result[void, DeviceError],
+    /**
+     * Say what the kernel does once the root task ends (decisions/0182): halt, as it always has, turn the machine
+     * off, or restart it. It's done after every other CPU has stopped and the objects left are logged; with test_exit
+     * on the kernel's command line, the emulator is asked to exit with RootTaskEnded instead, unless test_power is on
+     * it too. Calling it again replaces what was asked.
+     *
+     * @param platform A handle to the Platform object; no right is needed.
+     * @param action What to do.
+     * @error NoPowerOff Off, on a machine the kernel can't turn off: on x86-64 until power_set_off, or on AArch64
+     *     without PSCI.
+     * @error InvalidArgument An action that isn't one of PowerAction's.
+     */
+    power_end_with : fn(platform: Platform, action: PowerAction) -> Result[void, DeviceError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
@@ -1601,6 +1642,18 @@ DeviceError :: enum #backed_by(u32) {
      * isn't online, or isn't the caller's CPU budget's.
      */
     InvalidArgument = 46,
+    /** The kernel has no way to turn this machine off: no power_set_off on x86-64, or no PSCI on AArch64. */
+    NoPowerOff = 47,
+}
+
+/** For power_end_with: what the kernel does once the root task ends. */
+PowerAction :: enum #backed_by(u32) {
+    /** Halt every CPU, leaving the machine on: what it does when nothing's been asked. */
+    Halt = 1,
+    /** Turn the machine off: ACPI's S5 on x86-64, PSCI's SYSTEM_OFF on AArch64. */
+    Off = 2,
+    /** Reset the machine, warm, so it boots again. */
+    Restart = 3,
 }
 
 /** The most message-signaled IRQs one device has at once. */
