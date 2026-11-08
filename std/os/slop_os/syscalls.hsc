@@ -1034,6 +1034,18 @@ Syscalls :: struct {
      * @error InvalidArgument An action that isn't one of PowerAction's.
      */
     power_end_with : fn(platform: Platform, action: PowerAction) -> Result[void, DeviceError],
+    /**
+     * Say which requester ID an interrupt controller's interrupts come from, as the IOMMU that remaps them sees it
+     * (the SlopOS repository's decisions/0182): an I/O APIC's, from the DMAR's device scope for it. With it, the
+     * controller's lines are routed through the IOMMU's interrupt remapping, which takes their interrupts only from
+     * it; without it, once an IOMMU remaps interrupts, irq_create refuses its lines (NoController).
+     *
+     * @param platform A handle to the Platform object; no right is needed.
+     * @param controller The controller's number, from controller_register.
+     * @param source Its requester ID with its segment, as device_address makes it.
+     * @error NoSuchController No controller is registered with that number.
+     */
+    controller_set_source : fn(platform: Platform, controller: u32, source: u32) -> Result[void, DeviceError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
