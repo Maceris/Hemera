@@ -535,7 +535,7 @@ schema_try_write_value_at :: fn(data: rawptr, type: ptr[compiler.TypeInfo], into
  * @param into Where the value goes: type.size bytes that can be written, left as they were when it fails.
  * @return Whether the value was read. False, with nothing stored, when bytes are fewer than the type's size or
  *     empty, when there isn't the memory for the copy, when a distance points past what was written, when a string or
- *     view that isn't empty is null, when a C string has no 0 byte before the end of what was written, when what a
+ *     view that isn't empty is null (an empty one is read as null, wherever its writer said it pointed), when a C string has no 0 byte before the end of what was written, when what a
  *     pointer points to doesn't come after the value and all that pointers before it point to, as the writer lays
  *     them out, so no byte is read as two things, when a union's tag names no variant, or when pointers go more than
  *     SCHEMA_MAX_DEPTH deep; the copy is freed then. What the writer writes as 0 is read as 0 whatever the bytes say,
@@ -690,6 +690,11 @@ schema_relocate :: fn(copy: mut u8[], at: usize, type: ptr[compiler.TypeInfo], d
         if count > 0 && schema_read_word(copy, at + 8) == 0 {
             return false
         }
+        // An empty one's pointer is null, whatever its writer gave: with nothing to point to, it can't point inside
+        if count == 0 {
+            schema_write_word(copy, at + 8, 0)
+            return true
+        }
         _ = schema_relocate_word(copy, at + 8, count, &ok, next)
         return ok
     }
@@ -793,6 +798,11 @@ schema_relocate_array :: fn(copy: mut u8[], at: usize, info: ptr[compiler.TypeIn
         // Its capacity and allocator are another program's, if they're anything: none, so it owns no memory yet
         if array_type == .DYNAMIC {
             schema_zero_copy(copy, at + 16, size_of(ResizableArray) - 16)
+        }
+        // An empty one's pointer is null, whatever its writer gave: with nothing to point to, it can't point inside
+        if count == 0 {
+            schema_write_word(copy, at + 8, 0)
+            return true
         }
         match schema_relocate_word(copy, at + 8, count * element_size, &ok, next) {
             case Some(copied) => elements = copied

@@ -231,6 +231,34 @@ writes_values_for_elsewhere #test :: fn(t: ptr[mut testing.T]) -> testing.Outcom
     return .Ok
 }
 
+/**
+ * Write a value and read it back.
+ *
+ * @tparam T The value's type.
+ * @param value The value.
+ * @return Whether it was read back.
+ */
+reads_back :: fn[T](value: T) -> bool {
+    bytes : u8[..]
+    defer runtime.array_free(&bytes)
+    schema.write_value(value, &bytes)
+    return schema.read_value[T](bytes[0..<bytes.count]) is_some
+}
+
+reads_empty_strings_and_views_back #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    // Empty, but pointing somewhere: their writer gives where their bytes would go, past what it writes
+    numbers :: u64.[1, 2]
+    words :: string.["a", "bc"]
+    testing.expect(t, reads_back(""), "an empty string pointing to a literal is read back")
+    testing.expect(t, reads_back(numbers[0..<0]), "an empty view of an array is read back")
+    testing.expect(t, reads_back(words[0..<0]), "an empty view of strings is read back")
+    none : u64[]
+    testing.expect(t, reads_back(none), "a null view is read back")
+    listed : string[] = words
+    testing.expect(t, reads_back(listed), "a view of strings is read back")
+    return .Ok
+}
+
 agrees_with_stds_blake3 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     // Across chunk and block edges
     data : u8[5000]
