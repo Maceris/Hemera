@@ -1168,7 +1168,33 @@ Syscalls :: struct {
      * @error OutOfMemory Its page had no frame yet, and there were none.
      */
     thread_set_page : fn(memory: Memory, offset: u64) -> Result[void, MemoryError],
+    /**
+     * Say what hardware control-flow integrity a process's code was built for, as its ELF's property note says, and give
+     * the region of its address space its threads' shadow stacks go in (the SlopOS repository's decisions/0186). From then
+     * on, where the CPU has them, each thread made in it gets a shadow stack of its own there before it runs, in a slot of
+     * a guard page and SHADOW_STACK_BYTES, which the kernel makes and maps and gives back when the thread ends; and its
+     * threads have landing pads checked. Made before its first thread, normally by whoever loads its program.
+     *
+     * @param process The process, which needs RIGHT_PROCESS_THREADS.
+     * @param features CONTROL_FLOW_ bits; others are ignored.
+     * @param region With CONTROL_FLOW_SHADOW_STACK, where the shadow stacks go: page-aligned, free user space, room for at
+     *     least one slot; at most 256 slots are used. Ignored without it.
+     * @param size The region's size in bytes.
+     * @error BadAddress A region that isn't page-aligned, is too small for a slot, or wraps; or any, once a thread of the
+     *     process has a shadow stack. One that isn't free fails each thread's creation instead.
+     */
+    process_set_control_flow : fn(process: Process, features: u32, region: u64, size: u64) -> Result[void, ControlError],
 }
+
+// What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
+/** Landing pads at indirect branches' targets: x86-64's endbr64, AArch64's bti. */
+CONTROL_FLOW_LANDING_PADS : u32 : 1 << 0
+/** A shadow stack's checks of every return: x86-64's CET shadow stacks, AArch64's Guarded Control Stack. */
+CONTROL_FLOW_SHADOW_STACK : u32 : 1 << 1
+/** Return addresses signed and authenticated: AArch64's pointer authentication. */
+CONTROL_FLOW_SIGNED_RETURNS : u32 : 1 << 2
+/** The bytes of each thread's shadow stack, 8192 return addresses, which its fibers share. */
+SHADOW_STACK_BYTES : u64 : 64 * 1024
 
 /**
  * A thread's per-thread page (thread_set_page), as the thread writes it: the kernel only reads it, at its scheduling
