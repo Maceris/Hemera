@@ -808,7 +808,12 @@ package os
             }
         }
         block :: slop_os.startup_block()
-        child :: slop_os.memory_budget_create(block.budget, budget) or_return .Error(.NoBudget)
+        /*
+         * With the shadow stacks of its first thread and its lifecycle thread on top, where the CPU gives them, so the
+         * program has what it was given
+         */
+        threads :: if options.lifecycle is_some { cast[u64](2) } else { cast[u64](1) }
+        child :: slop_os.memory_budget_create(block.budget, budget + slop_os.shadow_stacks_budget(threads)) or_return .Error(.NoBudget)
         load := process_manager.Load.{name = label_from(name)}
         process := cast[slop_os.Process](slop_os.NO_HANDLE)
         watch : LaunchWatch? = null

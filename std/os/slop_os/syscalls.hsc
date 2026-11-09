@@ -1197,6 +1197,24 @@ CONTROL_FLOW_SIGNED_RETURNS : u32 : 1 << 2
 SHADOW_STACK_BYTES : u64 : 64 * 1024
 
 /**
+ * What the shadow stacks of a program's first threads take from its budget, where the CPU gives threads shadow stacks:
+ * each one's memory, with up to 3 pages for the memory object's own bookkeeping, and up to 3 pages of page tables
+ * mapping them, which are new for the first. A launcher adds it to the budget it was asked for, so the program has
+ * what it was given for itself: for its first thread, and the runtime's lifecycle thread where it's given a lifecycle
+ * channel (the SlopOS repository's decisions/0186).
+ *
+ * @param threads How many threads' shadow stacks: 1 or more; 0 gives 0.
+ * @return The bytes; 0 where the CPU has neither CET's shadow stacks nor AArch64's Guarded Control Stack.
+ */
+shadow_stacks_budget :: fn(threads: u64) -> u64 {
+    features :: &startup_block().cpu_features
+    if threads == 0 || (!has_feature(features, .X86ShadowStack) && !has_feature(features, .Aarch64Gcs)) {
+        return 0
+    }
+    return threads * (SHADOW_STACK_BYTES + 3 * 4096) + 3 * 4096
+}
+
+/**
  * A thread's per-thread page (thread_set_page), as the thread writes it: the kernel only reads it, at its scheduling
  * points, so a change is seen at the next one.
  */
