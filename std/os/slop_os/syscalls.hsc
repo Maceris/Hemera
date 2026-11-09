@@ -1444,6 +1444,19 @@ FAULT_WATCHPOINT : u32 : 10
  * names, the thread past it. A debugger can change that register before the thread goes on.
  */
 FAULT_COUNTER : u32 : 11
+/**
+ * A return the shadow stack refused, the hardware's copy of the return address not matching the stack's: x86-64's
+ * control protection exception on a return, or AArch64's Guarded Control Stack (the SlopOS repository's decisions/
+ * 0186); the address is meaningless.
+ */
+FAULT_SHADOW_STACK : u32 : 12
+/**
+ * An indirect branch to an instruction that isn't a landing pad: x86-64's indirect branch tracking (no endbr64), or
+ * AArch64's branch target identification (no bti) on a guarded page; the address is meaningless.
+ */
+FAULT_LANDING_PAD : u32 : 13
+/** A pointer, a signed return address, that failed authentication (AArch64's FEAT_FPAC); the address is meaningless. */
+FAULT_AUTHENTICATION : u32 : 14
 
 /** How many hardware breakpoints and watchpoints a thread can have, as ThreadDebug's slots. */
 DEBUG_SLOTS :: 4
@@ -1498,6 +1511,9 @@ fault_name :: fn(kind: u32) -> string #no_context {
         case FAULT_FLOATING_POINT => return "floating-point fault"
         case FAULT_WATCHPOINT => return "watchpoint"
         case FAULT_COUNTER => return "counter read"
+        case FAULT_SHADOW_STACK => return "shadow stack fault"
+        case FAULT_LANDING_PAD => return "branch to no landing pad"
+        case FAULT_AUTHENTICATION => return "failed authentication"
         case _ => return "unknown fault"
     }
 }
