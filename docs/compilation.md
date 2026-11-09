@@ -693,8 +693,10 @@ given when it needs it. The debug file is little-endian:
   (a `u16`, 1), the schemas (a `u32` count, then each as a `u32` size and its bytes, as `schema.write` writes them),
   and the functions (a `u32` count, then each its symbol, the `DW_AT_linkage_name` its DWARF has, and its locals: a
   `u32` count, then each one's name, line (a `u32`), argument number (a `u32`, from 1, or 0 for a local that isn't a
-  parameter) and schema (a `u32`, its place among the schemas)). A name or a symbol is its length, a `u32`, and its
-  bytes.
+  parameter) and schema (a `u32`, its place among the schemas)), then the named types (a `u32` count, then each its
+  name and its schema's place): the types a debugger lays the runtime's memory out by, those of `runtime.CarrierBlock`,
+  `runtime.Fiber`, `fiber.FiberPool` and `fiber.PoolCarrier` the program has. A name or a symbol is its length, a
+  `u32`, and its bytes.
 
 Stack traces give their frames as offsets into the program's image (`runtime.image_offset`), which are the same every
 run, wherever the system loaded it. `hemera --symbolize` turns them into functions, files and lines, from the

@@ -346,7 +346,15 @@ TEST(Freestanding, SplitsSlopOSDebugInfo)
 			}
 		}
 	}
-	EXPECT_EQ(at, bytes.size()) << "the table has bytes after its functions";
+	// The named types, the carrier block's among them
+	std::set<std::string> named;
+	const size_t named_count = read_number(bytes, at, 4);
+	for (size_t i = 0; i < named_count && at < bytes.size(); ++i) {
+		named.insert(read_name(bytes, at));
+		EXPECT_LT(read_number(bytes, at, 4), schemas.size());
+	}
+	EXPECT_TRUE(named.contains("runtime.CarrierBlock"));
+	EXPECT_EQ(at, bytes.size()) << "the table has bytes after its named types";
 	ASSERT_TRUE(main_locals.contains("count")) << "main's count isn't in the table";
 	EXPECT_EQ(main_locals["count"].first, 1u);
 	EXPECT_EQ(main_locals["label"].first, 2u);

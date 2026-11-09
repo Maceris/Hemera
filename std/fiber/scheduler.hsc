@@ -67,6 +67,13 @@ FiberPool :: struct {
      * safe for that.
      */
     allocator : runtime.Allocator,
+    /**
+     * Every fiber spawned that hasn't finished, parked ones too, linked through Fiber.all_next and all_previous, newest
+     * first: what a debugger lists, as the queues hold only those ready to run. Null when there's none.
+     */
+    all : ptr[mut runtime.Fiber]?,
+    /** Guards all, apart from the shared queue's lock so spawning and finishing don't contend with taking work. */
+    all_lock : concurrency.SpinLock,
 }
 
 /** The most carriers one pool can have; a thread joining past it logs an error and leaves run_carrier at once. */
@@ -121,6 +128,8 @@ create_fiber_pool :: fn(allocator := context.allocator) -> ptr[mut FiberPool] {
     pool :: runtime.new(FiberPool, allocator)
     pool.scheduler.wake_function = requeue_fiber
     pool.lock = concurrency.SpinLock.{}
+    pool.all = null
+    pool.all_lock = concurrency.SpinLock.{}
     pool.first = null
     pool.last = null
     pool.shared_count = 0
@@ -181,6 +190,7 @@ spawn :: fn(
         case Some(fiber) => {
             fiber.scheduler = &pool.scheduler
             intrinsics.interlocked_exchange_add_u64(&pool.live, 1)
+            link_fiber(pool, fiber)
             match carrier_in(pool) {
                 case Some(here) => add_local(here, fiber)
                 case None => add_shared(pool, fiber, fiber, 1)
@@ -329,6 +339,7 @@ run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fib
         }
     }
     else {
+        unlink_fiber(pool, fiber)
         runtime.fiber_destroy(fiber, pool.allocator)
         // The last one (it gives the count from before): carriers asleep can leave, if the pool is closed
         if intrinsics.interlocked_decrement_u64(&pool.live) == 1 {
@@ -692,4 +703,43 @@ take_shared :: fn(here: ptr[mut PoolCarrier]) -> ptr[mut runtime.Fiber]? {
  */
 min_of :: fn(a, b: u64) -> u64 {
     return if a < b { a } else { b }
+}
+
+/**
+ * Add a fiber to its pool's list of every fiber, at the front.
+ *
+ * @param pool The pool.
+ * @param fiber The fiber, just made, on no list.
+ */
+link_fiber :: fn(pool: ptr[mut FiberPool], fiber #escaping : ptr[mut runtime.Fiber]) {
+    concurrency.lock(&pool.all_lock)
+    fiber.all_previous = null
+    fiber.all_next = pool.all
+    match pool.all {
+        case Some(first) => first.all_previous = fiber
+        case None => {}
+    }
+    pool.all = fiber
+    concurrency.unlock(&pool.all_lock)
+}
+
+/**
+ * Take a finished fiber off its pool's list of every fiber.
+ *
+ * @param pool The pool.
+ * @param fiber The fiber, on the pool's list.
+ */
+unlink_fiber :: fn(pool: ptr[mut FiberPool], fiber: ptr[mut runtime.Fiber]) {
+    concurrency.lock(&pool.all_lock)
+    match fiber.all_previous {
+        case Some(previous) => previous.all_next = fiber.all_next
+        case None => pool.all = fiber.all_next
+    }
+    match fiber.all_next {
+        case Some(next) => next.all_previous = fiber.all_previous
+        case None => {}
+    }
+    fiber.all_next = null
+    fiber.all_previous = null
+    concurrency.unlock(&pool.all_lock)
 }

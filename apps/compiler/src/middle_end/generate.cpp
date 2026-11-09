@@ -8945,10 +8945,11 @@ namespace hemera {
 	 * local's function, name, line, argument number and type, its type as a schema, written by write_schema. "HDBT", the
 	 * version (u16), the schemas (u32 count, then each as a u32 size and its bytes), then the functions (u32 count, each
 	 * its symbol, its locals' count (u32), and each local: its name, line (u32), argument number (u32, 0 for a local that
-	 * isn't a parameter) and schema (u32, its place among the schemas)). A name is its length (u32) and its bytes; every
-	 * number is little-endian.
+	 * isn't a parameter) and schema (u32, its place among the schemas)), then the named types (u32 count, each its name and
+	 * its schema's place): the runtime's types a debugger lays memory out by, like the carrier block and fibers. A name is
+	 * its length (u32) and its bytes; every number is little-endian.
 	 */
-	static std::string debug_table(Generator& generator) {
+	static std::string debug_table(Generator& generator, const std::vector<std::pair<std::string, TypeInfo const*>>& named) {
 		std::string out = "HDBT";
 		auto number = [&](uint64_t value, size_t count) {
 			for (size_t i = 0; i < count; ++i) {
@@ -8962,12 +8963,19 @@ namespace hemera {
 		number(1, 2);
 		std::map<TypeInfo const*, size_t> places;
 		std::vector<std::vector<uint8_t>> schemas;
-		for (const Generator::DebugVariable& variable : generator.debug_variables) {
-			TypeInfo const* plain = get_base_type_or_alias(variable.type);
+		auto place_of = [&](TypeInfo const* type) {
+			TypeInfo const* plain = get_base_type_or_alias(type);
 			if (!places.contains(plain)) {
 				places.emplace(plain, schemas.size());
 				schemas.push_back(write_schema(plain));
 			}
+			return places[plain];
+		};
+		for (const Generator::DebugVariable& variable : generator.debug_variables) {
+			place_of(variable.type);
+		}
+		for (const auto& [type_name, type] : named) {
+			place_of(type);
 		}
 		number(schemas.size(), 4);
 		for (const std::vector<uint8_t>& schema : schemas) {
@@ -8995,6 +9003,11 @@ namespace hemera {
 				number(variable->arg, 4);
 				number(places[get_base_type_or_alias(variable->type)], 4);
 			}
+		}
+		number(named.size(), 4);
+		for (const auto& [type_name, type] : named) {
+			name(type_name);
+			number(places[get_base_type_or_alias(type)], 4);
 		}
 		return out;
 	}
@@ -12532,7 +12545,21 @@ namespace hemera {
 		generate_used(generator);
 		finish_module(generator);
 		if (options.debug_info && !generator.debug_variables.empty()) {
-			module->setAttr(DEBUG_TABLE_ATTRIBUTE, generator.builder.getStringAttr(debug_table(generator)));
+			// The runtime's types a debugger lays memory out by, those the program has, as package.name
+			std::vector<std::pair<std::string, TypeInfo const*>> named;
+			for (std::string_view name : { "CarrierBlock", "Fiber" }) {
+				Declaration* found = base_declaration_named(generator, "runtime", name);
+				if (found != nullptr && found->type_value != nullptr && found->type_value->complete) {
+					named.emplace_back(std::format("runtime.{}", name), found->type_value);
+				}
+			}
+			for (std::string_view name : { "FiberPool", "PoolCarrier" }) {
+				Declaration* found = std_declaration_named(generator, "fiber", name);
+				if (found != nullptr && found->type_value != nullptr && found->type_value->complete) {
+					named.emplace_back(std::format("fiber.{}", name), found->type_value);
+				}
+			}
+			module->setAttr(DEBUG_TABLE_ATTRIBUTE, generator.builder.getStringAttr(debug_table(generator, named)));
 		}
 		if (generator.failed) {
 			return false;

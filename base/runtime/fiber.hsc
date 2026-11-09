@@ -95,6 +95,12 @@ Fiber :: struct #align(16) {
      * then does nothing for a parked fiber.
      */
     scheduler : ptr[mut FiberScheduler]?,
+    /**
+     * Links in its scheduler's list of every fiber it has that hasn't finished, parked ones too, which a debugger walks
+     * to list them; owned by the scheduler, null at either end, and both null for a fiber on no such list.
+     */
+    all_next : ptr[mut Fiber]?,
+    all_previous : ptr[mut Fiber]?,
 }
 
 /**

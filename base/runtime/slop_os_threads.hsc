@@ -116,8 +116,13 @@ import intrinsics from "base"
      */
     slop_os_start_thread #no_context :: fn(entry: rawptr, stack: rawptr, size: usize, argument: u64) -> u64 {
         startup :: cast[ptr[SlopOsStartup]](intrinsics.process_state().startup_block)
-        // The top, 16-byte aligned, as both architectures' calls want it
-        top :: (cast[u64](cast[uintptr](stack)) + cast[u64](size)) & ~cast[u64](15)
+        /*
+         * The top, 16-byte aligned, as both architectures' calls want it; on x86-64, 8 bytes below, where a call's return
+         * address would be, as the entry is a function entered as if called: otherwise its frames are 8 bytes off, and an
+         * aligned store to one faults
+         */
+        aligned :: (cast[u64](cast[uintptr](stack)) + cast[u64](size)) & ~cast[u64](15)
+        top :: if TARGET_ARCH == .x86_64 { aligned - 8 } else { aligned }
         made :: slop_os_call(SLOP_OS_CALL_THREAD_CREATE, cast[u64](startup.budget), cast[u64](startup.space), cast[u64](cast[uintptr](entry)),
             top, argument)
         return if made.tag == 0 { made.first } else { cast[u64](0) }

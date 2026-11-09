@@ -1127,6 +1127,17 @@ Syscalls :: struct {
      * @error BadBuffer samples isn't memory the caller can write.
      */
     intercept_samples : fn(intercept: Intercept, samples: mut Sample[]) -> Result[u32, ControlError],
+    /**
+     * Set a process's hardware breakpoints and watchpoints, for a debugger: every thread of its, now and later, has
+     * them as it returns to user mode, unless the thread single-steps (thread_set_debug), when it has its own state
+     * instead, so a step past a breakpoint doesn't stop at it again. A hit is a fault stop, as thread_set_debug's are.
+     *
+     * @param process The process, which needs RIGHT_PROCESS_WRITE_STATE.
+     * @param debug Its slots, which replace the process's; none Off turns them off. step must be false.
+     * @error BadBuffer debug isn't memory the caller can read.
+     * @error BadRegisters step is set, or a slot the architecture can't set, as for thread_set_debug.
+     */
+    process_set_debug : fn(process: Process, debug: ptr[ThreadDebug]) -> Result[void, ControlError],
 }
 
 /** The most address spaces memory_evict takes a page from at once. */

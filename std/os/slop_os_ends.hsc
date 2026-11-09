@@ -603,8 +603,8 @@ package os
          */
         intercept : slop_os.Intercept,
         /**
-         * The program's address space, a handle the caller owns with no rights, for process_read_memory, which needs
-         * none on it.
+         * The program's address space, a handle the caller owns with RIGHT_TRANSFER alone, for process_read_memory,
+         * which needs none on it, and to move on, as to a debugger attached later.
          */
         space : slop_os.AddressSpace,
     }
@@ -858,7 +858,8 @@ package os
                 intercept :: slop_os.intercept_attach(process, reported.port, reported.key, calls, points)
                     or_return .Error(.NoBudget)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
-                kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), cast[slop_os.Rights](0)) or_return .Error(.BadGrants)
+                // No right but to move it on, as to a debugger attached later (process_read_memory needs none)
+                kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), slop_os.RIGHT_TRANSFER) or_return .Error(.BadGrants)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](kept)}
             }
             case None => {}
