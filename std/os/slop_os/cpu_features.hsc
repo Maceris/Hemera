@@ -59,6 +59,9 @@ CpuFeature :: enum #backed_by(u16) {
     X86Xsavec = 41, /**< XSAVEC, the compacted form of XSAVE. */
     X86Xsaveopt = 42, /**< XSAVEOPT, XSAVE that skips unmodified state. */
     X86FiveLevelPaging = 43, /**< Five-level paging, 57-bit virtual addresses. */
+    // Control-flow integrity (the SlopOS repository's decisions/0186)
+    X86ShadowStack = 44, /**< CET shadow stacks (CET_SS). */
+    X86Ibt = 45, /**< CET indirect branch tracking (CET_IBT). */
 
     // AArch64 (ID_AA64PFR0_EL1, ID_AA64ISAR0_EL1 and ID_AA64ISAR1_EL1): floating point and Advanced SIMD
     Aarch64Fp = 64, /**< Floating point. */
@@ -88,6 +91,8 @@ CpuFeature :: enum #backed_by(u16) {
     Aarch64Asid16 = 82, /**< 16-bit address space identifiers. */
     Aarch64Pages1G = 83, /**< 1 GiB blocks with 4 KiB pages. */
     Aarch64HardwareAccessFlag = 84, /**< The access flag kept by the hardware (FEAT_HAFDBS). */
+    // Control-flow integrity, numbered after the rest (the SlopOS repository's decisions/0186)
+    Aarch64Gcs = 85, /**< The Guarded Control Stack (FEAT_GCS), a shadow stack. */
 }
 
 /**
