@@ -1596,6 +1596,12 @@ PROTECTION_READ : Protection : 1 << 0
 PROTECTION_WRITE : Protection : 1 << 1
 /** Executable. */
 PROTECTION_EXECUTE : Protection : 1 << 2
+/**
+ * With PROTECTION_EXECUTE: indirect branches into the pages may land only on landing pads, as code built with them (an
+ * ELF whose property note says so) has: AArch64's guarded pages, for branch target identification (the SlopOS
+ * repository's decisions/0186). Nothing elsewhere, where landing pads are checked per thread, not per page.
+ */
+PROTECTION_GUARDED : Protection : 1 << 3
 
 /** For port_wait: wait for as long as it takes. */
 NO_DEADLINE : u64 : 0xffffffffffffffff
