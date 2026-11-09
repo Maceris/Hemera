@@ -170,10 +170,51 @@ import intrinsics from "base"
         push_context thread_context from thread.starting_context {
             thread.function(data)
         }
+        // Its per-thread page given back, if it had one
+        if thread.carrier.thread_page != null {
+            slop_os_call(SLOP_OS_CALL_THREAD_SET_PAGE, 0, 0)
+            unmap_pages(thread.carrier.thread_page, PAGE_SIZE)
+        }
         slop_os_call(SLOP_OS_CALL_THREAD_EXIT)
         loop {
             intrinsics.trap()
         }
+    }
+
+    /**
+     * Write the calling thread's per-thread page (the SlopOS repository's decisions/0041 and 0185): the fiber running
+     * and the CPU budget it's bound to. The page is made the first time it's wanted: a page of memory of its own
+     * (map_pages), given to the kernel with SLOP_OS_CALL_THREAD_SET_PAGE; if that fails, it isn't tried again on this
+     * thread, and nothing is written.
+     *
+     * @param carrier The calling thread's carrier block, whose thread_page it is.
+     * @param fiber The fiber running, its Fiber's address; 0 for none.
+     * @param budget The CPU budget's handle; 0 for the process's own.
+     * @return True if the page was written; false if there's none.
+     */
+    slop_os_note_fiber #no_context :: fn(carrier: ptr[mut CarrierBlock], fiber: u64, budget: u64) -> bool {
+        if carrier.thread_page == null {
+            // Only a thread with a fiber or a budget to note needs one
+            if carrier.thread_page_failed || (fiber == 0 && budget == 0) || intrinsics.process_state().startup_block == null {
+                return false
+            }
+            page :: map_pages(PAGE_SIZE)
+            if page == null {
+                carrier.thread_page_failed = true
+                return false
+            }
+            handle :: cast[ptr[u64]](cast[rawptr](cast[u64](cast[uintptr](page)) - cast[u64](PAGE_SIZE)))^
+            if slop_os_call(SLOP_OS_CALL_THREAD_SET_PAGE, handle, cast[u64](PAGE_SIZE)).tag != 0 {
+                unmap_pages(page, PAGE_SIZE)
+                carrier.thread_page_failed = true
+                return false
+            }
+            carrier.thread_page = page
+        }
+        written :: cast[ptr[mut SlopOsThreadPage]](carrier.thread_page)
+        intrinsics.volatile_store_u64(&written.fiber, fiber)
+        intrinsics.volatile_store_u64(&written.budget, budget)
+        return true
     }
 
     /**

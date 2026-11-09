@@ -101,6 +101,8 @@ Fiber :: struct #align(16) {
      */
     all_next : ptr[mut Fiber]?,
     all_previous : ptr[mut Fiber]?,
+    /** The CPU budget it runs on, as bind_cpu_budget gave it, a handle; 0 for its thread's own. */
+    cpu_budget : u64,
 }
 
 /**
@@ -216,6 +218,7 @@ fiber_create :: fn(
     result.next = null
     result.waiter = Waiter.{}
     result.scheduler = null
+    result.cpu_budget = 0
     return result, null
 }
 

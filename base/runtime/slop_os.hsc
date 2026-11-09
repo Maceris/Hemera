@@ -25,6 +25,23 @@ SLOP_OS_CALL_MEMORY_CREATE : u64 : 26
  * object, the size in bytes, and a protection.
  */
 SLOP_OS_CALL_MEMORY_MAP : u64 : 27
+/**
+ * The system call that gives the calling thread its per-thread page: a memory object's handle, and the page's offset
+ * in it; NO_HANDLE (0) for none.
+ */
+SLOP_OS_CALL_THREAD_SET_PAGE : u64 : 92
+
+/**
+ * A thread's per-thread page, which the thread writes and the kernel reads (std/os/slop_os's ThreadPage, which has to
+ * match it).
+ */
+SlopOsThreadPage :: struct {
+    /** The CPU budget the thread runs on, a handle; 0 for its process's own. */
+    budget : u64,
+    /** The fiber running, its Fiber's address; 0 for none. */
+    fiber : u64,
+}
+
 /** The system call that unmaps what was mapped: an address space's handle and the address it was mapped at. */
 SLOP_OS_CALL_MEMORY_UNMAP : u64 : 28
 /** The system call that ends the process, with an exit code. */

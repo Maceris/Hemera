@@ -254,6 +254,9 @@ find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> H
 #assert cast[u64](SYSCALL_MEMORY_CREATE) == runtime.SLOP_OS_CALL_MEMORY_CREATE
 #assert cast[u64](SYSCALL_MEMORY_MAP) == runtime.SLOP_OS_CALL_MEMORY_MAP
 #assert cast[u64](SYSCALL_MEMORY_UNMAP) == runtime.SLOP_OS_CALL_MEMORY_UNMAP
+#assert cast[u64](SYSCALL_THREAD_SET_PAGE) == runtime.SLOP_OS_CALL_THREAD_SET_PAGE
+#assert size_of(ThreadPage) == size_of(runtime.SlopOsThreadPage)
+#assert offset_of(ThreadPage, fiber) == offset_of(runtime.SlopOsThreadPage, fiber)
 #assert cast[u64](SYSCALL_PROCESS_EXIT) == runtime.SLOP_OS_CALL_PROCESS_EXIT
 #assert cast[u64](PROTECTION_READ | PROTECTION_WRITE) == runtime.SLOP_OS_PROTECTION_READ_WRITE
 #assert cast[u64](PROTECTION_READ) == runtime.SLOP_OS_PROTECTION_READ

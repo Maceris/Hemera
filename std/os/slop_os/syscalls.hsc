@@ -1138,6 +1138,58 @@ Syscalls :: struct {
      * @error BadRegisters step is set, or a slot the architecture can't set, as for thread_set_debug.
      */
     process_set_debug : fn(process: Process, debug: ptr[ThreadDebug]) -> Result[void, ControlError],
+    /**
+     * Say a process's CPU time, and what services ran on its CPU budget for it: the time threads of processes not on
+     * that budget ran on it, as a loan, for attribution (the SlopOS repository's decisions/0185).
+     *
+     * @param process The process, which needs RIGHT_PROCESS_INSPECT.
+     * @return Its threads' time and the time run on its budget by others, in nanoseconds since it was made; lent_ns is
+     *     shared by every process on the same budget.
+     */
+    process_cpu_info : fn(process: Process) -> Result[ProcessCpu, ControlError],
+    /**
+     * Say what's charged to a memory budget by objects of processes not on it, as a server's made for a client and
+     * charged to the client's budget are (the SlopOS repository's decisions/0185).
+     *
+     * @param budget The budget; no right is needed.
+     * @return The bytes.
+     */
+    memory_budget_others : fn(budget: MemoryBudget) -> Result[u64, HandleError],
+    /**
+     * Give the calling thread its per-thread page, a ThreadPage it writes and the kernel reads at its scheduling points
+     * (the SlopOS repository's decisions/0041 and 0185), or take it away. Base's runtime gives a thread one the first
+     * time it's asked (runtime.bind_cpu_budget, or a fiber scheduler's runtime.note_running_fiber).
+     *
+     * @param memory Anonymous memory, which needs RIGHT_MEMORY_READ, kept mapped while it's the page; NO_HANDLE for no
+     *     page from now, which puts the thread back on its process's budget if the page had it on another.
+     * @param offset Where in it the page is, in bytes: page-aligned, with a page of the memory from there.
+     * @error InvalidSize An offset that isn't page-aligned or leaves less than a page.
+     * @error WrongKind Memory that isn't anonymous: device, a boot module's, contiguous, paged, or a window.
+     * @error OutOfMemory Its page had no frame yet, and there were none.
+     */
+    thread_set_page : fn(memory: Memory, offset: u64) -> Result[void, MemoryError],
+}
+
+/**
+ * A thread's per-thread page (thread_set_page), as the thread writes it: the kernel only reads it, at its scheduling
+ * points, so a change is seen at the next one.
+ */
+ThreadPage :: struct {
+    /**
+     * The CPU budget the thread runs on, as a handle with RIGHT_CPU_BUDGET_BIND; 0 for its process's own, and any
+     * other that isn't such a handle the same. Resolved when it changes, so thread_use_cpu_budget holds until it does.
+     */
+    budget : u64,
+    /** The fiber running on the thread, as its fiber scheduler names it (base's, its runtime.Fiber's address); 0 for none. */
+    fiber : u64,
+}
+
+/** A process's CPU time, as process_cpu_info says it. */
+ProcessCpu :: struct {
+    /** The time its threads have run, in nanoseconds. */
+    run_ns : u64,
+    /** The time threads of other processes ran on its CPU budget, a loan's, in nanoseconds. */
+    lent_ns : u64,
 }
 
 /** The most address spaces memory_evict takes a page from at once. */
@@ -1159,10 +1211,15 @@ CpuBudgetInfo :: struct {
     children_share : u64,
     /** The CPUs its threads may run on, a bit per CPU's index. */
     cpus : u64,
+    /**
+     * The time threads of processes not on it have run on it, lent it, in nanoseconds since it was made: what services
+     * did for its processes (the SlopOS repository's decisions/0185).
+     */
+    lent : u64,
 }
 
 /** How many words cpu_budget_info writes: one for each of CpuBudgetInfo's fields. */
-CPU_BUDGET_INFO_WORDS :: 6
+CPU_BUDGET_INFO_WORDS :: 7
 
 /**
  * Describe a CPU budget: cpu_budget_info's words, as a CpuBudgetInfo. Needs no context.
@@ -1176,7 +1233,7 @@ cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
         return null
     }
     return CpuBudgetInfo.{priority = words[0], period = words[1], time = words[2], share = words[3], children_share = words[4],
-        cpus = words[5]}
+        cpus = words[5], lent = words[6]}
 }
 
 /** The most of a line debug_log writes, in bytes; the rest is dropped. */
@@ -1285,7 +1342,7 @@ TRACE_EVENTS :: 1024
 
 /** What a TraceEvent is. */
 TraceKind :: enum #backed_by(u32) {
-    /** A CPU switched to a thread: other is 0. */
+    /** A CPU switched to a thread: other is the fiber its per-thread page says is running (ThreadPage.fiber), 0 for none. */
     Switch = 1,
     /** A thread was made ready, as a wake or a preemption does: other is the CPU it was queued on. */
     Wake = 2,
@@ -1314,6 +1371,8 @@ SAMPLES :: 1024
 Sample :: struct {
     /** The thread's ID. */
     thread : u64,
+    /** The fiber its per-thread page said was running (ThreadPage.fiber); 0 for none. */
+    fiber : u64,
     /** How many of frames are used, 1 or more. */
     count : u32,
     /** Its program counter, then each caller's return address, innermost first, as its frame pointers chain them. */

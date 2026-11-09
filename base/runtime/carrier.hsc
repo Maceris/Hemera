@@ -99,6 +99,57 @@ CarrierBlock :: struct #align(64) {
      * the thread's own stack (docs/calling_convention.md, Calls to Foreign Code).
      */
     foreign_target : rawptr,
+    /**
+     * The thread's page the operating system reads at its scheduling points, for the CPU budget it runs on and the
+     * fiber running (on SlopOS, a SlopOsThreadPage, made the first time it's wanted); null until then, or for none.
+     */
+    thread_page : rawptr,
+    /** Whether making thread_page was tried and failed, so it isn't tried again on this thread. */
+    thread_page_failed : bool,
+}
+
+/**
+ * Tell the operating system which fiber is running on this thread, and the CPU budget it's bound to
+ * (bind_cpu_budget): a fiber scheduler calls it just before resuming a fiber, and with null once it's back. On SlopOS it
+ * writes the thread's per-thread page, so the kernel charges the fiber's loan and names the fiber in samples and the
+ * trace (the SlopOS repository's decisions/0041 and 0185); elsewhere it does nothing.
+ *
+ * @param fiber The fiber about to run on this thread; null for none, which puts the thread back on its own budget.
+ */
+note_running_fiber :: fn(fiber: ptr[Fiber]?) #no_context {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+        carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
+        match fiber {
+            case Some(running) => slop_os_note_fiber(carrier, cast[u64](cast[uintptr](running)), running.cpu_budget)
+            case None => slop_os_note_fiber(carrier, 0, 0)
+        }
+    }
+}
+
+/**
+ * Run the calling fiber, or thread, on a CPU budget: on SlopOS, a CPU budget's handle with RIGHT_CPU_BUDGET_BIND, a
+ * loan a client gave with a request, which the kernel puts the thread on at its next scheduling point and charges from
+ * then. A fiber keeps it across switches, as its scheduler notes it each time it resumes it (note_running_fiber).
+ *
+ * @param budget The handle; 0 for the process's own budget. One that isn't a CPU budget's with the right is taken as 0.
+ * @return True if it's noted; false if the system has no per-thread page, or one couldn't be made: then it's ignored.
+ */
+bind_cpu_budget :: fn(budget: u64) -> bool #no_context {
+    #if OS == .SlopOS && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
+        carrier : ptr[mut CarrierBlock] : intrinsics.carrier()
+        fiber : u64 = 0
+        match carrier.current_fiber {
+            case Some(running) => {
+                running.cpu_budget = budget
+                fiber = cast[u64](cast[uintptr](running))
+            }
+            case None => {}
+        }
+        return slop_os_note_fiber(carrier, fiber, budget)
+    }
+    #else {
+        return false
+    }
 }
 
 /**

@@ -312,12 +312,15 @@ run_carrier :: fn(pool #escaping : ptr[mut FiberPool]) {
 run_turn :: fn(here: ptr[mut PoolCarrier], fiber #escaping : ptr[mut runtime.Fiber]) {
     pool :: here.pool
     exit := runtime.FiberExit.Finished
+    // The system told which fiber runs here, and on which budget, until it's back (runtime.note_running_fiber)
+    runtime.note_running_fiber(fiber)
     if fiber.state == .NotStarted {
         exit = intrinsics.fiber_start(fiber)
     }
     else {
         exit = intrinsics.fiber_resume(fiber)
     }
+    runtime.note_running_fiber(null)
     /*
      * Only now, with the fiber switched away from, can another carrier take it: queued any
      * sooner, it could be resumed while still running here.
