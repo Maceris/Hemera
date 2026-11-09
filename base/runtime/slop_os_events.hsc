@@ -443,6 +443,38 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
     }
 
     /**
+     * Log through a ring given after the process started, as the events service's Open gives one, for a process that
+     * starts before the events service and so has no ring among its grants (the SlopOS repository's decisions/0185).
+     * From then on its records go to the ring, as a ring given at its start would take them.
+     *
+     * @param ring_handle The ring's handle, which can map it to read and write; the caller keeps it.
+     * @param doorbell The doorbell's end; the logger keeps it.
+     * @return True once it's the logger's ring; false if the process has a ring already, is mapping one, or this one
+     *     couldn't be mapped.
+     */
+    slop_os_adopt_events_ring :: fn(ring_handle: u32, doorbell: u32) -> bool {
+        state :: intrinsics.process_state()
+        // Only for a process whose logger has no ring: one it found none for, or hasn't looked for yet
+        claimed := false
+        for from in u32.[CLOCK_PAGE_NONE, CLOCK_PAGE_UNTRIED] {
+            if !claimed {
+                _, taken :: intrinsics.interlocked_compare_exchange_u32(&state.events_state, CLOCK_PAGE_MAPPING, from)
+                claimed = taken
+            }
+        }
+        if !claimed {
+            return false
+        }
+        state.events_log = map_events_ring(ring_handle, doorbell)
+        if state.events_log == null {
+            intrinsics.atomic_store_u32_release(&state.events_state, CLOCK_PAGE_NONE)
+            return false
+        }
+        intrinsics.atomic_store_u32_release(&state.events_state, CLOCK_PAGE_MAPPED)
+        return true
+    }
+
+    /**
      * Find what the process's logger keeps, its ring mapped the first time it's asked for.
      *
      * Safe from several threads at once: one maps it, and the others wait for it to.
@@ -483,13 +515,25 @@ slop_os_events_padded #no_context :: fn(count: u64) -> u64 {
      *     what comes after it fails.
      */
     map_events_log #no_context :: fn() -> rawptr {
+        ring_handle :: os_entry_grant("events", "Memory", "", false)
+        doorbell :: os_entry_grant("events", "Channel", "", false)
+        return map_events_ring(ring_handle, doorbell)
+    }
+
+    /**
+     * Map a ring and its doorbell for the logger, with pages of its own for what the logger keeps.
+     *
+     * @param ring_handle The ring's handle, which can map it to read and write.
+     * @param doorbell The doorbell's end.
+     * @return The SlopOsEventsLog, as map_events_log gives it; null if either is 0, or it couldn't be mapped or isn't a
+     *     ring this runtime writes.
+     */
+    map_events_ring #no_context :: fn(ring_handle: u32, doorbell: u32) -> rawptr {
         state :: intrinsics.process_state()
         if state.startup_block == null {
             return null
         }
         startup :: cast[ptr[SlopOsStartup]](state.startup_block)
-        ring_handle :: os_entry_grant("events", "Memory", "", false)
-        doorbell :: os_entry_grant("events", "Channel", "", false)
         if ring_handle == 0 || doorbell == 0 {
             return null
         }
