@@ -470,6 +470,9 @@ namespace hemera {
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
 				output.address_zero_is_memory = true;
 				break;
+			case hemera::arg_parse::CONTROL_FLOW_INTEGRITY:
+				output.control_flow_integrity = true;
+				break;
 			case hemera::arg_parse::ALLOW_RUN:
 				output.allow_run = true;
 				break;
@@ -1224,6 +1227,7 @@ namespace hemera {
 			case hemera::arg_parse::TEST:
 			case hemera::arg_parse::NO_RED_ZONE:
 			case hemera::arg_parse::ADDRESS_ZERO_IS_MEMORY:
+			case hemera::arg_parse::CONTROL_FLOW_INTEGRITY:
 			case hemera::arg_parse::ALLOW_RUN:
 			case hemera::arg_parse::NO_STARTUP_CODE:
 			case hemera::arg_parse::HELP:

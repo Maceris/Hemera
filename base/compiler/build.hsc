@@ -161,6 +161,13 @@ TargetOptions :: struct {
      */
     address_zero_is_memory : bool = false,
     /**
+     * Hardware control-flow integrity (docs/compilation.md, Control-Flow Integrity): a landing pad at every function's
+     * entry and after every call (endbr64 on x86-64, bti on AArch64), return addresses signed on AArch64 (pac-ret),
+     * and ELF notes saying the code has them and works with shadow stacks and the Guarded Control Stack. Each is a no-op
+     * on a CPU without it. ELF targets only.
+     */
+    control_flow_integrity : bool = false,
+    /**
      * Linker script for section placement, relative to the build package's folder. Empty uses the linker's default
      * layout.
      */

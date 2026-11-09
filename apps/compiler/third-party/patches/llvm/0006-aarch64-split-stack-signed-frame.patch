@@ -1,0 +1,25 @@
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+index 266f5749c824..f738bfdf8a24 100644
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -1035,6 +1035,11 @@ void AArch64FrameLowering::adjustForSegmentedStacks(
+ 
+   PrologueMBB.setMachineBlockAddressTaken();
+   PrologueMBB.setLabelMustBeEmitted();
++  // The link register signed as the function's own prologue signs it, with
++  // the stack pointer at entry, which is this frame record's top
++  const bool SignLR = Fn.hasFnAttribute("sign-return-address");
++  if (SignLR)
++    BuildMI(AllocMBB, DL, TII.get(AArch64::PACIASP));
+   BuildMI(AllocMBB, DL, TII.get(AArch64::STPXpre), AArch64::SP)
+       .addReg(AArch64::FP)
+       .addReg(AArch64::LR)
+@@ -1058,6 +1063,8 @@ void AArch64FrameLowering::adjustForSegmentedStacks(
+       .addReg(AArch64::LR, RegState::Define)
+       .addReg(AArch64::SP)
+       .addImm(2);
++  if (SignLR)
++    BuildMI(AllocMBB, DL, TII.get(AArch64::AUTIASP));
+   BuildMI(AllocMBB, DL, TII.get(AArch64::RET)).addReg(AArch64::LR);
+ }
+ 

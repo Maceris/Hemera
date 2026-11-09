@@ -93,6 +93,88 @@ static void build_kernel(const std::filesystem::path& output, hemera::TargetStac
 	});
 }
 
+/*
+ * With control-flow integrity (docs/compilation.md, Control-Flow Integrity), x86-64 code has landing pads: endbr64 at
+ * each interrupt's entry stub, which interrupt delivery needs under indirect branch tracking, at SYSCALL's entry, and
+ * at the fiber switches.
+ */
+TEST(Freestanding, BuildsKernelWithControlFlowIntegrity)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "freestanding" / "kernel_cfi.elf";
+	build_elf(output, "freestanding", false, [&](hemera::Options& options) {
+		options.os = hemera::OSType::UnknownOS;
+		options.cpu_features = "-mmx,-sse,-sse2,-avx,-avx2,+soft-float";
+		options.red_zone = false;
+		options.stack_check = hemera::TargetStackCheck::Trap;
+		options.startup_code = false;
+		options.entry = "kernel_entry";
+		options.linker_script = std::filesystem::canonical(scenario("freestanding") / "linker.ld");
+		options.control_flow_integrity = true;
+	});
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
+	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
+	llvm::object::ObjectFile& elf = *binary->getBinary();
+	std::optional<llvm::object::SectionRef> text;
+	for (const llvm::object::SectionRef& section : elf.sections()) {
+		auto name = section.getName();
+		if (name && *name == ".text") {
+			text = section;
+		}
+	}
+	ASSERT_TRUE(text.has_value());
+	auto contents = text->getContents();
+	ASSERT_TRUE(static_cast<bool>(contents));
+	const std::string endbr64{ '\xf3', '\x0f', '\x1e', '\xfa' };
+	std::set<std::string> padded{ "freestanding.breakpoint_entry.vector.0", "freestanding.breakpoint_entry.vector.255",
+		"freestanding.system_call", "hemera.fiber_start", "hemera.fiber_resume", "hemera.fiber_suspend" };
+	for (const llvm::object::SymbolRef& symbol : elf.symbols()) {
+		auto name = symbol.getName();
+		auto address = symbol.getAddress();
+		if (!name || !address || !padded.contains(name->str())) {
+			continue;
+		}
+		const uint64_t at = *address - text->getAddress();
+		ASSERT_LT(at + 4, contents->size()) << name->str();
+		EXPECT_EQ(contents->substr(at, 4).str(), endbr64) << name->str() << " doesn't start with endbr64";
+		padded.erase(name->str());
+	}
+	EXPECT_TRUE(padded.empty()) << "missing " << (padded.empty() ? std::string() : *padded.begin());
+}
+
+/*
+ * A program built with control-flow integrity says so in its ELF property note, which an operating system reads to
+ * turn on indirect branch tracking and shadow stacks for it: GNU_PROPERTY_X86_FEATURE_1_AND (0xc0000002), 4 bytes,
+ * with IBT (1) and SHSTK (2). Kernels' linker scripts usually drop notes, so this is a SlopOS program.
+ */
+TEST(Freestanding, NotesControlFlowIntegrity)
+{
+	const std::filesystem::path output = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / "slop_os_cfi" / "program.elf";
+	build_elf(output, "slop_os_program", false, [](hemera::Options& options) {
+		options.os = hemera::OSType::SlopOS;
+		options.cpu = "x86-64-v3";
+		options.relocation_model = hemera::TargetRelocationModel::PositionIndependent;
+		options.control_flow_integrity = true;
+	});
+	if (testing::Test::HasFatalFailure()) {
+		return;
+	}
+	auto binary = llvm::object::ObjectFile::createObjectFile(output.string());
+	ASSERT_TRUE(static_cast<bool>(binary)) << llvm::toString(binary.takeError());
+	const std::string expected{ '\x02', '\x00', '\x00', '\xc0', '\x04', '\x00', '\x00', '\x00', '\x03', '\x00', '\x00', '\x00' };
+	bool noted = false;
+	for (const llvm::object::SectionRef& section : binary->getBinary()->sections()) {
+		auto name = section.getName();
+		auto contents = section.getContents();
+		if (name && contents && *name == ".note.gnu.property" && contents->find(expected) != llvm::StringRef::npos) {
+			noted = true;
+		}
+	}
+	EXPECT_TRUE(noted) << "no .note.gnu.property with IBT and SHSTK";
+}
+
 static std::string bytes_of(const std::filesystem::path& file) {
 	std::ifstream stream(file, std::ios::binary);
 	return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());

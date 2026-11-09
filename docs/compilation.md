@@ -720,6 +720,28 @@ image was loaded, like one moved by KASLR, matches that.
 Functions are never tail calls, with or without debug info, so a frame is never left out of a stack trace by a
 caller whose frame was reused (see [calling_convention.md](calling_convention.md#walking-the-stack)).
 
+## Control-Flow Integrity
+
+`control_flow_integrity` in `TargetOptions` (`--control-flow-integrity`) builds an ELF program for the hardware's
+control-flow integrity, which its operating system turns on where the CPU has it:
+
+| | x86-64 | AArch64 |
+|---|---|---|
+| Landing pads, at a function's entry where it can be reached indirectly | `endbr64` (indirect branch tracking) | `bti c` (branch target identification) |
+| Landing pads after every call | `endbr64` | `bti j` |
+| Return addresses | Checked by a shadow stack, which the code needs nothing for | Signed with the stack pointer at entry (`paciasp`), checked before returning (`autiasp`), and checked by the Guarded Control Stack |
+| The ELF's `.note.gnu.property` | `IBT` and `SHSTK` | `BTI`, `PAC` and `GCS` |
+
+Each instruction does nothing on a CPU without its feature, so one build runs anywhere. The landing pads after calls
+are for resumed fibers, whose frames the resume loop re-enters with an indirect branch to the instruction after a
+call, and on AArch64 every frame keeps its frame record at the top, so the loop can sign its own return address as
+the frame's prologue signed the one it replaces (calling_convention.md, Resuming); both come from Hemera's LLVM
+patches. The hand-written sequences (the fiber switches, morestack, the foreign shims, and on x86-64 the entry
+functions' stubs and SYSCALL's entry, which interrupt delivery and SYSCALL reach under indirect branch tracking) have
+their landing pads too. Stack traces strip return addresses' authentication codes, for a 48-bit address space.
+
+Only ELF targets: on Windows and UEFI the option does nothing.
+
 ## Target Options on the Command Line
 
 A build package sets `TargetOptions` for each target it adds (see [Build Packages](#build-packages)). Building a
@@ -732,6 +754,7 @@ package directly, the compiler takes the ones freestanding programs need as flag
 | `--entry=name` | The entry function, `main` by default |
 | `--no-red-zone` | `red_zone = false` |
 | `--address-zero-is-memory` | `address_zero_is_memory = true`, for targets where address 0 is memory (docs/types.md, Pointers) |
+| `--control-flow-integrity` | `control_flow_integrity = true` (Control-Flow Integrity, below) |
 | `--stack-check=trap` | `stack_check_failure = .Trap`; `off`, the default, leaves the check out until hosted startup code sets up a carrier block |
 | `--code-model=kernel` | `code_model`: `default`, `small`, `kernel`, `medium` or `large` |
 | `--relocation-model=static` | `relocation_model`: `static`, or `pic`, the default |

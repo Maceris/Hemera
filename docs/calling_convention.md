@@ -273,8 +273,8 @@ On AArch64 it's the same, with a frame record for the minimal frame, and `x9`, `
     ret
 ```
 
-The stack parameters are just above that frame record, and `morestack` builds a frame record of its own, keeping the
-carrier's limit and segment in it, then calls the body with `blr x11`. A function's stack check compares against
+The stack parameters are just above that frame record, and `morestack` builds a frame record of its own, with the
+carrier's limit and segment and `x19` and `x20` below it, then calls the body with `blr x11`. A function's stack check compares against
 `[x28 + CARRIER_STACK_LIMIT]` through `x16` and `x17`, which nothing holds at a function's entry. Functions with the
 check aren't shrink-wrapped, so it comes before any of the function's own code.
 
@@ -521,15 +521,24 @@ the same shape as the x86-64 frame above, so the loop is the same, with these di
   from their frame record before returning, so `fiber_reenter` stores the loop's return address into `[frame + 8]`.
 * Since nothing is pushed, the stack pointer isn't moved to the frame being re-entered. It's at the fiber's saved
   state the first time, and after that at the bottom of the frame that just returned, which is the stack pointer its
-  caller continues with, below everything live. A frame record isn't always at the top of its frame on AArch64,
-  so `frame + 16` wouldn't be.
+  caller continues with, below everything live. Outside control-flow integrity a frame record isn't always at the top
+  of its frame on AArch64 (LLVM puts it below the other callee-saved registers), so `frame + 16` wouldn't be.
 * The loop keeps its state in `x9` to `x12`, which no function returns anything in.
 
-Not done yet: with pointer authentication, `fiber_reenter` would sign the loop's return address with the modifier the
-frame's prologue used, and `fiber_suspend` would write `resume_return` back still signed. With the Guarded Control
-Stack, `bl fiber_reenter` pushes onto it, and the fiber's entries are dropped with `GCSPOPM` in a loop (I'm not aware
-of a bulk equivalent of `INCSSP`). Builds with branch target identification would put `bti j` after every call
-instead of `endbr64`.
+With control-flow integrity ([compilation.md](compilation.md#control-flow-integrity)):
+* **Pointer authentication.** Each function signs its return address with the stack pointer at its entry (`paciasp`)
+  and authenticates it before returning (`autiasp`). Every Hemera frame keeps its frame record at the top of its frame
+  (LLVM's `"frame-record-at-top"`, Hemera's patch), so that stack pointer is always the frame pointer plus 16: in
+  generated functions, morestack's frame, `fiber_entry`'s, and the small frame of the stack check's `.Lgrow`. So
+  `fiber_reenter` signs the loop's return address with `frame + 16` before storing it, and the loop authenticates each
+  continuation it takes from `resume_return` against the frame that returned (`resume_frame + 16`) before branching to
+  it; `fiber_suspend` writes `resume_return` back still signed, as the frame's prologue signed it. They use
+  `PACIA1716` and `AUTIA1716`, which like `paciasp` are hints, and do nothing without pointer authentication.
+* **The Guarded Control Stack.** `bl fiber_reenter` pushes onto it, and each frame's `ret` pops what was pushed, as a
+  shadow stack does on x86-64. Where the thread has one (`CHKFEAT`, a hint, says so), the switches keep its pointer
+  (`GCSPR_EL0`) when the scheduler switches to a fiber, in `shadow_stack_base`, and pop the fiber's entries above it
+  one at a time with `GCSPOPM` when it switches back, there being no bulk equivalent of `INCSSP`.
+* **Landing pads.** `bti j` after every call, where the loop's `br` lands, and `bti c` at the switches' entries.
 
 #### Walking the Stack
 

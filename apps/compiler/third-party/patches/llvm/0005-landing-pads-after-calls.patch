@@ -1,0 +1,55 @@
+diff --git a/llvm/lib/Target/AArch64/AArch64BranchTargets.cpp b/llvm/lib/Target/AArch64/AArch64BranchTargets.cpp
+index e361c55b9004..617057b3c0dd 100644
+--- a/llvm/lib/Target/AArch64/AArch64BranchTargets.cpp
++++ b/llvm/lib/Target/AArch64/AArch64BranchTargets.cpp
+@@ -135,6 +135,11 @@ bool AArch64BranchTargetsImpl::run(MachineFunction &MF) {
+     if (MBB.isMachineBlockAddressTaken() || MBB.isIRBlockAddressTaken() ||
+         JumpTableTargets.count(&MBB))
+       CouldJump = true;
++    // A block whose address is taken may be called too, as a function's body
++    // is by morestack with BLR when it grows the stack (Hemera)
++    if ((MBB.isMachineBlockAddressTaken() || MBB.isIRBlockAddressTaken()) &&
++        F.hasFnAttribute("landing-pads-after-calls"))
++      CouldCall = true;
+ 
+     if (MBB.isEHPad()) {
+       if (HasWinCFI && (MBB.isEHFuncletEntry() || MBB.isCleanupFuncletEntry()))
+@@ -148,6 +153,21 @@ bool AArch64BranchTargetsImpl::run(MachineFunction &MF) {
+     }
+   }
+ 
++  // A landing pad after every call, for code that's re-entered at a call's
++  // continuation by an indirect branch, as a resumed fiber is (Hemera)
++  if (F.hasFnAttribute("landing-pads-after-calls")) {
++    const AArch64InstrInfo *TII = Subtarget->getInstrInfo();
++    for (MachineBasicBlock &MBB : MF) {
++      for (auto I = MBB.begin(); I != MBB.end(); ++I) {
++        if (I->isCall() && !I->isReturn()) {
++          BuildMI(MBB, std::next(I), I->getDebugLoc(), TII->get(AArch64::HINT))
++              .addImm(getBTIHintNum(false, true));
++          MadeChange = true;
++        }
++      }
++    }
++  }
++
+   return MadeChange;
+ }
+ 
+diff --git a/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp b/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
+index 6ccad26a890d..6d8b5dd95357 100644
+--- a/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
++++ b/llvm/lib/Target/X86/X86IndirectBranchTracking.cpp
+@@ -148,6 +148,12 @@ static bool runIndirectBranchTracking(MachineFunction &MF) {
+           IsCallReturnTwice(I->getOperand(0))) {
+         Changed |= addENDBR(MBB, std::next(I));
+       }
++      // A landing pad after every call, for code that's re-entered at a
++      // call's continuation by an indirect jump, as a resumed fiber is (Hemera)
++      else if (I->isCall() && !I->isReturn() &&
++               MF.getFunction().hasFnAttribute("landing-pads-after-calls")) {
++        Changed |= addENDBR(MBB, std::next(I));
++      }
+     }
+ 
+     // Exception handle may indirectly jump to catch pad, So we should add

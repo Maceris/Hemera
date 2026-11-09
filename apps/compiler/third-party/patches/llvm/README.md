@@ -93,3 +93,32 @@ Functions with segmented stacks aren't shrink-wrapped, as on X86: the check has 
 function's own code, rather than just before the part that needs the frame.
 
 Includes `llvm/test/CodeGen/AArch64/segmented-stacks-limit-register.ll`.
+
+## 0004-aarch64-frame-record-at-top.patch
+
+Hardware control-flow integrity on AArch64 (`docs/compilation.md`, *Control-Flow Integrity*). A function's return
+address is signed with the stack pointer at its entry (`paciasp`), and a resumed fiber's frames return into the resume
+loop (`docs/calling_convention.md`, *Resuming*), which has to sign its own return address the same way. It only knows
+each frame's frame pointer, and outside Darwin LLVM puts the frame record at the bottom of the callee-saved registers,
+so the entry stack pointer is the frame pointer plus their size, which differs from function to function. The
+`"frame-record-at-top"` function attribute gives a function Darwin's order of callee-saved registers, which puts the
+frame record at the top, so the entry stack pointer is always the frame pointer plus 16. Not on Windows, and not for
+SVE's calling convention.
+
+## 0005-landing-pads-after-calls.patch
+
+The resume loop also reaches each frame's continuation, the instruction after a call, with an indirect branch, which
+indirect branch tracking and branch target identification refuse unless a landing pad is there. LLVM puts one after a
+call only to a `returns_twice` function, like `setjmp`. The `"landing-pads-after-calls"` function attribute puts one
+after every call: `endbr64` on x86-64 (`X86IndirectBranchTracking`), `bti j` on AArch64 (`AArch64BranchTargets`), each
+where the module enables that pass (`"cf-protection-branch"`, `"branch-target-enforcement"`).
+
+The same patch makes a block whose address is taken a `bti jc` in such a function, rather than `bti j`: morestack
+reaches a function's body with `blr`, which only a `bti c` or `bti jc` accepts.
+
+## 0006-aarch64-split-stack-signed-frame.patch
+
+On top of 0003: the frame `.Lgrow` makes to call morestack signs its link register (`paciasp` before it's stored,
+`autiasp` before `ret`) when the function signs return addresses (`"sign-return-address"`). A fiber suspended on a
+new stack segment has that frame in its chain, and the resume loop re-enters it like any other, signing its own return
+address with the frame pointer plus 16, which is the stack pointer at its entry there too.

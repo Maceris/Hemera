@@ -1,0 +1,16 @@
+diff --git a/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp b/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp
+index 9e55b29426dd..060e3ef9f105 100644
+--- a/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp
++++ b/llvm/lib/Target/AArch64/AArch64RegisterInfo.cpp
+@@ -185,6 +185,11 @@ AArch64RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
+     if (Darwin)
+       return AFI.hasSVE_AAPCS(*MF) ? CSR_Darwin_AArch64_SVE_AAPCS_SaveList
+                                    : CSR_Darwin_AArch64_AAPCS_SaveList;
++    // The frame record at the top of the callee-saves, as on Darwin, so the
++    // stack pointer at entry is always the frame pointer plus 16 (Hemera)
++    if (!Windows && !AFI.hasSVE_AAPCS(*MF) &&
++        F.hasFnAttribute("frame-record-at-top"))
++      return CSR_Darwin_AArch64_AAPCS_SaveList;
+     if (Windows)
+       return AFI.hasSVE_AAPCS(*MF) ? CSR_Win_AArch64_SVE_AAPCS_SaveList
+                                    : CSR_Win_AArch64_AAPCS_SaveList;

@@ -552,6 +552,12 @@ namespace hemera {
         /// </summary>
         bool address_zero_is_memory;
         /// <summary>
+        /// Hardware control-flow integrity: landing pads at every function's entry and after every call (endbr64,
+        /// bti), return addresses signed on AArch64 (pac-ret), and the ELF notes that say the code has them, shadow
+        /// stacks and GCS included (docs/compilation.md, Control-Flow Integrity).
+        /// </summary>
+        bool control_flow_integrity;
+        /// <summary>
         /// --allow-run: the build package's compile-time code may run programs and write outside the output
         /// folder (docs/compilation.md, Compile-Time Permissions).
         /// </summary>

@@ -1293,6 +1293,26 @@ namespace hemera {
 	// From the vector, where the stack pointer is once the general registers are popped, to the saved rsp
 	constexpr int VECTOR_TO_RSP = 40;
 
+	/*
+	 * Whether this build has hardware control-flow integrity (docs/compilation.md, Control-Flow Integrity): its option,
+	 * on an ELF target for x86-64 or AArch64, where the landing pads, signed returns and their notes are.
+	 */
+	static bool control_flow_integrity(const Options& options) {
+		return options.control_flow_integrity && OSType::Win32 != options.os && OSType::UEFI != options.os
+			&& (ArchType::x86_64 == options.architecture || ArchType::aarch64 == options.architecture);
+	}
+
+	// The landing pad an indirect branch may land on, with control-flow integrity: endbr64 or bti; nothing without.
+	static std::string_view landing_pad(bool cfi, bool aarch64, bool call = true) {
+		if (!cfi) {
+			return "";
+		}
+		if (aarch64) {
+			return call ? "\tbti c\n" : "\tbti j\n";
+		}
+		return "\tendbr64\n";
+	}
+
 	static std::string push_registers() {
 		std::string text;
 		for (std::string_view name : FRAME_REGISTERS) {
@@ -1352,8 +1372,8 @@ namespace hemera {
 	 * to the kernel stack in the x86_64.SyscallScratch the gs base points at, and builds the frame:
 	 * rip from rcx, rflags from r11, and cs and ss as SYSRET will load them, from IA32_STAR.
 	 */
-	static std::string syscall_entry_assembly(std::string_view symbol, std::string_view body) {
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", symbol);
+	static std::string syscall_entry_assembly(std::string_view symbol, std::string_view body, bool cfi) {
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", symbol, landing_pad(cfi, false));
 		text += "\tswapgs\n\tmovq %rsp, %gs:8\n\tmovq %gs:0, %rsp\n";
 		// ss, rsp, rflags, cs, rip, the error code and the vector
 		text += "\tpushq $0\n\tpushq %gs:8\n\tpushq %r11\n\tpushq $0\n\tpushq %rcx\n\tpushq $0\n\tpushq $-1\n";
@@ -1371,12 +1391,15 @@ namespace hemera {
 		return vector == 8 || (vector >= 10 && vector <= 14) || vector == 17 || vector == 21 || vector == 29 || vector == 30;
 	}
 
-	// One stub per vector: an error code of 0 where the CPU pushes none, the vector, then the entry function.
-	static std::string vector_stubs(std::string_view symbol) {
+	/*
+	 * One stub per vector: an error code of 0 where the CPU pushes none, the vector, then the entry function. With
+	 * control-flow integrity each starts with endbr64, which an interrupt's delivery needs under indirect branch tracking.
+	 */
+	static std::string vector_stubs(std::string_view symbol, bool cfi) {
 		std::string text = "\t.text\n";
 		for (int vector = 0; vector < 256; ++vector) {
 			const bool paranoid = vector == 2 || vector == 8 || vector == 18;
-			text += std::format("{}.vector.{}:\n{}\tpushq ${}\n\tjmp {}{}\n", symbol, vector,
+			text += std::format("{}.vector.{}:\n{}{}\tpushq ${}\n\tjmp {}{}\n", symbol, vector, landing_pad(cfi, false),
 				pushes_error_code(vector) ? "" : "\tpushq $0\n", vector, symbol, paranoid ? ".paranoid" : "");
 		}
 		return text;
@@ -1500,7 +1523,7 @@ namespace hemera {
 			table = iter->second;
 		}
 		else {
-			generator.module_assembly.push_back(vector_stubs(symbol));
+			generator.module_assembly.push_back(vector_stubs(symbol, control_flow_integrity(*generator.options)));
 			mlir::Type u64 = integer_type(generator, 8);
 			mlir::Type type = LLVM::LLVMArrayType::get(u64, 256);
 			std::vector<LLVM::LLVMFuncOp> stubs;
@@ -1553,7 +1576,7 @@ namespace hemera {
 			text += entry_assembly_aarch64(symbol, body_symbol, !type->never_returns);
 		}
 		else {
-			text += has_convention(type, "syscall_entry") ? syscall_entry_assembly(symbol, body_symbol)
+			text += has_convention(type, "syscall_entry") ? syscall_entry_assembly(symbol, body_symbol, control_flow_integrity(*generator.options))
 				: entry_assembly(symbol, body_symbol, !type->never_returns);
 		}
 		generator.module_assembly.push_back(text);
@@ -1608,13 +1631,14 @@ namespace hemera {
 	 * calls in it stay where they are, and traps without memory. allocate takes no context: the function being grown may not
 	 * have one to give, since LLVM drops parameters an internal function doesn't use.
 	 */
-	static std::string morestack_assembly(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate, bool sse) {
+	static std::string morestack_assembly(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate, bool sse,
+		bool cfi) {
 		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
 		const size_t segment_size = o.segment_size, next_free = o.next_free;
 
 		// Room for the frame, the parameters, the return address, alignment, and the guard
 		const uint64_t extra = header_and_guard + 32;
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", MORESTACK_SYMBOL);
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", MORESTACK_SYMBOL, landing_pad(cfi, false));
 		text += "\tpushq %rbp\n\tmovq %rsp, %rbp\n";
 		text += std::format("\tpushq {}(%r14)\n\tpushq {}(%r14)\n\tpushq %rbx\n\tpushq %r12\n", limit, segment);
 		text += std::format("\tleaq {}(%r10,%r11), %rbx\n", extra);
@@ -1638,7 +1662,7 @@ namespace hemera {
 		text += "\tmovq 32(%rbp,%r12), %r10\n\tmovq %r10, (%rbx,%r12)\n\taddq $8, %r12\n\tjmp 2b\n";
 		text += "4:\n\tmovq %rbx, %r10\n\tmovq -24(%rbp), %rbx\n\tmovq -32(%rbp), %r12\n\tmovq %r10, %rsp\n";
 		// Where a body on a new segment returns: stack walks leave this frame out, and .grow's too
-		text += std::format("\tcallq *%rax\n{}:\n", MORESTACK_CONTINUE_SYMBOL);
+		text += std::format("\tcallq *%rax\n{}:\n{}", MORESTACK_CONTINUE_SYMBOL, landing_pad(cfi, false));
 		// Back: the segment just left is the spare now, and an older spare goes to the cache
 		text += "\tleaq -16(%rbp), %rsp\n";
 		text += std::format("\tmovq {}(%r14), %r10\n\tmovq {}(%r14), %r11\n\ttestq %r11, %r11\n\tjz 5f\n", segment, spare);
@@ -1699,14 +1723,19 @@ namespace hemera {
 	 * memory it runs brk #1. With fp, it keeps q0 to q7 while allocating.
 	 */
 	static std::string morestack_assembly_aarch64(const MorestackOffsets& o, uint64_t header_and_guard, const std::string& allocate,
-		bool fp) {
+		bool fp, bool cfi) {
 
 		const size_t limit = o.limit, segment = o.segment, spare = o.spare, cache = o.cache, cache_count = o.cache_count;
 		const size_t segment_size = o.segment_size, next_free = o.next_free;
 		const uint64_t extra = header_and_guard + 32;
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", MORESTACK_SYMBOL);
-		text += "\tstp x29, x30, [sp, #-48]!\n\tmov x29, sp\n";
-		text += std::format("\tldr x12, [x28, #{}]\n\tldr x13, [x28, #{}]\n\tstp x12, x13, [x29, #16]\n\tstp x19, x20, [x29, #32]\n",
+		/*
+		 * The frame record at the top, the carrier's limit and segment and x19 and x20 below it, so the stack pointer at
+		 * entry is the frame pointer plus 16, as in every Hemera frame (docs/calling_convention.md, Resuming); with
+		 * control-flow integrity the return address is signed with it.
+		 */
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", MORESTACK_SYMBOL, cfi ? "\tpaciasp\n" : "");
+		text += "\tstp x29, x30, [sp, #-16]!\n\tmov x29, sp\n\tsub sp, sp, #32\n";
+		text += std::format("\tldr x12, [x28, #{}]\n\tldr x13, [x28, #{}]\n\tstp x12, x13, [x29, #-32]\n\tstp x19, x20, [x29, #-16]\n",
 			limit, segment);
 		text += aarch64_move("x19", extra) + "\tadd x19, x19, x9\n\tadd x19, x19, x10\n";
 		// The spare, if it's big enough, or the first cached segment, which must be
@@ -1725,17 +1754,17 @@ namespace hemera {
 		text += std::format("\tldr w13, [x20, #{}]\n\tadd x13, x13, x20\n\tsub x13, x13, x10\n\tand x13, x13, #-16\n", segment_size);
 		text += "\tldr x14, [x29]\n\tadd x14, x14, #16\n\tmov x15, xzr\n2:\n\tcmp x15, x10\n\tb.hs 4f\n";
 		text += "\tldr x12, [x14, x15]\n\tstr x12, [x13, x15]\n\tadd x15, x15, #8\n\tb 2b\n";
-		text += "4:\n\tldp x19, x20, [x29, #32]\n\tmov sp, x13\n";
+		text += "4:\n\tldp x19, x20, [x29, #-16]\n\tmov sp, x13\n";
 		// Where a body on a new segment returns: stack walks leave this frame out, and the check's too
-		text += std::format("\tblr x11\n{}:\n", MORESTACK_CONTINUE_SYMBOL);
+		text += std::format("\tblr x11\n{}:\n{}", MORESTACK_CONTINUE_SYMBOL, landing_pad(cfi, true, false));
 		// Back: the segment just left is the spare now, and an older spare goes to the cache
-		text += "\tmov sp, x29\n";
+		text += "\tsub sp, x29, #32\n";
 		text += std::format("\tldr x12, [x28, #{}]\n\tldr x13, [x28, #{}]\n\tcbz x13, 5f\n", segment, spare);
 		text += std::format("\tldr x14, [x28, #{}]\n\tstr x14, [x13, #{}]\n\tstr x13, [x28, #{}]\n", cache, next_free, cache);
 		text += std::format("\tldr w14, [x28, #{0}]\n\tadd w14, w14, #1\n\tstr w14, [x28, #{0}]\n", cache_count);
 		text += std::format("5:\n\tstr x12, [x28, #{}]\n", spare);
-		text += std::format("\tldp x12, x13, [x29, #16]\n\tstr x12, [x28, #{}]\n\tstr x13, [x28, #{}]\n", limit, segment);
-		text += "\tldp x29, x30, [sp], #48\n\tret\n";
+		text += std::format("\tldp x12, x13, [x29, #-32]\n\tstr x12, [x28, #{}]\n\tstr x13, [x28, #{}]\n", limit, segment);
+		text += std::format("\tmov sp, x29\n\tldp x29, x30, [sp], #16\n{}\tret\n", cfi ? "\tautiasp\n" : "");
 		// None big enough: one from allocate, on the native stack, with the arguments and the body kept there
 		text += "9:\n\tmov x20, sp\n\tmov x12, sp\n";
 		text += std::format("\tldr w13, [x28, #{}]\n\tcbnz w13, 7f\n", o.foreign_depth);
@@ -1812,12 +1841,12 @@ namespace hemera {
 		if (aarch64) {
 			const bool fp = generator.options->cpu_features.find("-fp-armv8") == std::string::npos;
 			generator.module_assembly.push_back(morestack_assembly_aarch64(o, guard + header->type_value->size,
-				allocate_function.getSymName().str(), fp));
+				allocate_function.getSymName().str(), fp, control_flow_integrity(*generator.options)));
 			return true;
 		}
 		const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
 		generator.module_assembly.push_back(morestack_assembly(o, guard + header->type_value->size,
-			allocate_function.getSymName().str(), sse));
+			allocate_function.getSymName().str(), sse, control_flow_integrity(*generator.options)));
 		return true;
 	}
 
@@ -1989,10 +2018,10 @@ namespace hemera {
 	 * nothing a result is in.
 	 */
 	static std::string foreign_shim_assembly(const std::string& shim, const std::string& symbol, const ForeignOffsets& o,
-		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool windows) {
+		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool windows, bool cfi) {
 
 		const int64_t area = ((windows ? 32 : 0) + static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", shim);
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", shim, landing_pad(cfi, false));
 		text += "\tpushq %rbp\n\tmovq %rsp, %rbp\n\tpushq %rbx\n\tpushq %r12\n";
 		text += std::format("\tincl {}(%r14)\n\tmovq {}(%r14), %r12\n\tmovq %rsp, %rbx\n", o.foreign_depth, o.stack_limit);
 		// Already on the native stack, inside other foreign code or morestack's allocating: stay there
@@ -2042,10 +2071,10 @@ namespace hemera {
 	 * everything else, which no parameter or result is in.
 	 */
 	static std::string foreign_shim_assembly_aarch64(const std::string& shim, const std::string& symbol, const ForeignOffsets& o,
-		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments) {
+		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool cfi) {
 
 		const int64_t area = (static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", shim);
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", shim, landing_pad(cfi, true));
 		text += "\tstp x29, x30, [sp, #-32]!\n\tmov x29, sp\n\tstp x19, x20, [sp, #16]\n";
 		text += std::format("\tldr w9, [x28, #{0}]\n\tadd w9, w9, #1\n\tstr w9, [x28, #{0}]\n", o.foreign_depth);
 		text += std::format("\tldr x20, [x28, #{}]\n\tmov x19, sp\n", o.stack_limit);
@@ -2108,11 +2137,13 @@ namespace hemera {
 		const ForeignOffsets& offsets, TypeInfoFunction const* type) {
 
 		if (ArchType::aarch64 == generator.options->architecture) {
-			return foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type));
+			return foreign_shim_assembly_aarch64(shim, symbol, offsets, foreign_stack_arguments_aarch64(type),
+				control_flow_integrity(*generator.options));
 		}
 		// C's convention on Windows and UEFI is Microsoft's x64 one, with shadow space; elsewhere System V's
 		const bool windows = OSType::Win32 == generator.options->os || OSType::UEFI == generator.options->os;
-		return foreign_shim_assembly(shim, symbol, offsets, foreign_stack_arguments(type, windows), windows);
+		return foreign_shim_assembly(shim, symbol, offsets, foreign_stack_arguments(type, windows), windows,
+			control_flow_integrity(*generator.options));
 	}
 
 	/*
@@ -5699,7 +5730,8 @@ namespace hemera {
 	 * anything in, so a re-entered frame's result reaches its caller untouched, and the frame it
 	 * re-entered last in the carrier block, since the fiber only runs on one carrier at a time.
 	 */
-	static std::string fiber_assembly(const FiberOffsets& o, std::string_view run, bool sse) {
+	static std::string fiber_assembly(const FiberOffsets& o, std::string_view run, bool sse, bool cfi) {
+		const std::string_view pad = landing_pad(cfi, false);
 		const SuspendedLayout layout = suspended_layout(sse);
 		const std::string save_floating = sse ? "\tsubq $16, %rsp\n\tstmxcsr (%rsp)\n\tfnstcw 4(%rsp)\n" : "";
 		const std::string restore_floating = sse ? "\tldmxcsr (%rsp)\n\tfldcw 4(%rsp)\n\taddq $16, %rsp\n" : "";
@@ -5730,7 +5762,7 @@ namespace hemera {
 		};
 		std::string text = "\t.text\n";
 		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
-		text += std::format("\t.p2align 4\n{}:\n", FIBER_START_SYMBOL);
+		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_START_SYMBOL, pad);
 		text += save_scheduler;
 		text += std::format("\tmovq %rdi, {}(%r14)\n\tmovq %rdx, {}(%r14)\n\tmovq $0, {}(%r14)\n\tmovq $0, {}(%r14)\n",
 			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
@@ -5738,10 +5770,11 @@ namespace hemera {
 		text += "\tmovq %rsi, %rsp\n\txorl %ebp, %ebp\n\tcallq hemera.fiber_entry\n\tud2\n";
 		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
 		text += "\t.p2align 4\nhemera.fiber_entry:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n";
-		text += std::format("\tcallq {}\n", run);
+		// Where the resume loop re-enters this frame, with an indirect jump
+		text += std::format("\tcallq {}\n{}", run, pad);
 		text += back_to_scheduler(1);
 		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
-		text += std::format("\t.p2align 4\n{}:\n", FIBER_RESUME_SYMBOL);
+		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_RESUME_SYMBOL, pad);
 		text += save_scheduler;
 		text += std::format("\tmovq %rdi, {}(%r14)\n", o.current_fiber);
 		text += set_state(o, o.running);
@@ -5768,7 +5801,7 @@ namespace hemera {
 		text += "\tpopq %r15\n\tpopq %r13\n\tpopq %r12\n\tpopq %rbx\n\taddq $8, %rsp\n\tjmpq *%r11\n";
 		text += "1:\n\tmovq %rcx, %rsp\n\tjmpq *%r11\n";
 		// fiber_suspend(fiber): its state on its own stack, where it is, and back to the scheduler
-		text += std::format("\t.p2align 4\n{}:\n", FIBER_SUSPEND_SYMBOL);
+		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_SUSPEND_SYMBOL, pad);
 		text += "\tpushq %rbx\n\tpushq %r12\n\tpushq %r13\n\tpushq %r15\n";
 		text += std::format("\tpushq {}(%r14)\n\tpushq {}(%r14)\n\tpushq %rbp\n", o.carrier_segment, o.carrier_limit);
 		text += save_floating;
@@ -5796,9 +5829,18 @@ namespace hemera {
 	 * stack pointer where it is: at the fiber's saved state the first time, and then at the bottom of
 	 * the frame that returned, below everything live. fiber_reenter puts the loop's address in the
 	 * frame record, which functions return through, and the loop keeps its state in x9 to x12, which
-	 * no function returns anything in. No guarded control stack or pointer authentication yet.
+	 * no function returns anything in.
+	 *
+	 * With control-flow integrity (docs/calling_convention.md, Resuming): each frame's return address is signed
+	 * with the stack pointer at its entry, which is its frame pointer plus 16, as every Hemera frame keeps its frame
+	 * record at the top (LLVM's "frame-record-at-top"). So fiber_reenter signs the loop's address that way, and the
+	 * loop authenticates each continuation against the frame that just returned before branching to it. Those use
+	 * PACIA1716 and AUTIA1716, in x17 with the modifier in x16, which are hints, so they do nothing without pointer
+	 * authentication, as PACIASP doesn't. And where the thread has a Guarded Control Stack (CHKFEAT, also a hint, says
+	 * so), its pointer when the scheduler switches in is kept in shadow_stack_base, and the fiber's entries above it
+	 * are popped when it switches out, as INCSSP does on x86-64.
 	 */
-	static std::string fiber_assembly_aarch64(const FiberOffsets& o, std::string_view run, bool fp) {
+	static std::string fiber_assembly_aarch64(const FiberOffsets& o, std::string_view run, bool fp, bool cfi) {
 		const SuspendedLayout layout = suspended_layout(fp, true);
 		const size_t scheduler_size = fp ? 192 : 112;
 		const size_t suspended_size = fp ? AARCH64_SUSPENDED_FP_SIZE : AARCH64_SUSPENDED_SIZE;
@@ -5819,9 +5861,24 @@ namespace hemera {
 		save_scheduler += std::format("\tstp x27, x29, [sp, #64]\n\tldr x9, [x28, #{}]\n\tstp x30, x9, [sp, #80]\n", o.carrier_limit);
 		save_scheduler += std::format("\tldr x9, [x28, #{}]\n\tldr x10, [x28, #{}]\n\tstp x9, x10, [sp, #96]\n", o.carrier_segment, o.current_fiber);
 		save_scheduler += floating(112, true);
-		save_scheduler += std::format("\tmov x9, sp\n\tstr x9, [x28, #{}]\n\tstr xzr, [x28, #{}]\n", o.scheduler_sp, o.shadow_stack_base);
+		save_scheduler += std::format("\tmov x9, sp\n\tstr x9, [x28, #{}]\n", o.scheduler_sp);
+		if (cfi) {
+			// CHKFEAT X16 clears bit 0 where the thread has a GCS; its pointer, GCSPR_EL0, then
+			save_scheduler += "\tmov x16, #1\n\thint #40\n\tmov x9, xzr\n\ttbnz x16, #0, 20f\n\tmrs x9, s3_3_c2_c5_1\n20:\n";
+			save_scheduler += std::format("\tstr x9, [x28, #{}]\n", o.shadow_stack_base);
+		}
+		else {
+			save_scheduler += std::format("\tstr xzr, [x28, #{}]\n", o.shadow_stack_base);
+		}
 		auto back_to_scheduler = [&](int exit) {
-			std::string text = std::format("\tldr x9, [x28, #{}]\n\tmov sp, x9\n", o.scheduler_sp);
+			std::string text;
+			if (cfi) {
+				// The fiber's GCS entries popped (GCSPOPM), down to where the scheduler's are
+				text += std::format("\tldr x9, [x28, #{}]\n\tcbz x9, 22f\n21:\n\tmrs x10, s3_3_c2_c5_1\n\tcmp x10, x9\n\tb.hs 22f\n",
+					o.shadow_stack_base);
+				text += "\tsysl x10, #3, c7, c7, #1\n\tb 21b\n22:\n";
+			}
+			text += std::format("\tldr x9, [x28, #{}]\n\tmov sp, x9\n", o.scheduler_sp);
 			text += floating(112, false);
 			text += std::format("\tldp x9, x10, [sp, #96]\n\tstr x9, [x28, #{}]\n\tstr x10, [x28, #{}]\n", o.carrier_segment, o.current_fiber);
 			text += std::format("\tldp x30, x9, [sp, #80]\n\tstr x9, [x28, #{}]\n", o.carrier_limit);
@@ -5831,18 +5888,20 @@ namespace hemera {
 		};
 		std::string text = "\t.text\n";
 		// fiber_start(fiber, stack top, stack limit): onto the fiber's first segment, into fiber_entry
-		text += std::format("\t.p2align 4\n{}:\n", FIBER_START_SYMBOL);
+		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_START_SYMBOL, landing_pad(cfi, true));
 		text += save_scheduler;
 		text += std::format("\tstr x0, [x28, #{}]\n\tstr x2, [x28, #{}]\n\tstr xzr, [x28, #{}]\n\tstr xzr, [x28, #{}]\n",
 			o.current_fiber, o.carrier_limit, o.carrier_segment, o.resume_frame);
 		text += set_state_aarch64(o, o.running);
 		text += "\tmov sp, x1\n\tmov x29, xzr\n\tbl hemera.fiber_entry\n\tbrk #1\n";
 		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
-		text += "\t.p2align 4\nhemera.fiber_entry:\n\tstp x29, x30, [sp, #-16]!\n\tmov x29, sp\n";
-		text += std::format("\tbl {}\n", run);
+		text += std::format("\t.p2align 4\nhemera.fiber_entry:\n{}\tstp x29, x30, [sp, #-16]!\n\tmov x29, sp\n",
+			cfi ? "\tpaciasp\n" : "");
+		// Where the resume loop re-enters this frame, with an indirect branch
+		text += std::format("\tbl {}\n{}", run, landing_pad(cfi, true, false));
 		text += back_to_scheduler(1);
 		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
-		text += std::format("\t.p2align 4\n{}:\n", FIBER_RESUME_SYMBOL);
+		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_RESUME_SYMBOL, landing_pad(cfi, true));
 		text += save_scheduler;
 		text += std::format("\tstr x0, [x28, #{}]\n", o.current_fiber);
 		text += set_state_aarch64(o, o.running);
@@ -5857,17 +5916,32 @@ namespace hemera {
 		text += "\tbl hemera.fiber_reenter\n";
 		// The frame returned, to here: on to its caller, whose frame bottom the stack pointer is at now
 		text += std::format("{}:\n", FIBER_LOOP_RETURN_SYMBOL);
-		text += std::format("\tldr x11, [x28, #{}]\n\tldr x10, [x28, #{}]\n", o.resume_return, o.resume_parent);
+		if (cfi) {
+			// The continuation, signed with the stack pointer at the returned frame's entry: its frame pointer plus 16
+			text += std::format("\tldr x17, [x28, #{}]\n\tldr x16, [x28, #{}]\n\tadd x16, x16, #16\n\thint #12\n\tmov x11, x17\n",
+				o.resume_return, o.resume_frame);
+			text += std::format("\tldr x10, [x28, #{}]\n", o.resume_parent);
+		}
+		else {
+			text += std::format("\tldr x11, [x28, #{}]\n\tldr x10, [x28, #{}]\n", o.resume_return, o.resume_parent);
+		}
 		text += "\tmov w12, wzr\n\tb hemera.fiber_reenter_next\n";
 		// fiber_reenter: only reached by the bl above, whose return address the frame returns through now
-		text += "\t.p2align 4\nhemera.fiber_reenter:\n\tstr x30, [x10, #8]\n\tmov x29, x10\n\tcbz w12, 1f\n";
+		if (cfi) {
+			// The loop's address signed as the frame's prologue signed what it replaces: with its frame pointer plus 16
+			text += "\t.p2align 4\nhemera.fiber_reenter:\n\tmov x17, x30\n\tadd x16, x10, #16\n\thint #8\n\tstr x17, [x10, #8]\n";
+			text += "\tmov x29, x10\n\tcbz w12, 1f\n";
+		}
+		else {
+			text += "\t.p2align 4\nhemera.fiber_reenter:\n\tstr x30, [x10, #8]\n\tmov x29, x10\n\tcbz w12, 1f\n";
+		}
 		text += "\tldp x19, x20, [sp, #24]\n\tldp x21, x22, [sp, #40]\n\tldp x23, x24, [sp, #56]\n\tldp x25, x26, [sp, #72]\n";
 		text += "\tldr x27, [sp, #88]\n";
 		text += floating(104, false);
 		text += std::format("\tadd sp, sp, #{}\n", suspended_size);
 		text += "1:\n\tbr x11\n";
 		// fiber_suspend(fiber): its state on its own stack, where it is, and back to the scheduler
-		text += std::format("\t.p2align 4\n{}:\n", FIBER_SUSPEND_SYMBOL);
+		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_SUSPEND_SYMBOL, landing_pad(cfi, true));
 		text += std::format("\tsub sp, sp, #{}\n", suspended_size);
 		text += std::format("\tldr x9, [x28, #{}]\n\tldr x10, [x28, #{}]\n\tstr x29, [sp]\n\tstp x9, x10, [sp, #8]\n",
 			o.carrier_limit, o.carrier_segment);
@@ -5936,12 +6010,12 @@ namespace hemera {
 			const std::string run_symbol = run_function.getSymName().str();
 			if (ArchType::aarch64 == generator.options->architecture) {
 				const bool fp = generator.options->cpu_features.find("-fp-armv8") == std::string::npos;
-				generator.module_assembly.push_back(fiber_assembly_aarch64(offsets, run_symbol, fp));
+				generator.module_assembly.push_back(fiber_assembly_aarch64(offsets, run_symbol, fp, control_flow_integrity(*generator.options)));
 				fiber_walk_table(generator, offsets, fp);
 			}
 			else {
 				const bool sse = generator.options->cpu_features.find("-sse") == std::string::npos;
-				generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse));
+				generator.module_assembly.push_back(fiber_assembly(offsets, run_symbol, sse, control_flow_integrity(*generator.options)));
 				fiber_walk_table(generator, offsets, sse);
 			}
 		}
@@ -11242,6 +11316,7 @@ namespace hemera {
 				target.relocation_model = read_member(options, target_layout, "relocation_model");
 				target.red_zone = read_number(options, target_layout, "red_zone") != 0;
 				target.address_zero_is_memory = read_number(options, target_layout, "address_zero_is_memory") != 0;
+				target.control_flow_integrity = read_number(options, target_layout, "control_flow_integrity") != 0;
 				target.linker_script = read_text(options, target_layout, "linker_script");
 				const TypeInfo* paths_type = nullptr;
 				if (const uint8_t* paths = field_at(options, target_layout, "library_paths", paths_type)) {
@@ -11394,6 +11469,7 @@ namespace hemera {
 				data.write_member(at, target, "relocation_model", TargetRelocationModel::Static == options.relocation_model ? "Static" : "Default");
 				data.write_number(at, target, "red_zone", options.red_zone);
 				data.write_number(at, target, "address_zero_is_memory", options.address_zero_is_memory);
+				data.write_number(at, target, "control_flow_integrity", options.control_flow_integrity);
 				data.write_text(at, target, "linker_script", options.linker_script.empty() ? std::string() : options.linker_script.string());
 				data.write_text(at, target, "linker", options.linker);
 				data.write_number(at, target, "startup_code", options.startup_code);
@@ -12193,6 +12269,7 @@ namespace hemera {
 		result.relocation_model = target.relocation_model == "Static" ? TargetRelocationModel::Static : TargetRelocationModel::PositionIndependent;
 		result.red_zone = target.red_zone;
 		result.address_zero_is_memory = target.address_zero_is_memory;
+		result.control_flow_integrity = target.control_flow_integrity;
 		result.startup_code = target.startup_code;
 		// A typed library (docs/compilation.md, Typed Libraries): no startup code, and code that works wherever it's loaded
 		if (target.output_type == "DynamicLibrary") {
@@ -12725,11 +12802,14 @@ namespace hemera {
 		std::vector<uint64_t> offsets;
 		// The carrier register's name: r14 on x86-64, x28 on AArch64
 		const char* carrier_register = "r14";
+		// Whether return addresses are signed (AArch64 with control-flow integrity), so the walk strips them
+		bool signed_returns = false;
 	};
 
 	static WalkSupport walk_support(llvm::Module& module, const Options& options) {
 		WalkSupport support;
 		support.carrier_register = ArchType::aarch64 == options.architecture ? "x28" : "r14";
+		support.signed_returns = control_flow_integrity(options) && ArchType::aarch64 == options.architecture;
 		support.loop_return = module.getFunction(FIBER_LOOP_RETURN_SYMBOL);
 		support.morestack_continue = module.getFunction(MORESTACK_CONTINUE_SYMBOL);
 		llvm::GlobalVariable* table = module.getGlobalVariable(FIBER_WALK_SYMBOL, true);
@@ -12752,6 +12832,24 @@ namespace hemera {
 	 * return address is the running fiber's reentered_return. A body morestack ran on a new segment
 	 * returns into morestack, whose own frame returns into the function's .grow: both are left out.
 	 */
+	/*
+	 * A return address as the code it returns to, without the authentication code pointer authentication signed it
+	 * with, as XPACI gives it, for a 48-bit virtual address: the bits above 47 are cleared for an address in the lower
+	 * half, and set for one in the upper half, which bit 55 says. Unchanged where returns aren't signed.
+	 */
+	static llvm::Value* strip_authentication(llvm::IRBuilder<>& builder, const WalkSupport& support, llvm::Value* address) {
+		if (!support.signed_returns) {
+			return address;
+		}
+		llvm::Type* size = builder.getInt64Ty();
+		llvm::Value* bits = builder.CreatePtrToInt(address, size);
+		llvm::Value* upper = builder.CreateICmpNE(builder.CreateAnd(bits, llvm::ConstantInt::get(size, uint64_t{ 1 } << 55)),
+			llvm::ConstantInt::get(size, 0));
+		llvm::Value* low = builder.CreateAnd(bits, llvm::ConstantInt::get(size, 0x0000ffffffffffffull));
+		llvm::Value* stripped = builder.CreateSelect(upper, builder.CreateOr(low, llvm::ConstantInt::get(size, 0xffff000000000000ull)), low);
+		return builder.CreateIntToPtr(stripped, address->getType());
+	}
+
 	static void build_walk(llvm::IRBuilder<>& builder, llvm::Function* function, const WalkSupport& support, llvm::Value* start,
 		llvm::Value* addresses, llvm::Value* count, llvm::Value* skip, llvm::Value* first_written) {
 
@@ -12788,7 +12886,8 @@ namespace hemera {
 		// The caller's frame pointer, then this frame's return address unless it's the entry function's
 		builder.SetInsertPoint(frame);
 		llvm::Value* caller = builder.CreateLoad(pointer, current);
-		llvm::Value* raw_return = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), current, 8));
+		llvm::Value* raw_return = strip_authentication(builder, support,
+			builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), current, 8)));
 		builder.CreateCondBr(builder.CreateIsNull(caller), done, returned);
 
 		builder.SetInsertPoint(returned);
@@ -12805,7 +12904,8 @@ namespace hemera {
 			llvm::Value* carrier_value = builder.CreateCall(read_register, { llvm::MetadataAsValue::get(context,
 				llvm::MDNode::get(context, { llvm::MDString::get(context, support.carrier_register) })) });
 			llvm::Value* carrier = builder.CreateIntToPtr(carrier_value, pointer);
-			llvm::Value* real = builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), carrier, support.offsets[0]));
+			llvm::Value* real = strip_authentication(builder, support,
+				builder.CreateLoad(pointer, builder.CreateConstGEP1_64(builder.getInt8Ty(), carrier, support.offsets[0])));
 			builder.CreateBr(found);
 			builder.SetInsertPoint(found);
 			llvm::PHINode* chosen = builder.CreatePHI(pointer, 2);
@@ -12996,6 +13096,23 @@ namespace hemera {
 		}
 		const bool codeview = result->getModuleFlag("CodeView") != nullptr;
 		const bool classic_frames = system_v_on_windows(options);
+		/*
+		 * Hardware control-flow integrity (docs/compilation.md, Control-Flow Integrity): LLVM's module flags, from which it
+		 * also writes the ELF notes, and on AArch64 each function's attributes, which its code generation reads
+		 */
+		const bool cfi = control_flow_integrity(options);
+		const bool cfi_aarch64 = cfi && ArchType::aarch64 == options.architecture;
+		if (cfi_aarch64) {
+			result->addModuleFlag(llvm::Module::Min, "branch-target-enforcement", 1);
+			result->addModuleFlag(llvm::Module::Min, "sign-return-address", 1);
+			result->addModuleFlag(llvm::Module::Min, "sign-return-address-all", uint32_t{ 0 });
+			result->addModuleFlag(llvm::Module::Min, "sign-return-address-with-bkey", uint32_t{ 0 });
+			result->addModuleFlag(llvm::Module::Min, "guarded-control-stack", 1);
+		}
+		else if (cfi) {
+			result->addModuleFlag(llvm::Module::Min, "cf-protection-branch", 1);
+			result->addModuleFlag(llvm::Module::Min, "cf-protection-return", 1);
+		}
 		for (llvm::Function& function : *result) {
 			/*
 			 * On Windows, frames chain through rbp like elsewhere, without Windows' unwind information
@@ -13017,6 +13134,20 @@ namespace hemera {
 			 */
 			function.addFnAttr("frame-pointer", "all");
 			function.addFnAttr("disable-tail-calls", "true");
+			/*
+			 * A landing pad after every call, where a resumed fiber is re-entered by an indirect branch; on AArch64, landing
+			 * pads, return addresses signed with the stack pointer at entry, and the frame record at the top of the frame,
+			 * so the resume loop can sign its own the same way (docs/calling_convention.md, Resuming)
+			 */
+			if (cfi) {
+				function.addFnAttr("landing-pads-after-calls");
+			}
+			if (cfi_aarch64) {
+				function.addFnAttr("branch-target-enforcement");
+				function.addFnAttr("sign-return-address", "non-leaf");
+				function.addFnAttr("sign-return-address-key", "a_key");
+				function.addFnAttr("frame-record-at-top");
+			}
 			/*
 			 * No C library, so a loop that finds a string's end stays a loop, rather than becoming a call
 			 * to strlen or wcslen. memcpy, memmove, memset and memcmp are defined (define_memory_functions).
