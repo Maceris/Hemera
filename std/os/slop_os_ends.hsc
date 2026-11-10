@@ -1,6 +1,5 @@
 package os
 
-
 /*
  * SlopOS's side of std/os (the SlopOS repository's decisions 0040, 0044, 0068): channels typed by the
  * protocol they speak, sending and receiving fixed-layout messages on them, and launching programs through
@@ -13,354 +12,370 @@ package os
  *
  * A program's entry takes its grants as parameters, named after them (docs/compilation.md, Entry
  * Parameters); exit, the clock and random numbers are base's and std's as on any system.
+ *
+ * The channels and messages build on every OS, so a protocol's code, its validators above all, can be tested and
+ * fuzzed hosted; their calls only work on SlopOS. Launching is only on SlopOS.
  */
-#if OS == .SlopOS {
-    import compiler from "base"
-    import runtime from "base"
-    import slop_os from "std/os"
-    import process_manager from "std/os/slop_os"
+import compiler from "base"
+import runtime from "base"
+import slop_os from "std/os"
 
-    /**
-     * A channel end that speaks protocol P.
-     *
-     * An entry parameter of one is the grant of its name, and where one arrives, as a grant or in a message, its
-     * channel's tag has to be P's (protocol_tag), or it's refused.
-     *
-     * @tparam P The protocol: a type named after it, like process_manager.ProcessManager. Only its name is used.
-     */
-    Channel :: struct[P] {
-        /** The end itself, a handle in the caller's table, which whoever holds the Channel[P] owns and closes. */
-        end : slop_os.Channel,
+
+/**
+ * A channel end that speaks protocol P.
+ *
+ * An entry parameter of one is the grant of its name, and where one arrives, as a grant or in a message, its
+ * channel's tag has to be P's (protocol_tag), or it's refused.
+ *
+ * @tparam P The protocol: a type named after it, like process_manager.ProcessManager. Only its name is used.
+ */
+Channel :: struct[P] {
+    /** The end itself, a handle in the caller's table, which whoever holds the Channel[P] owns and closes. */
+    end : slop_os.Channel,
+}
+
+/**
+ * A channel end that connections to a P arrive on, each a message with the connection's end as its one handle.
+ *
+ * An entry parameter of one is the grant of its name, checked as a Channel[P]'s is.
+ *
+ * @tparam P The protocol the connections speak, as Channel[P] names it.
+ */
+Listener :: struct[P] {
+    /** The end connections arrive on, a handle in the caller's table, which its holder owns and closes. */
+    end : slop_os.Channel,
+}
+
+/**
+ * The reading end of a stream (std/os/slop_os's stream), which reads records of T.
+ *
+ * The Sink[T] at its other end writes them. Their channel is tagged with the stream protocol, whatever T is, and T
+ * is checked when the stream opens. records is no bytes, there so T is in their schemas: a manifest says what
+ * records a program reads and writes, for a launcher, like a shell, that connects them, checks they're the same,
+ * and reads them.
+ *
+ * @tparam T The records' type.
+ */
+Stream :: struct[T] #packed #align(4) {
+    /** The channel end, tagged with the stream protocol; its holder owns and closes it. */
+    end : slop_os.Channel,
+    /** No bytes: only there so T is in the type's schema. */
+    records : T[0],
+}
+
+/**
+ * The writing end of a stream (std/os/slop_os's stream), which writes records of T for the Stream[T] at its
+ * other end, tagged and checked as Stream[T] is.
+ *
+ * @tparam T The records' type.
+ */
+Sink :: struct[T] #packed #align(4) {
+    /** The channel end, tagged with the stream protocol; its holder owns and closes it. */
+    end : slop_os.Channel,
+    /** No bytes: only there so T is in the type's schema. */
+    records : T[0],
+}
+
+/**
+ * Compute the tag of the protocol P (decisions/0040, 0071).
+ *
+ * A channel for P is made with it (channel_create), and the end of a Channel[P] or Listener[P] has to have it
+ * where it arrives: as an entry's parameter, or in a message.
+ *
+ * @tparam P The protocol, by its type's name without its package.
+ * @return The 64-bit FNV-1a hash of P's name; never 0 in practice, which means no protocol.
+ */
+protocol_tag :: fn[P]() -> u64 {
+    return end_tag(type_info_of(Channel[P]))
+}
+
+/**
+ * Make a new channel for P, both ends tagged with its protocol_tag.
+ *
+ * @tparam P The protocol its ends speak.
+ * @param budget The memory budget its rings are charged to.
+ * @param ring_bytes How many bytes each way's ring holds: 0 for the kernel's default, or else a power of two from
+ *     CHANNEL_MIN_RING to CHANNEL_MAX_RING. A message is at most half of it (channel_max_payload).
+ * @return Its two ends, new handles in the caller's table, which the caller owns.
+ * @error InvalidSize The ring_bytes isn't 0 or a power of two in range.
+ * @error BudgetExceeded The budget can't pay for the rings.
+ * @error OutOfMemory The kernel had no memory for them.
+ * @error TableFull The caller's handle table has no room for the ends.
+ * @error InvalidHandle The budget isn't a handle of the caller's.
+ * @error WrongKind The budget isn't a memory budget.
+ * @error MissingRight The budget lacks the right to be charged.
+ */
+channel_for :: fn[P](budget: slop_os.MemoryBudget, ring_bytes: u32) -> Result[slop_os.ChannelPair, slop_os.ChannelError] {
+    return slop_os.channel_create(budget, ring_bytes, protocol_tag[P]())
+}
+
+/**
+ * Check whether a channel end was made for P.
+ *
+ * @tparam P The protocol asked about.
+ * @param end The end, which stays the caller's.
+ * @return True if its channel's tag is P's protocol_tag; false for another tag, or when the tag can't be read (a
+ *     closed or invalid handle).
+ */
+speaks :: fn[P](end: slop_os.Channel) -> bool {
+    return (slop_os.channel_tag(end) or_else 0) == protocol_tag[P]()
+}
+
+/**
+ * Compute the protocol tag that a channel end's type needs where it arrives.
+ *
+ * @param type The type: a Channel[P] or Listener[P], a Stream[T] or Sink[T], or anything else.
+ * @return For a Channel[P] or Listener[P], the FNV-1a hash of P's name without its package; for a Stream[T] or
+ *     Sink[T], the stream protocol's tag, name_tag("Stream"); and 0, meaning no protocol, for any other type.
+ */
+end_tag :: fn(type: ptr[compiler.TypeInfo]) -> u64 {
+    if type.variant != .STRUCT {
+        return 0
     }
-
-    /**
-     * A channel end that connections to a P arrive on, each a message with the connection's end as its one handle.
-     *
-     * An entry parameter of one is the grant of its name, checked as a Channel[P]'s is.
-     *
-     * @tparam P The protocol the connections speak, as Channel[P] names it.
-     */
-    Listener :: struct[P] {
-        /** The end connections arrive on, a handle in the caller's table, which its holder owns and closes. */
-        end : slop_os.Channel,
+    name :: cast[ptr[compiler.TypeInfoStruct]](type).name
+    start : usize = 0
+    if starts_with(name, "Stream[") || starts_with(name, "Sink[") {
+        return name_tag("Stream")
     }
-
-    /**
-     * The reading end of a stream (std/os/slop_os's stream), which reads records of T.
-     *
-     * The Sink[T] at its other end writes them. Their channel is tagged with the stream protocol, whatever T is, and T
-     * is checked when the stream opens. records is no bytes, there so T is in their schemas: a manifest says what
-     * records a program reads and writes, for a launcher, like a shell, that connects them, checks they're the same,
-     * and reads them.
-     *
-     * @tparam T The records' type.
-     */
-    Stream :: struct[T] #packed #align(4) {
-        /** The channel end, tagged with the stream protocol; its holder owns and closes it. */
-        end : slop_os.Channel,
-        /** No bytes: only there so T is in the type's schema. */
-        records : T[0],
+    if starts_with(name, "Channel[") {
+        start = 8
     }
-
-    /**
-     * The writing end of a stream (std/os/slop_os's stream), which writes records of T for the Stream[T] at its
-     * other end, tagged and checked as Stream[T] is.
-     *
-     * @tparam T The records' type.
-     */
-    Sink :: struct[T] #packed #align(4) {
-        /** The channel end, tagged with the stream protocol; its holder owns and closes it. */
-        end : slop_os.Channel,
-        /** No bytes: only there so T is in the type's schema. */
-        records : T[0],
+    else if starts_with(name, "Listener[") {
+        start = 9
     }
-
-    /**
-     * Compute the tag of the protocol P (decisions/0040, 0071).
-     *
-     * A channel for P is made with it (channel_create), and the end of a Channel[P] or Listener[P] has to have it
-     * where it arrives: as an entry's parameter, or in a message.
-     *
-     * @tparam P The protocol, by its type's name without its package.
-     * @return The 64-bit FNV-1a hash of P's name; never 0 in practice, which means no protocol.
-     */
-    protocol_tag :: fn[P]() -> u64 {
-        return end_tag(type_info_of(Channel[P]))
+    else {
+        return 0
     }
-
-    /**
-     * Make a new channel for P, both ends tagged with its protocol_tag.
-     *
-     * @tparam P The protocol its ends speak.
-     * @param budget The memory budget its rings are charged to.
-     * @param ring_bytes How many bytes each way's ring holds: 0 for the kernel's default, or else a power of two from
-     *     CHANNEL_MIN_RING to CHANNEL_MAX_RING. A message is at most half of it (channel_max_payload).
-     * @return Its two ends, new handles in the caller's table, which the caller owns.
-     * @error InvalidSize The ring_bytes isn't 0 or a power of two in range.
-     * @error BudgetExceeded The budget can't pay for the rings.
-     * @error OutOfMemory The kernel had no memory for them.
-     * @error TableFull The caller's handle table has no room for the ends.
-     * @error InvalidHandle The budget isn't a handle of the caller's.
-     * @error WrongKind The budget isn't a memory budget.
-     * @error MissingRight The budget lacks the right to be charged.
-     */
-    channel_for :: fn[P](budget: slop_os.MemoryBudget, ring_bytes: u32) -> Result[slop_os.ChannelPair, slop_os.ChannelError] {
-        return slop_os.channel_create(budget, ring_bytes, protocol_tag[P]())
-    }
-
-    /**
-     * Check whether a channel end was made for P.
-     *
-     * @tparam P The protocol asked about.
-     * @param end The end, which stays the caller's.
-     * @return True if its channel's tag is P's protocol_tag; false for another tag, or when the tag can't be read (a
-     *     closed or invalid handle).
-     */
-    speaks :: fn[P](end: slop_os.Channel) -> bool {
-        return (slop_os.channel_tag(end) or_else 0) == protocol_tag[P]()
-    }
-
-    /**
-     * Compute the protocol tag that a channel end's type needs where it arrives.
-     *
-     * @param type The type: a Channel[P] or Listener[P], a Stream[T] or Sink[T], or anything else.
-     * @return For a Channel[P] or Listener[P], the FNV-1a hash of P's name without its package; for a Stream[T] or
-     *     Sink[T], the stream protocol's tag, name_tag("Stream"); and 0, meaning no protocol, for any other type.
-     */
-    end_tag :: fn(type: ptr[compiler.TypeInfo]) -> u64 {
-        if type.variant != .STRUCT {
-            return 0
+    // P's own name, without its package or the closing bracket
+    end := name.count - 1
+    from := start
+    for i in start..<end {
+        if name[i] == '.' {
+            from = i + 1
         }
-        name :: cast[ptr[compiler.TypeInfoStruct]](type).name
-        start : usize = 0
-        if starts_with(name, "Stream[") || starts_with(name, "Sink[") {
-            return name_tag("Stream")
-        }
-        if starts_with(name, "Channel[") {
-            start = 8
-        }
-        else if starts_with(name, "Listener[") {
-            start = 9
-        }
-        else {
-            return 0
-        }
-        // P's own name, without its package or the closing bracket
-        end := name.count - 1
-        from := start
-        for i in start..<end {
-            if name[i] == '.' {
-                from = i + 1
-            }
-        }
-        // FNV-1a, 64-bit
-        hash : u64 = 0xcbf29ce484222325
-        for i in from..<end {
-            hash = (hash ~ cast[u64](cast[u8](name[i]))) * 0x100000001b3
-        }
-        return hash
     }
-
-    /**
-     * Compute the tag of the protocol named name, as its channels carry it.
-     *
-     * @param name The protocol's name without its package, like "Stream"; its bytes are hashed as they are.
-     * @return The 64-bit FNV-1a hash of name's bytes.
-     */
-    name_tag :: fn(name: string) -> u64 {
-        hash : u64 = 0xcbf29ce484222325
-        for character in name {
-            hash = (hash ~ cast[u64](cast[u8](character))) * 0x100000001b3
-        }
-        return hash
+    // FNV-1a, 64-bit
+    hash : u64 = 0xcbf29ce484222325
+    for i in from..<end {
+        hash = (hash ~ cast[u64](cast[u8](name[i]))) * 0x100000001b3
     }
+    return hash
+}
 
-    /**
-     * Check whether text starts with prefix, byte for byte.
-     *
-     * @param text The text looked in.
-     * @param prefix What it has to start with; "" starts every text.
-     * @return True if text's first bytes are prefix's.
-     */
-    starts_with :: fn(text: string, prefix: string) -> bool {
-        return text.count >= prefix.count && string_of(cast[ptr[u8]](text.data), prefix.count) == prefix
+/**
+ * Compute the tag of the protocol named name, as its channels carry it.
+ *
+ * @param name The protocol's name without its package, like "Stream"; its bytes are hashed as they are.
+ * @return The 64-bit FNV-1a hash of name's bytes.
+ */
+name_tag :: fn(name: string) -> u64 {
+    hash : u64 = 0xcbf29ce484222325
+    for character in name {
+        hash = (hash ~ cast[u64](cast[u8](character))) * 0x100000001b3
     }
+    return hash
+}
 
-    // ---- Messages: fixed-layout structs, sent as their bytes
+/**
+ * Check whether text starts with prefix, byte for byte.
+ *
+ * @param text The text looked in.
+ * @param prefix What it has to start with; "" starts every text.
+ * @return True if text's first bytes are prefix's.
+ */
+starts_with :: fn(text: string, prefix: string) -> bool {
+    return text.count >= prefix.count && string_of(cast[ptr[u8]](text.data), prefix.count) == prefix
+}
 
-    /** What receive and try_receive give: the message's size, and how many handles came with it. */
-    Received :: struct {
-        /** The message's size in bytes, at most the buffer's count. */
-        size : u32,
-        /** How many handles came with it, at the start of the handles given; 0 for a message without any. */
-        handle_count : u32,
-    }
+// ---- Messages: fixed-layout structs, sent as their bytes
 
-    /**
-     * View a fixed-layout message as its bytes, for send.
-     *
-     * @tparam T The message's type.
-     * @param message The message; it isn't copied.
-     * @return Its size_of(T) bytes, good as long as message is.
-     */
-    bytes_of :: fn[T](message: ptr[T]) -> u8[] {
-        return view_of(cast[ptr[u8]](message), size_of(T))
-    }
+/** What receive and try_receive give: the message's size, and how many handles came with it. */
+Received :: struct {
+    /** The message's size in bytes, at most the buffer's count. */
+    size : u32,
+    /** How many handles came with it, at the start of the handles given; 0 for a message without any. */
+    handle_count : u32,
+}
 
-    /**
-     * View a fixed-layout message as bytes that can be written, for receive to read into.
-     *
-     * @tparam T The message's type.
-     * @param message The message; it isn't copied.
-     * @return Its size_of(T) bytes, good as long as message is.
-     */
-    mut_bytes_of :: fn[T](message: ptr[mut T]) -> mut u8[] {
-        return view_of(cast[ptr[mut u8]](message), size_of(T))
-    }
+/**
+ * View a fixed-layout message as its bytes, for send.
+ *
+ * @tparam T The message's type.
+ * @param message The message; it isn't copied.
+ * @return Its size_of(T) bytes, good as long as message is.
+ */
+bytes_of :: fn[T](message: ptr[T]) -> u8[] {
+    return view_of(cast[ptr[u8]](message), size_of(T))
+}
 
-    /**
-     * Send a message through a channel end, waiting while its ring is full.
-     *
-     * The handles go first, in the first of the other end's HANDLE_BATCHES batches that's free, then the bytes, which
-     * name that batch.
-     *
-     * @param end The end it's sent through, which stays the caller's.
-     * @param port A port bound to end (port_for), waited on while the ring is full; nothing else should be bound to it,
-     *     as the packets it gives while waiting are dropped.
-     * @param bytes The message, at most channel_max_payload of the ring's size.
-     * @param handles At most MAX_HANDLES_PER_BATCH handles that go with it, moved out of the caller's table once
-     *     they're sent, so they're no longer the caller's; none for a message without handles.
-     * @return Null once it's sent; otherwise why not, from the kernel: BatchInUse when every batch is in use,
-     *     PeerClosed when the other end is closed, TooBig, and the like. If the bytes fail after the handles were sent,
-     *     the handles are gone from the caller's table anyway.
-     */
-    send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_os.Handle[]) -> slop_os.ChannelError? {
-        batch := slop_os.NO_BATCH
-        if handles.count != 0 {
-            batch = 0
-            loop {
-                match slop_os.channel_send_handles(end, handles, batch) {
-                    case Ok => break
-                    case Error(error) => {
-                        if error != .BatchInUse || batch + 1 >= slop_os.HANDLE_BATCHES {
-                            return error
-                        }
-                        batch += 1
-                    }
-                }
-            }
-        }
+/**
+ * View a fixed-layout message as bytes that can be written, for receive to read into.
+ *
+ * @tparam T The message's type.
+ * @param message The message; it isn't copied.
+ * @return Its size_of(T) bytes, good as long as message is.
+ */
+mut_bytes_of :: fn[T](message: ptr[mut T]) -> mut u8[] {
+    return view_of(cast[ptr[mut u8]](message), size_of(T))
+}
+
+/**
+ * Send a message through a channel end, waiting while its ring is full.
+ *
+ * The handles go first, in the first of the other end's HANDLE_BATCHES batches that's free, then the bytes, which
+ * name that batch.
+ *
+ * @param end The end it's sent through, which stays the caller's.
+ * @param port A port bound to end (port_for), waited on while the ring is full; nothing else should be bound to it,
+ *     as the packets it gives while waiting are dropped.
+ * @param bytes The message, at most channel_max_payload of the ring's size.
+ * @param handles At most MAX_HANDLES_PER_BATCH handles that go with it, moved out of the caller's table once
+ *     they're sent, so they're no longer the caller's; none for a message without handles.
+ * @return Null once it's sent; otherwise why not, from the kernel: BatchInUse when every batch is in use,
+ *     PeerClosed when the other end is closed, TooBig, and the like. If the bytes fail after the handles were sent,
+ *     the handles are gone from the caller's table anyway.
+ */
+send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_os.Handle[]) -> slop_os.ChannelError? {
+    batch := slop_os.NO_BATCH
+    if handles.count != 0 {
+        batch = 0
         loop {
-            match slop_os.channel_write(end, bytes, batch) {
-                case Ok => return null
+            match slop_os.channel_send_handles(end, handles, batch) {
+                case Ok => break
                 case Error(error) => {
-                    if error != .Full {
+                    if error != .BatchInUse || batch + 1 >= slop_os.HANDLE_BATCHES {
                         return error
                     }
-                    packets : slop_os.Packet[4]
-                    _ = slop_os.port_wait(port, packets, slop_os.NO_DEADLINE)
+                    batch += 1
                 }
             }
         }
     }
-
-    /**
-     * Receive the next message from a channel end, without waiting.
-     *
-     * @param end The end it's read from, which stays the caller's.
-     * @param buffer Where the message's bytes go; it should hold the largest message expected.
-     * @param handles Where the handles that came with it go, now the caller's to close.
-     * @return The message's size and how many handles came with it.
-     * @error Empty There's no message yet; the end's next message raises SIGNAL_READABLE.
-     * @error BufferTooSmall The message doesn't fit in buffer.
-     * @error PeerClosed The other end is closed.
-     * @error InvalidHandle The end isn't a handle of the caller's.
-     * @error Corrupt The other end broke the ring.
-     */
-    try_receive :: fn(end: slop_os.Channel, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
-        info :: slop_os.channel_read(end, buffer, cast[ptr[mut u32]](0))?
-        received := Received.{size = info.size}
-        if info.flags_and_batch & cast[u32](slop_os.MESSAGE_HAS_HANDLES) != 0 {
-            received.handle_count = slop_os.channel_take_handles(end, info.flags_and_batch >> 16, handles, cast[ptr[mut u32]](0))?
-        }
-        return .Ok(received)
-    }
-
-    /**
-     * Receive the next message from a channel end, as try_receive does, waiting on port until one comes.
-     *
-     * @param end The end it's read from, which stays the caller's.
-     * @param port A port bound to end (port_for), waited on with no deadline; the packets it gives are dropped.
-     * @param buffer Where the message's bytes go; it should hold the largest message expected.
-     * @param handles Where the handles that came with it go, now the caller's to close.
-     * @return The message's size and how many handles came with it.
-     * @error ObjectGone Waiting on port failed.
-     * @error BufferTooSmall The message doesn't fit in buffer.
-     * @error PeerClosed The other end is closed.
-     * @error InvalidHandle The end isn't a handle of the caller's.
-     * @error Corrupt The other end broke the ring.
-     */
-    receive :: fn(end: slop_os.Channel, port: slop_os.Port, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
-        loop {
-            match try_receive(end, buffer, handles) {
-                case Ok(received) => return .Ok(received)
-                case Error(error) => {
-                    if error != .Empty {
-                        return .Error(error)
-                    }
-                    packets : slop_os.Packet[4]
-                    _ = slop_os.port_wait(port, packets, slop_os.NO_DEADLINE) or_return .Error(.ObjectGone)
-                }
-            }
-        }
-    }
-
-    /**
-     * Make a port for send and receive to wait on with one end.
-     *
-     * @param budget The memory budget the port is charged to.
-     * @param end The end it's bound to, persistently, for SIGNAL_READABLE, SIGNAL_WRITABLE and SIGNAL_PEER_CLOSED,
-     *     under key 0. It stays the caller's.
-     * @return The port, a new handle the caller owns and closes; null if it couldn't be made or bound, with nothing
-     *     left behind.
-     */
-    port_for :: fn(budget: slop_os.MemoryBudget, end: slop_os.Channel) -> slop_os.Port? {
-        port :: slop_os.port_create(budget) or_return null
-        signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_WRITABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
-        match slop_os.port_bind(port, cast[slop_os.Handle](end), signals, 0, .Persistent) {
-            case Ok => return port
+    loop {
+        match slop_os.channel_write(end, bytes, batch) {
+            case Ok => return null
             case Error(error) => {
-                _ = slop_os.handle_close(cast[slop_os.Handle](port))
-                return null
+                if error != .Full {
+                    return error
+                }
+                packets : slop_os.Packet[4]
+                _ = slop_os.port_wait(port, packets, slop_os.NO_DEADLINE)
             }
         }
     }
+}
 
-    /**
-     * Send a request and wait for its reply.
-     *
-     * @param end The end both go through, which stays the caller's.
-     * @param port A port bound to end (port_for).
-     * @param request The request's bytes, as send takes them.
-     * @param handles The handles that go with it, moved out of the caller's table, as send moves them.
-     * @param reply Where the reply's bytes go. There's room for one handle with it, which is taken into the caller's
-     *     table and not given back, so a reply shouldn't carry any.
-     * @return The reply's size, and how many handles came with it.
-     * @error PeerClosed The other end is closed.
-     * @error BatchInUse Every batch of the other end's is in use, so the request wasn't sent.
-     * @error TooBig The request is bigger than the ring takes.
-     * @error BufferTooSmall The reply, or its handles, didn't fit.
-     * @error ObjectGone Waiting on port failed.
-     */
-    call :: fn(end: slop_os.Channel, port: slop_os.Port, request: u8[], handles: slop_os.Handle[], reply: mut u8[])
-        -> Result[Received, slop_os.ChannelError] {
-        match send(end, port, request, handles) {
-            case Some(error) => return .Error(error)
-            case None => {}
-        }
-        none : slop_os.Handle[1]
-        return receive(end, port, reply, none)
+/**
+ * Receive the next message from a channel end, without waiting.
+ *
+ * @param end The end it's read from, which stays the caller's.
+ * @param buffer Where the message's bytes go; it should hold the largest message expected.
+ * @param handles Where the handles that came with it go, now the caller's to close.
+ * @return The message's size and how many handles came with it.
+ * @error Empty There's no message yet; the end's next message raises SIGNAL_READABLE.
+ * @error BufferTooSmall The message doesn't fit in buffer.
+ * @error PeerClosed The other end is closed.
+ * @error InvalidHandle The end isn't a handle of the caller's.
+ * @error Corrupt The other end broke the ring.
+ */
+try_receive :: fn(end: slop_os.Channel, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
+    info :: slop_os.channel_read(end, buffer, cast[ptr[mut u32]](0))?
+    received := Received.{size = info.size}
+    if info.flags_and_batch & cast[u32](slop_os.MESSAGE_HAS_HANDLES) != 0 {
+        received.handle_count = slop_os.channel_take_handles(end, info.flags_and_batch >> 16, handles, cast[ptr[mut u32]](0))?
     }
+    return .Ok(received)
+}
+
+/**
+ * Receive the next message from a channel end, as try_receive does, waiting on port until one comes.
+ *
+ * @param end The end it's read from, which stays the caller's.
+ * @param port A port bound to end (port_for), waited on with no deadline; the packets it gives are dropped.
+ * @param buffer Where the message's bytes go; it should hold the largest message expected.
+ * @param handles Where the handles that came with it go, now the caller's to close.
+ * @return The message's size and how many handles came with it.
+ * @error ObjectGone Waiting on port failed.
+ * @error BufferTooSmall The message doesn't fit in buffer.
+ * @error PeerClosed The other end is closed.
+ * @error InvalidHandle The end isn't a handle of the caller's.
+ * @error Corrupt The other end broke the ring.
+ */
+receive :: fn(end: slop_os.Channel, port: slop_os.Port, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
+    loop {
+        match try_receive(end, buffer, handles) {
+            case Ok(received) => return .Ok(received)
+            case Error(error) => {
+                if error != .Empty {
+                    return .Error(error)
+                }
+                packets : slop_os.Packet[4]
+                _ = slop_os.port_wait(port, packets, slop_os.NO_DEADLINE) or_return .Error(.ObjectGone)
+            }
+        }
+    }
+}
+
+/**
+ * Make a port for send and receive to wait on with one end.
+ *
+ * @param budget The memory budget the port is charged to.
+ * @param end The end it's bound to, persistently, for SIGNAL_READABLE, SIGNAL_WRITABLE and SIGNAL_PEER_CLOSED,
+ *     under key 0. It stays the caller's.
+ * @return The port, a new handle the caller owns and closes; null if it couldn't be made or bound, with nothing
+ *     left behind.
+ */
+port_for :: fn(budget: slop_os.MemoryBudget, end: slop_os.Channel) -> slop_os.Port? {
+    port :: slop_os.port_create(budget) or_return null
+    signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_WRITABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
+    match slop_os.port_bind(port, cast[slop_os.Handle](end), signals, 0, .Persistent) {
+        case Ok => return port
+        case Error(error) => {
+            _ = slop_os.handle_close(cast[slop_os.Handle](port))
+            return null
+        }
+    }
+}
+
+/**
+ * Send a request and wait for its reply.
+ *
+ * @param end The end both go through, which stays the caller's.
+ * @param port A port bound to end (port_for).
+ * @param request The request's bytes, as send takes them.
+ * @param handles The handles that go with it, moved out of the caller's table, as send moves them.
+ * @param reply Where the reply's bytes go. There's room for one handle with it, which is taken into the caller's
+ *     table and not given back, so a reply shouldn't carry any.
+ * @return The reply's size, and how many handles came with it.
+ * @error PeerClosed The other end is closed.
+ * @error BatchInUse Every batch of the other end's is in use, so the request wasn't sent.
+ * @error TooBig The request is bigger than the ring takes.
+ * @error BufferTooSmall The reply, or its handles, didn't fit.
+ * @error ObjectGone Waiting on port failed.
+ */
+call :: fn(end: slop_os.Channel, port: slop_os.Port, request: u8[], handles: slop_os.Handle[], reply: mut u8[])
+    -> Result[Received, slop_os.ChannelError] {
+    match send(end, port, request, handles) {
+        case Some(error) => return .Error(error)
+        case None => {}
+    }
+    none : slop_os.Handle[1]
+    return receive(end, port, reply, none)
+}
+
+/**
+ * A program's log records' ring and its doorbell, which the events service gives (base's runtime.SlopOsEventsRing).
+ */
+LaunchEvents :: struct {
+    /** The ring's memory, given as the first grant "events". */
+    ring : slop_os.Memory,
+    /** The channel end that rings its doorbell, given as the second grant "events". */
+    doorbell : slop_os.Channel,
+}
+
+// Launching programs, through SlopOS's process manager: only on SlopOS
+#if OS == .SlopOS {
+    import process_manager from "std/os/slop_os"
 
     /**
      * Add a grant to what a Load gives the program.
@@ -564,16 +579,6 @@ package os
         name : string,
         /** The library's bytes, a handle given to the program, which then owns it. */
         memory : slop_os.Memory,
-    }
-
-    /**
-     * A program's log records' ring and its doorbell, which the events service gives (base's runtime.SlopOsEventsRing).
-     */
-    LaunchEvents :: struct {
-        /** The ring's memory, given as the first grant "events". */
-        ring : slop_os.Memory,
-        /** The channel end that rings its doorbell, given as the second grant "events". */
-        doorbell : slop_os.Channel,
     }
 
     /** Where a launched program's faults are reported (LaunchOptions.faults). */
