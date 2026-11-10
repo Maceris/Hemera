@@ -49,6 +49,8 @@ Input :: struct {
 Fuzzer :: struct {
     /** The test. */
     property : testing.Property,
+    /** What the test keeps from one input to the next (testing.fixture), released when the fuzzing ends. */
+    kept : testing.Kept,
     /** Its name, a copy on the heap. */
     name : string,
     /** The program's coverage counters. */
@@ -249,7 +251,7 @@ run_input :: fn(fuzzer: ptr[mut Fuzzer], input: u8[]) -> Ran {
         counters[index] = 0
     }
     room :: fuzzer.room
-    source := testing.source_in(room.bytes[0..<room.bytes.count], room.count, null)
+    source := testing.source_in(room.bytes[0..<room.bytes.count], room.count, null, &fuzzer.kept)
     attempt := testing.T.{name = fuzzer.name}
     _ = fuzzer.property(&attempt, &source)
     fuzzer.runs += 1
@@ -298,7 +300,7 @@ add_input :: fn(fuzzer: ptr[mut Fuzzer], bytes: u8[], save: bool) {
 report_finding :: fn(fuzzer: ptr[mut Fuzzer], failing: u8[], how: string) {
     t := testing.T.{name = fuzzer.name}
     smallest : testing.Case
-    _ = testing.report_shrunk(&t, fuzzer.property, failing, &smallest, "%", how)
+    _ = testing.report_shrunk(&t, fuzzer.property, failing, &smallest, &fuzzer.kept, "%", how)
     testing.report_failed(testing.STANDARD_OUTPUT, &t)
     storage : u8[PATH_BYTES]
     path := text_buffer.make(storage)
@@ -586,6 +588,7 @@ fuzz :: fn(property: testing.Property, name: string, options: FuzzOptions) -> in
     push_context fuzzing (assertion_handler = on_assertion, extensions = &node) {
         result = fuzz_with(&fuzzer, options)
     }
+    testing.release_kept(&fuzzer.kept)
     return result
 }
 

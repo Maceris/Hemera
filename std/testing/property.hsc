@@ -79,6 +79,76 @@ Source :: struct #scoped {
     unsupported : Text,
     /** Where draw was asked for the type in unsupported. */
     unsupported_at : runtime.SourceCodeLocation,
+    /** What the test keeps from one case to the next (fixture), its runner's; null where it keeps nothing. */
+    kept : ptr[mut Kept]?,
+}
+
+/**
+ * What a property test keeps from one case to the next, for fixture: its runner's, made empty before the first case
+ * and released after the last (release_kept).
+ */
+Kept :: struct {
+    /** The fixture, from runtime.new, as its type's pointer; null until a case asks for it. */
+    data : rawptr?,
+    /** The fixture's release function, fixture's release, as a raw pointer; release_fixture casts it back. */
+    release : rawptr?,
+    /** release_fixture for the fixture's type, which release_kept calls. */
+    releasing : (fn(kept: ptr[mut Kept]))?,
+}
+
+/**
+ * Get what a property test keeps from one case to the next, made on the first case that asks: something costly to
+ * make, like a volume's image, that every case starts from. Each case has to leave it as it found it, so a case gives
+ * the same result whichever cases ran before it, as shrinking and replaying need. Its runner releases it after the
+ * last case: hemera --test's after the test's cases and the shrinking of a failing one, hemera --fuzz's when the
+ * fuzzing ends, but not when an assertion ends the program.
+ *
+ * @tparam F The fixture's type.
+ * @param source The case's source.
+ * @param make Makes the fixture, once; null if it can't be made, which it's asked again by the next case.
+ * @param release Gives back what the fixture holds, once, after the last case; not its own memory, which is freed after.
+ * @return The fixture, the runner's, lasting until the last case; null if make gave null, or the source has no runner
+ *     to keep it (one made with source_in without a Kept).
+ */
+fixture :: fn[F](source: ptr[mut Source], make: (fn() -> F?), release: (fn(fixture: ptr[mut F]))) -> ptr[mut F]? {
+    kept :: source.kept or_return null
+    match kept.data {
+        case Some(data) => return cast[ptr[mut F]](data)
+        case None => {}
+    }
+    made :: make() or_return null
+    data :: runtime.new(F)
+    data^ = made
+    kept.data = cast[rawptr](data)
+    kept.release = cast[rawptr](release)
+    kept.releasing = release_fixture[F]
+    return data
+}
+
+/**
+ * Release a kept fixture of type F: its release function, then its memory.
+ *
+ * @tparam F The fixture's type, as fixture made it.
+ * @param kept What's kept, which has a fixture.
+ */
+release_fixture :: fn[F](kept: ptr[mut Kept]) {
+    data :: cast[ptr[mut F]](kept.data or_return void)
+    release :: cast[fn(fixture: ptr[mut F])](kept.release or_return void)
+    release(data)
+    runtime.free(data)
+}
+
+/**
+ * Release what a property test kept, if it kept anything, and empty it.
+ *
+ * @param kept What's kept.
+ */
+release_kept :: fn(kept: ptr[mut Kept]) {
+    match kept.releasing {
+        case Some(releasing) => releasing(kept)
+        case None => {}
+    }
+    kept^ = Kept.{}
 }
 
 /**
@@ -88,10 +158,11 @@ Source :: struct #scoped {
  *     source.
  * @param given How many of room's first bytes are the case's to replay; 0 to draw every byte fresh.
  * @param random The generator's state for fresh bytes, read after the given ones; null to read zeros instead.
+ * @param kept What the test keeps from one case to the next (fixture), the runner's; null to keep nothing.
  * @return The source.
  */
-source_in :: fn(room: mut u8[], given: usize, random: u64?) -> Source {
-    return Source.{room = room, count = if given > room.count { room.count } else { given }, random = random}
+source_in :: fn(room: mut u8[], given: usize, random: u64?, kept: ptr[mut Kept]? = null) -> Source {
+    return Source.{room = room, count = if given > room.count { room.count } else { given }, random = random, kept = kept}
 }
 
 /**
@@ -552,11 +623,12 @@ assume :: fn(t: ptr[mut T], condition: bool, why: string) -> Outcome {
  * @param test The test's own state, only read: its name is the attempt's.
  * @param bytes The case's bytes; past them, draws read zeros.
  * @param into Where the bytes it read go: the case's own up to there, and zeros past them.
+ * @param kept What the test keeps from one case to the next, its runner's; null for nothing.
  * @return Whether it failed: an assertion failed, or it drew a type draw can't make.
  */
-replay :: fn(property: Property, test: ptr[T], bytes: u8[], into: ptr[mut Case]) -> bool {
+replay :: fn(property: Property, test: ptr[T], bytes: u8[], into: ptr[mut Case], kept: ptr[mut Kept]? = null) -> bool {
     set_case(into, bytes)
-    source := source_in(into.bytes[0..<into.bytes.count], into.count, null)
+    source := source_in(into.bytes[0..<into.bytes.count], into.count, null, kept)
     attempt := T.{name = test.name}
     _ = property(&attempt, &source)
     // Bytes it didn't read aren't the case's
@@ -617,13 +689,15 @@ set_number_at :: fn(bytes: mut u8[], start: usize, size: usize, value: u64) {
 }
 
 /** A failing case being made smaller. */
-Shrinking :: struct {
+Shrinking :: struct #scoped {
     /** The test. */
     property : Property,
     /** The smallest failing case so far. */
     best : Case,
     /** How many times the test has been run on a candidate. */
     runs : usize,
+    /** What the test keeps from one case to the next, its runner's; null for nothing. */
+    kept : ptr[mut Kept]?,
 }
 
 /**
@@ -637,7 +711,7 @@ Shrinking :: struct {
 try_candidate :: fn(shrinking: ptr[mut Shrinking], test: ptr[T], candidate: ptr[Case]) -> bool {
     shrinking.runs += 1
     tried : Case
-    if !replay(shrinking.property, test, case_bytes(candidate), &tried) || !smaller(case_bytes(&tried), case_bytes(&shrinking.best)) {
+    if !replay(shrinking.property, test, case_bytes(candidate), &tried, shrinking.kept) || !smaller(case_bytes(&tried), case_bytes(&shrinking.best)) {
         return false
     }
     shrinking.best = tried
@@ -751,9 +825,11 @@ check_property :: fn(t: ptr[mut T], property: Property) -> Outcome {
     runs :: if t.runs == 0 { cast[usize](DEFAULT_RUNS) } else { t.runs }
     discarded : usize = 0
     room : u8[MAX_CASE_BYTES]
+    kept := Kept.{}
+    defer release_kept(&kept)
     for index in 0..<runs {
         state := t.seed + cast[u64](index) * 0x9e3779b97f4a7c15
-        source := source_in(room, 0, next_random(&state))
+        source := source_in(room, 0, next_random(&state), &kept)
         attempt := T.{name = t.name}
         _ = property(&attempt, &source)
         if attempt.failure_count == 0 && source.unsupported.count == 0 {
@@ -770,7 +846,7 @@ check_property :: fn(t: ptr[mut T], property: Property) -> Outcome {
             return .Error(.Failed)
         }
         smallest : Case
-        return report_shrunk(t, property, read_bytes(&source), &smallest, "case % of % (seed %)", index + 1, runs, t.seed)
+        return report_shrunk(t, property, read_bytes(&source), &smallest, &kept, "case % of % (seed %)", index + 1, runs, t.seed)
     }
     if runs > 0 && discarded == runs {
         return skip(t, "every case was discarded")
@@ -786,18 +862,20 @@ check_property :: fn(t: ptr[mut T], property: Property) -> Outcome {
  * @param property The test.
  * @param failing The case's bytes, on which the test failed.
  * @param smallest Where the smallest failing case goes, the one reported.
+ * @param kept What the test keeps from one case to the next, its runner's; null for nothing.
  * @param format_string How the case was found, like "case % of %"; "shrunk from..." follows it.
  * @param values The values for its %s.
  * @return What the final run gave, or Error(Failed) if that was Ok.
  */
-report_shrunk :: fn(t: ptr[mut T], property: Property, failing: u8[], smallest: ptr[mut Case], format_string: string, values: any...) -> Outcome {
-    shrinking := Shrinking.{property = property}
+report_shrunk :: fn(t: ptr[mut T], property: Property, failing: u8[], smallest: ptr[mut Case], kept: ptr[mut Kept]?, format_string: string,
+    values: any...) -> Outcome {
+    shrinking := Shrinking.{property = property, kept = kept}
     set_case(&shrinking.best, failing)
     shrink(&shrinking, t)
     // Once more, reported: the smallest case
     smallest^ = shrinking.best
     final := shrinking.best
-    source := source_in(final.bytes[0..<final.bytes.count], final.count, null)
+    source := source_in(final.bytes[0..<final.bytes.count], final.count, null, kept)
     outcome := property(t, &source)
     if t.failure_count == 0 {
         fail(t, "the case fails again when it's run again, as the test depends only on what it draws")

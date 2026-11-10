@@ -81,6 +81,28 @@ draws_a_string #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source
     return .Ok
 }
 
+/** What keeps_a_fixture_between_cases keeps: how many cases have used it. */
+Tally :: struct {
+    cases : u32,
+}
+
+make_tally :: fn() -> Tally? {
+    return Tally.{}
+}
+
+release_tally :: fn(tally: ptr[mut Tally]) {
+    tally.cases = 0
+}
+
+// Wrong on purpose: the fixture lasts from case to case, so the third case, and every one after, sees it used before
+keeps_a_fixture_between_cases #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    kept :: testing.fixture[Tally](source, make_tally, release_tally)
+    tally :: testing.require_some(t, kept, "the fixture is made")?
+    tally.cases += 1
+    testing.expect_lt(t, tally.cases, 3, "fewer than 3 cases have used the fixture")
+    return .Ok
+}
+
 /**
  * Run the tests with options, and check the report.
  *
@@ -104,7 +126,7 @@ reports :: fn(tests: testing.Test[], options: testing.RunOptions, expected: stri
 
 main :: fn() -> int {
     tests :: #insert testing.tests_of(compiler.load_package("."))
-    if tests.count != 9 || tests[0].tag_count != 1 || tests[0].tags[0].name != "slow" || tests[2].tag_count != 2 {
+    if tests.count != 10 || tests[0].tag_count != 1 || tests[0].tags[0].name != "slow" || tests[2].tag_count != 2 {
         return 1
     }
     tagged :: tests[0..<3]
@@ -122,8 +144,8 @@ main :: fn() -> int {
     if !reports(tagged, testing.RunOptions.{tags = "performance"}, "test measures_speed ... ok\n1 test: 1 passed, 0 failed, 2 left out by tag\n") {
         return 5
     }
-    properties :: tests[3..<9]
-    expected :: "test adds_both_ways ... ok\ntest draws_whole_values ... ok\ntest stays_below_500 ... FAILED\n    property_tests.hsc:59: the value is below 500\n        expected less than 500, got 500\n        note: drew 500\n    found by case 2 of 100 (seed 7), shrunk from 2 bytes to 2 in 63 runs\ntest sums_below_100 ... FAILED\n    property_tests.hsc:67: the sum is below 100\n        expected less than 100, got 100\n        note: drew 0, 100\n    found by case 1 of 100 (seed 7), shrunk from 4 bytes to 4 in 137 runs\ntest discards_everything ... skipped: every case was discarded\ntest draws_a_string ... FAILED\n    property_tests.hsc:80: draw can't make string: draw what it holds, and build it\n6 tests: 2 passed, 3 failed, 1 skipped\n"
+    properties :: tests[3..<10]
+    expected :: "test adds_both_ways ... ok\ntest draws_whole_values ... ok\ntest stays_below_500 ... FAILED\n    property_tests.hsc:59: the value is below 500\n        expected less than 500, got 500\n        note: drew 500\n    found by case 2 of 100 (seed 7), shrunk from 2 bytes to 2 in 63 runs\ntest sums_below_100 ... FAILED\n    property_tests.hsc:67: the sum is below 100\n        expected less than 100, got 100\n        note: drew 0, 100\n    found by case 1 of 100 (seed 7), shrunk from 4 bytes to 4 in 137 runs\ntest discards_everything ... skipped: every case was discarded\ntest draws_a_string ... FAILED\n    property_tests.hsc:80: draw can't make string: draw what it holds, and build it\ntest keeps_a_fixture_between_cases ... FAILED\n    property_tests.hsc:102: fewer than 3 cases have used the fixture\n        expected less than 3, got 4\n    found by case 3 of 100 (seed 7), shrunk from 0 bytes to 0 in 0 runs\n7 tests: 2 passed, 4 failed, 1 skipped\n"
     if !reports(properties, testing.RunOptions.{seed = 7}, expected) {
         return 6
     }

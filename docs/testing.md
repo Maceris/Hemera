@@ -99,6 +99,20 @@ a test whose cases are all discarded is skipped. A property test can't have case
 can't keep its source, or what it drew from it, past its return. A case reads at most `testing.MAX_CASE_BYTES`, 1024;
 past them, every draw gives zeros. The same test can be fuzzed ([Fuzzing](#fuzzing)).
 
+Something costly to make that every case starts from, like a volume's image, is a fixture, made on the first case that
+asks and kept until the last:
+
+```
+volume_survives_damage #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    image :: testing.require_some(t, testing.fixture[Image](source, make_image, free_image), "the image is made")?
+    ...   // damage it as drawn, use it, and put it back as it was
+}
+```
+
+`make` gives the fixture, or null to be asked again by the next case; `release` gives back what it holds once the run
+ends: after the test's cases and the shrinking of a failing one, or when fuzzing stops. Each case has to leave the
+fixture as it found it, so a case gives the same result whichever ran before it, as shrinking and replaying need.
+
 ### Tags
 
 `#tags(...)` after `#test` names a test's tags: constants of type `testing.Tag`, each a name a run asks for it by, and
