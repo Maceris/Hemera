@@ -13,8 +13,8 @@ import time from "std"
  * with the choices that make it, which ModelOptions.replay runs again.
  *
  * A preemption is switching away from a thread that could go on; a spin hint or a join is a thread waiting for another,
- * so switching away from it isn't one, and it isn't chosen again until another thread changes memory or ends. Loads
- * read what's there: every operation is sequentially consistent.
+ * so switching away from it isn't one, and it isn't chosen again until another thread changes memory or ends. What a
+ * load reads is chosen too, among the stores the memory model lets it read (model_memory.hsc).
  */
 
 /** The most threads a model-checked test has, the test's own among them. */
@@ -57,6 +57,32 @@ ModelFiber :: struct {
      * it isn't chosen until another thread changes memory or ends.
      */
     spinning : bool,
+    /** The atomic operation or fence it stopped to do, which the driver does once it's chosen; None for neither. */
+    pending : ModelPending,
+    /** What its operation read, once the driver's done it. */
+    old : u64,
+    /** Whether its compare-exchange stored, once the driver's done it. */
+    success : bool,
+}
+
+/** What a thread stopped to do, which the driver does for it on its own stack, as the memory model takes room. */
+ModelPending :: enum {
+    /** Nothing: a spin hint, a join, or a thread not stopped. */
+    None,
+    /** An atomic operation: operation, order, width, address, value and expected. */
+    Atomic,
+    /** A fence: order. */
+    Fence,
+}
+
+/** An atomic operation or fence a thread stopped to do. */
+ModelRequest :: struct {
+    operation : runtime.ModelOperation,
+    order : runtime.ModelOrder,
+    width : u32,
+    address : u64,
+    value : u64,
+    expected : u64,
 }
 
 /** A scheduling choice an execution made. */
@@ -76,6 +102,16 @@ Model :: struct {
     /** How the schedules are explored, as check_model was given, but replay, which is read into choices. */
     options : ModelOptions,
     threads : ModelFiber[MAX_MODEL_THREADS],
+    /** Each thread's view of memory (model_memory.hsc). */
+    views : ModelView[MAX_MODEL_THREADS],
+    /** Each thread's pending atomic operation or fence, as ModelFiber.pending says. */
+    requests : ModelRequest[MAX_MODEL_THREADS],
+    /** The atomic locations seen this execution, the first location_count of them. */
+    locations : ModelLocation[MAX_MODEL_LOCATIONS],
+    /** How many of locations are in use. */
+    location_count : usize,
+    /** The clock every sequentially consistent operation and fence takes on and adds to. */
+    sequential : ModelClock,
     /** How many of threads are in use, from the first. */
     thread_count : usize,
     /** The thread running, or that last ran. */
@@ -185,6 +221,10 @@ spawn :: fn(function: runtime.ThreadFunction, data #escaping #crosses_threads : 
         return null
     }
     model.threads[index] = ModelFiber.{fiber = fiber}
+    // It starts with what its parent has seen
+    if index < model.views.count && model.current < model.views.count {
+        model.views[index] = ModelView.{clock = model.views[model.current].clock}
+    }
     model.thread_count = index + 1
     return ModelThread.{index = index}
 }
@@ -200,6 +240,10 @@ join :: fn(thread: ModelThread) {
         checker :: intrinsics.carrier().model or_return void
         model :: cast[ptr[mut Model]](checker.data)
         if thread.index >= model.thread_count || thread.index >= model.threads.count || model.threads[thread.index].finished {
+            // What it did happens before what comes after the join
+            if thread.index < model.views.count && model.current < model.views.count {
+                join_clock(&model.views[model.current].clock, &model.views[thread.index].clock)
+            }
             return void
         }
         intrinsics.carrier().model = null
@@ -222,6 +266,11 @@ run_execution :: fn(model: ptr[mut Model], body: runtime.ThreadFunction, data #e
     model.preempted = 0
     model.current = 0
     model.problem = ""
+    model.location_count = 0
+    model.sequential = ModelClock.{}
+    for &view in model.views {
+        view^ = ModelView.{}
+    }
     first, error :: runtime.fiber_create(body, data)
     fiber :: first or_return void
     model.threads[0] = ModelFiber.{fiber = fiber}
@@ -235,6 +284,8 @@ run_execution :: fn(model: ptr[mut Model], body: runtime.ThreadFunction, data #e
             break
         }
         running :: &model.threads[next]
+        // What it stopped to do, done here, on this stack, before it goes on
+        do_pending(model, next)
         exit := runtime.FiberExit.Finished
         match running.fiber {
             case Some(each) => {
@@ -329,9 +380,33 @@ choose :: fn(model: ptr[mut Model]) -> usize? {
     if preempting && model.options.random_runs == 0 && model.preempted >= model.options.preemptions {
         options = 1
     }
+    chosen :: choose_option(model, options, true)
+    if chosen >= candidates.count {
+        return null
+    }
+    if preempting && chosen > 0 {
+        model.preempted += 1
+    }
+    return candidates[chosen]
+}
+
+/**
+ * Make one of the schedule's choices, among options: replayed from before, drawn at random, or the first not yet
+ * tried; recorded. Past ModelOptions.most_steps, the first, unrecorded, as choose ends the execution.
+ *
+ * @param model The model, whose choices and steps grow.
+ * @param options How many there are to choose from, at least 1.
+ * @param record_single Whether a choice of one is recorded too, as a thread's is, so a thread that never stops
+ *     reaches most_steps; a load's of one store isn't.
+ * @return The choice, below options.
+ */
+choose_option #no_context :: fn(model: ptr[mut Model], options: usize, record_single: bool) -> usize {
     step :: model.steps
+    if step >= model.options.most_steps || step >= model.choices.count || (options <= 1 && !record_single) {
+        return 0
+    }
     chosen : usize = 0
-    if step < model.replayed && step < model.choices.count {
+    if step < model.replayed {
         chosen = model.choices[step].chosen
     }
     else if model.options.random_runs > 0 {
@@ -340,17 +415,9 @@ choose :: fn(model: ptr[mut Model]) -> usize? {
     if chosen >= options {
         chosen = options - 1
     }
-    if chosen >= candidates.count {
-        return null
-    }
-    if step < model.choices.count {
-        model.choices[step] = ModelChoice.{chosen = chosen, options = options}
-    }
+    model.choices[step] = ModelChoice.{chosen = chosen, options = options}
     model.steps = step + 1
-    if preempting && chosen > 0 {
-        model.preempted += 1
-    }
-    return candidates[chosen]
+    return chosen
 }
 
 /**
@@ -415,7 +482,7 @@ parse_schedule :: fn(model: ptr[mut Model], text: string) -> usize {
  * @param model The model, whose generator moves on.
  * @return A number, any u64.
  */
-next_model_random :: fn(model: ptr[mut Model]) -> u64 {
+next_model_random #no_context :: fn(model: ptr[mut Model]) -> u64 {
     x := model.random | 1
     x = x ~ (x >> 12)
     x = x ~ (x << 25)
@@ -435,8 +502,16 @@ next_model_random :: fn(model: ptr[mut Model]) -> u64 {
 wait_turn #no_context :: fn(model: ptr[mut Model], spinning: bool) {
     carrier :: intrinsics.carrier()
     fiber :: carrier.current_fiber or_return void
+    // A thread that read an old store isn't waiting for another: reading again shows it something newer
+    stale := false
+    if model.current < model.views.count {
+        stale = model.views[model.current].stale
+        if spinning {
+            model.views[model.current].fresh = true
+        }
+    }
     if model.current < model.threads.count {
-        model.threads[model.current].spinning = spinning
+        model.threads[model.current].spinning = spinning && !stale
     }
     // The others' atomics go to the checker while this waits
     carrier.model = model.installed
@@ -445,8 +520,9 @@ wait_turn #no_context :: fn(model: ptr[mut Model], spinning: bool) {
 }
 
 /**
- * The model's hook for an atomic operation (runtime.ModelChecker.atomic): a stop for the schedule, then the operation,
- * sequentially consistent.
+ * The model's hook for an atomic operation (runtime.ModelChecker.atomic): a stop for the schedule, at which the driver
+ * does the operation as the memory model lets it (memory_atomic) once the thread's chosen to go on; outside a test's
+ * threads, the operation as the hardware does it.
  *
  * @param data The model.
  * @param operation What's done.
@@ -461,13 +537,45 @@ wait_turn #no_context :: fn(model: ptr[mut Model], spinning: bool) {
 model_atomic #no_context :: fn(data: rawptr, operation: runtime.ModelOperation, order: runtime.ModelOrder, width: u32, address: rawptr,
     value: u64, expected: u64) -> (old: u64, success: bool) {
     model :: cast[ptr[mut Model]](data)
-    wait_turn(model, false)
-    old, success :: runtime.native_atomic(operation, width, address, value, expected)
-    // A change that a thread waiting for one may see
-    if operation != .Load && success {
-        wake_spinners(model)
+    thread :: model.current
+    if thread >= model.threads.count || thread >= model.requests.count || (intrinsics.carrier().current_fiber is_none) {
+        return runtime.native_atomic(operation, width, address, value, expected)
     }
-    return old, success
+    model.requests[thread] = ModelRequest.{operation = operation, order = order, width = width, address = cast[u64](cast[uintptr](address)), value = value,
+        expected = expected}
+    model.threads[thread].pending = .Atomic
+    wait_turn(model, false)
+    return model.threads[thread].old, model.threads[thread].success
+}
+
+/**
+ * Do what a thread stopped to do, as it's chosen to go on: its atomic operation or fence, through the memory model, on
+ * the driver's stack rather than the thread's, as the model's work takes room a thread's stack may not have.
+ *
+ * @param model The model, whose memory changes, and whose thread is given what its operation read.
+ * @param thread The thread chosen.
+ */
+do_pending :: fn(model: ptr[mut Model], thread: usize) {
+    if thread >= model.threads.count || thread >= model.requests.count {
+        return void
+    }
+    waiting :: &model.threads[thread]
+    request :: model.requests[thread]
+    match waiting.pending {
+        case .Atomic => {
+            old, success :: memory_atomic(model, request.operation, request.order, request.width, cast[rawptr](cast[uintptr](request.address)), request.value,
+                request.expected)
+            waiting.old = old
+            waiting.success = success
+            // A change that a thread waiting for one may see
+            if request.operation != .Load && success {
+                wake_spinners(model)
+            }
+        }
+        case .Fence => memory_fence(model, request.order)
+        case .None => {}
+    }
+    waiting.pending = .None
 }
 
 /**
@@ -482,12 +590,22 @@ wake_spinners #no_context :: fn(model: ptr[mut Model]) {
 }
 
 /**
- * The model's hook for a fence (runtime.ModelChecker.fence): nothing, as every operation is sequentially consistent.
+ * The model's hook for a fence (runtime.ModelChecker.fence): a stop, at which the driver does it as the memory model has
+ * it (memory_fence).
  *
  * @param data The model.
  * @param order The fence's order.
  */
-model_fence #no_context :: fn(data: rawptr, order: runtime.ModelOrder) {}
+model_fence #no_context :: fn(data: rawptr, order: runtime.ModelOrder) {
+    model :: cast[ptr[mut Model]](data)
+    thread :: model.current
+    if thread >= model.threads.count || thread >= model.requests.count || (intrinsics.carrier().current_fiber is_none) {
+        return void
+    }
+    model.requests[thread] = ModelRequest.{order = order}
+    model.threads[thread].pending = .Fence
+    wait_turn(model, false)
+}
 
 /**
  * The model's hook for a spin hint (runtime.ModelChecker.spin): a stop at which the thread lets the others go first.

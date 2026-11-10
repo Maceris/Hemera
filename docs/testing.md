@@ -348,7 +348,7 @@ it is, so a model checker running on the thread (`CarrierBlock.model`) chooses w
 runs next, and which store a load reads. Without a checker, the hooks do the operation as the hardware would, so the
 same program runs either way; without the option, nothing changes.
 
-Only the hooks' own atomics, and a checker's while one of its hooks runs, are done as they are. Plain (non-atomic)
+Only base's atomics, the runtime's own, and a checker's while one of its hooks runs, are done as they are. Plain (non-atomic)
 accesses aren't seen, and atomics on more than 8 bytes aren't modelled.
 
 `testing.check_model(t, body, data, options)` is the checker: `body` runs as a test's first thread, and the threads it
@@ -366,6 +366,15 @@ racy_increments #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     return testing.check_model(t, two_increments, shared)   // found in execution 5; its schedule ... 0,0,1,0,...
 }
 ```
+
+What each load reads is chosen too, as weak memory lets it: any store from the newest the thread has read, or that
+happens before it, to the newest of all, as the C11 memory model has it, with acquire and release synchronizing through
+vector clocks, and read-modify-writes reading the newest store (`std/testing/model_memory.hsc`). So a relaxed flag can be
+seen before the data stored ahead of it, as a weakly ordered CPU shows it, and a released and acquired one can't. Two
+choices keep it close to what CPUs do rather than all C11 allows: a sequentially consistent load reads the newest store,
+and a thread's first load after a spin hint reads the newest, since stores become visible in time, which a thread waiting
+for one relies on. Memory written plainly, or reused for something else, starts a location's history again. base's own
+atomics, the runtime's machinery, aren't modelled.
 
 The threads are fibers, so a model-checked test is built with stack checks that grow fibers' stacks
 (`--stack-check=morestack`); without them, a thread that needs more than its first segment overruns it.

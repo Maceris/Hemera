@@ -5598,18 +5598,20 @@ namespace hemera {
 
 	/*
 	 * Whether the function being generated has its atomics, fences and spin hints call the model checker's hooks
-	 * (TargetOptions.model_checked, docs/testing.md's Model Checking): with the option, every function's but the hooks'
-	 * own, base/runtime's model.hsc, which do them as the hardware would; never in compile-time code.
+	 * (TargetOptions.model_checked, docs/testing.md's Model Checking): with the option, every function's but base's,
+	 * whose atomics are the runtime's own machinery (its allocator, morestack, and the hooks themselves), which a hook
+	 * switching fibers in the middle of would break; never in compile-time code.
 	 */
 	static bool model_checks(Generator& generator) {
 		if (generator.options == nullptr || !generator.options->model_checked || generator.compile_time || generator.state == nullptr) {
 			return false;
 		}
 		Declaration* current = generator.state->declaration;
-		if (current == nullptr || current->package_path == nullptr || current->file_name == nullptr) {
+		if (current == nullptr || current->package_path == nullptr) {
 			return true;
 		}
-		return !(text_of(current->package_path) == std::format("{}runtime", BASE_PACKAGE_PREFIX) && text_of(current->file_name) == "model.hsc");
+		// base's own atomics are the runtime's machinery, the allocator's and morestack's among them, not the test's
+		return !is_base_package(current->package_path);
 	}
 
 	// A memory order as base/runtime's ModelOrder numbers it: relaxed, acquire, release, acquire-release, sequentially consistent.

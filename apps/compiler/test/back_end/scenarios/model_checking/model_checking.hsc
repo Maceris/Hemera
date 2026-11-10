@@ -1,7 +1,8 @@
 /*
  * Model checking (docs/testing.md, Model Checking), built with --model-checked: a lost update between two threads that
  * each load and store is found, with its schedule; atomic increments and a SpinLock count both under every schedule
- * within the preemption bound. main returns 42 if every test passed.
+ * within the preemption bound; a relaxed flag seen before its data is found, as weak memory allows, and a released and
+ * acquired one never is. main returns 42 if every test passed.
  */
 package model_checking
 
@@ -113,6 +114,87 @@ locked_increments_pass #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
             runtime.write_output("\n")
         }
     }
+    return .Ok
+}
+
+/** A message: data, then a flag that says it's there. */
+Message :: struct #scoped {
+    data : u32,
+    flag : u32,
+    t : ptr[mut testing.T]?,
+}
+
+message_of :: fn(data: any) -> ptr[mut Message] {
+    return cast[ptr[ptr[mut Message]]](data.data)^
+}
+
+write_relaxed : runtime.ThreadFunction : fn(data #escaping : any) {
+    message :: message_of(data)
+    intrinsics.atomic_store_u32_no_fence(&message.data, 1)
+    intrinsics.atomic_store_u32_no_fence(&message.flag, 1)
+}
+
+read_relaxed : runtime.ThreadFunction : fn(data #escaping : any) {
+    message :: message_of(data)
+    if intrinsics.atomic_load_u32_no_fence(&message.flag) == 1 {
+        t :: message.t or_return void
+        testing.expect_eq(t, intrinsics.atomic_load_u32_no_fence(&message.data), 1, "the data is there once the flag is")
+    }
+}
+
+write_released : runtime.ThreadFunction : fn(data #escaping : any) {
+    message :: message_of(data)
+    intrinsics.atomic_store_u32_no_fence(&message.data, 1)
+    intrinsics.atomic_store_u32_release(&message.flag, 1)
+}
+
+read_acquired : runtime.ThreadFunction : fn(data #escaping : any) {
+    message :: message_of(data)
+    if intrinsics.atomic_load_u32_acquire(&message.flag) == 1 {
+        t :: message.t or_return void
+        testing.expect_eq(t, intrinsics.atomic_load_u32_no_fence(&message.data), 1, "the data is there once the flag is")
+    }
+}
+
+pass_message :: fn(data #escaping : any, writer: runtime.ThreadFunction, reader: runtime.ThreadFunction) {
+    message :: message_of(data)
+    message.data = 0
+    message.flag = 0
+    first :: testing.spawn(writer, data) or_return void
+    second :: testing.spawn(reader, data) or_return void
+    testing.join(first)
+    testing.join(second)
+}
+
+relaxed_body : runtime.ThreadFunction : fn(data #escaping : any) {
+    pass_message(data, write_relaxed, read_relaxed)
+}
+
+released_body : runtime.ThreadFunction : fn(data #escaping : any) {
+    pass_message(data, write_released, read_acquired)
+}
+
+// Weak memory: a relaxed flag can be seen before the data it follows, as a weakly ordered CPU can show it
+finds_a_message_seen_before_its_data #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    message :: runtime.new(Message)
+    defer runtime.free(message)
+    attempt :: runtime.new(testing.T)
+    defer runtime.free(attempt)
+    message.t = attempt
+    outcome :: testing.check_model(attempt, relaxed_body, message)
+    testing.expect(t, outcome is_error, "a reader that sees the flag but not the data is found")
+    return .Ok
+}
+
+// Release and acquire: the data is always there once the flag is
+released_messages_arrive_whole #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    message :: runtime.new(Message)
+    defer runtime.free(message)
+    attempt :: runtime.new(testing.T)
+    defer runtime.free(attempt)
+    message.t = attempt
+    outcome :: testing.check_model(attempt, released_body, message)
+    testing.expect(t, outcome is_ok, "every schedule's reader sees the data with the flag")
     return .Ok
 }
 

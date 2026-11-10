@@ -391,15 +391,15 @@ TEST(Hosted, RunsPropertyTestsAndTags)
 	run_hosted("property_tests", hemera::TargetStackCheck::Off);
 }
 
-// A model-checked build (docs/testing.md, Model Checking): a lost update found with its schedule, and atomic increments
-// and a SpinLock that count right under every schedule. Fibers grow their stacks in segments, as the checker's threads
+// A model-checked build (docs/testing.md, Model Checking): a lost update found with its schedule, atomic increments and a
+// SpinLock that count right under every schedule, and weak memory's relaxed message passing found, its released one not. Fibers grow their stacks in segments, as the checker's threads
 // are fibers.
 TEST(Hosted, ModelChecksAtomics)
 {
 	const HostedOutput checked = run_hosted("model_checking", hemera::TargetStackCheck::Morestack, 42, "", false, false, false, {}, false, "",
 		"", true);
 	EXPECT_NE(checked.output.find("found in execution"), std::string::npos) << checked.output;
-	EXPECT_NE(checked.output.find("3 tests: 3 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("5 tests: 5 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // Fuzz targets run as property tests: the schema reader's, and one only fuzzing finds a failure in.
