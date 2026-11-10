@@ -106,6 +106,11 @@ CarrierBlock :: struct #align(64) {
     thread_page : rawptr,
     /** Whether making thread_page was tried and failed, so it isn't tried again on this thread. */
     thread_page_failed : bool,
+    /**
+     * The model checker running on this carrier (model.hsc), whose hooks a model-checked build's atomics, fences and
+     * spin hints call; null for none, when they're done as the hardware would. Taken away while one of its hooks runs.
+     */
+    model : ptr[ModelChecker]?,
 }
 
 /**

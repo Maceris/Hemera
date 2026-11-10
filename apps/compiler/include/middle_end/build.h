@@ -73,6 +73,7 @@ namespace hemera {
 		bool address_zero_is_memory = false;
 		bool control_flow_integrity = false;
 		bool coverage = false;
+		bool model_checked = false;
 		std::string linker_script;
 		std::vector<std::string> library_paths;
 		std::string linker;

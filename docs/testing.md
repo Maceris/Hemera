@@ -338,3 +338,34 @@ property test can.
 A fuzzer of its own, for code it doesn't run itself, like an operating system's kernel, builds that code with
 `TargetOptions.coverage` (`base/compiler/build.hsc`): the same counters and constants, given by
 `intrinsics.coverage_counters` and `coverage_constants`, for the fuzzer to read however that code makes them reachable.
+
+## Model Checking
+
+Lock-free code goes wrong in interleavings a test rarely meets, and on weakly ordered CPUs in what a load can read. A
+model-checked build (`--model-checked`, or `TargetOptions.model_checked` in a build package) makes each atomic operation
+of 8 bytes or fewer, each fence and each `spin_hint` call a hook in `base/runtime/model.hsc` instead of being done where
+it is, so a model checker running on the thread (`CarrierBlock.model`) chooses what happens: which of a test's threads
+runs next, and which store a load reads. Without a checker, the hooks do the operation as the hardware would, so the
+same program runs either way; without the option, nothing changes.
+
+Only the hooks' own atomics, and a checker's while one of its hooks runs, are done as they are. Plain (non-atomic)
+accesses aren't seen, and atomics on more than 8 bytes aren't modelled.
+
+`testing.check_model(t, body, data, options)` is the checker: `body` runs as a test's first thread, and the threads it
+starts with `testing.spawn(function, data)` as others, which `testing.join` waits for; each is a fiber, all on the
+calling thread, switched only at those hooks. It runs the test again and again, each time from the start: every
+schedule within `options.preemptions` preemptions (2 by default), depth first, or `options.random_runs` schedules drawn at
+random from `options.seed`. A preemption is switching away from a thread that could go on; a thread at a spin hint or a
+join is waiting for another, and isn't chosen again until another changes memory or ends. The threads record failures in
+a `T` as any test does; a schedule in which every thread is waiting, or that makes more than `options.most_steps`
+choices, fails too. The first schedule that fails is reported, in `t`'s notes, as the choices `options.replay` takes to
+run it again:
+
+```
+racy_increments #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    return testing.check_model(t, two_increments, shared)   // found in execution 5; its schedule ... 0,0,1,0,...
+}
+```
+
+The threads are fibers, so a model-checked test is built with stack checks that grow fibers' stacks
+(`--stack-check=morestack`); without them, a thread that needs more than its first segment overruns it.

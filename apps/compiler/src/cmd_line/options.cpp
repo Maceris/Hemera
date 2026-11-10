@@ -29,6 +29,7 @@ namespace hemera {
 		, address_zero_is_memory{ false }
 		, control_flow_integrity{ false }
 		, coverage{ false }
+		, model_checked{ false }
 	{}
 	Options::~Options() = default;
 

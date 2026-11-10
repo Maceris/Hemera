@@ -57,7 +57,7 @@ struct HostedOutput {
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
 	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false,
 	const std::vector<std::filesystem::path>& library_paths = {}, bool test = false, std::string_view test_filter = "",
-	std::string_view fuzz = "")
+	std::string_view fuzz = "", bool model_checked = false)
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -78,6 +78,7 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_folder());
 	options.output_name = (output_folder / name).string();
 	options.stack_check = stack_check;
+	options.model_checked = model_checked;
 	options.debug_info = debug_info;
 	options.generate_all = generate_all;
 	options.valgrind_secrets = valgrind_secrets;
@@ -388,6 +389,17 @@ TEST(Hosted, TakesParenthesizedArguments)
 TEST(Hosted, RunsPropertyTestsAndTags)
 {
 	run_hosted("property_tests", hemera::TargetStackCheck::Off);
+}
+
+// A model-checked build (docs/testing.md, Model Checking): a lost update found with its schedule, and atomic increments
+// and a SpinLock that count right under every schedule. Fibers grow their stacks in segments, as the checker's threads
+// are fibers.
+TEST(Hosted, ModelChecksAtomics)
+{
+	const HostedOutput checked = run_hosted("model_checking", hemera::TargetStackCheck::Morestack, 42, "", false, false, false, {}, false, "",
+		"", true);
+	EXPECT_NE(checked.output.find("found in execution"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("3 tests: 3 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // Fuzz targets run as property tests: the schema reader's, and one only fuzzing finds a failure in.

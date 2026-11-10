@@ -174,6 +174,12 @@ TargetOptions :: struct {
      */
     coverage : bool = false,
     /**
+     * Model checking (docs/testing.md, Model Checking): each atomic operation, fence and spin hint calls base/runtime's
+     * model hooks, so a model checker can choose which thread runs next and what a load reads; without one, they do the
+     * operation as the hardware would. For a test build of lock-free code; slower, so never for a release.
+     */
+    model_checked : bool = false,
+    /**
      * Linker script for section placement, relative to the build package's folder. Empty uses the linker's default
      * layout.
      */

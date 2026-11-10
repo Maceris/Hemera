@@ -5597,6 +5597,154 @@ namespace hemera {
 	}
 
 	/*
+	 * Whether the function being generated has its atomics, fences and spin hints call the model checker's hooks
+	 * (TargetOptions.model_checked, docs/testing.md's Model Checking): with the option, every function's but the hooks'
+	 * own, base/runtime's model.hsc, which do them as the hardware would; never in compile-time code.
+	 */
+	static bool model_checks(Generator& generator) {
+		if (generator.options == nullptr || !generator.options->model_checked || generator.compile_time || generator.state == nullptr) {
+			return false;
+		}
+		Declaration* current = generator.state->declaration;
+		if (current == nullptr || current->package_path == nullptr || current->file_name == nullptr) {
+			return true;
+		}
+		return !(text_of(current->package_path) == std::format("{}runtime", BASE_PACKAGE_PREFIX) && text_of(current->file_name) == "model.hsc");
+	}
+
+	// A memory order as base/runtime's ModelOrder numbers it: relaxed, acquire, release, acquire-release, sequentially consistent.
+	static int64_t model_order(LLVM::AtomicOrdering ordering) {
+		switch (ordering) {
+			case LLVM::AtomicOrdering::monotonic: return 0;
+			case LLVM::AtomicOrdering::acquire: return 1;
+			case LLVM::AtomicOrdering::release: return 2;
+			case LLVM::AtomicOrdering::acq_rel: return 3;
+			case LLVM::AtomicOrdering::not_atomic:
+			case LLVM::AtomicOrdering::unordered:
+			case LLVM::AtomicOrdering::seq_cst:
+				return 4;
+		}
+	}
+
+	/*
+	 * An atomic operation as a call to runtime.model_atomic (base/runtime/model.hsc), which does it, or has the model
+	 * checker do it: its operation, order and width, its address, and its operands as words, zero-extended; what it
+	 * gives back, the old value and whether a compare-exchange succeeded, is turned back into the intrinsic's results.
+	 * Operations on more than 8 bytes aren't modelled, and are emitted as they are (false).
+	 */
+	static bool emit_model_atomic(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, Emitted& result) {
+
+		Declaration* hook = base_declaration_named(generator, "runtime", "model_atomic");
+		if (hook == nullptr) {
+			return false;
+		}
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		const int64_t order = model_order(ordering_suffix(name));
+		bool weak = false;
+		if (name.ends_with("_weak")) {
+			name.remove_suffix(5);
+			weak = true;
+		}
+		TypeInfo const* target = static_cast<TypeInfoPointer const*>(base(function->input[0].type))->base_type;
+		TypeInfo const* value_type = target != nullptr ? target : BUILTIN_rawptr;
+		if (value_type->size > 8) {
+			return false;
+		}
+		// base/runtime's ModelOperation
+		int64_t operation = -1;
+		const std::pair<std::string_view, int64_t> operations[] = {
+			{ "atomic_load_", 0 }, { "atomic_store_", 1 }, { "interlocked_exchange_add_", 3 }, { "interlocked_exchange_", 2 },
+			{ "interlocked_and_", 5 }, { "interlocked_or_", 6 }, { "interlocked_xor_", 7 }, { "interlocked_increment_", 3 },
+			{ "interlocked_decrement_", 4 }, { "interlocked_compare_exchange_", 8 },
+		};
+		for (const auto& [prefix, code] : operations) {
+			if (name.starts_with(prefix)) {
+				operation = code;
+				break;
+			}
+		}
+		if (operation < 0) {
+			return false;
+		}
+		if (operation == 8 && weak) {
+			operation = 9;
+		}
+		mlir::Type word = integer_type(generator, 8);
+		mlir::Type value_llvm = llvm_type(generator, value_type);
+		const bool pointer = value_llvm == pointer_type(generator);
+		auto to_word = [&](mlir::Value given) -> mlir::Value {
+			if (pointer) {
+				return LLVM::PtrToIntOp::create(b, l, word, given);
+			}
+			return value_type->size < 8 ? static_cast<mlir::Value>(LLVM::ZExtOp::create(b, l, word, given)) : given;
+		};
+		mlir::Value operand = constant_int(generator, word, 0);
+		mlir::Value expected = constant_int(generator, word, 0);
+		if (operation == 8 || operation == 9) {
+			operand = to_word(arguments[1]);
+			expected = to_word(arguments[2]);
+		}
+		else if (name.starts_with("interlocked_increment_") || name.starts_with("interlocked_decrement_")) {
+			operand = constant_int(generator, word, 1);
+		}
+		else if (operation != 0) {
+			operand = to_word(arguments[1]);
+		}
+		mlir::Type small = integer_type(generator, 4);
+		LLVM::LLVMFuncOp called = function_for(generator, hook);
+		auto call = LLVM::CallOp::create(b, l, called, mlir::ValueRange{ constant_int(generator, small, operation), constant_int(generator, small, order),
+			constant_int(generator, small, static_cast<int64_t>(value_type->size)), arguments[0], operand, expected });
+		call.setCConv(called.getCConv());
+		mlir::Value answer = call.getResult();
+		mlir::Value old_word = extract(generator, answer, 0);
+		mlir::Value old = old_word;
+		if (pointer) {
+			old = LLVM::IntToPtrOp::create(b, l, value_llvm, old_word);
+		}
+		else if (value_type->size < 8) {
+			old = LLVM::TruncOp::create(b, l, value_llvm, old_word);
+		}
+		if (operation == 1) {
+			return true;
+		}
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		if (operation == 8 || operation == 9) {
+			// (old, success), as a compare-exchange's own results are
+			mlir::Type pair = LLVM::LLVMStructType::getLiteral(generator.context, { value_llvm, mlir::IntegerType::get(generator.context, 1) });
+			mlir::Value made = LLVM::UndefOp::create(b, l, pair);
+			made = insert(generator, made, old, { 0 });
+			made = insert(generator, made, extract(generator, answer, 1), { 1 });
+			result = value(made, nullptr);
+			result.kind = ValueKind::RESULTS;
+			result.results = { function->output[0].type, function->output[1].type };
+			return true;
+		}
+		result = value(old, result_type);
+		return true;
+	}
+
+	/*
+	 * A fence or spin hint as a call to a model hook (base/runtime/model.hsc), named and given what it needs: a fence its
+	 * order, a spin hint nothing. False if the runtime hasn't the hook, when it's emitted as it is.
+	 */
+	static bool emit_model_call(Generator& generator, std::string_view hook_name, std::optional<int64_t> order) {
+		Declaration* hook = base_declaration_named(generator, "runtime", hook_name);
+		if (hook == nullptr) {
+			return false;
+		}
+		LLVM::LLVMFuncOp called = function_for(generator, hook);
+		std::vector<mlir::Value> arguments;
+		if (order) {
+			arguments.push_back(constant_int(generator, integer_type(generator, 4), *order));
+		}
+		auto call = LLVM::CallOp::create(generator.builder, generator.loc, called, arguments);
+		call.setCConv(called.getCConv());
+		return true;
+	}
+
+	/*
 	 * An intrinsic's instructions (base/intrinsics): trap, memory, volatile and atomic accesses,
 	 * fences, the carrier register, and the platform's own instructions.
 	 */
@@ -6208,6 +6356,9 @@ namespace hemera {
 			return value(LLVM::SqrtOp::create(generator.builder, generator.loc, arguments[0]), function->output.empty() ? nullptr
 				: function->output[0].type);
 		}
+		if (name == "spin_hint" && model_checks(generator) && emit_model_call(generator, "model_spin", std::nullopt)) {
+			return result;
+		}
 		if (name == "spin_hint") {
 			const ArchType architecture = generator.options != nullptr ? generator.options->architecture : ArchType::x86_64;
 			if (ArchType::x86_64 == architecture || ArchType::x86 == architecture) {
@@ -6386,9 +6537,17 @@ namespace hemera {
 			LLVM::StoreOp::create(b, l, arguments[1], arguments[0], static_cast<unsigned>(function->input[1].type->size), true);
 			return result;
 		}
+		if (name.starts_with("fence_") && model_checks(generator)
+			&& emit_model_call(generator, "model_fence", model_order(ordering_suffix(name)))) {
+			return result;
+		}
 		if (name.starts_with("fence_") || name.starts_with("compiler_fence_")) {
 			const bool compiler_only = name.starts_with("compiler_");
 			LLVM::FenceOp::create(b, l, ordering_suffix(name), compiler_only ? "singlethread" : "");
+			return result;
+		}
+		if ((name.starts_with("atomic_") || name.starts_with("interlocked_")) && model_checks(generator)
+			&& emit_model_atomic(generator, name, function, arguments, result)) {
 			return result;
 		}
 		if ((name.starts_with("atomic_") || name.starts_with("interlocked_")) && emit_atomic(generator, name, function, arguments, result)) {
@@ -11318,6 +11477,7 @@ namespace hemera {
 				target.address_zero_is_memory = read_number(options, target_layout, "address_zero_is_memory") != 0;
 				target.control_flow_integrity = read_number(options, target_layout, "control_flow_integrity") != 0;
 				target.coverage = read_number(options, target_layout, "coverage") != 0;
+				target.model_checked = read_number(options, target_layout, "model_checked") != 0;
 				target.linker_script = read_text(options, target_layout, "linker_script");
 				const TypeInfo* paths_type = nullptr;
 				if (const uint8_t* paths = field_at(options, target_layout, "library_paths", paths_type)) {
@@ -11472,6 +11632,7 @@ namespace hemera {
 				data.write_number(at, target, "address_zero_is_memory", options.address_zero_is_memory);
 				data.write_number(at, target, "control_flow_integrity", options.control_flow_integrity);
 				data.write_number(at, target, "coverage", options.coverage);
+				data.write_number(at, target, "model_checked", options.model_checked);
 				data.write_text(at, target, "linker_script", options.linker_script.empty() ? std::string() : options.linker_script.string());
 				data.write_text(at, target, "linker", options.linker);
 				data.write_number(at, target, "startup_code", options.startup_code);
@@ -12273,6 +12434,7 @@ namespace hemera {
 		result.address_zero_is_memory = target.address_zero_is_memory;
 		result.control_flow_integrity = target.control_flow_integrity;
 		result.coverage = target.coverage;
+		result.model_checked = target.model_checked;
 		result.startup_code = target.startup_code;
 		// A typed library (docs/compilation.md, Typed Libraries): no startup code, and code that works wherever it's loaded
 		if (target.output_type == "DynamicLibrary") {

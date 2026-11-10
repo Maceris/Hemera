@@ -563,6 +563,11 @@ namespace hemera {
         /// </summary>
         bool coverage;
         /// <summary>
+        /// Model checking (docs/testing.md, Model Checking): atomics, fences and spin hints call base/runtime's model
+        /// hooks (--model-checked, or TargetOptions.model_checked).
+        /// </summary>
+        bool model_checked;
+        /// <summary>
         /// --allow-run: the build package's compile-time code may run programs and write outside the output
         /// folder (docs/compilation.md, Compile-Time Permissions).
         /// </summary>
