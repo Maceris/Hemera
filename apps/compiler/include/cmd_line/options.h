@@ -558,6 +558,11 @@ namespace hemera {
         /// </summary>
         bool control_flow_integrity;
         /// <summary>
+        /// Coverage counters and the constants compared with, as --fuzz builds with, for a build target that asks
+        /// (TargetOptions.coverage) without being a fuzzer.
+        /// </summary>
+        bool coverage;
+        /// <summary>
         /// --allow-run: the build package's compile-time code may run programs and write outside the output
         /// folder (docs/compilation.md, Compile-Time Permissions).
         /// </summary>

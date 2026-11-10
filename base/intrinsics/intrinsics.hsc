@@ -117,7 +117,7 @@ library_imports : fn() -> runtime.LibraryImports : ---
  * program's code, each bumped every time the block runs, wrapping past 255.
  *
  * @return The counters, which the fuzzer zeroes before an input and reads after; empty unless the program was built
- *     with hemera --fuzz, and in compile-time code.
+ *     with hemera --fuzz or TargetOptions.coverage, and in compile-time code.
  */
 coverage_counters : fn() -> mut u8[] : ---
 
@@ -126,7 +126,7 @@ coverage_counters : fn() -> mut u8[] : ---
  * inputs (docs/testing.md, Fuzzing): magic numbers, tags and the like, which changing bytes at random seldom comes on.
  *
  * @return Each constant once, as a u64, its bits zero-extended, at most 4096 of them, those past 1 only; empty unless
- *     the program was built with hemera --fuzz, and in compile-time code.
+ *     the program was built with hemera --fuzz or TargetOptions.coverage, and in compile-time code.
  */
 coverage_constants : fn() -> u64[] : ---
 

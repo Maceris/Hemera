@@ -11317,6 +11317,7 @@ namespace hemera {
 				target.red_zone = read_number(options, target_layout, "red_zone") != 0;
 				target.address_zero_is_memory = read_number(options, target_layout, "address_zero_is_memory") != 0;
 				target.control_flow_integrity = read_number(options, target_layout, "control_flow_integrity") != 0;
+				target.coverage = read_number(options, target_layout, "coverage") != 0;
 				target.linker_script = read_text(options, target_layout, "linker_script");
 				const TypeInfo* paths_type = nullptr;
 				if (const uint8_t* paths = field_at(options, target_layout, "library_paths", paths_type)) {
@@ -11470,6 +11471,7 @@ namespace hemera {
 				data.write_number(at, target, "red_zone", options.red_zone);
 				data.write_number(at, target, "address_zero_is_memory", options.address_zero_is_memory);
 				data.write_number(at, target, "control_flow_integrity", options.control_flow_integrity);
+				data.write_number(at, target, "coverage", options.coverage);
 				data.write_text(at, target, "linker_script", options.linker_script.empty() ? std::string() : options.linker_script.string());
 				data.write_text(at, target, "linker", options.linker);
 				data.write_number(at, target, "startup_code", options.startup_code);
@@ -12270,6 +12272,7 @@ namespace hemera {
 		result.red_zone = target.red_zone;
 		result.address_zero_is_memory = target.address_zero_is_memory;
 		result.control_flow_integrity = target.control_flow_integrity;
+		result.coverage = target.coverage;
 		result.startup_code = target.startup_code;
 		// A typed library (docs/compilation.md, Typed Libraries): no startup code, and code that works wherever it's loaded
 		if (target.output_type == "DynamicLibrary") {

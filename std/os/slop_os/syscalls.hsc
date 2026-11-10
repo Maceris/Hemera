@@ -13,7 +13,7 @@ package slop_os
  * The version of the system ABI this package describes. The startup block carries the kernel's, and a program built
  * against another refuses to start, until ABI v1.
  */
-ABI_VERSION : u32 : 12
+ABI_VERSION : u32 : 13
 
 /**
  * A handle as user space sees it: opaque, chosen by the kernel, and good only in the process whose table it's in.
@@ -1184,6 +1184,18 @@ Syscalls :: struct {
      *     process has a shadow stack. One that isn't free fails each thread's creation instead.
      */
     process_set_control_flow : fn(process: Process, features: u32, region: u64, size: u64) -> Result[void, ControlError],
+    /**
+     * Take the kernel's coverage counters, for the system call fuzzer (the SlopOS repository's decisions/0186): a byte for
+     * each basic block of its code, bumped each time the block runs, wrapping past 255, copied into counters as far as
+     * it reaches, then every one zeroed, so the next take counts from here. Only in a kernel built with them, a test
+     * build (the SlopOS build's coverage=on); any process may take them there.
+     *
+     * @param counters Where they go, from its start; one shorter than the kernel's gets its first ones only.
+     * @return How many counters the kernel has.
+     * @error BadBuffer counters isn't the caller's to write.
+     * @error NotCounted The kernel wasn't built with coverage counters.
+     */
+    coverage_take : fn(counters: mut u8[]) -> Result[u64, CoverageError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
@@ -1931,6 +1943,14 @@ MemoryError :: enum #backed_by(u32) {
 
 /** The largest memory object, 1 GiB, in bytes. */
 MAX_MEMORY_SIZE : u64 : 1 << 30
+
+/** What coverage_take can fail with (the SlopOS repository's decisions/0186). Tags shared with the others mean the same. */
+CoverageError :: enum #backed_by(u32) {
+    /** Memory the call writes isn't there, or isn't the caller's to. */
+    BadBuffer = 10,
+    /** The kernel wasn't built with coverage counters. */
+    NotCounted = 48,
+}
 
 /** What process control can fail with. Tags shared with the others mean the same. */
 ControlError :: enum #backed_by(u32) {

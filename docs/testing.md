@@ -334,3 +334,7 @@ bytes at all, like a parser that never reads outside what it's given, so it draw
 
 It needs files, so the fuzzing program is a hosted one (`std/fuzzing`), while the test itself can be anywhere a
 property test can.
+
+A fuzzer of its own, for code it doesn't run itself, like an operating system's kernel, builds that code with
+`TargetOptions.coverage` (`base/compiler/build.hsc`): the same counters and constants, given by
+`intrinsics.coverage_counters` and `coverage_constants`, for the fuzzer to read however that code makes them reachable.

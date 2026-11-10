@@ -72,6 +72,7 @@ namespace hemera {
 		bool red_zone = true;
 		bool address_zero_is_memory = false;
 		bool control_flow_integrity = false;
+		bool coverage = false;
 		std::string linker_script;
 		std::vector<std::string> library_paths;
 		std::string linker;

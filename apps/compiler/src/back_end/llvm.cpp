@@ -562,7 +562,7 @@ namespace hemera {
 	}
 
 	bool BackendLLVM::generate(const Options& options, llvm::Module& module, std::string_view output_name, LargeFrames* frames) {
-		if (!options.fuzz.empty()) {
+		if (!options.fuzz.empty() || options.coverage) {
 			instrument_coverage(module);
 		}
 		// Optimize the IR

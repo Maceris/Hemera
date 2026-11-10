@@ -168,6 +168,12 @@ TargetOptions :: struct {
      */
     control_flow_integrity : bool = false,
     /**
+     * Coverage counters, as hemera --fuzz builds a program with (docs/testing.md, Fuzzing): a counter for each basic
+     * block, bumped as it runs, and the constants it compares with, which intrinsics.coverage_counters and
+     * coverage_constants give; for a fuzzer that reads another program's coverage, like an operating system's kernel's.
+     */
+    coverage : bool = false,
+    /**
      * Linker script for section placement, relative to the build package's folder. Empty uses the linker's default
      * layout.
      */
