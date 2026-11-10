@@ -11,6 +11,12 @@ import unicode from "std"
 
 /** The most bytes of text one Text has; write splits longer text into several. */
 MAX_TEXT_BYTES :: 2048
+/**
+ * The ring every terminal connection is made with, 8 KiB, so a Write of MAX_TEXT_BYTES, with its runs and links, fits
+ * a message, which is at most half the ring; the default ring's 1 KiB takes under 500 bytes, and a longer Write isn't
+ * sent at all.
+ */
+RING_BYTES : u32 : 8192
 /** The most runs one Text has. */
 MAX_RUNS :: 64
 /** The most events one Events has, and read's default for how many to ask for. */
@@ -409,7 +415,7 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  *     Connect couldn't be sent, and then nothing is left open.
  */
 connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[Terminal]? {
-    pair :: os.channel_for[Terminal](budget, 0) or_return null
+    pair :: os.channel_for[Terminal](budget, RING_BYTES) or_return null
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
     request^ = .Connect(os.Channel[Terminal].{end = pair.a})

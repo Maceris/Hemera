@@ -13,7 +13,7 @@ package slop_os
  * The version of the system ABI this package describes. The startup block carries the kernel's, and a program built
  * against another refuses to start, until ABI v1.
  */
-ABI_VERSION : u32 : 13
+ABI_VERSION : u32 : 14
 
 /**
  * A handle as user space sees it: opaque, chosen by the kernel, and good only in the process whose table it's in.
@@ -1272,10 +1272,15 @@ CpuBudgetInfo :: struct {
      * did for its processes (the SlopOS repository's decisions/0185).
      */
     lent : u64,
+    /**
+     * The time run on it, in nanoseconds since it was made: by any thread on it, lent included, but not by its
+     * children's (the SlopOS repository's decisions/0187).
+     */
+    ran : u64,
 }
 
 /** How many words cpu_budget_info writes: one for each of CpuBudgetInfo's fields. */
-CPU_BUDGET_INFO_WORDS :: 7
+CPU_BUDGET_INFO_WORDS :: 8
 
 /**
  * Describe a CPU budget: cpu_budget_info's words, as a CpuBudgetInfo. Needs no context.
@@ -1289,7 +1294,7 @@ cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
         return null
     }
     return CpuBudgetInfo.{priority = words[0], period = words[1], time = words[2], share = words[3], children_share = words[4],
-        cpus = words[5], lent = words[6]}
+        cpus = words[5], lent = words[6], ran = words[7]}
 }
 
 /** The most of a line debug_log writes, in bytes; the rest is dropped. */

@@ -63,7 +63,7 @@ SLOP_OS_PROTECTION_READ_WRITE : u64 : 3
  * The startup block's ABI version this runtime reads; a block of another version ends the process with
  * SLOP_OS_EXIT_WRONG_ABI before main (os_prepare_carrier).
  */
-SLOP_OS_ABI_VERSION : u32 : 13
+SLOP_OS_ABI_VERSION : u32 : 14
 /** A grant's kind: a memory budget, which memory objects are made from. */
 SLOP_OS_KIND_MEMORY_BUDGET : u32 : 1
 /** A grant's kind: a CPU budget. */
