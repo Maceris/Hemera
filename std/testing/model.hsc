@@ -57,6 +57,11 @@ ModelFiber :: struct {
      * it isn't chosen until another thread changes memory or ends.
      */
     spinning : bool,
+    /**
+     * Model.changes at its last spin hint: a spin hint waits only when nothing changed since the one before, so a loop
+     * reads everything it checks once after each change before it waits.
+     */
+    changes_seen : u64,
     /** The atomic operation or fence it stopped to do, which the driver does once it's chosen; None for neither. */
     pending : ModelPending,
     /** What its operation read, once the driver's done it. */
@@ -116,6 +121,8 @@ Model :: struct {
     thread_count : usize,
     /** The thread running, or that last ran. */
     current : usize,
+    /** How many times memory has changed, or a thread ended, this execution: what wakes threads waiting for another. */
+    changes : u64,
     /** The choices this execution made, the first replayed of them from the one before. */
     choices : ModelChoice[MAX_MODEL_STEPS],
     /** How many choices this execution has made. */
@@ -264,6 +271,7 @@ run_execution :: fn(model: ptr[mut Model], body: runtime.ThreadFunction, data #e
     model.thread_count = 0
     model.steps = 0
     model.preempted = 0
+    model.changes = 0
     model.current = 0
     model.problem = ""
     model.location_count = 0
@@ -584,6 +592,7 @@ do_pending :: fn(model: ptr[mut Model], thread: usize) {
  * @param model The model, whose threads' spinning is cleared.
  */
 wake_spinners #no_context :: fn(model: ptr[mut Model]) {
+    model.changes += 1
     for &each in model.threads {
         each.spinning = false
     }
@@ -613,5 +622,18 @@ model_fence #no_context :: fn(data: rawptr, order: runtime.ModelOrder) {
  * @param data The model.
  */
 model_spin #no_context :: fn(data: rawptr) {
-    wait_turn(cast[ptr[mut Model]](data), true)
+    model :: cast[ptr[mut Model]](data)
+    // Something changed since its last spin hint, which it may not have read yet: it goes round again before it waits
+    unchanged := true
+    if model.current < model.threads.count {
+        thread :: &model.threads[model.current]
+        unchanged = thread.changes_seen == model.changes
+        thread.changes_seen = model.changes
+    }
+    // It sees what's been stored, whether it waits or not, and its next load reads the newest store (ModelView.fresh)
+    catch_up(model, model.current)
+    if model.current < model.views.count {
+        model.views[model.current].fresh = true
+    }
+    wait_turn(model, unchanged)
 }

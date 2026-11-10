@@ -126,6 +126,23 @@ location_of #no_context :: fn(model: ptr[mut Model], address: rawptr, width: u32
 }
 
 /**
+ * Let a thread see every store made so far, as it stops at a spin hint: stores become visible in time, as every CPU
+ * makes them, which C11 alone doesn't promise, so a thread waiting for one isn't shown an older one for ever. It reads
+ * them from now on, or newer ones, with nothing more happening before it: it sees them, but doesn't synchronize with
+ * them.
+ *
+ * @param model The model, whose locations' seen change.
+ * @param thread The thread at the spin hint.
+ */
+catch_up #no_context :: fn(model: ptr[mut Model], thread: usize) {
+    for i in 0..<model.location_count {
+        if i < model.locations.count && thread < model.locations[i].seen.count && model.locations[i].count > 0 {
+            model.locations[i].seen[thread] = model.locations[i].total - 1
+        }
+    }
+}
+
+/**
  * Start a location's history again from what memory holds, if that isn't its newest store: a plain write, or the memory
  * reused for something else, as a freed object's or a stack slot's is, which the model doesn't see. What's there then
  * happens before every thread's every access, as the location's first store does.

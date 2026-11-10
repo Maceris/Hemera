@@ -355,8 +355,9 @@ accesses aren't seen, and atomics on more than 8 bytes aren't modelled.
 starts with `testing.spawn(function, data)` as others, which `testing.join` waits for; each is a fiber, all on the
 calling thread, switched only at those hooks. It runs the test again and again, each time from the start: every
 schedule within `options.preemptions` preemptions (2 by default), depth first, or `options.random_runs` schedules drawn at
-random from `options.seed`. A preemption is switching away from a thread that could go on; a thread at a spin hint or a
-join is waiting for another, and isn't chosen again until another changes memory or ends. The threads record failures in
+random from `options.seed`. A preemption is switching away from a thread that could go on; a thread at a join, or at a spin
+hint with nothing changed since its last, is waiting for another, and isn't chosen again until another changes memory or
+ends. A spin hint after a change isn't a wait yet, so a loop reads everything it checks once more before it waits. The threads record failures in
 a `T` as any test does; a schedule in which every thread is waiting, or that makes more than `options.most_steps`
 choices, fails too. The first schedule that fails is reported, in `t`'s notes, as the choices `options.replay` takes to
 run it again:
@@ -372,8 +373,8 @@ happens before it, to the newest of all, as the C11 memory model has it, with ac
 vector clocks, and read-modify-writes reading the newest store (`std/testing/model_memory.hsc`). So a relaxed flag can be
 seen before the data stored ahead of it, as a weakly ordered CPU shows it, and a released and acquired one can't. Two
 choices keep it close to what CPUs do rather than all C11 allows: a sequentially consistent load reads the newest store,
-and a thread's first load after a spin hint reads the newest, since stores become visible in time, which a thread waiting
-for one relies on. Memory written plainly, or reused for something else, starts a location's history again. base's own
+and at a spin hint a thread sees every store made so far, its first load after it reading the newest, since stores
+become visible in time, which a thread waiting for one relies on; seeing them isn't synchronizing with them. Memory written plainly, or reused for something else, starts a location's history again. base's own
 atomics, the runtime's machinery, aren't modelled.
 
 The threads are fibers, so a model-checked test is built with stack checks that grow fibers' stacks
