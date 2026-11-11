@@ -316,3 +316,105 @@ sha512 :: fn(data: u8[]) -> u8[64] {
     sha512_update(&hasher, data)
     return sha512_finish(&hasher)
 }
+
+/*
+ * SHA-384 (FIPS 180-4, section 6.5): SHA-512 started from other words, its digest the first 48 bytes. TLS 1.3's
+ * TLS_AES_256_GCM_SHA384 hashes its transcript with it, and certificates are signed with it.
+ */
+
+/** How many bytes a SHA-384 digest has. */
+SHA384_SIZE :: 48
+/** How many bytes a SHA-384 block has, SHA-512's: what HMAC pads its key to. */
+SHA384_BLOCK :: 128
+
+/** SHA-384's initial hash value, H0 to H7 (FIPS 180-4, section 5.3.4). */
+SHA384_START :: u64.[
+    0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
+    0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4,
+]
+
+/**
+ * A SHA-384 hash in progress, for what comes in parts: from sha384_start, fed with sha384_update, and ended with
+ * sha384_finish. It's a SHA-512 hash started from SHA-384's words, kept apart by its type so the two aren't mixed.
+ */
+Sha384 :: struct {
+    /** The SHA-512 hash it runs, started from SHA384_START. */
+    hasher: Sha512,
+}
+
+/**
+ * Start a SHA-384 hash (FIPS 180-4).
+ *
+ * @return The hasher, with nothing hashed yet.
+ */
+sha384_start :: fn() -> Sha384 {
+    hasher := Sha384.{}
+    for i in 0..<8 {
+        hasher.hasher.state.words[i] = SHA384_START[i]
+    }
+    return hasher
+}
+
+/**
+ * Add public bytes to what a SHA-384 hasher hashes.
+ *
+ * @param hasher The hasher, not yet finished.
+ * @param data The next bytes, of any number, none included; they're hashed, not kept.
+ */
+sha384_update :: fn(hasher: ptr[mut Sha384], data: u8[]) {
+    sha512_absorb(&hasher.hasher, as_secret(data))
+}
+
+/**
+ * Add secret bytes to what a SHA-384 hasher hashes, in constant time.
+ *
+ * @param hasher The hasher, not yet finished.
+ * @param data The next bytes, of any number; how many isn't secret, what they are is.
+ */
+sha384_update_secret #constant_time :: fn(hasher: ptr[mut Sha384], data: SecretByte[]) {
+    sha512_absorb(&hasher.hasher, data)
+}
+
+/**
+ * Finish a SHA-384 hash, keeping the digest a secret.
+ *
+ * @param hasher The hasher, after fewer than 2^61 bytes in all. It's spent afterwards: it can't be updated or
+ *     finished again, and its state isn't wiped.
+ * @return The 48-byte digest, the first 48 bytes of what SHA-512's finish gives from SHA-384's words, as a secret.
+ */
+sha384_finish_secret #constant_time :: fn(hasher: ptr[mut Sha384]) -> SecretByte[48] {
+    whole := sha512_finish_secret(&hasher.hasher)
+    digest : SecretByte[48]
+    for i in 0..<48 {
+        digest[i] = whole[i]
+    }
+    return digest
+}
+
+/**
+ * Finish a SHA-384 hash.
+ *
+ * @param hasher The hasher, after fewer than 2^61 bytes in all. It's spent afterwards: it can't be updated or
+ *     finished again.
+ * @return The 48-byte digest, public.
+ */
+sha384_finish :: fn(hasher: ptr[mut Sha384]) -> u8[48] {
+    secret := sha384_finish_secret(hasher)
+    digest : u8[48]
+    for i in 0..<48 {
+        digest[i] = compiler.declassify(secret[i])
+    }
+    return digest
+}
+
+/**
+ * Hash bytes with SHA-384 (FIPS 180-4), when they're all at hand.
+ *
+ * @param data The bytes, of any number, none included.
+ * @return The 48-byte digest.
+ */
+sha384 :: fn(data: u8[]) -> u8[48] {
+    hasher := sha384_start()
+    sha384_update(&hasher, data)
+    return sha384_finish(&hasher)
+}

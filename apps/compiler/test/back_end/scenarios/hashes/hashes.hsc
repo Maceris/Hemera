@@ -1,5 +1,5 @@
 /*
- * std/crypto's hashes (docs/memory.md, Secrets): SHA-256 and SHA-512 (FIPS 180-4), HMAC (RFC 4231's
+ * std/crypto's hashes (docs/memory.md, Secrets): SHA-256, SHA-384 and SHA-512 (FIPS 180-4), HMAC (RFC 4231's
  * cases), HKDF (RFC 5869's first case, and one with SHA-512), BLAKE2b (RFC 7693) and BLAKE3, keyed and
  * not, over empty, short, block-sized and longer messages, across BLAKE3's chunks and tree, in one go and
  * in parts, against values worked out by Python's hashlib and hmac and the blake3 package. Run with
@@ -105,6 +105,16 @@ expand512 #constant_time :: fn(length: usize, output: ptr[mut crypto.SecretByte[
     salt : u8[200]
     pseudo_random := crypto.hkdf_sha512_extract(counting(0, 13, &salt), repeat(0x0b, 22, &key))
     if !crypto.hkdf_sha512_expand(pseudo_random, counting(0xf0, 10, &salt), output[0..<length % 201]) {
+        return output[0..<0]
+    }
+    return output[0..<length % 201]
+}
+
+expand384 #constant_time :: fn(length: usize, output: ptr[mut crypto.SecretByte[200]]) -> crypto.SecretByte[] {
+    key : crypto.SecretByte[200]
+    salt : u8[200]
+    pseudo_random := crypto.hkdf_sha384_extract(counting(0, 13, &salt), repeat(0x0b, 22, &key))
+    if !crypto.hkdf_sha384_expand(pseudo_random, counting(0xf0, 10, &salt), output[0..<length % 201]) {
         return output[0..<0]
     }
     return output[0..<length % 201]
@@ -254,6 +264,23 @@ hashes_with_sha512 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     return .Ok
 }
 
+hashes_with_sha384 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    buffer : u8[1000]
+    expect_hex(t, crypto.sha384(bytes("")), "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+        "SHA-384 of an empty message, its padding alone")
+    expect_hex(t, crypto.sha384(bytes("abc")), "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7",
+        "SHA-384 of abc, FIPS 180-4's one-block example")
+    expect_hex(t, crypto.sha384(pattern(111, &buffer)), "f5f9fe110d809d34029de262a01b208356caec6e054c7f926b2591f6c9780579d4b59f5578c6f531a84f158a33660cef",
+        "SHA-384 of 111 bytes, the most whose padding and length fit in their block")
+    expect_hex(t, crypto.sha384(pattern(112, &buffer)), "33ba080ec0ccb378e4e95fed3b26c23aa1a280476e007519ee47f60cd9c5c8a65d627259a9aa2fd33ca06d3c14ee5548",
+        "SHA-384 of 112 bytes, too many for the 16-byte length to fit in their block")
+    expect_hex(t, crypto.sha384(pattern(128, &buffer)), "ca2385773319124534111a36d0581fc3f00815e907034b90cff9c3a861e126a741d5dfcff65a417b6d7296863ac0ec17",
+        "SHA-384 of 128 bytes, a whole block, its padding in a block of its own")
+    expect_hex(t, crypto.sha384(pattern(1000, &buffer)), "7a2f8c7f12344964a13cb9260492b845e56615d6152b9eb9e54b580fc88405e64f31813bfda10de2a642fdf1676c61b4",
+        "SHA-384 of 1000 bytes, across many blocks")
+    return .Ok
+}
+
 authenticates_with_hmac #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     key : crypto.SecretByte[200]
     plain : u8[200]
@@ -265,6 +292,10 @@ authenticates_with_hmac #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
         "HMAC-SHA-256 with a key longer than a block, which is hashed first: RFC 4231's sixth case")
     expect_hex(t, public(&plain, crypto.hmac_sha512(repeat(0xaa, 131, &key), bytes("Test Using Larger Than Block-Size Key - Hash Key First"))), "80b24263c7c1a3ebb71493c1dd7be8b49b46d1f41b4aeec1121b013783f8f3526b56d037e05f2598bd0fd2215d6a1e5295e64f73f63f0aec8b915a985d786598",
         "HMAC-SHA-512 with a key longer than a block, which is hashed first: RFC 4231's sixth case")
+    expect_hex(t, public(&plain, crypto.hmac_sha384(repeat(0x0b, 20, &key), bytes("Hi There"))), "afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7f4af152e8b2fa9cb6",
+        "HMAC-SHA-384, RFC 4231's first case")
+    expect_hex(t, public(&plain, crypto.hmac_sha384(repeat(0xaa, 131, &key), bytes("Test Using Larger Than Block-Size Key - Hash Key First"))), "4ece084485813e9088d2c63a041bc5b44f9ef1012a2b588f3cd11f05033ac4c60c2ef6ab4030fe8296248df163f44952",
+        "HMAC-SHA-384 with a key longer than a block, which is hashed first: RFC 4231's sixth case")
     return .Ok
 }
 
@@ -281,6 +312,10 @@ derives_keys_with_hkdf #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
         "HKDF-SHA-512's extracted key, from RFC 5869's first case's inputs")
     expect_hex(t, public(&plain, expand512(100, &output)), "832390086cda71fb47625bb5ceb168e4c8e26a1a16ed34d9fc7fe92c1481579338da362cb8d9f925d7cbcce0dff7098769cf15959867d571c1715450cb530137be3fb62f3cf32b84feba8f1eb1b563e20d9749b8640b8264c4b69b14ad5199115e1d609c",
         "HKDF-SHA-512 expanded to 100 bytes, across two of its blocks")
+    expect_hex(t, public(&plain, crypto.hkdf_sha384_extract(counting(0, 13, &salt), repeat(0x0b, 22, &key))), "704b39990779ce1dc548052c7dc39f303570dd13fb39f7acc564680bef80e8dec70ee9a7e1f3e293ef68eceb072a5ade",
+        "HKDF-SHA-384's extracted key, from RFC 5869's first case's inputs")
+    expect_hex(t, public(&plain, expand384(100, &output)), "9b5097a86038b805309076a44b3a9f38063e25b516dcbf369f394cfab43685f748b6457763e4f0204fc5d95d1da3e62587b22eb8943d0fab6bb631a2fe9df1a68c6ce5d56116a52005b3f122b88b39b7251fcd6c44d3ef25f20ed96802bf1b2c1d98bf74",
+        "HKDF-SHA-384 expanded to 100 bytes, across three of its blocks")
     return .Ok
 }
 

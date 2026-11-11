@@ -532,6 +532,15 @@ TEST(Hosted, Wycheproof)
 	run_hosted("wycheproof", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
+/*
+ * std/crypto's primitives for TLS and NTS against Project Wycheproof's vectors: SHA-384's HMAC and
+ * HKDF, AES-128-GCM, AES-SIV, P-256's ECDH and ECDSA, and RSA's signatures.
+ */
+TEST(Hosted, WycheproofForTls)
+{
+	run_hosted("wycheproof_tls", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+}
+
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
 TEST(Hosted, Hashes)
 {

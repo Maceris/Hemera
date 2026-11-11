@@ -1,7 +1,7 @@
 package crypto
 
 /*
- * HMAC (RFC 2104) and HKDF (RFC 5869), with SHA-256 or SHA-512. The key, and what HKDF derives, are
+ * HMAC (RFC 2104) and HKDF (RFC 5869), with SHA-256, SHA-384 or SHA-512. The key, and what HKDF derives, are
  * secrets; a tag is one too until it's compared, with crypto.equal:
  *
  *     tag :: crypto.hmac_sha256(key, message)
@@ -290,6 +290,150 @@ hkdf_sha512_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[],
         hmac_sha512_update(&hmac, info)
         hmac_sha512_update(&hmac, u8.[counter])
         previous = hmac_sha512_finish(&hmac)
+        for byte in previous {
+            if written < output.count {
+                output[written] = byte
+                written += 1
+            }
+        }
+        counter += 1
+    }
+    while written < output.count
+    return true
+}
+
+/**
+ * An HMAC-SHA-384 computation in progress, for a message that comes in parts: from hmac_sha384_start, fed with
+ * hmac_sha384_update, and ended with hmac_sha384_finish. Its state is secret, as it's derived from the key.
+ */
+HmacSha384 :: struct {
+    /** The inner hash, started with the key XOR ipad (0x36), which the message goes into. */
+    inner: Sha384,
+    /** The outer hash, started with the key XOR opad (0x5c), which the inner hash's digest goes into. */
+    outer: Sha384,
+}
+
+/**
+ * Start an HMAC-SHA-384 computation (RFC 2104, RFC 4231) with a key.
+ *
+ * @param key The key, of any length: one longer than SHA-384's 128-byte block is hashed first, and a shorter one
+ *     padded with zeros, as RFC 2104 says. RFC 2104 recommends at least 48 bytes. Not kept: only what's derived from
+ *     it is.
+ * @return The computation, ready for the message; its state is secret.
+ */
+hmac_sha384_start #constant_time :: fn(key: SecretByte[]) -> HmacSha384 {
+    padded : HmacSha512Block
+    if key.count > SHA384_BLOCK {
+        hashed := sha384_start()
+        sha384_update_secret(&hashed, key)
+        digest := sha384_finish_secret(&hashed)
+        for i in 0..<SHA384_SIZE {
+            padded[i] = cast[u8](digest[i])
+        }
+    }
+    else {
+        for byte, i in key {
+            padded[i % SHA384_BLOCK] = cast[u8](byte)
+        }
+    }
+    hmac := HmacSha384.{inner = sha384_start(), outer = sha384_start()}
+    for i in 0..<SHA384_BLOCK {
+        hmac.inner.hasher.state.block[i] = padded[i] ~ 0x36
+        hmac.outer.hasher.state.block[i] = padded[i] ~ 0x5c
+    }
+    sha512_compress(&hmac.inner.hasher.state)
+    sha512_compress(&hmac.outer.hasher.state)
+    hmac.inner.hasher.total = SHA384_BLOCK
+    hmac.outer.hasher.total = SHA384_BLOCK
+    return hmac
+}
+
+/**
+ * Add public bytes to the message an HMAC-SHA-384 computation authenticates.
+ *
+ * @param hmac The computation, not yet finished.
+ * @param message The next part of the message, of any length, empty included; it's hashed, not kept.
+ */
+hmac_sha384_update :: fn(hmac: ptr[mut HmacSha384], message: u8[]) {
+    sha384_update(&hmac.inner, message)
+}
+
+/**
+ * Add secret bytes to the message an HMAC-SHA-384 computation authenticates, in constant time.
+ *
+ * @param hmac The computation, not yet finished.
+ * @param message The next part of the message, of any length; its count isn't secret, its bytes are.
+ */
+hmac_sha384_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha384], message: SecretByte[]) {
+    sha384_update_secret(&hmac.inner, message)
+}
+
+/**
+ * Finish an HMAC-SHA-384 computation.
+ *
+ * @param hmac The computation. It's spent afterwards: it can't be updated or finished again, and its state isn't
+ *     wiped.
+ * @return The 48-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
+hmac_sha384_finish #constant_time :: fn(hmac: ptr[mut HmacSha384]) -> SecretByte[48] {
+    inner := sha384_finish_secret(&hmac.inner)
+    sha384_update_secret(&hmac.outer, inner)
+    return sha384_finish_secret(&hmac.outer)
+}
+
+/**
+ * Compute a message's HMAC-SHA-384 tag (RFC 2104, RFC 4231), when the whole message is at hand.
+ *
+ * @param key The key, of any length; one longer than 128 bytes is hashed first. RFC 2104 recommends at least 48
+ *     bytes.
+ * @param message The message, of any length.
+ * @return The 48-byte tag, a secret until it's compared with crypto.equal or sent.
+ */
+hmac_sha384 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte[48] {
+    hmac := hmac_sha384_start(key)
+    hmac_sha384_update(&hmac, message)
+    return hmac_sha384_finish(&hmac)
+}
+
+/**
+ * Extract a pseudorandom key from input keying material: HKDF-SHA-384's first step (RFC 5869, section 2.2).
+ *
+ * @param salt A public, ideally random, value, of any length. Empty is allowed, and is the same as RFC 5869's default
+ *     of 48 zero bytes.
+ * @param input The input keying material, like a shared secret from a key agreement.
+ * @return The 48-byte pseudorandom key, secret, for hkdf_sha384_expand.
+ */
+hkdf_sha384_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[48] {
+    hmac := hmac_sha384_start(as_secret(salt))
+    hmac_sha384_update_secret(&hmac, input)
+    return hmac_sha384_finish(&hmac)
+}
+
+/**
+ * Expand a pseudorandom key into keys: HKDF-SHA-384's second step (RFC 5869, section 2.3).
+ *
+ * @param pseudo_random The pseudorandom key, from hkdf_sha384_extract, or another uniformly random key of at least 48
+ *     bytes.
+ * @param info Public context that says what the keys are for, of any length, empty included; different info gives
+ *     unrelated keys from the same pseudorandom key.
+ * @param output Where the keys go, filled entirely: up to 255 * 48 = 12240 bytes.
+ * @return True once output is filled; false, with nothing written, when output is longer than 12240 bytes.
+ */
+hkdf_sha384_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[], output: mut SecretByte[]) -> bool {
+    if output.count > 255 * SHA384_SIZE {
+        return false
+    }
+    previous : SecretByte[48]
+    written : usize = 0
+    counter : u8 = 1
+    loop {
+        hmac := hmac_sha384_start(pseudo_random)
+        if counter > 1 {
+            hmac_sha384_update_secret(&hmac, previous)
+        }
+        hmac_sha384_update(&hmac, info)
+        hmac_sha384_update(&hmac, u8.[counter])
+        previous = hmac_sha384_finish(&hmac)
         for byte in previous {
             if written < output.count {
                 output[written] = byte
