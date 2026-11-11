@@ -27,6 +27,11 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Builders.h"
@@ -214,6 +219,10 @@ namespace hemera {
 		/// Generating compile-time code (docs/compilation.md, Compile-Time Execution), for #is_compile_time.
 		/// </summary>
 		bool compile_time = false;
+		/// <summary>
+		/// Which x86 extensions the target has, by LLVM's name, as they're asked about (x86_has).
+		/// </summary>
+		std::map<std::string, bool, std::less<>> x86_features;
 		/// <summary>
 		/// What compile-time code gave, by the constant's declaration or the #run's node, so each runs once.
 		/// </summary>
@@ -6331,7 +6340,183 @@ namespace hemera {
 			result = value(LLVM::ByteSwapOp::create(b, l, arguments[0]), result_type);
 			return true;
 		}
+		// Defined for 0 too, as the width in bits
+		if (name == "leading_zeros") {
+			result = value(LLVM::CountLeadingZerosOp::create(b, l, arguments[0].getType(), arguments[0], false), result_type);
+			return true;
+		}
+		if (name == "trailing_zeros") {
+			result = value(LLVM::CountTrailingZerosOp::create(b, l, arguments[0].getType(), arguments[0], false), result_type);
+			return true;
+		}
+		if (name == "count_ones") {
+			result = value(LLVM::CtPopOp::create(b, l, arguments[0].getType(), arguments[0]), result_type);
+			return true;
+		}
 		return false;
+	}
+
+	/*
+	 * Whether an x86 target has an extension, like sse4.1 or fma, by LLVM's name for it, from its CPU and features as
+	 * the code generator works them out; the host's for compile-time code, which runs there. Other targets are taken to
+	 * have what the float functions need: AArch64's floats always round and fuse.
+	 */
+	static bool x86_has(Generator& generator, std::string_view feature) {
+		const ArchType architecture = generator.options != nullptr ? generator.options->architecture : ArchType::x86_64;
+		if (ArchType::x86_64 != architecture && ArchType::x86 != architecture && !generator.compile_time) {
+			return true;
+		}
+		if (auto found = generator.x86_features.find(feature); found != generator.x86_features.end()) {
+			return found->second;
+		}
+		bool has = false;
+		if (generator.compile_time || generator.options == nullptr) {
+			has = llvm::sys::getHostCPUFeatures().lookup(feature);
+		}
+		else {
+			static std::once_flag registered;
+			std::call_once(registered, [] {
+				llvm::InitializeAllTargetInfos();
+				llvm::InitializeAllTargets();
+				llvm::InitializeAllTargetMCs();
+			});
+			const llvm::Triple triple(ArchType::x86 == architecture ? "i686-unknown-unknown" : "x86_64-unknown-unknown");
+			std::string error;
+			const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, error);
+			const std::string cpu = generator.options->cpu.empty() ? "generic" : generator.options->cpu;
+			std::unique_ptr<llvm::MCSubtargetInfo> info(target != nullptr
+				? target->createMCSubtargetInfo(triple, cpu, target_features(*generator.options)) : nullptr);
+			has = info != nullptr && info->checkFeatures("+" + std::string(feature));
+		}
+		generator.x86_features.emplace(std::string(feature), has);
+		return has;
+	}
+
+	// A float constant of type, a float or a vector of them, in every lane.
+	static mlir::Value float_constant(Generator& generator, mlir::Type type, double number) {
+		auto vector = llvm::dyn_cast<mlir::VectorType>(type);
+		mlir::Type lane = vector ? vector.getElementType() : type;
+		mlir::Value scalar = LLVM::ConstantOp::create(generator.builder, generator.loc, lane,
+			generator.builder.getFloatAttr(lane, number));
+		return vector ? splat(generator, scalar, type) : scalar;
+	}
+
+	/*
+	 * floor, ceil, trunc or round_even of x, a float or a vector of them, without the instructions that round: for a
+	 * magnitude under 2^p, p the fraction's bits, adding 2^p and taking it away again rounds it to a whole number, to
+	 * even as the default rounding does, and that's moved a step for the others. Bigger magnitudes, infinities and NaNs
+	 * are whole or have no whole number, and are given back as they are; zero keeps its sign.
+	 */
+	static mlir::Value rounded_by_adding(Generator& generator, std::string_view name, mlir::Value x) {
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		mlir::Type type = x.getType();
+		auto vector = llvm::dyn_cast<mlir::VectorType>(type);
+		const unsigned bits = (vector ? vector.getElementType() : type).getIntOrFloatBitWidth();
+		mlir::Value big = float_constant(generator, type, 32 == bits ? 0x1p23 : 0x1p52);
+		mlir::Value one = float_constant(generator, type, 1);
+		mlir::Value magnitude = LLVM::FAbsOp::create(b, l, x);
+		mlir::Value even = LLVM::CopySignOp::create(b, l, LLVM::FSubOp::create(b, l, LLVM::FAddOp::create(b, l, magnitude, big), big), x);
+		mlir::Value rounded = even;
+		if (name == "floor") {
+			rounded = LLVM::SelectOp::create(b, l, LLVM::FCmpOp::create(b, l, LLVM::FCmpPredicate::ogt, even, x),
+				LLVM::FSubOp::create(b, l, even, one), even);
+		}
+		else if (name == "ceil") {
+			rounded = LLVM::SelectOp::create(b, l, LLVM::FCmpOp::create(b, l, LLVM::FCmpPredicate::olt, even, x),
+				LLVM::FAddOp::create(b, l, even, one), even);
+		}
+		else if (name == "trunc") {
+			mlir::Value past = LLVM::FCmpOp::create(b, l, LLVM::FCmpPredicate::ogt, LLVM::FAbsOp::create(b, l, even), magnitude);
+			rounded = LLVM::SelectOp::create(b, l, past, LLVM::FSubOp::create(b, l, even, LLVM::CopySignOp::create(b, l, one, x)), even);
+		}
+		rounded = LLVM::CopySignOp::create(b, l, rounded, x);
+		mlir::Value small = LLVM::FCmpOp::create(b, l, LLVM::FCmpPredicate::olt, magnitude, big);
+		return LLVM::SelectOp::create(b, l, small, rounded, x);
+	}
+
+	/*
+	 * base/intrinsics' float functions (docs/types.md, Floats), on a float or each lane of a vector of them: LLVM's
+	 * intrinsics, which become instructions, where the target has them; rounding by adding (rounded_by_adding) without
+	 * SSE4.1, and runtime.fused_multiply_add_f32 and _f64, lane by lane, without FMA. Never a call to libm's functions,
+	 * which nothing Hemera builds links.
+	 */
+	static bool emit_float_intrinsic(Generator& generator, std::string_view name, TypeInfoFunction const* function,
+		const std::vector<mlir::Value>& arguments, Emitted& result) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfo* result_type = function->output.empty() ? nullptr : function->output[0].type;
+		mlir::Value made;
+		if (name == "square_root" && arguments.size() == 1) {
+			made = LLVM::SqrtOp::create(b, l, arguments[0]);
+		}
+		else if (name == "copy_sign" && arguments.size() == 2) {
+			made = LLVM::CopySignOp::create(b, l, arguments[0], arguments[1]);
+		}
+		else if (name == "minimum" && arguments.size() == 2) {
+			made = LLVM::MinimumOp::create(b, l, arguments[0], arguments[1]);
+		}
+		else if (name == "maximum" && arguments.size() == 2) {
+			made = LLVM::MaximumOp::create(b, l, arguments[0], arguments[1]);
+		}
+		else if ((name == "floor" || name == "ceil" || name == "trunc" || name == "round_even") && arguments.size() == 1) {
+			if (!x86_has(generator, "sse4.1")) {
+				made = rounded_by_adding(generator, name, arguments[0]);
+			}
+			else if (name == "floor") {
+				made = LLVM::FFloorOp::create(b, l, arguments[0]);
+			}
+			else if (name == "ceil") {
+				made = LLVM::FCeilOp::create(b, l, arguments[0]);
+			}
+			else if (name == "trunc") {
+				made = LLVM::FTruncOp::create(b, l, arguments[0]);
+			}
+			else {
+				made = LLVM::RoundEvenOp::create(b, l, arguments[0]);
+			}
+		}
+		else if (name == "fused_multiply_add" && arguments.size() == 3) {
+			if (x86_has(generator, "fma")) {
+				made = LLVM::FMAOp::create(b, l, arguments[0], arguments[1], arguments[2]);
+			}
+			else {
+				mlir::Type type = arguments[0].getType();
+				auto vector = llvm::dyn_cast<mlir::VectorType>(type);
+				mlir::Type lane = vector ? vector.getElementType() : type;
+				Declaration* software = base_declaration_named(generator, "runtime",
+					lane.getIntOrFloatBitWidth() == 32 ? "fused_multiply_add_f32" : "fused_multiply_add_f64");
+				if (software == nullptr) {
+					return false;
+				}
+				LLVM::LLVMFuncOp called = function_for(generator, software);
+				auto fused = [&](mlir::Value x, mlir::Value y, mlir::Value z) {
+					auto call = LLVM::CallOp::create(b, l, called, mlir::ValueRange{ x, y, z });
+					call.setCConv(called.getCConv());
+					return call.getResult();
+				};
+				if (!vector) {
+					made = fused(arguments[0], arguments[1], arguments[2]);
+				}
+				else {
+					made = LLVM::PoisonOp::create(b, l, type);
+					for (int64_t i = 0; i < vector.getNumElements(); ++i) {
+						mlir::Value index = LLVM::ConstantOp::create(b, l, b.getI32Type(), static_cast<int32_t>(i));
+						auto lane_of = [&](mlir::Value v) {
+							return static_cast<mlir::Value>(LLVM::ExtractElementOp::create(b, l, v, index));
+						};
+						made = LLVM::InsertElementOp::create(b, l, made, fused(lane_of(arguments[0]), lane_of(arguments[1]),
+							lane_of(arguments[2])), index);
+					}
+				}
+			}
+		}
+		else {
+			return false;
+		}
+		result = value(made, result_type);
+		return true;
 	}
 
 	static Emitted emit_intrinsic(Generator& generator, Declaration* called, TypeInfoFunction const* function,
@@ -6354,9 +6539,8 @@ namespace hemera {
 		if (Emitted vector_result; emit_vector_intrinsic(generator, name.substr(0, name.find('[')), function, arguments, vector_result)) {
 			return vector_result;
 		}
-		if (name.substr(0, name.find('[')) == "square_root" && arguments.size() == 1) {
-			return value(LLVM::SqrtOp::create(generator.builder, generator.loc, arguments[0]), function->output.empty() ? nullptr
-				: function->output[0].type);
+		if (Emitted float_result; emit_float_intrinsic(generator, name.substr(0, name.find('[')), function, arguments, float_result)) {
+			return float_result;
 		}
 		if (name == "spin_hint" && model_checks(generator) && emit_model_call(generator, "model_spin", std::nullopt)) {
 			return result;

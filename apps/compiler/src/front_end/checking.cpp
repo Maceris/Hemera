@@ -2550,7 +2550,8 @@ namespace hemera {
 	static bool is_vector_intrinsic(const Declaration* declaration) {
 		static constexpr std::string_view NAMES[] = {
 			"splat", "select", "rotate_lanes", "reduce_add", "reduce_and", "reduce_or", "reduce_xor", "any_true", "all_true",
-			"rotate_left", "rotate_right", "byte_swap",
+			"rotate_left", "rotate_right", "byte_swap", "leading_zeros", "trailing_zeros", "count_ones",
+			"square_root", "floor", "ceil", "trunc", "round_even", "fused_multiply_add", "minimum", "maximum", "copy_sign",
 		};
 		if (declaration == nullptr || declaration->package_path == nullptr
 			|| !std::string_view(*declaration->package_path).starts_with("<base>")
@@ -2621,14 +2622,34 @@ namespace hemera {
 			result = plain_function_type(checker.walk, { BUILTIN_bool, own, own }, own);
 			return Progress::DONE;
 		}
-		if (name == "rotate_left" || name == "rotate_right" || name == "byte_swap") {
+		/*
+		 * The float functions (docs/types.md, Floats): a float or a vector of them, and as many more of the same type as
+		 * the function takes; square_root takes f16 too
+		 */
+		if (name == "square_root" || name == "floor" || name == "ceil" || name == "trunc" || name == "round_even"
+			|| name == "fused_multiply_add" || name == "minimum" || name == "maximum" || name == "copy_sign") {
+
+			TypeInfo* own = vector != nullptr ? type : default_type(given);
+			TypeInfo const* lane = vector != nullptr ? (vector->is_bits ? nullptr : vector->element_type) : own;
+			const size_t size = lane != nullptr ? base_of(lane)->size : 0;
+			if (lane == nullptr || !is_float(lane) || is_byte_swapped(lane) || (size != 4 && size != 8 && !(name == "square_root" && size == 2))) {
+				return fail(arguments[0], std::format("takes {}, or a vector of them, not {}",
+					name == "square_root" ? "an f16, f32 or f64" : "an f32 or f64", describe(given)));
+			}
+			const size_t count = name == "fused_multiply_add" ? 3 : name == "minimum" || name == "maximum" || name == "copy_sign" ? 2 : 1;
+			result = plain_function_type(checker.walk, std::vector<TypeInfo*>(count, own), own);
+			return Progress::DONE;
+		}
+		if (name == "rotate_left" || name == "rotate_right" || name == "byte_swap" || name == "leading_zeros"
+			|| name == "trailing_zeros" || name == "count_ones") {
+
 			TypeInfo const* lane = vector != nullptr && !vector->is_bits ? vector->element_type : type;
 			if (lane == nullptr || !is_integer(lane) || (name == "byte_swap" && base_of(lane)->size < 2)) {
 				return fail(arguments[0], std::format("takes an integer{}, or a vector of them, not {}",
 					name == "byte_swap" ? " of 2 bytes or more" : "", describe(given)));
 			}
-			result = name == "byte_swap" ? plain_function_type(checker.walk, { type }, type)
-				: plain_function_type(checker.walk, { type, BUILTIN_u32 }, type);
+			result = name == "rotate_left" || name == "rotate_right" ? plain_function_type(checker.walk, { type, BUILTIN_u32 }, type)
+				: plain_function_type(checker.walk, { type }, type);
 			return Progress::DONE;
 		}
 		if (vector == nullptr || vector->is_bits) {

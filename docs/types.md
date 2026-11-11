@@ -431,6 +431,28 @@ a count. `if offset + 4 <= bytes.count` proves nothing about `offset`, since a h
 * Invariants of a data structure, like a struct's array having one entry per frame. Compare against the array's own
   count, rather than a field that's meant to equal it.
 
+## Floats
+
+`f16`, `f32` and `f64` are IEEE 754's binary16, binary32 and binary64. Their arithmetic rounds to nearest, ties to
+even, on every target, and `+ - * /` and `intrinsics.square_root` are correctly rounded, so a program gives the same
+bits wherever it runs. Division by zero gives an infinity or NaN, as IEEE 754 says, never a panic.
+
+`base/intrinsics` has the operations a CPU does in one instruction, each on a float or a vector of floats, lane by
+lane, its type worked out from the first argument. They're exact, giving the one result IEEE 754 defines; where the
+target lacks the instruction, like an x86-64 CPU without SSE4.1 or FMA, the compiler does the same with others, never
+calling a C library.
+
+| Function | What it does |
+|---|---|
+| `square_root(x)` | The square root, correctly rounded; NaN below zero. `f16` too |
+| `floor(x)`, `ceil(x)`, `trunc(x)` | The whole number below, above, or toward zero; zero keeps its sign, so `ceil(-0.5)` is `-0` |
+| `round_even(x)` | The nearest whole number, halfway to even: `0.5` gives `0`, `2.5` gives `2` |
+| `fused_multiply_add(x, y, z)` | `x × y + z`, rounded once |
+| `minimum(x, y)`, `maximum(x, y)` | IEEE 754-2019's: a NaN wins, and `-0` is less than `+0` |
+| `copy_sign(magnitude, sign)` | `magnitude` with `sign`'s sign bit |
+
+The rest of float math, from `exp` to `atan2`, is `std/math`'s, written in Hemera.
+
 ## Vectors
 
 A vector holds several values of one type, its lanes, and operators work on every lane at once, which the CPU does with
@@ -483,6 +505,8 @@ bytes := bit_cast[vector[u8, 16]](masked)
 | `any_true`, `all_true` | Whether any, or every, lane of a vector of bools is true |
 | `rotate_left(value, amount)`, `rotate_right` | An integer's bits rotated, or each lane's |
 | `byte_swap(value)` | An integer's bytes in the other order, or each lane's |
+| `leading_zeros(value)`, `trailing_zeros`, `count_ones` | How many zero bits above the highest one, below the lowest one, or how many ones, in an integer or each lane; the width for 0 |
+| `floor`, `ceil`, `trunc`, `round_even`, `square_root`, ... | The float functions ([Floats](#floats)), lane by lane |
 
 ## Enums
 

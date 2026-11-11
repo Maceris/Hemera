@@ -48,15 +48,97 @@ secure_zero : fn(target: mut rawptr, len: usize) : ---
  */
 store_defaults : fn[T](target: ptr[mut T]) : ---
 
+/*
+ * The float functions a CPU does in an instruction (docs/types.md, Floats). Each takes a float or a vector of floats,
+ * and works lane by lane on a vector; the compiler works out the type from the first argument, and the others are of
+ * the same type. They're exact: the one result IEEE 754 defines, the same on every target. Where the target lacks the
+ * instruction, like an x86-64 CPU without SSE4.1 or FMA, the compiler does the same with other instructions, never
+ * calling a C library.
+ */
 /**
- * Give the square root of a float.
+ * Give the square root of a float, correctly rounded.
  *
- * @tparam F The float type: f16, f32 or f64.
+ * @tparam F The type: f16, f32 or f64, or a vector of them.
  * @param x The number. Negative numbers have no square root here.
- * @return The float nearest the square root, of the same type; NaN for a negative x or a NaN, and infinity for
- *     infinity.
+ * @return The float nearest the square root, of the same type; NaN for a negative x or a NaN, infinity for infinity,
+ *     and x itself for either zero, so -0 gives -0.
  */
 square_root : fn[F](x: F) -> F : ---
+/**
+ * Round a float down, to the whole number at or below it.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x The number.
+ * @return The greatest whole number not above x, of the same type: floor(-0.5) is -1. Whole numbers, infinities and
+ *     zeros are given back as they are, keeping their sign, and a NaN stays a NaN.
+ */
+floor : fn[F](x: F) -> F : ---
+/**
+ * Round a float up, to the whole number at or above it.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x The number.
+ * @return The least whole number not below x, of the same type: ceil(-0.5) is -0, keeping the sign. Whole numbers,
+ *     infinities and zeros are given back as they are, and a NaN stays a NaN.
+ */
+ceil : fn[F](x: F) -> F : ---
+/**
+ * Round a float toward zero, dropping its fraction.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x The number.
+ * @return The whole number between x and zero nearest x, of the same type and sign: trunc(-1.5) is -1, trunc(-0.5)
+ *     is -0. Whole numbers, infinities and zeros are given back as they are, and a NaN stays a NaN.
+ */
+trunc : fn[F](x: F) -> F : ---
+/**
+ * Round a float to the nearest whole number, halfway cases to the even one, as IEEE 754's default rounding does.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x The number.
+ * @return The nearest whole number, of the same type and sign: 0.5 gives 0, 1.5 and 2.5 give 2, -0.5 gives -0.
+ *     Whole numbers, infinities and zeros are given back as they are, and a NaN stays a NaN.
+ */
+round_even : fn[F](x: F) -> F : ---
+/**
+ * Multiply two floats and add a third, rounding once: x × y + z exactly, then rounded, which separate * and + may
+ * not give, as the product is rounded first there.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x The first factor.
+ * @param y The second factor.
+ * @param z What's added to the product.
+ * @return The float nearest x × y + z, of the same type; NaN if any is a NaN, or the product is 0 × infinity, or
+ *     infinities of opposite signs are added; infinities as the arithmetic gives them otherwise.
+ */
+fused_multiply_add : fn[F](x: F, y: F, z: F) -> F : ---
+/**
+ * Give the lesser of two floats, as IEEE 754-2019's minimum: a NaN wins, and -0 is less than +0.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x One number.
+ * @param y The other, of the same type.
+ * @return The lesser, of the same type; a NaN if either is a NaN, and -0 for a -0 and a +0 in either order.
+ */
+minimum : fn[F](x: F, y: F) -> F : ---
+/**
+ * Give the greater of two floats, as IEEE 754-2019's maximum: a NaN wins, and +0 is greater than -0.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param x One number.
+ * @param y The other, of the same type.
+ * @return The greater, of the same type; a NaN if either is a NaN, and +0 for a -0 and a +0 in either order.
+ */
+maximum : fn[F](x: F, y: F) -> F : ---
+/**
+ * Give a float's magnitude with another's sign.
+ *
+ * @tparam F The type: f32 or f64, or a vector of them.
+ * @param magnitude Where the bits but the sign come from: its magnitude, infinity, or NaN with its payload.
+ * @param sign Where the sign bit comes from, a NaN's and zero's included.
+ * @return magnitude with sign's sign bit, of the same type: copy_sign(2, -0) is -2.
+ */
+copy_sign : fn[F](magnitude: F, sign: F) -> F : ---
 
 /**
  * Stop the program immediately by executing an illegal instruction (ud2 on x86-64, brk on AArch64),

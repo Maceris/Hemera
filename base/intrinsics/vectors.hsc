@@ -119,3 +119,29 @@ rotate_right : fn[T](value: T, amount: u32) -> T : ---
  * @return The bytes in the other order, of type T.
  */
 byte_swap : fn[T](value: T) -> T : ---
+/**
+ * Count an integer's zero bits above its highest one bit, or each lane's.
+ *
+ * @tparam T An integer, or a vector of integers.
+ * @param value The bits to count.
+ * @return How many zero bits come before the first one from the top, from 0 to the width in bits, which 0 gives; of
+ *     type T.
+ */
+leading_zeros : fn[T](value: T) -> T : ---
+/**
+ * Count an integer's zero bits below its lowest one bit, or each lane's.
+ *
+ * @tparam T An integer, or a vector of integers.
+ * @param value The bits to count.
+ * @return How many zero bits come before the first one from the bottom, from 0 to the width in bits, which 0 gives;
+ *     of type T.
+ */
+trailing_zeros : fn[T](value: T) -> T : ---
+/**
+ * Count an integer's one bits, or each lane's.
+ *
+ * @tparam T An integer, or a vector of integers.
+ * @param value The bits to count.
+ * @return How many bits are 1, from 0 to the width in bits; of type T.
+ */
+count_ones : fn[T](value: T) -> T : ---

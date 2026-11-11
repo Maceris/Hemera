@@ -57,7 +57,7 @@ struct HostedOutput {
 static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck stack_check, int expected_exit_code = 42,
 	std::string_view arguments = "", bool debug_info = false, bool generate_all = false, bool valgrind_secrets = false,
 	const std::vector<std::filesystem::path>& library_paths = {}, bool test = false, std::string_view test_filter = "",
-	std::string_view fuzz = "", bool model_checked = false)
+	std::string_view fuzz = "", bool model_checked = false, std::string_view cpu = "")
 {
 	HostedOutput result;
 	hemera::reset_reporting_storage();
@@ -71,7 +71,8 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	auto program_info = std::make_unique<hemera::ProgramInfo>(&context, &builder, &module);
 
 	// In the build folder, which antivirus software is likelier to leave alone than the temp folder
-	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR) / name;
+	const std::filesystem::path output_folder = std::filesystem::path(HEMERA_TEST_OUTPUT_DIR)
+		/ (cpu.empty() ? std::string(name) : std::format("{}_{}", name, cpu));
 	std::filesystem::create_directories(output_folder);
 	hemera::Options options;
 	options.input = std::filesystem::canonical(scenario(name));
@@ -79,6 +80,7 @@ static HostedOutput run_hosted(std::string_view name, hemera::TargetStackCheck s
 	options.output_name = (output_folder / name).string();
 	options.stack_check = stack_check;
 	options.model_checked = model_checked;
+	options.cpu = cpu;
 	options.debug_info = debug_info;
 	options.generate_all = generate_all;
 	options.valgrind_secrets = valgrind_secrets;
@@ -401,6 +403,19 @@ TEST(Hosted, ModelChecksAtomics)
 		"", true);
 	EXPECT_NE(checked.output.find("found in execution"), std::string::npos) << checked.output;
 	EXPECT_NE(checked.output.find("8 tests: 8 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
+/*
+ * base/intrinsics' float functions and bit counts: built for x86-64's first CPUs, without SSE4.1 and FMA, they round by
+ * adding and fuse in software; for x86-64-v3, by instructions, and the software is held to them bit for bit.
+ */
+TEST(Hosted, RoundsAndFusesFloats)
+{
+	for (const std::string_view cpu : { "generic", "x86-64-v3" }) {
+		const HostedOutput checked = run_hosted("float_intrinsics", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true,
+			"", "", false, cpu);
+		EXPECT_NE(checked.output.find("27 tests: 27 passed, 0 failed"), std::string::npos) << cpu << ": " << checked.output;
+	}
 }
 
 // The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, and narrowing.
