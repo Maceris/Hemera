@@ -18,9 +18,16 @@ The output is a direct mapping of the C API, meant to be wrapped by something ni
 * sType has its value as the field's default.
 * Commands the Vulkan loader exports are #foreign. Every other command is a PFN_ type and a field of
   VulkanInstanceProcs or VulkanDeviceProcs, filled by load_instance_procs or load_device_procs.
+* Platform extensions (Win32, Xlib, Wayland, Metal, Android and so on) are all included, on every OS: their types
+  from other headers (HWND, Display, wl_surface...) are defined in vulkan_platform.hsc, as opaque structs or aliases
+  of what the header makes them. Only the surface commands the loader exports on one OS (Win32's on Windows; Xlib's,
+  XCB's and Wayland's on Linux) are #foreign, inside `#if OS == ...`, since linking needs them; every other platform
+  command is loaded by name, so it's simply null where the driver doesn't have it.
+* Provisional extensions (VK_ENABLE_BETA_EXTENSIONS in C) are included, each of their structs and commands marked
+  as such: they can change in a later registry.
 
-Platform extensions (Win32, Xlib and so on) and the video extensions, whose types come from other headers, are left
-out, along with anything that needs them.
+The video extensions, whose types come from the video headers (video.xml), are left out, along with anything that
+needs them, and so is GGP's platform, whose header was never published.
 """
 
 import glob
@@ -58,6 +65,63 @@ C_TYPES = {
     "uint64_t": "u64",
     "size_t": "usize",
     "int": "i32",
+}
+
+# Platform extensions whose commands the loader exports on one OS, which are #foreign there, by Hemera's name for it.
+# Checked against vulkan-1.lib (Vulkan SDK 1.3.268) and libvulkan.so.1 (1.4.309).
+LOADER_EXPORTED_PLATFORM_EXTENSIONS = {
+    "VK_KHR_win32_surface": "Windows",
+    "VK_KHR_xlib_surface": "Linux",
+    "VK_KHR_xcb_surface": "Linux",
+    "VK_KHR_wayland_surface": "Linux",
+}
+
+# Types from platform headers, as Hemera declarations: an opaque struct for what C only uses through pointers, and
+# otherwise an alias of what the header defines. X11's IDs are `unsigned long`, 64 bits on Linux.
+PLATFORM_TYPES = {
+    # windows.h
+    "HINSTANCE": "alias rawptr",
+    "HWND": "alias rawptr",
+    "HMONITOR": "alias rawptr",
+    "HANDLE": "alias rawptr",
+    "DWORD": "alias u32",
+    "LPCWSTR": "alias ptr[u16]?",
+    "SECURITY_ATTRIBUTES": "struct {\n    nLength : u32,\n    lpSecurityDescriptor : rawptr,\n    bInheritHandle : b32,\n}",
+    # X11/Xlib.h and X11/extensions/Xrandr.h
+    "Display": "struct {}",
+    "VisualID": "alias u64",
+    "Window": "alias u64",
+    "RROutput": "alias u64",
+    # xcb/xcb.h
+    "xcb_connection_t": "struct {}",
+    "xcb_visualid_t": "alias u32",
+    "xcb_window_t": "alias u32",
+    # wayland-client.h
+    "wl_display": "struct {}",
+    "wl_surface": "struct {}",
+    # directfb.h
+    "IDirectFB": "struct {}",
+    "IDirectFBSurface": "struct {}",
+    # zircon/types.h
+    "zx_handle_t": "alias u32",
+    # screen/screen.h (QNX)
+    "_screen_context": "struct {}",
+    "_screen_window": "struct {}",
+    "_screen_buffer": "struct {}",
+}
+
+# Which header each group of PLATFORM_TYPES comes from, for the comments in vulkan_platform.hsc
+PLATFORM_HEADERS = {
+    "HINSTANCE": "windows.h", "Display": "X11/Xlib.h and X11/extensions/Xrandr.h", "xcb_connection_t": "xcb/xcb.h",
+    "wl_display": "wayland-client.h", "IDirectFB": "directfb.h", "zx_handle_t": "zircon/types.h",
+    "_screen_context": "screen/screen.h (QNX)",
+}
+
+# Platform types whose C names Hemera can't use, since a name can't start with an underscore
+PLATFORM_TYPE_NAMES = {
+    "_screen_context": "screen_context",
+    "_screen_window": "screen_window",
+    "_screen_buffer": "screen_buffer",
 }
 
 # Hemera's keywords, which a field or parameter can't be named
@@ -160,6 +224,8 @@ class Generator:
         # What's required, from each core version and extension included
         self.required_types = set()
         self.required_commands = {}     # name -> whether the loader exports it
+        self.command_os = {}            # name -> the OS whose loader exports it, for platform commands
+        self.provisional = {}           # type or command name -> the provisional extension it comes from
         self.extension_enums = {}       # enum type -> [(name, value or alias)]
         self.constants = []             # (name, type, value), from API Constants and extensions
         self.dropped = set()
@@ -170,7 +236,8 @@ class Generator:
         result = set()
         for name, t in self.types.items():
             requires = t.get("requires")
-            if t.get("category") is None and requires is not None and requires != "vk_platform" and name not in C_TYPES:
+            if (t.get("category") is None and requires is not None and requires != "vk_platform" and name not in C_TYPES
+                    and name not in PLATFORM_TYPES):
                 result.add(name)
         return result
 
@@ -184,21 +251,31 @@ class Generator:
             self.require(feature, None, exported=True)
         for extension in self.root.find("extensions"):
             supported = extension.get("supported", "").split(",")
-            if "vulkan" not in supported or extension.get("platform") is not None:
+            if "vulkan" not in supported:
                 continue
-            self.require(extension, int(extension.get("number")), exported=extension.get("name") in LOADER_EXPORTED_EXTENSIONS)
+            name = extension.get("name")
+            os_name = LOADER_EXPORTED_PLATFORM_EXTENSIONS.get(name)
+            self.require(extension, int(extension.get("number")),
+                         exported=name in LOADER_EXPORTED_EXTENSIONS or os_name is not None, os_name=os_name,
+                         provisional=name if extension.get("provisional") == "true" else None)
         self.close_over_types()
 
-    def require(self, feature, extension_number, exported):
+    def require(self, feature, extension_number, exported, os_name=None, provisional=None):
         for require in feature.findall("require"):
             if not for_vulkan(require):
                 continue
             for item in require:
                 if item.tag == "type":
                     self.required_types.add(item.get("name"))
+                    if provisional is not None:
+                        self.provisional.setdefault(item.get("name"), provisional)
                 elif item.tag == "command":
                     name = item.get("name")
                     self.required_commands[name] = self.required_commands.get(name, False) or exported
+                    if os_name is not None:
+                        self.command_os[name] = os_name
+                    if provisional is not None:
+                        self.provisional.setdefault(name, provisional)
                 elif item.tag == "enum" and for_vulkan(item):
                     self.require_enum(item, extension_number)
 
@@ -290,7 +367,7 @@ class Generator:
     def base_type(self, name):
         if name in C_TYPES:
             return C_TYPES[name]
-        return name
+        return PLATFORM_TYPE_NAMES.get(name, name)
 
     def type_of(self, decl, optional_pointer):
         base = self.base_type(decl.type)
@@ -429,7 +506,11 @@ class Generator:
             if name in ("VkFlags", "VkFlags64", "VkBool32"):
                 continue
             inner = t.find("type")
-            if inner is None:
+            if inner is None and (t.text or "").rstrip().endswith("*"):
+                # A platform's pointer type outside Objective-C, like `typedef void* MTLDevice_id`
+                lines.append(f"{name} :: alias rawptr")
+            elif inner is None:
+                # Used only through pointers, like ANativeWindow and CAMetalLayer
                 lines.append(f"{name} :: struct {{}}")
             elif "*" in (inner.tail or ""):
                 lines.append(f"{name} :: distinct alias rawptr")
@@ -538,6 +619,7 @@ class Generator:
                 lines.append(f"{name} :: {t.get('alias')}")
                 lines.append("")
                 continue
+            lines += self.provisional_comment(name)
             directives = []
             if category == "union":
                 directives.append("#union")
@@ -590,19 +672,42 @@ class Generator:
             return "device"
         return "instance"
 
+    def provisional_comment(self, name):
+        """The line marking a provisional extension's struct or command, or none."""
+        extension = self.provisional.get(name)
+        if extension is None:
+            return []
+        return [f"// Provisional ({extension}): it can change in a later registry"]
+
+    def generate_platform_types(self):
+        lines = ["// Types from platform headers, which only the platform extensions use"]
+        for name, declaration in PLATFORM_TYPES.items():
+            if name in PLATFORM_HEADERS:
+                lines += ["", f"// {PLATFORM_HEADERS[name]}"]
+            if self.wanted(name):
+                lines.append(f"{self.base_type(name)} :: {declaration}")
+        self.write("vulkan_platform.hsc", "\n".join(lines))
+
     def generate_commands(self):
-        foreign, pointers = [], []
+        foreign, foreign_by_os, pointers = [], {}, []
         for name in sorted(self.required_commands):
             parameters, returned = self.parameters(name)
             arrow = "" if returned == "void" else f" -> {returned}"
             signature = f"fn({', '.join(parameters)}){arrow}"
-            if self.required_commands[name]:
+            if name in self.command_os:
+                foreign_by_os.setdefault(self.command_os[name], []).append(f"{name} #foreign(VULKAN) : {signature} : ---")
+            elif self.required_commands[name]:
                 foreign.append(f"{name} #foreign(VULKAN) : {signature} : ---")
             else:
-                pointers.append((name, f"PFN_{name} :: alias {signature} #calling_convention(.c) #no_context"))
+                pointers.append((name, self.provisional_comment(name)
+                                 + [f"PFN_{name} :: alias {signature} #calling_convention(.c) #no_context"]))
         lines = ["// Commands the Vulkan loader exports", ""] + foreign
+        for os_name in sorted(foreign_by_os):
+            lines += ["", f"// Surface commands the loader exports on {os_name} only", f"#if OS == .{os_name} {{"]
+            lines += [f"    {f}" for f in foreign_by_os[os_name]]
+            lines.append("}")
         lines += ["", "// Commands found through vkGetInstanceProcAddr and vkGetDeviceProcAddr", ""]
-        lines += [p for _, p in pointers]
+        lines += [line for _, p in pointers for line in p]
         for level in ("instance", "device"):
             names = [n for n, _ in pointers if self.dispatch_level(n) == level]
             struct = f"Vulkan{level.capitalize()}Procs"
@@ -623,6 +728,7 @@ class Generator:
         self.generate_constants()
         self.generate_enums()
         self.generate_types()
+        self.generate_platform_types()
         self.generate_flags()
         self.generate_structs()
         self.generate_commands()

@@ -249,11 +249,30 @@ vkUpdateDescriptorSets #foreign(VULKAN) : fn(device: VkDevice, descriptorWriteCo
 vkWaitForFences #foreign(VULKAN) : fn(device: VkDevice, fenceCount: u32, pFences: ptr[VkFence], waitAll: VkBool32, timeout: u64) -> VkResult : ---
 vkWaitSemaphores #foreign(VULKAN) : fn(device: VkDevice, pWaitInfo: ptr[VkSemaphoreWaitInfo], timeout: u64) -> VkResult : ---
 
+// Surface commands the loader exports on Linux only
+#if OS == .Linux {
+    vkCreateWaylandSurfaceKHR #foreign(VULKAN) : fn(instance: VkInstance, pCreateInfo: ptr[VkWaylandSurfaceCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult : ---
+    vkCreateXcbSurfaceKHR #foreign(VULKAN) : fn(instance: VkInstance, pCreateInfo: ptr[VkXcbSurfaceCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult : ---
+    vkCreateXlibSurfaceKHR #foreign(VULKAN) : fn(instance: VkInstance, pCreateInfo: ptr[VkXlibSurfaceCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult : ---
+    vkGetPhysicalDeviceWaylandPresentationSupportKHR #foreign(VULKAN) : fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, display: ptr[mut wl_display]) -> VkBool32 : ---
+    vkGetPhysicalDeviceXcbPresentationSupportKHR #foreign(VULKAN) : fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, connection: ptr[mut xcb_connection_t], visual_id: xcb_visualid_t) -> VkBool32 : ---
+    vkGetPhysicalDeviceXlibPresentationSupportKHR #foreign(VULKAN) : fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, dpy: ptr[mut Display], visualID: VisualID) -> VkBool32 : ---
+}
+
+// Surface commands the loader exports on Windows only
+#if OS == .Windows {
+    vkCreateWin32SurfaceKHR #foreign(VULKAN) : fn(instance: VkInstance, pCreateInfo: ptr[VkWin32SurfaceCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult : ---
+    vkGetPhysicalDeviceWin32PresentationSupportKHR #foreign(VULKAN) : fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32) -> VkBool32 : ---
+}
+
 // Commands found through vkGetInstanceProcAddr and vkGetDeviceProcAddr
 
 PFN_vkAcquireDrmDisplayEXT :: alias fn(physicalDevice: VkPhysicalDevice, drmFd: i32, display: VkDisplayKHR) -> VkResult #calling_convention(.c) #no_context
+PFN_vkAcquireFullScreenExclusiveModeEXT :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR) -> VkResult #calling_convention(.c) #no_context
 PFN_vkAcquirePerformanceConfigurationINTEL :: alias fn(device: VkDevice, pAcquireInfo: ptr[VkPerformanceConfigurationAcquireInfoINTEL], pConfiguration: ptr[mut VkPerformanceConfigurationINTEL]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkAcquireProfilingLockKHR :: alias fn(device: VkDevice, pInfo: ptr[VkAcquireProfilingLockInfoKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkAcquireWinrtDisplayNV :: alias fn(physicalDevice: VkPhysicalDevice, display: VkDisplayKHR) -> VkResult #calling_convention(.c) #no_context
+PFN_vkAcquireXlibDisplayEXT :: alias fn(physicalDevice: VkPhysicalDevice, dpy: ptr[mut Display], display: VkDisplayKHR) -> VkResult #calling_convention(.c) #no_context
 PFN_vkBindAccelerationStructureMemoryNV :: alias fn(device: VkDevice, bindInfoCount: u32, pBindInfos: ptr[VkBindAccelerationStructureMemoryInfoNV]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkBindBufferMemory2KHR :: alias fn(device: VkDevice, bindInfoCount: u32, pBindInfos: ptr[VkBindBufferMemoryInfo]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkBindImageMemory2KHR :: alias fn(device: VkDevice, bindInfoCount: u32, pBindInfos: ptr[VkBindImageMemoryInfo]) -> VkResult #calling_convention(.c) #no_context
@@ -304,6 +323,12 @@ PFN_vkCmdDecodeVideoKHR :: alias fn(commandBuffer: VkCommandBuffer, pDecodeInfo:
 PFN_vkCmdDecompressMemoryIndirectCountNV :: alias fn(commandBuffer: VkCommandBuffer, indirectCommandsAddress: VkDeviceAddress, indirectCommandsCountAddress: VkDeviceAddress, stride: u32) #calling_convention(.c) #no_context
 PFN_vkCmdDecompressMemoryNV :: alias fn(commandBuffer: VkCommandBuffer, decompressRegionCount: u32, pDecompressMemoryRegions: ptr[VkDecompressMemoryRegionNV]) #calling_convention(.c) #no_context
 PFN_vkCmdDispatchBaseKHR :: alias fn(commandBuffer: VkCommandBuffer, baseGroupX: u32, baseGroupY: u32, baseGroupZ: u32, groupCountX: u32, groupCountY: u32, groupCountZ: u32) #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkCmdDispatchGraphAMDX :: alias fn(commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress, pCountInfo: ptr[VkDispatchGraphCountInfoAMDX]) #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkCmdDispatchGraphIndirectAMDX :: alias fn(commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress, pCountInfo: ptr[VkDispatchGraphCountInfoAMDX]) #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkCmdDispatchGraphIndirectCountAMDX :: alias fn(commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress, countInfo: VkDeviceAddress) #calling_convention(.c) #no_context
 PFN_vkCmdDrawClusterHUAWEI :: alias fn(commandBuffer: VkCommandBuffer, groupCountX: u32, groupCountY: u32, groupCountZ: u32) #calling_convention(.c) #no_context
 PFN_vkCmdDrawClusterIndirectHUAWEI :: alias fn(commandBuffer: VkCommandBuffer, buffer: VkBuffer, offset: VkDeviceSize) #calling_convention(.c) #no_context
 PFN_vkCmdDrawIndexedIndirectCountAMD :: alias fn(commandBuffer: VkCommandBuffer, buffer: VkBuffer, offset: VkDeviceSize, countBuffer: VkBuffer, countBufferOffset: VkDeviceSize, maxDrawCount: u32, stride: u32) #calling_convention(.c) #no_context
@@ -319,6 +344,8 @@ PFN_vkCmdDrawMeshTasksIndirectNV :: alias fn(commandBuffer: VkCommandBuffer, buf
 PFN_vkCmdDrawMeshTasksNV :: alias fn(commandBuffer: VkCommandBuffer, taskCount: u32, firstTask: u32) #calling_convention(.c) #no_context
 PFN_vkCmdDrawMultiEXT :: alias fn(commandBuffer: VkCommandBuffer, drawCount: u32, pVertexInfo: ptr[VkMultiDrawInfoEXT], instanceCount: u32, firstInstance: u32, stride: u32) #calling_convention(.c) #no_context
 PFN_vkCmdDrawMultiIndexedEXT :: alias fn(commandBuffer: VkCommandBuffer, drawCount: u32, pIndexInfo: ptr[VkMultiDrawIndexedInfoEXT], instanceCount: u32, firstInstance: u32, stride: u32, pVertexOffset: ptr[i32]?) #calling_convention(.c) #no_context
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+PFN_vkCmdEncodeVideoKHR :: alias fn(commandBuffer: VkCommandBuffer, pEncodeInfo: ptr[VkVideoEncodeInfoKHR]) #calling_convention(.c) #no_context
 PFN_vkCmdEndConditionalRenderingEXT :: alias fn(commandBuffer: VkCommandBuffer) #calling_convention(.c) #no_context
 PFN_vkCmdEndDebugUtilsLabelEXT :: alias fn(commandBuffer: VkCommandBuffer) #calling_convention(.c) #no_context
 PFN_vkCmdEndQueryIndexedEXT :: alias fn(commandBuffer: VkCommandBuffer, queryPool: VkQueryPool, query: u32, index: u32) #calling_convention(.c) #no_context
@@ -327,6 +354,8 @@ PFN_vkCmdEndRenderingKHR :: alias fn(commandBuffer: VkCommandBuffer) #calling_co
 PFN_vkCmdEndTransformFeedbackEXT :: alias fn(commandBuffer: VkCommandBuffer, firstCounterBuffer: u32, counterBufferCount: u32, pCounterBuffers: ptr[VkBuffer], pCounterBufferOffsets: ptr[VkDeviceSize]?) #calling_convention(.c) #no_context
 PFN_vkCmdEndVideoCodingKHR :: alias fn(commandBuffer: VkCommandBuffer, pEndCodingInfo: ptr[VkVideoEndCodingInfoKHR]) #calling_convention(.c) #no_context
 PFN_vkCmdExecuteGeneratedCommandsNV :: alias fn(commandBuffer: VkCommandBuffer, isPreprocessed: VkBool32, pGeneratedCommandsInfo: ptr[VkGeneratedCommandsInfoNV]) #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkCmdInitializeGraphScratchMemoryAMDX :: alias fn(commandBuffer: VkCommandBuffer, scratch: VkDeviceAddress) #calling_convention(.c) #no_context
 PFN_vkCmdInsertDebugUtilsLabelEXT :: alias fn(commandBuffer: VkCommandBuffer, pLabelInfo: ptr[VkDebugUtilsLabelEXT]) #calling_convention(.c) #no_context
 PFN_vkCmdNextSubpass2KHR :: alias fn(commandBuffer: VkCommandBuffer, pSubpassBeginInfo: ptr[VkSubpassBeginInfo], pSubpassEndInfo: ptr[VkSubpassEndInfo]) #calling_convention(.c) #no_context
 PFN_vkCmdOpticalFlowExecuteNV :: alias fn(commandBuffer: VkCommandBuffer, session: VkOpticalFlowSessionNV, pExecuteInfo: ptr[VkOpticalFlowExecuteInfoNV]) #calling_convention(.c) #no_context
@@ -432,13 +461,22 @@ PFN_vkCopyMicromapEXT :: alias fn(device: VkDevice, deferredOperation: VkDeferre
 PFN_vkCopyMicromapToMemoryEXT :: alias fn(device: VkDevice, deferredOperation: VkDeferredOperationKHR, pInfo: ptr[VkCopyMicromapToMemoryInfoEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateAccelerationStructureKHR :: alias fn(device: VkDevice, pCreateInfo: ptr[VkAccelerationStructureCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pAccelerationStructure: ptr[mut VkAccelerationStructureKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateAccelerationStructureNV :: alias fn(device: VkDevice, pCreateInfo: ptr[VkAccelerationStructureCreateInfoNV], pAllocator: ptr[VkAllocationCallbacks]?, pAccelerationStructure: ptr[mut VkAccelerationStructureNV]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateAndroidSurfaceKHR :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkAndroidSurfaceCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateBufferCollectionFUCHSIA :: alias fn(device: VkDevice, pCreateInfo: ptr[VkBufferCollectionCreateInfoFUCHSIA], pAllocator: ptr[VkAllocationCallbacks]?, pCollection: ptr[mut VkBufferCollectionFUCHSIA]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateCuFunctionNVX :: alias fn(device: VkDevice, pCreateInfo: ptr[VkCuFunctionCreateInfoNVX], pAllocator: ptr[VkAllocationCallbacks]?, pFunction: ptr[mut VkCuFunctionNVX]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateCuModuleNVX :: alias fn(device: VkDevice, pCreateInfo: ptr[VkCuModuleCreateInfoNVX], pAllocator: ptr[VkAllocationCallbacks]?, pModule: ptr[mut VkCuModuleNVX]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateDebugReportCallbackEXT :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkDebugReportCallbackCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pCallback: ptr[mut VkDebugReportCallbackEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateDebugUtilsMessengerEXT :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkDebugUtilsMessengerCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pMessenger: ptr[mut VkDebugUtilsMessengerEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateDeferredOperationKHR :: alias fn(device: VkDevice, pAllocator: ptr[VkAllocationCallbacks]?, pDeferredOperation: ptr[mut VkDeferredOperationKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateDescriptorUpdateTemplateKHR :: alias fn(device: VkDevice, pCreateInfo: ptr[VkDescriptorUpdateTemplateCreateInfo], pAllocator: ptr[VkAllocationCallbacks]?, pDescriptorUpdateTemplate: ptr[mut VkDescriptorUpdateTemplate]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateDirectFBSurfaceEXT :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkDirectFBSurfaceCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkCreateExecutionGraphPipelinesAMDX :: alias fn(device: VkDevice, pipelineCache: VkPipelineCache, createInfoCount: u32, pCreateInfos: ptr[VkExecutionGraphPipelineCreateInfoAMDX], pAllocator: ptr[VkAllocationCallbacks]?, pPipelines: ptr[mut VkPipeline]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateIOSSurfaceMVK :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkIOSSurfaceCreateInfoMVK], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateImagePipeSurfaceFUCHSIA :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkImagePipeSurfaceCreateInfoFUCHSIA], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateIndirectCommandsLayoutNV :: alias fn(device: VkDevice, pCreateInfo: ptr[VkIndirectCommandsLayoutCreateInfoNV], pAllocator: ptr[VkAllocationCallbacks]?, pIndirectCommandsLayout: ptr[mut VkIndirectCommandsLayoutNV]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateMacOSSurfaceMVK :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkMacOSSurfaceCreateInfoMVK], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateMetalSurfaceEXT :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkMetalSurfaceCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateMicromapEXT :: alias fn(device: VkDevice, pCreateInfo: ptr[VkMicromapCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pMicromap: ptr[mut VkMicromapEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateOpticalFlowSessionNV :: alias fn(device: VkDevice, pCreateInfo: ptr[VkOpticalFlowSessionCreateInfoNV], pAllocator: ptr[VkAllocationCallbacks]?, pSession: ptr[mut VkOpticalFlowSessionNV]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreatePrivateDataSlotEXT :: alias fn(device: VkDevice, pCreateInfo: ptr[VkPrivateDataSlotCreateInfo], pAllocator: ptr[VkAllocationCallbacks]?, pPrivateDataSlot: ptr[mut VkPrivateDataSlot]) -> VkResult #calling_convention(.c) #no_context
@@ -446,8 +484,10 @@ PFN_vkCreateRayTracingPipelinesKHR :: alias fn(device: VkDevice, deferredOperati
 PFN_vkCreateRayTracingPipelinesNV :: alias fn(device: VkDevice, pipelineCache: VkPipelineCache, createInfoCount: u32, pCreateInfos: ptr[VkRayTracingPipelineCreateInfoNV], pAllocator: ptr[VkAllocationCallbacks]?, pPipelines: ptr[mut VkPipeline]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateRenderPass2KHR :: alias fn(device: VkDevice, pCreateInfo: ptr[VkRenderPassCreateInfo2], pAllocator: ptr[VkAllocationCallbacks]?, pRenderPass: ptr[mut VkRenderPass]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateSamplerYcbcrConversionKHR :: alias fn(device: VkDevice, pCreateInfo: ptr[VkSamplerYcbcrConversionCreateInfo], pAllocator: ptr[VkAllocationCallbacks]?, pYcbcrConversion: ptr[mut VkSamplerYcbcrConversion]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateScreenSurfaceQNX :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkScreenSurfaceCreateInfoQNX], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateShadersEXT :: alias fn(device: VkDevice, createInfoCount: u32, pCreateInfos: ptr[VkShaderCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pShaders: ptr[mut VkShaderEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateValidationCacheEXT :: alias fn(device: VkDevice, pCreateInfo: ptr[VkValidationCacheCreateInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pValidationCache: ptr[mut VkValidationCacheEXT]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkCreateViSurfaceNN :: alias fn(instance: VkInstance, pCreateInfo: ptr[VkViSurfaceCreateInfoNN], pAllocator: ptr[VkAllocationCallbacks]?, pSurface: ptr[mut VkSurfaceKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateVideoSessionKHR :: alias fn(device: VkDevice, pCreateInfo: ptr[VkVideoSessionCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pVideoSession: ptr[mut VkVideoSessionKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkCreateVideoSessionParametersKHR :: alias fn(device: VkDevice, pCreateInfo: ptr[VkVideoSessionParametersCreateInfoKHR], pAllocator: ptr[VkAllocationCallbacks]?, pVideoSessionParameters: ptr[mut VkVideoSessionParametersKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkDebugMarkerSetObjectNameEXT :: alias fn(device: VkDevice, pNameInfo: ptr[VkDebugMarkerObjectNameInfoEXT]) -> VkResult #calling_convention(.c) #no_context
@@ -456,6 +496,7 @@ PFN_vkDebugReportMessageEXT :: alias fn(instance: VkInstance, flags: VkDebugRepo
 PFN_vkDeferredOperationJoinKHR :: alias fn(device: VkDevice, operation: VkDeferredOperationKHR) -> VkResult #calling_convention(.c) #no_context
 PFN_vkDestroyAccelerationStructureKHR :: alias fn(device: VkDevice, accelerationStructure: VkAccelerationStructureKHR, pAllocator: ptr[VkAllocationCallbacks]?) #calling_convention(.c) #no_context
 PFN_vkDestroyAccelerationStructureNV :: alias fn(device: VkDevice, accelerationStructure: VkAccelerationStructureNV, pAllocator: ptr[VkAllocationCallbacks]?) #calling_convention(.c) #no_context
+PFN_vkDestroyBufferCollectionFUCHSIA :: alias fn(device: VkDevice, collection: VkBufferCollectionFUCHSIA, pAllocator: ptr[VkAllocationCallbacks]?) #calling_convention(.c) #no_context
 PFN_vkDestroyCuFunctionNVX :: alias fn(device: VkDevice, function: VkCuFunctionNVX, pAllocator: ptr[VkAllocationCallbacks]?) #calling_convention(.c) #no_context
 PFN_vkDestroyCuModuleNVX :: alias fn(device: VkDevice, module: VkCuModuleNVX, pAllocator: ptr[VkAllocationCallbacks]?) #calling_convention(.c) #no_context
 PFN_vkDestroyDebugReportCallbackEXT :: alias fn(instance: VkInstance, callback: VkDebugReportCallbackEXT, pAllocator: ptr[VkAllocationCallbacks]?) #calling_convention(.c) #no_context
@@ -474,11 +515,14 @@ PFN_vkDestroyVideoSessionParametersKHR :: alias fn(device: VkDevice, videoSessio
 PFN_vkDisplayPowerControlEXT :: alias fn(device: VkDevice, display: VkDisplayKHR, pDisplayPowerInfo: ptr[VkDisplayPowerInfoEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkEnumeratePhysicalDeviceGroupsKHR :: alias fn(instance: VkInstance, pPhysicalDeviceGroupCount: ptr[mut u32], pPhysicalDeviceGroupProperties: ptr[mut VkPhysicalDeviceGroupProperties]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR :: alias fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, pCounterCount: ptr[mut u32], pCounters: ptr[mut VkPerformanceCounterKHR]?, pCounterDescriptions: ptr[mut VkPerformanceCounterDescriptionKHR]?) -> VkResult #calling_convention(.c) #no_context
+PFN_vkExportMetalObjectsEXT :: alias fn(device: VkDevice, pMetalObjectsInfo: ptr[mut VkExportMetalObjectsInfoEXT]) #calling_convention(.c) #no_context
 PFN_vkGetAccelerationStructureBuildSizesKHR :: alias fn(device: VkDevice, buildType: VkAccelerationStructureBuildTypeKHR, pBuildInfo: ptr[VkAccelerationStructureBuildGeometryInfoKHR], pMaxPrimitiveCounts: ptr[u32]?, pSizeInfo: ptr[mut VkAccelerationStructureBuildSizesInfoKHR]) #calling_convention(.c) #no_context
 PFN_vkGetAccelerationStructureDeviceAddressKHR :: alias fn(device: VkDevice, pInfo: ptr[VkAccelerationStructureDeviceAddressInfoKHR]) -> VkDeviceAddress #calling_convention(.c) #no_context
 PFN_vkGetAccelerationStructureHandleNV :: alias fn(device: VkDevice, accelerationStructure: VkAccelerationStructureNV, dataSize: usize, pData: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetAccelerationStructureMemoryRequirementsNV :: alias fn(device: VkDevice, pInfo: ptr[VkAccelerationStructureMemoryRequirementsInfoNV], pMemoryRequirements: ptr[mut VkMemoryRequirements2KHR]) #calling_convention(.c) #no_context
 PFN_vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT :: alias fn(device: VkDevice, pInfo: ptr[VkAccelerationStructureCaptureDescriptorDataInfoEXT], pData: rawptr) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetAndroidHardwareBufferPropertiesANDROID :: alias fn(device: VkDevice, buffer: ptr[AHardwareBuffer], pProperties: ptr[mut VkAndroidHardwareBufferPropertiesANDROID]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetBufferCollectionPropertiesFUCHSIA :: alias fn(device: VkDevice, collection: VkBufferCollectionFUCHSIA, pProperties: ptr[mut VkBufferCollectionPropertiesFUCHSIA]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetBufferDeviceAddressEXT :: alias fn(device: VkDevice, pInfo: ptr[VkBufferDeviceAddressInfo]) -> VkDeviceAddress #calling_convention(.c) #no_context
 PFN_vkGetBufferDeviceAddressKHR :: alias fn(device: VkDevice, pInfo: ptr[VkBufferDeviceAddressInfo]) -> VkDeviceAddress #calling_convention(.c) #no_context
 PFN_vkGetBufferMemoryRequirements2KHR :: alias fn(device: VkDevice, pInfo: ptr[VkBufferMemoryRequirementsInfo2], pMemoryRequirements: ptr[mut VkMemoryRequirements2]) #calling_convention(.c) #no_context
@@ -497,6 +541,7 @@ PFN_vkGetDeviceAccelerationStructureCompatibilityKHR :: alias fn(device: VkDevic
 PFN_vkGetDeviceBufferMemoryRequirementsKHR :: alias fn(device: VkDevice, pInfo: ptr[VkDeviceBufferMemoryRequirements], pMemoryRequirements: ptr[mut VkMemoryRequirements2]) #calling_convention(.c) #no_context
 PFN_vkGetDeviceFaultInfoEXT :: alias fn(device: VkDevice, pFaultCounts: ptr[mut VkDeviceFaultCountsEXT], pFaultInfo: ptr[mut VkDeviceFaultInfoEXT]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetDeviceGroupPeerMemoryFeaturesKHR :: alias fn(device: VkDevice, heapIndex: u32, localDeviceIndex: u32, remoteDeviceIndex: u32, pPeerMemoryFeatures: ptr[mut VkPeerMemoryFeatureFlags]) #calling_convention(.c) #no_context
+PFN_vkGetDeviceGroupSurfacePresentModes2EXT :: alias fn(device: VkDevice, pSurfaceInfo: ptr[VkPhysicalDeviceSurfaceInfo2KHR], pModes: ptr[mut VkDeviceGroupPresentModeFlagsKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetDeviceImageMemoryRequirementsKHR :: alias fn(device: VkDevice, pInfo: ptr[VkDeviceImageMemoryRequirements], pMemoryRequirements: ptr[mut VkMemoryRequirements2]) #calling_convention(.c) #no_context
 PFN_vkGetDeviceImageSparseMemoryRequirementsKHR :: alias fn(device: VkDevice, pInfo: ptr[VkDeviceImageMemoryRequirements], pSparseMemoryRequirementCount: ptr[mut u32], pSparseMemoryRequirements: ptr[mut VkSparseImageMemoryRequirements2]?) #calling_convention(.c) #no_context
 PFN_vkGetDeviceImageSubresourceLayoutKHR :: alias fn(device: VkDevice, pInfo: ptr[VkDeviceImageSubresourceInfoKHR], pLayout: ptr[mut VkSubresourceLayout2KHR]) #calling_convention(.c) #no_context
@@ -505,7 +550,14 @@ PFN_vkGetDeviceMicromapCompatibilityEXT :: alias fn(device: VkDevice, pVersionIn
 PFN_vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI :: alias fn(device: VkDevice, renderpass: VkRenderPass, pMaxWorkgroupSize: ptr[mut VkExtent2D]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetDrmDisplayEXT :: alias fn(physicalDevice: VkPhysicalDevice, drmFd: i32, connectorId: u32, display: ptr[mut VkDisplayKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetDynamicRenderingTilePropertiesQCOM :: alias fn(device: VkDevice, pRenderingInfo: ptr[VkRenderingInfo], pProperties: ptr[mut VkTilePropertiesQCOM]) -> VkResult #calling_convention(.c) #no_context
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+PFN_vkGetEncodedVideoSessionParametersKHR :: alias fn(device: VkDevice, pVideoSessionParametersInfo: ptr[VkVideoEncodeSessionParametersGetInfoKHR], pFeedbackInfo: ptr[mut VkVideoEncodeSessionParametersFeedbackInfoKHR]?, pDataSize: ptr[mut usize], pData: rawptr) -> VkResult #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkGetExecutionGraphPipelineNodeIndexAMDX :: alias fn(device: VkDevice, executionGraph: VkPipeline, pNodeInfo: ptr[VkPipelineShaderStageNodeCreateInfoAMDX], pNodeIndex: ptr[mut u32]) -> VkResult #calling_convention(.c) #no_context
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+PFN_vkGetExecutionGraphPipelineScratchSizeAMDX :: alias fn(device: VkDevice, executionGraph: VkPipeline, pSizeInfo: ptr[mut VkExecutionGraphPipelineScratchSizeAMDX]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetFenceFdKHR :: alias fn(device: VkDevice, pGetFdInfo: ptr[VkFenceGetFdInfoKHR], pFd: ptr[mut i32]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetFenceWin32HandleKHR :: alias fn(device: VkDevice, pGetWin32HandleInfo: ptr[VkFenceGetWin32HandleInfoKHR], pHandle: ptr[mut HANDLE]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetFramebufferTilePropertiesQCOM :: alias fn(device: VkDevice, framebuffer: VkFramebuffer, pPropertiesCount: ptr[mut u32], pProperties: ptr[mut VkTilePropertiesQCOM]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetGeneratedCommandsMemoryRequirementsNV :: alias fn(device: VkDevice, pInfo: ptr[VkGeneratedCommandsMemoryRequirementsInfoNV], pMemoryRequirements: ptr[mut VkMemoryRequirements2]) #calling_convention(.c) #no_context
 PFN_vkGetImageDrmFormatModifierPropertiesEXT :: alias fn(device: VkDevice, image: VkImage, pProperties: ptr[mut VkImageDrmFormatModifierPropertiesEXT]) -> VkResult #calling_convention(.c) #no_context
@@ -518,16 +570,23 @@ PFN_vkGetImageViewAddressNVX :: alias fn(device: VkDevice, imageView: VkImageVie
 PFN_vkGetImageViewHandleNVX :: alias fn(device: VkDevice, pInfo: ptr[VkImageViewHandleInfoNVX]) -> u32 #calling_convention(.c) #no_context
 PFN_vkGetImageViewOpaqueCaptureDescriptorDataEXT :: alias fn(device: VkDevice, pInfo: ptr[VkImageViewCaptureDescriptorDataInfoEXT], pData: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetLatencyTimingsNV :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR, pTimingCount: ptr[mut u32], pLatencyMarkerInfo: ptr[mut VkGetLatencyMarkerInfoNV]) #calling_convention(.c) #no_context
+PFN_vkGetMemoryAndroidHardwareBufferANDROID :: alias fn(device: VkDevice, pInfo: ptr[VkMemoryGetAndroidHardwareBufferInfoANDROID], pBuffer: ptr[mut ptr[mut AHardwareBuffer]]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetMemoryFdKHR :: alias fn(device: VkDevice, pGetFdInfo: ptr[VkMemoryGetFdInfoKHR], pFd: ptr[mut i32]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetMemoryFdPropertiesKHR :: alias fn(device: VkDevice, handleType: VkExternalMemoryHandleTypeFlagBits, fd: i32, pMemoryFdProperties: ptr[mut VkMemoryFdPropertiesKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetMemoryHostPointerPropertiesEXT :: alias fn(device: VkDevice, handleType: VkExternalMemoryHandleTypeFlagBits, pHostPointer: rawptr, pMemoryHostPointerProperties: ptr[mut VkMemoryHostPointerPropertiesEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetMemoryRemoteAddressNV :: alias fn(device: VkDevice, pMemoryGetRemoteAddressInfo: ptr[VkMemoryGetRemoteAddressInfoNV], pAddress: ptr[mut VkRemoteAddressNV]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetMemoryWin32HandleKHR :: alias fn(device: VkDevice, pGetWin32HandleInfo: ptr[VkMemoryGetWin32HandleInfoKHR], pHandle: ptr[mut HANDLE]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetMemoryWin32HandleNV :: alias fn(device: VkDevice, memory: VkDeviceMemory, handleType: VkExternalMemoryHandleTypeFlagsNV, pHandle: ptr[mut HANDLE]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetMemoryWin32HandlePropertiesKHR :: alias fn(device: VkDevice, handleType: VkExternalMemoryHandleTypeFlagBits, handle: HANDLE, pMemoryWin32HandleProperties: ptr[mut VkMemoryWin32HandlePropertiesKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetMemoryZirconHandleFUCHSIA :: alias fn(device: VkDevice, pGetZirconHandleInfo: ptr[VkMemoryGetZirconHandleInfoFUCHSIA], pZirconHandle: ptr[mut zx_handle_t]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetMemoryZirconHandlePropertiesFUCHSIA :: alias fn(device: VkDevice, handleType: VkExternalMemoryHandleTypeFlagBits, zirconHandle: zx_handle_t, pMemoryZirconHandleProperties: ptr[mut VkMemoryZirconHandlePropertiesFUCHSIA]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetMicromapBuildSizesEXT :: alias fn(device: VkDevice, buildType: VkAccelerationStructureBuildTypeKHR, pBuildInfo: ptr[VkMicromapBuildInfoEXT], pSizeInfo: ptr[mut VkMicromapBuildSizesInfoEXT]) #calling_convention(.c) #no_context
 PFN_vkGetPastPresentationTimingGOOGLE :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR, pPresentationTimingCount: ptr[mut u32], pPresentationTimings: ptr[mut VkPastPresentationTimingGOOGLE]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPerformanceParameterINTEL :: alias fn(device: VkDevice, parameter: VkPerformanceParameterTypeINTEL, pValue: ptr[mut VkPerformanceValueINTEL]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT :: alias fn(physicalDevice: VkPhysicalDevice, pTimeDomainCount: ptr[mut u32], pTimeDomains: ptr[mut VkTimeDomainEXT]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pPropertyCount: ptr[mut u32], pProperties: ptr[mut VkCooperativeMatrixPropertiesKHR]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV :: alias fn(physicalDevice: VkPhysicalDevice, pPropertyCount: ptr[mut u32], pProperties: ptr[mut VkCooperativeMatrixPropertiesNV]?) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetPhysicalDeviceDirectFBPresentationSupportEXT :: alias fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, dfb: ptr[mut IDirectFB]) -> VkBool32 #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pExternalBufferInfo: ptr[VkPhysicalDeviceExternalBufferInfo], pExternalBufferProperties: ptr[mut VkExternalBufferProperties]) #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pExternalFenceInfo: ptr[VkPhysicalDeviceExternalFenceInfo], pExternalFenceProperties: ptr[mut VkExternalFenceProperties]) #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV :: alias fn(physicalDevice: VkPhysicalDevice, format: VkFormat, type: VkImageType, tiling: VkImageTiling, usage: VkImageUsageFlags, flags: VkImageCreateFlags, externalHandleType: VkExternalMemoryHandleTypeFlagsNV, pExternalImageFormatProperties: ptr[mut VkExternalImageFormatPropertiesNV]) -> VkResult #calling_convention(.c) #no_context
@@ -542,11 +601,15 @@ PFN_vkGetPhysicalDeviceOpticalFlowImageFormatsNV :: alias fn(physicalDevice: VkP
 PFN_vkGetPhysicalDeviceProperties2KHR :: alias fn(physicalDevice: VkPhysicalDevice, pProperties: ptr[mut VkPhysicalDeviceProperties2]) #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pPerformanceQueryCreateInfo: ptr[VkQueryPoolPerformanceCreateInfoKHR], pNumPasses: ptr[mut u32]) #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR :: alias fn(physicalDevice: VkPhysicalDevice, pQueueFamilyPropertyCount: ptr[mut u32], pQueueFamilyProperties: ptr[mut VkQueueFamilyProperties2]?) #calling_convention(.c) #no_context
+PFN_vkGetPhysicalDeviceScreenPresentationSupportQNX :: alias fn(physicalDevice: VkPhysicalDevice, queueFamilyIndex: u32, window: ptr[mut screen_window]) -> VkBool32 #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR :: alias fn(physicalDevice: VkPhysicalDevice, pFormatInfo: ptr[VkPhysicalDeviceSparseImageFormatInfo2], pPropertyCount: ptr[mut u32], pProperties: ptr[mut VkSparseImageFormatProperties2]?) #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV :: alias fn(physicalDevice: VkPhysicalDevice, pCombinationCount: ptr[mut u32], pCombinations: ptr[mut VkFramebufferMixedSamplesCombinationNV]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT :: alias fn(physicalDevice: VkPhysicalDevice, surface: VkSurfaceKHR, pSurfaceCapabilities: ptr[mut VkSurfaceCapabilities2EXT]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetPhysicalDeviceSurfacePresentModes2EXT :: alias fn(physicalDevice: VkPhysicalDevice, pSurfaceInfo: ptr[VkPhysicalDeviceSurfaceInfo2KHR], pPresentModeCount: ptr[mut u32], pPresentModes: ptr[mut VkPresentModeKHR]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceToolPropertiesEXT :: alias fn(physicalDevice: VkPhysicalDevice, pToolCount: ptr[mut u32], pToolProperties: ptr[mut VkPhysicalDeviceToolProperties]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceVideoCapabilitiesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pVideoProfile: ptr[VkVideoProfileInfoKHR], pCapabilities: ptr[mut VkVideoCapabilitiesKHR]) -> VkResult #calling_convention(.c) #no_context
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pQualityLevelInfo: ptr[VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR], pQualityLevelProperties: ptr[mut VkVideoEncodeQualityLevelPropertiesKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPhysicalDeviceVideoFormatPropertiesKHR :: alias fn(physicalDevice: VkPhysicalDevice, pVideoFormatInfo: ptr[VkPhysicalDeviceVideoFormatInfoKHR], pVideoFormatPropertyCount: ptr[mut u32], pVideoFormatProperties: ptr[mut VkVideoFormatPropertiesKHR]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPipelineExecutableInternalRepresentationsKHR :: alias fn(device: VkDevice, pExecutableInfo: ptr[VkPipelineExecutableInfoKHR], pInternalRepresentationCount: ptr[mut u32], pInternalRepresentations: ptr[mut VkPipelineExecutableInternalRepresentationKHR]?) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetPipelineExecutablePropertiesKHR :: alias fn(device: VkDevice, pPipelineInfo: ptr[VkPipelineInfoKHR], pExecutableCount: ptr[mut u32], pProperties: ptr[mut VkPipelineExecutablePropertiesKHR]?) -> VkResult #calling_convention(.c) #no_context
@@ -557,6 +620,7 @@ PFN_vkGetPipelinePropertiesEXT :: alias fn(device: VkDevice, pPipelineInfo: ptr[
 PFN_vkGetPrivateDataEXT :: alias fn(device: VkDevice, objectType: VkObjectType, objectHandle: u64, privateDataSlot: VkPrivateDataSlot, pData: ptr[mut u64]) #calling_convention(.c) #no_context
 PFN_vkGetQueueCheckpointData2NV :: alias fn(queue: VkQueue, pCheckpointDataCount: ptr[mut u32], pCheckpointData: ptr[mut VkCheckpointData2NV]?) #calling_convention(.c) #no_context
 PFN_vkGetQueueCheckpointDataNV :: alias fn(queue: VkQueue, pCheckpointDataCount: ptr[mut u32], pCheckpointData: ptr[mut VkCheckpointDataNV]?) #calling_convention(.c) #no_context
+PFN_vkGetRandROutputDisplayEXT :: alias fn(physicalDevice: VkPhysicalDevice, dpy: ptr[mut Display], rrOutput: RROutput, pDisplay: ptr[mut VkDisplayKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetRayTracingCaptureReplayShaderGroupHandlesKHR :: alias fn(device: VkDevice, pipeline: VkPipeline, firstGroup: u32, groupCount: u32, dataSize: usize, pData: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetRayTracingShaderGroupHandlesKHR :: alias fn(device: VkDevice, pipeline: VkPipeline, firstGroup: u32, groupCount: u32, dataSize: usize, pData: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetRayTracingShaderGroupHandlesNV :: alias fn(device: VkDevice, pipeline: VkPipeline, firstGroup: u32, groupCount: u32, dataSize: usize, pData: rawptr) -> VkResult #calling_convention(.c) #no_context
@@ -564,8 +628,11 @@ PFN_vkGetRayTracingShaderGroupStackSizeKHR :: alias fn(device: VkDevice, pipelin
 PFN_vkGetRefreshCycleDurationGOOGLE :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR, pDisplayTimingProperties: ptr[mut VkRefreshCycleDurationGOOGLE]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetRenderingAreaGranularityKHR :: alias fn(device: VkDevice, pRenderingAreaInfo: ptr[VkRenderingAreaInfoKHR], pGranularity: ptr[mut VkExtent2D]) #calling_convention(.c) #no_context
 PFN_vkGetSamplerOpaqueCaptureDescriptorDataEXT :: alias fn(device: VkDevice, pInfo: ptr[VkSamplerCaptureDescriptorDataInfoEXT], pData: rawptr) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetScreenBufferPropertiesQNX :: alias fn(device: VkDevice, buffer: ptr[screen_buffer], pProperties: ptr[mut VkScreenBufferPropertiesQNX]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetSemaphoreCounterValueKHR :: alias fn(device: VkDevice, semaphore: VkSemaphore, pValue: ptr[mut u64]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetSemaphoreFdKHR :: alias fn(device: VkDevice, pGetFdInfo: ptr[VkSemaphoreGetFdInfoKHR], pFd: ptr[mut i32]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetSemaphoreWin32HandleKHR :: alias fn(device: VkDevice, pGetWin32HandleInfo: ptr[VkSemaphoreGetWin32HandleInfoKHR], pHandle: ptr[mut HANDLE]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetSemaphoreZirconHandleFUCHSIA :: alias fn(device: VkDevice, pGetZirconHandleInfo: ptr[VkSemaphoreGetZirconHandleInfoFUCHSIA], pZirconHandle: ptr[mut zx_handle_t]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetShaderBinaryDataEXT :: alias fn(device: VkDevice, shader: VkShaderEXT, pDataSize: ptr[mut usize], pData: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetShaderInfoAMD :: alias fn(device: VkDevice, pipeline: VkPipeline, shaderStage: VkShaderStageFlagBits, infoType: VkShaderInfoTypeAMD, pInfoSize: ptr[mut usize], pInfo: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetShaderModuleCreateInfoIdentifierEXT :: alias fn(device: VkDevice, pCreateInfo: ptr[VkShaderModuleCreateInfo], pIdentifier: ptr[mut VkShaderModuleIdentifierEXT]) #calling_convention(.c) #no_context
@@ -574,8 +641,12 @@ PFN_vkGetSwapchainCounterEXT :: alias fn(device: VkDevice, swapchain: VkSwapchai
 PFN_vkGetSwapchainStatusKHR :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetValidationCacheDataEXT :: alias fn(device: VkDevice, validationCache: VkValidationCacheEXT, pDataSize: ptr[mut usize], pData: rawptr) -> VkResult #calling_convention(.c) #no_context
 PFN_vkGetVideoSessionMemoryRequirementsKHR :: alias fn(device: VkDevice, videoSession: VkVideoSessionKHR, pMemoryRequirementsCount: ptr[mut u32], pMemoryRequirements: ptr[mut VkVideoSessionMemoryRequirementsKHR]?) -> VkResult #calling_convention(.c) #no_context
+PFN_vkGetWinrtDisplayNV :: alias fn(physicalDevice: VkPhysicalDevice, deviceRelativeId: u32, pDisplay: ptr[mut VkDisplayKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkImportFenceFdKHR :: alias fn(device: VkDevice, pImportFenceFdInfo: ptr[VkImportFenceFdInfoKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkImportFenceWin32HandleKHR :: alias fn(device: VkDevice, pImportFenceWin32HandleInfo: ptr[VkImportFenceWin32HandleInfoKHR]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkImportSemaphoreFdKHR :: alias fn(device: VkDevice, pImportSemaphoreFdInfo: ptr[VkImportSemaphoreFdInfoKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkImportSemaphoreWin32HandleKHR :: alias fn(device: VkDevice, pImportSemaphoreWin32HandleInfo: ptr[VkImportSemaphoreWin32HandleInfoKHR]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkImportSemaphoreZirconHandleFUCHSIA :: alias fn(device: VkDevice, pImportSemaphoreZirconHandleInfo: ptr[VkImportSemaphoreZirconHandleInfoFUCHSIA]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkInitializePerformanceApiINTEL :: alias fn(device: VkDevice, pInitializeInfo: ptr[VkInitializePerformanceApiInfoINTEL]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkLatencySleepNV :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR, pSleepInfo: ptr[VkLatencySleepInfoNV]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkMapMemory2KHR :: alias fn(device: VkDevice, pMemoryMapInfo: ptr[VkMemoryMapInfoKHR], ppData: ptr[mut rawptr]) -> VkResult #calling_convention(.c) #no_context
@@ -589,10 +660,13 @@ PFN_vkQueueSubmit2KHR :: alias fn(queue: VkQueue, submitCount: u32, pSubmits: pt
 PFN_vkRegisterDeviceEventEXT :: alias fn(device: VkDevice, pDeviceEventInfo: ptr[VkDeviceEventInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pFence: ptr[mut VkFence]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkRegisterDisplayEventEXT :: alias fn(device: VkDevice, display: VkDisplayKHR, pDisplayEventInfo: ptr[VkDisplayEventInfoEXT], pAllocator: ptr[VkAllocationCallbacks]?, pFence: ptr[mut VkFence]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkReleaseDisplayEXT :: alias fn(physicalDevice: VkPhysicalDevice, display: VkDisplayKHR) -> VkResult #calling_convention(.c) #no_context
+PFN_vkReleaseFullScreenExclusiveModeEXT :: alias fn(device: VkDevice, swapchain: VkSwapchainKHR) -> VkResult #calling_convention(.c) #no_context
 PFN_vkReleasePerformanceConfigurationINTEL :: alias fn(device: VkDevice, configuration: VkPerformanceConfigurationINTEL) -> VkResult #calling_convention(.c) #no_context
 PFN_vkReleaseProfilingLockKHR :: alias fn(device: VkDevice) #calling_convention(.c) #no_context
 PFN_vkReleaseSwapchainImagesEXT :: alias fn(device: VkDevice, pReleaseInfo: ptr[VkReleaseSwapchainImagesInfoEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkResetQueryPoolEXT :: alias fn(device: VkDevice, queryPool: VkQueryPool, firstQuery: u32, queryCount: u32) #calling_convention(.c) #no_context
+PFN_vkSetBufferCollectionBufferConstraintsFUCHSIA :: alias fn(device: VkDevice, collection: VkBufferCollectionFUCHSIA, pBufferConstraintsInfo: ptr[VkBufferConstraintsInfoFUCHSIA]) -> VkResult #calling_convention(.c) #no_context
+PFN_vkSetBufferCollectionImageConstraintsFUCHSIA :: alias fn(device: VkDevice, collection: VkBufferCollectionFUCHSIA, pImageConstraintsInfo: ptr[VkImageConstraintsInfoFUCHSIA]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkSetDebugUtilsObjectNameEXT :: alias fn(device: VkDevice, pNameInfo: ptr[VkDebugUtilsObjectNameInfoEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkSetDebugUtilsObjectTagEXT :: alias fn(device: VkDevice, pTagInfo: ptr[VkDebugUtilsObjectTagInfoEXT]) -> VkResult #calling_convention(.c) #no_context
 PFN_vkSetDeviceMemoryPriorityEXT :: alias fn(device: VkDevice, memory: VkDeviceMemory, priority: f32) #calling_convention(.c) #no_context
@@ -616,8 +690,18 @@ PFN_vkWriteMicromapsPropertiesEXT :: alias fn(device: VkDevice, micromapCount: u
 
 VulkanInstanceProcs :: struct {
     vkAcquireDrmDisplayEXT : PFN_vkAcquireDrmDisplayEXT?,
+    vkAcquireWinrtDisplayNV : PFN_vkAcquireWinrtDisplayNV?,
+    vkAcquireXlibDisplayEXT : PFN_vkAcquireXlibDisplayEXT?,
+    vkCreateAndroidSurfaceKHR : PFN_vkCreateAndroidSurfaceKHR?,
     vkCreateDebugReportCallbackEXT : PFN_vkCreateDebugReportCallbackEXT?,
     vkCreateDebugUtilsMessengerEXT : PFN_vkCreateDebugUtilsMessengerEXT?,
+    vkCreateDirectFBSurfaceEXT : PFN_vkCreateDirectFBSurfaceEXT?,
+    vkCreateIOSSurfaceMVK : PFN_vkCreateIOSSurfaceMVK?,
+    vkCreateImagePipeSurfaceFUCHSIA : PFN_vkCreateImagePipeSurfaceFUCHSIA?,
+    vkCreateMacOSSurfaceMVK : PFN_vkCreateMacOSSurfaceMVK?,
+    vkCreateMetalSurfaceEXT : PFN_vkCreateMetalSurfaceEXT?,
+    vkCreateScreenSurfaceQNX : PFN_vkCreateScreenSurfaceQNX?,
+    vkCreateViSurfaceNN : PFN_vkCreateViSurfaceNN?,
     vkDebugReportMessageEXT : PFN_vkDebugReportMessageEXT?,
     vkDestroyDebugReportCallbackEXT : PFN_vkDestroyDebugReportCallbackEXT?,
     vkDestroyDebugUtilsMessengerEXT : PFN_vkDestroyDebugUtilsMessengerEXT?,
@@ -627,6 +711,7 @@ VulkanInstanceProcs :: struct {
     vkGetPhysicalDeviceCalibrateableTimeDomainsEXT : PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT?,
     vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR : PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR?,
     vkGetPhysicalDeviceCooperativeMatrixPropertiesNV : PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV?,
+    vkGetPhysicalDeviceDirectFBPresentationSupportEXT : PFN_vkGetPhysicalDeviceDirectFBPresentationSupportEXT?,
     vkGetPhysicalDeviceExternalBufferPropertiesKHR : PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR?,
     vkGetPhysicalDeviceExternalFencePropertiesKHR : PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR?,
     vkGetPhysicalDeviceExternalImageFormatPropertiesNV : PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV?,
@@ -641,12 +726,17 @@ VulkanInstanceProcs :: struct {
     vkGetPhysicalDeviceProperties2KHR : PFN_vkGetPhysicalDeviceProperties2KHR?,
     vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR : PFN_vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR?,
     vkGetPhysicalDeviceQueueFamilyProperties2KHR : PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR?,
+    vkGetPhysicalDeviceScreenPresentationSupportQNX : PFN_vkGetPhysicalDeviceScreenPresentationSupportQNX?,
     vkGetPhysicalDeviceSparseImageFormatProperties2KHR : PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR?,
     vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV : PFN_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV?,
     vkGetPhysicalDeviceSurfaceCapabilities2EXT : PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT?,
+    vkGetPhysicalDeviceSurfacePresentModes2EXT : PFN_vkGetPhysicalDeviceSurfacePresentModes2EXT?,
     vkGetPhysicalDeviceToolPropertiesEXT : PFN_vkGetPhysicalDeviceToolPropertiesEXT?,
     vkGetPhysicalDeviceVideoCapabilitiesKHR : PFN_vkGetPhysicalDeviceVideoCapabilitiesKHR?,
+    vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR : PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR?,
     vkGetPhysicalDeviceVideoFormatPropertiesKHR : PFN_vkGetPhysicalDeviceVideoFormatPropertiesKHR?,
+    vkGetRandROutputDisplayEXT : PFN_vkGetRandROutputDisplayEXT?,
+    vkGetWinrtDisplayNV : PFN_vkGetWinrtDisplayNV?,
     vkReleaseDisplayEXT : PFN_vkReleaseDisplayEXT?,
     vkSubmitDebugUtilsMessageEXT : PFN_vkSubmitDebugUtilsMessageEXT?,
 }
@@ -654,8 +744,18 @@ VulkanInstanceProcs :: struct {
 // Finds each of the instance's commands the loader doesn't export, leaving those it doesn't have null
 load_instance_procs :: fn(instance: VkInstance, procs: ptr[mut VulkanInstanceProcs]) {
     procs.vkAcquireDrmDisplayEXT = bit_cast[PFN_vkAcquireDrmDisplayEXT?](vkGetInstanceProcAddr(instance, "vkAcquireDrmDisplayEXT"))
+    procs.vkAcquireWinrtDisplayNV = bit_cast[PFN_vkAcquireWinrtDisplayNV?](vkGetInstanceProcAddr(instance, "vkAcquireWinrtDisplayNV"))
+    procs.vkAcquireXlibDisplayEXT = bit_cast[PFN_vkAcquireXlibDisplayEXT?](vkGetInstanceProcAddr(instance, "vkAcquireXlibDisplayEXT"))
+    procs.vkCreateAndroidSurfaceKHR = bit_cast[PFN_vkCreateAndroidSurfaceKHR?](vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR"))
     procs.vkCreateDebugReportCallbackEXT = bit_cast[PFN_vkCreateDebugReportCallbackEXT?](vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"))
     procs.vkCreateDebugUtilsMessengerEXT = bit_cast[PFN_vkCreateDebugUtilsMessengerEXT?](vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"))
+    procs.vkCreateDirectFBSurfaceEXT = bit_cast[PFN_vkCreateDirectFBSurfaceEXT?](vkGetInstanceProcAddr(instance, "vkCreateDirectFBSurfaceEXT"))
+    procs.vkCreateIOSSurfaceMVK = bit_cast[PFN_vkCreateIOSSurfaceMVK?](vkGetInstanceProcAddr(instance, "vkCreateIOSSurfaceMVK"))
+    procs.vkCreateImagePipeSurfaceFUCHSIA = bit_cast[PFN_vkCreateImagePipeSurfaceFUCHSIA?](vkGetInstanceProcAddr(instance, "vkCreateImagePipeSurfaceFUCHSIA"))
+    procs.vkCreateMacOSSurfaceMVK = bit_cast[PFN_vkCreateMacOSSurfaceMVK?](vkGetInstanceProcAddr(instance, "vkCreateMacOSSurfaceMVK"))
+    procs.vkCreateMetalSurfaceEXT = bit_cast[PFN_vkCreateMetalSurfaceEXT?](vkGetInstanceProcAddr(instance, "vkCreateMetalSurfaceEXT"))
+    procs.vkCreateScreenSurfaceQNX = bit_cast[PFN_vkCreateScreenSurfaceQNX?](vkGetInstanceProcAddr(instance, "vkCreateScreenSurfaceQNX"))
+    procs.vkCreateViSurfaceNN = bit_cast[PFN_vkCreateViSurfaceNN?](vkGetInstanceProcAddr(instance, "vkCreateViSurfaceNN"))
     procs.vkDebugReportMessageEXT = bit_cast[PFN_vkDebugReportMessageEXT?](vkGetInstanceProcAddr(instance, "vkDebugReportMessageEXT"))
     procs.vkDestroyDebugReportCallbackEXT = bit_cast[PFN_vkDestroyDebugReportCallbackEXT?](vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"))
     procs.vkDestroyDebugUtilsMessengerEXT = bit_cast[PFN_vkDestroyDebugUtilsMessengerEXT?](vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"))
@@ -665,6 +765,7 @@ load_instance_procs :: fn(instance: VkInstance, procs: ptr[mut VulkanInstancePro
     procs.vkGetPhysicalDeviceCalibrateableTimeDomainsEXT = bit_cast[PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCalibrateableTimeDomainsEXT"))
     procs.vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR = bit_cast[PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR"))
     procs.vkGetPhysicalDeviceCooperativeMatrixPropertiesNV = bit_cast[PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesNV?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesNV"))
+    procs.vkGetPhysicalDeviceDirectFBPresentationSupportEXT = bit_cast[PFN_vkGetPhysicalDeviceDirectFBPresentationSupportEXT?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceDirectFBPresentationSupportEXT"))
     procs.vkGetPhysicalDeviceExternalBufferPropertiesKHR = bit_cast[PFN_vkGetPhysicalDeviceExternalBufferPropertiesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalBufferPropertiesKHR"))
     procs.vkGetPhysicalDeviceExternalFencePropertiesKHR = bit_cast[PFN_vkGetPhysicalDeviceExternalFencePropertiesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalFencePropertiesKHR"))
     procs.vkGetPhysicalDeviceExternalImageFormatPropertiesNV = bit_cast[PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceExternalImageFormatPropertiesNV"))
@@ -679,17 +780,23 @@ load_instance_procs :: fn(instance: VkInstance, procs: ptr[mut VulkanInstancePro
     procs.vkGetPhysicalDeviceProperties2KHR = bit_cast[PFN_vkGetPhysicalDeviceProperties2KHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties2KHR"))
     procs.vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR = bit_cast[PFN_vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR"))
     procs.vkGetPhysicalDeviceQueueFamilyProperties2KHR = bit_cast[PFN_vkGetPhysicalDeviceQueueFamilyProperties2KHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyProperties2KHR"))
+    procs.vkGetPhysicalDeviceScreenPresentationSupportQNX = bit_cast[PFN_vkGetPhysicalDeviceScreenPresentationSupportQNX?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceScreenPresentationSupportQNX"))
     procs.vkGetPhysicalDeviceSparseImageFormatProperties2KHR = bit_cast[PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSparseImageFormatProperties2KHR"))
     procs.vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV = bit_cast[PFN_vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSupportedFramebufferMixedSamplesCombinationsNV"))
     procs.vkGetPhysicalDeviceSurfaceCapabilities2EXT = bit_cast[PFN_vkGetPhysicalDeviceSurfaceCapabilities2EXT?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceCapabilities2EXT"))
+    procs.vkGetPhysicalDeviceSurfacePresentModes2EXT = bit_cast[PFN_vkGetPhysicalDeviceSurfacePresentModes2EXT?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfacePresentModes2EXT"))
     procs.vkGetPhysicalDeviceToolPropertiesEXT = bit_cast[PFN_vkGetPhysicalDeviceToolPropertiesEXT?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceToolPropertiesEXT"))
     procs.vkGetPhysicalDeviceVideoCapabilitiesKHR = bit_cast[PFN_vkGetPhysicalDeviceVideoCapabilitiesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceVideoCapabilitiesKHR"))
+    procs.vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR = bit_cast[PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR"))
     procs.vkGetPhysicalDeviceVideoFormatPropertiesKHR = bit_cast[PFN_vkGetPhysicalDeviceVideoFormatPropertiesKHR?](vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceVideoFormatPropertiesKHR"))
+    procs.vkGetRandROutputDisplayEXT = bit_cast[PFN_vkGetRandROutputDisplayEXT?](vkGetInstanceProcAddr(instance, "vkGetRandROutputDisplayEXT"))
+    procs.vkGetWinrtDisplayNV = bit_cast[PFN_vkGetWinrtDisplayNV?](vkGetInstanceProcAddr(instance, "vkGetWinrtDisplayNV"))
     procs.vkReleaseDisplayEXT = bit_cast[PFN_vkReleaseDisplayEXT?](vkGetInstanceProcAddr(instance, "vkReleaseDisplayEXT"))
     procs.vkSubmitDebugUtilsMessageEXT = bit_cast[PFN_vkSubmitDebugUtilsMessageEXT?](vkGetInstanceProcAddr(instance, "vkSubmitDebugUtilsMessageEXT"))
 }
 
 VulkanDeviceProcs :: struct {
+    vkAcquireFullScreenExclusiveModeEXT : PFN_vkAcquireFullScreenExclusiveModeEXT?,
     vkAcquirePerformanceConfigurationINTEL : PFN_vkAcquirePerformanceConfigurationINTEL?,
     vkAcquireProfilingLockKHR : PFN_vkAcquireProfilingLockKHR?,
     vkBindAccelerationStructureMemoryNV : PFN_vkBindAccelerationStructureMemoryNV?,
@@ -742,6 +849,9 @@ VulkanDeviceProcs :: struct {
     vkCmdDecompressMemoryIndirectCountNV : PFN_vkCmdDecompressMemoryIndirectCountNV?,
     vkCmdDecompressMemoryNV : PFN_vkCmdDecompressMemoryNV?,
     vkCmdDispatchBaseKHR : PFN_vkCmdDispatchBaseKHR?,
+    vkCmdDispatchGraphAMDX : PFN_vkCmdDispatchGraphAMDX?,
+    vkCmdDispatchGraphIndirectAMDX : PFN_vkCmdDispatchGraphIndirectAMDX?,
+    vkCmdDispatchGraphIndirectCountAMDX : PFN_vkCmdDispatchGraphIndirectCountAMDX?,
     vkCmdDrawClusterHUAWEI : PFN_vkCmdDrawClusterHUAWEI?,
     vkCmdDrawClusterIndirectHUAWEI : PFN_vkCmdDrawClusterIndirectHUAWEI?,
     vkCmdDrawIndexedIndirectCountAMD : PFN_vkCmdDrawIndexedIndirectCountAMD?,
@@ -757,6 +867,7 @@ VulkanDeviceProcs :: struct {
     vkCmdDrawMeshTasksNV : PFN_vkCmdDrawMeshTasksNV?,
     vkCmdDrawMultiEXT : PFN_vkCmdDrawMultiEXT?,
     vkCmdDrawMultiIndexedEXT : PFN_vkCmdDrawMultiIndexedEXT?,
+    vkCmdEncodeVideoKHR : PFN_vkCmdEncodeVideoKHR?,
     vkCmdEndConditionalRenderingEXT : PFN_vkCmdEndConditionalRenderingEXT?,
     vkCmdEndDebugUtilsLabelEXT : PFN_vkCmdEndDebugUtilsLabelEXT?,
     vkCmdEndQueryIndexedEXT : PFN_vkCmdEndQueryIndexedEXT?,
@@ -765,6 +876,7 @@ VulkanDeviceProcs :: struct {
     vkCmdEndTransformFeedbackEXT : PFN_vkCmdEndTransformFeedbackEXT?,
     vkCmdEndVideoCodingKHR : PFN_vkCmdEndVideoCodingKHR?,
     vkCmdExecuteGeneratedCommandsNV : PFN_vkCmdExecuteGeneratedCommandsNV?,
+    vkCmdInitializeGraphScratchMemoryAMDX : PFN_vkCmdInitializeGraphScratchMemoryAMDX?,
     vkCmdInsertDebugUtilsLabelEXT : PFN_vkCmdInsertDebugUtilsLabelEXT?,
     vkCmdNextSubpass2KHR : PFN_vkCmdNextSubpass2KHR?,
     vkCmdOpticalFlowExecuteNV : PFN_vkCmdOpticalFlowExecuteNV?,
@@ -870,10 +982,12 @@ VulkanDeviceProcs :: struct {
     vkCopyMicromapToMemoryEXT : PFN_vkCopyMicromapToMemoryEXT?,
     vkCreateAccelerationStructureKHR : PFN_vkCreateAccelerationStructureKHR?,
     vkCreateAccelerationStructureNV : PFN_vkCreateAccelerationStructureNV?,
+    vkCreateBufferCollectionFUCHSIA : PFN_vkCreateBufferCollectionFUCHSIA?,
     vkCreateCuFunctionNVX : PFN_vkCreateCuFunctionNVX?,
     vkCreateCuModuleNVX : PFN_vkCreateCuModuleNVX?,
     vkCreateDeferredOperationKHR : PFN_vkCreateDeferredOperationKHR?,
     vkCreateDescriptorUpdateTemplateKHR : PFN_vkCreateDescriptorUpdateTemplateKHR?,
+    vkCreateExecutionGraphPipelinesAMDX : PFN_vkCreateExecutionGraphPipelinesAMDX?,
     vkCreateIndirectCommandsLayoutNV : PFN_vkCreateIndirectCommandsLayoutNV?,
     vkCreateMicromapEXT : PFN_vkCreateMicromapEXT?,
     vkCreateOpticalFlowSessionNV : PFN_vkCreateOpticalFlowSessionNV?,
@@ -891,6 +1005,7 @@ VulkanDeviceProcs :: struct {
     vkDeferredOperationJoinKHR : PFN_vkDeferredOperationJoinKHR?,
     vkDestroyAccelerationStructureKHR : PFN_vkDestroyAccelerationStructureKHR?,
     vkDestroyAccelerationStructureNV : PFN_vkDestroyAccelerationStructureNV?,
+    vkDestroyBufferCollectionFUCHSIA : PFN_vkDestroyBufferCollectionFUCHSIA?,
     vkDestroyCuFunctionNVX : PFN_vkDestroyCuFunctionNVX?,
     vkDestroyCuModuleNVX : PFN_vkDestroyCuModuleNVX?,
     vkDestroyDeferredOperationKHR : PFN_vkDestroyDeferredOperationKHR?,
@@ -905,11 +1020,14 @@ VulkanDeviceProcs :: struct {
     vkDestroyVideoSessionKHR : PFN_vkDestroyVideoSessionKHR?,
     vkDestroyVideoSessionParametersKHR : PFN_vkDestroyVideoSessionParametersKHR?,
     vkDisplayPowerControlEXT : PFN_vkDisplayPowerControlEXT?,
+    vkExportMetalObjectsEXT : PFN_vkExportMetalObjectsEXT?,
     vkGetAccelerationStructureBuildSizesKHR : PFN_vkGetAccelerationStructureBuildSizesKHR?,
     vkGetAccelerationStructureDeviceAddressKHR : PFN_vkGetAccelerationStructureDeviceAddressKHR?,
     vkGetAccelerationStructureHandleNV : PFN_vkGetAccelerationStructureHandleNV?,
     vkGetAccelerationStructureMemoryRequirementsNV : PFN_vkGetAccelerationStructureMemoryRequirementsNV?,
     vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT : PFN_vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT?,
+    vkGetAndroidHardwareBufferPropertiesANDROID : PFN_vkGetAndroidHardwareBufferPropertiesANDROID?,
+    vkGetBufferCollectionPropertiesFUCHSIA : PFN_vkGetBufferCollectionPropertiesFUCHSIA?,
     vkGetBufferDeviceAddressEXT : PFN_vkGetBufferDeviceAddressEXT?,
     vkGetBufferDeviceAddressKHR : PFN_vkGetBufferDeviceAddressKHR?,
     vkGetBufferMemoryRequirements2KHR : PFN_vkGetBufferMemoryRequirements2KHR?,
@@ -928,6 +1046,7 @@ VulkanDeviceProcs :: struct {
     vkGetDeviceBufferMemoryRequirementsKHR : PFN_vkGetDeviceBufferMemoryRequirementsKHR?,
     vkGetDeviceFaultInfoEXT : PFN_vkGetDeviceFaultInfoEXT?,
     vkGetDeviceGroupPeerMemoryFeaturesKHR : PFN_vkGetDeviceGroupPeerMemoryFeaturesKHR?,
+    vkGetDeviceGroupSurfacePresentModes2EXT : PFN_vkGetDeviceGroupSurfacePresentModes2EXT?,
     vkGetDeviceImageMemoryRequirementsKHR : PFN_vkGetDeviceImageMemoryRequirementsKHR?,
     vkGetDeviceImageSparseMemoryRequirementsKHR : PFN_vkGetDeviceImageSparseMemoryRequirementsKHR?,
     vkGetDeviceImageSubresourceLayoutKHR : PFN_vkGetDeviceImageSubresourceLayoutKHR?,
@@ -935,7 +1054,11 @@ VulkanDeviceProcs :: struct {
     vkGetDeviceMicromapCompatibilityEXT : PFN_vkGetDeviceMicromapCompatibilityEXT?,
     vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI : PFN_vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI?,
     vkGetDynamicRenderingTilePropertiesQCOM : PFN_vkGetDynamicRenderingTilePropertiesQCOM?,
+    vkGetEncodedVideoSessionParametersKHR : PFN_vkGetEncodedVideoSessionParametersKHR?,
+    vkGetExecutionGraphPipelineNodeIndexAMDX : PFN_vkGetExecutionGraphPipelineNodeIndexAMDX?,
+    vkGetExecutionGraphPipelineScratchSizeAMDX : PFN_vkGetExecutionGraphPipelineScratchSizeAMDX?,
     vkGetFenceFdKHR : PFN_vkGetFenceFdKHR?,
+    vkGetFenceWin32HandleKHR : PFN_vkGetFenceWin32HandleKHR?,
     vkGetFramebufferTilePropertiesQCOM : PFN_vkGetFramebufferTilePropertiesQCOM?,
     vkGetGeneratedCommandsMemoryRequirementsNV : PFN_vkGetGeneratedCommandsMemoryRequirementsNV?,
     vkGetImageDrmFormatModifierPropertiesEXT : PFN_vkGetImageDrmFormatModifierPropertiesEXT?,
@@ -948,10 +1071,16 @@ VulkanDeviceProcs :: struct {
     vkGetImageViewHandleNVX : PFN_vkGetImageViewHandleNVX?,
     vkGetImageViewOpaqueCaptureDescriptorDataEXT : PFN_vkGetImageViewOpaqueCaptureDescriptorDataEXT?,
     vkGetLatencyTimingsNV : PFN_vkGetLatencyTimingsNV?,
+    vkGetMemoryAndroidHardwareBufferANDROID : PFN_vkGetMemoryAndroidHardwareBufferANDROID?,
     vkGetMemoryFdKHR : PFN_vkGetMemoryFdKHR?,
     vkGetMemoryFdPropertiesKHR : PFN_vkGetMemoryFdPropertiesKHR?,
     vkGetMemoryHostPointerPropertiesEXT : PFN_vkGetMemoryHostPointerPropertiesEXT?,
     vkGetMemoryRemoteAddressNV : PFN_vkGetMemoryRemoteAddressNV?,
+    vkGetMemoryWin32HandleKHR : PFN_vkGetMemoryWin32HandleKHR?,
+    vkGetMemoryWin32HandleNV : PFN_vkGetMemoryWin32HandleNV?,
+    vkGetMemoryWin32HandlePropertiesKHR : PFN_vkGetMemoryWin32HandlePropertiesKHR?,
+    vkGetMemoryZirconHandleFUCHSIA : PFN_vkGetMemoryZirconHandleFUCHSIA?,
+    vkGetMemoryZirconHandlePropertiesFUCHSIA : PFN_vkGetMemoryZirconHandlePropertiesFUCHSIA?,
     vkGetMicromapBuildSizesEXT : PFN_vkGetMicromapBuildSizesEXT?,
     vkGetPastPresentationTimingGOOGLE : PFN_vkGetPastPresentationTimingGOOGLE?,
     vkGetPerformanceParameterINTEL : PFN_vkGetPerformanceParameterINTEL?,
@@ -971,8 +1100,11 @@ VulkanDeviceProcs :: struct {
     vkGetRefreshCycleDurationGOOGLE : PFN_vkGetRefreshCycleDurationGOOGLE?,
     vkGetRenderingAreaGranularityKHR : PFN_vkGetRenderingAreaGranularityKHR?,
     vkGetSamplerOpaqueCaptureDescriptorDataEXT : PFN_vkGetSamplerOpaqueCaptureDescriptorDataEXT?,
+    vkGetScreenBufferPropertiesQNX : PFN_vkGetScreenBufferPropertiesQNX?,
     vkGetSemaphoreCounterValueKHR : PFN_vkGetSemaphoreCounterValueKHR?,
     vkGetSemaphoreFdKHR : PFN_vkGetSemaphoreFdKHR?,
+    vkGetSemaphoreWin32HandleKHR : PFN_vkGetSemaphoreWin32HandleKHR?,
+    vkGetSemaphoreZirconHandleFUCHSIA : PFN_vkGetSemaphoreZirconHandleFUCHSIA?,
     vkGetShaderBinaryDataEXT : PFN_vkGetShaderBinaryDataEXT?,
     vkGetShaderInfoAMD : PFN_vkGetShaderInfoAMD?,
     vkGetShaderModuleCreateInfoIdentifierEXT : PFN_vkGetShaderModuleCreateInfoIdentifierEXT?,
@@ -982,7 +1114,10 @@ VulkanDeviceProcs :: struct {
     vkGetValidationCacheDataEXT : PFN_vkGetValidationCacheDataEXT?,
     vkGetVideoSessionMemoryRequirementsKHR : PFN_vkGetVideoSessionMemoryRequirementsKHR?,
     vkImportFenceFdKHR : PFN_vkImportFenceFdKHR?,
+    vkImportFenceWin32HandleKHR : PFN_vkImportFenceWin32HandleKHR?,
     vkImportSemaphoreFdKHR : PFN_vkImportSemaphoreFdKHR?,
+    vkImportSemaphoreWin32HandleKHR : PFN_vkImportSemaphoreWin32HandleKHR?,
+    vkImportSemaphoreZirconHandleFUCHSIA : PFN_vkImportSemaphoreZirconHandleFUCHSIA?,
     vkInitializePerformanceApiINTEL : PFN_vkInitializePerformanceApiINTEL?,
     vkLatencySleepNV : PFN_vkLatencySleepNV?,
     vkMapMemory2KHR : PFN_vkMapMemory2KHR?,
@@ -995,10 +1130,13 @@ VulkanDeviceProcs :: struct {
     vkQueueSubmit2KHR : PFN_vkQueueSubmit2KHR?,
     vkRegisterDeviceEventEXT : PFN_vkRegisterDeviceEventEXT?,
     vkRegisterDisplayEventEXT : PFN_vkRegisterDisplayEventEXT?,
+    vkReleaseFullScreenExclusiveModeEXT : PFN_vkReleaseFullScreenExclusiveModeEXT?,
     vkReleasePerformanceConfigurationINTEL : PFN_vkReleasePerformanceConfigurationINTEL?,
     vkReleaseProfilingLockKHR : PFN_vkReleaseProfilingLockKHR?,
     vkReleaseSwapchainImagesEXT : PFN_vkReleaseSwapchainImagesEXT?,
     vkResetQueryPoolEXT : PFN_vkResetQueryPoolEXT?,
+    vkSetBufferCollectionBufferConstraintsFUCHSIA : PFN_vkSetBufferCollectionBufferConstraintsFUCHSIA?,
+    vkSetBufferCollectionImageConstraintsFUCHSIA : PFN_vkSetBufferCollectionImageConstraintsFUCHSIA?,
     vkSetDebugUtilsObjectNameEXT : PFN_vkSetDebugUtilsObjectNameEXT?,
     vkSetDebugUtilsObjectTagEXT : PFN_vkSetDebugUtilsObjectTagEXT?,
     vkSetDeviceMemoryPriorityEXT : PFN_vkSetDeviceMemoryPriorityEXT?,
@@ -1022,6 +1160,7 @@ VulkanDeviceProcs :: struct {
 
 // Finds each of the device's commands the loader doesn't export, leaving those it doesn't have null
 load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
+    procs.vkAcquireFullScreenExclusiveModeEXT = bit_cast[PFN_vkAcquireFullScreenExclusiveModeEXT?](vkGetDeviceProcAddr(device, "vkAcquireFullScreenExclusiveModeEXT"))
     procs.vkAcquirePerformanceConfigurationINTEL = bit_cast[PFN_vkAcquirePerformanceConfigurationINTEL?](vkGetDeviceProcAddr(device, "vkAcquirePerformanceConfigurationINTEL"))
     procs.vkAcquireProfilingLockKHR = bit_cast[PFN_vkAcquireProfilingLockKHR?](vkGetDeviceProcAddr(device, "vkAcquireProfilingLockKHR"))
     procs.vkBindAccelerationStructureMemoryNV = bit_cast[PFN_vkBindAccelerationStructureMemoryNV?](vkGetDeviceProcAddr(device, "vkBindAccelerationStructureMemoryNV"))
@@ -1074,6 +1213,9 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkCmdDecompressMemoryIndirectCountNV = bit_cast[PFN_vkCmdDecompressMemoryIndirectCountNV?](vkGetDeviceProcAddr(device, "vkCmdDecompressMemoryIndirectCountNV"))
     procs.vkCmdDecompressMemoryNV = bit_cast[PFN_vkCmdDecompressMemoryNV?](vkGetDeviceProcAddr(device, "vkCmdDecompressMemoryNV"))
     procs.vkCmdDispatchBaseKHR = bit_cast[PFN_vkCmdDispatchBaseKHR?](vkGetDeviceProcAddr(device, "vkCmdDispatchBaseKHR"))
+    procs.vkCmdDispatchGraphAMDX = bit_cast[PFN_vkCmdDispatchGraphAMDX?](vkGetDeviceProcAddr(device, "vkCmdDispatchGraphAMDX"))
+    procs.vkCmdDispatchGraphIndirectAMDX = bit_cast[PFN_vkCmdDispatchGraphIndirectAMDX?](vkGetDeviceProcAddr(device, "vkCmdDispatchGraphIndirectAMDX"))
+    procs.vkCmdDispatchGraphIndirectCountAMDX = bit_cast[PFN_vkCmdDispatchGraphIndirectCountAMDX?](vkGetDeviceProcAddr(device, "vkCmdDispatchGraphIndirectCountAMDX"))
     procs.vkCmdDrawClusterHUAWEI = bit_cast[PFN_vkCmdDrawClusterHUAWEI?](vkGetDeviceProcAddr(device, "vkCmdDrawClusterHUAWEI"))
     procs.vkCmdDrawClusterIndirectHUAWEI = bit_cast[PFN_vkCmdDrawClusterIndirectHUAWEI?](vkGetDeviceProcAddr(device, "vkCmdDrawClusterIndirectHUAWEI"))
     procs.vkCmdDrawIndexedIndirectCountAMD = bit_cast[PFN_vkCmdDrawIndexedIndirectCountAMD?](vkGetDeviceProcAddr(device, "vkCmdDrawIndexedIndirectCountAMD"))
@@ -1089,6 +1231,7 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkCmdDrawMeshTasksNV = bit_cast[PFN_vkCmdDrawMeshTasksNV?](vkGetDeviceProcAddr(device, "vkCmdDrawMeshTasksNV"))
     procs.vkCmdDrawMultiEXT = bit_cast[PFN_vkCmdDrawMultiEXT?](vkGetDeviceProcAddr(device, "vkCmdDrawMultiEXT"))
     procs.vkCmdDrawMultiIndexedEXT = bit_cast[PFN_vkCmdDrawMultiIndexedEXT?](vkGetDeviceProcAddr(device, "vkCmdDrawMultiIndexedEXT"))
+    procs.vkCmdEncodeVideoKHR = bit_cast[PFN_vkCmdEncodeVideoKHR?](vkGetDeviceProcAddr(device, "vkCmdEncodeVideoKHR"))
     procs.vkCmdEndConditionalRenderingEXT = bit_cast[PFN_vkCmdEndConditionalRenderingEXT?](vkGetDeviceProcAddr(device, "vkCmdEndConditionalRenderingEXT"))
     procs.vkCmdEndDebugUtilsLabelEXT = bit_cast[PFN_vkCmdEndDebugUtilsLabelEXT?](vkGetDeviceProcAddr(device, "vkCmdEndDebugUtilsLabelEXT"))
     procs.vkCmdEndQueryIndexedEXT = bit_cast[PFN_vkCmdEndQueryIndexedEXT?](vkGetDeviceProcAddr(device, "vkCmdEndQueryIndexedEXT"))
@@ -1097,6 +1240,7 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkCmdEndTransformFeedbackEXT = bit_cast[PFN_vkCmdEndTransformFeedbackEXT?](vkGetDeviceProcAddr(device, "vkCmdEndTransformFeedbackEXT"))
     procs.vkCmdEndVideoCodingKHR = bit_cast[PFN_vkCmdEndVideoCodingKHR?](vkGetDeviceProcAddr(device, "vkCmdEndVideoCodingKHR"))
     procs.vkCmdExecuteGeneratedCommandsNV = bit_cast[PFN_vkCmdExecuteGeneratedCommandsNV?](vkGetDeviceProcAddr(device, "vkCmdExecuteGeneratedCommandsNV"))
+    procs.vkCmdInitializeGraphScratchMemoryAMDX = bit_cast[PFN_vkCmdInitializeGraphScratchMemoryAMDX?](vkGetDeviceProcAddr(device, "vkCmdInitializeGraphScratchMemoryAMDX"))
     procs.vkCmdInsertDebugUtilsLabelEXT = bit_cast[PFN_vkCmdInsertDebugUtilsLabelEXT?](vkGetDeviceProcAddr(device, "vkCmdInsertDebugUtilsLabelEXT"))
     procs.vkCmdNextSubpass2KHR = bit_cast[PFN_vkCmdNextSubpass2KHR?](vkGetDeviceProcAddr(device, "vkCmdNextSubpass2KHR"))
     procs.vkCmdOpticalFlowExecuteNV = bit_cast[PFN_vkCmdOpticalFlowExecuteNV?](vkGetDeviceProcAddr(device, "vkCmdOpticalFlowExecuteNV"))
@@ -1202,10 +1346,12 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkCopyMicromapToMemoryEXT = bit_cast[PFN_vkCopyMicromapToMemoryEXT?](vkGetDeviceProcAddr(device, "vkCopyMicromapToMemoryEXT"))
     procs.vkCreateAccelerationStructureKHR = bit_cast[PFN_vkCreateAccelerationStructureKHR?](vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR"))
     procs.vkCreateAccelerationStructureNV = bit_cast[PFN_vkCreateAccelerationStructureNV?](vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureNV"))
+    procs.vkCreateBufferCollectionFUCHSIA = bit_cast[PFN_vkCreateBufferCollectionFUCHSIA?](vkGetDeviceProcAddr(device, "vkCreateBufferCollectionFUCHSIA"))
     procs.vkCreateCuFunctionNVX = bit_cast[PFN_vkCreateCuFunctionNVX?](vkGetDeviceProcAddr(device, "vkCreateCuFunctionNVX"))
     procs.vkCreateCuModuleNVX = bit_cast[PFN_vkCreateCuModuleNVX?](vkGetDeviceProcAddr(device, "vkCreateCuModuleNVX"))
     procs.vkCreateDeferredOperationKHR = bit_cast[PFN_vkCreateDeferredOperationKHR?](vkGetDeviceProcAddr(device, "vkCreateDeferredOperationKHR"))
     procs.vkCreateDescriptorUpdateTemplateKHR = bit_cast[PFN_vkCreateDescriptorUpdateTemplateKHR?](vkGetDeviceProcAddr(device, "vkCreateDescriptorUpdateTemplateKHR"))
+    procs.vkCreateExecutionGraphPipelinesAMDX = bit_cast[PFN_vkCreateExecutionGraphPipelinesAMDX?](vkGetDeviceProcAddr(device, "vkCreateExecutionGraphPipelinesAMDX"))
     procs.vkCreateIndirectCommandsLayoutNV = bit_cast[PFN_vkCreateIndirectCommandsLayoutNV?](vkGetDeviceProcAddr(device, "vkCreateIndirectCommandsLayoutNV"))
     procs.vkCreateMicromapEXT = bit_cast[PFN_vkCreateMicromapEXT?](vkGetDeviceProcAddr(device, "vkCreateMicromapEXT"))
     procs.vkCreateOpticalFlowSessionNV = bit_cast[PFN_vkCreateOpticalFlowSessionNV?](vkGetDeviceProcAddr(device, "vkCreateOpticalFlowSessionNV"))
@@ -1223,6 +1369,7 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkDeferredOperationJoinKHR = bit_cast[PFN_vkDeferredOperationJoinKHR?](vkGetDeviceProcAddr(device, "vkDeferredOperationJoinKHR"))
     procs.vkDestroyAccelerationStructureKHR = bit_cast[PFN_vkDestroyAccelerationStructureKHR?](vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR"))
     procs.vkDestroyAccelerationStructureNV = bit_cast[PFN_vkDestroyAccelerationStructureNV?](vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureNV"))
+    procs.vkDestroyBufferCollectionFUCHSIA = bit_cast[PFN_vkDestroyBufferCollectionFUCHSIA?](vkGetDeviceProcAddr(device, "vkDestroyBufferCollectionFUCHSIA"))
     procs.vkDestroyCuFunctionNVX = bit_cast[PFN_vkDestroyCuFunctionNVX?](vkGetDeviceProcAddr(device, "vkDestroyCuFunctionNVX"))
     procs.vkDestroyCuModuleNVX = bit_cast[PFN_vkDestroyCuModuleNVX?](vkGetDeviceProcAddr(device, "vkDestroyCuModuleNVX"))
     procs.vkDestroyDeferredOperationKHR = bit_cast[PFN_vkDestroyDeferredOperationKHR?](vkGetDeviceProcAddr(device, "vkDestroyDeferredOperationKHR"))
@@ -1237,11 +1384,14 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkDestroyVideoSessionKHR = bit_cast[PFN_vkDestroyVideoSessionKHR?](vkGetDeviceProcAddr(device, "vkDestroyVideoSessionKHR"))
     procs.vkDestroyVideoSessionParametersKHR = bit_cast[PFN_vkDestroyVideoSessionParametersKHR?](vkGetDeviceProcAddr(device, "vkDestroyVideoSessionParametersKHR"))
     procs.vkDisplayPowerControlEXT = bit_cast[PFN_vkDisplayPowerControlEXT?](vkGetDeviceProcAddr(device, "vkDisplayPowerControlEXT"))
+    procs.vkExportMetalObjectsEXT = bit_cast[PFN_vkExportMetalObjectsEXT?](vkGetDeviceProcAddr(device, "vkExportMetalObjectsEXT"))
     procs.vkGetAccelerationStructureBuildSizesKHR = bit_cast[PFN_vkGetAccelerationStructureBuildSizesKHR?](vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR"))
     procs.vkGetAccelerationStructureDeviceAddressKHR = bit_cast[PFN_vkGetAccelerationStructureDeviceAddressKHR?](vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR"))
     procs.vkGetAccelerationStructureHandleNV = bit_cast[PFN_vkGetAccelerationStructureHandleNV?](vkGetDeviceProcAddr(device, "vkGetAccelerationStructureHandleNV"))
     procs.vkGetAccelerationStructureMemoryRequirementsNV = bit_cast[PFN_vkGetAccelerationStructureMemoryRequirementsNV?](vkGetDeviceProcAddr(device, "vkGetAccelerationStructureMemoryRequirementsNV"))
     procs.vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT = bit_cast[PFN_vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT?](vkGetDeviceProcAddr(device, "vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT"))
+    procs.vkGetAndroidHardwareBufferPropertiesANDROID = bit_cast[PFN_vkGetAndroidHardwareBufferPropertiesANDROID?](vkGetDeviceProcAddr(device, "vkGetAndroidHardwareBufferPropertiesANDROID"))
+    procs.vkGetBufferCollectionPropertiesFUCHSIA = bit_cast[PFN_vkGetBufferCollectionPropertiesFUCHSIA?](vkGetDeviceProcAddr(device, "vkGetBufferCollectionPropertiesFUCHSIA"))
     procs.vkGetBufferDeviceAddressEXT = bit_cast[PFN_vkGetBufferDeviceAddressEXT?](vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressEXT"))
     procs.vkGetBufferDeviceAddressKHR = bit_cast[PFN_vkGetBufferDeviceAddressKHR?](vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR"))
     procs.vkGetBufferMemoryRequirements2KHR = bit_cast[PFN_vkGetBufferMemoryRequirements2KHR?](vkGetDeviceProcAddr(device, "vkGetBufferMemoryRequirements2KHR"))
@@ -1260,6 +1410,7 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkGetDeviceBufferMemoryRequirementsKHR = bit_cast[PFN_vkGetDeviceBufferMemoryRequirementsKHR?](vkGetDeviceProcAddr(device, "vkGetDeviceBufferMemoryRequirementsKHR"))
     procs.vkGetDeviceFaultInfoEXT = bit_cast[PFN_vkGetDeviceFaultInfoEXT?](vkGetDeviceProcAddr(device, "vkGetDeviceFaultInfoEXT"))
     procs.vkGetDeviceGroupPeerMemoryFeaturesKHR = bit_cast[PFN_vkGetDeviceGroupPeerMemoryFeaturesKHR?](vkGetDeviceProcAddr(device, "vkGetDeviceGroupPeerMemoryFeaturesKHR"))
+    procs.vkGetDeviceGroupSurfacePresentModes2EXT = bit_cast[PFN_vkGetDeviceGroupSurfacePresentModes2EXT?](vkGetDeviceProcAddr(device, "vkGetDeviceGroupSurfacePresentModes2EXT"))
     procs.vkGetDeviceImageMemoryRequirementsKHR = bit_cast[PFN_vkGetDeviceImageMemoryRequirementsKHR?](vkGetDeviceProcAddr(device, "vkGetDeviceImageMemoryRequirementsKHR"))
     procs.vkGetDeviceImageSparseMemoryRequirementsKHR = bit_cast[PFN_vkGetDeviceImageSparseMemoryRequirementsKHR?](vkGetDeviceProcAddr(device, "vkGetDeviceImageSparseMemoryRequirementsKHR"))
     procs.vkGetDeviceImageSubresourceLayoutKHR = bit_cast[PFN_vkGetDeviceImageSubresourceLayoutKHR?](vkGetDeviceProcAddr(device, "vkGetDeviceImageSubresourceLayoutKHR"))
@@ -1267,7 +1418,11 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkGetDeviceMicromapCompatibilityEXT = bit_cast[PFN_vkGetDeviceMicromapCompatibilityEXT?](vkGetDeviceProcAddr(device, "vkGetDeviceMicromapCompatibilityEXT"))
     procs.vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI = bit_cast[PFN_vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI?](vkGetDeviceProcAddr(device, "vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI"))
     procs.vkGetDynamicRenderingTilePropertiesQCOM = bit_cast[PFN_vkGetDynamicRenderingTilePropertiesQCOM?](vkGetDeviceProcAddr(device, "vkGetDynamicRenderingTilePropertiesQCOM"))
+    procs.vkGetEncodedVideoSessionParametersKHR = bit_cast[PFN_vkGetEncodedVideoSessionParametersKHR?](vkGetDeviceProcAddr(device, "vkGetEncodedVideoSessionParametersKHR"))
+    procs.vkGetExecutionGraphPipelineNodeIndexAMDX = bit_cast[PFN_vkGetExecutionGraphPipelineNodeIndexAMDX?](vkGetDeviceProcAddr(device, "vkGetExecutionGraphPipelineNodeIndexAMDX"))
+    procs.vkGetExecutionGraphPipelineScratchSizeAMDX = bit_cast[PFN_vkGetExecutionGraphPipelineScratchSizeAMDX?](vkGetDeviceProcAddr(device, "vkGetExecutionGraphPipelineScratchSizeAMDX"))
     procs.vkGetFenceFdKHR = bit_cast[PFN_vkGetFenceFdKHR?](vkGetDeviceProcAddr(device, "vkGetFenceFdKHR"))
+    procs.vkGetFenceWin32HandleKHR = bit_cast[PFN_vkGetFenceWin32HandleKHR?](vkGetDeviceProcAddr(device, "vkGetFenceWin32HandleKHR"))
     procs.vkGetFramebufferTilePropertiesQCOM = bit_cast[PFN_vkGetFramebufferTilePropertiesQCOM?](vkGetDeviceProcAddr(device, "vkGetFramebufferTilePropertiesQCOM"))
     procs.vkGetGeneratedCommandsMemoryRequirementsNV = bit_cast[PFN_vkGetGeneratedCommandsMemoryRequirementsNV?](vkGetDeviceProcAddr(device, "vkGetGeneratedCommandsMemoryRequirementsNV"))
     procs.vkGetImageDrmFormatModifierPropertiesEXT = bit_cast[PFN_vkGetImageDrmFormatModifierPropertiesEXT?](vkGetDeviceProcAddr(device, "vkGetImageDrmFormatModifierPropertiesEXT"))
@@ -1280,10 +1435,16 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkGetImageViewHandleNVX = bit_cast[PFN_vkGetImageViewHandleNVX?](vkGetDeviceProcAddr(device, "vkGetImageViewHandleNVX"))
     procs.vkGetImageViewOpaqueCaptureDescriptorDataEXT = bit_cast[PFN_vkGetImageViewOpaqueCaptureDescriptorDataEXT?](vkGetDeviceProcAddr(device, "vkGetImageViewOpaqueCaptureDescriptorDataEXT"))
     procs.vkGetLatencyTimingsNV = bit_cast[PFN_vkGetLatencyTimingsNV?](vkGetDeviceProcAddr(device, "vkGetLatencyTimingsNV"))
+    procs.vkGetMemoryAndroidHardwareBufferANDROID = bit_cast[PFN_vkGetMemoryAndroidHardwareBufferANDROID?](vkGetDeviceProcAddr(device, "vkGetMemoryAndroidHardwareBufferANDROID"))
     procs.vkGetMemoryFdKHR = bit_cast[PFN_vkGetMemoryFdKHR?](vkGetDeviceProcAddr(device, "vkGetMemoryFdKHR"))
     procs.vkGetMemoryFdPropertiesKHR = bit_cast[PFN_vkGetMemoryFdPropertiesKHR?](vkGetDeviceProcAddr(device, "vkGetMemoryFdPropertiesKHR"))
     procs.vkGetMemoryHostPointerPropertiesEXT = bit_cast[PFN_vkGetMemoryHostPointerPropertiesEXT?](vkGetDeviceProcAddr(device, "vkGetMemoryHostPointerPropertiesEXT"))
     procs.vkGetMemoryRemoteAddressNV = bit_cast[PFN_vkGetMemoryRemoteAddressNV?](vkGetDeviceProcAddr(device, "vkGetMemoryRemoteAddressNV"))
+    procs.vkGetMemoryWin32HandleKHR = bit_cast[PFN_vkGetMemoryWin32HandleKHR?](vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR"))
+    procs.vkGetMemoryWin32HandleNV = bit_cast[PFN_vkGetMemoryWin32HandleNV?](vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleNV"))
+    procs.vkGetMemoryWin32HandlePropertiesKHR = bit_cast[PFN_vkGetMemoryWin32HandlePropertiesKHR?](vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandlePropertiesKHR"))
+    procs.vkGetMemoryZirconHandleFUCHSIA = bit_cast[PFN_vkGetMemoryZirconHandleFUCHSIA?](vkGetDeviceProcAddr(device, "vkGetMemoryZirconHandleFUCHSIA"))
+    procs.vkGetMemoryZirconHandlePropertiesFUCHSIA = bit_cast[PFN_vkGetMemoryZirconHandlePropertiesFUCHSIA?](vkGetDeviceProcAddr(device, "vkGetMemoryZirconHandlePropertiesFUCHSIA"))
     procs.vkGetMicromapBuildSizesEXT = bit_cast[PFN_vkGetMicromapBuildSizesEXT?](vkGetDeviceProcAddr(device, "vkGetMicromapBuildSizesEXT"))
     procs.vkGetPastPresentationTimingGOOGLE = bit_cast[PFN_vkGetPastPresentationTimingGOOGLE?](vkGetDeviceProcAddr(device, "vkGetPastPresentationTimingGOOGLE"))
     procs.vkGetPerformanceParameterINTEL = bit_cast[PFN_vkGetPerformanceParameterINTEL?](vkGetDeviceProcAddr(device, "vkGetPerformanceParameterINTEL"))
@@ -1303,8 +1464,11 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkGetRefreshCycleDurationGOOGLE = bit_cast[PFN_vkGetRefreshCycleDurationGOOGLE?](vkGetDeviceProcAddr(device, "vkGetRefreshCycleDurationGOOGLE"))
     procs.vkGetRenderingAreaGranularityKHR = bit_cast[PFN_vkGetRenderingAreaGranularityKHR?](vkGetDeviceProcAddr(device, "vkGetRenderingAreaGranularityKHR"))
     procs.vkGetSamplerOpaqueCaptureDescriptorDataEXT = bit_cast[PFN_vkGetSamplerOpaqueCaptureDescriptorDataEXT?](vkGetDeviceProcAddr(device, "vkGetSamplerOpaqueCaptureDescriptorDataEXT"))
+    procs.vkGetScreenBufferPropertiesQNX = bit_cast[PFN_vkGetScreenBufferPropertiesQNX?](vkGetDeviceProcAddr(device, "vkGetScreenBufferPropertiesQNX"))
     procs.vkGetSemaphoreCounterValueKHR = bit_cast[PFN_vkGetSemaphoreCounterValueKHR?](vkGetDeviceProcAddr(device, "vkGetSemaphoreCounterValueKHR"))
     procs.vkGetSemaphoreFdKHR = bit_cast[PFN_vkGetSemaphoreFdKHR?](vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHR"))
+    procs.vkGetSemaphoreWin32HandleKHR = bit_cast[PFN_vkGetSemaphoreWin32HandleKHR?](vkGetDeviceProcAddr(device, "vkGetSemaphoreWin32HandleKHR"))
+    procs.vkGetSemaphoreZirconHandleFUCHSIA = bit_cast[PFN_vkGetSemaphoreZirconHandleFUCHSIA?](vkGetDeviceProcAddr(device, "vkGetSemaphoreZirconHandleFUCHSIA"))
     procs.vkGetShaderBinaryDataEXT = bit_cast[PFN_vkGetShaderBinaryDataEXT?](vkGetDeviceProcAddr(device, "vkGetShaderBinaryDataEXT"))
     procs.vkGetShaderInfoAMD = bit_cast[PFN_vkGetShaderInfoAMD?](vkGetDeviceProcAddr(device, "vkGetShaderInfoAMD"))
     procs.vkGetShaderModuleCreateInfoIdentifierEXT = bit_cast[PFN_vkGetShaderModuleCreateInfoIdentifierEXT?](vkGetDeviceProcAddr(device, "vkGetShaderModuleCreateInfoIdentifierEXT"))
@@ -1314,7 +1478,10 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkGetValidationCacheDataEXT = bit_cast[PFN_vkGetValidationCacheDataEXT?](vkGetDeviceProcAddr(device, "vkGetValidationCacheDataEXT"))
     procs.vkGetVideoSessionMemoryRequirementsKHR = bit_cast[PFN_vkGetVideoSessionMemoryRequirementsKHR?](vkGetDeviceProcAddr(device, "vkGetVideoSessionMemoryRequirementsKHR"))
     procs.vkImportFenceFdKHR = bit_cast[PFN_vkImportFenceFdKHR?](vkGetDeviceProcAddr(device, "vkImportFenceFdKHR"))
+    procs.vkImportFenceWin32HandleKHR = bit_cast[PFN_vkImportFenceWin32HandleKHR?](vkGetDeviceProcAddr(device, "vkImportFenceWin32HandleKHR"))
     procs.vkImportSemaphoreFdKHR = bit_cast[PFN_vkImportSemaphoreFdKHR?](vkGetDeviceProcAddr(device, "vkImportSemaphoreFdKHR"))
+    procs.vkImportSemaphoreWin32HandleKHR = bit_cast[PFN_vkImportSemaphoreWin32HandleKHR?](vkGetDeviceProcAddr(device, "vkImportSemaphoreWin32HandleKHR"))
+    procs.vkImportSemaphoreZirconHandleFUCHSIA = bit_cast[PFN_vkImportSemaphoreZirconHandleFUCHSIA?](vkGetDeviceProcAddr(device, "vkImportSemaphoreZirconHandleFUCHSIA"))
     procs.vkInitializePerformanceApiINTEL = bit_cast[PFN_vkInitializePerformanceApiINTEL?](vkGetDeviceProcAddr(device, "vkInitializePerformanceApiINTEL"))
     procs.vkLatencySleepNV = bit_cast[PFN_vkLatencySleepNV?](vkGetDeviceProcAddr(device, "vkLatencySleepNV"))
     procs.vkMapMemory2KHR = bit_cast[PFN_vkMapMemory2KHR?](vkGetDeviceProcAddr(device, "vkMapMemory2KHR"))
@@ -1327,10 +1494,13 @@ load_device_procs :: fn(device: VkDevice, procs: ptr[mut VulkanDeviceProcs]) {
     procs.vkQueueSubmit2KHR = bit_cast[PFN_vkQueueSubmit2KHR?](vkGetDeviceProcAddr(device, "vkQueueSubmit2KHR"))
     procs.vkRegisterDeviceEventEXT = bit_cast[PFN_vkRegisterDeviceEventEXT?](vkGetDeviceProcAddr(device, "vkRegisterDeviceEventEXT"))
     procs.vkRegisterDisplayEventEXT = bit_cast[PFN_vkRegisterDisplayEventEXT?](vkGetDeviceProcAddr(device, "vkRegisterDisplayEventEXT"))
+    procs.vkReleaseFullScreenExclusiveModeEXT = bit_cast[PFN_vkReleaseFullScreenExclusiveModeEXT?](vkGetDeviceProcAddr(device, "vkReleaseFullScreenExclusiveModeEXT"))
     procs.vkReleasePerformanceConfigurationINTEL = bit_cast[PFN_vkReleasePerformanceConfigurationINTEL?](vkGetDeviceProcAddr(device, "vkReleasePerformanceConfigurationINTEL"))
     procs.vkReleaseProfilingLockKHR = bit_cast[PFN_vkReleaseProfilingLockKHR?](vkGetDeviceProcAddr(device, "vkReleaseProfilingLockKHR"))
     procs.vkReleaseSwapchainImagesEXT = bit_cast[PFN_vkReleaseSwapchainImagesEXT?](vkGetDeviceProcAddr(device, "vkReleaseSwapchainImagesEXT"))
     procs.vkResetQueryPoolEXT = bit_cast[PFN_vkResetQueryPoolEXT?](vkGetDeviceProcAddr(device, "vkResetQueryPoolEXT"))
+    procs.vkSetBufferCollectionBufferConstraintsFUCHSIA = bit_cast[PFN_vkSetBufferCollectionBufferConstraintsFUCHSIA?](vkGetDeviceProcAddr(device, "vkSetBufferCollectionBufferConstraintsFUCHSIA"))
+    procs.vkSetBufferCollectionImageConstraintsFUCHSIA = bit_cast[PFN_vkSetBufferCollectionImageConstraintsFUCHSIA?](vkGetDeviceProcAddr(device, "vkSetBufferCollectionImageConstraintsFUCHSIA"))
     procs.vkSetDebugUtilsObjectNameEXT = bit_cast[PFN_vkSetDebugUtilsObjectNameEXT?](vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT"))
     procs.vkSetDebugUtilsObjectTagEXT = bit_cast[PFN_vkSetDebugUtilsObjectTagEXT?](vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectTagEXT"))
     procs.vkSetDeviceMemoryPriorityEXT = bit_cast[PFN_vkSetDeviceMemoryPriorityEXT?](vkGetDeviceProcAddr(device, "vkSetDeviceMemoryPriorityEXT"))

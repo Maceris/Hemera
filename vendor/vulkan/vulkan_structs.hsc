@@ -186,6 +186,28 @@ VkAccelerationStructureSRTMotionInstanceNV :: struct {
     accelerationStructureReference : u64,
 }
 
+// Provisional (VK_NV_displacement_micromap): it can change in a later registry
+VkAccelerationStructureTrianglesDisplacementMicromapNV :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_DISPLACEMENT_MICROMAP_NV,
+    pNext : rawptr,
+    displacementBiasAndScaleFormat : VkFormat,
+    displacementVectorFormat : VkFormat,
+    displacementBiasAndScaleBuffer : VkDeviceOrHostAddressConstKHR,
+    displacementBiasAndScaleStride : VkDeviceSize,
+    displacementVectorBuffer : VkDeviceOrHostAddressConstKHR,
+    displacementVectorStride : VkDeviceSize,
+    displacedMicromapPrimitiveFlags : VkDeviceOrHostAddressConstKHR,
+    displacedMicromapPrimitiveFlagsStride : VkDeviceSize,
+    indexType : VkIndexType,
+    indexBuffer : VkDeviceOrHostAddressConstKHR,
+    indexStride : VkDeviceSize,
+    baseTriangle : u32,
+    usageCountsCount : u32,
+    pUsageCounts : ptr[VkMicromapUsageEXT]?,
+    ppUsageCounts : ptr[ptr[VkMicromapUsageEXT]]?,
+    micromap : VkMicromapEXT,
+}
+
 VkAccelerationStructureTrianglesOpacityMicromapEXT :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_EXT,
     pNext : rawptr,
@@ -236,6 +258,58 @@ VkAmigoProfilingSubmitInfoSEC :: struct {
     pNext : rawptr,
     firstDrawTimestamp : u64,
     swapBufferTimestamp : u64,
+}
+
+VkAndroidHardwareBufferFormatProperties2ANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID,
+    pNext : rawptr,
+    format : VkFormat,
+    externalFormat : u64,
+    formatFeatures : VkFormatFeatureFlags2,
+    samplerYcbcrConversionComponents : VkComponentMapping,
+    suggestedYcbcrModel : VkSamplerYcbcrModelConversion,
+    suggestedYcbcrRange : VkSamplerYcbcrRange,
+    suggestedXChromaOffset : VkChromaLocation,
+    suggestedYChromaOffset : VkChromaLocation,
+}
+
+VkAndroidHardwareBufferFormatPropertiesANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID,
+    pNext : rawptr,
+    format : VkFormat,
+    externalFormat : u64,
+    formatFeatures : VkFormatFeatureFlags,
+    samplerYcbcrConversionComponents : VkComponentMapping,
+    suggestedYcbcrModel : VkSamplerYcbcrModelConversion,
+    suggestedYcbcrRange : VkSamplerYcbcrRange,
+    suggestedXChromaOffset : VkChromaLocation,
+    suggestedYChromaOffset : VkChromaLocation,
+}
+
+VkAndroidHardwareBufferFormatResolvePropertiesANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_RESOLVE_PROPERTIES_ANDROID,
+    pNext : rawptr,
+    colorAttachmentFormat : VkFormat,
+}
+
+VkAndroidHardwareBufferPropertiesANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,
+    pNext : rawptr,
+    allocationSize : VkDeviceSize,
+    memoryTypeBits : u32,
+}
+
+VkAndroidHardwareBufferUsageANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID,
+    pNext : rawptr,
+    androidHardwareBufferUsage : u64,
+}
+
+VkAndroidSurfaceCreateInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+    pNext : rawptr,
+    flags : VkAndroidSurfaceCreateFlagsKHR,
+    window : ptr[mut ANativeWindow]?,
 }
 
 VkApplicationInfo :: struct {
@@ -466,6 +540,60 @@ VkBufferCaptureDescriptorDataInfoEXT :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_CAPTURE_DESCRIPTOR_DATA_INFO_EXT,
     pNext : rawptr,
     buffer : VkBuffer,
+}
+
+VkBufferCollectionBufferCreateInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_COLLECTION_BUFFER_CREATE_INFO_FUCHSIA,
+    pNext : rawptr,
+    collection : VkBufferCollectionFUCHSIA,
+    index : u32,
+}
+
+VkBufferCollectionConstraintsInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_COLLECTION_CONSTRAINTS_INFO_FUCHSIA,
+    pNext : rawptr,
+    minBufferCount : u32,
+    maxBufferCount : u32,
+    minBufferCountForCamping : u32,
+    minBufferCountForDedicatedSlack : u32,
+    minBufferCountForSharedSlack : u32,
+}
+
+VkBufferCollectionCreateInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_COLLECTION_CREATE_INFO_FUCHSIA,
+    pNext : rawptr,
+    collectionToken : zx_handle_t,
+}
+
+VkBufferCollectionImageCreateInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_COLLECTION_IMAGE_CREATE_INFO_FUCHSIA,
+    pNext : rawptr,
+    collection : VkBufferCollectionFUCHSIA,
+    index : u32,
+}
+
+VkBufferCollectionPropertiesFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_COLLECTION_PROPERTIES_FUCHSIA,
+    pNext : rawptr,
+    memoryTypeBits : u32,
+    bufferCount : u32,
+    createInfoIndex : u32,
+    sysmemPixelFormat : u64,
+    formatFeatures : VkFormatFeatureFlags,
+    sysmemColorSpaceIndex : VkSysmemColorSpaceFUCHSIA,
+    samplerYcbcrConversionComponents : VkComponentMapping,
+    suggestedYcbcrModel : VkSamplerYcbcrModelConversion,
+    suggestedYcbcrRange : VkSamplerYcbcrRange,
+    suggestedXChromaOffset : VkChromaLocation,
+    suggestedYChromaOffset : VkChromaLocation,
+}
+
+VkBufferConstraintsInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_BUFFER_CONSTRAINTS_INFO_FUCHSIA,
+    pNext : rawptr,
+    createInfo : VkBufferCreateInfo,
+    requiredFormatFeatures : VkFormatFeatureFlags,
+    bufferCollectionConstraints : VkBufferCollectionConstraintsInfoFUCHSIA,
 }
 
 VkBufferCopy :: struct {
@@ -1009,6 +1137,15 @@ VkCuModuleCreateInfoNVX :: struct {
     pData : rawptr,
 }
 
+VkD3D12FenceSubmitInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_D3D12_FENCE_SUBMIT_INFO_KHR,
+    pNext : rawptr,
+    waitSemaphoreValuesCount : u32,
+    pWaitSemaphoreValues : ptr[u64]?,
+    signalSemaphoreValuesCount : u32,
+    pSignalSemaphoreValues : ptr[u64]?,
+}
+
 VkDebugMarkerMarkerInfoEXT :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
     pNext : rawptr,
@@ -1526,6 +1663,12 @@ VkDeviceMemoryReportCallbackDataEXT :: struct {
     heapIndex : u32,
 }
 
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkDeviceOrHostAddressConstAMDX :: struct #union {
+    deviceAddress : VkDeviceAddress,
+    hostAddress : rawptr,
+}
+
 VkDeviceOrHostAddressConstKHR :: struct #union {
     deviceAddress : VkDeviceAddress,
     hostAddress : rawptr,
@@ -1582,6 +1725,29 @@ VkDirectDriverLoadingListLUNARG :: struct {
     mode : VkDirectDriverLoadingModeLUNARG,
     driverCount : u32,
     pDrivers : ptr[VkDirectDriverLoadingInfoLUNARG]?,
+}
+
+VkDirectFBSurfaceCreateInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_DIRECTFB_SURFACE_CREATE_INFO_EXT,
+    pNext : rawptr,
+    flags : VkDirectFBSurfaceCreateFlagsEXT,
+    dfb : ptr[mut IDirectFB]?,
+    surface : ptr[mut IDirectFBSurface]?,
+}
+
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkDispatchGraphCountInfoAMDX :: struct {
+    count : u32,
+    infos : VkDeviceOrHostAddressConstAMDX,
+    stride : u64,
+}
+
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkDispatchGraphInfoAMDX :: struct {
+    nodeIndex : u32,
+    payloadCount : u32,
+    payloads : VkDeviceOrHostAddressConstAMDX,
+    payloadStride : u64,
 }
 
 VkDispatchIndirectCommand :: struct {
@@ -1762,6 +1928,26 @@ VkEventCreateInfo :: struct {
     flags : VkEventCreateFlags,
 }
 
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkExecutionGraphPipelineCreateInfoAMDX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXECUTION_GRAPH_PIPELINE_CREATE_INFO_AMDX,
+    pNext : rawptr,
+    flags : VkPipelineCreateFlags,
+    stageCount : u32,
+    pStages : ptr[VkPipelineShaderStageCreateInfo]?,
+    pLibraryInfo : ptr[VkPipelineLibraryCreateInfoKHR]?,
+    layout : VkPipelineLayout,
+    basePipelineHandle : VkPipeline,
+    basePipelineIndex : i32,
+}
+
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkExecutionGraphPipelineScratchSizeAMDX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXECUTION_GRAPH_PIPELINE_SCRATCH_SIZE_AMDX,
+    pNext : rawptr,
+    size : VkDeviceSize,
+}
+
 VkExportFenceCreateInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_FENCE_CREATE_INFO,
     pNext : rawptr,
@@ -1769,6 +1955,14 @@ VkExportFenceCreateInfo :: struct {
 }
 
 VkExportFenceCreateInfoKHR :: VkExportFenceCreateInfo
+
+VkExportFenceWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_FENCE_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    pAttributes : ptr[SECURITY_ATTRIBUTES]?,
+    dwAccess : DWORD,
+    name : LPCWSTR,
+}
 
 VkExportMemoryAllocateInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
@@ -1784,6 +1978,77 @@ VkExportMemoryAllocateInfoNV :: struct {
     handleTypes : VkExternalMemoryHandleTypeFlagsNV,
 }
 
+VkExportMemoryWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_MEMORY_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    pAttributes : ptr[SECURITY_ATTRIBUTES]?,
+    dwAccess : DWORD,
+    name : LPCWSTR,
+}
+
+VkExportMemoryWin32HandleInfoNV :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_MEMORY_WIN32_HANDLE_INFO_NV,
+    pNext : rawptr,
+    pAttributes : ptr[SECURITY_ATTRIBUTES]?,
+    dwAccess : DWORD,
+}
+
+VkExportMetalBufferInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_BUFFER_INFO_EXT,
+    pNext : rawptr,
+    memory : VkDeviceMemory,
+    mtlBuffer : MTLBuffer_id,
+}
+
+VkExportMetalCommandQueueInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_COMMAND_QUEUE_INFO_EXT,
+    pNext : rawptr,
+    queue : VkQueue,
+    mtlCommandQueue : MTLCommandQueue_id,
+}
+
+VkExportMetalDeviceInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_DEVICE_INFO_EXT,
+    pNext : rawptr,
+    mtlDevice : MTLDevice_id,
+}
+
+VkExportMetalIOSurfaceInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_IO_SURFACE_INFO_EXT,
+    pNext : rawptr,
+    image : VkImage,
+    ioSurface : IOSurfaceRef,
+}
+
+VkExportMetalObjectCreateInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECT_CREATE_INFO_EXT,
+    pNext : rawptr,
+    exportObjectType : VkExportMetalObjectTypeFlagBitsEXT,
+}
+
+VkExportMetalObjectsInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT,
+    pNext : rawptr,
+}
+
+VkExportMetalSharedEventInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_SHARED_EVENT_INFO_EXT,
+    pNext : rawptr,
+    semaphore : VkSemaphore,
+    event : VkEvent,
+    mtlSharedEvent : MTLSharedEvent_id,
+}
+
+VkExportMetalTextureInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_METAL_TEXTURE_INFO_EXT,
+    pNext : rawptr,
+    image : VkImage,
+    imageView : VkImageView,
+    bufferView : VkBufferView,
+    plane : VkImageAspectFlagBits,
+    mtlTexture : MTLTexture_id,
+}
+
 VkExportSemaphoreCreateInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,
     pNext : rawptr,
@@ -1791,6 +2056,14 @@ VkExportSemaphoreCreateInfo :: struct {
 }
 
 VkExportSemaphoreCreateInfoKHR :: VkExportSemaphoreCreateInfo
+
+VkExportSemaphoreWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    pAttributes : ptr[SECURITY_ATTRIBUTES]?,
+    dwAccess : DWORD,
+    name : LPCWSTR,
+}
 
 VkExtensionProperties :: struct {
     extensionName : u8[VK_MAX_EXTENSION_NAME_SIZE],
@@ -1825,6 +2098,18 @@ VkExternalFenceProperties :: struct {
 }
 
 VkExternalFencePropertiesKHR :: VkExternalFenceProperties
+
+VkExternalFormatANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_ANDROID,
+    pNext : rawptr,
+    externalFormat : u64,
+}
+
+VkExternalFormatQNX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_EXTERNAL_FORMAT_QNX,
+    pNext : rawptr,
+    externalFormat : u64,
+}
 
 VkExternalImageFormatProperties :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES,
@@ -1895,6 +2180,13 @@ VkFenceCreateInfo :: struct {
 
 VkFenceGetFdInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_FENCE_GET_FD_INFO_KHR,
+    pNext : rawptr,
+    fence : VkFence,
+    handleType : VkExternalFenceHandleTypeFlagBits,
+}
+
+VkFenceGetWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_FENCE_GET_WIN32_HANDLE_INFO_KHR,
     pNext : rawptr,
     fence : VkFence,
     handleType : VkExternalFenceHandleTypeFlagBits,
@@ -2148,6 +2440,13 @@ VkHostImageLayoutTransitionInfoEXT :: struct {
     subresourceRange : VkImageSubresourceRange,
 }
 
+VkIOSSurfaceCreateInfoMVK :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK,
+    pNext : rawptr,
+    flags : VkIOSSurfaceCreateFlagsMVK,
+    pView : rawptr,
+}
+
 VkImageBlit :: struct {
     srcSubresource : VkImageSubresourceLayers,
     srcOffsets : VkOffset3D[2],
@@ -2185,6 +2484,15 @@ VkImageCompressionPropertiesEXT :: struct {
     pNext : rawptr,
     imageCompressionFlags : VkImageCompressionFlagsEXT,
     imageCompressionFixedRateFlags : VkImageCompressionFixedRateFlagsEXT,
+}
+
+VkImageConstraintsInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMAGE_CONSTRAINTS_INFO_FUCHSIA,
+    pNext : rawptr,
+    formatConstraintsCount : u32,
+    pFormatConstraints : ptr[VkImageFormatConstraintsInfoFUCHSIA]?,
+    bufferCollectionConstraints : VkBufferCollectionConstraintsInfoFUCHSIA,
+    flags : VkImageConstraintsInfoFlagsFUCHSIA,
 }
 
 VkImageCopy :: struct {
@@ -2244,6 +2552,17 @@ VkImageDrmFormatModifierPropertiesEXT :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT,
     pNext : rawptr,
     drmFormatModifier : u64,
+}
+
+VkImageFormatConstraintsInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMAGE_FORMAT_CONSTRAINTS_INFO_FUCHSIA,
+    pNext : rawptr,
+    imageCreateInfo : VkImageCreateInfo,
+    requiredFormatFeatures : VkFormatFeatureFlags,
+    flags : VkImageFormatConstraintsFlagsFUCHSIA,
+    sysmemPixelFormat : u64,
+    colorSpaceCount : u32,
+    pColorSpaces : ptr[VkSysmemColorSpaceFUCHSIA]?,
 }
 
 VkImageFormatListCreateInfo :: struct {
@@ -2308,6 +2627,13 @@ VkImageMemoryRequirementsInfo2 :: struct {
 }
 
 VkImageMemoryRequirementsInfo2KHR :: VkImageMemoryRequirementsInfo2
+
+VkImagePipeSurfaceCreateInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMAGEPIPE_SURFACE_CREATE_INFO_FUCHSIA,
+    pNext : rawptr,
+    flags : VkImagePipeSurfaceCreateFlagsFUCHSIA,
+    imagePipeHandle : zx_handle_t,
+}
 
 VkImagePlaneMemoryRequirementsInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_IMAGE_PLANE_MEMORY_REQUIREMENTS_INFO,
@@ -2466,6 +2792,12 @@ VkImageViewUsageCreateInfo :: struct {
 
 VkImageViewUsageCreateInfoKHR :: VkImageViewUsageCreateInfo
 
+VkImportAndroidHardwareBufferInfoANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,
+    pNext : rawptr,
+    buffer : ptr[mut AHardwareBuffer]?,
+}
+
 VkImportFenceFdInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_FENCE_FD_INFO_KHR,
     pNext : rawptr,
@@ -2473,6 +2805,23 @@ VkImportFenceFdInfoKHR :: struct {
     flags : VkFenceImportFlags,
     handleType : VkExternalFenceHandleTypeFlagBits,
     fd : i32,
+}
+
+VkImportFenceWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_FENCE_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    fence : VkFence,
+    flags : VkFenceImportFlags,
+    handleType : VkExternalFenceHandleTypeFlagBits,
+    handle : HANDLE,
+    name : LPCWSTR,
+}
+
+VkImportMemoryBufferCollectionFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_MEMORY_BUFFER_COLLECTION_FUCHSIA,
+    pNext : rawptr,
+    collection : VkBufferCollectionFUCHSIA,
+    index : u32,
 }
 
 VkImportMemoryFdInfoKHR :: struct {
@@ -2489,6 +2838,59 @@ VkImportMemoryHostPointerInfoEXT :: struct {
     pHostPointer : rawptr,
 }
 
+VkImportMemoryWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    handleType : VkExternalMemoryHandleTypeFlagBits,
+    handle : HANDLE,
+    name : LPCWSTR,
+}
+
+VkImportMemoryWin32HandleInfoNV :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_NV,
+    pNext : rawptr,
+    handleType : VkExternalMemoryHandleTypeFlagsNV,
+    handle : HANDLE,
+}
+
+VkImportMemoryZirconHandleInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_MEMORY_ZIRCON_HANDLE_INFO_FUCHSIA,
+    pNext : rawptr,
+    handleType : VkExternalMemoryHandleTypeFlagBits,
+    handle : zx_handle_t,
+}
+
+VkImportMetalBufferInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_METAL_BUFFER_INFO_EXT,
+    pNext : rawptr,
+    mtlBuffer : MTLBuffer_id,
+}
+
+VkImportMetalIOSurfaceInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_METAL_IO_SURFACE_INFO_EXT,
+    pNext : rawptr,
+    ioSurface : IOSurfaceRef,
+}
+
+VkImportMetalSharedEventInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_METAL_SHARED_EVENT_INFO_EXT,
+    pNext : rawptr,
+    mtlSharedEvent : MTLSharedEvent_id,
+}
+
+VkImportMetalTextureInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_METAL_TEXTURE_INFO_EXT,
+    pNext : rawptr,
+    plane : VkImageAspectFlagBits,
+    mtlTexture : MTLTexture_id,
+}
+
+VkImportScreenBufferInfoQNX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_SCREEN_BUFFER_INFO_QNX,
+    pNext : rawptr,
+    buffer : ptr[mut screen_buffer]?,
+}
+
 VkImportSemaphoreFdInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
     pNext : rawptr,
@@ -2496,6 +2898,25 @@ VkImportSemaphoreFdInfoKHR :: struct {
     flags : VkSemaphoreImportFlags,
     handleType : VkExternalSemaphoreHandleTypeFlagBits,
     fd : i32,
+}
+
+VkImportSemaphoreWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    semaphore : VkSemaphore,
+    flags : VkSemaphoreImportFlags,
+    handleType : VkExternalSemaphoreHandleTypeFlagBits,
+    handle : HANDLE,
+    name : LPCWSTR,
+}
+
+VkImportSemaphoreZirconHandleInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_ZIRCON_HANDLE_INFO_FUCHSIA,
+    pNext : rawptr,
+    semaphore : VkSemaphore,
+    flags : VkSemaphoreImportFlags,
+    handleType : VkExternalSemaphoreHandleTypeFlagBits,
+    zirconHandle : zx_handle_t,
 }
 
 VkIndirectCommandsLayoutCreateInfoNV :: struct {
@@ -2611,6 +3032,13 @@ VkLayerProperties :: struct {
     description : u8[VK_MAX_DESCRIPTION_SIZE],
 }
 
+VkMacOSSurfaceCreateInfoMVK :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
+    pNext : rawptr,
+    flags : VkMacOSSurfaceCreateFlagsMVK,
+    pView : rawptr,
+}
+
 VkMappedMemoryRange :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
     pNext : rawptr,
@@ -2677,6 +3105,12 @@ VkMemoryFdPropertiesKHR :: struct {
     memoryTypeBits : u32,
 }
 
+VkMemoryGetAndroidHardwareBufferInfoANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_GET_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,
+    pNext : rawptr,
+    memory : VkDeviceMemory,
+}
+
 VkMemoryGetFdInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
     pNext : rawptr,
@@ -2686,6 +3120,20 @@ VkMemoryGetFdInfoKHR :: struct {
 
 VkMemoryGetRemoteAddressInfoNV :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_GET_REMOTE_ADDRESS_INFO_NV,
+    pNext : rawptr,
+    memory : VkDeviceMemory,
+    handleType : VkExternalMemoryHandleTypeFlagBits,
+}
+
+VkMemoryGetWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    memory : VkDeviceMemory,
+    handleType : VkExternalMemoryHandleTypeFlagBits,
+}
+
+VkMemoryGetZirconHandleInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_GET_ZIRCON_HANDLE_INFO_FUCHSIA,
     pNext : rawptr,
     memory : VkDeviceMemory,
     handleType : VkExternalMemoryHandleTypeFlagBits,
@@ -2760,6 +3208,25 @@ VkMemoryUnmapInfoKHR :: struct {
     pNext : rawptr,
     flags : VkMemoryUnmapFlagsKHR,
     memory : VkDeviceMemory,
+}
+
+VkMemoryWin32HandlePropertiesKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_WIN32_HANDLE_PROPERTIES_KHR,
+    pNext : rawptr,
+    memoryTypeBits : u32,
+}
+
+VkMemoryZirconHandlePropertiesFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_MEMORY_ZIRCON_HANDLE_PROPERTIES_FUCHSIA,
+    pNext : rawptr,
+    memoryTypeBits : u32,
+}
+
+VkMetalSurfaceCreateInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+    pNext : rawptr,
+    flags : VkMetalSurfaceCreateFlagsEXT,
+    pLayer : ptr[CAMetalLayer]?,
 }
 
 VkMicromapBuildInfoEXT :: struct {
@@ -3482,6 +3949,20 @@ VkPhysicalDeviceDiscardRectanglePropertiesEXT :: struct {
     maxDiscardRectangles : u32,
 }
 
+// Provisional (VK_NV_displacement_micromap): it can change in a later registry
+VkPhysicalDeviceDisplacementMicromapFeaturesNV :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_FEATURES_NV,
+    pNext : rawptr,
+    displacementMicromap : VkBool32,
+}
+
+// Provisional (VK_NV_displacement_micromap): it can change in a later registry
+VkPhysicalDeviceDisplacementMicromapPropertiesNV :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_PROPERTIES_NV,
+    pNext : rawptr,
+    maxDisplacementMicromapSubdivisionLevel : u32,
+}
+
 VkPhysicalDeviceDriverProperties :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
     pNext : rawptr,
@@ -3612,6 +4093,20 @@ VkPhysicalDeviceExternalFenceInfo :: struct {
 
 VkPhysicalDeviceExternalFenceInfoKHR :: VkPhysicalDeviceExternalFenceInfo
 
+VkPhysicalDeviceExternalFormatResolveFeaturesANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FORMAT_RESOLVE_FEATURES_ANDROID,
+    pNext : rawptr,
+    externalFormatResolve : VkBool32,
+}
+
+VkPhysicalDeviceExternalFormatResolvePropertiesANDROID :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FORMAT_RESOLVE_PROPERTIES_ANDROID,
+    pNext : rawptr,
+    nullColorAttachmentWithExternalFormatResolve : VkBool32,
+    externalFormatResolveChromaOffsetX : VkChromaLocation,
+    externalFormatResolveChromaOffsetY : VkChromaLocation,
+}
+
 VkPhysicalDeviceExternalImageFormatInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO,
     pNext : rawptr,
@@ -3630,6 +4125,12 @@ VkPhysicalDeviceExternalMemoryRDMAFeaturesNV :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_RDMA_FEATURES_NV,
     pNext : rawptr,
     externalMemoryRDMA : VkBool32,
+}
+
+VkPhysicalDeviceExternalMemoryScreenBufferFeaturesQNX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_SCREEN_BUFFER_FEATURES_QNX,
+    pNext : rawptr,
+    screenBufferImport : VkBool32,
 }
 
 VkPhysicalDeviceExternalSemaphoreInfo :: struct {
@@ -4569,6 +5070,34 @@ VkPhysicalDevicePointClippingProperties :: struct {
 
 VkPhysicalDevicePointClippingPropertiesKHR :: VkPhysicalDevicePointClippingProperties
 
+// Provisional (VK_KHR_portability_subset): it can change in a later registry
+VkPhysicalDevicePortabilitySubsetFeaturesKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR,
+    pNext : rawptr,
+    constantAlphaColorBlendFactors : VkBool32,
+    events : VkBool32,
+    imageViewFormatReinterpretation : VkBool32,
+    imageViewFormatSwizzle : VkBool32,
+    imageView2DOn3DImage : VkBool32,
+    multisampleArrayImage : VkBool32,
+    mutableComparisonSamplers : VkBool32,
+    pointPolygons : VkBool32,
+    samplerMipLodBias : VkBool32,
+    separateStencilMaskRef : VkBool32,
+    shaderSampleRateInterpolationFunctions : VkBool32,
+    tessellationIsolines : VkBool32,
+    tessellationPointMode : VkBool32,
+    triangleFans : VkBool32,
+    vertexAttributeAccessBeyondStride : VkBool32,
+}
+
+// Provisional (VK_KHR_portability_subset): it can change in a later registry
+VkPhysicalDevicePortabilitySubsetPropertiesKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR,
+    pNext : rawptr,
+    minVertexInputBindingStrideAlignment : u32,
+}
+
 VkPhysicalDevicePresentBarrierFeaturesNV :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_BARRIER_FEATURES_NV,
     pNext : rawptr,
@@ -4934,6 +5463,24 @@ VkPhysicalDeviceShaderEarlyAndLateFragmentTestsFeaturesAMD :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_EARLY_AND_LATE_FRAGMENT_TESTS_FEATURES_AMD,
     pNext : rawptr,
     shaderEarlyAndLateFragmentTests : VkBool32,
+}
+
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkPhysicalDeviceShaderEnqueueFeaturesAMDX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ENQUEUE_FEATURES_AMDX,
+    pNext : rawptr,
+    shaderEnqueue : VkBool32,
+}
+
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkPhysicalDeviceShaderEnqueuePropertiesAMDX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ENQUEUE_PROPERTIES_AMDX,
+    pNext : rawptr,
+    maxExecutionGraphDepth : u32,
+    maxExecutionGraphShaderOutputNodes : u32,
+    maxExecutionGraphShaderPayloadSize : u32,
+    maxExecutionGraphShaderPayloadCount : u32,
+    executionGraphDispatchAddressAlignment : u32,
 }
 
 VkPhysicalDeviceShaderFloat16Int8Features :: struct {
@@ -5306,6 +5853,14 @@ VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_INPUT_DYNAMIC_STATE_FEATURES_EXT,
     pNext : rawptr,
     vertexInputDynamicState : VkBool32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkPhysicalDeviceVideoEncodeQualityLevelInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_ENCODE_QUALITY_LEVEL_INFO_KHR,
+    pNext : rawptr,
+    pVideoProfile : ptr[VkVideoProfileInfoKHR]?,
+    qualityLevel : u32,
 }
 
 VkPhysicalDeviceVideoFormatInfoKHR :: struct {
@@ -5939,6 +6494,14 @@ VkPipelineShaderStageModuleIdentifierCreateInfoEXT :: struct {
     pIdentifier : cstring?,
 }
 
+// Provisional (VK_AMDX_shader_enqueue): it can change in a later registry
+VkPipelineShaderStageNodeCreateInfoAMDX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_NODE_CREATE_INFO_AMDX,
+    pNext : rawptr,
+    pName : cstring?,
+    index : u32,
+}
+
 VkPipelineShaderStageRequiredSubgroupSizeCreateInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO,
     pNext : rawptr,
@@ -6125,6 +6688,13 @@ VkQueryPoolPerformanceQueryCreateInfoINTEL :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_QUERY_CREATE_INFO_INTEL,
     pNext : rawptr,
     performanceCountersSampling : VkQueryPoolSamplingModeINTEL,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkQueryPoolVideoEncodeFeedbackCreateInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_QUERY_POOL_VIDEO_ENCODE_FEEDBACK_CREATE_INFO_KHR,
+    pNext : rawptr,
+    encodeFeedbackFlags : VkVideoEncodeFeedbackFlagsKHR,
 }
 
 VkQueueFamilyCheckpointProperties2NV :: struct {
@@ -6576,6 +7146,35 @@ VkSamplerYcbcrConversionYcbcrDegammaCreateInfoQCOM :: struct {
     enableCbCrDegamma : VkBool32,
 }
 
+VkScreenBufferFormatPropertiesQNX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SCREEN_BUFFER_FORMAT_PROPERTIES_QNX,
+    pNext : rawptr,
+    format : VkFormat,
+    externalFormat : u64,
+    screenUsage : u64,
+    formatFeatures : VkFormatFeatureFlags,
+    samplerYcbcrConversionComponents : VkComponentMapping,
+    suggestedYcbcrModel : VkSamplerYcbcrModelConversion,
+    suggestedYcbcrRange : VkSamplerYcbcrRange,
+    suggestedXChromaOffset : VkChromaLocation,
+    suggestedYChromaOffset : VkChromaLocation,
+}
+
+VkScreenBufferPropertiesQNX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SCREEN_BUFFER_PROPERTIES_QNX,
+    pNext : rawptr,
+    allocationSize : VkDeviceSize,
+    memoryTypeBits : u32,
+}
+
+VkScreenSurfaceCreateInfoQNX :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SCREEN_SURFACE_CREATE_INFO_QNX,
+    pNext : rawptr,
+    flags : VkScreenSurfaceCreateFlagsQNX,
+    context_ : ptr[mut screen_context]?,
+    window : ptr[mut screen_window]?,
+}
+
 VkSemaphoreCreateInfo :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     pNext : rawptr,
@@ -6584,6 +7183,20 @@ VkSemaphoreCreateInfo :: struct {
 
 VkSemaphoreGetFdInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
+    pNext : rawptr,
+    semaphore : VkSemaphore,
+    handleType : VkExternalSemaphoreHandleTypeFlagBits,
+}
+
+VkSemaphoreGetWin32HandleInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR,
+    pNext : rawptr,
+    semaphore : VkSemaphore,
+    handleType : VkExternalSemaphoreHandleTypeFlagBits,
+}
+
+VkSemaphoreGetZirconHandleInfoFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SEMAPHORE_GET_ZIRCON_HANDLE_INFO_FUCHSIA,
     pNext : rawptr,
     semaphore : VkSemaphore,
     handleType : VkExternalSemaphoreHandleTypeFlagBits,
@@ -6979,6 +7592,12 @@ VkSurfaceCapabilities2KHR :: struct {
     surfaceCapabilities : VkSurfaceCapabilitiesKHR,
 }
 
+VkSurfaceCapabilitiesFullScreenExclusiveEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_FULL_SCREEN_EXCLUSIVE_EXT,
+    pNext : rawptr,
+    fullScreenExclusiveSupported : VkBool32,
+}
+
 VkSurfaceCapabilitiesKHR :: struct {
     minImageCount : u32,
     maxImageCount : u32,
@@ -7007,6 +7626,18 @@ VkSurfaceFormat2KHR :: struct {
 VkSurfaceFormatKHR :: struct {
     format : VkFormat,
     colorSpace : VkColorSpaceKHR,
+}
+
+VkSurfaceFullScreenExclusiveInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
+    pNext : rawptr,
+    fullScreenExclusive : VkFullScreenExclusiveEXT,
+}
+
+VkSurfaceFullScreenExclusiveWin32InfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT,
+    pNext : rawptr,
+    hmonitor : HMONITOR,
 }
 
 VkSurfacePresentModeCompatibilityEXT :: struct {
@@ -7110,6 +7741,12 @@ VkSwapchainPresentScalingCreateInfoEXT :: struct {
     scalingBehavior : VkPresentScalingFlagsEXT,
     presentGravityX : VkPresentGravityFlagsEXT,
     presentGravityY : VkPresentGravityFlagsEXT,
+}
+
+VkSysmemColorSpaceFUCHSIA :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_SYSMEM_COLOR_SPACE_FUCHSIA,
+    pNext : rawptr,
+    colorSpace : u32,
 }
 
 VkTextureLODGatherFormatPropertiesAMD :: struct {
@@ -7226,6 +7863,13 @@ VkVertexInputBindingDivisorDescriptionEXT :: struct {
     divisor : u32,
 }
 
+VkViSurfaceCreateInfoNN :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN,
+    pNext : rawptr,
+    flags : VkViSurfaceCreateFlagsNN,
+    window : rawptr,
+}
+
 VkVideoBeginCodingInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_BEGIN_CODING_INFO_KHR,
     pNext : rawptr,
@@ -7279,6 +7923,256 @@ VkVideoDecodeUsageInfoKHR :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_DECODE_USAGE_INFO_KHR,
     pNext : rawptr,
     videoUsageHints : VkVideoDecodeUsageFlagsKHR,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeCapabilitiesKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_CAPABILITIES_KHR,
+    pNext : rawptr,
+    flags : VkVideoEncodeCapabilityFlagsKHR,
+    rateControlModes : VkVideoEncodeRateControlModeFlagsKHR,
+    maxRateControlLayers : u32,
+    maxBitrate : u64,
+    maxQualityLevels : u32,
+    encodeInputPictureGranularity : VkExtent2D,
+    supportedEncodeFeedbackFlags : VkVideoEncodeFeedbackFlagsKHR,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264FrameSizeEXT :: struct {
+    frameISize : u32,
+    framePSize : u32,
+    frameBSize : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264GopRemainingFrameInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_GOP_REMAINING_FRAME_INFO_EXT,
+    pNext : rawptr,
+    useGopRemainingFrames : VkBool32,
+    gopRemainingI : u32,
+    gopRemainingP : u32,
+    gopRemainingB : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264QpEXT :: struct {
+    qpI : i32,
+    qpP : i32,
+    qpB : i32,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264QualityLevelPropertiesEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_QUALITY_LEVEL_PROPERTIES_EXT,
+    pNext : rawptr,
+    preferredRateControlFlags : VkVideoEncodeH264RateControlFlagsEXT,
+    preferredGopFrameCount : u32,
+    preferredIdrPeriod : u32,
+    preferredConsecutiveBFrameCount : u32,
+    preferredTemporalLayerCount : u32,
+    preferredConstantQp : VkVideoEncodeH264QpEXT,
+    preferredMaxL0ReferenceCount : u32,
+    preferredMaxL1ReferenceCount : u32,
+    preferredStdEntropyCodingModeFlag : VkBool32,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264RateControlInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_RATE_CONTROL_INFO_EXT,
+    pNext : rawptr,
+    flags : VkVideoEncodeH264RateControlFlagsEXT,
+    gopFrameCount : u32,
+    idrPeriod : u32,
+    consecutiveBFrameCount : u32,
+    temporalLayerCount : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264RateControlLayerInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_RATE_CONTROL_LAYER_INFO_EXT,
+    pNext : rawptr,
+    useMinQp : VkBool32,
+    minQp : VkVideoEncodeH264QpEXT,
+    useMaxQp : VkBool32,
+    maxQp : VkVideoEncodeH264QpEXT,
+    useMaxFrameSize : VkBool32,
+    maxFrameSize : VkVideoEncodeH264FrameSizeEXT,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264SessionParametersFeedbackInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_FEEDBACK_INFO_EXT,
+    pNext : rawptr,
+    hasStdSPSOverrides : VkBool32,
+    hasStdPPSOverrides : VkBool32,
+}
+
+// Provisional (VK_EXT_video_encode_h264): it can change in a later registry
+VkVideoEncodeH264SessionParametersGetInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_GET_INFO_EXT,
+    pNext : rawptr,
+    writeStdSPS : VkBool32,
+    writeStdPPS : VkBool32,
+    stdSPSId : u32,
+    stdPPSId : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265FrameSizeEXT :: struct {
+    frameISize : u32,
+    framePSize : u32,
+    frameBSize : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265GopRemainingFrameInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_GOP_REMAINING_FRAME_INFO_EXT,
+    pNext : rawptr,
+    useGopRemainingFrames : VkBool32,
+    gopRemainingI : u32,
+    gopRemainingP : u32,
+    gopRemainingB : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265QpEXT :: struct {
+    qpI : i32,
+    qpP : i32,
+    qpB : i32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265QualityLevelPropertiesEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_QUALITY_LEVEL_PROPERTIES_EXT,
+    pNext : rawptr,
+    preferredRateControlFlags : VkVideoEncodeH265RateControlFlagsEXT,
+    preferredGopFrameCount : u32,
+    preferredIdrPeriod : u32,
+    preferredConsecutiveBFrameCount : u32,
+    preferredSubLayerCount : u32,
+    preferredConstantQp : VkVideoEncodeH265QpEXT,
+    preferredMaxL0ReferenceCount : u32,
+    preferredMaxL1ReferenceCount : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265RateControlInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_INFO_EXT,
+    pNext : rawptr,
+    flags : VkVideoEncodeH265RateControlFlagsEXT,
+    gopFrameCount : u32,
+    idrPeriod : u32,
+    consecutiveBFrameCount : u32,
+    subLayerCount : u32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265RateControlLayerInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_LAYER_INFO_EXT,
+    pNext : rawptr,
+    useMinQp : VkBool32,
+    minQp : VkVideoEncodeH265QpEXT,
+    useMaxQp : VkBool32,
+    maxQp : VkVideoEncodeH265QpEXT,
+    useMaxFrameSize : VkBool32,
+    maxFrameSize : VkVideoEncodeH265FrameSizeEXT,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265SessionParametersFeedbackInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_FEEDBACK_INFO_EXT,
+    pNext : rawptr,
+    hasStdVPSOverrides : VkBool32,
+    hasStdSPSOverrides : VkBool32,
+    hasStdPPSOverrides : VkBool32,
+}
+
+// Provisional (VK_EXT_video_encode_h265): it can change in a later registry
+VkVideoEncodeH265SessionParametersGetInfoEXT :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_GET_INFO_EXT,
+    pNext : rawptr,
+    writeStdVPS : VkBool32,
+    writeStdSPS : VkBool32,
+    writeStdPPS : VkBool32,
+    stdVPSId : u32,
+    stdSPSId : u32,
+    stdPPSId : u32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_INFO_KHR,
+    pNext : rawptr,
+    flags : VkVideoEncodeFlagsKHR,
+    dstBuffer : VkBuffer,
+    dstBufferOffset : VkDeviceSize,
+    dstBufferRange : VkDeviceSize,
+    srcPictureResource : VkVideoPictureResourceInfoKHR,
+    pSetupReferenceSlot : ptr[VkVideoReferenceSlotInfoKHR]?,
+    referenceSlotCount : u32,
+    pReferenceSlots : ptr[VkVideoReferenceSlotInfoKHR]?,
+    precedingExternallyEncodedBytes : u32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeQualityLevelInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_QUALITY_LEVEL_INFO_KHR,
+    pNext : rawptr,
+    qualityLevel : u32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeQualityLevelPropertiesKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_QUALITY_LEVEL_PROPERTIES_KHR,
+    pNext : rawptr,
+    preferredRateControlMode : VkVideoEncodeRateControlModeFlagBitsKHR,
+    preferredRateControlLayerCount : u32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeRateControlInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_RATE_CONTROL_INFO_KHR,
+    pNext : rawptr,
+    flags : VkVideoEncodeRateControlFlagsKHR,
+    rateControlMode : VkVideoEncodeRateControlModeFlagBitsKHR,
+    layerCount : u32,
+    pLayers : ptr[VkVideoEncodeRateControlLayerInfoKHR]?,
+    virtualBufferSizeInMs : u32,
+    initialVirtualBufferSizeInMs : u32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeRateControlLayerInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_RATE_CONTROL_LAYER_INFO_KHR,
+    pNext : rawptr,
+    averageBitrate : u64,
+    maxBitrate : u64,
+    frameRateNumerator : u32,
+    frameRateDenominator : u32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeSessionParametersFeedbackInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_SESSION_PARAMETERS_FEEDBACK_INFO_KHR,
+    pNext : rawptr,
+    hasOverrides : VkBool32,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeSessionParametersGetInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_SESSION_PARAMETERS_GET_INFO_KHR,
+    pNext : rawptr,
+    videoSessionParameters : VkVideoSessionParametersKHR,
+}
+
+// Provisional (VK_KHR_video_encode_queue): it can change in a later registry
+VkVideoEncodeUsageInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_VIDEO_ENCODE_USAGE_INFO_KHR,
+    pNext : rawptr,
+    videoUsageHints : VkVideoEncodeUsageFlagsKHR,
+    videoContentHints : VkVideoEncodeContentFlagsKHR,
+    tuningMode : VkVideoEncodeTuningModeKHR,
 }
 
 VkVideoEndCodingInfoKHR :: struct {
@@ -7386,6 +8280,46 @@ VkViewportWScalingNV :: struct {
     ycoeff : f32,
 }
 
+VkWaylandSurfaceCreateInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+    pNext : rawptr,
+    flags : VkWaylandSurfaceCreateFlagsKHR,
+    display : ptr[mut wl_display]?,
+    surface : ptr[mut wl_surface]?,
+}
+
+VkWin32KeyedMutexAcquireReleaseInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_KHR,
+    pNext : rawptr,
+    acquireCount : u32,
+    pAcquireSyncs : ptr[VkDeviceMemory]?,
+    pAcquireKeys : ptr[u64]?,
+    pAcquireTimeouts : ptr[u32]?,
+    releaseCount : u32,
+    pReleaseSyncs : ptr[VkDeviceMemory]?,
+    pReleaseKeys : ptr[u64]?,
+}
+
+VkWin32KeyedMutexAcquireReleaseInfoNV :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_WIN32_KEYED_MUTEX_ACQUIRE_RELEASE_INFO_NV,
+    pNext : rawptr,
+    acquireCount : u32,
+    pAcquireSyncs : ptr[VkDeviceMemory]?,
+    pAcquireKeys : ptr[u64]?,
+    pAcquireTimeoutMilliseconds : ptr[u32]?,
+    releaseCount : u32,
+    pReleaseSyncs : ptr[VkDeviceMemory]?,
+    pReleaseKeys : ptr[u64]?,
+}
+
+VkWin32SurfaceCreateInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+    pNext : rawptr,
+    flags : VkWin32SurfaceCreateFlagsKHR,
+    hinstance : HINSTANCE,
+    hwnd : HWND,
+}
+
 VkWriteDescriptorSet :: struct {
     sType : VkStructureType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
     pNext : rawptr,
@@ -7425,4 +8359,20 @@ VkWriteDescriptorSetInlineUniformBlockEXT :: VkWriteDescriptorSetInlineUniformBl
 VkXYColorEXT :: struct {
     x : f32,
     y : f32,
+}
+
+VkXcbSurfaceCreateInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+    pNext : rawptr,
+    flags : VkXcbSurfaceCreateFlagsKHR,
+    connection : ptr[mut xcb_connection_t]?,
+    window : xcb_window_t,
+}
+
+VkXlibSurfaceCreateInfoKHR :: struct {
+    sType : VkStructureType = .VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+    pNext : rawptr,
+    flags : VkXlibSurfaceCreateFlagsKHR,
+    dpy : ptr[mut Display]?,
+    window : Window,
 }

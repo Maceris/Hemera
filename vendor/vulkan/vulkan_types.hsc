@@ -6,6 +6,15 @@ package vulkan
 VkFlags :: distinct alias u32
 VkFlags64 :: distinct alias u64
 VkBool32 :: alias b32
+AHardwareBuffer :: struct {}
+ANativeWindow :: struct {}
+CAMetalLayer :: struct {}
+IOSurfaceRef :: alias rawptr
+MTLBuffer_id :: alias rawptr
+MTLCommandQueue_id :: alias rawptr
+MTLDevice_id :: alias rawptr
+MTLSharedEvent_id :: alias rawptr
+MTLTexture_id :: alias rawptr
 VkDeviceAddress :: distinct alias u64
 VkDeviceSize :: distinct alias u64
 VkRemoteAddressNV :: distinct alias rawptr
@@ -17,6 +26,7 @@ VkNonDispatchableHandle :: distinct alias u64
 VkAccelerationStructureKHR :: distinct alias VkNonDispatchableHandle
 VkAccelerationStructureNV :: distinct alias VkNonDispatchableHandle
 VkBuffer :: distinct alias VkNonDispatchableHandle
+VkBufferCollectionFUCHSIA :: distinct alias VkNonDispatchableHandle
 VkBufferView :: distinct alias VkNonDispatchableHandle
 VkCommandBuffer :: distinct alias VkHandle
 VkCommandPool :: distinct alias VkNonDispatchableHandle
@@ -77,6 +87,7 @@ VkAccessFlagBits2 :: VkAccessFlags2
 VkAccessFlags2KHR :: VkAccessFlags2
 VkAcquireProfilingLockFlagsKHR :: distinct alias VkFlags
 VkAcquireProfilingLockFlagBitsKHR :: VkAcquireProfilingLockFlagsKHR
+VkAndroidSurfaceCreateFlagsKHR :: distinct alias VkFlags
 VkAttachmentDescriptionFlags :: distinct alias VkFlags
 VkAttachmentDescriptionFlagBits :: VkAttachmentDescriptionFlags
 VkBufferCreateFlags :: distinct alias VkFlags
@@ -140,12 +151,15 @@ VkDeviceMemoryReportFlagsEXT :: distinct alias VkFlags
 VkDeviceQueueCreateFlags :: distinct alias VkFlags
 VkDeviceQueueCreateFlagBits :: VkDeviceQueueCreateFlags
 VkDirectDriverLoadingFlagsLUNARG :: distinct alias VkFlags
+VkDirectFBSurfaceCreateFlagsEXT :: distinct alias VkFlags
 VkDisplayModeCreateFlagsKHR :: distinct alias VkFlags
 VkDisplayPlaneAlphaFlagsKHR :: distinct alias VkFlags
 VkDisplayPlaneAlphaFlagBitsKHR :: VkDisplayPlaneAlphaFlagsKHR
 VkDisplaySurfaceCreateFlagsKHR :: distinct alias VkFlags
 VkEventCreateFlags :: distinct alias VkFlags
 VkEventCreateFlagBits :: VkEventCreateFlags
+VkExportMetalObjectTypeFlagsEXT :: distinct alias VkFlags
+VkExportMetalObjectTypeFlagBitsEXT :: VkExportMetalObjectTypeFlagsEXT
 VkExternalFenceFeatureFlags :: distinct alias VkFlags
 VkExternalFenceFeatureFlagBits :: VkExternalFenceFeatureFlags
 VkExternalFenceFeatureFlagsKHR :: VkExternalFenceFeatureFlags
@@ -193,14 +207,19 @@ VkGraphicsPipelineLibraryFlagBitsEXT :: VkGraphicsPipelineLibraryFlagsEXT
 VkHeadlessSurfaceCreateFlagsEXT :: distinct alias VkFlags
 VkHostImageCopyFlagsEXT :: distinct alias VkFlags
 VkHostImageCopyFlagBitsEXT :: VkHostImageCopyFlagsEXT
+VkIOSSurfaceCreateFlagsMVK :: distinct alias VkFlags
 VkImageAspectFlags :: distinct alias VkFlags
 VkImageAspectFlagBits :: VkImageAspectFlags
 VkImageCompressionFixedRateFlagsEXT :: distinct alias VkFlags
 VkImageCompressionFixedRateFlagBitsEXT :: VkImageCompressionFixedRateFlagsEXT
 VkImageCompressionFlagsEXT :: distinct alias VkFlags
 VkImageCompressionFlagBitsEXT :: VkImageCompressionFlagsEXT
+VkImageConstraintsInfoFlagsFUCHSIA :: distinct alias VkFlags
+VkImageConstraintsInfoFlagBitsFUCHSIA :: VkImageConstraintsInfoFlagsFUCHSIA
 VkImageCreateFlags :: distinct alias VkFlags
 VkImageCreateFlagBits :: VkImageCreateFlags
+VkImageFormatConstraintsFlagsFUCHSIA :: distinct alias VkFlags
+VkImagePipeSurfaceCreateFlagsFUCHSIA :: distinct alias VkFlags
 VkImageUsageFlags :: distinct alias VkFlags
 VkImageUsageFlagBits :: VkImageUsageFlags
 VkImageViewCreateFlags :: distinct alias VkFlags
@@ -211,6 +230,7 @@ VkIndirectStateFlagsNV :: distinct alias VkFlags
 VkIndirectStateFlagBitsNV :: VkIndirectStateFlagsNV
 VkInstanceCreateFlags :: distinct alias VkFlags
 VkInstanceCreateFlagBits :: VkInstanceCreateFlags
+VkMacOSSurfaceCreateFlagsMVK :: distinct alias VkFlags
 VkMemoryAllocateFlags :: distinct alias VkFlags
 VkMemoryAllocateFlagBits :: VkMemoryAllocateFlags
 VkMemoryAllocateFlagsKHR :: VkMemoryAllocateFlags
@@ -222,6 +242,7 @@ VkMemoryMapFlags :: distinct alias VkFlags
 VkMemoryPropertyFlags :: distinct alias VkFlags
 VkMemoryPropertyFlagBits :: VkMemoryPropertyFlags
 VkMemoryUnmapFlagsKHR :: distinct alias VkFlags
+VkMetalSurfaceCreateFlagsEXT :: distinct alias VkFlags
 VkMicromapCreateFlagsEXT :: distinct alias VkFlags
 VkMicromapCreateFlagBitsEXT :: VkMicromapCreateFlagsEXT
 VkOpticalFlowExecuteFlagsNV :: distinct alias VkFlags
@@ -303,6 +324,7 @@ VkSampleCountFlags :: distinct alias VkFlags
 VkSampleCountFlagBits :: VkSampleCountFlags
 VkSamplerCreateFlags :: distinct alias VkFlags
 VkSamplerCreateFlagBits :: VkSamplerCreateFlags
+VkScreenSurfaceCreateFlagsQNX :: distinct alias VkFlags
 VkSemaphoreCreateFlags :: distinct alias VkFlags
 VkSemaphoreImportFlags :: distinct alias VkFlags
 VkSemaphoreImportFlagBits :: VkSemaphoreImportFlags
@@ -323,6 +345,7 @@ VkSparseMemoryBindFlags :: distinct alias VkFlags
 VkSparseMemoryBindFlagBits :: VkSparseMemoryBindFlags
 VkStencilFaceFlags :: distinct alias VkFlags
 VkStencilFaceFlagBits :: VkStencilFaceFlags
+VkStreamDescriptorSurfaceCreateFlagsGGP :: distinct alias VkFlags
 VkSubgroupFeatureFlags :: distinct alias VkFlags
 VkSubgroupFeatureFlagBits :: VkSubgroupFeatureFlags
 VkSubmitFlags :: distinct alias VkFlags
@@ -340,6 +363,7 @@ VkToolPurposeFlags :: distinct alias VkFlags
 VkToolPurposeFlagBits :: VkToolPurposeFlags
 VkToolPurposeFlagsEXT :: VkToolPurposeFlags
 VkValidationCacheCreateFlagsEXT :: distinct alias VkFlags
+VkViSurfaceCreateFlagsNN :: distinct alias VkFlags
 VkVideoBeginCodingFlagsKHR :: distinct alias VkFlags
 VkVideoCapabilityFlagsKHR :: distinct alias VkFlags
 VkVideoCapabilityFlagBitsKHR :: VkVideoCapabilityFlagsKHR
@@ -358,10 +382,42 @@ VkVideoDecodeH264PictureLayoutFlagsKHR :: distinct alias VkFlags
 VkVideoDecodeH264PictureLayoutFlagBitsKHR :: VkVideoDecodeH264PictureLayoutFlagsKHR
 VkVideoDecodeUsageFlagsKHR :: distinct alias VkFlags
 VkVideoDecodeUsageFlagBitsKHR :: VkVideoDecodeUsageFlagsKHR
+VkVideoEncodeCapabilityFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeCapabilityFlagBitsKHR :: VkVideoEncodeCapabilityFlagsKHR
+VkVideoEncodeContentFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeContentFlagBitsKHR :: VkVideoEncodeContentFlagsKHR
+VkVideoEncodeFeedbackFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeFeedbackFlagBitsKHR :: VkVideoEncodeFeedbackFlagsKHR
+VkVideoEncodeFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeH264CapabilityFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH264CapabilityFlagBitsEXT :: VkVideoEncodeH264CapabilityFlagsEXT
+VkVideoEncodeH264RateControlFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH264RateControlFlagBitsEXT :: VkVideoEncodeH264RateControlFlagsEXT
+VkVideoEncodeH264StdFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH264StdFlagBitsEXT :: VkVideoEncodeH264StdFlagsEXT
+VkVideoEncodeH265CapabilityFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH265CapabilityFlagBitsEXT :: VkVideoEncodeH265CapabilityFlagsEXT
+VkVideoEncodeH265CtbSizeFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH265CtbSizeFlagBitsEXT :: VkVideoEncodeH265CtbSizeFlagsEXT
+VkVideoEncodeH265RateControlFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH265RateControlFlagBitsEXT :: VkVideoEncodeH265RateControlFlagsEXT
+VkVideoEncodeH265StdFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH265StdFlagBitsEXT :: VkVideoEncodeH265StdFlagsEXT
+VkVideoEncodeH265TransformBlockSizeFlagsEXT :: distinct alias VkFlags
+VkVideoEncodeH265TransformBlockSizeFlagBitsEXT :: VkVideoEncodeH265TransformBlockSizeFlagsEXT
+VkVideoEncodeRateControlFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeRateControlModeFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeRateControlModeFlagBitsKHR :: VkVideoEncodeRateControlModeFlagsKHR
+VkVideoEncodeUsageFlagsKHR :: distinct alias VkFlags
+VkVideoEncodeUsageFlagBitsKHR :: VkVideoEncodeUsageFlagsKHR
 VkVideoEndCodingFlagsKHR :: distinct alias VkFlags
 VkVideoSessionCreateFlagsKHR :: distinct alias VkFlags
 VkVideoSessionCreateFlagBitsKHR :: VkVideoSessionCreateFlagsKHR
 VkVideoSessionParametersCreateFlagsKHR :: distinct alias VkFlags
+VkWaylandSurfaceCreateFlagsKHR :: distinct alias VkFlags
+VkWin32SurfaceCreateFlagsKHR :: distinct alias VkFlags
+VkXcbSurfaceCreateFlagsKHR :: distinct alias VkFlags
+VkXlibSurfaceCreateFlagsKHR :: distinct alias VkFlags
 
 // Function pointers, which foreign code calls back
 PFN_vkAllocationFunction :: alias fn(pUserData: rawptr, size: usize, alignment: usize, allocationScope: VkSystemAllocationScope) -> rawptr #calling_convention(.c)

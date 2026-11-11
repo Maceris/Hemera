@@ -31,6 +31,13 @@ main :: fn() -> int {
     application :: memory.new_value(vk.VkApplicationInfo.{pApplicationName = "vulkan_info", apiVersion = vk.VK_API_VERSION_1_3},
         from_frame)
     create := vk.VkInstanceCreateInfo.{pApplicationInfo = application}
+    #if OS == .Windows {
+        // The surface extensions, which the platform's presentation queries below need enabled
+        extensions :: memory.new_value(cstring.[vk.VK_KHR_SURFACE_EXTENSION_NAME, vk.VK_KHR_WIN32_SURFACE_EXTENSION_NAME],
+            from_frame)
+        create.enabledExtensionCount = 2
+        create.ppEnabledExtensionNames = &extensions[0]
+    }
     instance : vk.VkInstance
     result := vk.vkCreateInstance(&create, null, &instance)
     if result != .VK_SUCCESS {
@@ -67,6 +74,16 @@ main :: fn() -> int {
         printf("     dynamic rendering %, synchronization2 %, buffer device address %, geometry shaders %\n",
             features13.dynamicRendering, features13.synchronization2, features12.bufferDeviceAddress,
             features.features.geometryShader)
+
+        // Which queue families can present to a window, through the platform's surface extension the loader exports
+        #if OS == .Windows {
+            families : u32 = 0
+            vk.vkGetPhysicalDeviceQueueFamilyProperties(device, &families, null)
+            for family in 0..<families {
+                printf("     queue family % presents to Win32 windows: %\n", family,
+                    vk.vkGetPhysicalDeviceWin32PresentationSupportKHR(device, family))
+            }
+        }
     }
 
     // Commands the loader doesn't export, found by name, and called through their pointers
