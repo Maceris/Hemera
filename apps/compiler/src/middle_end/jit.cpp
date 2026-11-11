@@ -14,6 +14,8 @@
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -675,7 +677,29 @@ namespace hemera {
 		 * 48 the other, and the Ed25519 table, which computes, came out quicker overall too.
 		 */
 		machine->setCodeGenOptLevel(llvm::CodeGenOptLevel::None);
-		return llvm::orc::LLJITBuilder().setJITTargetMachineBuilder(std::move(*machine)).create();
+		llvm::orc::LLJITBuilder builder;
+		builder.setJITTargetMachineBuilder(std::move(*machine));
+#if defined(_WIN32)
+		/*
+		 * Each object's sections in one block. RuntimeDyld's COFF linker otherwise places an object's code, read-only
+		 * and writable sections apart, wherever VirtualAlloc gives, and its 32-bit relocations between them (REL32,
+		 * and ADDR32NB from the image base its unwind tables count from) are only asserted, so ones that overflow were
+		 * truncated in a release build: compile-time code read through an address cut short, reading near 0, or a
+		 * relocation caught overflowing ended the compiler. A reserving memory manager allocates them together.
+		 * Calls between objects go through RuntimeDyld's stubs, which jump to 64-bit addresses.
+		 */
+		builder.setObjectLinkingLayerCreator([](llvm::orc::ExecutionSession& session, llvm::jitlink::JITLinkMemoryManager&)
+			-> llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>> {
+			auto layer = std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(session, [](const llvm::MemoryBuffer&) {
+				return std::make_unique<llvm::SectionMemoryManager>(nullptr, true);
+			});
+			// As LLJIT's own COFF layer has them
+			layer->setOverrideObjectFlagsWithResponsibilityFlags(true);
+			layer->setAutoClaimResponsibilityForObjectSymbols(true);
+			return std::unique_ptr<llvm::orc::ObjectLayer>(std::move(layer));
+		});
+#endif
+		return builder.create();
 	}
 
 	/*
