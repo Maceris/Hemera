@@ -1289,6 +1289,35 @@ TEST(FrontEnd, ChecksIntegerRanges)
  * range, operators that don't apply, intrinsics given what they can't take, an x86_64 immediate that
  * isn't a constant, and #target_features with a +.
  */
+// Arrays as vectors (docs/types.md, Arrays as Vectors): swizzles' letters, what's assigned through, arithmetic's types.
+TEST(FrontEnd, ChecksArraysAsVectors)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("array_arithmetic_errors"));
+	ASSERT_EQ(errors.size(), 12) << codes(errors);
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"f32[4] has no member xg",
+		"f32[3] has no member w",
+		"f32[4] has no member xyzwx",
+		"f32[2] isn't a location to assign to",
+		"& needs a location",
+		"Point3 and f32[3] don't go together",
+		"f32[3] and f64[3] don't go together",
+		"% and %% are on integers, not f32",
+		"a string can't go with every element of f32[3]",
+		"f32[3] values can't be ordered",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
 TEST(FrontEnd, ChecksVectors)
 {
 	hemera::disable_reporting_printing();

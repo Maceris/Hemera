@@ -107,6 +107,12 @@ namespace hemera {
 		/// holds (docs/types.md, Relative Pointers). & and assignment use the place itself.
 		/// </summary>
 		TypeInfo* relative = nullptr;
+		/// <summary>
+		/// For a swizzle of several elements read from a place, like v.zx (docs/types.md, Arrays as Vectors): the array
+		/// it's of, and which elements, in order, so an assignment can store through it. The Emitted itself is a copy.
+		/// </summary>
+		mlir::Value swizzle_base;
+		std::vector<int64_t> swizzle;
 	};
 
 	struct Breakable {
@@ -943,6 +949,10 @@ namespace hemera {
 	static mlir::Value type_descriptor(Generator& generator, TypeInfo const* type);
 	static mlir::Value strings_equal(Generator& generator, mlir::Value left, mlir::Value right);
 	static mlir::Value values_equal(Generator& generator, mlir::Value left, mlir::Value right, TypeInfo const* type);
+	static bool array_swizzle(std::string_view name, size_t count, std::vector<int64_t>& indices);
+	static Emitted emit_swizzle(Generator& generator, const Emitted& current, TypeInfoArray const* array,
+		const std::vector<int64_t>& indices, TypeInfo* result_type);
+	static TypeInfoArray const* arithmetic_array(TypeInfo const* type);
 	static std::optional<uint64_t> target_member(Generator& generator, InternedString name, TypeInfo const* type);
 
 	/*
@@ -4459,8 +4469,12 @@ namespace hemera {
 				composite->part_type);
 		}
 		if (TypeInfoVariant::ARRAY == type->variant && ArrayType::STATIC == static_cast<TypeInfoArray const*>(type)->array_type) {
-			return value(constant_int(generator, usize_type(generator),
-				static_cast<int64_t>(static_cast<TypeInfoArray const*>(type)->count)), BUILTIN_usize);
+			auto array = static_cast<TypeInfoArray const*>(type);
+			std::vector<int64_t> indices;
+			if (array_swizzle(member, array->count, indices)) {
+				return emit_swizzle(generator, current, array, indices, result_type);
+			}
+			return value(constant_int(generator, usize_type(generator), static_cast<int64_t>(array->count)), BUILTIN_usize);
 		}
 		mlir::Value whole = value_of(generator, current);
 		if (TypeInfoVariant::ANY == type->variant) {
@@ -7653,6 +7667,26 @@ namespace hemera {
 		return location(offset_address(generator, address, some.offsets.empty() ? 0 : some.offsets[0]), some.types[0]);
 	}
 
+	/*
+	 * -x for a number, or a vector of them, whose lanes are scalar: every part of a complex number or a quaternion
+	 * negated, a float's sign flipped, an integer taken from 0.
+	 */
+	static mlir::Value negate_number(Generator& generator, mlir::Value operand, TypeInfo const* scalar) {
+		if (is_composite(scalar)) {
+			auto composite = static_cast<TypeInfoComposite const*>(base(scalar));
+			mlir::Value negated = operand;
+			for (size_t i = 0; i < composite->parts; ++i) {
+				negated = insert(generator, negated, LLVM::FNegOp::create(generator.builder, generator.loc,
+					extract(generator, operand, static_cast<int64_t>(i))), { static_cast<int64_t>(i) });
+			}
+			return negated;
+		}
+		if (is_float(scalar)) {
+			return LLVM::FNegOp::create(generator.builder, generator.loc, operand);
+		}
+		return LLVM::SubOp::create(generator.builder, generator.loc, constant_int(generator, operand.getType(), 0), operand);
+	}
+
 	static Emitted emit_unary(Generator& generator, ast::Node* node, TypeInfo* expected) {
 		const TokenType op = node->value.type;
 		ast::Node* operand_node = node->children[0];
@@ -7698,6 +7732,23 @@ namespace hemera {
 			Emitted operand = emit_expression(generator, operand_node, nullptr);
 			return location(value_of(generator, operand), result_type);
 		}
+		// -a on an array of numbers: 0 - each element, so -0.0 comes from 0.0 as it does for a float alone
+		if (TypeInfoArray const* array = arithmetic_array(result_type); array != nullptr
+			&& (TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op)) {
+			Emitted whole = emit_expression(generator, operand_node, result_type);
+			if (TokenType::OPERATOR_PLUS == op) {
+				return whole;
+			}
+			mlir::Value source = address_of(generator, whole);
+			mlir::Value slot = make_slot(generator, result_type);
+			TypeInfo* element = array->element_type;
+			for (size_t i = 0; i < array->count; ++i) {
+				mlir::Value index = constant_int(generator, usize_type(generator), static_cast<int64_t>(i));
+				mlir::Value x = load(generator, element, element_address(generator, source, element, index));
+				store(generator, negate_number(generator, x, element), element_address(generator, slot, element, index));
+			}
+			return location(slot, result_type);
+		}
 		mlir::Value operand = emit_as(generator, operand_node, result_type);
 		mlir::Type type = operand.getType();
 		if (TokenType::OPERATOR_NOT == op) {
@@ -7713,20 +7764,7 @@ namespace hemera {
 			// A vector's lanes decide, like -v on floats
 			TypeInfo const* scalar = is_variant(result_type, TypeInfoVariant::VECTOR)
 				? static_cast<TypeInfoVector const*>(base(result_type))->element_type : result_type;
-			// Every part of a complex number or a quaternion negated
-			if (is_composite(scalar)) {
-				auto composite = static_cast<TypeInfoComposite const*>(base(scalar));
-				mlir::Value negated = operand;
-				for (size_t i = 0; i < composite->parts; ++i) {
-					negated = insert(generator, negated, LLVM::FNegOp::create(generator.builder, generator.loc,
-						extract(generator, operand, static_cast<int64_t>(i))), { static_cast<int64_t>(i) });
-				}
-				return value(negated, result_type);
-			}
-			if (is_float(scalar)) {
-				return value(LLVM::FNegOp::create(generator.builder, generator.loc, operand), result_type);
-			}
-			return value(LLVM::SubOp::create(generator.builder, generator.loc, constant_int(generator, type, 0), operand), result_type);
+			return value(negate_number(generator, operand, scalar), result_type);
 		}
 		if (TokenType::OPERATOR_BITWISE_XOR == op) {
 			// A vector of bools' lanes are 0 or 1
@@ -7786,6 +7824,119 @@ namespace hemera {
 			return value(LLVM::ZExtOp::create(generator.builder, generator.loc, llvm_type(generator, result_type), lanes), result_type);
 		}
 		return value(arithmetic(generator, op, left, right, lane, node), type);
+	}
+
+	/*
+	 * A swizzle's elements (docs/types.md, Arrays as Vectors): 1 to 4 letters, all of x y z w or all of r g b a, each an
+	 * element of an array of count, in order, as the checker's swizzle_indices reads them.
+	 */
+	static bool array_swizzle(std::string_view name, size_t count, std::vector<int64_t>& indices) {
+		if (name.empty() || name.size() > 4 || count == 0 || count > 4) {
+			return false;
+		}
+		for (std::string_view letters : { std::string_view("xyzw"), std::string_view("rgba") }) {
+			std::vector<int64_t> found;
+			for (char c : name) {
+				const size_t at = letters.find(c);
+				if (at == std::string_view::npos || at >= count) {
+					found.clear();
+					break;
+				}
+				found.push_back(static_cast<int64_t>(at));
+			}
+			if (found.size() == name.size()) {
+				indices = std::move(found);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/*
+	 * An array's swizzle: one element, where it is when the array is somewhere; or several, copied into a new array,
+	 * which remembers where they came from for an assignment through it.
+	 */
+	static Emitted emit_swizzle(Generator& generator, const Emitted& current, TypeInfoArray const* array,
+		const std::vector<int64_t>& indices, TypeInfo* result_type) {
+
+		TypeInfo* element = array->element_type;
+		if (indices.size() == 1) {
+			if (current.address) {
+				return location(element_address(generator, current.address, element,
+					constant_int(generator, usize_type(generator), indices[0])), element);
+			}
+			return value(extract(generator, current.value, indices[0]), element);
+		}
+		mlir::Value slot = make_slot(generator, result_type);
+		for (size_t i = 0; i < indices.size(); ++i) {
+			mlir::Value part = current.address
+				? load(generator, element, element_address(generator, current.address, element, constant_int(generator, usize_type(generator), indices[i])))
+				: extract(generator, current.value, indices[i]);
+			store(generator, part, element_address(generator, slot, element, constant_int(generator, usize_type(generator), static_cast<int64_t>(i))));
+		}
+		Emitted copy = location(slot, result_type);
+		if (current.address) {
+			copy.swizzle_base = current.address;
+			copy.swizzle = indices;
+		}
+		return copy;
+	}
+
+	// The array an operator works on element by element: a fixed array of numbers, or null (docs/types.md, Arrays as Vectors).
+	static TypeInfoArray const* arithmetic_array(TypeInfo const* type) {
+		if (!is_variant(type, TypeInfoVariant::ARRAY)) {
+			return nullptr;
+		}
+		auto array = static_cast<TypeInfoArray const*>(base(type));
+		return ArrayType::STATIC == array->array_type && (is_variant(array->element_type, TypeInfoVariant::INTEGER) || is_float(array->element_type)
+			|| is_composite(array->element_type)) ? array : nullptr;
+	}
+
+	/*
+	 * Each element of result at result_address, the operator on left's and right's: each either an array of result's
+	 * type, at an address, or a number, for every element. Unrolled for a short array, a loop over a long one.
+	 */
+	static void array_arithmetic(Generator& generator, TokenType op, TypeInfoArray const* array, mlir::Value left, bool left_array,
+		mlir::Value right, bool right_array, mlir::Value result_address, const ast::Node* where) {
+
+		mlir::OpBuilder& b = generator.builder;
+		const mlir::Location l = generator.loc;
+		TypeInfo* element = array->element_type;
+		auto at = [&](mlir::Value index) {
+			mlir::Value x = left_array ? load(generator, element, element_address(generator, left, element, index)) : left;
+			mlir::Value y = right_array ? load(generator, element, element_address(generator, right, element, index)) : right;
+			store(generator, arithmetic(generator, op, x, y, element, where), element_address(generator, result_address, element, index));
+		};
+		if (array->count <= 16) {
+			for (size_t i = 0; i < array->count; ++i) {
+				at(constant_int(generator, usize_type(generator), static_cast<int64_t>(i)));
+			}
+			return;
+		}
+		mlir::Value index = make_slot(generator, BUILTIN_usize);
+		store(generator, constant_int(generator, usize_type(generator), 0), index);
+		emit_loop(generator, true, [&]() {
+			mlir::Value i = load(generator, BUILTIN_usize, index);
+			mlir::Value done = LLVM::ICmpOp::create(b, l, LLVM::ICmpPredicate::uge, i,
+				constant_int(generator, usize_type(generator), static_cast<int64_t>(array->count)));
+			emit_if(generator, done, [&]() {
+				emit_break(generator, 1);
+				return true;
+			}, nullptr);
+			at(i);
+			store(generator, LLVM::AddOp::create(b, l, i, constant_int(generator, usize_type(generator), 1)), index);
+			return false;
+		});
+	}
+
+	// An operand of an array's arithmetic: the array's address, or the number, of its element type.
+	static mlir::Value array_operand(Generator& generator, ast::Node* node, TypeInfo* type, bool& is_array) {
+		TypeInfo* own = type_at(generator, node, nullptr);
+		is_array = own != nullptr && arithmetic_array(own) != nullptr;
+		if (is_array) {
+			return address_of(generator, emit_expression(generator, node, type));
+		}
+		return emit_as(generator, node, arithmetic_array(type)->element_type);
 	}
 
 	static Emitted emit_binary(Generator& generator, ast::Node* node, TypeInfo* expected) {
@@ -7872,6 +8023,16 @@ namespace hemera {
 		}
 		if (TypeInfo* vector = vector_operands(generator, left_node, right_node); vector != nullptr && right_node != nullptr) {
 			return emit_vector_binary(generator, node, op, vector, result_type);
+		}
+		// Arrays of numbers element by element (docs/types.md, Arrays as Vectors)
+		if (TypeInfoArray const* array = arithmetic_array(result_type); array != nullptr && right_node != nullptr && !is_comparison(op)) {
+			bool left_array = false;
+			bool right_array = false;
+			mlir::Value left = array_operand(generator, left_node, result_type, left_array);
+			mlir::Value right = array_operand(generator, right_node, result_type, right_array);
+			mlir::Value slot = make_slot(generator, result_type);
+			array_arithmetic(generator, op, array, left, left_array, right, right_array, slot, node);
+			return location(slot, result_type);
 		}
 		if (is_comparison(op)) {
 			TypeInfo* type = shared_type(generator, left_node, right_node, nullptr);
@@ -9029,7 +9190,7 @@ namespace hemera {
 		return values;
 	}
 
-	// a = b, a, b = b, a, and a += b.
+	// a = b, a, b = b, a, and a += b; and v.xy = ..., a swizzle as the list of its elements (docs/types.md, Arrays as Vectors).
 	static void emit_assignment(Generator& generator, ast::Node* node) {
 		ast::Node* left_node = node->children[0];
 		ast::Node* right_node = node->children[1];
@@ -9040,9 +9201,30 @@ namespace hemera {
 		else {
 			targets.push_back(left_node);
 		}
+		// A swizzle stored through is its elements, each a target of the element type
+		auto swizzle_count = [&](ast::Node* target) -> uint32_t {
+			if (generator.state == nullptr || generator.state->checked == nullptr) {
+				return 0;
+			}
+			auto found = generator.state->checked->swizzle_targets.find(target);
+			return found != generator.state->checked->swizzle_targets.end() ? found->second : 0;
+		};
 		std::vector<TypeInfo*> types;
+		TypeInfo* spread_from = nullptr;
 		for (ast::Node* target : targets) {
-			types.push_back(is_wildcard(target) ? nullptr : type_at(generator, target, nullptr));
+			if (is_wildcard(target)) {
+				types.push_back(nullptr);
+				continue;
+			}
+			TypeInfo* type = type_at(generator, target, nullptr);
+			if (const uint32_t count = swizzle_count(target); count > 0) {
+				types.insert(types.end(), count, static_cast<TypeInfoArray const*>(base(type))->element_type);
+				if (targets.size() == 1) {
+					spread_from = type;
+				}
+				continue;
+			}
+			types.push_back(type);
 		}
 		std::vector<Emitted> values;
 		if (is_assignment(right_node)) {
@@ -9053,29 +9235,73 @@ namespace hemera {
 		else {
 			values = emit_values(generator, right_node, types);
 		}
+		if (values.empty()) {
+			return;
+		}
+		// An array of the swizzle's type, element by element, read whole before any is stored
+		if (spread_from != nullptr && values.size() == 1 && values[0].type != nullptr && base(values[0].type) == base(spread_from)
+			&& types.size() > 1) {
+			mlir::Value whole = value_of(generator, values[0]);
+			TypeInfo* element = static_cast<TypeInfoArray const*>(base(spread_from))->element_type;
+			values.clear();
+			for (size_t i = 0; i < types.size(); ++i) {
+				values.push_back(value(extract(generator, whole, static_cast<int64_t>(i)), element));
+			}
+		}
+		// Where each value goes
+		struct Place {
+			bool skip = false;
+			Emitted target;
+			ast::Node* node = nullptr;
+		};
+		std::vector<Place> places;
+		for (ast::Node* target : targets) {
+			if (is_wildcard(target)) {
+				places.push_back(Place{ true, Emitted{}, target });
+				continue;
+			}
+			Emitted emitted = emit_expression(generator, target, nullptr);
+			if (swizzle_count(target) > 0 && emitted.swizzle_base) {
+				TypeInfo* element = static_cast<TypeInfoArray const*>(base(emitted.type))->element_type;
+				for (int64_t index : emitted.swizzle) {
+					places.push_back(Place{ false, location(element_address(generator, emitted.swizzle_base, element,
+						constant_int(generator, usize_type(generator), index)), element), target });
+				}
+				continue;
+			}
+			if (!emitted.address) {
+				unsupported(generator, target, "this can't be assigned to");
+				places.push_back(Place{ true, Emitted{}, target });
+				continue;
+			}
+			places.push_back(Place{ false, emitted, target });
+		}
 		const TokenType op = operator_of_assignment(node->value.type);
-		for (size_t i = 0; i < targets.size() && !values.empty(); ++i) {
-			if (is_wildcard(targets[i])) {
+		for (size_t i = 0; i < places.size(); ++i) {
+			const Place& place = places[i];
+			if (place.skip) {
 				continue;
 			}
-			const Emitted& given = values.size() == 1 ? values[0] : values[i];
-			Emitted target = emit_expression(generator, targets[i], nullptr);
-			if (!target.address) {
-				unsupported(generator, targets[i], "this can't be assigned to");
-				continue;
-			}
+			const Emitted& given = values.size() == 1 ? values[0] : values[std::min(i, values.size() - 1)];
+			const Emitted& target = place.target;
 			if (TokenType::INVALID == op) {
-				store_emitted(generator, given, target.relative != nullptr ? target.relative : target.type, target.address, targets[i]);
+				store_emitted(generator, given, target.relative != nullptr ? target.relative : target.type, target.address, place.node);
+				continue;
+			}
+			// An array of numbers element by element, with an array of its type or a number for every element
+			if (TypeInfoArray const* array = arithmetic_array(target.type); array != nullptr) {
+				const bool whole = given.type != nullptr && arithmetic_array(given.type) != nullptr;
+				mlir::Value operand = whole ? address_of(generator, given) : convert_emitted(generator, given, array->element_type);
+				array_arithmetic(generator, op, array, target.address, true, operand, whole, target.address, node);
 				continue;
 			}
 			mlir::Value v;
+			mlir::Value current = value_of(generator, target);
 			if (is_shift(op)) {
-				mlir::Value current = value_of(generator, target);
 				v = arithmetic(generator, op, current, shift_amount(generator, value_of(generator, given), current.getType()),
 					target.type, node);
 			}
 			else {
-				mlir::Value current = value_of(generator, target);
 				mlir::Value operand = convert_emitted(generator, given, target.type);
 				v = TokenType::OPERATOR_AND == op ? static_cast<mlir::Value>(LLVM::AndOp::create(generator.builder, generator.loc, current, operand))
 					: TokenType::OPERATOR_OR == op ? static_cast<mlir::Value>(LLVM::OrOp::create(generator.builder, generator.loc, current, operand))

@@ -150,6 +150,11 @@ namespace hemera {
 		/// A secret: of a #secret type, or worked out from one (docs/memory.md, Secrets).
 		/// </summary>
 		bool is_secret = false;
+		/// <summary>
+		/// A swizzle of a variable array with no letter repeated, like v.xy, which multiple assignment stores through,
+		/// element by element, though it isn't a place & can take (docs/types.md, Arrays as Vectors).
+		/// </summary>
+		bool swizzle_target = false;
 	};
 
 	/// <summary>
@@ -221,6 +226,11 @@ namespace hemera {
 		/// What each compiler.satisfies worked out, by its call's node (docs/types.md, Constraints).
 		/// </summary>
 		std::unordered_map<const ast::Node*, bool> satisfied;
+		/// <summary>
+		/// Each assignment target that's a swizzle stored through, like v.xy in v.xy = 1, 2, by its node: how many
+		/// elements it is, which the assignment's values go to in turn (docs/types.md, Arrays as Vectors).
+		/// </summary>
+		std::unordered_map<const ast::Node*, uint32_t> swizzle_targets;
 		/// <summary>
 		/// The type of each value an assignment discards, by its _ (FunctionInfo.discards).
 		/// </summary>

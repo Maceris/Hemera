@@ -418,6 +418,13 @@ TEST(Hosted, RoundsAndFusesFloats)
 	}
 }
 
+// Fixed arrays as vectors: element-wise arithmetic, at any length, and swizzles read and assigned through.
+TEST(Hosted, DoesArithmeticOnArrays)
+{
+	const HostedOutput checked = run_hosted("array_arithmetic", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("6 tests: 6 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 /*
  * std/math: each function within its ulp bound of references worked out in far more precision (float_math's
  * make_references.py), special values, identities, and parsing correctly rounded, the slow path's halfway cases too.

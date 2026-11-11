@@ -1066,6 +1066,33 @@ namespace hemera {
 		return true;
 	}
 
+	/*
+	 * A swizzle's elements (docs/types.md, Arrays as Vectors): 1 to 4 letters, all of x y z w or all of r g b a, each an
+	 * element of an array of count, in order. False, with indices left as they are, for any other name.
+	 */
+	static bool swizzle_indices(std::string_view name, size_t count, std::vector<size_t>& indices) {
+		if (name.empty() || name.size() > 4 || count == 0 || count > 4) {
+			return false;
+		}
+		const std::string_view sets[] = { "xyzw", "rgba" };
+		for (std::string_view letters : sets) {
+			std::vector<size_t> found;
+			for (char c : name) {
+				const size_t at = letters.find(c);
+				if (at == std::string_view::npos || at >= count) {
+					found.clear();
+					break;
+				}
+				found.push_back(at);
+			}
+			if (found.size() == name.size()) {
+				indices = std::move(found);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static Progress check_member(Checker& checker, ast::Node* where, InternedString name, Value& value) {
 		const ValueKind kind = value.kind;
 		if (ValueKind::POISONED == kind) {
@@ -1173,6 +1200,24 @@ namespace hemera {
 			auto array = static_cast<TypeInfoArray const*>(type);
 			if (member == "count" || (member == "capacity" && ArrayType::DYNAMIC == array->array_type)) {
 				value = typed(BUILTIN_usize);
+				return Progress::DONE;
+			}
+			/*
+			 * A swizzle (docs/types.md, Arrays as Vectors): one letter an element, which is a place as the array is; several
+			 * a new array of those elements, which multiple assignment can store through when no letter repeats
+			 */
+			std::vector<size_t> indices;
+			if (ArrayType::STATIC == array->array_type && swizzle_indices(member, array->count, indices)) {
+				if (indices.size() == 1) {
+					value = typed(array->element_type);
+					value.is_location = is_location;
+					value.is_mutable = is_mutable;
+					return read_place(checker, where, value);
+				}
+				const bool distinct = std::set<size_t>(indices.begin(), indices.end()).size() == indices.size();
+				const bool through = is_location && is_mutable && distinct;
+				value = typed(array_of(checker.walk, array->element_type, ArrayType::STATIC, indices.size()));
+				value.swizzle_target = through;
 				return Progress::DONE;
 			}
 			if (member == "data" && ArrayType::STATIC != array->array_type) {
@@ -3195,6 +3240,61 @@ namespace hemera {
 		return ValueKind::VALUE == value.kind || is_untyped(value);
 	}
 
+	/*
+	 * A value's array type when it does arithmetic element by element (docs/types.md, Arrays as Vectors): a fixed array
+	 * of numbers of the target's own byte order, or null.
+	 */
+	static TypeInfoArray const* arithmetic_array_of(const Value& value) {
+		if (ValueKind::VALUE != value.kind || !is_variant(value.type, TypeInfoVariant::ARRAY)) {
+			return nullptr;
+		}
+		auto array = static_cast<TypeInfoArray const*>(base_of(value.type));
+		TypeInfo const* element = array->element_type;
+		if (ArrayType::STATIC != array->array_type || !is_numeric(element) || is_byte_swapped(element)) {
+			return nullptr;
+		}
+		return array;
+	}
+
+	/*
+	 * Whether an array's element-wise arithmetic takes op with other on the other side, an array of the same type or a
+	 * number for every element; with why not in reason. Integer elements alone take % and %%.
+	 */
+	static bool array_arithmetic_fits(TokenType op, TypeInfo* type, TypeInfoArray const* array, const Value& other,
+		std::string& reason) {
+
+		TypeInfo* element = array->element_type;
+		if (TokenType::OPERATOR_PLUS != op && TokenType::OPERATOR_MINUS != op && TokenType::OPERATOR_MULTIPLY != op
+			&& TokenType::OPERATOR_DIVIDE != op && TokenType::OPERATOR_MODULUS != op && TokenType::OPERATOR_REMAINDER != op) {
+			reason = std::format("{} takes + - * / element by element, and % on integers; compare with ==", to_string(type));
+			return false;
+		}
+		if ((TokenType::OPERATOR_MODULUS == op || TokenType::OPERATOR_REMAINDER == op) && !is_integer(element)) {
+			reason = std::format("% and %% are on integers, not {}", to_string(element));
+			return false;
+		}
+		if (ValueKind::VALUE == other.kind) {
+			if (arithmetic_array_of(other) != nullptr) {
+				if (!same_type(other.type, type)) {
+					reason = std::format("{} and {} don't go together: arrays work element by element with arrays of the same type",
+						to_string(type), to_string(other.type));
+					return false;
+				}
+				return true;
+			}
+			if (!same_type(other.type, element)) {
+				reason = std::format("{} can't go with every element of {}", describe(other), to_string(type));
+				return false;
+			}
+			return true;
+		}
+		if (!fits(other, element)) {
+			reason = std::format("{} can't go with every element of {}", describe(other), to_string(type));
+			return false;
+		}
+		return true;
+	}
+
 	// A value's vector type, or null when it isn't a vector.
 	static TypeInfoVector const* vector_type_of(const Value& value) {
 		if (ValueKind::VALUE != value.kind || !is_variant(value.type, TypeInfoVariant::VECTOR)) {
@@ -3652,6 +3752,18 @@ namespace hemera {
 			check_vector_binary(checker, node, op, left, right, result);
 			return Progress::DONE;
 		}
+		// Arrays of numbers element by element; == and != still compare them whole (docs/types.md, Arrays as Vectors)
+		if ((arithmetic_array_of(left) != nullptr || arithmetic_array_of(right) != nullptr) && !is_comparison(op)) {
+			const bool array_left = arithmetic_array_of(left) != nullptr;
+			const Value& array_side = array_left ? left : right;
+			std::string reason;
+			if (!array_arithmetic_fits(op, array_side.type, arithmetic_array_of(array_side), array_left ? right : left, reason)) {
+				result = error_at(checker, ErrorCode::E4020, node, reason);
+				return Progress::DONE;
+			}
+			result = typed(array_side.type);
+			return Progress::DONE;
+		}
 		// Endian-specific values are computed as their native types (docs/types.md, Endian-Specific Types)
 		for (Value* operand : { &left, &right }) {
 			if (ValueKind::VALUE == operand->kind) {
@@ -3914,6 +4026,10 @@ namespace hemera {
 				&& !vector->is_bits && (integer_lanes || is_float(vector->element_type));
 			result = valid ? typed(type) : error_at(checker, ErrorCode::E4020, node, std::format("this operator doesn't apply to {}",
 				to_string(type)));
+			return Progress::DONE;
+		}
+		if ((TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op) && arithmetic_array_of(operand) != nullptr) {
+			result = typed(operand.type);
 			return Progress::DONE;
 		}
 		if (TokenType::OPERATOR_NOT == op) {
@@ -5103,21 +5219,50 @@ namespace hemera {
 		}
 		std::vector<Value> target_values;
 		std::vector<TypeInfo*> types;
+		/*
+		 * A swizzle with no repeated letter is the list of its elements (docs/types.md, Arrays as Vectors), so targets has
+		 * its node once for each, and spread_from the swizzle's array type when it's the only target, which an array of
+		 * that type is spread over, element by element
+		 */
+		std::vector<ast::Node*> expanded;
+		TypeInfo* spread_from = nullptr;
 		for (ast::Node* target : targets) {
 			Value value;
 			if (ast::NodeType::UNDERSCORE == target->node_type) {
 				target_values.push_back(poisoned());
 				types.push_back(nullptr);
+				expanded.push_back(target);
 				continue;
 			}
 			Progress progress = check_expression(checker, target, nullptr, value);
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+			if (value.swizzle_target) {
+				auto array = static_cast<TypeInfoArray const*>(base_of(value.type));
+				Value element = typed(array->element_type);
+				element.is_location = true;
+				element.is_mutable = true;
+				element.is_secret = value.is_secret;
+				for (size_t i = 0; i < array->count; ++i) {
+					target_values.push_back(element);
+					types.push_back(array->element_type);
+					expanded.push_back(target);
+				}
+				if (checker.record != nullptr) {
+					checker.record->swizzle_targets[target] = static_cast<uint32_t>(array->count);
+				}
+				if (targets.size() == 1) {
+					spread_from = value.type;
+				}
+				continue;
+			}
 			require_assignable(checker, value, target);
 			target_values.push_back(value);
 			types.push_back(ValueKind::VALUE == value.kind ? value.type : nullptr);
+			expanded.push_back(target);
 		}
+		targets = std::move(expanded);
 		if (ast::NodeType::MATCH == right_node->node_type) {
 			// docs/control_flow.md, Match: assign inside the arms instead
 			error_at(checker, ErrorCode::E4020, right_node, "match can't be the right side of an assignment; assign inside its arms");
@@ -5139,6 +5284,12 @@ namespace hemera {
 			if (progress != Progress::DONE) {
 				return progress;
 			}
+		}
+		// An array of the swizzle's type, element by element
+		if (spread_from != nullptr && values.size() == 1 && ValueKind::VALUE == values[0].kind && same_type(values[0].type, spread_from)) {
+			Value element = typed(static_cast<TypeInfoArray const*>(base_of(spread_from))->element_type);
+			element.is_secret = values[0].is_secret;
+			values.assign(targets.size(), element);
 		}
 		if (values.size() != 1 && values.size() != targets.size()) {
 			error_at(checker, ErrorCode::E4018, node, std::format("{} values for {} targets; give one, or one each",
@@ -5163,6 +5314,14 @@ namespace hemera {
 					continue;
 				}
 				require_fit(checker, value, types[i], targets[i], "this assignment");
+				continue;
+			}
+			// An array of numbers element by element, with an array of its type or a number for each element
+			if (TypeInfoArray const* array = arithmetic_array_of(target_values[i]); array != nullptr) {
+				std::string reason;
+				if (ValueKind::POISONED != value.kind && !array_arithmetic_fits(op, types[i], array, value, reason)) {
+					error_at(checker, ErrorCode::E4020, targets[i], reason);
+				}
 				continue;
 			}
 			// An endian-specific integer is computed as its native type, and stored with a cast that shows the swap

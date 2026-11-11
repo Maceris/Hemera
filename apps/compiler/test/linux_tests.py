@@ -97,6 +97,8 @@ TESTS = [
     ("float_intrinsics", ["--test"], 0),
     # std/math against its references, the same bits on every architecture
     ("float_math", ["--test"], 0),
+    # Arrays as vectors, element by element on each architecture's own instructions
+    ("array_arithmetic", ["--test"], 0),
     # The network protocol's policies, plain code on every OS
     ("network_policy", ["--test"], 0),
     # Instances of a generic whose parameter is an optional of a generic alias, each with its own

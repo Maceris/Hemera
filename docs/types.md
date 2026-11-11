@@ -214,6 +214,44 @@ e : f64[2] : f64.[0.5, 1.5]
 f : int[] : int.[4, 5, 6]   // A view over an array on the stack
 ```
 
+### Arrays as Vectors
+
+A fixed array of numbers is the vector of graphics and geometry: any length, laid out as its elements with their own
+alignment, so it matches C's structs, vertex formats and Vulkan's. Arithmetic works on it element by element, and its
+first four elements have letters. `vector[T, n]` (see [Vectors](#vectors)) stays the type whose lanes are the CPU's
+vector registers.
+
+```
+position : f32[3] = f32.[1, 2, 3]
+velocity := f32.[0.5, 0, -1]
+next := position + velocity * 0.016    // element by element; a number goes with every element
+colour : f32[4] = f32.[1, 0.5, 0, 1]
+rgb := colour.rgb                       // an f32[3]
+flipped := position.zyx
+position.y = 10                         // one element, as position[1]
+colour.rg = 0.25, 0.75                  // several, as a multiple assignment
+```
+
+* **Operators:** `+ - * /` work element by element on two arrays of the same type, or an array and a number of its
+  element type, on either side, which goes with every element; `%` and `%%` too, on integers. Unary `-` negates each
+  element. `+=` and the rest do the same in place. The elements are numbers of the target's byte order: integers,
+  floats, complex numbers or quaternions. Integer division by an element of 0 panics, as a single division does.
+* **Comparison** stays whole: `==` and `!=` compare every element (see [Equality](#equality)), and `<` and the others
+  don't apply; lane-by-lane comparisons are what `vector` is for.
+* **Distinct aliases keep their own arithmetic:** with `Point3 :: distinct alias f32[3]`, `Point3 + Point3` is a
+  `Point3`, and mixing it with an `f32[3]` or another alias needs a cast, so a library can say what its kinds of array
+  mean.
+* **Swizzles:** an array of 1 to 4 elements has `x y z w` and `r g b a` for them, in order, the two sets not mixed and
+  only as many as it has: an `f32[3]` has no `w`. One letter is that element, which can be assigned and pointed to as
+  `a[i]` can. Several make a new array of those elements, in that order, and can repeat: `v.xxy` is an `f32[3]`.
+* **Assigning through a swizzle** with no letter repeated, on a variable array, assigns its elements as a multiple
+  assignment does (see [operators.md](operators.md#assignment-operators)): `v.xy = ...` is `v.x, v.y = ...`. The right
+  side is an array of the swizzle's type, which goes element by element; as many values as letters, or a call giving
+  that many; or one value for every element. Everything on the right is worked out before anything is stored, so
+  `v.xy = v.yx` swaps them. `+=` and the others work the same way. A swizzle of several letters isn't a place, so `&`
+  doesn't take it, and one with a repeated letter is a value only.
+* A quaternion's `xyz` is an array of three, so `q.xyz * 2` is arithmetic like any other.
+
 ### Dynamic Arrays
 
 Dynamic arrays are resizable, allocating more memory as needed. It behaves

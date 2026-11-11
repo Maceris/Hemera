@@ -30,12 +30,12 @@ Unary:
 
 Binary:
 ```
-+   addition                 integers, enums, floats, complex values, quaternions, vectors, matrices, constant strings
--   subtraction              integers, enums, floats, complex values, quaternions, vectors, matrices
-*   multiplication           integers, floats, complex values, quaternions, vectors, matrices
-/   division                 integers, floats, complex values, quaternions, vectors
-%   modulus (truncated)      integers
-%%  remainder (floored)      integers
++   addition                 integers, enums, floats, complex values, quaternions, vectors, arrays, matrices, constant strings
+-   subtraction              integers, enums, floats, complex values, quaternions, vectors, arrays, matrices
+*   multiplication           integers, floats, complex values, quaternions, vectors, arrays, matrices
+/   division                 integers, floats, complex values, quaternions, vectors, arrays
+%   modulus (truncated)      integers, arrays of integers
+%%  remainder (floored)      integers, arrays of integers
 
 &   bitwise AND              integers, enums
 |   bitwise OR               integers, enums
@@ -106,7 +106,7 @@ The divisor for division, modulus, and remainder must not be zero if constant. I
 ||=  logical OR                a ||= b is a = a || b
 ```
 
-Multiple values can be assigned in one expression, for example `a, b, c = 1` will set all of the values to 1, and `a, b = b, a` will swap the 2 values. 
+Multiple values can be assigned in one expression, for example `a, b, c = 1` will set all of the values to 1, and `a, b = b, a` will swap the 2 values. A swizzle with no letter repeated, like `v.xy`, is the list of its elements here, so `v.xy = v.yx` swaps two of an array's elements (see [types.md](types.md#arrays-as-vectors)). 
 
 These evaluate independently/concurrently, as explained in this example:
 
