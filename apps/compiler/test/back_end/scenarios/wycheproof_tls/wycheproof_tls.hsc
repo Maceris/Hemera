@@ -185,3 +185,128 @@ agrees_on_aes128_gcm_in_software #test :: fn(t: ptr[mut testing.T]) -> testing.O
     }
     return .Ok
 }
+
+/*
+ * Seal and open with AES-SIV-CMAC-256 or -512, as the key's size says, with the associated data
+ * and nonce given: a valid case seals to the tag and ciphertext and opens again, and an invalid one is refused, leaving
+ * zeros
+ */
+siv_case #constant_time :: fn(hardware: bool, key_bytes: u8[], associated: u8[], nonce: u8[]?, message: u8[], tag_bytes: u8[], ciphertext: u8[],
+    valid: bool) -> bool {
+
+    if tag_bytes.count != 16 || (key_bytes.count != 32 && key_bytes.count != 64) || message.count > BUFFER || ciphertext.count > BUFFER {
+        return !valid
+    }
+    tag : crypto.Tag128
+    for i in 0..<16 {
+        tag[i] = tag_bytes[i]
+    }
+    key256 : crypto.Key256
+    key512 : crypto.Key512
+    for byte, i in key_bytes {
+        key256[i % 32] = byte
+        key512[i % 64] = byte
+    }
+    wide := key_bytes.count == 64
+    if valid {
+        sealed : u8[BUFFER]
+        sealed_tag : crypto.Tag128
+        worked := false
+        if wide {
+            worked = crypto.aes_siv_cmac512_seal_with(&key512, associated, nonce, crypto.as_secret(message), &sealed_tag, sealed[0..<message.count],
+                hardware)
+        }
+        else {
+            worked = crypto.aes_siv_cmac256_seal_with(&key256, associated, nonce, crypto.as_secret(message), &sealed_tag, sealed[0..<message.count],
+                hardware)
+        }
+        if !worked || message.count != ciphertext.count {
+            return false
+        }
+        for i in 0..<message.count {
+            if sealed[i] != ciphertext[i] {
+                return false
+            }
+        }
+        for i in 0..<16 {
+            if sealed_tag[i] != tag[i] {
+                return false
+            }
+        }
+    }
+    opened : crypto.SecretByte[BUFFER]
+    worked := false
+    if wide {
+        worked = crypto.aes_siv_cmac512_open_with(&key512, associated, nonce, &tag, ciphertext, opened[0..<ciphertext.count], hardware)
+    }
+    else {
+        worked = crypto.aes_siv_cmac256_open_with(&key256, associated, nonce, &tag, ciphertext, opened[0..<ciphertext.count], hardware)
+    }
+    if worked != valid {
+        return false
+    }
+    if valid {
+        return crypto.equal(opened[0..<ciphertext.count], message)
+    }
+    for i in 0..<ciphertext.count {
+        if compiler.declassify(opened[i]) != 0 {
+            return false
+        }
+    }
+    return true
+}
+
+// RFC 5297's deterministic form: one string of associated data, and the tag before the ciphertext
+siv_deterministic_case :: fn(hardware: bool, b: ptr[mut Buffers], key_hex: string, associated_hex: string, message_hex: string,
+    output_hex: string, valid: bool) -> bool {
+
+    key_count := decode(key_hex, &b.a) % (BUFFER + 1)
+    associated_count := decode(associated_hex, &b.b) % (BUFFER + 1)
+    message_count := decode(message_hex, &b.c) % (BUFFER + 1)
+    output_count := decode(output_hex, &b.d) % (BUFFER + 1)
+    if output_count < 16 {
+        return !valid
+    }
+    return siv_case(hardware, b.a[0..<key_count], b.b[0..<associated_count], null, b.c[0..<message_count], b.d[0..<16], b.d[16..<output_count], valid)
+}
+
+// RFC 5297's nonce-based form: the associated data, then the nonce
+siv_aead_case :: fn(hardware: bool, b: ptr[mut Buffers], key_hex: string, nonce_hex: string, associated_hex: string, message_hex: string,
+    ciphertext_hex: string, tag_hex: string, valid: bool) -> bool {
+
+    key_count := decode(key_hex, &b.a) % (BUFFER + 1)
+    nonce_count := decode(nonce_hex, &b.b) % (BUFFER + 1)
+    associated_count := decode(associated_hex, &b.c) % (BUFFER + 1)
+    message_count := decode(message_hex, &b.d) % (BUFFER + 1)
+    ciphertext_count := decode(ciphertext_hex, &b.e) % (BUFFER + 1)
+    tag_count := decode(tag_hex, &b.f) % (BUFFER + 1)
+    return siv_case(hardware, b.a[0..<key_count], b.c[0..<associated_count], b.b[0..<nonce_count], b.d[0..<message_count], b.f[0..<tag_count], b.e[0..<ciphertext_count], valid)
+}
+
+agrees_on_aes_siv #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for hardware in bool.[false, true] {
+        if !hardware || crypto.aes_hardware() {
+            for i in 0..<SIV_CASES.count / 5 {
+                expect_case(t, siv_deterministic_case(hardware, &b, SIV_CASES[5 * i], SIV_CASES[5 * i + 1], SIV_CASES[5 * i + 2],
+                    SIV_CASES[5 * i + 3], SIV_CASES[5 * i + 4] == "valid"), i,
+                    "sealed to Wycheproof's tag and ciphertext and opened, or refused, with and without AES-NI")
+            }
+        }
+    }
+    return .Ok
+}
+
+agrees_on_aes_siv_with_nonces #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for hardware in bool.[false, true] {
+        if !hardware || crypto.aes_hardware() {
+            for i in 0..<SIV_AEAD_CASES.count / 7 {
+                expect_case(t, siv_aead_case(hardware, &b, SIV_AEAD_CASES[7 * i], SIV_AEAD_CASES[7 * i + 1], SIV_AEAD_CASES[7 * i + 2],
+                    SIV_AEAD_CASES[7 * i + 3], SIV_AEAD_CASES[7 * i + 4], SIV_AEAD_CASES[7 * i + 5], SIV_AEAD_CASES[7 * i + 6] == "valid"), i,
+                    "the nonce after the associated data, sealed and opened or refused, with and without AES-NI")
+            }
+        }
+    }
+    return .Ok
+}
