@@ -310,3 +310,56 @@ agrees_on_aes_siv_with_nonces #test :: fn(t: ptr[mut testing.T]) -> testing.Outc
     }
     return .Ok
 }
+
+// The shared secret is Wycheproof's for a valid case; an invalid public key is refused
+ecdh_point_case #constant_time :: fn(b: ptr[mut Buffers], private_hex: string, public_hex: string, shared_hex: string, valid: bool) -> bool {
+    _ = decode(private_hex, &b.a)
+    public_count := decode(public_hex, &b.b) % (BUFFER + 1)
+    shared_count := decode(shared_hex, &b.c) % (BUFFER + 1)
+    secret : crypto.P256SecretKey
+    for i in 0..<32 {
+        secret[i] = b.a[i]
+    }
+    shared : crypto.SecretByte[32]
+    worked := crypto.p256_ecdh(&secret, b.b[0..<public_count], &shared)
+    if !valid {
+        return !worked
+    }
+    return worked && crypto.equal(shared, b.c[0..<shared_count])
+}
+
+// The signature, r then s, verifies over the message's SHA-256 exactly when Wycheproof says it's valid
+ecdsa_p1363_case :: fn(b: ptr[mut Buffers], public_hex: string, message_hex: string, signature_hex: string, valid: bool) -> bool {
+    public_count := decode(public_hex, &b.a) % (BUFFER + 1)
+    message_count := decode(message_hex, &b.b) % (BUFFER + 1)
+    signature_count := decode(signature_hex, &b.c) % (BUFFER + 1)
+    if signature_count != 64 {
+        return !valid
+    }
+    signature : crypto.P256Signature
+    for i in 0..<64 {
+        signature[i] = b.c[i]
+    }
+    digest := crypto.sha256(b.b[0..<message_count])
+    return crypto.p256_ecdsa_verify(b.a[0..<public_count], digest, &signature) == valid
+}
+
+agrees_on_p256_ecdh #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<ECDH_POINT_CASES.count / 4 {
+        expect_case(t, ecdh_point_case(&b, ECDH_POINT_CASES[4 * i], ECDH_POINT_CASES[4 * i + 1], ECDH_POINT_CASES[4 * i + 2],
+            ECDH_POINT_CASES[4 * i + 3] == "valid"), i,
+            "each shared secret is Wycheproof's, and a point off the curve or badly written is refused")
+    }
+    return .Ok
+}
+
+agrees_on_p256_ecdsa #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<ECDSA_P1363_CASES.count / 4 {
+        expect_case(t, ecdsa_p1363_case(&b, ECDSA_P1363_CASES[4 * i], ECDSA_P1363_CASES[4 * i + 1], ECDSA_P1363_CASES[4 * i + 2],
+            ECDSA_P1363_CASES[4 * i + 3] == "valid"), i,
+            "each signature verifies exactly when Wycheproof says it's valid")
+    }
+    return .Ok
+}

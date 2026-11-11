@@ -2,7 +2,8 @@
  * std/crypto's X25519 and Ed25519 against values from Python's cryptography package: RFC 7748's and
  * RFC 8032's inputs and more. X25519 keys agree from both sides, refuse low-order points and take u mod p
  * with its top bit dropped. Ed25519 signatures match, verify, and are refused for a changed message, key
- * or signature, an S that isn't below L, and a public key whose y isn't below p.
+ * or signature, an S that isn't below L, and a public key whose y isn't below p. P-256's public keys,
+ * ECDSA signatures (RFC 6979's) and ECDH, with bad keys and points refused.
  */
 package curves_test
 
@@ -274,5 +275,112 @@ refuses_a_public_key_whose_y_isnt_below_p #test :: fn(t: ptr[mut testing.T]) -> 
     testing.expect(t, check_refused("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", "",
         "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         "y is p + 1, which reduced would be 1, the neutral point's y")
+    return .Ok
+}
+
+bytes_of :: fn(hex: string, into: ptr[mut u8[1024]]) -> u8[] {
+    for i in 0..<1024 {
+        into[i] = 0
+    }
+    count := decode(hex, into)
+    if count > 1024 {
+        count = 1024
+    }
+    return into[0..<count]
+}
+
+same_bytes :: fn(a: u8[], b: u8[]) -> bool {
+    if a.count != b.count {
+        return false
+    }
+    for byte, i in a {
+        if byte != b[i] {
+            return false
+        }
+    }
+    return true
+}
+
+// RFC 6979's P-256 key (section A.2.5)
+P256_RFC6979_KEY :: "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721"
+P256_RFC6979_PUBLIC :: "0460fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb67903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462299"
+
+// RFC 6979's signatures with that key, of "sample" and "test" with SHA-256
+P256_RFC6979_SIGNATURES :: string.[
+    "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+    "f1abb023518351cd71d881567b1ea663ed3efcf6c5132b354f28d3b0b7d38367019f4113742a2b14bd25926b49c649155f267e60d3814b4c0cc84250e46f0083",
+]
+
+p256_key #constant_time :: fn(hex: string) -> crypto.P256SecretKey {
+    return compiler.secret(cast[crypto.P256SecretKey](bytes32(hex)))
+}
+
+derives_p256_public_keys #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    buffer : u8[1024]
+    secret := p256_key(P256_RFC6979_KEY)
+    public : crypto.P256PublicKey
+    testing.expect(t, crypto.p256_public_key(&secret, &public), "a key from 1 to n - 1 is taken")
+    testing.expect(t, same_bytes(public[0..<65], bytes_of(P256_RFC6979_PUBLIC, &buffer)), "its public key is RFC 6979's")
+    zero := p256_key("0000000000000000000000000000000000000000000000000000000000000000")
+    order := p256_key("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551")
+    testing.expect(t, !crypto.p256_public_key(&zero, &public), "0 isn't a secret key")
+    testing.expect(t, !crypto.p256_public_key(&order, &public), "n isn't either")
+    return .Ok
+}
+
+signs_with_p256_as_rfc_6979_does #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    buffer : u8[1024]
+    secret := p256_key(P256_RFC6979_KEY)
+    public := bytes_of(P256_RFC6979_PUBLIC, &buffer)
+    expected := u8.[0]
+    for message, i in string.["sample", "test"] {
+        digest := crypto.sha256(bit_cast[u8[]](message))
+        none : crypto.P256Signature
+        maybe := crypto.p256_ecdsa_sign(&secret, digest, crypto.as_secret(expected[0..<0]))
+        testing.expect(t, maybe != null, "a good key signs")
+        signature := maybe or_else none
+        other : u8[1024]
+        wanted := bytes_of(P256_RFC6979_SIGNATURES[i % 2], &other)
+        testing.expect(t, same_bytes(signature[0..<64], wanted), "the signature is RFC 6979's, its nonce from the key and digest")
+        testing.expect(t, crypto.p256_ecdsa_verify(public, digest, &signature), "and verifies")
+        digest[0] = digest[0] ~ 1
+        testing.expect(t, !crypto.p256_ecdsa_verify(public, digest, &signature), "but not for another digest")
+    }
+    return .Ok
+}
+
+signs_with_p256_and_random_bytes #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    buffer : u8[1024]
+    secret := p256_key(P256_RFC6979_KEY)
+    public := bytes_of(P256_RFC6979_PUBLIC, &buffer)
+    digest := crypto.sha256(bit_cast[u8[]]("sample"))
+    random := u8.[1, 2, 3, 4, 5, 6, 7, 8]
+    none : crypto.P256Signature
+    signature := crypto.p256_ecdsa_sign(&secret, digest, crypto.as_secret(random)) or_else none
+    plain := crypto.p256_ecdsa_sign(&secret, digest, crypto.as_secret(random[0..<0])) or_else none
+    testing.expect(t, crypto.p256_ecdsa_verify(public, digest, &signature), "a signature with random bytes mixed in verifies")
+    testing.expect(t, !same_bytes(signature[0..<64], plain[0..<64]), "and its nonce isn't RFC 6979's alone")
+    signature[40] = signature[40] ~ 0x10
+    testing.expect(t, !crypto.p256_ecdsa_verify(public, digest, &signature), "a changed s is refused")
+    return .Ok
+}
+
+agrees_on_p256_shared_secrets #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    a := p256_key(P256_RFC6979_KEY)
+    b := p256_key("0612465c89a023ab17855b0a6bcebfd3febb53aef84138647b5352e02c10c346")
+    a_public : crypto.P256PublicKey
+    b_public : crypto.P256PublicKey
+    _ = crypto.p256_public_key(&a, &a_public)
+    _ = crypto.p256_public_key(&b, &b_public)
+    a_shared : crypto.SecretByte[32]
+    b_shared : crypto.SecretByte[32]
+    testing.expect(t, crypto.p256_ecdh(&a, b_public[0..<65], &a_shared) && crypto.p256_ecdh(&b, a_public[0..<65], &b_shared), "both sides agree")
+    plain : u8[32]
+    for i in 0..<32 {
+        plain[i] = compiler.declassify(b_shared[i])
+    }
+    testing.expect(t, crypto.equal(a_shared, plain), "on the same secret")
+    a_public[64] = a_public[64] ~ 1
+    testing.expect(t, !crypto.p256_ecdh(&b, a_public[0..<65], &b_shared), "a point off the curve is refused")
     return .Ok
 }

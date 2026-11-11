@@ -48,16 +48,22 @@ hashes #constant_time :: fn(into: ptr[mut Sink], key: ptr[crypto.Key256], messag
     sha512 := crypto.sha512_start()
     crypto.sha512_update_secret(&sha512, message)
     sink(into, crypto.sha512_finish_secret(&sha512))
+    sha384 := crypto.sha384_start()
+    crypto.sha384_update_secret(&sha384, message)
+    sink(into, crypto.sha384_finish_secret(&sha384))
     key_bytes : crypto.SecretByte[32]
     for i in 0..<32 {
         key_bytes[i] = cast[crypto.SecretByte](key[i])
     }
     sink(into, crypto.hmac_sha256(key_bytes, u8.[1, 2, 3]))
     sink(into, crypto.hmac_sha512(key_bytes, u8.[1, 2, 3]))
+    sink(into, crypto.hmac_sha384(key_bytes, u8.[1, 2, 3]))
     expanded : crypto.SecretByte[80]
     _ = crypto.hkdf_sha256_expand(crypto.hkdf_sha256_extract(u8.[9, 9], key_bytes), u8.[4], expanded)
     sink(into, expanded)
     _ = crypto.hkdf_sha512_expand(crypto.hkdf_sha512_extract(u8.[9, 9], key_bytes), u8.[4], expanded)
+    sink(into, expanded)
+    _ = crypto.hkdf_sha384_expand(crypto.hkdf_sha384_extract(u8.[9, 9], key_bytes), u8.[4], expanded)
     sink(into, expanded)
     digest : crypto.SecretByte[64]
     blake2b := crypto.blake2b_start_keyed(64, key_bytes) or_return void
@@ -80,11 +86,29 @@ encryption #constant_time :: fn(into: ptr[mut Sink], key: ptr[crypto.Key256], me
     if crypto.chacha20_poly1305_open(key, &nonce, ciphertext, u8.[7], &tag, opened) {
         sink(into, opened)
     }
+    key128 : crypto.Key128
+    for i in 0..<16 {
+        key128[i] = key[i]
+    }
     for hardware in bool.[false, true] {
         if !hardware || crypto.aes_hardware() {
             _ = crypto.aes256_gcm_seal_with(key, &nonce, message, u8.[7], ciphertext, &tag, hardware)
             if crypto.aes256_gcm_open_with(key, &nonce, ciphertext, u8.[7], &tag, opened, hardware) {
                 sink(into, opened)
+            }
+            _ = crypto.aes128_gcm_seal_with(&key128, &nonce, message, u8.[7], ciphertext, &tag, hardware)
+            if crypto.aes128_gcm_open_with(&key128, &nonce, ciphertext, u8.[7], &tag, opened, hardware) {
+                sink(into, opened)
+            }
+            // AES-SIV with a nonce, and without; then a forged tag, refused without the comparison leaking
+            _ = crypto.aes_siv_cmac256_seal_with(key, u8.[7], u8.[1, 2, 3], message, &tag, ciphertext, hardware)
+            if crypto.aes_siv_cmac256_open_with(key, u8.[7], u8.[1, 2, 3], &tag, ciphertext, opened, hardware) {
+                sink(into, opened)
+            }
+            _ = crypto.aes_siv_cmac256_seal_with(key, u8.[7], null, message, &tag, ciphertext, hardware)
+            tag[5] = tag[5] ~ 1
+            if !crypto.aes_siv_cmac256_open_with(key, u8.[7], null, &tag, ciphertext, opened, hardware) {
+                into.total += 1
             }
         }
     }
@@ -142,6 +166,25 @@ long_paths #constant_time :: fn(into: ptr[mut Sink], key: ptr[crypto.Key256], lo
     }
 }
 
+// P-256's public key, ECDH and signing, each a multiplication by a secret scalar, and signing's inverse of its nonce
+p256 #constant_time :: fn(into: ptr[mut Sink], secret: ptr[crypto.P256SecretKey]) {
+    public : crypto.P256PublicKey
+    if !crypto.p256_public_key(secret, &public) {
+        return void
+    }
+    into.total += cast[u64](public[1])
+    shared : crypto.SecretByte[32]
+    if crypto.p256_ecdh(secret, public[0..<65], &shared) {
+        sink(into, shared)
+    }
+    digest := crypto.sha256(u8.[1, 2, 3])
+    signature := crypto.p256_ecdsa_sign(secret, digest, crypto.as_secret(u8.[4, 5])) or_return void
+    into.total += cast[u64](signature[0])
+    if crypto.p256_ecdsa_verify(public[0..<65], digest, &signature) {
+        into.total += 1
+    }
+}
+
 passwords #constant_time :: fn(into: ptr[mut Sink], password: crypto.SecretByte[]) {
     parameters := crypto.Argon2Parameters.{memory_kib = 64, passes = 2, lanes = 2}
     blocks, error := runtime.new_array(crypto.Argon2Block, crypto.argon2_blocks_needed(parameters))
@@ -163,6 +206,8 @@ main :: fn() -> int {
     x_key := compiler.secret(cast[crypto.X25519SecretKey](pattern32(3)))
     ed_key := compiler.secret(cast[crypto.Ed25519SecretKey](pattern32(4)))
     curves(&into, &x_key, &ed_key)
+    p256_key := compiler.secret(cast[crypto.P256SecretKey](pattern32(6)))
+    p256(&into, &p256_key)
     passwords(&into, message[0..<20])
     // Each byte marked secret, not the view of them
     long, error := runtime.new_array(crypto.SecretByte, 20000)
