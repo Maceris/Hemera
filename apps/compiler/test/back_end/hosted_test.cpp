@@ -418,6 +418,20 @@ TEST(Hosted, RoundsAndFusesFloats)
 	}
 }
 
+// std/linear_algebra: vectors' functions, quaternions, determinants, inverses, and the transforms against where they put points.
+TEST(Hosted, UsesLinearAlgebra)
+{
+	const HostedOutput checked = run_hosted("linear_algebra", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("6 tests: 6 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
+// Matrices: literals row by row, stored column by column, the products, transpose, identity, casts and draws.
+TEST(Hosted, ComputesWithMatrices)
+{
+	const HostedOutput checked = run_hosted("matrices", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("6 tests: 6 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // Fixed arrays as vectors: element-wise arithmetic, at any length, and swizzles read and assigned through.
 TEST(Hosted, DoesArithmeticOnArrays)
 {

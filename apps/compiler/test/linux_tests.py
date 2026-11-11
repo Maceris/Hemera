@@ -99,6 +99,8 @@ TESTS = [
     ("float_math", ["--test"], 0),
     # Arrays as vectors, element by element on each architecture's own instructions
     ("array_arithmetic", ["--test"], 0),
+    ("matrices", ["--test"], 0),
+    ("linear_algebra", ["--test"], 0),
     # The network protocol's policies, plain code on every OS
     ("network_policy", ["--test"], 0),
     # Instances of a generic whose parameter is an optional of a generic alias, each with its own

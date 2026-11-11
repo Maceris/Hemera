@@ -549,6 +549,41 @@ bytes := bit_cast[vector[u8, 16]](masked)
 | `leading_zeros(value)`, `trailing_zeros`, `count_ones` | How many zero bits above the highest one, below the lowest one, or how many ones, in an integer or each lane; the width for 0 |
 | `floor`, `ceil`, `trunc`, `round_even`, `square_root`, ... | The float functions ([Floats](#floats)), lane by lane |
 
+## Matrices
+
+`matrix[T, rows, columns]` holds rows × columns elements of an integer or float type `T`, of the target's own byte
+order, with 1 to 4 rows and 1 to 4 columns. Its elements are stored column by column, as GLSL, SPIR-V and Vulkan store
+them, so a `matrix[f32, 4, 4]` is uploaded as it is; a literal is still written row by row, as on paper. It's laid out
+as its elements, with their alignment.
+
+```
+Transform :: matrix[f32, 4, 4]
+m := Transform.{
+    1, 0, 0, tx,
+    0, 1, 0, ty,                     // row by row
+    0, 0, 1, tz,
+    0, 0, 0, 1,
+}
+moved := m * f32.[x, y, z, 1]        // a matrix times a column: an f32[4]
+both := projection * view * m        // the matrix product
+m[0, 3] = 5                          // row, column
+zero := Transform.{}                 // every element 0
+```
+
+* **Elements** are `m[row, column]`, each index proven in bounds as an array's is ([Bounds Checking](#bounds-checking)).
+  There's no `m[i]`.
+* **Operators:** `+` and `-` element by element, with a matrix of the same type; unary `-`. `*` is the matrix product,
+  a rows × k matrix times a k × columns one giving rows × columns, of the same type when both are; a matrix times an
+  array of as many elements as it has columns, a column vector, giving an array of as many as it has rows; an array of
+  as many as it has rows times a matrix, a row vector; or a number times every element, on either side. `+=`, `-=`
+  and `*=` work in place when the result is the matrix's own type. `==` and `!=` compare every element.
+* **Builtins:** `transpose(m)` is the columns × rows matrix of `m`'s rows as its columns, and `identity(M)` the `M` with
+  ones where the row is the column and zeros elsewhere.
+* **Casts:** `cast[T[rows * columns]](m)` is the array of its elements, column by column, and the same cast back makes
+  a matrix of an array: the same bits either way.
+* Determinants, inverses and the transforms are `std/linear_algebra`'s, being numerics rather than structure. std140's
+  padding, which puts a `mat3`'s columns 16 bytes apart, isn't the matrix's layout.
+
 ## Enums
 
 Enums represent a set of distinct values.
@@ -677,7 +712,8 @@ push :: fn[T, capacity: usize](ring: ptr[mut Ring[T, capacity]], item: T) {/* ..
 ```
 
 They follow the same rules as compile-time parameters, and are bound explicitly, or inferred from a parameter's type,
-as `push` binds `capacity` from `ring`. Inside the type or function, a value is a constant of its declared type: it can
+as `push` binds `capacity` from `ring`. An array's count binds one too, as `dot :: fn[T, n: usize](a: T[n], b: T[n])`
+binds `T` and `n` from `f32.[1, 2, 3]`, and so do a matrix's rows and columns, from `matrix[T, rows, columns]`. Inside the type or function, a value is a constant of its declared type: it can
 size an array, be used in `#if` and `#assert`, and be used like any other constant. A value given explicitly is written
 like a type argument, as in `filled[4](byte)`. Two instances with equal values are the same type, so
 `Ring[u8, 2 + 2]` is `Ring[u8, 4]`.
