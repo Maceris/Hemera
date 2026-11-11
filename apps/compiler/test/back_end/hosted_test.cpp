@@ -534,7 +534,7 @@ TEST(Hosted, Wycheproof)
 
 /*
  * std/crypto's primitives for TLS and NTS against Project Wycheproof's vectors: SHA-384's HMAC and
- * HKDF, AES-128-GCM, AES-SIV, P-256's ECDH and ECDSA, and RSA's signatures.
+ * HKDF, AES-128-GCM, AES-SIV, P-256's ECDH and ECDSA, P-384's ECDSA, and RSA's signatures.
  */
 TEST(Hosted, WycheproofForTls)
 {

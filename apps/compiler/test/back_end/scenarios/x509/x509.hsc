@@ -1,6 +1,6 @@
 /*
  * std/crypto's DER, PEM and X.509: chains from a test authority (certificates.hsc, made by
- * make_certificates.py) validated to their anchors, good ones with RSA, RSA-PSS, P-256 and Ed25519
+ * make_certificates.py) validated to their anchors, good ones with RSA, RSA-PSS, P-256, P-384 and Ed25519
  * signatures and in any order, and bad ones refused for the reason each is bad; host names matched, base64
  * strict, and DER's times and integers read as RFC 5280 and X.690 say. Run with hemera --test.
  */
@@ -41,6 +41,7 @@ validates_good_chains #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, verdict_of(P256_CHAIN, .SERVER) == .VALID, "ECDSA all the way to a P-256 root")
     testing.expect(t, verdict_of(ED25519_CHAIN, .SERVER) == .VALID, "a leaf signed by an Ed25519 root")
     testing.expect(t, verdict_of(SHUFFLED_CHAIN, .SERVER) == .VALID, "a chain with a certificate off its path, out of order")
+    testing.expect(t, verdict_of(P384_CHAIN, .SERVER) == .VALID, "a P-256 leaf by a P-384 intermediate, with ecdsa-with-SHA384")
     testing.expect(t, verdict_of(CONSTRAINED_GOOD_CHAIN, .SERVER) == .VALID, "names within a CA's name constraints")
     testing.expect(t, verdict_of(CLIENT_ONLY_CHAIN, .CLIENT) == .VALID, "a client's certificate, for a client")
     testing.expect(t, verdict_of(CLIENT_ONLY_CHAIN, .ANY) == .VALID, "and for any purpose")

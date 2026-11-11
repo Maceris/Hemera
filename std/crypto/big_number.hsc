@@ -292,3 +292,65 @@ big_power :: fn(base: ptr[BigNumber], exponent: ptr[BigNumber], modulus: ptr[Big
     result.count = big_limbs_used(&result, k)
     return result
 }
+
+/**
+ * Add two numbers modulo an odd number, in or out of Montgomery form alike.
+ *
+ * @param a One addend, below the modulus.
+ * @param b The other, below the modulus.
+ * @param modulus The modulus.
+ * @return a + b mod n, below n, with the modulus's limbs.
+ */
+big_add :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+    k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
+    sum := BigNumber.{count = k}
+    carry : u64 = 0
+    for i in 0..<k {
+        wide := cast[u128](a.limbs[i]) + cast[u128](b.limbs[i]) + cast[u128](carry)
+        sum.limbs[i] = cast[u64](wide)
+        carry = cast[u64](wide >> 64)
+    }
+    big_reduce_once(&sum, carry, modulus)
+    return sum
+}
+
+/**
+ * Subtract one number from another modulo an odd number, in or out of Montgomery form alike.
+ *
+ * @param a The number subtracted from, below the modulus.
+ * @param b The number subtracted, below the modulus.
+ * @param modulus The modulus.
+ * @return a - b mod n, below n, with the modulus's limbs.
+ */
+big_subtract :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+    k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
+    difference := BigNumber.{count = k}
+    borrow : u64 = 0
+    for i in 0..<k {
+        wide := cast[u128](a.limbs[i]) - cast[u128](b.limbs[i]) - cast[u128](borrow)
+        difference.limbs[i] = cast[u64](wide)
+        borrow = cast[u64](wide >> 64) & 1
+    }
+    if borrow != 0 {
+        carry : u64 = 0
+        for i in 0..<k {
+            wide := cast[u128](difference.limbs[i]) + cast[u128](modulus.n.limbs[i]) + cast[u128](carry)
+            difference.limbs[i] = cast[u64](wide)
+            carry = cast[u64](wide >> 64)
+        }
+    }
+    return difference
+}
+
+/**
+ * Multiply two numbers modulo an odd number, out of Montgomery form: Montgomery's product, then times R^2.
+ *
+ * @param a One factor, below the modulus.
+ * @param b The other, below the modulus.
+ * @param modulus The modulus.
+ * @return a * b mod n, below n.
+ */
+big_multiply_plain :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+    product := big_multiply(a, b, modulus)
+    return big_multiply(&product, &modulus.r2, modulus)
+}

@@ -35,7 +35,7 @@ def rsa_key(bits=2048):
 
 
 def certificate(subject, key, issuer_name, issuer_key, ca=False, path_length=None, key_usage=None, eku=None, names=None,
-                constraints=None, start=START, end=END, extra=None, pss=False, basic=True):
+                constraints=None, start=START, end=END, extra=None, pss=False, basic=True, hash_=None):
     builder = (x509.CertificateBuilder().subject_name(name(subject)).issuer_name(issuer_name).public_key(key.public_key())
                .serial_number(x509.random_serial_number()).not_valid_before(start).not_valid_after(end))
     if basic:
@@ -72,7 +72,7 @@ def certificate(subject, key, issuer_name, issuer_key, ca=False, path_length=Non
     if pss:
         return builder.sign(issuer_key, hashes.SHA256(), rsa_padding=padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
                                                                                  salt_length=32))
-    return builder.sign(issuer_key, hashes.SHA256())
+    return builder.sign(issuer_key, hash_ or hashes.SHA256())
 
 
 def pem(*certificates):
@@ -125,6 +125,13 @@ constant("ED25519_CHAIN", e_leaf, comment="A leaf signed by the Ed25519 root dir
 
 # The chain out of order, with a certificate that isn't on the path
 constant("SHUFFLED_CHAIN", p_leaf, inter, p_inter, comment="The P-256 chain with an RSA intermediate in between that isn't on its path")
+
+# A P-384 intermediate, like Let's Encrypt's E5, under the RSA root, signing a P-256 leaf with SHA-384
+p384_inter_key = ec.generate_private_key(ec.SECP384R1())
+p384_inter = certificate("P-384 Intermediate", p384_inter_key, rsa_root.subject, rsa_root_key, ca=True, path_length=0)
+constant("P384_CHAIN", certificate("example.test", p256(), p384_inter.subject, p384_inter_key, names=leaf_names, eku=server,
+                                   hash_=hashes.SHA384()), p384_inter,
+         comment="A P-256 leaf by a P-384 intermediate, signed with ecdsa-with-SHA384, by the RSA root")
 
 # Expired, and not yet valid
 expired = certificate("example.test", p256(), p_inter.subject, p_inter_key, names=leaf_names,

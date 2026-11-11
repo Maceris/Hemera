@@ -15,8 +15,8 @@ package crypto
  * certificates that aren't needed are skipped. What's read is views of those bytes; nothing is allocated.
  *
  * What's checked, for each certificate on the path from the leaf to an anchor: its signature, by its
- * issuer's key (RSA of 2048 bits or more with PKCS #1 v1.5 or PSS, P-256 ECDSA or Ed25519, over SHA-256,
- * SHA-384 or SHA-512); its validity period; that an issuer is a CA (basic constraints, and key usage's
+ * issuer's key (RSA of 2048 bits or more with PKCS #1 v1.5 or PSS, P-256 or P-384 ECDSA, or Ed25519, over
+ * SHA-256, SHA-384 or SHA-512); its validity period; that an issuer is a CA (basic constraints, and key usage's
  * keyCertSign when there's key usage) within its path length; name constraints on DNS names, IP addresses,
  * email addresses and directory names; extended key usage, the leaf's and any CA's that has one; and that
  * no extension marked critical is one that isn't understood. Names are compared byte for byte, as DER
@@ -54,12 +54,14 @@ X509Signature :: enum {
 
 /** What kind of public key a certificate holds. */
 X509KeyKind :: enum {
-    /** An algorithm or curve this package doesn't do, like P-384: the certificate can be read but its key not used. */
+    /** An algorithm or curve this package doesn't do, like P-521: the certificate can be read but its key not used. */
     UNSUPPORTED,
     /** RSA: the key is a PKCS #1 RSAPublicKey's DER. */
     RSA,
     /** P-256: the key is SEC 1's point. */
     P256,
+    /** P-384, which only verifies: the key is SEC 1's uncompressed point. */
+    P384,
     /** Ed25519: the key is its 32 bytes. */
     ED25519,
 }
@@ -190,6 +192,8 @@ OID_SHA512 :: u8.[0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03]
 OID_EC_PUBLIC_KEY :: u8.[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]
 /** prime256v1, P-256's curve, 1.2.840.10045.3.1.7. */
 OID_P256 :: u8.[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]
+/** secp384r1, P-384's curve, 1.3.132.0.34. */
+OID_P384 :: u8.[0x2b, 0x81, 0x04, 0x00, 0x22]
 /** ecdsa-with-SHA256, 1.2.840.10045.4.3.2. */
 OID_ECDSA_SHA256 :: u8.[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]
 /** ecdsa-with-SHA384, 1.2.840.10045.4.3.3. */
@@ -366,7 +370,8 @@ X509PublicKey :: struct {
 
 /**
  * Read a SubjectPublicKeyInfo (RFC 5280, section 4.1.2.7): an RSA key (rsaEncryption, its parameters NULL), a P-256
- * key (id-ecPublicKey with prime256v1, its point checked to be on the curve), or an Ed25519 key (RFC 8410).
+ * or P-384 key (id-ecPublicKey with prime256v1 or secp384r1, its point checked to be on the curve), or an Ed25519 key
+ * (RFC 8410).
  *
  * @param der The SubjectPublicKeyInfo's whole DER, and nothing after it.
  * @return The key, its bytes a view of der; UNSUPPORTED for another algorithm or curve that's well formed. Null for
@@ -399,6 +404,14 @@ x509_public_key :: fn(der: u8[]) -> X509PublicKey? {
         curve := der_oid(curve_element) or_return null
         if curve_element.rest.count != 0 {
             return null
+        }
+        if der_same(curve, OID_P384) {
+            p384 := p384_curve()
+            point : P384Point
+            if !p384_decode_point(&p384, bits, &point) {
+                return null
+            }
+            return X509PublicKey.{kind = .P384, key = bits}
         }
         if !der_same(curve, OID_P256) {
             return X509PublicKey.{kind = .UNSUPPORTED, key = bits[0..<0]}
@@ -440,30 +453,69 @@ rsa_public_key_from_der :: fn(der: u8[]) -> RsaPublicKey? {
 }
 
 /**
- * Read an ECDSA-Sig-Value (RFC 3279, section 2.2.3): SEQUENCE { r INTEGER, s INTEGER }, as P-256's r then s.
+ * Read an ECDSA-Sig-Value (RFC 3279, section 2.2.3), SEQUENCE { r INTEGER, s INTEGER }, into r then s.
+ *
+ * @param der The signature's DER, and nothing after it.
+ * @param pair Where r then s go, each right-aligned in half of it: 64 bytes for P-256, 96 for P-384, at most 132.
+ * @return Whether it's well-formed DER of two numbers, 0 or more, each fitting half of pair.
+ */
+ecdsa_signature_from_der :: fn(der: u8[], pair: mut u8[]) -> bool {
+    sequence := der_expect(der, DER_SEQUENCE) or_return false
+    if sequence.rest.count != 0 || pair.count > 132 {
+        return false
+    }
+    r_element := der_expect(sequence.contents, DER_INTEGER) or_return false
+    s_element := der_expect(r_element.rest, DER_INTEGER) or_return false
+    r := der_unsigned(r_element) or_return false
+    s := der_unsigned(s_element) or_return false
+    half := pair.count / 2
+    if s_element.rest.count != 0 || r.count > half || s.count > half {
+        return false
+    }
+    for i in 0..<pair.count {
+        pair[i] = 0
+    }
+    for byte, i in r {
+        at := half - r.count + i
+        if at < pair.count {
+            pair[at] = byte
+        }
+    }
+    for byte, i in s {
+        at := pair.count - s.count + i
+        if at < pair.count {
+            pair[at] = byte
+        }
+    }
+    return true
+}
+
+/**
+ * Read an ECDSA-Sig-Value (RFC 3279, section 2.2.3) as P-256's r then s.
  *
  * @param der The signature's DER, and nothing after it.
  * @return The signature as r then s, 32 bytes each; or null for malformed DER, a negative number, or one over 32
  *     bytes. Whether r and s are from 1 to n - 1 is p256_ecdsa_verify's to check.
  */
 p256_signature_from_der :: fn(der: u8[]) -> P256Signature? {
-    sequence := der_expect(der, DER_SEQUENCE) or_return null
-    if sequence.rest.count != 0 {
-        return null
-    }
-    r_element := der_expect(sequence.contents, DER_INTEGER) or_return null
-    s_element := der_expect(r_element.rest, DER_INTEGER) or_return null
-    r := der_unsigned(r_element) or_return null
-    s := der_unsigned(s_element) or_return null
-    if s_element.rest.count != 0 || r.count > 32 || s.count > 32 {
-        return null
-    }
     signature : P256Signature
-    for byte, i in r {
-        signature[(32 - r.count + i) % 32] = byte
+    if !ecdsa_signature_from_der(der, signature[0..<64]) {
+        return null
     }
-    for byte, i in s {
-        signature[(64 - s.count + i) % 64] = byte
+    return signature
+}
+
+/**
+ * Read an ECDSA-Sig-Value (RFC 3279, section 2.2.3) as P-384's r then s.
+ *
+ * @param der The signature's DER, and nothing after it.
+ * @return The signature as r then s, 48 bytes each; or null for malformed DER, a negative number, or one over 48
+ *     bytes. Whether r and s are from 1 to n - 1 is p384_ecdsa_verify's to check.
+ */
+p384_signature_from_der :: fn(der: u8[]) -> P384Signature? {
+    signature : P384Signature
+    if !ecdsa_signature_from_der(der, signature[0..<96]) {
+        return null
     }
     return signature
 }
@@ -911,6 +963,13 @@ x509_verify_signature :: fn(kind: X509KeyKind, key: u8[], algorithm: X509Signatu
             }
             pair := p256_signature_from_der(signature) or_return .BAD_SIGNATURE
             verified = p256_ecdsa_verify(key, digest[0..<size], &pair)
+        }
+        case .P384 => {
+            if algorithm != .ECDSA_SHA256 && algorithm != .ECDSA_SHA384 && algorithm != .ECDSA_SHA512 {
+                return .UNSUPPORTED
+            }
+            pair := p384_signature_from_der(signature) or_return .BAD_SIGNATURE
+            verified = p384_ecdsa_verify(key, digest[0..<size], &pair)
         }
         case .ED25519 => {
             if algorithm != .ED25519 {

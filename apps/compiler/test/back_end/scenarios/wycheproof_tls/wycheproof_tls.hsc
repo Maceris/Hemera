@@ -1,6 +1,6 @@
 /*
  * std/crypto's primitives for TLS and NTS against Project Wycheproof's vectors, in cases.hsc: HMAC and
- * HKDF with SHA-384, AES-128-GCM with and without AES-NI, AES-SIV, P-256's ECDH and ECDSA, and RSA's
+ * HKDF with SHA-384, AES-128-GCM with and without AES-NI, AES-SIV, P-256's ECDH and ECDSA, P-384's ECDSA, and RSA's
  * PKCS #1 v1.5 and PSS signatures. Run with hemera --test.
  */
 package wycheproof_tls_test
@@ -475,6 +475,41 @@ agrees_on_p256_ecdsa_with_der #test :: fn(t: ptr[mut testing.T]) -> testing.Outc
         expect_case(t, ecdsa_der_case(&b, ECDSA_DER_CASES[4 * i], ECDSA_DER_CASES[4 * i + 1], ECDSA_DER_CASES[4 * i + 2],
             ECDSA_DER_CASES[4 * i + 3]), i,
             "a DER signature read strictly, and verified exactly when Wycheproof says it's valid")
+    }
+    return .Ok
+}
+
+// A P-384 signature, DER or r then s, verified over the message's digest
+p384_case :: fn(b: ptr[mut Buffers], hash_name: string, form: string, public_hex: string, message_hex: string, signature_hex: string,
+    result: string) -> bool {
+
+    public_count := decode(public_hex, &b.a) % (BUFFER + 1)
+    message_count := decode(message_hex, &b.b) % (BUFFER + 1)
+    signature_count := decode(signature_hex, &b.c) % (BUFFER + 1)
+    signature : crypto.P384Signature
+    if form == "der" {
+        signature = crypto.p384_signature_from_der(b.c[0..<signature_count]) or_return held(false, result)
+    }
+    else {
+        if signature_count != 96 {
+            return held(false, result)
+        }
+        for i in 0..<96 {
+            signature[i] = b.c[i]
+        }
+    }
+    hash := rsa_hash(hash_name)
+    digest : u8[64]
+    size := rsa_digest(hash, b.b[0..<message_count], &digest) % 65
+    return held(crypto.p384_ecdsa_verify(b.a[0..<public_count], digest[0..<size], &signature), result)
+}
+
+agrees_on_p384_ecdsa #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<P384_CASES.count / 6 {
+        expect_case(t, p384_case(&b, P384_CASES[6 * i], P384_CASES[6 * i + 1], P384_CASES[6 * i + 2], P384_CASES[6 * i + 3],
+            P384_CASES[6 * i + 4], P384_CASES[6 * i + 5]), i,
+            "each P-384 signature verifies exactly when Wycheproof says it's valid")
     }
     return .Ok
 }
