@@ -44,6 +44,10 @@ namespace hemera {
 		/// </summary>
 		VECTOR,
 		VOID,
+		/// <summary>
+		/// matrix[T, rows, columns], its elements stored column by column (docs/types.md, Matrices).
+		/// </summary>
+		MATRIX,
 	};
 
 	enum class ArrayType : uint8_t {
@@ -175,6 +179,18 @@ namespace hemera {
 		bool is_bits;
 
 		TypeInfoVector(TypeInfo* element_type, size_t count, bool is_bits);
+	};
+
+	/// <summary>
+	/// matrix[T, rows, columns]: rows × columns elements of an integer or float type, 1 to 4 each way, stored column
+	/// by column, so element (r, c) is at c × rows + r, as GLSL, SPIR-V and Vulkan store them (docs/types.md, Matrices).
+	/// </summary>
+	struct TypeInfoMatrix : public TypeInfo {
+		TypeInfo* element_type;
+		size_t rows;
+		size_t columns;
+
+		TypeInfoMatrix(TypeInfo* element_type, size_t rows, size_t columns);
 	};
 
 	/// <summary>

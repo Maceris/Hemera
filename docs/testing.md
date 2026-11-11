@@ -66,7 +66,7 @@ reverses_back #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]
 
 | Draw | Gives |
 |---|---|
-| `draw[V](source)` | Any value of a type made of numbers, booleans, characters and enums: those alone, or in structs, fixed arrays, vectors and unions. Integers and floats favor their edges now and then: 0, 1, the least and the most, and for floats the infinities and NaN |
+| `draw[V](source)` | Any value of a type made of numbers, booleans, characters and enums: those alone, or in structs, fixed arrays, vectors, matrices and unions. Integers and floats favor their edges now and then: 0, 1, the least and the most, and for floats the infinities and NaN |
 | `draw_between(source, low, high)` | An integer from `low` to `high`, both included |
 | `draw_below(source, bound)` | A `u64` from 0 to `bound - 1` |
 | `draw_bool(source)` | A boolean |

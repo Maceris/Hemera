@@ -509,6 +509,9 @@ after_type :: fn(schema: u8[], at: usize) -> usize {
     else if kind == cast[u8](Kind.Vector) {
         cursor += 4 + 8 + 1
     }
+    else if kind == cast[u8](Kind.Matrix) {
+        cursor += 4 + 8 + 8
+    }
     if cursor > schema.count {
         return NOWHERE
     }

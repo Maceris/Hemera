@@ -195,8 +195,10 @@ namespace hemera {
 	/// </summary>
 	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count, bool is_mutable = false);
 	TypeInfo* vector_of(Walk& walk, TypeInfo* element, size_t count);
+	TypeInfo* matrix_of(Walk& walk, TypeInfo* element, size_t rows, size_t columns);
 	TypeInfo* plain_function_type(Walk& walk, const std::vector<TypeInfo*>& inputs, TypeInfo* output);
 	Progress vector_type(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, TypeInfo*& result);
+	Progress matrix_type(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, TypeInfo*& result);
 	Progress optional_of(Walk& walk, ast::Node* where, TypeInfo* type, Need need, TypeInfo*& result);
 
 	/// <summary>

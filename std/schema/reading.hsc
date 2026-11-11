@@ -31,7 +31,7 @@ Type :: struct {
     /** A struct's, union's, enum's or distinct alias's name, a view of the schema's bytes; empty for other kinds. */
     name : string,
     /**
-     * An alias's type, an array's or a vector's elements', a pointer's (NOWHERE for a rawptr) or an enum's backing
+     * An alias's type, an array's, a vector's or a matrix's elements', a pointer's (NOWHERE for a rawptr) or an enum's backing
      * type, as a place among the schema's types; NOWHERE for other kinds.
      */
     base : usize,
@@ -55,8 +55,10 @@ Type :: struct {
     null_is_none : bool,
     /** Whether a function type is #never_returns. */
     never_returns : bool,
-    /** A struct's alignment in bytes, a vector's count of lanes; 0 for other kinds. */
+    /** A struct's alignment in bytes, a vector's count of lanes, a matrix's rows; 0 for other kinds. */
     count : u64,
+    /** A matrix's columns; 0 for other kinds. */
+    columns : u64,
     /** A union's tag type, as a place among the schema's types; NOWHERE for none, or other kinds. */
     tag : usize,
     /** A struct's members, in order. */
@@ -420,7 +422,7 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
         return NOWHERE
     }
     kind :: byte_at(bytes, start)
-    if kind < cast[u8](Kind.Alias) || kind > cast[u8](Kind.Void) {
+    if kind < cast[u8](Kind.Alias) || kind > cast[u8](Kind.Matrix) {
         return NOWHERE
     }
     made.kind = cast[Kind](kind)
@@ -544,6 +546,11 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
         made.base = reference_at(schema, made, &at, count)
         made.count = number_at(bytes, &at, 8)
         made.is_bits = number_at(bytes, &at, 1) != 0
+    }
+    else if made.kind == .Matrix {
+        made.base = reference_at(schema, made, &at, count)
+        made.count = number_at(bytes, &at, 8)
+        made.columns = number_at(bytes, &at, 8)
     }
     if at != NOWHERE && at > bytes.count {
         return NOWHERE

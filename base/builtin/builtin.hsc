@@ -198,6 +198,31 @@ relptr64[T] :: alias relptr64[T]
  * @tparam count How many lanes: a power of two, with the whole at most 64 bytes.
  */
 vector[T, count: usize] :: alias vector[T, count]
+
+// Matrices (docs/types.md, Matrices)
+/**
+ * rows × columns numbers, stored column by column, written row by row in literals, with * the matrix product.
+ *
+ * @tparam T Each element's type: an integer or float in the target's own byte order.
+ * @tparam rows How many rows, 1 to 4.
+ * @tparam columns How many columns, 1 to 4.
+ */
+matrix[T, rows: usize, columns: usize] :: alias matrix[T, rows, columns]
+/**
+ * Give a matrix's transpose: its rows as columns.
+ *
+ * @param m A matrix, rows × columns.
+ * @return The columns × rows matrix whose (r, c) element is m's (c, r), of m's element type.
+ */
+transpose : fn(m: expr) -> any : ---
+/**
+ * Give an identity matrix.
+ *
+ * @tparam M The matrix type, bound by the argument.
+ * @param M A matrix type, square or not.
+ * @return The M with ones where the row is the column, and zeros elsewhere.
+ */
+identity : fn[M](M: type) -> M : ---
 /** 128 bits of a vector register without lanes of their own: they take &, |, ~ and bit_cast, as AES needs. */
 v128 :: alias v128
 /** 256 bits of a vector register without lanes of their own: they take &, |, ~ and bit_cast. */

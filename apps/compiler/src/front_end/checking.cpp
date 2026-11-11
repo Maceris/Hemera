@@ -842,7 +842,7 @@ namespace hemera {
 		return name == "size_of" || name == "align_of" || name == "offset_of" || name == "type_of"
 			|| name == "type_info_of" || name == "types_are_aliases" || name == "is_secret_type" || name == "has_defaults"
 			|| name == "max_value"
-			|| name == "min_value" || name == "todo" || is_number_builtin(name);
+			|| name == "min_value" || name == "todo" || name == "transpose" || name == "identity" || is_number_builtin(name);
 	}
 
 	static bool is_pointer_name(std::string_view name) {
@@ -945,8 +945,8 @@ namespace hemera {
 			result.name = name;
 			return Progress::DONE;
 		}
-		if (is_pointer_name(text_of(name)) || is_text(name, "vector")) {
-			// ptr, a relative pointer or vector, which is a type once it's given its arguments
+		if (is_pointer_name(text_of(name)) || is_text(name, "vector") || is_text(name, "matrix")) {
+			// ptr, a relative pointer, vector or matrix, which is a type once it's given its arguments
 			result = type_value(nullptr);
 			result.name = name;
 			return Progress::DONE;
@@ -1290,7 +1290,8 @@ namespace hemera {
 		if (ValueKind::UNTYPED_STRING == value.kind) {
 			value = typed(default_type(value));
 		}
-		if (ValueKind::VALUE != value.kind || arguments.size() != 1) {
+		const bool two = ValueKind::VALUE == value.kind && arguments.size() == 2 && is_variant(value.type, TypeInfoVariant::MATRIX);
+		if (ValueKind::VALUE != value.kind || (arguments.size() != 1 && !two)) {
 			value = error_at(checker, ErrorCode::E4020, where, std::format("{} can't be indexed", describe(value)));
 			return Progress::DONE;
 		}
@@ -1351,6 +1352,30 @@ namespace hemera {
 					to_string(value.type), vector->count - 1));
 			}
 			value = typed(vector->element_type);
+			value.is_location = true;
+			value.is_mutable = is_mutable;
+			return Progress::DONE;
+		}
+		else if (TypeInfoVariant::MATRIX == type->variant) {
+			// An element by its row and column, each proven in bounds as an array's index is (docs/types.md, Matrices)
+			auto matrix = static_cast<TypeInfoMatrix const*>(type);
+			if (arguments.size() != 2) {
+				value = error_at(checker, ErrorCode::E4020, where, std::format("an element of {} is m[row, column]",
+					to_string(value.type)));
+				return Progress::DONE;
+			}
+			for (ast::Node* argument : arguments) {
+				Value index_value;
+				Progress progress = check_expression(checker, argument, BUILTIN_usize, index_value);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				if (ValueKind::POISONED != index_value.kind && !is_integer(default_type(index_value))) {
+					error_at(checker, ErrorCode::E4015, argument, std::format("an index is an integer, not {}", describe(index_value)));
+				}
+			}
+			require_public(checker, where, "which element is read, an address");
+			value = typed(matrix->element_type);
 			value.is_location = true;
 			value.is_mutable = is_mutable;
 			return Progress::DONE;
@@ -1688,7 +1713,46 @@ namespace hemera {
 			if (array == nullptr || TypeInfoVariant::ARRAY != array->variant) {
 				return;
 			}
-			current = static_cast<TypeInfoArray const*>(array)->element_type;
+			// A count that's a value parameter, like n in T[n], binds it to a static array's count
+			auto peeled = static_cast<TypeInfoArray const*>(array);
+			ast::Node* count = dimensions[i]->children.empty() ? nullptr : dimensions[i]->children[0];
+			if (count != nullptr && ArrayType::STATIC == peeled->array_type
+				&& (ast::NodeType::IDENTIFIER == count->node_type || ast::NodeType::TYPE == count->node_type) && count->children.empty()) {
+				const std::string count_name = text_of(count->value.value);
+				if (std::find(generics.begin(), generics.end(), count_name) != generics.end() && !bound_values.contains(count_name)) {
+					ConstantValue known;
+					known.kind = ConstantValue::Kind::INTEGER;
+					known.integer = static_cast<int64_t>(peeled->count);
+					bound_values.emplace(count_name, known);
+				}
+			}
+			current = peeled->element_type;
+		}
+		/*
+		 * T[n] or f32[n], with n a value parameter, parses as T given n, since a name in brackets could be a generic's
+		 * argument: against a static array, it's the array, binding n to its count, and T, if it's a parameter too, to its
+		 * elements
+		 */
+		if (arguments != nullptr && arguments->children.size() == 1) {
+			TypeInfo const* array = base_of(current);
+			ast::Node* count = arguments->children[0];
+			const std::string count_name = text_of(count->value.value);
+			if (array != nullptr && TypeInfoVariant::ARRAY == array->variant
+				&& ArrayType::STATIC == static_cast<TypeInfoArray const*>(array)->array_type
+				&& (ast::NodeType::IDENTIFIER == count->node_type || ast::NodeType::TYPE == count->node_type) && count->children.empty()
+				&& std::find(generics.begin(), generics.end(), count_name) != generics.end()) {
+				auto peeled = static_cast<TypeInfoArray const*>(array);
+				if (!bound_values.contains(count_name)) {
+					ConstantValue known;
+					known.kind = ConstantValue::Kind::INTEGER;
+					known.integer = static_cast<int64_t>(peeled->count);
+					bound_values.emplace(count_name, known);
+				}
+				if (std::find(generics.begin(), generics.end(), name) != generics.end()) {
+					bound.emplace(name, peeled->element_type);
+				}
+				return;
+			}
 		}
 		if (std::find(generics.begin(), generics.end(), name) != generics.end() && arguments == nullptr) {
 			bound.emplace(name, current);
@@ -1702,6 +1766,24 @@ namespace hemera {
 			&& TypeInfoVariant::POINTER == type->variant && !arguments->children.empty()) {
 			unify(checker, arguments->children[0], static_cast<TypeInfoPointer const*>(type)->base_type, bound,
 				bound_values, generics);
+			return;
+		}
+		// matrix[T, rows, columns]: its elements' type, and its rows and columns as value parameters
+		if (name == "matrix" && type != nullptr && TypeInfoVariant::MATRIX == type->variant && arguments->children.size() == 3) {
+			auto matrix = static_cast<TypeInfoMatrix const*>(type);
+			unify(checker, arguments->children[0], matrix->element_type, bound, bound_values, generics);
+			for (size_t i = 1; i < 3; ++i) {
+				ast::Node* dimension = arguments->children[i];
+				const std::string dimension_name = text_of(dimension->value.value);
+				if ((ast::NodeType::IDENTIFIER == dimension->node_type || ast::NodeType::TYPE == dimension->node_type)
+					&& dimension->children.empty() && std::find(generics.begin(), generics.end(), dimension_name) != generics.end()
+					&& !bound_values.contains(dimension_name)) {
+					ConstantValue known;
+					known.kind = ConstantValue::Kind::INTEGER;
+					known.integer = static_cast<int64_t>(1 == i ? matrix->rows : matrix->columns);
+					bound_values.emplace(dimension_name, known);
+				}
+			}
 			return;
 		}
 		// An instance of a generic type: its arguments
@@ -2236,6 +2318,18 @@ namespace hemera {
 				explicit_names.insert(generics[i]);
 			}
 		}
+		// Derived parameters are worked out, never bound from arguments (docs/types.md, Derived Parameters)
+		std::set<std::string> derived_names;
+		for (ast::Node* child : function->children) {
+			if (ast::NodeType::GENERIC_TAG != child->node_type) {
+				continue;
+			}
+			for (ast::Node* parameter : child->children) {
+				if (ast::NodeType::DERIVED_PARAMETER == parameter->node_type) {
+					derived_names.insert(text_of(parameter->value.value));
+				}
+			}
+		}
 		// Each argument, matched to its parameter, binds what it can
 		auto parameter_for = [&](size_t position, InternedString name) -> const Parameter* {
 			if (name == nullptr) {
@@ -2320,6 +2414,9 @@ namespace hemera {
 				inferred["T"] = mutable_argument(checker.walk, inferred["T"]);
 			}
 			for (const auto& [generic_name, generic_type] : inferred) {
+				if (derived_names.contains(generic_name)) {
+					continue;
+				}
 				if (explicit_names.contains(generic_name)) {
 					report_warning(WarningCode::W4000, checker.walk.file_path, argument->value.line_number,
 						argument->value.column_number, std::format("{} is given twice", generic_name));
@@ -2444,6 +2541,8 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	static TypeInfoMatrix const* matrix_type_of(const Value& value);
+
 	// size_of, align_of and the other builtin functions (docs/types.md).
 	static Progress check_builtin_call(Checker& checker, ast::Node* where, Value& callee,
 		const std::vector<ast::Node*>& arguments) {
@@ -2488,6 +2587,27 @@ namespace hemera {
 		}
 		if (is_number_builtin(name)) {
 			return check_number_builtin(checker, arguments[0], name, values[0], callee);
+		}
+		// transpose(m), a matrix's rows as its columns, and identity(M), ones where row is column (docs/types.md, Matrices)
+		if (name == "transpose") {
+			TypeInfoMatrix const* matrix = matrix_type_of(values[0]);
+			if (matrix == nullptr) {
+				callee = ValueKind::POISONED == values[0].kind ? poisoned()
+					: error_at(checker, ErrorCode::E4015, arguments[0], std::format("transpose takes a matrix, not {}", describe(values[0])));
+				return Progress::DONE;
+			}
+			callee = typed(matrix_of(checker.walk, matrix->element_type, matrix->columns, matrix->rows));
+			return Progress::DONE;
+		}
+		if (name == "identity") {
+			if (ValueKind::TYPE != values[0].kind || !is_variant(values[0].type, TypeInfoVariant::MATRIX)) {
+				callee = ValueKind::POISONED == values[0].kind ? poisoned()
+					: error_at(checker, ErrorCode::E4015, arguments[0], std::format("identity takes a matrix type, like identity(matrix[f32, 4, 4]), not {}",
+						describe(values[0])));
+				return Progress::DONE;
+			}
+			callee = typed(values[0].type);
+			return Progress::DONE;
 		}
 		// type_info_of and types_are_aliases also take type values, like an any's type
 		const bool takes_type = name != "type_of";
@@ -2980,7 +3100,7 @@ namespace hemera {
 		}
 		const bool type_head = ValueKind::TYPE == value.kind
 			|| (is_text(node->value.value, "ptr") || std::string_view(*node->value.value).starts_with("relptr")
-				|| is_text(node->value.value, "vector"));
+				|| is_text(node->value.value, "vector") || is_text(node->value.value, "matrix"));
 		// The head's own value, at the head's qualifier for package.Name, or at the DOT_ACCESS before it
 		if (next > 0) {
 			record(checker, node->children[next - 1], value);
@@ -3240,6 +3360,14 @@ namespace hemera {
 		return ValueKind::VALUE == value.kind || is_untyped(value);
 	}
 
+	// A value's matrix type, or null when it isn't a matrix (docs/types.md, Matrices).
+	static TypeInfoMatrix const* matrix_type_of(const Value& value) {
+		if (ValueKind::VALUE != value.kind || !is_variant(value.type, TypeInfoVariant::MATRIX)) {
+			return nullptr;
+		}
+		return static_cast<TypeInfoMatrix const*>(base_of(value.type));
+	}
+
 	/*
 	 * A value's array type when it does arithmetic element by element (docs/types.md, Arrays as Vectors): a fixed array
 	 * of numbers of the target's own byte order, or null.
@@ -3254,6 +3382,71 @@ namespace hemera {
 			return nullptr;
 		}
 		return array;
+	}
+
+	/*
+	 * What an operator on a matrix gives (docs/types.md, Matrices): + and - with a matrix of its type, element by element;
+	 * * the matrix product, a matrix times an array of as many elements as it has columns (a column), an array of as
+	 * many as it has rows times it (a row), or a number times every element; == and != whole. Null, with why in reason,
+	 * when they don't go together.
+	 */
+	static TypeInfo* matrix_binary_type(Checker& checker, TokenType op, const Value& left, const Value& right, std::string& reason) {
+		TypeInfoMatrix const* left_matrix = matrix_type_of(left);
+		TypeInfoMatrix const* right_matrix = matrix_type_of(right);
+		TypeInfoMatrix const* matrix = left_matrix != nullptr ? left_matrix : right_matrix;
+		TypeInfo* element = matrix->element_type;
+		const Value& other = left_matrix != nullptr ? right : left;
+		if (is_comparison(op)) {
+			if ((TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) && ValueKind::VALUE == left.kind
+				&& ValueKind::VALUE == right.kind && same_type(left.type, right.type)) {
+				return BUILTIN_bool;
+			}
+			reason = std::format("{} and {} compare with == and != only, a matrix with one of its type", describe(left), describe(right));
+			return nullptr;
+		}
+		if (TokenType::OPERATOR_PLUS == op || TokenType::OPERATOR_MINUS == op) {
+			if (left_matrix != nullptr && right_matrix != nullptr && same_type(left.type, right.type)) {
+				return left.type;
+			}
+			reason = std::format("a matrix adds and subtracts a matrix of its own type, not {} and {}", describe(left), describe(right));
+			return nullptr;
+		}
+		if (TokenType::OPERATOR_MULTIPLY != op) {
+			reason = std::format("a matrix takes +, -, * and comparisons, not this operator, with {} and {}", describe(left),
+				describe(right));
+			return nullptr;
+		}
+		// The matrix product: rows by k, times k by columns
+		if (left_matrix != nullptr && right_matrix != nullptr) {
+			if (!same_type(left_matrix->element_type, right_matrix->element_type) || left_matrix->columns != right_matrix->rows) {
+				reason = std::format("{} can't multiply {}: its columns are {}, and the other's rows {}, of {}", to_string(left.type),
+					to_string(right.type), left_matrix->columns, right_matrix->rows, to_string(right_matrix->element_type));
+				return nullptr;
+			}
+			if (same_type(left.type, right.type)) {
+				return left.type;
+			}
+			return matrix_of(checker.walk, element, left_matrix->rows, right_matrix->columns);
+		}
+		// A column vector, or a row one
+		if (ValueKind::VALUE == other.kind && is_variant(other.type, TypeInfoVariant::ARRAY)) {
+			auto array = static_cast<TypeInfoArray const*>(base_of(other.type));
+			const size_t needed = left_matrix != nullptr ? matrix->columns : matrix->rows;
+			if (ArrayType::STATIC != array->array_type || !same_type(array->element_type, element) || array->count != needed) {
+				reason = std::format("{} multiplies an array of {} {} {}, not {}", to_string(matrix_type_of(left) != nullptr
+					? left.type : right.type), needed, to_string(element), left_matrix != nullptr ? "on its right" : "on its left",
+					describe(other));
+				return nullptr;
+			}
+			return array_of(checker.walk, element, ArrayType::STATIC, left_matrix != nullptr ? matrix->rows : matrix->columns);
+		}
+		// A number for every element
+		const bool number = ValueKind::VALUE == other.kind ? same_type(other.type, element) : fits(other, element);
+		if (!number) {
+			reason = std::format("{} can't multiply {}", describe(other), to_string(left_matrix != nullptr ? left.type : right.type));
+			return nullptr;
+		}
+		return left_matrix != nullptr ? left.type : right.type;
 	}
 
 	/*
@@ -3752,6 +3945,12 @@ namespace hemera {
 			check_vector_binary(checker, node, op, left, right, result);
 			return Progress::DONE;
 		}
+		if (matrix_type_of(left) != nullptr || matrix_type_of(right) != nullptr) {
+			std::string reason;
+			TypeInfo* type = matrix_binary_type(checker, op, left, right, reason);
+			result = type != nullptr ? typed(type) : error_at(checker, ErrorCode::E4020, node, reason);
+			return Progress::DONE;
+		}
 		// Arrays of numbers element by element; == and != still compare them whole (docs/types.md, Arrays as Vectors)
 		if ((arithmetic_array_of(left) != nullptr || arithmetic_array_of(right) != nullptr) && !is_comparison(op)) {
 			const bool array_left = arithmetic_array_of(left) != nullptr;
@@ -4028,7 +4227,8 @@ namespace hemera {
 				to_string(type)));
 			return Progress::DONE;
 		}
-		if ((TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op) && arithmetic_array_of(operand) != nullptr) {
+		if ((TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op)
+			&& (arithmetic_array_of(operand) != nullptr || matrix_type_of(operand) != nullptr)) {
 			result = typed(operand.type);
 			return Progress::DONE;
 		}
@@ -4109,6 +4309,19 @@ namespace hemera {
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(from)->array_type
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(to)->array_type
 			&& same_type(static_cast<TypeInfoArray const*>(from)->element_type, static_cast<TypeInfoArray const*>(to)->element_type);
+		// A matrix and the array of its elements, column by column, either way (docs/types.md, Matrices)
+		auto storage = [](TypeInfo const* matrix_type, TypeInfo const* array_type) {
+			if (TypeInfoVariant::MATRIX != matrix_type->variant || TypeInfoVariant::ARRAY != array_type->variant) {
+				return false;
+			}
+			auto matrix = static_cast<TypeInfoMatrix const*>(matrix_type);
+			auto array = static_cast<TypeInfoArray const*>(array_type);
+			return ArrayType::STATIC == array->array_type && array->count == matrix->rows * matrix->columns
+				&& same_type(array->element_type, matrix->element_type);
+		};
+		if (storage(from, to) || storage(to, from)) {
+			return true;
+		}
 		// Complex numbers to another size, quaternions too, and a real number to either, as its real part
 		const bool composites = is_composite(to) && (from->variant == to->variant
 			|| TypeInfoVariant::INTEGER == from->variant || TypeInfoVariant::FLOAT == from->variant);
@@ -4235,15 +4448,16 @@ namespace hemera {
 			}
 			named = declaration->type_value;
 		}
-		else if (is_text(node->value.value, "vector") && !head_was_package) {
-			// vector[u32, 4].{...}
+		else if ((is_text(node->value.value, "vector") || is_text(node->value.value, "matrix")) && !head_was_package) {
+			// vector[u32, 4].{...} and matrix[f32, 2, 2].{...}
 			std::vector<ast::Node*> argument_nodes;
 			for (ast::Node* child : node->children) {
 				if (ast::NodeType::GENERIC_TAG == child->node_type) {
 					argument_nodes.insert(argument_nodes.end(), child->children.begin(), child->children.end());
 				}
 			}
-			return vector_type(checker.walk, node, argument_nodes, result);
+			return is_text(node->value.value, "matrix") ? matrix_type(checker.walk, node, argument_nodes, result)
+				: vector_type(checker.walk, node, argument_nodes, result);
 		}
 		else {
 			named = builtin_type(text_of(binding->value.value));
@@ -4313,6 +4527,25 @@ namespace hemera {
 					return progress;
 				}
 				require_fit(checker, lane, vector->element_type, list->children[i], "a lane");
+			}
+			return Progress::DONE;
+		}
+		// matrix[f32, 2, 2].{a, b, c, d}: every element, written row by row, or .{} for zeros (docs/types.md, Matrices)
+		if (base != nullptr && TypeInfoVariant::MATRIX == base->variant) {
+			auto matrix = static_cast<TypeInfoMatrix const*>(base);
+			const size_t given = list != nullptr ? list->children.size() : 0;
+			if (given != 0 && given != matrix->rows * matrix->columns) {
+				result = error_at(checker, ErrorCode::E4015, node, std::format("{} is written with all {} elements, row by row, not {}",
+					to_string(type), matrix->rows * matrix->columns, given));
+				return Progress::DONE;
+			}
+			for (size_t i = 0; i < given; ++i) {
+				Value element;
+				progress = check_expression(checker, list->children[i], matrix->element_type, element);
+				if (progress != Progress::DONE) {
+					return progress;
+				}
+				require_fit(checker, element, matrix->element_type, list->children[i], "an element");
 			}
 			return Progress::DONE;
 		}
@@ -5314,6 +5547,19 @@ namespace hemera {
 					continue;
 				}
 				require_fit(checker, value, types[i], targets[i], "this assignment");
+				continue;
+			}
+			// A matrix, as its operator gives a matrix of its type
+			if (matrix_type_of(target_values[i]) != nullptr) {
+				std::string reason;
+				TypeInfo* type = ValueKind::POISONED == value.kind ? types[i] : matrix_binary_type(checker, op, target_values[i], value, reason);
+				if (type == nullptr) {
+					error_at(checker, ErrorCode::E4020, targets[i], reason);
+				}
+				else if (!same_type(type, types[i])) {
+					error_at(checker, ErrorCode::E4015, targets[i], std::format("this gives {}, which isn't {}", to_string(type),
+						to_string(types[i])));
+				}
 				continue;
 			}
 			// An array of numbers element by element, with an array of its type or a number for each element

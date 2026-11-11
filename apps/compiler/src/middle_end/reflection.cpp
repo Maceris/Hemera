@@ -38,6 +38,7 @@ namespace hemera {
 				case TypeInfoVariant::TYPE: return "TYPE";
 				case TypeInfoVariant::UNION: return "UNION";
 				case TypeInfoVariant::VECTOR: return "VECTOR";
+				case TypeInfoVariant::MATRIX: return "MATRIX";
 				case TypeInfoVariant::VOID: return "VOID";
 			}
 			return "VOID";
@@ -56,6 +57,7 @@ namespace hemera {
 				: TypeInfoVariant::STRUCT == variant ? "TypeInfoStruct"
 				: TypeInfoVariant::UNION == variant ? "TypeInfoUnion"
 				: TypeInfoVariant::VECTOR == variant ? "TypeInfoVector"
+				: TypeInfoVariant::MATRIX == variant ? "TypeInfoMatrix"
 				: "TypeInfo";
 		}
 
@@ -331,6 +333,13 @@ namespace hemera {
 				write_type(record, layout, "element_type", vector->element_type);
 				write_number(record, layout, "count", vector->count);
 				write_number(record, layout, "is_bits", vector->is_bits);
+				break;
+			}
+			case TypeInfoVariant::MATRIX: {
+				auto matrix = static_cast<const TypeInfoMatrix*>(type);
+				write_type(record, layout, "element_type", matrix->element_type);
+				write_number(record, layout, "rows", matrix->rows);
+				write_number(record, layout, "columns", matrix->columns);
 				break;
 			}
 			case TypeInfoVariant::ALIAS: {

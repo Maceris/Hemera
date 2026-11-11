@@ -541,6 +541,11 @@ namespace hemera {
 					pointer_type(generator), pointer_type(generator) });
 			}
 		}
+		else if (TypeInfoVariant::MATRIX == variant) {
+			// Its elements, column by column, as the array of them it can be cast to (docs/types.md, Matrices)
+			auto matrix = static_cast<TypeInfoMatrix const*>(type);
+			result = LLVM::LLVMArrayType::get(llvm_type(generator, matrix->element_type), matrix->rows * matrix->columns);
+		}
 		else if (TypeInfoVariant::VECTOR == variant) {
 			// A vector[bool, n]'s lanes are bytes of 0 or 1, as a bool is in memory
 			auto vector = static_cast<TypeInfoVector const*>(type);
@@ -2703,6 +2708,11 @@ namespace hemera {
 		if (source == destination) {
 			return v;
 		}
+		// A matrix and the array of its elements are the same bits, column by column (docs/types.md, Matrices)
+		if ((TypeInfoVariant::MATRIX == source->variant && TypeInfoVariant::ARRAY == destination->variant)
+			|| (TypeInfoVariant::ARRAY == source->variant && TypeInfoVariant::MATRIX == destination->variant)) {
+			return v;
+		}
 		/*
 		 * To a complex number or a quaternion: one of another size part by part, or a real number as its real part
 		 * (docs/types.md, Complex Numbers and Quaternions)
@@ -3315,6 +3325,19 @@ namespace hemera {
 			const auto& described = compile_time_data(generator.program).described_types();
 			auto found = described.find(static_cast<uintptr_t>(address));
 			return found != described.end() ? type_descriptor(generator, found->second) : zero_of(generator, llvm);
+		}
+		if (TypeInfoVariant::MATRIX == variant) {
+			auto matrix = static_cast<TypeInfoMatrix const*>(type);
+			const size_t count = matrix->rows * matrix->columns;
+			if (mlir::Value dense = dense_numbers(generator, llvm, matrix->element_type, at, count)) {
+				return dense;
+			}
+			mlir::Value result = zero_of(generator, llvm);
+			for (size_t i = 0; i < count; ++i) {
+				result = insert(generator, result, constant_from(generator, matrix->element_type, value, offset + i * matrix->element_type->size),
+					{ static_cast<int64_t>(i) });
+			}
+			return result;
 		}
 		if (TypeInfoVariant::COMPLEX == variant || TypeInfoVariant::QUATERNION == variant) {
 			auto composite = static_cast<TypeInfoComposite const*>(type);
@@ -4058,6 +4081,7 @@ namespace hemera {
 			case TypeInfoVariant::UNION: return "UNION";
 			case TypeInfoVariant::VECTOR: return "VECTOR";
 			case TypeInfoVariant::VOID: return "VOID";
+			case TypeInfoVariant::MATRIX: return "MATRIX";
 		}
 		return "VOID";
 	}
@@ -4084,6 +4108,7 @@ namespace hemera {
 			case TypeInfoVariant::STRUCT: return "TypeInfoStruct";
 			case TypeInfoVariant::UNION: return "TypeInfoUnion";
 			case TypeInfoVariant::VECTOR: return "TypeInfoVector";
+			case TypeInfoVariant::MATRIX: return "TypeInfoMatrix";
 			case TypeInfoVariant::ANY:
 			case TypeInfoVariant::ARCHETYPE:
 			case TypeInfoVariant::BOOLEAN:
@@ -4105,6 +4130,13 @@ namespace hemera {
 				info.type_of("element_type", vector->element_type);
 				info.number("count", vector->count);
 				info.flag("is_bits", vector->is_bits);
+				break;
+			}
+			case TypeInfoVariant::MATRIX: {
+				auto matrix = static_cast<TypeInfoMatrix const*>(type);
+				info.type_of("element_type", matrix->element_type);
+				info.number("rows", matrix->rows);
+				info.number("columns", matrix->columns);
 				break;
 			}
 			case TypeInfoVariant::ALIAS: {
@@ -4283,6 +4315,9 @@ namespace hemera {
 				break;
 			case TypeInfoVariant::VECTOR:
 				wait_for_described(generator, static_cast<const TypeInfoVector*>(type)->element_type, seen);
+				break;
+			case TypeInfoVariant::MATRIX:
+				wait_for_described(generator, static_cast<const TypeInfoMatrix*>(type)->element_type, seen);
 				break;
 			case TypeInfoVariant::FUNCTION: {
 				auto function = static_cast<const TypeInfoFunction*>(type);
@@ -4521,6 +4556,22 @@ namespace hemera {
 	}
 
 	// [index] or [low..<high]: an element, or a view of several.
+	// m[row, column]: the element at column × rows + row, where the matrix is (docs/types.md, Matrices).
+	static Emitted emit_matrix_element(Generator& generator, Emitted current, const std::vector<ast::Node*>& arguments) {
+		TypeInfo const* type = base(current.type);
+		if (TypeInfoVariant::POINTER == type->variant) {
+			auto pointer = static_cast<TypeInfoPointer const*>(type);
+			current = location(value_of(generator, current), pointer->base_type);
+			type = base(pointer->base_type);
+		}
+		auto matrix = static_cast<TypeInfoMatrix const*>(type);
+		mlir::Value row = emit_as(generator, arguments[0], BUILTIN_usize);
+		mlir::Value column = emit_as(generator, arguments[1], BUILTIN_usize);
+		mlir::Value index = LLVM::AddOp::create(generator.builder, generator.loc, LLVM::MulOp::create(generator.builder, generator.loc,
+			column, constant_int(generator, usize_type(generator), static_cast<int64_t>(matrix->rows))), row);
+		return location(element_address(generator, address_of(generator, current), matrix->element_type, index), matrix->element_type);
+	}
+
 	static Emitted emit_index(Generator& generator, Emitted current, ast::Node* index, const CheckedNode* found) {
 		TypeInfo const* type = base(current.type);
 		mlir::Value data;
@@ -5022,6 +5073,28 @@ namespace hemera {
 		}
 		if ((name == "real" || name == "imag" || name == "jmag" || name == "kmag" || name == "conj" || name == "abs") && arguments.size() == 1) {
 			return emit_number_builtin(generator, paren, name, arguments[0]);
+		}
+		// A matrix's transpose, and an identity matrix: ones where row is column, zeros elsewhere (docs/types.md, Matrices)
+		if ((name == "transpose" || name == "identity") && arguments.size() == 1) {
+			TypeInfo* result_type = type_at(generator, paren, nullptr);
+			auto result = static_cast<TypeInfoMatrix const*>(base(result_type));
+			mlir::Value elements = zero_of(generator, llvm_type(generator, result_type));
+			if (name == "identity") {
+				mlir::Value one = convert(generator, constant_int(generator, integer_type(generator, 4), 1), BUILTIN_i32, result->element_type);
+				for (size_t i = 0; i < std::min(result->rows, result->columns); ++i) {
+					elements = insert(generator, elements, one, { static_cast<int64_t>(i * result->rows + i) });
+				}
+				return value(elements, result_type);
+			}
+			mlir::Value source = value_of(generator, emit_expression(generator, arguments[0], nullptr));
+			// The source is columns × rows: its (column, row) is the result's (row, column)
+			for (size_t row = 0; row < result->rows; ++row) {
+				for (size_t column = 0; column < result->columns; ++column) {
+					elements = insert(generator, elements, extract(generator, source, static_cast<int64_t>(row * result->columns + column)),
+						{ static_cast<int64_t>(column * result->rows + row) });
+				}
+			}
+			return value(elements, result_type);
 		}
 		if ((name == "size_of" || name == "align_of" || name == "offset_of") && !arguments.empty()) {
 			TypeInfo const* of = emit_expression(generator, arguments[0], nullptr).type;
@@ -7352,6 +7425,9 @@ namespace hemera {
 					LLVM::LLVMFuncOp function = function_for(generator, found->declaration);
 					current = value(LLVM::AddressOfOp::create(generator.builder, generator.loc, function), found->declaration->value_type);
 				}
+				else if (ValueKind::GENERIC_FUNCTION != current.kind && arguments.size() == 2) {
+					current = emit_matrix_element(generator, current, arguments);
+				}
 				else if (ValueKind::GENERIC_FUNCTION != current.kind) {
 					current = emit_index(generator, current, arguments[0], found);
 				}
@@ -7732,6 +7808,22 @@ namespace hemera {
 			Emitted operand = emit_expression(generator, operand_node, nullptr);
 			return location(value_of(generator, operand), result_type);
 		}
+		// -m on a matrix: each element negated
+		if (is_variant(result_type, TypeInfoVariant::MATRIX) && (TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op)) {
+			Emitted whole = emit_expression(generator, operand_node, result_type);
+			if (TokenType::OPERATOR_PLUS == op) {
+				return whole;
+			}
+			auto matrix = static_cast<TypeInfoMatrix const*>(base(result_type));
+			mlir::Value source = address_of(generator, whole);
+			mlir::Value slot = make_slot(generator, result_type);
+			for (size_t i = 0; i < matrix->rows * matrix->columns; ++i) {
+				mlir::Value index = constant_int(generator, usize_type(generator), static_cast<int64_t>(i));
+				mlir::Value x = load(generator, matrix->element_type, element_address(generator, source, matrix->element_type, index));
+				store(generator, negate_number(generator, x, matrix->element_type), element_address(generator, slot, matrix->element_type, index));
+			}
+			return location(slot, result_type);
+		}
 		// -a on an array of numbers: 0 - each element, so -0.0 comes from 0.0 as it does for a float alone
 		if (TypeInfoArray const* array = arithmetic_array(result_type); array != nullptr
 			&& (TokenType::OPERATOR_MINUS == op || TokenType::OPERATOR_PLUS == op)) {
@@ -7939,6 +8031,81 @@ namespace hemera {
 		return emit_as(generator, node, arithmetic_array(type)->element_type);
 	}
 
+	/*
+	 * An operator on a matrix, into a new place of result_type (docs/types.md, Matrices): + and - element by element;
+	 * * the matrix product, a matrix times a column, a row times a matrix, or every element times a number. left and
+	 * right are where a matrix or an array is, or the number itself.
+	 */
+	static mlir::Value matrix_operation(Generator& generator, TokenType op, mlir::Value left, TypeInfo const* left_type, mlir::Value right,
+		TypeInfo const* right_type, TypeInfo* result_type, const ast::Node* where) {
+
+		auto matrix_of_type = [](TypeInfo const* type) {
+			return is_variant(type, TypeInfoVariant::MATRIX) ? static_cast<TypeInfoMatrix const*>(base(type)) : nullptr;
+		};
+		TypeInfoMatrix const* a = matrix_of_type(left_type);
+		TypeInfoMatrix const* b = matrix_of_type(right_type);
+		TypeInfo* element = (a != nullptr ? a : b)->element_type;
+		mlir::Value result = make_slot(generator, result_type);
+		auto at = [&](mlir::Value data, size_t index) {
+			return element_address(generator, data, element, constant_int(generator, usize_type(generator), static_cast<int64_t>(index)));
+		};
+		auto read = [&](mlir::Value data, size_t index) {
+			return load(generator, element, at(data, index));
+		};
+		const bool left_array = is_variant(left_type, TypeInfoVariant::ARRAY);
+		const bool right_array = is_variant(right_type, TypeInfoVariant::ARRAY);
+		if (TokenType::OPERATOR_MULTIPLY == op && a != nullptr && b != nullptr) {
+			// rows × k times k × columns: each element the sum of a row's and a column's products
+			for (size_t column = 0; column < b->columns; ++column) {
+				for (size_t row = 0; row < a->rows; ++row) {
+					mlir::Value sum;
+					for (size_t k = 0; k < a->columns; ++k) {
+						mlir::Value product = arithmetic(generator, TokenType::OPERATOR_MULTIPLY, read(left, k * a->rows + row),
+							read(right, column * b->rows + k), element, where);
+						sum = sum ? arithmetic(generator, TokenType::OPERATOR_PLUS, sum, product, element, where) : product;
+					}
+					store(generator, sum, at(result, column * a->rows + row));
+				}
+			}
+			return result;
+		}
+		if (TokenType::OPERATOR_MULTIPLY == op && (left_array || right_array)) {
+			// A column, matrix × v: each row's products summed; or a row, v × matrix: each column's
+			TypeInfoMatrix const* m = a != nullptr ? a : b;
+			const size_t outputs = a != nullptr ? m->rows : m->columns;
+			const size_t inner = a != nullptr ? m->columns : m->rows;
+			for (size_t out = 0; out < outputs; ++out) {
+				mlir::Value sum;
+				for (size_t k = 0; k < inner; ++k) {
+					mlir::Value product = a != nullptr
+						? arithmetic(generator, TokenType::OPERATOR_MULTIPLY, read(left, k * m->rows + out), read(right, k), element, where)
+						: arithmetic(generator, TokenType::OPERATOR_MULTIPLY, read(left, k), read(right, out * m->rows + k), element, where);
+					sum = sum ? arithmetic(generator, TokenType::OPERATOR_PLUS, sum, product, element, where) : product;
+				}
+				store(generator, sum, at(result, out));
+			}
+			return result;
+		}
+		// Element by element: two matrices, or one and a number
+		TypeInfoMatrix const* m = a != nullptr ? a : b;
+		for (size_t i = 0; i < m->rows * m->columns; ++i) {
+			mlir::Value x = a != nullptr ? read(left, i) : left;
+			mlir::Value y = b != nullptr ? read(right, i) : right;
+			store(generator, arithmetic(generator, op, x, y, element, where), at(result, i));
+		}
+		return result;
+	}
+
+	// An operand of a matrix's operator: where a matrix or an array is, or the number, as the matrix's element.
+	static mlir::Value matrix_operand(Generator& generator, ast::Node* node, TypeInfo* element, TypeInfo*& type) {
+		type = type_at(generator, node, nullptr);
+		if (is_variant(type, TypeInfoVariant::MATRIX) || is_variant(type, TypeInfoVariant::ARRAY)) {
+			return address_of(generator, emit_expression(generator, node, type));
+		}
+		type = element;
+		return emit_as(generator, node, element);
+	}
+
 	static Emitted emit_binary(Generator& generator, ast::Node* node, TypeInfo* expected) {
 		const TokenType op = node->value.type;
 		ast::Node* left_node = node->children[0];
@@ -8023,6 +8190,21 @@ namespace hemera {
 		}
 		if (TypeInfo* vector = vector_operands(generator, left_node, right_node); vector != nullptr && right_node != nullptr) {
 			return emit_vector_binary(generator, node, op, vector, result_type);
+		}
+		// Matrices' arithmetic: whichever side is one, and an array with it is a row or a column
+		if (right_node != nullptr && !is_comparison(op)) {
+			TypeInfo* left_own = type_at(generator, left_node, nullptr);
+			TypeInfo* right_own = type_at(generator, right_node, nullptr);
+			TypeInfo const* matrix = is_variant(left_own, TypeInfoVariant::MATRIX) ? left_own
+				: is_variant(right_own, TypeInfoVariant::MATRIX) ? right_own : nullptr;
+			if (matrix != nullptr) {
+				TypeInfo* element = static_cast<TypeInfoMatrix const*>(base(matrix))->element_type;
+				TypeInfo* left_type = nullptr;
+				TypeInfo* right_type = nullptr;
+				mlir::Value left = matrix_operand(generator, left_node, element, left_type);
+				mlir::Value right = matrix_operand(generator, right_node, element, right_type);
+				return location(matrix_operation(generator, op, left, left_type, right, right_type, result_type, node), result_type);
+			}
 		}
 		// Arrays of numbers element by element (docs/types.md, Arrays as Vectors)
 		if (TypeInfoArray const* array = arithmetic_array(result_type); array != nullptr && right_node != nullptr && !is_comparison(op)) {
@@ -8118,9 +8300,10 @@ namespace hemera {
 					return value(TokenType::OPERATOR_EQUAL == op ? equal : negate(generator, equal), BUILTIN_bool);
 				}
 			}
-			// Arrays element by element, structs member by member, tagged unions by their variant and its values
+			// Arrays and matrices element by element, structs member by member, tagged unions by their variant and its values
 			if ((TokenType::OPERATOR_EQUAL == op || TokenType::OPERATOR_NOT_EQUAL == op) && (is_variant(type, TypeInfoVariant::STRUCT)
-				|| is_variant(type, TypeInfoVariant::UNION) || is_variant(type, TypeInfoVariant::ARRAY))) {
+				|| is_variant(type, TypeInfoVariant::UNION) || is_variant(type, TypeInfoVariant::ARRAY)
+				|| is_variant(type, TypeInfoVariant::MATRIX))) {
 				mlir::Value left_address = address_of(generator, emit_expression(generator, left_node, type));
 				mlir::Value right_address = address_of(generator, emit_expression(generator, right_node, type));
 				mlir::Value equal = values_equal(generator, left_address, right_address, type);
@@ -8381,6 +8564,23 @@ namespace hemera {
 
 	// Type.{values} or Type.{name = value}: built as a value, part by part.
 	static Emitted emit_struct_literal(Generator& generator, ast::Node* node, TypeInfo* type) {
+		// A matrix's elements, written row by row and stored column by column (docs/types.md, Matrices)
+		if (is_variant(type, TypeInfoVariant::MATRIX)) {
+			auto matrix = static_cast<TypeInfoMatrix const*>(base(type));
+			mlir::Value elements = zero_of(generator, llvm_type(generator, type));
+			for (ast::Node* child : node->children) {
+				if (ast::NodeType::LIST != child->node_type) {
+					continue;
+				}
+				for (size_t i = 0; i < child->children.size() && i < matrix->rows * matrix->columns; ++i) {
+					const size_t row = i / matrix->columns;
+					const size_t column = i % matrix->columns;
+					elements = insert(generator, elements, emit_as(generator, child->children[i], matrix->element_type),
+						{ static_cast<int64_t>(column * matrix->rows + row) });
+				}
+			}
+			return value(elements, type);
+		}
 		// A vector's lanes, in order
 		if (is_variant(type, TypeInfoVariant::VECTOR)) {
 			auto vector = static_cast<TypeInfoVector const*>(base(type));
@@ -8602,6 +8802,18 @@ namespace hemera {
 		mlir::OpBuilder& b = generator.builder;
 		const mlir::Location l = generator.loc;
 		TypeInfo const* t = base(type);
+		// Every element, as floats compare: -0 equals +0, and a NaN nothing
+		if (TypeInfoVariant::MATRIX == t->variant) {
+			auto matrix = static_cast<TypeInfoMatrix const*>(t);
+			mlir::Value result = boolean(generator, true);
+			for (size_t i = 0; i < matrix->rows * matrix->columns; ++i) {
+				mlir::Value index = constant_int(generator, usize_type(generator), static_cast<int64_t>(i));
+				mlir::Value same = values_equal(generator, element_address(generator, left, matrix->element_type, index),
+					element_address(generator, right, matrix->element_type, index), matrix->element_type);
+				result = LLVM::AndOp::create(b, l, result, same);
+			}
+			return result;
+		}
 		if (TypeInfoVariant::ARRAY == t->variant) {
 			auto array = static_cast<TypeInfoArray const*>(t);
 			TypeInfo const* element = array->element_type;
@@ -9288,6 +9500,17 @@ namespace hemera {
 				store_emitted(generator, given, target.relative != nullptr ? target.relative : target.type, target.address, place.node);
 				continue;
 			}
+			// A matrix: the operator into a new place, then stored, as a product reads what it's stored over
+			if (is_variant(target.type, TypeInfoVariant::MATRIX)) {
+				TypeInfo* element = static_cast<TypeInfoMatrix const*>(base(target.type))->element_type;
+				const bool whole = given.type != nullptr && (is_variant(given.type, TypeInfoVariant::MATRIX)
+					|| is_variant(given.type, TypeInfoVariant::ARRAY));
+				mlir::Value operand = whole ? address_of(generator, given) : convert_emitted(generator, given, element);
+				mlir::Value made = matrix_operation(generator, op, target.address, target.type, operand, whole ? given.type : element,
+					target.type, node);
+				store(generator, load(generator, target.type, made), target.address);
+				continue;
+			}
 			// An array of numbers element by element, with an array of its type or a number for every element
 			if (TypeInfoArray const* array = arithmetic_array(target.type); array != nullptr) {
 				const bool whole = given.type != nullptr && arithmetic_array(given.type) != nullptr;
@@ -9501,6 +9724,11 @@ namespace hemera {
 			case TypeInfoVariant::VECTOR: {
 				auto vector = static_cast<TypeInfoVector const*>(type);
 				return debug_array(generator, name, type, vector->element_type, vector->count);
+			}
+			// Its elements, column by column, as they're stored
+			case TypeInfoVariant::MATRIX: {
+				auto matrix = static_cast<TypeInfoMatrix const*>(type);
+				return debug_array(generator, name, type, matrix->element_type, matrix->rows * matrix->columns);
 			}
 			case TypeInfoVariant::QUATERNION: {
 				auto composite = static_cast<TypeInfoComposite const*>(type);
@@ -12083,6 +12311,7 @@ namespace hemera {
 			case TypeInfoVariant::COMPLEX: return "a complex number";
 			case TypeInfoVariant::QUATERNION: return "a quaternion";
 			case TypeInfoVariant::VECTOR: return "a vector";
+			case TypeInfoVariant::MATRIX: return "a matrix";
 			case TypeInfoVariant::VOID: return "void";
 			case TypeInfoVariant::ALIAS: return "an alias";
 			case TypeInfoVariant::ARCHETYPE: return "a generic's type parameter";

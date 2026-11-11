@@ -38,6 +38,8 @@ namespace hemera {
 				case TypeInfoVariant::TYPE: return 15;
 				case TypeInfoVariant::UNION: return 16;
 				case TypeInfoVariant::VECTOR: return 17;
+				// Past VOID, so the kinds before it keep their numbers
+				case TypeInfoVariant::MATRIX: return 19;
 				// An archetype's descriptor says VOID, as reflection.cpp's variant_name has it
 				case TypeInfoVariant::ARCHETYPE:
 				case TypeInfoVariant::VOID: return 18;
@@ -145,6 +147,9 @@ namespace hemera {
 					}
 					case TypeInfoVariant::VECTOR:
 						place(static_cast<TypeInfoVector const*>(type)->element_type);
+						break;
+					case TypeInfoVariant::MATRIX:
+						place(static_cast<TypeInfoMatrix const*>(type)->element_type);
 						break;
 					case TypeInfoVariant::ANY:
 					case TypeInfoVariant::ARCHETYPE:
@@ -273,6 +278,13 @@ namespace hemera {
 						reference(vector->element_type);
 						number(vector->count, 8);
 						flag(vector->is_bits);
+						break;
+					}
+					case TypeInfoVariant::MATRIX: {
+						auto matrix = static_cast<TypeInfoMatrix const*>(type);
+						reference(matrix->element_type);
+						number(matrix->rows, 8);
+						number(matrix->columns, 8);
 						break;
 					}
 					case TypeInfoVariant::ANY:

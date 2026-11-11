@@ -115,6 +115,8 @@ TypeInfoVariant :: enum {
     VECTOR,
     /** No type of its own, which has nothing more than TypeInfo. */
     VOID,
+    /** matrix[T, rows, columns]: TypeInfoMatrix. After VOID, so the kinds before it keep their values. */
+    MATRIX,
 }
 
 /**
@@ -211,6 +213,20 @@ TypeInfoVector :: struct {
     count: usize,
     /** v128, v256 or v512: bits of a vector register, without lanes of their own. */
     is_bits: bool,
+}
+
+/**
+ * matrix[T, rows, columns], its elements stored column by column: element (r, c) is the (c × rows + r)th (docs/types.md,
+ * Matrices).
+ */
+TypeInfoMatrix :: struct {
+    using TypeInfo,
+    /** Each element's type, an integer or a float. */
+    element_type: ptr[TypeInfo],
+    /** How many rows, 1 to 4. */
+    rows: usize,
+    /** How many columns, 1 to 4. */
+    columns: usize,
 }
 
 /** A string type's description. */

@@ -1046,7 +1046,19 @@ namespace hemera {
 						}
 						ast::Node* index = arguments[0];
 						next.pathless = true;
-						if (is_indexable(collection.type)) {
+						// m[row, column]: each proven below the matrix's rows or columns (docs/types.md, Matrices)
+						if (is_variant(collection.type, TypeInfoVariant::MATRIX) && arguments.size() == 2) {
+							auto matrix = static_cast<TypeInfoMatrix const*>(base(collection.type));
+							for (size_t k = 0; k < 2; ++k) {
+								Chain dimension;
+								dimension.type = BUILTIN_usize;
+								dimension.pathless = true;
+								dimension.count = constant(static_cast<int64_t>(k == 0 ? matrix->rows : matrix->columns));
+								const Value at = evaluate(analysis, facts, arguments[k]);
+								check_index(analysis, facts, dimension, arguments[k], at);
+							}
+						}
+						else if (is_indexable(collection.type)) {
 							if (is_range(index) || ast::NodeType::RANGE_ARRAY == index->node_type) {
 								next.count = check_slice(analysis, facts, collection, index);
 							}

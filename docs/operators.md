@@ -45,6 +45,9 @@ Binary:
 >>> right shift (logical)    signed integer >>> integer >= 0
 ```
 
+On arrays, `+ - * / % %%` work element by element ([Arrays as Vectors](types.md#arrays-as-vectors)). On matrices, `+`
+and `-` do, and `*` is the matrix product, or a matrix times an array or a number ([Matrices](types.md#matrices)).
+
 Except for shift operations, if one operand is an untyped constant
 and the other operand is not, the constant is implicitly converted to
 the type of the other operand (if possible).

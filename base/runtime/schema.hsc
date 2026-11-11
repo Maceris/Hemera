@@ -44,6 +44,7 @@ SchemaKind :: enum #backed_by(u8) {
     Union = 16, /**< A tagged union, or an optional that's just a pointer. */
     Vector = 17, /**< A vector of lanes. */
     Void = 18, /**< The void type. */
+    Matrix = 19, /**< A matrix: its elements' type, its rows and its columns. */
 }
 
 /**
@@ -234,6 +235,9 @@ schema_reach :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]], ou
     else if variant == .VECTOR {
         _ = schema_place(cast[ptr[compiler.TypeInfoVector]](type).element_type, types, out)
     }
+    else if variant == .MATRIX {
+        _ = schema_place(cast[ptr[compiler.TypeInfoMatrix]](type).element_type, types, out)
+    }
 }
 
 /**
@@ -355,6 +359,12 @@ schema_describe :: fn(type: ptr[compiler.TypeInfo], types: ptr[mut uintptr[..]],
         schema_number(out, cast[u64](vector.count), 8)
         schema_flag(out, vector.is_bits)
     }
+    else if variant == .MATRIX {
+        matrix :: cast[ptr[compiler.TypeInfoMatrix]](type)
+        schema_reference(out, matrix.element_type, types)
+        schema_number(out, cast[u64](matrix.rows), 8)
+        schema_number(out, cast[u64](matrix.columns), 8)
+    }
 }
 
 /**
@@ -383,6 +393,7 @@ schema_kind_of :: fn(variant: compiler.TypeInfoVariant) -> SchemaKind {
         case .UNION => SchemaKind.Union
         case .VECTOR => SchemaKind.Vector
         case .VOID => SchemaKind.Void
+        case .MATRIX => SchemaKind.Matrix
     }
 }
 

@@ -550,6 +550,13 @@ draw_into :: fn(source: ptr[mut Source], info: ptr[compiler.TypeInfo], at: rawpt
                 draw_into(source, vector.element_type, offset_by(at, index * element))
             }
         }
+        case .MATRIX: {
+            matrix :: cast[ptr[compiler.TypeInfoMatrix]](plain)
+            element :: matrix.element_type.size
+            for index in 0..<matrix.rows * matrix.columns {
+                draw_into(source, matrix.element_type, offset_by(at, index * element))
+            }
+        }
         case .COMPLEX, .QUATERNION: {
             // Parts that are floats: two, or four
             parts :: if plain.variant == .COMPLEX { cast[usize](2) } else { cast[usize](4) }

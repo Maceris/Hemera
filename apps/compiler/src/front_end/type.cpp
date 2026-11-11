@@ -92,6 +92,14 @@ namespace hemera {
 		, is_bits{ is_bits_ }
 	{}
 
+	// As its elements are laid out, one after another, with their own alignment
+	TypeInfoMatrix::TypeInfoMatrix(TypeInfo* element_type_, size_t rows_, size_t columns_)
+		: TypeInfo{ TypeInfoVariant::MATRIX, element_type_->size * rows_ * columns_, element_type_->alignment }
+		, element_type{ element_type_ }
+		, rows{ rows_ }
+		, columns{ columns_ }
+	{}
+
 	TypeInfoFloat::TypeInfoFloat(Endianness endianness_, size_t size_)
 		: TypeInfo{ TypeInfoVariant::FLOAT, size_, size_ }
 		, endianness{ endianness_ }
@@ -504,6 +512,10 @@ namespace hemera {
 			auto vector = static_cast<TypeInfoVector const*>(type);
 			return std::format("vector[{}, {}]", to_string(vector->element_type), vector->count);
 		}
+		if (TypeInfoVariant::MATRIX == variant) {
+			auto matrix = static_cast<TypeInfoMatrix const*>(type);
+			return std::format("matrix[{}, {}, {}]", to_string(matrix->element_type), matrix->rows, matrix->columns);
+		}
 		if (TypeInfoVariant::ARRAY == variant) {
 			auto array = static_cast<TypeInfoArray const*>(type);
 			const std::string dimension = ArrayType::STATIC == array->array_type
@@ -554,6 +566,9 @@ namespace hemera {
 			}
 			else if (TypeInfoVariant::VECTOR == variant) {
 				type = static_cast<TypeInfoVector const*>(type)->element_type;
+			}
+			else if (TypeInfoVariant::MATRIX == variant) {
+				type = static_cast<TypeInfoMatrix const*>(type)->element_type;
 			}
 			else {
 				return false;

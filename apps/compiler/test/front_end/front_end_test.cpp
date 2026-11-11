@@ -1289,6 +1289,49 @@ TEST(FrontEnd, ChecksIntegerRanges)
  * range, operators that don't apply, intrinsics given what they can't take, an x86_64 immediate that
  * isn't a constant, and #target_features with a +.
  */
+// Matrices (docs/types.md, Matrices): their types, literals, indexes, products and builtins.
+TEST(FrontEnd, ChecksMatrices)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("matrix_errors"));
+	ASSERT_EQ(errors.size(), 11) << codes(errors);
+	std::string all;
+	for (const std::string& message : *hemera::error_messages()) {
+		all += message + "\n";
+	}
+	for (std::string_view expected : {
+		"a matrix has 1 to 4 rows and 1 to 4 columns, not 5 and 4",
+		"a matrix's elements are integers or floats of the target's byte order, not string",
+		"matrix[f32, 2, 2] is written with all 4 elements, row by row, not 3",
+		"an element of matrix[f32, 2, 2] is m[row, column]",
+		"matrix[f32, 2, 3] can't multiply matrix[f32, 2, 3]: its columns are 3, and the other's rows 2",
+		"multiplies an array of 3 f32 on its right, not f32[2]",
+		"a matrix adds and subtracts a matrix of its own type",
+		"transpose takes a matrix, not the integer 3",
+		"identity takes a matrix type",
+		"compare with == and != only",
+		"this gives matrix[f32, 2, 3], which isn't matrix[f32, 2, 2]",
+	}) {
+		EXPECT_NE(all.find(expected), std::string::npos) << expected << "\n\nin:\n" << all;
+	}
+}
+
+// A matrix's row and column are each proven in bounds, as an array's index is.
+TEST(FrontEnd, ChecksMatrixBounds)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("matrix_bounds"));
+	ASSERT_EQ(errors.size(), 2) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4031);
+	EXPECT_EQ(errors[1], hemera::ErrorCode::E4031);
+}
+
 // Arrays as vectors (docs/types.md, Arrays as Vectors): swizzles' letters, what's assigned through, arithmetic's types.
 TEST(FrontEnd, ChecksArraysAsVectors)
 {

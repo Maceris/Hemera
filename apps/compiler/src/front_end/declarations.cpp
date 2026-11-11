@@ -406,6 +406,11 @@ namespace hemera {
 			[&] { return new TypeInfoVector(element, count, false); });
 	}
 
+	TypeInfo* matrix_of(Walk& walk, TypeInfo* element, size_t rows, size_t columns) {
+		return derived_type(walk, std::format("matrix {} {} {}", static_cast<const void*>(element), rows, columns),
+			[&] { return new TypeInfoMatrix(element, rows, columns); });
+	}
+
 	TypeInfo* array_of(Walk& walk, TypeInfo* element, ArrayType array_type, size_t count, bool is_mutable) {
 		is_mutable = is_mutable && ArrayType::VIEW == array_type;
 		return derived_type(walk,
@@ -636,9 +641,9 @@ namespace hemera {
 			&& TokenType::SYM_QUESTION == node->value.type && node->children.empty();
 	}
 
-	// vector[T, n], which like ptr[T] is made from its arguments rather than declared.
+	// vector[T, n] and matrix[T, rows, columns], which like ptr[T] are made from their arguments rather than declared.
 	static bool is_vector_name(std::string_view name) {
-		return name == "vector";
+		return name == "vector" || name == "matrix";
 	}
 
 	static bool is_pointer_name(std::string_view name) {
@@ -766,6 +771,44 @@ namespace hemera {
 		return Progress::DONE;
 	}
 
+	// matrix[T, rows, columns]: integers or floats of the target's byte order, 1 to 4 rows and columns (docs/types.md, Matrices).
+	Progress matrix_type(Walk& walk, ast::Node* where, const std::vector<ast::Node*>& arguments, TypeInfo*& result) {
+		if (arguments.size() != 3) {
+			return type_error(walk, ErrorCode::E4014, where,
+				"matrix takes its elements' type, then how many rows and columns, like matrix[f32, 4, 4]");
+		}
+		TypeInfo* element = nullptr;
+		Progress progress = type_of(walk, arguments[0], Need::RESOLVED, element);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		size_t rows = 0;
+		size_t columns = 0;
+		progress = array_count(walk, arguments[1], rows);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		progress = array_count(walk, arguments[2], columns);
+		if (progress != Progress::DONE) {
+			return progress;
+		}
+		TypeInfo const* number = get_base_type(element);
+		const bool numeric = number != nullptr && (TypeInfoVariant::INTEGER == number->variant || TypeInfoVariant::FLOAT == number->variant);
+		const bool own_endianness = numeric && (TypeInfoVariant::INTEGER == number->variant
+			? static_cast<TypeInfoInteger const*>(number)->endianness : static_cast<TypeInfoFloat const*>(number)->endianness)
+			== Endianness::SYSTEM;
+		if (!numeric || !own_endianness) {
+			return type_error(walk, ErrorCode::E4014, arguments[0],
+				std::format("a matrix's elements are integers or floats of the target's byte order, not {}", to_string(element)));
+		}
+		if (rows == 0 || rows > 4 || columns == 0 || columns > 4) {
+			return type_error(walk, ErrorCode::E4014, rows == 0 || rows > 4 ? arguments[1] : arguments[2],
+				std::format("a matrix has 1 to 4 rows and 1 to 4 columns, not {} and {}", rows, columns));
+		}
+		result = matrix_of(walk, element, rows, columns);
+		return Progress::DONE;
+	}
+
 	// Array dimensions, outermost first: the last one written is the innermost. Views are mut T[] if mutable_views.
 	static Progress apply_dimensions(Walk& walk, std::vector<TypePart>& dimensions, TypeInfo*& current, bool mutable_views) {
 		for (auto iter = dimensions.rbegin(); iter != dimensions.rend(); ++iter) {
@@ -827,10 +870,14 @@ namespace hemera {
 		TypeInfo* current = nullptr;
 		Declaration* generic = nullptr;
 		if (vector) {
+			const bool matrix = name_text(name) == "matrix";
 			if (parts.empty() || TypePart::Kind::ARGUMENTS != parts[0].kind) {
-				return type_error(walk, ErrorCode::E4014, where, "vector takes its lanes' type and how many, like vector[u32, 4]");
+				return type_error(walk, ErrorCode::E4014, where, matrix
+					? "matrix takes its elements' type, then how many rows and columns, like matrix[f32, 4, 4]"
+					: "vector takes its lanes' type and how many, like vector[u32, 4]");
 			}
-			Progress progress = vector_type(walk, parts[0].node, parts[0].arguments, current);
+			Progress progress = matrix ? matrix_type(walk, parts[0].node, parts[0].arguments, current)
+				: vector_type(walk, parts[0].node, parts[0].arguments, current);
 			if (progress != Progress::DONE) {
 				return progress;
 			}
