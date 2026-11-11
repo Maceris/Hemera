@@ -1,6 +1,6 @@
 /**
- * Cryptography: hashes, message authentication, key derivation, encryption, key agreement, signatures and password
- * hashing.
+ * Cryptography: hashes, message authentication, key derivation, encryption, key agreement, signatures, password
+ * hashing, and the certificates (X.509, DER and PEM) that TLS checks a server's key with.
  *
  * Freestanding: callers pass every buffer, so a kernel can use it. What's secret is #secret (docs/memory.md,
  * Secrets), and every function working with secrets is #constant_time, so the compiler checks that none decides

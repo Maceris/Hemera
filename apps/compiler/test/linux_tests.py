@@ -61,6 +61,7 @@ TESTS = [
     ("argon2", ["--test"], 0),
     ("wycheproof", ["--test"], 0),
     ("wycheproof_tls", ["--test"], 0),
+    ("x509", ["--test"], 0),
     # Under Valgrind's Memcheck, which reports anything that depends on a secret (docs/memory.md)
     ("ctgrind", ["--valgrind-secrets"], 42),
     # And a secret leaked past the compiler, which it must report: --error-exitcode

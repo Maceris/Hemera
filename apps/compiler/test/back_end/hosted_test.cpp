@@ -541,6 +541,15 @@ TEST(Hosted, WycheproofForTls)
 	run_hosted("wycheproof_tls", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
+/*
+ * std/crypto's DER, PEM and X.509: chains from a test authority validated to their anchors, bad ones
+ * refused for their reasons, and host names matched.
+ */
+TEST(Hosted, Certificates)
+{
+	run_hosted("x509", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+}
+
 // std/crypto's hashes, HMAC and HKDF against known values (std/crypto).
 TEST(Hosted, Hashes)
 {

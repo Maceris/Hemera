@@ -425,3 +425,56 @@ agrees_on_rsa_pss #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     }
     return .Ok
 }
+
+// Whether a case did what Wycheproof says: valid ones work, invalid ones are refused, and acceptable ones may do either
+held :: fn(worked: bool, result: string) -> bool {
+    return result == "acceptable" || worked == (result == "valid")
+}
+
+// The public key read from a SubjectPublicKeyInfo, then the shared secret; refused for a key that isn't P-256's
+ecdh_spki_case #constant_time :: fn(b: ptr[mut Buffers], private_hex: string, public_hex: string, shared_hex: string, result: string) -> bool {
+    _ = decode(private_hex, &b.a)
+    public_count := decode(public_hex, &b.b) % (BUFFER + 1)
+    shared_count := decode(shared_hex, &b.c) % (BUFFER + 1)
+    secret : crypto.P256SecretKey
+    for i in 0..<32 {
+        secret[i] = b.a[i]
+    }
+    shared : crypto.SecretByte[32]
+    key := crypto.x509_public_key(b.b[0..<public_count]) or_return held(false, result)
+    worked := key.kind == .P256 && crypto.p256_ecdh(&secret, key.key, &shared)
+    if worked && result == "valid" {
+        return crypto.equal(shared, b.c[0..<shared_count])
+    }
+    return held(worked, result)
+}
+
+// The DER signature read strictly, then verified over the message's SHA-256
+ecdsa_der_case :: fn(b: ptr[mut Buffers], public_hex: string, message_hex: string, signature_hex: string, result: string) -> bool {
+    public_count := decode(public_hex, &b.a) % (BUFFER + 1)
+    message_count := decode(message_hex, &b.b) % (BUFFER + 1)
+    signature_count := decode(signature_hex, &b.c) % (BUFFER + 1)
+    signature := crypto.p256_signature_from_der(b.c[0..<signature_count]) or_return held(false, result)
+    digest := crypto.sha256(b.b[0..<message_count])
+    return held(crypto.p256_ecdsa_verify(b.a[0..<public_count], digest, &signature), result)
+}
+
+agrees_on_p256_ecdh_with_spki #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<ECDH_SPKI_CASES.count / 4 {
+        expect_case(t, ecdh_spki_case(&b, ECDH_SPKI_CASES[4 * i], ECDH_SPKI_CASES[4 * i + 1], ECDH_SPKI_CASES[4 * i + 2],
+            ECDH_SPKI_CASES[4 * i + 3]), i,
+            "a SubjectPublicKeyInfo read strictly, and the shared secret Wycheproof's, or the key refused")
+    }
+    return .Ok
+}
+
+agrees_on_p256_ecdsa_with_der #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<ECDSA_DER_CASES.count / 4 {
+        expect_case(t, ecdsa_der_case(&b, ECDSA_DER_CASES[4 * i], ECDSA_DER_CASES[4 * i + 1], ECDSA_DER_CASES[4 * i + 2],
+            ECDSA_DER_CASES[4 * i + 3]), i,
+            "a DER signature read strictly, and verified exactly when Wycheproof says it's valid")
+    }
+    return .Ok
+}
