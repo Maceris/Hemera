@@ -451,7 +451,10 @@ calling a C library.
 | `minimum(x, y)`, `maximum(x, y)` | IEEE 754-2019's: a NaN wins, and `-0` is less than `+0` |
 | `copy_sign(magnitude, sign)` | `magnitude` with `sign`'s sign bit |
 
-The rest of float math, from `exp` to `atan2`, is `std/math`'s, written in Hemera.
+The rest of float math is `std/math`'s, written in Hemera so it gives the same bits everywhere: `exp`, `log`, `power`,
+the trigonometric and hyperbolic functions and their inverses, `erf`, `gamma` and the like, each within 1 ulp unless
+it says otherwise, for `f32` and `f64`; `next_up`, `ulp`, `fraction_and_exponent` and the other bit-level ones; and
+`parse[F](text)`, which reads a float from decimal text correctly rounded.
 
 ## Vectors
 

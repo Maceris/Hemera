@@ -418,6 +418,16 @@ TEST(Hosted, RoundsAndFusesFloats)
 	}
 }
 
+/*
+ * std/math: each function within its ulp bound of references worked out in far more precision (float_math's
+ * make_references.py), special values, identities, and parsing correctly rounded, the slow path's halfway cases too.
+ */
+TEST(Hosted, ComputesFloatMath)
+{
+	const HostedOutput checked = run_hosted("float_math", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("1324 tests: 1324 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, and narrowing.
 TEST(Hosted, ChecksNetworkPolicies)
 {
