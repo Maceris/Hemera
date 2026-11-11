@@ -363,3 +363,65 @@ agrees_on_p256_ecdsa #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     }
     return .Ok
 }
+
+rsa_hash :: fn(text: string) -> crypto.RsaHash {
+    if text == "384" {
+        return .SHA384
+    }
+    if text == "512" {
+        return .SHA512
+    }
+    return .SHA256
+}
+
+// The message's digest with the case's hash, in digest's first bytes, and how many
+rsa_digest :: fn(hash: crypto.RsaHash, message: u8[], digest: ptr[mut u8[64]]) -> usize {
+    crypto.rsa_hash_parts(hash, message, message[0..<0], message[0..<0], digest)
+    return crypto.rsa_hash_size(hash)
+}
+
+rsa_key_of :: fn(b: ptr[mut Buffers], index: string) -> crypto.RsaPublicKey? {
+    at := number(index)
+    if 2 * at + 1 >= RSA_KEYS.count {
+        return null
+    }
+    modulus_count := decode(RSA_KEYS[(2 * at) % RSA_KEYS.count], &b.a) % (BUFFER + 1)
+    exponent_count := decode(RSA_KEYS[(2 * at + 1) % RSA_KEYS.count], &b.b) % (BUFFER + 1)
+    return crypto.rsa_public_key(b.a[0..<modulus_count], b.b[0..<exponent_count])
+}
+
+// The signature verifies exactly when Wycheproof says it's valid; a key refused counts as refusing it
+rsa_case :: fn(b: ptr[mut Buffers], key_index: string, hash_name: string, salt: string, message_hex: string, signature_hex: string,
+    valid: bool, pss: bool) -> bool {
+
+    key := rsa_key_of(b, key_index) or_return !valid
+    message_count := decode(message_hex, &b.c) % (BUFFER + 1)
+    signature_count := decode(signature_hex, &b.d) % (BUFFER + 1)
+    hash := rsa_hash(hash_name)
+    digest : u8[64]
+    size := rsa_digest(hash, b.c[0..<message_count], &digest) % 65
+    if pss {
+        return crypto.rsa_pss_verify(&key, hash, digest[0..<size], b.d[0..<signature_count], number(salt)) == valid
+    }
+    return crypto.rsa_pkcs1_verify(&key, hash, digest[0..<size], b.d[0..<signature_count]) == valid
+}
+
+agrees_on_rsa_pkcs1 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<RSA_PKCS1_CASES.count / 5 {
+        expect_case(t, rsa_case(&b, RSA_PKCS1_CASES[5 * i], RSA_PKCS1_CASES[5 * i + 1], "0", RSA_PKCS1_CASES[5 * i + 2],
+            RSA_PKCS1_CASES[5 * i + 3], RSA_PKCS1_CASES[5 * i + 4] == "valid", false), i,
+            "each PKCS #1 v1.5 signature verifies exactly when Wycheproof says it's valid, its encoding exact")
+    }
+    return .Ok
+}
+
+agrees_on_rsa_pss #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    b := Buffers.{}
+    for i in 0..<RSA_PSS_CASES.count / 6 {
+        expect_case(t, rsa_case(&b, RSA_PSS_CASES[6 * i], RSA_PSS_CASES[6 * i + 1], RSA_PSS_CASES[6 * i + 2], RSA_PSS_CASES[6 * i + 3],
+            RSA_PSS_CASES[6 * i + 4], RSA_PSS_CASES[6 * i + 5] == "valid", true), i,
+            "each PSS signature verifies exactly when Wycheproof says it's valid")
+    }
+    return .Ok
+}
