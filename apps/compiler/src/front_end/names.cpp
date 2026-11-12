@@ -1935,8 +1935,20 @@ namespace hemera {
 		NameRegistry& names = walk.executor.program_info->names;
 		Evaluation* evaluation = nullptr;
 		{
+			/*
+			 * In a generic's instance, like #if float_kind(F) == ..., each instance runs it for its own arguments: the
+			 * same node with other types is another evaluation, keyed as derived parameters' are
+			 */
+			std::string instance;
+			for (const auto& [name, type] : walk.generic_types) {
+				instance += std::format(" {}={}", name, static_cast<const void*>(get_base_type_or_alias(type)));
+			}
+			for (const auto& [name, value] : walk.generic_values) {
+				instance += std::format(" {}={}", name, constant_text(value));
+			}
 			std::scoped_lock<std::mutex> lock(names.mutex);
-			std::unique_ptr<Evaluation>& slot = names.evaluations[expression];
+			std::unique_ptr<Evaluation>& slot = instance.empty() ? names.evaluations[expression]
+				: names.derived_evaluations[std::format("{}{}", static_cast<const void*>(expression), instance)];
 			if (slot == nullptr) {
 				slot = std::make_unique<Evaluation>();
 				slot->node = expression;

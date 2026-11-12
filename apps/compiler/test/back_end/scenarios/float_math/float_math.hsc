@@ -176,20 +176,140 @@ knows_floats_bits #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     return .Ok
 }
 
-/** f32's functions are f64's rounded once, so within 1 ulp of f32 of the exact value, which the f64 one is near. */
-works_in_f32 #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
-    x :: cast[f32](testing.draw_between(source, -2000, 2000)) / 100
-    wide :: cast[f64](x)
-    testing.expect_eq(t, math.sin(x), cast[f32](math.sin(wide)), "sin")
-    testing.expect_eq(t, math.exp(x), cast[f32](math.exp(wide)), "exp")
-    testing.expect_eq(t, math.atan(x), cast[f32](math.atan(wide)), "atan")
-    s, c :: math.sin_cos(x)
-    testing.expect(t, s == math.sin(x) && c == math.cos(x), "sin_cos as sin and cos")
-    if x > 0 {
-        testing.expect_eq(t, math.log(x), cast[f32](math.log(wide)), "log")
-        testing.expect_eq(t, math.power(x, cast[f32](1.5)), cast[f32](math.power(wide, 1.5)), "power")
+/**
+ * How far an f32 result is from the f64 function's, in units of its last place as an f32: 0 for two NaNs or the same
+ * infinity, infinity for a NaN or infinity against something else.
+ */
+ulps_off_32 :: fn(result: f32, reference: f64) -> f64 {
+    rounded :: cast[f32](reference)
+    if result != result || rounded != rounded {
+        return if result != result && rounded != rounded { 0.0 } else { math.infinity[f64]() }
     }
+    if math.is_infinite(result) || math.is_infinite(rounded) {
+        return if result == rounded { 0.0 } else { math.infinity[f64]() }
+    }
+    return abs(cast[f64](result) - reference) / cast[f64](math.ulp(rounded))
+}
+
+/** The functions with f32 kernels of their own, by an index, for checking them alike. */
+FUNCTIONS_32 :: 14
+
+/** Give one of the f32 kernels' functions on eight lanes, and its f64 reference, by index. */
+function_32 :: fn(index: i32, x: vector[f32, 8]) -> vector[f32, 8] {
+    match index {
+        case 0 => return math.exp(x)
+        case 1 => return math.exp2(x)
+        case 2 => return math.exp_minus_one(x)
+        case 3 => return math.log(x)
+        case 4 => return math.log2(x)
+        case 5 => return math.log10(x)
+        case 6 => return math.log_one_plus(x)
+        case 7 => return math.sin(x)
+        case 8 => return math.cos(x)
+        case 9 => return math.tan(x)
+        case 10 => return math.asin(x)
+        case 11 => return math.acos(x)
+        case 12 => return math.atan(x)
+        case _ => return math.cube_root(x)
+    }
+}
+
+/** The same function on one f32. */
+scalar_32 :: fn(index: i32, x: f32) -> f32 {
+    match index {
+        case 0 => return math.exp(x)
+        case 1 => return math.exp2(x)
+        case 2 => return math.exp_minus_one(x)
+        case 3 => return math.log(x)
+        case 4 => return math.log2(x)
+        case 5 => return math.log10(x)
+        case 6 => return math.log_one_plus(x)
+        case 7 => return math.sin(x)
+        case 8 => return math.cos(x)
+        case 9 => return math.tan(x)
+        case 10 => return math.asin(x)
+        case 11 => return math.acos(x)
+        case 12 => return math.atan(x)
+        case _ => return math.cube_root(x)
+    }
+}
+
+/** Its f64 reference. */
+reference_64 :: fn(index: i32, x: f64) -> f64 {
+    match index {
+        case 0 => return math.exp(x)
+        case 1 => return math.exp2(x)
+        case 2 => return math.exp_minus_one(x)
+        case 3 => return math.log(x)
+        case 4 => return math.log2(x)
+        case 5 => return math.log10(x)
+        case 6 => return math.log_one_plus(x)
+        case 7 => return math.sin(x)
+        case 8 => return math.cos(x)
+        case 9 => return math.tan(x)
+        case 10 => return math.asin(x)
+        case 11 => return math.acos(x)
+        case 12 => return math.atan(x)
+        case _ => return math.cube_root(x)
+    }
+}
+
+/**
+ * f32's kernels on every 65537th f32, all 65,536 of them through the whole range: within 1 ulp of the f64 functions,
+ * and on eight lanes the same bits as one at a time. float_math_exhaustive does every f32, by hand.
+ */
+works_in_f32 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    for index in 0..<FUNCTIONS_32 {
+        function :: cast[i32](index)
+        worst := 0.0
+        worst_at : f32 = 0
+        same := true
+        bits : u64 = 0
+        loop {
+            lanes : f32[8]
+            for &lane, i in lanes {
+                lane^ = bit_cast[f32](cast[u32]((bits + cast[u64](i) * 65537 * 8192) & 0xffff_ffff))
+            }
+            results :: bit_cast[f32[8]](function_32(function, bit_cast[vector[f32, 8]](lanes)))
+            for result, i in results {
+                one :: scalar_32(function, lanes[i])
+                same = same && (bit_cast[u32](one) == bit_cast[u32](result) || (one != one && result != result))
+                off :: ulps_off_32(result, reference_64(function, cast[f64](lanes[i])))
+                if off > worst {
+                    worst = off
+                    worst_at = lanes[i]
+                }
+            }
+            bits += 65537
+        }
+        while bits < 8192 * 65537
+        testing.note(t, "function % at %", index, worst_at)
+        testing.expect_le(t, worst, 1.0, "worst error, in f32 ulp: % against %")
+        testing.expect(t, same, "eight lanes give one at a time's bits")
+        testing.end_note(t)
+    }
+    s, c :: math.sin_cos(cast[f32](2.5))
+    testing.expect(t, s == math.sin(cast[f32](2.5)) && c == math.cos(cast[f32](2.5)), "sin_cos as sin and cos")
     return .Ok
+}
+
+/** f32's functions of two, on random pairs, within 1 ulp of f64's. */
+works_in_f32_on_pairs #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    x :: bit_cast[f32](testing.draw[u32](source))
+    y :: bit_cast[f32](testing.draw[u32](source))
+    small :: cast[f32](testing.draw_between(source, 1, 1600)) / 100
+    exponent :: cast[f32](testing.draw_between(source, -6400, 6400)) / 100
+    check_pair(t, x, y)
+    check_pair(t, small, exponent)
+    return .Ok
+}
+
+/** Hold power, atan2 and hypotenuse on one pair of f32s to 1 ulp of f64's. */
+check_pair :: fn(t: ptr[mut testing.T], a: f32, b: f32) {
+    testing.expect_le(t, ulps_off_32(math.power(a, b), math.power(cast[f64](a), cast[f64](b))), 1.0, "power: % against %")
+    testing.expect_le(t, ulps_off_32(math.atan2(a, b), math.atan2(cast[f64](a), cast[f64](b))), 1.0, "atan2: % against %")
+    testing.expect_le(t, ulps_off_32(math.hypotenuse(a, b), math.hypotenuse(cast[f64](a), cast[f64](b))), 1.0,
+        "hypotenuse: % against %")
 }
 
 /** sin² + cos² = 1, exp and log undo each other, and the like, over arguments drawn anywhere. */
@@ -230,5 +350,39 @@ parses_special_values #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, math.parse[f64]("inf") == math.infinity[f64]() && math.parse[f64]("-Infinity") == -math.infinity[f64](),
         "infinities")
     testing.expect(t, math.is_nan(math.parse[f64]("NaN") or_else 0) && math.is_nan(math.parse[f32]("nan") or_else 0), "NaN")
+    return .Ok
+}
+
+/** A compile-time call in a generic's #if decides for each instance: the same node, other answers. */
+kind_of :: fn[F]() -> i32 {
+    #if math.float_kind(F) == math.FLOAT_32 {
+        return 32
+    }
+    #else_if math.float_kind(F) == math.FLOAT_64 {
+        return 64
+    }
+    #else {
+        return 0
+    }
+}
+
+picks_branches_for_each_instance #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    testing.expect_eq(t, kind_of[f32](), 32, "f32")
+    testing.expect_eq(t, kind_of[f64](), 64, "f64, not f32's answer again")
+    testing.expect_eq(t, kind_of[u8](), 0, "neither")
+    return .Ok
+}
+
+/** Vectors: n bound from vector[T, n], lanes cast as numbers, and functions without kernels lane by lane. */
+works_on_vectors #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    v :: vector[f32, 4].{1.5, -2.5, 3, 0.25}
+    whole :: cast[vector[i32, 4]](v)
+    testing.expect(t, intrinsics.all_true(whole == vector[i32, 4].{1, -2, 3, 0}), "f32 lanes to i32, truncated")
+    testing.expect(t, intrinsics.all_true(cast[vector[f64, 4]](whole) == vector[f64, 4].{1, -2, 3, 0}), "and to f64")
+    wide :: vector[f64, 2].{0.5, 2}
+    lanes :: bit_cast[f64[2]](math.sinh(wide))
+    testing.expect(t, lanes[0] == math.sinh(0.5) && lanes[1] == math.sinh(2.0), "an f64 function lane by lane")
+    narrow :: bit_cast[f32[4]](math.erf(v))
+    testing.expect(t, narrow[1] == math.erf(cast[f32](-2.5)), "an f32 one")
     return .Ok
 }

@@ -491,8 +491,9 @@ calling a C library.
 
 The rest of float math is `std/math`'s, written in Hemera so it gives the same bits everywhere: `exp`, `log`, `power`,
 the trigonometric and hyperbolic functions and their inverses, `erf`, `gamma` and the like, each within 1 ulp unless
-it says otherwise, for `f32` and `f64`; `next_up`, `ulp`, `fraction_and_exponent` and the other bit-level ones; and
-`parse[F](text)`, which reads a float from decimal text correctly rounded.
+it says otherwise, for `f32`, `f64`, and vectors of either, lane by lane, so `math.sin(v)` works on a
+`vector[f32, 8]`; `next_up`, `ulp`, `fraction_and_exponent` and the other bit-level ones; and `parse[F](text)`, which
+reads a float from decimal text correctly rounded.
 
 ## Vectors
 
@@ -524,6 +525,9 @@ a[2] = 100
   same size gives the same lanes.
 * Running on a target without vector instructions, like a kernel built without SIMD state, a vector's code works
   one lane at a time.
+* `cast` converts a vector to another of as many lanes, each lane as `cast` converts a number: `cast[vector[i32, 8]](v)`
+  truncates eight floats, and `cast[vector[f64, 4]](w)` widens four.
+* A generic binds a vector's lane type and count from an argument, as `fn[n: usize](v: vector[f32, n])` does.
 
 `v128`, `v256` and `v512` are bits of a vector register's size, without lanes of their own. They take `&`, `|` and
 `~`, and `bit_cast` to and from any vector or array of their size: they're what instructions like AES's work on,

@@ -2800,6 +2800,38 @@ namespace hemera {
 		}
 		mlir::OpBuilder& b = generator.builder;
 		const mlir::Location l = generator.loc;
+		/*
+		 * A vector to one of as many lanes, each converted as a number is: the same instructions, on the whole vector
+		 * (docs/types.md, Vectors)
+		 */
+		if (TypeInfoVariant::VECTOR == source->variant && TypeInfoVariant::VECTOR == destination->variant
+			&& llvm::isa<mlir::VectorType>(from_type) && llvm::isa<mlir::VectorType>(target)) {
+			TypeInfo const* from_lane = static_cast<TypeInfoVector const*>(source)->element_type;
+			TypeInfo const* to_lane = static_cast<TypeInfoVector const*>(destination)->element_type;
+			mlir::Type from_element = llvm::cast<mlir::VectorType>(from_type).getElementType();
+			mlir::Type to_element = llvm::cast<mlir::VectorType>(target).getElementType();
+			const bool from_integer = llvm::isa<mlir::IntegerType>(from_element);
+			const bool to_integer = llvm::isa<mlir::IntegerType>(to_element);
+			const unsigned from_width = from_element.getIntOrFloatBitWidth();
+			const unsigned to_width = to_element.getIntOrFloatBitWidth();
+			if (from_integer && to_integer) {
+				if (to_width > from_width) {
+					return is_signed(from_lane) ? static_cast<mlir::Value>(LLVM::SExtOp::create(b, l, target, v))
+						: static_cast<mlir::Value>(LLVM::ZExtOp::create(b, l, target, v));
+				}
+				return to_width < from_width ? static_cast<mlir::Value>(LLVM::TruncOp::create(b, l, target, v)) : v;
+			}
+			if (!from_integer && !to_integer) {
+				return from_width < to_width ? static_cast<mlir::Value>(LLVM::FPExtOp::create(b, l, target, v))
+					: static_cast<mlir::Value>(LLVM::FPTruncOp::create(b, l, target, v));
+			}
+			if (from_integer) {
+				return is_signed(from_lane) ? static_cast<mlir::Value>(LLVM::SIToFPOp::create(b, l, target, v))
+					: static_cast<mlir::Value>(LLVM::UIToFPOp::create(b, l, target, v));
+			}
+			return is_signed(to_lane) ? static_cast<mlir::Value>(LLVM::FPToSIOp::create(b, l, target, v))
+				: static_cast<mlir::Value>(LLVM::FPToUIOp::create(b, l, target, v));
+		}
 		if (llvm::isa<mlir::IntegerType>(from_type) && llvm::isa<mlir::IntegerType>(target)) {
 			const unsigned from_width = from_type.getIntOrFloatBitWidth();
 			const unsigned to_width = target.getIntOrFloatBitWidth();

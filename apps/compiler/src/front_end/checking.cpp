@@ -1768,6 +1768,22 @@ namespace hemera {
 				bound_values, generics);
 			return;
 		}
+		// vector[T, n]: its lanes' type, and their count as a value parameter
+		if (name == "vector" && type != nullptr && TypeInfoVariant::VECTOR == type->variant && arguments->children.size() == 2
+			&& !static_cast<TypeInfoVector const*>(type)->is_bits) {
+			auto vector = static_cast<TypeInfoVector const*>(type);
+			unify(checker, arguments->children[0], vector->element_type, bound, bound_values, generics);
+			ast::Node* count = arguments->children[1];
+			const std::string count_name = text_of(count->value.value);
+			if ((ast::NodeType::IDENTIFIER == count->node_type || ast::NodeType::TYPE == count->node_type) && count->children.empty()
+				&& std::find(generics.begin(), generics.end(), count_name) != generics.end() && !bound_values.contains(count_name)) {
+				ConstantValue known;
+				known.kind = ConstantValue::Kind::INTEGER;
+				known.integer = static_cast<int64_t>(vector->count);
+				bound_values.emplace(count_name, known);
+			}
+			return;
+		}
 		// matrix[T, rows, columns]: its elements' type, and its rows and columns as value parameters
 		if (name == "matrix" && type != nullptr && TypeInfoVariant::MATRIX == type->variant && arguments->children.size() == 3) {
 			auto matrix = static_cast<TypeInfoMatrix const*>(type);
@@ -4309,6 +4325,18 @@ namespace hemera {
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(from)->array_type
 			&& ArrayType::VIEW == static_cast<TypeInfoArray const*>(to)->array_type
 			&& same_type(static_cast<TypeInfoArray const*>(from)->element_type, static_cast<TypeInfoArray const*>(to)->element_type);
+		// A vector to another of as many lanes, each converted as a number is (docs/types.md, Vectors)
+		if (TypeInfoVariant::VECTOR == from->variant && TypeInfoVariant::VECTOR == to->variant) {
+			auto from_vector = static_cast<TypeInfoVector const*>(from);
+			auto to_vector = static_cast<TypeInfoVector const*>(to);
+			auto numeric = [](TypeInfo const* lane) {
+				return TypeInfoVariant::INTEGER == base_of(lane)->variant || TypeInfoVariant::FLOAT == base_of(lane)->variant;
+			};
+			if (!from_vector->is_bits && !to_vector->is_bits && from_vector->count == to_vector->count
+				&& numeric(from_vector->element_type) && numeric(to_vector->element_type)) {
+				return true;
+			}
+		}
 		// A matrix and the array of its elements, column by column, either way (docs/types.md, Matrices)
 		auto storage = [](TypeInfo const* matrix_type, TypeInfo const* array_type) {
 			if (TypeInfoVariant::MATRIX != matrix_type->variant || TypeInfoVariant::ARRAY != array_type->variant) {
