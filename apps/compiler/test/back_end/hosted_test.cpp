@@ -450,11 +450,12 @@ TEST(Hosted, ComputesFloatMath)
 	EXPECT_NE(checked.output.find("1333 tests: 1333 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
-// The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, and narrowing.
+// The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, narrowing, and
+// rules by name, which never reach an address that isn't public unless a range names it.
 TEST(Hosted, ChecksNetworkPolicies)
 {
 	const HostedOutput checked = run_hosted("network_policy", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("4 tests: 4 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("7 tests: 7 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // Fuzz targets run as property tests: the schema reader's, and one only fuzzing finds a failure in.

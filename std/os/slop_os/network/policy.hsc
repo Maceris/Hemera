@@ -12,6 +12,11 @@ import net_address from "std/os/slop_os"
  *
  * A public address is any that isn't private, loopback, link-local, shared, multicast or reserved (RFC 6890's special
  * ranges), so a policy of public addresses doesn't reach the local network, as DNS rebinding would want it to.
+ *
+ * A rule may name a host instead, or every host under a domain ("*.example.com"), which allows connecting by that
+ * name, the service resolving it (allows_named). A name never reaches an address that isn't public unless a rule's
+ * range covers it, whatever else the policy allows: a name's answer is its server's to choose, and DNS rebinding would
+ * have a public name answer with a local address (decisions/0188).
  */
 
 /** The most rules of each kind a policy has: 16 to connect, and 16 to listen. */
@@ -27,6 +32,10 @@ SCOPE_PUBLIC : u8 : 0
 SCOPE_ANY : u8 : 1
 /** A rule's scope covering the addresses sharing the rule's address's first prefix_length bits, of its family. */
 SCOPE_RANGE : u8 : 2
+/** A rule's scope covering a host by name, or the hosts under a domain: connections by name only. */
+SCOPE_NAME : u8 : 3
+/** The longest name a rule holds, "*." included. */
+RULE_NAME_BYTES :: 63
 
 /** One rule of a policy: plain data, so it's a Relative's element in a message. */
 Rule :: struct {
@@ -43,6 +52,12 @@ Rule :: struct {
     last_port : u16,
     /** With SCOPE_RANGE: the range's address's bytes, IPv4's in the first 4. */
     address : u8[16],
+    /**
+     * With SCOPE_NAME: the name, lower case, without a final dot, its first name_length bytes; "*." first for every
+     * name under the domain after it, not the domain itself.
+     */
+    name : u8[RULE_NAME_BYTES],
+    name_length : u8,
 }
 
 /**
@@ -58,6 +73,94 @@ Rule :: struct {
 range_rule :: fn(address: net_address.Address, prefix_length: u8, transports: u8, first_port: u16, last_port: u16) -> Rule {
     return Rule.{scope = SCOPE_RANGE, family = cast[u8](address.family), prefix_length = prefix_length, transports = transports,
         first_port = first_port, last_port = last_port, address = address.bytes}
+}
+
+/**
+ * Make a rule for a host by name, or every host under a domain.
+ *
+ * @param name The name, any case, a final dot or not; "*.example.com" for every name under example.com. At most
+ *     RULE_NAME_BYTES once its final dot's gone.
+ * @param transports TRANSPORT_TCP, TRANSPORT_UDP, or both.
+ * @param first_port The first port.
+ * @param last_port The last port.
+ * @return The rule; null if the name's empty or too long.
+ */
+name_rule :: fn(name: string, transports: u8, first_port: u16, last_port: u16) -> Rule? {
+    bytes :: string_bytes(name)
+    length := bytes.count
+    if length > 0 && bytes[length - 1] == DOT {
+        length -= 1
+    }
+    if length == 0 || length > RULE_NAME_BYTES {
+        return null
+    }
+    rule := Rule.{scope = SCOPE_NAME, transports = transports, first_port = first_port, last_port = last_port,
+        name_length = cast[u8](length)}
+    for i in 0..<length {
+        if i < rule.name.count {
+            rule.name[i] = lower(bytes[i])
+        }
+    }
+    return rule
+}
+
+/** A dot, an asterisk, and the capital letters' ends, as bytes. */
+DOT : u8 : 46
+ASTERISK : u8 : 42
+UPPER_A : u8 : 65
+UPPER_Z : u8 : 90
+
+/** A byte in lower case, if it's a capital letter. */
+lower :: fn(byte: u8) -> u8 {
+    return if byte >= UPPER_A && byte <= UPPER_Z { byte + 32 } else { byte }
+}
+
+/**
+ * Give a name rule's name.
+ *
+ * @param rule The rule, of SCOPE_NAME.
+ * @return Its name, a view of the rule's bytes.
+ */
+rule_name :: fn(rule: ptr[Rule]) -> u8[] {
+    length :: if cast[usize](rule.name_length) < rule.name.count { cast[usize](rule.name_length) } else { rule.name.count }
+    return view_of(&rule.name[0], length)
+}
+
+/**
+ * Tell whether a name rule's name covers a host's name: the same name, or, for "*.example.com", a name under it.
+ *
+ * @param pattern The rule's name.
+ * @param name The host's name, any case, a final dot or not.
+ * @return True if it covers it.
+ */
+name_covers :: fn(pattern: u8[], name: u8[]) -> bool {
+    length := name.count
+    if length > 0 && name[length - 1] == DOT {
+        length -= 1
+    }
+    if pattern.count >= 2 && pattern[0] == ASTERISK && pattern[1] == DOT {
+        // ".example.com", the end of a longer name
+        suffix :: pattern.count - 1
+        if length <= suffix {
+            return false
+        }
+        for i in 0..<suffix {
+            at :: length - suffix + i
+            if at >= name.count || 1 + i >= pattern.count || lower(name[at]) != pattern[1 + i] {
+                return false
+            }
+        }
+        return true
+    }
+    if length != pattern.count {
+        return false
+    }
+    for i in 0..<length {
+        if lower(name[i]) != pattern[i] {
+            return false
+        }
+    }
+    return true
 }
 
 /**
@@ -214,6 +317,51 @@ allows_connect :: fn(policy: ptr[Policy], transport: u8, to: net_address.Endpoin
 }
 
 /**
+ * Tell whether a policy allows connecting by name to one of the addresses the name resolved to: a public address by
+ * any rule that covers it, or by a rule naming the host; an address that isn't public only by a range covering it, so
+ * a name answered with a local address (DNS rebinding) reaches nothing the policy doesn't name.
+ *
+ * @param policy The policy.
+ * @param transport TRANSPORT_TCP or TRANSPORT_UDP.
+ * @param name The name connected to.
+ * @param to The address it resolved to, and the port.
+ * @return True if a connect rule allows it.
+ */
+allows_named :: fn(policy: ptr[Policy], transport: u8, name: u8[], to: net_address.Endpoint) -> bool {
+    public :: is_public(to.address)
+    for i in cast[u32](0)..<policy.connect_count {
+        if cast[usize](i) >= policy.connect.count {
+            break
+        }
+        rule :: &policy.connect[i]
+        if rule.transports & transport == 0 || to.port < rule.first_port || to.port > rule.last_port {
+            continue
+        }
+        if !public {
+            if rule.scope == SCOPE_RANGE && covers_address(rule, to.address) {
+                return true
+            }
+            continue
+        }
+        if covers_address(rule, to.address) || (rule.scope == SCOPE_NAME && name_covers(rule_name(rule), name)) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Tell whether a policy lets its connection resolve names: if it allows connecting anywhere at all, as a lookup's
+ * queries could otherwise carry what a program allowed nothing would send.
+ *
+ * @param policy The policy.
+ * @return True if it has a connect rule.
+ */
+allows_resolve :: fn(policy: ptr[Policy]) -> bool {
+    return policy.connect_count > 0
+}
+
+/**
  * Tell whether a policy allows listening on a port by a transport.
  *
  * @param policy The policy.
@@ -249,6 +397,13 @@ rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
     if !addresses || outer.scope == SCOPE_ANY {
         return true
     }
+    // A name reaches public addresses only, or what a range of the policy names
+    if inner.scope == SCOPE_NAME {
+        return outer.scope == SCOPE_PUBLIC || (outer.scope == SCOPE_NAME && pattern_within(rule_name(outer), rule_name(inner)))
+    }
+    if outer.scope == SCOPE_NAME {
+        return false
+    }
     inner_range :: rule_address(inner)
     if outer.scope == SCOPE_PUBLIC {
         // A range is within public addresses only if it's one public address, or a range of public addresses no
@@ -260,6 +415,26 @@ rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
     return outer.scope == SCOPE_RANGE && inner.scope == SCOPE_RANGE && outer_range.family != .None
         && inner_range.family == outer_range.family && inner.prefix_length >= outer.prefix_length
         && prefix_matches(outer_range, inner_range, outer.prefix_length)
+}
+
+/**
+ * Tell whether one name rule's name covers all another's does.
+ *
+ * @param outer The covering rule's name.
+ * @param inner The covered rule's: a name, covered if outer covers it; or "*.domain", covered if outer is "*." of the
+ *     same domain or one above it.
+ * @return True if it does.
+ */
+pattern_within :: fn(outer: u8[], inner: u8[]) -> bool {
+    if inner.count >= 2 && inner[0] == ASTERISK && inner[1] == DOT {
+        // Every name under inner's domain: outer has to be a wildcard over the same domain, or one it's under
+        if outer.count < 2 || outer[0] != ASTERISK || outer[1] != DOT {
+            return false
+        }
+        domain :: inner[2..<inner.count]
+        return name_covers(outer, domain) || (outer.count - 2 == domain.count && name_covers(outer[2..<outer.count], domain))
+    }
+    return name_covers(outer, inner)
 }
 
 /**
@@ -379,6 +554,10 @@ describe_rule :: fn(rule: ptr[Rule], into: ptr[mut text_buffer.TextBuffer], list
         }
         else if rule.scope == SCOPE_PUBLIC {
             text_buffer.append(into, " to any public address")
+        }
+        else if rule.scope == SCOPE_NAME {
+            text_buffer.append(into, " to ")
+            text_buffer.append(into, string_of(&rule.name[0], cast[usize](rule.name_length)))
         }
         else if rule.family == 4 {
             b :: rule.address

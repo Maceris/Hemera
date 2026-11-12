@@ -12,6 +12,8 @@ package net
  *     _ = net.write(&connection, string_bytes("hello"))
  *     count :: net.read(&connection, buffer)?      // 0 once the peer has finished
  *     net.close(&connection)
+ *
+ * Names are resolved by the service: open_name connects to a host by name, and resolve gives a name's addresses.
  */
 
 #if base.OS == .SlopOS {
@@ -49,6 +51,21 @@ package net
         Reset,
         /** The connection to the service failed. */
         Broken,
+        /** The name doesn't exist. */
+        NoSuchName,
+        /** The name has no address of the kinds asked for. */
+        NoAddress,
+        /** No DNS server answered, or every one failed: maybe for now. */
+        ResolveFailed,
+        /** The name isn't one. */
+        BadName,
+    }
+
+    /** A name's addresses, as resolve gives them. */
+    Addresses :: struct {
+        /** The first count are the name's, IPv6 and IPv4 taking turns, IPv6 first. */
+        addresses : net_address.Address[network.MAX_ADDRESSES],
+        count : usize,
     }
 
     /** A TCP connection's state, the caller's, until close. */
@@ -143,6 +160,112 @@ package net
             }
         }
         return started(tcp)
+    }
+
+    /**
+     * Open a TCP connection to a host by name, and wait until it's open or has failed. The service resolves the name and
+     * tries its addresses, IPv6 first, as RFC 8305's Happy Eyeballs does, each as the connection's policy allows a name
+     * to reach (network.allows_named).
+     *
+     * @param service A connection to the network service, the caller's.
+     * @param name The host's name: any case, a final dot or not, at most network.MAX_NAME bytes.
+     * @param port Its port, 1 to 65535.
+     * @param memory_bytes The memory for its rings: at least two pages, rounded up to a whole number of them.
+     * @return The connection, open; or why it couldn't be: NotAllowed if the policy allows none of the name's addresses,
+     *     the resolver's failure, or the last address's.
+     */
+    open_name :: fn(service: os.Channel[network.Network], name: string, port: u16, memory_bytes: u64 = DEFAULT_MEMORY)
+        -> Result[Tcp, Failure] {
+        startup :: slop_os.startup_block()
+        made :: match make_memory(memory_bytes) {
+            case Ok(found) => found
+            case Error(failure) => return .Error(failure)
+        }
+        tcp := made
+        handle :: match give_memory(tcp.memory) {
+            case Some(found) => found
+            case None => {
+                unmake(&tcp)
+                return .Error(.NoRoom)
+            }
+        }
+        asking :: match os.port_for(startup.budget, service.end) {
+            case Some(found) => found
+            case None => {
+                unmake(&tcp)
+                return .Error(.NoRoom)
+            }
+        }
+        defer slop_os.handle_close(cast[slop_os.Handle](asking))
+        out := os.Outgoing.{}
+        request :: os.begin[network.Request](&out)
+        text :: os.append(&out, string_bytes(name))
+        request^ = .OpenName(network.OpenNamed.{name = text, port = port, memory = handle})
+        if network.send_request(service.end, asking, &out) is_some {
+            unmake(&tcp)
+            return .Error(.Broken)
+        }
+        into := os.Incoming.{}
+        match network.receive_response(service.end, asking, &into, true) {
+            case Received => {}
+            case _ => {
+                unmake(&tcp)
+                return .Error(.Broken)
+            }
+        }
+        match os.message_of[network.Response](&into)^ {
+            case Opened(stream) => tcp.stream = stream
+            case Refused(refusal) => {
+                unmake(&tcp)
+                return .Error(failure_of(refusal))
+            }
+            case _ => {
+                unmake(&tcp)
+                return .Error(.Broken)
+            }
+        }
+        return started(tcp)
+    }
+
+    /**
+     * Give a name's addresses, and wait for them.
+     *
+     * @param service A connection to the network service, the caller's, whose policy allows connecting somewhere.
+     * @param name The name: any case, a final dot or not, at most network.MAX_NAME bytes.
+     * @param kinds Which addresses: IPv4's, IPv6's, or both.
+     * @return Its addresses, at least one; or why there are none: NotAllowed if the policy allows connecting nowhere,
+     *     NoSuchName, NoAddress, ResolveFailed, BadName, or Broken if the service couldn't be asked.
+     */
+    resolve :: fn(service: os.Channel[network.Network], name: string, kinds: network.Kinds = .Both) -> Result[Addresses, Failure] {
+        startup :: slop_os.startup_block()
+        asking :: os.port_for(startup.budget, service.end) or_return .Error(.NoRoom)
+        defer slop_os.handle_close(cast[slop_os.Handle](asking))
+        out := os.Outgoing.{}
+        request :: os.begin[network.Request](&out)
+        text :: os.append(&out, string_bytes(name))
+        request^ = .Resolve(network.ResolveName.{name = text, kinds = kinds})
+        if network.send_request(service.end, asking, &out) is_some {
+            return .Error(.Broken)
+        }
+        into := os.Incoming.{}
+        match network.receive_response(service.end, asking, &into, true) {
+            case Received => {}
+            case _ => return .Error(.Broken)
+        }
+        return match os.message_of[network.Response](&into)^ {
+            case Resolved(found) => {
+                got := Addresses.{}
+                for address in os.items(&into, found) {
+                    if got.count < got.addresses.count {
+                        got.addresses[got.count] = network.address_of(address)
+                        got.count += 1
+                    }
+                }
+                if got.count == 0 { Result[Addresses, Failure].Error(.NoAddress) } else { Result[Addresses, Failure].Ok(got) }
+            }
+            case Refused(refusal) => .Error(failure_of(refusal))
+            case _ => .Error(.Broken)
+        }
     }
 
     /**
@@ -587,6 +710,32 @@ package net
     }
 
     /**
+     * Say where a connection runs: its local and remote endpoints, and its rings' size. Any progress the service says
+     * meanwhile is taken, as wait takes it.
+     *
+     * @param tcp The connection.
+     * @return What the service says of it; null if the channel failed.
+     */
+    describe :: fn(tcp: ptr[mut Tcp]) -> tcp_stream.StreamInfo? {
+        tell(tcp, .Describe)
+        loop {
+            into := os.Incoming.{}
+            match tcp_stream.receive_response(tcp.stream.end, tcp.port, &into, true) {
+                case Received => {}
+                case _ => return null
+            }
+            match os.message_of[tcp_stream.Response](&into)^ {
+                case Described(info) => return info
+                case Progress(progress) => {
+                    tcp.progress = progress
+                    tcp.watching = false
+                }
+                case _ => {}
+            }
+        }
+    }
+
+    /**
      * Wait for the connection's progress to change.
      *
      * @param tcp The connection, whose progress is updated.
@@ -631,6 +780,10 @@ package net
             case .NoRoom => .NoRoom
             case .BadMemory => .NoRoom
             case .BadEndpoint => .BadEndpoint
+            case .NoSuchName => .NoSuchName
+            case .NoAddress => .NoAddress
+            case .ResolveFailed => .ResolveFailed
+            case .BadName => .BadName
         }
     }
 

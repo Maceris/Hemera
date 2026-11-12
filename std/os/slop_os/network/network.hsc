@@ -13,6 +13,10 @@ import datagrams from "std/os/slop_os"
  * (datagrams). Each answers with a channel of its own, which moves to the program. There's no other way out: a program
  * without a connection to the service reaches nothing. Each connection has a policy (policy.hsc), which every Open,
  * Listen and Udp, and each datagram, is checked against; Narrow makes another with less.
+ *
+ * Names are resolved by the service (decisions/0188, 13e): Resolve gives a name's addresses, and OpenName connects to
+ * one, trying its addresses as RFC 8305's Happy Eyeballs does, each checked against the policy as a name's are
+ * (allows_named), so a name answered with a local address reaches only what the policy names.
  */
 
 /** The network protocol, for the channels between a program and the network service, and the service's listener. */
@@ -25,10 +29,10 @@ Network :: struct {}
 PROTOCOL :: slop_os.Protocol.{name = "network", major_version = 1, lending = .PerConnection}
 
 /**
- * The ring every network connection is made with: 4 KiB, so a Narrow with MAX_RULES of each kind, some 800 bytes, fits a
- * message, which is at most half the ring.
+ * The ring every network connection is made with: 8 KiB, so a Narrow with MAX_RULES of each kind, some 3 KiB with their
+ * names, fits a message, which is at most half the ring.
  */
-RING_BYTES : u32 : 4096
+RING_BYTES : u32 : 8192
 
 /** A TCP connection to open. */
 OpenTo :: struct {
@@ -39,6 +43,59 @@ OpenTo :: struct {
      * its size each, as the service finds it.
      */
     memory : slop_os.Memory,
+}
+
+/** A host to connect to by name. */
+OpenNamed :: struct {
+    /** Its name, as text: any case, a final dot or not, at most MAX_NAME bytes. */
+    name : slop_os.Relative[u8],
+    /** The port, 1 to 65535. */
+    port : u16,
+    /** The connection's memory, as OpenTo's. */
+    memory : slop_os.Memory,
+}
+
+/** The longest name Resolve and OpenName take, as text without a final dot. */
+MAX_NAME :: 253
+
+/** Which of a name's addresses Resolve wants. */
+Kinds :: enum #backed_by(u8) {
+    /** Its IPv4 addresses. */
+    V4 = 1,
+    /** Its IPv6 addresses. */
+    V6 = 2,
+    /** Both. */
+    Both = 3,
+}
+
+/** A name to resolve. */
+ResolveName :: struct {
+    /** The name, as text: any case, a final dot or not, at most MAX_NAME bytes. */
+    name : slop_os.Relative[u8],
+    kinds : Kinds,
+}
+
+/** The most addresses Resolved gives. */
+MAX_ADDRESSES :: 8
+
+/** An address as Resolved carries it: plain bytes, as a message's items are. */
+ResolvedAddress :: struct {
+    /** Its family, a net_address.Family's value: 4 or 6. */
+    family : u8,
+    /** Its bytes, IPv4's in the first 4. */
+    bytes : u8[16],
+}
+
+/**
+ * Give a resolved address as an address.
+ *
+ * @param resolved It.
+ * @return The address; of no family if its family isn't 4 or 6.
+ */
+address_of :: fn(resolved: ResolvedAddress) -> net_address.Address {
+    family :: if resolved.family == 4 { net_address.Family.V4 } else if resolved.family == 6 { net_address.Family.V6 }
+        else { net_address.Family.None }
+    return net_address.Address.{family = family, bytes = resolved.bytes}
 }
 
 /** Why a request was refused. */
@@ -55,6 +112,14 @@ Refusal :: enum #backed_by(u8) {
     BadMemory = 4,
     /** The endpoint isn't one: no address, or port 0. */
     BadEndpoint = 5,
+    /** The name doesn't exist. */
+    NoSuchName = 6,
+    /** The name has no address of the kinds asked for. */
+    NoAddress = 7,
+    /** No DNS server answered, or every one failed: maybe for now. */
+    ResolveFailed = 8,
+    /** The name isn't one: empty, too long, or with a character or label names don't have. */
+    BadName = 9,
 }
 
 /** What a program asks of the network service. */
@@ -75,6 +140,19 @@ Request :: union {
     /** Make another connection with this one's policy, to give a program. Answered with Narrowed. */
     Copy,
     /**
+     * Give a name's addresses, IPv6 and IPv4 taking turns, IPv6 first. Answered with Resolved once its servers have
+     * answered, or Refused: NotAllowed if the policy allows connecting nowhere, or why it wasn't resolved.
+     */
+    Resolve(ResolveName),
+    /**
+     * Open a TCP connection to a host by name: its addresses tried as Happy Eyeballs does (RFC 8305), IPv6 first, the
+     * next started each 250 ms the last isn't connected, until one is, the others then dropped. Each address is checked
+     * against the policy (allows_named), and those it doesn't allow aren't tried. Answered with Opened once the name's
+     * resolved, its progress then said on its channel, or with Refused: NotAllowed if the policy allows none of its
+     * addresses, or why it wasn't resolved.
+     */
+    OpenName(OpenNamed),
+    /**
      * Have the service serve another client, on the end given, which moves to it. Sent on the listener, and answered
      * with nothing.
      */
@@ -91,7 +169,9 @@ Response :: union {
     Bound(os.Channel[datagrams.Datagrams]),
     /** Narrow's and Copy's answer: the new connection. */
     Narrowed(os.Channel[Network]),
-    /** An answer refusing Open, Listen, Udp or Narrow. */
+    /** Resolve's answer: the name's addresses, at most MAX_ADDRESSES, IPv6 first. */
+    Resolved(slop_os.Relative[ResolvedAddress]),
+    /** An answer refusing Open, Listen, Udp, Narrow, Resolve or OpenName. */
     Refused(Refusal),
     /** The answer to a request the service doesn't know; every protocol has it. */
     Unsupported,
@@ -101,7 +181,8 @@ Response :: union {
  * Tell whether a request may be sent again, after a reconnect, without doing more than sending it once did.
  *
  * @param request The request, which isn't changed.
- * @return False for Open, Listen, Udp, Narrow and Copy, each of which makes something new; true for Connect.
+ * @return False for Open, Listen, Udp, Narrow, Copy and OpenName, each of which makes something new; true for Resolve
+ *     and Connect.
  */
 is_idempotent :: fn(request: ptr[Request]) -> bool {
     return match request^ {
@@ -110,6 +191,8 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
         case Udp(_) => false
         case Narrow(_) => false
         case Copy => false
+        case Resolve(_) => true
+        case OpenName(_) => false
         case Connect(_) => true
     }
 }
