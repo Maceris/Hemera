@@ -37,6 +37,39 @@ lock :: fn(spin_lock: ptr[mut SpinLock]) {
     while intrinsics.atomic_load_u32_acquire(&spin_lock.now_serving) != ticket
 }
 
+/** What lock_waiting calls while it waits: a function, and what it's given. */
+Waiting :: struct {
+    /**
+     * Called each time round the spin, with state. It mustn't take the lock being waited for, which would wait for
+     * itself; it may return, or not.
+     */
+    call : (fn(state: rawptr)),
+    /** What call is given, which lock_waiting only passes on: any address, null included. */
+    state : rawptr,
+}
+
+/**
+ * Take the lock as lock does, calling waiting each time round the spin while it isn't this caller's turn: for a caller
+ * that has to keep watch while it waits, like a kernel with interrupts off checking for a CPU that's stopped, which
+ * could be the one holding the lock.
+ *
+ * @param spin_lock The lock, which the caller holds when this returns, until unlock. Writes made under it by earlier
+ *     holders are seen.
+ * @param waiting Called while the caller waits, after its ticket is taken, never once the lock is the caller's: not at
+ *     all when the lock is free at once.
+ */
+lock_waiting :: fn(spin_lock: ptr[mut SpinLock], waiting: Waiting) {
+    ticket :: intrinsics.interlocked_exchange_add_u32_no_fence(&spin_lock.next_ticket, 1)
+    loop {
+        if intrinsics.atomic_load_u32_acquire(&spin_lock.now_serving) == ticket {
+            return void
+        }
+        runtime.deterministic_turn()
+        waiting.call(waiting.state)
+        intrinsics.spin_hint()
+    }
+}
+
 /**
  * Give back the lock, serving the next ticket.
  *

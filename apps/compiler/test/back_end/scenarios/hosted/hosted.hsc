@@ -938,6 +938,7 @@ fails_allocations_on_purpose #test :: fn(t: ptr[mut testing.T]) -> testing.Outco
 ranks_locks #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     // Ranked locks: in order, out of order, and two of one rank by address
     testing.expect(t, ranks_hold(), "a lower rank after a higher is refused, and one rank is taken in address order")
+    testing.expect(t, waits_watching(), "lock_waiting calls its function while it waits, and not once the lock is free")
     return .Ok
 }
 
@@ -992,6 +993,42 @@ arrays_try :: fn() -> bool {
         runtime.array_free(&numbers)
     }
     return held && failing.allocations == 2 && failing.live == 0
+}
+
+/** A lock held by its waiter's own caller, and how many times the waiter has been called, which gives it back. */
+Watched :: struct {
+    /** The lock, held until calls reaches 3. */
+    lock : concurrency.SpinLock,
+    /** How many times give_back_third has been called. */
+    calls : int,
+}
+
+/** A Waiting's call: count it, and on the third give back the lock its state's Watched holds. */
+give_back_third :: fn(state: rawptr) {
+    watched :: cast[ptr[mut Watched]](state)
+    watched.calls += 1
+    if watched.calls == 3 {
+        concurrency.unlock(&watched.lock)
+    }
+}
+
+// lock_waiting, and lock_ranked given a Waiting: called while the lock's held, and not when it's free at once
+waits_watching :: fn() -> bool {
+    watched := Watched.{}
+    waiting :: concurrency.Waiting.{call = give_back_third, state = cast[rawptr](&watched)}
+    concurrency.lock(&watched.lock)
+    concurrency.lock_waiting(&watched.lock, waiting)
+    waited :: watched.calls == 3
+    concurrency.unlock(&watched.lock)
+    concurrency.lock_waiting(&watched.lock, waiting)
+    free_at_once :: watched.calls == 3
+    concurrency.unlock(&watched.lock)
+    held : concurrency.HeldRanks
+    watched.calls = 0
+    concurrency.lock(&watched.lock)
+    in_order :: concurrency.lock_ranked(&watched.lock, 10, &held, waiting)
+    ranked :: watched.calls == 3 && concurrency.unlock_ranked(&watched.lock, 10, &held)
+    return waited && free_at_once && in_order && ranked
 }
 
 // lock_ranked and unlock_ranked: a higher rank after a lower is in order, a lower after a higher isn't

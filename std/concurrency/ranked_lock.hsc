@@ -59,13 +59,14 @@ highest_held :: fn(held: ptr[HeldRanks]) -> (rank: u32, lock: u64, any: bool) {
  * @param spin_lock The lock, which this spins for.
  * @param rank The lock's rank: higher ranks are taken after lower ones.
  * @param held The holder's ranks, this CPU's or thread's.
+ * @param waiting Called while this waits for the lock, as lock_waiting calls it; null to only spin.
  * @return True if it was in order: nothing was held, or the newest rank held was below rank; also true when more is
  *     held than MAX_HELD_RANKS keeps, since then it can't be checked.
  */
-lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks]) -> bool {
+lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks], waiting: Waiting? = null) -> bool {
     highest, highest_lock, any :: highest_held(held)
     in_order :: !any || highest < rank
-    lock(spin_lock)
+    take(spin_lock, waiting)
     push_held(held, rank, cast[u64](cast[uintptr](spin_lock)))
     return in_order
 }
@@ -80,16 +81,27 @@ lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRan
  * @param rank The lock's rank: higher ranks are taken after lower ones, and a lock of the same rank as the newest held
  *     is in order only at a higher address than it.
  * @param held The holder's ranks, this CPU's or thread's.
+ * @param waiting Called while this waits for the lock, as lock_waiting calls it; null to only spin.
  * @return True if it was in order: nothing was held, the newest rank held was below rank, or it was rank and its lock
  *     was at a lower address; also true when more is held than MAX_HELD_RANKS keeps.
  */
-lock_ranked_after :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks]) -> bool {
+lock_ranked_after :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks], waiting: Waiting? = null)
+    -> bool {
+
     highest, highest_lock, any :: highest_held(held)
     address :: cast[u64](cast[uintptr](spin_lock))
     in_order :: !any || highest < rank || (highest == rank && highest_lock < address)
-    lock(spin_lock)
+    take(spin_lock, waiting)
     push_held(held, rank, address)
     return in_order
+}
+
+/** Take a spin lock, calling waiting while it waits if there's one, as lock_waiting does. */
+take :: fn(spin_lock: ptr[mut SpinLock], waiting: Waiting?) {
+    match waiting {
+        case Some(each) => lock_waiting(spin_lock, each)
+        case None => lock(spin_lock)
+    }
 }
 
 /**
