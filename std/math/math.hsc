@@ -5,8 +5,10 @@ import runtime from "base"
 import compiler from "base"
 
 /*
- * The public functions, each on an f32 or an f64: F is the type, worked out from the argument. An f64 is worked on as
- * it is; an f32 is widened to f64, worked on there, and the result rounded to f32 once.
+ * The public functions, each on an f32 or an f64 or a vector of either: F is the type, worked out from the argument.
+ * Each chooses its code by float_kind(F) when it's compiled: f32's kernel (lanes.hsc), on one lane for a scalar, or
+ * an f32 widened to f64's function and rounded once where it has none; f64's function, or its form on lanes
+ * (lanes_64.hsc) for a vector.
  */
 
 /** π. */
@@ -513,13 +515,13 @@ atan2 :: fn[F](y: F, x: F) -> F {
  */
 sinh :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, sinh_64)
+        return narrowed(sinh_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, sinh_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, sinh_64)
+        return sinh_lanes_64(x)
     }
     #else {
         return sinh_64(x)
@@ -535,13 +537,13 @@ sinh :: fn[F](x: F) -> F {
  */
 cosh :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, cosh_64)
+        return narrowed(cosh_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, cosh_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, cosh_64)
+        return cosh_lanes_64(x)
     }
     #else {
         return cosh_64(x)
@@ -557,13 +559,13 @@ cosh :: fn[F](x: F) -> F {
  */
 tanh :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, tanh_64)
+        return narrowed(tanh_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, tanh_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, tanh_64)
+        return tanh_lanes_64(x)
     }
     #else {
         return tanh_64(x)
@@ -579,13 +581,13 @@ tanh :: fn[F](x: F) -> F {
  */
 asinh :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, asinh_64)
+        return narrowed(asinh_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, asinh_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, asinh_64)
+        return asinh_lanes_64(x)
     }
     #else {
         return asinh_64(x)
@@ -601,13 +603,13 @@ asinh :: fn[F](x: F) -> F {
  */
 acosh :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, acosh_64)
+        return narrowed(acosh_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, acosh_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, acosh_64)
+        return acosh_lanes_64(x)
     }
     #else {
         return acosh_64(x)
@@ -623,13 +625,13 @@ acosh :: fn[F](x: F) -> F {
  */
 atanh :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, atanh_64)
+        return narrowed(atanh_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, atanh_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, atanh_64)
+        return atanh_lanes_64(x)
     }
     #else {
         return atanh_64(x)
@@ -739,13 +741,13 @@ remainder :: fn[F](x: F, y: F) -> F {
  */
 erf :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, erf_64)
+        return narrowed(erf_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, erf_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, erf_64)
+        return erf_lanes_64(x)
     }
     #else {
         return erf_64(x)
@@ -762,13 +764,13 @@ erf :: fn[F](x: F) -> F {
  */
 erfc :: fn[F](x: F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
-        return each_lane_widened(x, erfc_64)
+        return narrowed(erfc_lanes_64(widened(x)))
     }
     #else_if float_kind(F) == FLOAT_32 {
         return in_f64(x, erfc_64)
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, erfc_64)
+        return erfc_lanes_64(x)
     }
     #else {
         return erfc_64(x)

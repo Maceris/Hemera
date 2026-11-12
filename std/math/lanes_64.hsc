@@ -836,3 +836,209 @@ power_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) -> ve
     result :: intrinsics.select(negative, -magnitude_result, magnitude_result)
     return redo_lanes_64_2(result, x_in, y_in, special | out_of_range | subnormal, power_64)
 }
+
+/** sinh_64 on lanes: from ln of the largest f64, infinities and NaN by the scalar function. */
+//SPEC: musl src/math/sinh.c
+sinh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    h :: intrinsics.select(x < 0, f64_lanes[n](-0.5), f64_lanes[n](0.5))
+    a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    w :: lane_high(a)
+    large :: w >= 0x4086_2e42
+    small :: w < 0x3ff0_0000
+    t :: exp_minus_one_lanes_64(intrinsics.select(large, f64_lanes[n](0), a))
+    // One division: t²/(t + 1) below 1, t/(t + 1) from it
+    quotient :: intrinsics.select(small, t * t, t) / (t + 1)
+    result :: intrinsics.select(w < 0x3ff0_0000 - (26 << 20), x,
+        intrinsics.select(small, h * (2 * t - quotient), h * (t + quotient)))
+    return redo_lanes_64(result, x, large, sinh_64)
+}
+
+/** cosh_64 on lanes: from ln of the largest f64, infinities and NaN by the scalar function. */
+//SPEC: musl src/math/cosh.c
+cosh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    w :: lane_high(a)
+    large :: w >= 0x4086_2e42
+    small :: w < 0x3fe6_2e42
+    safe :: intrinsics.select(large, f64_lanes[n](0), a)
+    near := f64_lanes[n](1)
+    if intrinsics.any_true(small) {
+        t :: exp_minus_one_lanes_64(safe)
+        near = 1 + t * t / (2 * (1 + t))
+    }
+    far := f64_lanes[n](1)
+    if intrinsics.any_true(~small) {
+        t :: exp_lanes_64(safe)
+        far = 0.5 * (t + 1 / t)
+    }
+    result :: intrinsics.select(w < 0x3ff0_0000 - (26 << 20), f64_lanes[n](1), intrinsics.select(small, near, far))
+    return redo_lanes_64(result, x, large, cosh_64)
+}
+
+/** tanh_64 on lanes. */
+//SPEC: musl src/math/tanh.c
+tanh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    w :: lane_high(a)
+    one :: w > 0x4034_0000
+    big :: w > 0x3fe1_93ea
+    middle :: w > 0x3fd0_58ae
+    // e^(2|x|) - 1 from ln(5/3)/2, e^(-2|x|) - 1 below; past 20 tanh rounds to 1
+    t :: exp_minus_one_lanes_64(intrinsics.select(one, f64_lanes[n](0), intrinsics.select(middle, 2 * a, -2 * a)))
+    // One division: 2/(t + 2) past ln(3)/2, t/(t + 2) past ln(5/3)/2, -t/(t + 2) below
+    quotient :: intrinsics.select(big, f64_lanes[n](2), intrinsics.select(middle, t, -t)) / (t + 2)
+    magnitude := intrinsics.select(big, 1 - quotient, quotient)
+    magnitude = intrinsics.select(one, f64_lanes[n](1), intrinsics.select(w < 0x0010_0000, a, magnitude))
+    result :: intrinsics.select((lane_bits(x) >> 63) != 0, -magnitude, magnitude)
+    return intrinsics.select(x != x, x, result)
+}
+
+/** asinh_64 on lanes. */
+//SPEC: musl src/math/asinh.c
+asinh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    e :: bit_cast[vector[i64, n]]((lane_bits(x) >> 52) & 0x7ff)
+    y :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    big :: e >= 0x3ff + 26
+    middle :: ~big & (e >= 0x3ff + 1)
+    small :: ~big & ~middle & (e >= 0x3ff - 26)
+    // Past 2^26 ln y + ln 2; from 2 ln(2y + 1/(√(y² + 1) + y)); from 2^-26 ln(1 + y + y²/(√(y² + 1) + 1))
+    root :: intrinsics.square_root(y * y + 1)
+    quotient :: intrinsics.select(middle, f64_lanes[n](1), y * y) / intrinsics.select(middle, root + y, root + 1)
+    magnitude := y
+    if intrinsics.any_true(big | middle) {
+        logarithm :: log_lanes_64(intrinsics.select(big, y, intrinsics.select(middle, 2 * y + quotient, f64_lanes[n](1))))
+        magnitude = intrinsics.select(big, logarithm + LN2, intrinsics.select(middle, logarithm, magnitude))
+    }
+    if intrinsics.any_true(small) {
+        magnitude = intrinsics.select(small, log_one_plus_lanes_64(intrinsics.select(small, y + quotient, f64_lanes[n](0))),
+            magnitude)
+    }
+    return intrinsics.select((lane_bits(x) >> 63) != 0, -magnitude, magnitude)
+}
+
+/** acosh_64 on lanes. */
+//SPEC: musl src/math/acosh.c
+acosh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    e :: bit_cast[vector[i64, n]]((lane_bits(x) >> 52) & 0x7ff)
+    below :: x < 1
+    small :: e < 0x3ff + 1
+    middle :: ~small & (e < 0x3ff + 26)
+    safe :: intrinsics.select(below, f64_lanes[n](2), x)
+    result := f64_lanes[n](0)
+    if intrinsics.any_true(~small) {
+        // Below 2^26 ln(2x - 1/(x + √(x² - 1))), from it ln x + ln 2
+        argument :: intrinsics.select(middle, 2 * safe - 1 / (safe + intrinsics.square_root(safe * safe - 1)), safe)
+        logarithm :: log_lanes_64(intrinsics.select(small, f64_lanes[n](1), argument))
+        result = intrinsics.select(middle, logarithm, logarithm + LN2)
+    }
+    if intrinsics.any_true(small & ~below) {
+        // Below 2: ln(1 + (x - 1) + √((x - 1)² + 2(x - 1)))
+        less :: safe - 1
+        near :: log_one_plus_lanes_64(intrinsics.select(small, less + intrinsics.square_root(less * less + 2 * less),
+            f64_lanes[n](0)))
+        result = intrinsics.select(small, near, result)
+    }
+    return intrinsics.select(below, f64_lanes[n](nan_64()), result)
+}
+
+/** atanh_64 on lanes. */
+//SPEC: musl src/math/atanh.c
+atanh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    e :: bit_cast[vector[i64, n]]((lane_bits(x) >> 52) & 0x7ff)
+    y :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    small :: e < 0x3ff - 1
+    // One division: 2y²/(1 - y) below a half, y/(1 - y) from it
+    quotient :: intrinsics.select(small, 2 * y * y, y) / (1 - y)
+    logarithm :: log_one_plus_lanes_64(intrinsics.select(small, 2 * y + quotient, 2 * quotient))
+    magnitude :: intrinsics.select(small & (e < 0x3ff - 32), y, 0.5 * logarithm)
+    return intrinsics.select((lane_bits(x) >> 63) != 0, -magnitude, magnitude)
+}
+
+/** erf_near_zero_64 on lanes. */
+erf_near_zero_lanes :: fn[n: usize](z: vector[f64, n]) -> vector[f64, n] {
+    r :: z * (z * (z * (z * ERF_PP4 + ERF_PP3) + ERF_PP2) + ERF_PP1) + ERF_PP0
+    s :: 1 + z * (z * (z * (z * (z * ERF_QQ5 + ERF_QQ4) + ERF_QQ3) + ERF_QQ2) + ERF_QQ1)
+    return r / s
+}
+
+/** erf_near_one_64 on lanes. */
+erf_near_one_lanes :: fn[n: usize](s: vector[f64, n]) -> vector[f64, n] {
+    p :: s * (s * (s * (s * (s * (s * ERF_PA6 + ERF_PA5) + ERF_PA4) + ERF_PA3) + ERF_PA2) + ERF_PA1) + ERF_PA0
+    q :: 1 + s * (s * (s * (s * (s * (s * ERF_QA6 + ERF_QA5) + ERF_QA4) + ERF_QA3) + ERF_QA2) + ERF_QA1)
+    return p / q
+}
+
+/** erfc_tail_64 on lanes, x positive, the first rational where ix is below 0x4006_db6e. */
+//SPEC: fdlibm s_erf.c
+erfc_tail_lanes :: fn[n: usize](x: vector[f64, n], ix: vector[i64, n]) -> vector[f64, n] {
+    s :: 1 / (x * x)
+    near :: ix < 0x4006_db6e
+    r_a :: s * (s * (s * (s * (s * (s * (s * ERF_RA7 + ERF_RA6) + ERF_RA5) + ERF_RA4) + ERF_RA3) + ERF_RA2) + ERF_RA1)
+        + ERF_RA0
+    q_a :: 1 + s * (s * (s * (s * (s * (s * (s * (s * ERF_SA8 + ERF_SA7) + ERF_SA6) + ERF_SA5) + ERF_SA4) + ERF_SA3)
+        + ERF_SA2) + ERF_SA1)
+    r_b :: s * (s * (s * (s * (s * (s * ERF_RB6 + ERF_RB5) + ERF_RB4) + ERF_RB3) + ERF_RB2) + ERF_RB1) + ERF_RB0
+    q_b :: 1 + s * (s * (s * (s * (s * (s * (s * ERF_SB7 + ERF_SB6) + ERF_SB5) + ERF_SB4) + ERF_SB3) + ERF_SB2) + ERF_SB1)
+    ratio :: intrinsics.select(near, r_a, r_b) / intrinsics.select(near, q_a, q_b)
+    z :: lane_cut(x)
+    return exp_lanes_64(-z * z - 0.5625) * exp_lanes_64((z - x) * (z + x) + ratio) / x
+}
+
+/** erf_64 on lanes. */
+//SPEC: fdlibm s_erf.c
+erf_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    hx :: lane_high(x)
+    ix :: hx & 0x7fff_ffff
+    negative :: hx < 0
+    a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    unit :: intrinsics.select(negative, f64_lanes[n](-1), f64_lanes[n](1))
+    zero_zone :: ix < 0x3feb_0000
+    one_zone :: ~zero_zone & (ix < 0x3ff4_0000)
+    tail_zone :: ~zero_zone & ~one_zone & (ix < 0x4018_0000)
+    result := unit
+    if intrinsics.any_true(zero_zone) {
+        // Under 2^-28 x + x(2/√π - 1), scaled up first where that would underflow
+        tiny :: intrinsics.select(ix < 0x0080_0000, (8 * x + x * ERF_EFX8) / 8, x + x * ERF_EFX)
+        near :: x + x * erf_near_zero_lanes(x * x)
+        result = intrinsics.select(zero_zone, intrinsics.select(ix < 0x3e30_0000, tiny, near), result)
+    }
+    if intrinsics.any_true(one_zone) {
+        p :: erf_near_one_lanes(a - 1)
+        result = intrinsics.select(one_zone, intrinsics.select(negative, -ERF_X - p, ERF_X + p), result)
+    }
+    if intrinsics.any_true(tail_zone) {
+        r :: erfc_tail_lanes(intrinsics.select(tail_zone, a, f64_lanes[n](3)), ix)
+        result = intrinsics.select(tail_zone, intrinsics.select(negative, r - 1, 1 - r), result)
+    }
+    return intrinsics.select(x != x, x + x, result)
+}
+
+/** erfc_64 on lanes. */
+//SPEC: fdlibm s_erf.c
+erfc_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+    hx :: lane_high(x)
+    ix :: hx & 0x7fff_ffff
+    negative :: hx < 0
+    a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
+    zero_zone :: ix < 0x3feb_0000
+    one_zone :: ~zero_zone & (ix < 0x3ff4_0000)
+    // Past 28 erfc x is 0 or 2, below -6 2
+    tail_zone :: ~zero_zone & ~one_zone & (ix < 0x403c_0000) & ~(negative & (ix >= 0x4018_0000))
+    result := intrinsics.select(hx > 0, f64_lanes[n](0), f64_lanes[n](2))
+    if intrinsics.any_true(zero_zone) {
+        y :: erf_near_zero_lanes(x * x)
+        // Under a quarter 1 - (x + xy), from it 0.5 - (xy + (x - 0.5))
+        near :: intrinsics.select(hx < 0x3fd0_0000, 1 - (x + x * y), 0.5 - (x * y + (x - 0.5)))
+        result = intrinsics.select(zero_zone, intrinsics.select(ix < 0x3c70_0000, 1 - x, near), result)
+    }
+    if intrinsics.any_true(one_zone) {
+        p :: erf_near_one_lanes(a - 1)
+        result = intrinsics.select(one_zone, intrinsics.select(negative, 1 + (ERF_X + p), (1 - ERF_X) - p), result)
+    }
+    if intrinsics.any_true(tail_zone) {
+        clamped :: intrinsics.select(ix < 0x4006_db6d, ix, i64_lanes[n](0x4006_db6e))
+        r :: erfc_tail_lanes(intrinsics.select(tail_zone, a, f64_lanes[n](3)), clamped)
+        result = intrinsics.select(tail_zone, intrinsics.select(hx > 0, r, 2 - r), result)
+    }
+    return intrinsics.select(x != x, x + x, result)
+}

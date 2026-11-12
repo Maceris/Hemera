@@ -441,12 +441,13 @@ TEST(Hosted, DoesArithmeticOnArrays)
 
 /*
  * std/math: each function within its ulp bound of references worked out in far more precision (float_math's
- * make_references.py), special values, identities, and parsing correctly rounded, the slow path's halfway cases too.
+ * make_references.py), special values, identities, and parsing correctly rounded, the slow path's halfway cases too;
+ * f32's kernels and vectors' lanes; and std/math/fast within its bounds.
  */
 TEST(Hosted, ComputesFloatMath)
 {
 	const HostedOutput checked = run_hosted("float_math", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("1328 tests: 1328 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("1333 tests: 1333 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, and narrowing.

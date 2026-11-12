@@ -493,7 +493,9 @@ The rest of float math is `std/math`'s, written in Hemera so it gives the same b
 the trigonometric and hyperbolic functions and their inverses, `erf`, `gamma` and the like, each within 1 ulp unless
 it says otherwise, for `f32`, `f64`, and vectors of either, lane by lane, so `math.sin(v)` works on a
 `vector[f32, 8]`; `next_up`, `ulp`, `fraction_and_exponent` and the other bit-level ones; and `parse[F](text)`, which
-reads a float from decimal text correctly rounded.
+reads a float from decimal text correctly rounded. `std/math/fast` has the same functions by the same names, for code
+that wants speed over the last bits, like a renderer's shading: the commonest within 3.5 ulp, each saying its bound,
+and the rest std/math's; it too gives the same bits everywhere.
 
 ## Vectors
 

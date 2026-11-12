@@ -1,5 +1,6 @@
 package float_math_exhaustive
 
+import fast from "std/math"
 import intrinsics from "base"
 import io from "std"
 import math from "std"
@@ -7,22 +8,25 @@ import runtime from "base"
 import strings from "std"
 
 /*
- * Every f32 through one of std/math's f32 functions, eight lanes at a time, against the f64 function rounded: how many
- * ulp of f32 the worst is off, and how many are past 1 ulp. Run by hand, as it takes minutes a function; HemeraTest's
- * float_math samples instead.
+ * Every f32 through one of std/math's f32 functions, or std/math/fast's, eight lanes at a time, against the f64
+ * function rounded: how many ulp of f32 the worst is off, and how many are past its bound, 1 ulp or fast's 3.5. Run by
+ * hand, as it takes minutes a function; HemeraTest's float_math samples instead.
  *
  *     float_math_exhaustive <function> [part parts]
+ *
+ * fast's are named fast.exp and so on.
  *
  * part and parts split the inputs, for running parts at once.
  */
 
 Lanes :: vector[f32, 8]
 
-/** A function checked: its lanes' form, and its f64 one, the reference. */
+/** A function checked: its lanes' form, its f64 one, the reference, and how many ulp it may be off. */
 Checked :: struct {
     name : string,
     lanes : fn(x: Lanes) -> Lanes,
     reference : fn(x: f64) -> f64,
+    bound : f64 = 1,
 }
 
 FUNCTIONS :: Checked.[
@@ -40,6 +44,17 @@ FUNCTIONS :: Checked.[
     Checked.{name = "acos", lanes = math.acos[Lanes], reference = math.acos[f64]},
     Checked.{name = "atan", lanes = math.atan[Lanes], reference = math.atan[f64]},
     Checked.{name = "cube_root", lanes = math.cube_root[Lanes], reference = math.cube_root[f64]},
+    Checked.{name = "fast.exp", lanes = fast.exp[Lanes], reference = math.exp[f64], bound = 3.5},
+    Checked.{name = "fast.exp2", lanes = fast.exp2[Lanes], reference = math.exp2[f64], bound = 3.5},
+    Checked.{name = "fast.log", lanes = fast.log[Lanes], reference = math.log[f64], bound = 3.5},
+    Checked.{name = "fast.log2", lanes = fast.log2[Lanes], reference = math.log2[f64], bound = 3.5},
+    Checked.{name = "fast.sin", lanes = fast.sin[Lanes], reference = math.sin[f64], bound = 3.5},
+    Checked.{name = "fast.cos", lanes = fast.cos[Lanes], reference = math.cos[f64], bound = 3.5},
+    Checked.{name = "fast.tan", lanes = fast.tan[Lanes], reference = math.tan[f64], bound = 3.5},
+    Checked.{name = "fast.asin", lanes = fast.asin[Lanes], reference = math.asin[f64], bound = 3.5},
+    Checked.{name = "fast.acos", lanes = fast.acos[Lanes], reference = math.acos[f64], bound = 3.5},
+    Checked.{name = "fast.atan", lanes = fast.atan[Lanes], reference = math.atan[f64], bound = 3.5},
+    Checked.{name = "fast.cube_root", lanes = fast.cube_root[Lanes], reference = math.cube_root[f64], bound = 3.5},
 ]
 
 /**
@@ -61,17 +76,19 @@ ulps_off :: fn(result: f32, reference: f64) -> f64 {
     return abs(cast[f64](result) - reference) / cast[f64](math.ulp(rounded))
 }
 
-/** A function of two checked: its lanes' form, and its f64 one. */
+/** A function of two checked: its lanes' form, its f64 one, and how many ulp it may be off. */
 CheckedPair :: struct {
     name : string,
     lanes : fn(x: Lanes, y: Lanes) -> Lanes,
     reference : fn(x: f64, y: f64) -> f64,
+    bound : f64 = 1,
 }
 
 PAIRS :: CheckedPair.[
     CheckedPair.{name = "power", lanes = math.power[Lanes], reference = math.power[f64]},
     CheckedPair.{name = "atan2", lanes = math.atan2[Lanes], reference = math.atan2[f64]},
     CheckedPair.{name = "hypotenuse", lanes = math.hypotenuse[Lanes], reference = math.hypotenuse[f64]},
+    CheckedPair.{name = "fast.atan2", lanes = fast.atan2[Lanes], reference = math.atan2[f64], bound = 3.5},
 ]
 
 /** How many pairs a function of two is checked on: 2^28, half any bits, half where graphics' arguments are. */
@@ -91,7 +108,7 @@ next_random :: fn(state: ptr[mut u64]) -> u64 {
  * Check a function of two on random pairs.
  *
  * @param checked The function.
- * @return 0 if none is past 1 ulp, 1 otherwise.
+ * @return 0 if none is past its bound, 1 otherwise.
  */
 check_pairs :: fn(checked: CheckedPair) -> int {
     state := cast[u64](0x9e37_79b9_7f4a_7c15)
@@ -117,7 +134,7 @@ check_pairs :: fn(checked: CheckedPair) -> int {
         results :: bit_cast[f32[8]](checked.lanes(bit_cast[Lanes](xs), bit_cast[Lanes](ys)))
         for result, i in results {
             off :: ulps_off(result, checked.reference(cast[f64](xs[i]), cast[f64](ys[i])))
-            if off > 1 {
+            if off > checked.bound {
                 over += 1
             }
             if off > worst {
@@ -127,7 +144,8 @@ check_pairs :: fn(checked: CheckedPair) -> int {
             }
         }
     }
-    io.printf("%: worst % ulp, at (%, %); % of % past 1 ulp\n", checked.name, worst, worst_x, worst_y, over, PAIR_COUNT)
+    io.printf("%: worst % ulp, at (%, %); % of % past % ulp\n", checked.name, worst, worst_x, worst_y, over, PAIR_COUNT,
+        checked.bound)
     return if over == 0 { 0 } else { 1 }
 }
 
@@ -167,7 +185,7 @@ main :: fn() -> int {
             inputs :: bit_cast[f32[8]](x)
             for result, i in results {
                 off :: ulps_off(result, checked.reference(cast[f64](inputs[i])))
-                if off > 1 {
+                if off > checked.bound {
                     over += 1
                 }
                 if off > worst {
@@ -178,7 +196,8 @@ main :: fn() -> int {
             bits += 8
         }
         while bits < last
-        io.printf("%: worst % ulp, at % (bits %{x}); % past 1 ulp\n", name, worst, worst_at, bit_cast[u32](worst_at), over)
+        io.printf("%: worst % ulp, at % (bits %{x}); % past % ulp\n", name, worst, worst_at, bit_cast[u32](worst_at), over,
+            checked.bound)
         return if over == 0 { 0 } else { 1 }
     }
     io.printf("no function %\n", name)

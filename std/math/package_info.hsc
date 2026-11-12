@@ -14,8 +14,11 @@
  * ulp, nearly always correctly rounded; a scalar f32 runs the same kernel on one lane, giving the same bits. f64's on
  * vectors (lanes_64.hsc) are fdlibm's with every branch worked out in each lane and the lane's own chosen, so each lane
  * gets the scalar function's bits exactly; four lanes take from about the time of one value, for sin and cos, which
- * work out both of their kernels, to half or less, for log, power, cube_root and hypotenuse. The other functions work
- * a lane at a time.
+ * work out both of their kernels, to half or less, for log, power, cube_root and hypotenuse. The hyperbolic functions
+ * and their inverses, erf and erfc are built the same way from those, and take f32 lanes widened to them; gamma,
+ * log_gamma, erf_inverse and the remainders work a lane at a time.
+ *
+ * std/math/fast has the same functions, faster and less exact.
  */
 package math
 

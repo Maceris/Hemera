@@ -1,14 +1,16 @@
 package float_math_speed
 
+import fast from "std/math"
 import io from "std"
 import math from "std"
 import runtime from "base"
 import time from "std"
 
 /*
- * How long std/math's functions take, in nanoseconds a value: f32 through f64's fdlibm (how f32 was first built), f32's
- * own kernel on one value at a time, and on eight lanes at once; and f64 a value at a time and on four lanes. Run by
- * hand, built for the machine measured (like --cpu=x86-64-v3); the numbers vary from run to run by a few percent.
+ * How long std/math's functions take, and std/math/fast's, in nanoseconds a value: f32 through f64's fdlibm (how f32
+ * was first built), f32's own kernel on one value at a time, and on eight lanes at once; and f64 a value at a time and
+ * on four lanes. Run by hand, built for the machine measured (like --cpu=x86-64-v3); the numbers vary from run to run
+ * by a few percent.
  */
 
 /** How many values each measure takes, and how many times over. */
@@ -138,6 +140,15 @@ log_abs_lanes_64 :: fn(x: vector[f64, 4]) -> vector[f64, 4] {
     return math.log(bit_cast[vector[f64, 4]](bit_cast[vector[u64, 4]](x) & 0x7fff_ffff_ffff_ffff))
 }
 
+fast_log_abs :: fn(x: f32) -> f32 { return fast.log(abs(x)) }
+fast_log_abs_lanes :: fn(x: vector[f32, 8]) -> vector[f32, 8] {
+    return fast.log(bit_cast[vector[f32, 8]](bit_cast[vector[u32, 8]](x) & 0x7fff_ffff))
+}
+fast_log_abs_64 :: fn(x: f64) -> f64 { return fast.log(abs(x)) }
+fast_log_abs_lanes_64 :: fn(x: vector[f64, 4]) -> vector[f64, 4] {
+    return fast.log(bit_cast[vector[f64, 4]](bit_cast[vector[u64, 4]](x) & 0x7fff_ffff_ffff_ffff))
+}
+
 main :: fn() -> int {
     values := make_values()
     measure("sin", &values, sin_through, math.sin[f32], math.sin[vector[f32, 8]], math.sin[f64], math.sin[vector[f64, 4]])
@@ -148,6 +159,14 @@ main :: fn() -> int {
         math.atan[vector[f64, 4]])
     measure("cube_root", &values, cube_root_through, math.cube_root[f32], math.cube_root[vector[f32, 8]],
         math.cube_root[f64], math.cube_root[vector[f64, 4]])
+    measure("fast.sin", &values, sin_through, fast.sin[f32], fast.sin[vector[f32, 8]], fast.sin[f64], fast.sin[vector[f64, 4]])
+    measure("fast.cos", &values, cos_through, fast.cos[f32], fast.cos[vector[f32, 8]], fast.cos[f64], fast.cos[vector[f64, 4]])
+    measure("fast.exp", &values, exp_through, fast.exp[f32], fast.exp[vector[f32, 8]], fast.exp[f64], fast.exp[vector[f64, 4]])
+    measure("fast.log", &values, log_through, fast_log_abs, fast_log_abs_lanes, fast_log_abs_64, fast_log_abs_lanes_64)
+    measure("fast.atan", &values, atan_through, fast.atan[f32], fast.atan[vector[f32, 8]], fast.atan[f64],
+        fast.atan[vector[f64, 4]])
+    measure("fast.cbrt", &values, cube_root_through, fast.cube_root[f32], fast.cube_root[vector[f32, 8]],
+        fast.cube_root[f64], fast.cube_root[vector[f64, 4]])
     measure_2("power", &values, math.power[f64], math.power[vector[f64, 4]])
     measure_2("hypotenuse", &values, math.hypotenuse[f64], math.hypotenuse[vector[f64, 4]])
     return 0
