@@ -45,13 +45,7 @@ make_pair :: fn(chain: u8[], kind: crypto.X509KeyKind, key: u8[], only_suite: tl
         }
     }
     pair.anchors_bytes = ROOT.count
-    identity := tls.Identity.{kind = kind, chain = cast[rawptr](&pair.chain[0]), chain_bytes = pair.chain_bytes}
-    for byte, i in key {
-        if i < 32 {
-            identity.p256[i] = byte
-            identity.ed25519[i] = byte
-        }
-    }
+    identity :: tls.identity_of(kind, tls.range(pair.chain, 0, pair.chain_bytes), key)
     tls.server(&pair.server, &identity, only_suite, only_group)
     tls.client(&pair.client, "tls.test", tls.range(pair.anchors, 0, pair.anchors_bytes), NOW)
     return pair
@@ -217,6 +211,16 @@ updates_keys_and_closes #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     got : u8[32]
     count :: tls.read(&pair.client, got[0..<got.count])
     testing.expect(t, count <= got.count && string_of(&got[0], count) == "last words", "what came before it is read")
+    return .Ok
+}
+
+refuses_to_serve_without_a_chain #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    pair :: make_pair(P256_CHAIN[0..<0], .P256, P256_KEY[0..<32])
+    defer runtime.free(pair)
+    pump(pair)
+    testing.expect(t, tls.ended(&pair.server) && pair.server.ending == .Refused && pair.server.alert == tls.ALERT_INTERNAL_ERROR,
+        "a server whose identity has no chain ends rather than send an empty Certificate")
+    testing.expect(t, tls.ended(&pair.client) && !tls.connected(&pair.client), "and the client doesn't connect")
     return .Ok
 }
 

@@ -194,7 +194,30 @@ Identity :: struct {
     ed25519 : crypto.Ed25519SecretKey,
 }
 
-/** A TLS connection: the caller's, zeroed or ended, before client or server; some 300 KiB, so on the heap. */
+/**
+ * Make an identity from a chain and its leaf's key.
+ *
+ * @param kind The leaf's kind of key: P256 or ED25519.
+ * @param chain The chain, DER certificates one after another, the leaf first; the caller's, unchanged and in place for as
+ *     long as a connection serves with the identity, as the identity points at it rather than copying it.
+ * @param key The leaf's secret key, 32 bytes: P-256's scalar, big-endian, or Ed25519's seed. Fewer leave the rest zero.
+ * @return The identity.
+ */
+identity_of #constant_time :: fn(kind: crypto.X509KeyKind, chain: u8[], key: u8[]) -> Identity {
+    made := Identity.{kind = kind, chain_bytes = chain.count}
+    if chain.count > 0 {
+        made.chain = cast[rawptr](&chain[0])
+    }
+    for byte, i in key {
+        if i < 32 {
+            made.p256[i] = byte
+            made.ed25519[i] = byte
+        }
+    }
+    return made
+}
+
+/** A TLS connection:the caller's, zeroed or ended, before client or server; some 300 KiB, so on the heap. */
 Connection :: struct {
     role : Role,
     state : State,

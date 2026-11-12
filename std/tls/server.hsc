@@ -433,6 +433,11 @@ send_flight :: fn(connection: ptr[mut Connection]) {
     put_u8(into, &writer, 0)
     list :: start_vector(into, &writer, 3)
     chain :: view_of(cast[ptr[u8]](connection.identity.chain), connection.identity.chain_bytes)
+    // A server proves itself with a certificate: an identity without one can't serve
+    if chain.count == 0 {
+        fail(connection, ALERT_INTERNAL_ERROR)
+        return void
+    }
     at := cast[usize](0)
     loop {
         if at >= chain.count {
