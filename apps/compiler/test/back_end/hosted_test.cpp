@@ -450,6 +450,15 @@ TEST(Hosted, ComputesFloatMath)
 	EXPECT_NE(checked.output.find("1333 tests: 1333 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
+// std/tls: RFC 8448's Simple 1-RTT Handshake replayed as a client and as a server, and a client and a server in
+// memory over each suite, Ed25519, a HelloRetryRequest, KeyUpdate and close_notify; chains refused for each reason, a
+// changed record refused, and random bytes taken without harm.
+TEST(Hosted, SpeaksTls)
+{
+	const HostedOutput checked = run_hosted("tls", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("8 tests: 8 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, narrowing, and
 // rules by name, which never reach an address that isn't public unless a range names it.
 TEST(Hosted, ChecksNetworkPolicies)
