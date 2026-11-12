@@ -763,6 +763,14 @@ TEST(Hosted, JoinsMultilineStrings)
 	run_hosted("multiline_strings", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
+// The memory functions the compiler defines, memcpy, memmove and memset a word at a time where they can, against a
+// byte at a time at every alignment.
+TEST(Hosted, CopiesAndFillsMemory)
+{
+	const HostedOutput checked = run_hosted("memory_functions", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("3 tests: 3 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // Vectors, their intrinsics, and AES-NI and PCLMULQDQ where the CPU has them (docs/types.md, Vectors).
 TEST(Hosted, RunsVectors)
 {

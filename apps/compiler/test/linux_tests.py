@@ -53,6 +53,7 @@ TESTS = [
     ("large_values", ["--test", "--stack-check=morestack"], 0),
     ("integer_ranges", ["--test"], 0),
     ("vectors", ["--test"], 0),
+    ("memory_functions", ["--test"], 0),
     ("reverse_loops", ["--test"], 0),
     ("secrets", ["--test"], 0),
     ("hashes", ["--test"], 0),

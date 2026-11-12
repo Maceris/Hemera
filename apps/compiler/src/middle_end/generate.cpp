@@ -13562,16 +13562,76 @@ namespace hemera {
 	}
 
 	/*
+	 * A copy or fill of count bytes from offset 0, a word at a time where it can be: when the
+	 * pointers it touches are as aligned as each other (aligned says so) and there are at least
+	 * 16 bytes, the bytes up to an 8-byte boundary one at a time, then aligned 8-byte words, then
+	 * the rest; otherwise a byte at a time. Only aligned words are read and written, which every
+	 * target's memory takes, AArch64's device memory before its MMU is on too. word(offset) and
+	 * single(offset) do one word or byte at that offset; downwards goes from the end, for a
+	 * memmove whose target is after its source. lead is the address whose alignment the words
+	 * follow. Leaves the builder after it.
+	 */
+	static void word_loop(llvm::IRBuilder<>& builder, llvm::Value* count, llvm::Value* lead, llvm::Value* aligned, bool downwards,
+		const std::function<void(llvm::Value*)>& word, const std::function<void(llvm::Value*)>& single) {
+
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+		llvm::LLVMContext& context = function->getContext();
+		llvm::Type* size = count->getType();
+		auto constant = [&](uint64_t value) { return llvm::ConstantInt::get(size, value); };
+		llvm::BasicBlock* fast = llvm::BasicBlock::Create(context, "words", function);
+		llvm::BasicBlock* slow = llvm::BasicBlock::Create(context, "bytes", function);
+		llvm::BasicBlock* after = llvm::BasicBlock::Create(context, "copied", function);
+		llvm::Value* big = builder.CreateICmpUGE(count, constant(16));
+		builder.CreateCondBr(builder.CreateAnd(aligned, big), fast, slow);
+
+		builder.SetInsertPoint(slow);
+		byte_loop(builder, count, downwards, single);
+		builder.CreateBr(after);
+
+		// head bytes up to the boundary, words whole words, and the tail's bytes after them
+		builder.SetInsertPoint(fast);
+		llvm::Value* address = builder.CreatePtrToInt(lead, size);
+		llvm::Value* head = builder.CreateAnd(builder.CreateSub(constant(0), address), constant(7));
+		llvm::Value* words = builder.CreateLShr(builder.CreateSub(count, head), constant(3));
+		llvm::Value* tail_start = builder.CreateAdd(head, builder.CreateShl(words, constant(3)));
+		llvm::Value* tail = builder.CreateSub(count, tail_start);
+		auto heads = [&]() { byte_loop(builder, head, downwards, single); };
+		auto whole = [&]() {
+			byte_loop(builder, words, downwards, [&](llvm::Value* index) {
+				word(builder.CreateAdd(head, builder.CreateShl(index, constant(3))));
+			});
+		};
+		auto tails = [&]() {
+			byte_loop(builder, tail, downwards, [&](llvm::Value* index) { single(builder.CreateAdd(tail_start, index)); });
+		};
+		if (downwards) {
+			tails();
+			whole();
+			heads();
+		}
+		else {
+			heads();
+			whole();
+			tails();
+		}
+		builder.CreateBr(after);
+		builder.SetInsertPoint(after);
+	}
+
+	/*
 	 * memcpy, memmove, memset and memcmp, which LLVM calls for large copies even without the C
-	 * library, as byte loops: nothing Hemera builds links a C library.
+	 * library: nothing Hemera builds links a C library. The first three go a word at a time where
+	 * the pointers allow (word_loop), memcmp a byte at a time.
 	 */
 	static void define_memory_functions(llvm::Module& module) {
 		llvm::LLVMContext& context = module.getContext();
 		llvm::Type* pointer = llvm::PointerType::get(context, 0);
 		llvm::Type* size = llvm::Type::getInt64Ty(context);
 		llvm::Type* byte = llvm::Type::getInt8Ty(context);
+		llvm::Type* word = size;
 		llvm::Type* i32 = llvm::Type::getInt32Ty(context);
 		llvm::IRBuilder<> builder(context);
+		const llvm::Align word_alignment(8);
 		for (llvm::StringRef name : { "memcpy", "memmove" }) {
 			llvm::Function* function = library_function(module, name, llvm::FunctionType::get(pointer, { pointer, pointer, size }, false));
 			if (!function->isDeclaration()) {
@@ -13582,10 +13642,20 @@ namespace hemera {
 			llvm::Value* count = function->getArg(2);
 			builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", function));
 			auto copy = [&](bool downwards) {
-				byte_loop(builder, count, downwards, [&](llvm::Value* index) {
-					llvm::Value* from = builder.CreateGEP(byte, source, index);
-					builder.CreateStore(builder.CreateLoad(byte, from), builder.CreateGEP(byte, target, index));
-				});
+				// The words are aligned for both when the pointers are as aligned as each other
+				llvm::Value* apart = builder.CreateXor(builder.CreatePtrToInt(target, size), builder.CreatePtrToInt(source, size));
+				llvm::Value* aligned = builder.CreateICmpEQ(builder.CreateAnd(apart, llvm::ConstantInt::get(size, 7)),
+					llvm::ConstantInt::get(size, 0));
+				word_loop(builder, count, target, aligned, downwards,
+					[&](llvm::Value* offset) {
+						llvm::Value* from = builder.CreateGEP(byte, source, offset);
+						builder.CreateAlignedStore(builder.CreateAlignedLoad(word, from, word_alignment),
+							builder.CreateGEP(byte, target, offset), word_alignment);
+					},
+					[&](llvm::Value* offset) {
+						llvm::Value* from = builder.CreateGEP(byte, source, offset);
+						builder.CreateStore(builder.CreateLoad(byte, from), builder.CreateGEP(byte, target, offset));
+					});
 				builder.CreateRet(target);
 			};
 			if (name == "memcpy") {
@@ -13604,11 +13674,16 @@ namespace hemera {
 		llvm::Function* memset = library_function(module, "memset", llvm::FunctionType::get(pointer, { pointer, i32, size }, false));
 		if (memset->isDeclaration()) {
 			builder.SetInsertPoint(llvm::BasicBlock::Create(context, "entry", memset));
+			llvm::Value* target = memset->getArg(0);
 			llvm::Value* fill = builder.CreateTrunc(memset->getArg(1), byte);
-			byte_loop(builder, memset->getArg(2), false, [&](llvm::Value* index) {
-				builder.CreateStore(fill, builder.CreateGEP(byte, memset->getArg(0), index));
-			});
-			builder.CreateRet(memset->getArg(0));
+			// The byte in each of a word's 8
+			llvm::Value* fill_word = builder.CreateMul(builder.CreateZExt(fill, word), llvm::ConstantInt::get(word, 0x0101010101010101ull));
+			word_loop(builder, memset->getArg(2), target, builder.getTrue(), false,
+				[&](llvm::Value* offset) {
+					builder.CreateAlignedStore(fill_word, builder.CreateGEP(byte, target, offset), word_alignment);
+				},
+				[&](llvm::Value* offset) { builder.CreateStore(fill, builder.CreateGEP(byte, target, offset)); });
+			builder.CreateRet(target);
 		}
 		llvm::Function* memcmp = library_function(module, "memcmp", llvm::FunctionType::get(i32, { pointer, pointer, size }, false));
 		if (memcmp->isDeclaration()) {
