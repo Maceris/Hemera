@@ -446,7 +446,7 @@ TEST(Hosted, DoesArithmeticOnArrays)
 TEST(Hosted, ComputesFloatMath)
 {
 	const HostedOutput checked = run_hosted("float_math", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("1327 tests: 1327 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("1328 tests: 1328 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, and narrowing.

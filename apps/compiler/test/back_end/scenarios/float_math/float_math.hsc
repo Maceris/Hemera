@@ -386,3 +386,74 @@ works_on_vectors #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, narrow[1] == math.erf(cast[f32](-2.5)), "an f32 one")
     return .Ok
 }
+
+/** Whether two f64s are the same bits, any NaN being any other. */
+same_64 :: fn(a: f64, b: f64) -> bool {
+    return (a != a && b != b) || bit_cast[u64](a) == bit_cast[u64](b)
+}
+
+/** An f64 drawn from any bits, or near where the functions' branches part. */
+draw_64 :: fn(source: ptr[mut testing.Source]) -> f64 {
+    match testing.draw_below(source, 5) {
+        case 0 => return bit_cast[f64](testing.draw[u64](source))
+        case 1 => return cast[f64](testing.draw_between(source, -2000000, 2000000)) / 1000000
+        case 2 => return cast[f64](testing.draw_between(source, -100000000, 100000000)) / 1000
+        case 3 => return cast[f64](testing.draw_between(source, -64000000, 64000000)) / 1000000
+        case _ => return bit_cast[f64](testing.draw[u64](source) & 0x3fff_ffff_ffff_ffff) * (if testing.draw_bool(source) { 1.0 } else { -1.0 })
+    }
+}
+
+/** f64's kernels on four lanes give each lane the scalar function's bits exactly. */
+works_on_f64_lanes #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    xs : f64[4]
+    ys : f64[4]
+    wholes : f64[4]
+    for i in 0..<4 {
+        xs[i] = draw_64(source)
+        ys[i] = draw_64(source)
+        wholes[i] = cast[f64](testing.draw_between(source, -40, 40))
+    }
+    v :: bit_cast[vector[f64, 4]](xs)
+    w :: bit_cast[vector[f64, 4]](ys)
+    exp :: bit_cast[f64[4]](math.exp(v))
+    log :: bit_cast[f64[4]](math.log(v))
+    sin :: bit_cast[f64[4]](math.sin(v))
+    cos :: bit_cast[f64[4]](math.cos(v))
+    tan :: bit_cast[f64[4]](math.tan(v))
+    atan :: bit_cast[f64[4]](math.atan(v))
+    asin :: bit_cast[f64[4]](math.asin(v))
+    acos :: bit_cast[f64[4]](math.acos(v))
+    atan2 :: bit_cast[f64[4]](math.atan2(v, w))
+    exp2 :: bit_cast[f64[4]](math.exp2(v))
+    exp_minus_one :: bit_cast[f64[4]](math.exp_minus_one(v))
+    log2 :: bit_cast[f64[4]](math.log2(v))
+    log10 :: bit_cast[f64[4]](math.log10(v))
+    log_one_plus :: bit_cast[f64[4]](math.log_one_plus(v))
+    cube_root :: bit_cast[f64[4]](math.cube_root(v))
+    hypotenuse :: bit_cast[f64[4]](math.hypotenuse(v, w))
+    power :: bit_cast[f64[4]](math.power(v, w))
+    whole_power :: bit_cast[f64[4]](math.power(v, bit_cast[vector[f64, 4]](wholes)))
+    for x, i in xs {
+        testing.note(t, "lane %: % and %", i, x, ys[i])
+        testing.expect(t, same_64(exp[i], math.exp(x)), "exp")
+        testing.expect(t, same_64(log[i], math.log(x)), "log")
+        testing.expect(t, same_64(sin[i], math.sin(x)), "sin")
+        testing.expect(t, same_64(cos[i], math.cos(x)), "cos")
+        testing.expect(t, same_64(tan[i], math.tan(x)), "tan")
+        testing.expect(t, same_64(atan[i], math.atan(x)), "atan")
+        testing.expect(t, same_64(asin[i], math.asin(x)), "asin")
+        testing.expect(t, same_64(acos[i], math.acos(x)), "acos")
+        testing.expect(t, same_64(atan2[i], math.atan2(x, ys[i])), "atan2")
+        testing.expect(t, same_64(exp2[i], math.exp2(x)), "exp2")
+        testing.expect(t, same_64(exp_minus_one[i], math.exp_minus_one(x)), "exp_minus_one")
+        testing.expect(t, same_64(log2[i], math.log2(x)), "log2")
+        testing.expect(t, same_64(log10[i], math.log10(x)), "log10")
+        testing.expect(t, same_64(log_one_plus[i], math.log_one_plus(x)), "log_one_plus")
+        testing.expect(t, same_64(cube_root[i], math.cube_root(x)), "cube_root")
+        testing.expect(t, same_64(hypotenuse[i], math.hypotenuse(x, ys[i])), "hypotenuse")
+        testing.expect(t, same_64(power[i], math.power(x, ys[i])), "power")
+        testing.expect(t, same_64(whole_power[i], math.power(x, wholes[i])), "power to a whole number")
+        testing.end_note(t)
+    }
+    return .Ok
+}

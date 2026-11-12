@@ -159,7 +159,7 @@ exp :: fn[F](x: F) -> F {
         return exp_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, exp_64)
+        return exp_lanes_64(x)
     }
     #else {
         return exp_64(x)
@@ -182,7 +182,7 @@ exp2 :: fn[F](x: F) -> F {
         return exp2_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, exp2_64)
+        return exp2_lanes_64(x)
     }
     #else {
         return exp2_64(x)
@@ -204,7 +204,7 @@ exp_minus_one :: fn[F](x: F) -> F {
         return exp_minus_one_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, exp_minus_one_64)
+        return exp_minus_one_lanes_64(x)
     }
     #else {
         return exp_minus_one_64(x)
@@ -226,7 +226,7 @@ log :: fn[F](x: F) -> F {
         return log_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, log_64)
+        return log_lanes_64(x)
     }
     #else {
         return log_64(x)
@@ -249,7 +249,7 @@ log2 :: fn[F](x: F) -> F {
         return log2_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, log2_64)
+        return log2_lanes_64(x)
     }
     #else {
         return log2_64(x)
@@ -271,7 +271,7 @@ log10 :: fn[F](x: F) -> F {
         return log10_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, log10_64)
+        return log10_lanes_64(x)
     }
     #else {
         return log10_64(x)
@@ -293,7 +293,7 @@ log_one_plus :: fn[F](x: F) -> F {
         return log_one_plus_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, log_one_plus_64)
+        return log_one_plus_lanes_64(x)
     }
     #else {
         return log_one_plus_64(x)
@@ -318,7 +318,7 @@ power :: fn[F](x: F, y: F) -> F {
         return power_lanes_32(vector[f32, 1].{x}, vector[f32, 1].{y})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane_2(x, y, power_64)
+        return power_lanes_64(x, y)
     }
     #else {
         return power_64(x, y)
@@ -340,7 +340,7 @@ sin :: fn[F](x: F) -> F {
         return sin_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, sin_64)
+        return sin_lanes_64(x)
     }
     #else {
         return sin_64(x)
@@ -362,7 +362,7 @@ cos :: fn[F](x: F) -> F {
         return cos_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, cos_64)
+        return cos_lanes_64(x)
     }
     #else {
         return cos_64(x)
@@ -384,7 +384,7 @@ tan :: fn[F](x: F) -> F {
         return tan_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, tan_64)
+        return tan_lanes_64(x)
     }
     #else {
         return tan_64(x)
@@ -407,7 +407,7 @@ sin_cos :: fn[F](x: F) -> (F, F) {
         return s[0], c[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, sin_64), each_lane(x, cos_64)
+        return sin_lanes_64(x), cos_lanes_64(x)
     }
     #else {
         return sin_cos_64(x)
@@ -429,7 +429,7 @@ asin :: fn[F](x: F) -> F {
         return asin_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, asin_64)
+        return asin_lanes_64(x)
     }
     #else {
         return asin_64(x)
@@ -451,7 +451,7 @@ acos :: fn[F](x: F) -> F {
         return acos_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, acos_64)
+        return acos_lanes_64(x)
     }
     #else {
         return acos_64(x)
@@ -473,7 +473,7 @@ atan :: fn[F](x: F) -> F {
         return atan_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, atan_64)
+        return atan_lanes_64(x)
     }
     #else {
         return atan_64(x)
@@ -497,7 +497,7 @@ atan2 :: fn[F](y: F, x: F) -> F {
         return atan2_lanes_32(vector[f32, 1].{y}, vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane_2(y, x, atan2_64)
+        return atan2_lanes_64(y, x)
     }
     #else {
         return atan2_64(y, x)
@@ -651,7 +651,7 @@ cube_root :: fn[F](x: F) -> F {
         return cube_root_lanes_32(vector[f32, 1].{x})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane(x, cube_root_64)
+        return cube_root_lanes_64(x)
     }
     #else {
         return cube_root_64(x)
@@ -675,7 +675,7 @@ hypotenuse :: fn[F](x: F, y: F) -> F {
         return hypotenuse_lanes_32(vector[f32, 1].{x}, vector[f32, 1].{y})[0]
     }
     #else_if float_kind(F) == FLOAT_LANES_64 {
-        return each_lane_2(x, y, hypotenuse_64)
+        return hypotenuse_lanes_64(x, y)
     }
     #else {
         return hypotenuse_64(x, y)

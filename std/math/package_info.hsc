@@ -11,8 +11,11 @@
  * exp_minus_one, log, log2, log10, log_one_plus, power, the trigonometric ones and their inverses, cube_root and
  * hypotenuse) have kernels of their own (lanes.hsc): branch-free, with short polynomials in f64 lanes sized for f32,
  * so eight lanes take about what two values took through f64's functions. Checked on every f32, they're within 0.51
- * ulp, nearly always correctly rounded; a scalar f32 runs the same kernel on one lane, giving the same bits. The other
- * functions, and f64's on vectors, work a lane at a time.
+ * ulp, nearly always correctly rounded; a scalar f32 runs the same kernel on one lane, giving the same bits. f64's on
+ * vectors (lanes_64.hsc) are fdlibm's with every branch worked out in each lane and the lane's own chosen, so each lane
+ * gets the scalar function's bits exactly; four lanes take from about the time of one value, for sin and cos, which
+ * work out both of their kernels, to half or less, for log, power, cube_root and hypotenuse. The other functions work
+ * a lane at a time.
  */
 package math
 

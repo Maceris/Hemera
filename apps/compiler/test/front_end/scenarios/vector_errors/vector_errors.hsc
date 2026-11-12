@@ -1,6 +1,7 @@
 /*
  * Vectors used wrongly (docs/types.md, Vectors): lanes that can't be, counts that aren't powers of two
- * or are too big, a lane chosen at run time or out of range, operators that don't apply, intrinsics
+ * or are too big, a lane chosen at run time or out of range, a value of another type than the lanes
+ * beside a vector (one of the lanes' type goes in every lane), operators that don't apply, intrinsics
  * given what they can't take, an immediate that isn't a constant, and #target_features misused.
  */
 package vector_errors
@@ -21,6 +22,10 @@ main :: fn() -> int {
     _ = a[which]
     _ = a[4]
     _ = a + vector[u32, 8].{}
+    lane : u32 = 3
+    _ = a * lane
+    wide : u64 = 3
+    _ = a * wide
     _ = a / a
     bits := bit_cast[v128](a)
     _ = bits + bits

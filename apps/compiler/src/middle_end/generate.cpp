@@ -7900,11 +7900,12 @@ namespace hemera {
 		return value(operand, result_type);
 	}
 
-	// An operand of an operator on vectors: the vector, or an untyped literal in every lane.
+	// An operand of an operator on vectors: the vector, or an untyped literal or a value of the lane's type in every lane.
 	static mlir::Value vector_operand(Generator& generator, ast::Node* node, TypeInfo* type) {
 		const CheckedNode* found = checked(generator, node);
-		if (found != nullptr && is_untyped(found->kind)) {
-			auto vector = static_cast<TypeInfoVector const*>(base(type));
+		auto vector = static_cast<TypeInfoVector const*>(base(type));
+		if (found != nullptr && (is_untyped(found->kind) || (ValueKind::VALUE == found->kind && found->type != nullptr
+			&& !is_variant(found->type, TypeInfoVariant::VECTOR)))) {
 			return splat(generator, emit_as(generator, node, vector->element_type), llvm_type(generator, type));
 		}
 		return emit_as(generator, node, type);

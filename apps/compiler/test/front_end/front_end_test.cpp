@@ -1368,7 +1368,7 @@ TEST(FrontEnd, ChecksVectors)
 	FrontEndFixture fixture;
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("vector_errors"));
-	ASSERT_EQ(errors.size(), 15) << codes(errors);
+	ASSERT_EQ(errors.size(), 16) << codes(errors);
 	std::string all;
 	for (const std::string& message : *hemera::error_messages()) {
 		all += message + "\n";
@@ -1380,6 +1380,7 @@ TEST(FrontEnd, ChecksVectors)
 		"not 16 of u64",
 		"a lane of Words is chosen by a constant from 0 to 3",
 		"Words and vector[u32, 8] don't go together",
+		"Words and u64 don't go together",
 		"since integer division isn't on vectors yet",
 		"v128 only takes &, | and ~",
 		"Words takes all 4 lanes, not 2",

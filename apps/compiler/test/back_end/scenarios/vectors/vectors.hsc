@@ -37,6 +37,9 @@ works_lane_by_lane #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, c[0] == 11 && c[3] == 44, "+ adds lane to lane")
     d := c * 2 - 1
     testing.expect_eq(t, d[1], 43, "a number with a vector is used in every lane")
+    scale : u32 = 3
+    scaled := a * scale
+    testing.expect(t, scaled[0] == 3 && scaled[3] == 12, "a value of the lanes' type is used in every lane")
     e := a << 4
     testing.expect_eq(t, e[2], 48, "<< by a number shifts every lane")
     shifts := Words.{0, 1, 2, 3}

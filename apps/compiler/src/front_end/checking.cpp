@@ -3547,7 +3547,8 @@ namespace hemera {
 			}
 			return;
 		}
-		if (ValueKind::VALUE == other.kind && !same_type(other.type, type)) {
+		// A value of the lane's type goes in every lane, as a literal does
+		if (ValueKind::VALUE == other.kind && !same_type(other.type, type) && (vector->is_bits || !same_type(other.type, lane))) {
 			result = error_at(checker, ErrorCode::E4015, node, std::format("{} and {} don't go together", describe(left),
 				describe(right)));
 			return;

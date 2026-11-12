@@ -509,14 +509,17 @@ a := Words.{1, 2, 3, 4}         // every lane, in order
 zero := Words.{}
 b := a + Words.{10, 20, 30, 40} // .{11, 22, 33, 44}
 c := a * 2 - 1                  // a literal goes in every lane
+scale : u32 = 3
+s := a * scale                  // and so does a value of the lanes' type
 d := a << 4                     // shifted by one amount, or by a vector of them
 e := b >> Words.{0, 1, 2, 3}
 first := a[0]                   // a lane
 a[2] = 100
 ```
 
-* The arithmetic, bitwise and shift operators work lane by lane on two vectors of the same type, or one and a literal,
-  which goes in every lane. Integer division and remainder aren't on vectors yet, since a lane of 0 has nothing like
+* The arithmetic, bitwise and shift operators work lane by lane on two vectors of the same type, or one and a literal
+  or a value of its lanes' type, which goes in every lane; a value of another type doesn't, even one that would
+  convert. Integer division and remainder aren't on vectors yet, since a lane of 0 has nothing like
   the panic dividing by 0 gives; floats divide.
 * Comparisons compare lane by lane, giving a vector of bools: `a < b` is a `vector[bool, 4]`. `&`, `|`, `~` and the
   unary `~` work on those, and `intrinsics.any_true` and `all_true` ask about them; `&&` and `||` don't.
