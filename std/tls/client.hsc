@@ -120,6 +120,16 @@ send_client_hello :: fn(connection: ptr[mut Connection]) {
         end_vector(into, &writer, list, 2)
         end_vector(into, &writer, server_name, 2)
     }
+    if connection.protocol_length > 0 {
+        put_u16(into, &writer, EXTENSION_ALPN)
+        alpn :: start_vector(into, &writer, 2)
+        names :: start_vector(into, &writer, 2)
+        name :: start_vector(into, &writer, 1)
+        put_bytes(into, &writer, protocol_of(connection))
+        end_vector(into, &writer, name, 1)
+        end_vector(into, &writer, names, 2)
+        end_vector(into, &writer, alpn, 2)
+    }
     put_u16(into, &writer, EXTENSION_SUPPORTED_GROUPS)
     groups :: start_vector(into, &writer, 2)
     groups_list :: start_vector(into, &writer, 2)
@@ -186,15 +196,7 @@ client_message :: fn(connection: ptr[mut Connection], kind: u8, message: u8[]) {
         take_server_hello(connection, message)
     }
     else if connection.state == .WaitEncryptedExtensions && kind == ENCRYPTED_EXTENSIONS {
-        reader := reader_of(message)
-        _ = get_bytes(message, &reader, 4)
-        extensions := get_vector(message, &reader, 2)
-        if !done(&reader) {
-            fail(connection, ALERT_DECODE_ERROR)
-            return void
-        }
-        transcript_add(&connection.transcript, message)
-        connection.state = .WaitCertificate
+        take_encrypted_extensions(connection, message)
     }
     else if connection.state == .WaitCertificate && kind == CERTIFICATE_REQUEST && !connection.certificate_requested {
         reader := reader_of(message)
@@ -363,6 +365,50 @@ take_server_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
     set_read_keys(connection, &connection.server_secret)
     set_write_keys(connection, &connection.client_secret)
     connection.state = .WaitEncryptedExtensions
+}
+
+/**
+ * Take EncryptedExtensions: ALPN's answer checked against what was offered, the rest ignored.
+ *
+ * @param connection The connection, a client's waiting for it.
+ * @param message The message, with its header.
+ */
+take_encrypted_extensions :: fn(connection: ptr[mut Connection], message: u8[]) {
+    reader := reader_of(message)
+    _ = get_bytes(message, &reader, 4)
+    extensions := get_vector(message, &reader, 2)
+    if !done(&reader) {
+        fail(connection, ALERT_DECODE_ERROR)
+        return void
+    }
+    loop {
+        if extensions.at >= extensions.end || extensions.bad {
+            break
+        }
+        kind :: get_u16(message, &extensions)
+        data := get_vector(message, &extensions, 2)
+        if kind == EXTENSION_ALPN {
+            // One name, one this side offered (RFC 7301 §3.1)
+            if connection.protocol_length == 0 {
+                fail(connection, ALERT_UNSUPPORTED_EXTENSION)
+                return void
+            }
+            names := get_vector(message, &data, 2)
+            name := get_vector(message, &names, 1)
+            if names.bad || !done(&names) || !done(&data) || !is_protocol(connection, range(message, name.at, name.end)) {
+                fail(connection, ALERT_ILLEGAL_PARAMETER)
+                return void
+            }
+            connection.protocol_agreed = true
+        }
+    }
+    while true
+    if extensions.bad {
+        fail(connection, ALERT_DECODE_ERROR)
+        return void
+    }
+    transcript_add(&connection.transcript, message)
+    connection.state = .WaitCertificate
 }
 
 /**
@@ -603,4 +649,5 @@ take_server_finished :: fn(connection: ptr[mut Connection], message: u8[]) {
     send_message(connection, range(finished, 0, length))
     set_write_keys(connection, &connection.client_secret)
     connection.state = .Connected
+    connection.handshake_done = true
 }

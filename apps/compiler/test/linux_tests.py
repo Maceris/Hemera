@@ -105,6 +105,7 @@ TESTS = [
     # The network protocol's policies, plain code on every OS
     ("network_policy", ["--test"], 0),
     ("tls", ["--test"], 0),
+    ("ntp", ["--test"], 0),
     # Instances of a generic whose parameter is an optional of a generic alias, each with its own
     ("generic_alias_arguments", ["--test"], 0),
     # #test(CASES), each case a test of its own

@@ -58,6 +58,7 @@ replays_rfc8448_as_a_client #test :: fn(t: ptr[mut testing.T]) -> testing.Outcom
     testing.end_note(t)
     testing.expect(t, same_secret(&connection.client_secret, CLIENT_APPLICATION_SECRET[0..<32]), "the client's application traffic secret")
     testing.expect(t, same_secret(&connection.server_secret, SERVER_APPLICATION_SECRET[0..<32]), "the server's application traffic secret")
+    testing.expect(t, same_secret(&connection.exporter_secret, EXPORTER_SECRET[0..<32]), "the exporter master secret")
     testing.expect(t, same(tls.output(connection), CLIENT_FINISHED_RECORD[0..<CLIENT_FINISHED_RECORD.count]), "the client's Finished record")
     tls.sent(connection, tls.output(connection).count)
     testing.expect_eq(t, tls.write(connection, APPLICATION_DATA[0..<APPLICATION_DATA.count]), APPLICATION_DATA.count, "the data written")

@@ -594,9 +594,12 @@ package net
      *
      * @param socket The socket.
      * @param into Where its payload goes; what doesn't fit is dropped.
-     * @return Who sent it, and how many bytes were put in into; null if the socket's connection failed.
+     * @param deadline When to stop waiting, in the monotonic clock's nanoseconds; NO_DEADLINE, the default, for never. A
+     *     Receive given up on stays with the service, and the next datagram answers it: a socket waited on with a
+     *     deadline is closed after one given up on, or its next receive may be given an earlier datagram.
+     * @return Who sent it, and how many bytes were put in into; null if the socket's connection failed, or the deadline came first.
      */
-    receive_from :: fn(socket: ptr[mut Udp], into: mut u8[]) -> Got? {
+    receive_from :: fn(socket: ptr[mut Udp], into: mut u8[], deadline: u64 = slop_os.NO_DEADLINE) -> Got? {
         out := os.Outgoing.{}
         request :: os.begin[datagrams.Request](&out)
         request^ = .Receive
@@ -604,9 +607,18 @@ package net
             return null
         }
         incoming := os.Incoming.{}
-        match datagrams.receive_response(socket.channel.end, socket.port, &incoming, true) {
-            case Received => {}
-            case _ => return null
+        loop {
+            match datagrams.receive_response(socket.channel.end, socket.port, &incoming, false) {
+                case Received => break
+                case Empty => {
+                    packets : slop_os.Packet[1]
+                    waited :: slop_os.port_wait(socket.port, packets[0..<1], deadline) or_else 0
+                    if waited == 0 {
+                        return null
+                    }
+                }
+                case _ => return null
+            }
         }
         match os.message_of[datagrams.Response](&incoming)^ {
             case Datagram(arrived) => {

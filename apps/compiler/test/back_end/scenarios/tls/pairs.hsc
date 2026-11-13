@@ -1,6 +1,7 @@
 package tls_test
 
 import runtime from "base"
+import compiler from "base"
 import crypto from "std"
 import testing from "std"
 import tls from "std"
@@ -29,9 +30,12 @@ Pair :: struct {
  * @param key Its leaf's secret key, 32 bytes.
  * @param only_suite The server's only suite, or None.
  * @param only_group The server's only group, or 0.
+ * @param client_protocol The application protocol the client offers by ALPN, or none.
+ * @param server_protocol The one the server speaks, or none.
  * @return The pair, the caller's to free, the client's ClientHello waiting.
  */
-make_pair :: fn(chain: u8[], kind: crypto.X509KeyKind, key: u8[], only_suite: tls.Suite = .None, only_group: u16 = 0) -> ptr[mut Pair] {
+make_pair :: fn(chain: u8[], kind: crypto.X509KeyKind, key: u8[], only_suite: tls.Suite = .None, only_group: u16 = 0,
+    client_protocol: string = "", server_protocol: string = "") -> ptr[mut Pair] {
     pair :: runtime.new(Pair)
     for byte, i in chain {
         if i < pair.chain.count {
@@ -46,8 +50,8 @@ make_pair :: fn(chain: u8[], kind: crypto.X509KeyKind, key: u8[], only_suite: tl
     }
     pair.anchors_bytes = ROOT.count
     identity :: tls.identity_of(kind, tls.range(pair.chain, 0, pair.chain_bytes), key)
-    tls.server(&pair.server, &identity, only_suite, only_group)
-    tls.client(&pair.client, "tls.test", tls.range(pair.anchors, 0, pair.anchors_bytes), NOW)
+    tls.server(&pair.server, &identity, only_suite, only_group, server_protocol)
+    tls.client(&pair.client, "tls.test", tls.range(pair.anchors, 0, pair.anchors_bytes), NOW, client_protocol)
     return pair
 }
 
@@ -222,6 +226,73 @@ refuses_to_serve_without_a_chain #test :: fn(t: ptr[mut testing.T]) -> testing.O
         "a server whose identity has no chain ends rather than send an empty Certificate")
     testing.expect(t, tls.ended(&pair.client) && !tls.connected(&pair.client), "and the client doesn't connect")
     return .Ok
+}
+
+agrees_on_a_protocol_and_exports_keys #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    agreed :: make_pair(P256_CHAIN[0..<P256_CHAIN.count], .P256, P256_KEY[0..<32], client_protocol = "ntske/1",
+        server_protocol = "ntske/1")
+    defer runtime.free(agreed)
+    pump(agreed)
+    testing.require(t, tls.connected(&agreed.client) && tls.connected(&agreed.server), "connected offering ntske/1")?
+    testing.expect(t, tls.protocol_agreed(&agreed.client) && tls.protocol_agreed(&agreed.server), "both agree on it")
+    // Both sides export the same keys; another label or context gives others
+    client_key : crypto.SecretByte[32]
+    server_key : crypto.SecretByte[32]
+    other_label : crypto.SecretByte[32]
+    other_context : crypto.SecretByte[32]
+    label :: "EXPORTER-network-time-security"
+    c2s :: u8.[0, 0, 0, 15, 0]
+    s2c :: u8.[0, 0, 0, 15, 1]
+    testing.expect(t, tls.export_keying_material(&agreed.client, label, c2s[0..<5], client_key[0..<32]), "the client exports")
+    testing.expect(t, tls.export_keying_material(&agreed.server, label, c2s[0..<5], server_key[0..<32]), "the server exports")
+    _ = tls.export_keying_material(&agreed.server, "EXPORTER-something-else", c2s[0..<5], other_label[0..<32])
+    _ = tls.export_keying_material(&agreed.server, label, s2c[0..<5], other_context[0..<32])
+    server_plain :: declassified(server_key[0..<32])
+    label_plain :: declassified(other_label[0..<32])
+    context_plain :: declassified(other_context[0..<32])
+    testing.expect(t, crypto.equal(client_key[0..<32], server_plain[0..<32]), "the same keys")
+    testing.expect(t, !crypto.equal(client_key[0..<32], label_plain[0..<32]), "another label, other keys")
+    testing.expect(t, !crypto.equal(client_key[0..<32], context_plain[0..<32]), "another context, other keys")
+    // Closed cleanly, as an NTS-KE server closes once it's answered, the keys are still there, the same
+    tls.close(&agreed.server)
+    pump(agreed)
+    after_close : crypto.SecretByte[32]
+    testing.expect(t, tls.ended(&agreed.client) && agreed.client.ending == .Closed, "the client sees the close_notify")
+    testing.expect(t, tls.export_keying_material(&agreed.client, label, c2s[0..<5], after_close[0..<32]), "the client exports after it")
+    testing.expect(t, tls.export_keying_material(&agreed.server, label, c2s[0..<5], server_key[0..<32]), "the server exports after it")
+    after_plain :: declassified(after_close[0..<32])
+    testing.expect(t, crypto.equal(client_key[0..<32], after_plain[0..<32]), "the same keys after the close")
+    // A server that speaks another protocol refuses the client; one offered nothing serves it, not agreeing
+    refused :: make_pair(P256_CHAIN[0..<P256_CHAIN.count], .P256, P256_KEY[0..<32], client_protocol = "h2", server_protocol = "ntske/1")
+    defer runtime.free(refused)
+    pump(refused)
+    testing.expect(t, tls.ended(&refused.server) && refused.server.ending == .Refused
+        && refused.server.alert == tls.ALERT_NO_APPLICATION_PROTOCOL, "a server refuses a client offering only another protocol")
+    unexported : crypto.SecretByte[32]
+    testing.expect(t, !tls.export_keying_material(&refused.client, label, c2s[0..<5], unexported[0..<32])
+        && !tls.export_keying_material(&refused.server, label, c2s[0..<5], unexported[0..<32]), "a failed handshake exports nothing")
+    silent :: make_pair(P256_CHAIN[0..<P256_CHAIN.count], .P256, P256_KEY[0..<32], server_protocol = "ntske/1")
+    defer runtime.free(silent)
+    pump(silent)
+    testing.expect(t, tls.connected(&silent.client) && !tls.protocol_agreed(&silent.client) && !tls.protocol_agreed(&silent.server),
+        "a client offering none is served, neither agreeing")
+    unasked :: make_pair(P256_CHAIN[0..<P256_CHAIN.count], .P256, P256_KEY[0..<32], client_protocol = "ntske/1")
+    defer runtime.free(unasked)
+    pump(unasked)
+    testing.expect(t, tls.connected(&unasked.client) && !tls.protocol_agreed(&unasked.client),
+        "a server speaking none answers none, and the client knows they didn't agree")
+    return .Ok
+}
+
+/** A copy of secret bytes as plain bytes, to compare. */
+declassified #constant_time :: fn(bytes: crypto.SecretByte[]) -> u8[32] {
+    out : u8[32]
+    for byte, i in bytes {
+        if i < out.count {
+            out[i] = compiler.declassify(cast[u8](byte))
+        }
+    }
+    return out
 }
 
 /** Bytes made at random, as a ClientHello's or a ServerHello's, end a connection or wait, without harm. */

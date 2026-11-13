@@ -231,10 +231,14 @@ package net
      * @param host The host's name, or an IPv4 address's text, which its certificate has to match.
      * @param port Its port.
      * @param anchors The trust anchors, DER certificates one after another, the caller's while the stream's open.
+     * @param protocol The application protocol offered by ALPN, like "ntske/1"; empty, the default, for none.
+     *     tls.protocol_agreed(state(&stream)) says whether the server took it.
      * @return The stream, connected; or why it isn't.
      */
-    connect_tls :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[]) -> Result[TlsStream, TlsFailure] {
-        return connect_with(service, host, port, anchors, true)
+    connect_tls :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], protocol: string = "")
+        -> Result[TlsStream, TlsFailure] {
+
+        return connect_with(service, host, port, anchors, true, protocol)
     }
 
     /**
@@ -247,12 +251,12 @@ package net
      * @return The stream, connected; or why it isn't.
      */
     connect_tls_unverified :: fn(service: os.Channel[network.Network], host: string, port: u16) -> Result[TlsStream, TlsFailure] {
-        return connect_with(service, host, port, string_bytes(""), false)
+        return connect_with(service, host, port, string_bytes(""), false, "")
     }
 
     /** connect_tls's and connect_tls_unverified's work. */
-    connect_with :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], verify: bool)
-        -> Result[TlsStream, TlsFailure] {
+    connect_with :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], verify: bool,
+        protocol: string) -> Result[TlsStream, TlsFailure] {
 
         opened := match net_address.parse_v4(host) {
             case Some(address) => open(service, net_address.Endpoint.{address = address, port = port})
@@ -265,7 +269,7 @@ package net
         stream := stream_over(tcp)
         if verify {
             now :: time.now() or_else runtime.Instant.{}
-            tls.client(state(&stream), host, anchors, now.seconds)
+            tls.client(state(&stream), host, anchors, now.seconds, protocol)
         }
         else {
             tls.client_unverified(state(&stream), host)

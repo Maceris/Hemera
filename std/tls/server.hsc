@@ -44,6 +44,7 @@ server_message :: fn(connection: ptr[mut Connection], kind: u8, message: u8[]) {
         transcript_add(&connection.transcript, message)
         set_read_keys(connection, &connection.client_secret)
         connection.state = .Connected
+        connection.handshake_done = true
     }
     else if connection.state == .Connected && kind == KEY_UPDATE {
         take_key_update(connection, message)
@@ -66,6 +67,9 @@ Offer :: struct {
     p256_length : usize,
     ecdsa_p256 : bool,
     ed25519 : bool,
+    /** Whether it offers application protocols by ALPN, and the one this server speaks among them. */
+    protocols : bool,
+    protocol : bool,
 }
 
 /**
@@ -169,6 +173,21 @@ read_offer :: fn(connection: ptr[mut Connection], message: u8[]) -> Offer? {
                 return null
             }
         }
+        else if kind == EXTENSION_ALPN {
+            offer.protocols = true
+            names := get_vector(message, &data, 2)
+            loop {
+                if names.at >= names.end || names.bad {
+                    break
+                }
+                name := get_vector(message, &names, 1)
+                offer.protocol = offer.protocol || (!name.bad && is_protocol(connection, range(message, name.at, name.end)))
+            }
+            while true
+            if names.bad {
+                return null
+            }
+        }
         else if kind == EXTENSION_SIGNATURE_ALGORITHMS {
             schemes := get_vector(message, &data, 2)
             loop {
@@ -210,6 +229,12 @@ take_client_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
         fail(connection, if connection.retried { ALERT_ILLEGAL_PARAMETER } else { ALERT_HANDSHAKE_FAILURE })
         return void
     }
+    // A client offering application protocols, but not this server's, isn't served (RFC 7301 §3.2)
+    if connection.protocol_length > 0 && offer.protocols && !offer.protocol {
+        fail(connection, ALERT_NO_APPLICATION_PROTOCOL)
+        return void
+    }
+    connection.protocol_agreed = connection.protocol_length > 0 && offer.protocol
     connection.suite = offer.suite
     connection.scheme = if connection.identity.kind == .P256 && offer.ecdsa_p256 { SCHEME_ECDSA_P256_SHA256 }
         else if connection.identity.kind == .ED25519 && offer.ed25519 { SCHEME_ED25519 } else { cast[u16](0) }
@@ -425,9 +450,25 @@ put_ecdsa_der :: fn(into: mut u8[], writer: ptr[mut Writer], pair: u8[]) {
  */
 send_flight :: fn(connection: ptr[mut Connection]) {
     into :: connection.building[0..<connection.building.count]
-    extensions :: u8.[ENCRYPTED_EXTENSIONS, 0, 0, 2, 0, 0]
-    send_message(connection, extensions[0..<6])
+    // EncryptedExtensions: ALPN's answer, if they agreed
     writer := Writer.{}
+    put_u8(into, &writer, ENCRYPTED_EXTENSIONS)
+    encrypted :: start_vector(into, &writer, 3)
+    extensions :: start_vector(into, &writer, 2)
+    if connection.protocol_agreed {
+        put_u16(into, &writer, EXTENSION_ALPN)
+        alpn :: start_vector(into, &writer, 2)
+        names :: start_vector(into, &writer, 2)
+        name :: start_vector(into, &writer, 1)
+        put_bytes(into, &writer, protocol_of(connection))
+        end_vector(into, &writer, name, 1)
+        end_vector(into, &writer, names, 2)
+        end_vector(into, &writer, alpn, 2)
+    }
+    end_vector(into, &writer, extensions, 2)
+    end_vector(into, &writer, encrypted, 3)
+    send_message(connection, range(into, 0, writer.at))
+    writer = Writer.{}
     put_u8(into, &writer, CERTIFICATE)
     body :: start_vector(into, &writer, 3)
     put_u8(into, &writer, 0)

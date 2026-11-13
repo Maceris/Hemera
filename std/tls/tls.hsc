@@ -64,6 +64,8 @@ EXTENSION_SIGNATURE_ALGORITHMS : u16 : 13
 EXTENSION_SUPPORTED_VERSIONS : u16 : 43
 EXTENSION_COOKIE : u16 : 44
 EXTENSION_KEY_SHARE : u16 : 51
+/** Application-Layer Protocol Negotiation (RFC 7301). */
+EXTENSION_ALPN : u16 : 16
 
 /** TLS 1.3's version, and the legacy one records and hellos say. */
 VERSION_13 : u16 : 0x0304
@@ -103,6 +105,11 @@ ALERT_PROTOCOL_VERSION : u8 : 70
 ALERT_INTERNAL_ERROR : u8 : 80
 ALERT_USER_CANCELED : u8 : 90
 ALERT_MISSING_EXTENSION : u8 : 109
+ALERT_UNSUPPORTED_EXTENSION : u8 : 110
+ALERT_NO_APPLICATION_PROTOCOL : u8 : 120
+
+/** The longest application protocol's name ALPN offers or takes: RFC 7301 allows 255, names in use are short. */
+PROTOCOL_BYTES :: 64
 
 /** ServerHello's random when it's a HelloRetryRequest: SHA-256 of "HelloRetryRequest" (§4.1.3). */
 RETRY_RANDOM :: u8.[0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
@@ -248,6 +255,11 @@ Connection :: struct {
     /** A server's only suite, or None for any; and its only group, or 0 for either. */
     only_suite : Suite,
     only_group : u16,
+    /** The application protocol, by ALPN: the one a client offers, or a server speaks; protocol_length 0 for none. */
+    protocol : u8[PROTOCOL_BYTES],
+    protocol_length : usize,
+    /** Whether both sides agreed on it: the server echoed the client's, or took it. */
+    protocol_agreed : bool,
 
     // The handshake
     suite : Suite,
@@ -286,6 +298,10 @@ Connection :: struct {
     small_rsa : bool,
     handshake_secret : Secret,
     master_secret : Secret,
+    /** exporter_master_secret (RFC 8446 §7.5), which export_keying_material derives from. */
+    exporter_secret : Secret,
+    /** Whether the handshake finished, so exporter_secret is the connection's, even once it's closed. */
+    handshake_done : bool,
     /** The client's handshake traffic secret, kept past the application secrets' replacing client_secret. */
     client_handshake_secret : Secret,
     client_secret : Secret,
@@ -330,10 +346,13 @@ Connection :: struct {
  * @param anchors The trust anchors: DER certificates one after another (crypto.pem_certificates makes them from PEM),
  *     the caller's, unchanged, for the connection's life.
  * @param now The time to check certificates at, in seconds since 1970 UTC.
+ * @param protocol The application protocol offered by ALPN (RFC 7301), at most PROTOCOL_BYTES, like "ntske/1"; empty for
+ *     none. A server that takes another is refused; one that answers none is talked to, and protocol_agreed says so.
  */
-client :: fn(connection: ptr[mut Connection], host: string, anchors: u8[], now: i64) {
+client :: fn(connection: ptr[mut Connection], host: string, anchors: u8[], now: i64, protocol: string = "") {
     reset(connection, .Client)
     set_host(connection, host)
+    set_protocol(connection, protocol)
     connection.verify = true
     connection.anchors = cast[u64](cast[uintptr](anchors.data))
     connection.anchors_bytes = anchors.count
@@ -348,10 +367,12 @@ client :: fn(connection: ptr[mut Connection], host: string, anchors: u8[], now: 
  *
  * @param connection The connection, zeroed or ended.
  * @param host The name sent as SNI; may be empty, when none is sent.
+ * @param protocol The application protocol offered by ALPN, as client takes it; empty for none.
  */
-client_unverified :: fn(connection: ptr[mut Connection], host: string) {
+client_unverified :: fn(connection: ptr[mut Connection], host: string, protocol: string = "") {
     reset(connection, .Client)
     set_host(connection, host)
+    set_protocol(connection, protocol)
     connection.verify = false
     start_client(connection)
 }
@@ -364,9 +385,14 @@ client_unverified :: fn(connection: ptr[mut Connection], host: string) {
  * @param only_suite The one suite it takes, or None for any of the three, the client's first offered.
  * @param only_group The one group it takes, GROUP_X25519 or GROUP_P256, asking for it with a HelloRetryRequest if the
  *     client's key share is another's; or 0 for either, X25519 first.
+ * @param protocol The application protocol it speaks, by ALPN, at most PROTOCOL_BYTES; empty for none. A client that
+ *     offers others but not it is refused with no_application_protocol; one that offers none is served, and
+ *     protocol_agreed says so.
  */
-server :: fn(connection: ptr[mut Connection], identity: ptr[Identity], only_suite: Suite = .None, only_group: u16 = 0) {
+server :: fn(connection: ptr[mut Connection], identity: ptr[Identity], only_suite: Suite = .None, only_group: u16 = 0,
+    protocol: string = "") {
     reset(connection, .Server)
+    set_protocol(connection, protocol)
     connection.identity = identity^
     connection.only_suite = only_suite
     connection.only_group = only_group
@@ -439,6 +465,44 @@ sent :: fn(connection: ptr[mut Connection], count: usize) {
  */
 connected :: fn(connection: ptr[Connection]) -> bool {
     return connection.state == .Connected
+}
+
+/**
+ * Tell whether the two sides agreed on the application protocol by ALPN: the one this side offered or speaks.
+ *
+ * @param connection The connection, connected.
+ * @return True if they did; false if the peer offered or answered none, or neither side gave one.
+ */
+protocol_agreed :: fn(connection: ptr[Connection]) -> bool {
+    return connection.protocol_agreed
+}
+
+/**
+ * Export keying material (RFC 8446 §7.5, RFC 5705): TLS-Exporter(label, context, output.count), keys a protocol over
+ * the connection derives from it, as NTS (RFC 8915) does.
+ *
+ * @param connection The connection: connected, or closed cleanly after its handshake finished, by close_notify either
+ *     way, as an NTS-KE server closes it once it's answered.
+ * @param label The exporter's label, like "EXPORTER-network-time-security", at most 249 bytes.
+ * @param context The context value, hashed; empty for an empty one, which TLS 1.3 doesn't tell from none.
+ * @param output Where the material goes, every byte, at most 255 times the suite's hash's length.
+ * @return False, output untouched, if the handshake didn't finish, the connection failed (an alert either way), or
+ *     output is too long.
+ */
+export_keying_material #constant_time :: fn(connection: ptr[Connection], label: string, context: u8[], output: mut crypto.SecretByte[])
+    -> bool {
+
+    hash :: suite_hash(connection.suite)
+    usable :: connection.handshake_done && (connection.state == .Connected
+        || (connection.state == .Ended && (connection.ending == .Closed || connection.ending == .LocalClose)))
+    if !usable || label.count > 249 || output.count > 255 * hash_length(hash) {
+        return false
+    }
+    secret := derive_empty(hash, &connection.exporter_secret, label)
+    hashed : u8[HASH_MOST]
+    hash_of(hash, context, &hashed)
+    expand_label(hash, &secret, "exporter", range(hashed, 0, hash_length(hash)), output)
+    return true
 }
 
 /**
@@ -532,6 +596,7 @@ reset :: fn(connection: ptr[mut Connection], role: Role) {
     connection.state = .Idle
     connection.ending = .None
     connection.alert = 0
+    connection.handshake_done = false
     connection.certificate = .VALID
     connection.wrong_name = false
     connection.host_length = 0
@@ -563,6 +628,42 @@ reset :: fn(connection: ptr[mut Connection], role: Role) {
     connection.small_rsa = false
     connection.only_suite = .None
     connection.only_group = 0
+    connection.protocol_length = 0
+    connection.protocol_agreed = false
+}
+
+/** Keep the application protocol offered or spoken; one longer than PROTOCOL_BYTES is none, as it can't be kept whole. */
+set_protocol :: fn(connection: ptr[mut Connection], protocol: string) {
+    bytes :: string_bytes(protocol)
+    if bytes.count > connection.protocol.count {
+        connection.protocol_length = 0
+        return void
+    }
+    for byte, i in bytes {
+        if i < connection.protocol.count {
+            connection.protocol[i] = byte
+        }
+    }
+    connection.protocol_length = bytes.count
+}
+
+/** The application protocol offered or spoken, as kept. */
+protocol_of :: fn(connection: ptr[Connection]) -> u8[] {
+    return range(connection.protocol, 0, connection.protocol_length)
+}
+
+/** Tell whether a name is the application protocol offered or spoken. */
+is_protocol :: fn(connection: ptr[Connection], name: u8[]) -> bool {
+    mine :: protocol_of(connection)
+    if mine.count == 0 || name.count != mine.count {
+        return false
+    }
+    for byte, i in name {
+        if byte != mine[i] {
+            return false
+        }
+    }
+    return true
 }
 
 /** Keep the host's name, as much as fits. */
@@ -1072,6 +1173,7 @@ application_secrets :: fn(connection: ptr[mut Connection]) {
     transcript_hash(&connection.transcript, hash, &transcript)
     connection.client_secret = derive_secret(hash, &connection.master_secret, "c ap traffic", &transcript)
     connection.server_secret = derive_secret(hash, &connection.master_secret, "s ap traffic", &transcript)
+    connection.exporter_secret = derive_secret(hash, &connection.master_secret, "exp master", &transcript)
 }
 
 /**
