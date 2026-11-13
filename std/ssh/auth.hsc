@@ -88,6 +88,9 @@ take_request :: fn(conn: ptr[mut Connection], message: u8[]) {
         disconnect(conn, DISCONNECT_NO_MORE_AUTH_METHODS, "too many authentication tries")
         return void
     }
+    // Nothing of a request before carries over to this one
+    conn.offered_key = PublicKey.{}
+    conn.offered_signed = false
     reader := Reader.{at = 1, end = message.count}
     user :: get_string(message, &reader)
     service :: get_string(message, &reader)

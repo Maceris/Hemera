@@ -118,7 +118,9 @@ handle_kex :: fn(conn: ptr[mut Connection], message: u8[]) {
         take_reply(conn, message)
         return void
     }
-    if kind == MSG_NEWKEYS && conn.exchange_sent && !conn.newkeys_received {
+    // Only once this side has the new keys, and has sent its own NEWKEYS: a client's exchange is sent before it has
+    // any, and a NEWKEYS taken then would have it read in the clear
+    if kind == MSG_NEWKEYS && conn.exchange_sent && conn.newkeys_sent && !conn.newkeys_received {
         // Read under the new keys from here
         conn.into = conn.next_in
         if conn.strict {
@@ -152,6 +154,9 @@ finish_exchange :: fn(conn: ptr[mut Connection]) {
     }
     for i in cast[usize](0)..<32 {
         conn.x25519[i] = 0
+    }
+    for i in cast[usize](0)..<conn.ml_kem.count {
+        conn.ml_kem[i] = 0
     }
     flush_held(conn)
     if first && conn.role == .Client {

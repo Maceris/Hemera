@@ -419,3 +419,25 @@ client_takes_any_bytes #test :: fn(t: ptr[mut testing.T], source: ptr[mut testin
     _ = ssh.received(client, bytes)
     return .Ok
 }
+
+/**
+ * A NEWKEYS in the clear, right after the client's sent its exchange, before it has any keys (as a man in the middle
+ * would send one, to have it read the rest in the clear), ends the connection.
+ */
+refuses_newkeys_before_the_reply #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    pair :: make_pair(true)
+    defer runtime.free(pair)
+    // The server's version and KEXINIT to the client, which answers with its KEXINIT and its exchange
+    server_out :: ssh.output(&pair.server)
+    taken :: ssh.received(&pair.client, server_out)
+    ssh.sent(&pair.server, taken)
+    testing.require(t, !ssh.is_ended(&pair.client), "the client's taken the server's KEXINIT")?
+    // NEWKEYS: length 12, padding 10, the message, the padding
+    forged : u8[16]
+    forged[3] = 12
+    forged[4] = 10
+    forged[5] = 21
+    _ = ssh.received(&pair.client, forged[0..<16])
+    testing.expect(t, ssh.is_ended(&pair.client), "the client ends the connection")
+    return .Ok
+}
