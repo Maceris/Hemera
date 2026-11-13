@@ -107,6 +107,7 @@ TESTS = [
     ("network_policy", ["--test"], 0),
     ("tls", ["--test"], 0),
     ("ntp", ["--test"], 0),
+    ("ssh", ["--test"], 0),
     # Instances of a generic whose parameter is an optional of a generic alias, each with its own
     ("generic_alias_arguments", ["--test"], 0),
     # #test(CASES), each case a test of its own
@@ -150,6 +151,28 @@ ASSERTION_REPORT = "assertion failed: count must be positive\n    at "
 
 def run(command: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(command, capture_output=True, text=True)
+
+
+def openssh_interop(compiler: str, aarch64: bool, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
+    """
+    std/ssh against OpenSSH's ssh, sshd and ssh-keygen on the Linux machine, which needs them and sshpass: the
+    ssh_openssh scenario's program, run by its interop.sh as a server for ssh and a client of sshd -i, under each
+    exchange and cipher, with keys each side wrote. What went wrong, or "" if nothing did.
+    """
+    scenario = SCENARIOS / "ssh_openssh"
+    program = temporary / "ssh_openssh"
+    architecture = ["--arch=aarch64"] if aarch64 else []
+    built = run([compiler, "--os=linux", *architecture, f"--output={program}", str(scenario)])
+    if built.returncode != 0 or not program.exists():
+        return f"doesn't build\n{built.stdout}{built.stderr}"
+    for file in (program, scenario / "interop.sh"):
+        if run(["scp", "-q", "-i", key, str(file), f"{host}:{folder}/{file.name}"]).returncode != 0:
+            return f"couldn't copy {file.name}"
+    prefix = "QEMU_LD_PREFIX=/usr/aarch64-linux-gnu " if aarch64 else ""
+    ran = run(ssh + [f"cd ~/{folder} && chmod +x ssh_openssh interop.sh && {prefix}timeout 600 ./interop.sh"])
+    if ran.returncode != 42:
+        return f"exited with {ran.returncode}\n{ran.stdout}{ran.stderr}"
+    return ""
 
 
 def typed_libraries(compiler: str, aarch64: bool, temporary: Path, ssh: list[str], key: str, host: str, folder: str) -> str:
@@ -258,6 +281,14 @@ def main() -> int:
                 print(f"FAILED: {name} {', '.join(problems)}\n{ran.stdout}{ran.stderr}")
                 failures += 1
         count = len(tests)
+        if not only or "openssh_interop" in only:
+            count += 1
+            problem = openssh_interop(compiler, aarch64, Path(temporary), ssh, key, host, folder)
+            if problem:
+                print(f"FAILED: openssh_interop {problem}")
+                failures += 1
+            else:
+                print("passed: openssh_interop")
         if not only or "typed_libraries" in only:
             count += 1
             problem = typed_libraries(compiler, aarch64, Path(temporary), ssh, key, host, folder)
