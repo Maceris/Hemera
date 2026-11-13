@@ -90,6 +90,12 @@ handle_kex :: fn(conn: ptr[mut Connection], message: u8[]) {
             fail(conn, DISCONNECT_PROTOCOL_ERROR, "a KEXINIT too long")
             return void
         }
+        // A server takes one exchange before its client's logged in: each is costly, and a peer that hasn't logged in
+        // could ask for them over and over
+        if conn.first_done && conn.role == .Server && !conn.authenticated {
+            fail(conn, DISCONNECT_PROTOCOL_ERROR, "a key exchange again before logging in")
+            return void
+        }
         for byte, i in message {
             if i < conn.their_kexinit.count {
                 conn.their_kexinit[i] = byte

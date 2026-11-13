@@ -590,11 +590,12 @@ TEST(Hosted, MlKem)
 
 // std/ssh's two ends talking in memory: logging in with a key and a password, a host key refused, data both ways under
 // every exchange and cipher with a key exchange again on the way, a changed packet refused, ssh-keygen's keys read and
-// written, a NEWKEYS before the reply and a peer without strict key exchange refused, and any bytes taken.
+// written; a NEWKEYS before the reply, a peer without strict key exchange and a second key exchange before logging
+// in refused; and any bytes taken.
 TEST(Hosted, Ssh)
 {
 	const HostedOutput checked = run_hosted("ssh", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("11 tests: 11 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("12 tests: 12 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.

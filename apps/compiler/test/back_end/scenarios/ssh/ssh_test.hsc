@@ -493,3 +493,29 @@ refuses_a_peer_without_strict_key_exchange #test :: fn(t: ptr[mut testing.T]) ->
     testing.expect(t, ssh.is_ended(server), "the server ends the connection")
     return .Ok
 }
+
+/** A client that asks for a key exchange again before it's logged in is refused: each is costly to the server. */
+refuses_a_second_key_exchange_before_logging_in #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    pair :: make_pair(true)
+    defer runtime.free(pair)
+    pair.trusted = true
+    // Up to the first exchange's end, without logging in: the client's events aren't taken, so it waits on its host key
+    for round in 0..<20 {
+        out :: ssh.output(&pair.client)
+        if out.count > 0 {
+            ssh.sent(&pair.client, ssh.received(&pair.server, out))
+        }
+        back :: ssh.output(&pair.server)
+        if back.count > 0 {
+            ssh.sent(&pair.server, ssh.received(&pair.client, back))
+        }
+    }
+    _ = ssh.take_event(&pair.client)
+    ssh.trust_host_key(&pair.client, true)
+    // The client's NEWKEYS, then at once a KEXINIT again
+    ssh.sent(&pair.client, ssh.received(&pair.server, ssh.output(&pair.client)))
+    ssh.rekey(&pair.client)
+    _ = ssh.received(&pair.server, ssh.output(&pair.client))
+    testing.expect(t, ssh.is_ended(&pair.server), "the server ends the connection")
+    return .Ok
+}
