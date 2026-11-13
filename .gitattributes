@@ -4,3 +4,6 @@
 # What a test program is expected to write, byte for byte
 apps/compiler/test/back_end/scenarios/*/output.txt text eol=lf
 apps/compiler/test/back_end/scenarios/*/error.txt text eol=lf
+
+# Shell scripts run on Linux, where a CR ends every command badly
+*.sh text eol=lf
