@@ -14,6 +14,10 @@ package net
  *     net.close(&connection)
  *
  * Names are resolved by the service: open_name connects to a host by name, and resolve gives a name's addresses.
+ *
+ * A program serving many connections at once, on one port, uses what doesn't wait instead: ask_accept and
+ * take_accepted for a listener whose channel it's bound with listener_on; serve_on to bind a connection to its port
+ * under a key of its own; then, each time that key's raised, poll, and read_now and write_now what's ready.
  */
 
 #if base.OS == .SlopOS {
@@ -70,6 +74,9 @@ package net
 
     /** A TCP connection's state, the caller's, until close. */
     Tcp :: struct {
+        /** Whether port is the caller's, its channel bound to it under shared_key (serve_on), not closed with it. */
+        shared : bool,
+        shared_key : u64,
         /** Its channel. */
         stream : os.Channel[tcp_stream.TcpStream],
         /** A port of its own, bound to stream, waited on. */
@@ -429,6 +436,10 @@ package net
      * @param tcp The connection, not used again.
      */
     close :: fn(tcp: ptr[mut Tcp]) {
+        if tcp.shared {
+            _ = slop_os.port_unbind(tcp.port, tcp.shared_key)
+            tcp.port = cast[slop_os.Port](slop_os.NO_HANDLE)
+        }
         _ = slop_os.handle_close(cast[slop_os.Handle](tcp.stream.end))
         if cast[slop_os.Handle](tcp.port) != slop_os.NO_HANDLE {
             _ = slop_os.handle_close(cast[slop_os.Handle](tcp.port))
@@ -523,6 +534,214 @@ package net
             case Ok(opened) => .Ok(Accepted.{tcp = opened, remote = remote})
             case Error(failure) => .Error(failure)
         }
+    }
+
+    /**
+     * Bind a listener's channel to the caller's port, under a key of its own, so the port's raised when an accept
+     * asked for is answered.
+     *
+     * @param listener The listener; its own port stays its own.
+     * @param port The caller's port.
+     * @param key The key its packets come under.
+     * @return True if it's bound.
+     */
+    listener_on :: fn(listener: ptr[Listener], port: slop_os.Port, key: u64) -> bool {
+        signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
+        return slop_os.port_bind(port, cast[slop_os.Handle](listener.channel.end), signals, key, .Persistent) is_ok
+    }
+
+    /**
+     * Ask a listener for its next connection, without waiting for it: take_accepted takes it once it's come. One is
+     * asked at a time.
+     *
+     * @param listener The listener.
+     * @param memory_bytes The memory for its rings, as accept's.
+     * @return The connection to be, its memory made, its channel to come; or why it couldn't be asked.
+     */
+    ask_accept :: fn(listener: ptr[mut Listener], memory_bytes: u64 = DEFAULT_MEMORY) -> Result[Tcp, Failure] {
+        tcp := match make_memory(memory_bytes) {
+            case Ok(found) => found
+            case Error(failure) => return .Error(failure)
+        }
+        handle :: match give_memory(tcp.memory) {
+            case Some(found) => found
+            case None => {
+                unmake(&tcp)
+                return .Error(.NoRoom)
+            }
+        }
+        out := os.Outgoing.{}
+        request :: os.begin[tcp_listener.Request](&out)
+        request^ = .Accept(handle)
+        if tcp_listener.send_request(listener.channel.end, listener.port, &out) is_some {
+            unmake(&tcp)
+            return .Error(.Broken)
+        }
+        return .Ok(tcp)
+    }
+
+    /** What take_accepted found. */
+    Taken :: union {
+        /** The connection hasn't come yet. */
+        Waiting,
+        /** It's come, from where; the connection asked for is it now, its channel had, its port not yet bound. */
+        Came(net_address.Endpoint),
+        /** The listener failed, or refused it; the connection asked for is given back. */
+        Failed(Failure),
+    }
+
+    /**
+     * Take the answer to ask_accept, if it's come, without waiting.
+     *
+     * @param listener The listener.
+     * @param pending The connection ask_accept gave: given its channel once it's come, or given back if it failed.
+     * @return Waiting, Came, or Failed.
+     */
+    take_accepted :: fn(listener: ptr[mut Listener], pending: ptr[mut Tcp]) -> Taken {
+        into := os.Incoming.{}
+        match tcp_listener.receive_response(listener.channel.end, listener.port, &into, false) {
+            case Received => {}
+            case Empty => return .Waiting
+            case _ => {
+                unmake(pending)
+                return .Failed(.Broken)
+            }
+        }
+        match os.message_of[tcp_listener.Response](&into)^ {
+            case Accepted(accepted) => {
+                pending.stream = accepted.stream
+                return .Came(accepted.remote)
+            }
+            case _ => {
+                unmake(pending)
+                return .Failed(.NoRoom)
+            }
+        }
+    }
+
+    /**
+     * Serve a connection on the caller's port: its channel bound to it under a key of the caller's, and its progress
+     * watched, so the port's raised whenever it changes. From now on, nothing on it waits but write and read, which a
+     * program serving on one port doesn't call: poll, read_now and write_now take their places.
+     *
+     * @param tcp The connection, from take_accepted or open; a port of its own is closed.
+     * @param port The caller's port, which close leaves open, unbinding the key.
+     * @param key The key its packets come under.
+     * @return True once it's bound and watched.
+     */
+    serve_on :: fn(tcp: ptr[mut Tcp], port: slop_os.Port, key: u64) -> bool {
+        if !tcp.shared && cast[slop_os.Handle](tcp.port) != slop_os.NO_HANDLE {
+            _ = slop_os.handle_close(cast[slop_os.Handle](tcp.port))
+        }
+        signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
+        if slop_os.port_bind(port, cast[slop_os.Handle](tcp.stream.end), signals, key, .Persistent) is_error {
+            tcp.port = cast[slop_os.Port](slop_os.NO_HANDLE)
+            return false
+        }
+        tcp.port = port
+        tcp.shared = true
+        tcp.shared_key = key
+        return poll(tcp)
+    }
+
+    /**
+     * Take what the service has said of a connection's progress, without waiting, and ask to hear of its next change.
+     *
+     * @param tcp The connection, served on a port (serve_on).
+     * @return False if its channel failed.
+     */
+    poll :: fn(tcp: ptr[mut Tcp]) -> bool {
+        loop {
+            into := os.Incoming.{}
+            match tcp_stream.receive_response(tcp.stream.end, tcp.port, &into, false) {
+                case Received => {}
+                case Empty => break
+                case _ => return false
+            }
+            match os.message_of[tcp_stream.Response](&into)^ {
+                case Progress(progress) => {
+                    tcp.progress = progress
+                    tcp.watching = false
+                }
+                case _ => {}
+            }
+        }
+        while true
+        if !tcp.watching {
+            out := os.Outgoing.{}
+            os.begin[tcp_stream.Request](&out)^ = .Watch(tcp.progress)
+            if tcp_stream.send_request(tcp.stream.end, tcp.port, &out) is_some {
+                return false
+            }
+            tcp.watching = true
+        }
+        return true
+    }
+
+    /**
+     * Read what's arrived, without waiting.
+     *
+     * @param tcp The connection.
+     * @param into Where it goes.
+     * @return How many bytes: 0 if none's arrived since the last poll said.
+     */
+    read_now :: fn(tcp: ptr[mut Tcp], into: mut u8[]) -> usize {
+        waiting :: tcp.progress.delivered - tcp.read
+        if waiting == 0 {
+            return 0
+        }
+        count :: if cast[u64](into.count) < waiting { into.count } else { cast[usize](waiting) }
+        ring :: view_of(cast[ptr[u8]](tcp.at + tcp.ring), cast[usize](tcp.ring))
+        for &byte, i in into {
+            if i >= count {
+                break
+            }
+            at :: cast[usize]((tcp.read + cast[u64](i)) % tcp.ring)
+            if at < ring.count {
+                byte^ = ring[at]
+            }
+        }
+        tcp.read += cast[u64](count)
+        tell(tcp, .Read(tcp.read))
+        return count
+    }
+
+    /**
+     * Write what there's room for, without waiting.
+     *
+     * @param tcp The connection, not finished.
+     * @param bytes What's to be written.
+     * @return How many were: fewer than given while the ring's full, 0 once it's finished or ended.
+     */
+    write_now :: fn(tcp: ptr[mut Tcp], bytes: u8[]) -> usize {
+        if tcp.finished || tcp.progress.ending != .None {
+            return 0
+        }
+        room :: tcp.ring - (tcp.written - tcp.progress.acknowledged)
+        count :: if cast[u64](bytes.count) < room { bytes.count } else { cast[usize](room) }
+        if count == 0 {
+            return 0
+        }
+        ring :: view_of(cast[ptr[mut u8]](tcp.at), cast[usize](tcp.ring))
+        for i in 0..<count {
+            at :: cast[usize]((tcp.written + cast[u64](i)) % tcp.ring)
+            if at < ring.count && i < bytes.count {
+                ring[at] = bytes[i]
+            }
+        }
+        tcp.written += cast[u64](count)
+        tell(tcp, .Wrote(tcp.written))
+        return count
+    }
+
+    /**
+     * Tell whether a connection is done with: the peer has finished and all it sent is read, or it ended otherwise.
+     *
+     * @param tcp The connection.
+     * @return True once nothing more will come from it.
+     */
+    is_done :: fn(tcp: ptr[Tcp]) -> bool {
+        return (tcp.progress.peer_finished && tcp.read >= tcp.progress.delivered) || tcp.progress.ending != .None
     }
 
     /** A connection accepted, and who it's from. */
