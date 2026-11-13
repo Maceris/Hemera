@@ -9149,9 +9149,20 @@ namespace hemera {
 				}
 			}
 			if (iter == generator.compile_time_values.end()) {
+				/*
+				 * Inside compile-time code still collecting what it reaches, this waits for what it reaches too, as a
+				 * constant's value does (executed_constant): a function another thread hasn't finished checking is
+				 * waited for, and the outer code run again, not an error
+				 */
 				CompileTimeValue ran;
-				if (!run_at_compile_time(generator, node->children[0], result_type, generator.state->checked,
-					generator.state->declaration, ran)) {
+				std::vector<Declaration*> waiting;
+				const bool ran_now = run_at_compile_time(generator, node->children[0], result_type, generator.state->checked,
+					generator.state->declaration, ran, generator.collecting ? &waiting : nullptr);
+				if (!waiting.empty()) {
+					generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
+					return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
+				}
+				if (!ran_now) {
 					return value(zero_of(generator, llvm_type(generator, result_type)), result_type);
 				}
 				iter = generator.compile_time_values.emplace(node, std::move(ran)).first;
@@ -10370,9 +10381,15 @@ namespace hemera {
 			// #run as a statement runs when its function is generated
 			if (is_text(statement->value.value, "#run") && !statement->children.empty()
 				&& !generator.compile_time_values.contains(statement)) {
+				// Waiting, inside compile-time code still collecting, for what it reaches, as a #run expression does
 				CompileTimeValue ran;
+				std::vector<Declaration*> waiting;
 				run_at_compile_time(generator, statement->children[0], nullptr, generator.state->checked,
-					generator.state->declaration, ran);
+					generator.state->declaration, ran, generator.collecting ? &waiting : nullptr);
+				if (!waiting.empty()) {
+					generator.unchecked.insert(generator.unchecked.end(), waiting.begin(), waiting.end());
+					return false;
+				}
 				generator.compile_time_values.emplace(statement, std::move(ran));
 			}
 			return false;
