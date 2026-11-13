@@ -272,3 +272,50 @@ seals_nists_test_case_16 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect_eq(t, case_32, Problem.NONE, "AES-256-GCM in software: NIST's test case 16, 60 bytes with 20 of associated data, as Python's cryptography has it")
     return .Ok
 }
+
+/**
+ * OpenSSH's chacha20-poly1305@openssh.com: packets of any length sealed and opened, the length read from the first 4
+ * bytes alone, and any changed byte, or another sequence number, refused.
+ */
+seals_openssh_packets #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    key : crypto.SecretByte[64]
+    for i in cast[usize](0)..<64 {
+        key[i] = cast[crypto.SecretByte](cast[u8](testing.draw_below(source, 256)))
+    }
+    keys := crypto.ssh_chacha_keys(&key)
+    sequence :: cast[u32](testing.draw_below(source, cast[u64](1) << 32))
+    body :: testing.draw_bytes(source, 1500)
+    packet : crypto.SecretByte[1504]
+    length :: cast[u32](body.count)
+    for i in cast[usize](0)..<4 {
+        packet[i] = cast[crypto.SecretByte](cast[u8](length >> (8 * cast[u32](3 - i))))
+    }
+    for byte, i in body {
+        if 4 + i < packet.count {
+            packet[4 + i] = cast[crypto.SecretByte](byte)
+        }
+    }
+    count :: 4 + body.count
+    sealed : u8[1504]
+    tag : crypto.Tag128
+    testing.require(t, crypto.ssh_chacha_seal(&keys, sequence, packet[0..<count % 1505], sealed[0..<count % 1505], &tag), "sealed")?
+    testing.expect_eq(t, crypto.ssh_chacha_length(&keys, sequence, sealed[0..<4]), length, "the length read from the first four bytes")
+    opened : crypto.SecretByte[1500]
+    testing.require(t, crypto.ssh_chacha_open(&keys, sequence, sealed[0..<count % 1505], &tag, opened[0..<body.count % 1501]), "opened")?
+    same := true
+    for byte, i in body {
+        if i < opened.count && compiler.declassify(cast[u8](opened[i])) != byte {
+            same = false
+        }
+    }
+    testing.expect(t, same, "the packet as it was")
+    testing.expect(t, !crypto.ssh_chacha_open(&keys, sequence + 1, sealed[0..<count % 1505], &tag, opened[0..<body.count % 1501]),
+        "not with another sequence number")
+    at :: cast[usize](testing.draw_below(source, cast[u64](count)))
+    if at < sealed.count {
+        sealed[at] = sealed[at] ~ 1
+    }
+    testing.expect(t, !crypto.ssh_chacha_open(&keys, sequence, sealed[0..<count % 1505], &tag, opened[0..<body.count % 1501]),
+        "nor with a byte changed")
+    return .Ok
+}

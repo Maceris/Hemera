@@ -422,3 +422,41 @@ compares_in_constant_time #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome 
     testing.expect(t, !crypto.equal(tag, plain[0..<31]), "a tag isn't equal to fewer bytes, whatever they are")
     return .Ok
 }
+
+/** SHA-3 and SHAKE (FIPS 202) against known answers: empty, "abc", and a million a's absorbed a thousand at a time. */
+hashes_with_sha3 #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    empty :: crypto.sha3_256(bytes(""))
+    expect_hex(t, empty[0..<32], "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a", "SHA3-256 of nothing")
+    abc :: crypto.sha3_256(bytes("abc"))
+    expect_hex(t, abc[0..<32], "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532", "SHA3-256 of abc")
+    nothing512 :: crypto.sha3_512(bytes(""))
+    expect_hex(t, nothing512[0..<64], "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26",
+        "SHA3-512 of nothing")
+    abc512 :: crypto.sha3_512(bytes("abc"))
+    expect_hex(t, abc512[0..<64], "b751850b1a57168a5693cd924b6b096e08f621827444f70d884f5d0240d2712e10e116e9192af3c91a7ec57647e3934057340b4cf408d5a56592f8274eec53f0",
+        "SHA3-512 of abc")
+    shake128 : u8[32]
+    crypto.shake128(bytes(""), shake128[0..<32])
+    expect_hex(t, shake128[0..<32], "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26", "SHAKE128 of nothing")
+    crypto.shake128(bytes("abc"), shake128[0..<32])
+    expect_hex(t, shake128[0..<32], "5881092dd818bf5cf8a3ddb793fbcba74097d5c526a6d35f97b83351940f2cc8", "SHAKE128 of abc")
+    shake256 : u8[64]
+    crypto.shake256(bytes(""), shake256[0..<64])
+    expect_hex(t, shake256[0..<64], "46b9dd2b0ba88d13233b3feb743eeb243fcd52ea62b81b82b50c27646ed5762fd75dc4ddd8c0f200cb05019d67b592f6fc821c49479ab48640292eacb3b7c4be",
+        "SHAKE256 of nothing, past its rate")
+    crypto.shake256(bytes("abc"), shake256[0..<64])
+    expect_hex(t, shake256[0..<64], "483366601360a8771c6863080cc4114d8db44530f8f1e1ee4f94ea37e78b5739d5a15bef186a5386c75744c0527e1faa9f8726e462a12a4feb06bd8801e751e4",
+        "SHAKE256 of abc")
+    a : u8[1000]
+    for &byte in a {
+        byte^ = 0x61
+    }
+    million := crypto.sha3_256_start()
+    for i in 0..<1000 {
+        crypto.keccak_absorb(&million, crypto.as_secret(a[0..<1000]))
+    }
+    digest : u8[32]
+    crypto.keccak_squeeze_public(&million, digest[0..<32])
+    expect_hex(t, digest[0..<32], "5c8875ae474a3634ba4fd55ec85bffd661f32aca75c6d699d0cdcb6c115891c1", "SHA3-256 of a million a's")
+    return .Ok
+}

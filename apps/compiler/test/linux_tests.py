@@ -58,6 +58,7 @@ TESTS = [
     ("secrets", ["--test"], 0),
     ("hashes", ["--test"], 0),
     ("aead", ["--test"], 0),
+    ("ml_kem", ["--test"], 0),
     ("curves", ["--test"], 0),
     ("argon2", ["--test"], 0),
     ("wycheproof", ["--test"], 0),

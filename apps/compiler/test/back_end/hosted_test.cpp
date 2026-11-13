@@ -573,10 +573,19 @@ TEST(Hosted, ReturnsParenthesizedTypes)
 	run_hosted("parenthesized_results", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
-// std/crypto's ChaCha20-Poly1305 and AES-256-GCM, with and without AES-NI, against known values.
+// std/crypto's ChaCha20-Poly1305 and AES-256-GCM, with and without AES-NI, against known values, and OpenSSH's
+// chacha20-poly1305@openssh.com sealing and opening packets.
 TEST(Hosted, AuthenticatedEncryption)
 {
 	run_hosted("aead", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+}
+
+// std/crypto's ML-KEM-768 against NIST's ACVP vectors and Wycheproof's: key pairs, encapsulation, decapsulation with
+// implicit rejection, and the keys' checks.
+TEST(Hosted, MlKem)
+{
+	const HostedOutput checked = run_hosted("ml_kem", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("6 tests: 6 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.
