@@ -203,6 +203,11 @@ negotiate :: fn(conn: ptr[mut Connection]) -> bool {
     if !conn.first_done {
         conn.strict = has_name(name_list(client_init, 0), string_bytes("kex-strict-c-v00@openssh.com"))
             && has_name(name_list(server_init, 0), string_bytes("kex-strict-s-v00@openssh.com"))
+        // Required: a peer without it is open to Terrapin's prefix truncation
+        if !conn.strict {
+            fail(conn, DISCONNECT_KEY_EXCHANGE_FAILED, "strict key exchange is required")
+            return false
+        }
         conn.peer_wants_ext_info = conn.role == .Server && has_name(name_list(client_init, 0), string_bytes("ext-info-c"))
     }
     // A guessed first exchange packet that guessed wrong is passed over

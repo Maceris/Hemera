@@ -441,3 +441,55 @@ refuses_newkeys_before_the_reply #test :: fn(t: ptr[mut testing.T]) -> testing.O
     testing.expect(t, ssh.is_ended(&pair.client), "the client ends the connection")
     return .Ok
 }
+
+/** A client that doesn't offer strict key exchange is refused: Terrapin's prefix truncation works on one. */
+refuses_a_peer_without_strict_key_exchange #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    server :: runtime.new(ssh.Connection)
+    defer runtime.free(server)
+    host :: key_of(1)
+    ssh.server(server, &host)
+    // A client's version and KEXINIT that offers curve25519-sha256 and nothing more
+    hello : u8[1024]
+    writer := ssh.Writer.{}
+    out :: hello[0..<1024]
+    ssh.put_bytes(out, &writer, string_bytes("SSH-2.0-test\r\n"))
+    length_at :: writer.at
+    ssh.put_u32(out, &writer, 0)
+    ssh.put_u8(out, &writer, 4)
+    ssh.put_u8(out, &writer, ssh.MSG_KEXINIT)
+    for i in 0..<16 {
+        ssh.put_u8(out, &writer, 7)
+    }
+    ssh.put_text(out, &writer, "curve25519-sha256")
+    ssh.put_text(out, &writer, "ssh-ed25519")
+    for i in 0..<2 {
+        ssh.put_text(out, &writer, "chacha20-poly1305@openssh.com")
+    }
+    for i in 0..<2 {
+        ssh.put_text(out, &writer, "hmac-sha2-256")
+    }
+    for i in 0..<2 {
+        ssh.put_text(out, &writer, "none")
+    }
+    for i in 0..<2 {
+        ssh.put_text(out, &writer, "")
+    }
+    ssh.put_bool(out, &writer, false)
+    ssh.put_u32(out, &writer, 0)
+    // Padding to a multiple of 8, at least 4
+    pad := 8 - (writer.at - length_at) % 8
+    if pad < 4 {
+        pad += 8
+    }
+    for i in cast[usize](0)..<pad {
+        ssh.put_u8(out, &writer, 0)
+    }
+    packet_length :: writer.at - length_at - 4
+    for i in cast[usize](0)..<4 {
+        ssh.set_byte(out, length_at + i, cast[u8](packet_length >> (8 * (3 - i))))
+    }
+    ssh.set_byte(out, length_at + 4, cast[u8](pad))
+    _ = ssh.received(server, range(hello[0..<1024], 0, writer.at))
+    testing.expect(t, ssh.is_ended(server), "the server ends the connection")
+    return .Ok
+}

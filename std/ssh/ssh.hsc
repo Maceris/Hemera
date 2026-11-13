@@ -16,9 +16,9 @@ import random from "std"
  * (trust_host_key), a server's Password and PublicKey (answer_authentication), and a server's ChannelRequest
  * (answer_request). Channels' data is read with channel_read and written with channel_write.
  *
- * The transport is RFC 4253's, with OpenSSH's strict key exchange, which a peer that offers it is held to: in the first
- * exchange only its messages are taken, and sequence numbers start again at each NEWKEYS, which closes off Terrapin's
- * prefix truncation. A key exchange starts again after REKEY_BYTES either way, or when the peer starts one, or rekey
+ * The transport is RFC 4253's, with OpenSSH's strict key exchange, which every peer has to offer, as OpenSSH has since
+ * 9.6, and is held to: in the first exchange only its messages are taken, and sequence numbers start again at each
+ * NEWKEYS, which closes off Terrapin's prefix truncation. A peer that doesn't offer it is refused. A key exchange starts again after REKEY_BYTES either way, or when the peer starts one, or rekey
  * is called; messages written meanwhile are held until it's done.
  */
 
