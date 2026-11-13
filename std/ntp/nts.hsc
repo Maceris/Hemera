@@ -199,7 +199,8 @@ read_ke_response :: fn(response: u8[], session: ptr[mut Session]) -> KeReading {
             add_cookie(session, tls.range(response, body.at, body.end))
         }
         else if record == RECORD_SERVER {
-            if length == 0 || length > session.server.count {
+            // A name or an address's text: letters, digits, '-', '.', '_' and ':' only (13h)
+            if length == 0 || length > session.server.count || !is_host_text(tls.range(response, body.at, body.end)) {
                 return KeReading.{outcome = .Malformed, read = reader.at}
             }
             for byte, i in tls.range(response, body.at, body.end) {
@@ -214,11 +215,32 @@ read_ke_response :: fn(response: u8[], session: ptr[mut Session]) -> KeReading {
                 return KeReading.{outcome = .Malformed, read = reader.at}
             }
             session.port = tls.get_u16(response, &body)
+            if session.port == 0 {
+                return KeReading.{outcome = .Malformed, read = reader.at}
+            }
         }
         else if record != RECORD_WARNING && critical {
             return KeReading.{outcome = .Malformed, read = reader.at}
         }
     }
+}
+
+/**
+ * Tell whether bytes are a host's name or an address's text, as a Server record holds: letters, digits, '-', '.', '_'
+ * and ':', for IPv6's.
+ *
+ * @param text The bytes.
+ * @return True if each is one of those.
+ */
+is_host_text :: fn(text: u8[]) -> bool {
+    for byte in text {
+        letter :: (byte >= 0x61 && byte <= 0x7a) || (byte >= 0x41 && byte <= 0x5a)
+        digit :: byte >= 0x30 && byte <= 0x39
+        if !letter && !digit && byte != 0x2d && byte != 0x2e && byte != 0x5f && byte != 0x3a {
+            return false
+        }
+    }
+    return true
 }
 
 /**

@@ -342,7 +342,8 @@ Connection :: struct {
  *
  * @param connection The connection, zeroed or ended.
  * @param host The server's DNS name, sent as SNI, which its certificate has to match; or an IP address's text, which
- *     isn't sent but is matched. At most HOST_BYTES.
+ *     isn't sent but is matched. At most HOST_BYTES: a longer one ends the connection at once, Refused with
+ *     internal_error, rather than be matched cut short.
  * @param anchors The trust anchors: DER certificates one after another (crypto.pem_certificates makes them from PEM),
  *     the caller's, unchanged, for the connection's life.
  * @param now The time to check certificates at, in seconds since 1970 UTC.
@@ -351,6 +352,12 @@ Connection :: struct {
  */
 client :: fn(connection: ptr[mut Connection], host: string, anchors: u8[], now: i64, protocol: string = "") {
     reset(connection, .Client)
+    if string_bytes(host).count > HOST_BYTES {
+        connection.state = .Ended
+        connection.ending = .Refused
+        connection.alert = ALERT_INTERNAL_ERROR
+        return void
+    }
     set_host(connection, host)
     set_protocol(connection, protocol)
     connection.verify = true
@@ -475,6 +482,41 @@ connected :: fn(connection: ptr[Connection]) -> bool {
  */
 protocol_agreed :: fn(connection: ptr[Connection]) -> bool {
     return connection.protocol_agreed
+}
+
+/**
+ * Forget a connection's secrets: its ephemeral keys, every secret of its key schedule, its traffic keys, and the
+ * plaintext it holds, all zeroed, so memory given back after doesn't keep them (13h). It can't be used after, but to be
+ * set up again.
+ *
+ * @param connection The connection.
+ */
+forget #constant_time :: fn(connection: ptr[mut Connection]) {
+    no_x25519 : crypto.X25519SecretKey
+    no_p256 : crypto.P256SecretKey
+    no_secret : Secret
+    no_opened : crypto.SecretByte[RECORD_CIPHERTEXT]
+    connection.x25519 = no_x25519
+    connection.p256 = no_p256
+    connection.handshake_secret = no_secret
+    connection.master_secret = no_secret
+    connection.exporter_secret = no_secret
+    connection.client_handshake_secret = no_secret
+    connection.client_secret = no_secret
+    connection.server_secret = no_secret
+    connection.read_secret = no_secret
+    connection.write_secret = no_secret
+    connection.read = TrafficKeys.{}
+    connection.write = TrafficKeys.{}
+    connection.opened = no_opened
+    for &byte in connection.plaintext {
+        byte^ = 0
+    }
+    for &byte in connection.inner {
+        byte^ = 0
+    }
+    connection.handshake_done = false
+    connection.state = .Ended
 }
 
 /**

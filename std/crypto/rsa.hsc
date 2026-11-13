@@ -48,14 +48,15 @@ RSA_DIGEST_INFO_SHA512 :: u8.[0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x
  * @param modulus n, big-endian bytes, leading zeros allowed, as an X.509 certificate or a PKCS #1 RSAPublicKey holds
  *     it. Copied.
  * @param exponent e, big-endian bytes, the same way; 65537 is usual.
- * @return The key; or null when n is even, below RSA_FEWEST_BITS bits or above 8192, or e is even, below 3 or not
- *     below n.
+ * @return The key; or null when n is even, below RSA_FEWEST_BITS bits or above 8192, or e is even, below 3, not
+ *     below n, or above 2^32, as BoringSSL has it: a huge e would make each verification take as long as signing.
  */
 rsa_public_key :: fn(modulus: u8[], exponent: u8[]) -> RsaPublicKey? {
     n := big_from_bytes(modulus) or_return null
     e := big_from_bytes(exponent) or_return null
     bits := big_bits(&n)
-    if bits < RSA_FEWEST_BITS || e.count == 0 || (e.limbs[0] & 1) == 0 || (e.count == 1 && e.limbs[0] < 3) || big_compare(&e, &n) >= 0 {
+    if bits < RSA_FEWEST_BITS || e.count == 0 || (e.limbs[0] & 1) == 0 || (e.count == 1 && e.limbs[0] < 3) || big_compare(&e, &n) >= 0
+        || big_limbs_used(&e, e.count) > 1 || e.limbs[0] > 0x1_0000_0000 {
         return null
     }
     prepared := big_modulus(&n) or_return null

@@ -22,6 +22,9 @@ package net
     import net_address from "std/os/slop_os"
     import network from "std/os/slop_os"
 
+    /** How long NTS-KE may take, connecting to its server's last record, before it's given up: 10 s. */
+    NTS_KE_TIMEOUT : u64 : 10_000_000_000
+
     /** Why NTS gave no time. */
     NtsFailure :: enum {
         /** NTS-KE's TLS connection failed or was refused: tls says why. */
@@ -79,7 +82,9 @@ package net
 
         session.keyed = false
         session.cookie_count = 0
-        stream := match connect_tls(service, host, port, anchors, ntp.ALPN) {
+        // A server that stops answering ends it, rather than hold the caller, as the clock, for ever (13h)
+        deadline :: (slop_os.clock_monotonic() or_else 0) + NTS_KE_TIMEOUT
+        stream := match connect_tls(service, host, port, anchors, ntp.ALPN, deadline) {
             case Ok(found) => found
             case Error(failure) => return NtsProblem.{why = .Tls, tls = failure}
         }

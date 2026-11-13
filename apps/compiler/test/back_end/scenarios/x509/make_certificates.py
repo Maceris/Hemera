@@ -169,9 +169,18 @@ constant("CONSTRAINED_DNS_CHAIN", certificate("other.test", p256(), nc.subject, 
          comment="A leaf with a name outside the permitted subtrees")
 constant("CONSTRAINED_EXCLUDED_CHAIN", certificate("x.bad.allowed.test", p256(), nc.subject, nc_key, names=[dns("x.bad.allowed.test")]), nc,
          comment="A leaf with a name in the excluded subtree")
+constant("CONSTRAINED_WILDCARD_CHAIN", certificate("wild.allowed.test", p256(), nc.subject, nc_key, names=[dns("*.allowed.test")]), nc,
+         comment="A leaf whose wildcard matches a name in the excluded subtree, bad.allowed.test")
 constant("CONSTRAINED_IP_CHAIN", certificate("host.allowed.test", p256(), nc.subject, nc_key,
                                              names=[dns("host.allowed.test"), x509.IPAddress(ipaddress.ip_address("198.51.100.1"))]), nc,
          comment="A leaf with an IP address outside the permitted range")
+
+# A chain made to be slow to search: nine CAs of one name and key, each able to issue every other, none reaching an
+# anchor, so a search without a budget would try every ordering of them
+tangle_key = p256()
+tangle = [certificate("Tangle", tangle_key, name("Tangle"), tangle_key, ca=True) for _ in range(9)]
+constant("TANGLED_CHAIN", certificate("example.test", p256(), name("Tangle"), tangle_key, names=leaf_names), *tangle,
+         comment="A leaf by nine CAs of one name and key, none reaching an anchor")
 
 # Purpose and key usage
 constant("CLIENT_ONLY_CHAIN", certificate("example.test", p256(), p_inter.subject, p_inter_key, names=leaf_names,

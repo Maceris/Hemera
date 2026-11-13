@@ -135,10 +135,152 @@ names_reach_public_addresses_only #test :: fn(t: ptr[mut testing.T]) -> testing.
     testing.expect(t, !network.allows_named(&peer, network.TRANSPORT_TCP, name, at(93, 184, 215, 14, 8)), "nor another port")
     testing.expect(t, !network.allows_named(&peer, network.TRANSPORT_TCP, name, at(10, 0, 2, 2, 7)), "nor a private address")
     testing.expect(t, !network.allows_connect(&peer, network.TRANSPORT_TCP, at(93, 184, 215, 14, 7)), "nor any address but by name")
-    testing.expect(t, network.allows_resolve(&peer) && network.allows_resolve(&session), "who connects anywhere may resolve")
+    testing.expect(t, network.allows_resolve(&session, string_bytes("any.example.org")), "who reaches public addresses may resolve any name")
+    testing.expect(t, network.allows_resolve(&peer, name), "who reaches a name may resolve it")
+    // Its queries would carry the name on, to the name's own servers, past what the policy allows
+    testing.expect(t, !network.allows_resolve(&peer, string_bytes("secret.attacker.example")), "but not another name")
+    testing.expect(t, !network.allows_resolve(&local, name), "nor who reaches only a private range")
     nothing := network.Policy.{}
-    testing.expect(t, !network.allows_resolve(&nothing), "who connects nowhere may not")
+    testing.expect(t, !network.allows_resolve(&nothing, name), "who connects nowhere may not")
     return .Ok
+}
+
+/** Ranges whose address is public but that reach special ranges aren't within public addresses (13h). */
+public_ranges_hold_no_special_ones #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    session := network.public_only()
+    for range in net_address.Address.[net_address.v4(192, 0, 1, 0), net_address.v4(198, 51, 0, 0), net_address.v4(203, 0, 0, 0)] {
+        wide := network.Policy.{connect_count = 1}
+        wide.connect[0] = network.range_rule(range, 16, network.TRANSPORT_TCP, 0, 65535)
+        testing.expect(t, !network.within(&session, &wide), "a /16 holding a documentation or IETF /24 isn't public")
+    }
+    public := network.Policy.{connect_count = 1}
+    public.connect[0] = network.range_rule(net_address.v4(93, 184, 0, 0), 16, network.TRANSPORT_TCP, 0, 65535)
+    testing.expect(t, network.within(&session, &public), "a public /16 is")
+    whole := network.Policy.{connect_count = 1}
+    whole.connect[0] = network.range_rule(net_address.v4(0, 0, 0, 0), 0, network.TRANSPORT_TCP, 0, 65535)
+    testing.expect(t, !network.within(&session, &whole), "every address isn't")
+    // 6to4 and Teredo carry IPv4 addresses, private ones among them
+    six_to_four := net_address.Address.{family = .V6}
+    six_to_four.bytes[0] = 0x20
+    six_to_four.bytes[1] = 0x02
+    six_to_four.bytes[2] = 10
+    testing.expect(t, !network.is_public(six_to_four), "6to4's 2002::/16 isn't public")
+    teredo := net_address.Address.{family = .V6}
+    teredo.bytes[0] = 0x20
+    teredo.bytes[1] = 0x01
+    testing.expect(t, !network.is_public(teredo), "nor Teredo's 2001::/32")
+    return .Ok
+}
+
+/**
+ * Whatever a policy within another allows, the other allows (13h): Narrow can't widen. Two policies of drawn rules,
+ * and a drawn endpoint and name; when the second is within the first, each check that passes for the second passes for
+ * the first, or, by name, the first reaches the endpoint by its address.
+ */
+narrowing_never_widens #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    outer :: drawn_policy(source)
+    inner :: drawn_policy(source)
+    if !network.within(&outer, &inner) {
+        return .Ok
+    }
+    to :: drawn_endpoint(source)
+    name :: drawn_name(source)
+    transport :: if testing.draw_bool(source) { network.TRANSPORT_TCP } else { network.TRANSPORT_UDP }
+    port :: cast[u16](testing.draw_below(source, 65536))
+    if network.allows_connect(&inner, transport, to) {
+        testing.expect(t, network.allows_connect(&outer, transport, to), "what the inner policy connects to, the outer does")
+    }
+    /*
+     * By name, it reaches only what the outer reaches, by name or by its address: a range within everything allows
+     * names resolving to a private address in it, which everything doesn't (the rebinding rule), but everything reaches
+     * that address, and could narrow to the same range itself
+     */
+    if network.allows_named(&inner, transport, string_bytes(name), to) {
+        testing.expect(t, network.allows_named(&outer, transport, string_bytes(name), to) || network.allows_connect(&outer, transport, to),
+            "and by name")
+    }
+    if network.allows_listen(&inner, transport, port) {
+        testing.expect(t, network.allows_listen(&outer, transport, port), "and listens")
+    }
+    if network.allows_resolve(&inner, string_bytes(name)) {
+        testing.expect(t, network.allows_resolve(&outer, string_bytes(name)), "and resolves")
+    }
+    return .Ok
+}
+
+/** Names drawn among, some under others. */
+NAMES :: string.["example.com", "www.example.com", "a.b.example.com", "example.org", "evil.test"]
+
+/** Addresses drawn among: public, private and special ones, and both ends of a few ranges. */
+ADDRESSES :: u8.[93, 184, 215, 14, 10, 0, 2, 2, 192, 0, 2, 1, 192, 0, 1, 7, 198, 51, 100, 1, 198, 51, 0, 1, 203, 0, 113, 9,
+    100, 64, 0, 1, 127, 0, 0, 1, 255, 255, 255, 255, 8, 8, 8, 8, 172, 16, 0, 1, 0, 0, 0, 0]
+
+drawn_address :: fn(source: ptr[mut testing.Source]) -> net_address.Address {
+    if testing.draw_below(source, 4) == 0 {
+        address := net_address.Address.{family = .V6}
+        for &byte in address.bytes {
+            byte^ = cast[u8](testing.draw_below(source, 256))
+        }
+        if testing.draw_bool(source) {
+            address.bytes[0] = 0x20 | (address.bytes[0] & 0x1f)
+        }
+        return address
+    }
+    table :: ADDRESSES[0..<ADDRESSES.count]
+    at :: cast[usize](testing.draw_below(source, cast[u64](ADDRESSES.count / 4))) * 4
+    if at + 3 >= table.count {
+        return net_address.v4(0, 0, 0, 0)
+    }
+    return net_address.v4(byte_of(table, at), byte_of(table, at + 1), byte_of(table, at + 2), byte_of(table, at + 3))
+}
+
+drawn_name :: fn(source: ptr[mut testing.Source]) -> string {
+    at :: cast[usize](testing.draw_below(source, cast[u64](NAMES.count)))
+    return if at < NAMES.count { NAMES[at] } else { "" }
+}
+
+drawn_endpoint :: fn(source: ptr[mut testing.Source]) -> net_address.Endpoint {
+    return net_address.Endpoint.{address = drawn_address(source), port = cast[u16](testing.draw_below(source, 65536))}
+}
+
+drawn_policy :: fn(source: ptr[mut testing.Source]) -> network.Policy {
+    policy := network.Policy.{connect_count = cast[u32](testing.draw_below(source, 3)), listen_count = cast[u32](testing.draw_below(source, 2))}
+    for &rule, i in policy.connect {
+        if i < cast[usize](policy.connect_count) {
+            rule^ = drawn_rule(source)
+        }
+    }
+    for &rule, i in policy.listen {
+        if i < cast[usize](policy.listen_count) {
+            rule^ = drawn_rule(source)
+        }
+    }
+    return policy
+}
+
+drawn_rule :: fn(source: ptr[mut testing.Source]) -> network.Rule {
+    transports :: cast[u8](1 + testing.draw_below(source, 3))
+    first :: cast[u16](testing.draw_below(source, 65536))
+    last :: cast[u16](testing.draw_below(source, 65536))
+    scope :: testing.draw_below(source, 4)
+    if scope == 0 {
+        return network.Rule.{scope = network.SCOPE_PUBLIC, transports = transports, first_port = first, last_port = last}
+    }
+    if scope == 1 {
+        return network.Rule.{scope = network.SCOPE_ANY, transports = transports, first_port = first, last_port = last}
+    }
+    if scope == 2 {
+        address :: drawn_address(source)
+        most :: if address.family == .V4 { cast[u64](33) } else { cast[u64](129) }
+        return network.range_rule(address, cast[u8](testing.draw_below(source, most)), transports, first, last)
+    }
+    pattern :: if testing.draw_bool(source) { "*." } else { "" }
+    name :: drawn_name(source)
+    storage : u8[64]
+    text := text_buffer.make(storage)
+    text_buffer.append(&text, pattern)
+    text_buffer.append(&text, name)
+    return network.name_rule(text_buffer.as_string(&text), transports, first, last) or_else network.Rule.{}
 }
 
 narrows_to_names #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
@@ -163,4 +305,9 @@ narrows_to_names #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     network.describe(&domain, &text)
     testing.expect_eq(t, text_buffer.as_string(&text), "TCP to *.example.com, port 443", "a name rule described")
     return .Ok
+}
+
+/** A table's byte, or 0 past its end. */
+byte_of :: fn(table: u8[], at: usize) -> u8 {
+    return if at < table.count { table[at] } else { cast[u8](0) }
 }

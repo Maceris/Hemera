@@ -233,12 +233,14 @@ package net
      * @param anchors The trust anchors, DER certificates one after another, the caller's while the stream's open.
      * @param protocol The application protocol offered by ALPN, like "ntske/1"; empty, the default, for none.
      *     tls.protocol_agreed(state(&stream)) says whether the server took it.
+     * @param deadline When waiting on the peer gives up, connecting and after, in the monotonic clock's nanoseconds; 0,
+     *     the default, for never. A peer that stops answering then fails it as Broken (net.set_deadline).
      * @return The stream, connected; or why it isn't.
      */
-    connect_tls :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], protocol: string = "")
-        -> Result[TlsStream, TlsFailure] {
+    connect_tls :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], protocol: string = "",
+        deadline: u64 = 0) -> Result[TlsStream, TlsFailure] {
 
-        return connect_with(service, host, port, anchors, true, protocol)
+        return connect_with(service, host, port, anchors, true, protocol, deadline)
     }
 
     /**
@@ -251,16 +253,16 @@ package net
      * @return The stream, connected; or why it isn't.
      */
     connect_tls_unverified :: fn(service: os.Channel[network.Network], host: string, port: u16) -> Result[TlsStream, TlsFailure] {
-        return connect_with(service, host, port, string_bytes(""), false, "")
+        return connect_with(service, host, port, string_bytes(""), false, "", 0)
     }
 
     /** connect_tls's and connect_tls_unverified's work. */
     connect_with :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], verify: bool,
-        protocol: string) -> Result[TlsStream, TlsFailure] {
+        protocol: string, deadline: u64) -> Result[TlsStream, TlsFailure] {
 
         opened := match net_address.parse_v4(host) {
-            case Some(address) => open(service, net_address.Endpoint.{address = address, port = port})
-            case None => open_name(service, host, port)
+            case Some(address) => open(service, net_address.Endpoint.{address = address, port = port}, deadline = deadline)
+            case None => open_name(service, host, port, deadline = deadline)
         }
         tcp := match opened {
             case Ok(found) => found
@@ -430,6 +432,7 @@ package net
         finish(&stream.tcp)
         _ = flush(&stream.tcp)
         close(&stream.tcp)
+        tls.forget(state(stream))
         runtime.free(state(stream))
         runtime.free(buffered_of(stream))
     }

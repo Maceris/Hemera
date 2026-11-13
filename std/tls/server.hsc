@@ -519,8 +519,14 @@ send_flight :: fn(connection: ptr[mut Connection]) {
         for byte, i in bytes {
             extra[i] = cast[crypto.SecretByte](byte)
         }
-        none : crypto.P256Signature
-        signed :: crypto.p256_ecdsa_sign(&connection.identity.p256, digest[0..<32], extra[0..<32]) or_else none
+        // A signature that couldn't be made fails the handshake, rather than send zeros as one (13h)
+        signed :: match crypto.p256_ecdsa_sign(&connection.identity.p256, digest[0..<32], extra[0..<32]) {
+            case Some(found) => found
+            case None => {
+                fail(connection, ALERT_INTERNAL_ERROR)
+                return void
+            }
+        }
         put_ecdsa_der(into, &writer, signed[0..<64])
     }
     else {

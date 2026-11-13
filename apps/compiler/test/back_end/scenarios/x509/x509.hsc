@@ -56,6 +56,10 @@ refuses_bad_chains #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, verdict_of(PATH_TOO_LONG_CHAIN, .SERVER) == .PATH_TOO_LONG, "a CA below one whose path length is 0")
     testing.expect(t, verdict_of(CONSTRAINED_DNS_CHAIN, .SERVER) == .NAME_CONSTRAINTS, "a DNS name outside the permitted subtrees")
     testing.expect(t, verdict_of(CONSTRAINED_EXCLUDED_CHAIN, .SERVER) == .NAME_CONSTRAINTS, "a DNS name in an excluded subtree")
+    testing.expect(t, verdict_of(CONSTRAINED_WILDCARD_CHAIN, .SERVER) == .NAME_CONSTRAINTS,
+        "a wildcard matching a name in an excluded subtree")
+    // Each ordering of nine would be tried without a budget: hours of signature checks
+    testing.expect(t, verdict_of(TANGLED_CHAIN, .SERVER) == .TOO_COMPLEX, "a chain made to be slow to search, given up")
     testing.expect(t, verdict_of(CONSTRAINED_IP_CHAIN, .SERVER) == .NAME_CONSTRAINTS, "an IP address outside the permitted range")
     testing.expect(t, verdict_of(CLIENT_ONLY_CHAIN, .SERVER) == .PURPOSE, "a client's certificate, for a server")
     testing.expect(t, verdict_of(KEY_USAGE_CHAIN, .SERVER) == .KEY_USAGE, "a leaf that can't sign")
@@ -131,5 +135,86 @@ reads_der #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     testing.expect(t, crypto.der_next(long) == null, "a long-form length under 128")
     indefinite := u8.[0x30, 0x80, 0, 0]
     testing.expect(t, crypto.der_next(indefinite) == null, "an indefinite length")
+    return .Ok
+}
+
+/** Any bytes read as DER, walked into every element, and read as certificates: nothing reads outside them (13h). */
+reads_any_der #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    bytes :: testing.draw_bytes(source, 3000)
+    walk(t, bytes, 0)
+    return .Ok
+}
+
+/** Walk DER's elements, and each constructed one's, a few deep, each read as a certificate and a time too. */
+walk :: fn(t: ptr[mut testing.T], data: u8[], depth: u32) {
+    if depth > 6 {
+        return void
+    }
+    rest := data
+    loop {
+        element := crypto.der_next(rest) or_break
+        testing.expect(t, element.whole.count <= rest.count && element.rest.count < rest.count, "an element is within what's left, and takes some")
+        _ = crypto.x509_parse(element.whole)
+        _ = crypto.der_time(element)
+        if element.tag & 0x20 != 0 {
+            walk(t, element.contents, depth + 1)
+        }
+        rest = element.rest
+    }
+    while rest.count != 0
+}
+
+/** A chain with a byte of it changed is never valid (13h): every byte is signed, or checked. */
+refuses_any_changed_chain #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    anchors := Der.{}
+    chain := Der.{}
+    der_of(ANCHORS, &anchors)
+    der_of(P256_CHAIN, &chain)
+    if chain.count == 0 {
+        return .Ok
+    }
+    at :: cast[usize](testing.draw_below(source, cast[u64](chain.count)))
+    if at < chain.bytes.count {
+        chain.bytes[at] = chain.bytes[at] ~ cast[u8](testing.draw_between(source, 1, 255))
+    }
+    verdict :: crypto.x509_verify_chain(chain.bytes[0..<chain.count % 16385], anchors.bytes[0..<anchors.count % 16385], NOW, .SERVER)
+    testing.expect(t, verdict != .VALID, "a changed chain isn't valid")
+    return .Ok
+}
+
+/** Any text, often in a CERTIFICATE block, read as PEM: what's written fits (13h). */
+reads_any_pem #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    text : u8[4096]
+    length := cast[usize](0)
+    wrapped :: testing.draw_bool(source)
+    begin :: string_bytes("-----BEGIN CERTIFICATE-----\n")
+    end :: string_bytes("\n-----END CERTIFICATE-----\n")
+    alphabet :: string_bytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n")
+    if wrapped {
+        for byte in begin {
+            text[length % text.count] = byte
+            length += 1
+        }
+    }
+    drawn :: testing.draw_bytes(source, 3000)
+    for byte in drawn {
+        if length < text.count {
+            text[length] = if wrapped { alphabet[cast[usize](byte) % alphabet.count] } else { byte }
+            length += 1
+        }
+    }
+    if wrapped {
+        for byte in end {
+            if length < text.count {
+                text[length] = byte
+                length += 1
+            }
+        }
+    }
+    output := Der.{}
+    match crypto.pem_certificates(text[0..<length % (text.count + 1)], output.bytes) {
+        case Some(written) => testing.expect(t, written <= output.bytes.count, "what's written fits")
+        case None => {}
+    }
     return .Ok
 }

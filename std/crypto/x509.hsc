@@ -25,6 +25,13 @@ package crypto
 
 /** The most certificates a chain may have, the leaf included; more are refused. */
 X509_MOST_CERTIFICATES :: 10
+/**
+ * The most steps a search for a path takes, each a certificate tried on the path: a real chain needs a few, while one
+ * made of many certificates that each could issue the others would have it try every ordering, a factorial many.
+ */
+X509_MOST_STEPS :: 64
+/** The most signatures a search checks: each pair of certificates is checked once, and the anchors' count too. */
+X509_MOST_SIGNATURE_CHECKS :: 64
 /** The fewest bits an RSA key that signs a certificate may have. */
 X509_FEWEST_RSA_BITS :: 2048
 
@@ -102,6 +109,11 @@ X509Verdict :: enum {
     PURPOSE,
     /** A name in a certificate is outside a CA's name constraints, or of a kind the constraints can't be checked on. */
     NAME_CONSTRAINTS,
+    /**
+     * Finding a path took more than X509_MOST_STEPS or X509_MOST_SIGNATURE_CHECKS: the chain's built to make the search
+     * slow, as by many certificates that could each issue the others.
+     */
+    TOO_COMPLEX,
 }
 
 /**
@@ -1075,6 +1087,27 @@ x509_dns_within :: fn(name: u8[], constraint: u8[]) -> bool {
 }
 
 /**
+ * Say whether a wildcard DNS name could match a name within a dNSName constraint: "*.example.com" matches
+ * bad.example.com, which the constraint bad.example.com holds, though the wildcard isn't itself within it. Any
+ * constraint under the wildcard's domain counts, as Chromium has it, which may refuse a little more than it must.
+ *
+ * @param name The name, like *.example.com; one that isn't a wildcard reaches nothing.
+ * @param constraint The constraint, like bad.example.com or .bad.example.com.
+ * @return Whether the constraint is under the wildcard's domain, ignoring letters' case.
+ */
+x509_wildcard_reaches :: fn(name: u8[], constraint: u8[]) -> bool {
+    if name.count < 3 || name[0] != cast[u8]('*') || name[1] != cast[u8]('.') {
+        return false
+    }
+    domain := name[2..<name.count]
+    under := constraint
+    if under.count > 0 && under[0] == cast[u8]('.') {
+        under = under[1..<under.count]
+    }
+    return under.count > domain.count && x509_dns_within(under, domain)
+}
+
+/**
  * Say whether two mailboxes are the same: the local parts exactly, the hosts ignoring letters' case.
  *
  * @param a One mailbox, local@host.
@@ -1219,7 +1252,12 @@ x509_name_allowed :: fn(ca: ptr[X509Certificate], tag: u8, name: u8[]) -> bool {
     loop {
         tree := der_next(excluded) or_return false
         excluded = tree.rest
-        if x509_within(tag, name, der_next(tree.contents) or_return false) {
+        base := der_next(tree.contents) or_return false
+        if x509_within(tag, name, base) {
+            return false
+        }
+        // A wildcard some of whose names are in the excluded subtree is refused too (13h)
+        if tag == DER_CONTEXT + 2 && base.tag == DER_CONTEXT + 2 && x509_wildcard_reaches(name, base.contents) {
             return false
         }
     }
@@ -1320,6 +1358,41 @@ X509Path :: struct #scoped {
     purpose: X509Purpose,
     /** The most telling reason a path was refused, for when none is found. */
     reason: X509Verdict,
+    /** The steps and signature checks the search has taken, against X509_MOST_STEPS and X509_MOST_SIGNATURE_CHECKS. */
+    steps: usize,
+    checks: usize,
+    /** Whether either ran out, which ends the search, TOO_COMPLEX its reason. */
+    exhausted: bool,
+    /**
+     * Each pair's signature checked, by the issuer's index times X509_MOST_CERTIFICATES plus the subject's: 0 not yet,
+     * 1 valid, 2 not; so a pair the search comes to again isn't checked again.
+     */
+    signed: u8[100],
+}
+
+/**
+ * Count a step or a signature check of a search against its budget.
+ *
+ * @param state The validation.
+ * @param signature True for a signature check, false for a step.
+ * @return False once the budget's run out, the search exhausted, its reason TOO_COMPLEX.
+ */
+x509_spend :: fn(state: ptr[mut X509Path], signature: bool) -> bool {
+    if state.exhausted {
+        return false
+    }
+    if signature {
+        state.checks += 1
+    }
+    else {
+        state.steps += 1
+    }
+    if state.checks > X509_MOST_SIGNATURE_CHECKS || state.steps > X509_MOST_STEPS {
+        state.exhausted = true
+        state.reason = .TOO_COMPLEX
+        return false
+    }
+    return true
 }
 
 /**
@@ -1414,10 +1487,11 @@ x509_check_path :: fn(state: ptr[X509Path], anchor: ptr[X509Certificate]) -> X50
  */
 x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
     length := state.length % (X509_MOST_CERTIFICATES + 1)
-    if length == 0 {
+    if length == 0 || !x509_spend(state, false) {
         return false
     }
-    last := &state.certificates[state.path[(length - 1) % X509_MOST_CERTIFICATES] % X509_MOST_CERTIFICATES]
+    subject_index := state.path[(length - 1) % X509_MOST_CERTIFICATES] % X509_MOST_CERTIFICATES
+    last := &state.certificates[subject_index]
     anchors := state.anchors
     loop {
         element := der_next(anchors) or_return false
@@ -1425,6 +1499,9 @@ x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
         match x509_parse(element.whole) {
             case Some(anchor) => {
                 if der_same(anchor.subject, last.issuer) {
+                    if !x509_spend(state, true) {
+                        return false
+                    }
                     signed := x509_verify_signature(anchor.key_kind, anchor.key, last.signature_algorithm, last.pss_salt, last.tbs,
                         last.signature)
                     if signed != .VALID {
@@ -1454,8 +1531,20 @@ x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
         }
         candidate := &state.certificates[i % X509_MOST_CERTIFICATES]
         if !used && der_same(candidate.subject, last.issuer) {
-            signed := x509_verify_signature(candidate.key_kind, candidate.key, last.signature_algorithm, last.pss_salt, last.tbs,
-                last.signature)
+            // Each pair's signature checked once: the search may come to it again by another way
+            pair := ((i % X509_MOST_CERTIFICATES) * X509_MOST_CERTIFICATES + subject_index) % 100
+            signed := X509Verdict.VALID
+            if state.signed[pair] == 2 {
+                signed = .BAD_SIGNATURE
+            }
+            else if state.signed[pair] == 0 {
+                if !x509_spend(state, true) {
+                    return false
+                }
+                signed = x509_verify_signature(candidate.key_kind, candidate.key, last.signature_algorithm, last.pss_salt, last.tbs,
+                    last.signature)
+                state.signed[pair] = if signed == .VALID { cast[u8](1) } else { cast[u8](2) }
+            }
             if signed != .VALID {
                 x509_note(state, signed)
             }
@@ -1466,6 +1555,9 @@ x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
                     return true
                 }
                 state.length = length
+                if state.exhausted {
+                    return false
+                }
             }
         }
     }

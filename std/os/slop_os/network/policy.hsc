@@ -241,15 +241,79 @@ is_public :: fn(address: net_address.Address) -> bool {
         return true
     }
     if address.family == .V6 {
-        // Global unicast only: 2000::/3, past its documentation range 2001:db8::/32
+        // Global unicast only: 2000::/3, past its documentation range 2001:db8::/32, the IETF's protocol assignments
+        // 2001::/23 (Teredo's 2001::/32 among them) and 6to4's 2002::/16, which carry IPv4 addresses, private ones too
         if b[0] & 0xe0 != 0x20 {
             return false
         }
-        if b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == 0xb8 {
+        if b[0] == 0x20 && b[1] == 0x01 && ((b[2] == 0x0d && b[3] == 0xb8) || b[2] < 2) {
+            return false
+        }
+        if b[0] == 0x20 && b[1] == 0x02 {
             return false
         }
         return true
     }
+    return false
+}
+
+/**
+ * IPv4's special ranges (RFC 6890) is_public refuses, each an address's 4 bytes then its prefix length: this network,
+ * private, loopback, multicast and reserved, shared, link-local, IETF assignments, documentation and benchmarking.
+ */
+SPECIAL_V4 :: u8.[0, 0, 0, 0, 8, 10, 0, 0, 0, 8, 127, 0, 0, 0, 8, 224, 0, 0, 0, 3, 100, 64, 0, 0, 10, 169, 254, 0, 0, 16,
+    172, 16, 0, 0, 12, 192, 168, 0, 0, 16, 192, 0, 0, 0, 24, 192, 0, 2, 0, 24, 198, 18, 0, 0, 15, 198, 51, 100, 0, 24,
+    203, 0, 113, 0, 24]
+
+/**
+ * IPv6's special ranges within 2000::/3 that is_public refuses, each an address's first 4 bytes then its prefix
+ * length: the IETF's protocol assignments, documentation, and 6to4.
+ */
+SPECIAL_V6 :: u8.[0x20, 0x01, 0, 0, 23, 0x20, 0x01, 0x0d, 0xb8, 32, 0x20, 0x02, 0, 0, 16]
+
+/**
+ * Tell whether a range's every address is public: none of it in a special range, so is_public holds for each.
+ *
+ * @param address The range's address.
+ * @param prefix_length How many of its first bits the range shares.
+ * @return True if the whole range is public.
+ */
+is_public_range :: fn(address: net_address.Address, prefix_length: u8) -> bool {
+    if address.family == .V4 {
+        return !overlaps_any(address, prefix_length, SPECIAL_V4[0..<SPECIAL_V4.count])
+    }
+    if address.family == .V6 {
+        global := net_address.Address.{family = .V6}
+        global.bytes[0] = 0x20
+        return prefix_length >= 3 && prefix_matches(address, global, 3) && !overlaps_any(address, prefix_length, SPECIAL_V6[0..<SPECIAL_V6.count])
+    }
+    return false
+}
+
+/**
+ * Tell whether a range overlaps any of a table's: two overlap if they share the shorter one's prefix.
+ *
+ * @param address The range's address.
+ * @param prefix_length How many of its first bits the range shares.
+ * @param table Ranges of the address's family, each its address's first 4 bytes then its prefix length.
+ * @return True if one overlaps it.
+ */
+overlaps_any :: fn(address: net_address.Address, prefix_length: u8, table: u8[]) -> bool {
+    special := net_address.Address.{family = address.family}
+    at := cast[usize](0)
+    loop {
+        for i in cast[usize](0)..<4 {
+            if at + i < table.count {
+                special.bytes[i] = table[at + i]
+            }
+        }
+        length :: if at + 4 < table.count { table[at + 4] } else { cast[u8](0) }
+        if prefix_matches(address, special, if length < prefix_length { length } else { prefix_length }) {
+            return true
+        }
+        at += 5
+    }
+    while at + 5 <= table.count
     return false
 }
 
@@ -351,14 +415,26 @@ allows_named :: fn(policy: ptr[Policy], transport: u8, name: u8[], to: net_addre
 }
 
 /**
- * Tell whether a policy lets its connection resolve names: if it allows connecting anywhere at all, as a lookup's
- * queries could otherwise carry what a program allowed nothing would send.
+ * Tell whether a policy lets its connection resolve a name. A lookup's queries go on, through the resolver, to the
+ * name's own servers, wherever they are, carrying the name: so only a policy that reaches public addresses, or every
+ * address, resolves any name, and one of name rules only the names they cover. Anything else could send out, in names,
+ * what nothing it allows would carry.
  *
  * @param policy The policy.
- * @return True if it has a connect rule.
+ * @param name The name, as asked.
+ * @return True if a connect rule is SCOPE_PUBLIC or SCOPE_ANY, or SCOPE_NAME covering the name.
  */
-allows_resolve :: fn(policy: ptr[Policy]) -> bool {
-    return policy.connect_count > 0
+allows_resolve :: fn(policy: ptr[Policy], name: u8[]) -> bool {
+    for i in cast[u32](0)..<policy.connect_count {
+        if cast[usize](i) >= policy.connect.count {
+            break
+        }
+        rule :: &policy.connect[i]
+        if rule.scope == SCOPE_PUBLIC || rule.scope == SCOPE_ANY || (rule.scope == SCOPE_NAME && name_covers(rule_name(rule), name)) {
+            return true
+        }
+    }
+    return false
 }
 
 /**
@@ -406,10 +482,8 @@ rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
     }
     inner_range :: rule_address(inner)
     if outer.scope == SCOPE_PUBLIC {
-        // A range is within public addresses only if it's one public address, or a range of public addresses no
-        // special range overlaps: taken here as a prefix of 16 bits or more whose address is public
-        return inner.scope == SCOPE_PUBLIC || (inner.scope == SCOPE_RANGE && is_public(inner_range)
-            && inner.prefix_length >= (if inner_range.family == .V4 { cast[u8](16) } else { cast[u8](32) }))
+        // A range is within public addresses only if no special range overlaps it
+        return inner.scope == SCOPE_PUBLIC || (inner.scope == SCOPE_RANGE && is_public_range(inner_range, inner.prefix_length))
     }
     outer_range :: rule_address(outer)
     return outer.scope == SCOPE_RANGE && inner.scope == SCOPE_RANGE && outer_range.family != .None

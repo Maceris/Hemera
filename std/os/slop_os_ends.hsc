@@ -225,17 +225,25 @@ mut_bytes_of :: fn[T](message: ptr[mut T]) -> mut u8[] {
  * The handles go first, in the first of the other end's HANDLE_BATCHES batches that's free, then the bytes, which
  * name that batch.
  *
+ * A server answering a client sends without waiting: a client that doesn't read its answers would otherwise hold the
+ * server for as long as it liked. Full then means the client's fallen behind, and the server lets it go, as the
+ * handles may be in its batch already, which only closing the channel gives back.
+ *
  * @param end The end it's sent through, which stays the caller's.
- * @param port A port bound to end (port_for), waited on while the ring is full; nothing else should be bound to it,
- *     as the packets it gives while waiting are dropped.
+ * @param port A port bound to end (port_for), waited on while the ring is full if wait; nothing else should be bound
+ *     to it, as the packets it gives while waiting are dropped.
  * @param bytes The message, at most channel_max_payload of the ring's size.
  * @param handles At most MAX_HANDLES_PER_BATCH handles that go with it, moved out of the caller's table once
  *     they're sent, so they're no longer the caller's; none for a message without handles.
+ * @param wait Whether to wait while the ring's full; false gives Full instead.
  * @return Null once it's sent; otherwise why not, from the kernel: BatchInUse when every batch is in use,
- *     PeerClosed when the other end is closed, TooBig, and the like. If the bytes fail after the handles were sent,
- *     the handles are gone from the caller's table anyway.
+ *     PeerClosed when the other end is closed, Full when it's full and not waited on, TooBig, and the like. The
+ *     handles are gone from the caller's table either way: closed if they couldn't be sent, and sent, if the bytes
+ *     failed after them.
  */
-send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_os.Handle[]) -> slop_os.ChannelError? {
+send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_os.Handle[], wait: bool = true)
+    -> slop_os.ChannelError? {
+
     batch := slop_os.NO_BATCH
     if handles.count != 0 {
         batch = 0
@@ -244,6 +252,10 @@ send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_
                 case Ok => break
                 case Error(error) => {
                     if error != .BatchInUse || batch + 1 >= slop_os.HANDLE_BATCHES {
+                        // Not sent, so still the caller's: closed, as what they name would otherwise outlive the message
+                        for handle in handles {
+                            _ = slop_os.handle_close(handle)
+                        }
                         return error
                     }
                     batch += 1
@@ -255,7 +267,7 @@ send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_
         match slop_os.channel_write(end, bytes, batch) {
             case Ok => return null
             case Error(error) => {
-                if error != .Full {
+                if error != .Full || !wait {
                     return error
                 }
                 packets : slop_os.Packet[4]

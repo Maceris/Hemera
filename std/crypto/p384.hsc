@@ -234,7 +234,8 @@ p384_ecdsa_verify :: fn(public_key: u8[], digest: u8[], signature: ptr[P384Signa
     one := BigNumber.{count = c.p.n.count}
     one.limbs[0] = 1
     z_plain := big_multiply(&sum.z, &one, &c.p)
-    if big_bits(&z_plain) == 0 {
+    // The point at infinity: Z is 0, whatever count the product has (big_bits wants a normalized count)
+    if big_limbs_used(&z_plain, z_plain.count) == 0 {
         return false
     }
     p_minus_2 := c.p.n

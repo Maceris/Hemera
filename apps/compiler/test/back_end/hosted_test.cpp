@@ -452,20 +452,21 @@ TEST(Hosted, ComputesFloatMath)
 
 // std/tls: RFC 8448's Simple 1-RTT Handshake replayed as a client and as a server, and a client and a server in
 // memory over each suite, Ed25519, a HelloRetryRequest, KeyUpdate and close_notify; chains refused for each reason, a
-// changed record refused, a server without a chain refused, ALPN and exported keys, and random bytes taken without
-// harm.
+// changed record refused, a server without a chain refused, ALPN and exported keys, random bytes taken without harm,
+// and a server's flight changed on its way never connecting.
 TEST(Hosted, SpeaksTls)
 {
 	const HostedOutput checked = run_hosted("tls", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("10 tests: 10 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("11 tests: 11 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // std/ntp: NTP's timestamps, offset and delay; NTS-KE's request and responses; and NTP with NTS against a server played
-// in the test, its answers taken, or refused as forged, changed, for another request, a NAK or unsynchronized.
+// in the test, its answers taken, or refused as forged, changed, for another request, a NAK or unsynchronized; and
+// NTS-KE responses of any records read within their bounds.
 TEST(Hosted, SpeaksNtpWithNts)
 {
 	const HostedOutput checked = run_hosted("ntp", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("5 tests: 5 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("6 tests: 6 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // The network protocol's policies (std/os/slop_os/network): public addresses, what a policy allows, narrowing, and
@@ -473,7 +474,7 @@ TEST(Hosted, SpeaksNtpWithNts)
 TEST(Hosted, ChecksNetworkPolicies)
 {
 	const HostedOutput checked = run_hosted("network_policy", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("7 tests: 7 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("9 tests: 9 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // Fuzz targets run as property tests: the schema reader's, and one only fuzzing finds a failure in.

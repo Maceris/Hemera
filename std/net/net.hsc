@@ -88,6 +88,11 @@ package net
         watching : bool,
         /** Whether it's finished writing. */
         finished : bool,
+        /**
+         * When waiting on it gives up, in the monotonic clock's nanoseconds; 0, as it's made, for never. Past it, what
+         * waits fails as Broken: opening, writing past the room, reading, flushing (set_deadline).
+         */
+        deadline : u64,
     }
 
     /** A listening port's state, the caller's, until close_listener. */
@@ -108,10 +113,12 @@ package net
      * @param service A connection to the network service, the caller's.
      * @param to Who to.
      * @param memory_bytes The memory for its rings: at least two pages, rounded up to a whole number of them.
-     * @return The connection, open; or why it couldn't be.
+     * @param deadline When to give up waiting, opening and after, in the monotonic clock's nanoseconds; 0, the default,
+     *     for never (set_deadline).
+     * @return The connection, open; or why it couldn't be, Broken if the deadline came first.
      */
-    open :: fn(service: os.Channel[network.Network], to: net_address.Endpoint, memory_bytes: u64 = DEFAULT_MEMORY)
-        -> Result[Tcp, Failure] {
+    open :: fn(service: os.Channel[network.Network], to: net_address.Endpoint, memory_bytes: u64 = DEFAULT_MEMORY,
+        deadline: u64 = 0) -> Result[Tcp, Failure] {
         startup :: slop_os.startup_block()
         made :: match make_memory(memory_bytes) {
             case Ok(found) => found
@@ -159,6 +166,7 @@ package net
                 return .Error(.Broken)
             }
         }
+        tcp.deadline = deadline
         return started(tcp)
     }
 
@@ -171,11 +179,13 @@ package net
      * @param name The host's name: any case, a final dot or not, at most network.MAX_NAME bytes.
      * @param port Its port, 1 to 65535.
      * @param memory_bytes The memory for its rings: at least two pages, rounded up to a whole number of them.
+     * @param deadline When to give up waiting, opening and after, in the monotonic clock's nanoseconds; 0, the default,
+     *     for never (set_deadline).
      * @return The connection, open; or why it couldn't be: NotAllowed if the policy allows none of the name's addresses,
-     *     the resolver's failure, or the last address's.
+     *     the resolver's failure, or the last address's; Broken if the deadline came first.
      */
-    open_name :: fn(service: os.Channel[network.Network], name: string, port: u16, memory_bytes: u64 = DEFAULT_MEMORY)
-        -> Result[Tcp, Failure] {
+    open_name :: fn(service: os.Channel[network.Network], name: string, port: u16, memory_bytes: u64 = DEFAULT_MEMORY,
+        deadline: u64 = 0) -> Result[Tcp, Failure] {
         startup :: slop_os.startup_block()
         made :: match make_memory(memory_bytes) {
             case Ok(found) => found
@@ -224,6 +234,7 @@ package net
                 return .Error(.Broken)
             }
         }
+        tcp.deadline = deadline
         return started(tcp)
     }
 
@@ -748,10 +759,21 @@ package net
     }
 
     /**
-     * Wait for the connection's progress to change.
+     * Set when waiting on a connection gives up, from now on: a peer that stops answering then fails what waits on it
+     * as Broken, rather than hold it for ever.
+     *
+     * @param tcp The connection.
+     * @param deadline The time, in the monotonic clock's nanoseconds; 0 for never.
+     */
+    set_deadline :: fn(tcp: ptr[mut Tcp], deadline: u64) {
+        tcp.deadline = deadline
+    }
+
+    /**
+     * Wait for the connection's progress to change, until its deadline.
      *
      * @param tcp The connection, whose progress is updated.
-     * @return True once it has; false if the channel failed.
+     * @return True once it has; false if the channel failed, or the deadline came first.
      */
     wait :: fn(tcp: ptr[mut Tcp]) -> bool {
         if !tcp.watching {
@@ -764,10 +786,20 @@ package net
             tcp.watching = true
         }
         into := os.Incoming.{}
-        match tcp_stream.receive_response(tcp.stream.end, tcp.port, &into, true) {
-            case Received => {}
-            case _ => return false
+        until :: if tcp.deadline == 0 { slop_os.NO_DEADLINE } else { tcp.deadline }
+        loop {
+            match tcp_stream.receive_response(tcp.stream.end, tcp.port, &into, false) {
+                case Received => break
+                case Empty => {
+                    packets : slop_os.Packet[1]
+                    if (slop_os.port_wait(tcp.port, packets[0..<1], until) or_else 0) == 0 {
+                        return false
+                    }
+                }
+                case _ => return false
+            }
         }
+        while true
         match os.message_of[tcp_stream.Response](&into)^ {
             case Progress(progress) => {
                 tcp.progress = progress

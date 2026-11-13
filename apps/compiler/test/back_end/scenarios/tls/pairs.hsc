@@ -327,3 +327,84 @@ any_bytes : testing.Property : fn(t: ptr[mut testing.T], source: ptr[mut testing
     _ = tls.received(&pair.client, tls.range(copy, 0, count))
     return .Ok
 }
+
+/** Room for a server's flight, changed. */
+Flight :: struct {
+    bytes : u8[32768],
+}
+
+/**
+ * A server's flight changed on its way (13h): a byte flipped, the flight cut short, or bytes put in it, then fed to the
+ * client in pieces of any size. Every byte of it is authenticated or checked, so the client never connects.
+ */
+refuses_a_changed_flight #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    pair :: make_pair(P256_CHAIN[0..<P256_CHAIN.count], .P256, P256_KEY[0..<32])
+    defer runtime.free(pair)
+    flight :: runtime.new(Flight)
+    defer runtime.free(flight)
+    hello :: tls.output(&pair.client)
+    tls.sent(&pair.client, tls.received(&pair.server, hello))
+    original :: tls.output(&pair.server)
+    length := if original.count < flight.bytes.count { original.count } else { flight.bytes.count }
+    for i in 0..<length {
+        if i < original.count && i < flight.bytes.count {
+            flight.bytes[i] = original[i]
+        }
+    }
+    tls.sent(&pair.server, original.count)
+    if length < 2 {
+        return .Ok
+    }
+    at :: cast[usize](testing.draw_below(source, cast[u64](length)))
+    kind :: testing.draw_below(source, 3)
+    if kind == 0 {
+        // The ServerHello's record's legacy_record_version, which is to be ignored (RFC 8446 §5.1): the encrypted
+        // records' headers are authenticated, but not a plaintext one's
+        if at == 1 || at == 2 {
+            return .Ok
+        }
+        if at < flight.bytes.count {
+            flight.bytes[at] = flight.bytes[at] ~ cast[u8](testing.draw_between(source, 1, 255))
+        }
+    }
+    else if kind == 1 {
+        length = at
+    }
+    else {
+        inserted :: testing.draw_bytes(source, 64)
+        if inserted.count == 0 || length + inserted.count > flight.bytes.count {
+            return .Ok
+        }
+        // Made room at, strictly inside the flight, then the drawn bytes there
+        with {
+            i := length
+        }
+        loop {
+            i -= 1
+            if i + inserted.count < flight.bytes.count && i < flight.bytes.count {
+                flight.bytes[i + inserted.count] = flight.bytes[i]
+            }
+        }
+        while i > at
+        for byte, j in inserted {
+            if at + j < flight.bytes.count {
+                flight.bytes[at + j] = byte
+            }
+        }
+        length += inserted.count
+    }
+    fed := cast[usize](0)
+    loop {
+        piece :: cast[usize](testing.draw_between(source, 1, 3000))
+        end :: if fed + piece < length { fed + piece } else { length }
+        taken :: tls.received(&pair.client, tls.range(flight.bytes, fed, end))
+        if taken == 0 {
+            break
+        }
+        fed += taken
+    }
+    while fed < length
+    pump(pair)
+    testing.expect(t, !tls.connected(&pair.client), "a changed flight never connects")
+    return .Ok
+}

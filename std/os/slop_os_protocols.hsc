@@ -225,17 +225,46 @@ relative_fits :: fn(message: u8[], size: u32, offset: usize, fixed: usize, eleme
 }
 
 /**
- * Check whether a handle field's index is in the message's batch.
+ * Check a handle field's index: that it's in the message's batch, and that no field before it named the same handle,
+ * noting it.
  *
  * @param message The message's bytes, as bytes_of_incoming gives them, only read: the handle field's 4-byte index
  *     is read at offset.
  * @param offset Where the handle field is, in bytes from the message's start.
- * @param handle_count How many handles came with the message.
- * @return True if the index is below handle_count, or is NO_HANDLE_INDEX, for none.
+ * @param handle_count How many handles came with the message, at most MAX_HANDLES_PER_BATCH.
+ * @param named The handles the message's fields have named so far, a bit each by index; this one's is added.
+ * @return True if the index is NO_HANDLE_INDEX, or is below handle_count and not named before.
  */
-index_fits :: fn(message: u8[], offset: usize, handle_count: u32) -> bool {
+index_takes :: fn(message: u8[], offset: usize, handle_count: u32, named: ptr[mut u64]) -> bool {
     index :: cast[u32](read_message(message, offset, 4))
-    return index == slop_os.NO_HANDLE_INDEX || index < handle_count
+    if index == slop_os.NO_HANDLE_INDEX {
+        return true
+    }
+    if index >= handle_count || index >= 64 {
+        return false
+    }
+    bit :: cast[u64](1) << cast[u64](index)
+    if named^ & bit != 0 {
+        return false
+    }
+    named^ = named^ | bit
+    return true
+}
+
+/**
+ * Check that a message's fields named every handle that came with it: one that none names would be left in the
+ * receiver's table, and a sender could fill it so.
+ *
+ * @param named The handles named, a bit each by index (index_takes).
+ * @param handle_count How many came.
+ * @return True if each was named.
+ */
+every_handle_named :: fn(named: u64, handle_count: u32) -> bool {
+    if handle_count > 64 {
+        return false
+    }
+    all :: if handle_count == 64 { ~cast[u64](0) } else { (cast[u64](1) << cast[u64](handle_count)) - 1 }
+    return named == all
 }
 
 /**
@@ -263,7 +292,7 @@ encode_handle :: fn(out: ptr[mut Outgoing], offset: usize) {
 /**
  * Decode a handle field of a received message: the handle whose index is there takes its place.
  *
- * @param into A message received and validated, its handle fields checked by index_fits. The field at offset is
+ * @param into A message received and validated, its handle fields checked by index_takes. The field at offset is
  *     overwritten with the handle, or 0; the handle stays in into's batch, the caller's to keep or close.
  * @param offset Where the handle field is, in bytes from the message's start. An index for no handle, or past the
  *     batch, leaves 0, no handle.
@@ -349,13 +378,15 @@ refuse :: fn(into: ptr[mut Incoming]) {
  * Send a message that's been built, with its handles, through end.
  *
  * @param end The end it's sent through, which stays the caller's.
- * @param port A port bound to end (port_for), waited on while the ring is full.
- * @param out The message, its used bytes sent, and its gathered handles moved out of the caller's table.
+ * @param port A port bound to end (port_for), waited on while the ring is full if wait.
+ * @param out The message, its used bytes sent, and its gathered handles moved out of the caller's table: sent, or
+ *     closed if they couldn't be.
+ * @param wait Whether to wait while the ring's full; false, as a server answers, gives Full instead (send).
  * @return Null once it's sent; otherwise why not, as send gives it.
  */
-send_outgoing :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut Outgoing]) -> slop_os.ChannelError? {
+send_outgoing :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut Outgoing], wait: bool = true) -> slop_os.ChannelError? {
     bytes :: view_of(cast[ptr[u8]](&out.words[0]), cast[usize](out.used))
-    return send(end, port, bytes, view_of(&out.handles[0], cast[usize](out.handle_count)))
+    return send(end, port, bytes, view_of(&out.handles[0], cast[usize](out.handle_count)), wait)
 }
 
 // ---- The generator
@@ -410,12 +441,12 @@ protocol_code :: fn(Request: type, Response: type) -> compiler.Code {
     }
     runtime.assert(unsupported, "a protocol's Response has an Unsupported variant, with nothing in it (decisions/0040)")
     array_add(&made, #code {
-        // Says the request wasn't one this side knows (decisions/0040).
-        answer_unsupported :: fn(end: slop_os.Channel, port: slop_os.Port) -> slop_os.ChannelError? {
+        // Says the request wasn't one this side knows (decisions/0040); waiting while the ring's full if wait.
+        answer_unsupported :: fn(end: slop_os.Channel, port: slop_os.Port, wait: bool = true) -> slop_os.ChannelError? {
             out := os.Outgoing.{}
             response :: os.begin[#insert Response](&out)
             response^ = .Unsupported
-            return send_response(end, port, &out)
+            return send_response(end, port, &out, wait)
         }
     })
     return compiler.list(made)
@@ -460,7 +491,12 @@ side_code :: fn(T: type, side: string) -> compiler.Code {
         }
         array_add(&checking, #code {
             if tag == #insert cast[u64](i) {
+                // Each handle named by one field, and every handle by some field
+                named := cast[u64](0)
                 #insert checks_of(fields, fixed)
+                if !os.every_handle_named(named, handle_count) {
+                    return .Invalid
+                }
                 return .Valid
             }
         })
@@ -492,11 +528,13 @@ side_code :: fn(T: type, side: string) -> compiler.Code {
             return .Invalid
         }
 
-        // out's message, with its handles moved into its batch.
-        #insert compiler.name("send_", side) :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut os.Outgoing]) -> slop_os.ChannelError? {
+        // out's message, with its handles moved into its batch, or closed; waiting while the ring's full if wait.
+        #insert compiler.name("send_", side) :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut os.Outgoing], wait: bool = true)
+            -> slop_os.ChannelError? {
+
             tag :: out.words[0] & #insert mask
             #insert compiler.list(encoding)
-            return os.send_outgoing(end, port, out)
+            return os.send_outgoing(end, port, out, wait)
         }
 
         /*
@@ -570,7 +608,7 @@ checks_of :: fn(fields: FieldCheck[], fixed: usize) -> compiler.Code {
         }
         else if field.kind == .Handle {
             array_add(&made, #code {
-                if !os.index_fits(message, #insert offset, handle_count) {
+                if !os.index_takes(message, #insert offset, handle_count, &named) {
                     return .Invalid
                 }
             })

@@ -311,3 +311,71 @@ any_bytes : testing.Property : fn(t: ptr[mut testing.T], source: ptr[mut testing
     _ = ntp.read_response(session, &pending, bytes)
     return .Ok
 }
+
+/**
+ * NTS-KE responses of drawn records (13h): any kinds, critical or not, bodies of any length, some well formed. What's
+ * read stays within its bounds, and Done means everything NTS needs was agreed.
+ */
+reads_any_ke_records #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome {
+    response : u8[4096]
+    length := cast[usize](0)
+    count :: testing.draw_between(source, 0, 24)
+    kinds :: u16.[0, 1, 2, 3, 4, 5, 5, 5, 6, 7, 99]
+    for i in 0..<count {
+        kind :: kinds[cast[usize](testing.draw_below(source, cast[u64](kinds.count))) % kinds.count]
+        critical :: if testing.draw_bool(source) { cast[u16](0x8000) } else { cast[u16](0) }
+        body : u8[300]
+        size := cast[usize](0)
+        // Well formed as often as not: NTPv4, AES-SIV-CMAC-256, a port
+        if testing.draw_bool(source) && (kind == 1 || kind == 4 || kind == 7) {
+            body[0] = 0
+            body[1] = if kind == 4 { cast[u8](15) } else if kind == 7 { cast[u8](123) } else { cast[u8](0) }
+            size = 2
+        }
+        else {
+            drawn :: testing.draw_bytes(source, 300)
+            for byte, j in drawn {
+                if j < body.count {
+                    body[j] = byte
+                    size = j + 1
+                }
+            }
+        }
+        if length + 4 + size > response.count {
+            break
+        }
+        header :: kind | critical
+        put_at(response[0..<response.count], length, cast[u8](header >> 8))
+        put_at(response[0..<response.count], length + 1, cast[u8](header))
+        put_at(response[0..<response.count], length + 2, cast[u8](size >> 8))
+        put_at(response[0..<response.count], length + 3, cast[u8](size))
+        for j in 0..<size {
+            if j < body.count {
+                put_at(response[0..<response.count], length + 4 + j, body[j])
+            }
+        }
+        length += 4 + size
+    }
+    session :: runtime.new(ntp.Session)
+    defer runtime.free(session)
+    reading :: ntp.read_ke_response(tls.range(response, 0, length), session)
+    testing.expect(t, reading.read <= length, "no more read than there is")
+    testing.expect(t, session.cookie_count <= ntp.MAX_COOKIES, "no more cookies kept than there's room for")
+    for cookie, i in session.cookies {
+        if i < session.cookie_count {
+            testing.expect(t, cookie.count > 0 && cookie.count <= ntp.COOKIE_BYTES, "each cookie fits")
+        }
+    }
+    testing.expect(t, session.server_length <= session.server.count, "the server's name fits")
+    if reading.outcome == .Done {
+        testing.expect(t, session.protocol_agreed && session.aead_agreed && session.cookie_count > 0, "done, everything's agreed")
+    }
+    return .Ok
+}
+
+/** Write a byte if it's within the bytes. */
+put_at :: fn(into: mut u8[], at: usize, byte: u8) {
+    if at < into.count {
+        into[at] = byte
+    }
+}

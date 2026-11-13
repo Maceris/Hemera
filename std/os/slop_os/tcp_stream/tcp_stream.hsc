@@ -7,7 +7,9 @@ import net_address from "std/os/slop_os"
 /*
  * A TCP connection's channel, between the network service and the program it's for. The program's memory, given when
  * the connection was asked for, holds two rings of bytes, each half of it: the first what the program writes, the
- * second what arrives for it. Both sides map it; neither copies. The program says how far it has written and read, in
+ * second what arrives for it. The program maps it; the service copies to and from it through the kernel, so memory the
+ * program closes or that can't be had ends that connection only. It has to be plain memory: paged memory, which would
+ * have the service wait on a pager, is refused. The program says how far it has written and read, in
  * bytes from the start (Wrote and Read); the service says how far it has delivered into the second ring and had
  * acknowledged from the first (Progress), as a held Watch is answered once anything differs from what it holds.
  *
