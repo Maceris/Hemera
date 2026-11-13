@@ -598,6 +598,26 @@ TEST(Hosted, Ssh)
 	EXPECT_NE(checked.output.find("12 tests: 12 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
+/*
+ * std/fonts reading Noto Sans and Noto Sans Mono: tables, character maps, advances, outlines with composites, GPOS
+ * kerning, measuring and wrapping, against references read with Python; and any bytes taken as a font.
+ */
+TEST(Hosted, Fonts)
+{
+	const HostedOutput checked = run_hosted("fonts", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("7 tests: 7 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
+/*
+ * std/canvas's coverage summed to shapes' areas; the fill rules, strokes with each cap and dashed, transforms, clips,
+ * damage, gradients, images and text from the glyph cache; and any path drawn without harm.
+ */
+TEST(Hosted, Canvas)
+{
+	const HostedOutput checked = run_hosted("canvas", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("7 tests: 7 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.
 TEST(Hosted, Curves)
 {
