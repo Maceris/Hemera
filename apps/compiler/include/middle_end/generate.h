@@ -26,6 +26,12 @@ namespace hemera {
 	/// </summary>
 	std::string target_features(const Options& options);
 
+	/*
+	 * symbol as assembly text names it: in double quotes, with " and \ escaped, so a name with any characters, like
+	 * one with a dot or a letter outside ASCII, is one symbol to the assembler wherever it's written.
+	 */
+	std::string assembly_name(std::string_view symbol);
+
 	/// <summary>
 	/// Runs an evaluation's compile-time code while the program is still being checked
 	/// (docs/compilation.md, Compile-Time Execution), keeping its result in the evaluation. If functions or

@@ -19,6 +19,7 @@
 #include "front_end/documentation.h"
 #include "front_end/front_end.h"
 #include "front_end/walk.h"
+#include "lexer/identifiers.h"
 #include "hmir/hmir_dialect.h"
 #include "hmir/hmir_ops.h"
 #include "hmir/hmir_passes.h"
@@ -1361,7 +1362,7 @@ namespace hemera {
 	 */
 	static std::string call_body(std::string_view body) {
 		return std::format("\txorl %ebp, %ebp\n\tcld\n\tpushfq\n\tandq $-262145, (%rsp)\n\tpopfq\n\tmovq %rsp, %rdi\n\tcall {}\n",
-			body);
+			assembly_name(body));
 	}
 
 	/*
@@ -1377,12 +1378,12 @@ namespace hemera {
 			}
 			return std::format("{}{}\taddq $16, %rsp\n\tiretq\n", swap_back, pop_registers());
 		};
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", symbol);
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", assembly_name(symbol));
 		text += push_registers();
 		text += std::format("\ttestb $3, {}(%rsp)\n\tjz 1f\n\tswapgs\n1:\n", FRAME_CS);
 		text += call_body(body);
 		text += leave(std::format("\ttestb $3, {}(%rsp)\n\tjz 2f\n\tswapgs\n2:\n", FRAME_CS));
-		text += std::format("\t.p2align 4\n{}.paranoid:\n", symbol);
+		text += std::format("\t.p2align 4\n{}:\n", assembly_name(std::string(symbol) + ".paranoid"));
 		text += push_registers();
 		// rbx, which the body preserves, remembers whether this swapped
 		text += "\tmovl $0xc0000101, %ecx\n\trdmsr\n\txorl %ebx, %ebx\n\ttestl %edx, %edx\n\tjs 1f\n\tswapgs\n\tmovl $1, %ebx\n1:\n";
@@ -1397,7 +1398,7 @@ namespace hemera {
 	 * rip from rcx, rflags from r11, and cs and ss as SYSRET will load them, from IA32_STAR.
 	 */
 	static std::string syscall_entry_assembly(std::string_view symbol, std::string_view body, bool cfi) {
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", symbol, landing_pad(cfi, false));
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", assembly_name(symbol), landing_pad(cfi, false));
 		text += "\tswapgs\n\tmovq %rsp, %gs:8\n\tmovq %gs:0, %rsp\n";
 		// ss, rsp, rflags, cs, rip, the error code and the vector
 		text += "\tpushq $0\n\tpushq %gs:8\n\tpushq %r11\n\tpushq $0\n\tpushq %rcx\n\tpushq $0\n\tpushq $-1\n";
@@ -1423,8 +1424,8 @@ namespace hemera {
 		std::string text = "\t.text\n";
 		for (int vector = 0; vector < 256; ++vector) {
 			const bool paranoid = vector == 2 || vector == 8 || vector == 18;
-			text += std::format("{}.vector.{}:\n{}{}\tpushq ${}\n\tjmp {}{}\n", symbol, vector, landing_pad(cfi, false),
-				pushes_error_code(vector) ? "" : "\tpushq $0\n", vector, symbol, paranoid ? ".paranoid" : "");
+			text += std::format("{}:\n{}{}\tpushq ${}\n\tjmp {}\n", assembly_name(std::format("{}.vector.{}", symbol, vector)), landing_pad(cfi, false),
+				pushes_error_code(vector) ? "" : "\tpushq $0\n", vector, assembly_name(std::string(symbol) + (paranoid ? ".paranoid" : "")));
 		}
 		return text;
 	}
@@ -1473,7 +1474,7 @@ namespace hemera {
 	 * after it so nothing runs on past it speculatively.
 	 */
 	static std::string entry_assembly_aarch64(std::string_view symbol, std::string_view body, bool returns) {
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", symbol);
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n", assembly_name(symbol));
 		for (int i = 2; i < 30; i += 2) {
 			text += std::format("\tstp x{}, x{}, [sp, #{}]\n", i, i + 1, i * 8);
 		}
@@ -1481,7 +1482,7 @@ namespace hemera {
 		text += std::format("\tmrs x1, elr_el1\n\tmrs x2, spsr_el1\n\tstp x1, x2, [sp, #{}]\n", AARCH64_FRAME_ELR);
 		text += std::format("\tmrs x1, esr_el1\n\tmrs x2, far_el1\n\tstp x1, x2, [sp, #{}]\n", AARCH64_FRAME_ESR);
 		text += std::format("\tstr x0, [sp, #{}]\n", AARCH64_FRAME_VECTOR);
-		text += std::format("\tmov x29, xzr\n\tmov x30, xzr\n\tmov x0, sp\n\tbl {}\n", body);
+		text += std::format("\tmov x29, xzr\n\tmov x30, xzr\n\tmov x0, sp\n\tbl {}\n", assembly_name(body));
 		if (!returns) {
 			return text + "\tbrk #1\n";
 		}
@@ -1497,10 +1498,10 @@ namespace hemera {
 	 * saving x0 and x1, and jumping to handler's code with its index in x0.
 	 */
 	static std::string vector_table_aarch64(std::string_view symbol) {
-		std::string text = std::format("\t.text\n\t.p2align 11\n{}.vector_table:\n", symbol);
+		std::string text = std::format("\t.text\n\t.p2align 11\n{}:\n", assembly_name(std::string(symbol) + ".vector_table"));
 		for (int index = 0; index < 16; ++index) {
 			text += std::format("\t.p2align 7\n\tsub sp, sp, #{}\n\tstp x0, x1, [sp]\n\tmov x0, #{}\n\tb {}\n",
-				AARCH64_FRAME_SIZE, index, symbol);
+				AARCH64_FRAME_SIZE, index, assembly_name(symbol));
 		}
 		return text;
 	}
@@ -1591,7 +1592,7 @@ namespace hemera {
 				body.setPassthroughAttr(generator.builder.getArrayAttr({ generator.builder.getStringAttr("noreturn") }));
 			}
 		}
-		std::string text = exported ? std::format("\t.globl {}\n", symbol) : std::string();
+		std::string text = exported ? std::format("\t.globl {}\n", assembly_name(symbol)) : std::string();
 		if (ArchType::aarch64 == generator.options->architecture) {
 			if (has_convention(type, "syscall_entry")) {
 				unsupported(generator, declaration->node,
@@ -1713,7 +1714,7 @@ namespace hemera {
 		 */
 		text += std::format("\tpushq {}(%r14)\n\tpushq %r12\n\tmovq $0, {}(%r14)\n", limit, limit);
 		text += std::format("\tincl {}(%r14)\n\tmovq %rbx, %rdi\n\tcallq {}\n\tmovq %rax, %r10\n\tdecl {}(%r14)\n",
-			o.foreign_depth, allocate, o.foreign_depth);
+			o.foreign_depth, assembly_name(allocate), o.foreign_depth);
 		text += std::format("\tpopq %r12\n\tpopq {}(%r14)\n", limit);
 		if (sse) {
 			for (int i = 0; i < 8; ++i) {
@@ -1806,7 +1807,7 @@ namespace hemera {
 		// No limit while it allocates, as on x86-64
 		text += std::format("\tldr x12, [x28, #{0}]\n\tstp x12, x20, [sp, #-16]!\n\tstr xzr, [x28, #{0}]\n", limit);
 		text += std::format("\tldr w12, [x28, #{0}]\n\tadd w12, w12, #1\n\tstr w12, [x28, #{0}]\n", o.foreign_depth);
-		text += std::format("\tmov x0, x19\n\tbl {}\n\tmov x12, x0\n", allocate);
+		text += std::format("\tmov x0, x19\n\tbl {}\n\tmov x12, x0\n", assembly_name(allocate));
 		text += std::format("\tldr w13, [x28, #{0}]\n\tsub w13, w13, #1\n\tstr w13, [x28, #{0}]\n", o.foreign_depth);
 		text += std::format("\tldp x13, x20, [sp], #16\n\tstr x13, [x28, #{}]\n", limit);
 		if (fp) {
@@ -2045,7 +2046,7 @@ namespace hemera {
 		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool windows, bool cfi) {
 
 		const int64_t area = ((windows ? 32 : 0) + static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", shim, landing_pad(cfi, false));
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", assembly_name(shim), landing_pad(cfi, false));
 		text += "\tpushq %rbp\n\tmovq %rsp, %rbp\n\tpushq %rbx\n\tpushq %r12\n";
 		text += std::format("\tincl {}(%r14)\n\tmovq {}(%r14), %r12\n\tmovq %rsp, %rbx\n", o.foreign_depth, o.stack_limit);
 		// Already on the native stack, inside other foreign code or morestack's allocating: stay there
@@ -2066,7 +2067,7 @@ namespace hemera {
 			text += std::format("\tmovq {}(%rbp), %rax\n\tmovq %rax, {}(%rsp)\n", from, to);
 		}
 		// A function's symbol, or for a shim for function values (an empty symbol), the function left in the carrier block
-		text += symbol.empty() ? std::format("\tcallq *{}(%r14)\n", o.foreign_target) : std::format("\tcallq {}\n", symbol);
+		text += symbol.empty() ? std::format("\tcallq *{}(%r14)\n", o.foreign_target) : std::format("\tcallq {}\n", assembly_name(symbol));
 		text += std::format("\tmovq %rbx, %rsp\n\tmovq %r12, {}(%r14)\n\tdecl {}(%r14)\n", o.stack_limit, o.foreign_depth);
 		text += "\tpopq %r12\n\tpopq %rbx\n\tpopq %rbp\n\tretq\n";
 		return text;
@@ -2098,7 +2099,7 @@ namespace hemera {
 		const std::vector<std::pair<int64_t, int64_t>>& stack_arguments, bool cfi) {
 
 		const int64_t area = (static_cast<int64_t>(stack_arguments.size()) * 8 + 15) & ~int64_t{ 15 };
-		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", shim, landing_pad(cfi, true));
+		std::string text = std::format("\t.text\n\t.p2align 4\n{}:\n{}", assembly_name(shim), landing_pad(cfi, true));
 		text += "\tstp x29, x30, [sp, #-32]!\n\tmov x29, sp\n\tstp x19, x20, [sp, #16]\n";
 		text += std::format("\tldr w9, [x28, #{0}]\n\tadd w9, w9, #1\n\tstr w9, [x28, #{0}]\n", o.foreign_depth);
 		text += std::format("\tldr x20, [x28, #{}]\n\tmov x19, sp\n", o.stack_limit);
@@ -2115,7 +2116,7 @@ namespace hemera {
 		for (const auto& [from, to] : stack_arguments) {
 			text += std::format("\tldr x9, [x29, #{}]\n\tstr x9, [sp, #{}]\n", from, to);
 		}
-		text += symbol.empty() ? std::format("\tldr x9, [x28, #{}]\n\tblr x9\n", o.foreign_target) : std::format("\tbl {}\n", symbol);
+		text += symbol.empty() ? std::format("\tldr x9, [x28, #{}]\n\tblr x9\n", o.foreign_target) : std::format("\tbl {}\n", assembly_name(symbol));
 		text += std::format("\tmov sp, x19\n\tstr x20, [x28, #{}]\n", o.stack_limit);
 		text += std::format("\tldr w9, [x28, #{0}]\n\tsub w9, w9, #1\n\tstr w9, [x28, #{0}]\n", o.foreign_depth);
 		text += "\tldp x19, x20, [sp, #16]\n\tldp x29, x30, [sp], #32\n\tret\n";
@@ -2212,7 +2213,7 @@ namespace hemera {
 		if (OSType::Linux == generator.options->os && !generator.c_library && is_base_package(declaration->package_path)) {
 			if (!generator.module.lookupSymbol<LLVM::LLVMFuncOp>(shim)) {
 				const char* stop = ArchType::aarch64 == generator.options->architecture ? "brk #1" : "ud2";
-				generator.module_assembly.push_back(std::format("\t.text\n\t.p2align 4\n{}:\n\t{}\n", shim, stop));
+				generator.module_assembly.push_back(std::format("\t.text\n\t.p2align 4\n{}:\n\t{}\n", assembly_name(shim), stop));
 			}
 			LLVM::LLVMFuncOp unused = assembly_function(generator, shim, function_type(generator, type, false));
 			unused.setCConv(LLVM::cconv::CConv::C);
@@ -6049,7 +6050,7 @@ namespace hemera {
 		// fiber_entry: the fiber's bottom frame, calling runtime.fiber_run(fiber); after that, it's finished
 		text += "\t.p2align 4\nhemera.fiber_entry:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n";
 		// Where the resume loop re-enters this frame, with an indirect jump
-		text += std::format("\tcallq {}\n{}", run, pad);
+		text += std::format("\tcallq {}\n{}", assembly_name(run), pad);
 		text += back_to_scheduler(1);
 		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
 		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_RESUME_SYMBOL, pad);
@@ -6176,7 +6177,7 @@ namespace hemera {
 		text += std::format("\t.p2align 4\nhemera.fiber_entry:\n{}\tstp x29, x30, [sp, #-16]!\n\tmov x29, sp\n",
 			cfi ? "\tpaciasp\n" : "");
 		// Where the resume loop re-enters this frame, with an indirect branch
-		text += std::format("\tbl {}\n{}", run, landing_pad(cfi, true, false));
+		text += std::format("\tbl {}\n{}", assembly_name(run), landing_pad(cfi, true, false));
 		text += back_to_scheduler(1);
 		// fiber_resume(fiber): the carrier's segment and limit back from the fiber's stack, then re-enter its frames, innermost first
 		text += std::format("\t.p2align 4\n{}:\n{}", FIBER_RESUME_SYMBOL, landing_pad(cfi, true));
@@ -12629,25 +12630,6 @@ namespace hemera {
 			return service_scope->codes.size();
 		}
 
-		// Whether text is a name: letters, digits and _, not starting with a digit, and not a keyword or _ alone.
-		bool is_identifier(std::string_view text) {
-			static constexpr std::string_view KEYWORDS[] = {
-				"auto_cast", "bit_cast", "break", "case", "cast", "compute", "continue", "defer", "distinct", "else", "enum", "false",
-				"fn", "for", "give", "if", "is_error", "is_none", "is_ok", "is_some", "loop", "match", "mut", "null", "or_break", "or_continue",
-				"or_else", "or_return", "push_context", "return", "struct", "switch", "true", "union", "using", "void",
-				"while", "with",
-			};
-			if (text.empty() || text == "_" || std::isdigit(static_cast<unsigned char>(text[0])) != 0) {
-				return false;
-			}
-			for (const char c : text) {
-				if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
-					return false;
-				}
-			}
-			return std::find(std::begin(KEYWORDS), std::end(KEYWORDS), text) == std::end(KEYWORDS);
-		}
-
 		// What a piece of code is, base/compiler's CodeKind, by its tree's root.
 		uint64_t code_kind_of(const ast::Node* tree) {
 			const std::string_view word = tree->value.value != nullptr ? std::string_view(*tree->value.value) : std::string_view();
@@ -12710,7 +12692,7 @@ namespace hemera {
 					text += read_string(strings + i * 16);
 				}
 				uint64_t handle = 0;
-				if (!is_identifier(text)) {
+				if (!lexer::is_identifier(text)) {
 					report_error(ErrorCode::E4029, file, line, column, std::format("compiler.name needs a name, not \"{}\"", text));
 					service_scope->code_reported = true;
 				}
@@ -13401,6 +13383,17 @@ namespace hemera {
 		}
 		scratch.erase();
 		return ran;
+	}
+
+	std::string assembly_name(std::string_view symbol) {
+		std::string text = "\"";
+		for (const char c : symbol) {
+			if (c == '"' || c == '\\') {
+				text += '\\';
+			}
+			text += c;
+		}
+		return text + '"';
 	}
 
 	std::string target_features(const Options& options) {

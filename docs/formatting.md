@@ -12,7 +12,12 @@
 | Union Member | PascalCase           | ArgumentList, LeafNode          |
 | Variable     | snake_case           | first_item, cached_width        |
 
-The only valid characters for identifiers are alphanumeric characters ([a-z], [A-Z], [0-9]) and underscore ('_'), and must start with a letter.
+Identifiers are [UAX #31](https://www.unicode.org/reports/tr31/)'s default identifiers, so they can be in any script:
+they start with a letter (a code point with XID_Start, like `a`, `Ж` or `日`), and go on with letters, digits, `_` and
+combining marks (XID_Continue, like `1`, `_`, `١` or U+0301). An identifier can't start with a digit or `_`. Default
+ignorable code points, which can't be seen, like the zero width joiner, aren't in identifiers at all. The tables are
+generated from the Unicode Character Database, of the same version as `std:unicode`'s, by
+`std/unicode/_generator/generate_identifiers.py`.
 Identifiers may not be the same as [reserved keywords](keywords.md); [contextual keywords](keywords.md#contextual-keywords) and the names of [builtin types](types.md) can be used, though a builtin type's name hides the type.
 
 ## Lists

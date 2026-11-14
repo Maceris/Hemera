@@ -19,7 +19,11 @@ digit_hex = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 digit_octal = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" ;
 digit_binary = "0" | "1" ;
 
-identifier = letter , { letter | digit_decimal | "_" } ;
+# UAX #31's default identifiers, without default ignorable code points (docs/formatting.md); letter, the ASCII
+# letters, is among each, and directives and annotations are ASCII only
+identifier_start = ? a code point with XID_Start ? ;
+identifier_continue = ? a code point with XID_Continue ? ;
+identifier = identifier_start , { identifier_continue } ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 

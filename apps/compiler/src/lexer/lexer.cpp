@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "error/reporting.h"
+#include "lexer/identifiers.h"
 #include "lexer/lexer.h"
 #include "util/logger.h"
 #include "util/utf8.h"
@@ -19,124 +20,6 @@ namespace hemera::lexer {
 		, comment_depth{ 0 }
 		, line_too_long{ false }
 	{}
-
-	static std::optional<TokenType> get_reserved_identifier(std::string_view identifier) {
-		if (identifier.compare("auto_cast") == 0) {
-			return TokenType::KEYWORD_AUTO_CAST;
-		}
-		if (identifier.compare("bit_cast") == 0) {
-			return TokenType::KEYWORD_BIT_CAST;
-		}
-		if (identifier.compare("break") == 0) {
-			return TokenType::KEYWORD_BREAK;
-		}
-		if (identifier.compare("case") == 0) {
-			return TokenType::KEYWORD_CASE;
-		}
-		if (identifier.compare("cast") == 0) {
-			return TokenType::KEYWORD_CAST;
-		}
-		if (identifier.compare("continue") == 0) {
-			return TokenType::KEYWORD_CONTINUE;
-		}
-		if (identifier.compare("defer") == 0) {
-			return TokenType::KEYWORD_DEFER;
-		}
-		if (identifier.compare("distinct") == 0) {
-			return TokenType::KEYWORD_DISTINCT;
-		}
-		if (identifier.compare("else") == 0) {
-			return TokenType::KEYWORD_ELSE;
-		}
-		if (identifier.compare("enum") == 0) {
-			return TokenType::KEYWORD_ENUM;
-		}
-		if (identifier.compare("false") == 0) {
-			return TokenType::KEYWORD_FALSE;
-		}
-		if (identifier.compare("fn") == 0) {
-			return TokenType::KEYWORD_FN;
-		}
-		if (identifier.compare("for") == 0) {
-			return TokenType::KEYWORD_FOR;
-		}
-		if (identifier.compare("if") == 0) {
-			return TokenType::KEYWORD_IF;
-		}
-		if (identifier.compare("compute") == 0) {
-			return TokenType::KEYWORD_COMPUTE;
-		}
-		if (identifier.compare("give") == 0) {
-			return TokenType::KEYWORD_GIVE;
-		}
-		if (identifier.compare("is_error") == 0) {
-			return TokenType::KEYWORD_IS_ERROR;
-		}
-		if (identifier.compare("is_none") == 0) {
-			return TokenType::KEYWORD_IS_NONE;
-		}
-		if (identifier.compare("is_ok") == 0) {
-			return TokenType::KEYWORD_IS_OK;
-		}
-		if (identifier.compare("is_some") == 0) {
-			return TokenType::KEYWORD_IS_SOME;
-		}
-		if (identifier.compare("loop") == 0) {
-			return TokenType::KEYWORD_LOOP;
-		}
-		if (identifier.compare("match") == 0) {
-			return TokenType::KEYWORD_MATCH;
-		}
-		if (identifier.compare("mut") == 0) {
-			return TokenType::KEYWORD_MUT;
-		}
-		if (identifier.compare("null") == 0) {
-			return TokenType::KEYWORD_NULL;
-		}
-		if (identifier.compare("or_break") == 0) {
-			return TokenType::KEYWORD_OR_BREAK;
-		}
-		if (identifier.compare("or_continue") == 0) {
-			return TokenType::KEYWORD_OR_CONTINUE;
-		}
-		if (identifier.compare("or_else") == 0) {
-			return TokenType::KEYWORD_OR_ELSE;
-		}
-		if (identifier.compare("or_return") == 0) {
-			return TokenType::KEYWORD_OR_RETURN;
-		}
-		if (identifier.compare("push_context") == 0) {
-			return TokenType::KEYWORD_PUSH_CONTEXT;
-		}
-		if (identifier.compare("return") == 0) {
-			return TokenType::KEYWORD_RETURN;
-		}
-		if (identifier.compare("struct") == 0) {
-			return TokenType::KEYWORD_STRUCT;
-		}
-		if (identifier.compare("switch") == 0) {
-			return TokenType::KEYWORD_SWITCH;
-		}
-		if (identifier.compare("true") == 0) {
-			return TokenType::KEYWORD_TRUE;
-		}
-		if (identifier.compare("union") == 0) {
-			return TokenType::KEYWORD_UNION;
-		}
-		if (identifier.compare("using") == 0) {
-			return TokenType::KEYWORD_USING;
-		}
-		if (identifier.compare("void") == 0) {
-			return TokenType::KEYWORD_VOID;
-		}
-		if (identifier.compare("while") == 0) {
-			return TokenType::KEYWORD_WHILE;
-		}
-		if (identifier.compare("with") == 0) {
-			return TokenType::KEYWORD_WITH;
-		}
-		return {};
-	}
 
 	/*
 	 * A line can have at most MAX_LINE_LENGTH characters, as many as a token's column counts; a longer
@@ -498,6 +381,13 @@ namespace hemera::lexer {
 				next_char(tokenizer, input_stream);
 				goto switch_start;
 			default:
+				// A letter, digit or mark outside ASCII, all its bytes
+				if (const size_t length = identifier_character(tokenizer.current_line, tokenizer.column_number, false); length > 0) {
+					for (size_t i = 0; i < length; ++i) {
+						next_char(tokenizer, input_stream);
+					}
+					goto switch_start;
+				}
 				break;
 			}
 			break;
@@ -530,7 +420,7 @@ namespace hemera::lexer {
 				goto switch_start;
 			case 'i': case 'j': case 'k':
 				// An imaginary literal, unless the letter starts a name
-				if (!std::isalnum(static_cast<unsigned char>(peek_char(tokenizer, 1))) && peek_char(tokenizer, 1) != '_') {
+				if (identifier_character(tokenizer.current_line, tokenizer.column_number + 1u, false) == 0) {
 					result_type = TokenType::LITERAL_IMAGINARY;
 					next_char(tokenizer, input_stream);
 				}
@@ -564,7 +454,7 @@ namespace hemera::lexer {
 				goto switch_start;
 			case 'i': case 'j': case 'k':
 				// An imaginary literal, unless the letter starts a name
-				if (!std::isalnum(static_cast<unsigned char>(peek_char(tokenizer, 1))) && peek_char(tokenizer, 1) != '_') {
+				if (identifier_character(tokenizer.current_line, tokenizer.column_number + 1u, false) == 0) {
 					result_type = TokenType::LITERAL_IMAGINARY;
 					next_char(tokenizer, input_stream);
 				}
@@ -625,7 +515,7 @@ namespace hemera::lexer {
 				goto switch_start;
 			case 'i': case 'j': case 'k':
 				// An imaginary literal, unless the letter starts a name
-				if (!std::isalnum(static_cast<unsigned char>(peek_char(tokenizer, 1))) && peek_char(tokenizer, 1) != '_') {
+				if (identifier_character(tokenizer.current_line, tokenizer.column_number + 1u, false) == 0) {
 					result_type = TokenType::LITERAL_IMAGINARY;
 					next_char(tokenizer, input_stream);
 				}
@@ -1166,11 +1056,37 @@ namespace hemera::lexer {
 				result_type = TokenType::SYM_COLON;
 				next_char(tokenizer, input_stream);
 				break;
-			default:
+			default: {
+				// A name can start with a letter outside ASCII
+				uint32_t code_point = 0;
+				const size_t length = identifier_character(tokenizer.current_line, tokenizer.column_number, true, &code_point);
+				if (length > 0) {
+					state = State::identifier;
+					result_type = TokenType::IDENTIFIER;
+					for (size_t i = 0; i < length; ++i) {
+						next_char(tokenizer, input_stream);
+					}
+					goto switch_start;
+				}
+				/*
+				 * Anything else: a character outside ASCII is taken whole, so it's reported once, saying what it is;
+				 * bytes that aren't UTF-8, already reported (E2008), one at a time
+				 */
+				const size_t bytes = std::max<size_t>(utf8::decode(tokenizer.current_line, tokenizer.column_number, code_point), 1);
+				const uint16_t column = tokenizer.column_number;
 				state = State::invalid;
-				next_char(tokenizer, input_stream);
-				report_error(ErrorCode::E2006, file_path, tokenizer.line_number, tokenizer.column_number);
+				for (size_t i = 0; i < bytes; ++i) {
+					next_char(tokenizer, input_stream);
+				}
+				if (bytes > 1) {
+					report_error(ErrorCode::E2006, file_path, tokenizer.line_number, column,
+						std::format("U+{:04X} can't start a name, and isn't an operator", code_point));
+				}
+				else {
+					report_error(ErrorCode::E2006, file_path, tokenizer.line_number, tokenizer.column_number);
+				}
 				goto switch_start;
+			}
 			}
 			break;
 		case State::tilde:
@@ -1311,7 +1227,7 @@ namespace hemera::lexer {
 		}
 
 		if (result_type == TokenType::IDENTIFIER && token_contents) {
-			std::optional<TokenType> maybe_token = get_reserved_identifier(*token_contents);
+			std::optional<TokenType> maybe_token = keyword(*token_contents);
 			// A keyword keeps its text, since it can still be a name where only a name can go
 			if (maybe_token) {
 				result_type = *maybe_token;

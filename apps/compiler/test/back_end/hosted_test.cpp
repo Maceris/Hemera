@@ -1013,6 +1013,12 @@ TEST(Hosted, GeneratesFunctions)
 	run_hosted("generated_functions", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
 }
 
+// docs/formatting.md: names outside ASCII, of any script, as types, fields, enum members, functions and locals.
+TEST(Hosted, UsesUnicodeNames)
+{
+	run_hosted("unicode_names", hemera::TargetStackCheck::Off, 0, "", true, false, false, {}, true);
+}
+
 /*
  * std/io's printing, to standard output and error, and the standard logger the hosted context starts
  * with: what the program writes is in output.txt and error.txt in its scenario folder.

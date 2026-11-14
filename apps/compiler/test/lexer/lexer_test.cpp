@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 
 #include "error/reporting.h"
+#include "lexer/identifiers.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_types.h"
@@ -339,6 +340,67 @@ TEST(LexerTests, UnicodeEscapes)
 	EXPECT_EQ(hemera::ast::string_value(&node), "a\xC3\xA9\xF0\x9F\x98\x80\xE2\x80\xAE\n");
 }
 
+// Each token's type and text, end of file left out
+static std::vector<std::pair<TokenType, std::string>> tokens_of(const std::string& text) {
+	auto reporting = hemera::DisableReportingForBlock();
+	StringCacheGuard string_cache;
+	Allocator<> alloc;
+	MyVector<Token> output;
+	std::istringstream input_stream(text);
+	hemera::lexer::lex(input_stream, output, alloc, "text");
+	std::vector<std::pair<TokenType, std::string>> tokens;
+	for (const Token& token : output) {
+		if (token.type != TokenType::END_OF_FILE) {
+			tokens.emplace_back(token.type, token.value != nullptr ? std::string(*token.value) : std::string());
+		}
+	}
+	return tokens;
+}
+
+/*
+ * Names are UAX #31's default identifiers: a letter of any script first, then letters, digits, _ and combining marks
+ * of any script, but not default ignorables
+ */
+TEST(LexerTests, UnicodeIdentifiers)
+{
+	using Tokens = std::vector<std::pair<TokenType, std::string>>;
+	using Errors = std::vector<std::string>;
+	const TokenType ID = TokenType::IDENTIFIER;
+	// Cyrillic, Japanese, Greek with an accent, a combining acute, Arabic-Indic digits, Devanagari with its vowel signs
+	for (const std::string name : { "\xD0\xB8\xD0\xBC\xD1\x8F", "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E", "\xCE\xAC\xCE\xBB\xCF\x86\xCE\xB1",
+		"e\xCC\x81t\xC3\xA9", "x\xD9\xA1\xD9\xA2", "\xE0\xA4\xA8\xE0\xA4\xBE\xE0\xA4\xAE", "\xC3\xA9_1" }) {
+		EXPECT_EQ(tokens_of(name + " :: 1"), (Tokens{ { ID, name }, { TokenType::SYM_COLON, "" }, { TokenType::SYM_COLON, "" },
+			{ TokenType::LITERAL_INTEGER, "1" } })) << name;
+		EXPECT_EQ(text_errors(name + " :: 1"), Errors{}) << name;
+		EXPECT_TRUE(hemera::lexer::is_identifier(name)) << name;
+	}
+	// Not a first character: an Arabic-Indic digit, a combining acute; each reported once, whole, where it starts
+	EXPECT_EQ(text_errors("a \xD9\xA1"), (Errors{ "(1,2) E2006" }));
+	EXPECT_EQ(text_errors("a \xCC\x81"), (Errors{ "(1,2) E2006" }));
+	// Default ignorables end a name: a zero width joiner, a soft hyphen, a variation selector
+	EXPECT_EQ(tokens_of("ab\xE2\x80\x8D" "c")[0], (std::pair<TokenType, std::string>{ ID, "ab" }));
+	EXPECT_EQ(text_errors("ab\xE2\x80\x8D" "c"), (Errors{ "(1,2) E2006" }));
+	EXPECT_EQ(text_errors("ab\xC2\xAD" "c"), (Errors{ "(1,2) E2006" }));
+	EXPECT_EQ(text_errors("ab\xEF\xB8\x8F"), (Errors{ "(1,2) E2006" }));
+	// Nor is an emoji anywhere in a name
+	EXPECT_EQ(text_errors("\xF0\x9F\x98\x80 :: 1"), (Errors{ "(1,0) E2006" }));
+	// A letter after an imaginary literal's i makes it a name instead, as an ASCII one does
+	EXPECT_EQ(tokens_of("2i\xD0\xB6"), (Tokens{ { TokenType::LITERAL_INTEGER, "2" }, { ID, "i\xD0\xB6" } }));
+	EXPECT_EQ(tokens_of("2i"), (Tokens{ { TokenType::LITERAL_IMAGINARY, "2i" } }));
+
+	// What compiler.name takes as a name
+	EXPECT_TRUE(hemera::lexer::is_identifier("a1_b"));
+	EXPECT_FALSE(hemera::lexer::is_identifier(""));
+	EXPECT_FALSE(hemera::lexer::is_identifier("_"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("_a"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("1a"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("if"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("a b"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("a\xE2\x80\x8D" "b"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("\xCC\x81" "a"));
+	EXPECT_FALSE(hemera::lexer::is_identifier("a\xFF"));
+}
+
 TEST(LexerTests, ManyTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();
@@ -496,8 +558,9 @@ TEST(LexerTests, InvalidTokenTest)
 		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x7f
 	};
 
-	inputs.push_back(std::make_tuple("私", 
-		std::vector<TokenType>{ TokenType::INVALID, TokenType::INVALID, TokenType::INVALID, TokenType::END_OF_FILE }));
+	// A character outside ASCII that can't start a name, an arrow, is one invalid token, whole (UnicodeIdentifiers)
+	inputs.push_back(std::make_tuple("\xE2\x86\x92",
+		std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
 	inputs.push_back(std::make_tuple("'\n", 
 		std::vector<TokenType>{ TokenType::INVALID, TokenType::END_OF_FILE }));
 	inputs.push_back(std::make_tuple("\"\n", 

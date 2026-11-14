@@ -357,7 +357,7 @@ namespace hemera {
 		llvm::ModuleSymbolTable::CollectAsmSymbols(module, [&](llvm::StringRef name, llvm::object::BasicSymbolRef::Flags flags) {
 			const bool local = (flags & (llvm::object::BasicSymbolRef::SF_Global | llvm::object::BasicSymbolRef::SF_Undefined)) == 0;
 			if (local && !name.empty() && !name.starts_with(".L")) {
-				globals += std::format("\t.globl {}\n", name.str());
+				globals += std::format("\t.globl {}\n", assembly_name(name.str()));
 			}
 		});
 		if (!globals.empty()) {

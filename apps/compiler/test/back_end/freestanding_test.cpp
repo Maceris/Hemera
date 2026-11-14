@@ -220,7 +220,8 @@ TEST(Freestanding, CallsUEFIFunctionValuesWithMicrosoftsConvention)
 	for (const llvm::Module::GlobalAsmFragment& fragment : lowered->getModuleInlineAsm()) {
 		assembly += fragment.Asm;
 	}
-	const size_t shim = assembly.find("hemera.foreign_indirect.1:");
+	// Symbols are quoted in assembly text (hemera::assembly_name)
+	const size_t shim = assembly.find("\"hemera.foreign_indirect.1\":");
 	ASSERT_NE(shim, std::string::npos) << assembly;
 	const std::string body = assembly.substr(shim, assembly.find("retq", shim) - shim);
 	// 32 bytes of shadow space and the stack argument, and the argument copied above the shadow space
