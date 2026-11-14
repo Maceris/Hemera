@@ -506,7 +506,7 @@ Ui :: struct {
     /** The focused widget; 0 for none. */
     focus : ID,
     /** The focusable widgets, in the last frame's order, for Tab. */
-    focusables : ID[..],
+    focusables : u64[..],
     /** What the pointer can be over, as the last frame showed it, in the order it was drawn. */
     hits : Hit[..],
     /** The focused field's editing. */

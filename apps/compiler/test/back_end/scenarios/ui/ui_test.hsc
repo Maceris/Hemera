@@ -482,3 +482,36 @@ takes_any_input #test :: fn(t: ptr[mut testing.T], source: ptr[mut testing.Sourc
     }
     return .Ok
 }
+
+/** Run a frame of a login form: a name, a secret password, and Log in. */
+login_frame :: fn(u: ptr[mut ui.Ui], input: ui.Input, name: ptr[mut u8[..]], password: ptr[mut u8[..]]) -> bool {
+    ui.begin(u, input, WIDTH, HEIGHT)
+    _ = ui.text_field(u, "Name", name)
+    _ = ui.text_field(u, "Password", password, secret = true)
+    clicked :: ui.button(u, "Log in")
+    _ = ui.end(u)
+    submitted := clicked
+    for event in ui.events_of(u) {
+        submitted = submitted || event.kind == .Submitted
+    }
+    return submitted
+}
+
+fills_a_form_by_keyboard #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    u :: new_ui()
+    defer free(u)
+    name : u8[..]
+    defer runtime.array_free(&name)
+    password : u8[..]
+    defer runtime.array_free(&password)
+    _ = login_frame(u, ui.Input.{}, &name, &password)
+    _ = login_frame(u, keys(ui.Key.[ui.Key.Tab]), &name, &password)
+    _ = login_frame(u, ui.Input.{text = string_bytes("admin")}, &name, &password)
+    _ = login_frame(u, keys(ui.Key.[ui.Key.Tab]), &name, &password)
+    _ = login_frame(u, ui.Input.{text = string_bytes("secret")}, &name, &password)
+    submitted :: login_frame(u, keys(ui.Key.[ui.Key.Enter]), &name, &password)
+    testing.expect(t, as_text(&name) == "admin", "Tab focuses the first field, and what's typed goes in it")
+    testing.expect(t, as_text(&password) == "secret", "the next Tab the second")
+    testing.expect(t, submitted, "and Enter in it submits")
+    return .Ok
+}
