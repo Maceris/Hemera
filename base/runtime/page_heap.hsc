@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * The process's heap (PageHeap, process.hsc) on systems where the runtime makes its own from pages the

@@ -4,7 +4,7 @@
  */
 package build_changed
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 build :: fn() {
     maths := compiler.command_line_options()

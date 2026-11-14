@@ -3,7 +3,7 @@
  */
 package os
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier: Os, since it makes system calls, so only packages of that tier can import it. */
 PACKAGE_TIER :: tiers.Tier.Os

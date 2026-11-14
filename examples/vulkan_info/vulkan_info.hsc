@@ -1,9 +1,9 @@
 package vulkan_info
 
 import io
-import memory from "std"
-import runtime from "base"
-import vulkan as vk from "vendor"
+import memory from "std:memory"
+import runtime from "base:runtime"
+import vulkan as vk from "vendor:vulkan"
 
 // The text in a fixed-size C string field, up to its terminator
 field_text :: fn(field: ptr[u8[256]]) -> string {

@@ -1,6 +1,6 @@
 package scoped_known_before_body
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 // A struct's #scoped is known before its body is: Parsers is checked while Parser's fields are still being made
 fields :: fn() -> compiler.Code {

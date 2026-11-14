@@ -5,7 +5,7 @@
  */
 package field_defaults
 
-import testing from "std"
+import testing from "std:testing"
 
 twice :: fn(x: int) -> int {
     return x * 2

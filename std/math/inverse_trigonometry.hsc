@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * asin, acos, atan and atan2 in f64 (fdlibm's e_asin.c, e_acos.c, s_atan.c and e_atan2.c). The constants' hex is their

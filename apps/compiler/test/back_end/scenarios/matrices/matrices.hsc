@@ -1,6 +1,6 @@
 package matrices
 
-import testing from "std"
+import testing from "std:testing"
 
 /*
  * Matrices (docs/types.md, Matrices): literals written row by row and stored column by column, m[row, column], the

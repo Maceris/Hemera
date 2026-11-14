@@ -1,6 +1,6 @@
 package insert_statements_as_expression
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 statements :: fn() -> compiler.Code {
     return #code {

@@ -4,7 +4,7 @@
  */
 package endian_types
 
-import testing from "std"
+import testing from "std:testing"
 
 /** A header as a wire format lays it out: a byte, a big-endian length, a little-endian flags field. */
 Header :: struct #packed {

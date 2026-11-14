@@ -1,6 +1,6 @@
 package slop_os_program
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * A program for SlopOS, built but not run here: its heap maps memory in the range its startup block

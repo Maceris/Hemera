@@ -4,7 +4,7 @@
  */
 package relative_to_itself
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 // next is the first field, so a pointer to the Loop is a pointer to next itself
 Loop :: struct {

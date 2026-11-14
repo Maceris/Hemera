@@ -1,6 +1,6 @@
 package compute_blocks
 
-import testing from "std"
+import testing from "std:testing"
 
 /*
  * Compute blocks (docs/control_flow.md, Compute Blocks): compute[T] { ... } runs its statements and gives a value of T

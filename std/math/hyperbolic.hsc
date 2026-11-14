@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * The hyperbolic functions and their inverses in f64, as musl has them: from exp, exp_minus_one and log_one_plus, so

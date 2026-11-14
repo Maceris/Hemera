@@ -1,6 +1,6 @@
 package crypto
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /** A byte that's a secret, like a key's or a password's (docs/memory.md, Secrets). */
 SecretByte :: distinct alias u8 #secret

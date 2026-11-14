@@ -8,10 +8,10 @@
  */
 package libc_test
 
-import intrinsics from "base"
-import runtime from "base"
-import fiber from "std"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import fiber from "std:fiber"
+import testing from "std:testing"
 
 LIBC :: #library("c")
 
@@ -27,14 +27,14 @@ Qsort :: alias fn(items: rawptr, count: usize, size: usize, compare: rawptr) #ca
 
 // getpid as a system call, to compare with C's
 #if TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     raw_getpid :: fn() -> u64 {
         return x86_64.syscall(39)
     }
 }
 #else_if TARGET_ARCH == .arm64 {
-    import aarch64 from "base/intrinsics"
+    import aarch64 from "base:intrinsics/aarch64"
 
     raw_getpid :: fn() -> u64 {
         return aarch64.syscall(172)

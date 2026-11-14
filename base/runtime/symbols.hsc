@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Naming the frames of a stack trace while the program runs. A program built with debug info

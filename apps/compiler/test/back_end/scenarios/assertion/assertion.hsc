@@ -4,7 +4,7 @@
  */
 package assertion_test
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 check :: fn(count: int) {
     runtime.assert(count > 0, "count must be positive")

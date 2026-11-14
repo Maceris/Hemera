@@ -1,7 +1,7 @@
 package ui
 
-import runtime from "base"
-import fonts from "std"
+import runtime from "base:runtime"
+import fonts from "std:fonts"
 
 /** A check box's side, in pixels. */
 CHECK : f32 : 16

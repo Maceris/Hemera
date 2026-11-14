@@ -1,7 +1,7 @@
 package os
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /*
  * Linux's run_process, by system calls: the child is forked, points its standard output and error

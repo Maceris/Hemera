@@ -31,7 +31,7 @@ ImportInfo :: struct {
     path : string,
     /** The name it was imported as, which is the package name if there was no alias. */
     alias : string,
-    /** The from part's text without its quotes, like base or ../; empty if there was none. */
+    /** The from part's text without its quotes, like base:runtime or ../neighbor; empty if there was none. */
     from : string,
     /** Where the import is written. */
     location : SourceCodeLocation,

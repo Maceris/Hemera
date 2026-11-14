@@ -6,11 +6,11 @@
  */
 package ssh_test
 
-import compiler from "base"
-import runtime from "base"
-import crypto from "std"
-import ssh from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
+import ssh from "std:ssh"
+import testing from "std:testing"
 
 /** A client, a server, and what each has seen. */
 Pair :: struct {

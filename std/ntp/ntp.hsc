@@ -1,6 +1,6 @@
 package ntp
 
-import tls from "std"
+import tls from "std:tls"
 
 /*
  * NTPv4's packet (RFC 5905 §7.3) and the times it carries. A timestamp is NTP's 64 bits: seconds since 1900 in the high

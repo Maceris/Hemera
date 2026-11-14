@@ -1,6 +1,6 @@
 package schema
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * Schemas read back (the bytes are schema.hsc's): each type one describes, with what its kind has, for code that meets

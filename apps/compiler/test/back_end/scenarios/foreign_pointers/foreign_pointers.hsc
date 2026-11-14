@@ -5,8 +5,8 @@
  */
 package foreign_pointers
 
-import runtime from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 KERNEL32 :: #library("kernel32")
 

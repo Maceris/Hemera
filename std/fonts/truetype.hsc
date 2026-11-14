@@ -1,6 +1,6 @@
 package fonts
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * The TrueType container (the OpenType specification, "Font file"): a table directory, then tables found by their

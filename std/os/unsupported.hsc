@@ -1,6 +1,6 @@
 package os
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * Targets without processes to run or an environment, like OS == .None and SlopOS (whose programs start through

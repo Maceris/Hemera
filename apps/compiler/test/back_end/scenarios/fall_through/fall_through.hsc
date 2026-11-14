@@ -7,8 +7,8 @@
  */
 package fall_through
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 // Digits for each case that ran, in order
 run :: fn(value: int, stop: bool) -> int {

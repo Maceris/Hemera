@@ -1,8 +1,8 @@
 package testing
 
-import runtime from "base"
-import reflection from "std"
-import text_buffer from "std"
+import runtime from "base:runtime"
+import reflection from "std:reflection"
+import text_buffer from "std:text_buffer"
 
 /** How many of a test's failures are kept in full; past these, failures are only counted. */
 MAX_FAILURES :: 8

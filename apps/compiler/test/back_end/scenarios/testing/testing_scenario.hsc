@@ -5,9 +5,9 @@
  */
 package testing_scenario
 
-import runtime from "base"
-import compiler from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 Parsed :: enum {
     Empty,

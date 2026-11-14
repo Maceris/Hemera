@@ -1,8 +1,8 @@
 package text_buffer
 
-import compiler from "base"
-import runtime from "base"
-import reflection from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import reflection from "std:reflection"
 
 /*
  * Formatting values into a TextBuffer, the way loggers format their parameters, without

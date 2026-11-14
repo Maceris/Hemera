@@ -1,8 +1,8 @@
 package fiber
 
-import intrinsics from "base"
-import runtime from "base"
-import concurrency from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import concurrency from "std:concurrency"
 
 /**
  * A pool of fibers that one or more carriers share (docs/multitasking.md, Fiber Pools).

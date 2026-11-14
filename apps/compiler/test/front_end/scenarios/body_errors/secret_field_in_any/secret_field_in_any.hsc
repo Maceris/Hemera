@@ -1,6 +1,6 @@
 package secret_field_in_any
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 Key :: struct #secret {
     bytes : u8[32],

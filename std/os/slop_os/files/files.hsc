@@ -1,6 +1,6 @@
 package files
 
-import slop_os from "std/os"
+import slop_os from "std:os/slop_os"
 
 /*
  * What the file protocols share (the SlopOS repository's decisions 0015, 0018, 0046, 0087): file, read_only_file,

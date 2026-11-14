@@ -1,7 +1,7 @@
 package fast
 
-import intrinsics from "base"
-import math from "std"
+import intrinsics from "base:intrinsics"
+import math from "std:math"
 
 /*
  * f64's fast kernels: SLEEF's shapes (one reduction, one polynomial with fused multiply-adds, special cases chosen

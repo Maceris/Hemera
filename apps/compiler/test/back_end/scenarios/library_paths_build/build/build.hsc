@@ -4,8 +4,8 @@
  */
 package build
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 build :: fn() {
     options := compiler.command_line_options()

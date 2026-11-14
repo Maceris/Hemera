@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /**
  * A source of random bytes, as context.random holds it.

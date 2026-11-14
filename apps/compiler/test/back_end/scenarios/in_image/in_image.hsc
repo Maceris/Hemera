@@ -1,7 +1,7 @@
 package in_image
 
-import runtime from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * runtime.in_image: whether an address is in the program's image, from the image's own headers. A string literal and a

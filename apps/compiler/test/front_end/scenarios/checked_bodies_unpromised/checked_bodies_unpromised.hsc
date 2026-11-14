@@ -1,6 +1,6 @@
 package checked_bodies_unpromised
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * Constrained generics whose bodies use what their constraints don't promise (docs/types.md, Checked

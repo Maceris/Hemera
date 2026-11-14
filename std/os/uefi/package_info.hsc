@@ -6,7 +6,7 @@
  */
 package uefi
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: it calls the firmware, not an operating system, and needs no allocator. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

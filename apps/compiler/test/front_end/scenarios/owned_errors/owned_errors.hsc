@@ -1,7 +1,7 @@
 package owned_errors
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 // Owners that aren't released or moved, or are used after they were (docs/memory.md, Owned Types)
 

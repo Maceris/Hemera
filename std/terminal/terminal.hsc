@@ -14,14 +14,14 @@ package terminal
  *     }
  */
 
-import unicode from "std"
+import unicode from "std:unicode"
 
 #if base.OS == .SlopOS {
-    import runtime from "base"
-    import os from "std"
-    import slop_os from "std/os"
-    import lifecycle from "std/os/slop_os"
-    import terminal as protocol from "std/os/slop_os"
+    import runtime from "base:runtime"
+    import os from "std:os"
+    import slop_os from "std:os/slop_os"
+    import lifecycle from "std:os/slop_os/lifecycle"
+    import terminal as protocol from "std:os/slop_os/terminal"
 
     /** The port key a stop's asked for on, beside the terminal's binding, so a wait for input wakes for a stop too. */
     STOP_KEY : u64 : 1

@@ -8,7 +8,7 @@
  */
 package fuzzing
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Os: it keeps its corpus in files. */
 PACKAGE_TIER :: tiers.Tier.Os

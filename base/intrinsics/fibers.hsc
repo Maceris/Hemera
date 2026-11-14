@@ -1,6 +1,6 @@
 package intrinsics
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * Give the current thread's carrier block, from the carrier register.

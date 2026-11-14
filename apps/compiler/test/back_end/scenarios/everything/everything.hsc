@@ -5,21 +5,21 @@
  */
 package everything
 
-import c_string from "std"
+import c_string from "std:c_string"
 import generics_sweep from "../generics_sweep"
-import concurrency from "std"
-import containers from "std"
-import fiber from "std"
-import io from "std"
-import logger from "std"
-import memory from "std"
-import os from "std"
-import random from "std"
-import reflection from "std"
-import strings from "std"
-import text_buffer from "std"
-import tiers from "std"
-import time from "std"
+import concurrency from "std:concurrency"
+import containers from "std:containers"
+import fiber from "std:fiber"
+import io from "std:io"
+import logger from "std:logger"
+import memory from "std:memory"
+import os from "std:os"
+import random from "std:random"
+import reflection from "std:reflection"
+import strings from "std:strings"
+import text_buffer from "std:text_buffer"
+import tiers from "std:tiers"
+import time from "std:time"
 
 main :: fn() -> int {
     return 42

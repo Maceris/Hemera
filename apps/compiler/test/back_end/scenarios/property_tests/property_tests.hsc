@@ -5,9 +5,9 @@
  */
 package property_tests
 
-import runtime from "base"
-import compiler from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 /** The package's own tag, run unless left out. */
 NETWORK :: testing.Tag.{name = "network", by_default = .Included}

@@ -13,7 +13,7 @@
  */
 package slop_os
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier: freestanding, since the kernel imports it as well as programs. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

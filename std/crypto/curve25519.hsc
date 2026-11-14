@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * Curve25519's field, numbers mod p = 2^255 - 19, which X25519 and Ed25519 both work in, and X25519

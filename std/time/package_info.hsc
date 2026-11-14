@@ -7,7 +7,7 @@
  */
 package time
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: it needs only base, and no operating system. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

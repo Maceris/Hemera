@@ -6,8 +6,8 @@
  */
 package vectors_test
 
-import intrinsics from "base"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import testing from "std:testing"
 
 /** Four u32 lanes, 16 bytes. */
 Words :: vector[u32, 4]
@@ -130,7 +130,7 @@ encrypts_with_aes_instructions #test :: fn(t: ptr[mut testing.T]) -> testing.Out
 
 // x86-64's instructions, on x86-64 only
 #if TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     /**
      * Make the next AES-128 round key.

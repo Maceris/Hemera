@@ -1,6 +1,6 @@
 package constraints_unsatisfied
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 HasCount #constraint :: fn(T: type) {
     compiler.require_field(T, "count", usize)

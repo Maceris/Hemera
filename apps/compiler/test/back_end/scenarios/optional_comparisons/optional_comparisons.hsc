@@ -4,7 +4,7 @@
  */
 package optional_comparisons
 
-import testing from "std"
+import testing from "std:testing"
 
 /**
  * Find text, as a lookup that may come up empty would.

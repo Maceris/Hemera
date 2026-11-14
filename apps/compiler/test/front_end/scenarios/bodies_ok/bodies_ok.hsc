@@ -1,6 +1,6 @@
 package bodies_ok
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 Point :: struct {
     x : int,

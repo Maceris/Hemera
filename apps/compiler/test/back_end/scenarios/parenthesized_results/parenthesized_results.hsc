@@ -4,7 +4,7 @@
  */
 package parenthesized_results
 
-import testing from "std"
+import testing from "std:testing"
 
 /**
  * View a whole buffer, or nothing, through a result written in parentheses.

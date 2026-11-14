@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Typed libraries (docs/compilation.md, Typed Libraries). A library built on its own has an interface record: each of

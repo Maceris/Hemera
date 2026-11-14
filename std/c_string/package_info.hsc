@@ -3,7 +3,7 @@
  */
 package c_string
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: it needs only base, and allocates nothing. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

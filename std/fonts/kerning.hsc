@@ -1,6 +1,6 @@
 package fonts
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Pair kerning: GPOS's pair adjustment lookups (type 2, or type 9 extending one) under any script's kern feature, a

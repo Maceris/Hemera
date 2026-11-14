@@ -1,6 +1,6 @@
 package os
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * End the process at once, every thread of it, from any thread.

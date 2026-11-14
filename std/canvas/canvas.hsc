@@ -1,7 +1,7 @@
 package canvas
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /** The most saved states. */
 MAX_SAVED :: 32

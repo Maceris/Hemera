@@ -22,7 +22,7 @@
  */
 package math
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier: Freestanding, as it needs nothing but arithmetic. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

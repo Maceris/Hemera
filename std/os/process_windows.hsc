@@ -1,6 +1,6 @@
 package os
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * Windows' run_process: the child's standard output and error go to pipes the parent reads, polling

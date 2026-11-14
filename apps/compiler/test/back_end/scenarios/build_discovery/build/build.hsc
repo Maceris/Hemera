@@ -4,8 +4,8 @@
  */
 package build
 
-import compiler from "base"
-import reflection from "std"
+import compiler from "base:compiler"
+import reflection from "std:reflection"
 
 build :: fn() {
     for folder in compiler.subfolders("../programs") {

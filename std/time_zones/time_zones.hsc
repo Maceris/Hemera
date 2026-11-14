@@ -1,7 +1,7 @@
 package time_zones
 
-import runtime from "base"
-import time from "std"
+import runtime from "base:runtime"
+import time from "std:time"
 
 /** A local time type, one of a zone's: the offset from UTC it has, and how it's named. */
 ZoneType :: struct {

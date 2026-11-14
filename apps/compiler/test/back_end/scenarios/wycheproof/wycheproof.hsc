@@ -5,9 +5,9 @@
  */
 package wycheproof_test
 
-import compiler from "base"
-import crypto from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import testing from "std:testing"
 
 BUFFER :: 16384
 

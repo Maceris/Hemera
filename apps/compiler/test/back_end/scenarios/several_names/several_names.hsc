@@ -4,7 +4,7 @@
  */
 package several_names
 
-import testing from "std"
+import testing from "std:testing"
 
 MIN, MAX :: -10, 10
 WIDTH, HEIGHT : u32 : 640, 480

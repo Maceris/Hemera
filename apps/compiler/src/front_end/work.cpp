@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -230,36 +231,169 @@ namespace hemera {
 	}
 
 	/*
-	 * The folder an import refers to (docs/packages.md, Imports). A built-in location, optionally
-	 * followed by subfolders, names the folder containing the package, which is the folder named
-	 * after the import. Anything else is relative to the importing package's folder and names the
-	 * package's folder itself. No location means std.
+	 * Why an import's location can't be used, as a message for E4042, or nothing if it can. Control characters are
+	 * never part of one: on Windows some are dropped when a path is opened, so ".\x01." could be checked as one name
+	 * and opened as "..".
 	 */
-	static std::filesystem::path import_folder(const Options& options,
-		const std::filesystem::path& package_folder, const ImportInfo& import) {
-
-		std::string location = import.location == nullptr
-			? std::string("std")
-			: string_literal_text(import.location);
-
-		const bool explicitly_relative = location == "." || location == ".."
-			|| location.starts_with("./") || location.starts_with("../");
-
-		if (!explicitly_relative) {
-			const size_t slash = location.find('/');
-			std::optional<BuiltinPackage> builtin = builtin_location(location.substr(0, slash));
-			if (builtin) {
-				auto iter = options.builtin_paths.find(builtin.value());
-				std::filesystem::path folder = iter == options.builtin_paths.end()
-					? std::filesystem::path(location.substr(0, slash))
-					: iter->second;
-				if (slash != std::string::npos) {
-					folder /= location.substr(slash + 1);
-				}
-				return folder / *import.name;
+	static std::optional<std::string> location_text_problem(std::string_view location) {
+		if (location.empty()) {
+			return "the location is empty";
+		}
+		for (const char c : location) {
+			const auto byte = static_cast<unsigned char>(c);
+			if (byte < 0x20 || byte == 0x7f) {
+				return std::format("it holds the control character U+{:04X}", static_cast<unsigned>(byte));
+			}
+			if (c == '\\') {
+				return "it uses '\\', but locations separate folders with '/'";
 			}
 		}
-		return package_folder / location;
+		return {};
+	}
+
+	/*
+	 * Why the path after a location's prefix, like "os/uefi" in "std:os/uefi", can't be used, or nothing if it can.
+	 * Each folder must be a plain name: not empty, "." or "..", and not ending in '.' or ' ', which Windows drops when
+	 * opening a path (so "..." or ".. " would act as ".."). This is only for clear errors; the folder found is still
+	 * checked to be inside the location after links are followed (resolve_import).
+	 */
+	static std::optional<std::string> prefixed_path_problem(std::string_view prefix, std::string_view path) {
+		if (path.empty()) {
+			return std::format("\"{}:\" names no package; add its folder, like \"{}:io\"", prefix, prefix);
+		}
+		size_t start = 0;
+		while (start <= path.size()) {
+			const size_t slash = std::min(path.find('/', start), path.size());
+			const std::string_view folder = path.substr(start, slash - start);
+			if (folder.empty()) {
+				return std::format("\"{}\" has an empty folder name", path);
+			}
+			if (folder == "." || folder == "..") {
+				return std::format("\"{}\" can't use \"{}\" inside {}", path, folder, prefix);
+			}
+			if (folder.back() == '.' || folder.back() == ' ' || folder.front() == ' ') {
+				return std::format("\"{}\" has the folder \"{}\", which starts with a space or ends with '.' or a space",
+					path, folder);
+			}
+			if (folder.find(':') != std::string_view::npos) {
+				return std::format("\"{}\" has a second ':'", path);
+			}
+			start = slash + 1;
+		}
+		return {};
+	}
+
+	// Whether path is root or inside it, both already canonical: the same folders, then maybe more.
+	static bool is_within(const std::filesystem::path& path, const std::filesystem::path& root) {
+		auto path_part = path.begin();
+		for (auto root_part = root.begin(); root_part != root.end(); ++root_part, ++path_part) {
+			if (root_part->empty() && std::next(root_part) == root.end()) {
+				// A root ending in a separator has an empty last part
+				return true;
+			}
+			if (path_part == path.end() || *path_part != *root_part) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	static bool base_has_package(std::string_view folder);
+	static std::string_view base_folder(InternedString package_path);
+
+	/*
+	 * Where an import's package is (docs/packages.md, Imports): a package of base, by its folder in base, or the
+	 * canonical path of a folder on disk.
+	 */
+	struct ImportPlace {
+		bool from_base = false;
+		std::string folder;
+	};
+
+	/*
+	 * Finds the package an import names, or reports why it can't (E4042, E4005) and gives nothing.
+	 *
+	 * A location starting with a built-in location's name and ':', like "std:os/uefi", is that package's folder inside
+	 * the built-in location; no location is the std package named after the import. Anything else is a folder relative
+	 * to the importing package's own. The folder a prefixed location finds must stay inside its built-in location after
+	 * every link is followed; the path it gives is the one every later step uses, so what was checked is what's read.
+	 */
+	static std::optional<ImportPlace> resolve_import(const Options& options, const FileLocation& importer,
+		const ImportInfo& import, const std::string& file_path, const ast::Node* node) {
+
+		const auto invalid = [&](const std::string& why) -> std::optional<ImportPlace> {
+			report_error(ErrorCode::E4042, file_path, node->value.line_number, node->value.column_number, why);
+			return {};
+		};
+		const auto missing = [&](const std::string& what) -> std::optional<ImportPlace> {
+			report_error(ErrorCode::E4005, file_path, node->value.line_number, node->value.column_number, what);
+			return {};
+		};
+
+		const std::string location = import.location == nullptr
+			? "std:" + std::string(std::string_view(*import.name))
+			: string_literal_text(import.location);
+		if (auto problem = location_text_problem(location)) {
+			return invalid(*problem);
+		}
+
+		const size_t colon = location.find(':');
+		if (colon != std::string::npos) {
+			const std::string prefix = location.substr(0, colon);
+			const std::string path = location.substr(colon + 1);
+			std::optional<BuiltinPackage> builtin = builtin_location(prefix);
+			if (!builtin) {
+				return invalid(std::format("\"{}\" isn't a built-in location; those are base, std, user and vendor, "
+					"and a relative folder's location has no ':'", prefix));
+			}
+			if (auto problem = prefixed_path_problem(prefix, path)) {
+				return invalid(*problem);
+			}
+			if (builtin.value() == BuiltinPackage::BASE) {
+				if (!base_has_package(path)) {
+					return missing(location);
+				}
+				return ImportPlace{ true, path };
+			}
+
+			auto iter = options.builtin_paths.find(builtin.value());
+			std::error_code error;
+			const std::filesystem::path root = std::filesystem::weakly_canonical(
+				iter == options.builtin_paths.end() ? std::filesystem::path(prefix) : iter->second, error);
+			if (error) {
+				return missing(location);
+			}
+			const std::filesystem::path folder = std::filesystem::weakly_canonical(root / path, error);
+			if (error || !std::filesystem::is_directory(folder, error)) {
+				return missing(std::format("{} ({})", location, (root / path).string()));
+			}
+			if (!is_within(folder, root)) {
+				return invalid(std::format("\"{}\" leads to {}, outside {} at {}", location, folder.string(), prefix,
+					root.string()));
+			}
+			return ImportPlace{ false, folder.string() };
+		}
+
+		// Relative to a package of base, like "./x86_64" in base/intrinsics, is in base too
+		if (is_base_package(importer.package_path)) {
+			std::string folder = (std::filesystem::path(std::string(base_folder(importer.package_path))) / location)
+				.lexically_normal().generic_string();
+			while (folder.ends_with("/")) {
+				folder.pop_back();
+			}
+			if (folder.starts_with("..") || !base_has_package(folder)) {
+				return missing(std::format("base/{}", folder));
+			}
+			return ImportPlace{ true, folder };
+		}
+
+		std::error_code error;
+		const std::filesystem::path folder = std::filesystem::weakly_canonical(
+			std::filesystem::path(*importer.package_path) / location, error);
+		if (error || !std::filesystem::is_directory(folder, error)) {
+			return missing(folder.string());
+		}
+		return ImportPlace{ false, folder.string() };
 	}
 	
 	static void list_package_files(WorkThreadData& executor, InternedString package_path_text,
@@ -410,7 +544,7 @@ namespace hemera {
 		if (!options.fuzz.empty()) {
 			return std::format(
 				"{}"
-				"import fuzzing from \"std\"\n"
+				"import fuzzing from \"std:fuzzing\"\n"
 				"\n"
 				"{} :: fn() -> int {{\n"
 				"    options :: fuzzing.FuzzOptions.{{seconds = {}, runs = {}, folder = \"{}\", seed = {}}}\n"
@@ -422,8 +556,8 @@ namespace hemera {
 		const std::string seed = options.test_seeded ? std::format("{}", options.test_seed) : "null";
 		return std::format(
 			"{}"
-			"import compiler from \"base\"\n"
-			"import testing from \"std\"\n"
+			"import compiler from \"base:compiler\"\n"
+			"import testing from \"std:testing\"\n"
 			"\n"
 			"{} :: fn() -> int {{\n"
 			"    tests :: #insert testing.tests_of(compiler.load_package(\".\"))\n"
@@ -497,36 +631,14 @@ namespace hemera {
 			}
 		}
 
-		// Base is the interface to what the compiler provides, so nothing is read from files
-		std::string location_text = import->location == nullptr
-			? std::string("std")
-			: string_literal_text(import->location);
-		const size_t slash = location_text.find('/');
-		const bool relative = location_text == "." || location_text == ".."
-			|| location_text.starts_with("./") || location_text.starts_with("../");
-		// From base, or relative to a package of base, like "./x86_64" in base/intrinsics
-		const bool from_base = relative ? is_base_package(location.package_path)
-			: location_text.substr(0, slash) == "base";
-		if (from_base) {
-			std::string folder;
-			if (relative) {
-				folder = (std::filesystem::path(std::string(base_folder(location.package_path)))
-					/ location_text).lexically_normal().generic_string();
-				while (folder.ends_with("/")) {
-					folder.pop_back();
-				}
-			}
-			else {
-				std::string subfolders = slash == std::string::npos ? std::string() : location_text.substr(slash + 1) + "/";
-				folder = subfolders + std::string(std::string_view(*import->name));
-			}
-			if (folder.starts_with("..") || !base_has_package(folder)) {
-				report_error(ErrorCode::E4005, file_path,
-					child->value.line_number, child->value.column_number,
-					std::format("base/{}", folder));
-				return;
-			}
-			import->resolved_path = intern(std::string(BASE_PACKAGE_PREFIX) + folder);
+		std::optional<ImportPlace> place = resolve_import(*executor.global_data->options, location, *import,
+			file_path, child);
+		if (!place) {
+			return;
+		}
+		if (place->from_base) {
+			// Base is the interface to what the compiler provides, so nothing is read from files
+			import->resolved_path = intern(std::string(BASE_PACKAGE_PREFIX) + place->folder);
 			// builtin's names are the compiler's own, so it has nothing to load
 			if (!is_compiler_provided(import->resolved_path)) {
 				executor.create_work(WorkType::IMPORT,
@@ -534,18 +646,7 @@ namespace hemera {
 			}
 		}
 		else {
-			std::error_code error;
-			std::filesystem::path folder = std::filesystem::weakly_canonical(
-				import_folder(*executor.global_data->options,
-					std::filesystem::path(*location.package_path), *import),
-				error);
-			if (error || !std::filesystem::is_directory(folder, error)) {
-				report_error(ErrorCode::E4005, file_path,
-					child->value.line_number, child->value.column_number,
-					folder.string());
-				return;
-			}
-			import->resolved_path = intern(folder.string());
+			import->resolved_path = intern(place->folder);
 			executor.create_work(WorkType::IMPORT,
 				WorkTarget{ WorkTargetType::PACKAGE, { .name = import->resolved_path } });
 		}

@@ -10,13 +10,13 @@ package os
  * NotFound without one, or InvalidPath for a path that isn't beneath it.
  */
 #if OS == .SlopOS {
-    import intrinsics from "base"
-    import runtime from "base"
-    import slop_os from "std/os"
-    import dir from "std/os/slop_os"
-    import file from "std/os/slop_os"
-    import files from "std/os/slop_os"
-    import read_only_file from "std/os/slop_os"
+    import intrinsics from "base:intrinsics"
+    import runtime from "base:runtime"
+    import slop_os from "std:os/slop_os"
+    import dir from "std:os/slop_os/dir"
+    import file from "std:os/slop_os/file"
+    import files from "std:os/slop_os/files"
+    import read_only_file from "std:os/slop_os/read_only_file"
 
     /**
      * The size of each File's buffer, in bytes: the most one read or write moves, so a bigger one takes several

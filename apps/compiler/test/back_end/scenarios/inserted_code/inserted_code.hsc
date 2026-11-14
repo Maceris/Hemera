@@ -1,7 +1,7 @@
 package inserted_code
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 /*
  * #insert outside a quote (docs/compilation.md, Code Values): code made at compile time, put in a body as

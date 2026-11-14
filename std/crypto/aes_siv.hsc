@@ -1,6 +1,6 @@
 package crypto
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * AES-SIV with CMAC (RFC 5297): authenticated encryption that holds up when a nonce repeats. The tag is

@@ -5,7 +5,7 @@
  */
 package build
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 check_program :: fn(target: ptr[compiler.BuildOptions], program: ptr[compiler.ProgramInfo]) -> bool {
     main_function :: compiler.find_function(program.root, "main") or_else compiler.FunctionInfo.{}

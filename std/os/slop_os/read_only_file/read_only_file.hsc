@@ -1,8 +1,8 @@
 package read_only_file
 
-import os from "std"
-import slop_os from "std/os"
-import files from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import files from "std:os/slop_os/files"
 
 /**
  * The read_only_file protocol, for os.Channel[ReadOnlyFile]: a file to read (the SlopOS repository's decisions

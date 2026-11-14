@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * What the runtime needs from Windows: the process heap, threads, waiting on an address, and

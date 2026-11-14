@@ -6,9 +6,9 @@
  */
 package aead_test
 
-import compiler from "base"
-import crypto from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import testing from "std:testing"
 
 // hex's bytes into into, how many there were
 decode :: fn(hex: string, into: ptr[mut u8[1200]]) -> usize {

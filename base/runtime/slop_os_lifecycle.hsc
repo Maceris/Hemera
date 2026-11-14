@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * The lifecycle channel on SlopOS (the SlopOS repository's decisions 0136, 0139): a program given a channel labeled

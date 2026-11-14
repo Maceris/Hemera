@@ -1,6 +1,6 @@
 package intrinsics
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * Copy bytes from one place to another, where the two may overlap, like C's memmove.

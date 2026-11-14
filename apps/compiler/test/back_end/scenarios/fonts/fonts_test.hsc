@@ -5,10 +5,10 @@
  */
 package fonts_test
 
-import runtime from "base"
-import fonts from "std"
-import strings from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import fonts from "std:fonts"
+import strings from "std:strings"
+import testing from "std:testing"
 
 SANS :: #file_data("../../fonts/NotoSans-Regular.ttf")
 MONO :: #file_data("../../fonts/NotoSansMono-Regular.ttf")

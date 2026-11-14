@@ -4,7 +4,7 @@
  */
 package constant_sizes
 
-import testing from "std"
+import testing from "std:testing"
 
 /**
  * Work out a Fibonacci number the slow way, for #run to give an array's count.

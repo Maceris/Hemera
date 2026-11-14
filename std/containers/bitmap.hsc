@@ -1,6 +1,6 @@
 package containers
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /**
  * size bits, all clear to start, in 64-bit words in the bitmap itself: for things like which frames or IDs are in use.

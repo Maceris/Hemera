@@ -135,6 +135,35 @@ TEST(FrontEnd, ReportsMissingImport)
 	EXPECT_EQ(errors[0], hemera::ErrorCode::E4005);
 }
 
+TEST(FrontEnd, ReportsInvalidImportLocations)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture,
+		scenario("import_locations"), scenario("imports/fake_std"));
+
+	// One for each import, and nothing found for any of them
+	ASSERT_EQ(errors.size(), 9u) << codes(errors);
+	for (hemera::ErrorCode error : errors) {
+		EXPECT_EQ(error, hemera::ErrorCode::E4042) << codes(errors);
+	}
+}
+
+TEST(FrontEnd, ReportsImportNameNotThePackages)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture,
+		scenario("import_names"), scenario("imports/fake_std"));
+
+	ASSERT_EQ(errors.size(), 1u) << codes(errors);
+	EXPECT_EQ(errors[0], hemera::ErrorCode::E4043);
+}
+
 TEST(FrontEnd, AcceptsIfChain)
 {
 	hemera::disable_reporting_printing();

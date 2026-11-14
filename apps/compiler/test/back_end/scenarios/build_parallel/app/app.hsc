@@ -1,7 +1,7 @@
 // A target built several times at once: main returns the answer its target's settings give it.
 package app
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 ANSWER :: #run compiler.target_setting("answer", default = "0")
 

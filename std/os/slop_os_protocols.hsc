@@ -37,10 +37,10 @@ package os
  * It builds on every OS, so a protocol's validators can be tested and fuzzed hosted, as SlopOS's are; sending and
  * receiving only work on SlopOS.
  */
-import compiler from "base"
-import intrinsics from "base"
-import runtime from "base"
-import slop_os from "std/os"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import slop_os from "std:os/slop_os"
 
 /**
  * The most a message has here, in 8-byte words: 512, 4096 bytes, what fits a ring of 8 KiB or more (a message is

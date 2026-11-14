@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <thread>
 
 #include "error/reporting.h"
@@ -346,6 +347,8 @@ namespace hemera {
 		data.global_data->threads_running--;
 	}
 
+	static void check_import_names(ProgramInfo& program);
+
 	void kick_off_processing(ProgramInfo* program_info, const Options* options) {
 		// Once for the process, since a build's targets may be checked at the same time (build.cpp)
 		static std::once_flag initialized;
@@ -417,22 +420,49 @@ namespace hemera {
 			global_data.thread_data.push_back(general_thread);
 		}
 
-		std::vector<std::jthread> threads;
-		// The threads report in the scope of whoever started the program, like a build's target
-		ReportScope* scope = report_scope();
+		{
+			std::vector<std::jthread> threads;
+			// The threads report in the scope of whoever started the program, like a build's target
+			ReportScope* scope = report_scope();
 
-		threads.emplace_back([scope, &data = *global_data.thread_data[0]] {
-			set_report_scope(scope);
-			do_llvm_work(data);
-		});
-
-		for (size_t i = 1; i < static_cast<size_t>(THREAD_COUNT); ++i) {
-			threads.emplace_back([scope, &data = *global_data.thread_data[i]] {
+			threads.emplace_back([scope, &data = *global_data.thread_data[0]] {
 				set_report_scope(scope);
-				do_work(data);
+				do_llvm_work(data);
 			});
+
+			for (size_t i = 1; i < static_cast<size_t>(THREAD_COUNT); ++i) {
+				threads.emplace_back([scope, &data = *global_data.thread_data[i]] {
+					set_report_scope(scope);
+					do_work(data);
+				});
+			}
+			//NOTE(ches) the destructors for the threads will .join() them here
 		}
-		//NOTE(ches) the destructors for the threads will .join() them here
+		check_import_names(*program_info);
+	}
+
+	/*
+	 * Reports each import whose name isn't the imported package's own, from its package statement (docs/packages.md,
+	 * Imports). Run once every package is read, since an import is resolved before its package's files are parsed.
+	 * A package with no statement, like the compiler's own builtin, is never wrong.
+	 */
+	static void check_import_names(ProgramInfo& program) {
+		for (const auto& [package_path, package] : program.packages) {
+			for (const auto& [file_name, file] : package->files) {
+				for (const ImportInfo* import : file->imports) {
+					auto imported = program.packages.find(import->resolved_path);
+					if (imported == program.packages.end() || imported->second->self_reported_name == nullptr
+						|| *imported->second->self_reported_name == *import->name) {
+						continue;
+					}
+					report_error(ErrorCode::E4043, file_path_of(package_path, file_name),
+						import->node->value.line_number, import->node->value.column_number,
+						std::format("imported as {}, but its package statement names it {}; use \"import {} as {}\" "
+							"to use another name", *import->name, *imported->second->self_reported_name,
+							*imported->second->self_reported_name, *import->name));
+				}
+			}
+		}
 	}
 
 	void sleep_thread(WorkThreadData& data) {

@@ -5,12 +5,12 @@
  */
 package generics_sweep
 
-import runtime from "base"
-import concurrency from "std"
-import containers from "std"
-import maps from "std"
-import memory from "std"
-import os from "std"
+import runtime from "base:runtime"
+import concurrency from "std:concurrency"
+import containers from "std:containers"
+import maps from "std:maps"
+import memory from "std:memory"
+import os from "std:os"
 
 Point :: struct {
     x : int,

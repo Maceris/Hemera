@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Loading a typed library on SlopOS (libraries.hsc; the SlopOS repository's decisions 0119, 0120): whoever launched the

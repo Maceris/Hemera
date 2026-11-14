@@ -4,7 +4,7 @@
  */
 package multiline_strings
 
-import testing from "std"
+import testing from "std:testing"
 
 /** Three lines, the second starting with a space after its \\. */
 GREETING : string : \\Hello there,

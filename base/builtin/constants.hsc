@@ -1,6 +1,6 @@
 package builtin
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /**
  * The operating system the program is compiled for, a value known when it's compiled, so `#if OS == .Windows` and

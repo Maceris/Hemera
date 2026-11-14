@@ -88,9 +88,9 @@ def hemera_program(generator):
     lines = [
         "package layouts",
         "",
-        "import compiler from \"base\"",
+        "import compiler from \"base:compiler\"",
         "import io",
-        "import vulkan as vk from \"vendor\"",
+        "import vulkan as vk from \"vendor:vulkan\"",
         "",
         "layout :: fn(info: ptr[compiler.TypeInfo], fields: string[]) {",
         "    s :: cast[ptr[compiler.TypeInfoStruct]](info)",

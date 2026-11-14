@@ -1,7 +1,7 @@
 package tls
 
-import compiler from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
 
 /*
  * A TLS connection: its state, the records that arrive and leave, and what the caller reads and writes. The handshake's

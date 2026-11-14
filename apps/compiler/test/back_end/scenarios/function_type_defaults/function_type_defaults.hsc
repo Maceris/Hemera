@@ -8,9 +8,9 @@
  */
 package function_type_defaults_test
 
-import runtime from "base"
+import runtime from "base:runtime"
 import scaled from "scaled"
-import testing from "std"
+import testing from "std:testing"
 
 SECOND :: 1
 

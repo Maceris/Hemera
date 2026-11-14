@@ -4,8 +4,8 @@
  */
 package unicode_test
 
-import testing from "std"
-import unicode from "std"
+import testing from "std:testing"
+import unicode from "std:unicode"
 
 TESTS :: #file_data("../../../../../../std/unicode/test/grapheme_break_test.txt")
 

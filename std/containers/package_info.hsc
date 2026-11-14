@@ -4,7 +4,7 @@
  */
 package containers
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: it needs only base, and never allocates. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

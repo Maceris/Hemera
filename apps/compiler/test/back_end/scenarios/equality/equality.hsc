@@ -4,7 +4,7 @@
  */
 package equality
 
-import testing from "std"
+import testing from "std:testing"
 
 /** A fixed array compared as a whole. */
 Guid :: u8[16]

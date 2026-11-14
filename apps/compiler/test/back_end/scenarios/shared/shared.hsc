@@ -5,10 +5,10 @@
  */
 package shared_test
 
-import compiler from "base"
-import memory from "std"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import memory from "std:memory"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 Buffer :: struct {
     size : int,

@@ -4,7 +4,7 @@
  */
 package type_values
 
-import testing from "std"
+import testing from "std:testing"
 
 Index :: alias int
 Ind :: alias Index

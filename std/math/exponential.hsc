@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * e^x, 2^x and e^x - 1, in f64 (fdlibm's e_exp.c and s_expm1.c). The constants' hex is their bits, high word then low,

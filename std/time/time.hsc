@@ -1,6 +1,6 @@
 package time
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /** A point in time in UTC, as seconds and nanoseconds since 1970-01-01T00:00:00Z: base's runtime.Instant. */
 Instant :: runtime.Instant

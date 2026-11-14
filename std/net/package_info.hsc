@@ -5,7 +5,7 @@
  */
 package net
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier: Os, since it makes system calls. */
 PACKAGE_TIER :: tiers.Tier.Os

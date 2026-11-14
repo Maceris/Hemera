@@ -4,7 +4,7 @@
  */
 package logger
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: it reads the clock and writes to standard output or error, which take system calls. */
 PACKAGE_TIER :: tiers.Tier.Os

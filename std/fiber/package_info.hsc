@@ -3,7 +3,7 @@
  */
 package fiber
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: pools and fibers are allocated, but no system calls are made directly. */
 PACKAGE_TIER :: tiers.Tier.Allocating

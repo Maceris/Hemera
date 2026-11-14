@@ -1,10 +1,10 @@
 package read_only_dir
 
-import os from "std"
-import slop_os from "std/os"
-import file_set from "std/os/slop_os"
-import files from "std/os/slop_os"
-import read_only_file from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import file_set from "std:os/slop_os/file_set"
+import files from "std:os/slop_os/files"
+import read_only_file from "std:os/slop_os/read_only_file"
 
 /**
  * The read_only_dir protocol, for os.Channel[ReadOnlyDir]: a directory to read (the SlopOS repository's decisions

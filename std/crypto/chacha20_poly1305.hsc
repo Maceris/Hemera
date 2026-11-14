@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * ChaCha20-Poly1305 (RFC 8439): encryption with a 32-byte key and a 12-byte nonce, which must never
@@ -223,7 +223,7 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
 }
 
 #if TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     /**
      * Check whether AVX2 can be used.

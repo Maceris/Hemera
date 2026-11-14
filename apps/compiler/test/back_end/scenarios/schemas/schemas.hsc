@@ -1,11 +1,11 @@
 package schemas
 
-import compiler from "base"
-import runtime from "base"
-import crypto from "std"
-import memory from "std"
-import schema from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
+import memory from "std:memory"
+import schema from "std:schema"
+import testing from "std:testing"
 
 /*
  * std's schema: a type's description serialized canonically, and its hash, the same at compile time and at run time.

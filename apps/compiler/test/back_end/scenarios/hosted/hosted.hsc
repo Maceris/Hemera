@@ -4,13 +4,13 @@
  */
 package hosted
 
-import compiler from "base"
-import intrinsics from "base"
-import runtime from "base"
-import concurrency from "std"
-import memory from "std"
-import testing from "std"
-import text_buffer from "std"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import concurrency from "std:concurrency"
+import memory from "std:memory"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
 
 Point :: struct {
     x : int,
@@ -379,7 +379,7 @@ reflected_parameters :: fn() -> int {
     }
     // An import's from is the literal's text, without its quotes
     for &edge in info.imports {
-        if edge.alias == "runtime" && edge.from != "base" {
+        if edge.alias == "runtime" && edge.from != "base:runtime" {
             return -1
         }
     }

@@ -14,16 +14,16 @@ package net
  */
 
 #if base.OS == .SlopOS {
-    import runtime from "base"
-    import crypto from "std"
-    import os from "std"
-    import time from "std"
-    import tls from "std"
-    import slop_os from "std/os"
-    import net_address from "std/os/slop_os"
-    import network from "std/os/slop_os"
-    import files from "std/os/slop_os"
-    import read_only_dir from "std/os/slop_os"
+    import runtime from "base:runtime"
+    import crypto from "std:crypto"
+    import os from "std:os"
+    import time from "std:time"
+    import tls from "std:tls"
+    import slop_os from "std:os/slop_os"
+    import net_address from "std:os/slop_os/net_address"
+    import network from "std:os/slop_os/network"
+    import files from "std:os/slop_os/files"
+    import read_only_dir from "std:os/slop_os/read_only_dir"
 
     /** The most anchors' bytes load_anchors keeps: 256 KiB, a public set of roots' size. */
     ANCHOR_BYTES :: 262144

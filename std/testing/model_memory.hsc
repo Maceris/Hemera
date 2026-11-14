@@ -1,6 +1,6 @@
 package testing
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * The model checker's memory (docs/testing.md, Model Checking): what its atomics read, as the C11 memory model lets them,

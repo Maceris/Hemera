@@ -1,6 +1,6 @@
 package macro_expands_forever
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 // Its code calls it again, so it never stops expanding
 forever #macro :: fn() -> compiler.Code {

@@ -5,7 +5,7 @@
  */
 package variadic_groups
 
-import testing from "std"
+import testing from "std:testing"
 
 // A bool after ints: true or false says where the ints end
 counted :: fn(fiz: bool, numbers: int..., fuzz: bool) -> int {

@@ -3,7 +3,7 @@
  */
 package target_constants
 
-import testing from "std"
+import testing from "std:testing"
 
 /** Whether the program is built for Windows, as a constant's value. */
 ON_WINDOWS :: OS == .Windows

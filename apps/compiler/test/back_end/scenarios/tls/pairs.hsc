@@ -1,10 +1,10 @@
 package tls_test
 
-import runtime from "base"
-import compiler from "base"
-import crypto from "std"
-import testing from "std"
-import tls from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import testing from "std:testing"
+import tls from "std:tls"
 
 /*
  * A client and a server of std/tls's, in memory: each suite, P-256's and Ed25519's certificates, P-256 asked for with

@@ -1,6 +1,6 @@
 package containers
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /**
  * Up to capacity values of T, in order, in the array itself: like a dynamic array that never allocates, and fails to

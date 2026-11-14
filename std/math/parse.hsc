@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Decimal text to floats, correctly rounded: to nearest, ties to even, as IEEE 754 says. Three ways, the first that's

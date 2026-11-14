@@ -1,6 +1,6 @@
 package concurrency
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * A lock that waits without spinning.

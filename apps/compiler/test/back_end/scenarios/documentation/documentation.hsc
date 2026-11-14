@@ -1,7 +1,7 @@
 package documentation
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 import documented from "./documented"
 
 /*

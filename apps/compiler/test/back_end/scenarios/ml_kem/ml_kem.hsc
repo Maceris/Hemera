@@ -5,9 +5,9 @@
  */
 package ml_kem_test
 
-import compiler from "base"
-import crypto from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import testing from "std:testing"
 
 /** Room for the longest value, a secret key's 2400 bytes. */
 Bytes :: struct {

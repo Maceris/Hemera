@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Cube roots and hypotenuses in f64 (fdlibm's s_cbrt.c, as FreeBSD has it, and musl's hypot.c). The constants' hex is

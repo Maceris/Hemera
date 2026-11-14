@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Freeing passes the block's size and alignment, as it was allocated (docs/memory.md, Allocators): free and

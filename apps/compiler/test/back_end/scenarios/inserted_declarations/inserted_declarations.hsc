@@ -1,7 +1,7 @@
 package inserted_declarations
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 /*
  * #insert at the top level, among fields, variants and members, and among a match's patterns and a switch's

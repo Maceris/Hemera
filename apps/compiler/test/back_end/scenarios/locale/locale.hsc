@@ -4,11 +4,11 @@
  */
 package locale_test
 
-import runtime from "base"
-import locale from "std"
-import testing from "std"
-import text_buffer from "std"
-import time from "std"
+import runtime from "base:runtime"
+import locale from "std:locale"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
+import time from "std:time"
 
 /**
  * Take what's been written to a text buffer, and empty it for what's written next.

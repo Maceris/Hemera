@@ -1,6 +1,6 @@
 package maths
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * The maths library built again with add's type changed, i32s where it had ints, under the same name: a program built

@@ -1,7 +1,7 @@
 package runtime
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * What the runtime needs from SlopOS, through its system calls and its startup block: memory, the clock,
@@ -191,7 +191,7 @@ SlopOsGrant :: struct {
 
 // A system call, and what it gives in the system ABI's three result registers, on each architecture
 #if OS == .SlopOS && TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     /** What a system call gives back, in the system ABI's three result registers. */
     SlopOsAnswer :: struct {
@@ -221,7 +221,7 @@ SlopOsGrant :: struct {
     }
 }
 #else_if OS == .SlopOS && TARGET_ARCH == .arm64 {
-    import aarch64 from "base/intrinsics"
+    import aarch64 from "base:intrinsics/aarch64"
 
     /** What a system call gives back, in the system ABI's three result registers. */
     SlopOsAnswer :: struct {

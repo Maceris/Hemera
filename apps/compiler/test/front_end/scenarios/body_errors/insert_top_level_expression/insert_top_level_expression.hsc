@@ -1,6 +1,6 @@
 package insert_top_level_expression
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 make :: fn() -> compiler.Code {
     return #code(1)

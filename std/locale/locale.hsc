@@ -1,8 +1,8 @@
 package locale
 
-import runtime from "base"
-import text_buffer from "std"
-import time from "std"
+import runtime from "base:runtime"
+import text_buffer from "std:text_buffer"
+import time from "std:time"
 
 /*
  * A locale: how text meant for a person writes numbers, dates and times. It's a context value (a context extension,

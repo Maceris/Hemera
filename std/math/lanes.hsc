@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Kernels on f64 lanes for f32's functions (decisions recorded with the project: f32's own kernels): each takes and

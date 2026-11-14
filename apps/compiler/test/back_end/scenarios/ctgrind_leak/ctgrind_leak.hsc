@@ -5,8 +5,8 @@
  */
 package ctgrind_leak_test
 
-import compiler from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
 
 main :: fn() -> int {
     key := compiler.secret(cast[crypto.Key256](u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,

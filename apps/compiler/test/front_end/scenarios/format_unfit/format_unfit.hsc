@@ -1,6 +1,6 @@
 package format_unfit
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 // Format strings written in place, checked against their values (docs/format_strings.md)
 main :: fn() {

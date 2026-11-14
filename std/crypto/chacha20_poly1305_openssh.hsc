@@ -1,6 +1,6 @@
 package crypto
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * OpenSSH's chacha20-poly1305@openssh.com (PROTOCOL.chacha20poly1305): SSH's packets sealed with ChaCha20 and

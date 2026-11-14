@@ -1,7 +1,7 @@
 package process_manager
 
-import os from "std"
-import slop_os from "std/os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
 
 /*
  * The process manager's protocol (the SlopOS repository's decisions 0040, 0067, 0071): it loads programs into

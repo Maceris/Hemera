@@ -15,7 +15,7 @@
  */
 package time_zones
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Allocating: a zone's tables come from the context's allocator; no system call is made. */
 PACKAGE_TIER :: tiers.Tier.Allocating

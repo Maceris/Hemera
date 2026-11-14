@@ -1,8 +1,8 @@
 package canvas
 
-import intrinsics from "base"
-import runtime from "base"
-import math from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import math from "std:math"
 
 /*
  * Strokes, from a path flattened to polylines in pixels: each segment a rectangle of the stroke's width, each corner a

@@ -1,7 +1,7 @@
 package runtime
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * SlopOS's logger (the SlopOS repository's design/observability.md §2, decisions/0093): context.logger's records,

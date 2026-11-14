@@ -6,9 +6,9 @@
  */
 package arena_test
 
-import memory from "std"
-import runtime from "base"
-import testing from "std"
+import memory from "std:memory"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /** A struct with defaults and a pointer, kept in the arena. */
 Node :: struct {

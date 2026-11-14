@@ -1,6 +1,6 @@
 package owned_not_marked
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 File :: struct #owned(close) {
     handle : int,

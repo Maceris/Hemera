@@ -1,13 +1,13 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * What the runtime needs from Linux, through system calls rather than a C library: memory, threads,
  * and waiting on an address. On x86-64 and AArch64, which number the calls differently.
  */
 #if OS == .Linux && TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     /** x86-64's number for write(2). */
     SYS_WRITE : u64 : 1
@@ -64,7 +64,7 @@ import intrinsics from "base"
     }
 }
 #else_if OS == .Linux && TARGET_ARCH == .arm64 {
-    import aarch64 from "base/intrinsics"
+    import aarch64 from "base:intrinsics/aarch64"
 
     // The generic table's numbers, which AArch64 uses
     /** AArch64's number for futex(2). */

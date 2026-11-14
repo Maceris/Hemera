@@ -5,8 +5,8 @@
  */
 package output_test
 
-import runtime from "base"
-import io from "std"
+import runtime from "base:runtime"
+import io from "std:io"
 
 Color :: enum {
     RED,

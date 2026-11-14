@@ -1,9 +1,9 @@
 package file
 
-import os from "std"
-import slop_os from "std/os"
-import files from "std/os/slop_os"
-import read_only_file from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import files from "std:os/slop_os/files"
+import read_only_file from "std:os/slop_os/read_only_file"
 
 /**
  * The file protocol, for os.Channel[File]: a file to read and write (the SlopOS repository's decisions 0015, 0046,

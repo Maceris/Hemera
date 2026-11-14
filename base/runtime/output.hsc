@@ -1,7 +1,7 @@
 package runtime
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /**
  * Which of the process's standard streams text goes to, where there are some.

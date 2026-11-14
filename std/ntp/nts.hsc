@@ -1,9 +1,9 @@
 package ntp
 
-import compiler from "base"
-import crypto from "std"
-import random from "std"
-import tls from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import random from "std:random"
+import tls from "std:tls"
 
 /*
  * NTS (RFC 8915). Key Establishment first, over TLS 1.3 to the NTS-KE server, port 4460, with ALPN's "ntske/1": the

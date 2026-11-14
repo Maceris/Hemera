@@ -1,6 +1,6 @@
 package canvas
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /** The most stops a gradient has. */
 MAX_STOPS :: 8

@@ -1,7 +1,7 @@
 package os
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /**
  * What went wrong in a call to the operating system.

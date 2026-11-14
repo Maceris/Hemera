@@ -1,7 +1,7 @@
 package math
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /*
  * x^y in f64 (fdlibm's e_pow.c): log2 x in extra precision, times y, and 2 to that. The constants' hex is their bits,

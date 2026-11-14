@@ -1,9 +1,9 @@
 package testing
 
-import runtime from "base"
-import compiler from "base"
-import reflection from "std"
-import text_buffer from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import reflection from "std:reflection"
+import text_buffer from "std:text_buffer"
 
 /**
  * Make the table of a package's tests, for a runner: compile-time code, inserted in that package, where the table is

@@ -3,7 +3,7 @@
  */
 package maps
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: maps grow with context.allocator, so it needs an Allocator in context. */
 PACKAGE_TIER :: tiers.Tier.Allocating

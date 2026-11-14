@@ -1,7 +1,7 @@
 package strings
 
-import runtime from "base"
-import text_buffer from "std"
+import runtime from "base:runtime"
+import text_buffer from "std:text_buffer"
 
 /**
  * How many bytes format tries on the stack first, which most results fit in.

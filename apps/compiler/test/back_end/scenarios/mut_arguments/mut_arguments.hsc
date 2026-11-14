@@ -5,8 +5,8 @@
  */
 package mut_arguments_test
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 Box :: struct[T] {
     value : ptr[T],

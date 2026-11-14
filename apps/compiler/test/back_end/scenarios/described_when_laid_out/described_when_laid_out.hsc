@@ -1,7 +1,7 @@
 package described_when_laid_out
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 // Compile-time code describing a type waits for what the description holds by value: here Table's call's
 // Result, whose Ok holds Pair, which a slow #insert is still making

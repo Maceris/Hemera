@@ -1,6 +1,6 @@
 package fast
 
-import math from "std"
+import math from "std:math"
 
 /*
  * The public functions, each on an f32 or an f64 or a vector of either: F is the type, worked out from the argument.

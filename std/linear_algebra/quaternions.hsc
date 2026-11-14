@@ -1,7 +1,7 @@
 package linear_algebra
 
-import intrinsics from "base"
-import math from "std"
+import intrinsics from "base:intrinsics"
+import math from "std:math"
 
 /*
  * Rotations as unit quaternions (docs/types.md, Complex Numbers and Quaternions): q = w + xi + yj + zk, its Hamilton

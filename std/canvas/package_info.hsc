@@ -15,7 +15,7 @@
  */
 package canvas
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: it needs only base and std's math and fonts. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

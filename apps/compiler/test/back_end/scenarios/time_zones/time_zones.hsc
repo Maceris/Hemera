@@ -5,10 +5,10 @@
  */
 package time_zones_test
 
-import testing from "std"
-import text_buffer from "std"
-import time from "std"
-import time_zones from "std"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
+import time from "std:time"
+import time_zones from "std:time_zones"
 
 /**
  * Make an instant from a UTC date and time.

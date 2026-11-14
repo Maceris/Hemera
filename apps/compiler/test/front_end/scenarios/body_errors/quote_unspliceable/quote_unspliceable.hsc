@@ -1,6 +1,6 @@
 package quote_unspliceable
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 Point :: struct {
     x : int,

@@ -1,8 +1,8 @@
 package secret_holders
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * What holds a secret (docs/memory.md, Secrets): an optional or a result of a #secret type, whose tag is public and

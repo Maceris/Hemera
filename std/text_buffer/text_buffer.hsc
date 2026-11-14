@@ -1,6 +1,6 @@
 package text_buffer
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * Text built up in bytes the caller provides. Appending past the end keeps what fits and sets

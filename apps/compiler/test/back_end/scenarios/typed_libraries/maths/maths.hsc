@@ -1,8 +1,8 @@
 package maths
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * A typed library's package: its #export functions are its interface, called through the library by programs that

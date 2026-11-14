@@ -1,8 +1,8 @@
 package ui
 
-import runtime from "base"
-import canvas from "std"
-import fonts from "std"
+import runtime from "base:runtime"
+import canvas from "std:canvas"
+import fonts from "std:fonts"
 
 /** How deep boxes nest that the draw list goes into; deeper ones aren't drawn. */
 MAX_DEPTH :: 256

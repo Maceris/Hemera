@@ -14,7 +14,7 @@
  */
 package tls
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: its caller gives every buffer, and its randomness comes from context.random. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

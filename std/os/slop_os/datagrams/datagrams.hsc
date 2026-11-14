@@ -1,8 +1,8 @@
 package datagrams
 
-import os from "std"
-import slop_os from "std/os"
-import net_address from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import net_address from "std:os/slop_os/net_address"
 
 /*
  * A UDP socket's channel, between the network service and the program it's for: datagrams sent and received, each in

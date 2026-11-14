@@ -1,8 +1,8 @@
 package network
 
-import text_buffer from "std"
-import slop_os from "std/os"
-import net_address from "std/os/slop_os"
+import text_buffer from "std:text_buffer"
+import slop_os from "std:os/slop_os"
+import net_address from "std:os/slop_os/net_address"
 
 /*
  * A network connection's policy: what it may connect to, and what it may listen on. A rule allows a transport, TCP or

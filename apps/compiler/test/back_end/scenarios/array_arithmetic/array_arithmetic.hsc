@@ -1,6 +1,6 @@
 package array_arithmetic
 
-import testing from "std"
+import testing from "std:testing"
 
 /*
  * Fixed arrays as vectors (docs/types.md, Arrays as Vectors): + - * / % element by element, with a number for every

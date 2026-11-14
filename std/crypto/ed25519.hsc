@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * Ed25519 (RFC 8032): signatures. A secret key signs a message, and anyone with its public key can check

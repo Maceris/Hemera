@@ -5,9 +5,9 @@
  */
 package macros_test
 
-import compiler from "base"
+import compiler from "base:compiler"
 import helpers from "helpers"
-import testing from "std"
+import testing from "std:testing"
 
 // Not the doubled the macros in helpers call
 doubled :: fn(n: int) -> int {

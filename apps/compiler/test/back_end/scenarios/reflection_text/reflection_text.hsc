@@ -4,8 +4,8 @@
  */
 package reflection_text
 
-import reflection from "std"
-import testing from "std"
+import reflection from "std:reflection"
+import testing from "std:testing"
 
 /** An enum whose members have names to write. */
 Color :: enum {

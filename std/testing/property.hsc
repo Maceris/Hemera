@@ -1,9 +1,9 @@
 package testing
 
-import runtime from "base"
-import compiler from "base"
-import reflection from "std"
-import text_buffer from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import reflection from "std:reflection"
+import text_buffer from "std:text_buffer"
 
 /*
  * Property tests (docs/testing.md, Property Tests): a test that takes a Source as well as its T, and draws its inputs

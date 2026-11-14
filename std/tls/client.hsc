@@ -1,8 +1,8 @@
 package tls
 
-import compiler from "base"
-import crypto from "std"
-import random from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import random from "std:random"
 
 /*
  * The client's handshake (RFC 8446 §2, §4): a ClientHello offering the three suites, X25519 and P-256 (a key share for

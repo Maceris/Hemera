@@ -1,7 +1,7 @@
 package reflection
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 /**
  * Give a string, boolean or enum value as text, without allocating.

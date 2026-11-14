@@ -1,7 +1,7 @@
 package math
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /*
  * sin, cos and tan in f64 (fdlibm's s_sin.c, s_cos.c, s_tan.c, k_sin.c, k_cos.c, k_tan.c, e_rem_pio2.c and

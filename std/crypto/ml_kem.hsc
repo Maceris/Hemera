@@ -1,6 +1,6 @@
 package crypto
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * ML-KEM-768 (FIPS 203): a key encapsulation mechanism from module lattices, which quantum computers aren't known to

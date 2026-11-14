@@ -1,8 +1,8 @@
 package logger
 
-import runtime from "base"
-import text_buffer from "std"
-import time from "std"
+import runtime from "base:runtime"
+import text_buffer from "std:text_buffer"
+import time from "std:time"
 
 /**
  * What a logger from create puts in front of each message, on a line of its own:

@@ -1,8 +1,8 @@
 package code_values
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * Code values (docs/compilation.md, Code Values): quotes, made at compile time, with what #insert puts in

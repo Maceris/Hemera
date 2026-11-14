@@ -4,8 +4,8 @@
  */
 package optional_defaults
 
-import testing from "std"
-import text_buffer from "std"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
 
 /** A struct holding only an optional. */
 Inner :: struct {

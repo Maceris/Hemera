@@ -11,10 +11,10 @@ package os
  *     value :: os.typed_value[Settings](settings)
  */
 #if OS == .SlopOS {
-    import compiler from "base"
-    import runtime from "base"
-    import schema from "std"
-    import slop_os from "std/os"
+    import compiler from "base:compiler"
+    import runtime from "base:runtime"
+    import schema from "std:schema"
+    import slop_os from "std:os/slop_os"
 
     /**
      * Compute T's schema hash, as a typed file of T carries it.

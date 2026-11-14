@@ -1,8 +1,8 @@
 package generated_functions
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * Code made from data (docs/compilation.md, Code Values): a function per member of a table of function

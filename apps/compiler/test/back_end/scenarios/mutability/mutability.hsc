@@ -1,8 +1,8 @@
 package mutability
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * What can be changed only when given mut (docs/types.md, Mutability): a view's elements through a mut T[], a

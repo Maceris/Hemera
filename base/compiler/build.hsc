@@ -47,7 +47,7 @@ BuildOptions :: struct {
     test_seeded : bool,
     /** With test, how many cases each property test draws; 0 for testing.DEFAULT_RUNS. */
     test_runs : u64,
-    /** Overrides for where imports from "base", "std", etc. are found; empty uses the compiler's own. */
+    /** Overrides for where built-in import locations, like std:, are found; empty uses the compiler's own. */
     package_paths : PackagePath[..],
     /**
      * Per-target values that the target's code reads with target_setting(). From command_line_options, those given on

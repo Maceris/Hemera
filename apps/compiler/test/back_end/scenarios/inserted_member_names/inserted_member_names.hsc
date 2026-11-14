@@ -1,8 +1,8 @@
 package inserted_member_names
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * Members named by #insert in a quote (docs/compilation.md, Code Values): an enum's members, with and without

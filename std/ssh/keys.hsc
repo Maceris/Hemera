@@ -1,7 +1,7 @@
 package ssh
 
-import compiler from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
 
 /*
  * SSH's keys: public key blobs (RFC 4253, 6.6), as a host key and a user's key are sent, and the signatures they check

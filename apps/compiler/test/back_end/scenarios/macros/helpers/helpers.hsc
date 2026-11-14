@@ -1,7 +1,7 @@
 // Macros written in another package, whose code sees this package's names, which a caller doesn't.
 package helpers
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 doubled :: fn(n: int) -> int {
     return n * 2

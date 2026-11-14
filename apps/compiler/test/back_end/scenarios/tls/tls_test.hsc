@@ -1,9 +1,9 @@
 package tls_test
 
-import runtime from "base"
-import crypto from "std"
-import testing from "std"
-import tls from "std"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
+import testing from "std:testing"
+import tls from "std:tls"
 
 /*
  * std/tls: RFC 8448's Simple 1-RTT Handshake replayed, as a client from its ClientHello on and as a server up to its

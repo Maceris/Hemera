@@ -5,9 +5,9 @@
  */
 package secrets_test
 
-import compiler from "base"
-import intrinsics from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
+import testing from "std:testing"
 
 Key :: struct #secret {
     bytes: u8[16],

@@ -1,6 +1,6 @@
 package valid_scenarios
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 types :: fn(
     optional: int?,

@@ -1,7 +1,7 @@
 package runtime
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /**
  * Called by assert when an assertion fails, through context.assertion_handler.

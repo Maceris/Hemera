@@ -4,7 +4,7 @@ package bounds_ok
  * What docs/types.md, Bounds Checking, proves: none of this is reported.
  */
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 Event :: enum { Nmi, DoubleFault, MachineCheck }
 

@@ -1,6 +1,6 @@
 package insert_shadows_builtin
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 make :: fn() -> compiler.Code {
     return #code {

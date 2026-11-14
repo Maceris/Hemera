@@ -5,8 +5,8 @@
  */
 package inserted_over_imports
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 import one from "./one"
 import two from "./two"
 

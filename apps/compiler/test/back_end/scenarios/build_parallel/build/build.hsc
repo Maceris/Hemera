@@ -5,8 +5,8 @@
  */
 package build
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 NAMES :: string.["app_0", "app_1", "app_2", "app_3"]
 ANSWERS :: string.["10", "11", "12", "13"]

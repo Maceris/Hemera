@@ -1,7 +1,7 @@
 package names_ok
 
 import lib from "../names_ok_lib"
-import runtime from "base"
+import runtime from "base:runtime"
 
 // COUNT and Item are declared in the other file
 LIMIT :: COUNT * 2

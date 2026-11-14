@@ -1,6 +1,6 @@
 package insert_needs_itself
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 make :: fn(count: int) -> compiler.Code {
     return #code {

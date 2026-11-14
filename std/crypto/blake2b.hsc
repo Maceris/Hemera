@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * BLAKE2b (RFC 7693): a hash of 1 to 64 bytes, keyed or not, which Argon2 is built on. The size is

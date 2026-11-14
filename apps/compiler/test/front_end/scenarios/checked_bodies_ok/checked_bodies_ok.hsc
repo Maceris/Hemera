@@ -1,6 +1,6 @@
 package checked_bodies_ok
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * Constrained generics whose bodies only use what their constraints promise (docs/types.md, Checked

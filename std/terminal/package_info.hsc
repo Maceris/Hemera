@@ -4,7 +4,7 @@
  */
 package terminal
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: it talks to a terminal through system calls. */
 PACKAGE_TIER :: tiers.Tier.Os

@@ -13,9 +13,9 @@
  */
 package freestanding_aarch64
 
-import intrinsics from "base"
-import runtime from "base"
-import aarch64 from "base/intrinsics"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import aarch64 from "base:intrinsics/aarch64"
 
 // QEMU virt's PL011 UART: data, and flags, whose bit 5 says the transmit FIFO is full
 UART : u64 : 0x0900_0000

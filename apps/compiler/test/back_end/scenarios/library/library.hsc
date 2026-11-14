@@ -6,13 +6,13 @@
  */
 package library_test
 
-import compiler from "base"
-import runtime from "base"
-import logger from "std"
-import memory from "std"
-import strings from "std"
-import testing from "std"
-import time from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import logger from "std:logger"
+import memory from "std:memory"
+import strings from "std:strings"
+import testing from "std:testing"
+import time from "std:time"
 
 formats_and_compares_strings #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     formatted :: testing.require_ok(t, strings.format("% + % = %", 2, 3, "five"), "the allocator has room for a short string")?

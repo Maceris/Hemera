@@ -4,8 +4,8 @@
  */
 package new_defaults
 
-import runtime from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /** A struct whose fields both have defaults. */
 Setting :: struct {

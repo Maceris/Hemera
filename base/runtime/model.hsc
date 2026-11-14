@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * The model checker's hooks (TargetOptions.model_checked, docs/testing.md's Model Checking): in a build with the

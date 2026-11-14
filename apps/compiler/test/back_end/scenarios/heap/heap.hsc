@@ -8,9 +8,9 @@
  */
 package heap
 
-import intrinsics from "base"
-import runtime from "base"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /** How many blocks each thread holds at once. */
 BLOCKS : usize : 300

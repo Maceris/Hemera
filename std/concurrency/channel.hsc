@@ -1,6 +1,6 @@
 package concurrency
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /**
  * A queue of up to capacity values between fibers and threads.

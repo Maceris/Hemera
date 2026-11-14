@@ -1,11 +1,11 @@
 package float_math_exhaustive
 
-import fast from "std/math"
-import intrinsics from "base"
-import io from "std"
-import math from "std"
-import runtime from "base"
-import strings from "std"
+import fast from "std:math/fast"
+import intrinsics from "base:intrinsics"
+import io from "std:io"
+import math from "std:math"
+import runtime from "base:runtime"
+import strings from "std:strings"
 
 /*
  * Every f32 through one of std/math's f32 functions, or std/math/fast's, eight lanes at a time, against the f64

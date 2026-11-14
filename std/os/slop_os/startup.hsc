@@ -1,7 +1,7 @@
 package slop_os
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /**
  * What a process starts with (knowledge/design/system-abi.md §6, docs/specs/programs.md): its first

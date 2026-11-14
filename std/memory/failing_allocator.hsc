@@ -1,7 +1,7 @@
 package memory
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /**
  * An allocator that fails on purpose, for running the error paths that a failed allocation takes (as Linux's failslab

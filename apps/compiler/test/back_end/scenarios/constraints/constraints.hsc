@@ -4,10 +4,10 @@
  */
 package constraints_test
 
-import compiler from "base"
-import runtime from "base"
-import containers from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import containers from "std:containers"
+import testing from "std:testing"
 
 HasCount #constraint :: fn(T: type) {
     compiler.require_field(T, "count", usize)

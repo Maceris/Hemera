@@ -1,8 +1,8 @@
 package math
 
-import intrinsics from "base"
-import runtime from "base"
-import compiler from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
 
 /*
  * The public functions, each on an f32 or an f64 or a vector of either: F is the type, worked out from the argument.

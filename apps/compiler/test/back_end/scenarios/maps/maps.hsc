@@ -3,9 +3,9 @@
  */
 package maps_test
 
-import maps from "std"
-import runtime from "base"
-import testing from "std"
+import maps from "std:maps"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 // A combination that's used often, by name
 StringMap :: alias[V] maps.HashMap[string, V, maps.hash_string]

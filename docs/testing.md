@@ -7,7 +7,7 @@ reflection and runs each, reporting to wherever the program can write: standard 
 sink the program gives, down to a kernel's console.
 
 ```
-import testing from "std"
+import testing from "std:testing"
 
 parses_a_duration #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     parsed :: testing.require_ok(t, parse_duration("1h30m"), "a duration with two units")?

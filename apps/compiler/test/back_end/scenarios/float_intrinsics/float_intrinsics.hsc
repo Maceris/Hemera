@@ -1,8 +1,8 @@
 package float_intrinsics
 
-import intrinsics from "base"
-import runtime from "base"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * base/intrinsics' float and bit-count functions (docs/types.md, Floats). Built for a CPU without SSE4.1 and FMA, they

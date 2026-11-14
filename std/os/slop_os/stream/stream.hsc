@@ -25,10 +25,10 @@ package stream
  */
 
 #if base.OS == .SlopOS {
-    import compiler from "base"
-    import runtime from "base"
-    import os from "std"
-    import slop_os from "std/os"
+    import compiler from "base:compiler"
+    import runtime from "base:runtime"
+    import os from "std:os"
+    import slop_os from "std:os/slop_os"
 
     /**
      * The stream protocol, for the channel between a Sink[T] and its Stream[T]: the writer sends the requests, and the

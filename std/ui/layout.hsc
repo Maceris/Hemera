@@ -1,7 +1,7 @@
 package ui
 
-import runtime from "base"
-import fonts from "std"
+import runtime from "base:runtime"
+import fonts from "std:fonts"
 
 /*
  * Layout, as Clay does it, one axis at a time, widths first: each box's content width found bottom-up (what it wants,

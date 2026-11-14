@@ -1,10 +1,10 @@
 package float_math_speed
 
-import fast from "std/math"
-import io from "std"
-import math from "std"
-import runtime from "base"
-import time from "std"
+import fast from "std:math/fast"
+import io from "std:io"
+import math from "std:math"
+import runtime from "base:runtime"
+import time from "std:time"
 
 /*
  * How long std/math's functions take, and std/math/fast's, in nanoseconds a value: f32 through f64's fdlibm (how f32

@@ -1,7 +1,7 @@
 package ssh
 
-import compiler from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
 
 /*
  * User authentication (RFC 4252), after the client's service request for ssh-userauth. A server takes "none" (which

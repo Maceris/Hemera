@@ -1,6 +1,6 @@
 package union_constants
 
-import testing from "std"
+import testing from "std:testing"
 
 /*
  * Constants of #union structs (docs/types.md, Structs (#union)): each given member written where it is, over

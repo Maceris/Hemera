@@ -5,9 +5,9 @@
  */
 package regex_test
 
-import regex from "std"
-import testing from "std"
-import text_buffer from "std"
+import regex from "std:regex"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
 
 /**
  * Find where a pattern first matches text.

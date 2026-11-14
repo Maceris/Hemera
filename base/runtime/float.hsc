@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Fused multiply-add in software, for targets without the instruction: intrinsics.fused_multiply_add calls these, lane

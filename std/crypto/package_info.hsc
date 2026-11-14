@@ -9,7 +9,7 @@
  */
 package crypto
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: it needs only base, and allocates nothing. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

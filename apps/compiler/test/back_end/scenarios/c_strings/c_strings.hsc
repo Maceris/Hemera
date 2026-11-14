@@ -1,7 +1,7 @@
 package c_strings
 
-import c_string from "std"
-import testing from "std"
+import c_string from "std:c_string"
+import testing from "std:testing"
 
 /*
  * std's c_string: a cstring's length and its text as a string, looking no further than a limit for its zero byte,

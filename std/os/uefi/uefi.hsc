@@ -1,7 +1,7 @@
 package uefi
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 // Only for a UEFI program, as base's runtime has these only there
 #if OS == .UEFI {

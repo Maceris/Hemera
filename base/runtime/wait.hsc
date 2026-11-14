@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Sleeping until a 32-bit value changes, for code like a fiber pool's carriers with nothing to run:

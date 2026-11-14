@@ -7,10 +7,10 @@
  */
 package hashes_test
 
-import compiler from "base"
-import runtime from "base"
-import crypto from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
+import testing from "std:testing"
 
 bytes :: fn(text: string) -> u8[] {
     return bit_cast[u8[]](text)

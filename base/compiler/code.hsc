@@ -1,6 +1,6 @@
 package compiler
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * A location in the source code, what #caller_location gives: runtime's, so a location from either

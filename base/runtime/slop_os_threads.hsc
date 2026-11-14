@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Threads on SlopOS: each a kernel thread in the process's address space, on a stack of its own mapped from the startup

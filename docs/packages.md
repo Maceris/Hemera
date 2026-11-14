@@ -10,17 +10,31 @@ symlinks, case-insensitivity, or problematic characters in the folder name.
 
 Files import other packages using the `import` keyword.
 
-They may (and usually do) have a pre-specified `from` part, specifying where the package is from, in the format `from "name"`.
-These can be left off for `base` and `std`.
+An import is `import name [as alias] [from "location"]`. The location names the package's folder, and the name is the
+package's own, as its package statement gives it; the two needn't look alike, since a package's name never has to work
+as a folder name. A name that isn't the package's is an error (E4043). To use a package by another name in a file, give
+an alias with `as`.
 
-What the `from` string names depends on how it starts:
+What the location names depends on how it starts:
 
-* **A built-in location** (`base`, `std`, `user` or `vendor`), optionally followed by subfolders, names the folder
-  that *contains* the package, and the identifier after `import` is the package's folder inside it.
-  `import io from "std"` is `std/io`, and `import json from "std/encoding"` is `std/encoding/json`.
-* **Anything else** is a path relative to the current file, like `"../neighbor"` or `"bar_v1"`. It names the
-  package's folder *itself*, and the identifier after `import` is just the name it's used by in this file.
-  `import foo from "../neighbor"` is the package in `../neighbor`, used as `foo`.
+* **A built-in location and a colon** (`base:`, `std:`, `user:` or `vendor:`), then the package's folder inside it.
+  `"std:io"` is `std/io`, and `"std:encoding/json"` is `std/encoding/json`.
+* **Anything else** is a folder relative to the importing file's package, like `"../neighbor"` or `"bar_v1"`.
+  `"std"` is a folder named `std` beside the importing package, never the standard library.
+
+With no `from`, the package is in std and its folder is its name: `import io` is `import io from "std:io"`.
+
+A location is checked before anything is read, and an invalid one is an error (E4042):
+
+* It can't be empty, hold control characters, or use `\`; folders are always separated with `/`.
+* A prefix must be one of the four built-in locations; a relative folder's location has no `:`.
+* After a prefix, each folder must be a plain name: not empty, `.` or `..`, and not starting with a space or ending in
+  `.` or a space, which Windows drops when opening a path. So a prefixed location can't name a folder outside its
+  built-in location.
+* The folder a prefixed location finds, after following any links, must still be inside its built-in location. That
+  folder, as found, is the one the compiler then reads.
+
+Nothing in a location is expanded: `~`, `%NAME%` and `$NAME` are just characters in a folder name.
 
 The built in locations are:
 
@@ -32,23 +46,21 @@ The built in locations are:
 Below are a few examples of imports
 
 ```
-// Imports are relative to the current file if no prefix is specified
-import foo from "../neighbor"
+// Without a prefix, a location is relative to this package's folder
+import neighbor from "../neighbor"
 import bar from "bar_v1"
-import builtin from "base"
-import io // from "std"
-import test from "std"
-// Subfolders of a built-in location
-import json from "std/encoding"
-import x86_64 from "base/intrinsics"
-// You can give packages an alias
-import pandas as pd from "user"
-import vulkan as vk from "vendor"
+// A built-in location, then the package's folder inside it
+import builtin from "base:builtin"
+import testing from "std:testing"
+import json from "std:encoding/json"
+import x86_64 from "base:intrinsics/x86_64"
+// With no location, the package's folder in std
+import io
+// An alias is the name the package is used by in this file
+import pandas as pd from "user:pandas"
+import vulkan as vk from "vendor:vulkan"
+import neighbor as next_door from "../neighbor"
 ```
-
-If, for some reason, trying to import from a folder in the local folder with a name exactly the same as a built-in location,
-a relative path is used: `import example from "./base"`. The same goes for its subfolders: `"std/os"` is always the
-built-in location, and a local folder named `std` is `"./std/os"`.
 
 ### Circular Imports
 
@@ -110,8 +122,8 @@ bar :: fn(x: int) -> int {
 ```
 package example
 
-import library1 from "user"
-import library2 as lib2 from "user"
+import library1 from "user:library1"
+import library2 as lib2 from "user:library2"
 
 foo :: fn(x: int) -> int {
     return x
@@ -171,10 +183,10 @@ come from either of its branches:
 ```
 package example
 
-import foo from "user" // declares BAR
+import foo from "user:foo" // declares BAR
 
 #if BAR {
-    import baz from "user" // declares BAT
+    import baz from "user:baz" // declares BAT
 }
 #else {
     BAT :: false
@@ -191,11 +203,11 @@ When chains need each other, neither can be decided first, and it's a circular d
 package example
 
 #if BAR {
-    import baz from "user" // declares BAT
+    import baz from "user:baz" // declares BAT
 }
 
 #if BAT {
-    import foo from "user" // declares BAR
+    import foo from "user:foo" // declares BAR
 }
 ```
 
@@ -218,7 +230,7 @@ Every `std` package has one, and other packages are encouraged to do the same.
  */
 package atomic
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 PACKAGE_TIER :: tiers.Tier.Freestanding
 ```

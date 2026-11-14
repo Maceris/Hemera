@@ -17,7 +17,7 @@
  */
 package ui
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: it needs only base and std's canvas, fonts and unicode. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

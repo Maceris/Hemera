@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * BLAKE3: a fast hash, of any length, keyed or not. Input goes in 1024-byte chunks, whose chaining

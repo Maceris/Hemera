@@ -6,8 +6,8 @@
  */
 package x509_test
 
-import crypto from "std"
-import testing from "std"
+import crypto from "std:crypto"
+import testing from "std:testing"
 
 // 2026-06-01T00:00:00Z, when every chain here but the expired and future ones is valid
 NOW :: 1780272000

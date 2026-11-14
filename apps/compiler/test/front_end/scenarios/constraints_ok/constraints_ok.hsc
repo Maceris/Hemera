@@ -1,6 +1,6 @@
 package constraints_ok
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 // A constraint of this package's own: a struct with a count, named without a package
 HasCount #constraint :: fn(T: type) {

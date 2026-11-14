@@ -4,7 +4,7 @@
  */
 package union_literals
 
-import testing from "std"
+import testing from "std:testing"
 
 Overlay :: struct #union {
     word : u32,

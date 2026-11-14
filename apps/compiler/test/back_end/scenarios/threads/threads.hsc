@@ -21,11 +21,11 @@
  */
 package threads
 
-import intrinsics from "base"
-import runtime from "base"
-import fiber from "std"
-import concurrency from "std"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import fiber from "std:fiber"
+import concurrency from "std:concurrency"
+import testing from "std:testing"
 
 FIRST_FIBERS :: 40
 SECOND_FIBERS :: 60

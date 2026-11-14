@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * BLAKE3-256 of public bytes, all at once, for what base names by hash (schema_hash): a plain version of std's

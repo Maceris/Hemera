@@ -1,6 +1,6 @@
 package insert_shadows_import
 
-import compiler from "base"
+import compiler from "base:compiler"
 import collision_a from "../collision_a"
 
 make :: fn() -> compiler.Code {

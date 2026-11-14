@@ -1,6 +1,6 @@
 package name_not_identifier
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 // A name is one identifier, never other code
 bad :: fn() -> compiler.Code {

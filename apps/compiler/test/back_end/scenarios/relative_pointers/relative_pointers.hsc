@@ -5,9 +5,9 @@
  */
 package relative_pointers
 
-import intrinsics from "base"
-import runtime from "base"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /** A node of a ring, linked to the next by a relative pointer. */
 Node :: struct {

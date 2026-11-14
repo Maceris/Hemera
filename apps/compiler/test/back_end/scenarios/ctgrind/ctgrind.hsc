@@ -8,9 +8,9 @@
  */
 package ctgrind_test
 
-import compiler from "base"
-import runtime from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
 
 pattern32 :: fn(seed: u8) -> u8[32] {
     bytes : u8[32]

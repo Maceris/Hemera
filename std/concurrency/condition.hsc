@@ -1,6 +1,6 @@
 package concurrency
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /**
  * Waiting for something a Mutex guards to change, like a queue getting an item.

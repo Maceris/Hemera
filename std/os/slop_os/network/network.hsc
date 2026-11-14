@@ -1,11 +1,11 @@
 package network
 
-import os from "std"
-import slop_os from "std/os"
-import net_address from "std/os/slop_os"
-import tcp_stream from "std/os/slop_os"
-import tcp_listener from "std/os/slop_os"
-import datagrams from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import net_address from "std:os/slop_os/net_address"
+import tcp_stream from "std:os/slop_os/tcp_stream"
+import tcp_listener from "std:os/slop_os/tcp_listener"
+import datagrams from "std:os/slop_os/datagrams"
 
 /*
  * A connection to the network service: what a program reaches the network through. Open makes a TCP connection, into

@@ -4,7 +4,7 @@
  */
 package concurrency
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: it needs only base, since waiting parks through the runtime. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

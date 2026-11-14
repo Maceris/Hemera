@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * P-256 (NIST's secp256r1, FIPS 186-5 and SEC 2): ECDH key agreement (SEC 1, section 3.3.1) and ECDSA

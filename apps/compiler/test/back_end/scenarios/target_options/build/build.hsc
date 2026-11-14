@@ -6,7 +6,7 @@
  */
 package build
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 build :: fn() {
     // Debug info, but built for release, which its code checks

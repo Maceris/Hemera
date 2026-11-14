@@ -1,6 +1,6 @@
 package schema
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * Values written elsewhere (write_value), read back as text by their schemas (write), the way base's output_format

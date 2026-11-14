@@ -1,9 +1,9 @@
 package network_policy
 
-import testing from "std"
-import text_buffer from "std"
-import net_address from "std/os/slop_os"
-import network from "std/os/slop_os"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
+import net_address from "std:os/slop_os/net_address"
+import network from "std:os/slop_os/network"
 
 /*
  * The network protocol's policies (std/os/slop_os/network's policy.hsc), which are plain code, so tested hosted: which

@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * The error function, its complement and inverse, and the gamma function and its logarithm, in f64 (fdlibm's s_erf.c

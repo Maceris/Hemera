@@ -1,6 +1,6 @@
 package intrinsics
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * Atomic operations, each on one naturally aligned value.

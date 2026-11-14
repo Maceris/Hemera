@@ -1,9 +1,9 @@
 package canvas
 
-import intrinsics from "base"
-import runtime from "base"
-import fonts from "std"
-import unicode from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import fonts from "std:fonts"
+import unicode from "std:unicode"
 
 /*
  * Text: each glyph's outline rasterized once, at its size and a quarter-pixel step of where it starts, into a

@@ -1,6 +1,6 @@
 package thread_bound
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 // Values that can't leave their thread, given to what sends them to another (docs/multitasking.md)
 

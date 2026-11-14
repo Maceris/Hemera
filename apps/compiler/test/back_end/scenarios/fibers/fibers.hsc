@@ -10,10 +10,10 @@
  */
 package fibers
 
-import intrinsics from "base"
-import runtime from "base"
-import fiber from "std"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import fiber from "std:fiber"
+import testing from "std:testing"
 
 ARENA_SIZE :: 131072
 SEGMENT_SIZE :: 4096

@@ -1,8 +1,8 @@
 package ssh
 
-import compiler from "base"
-import crypto from "std"
-import random from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import random from "std:random"
 
 /*
  * An SSH connection, either side's. Its caller makes it with client or server, then:

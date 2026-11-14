@@ -13,14 +13,14 @@ package net
  */
 
 #if base.OS == .SlopOS {
-    import runtime from "base"
-    import ntp from "std"
-    import os from "std"
-    import time from "std"
-    import tls from "std"
-    import slop_os from "std/os"
-    import net_address from "std/os/slop_os"
-    import network from "std/os/slop_os"
+    import runtime from "base:runtime"
+    import ntp from "std:ntp"
+    import os from "std:os"
+    import time from "std:time"
+    import tls from "std:tls"
+    import slop_os from "std:os/slop_os"
+    import net_address from "std:os/slop_os/net_address"
+    import network from "std:os/slop_os/network"
 
     /** How long NTS-KE may take, connecting to its server's last record, before it's given up: 10 s. */
     NTS_KE_TIMEOUT : u64 : 10_000_000_000

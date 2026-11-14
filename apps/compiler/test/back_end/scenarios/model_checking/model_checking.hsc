@@ -6,11 +6,11 @@
  */
 package model_checking
 
-import runtime from "base"
-import intrinsics from "base"
-import compiler from "base"
-import concurrency from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import intrinsics from "base:intrinsics"
+import compiler from "base:compiler"
+import concurrency from "std:concurrency"
+import testing from "std:testing"
 
 Shared :: struct #scoped {
     count : u32,

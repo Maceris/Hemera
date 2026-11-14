@@ -6,12 +6,12 @@
  */
 package canvas_test
 
-import runtime from "base"
-import canvas from "std"
-import fonts from "std"
-import math from "std"
-import strings from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import canvas from "std:canvas"
+import fonts from "std:fonts"
+import math from "std:math"
+import strings from "std:strings"
+import testing from "std:testing"
 
 SANS :: #file_data("../../fonts/NotoSans-Regular.ttf")
 SIZE :: 128

@@ -4,7 +4,7 @@
  */
 package wide_booleans
 
-import testing from "std"
+import testing from "std:testing"
 
 /**
  * Tell whether a wide boolean is true, taking it widened to b64 and testing it as a condition.

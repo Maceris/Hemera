@@ -1,8 +1,8 @@
 package terminal
 
-import os from "std"
-import slop_os from "std/os"
-import unicode from "std"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import unicode from "std:unicode"
 
 /*
  * The protocol's plain types, on every OS, so code that turns them into something else can be tested hosted (as the

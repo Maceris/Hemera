@@ -1,8 +1,8 @@
 package linear_algebra_test
 
-import linear_algebra from "std"
-import math from "std"
-import testing from "std"
+import linear_algebra from "std:linear_algebra"
+import math from "std:math"
+import testing from "std:testing"
 
 /*
  * std/linear_algebra: vectors' functions, quaternions against the matrices they make, determinants and inverses, and

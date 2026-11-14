@@ -7,9 +7,9 @@
  */
 package freestanding
 
-import intrinsics from "base"
-import runtime from "base"
-import x86_64 from "base/intrinsics"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
+import x86_64 from "base:intrinsics/x86_64"
 
 // Limine's request markers and base revision tag (base revision 6)
 REQUESTS_START #externally_initialized #section(".limine_requests_start") : u64[4] : u64.[0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf, 0x785c6ed015d3e316, 0x181e920a7852b9d9]

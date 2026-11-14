@@ -1,8 +1,8 @@
 package grant
 
-import os from "std"
-import slop_os from "std/os"
-import files from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import files from "std:os/slop_os/files"
 
 /**
  * The grant protocol, for os.Channel[Grant]: a grant (the SlopOS repository's roadmap 8f).

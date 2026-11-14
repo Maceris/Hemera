@@ -1,7 +1,7 @@
 package concurrency
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /**
  * A ticket lock: whoever takes the lock gets a ticket and is served in order, so nobody waits forever while others

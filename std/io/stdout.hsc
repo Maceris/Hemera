@@ -1,7 +1,7 @@
 package io
 
-import runtime from "base"
-import text_buffer from "std"
+import runtime from "base:runtime"
+import text_buffer from "std:text_buffer"
 
 /*
  * Text to standard output, or standard error for the e versions, as runtime.write_output writes it:

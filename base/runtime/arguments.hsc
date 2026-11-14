@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /**
  * Give the process's command-line arguments, the program's name first, as UTF-8.

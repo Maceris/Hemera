@@ -4,8 +4,8 @@
  */
 package generic_insertions
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 add #macro :: fn(target: compiler.Code, amount: int) -> compiler.Code {
     return #code {

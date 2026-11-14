@@ -4,7 +4,7 @@
  */
 package optional_constants
 
-import testing from "std"
+import testing from "std:testing"
 
 /** A share of the processor, a struct with fields of two sizes. */
 Share :: struct {

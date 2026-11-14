@@ -347,7 +347,7 @@ An output's name, `output_path` or `--output`, names every file made from it: `n
 ```
 package build
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 build :: fn() {
     kernel := compiler.command_line_options()

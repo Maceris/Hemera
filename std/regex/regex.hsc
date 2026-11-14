@@ -1,7 +1,7 @@
 package regex
 
-import runtime from "base"
-import unicode from "std"
+import runtime from "base:runtime"
+import unicode from "std:unicode"
 
 /*
  * RE2's syntax, but for what can't run in linear time (no backreferences, no lookaround), matching code points of UTF-8

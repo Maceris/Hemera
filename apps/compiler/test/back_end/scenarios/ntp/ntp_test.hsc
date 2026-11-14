@@ -1,11 +1,11 @@
 package ntp_test
 
-import runtime from "base"
-import crypto from "std"
-import ntp from "std"
-import random from "std"
-import testing from "std"
-import tls from "std"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
+import ntp from "std:ntp"
+import random from "std:random"
+import testing from "std:testing"
+import tls from "std:tls"
 
 /*
  * std/ntp: NTP's timestamps and its offset and delay; NTS-KE's request and the reading of its response; and NTP

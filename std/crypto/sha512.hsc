@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * SHA-512 (FIPS 180-4), like SHA-256 (see sha256.hsc) with 64-bit words, 128-byte blocks and 80 rounds.

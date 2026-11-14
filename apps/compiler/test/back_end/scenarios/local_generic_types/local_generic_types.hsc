@@ -1,6 +1,6 @@
 package local_generic_types
 
-import testing from "std"
+import testing from "std:testing"
 
 /*
  * Generic types declared in a function (docs/types.md, Types Declared in Functions): a struct and a union with

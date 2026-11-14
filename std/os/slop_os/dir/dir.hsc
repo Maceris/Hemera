@@ -1,13 +1,13 @@
 package dir
 
-import os from "std"
-import slop_os from "std/os"
-import file from "std/os/slop_os"
-import file_set from "std/os/slop_os"
-import files from "std/os/slop_os"
-import grant from "std/os/slop_os"
-import read_only_dir from "std/os/slop_os"
-import read_only_file from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import file from "std:os/slop_os/file"
+import file_set from "std:os/slop_os/file_set"
+import files from "std:os/slop_os/files"
+import grant from "std:os/slop_os/grant"
+import read_only_dir from "std:os/slop_os/read_only_dir"
+import read_only_file from "std:os/slop_os/read_only_file"
 
 /**
  * The dir protocol, for os.Channel[Dir]: a directory (the SlopOS repository's decisions 0015, 0046, 0087).

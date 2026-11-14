@@ -5,9 +5,9 @@
  */
 package test_cases
 
-import runtime from "base"
-import compiler from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 /** A case with a name: text, and its length. */
 Measured :: struct {

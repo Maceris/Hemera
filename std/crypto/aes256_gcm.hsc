@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * AES (FIPS 197) and GCM (NIST SP 800-38D), and AES-256-GCM: encryption with a 32-byte key and a 12-byte
@@ -1036,7 +1036,7 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
 }
 
 #if TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     /** The schedule's round keys as AES-NI takes them, one 128-bit register each. */
     AesRoundKeys :: distinct alias v128[15] #secret

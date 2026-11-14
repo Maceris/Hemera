@@ -1,8 +1,8 @@
 package float_math
 
-import intrinsics from "base"
-import math from "std"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import math from "std:math"
+import testing from "std:testing"
 
 /*
  * std/math against references worked out in more precision than f64 (float_math_references.hsc, made by

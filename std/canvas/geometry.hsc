@@ -1,7 +1,7 @@
 package canvas
 
-import intrinsics from "base"
-import math from "std"
+import intrinsics from "base:intrinsics"
+import math from "std:math"
 
 /** A point, or a vector, in pixels or a path's units. */
 Point :: struct {

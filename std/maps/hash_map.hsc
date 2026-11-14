@@ -1,7 +1,7 @@
 package maps
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 /**
  * A map from keys of K to values of V, which finds each key by hash, a function it's made with.

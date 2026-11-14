@@ -5,8 +5,8 @@
  */
 package memory_functions
 
-import intrinsics from "base"
-import testing from "std"
+import intrinsics from "base:intrinsics"
+import testing from "std:testing"
 
 /** The buffers' size: room for any length drawn at any offset. */
 SIZE :: 512

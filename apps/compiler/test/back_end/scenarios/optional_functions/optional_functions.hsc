@@ -5,7 +5,7 @@
  */
 package optional_functions_test
 
-import testing from "std"
+import testing from "std:testing"
 
 double :: fn(n: int) -> int {
     return n * 2

@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * SHA-256 (FIPS 180-4). One call for what's all at hand, or a hasher for what comes in parts:
@@ -282,7 +282,7 @@ sha256 :: fn(data: u8[]) -> u8[32] {
 }
 
 #if TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 
     /**
      * Check whether the CPU has the SHA extensions.

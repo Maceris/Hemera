@@ -6,7 +6,7 @@
  */
 package integer_ranges_test
 
-import testing from "std"
+import testing from "std:testing"
 
 /** 128, a constant too large for a u8's parts but not for a u8 once worked out. */
 QUARTER :: 512 / 4

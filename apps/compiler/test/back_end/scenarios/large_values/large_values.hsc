@@ -6,7 +6,7 @@
  */
 package large_values_test
 
-import testing from "std"
+import testing from "std:testing"
 
 // 4 KiB: far too large for registers
 Big :: struct {

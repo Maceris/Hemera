@@ -1,9 +1,9 @@
 package testing
 
-import runtime from "base"
-import intrinsics from "base"
-import text_buffer from "std"
-import time from "std"
+import runtime from "base:runtime"
+import intrinsics from "base:intrinsics"
+import text_buffer from "std:text_buffer"
+import time from "std:time"
 
 /*
  * Model checking (docs/testing.md, Model Checking): a test's threads run as fibers on one thread, switched only where a

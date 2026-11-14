@@ -4,14 +4,14 @@
  */
 package system_test
 
-import runtime from "base"
-import random from "std"
-import strings from "std"
-import testing from "std"
-import time from "std"
+import runtime from "base:runtime"
+import random from "std:random"
+import strings from "std:strings"
+import testing from "std:testing"
+import time from "std:time"
 
 #if TARGET_ARCH == .x86_64 {
-    import x86_64 from "base/intrinsics"
+    import x86_64 from "base:intrinsics/x86_64"
 }
 
 reads_the_wall_clock #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {

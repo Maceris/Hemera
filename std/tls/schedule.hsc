@@ -1,7 +1,7 @@
 package tls
 
-import compiler from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
 
 /*
  * The key schedule (RFC 8446 §7): the transcript hash, HKDF over the suite's hash, HKDF-Expand-Label and Derive-Secret,

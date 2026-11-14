@@ -1,7 +1,7 @@
 package runtime
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /**
  * How a string is laid out in memory, for code that works through rawptr and type info, like std's reflection

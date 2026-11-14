@@ -1,8 +1,8 @@
 package maths
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * The maths library built again with one more export: what it had is unchanged, so it can stand in for the first, as

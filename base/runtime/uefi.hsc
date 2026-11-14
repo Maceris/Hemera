@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * UEFI applications (docs/compilation.md, UEFI Applications): a program the firmware runs on its boot services, like a

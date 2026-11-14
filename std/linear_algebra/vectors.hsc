@@ -1,6 +1,6 @@
 package linear_algebra
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * Functions on fixed arrays of numbers as vectors, of any length unless they say otherwise, as GLSL has them. T is the

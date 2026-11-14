@@ -1,8 +1,8 @@
 package described_while_inserting
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 // Node's #insert describes Edge, which points back at Node: what's behind a pointer isn't waited for, since
 // Node can't be laid out until this is done

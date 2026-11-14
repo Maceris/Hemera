@@ -1,9 +1,9 @@
 package tcp_listener
 
-import os from "std"
-import slop_os from "std/os"
-import net_address from "std/os/slop_os"
-import tcp_stream from "std/os/slop_os"
+import os from "std:os"
+import slop_os from "std:os/slop_os"
+import net_address from "std:os/slop_os/net_address"
+import tcp_stream from "std:os/slop_os/tcp_stream"
 
 /*
  * A listening TCP port's channel, between the network service and the program listening. Each Accept gives the memory

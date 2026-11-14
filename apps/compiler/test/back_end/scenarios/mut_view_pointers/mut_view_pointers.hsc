@@ -4,8 +4,8 @@
  */
 package mut_view_pointers
 
-import runtime from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 // The first element set, and the view moved on past it
 advance :: fn(view: ptr[mut (mut u8[])]) {

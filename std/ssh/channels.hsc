@@ -1,6 +1,6 @@
 package ssh
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /*
  * The connection protocol (RFC 4254): session channels, each with its window both ways. What arrives on a channel

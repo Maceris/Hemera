@@ -1,6 +1,6 @@
 package insert_wrong_members
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 fields :: fn() -> compiler.Code {
     return #code fields {

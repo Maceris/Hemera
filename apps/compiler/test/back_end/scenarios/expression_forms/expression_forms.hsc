@@ -8,7 +8,7 @@ package expression_forms
  * with the same name. Run with hemera --test.
  */
 
-import testing from "std"
+import testing from "std:testing"
 
 Pair :: struct {
     a : int,

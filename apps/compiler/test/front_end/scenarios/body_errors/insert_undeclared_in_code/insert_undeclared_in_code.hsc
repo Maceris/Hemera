@@ -1,6 +1,6 @@
 package insert_undeclared_in_code
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 // The code names something that isn't declared where it's put
 broken :: fn() -> compiler.Code {

@@ -1,9 +1,9 @@
 package float_math
 
-import fast from "std/math"
-import intrinsics from "base"
-import math from "std"
-import testing from "std"
+import fast from "std:math/fast"
+import intrinsics from "base:intrinsics"
+import math from "std:math"
+import testing from "std:testing"
 
 /*
  * std/math/fast: its f32 kernels on every 65537th f32 and on pairs, against f64's functions; its f64 kernels against

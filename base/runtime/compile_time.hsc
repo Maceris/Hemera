@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /**
  * The context compile-time code runs with (docs/compilation.md, Compile-Time Execution).

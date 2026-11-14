@@ -5,7 +5,7 @@
  */
 package composites
 
-import testing from "std"
+import testing from "std:testing"
 
 I :: 1i
 HALF :: 0.5 + 1.5i

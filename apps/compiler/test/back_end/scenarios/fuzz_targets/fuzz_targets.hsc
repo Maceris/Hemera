@@ -5,10 +5,10 @@
  */
 package fuzz_targets
 
-import runtime from "base"
-import compiler from "base"
-import memory from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import compiler from "base:compiler"
+import memory from "std:memory"
+import testing from "std:testing"
 
 /** Something read back from bytes another program sent: strings, views and pointers to check. */
 Message :: struct {

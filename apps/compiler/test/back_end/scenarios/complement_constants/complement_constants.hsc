@@ -4,7 +4,7 @@
  */
 package complement_constants
 
-import testing from "std"
+import testing from "std:testing"
 
 MASK :: 0xff
 // Alone it's the untyped -256

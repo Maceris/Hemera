@@ -1,6 +1,6 @@
 package types
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 // Fields in order, each at its alignment; the struct is aligned to its most aligned field
 Mixed :: struct {

@@ -1,7 +1,7 @@
 package crypto
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 /*
  * SHA-3 and SHAKE (FIPS 202): Keccak-f[1600]'s sponge, as SHA3-256 and SHA3-512, digests of 32 and 64 bytes, and

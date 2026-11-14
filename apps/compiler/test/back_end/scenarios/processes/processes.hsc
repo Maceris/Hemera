@@ -5,11 +5,11 @@
  */
 package processes_test
 
-import compiler from "base"
-import os from "std"
-import runtime from "base"
-import strings from "std"
-import testing from "std"
+import compiler from "base:compiler"
+import os from "std:os"
+import runtime from "base:runtime"
+import strings from "std:strings"
+import testing from "std:testing"
 
 #if OS == .Windows {
     SHELL :: "cmd.exe"

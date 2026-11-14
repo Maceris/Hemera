@@ -1,7 +1,7 @@
 package fast
 
-import intrinsics from "base"
-import math from "std"
+import intrinsics from "base:intrinsics"
+import math from "std:math"
 
 /*
  * f32's fast kernels, f32 throughout: SLEEF's (Naoki Shibata's) 3.5-ulp algorithms and coefficients, each a reduction,

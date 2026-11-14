@@ -1,7 +1,7 @@
 package canvas
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /*
  * The rasterizer. A path's edges, flattened to lines in pixels, each add to the cells of a region what they cover:

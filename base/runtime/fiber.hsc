@@ -1,6 +1,6 @@
 package runtime
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /**
  * The size in bytes of each additional stack segment, header included, unless a single frame needs more; then the

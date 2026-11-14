@@ -1,6 +1,6 @@
 package linear_algebra
 
-import math from "std"
+import math from "std:math"
 
 /*
  * Matrices' numerics and the transforms (docs/types.md, Matrices). The transforms are 4 × 4, for points as columns

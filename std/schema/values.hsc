@@ -1,6 +1,6 @@
 package schema
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * A value written for something that reads it elsewhere, by its type's schema (docs/types.md, Schemas): its bytes in

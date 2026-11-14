@@ -1,7 +1,7 @@
 package returns_from_heap
 
-import runtime from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /*
  * Where a call's result points, from what the callee's body gives back (docs/memory.md, Pointers to the Stack): these

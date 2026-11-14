@@ -1,12 +1,12 @@
 package fuzzing
 
-import runtime from "base"
-import intrinsics from "base"
-import os from "std"
-import strings from "std"
-import testing from "std"
-import text_buffer from "std"
-import time from "std"
+import runtime from "base:runtime"
+import intrinsics from "base:intrinsics"
+import os from "std:os"
+import strings from "std:strings"
+import testing from "std:testing"
+import text_buffer from "std:text_buffer"
+import time from "std:time"
 
 /** How many changes, at most, make one input from another. */
 MAX_CHANGES :: 4

@@ -1,7 +1,7 @@
 package generic_type_insertions
 
-import compiler from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import testing from "std:testing"
 
 /*
  * #insert in a generic type (docs/compilation.md, Code Values): each instance inserts into a tree of its own, so

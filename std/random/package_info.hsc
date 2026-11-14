@@ -3,7 +3,7 @@
  */
 package random
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** This package's tier: it needs only base, drawing from whatever generator context.random has. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

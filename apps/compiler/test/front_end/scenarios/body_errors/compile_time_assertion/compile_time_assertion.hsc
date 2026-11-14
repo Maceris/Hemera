@@ -1,6 +1,6 @@
 package compile_time_assertion
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 // A failed assertion in compile-time code fails the build, once
 size :: fn() -> int {

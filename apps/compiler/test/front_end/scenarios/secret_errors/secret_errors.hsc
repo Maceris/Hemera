@@ -6,8 +6,8 @@
  */
 package secret_errors
 
-import compiler from "base"
-import intrinsics from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
 
 Key :: struct #secret {
     bytes: u8[4],

@@ -21,14 +21,14 @@ package net
  */
 
 #if base.OS == .SlopOS {
-    import runtime from "base"
-    import os from "std"
-    import slop_os from "std/os"
-    import net_address from "std/os/slop_os"
-    import network from "std/os/slop_os"
-    import tcp_stream from "std/os/slop_os"
-    import tcp_listener from "std/os/slop_os"
-    import datagrams from "std/os/slop_os"
+    import runtime from "base:runtime"
+    import os from "std:os"
+    import slop_os from "std:os/slop_os"
+    import net_address from "std:os/slop_os/net_address"
+    import network from "std:os/slop_os/network"
+    import tcp_stream from "std:os/slop_os/tcp_stream"
+    import tcp_listener from "std:os/slop_os/tcp_listener"
+    import datagrams from "std:os/slop_os/datagrams"
 
     /** The memory a connection's rings are made in by default: 128 KiB, rings of 64 KiB each way. */
     DEFAULT_MEMORY : u64 : 131072

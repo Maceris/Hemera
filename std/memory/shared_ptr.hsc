@@ -1,8 +1,8 @@
 package memory
 
-import compiler from "base"
-import intrinsics from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /**
  * Shared ownership (docs/memory.md, Owned Types): a value on the heap with several owners, released when the last one

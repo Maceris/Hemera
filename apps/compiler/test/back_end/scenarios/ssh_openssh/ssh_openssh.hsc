@@ -14,12 +14,12 @@
  */
 package ssh_openssh
 
-import compiler from "base"
-import runtime from "base"
-import crypto from "std"
-import os from "std"
-import ssh from "std"
-import strings from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import crypto from "std:crypto"
+import os from "std:os"
+import ssh from "std:ssh"
+import strings from "std:strings"
 
 STANDARD_INPUT :: os.File.{handle = 0}
 STANDARD_OUTPUT :: os.File.{handle = 1}

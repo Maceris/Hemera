@@ -1,8 +1,8 @@
 package program
 
-import compiler from "base"
-import intrinsics from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import intrinsics from "base:intrinsics"
+import testing from "std:testing"
 import maths from "../maths"
 
 /*

@@ -5,7 +5,7 @@
  */
 package parenthesized_arguments
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /** The package's, not the target's architecture. */
 TARGET_ARCH :: 7

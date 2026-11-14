@@ -1,7 +1,7 @@
 package fonts
 
-import runtime from "base"
-import unicode from "std"
+import runtime from "base:runtime"
+import unicode from "std:unicode"
 
 /*
  * Text laid out in lines: each glyph's advance, scaled from design units to pixels, with the pair kerning before it;

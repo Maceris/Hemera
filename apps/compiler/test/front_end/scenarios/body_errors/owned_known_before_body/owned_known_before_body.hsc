@@ -1,6 +1,6 @@
 package owned_known_before_body
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 // A struct's #owned is known before its body is: drop is checked while File's fields are still being made
 fields :: fn() -> compiler.Code {

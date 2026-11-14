@@ -5,7 +5,7 @@
  */
 package reverse_loops_test
 
-import testing from "std"
+import testing from "std:testing"
 
 goes_down_ranges #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     // 9, 8, ..., 1: each digit shifts the earlier ones up

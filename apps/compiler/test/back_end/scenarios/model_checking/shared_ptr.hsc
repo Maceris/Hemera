@@ -1,10 +1,10 @@
 package model_checking
 
-import runtime from "base"
-import intrinsics from "base"
-import compiler from "base"
-import memory from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import intrinsics from "base:intrinsics"
+import compiler from "base:compiler"
+import memory from "std:memory"
+import testing from "std:testing"
 
 /*
  * SharedPtr's counts under the model checker (docs/testing.md, Model Checking): owners released on two threads destroy

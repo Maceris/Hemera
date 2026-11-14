@@ -1,7 +1,7 @@
 package memory
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /**
  * An arena: a bump allocator over chunks it takes from another allocator, for memory that's all given back at once.

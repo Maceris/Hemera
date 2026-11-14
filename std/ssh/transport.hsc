@@ -1,7 +1,7 @@
 package ssh
 
-import compiler from "base"
-import crypto from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
 
 /*
  * The transport (RFC 4253): packets, sealed with the cipher each way has, and key exchange.

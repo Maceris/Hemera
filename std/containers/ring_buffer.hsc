@@ -1,6 +1,6 @@
 package containers
 
-import compiler from "base"
+import compiler from "base:compiler"
 
 /**
  * A queue of up to capacity values of T, in the buffer itself: added at the back, taken from the front, in the order

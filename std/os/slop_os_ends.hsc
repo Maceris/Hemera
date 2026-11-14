@@ -16,9 +16,9 @@ package os
  * The channels and messages build on every OS, so a protocol's code, its validators above all, can be tested and
  * fuzzed hosted; their calls only work on SlopOS. Launching is only on SlopOS.
  */
-import compiler from "base"
-import runtime from "base"
-import slop_os from "std/os"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import slop_os from "std:os/slop_os"
 
 
 /**
@@ -387,7 +387,7 @@ LaunchEvents :: struct {
 
 // Launching programs, through SlopOS's process manager: only on SlopOS
 #if OS == .SlopOS {
-    import process_manager from "std/os/slop_os"
+    import process_manager from "std:os/slop_os/process_manager"
 
     /**
      * Add a grant to what a Load gives the program.

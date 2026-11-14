@@ -3,7 +3,7 @@
  */
 package net_address
 
-import tiers from "std"
+import tiers from "std:tiers"
 
 /** The package's tier, Freestanding: plain types and their parsing, no allocator and no system calls. */
 PACKAGE_TIER :: tiers.Tier.Freestanding

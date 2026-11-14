@@ -5,9 +5,9 @@
  */
 package owned_test
 
-import compiler from "base"
-import runtime from "base"
-import testing from "std"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 File :: struct #owned(close) {
     handle : int,

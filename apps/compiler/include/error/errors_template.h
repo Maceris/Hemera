@@ -93,6 +93,8 @@ E4038,Default differs from the stated type
 E4039,Invalid macro call
 E4040,Relative pointer not in place
 E4041,Documentation doesn't match its declaration
+E4042,Invalid import location
+E4043,Import name doesn't match the package
 // E5000-E5999 Lowering MLIR to LLVM IR
 E5000,Unsupported target
 E5001,Building code gen pipeline failed

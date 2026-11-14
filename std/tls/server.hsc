@@ -1,8 +1,8 @@
 package tls
 
-import compiler from "base"
-import crypto from "std"
-import random from "std"
+import compiler from "base:compiler"
+import crypto from "std:crypto"
+import random from "std:random"
 
 /*
  * The server's handshake (RFC 8446 §2, §4): a ClientHello taken, its suite, group and signature scheme chosen, or a

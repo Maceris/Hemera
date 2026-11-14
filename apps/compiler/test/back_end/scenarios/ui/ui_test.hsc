@@ -7,11 +7,11 @@
  */
 package ui_test
 
-import runtime from "base"
-import canvas from "std"
-import strings from "std"
-import testing from "std"
-import ui from "std"
+import runtime from "base:runtime"
+import canvas from "std:canvas"
+import strings from "std:strings"
+import testing from "std:testing"
+import ui from "std:ui"
 
 SANS :: #file_data("../../fonts/NotoSans-Regular.ttf")
 MONO :: #file_data("../../fonts/NotoSansMono-Regular.ttf")

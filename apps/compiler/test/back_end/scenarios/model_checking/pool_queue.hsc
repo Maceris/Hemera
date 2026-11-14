@@ -1,8 +1,8 @@
 package model_checking
 
-import runtime from "base"
-import fiber from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import fiber from "std:fiber"
+import testing from "std:testing"
 
 /*
  * The fiber pool's carrier queues under the model checker (docs/testing.md, Model Checking): a carrier adds fibers to

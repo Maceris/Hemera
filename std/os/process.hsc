@@ -1,7 +1,7 @@
 package os
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 /** What a process run by run_process left behind: how it ended, and everything it wrote. */
 ProcessResult :: struct {

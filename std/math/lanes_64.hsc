@@ -1,6 +1,6 @@
 package math
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 /*
  * f64's functions on lanes: fdlibm's algorithms as the scalar functions have them, every branch worked out in every lane

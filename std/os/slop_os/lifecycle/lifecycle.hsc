@@ -1,8 +1,8 @@
 package lifecycle
 
 #if base.OS == .SlopOS {
-    import runtime from "base"
-    import slop_os from "std/os"
+    import runtime from "base:runtime"
+    import slop_os from "std:os/slop_os"
 
     /*
      * The lifecycle channel (the SlopOS repository's decisions 0136, 0139): what a launcher keeps to ask a program it

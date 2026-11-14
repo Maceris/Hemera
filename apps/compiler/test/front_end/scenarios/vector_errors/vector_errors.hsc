@@ -6,8 +6,8 @@
  */
 package vector_errors
 
-import intrinsics from "base"
-import x86_64 from "base/intrinsics"
+import intrinsics from "base:intrinsics"
+import x86_64 from "base:intrinsics/x86_64"
 
 Words :: vector[u32, 4]
 Strings :: vector[string, 4]

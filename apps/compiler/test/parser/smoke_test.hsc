@@ -18,17 +18,17 @@ package smoketest
 
 import io
 import memory as mem
-import library1 from "user"
+import library1 from "user:library1"
 import library2 from "../../foo/bar/baz"
-import library3 as lib3 from "user"
+import library3 as lib3 from "user:library3"
 
 #if OS == .WINDOWS {
-	import windows_io from "user"
+	import windows_io from "user:windows_io"
 	#if PLATFORM == .X86 {
-		import more_specific_windows_io from "user"
+		import more_specific_windows_io from "user:more_specific_windows_io"
 	}
 	#else {
-		import less_specific_windows_io from "user"
+		import less_specific_windows_io from "user:less_specific_windows_io"
 	}
 }
 

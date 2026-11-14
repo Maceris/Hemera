@@ -4,7 +4,7 @@
  */
 package string_cases
 
-import testing from "std"
+import testing from "std:testing"
 
 /**
  * Sort a devicetree compatible string, through match on strings.

@@ -5,8 +5,8 @@
  */
 package generic_alias_arguments
 
-import memory from "std"
-import testing from "std"
+import memory from "std:memory"
+import testing from "std:testing"
 
 /** A value given a destroy function of its own type. */
 Buffer :: struct {

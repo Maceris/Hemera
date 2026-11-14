@@ -1,6 +1,6 @@
 package compile_time_trap
 
-import intrinsics from "base"
+import intrinsics from "base:intrinsics"
 
 // A trap in compile-time code fails the build instead of the compiler
 size :: fn() -> int {

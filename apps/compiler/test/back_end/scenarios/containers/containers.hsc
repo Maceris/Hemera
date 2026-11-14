@@ -3,9 +3,9 @@
  */
 package containers_test
 
-import runtime from "base"
-import containers from "std"
-import testing from "std"
+import runtime from "base:runtime"
+import containers from "std:containers"
+import testing from "std:testing"
 
 /** Something queued on an intrusive list. */
 Task :: struct {

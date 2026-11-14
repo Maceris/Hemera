@@ -1,7 +1,7 @@
 package os
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /*
  * Windows' side of std/os, through kernel32's wide (UTF-16) functions. Paths and names are

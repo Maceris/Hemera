@@ -1,7 +1,7 @@
 package os
 
-import intrinsics from "base"
-import runtime from "base"
+import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 
 /*
  * Linux's side of std/os: system calls made directly, so a program needs no C library for them

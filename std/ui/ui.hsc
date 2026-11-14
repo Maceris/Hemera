@@ -1,8 +1,8 @@
 package ui
 
-import runtime from "base"
-import canvas from "std"
-import fonts from "std"
+import runtime from "base:runtime"
+import canvas from "std:canvas"
+import fonts from "std:fonts"
 
 /** A widget's identity from frame to frame: a hash of its label, its parent's ID and its key. */
 ID :: u64

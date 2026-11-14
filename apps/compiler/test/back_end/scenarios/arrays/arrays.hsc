@@ -4,8 +4,8 @@
  */
 package arrays_test
 
-import runtime from "base"
-import testing from "std"
+import runtime from "base:runtime"
+import testing from "std:testing"
 
 /** What a counting allocator passes requests on to, and what it's counted. */
 Counter :: struct {

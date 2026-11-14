@@ -1,7 +1,7 @@
 package schema
 
-import compiler from "base"
-import runtime from "base"
+import compiler from "base:compiler"
+import runtime from "base:runtime"
 
 /*
  * A type's schema (docs/types.md, Schemas): its type information serialized canonically, so the same type gives the

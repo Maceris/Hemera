@@ -1,6 +1,6 @@
 package ui
 
-import runtime from "base"
+import runtime from "base:runtime"
 
 /*
  * The tree read from outside: selectors, for tests to find widgets and drive them, and the accessibility export, the

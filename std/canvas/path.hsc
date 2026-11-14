@@ -1,7 +1,7 @@
 package canvas
 
-import runtime from "base"
-import fonts from "std"
+import runtime from "base:runtime"
+import fonts from "std:fonts"
 
 /** What a path's command does. */
 Verb :: enum #backed_by(u8) {

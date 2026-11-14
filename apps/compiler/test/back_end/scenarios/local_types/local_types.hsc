@@ -4,7 +4,7 @@
  */
 package local_types
 
-import testing from "std"
+import testing from "std:testing"
 
 // A package-level Point, which the local ones below hide where they're seen
 Point :: struct {
