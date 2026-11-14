@@ -216,17 +216,10 @@ namespace hemera::lexer {
 		return found->composed;
 	}
 
-	std::string identifier_nfkc(std::string_view text) {
-		// Decomposed, compatibility decompositions too
+	std::vector<uint32_t> identifier_nfkd(const std::vector<uint32_t>& code_points) {
 		std::vector<uint32_t> points;
-		for (size_t at = 0; at < text.size();) {
-			uint32_t code_point = 0;
-			const size_t length = utf8::decode(text, at, code_point);
-			if (length == 0) {
-				return std::string(text);
-			}
+		for (const uint32_t code_point : code_points) {
 			decompose(code_point, points);
-			at += length;
 		}
 		// Each run of combining marks in order of their classes, keeping the order of those with the same class
 		for (size_t i = 1; i < points.size(); ++i) {
@@ -235,6 +228,22 @@ namespace hemera::lexer {
 				std::swap(points[j - 1], points[j]);
 			}
 		}
+		return points;
+	}
+
+	std::string identifier_nfkc(std::string_view text) {
+		std::vector<uint32_t> code_points;
+		for (size_t at = 0; at < text.size();) {
+			uint32_t code_point = 0;
+			const size_t length = utf8::decode(text, at, code_point);
+			if (length == 0) {
+				return std::string(text);
+			}
+			code_points.push_back(code_point);
+			at += length;
+		}
+		// Decomposed, compatibility decompositions too, and its marks in order
+		const std::vector<uint32_t> points = identifier_nfkd(code_points);
 		/*
 		 * Composed: each code point onto the last starter, unless something between them has the same class or a
 		 * starter's (blocked)

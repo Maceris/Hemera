@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "lexer/token.h"
 
@@ -39,6 +40,13 @@ namespace hemera::lexer {
 	 * Only code points a name can have are decomposed; text that isn't UTF-8 is given back as it is.
 	 */
 	std::string identifier_nfkc(std::string_view text);
+
+	/*
+	 * code_points decomposed, compatibility decompositions too, with each run of combining marks in the order of their
+	 * classes (UAX #15's NFKD). For a name, which is in NFKC, that's its NFD. As identifier_nfkc, only code points a
+	 * name can have, and what their decompositions hold, are decomposed.
+	 */
+	std::vector<uint32_t> identifier_nfkd(const std::vector<uint32_t>& code_points);
 
 	// Whether text is a whole name: as the lexer reads one, in NFKC, and not a keyword
 	bool is_identifier(std::string_view text);

@@ -1472,6 +1472,26 @@ TEST(FrontEnd, ChecksBodies)
 }
 
 /*
+ * UTS #39's checks of a package's names outside ASCII: names that look like another, here or in another file (W2000),
+ * a name mixing Latin and Cyrillic (W2001), and one in Runic (W2002); each once, and none for the names that are fine
+ */
+TEST(FrontEnd, WarnsOfNamesThatMislead)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("name_security"));
+
+	EXPECT_TRUE(errors.empty()) << codes(errors);
+	const std::vector<hemera::WarningCode>& warnings = *hemera::warning_list();
+	EXPECT_EQ(std::count(warnings.begin(), warnings.end(), hemera::WarningCode::W2000), 2);
+	EXPECT_EQ(std::count(warnings.begin(), warnings.end(), hemera::WarningCode::W2001), 1);
+	EXPECT_EQ(std::count(warnings.begin(), warnings.end(), hemera::WarningCode::W2002), 1);
+	EXPECT_EQ(warnings.size(), 4u);
+}
+
+/*
  * An assignment whose right side calls something given &out, as a call on its left is, is warned of once (W4003): the
  * right side runs first. Written in order, given another variable, or with no call on the left, it isn't.
  */

@@ -12,6 +12,7 @@
 #include "gtest/gtest.h"
 
 #include "error/reporting.h"
+#include "lexer/identifier_security.h"
 #include "lexer/identifiers.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
@@ -476,6 +477,32 @@ TEST(LexerTests, NamesInNfkc)
 	EXPECT_EQ(hemera::lexer::identifier_nfkc("\xE1\x84\x80\xE1\x85\xA1\xE1\x86\xA8"), "\xEA\xB0\x81");
 	EXPECT_FALSE(hemera::lexer::is_identifier("cafe\xCC\x81"));
 	EXPECT_TRUE(hemera::lexer::is_identifier("caf\xC3\xA9"));
+}
+
+// UTS #39's skeletons, mixed scripts and identifier status, which the front end warns of names with
+TEST(LexerTests, NameSecurity)
+{
+	using hemera::lexer::identifier_skeleton;
+	using hemera::lexer::mixed_scripts;
+	using hemera::lexer::uncommon_code_point;
+	// Cyrillic сор and Latin cop; m and rn; Greek ο and Latin o; but not cop and cup
+	EXPECT_EQ(identifier_skeleton("\xD1\x81\xD0\xBE\xD1\x80"), identifier_skeleton("cop"));
+	EXPECT_EQ(identifier_skeleton("m"), identifier_skeleton("rn"));
+	EXPECT_EQ(identifier_skeleton("x\xCE\xBF"), identifier_skeleton("xo"));
+	EXPECT_NE(identifier_skeleton("cop"), identifier_skeleton("cup"));
+
+	// Latin with Cyrillic, and Greek with Cyrillic; Latin with Han and kana, Han with Hangul, and digits and _ are fine
+	EXPECT_EQ(mixed_scripts("total_\xD0\xB8\xD1\x82\xD0\xBE\xD0\xB3"), (std::vector<std::string_view>{ "Latin", "Cyrillic" }));
+	EXPECT_EQ(mixed_scripts("\xCF\x80\xD0\xB8"), (std::vector<std::string_view>{ "Greek", "Cyrillic" }));
+	EXPECT_TRUE(mixed_scripts("name_\xE6\x97\xA5\xE6\x9C\xAC\xE3\x81\xB2\xE3\x82\xAB").empty());
+	EXPECT_TRUE(mixed_scripts("\xED\x95\x9C\xE6\xBC\xA2").empty());
+	EXPECT_TRUE(mixed_scripts("\xD0\xB8\xD0\xBC\xD1\x8F_2").empty());
+	EXPECT_TRUE(mixed_scripts("count").empty());
+
+	// Runic isn't recommended for names; Cyrillic and ASCII are
+	EXPECT_EQ(uncommon_code_point("a\xE1\x9A\xA0"), 0x16a0u);
+	EXPECT_EQ(uncommon_code_point("\xD0\xB8\xD0\xBC\xD1\x8F_2"), 0u);
+	EXPECT_EQ(hemera::lexer::script_name(0x16a0), "Runic");
 }
 
 TEST(LexerTests, ManyTokenTest)

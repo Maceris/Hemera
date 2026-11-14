@@ -20,9 +20,24 @@ ignorable code points, which can't be seen, like the zero width joiner, aren't i
 An identifier must already be in Unicode's Normalization Form KC ([UAX #15](https://www.unicode.org/reports/tr15/)),
 so every identifier has one spelling, in bytes, and two that look the same are the same: `é` is U+00E9, not `e` and a
 combining acute (U+0301), and `fi` is two letters, not the ligature `ﬁ`. One that isn't is an error (E2011) that gives its
-NFKC spelling. An ASCII identifier always is. The tables are
-generated from the Unicode Character Database, of the same version as `std:unicode`'s, by
-`std/unicode/_generator/generate_identifiers.py`.
+NFKC spelling. An ASCII identifier always is.
+
+Identifiers outside ASCII are also checked as [UTS #39](https://www.unicode.org/reports/tr39/) recommends, once a
+package is read, with a warning for each identifier, where it's first used:
+
+* **Looks like another (W2000).** Two different identifiers in a package, in one file or two, that look alike: their
+  skeletons, with each character replaced by what it's most easily mistaken for, are the same. Like `cop` and `сор`,
+  whose letters are Cyrillic. The warning is on the one used later, or the one outside ASCII.
+* **Mixes scripts (W2001).** An identifier with letters of more than one script, beyond UTS #39's Highly Restrictive
+  level, like `total_итог`, Latin and Cyrillic. One script is fine, as is Latin with Han, Hiragana and Katakana, with Han
+  and Bopomofo, or with Han and Hangul; digits, `_` and marks that go with any script count as every script's.
+* **Uncommon character (W2002).** An identifier with a character UTS #39 doesn't recommend for identifiers
+  (Identifier_Status isn't Allowed), like the obsolete scripts Runic and Ogham, or technical and limited-use ones.
+
+The tables are generated from the Unicode Character Database, of the same version as `std:unicode`'s, by
+`std/unicode/_generator/generate_identifiers.py`, and for these checks, with UTS #39's data (confusables and
+identifier status), by `std/unicode/_generator/generate_identifier_security.py`.
+
 Identifiers may not be the same as [reserved keywords](keywords.md); [contextual keywords](keywords.md#contextual-keywords) and the names of [builtin types](types.md) can be used, though a builtin type's name hides the type.
 
 ## Lists

@@ -80,6 +80,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/front_end/type_id.h
   ${INCLUDE_DIR}/front_end/walk.h
   ${INCLUDE_DIR}/front_end/work.h
+  ${INCLUDE_DIR}/lexer/identifier_security.h
   ${INCLUDE_DIR}/lexer/identifiers.h
   ${INCLUDE_DIR}/lexer/lexer.h
   ${INCLUDE_DIR}/lexer/token.h
@@ -124,6 +125,8 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/front_end/info.cpp
   ${SOURCE_DIR}/front_end/type.cpp
   ${SOURCE_DIR}/front_end/work.cpp
+  ${SOURCE_DIR}/lexer/identifier_security.cpp
+  ${SOURCE_DIR}/lexer/identifier_security_tables.h
   ${SOURCE_DIR}/lexer/identifiers.cpp
   ${SOURCE_DIR}/lexer/identifier_tables.h
   ${SOURCE_DIR}/lexer/lexer.cpp

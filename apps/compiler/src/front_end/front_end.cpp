@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <chrono>
 #include <format>
+#include <map>
 #include <thread>
+#include <tuple>
 
 #include "error/reporting.h"
+#include "lexer/identifier_security.h"
 #include "memory/allocator.h"
 #include "util/logger.h"
 #include "front_end/front_end.h"
@@ -348,6 +351,7 @@ namespace hemera {
 	}
 
 	static void check_import_names(ProgramInfo& program);
+	static void check_name_security(ProgramInfo& program);
 
 	void kick_off_processing(ProgramInfo* program_info, const Options* options) {
 		// Once for the process, since a build's targets may be checked at the same time (build.cpp)
@@ -439,6 +443,85 @@ namespace hemera {
 			//NOTE(ches) the destructors for the threads will .join() them here
 		}
 		check_import_names(*program_info);
+		check_name_security(*program_info);
+	}
+
+	/*
+	 * UTS #39's checks of a package's names, outside ASCII (docs/formatting.md, Identifiers), each warned once, where
+	 * the name is first used: two names in the package that look alike (W2000), a name that mixes scripts (W2001), and
+	 * one with a character that isn't for everyday text (W2002). A package whose names are all ASCII has nothing to check.
+	 */
+	static void check_name_security(ProgramInfo& program) {
+		struct Use {
+			std::string file;
+			uint32_t line;
+			uint16_t column;
+		};
+		auto before = [](const Use& a, const Use& b) {
+			return std::tie(a.file, a.line, a.column) < std::tie(b.file, b.line, b.column);
+		};
+		for (const auto& [package_path, package] : program.packages) {
+			// Each name's first use, in file order
+			std::map<std::string, Use> names;
+			bool outside_ascii = false;
+			for (const auto& [file_name, file] : package->files) {
+				const std::string path = file_path_of(package_path, file_name);
+				for (const Token& token : file->tokens) {
+					if (TokenType::IDENTIFIER != token.type || token.value == nullptr) {
+						continue;
+					}
+					const std::string name(*token.value);
+					outside_ascii = outside_ascii
+						|| std::any_of(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; });
+					const Use use{ path, token.line_number, token.column_number };
+					auto [entry, added] = names.try_emplace(name, use);
+					if (!added && before(use, entry->second)) {
+						entry->second = use;
+					}
+				}
+			}
+			if (!outside_ascii) {
+				continue;
+			}
+			// By skeleton, the names that look alike: each is warned of but the first used, ASCII ones first
+			std::map<std::string, std::vector<const std::string*>> alike;
+			for (const auto& [name, use] : names) {
+				const bool ascii = std::all_of(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) < 0x80; });
+				if (!ascii) {
+					if (const std::vector<std::string_view> scripts = lexer::mixed_scripts(name); !scripts.empty()) {
+						std::string listed;
+						for (size_t i = 0; i < scripts.size(); ++i) {
+							listed += std::format("{}{}", i == 0 ? "" : i + 1 == scripts.size() ? " and " : ", ", scripts[i]);
+						}
+						report_warning(WarningCode::W2001, use.file, use.line, use.column,
+							std::format("{} mixes {}, which can make it look like a name it isn't", name, listed));
+					}
+					if (const uint32_t uncommon = lexer::uncommon_code_point(name); uncommon != 0) {
+						report_warning(WarningCode::W2002, use.file, use.line, use.column,
+							std::format("{} has U+{:04X}, of {}, which UTS #39 doesn't recommend for names", name, uncommon,
+								lexer::script_name(uncommon)));
+					}
+				}
+				alike[lexer::identifier_skeleton(name)].push_back(&name);
+			}
+			for (auto& [skeleton, group] : alike) {
+				if (group.size() < 2) {
+					continue;
+				}
+				std::sort(group.begin(), group.end(), [&](const std::string* a, const std::string* b) {
+					const bool a_ascii = std::all_of(a->begin(), a->end(), [](char c) { return static_cast<unsigned char>(c) < 0x80; });
+					const bool b_ascii = std::all_of(b->begin(), b->end(), [](char c) { return static_cast<unsigned char>(c) < 0x80; });
+					return a_ascii != b_ascii ? a_ascii : before(names.at(*a), names.at(*b));
+				});
+				const Use& original = names.at(*group[0]);
+				for (size_t i = 1; i < group.size(); ++i) {
+					const Use& use = names.at(*group[i]);
+					report_warning(WarningCode::W2000, use.file, use.line, use.column,
+						std::format("{} looks like {}, used at {}({},{}), but is another name", *group[i], *group[0],
+							original.file, original.line, original.column));
+				}
+			}
+		}
 	}
 
 	/*
