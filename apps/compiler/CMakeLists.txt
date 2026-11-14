@@ -15,26 +15,8 @@ ENABLE_LANGUAGE(CXX)
 ENABLE_LANGUAGE(ASM)
 ENABLE_LANGUAGE(ASM_MASM)
 
-IF(POLICY CMP0091)
-    CMAKE_POLICY(SET CMP0091 NEW) # CMAKE_MSVC_RUNTIME_LIBRARY
-ENDIF()
-
-IF(POLICY CMP0194)
-    CMAKE_POLICY(SET CMP0194 NEW) # Ignore the MSVC cl for ASM
-ENDIF()
-
-IF(POLICY CMP0068)
-  CMAKE_POLICY(SET CMP0068 NEW)
-  SET(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
-ENDIF()
-
-IF(POLICY CMP0075)
-  CMAKE_POLICY(SET CMP0075 NEW)
-ENDIF()
-
-IF(POLICY CMP0077)
-  CMAKE_POLICY(SET CMP0077 NEW)
-ENDIF()
+# The version range above makes every policy up to CMake 4.3.3 NEW, like CMP0091 (CMAKE_MSVC_RUNTIME_LIBRARY) and
+# CMP0194 (not using MSVC's cl for ASM)
 
 SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON) # Use solution folders.
 
@@ -85,10 +67,7 @@ IF ((CMAKE_C_COMPILER_ID MATCHES "GNU") AND NOT MINGW AND NOT HAIKU)
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};-fno-exceptions")
   
 ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:>:;/MT>;")       # link with multithreaded, static version of the C Runtime Library
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Release>:;/MT>") # link with multithreaded, static version of the C Runtime Library
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Debug>:;/MTd>")  # link with debug, multithreaded, static version of the C Runtime Library
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/MP")                      # Compile in parallel
+  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/MP")                    # Compile in parallel
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")                  # increase the maximum number of sections an object file can contain
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/EHs-;/EHc-")              # Disable exceptions
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/GR-")                     # Disable run-time type information
@@ -100,9 +79,6 @@ ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   
 ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Release>:;/Zi>")  # debug info in a PDB beside a Release build, so a crash can be traced
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:>:;/MT>")        # link with multithreaded, static version of the C Runtime Library
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Release>:;/MT>") # link with multithreaded, static version of the C Runtime Library
-  SET(HEMERA_OPTIONS "${HEMERA_OPTIONS}$<$<CONFIG:Debug>:;/MTd>")  # link with debug, multithreaded, static version of the C Runtime Library
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/bigobj")                  # increase the maximum number of sections an object file can contain
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/MP")                      # Compile in parallel
   SET(HEMERA_OPTIONS "${HEMERA_OPTIONS};/EHs-;/EHc-")              # Disable exceptions
@@ -152,6 +128,7 @@ ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   
 ENDIF()
 
+# The static C runtime, its debug version for Debug, for every target from here on, LLVM's included
 IF(MSVC)
   SET(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 ENDIF()

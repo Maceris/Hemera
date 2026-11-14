@@ -138,10 +138,6 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/util/thread_pool.cpp
 )
 
-SET(THIRD_PARTY_HEADER_FILES
-  
-)
-
 SET(TEST_FILES
   ${TEST_DIR}/main.cpp
   ${TEST_DIR}/string_cache_guard.h
@@ -151,25 +147,6 @@ SET(TEST_FILES
   ${TEST_DIR}/front_end/front_end_test.cpp
   ${TEST_DIR}/lexer/lexer_test.cpp
   ${TEST_DIR}/parser/parser_test.cpp
-)
-
-ADD_LIBRARY(HemeraLib
-  ${HEADER_FILES}
-  ${THIRD_PARTY_HEADER_FILES}
-  ${HEMERA_GENERATED_DIR}/hemera_errors.h
-  ${HEMERA_GENERATED_DIR}/hemera_warnings.h
-  ${HEMERA_GENERATED_DIR}/hemera_base.cpp
-  
-  ${SOURCE_FILES}
-)
-
-ADD_EXECUTABLE(Hemera
-  ${HEADER_FILES}
-  ${THIRD_PARTY_HEADER_FILES}
-  ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
-  ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
-
-  ${SOURCE_DIR}/main.cpp
 )
 
 llvm_map_components_to_libnames(llvm_libs
@@ -209,68 +186,12 @@ llvm_map_components_to_libnames(llvm_libs
   x86targetmca
 )
 SEPARATE_ARGUMENTS(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
-TARGET_LINK_LIBRARIES(HemeraLib PUBLIC
-  ${llvm_libs}
-  HMIR
-  MLIRPass
-  MLIRBuiltinToLLVMIRTranslation
-  MLIRLLVMToLLVMIRTranslation
-  MLIRTargetLLVMIRExport
-)
 
-TARGET_INCLUDE_DIRECTORIES(HemeraLib PUBLIC
-  ${INCLUDE_DIR}/
-  $<BUILD_INTERFACE:${HEMERA_GENERATED_DIR}>
-)
-
-IF(MSVC)
-  # Intellisense doesn't play well with the clang-cl SYSTEM PRIVATE includes
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/googletest/googletest/include)
-ENDIF()
-
-TARGET_INCLUDE_DIRECTORIES(Hemera PUBLIC
-  ${INCLUDE_DIR}/
-)
-
-SOURCE_GROUP(TREE ${INCLUDE_DIR} PREFIX "include" FILES ${HEADER_FILES})
-SOURCE_GROUP(TREE ${SOURCE_DIR} PREFIX "src" FILES ${SOURCE_FILES})
-SOURCE_GROUP(TREE ${TEST_DIR} PREFIX "test" FILES ${TEST_FILES})
-
-TARGET_LINK_LIBRARIES(Hemera HemeraLib)
-# hemera-debug for Debug, so both builds can be on PATH and be run by name
-SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera" OUTPUT_NAME_DEBUG "hemera-debug")
-TARGET_COMPILE_DEFINITIONS(HemeraLib PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
-TARGET_COMPILE_DEFINITIONS(Hemera PRIVATE ${HEMERA_DEFINITIONS})
-TARGET_COMPILE_OPTIONS(HemeraLib PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
-TARGET_COMPILE_OPTIONS(Hemera PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
-IF(MSVC)
-  # The Release compiler's PDB, from what /Zi compiled, without giving up unreferenced code being dropped
-  TARGET_LINK_OPTIONS(Hemera PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
-ENDIF()
-
-ADD_DEPENDENCIES(Hemera HemeraGenerated)
-
-# The compiler with AddressSanitizer, for memory errors that only show now and then: hemera-asan.exe, with
-# -DHEMERA_ASAN=ON. Only Hemera's own code is instrumented; LLVM and MLIR are the libraries the compiler links, so
-# they aren't rebuilt for it. The ASan runtime's DLL has to be on the PATH, or next to it, to run.
-OPTION(HEMERA_ASAN "Also build hemera-asan, the compiler with AddressSanitizer" OFF)
-IF(HEMERA_ASAN)
-  ADD_LIBRARY(HemeraLibAsan
-    ${HEADER_FILES}
-    ${THIRD_PARTY_HEADER_FILES}
-    ${HEMERA_GENERATED_DIR}/hemera_errors.h
-    ${HEMERA_GENERATED_DIR}/hemera_warnings.h
-    ${HEMERA_GENERATED_DIR}/hemera_base.cpp
-    ${SOURCE_FILES}
-  )
-  ADD_EXECUTABLE(HemeraAsan
-    ${HEADER_FILES}
-    ${THIRD_PARTY_HEADER_FILES}
-    ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
-    ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
-    ${SOURCE_DIR}/main.cpp
-  )
-  TARGET_LINK_LIBRARIES(HemeraLibAsan PUBLIC
+# A compiler: the library LIBRARY, of everything but main and the generated sources too, for the compiler's tests and
+# the tools built on it; and the program PROGRAM, which is main linked with it
+FUNCTION(HEMERA_ADD_COMPILER LIBRARY PROGRAM)
+  ADD_LIBRARY(${LIBRARY} ${HEADER_FILES} ${HEMERA_GENERATED} ${SOURCE_FILES})
+  TARGET_LINK_LIBRARIES(${LIBRARY} PUBLIC
     ${llvm_libs}
     HMIR
     MLIRPass
@@ -278,19 +199,47 @@ IF(HEMERA_ASAN)
     MLIRLLVMToLLVMIRTranslation
     MLIRTargetLLVMIRExport
   )
-  TARGET_INCLUDE_DIRECTORIES(HemeraLibAsan PUBLIC
-    ${INCLUDE_DIR}/
-    $<BUILD_INTERFACE:${HEMERA_GENERATED_DIR}>
-  )
-  TARGET_INCLUDE_DIRECTORIES(HemeraAsan PUBLIC ${INCLUDE_DIR}/)
-  TARGET_LINK_LIBRARIES(HemeraAsan HemeraLibAsan)
+  TARGET_INCLUDE_DIRECTORIES(${LIBRARY} PUBLIC ${INCLUDE_DIR}/ $<BUILD_INTERFACE:${HEMERA_GENERATED_DIR}>)
+  TARGET_COMPILE_DEFINITIONS(${LIBRARY} PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
+  TARGET_COMPILE_OPTIONS(${LIBRARY} PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
+
+  ADD_EXECUTABLE(${PROGRAM} ${HEADER_FILES} ${SOURCE_DIR}/main.cpp)
+  TARGET_LINK_LIBRARIES(${PROGRAM} ${LIBRARY})
+  TARGET_COMPILE_DEFINITIONS(${PROGRAM} PRIVATE ${HEMERA_DEFINITIONS})
+  TARGET_COMPILE_OPTIONS(${PROGRAM} PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
+  ADD_DEPENDENCIES(${PROGRAM} HemeraGenerated)
+ENDFUNCTION()
+
+HEMERA_ADD_COMPILER(HemeraLib Hemera)
+# hemera-debug for Debug, so both builds can be on PATH and be run by name
+SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera" OUTPUT_NAME_DEBUG "hemera-debug")
+IF(MSVC)
+  # The Release compiler's PDB, from what /Zi compiled, without giving up unreferenced code being dropped
+  TARGET_LINK_OPTIONS(Hemera PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+ENDIF()
+
+IF(MSVC)
+  # Intellisense doesn't play well with the clang-cl SYSTEM PRIVATE includes
+  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/googletest/googletest/include)
+ENDIF()
+
+SOURCE_GROUP(TREE ${INCLUDE_DIR} PREFIX "include" FILES ${HEADER_FILES})
+SOURCE_GROUP(TREE ${SOURCE_DIR} PREFIX "src" FILES ${SOURCE_FILES})
+SOURCE_GROUP(TREE ${TEST_DIR} PREFIX "test" FILES ${TEST_FILES})
+
+# The compiler with AddressSanitizer, for memory errors that only show now and then: hemera-asan.exe, with
+# -DHEMERA_ASAN=ON. Only Hemera's own code is instrumented; LLVM and MLIR are the libraries the compiler links, so
+# they aren't rebuilt for it. The ASan runtime's DLL has to be on the PATH, or next to it, to run.
+OPTION(HEMERA_ASAN "Also build hemera-asan, the compiler with AddressSanitizer" OFF)
+IF(HEMERA_ASAN)
+  HEMERA_ADD_COMPILER(HemeraLibAsan HemeraAsan)
   SET_TARGET_PROPERTIES(HemeraAsan PROPERTIES OUTPUT_NAME "hemera-asan")
   # The standard library's container annotations off, as in the uninstrumented LLVM libraries, which the linker checks
   SET(HEMERA_ASAN_DEFINITIONS _DISABLE_STRING_ANNOTATION _DISABLE_VECTOR_ANNOTATION)
-  TARGET_COMPILE_DEFINITIONS(HemeraLibAsan PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST} ${HEMERA_ASAN_DEFINITIONS})
-  TARGET_COMPILE_DEFINITIONS(HemeraAsan PRIVATE ${HEMERA_DEFINITIONS} ${HEMERA_ASAN_DEFINITIONS})
-  TARGET_COMPILE_OPTIONS(HemeraLibAsan PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS} -fsanitize=address)
-  TARGET_COMPILE_OPTIONS(HemeraAsan PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS} -fsanitize=address)
+  TARGET_COMPILE_DEFINITIONS(HemeraLibAsan PRIVATE ${HEMERA_ASAN_DEFINITIONS})
+  TARGET_COMPILE_DEFINITIONS(HemeraAsan PRIVATE ${HEMERA_ASAN_DEFINITIONS})
+  TARGET_COMPILE_OPTIONS(HemeraLibAsan PRIVATE -fsanitize=address)
+  TARGET_COMPILE_OPTIONS(HemeraAsan PRIVATE -fsanitize=address)
   IF(MSVC)
     # clang-cl's ASan runtime, from its own lib/clang/<version>/lib/windows: the dynamic one, as the CRT is; and a PDB
     GET_FILENAME_COMPONENT(HEMERA_CLANG_BIN ${CMAKE_CXX_COMPILER} DIRECTORY)
@@ -307,19 +256,11 @@ IF(HEMERA_ASAN)
     ADD_CUSTOM_COMMAND(TARGET HemeraAsan POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HEMERA_ASAN_LIBRARY_DIR}/clang_rt.asan_dynamic-x86_64.dll $<TARGET_FILE_DIR:HemeraAsan>)
   ENDIF()
-  ADD_DEPENDENCIES(HemeraAsan HemeraGenerated)
 ENDIF()
 
 enable_testing()
 
-ADD_EXECUTABLE(HemeraTest
-  ${HEADER_FILES}
-  ${THIRD_PARTY_HEADER_FILES}
-  
-  ${TEST_FILES}
-  ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
-  ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
-)
+ADD_EXECUTABLE(HemeraTest ${HEADER_FILES} ${TEST_FILES})
 
 TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})
 # Where tests write what they build, like the hosted test's program
@@ -332,7 +273,6 @@ TARGET_LINK_LIBRARIES(HemeraTest
   GTest::gtest_main
   GTest::gtest
   HemeraLib
-  ${llvm_libs}
 )
 IF(MSVC)
   # A PDB for the Release tests too, so a crash or a profile of them has names
