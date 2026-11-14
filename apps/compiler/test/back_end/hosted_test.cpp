@@ -618,6 +618,17 @@ TEST(Hosted, Canvas)
 	EXPECT_NE(checked.output.find("7 tests: 7 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
+/*
+ * std/ui driven by frames of synthetic input: layout's sizes, wrapped text, buttons, check boxes and focus, a text
+ * field's editing and undo, a virtualized list, draw lists compared for damage, state dropped with its widget, frames
+ * painted, duplicate IDs, selectors; and any input taken.
+ */
+TEST(Hosted, Ui)
+{
+	const HostedOutput checked = run_hosted("ui", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
+	EXPECT_NE(checked.output.find("11 tests: 11 passed, 0 failed"), std::string::npos) << checked.output;
+}
+
 // std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.
 TEST(Hosted, Curves)
 {
