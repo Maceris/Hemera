@@ -15,7 +15,12 @@
 Identifiers are [UAX #31](https://www.unicode.org/reports/tr31/)'s default identifiers, so they can be in any script:
 they start with a letter (a code point with XID_Start, like `a`, `Ж` or `日`), and go on with letters, digits, `_` and
 combining marks (XID_Continue, like `1`, `_`, `١` or U+0301). An identifier can't start with a digit or `_`. Default
-ignorable code points, which can't be seen, like the zero width joiner, aren't in identifiers at all. The tables are
+ignorable code points, which can't be seen, like the zero width joiner, aren't in identifiers at all.
+
+An identifier must already be in Unicode's Normalization Form KC ([UAX #15](https://www.unicode.org/reports/tr15/)),
+so every identifier has one spelling, in bytes, and two that look the same are the same: `é` is U+00E9, not `e` and a
+combining acute (U+0301), and `fi` is two letters, not the ligature `ﬁ`. One that isn't is an error (E2011) that gives its
+NFKC spelling. An ASCII identifier always is. The tables are
 generated from the Unicode Character Database, of the same version as `std:unicode`'s, by
 `std/unicode/_generator/generate_identifiers.py`.
 Identifiers may not be the same as [reserved keywords](keywords.md); [contextual keywords](keywords.md#contextual-keywords) and the names of [builtin types](types.md) can be used, though a builtin type's name hides the type.

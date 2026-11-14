@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <iterator>
+#include <utility>
+#include <vector>
 
 #include "util/utf8.h"
 #include "identifier_tables.h"
@@ -162,6 +164,107 @@ namespace hemera::lexer {
 		return {};
 	}
 
+	// Hangul syllables, which decompose and compose by arithmetic rather than by the tables (Unicode §3.12)
+	constexpr uint32_t HANGUL_S = 0xac00, HANGUL_L = 0x1100, HANGUL_V = 0x1161, HANGUL_T = 0x11a7;
+	constexpr uint32_t HANGUL_L_COUNT = 19, HANGUL_V_COUNT = 21, HANGUL_T_COUNT = 28;
+	constexpr uint32_t HANGUL_N_COUNT = HANGUL_V_COUNT * HANGUL_T_COUNT, HANGUL_S_COUNT = HANGUL_L_COUNT * HANGUL_N_COUNT;
+
+	static uint8_t combining_class(uint32_t code_point) {
+		const CombiningClassRange* found = std::upper_bound(std::begin(COMBINING_CLASSES), std::end(COMBINING_CLASSES),
+			code_point, [](uint32_t point, const CombiningClassRange& range) { return point < range.first; });
+		if (found == std::begin(COMBINING_CLASSES) || code_point > (found - 1)->last) {
+			return 0;
+		}
+		return (found - 1)->combining_class;
+	}
+
+	static void decompose(uint32_t code_point, std::vector<uint32_t>& out) {
+		if (code_point >= HANGUL_S && code_point < HANGUL_S + HANGUL_S_COUNT) {
+			const uint32_t index = code_point - HANGUL_S;
+			out.push_back(HANGUL_L + index / HANGUL_N_COUNT);
+			out.push_back(HANGUL_V + index % HANGUL_N_COUNT / HANGUL_T_COUNT);
+			if (index % HANGUL_T_COUNT != 0) {
+				out.push_back(HANGUL_T + index % HANGUL_T_COUNT);
+			}
+			return;
+		}
+		const Decomposition* found = std::lower_bound(std::begin(DECOMPOSITIONS), std::end(DECOMPOSITIONS), code_point,
+			[](const Decomposition& entry, uint32_t point) { return entry.code_point < point; });
+		if (found == std::end(DECOMPOSITIONS) || found->code_point != code_point) {
+			out.push_back(code_point);
+			return;
+		}
+		out.insert(out.end(), DECOMPOSED + found->start, DECOMPOSED + found->start + found->length);
+	}
+
+	// What first and second compose into canonically, or 0 if they don't
+	static uint32_t compose(uint32_t first, uint32_t second) {
+		if (first >= HANGUL_L && first < HANGUL_L + HANGUL_L_COUNT && second >= HANGUL_V && second < HANGUL_V + HANGUL_V_COUNT) {
+			return HANGUL_S + ((first - HANGUL_L) * HANGUL_V_COUNT + second - HANGUL_V) * HANGUL_T_COUNT;
+		}
+		if (first >= HANGUL_S && first < HANGUL_S + HANGUL_S_COUNT && (first - HANGUL_S) % HANGUL_T_COUNT == 0
+			&& second > HANGUL_T && second < HANGUL_T + HANGUL_T_COUNT) {
+			return first + second - HANGUL_T;
+		}
+		const Composition* found = std::lower_bound(std::begin(COMPOSITIONS), std::end(COMPOSITIONS), std::make_pair(first, second),
+			[](const Composition& entry, const std::pair<uint32_t, uint32_t>& pair) {
+				return entry.first < pair.first || (entry.first == pair.first && entry.second < pair.second);
+			});
+		if (found == std::end(COMPOSITIONS) || found->first != first || found->second != second) {
+			return 0;
+		}
+		return found->composed;
+	}
+
+	std::string identifier_nfkc(std::string_view text) {
+		// Decomposed, compatibility decompositions too
+		std::vector<uint32_t> points;
+		for (size_t at = 0; at < text.size();) {
+			uint32_t code_point = 0;
+			const size_t length = utf8::decode(text, at, code_point);
+			if (length == 0) {
+				return std::string(text);
+			}
+			decompose(code_point, points);
+			at += length;
+		}
+		// Each run of combining marks in order of their classes, keeping the order of those with the same class
+		for (size_t i = 1; i < points.size(); ++i) {
+			const uint8_t mark = combining_class(points[i]);
+			for (size_t j = i; mark != 0 && j > 0 && combining_class(points[j - 1]) > mark; --j) {
+				std::swap(points[j - 1], points[j]);
+			}
+		}
+		/*
+		 * Composed: each code point onto the last starter, unless something between them has the same class or a
+		 * starter's (blocked)
+		 */
+		std::vector<uint32_t> composed;
+		size_t starter = 0;
+		// The class of the last code point kept; 0 means it's the starter itself, and 256 that there's no starter yet
+		int last_class = 256;
+		for (const uint32_t point : points) {
+			const int mark = combining_class(point);
+			if (!composed.empty() && (last_class < mark || last_class == 0)) {
+				const uint32_t together = compose(composed[starter], point);
+				if (together != 0) {
+					composed[starter] = together;
+					continue;
+				}
+			}
+			if (mark == 0) {
+				starter = composed.size();
+			}
+			last_class = composed.empty() && mark != 0 ? 256 : mark;
+			composed.push_back(point);
+		}
+		std::string result;
+		for (const uint32_t point : composed) {
+			utf8::encode(point, result);
+		}
+		return result;
+	}
+
 	bool is_identifier(std::string_view text) {
 		size_t at = identifier_character(text, 0, true);
 		if (at == 0) {
@@ -174,6 +277,7 @@ namespace hemera::lexer {
 			}
 			at += length;
 		}
-		return !keyword(text).has_value();
+		const bool ascii = std::all_of(text.begin(), text.end(), [](char c) { return static_cast<unsigned char>(c) < 0x80; });
+		return !keyword(text).has_value() && (ascii || identifier_nfkc(text) == text);
 	}
 }

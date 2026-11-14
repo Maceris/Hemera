@@ -18,6 +18,7 @@ E2007,Line too long
 E2008,Invalid UTF-8
 E2009,Bidirectional control character
 E2010,Invalid Unicode escape
+E2011,Name not in NFKC
 // E3000-E3999 Parser
 E3001,Missing package statement
 E3002,Missing package name

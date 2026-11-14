@@ -1,6 +1,9 @@
 #include <cstdint>
 #include <cctype>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -13,6 +16,7 @@
 #include "lexer/lexer.h"
 #include "lexer/token.h"
 #include "parser/ast_types.h"
+#include "util/utf8.h"
 #include "../string_cache_guard.h"
 
 using hemera::Allocator;
@@ -366,9 +370,12 @@ TEST(LexerTests, UnicodeIdentifiers)
 	using Tokens = std::vector<std::pair<TokenType, std::string>>;
 	using Errors = std::vector<std::string>;
 	const TokenType ID = TokenType::IDENTIFIER;
-	// Cyrillic, Japanese, Greek with an accent, a combining acute, Arabic-Indic digits, Devanagari with its vowel signs
+	/*
+	 * Cyrillic, Japanese, Greek with an accent, q with a combining acute (which has no character of its own, so that's
+	 * its NFKC), Arabic-Indic digits, Devanagari with its vowel signs
+	 */
 	for (const std::string name : { "\xD0\xB8\xD0\xBC\xD1\x8F", "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E", "\xCE\xAC\xCE\xBB\xCF\x86\xCE\xB1",
-		"e\xCC\x81t\xC3\xA9", "x\xD9\xA1\xD9\xA2", "\xE0\xA4\xA8\xE0\xA4\xBE\xE0\xA4\xAE", "\xC3\xA9_1" }) {
+		"q\xCC\x81t\xC3\xA9", "x\xD9\xA1\xD9\xA2", "\xE0\xA4\xA8\xE0\xA4\xBE\xE0\xA4\xAE", "\xC3\xA9_1" }) {
 		EXPECT_EQ(tokens_of(name + " :: 1"), (Tokens{ { ID, name }, { TokenType::SYM_COLON, "" }, { TokenType::SYM_COLON, "" },
 			{ TokenType::LITERAL_INTEGER, "1" } })) << name;
 		EXPECT_EQ(text_errors(name + " :: 1"), Errors{}) << name;
@@ -399,6 +406,76 @@ TEST(LexerTests, UnicodeIdentifiers)
 	EXPECT_FALSE(hemera::lexer::is_identifier("a\xE2\x80\x8D" "b"));
 	EXPECT_FALSE(hemera::lexer::is_identifier("\xCC\x81" "a"));
 	EXPECT_FALSE(hemera::lexer::is_identifier("a\xFF"));
+}
+
+/*
+ * identifier_nfkc against Unicode's NormalizationTest.txt, the copy std/unicode's tests use: each line whose code points
+ * can all be in a name, column 1 to 5's NFKC is column 4
+ */
+TEST(LexerTests, IdentifierNfkcMatchesUnicodesTests)
+{
+	const std::filesystem::path tests = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path()
+		.parent_path() / "std" / "unicode" / "test" / "normalization_test.txt";
+	std::ifstream file(tests, std::ios::binary);
+	ASSERT_TRUE(file.is_open()) << tests.string();
+	// A column's code points as UTF-8, or nothing if one of them can't be in a name
+	auto column_text = [](std::string_view column) -> std::optional<std::string> {
+		std::string text;
+		std::istringstream points{ std::string(column) };
+		for (std::string hex; points >> hex;) {
+			const uint32_t code_point = static_cast<uint32_t>(std::stoul(hex, nullptr, 16));
+			if (!hemera::lexer::is_identifier_continue(code_point)) {
+				return std::nullopt;
+			}
+			hemera::utf8::encode(code_point, text);
+		}
+		return text;
+	};
+	size_t checked = 0;
+	for (std::string line; std::getline(file, line);) {
+		if (line.empty() || line[0] == '#' || line[0] == '@') {
+			continue;
+		}
+		std::vector<std::string_view> columns;
+		std::string_view rest(line);
+		for (int i = 0; i < 5; ++i) {
+			const size_t semicolon = rest.find(';');
+			columns.push_back(rest.substr(0, semicolon));
+			rest.remove_prefix(semicolon + 1);
+		}
+		std::optional<std::string> expected = column_text(columns[3]);
+		if (!expected) {
+			continue;
+		}
+		for (const std::string_view column : columns) {
+			std::optional<std::string> source = column_text(column);
+			if (source) {
+				EXPECT_EQ(hemera::lexer::identifier_nfkc(*source), *expected) << line;
+				checked += 1;
+			}
+		}
+	}
+	// Most of the file's lines are letters and marks a name can have
+	EXPECT_GT(checked, 5000u);
+}
+
+// A name outside ASCII must be in NFKC already (E2011), which every ASCII name is
+TEST(LexerTests, NamesInNfkc)
+{
+	using Errors = std::vector<std::string>;
+	// é as e and a combining acute; the ligature ﬁ; a full-width Ａ; a Hangul syllable as its jamo; Å as the angstrom sign
+	EXPECT_EQ(text_errors("cafe\xCC\x81 :: 1"), (Errors{ "(1,0) E2011" }));
+	EXPECT_EQ(text_errors("x :: \xEF\xAC\x81le"), (Errors{ "(1,5) E2011" }));
+	EXPECT_EQ(text_errors("\xEF\xBC\xA1 :: 1"), (Errors{ "(1,0) E2011" }));
+	EXPECT_EQ(text_errors("\xE1\x84\x80\xE1\x85\xA1 :: 1"), (Errors{ "(1,0) E2011" }));
+	// Already NFKC: é, 가, a Devanagari letter with its vowel sign
+	EXPECT_EQ(text_errors("caf\xC3\xA9 :: \xEA\xB0\x80 + \xE0\xA4\x95\xE0\xA4\xBF"), Errors{});
+
+	EXPECT_EQ(hemera::lexer::identifier_nfkc("cafe\xCC\x81"), "caf\xC3\xA9");
+	EXPECT_EQ(hemera::lexer::identifier_nfkc("\xEF\xAC\x81le"), "file");
+	EXPECT_EQ(hemera::lexer::identifier_nfkc("\xE1\x84\x80\xE1\x85\xA1\xE1\x86\xA8"), "\xEA\xB0\x81");
+	EXPECT_FALSE(hemera::lexer::is_identifier("cafe\xCC\x81"));
+	EXPECT_TRUE(hemera::lexer::is_identifier("caf\xC3\xA9"));
 }
 
 TEST(LexerTests, ManyTokenTest)

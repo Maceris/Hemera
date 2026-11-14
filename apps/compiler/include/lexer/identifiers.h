@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "lexer/token.h"
@@ -31,6 +32,14 @@ namespace hemera::lexer {
 	// The keyword text spells, or none for one that isn't a keyword
 	std::optional<TokenType> keyword(std::string_view text);
 
-	// Whether text is a whole name: as the lexer reads one, and not a keyword
+	/*
+	 * text, a name's characters, in Unicode's Normalization Form KC (UAX #15): with compatibility characters, like ﬁ
+	 * or a full-width Ａ, written as what they stand for (fi, A), and combining marks composed onto what they mark where
+	 * there's one character for both. A name must already be in it, so there's one spelling, in bytes, of every name.
+	 * Only code points a name can have are decomposed; text that isn't UTF-8 is given back as it is.
+	 */
+	std::string identifier_nfkc(std::string_view text);
+
+	// Whether text is a whole name: as the lexer reads one, in NFKC, and not a keyword
 	bool is_identifier(std::string_view text);
 }

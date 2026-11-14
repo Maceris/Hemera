@@ -1227,6 +1227,15 @@ namespace hemera::lexer {
 		}
 
 		if (result_type == TokenType::IDENTIFIER && token_contents) {
+			// A name has one spelling: NFKC's, which an ASCII one always is (E2011)
+			const std::string_view name(token_contents->data(), token_contents->size());
+			if (std::any_of(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {
+				const std::string normalized = identifier_nfkc(name);
+				if (normalized != name) {
+					report_error(ErrorCode::E2011, file_path, start_line, start_column,
+						std::format("write it as \"{}\", its NFKC form, so it's spelled one way", normalized));
+				}
+			}
 			std::optional<TokenType> maybe_token = keyword(*token_contents);
 			// A keyword keeps its text, since it can still be a name where only a name can go
 			if (maybe_token) {
