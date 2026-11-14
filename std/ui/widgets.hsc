@@ -219,9 +219,11 @@ end_list :: fn(ui: ptr[mut Ui], range: Range, count: usize, row_height: f32) {
  * @param text Its text, the program's, UTF-8, changed as it's edited.
  * @param width Its width.
  * @param key Mixed into its ID.
+ * @param secret Whether it's a password's: shown as a star a byte, its cursor kept at its end, and nothing copied or
+ *     cut from it.
  * @return Whether its text changed this frame; Changed, Submitted (Enter) and Copied (Ctrl+C or X) events too.
  */
-text_field :: fn(ui: ptr[mut Ui], name: string, text: ptr[mut u8[..]], width: Axis = grow(), key: u64 = 0) -> bool {
+text_field :: fn(ui: ptr[mut Ui], name: string, text: ptr[mut u8[..]], width: Axis = grow(), key: u64 = 0, secret: bool = false) -> bool {
     theme :: ui.theme
     index :: open_node(ui, hash(string_bytes(name)), Box.{key = key, width = width, padding_x = theme.padding_x / 2, padding_y = theme.padding_y,
         corner = theme.corner, clip = true, role = .TextField, background = theme.field})
@@ -253,10 +255,27 @@ text_field :: fn(ui: ptr[mut Ui], name: string, text: ptr[mut u8[..]], width: Ax
             ui.editing.cursor = at
             ui.editing.anchor = at
         }
-        changed = edit(ui, id, text)
+        if secret {
+            // Typed at its end, and only its end: what's typed can't be read back through a selection
+            ui.editing.cursor = text.count
+            ui.editing.anchor = text.count
+            changed = edit(ui, id, text, true)
+            ui.editing.cursor = text.count
+            ui.editing.anchor = text.count
+        }
+        else {
+            changed = edit(ui, id, text, false)
+        }
     }
     // Its text, as it is after the edits, with its cursor if it's focused
-    shown :: label_text(ui, contents(text), TextStyle.{wrap = false})
+    stars : u8[..]
+    defer runtime.array_free(&stars)
+    if secret {
+        for byte in contents(text) {
+            runtime.array_add(&stars, cast[u8]('*'))
+        }
+    }
+    shown :: label_text(ui, if secret { stars[0..<stars.count] } else { contents(text) }, TextStyle.{wrap = false})
     if shown != NO_NODE {
         node(ui, shown).edited = ui.focus == id
         // An empty field's text is still a line tall
@@ -326,8 +345,8 @@ after :: fn(text: u8[], at: usize) -> usize {
     return place
 }
 
-/** Apply the frame's input to the field being edited: its keys in order, then what's typed and pasted. */
-edit :: fn(ui: ptr[mut Ui], id: ID, text: ptr[mut u8[..]]) -> bool {
+/** Apply the frame's input to the field being edited: its keys in order, then what's typed and pasted; a secret one's never copied. */
+edit :: fn(ui: ptr[mut Ui], id: ID, text: ptr[mut u8[..]], secret: bool) -> bool {
     changed := false
     editing :: &ui.editing
     editing.cursor = if editing.cursor > text.count { text.count } else { editing.cursor }
@@ -359,10 +378,16 @@ edit :: fn(ui: ptr[mut Ui], id: ID, text: ptr[mut u8[..]]) -> bool {
                 editing.anchor = 0
                 editing.cursor = text.count
             }
-            case .Copy => copied(ui, id, contents(text))
+            case .Copy => {
+                if !secret {
+                    copied(ui, id, contents(text))
+                }
+            }
             case .Cut => {
-                copied(ui, id, contents(text))
-                changed = replace(ui, text, "") || changed
+                if !secret {
+                    copied(ui, id, contents(text))
+                    changed = replace(ui, text, "") || changed
+                }
             }
             case .Undo => changed = undo(ui, text, false) || changed
             case .Redo => changed = undo(ui, text, true) || changed

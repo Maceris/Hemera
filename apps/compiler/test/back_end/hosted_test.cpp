@@ -626,7 +626,7 @@ TEST(Hosted, Canvas)
 TEST(Hosted, Ui)
 {
 	const HostedOutput checked = run_hosted("ui", hemera::TargetStackCheck::Off, 0, "", false, false, false, {}, true);
-	EXPECT_NE(checked.output.find("11 tests: 11 passed, 0 failed"), std::string::npos) << checked.output;
+	EXPECT_NE(checked.output.find("12 tests: 12 passed, 0 failed"), std::string::npos) << checked.output;
 }
 
 // std/crypto's X25519 and Ed25519 against known values, with bad keys and signatures refused.

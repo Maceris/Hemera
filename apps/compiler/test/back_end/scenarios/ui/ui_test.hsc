@@ -272,6 +272,34 @@ edits_text #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     return .Ok
 }
 
+/** Run a frame with a secret field over text. */
+secret_frame :: fn(u: ptr[mut ui.Ui], input: ui.Input, text: ptr[mut u8[..]]) {
+    ui.begin(u, input, WIDTH, HEIGHT)
+    _ = ui.text_field(u, "Password", text, secret = true)
+    _ = ui.end(u)
+}
+
+hides_secrets #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+    u :: new_ui()
+    defer free(u)
+    text : u8[..]
+    defer runtime.array_free(&text)
+    secret_frame(u, ui.Input.{}, &text)
+    u.focus = ui.find(u, "//role=textfield") or_else 0
+    secret_frame(u, ui.Input.{text = string_bytes("hunter2")}, &text)
+    testing.expect(t, as_text(&text) == "hunter2", "a secret field takes what's typed")
+    testing.expect(t, (ui.find(u, "//text=*******") is_some) && (ui.find(u, "//text=hunter2") is_none), "and shows a star for each byte, never it")
+    secret_frame(u, keys(ui.Key.[ui.Key.SelectAll, ui.Key.Copy, ui.Key.Left, ui.Key.Left]), &text)
+    copied := false
+    for event in ui.events_of(u) {
+        copied = copied || event.kind == .Copied
+    }
+    testing.expect(t, !copied, "nothing's copied from it")
+    secret_frame(u, ui.Input.{text = string_bytes("!")}, &text)
+    testing.expect(t, as_text(&text) == "hunter2!", "and typing goes at its end, wherever the arrows were")
+    return .Ok
+}
+
 drops_state_with_its_widget #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
     u :: new_ui()
     defer free(u)
