@@ -1325,6 +1325,21 @@ There are a few [operators built in](operators.md#result-operators) to make life
 
 There are 2 formats for strings. Strings can be enclosed in quotes like `"This is a string"`, or may be multiline strings.
 
+A quoted string's text is UTF-8, with these escapes:
+
+| Escape     | Means                                                                                          |
+|------------|------------------------------------------------------------------------------------------------|
+| `\n`       | A newline, U+000A                                                                              |
+| `\t`       | A tab, U+0009                                                                                  |
+| `\r`       | A carriage return, U+000D                                                                      |
+| `\0`       | A zero byte                                                                                    |
+| `\u{...}`  | The code point named by 1 to 6 hex digits, as its UTF-8: `"\u{E9}"` is `"é"`, two bytes        |
+| `\` and any other character | That character, like `\"` and `\\`                                            |
+
+A `\u{...}` must name a Unicode scalar value, at most U+10FFFF and not a surrogate (U+D800 to U+DFFF), or it's an error
+(E2010). It's how a string holds a character that can't be written in source as it is, like a bidirectional control
+([File Contents](formatting.md#file-contents)).
+
 For multiline strings, each line starts with a double-backslash (`\\`)
 
 ```

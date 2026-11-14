@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <string_view>
+#include <vector>
 
 #include "lexer/token.h"
 #include "memory/allocator.h"
@@ -61,6 +62,17 @@ namespace hemera {
 			uint8_t comment_depth;
 			// The line just read was longer than a column can count, and was cut short (E2007)
 			bool line_too_long;
+			/*
+			 * Where the lines read so far, but not yet reported, have bytes that aren't UTF-8 (E2008) or a
+			 * bidirectional control (E2009), in the order they're found; the next token reports them
+			 */
+			struct TextProblem {
+				uint32_t line_number;
+				uint16_t column_number;
+				// The bidirectional control found, or 0 for bytes that aren't UTF-8
+				uint32_t bidirectional_control;
+			};
+			std::vector<TextProblem> text_problems;
 
 			Tokenizer();
 			Tokenizer(const Tokenizer&) = delete;

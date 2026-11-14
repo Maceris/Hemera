@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cctype>
 #include <concepts>
 #include <format>
@@ -7,6 +8,7 @@
 #include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "util/logger.h"
+#include "util/utf8.h"
 
 namespace hemera::lexer {
 
@@ -142,11 +144,49 @@ namespace hemera::lexer {
 	 */
 	constexpr size_t MAX_LINE_LENGTH = 0xffff;
 
-	static void limit_line(Tokenizer& tokenizer, MyString& line) {
+	/*
+	 * Checks a line just read, before it's lexed: that it's UTF-8 and has no bidirectional controls, noting where
+	 * it isn't or has for the next token to report (E2008, E2009), and that it isn't too long. Only the first bytes
+	 * that aren't UTF-8 are noted, so one stray byte doesn't make a report per byte after it.
+	 */
+	static void check_line(Tokenizer& tokenizer, MyString& line) {
+		const std::string_view text(line.data(), std::min(line.size(), MAX_LINE_LENGTH));
+		bool reported_invalid = false;
+		for (size_t at = 0; at < text.size();) {
+			uint32_t code_point = 0;
+			const size_t length = utf8::decode(text, at, code_point);
+			if (length == 0) {
+				if (!reported_invalid) {
+					tokenizer.text_problems.push_back({ tokenizer.line_number, static_cast<uint16_t>(at), 0 });
+					reported_invalid = true;
+				}
+				at += 1;
+				continue;
+			}
+			if (utf8::is_bidirectional_control(code_point)) {
+				tokenizer.text_problems.push_back({ tokenizer.line_number, static_cast<uint16_t>(at), code_point });
+			}
+			at += length;
+		}
 		if (line.size() > MAX_LINE_LENGTH) {
 			line.resize(MAX_LINE_LENGTH);
 			tokenizer.line_too_long = true;
 		}
+	}
+
+	static void report_text_problems(Tokenizer& tokenizer, std::string_view file_path) {
+		for (const Tokenizer::TextProblem& problem : tokenizer.text_problems) {
+			if (problem.bidirectional_control == 0) {
+				report_error(ErrorCode::E2008, file_path, problem.line_number, problem.column_number,
+					"source files are UTF-8");
+			}
+			else {
+				report_error(ErrorCode::E2009, file_path, problem.line_number, problem.column_number,
+					std::format("U+{:04X} can make code display in an order other than it's read; in a string, write it "
+						"as \\u{{{:X}}}", problem.bidirectional_control, problem.bidirectional_control));
+			}
+		}
+		tokenizer.text_problems.clear();
 	}
 
 	static bool next_line(Tokenizer& tokenizer, std::istream& input_stream) {
@@ -159,10 +199,10 @@ namespace hemera::lexer {
 		if (!std::getline(input_stream, line)) {
 			return false;
 		}
-		limit_line(tokenizer, line);
+		tokenizer.line_number += 1;
+		check_line(tokenizer, line);
 		tokenizer.current_line = line;
 		tokenizer.column_number = 0;
-		tokenizer.line_number += 1;
 		return true;
 	}
 
@@ -215,6 +255,41 @@ namespace hemera::lexer {
 		return result;
 	}
 
+	/*
+	 * Takes the rest of a \u{...} escape in a quoted string, just after its u: braces around 1 to 6 hex digits, naming
+	 * a code point up to U+10FFFF that isn't a surrogate (U+D800 to U+DFFF). Reports one that isn't (E2010) at its u,
+	 * taking as much as looked like it, but never the string's closing quote or the end of the line.
+	 */
+	static void unicode_escape(Tokenizer& tokenizer, std::istream& input_stream, std::string_view file_path) {
+		const uint32_t line = tokenizer.line_number;
+		const uint16_t column = static_cast<uint16_t>(tokenizer.column_number - 1);
+		bool valid = peek_char(tokenizer) == '{';
+		uint32_t value = 0;
+		size_t digits = 0;
+		if (valid) {
+			next_char(tokenizer, input_stream);
+			while (std::isxdigit(static_cast<unsigned char>(peek_char(tokenizer)))) {
+				const char digit = next_char(tokenizer, input_stream);
+				if (digits < 7) {
+					value = value * 16 + static_cast<uint32_t>(std::isdigit(static_cast<unsigned char>(digit))
+						? digit - '0' : std::tolower(static_cast<unsigned char>(digit)) - 'a' + 10);
+				}
+				digits += 1;
+			}
+			valid = peek_char(tokenizer) == '}';
+			if (valid) {
+				next_char(tokenizer, input_stream);
+			}
+		}
+		if (!valid || digits == 0 || digits > 6) {
+			report_error(ErrorCode::E2010, file_path, line, column, "it's written \\u{...}, with 1 to 6 hex digits");
+		}
+		else if (value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) {
+			report_error(ErrorCode::E2010, file_path, line, column,
+				std::format("U+{:X} isn't a Unicode scalar value: it's past U+10FFFF or a surrogate", value));
+		}
+	}
+
 	Token next(Tokenizer& tokenizer, std::istream& input_stream,
 		Allocator<> string_alloc, std::string_view file_path) {
 
@@ -223,6 +298,7 @@ namespace hemera::lexer {
 			report_error(ErrorCode::E2007, file_path, tokenizer.line_number, 0,
 				std::format("a line can have at most {} characters", MAX_LINE_LENGTH));
 		}
+		report_text_problems(tokenizer, file_path);
 		uint32_t start_line = tokenizer.line_number;
 		uint16_t start_column = tokenizer.column_number;
 		TokenType result_type = TokenType::END_OF_FILE;
@@ -676,6 +752,10 @@ namespace hemera::lexer {
 			case 0x7f:
 				state = State::invalid;
 				report_error(ErrorCode::E2004, file_path, tokenizer.line_number, tokenizer.column_number);
+				goto switch_start;
+			case 'u':
+				unicode_escape(tokenizer, input_stream, file_path);
+				state = State::literal_string;
 				goto switch_start;
 			default:
 				state = State::literal_string;
@@ -1268,7 +1348,11 @@ namespace hemera::lexer {
 
 		Tokenizer tokenizer{};
 		std::getline(input_stream, tokenizer.current_line);
-		limit_line(tokenizer, tokenizer.current_line);
+		// A byte order mark, which says the file is UTF-8, isn't part of the text
+		if (tokenizer.current_line.starts_with("\xEF\xBB\xBF")) {
+			tokenizer.current_line.erase(0, 3);
+		}
+		check_line(tokenizer, tokenizer.current_line);
 
 		while (true) {
 			Token next_token = next(tokenizer, input_stream, string_alloc, file_path);

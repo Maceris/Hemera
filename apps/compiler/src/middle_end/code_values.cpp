@@ -10,6 +10,7 @@
 
 #include "error/reporting.h"
 #include "parser/printing.h"
+#include "util/utf8.h"
 
 namespace hemera {
 
@@ -23,10 +24,21 @@ namespace hemera {
 			return Token(type, where.column_number, where.line_number, text.empty() ? nullptr : intern(text));
 		}
 
-		// Text as a string or character literal's, quotes and escapes included.
+		/*
+		 * Text as a string or character literal's, quotes and escapes included. A string's bidirectional controls are
+		 * written as \u{...}, as source can't have them (E2009).
+		 */
 		std::string quoted_text(std::string_view text, char quote) {
 			std::string out(1, quote);
-			for (const char c : text) {
+			for (size_t at = 0; at < text.size(); ++at) {
+				const char c = text[at];
+				uint32_t code_point = 0;
+				const size_t length = quote == '"' ? utf8::decode(text, at, code_point) : 0;
+				if (length > 1 && utf8::is_bidirectional_control(code_point)) {
+					out += std::format("\\u{{{:X}}}", code_point);
+					at += length - 1;
+					continue;
+				}
 				if (c == '\\' || c == quote) {
 					out += '\\';
 					out += c;
@@ -50,26 +62,9 @@ namespace hemera {
 			return out + quote;
 		}
 
-		std::string utf8(uint64_t code_point) {
+		std::string utf8_text(uint64_t code_point) {
 			std::string out;
-			if (code_point < 0x80) {
-				out += static_cast<char>(code_point);
-			}
-			else if (code_point < 0x800) {
-				out += static_cast<char>(0xc0 | (code_point >> 6));
-				out += static_cast<char>(0x80 | (code_point & 0x3f));
-			}
-			else if (code_point < 0x10000) {
-				out += static_cast<char>(0xe0 | (code_point >> 12));
-				out += static_cast<char>(0x80 | ((code_point >> 6) & 0x3f));
-				out += static_cast<char>(0x80 | (code_point & 0x3f));
-			}
-			else {
-				out += static_cast<char>(0xf0 | (code_point >> 18));
-				out += static_cast<char>(0x80 | ((code_point >> 12) & 0x3f));
-				out += static_cast<char>(0x80 | ((code_point >> 6) & 0x3f));
-				out += static_cast<char>(0x80 | (code_point & 0x3f));
-			}
+			utf8::encode(static_cast<uint32_t>(code_point), out);
 			return out;
 		}
 
@@ -180,7 +175,7 @@ namespace hemera {
 						value.magnitude != 0 ? "true" : "false", false);
 				}
 				else if (value.kind == Spliced::Kind::CHARACTER) {
-					return literal_node(where, TokenType::LITERAL_CHAR, quoted_text(utf8(value.magnitude), '\''), false);
+					return literal_node(where, TokenType::LITERAL_CHAR, quoted_text(utf8_text(value.magnitude), '\''), false);
 				}
 				else if (value.kind == Spliced::Kind::STRING) {
 					return literal_node(where, TokenType::LITERAL_STRING, quoted_text(value.text, '"'), false);

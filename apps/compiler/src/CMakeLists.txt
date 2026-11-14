@@ -94,9 +94,11 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/parser/printing.h
   ${INCLUDE_DIR}/types/primitives.h
+  ${INCLUDE_DIR}/util/console.h
   ${INCLUDE_DIR}/util/crash_dump.h
   ${INCLUDE_DIR}/util/logger.h
   ${INCLUDE_DIR}/util/thread_pool.h
+  ${INCLUDE_DIR}/util/utf8.h
 )
 
 SET(SOURCE_FILES
@@ -133,6 +135,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/parser/ast_types.cpp
   ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/parser/printing.cpp
+  ${SOURCE_DIR}/util/console.cpp
   ${SOURCE_DIR}/util/crash_dump.cpp
   ${SOURCE_DIR}/util/logger.cpp
   ${SOURCE_DIR}/util/thread_pool.cpp
@@ -187,6 +190,12 @@ llvm_map_components_to_libnames(llvm_libs
 )
 SEPARATE_ARGUMENTS(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 
+# On Windows, every program linking the compiler's library has this manifest, which makes UTF-8 the process's code
+# page, so paths and the command line are UTF-8 there as everywhere else in the compiler
+IF(WIN32)
+  SET(HEMERA_MANIFEST ${SOURCE_DIR}/utf8.manifest)
+ENDIF()
+
 # A compiler: the library LIBRARY, of everything but main and the generated sources too, for the compiler's tests and
 # the tools built on it; and the program PROGRAM, which is main linked with it
 FUNCTION(HEMERA_ADD_COMPILER LIBRARY PROGRAM)
@@ -203,7 +212,7 @@ FUNCTION(HEMERA_ADD_COMPILER LIBRARY PROGRAM)
   TARGET_COMPILE_DEFINITIONS(${LIBRARY} PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
   TARGET_COMPILE_OPTIONS(${LIBRARY} PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
 
-  ADD_EXECUTABLE(${PROGRAM} ${HEADER_FILES} ${SOURCE_DIR}/main.cpp)
+  ADD_EXECUTABLE(${PROGRAM} ${HEADER_FILES} ${SOURCE_DIR}/main.cpp ${HEMERA_MANIFEST})
   TARGET_LINK_LIBRARIES(${PROGRAM} ${LIBRARY})
   TARGET_COMPILE_DEFINITIONS(${PROGRAM} PRIVATE ${HEMERA_DEFINITIONS})
   TARGET_COMPILE_OPTIONS(${PROGRAM} PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
@@ -260,7 +269,7 @@ ENDIF()
 
 enable_testing()
 
-ADD_EXECUTABLE(HemeraTest ${HEADER_FILES} ${TEST_FILES})
+ADD_EXECUTABLE(HemeraTest ${HEADER_FILES} ${TEST_FILES} ${HEMERA_MANIFEST})
 
 TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})
 # Where tests write what they build, like the hosted test's program

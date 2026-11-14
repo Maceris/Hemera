@@ -1,6 +1,8 @@
 #include <cstdint>
 #include <cctype>
 #include <format>
+#include <sstream>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -9,6 +11,7 @@
 #include "error/reporting.h"
 #include "lexer/lexer.h"
 #include "lexer/token.h"
+#include "parser/ast_types.h"
 #include "../string_cache_guard.h"
 
 using hemera::Allocator;
@@ -261,6 +264,79 @@ TEST(LexerTests, VeryLongLine)
 	EXPECT_EQ(output[2].type, TokenType::IDENTIFIER);
 	EXPECT_EQ(output[2].line_number, 3);
 	hemera::reset_reporting_storage();
+}
+
+// The errors lexing text reports, in order, each as "(line,column) code"
+static std::vector<std::string> text_errors(const std::string& text) {
+	hemera::reset_reporting_storage();
+	StringCacheGuard string_cache;
+	Allocator<> alloc;
+	MyVector<Token> output;
+	hemera::ReportScope scope;
+	hemera::set_report_scope(&scope);
+	std::istringstream input_stream(text);
+	hemera::lexer::lex(input_stream, output, alloc, "text", true);
+	hemera::set_report_scope(nullptr);
+	hemera::reset_reporting_storage();
+	std::vector<std::string> errors;
+	std::istringstream lines(scope.output + scope.errors_output);
+	for (std::string line; std::getline(lines, line);) {
+		const size_t open = line.find('(');
+		const size_t error = line.find("): error ");
+		if (open != std::string::npos && error != std::string::npos) {
+			errors.push_back(line.substr(open, error + 1 - open) + " " + line.substr(error + 9, 5));
+		}
+	}
+	return errors;
+}
+
+/*
+ * Source is UTF-8: bytes that aren't are reported once a line, where they start (E2008), and a byte order mark at
+ * the start is skipped
+ */
+TEST(LexerTests, InvalidUtf8)
+{
+	using Errors = std::vector<std::string>;
+	EXPECT_EQ(text_errors("// caf\xC3\xA9 \xE6\x97\xA5\xE6\x9C\xAC \xF0\x9F\x98\x80\na :: \"\xD0\x96\""), Errors{});
+	EXPECT_EQ(text_errors("\xEF\xBB\xBF" "a :: 1"), Errors{});
+	// A stray continuation byte, a lead with none, an overlong '/', a surrogate, past U+10FFFF
+	EXPECT_EQ(text_errors("// ab\x80"), (Errors{ "(1,5) E2008" }));
+	EXPECT_EQ(text_errors("// \xC3x"), (Errors{ "(1,3) E2008" }));
+	EXPECT_EQ(text_errors("// \xC0\xAF"), (Errors{ "(1,3) E2008" }));
+	EXPECT_EQ(text_errors("// \xED\xA0\x80"), (Errors{ "(1,3) E2008" }));
+	EXPECT_EQ(text_errors("// \xF4\x90\x80\x80"), (Errors{ "(1,3) E2008" }));
+	// Once a line, on each line it happens on, inside a block comment too
+	EXPECT_EQ(text_errors("/* \xFF\xFF\n\n \xFE */"), (Errors{ "(1,3) E2008", "(3,1) E2008" }));
+}
+
+// Bidirectional controls are an error wherever they are (E2009), and a string has them through \u{...}
+TEST(LexerTests, BidirectionalControls)
+{
+	using Errors = std::vector<std::string>;
+	// U+202E in a comment and U+2066 in a string, U+061C and U+200F
+	EXPECT_EQ(text_errors("a :: 1 // \xE2\x80\xAE" "b"), (Errors{ "(1,10) E2009" }));
+	EXPECT_EQ(text_errors("a :: \"x\xE2\x81\xA6\""), (Errors{ "(1,7) E2009" }));
+	EXPECT_EQ(text_errors("// \xD8\x9C \xE2\x80\x8F"), (Errors{ "(1,3) E2009", "(1,6) E2009" }));
+	EXPECT_EQ(text_errors("a :: \"\\u{202E}\""), Errors{});
+}
+
+TEST(LexerTests, UnicodeEscapes)
+{
+	using Errors = std::vector<std::string>;
+	EXPECT_EQ(text_errors("a :: \"\\u{0}\\u{e9}\\u{10FFFF}\\u{00004A}\""), Errors{});
+	EXPECT_EQ(text_errors("a :: \"\\u\""), (Errors{ "(1,7) E2010" }));
+	EXPECT_EQ(text_errors("a :: \"\\u{}\""), (Errors{ "(1,7) E2010" }));
+	EXPECT_EQ(text_errors("a :: \"\\u{12345678}\""), (Errors{ "(1,7) E2010" }));
+	EXPECT_EQ(text_errors("a :: \"\\u{12g}\""), (Errors{ "(1,7) E2010" }));
+	EXPECT_EQ(text_errors("a :: \"\\u{110000}\""), (Errors{ "(1,7) E2010" }));
+	EXPECT_EQ(text_errors("a :: \"\\u{D800}\""), (Errors{ "(1,7) E2010" }));
+	// A bad escape doesn't take the closing quote, so what follows still lexes
+	EXPECT_EQ(text_errors("a :: \"\\u{41\"\nb :: 2"), (Errors{ "(1,7) E2010" }));
+
+	StringCacheGuard string_cache;
+	const Token literal(TokenType::LITERAL_STRING, 0, 1, hemera::intern(std::string("\"a\\u{E9}\\u{1F600}\\u{202e}\\n\"")));
+	hemera::ast::Node node(hemera::ast::NodeType::LITERAL, literal);
+	EXPECT_EQ(hemera::ast::string_value(&node), "a\xC3\xA9\xF0\x9F\x98\x80\xE2\x80\xAE\n");
 }
 
 TEST(LexerTests, ManyTokenTest)

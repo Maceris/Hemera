@@ -4,10 +4,20 @@
 
 #include "cmd_line/arg_parsing.h"
 #include "cmd_line/options.h"
+#include "util/console.h"
 
 using hemera::arg_parse::Option;
 using hemera::arg_parse::UnprocessedOptions;
 using hemera::Allocator;
+
+/*
+ * The command line and paths are UTF-8 on Windows through utf8.manifest, which the tests have as the compiler does;
+ * without it, a path or argument outside the system's code page is turned into question marks
+ */
+TEST(ArgParsingTest, ProcessCodePageIsUtf8)
+{
+	EXPECT_TRUE(hemera::process_code_page_is_utf8());
+}
 
 TEST(ArgParsingTest, OptionsWithoutArgs)
 {

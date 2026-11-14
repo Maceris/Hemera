@@ -23,6 +23,7 @@ identifier = letter , { letter | digit_decimal | "_" } ;
 
 S = { " " | "\n" | "\t" | "\r" | "\f" | "\b" } ;
 
+# Any UTF-8 character but a bidirectional control (docs/formatting.md, File Contents)
 any_character = ? all characters ? ;
 illegal_string_characters = "\x01" |"\x02" |"\x03" |"\x04" |"\x05"
     |"\x06" |"\x07" |"\x08" |"\x09" |"\x0b"
@@ -48,7 +49,10 @@ comment_line = "//" , { any_character - "\n" } , "\n" ;
 
 comment_any = comment_block | comment_line ;
 
-literal_string = '"' , { any_character - ( "\" | '"' | illegal_string_characters ) | ( "\" , any_character - "n" ) } , '"' ;
+literal_string = '"' , { any_character - ( "\" | '"' | illegal_string_characters ) | unicode_escape
+    | ( "\" , any_character - ( "\n" | "u" ) ) } , '"' ;
+# 1 to 6 digits, naming a code point up to U+10FFFF that isn't a surrogate
+unicode_escape = "\u{" , digit_hex , [ digit_hex ] , [ digit_hex ] , [ digit_hex ] , [ digit_hex ] , [ digit_hex ] , "}" ;
 literal_char = "'" , { any_character - ( "\" | "'" | illegal_string_characters ) | ("\" , any_character - ( "n" | illegal_string_characters ) ) } , "'" ;
 
 literal_integer = integer_decimal

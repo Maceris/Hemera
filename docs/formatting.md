@@ -30,7 +30,16 @@ This is to enable definitions of things to be reordered or modified without havi
 
 # File Contents
 
-The source files are utf-8 encoded text files. There are restrictions on the size of the files, both in terms of line width and number of lines (and consequently, the total size).
+The source files are UTF-8 encoded text files, whatever the system's code page. Bytes that aren't UTF-8 are an error
+(E2008): a stray continuation byte, a sequence cut short, an overlong form, a surrogate or a code point past U+10FFFF. A
+byte order mark at the start of a file is skipped.
+
+The characters that change the order text is displayed in without being seen (Unicode's bidirectional controls: U+061C,
+U+200E, U+200F, U+202A to U+202E and U+2066 to U+2069) are an error anywhere in a file, comments and strings included
+(E2009), as they can make code look different from how it compiles. A string that needs one writes it as an escape,
+like `"\u{202E}"` ([Strings](types.md#strings)).
+
+There are restrictions on the size of the files, both in terms of line width and number of lines (and consequently, the total size).
 
 These are:
 

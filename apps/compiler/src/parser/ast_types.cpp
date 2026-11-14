@@ -1,6 +1,9 @@
 #include "parser/ast_types.h"
 
+#include <charconv>
 #include <format>
+
+#include "util/utf8.h"
 
 namespace hemera::ast {
 
@@ -129,6 +132,17 @@ namespace hemera::ast {
 				continue;
 			}
 			const char escaped = text[++i];
+			if (escaped == 'u' && i + 1 < text.size() && text[i + 1] == '{') {
+				// \u{...}, a code point's UTF-8, which the lexer checked
+				const size_t close = text.find('}', i);
+				if (close != std::string_view::npos) {
+					uint32_t code_point = 0;
+					std::from_chars(text.data() + i + 2, text.data() + close, code_point, 16);
+					utf8::encode(code_point, result);
+					i = close;
+					continue;
+				}
+			}
 			result += escaped == 'n' ? '\n' : escaped == 't' ? '\t' : escaped == 'r' ? '\r' : escaped == '0' ? '\0' : escaped;
 		}
 		return result;
