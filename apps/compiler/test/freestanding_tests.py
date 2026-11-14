@@ -22,6 +22,8 @@ import tempfile
 from pathlib import Path
 
 COMPILER_DIR = Path(__file__).resolve().parent.parent
+# Where the windows preset (CMakePresets.json) puts the compiler, in a folder per configuration
+BUILT = COMPILER_DIR.parent.parent / "build" / "windows" / "bin"
 SCENARIOS = COMPILER_DIR / "test" / "back_end" / "scenarios"
 
 # A kernel's target: no startup code, stack checks that trap, no floating point or SIMD (which trap until
@@ -38,8 +40,8 @@ def run(command: list[str], timeout: int | None = None) -> subprocess.CompletedP
 
 
 def main() -> int:
-    release = COMPILER_DIR / "bin" / "Release" / "hemera.exe"
-    compiler = os.environ.get("HEMERA", str(release if release.exists() else COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
+    release = BUILT / "Release" / "hemera.exe"
+    compiler = os.environ.get("HEMERA", str(release if release.exists() else BUILT / "Debug" / "hemera-debug.exe"))
     qemu = os.environ.get("QEMU_AARCH64", "C:/Program Files/qemu/qemu-system-aarch64.exe")
     scenario = SCENARIOS / "freestanding_aarch64"
     linker_script = f"--linker-script={scenario / 'linker.ld'}"

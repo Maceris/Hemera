@@ -1,0 +1,40 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows",
+      "displayName": "Windows, Visual Studio with clang-cl",
+      "description": "Visual Studio 2022 projects using clang-cl, in build/windows; programs in build/windows/bin/<configuration>",
+      "generator": "Visual Studio 17 2022",
+      "toolset": "ClangCL",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "displayName": "Release compiler and tests",
+      "configurePreset": "windows",
+      "configuration": "Release",
+      "targets": [ "Hemera", "HemeraTest" ]
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug compiler and tests",
+      "configurePreset": "windows",
+      "configuration": "Debug",
+      "targets": [ "Hemera", "HemeraTest" ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "release",
+      "displayName": "Release tests",
+      "configurePreset": "windows",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

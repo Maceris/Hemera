@@ -9,45 +9,48 @@ TARGET_COMPILE_OPTIONS(generate_errors PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNIN
 
 SET_TARGET_PROPERTIES(generate_errors PROPERTIES OUTPUT_NAME generate_errors)
 
+# The commands below write into it with the shell's redirection, which doesn't make folders
+FILE(MAKE_DIRECTORY ${HEMERA_GENERATED_DIR})
+
 ADD_CUSTOM_COMMAND(
   OUTPUT
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h 
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
-  COMMAND generate_errors hemera_errors hpp ${ROOT_DIR}/include/error/errors_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
-  COMMAND generate_errors hemera_errors cpp ${ROOT_DIR}/include/error/errors_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+    ${HEMERA_GENERATED_DIR}/hemera_errors.h 
+    ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
+  COMMAND generate_errors hemera_errors hpp ${ROOT_DIR}/include/error/errors_template.h > ${HEMERA_GENERATED_DIR}/hemera_errors.h
+  COMMAND generate_errors hemera_errors cpp ${ROOT_DIR}/include/error/errors_template.h > ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
   DEPENDS generate_errors ${ROOT_DIR}/include/error/errors_template.h
 )
 SET(HEMERA_GENERATED
   ${HEMERA_GENERATED}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_errors.h
+  ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
 )
 
 ADD_CUSTOM_COMMAND(
   OUTPUT
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
-  COMMAND generate_errors hemera_warnings hpp ${ROOT_DIR}/include/error/warnings_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
-  COMMAND generate_errors hemera_warnings cpp ${ROOT_DIR}/include/error/warnings_template.h > ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+    ${HEMERA_GENERATED_DIR}/hemera_warnings.h
+    ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
+  COMMAND generate_errors hemera_warnings hpp ${ROOT_DIR}/include/error/warnings_template.h > ${HEMERA_GENERATED_DIR}/hemera_warnings.h
+  COMMAND generate_errors hemera_warnings cpp ${ROOT_DIR}/include/error/warnings_template.h > ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
   DEPENDS generate_errors ${ROOT_DIR}/include/error/warnings_template.h
 )
 
 SET(HEMERA_GENERATED 
   ${HEMERA_GENERATED}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_warnings.h
+  ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
 )
 
 # base is built into the compiler, which supplies it rather than reading it while compiling
 FILE(GLOB_RECURSE HEMERA_BASE_SOURCES CONFIGURE_DEPENDS ${ROOT_DIR}/../../base/*.hsc)
 ADD_CUSTOM_COMMAND(
-  OUTPUT ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
-  COMMAND ${CMAKE_COMMAND} -DBASE_DIR=${ROOT_DIR}/../../base -DOUTPUT=${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp -P ${SOURCE_DIR}/front_end/embed_base.cmake
+  OUTPUT ${HEMERA_GENERATED_DIR}/hemera_base.cpp
+  COMMAND ${CMAKE_COMMAND} -DBASE_DIR=${ROOT_DIR}/../../base -DOUTPUT=${HEMERA_GENERATED_DIR}/hemera_base.cpp -P ${SOURCE_DIR}/front_end/embed_base.cmake
   DEPENDS ${SOURCE_DIR}/front_end/embed_base.cmake ${HEMERA_BASE_SOURCES}
 )
 SET(HEMERA_GENERATED
   ${HEMERA_GENERATED}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_base.cpp
 )
 
 ADD_CUSTOM_TARGET(HemeraGenerated DEPENDS ${HEMERA_GENERATED})
@@ -153,9 +156,9 @@ SET(TEST_FILES
 ADD_LIBRARY(HemeraLib
   ${HEADER_FILES}
   ${THIRD_PARTY_HEADER_FILES}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_errors.h
+  ${HEMERA_GENERATED_DIR}/hemera_warnings.h
+  ${HEMERA_GENERATED_DIR}/hemera_base.cpp
   
   ${SOURCE_FILES}
 )
@@ -163,8 +166,8 @@ ADD_LIBRARY(HemeraLib
 ADD_EXECUTABLE(Hemera
   ${HEADER_FILES}
   ${THIRD_PARTY_HEADER_FILES}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
 
   ${SOURCE_DIR}/main.cpp
 )
@@ -217,7 +220,7 @@ TARGET_LINK_LIBRARIES(HemeraLib PUBLIC
 
 TARGET_INCLUDE_DIRECTORIES(HemeraLib PUBLIC
   ${INCLUDE_DIR}/
-  $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}>
+  $<BUILD_INTERFACE:${HEMERA_GENERATED_DIR}>
 )
 
 IF(MSVC)
@@ -234,7 +237,8 @@ SOURCE_GROUP(TREE ${SOURCE_DIR} PREFIX "src" FILES ${SOURCE_FILES})
 SOURCE_GROUP(TREE ${TEST_DIR} PREFIX "test" FILES ${TEST_FILES})
 
 TARGET_LINK_LIBRARIES(Hemera HemeraLib)
-SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera")
+# hemera-debug for Debug, so both builds can be on PATH and be run by name
+SET_TARGET_PROPERTIES(Hemera PROPERTIES OUTPUT_NAME "hemera" OUTPUT_NAME_DEBUG "hemera-debug")
 TARGET_COMPILE_DEFINITIONS(HemeraLib PRIVATE ${HEMERA_DEFINITIONS} ${LLVM_DEFINITIONS_LIST})
 TARGET_COMPILE_DEFINITIONS(Hemera PRIVATE ${HEMERA_DEFINITIONS})
 TARGET_COMPILE_OPTIONS(HemeraLib PRIVATE ${HEMERA_OPTIONS} ${HEMERA_WARNING_OPTIONS})
@@ -254,16 +258,16 @@ IF(HEMERA_ASAN)
   ADD_LIBRARY(HemeraLibAsan
     ${HEADER_FILES}
     ${THIRD_PARTY_HEADER_FILES}
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.h
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.h
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_base.cpp
+    ${HEMERA_GENERATED_DIR}/hemera_errors.h
+    ${HEMERA_GENERATED_DIR}/hemera_warnings.h
+    ${HEMERA_GENERATED_DIR}/hemera_base.cpp
     ${SOURCE_FILES}
   )
   ADD_EXECUTABLE(HemeraAsan
     ${HEADER_FILES}
     ${THIRD_PARTY_HEADER_FILES}
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
-    ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+    ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
+    ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
     ${SOURCE_DIR}/main.cpp
   )
   TARGET_LINK_LIBRARIES(HemeraLibAsan PUBLIC
@@ -276,7 +280,7 @@ IF(HEMERA_ASAN)
   )
   TARGET_INCLUDE_DIRECTORIES(HemeraLibAsan PUBLIC
     ${INCLUDE_DIR}/
-    $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}>
+    $<BUILD_INTERFACE:${HEMERA_GENERATED_DIR}>
   )
   TARGET_INCLUDE_DIRECTORIES(HemeraAsan PUBLIC ${INCLUDE_DIR}/)
   TARGET_LINK_LIBRARIES(HemeraAsan HemeraLibAsan)
@@ -313,8 +317,8 @@ ADD_EXECUTABLE(HemeraTest
   ${THIRD_PARTY_HEADER_FILES}
   
   ${TEST_FILES}
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_errors.cpp
-  ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/hemera_warnings.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_errors.cpp
+  ${HEMERA_GENERATED_DIR}/hemera_warnings.cpp
 )
 
 TARGET_COMPILE_OPTIONS(HemeraTest PRIVATE ${HEMERA_OPTIONS})

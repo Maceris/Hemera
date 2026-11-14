@@ -215,7 +215,11 @@ TEST(Freestanding, CallsUEFIFunctionValuesWithMicrosoftsConvention)
 	llvm::LLVMContext llvm_context;
 	std::unique_ptr<llvm::Module> lowered = hemera::lower_to_llvm(module, llvm_context, options);
 	ASSERT_NE(lowered, nullptr);
-	const std::string assembly = lowered->getModuleInlineAsm();
+	// The module's inline assembly, all its fragments in order
+	std::string assembly;
+	for (const llvm::Module::GlobalAsmFragment& fragment : lowered->getModuleInlineAsm()) {
+		assembly += fragment.Asm;
+	}
 	const size_t shim = assembly.find("hemera.foreign_indirect.1:");
 	ASSERT_NE(shim, std::string::npos) << assembly;
 	const std::string body = assembly.substr(shim, assembly.find("retq", shim) - shim);

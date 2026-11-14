@@ -2259,7 +2259,7 @@ namespace hemera {
 			generator.builder.setInsertionPointToEnd(generator.module.getBody());
 			mlir::Type pointer = LLVM::LLVMPointerType::get(generator.context);
 			carrier = LLVM::GlobalOp::create(generator.builder, generator.loc, pointer, false, LLVM::Linkage::Internal,
-				THREAD_CARRIER_SYMBOL, mlir::Attribute(), 8, 0, true, true);
+				THREAD_CARRIER_SYMBOL, mlir::Attribute(), 8, 0, true, LLVM::ThreadLocalMode::GeneralDynamic);
 			generator.builder.setInsertionPointToStart(generator.builder.createBlock(&carrier.getInitializerRegion()));
 			LLVM::ReturnOp::create(generator.builder, generator.loc, zero_of(generator, pointer));
 		}
@@ -5207,7 +5207,7 @@ namespace hemera {
 		std::string_view text, std::string_view constraints) {
 
 		auto op = LLVM::InlineAsmOp::create(generator.builder, generator.loc, result, operands, text, constraints, true, false,
-			LLVM::tailcallkind::TailCallKind::None, LLVM::AsmDialectAttr(), mlir::ArrayAttr());
+			LLVM::tailcallkind::TailCallKind::None, false, LLVM::AsmDialectAttr(), mlir::ArrayAttr());
 		return result ? static_cast<mlir::Value>(op.getRes()) : mlir::Value();
 	}
 
@@ -5686,7 +5686,7 @@ namespace hemera {
 		const unsigned alignment = static_cast<unsigned>(value_type->size);
 		if (name.starts_with("atomic_load_")) {
 			result = value(LLVM::LoadOp::create(b, l, llvm_type(generator, value_type), arguments[0], alignment, false, false, false,
-				false, ordering), result_type);
+				false, false, ordering), result_type);
 			return true;
 		}
 		if (name.starts_with("atomic_store_")) {
@@ -13542,18 +13542,46 @@ namespace hemera {
 	}
 
 	/*
-	 * __chkstk, which code for Windows calls before taking a frame bigger than a page, with its size
-	 * in rax: Windows commits a thread's stack a page at a time as its guard page is touched, so each
-	 * page of the frame is touched in order, from the top down. It changes no register but the
-	 * flags, like the C library's, which Hemera doesn't link.
+	 * __chkstk, which code for Windows calls before taking a frame bigger than a page: Windows commits a thread's
+	 * stack a page at a time as its guard page is touched, so each page of the frame is touched in order, from the
+	 * top down, ending at the frame's lowest byte. Like the C library's, which Hemera doesn't link:
+	 * - on x86-64 the frame's size in bytes is in rax, and it changes no register but the flags;
+	 * - on AArch64 the size is in x15, in units of 16 bytes, and it changes only x16, x17 and the flags. The caller
+	 *   moves the stack pointer itself afterwards.
 	 */
 	//SPEC: compiler-rt lib/builtins/x86_64/chkstk.S
+	//SPEC: compiler-rt lib/builtins/aarch64/chkstk.S
 	static void define_stack_probe(llvm::Module& module, const Options& options) {
 		// UEFI's code is Windows' too, whose firmware has the stack committed already, so the probe only touches it
-		if ((OSType::Win32 != options.os && OSType::UEFI != options.os) || ArchType::x86_64 != options.architecture) {
+		if (OSType::Win32 != options.os && OSType::UEFI != options.os) {
 			return;
 		}
-		module.appendModuleInlineAsm(
+		if (ArchType::aarch64 == options.architecture) {
+			module.appendModuleInlineAsm(llvm::StringRef(
+				"\t.text\n"
+				"\t.globl __chkstk\n"
+				"\t.p2align 2\n"
+				"__chkstk:\n"
+				"\tlsl x16, x15, #4\n"
+				"\tmov x17, sp\n"
+				"\tcmp x16, #0x1000\n"
+				"\tb.lo 2f\n"
+				"1:\n"
+				"\tsub x17, x17, #0x1000\n"
+				"\tldr xzr, [x17]\n"
+				"\tsub x16, x16, #0x1000\n"
+				"\tcmp x16, #0x1000\n"
+				"\tb.hi 1b\n"
+				"2:\n"
+				"\tsub x17, x17, x16\n"
+				"\tldr xzr, [x17]\n"
+				"\tret\n"));
+			return;
+		}
+		if (ArchType::x86_64 != options.architecture) {
+			return;
+		}
+		module.appendModuleInlineAsm(llvm::StringRef(
 			"\t.text\n"
 			"\t.globl __chkstk\n"
 			"\t.p2align 4\n"
@@ -13575,7 +13603,7 @@ namespace hemera {
 			"\torq $0, (%rcx)\n"
 			"\tpopq %rax\n"
 			"\tpopq %rcx\n"
-			"\tretq\n");
+			"\tretq\n"));
 	}
 
 	/*
@@ -13647,7 +13675,7 @@ namespace hemera {
 		llvm::Type* byte = llvm::Type::getInt8Ty(context);
 		llvm::Type* word = size;
 		llvm::Type* i32 = llvm::Type::getInt32Ty(context);
-		llvm::IRBuilder<> builder(context);
+		llvm::IRBuilder<> builder(module);
 		const llvm::Align word_alignment(8);
 		for (llvm::StringRef name : { "memcpy", "memmove" }) {
 			llvm::Function* function = library_function(module, name, llvm::FunctionType::get(pointer, { pointer, pointer, size }, false));

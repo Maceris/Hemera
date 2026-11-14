@@ -1,8 +1,8 @@
 diff --git a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-index aedc4956f1bd..8a204d0cb903 100644
+index f18d4382f9d2..c6bdfe414d94 100644
 --- a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 +++ b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-@@ -3176,12 +3176,16 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
+@@ -3286,12 +3286,16 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
    const Function &F = MF.getFunction();
  
    // Record that there are split-stack functions, so we will emit a special
@@ -24,10 +24,10 @@ index aedc4956f1bd..8a204d0cb903 100644
      HasNoSplitStack = true;
  
 diff --git a/llvm/lib/Target/X86/X86FrameLowering.cpp b/llvm/lib/Target/X86/X86FrameLowering.cpp
-index a3f50cde617a..8807c01630df 100644
+index 4e12043ec1e9..ed11c910c44b 100644
 --- a/llvm/lib/Target/X86/X86FrameLowering.cpp
 +++ b/llvm/lib/Target/X86/X86FrameLowering.cpp
-@@ -18,6 +18,7 @@
+@@ -19,6 +19,7 @@
  #include "X86Subtarget.h"
  #include "X86TargetMachine.h"
  #include "llvm/ADT/Statistic.h"
@@ -35,7 +35,7 @@ index a3f50cde617a..8807c01630df 100644
  #include "llvm/CodeGen/LivePhysRegs.h"
  #include "llvm/CodeGen/MachineFrameInfo.h"
  #include "llvm/CodeGen/MachineFunction.h"
-@@ -3435,8 +3436,43 @@ void X86FrameLowering::adjustForSegmentedStacks(
+@@ -3582,8 +3583,43 @@ void X86FrameLowering::adjustForSegmentedStacks(
  
    if (MF.getFunction().isVarArg())
      report_fatal_error("Segmented stacks do not support vararg functions.");
@@ -81,7 +81,7 @@ index a3f50cde617a..8807c01630df 100644
        !STI.isTargetDragonFly())
      report_fatal_error("Segmented stacks not supported on this platform.");
  
-@@ -3476,7 +3512,25 @@ void X86FrameLowering::adjustForSegmentedStacks(
+@@ -3623,7 +3659,25 @@ void X86FrameLowering::adjustForSegmentedStacks(
    bool CompareStackPointer = StackSize < kSplitStackAvailable;
  
    // Read the limit off the current stacklet off the stack_guard location.
@@ -108,7 +108,7 @@ index a3f50cde617a..8807c01630df 100644
      if (STI.isTargetLinux()) {
        TlsReg = X86::FS;
        TlsOffset = IsLP64 ? 0x70 : 0x40;
-@@ -3599,6 +3653,45 @@ void X86FrameLowering::adjustForSegmentedStacks(
+@@ -3746,6 +3800,45 @@ void X86FrameLowering::adjustForSegmentedStacks(
        .addMBB(&PrologueMBB)
        .addImm(X86::COND_A);
  

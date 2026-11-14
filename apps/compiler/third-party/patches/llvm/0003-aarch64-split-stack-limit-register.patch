@@ -1,5 +1,5 @@
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
-index 026f807124d2..266f5749c824 100644
+index 195a4ec48c78..e5d31d2b5880 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 @@ -224,6 +224,7 @@
@@ -10,8 +10,8 @@ index 026f807124d2..266f5749c824 100644
  #include "llvm/Analysis/ValueTracking.h"
  #include "llvm/CodeGen/CFIInstBuilder.h"
  #include "llvm/CodeGen/LivePhysRegs.h"
-@@ -938,6 +939,128 @@ AArch64FrameLowering::findScratchNonCalleeSaveRegister(MachineBasicBlock *MBB,
-   return AArch64::NoRegister;
+@@ -935,6 +936,128 @@ AArch64FrameLowering::findScratchNonCalleeSaveRegister(MachineBasicBlock *MBB,
+   return Register();
  }
  
 +// "split-stack" with "split-stack-limit-register"="x28": the stack pointer less
@@ -140,7 +140,7 @@ index 026f807124d2..266f5749c824 100644
      const MachineBasicBlock &MBB) const {
    const MachineFunction *MF = MBB.getParent();
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.h b/llvm/lib/Target/AArch64/AArch64FrameLowering.h
-index 19cc93d01013..f996fb104343 100644
+index aa2e2d6c0392..29530e97e6a8 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.h
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.h
 @@ -47,6 +47,11 @@ public:
@@ -155,7 +155,7 @@ index 19cc93d01013..f996fb104343 100644
    /// Harden the entire function with pac-ret.
    ///
    /// If pac-ret+leaf is requested, we want to harden as much code as possible.
-@@ -107,8 +112,10 @@ public:
+@@ -116,8 +121,10 @@ public:
                              RegScavenger *RS) const override;
  
    /// Returns true if the target will correctly handle shrink wrapping.

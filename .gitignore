@@ -5,9 +5,14 @@
 # MacOS
 .DS_Store
 
-# Windows
-builds/
+# Build output
+# CMake's build folders, one per preset (CMakePresets.json)
+/build/
+# Packages' own build output (docs/packages.md, Structure), and the compiler's old apps/compiler/bin
 bin/
+builds/
+
+# Windows
 *.exe
 *.obj
 *.pdb

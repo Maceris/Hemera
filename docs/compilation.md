@@ -474,9 +474,9 @@ entry is the image's, which the firmware calls with the image's handle and the s
 
 `std/os/uefi` has the firmware's other tables and protocols as they're needed, like the runtime services, whose
 `ResetSystem` `uefi.reset(.Shutdown)` calls. The firmware's functions are reached through the pointers in its tables,
-typed with their convention (see [directives.md](directives.md#functions)). On x86-64 a frame bigger than a page
-calls `__chkstk`, which the compiler provides as it does for Windows; on AArch64 no function has unwind information,
-which Windows' code would otherwise have.
+typed with their convention (see [directives.md](directives.md#functions)). A frame bigger than a page calls
+`__chkstk`, which the compiler provides as it does for Windows, on x86-64 and AArch64 alike; on AArch64 no function
+has unwind information, which Windows' code would otherwise have.
 `OutputType.FlatBinary` links the same way, then keeps only the loadable bytes.
 
 ### Starting on Linux

@@ -158,30 +158,17 @@ ENDIF()
 
 # Directories
 
-IF(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
-  SET(HEMERA_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "Path for runtime output files")
-  SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${HEMERA_RUNTIME_OUTPUT_DIRECTORY})
-ELSE()
-  SET(HEMERA_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" CACHE STRING "Path for runtime output files")
+# Programs in bin/<configuration> and libraries in lib/<configuration>, under the build folder. The root CMakeLists.txt
+# sets these for every project; these are for configuring the compiler on its own.
+IF(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+  SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 ENDIF()
-
-IF(NOT DEFINED CMAKE_LIBRARY_OUTPUT_DIRECTORY)
-  SET(HEMERA_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "Path for library output files")
-  SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${HEMERA_LIBRARY_OUTPUT_DIRECTORY})
-ELSE()
-  SET(HEMERA_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" CACHE STRING "Path for library output files")
+IF(NOT CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+  SET(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 ENDIF()
-
-IF(NOT DEFINED CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
-  SET(HEMERA_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" CACHE STRING "Path for archive output files")
-  SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${HEMERA_ARCHIVE_OUTPUT_DIRECTORY})
-ELSE()
-  SET(HEMERA_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}" CACHE STRING "Path for archive output files")
+IF(NOT CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
+  SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 ENDIF()
-
-SET(RUNTIME_OUTPUT_DIRECTORY ${HEMERA_RUNTIME_OUTPUT_DIRECTORY})
-SET(LIBRARY_OUTPUT_DIRECTORY ${HEMERA_LIBRARY_OUTPUT_DIRECTORY})
-SET(ARCHIVE_OUTPUT_DIRECTORY ${HEMERA_ARCHIVE_OUTPUT_DIRECTORY})
 
 SET(ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 SET(THIRD_PARTY_DIR ${ROOT_DIR}/third-party)
@@ -189,7 +176,8 @@ SET(SOURCE_DIR ${ROOT_DIR}/src)
 SET(INCLUDE_DIR ${ROOT_DIR}/include)
 SET(HEMERA_MLIR_DIR ${ROOT_DIR}/mlir)
 SET(TEST_DIR ${ROOT_DIR}/test)
-SET(CONFIGURATION_BINARY_DIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}/$<$<CONFIG:Debug>:Debug>$<$<CONFIG:Release>:Release>)
+# Sources made while building, like the error tables and the embedded base
+SET(HEMERA_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 # Third party
 
@@ -197,15 +185,16 @@ SET(CONFIGURATION_BINARY_DIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY}/$<$<CONFIG:Debug
 SET(LLVM_SOURCE_DIR ${THIRD_PARTY_DIR}/llvm-project)
 INCLUDE(${THIRD_PARTY_DIR}/patches/llvm/apply_patches.cmake)
 
-SET(LLVM_DIR ${THIRD_PARTY_DIR}/llvm-project/llvm/cmake/modules)
-FIND_PACKAGE(LLVM REQUIRED CONFIG)
-MESSAGE(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-MESSAGE(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-LIST(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
-
 SET(LLVM_TARGETS_TO_BUILD "X86;AArch64;ARM" CACHE STRING "")
-SET(LLVM_ENABLE_PROJECTS "clang;lld;mlir" CACHE STRING "")
-SET(LLVM_ENABLE_RUNTIMES "compiler-rt;libc" CACHE STRING "")
+# Only what the compiler links: LLVM's and MLIR's libraries. Programs are linked by the lld on the PATH, and nothing
+# uses clang, compiler-rt or LLVM's libc. lld stays a project so a linker can be built from the same LLVM when wanted
+SET(LLVM_ENABLE_PROJECTS "lld;mlir" CACHE STRING "")
+SET(LLVM_ENABLE_RUNTIMES "" CACHE STRING "")
+# LLVM's, lld's and MLIR's programs aren't built with everything else, but each is still a target, like llc and
+# FileCheck for running the patches' tests
+SET(LLVM_BUILD_TOOLS OFF CACHE BOOL "")
+SET(LLD_BUILD_TOOLS OFF CACHE BOOL "")
+SET(LLVM_BUILD_UTILS OFF CACHE BOOL "")
 SET(LLVM_BUILD_TESTS OFF CACHE BOOL "")
 SET(LLVM_INCLUDE_TESTS OFF CACHE BOOL "")
 SET(LLVM_INCLUDE_BENCHMARKS OFF CACHE BOOL "")
@@ -216,8 +205,9 @@ SET(LLVM_OPTIMIZED_TABLEGEN ON CACHE BOOL "")
 # each native tool step depend on every native tool registered before it, including ones that are never built
 # (llvm-readobj, mlir-pdll, mlir-irdl-to-cpp), so MSBuild always considers some of the steps out of date and re-runs the
 # nested build on every build. Once those tools exist, point LLVM straight at them instead, using the same paths so none
-# of the generated files change. Turn this off after updating LLVM so they are rebuilt from the new sources.
-OPTION(HEMERA_REUSE_NATIVE_TOOLS "Use the already built native MLIR tools instead of re-checking them every build" ON)
+# of the generated files change. Turn this off after updating LLVM so they are rebuilt from the new sources. Rebuilding
+# them also races: two steps building the same nested tool at once, as a parallel Debug build did, fail to link.
+OPTION(HEMERA_REUSE_NATIVE_TOOLS "Use the already built native tools instead of re-checking them every build" ON)
 IF(CMAKE_CONFIGURATION_TYPES)
   SET(HEMERA_NATIVE_TOOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/third-party/llvm-project/llvm/NATIVE/Release/bin)
 ELSE()
@@ -233,17 +223,31 @@ FUNCTION(HEMERA_REUSE_NATIVE_TOOL TOOL SETTING DEFAULT)
   ENDIF()
 ENDFUNCTION()
 
+# LLVM takes every tool it finds in LLVM_NATIVE_TOOL_DIR, and still builds the ones it doesn't, unless a setting below,
+# already in the cache, names another. llvm-min-tblgen follows LLVM_TABLEGEN.
+IF(HEMERA_REUSE_NATIVE_TOOLS)
+  SET(LLVM_NATIVE_TOOL_DIR ${HEMERA_NATIVE_TOOL_DIR} CACHE PATH "" FORCE)
+ELSEIF("${LLVM_NATIVE_TOOL_DIR}" STREQUAL "${HEMERA_NATIVE_TOOL_DIR}")
+  SET(LLVM_NATIVE_TOOL_DIR "" CACHE PATH "" FORCE)
+ENDIF()
+HEMERA_REUSE_NATIVE_TOOL(llvm-tblgen LLVM_TABLEGEN llvm-tblgen)
 HEMERA_REUSE_NATIVE_TOOL(mlir-tblgen MLIR_TABLEGEN mlir-tblgen)
 HEMERA_REUSE_NATIVE_TOOL(mlir-linalg-ods-yaml-gen MLIR_LINALG_ODS_YAML_GEN "")
 
-SET(LLVM_RUNTIME_OUTPUT_INTDIR ${HEMERA_RUNTIME_OUTPUT_DIRECTORY})
-SET(LLVM_LIBRARY_OUTPUT_INTDIR ${HEMERA_LIBRARY_OUTPUT_DIRECTORY})
 ADD_SUBDIRECTORY(${THIRD_PARTY_DIR}/llvm-project/llvm)
+SET(HEMERA_LLVM_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third-party/llvm-project/llvm)
 
-SET(MLIR_DIR ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/lib/cmake/mlir)
+# The packages LLVM and MLIR describe themselves with, written into the build folder while LLVM was configured
+SET(LLVM_DIR ${HEMERA_LLVM_BINARY_DIR}/lib/cmake/llvm)
+FIND_PACKAGE(LLVM REQUIRED CONFIG)
+MESSAGE(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+MESSAGE(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+LIST(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+
+SET(MLIR_DIR ${CMAKE_BINARY_DIR}/lib/cmake/mlir)
 FIND_PACKAGE(MLIR REQUIRED CONFIG)
 MESSAGE(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
-SET(MLIR_BINARY_DIR ${CONFIGURATION_BINARY_DIR})
+SET(MLIR_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/mlir)
 LIST(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 SET(MLIR_INCLUDE_DIR ${THIRD_PARTY_DIR}/llvm-project/mlir/include)
 SET(TABLEGEN_INCLUDES -I${MLIR_INCLUDE_DIR})
@@ -252,16 +256,16 @@ LIST(APPEND MLIR_TABLEGEN_FLAGS "-I${MLIR_INCLUDE_DIR}")
 INCLUDE_DIRECTORIES(SYSTEM PRIVATE
   ${LLVM_INCLUDE_DIRS}
   ${THIRD_PARTY_DIR}/llvm-project/llvm/include
-  $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include>
+  $<BUILD_INTERFACE:${HEMERA_LLVM_BINARY_DIR}/include>
   ${MLIR_INCLUDE_DIRS}
   ${THIRD_PARTY_DIR}/llvm-project/mlir/include
-  $<BUILD_INTERFACE:${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/mlir/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/mlir/include>
 )
 
 IF(MSVC)
   # Intellisense doesn't play well with the clang-cl SYSTEM PRIVATE includes
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/mlir/include)
-  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${HEMERA_LIBRARY_OUTPUT_DIRECTORY}/third-party/llvm-project/llvm/include)
+  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/mlir/include)
+  LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${HEMERA_LLVM_BINARY_DIR}/include)
   LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/llvm-project/mlir/include)
   LIST(APPEND CMAKE_VS_SDK_INCLUDE_DIRECTORIES ${THIRD_PARTY_DIR}/llvm-project/llvm/include)
 ENDIF()
@@ -278,4 +282,4 @@ ADD_SUBDIRECTORY(src)
 ADD_SUBDIRECTORY(${HEMERA_MLIR_DIR})
 
 SET_PROPERTY(DIRECTORY ${ROOT_DIR} PROPERTY VS_STARTUP_PROJECT Hemera)
-SET_PROPERTY(TARGET Hemera PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CONFIGURATION_BINARY_DIR})
+SET_PROPERTY(TARGET Hemera PROPERTY VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:Hemera>)

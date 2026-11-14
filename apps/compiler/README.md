@@ -36,30 +36,28 @@ run this command to update dependencies:
 $ git submodule update --init --recursive
 ```
 
-To minimally create the project or solution files for the project, create a directory named "bin" under this folder, and run
-`cmake ..` from bin. For example:
+The build starts from the repository's root, whose `CMakeLists.txt` adds the compiler and the tools built on it, all
+sharing one build of LLVM. Configure and build with the presets in `CMakePresets.json`, from the repository's root:
 ```bash
-mkdir bin
-cd bin
-cmake ..
+cmake --preset windows
+cmake --build --preset release
 ```
 
-It's recommended to use pre-installed LLVM tools (ideally the same version) for building and linking. e.g.
-`cmake .. -T ClangCL`
+The `windows` preset makes Visual Studio 2022 projects using clang-cl in `build/windows`, with `Hemera.sln` at its
+top. Programs go in `build/windows/bin/<configuration>`, like `build/windows/bin/Release/hemera.exe`, and libraries in
+`build/windows/lib/<configuration>`; everything else in `build/windows` is CMake's and LLVM's. To start again from
+nothing, delete the preset's folder, or configure with `cmake --preset windows --fresh`.
 
-This will generate all of the project files in the `bin` folder, where build output will also be stored.
-If using Visual Studio, you can open the Loquat solution and build and run it from there.
+The `release` and `debug` build presets build the compiler and its tests, and only the parts of LLVM they use; building
+the solution's `ALL_BUILD` builds every LLVM library too. LLVM's own programs, like `llc` and `FileCheck`, aren't built
+unless asked for by name (`cmake --build build/windows --config Release --target llc`). Programs Hemera builds are
+linked by the `lld-link` or `ld.lld` on the PATH, which Visual Studio's LLVM tools provide.
 
-Note that since this includes LLVM, Debug builds require a very large amount of time and disk space.
-A full debug build could be tens or even hundreds of GB of disk space and will take hours.
-Around 75 GB would be a reasonable estimate. The exact space requirements will vary by system.
-Release builds are very much recommended, but will still not be small or fast. A Debug compiler is also much slower
-at compiling Hemera: most of the time goes in LLVM's code generation, which a Debug LLVM does about ten to twenty times
-slower. Use the Release compiler (`bin/Release/hemera.exe`) to build programs, and Debug for debugging the compiler.
-Both can be built in the same `bin` folder, each with its own outputs.
-
-It's quite likely that you'll need to build a few times to get a full/clean build, 
-as some stages/tools depend on the outputs of others to be used as build tools.
+Since the build includes LLVM, Debug builds take a long time and a lot of disk space. Release builds are very much
+recommended. A Debug compiler is also much slower at compiling Hemera: most of the time goes in LLVM's code generation,
+which a Debug LLVM does about ten to twenty times slower. Use the Release compiler to build programs, and Debug for
+debugging the compiler. Both can be built in the same folder, each with its own outputs. The Debug compiler is
+`hemera-debug` (`build/windows/bin/Debug/hemera-debug.exe`), so both folders can be on the PATH and each run by name.
 
 ## Crashes and Memory Errors
 
@@ -67,8 +65,8 @@ If the compiler crashes on Windows, it writes a minidump before it ends, `hemera
 folder `HEMERA_CRASH_DUMPS` names, or the temporary folder, and says where on standard error, followed by a stack
 trace. Open it in Visual Studio or WinDbg with the compiler's PDB, which Release builds have too.
 
-For memory errors that only show now and then, configure with `-DHEMERA_ASAN=ON` to also build `hemera-asan`, the
-compiler with AddressSanitizer (`cmake --build . --config Release --target HemeraAsan`). Only the compiler's own code
+For memory errors that only show now and then, configure with `cmake --preset windows -DHEMERA_ASAN=ON` to also build `hemera-asan`, the
+compiler with AddressSanitizer (`cmake --build build/windows --config Release --target HemeraAsan`). Only the compiler's own code
 is instrumented, so LLVM isn't rebuilt for it. It runs like `hemera`, about twice as slowly, and stops at the first
 use of freed memory, overflow or other error it finds, with where the memory was allocated and freed.
 

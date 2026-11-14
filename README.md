@@ -17,10 +17,23 @@ you can run this command to update dependencies:
 $ git submodule update --init --recursive
 ```
 
+## Building
+
+The compiler and the tools built on it are one CMake build, configured from this folder with the presets in
+`CMakePresets.json`:
+```bash
+cmake --preset windows
+cmake --build --preset release
+```
+
+That builds into `build/windows`, with the compiler at `build/windows/bin/Release/hemera.exe`. See
+[the compiler's README](/apps/compiler/README.md) for requirements and details.
+
 ## Folders
 
 * `apps/` - Applications like the compiler, formatter, LSP
 * `base/` - Packages that are part of the base language, required for targets and implementations
+* `build/` - Where CMake builds, a folder per preset; ignored by source control
 * `docs/` - Documentation
 * `examples/` - Example projects
 * `std/` - The standard library, intended to support the runtime, operating system specific calls, and other common core functionality

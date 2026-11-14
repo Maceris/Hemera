@@ -67,6 +67,12 @@ other targets have instead:
 Elsewhere it changes nothing. A function with it can't be unwound through by Windows' unwinder, so structured
 exception handling and C++ exceptions can't pass through it.
 
+The attribute is read by `X86FrameLowering::isWin64Prologue`, which the patch brings back: upstream now asks
+`MachineFunction::usesWindowsUnwindInfo()` everywhere. The places that decide the prologue's and epilogue's shape, frame
+offsets, `llvm.frameaddress` and the XMM saves ask `isWin64Prologue`; the ones about the object format, like whether
+to emit DWARF CFI, still ask `usesWindowsUnwindInfo`, so a function with the attribute gets no unwind information of
+either kind.
+
 Includes `llvm/test/CodeGen/X86/win64-classic-frame.ll`.
 
 ## 0003-aarch64-split-stack-limit-register.patch
@@ -102,8 +108,9 @@ loop (`docs/calling_convention.md`, *Resuming*), which has to sign its own retur
 each frame's frame pointer, and outside Darwin LLVM puts the frame record at the bottom of the callee-saved registers,
 so the entry stack pointer is the frame pointer plus their size, which differs from function to function. The
 `"frame-record-at-top"` function attribute gives a function Darwin's order of callee-saved registers, which puts the
-frame record at the top, so the entry stack pointer is always the frame pointer plus 16. Not on Windows, and not for
-SVE's calling convention.
+frame record at the top, so the entry stack pointer is always the frame pointer plus 16. Not on Windows or UEFI, which
+LLVM gives Windows' order of callee-saved registers, and not for SVE's calling convention. Hemera doesn't use
+control-flow integrity on either.
 
 ## 0005-landing-pads-after-calls.patch
 

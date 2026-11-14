@@ -405,7 +405,7 @@ namespace hemera {
 					llvm::FunctionAnalysisManager functions;
 					llvm::CGSCCAnalysisManager call_graph;
 					llvm::ModuleAnalysisManager modules;
-					llvm::PassBuilder builder(part_machine.get());
+					llvm::PassBuilder builder(context, part_machine.get());
 					builder.registerModuleAnalyses(modules);
 					builder.registerCGSCCAnalyses(call_graph);
 					builder.registerFunctionAnalyses(functions);
@@ -594,31 +594,19 @@ namespace hemera {
 		llvm::CGSCCAnalysisManager call_graph_analysis_manager;
 		llvm::ModuleAnalysisManager module_analysis_manager;
 
-		llvm::MachineModuleInfo machine_module_info(target_machine);
-		llvm::MachineModuleAnalysis machine_module_analysis(machine_module_info);
-		llvm::MachineFunctionAnalysisManager machine_function_analysis_manager;
-		llvm::MachineFunctionAnalysis machine_function_analysis(*target_machine);
-		llvm::BasicBlockSectionsProfileReaderAnalysis basic_block_sections_profile_reader_analysis(*target_machine);
-
 		// With the target machine, so the passes cost things as the target does: what's worth inlining or
 		// vectorizing, and whether functions with different #target_features can be inlined into each other
-		llvm::PassBuilder pass_builder(target_machine);
+		llvm::PassBuilder pass_builder(module.getContext(), target_machine);
 
 		pass_builder.registerModuleAnalyses(module_analysis_manager);
 		pass_builder.registerCGSCCAnalyses(call_graph_analysis_manager);
 		pass_builder.registerFunctionAnalyses(function_analysis_manager);
-		pass_builder.registerMachineFunctionAnalyses(machine_function_analysis_manager);
 		pass_builder.registerLoopAnalyses(loop_analysis_manager);
 		pass_builder.crossRegisterProxies(loop_analysis_manager,
 			function_analysis_manager,
 			call_graph_analysis_manager,
-			module_analysis_manager,
-			&machine_function_analysis_manager
+			module_analysis_manager
 		);
-		
-		module_analysis_manager.registerPass([&] { return machine_module_analysis; });
-		function_analysis_manager.registerPass([&] { return machine_function_analysis; });
-		function_analysis_manager.registerPass([&] { return basic_block_sections_profile_reader_analysis; });
 
 		llvm::OptimizationLevel optimization_level =
 			map_optimization_level(options.optimization_level);
@@ -656,76 +644,21 @@ namespace hemera {
 			report_error(ErrorCode::E6000, output_name, 0, 0, error_code.message());
 			return false;
 		}
-		// LLVM's new code generation pipeline is only X86's so far: elsewhere, the optimizations, then the legacy one
-		if (!target_triple->isX86()) {
-			module_pass_manager.run(module, module_analysis_manager);
-			llvm::legacy::PassManager passes;
-			if (target_machine->addPassesToEmitFile(passes, destination, nullptr, llvm::CodeGenFileType::ObjectFile)) {
-				report_error(ErrorCode::E5001, output_name, 0, 0, "the target can't generate an object file");
-				return false;
-			}
-			passes.run(module);
-			destination.flush();
-			return true;
-		}
-
-		llvm::SourceMgr source_manager;
-		llvm::MCRegisterInfo* mc_register_info = target->createMCRegInfo(*target_triple);
-		llvm::MCTargetOptions mc_target_options;
-		llvm::MCAsmInfo* mc_asm_info = target->createMCAsmInfo(
-			*mc_register_info,
-			*target_triple,
-			mc_target_options
-		);
-		llvm::MCSubtargetInfo* mc_subtarget_info = target->createMCSubtargetInfo(
-			*target_triple, 
-			target_machine->getTargetCPU(), 
-			target_machine->getTargetFeatureString()
-		);
-		llvm::MCContext mc_context(
-			*target_triple,
-			*mc_asm_info,
-			*mc_register_info,
-			*mc_subtarget_info,
-			&source_manager
-		);
-		const bool is_PIC = true;// Position Independent Code
-		const bool is_large_code_model = false; // Large memory model
-		llvm::MCObjectFileInfo* mc_object_file_info = 
-			target->createMCObjectFileInfo(mc_context, is_PIC, 
-				is_large_code_model);
-		mc_context.setObjectFileInfo(mc_object_file_info);
-
-		llvm::CGPassBuilderOption code_gen_pass_builder_option;
-		llvm::PassInstrumentationCallbacks pass_instrumentation_callbacks;
-		llvm::Error result = target_machine->buildCodeGenPipeline(
-			module_pass_manager,
-			module_analysis_manager,
-			destination,
-			nullptr,
-			llvm::CodeGenFileType::ObjectFile,
-			code_gen_pass_builder_option,
-			mc_context,
-			&pass_instrumentation_callbacks
-		);
-
-		// Run everything
+		/*
+		 * The optimizations, then machine code through LLVM's legacy code generation pipeline, as for the parts and as
+		 * llc does by default. The new pass manager's is still being ported, X86's included, and has differed from it:
+		 * with LLVM 24 the context given it had to be the machine code's own, and it crashed computing live intervals
+		 * while two build targets were generated at once
+		 */
 		module_pass_manager.run(module, module_analysis_manager);
-
-		bool had_errors = false;
-		llvm::handleAllErrors(std::move(result),
-			[&output_name, &had_errors](
-				const llvm::ErrorInfoBase& error_base) {
-				report_error(ErrorCode::E5001, output_name, 0, 0,
-					error_base.message());
-				had_errors = true;
-			});
-
-		//TODO(ches) can we delete the .o output? Do we need to ourselves?
-
+		llvm::legacy::PassManager passes;
+		if (target_machine->addPassesToEmitFile(passes, destination, nullptr, llvm::CodeGenFileType::ObjectFile)) {
+			report_error(ErrorCode::E5001, output_name, 0, 0, "the target can't generate an object file");
+			return false;
+		}
+		passes.run(module);
 		destination.flush();
-
-		return !had_errors;
+		return true;
 	}
 
 	bool BackendLLVM::initialize(const Options& options) {

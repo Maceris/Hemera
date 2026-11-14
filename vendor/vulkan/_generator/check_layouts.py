@@ -121,7 +121,7 @@ def run(command, **kwargs):
 
 
 def main():
-    hemera = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPOSITORY, "apps", "compiler", "bin", "Release", "hemera.exe")
+    hemera = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPOSITORY, "build", "windows", "bin", "Release", "hemera.exe")
     clang = sys.argv[2] if len(sys.argv) > 2 else shutil.which("clang") or "clang"
     registry = find_registry()
     sdk = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(registry))))

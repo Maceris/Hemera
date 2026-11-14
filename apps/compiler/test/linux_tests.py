@@ -25,6 +25,8 @@ import tempfile
 from pathlib import Path
 
 COMPILER_DIR = Path(__file__).resolve().parent.parent
+# Where the windows preset (CMakePresets.json) puts the compiler, in a folder per configuration
+BUILT = COMPILER_DIR.parent.parent / "build" / "windows" / "bin"
 SCENARIOS = COMPILER_DIR / "test" / "back_end" / "scenarios"
 
 # Scenario folder, the compiler's extra arguments, and the exit code expected
@@ -130,6 +132,10 @@ RUN_WITH = {
     "files": ("HEMERA_FILES_TEST='h\u00e9llo'", "alpha 'two words' ''"),
 }
 
+# Seconds a test may run before it's stopped and fails, where 120 isn't enough. canvas takes about 30 on
+# x86-64, and ten times that on AArch64 through QEMU
+TIME_LIMITS = {"canvas": 900}
+
 # Tests run under Valgrind's Memcheck, when the Linux machine has it, failing on any error it reports
 UNDER_VALGRIND = {"ctgrind", "ctgrind_leak"}
 VALGRIND = "valgrind -q --error-exitcode=99 --track-origins=yes"
@@ -216,8 +222,8 @@ def main() -> int:
         print("HEMERA_LINUX_HOST isn't set: user@address of a Linux machine to run the tests on")
         return 2
     key = os.environ.get("HEMERA_LINUX_KEY", str(Path.home() / ".ssh" / "hemera_linux_vm"))
-    release = COMPILER_DIR / "bin" / "Release" / "hemera.exe"
-    compiler = os.environ.get("HEMERA", str(release if release.exists() else COMPILER_DIR / "bin" / "Debug" / "hemera.exe"))
+    release = BUILT / "Release" / "hemera.exe"
+    compiler = os.environ.get("HEMERA", str(release if release.exists() else BUILT / "Debug" / "hemera-debug.exe"))
     architecture = os.environ.get("HEMERA_LINUX_ARCH", "x86_64")
     aarch64 = architecture == "aarch64"
     if aarch64:
@@ -252,7 +258,7 @@ def main() -> int:
             environment, program_arguments = RUN_WITH.get(name, ("", ""))
             if aarch64:
                 environment = f"QEMU_LD_PREFIX=/usr/aarch64-linux-gnu {environment}"
-            launch = f"timeout 120 ./{name}"
+            launch = f"timeout {TIME_LIMITS.get(name, 120)} ./{name}"
             if name in UNDER_VALGRIND:
                 launch = (f"if command -v valgrind > /dev/null; then timeout 1200 {VALGRIND} ./{name}; "
                           f"else echo 'valgrind not installed' >&2; exit {exit_code}; fi")
