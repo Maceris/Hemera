@@ -72,8 +72,9 @@ namespace hemera::layout {
 
 		/// <summary>
 		/// doc, printed just before the next line break instead of here: a trailing comment, which stays
-		/// at the end of its line after what follows it on that line, like a comma. Its width counts
-		/// towards the line it ends.
+		/// at the end of its line after what follows it on that line, like a comma. Its width isn't
+		/// counted when deciding whether a group fits, as breaking the group wouldn't shorten it, so
+		/// a long one runs past the width; with break_parent after it, it still breaks its group.
 		/// </summary>
 		Doc line_suffix(Doc doc);
 

@@ -935,10 +935,10 @@ namespace hemera::ast {
 				comments_printed[index] = true;
 				const std::string_view written = comments->source.substr(token.offset, token.length);
 				if (comments->is_line_comment(index)) {
-					return text(line_comment_text(written));
+					return one_line_or_block(index, line_comment_text(written));
 				}
 				if (written.find('\n') == std::string_view::npos) {
-					return text(trim_end(written));
+					return one_line_or_block(index, std::string(trim_end(written)));
 				}
 				size_t line_start = token.offset;
 				while (line_start > 0 && comments->source[line_start - 1] != '\n') {
@@ -952,13 +952,61 @@ namespace hemera::ast {
 				return out.doc();
 			}
 
-			// Whether a comment is a line comment on a line of its own, which a run of becomes one block (C2).
+			// Whether text holds a block comment's opening or closing, which can't go in one, as block comments nest.
+			static bool has_block_marker(std::string_view text) {
+				return text.find("/*") != std::string_view::npos || text.find("*/") != std::string_view::npos;
+			}
+
+			/*
+			 * The words of a one-line comment, as written: a line comment's after its slashes, or a block comment's
+			 * between its markers. Empty if they can't go in a block comment of their own: a run of slashes, a
+			 * block comment's markers in them, or a hemera-format switch.
+			 */
+			static std::string_view block_words(std::string_view written) {
+				std::string_view words;
+				if (written.starts_with("//")) {
+					if (written.starts_with("///") || is_format_switch(written)) {
+						return {};
+					}
+					words = written.substr(2);
+				}
+				else if (written.starts_with("/*") && written.ends_with("*/") && written.size() >= 5) {
+					const size_t opener = written.starts_with("/**") && written.size() >= 6 ? 3 : 2;
+					words = written.substr(opener, written.size() - opener - 2);
+				}
+				words = trim_end(words);
+				words.remove_prefix(std::min(words.size(), leading_spaces(words)));
+				return has_block_marker(words) ? std::string_view{} : words;
+			}
+
+			/*
+			 * A one-line comment, line written as C1 lays it out, as it is where it fits, and otherwise, when it's
+			 * on a line of its own, made a block comment of one line (a doc comment staying one), which C5 then
+			 * breaks.
+			 */
+			Doc one_line_or_block(uint32_t index, const std::string& line) {
+				const std::string_view words = block_words(line);
+				if (words.empty() || comments->breaks_before(comments->start_of(index)) == 0
+					|| !comments->ends_line(comments->end_of(index))) {
+					return text(line);
+				}
+				const std::string_view opener = line.starts_with("/**") ? "/**" : "/*";
+				return d.group(d.if_break(
+					d.concat({ text(opener), nl(), text(" * " + std::string(words)), nl(), text(" */") }),
+					text(line)));
+			}
+
+			/*
+			 * Whether a comment is a line comment on a line of its own, which a run of becomes one block (C2): not
+			 * one whose words can't go in a block comment.
+			 */
 			bool joins_comment_run(uint32_t index) const {
 				if (!comments->is_line_comment(index) || comments->breaks_before(comments->start_of(index)) == 0) {
 					return false;
 				}
 				const Token& token = comments->comments[index];
-				return !is_format_switch(comments->source.substr(token.offset, token.length));
+				const std::string_view written = comments->source.substr(token.offset, token.length);
+				return !is_format_switch(written) && !has_block_marker(written.substr(2));
 			}
 
 			// // hemera-format: off or on, which stays a line comment of its own.
@@ -1807,8 +1855,8 @@ namespace hemera::ast {
 			}
 
 			Doc generic_list(const Node* node) {
-				// Generic arguments never break: a type reads as one
-				return d.concat({ text("["), list(node->children, [&](const Node* item) { return generic_item(item); }), text("]") });
+				// Generic arguments never break, a function type in them included: a type reads as one
+				return d.flat(d.concat({ text("["), list(node->children, [&](const Node* item) { return generic_item(item); }), text("]") }));
 			}
 
 			Doc generic_item(const Node* node) {
@@ -1842,7 +1890,7 @@ namespace hemera::ast {
 							out << bracket_list("(", child->children, [&](const Node* p) { return parameter(p); }, ")", false);
 						}
 						else {
-							out << " -> (" << results(child) << ")";
+							out << " -> " << results(child);
 						}
 					}
 					else if (child->node_type == NodeType::VOID) {
@@ -1917,20 +1965,23 @@ namespace hemera::ast {
 			}
 
 			// Several results: types, or names sharing the type after a COLON, like a : u16, b, c : f32.
+			/*
+			 * A function's results in parentheses, each a type or name : type, broken like parameters where they
+			 * don't fit once the parameters have broken (B5).
+			 */
 			Doc results(const Node* node) {
-				Parts out = parts();
-				for (size_t i = 0; i < node->children.size(); ++i) {
-					const Node* part = node->children[i];
-					if (NodeType::COLON == part->node_type) {
-						out << " : ";
-						continue;
+				std::vector<Doc> items;
+				const MyVector<Node*>& children = node->children;
+				for (size_t i = 0; i < children.size(); ++i) {
+					if (i + 2 < children.size() && NodeType::COLON == children[i + 1]->node_type) {
+						items.push_back(d.concat({ type(children[i], true), text(" : "), type(children[i + 2], true) }));
+						i += 2;
 					}
-					if (i > 0 && NodeType::COLON != node->children[i - 1]->node_type) {
-						out << ", ";
+					else {
+						items.push_back(type(children[i], true));
 					}
-					out << type(part, true);
 				}
-				return out.doc();
+				return bracketed("(", items, ")", false);
 			}
 
 			// ---------------------------------------------------------------------------------

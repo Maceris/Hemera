@@ -60,6 +60,22 @@ empty :: fn() {
     // A block with only a comment keeps it inside
 }
 
+long_comments :: fn(value : int) {
+    if value > 0 {
+        /*
+         * A line comment on a line of its own that ends up past the width once indented becomes a block comment, broken
+         * there.
+         */
+        /**
+         * So does a one-line doc comment that ends up past the width, staying a doc comment, broken where it fits
+         * there.
+         */
+        use(value)
+        // One that holds a block comment's /* opening can't be one, as block comments nest, so it stays past the width.
+        use(value) // A trailing comment stays after its code, however long, as there's nowhere else for it on this line.
+    }
+}
+
 calls :: fn() {
     call(
         1, // a trailing comment breaks the call, staying after its item

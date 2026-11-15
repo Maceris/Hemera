@@ -210,6 +210,17 @@ TEST(Layout, LineSuffixWaitsForTheLineEnd)
 	EXPECT_EQ(d.render(d.concat({ d.text("x"), d.line_suffix(d.text(" // end")) }), 120), "x // end");
 }
 
+TEST(Layout, LongLineSuffixDoesNotBreakItsLine)
+{
+	// f(a) // a long comment: breaking the call wouldn't make the comment fit, so the call stays whole
+	Document d;
+	const Doc doc = d.concat({
+		d.group(d.concat({ d.text("f("), d.indent(d.concat({ d.soft_line(), d.text("a") })), d.soft_line(), d.text(")") })),
+		d.line_suffix(d.text(" // a long comment")),
+	});
+	EXPECT_EQ(d.render(doc, 10), "f(a) // a long comment");
+}
+
 TEST(Layout, NoTrailingSpaces)
 {
 	Document d;

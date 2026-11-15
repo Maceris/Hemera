@@ -18,6 +18,29 @@ short :: fn(a : int, b : int) -> int {
     return a + b
 }
 
+// B6: results that still don't fit once the parameters have broken break the same way
+read_the_whole_configuration :: fn(
+    path : string,
+    allocator : runtime.Allocator
+) -> (
+    configuration_text : string,
+    line_count : usize,
+    warning_count : usize,
+    note_count : usize,
+    error : runtime.AllocatorError?
+) {
+    use(path)
+}
+
+// Generic parameters never break, a function type in them included: the parameters break instead
+resize_the_map :: fn[K : compiler.Equatable, V, hash : (fn(key : K) -> u64)](
+    map : ptr[mut HashMap[K, V, hash]],
+    slots : usize,
+    location := #caller_location
+) -> bool {
+    return true
+}
+
 main :: fn() {
     // B6: arguments, one to a line, the closing ) on its own
     result := connect_to_the_remote_service(

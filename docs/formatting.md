@@ -49,7 +49,6 @@ Commas at the ends of lists (below) are optional. They can be there, or they cou
 * structs
 * enums
 * unions
-* match expressions
 * struct literals that specify fields by name
 * `push_context` field overrides
 
@@ -149,8 +148,10 @@ What it does:
 * A line comment has one space after its `//`, and a run of them on lines of their own becomes one `/* */` block. A
   block comment of several lines opens and closes on lines of its own, with a `*` starting each line in between. A
   comment is indented with its code, and its lines that end up past 120 characters are broken, a block tag's
-  continuation indented 4 spaces past its `@`; code examples, list items, table rows and URLs aren't. Block tags go in
-  the order `@tparam`, `@param`, `@return`, `@error`.
+  continuation indented 4 spaces past its `@`; code examples, list items, table rows and URLs aren't. A one-line
+  comment on a line of its own that ends up past 120 becomes a block comment, `/**` if it was one, and is broken the
+  same way, unless it holds a `/*` or `*/`; one after code on its line stays as it is. Block tags go in the order
+  `@tparam`, `@param`, `@return`, `@error`.
 
 The lines between `// hemera-format: off` and `// hemera-format: on` (or the end of the file) are kept exactly as they
 were written, for a table laid out by hand.

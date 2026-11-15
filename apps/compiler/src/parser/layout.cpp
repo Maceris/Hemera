@@ -254,8 +254,10 @@ namespace hemera::layout {
 				break;
 			case Kind::INDENT:
 			case Kind::ISOLATE:
-			case Kind::LINE_SUFFIX:
 				stack.push_back(Command{ command.indent, command.flat, part.first, 0, command.forced });
+				break;
+			case Kind::LINE_SUFFIX:
+				// Not measured: it goes at the line's end, however the code before it breaks, so breaking can't make it fit
 				break;
 			case Kind::FLAT:
 				stack.push_back(Command{ command.indent, true, part.first, 0, true });
@@ -349,7 +351,8 @@ namespace hemera::layout {
 				stack.push_back(Command{ command.indent, true, part.first, 0, true });
 				break;
 			case Kind::LINE_SUFFIX:
-				suffixes.push_back(Command{ command.indent, command.flat, part.first, 0, command.forced });
+				// Not flat for the group it's in, which didn't measure it: its own groups are decided where it goes
+				suffixes.push_back(Command{ command.indent, command.forced, part.first, 0, command.forced });
 				break;
 			case Kind::GROUP: {
 				/*
