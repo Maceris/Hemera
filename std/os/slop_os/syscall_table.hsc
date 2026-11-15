@@ -106,12 +106,16 @@ syscall_numbers :: fn() -> compiler.Code {
 /**
  * Generate a stub for each call in Syscalls, named like its member and taking the same parameters.
  *
+ * A call that can't be made, with too many arguments for the registers, an error that isn't an enum or a value that
+ * doesn't fit a register, is an error at the #insert (slop_os:E0001 to E0003).
+ *
+ * @param location Where it's inserted, which is where a call that can't be made is reported.
  * @return The stubs' declarations, to insert at the top level.
  */
-syscall_stubs :: fn() -> compiler.Code {
+syscall_stubs :: fn(location := #caller_location) -> compiler.Code {
     made : compiler.Code[..]
     for member, i in table().members {
-        array_add(&made, stub(member, cast[u64](i)))
+        array_add(&made, stub(member, cast[u64](i), location))
     }
     return compiler.list(made)
 }
@@ -130,12 +134,15 @@ syscall_stubs :: fn() -> compiler.Code {
  * that doesn't return gives back nothing, and its dispatch answers 0, 0, 0 if the handler ever comes back.
  * A number that matches no call falls through every statement, for the code after them to answer.
  *
+ * A call that can't be made is an error at the #insert, as syscall_stubs says.
+ *
+ * @param location Where it's inserted, which is where a call that can't be made is reported.
  * @return One if statement per call, to insert where a call arrives.
  */
-syscall_dispatch :: fn() -> compiler.Code {
+syscall_dispatch :: fn(location := #caller_location) -> compiler.Code {
     made : compiler.Code[..]
     for member, i in table().members {
-        array_add(&made, dispatch(member, cast[u64](i)))
+        array_add(&made, dispatch(member, cast[u64](i), location))
     }
     return compiler.list(made)
 }
@@ -156,13 +163,15 @@ table :: fn() -> ptr[compiler.TypeInfoStruct] {
  *
  * @param member The call's member of Syscalls, whose type is the call's function type.
  * @param number The call's number, its member's index.
+ * @param location Where the table's code is inserted, where a call that can't be made is reported: its
+ *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return Statements code declaring the stub, a function named as the member with its parameters, for syscall_stubs to
  *     gather into the list it inserts at the top level.
  */
-stub :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
+stub :: fn(member: compiler.StructMember, number: u64, location: runtime.SourceCodeLocation) -> compiler.Code {
     function :: cast[ptr[compiler.TypeInfoFunction]](member.member_type)
     signature :: compiler.described_type(member.member_type)
-    words :: argument_words(function, member.name)
+    words :: argument_words(function, member.name, location)
     if function.never_returns {
         return #code {
             #insert compiler.name(member.name) :: fn(#insert compiler.parameters(signature)) #never_returns #no_context {
@@ -173,7 +182,7 @@ stub :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
         }
     }
     result :: result_of(function)
-    ok, error :: result_types(result, member.name)
+    ok, error :: result_types(result, member.name, location)
     return #code {
         #insert compiler.name(member.name) :: fn(#insert compiler.parameters(signature)) -> #insert compiler.type_code(compiler.described_type(result)) #no_context {
             answer :: system_call(#insert number, #insert words)
@@ -193,9 +202,11 @@ stub :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
  *
  * @param function The call's function type, whose input gives the parameters.
  * @param call The call's name, for the error message.
+ * @param location Where the table's code is inserted, where a call that can't be made is reported: its
+ *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return The words, as a list of expressions to pass after the call's number.
  */
-argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string) -> compiler.Code {
+argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string, location: runtime.SourceCodeLocation) -> compiler.Code {
     made : compiler.Code[..]
     for input in function.input {
         argument :: compiler.name(input.name)
@@ -204,11 +215,12 @@ argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string) -> 
             array_add(&made, #code(cast[u64]((#insert argument).count)))
         }
         else {
-            array_add(&made, word_of(input.type, argument))
+            array_add(&made, word_of(input.type, argument, location))
         }
     }
     if #is_compile_time && made.count > SYSCALL_ARGUMENT_WORDS {
-        compiler.report_error(#source_location, "% takes more than % registers of arguments", call, SYSCALL_ARGUMENT_WORDS)
+        compiler.report(.Error, #package_name, "E0001", location, "% takes more than % registers of arguments", call,
+            SYSCALL_ARGUMENT_WORDS)
     }
     return compiler.list(made)
 }
@@ -263,10 +275,12 @@ ok_result :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
  *
  * @param member The call's member of Syscalls, whose type is the call's function type.
  * @param number The call's number, its member's index.
+ * @param location Where the table's code is inserted, where a call that can't be made is reported: its
+ *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return Code for one if statement, inserted where the kernel dispatches, using the registers, thread and number
  *     there: when number matches, it returns the call's answer from the function it's in; otherwise it does nothing.
  */
-dispatch :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
+dispatch :: fn(member: compiler.StructMember, number: u64, location: runtime.SourceCodeLocation) -> compiler.Code {
     function :: cast[ptr[compiler.TypeInfoFunction]](member.member_type)
     arguments : compiler.Code[..]
     index := cast[u64](0)
@@ -294,13 +308,13 @@ dispatch :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
             }
         }
     }
-    ok, error :: result_types(result_of(function), member.name)
+    ok, error :: result_types(result_of(function), member.name, location)
     return #code {
         if number == #insert number {
             run :: #insert handler
             match run(thread, #insert compiler.list(arguments)) {
-                #insert ok_answer(ok)
-                case Error(error) => return answered(#insert word_of(error, #code(error)), 0, 0)
+                #insert ok_answer(ok, location)
+                case Error(error) => return answered(#insert word_of(error, #code(error), location), 0, 0)
             }
         }
     }
@@ -313,17 +327,19 @@ dispatch :: fn(member: compiler.StructMember, number: u64) -> compiler.Code {
  * register, with the second 0.
  *
  * @param ok The Ok type, or None when the call's Ok carries nothing, which answers 0, 0, 0.
+ * @param location Where the table's code is inserted, where a call that can't be made is reported: its
+ *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return Code for one case pattern, Ok or Ok(value), to insert in a match on the handler's result; it returns from the
  *     function it's in.
  */
-ok_answer :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
+ok_answer :: fn(ok: ptr[compiler.TypeInfo]?, location: runtime.SourceCodeLocation) -> compiler.Code {
     type :: ok or_return #code patterns {
         case Ok => return answered(0, 0, 0)
     }
     base :: underlying(type)
     if base.variant != .STRUCT {
         return #code patterns {
-            case Ok(value) => return answered(0, #insert word_of(type, #code(value)), 0)
+            case Ok(value) => return answered(0, #insert word_of(type, #code(value), location), 0)
         }
     }
     members :: cast[ptr[compiler.TypeInfoStruct]](base).members
@@ -331,7 +347,7 @@ ok_answer :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
     for field, i in members {
         if i < 2 {
             name :: compiler.name(field.name)
-            array_add(&words, word_of(field.member_type, #code(value.#insert name)))
+            array_add(&words, word_of(field.member_type, #code(value.#insert name), location))
         }
     }
     if words.count < 2 {
@@ -359,14 +375,18 @@ result_of :: fn(function: ptr[compiler.TypeInfoFunction]) -> ptr[compiler.TypeIn
 /**
  * Split a call's Result into its Ok type and its error type.
  *
- * Reports a compile error when the error type isn't an enum, since an error's tag has to fit the first register.
+ * Reports a compile error when the error type isn't an enum, since an error's tag has to fit the first register
+ * (slop_os:E0002).
  *
  * @param result The call's result type, a Result[T, E] (through any aliases).
  * @param call The call's name, for the error message.
+ * @param location Where an error that isn't an enum is reported: the table's #insert, for syscall_stubs and
+ *     syscall_dispatch; the caller's location when not given.
  * @return ok The Ok type, or None when Ok carries nothing.
  * @return error The error type; result itself when the Result has no Error variant.
  */
-result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[compiler.TypeInfo]?, error: ptr[compiler.TypeInfo]) {
+result_types :: fn(result: ptr[compiler.TypeInfo], call: string, location := #caller_location)
+    -> (ok: ptr[compiler.TypeInfo]?, error: ptr[compiler.TypeInfo]) {
     union_info :: cast[ptr[compiler.TypeInfoUnion]](underlying(result))
     ok : ptr[compiler.TypeInfo]? = null
     error := result
@@ -381,7 +401,7 @@ result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[com
         }
     }
     if #is_compile_time && underlying(error).variant != .ENUM {
-        compiler.report_error(#source_location, "%'s error isn't an enum", call)
+        compiler.report(.Error, #package_name, "E0002", location, "%'s error isn't an enum", call)
     }
     return ok, error
 }
@@ -395,12 +415,14 @@ result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[com
  * @param type The value's type, not null and only read: an alias, enum, bool, pointer, or integer of at most 8 bytes.
  *     Anything else reports a compile error, and value is cast as if it were an integer.
  * @param value The expression to convert.
+ * @param location Where the table's code is inserted, where a call that can't be made is reported: its
+ *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return An expression of type u64.
  */
-word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code) -> compiler.Code {
+word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code, location: runtime.SourceCodeLocation) -> compiler.Code {
     if type.variant == .ALIAS {
         base :: cast[ptr[compiler.TypeInfoAlias]](type).base_type
-        return word_of(base, #code(cast[#insert compiler.type_code(compiler.described_type(base))](#insert value)))
+        return word_of(base, #code(cast[#insert compiler.type_code(compiler.described_type(base))](#insert value)), location)
     }
     if type.variant == .ENUM {
         backing :: compiler.type_code(compiler.described_type(cast[ptr[compiler.TypeInfoEnum]](type).backing_type))
@@ -413,7 +435,7 @@ word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code) -> compiler.Co
         return #code(cast[u64](cast[rawptr](#insert value)))
     }
     if #is_compile_time && (type.variant != .INTEGER || type.size > 8) {
-        compiler.report_error(#source_location, "a call's argument or result doesn't fit a register")
+        compiler.report(.Error, #package_name, "E0003", location, "a call's argument or result doesn't fit a register")
     }
     return #code(cast[u64](#insert value))
 }
