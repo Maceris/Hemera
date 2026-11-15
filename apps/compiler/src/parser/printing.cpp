@@ -729,7 +729,16 @@ namespace hemera::ast {
 					body << items[i];
 				}
 				const Doc inside = body.doc();
+				/*
+				 * Only the last item can run over lines in a flat list, as a block does in f(a, fn() { ... }): one
+				 * before it that does breaks the list
+				 */
+				bool spans_lines = false;
+				for (size_t i = 0; i + 1 < items.size(); ++i) {
+					spans_lines = spans_lines || d.flat_width(items[i]) == SIZE_MAX;
+				}
 				return d.group(d.concat({
+					spans_lines ? d.break_parent() : EMPTY,
 					text(open),
 					d.if_break(d.indent(d.concat({ d.soft_line(), inside, trailing_comma ? text(",") : EMPTY })), inside),
 					d.soft_line(),
@@ -2459,6 +2468,10 @@ namespace hemera::ast {
 				if (NodeType::TYPE == node->node_type) {
 					return simple_type(node);
 				}
+				// A match or block ends at its }, so it can be an argument without parentheses, before a , or )
+				if (NodeType::MATCH == node->node_type || NodeType::BLOCK == node->node_type) {
+					return expression(node, ANY);
+				}
 				return expression(node, FALLBACK);
 			}
 
@@ -2678,7 +2691,7 @@ namespace hemera::ast {
 			}
 
 			// open items close on one line where it fits, and otherwise as many items to a line as fit (B8).
-			Doc packed(std::string_view open, const std::vector<Doc>& items, std::string_view close) {
+			Doc packed(std::string_view open, const std::vector<Doc>& items, const std::vector<const Node*>& nodes, std::string_view close) {
 				Parts flat = parts();
 				std::vector<Doc> lines;
 				for (size_t i = 0; i < items.size(); ++i) {
@@ -2686,7 +2699,14 @@ namespace hemera::ast {
 					flat << (i > 0 ? ", " : "") << items[i];
 					lines.push_back(last ? items[i] : d.concat({ items[i], text(",") }));
 					if (!last) {
-						lines.push_back(d.line());
+						// An item with a comment before it, or a blank line, starts a line, as it heads what follows
+						const Node* next = nodes[i + 1];
+						if (has_leading_comment(next) || blank_before(next)) {
+							lines.push_back(d.concat({ nl(), blank_before(next) ? nl() : EMPTY }));
+						}
+						else {
+							lines.push_back(d.line());
+						}
 					}
 				}
 				const Doc broken = d.concat({ d.indent(d.concat({ d.soft_line(), d.fill(lines) })), d.soft_line() });
@@ -2729,7 +2749,7 @@ namespace hemera::ast {
 					numbers = numbers && is_number(item);
 				}
 				if (close == "]" && numbers) {
-					out << packed(open, values, close);
+					out << packed(open, values, nodes, close);
 					return out.doc();
 				}
 				// A struct literal's trailing comma is optional only where its fields are named (D3)

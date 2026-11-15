@@ -369,32 +369,27 @@ namespace hemera::layout {
 				if (i >= part.count) {
 					break;
 				}
-				const Doc item = children[part.first + i];
-				const Command item_flat{ command.indent, true, item, 0, command.forced };
-				const Command item_broken{ command.indent, false, item, 0, command.forced };
-				const bool item_fits = unlimited || fits({ item_flat }, {}, remaining(), true);
-				if (i + 1 >= part.count) {
-					stack.push_back(item_fits ? item_flat : item_broken);
-					break;
-				}
-				const Doc separator = children[part.first + i + 1];
-				const Command separator_flat{ command.indent, true, separator, 0, command.forced };
-				const Command separator_broken{ command.indent, false, separator, 0, command.forced };
-				if (i + 2 >= part.count) {
-					stack.push_back(item_fits && !parts[item].breaks ? separator_flat : separator_broken);
-					stack.push_back(item_fits ? item_flat : item_broken);
-					break;
-				}
 				/*
-				 * Whether the next item fits after this one decides the separator between them, unless this one
-				 * has a break_parent, like a line comment's, which ends its line
+				 * Each child is decided once what's before it is printed: an item (even i) is flat if it fits on
+				 * the rest of the line; a separator (odd i) is flat if the item after it fits there too, and
+				 * broken if what came before left a line suffix waiting, like a line comment, which ends its line
 				 */
-				const Command next_flat{ command.indent, true, children[part.first + i + 2], 0, command.forced };
-				const bool both_fit = !parts[item].breaks
-					&& (unlimited || fits({ item_flat, separator_flat, next_flat }, {}, remaining(), true));
-				stack.push_back(Command{ command.indent, command.flat, command.doc, i + 2, command.forced });
-				stack.push_back(both_fit ? separator_flat : separator_broken);
-				stack.push_back(item_fits ? item_flat : item_broken);
+				stack.push_back(Command{ command.indent, command.flat, command.doc, i + 1, command.forced });
+				const Doc child = children[part.first + i];
+				const Command child_flat{ command.indent, true, child, 0, command.forced };
+				const Command child_broken{ command.indent, false, child, 0, command.forced };
+				bool flat_fits = unlimited || command.forced;
+				if (i % 2 == 0) {
+					flat_fits = flat_fits || fits({ child_flat }, {}, remaining(), true);
+				}
+				else if (!suffixes.empty()) {
+					flat_fits = command.forced;
+				}
+				else if (!flat_fits && i + 1 < part.count) {
+					const Command next_flat{ command.indent, true, children[part.first + i + 1], 0, command.forced };
+					flat_fits = fits({ child_flat, next_flat }, {}, remaining(), true);
+				}
+				stack.push_back(flat_fits ? child_flat : child_broken);
 				break;
 			}
 			case Kind::LINE:

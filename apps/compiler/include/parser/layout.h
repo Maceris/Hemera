@@ -97,8 +97,8 @@ namespace hemera::layout {
 		/// <summary>
 		/// Items packed onto as few lines as fit (B8): parts alternate an item and the separator after
 		/// it, item first. A separator is flat, usually a space, where the item after it fits on the line,
-		/// and broken where it doesn't or where the item before it holds a break_parent, like a line
-		/// comment's. An item is laid out flat unless it can't fit on a line of its own.
+		/// and broken where it doesn't or where the item before it left a line suffix waiting, like a
+		/// trailing comment. An item is laid out flat unless it can't fit on a line of its own.
 		/// </summary>
 		Doc fill(const std::vector<Doc>& parts);
 

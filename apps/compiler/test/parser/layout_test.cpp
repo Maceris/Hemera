@@ -176,6 +176,10 @@ TEST(Layout, FillItemWithALineCommentEndsItsLine)
 	const Doc commented = d.concat({ d.text("2,"), d.line_suffix(d.text(" // two")), d.break_parent() });
 	const Doc doc = d.fill({ d.text("1,"), d.line(), commented, d.line(), d.text("3,"), d.line(), d.text("4") });
 	EXPECT_EQ(d.render(doc, 120), "1, 2, // two\n3, 4");
+	// A comment on a line of its own before an item, which a hard line follows, doesn't take the line after it
+	const Doc heading = d.concat({ d.text("// three"), d.hard_line(), d.break_parent(), d.text("3,") });
+	const Doc table = d.fill({ d.text("1,"), d.line(), d.text("2,"), d.hard_line(), heading, d.line(), d.text("4") });
+	EXPECT_EQ(d.render(table, 120), "1, 2,\n// three\n3, 4");
 }
 
 TEST(Layout, BreakParentBreaksOutToAnIsolate)

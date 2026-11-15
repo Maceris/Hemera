@@ -173,7 +173,10 @@ TEST(ParserSmoke, BaseAndStd)
  * parser makes. Files that don't parse, like the error scenarios, are left out.
  */
 namespace {
-	// The files formatting and printing are checked against: base, std and the scenarios.
+	/*
+	 * The files formatting and printing are checked against: base, std and the scenarios, and those in the folders
+	 * HEMERA_FORMAT_TEST_FOLDERS names, separated by semicolons, for checking formatting over another code base.
+	 */
 	std::vector<std::filesystem::path> round_trip_files()
 	{
 		std::filesystem::path test_root = std::filesystem::path(__FILE__).remove_filename().append("..");
@@ -185,6 +188,17 @@ namespace {
 			std::filesystem::path(test_root).append("front_end").append("scenarios"),
 			std::filesystem::path(test_root).append("back_end").append("scenarios"),
 		};
+		if (const char* extra = std::getenv("HEMERA_FORMAT_TEST_FOLDERS")) {
+			std::string_view list = extra;
+			while (!list.empty()) {
+				const size_t separator = list.find(';');
+				const std::string_view folder = list.substr(0, separator);
+				if (!folder.empty()) {
+					folders.emplace_back(std::string(folder));
+				}
+				list = separator == std::string_view::npos ? std::string_view() : list.substr(separator + 1);
+			}
+		}
 		std::vector<std::filesystem::path> files;
 		for (const std::filesystem::path& folder : folders) {
 			for (const auto& file : std::filesystem::recursive_directory_iterator(folder)) {
@@ -199,8 +213,8 @@ namespace {
 
 	/*
 	 * A comment's words, in order, without its markers (the slashes and stars that open and close it, and each
-	 * line's star): what formatting keeps,
-	 * though it can make a run of line comments one block (C2), lay a block's lines out again (C3) and break them (C5).
+	 * line's star): what formatting keeps, though it can make a run of line comments one block (C2), lay a block's
+	 * lines out again (C3) and break them (C5).
 	 */
 	void comment_words(std::string_view text, std::vector<std::string>& words)
 	{
@@ -700,7 +714,11 @@ TEST(ParserSmoke, DISABLED_FormatAll)
 		if (!result.parsed) {
 			continue;
 		}
-		std::filesystem::path out_path = std::filesystem::path(to) / std::filesystem::relative(path, root);
+		std::filesystem::path relative = std::filesystem::relative(path, root);
+		if (relative.empty() || *relative.begin() == "..") {
+			relative = std::filesystem::path("extra") / path.relative_path();
+		}
+		std::filesystem::path out_path = std::filesystem::path(to) / relative;
 		std::filesystem::create_directories(out_path.parent_path());
 		std::ofstream out(out_path, std::ios::binary);
 		out << result.text;
