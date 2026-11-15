@@ -28,11 +28,16 @@ The output is a direct mapping of the C API, meant to be wrapped by something ni
 
 The video extensions, whose types come from the video headers (video.xml), are left out, along with anything that
 needs them, and so is GGP's platform, whose header was never published.
+
+The files are formatted with hemera-format as the last step, so they stay as `hemera-format --check` wants them: the one
+HEMERA_FORMAT names, or the one on PATH, or the repository's Release build's.
 """
 
 import glob
 import os
 import re
+import shutil
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
@@ -203,6 +208,8 @@ class Declaration:
 
 class Generator:
     def __init__(self, path):
+        # The files written, which are formatted once they all are
+        self.written = []
         self.root = ET.parse(path).getroot()
         self.types = {}
         for t in self.root.find("types"):
@@ -393,6 +400,7 @@ class Generator:
         text = HEADER.format(version=f"{self.version}.{self.header_version}") + "\n" + body.rstrip() + "\n"
         with open(os.path.join(OUTPUT, file_name), "w", newline="\n") as f:
             f.write(text)
+        self.written.append(os.path.join(OUTPUT, file_name))
 
     def constant_value(self, value, type_name):
         value = value.strip()
@@ -740,6 +748,31 @@ class Generator:
         dropped_commands = sorted(n for n in self.dropped if n in self.commands)
         if dropped_commands:
             print("Left out: " + ", ".join(dropped_commands))
+        format_files(self.written)
+
+
+def find_formatter():
+    """hemera-format: the one HEMERA_FORMAT names, or the one on PATH, or this repository's Release build's."""
+    named = os.environ.get("HEMERA_FORMAT")
+    if named:
+        return named
+    on_path = shutil.which("hemera-format")
+    if on_path:
+        return on_path
+    repository = os.path.dirname(os.path.dirname(OUTPUT))
+    built = sorted(glob.glob(os.path.join(repository, "build", "*", "bin", "Release", "hemera-format*")))
+    return built[0] if built else None
+
+
+def format_files(files):
+    """Lays the written files out as hemera-format does, so `hemera-format --check vendor/vulkan` passes."""
+    formatter = find_formatter()
+    if formatter is None:
+        sys.exit("hemera-format wasn't found, so the files are written but not formatted: build it, or set HEMERA_FORMAT "
+                 "to it, and run this again")
+    result = subprocess.run([formatter, "--write", *files])
+    if result.returncode != 0:
+        sys.exit(f"{formatter} couldn't format the files (exit {result.returncode})")
 
 
 if __name__ == "__main__":
