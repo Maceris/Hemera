@@ -1,6 +1,7 @@
 #include "back_end/back_end.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -868,12 +869,30 @@ namespace hemera {
 	 * that follows (u64), the program linked with its DWARF, then the debug table, if the program has one. Its ELF is
 	 * read from linked, which is removed.
 	 */
+	/*
+	 * Deletes a file the build just wrote, like the linker's, returning whether it's gone. Something else can hold a new
+	 * file open for a moment, like an antivirus scan, so a failed delete is tried again for about a second.
+	 */
+	static bool remove_written(const std::string& path) {
+		for (int attempt = 0; attempt < 20; ++attempt) {
+			std::error_code error;
+			std::filesystem::remove(path, error);
+			if (!error) {
+				return true;
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		}
+		return false;
+	}
+
 	static void write_debug_file(const std::string& linked, const std::string& output_name, const std::string& table) {
 		std::ifstream in(linked, std::ios::binary);
 		const std::string elf((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 		in.close();
-		std::error_code ignored;
-		std::filesystem::remove(linked, ignored);
+		if (!remove_written(linked)) {
+			report_warning(WarningCode::W7000, linked, 0, 0, "the program linked with its debug info, once in the debug file, "
+				"couldn't be deleted");
+		}
 		const std::string path = std::filesystem::path(output_name).replace_extension(".debug").string();
 		std::ofstream out(path, std::ios::binary | std::ios::trunc);
 		std::string header = "HDBG";
@@ -954,7 +973,7 @@ namespace hemera {
 		}
 
 		for (const std::string& file : files) {
-			if (!std::filesystem::remove(file)) {
+			if (!remove_written(file)) {
 				report_error(ErrorCode::E7001, file, 0, 0);
 			}
 		}
