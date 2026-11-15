@@ -510,7 +510,7 @@ namespace hemera {
 			if (entry.path().extension() != ".hsc") {
 				continue;
 			}
-			std::ifstream file(entry.path());
+			std::ifstream file(entry.path(), std::ios::binary);
 			std::string line;
 			while (std::getline(file, line)) {
 				if (line.starts_with("package ")) {
@@ -842,7 +842,8 @@ namespace hemera {
 		}
 
 		std::string file_path = dir_path.append(*location.file_name).generic_string();
-		std::ifstream file(file_path);
+		// Binary, so the lexer sees the file's own bytes, and its offsets are the file's (the lexer takes CRLF)
+		std::ifstream file(file_path, std::ios::binary);
 
 		if (!file.is_open()) {
 			report_error(ErrorCode::E4000, file_path, 0, 0);

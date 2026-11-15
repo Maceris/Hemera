@@ -23,22 +23,15 @@ namespace hemera {
 		std::span<const std::string_view> parts;
 
 		/// <summary>
-		/// The file's text, with line endings as reading it from disk as text gives them: CRLF
-		/// becomes LF.
+		/// The file's bytes, as they were when the compiler was built, line endings included: the lexer
+		/// takes CRLF and LF alike, so offsets into it are the embedded file's.
 		/// </summary>
 		std::string contents() const {
 			std::string joined;
 			for (std::string_view part : parts) {
 				joined += part;
 			}
-			std::string result;
-			result.reserve(joined.size());
-			for (size_t i = 0; i < joined.size(); ++i) {
-				if (joined[i] != '\r' || i + 1 >= joined.size() || joined[i + 1] != '\n') {
-					result += joined[i];
-				}
-			}
-			return result;
+			return joined;
 		}
 	};
 

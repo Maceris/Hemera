@@ -506,6 +506,36 @@ TEST(LexerTests, NameSecurity)
 	EXPECT_EQ(hemera::lexer::script_name(0x16a0), "Runic");
 }
 
+/*
+ * A file with CRLF line endings, as read in binary mode, lexes as the same file with LF: the same tokens, lines and
+ * columns, and no errors, through comments, multiline strings and blank lines. A lone CR is still an error (E2002).
+ */
+TEST(LexerTests, CrlfLexesAsLf)
+{
+	const std::string lf = "// a comment\na :: 1 // trailing\n\n\\\\ multiline\n\\\\ string\nb :: \"text\"\n/* block\n   comment */ c :: 2\n";
+	std::string crlf;
+	for (const char c : lf) {
+		crlf += c == '\n' ? std::string("\r\n") : std::string(1, c);
+	}
+	auto lexed = [](const std::string& text) {
+		hemera::reset_reporting_storage();
+		StringCacheGuard string_cache;
+		Allocator<> alloc;
+		MyVector<Token> output;
+		std::istringstream input_stream(text);
+		hemera::lexer::lex(input_stream, output, alloc, "text", true);
+		std::vector<std::tuple<TokenType, uint32_t, uint16_t, std::string>> tokens;
+		for (const Token& token : output) {
+			tokens.emplace_back(token.type, token.line_number, token.column_number,
+				token.value != nullptr ? std::string(*token.value) : std::string());
+		}
+		return tokens;
+	};
+	EXPECT_EQ(text_errors(crlf), std::vector<std::string>{});
+	EXPECT_EQ(lexed(crlf), lexed(lf));
+	EXPECT_EQ(text_errors("a :: 1\rb :: 2\n"), (std::vector<std::string>{ "(1,7) E2002" }));
+}
+
 TEST(LexerTests, ManyTokenTest)
 {
 	auto reporting = hemera::DisableReportingForBlock();

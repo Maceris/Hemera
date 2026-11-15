@@ -72,6 +72,22 @@ namespace hemera::lexer {
 		tokenizer.text_problems.clear();
 	}
 
+	/*
+	 * Reads the next line, without its line ending. Sources are read as they are on disk, so a line ending in CRLF
+	 * comes with its CR, which goes with the LF as the line's ending. A CR with no LF after it, inside a line or at the
+	 * end of the file, stays in the line, an error where it's lexed (E2002).
+	 */
+	static bool read_line(std::istream& input_stream, MyString& line) {
+		if (!std::getline(input_stream, line)) {
+			return false;
+		}
+		// getline stopped at an LF unless it reached the end of the input
+		if (!input_stream.eof() && !line.empty() && line.back() == '\r') {
+			line.pop_back();
+		}
+		return true;
+	}
+
 	static bool next_line(Tokenizer& tokenizer, std::istream& input_stream) {
 		/*
 		 * getline empties the string it's given even when there's no line left, so read into
@@ -79,7 +95,7 @@ namespace hemera::lexer {
 		 * still needs the current line to copy its text from.
 		 */
 		MyString line;
-		if (!std::getline(input_stream, line)) {
+		if (!read_line(input_stream, line)) {
 			return false;
 		}
 		tokenizer.line_number += 1;
@@ -1256,8 +1272,9 @@ namespace hemera::lexer {
 	void lex_file(const std::string& file_path, MyVector<Token>& output,
 		Allocator<> string_alloc, bool include_comments) {
 
+		// Binary, so the lexer sees the file's own bytes, CRLF included, whatever the system's text mode does
 		std::ifstream input;
-		input.open(file_path);
+		input.open(file_path, std::ios::binary);
 
 		if (!input.is_open()) {
 			report_error(ErrorCode::E1000, file_path, 0, 0);
@@ -1272,7 +1289,7 @@ namespace hemera::lexer {
 		bool include_comments) {
 
 		Tokenizer tokenizer{};
-		std::getline(input_stream, tokenizer.current_line);
+		read_line(input_stream, tokenizer.current_line);
 		// A byte order mark, which says the file is UTF-8, isn't part of the text
 		if (tokenizer.current_line.starts_with("\xEF\xBB\xBF")) {
 			tokenizer.current_line.erase(0, 3);
