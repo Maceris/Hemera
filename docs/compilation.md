@@ -188,7 +188,8 @@ sized :: #code(size_of(#insert u64))          // size_of(u64)
 bigger than a name, a call or a prefix operation goes in parentheses. An inserted tree gets the parentheses its operators
 need where it lands. An `#insert` in a quote inside a quote belongs to the inner one.
 
-`compiler.code_text(code)` gives the code as Hemera, formatted for reading, which parses back into the same tree.
+`compiler.code_text(code)` gives the code as Hemera, laid out as `hemera-format` lays files out ([The
+Formatter](formatting.md#the-formatter)), which parses back into the same tree.
 
 Only compile-time code has code: like a pointer, a `compiler.Code` can't be a constant of the program, and a function
 that quotes can only run at compile time.

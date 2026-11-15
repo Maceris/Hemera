@@ -100,7 +100,7 @@ import other_package
 
 EXAMPLE_CONSTANT :: 43
 
-example_function :: fn(x: int) -> int {
+example_function :: fn(x : int) -> int {
     return EXAMPLE_CONSTANT + x
 }
 
@@ -109,5 +109,51 @@ ExampleStruct :: struct {
     y : f32,
 }
 ```
+
+# The Formatter
+
+`hemera-format` lays files out the one way Hemera code is written: 4-space indents, lines of at most 120 characters
+(code points), and the spacing, line breaks, blank lines and comment layout below. It's built beside the compiler from
+the compiler's own lexer, parser and printer, so it never changes what code means: it only parses, without checking,
+and a file that doesn't parse is left as it is, with the parser's errors. There's nothing to configure.
+
+```bash
+hemera-format path/to/file.hsc
+hemera-format --check path/to/folder
+hemera-format --write path/to/folder
+```
+
+With no path, it formats standard input to standard output. A path is a file or a folder, whose `.hsc` files are all
+formatted, folders inside it too, several at once. `--check` writes nothing and lists the files that would change;
+`--write` writes them. Without either, one file goes to standard output. It exits with 0 when every file was already
+formatted or was written, 1 when `--check` found one that would change, and 2 for an error, which leaves that file as it
+was. A file keeps its line endings, going by its first one.
+
+What it does:
+
+* A line that doesn't fit breaks at the outermost place it can: an argument, parameter or struct literal list puts an
+  item to a line, indented, with the closing bracket on a line of its own; a run of `&&`, `+` and the like breaks before
+  each operator, continuing 4 spaces deeper. Lines broken by hand that fit are joined again.
+* A struct literal, struct, enum, union or `push_context` list broken over lines has a comma after its last item.
+* An array of numbers that doesn't fit packs as many to a line as fit.
+* `else` starts a line of its own after the `}`. An `if` whose value is used, with a single expression in each block,
+  stays on one line where it fits, as does a `case` with one statement.
+* One space each side of `::`, `:=`, `=`, `->`, `=>`, binary operators and the `:` of `name : Type`, parameters
+  included; none inside brackets or in ranges.
+* 4 or more similar declarations in a row (constants, struct fields, enum members) line up their `:`, `::` and `=`, as
+  long as no line is padded by more than 30 spaces. A blank line or a comment on its own line ends a run.
+* Imports are sorted by location (`base:`, `std:`, `user:`, `vendor:`, then relative folders), then the location's
+  path, then name. There's one blank line between the file's leading comments, its package statement, its imports and
+  its declarations; elsewhere, blank lines stay where they were, at most one in a row.
+* A line comment has one space after its `//`, and a run of them on lines of their own becomes one `/* */` block. A
+  block comment of several lines opens and closes on lines of its own, with a `*` starting each line in between. A
+  comment is indented with its code, and its lines that end up past 120 characters are broken, a block tag's
+  continuation indented 4 spaces past its `@`; code examples, list items, table rows and URLs aren't. Block tags go in
+  the order `@tparam`, `@param`, `@return`, `@error`.
+
+The lines between `// hemera-format: off` and `// hemera-format: on` (or the end of the file) are kept exactly as they
+were written, for a table laid out by hand.
+
+`compiler.code_text` and `--show-inserted` show code laid out the same way.
 
 
