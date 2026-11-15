@@ -6,11 +6,11 @@ package vulkan
 
 // windows.h
 HINSTANCE :: alias rawptr
-HWND :: alias rawptr
-HMONITOR :: alias rawptr
-HANDLE :: alias rawptr
-DWORD :: alias u32
-LPCWSTR :: alias ptr[u16]?
+HWND      :: alias rawptr
+HMONITOR  :: alias rawptr
+HANDLE    :: alias rawptr
+DWORD     :: alias u32
+LPCWSTR   :: alias ptr[u16]?
 SECURITY_ATTRIBUTES :: struct {
     nLength : u32,
     lpSecurityDescriptor : rawptr,
@@ -18,9 +18,9 @@ SECURITY_ATTRIBUTES :: struct {
 }
 
 // X11/Xlib.h and X11/extensions/Xrandr.h
-Display :: struct {}
+Display  :: struct {}
 VisualID :: alias u64
-Window :: alias u64
+Window   :: alias u64
 RROutput :: alias u64
 
 // xcb/xcb.h
