@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "hemera_errors.h"
@@ -79,6 +80,63 @@ namespace hemera {
 	void report_coded(bool error, std::string_view prefix, std::string_view code, std::string_view file,
 		uint32_t line_number, uint16_t column_number, std::string_view message);
 
+	/*
+	 * Which warnings are shown (docs/compilation.md, Allowing and Denying Warnings), set for each build of a program,
+	 * in its scope or for the whole process. A pattern is a warning's prefix:code, like hemera:W2001, a prefix's every
+	 * warning, like fonts:*, or every warning, *.
+	 */
+	struct WarningRules {
+		// Not shown, from --allow or BuildOptions.allowed_warnings
+		std::vector<std::string> allowed;
+		// Errors instead, keeping their codes, from --deny or BuildOptions.denied_warnings
+		std::vector<std::string> denied;
+		// Each package's folder, with / throughout, and the patterns its ALLOWED_WARNINGS allows in it
+		std::vector<std::pair<std::string, std::vector<std::string>>> package_allowed;
+		// Folders whose warnings aren't shown, the built-in packages', but for shown_folder, the root package's
+		std::vector<std::string> quiet_folders;
+		std::string shown_folder;
+		// While the front end reads the packages, whose own lists may come after their warnings, they're held
+		bool holding = false;
+		// Starts not yet released: a package loaded while compiling (compiler.load_package) starts again, inside
+		size_t depth = 0;
+		struct Held {
+			std::string coded;
+			WarningCode code;
+			std::string file;
+			uint32_t line;
+			uint16_t column;
+			std::string text;
+		};
+		std::vector<Held> held;
+		std::mutex mutex;
+	};
+
+	/*
+	 * Whether pattern is one a warning list can hold: *, or a prefix, a name, then : and either * or a warning's code,
+	 * W and ASCII letters and digits.
+	 */
+	bool is_warning_pattern(std::string_view pattern);
+
+	/*
+	 * Adds each pattern in text, separated by commas, with any spaces around them, to patterns, like --allow's value.
+	 * Returns false, having added none, if one isn't a pattern (is_warning_pattern).
+	 */
+	bool add_warning_patterns(std::string_view text, std::vector<std::string>& patterns);
+
+	/*
+	 * Starts a build's warning rules, in the thread's scope or for the process: what the build allows and denies, the
+	 * folders whose warnings aren't shown, and the root package's, which is shown wherever it is. Warnings are held
+	 * from here until release_warnings.
+	 */
+	void start_warning_rules(std::vector<std::string> allowed, std::vector<std::string> denied,
+		std::vector<std::string> quiet_folders, std::string shown_folder);
+
+	// A package's own ALLOWED_WARNINGS, for warnings in its folder.
+	void allow_warnings_in_package(std::string folder, std::vector<std::string> patterns);
+
+	// Reports the warnings held since start_warning_rules, as the rules decide, and stops holding them.
+	void release_warnings();
+
 	/// <summary>
 	/// Prints a message that isn't an error or a warning, like what compile-time code logs at the
 	/// info level, when printing is on.
@@ -98,6 +156,8 @@ namespace hemera {
 		std::string output;
 		std::string errors_output;
 		size_t errors = 0;
+		// Which of its warnings are shown
+		WarningRules warnings;
 	};
 
 	/// <summary>

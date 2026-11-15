@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <format>
 #include <iostream>
 #include <mutex>
@@ -5,6 +6,7 @@
 #include <string>
 
 #include "error/reporting.h"
+#include "lexer/identifiers.h"
 
 namespace hemera {
 
@@ -264,48 +266,216 @@ namespace hemera {
 		}
 	}
 
-	static void print_warning(WarningCode warning, std::string_view file,
-		uint32_t line_number, uint16_t column_number,
+	// The rules of the thread's scope, or the process's
+	static WarningRules& warning_rules() {
+		// Made once and kept, as the other storage is, so there's nothing to destroy at exit
+		static WarningRules* process_warning_rules = new WarningRules();
+		return current_scope != nullptr ? current_scope->warnings : *process_warning_rules;
+	}
+
+	static std::string with_slashes(std::string_view path) {
+		std::string result(path);
+		std::replace(result.begin(), result.end(), '\\', '/');
+		while (result.size() > 1 && result.back() == '/') {
+			result.pop_back();
+		}
+		return result;
+	}
+
+	// Whether path is folder or inside it
+	static bool within(std::string_view path, std::string_view folder) {
+		return !folder.empty() && path.starts_with(folder) && (path.size() == folder.size() || path[folder.size()] == '/');
+	}
+
+	static bool matches(const std::vector<std::string>& patterns, std::string_view coded) {
+		const std::string_view prefix = coded.substr(0, coded.find(':'));
+		for (const std::string& pattern : patterns) {
+			if (pattern == "*" || pattern == coded || (pattern.ends_with(":*") && pattern.substr(0, pattern.size() - 2) == prefix)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool is_warning_pattern(std::string_view pattern) {
+		if (pattern == "*") {
+			return true;
+		}
+		const size_t colon = pattern.find(':');
+		if (colon == std::string_view::npos || !lexer::is_identifier(pattern.substr(0, colon))) {
+			return false;
+		}
+		const std::string_view code = pattern.substr(colon + 1);
+		return code == "*" || (code.size() >= 2 && code[0] == 'W' && std::all_of(code.begin(), code.end(),
+			[](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }));
+	}
+
+	bool add_warning_patterns(std::string_view text, std::vector<std::string>& patterns) {
+		std::vector<std::string> found;
+		while (!text.empty()) {
+			const size_t comma = text.find(',');
+			std::string_view pattern = text.substr(0, comma);
+			text = comma == std::string_view::npos ? std::string_view() : text.substr(comma + 1);
+			while (!pattern.empty() && pattern.front() == ' ') {
+				pattern.remove_prefix(1);
+			}
+			while (!pattern.empty() && pattern.back() == ' ') {
+				pattern.remove_suffix(1);
+			}
+			if (pattern.empty()) {
+				continue;
+			}
+			if (!is_warning_pattern(pattern)) {
+				return false;
+			}
+			found.emplace_back(pattern);
+		}
+		patterns.insert(patterns.end(), found.begin(), found.end());
+		return true;
+	}
+
+	void start_warning_rules(std::vector<std::string> allowed, std::vector<std::string> denied,
+		std::vector<std::string> quiet_folders, std::string shown_folder) {
+
+		WarningRules& rules = warning_rules();
+		std::lock_guard<std::mutex> lock(rules.mutex);
+		// Inside another build's front end, as compiler.load_package's is, whose rules go on
+		if (rules.depth++ > 0) {
+			return;
+		}
+		rules.allowed = std::move(allowed);
+		rules.denied = std::move(denied);
+		rules.package_allowed.clear();
+		rules.quiet_folders.clear();
+		for (const std::string& folder : quiet_folders) {
+			rules.quiet_folders.push_back(with_slashes(folder));
+		}
+		rules.shown_folder = with_slashes(shown_folder);
+		rules.holding = true;
+		rules.held.clear();
+	}
+
+	void allow_warnings_in_package(std::string folder, std::vector<std::string> patterns) {
+		WarningRules& rules = warning_rules();
+		std::lock_guard<std::mutex> lock(rules.mutex);
+		rules.package_allowed.emplace_back(with_slashes(folder), std::move(patterns));
+	}
+
+	enum class WarningFate {
+		SHOWN,
+		HIDDEN,
+		DENIED,
+	};
+
+	/*
+	 * What becomes of a warning: hidden if its package allows it, if it's in a built-in package that isn't the one being
+	 * built, or if the build allows it; otherwise an error if the build denies it, or shown.
+	 */
+	static WarningFate fate_of(WarningRules& rules, std::string_view coded, std::string_view file) {
+		const std::string path = with_slashes(file);
+		const std::string folder = path.substr(0, path.rfind('/') == std::string::npos ? 0 : path.rfind('/'));
+		for (const auto& [package, patterns] : rules.package_allowed) {
+			if (package == folder && matches(patterns, coded)) {
+				return WarningFate::HIDDEN;
+			}
+		}
+		if (!within(path, rules.shown_folder)) {
+			for (const std::string& quiet : rules.quiet_folders) {
+				if (within(path, quiet)) {
+					return WarningFate::HIDDEN;
+				}
+			}
+		}
+		if (matches(rules.allowed, coded)) {
+			return WarningFate::HIDDEN;
+		}
+		return matches(rules.denied, coded) ? WarningFate::DENIED : WarningFate::SHOWN;
+	}
+
+	// A warning decided on: shown, counted in warning_list as code; or denied, an error that keeps coded
+	static void decide_warning(WarningRules& rules, const WarningRules::Held& warning) {
+		WarningFate fate;
+		{
+			std::lock_guard<std::mutex> lock(rules.mutex);
+			fate = fate_of(rules, warning.coded, warning.file);
+		}
+		if (WarningFate::HIDDEN == fate) {
+			return;
+		}
+		const bool denied = WarningFate::DENIED == fate;
+		if (denied) {
+			++errors_on_this_thread;
+		}
+		if (!first_report(denied ? "error" : "warning", denied ? static_cast<int>(ErrorCode::E4045) : static_cast<int>(warning.code),
+			warning.file, warning.line, warning.column, std::format("{} {}", warning.coded, warning.text))) {
+			return;
+		}
+		if (denied) {
+			log_error(ErrorCode::E4045, std::format("{}: {}", warning.coded, warning.text));
+		}
+		else {
+			log_warning(warning.code);
+		}
+		write_line(std::format("{}({},{}): {} {}: {}", warning.file, warning.line, warning.column,
+			denied ? "error" : "warning", warning.coded, warning.text));
+	}
+
+	// Every warning, the compiler's and compile-time code's: held while the rules are being gathered, or decided on
+	static void emit_warning(std::string coded, WarningCode code, std::string_view file, uint32_t line_number,
+		uint16_t column_number, std::string text) {
+
+		if (!reporting_enabled) {
+			return;
+		}
+		WarningRules& rules = warning_rules();
+		WarningRules::Held warning{ std::move(coded), code, std::string(file), line_number, column_number, std::move(text) };
+		{
+			std::lock_guard<std::mutex> lock(rules.mutex);
+			if (rules.holding) {
+				rules.held.push_back(std::move(warning));
+				return;
+			}
+		}
+		decide_warning(rules, warning);
+	}
+
+	void release_warnings() {
+		WarningRules& rules = warning_rules();
+		std::vector<WarningRules::Held> held;
+		{
+			std::lock_guard<std::mutex> lock(rules.mutex);
+			if (rules.depth > 0 && --rules.depth > 0) {
+				return;
+			}
+			rules.holding = false;
+			held.swap(rules.held);
+		}
+		for (const WarningRules::Held& warning : held) {
+			decide_warning(rules, warning);
+		}
+	}
+
+	// A warning of the compiler's own: hemera:W2001, with its title and what's added to it
+	static void compiler_warning(WarningCode warning, std::string_view file, uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
 		auto it = warning_info_map->find(warning);
-
-		WarningInfo info = (it != warning_info_map->end())
-			? it->second
-			: WarningInfo("W0000", "Unknown warning");
-
-		std::string extension = "";
-
-		if (!additional_info.empty()) {
-			extension = std::format(". {}", additional_info);
-		}
-
-		write_line(std::format("{}({},{}): {} {}:{}: {}{}", file,
-			line_number, column_number, "warning", COMPILER_PREFIX, info.string_value,
-			info.message, extension));
+		const WarningInfo info = it != warning_info_map->end() ? it->second : WarningInfo("W0000", "Unknown warning");
+		emit_warning(std::format("{}:{}", COMPILER_PREFIX, info.string_value), warning, file, line_number, column_number,
+			additional_info.empty() ? std::string(info.message) : std::format("{}. {}", info.message, additional_info));
 	}
 
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number) {
 
-		if (!reporting_enabled
-			|| !first_report("warning", static_cast<int>(warning), file, line_number, column_number, "")) {
-			return;
-		}
-		log_warning(warning);
-		print_warning(warning, file, line_number, column_number, "");
+		compiler_warning(warning, file, line_number, column_number, "");
 	}
 
 	void report_warning(WarningCode warning, std::string_view file,
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info) {
 
-		if (!reporting_enabled || !first_report("warning", static_cast<int>(warning), file, line_number,
-			column_number, additional_info)) {
-			return;
-		}
-		log_warning(warning);
-		print_warning(warning, file, line_number, column_number, additional_info);
+		compiler_warning(warning, file, line_number, column_number, additional_info);
 	}
 
 	void report_coded(bool error, std::string_view prefix, std::string_view code, std::string_view file,
@@ -321,14 +491,10 @@ namespace hemera {
 			log_error(ErrorCode::E4029, message);
 		}
 		else {
-			if (!reporting_enabled || !first_report("warning", static_cast<int>(WarningCode::W4001), file, line_number,
-				column_number, std::format("{} {}", coded, message))) {
-				return;
-			}
-			log_warning(WarningCode::W4001);
+			emit_warning(coded, WarningCode::W4001, file, line_number, column_number, std::string(message));
+			return;
 		}
-		write_line(std::format("{}({},{}): {} {}: {}", file, line_number, column_number, error ? "error" : "warning",
-			coded, message));
+		write_line(std::format("{}({},{}): error {}: {}", file, line_number, column_number, coded, message));
 	}
 
 	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,

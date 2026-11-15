@@ -88,7 +88,8 @@ struct FrontEndFixture {
  * Returns the errors it reported.
  */
 static std::vector<hemera::ErrorCode> process_package(FrontEndFixture& fixture,
-	const std::filesystem::path& package, const std::filesystem::path& std_path = {}) {
+	const std::filesystem::path& package, const std::filesystem::path& std_path = {},
+	const std::vector<std::string>& allowed_warnings = {}, const std::vector<std::string>& denied_warnings = {}) {
 
 	hemera::reset_reporting_storage();
 
@@ -97,6 +98,8 @@ static std::vector<hemera::ErrorCode> process_package(FrontEndFixture& fixture,
 	if (!std_path.empty()) {
 		options.builtin_paths[hemera::BuiltinPackage::STD] = std::filesystem::canonical(std_path);
 	}
+	options.allowed_warnings = allowed_warnings;
+	options.denied_warnings = denied_warnings;
 
 	hemera::kick_off_processing(fixture.program_info, &options);
 
@@ -1508,6 +1511,65 @@ TEST(FrontEnd, KeepsCallerLocationToDefaults)
 
 	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("caller_location_misused"));
 	EXPECT_EQ(errors, std::vector<hemera::ErrorCode>{ hemera::ErrorCode::E4014 }) << codes(errors);
+}
+
+/*
+ * Which warnings are shown: the package's ALLOWED_WARNINGS hides W2002 in it, and std's warnings are hidden in a build
+ * of another package, leaving main's W2001; which the build can allow, deny as an error (E4045) keeping its code, or
+ * allow and deny at once, when allowing wins.
+ */
+TEST(FrontEnd, AllowsAndDeniesWarnings)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	using Warnings = std::vector<hemera::WarningCode>;
+	using Errors = std::vector<hemera::ErrorCode>;
+	const auto main = scenario("warning_rules/main");
+	const auto fake_std = scenario("warning_rules/fake_std");
+	{
+		FrontEndFixture fixture;
+		EXPECT_EQ(process_package(fixture, main, fake_std), Errors{});
+		EXPECT_EQ(*hemera::warning_list(), Warnings{ hemera::WarningCode::W2001 });
+	}
+	{
+		FrontEndFixture fixture;
+		EXPECT_EQ(process_package(fixture, main, fake_std, { "hemera:W2001" }), Errors{});
+		EXPECT_EQ(*hemera::warning_list(), Warnings{});
+	}
+	{
+		FrontEndFixture fixture;
+		hemera::ReportScope scope;
+		hemera::set_report_scope(&scope);
+		Errors errors = process_package(fixture, main, fake_std, {}, { "*" });
+		hemera::set_report_scope(nullptr);
+		EXPECT_EQ(errors, Errors{ hemera::ErrorCode::E4045 });
+		EXPECT_EQ(*hemera::warning_list(), Warnings{});
+		EXPECT_NE(scope.output.find("error hemera:W2001: Name mixes scripts."), std::string::npos) << scope.output;
+	}
+	{
+		FrontEndFixture fixture;
+		EXPECT_EQ(process_package(fixture, main, fake_std, { "hemera:*" }, { "*" }), Errors{});
+		EXPECT_EQ(*hemera::warning_list(), Warnings{});
+	}
+}
+
+// ALLOWED_WARNINGS holds warnings with their prefixes, as string literals (E4046)
+TEST(FrontEnd, ChecksAllowedWarnings)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("bad_allowed_warnings"));
+	EXPECT_EQ(errors, std::vector<hemera::ErrorCode>{ hemera::ErrorCode::E4046 }) << codes(errors);
+
+	std::vector<std::string> patterns;
+	EXPECT_TRUE(hemera::add_warning_patterns(" hemera:W2001, fonts:*,* ", patterns));
+	EXPECT_EQ(patterns, (std::vector<std::string>{ "hemera:W2001", "fonts:*", "*" }));
+	for (const char* wrong : { "W2001", "hemera:E4015", "two words:W1", "hemera:", ":W1", "hemera:W-1" }) {
+		EXPECT_FALSE(hemera::add_warning_patterns(wrong, patterns)) << wrong;
+	}
+	EXPECT_EQ(patterns.size(), 3u);
 }
 
 // hemera, the prefix of the compiler's own diagnostics, can't be a package's name (E4044)

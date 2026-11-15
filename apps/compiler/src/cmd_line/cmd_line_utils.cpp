@@ -10,6 +10,7 @@
 
 #include "version.h"
 #include "cmd_line/arg_parsing.h"
+#include "error/reporting.h"
 #include "util/logger.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -509,6 +510,8 @@ namespace hemera {
 			case hemera::arg_parse::OUTPUT:
 			case hemera::arg_parse::PACKAGE_PATH:
 			case hemera::arg_parse::SETTING:
+			case hemera::arg_parse::ALLOW_WARNINGS:
+			case hemera::arg_parse::DENY_WARNINGS:
 			case hemera::arg_parse::SHOW_INSERTED:
 			case hemera::arg_parse::RELOCATION_MODEL:
 			case hemera::arg_parse::STACK_CHECK:
@@ -992,6 +995,16 @@ namespace hemera {
 						return false;
 					}
 					output.settings.emplace_back(std::string(value.substr(0, equals)), std::string(value.substr(equals + 1)));
+				}
+				break;
+			case hemera::arg_parse::ALLOW_WARNINGS:
+			case hemera::arg_parse::DENY_WARNINGS:
+				for (MyString value : option_with_value.values) {
+					if (!add_warning_patterns(std::string_view(value), option_with_value.option == hemera::arg_parse::ALLOW_WARNINGS
+						? output.allowed_warnings : output.denied_warnings)) {
+						cout << "A warning is written prefix:code, like hemera:W2001, prefix:* or *, not " << value << endl;
+						return false;
+					}
 				}
 				break;
 			case hemera::arg_parse::SHOW_INSERTED:

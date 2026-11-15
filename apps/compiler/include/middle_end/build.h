@@ -58,6 +58,9 @@ namespace hemera {
 		uint64_t test_runs = 0;
 		std::vector<std::pair<std::string, std::string>> settings;
 		std::vector<std::pair<std::string, std::string>> package_paths;
+		// BuildOptions.allowed_warnings and denied_warnings: patterns separated by commas, as --allow and --deny take
+		std::string allowed_warnings;
+		std::string denied_warnings;
 		std::vector<BuildLibrary> libraries;
 		std::string optimization_level;
 		bool debug_info = false;

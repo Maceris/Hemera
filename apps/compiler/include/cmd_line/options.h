@@ -643,6 +643,12 @@ namespace hemera {
         /// </summary>
         std::vector<std::pair<std::string, std::string>> settings;
         /// <summary>
+        /// Warnings not shown, and warnings made errors (--allow, --deny): prefix:code, prefix:* or *
+        /// (docs/compilation.md, Allowing and Denying Warnings).
+        /// </summary>
+        std::vector<std::string> allowed_warnings;
+        std::vector<std::string> denied_warnings;
+        /// <summary>
         /// --show-inserted=file:line: where to print the code #insert puts there (docs/compilation.md, Code
         /// Values). A file matches when the inserting file's path ends with it.
         /// </summary>

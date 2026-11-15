@@ -131,6 +131,31 @@ check_glyphs :: fn(font: Font, location := #caller_location) {
 `compiler.report_error` and `compiler.report_warning` report with the compiler's codes for compile-time code's
 diagnostics, `hemera:E4029` and `hemera:W4001`, for a message that doesn't need a code of its own.
 
+### Allowing and Denying Warnings
+
+A warning can be allowed, so it isn't shown, or denied, so it's an error that keeps its code and fails the build.
+Lists of warnings name them by pattern: a `prefix:code` like `hemera:W2001`, `prefix:*` for every warning with that
+prefix, or `*` for every warning.
+
+* **A build:** `--allow` and `--deny` on the command line, each a list separated by commas, like
+  `--allow=hemera:W2001,fonts:*` or `--deny=*` for a build with no warnings. A build package's targets have the same
+  lists in `BuildOptions.allowed_warnings` and `denied_warnings`, which `command_line_options()` fills from the
+  command line.
+* **A package:** an `ALLOWED_WARNINGS` constant in any of its files, usually `package_info.hsc`, which allows those
+  warnings wherever they're located in the package, whoever reports them: `ALLOWED_WARNINGS ::
+  string.["hemera:W2001"]`. It's read as it's written, so it's an array of string literals (E4046 otherwise).
+
+```
+// package_info.hsc of a package written in Serbian, which mixes Latin and Cyrillic on purpose
+package srpski
+
+ALLOWED_WARNINGS :: string.["hemera:W2001"]
+```
+
+A warning a package allows is hidden even when the build denies it, as is a build's allowed one. Only the packages
+being built show their warnings: those in base, std and vendor are hidden, unless the root package is one of theirs.
+A denied warning is reported as an error with its own code, like `error hemera:W2001: ...`.
+
 ## Code Values
 
 Compile-time code can make code, as syntax trees, never as text: a `compiler.Code` is a tree the compiler keeps, which

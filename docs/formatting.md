@@ -23,7 +23,9 @@ combining acute (U+0301), and `fi` is two letters, not the ligature `ﬁ`. One t
 NFKC spelling. An ASCII identifier always is.
 
 Identifiers outside ASCII are also checked as [UTS #39](https://www.unicode.org/reports/tr39/) recommends, once a
-package is read, with a warning for each identifier, where it's first used:
+package is read, with a warning for each identifier, where it's first used. A package that uses scripts this way on
+purpose allows the warning in its `package_info.hsc`
+([Allowing and Denying Warnings](compilation.md#allowing-and-denying-warnings)):
 
 * **Looks like another (W2000).** Two different identifiers in a package, in one file or two, that look alike: their
   skeletons, with each character replaced by what it's most easily mistaken for, are the same. Like `cop` and `сор`,

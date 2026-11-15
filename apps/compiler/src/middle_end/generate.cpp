@@ -12179,6 +12179,8 @@ namespace hemera {
 			target.test_runs = read_number(record, layout, "test_runs");
 			target.settings = read_pairs(record, layout, "settings", "name", "value");
 			target.package_paths = read_pairs(record, layout, "package_paths", "location", "path");
+			target.allowed_warnings = read_text(record, layout, "allowed_warnings");
+			target.denied_warnings = read_text(record, layout, "denied_warnings");
 			const TypeInfo* type = nullptr;
 			// Each LinkedLibrary: a target, or a package's folder and a file
 			if (const uint8_t* at = field_at(record, layout, "libraries", type)) {
@@ -12320,6 +12322,16 @@ namespace hemera {
 				data.write_number(record, layout, "test_runs", options.test_runs);
 			}
 			data.write_text(record, layout, "output_path", current ? options.output_name : "");
+			// The warnings --allow and --deny gave, which a target made from these keeps
+			auto joined = [](const std::vector<std::string>& patterns) {
+				std::string text;
+				for (const std::string& pattern : patterns) {
+					text += text.empty() ? pattern : "," + pattern;
+				}
+				return text;
+			};
+			data.write_text(record, layout, "allowed_warnings", joined(options.allowed_warnings));
+			data.write_text(record, layout, "denied_warnings", joined(options.denied_warnings));
 			// Settings, as a dynamic array that uses the calling code's allocator, so it can be added to
 			size_t offset = 0;
 			const TypeInfo* field_type = nullptr;
@@ -13144,6 +13156,15 @@ namespace hemera {
 			result.builtin_paths[package] = from_build(build, path);
 		}
 		result.settings = target.settings;
+		result.allowed_warnings.clear();
+		result.denied_warnings.clear();
+		if (!add_warning_patterns(target.allowed_warnings, result.allowed_warnings)
+			|| !add_warning_patterns(target.denied_warnings, result.denied_warnings)) {
+			report_error(ErrorCode::E4046, target.location.file, target.location.line, target.location.column,
+				std::format("target {}: a warning is written prefix:code, like hemera:W2001, prefix:* or *, not \"{}\" or \"{}\"",
+					target.name, target.allowed_warnings, target.denied_warnings));
+			return false;
+		}
 		result.build_extent = build.build_extent;
 		result.time_phases = build.time_phases;
 		result.check_documentation = build.check_documentation;

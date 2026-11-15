@@ -851,6 +851,45 @@ namespace hemera {
 		parse_and_process(executor, location, package_info, file_info, file, file_path);
 	}
 
+	/*
+	 * A package's ALLOWED_WARNINGS, the warnings not shown in it (docs/compilation.md, Allowing and Denying Warnings),
+	 * from whichever of its files declares it, usually package_info.hsc. Its value is read as written, so it's an
+	 * array of string literals, like string.["hemera:W2001", "fonts:*"]: anything else is an error (E4046).
+	 */
+	static void read_allowed_warnings(const FileLocation& location, ast::Node* root, const std::string& file_path) {
+		for (ast::Node* child : root->children) {
+			if (ast::NodeType::DEFINITION != child->node_type || child->children.empty()
+				|| child->children[0]->value.value == nullptr || *child->children[0]->value.value != "ALLOWED_WARNINGS") {
+				continue;
+			}
+			ast::Node* value = definition_value(child);
+			std::vector<std::string> patterns;
+			// An array literal holds its elements in a LIST
+			ast::Node* elements = value != nullptr && ast::NodeType::ARRAY_LITERAL == value->node_type && value->children.size() == 1
+				&& ast::NodeType::LIST == value->children[0]->node_type ? value->children[0] : nullptr;
+			bool written_out = elements != nullptr;
+			if (written_out) {
+				for (ast::Node* element : elements->children) {
+					if (ast::NodeType::LITERAL == element->node_type && TokenType::LITERAL_STRING == element->value.type) {
+						patterns.push_back(ast::string_value(element));
+					}
+					else {
+						written_out = false;
+					}
+				}
+			}
+			const std::string_view wrong = !written_out ? "an array of string literals"
+				: std::any_of(patterns.begin(), patterns.end(), [](const std::string& pattern) { return !is_warning_pattern(pattern); })
+				? "warnings written prefix:code, like hemera:W2001, prefix:* or *" : "";
+			if (!wrong.empty()) {
+				report_error(ErrorCode::E4046, file_path, child->value.line_number, child->value.column_number,
+					std::format("ALLOWED_WARNINGS lists the warnings not shown in the package, as {}", wrong));
+				continue;
+			}
+			allow_warnings_in_package(std::string(*location.package_path), std::move(patterns));
+		}
+	}
+
 	// Lexes and parses a file's text, checks its package name, and processes its top-level nodes.
 	static void parse_and_process(WorkThreadData& executor, const FileLocation& location,
 		PackageInfo* package_info, FileInfo* file_info, std::istream& file, const std::string& file_path) {
@@ -860,9 +899,10 @@ namespace hemera {
 		lexer::lex(file, file_info->tokens, token_alloc, file_path, true);
 		keep_documentation(file_path, file_info->tokens, executor.program_info->check_documentation);
 
-		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens, 
+		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens,
 			executor.program_info->node_alloc, &executor.program_info->quotes);
-		
+		read_allowed_warnings(location, file_info->ast_root, file_path);
+
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->node_type != ast::NodeType::PACKAGE) {
 				continue;

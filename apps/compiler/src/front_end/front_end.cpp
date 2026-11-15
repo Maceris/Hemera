@@ -374,6 +374,20 @@ namespace hemera {
 		InternedString input_package = intern(options->input.string());
 
 		/*
+		 * Which warnings are shown (docs/compilation.md, Allowing and Denying Warnings): the build's lists, and only the
+		 * packages being built's, so not base's, std's and vendor's, unless the root package is one of theirs. Held
+		 * until every package's own ALLOWED_WARNINGS is read.
+		 */
+		std::vector<std::string> quiet_folders{ "<base>" };
+		for (const BuiltinPackage builtin : { BuiltinPackage::STD, BuiltinPackage::VENDOR }) {
+			if (auto found = options->builtin_paths.find(builtin); found != options->builtin_paths.end()) {
+				std::error_code error;
+				quiet_folders.push_back(std::filesystem::weakly_canonical(found->second, error).string());
+			}
+		}
+		start_warning_rules(options->allowed_warnings, options->denied_warnings, quiet_folders, options->input.string());
+
+		/*
 		 * std's schema, for a typed library's interface record or a program's imports, whose types the compiler
 		 * hashes with it (docs/compilation.md, Typed Libraries)
 		 */
@@ -444,6 +458,7 @@ namespace hemera {
 		}
 		check_import_names(*program_info);
 		check_name_security(*program_info);
+		release_warnings();
 	}
 
 	/*

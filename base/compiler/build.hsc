@@ -54,6 +54,14 @@ BuildOptions :: struct {
      * the command line; a later one of the same name wins.
      */
     settings : TargetSetting[..],
+    /**
+     * Warnings not shown, as --allow takes them: separated by commas, each a prefix:code like hemera:W2001, a prefix's
+     * every warning like fonts:*, or * for all (docs/compilation.md, Allowing and Denying Warnings). Empty allows
+     * none; from command_line_options, the command line's.
+     */
+    allowed_warnings : string,
+    /** Warnings made errors, which keep their codes, written as allowed_warnings is, like * so a target has none. */
+    denied_warnings : string,
     /** The typed libraries the target calls (docs/compilation.md, Typed Libraries); empty for none. */
     libraries : LinkedLibrary[..],
     /** How code is generated: the optimization level and debug info. */
