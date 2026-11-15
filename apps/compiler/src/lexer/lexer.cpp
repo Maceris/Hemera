@@ -211,6 +211,8 @@ namespace hemera::lexer {
 		uint32_t start_line_offset = tokenizer.line_offset;
 		TokenType result_type = TokenType::END_OF_FILE;
 		MyString* token_contents = string_alloc.new_object<MyString>();
+		// Whether the token's last line is already in token_contents, as a multiline string's is at the file's end
+		bool last_line_taken = false;
 
 		State state = State::start;
 
@@ -703,10 +705,10 @@ namespace hemera::lexer {
 			break;
 		case State::multiline_string_line:
 			switch (next_char(tokenizer, input_stream, start_line, start_column, token_contents)) {
+			// The file's end ends its last line, as a line break does, its text already taken
 			case 0:
-				state = State::invalid;
-				report_error(ErrorCode::E2005, file_path, tokenizer.line_number, tokenizer.column_number);
-				goto switch_start;
+				last_line_taken = true;
+				break;
 			case '\n':
 				break;
 			case '\r':
@@ -1146,7 +1148,9 @@ namespace hemera::lexer {
 				first_position = start_column;
 			}
 			size_t remainder_count = static_cast<size_t>(tokenizer.column_number) - first_position;
-			*token_contents += tokenizer.current_line.substr(first_position, remainder_count);
+			if (!last_line_taken) {
+				*token_contents += tokenizer.current_line.substr(first_position, remainder_count);
+			}
 		}
 			break;
 		

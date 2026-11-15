@@ -537,6 +537,34 @@ TEST(LexerTests, CrlfLexesAsLf)
 }
 
 /*
+ * A multiline string can end a file: its last line ends at the file's end, with or without a line break after it, the
+ * same string either way.
+ */
+TEST(LexerTests, MultilineStringEndsAFile)
+{
+	auto last_string = [](const std::string& text) {
+		hemera::reset_reporting_storage();
+		StringCacheGuard string_cache;
+		Allocator<> alloc;
+		MyVector<Token> output;
+		std::istringstream input_stream(text);
+		hemera::lexer::lex(input_stream, output, alloc, "text");
+		std::string value;
+		for (const Token& token : output) {
+			if (TokenType::LITERAL_STRING == token.type && token.value != nullptr) {
+				value += std::string(*token.value) + "|";
+			}
+		}
+		return value;
+	};
+	const std::string with_break = "a ::\n    \\\\abc\n    \\\\def\n";
+	EXPECT_EQ(text_errors(with_break), std::vector<std::string>{});
+	EXPECT_EQ(text_errors("a ::\n    \\\\abc\n    \\\\def"), std::vector<std::string>{});
+	EXPECT_EQ(last_string(with_break), last_string("a ::\n    \\\\abc\n    \\\\def\n\n"));
+	EXPECT_EQ(last_string(with_break), last_string("a ::\n    \\\\abc\n    \\\\def"));
+}
+
+/*
  * Each token's offset and length pick out its text in the file's bytes: after a byte order mark, through CRLF and LF
  * lines, multibyte names and strings, a comment to the end of its line (without the line ending) and one over two
  * lines, and multiline string lines. A token from no file has no span.
