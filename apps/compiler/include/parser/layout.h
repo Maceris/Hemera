@@ -97,9 +97,17 @@ namespace hemera::layout {
 		/// <summary>
 		/// Items packed onto as few lines as fit (B8): parts alternate an item and the separator after
 		/// it, item first. A separator is flat, usually a space, where the item after it fits on the line,
-		/// and broken where it doesn't. An item is laid out flat unless it can't fit on a line of its own.
+		/// and broken where it doesn't or where the item before it holds a break_parent, like a line
+		/// comment's. An item is laid out flat unless it can't fit on a line of its own.
 		/// </summary>
 		Doc fill(const std::vector<Doc>& parts);
+
+		/// <summary>
+		/// doc laid out flat wherever it is: the groups in it never break and its lines are spaces, though
+		/// hard and literal lines still break. For what reads as one, like a type or a name. EMPTY stays
+		/// EMPTY.
+		/// </summary>
+		Doc flat(Doc doc);
 
 		/// <summary>
 		/// doc, keeping the break_parents in it from breaking the groups around it: a block's statements
@@ -141,6 +149,7 @@ namespace hemera::layout {
 			IF_BREAK,
 			FILL,
 			ISOLATE,
+			FLAT,
 		};
 
 		/*
@@ -158,13 +167,22 @@ namespace hemera::layout {
 
 		/*
 		 * A part to print or measure: at indent columns, flat or broken as its group is, and for a FILL,
-		 * from its from'th child on.
+		 * from its from'th child on. forced is for what a flat part holds, which is flat whatever fits.
 		 */
 		struct Command {
 			size_t indent;
 			bool flat;
 			Doc doc;
 			uint32_t from;
+			bool forced;
+
+			Command(size_t indent, bool flat, Doc doc, uint32_t from, bool forced = false)
+				: indent{ indent }
+				, flat{ flat || forced }
+				, doc{ doc }
+				, from{ from }
+				, forced{ forced }
+			{}
 		};
 
 		Doc add(Part part);

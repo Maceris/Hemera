@@ -161,6 +161,14 @@ namespace hemera::layout {
 		return add(Part{ Kind::ISOLATE, false, doc, 0, 0 });
 	}
 
+	Doc Document::flat(Doc doc) {
+		if (doc == EMPTY) {
+			return EMPTY;
+		}
+		// A line comment in it still needs the groups around it broken, to end its line
+		return add(Part{ Kind::FLAT, parts[doc].breaks, doc, 0, 0 });
+	}
+
 	bool Document::breaks(Doc doc) const {
 		return parts[doc].breaks;
 	}
@@ -197,6 +205,7 @@ namespace hemera::layout {
 			case Kind::LINE_SUFFIX:
 			case Kind::INDENT:
 			case Kind::ISOLATE:
+			case Kind::FLAT:
 				stack.push_back(part.first);
 				break;
 			case Kind::IF_BREAK:
@@ -235,27 +244,34 @@ namespace hemera::layout {
 				break;
 			case Kind::CONCAT:
 				for (uint32_t i = part.count; i > 0; --i) {
-					stack.push_back(Command{ command.indent, command.flat, children[part.first + i - 1], 0 });
+					stack.push_back(Command{ command.indent, command.flat, children[part.first + i - 1], 0, command.forced });
 				}
 				break;
 			case Kind::FILL:
 				for (uint32_t i = part.count; i > command.from; --i) {
-					stack.push_back(Command{ command.indent, command.flat, children[part.first + i - 1], 0 });
+					stack.push_back(Command{ command.indent, command.flat, children[part.first + i - 1], 0, command.forced });
 				}
 				break;
 			case Kind::INDENT:
 			case Kind::ISOLATE:
 			case Kind::LINE_SUFFIX:
-				stack.push_back(Command{ command.indent, command.flat, part.first, 0 });
+				stack.push_back(Command{ command.indent, command.flat, part.first, 0, command.forced });
+				break;
+			case Kind::FLAT:
+				stack.push_back(Command{ command.indent, true, part.first, 0, true });
 				break;
 			case Kind::GROUP:
-				if (must_be_flat && part.breaks) {
+				if (must_be_flat && part.breaks && !command.forced) {
 					return false;
 				}
-				stack.push_back(Command{ command.indent, command.flat && !part.breaks, part.first, 0 });
+				/*
+				 * A group not yet laid out counts as flat, even after this one in a broken group: a later group
+				 * doesn't take this one's line break from it, so the first of two that don't fit breaks first
+				 */
+				stack.push_back(Command{ command.indent, command.forced || !part.breaks, part.first, 0, command.forced });
 				break;
 			case Kind::IF_BREAK:
-				stack.push_back(Command{ command.indent, command.flat, command.flat ? part.count : part.first, 0 });
+				stack.push_back(Command{ command.indent, command.flat, command.flat ? part.count : part.first, 0, command.forced });
 				break;
 			case Kind::LINE:
 				if (!command.flat) {
@@ -320,30 +336,33 @@ namespace hemera::layout {
 				break;
 			case Kind::CONCAT:
 				for (uint32_t i = part.count; i > 0; --i) {
-					stack.push_back(Command{ command.indent, command.flat, children[part.first + i - 1], 0 });
+					stack.push_back(Command{ command.indent, command.flat, children[part.first + i - 1], 0, command.forced });
 				}
 				break;
 			case Kind::INDENT:
-				stack.push_back(Command{ command.indent + INDENT_WIDTH, command.flat, part.first, 0 });
+				stack.push_back(Command{ command.indent + INDENT_WIDTH, command.flat, part.first, 0, command.forced });
 				break;
 			case Kind::ISOLATE:
-				stack.push_back(Command{ command.indent, command.flat, part.first, 0 });
+				stack.push_back(Command{ command.indent, command.flat, part.first, 0, command.forced });
+				break;
+			case Kind::FLAT:
+				stack.push_back(Command{ command.indent, true, part.first, 0, true });
 				break;
 			case Kind::LINE_SUFFIX:
-				suffixes.push_back(Command{ command.indent, command.flat, part.first, 0 });
+				suffixes.push_back(Command{ command.indent, command.flat, part.first, 0, command.forced });
 				break;
 			case Kind::GROUP: {
 				/*
 				 * Measured afresh even inside a flat group: what's flat up to a hard line can still have a
 				 * group after it, on the next line, that doesn't fit.
 				 */
-				const Command flat{ command.indent, true, part.first, 0 };
-				const bool flat_fits = !part.breaks && (unlimited || fits({ flat }, stack, remaining(), false));
-				stack.push_back(flat_fits ? flat : Command{ command.indent, false, part.first, 0 });
+				const Command flat{ command.indent, true, part.first, 0, command.forced };
+				const bool flat_fits = command.forced || (!part.breaks && (unlimited || fits({ flat }, stack, remaining(), false)));
+				stack.push_back(flat_fits ? flat : Command{ command.indent, false, part.first, 0, command.forced });
 				break;
 			}
 			case Kind::IF_BREAK:
-				stack.push_back(Command{ command.indent, command.flat, command.flat ? part.count : part.first, 0 });
+				stack.push_back(Command{ command.indent, command.flat, command.flat ? part.count : part.first, 0, command.forced });
 				break;
 			case Kind::FILL: {
 				const uint32_t i = command.from;
@@ -351,25 +370,29 @@ namespace hemera::layout {
 					break;
 				}
 				const Doc item = children[part.first + i];
-				const Command item_flat{ command.indent, true, item, 0 };
-				const Command item_broken{ command.indent, false, item, 0 };
+				const Command item_flat{ command.indent, true, item, 0, command.forced };
+				const Command item_broken{ command.indent, false, item, 0, command.forced };
 				const bool item_fits = unlimited || fits({ item_flat }, {}, remaining(), true);
 				if (i + 1 >= part.count) {
 					stack.push_back(item_fits ? item_flat : item_broken);
 					break;
 				}
 				const Doc separator = children[part.first + i + 1];
-				const Command separator_flat{ command.indent, true, separator, 0 };
-				const Command separator_broken{ command.indent, false, separator, 0 };
+				const Command separator_flat{ command.indent, true, separator, 0, command.forced };
+				const Command separator_broken{ command.indent, false, separator, 0, command.forced };
 				if (i + 2 >= part.count) {
-					stack.push_back(item_fits ? separator_flat : separator_broken);
+					stack.push_back(item_fits && !parts[item].breaks ? separator_flat : separator_broken);
 					stack.push_back(item_fits ? item_flat : item_broken);
 					break;
 				}
-				// Whether the next item fits after this one decides the separator between them
-				const Command next_flat{ command.indent, true, children[part.first + i + 2], 0 };
-				const bool both_fit = unlimited || fits({ item_flat, separator_flat, next_flat }, {}, remaining(), true);
-				stack.push_back(Command{ command.indent, command.flat, command.doc, i + 2 });
+				/*
+				 * Whether the next item fits after this one decides the separator between them, unless this one
+				 * has a break_parent, like a line comment's, which ends its line
+				 */
+				const Command next_flat{ command.indent, true, children[part.first + i + 2], 0, command.forced };
+				const bool both_fit = !parts[item].breaks
+					&& (unlimited || fits({ item_flat, separator_flat, next_flat }, {}, remaining(), true));
+				stack.push_back(Command{ command.indent, command.flat, command.doc, i + 2, command.forced });
 				stack.push_back(both_fit ? separator_flat : separator_broken);
 				stack.push_back(item_fits ? item_flat : item_broken);
 				break;

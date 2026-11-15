@@ -97,6 +97,26 @@ TEST(Layout, WhatFollowsAGroupCountsUpToTheLineEnd)
 	EXPECT_EQ(d.render(doc, 13), "f(\n    a,\n    b,\n) + tail\nnext line is long");
 }
 
+TEST(Layout, FirstOfTwoGroupsBreaksFirst)
+{
+	// f(aaa, bbb) -> g(ccc): when the line doesn't fit, the parameters break, not the result after them
+	Document d;
+	const Doc doc = d.concat({ call(d, { "aaa", "bbb" }), d.text(" -> "), call(d, { "ccc" }) });
+	EXPECT_EQ(d.render(doc, 120), "f(aaa, bbb) -> f(ccc)");
+	EXPECT_EQ(d.render(doc, 18), "f(\n    aaa,\n    bbb,\n) -> f(ccc)");
+}
+
+TEST(Layout, FlatNeverBreaks)
+{
+	// name(x) :: f(aaa, bbb): the name is flat, so the call after it breaks however narrow the line
+	Document d;
+	const Doc doc = d.concat({ d.flat(call(d, { "x" })), d.text(" :: "), call(d, { "aaa", "bbb" }) });
+	EXPECT_EQ(d.render(doc, 10), "f(x) :: f(\n    aaa,\n    bbb,\n)");
+	// A hard line in it still breaks
+	EXPECT_EQ(d.render(d.flat(d.concat({ d.text("a"), d.hard_line(), d.text("b") })), 120), "a\nb");
+	EXPECT_EQ(d.flat(EMPTY), EMPTY);
+}
+
 TEST(Layout, HardLineDoesNotBreakItsGroup)
 {
 	/*
@@ -147,6 +167,15 @@ TEST(Layout, FillPacksItems)
 	EXPECT_EQ(d.render(doc, 14), "[\n    1, 22,\n    333, 4,\n    55, 666,\n    7,\n]");
 	// An item too long for any line is still written, on its own line
 	EXPECT_EQ(d.render(doc, 5), "[\n    1,\n    22,\n    333,\n    4,\n    55,\n    666,\n    7,\n]");
+}
+
+TEST(Layout, FillItemWithALineCommentEndsItsLine)
+{
+	// 1, 2, // two \n 3: the comment stays the last thing on its line
+	Document d;
+	const Doc commented = d.concat({ d.text("2,"), d.line_suffix(d.text(" // two")), d.break_parent() });
+	const Doc doc = d.fill({ d.text("1,"), d.line(), commented, d.line(), d.text("3,"), d.line(), d.text("4") });
+	EXPECT_EQ(d.render(doc, 120), "1, 2, // two\n3, 4");
 }
 
 TEST(Layout, BreakParentBreaksOutToAnIsolate)

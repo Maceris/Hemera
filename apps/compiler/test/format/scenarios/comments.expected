@@ -1,0 +1,76 @@
+package comments
+
+zero :: 0 // C1: a line comment gets one space after its //
+
+// TODO(someone): house markers too
+minus_one :: -1
+
+/*
+ * C2: a run of line comments
+ * on lines of their own
+ * becomes one block
+ */
+first :: 1
+
+/*
+ * C3: a block comment's text moves off its opening line,
+ * each line gets a star, and the closing goes on a line of its own
+ */
+second :: 2
+
+/** A one-line doc comment stays as it is */
+third :: 3
+
+/*
+ * C4: a comment is indented with the code it's in, stars and all
+ */
+fourth :: 4
+
+/**
+ * C7: tags in order, @param before @return before @error.
+ *
+ * @param a The first.
+ * @param b The second.
+ * @return The sum.
+ * @error Overflow It didn't fit.
+ */
+add :: fn(a : int, b : int) -> int {
+    return a + b // C8: one space before a trailing comment
+}
+
+/**
+ * C5: a line that ends up over 120 columns once it's indented is broken at the last space that fits, its continuation
+ * starting with the same star.
+ * @param value A tag's text that runs past 120 columns continues on the next line, indented 4 spaces past the tag's @,
+ *     as later lines of it do.
+ */
+nested :: fn(value : int) {
+    if value > 0 {
+        if value > 1 {
+            /*
+             * This comment was written with no indent at all, and indenting it with its code takes this line past the
+             * width.
+             */
+            use(value)
+        }
+    }
+}
+
+empty :: fn() {
+    // A block with only a comment keeps it inside
+}
+
+calls :: fn() {
+    call(
+        1, // a trailing comment breaks the call, staying after its item
+        2
+    )
+    call(/* inline */ 3)
+}
+
+// hemera-format: off
+kept   ::   fn( a:int ) -> int   {   return a }
+// hemera-format: on
+formatted :: fn(a : int) -> int {
+    return a
+}

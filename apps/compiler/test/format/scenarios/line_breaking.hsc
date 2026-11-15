@@ -1,0 +1,44 @@
+package line_breaking
+
+import runtime from "base:runtime"
+
+// B6: a parameter list that doesn't fit, an item to a line; B5: the ( stays with the name
+connect_to_the_remote_service :: fn(address: string, port: u16, timeout_milliseconds: u32, retries: u32, allocator: runtime.Allocator) -> bool {
+    return true
+}
+
+// B1: hand-broken lines that fit are joined
+short :: fn(a: int,
+    b: int) -> int {
+    return a +
+        b
+}
+
+main :: fn() {
+    // B6: arguments, one to a line, the closing ) on its own
+    result := connect_to_the_remote_service("a fairly long host name for the example, long enough", 443, 30000, 5, context.allocator)
+    // B3: a run of one level's operators breaks before each, all at once, 4 deeper
+    ready := result && connection_count_is_below_the_limit(result) && the_service_is_not_in_maintenance(result) && is_ready(result)
+    // B2: the outer list breaks before the inner one
+    outer(inner(1, 2), "a string long enough that the whole call doesn't fit on one line of a hundred and twenty columns")
+    // D3: a broken named struct literal ends in a comma
+    settings := Settings.{name = "a long enough name to break the literal over lines", mode = .Fast, retries = 3, verbose = true}
+    // B8: short numbers pack as many to a line as fit
+    table := u8.[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14]
+    // L5: else on the line after the }
+    if ready {
+        use(table)
+    } else {
+        use(settings)
+    }
+    // An if whose value is used stays on one line where it fits, and is a block's lines where it doesn't
+    smaller :: if ready { 1 } else { 2 }
+    larger :: if ready { connect_to_the_remote_service("a long host name", 443, 30000, 5, context.allocator) } else { false }
+    switch smaller {
+        // B7: a case that fits stays on one line
+        case 1: use(1)
+        case 2: {
+            use(2)
+        }
+    }
+}

@@ -69,7 +69,7 @@ making_code_works :: fn() -> bool {
             return target(#insert compiler.arguments(Forward))
         }
     }
-    expect(signature, "forward :: fn(x: int, y: u8) -> int {\n    return target(x, y)\n}\n")
+    expect(signature, "forward :: fn(x : int, y : u8) -> int {\n    return target(x, y)\n}\n")
     // Looking at code
     if compiler.code_kind(count) != .Name || compiler.code_kind(signature) != .Statements
         || compiler.code_kind(compiler.literal(1)) != .Literal || compiler.code_kind(#code(a + b)) != .Expression {

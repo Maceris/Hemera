@@ -197,10 +197,13 @@ namespace {
 		return files;
 	}
 
-	// A comment's words, without the spaces its lines start or end with, which re-indenting changes.
-	std::string comment_words(std::string_view text)
+	/*
+	 * A comment's words, in order, without its markers (the slashes and stars that open and close it, and each
+	 * line's star): what formatting keeps,
+	 * though it can make a run of line comments one block (C2), lay a block's lines out again (C3) and break them (C5).
+	 */
+	void comment_words(std::string_view text, std::vector<std::string>& words)
 	{
-		std::string out;
 		size_t start = 0;
 		while (start <= text.size()) {
 			size_t end = text.find('\n', start);
@@ -208,24 +211,77 @@ namespace {
 				end = text.size();
 			}
 			std::string_view line = text.substr(start, end - start);
-			while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
+			start = end + 1;
+			auto trim = [&]() {
+				while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
+					line.remove_prefix(1);
+				}
+				while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) {
+					line.remove_suffix(1);
+				}
+			};
+			trim();
+			for (std::string_view marker : { "//", "/**", "/*" }) {
+				if (line.starts_with(marker)) {
+					line.remove_prefix(marker.size());
+					break;
+				}
+			}
+			if (line.ends_with("*/")) {
+				line.remove_suffix(2);
+			}
+			trim();
+			if (line.starts_with("*")) {
 				line.remove_prefix(1);
 			}
-			while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) {
-				line.remove_suffix(1);
+			std::istringstream split{ std::string(line) };
+			std::string word;
+			while (split >> word) {
+				words.push_back(word);
 			}
-			out += line;
-			out += '\n';
-			start = end + 1;
 		}
-		return out;
+	}
+
+	/*
+	 * Puts the imports in a row at the top of a file's tree in an order of their own, as formatting and printing sort
+	 * them (D2), so trees that differ only in that compare the same. Returns their trees in the order they were in.
+	 */
+	std::vector<std::string> sort_top_imports(hemera::ast::Node* ast)
+	{
+		auto& children = ast->children;
+		auto first = std::find_if(children.begin(), children.end(),
+			[](const hemera::ast::Node* child) { return hemera::ast::NodeType::IMPORT == child->node_type; });
+		auto last = std::find_if(first, children.end(),
+			[](const hemera::ast::Node* child) { return hemera::ast::NodeType::IMPORT != child->node_type; });
+		std::vector<std::string> imports;
+		for (auto import_node = first; import_node != last; ++import_node) {
+			imports.push_back(hemera::ast::dump(*import_node));
+		}
+		std::stable_sort(first, last, [](const hemera::ast::Node* a, const hemera::ast::Node* b) {
+			return hemera::ast::dump(a) < hemera::ast::dump(b);
+		});
+		return imports;
 	}
 
 	struct Lexed {
 		std::vector<std::string> comments;
 		std::string tree;
+		// The top imports' trees, in the file's order
+		std::vector<std::string> imports;
 		bool parsed = false;
 	};
+
+	// Whether formatting kept the comments: in order, or in any order where it put the imports in an order of their own.
+	bool same_comments(const Lexed& before, const Lexed& after) {
+		if (before.imports == after.imports) {
+			return before.comments == after.comments;
+		}
+		std::vector<std::string> sorted_before = before.comments;
+		std::vector<std::string> sorted_after = after.comments;
+		std::sort(sorted_before.begin(), sorted_before.end());
+		std::sort(sorted_after.begin(), sorted_after.end());
+		return sorted_before == sorted_after;
+	}
 
 	// source's comments' words, in order, and its tree as dump writes it.
 	Lexed lex_and_parse(const std::string& source, const std::string& file_path)
@@ -239,7 +295,7 @@ namespace {
 		MyVector<Token> tokens;
 		for (const Token& token : all_tokens) {
 			if (TokenType::COMMENT_BLOCK == token.type || TokenType::COMMENT_LINE == token.type) {
-				lexed.comments.push_back(comment_words(source.substr(token.offset, token.length)));
+				comment_words(source.substr(token.offset, token.length), lexed.comments);
 			}
 			else {
 				tokens.push_back(token);
@@ -250,6 +306,7 @@ namespace {
 		hemera::ast::Node* ast = hemera::parser::file(file_path, tokens, node_alloc, &quotes);
 		lexed.parsed = ast != nullptr && hemera::error_count() == 0;
 		if (lexed.parsed) {
+			lexed.imports = sort_top_imports(ast);
 			lexed.tree = hemera::ast::dump(ast);
 		}
 		return lexed;
@@ -258,7 +315,7 @@ namespace {
 
 /*
  * Formatting a file (parser/formatting.h) keeps every comment, once each and in order, and the tree it parses to,
- * for every file the parser takes in base, std and the scenarios.
+ * and formatting it again changes nothing, for every file the parser takes in base, std and the scenarios.
  */
 TEST(ParserSmoke, FormattingKeepsCommentsAndTrees)
 {
@@ -276,7 +333,7 @@ TEST(ParserSmoke, FormattingKeepsCommentsAndTrees)
 			continue;
 		}
 		hemera::reset_reporting_storage();
-		const hemera::formatting::Result result = hemera::formatting::format_source(source, file_path, SIZE_MAX);
+		const hemera::formatting::Result result = hemera::formatting::format_source(source, file_path);
 		formatted_count += 1;
 		std::string problem;
 		if (!result.parsed) {
@@ -293,14 +350,22 @@ TEST(ParserSmoke, FormattingKeepsCommentsAndTrees)
 			else if (after.tree != before.tree) {
 				problem = "formatted as a different tree";
 			}
-			else if (after.comments != before.comments) {
+			else if (!same_comments(before, after)) {
 				size_t i = 0;
 				while (i < before.comments.size() && i < after.comments.size() && before.comments[i] == after.comments[i]) {
 					++i;
 				}
-				problem = std::format("has {} comments formatted, {} before; the {}th differs:\n{}\n--- formatted as\n{}",
+				problem = std::format("has {} words in comments formatted, {} before; the {}th differs: {} formatted as {}",
 					after.comments.size(), before.comments.size(), i + 1, i < before.comments.size() ? before.comments[i] : "",
 					i < after.comments.size() ? after.comments[i] : "");
+			}
+			else {
+				// Formatting what formatting made changes nothing
+				hemera::reset_reporting_storage();
+				const hemera::formatting::Result again = hemera::formatting::format_source(result.text, file_path + " (formatted)");
+				if (!again.parsed || again.text != result.text) {
+					problem = std::format("formats differently a second time:\n{}", again.text);
+				}
 			}
 		}
 		if (problem.empty()) {
@@ -314,6 +379,41 @@ TEST(ParserSmoke, FormattingKeepsCommentsAndTrees)
 		}
 	}
 	EXPECT_GT(formatted_count, 100);
+}
+
+/*
+ * Each file in test/format/scenarios formats to its .expected file beside it, which formats to itself: the style
+ * rules' examples, a scenario for each group of them.
+ */
+TEST(Formatting, Scenarios)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+
+	const std::filesystem::path folder = std::filesystem::path(__FILE__).remove_filename().append("..").append("format").append("scenarios");
+	auto read = [](const std::filesystem::path& path) {
+		std::ifstream stream(path, std::ios::binary);
+		return std::string((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+	};
+	size_t count = 0;
+	for (const auto& file : std::filesystem::directory_iterator(folder)) {
+		if (file.path().extension() != ".hsc") {
+			continue;
+		}
+		std::filesystem::path expected_path = file.path();
+		expected_path.replace_extension(".expected");
+		const std::string expected = read(expected_path);
+		ASSERT_FALSE(expected.empty()) << expected_path.generic_string();
+		hemera::reset_reporting_storage();
+		const hemera::formatting::Result result = hemera::formatting::format_source(read(file.path()), file.path().generic_string());
+		EXPECT_TRUE(result.parsed && result.lost_comments.empty()) << file.path().generic_string();
+		EXPECT_EQ(result.text, expected) << file.path().generic_string();
+		hemera::reset_reporting_storage();
+		const hemera::formatting::Result again = hemera::formatting::format_source(expected, expected_path.generic_string());
+		EXPECT_EQ(again.text, expected) << expected_path.generic_string() << " formats to something else";
+		count += 1;
+	}
+	EXPECT_GE(count, 3u);
 }
 
 TEST(ParserSmoke, PrintingRoundTrips)
@@ -364,6 +464,10 @@ TEST(ParserSmoke, PrintingRoundTrips)
 			hemera::ast::Node* reparsed = hemera::parser::file(file_path + " (printed)", printed_tokens, node_alloc, &printed_quotes);
 			printed_count += 1;
 			const bool parsed = reparsed != nullptr && hemera::error_count() == 0;
+			if (parsed) {
+				sort_top_imports(reparsed);
+				sort_top_imports(ast);
+			}
 			if (parsed && hemera::ast::dump(reparsed) == hemera::ast::dump(ast)) {
 				continue;
 			}

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <format>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -20,6 +21,20 @@ namespace hemera::ast {
 	 * parentheses its operators need, which parsing turns into PAREN_GROUP nodes.
 	 */
 	namespace {
+
+		/*
+		 * W7: a run of at least ALIGNED_RUN similar declarations has its names padded so their : and :: line up,
+		 * and a run breaks where that would pad a line by more than ALIGNMENT_LIMIT spaces. Both are to tune once
+		 * std and the Vulkan bindings are formatted.
+		 */
+		constexpr size_t ALIGNED_RUN = 4;
+		constexpr size_t ALIGNMENT_LIMIT = 30;
+
+		/*
+		 * Whether an if expression whose value is used, with an else and an expression alone in each block, is
+		 * on one line where it fits, like x :: if a { b } else { c }, rather than else on a line of its own (L5).
+		 */
+		constexpr bool ONE_LINE_IF_EXPRESSIONS = true;
 
 		// How tightly an expression binds, by where the parser parses it: an operand needs at least its level.
 		enum Level : int {
@@ -690,14 +705,48 @@ namespace hemera::ast {
 				return d.hard_line();
 			}
 
-			// Each of docs on a line of its own, one indent deeper: what goes between a { and its }.
-			Doc indented_lines(const std::vector<Doc>& docs) {
-				Parts out = parts();
-				for (const Doc doc : docs) {
-					out << nl() << doc;
+			/*
+			 * open items close, on one line where it fits, and otherwise an item to a line, each indented one
+			 * level, with close on a line of its own (B5, B6): a comma after the last item then if
+			 * trailing_comma, for the lists docs/formatting.md makes that comma optional in (D3). The items
+			 * are indented only when broken, so a block in a flat list's last item isn't. Given the items'
+			 * nodes, a broken list keeps the blank lines that were between them (L6).
+			 */
+			Doc bracketed(std::string_view open, const std::vector<Doc>& items, std::string_view close, bool trailing_comma,
+				const std::vector<const Node*>* nodes = nullptr) {
+				if (items.empty()) {
+					return d.concat({ text(open), text(close) });
 				}
-				return d.indent(out.doc());
+				Parts body = parts();
+				for (size_t i = 0; i < items.size(); ++i) {
+					if (i > 0) {
+						body << ",";
+						if (nodes != nullptr && blank_before((*nodes)[i])) {
+							body << d.if_break(nl());
+						}
+						body << d.line();
+					}
+					body << items[i];
+				}
+				const Doc inside = body.doc();
+				return d.group(d.concat({
+					text(open),
+					d.if_break(d.indent(d.concat({ d.soft_line(), inside, trailing_comma ? text(",") : EMPTY })), inside),
+					d.soft_line(),
+					text(close),
+				}));
 			}
+
+			template <typename F>
+			Doc bracket_list(std::string_view open, const MyVector<Node*>& items, F each, std::string_view close, bool trailing_comma) {
+				std::vector<Doc> docs;
+				docs.reserve(items.size());
+				for (const Node* item : items) {
+					docs.push_back(each(item));
+				}
+				return bracketed(open, docs, close, trailing_comma);
+			}
+
 
 			/*
 			 * Each item on a line of its own, one indent deeper, with a blank line before one that had one
@@ -705,6 +754,9 @@ namespace hemera::ast {
 			 * the groups around them.
 			 */
 			Doc item_lines(const std::vector<std::pair<const Node*, Doc>>& items) {
+				if (items.empty()) {
+					return EMPTY;
+				}
 				Parts out = parts();
 				for (size_t i = 0; i < items.size(); ++i) {
 					out << nl();
@@ -729,52 +781,231 @@ namespace hemera::ast {
 				return start != UINT32_MAX && comments->breaks_before(start) >= 2;
 			}
 
-			/*
-			 * A comment as written, without spaces at its lines' ends. A block comment's later lines keep
-			 * where they are against its first, so they move with it when it's indented (C4).
-			 */
-			Doc comment(uint32_t index) {
-				const Token& token = comments->comments[index];
-				comments_printed[index] = true;
-				std::string_view written = comments->source.substr(token.offset, token.length);
-				size_t line_start = token.offset;
-				while (line_start > 0 && comments->source[line_start - 1] != '\n') {
-					--line_start;
+			static std::string_view trim_end(std::string_view line) {
+				while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) {
+					line.remove_suffix(1);
 				}
-				const size_t column = token.offset - line_start;
-				Parts out = parts();
-				bool first = true;
+				return line;
+			}
+
+			static size_t leading_spaces(std::string_view line) {
+				size_t count = 0;
+				while (count < line.size() && (line[count] == ' ' || line[count] == '\t')) {
+					++count;
+				}
+				return count;
+			}
+
+			// A line comment's text with one space after its // (C1), unless it's empty or a run of slashes.
+			static std::string line_comment_text(std::string_view written) {
+				written = trim_end(written);
+				if (written.size() > 2 && written[2] != ' ' && written[2] != '\t' && written[2] != '/') {
+					return "// " + std::string(written.substr(2));
+				}
+				return std::string(written);
+			}
+
+			/*
+			 * Where a block tag goes among a doc comment's (C7): @tparam, which the code always puts first, then
+			 * @param, @return and @error; -1 for any other.
+			 */
+			static int tag_rank(std::string_view line) {
+				const std::string_view text = line.substr(std::min(line.size(), size_t{ 2 }));
+				for (const auto& [tag, rank] : { std::pair{ "@tparam ", 0 }, std::pair{ "@param ", 1 }, std::pair{ "@return ", 2 },
+					std::pair{ "@error ", 3 } }) {
+					if (text.starts_with(tag) || text == std::string_view(tag).substr(0, std::string_view(tag).size() - 1)) {
+						return rank;
+					}
+				}
+				return -1;
+			}
+
+			/*
+			 * A doc comment's block tags in C7's order, each with its continuation lines, if every line after the
+			 * first tag is a tag or a tag's continuation, indented past the *; as they are otherwise. lines are a
+			 * block comment's inner lines, each starting with *.
+			 */
+			static void order_tags(std::vector<std::string>& lines) {
+				size_t first = 0;
+				while (first < lines.size() && !lines[first].starts_with("* @")) {
+					++first;
+				}
+				if (first == lines.size()) {
+					return;
+				}
+				std::vector<std::vector<std::string>> tags;
+				for (size_t i = first; i < lines.size(); ++i) {
+					if (lines[i].starts_with("* @")) {
+						// A tag C7 doesn't place leaves them all as they are
+						if (tag_rank(lines[i]) < 0) {
+							return;
+						}
+						tags.push_back({ lines[i] });
+					}
+					else if (lines[i].starts_with("*  ")) {
+						tags.back().push_back(lines[i]);
+					}
+					else {
+						return;
+					}
+				}
+				std::stable_sort(tags.begin(), tags.end(),
+					[](const std::vector<std::string>& a, const std::vector<std::string>& b) { return tag_rank(a[0]) < tag_rank(b[0]); });
+				lines.resize(first);
+				for (const std::vector<std::string>& tag : tags) {
+					lines.insert(lines.end(), tag.begin(), tag.end());
+				}
+			}
+
+			/*
+			 * A block comment of several lines laid out (C3): its opening on a line of its own, each line in it
+			 * starting with a * under the opening's, and the closing on a line of its own. A line written
+			 * without its * keeps how far it was indented past where the text after a * goes. column is
+			 * where the comment started on its line.
+			 */
+			static std::vector<std::string> block_comment_lines(std::string_view written, size_t column) {
+				std::vector<std::string_view> source_lines;
 				while (true) {
 					const size_t line_end = written.find('\n');
-					std::string_view line = written.substr(0, line_end);
-					while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) {
-						line.remove_suffix(1);
-					}
-					if (!first) {
-						size_t strip = 0;
-						while (strip < column && strip < line.size() && (line[strip] == ' ' || line[strip] == '\t')) {
-							++strip;
-						}
-						line.remove_prefix(strip);
-						out << nl();
-					}
-					out << line;
-					first = false;
+					source_lines.push_back(trim_end(written.substr(0, line_end)));
 					if (line_end == std::string_view::npos) {
 						break;
 					}
 					written.remove_prefix(line_end + 1);
 				}
+				const bool documentation = source_lines[0].starts_with("/**");
+				const std::string_view opener = documentation ? "/**" : "/*";
+				std::vector<std::string> inner;
+				auto add = [&](std::string_view text, size_t indent) {
+					if (text.starts_with("*")) {
+						inner.emplace_back(text);
+					}
+					else if (text.empty()) {
+						inner.emplace_back("*");
+					}
+					else {
+						// Past where the text after " * " would start
+						const size_t extra = indent > column + 3 ? indent - (column + 3) : 0;
+						inner.push_back("* " + std::string(extra, ' ') + std::string(text));
+					}
+				};
+				const std::string_view first_text = source_lines[0].substr(opener.size());
+				if (!first_text.empty()) {
+					add(first_text.substr(leading_spaces(first_text)), column + 3);
+				}
+				for (size_t i = 1; i < source_lines.size(); ++i) {
+					const size_t indent = leading_spaces(source_lines[i]);
+					std::string_view text = source_lines[i].substr(indent);
+					if (i + 1 == source_lines.size()) {
+						// The closing, alone or after the last line's text
+						text.remove_suffix(std::min(text.size(), size_t{ 2 }));
+						text = trim_end(text);
+						if (text.empty() || text == "*") {
+							break;
+						}
+					}
+					add(text, indent);
+				}
+				if (documentation) {
+					order_tags(inner);
+				}
+				std::vector<std::string> lines{ std::string(opener) };
+				for (const std::string& line : inner) {
+					lines.push_back(" " + line);
+				}
+				lines.emplace_back(" */");
+				return lines;
+			}
+
+			/*
+			 * A comment laid out by C1 and C3, without spaces at its lines' ends, its lines indented with the
+			 * code it's in (C4). A one-line block comment stays as written.
+			 */
+			Doc comment(uint32_t index) {
+				const Token& token = comments->comments[index];
+				comments_printed[index] = true;
+				const std::string_view written = comments->source.substr(token.offset, token.length);
+				if (comments->is_line_comment(index)) {
+					return text(line_comment_text(written));
+				}
+				if (written.find('\n') == std::string_view::npos) {
+					return text(trim_end(written));
+				}
+				size_t line_start = token.offset;
+				while (line_start > 0 && comments->source[line_start - 1] != '\n') {
+					--line_start;
+				}
+				Parts out = parts();
+				const std::vector<std::string> lines = block_comment_lines(written, token.offset - line_start);
+				for (size_t i = 0; i < lines.size(); ++i) {
+					out << (i > 0 ? nl() : EMPTY) << lines[i];
+				}
 				return out.doc();
+			}
+
+			// Whether a comment is a line comment on a line of its own, which a run of becomes one block (C2).
+			bool joins_comment_run(uint32_t index) const {
+				if (!comments->is_line_comment(index) || comments->breaks_before(comments->start_of(index)) == 0) {
+					return false;
+				}
+				const Token& token = comments->comments[index];
+				return !is_format_switch(comments->source.substr(token.offset, token.length));
+			}
+
+			// // hemera-format: off or on, which stays a line comment of its own.
+			static bool is_format_switch(std::string_view written) {
+				const std::string text = line_comment_text(written);
+				return text == "// hemera-format: off" || text == "// hemera-format: on";
+			}
+
+			/*
+			 * list[i], or the run of line comments starting there, each on a line of its own right after the one
+			 * before, as one block (C2). i moves to the last comment taken.
+			 */
+			Doc comment_or_run(const std::vector<uint32_t>& list, size_t& i) {
+				size_t last = i;
+				if (joins_comment_run(list[i])) {
+					while (last + 1 < list.size() && joins_comment_run(list[last + 1])
+						&& comments->breaks_between(comments->end_of(list[last]), comments->start_of(list[last + 1])) == 1) {
+						++last;
+					}
+				}
+				if (last == i) {
+					return comment(list[i]);
+				}
+				Parts out = parts();
+				out << "/*";
+				for (size_t k = i; k <= last; ++k) {
+					comments_printed[list[k]] = true;
+					const Token& token = comments->comments[list[k]];
+					const std::string text = line_comment_text(comments->source.substr(token.offset, token.length));
+					std::string_view words = std::string_view(text).substr(2);
+					if (!words.empty() && words[0] == ' ') {
+						words.remove_prefix(1);
+					}
+					out << nl() << (words.empty() ? std::string(" *") : " * " + std::string(words));
+				}
+				out << nl() << " */";
+				i = last;
+				return out.doc();
+			}
+
+			// Whether a comment is documentation, /** ... */.
+			bool is_documentation(uint32_t index) const {
+				const Token& token = comments->comments[index];
+				return comments->source.substr(token.offset, token.length).starts_with("/**")
+					&& !comments->source.substr(token.offset, token.length).starts_with("/**/");
 			}
 
 			/*
 			 * doc with node's comments around it: leading ones before it, each on its own line if it was or
 			 * if it's a line comment; trailing ones after it, at its line's end if they ended their line
 			 * and on lines of their own after it if they had one; dangling ones as trailing ones, unless the
-			 * caller prints them (a block). Each is printed once, wherever node is printed first.
+			 * caller prints them (a block). Each is printed once, wherever node is printed first. With
+			 * blank_after_leading, a blank line follows the leading comments unless the last documents node,
+			 * as a file's do (D1).
 			 */
-			Doc host(const Node* node, Doc doc, bool with_dangling = true) {
+			Doc host(const Node* node, Doc doc, bool with_dangling = true, bool blank_after_leading = false) {
 				if (comments == nullptr) {
 					return doc;
 				}
@@ -791,10 +1022,14 @@ namespace hemera::ast {
 				const Comments::Extent span = comments->extent(node);
 				Parts out = parts();
 				for (size_t i = 0; i < attached.leading.size(); ++i) {
+					const Doc written = comment_or_run(attached.leading, i);
 					const uint32_t index = attached.leading[i];
 					const uint32_t next = i + 1 < attached.leading.size() ? comments->start_of(attached.leading[i + 1]) : span.start;
-					const size_t breaks = comments->breaks_between(comments->end_of(index), next);
-					out << comment(index);
+					size_t breaks = comments->breaks_between(comments->end_of(index), next);
+					if (blank_after_leading && i + 1 == attached.leading.size() && !is_documentation(index)) {
+						breaks = 2;
+					}
+					out << written;
 					if (comments->is_line_comment(index) || breaks > 0) {
 						out << nl() << (breaks > 1 ? nl() : EMPTY) << d.break_parent();
 					}
@@ -809,16 +1044,22 @@ namespace hemera::ast {
 				}
 				uint32_t end = span.end;
 				bool at_line_end = false;
-				for (const uint32_t index : after) {
+				for (size_t i = 0; i < after.size(); ++i) {
+					uint32_t index = after[i];
 					const size_t breaks = comments->breaks_between(end, comments->start_of(index));
+					if (breaks > 0) {
+						// On lines of its own, maybe a run of line comments
+						const Doc written = comment_or_run(after, i);
+						index = after[i];
+						end = comments->end_of(index);
+						out << d.line_suffix(d.concat({ nl(), breaks > 1 ? nl() : EMPTY, written })) << d.break_parent();
+						at_line_end = true;
+						continue;
+					}
 					end = comments->end_of(index);
 					// Whether it ends its line in the source, so it ends its line here too
 					const bool ends_line = comments->ends_line(end);
-					if (breaks > 0) {
-						out << d.line_suffix(d.concat({ nl(), breaks > 1 ? nl() : EMPTY, comment(index) })) << d.break_parent();
-						at_line_end = true;
-					}
-					else if (at_line_end || ends_line || comments->is_line_comment(index)) {
+					if (at_line_end || ends_line || comments->is_line_comment(index)) {
 						out << d.line_suffix(d.concat({ text(" "), comment(index) }));
 						if (comments->is_line_comment(index)) {
 							out << d.break_parent();
@@ -835,33 +1076,111 @@ namespace hemera::ast {
 			// ---------------------------------------------------------------------------------
 			// Files and declarations
 
-			// The package statement, then a blank line, then each declaration on a line of its own.
+			/*
+			 * A file (D1): its leading comments, the package statement, its imports in order (D2), then its
+			 * declarations, a blank line between each of those and the next (L6), and blank lines between
+			 * declarations where there were some, at most one in a row.
+			 */
 			Doc file(const Node* node) {
 				Parts out = parts();
-				bool first = true;
-				for (const Node* child : node->children) {
-					if (NodeType::PACKAGE == child->node_type) {
-						const std::string_view name = child->children.empty() ? std::string_view() : text_of(child->children[0]);
-						out << host(child, d.concat({ text("package "), text(name) })) << nl() << nl();
-						first = true;
-						continue;
-					}
-					if (!first && blank_before(child)) {
+				const auto& children = node->children;
+				size_t i = 0;
+				if (i < children.size() && NodeType::PACKAGE == children[i]->node_type) {
+					const Node* package = children[i];
+					const std::string_view name = package->children.empty() ? std::string_view() : text_of(package->children[0]);
+					out << host(package, d.concat({ text("package "), text(name) }), true, true) << nl();
+					++i;
+					if (i < children.size()) {
 						out << nl();
 					}
-					out << top_level(child) << nl();
-					first = false;
+				}
+				// The imports right after it, sorted, one to a line with no blank lines between them
+				const size_t first_import = i;
+				while (i < children.size() && NodeType::IMPORT == children[i]->node_type) {
+					++i;
+				}
+				std::vector<const Node*> imports(children.begin() + static_cast<std::ptrdiff_t>(first_import),
+					children.begin() + static_cast<std::ptrdiff_t>(i));
+				// The comments before the first import head them all, so they stay first
+				if (!imports.empty() && comments != nullptr && !comments->recording) {
+					auto found = comments->attached.find(imports.front());
+					if (found != comments->attached.end()) {
+						std::vector<uint32_t>& leading = found->second.leading;
+						for (size_t k = 0; k < leading.size(); ++k) {
+							const Doc written = comment_or_run(leading, k);
+							const uint32_t next = k + 1 < leading.size() ? comments->start_of(leading[k + 1])
+								: comments->extent(imports.front()).start;
+							out << written << nl();
+							if (comments->breaks_between(comments->end_of(leading[k]), next) > 1) {
+								out << nl();
+							}
+						}
+						leading.clear();
+					}
+				}
+				std::stable_sort(imports.begin(), imports.end(),
+					[](const Node* a, const Node* b) { return import_order(a) < import_order(b); });
+				for (const Node* import_node : imports) {
+					out << top_level(import_node) << nl();
+				}
+				if (!imports.empty() && i < children.size()) {
+					out << nl();
+				}
+				std::vector<Entry> entries;
+				for (; i < children.size(); ++i) {
+					entries.push_back(entry_for(children[i], EMPTY));
+				}
+				const std::vector<std::pair<const Node*, Doc>> lines = aligned(entries);
+				for (size_t k = 0; k < lines.size(); ++k) {
+					if (k > 0 && blank_before(lines[k].first)) {
+						out << nl();
+					}
+					out << lines[k].second << nl();
 				}
 				// Comments in a file with nothing else in it
 				if (comments != nullptr && !comments->recording) {
 					auto found = comments->attached.find(node);
 					if (found != comments->attached.end()) {
-						for (const uint32_t index : found->second.dangling) {
-							out << comment(index) << nl();
+						const std::vector<uint32_t>& dangling = found->second.dangling;
+						for (size_t k = 0; k < dangling.size(); ++k) {
+							out << comment_or_run(dangling, k) << nl();
 						}
 					}
 				}
 				return out.doc();
+			}
+
+			/*
+			 * Where an import goes among a file's (D2): by its location's built-in prefix (base, std, user,
+			 * vendor, then a relative folder), then the location's path, then the name. An import with no
+			 * location is std's package of its name.
+			 */
+			static std::tuple<int, std::string_view, std::string_view> import_order(const Node* node) {
+				std::string_view name;
+				std::string_view location;
+				for (size_t i = 0; i < node->children.size(); ++i) {
+					const Node* child = node->children[i];
+					if (NodeType::KEYWORD_FROM == child->node_type && i + 1 < node->children.size()) {
+						location = text_of(node->children[i + 1]);
+						++i;
+					}
+					else if (name.empty() && NodeType::IDENTIFIER == child->node_type) {
+						name = text_of(child);
+					}
+				}
+				if (location.size() >= 2 && location.front() == '"' && location.back() == '"') {
+					location = location.substr(1, location.size() - 2);
+				}
+				if (location.empty()) {
+					return { 1, name, name };
+				}
+				const size_t colon = location.find(':');
+				if (colon == std::string_view::npos) {
+					return { 4, location, name };
+				}
+				const std::string_view prefix = location.substr(0, colon);
+				const int rank = prefix == "base" ? 0 : prefix == "std" ? 1 : prefix == "user" ? 2 : prefix == "vendor" ? 3 : 4;
+				return { rank, location.substr(colon + 1), name };
 			}
 
 			Doc top_level(const Node* node) {
@@ -902,11 +1221,11 @@ namespace hemera::ast {
 						out << " " << expression(node->children[0], ANY);
 						first = 1;
 					}
-					std::vector<std::pair<const Node*, Doc>> lines;
+					std::vector<Entry> entries;
 					for (size_t i = first; i < node->children.size(); ++i) {
-						lines.emplace_back(node->children[i], top_level(node->children[i]));
+						entries.push_back(entry_for(node->children[i], EMPTY));
 					}
-					out << " {" << item_lines(lines) << nl() << "}";
+					out << " {" << item_lines(aligned(entries)) << nl() << "}";
 					return out.doc();
 				}
 				return directive(node);
@@ -940,14 +1259,61 @@ namespace hemera::ast {
 			}
 
 			/*
+			 * A declaration in parts, so a run of them can be lined up (W7): its name, its type if one is
+			 * written, and what follows them, like " :: value". Its shape says which runs it can be in.
+			 */
+			struct Declaration {
+				enum class Shape {
+					// Not lined up with others, like a variable, a function or anything with annotations
+					OTHER,
+					// NAME :: value
+					CONSTANT,
+					// NAME : Type : value
+					TYPED_CONSTANT,
+					// A struct's name : Type, or name : Type = default
+					FIELD,
+					FIELD_WITH_DEFAULT,
+					// An enum's NAME = value
+					MEMBER,
+				};
+
+				Shape shape = Shape::OTHER;
+				// Annotations, each on a line of its own, and using
+				Doc prefix = EMPTY;
+				Doc name = EMPTY;
+				Doc type = EMPTY;
+				Doc rest = EMPTY;
+			};
+
+			Doc spaces(size_t count) {
+				return count == 0 ? EMPTY : text(std::string(count, ' '));
+			}
+
+			// declaration with its name padded by name_pad spaces and its type, if what follows it is padded, by type_pad.
+			Doc join(const Declaration& declaration, size_t name_pad, size_t type_pad) {
+				Parts out = parts();
+				out << declaration.prefix << declaration.name << spaces(name_pad);
+				if (declaration.type != EMPTY) {
+					out << " : " << declaration.type << (declaration.rest != EMPTY ? spaces(type_pad) : EMPTY);
+				}
+				out << declaration.rest;
+				return out.doc();
+			}
+
+			/*
 			 * A definition: names, the type if one is written, then :: or : for a constant, := or = for a
 			 * variable, and the value. Annotations, which follow everything, go before it, a line each.
 			 */
 			Doc definition(const Node* node) {
+				return host(node, join(declaration(node), 0, 0));
+			}
+
+			Declaration declaration(const Node* node) {
+				Declaration out;
 				Parts prefix = parts();
-				Parts out = parts();
 				if (!node->children.empty()) {
-					out << names(node->children[0]);
+					// A name reads as one, so it never breaks
+					out.name = d.flat(names(node->children[0]));
 				}
 				bool is_using = false;
 				size_t i = 1;
@@ -966,23 +1332,174 @@ namespace hemera::ast {
 					++i;
 				}
 				if (written_type != nullptr) {
-					out << " : " << type(written_type, false);
+					out.type = type(written_type, false);
 				}
+				Parts rest = parts();
 				if (i < node->children.size()) {
 					const bool constant = NodeType::COLON == node->children[i]->node_type;
+					// A value that starts on the next line, like a multiline string, has no space before it
+					const bool next_line = i + 1 < node->children.size() && is_multiline_string(node->children[i + 1]);
 					if (written_type != nullptr) {
-						out << (constant ? " : " : " = ");
+						rest << (constant ? " :" : " =");
+						out.shape = constant ? Declaration::Shape::TYPED_CONSTANT : Declaration::Shape::FIELD_WITH_DEFAULT;
 					}
 					else {
-						out << (constant ? " :: " : " := ");
+						rest << (constant ? " ::" : " :=");
+						out.shape = constant ? Declaration::Shape::CONSTANT : Declaration::Shape::OTHER;
+					}
+					if (!next_line) {
+						rest << " ";
 					}
 					++i;
-					out << value(node, i, prefix, is_using);
+					rest << value(node, i, prefix, is_using);
 				}
 				else if (written_type == nullptr) {
-					out << " :";
+					rest << " :";
 				}
-				return host(node, d.concat({ prefix.doc(), is_using ? text("using ") : EMPTY, out.doc() }));
+				else {
+					out.shape = Declaration::Shape::FIELD;
+				}
+				out.rest = rest.doc();
+				out.prefix = d.concat({ prefix.doc(), is_using ? text("using ") : EMPTY });
+				if (out.prefix != EMPTY) {
+					out.shape = Declaration::Shape::OTHER;
+				}
+				return out;
+			}
+
+			/*
+			 * A line of a list of declarations: one, or something else in the list, like an #insert, with what
+			 * follows it, like a struct field's comma.
+			 */
+			struct Entry {
+				const Node* node = nullptr;
+				bool is_declaration = false;
+				Declaration declaration;
+				Doc other = EMPTY;
+				Doc after = EMPTY;
+			};
+
+			static bool same_run(Declaration::Shape a, Declaration::Shape b) {
+				const bool a_field = Declaration::Shape::FIELD == a || Declaration::Shape::FIELD_WITH_DEFAULT == a;
+				const bool b_field = Declaration::Shape::FIELD == b || Declaration::Shape::FIELD_WITH_DEFAULT == b;
+				return a == b || (a_field && b_field);
+			}
+
+			// Whether a declaration's type is padded in a run: when something follows it, like a default or value.
+			static bool pads_type(Declaration::Shape shape) {
+				return Declaration::Shape::TYPED_CONSTANT == shape || Declaration::Shape::FIELD_WITH_DEFAULT == shape;
+			}
+
+			bool has_leading_comment(const Node* node) const {
+				if (comments == nullptr || comments->recording) {
+					return false;
+				}
+				auto found = comments->attached.find(node);
+				return found != comments->attached.end() && !found->second.leading.empty();
+			}
+
+			/*
+			 * The entries' lines, each with its comments, lined up in runs (W7): a run is ALIGNED_RUN or more
+			 * declarations of one shape, each on one line, in a row without a blank line or a comment on a line of
+			 * its own between them, broken where lining them up would pad a line more than ALIGNMENT_LIMIT.
+			 */
+			std::vector<std::pair<const Node*, Doc>> aligned(const std::vector<Entry>& entries) {
+				const size_t count = entries.size();
+				std::vector<size_t> name_widths(count, 0);
+				std::vector<size_t> type_widths(count, 0);
+				std::vector<bool> can_align(count, false);
+				for (size_t i = 0; i < count; ++i) {
+					const Entry& entry = entries[i];
+					if (!entry.is_declaration || Declaration::Shape::OTHER == entry.declaration.shape) {
+						continue;
+					}
+					name_widths[i] = d.flat_width(entry.declaration.name);
+					type_widths[i] = d.flat_width(entry.declaration.type);
+					can_align[i] = d.flat_width(join(entry.declaration, 0, 0)) != SIZE_MAX && name_widths[i] != SIZE_MAX
+						&& type_widths[i] != SIZE_MAX;
+				}
+				std::vector<size_t> name_pads(count, 0);
+				std::vector<size_t> type_pads(count, 0);
+				size_t start = 0;
+				auto close_run = [&](size_t end) {
+					if (end > start && end - start >= ALIGNED_RUN) {
+						size_t widest_name = 0;
+						size_t widest_type = 0;
+						for (size_t k = start; k < end; ++k) {
+							widest_name = std::max(widest_name, name_widths[k]);
+							if (pads_type(entries[k].declaration.shape)) {
+								widest_type = std::max(widest_type, type_widths[k]);
+							}
+						}
+						for (size_t k = start; k < end; ++k) {
+							name_pads[k] = widest_name - name_widths[k];
+							type_pads[k] = pads_type(entries[k].declaration.shape) ? widest_type - type_widths[k] : 0;
+						}
+					}
+					start = end;
+				};
+				// The widths a run would span with entry i in it
+				auto too_wide = [&](size_t i) {
+					size_t narrowest_name = name_widths[i];
+					size_t widest_name = name_widths[i];
+					size_t narrowest_type = SIZE_MAX;
+					size_t widest_type = 0;
+					for (size_t k = start; k <= i; ++k) {
+						narrowest_name = std::min(narrowest_name, name_widths[k]);
+						widest_name = std::max(widest_name, name_widths[k]);
+						if (pads_type(entries[k].declaration.shape)) {
+							narrowest_type = std::min(narrowest_type, type_widths[k]);
+							widest_type = std::max(widest_type, type_widths[k]);
+						}
+					}
+					return widest_name - narrowest_name > ALIGNMENT_LIMIT
+						|| (narrowest_type != SIZE_MAX && widest_type - narrowest_type > ALIGNMENT_LIMIT);
+				};
+				for (size_t i = 0; i < count; ++i) {
+					if (!can_align[i]) {
+						close_run(i);
+						start = i + 1;
+						continue;
+					}
+					if (i > start && (!same_run(entries[start].declaration.shape, entries[i].declaration.shape)
+						|| blank_before(entries[i].node) || has_leading_comment(entries[i].node) || too_wide(i))) {
+						close_run(i);
+					}
+				}
+				close_run(count);
+
+				std::vector<std::pair<const Node*, Doc>> lines;
+				lines.reserve(count);
+				for (size_t i = 0; i < count; ++i) {
+					const Entry& entry = entries[i];
+					const Doc doc = entry.is_declaration ? join(entry.declaration, name_pads[i], type_pads[i]) : entry.other;
+					lines.emplace_back(entry.node, d.concat({ host(entry.node, doc), entry.after }));
+				}
+				return lines;
+			}
+
+			// A list's entry for something that isn't a declaration, like an #insert.
+			static Entry other_entry(const Node* node, Doc doc, Doc after) {
+				Entry entry;
+				entry.node = node;
+				entry.other = doc;
+				entry.after = after;
+				return entry;
+			}
+
+			// A list's entry for a declaration, or for node printed as other if it isn't one.
+			Entry entry_for(const Node* node, Doc after) {
+				Entry entry;
+				entry.node = node;
+				entry.after = after;
+				if (NodeType::DEFINITION == node->node_type) {
+					entry.is_declaration = true;
+					entry.declaration = declaration(node);
+				}
+				else {
+					entry.other = top_level(node);
+				}
+				return entry;
 			}
 
 			// What a definition's separator is followed by, from children[i] on.
@@ -1071,17 +1588,25 @@ namespace hemera::ast {
 				return d.concat({ text(" where "), expression(node->children[0], ANY) });
 			}
 
+			// " { lines }", where lines start with their line breaks, or " {}" for none.
+			Doc braces(Doc lines) {
+				if (lines == EMPTY) {
+					return text(" {}");
+				}
+				return d.concat({ text(" {"), lines, nl(), text("}") });
+			}
+
 			// keyword is struct, or fields for a quote of a struct's fields
 			Doc struct_declaration(const Node* node, std::string_view keyword = "struct") {
 				Parts out = parts();
 				out << keyword;
-				std::vector<std::pair<const Node*, Doc>> members;
+				std::vector<Entry> members;
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::GENERIC_TAG) {
 						out << generic_list(child);
 					}
 					else if (is_insert(child)) {
-						members.emplace_back(child, d.concat({ host(child, directive(child)), text(",") }));
+						members.push_back(other_entry(child, directive(child), text(",")));
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
 						out << " " << directive(child);
@@ -1090,13 +1615,13 @@ namespace hemera::ast {
 						out << where_clause(child);
 					}
 					else if (child->node_type == NodeType::USING) {
-						members.emplace_back(child, d.concat({ host(child, d.concat({ text("using "), qualified(child, 0) })), text(",") }));
+						members.push_back(other_entry(child, d.concat({ text("using "), qualified(child, 0) }), text(",")));
 					}
 					else {
-						members.emplace_back(child, d.concat({ definition(child), text(",") }));
+						members.push_back(entry_for(child, text(",")));
 					}
 				}
-				out << " {" << item_lines(members) << nl() << "}";
+				out << braces(item_lines(aligned(members)));
 				return out.doc();
 			}
 
@@ -1121,12 +1646,12 @@ namespace hemera::ast {
 						variant << text_of(child);
 						if (i + 1 < node->children.size() && NodeType::PAREN_GROUP == node->children[i + 1]->node_type) {
 							// A payload's function types are written without parentheses, which a union's payload doesn't take
-							variant << "(" << list(node->children[++i]->children, [&](const Node* t) { return type(t, false); }) << ")";
+							variant << bracket_list("(", node->children[++i]->children, [&](const Node* t) { return type(t, false); }, ")", false);
 						}
 						variants.emplace_back(child, d.concat({ host(child, variant.doc()), text(",") }));
 					}
 				}
-				out << " {" << item_lines(variants) << nl() << "}";
+				out << braces(item_lines(variants));
 				return out.doc();
 			}
 
@@ -1134,26 +1659,32 @@ namespace hemera::ast {
 			Doc enum_declaration(const Node* node, std::string_view keyword = "enum") {
 				Parts out = parts();
 				out << keyword;
-				std::vector<std::pair<const Node*, Doc>> members;
+				std::vector<Entry> members;
 				for (const Node* child : node->children) {
 					if (is_insert(child)) {
-						members.emplace_back(child, d.concat({ host(child, directive(child)), text(",") }));
+						members.push_back(other_entry(child, directive(child), text(",")));
 						continue;
 					}
 					if (NodeType::DIRECTIVE == child->node_type) {
 						out << " " << directive(child);
 						continue;
 					}
-					Parts member = parts();
-					member << text_of(child);
+					Entry member;
+					member.node = child;
+					member.is_declaration = true;
+					member.after = text(",");
+					member.declaration.name = text(text_of(child));
+					Parts value = parts();
 					for (const Node* assign : child->children) {
 						if (!assign->children.empty()) {
-							member << " = " << expression(assign->children[0], ANY);
+							value << " = " << expression(assign->children[0], ANY);
 						}
 					}
-					members.emplace_back(child, d.concat({ host(child, member.doc()), text(",") }));
+					member.declaration.rest = value.doc();
+					member.declaration.shape = member.declaration.rest != EMPTY ? Declaration::Shape::MEMBER : Declaration::Shape::OTHER;
+					members.push_back(member);
 				}
-				out << " {" << item_lines(members) << nl() << "}";
+				out << braces(item_lines(aligned(members)));
 				return out.doc();
 			}
 
@@ -1267,6 +1798,7 @@ namespace hemera::ast {
 			}
 
 			Doc generic_list(const Node* node) {
+				// Generic arguments never break: a type reads as one
 				return d.concat({ text("["), list(node->children, [&](const Node* item) { return generic_item(item); }), text("]") });
 			}
 
@@ -1276,7 +1808,7 @@ namespace hemera::ast {
 
 			Doc generic_item_bare(const Node* node) {
 				if (NodeType::COLON == node->node_type && node->children.size() == 2) {
-					return d.concat({ text(text_of(node->children[0])), text(": "), type(node->children[1], true) });
+					return d.concat({ text(text_of(node->children[0])), text(" : "), type(node->children[1], true) });
 				}
 				if (NodeType::DERIVED_PARAMETER == node->node_type) {
 					return d.concat({ text(text_of(node)), text(" = "),
@@ -1298,7 +1830,7 @@ namespace hemera::ast {
 					else if (child->node_type == NodeType::LIST) {
 						if (!seen_parameters) {
 							seen_parameters = true;
-							out << "(" << list(child->children, [&](const Node* p) { return parameter(p); }) << ")";
+							out << bracket_list("(", child->children, [&](const Node* p) { return parameter(p); }, ")", false);
 						}
 						else {
 							out << " -> (" << results(child) << ")";
@@ -1363,7 +1895,7 @@ namespace hemera::ast {
 						type_text = d.concat({ type(part, true), varargs(part) });
 					}
 				}
-				return d.concat({ out, text(": "), type_text, is_varargs ? text("...") : EMPTY });
+				return d.concat({ out, text(" : "), type_text, is_varargs ? text("...") : EMPTY });
 			}
 
 			Doc varargs(const Node* node) {
@@ -1375,13 +1907,13 @@ namespace hemera::ast {
 				return EMPTY;
 			}
 
-			// Several results: types, or names sharing the type after a COLON, like a: u16, b, c: f32.
+			// Several results: types, or names sharing the type after a COLON, like a : u16, b, c : f32.
 			Doc results(const Node* node) {
 				Parts out = parts();
 				for (size_t i = 0; i < node->children.size(); ++i) {
 					const Node* part = node->children[i];
 					if (NodeType::COLON == part->node_type) {
-						out << ": ";
+						out << " : ";
 						continue;
 					}
 					if (i > 0 && NodeType::COLON != node->children[i - 1]->node_type) {
@@ -1424,8 +1956,9 @@ namespace hemera::ast {
 					return EMPTY;
 				}
 				Parts out = parts();
-				for (const uint32_t index : found->second.dangling) {
-					out << nl() << comment(index);
+				const std::vector<uint32_t>& dangling = found->second.dangling;
+				for (size_t k = 0; k < dangling.size(); ++k) {
+					out << nl() << comment_or_run(dangling, k);
 				}
 				return d.indent(d.isolate(out.doc()));
 			}
@@ -1481,6 +2014,9 @@ namespace hemera::ast {
 				}
 				else if (node->node_type == NodeType::USING) {
 					return d.concat({ text("using "), qualified(node, 0) });
+				}
+				else if (node->node_type == NodeType::IF) {
+					return if_expression(node, true);
 				}
 				else {
 					return expression(node, ANY);
@@ -1572,7 +2108,7 @@ namespace hemera::ast {
 						out << " from " << (child->children.empty() ? EMPTY : expression(child->children[0], ANY));
 					}
 					else if (child->node_type == NodeType::LIST) {
-						out << " (" << list(child->children, [&](const Node* assign) { return field_value(assign); }) << ")";
+						out << " " << bracket_list("(", child->children, [&](const Node* assign) { return field_value(assign); }, ")", true);
 					}
 					else if (child->node_type == NodeType::BLOCK) {
 						out << " " << block(child);
@@ -1602,10 +2138,9 @@ namespace hemera::ast {
 				});
 			}
 
-			// A switch's cases, in braces, each at the switch's indent and its statements one deeper.
+			// A switch's cases, in braces, each one indent deeper than the switch and its statements one more.
 			Doc switch_cases(const Node* cases) {
 				Parts out = parts();
-				out << "{";
 				bool first = true;
 				for (const Node* item : cases->children) {
 					if (!first && blank_before(item)) {
@@ -1613,7 +2148,7 @@ namespace hemera::ast {
 					}
 					first = false;
 					if (NodeType::DIRECTIVE == item->node_type) {
-						out << indented_lines({ directive(item) });
+						out << nl() << directive(item);
 						continue;
 					}
 					Parts entries = parts();
@@ -1626,11 +2161,30 @@ namespace hemera::ast {
 							entries << (entries.empty() ? "" : ", ") << case_entry(part);
 						}
 					}
+					// A block alone goes on the case's line, as case .A: { ... }
+					const bool one_block = body != nullptr && body->children.size() == 1 && NodeType::BLOCK == body->children[0]->node_type;
+					if (one_block) {
+						const Doc block_doc = statement(body->children[0]);
+						out << nl() << host(item, d.concat({ text("case "), entries.doc(), text(": "), block_doc }));
+						continue;
+					}
+					// A statement alone stays on the case's line where it fits, as case 1: x += 1 (B7)
+					if (body != nullptr && body->children.size() == 1) {
+						const Doc statement_doc = statement(body->children[0]);
+						if (d.flat_width(statement_doc) != SIZE_MAX) {
+							const Doc one_line = d.group(d.concat({
+								text("case "), entries.doc(), text(":"), d.indent(d.concat({ d.line(), statement_doc })),
+							}));
+							out << nl() << host(item, one_line);
+							continue;
+						}
+						out << nl() << host(item, d.concat({ text("case "), entries.doc(), text(":"), d.indent(d.concat({ nl(), statement_doc })) }));
+						continue;
+					}
 					const Doc statements = body != nullptr ? statement_lines(body) : EMPTY;
 					out << nl() << host(item, d.concat({ text("case "), entries.doc(), text(":"), statements }));
 				}
-				out << nl() << "}";
-				return d.isolate(out.doc());
+				return d.concat({ text("{"), d.indent(d.isolate(out.doc())), nl(), text("}") });
 			}
 
 			// A case's or arm's entry: a literal, a range, Enum.Member, .Member, _, or a pattern like Some(x).
@@ -1659,7 +2213,7 @@ namespace hemera::ast {
 					out << text_of(node);
 					for (const Node* child : node->children) {
 						if (NodeType::PAREN_GROUP == child->node_type) {
-							out << "(" << list(child->children, [&](const Node* p) { return case_entry(p); }) << ")";
+							out << bracket_list("(", child->children, [&](const Node* p) { return case_entry(p); }, ")", false);
 						}
 					}
 					return out.doc();
@@ -1774,7 +2328,7 @@ namespace hemera::ast {
 					return d.concat({ text("."), text(text_of(node)), chain(node, 0) });
 				}
 				else if (node->node_type == NodeType::IF) {
-					return if_expression(node);
+					return if_expression(node, false);
 				}
 				else if (node->node_type == NodeType::MATCH) {
 					return match(node);
@@ -1813,14 +2367,32 @@ namespace hemera::ast {
 				}
 			}
 
+			/*
+			 * A literal as written. A multiline string, a line per token each starting with \\, starts on the
+			 * next line, its lines 4 deeper than the line it's on (L3).
+			 */
 			Doc literal(const Node* node) {
-				Parts out = parts();
-				out << text_of(node);
-				// A multiline string: a line per token, each starting with \\.
-				for (const Node* line : node->children) {
-					out << nl() << text_of(line);
+				if (!is_multiline_string(node)) {
+					return text(text_of(node));
 				}
-				return out.doc();
+				Parts out = parts();
+				out << nl() << string_line(text_of(node));
+				for (const Node* line : node->children) {
+					out << nl() << string_line(text_of(line));
+				}
+				return d.indent(out.doc());
+			}
+
+			// A multiline string's line, without the line break its token's text ends with.
+			static std::string_view string_line(std::string_view line) {
+				while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+					line.remove_suffix(1);
+				}
+				return line;
+			}
+
+			static bool is_multiline_string(const Node* node) {
+				return NodeType::LITERAL == node->node_type && text_of(node).starts_with("\\\\");
 			}
 
 			/*
@@ -1854,15 +2426,22 @@ namespace hemera::ast {
 						continue;
 					}
 					const bool call = NodeType::PAREN_GROUP == marker->node_type;
-					Parts inside = parts();
-					bool first_item = true;
+					std::vector<Doc> inside;
 					while (i < children.size() && !is_marker(children[i])) {
 						const Node* item = children[i];
-						inside << (first_item ? "" : ", ") << (call ? argument(item) : index(item));
-						first_item = false;
+						inside.push_back(call ? argument(item) : index(item));
 						++i;
 					}
-					out << (call ? "(" : "[") << inside.doc() << (call ? ")" : "]");
+					if (call) {
+						out << bracketed("(", inside, ")", false);
+						continue;
+					}
+					// An index or type arguments never break, as a type's don't
+					out << "[";
+					for (size_t k = 0; k < inside.size(); ++k) {
+						out << (k > 0 ? ", " : "") << inside[k];
+					}
+					out << "]";
 				}
 				return out.doc();
 			}
@@ -1917,7 +2496,7 @@ namespace hemera::ast {
 					for (size_t i = 1; i < node->children.size(); ++i) {
 						const Node* part = node->children[i];
 						if (NodeType::PAREN_GROUP == part->node_type) {
-							out << "(" << list(part->children, [&](const Node* a) { return argument(a); }) << ")";
+							out << bracket_list("(", part->children, [&](const Node* a) { return argument(a); }, ")", false);
 						}
 						else {
 							out << " |> " << text_of(part);
@@ -1961,6 +2540,9 @@ namespace hemera::ast {
 					left = SUM;
 					right = PRODUCT;
 				}
+				if (rhs != nullptr && ASSIGNMENT != level && RANGE != level && NodeType::VOID != rhs->node_type) {
+					return operator_run(node, level, left, right);
+				}
 				// An assignment's targets can be a list, and a range has no spaces
 				const Doc left_doc = NodeType::LIST == lhs->node_type && ASSIGNMENT == binary_level(op)
 					? expression(lhs, ANY) : expression(lhs, left);
@@ -1972,6 +2554,60 @@ namespace hemera::ast {
 					return d.concat({ left_doc, text(operator_text(op)), right_doc });
 				}
 				return d.concat({ left_doc, text(" "), text(operator_text(op)), text(" "), right_doc });
+			}
+
+			// A binary operation at level, of two operands, that operator_run takes into its run.
+			static bool joins_run(const Node* node, int level) {
+				return NodeType::BINARY_OPERATOR == node->node_type && node->children.size() == 2
+					&& !is_token(node, TokenType::OPERATOR_PIPE) && binary_level(node->value.type) == level;
+			}
+
+			/*
+			 * a && b && c: the operands of one level's operators in a row, the side they group to taken in, on
+			 * one line where they fit, and otherwise each operator starting a line of its own (B3), all of
+			 * them at once (B2), 4 deeper than the first operand (L3). left and right are what each side has
+			 * to be.
+			 */
+			Doc operator_run(const Node* node, int level, int left, int right) {
+				// Each operand, with the operator before it (none before the first)
+				std::vector<std::pair<TokenType, const Node*>> operands;
+				if (left == level) {
+					// Grouping to the left, like a + b + c, which is (a + b) + c
+					std::vector<const Node*> spine;
+					const Node* at = node;
+					while (joins_run(at, level)) {
+						spine.push_back(at);
+						at = at->children[0];
+					}
+					operands.emplace_back(TokenType::START_OF_FILE, at);
+					for (size_t i = spine.size(); i > 0; --i) {
+						operands.emplace_back(spine[i - 1]->value.type, spine[i - 1]->children[1]);
+					}
+				}
+				else {
+					// Grouping to the right, like a || b || c, which is a || (b || c), or not grouping at all
+					const Node* at = node;
+					TokenType op = TokenType::START_OF_FILE;
+					while (right == level && joins_run(at, level)) {
+						operands.emplace_back(op, at->children[0]);
+						op = at->value.type;
+						at = at->children[1];
+					}
+					if (at == node) {
+						operands.emplace_back(op, at->children[0]);
+						op = at->value.type;
+						at = at->children[1];
+					}
+					operands.emplace_back(op, at);
+				}
+				Parts rest = parts();
+				for (size_t i = 1; i < operands.size(); ++i) {
+					// The last operand on the side it groups to takes that side's level, the rest the other's
+					const bool right_side = left == level || i + 1 == operands.size();
+					rest << d.line() << operator_text(operands[i].first) << " " << expression(operands[i].second, right_side ? right : left);
+				}
+				const Doc first = expression(operands[0].second, left);
+				return d.group(d.concat({ first, d.indent(rest.doc()) }));
 			}
 
 			Doc unary(const Node* node) {
@@ -2024,6 +2660,39 @@ namespace hemera::ast {
 				return out.doc();
 			}
 
+			// name = value in a struct literal, naming the field it sets.
+			static bool is_named_field(const Node* item) {
+				return NodeType::BINARY_OPERATOR == item->node_type && is_token(item, TokenType::OPERATOR_ASSIGN)
+					&& item->children.size() == 2 && NodeType::IDENTIFIER == item->children[0]->node_type
+					&& item->children[0]->children.empty();
+			}
+
+			// A number or character, maybe negated: an item B8 packs.
+			static bool is_number(const Node* item) {
+				if (NodeType::UNARY_OPERATOR == item->node_type && is_token(item, TokenType::OPERATOR_MINUS) && item->children.size() == 1) {
+					item = item->children[0];
+				}
+				return NodeType::LITERAL == item->node_type && item->children.empty()
+					&& (is_token(item, TokenType::LITERAL_INTEGER) || is_token(item, TokenType::LITERAL_FLOATING_POINT)
+						|| is_token(item, TokenType::LITERAL_CHAR) || is_token(item, TokenType::LITERAL_IMAGINARY));
+			}
+
+			// open items close on one line where it fits, and otherwise as many items to a line as fit (B8).
+			Doc packed(std::string_view open, const std::vector<Doc>& items, std::string_view close) {
+				Parts flat = parts();
+				std::vector<Doc> lines;
+				for (size_t i = 0; i < items.size(); ++i) {
+					const bool last = i + 1 == items.size();
+					flat << (i > 0 ? ", " : "") << items[i];
+					lines.push_back(last ? items[i] : d.concat({ items[i], text(",") }));
+					if (!last) {
+						lines.push_back(d.line());
+					}
+				}
+				const Doc broken = d.concat({ d.indent(d.concat({ d.soft_line(), d.fill(lines) })), d.soft_line() });
+				return d.group(d.concat({ text(open), d.if_break(broken, flat.doc()), text(close) }));
+			}
+
 			// Type.{...} or Type.[...], or .{...} for the type expected there.
 			Doc typed_literal(const Node* node, std::string_view open, std::string_view close) {
 				Parts out = parts();
@@ -2045,52 +2714,102 @@ namespace hemera::ast {
 						items = child;
 					}
 				}
-				out << open;
 				if (items == nullptr || items->children.empty()) {
-					out << close;
+					out << open << close;
 					return out.doc();
 				}
-				// Each item printed once, as its comments are
 				std::vector<Doc> values;
+				std::vector<const Node*> nodes;
+				bool named = true;
+				bool numbers = true;
 				for (const Node* item : items->children) {
 					values.push_back(field_value(item));
+					nodes.push_back(item);
+					named = named && is_named_field(item);
+					numbers = numbers && is_number(item);
 				}
-				Parts inline_items = parts();
-				for (size_t i = 0; i < values.size(); ++i) {
-					inline_items << (i > 0 ? ", " : "") << values[i];
-				}
-				const std::string inline_text = d.render(inline_items.doc(), SIZE_MAX);
-				if (inline_text.size() <= 100 && inline_text.find('\n') == std::string::npos && !d.breaks(inline_items.doc())) {
-					out << inline_items.doc() << close;
+				if (close == "]" && numbers) {
+					out << packed(open, values, close);
 					return out.doc();
 				}
-				// Long ones, like a table, an item to a line
-				std::vector<std::pair<const Node*, Doc>> lines;
-				for (size_t i = 0; i < values.size(); ++i) {
-					lines.emplace_back(items->children[i], d.concat({ values[i], text(",") }));
-				}
-				out << item_lines(lines) << nl() << close;
+				// A struct literal's trailing comma is optional only where its fields are named (D3)
+				out << bracketed(open, values, close, close == "}" && named, &nodes);
 				return out.doc();
 			}
 
-			Doc if_expression(const Node* node) {
+			/*
+			 * Whether an if expression whose value is used, like a constant's, can be on one line, as
+			 * if a { b } else { c } (ONE_LINE_IF_EXPRESSIONS): it has an else, and each of its blocks holds a
+			 * single expression.
+			 */
+			static bool is_short_if(const Node* node) {
+				bool has_else = false;
+				for (const Node* child : node->children) {
+					if (NodeType::BLOCK == child->node_type) {
+						if (child->children.size() != 1 || !is_short_value(child->children[0])) {
+							return false;
+						}
+					}
+					else if (NodeType::ELSE == child->node_type) {
+						has_else = true;
+						for (const Node* branch : child->children) {
+							const bool short_branch = NodeType::IF == branch->node_type ? is_short_if(branch)
+								: branch->children.size() == 1 && is_short_value(branch->children[0]);
+							if (!short_branch) {
+								return false;
+							}
+						}
+					}
+				}
+				return has_else;
+			}
+
+			// An expression a short if's block can hold: not a statement, a block or another if.
+			static bool is_short_value(const Node* node) {
+				return NodeType::DEFINITION != node->node_type && NodeType::RETURN != node->node_type
+					&& NodeType::BREAK != node->node_type && NodeType::CONTINUE != node->node_type
+					&& NodeType::DEFER != node->node_type && NodeType::GIVE != node->node_type
+					&& NodeType::FOR_LOOP != node->node_type && NodeType::LOOP != node->node_type
+					&& NodeType::SWITCH != node->node_type && NodeType::MATCH != node->node_type
+					&& NodeType::IF != node->node_type && NodeType::BLOCK != node->node_type
+					&& NodeType::DIRECTIVE != node->node_type && NodeType::PUSH_CONTEXT != node->node_type
+					&& NodeType::USING != node->node_type && !(NodeType::BINARY_OPERATOR == node->node_type
+						&& is_assignment(node->value.type));
+			}
+
+			// { value }, broken as a block is where the if it's in is.
+			Doc short_block(const Node* node) {
+				return host(node, d.concat({ text("{"), d.indent(d.concat({ d.line(), statement(node->children[0]) })), d.line(), text("}") }));
+			}
+
+			/*
+			 * if condition { ... }, then else and what follows it on the next line (L5). An if whose value is
+			 * used and is_short_if is on one line where it fits, unless it's a statement (in_statement).
+			 */
+			Doc if_expression(const Node* node, bool in_statement) {
+				const bool one_line = ONE_LINE_IF_EXPRESSIONS && !in_statement && is_short_if(node);
+				return if_chain(node, one_line);
+			}
+
+			Doc if_chain(const Node* node, bool one_line) {
 				Parts out = parts();
 				out << "if";
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::BLOCK) {
-						out << " " << block(child);
+						out << " " << (one_line ? short_block(child) : block(child));
 					}
 					else if (child->node_type == NodeType::ELSE) {
-						out << " else";
+						out << (one_line ? d.line() : nl()) << "else";
 						for (const Node* branch : child->children) {
-							out << " " << (NodeType::IF == branch->node_type ? if_expression(branch) : block(branch));
+							out << " " << (NodeType::IF == branch->node_type ? host(branch, if_chain(branch, one_line))
+								: one_line ? short_block(branch) : block(branch));
 						}
 					}
 					else {
 						out << " " << expression(child, ANY);
 					}
 				}
-				return out.doc();
+				return one_line ? d.group(out.doc()) : out.doc();
 			}
 
 			// A directive in an expression: alone, with an expression (#run x), or with arguments (#align(16)).
@@ -2130,11 +2849,11 @@ namespace hemera::ast {
 					return out.doc();
 				}
 				if (is_marker(node->children[0]) && NodeType::PAREN_GROUP == node->children[0]->node_type) {
-					out << "(";
+					std::vector<Doc> arguments;
 					for (size_t i = 1; i < node->children.size(); ++i) {
-						out << (i > 1 ? ", " : "") << argument(node->children[i]);
+						arguments.push_back(argument(node->children[i]));
 					}
-					out << ")";
+					out << bracketed("(", arguments, ")", false);
 					return out.doc();
 				}
 				// #insert's operand binds like a prefix operator's; #run's and #assert's is an expression
@@ -2208,6 +2927,175 @@ namespace hemera::ast {
 		};
 	}
 
+	namespace {
+		// text's lines, without their line endings.
+		std::vector<std::string_view> lines_of(std::string_view text) {
+			std::vector<std::string_view> lines;
+			size_t start = 0;
+			while (start < text.size()) {
+				size_t end = text.find('\n', start);
+				if (end == std::string_view::npos) {
+					end = text.size();
+				}
+				std::string_view line = text.substr(start, end - start);
+				if (!line.empty() && line.back() == '\r') {
+					line.remove_suffix(1);
+				}
+				lines.push_back(line);
+				start = end + 1;
+			}
+			return lines;
+		}
+
+		std::string_view trimmed(std::string_view line) {
+			const size_t first = line.find_first_not_of(" \t");
+			if (first == std::string_view::npos) {
+				return {};
+			}
+			return line.substr(first, line.find_last_not_of(" \t\r") - first + 1);
+		}
+
+		/*
+		 * Whether a block comment's line, the text after its "* ", is never broken (C6): a code example, indented 4
+		 * past the *, a list item, a table row or a line with a URL.
+		 */
+		bool never_broken(std::string_view words) {
+			if (words.starts_with("    ") || words.starts_with("- ") || words.starts_with("* ") || words.starts_with("+ ")
+				|| words.starts_with("|") || words.find("://") != std::string_view::npos) {
+				return true;
+			}
+			size_t digits = 0;
+			while (digits < words.size() && words[digits] >= '0' && words[digits] <= '9') {
+				++digits;
+			}
+			return digits > 0 && digits + 1 < words.size() && words[digits] == '.' && words[digits + 1] == ' ';
+		}
+
+		/*
+		 * The block comments' lines in text that are wider than width broken at the last space that fits (C5), each
+		 * part after the first starting as the line did: the same * and indent, or a block tag's indented 4 past its
+		 * @ (C7). Lines C6 keeps whole, and lines with no space to break at, run over.
+		 */
+		std::string wrap_comments(const std::string& text, size_t width, std::string_view newline) {
+			if (width == SIZE_MAX) {
+				return text;
+			}
+			std::string out;
+			out.reserve(text.size());
+			bool in_comment = false;
+			for (std::string_view line : lines_of(text)) {
+				const std::string_view words_of_line = trimmed(line);
+				if (!in_comment && (words_of_line == "/*" || words_of_line == "/**")) {
+					in_comment = true;
+				}
+				else if (in_comment && words_of_line == "*/") {
+					in_comment = false;
+				}
+				else if (in_comment && words_of_line.starts_with("* ") && layout::width_of(line) > width) {
+					const size_t star = line.find('*');
+					std::string_view words = line.substr(star + 2);
+					if (!never_broken(words)) {
+						// The prefix later parts start with: a tag's continuation is 4 past its @
+						const size_t words_indent = words.find_first_not_of(' ');
+						std::string continuation(line.substr(0, star + 1));
+						continuation += words.starts_with("@") ? std::string(5, ' ') : std::string(words_indent + 1, ' ');
+						std::string rest(line);
+						bool first = true;
+						while (layout::width_of(rest) > width) {
+							const std::string_view prefix = first ? line.substr(0, star + 2 + words_indent) : std::string_view(continuation);
+							// The last space at or before the width, past the prefix
+							size_t cut = std::string::npos;
+							size_t columns = 0;
+							for (size_t i = 0; i < rest.size(); ++i) {
+								if ((static_cast<unsigned char>(rest[i]) & 0xC0) != 0x80) {
+									++columns;
+								}
+								if (columns > width + 1) {
+									break;
+								}
+								if (rest[i] == ' ' && i > prefix.size()) {
+									cut = i;
+								}
+							}
+							if (cut == std::string::npos) {
+								break;
+							}
+							out.append(rest, 0, cut);
+							out.append(newline);
+							rest = continuation + rest.substr(rest.find_first_not_of(' ', cut));
+							first = false;
+						}
+						out.append(rest);
+						out.append(newline);
+						continue;
+					}
+				}
+				out.append(line);
+				out.append(newline);
+			}
+			return out;
+		}
+
+		bool is_switch_line(std::string_view line, std::string_view state) {
+			const std::string_view words = trimmed(line);
+			if (!words.starts_with("//")) {
+				return false;
+			}
+			std::string_view rest = trimmed(words.substr(2));
+			return rest.starts_with("hemera-format:") && trimmed(rest.substr(14)) == state;
+		}
+
+		// The lines between each // hemera-format: off line and the next on line, or the end, by number.
+		std::vector<std::pair<size_t, size_t>> unformatted_regions(const std::vector<std::string_view>& lines) {
+			std::vector<std::pair<size_t, size_t>> regions;
+			for (size_t i = 0; i < lines.size(); ++i) {
+				if (!is_switch_line(lines[i], "off")) {
+					continue;
+				}
+				size_t end = i + 1;
+				while (end < lines.size() && !is_switch_line(lines[end], "on")) {
+					++end;
+				}
+				regions.emplace_back(i + 1, end);
+				i = end;
+			}
+			return regions;
+		}
+
+		/*
+		 * text with the lines between each // hemera-format: off and the next // hemera-format: on, or the end of
+		 * the file, as they are in source: the same code, kept as written. The k-th region in text is the k-th in
+		 * source, as formatting keeps every comment in order.
+		 */
+		std::string keep_unformatted(const std::string& text, std::string_view source, std::string_view newline) {
+			const std::vector<std::string_view> source_lines = lines_of(source);
+			const std::vector<std::pair<size_t, size_t>> source_regions = unformatted_regions(source_lines);
+			if (source_regions.empty()) {
+				return text;
+			}
+			const std::vector<std::string_view> lines = lines_of(text);
+			const std::vector<std::pair<size_t, size_t>> regions = unformatted_regions(lines);
+			if (regions.size() != source_regions.size()) {
+				return text;
+			}
+			std::string out;
+			size_t next = 0;
+			for (size_t k = 0; k < regions.size(); ++k) {
+				for (; next < regions[k].first; ++next) {
+					out.append(lines[next]).append(newline);
+				}
+				for (size_t i = source_regions[k].first; i < source_regions[k].second; ++i) {
+					out.append(source_lines[i]).append(newline);
+				}
+				next = regions[k].second;
+			}
+			for (; next < lines.size(); ++next) {
+				out.append(lines[next]).append(newline);
+			}
+			return out;
+		}
+	}
+
 	Formatted format_tree(const Node* file, const QuoteTable* quotes, std::string_view source, const MyVector<Token>& tokens,
 		const MyVector<Token>& comments, size_t width, std::string_view newline) {
 		Formatted result;
@@ -2236,7 +3124,7 @@ namespace hemera::ast {
 		printer.quote_table = quotes;
 		printer.comments = &trivia;
 		printer.comments_printed.assign(comments.size(), false);
-		result.text = d.render(printer.file(file), width, newline);
+		result.text = keep_unformatted(wrap_comments(d.render(printer.file(file), width, newline), width, newline), source, newline);
 		for (size_t i = 0; i < comments.size(); ++i) {
 			if (!printer.comments_printed[i]) {
 				result.lost_comments.push_back(comments[i].offset);
@@ -2244,6 +3132,9 @@ namespace hemera::ast {
 		}
 		return result;
 	}
+
+	// The width code text is laid out within, as the formatter does (L2)
+	static constexpr size_t CODE_WIDTH = 120;
 
 	std::string source_of(const Node* node, const QuoteTable* quotes) {
 		if (node == nullptr) {
@@ -2253,10 +3144,10 @@ namespace hemera::ast {
 		Printer printer(d);
 		printer.quote_table = quotes;
 		if (NodeType::FILE == node->node_type) {
-			return d.render(printer.file(node), SIZE_MAX);
+			return d.render(printer.file(node), CODE_WIDTH);
 		}
 		Doc contents = printer.named_contents(node);
-		return d.render(contents != EMPTY ? contents : printer.statement(node), SIZE_MAX);
+		return d.render(contents != EMPTY ? contents : printer.statement(node), CODE_WIDTH);
 	}
 
 	std::string source_of_statements(const Node* block, const QuoteTable* quotes) {
@@ -2270,7 +3161,7 @@ namespace hemera::ast {
 		for (const Node* child : block->children) {
 			out << printer.statement(child) << d.hard_line();
 		}
-		return d.render(out.doc(), SIZE_MAX);
+		return d.render(out.doc(), CODE_WIDTH);
 	}
 
 }
