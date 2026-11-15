@@ -899,7 +899,7 @@ namespace hemera {
 		Allocator<> token_alloc;
 		// With its comments, whose documentation comments are kept for reflection, and the rest dropped
 		lexer::lex(file, file_info->tokens, token_alloc, file_path, true);
-		keep_documentation(file_path, file_info->tokens, executor.program_info->check_documentation);
+		keep_documentation(file_path, file_info->tokens, file_info->comments, executor.program_info->check_documentation);
 
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens,
 			executor.program_info->node_alloc, &executor.program_info->quotes);

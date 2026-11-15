@@ -245,16 +245,26 @@ namespace hemera {
 		return result;
 	}
 
-	void keep_documentation(std::string_view file_path, MyVector<Token>& tokens, bool check) {
-		FileDocumentation kept;
-		MyVector<Token> without;
+	void keep_documentation(std::string_view file_path, MyVector<Token>& tokens, MyVector<Token>& comments, bool check) {
+		// The comments apart from the rest, each with where it was among the rest: the index of the token after it
+		MyVector<Token> without(tokens.get_allocator());
 		without.reserve(tokens.size());
-		for (size_t i = 0; i < tokens.size(); ++i) {
-			const Token& token = tokens[i];
-			if (TokenType::COMMENT_BLOCK != token.type && TokenType::COMMENT_LINE != token.type) {
-				without.push_back(token);
-				continue;
+		std::vector<size_t> before_token;
+		for (const Token& token : tokens) {
+			if (TokenType::COMMENT_BLOCK == token.type || TokenType::COMMENT_LINE == token.type) {
+				comments.push_back(token);
+				before_token.push_back(without.size());
 			}
+			else {
+				without.push_back(token);
+			}
+		}
+		tokens = std::move(without);
+
+		// The documentation comments, from the comments, each placed by the tokens around it
+		FileDocumentation kept;
+		for (size_t i = 0; i < comments.size(); ++i) {
+			const Token& token = comments[i];
 			if (TokenType::COMMENT_BLOCK != token.type || token.value == nullptr || !is_documentation(*token.value)) {
 				continue;
 			}
@@ -267,22 +277,19 @@ namespace hemera {
 				}
 			}
 			if (text.starts_with("/**<")) {
-				// After what it documents, on its line
-				if (without.empty()) {
+				// After what it documents, on its line: the token before it
+				if (before_token[i] == 0) {
 					if (check) {
 						report_error(ErrorCode::E3034, file_path, token.line_number, token.column_number,
 							"/**< documents what's before it on its line, and nothing is");
 					}
 					continue;
 				}
-				kept.trailing[without.back().line_number] = Kept{ std::string(text), token.line_number, token.column_number };
+				kept.trailing[tokens[before_token[i] - 1].line_number] = Kept{ std::string(text), token.line_number, token.column_number };
 				continue;
 			}
-			// Before what it documents: the next token that isn't a comment, a name
-			size_t next = i + 1;
-			while (next < tokens.size() && (TokenType::COMMENT_BLOCK == tokens[next].type || TokenType::COMMENT_LINE == tokens[next].type)) {
-				next += 1;
-			}
+			// Before what it documents: the token after it, a name
+			size_t next = before_token[i];
 			// A field included with using is documented by its name, after the keyword
 			if (next + 1 < tokens.size() && TokenType::KEYWORD_USING == tokens[next].type) {
 				next += 1;
@@ -304,7 +311,6 @@ namespace hemera {
 			}
 			kept.leading[key] = Kept{ std::string(text), token.line_number, token.column_number };
 		}
-		tokens = std::move(without);
 		std::scoped_lock<std::mutex> lock(files_mutex);
 		files()[key_of(file_path)] = std::move(kept);
 	}

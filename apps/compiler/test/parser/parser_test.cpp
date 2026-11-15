@@ -4,6 +4,9 @@
 #include <format>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <map>
+#include <optional>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -15,10 +18,12 @@
 #include "../string_cache_guard.h"
 #include "parser/parser.h"
 #include "parser/printing.h"
+#include "front_end/documentation.h"
 
 using hemera::Allocator;
 using hemera::MyVector;
 using hemera::Token;
+using hemera::TokenType;
 
 static std::optional<hemera::ErrorCode> find_error(std::string_view name) {
 	for (const auto& entry : *hemera::error_info_map) {
@@ -229,6 +234,115 @@ TEST(ParserSmoke, PrintingRoundTrips)
 		}
 	}
 	EXPECT_GT(printed_count, 100);
+}
+
+/*
+ * Every file in base and std keeps its comments, every one, in order, each span picking out its text in the file's
+ * bytes, with none left among its tokens; and its documentation comments are kept where they were before comments were
+ * kept, the documentation table placed as by the tokens with comments among them (keep_documentation's old way).
+ */
+TEST(ParserSmoke, KeepsCommentsAndDocumentation)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	std::filesystem::path root = std::filesystem::path(__FILE__).remove_filename().append("..").append("..").append("..").append("..");
+
+	size_t files = 0;
+	size_t comments_kept = 0;
+	size_t documented = 0;
+	for (const char* folder : { "base", "std" }) {
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(std::filesystem::path(root).append(folder))) {
+			if (!entry.is_regular_file() || entry.path().extension() != ".hsc") {
+				continue;
+			}
+			const std::string file_path = std::filesystem::canonical(entry.path()).generic_string();
+			std::ifstream stream(file_path, std::ios::binary);
+			const std::string bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+			hemera::reset_reporting_storage();
+			Allocator<> alloc;
+			MyVector<Token> tokens;
+			std::istringstream input(bytes);
+			hemera::lexer::lex(input, tokens, alloc, file_path, true);
+			const MyVector<Token> with_comments = tokens;
+			auto is_comment = [](const Token& token) {
+				return TokenType::COMMENT_BLOCK == token.type || TokenType::COMMENT_LINE == token.type;
+			};
+
+			// Where each documentation comment documents, found the old way, over the tokens with comments among them
+			std::map<std::pair<uint32_t, uint16_t>, std::pair<uint32_t, uint16_t>> leading;
+			std::map<uint32_t, std::pair<uint32_t, uint16_t>> trailing;
+			for (size_t i = 0; i < with_comments.size(); ++i) {
+				const Token& token = with_comments[i];
+				if (TokenType::COMMENT_BLOCK != token.type || token.value == nullptr || !hemera::is_documentation(*token.value)) {
+					continue;
+				}
+				const std::pair<uint32_t, uint16_t> at{ token.line_number, token.column_number };
+				if (std::string_view(*token.value).starts_with("/**<")) {
+					for (size_t before = i; before > 0; --before) {
+						if (!is_comment(with_comments[before - 1])) {
+							trailing[with_comments[before - 1].line_number] = at;
+							break;
+						}
+					}
+					continue;
+				}
+				size_t next = i + 1;
+				while (next < with_comments.size() && is_comment(with_comments[next])) {
+					next += 1;
+				}
+				if (next + 1 < with_comments.size() && TokenType::KEYWORD_USING == with_comments[next].type) {
+					next += 1;
+				}
+				if (next < with_comments.size() && TokenType::IDENTIFIER == with_comments[next].type) {
+					leading.try_emplace({ with_comments[next].line_number, with_comments[next].column_number }, at);
+				}
+			}
+
+			MyVector<Token> comments;
+			hemera::keep_documentation(file_path, tokens, comments, false);
+			files += 1;
+
+			// Every comment kept, in order, and none left among the tokens
+			std::vector<uint32_t> expected;
+			for (const Token& token : with_comments) {
+				if (is_comment(token)) {
+					expected.push_back(token.offset);
+				}
+			}
+			std::vector<uint32_t> kept;
+			for (const Token& comment : comments) {
+				kept.push_back(comment.offset);
+				// Its span is its text, as the file has it, but for CRs and a line comment's line ending
+				std::string spanned = bytes.substr(comment.offset, comment.length);
+				std::erase(spanned, '\r');
+				std::string text(*comment.value);
+				if (TokenType::COMMENT_LINE == comment.type && text.ends_with('\n')) {
+					text.pop_back();
+				}
+				EXPECT_EQ(spanned, text) << file_path << " at " << comment.line_number;
+			}
+			EXPECT_EQ(kept, expected) << file_path;
+			EXPECT_TRUE(std::none_of(tokens.begin(), tokens.end(), is_comment)) << file_path;
+			comments_kept += comments.size();
+
+			// Each documentation comment where it was
+			for (const auto& [key, at] : leading) {
+				const std::optional<hemera::Documentation> found = hemera::documentation_at(file_path, key.first, key.second);
+				ASSERT_TRUE(found.has_value()) << file_path << " at " << key.first;
+				EXPECT_EQ(std::make_pair(found->line, found->column), at) << file_path << " at " << key.first;
+			}
+			for (const auto& [line, at] : trailing) {
+				// A column no token starts at, so only a trailing comment on the line answers
+				const std::optional<hemera::Documentation> found = hemera::documentation_at(file_path, line, UINT16_MAX);
+				ASSERT_TRUE(found.has_value()) << file_path << " at " << line;
+				EXPECT_EQ(std::make_pair(found->line, found->column), at) << file_path << " at " << line;
+			}
+			documented += leading.size() + trailing.size();
+		}
+	}
+	EXPECT_GT(files, 200u);
+	EXPECT_GT(comments_kept, 5000u);
+	EXPECT_GT(documented, 3000u);
 }
 
 TEST(ParserSmoke, ErrorScenarios)

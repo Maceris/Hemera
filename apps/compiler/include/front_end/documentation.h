@@ -49,11 +49,13 @@ namespace hemera {
 		const DocumentationTag* tag_named(std::string_view tag, std::string_view name = {}) const;
 	};
 
-	/// <summary>
-	/// A file's tokens, lexed with their comments, made the file's tokens without them: each documentation comment
-	/// kept for the file, and, when checking, one that's malformed or documents nothing reported (E3034).
-	/// </summary>
-	void keep_documentation(std::string_view file_path, MyVector<Token>& tokens, bool check);
+	/*
+	 * A file's tokens, lexed with their comments, made the file's tokens without them, and its comments, every one, in
+	 * order and with their spans, put in comments, which the formatter places from. The documentation comments among
+	 * them are kept for the file, for reflection and documentation, and, when checking, one that's malformed or
+	 * documents nothing is reported (E3034).
+	 */
+	void keep_documentation(std::string_view file_path, MyVector<Token>& tokens, MyVector<Token>& comments, bool check);
 
 	/// <summary>
 	/// The documentation of what's declared at the token at line and column in a file: a documentation comment just

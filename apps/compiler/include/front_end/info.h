@@ -165,6 +165,11 @@ namespace hemera {
 		 * once every package is read (front_end.cpp, check_name_security)
 		 */
 		MyVector<NameUse> names;
+		/*
+		 * The file's comments, every one, in order, with their spans, kept when its tokens go, for the formatter, which
+		 * places each by its offset and the blank lines around it by its line (docs/formatting.md)
+		 */
+		MyVector<Token> comments;
 		ast::Node* ast_root;
 		InternedString full_path;
 
