@@ -208,7 +208,7 @@ argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string) -> 
         }
     }
     if #is_compile_time && made.count > SYSCALL_ARGUMENT_WORDS {
-        compiler.report_error(#caller_location, "% takes more than % registers of arguments", call, SYSCALL_ARGUMENT_WORDS)
+        compiler.report_error(#source_location, "% takes more than % registers of arguments", call, SYSCALL_ARGUMENT_WORDS)
     }
     return compiler.list(made)
 }
@@ -381,7 +381,7 @@ result_types :: fn(result: ptr[compiler.TypeInfo], call: string) -> (ok: ptr[com
         }
     }
     if #is_compile_time && underlying(error).variant != .ENUM {
-        compiler.report_error(#caller_location, "%'s error isn't an enum", call)
+        compiler.report_error(#source_location, "%'s error isn't an enum", call)
     }
     return ok, error
 }
@@ -413,7 +413,7 @@ word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code) -> compiler.Co
         return #code(cast[u64](cast[rawptr](#insert value)))
     }
     if #is_compile_time && (type.variant != .INTEGER || type.size > 8) {
-        compiler.report_error(#caller_location, "a call's argument or result doesn't fit a register")
+        compiler.report_error(#source_location, "a call's argument or result doesn't fit a register")
     }
     return #code(cast[u64](#insert value))
 }

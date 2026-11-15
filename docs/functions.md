@@ -218,7 +218,7 @@ foo : FooFn : fn(a: int, b: int) -> int {      // b = 1, from FooFn
     return a + b
 }
 
-bar : FooFn : fn(a: int, b: int = 2) -> int {  // error E4038: FooFn gives b the default 1
+bar : FooFn : fn(a: int, b: int = 2) -> int {  // error hemera:E4038: FooFn gives b the default 1
     return a + b
 }
 

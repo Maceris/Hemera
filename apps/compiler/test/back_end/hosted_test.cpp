@@ -1389,7 +1389,7 @@ TEST(Hosted, ReportsForeignFunctionsInTheirOwnFile)
 	EXPECT_FALSE(hemera::generate_program(program_info.get(), options, module));
 	hemera::set_report_scope(nullptr);
 	const std::string reported = scope.output + scope.errors_output;
-	EXPECT_NE(reported.find("foreign_by_value.hsc(14,30): error E5002"), std::string::npos) << reported;
+	EXPECT_NE(reported.find("foreign_by_value.hsc(14,30): error hemera:E5002"), std::string::npos) << reported;
 
 	module.erase();
 }

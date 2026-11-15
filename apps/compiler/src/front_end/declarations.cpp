@@ -1454,7 +1454,7 @@ namespace hemera {
 					if (parameter_type == nullptr && has_default && parameter->children.size() == 2) {
 						// The type of its default, like allocator := context.allocator
 						Value default_value;
-						Progress progress = check_constant(walk, parameter->children[1], nullptr, default_value);
+						Progress progress = check_default_type(walk, parameter->children[1], default_value);
 						if (progress != Progress::DONE) {
 							return progress;
 						}

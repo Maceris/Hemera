@@ -277,6 +277,12 @@ namespace hemera {
 	Progress check_constant(Walk& walk, ast::Node* value, TypeInfo* expected, Value& result,
 		CheckedBody* record_into = nullptr);
 
+	/*
+	 * The type of a parameter's default, checked as a constant is, for a parameter with no type of its own, like
+	 * location := #caller_location: a default can be #caller_location, which nothing else can.
+	 */
+	Progress check_default_type(Walk& walk, ast::Node* value, Value& result);
+
 	/// <summary>
 	/// A top-level #assert (docs/directives.md): its condition, a compile-time constant, is true.
 	/// </summary>

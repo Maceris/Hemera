@@ -6,6 +6,9 @@ of the package.
 The package statement is required to standardize the character sets and name scheme, since directory names would be problematic due to things like
 symlinks, case-insensitivity, or problematic characters in the folder name.
 
+A package can't be named `hemera`, which is the prefix of the compiler's own error and warning codes, like
+`hemera:E4015` (E4044, [Diagnostics](compilation.md#diagnostics)).
+
 ## Imports
 
 Files import other packages using the `import` keyword.
@@ -212,7 +215,7 @@ package example
 ```
 
 ```
-example.hsc(3,4): error E4007: Circular dependency. This #if needs BAR, which the #if on line 7 may import
+example.hsc(3,4): error hemera:E4007: Circular dependency. This #if needs BAR, which the #if on line 7 may import
 (import foo, line 8); that #if needs BAT, which this #if may import (import baz, line 4)
 ```
 

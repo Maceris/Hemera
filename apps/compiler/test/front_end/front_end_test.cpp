@@ -1472,6 +1472,56 @@ TEST(FrontEnd, ChecksBodies)
 }
 
 /*
+ * compiler.report's diagnostics are printed with their prefix and code, and counted as E4029 and W4001; one that breaks
+ * its rules is a hemera:E4029 error in its place. #package_name and #line give the package's name and the line.
+ */
+TEST(FrontEnd, ReportsCodedDiagnostics)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	hemera::ReportScope scope;
+	hemera::set_report_scope(&scope);
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("coded_reports"));
+	hemera::set_report_scope(nullptr);
+	const std::string reported = scope.output + scope.errors_output;
+
+	EXPECT_NE(reported.find("coded_reports.hsc(10,"), std::string::npos) << reported;
+	EXPECT_NE(reported.find("warning coded_reports:W0001: warned at line 10"), std::string::npos) << reported;
+	EXPECT_NE(reported.find("error fonts:E0042: an error of fonts'"), std::string::npos) << reported;
+	for (const char* wrong : { "the code \"E0001\" isn't W", "the prefix hemera is the compiler's own",
+		"the prefix \"two words\" isn't a name", "the code \"W-1\" isn't W" }) {
+		EXPECT_NE(reported.find(wrong), std::string::npos) << wrong << "\n" << reported;
+	}
+	EXPECT_EQ(std::count(errors.begin(), errors.end(), hemera::ErrorCode::E4029), 5) << codes(errors);
+	EXPECT_EQ(errors.size(), 5u) << codes(errors);
+	EXPECT_EQ(std::count(hemera::warning_list()->begin(), hemera::warning_list()->end(), hemera::WarningCode::W4001), 1);
+}
+
+// #caller_location outside a parameter's default is an error (E4014), once; as a default, typed or not, it's fine
+TEST(FrontEnd, KeepsCallerLocationToDefaults)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("caller_location_misused"));
+	EXPECT_EQ(errors, std::vector<hemera::ErrorCode>{ hemera::ErrorCode::E4014 }) << codes(errors);
+}
+
+// hemera, the prefix of the compiler's own diagnostics, can't be a package's name (E4044)
+TEST(FrontEnd, ReservesTheCompilersPrefix)
+{
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+	FrontEndFixture fixture;
+
+	std::vector<hemera::ErrorCode> errors = process_package(fixture, scenario("hemera_package"));
+	EXPECT_EQ(std::count(errors.begin(), errors.end(), hemera::ErrorCode::E4044), 1) << codes(errors);
+}
+
+/*
  * UTS #39's checks of a package's names outside ASCII: names that look like another, here or in another file (W2000),
  * a name mixing Latin and Cyrillic (W2001), and one in Runic (W2002); each once, and none for the names that are fine
  */

@@ -64,6 +64,8 @@ namespace hemera {
 		/// Whether there's a context: false in entry points until they push one.
 		/// </summary>
 		bool has_context = true;
+		// The parameter's default being checked, the one place #caller_location can be, or null
+		const ast::Node* parameter_default = nullptr;
 		/// <summary>
 		/// In a body checked before any instance, an #if was left to the instances, since what it
 		/// decides on is only known there (docs/types.md, Checked Bodies).
@@ -2233,6 +2235,7 @@ namespace hemera {
 		Checker inner(walk);
 		inner.record = checked.get();
 		inner.has_context = true;
+		inner.parameter_default = input.default_value;
 		inner.scopes.emplace_back();
 		Value value;
 		Progress progress = check_expression(inner, input.default_value, input.type, value);
@@ -5014,7 +5017,16 @@ namespace hemera {
 				become(checker, node, inserted);
 				return check_expression(checker, node, expected, result);
 			}
-			if (is_text(node->value.value, "#caller_location")) {
+			/*
+			 * #caller_location is where the call is, so it's only a parameter's default, which the caller fills in;
+			 * #source_location is where it's written, anywhere (docs/directives.md)
+			 */
+			if (is_text(node->value.value, "#caller_location") && node != checker.parameter_default) {
+				result = error_at(checker, ErrorCode::E4014, node, "#caller_location is where a function is called from, so it's "
+					"only a parameter's default; #source_location is where it's written");
+				return Progress::DONE;
+			}
+			if (is_text(node->value.value, "#caller_location") || is_text(node->value.value, "#source_location")) {
 				TypeInfo* location = nullptr;
 				Progress progress = base_type(checker, node, "runtime", "SourceCodeLocation", location);
 				if (progress == Progress::DONE) {
@@ -5045,9 +5057,14 @@ namespace hemera {
 				result = typed(BUILTIN_bool);
 				return Progress::DONE;
 			}
-			if (is_text(node->value.value, "#file_path")) {
-				// The path of the file it's in, as a string
+			if (is_text(node->value.value, "#file_path") || is_text(node->value.value, "#package_name")) {
+				// The path of the file it's in, or the name of its package, from the package statement, as a string
 				result = typed(BUILTIN_string);
+				return Progress::DONE;
+			}
+			if (is_text(node->value.value, "#line")) {
+				// The line it's on, as SourceCodeLocation.line is
+				result = typed(BUILTIN_u32);
 				return Progress::DONE;
 			}
 			if (is_text(node->value.value, "#file_data")) {
@@ -7080,7 +7097,9 @@ namespace hemera {
 				if (has_default && index < type->input.size()) {
 					ast::Node* value_node = parameter->children[1];
 					Value value;
+					checker.parameter_default = value_node;
 					Progress progress = check_expression(checker, value_node, type->input[index].type, value);
+					checker.parameter_default = nullptr;
 					if (progress != Progress::DONE) {
 						checker.has_context = had_context;
 						return progress;
@@ -7518,5 +7537,12 @@ namespace hemera {
 			require_fit(checker, result, expected, value, "the constant's value");
 		}
 		return progress;
+	}
+
+	Progress check_default_type(Walk& walk, ast::Node* value, Value& result) {
+		Checker checker(walk);
+		checker.parameter_default = value;
+		push_scope(checker);
+		return check_expression(checker, value, nullptr, result);
 	}
 }

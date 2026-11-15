@@ -341,7 +341,18 @@ if (x86_64.cpuid(1).ecx & (1 << 25)) != 0 {
 
 ### `#caller_location`
 
-`#caller_location` is (only) used to set a function parameter's default value to the location of the code calling the function.
+`#caller_location` is a function parameter's default value: the location of the code calling the function, as a
+`runtime.SourceCodeLocation`, with the file, function, line and column. Since it's the caller's, it's only a
+parameter's default; anywhere else is an error (E4014). For the location where code is written, there's
+`#source_location` ([Values](#values)).
+
+```
+check :: fn(ok: bool, message: string, location := #caller_location) {
+    if !ok {
+        compiler.report_error(location, message) // Points at the call to check
+    }
+}
+```
 
 ### `#crosses_threads`
 
@@ -399,6 +410,14 @@ buffer #release :: make_buffer(4096)
 
 `#file_path` is the path to the file in which this directive appears.
 
+`#source_location` is the location where it's written, as a `runtime.SourceCodeLocation`, with the file, function,
+line and column, like `#caller_location` gives the caller's: for something to report about the code it's in, like
+`compiler.report_error(#source_location, "...")` in a `#run`.
+
+`#line` is the line it's on, a `u32` counted from 1, as `SourceCodeLocation.line` is.
+
+`#package_name` is the name of the package it's in, from the package statement, as a `string`: the usual prefix for
+the codes of what the package's compile-time code reports ([Diagnostics](compilation.md#diagnostics)).
 `#file_data("path")` is the contents of a file, read when the program is compiled, as a `u8[N]` with `N` the file's
 size. The path is relative to the folder of the file the directive is in. Data a program needs but shouldn't keep in
 source, like a font, an image or a table, goes in the program this way, without a step that turns it into a constant

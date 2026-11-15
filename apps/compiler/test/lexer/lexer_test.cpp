@@ -288,9 +288,10 @@ static std::vector<std::string> text_errors(const std::string& text) {
 	std::istringstream lines(scope.output + scope.errors_output);
 	for (std::string line; std::getline(lines, line);) {
 		const size_t open = line.find('(');
-		const size_t error = line.find("): error ");
+		// The compiler's own codes, printed as hemera:E2008
+		const size_t error = line.find("): error hemera:");
 		if (open != std::string::npos && error != std::string::npos) {
-			errors.push_back(line.substr(open, error + 1 - open) + " " + line.substr(error + 9, 5));
+			errors.push_back(line.substr(open, error + 1 - open) + " " + line.substr(error + 16, 5));
 		}
 	}
 	return errors;

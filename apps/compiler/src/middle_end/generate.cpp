@@ -343,6 +343,32 @@ namespace hemera {
 	}
 
 	/*
+	 * #package_name: the name the package of the code being generated gives itself, in its package statement. Code in a
+	 * declaration is in the declaration's package; top-level code, like a #run, is in its file's.
+	 */
+	static std::string current_package_name(Generator& generator) {
+		if (generator.program == nullptr) {
+			return std::string();
+		}
+		Declaration* declaration = generator.state != nullptr ? generator.state->declaration : nullptr;
+		const PackageInfo* found = nullptr;
+		if (declaration != nullptr) {
+			auto package = generator.program->packages.find(declaration->package_path);
+			found = package != generator.program->packages.end() ? package->second : nullptr;
+		}
+		else {
+			for (const auto& [package_path, package] : generator.program->packages) {
+				for (const auto& [file_name, file] : package->files) {
+					if (file_path_of(package_path, file_name) == generator.file_path) {
+						found = package;
+					}
+				}
+			}
+		}
+		return found != nullptr && found->self_reported_name != nullptr ? std::string(*found->self_reported_name) : std::string();
+	}
+
+	/*
 	 * A source file as what the program says about it names it (docs/compilation.md, Deterministic Output): the same
 	 * wherever the sources are. base's are <base>/..., std's <std>/..., and anything else relative to the folder of the
 	 * package being built, with / throughout. Error messages keep the path on disk.
@@ -3507,6 +3533,9 @@ namespace hemera {
 			uint32_t line;
 			uint16_t column;
 			std::string message;
+			// compiler.report's prefix and code, or empty for report_error's and report_warning's, which have the compiler's
+			std::string prefix = {};
+			std::string code = {};
 		};
 		std::vector<Report> reports = {};
 	};
@@ -3515,7 +3544,10 @@ namespace hemera {
 	// Report what compile-time code reported during a run that counts, as compiler.report_error and report_warning do.
 	static void report_held(const ServiceScope& scope) {
 		for (const ServiceScope::Report& report : scope.reports) {
-			if (report.error) {
+			if (!report.code.empty()) {
+				report_coded(report.error, report.prefix, report.code, report.file, report.line, report.column, report.message);
+			}
+			else if (report.error) {
 				report_error(ErrorCode::E4029, report.file, report.line, report.column, report.message);
 			}
 			else {
@@ -9126,7 +9158,9 @@ namespace hemera {
 		if (ast::NodeType::VOID == type) {
 			return Emitted{};
 		}
-		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#caller_location")) {
+		// #source_location, where it's written; #caller_location only gets here as a default the caller filled in
+		if (ast::NodeType::DIRECTIVE == type && (is_text(node->value.value, "#source_location")
+			|| is_text(node->value.value, "#caller_location"))) {
 			return value(caller_location(generator, result_type, node), result_type);
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#file_data")) {
@@ -9134,6 +9168,12 @@ namespace hemera {
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#file_path")) {
 			return value(string_value(generator, current_file(generator), BUILTIN_string), BUILTIN_string);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#package_name")) {
+			return value(string_value(generator, current_package_name(generator), BUILTIN_string), BUILTIN_string);
+		}
+		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#line")) {
+			return value(constant_int(generator, integer_type(generator, 4), node->value.line_number), BUILTIN_u32);
 		}
 		if (ast::NodeType::DIRECTIVE == type && is_text(node->value.value, "#is_compile_time")) {
 			return value(boolean(generator, generator.compile_time), BUILTIN_bool);
@@ -12839,6 +12879,42 @@ namespace hemera {
 				}
 				else {
 					report_warning(WarningCode::W4001, file, line, column, message);
+				}
+				return;
+			}
+			if (name == "report") {
+				// compiler.report(kind, prefix, code, location, format_string, params...): a diagnostic with a code of its own
+				const bool error = read_unsigned(call.arguments[0], call.type->input[0].type->size) == 1;
+				const std::string prefix(read_string(call.arguments[1]));
+				const std::string code(read_string(call.arguments[2]));
+				std::string file;
+				uint32_t line = 0;
+				uint16_t column = 0;
+				read_location(call, 3, file, line, column);
+				const std::string message = format_compile_time(read_string(call.arguments[4]),
+					reinterpret_cast<const void*>(read_u64(call.arguments[5] + 8)), read_u64(call.arguments[5]));
+				const char letter = error ? 'E' : 'W';
+				std::string wrong;
+				if (!lexer::is_identifier(prefix)) {
+					wrong = std::format("the prefix \"{}\" isn't a name, as a package's is", prefix);
+				}
+				else if (prefix == COMPILER_PREFIX) {
+					wrong = std::format("the prefix {} is the compiler's own", COMPILER_PREFIX);
+				}
+				else if (code.size() < 2 || code[0] != letter || !std::all_of(code.begin(), code.end(),
+					[](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); })) {
+					wrong = std::format("the code \"{}\" isn't {} and ASCII letters and digits after it, as {} {} is", code,
+						letter, error ? "an" : "a", error ? "error" : "warning");
+				}
+				if (!wrong.empty()) {
+					report_error(ErrorCode::E4029, file, line, column, std::format("compiler.report: {}", wrong));
+				}
+				else if (service_scope != nullptr) {
+					// Held until the run is known to count, as report_error's and report_warning's are
+					service_scope->reports.push_back({ error, file, line, column, message, prefix, code });
+				}
+				else {
+					report_coded(error, prefix, code, file, line, column, message);
 				}
 				return;
 			}

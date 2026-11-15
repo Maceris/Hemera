@@ -50,7 +50,7 @@ threads. That lets you check that two builds of a commit match, name a build
 by the hash of its bytes, see only real changes when comparing two compilers' output, and cache or
 bisect builds.
 
-What the program says about its sources names them the same wherever they are: `#caller_location`'s
+What the program says about its sources names them the same wherever they are: `#caller_location`'s and `#source_location`'s
 `file_path` and debug info give `base`'s files as `<base>/...`, `std`'s as `<std>/...`, and every other
 file relative to the folder of the package being built, with `/` throughout, like
 `../shared/parse.hsc`. Error messages keep the path on disk. A PE/COFF program with debug info names its
@@ -97,8 +97,39 @@ function that uses them gets compiled, but calling it at compile time stops with
 
 Compile-time code can look at the program through `base/compiler`: `compiler.package_info` for a package the file
 imports, with its files, imports, functions, constants (with their values) and types, `find_function` and
-`find_constant` in one, and `report_error` and `report_warning` at any location. `compiler.target_setting` reads a
-setting given on the command line as `--setting=name=value`.
+`find_constant` in one, and `report`, `report_error` and `report_warning` at any location ([Diagnostics](#diagnostics)).
+`compiler.target_setting` reads a setting given on the command line as `--setting=name=value`.
+
+### Diagnostics
+
+Every error and warning has a code, printed with a prefix saying whose it is: `hemera:E4015` for the compiler's own,
+like MSVC's `C4996`, and `fonts:W0003` for one a package's compile-time code reported. A code stays the same when its
+message is reworded, so it's what to search for, and what to name when allowing or denying a warning.
+
+```
+main.hsc(12,5): error hemera:E4015: Type mismatch. the returned value needs int, not a string
+fonts_test.hsc(14,9): warning fonts:W0003: Arial has no glyph for U+16A0
+```
+
+Compile-time code reports one with a code of its own through `compiler.report`:
+
+```
+check_glyphs :: fn(font: Font, location := #caller_location) {
+    for code_point in font.missing {
+        compiler.report(.Warning, #package_name, "W0003", location, "% has no glyph for U+%", font.name, code_point)
+    }
+}
+```
+
+* The prefix is usually `#package_name`, the reporting package's name. It's a convention, not a guarantee: any name
+  can be a prefix, so two packages with the same name, or one using another's prefix, share codes. `hemera` is the
+  compiler's own, and no package can use it or be named it (E4044).
+* The code is ASCII letters and digits, starting with `W` for a warning and `E` for an error, so it can be searched
+  for and says what it is.
+* A prefix that isn't a name, or a code that isn't one of those, is an error (`hemera:E4029`) in the diagnostic's place.
+
+`compiler.report_error` and `compiler.report_warning` report with the compiler's codes for compile-time code's
+diagnostics, `hemera:E4029` and `hemera:W4001`, for a message that doesn't need a code of its own.
 
 ## Code Values
 

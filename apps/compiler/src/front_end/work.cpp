@@ -872,6 +872,12 @@ namespace hemera {
 				continue;
 			}
 			InternedString package_name = child->children[0]->value.value;
+			// hemera is the prefix of the compiler's own codes, like hemera:E4015, so no package is named it
+			if (*package_name == COMPILER_PREFIX) {
+				report_error(ErrorCode::E4044, file_path, child->children[0]->value.line_number,
+					child->children[0]->value.column_number,
+					std::format("{} is the prefix of the compiler's own diagnostics, like {}:E4015", COMPILER_PREFIX, COMPILER_PREFIX));
+			}
 
 			std::scoped_lock<std::mutex> lock(package_info->files_mutex);
 			if (package_info->self_reported_name == nullptr) {

@@ -217,8 +217,8 @@ namespace hemera {
 			extension = std::format(". {}", additional_info);
 		}
 
-		write_line(std::format("{}({},{}): {} {}: {}{}", file,
-			line_number, column_number, "error", info.string_value,
+		write_line(std::format("{}({},{}): {} {}:{}: {}{}", file,
+			line_number, column_number, "error", COMPILER_PREFIX, info.string_value,
 			info.message, extension));
 	}
 
@@ -280,8 +280,8 @@ namespace hemera {
 			extension = std::format(". {}", additional_info);
 		}
 
-		write_line(std::format("{}({},{}): {} {}: {}{}", file,
-			line_number, column_number, "warning", info.string_value,
+		write_line(std::format("{}({},{}): {} {}:{}: {}{}", file,
+			line_number, column_number, "warning", COMPILER_PREFIX, info.string_value,
 			info.message, extension));
 	}
 
@@ -306,6 +306,29 @@ namespace hemera {
 		}
 		log_warning(warning);
 		print_warning(warning, file, line_number, column_number, additional_info);
+	}
+
+	void report_coded(bool error, std::string_view prefix, std::string_view code, std::string_view file,
+		uint32_t line_number, uint16_t column_number, std::string_view message) {
+
+		const std::string coded = std::format("{}:{}", prefix, code);
+		if (error) {
+			++errors_on_this_thread;
+			if (!reporting_enabled || !first_report("error", static_cast<int>(ErrorCode::E4029), file, line_number,
+				column_number, std::format("{} {}", coded, message))) {
+				return;
+			}
+			log_error(ErrorCode::E4029, message);
+		}
+		else {
+			if (!reporting_enabled || !first_report("warning", static_cast<int>(WarningCode::W4001), file, line_number,
+				column_number, std::format("{} {}", coded, message))) {
+				return;
+			}
+			log_warning(WarningCode::W4001);
+		}
+		write_line(std::format("{}({},{}): {} {}: {}", file, line_number, column_number, error ? "error" : "warning",
+			coded, message));
 	}
 
 	void report_message(std::string_view file, uint32_t line_number, uint16_t column_number,

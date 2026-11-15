@@ -27,7 +27,7 @@ parses_a_duration #test :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
 * isn't generic, and needn't be exported.
 
 A function marked `#test` whose signature is anything else is an error where the runner's table is made (`tests_of`),
-at the function.
+at the function (`testing:E0002`).
 
 ### Tests Over Cases
 
@@ -49,7 +49,8 @@ hashes_to_the_published_digest #test(DIGESTS) :: fn(t: ptr[mut testing.T], item:
 
 Each case's test is named after the function and the case: by the case's `name`, when its type has a `name` string,
 like `hashes_to_the_published_digest[abc]`, or by its index otherwise, like `squares[2]`. A filter of `[abc]` runs
-that case alone. The cases' type has to be the second parameter's; anything else is an error at the function.
+that case alone. The cases' type has to be the second parameter's; anything else is an error at the function
+(`testing:E0003`), as is a `CASES` that isn't a constant fixed array of the package's (`testing:E0004`).
 
 ### Property Tests
 
@@ -117,7 +118,7 @@ fixture as it found it, so a case gives the same result whichever ran before it,
 
 `#tags(...)` after `#test` names a test's tags: constants of type `testing.Tag`, each a name a run asks for it by, and
 whether its tests run when a run doesn't ask. A misspelled tag is an undeclared name, rather than a tag nothing asks
-for. A test can have up to `testing.MAX_TAGS`.
+for. A test can have up to `testing.MAX_TAGS`; one with more is an error (`testing:E0001`).
 
 ```
 NETWORK :: testing.Tag.{name = "network", by_default = .Included}

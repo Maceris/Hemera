@@ -65,6 +65,20 @@ namespace hemera {
 		uint32_t line_number, uint16_t column_number,
 		std::string_view additional_info);
 
+	/*
+	 * The prefix the compiler's own codes are printed with, as hemera:E4015 (docs/compilation.md, Diagnostics), which no
+	 * package can use or be named.
+	 */
+	constexpr std::string_view COMPILER_PREFIX = "hemera";
+
+	/*
+	 * A diagnostic compile-time code reported with its own code, through compiler.report: printed as prefix:code, like
+	 * fonts:W0003, with message after it. An error fails the build. In error_list and warning_list it's E4029 or W4001,
+	 * which compile-time code's diagnostics all are there. prefix and code must already be checked.
+	 */
+	void report_coded(bool error, std::string_view prefix, std::string_view code, std::string_view file,
+		uint32_t line_number, uint16_t column_number, std::string_view message);
+
 	/// <summary>
 	/// Prints a message that isn't an error or a warning, like what compile-time code logs at the
 	/// info level, when printing is on.

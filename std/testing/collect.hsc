@@ -69,7 +69,8 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
             runtime.array_add(&tags, tag)
         }
         if tags.count > MAX_TAGS {
-            compiler.report_error(function.location, "% has % tags; a test can have at most %", function.name, tags.count, MAX_TAGS)
+            compiler.report(.Error, #package_name, "E0001", function.location, "% has % tags; a test can have at most %",
+                function.name, tags.count, MAX_TAGS)
             continue
         }
         tag_count :: tags.count
@@ -311,7 +312,7 @@ is_test_signature :: fn(function: ptr[compiler.FunctionInfo], constants: compile
     }
     if function.test_cases.count == 0 {
         if !right {
-            compiler.report_error(function.location, "% is marked #test, so it has to be fn(t: ptr[mut testing.T]) -> testing.Outcome, or for a property test, fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome",
+            compiler.report(.Error, #package_name, "E0002", function.location, "% is marked #test, so it has to be fn(t: ptr[mut testing.T]) -> testing.Outcome, or for a property test, fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome",
                 function.name)
         }
         return right
@@ -323,14 +324,15 @@ is_test_signature :: fn(function: ptr[compiler.FunctionInfo], constants: compile
                 right = function.parameters[1].type == cases.type
             }
             if !right {
-                compiler.report_error(function.location,
+                compiler.report(.Error, #package_name, "E0003", function.location,
                     "% is marked #test(%), so it has to be fn(t: ptr[mut testing.T], item: %) -> testing.Outcome", function.name,
                     function.test_cases, cases.type)
             }
             return right
         }
         case None => {
-            compiler.report_error(function.location, "% is marked #test(%), which has to name a constant fixed array of its package's",
+            compiler.report(.Error, #package_name, "E0004", function.location,
+                "% is marked #test(%), which has to name a constant fixed array of its package's",
                 function.name, function.test_cases)
             return false
         }

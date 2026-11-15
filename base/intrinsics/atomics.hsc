@@ -167,6 +167,6 @@ add_atomic :: fn(made: ptr[mut AtomicDeclarations], code: compiler.Code) {
         made.count += 1
     }
     else {
-        compiler.report_error(#caller_location, "more atomic operations than AtomicDeclarations holds")
+        compiler.report_error(#source_location, "more atomic operations than AtomicDeclarations holds")
     }
 }

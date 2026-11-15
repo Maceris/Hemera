@@ -60,7 +60,7 @@ reflects_bindings :: fn(program: ptr[compiler.ProgramInfo], main_function: ptr[c
 
 report_outputs :: fn(inputs: compiler.TargetOutput[]) -> bool {
     for &input in inputs {
-        compiler.report_warning(#caller_location, "built % at %", input.name, input.path)
+        compiler.report_warning(#source_location, "built % at %", input.name, input.path)
     }
     return true
 }

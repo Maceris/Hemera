@@ -810,7 +810,7 @@ HasCount #constraint :: fn(T: type) {
   reasons for every alternative of an `||`. The instance's body isn't checked, so no error comes from inside it:
 
 ```
-main.hsc:12:9: error E4032: Constraint not satisfied. largest[char] can't be made
+main.hsc:12:9: error hemera:E4032: Constraint not satisfied. largest[char] can't be made
     T = char isn't compiler.Ordered && (compiler.Integer || compiler.Float)
         Integer: char is a character, not an integer
         Float: char is a character, not a float
@@ -859,7 +859,7 @@ total :: fn[T: compiler.Equatable](a: T, b: T) -> T {
     return a + b
 }
 
-main.hsc:2:14: error E4033: Not promised by constraints. arithmetic on T, which total's constraints don't promise;
+main.hsc:2:14: error hemera:E4033: Not promised by constraints. arithmetic on T, which total's constraints don't promise;
     constrain T with compiler.Numeric
 ```
 
@@ -897,7 +897,7 @@ pick :: fn[T: compiler.Ordered](a: T, b: T) -> T {
     return largest(a, b)
 }
 
-main.hsc:4:20: error E4033: Not promised by constraints. largest[T] needs what pick's constraints don't promise
+main.hsc:4:20: error hemera:E4033: Not promised by constraints. largest[T] needs what pick's constraints don't promise
     T needs Integer(T)
     T needs Float(T)
 ```

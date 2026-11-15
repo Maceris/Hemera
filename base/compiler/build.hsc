@@ -441,7 +441,8 @@ build_permissions : fn() -> BuildPermissions : ---
 
 /**
  * Report a compile error at location, without stopping compile-time execution, so every
- * problem can be reported. The build fails once the current target is done.
+ * problem can be reported. The build fails once the current target is done. Its code is hemera:E4029, which every
+ * error reported this way has; report gives one a code of its own.
  *
  * @param location Where the error is reported, like #caller_location for an error in what the caller gave.
  * @param format_string The message, with placeholders (docs/format_strings.md).
@@ -450,10 +451,35 @@ build_permissions : fn() -> BuildPermissions : ---
 report_error : fn(location: SourceCodeLocation, format_string: string, params: any...) : ---
 
 /**
- * Report a warning at location, which doesn't fail the build.
+ * Report a warning at location, which doesn't fail the build. Its code is hemera:W4001, which every warning reported
+ * this way has; report gives one a code of its own.
  *
  * @param location Where the warning is reported.
  * @param format_string The message, with placeholders (docs/format_strings.md).
  * @param params The values for the placeholders, in order.
  */
 report_warning : fn(location: SourceCodeLocation, format_string: string, params: any...) : ---
+
+/** Whether a diagnostic is a warning, which doesn't fail the build, or an error, which does. */
+DiagnosticType :: enum {
+    Warning,
+    Error,
+}
+
+/**
+ * Report a warning or an error at location with a code of the package's own, printed as prefix:code, like
+ * fonts:W0003, so it can be told apart from others and allowed or denied by that, whatever its message says
+ * (docs/compilation.md, Diagnostics). Without stopping compile-time execution, as report_error and report_warning,
+ * which give every diagnostic hemera:E4029 or hemera:W4001.
+ *
+ * @param kind Whether it's a warning or an error.
+ * @param prefix Whose code it is: a name, as a package's is, usually #package_name; not hemera, the compiler's.
+ * @param code The code, ASCII letters and digits, starting with W for a warning or E for an error, like W0003.
+ * @param location Where it's reported.
+ * @param format_string The message, with placeholders (docs/format_strings.md).
+ * @param params The values for the placeholders, in order.
+ *
+ * A prefix or code that isn't one of those is an error, reported in its place.
+ */
+report : fn(kind: DiagnosticType, prefix: string, code: string, location: SourceCodeLocation, format_string: string,
+    params: any...) : ---

@@ -410,7 +410,7 @@ SQUARES_SUM :: sum_of_squares(6)
 
 sum_of_squares :: fn(count: int) -> int {
     runtime.log_info("adding up % squares", count)
-    memory, error :: context.allocator.function(context.allocator.data, cast[usize](count) * 8, 8, null, 0, #caller_location)
+    memory, error :: context.allocator.function(context.allocator.data, cast[usize](count) * 8, 8, null, 0, #source_location)
     if (error is_some) || memory.count == 0 {
         return -1
     }
