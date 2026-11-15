@@ -77,6 +77,7 @@ namespace hemera {
 		: identifiers{}
 		, imports{}
 		, tokens{}
+		, names{}
 		, ast_root{ nullptr }
 		, full_path{}
 		, imports_mutex{}

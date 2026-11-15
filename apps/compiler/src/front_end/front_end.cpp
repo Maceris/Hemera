@@ -481,14 +481,12 @@ namespace hemera {
 			bool outside_ascii = false;
 			for (const auto& [file_name, file] : package->files) {
 				const std::string path = file_path_of(package_path, file_name);
-				for (const Token& token : file->tokens) {
-					if (TokenType::IDENTIFIER != token.type || token.value == nullptr) {
-						continue;
-					}
-					const std::string name(*token.value);
+				// The names it used, kept when it was parsed, as its tokens are gone
+				for (const NameUse& used : file->names) {
+					const std::string name(*used.name);
 					outside_ascii = outside_ascii
 						|| std::any_of(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; });
-					const Use use{ path, token.line_number, token.column_number };
+					const Use use{ path, used.line_number, used.column_number };
 					auto [entry, added] = names.try_emplace(name, use);
 					if (!added && before(use, entry->second)) {
 						entry->second = use;

@@ -145,10 +145,26 @@ namespace hemera {
 		ast::Node* node;
 	};
 
+	// A name a file uses, with where it's first used in it
+	struct NameUse {
+		InternedString name;
+		uint32_t line_number;
+		uint16_t column_number;
+	};
+
 	struct FileInfo {
 		MyMap<InternedString, IdentifierInfo*> identifiers;
 		MyVector<ImportInfo*> imports;
+		/*
+		 * The file's tokens, only while it's lexed and parsed: its nodes hold copies of theirs, so the list is freed
+		 * once the file is parsed, as it would otherwise be kept as long as its program (work.cpp, parse_and_process)
+		 */
 		MyVector<Token> tokens;
+		/*
+		 * Each name the file uses, once, with its first use, kept from its tokens for the checks of a package's names
+		 * once every package is read (front_end.cpp, check_name_security)
+		 */
+		MyVector<NameUse> names;
 		ast::Node* ast_root;
 		InternedString full_path;
 

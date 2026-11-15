@@ -4,6 +4,7 @@
 #include <fstream>
 #include <optional>
 #include <sstream>
+#include <unordered_set>
 
 #include "error/reporting.h"
 #include "front_end/base_sources.h"
@@ -903,6 +904,15 @@ namespace hemera {
 		file_info->ast_root = hemera::parser::file(file_path, file_info->tokens,
 			executor.program_info->node_alloc, &executor.program_info->quotes);
 		read_allowed_warnings(location, file_info->ast_root, file_path);
+
+		// The names it uses, which is all that's read of its tokens after this; then the tokens go
+		std::unordered_set<InternedString> seen;
+		for (const Token& token : file_info->tokens) {
+			if (TokenType::IDENTIFIER == token.type && token.value != nullptr && seen.insert(token.value).second) {
+				file_info->names.push_back({ token.value, token.line_number, token.column_number });
+			}
+		}
+		MyVector<Token>(file_info->tokens.get_allocator()).swap(file_info->tokens);
 
 		for (ast::Node* child : file_info->ast_root->children) {
 			if (child->node_type != ast::NodeType::PACKAGE) {
