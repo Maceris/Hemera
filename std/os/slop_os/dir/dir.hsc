@@ -247,7 +247,7 @@ Response :: union {
  * @return False for Remove, Rename, Begin, Commit, Replace, Grant, Link, Revoke and Snapshot, and an OpenFile of a
  *     New file; true for the rest.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case OpenFile(open) => open.creation != .New
         case OpenReadOnlyFile(_) => true
@@ -292,7 +292,7 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  * @return The new connection's end, which the caller owns and closes; null if the channel couldn't be made or the
  *     Connect couldn't be sent, and then nothing is left open.
  */
-connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[Dir]? {
+connect :: fn(end : slop_os.Channel, port : slop_os.Port, budget : slop_os.MemoryBudget) -> os.Channel[Dir]? {
     pair :: os.channel_for[Dir](budget, 0) or_return null
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)

@@ -11,7 +11,7 @@ package math
  * @param x The number.
  * @return Its top 32 bits.
  */
-high_word :: fn(x: f64) -> i32 {
+high_word :: fn(x : f64) -> i32 {
     return cast[i32](bit_cast[u64](x) >> 32)
 }
 
@@ -21,7 +21,7 @@ high_word :: fn(x: f64) -> i32 {
  * @param x The number.
  * @return Its bottom 32 bits.
  */
-low_word :: fn(x: f64) -> u32 {
+low_word :: fn(x : f64) -> u32 {
     return cast[u32](bit_cast[u64](x))
 }
 
@@ -32,7 +32,7 @@ low_word :: fn(x: f64) -> u32 {
  * @param low The bottom 32 bits.
  * @return The f64 they make.
  */
-from_words :: fn(high: i32, low: u32) -> f64 {
+from_words :: fn(high : i32, low : u32) -> f64 {
     return bit_cast[f64]((cast[u64](cast[u32](high)) << 32) | cast[u64](low))
 }
 
@@ -43,7 +43,7 @@ from_words :: fn(high: i32, low: u32) -> f64 {
  * @param high The new high word, taken as its bits.
  * @return The f64 made.
  */
-with_high_word :: fn(x: f64, high: i32) -> f64 {
+with_high_word :: fn(x : f64, high : i32) -> f64 {
     return from_words(high, low_word(x))
 }
 
@@ -55,7 +55,7 @@ with_high_word :: fn(x: f64, high: i32) -> f64 {
  * @param low The new low word.
  * @return The f64 made.
  */
-with_low_word :: fn(x: f64, low: u32) -> f64 {
+with_low_word :: fn(x : f64, low : u32) -> f64 {
     return from_words(high_word(x), low)
 }
 

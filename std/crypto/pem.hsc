@@ -26,7 +26,7 @@ BASE64_ALPHABET :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567
  * @param c The character.
  * @return Its value, 0 to 63; 64 for =, padding; 65 for whitespace (space, tab, CR, LF); 66 for anything else.
  */
-base64_value :: fn(c: u8) -> u8 {
+base64_value :: fn(c : u8) -> u8 {
     if c >= cast[u8]('A') && c <= cast[u8]('Z') {
         return c - cast[u8]('A')
     }
@@ -61,7 +61,7 @@ base64_value :: fn(c: u8) -> u8 {
  *     character, a group cut short, padding before the end or more than two of it, or left-over bits that aren't 0),
  *     or output is too small, with what was written so far left there.
  */
-base64_decode :: fn(text: u8[], output: mut u8[]) -> usize? {
+base64_decode :: fn(text : u8[], output : mut u8[]) -> usize? {
     written : usize = 0
     group : u32 = 0
     filled : usize = 0
@@ -121,7 +121,7 @@ base64_decode :: fn(text: u8[], output: mut u8[]) -> usize? {
  * @return How many characters were written, from the start of output; or null when output is too small, with
  *     nothing written.
  */
-base64_encode :: fn(data: u8[], output: mut u8[]) -> usize? {
+base64_encode :: fn(data : u8[], output : mut u8[]) -> usize? {
     needed := (data.count + 2) / 3 * 4
     if needed > output.count {
         return null
@@ -157,11 +157,11 @@ base64_encode :: fn(data: u8[], output: mut u8[]) -> usize? {
 /** A PEM block found in text: its label, and its base64 body, views of the text. */
 PemBlock :: struct {
     /** The label between BEGIN and the dashes, like CERTIFICATE or PRIVATE KEY. */
-    label: u8[],
+    label : u8[],
     /** The base64 text between the BEGIN and END lines, line breaks and all, for base64_decode. */
-    body: u8[],
+    body : u8[],
     /** The text after the END line's dashes, where the next block may be. */
-    rest: u8[],
+    rest : u8[],
 }
 
 /**
@@ -172,7 +172,7 @@ PemBlock :: struct {
  * @param wanted The bytes.
  * @return Whether text from at starts with wanted.
  */
-pem_has :: fn(text: u8[], at: usize, wanted: string) -> bool {
+pem_has :: fn(text : u8[], at : usize, wanted : string) -> bool {
     if at > text.count || wanted.count > text.count - at {
         return false
     }
@@ -191,7 +191,7 @@ pem_has :: fn(text: u8[], at: usize, wanted: string) -> bool {
  * @param text The text, of any length.
  * @return The block, its views of text; or null when there's no BEGIN line, or no END line with its label after it.
  */
-pem_next :: fn(text: u8[]) -> PemBlock? {
+pem_next :: fn(text : u8[]) -> PemBlock? {
     for begin in 0..<text.count {
         if pem_has(text, begin, "-----BEGIN ") {
             label_start := begin + 11
@@ -237,7 +237,7 @@ pem_next :: fn(text: u8[]) -> PemBlock? {
  * @return How many bytes were written, 0 when there's no certificate; or null when a CERTIFICATE block isn't base64,
  *     or output is too small.
  */
-pem_certificates :: fn(text: u8[], output: mut u8[]) -> usize? {
+pem_certificates :: fn(text : u8[], output : mut u8[]) -> usize? {
     written : usize = 0
     rest := text
     loop {

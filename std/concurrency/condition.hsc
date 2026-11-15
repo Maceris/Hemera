@@ -36,7 +36,7 @@ Condition :: struct {
  * @param condition The condition, shared with whoever signals it.
  * @param mutex The mutex guarding what's waited for, which the caller must hold; it's held again when this returns.
  */
-condition_wait :: fn(condition: ptr[mut Condition], mutex: ptr[mut Mutex]) {
+condition_wait :: fn(condition : ptr[mut Condition], mutex : ptr[mut Mutex]) {
     waiter :: runtime.current_waiter()
     runtime.prepare_wait(waiter)
     {
@@ -59,7 +59,7 @@ condition_wait :: fn(condition: ptr[mut Condition], mutex: ptr[mut Mutex]) {
  * @param condition The condition. The caller should hold the mutex its waiters use, having changed what they wait
  *     for, so the change isn't missed.
  */
-condition_signal :: fn(condition: ptr[mut Condition]) {
+condition_signal :: fn(condition : ptr[mut Condition]) {
     lock(&condition.guard)
     next :: condition.first
     match next {
@@ -84,7 +84,7 @@ condition_signal :: fn(condition: ptr[mut Condition]) {
  * @param condition The condition. The caller should hold the mutex its waiters use, having changed what they wait
  *     for.
  */
-condition_broadcast :: fn(condition: ptr[mut Condition]) {
+condition_broadcast :: fn(condition : ptr[mut Condition]) {
     lock(&condition.guard)
     walk := condition.first
     condition.first = null

@@ -13,8 +13,8 @@ package math
  * @return The remainder, of x's sign and smaller than |y|; x for a finite x and infinite y; NaN if y is 0, x is
  *     infinite, or either is NaN.
  */
-//SPEC: musl src/math/fmod.c
-truncated_remainder_64 :: fn(x: f64, y: f64) -> f64 {
+// SPEC: musl src/math/fmod.c
+truncated_remainder_64 :: fn(x : f64, y : f64) -> f64 {
     ux := bit_cast[u64](x)
     uy := bit_cast[u64](y)
     ex := cast[i32]((ux >> 52) & 0x7ff)
@@ -101,8 +101,8 @@ truncated_remainder_64 :: fn(x: f64, y: f64) -> f64 {
  * @return The remainder, at most |y| / 2 in magnitude, and -0 or +0 as x's sign when it's 0; x for a finite x and
  *     infinite y; NaN if y is 0, x is infinite, or either is NaN.
  */
-//SPEC: fdlibm e_remainder.c
-remainder_64 :: fn(x_in: f64, y: f64) -> f64 {
+// SPEC: fdlibm e_remainder.c
+remainder_64 :: fn(x_in : f64, y : f64) -> f64 {
     x := x_in
     negative :: (bit_cast[u64](x) >> 63) != 0
     p := abs(y)

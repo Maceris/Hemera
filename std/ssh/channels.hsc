@@ -11,7 +11,7 @@ import compiler from "base:compiler"
  */
 
 /** Take a message of the connection protocol's. */
-handle_connection :: fn(conn: ptr[mut Connection], message: u8[]) {
+handle_connection :: fn(conn : ptr[mut Connection], message : u8[]) {
     kind :: byte_at(message, 0)
     reader := Reader.{at = 1, end = message.count}
     if kind == MSG_GLOBAL_REQUEST {
@@ -89,14 +89,14 @@ handle_connection :: fn(conn: ptr[mut Connection], message: u8[]) {
 }
 
 /** Send a message of its number alone. */
-send_byte_message :: fn(conn: ptr[mut Connection], kind: u8) {
+send_byte_message :: fn(conn : ptr[mut Connection], kind : u8) {
     writer := Writer.{}
     put_u8(conn.message[0..<PAYLOAD_BYTES], &writer, kind)
     send_message(conn, range(conn.message[0..<PAYLOAD_BYTES], 0, writer.at))
 }
 
 /** Send a message of its number and a channel's peer's number for it. */
-send_channel_message :: fn(conn: ptr[mut Connection], kind: u8, remote: u32) {
+send_channel_message :: fn(conn : ptr[mut Connection], kind : u8, remote : u32) {
     writer := Writer.{}
     put_u8(conn.message[0..<PAYLOAD_BYTES], &writer, kind)
     put_u32(conn.message[0..<PAYLOAD_BYTES], &writer, remote)
@@ -104,7 +104,7 @@ send_channel_message :: fn(conn: ptr[mut Connection], kind: u8, remote: u32) {
 }
 
 /** A server's: take a CHANNEL_OPEN, a session's opened if there's room; anything else refused. */
-take_open :: fn(conn: ptr[mut Connection], message: u8[]) {
+take_open :: fn(conn : ptr[mut Connection], message : u8[]) {
     reader := Reader.{at = 1, end = message.count}
     kind :: get_string(message, &reader)
     sender :: get_u32(message, &reader)
@@ -138,8 +138,12 @@ take_open :: fn(conn: ptr[mut Connection], message: u8[]) {
         send_message(conn, range(data, 0, writer.at))
         return void
     }
-    conn.channels[index] = Channel.{state = .Open, remote = sender, remote_window = cast[u64](window),
-        remote_packet = if packet < CHANNEL_PACKET { packet } else { cast[u32](CHANNEL_PACKET) }}
+    conn.channels[index] = Channel.{
+        state = .Open,
+        remote = sender,
+        remote_window = cast[u64](window),
+        remote_packet = if packet < CHANNEL_PACKET { packet } else { cast[u32](CHANNEL_PACKET) },
+    }
     put_u8(data, &writer, MSG_CHANNEL_OPEN_CONFIRMATION)
     put_u32(data, &writer, sender)
     put_u32(data, &writer, cast[u32](index))
@@ -150,7 +154,7 @@ take_open :: fn(conn: ptr[mut Connection], message: u8[]) {
 }
 
 /** Take a channel's data into its buffer: more than its window ends the connection. */
-take_data :: fn(conn: ptr[mut Connection], index: usize, data: u8[]) {
+take_data :: fn(conn : ptr[mut Connection], index : usize, data : u8[]) {
     if index >= conn.channels.count {
         return void
     }
@@ -171,7 +175,7 @@ take_data :: fn(conn: ptr[mut Connection], index: usize, data: u8[]) {
 }
 
 /** Take a CHANNEL_REQUEST. */
-take_channel_request :: fn(conn: ptr[mut Connection], index: usize, message: u8[], from: Reader) {
+take_channel_request :: fn(conn : ptr[mut Connection], index : usize, message : u8[], from : Reader) {
     reader := from
     name :: get_string(message, &reader)
     want_reply :: get_bool(message, &reader)
@@ -233,7 +237,15 @@ take_channel_request :: fn(conn: ptr[mut Connection], index: usize, message: u8[
         if want_reply {
             send_channel_message(conn, MSG_CHANNEL_SUCCESS, remote)
         }
-        event(conn, if request.kind == .WindowChange { Event.WindowChanged(cast[u32](index)) } else { Event.Signal(cast[u32](index)) })
+        event(
+            conn,
+            if request.kind == .WindowChange {
+                Event.WindowChanged(cast[u32](index))
+            }
+            else {
+                Event.Signal(cast[u32](index))
+            }
+        )
         return void
     }
     conn.waiting = .Request
@@ -241,7 +253,7 @@ take_channel_request :: fn(conn: ptr[mut Connection], index: usize, message: u8[
 }
 
 /** Keep a request's text, as much as fits. */
-keep_text :: fn(request: ptr[mut ChannelRequest], text: u8[]) {
+keep_text :: fn(request : ptr[mut ChannelRequest], text : u8[]) {
     request.text_length = 0
     for byte, i in text {
         if i < request.text.count {
@@ -252,12 +264,12 @@ keep_text :: fn(request: ptr[mut ChannelRequest], text: u8[]) {
 }
 
 /** A request's text: its terminal type, command, subsystem or signal. */
-request_text :: fn(request: ptr[ChannelRequest]) -> u8[] {
+request_text :: fn(request : ptr[ChannelRequest]) -> u8[] {
     return range(request.text[0..<REQUEST_TEXT_BYTES], 0, request.text_length)
 }
 
 /** A signal's common number, by its name as SSH sends it (RFC 4254, 6.10); 0 for one not known. */
-signal_number :: fn(name: u8[]) -> u32 {
+signal_number :: fn(name : u8[]) -> u32 {
     names :: string.["HUP", "INT", "QUIT", "ILL", "ABRT", "FPE", "KILL", "USR1", "SEGV", "USR2", "PIPE", "ALRM", "TERM"]
     numbers :: u32.[1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 15]
     for each, i in names {
@@ -274,14 +286,18 @@ signal_number :: fn(name: u8[]) -> u32 {
  * @param conn The connection, its ChannelRequest event taken.
  * @param ok Whether it's done: a terminal given, a shell or command started, a subsystem run.
  */
-answer_request :: fn(conn: ptr[mut Connection], ok: bool) {
+answer_request :: fn(conn : ptr[mut Connection], ok : bool) {
     if conn.waiting != .Request {
         return void
     }
     conn.waiting = .Nothing
     index :: cast[usize](conn.request.channel)
     if conn.request.want_reply && index < conn.channels.count && conn.channels[index].state == .Open {
-        send_channel_message(conn, if ok { MSG_CHANNEL_SUCCESS } else { MSG_CHANNEL_FAILURE }, conn.channels[index].remote)
+        send_channel_message(
+            conn,
+            if ok { MSG_CHANNEL_SUCCESS } else { MSG_CHANNEL_FAILURE },
+            conn.channels[index].remote
+        )
     }
     process(conn)
 }
@@ -294,7 +310,7 @@ answer_request :: fn(conn: ptr[mut Connection], ok: bool) {
  * @param conn The connection, authenticated.
  * @return The channel's number, ChannelOpened or ChannelRefused coming for it; null if there's no room.
  */
-open_session :: fn(conn: ptr[mut Connection]) -> u32? {
+open_session :: fn(conn : ptr[mut Connection]) -> u32? {
     if conn.role != .Client || !conn.authenticated {
         return null
     }
@@ -316,7 +332,7 @@ open_session :: fn(conn: ptr[mut Connection]) -> u32? {
 }
 
 /** The channel at a number, if it's open. */
-open_channel :: fn(conn: ptr[mut Connection], number: u32) -> ptr[mut Channel]? {
+open_channel :: fn(conn : ptr[mut Connection], number : u32) -> ptr[mut Channel]? {
     index :: cast[usize](number)
     if index >= conn.channels.count || conn.channels[index].state != .Open {
         return null
@@ -336,7 +352,14 @@ open_channel :: fn(conn: ptr[mut Connection], number: u32) -> ptr[mut Channel]? 
  * @param rows Its height.
  * @return True once it's sent.
  */
-channel_request :: fn(conn: ptr[mut Connection], number: u32, kind: RequestKind, text: string, columns: u32 = 80, rows: u32 = 24) -> bool {
+channel_request :: fn(
+    conn : ptr[mut Connection],
+    number : u32,
+    kind : RequestKind,
+    text : string,
+    columns : u32 = 80,
+    rows : u32 = 24
+) -> bool {
     channel :: open_channel(conn, number) or_return false
     writer := Writer.{}
     data :: conn.message[0..<PAYLOAD_BYTES]
@@ -392,7 +415,7 @@ channel_request :: fn(conn: ptr[mut Connection], number: u32, kind: RequestKind,
  * @param number The channel.
  * @param status The exit status.
  */
-channel_exit_status :: fn(conn: ptr[mut Connection], number: u32, status: u32) {
+channel_exit_status :: fn(conn : ptr[mut Connection], number : u32, status : u32) {
     channel :: open_channel(conn, number) or_return void
     writer := Writer.{}
     data :: conn.message[0..<PAYLOAD_BYTES]
@@ -414,7 +437,7 @@ channel_exit_status :: fn(conn: ptr[mut Connection], number: u32, status: u32) {
  * @return How many were written; fewer than given while the window's short, and 0 while keys are exchanged, after EOF,
  *     or for a channel that isn't open.
  */
-channel_write :: fn(conn: ptr[mut Connection], number: u32, bytes: u8[], errors: bool = false) -> usize {
+channel_write :: fn(conn : ptr[mut Connection], number : u32, bytes : u8[], errors : bool = false) -> usize {
     channel :: open_channel(conn, number) or_return 0
     if channel.eof_sent || channel.close_sent || exchanging(conn) || conn.ended {
         return 0
@@ -464,7 +487,7 @@ channel_write :: fn(conn: ptr[mut Connection], number: u32, bytes: u8[], errors:
  * @param into Where it goes.
  * @return How many bytes; 0 if none are waiting.
  */
-channel_read :: fn(conn: ptr[mut Connection], number: u32, into: mut u8[]) -> usize {
+channel_read :: fn(conn : ptr[mut Connection], number : u32, into : mut u8[]) -> usize {
     channel :: open_channel(conn, number) or_return 0
     count := cast[usize](0)
     loop {
@@ -494,13 +517,13 @@ channel_read :: fn(conn: ptr[mut Connection], number: u32, into: mut u8[]) -> us
 }
 
 /** How many bytes wait to be read on a channel. */
-channel_waiting :: fn(conn: ptr[mut Connection], number: u32) -> usize {
+channel_waiting :: fn(conn : ptr[mut Connection], number : u32) -> usize {
     channel :: open_channel(conn, number) or_return 0
     return channel.count
 }
 
 /** Say this side will write nothing more on a channel. */
-channel_eof :: fn(conn: ptr[mut Connection], number: u32) {
+channel_eof :: fn(conn : ptr[mut Connection], number : u32) {
     channel :: open_channel(conn, number) or_return void
     if channel.eof_sent || channel.close_sent {
         return void
@@ -509,8 +532,10 @@ channel_eof :: fn(conn: ptr[mut Connection], number: u32) {
     send_channel_message(conn, MSG_CHANNEL_EOF, channel.remote)
 }
 
-/** Close a channel: once the peer has too, and what arrived on it is read, ChannelClosed says so and its number's free. */
-channel_close :: fn(conn: ptr[mut Connection], number: u32) {
+/**
+ * Close a channel: once the peer has too, and what arrived on it is read, ChannelClosed says so and its number's free.
+ */
+channel_close :: fn(conn : ptr[mut Connection], number : u32) {
     channel :: open_channel(conn, number) or_return void
     if channel.close_sent {
         return void
@@ -521,11 +546,13 @@ channel_close :: fn(conn: ptr[mut Connection], number: u32) {
 }
 
 /** Free a channel closed both ways, once what arrived on it is read. */
-free_if_closed :: fn(conn: ptr[mut Connection], index: usize) {
+free_if_closed :: fn(conn : ptr[mut Connection], index : usize) {
     if index >= conn.channels.count {
         return void
     }
-    if conn.channels[index].state == .Open && conn.channels[index].close_sent && conn.channels[index].close_received
+    if conn.channels[index].state == .Open
+        && conn.channels[index].close_sent
+        && conn.channels[index].close_received
         && conn.channels[index].count == 0 {
         conn.channels[index] = Channel.{}
         event(conn, .ChannelClosed(cast[u32](index)))

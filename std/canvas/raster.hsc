@@ -26,16 +26,16 @@ FillRule :: enum {
 /** A rasterizer's region, its cells, and a row's coverage. */
 Raster :: struct {
     /** The region, in pixels: its left and top, and its size. */
-    x0 : i32,
-    y0 : i32,
-    width : usize,
+    x0     : i32,
+    y0     : i32,
+    width  : usize,
     height : usize,
     /** Each row's cells, width + 2 of them, the two past the width taking what spills past it; zero between fills. */
     cells : f32[..],
 }
 
 /** Make a raster ready for a region: its cells, zero. */
-begin :: fn(raster: ptr[mut Raster], region: Rect) {
+begin :: fn(raster : ptr[mut Raster], region : Rect) {
     raster.x0 = region.x0
     raster.y0 = region.y0
     raster.width = cast[usize](region.x1 - region.x0)
@@ -51,19 +51,19 @@ begin :: fn(raster: ptr[mut Raster], region: Rect) {
 }
 
 /** Give back a raster's cells. */
-free_raster :: fn(raster: ptr[mut Raster]) {
+free_raster :: fn(raster : ptr[mut Raster]) {
     runtime.array_free(&raster.cells)
 }
 
 /** Add a cell's share, if it's in the region. */
-add_cell :: fn(raster: ptr[mut Raster], at: usize, value: f32) {
+add_cell :: fn(raster : ptr[mut Raster], at : usize, value : f32) {
     if at < raster.cells.count {
         raster.cells[at] += value
     }
 }
 
 /** Add an edge, in pixels: clipped to the region's sides, then accumulated row by row. */
-add_line :: fn(raster: ptr[mut Raster], from: Point, to: Point) {
+add_line :: fn(raster : ptr[mut Raster], from : Point, to : Point) {
     w :: cast[f32](raster.width)
     // In the region's own coordinates
     ax := from.x - cast[f32](raster.x0)
@@ -112,7 +112,7 @@ add_line :: fn(raster: ptr[mut Raster], from: Point, to: Point) {
 }
 
 /** Accumulate a line within the region's columns, 0 to width (font-rs's draw_line). */
-accumulate :: fn(raster: ptr[mut Raster], ax: f32, ay: f32, bx: f32, by: f32) {
+accumulate :: fn(raster : ptr[mut Raster], ax : f32, ay : f32, bx : f32, by : f32) {
     if ay == by {
         return void
     }
@@ -190,7 +190,7 @@ accumulate :: fn(raster: ptr[mut Raster], ax: f32, ay: f32, bx: f32, by: f32) {
  * @param into Where the coverage goes, a value for each of the region's columns.
  * @return Whether any of it's more than 0.
  */
-coverage_row :: fn(raster: ptr[mut Raster], row: usize, rule: FillRule, into: mut f32[]) -> bool {
+coverage_row :: fn(raster : ptr[mut Raster], row : usize, rule : FillRule, into : mut f32[]) -> bool {
     stride :: raster.width + 2
     start :: row * stride
     sum := cast[f32](0)
@@ -227,7 +227,7 @@ coverage_row :: fn(raster: ptr[mut Raster], row: usize, rule: FillRule, into: mu
  * @param into Where the polylines go, added to what's there.
  * @param closing Whether every subpath's closed, as a fill takes it; for a stroke, false, only those the path closes.
  */
-flatten :: fn(path: ptr[Path], transform: Affine, into: ptr[mut Path], closing: bool = true) {
+flatten :: fn(path : ptr[Path], transform : Affine, into : ptr[mut Path], closing : bool = true) {
     at := cast[usize](0)
     current := Point.{}
     start := Point.{}
@@ -268,7 +268,11 @@ flatten :: fn(path: ptr[Path], transform: Affine, into: ptr[mut Path], closing: 
             for i in cast[u32](1)..<n + 1 {
                 t :: cast[f32](i) / cast[f32](n)
                 u :: 1 - t
-                line_to(into, u * u * current.x + 2 * u * t * c.x + t * t * p.x, u * u * current.y + 2 * u * t * c.y + t * t * p.y)
+                line_to(
+                    into,
+                    u * u * current.x + 2 * u * t * c.x + t * t * p.x,
+                    u * u * current.y + 2 * u * t * c.y + t * t * p.y
+                )
             }
             current = p
             at += 2
@@ -295,7 +299,11 @@ flatten :: fn(path: ptr[Path], transform: Affine, into: ptr[mut Path], closing: 
                 b1 :: 3 * u * u * t
                 b2 :: 3 * u * t * t
                 b3 :: t * t * t
-                line_to(into, b0 * current.x + b1 * c1.x + b2 * c2.x + b3 * p.x, b0 * current.y + b1 * c1.y + b2 * c2.y + b3 * p.y)
+                line_to(
+                    into,
+                    b0 * current.x + b1 * c1.x + b2 * c2.x + b3 * p.x,
+                    b0 * current.y + b1 * c1.y + b2 * c2.y + b3 * p.y
+                )
             }
             current = p
             at += 3
@@ -314,7 +322,7 @@ flatten :: fn(path: ptr[Path], transform: Affine, into: ptr[mut Path], closing: 
 }
 
 /** How many lines a curve takes, from the square of how many its curvature needs. */
-segments_for :: fn(squared: f32) -> u32 {
+segments_for :: fn(squared : f32) -> u32 {
     n :: intrinsics.ceil(intrinsics.square_root(squared))
     if !(n >= 1) {
         return 1
@@ -323,12 +331,12 @@ segments_for :: fn(squared: f32) -> u32 {
 }
 
 /** A path's point, or the origin past its end. */
-point_of :: fn(path: ptr[Path], at: usize) -> Point {
+point_of :: fn(path : ptr[Path], at : usize) -> Point {
     return if at < path.points.count { path.points[at] } else { Point.{} }
 }
 
 /** The bounds of a polyline path, whole pixels holding every point; empty for none. */
-bounds_of :: fn(path: ptr[Path]) -> Rect {
+bounds_of :: fn(path : ptr[Path]) -> Rect {
     if path.points.count == 0 {
         return Rect.{}
     }
@@ -344,12 +352,16 @@ bounds_of :: fn(path: ptr[Path]) -> Rect {
     }
     // Clamped well within i32, so a wild coordinate can't overflow
     limit :: cast[f32](1 << 24)
-    return Rect.{x0 = cast[i32](intrinsics.floor(intrinsics.maximum(x0, -limit))), y0 = cast[i32](intrinsics.floor(intrinsics.maximum(y0, -limit))),
-        x1 = cast[i32](intrinsics.ceil(intrinsics.minimum(x1, limit))) + 1, y1 = cast[i32](intrinsics.ceil(intrinsics.minimum(y1, limit))) + 1}
+    return Rect.{
+        x0 = cast[i32](intrinsics.floor(intrinsics.maximum(x0, -limit))),
+        y0 = cast[i32](intrinsics.floor(intrinsics.maximum(y0, -limit))),
+        x1 = cast[i32](intrinsics.ceil(intrinsics.minimum(x1, limit))) + 1,
+        y1 = cast[i32](intrinsics.ceil(intrinsics.minimum(y1, limit))) + 1,
+    }
 }
 
 /** Add a polyline path's edges to a raster: each Line from the point before it, each subpath closed. */
-add_polylines :: fn(raster: ptr[mut Raster], path: ptr[Path]) {
+add_polylines :: fn(raster : ptr[mut Raster], path : ptr[Path]) {
     at := cast[usize](0)
     current := Point.{}
     start := Point.{}

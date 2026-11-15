@@ -108,7 +108,7 @@ Test :: struct {
     /** The function's name, which reports and filters use. */
     name : string,
     /** The function, which takes the test's state and gives back how it ended. */
-    run : fn(t: ptr[mut T]) -> Outcome,
+    run : fn(t : ptr[mut T]) -> Outcome,
     /** Its tags, from #tags(...), which decide whether a run includes it: the first tag_count. */
     tags : Tag[MAX_TAGS],
     /** How many of tags it has, 0 to MAX_TAGS. */
@@ -121,7 +121,7 @@ Test :: struct {
  * @param test The test, only read.
  * @return Its tags, a view of its own, good while it's unchanged; empty for none.
  */
-tags_of :: fn(test: ptr[Test]) -> Tag[] {
+tags_of :: fn(test : ptr[Test]) -> Tag[] {
     if test.tag_count <= test.tags.count {
         return test.tags[0..<test.tag_count]
     }
@@ -134,7 +134,8 @@ RunOptions :: struct {
     filter : string,
     /**
      * Which tags' tests are run, as words separated by commas, like "+slow,-network". "+name" runs the tests with that
-     * tag, though it's Excluded by default; "-name" leaves them out; "all" is +name for every tag. A bare name runs only
+     * tag, though it's Excluded by default; "-name" leaves them out; "all" is +name for every tag. A bare name runs
+     * only
      * the tests with it, or with any bare name given, whatever their tags' defaults, less those "-name" leaves out.
      * Empty runs each test none of whose tags is Excluded. A test left out by a tag is counted apart, as left out.
      */
@@ -155,7 +156,7 @@ Reporter :: struct #scoped {
     /** What write writes to, passed to it; null for a writer that needs nothing, like standard output's. */
     target : rawptr,
     /** Write text, which is good only during the call; it can't fail, so a writer with nowhere to put it drops it. */
-    write : fn(target: rawptr, text: string),
+    write : fn(target : rawptr, text : string),
 }
 
 /**
@@ -164,7 +165,7 @@ Reporter :: struct #scoped {
  * @param t The test's state, only read.
  * @return True while no assertion has failed.
  */
-passed :: fn(t: ptr[T]) -> bool {
+passed :: fn(t : ptr[T]) -> bool {
     return t.failure_count == 0
 }
 
@@ -174,7 +175,7 @@ passed :: fn(t: ptr[T]) -> bool {
  * @param text The text, only read.
  * @return A view of its bytes, good while it's unchanged; "" for none.
  */
-text_of :: fn(text: ptr[Text]) -> string {
+text_of :: fn(text : ptr[Text]) -> string {
     if text.count == 0 || text.count > text.bytes.count {
         return ""
     }
@@ -187,7 +188,7 @@ text_of :: fn(text: ptr[Text]) -> string {
  * @param from The text, any length.
  * @return It in a Text, cut at TEXT_BYTES.
  */
-text_from :: fn(from: string) -> Text {
+text_from :: fn(from : string) -> Text {
     made := Text.{}
     for character in from {
         if made.count >= made.bytes.count {
@@ -205,7 +206,7 @@ text_from :: fn(from: string) -> Text {
  * @param format The format string, as an assertion's message is.
  * @return True if it has a placeholder, so the message says what the values were and the automatic detail is left out.
  */
-references_values :: fn(format: string) -> bool {
+references_values :: fn(format : string) -> bool {
     at : usize = 0
     loop {
         if at >= format.count {
@@ -236,7 +237,7 @@ references_values :: fn(format: string) -> bool {
  * @param detail What was found instead, like "expected 1, got 2"; empty for none, and cut at TEXT_BYTES.
  * @param location Where the assertion was made.
  */
-record :: fn(t: ptr[mut T], message: string, detail: string, location: runtime.SourceCodeLocation) {
+record :: fn(t : ptr[mut T], message : string, detail : string, location : runtime.SourceCodeLocation) {
     index :: t.failure_count
     t.failure_count += 1
     if index >= t.failures.count {
@@ -271,11 +272,22 @@ record :: fn(t: ptr[mut T], message: string, detail: string, location: runtime.S
  * @param detail What the assertion says was found, used when message references no value.
  * @param location Where the assertion was made.
  */
-record_formatted :: fn(t: ptr[mut T], message: string, values: any[], detail: Text, location: runtime.SourceCodeLocation) {
+record_formatted :: fn(
+    t : ptr[mut T],
+    message : string,
+    values : any[],
+    detail : Text,
+    location : runtime.SourceCodeLocation
+) {
     storage : u8[TEXT_BYTES]
     formatted := text_buffer.make(storage)
     text_buffer.append_format(&formatted, message, values)
-    record(t, text_buffer.as_string(&formatted), if references_values(message) { "" } else { text_of(&detail) }, location)
+    record(
+        t,
+        text_buffer.as_string(&formatted),
+        if references_values(message) { "" } else { text_of(&detail) },
+        location
+    )
 }
 
 /**
@@ -285,7 +297,7 @@ record_formatted :: fn(t: ptr[mut T], message: string, values: any[], detail: Te
  * @param text The buffer. If it fills, what fits is kept.
  * @param value The value, of any type.
  */
-append_shown :: fn(text: ptr[mut text_buffer.TextBuffer], value: any) {
+append_shown :: fn(text : ptr[mut text_buffer.TextBuffer], value : any) {
     info :: type_info_of(value.type)
     if cast[rawptr](info) == null || reflection.unaliased(info).variant != .STRING {
         text_buffer.append_value(text, value)
@@ -323,7 +335,7 @@ append_shown :: fn(text: ptr[mut text_buffer.TextBuffer], value: any) {
  * @param values The values, shown in order.
  * @return The detail, cut at TEXT_BYTES.
  */
-detail_of :: fn(parts: string[], values: any[]) -> Text {
+detail_of :: fn(parts : string[], values : any[]) -> Text {
     storage : u8[TEXT_BYTES]
     detail := text_buffer.make(storage)
     for part, i in parts {
@@ -344,7 +356,7 @@ detail_of :: fn(parts: string[], values: any[]) -> Text {
  * @param location Where the check is; the caller's own.
  * @return True if the condition held; false, the failure recorded, if not. Most callers ignore it.
  */
-expect :: fn(t: ptr[mut T], condition: bool, message: string, location := #caller_location) -> bool {
+expect :: fn(t : ptr[mut T], condition : bool, message : string, location := #caller_location) -> bool {
     if !condition {
         record(t, message, "", location)
     }
@@ -362,11 +374,23 @@ expect :: fn(t: ptr[mut T], condition: bool, message: string, location := #calle
  * @param location Where the check is; the caller's own.
  * @return True if they were equal; false, the failure recorded, if not.
  */
-expect_eq :: fn[V](t: ptr[mut T], actual: V, expected: V, message #format(actual, expected) : string, location := #caller_location) -> bool {
+expect_eq :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    expected : V,
+    message #format(actual, expected) : string,
+    location := #caller_location
+) -> bool {
     if actual == expected {
         return true
     }
-    record_formatted(t, message, any.[actual, expected], detail_of(string.["expected ", ", got ", ""], any.[expected, actual]), location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, expected],
+        detail_of(string.["expected ", ", got ", ""], any.[expected, actual]),
+        location
+    )
     return false
 }
 
@@ -380,11 +404,23 @@ expect_eq :: fn[V](t: ptr[mut T], actual: V, expected: V, message #format(actual
  * @param location Where the check is; the caller's own.
  * @return True if they differed; false, the failure recorded, if not.
  */
-expect_ne :: fn[V](t: ptr[mut T], actual: V, unexpected: V, message #format(actual, unexpected) : string, location := #caller_location) -> bool {
+expect_ne :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    unexpected : V,
+    message #format(actual, unexpected) : string,
+    location := #caller_location
+) -> bool {
     if actual != unexpected {
         return true
     }
-    record_formatted(t, message, any.[actual, unexpected], detail_of(string.["expected anything but ", ""], any.[unexpected]), location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, unexpected],
+        detail_of(string.["expected anything but ", ""], any.[unexpected]),
+        location
+    )
     return false
 }
 
@@ -398,11 +434,23 @@ expect_ne :: fn[V](t: ptr[mut T], actual: V, unexpected: V, message #format(actu
  * @param location Where the check is; the caller's own.
  * @return True if actual < bound; false, the failure recorded, if not.
  */
-expect_lt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> bool {
+expect_lt :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> bool {
     if actual < bound {
         return true
     }
-    record_formatted(t, message, any.[actual, bound], detail_of(string.["expected less than ", ", got ", ""], any.[bound, actual]), location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, bound],
+        detail_of(string.["expected less than ", ", got ", ""], any.[bound, actual]),
+        location
+    )
     return false
 }
 
@@ -416,11 +464,23 @@ expect_lt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, b
  * @param location Where the check is; the caller's own.
  * @return True if actual <= bound; false, the failure recorded, if not.
  */
-expect_le :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> bool {
+expect_le :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> bool {
     if actual <= bound {
         return true
     }
-    record_formatted(t, message, any.[actual, bound], detail_of(string.["expected at most ", ", got ", ""], any.[bound, actual]), location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, bound],
+        detail_of(string.["expected at most ", ", got ", ""], any.[bound, actual]),
+        location
+    )
     return false
 }
 
@@ -434,11 +494,23 @@ expect_le :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, b
  * @param location Where the check is; the caller's own.
  * @return True if actual > bound; false, the failure recorded, if not.
  */
-expect_gt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> bool {
+expect_gt :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> bool {
     if actual > bound {
         return true
     }
-    record_formatted(t, message, any.[actual, bound], detail_of(string.["expected more than ", ", got ", ""], any.[bound, actual]), location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, bound],
+        detail_of(string.["expected more than ", ", got ", ""], any.[bound, actual]),
+        location
+    )
     return false
 }
 
@@ -452,11 +524,23 @@ expect_gt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, b
  * @param location Where the check is; the caller's own.
  * @return True if actual >= bound; false, the failure recorded, if not.
  */
-expect_ge :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> bool {
+expect_ge :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> bool {
     if actual >= bound {
         return true
     }
-    record_formatted(t, message, any.[actual, bound], detail_of(string.["expected at least ", ", got ", ""], any.[bound, actual]), location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, bound],
+        detail_of(string.["expected at least ", ", got ", ""], any.[bound, actual]),
+        location
+    )
     return false
 }
 
@@ -471,12 +555,24 @@ expect_ge :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, b
  * @param location Where the check is; the caller's own.
  * @return True if low <= actual <= high; false, the failure recorded, if not.
  */
-expect_within :: fn[V](t: ptr[mut T], actual: V, low: V, high: V, message #format(actual, low, high) : string, location := #caller_location) -> bool {
+expect_within :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    low : V,
+    high : V,
+    message #format(actual, low, high) : string,
+    location := #caller_location
+) -> bool {
     if low <= actual && actual <= high {
         return true
     }
-    record_formatted(t, message, any.[actual, low, high], detail_of(string.["expected ", " to ", ", got ", ""], any.[low, high, actual]),
-        location)
+    record_formatted(
+        t,
+        message,
+        any.[actual, low, high],
+        detail_of(string.["expected ", " to ", ", got ", ""], any.[low, high, actual]),
+        location
+    )
     return false
 }
 
@@ -491,15 +587,32 @@ expect_within :: fn[V](t: ptr[mut T], actual: V, low: V, high: V, message #forma
  * @return True if they have the same count and items; false, the failure recorded with both counts or the first
  *     index that differs and both items there, if not.
  */
-expect_same_items :: fn[V](t: ptr[mut T], actual: V[], expected: V[], message #format(actual, expected) : string, location := #caller_location) -> bool {
+expect_same_items :: fn[V](
+    t : ptr[mut T],
+    actual : V[],
+    expected : V[],
+    message #format(actual, expected) : string,
+    location := #caller_location
+) -> bool {
     if actual.count != expected.count {
-        record_formatted(t, message, any.[actual, expected], detail_of(string.["expected ", " items, got ", ""], any.[expected.count, actual.count]), location)
+        record_formatted(
+            t,
+            message,
+            any.[actual, expected],
+            detail_of(string.["expected ", " items, got ", ""], any.[expected.count, actual.count]),
+            location
+        )
         return false
     }
     for item, i in actual {
         if i < expected.count && item != expected[i] {
-            record_formatted(t, message, any.[actual, expected], detail_of(string.["at ", ", expected ", ", got ", ""],
-                any.[i, expected[i], item]), location)
+            record_formatted(
+                t,
+                message,
+                any.[actual, expected],
+                detail_of(string.["at ", ", expected ", ", got ", ""], any.[i, expected[i], item]),
+                location
+            )
             return false
         }
     }
@@ -515,11 +628,22 @@ expect_same_items :: fn[V](t: ptr[mut T], actual: V[], expected: V[], message #f
  * @param location Where the check is; the caller's own.
  * @return True if it was Ok; false, the failure recorded, if not.
  */
-expect_ok :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #format(result) : string, location := #caller_location) -> bool {
+expect_ok :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    message #format(result) : string,
+    location := #caller_location
+) -> bool {
     match result {
         case Ok => return true
         case Error(error) => {
-            record_formatted(t, message, any.[result], detail_of(string.["expected Ok, got Error(", ")"], any.[error]), location)
+            record_formatted(
+                t,
+                message,
+                any.[result],
+                detail_of(string.["expected Ok, got Error(", ")"], any.[error]),
+                location
+            )
             return false
         }
     }
@@ -535,16 +659,34 @@ expect_ok :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #format(resul
  * @param location Where the check is; the caller's own.
  * @return True if it was Error(wanted); false, the failure recorded, if it was Ok or another error.
  */
-expect_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], wanted: E, message #format(result, wanted) : string, location := #caller_location) -> bool {
+expect_error :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    wanted : E,
+    message #format(result, wanted) : string,
+    location := #caller_location
+) -> bool {
     match result {
         case Ok => {
-            record_formatted(t, message, any.[result, wanted], detail_of(string.["expected Error(", "), got Ok"], any.[wanted]), location)
+            record_formatted(
+                t,
+                message,
+                any.[result, wanted],
+                detail_of(string.["expected Error(", "), got Ok"], any.[wanted]),
+                location
+            )
         }
         case Error(error) => {
             if error == wanted {
                 return true
             }
-            record_formatted(t, message, any.[result, wanted], detail_of(string.["expected Error(", "), got Error(", ")"], any.[wanted, error]), location)
+            record_formatted(
+                t,
+                message,
+                any.[result, wanted],
+                detail_of(string.["expected Error(", "), got Error(", ")"], any.[wanted, error]),
+                location
+            )
         }
     }
     return false
@@ -559,7 +701,12 @@ expect_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], wanted: E, message
  * @param location Where the check is; the caller's own.
  * @return True if it was an Error; false, the failure recorded with what it held, if it was Ok.
  */
-expect_any_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #format(result) : string, location := #caller_location) -> bool {
+expect_any_error :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    message #format(result) : string,
+    location := #caller_location
+) -> bool {
     if result is_error {
         return true
     }
@@ -569,7 +716,15 @@ expect_any_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #forma
     }
     #else {
         match result {
-            case Ok(held) => record_formatted(t, message, any.[result], detail_of(string.["expected an error, got Ok(", ")"], any.[held]), location)
+            case Ok(
+                held
+            ) => record_formatted(
+                t,
+                message,
+                any.[result],
+                detail_of(string.["expected an error, got Ok(", ")"], any.[held]),
+                location
+            )
             case Error(error) => {}
         }
     }
@@ -586,12 +741,22 @@ expect_any_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #forma
  * @param location Where the check is; the caller's own.
  * @return True if it was an Error among errors; false, the failure recorded, if it was Ok or another error.
  */
-expect_error_in :: fn[V, E](t: ptr[mut T], result: Result[V, E], errors: E[], message #format(result, errors) : string,
-    location := #caller_location) -> bool {
-
+expect_error_in :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    errors : E[],
+    message #format(result, errors) : string,
+    location := #caller_location
+) -> bool {
     match result {
         case Ok => {
-            record_formatted(t, message, any.[result, errors], detail_of(string.["expected one of ", ", got Ok"], any.[errors]), location)
+            record_formatted(
+                t,
+                message,
+                any.[result, errors],
+                detail_of(string.["expected one of ", ", got Ok"], any.[errors]),
+                location
+            )
         }
         case Error(error) => {
             for each in errors {
@@ -599,7 +764,13 @@ expect_error_in :: fn[V, E](t: ptr[mut T], result: Result[V, E], errors: E[], me
                     return true
                 }
             }
-            record_formatted(t, message, any.[result, errors], detail_of(string.["expected one of ", ", got Error(", ")"], any.[errors, error]), location)
+            record_formatted(
+                t,
+                message,
+                any.[result, errors],
+                detail_of(string.["expected one of ", ", got Error(", ")"], any.[errors, error]),
+                location
+            )
         }
     }
     return false
@@ -614,7 +785,12 @@ expect_error_in :: fn[V, E](t: ptr[mut T], result: Result[V, E], errors: E[], me
  * @param location Where the check is; the caller's own.
  * @return True if it held one; false, the failure recorded, if it was empty.
  */
-expect_some :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : string, location := #caller_location) -> bool {
+expect_some :: fn[V](
+    t : ptr[mut T],
+    optional : V?,
+    message #format(optional) : string,
+    location := #caller_location
+) -> bool {
     if optional is_some {
         return true
     }
@@ -631,10 +807,21 @@ expect_some :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : st
  * @param location Where the check is; the caller's own.
  * @return True if it was empty; false, the failure recorded, if it held a value.
  */
-expect_none :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : string, location := #caller_location) -> bool {
+expect_none :: fn[V](
+    t : ptr[mut T],
+    optional : V?,
+    message #format(optional) : string,
+    location := #caller_location
+) -> bool {
     match optional {
         case Some(value) => {
-            record_formatted(t, message, any.[optional], detail_of(string.["expected none, got ", ""], any.[value]), location)
+            record_formatted(
+                t,
+                message,
+                any.[optional],
+                detail_of(string.["expected none, got ", ""], any.[value]),
+                location
+            )
             return false
         }
         case None => return true
@@ -648,7 +835,7 @@ expect_none :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : st
  * @param message What went wrong, for whoever reads the failure; plain text.
  * @param location Where it failed; the caller's own.
  */
-fail :: fn(t: ptr[mut T], message: string, location := #caller_location) {
+fail :: fn(t : ptr[mut T], message : string, location := #caller_location) {
     record(t, message, "", location)
 }
 
@@ -660,7 +847,7 @@ fail :: fn(t: ptr[mut T], message: string, location := #caller_location) {
  * @param reason Why, like "no system volume"; cut at TEXT_BYTES.
  * @return Error(Skipped), for the test to return: return testing.skip(t, "no disk").
  */
-skip :: fn(t: ptr[mut T], reason: string) -> Outcome {
+skip :: fn(t : ptr[mut T], reason : string) -> Outcome {
     t.skipped = true
     t.skip_reason = text_from(reason)
     return .Error(.Skipped)
@@ -674,7 +861,7 @@ skip :: fn(t: ptr[mut T], reason: string) -> Outcome {
  * @param format_string The note, each % replaced by the next value, as text_buffer's append_format does.
  * @param values The values for its placeholders.
  */
-note :: fn(t: ptr[mut T], format_string: string, values: any...) {
+note :: fn(t : ptr[mut T], format_string : string, values : any...) {
     index :: t.note_count
     t.note_count += 1
     if index >= t.notes.count {
@@ -691,7 +878,7 @@ note :: fn(t: ptr[mut T], format_string: string, values: any...) {
  *
  * @param t The test's state, whose notes shrink by one; none to end does nothing.
  */
-end_note :: fn(t: ptr[mut T]) {
+end_note :: fn(t : ptr[mut T]) {
     if t.note_count > 0 {
         t.note_count -= 1
     }
@@ -706,7 +893,12 @@ end_note :: fn(t: ptr[mut T]) {
  * @param index Which case, from 0.
  * @return What test gave; Error(Failed), the failure recorded, if index is past the cases, which tests_of doesn't make.
  */
-run_case_at :: fn[C](t: ptr[mut T], test: (fn(t: ptr[mut T], item: C) -> Outcome), cases: C[], index: usize) -> Outcome {
+run_case_at :: fn[C](
+    t : ptr[mut T],
+    test : (fn(t : ptr[mut T], item : C) -> Outcome),
+    cases : C[],
+    index : usize
+) -> Outcome {
     if index >= cases.count {
         fail(t, "the case is one of the test's cases")
         return .Error(.Failed)
@@ -720,7 +912,7 @@ run_case_at :: fn[C](t: ptr[mut T], test: (fn(t: ptr[mut T], item: C) -> Outcome
  * @param held What the expect_ assertion gave.
  * @return Ok if it held; Error(Failed) if not, for the test to return with ?.
  */
-outcome_of :: fn(held: bool) -> Outcome {
+outcome_of :: fn(held : bool) -> Outcome {
     if held {
         return .Ok
     }
@@ -736,7 +928,7 @@ outcome_of :: fn(held: bool) -> Outcome {
  * @param location Where the check is; the caller's own.
  * @return Ok if it held; Error(Failed), the failure recorded, if not.
  */
-require :: fn(t: ptr[mut T], condition: bool, message: string, location := #caller_location) -> Outcome {
+require :: fn(t : ptr[mut T], condition : bool, message : string, location := #caller_location) -> Outcome {
     return outcome_of(expect(t, condition, message, location))
 }
 
@@ -750,7 +942,13 @@ require :: fn(t: ptr[mut T], condition: bool, message: string, location := #call
  * @param location Where the check is; the caller's own.
  * @return Ok if they were equal; Error(Failed), the failure recorded, if not.
  */
-require_eq :: fn[V](t: ptr[mut T], actual: V, expected: V, message #format(actual, expected) : string, location := #caller_location) -> Outcome {
+require_eq :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    expected : V,
+    message #format(actual, expected) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_eq(t, actual, expected, message, location))
 }
 
@@ -764,7 +962,13 @@ require_eq :: fn[V](t: ptr[mut T], actual: V, expected: V, message #format(actua
  * @param location Where the check is; the caller's own.
  * @return Ok if they differed; Error(Failed), the failure recorded, if not.
  */
-require_ne :: fn[V](t: ptr[mut T], actual: V, unexpected: V, message #format(actual, unexpected) : string, location := #caller_location) -> Outcome {
+require_ne :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    unexpected : V,
+    message #format(actual, unexpected) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_ne(t, actual, unexpected, message, location))
 }
 
@@ -778,7 +982,13 @@ require_ne :: fn[V](t: ptr[mut T], actual: V, unexpected: V, message #format(act
  * @param location Where the check is; the caller's own.
  * @return Ok if it was; Error(Failed), the failure recorded, if not.
  */
-require_lt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> Outcome {
+require_lt :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_lt(t, actual, bound, message, location))
 }
 
@@ -792,7 +1002,13 @@ require_lt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, 
  * @param location Where the check is; the caller's own.
  * @return Ok if it was; Error(Failed), the failure recorded, if not.
  */
-require_le :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> Outcome {
+require_le :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_le(t, actual, bound, message, location))
 }
 
@@ -806,7 +1022,13 @@ require_le :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, 
  * @param location Where the check is; the caller's own.
  * @return Ok if it was; Error(Failed), the failure recorded, if not.
  */
-require_gt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> Outcome {
+require_gt :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_gt(t, actual, bound, message, location))
 }
 
@@ -820,7 +1042,13 @@ require_gt :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, 
  * @param location Where the check is; the caller's own.
  * @return Ok if it was; Error(Failed), the failure recorded, if not.
  */
-require_ge :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, bound) : string, location := #caller_location) -> Outcome {
+require_ge :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    bound : V,
+    message #format(actual, bound) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_ge(t, actual, bound, message, location))
 }
 
@@ -835,7 +1063,14 @@ require_ge :: fn[V](t: ptr[mut T], actual: V, bound: V, message #format(actual, 
  * @param location Where the check is; the caller's own.
  * @return Ok if it was; Error(Failed), the failure recorded, if not.
  */
-require_within :: fn[V](t: ptr[mut T], actual: V, low: V, high: V, message #format(actual, low, high) : string, location := #caller_location) -> Outcome {
+require_within :: fn[V](
+    t : ptr[mut T],
+    actual : V,
+    low : V,
+    high : V,
+    message #format(actual, low, high) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_within(t, actual, low, high, message, location))
 }
 
@@ -849,7 +1084,13 @@ require_within :: fn[V](t: ptr[mut T], actual: V, low: V, high: V, message #form
  * @param location Where the check is; the caller's own.
  * @return Ok if they did; Error(Failed), the failure recorded, if not.
  */
-require_same_items :: fn[V](t: ptr[mut T], actual: V[], expected: V[], message #format(actual, expected) : string, location := #caller_location) -> Outcome {
+require_same_items :: fn[V](
+    t : ptr[mut T],
+    actual : V[],
+    expected : V[],
+    message #format(actual, expected) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_same_items(t, actual, expected, message, location))
 }
 
@@ -862,7 +1103,12 @@ require_same_items :: fn[V](t: ptr[mut T], actual: V[], expected: V[], message #
  * @param location Where the check is; the caller's own.
  * @return The Ok value; Error(Failed), the failure recorded with the error, if it was an Error.
  */
-require_ok :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #format(result) : string, location := #caller_location) -> Result[V, Stopped] {
+require_ok :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    message #format(result) : string,
+    location := #caller_location
+) -> Result[V, Stopped] {
     // A Result[void, E]'s Ok holds nothing, so it's checked without taking a value out
     #if size_of(V) == 0 {
         if expect_ok(t, result, message, location) {
@@ -891,7 +1137,13 @@ require_ok :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #format(resu
  * @param location Where the check is; the caller's own.
  * @return Ok if it was Error(wanted); Error(Failed), the failure recorded, if not.
  */
-require_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], wanted: E, message #format(result, wanted) : string, location := #caller_location) -> Outcome {
+require_error :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    wanted : E,
+    message #format(result, wanted) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_error(t, result, wanted, message, location))
 }
 
@@ -904,7 +1156,12 @@ require_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], wanted: E, messag
  * @param location Where the check is; the caller's own.
  * @return Ok if it was an Error; Error(Failed), the failure recorded, if it was Ok.
  */
-require_any_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #format(result) : string, location := #caller_location) -> Outcome {
+require_any_error :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    message #format(result) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_any_error(t, result, message, location))
 }
 
@@ -918,9 +1175,13 @@ require_any_error :: fn[V, E](t: ptr[mut T], result: Result[V, E], message #form
  * @param location Where the check is; the caller's own.
  * @return Ok if it was; Error(Failed), the failure recorded, if not.
  */
-require_error_in :: fn[V, E](t: ptr[mut T], result: Result[V, E], errors: E[], message #format(result, errors) : string,
-    location := #caller_location) -> Outcome {
-
+require_error_in :: fn[V, E](
+    t : ptr[mut T],
+    result : Result[V, E],
+    errors : E[],
+    message #format(result, errors) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_error_in(t, result, errors, message, location))
 }
 
@@ -933,7 +1194,12 @@ require_error_in :: fn[V, E](t: ptr[mut T], result: Result[V, E], errors: E[], m
  * @param location Where the check is; the caller's own.
  * @return The value; Error(Failed), the failure recorded, if it was empty.
  */
-require_some :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : string, location := #caller_location) -> Result[V, Stopped] {
+require_some :: fn[V](
+    t : ptr[mut T],
+    optional : V?,
+    message #format(optional) : string,
+    location := #caller_location
+) -> Result[V, Stopped] {
     match optional {
         case Some(value) => return .Ok(value)
         case None => {
@@ -952,7 +1218,12 @@ require_some :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : s
  * @param location Where the check is; the caller's own.
  * @return Ok if it was empty; Error(Failed), the failure recorded, if it held a value.
  */
-require_none :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : string, location := #caller_location) -> Outcome {
+require_none :: fn[V](
+    t : ptr[mut T],
+    optional : V?,
+    message #format(optional) : string,
+    location := #caller_location
+) -> Outcome {
     return outcome_of(expect_none(t, optional, message, location))
 }
 
@@ -963,7 +1234,7 @@ require_none :: fn[V](t: ptr[mut T], optional: V?, message #format(optional) : s
  * @param format_string The line, without its newline, with % for each value, as text_buffer's append_format takes it.
  * @param values The values for its %s.
  */
-report :: fn(reporter: Reporter, format_string: string, values: any...) {
+report :: fn(reporter : Reporter, format_string : string, values : any...) {
     storage : u8[2 * TEXT_BYTES + 64]
     line := text_buffer.make(storage)
     text_buffer.append_format(&line, format_string, values)
@@ -982,7 +1253,7 @@ report :: fn(reporter: Reporter, format_string: string, values: any...) {
  * @param part What's looked for; empty is in everything.
  * @return Whether part appears in text, byte for byte.
  */
-contains :: fn(text: string, part: string) -> bool {
+contains :: fn(text : string, part : string) -> bool {
     if part.count > text.count {
         return false
     }
@@ -1008,7 +1279,7 @@ contains :: fn(text: string, part: string) -> bool {
  * @param count How many there are.
  * @return "" for 1, "s" for any other count.
  */
-plural :: fn(count: usize) -> string {
+plural :: fn(count : usize) -> string {
     return if count == 1 { "" } else { "s" }
 }
 
@@ -1021,7 +1292,7 @@ plural :: fn(count: usize) -> string {
  * @param word The word.
  * @return Whether the part is word, byte for byte.
  */
-word_is :: fn(text: string, start: usize, end: usize, word: string) -> bool {
+word_is :: fn(text : string, start : usize, end : usize, word : string) -> bool {
     if end < start || end > text.count || end - start != word.count {
         return false
     }
@@ -1040,7 +1311,7 @@ word_is :: fn(text: string, start: usize, end: usize, word: string) -> bool {
  * @param word The word looked for, with its + or - if it has one, like "-network".
  * @return Whether one of the list's words is word, byte for byte.
  */
-has_word :: fn(words: string, word: string) -> bool {
+has_word :: fn(words : string, word : string) -> bool {
     start : usize = 0
     for at in 0..=words.count {
         if at < words.count && words[at] != ',' {
@@ -1060,13 +1331,17 @@ has_word :: fn(words: string, word: string) -> bool {
  * @param words The list, as RunOptions.tags is.
  * @return Whether a run with it runs only the tests with the bare words' tags.
  */
-has_bare_word :: fn(words: string) -> bool {
+has_bare_word :: fn(words : string) -> bool {
     start : usize = 0
     for at in 0..=words.count {
         if at < words.count && words[at] != ',' {
             continue
         }
-        if at > start && start < words.count && words[start] != '+' && words[start] != '-' && !word_is(words, start, at, "all") {
+        if at > start
+            && start < words.count
+            && words[start] != '+'
+            && words[start] != '-'
+            && !word_is(words, start, at, "all") {
             return true
         }
         start = at + 1
@@ -1082,7 +1357,7 @@ has_bare_word :: fn(words: string) -> bool {
  * @param tag The tag.
  * @return The word, good while into is unchanged.
  */
-signed_word :: fn(into: ptr[mut text_buffer.TextBuffer], sign: string, tag: Tag) -> string {
+signed_word :: fn(into : ptr[mut text_buffer.TextBuffer], sign : string, tag : Tag) -> string {
     into.count = 0
     text_buffer.append(into, sign)
     text_buffer.append(into, tag.name)
@@ -1097,7 +1372,7 @@ signed_word :: fn(into: ptr[mut text_buffer.TextBuffer], sign: string, tag: Tag)
  * @return Whether it's run: false when asked leaves one of its tags out, gives bare names none of its tags has, or
  *     doesn't ask for one of its tags that's Excluded by default.
  */
-included_by_tags :: fn(tags: Tag[], asked: string) -> bool {
+included_by_tags :: fn(tags : Tag[], asked : string) -> bool {
     storage : u8[64]
     word := text_buffer.make(storage)
     for tag in tags {
@@ -1129,7 +1404,7 @@ included_by_tags :: fn(tags: Tag[], asked: string) -> bool {
  * @param reporter Where the lines go.
  * @param t The test's state once it's run, only read.
  */
-report_failed :: fn(reporter: Reporter, t: ptr[T]) {
+report_failed :: fn(reporter : Reporter, t : ptr[T]) {
     report(reporter, "test % ... FAILED", t.name)
     for &failure, i in t.failures {
         if i >= t.failure_count {
@@ -1165,7 +1440,7 @@ report_failed :: fn(reporter: Reporter, t: ptr[T]) {
  * @param options Which tests are run; the default runs each test none of whose tags is Excluded by default.
  * @return How many tests failed: 0 when all that ran passed or skipped themselves.
  */
-run :: fn(tests: Test[], reporter: Reporter, options: RunOptions = RunOptions.{}) -> usize {
+run :: fn(tests : Test[], reporter : Reporter, options : RunOptions = RunOptions.{}) -> usize {
     passed_count : usize = 0
     failed_count : usize = 0
     skipped_count : usize = 0
@@ -1218,7 +1493,7 @@ run :: fn(tests: Test[], reporter: Reporter, options: RunOptions = RunOptions.{}
  * @param target Not used.
  * @param text The text, written as it is.
  */
-write_standard_output :: fn(target: rawptr, text: string) {
+write_standard_output :: fn(target : rawptr, text : string) {
     runtime.write_output(text)
 }
 
@@ -1244,7 +1519,7 @@ BufferReporter :: struct #scoped {
  * @param target The BufferReporter, which lasts while run does.
  * @param text The line, appended as it is.
  */
-write_buffer :: fn(target: rawptr, text: string) {
+write_buffer :: fn(target : rawptr, text : string) {
     buffer :: cast[ptr[mut BufferReporter]](target)
     for character in text {
         if buffer.count >= buffer.bytes.count {
@@ -1262,7 +1537,7 @@ write_buffer :: fn(target: rawptr, text: string) {
  * @param buffer The buffer, which has to last while the reporter is used; what it's caught is added after what it has.
  * @return The reporter, for run.
  */
-reporter_of :: fn(buffer: ptr[mut BufferReporter]) -> Reporter {
+reporter_of :: fn(buffer : ptr[mut BufferReporter]) -> Reporter {
     return Reporter.{target = cast[rawptr](buffer), write = write_buffer}
 }
 
@@ -1272,7 +1547,7 @@ reporter_of :: fn(buffer: ptr[mut BufferReporter]) -> Reporter {
  * @param buffer The buffer, only read.
  * @return The report so far, a view of its bytes, good while it's unchanged; "" for none.
  */
-report_text :: fn(buffer: ptr[BufferReporter]) -> string {
+report_text :: fn(buffer : ptr[BufferReporter]) -> string {
     if buffer.count == 0 || buffer.count > buffer.bytes.count {
         return ""
     }
@@ -1287,7 +1562,7 @@ report_text :: fn(buffer: ptr[BufferReporter]) -> string {
  * @param failed What run gave, how many tests failed.
  * @param out Where the report goes when failed isn't 0.
  */
-write_report_if_failed :: fn(buffer: ptr[BufferReporter], failed: usize, out: Reporter) {
+write_report_if_failed :: fn(buffer : ptr[BufferReporter], failed : usize, out : Reporter) {
     if failed > 0 {
         out.write(out.target, report_text(buffer))
     }

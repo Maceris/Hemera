@@ -15,7 +15,7 @@ SecretWord :: distinct alias u64 #secret
  * @param data The bytes. Nothing is copied.
  * @return The same bytes as SecretByte, a view of data's memory that's good as long as data is.
  */
-as_secret #constant_time :: fn(data: u8[]) -> SecretByte[] {
+as_secret #constant_time :: fn(data : u8[]) -> SecretByte[] {
     return bit_cast[SecretByte[]](data)
 }
 
@@ -29,7 +29,7 @@ as_secret #constant_time :: fn(data: u8[]) -> SecretByte[] {
  * @param given The public bytes to check it against, like the tag that came with the message.
  * @return Whether they're the same bytes: false when their counts differ, true when both are empty.
  */
-equal #constant_time :: fn(secret: SecretByte[], given: u8[]) -> bool {
+equal #constant_time :: fn(secret : SecretByte[], given : u8[]) -> bool {
     if secret.count != given.count {
         return false
     }

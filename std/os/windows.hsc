@@ -27,7 +27,7 @@ import runtime from "base:runtime"
      * @return The value's length in units without the terminator, once it's in buffer; if it doesn't fit, the size
      *     needed with the terminator; 0 if it isn't set (ERROR_ENVVAR_NOT_FOUND), or is empty.
      */
-    GetEnvironmentVariableW #foreign(KERNEL32) : fn(name: rawptr, buffer: rawptr, size: u32) -> u32 : ---
+    GetEnvironmentVariableW #foreign(KERNEL32) : fn(name : rawptr, buffer : rawptr, size : u32) -> u32 : ---
     /**
      * Open or make a file, or open a folder.
      *
@@ -41,13 +41,13 @@ import runtime from "base:runtime"
      * @return The handle, which CloseHandle closes; INVALID_HANDLE on failure, with GetLastError saying why.
      */
     CreateFileW #foreign(KERNEL32) : fn(
-        name: rawptr,
-        access: u32,
-        share: u32,
-        security: rawptr,
-        disposition: u32,
-        flags: u32,
-        template: rawptr,
+        name : rawptr,
+        access : u32,
+        share : u32,
+        security : rawptr,
+        disposition : u32,
+        flags : u32,
+        template : rawptr
     ) -> rawptr : ---
     /**
      * Close a handle, which mustn't be used after.
@@ -56,7 +56,7 @@ import runtime from "base:runtime"
      *     nonzero, it's no good.
      * @return Nonzero if it was closed; 0 if not.
      */
-    CloseHandle #foreign(KERNEL32) : fn(handle: rawptr) -> i32 : ---
+    CloseHandle #foreign(KERNEL32) : fn(handle : rawptr) -> i32 : ---
     /**
      * Read from a file or pipe, waiting for it.
      *
@@ -68,7 +68,13 @@ import runtime from "base:runtime"
      * @return Nonzero if it worked; 0 if not, with GetLastError saying why, ERROR_BROKEN_PIPE for a pipe whose
      *     writers have all closed it.
      */
-    ReadFile #foreign(KERNEL32) : fn(file: rawptr, buffer: rawptr, count: u32, read: ptr[mut u32], overlapped: rawptr) -> i32 : ---
+    ReadFile #foreign(KERNEL32) : fn(
+        file : rawptr,
+        buffer : rawptr,
+        count : u32,
+        read : ptr[mut u32],
+        overlapped : rawptr
+    ) -> i32 : ---
     /**
      * Write to a file or pipe, waiting for it.
      *
@@ -79,7 +85,13 @@ import runtime from "base:runtime"
      * @param overlapped Null, for a handle that isn't overlapped.
      * @return Nonzero if it worked; 0 if not, with GetLastError saying why.
      */
-    WriteFile #foreign(KERNEL32) : fn(file: rawptr, bytes: rawptr, count: u32, written: ptr[mut u32], overlapped: rawptr) -> i32 : ---
+    WriteFile #foreign(KERNEL32) : fn(
+        file : rawptr,
+        bytes : rawptr,
+        count : u32,
+        written : ptr[mut u32],
+        overlapped : rawptr
+    ) -> i32 : ---
     /**
      * Give a file's size.
      *
@@ -88,14 +100,14 @@ import runtime from "base:runtime"
      * @param size Where its size in bytes is stored.
      * @return Nonzero if it worked; 0 if not, as for a pipe, with GetLastError saying why.
      */
-    GetFileSizeEx #foreign(KERNEL32) : fn(file: rawptr, size: ptr[mut i64]) -> i32 : ---
+    GetFileSizeEx #foreign(KERNEL32) : fn(file : rawptr, size : ptr[mut i64]) -> i32 : ---
     /**
      * Delete a file.
      *
      * @param name The file's path, UTF-16 with a terminator.
      * @return Nonzero if it was deleted, or marked to go once every handle to it is closed; 0 if not.
      */
-    DeleteFileW #foreign(KERNEL32) : fn(name: rawptr) -> i32 : ---
+    DeleteFileW #foreign(KERNEL32) : fn(name : rawptr) -> i32 : ---
     /**
      * Move a file or folder.
      *
@@ -104,7 +116,7 @@ import runtime from "base:runtime"
      * @param flags Like MOVEFILE_REPLACE_EXISTING and MOVEFILE_COPY_ALLOWED.
      * @return Nonzero once it's moved; 0 if not, with GetLastError saying why.
      */
-    MoveFileExW #foreign(KERNEL32) : fn(from: rawptr, to: rawptr, flags: u32) -> i32 : ---
+    MoveFileExW #foreign(KERNEL32) : fn(from : rawptr, to : rawptr, flags : u32) -> i32 : ---
     /**
      * Give a path's attributes.
      *
@@ -112,7 +124,7 @@ import runtime from "base:runtime"
      * @return Its attributes, like FILE_ATTRIBUTE_DIRECTORY; INVALID_FILE_ATTRIBUTES if nothing's there or it can't be
      *     looked at.
      */
-    GetFileAttributesW #foreign(KERNEL32) : fn(name: rawptr) -> u32 : ---
+    GetFileAttributesW #foreign(KERNEL32) : fn(name : rawptr) -> u32 : ---
     /**
      * Make a folder.
      *
@@ -120,14 +132,14 @@ import runtime from "base:runtime"
      * @param security Security attributes, or null for the defaults.
      * @return Nonzero once it's made; 0 if not, with GetLastError saying why.
      */
-    CreateDirectoryW #foreign(KERNEL32) : fn(name: rawptr, security: rawptr) -> i32 : ---
+    CreateDirectoryW #foreign(KERNEL32) : fn(name : rawptr, security : rawptr) -> i32 : ---
     /**
      * Remove an empty folder.
      *
      * @param name Its path, UTF-16 with a terminator.
      * @return Nonzero once it's removed; 0 if not, with GetLastError saying why.
      */
-    RemoveDirectoryW #foreign(KERNEL32) : fn(name: rawptr) -> i32 : ---
+    RemoveDirectoryW #foreign(KERNEL32) : fn(name : rawptr) -> i32 : ---
     /**
      * Start a search of a folder, giving its first match.
      *
@@ -136,7 +148,7 @@ import runtime from "base:runtime"
      * @return The search's handle, which FindClose closes; INVALID_HANDLE on failure, with GetLastError saying why,
      *     ERROR_FILE_NOT_FOUND when nothing matches.
      */
-    FindFirstFileW #foreign(KERNEL32) : fn(pattern: rawptr, data: rawptr) -> rawptr : ---
+    FindFirstFileW #foreign(KERNEL32) : fn(pattern : rawptr, data : rawptr) -> rawptr : ---
     /**
      * Give a search's next match.
      *
@@ -144,14 +156,14 @@ import runtime from "base:runtime"
      * @param data Where the match is stored, a FindData.
      * @return Nonzero if there was one; 0 at the end (ERROR_NO_MORE_FILES) or on failure.
      */
-    FindNextFileW #foreign(KERNEL32) : fn(search: rawptr, data: rawptr) -> i32 : ---
+    FindNextFileW #foreign(KERNEL32) : fn(search : rawptr, data : rawptr) -> i32 : ---
     /**
      * End a search.
      *
      * @param search The search's handle, which mustn't be used after.
      * @return Nonzero if it was closed; 0 if not.
      */
-    FindClose #foreign(KERNEL32) : fn(search: rawptr) -> i32 : ---
+    FindClose #foreign(KERNEL32) : fn(search : rawptr) -> i32 : ---
     /**
      * Give the process's current directory.
      *
@@ -160,14 +172,14 @@ import runtime from "base:runtime"
      * @return The path's length in units without the terminator, once it's in buffer; if it doesn't fit, the size
      *     needed with the terminator; 0 on failure.
      */
-    GetCurrentDirectoryW #foreign(KERNEL32) : fn(size: u32, buffer: rawptr) -> u32 : ---
+    GetCurrentDirectoryW #foreign(KERNEL32) : fn(size : u32, buffer : rawptr) -> u32 : ---
     /**
      * Change the process's current directory, for every thread.
      *
      * @param name The new one's path, UTF-16 with a terminator.
      * @return Nonzero once it's changed; 0 if not, with GetLastError saying why.
      */
-    SetCurrentDirectoryW #foreign(KERNEL32) : fn(name: rawptr) -> i32 : ---
+    SetCurrentDirectoryW #foreign(KERNEL32) : fn(name : rawptr) -> i32 : ---
 
     /** CreateFileW's access to read. */
     GENERIC_READ : u32 : 0x80000000
@@ -209,7 +221,7 @@ import runtime from "base:runtime"
      * @param code The code, as GetLastError gives it.
      * @return The OsError a caller sees.
      */
-    error_of :: fn(code: u32) -> OsError {
+    error_of :: fn(code : u32) -> OsError {
         // FILE_NOT_FOUND, PATH_NOT_FOUND, INVALID_DRIVE, BAD_NETPATH, ENVVAR_NOT_FOUND
         if code == 2 || code == 3 || code == 15 || code == 53 || code == 203 {
             return .NotFound
@@ -258,7 +270,7 @@ import runtime from "base:runtime"
      *     whatever the conversion's length: the converted text, then 0s to the end, so for text that isn't ASCII the
      *     count is more than the length and a 0. Empty, owning nothing, if memory ran out.
      */
-    wide :: fn(text: string) -> u16[] {
+    wide :: fn(text : string) -> u16[] {
         units, error :: runtime.new_array(u16, text.count + 1, context.allocator)
         if error != null {
             empty : u16[]
@@ -277,7 +289,7 @@ import runtime from "base:runtime"
      * @param units What wide, wide_path or relative_name gave.
      * @return How many units come before the first 0; units.count if there's none.
      */
-    wide_length :: fn(units: u16[]) -> usize {
+    wide_length :: fn(units : u16[]) -> usize {
         for unit, i in units {
             if unit == 0 {
                 return i
@@ -291,7 +303,7 @@ import runtime from "base:runtime"
      *
      * @param units The units, from the context's allocator, which mustn't be used after; empty ones are ignored.
      */
-    free_wide :: fn(units: u16[]) {
+    free_wide :: fn(units : u16[]) {
         runtime.free_array(units, context.allocator)
     }
 
@@ -303,7 +315,7 @@ import runtime from "base:runtime"
      * @return error InvalidPath for a path holding a 0 byte, which would cut it short; OutOfMemory if the units
      *     couldn't be allocated; or null.
      */
-    wide_path :: fn(path: string) -> (units : u16[], error : OsError?) {
+    wide_path :: fn(path : string) -> (units : u16[], error : OsError?) {
         empty : u16[]
         for character in path {
             if character == cast[char](0) {
@@ -326,7 +338,11 @@ import runtime from "base:runtime"
      * @return text The text, which the caller owns; "", owning nothing, for no units or on failure.
      * @return error OutOfMemory if the text couldn't be allocated, or null.
      */
-    narrow :: fn(start: rawptr, count: usize, allocator: runtime.Allocator) -> (text #unrestricted : string, error : OsError?) {
+    narrow :: fn(
+        start : rawptr,
+        count : usize,
+        allocator : runtime.Allocator
+    ) -> (text #unrestricted : string, error : OsError?) {
         if count == 0 {
             return "", null
         }
@@ -350,7 +366,10 @@ import runtime from "base:runtime"
      * @return error NotFound when it isn't set (or is set but empty, which Windows can't tell apart); InvalidPath for
      *     a name holding a 0 byte; OutOfMemory if a conversion couldn't be allocated; otherwise error_of's; or null.
      */
-    system_get_environment :: fn(name: string, allocator: runtime.Allocator) -> (value #unrestricted : string, error : OsError?) {
+    system_get_environment :: fn(
+        name : string,
+        allocator : runtime.Allocator
+    ) -> (value #unrestricted : string, error : OsError?) {
         name_units, name_error :: wide_path(name)
         if name_error != null {
             return "", name_error
@@ -392,7 +411,7 @@ import runtime from "base:runtime"
      *     couldn't be allocated; otherwise CreateFileW's error (error_of), like NotFound or AccessDenied (a file
      *     another process has opened without sharing it, too); or null.
      */
-    system_open :: fn(path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open :: fn(path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         units, path_error :: wide_path(path)
         if path_error != null {
             return File.{0}, path_error
@@ -412,7 +431,15 @@ import runtime from "base:runtime"
         else if mode == .READ_WRITE {
             access = GENERIC_READ | GENERIC_WRITE
         }
-        handle :: CreateFileW(cast[rawptr](units.data), access, FILE_SHARE_ALL, null, disposition, FILE_ATTRIBUTE_NORMAL, null)
+        handle :: CreateFileW(
+            cast[rawptr](units.data),
+            access,
+            FILE_SHARE_ALL,
+            null,
+            disposition,
+            FILE_ATTRIBUTE_NORMAL,
+            null
+        )
         if cast[u64](handle) == INVALID_HANDLE {
             code :: GetLastError()
             // Opening a folder as a file
@@ -429,7 +456,7 @@ import runtime from "base:runtime"
      *
      * @param file The open file, which isn't good afterwards.
      */
-    system_close :: fn(file: File) {
+    system_close :: fn(file : File) {
         CloseHandle(cast[rawptr](file.handle))
     }
 
@@ -446,7 +473,7 @@ import runtime from "base:runtime"
      *     closed it; fewer than asked when less was there. 0 on failure.
      * @return error ReadFile's error (error_of), like AccessDenied for a file not opened to read; or null.
      */
-    system_read :: fn(file: File, buffer: mut u8[]) -> (count : usize, error : OsError?) {
+    system_read :: fn(file : File, buffer : mut u8[]) -> (count : usize, error : OsError?) {
         if buffer.count == 0 {
             return 0, null
         }
@@ -473,7 +500,7 @@ import runtime from "base:runtime"
      * @return error WriteFile's error (error_of): AccessDenied for a file not opened to write, Other for a full
      *     volume; or null.
      */
-    system_write :: fn(file: File, bytes: rawptr, count: usize) -> (written : usize, error : OsError?) {
+    system_write :: fn(file : File, bytes : rawptr, count : usize) -> (written : usize, error : OsError?) {
         asked :: if count > MOST_PER_CALL { MOST_PER_CALL } else { count }
         written : u32 = 0
         if WriteFile(cast[rawptr](file.handle), bytes, cast[u32](asked), &written, null) == 0 {
@@ -489,7 +516,7 @@ import runtime from "base:runtime"
      * @return size Its size in bytes; 0 on failure.
      * @return error GetFileSizeEx's error (error_of), like Other for a pipe or a console; or null.
      */
-    system_file_size :: fn(file: File) -> (size : u64, error : OsError?) {
+    system_file_size :: fn(file : File) -> (size : u64, error : OsError?) {
         size : i64 = 0
         if GetFileSizeEx(cast[rawptr](file.handle), &size) == 0 {
             return 0, last_error()
@@ -505,7 +532,7 @@ import runtime from "base:runtime"
      *     be allocated; otherwise DeleteFileW's error (error_of), like NotFound, or AccessDenied for a read-only file
      *     or a folder.
      */
-    system_delete_file :: fn(path: string) -> OsError? {
+    system_delete_file :: fn(path : string) -> OsError? {
         units, path_error :: wide_path(path)
         if path_error != null {
             return path_error
@@ -525,7 +552,7 @@ import runtime from "base:runtime"
      * @return Null once it's moved; InvalidPath if either path holds a 0 byte; OutOfMemory if a conversion couldn't
      *     be allocated; otherwise MoveFileExW's error (error_of), like NotFound, AlreadyExists or AccessDenied.
      */
-    system_rename :: fn(from: string, to: string) -> OsError? {
+    system_rename :: fn(from : string, to : string) -> OsError? {
         source, source_error :: wide_path(from)
         if source_error != null {
             return source_error
@@ -536,7 +563,12 @@ import runtime from "base:runtime"
             return target_error
         }
         defer free_wide(target)
-        if MoveFileExW(cast[rawptr](source.data), cast[rawptr](target.data), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) == 0 {
+        if MoveFileExW(
+            cast[rawptr](source.data),
+            cast[rawptr](target.data),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED
+        )
+            == 0 {
             return last_error()
         }
         return null
@@ -549,7 +581,7 @@ import runtime from "base:runtime"
      * @return DIRECTORY for a folder, FILE for anything else that's there, and NOTHING when nothing is, it can't be
      *     looked at, the path holds a 0 byte, or its conversion couldn't be allocated.
      */
-    system_path_kind :: fn(path: string) -> PathKind {
+    system_path_kind :: fn(path : string) -> PathKind {
         units, path_error :: wide_path(path)
         if path_error != null {
             return .NOTHING
@@ -574,7 +606,7 @@ import runtime from "base:runtime"
      *     allocated; otherwise CreateDirectoryW's error (error_of): AlreadyExists if anything is there, NotFound if a
      *     folder on the way is missing, and so on.
      */
-    system_make_directory :: fn(path: string) -> OsError? {
+    system_make_directory :: fn(path : string) -> OsError? {
         units, path_error :: wide_path(path)
         if path_error != null {
             return path_error
@@ -594,7 +626,7 @@ import runtime from "base:runtime"
      *     be allocated; otherwise RemoveDirectoryW's error (error_of): DirectoryNotEmpty for a folder with something
      *     in it, NotADirectory for a file, NotFound, and so on.
      */
-    system_remove_directory :: fn(path: string) -> OsError? {
+    system_remove_directory :: fn(path : string) -> OsError? {
         units, path_error :: wide_path(path)
         if path_error != null {
             return path_error
@@ -631,7 +663,11 @@ import runtime from "base:runtime"
      *     OutOfMemory if a conversion or a name couldn't be allocated; otherwise FindFirstFileW's error (error_of),
      *     like NotFound.
      */
-    system_list_directory :: fn(path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory :: fn(
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         // Everything in it: path\*
         units, path_error :: wide_path(path)
         if path_error != null {
@@ -702,7 +738,7 @@ import runtime from "base:runtime"
      * @return error OutOfMemory if a buffer or the path couldn't be allocated; otherwise GetCurrentDirectoryW's error
      *     (error_of); or null.
      */
-    system_current_directory :: fn(allocator: runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
+    system_current_directory :: fn(allocator : runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
         loop {
             // The size with its terminator, then the path, which may change in between
             needed :: GetCurrentDirectoryW(0, null)
@@ -734,7 +770,7 @@ import runtime from "base:runtime"
      *     be allocated; otherwise SetCurrentDirectoryW's error (error_of), like NotFound or NotADirectory, the current
      *     directory left as it was.
      */
-    system_set_current_directory :: fn(path: string) -> OsError? {
+    system_set_current_directory :: fn(path : string) -> OsError? {
         units, path_error :: wide_path(path)
         if path_error != null {
             return path_error
@@ -769,8 +805,19 @@ import runtime from "base:runtime"
      * @param extended_length The size of extended in bytes, or 0.
      * @return An NTSTATUS: negative on failure, which status_error translates.
      */
-    NtCreateFile #foreign(NTDLL) : fn(handle: ptr[mut rawptr], access: u32, attributes: rawptr, status: rawptr, size: rawptr, file_attributes: u32,
-        share: u32, disposition: u32, options: u32, extended: rawptr, extended_length: u32) -> i32 : ---
+    NtCreateFile #foreign(NTDLL) : fn(
+        handle : ptr[mut rawptr],
+        access : u32,
+        attributes : rawptr,
+        status : rawptr,
+        size : rawptr,
+        file_attributes : u32,
+        share : u32,
+        disposition : u32,
+        options : u32,
+        extended : rawptr,
+        extended_length : u32
+    ) -> i32 : ---
     /**
      * Give a path's basic information without opening it.
      *
@@ -778,7 +825,7 @@ import runtime from "base:runtime"
      * @param information Where FILE_BASIC_INFORMATION is stored, 40 bytes: four times, then the attributes at 32.
      * @return An NTSTATUS: negative when nothing's there or it can't be looked at.
      */
-    NtQueryAttributesFile #foreign(NTDLL) : fn(attributes: rawptr, information: rawptr) -> i32 : ---
+    NtQueryAttributesFile #foreign(NTDLL) : fn(attributes : rawptr, information : rawptr) -> i32 : ---
     /**
      * Change something about an open file, like its name or that it's to be deleted.
      *
@@ -789,7 +836,13 @@ import runtime from "base:runtime"
      * @param class What information is, like FILE_RENAME_INFORMATION or FILE_DISPOSITION_INFORMATION.
      * @return An NTSTATUS: negative on failure, which status_error translates.
      */
-    NtSetInformationFile #foreign(NTDLL) : fn(handle: rawptr, status: rawptr, information: rawptr, length: u32, class: u32) -> i32 : ---
+    NtSetInformationFile #foreign(NTDLL) : fn(
+        handle : rawptr,
+        status : rawptr,
+        information : rawptr,
+        length : u32,
+        class : u32
+    ) -> i32 : ---
     /**
      * Read information about an open file, like a folder's entries.
      *
@@ -800,7 +853,12 @@ import runtime from "base:runtime"
      * @return Nonzero if it worked; 0 if not, with GetLastError saying why, ERROR_NO_MORE_FILES after a folder's last
      *     entry.
      */
-    GetFileInformationByHandleEx #foreign(KERNEL32) : fn(handle: rawptr, class: u32, buffer: rawptr, size: u32) -> i32 : ---
+    GetFileInformationByHandleEx #foreign(KERNEL32) : fn(
+        handle : rawptr,
+        class : u32,
+        buffer : rawptr,
+        size : u32
+    ) -> i32 : ---
 
     /** UNICODE_STRING: its length and room in bytes, without a terminator, and its units. */
     UnicodeString :: struct #scoped {
@@ -909,7 +967,7 @@ import runtime from "base:runtime"
      * @param status The status, negative.
      * @return The OsError a caller sees.
      */
-    status_error :: fn(status: i32) -> OsError {
+    status_error :: fn(status : i32) -> OsError {
         code :: cast[u32](status)
         // NO_SUCH_FILE, OBJECT_NAME_NOT_FOUND, OBJECT_PATH_NOT_FOUND
         if code == 0xc000000f || code == 0xc0000034 || code == 0xc000003a {
@@ -949,7 +1007,7 @@ import runtime from "base:runtime"
      * @return units As wide_path's, from the context's allocator, which free_wide gives back.
      * @return error As wide_path's: InvalidPath for a 0 byte, OutOfMemory; or null.
      */
-    relative_name :: fn(path: string) -> (units : u16[], error : OsError?) {
+    relative_name :: fn(path : string) -> (units : u16[], error : OsError?) {
         units, error :: wide_path(path)
         if error != null {
             return units, error
@@ -977,7 +1035,13 @@ import runtime from "base:runtime"
      * @return error InvalidPath for a path holding a 0 byte or of more than 32767 UTF-16 units; OutOfMemory if its
      *     conversion couldn't be allocated; otherwise NtCreateFile's (status_error); or null.
      */
-    open_relative :: fn(root: rawptr, path: string, access: u32, disposition: u32, options: u32) -> (handle : rawptr, error : OsError?) {
+    open_relative :: fn(
+        root : rawptr,
+        path : string,
+        access : u32,
+        disposition : u32,
+        options : u32
+    ) -> (handle : rawptr, error : OsError?) {
         units, path_error :: relative_name(path)
         if path_error != null {
             return null, path_error
@@ -989,12 +1053,27 @@ import runtime from "base:runtime"
             return null, OsError.InvalidPath
         }
         name := UnicodeString.{length = cast[u16](bytes), maximum = cast[u16](bytes), buffer = cast[rawptr](units.data)}
-        attributes := ObjectAttributes.{length = cast[u32](size_of(ObjectAttributes)), root = root, name = cast[rawptr](&name),
-            attributes = OBJ_CASE_INSENSITIVE}
+        attributes := ObjectAttributes.{
+            length = cast[u32](size_of(ObjectAttributes)),
+            root = root,
+            name = cast[rawptr](&name),
+            attributes = OBJ_CASE_INSENSITIVE,
+        }
         io : IoStatus
         handle : rawptr = null
-        status :: NtCreateFile(&handle, access | SYNCHRONIZE, cast[rawptr](&attributes), cast[rawptr](&io), null, FILE_ATTRIBUTE_NORMAL,
-            FILE_SHARE_ALL, disposition, options | FILE_SYNCHRONOUS_IO_NONALERT, null, 0)
+        status :: NtCreateFile(
+            &handle,
+            access | SYNCHRONIZE,
+            cast[rawptr](&attributes),
+            cast[rawptr](&io),
+            null,
+            FILE_ATTRIBUTE_NORMAL,
+            FILE_SHARE_ALL,
+            disposition,
+            options | FILE_SYNCHRONOUS_IO_NONALERT,
+            null,
+            0
+        )
         if status < 0 {
             return null, status_error(status)
         }
@@ -1015,7 +1094,7 @@ import runtime from "base:runtime"
      * @return error As open_relative's: IsADirectory for a folder, NotFound, AccessDenied, InvalidPath and so on; or
      *     null.
      */
-    system_open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open_in :: fn(directory : Directory, path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         access := GENERIC_READ
         disposition := FILE_OPEN
         if mode == .WRITE {
@@ -1030,7 +1109,13 @@ import runtime from "base:runtime"
         else if mode == .READ_WRITE {
             access = GENERIC_READ | GENERIC_WRITE
         }
-        handle, error :: open_relative(cast[rawptr](directory.handle), path, access, disposition, FILE_NON_DIRECTORY_FILE)
+        handle, error :: open_relative(
+            cast[rawptr](directory.handle),
+            path,
+            access,
+            disposition,
+            FILE_NON_DIRECTORY_FILE
+        )
         if error != null {
             return File.{0}, error
         }
@@ -1046,7 +1131,7 @@ import runtime from "base:runtime"
      * @return error NotADirectory for a file; InvalidPath for a path holding a 0 byte; OutOfMemory if its conversion
      *     couldn't be allocated; otherwise CreateFileW's error (error_of), like NotFound or AccessDenied; or null.
      */
-    system_open_directory :: fn(path: string) -> (directory : Directory, error : OsError?) {
+    system_open_directory :: fn(path : string) -> (directory : Directory, error : OsError?) {
         if system_path_kind(path) == .FILE {
             return Directory.{0}, OsError.NotADirectory
         }
@@ -1055,7 +1140,15 @@ import runtime from "base:runtime"
             return Directory.{0}, path_error
         }
         defer free_wide(units)
-        handle :: CreateFileW(cast[rawptr](units.data), DIRECTORY_ACCESS, FILE_SHARE_ALL, null, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, null)
+        handle :: CreateFileW(
+            cast[rawptr](units.data),
+            DIRECTORY_ACCESS,
+            FILE_SHARE_ALL,
+            null,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            null
+        )
         if cast[u64](handle) == INVALID_HANDLE {
             return Directory.{0}, last_error()
         }
@@ -1082,8 +1175,14 @@ import runtime from "base:runtime"
      * @return error As open_relative's: NotADirectory for a file, NotFound, AccessDenied, InvalidPath and so on; or
      *     null.
      */
-    system_open_directory_in :: fn(directory: Directory, path: string) -> (opened : Directory, error : OsError?) {
-        handle, error :: open_relative(cast[rawptr](directory.handle), path, DIRECTORY_ACCESS, FILE_OPEN, FILE_DIRECTORY_FILE)
+    system_open_directory_in :: fn(directory : Directory, path : string) -> (opened : Directory, error : OsError?) {
+        handle, error :: open_relative(
+            cast[rawptr](directory.handle),
+            path,
+            DIRECTORY_ACCESS,
+            FILE_OPEN,
+            FILE_DIRECTORY_FILE
+        )
         if error != null {
             return Directory.{0}, error
         }
@@ -1095,7 +1194,7 @@ import runtime from "base:runtime"
      *
      * @param directory The open directory, which isn't good afterwards.
      */
-    system_close_directory :: fn(directory: Directory) {
+    system_close_directory :: fn(directory : Directory) {
         CloseHandle(cast[rawptr](directory.handle))
     }
 
@@ -1107,8 +1206,14 @@ import runtime from "base:runtime"
      * @return Null once it's made; open_relative's error otherwise: AlreadyExists if anything is there, NotFound if a
      *     folder on the way is missing, and so on.
      */
-    system_make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
-        handle, error :: open_relative(cast[rawptr](directory.handle), path, FILE_LIST_DIRECTORY, FILE_CREATE, FILE_DIRECTORY_FILE)
+    system_make_directory_in :: fn(directory : Directory, path : string) -> OsError? {
+        handle, error :: open_relative(
+            cast[rawptr](directory.handle),
+            path,
+            FILE_LIST_DIRECTORY,
+            FILE_CREATE,
+            FILE_DIRECTORY_FILE
+        )
         if error != null {
             return error
         }
@@ -1127,7 +1232,7 @@ import runtime from "base:runtime"
      *     wrong kind, or AccessDenied; or NtSetInformationFile's (status_error), like DirectoryNotEmpty or
      *     AccessDenied for a read-only file.
      */
-    delete_relative :: fn(directory: Directory, path: string, options: u32) -> OsError? {
+    delete_relative :: fn(directory : Directory, path : string, options : u32) -> OsError? {
         handle, error :: open_relative(cast[rawptr](directory.handle), path, DELETE, FILE_OPEN, options)
         if error != null {
             return error
@@ -1137,7 +1242,13 @@ import runtime from "base:runtime"
         disposition : u8[8]
         disposition[0] = 1
         io : IoStatus
-        status :: NtSetInformationFile(handle, cast[rawptr](&io), cast[rawptr](&disposition[0]), 1, FILE_DISPOSITION_INFORMATION)
+        status :: NtSetInformationFile(
+            handle,
+            cast[rawptr](&io),
+            cast[rawptr](&disposition[0]),
+            1,
+            FILE_DISPOSITION_INFORMATION
+        )
         if status < 0 {
             return status_error(status)
         }
@@ -1151,7 +1262,7 @@ import runtime from "base:runtime"
      * @param path The file's path beneath it.
      * @return As delete_relative's; IsADirectory for a folder.
      */
-    system_delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_delete_file_in :: fn(directory : Directory, path : string) -> OsError? {
         return delete_relative(directory, path, FILE_NON_DIRECTORY_FILE)
     }
 
@@ -1162,7 +1273,7 @@ import runtime from "base:runtime"
      * @param path The folder's path beneath it.
      * @return As delete_relative's; DirectoryNotEmpty for a folder with something in it, NotADirectory for a file.
      */
-    system_remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_remove_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         return delete_relative(directory, path, FILE_DIRECTORY_FILE)
     }
 
@@ -1179,7 +1290,7 @@ import runtime from "base:runtime"
      *     OutOfMemory if the rename's information couldn't be allocated; or NtSetInformationFile's (status_error),
      *     like AccessDenied.
      */
-    system_rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+    system_rename_in :: fn(directory : Directory, from : string, to : string) -> OsError? {
         handle, error :: open_relative(cast[rawptr](directory.handle), from, DELETE, FILE_OPEN, 0)
         if error != null {
             return error
@@ -1201,7 +1312,13 @@ import runtime from "base:runtime"
         cast[ptr[mut u32]](cast[rawptr](information.data) + 16)^ = cast[u32](bytes)
         intrinsics.mem_copy_non_overlapping(cast[mut rawptr](information.data) + 20, cast[rawptr](units.data), bytes)
         io : IoStatus
-        status :: NtSetInformationFile(handle, cast[rawptr](&io), cast[rawptr](information.data), cast[u32](information.count), FILE_RENAME_INFORMATION)
+        status :: NtSetInformationFile(
+            handle,
+            cast[rawptr](&io),
+            cast[rawptr](information.data),
+            cast[u32](information.count),
+            FILE_RENAME_INFORMATION
+        )
         if status < 0 {
             return status_error(status)
         }
@@ -1219,7 +1336,7 @@ import runtime from "base:runtime"
      *     looked at, the path holds a 0 byte or is more than 32767 UTF-16 units, as open_relative refuses, or its
      *     conversion couldn't be allocated.
      */
-    system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+    system_path_kind_in :: fn(directory : Directory, path : string) -> PathKind {
         units, path_error :: relative_name(path)
         if path_error != null {
             return .NOTHING
@@ -1230,8 +1347,12 @@ import runtime from "base:runtime"
             return .NOTHING
         }
         name := UnicodeString.{length = cast[u16](bytes), maximum = cast[u16](bytes), buffer = cast[rawptr](units.data)}
-        attributes := ObjectAttributes.{length = cast[u32](size_of(ObjectAttributes)), root = cast[rawptr](directory.handle),
-            name = cast[rawptr](&name), attributes = OBJ_CASE_INSENSITIVE}
+        attributes := ObjectAttributes.{
+            length = cast[u32](size_of(ObjectAttributes)),
+            root = cast[rawptr](directory.handle),
+            name = cast[rawptr](&name),
+            attributes = OBJ_CASE_INSENSITIVE,
+        }
         basic : u64[5]
         if NtQueryAttributesFile(cast[rawptr](&attributes), cast[rawptr](&basic[0])) < 0 {
             return .NOTHING
@@ -1257,10 +1378,23 @@ import runtime from "base:runtime"
      * @return Null once every entry is added; open_relative's error, like NotFound or NotADirectory for a file;
      *     OutOfMemory if the buffer or a name couldn't be allocated; or GetFileInformationByHandleEx's (error_of).
      */
-    system_list_directory_in :: fn(directory: Directory, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
-        // A handle of its own to list through, even for the directory itself (an empty name, relative to it), so it lists from the start
-        handle, error :: open_relative(cast[rawptr](directory.handle), path, DIRECTORY_ACCESS, FILE_OPEN,
-            FILE_DIRECTORY_FILE)
+    system_list_directory_in :: fn(
+        directory : Directory,
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
+        /*
+         * A handle of its own to list through, even for the directory itself (an empty name, relative to it), so it
+         * lists from the start
+         */
+        handle, error :: open_relative(
+            cast[rawptr](directory.handle),
+            path,
+            DIRECTORY_ACCESS,
+            FILE_OPEN,
+            FILE_DIRECTORY_FILE
+        )
         if error != null {
             return error
         }

@@ -36,22 +36,22 @@ NEXT_PROTOCOL_NTPV4 : u16 : 0
 AEAD_AES_SIV_CMAC_256 : u16 : 15
 
 // NTS-KE's record types (RFC 8915 §4.1), the high bit of the type saying a record's critical
-RECORD_END : u16 : 0
+RECORD_END           : u16 : 0
 RECORD_NEXT_PROTOCOL : u16 : 1
-RECORD_ERROR : u16 : 2
-RECORD_WARNING : u16 : 3
-RECORD_AEAD : u16 : 4
-RECORD_COOKIE : u16 : 5
-RECORD_SERVER : u16 : 6
-RECORD_PORT : u16 : 7
+RECORD_ERROR         : u16 : 2
+RECORD_WARNING       : u16 : 3
+RECORD_AEAD          : u16 : 4
+RECORD_COOKIE        : u16 : 5
+RECORD_SERVER        : u16 : 6
+RECORD_PORT          : u16 : 7
 /** A record type's critical bit: a record of an unknown type that has it can't be ignored. */
 CRITICAL : u16 : 0x8000
 
 // NTP's extension fields NTS uses (RFC 8915 §5.7)
-FIELD_UNIQUE_IDENTIFIER : u16 : 0x0104
-FIELD_COOKIE : u16 : 0x0204
+FIELD_UNIQUE_IDENTIFIER  : u16 : 0x0104
+FIELD_COOKIE             : u16 : 0x0204
 FIELD_COOKIE_PLACEHOLDER : u16 : 0x0304
-FIELD_AUTHENTICATOR : u16 : 0x0404
+FIELD_AUTHENTICATOR      : u16 : 0x0404
 
 /** The most cookies a session keeps, as RFC 8915 has a client keep. */
 MAX_COOKIES :: 8
@@ -126,7 +126,7 @@ KeReading :: struct {
  * @param into Where it goes, at least 16 bytes.
  * @return How many bytes it is; 0 if into's too short.
  */
-ke_request :: fn(into: mut u8[]) -> usize {
+ke_request :: fn(into : mut u8[]) -> usize {
     writer := tls.Writer.{}
     tls.put_u16(into, &writer, CRITICAL | RECORD_NEXT_PROTOCOL)
     tls.put_u16(into, &writer, 2)
@@ -146,7 +146,7 @@ ke_request :: fn(into: mut u8[]) -> usize {
  * @param session The session, which its cookies, server and port are written to; set afresh each time.
  * @return What it came to.
  */
-read_ke_response :: fn(response: u8[], session: ptr[mut Session]) -> KeReading {
+read_ke_response :: fn(response : u8[], session : ptr[mut Session]) -> KeReading {
     session.cookie_count = 0
     session.server_length = 0
     session.port = NTP_PORT
@@ -192,8 +192,11 @@ read_ke_response :: fn(response: u8[], session: ptr[mut Session]) -> KeReading {
             session.aead_agreed = true
         }
         else if record == RECORD_ERROR {
-            return KeReading.{outcome = .Refused, error = if length == 2 { tls.get_u16(response, &body) } else { cast[u16](0) },
-                read = reader.at}
+            return KeReading.{
+                outcome = .Refused,
+                error = if length == 2 { tls.get_u16(response, &body) } else { cast[u16](0) },
+                read = reader.at,
+            }
         }
         else if record == RECORD_COOKIE {
             add_cookie(session, tls.range(response, body.at, body.end))
@@ -232,7 +235,7 @@ read_ke_response :: fn(response: u8[], session: ptr[mut Session]) -> KeReading {
  * @param text The bytes.
  * @return True if each is one of those.
  */
-is_host_text :: fn(text: u8[]) -> bool {
+is_host_text :: fn(text : u8[]) -> bool {
     for byte in text {
         letter :: (byte >= 0x61 && byte <= 0x7a) || (byte >= 0x41 && byte <= 0x5a)
         digit :: byte >= 0x30 && byte <= 0x39
@@ -249,7 +252,7 @@ is_host_text :: fn(text: u8[]) -> bool {
  * @param session The session.
  * @param cookie The cookie.
  */
-add_cookie :: fn(session: ptr[mut Session], cookie: u8[]) {
+add_cookie :: fn(session : ptr[mut Session], cookie : u8[]) {
     at :: session.cookie_count
     if cookie.count == 0 || cookie.count > COOKIE_BYTES || at >= session.cookies.count {
         return void
@@ -271,7 +274,7 @@ add_cookie :: fn(session: ptr[mut Session], cookie: u8[]) {
  * @param connection The TLS connection NTS-KE ran over, connected, which has to have agreed on ALPN's "ntske/1".
  * @return True with the keys set; false if the connection didn't agree on "ntske/1", or can't export.
  */
-take_keys :: fn(session: ptr[mut Session], connection: ptr[tls.Connection]) -> bool {
+take_keys :: fn(session : ptr[mut Session], connection : ptr[tls.Connection]) -> bool {
     session.keyed = false
     if !tls.protocol_agreed(connection) {
         return false
@@ -309,8 +312,11 @@ Pending :: struct {
  * @param pending Where what it was goes, to check its answer against.
  * @return How many bytes it is; 0 if the session isn't keyed, has no cookie, or into's too short for it.
  */
-make_request :: fn(session: ptr[mut Session], into: mut u8[], pending: ptr[mut Pending]) -> usize {
-    if !session.keyed || session.cookie_count == 0 || session.cookie_count > session.cookies.count || into.count < HEADER_BYTES {
+make_request :: fn(session : ptr[mut Session], into : mut u8[], pending : ptr[mut Pending]) -> usize {
+    if !session.keyed
+        || session.cookie_count == 0
+        || session.cookie_count > session.cookies.count
+        || into.count < HEADER_BYTES {
         return 0
     }
     transmit : u8[8]
@@ -332,7 +338,8 @@ make_request :: fn(session: ptr[mut Session], into: mut u8[], pending: ptr[mut P
     placeholder :: field_bytes(cookie.count)
     wanted :: MAX_COOKIES - 1 - session.cookie_count
     for asked in 0..<wanted {
-        if writer.at + placeholder + authenticator_bytes() > into.count || writer.at + placeholder + authenticator_bytes() > REQUEST_BYTES {
+        if writer.at + placeholder + authenticator_bytes() > into.count
+            || writer.at + placeholder + authenticator_bytes() > REQUEST_BYTES {
             break
         }
         put_field(into, &writer, FIELD_COOKIE_PLACEHOLDER, cookie, true)
@@ -343,8 +350,14 @@ make_request :: fn(session: ptr[mut Session], into: mut u8[], pending: ptr[mut P
     random.fill(nonce[0..<NONCE_BYTES])
     tag : crypto.Tag128
     empty : u8[1]
-    if !crypto.aes_siv_cmac256_seal(&session.c2s, tls.range(into, 0, associated), nonce[0..<NONCE_BYTES],
-        crypto.as_secret(empty[0..<0]), &tag, empty[0..<0]) {
+    if !crypto.aes_siv_cmac256_seal(
+        &session.c2s,
+        tls.range(into, 0, associated),
+        nonce[0..<NONCE_BYTES],
+        crypto.as_secret(empty[0..<0]),
+        &tag,
+        empty[0..<0]
+    ) {
         return 0
     }
     tls.put_u16(into, &writer, FIELD_AUTHENTICATOR)
@@ -362,7 +375,7 @@ authenticator_bytes :: fn() -> usize {
 }
 
 /** An extension field's bytes for a body: its header, and the body padded to four bytes and to FIELD_LEAST. */
-field_bytes :: fn(body: usize) -> usize {
+field_bytes :: fn(body : usize) -> usize {
     padded :: (body + 3) / 4 * 4
     total :: 4 + padded
     return if total < FIELD_LEAST { FIELD_LEAST } else { total }
@@ -377,7 +390,7 @@ field_bytes :: fn(body: usize) -> usize {
  * @param body Its body; with zeroed, only its count's used, the body all zeros, as a placeholder's is.
  * @param zeroed Whether the body's zeros.
  */
-put_field :: fn(into: mut u8[], writer: ptr[mut tls.Writer], field: u16, body: u8[], zeroed: bool) {
+put_field :: fn(into : mut u8[], writer : ptr[mut tls.Writer], field : u16, body : u8[], zeroed : bool) {
     total :: field_bytes(body.count)
     tls.put_u16(into, writer, field)
     tls.put_u16(into, writer, cast[u16](total))
@@ -418,7 +431,7 @@ Answer :: struct {
  * @param packet The answer, as it arrived.
  * @return What it came to; reply is set from Forged on, as the header read.
  */
-read_response :: fn(session: ptr[mut Session], pending: ptr[Pending], packet: u8[]) -> Answer {
+read_response :: fn(session : ptr[mut Session], pending : ptr[Pending], packet : u8[]) -> Answer {
     reply :: read_header(packet, pending.transmit) or_return Answer.{outcome = .NotAnswer}
     identified := false
     authenticator := cast[usize](0)
@@ -473,8 +486,14 @@ read_response :: fn(session: ptr[mut Session], pending: ptr[Pending], packet: u8
     ciphertext :: tls.range(packet, sealed.at + 16, sealed.end)
     opened : crypto.SecretByte[PLAINTEXT_BYTES]
     plaintext :: tls.range_mut(opened, 0, ciphertext.count)
-    if !crypto.aes_siv_cmac256_open(&session.s2c, tls.range(packet, 0, authenticator), tls.range(packet, nonce.at, nonce.end), &tag,
-        ciphertext, plaintext) {
+    if !crypto.aes_siv_cmac256_open(
+        &session.s2c,
+        tls.range(packet, 0, authenticator),
+        tls.range(packet, nonce.at, nonce.end),
+        &tag,
+        ciphertext,
+        plaintext
+    ) {
         return Answer.{outcome = .Forged, reply = reply}
     }
     take_sealed_cookies(session, plaintext)
@@ -487,7 +506,7 @@ read_response :: fn(session: ptr[mut Session], pending: ptr[Pending], packet: u8
  * @param session The session.
  * @param fields The opened plaintext: extension fields.
  */
-take_sealed_cookies #constant_time :: fn(session: ptr[mut Session], fields: crypto.SecretByte[]) {
+take_sealed_cookies #constant_time :: fn(session : ptr[mut Session], fields : crypto.SecretByte[]) {
     // Cookies are the server's to read, not secrets to this side: what's opened is public once it's authenticated
     plain : u8[PLAINTEXT_BYTES]
     for byte, i in fields {
@@ -516,7 +535,7 @@ take_sealed_cookies #constant_time :: fn(session: ptr[mut Session], fields: cryp
 }
 
 /** Tell whether two byte views are the same bytes. */
-same :: fn(a: u8[], b: u8[]) -> bool {
+same :: fn(a : u8[], b : u8[]) -> bool {
     if a.count != b.count {
         return false
     }
@@ -535,7 +554,7 @@ same :: fn(a: u8[], b: u8[]) -> bool {
  * @param length How many bytes.
  * @return A reader of them; a bad one, and the reader made bad, if it has fewer.
  */
-take :: fn(reader: ptr[mut tls.Reader], length: usize) -> tls.Reader {
+take :: fn(reader : ptr[mut tls.Reader], length : usize) -> tls.Reader {
     if reader.bad || length > reader.end - reader.at {
         reader.bad = true
         reader.at = reader.end

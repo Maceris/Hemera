@@ -1,7 +1,7 @@
 package testing
 
-import runtime from "base:runtime"
 import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 import text_buffer from "std:text_buffer"
 import time from "std:time"
 
@@ -53,7 +53,8 @@ ModelFiber :: struct {
     /** Whether its function has returned. */
     finished : bool,
     /**
-     * Whether it's waiting for another thread, stopped at a spin hint or a join, since nothing it could see has changed:
+     * Whether it's waiting for another thread, stopped at a spin hint or a join, since nothing it could see has
+     * changed:
      * it isn't chosen until another thread changes memory or ends.
      */
     spinning : bool,
@@ -83,11 +84,11 @@ ModelPending :: enum {
 /** An atomic operation or fence a thread stopped to do. */
 ModelRequest :: struct {
     operation : runtime.ModelOperation,
-    order : runtime.ModelOrder,
-    width : u32,
-    address : u64,
-    value : u64,
-    expected : u64,
+    order     : runtime.ModelOrder,
+    width     : u32,
+    address   : u64,
+    value     : u64,
+    expected  : u64,
 }
 
 /** A scheduling choice an execution made. */
@@ -152,16 +153,31 @@ Model :: struct {
  * @param options How the schedules are explored.
  * @return Ok if every schedule passed; Error(Failed) with the first that didn't.
  */
-check_model :: fn(t: ptr[mut T], body: runtime.ThreadFunction, data #escaping : any? = null, options := ModelOptions.{}) -> Outcome {
+check_model :: fn(
+    t : ptr[mut T],
+    body : runtime.ThreadFunction,
+    data #escaping : any? = null,
+    options := ModelOptions.{}
+) -> Outcome {
     model := runtime.new(Model)
     defer runtime.free(model)
-    model.options = ModelOptions.{preemptions = options.preemptions, random_runs = options.random_runs, seed = options.seed,
-        most_executions = options.most_executions, most_steps = options.most_steps}
+    model.options = ModelOptions.{
+        preemptions = options.preemptions,
+        random_runs = options.random_runs,
+        seed = options.seed,
+        most_executions = options.most_executions,
+        most_steps = options.most_steps,
+    }
     if model.options.most_steps == 0 || model.options.most_steps > MAX_MODEL_STEPS {
         model.options.most_steps = MAX_MODEL_STEPS
     }
     model.random = if options.seed != 0 { options.seed } else { cast[u64](cast[i64](time.monotonic())) | 1 }
-    model.checker = runtime.ModelChecker.{data = cast[rawptr](model), atomic = model_atomic, fence = model_fence, spin = model_spin}
+    model.checker = runtime.ModelChecker.{
+        data = cast[rawptr](model),
+        atomic = model_atomic,
+        fence = model_fence,
+        spin = model_spin,
+    }
     model.installed = &model.checker
     if options.replay.count > 0 {
         model.replayed = parse_schedule(model, options.replay)
@@ -176,7 +192,11 @@ check_model :: fn(t: ptr[mut T], body: runtime.ThreadFunction, data #escaping : 
             }
             storage : u8[TEXT_BYTES]
             schedule := text_buffer.make(storage)
-            text_buffer.append_format(&schedule, "found in execution %; its schedule, as ModelOptions.replay takes it: ", executions)
+            text_buffer.append_format(
+                &schedule,
+                "found in execution %; its schedule, as ModelOptions.replay takes it: ",
+                executions
+            )
             for i in 0..<model.steps {
                 if i > 0 {
                     text_buffer.append(&schedule, ",")
@@ -211,7 +231,7 @@ check_model :: fn(t: ptr[mut T], body: runtime.ThreadFunction, data #escaping : 
  * @param data What it's given.
  * @return The thread, for join; null outside check_model, or with MAX_MODEL_THREADS already, or no memory for it.
  */
-spawn :: fn(function: runtime.ThreadFunction, data #escaping #crosses_threads : any? = null) -> ModelThread? {
+spawn :: fn(function : runtime.ThreadFunction, data #escaping #crosses_threads : any? = null) -> ModelThread? {
     carrier :: intrinsics.carrier()
     checker :: carrier.model or_return null
     model :: cast[ptr[mut Model]](checker.data)
@@ -242,11 +262,13 @@ spawn :: fn(function: runtime.ThreadFunction, data #escaping #crosses_threads : 
  *
  * @param thread The thread.
  */
-join :: fn(thread: ModelThread) {
+join :: fn(thread : ModelThread) {
     loop {
         checker :: intrinsics.carrier().model or_return void
         model :: cast[ptr[mut Model]](checker.data)
-        if thread.index >= model.thread_count || thread.index >= model.threads.count || model.threads[thread.index].finished {
+        if thread.index >= model.thread_count
+            || thread.index >= model.threads.count
+            || model.threads[thread.index].finished {
             // What it did happens before what comes after the join
             if thread.index < model.views.count && model.current < model.views.count {
                 join_clock(&model.views[model.current].clock, &model.views[thread.index].clock)
@@ -267,7 +289,7 @@ join :: fn(thread: ModelThread) {
  * @param body The test's first thread.
  * @param data What it's given.
  */
-run_execution :: fn(model: ptr[mut Model], body: runtime.ThreadFunction, data #escaping : any?) {
+run_execution :: fn(model : ptr[mut Model], body : runtime.ThreadFunction, data #escaping : any?) {
     model.thread_count = 0
     model.steps = 0
     model.preempted = 0
@@ -337,7 +359,7 @@ run_execution :: fn(model: ptr[mut Model], body: runtime.ThreadFunction, data #e
  * @param model The model.
  * @return True if each has.
  */
-every_thread_finished :: fn(model: ptr[Model]) -> bool {
+every_thread_finished :: fn(model : ptr[Model]) -> bool {
     for each, i in model.threads {
         if i < model.thread_count && !each.finished {
             return false
@@ -354,7 +376,7 @@ every_thread_finished :: fn(model: ptr[Model]) -> bool {
  * @param model The model, whose choices, steps and preemptions grow.
  * @return The thread; null when the execution has to end: none can run, or it's made too many choices, problem set.
  */
-choose :: fn(model: ptr[mut Model]) -> usize? {
+choose :: fn(model : ptr[mut Model]) -> usize? {
     if model.steps >= model.options.most_steps {
         model.problem = "a schedule made more choices than ModelOptions.most_steps: a thread may never end"
         return null
@@ -372,7 +394,11 @@ choose :: fn(model: ptr[mut Model]) -> usize? {
         count = 1
     }
     for each, i in model.threads {
-        if i < model.thread_count && !each.finished && !each.spinning && i != model.current && count < candidates.count {
+        if i < model.thread_count
+            && !each.finished
+            && !each.spinning
+            && i != model.current
+            && count < candidates.count {
             candidates[count] = i
             count += 1
         }
@@ -408,7 +434,7 @@ choose :: fn(model: ptr[mut Model]) -> usize? {
  *     reaches most_steps; a load's of one store isn't.
  * @return The choice, below options.
  */
-choose_option #no_context :: fn(model: ptr[mut Model], options: usize, record_single: bool) -> usize {
+choose_option #no_context :: fn(model : ptr[mut Model], options : usize, record_single : bool) -> usize {
     step :: model.steps
     if step >= model.options.most_steps || step >= model.choices.count || (options <= 1 && !record_single) {
         return 0
@@ -435,7 +461,7 @@ choose_option #no_context :: fn(model: ptr[mut Model], options: usize, record_si
  * @param model The model, whose choices and replayed are set for the next execution.
  * @return False once every schedule within the bound has been run.
  */
-backtrack :: fn(model: ptr[mut Model]) -> bool {
+backtrack :: fn(model : ptr[mut Model]) -> bool {
     at := model.steps
     loop {
         if at == 0 {
@@ -461,7 +487,7 @@ backtrack :: fn(model: ptr[mut Model]) -> bool {
  * @param text The choices, decimal, separated by commas.
  * @return How many were read.
  */
-parse_schedule :: fn(model: ptr[mut Model], text: string) -> usize {
+parse_schedule :: fn(model : ptr[mut Model], text : string) -> usize {
     count : usize = 0
     value : usize = 0
     any_digit := false
@@ -490,7 +516,7 @@ parse_schedule :: fn(model: ptr[mut Model], text: string) -> usize {
  * @param model The model, whose generator moves on.
  * @return A number, any u64.
  */
-next_model_random #no_context :: fn(model: ptr[mut Model]) -> u64 {
+next_model_random #no_context :: fn(model : ptr[mut Model]) -> u64 {
     x := model.random | 1
     x = x ~ (x >> 12)
     x = x ~ (x << 25)
@@ -507,7 +533,7 @@ next_model_random #no_context :: fn(model: ptr[mut Model]) -> u64 {
  * @param spinning Whether the thread is waiting for another, at a spin hint or a join, so switching from it isn't a
  *     preemption.
  */
-wait_turn #no_context :: fn(model: ptr[mut Model], spinning: bool) {
+wait_turn #no_context :: fn(model : ptr[mut Model], spinning : bool) {
     carrier :: intrinsics.carrier()
     fiber :: carrier.current_fiber or_return void
     // A thread that read an old store isn't waiting for another: reading again shows it something newer
@@ -542,15 +568,28 @@ wait_turn #no_context :: fn(model: ptr[mut Model], spinning: bool) {
  * @return old What the location held before.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-model_atomic #no_context :: fn(data: rawptr, operation: runtime.ModelOperation, order: runtime.ModelOrder, width: u32, address: rawptr,
-    value: u64, expected: u64) -> (old: u64, success: bool) {
+model_atomic #no_context :: fn(
+    data : rawptr,
+    operation : runtime.ModelOperation,
+    order : runtime.ModelOrder,
+    width : u32,
+    address : rawptr,
+    value : u64,
+    expected : u64
+) -> (old : u64, success : bool) {
     model :: cast[ptr[mut Model]](data)
     thread :: model.current
     if thread >= model.threads.count || thread >= model.requests.count || (intrinsics.carrier().current_fiber is_none) {
         return runtime.native_atomic(operation, width, address, value, expected)
     }
-    model.requests[thread] = ModelRequest.{operation = operation, order = order, width = width, address = cast[u64](cast[uintptr](address)), value = value,
-        expected = expected}
+    model.requests[thread] = ModelRequest.{
+        operation = operation,
+        order = order,
+        width = width,
+        address = cast[u64](cast[uintptr](address)),
+        value = value,
+        expected = expected,
+    }
     model.threads[thread].pending = .Atomic
     wait_turn(model, false)
     return model.threads[thread].old, model.threads[thread].success
@@ -563,7 +602,7 @@ model_atomic #no_context :: fn(data: rawptr, operation: runtime.ModelOperation, 
  * @param model The model, whose memory changes, and whose thread is given what its operation read.
  * @param thread The thread chosen.
  */
-do_pending :: fn(model: ptr[mut Model], thread: usize) {
+do_pending :: fn(model : ptr[mut Model], thread : usize) {
     if thread >= model.threads.count || thread >= model.requests.count {
         return void
     }
@@ -571,8 +610,15 @@ do_pending :: fn(model: ptr[mut Model], thread: usize) {
     request :: model.requests[thread]
     match waiting.pending {
         case .Atomic => {
-            old, success :: memory_atomic(model, request.operation, request.order, request.width, cast[rawptr](cast[uintptr](request.address)), request.value,
-                request.expected)
+            old, success :: memory_atomic(
+                model,
+                request.operation,
+                request.order,
+                request.width,
+                cast[rawptr](cast[uintptr](request.address)),
+                request.value,
+                request.expected
+            )
             waiting.old = old
             waiting.success = success
             // A change that a thread waiting for one may see
@@ -591,7 +637,7 @@ do_pending :: fn(model: ptr[mut Model], thread: usize) {
  *
  * @param model The model, whose threads' spinning is cleared.
  */
-wake_spinners #no_context :: fn(model: ptr[mut Model]) {
+wake_spinners #no_context :: fn(model : ptr[mut Model]) {
     model.changes += 1
     for &each in model.threads {
         each.spinning = false
@@ -599,13 +645,14 @@ wake_spinners #no_context :: fn(model: ptr[mut Model]) {
 }
 
 /**
- * The model's hook for a fence (runtime.ModelChecker.fence): a stop, at which the driver does it as the memory model has
+ * The model's hook for a fence (runtime.ModelChecker.fence): a stop, at which the driver does it as the memory model
+ * has
  * it (memory_fence).
  *
  * @param data The model.
  * @param order The fence's order.
  */
-model_fence #no_context :: fn(data: rawptr, order: runtime.ModelOrder) {
+model_fence #no_context :: fn(data : rawptr, order : runtime.ModelOrder) {
     model :: cast[ptr[mut Model]](data)
     thread :: model.current
     if thread >= model.threads.count || thread >= model.requests.count || (intrinsics.carrier().current_fiber is_none) {
@@ -621,7 +668,7 @@ model_fence #no_context :: fn(data: rawptr, order: runtime.ModelOrder) {
  *
  * @param data The model.
  */
-model_spin #no_context :: fn(data: rawptr) {
+model_spin #no_context :: fn(data : rawptr) {
     model :: cast[ptr[mut Model]](data)
     // Something changed since its last spin hint, which it may not have read yet: it goes round again before it waits
     unchanged := true

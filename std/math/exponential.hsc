@@ -40,7 +40,7 @@ EXPM1_Q5 : f64 : -2.01099218183624371326e-07 // 0xbe8afdb7_6e09c32d
  * @param k The power, in that range.
  * @return 2^k, exactly.
  */
-power_of_two_64 :: fn(k: i32) -> f64 {
+power_of_two_64 :: fn(k : i32) -> f64 {
     return from_words(cast[i32](cast[u32](0x3ff + k) << 20), 0)
 }
 
@@ -52,8 +52,8 @@ power_of_two_64 :: fn(k: i32) -> f64 {
  * @param k The power of two to scale by, from -1074 to 1024.
  * @return The result, within 1 ulp.
  */
-//SPEC: fdlibm e_exp.c
-exp_reduced_64 :: fn(hi: f64, lo: f64, k: i32) -> f64 {
+// SPEC: fdlibm e_exp.c
+exp_reduced_64 :: fn(hi : f64, lo : f64, k : i32) -> f64 {
     x :: hi - lo
     t :: x * x
     c :: x - t * (EXP_P1 + t * (EXP_P2 + t * (EXP_P3 + t * (EXP_P4 + t * EXP_P5))))
@@ -76,8 +76,8 @@ exp_reduced_64 :: fn(hi: f64, lo: f64, k: i32) -> f64 {
  * @param x The power.
  * @return e^x, within 1 ulp; infinity past EXP_OVERFLOW, 0 below EXP_UNDERFLOW, 0 for -infinity, NaN for NaN.
  */
-//SPEC: fdlibm e_exp.c
-exp_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm e_exp.c
+exp_64 :: fn(x : f64) -> f64 {
     hx := cast[u32](high_word(x))
     sign :: cast[i32](hx >> 31)
     hx &= 0x7fff_ffff
@@ -122,7 +122,7 @@ exp_64 :: fn(x: f64) -> f64 {
  * @param x The power.
  * @return 2^x, within 1 ulp; infinity from 1024, 0 at -1075 and below, NaN for NaN.
  */
-exp2_64 :: fn(x: f64) -> f64 {
+exp2_64 :: fn(x : f64) -> f64 {
     if x != x {
         return x + x
     }
@@ -151,8 +151,8 @@ LN2_TAIL : f64 : 2.319046813846299558e-17 // 0x3c7abc9e_3b39803f
  * @param x_in The power.
  * @return e^x - 1, within 1 ulp; infinity past EXP_OVERFLOW, -1 below -56 ln 2, x itself under 2^-54, NaN for NaN.
  */
-//SPEC: fdlibm s_expm1.c
-exp_minus_one_64 :: fn(x_in: f64) -> f64 {
+// SPEC: fdlibm s_expm1.c
+exp_minus_one_64 :: fn(x_in : f64) -> f64 {
     x := x_in
     hx := cast[u32](high_word(x))
     negative :: (hx & 0x8000_0000) != 0
@@ -206,8 +206,12 @@ exp_minus_one_64 :: fn(x_in: f64) -> f64 {
     }
     half_x :: 0.5 * x
     half_x_squared :: x * half_x
-    r1 :: 1 + half_x_squared * (EXPM1_Q1 + half_x_squared * (EXPM1_Q2 + half_x_squared * (EXPM1_Q3 + half_x_squared
-        * (EXPM1_Q4 + half_x_squared * EXPM1_Q5))))
+    r1 :: 1
+        + half_x_squared
+            * (EXPM1_Q1
+                + half_x_squared
+                    * (EXPM1_Q2
+                        + half_x_squared * (EXPM1_Q3 + half_x_squared * (EXPM1_Q4 + half_x_squared * EXPM1_Q5))))
     t := 3.0 - r1 * half_x
     e := half_x_squared * ((r1 - t) / (6.0 - x * t))
     if k == 0 {

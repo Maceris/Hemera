@@ -17,9 +17,12 @@ import runtime from "base:runtime"
      * @return result An empty ProcessResult, owning nothing.
      * @return error Always Unsupported.
      */
-    system_run_process :: fn(program: string, arguments: string[], working_directory: string?, allocator: runtime.Allocator)
-        -> (result #unrestricted : ProcessResult, error : ProcessError?) {
-
+    system_run_process :: fn(
+        program : string,
+        arguments : string[],
+        working_directory : string?,
+        allocator : runtime.Allocator
+    ) -> (result #unrestricted : ProcessResult, error : ProcessError?) {
         empty : ProcessResult
         return empty, ProcessError.Unsupported
     }
@@ -32,7 +35,10 @@ import runtime from "base:runtime"
      * @return value Always "", owning nothing.
      * @return error Always Unsupported.
      */
-    system_get_environment :: fn(name: string, allocator: runtime.Allocator) -> (value #unrestricted : string, error : OsError?) {
+    system_get_environment :: fn(
+        name : string,
+        allocator : runtime.Allocator
+    ) -> (value #unrestricted : string, error : OsError?) {
         return "", OsError.Unsupported
     }
 }
@@ -47,7 +53,7 @@ import runtime from "base:runtime"
      * @return file Always the zero File, which close ignores.
      * @return error Always Unsupported.
      */
-    system_open :: fn(path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open :: fn(path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         return File.{0}, OsError.Unsupported
     }
 
@@ -56,7 +62,7 @@ import runtime from "base:runtime"
      *
      * @param file A File, which can only be the zero one; ignored.
      */
-    system_close :: fn(file: File) {}
+    system_close :: fn(file : File) {}
 
     /**
      * Fail to read, as there's no file system.
@@ -66,7 +72,7 @@ import runtime from "base:runtime"
      * @return count Always 0.
      * @return error Always Unsupported.
      */
-    system_read :: fn(file: File, buffer: mut u8[]) -> (count : usize, error : OsError?) {
+    system_read :: fn(file : File, buffer : mut u8[]) -> (count : usize, error : OsError?) {
         return 0, OsError.Unsupported
     }
 
@@ -79,7 +85,7 @@ import runtime from "base:runtime"
      * @return written Always 0.
      * @return error Always Unsupported.
      */
-    system_write :: fn(file: File, bytes: rawptr, count: usize) -> (written : usize, error : OsError?) {
+    system_write :: fn(file : File, bytes : rawptr, count : usize) -> (written : usize, error : OsError?) {
         return 0, OsError.Unsupported
     }
 
@@ -90,7 +96,7 @@ import runtime from "base:runtime"
      * @return size Always 0.
      * @return error Always Unsupported.
      */
-    system_file_size :: fn(file: File) -> (size : u64, error : OsError?) {
+    system_file_size :: fn(file : File) -> (size : u64, error : OsError?) {
         return 0, OsError.Unsupported
     }
 
@@ -100,7 +106,7 @@ import runtime from "base:runtime"
      * @param path The file's path, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_delete_file :: fn(path: string) -> OsError? {
+    system_delete_file :: fn(path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -111,7 +117,7 @@ import runtime from "base:runtime"
      * @param to Where it would go, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_rename :: fn(from: string, to: string) -> OsError? {
+    system_rename :: fn(from : string, to : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -121,7 +127,7 @@ import runtime from "base:runtime"
      * @param path The path, which isn't looked at.
      * @return Always NOTHING.
      */
-    system_path_kind :: fn(path: string) -> PathKind {
+    system_path_kind :: fn(path : string) -> PathKind {
         return .NOTHING
     }
 
@@ -131,7 +137,7 @@ import runtime from "base:runtime"
      * @param path The directory's path, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_make_directory :: fn(path: string) -> OsError? {
+    system_make_directory :: fn(path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -141,7 +147,7 @@ import runtime from "base:runtime"
      * @param path The directory's path, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_remove_directory :: fn(path: string) -> OsError? {
+    system_remove_directory :: fn(path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -153,7 +159,11 @@ import runtime from "base:runtime"
      * @param allocator Where names would be allocated; nothing is.
      * @return Always Unsupported.
      */
-    system_list_directory :: fn(path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory :: fn(
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -164,7 +174,7 @@ import runtime from "base:runtime"
      * @return path Always "", owning nothing.
      * @return error Always Unsupported.
      */
-    system_current_directory :: fn(allocator: runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
+    system_current_directory :: fn(allocator : runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
         return "", OsError.Unsupported
     }
 
@@ -174,7 +184,7 @@ import runtime from "base:runtime"
      * @param path The directory's path, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_set_current_directory :: fn(path: string) -> OsError? {
+    system_set_current_directory :: fn(path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -185,7 +195,7 @@ import runtime from "base:runtime"
      * @return directory Always the zero Directory, which close_directory ignores.
      * @return error Always Unsupported.
      */
-    system_open_directory :: fn(path: string) -> (directory : Directory, error : OsError?) {
+    system_open_directory :: fn(path : string) -> (directory : Directory, error : OsError?) {
         return Directory.{0}, OsError.Unsupported
     }
 
@@ -207,7 +217,7 @@ import runtime from "base:runtime"
      * @return opened Always the zero Directory, which close_directory ignores.
      * @return error Always Unsupported.
      */
-    system_open_directory_in :: fn(directory: Directory, path: string) -> (opened : Directory, error : OsError?) {
+    system_open_directory_in :: fn(directory : Directory, path : string) -> (opened : Directory, error : OsError?) {
         return Directory.{0}, OsError.Unsupported
     }
 
@@ -216,7 +226,7 @@ import runtime from "base:runtime"
      *
      * @param directory A Directory, which can only be the zero one; ignored.
      */
-    system_close_directory :: fn(directory: Directory) {}
+    system_close_directory :: fn(directory : Directory) {}
 
     /**
      * Fail to open a file beneath a directory, as there's no file system.
@@ -227,7 +237,7 @@ import runtime from "base:runtime"
      * @return file Always the zero File, which close ignores.
      * @return error Always Unsupported.
      */
-    system_open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open_in :: fn(directory : Directory, path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         return File.{0}, OsError.Unsupported
     }
 
@@ -238,7 +248,7 @@ import runtime from "base:runtime"
      * @param path The path beneath it, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_delete_file_in :: fn(directory : Directory, path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -250,7 +260,7 @@ import runtime from "base:runtime"
      * @param to Where it would go, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+    system_rename_in :: fn(directory : Directory, from : string, to : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -261,7 +271,7 @@ import runtime from "base:runtime"
      * @param path The path beneath it, which isn't looked at.
      * @return Always NOTHING.
      */
-    system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+    system_path_kind_in :: fn(directory : Directory, path : string) -> PathKind {
         return .NOTHING
     }
 
@@ -272,7 +282,7 @@ import runtime from "base:runtime"
      * @param path The path beneath it, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_make_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -283,7 +293,7 @@ import runtime from "base:runtime"
      * @param path The path beneath it, which isn't looked at.
      * @return Always Unsupported.
      */
-    system_remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_remove_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         return OsError.Unsupported
     }
 
@@ -296,7 +306,12 @@ import runtime from "base:runtime"
      * @param allocator Where names would be allocated; nothing is.
      * @return Always Unsupported.
      */
-    system_list_directory_in :: fn(directory: Directory, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory_in :: fn(
+        directory : Directory,
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         return OsError.Unsupported
     }
 }

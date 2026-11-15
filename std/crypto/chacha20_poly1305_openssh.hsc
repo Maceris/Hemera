@@ -29,7 +29,7 @@ SshChachaKeys :: struct {
  * @param key The 64 bytes.
  * @return The keys.
  */
-ssh_chacha_keys #constant_time :: fn(key: ptr[SecretByte[64]]) -> SshChachaKeys {
+ssh_chacha_keys #constant_time :: fn(key : ptr[SecretByte[64]]) -> SshChachaKeys {
     keys : SshChachaKeys
     for i in cast[usize](0)..<32 {
         keys.main[i] = cast[u8](key[i])
@@ -39,7 +39,7 @@ ssh_chacha_keys #constant_time :: fn(key: ptr[SecretByte[64]]) -> SshChachaKeys 
 }
 
 /** The nonce for a sequence number: 4 zero bytes, then it as 8 bytes big-endian. */
-ssh_chacha_nonce :: fn(sequence: u32) -> Nonce96 {
+ssh_chacha_nonce :: fn(sequence : u32) -> Nonce96 {
     nonce : Nonce96
     for i in cast[usize](0)..<4 {
         nonce[8 + i] = cast[u8](sequence >> (8 * cast[u32](3 - i)))
@@ -55,7 +55,7 @@ ssh_chacha_nonce :: fn(sequence: u32) -> Nonce96 {
  * @param encrypted The packet's first 4 bytes, as they came.
  * @return The length, big-endian as SSH sends it: public, as framing needs it, though only the tag says it's genuine.
  */
-ssh_chacha_length #constant_time :: fn(keys: ptr[SshChachaKeys], sequence: u32, encrypted: u8[]) -> u32 {
+ssh_chacha_length #constant_time :: fn(keys : ptr[SshChachaKeys], sequence : u32, encrypted : u8[]) -> u32 {
     nonce := ssh_chacha_nonce(sequence)
     block := chacha20_block(&keys.header, 0, &nonce)
     length := cast[u32](0)
@@ -76,9 +76,13 @@ ssh_chacha_length #constant_time :: fn(keys: ptr[SshChachaKeys], sequence: u32, 
  * @param tag Where the tag goes.
  * @return True; false, nothing written, if the counts differ or packet has no length.
  */
-ssh_chacha_seal #constant_time :: fn(keys: ptr[SshChachaKeys], sequence: u32, packet: SecretByte[], sealed: mut u8[],
-    tag: ptr[mut Tag128]) -> bool {
-
+ssh_chacha_seal #constant_time :: fn(
+    keys : ptr[SshChachaKeys],
+    sequence : u32,
+    packet : SecretByte[],
+    sealed : mut u8[],
+    tag : ptr[mut Tag128]
+) -> bool {
     if packet.count != sealed.count || packet.count < 4 || cast[u64](packet.count) > CHACHA20_POLY1305_MOST {
         return false
     }
@@ -105,9 +109,13 @@ ssh_chacha_seal #constant_time :: fn(keys: ptr[SshChachaKeys], sequence: u32, pa
  * @param packet Where the packet after its length goes, 4 bytes fewer than sealed.
  * @return True with packet written; false, nothing written, if the tag doesn't match or the counts are wrong.
  */
-ssh_chacha_open #constant_time :: fn(keys: ptr[SshChachaKeys], sequence: u32, sealed: u8[], tag: ptr[Tag128],
-    packet: mut SecretByte[]) -> bool {
-
+ssh_chacha_open #constant_time :: fn(
+    keys : ptr[SshChachaKeys],
+    sequence : u32,
+    sealed : u8[],
+    tag : ptr[Tag128],
+    packet : mut SecretByte[]
+) -> bool {
     if sealed.count < 4 || packet.count != sealed.count - 4 || cast[u64](sealed.count) > CHACHA20_POLY1305_MOST {
         return false
     }
@@ -135,7 +143,12 @@ ssh_chacha_open #constant_time :: fn(keys: ptr[SshChachaKeys], sequence: u32, se
 }
 
 /** Encrypt the packet after its length with the main key's stream from block 1, into public bytes. */
-ssh_chacha_stream #constant_time :: fn(keys: ptr[SshChachaKeys], nonce: ptr[Nonce96], plaintext: SecretByte[], out: mut u8[]) {
+ssh_chacha_stream #constant_time :: fn(
+    keys : ptr[SshChachaKeys],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    out : mut u8[]
+) {
     at : usize = 0
     loop {
         state := chacha_state(&keys.main, cast[u32](at / 64 + 1), nonce)
@@ -152,7 +165,7 @@ ssh_chacha_stream #constant_time :: fn(keys: ptr[SshChachaKeys], nonce: ptr[Nonc
 }
 
 /** Poly1305 of the sealed packet, keyed by block 0 of the main key's stream. */
-ssh_chacha_tag #constant_time :: fn(keys: ptr[SshChachaKeys], nonce: ptr[Nonce96], sealed: u8[]) -> SecretByte[16] {
+ssh_chacha_tag #constant_time :: fn(keys : ptr[SshChachaKeys], nonce : ptr[Nonce96], sealed : u8[]) -> SecretByte[16] {
     block := chacha20_block(&keys.main, 0, nonce)
     one_time : Poly1305Key
     for i in cast[usize](0)..<32 {

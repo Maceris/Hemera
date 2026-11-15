@@ -32,9 +32,9 @@ AesBlock :: distinct alias u8[16] #secret
 /** A GHASH value, an element of GF(2^128) as GCM orders its bits, held as two big-endian halves. */
 Ghash :: struct #secret {
     /** The value's first 8 bytes, big-endian. */
-    high: u64,
+    high : u64,
     /** The value's last 8 bytes, big-endian. */
-    low: u64,
+    low : u64,
 }
 
 /**
@@ -43,25 +43,25 @@ Ghash :: struct #secret {
  */
 AesKey :: struct {
     /** The round keys, from aes128_expand or aes256_expand. */
-    schedule: AesSchedule,
+    schedule : AesSchedule,
     /** The round keys as bit planes, for software; only made, and only used, when hardware is false. */
-    sliced: AesSlicedSchedule,
+    sliced : AesSlicedSchedule,
     /** How many rounds: 10 for AES-128, 14 for AES-256. */
-    rounds: usize,
+    rounds : usize,
     /** Whether AES-NI is used; if not, AES is worked out in software. */
-    hardware: bool,
+    hardware : bool,
 }
 
 /** AES-GCM's state for one key: the AES key, and GHASH's key and its powers. Secret throughout. */
 AesGcm :: struct {
     /** The AES key, AES-128's or AES-256's. */
-    aes: AesKey,
+    aes : AesKey,
     /** GHASH's key, H: a block of zeros encrypted. */
-    hash_key: Ghash,
+    hash_key : Ghash,
     /** H, H^2, H^3 and H^4, so GHASH can take four blocks with one reduction. */
-    hash_powers: Ghash[4],
+    hash_powers : Ghash[4],
     /** Whether PCLMULQDQ is used for GHASH; if not, GHASH is worked out in software. The AES key says for AES. */
-    hardware: bool,
+    hardware : bool,
 }
 
 /** Eight bit planes, plane k holding bit k of each of the up to 64 bytes the planes are carrying. */
@@ -75,7 +75,7 @@ AesPlanes :: distinct alias u64[8] #secret
  *
  * @param q The planes, changed in place.
  */
-aes_sbox_planes #constant_time :: fn(q: ptr[mut AesPlanes]) {
+aes_sbox_planes #constant_time :: fn(q : ptr[mut AesPlanes]) {
     x0 := q[7]
     x1 := q[6]
     x2 := q[5]
@@ -224,7 +224,7 @@ aes_sbox_planes #constant_time :: fn(q: ptr[mut AesPlanes]) {
  * @param x The byte to substitute, any of the 256 values; secret, and nothing branches on it or indexes with it.
  * @return Its substitution, secret.
  */
-aes_sbox #constant_time :: fn(x: SecretByte) -> SecretByte {
+aes_sbox #constant_time :: fn(x : SecretByte) -> SecretByte {
     q : AesPlanes
     for k in 0..<8 {
         q[k] = cast[u64](cast[u8](x) >> cast[u8](k)) & 1
@@ -243,7 +243,7 @@ aes_sbox #constant_time :: fn(x: SecretByte) -> SecretByte {
  * @param a Any byte, read as a polynomial over GF(2), bit k the coefficient of x^k; secret.
  * @return The product, a times 2, secret.
  */
-aes_double #constant_time :: fn(a: SecretByte) -> SecretByte {
+aes_double #constant_time :: fn(a : SecretByte) -> SecretByte {
     value := cast[u8](a)
     return cast[SecretByte]((value << 1) ~ (0x1b & (cast[u8](0) - (value >> 7))))
 }
@@ -254,7 +254,7 @@ aes_double #constant_time :: fn(a: SecretByte) -> SecretByte {
  * @param key The 32-byte key.
  * @return The 15 round keys, secret; the first two are the key itself.
  */
-aes256_expand #constant_time :: fn(key: ptr[Key256]) -> AesSchedule {
+aes256_expand #constant_time :: fn(key : ptr[Key256]) -> AesSchedule {
     schedule : AesSchedule
     for i in 0..<32 {
         schedule[i] = key[i]
@@ -306,7 +306,7 @@ AesSlicedSchedule :: distinct alias u64[120] #secret
  * @param word The matrix, a byte a row, row 0 the least significant byte.
  * @return The matrix turned, so that byte k holds bit k of each row; doing it twice gives word back.
  */
-aes_transpose8 #constant_time :: fn(word: SecretWord) -> SecretWord {
+aes_transpose8 #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     y := x
     t := (y ~ (y >> 7)) & 0x00aa_00aa_00aa_00aa
@@ -324,7 +324,7 @@ aes_transpose8 #constant_time :: fn(word: SecretWord) -> SecretWord {
  * @param word The byte, in the low 8 bits, the rest 0.
  * @return The spread bits, in the low 32; aes_gather undoes it.
  */
-aes_spread #constant_time :: fn(word: SecretWord) -> SecretWord {
+aes_spread #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     y := (x ~ (x << 12)) & 0x000f_000f
     y = (y ~ (y << 6)) & 0x0303_0303
@@ -337,7 +337,7 @@ aes_spread #constant_time :: fn(word: SecretWord) -> SecretWord {
  * @param word The bits; only bits 4 * j, for j from 0 to 7, are read.
  * @return The byte, in the low 8 bits.
  */
-aes_gather #constant_time :: fn(word: SecretWord) -> SecretWord {
+aes_gather #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     y := x & 0x1111_1111
     y = (y ~ (y >> 3)) & 0x0303_0303
@@ -351,7 +351,7 @@ aes_gather #constant_time :: fn(word: SecretWord) -> SecretWord {
  * @param blocks The 64 bytes to pack, block b at bytes 16 * b to 16 * b + 15; read, not changed.
  * @param q Where the planes go, all eight overwritten.
  */
-aes_pack #constant_time :: fn(blocks: ptr[AesBlocks4], q: ptr[mut AesPlanes]) {
+aes_pack #constant_time :: fn(blocks : ptr[AesBlocks4], q : ptr[mut AesPlanes]) {
     for k in 0..<8 {
         q[k] = 0
     }
@@ -375,7 +375,7 @@ aes_pack #constant_time :: fn(blocks: ptr[AesBlocks4], q: ptr[mut AesPlanes]) {
  * @param q The planes to unpack, laid out as aes_pack lays them out; read, not changed.
  * @param blocks Where the four blocks go, all 64 bytes overwritten.
  */
-aes_unpack #constant_time :: fn(q: ptr[AesPlanes], blocks: ptr[mut AesBlocks4]) {
+aes_unpack #constant_time :: fn(q : ptr[AesPlanes], blocks : ptr[mut AesBlocks4]) {
     for half in 0..<8 {
         shift := 32 * cast[u64](half % 2) + cast[u64](half / 2)
         turned := compiler.secret(cast[u64](0))
@@ -395,11 +395,13 @@ aes_unpack #constant_time :: fn(q: ptr[AesPlanes], blocks: ptr[mut AesBlocks4]) 
  *
  * @param q The planes, changed in place.
  */
-aes_shift_rows #constant_time :: fn(q: ptr[mut AesPlanes]) {
+aes_shift_rows #constant_time :: fn(q : ptr[mut AesPlanes]) {
     for k in 0..<8 {
         x := q[k]
-        q[k] = (x & 0x000f_000f_000f_000f) | intrinsics.rotate_right(x & 0x00f0_00f0_00f0_00f0, 16)
-            | intrinsics.rotate_right(x & 0x0f00_0f00_0f00_0f00, 32) | intrinsics.rotate_right(x & 0xf000_f000_f000_f000, 48)
+        q[k] = (x & 0x000f_000f_000f_000f)
+            | intrinsics.rotate_right(x & 0x00f0_00f0_00f0_00f0, 16)
+            | intrinsics.rotate_right(x & 0x0f00_0f00_0f00_0f00, 32)
+            | intrinsics.rotate_right(x & 0xf000_f000_f000_f000, 48)
     }
 }
 
@@ -409,7 +411,7 @@ aes_shift_rows #constant_time :: fn(q: ptr[mut AesPlanes]) {
  * @param word A plane: four 16-bit columns, each holding four 4-bit rows, row 0 in its lowest nibble.
  * @return The plane with each column's row r holding what row r + 1 held, and row 3 what row 0 held.
  */
-aes_rows_up1 #constant_time :: fn(word: SecretWord) -> SecretWord {
+aes_rows_up1 #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     return cast[SecretWord](((x >> 4) & 0x0fff_0fff_0fff_0fff) | ((x << 12) & 0xf000_f000_f000_f000))
 }
@@ -420,7 +422,7 @@ aes_rows_up1 #constant_time :: fn(word: SecretWord) -> SecretWord {
  * @param word A plane: four 16-bit columns, each holding four 4-bit rows, row 0 in its lowest nibble.
  * @return The plane with each column's row r holding what row r + 2 held, and rows 2 and 3 what rows 0 and 1 held.
  */
-aes_rows_up2 #constant_time :: fn(word: SecretWord) -> SecretWord {
+aes_rows_up2 #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     return cast[SecretWord](((x >> 8) & 0x00ff_00ff_00ff_00ff) | ((x << 8) & 0xff00_ff00_ff00_ff00))
 }
@@ -431,7 +433,7 @@ aes_rows_up2 #constant_time :: fn(word: SecretWord) -> SecretWord {
  * @param word A plane: four 16-bit columns, each holding four 4-bit rows, row 0 in its lowest nibble.
  * @return The plane with each column's row r holding what row r + 3 held, and rows 1 to 3 what rows 0 to 2 held.
  */
-aes_rows_up3 #constant_time :: fn(word: SecretWord) -> SecretWord {
+aes_rows_up3 #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     return cast[SecretWord](((x >> 12) & 0x000f_000f_000f_000f) | ((x << 4) & 0xfff0_fff0_fff0_fff0))
 }
@@ -444,7 +446,7 @@ aes_rows_up3 #constant_time :: fn(word: SecretWord) -> SecretWord {
  *
  * @param q The planes, changed in place.
  */
-aes_mix_columns #constant_time :: fn(q: ptr[mut AesPlanes]) {
+aes_mix_columns #constant_time :: fn(q : ptr[mut AesPlanes]) {
     sum : AesPlanes
     rest : AesPlanes
     for k in 0..<8 {
@@ -471,14 +473,15 @@ aes_mix_columns #constant_time :: fn(q: ptr[mut AesPlanes]) {
  * @param rounds How many rounds the key has, 10 or 14, so rounds + 1 round keys are laid out; the rest stay zero.
  * @return The round keys as planes, each byte in all four blocks' bits for it; secret.
  */
-aes_slice_schedule #constant_time :: fn(schedule: ptr[AesSchedule], rounds: usize) -> AesSlicedSchedule {
+aes_slice_schedule #constant_time :: fn(schedule : ptr[AesSchedule], rounds : usize) -> AesSlicedSchedule {
     sliced : AesSlicedSchedule
     for round in cast[usize](0)..<(rounds % 15) + 1 {
         for p in cast[usize](0)..<16 {
             byte := cast[u64](schedule[16 * round + p])
             for k in cast[usize](0)..<8 {
                 bit := (byte >> cast[u64](k)) & 1
-                sliced[8 * round + k] = sliced[8 * round + k] | ((cast[u64](0) - bit) & (cast[u64](0xf) << (4 * cast[u64](p))))
+                sliced[8 * round
+                    + k] = sliced[8 * round + k] | ((cast[u64](0) - bit) & (cast[u64](0xf) << (4 * cast[u64](p))))
             }
         }
     }
@@ -492,7 +495,11 @@ aes_slice_schedule #constant_time :: fn(schedule: ptr[AesSchedule], rounds: usiz
  * @param rounds How many rounds: 10 for AES-128, 14 for AES-256; public.
  * @param blocks The four blocks, encrypted in place.
  */
-aes_encrypt4_software #constant_time :: fn(sliced: ptr[AesSlicedSchedule], rounds: usize, blocks: ptr[mut AesBlocks4]) {
+aes_encrypt4_software #constant_time :: fn(
+    sliced : ptr[AesSlicedSchedule],
+    rounds : usize,
+    blocks : ptr[mut AesBlocks4]
+) {
     q : AesPlanes
     aes_pack(blocks, &q)
     for k in 0..<8 {
@@ -518,7 +525,7 @@ aes_encrypt4_software #constant_time :: fn(sliced: ptr[AesSlicedSchedule], round
  * @param word Any 64-bit value, all of it read; secret, and nothing branches on it.
  * @return Its 64 bits in the other order: bit 0 becomes bit 63.
  */
-ghash_reverse #constant_time :: fn(word: SecretWord) -> SecretWord {
+ghash_reverse #constant_time :: fn(word : SecretWord) -> SecretWord {
     x := cast[u64](word)
     y := ((x >> 1) & 0x5555_5555_5555_5555) | ((x & 0x5555_5555_5555_5555) << 1)
     y = ((y >> 2) & 0x3333_3333_3333_3333) | ((y & 0x3333_3333_3333_3333) << 2)
@@ -535,7 +542,7 @@ ghash_reverse #constant_time :: fn(word: SecretWord) -> SecretWord {
  * @param b The other factor, read the same way; the product doesn't depend on which is which.
  * @return The low 64 bits of their carry-less product.
  */
-ghash_bmul64 #constant_time :: fn(a: SecretWord, b: SecretWord) -> SecretWord {
+ghash_bmul64 #constant_time :: fn(a : SecretWord, b : SecretWord) -> SecretWord {
     x := cast[u64](a)
     y := cast[u64](b)
     x0 := x & 0x1111_1111_1111_1111
@@ -550,7 +557,9 @@ ghash_bmul64 #constant_time :: fn(a: SecretWord, b: SecretWord) -> SecretWord {
     z1 := (x0 * y1) ~ (x1 * y0) ~ (x2 * y3) ~ (x3 * y2)
     z2 := (x0 * y2) ~ (x1 * y1) ~ (x2 * y0) ~ (x3 * y3)
     z3 := (x0 * y3) ~ (x1 * y2) ~ (x2 * y1) ~ (x3 * y0)
-    return cast[SecretWord]((z0 & 0x1111_1111_1111_1111) | (z1 & 0x2222_2222_2222_2222) | (z2 & 0x4444_4444_4444_4444)
+    return cast[SecretWord]((z0 & 0x1111_1111_1111_1111)
+        | (z1 & 0x2222_2222_2222_2222)
+        | (z2 & 0x4444_4444_4444_4444)
         | (z3 & 0x8888_8888_8888_8888))
 }
 
@@ -565,7 +574,7 @@ ghash_bmul64 #constant_time :: fn(a: SecretWord, b: SecretWord) -> SecretWord {
  *     on which is which.
  * @return Their product, as NIST SP 800-38D defines it.
  */
-ghash_multiply_software #constant_time :: fn(x: Ghash, y: Ghash) -> Ghash {
+ghash_multiply_software #constant_time :: fn(x : Ghash, y : Ghash) -> Ghash {
     h0 := cast[SecretWord](y.low)
     h1 := cast[SecretWord](y.high)
     h2 := cast[SecretWord](y.low ~ y.high)
@@ -614,7 +623,7 @@ ghash_multiply_software #constant_time :: fn(x: Ghash, y: Ghash) -> Ghash {
  *     ignored.
  * @return Their product, as NIST SP 800-38D defines it; the same whether worked out with PCLMULQDQ or in software.
  */
-ghash_multiply #constant_time :: fn(x: Ghash, y: Ghash, hardware: bool) -> Ghash {
+ghash_multiply #constant_time :: fn(x : Ghash, y : Ghash, hardware : bool) -> Ghash {
     #if TARGET_ARCH == .x86_64 {
         if hardware {
             return ghash_multiply_hardware(x, y)
@@ -632,7 +641,7 @@ ghash_multiply #constant_time :: fn(x: Ghash, y: Ghash, hardware: bool) -> Ghash
  *     the round keys are laid out as bit planes for software.
  * @return The key, secret throughout; nothing wipes it when it's done with.
  */
-aes_key #constant_time :: fn(schedule: AesSchedule, rounds: usize, hardware: bool) -> AesKey {
+aes_key #constant_time :: fn(schedule : AesSchedule, rounds : usize, hardware : bool) -> AesKey {
     aes := AesKey.{schedule = schedule, rounds = rounds, hardware = hardware}
     if !hardware {
         aes.sliced = aes_slice_schedule(&aes.schedule, rounds)
@@ -646,7 +655,7 @@ aes_key #constant_time :: fn(schedule: AesSchedule, rounds: usize, hardware: boo
  * @param aes The key, from aes_key.
  * @param block The block, encrypted in place.
  */
-aes_encrypt_block #constant_time :: fn(aes: ptr[AesKey], block: ptr[mut AesBlock]) {
+aes_encrypt_block #constant_time :: fn(aes : ptr[AesKey], block : ptr[mut AesBlock]) {
     #if TARGET_ARCH == .x86_64 {
         if aes.hardware {
             aes_encrypt_hardware(&aes.schedule, aes.rounds, block)
@@ -669,7 +678,7 @@ aes_encrypt_block #constant_time :: fn(aes: ptr[AesKey], block: ptr[mut AesBlock
  * @param aes The key, from aes_key.
  * @param blocks The four blocks, one after another, encrypted in place, each on its own (as ECB would).
  */
-aes_encrypt4 #constant_time :: fn(aes: ptr[AesKey], blocks: ptr[mut AesBlocks4]) {
+aes_encrypt4 #constant_time :: fn(aes : ptr[AesKey], blocks : ptr[mut AesBlocks4]) {
     #if TARGET_ARCH == .x86_64 {
         if aes.hardware {
             aes_encrypt4_hardware(&aes.schedule, aes.rounds, blocks)
@@ -689,7 +698,7 @@ aes_encrypt4 #constant_time :: fn(aes: ptr[AesKey], blocks: ptr[mut AesBlocks4])
  *     2^32 - 1, which AES_GCM_MOST keeps a message from reaching.
  * @param stream Where the 64 bytes of keystream go.
  */
-gcm_keystream #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], count: u32, stream: ptr[mut AesBlocks4]) {
+gcm_keystream #constant_time :: fn(gcm : ptr[AesGcm], nonce : ptr[Nonce96], count : u32, stream : ptr[mut AesBlocks4]) {
     for b in 0..<4 {
         counter := gcm_counter(nonce, count + cast[u32](b))
         for i in 0..<16 {
@@ -722,7 +731,7 @@ aes_hardware :: fn() -> bool {
  * @param block Any 16 bytes: bytes 0 to 7 become the high half, 8 to 15 the low; read, not changed.
  * @return The value, its halves read big-endian.
  */
-ghash_of #constant_time :: fn(block: ptr[AesBlock]) -> Ghash {
+ghash_of #constant_time :: fn(block : ptr[AesBlock]) -> Ghash {
     value := Ghash.{high = 0, low = 0}
     for i in 0..<8 {
         value.high = (value.high << 8) | cast[u64](block[i])
@@ -739,7 +748,7 @@ ghash_of #constant_time :: fn(block: ptr[AesBlock]) -> Ghash {
  *     AES key says for itself whether AES-NI is.
  * @return The state, secret throughout; nothing wipes it when it's done with.
  */
-aes_gcm_start #constant_time :: fn(aes: AesKey, hardware: bool) -> AesGcm {
+aes_gcm_start #constant_time :: fn(aes : AesKey, hardware : bool) -> AesGcm {
     gcm := AesGcm.{aes = aes, hardware = hardware}
     zero : AesBlock
     aes_encrypt_block(&gcm.aes, &zero)
@@ -759,7 +768,7 @@ aes_gcm_start #constant_time :: fn(aes: AesKey, hardware: bool) -> AesGcm {
  * @param data The bytes, of any number; a partial last block is padded with zeros, as GCM pads the associated data
  *     and the ciphertext.
  */
-ghash_update #constant_time :: fn(gcm: ptr[AesGcm], value: ptr[mut Ghash], data: u8[]) {
+ghash_update #constant_time :: fn(gcm : ptr[AesGcm], value : ptr[mut Ghash], data : u8[]) {
     at : usize = 0
     #if TARGET_ARCH == .x86_64 {
         if gcm.hardware {
@@ -802,7 +811,7 @@ ghash_update #constant_time :: fn(gcm: ptr[AesGcm], value: ptr[mut Ghash], data:
  * @param count The count: 1 for the block that masks the tag (J0), and 2 on for the message's blocks.
  * @return The counter block, to be encrypted.
  */
-gcm_counter #constant_time :: fn(nonce: ptr[Nonce96], count: u32) -> AesBlock {
+gcm_counter #constant_time :: fn(nonce : ptr[Nonce96], count : u32) -> AesBlock {
     block : AesBlock
     for i in 0..<12 {
         block[i] = nonce[i]
@@ -825,7 +834,12 @@ gcm_counter #constant_time :: fn(nonce: ptr[Nonce96], count: u32) -> AesBlock {
  *     padded the same way, its length in bits beside the other's.
  * @return The 16-byte tag, a secret until it's compared or sent.
  */
-gcm_tag #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], associated: u8[], ciphertext: u8[]) -> SecretByte[16] {
+gcm_tag #constant_time :: fn(
+    gcm : ptr[AesGcm],
+    nonce : ptr[Nonce96],
+    associated : u8[],
+    ciphertext : u8[]
+) -> SecretByte[16] {
     value := Ghash.{high = 0, low = 0}
     ghash_update(gcm, &value, associated)
     ghash_update(gcm, &value, ciphertext)
@@ -869,9 +883,14 @@ AES256_GCM_MOST :: AES_GCM_MOST
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than AES256_GCM_MOST.
  */
-aes256_gcm_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128]) -> bool {
-
+aes256_gcm_seal #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128]
+) -> bool {
     return aes256_gcm_seal_with(key, nonce, plaintext, associated, ciphertext, tag, aes_hardware())
 }
 
@@ -892,9 +911,14 @@ aes256_gcm_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plai
  *     the associated data, the nonce, the key or the tag is wrong: forged or damaged), the counts differ, or the
  *     ciphertext is longer than AES256_GCM_MOST.
  */
-aes256_gcm_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
-    tag: ptr[Tag128], plaintext: mut SecretByte[]) -> bool {
-
+aes256_gcm_open #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[]
+) -> bool {
     return aes256_gcm_open_with(key, nonce, ciphertext, associated, tag, plaintext, aes_hardware())
 }
 
@@ -915,9 +939,15 @@ aes256_gcm_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciph
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than AES256_GCM_MOST.
  */
-aes256_gcm_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128], hardware: bool) -> bool {
-
+aes256_gcm_seal_with #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128],
+    hardware : bool
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](plaintext.count) > AES_GCM_MOST {
         return false
     }
@@ -941,9 +971,15 @@ aes256_gcm_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
  * @return True with plaintext written, or false, with nothing written, when the tag doesn't match (forged or
  *     damaged), the counts differ, or the ciphertext is longer than AES256_GCM_MOST.
  */
-aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
-    tag: ptr[Tag128], plaintext: mut SecretByte[], hardware: bool) -> bool {
-
+aes256_gcm_open_with #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[],
+    hardware : bool
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](ciphertext.count) > AES_GCM_MOST {
         return false
     }
@@ -963,9 +999,14 @@ aes256_gcm_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96],
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than AES_GCM_MOST.
  */
-aes_gcm_seal #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128]) -> bool {
-
+aes_gcm_seal #constant_time :: fn(
+    gcm : ptr[AesGcm],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128]
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](plaintext.count) > AES_GCM_MOST {
         return false
     }
@@ -1004,9 +1045,14 @@ aes_gcm_seal #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], plainte
  * @return True with plaintext written, or false, with nothing written, when the tag doesn't match, the counts differ,
  *     or the ciphertext is longer than AES_GCM_MOST.
  */
-aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[], tag: ptr[Tag128],
-    plaintext: mut SecretByte[]) -> bool {
-
+aes_gcm_open #constant_time :: fn(
+    gcm : ptr[AesGcm],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[]
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](ciphertext.count) > AES_GCM_MOST {
         return false
     }
@@ -1048,7 +1094,11 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
      * @param rounds How many rounds: 10 for AES-128, 14 for AES-256.
      * @param block The block, encrypted in place. The CPU has to have AES-NI, as aes_hardware says.
      */
-    aes_encrypt_hardware #constant_time #target_features("aes") :: fn(schedule: ptr[AesSchedule], rounds: usize, block: ptr[mut AesBlock]) {
+    aes_encrypt_hardware #constant_time #target_features("aes") :: fn(
+        schedule : ptr[AesSchedule],
+        rounds : usize,
+        block : ptr[mut AesBlock]
+    ) {
         keys := bit_cast[AesRoundKeys](schedule^)
         last := rounds % 15
         state := bit_cast[v128](block^) ~ keys[0]
@@ -1070,7 +1120,11 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
      * @param rounds How many rounds: 10 for AES-128, 14 for AES-256.
      * @param blocks The four blocks, encrypted in place. The CPU has to have AES-NI, as aes_hardware says.
      */
-    aes_encrypt4_hardware #constant_time #target_features("aes") :: fn(schedule: ptr[AesSchedule], rounds: usize, blocks: ptr[mut AesBlocks4]) {
+    aes_encrypt4_hardware #constant_time #target_features("aes") :: fn(
+        schedule : ptr[AesSchedule],
+        rounds : usize,
+        blocks : ptr[mut AesBlocks4]
+    ) {
         keys := bit_cast[AesRoundKeys](schedule^)
         last := rounds % 15
         state := bit_cast[AesLanes4](blocks^)
@@ -1100,7 +1154,7 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
      *     PCLMULQDQ, as aes_hardware says.
      * @return Their product, reduced: the same value ghash_multiply_software gives.
      */
-    ghash_multiply_hardware #constant_time #target_features("pclmul") :: fn(x: Ghash, y: Ghash) -> Ghash {
+    ghash_multiply_hardware #constant_time #target_features("pclmul") :: fn(x : Ghash, y : Ghash) -> Ghash {
         return ghash_reduce_hardware(ghash_product_hardware(x, y))
     }
 
@@ -1112,7 +1166,7 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
      * @return Their 256-bit carry-less product, for ghash_reduce_hardware; products can be XORed together before one
      *     reduction, as reducing is linear.
      */
-    ghash_product_hardware #constant_time #target_features("pclmul") :: fn(x: Ghash, y: Ghash) -> GhashWide {
+    ghash_product_hardware #constant_time #target_features("pclmul") :: fn(x : Ghash, y : Ghash) -> GhashWide {
         a := bit_cast[v128](vector[u64, 2].{x.low, x.high})
         b := bit_cast[v128](vector[u64, 2].{y.low, y.high})
         t3 := bit_cast[vector[u64, 2]](x86_64.carryless_multiply(a, b, 0x00))
@@ -1133,7 +1187,7 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
      * @return The product reduced modulo x^128 + x^7 + x^2 + x + 1, a GHASH value; for several products XORed together,
      *     the XOR of their reductions.
      */
-    ghash_reduce_hardware #constant_time #target_features("pclmul") :: fn(wide: GhashWide) -> Ghash {
+    ghash_reduce_hardware #constant_time #target_features("pclmul") :: fn(wide : GhashWide) -> Ghash {
         t3 := wide[0]
         t6 := wide[1]
         // The 256-bit product shifted left by one
@@ -1165,7 +1219,11 @@ aes_gcm_open #constant_time :: fn(gcm: ptr[AesGcm], nonce: ptr[Nonce96], ciphert
      * @param data The bytes; only whole groups of 64 from its start are taken.
      * @return How many bytes were taken, a multiple of 64; the caller adds the rest.
      */
-    ghash_blocks4_hardware #constant_time #target_features("pclmul") :: fn(gcm: ptr[AesGcm], value: ptr[mut Ghash], data: u8[]) -> usize {
+    ghash_blocks4_hardware #constant_time #target_features("pclmul") :: fn(
+        gcm : ptr[AesGcm],
+        value : ptr[mut Ghash],
+        data : u8[]
+    ) -> usize {
         start : usize = 0
         loop {
             group : u8[64]

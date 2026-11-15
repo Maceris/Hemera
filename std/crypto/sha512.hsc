@@ -16,9 +16,9 @@ SHA512_BLOCK :: 128
 /** The words and the block being filled, which hold what was hashed, so they're secrets. */
 Sha512State :: struct #secret {
     /** The eight 64-bit chaining words, H0 to H7, which become the digest. */
-    words: u64[8],
+    words : u64[8],
     /** The block being filled, compressed into the words once it's full. */
-    block: u8[128],
+    block : u8[128],
 }
 
 /** A block's schedule of 80 words, each with its round's constant added. */
@@ -33,11 +33,11 @@ Sha512Working :: distinct alias u64[9] #secret
  */
 Sha512 :: struct {
     /** The chaining words and the block being filled, secret. */
-    state: Sha512State,
+    state : Sha512State,
     /** How many bytes of the block are filled, 0 to 127. */
-    buffered: usize,
+    buffered : usize,
     /** How many bytes have been hashed in all, which the padding ends with, in bits. */
-    total: u64,
+    total : u64,
 }
 
 /** SHA-512's 80 round constants, K0 to K79 (FIPS 180-4, section 4.2.3). */
@@ -57,13 +57,13 @@ SHA512_ROUND :: u64.[
     0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b, 0xca273eceea26619c,
     0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba, 0x0a637dc5a2c898a6,
     0x113f9804bef90dae, 0x1b710b35131c471b, 0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc,
-    0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
+    0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
 ]
 
 /** SHA-512's initial hash value, H0 to H7 (FIPS 180-4, section 5.3.5). */
 SHA512_START :: u64.[
-    0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
-    0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
+    0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1, 0x510e527fade682d1,
+    0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179
 ]
 
 /**
@@ -84,7 +84,7 @@ sha512_start :: fn() -> Sha512 {
  *
  * @param state The state, its block full; its words are updated, and its block left as it was.
  */
-sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
+sha512_compress #constant_time :: fn(state : ptr[mut Sha512State]) {
     w : Sha512Schedule
     for i in 0..<16 {
         word := compiler.secret(cast[u64](0))
@@ -103,7 +103,7 @@ sha512_compress #constant_time :: fn(state: ptr[mut Sha512State]) {
  * @param w The block's 16 big-endian words in its first 16; the rest of the schedule is worked out in it, so it's
  *     overwritten.
  */
-sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[mut Sha512Schedule]) {
+sha512_compress_words #constant_time :: fn(state : ptr[mut Sha512State], w : ptr[mut Sha512Schedule]) {
     sha512_schedule(w)
     v : Sha512Working
     for i in 0..<8 {
@@ -139,7 +139,7 @@ sha512_compress_words #constant_time :: fn(state: ptr[mut Sha512State], w: ptr[m
  * @param w The block's schedule, each word with its round's constant added, as sha512_schedule leaves it.
  * @param i The round's number, 0 to 79, for its schedule word.
  */
-sha512_round #constant_time :: fn(v: ptr[mut Sha512Working], r: usize, w: ptr[Sha512Schedule], i: usize) {
+sha512_round #constant_time :: fn(v : ptr[mut Sha512Working], r : usize, w : ptr[Sha512Schedule], i : usize) {
     a := v[(8 - r) % 8]
     b := v[(9 - r) % 8]
     e := v[(12 - r) % 8]
@@ -169,7 +169,7 @@ sha512_round #constant_time :: fn(v: ptr[mut Sha512Working], r: usize, w: ptr[Sh
  *
  * @param w The schedule, the block's 16 big-endian words in its first 16; all 80 are written.
  */
-sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
+sha512_schedule #constant_time :: fn(w : ptr[mut Sha512Schedule]) {
     for i in 16..<80 {
         s0 := intrinsics.rotate_right(w[i - 15], 1) ~ intrinsics.rotate_right(w[i - 15], 8) ~ (w[i - 15] >> 7)
         s1 := intrinsics.rotate_right(w[i - 2], 19) ~ intrinsics.rotate_right(w[i - 2], 61) ~ (w[i - 2] >> 6)
@@ -186,7 +186,7 @@ sha512_schedule #constant_time :: fn(w: ptr[mut Sha512Schedule]) {
  * @param hasher The hasher. Its total doesn't count the byte: the caller adds it, as padding isn't counted.
  * @param byte Any byte, message or padding, put in the block's next free position.
  */
-sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
+sha512_byte :: fn(hasher : ptr[mut Sha512], byte : u8) {
     hasher.state.block[hasher.buffered % SHA512_BLOCK] = byte
     hasher.buffered += 1
     if hasher.buffered == SHA512_BLOCK {
@@ -201,7 +201,7 @@ sha512_byte :: fn(hasher: ptr[mut Sha512], byte: u8) {
  * @param hasher The hasher, not yet finished.
  * @param data The next bytes, of any number, none included; they're hashed, not kept.
  */
-sha512_update :: fn(hasher: ptr[mut Sha512], data: u8[]) {
+sha512_update :: fn(hasher : ptr[mut Sha512], data : u8[]) {
     sha512_absorb(hasher, as_secret(data))
 }
 
@@ -211,7 +211,7 @@ sha512_update :: fn(hasher: ptr[mut Sha512], data: u8[]) {
  * @param hasher The hasher, not yet finished.
  * @param data The next bytes, of any number; how many isn't secret, what they are is.
  */
-sha512_update_secret #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
+sha512_update_secret #constant_time :: fn(hasher : ptr[mut Sha512], data : SecretByte[]) {
     sha512_absorb(hasher, data)
 }
 
@@ -222,7 +222,7 @@ sha512_update_secret #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretB
  * @param hasher The hasher, not yet finished; its total grows by data's count.
  * @param data The bytes, of any number.
  */
-sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) {
+sha512_absorb #constant_time :: fn(hasher : ptr[mut Sha512], data : SecretByte[]) {
     at : usize = 0
     loop {
         hasher.state.block[hasher.buffered % SHA512_BLOCK] = cast[u8](data[at])
@@ -265,7 +265,7 @@ sha512_absorb #constant_time :: fn(hasher: ptr[mut Sha512], data: SecretByte[]) 
  *     finished again, and its state isn't wiped.
  * @return The 64-byte digest, big-endian words, as a secret.
  */
-sha512_finish_secret #constant_time :: fn(hasher: ptr[mut Sha512]) -> SecretByte[64] {
+sha512_finish_secret #constant_time :: fn(hasher : ptr[mut Sha512]) -> SecretByte[64] {
     bits := hasher.total * 8
     sha512_byte(hasher, 0x80)
     // Zeros up to the 16 bytes the length takes at the end of a block, a new one if they don't fit
@@ -296,7 +296,7 @@ sha512_finish_secret #constant_time :: fn(hasher: ptr[mut Sha512]) -> SecretByte
  *     finished again.
  * @return The 64-byte digest, public.
  */
-sha512_finish :: fn(hasher: ptr[mut Sha512]) -> u8[64] {
+sha512_finish :: fn(hasher : ptr[mut Sha512]) -> u8[64] {
     secret := sha512_finish_secret(hasher)
     digest : u8[64]
     for i in 0..<64 {
@@ -311,7 +311,7 @@ sha512_finish :: fn(hasher: ptr[mut Sha512]) -> u8[64] {
  * @param data The bytes, of any number, none included.
  * @return The 64-byte digest.
  */
-sha512 :: fn(data: u8[]) -> u8[64] {
+sha512 :: fn(data : u8[]) -> u8[64] {
     hasher := sha512_start()
     sha512_update(&hasher, data)
     return sha512_finish(&hasher)
@@ -329,8 +329,8 @@ SHA384_BLOCK :: 128
 
 /** SHA-384's initial hash value, H0 to H7 (FIPS 180-4, section 5.3.4). */
 SHA384_START :: u64.[
-    0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
-    0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4,
+    0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939, 0x67332667ffc00b31,
+    0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4
 ]
 
 /**
@@ -339,7 +339,7 @@ SHA384_START :: u64.[
  */
 Sha384 :: struct {
     /** The SHA-512 hash it runs, started from SHA384_START. */
-    hasher: Sha512,
+    hasher : Sha512,
 }
 
 /**
@@ -361,7 +361,7 @@ sha384_start :: fn() -> Sha384 {
  * @param hasher The hasher, not yet finished.
  * @param data The next bytes, of any number, none included; they're hashed, not kept.
  */
-sha384_update :: fn(hasher: ptr[mut Sha384], data: u8[]) {
+sha384_update :: fn(hasher : ptr[mut Sha384], data : u8[]) {
     sha512_absorb(&hasher.hasher, as_secret(data))
 }
 
@@ -371,7 +371,7 @@ sha384_update :: fn(hasher: ptr[mut Sha384], data: u8[]) {
  * @param hasher The hasher, not yet finished.
  * @param data The next bytes, of any number; how many isn't secret, what they are is.
  */
-sha384_update_secret #constant_time :: fn(hasher: ptr[mut Sha384], data: SecretByte[]) {
+sha384_update_secret #constant_time :: fn(hasher : ptr[mut Sha384], data : SecretByte[]) {
     sha512_absorb(&hasher.hasher, data)
 }
 
@@ -382,7 +382,7 @@ sha384_update_secret #constant_time :: fn(hasher: ptr[mut Sha384], data: SecretB
  *     finished again, and its state isn't wiped.
  * @return The 48-byte digest, the first 48 bytes of what SHA-512's finish gives from SHA-384's words, as a secret.
  */
-sha384_finish_secret #constant_time :: fn(hasher: ptr[mut Sha384]) -> SecretByte[48] {
+sha384_finish_secret #constant_time :: fn(hasher : ptr[mut Sha384]) -> SecretByte[48] {
     whole := sha512_finish_secret(&hasher.hasher)
     digest : SecretByte[48]
     for i in 0..<48 {
@@ -398,7 +398,7 @@ sha384_finish_secret #constant_time :: fn(hasher: ptr[mut Sha384]) -> SecretByte
  *     finished again.
  * @return The 48-byte digest, public.
  */
-sha384_finish :: fn(hasher: ptr[mut Sha384]) -> u8[48] {
+sha384_finish :: fn(hasher : ptr[mut Sha384]) -> u8[48] {
     secret := sha384_finish_secret(hasher)
     digest : u8[48]
     for i in 0..<48 {
@@ -413,7 +413,7 @@ sha384_finish :: fn(hasher: ptr[mut Sha384]) -> u8[48] {
  * @param data The bytes, of any number, none included.
  * @return The 48-byte digest.
  */
-sha384 :: fn(data: u8[]) -> u8[48] {
+sha384 :: fn(data : u8[]) -> u8[48] {
     hasher := sha384_start()
     sha384_update(&hasher, data)
     return sha384_finish(&hasher)

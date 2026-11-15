@@ -14,7 +14,7 @@ Writer :: struct {
 }
 
 /** Write a byte. */
-put_u8 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u8) {
+put_u8 :: fn(into : mut u8[], writer : ptr[mut Writer], value : u8) {
     if writer.at < into.count {
         into[writer.at] = value
     }
@@ -25,12 +25,12 @@ put_u8 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u8) {
 }
 
 /** Write a boolean: 1 or 0. */
-put_bool :: fn(into: mut u8[], writer: ptr[mut Writer], value: bool) {
+put_bool :: fn(into : mut u8[], writer : ptr[mut Writer], value : bool) {
     put_u8(into, writer, if value { cast[u8](1) } else { cast[u8](0) })
 }
 
 /** Write a uint32, big-endian. */
-put_u32 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u32) {
+put_u32 :: fn(into : mut u8[], writer : ptr[mut Writer], value : u32) {
     put_u8(into, writer, cast[u8](value >> 24))
     put_u8(into, writer, cast[u8](value >> 16))
     put_u8(into, writer, cast[u8](value >> 8))
@@ -38,20 +38,20 @@ put_u32 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u32) {
 }
 
 /** Write bytes as they are. */
-put_bytes :: fn(into: mut u8[], writer: ptr[mut Writer], bytes: u8[]) {
+put_bytes :: fn(into : mut u8[], writer : ptr[mut Writer], bytes : u8[]) {
     for byte in bytes {
         put_u8(into, writer, byte)
     }
 }
 
 /** Write a string: its length, then its bytes. */
-put_string :: fn(into: mut u8[], writer: ptr[mut Writer], bytes: u8[]) {
+put_string :: fn(into : mut u8[], writer : ptr[mut Writer], bytes : u8[]) {
     put_u32(into, writer, cast[u32](bytes.count))
     put_bytes(into, writer, bytes)
 }
 
 /** Write text as a string. */
-put_text :: fn(into: mut u8[], writer: ptr[mut Writer], text: string) {
+put_text :: fn(into : mut u8[], writer : ptr[mut Writer], text : string) {
     put_string(into, writer, string_bytes(text))
 }
 
@@ -59,7 +59,7 @@ put_text :: fn(into: mut u8[], writer: ptr[mut Writer], text: string) {
  * Write an mpint from an unsigned big-endian number: its leading zero bytes dropped, and a zero byte put first if
  * its top bit is set, so it's read as positive.
  */
-put_mpint :: fn(into: mut u8[], writer: ptr[mut Writer], magnitude: u8[]) {
+put_mpint :: fn(into : mut u8[], writer : ptr[mut Writer], magnitude : u8[]) {
     start := cast[usize](0)
     loop {
         start += 1
@@ -79,14 +79,14 @@ put_mpint :: fn(into: mut u8[], writer: ptr[mut Writer], magnitude: u8[]) {
  *
  * @return Where its length goes.
  */
-start_string :: fn(into: mut u8[], writer: ptr[mut Writer]) -> usize {
+start_string :: fn(into : mut u8[], writer : ptr[mut Writer]) -> usize {
     at :: writer.at
     put_u32(into, writer, 0)
     return at
 }
 
 /** End a string start_string started, its length filled in. */
-end_string :: fn(into: mut u8[], writer: ptr[mut Writer], at: usize) {
+end_string :: fn(into : mut u8[], writer : ptr[mut Writer], at : usize) {
     length :: writer.at - at - 4
     for i in cast[usize](0)..<4 {
         position :: at + i
@@ -104,12 +104,12 @@ Reader :: struct {
 }
 
 /** A reader of all of some bytes. */
-reader_of :: fn(bytes: u8[]) -> Reader {
+reader_of :: fn(bytes : u8[]) -> Reader {
     return Reader.{at = 0, end = bytes.count}
 }
 
 /** Read a byte; 0, the reader bad, past the end. */
-get_u8 :: fn(from: u8[], reader: ptr[mut Reader]) -> u8 {
+get_u8 :: fn(from : u8[], reader : ptr[mut Reader]) -> u8 {
     if reader.at >= reader.end || reader.at >= from.count {
         reader.bad = true
         return 0
@@ -120,12 +120,12 @@ get_u8 :: fn(from: u8[], reader: ptr[mut Reader]) -> u8 {
 }
 
 /** Read a boolean: anything but 0 is true. */
-get_bool :: fn(from: u8[], reader: ptr[mut Reader]) -> bool {
+get_bool :: fn(from : u8[], reader : ptr[mut Reader]) -> bool {
     return get_u8(from, reader) != 0
 }
 
 /** Read a uint32, big-endian. */
-get_u32 :: fn(from: u8[], reader: ptr[mut Reader]) -> u32 {
+get_u32 :: fn(from : u8[], reader : ptr[mut Reader]) -> u32 {
     value := cast[u32](0)
     for i in 0..<4 {
         value = (value << 8) | cast[u32](get_u8(from, reader))
@@ -134,7 +134,7 @@ get_u32 :: fn(from: u8[], reader: ptr[mut Reader]) -> u32 {
 }
 
 /** Read count bytes as they are; none, the reader bad, if there aren't so many. */
-get_bytes :: fn(from: u8[], reader: ptr[mut Reader], count: usize) -> u8[] {
+get_bytes :: fn(from : u8[], reader : ptr[mut Reader], count : usize) -> u8[] {
     if reader.bad || count > reader.end - reader.at || reader.end > from.count {
         reader.bad = true
         reader.at = reader.end
@@ -146,13 +146,13 @@ get_bytes :: fn(from: u8[], reader: ptr[mut Reader], count: usize) -> u8[] {
 }
 
 /** Read a string's bytes. */
-get_string :: fn(from: u8[], reader: ptr[mut Reader]) -> u8[] {
+get_string :: fn(from : u8[], reader : ptr[mut Reader]) -> u8[] {
     length :: cast[usize](get_u32(from, reader))
     return get_bytes(from, reader, length)
 }
 
 /** A reader of a string's bytes, within from, the outer reader past it. */
-get_inner :: fn(from: u8[], reader: ptr[mut Reader]) -> Reader {
+get_inner :: fn(from : u8[], reader : ptr[mut Reader]) -> Reader {
     length :: cast[usize](get_u32(from, reader))
     if reader.bad || length > reader.end - reader.at {
         reader.bad = true
@@ -168,7 +168,7 @@ get_inner :: fn(from: u8[], reader: ptr[mut Reader]) -> Reader {
  * Read an mpint as an unsigned big-endian number, its sign byte dropped; a negative one, or one with a needless leading
  * byte, makes the reader bad.
  */
-get_mpint :: fn(from: u8[], reader: ptr[mut Reader]) -> u8[] {
+get_mpint :: fn(from : u8[], reader : ptr[mut Reader]) -> u8[] {
     bytes :: get_string(from, reader)
     if bytes.count == 0 {
         return bytes
@@ -188,12 +188,12 @@ get_mpint :: fn(from: u8[], reader: ptr[mut Reader]) -> u8[] {
 }
 
 /** Whether everything was read, and well. */
-done :: fn(reader: ptr[Reader]) -> bool {
+done :: fn(reader : ptr[Reader]) -> bool {
     return !reader.bad && reader.at == reader.end
 }
 
 /** Part of a view, or none if it's not all there. */
-range :: fn[T](view: T[], from: usize, to: usize) -> T[] {
+range :: fn[T](view : T[], from : usize, to : usize) -> T[] {
     if from > to || to > view.count {
         return view[0..<0]
     }
@@ -201,7 +201,7 @@ range :: fn[T](view: T[], from: usize, to: usize) -> T[] {
 }
 
 /** Part of a view to write, or none if it's not all there. */
-range_mut :: fn[T](view: mut T[], from: usize, to: usize) -> mut T[] {
+range_mut :: fn[T](view : mut T[], from : usize, to : usize) -> mut T[] {
     if from > to || to > view.count {
         return view[0..<0]
     }
@@ -209,19 +209,19 @@ range_mut :: fn[T](view: mut T[], from: usize, to: usize) -> mut T[] {
 }
 
 /** A byte of a view, or 0 past its end. */
-byte_at :: fn(view: u8[], at: usize) -> u8 {
+byte_at :: fn(view : u8[], at : usize) -> u8 {
     return if at < view.count { view[at] } else { cast[u8](0) }
 }
 
 /** Write a byte of a view, if it's within it. */
-set_byte :: fn(view: mut u8[], at: usize, value: u8) {
+set_byte :: fn(view : mut u8[], at : usize, value : u8) {
     if at < view.count {
         view[at] = value
     }
 }
 
 /** Move bytes from the back of a buffer to its front, dropping count at the front; gives how many are left. */
-drop_front :: fn(buffer: mut u8[], held: usize, count: usize) -> usize {
+drop_front :: fn(buffer : mut u8[], held : usize, count : usize) -> usize {
     taken :: if count < held { count } else { held }
     for i in taken..<held {
         to :: i - taken
@@ -233,7 +233,7 @@ drop_front :: fn(buffer: mut u8[], held: usize, count: usize) -> usize {
 }
 
 /** Whether two byte views hold the same bytes. */
-same :: fn(a: u8[], b: u8[]) -> bool {
+same :: fn(a : u8[], b : u8[]) -> bool {
     if a.count != b.count {
         return false
     }
@@ -246,7 +246,7 @@ same :: fn(a: u8[], b: u8[]) -> bool {
 }
 
 /** Whether bytes are some text. */
-is :: fn(bytes: u8[], text: string) -> bool {
+is :: fn(bytes : u8[], text : string) -> bool {
     return same(bytes, string_bytes(text))
 }
 
@@ -257,7 +257,7 @@ is :: fn(bytes: u8[], text: string) -> bool {
  * @param name The name.
  * @return True if one of them is it.
  */
-has_name :: fn(list: u8[], name: u8[]) -> bool {
+has_name :: fn(list : u8[], name : u8[]) -> bool {
     start := cast[usize](0)
     for i in cast[usize](0)..<list.count + 1 {
         if i == list.count || (i < list.count && list[i] == 0x2c) {
@@ -278,7 +278,7 @@ has_name :: fn(list: u8[], name: u8[]) -> bool {
  * @param chosen Where the name goes.
  * @return Its length; 0 if they have none in common.
  */
-choose :: fn(client: u8[], server: u8[], chosen: mut u8[]) -> usize {
+choose :: fn(client : u8[], server : u8[], chosen : mut u8[]) -> usize {
     start := cast[usize](0)
     for i in cast[usize](0)..<client.count + 1 {
         if i == client.count || (i < client.count && client[i] == 0x2c) {

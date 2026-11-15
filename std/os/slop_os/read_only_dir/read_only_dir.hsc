@@ -91,7 +91,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return True for every request: none of them changes anything.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case OpenReadOnlyFile(_) => true
         case OpenDirectory(_) => true
@@ -118,7 +118,7 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  * @return The new connection's end, which the caller owns and closes; null if the channel couldn't be made or the
  *     Connect couldn't be sent, and then nothing is left open.
  */
-connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[ReadOnlyDir]? {
+connect :: fn(end : slop_os.Channel, port : slop_os.Port, budget : slop_os.MemoryBudget) -> os.Channel[ReadOnlyDir]? {
     pair :: os.channel_for[ReadOnlyDir](budget, 0) or_return null
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)

@@ -17,8 +17,8 @@ EXPO2_SHIFT : f64 : 1416.0996898839683 // 0x40962066_151add8b
  * @param sign 1 or -1.
  * @return sign × e^x / 2, within 1 ulp.
  */
-//SPEC: musl src/math/__expo2.c
-half_exp_large_64 :: fn(x: f64, sign: f64) -> f64 {
+// SPEC: musl src/math/__expo2.c
+half_exp_large_64 :: fn(x : f64, sign : f64) -> f64 {
     scale :: power_of_two_64(1021)
     return exp_64(x - EXPO2_SHIFT) * (sign * scale) * scale
 }
@@ -29,8 +29,8 @@ half_exp_large_64 :: fn(x: f64, sign: f64) -> f64 {
  * @param x The number.
  * @return sinh x, within 1 ulp; x for ±0 and ±infinity, NaN for NaN.
  */
-//SPEC: musl src/math/sinh.c
-sinh_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/sinh.c
+sinh_64 :: fn(x : f64) -> f64 {
     h :: if (bit_cast[u64](x) >> 63) != 0 { -0.5 } else { 0.5 }
     magnitude :: abs(x)
     w :: high_word(magnitude)
@@ -57,8 +57,8 @@ sinh_64 :: fn(x: f64) -> f64 {
  * @param x The number.
  * @return cosh x, within 1 ulp; infinity for ±infinity, NaN for NaN.
  */
-//SPEC: musl src/math/cosh.c
-cosh_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/cosh.c
+cosh_64 :: fn(x : f64) -> f64 {
     magnitude :: abs(x)
     w :: high_word(magnitude)
     // Below ln 2
@@ -86,8 +86,8 @@ cosh_64 :: fn(x: f64) -> f64 {
  * @param x The number.
  * @return tanh x, within 1 ulp; ±1 for ±infinity and past 20, x for ±0, NaN for NaN.
  */
-//SPEC: musl src/math/tanh.c
-tanh_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/tanh.c
+tanh_64 :: fn(x : f64) -> f64 {
     negative :: (bit_cast[u64](x) >> 63) != 0
     magnitude :: abs(x)
     w :: high_word(magnitude)
@@ -128,8 +128,8 @@ tanh_64 :: fn(x: f64) -> f64 {
  * @param x The number.
  * @return asinh x, within 1 ulp; x for ±0 and ±infinity, NaN for NaN.
  */
-//SPEC: musl src/math/asinh.c
-asinh_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/asinh.c
+asinh_64 :: fn(x : f64) -> f64 {
     negative :: (bit_cast[u64](x) >> 63) != 0
     e :: cast[i32]((bit_cast[u64](x) >> 52) & 0x7ff)
     y := abs(x)
@@ -154,8 +154,8 @@ asinh_64 :: fn(x: f64) -> f64 {
  * @param x The number, at least 1.
  * @return acosh x, within 1 ulp; infinity for infinity, NaN below 1 and for NaN.
  */
-//SPEC: musl src/math/acosh.c
-acosh_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/acosh.c
+acosh_64 :: fn(x : f64) -> f64 {
     e :: cast[i32]((bit_cast[u64](x) >> 52) & 0x7ff)
     if x < 1 {
         return nan_64()
@@ -177,8 +177,8 @@ acosh_64 :: fn(x: f64) -> f64 {
  * @param x The number, from -1 to 1.
  * @return atanh x, within 1.5 ulp; ±infinity at ±1, NaN beyond and for NaN.
  */
-//SPEC: musl src/math/atanh.c
-atanh_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/atanh.c
+atanh_64 :: fn(x : f64) -> f64 {
     negative :: (bit_cast[u64](x) >> 63) != 0
     e :: cast[i32]((bit_cast[u64](x) >> 52) & 0x7ff)
     y := abs(x)

@@ -52,7 +52,7 @@ HANGUL_S_COUNT : u32 : 11172
  * @param point The code point; one past U+10FFFF is a starter.
  * @return Its class: 0 for a starter, which nothing reorders past.
  */
-combining_class :: fn(point: u32) -> u8 {
+combining_class :: fn(point : u32) -> u8 {
     low := cast[usize](0)
     high := CLASS_STARTS.count
     // The last run that starts at or before point
@@ -86,7 +86,7 @@ combining_class :: fn(point: u32) -> u8 {
  * @param into Where it's written, from the start: LONGEST_DECOMPOSITION code points are always room enough.
  * @return How many code points were written: 1 to LONGEST_DECOMPOSITION; 0 if into hasn't room for them.
  */
-decompose :: fn(point: u32, into: mut u32[]) -> usize {
+decompose :: fn(point : u32, into : mut u32[]) -> usize {
     if point >= HANGUL_S_BASE && point < HANGUL_S_BASE + HANGUL_S_COUNT {
         index :: point - HANGUL_S_BASE
         trailing :: index % HANGUL_T_COUNT
@@ -105,7 +105,14 @@ decompose :: fn(point: u32, into: mut u32[]) -> usize {
         return 3
     }
     match index_of(DECOMPOSED[0..<DECOMPOSED.count], point) {
-        case Some(at) => return copied(DECOMPOSITION_STARTS[0..<DECOMPOSITION_STARTS.count], DECOMPOSITIONS[0..<DECOMPOSITIONS.count], at, into)
+        case Some(
+            at
+        ) => return copied(
+            DECOMPOSITION_STARTS[0..<DECOMPOSITION_STARTS.count],
+            DECOMPOSITIONS[0..<DECOMPOSITIONS.count],
+            at,
+            into
+        )
         case None => {}
     }
     if into.count == 0 {
@@ -123,13 +130,18 @@ decompose :: fn(point: u32, into: mut u32[]) -> usize {
  * @param second The one that follows it.
  * @return The composite; null if they don't compose.
  */
-compose :: fn(first: u32, second: u32) -> u32? {
-    if first >= HANGUL_L_BASE && first < HANGUL_L_BASE + HANGUL_L_COUNT && second >= HANGUL_V_BASE
+compose :: fn(first : u32, second : u32) -> u32? {
+    if first >= HANGUL_L_BASE
+        && first < HANGUL_L_BASE + HANGUL_L_COUNT
+        && second >= HANGUL_V_BASE
         && second < HANGUL_V_BASE + HANGUL_V_COUNT {
         return HANGUL_S_BASE + ((first - HANGUL_L_BASE) * HANGUL_V_COUNT + (second - HANGUL_V_BASE)) * HANGUL_T_COUNT
     }
-    if first >= HANGUL_S_BASE && first < HANGUL_S_BASE + HANGUL_S_COUNT && (first - HANGUL_S_BASE) % HANGUL_T_COUNT == 0
-        && second > HANGUL_T_BASE && second < HANGUL_T_BASE + HANGUL_T_COUNT {
+    if first >= HANGUL_S_BASE
+        && first < HANGUL_S_BASE + HANGUL_S_COUNT
+        && (first - HANGUL_S_BASE) % HANGUL_T_COUNT == 0
+        && second > HANGUL_T_BASE
+        && second < HANGUL_T_BASE + HANGUL_T_COUNT {
         return first + (second - HANGUL_T_BASE)
     }
     key :: (cast[u64](first) << 21) | cast[u64](second)
@@ -165,7 +177,7 @@ compose :: fn(first: u32, second: u32) -> u32? {
  * @return How many code points were written, 1 to 3, the code point itself if folding doesn't change it; 0 if into
  *     hasn't room.
  */
-fold :: fn(point: u32, into: mut u32[]) -> usize {
+fold :: fn(point : u32, into : mut u32[]) -> usize {
     match index_of(FOLDED[0..<FOLDED.count], point) {
         case Some(at) => return copied(FOLDING_STARTS[0..<FOLDING_STARTS.count], FOLDINGS[0..<FOLDINGS.count], at, into)
         case None => {}
@@ -187,7 +199,7 @@ fold :: fn(point: u32, into: mut u32[]) -> usize {
  *     text is always enough.
  * @return How many bytes of into were written; null if scratch or into hasn't room, when into holds part of it.
  */
-normalize :: fn(text: u8[], form: Form, scratch: mut u32[], into: mut u8[]) -> usize? {
+normalize :: fn(text : u8[], form : Form, scratch : mut u32[], into : mut u8[]) -> usize? {
     count :: decomposed(text, scratch) or_return null
     if count > scratch.count {
         return null
@@ -213,7 +225,7 @@ normalize :: fn(text: u8[], form: Form, scratch: mut u32[], into: mut u8[]) -> u
  *     always enough.
  * @return How many bytes of into were written; null if scratch or into hasn't room.
  */
-case_fold :: fn(text: u8[], scratch: mut u32[], into: mut u8[]) -> usize? {
+case_fold :: fn(text : u8[], scratch : mut u32[], into : mut u8[]) -> usize? {
     count := cast[usize](0)
     at := cast[usize](0)
     loop {
@@ -245,7 +257,7 @@ case_fold :: fn(text: u8[], scratch: mut u32[], into: mut u8[]) -> usize? {
  * @param scratch Where the code points go, from the start.
  * @return How many there are; null if scratch hasn't room.
  */
-decomposed :: fn(text: u8[], scratch: mut u32[]) -> usize? {
+decomposed :: fn(text : u8[], scratch : mut u32[]) -> usize? {
     count := cast[usize](0)
     at := cast[usize](0)
     loop {
@@ -272,7 +284,7 @@ decomposed :: fn(text: u8[], scratch: mut u32[]) -> usize? {
  *
  * @param points The code points, reordered in place.
  */
-order :: fn(points: mut u32[]) {
+order :: fn(points : mut u32[]) {
     for i in 1..<points.count {
         class :: combining_class(points[i])
         if class == 0 {
@@ -301,7 +313,7 @@ order :: fn(points: mut u32[]) {
  * @param points The code points, in NFD; composed in place, from the start.
  * @return How many code points are left, from the start.
  */
-composed :: fn(points: mut u32[]) -> usize {
+composed :: fn(points : mut u32[]) -> usize {
     if points.count == 0 {
         return 0
     }
@@ -341,7 +353,7 @@ composed :: fn(points: mut u32[]) -> usize {
  * @param into Where the bytes go, from the start.
  * @return How many bytes were written; null if into hasn't room for them all.
  */
-encoded :: fn(points: u32[], into: mut u8[]) -> usize? {
+encoded :: fn(points : u32[], into : mut u8[]) -> usize? {
     written := cast[usize](0)
     for point in points {
         from :: written
@@ -365,7 +377,7 @@ encoded :: fn(points: u32[], into: mut u8[]) -> usize? {
  * @return point The code point.
  * @return length How many bytes it took: at least 1.
  */
-next_point :: fn(text: u8[], at: usize) -> (point: u32, length: usize) {
+next_point :: fn(text : u8[], at : usize) -> (point : u32, length : usize) {
     point, length :: decode(text, at)
     if length == 0 {
         return 0xfffd, 1
@@ -382,7 +394,7 @@ next_point :: fn(text: u8[], at: usize) -> (point: u32, length: usize) {
  * @param into Where its code points go, from the start.
  * @return How many were copied; 0 for an index past the table's, or into without room.
  */
-copied :: fn(starts: u16[], data: u32[], at: usize, into: mut u32[]) -> usize {
+copied :: fn(starts : u16[], data : u32[], at : usize, into : mut u32[]) -> usize {
     if at >= starts.count {
         return 0
     }
@@ -411,7 +423,7 @@ copied :: fn(starts: u16[], data: u32[], at: usize, into: mut u32[]) -> usize {
  * @param point The one looked for.
  * @return Its index; null if it isn't there.
  */
-index_of :: fn(points: u32[], point: u32) -> usize? {
+index_of :: fn(points : u32[], point : u32) -> usize? {
     low := cast[usize](0)
     high := points.count
     loop {

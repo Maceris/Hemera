@@ -43,7 +43,7 @@ CHACHA_CONSTANTS :: u32.[0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]
  * @param c The index of its third word.
  * @param d The index of its fourth word.
  */
-chacha_quarter #constant_time :: fn(x: ptr[mut ChaChaWords], a: usize, b: usize, c: usize, d: usize) {
+chacha_quarter #constant_time :: fn(x : ptr[mut ChaChaWords], a : usize, b : usize, c : usize, d : usize) {
     x[a % 16] = x[a % 16] + x[b % 16]
     x[d % 16] = intrinsics.rotate_left(x[d % 16] ~ x[a % 16], 16)
     x[c % 16] = x[c % 16] + x[d % 16]
@@ -62,7 +62,7 @@ chacha_quarter #constant_time :: fn(x: ptr[mut ChaChaWords], a: usize, b: usize,
  * @param nonce The nonce, read as three little-endian words.
  * @return The constants, the key, the counter and the nonce, in that order; secret.
  */
-chacha_state #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Nonce96]) -> ChaChaWords {
+chacha_state #constant_time :: fn(key : ptr[Key256], counter : u32, nonce : ptr[Nonce96]) -> ChaChaWords {
     state : ChaChaWords
     for i in 0..<4 {
         state[i] = CHACHA_CONSTANTS[i]
@@ -93,7 +93,7 @@ chacha_state #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Non
  * @param nonce The 12-byte nonce, the state's words 13 to 15; read, not changed.
  * @return The block as sixteen words, whose little-endian bytes are the keystream's; secret.
  */
-chacha20_block #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[Nonce96]) -> ChaChaWords {
+chacha20_block #constant_time :: fn(key : ptr[Key256], counter : u32, nonce : ptr[Nonce96]) -> ChaChaWords {
     state := chacha_state(key, counter, nonce)
     x := state
     for round in 0..<10 {
@@ -119,7 +119,7 @@ chacha20_block #constant_time :: fn(key: ptr[Key256], counter: u32, nonce: ptr[N
  * @param at The byte's index in the block, 0 to 63.
  * @return The byte, secret.
  */
-chacha_byte #constant_time :: fn(block: ptr[ChaChaWords], at: usize) -> SecretByte {
+chacha_byte #constant_time :: fn(block : ptr[ChaChaWords], at : usize) -> SecretByte {
     return cast[SecretByte](block[(at / 4) % 16] >> (8 * cast[u32](at % 4)))
 }
 
@@ -150,7 +150,7 @@ ChaChaStreamWords :: distinct alias u32[128] #secret
  * @param c The index of its third word.
  * @param d The index of its fourth word.
  */
-chacha_quarter_lanes :: fn[T](x: ptr[mut T], a: usize, b: usize, c: usize, d: usize) {
+chacha_quarter_lanes :: fn[T](x : ptr[mut T], a : usize, b : usize, c : usize, d : usize) {
     x[a % 16] = x[a % 16] + x[b % 16]
     x[d % 16] = intrinsics.rotate_left(x[d % 16] ~ x[a % 16], 16)
     x[c % 16] = x[c % 16] + x[d % 16]
@@ -168,7 +168,7 @@ chacha_quarter_lanes :: fn[T](x: ptr[mut T], a: usize, b: usize, c: usize, d: us
  * @param words Where the blocks' 64 words go.
  * @param at The word in words the first block goes at: 0 or 64.
  */
-chacha20_blocks4 #constant_time :: fn(state: ptr[ChaChaWords], words: ptr[mut ChaChaStreamWords], at: usize) {
+chacha20_blocks4 #constant_time :: fn(state : ptr[ChaChaWords], words : ptr[mut ChaChaStreamWords], at : usize) {
     x : ChaChaLanes4
     for i in 0..<16 {
         x[i] = intrinsics.splat[vector[u32, 4]](state[i])
@@ -205,7 +205,7 @@ chacha20_blocks4 #constant_time :: fn(state: ptr[ChaChaWords], words: ptr[mut Ch
  *     says, may be told; on targets other than x86-64 it's ignored.
  * @param stream Where the keystream goes, all 512 bytes.
  */
-chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool, stream: ptr[mut ChaChaStream]) {
+chacha20_keystream #constant_time :: fn(state : ptr[mut ChaChaWords], wide : bool, stream : ptr[mut ChaChaStream]) {
     words : ChaChaStreamWords
     made := false
     #if TARGET_ARCH == .x86_64 {
@@ -248,7 +248,10 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
      *     have AVX2, as vectors_wide says.
      * @param words Where the blocks' 128 words go.
      */
-    chacha20_blocks8 #constant_time #target_features("avx2") :: fn(state: ptr[ChaChaWords], words: ptr[mut ChaChaStreamWords]) {
+    chacha20_blocks8 #constant_time #target_features("avx2") :: fn(
+        state : ptr[ChaChaWords],
+        words : ptr[mut ChaChaStreamWords]
+    ) {
         x : ChaChaLanes8
         for i in 0..<16 {
             x[i] = intrinsics.splat[vector[u32, 8]](state[i])
@@ -290,13 +293,13 @@ chacha20_keystream #constant_time :: fn(state: ptr[mut ChaChaWords], wide: bool,
  */
 Poly1305State :: struct #secret {
     /** The key's r, clamped as RFC 8439 says, in limbs of 44, 44 and 42 bits. */
-    r: u64[3],
+    r : u64[3],
     /** The key's s, added at the end, as two little-endian 64-bit halves. */
-    s: u64[2],
+    s : u64[2],
     /** The sum, in limbs of 44, 44 and 42 bits, only partly carried: reduced modulo 2^130 - 5 at the end. */
-    h: u64[3],
+    h : u64[3],
     /** The block being filled. */
-    block: u8[16],
+    block : u8[16],
 }
 
 /**
@@ -305,9 +308,9 @@ Poly1305State :: struct #secret {
  */
 Poly1305 :: struct {
     /** The key and the sum, secret, and the block being filled. */
-    state: Poly1305State,
+    state : Poly1305State,
     /** How many bytes of the block are filled, 0 to 15. */
-    buffered: usize,
+    buffered : usize,
 }
 
 /**
@@ -328,7 +331,7 @@ POLY_MASK42 :: 0x3ff_ffff_ffff
  * @param at The first byte's index, 0 to 24.
  * @return The word, still a secret.
  */
-poly_key_word #constant_time :: fn(key: ptr[Poly1305Key], at: usize) -> SecretWord {
+poly_key_word #constant_time :: fn(key : ptr[Poly1305Key], at : usize) -> SecretWord {
     word := compiler.secret(cast[u64](0))
     for j in 0..<8 {
         word = word | (cast[u64](key[(at + cast[usize](j)) % 32]) << (8 * cast[u64](j)))
@@ -342,7 +345,7 @@ poly_key_word #constant_time :: fn(key: ptr[Poly1305Key], at: usize) -> SecretWo
  * @param key The one-time key: r, clamped here, and s. It's copied into the state, not kept.
  * @return The authentication, with a sum of 0 and nothing buffered.
  */
-poly1305_start #constant_time :: fn(key: ptr[Poly1305Key]) -> Poly1305 {
+poly1305_start #constant_time :: fn(key : ptr[Poly1305Key]) -> Poly1305 {
     poly := Poly1305.{}
     t0 := cast[u64](poly_key_word(key, 0))
     t1 := cast[u64](poly_key_word(key, 8))
@@ -364,7 +367,7 @@ poly1305_start #constant_time :: fn(key: ptr[Poly1305Key]) -> Poly1305 {
  * @param high The bit above the block's 128 in the third limb: 1 << 40 for a full block, and 0 for a last, partial
  *     one, whose 1 is already among its bytes.
  */
-poly1305_add_block #constant_time :: fn(state: ptr[mut Poly1305State], t0: SecretWord, t1: SecretWord, high: u64) {
+poly1305_add_block #constant_time :: fn(state : ptr[mut Poly1305State], t0 : SecretWord, t1 : SecretWord, high : u64) {
     m0 := cast[u64](t0)
     m1 := cast[u64](t1)
     h0 := state.h[0] + (m0 & POLY_MASK44)
@@ -398,7 +401,7 @@ poly1305_add_block #constant_time :: fn(state: ptr[mut Poly1305State], t0: Secre
  * @param state The state, its block full or padded.
  * @param high The bit above the block's 128 in the third limb: 1 << 40 for a full block, and 0 for a padded one.
  */
-poly1305_blocks #constant_time :: fn(state: ptr[mut Poly1305State], high: u64) {
+poly1305_blocks #constant_time :: fn(state : ptr[mut Poly1305State], high : u64) {
     t0 := compiler.secret(cast[u64](0))
     t1 := compiler.secret(cast[u64](0))
     for j in 0..<8 {
@@ -414,7 +417,7 @@ poly1305_blocks #constant_time :: fn(state: ptr[mut Poly1305State], high: u64) {
  * @param poly The authentication, not yet finished.
  * @param data The next bytes, of any number, none included; they're added, not kept.
  */
-poly1305_update :: fn(poly: ptr[mut Poly1305], data: u8[]) {
+poly1305_update :: fn(poly : ptr[mut Poly1305], data : u8[]) {
     at : usize = 0
     // Filling a block already started, a byte at a time
     loop {
@@ -453,7 +456,7 @@ poly1305_update :: fn(poly: ptr[mut Poly1305], data: u8[]) {
  *
  * @param poly The authentication; nothing is added when what it has is already a multiple of 16 bytes.
  */
-poly1305_pad :: fn(poly: ptr[mut Poly1305]) {
+poly1305_pad :: fn(poly : ptr[mut Poly1305]) {
     loop {
         poly1305_update(poly, u8.[0])
     }
@@ -467,7 +470,7 @@ poly1305_pad :: fn(poly: ptr[mut Poly1305]) {
  *     wiped.
  * @return The 16-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-poly1305_finish #constant_time :: fn(poly: ptr[mut Poly1305]) -> SecretByte[16] {
+poly1305_finish #constant_time :: fn(poly : ptr[mut Poly1305]) -> SecretByte[16] {
     // A last, partial block: a 1 after it, then zeros, and no 2^128
     if poly.buffered > 0 {
         poly.state.block[poly.buffered % 16] = 1
@@ -545,7 +548,12 @@ poly1305_finish #constant_time :: fn(poly: ptr[mut Poly1305]) -> SecretByte[16] 
  *     associated data, padded the same way, then both lengths in bytes.
  * @return The 16-byte tag, a secret until it's compared or sent.
  */
-chacha20_poly1305_tag #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], associated: u8[], ciphertext: u8[]) -> SecretByte[16] {
+chacha20_poly1305_tag #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    associated : u8[],
+    ciphertext : u8[]
+) -> SecretByte[16] {
     block := chacha20_block(key, 0, nonce)
     one_time : Poly1305Key
     for i in cast[usize](0)..<32 {
@@ -585,9 +593,14 @@ CHACHA20_POLY1305_MOST :: 274_877_906_880
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than CHACHA20_POLY1305_MOST.
  */
-chacha20_poly1305_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128]) -> bool {
-
+chacha20_poly1305_seal #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128]
+) -> bool {
     return chacha20_poly1305_seal_with(key, nonce, plaintext, associated, ciphertext, tag, vectors_wide())
 }
 
@@ -607,9 +620,14 @@ chacha20_poly1305_seal #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96
  *     the associated data, the nonce, the key or the tag is wrong: forged or damaged), the counts differ, or the
  *     ciphertext is longer than CHACHA20_POLY1305_MOST.
  */
-chacha20_poly1305_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
-    tag: ptr[Tag128], plaintext: mut SecretByte[]) -> bool {
-
+chacha20_poly1305_open #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[]
+) -> bool {
     return chacha20_poly1305_open_with(key, nonce, ciphertext, associated, tag, plaintext, vectors_wide())
 }
 
@@ -630,9 +648,15 @@ chacha20_poly1305_open #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than CHACHA20_POLY1305_MOST.
  */
-chacha20_poly1305_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128], wide: bool) -> bool {
-
+chacha20_poly1305_seal_with #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128],
+    wide : bool
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](plaintext.count) > CHACHA20_POLY1305_MOST {
         return false
     }
@@ -675,9 +699,15 @@ chacha20_poly1305_seal_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[No
  * @return True with plaintext written, or false, with nothing written, when the tag doesn't match (forged or
  *     damaged), the counts differ, or the ciphertext is longer than CHACHA20_POLY1305_MOST.
  */
-chacha20_poly1305_open_with #constant_time :: fn(key: ptr[Key256], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
-    tag: ptr[Tag128], plaintext: mut SecretByte[], wide: bool) -> bool {
-
+chacha20_poly1305_open_with #constant_time :: fn(
+    key : ptr[Key256],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[],
+    wide : bool
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](ciphertext.count) > CHACHA20_POLY1305_MOST {
         return false
     }

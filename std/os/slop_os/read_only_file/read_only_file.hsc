@@ -61,7 +61,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return True for every request: none of them changes the file.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case UseBuffer(_) => true
         case Read(_) => true

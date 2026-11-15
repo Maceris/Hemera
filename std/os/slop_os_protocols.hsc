@@ -115,7 +115,7 @@ Validity :: enum {
  * @param out The message being built; whatever it held is cleared, its handles too (not closed).
  * @return Where the message is, in out, good as long as out is; zeroed, for the caller to fill.
  */
-begin :: fn[T](out: ptr[mut Outgoing]) -> ptr[mut T] {
+begin :: fn[T](out : ptr[mut Outgoing]) -> ptr[mut T] {
     out^ = Outgoing.{}
     out.used = cast[u32]((size_of(T) + 7) & ~cast[usize](7))
     return cast[ptr[mut T]](&out.words[0])
@@ -131,7 +131,7 @@ begin :: fn[T](out: ptr[mut Outgoing]) -> ptr[mut T] {
  * @param items What's appended, copied; empty appends nothing.
  * @return Where they are, for a Relative field: their offset from the message's start and their count.
  */
-append :: fn[E](out: ptr[mut Outgoing], items: E[]) -> slop_os.Relative[E] {
+append :: fn[E](out : ptr[mut Outgoing], items : E[]) -> slop_os.Relative[E] {
     alignment :: cast[u32](align_of(E))
     start :: (out.used + alignment - 1) & ~(alignment - 1)
     bytes :: cast[u32](items.count * size_of(E))
@@ -139,8 +139,11 @@ append :: fn[E](out: ptr[mut Outgoing], items: E[]) -> slop_os.Relative[E] {
         runtime.assert(false, "a message's variable-size data fits MESSAGE_BYTES")
     }
     if bytes != 0 {
-        intrinsics.mem_copy_non_overlapping(cast[mut rawptr](cast[u64](&out.words[0]) + cast[u64](start)), cast[rawptr](items.data),
-            cast[usize](bytes))
+        intrinsics.mem_copy_non_overlapping(
+            cast[mut rawptr](cast[u64](&out.words[0]) + cast[u64](start)),
+            cast[rawptr](items.data),
+            cast[usize](bytes)
+        )
     }
     out.used = start + bytes
     return slop_os.Relative[E].{offset = start, count = cast[u32](items.count)}
@@ -153,7 +156,7 @@ append :: fn[E](out: ptr[mut Outgoing], items: E[]) -> slop_os.Relative[E] {
  * @param into The message, only once its receive function said Received.
  * @return The message, in into, good as long as into is and isn't received into again.
  */
-message_of :: fn[T](into: ptr[Incoming]) -> ptr[T] {
+message_of :: fn[T](into : ptr[Incoming]) -> ptr[T] {
     return cast[ptr[T]](&into.words[0])
 }
 
@@ -165,7 +168,7 @@ message_of :: fn[T](into: ptr[Incoming]) -> ptr[T] {
  * @param relative The Relative field, from the message.
  * @return Its items, in into, good as long as into is.
  */
-items :: fn[E](into: ptr[Incoming], relative: slop_os.Relative[E]) -> E[] {
+items :: fn[E](into : ptr[Incoming], relative : slop_os.Relative[E]) -> E[] {
     return view_of(cast[ptr[E]](cast[u64](&into.words[0]) + cast[u64](relative.offset)), cast[usize](relative.count))
 }
 
@@ -177,7 +180,7 @@ items :: fn[E](into: ptr[Incoming], relative: slop_os.Relative[E]) -> E[] {
  * @param into A message arrive has read in, whether validated yet or not; it isn't changed.
  * @return All MESSAGE_BYTES of its words, not only its size, good as long as into is.
  */
-bytes_of_incoming :: fn(into: ptr[Incoming]) -> u8[] {
+bytes_of_incoming :: fn(into : ptr[Incoming]) -> u8[] {
     return view_of(cast[ptr[u8]](&into.words[0]), MESSAGE_BYTES)
 }
 
@@ -190,7 +193,7 @@ bytes_of_incoming :: fn(into: ptr[Incoming]) -> u8[] {
  * @param size How many bytes it has, from 0 to 8.
  * @return Its value; bytes past the message's end read as 0.
  */
-read_message :: fn(message: u8[], offset: usize, size: usize) -> u64 {
+read_message :: fn(message : u8[], offset : usize, size : usize) -> u64 {
     value : u64 = 0
     for i in 0..<size {
         at :: offset + i
@@ -214,14 +217,24 @@ read_message :: fn(message: u8[], offset: usize, size: usize) -> u64 {
  * @return True if it has no items, or its items start at or after fixed, aligned, and end within size; false
  *     otherwise.
  */
-relative_fits :: fn(message: u8[], size: u32, offset: usize, fixed: usize, element_size: usize, alignment: usize) -> bool {
+relative_fits :: fn(
+    message : u8[],
+    size : u32,
+    offset : usize,
+    fixed : usize,
+    element_size : usize,
+    alignment : usize
+) -> bool {
     start :: read_message(message, offset, 4)
     count :: read_message(message, offset + 4, 4)
     if count == 0 {
         return true
     }
     end :: start + count * cast[u64](element_size)
-    return start >= cast[u64](fixed) && start % cast[u64](alignment) == 0 && count <= cast[u64](MESSAGE_BYTES) && end <= cast[u64](size)
+    return start >= cast[u64](fixed)
+        && start % cast[u64](alignment) == 0
+        && count <= cast[u64](MESSAGE_BYTES)
+        && end <= cast[u64](size)
 }
 
 /**
@@ -235,7 +248,7 @@ relative_fits :: fn(message: u8[], size: u32, offset: usize, fixed: usize, eleme
  * @param named The handles the message's fields have named so far, a bit each by index; this one's is added.
  * @return True if the index is NO_HANDLE_INDEX, or is below handle_count and not named before.
  */
-index_takes :: fn(message: u8[], offset: usize, handle_count: u32, named: ptr[mut u64]) -> bool {
+index_takes :: fn(message : u8[], offset : usize, handle_count : u32, named : ptr[mut u64]) -> bool {
     index :: cast[u32](read_message(message, offset, 4))
     if index == slop_os.NO_HANDLE_INDEX {
         return true
@@ -259,7 +272,7 @@ index_takes :: fn(message: u8[], offset: usize, handle_count: u32, named: ptr[mu
  * @param handle_count How many came.
  * @return True if each was named.
  */
-every_handle_named :: fn(named: u64, handle_count: u32) -> bool {
+every_handle_named :: fn(named : u64, handle_count : u32) -> bool {
     if handle_count > 64 {
         return false
     }
@@ -274,7 +287,7 @@ every_handle_named :: fn(named: u64, handle_count: u32) -> bool {
  * @param offset Where the handle field is, in bytes from the message's start. A field of 0, no handle, becomes
  *     NO_HANDLE_INDEX. A handle past MAX_HANDLES_PER_BATCH is left as it is, which the receiver will find invalid.
  */
-encode_handle :: fn(out: ptr[mut Outgoing], offset: usize) {
+encode_handle :: fn(out : ptr[mut Outgoing], offset : usize) {
     at :: cast[ptr[mut u32]](cast[u64](&out.words[0]) + cast[u64](offset))
     handle :: at^
     if handle == 0 {
@@ -300,7 +313,7 @@ encode_handle :: fn(out: ptr[mut Outgoing], offset: usize) {
  * @return False if tag isn't 0 and the handle's channel isn't tagged with it (or isn't a channel); true otherwise,
  *     with no handle too.
  */
-decode_handle :: fn(into: ptr[mut Incoming], offset: usize, tag: u64) -> bool {
+decode_handle :: fn(into : ptr[mut Incoming], offset : usize, tag : u64) -> bool {
     at :: cast[ptr[mut u32]](cast[u64](&into.words[0]) + cast[u64](offset))
     index :: cast[usize](at^)
     at^ = 0
@@ -326,7 +339,7 @@ decode_handle :: fn(into: ptr[mut Incoming], offset: usize, tag: u64) -> bool {
  * @return Received with the message in into; Empty when there's none and wait is false; Failed with the kernel's
  *     error otherwise.
  */
-arrive :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut Incoming], wait: bool) -> Arrival {
+arrive :: fn(end : slop_os.Channel, port : slop_os.Port, into : ptr[mut Incoming], wait : bool) -> Arrival {
     into^ = Incoming.{}
     buffer :: view_of(cast[ptr[mut u8]](&into.words[0]), MESSAGE_BYTES)
     handles :: view_of(&into.handles[0], into.handles.count)
@@ -356,7 +369,7 @@ arrive :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut Incoming], 
  * @param side "request" or "response", what the message was to be.
  * @param why What's wrong with it, after "a request" or "a response", as a phrase for the log.
  */
-report_broken :: fn(protocol: string, side: string, why: string) {
+report_broken :: fn(protocol : string, side : string, why : string) {
     runtime.log_info("% protocol: a % came %, so the connection's closed", protocol, side, why)
 }
 
@@ -365,7 +378,7 @@ report_broken :: fn(protocol: string, side: string, why: string) {
  *
  * @param into The message; its handle_count is 0 afterwards.
  */
-refuse :: fn(into: ptr[mut Incoming]) {
+refuse :: fn(into : ptr[mut Incoming]) {
     for handle, i in into.handles {
         if i < cast[usize](into.handle_count) {
             _ = slop_os.handle_close(handle)
@@ -384,7 +397,12 @@ refuse :: fn(into: ptr[mut Incoming]) {
  * @param wait Whether to wait while the ring's full; false, as a server answers, gives Full instead (send).
  * @return Null once it's sent; otherwise why not, as send gives it.
  */
-send_outgoing :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut Outgoing], wait: bool = true) -> slop_os.ChannelError? {
+send_outgoing :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    out : ptr[mut Outgoing],
+    wait : bool = true
+) -> slop_os.ChannelError? {
     bytes :: view_of(cast[ptr[u8]](&out.words[0]), cast[usize](out.used))
     return send(end, port, bytes, view_of(&out.handles[0], cast[usize](out.handle_count)), wait)
 }
@@ -431,7 +449,7 @@ FieldCheck :: struct {
  * @return The code: validate_request, validate_response, send_request, send_response, receive_request,
  *     receive_response and answer_unsupported.
  */
-protocol_code :: fn(Request: type, Response: type) -> compiler.Code {
+protocol_code :: fn(Request : type, Response : type) -> compiler.Code {
     made : compiler.Code[..]
     array_add(&made, side_code(Request, "request"))
     array_add(&made, side_code(Response, "response"))
@@ -442,7 +460,11 @@ protocol_code :: fn(Request: type, Response: type) -> compiler.Code {
     runtime.assert(unsupported, "a protocol's Response has an Unsupported variant, with nothing in it (decisions/0040)")
     array_add(&made, #code {
         // Says the request wasn't one this side knows (decisions/0040); waiting while the ring's full if wait.
-        answer_unsupported :: fn(end: slop_os.Channel, port: slop_os.Port, wait: bool = true) -> slop_os.ChannelError? {
+        answer_unsupported :: fn(
+            end : slop_os.Channel,
+            port : slop_os.Port,
+            wait : bool = true
+        ) -> slop_os.ChannelError? {
             out := os.Outgoing.{}
             response :: os.begin[#insert Response](&out)
             response^ = .Unsupported
@@ -458,7 +480,7 @@ protocol_code :: fn(Request: type, Response: type) -> compiler.Code {
  * @param T The Request or Response type.
  * @return Its type info, as a union's.
  */
-union_of :: fn(T: type) -> ptr[compiler.TypeInfoUnion] {
+union_of :: fn(T : type) -> ptr[compiler.TypeInfoUnion] {
     info :: type_info_of(T)
     runtime.assert(info.variant == .UNION, "a protocol's Request and Response are unions")
     return cast[ptr[compiler.TypeInfoUnion]](info)
@@ -471,7 +493,7 @@ union_of :: fn(T: type) -> ptr[compiler.TypeInfoUnion] {
  * @param side Its name in the functions' names: "request" or "response".
  * @return The three functions' code.
  */
-side_code :: fn(T: type, side: string) -> compiler.Code {
+side_code :: fn(T : type, side : string) -> compiler.Code {
     info :: union_of(T)
     tag_size :: match info.tag_type {
         case Some(tag) => tag.size
@@ -516,7 +538,7 @@ side_code :: fn(T: type, side: string) -> compiler.Code {
     validator :: compiler.name("validate_", side)
     return #code {
         // Whether a message of #insert side's type is one: its tag, values, handles' indices and variable-size data.
-        #insert compiler.name("validate_", side) :: fn(message: u8[], size: u32, handle_count: u32) -> os.Validity {
+        #insert compiler.name("validate_", side) :: fn(message : u8[], size : u32, handle_count : u32) -> os.Validity {
             if size < #insert cast[u32](tag_size) {
                 return .Invalid
             }
@@ -529,9 +551,12 @@ side_code :: fn(T: type, side: string) -> compiler.Code {
         }
 
         // out's message, with its handles moved into its batch, or closed; waiting while the ring's full if wait.
-        #insert compiler.name("send_", side) :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut os.Outgoing], wait: bool = true)
-            -> slop_os.ChannelError? {
-
+        #insert compiler.name("send_", side) :: fn(
+            end : slop_os.Channel,
+            port : slop_os.Port,
+            out : ptr[mut os.Outgoing],
+            wait : bool = true
+        ) -> slop_os.ChannelError? {
             tag :: out.words[0] & #insert mask
             #insert compiler.list(encoding)
             return os.send_outgoing(end, port, out, wait)
@@ -541,7 +566,12 @@ side_code :: fn(T: type, side: string) -> compiler.Code {
          * The next message into into, waiting for one if wait: Received once it's checked, its handles in place.
          * Anything else leaves nothing in into, its handles closed.
          */
-        #insert compiler.name("receive_", side) :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut os.Incoming], wait: bool) -> os.Arrival {
+        #insert compiler.name("receive_", side) :: fn(
+            end : slop_os.Channel,
+            port : slop_os.Port,
+            into : ptr[mut os.Incoming],
+            wait : bool
+        ) -> os.Arrival {
             arrived :: os.arrive(end, port, into, wait)
             match arrived {
                 case Received => {}
@@ -581,7 +611,7 @@ side_code :: fn(T: type, side: string) -> compiler.Code {
  * @param fixed The size of the message's fixed part in bytes, which Relatives' items start at or after.
  * @return Code that returns .Invalid on the first field that fails, and nothing else.
  */
-checks_of :: fn(fields: FieldCheck[], fixed: usize) -> compiler.Code {
+checks_of :: fn(fields : FieldCheck[], fixed : usize) -> compiler.Code {
     made : compiler.Code[..]
     for field in fields {
         offset :: field.offset
@@ -615,7 +645,14 @@ checks_of :: fn(fields: FieldCheck[], fixed: usize) -> compiler.Code {
         }
         else {
             array_add(&made, #code {
-                if !os.relative_fits(message, size, #insert offset, #insert fixed, #insert field.size, #insert field.alignment) {
+                if !os.relative_fits(
+                    message,
+                    size,
+                    #insert offset,
+                    #insert fixed,
+                    #insert field.size,
+                    #insert field.alignment
+                ) {
                     return .Invalid
                 }
             })
@@ -633,7 +670,7 @@ checks_of :: fn(fields: FieldCheck[], fixed: usize) -> compiler.Code {
  * @return The code: a list of statements, one per handle field, for where out is in scope when sending, or into and
  *     speaks when receiving; empty when fields has no handles.
  */
-handles_of :: fn(fields: FieldCheck[], sending: bool) -> compiler.Code {
+handles_of :: fn(fields : FieldCheck[], sending : bool) -> compiler.Code {
     made : compiler.Code[..]
     for field in fields {
         if field.kind != .Handle {
@@ -663,7 +700,7 @@ handles_of :: fn(fields: FieldCheck[], sending: bool) -> compiler.Code {
  * @param offset Where it is, in bytes from the message's start.
  * @param fields Where its checks are added, one per bool, enum, handle and Relative in it, in their order.
  */
-collect :: fn(type: ptr[compiler.TypeInfo], offset: usize, fields: ptr[mut FieldCheck[..]]) {
+collect :: fn(type : ptr[compiler.TypeInfo], offset : usize, fields : ptr[mut FieldCheck[..]]) {
     if type.variant == .INTEGER || type.variant == .FLOAT || type.variant == .CHAR {
         return void
     }
@@ -715,8 +752,14 @@ collect :: fn(type: ptr[compiler.TypeInfo], offset: usize, fields: ptr[mut Field
             runtime.assert(held != type, "a Relative names its elements' type")
             inner : FieldCheck[..]
             collect(held, 0, &inner)
-            runtime.assert(inner.count == 0, "a Relative's elements are plain data: no bools, enums, handles or Relatives")
-            array_add(fields, FieldCheck.{kind = .Relative, offset = offset, size = held.size, alignment = alignment_of(held)})
+            runtime.assert(
+                inner.count == 0,
+                "a Relative's elements are plain data: no bools, enums, handles or Relatives"
+            )
+            array_add(
+                fields,
+                FieldCheck.{kind = .Relative, offset = offset, size = held.size, alignment = alignment_of(held)}
+            )
             return void
         }
         for member in structure.members {
@@ -724,7 +767,10 @@ collect :: fn(type: ptr[compiler.TypeInfo], offset: usize, fields: ptr[mut Field
         }
         return void
     }
-    runtime.assert(false, "a message holds plain data, handles and Relatives only: no pointers, strings, views, unions or functions")
+    runtime.assert(
+        false,
+        "a message holds plain data, handles and Relatives only: no pointers, strings, views, unions or functions"
+    )
 }
 
 /**
@@ -734,7 +780,7 @@ collect :: fn(type: ptr[compiler.TypeInfo], offset: usize, fields: ptr[mut Field
  * @param type Any type, followed through its aliases; it isn't changed.
  * @return True for Handle or an alias of it; false for anything else.
  */
-is_handle :: fn(type: ptr[compiler.TypeInfo]) -> bool {
+is_handle :: fn(type : ptr[compiler.TypeInfo]) -> bool {
     at := type
     loop {
         if at.variant != .ALIAS {
@@ -755,10 +801,13 @@ is_handle :: fn(type: ptr[compiler.TypeInfo]) -> bool {
  * @return A struct's own alignment; for anything else, what Hemera gives integers of its size: 1, 2, 4 or 8 bytes,
  *     never more.
  */
-alignment_of :: fn(type: ptr[compiler.TypeInfo]) -> usize {
+alignment_of :: fn(type : ptr[compiler.TypeInfo]) -> usize {
     if type.variant == .STRUCT {
         return cast[ptr[compiler.TypeInfoStruct]](type).alignment
     }
     size :: type.size
-    return if size >= 8 { cast[usize](8) } else if size >= 4 { cast[usize](4) } else if size >= 2 { cast[usize](2) } else { cast[usize](1) }
+    return if size >= 8 {
+        cast[usize](8)
+    }
+    else if size >= 4 { cast[usize](4) } else if size >= 2 { cast[usize](2) } else { cast[usize](1) }
 }

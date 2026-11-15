@@ -20,7 +20,6 @@ import compiler from "base:compiler"
 import runtime from "base:runtime"
 import slop_os from "std:os/slop_os"
 
-
 /**
  * A channel end that speaks protocol P.
  *
@@ -105,7 +104,10 @@ protocol_tag :: fn[P]() -> u64 {
  * @error WrongKind The budget isn't a memory budget.
  * @error MissingRight The budget lacks the right to be charged.
  */
-channel_for :: fn[P](budget: slop_os.MemoryBudget, ring_bytes: u32) -> Result[slop_os.ChannelPair, slop_os.ChannelError] {
+channel_for :: fn[P](
+    budget : slop_os.MemoryBudget,
+    ring_bytes : u32
+) -> Result[slop_os.ChannelPair, slop_os.ChannelError] {
     return slop_os.channel_create(budget, ring_bytes, protocol_tag[P]())
 }
 
@@ -117,7 +119,7 @@ channel_for :: fn[P](budget: slop_os.MemoryBudget, ring_bytes: u32) -> Result[sl
  * @return True if its channel's tag is P's protocol_tag; false for another tag, or when the tag can't be read (a
  *     closed or invalid handle).
  */
-speaks :: fn[P](end: slop_os.Channel) -> bool {
+speaks :: fn[P](end : slop_os.Channel) -> bool {
     return (slop_os.channel_tag(end) or_else 0) == protocol_tag[P]()
 }
 
@@ -128,7 +130,7 @@ speaks :: fn[P](end: slop_os.Channel) -> bool {
  * @return For a Channel[P] or Listener[P], the FNV-1a hash of P's name without its package; for a Stream[T] or
  *     Sink[T], the stream protocol's tag, name_tag("Stream"); and 0, meaning no protocol, for any other type.
  */
-end_tag :: fn(type: ptr[compiler.TypeInfo]) -> u64 {
+end_tag :: fn(type : ptr[compiler.TypeInfo]) -> u64 {
     if type.variant != .STRUCT {
         return 0
     }
@@ -168,7 +170,7 @@ end_tag :: fn(type: ptr[compiler.TypeInfo]) -> u64 {
  * @param name The protocol's name without its package, like "Stream"; its bytes are hashed as they are.
  * @return The 64-bit FNV-1a hash of name's bytes.
  */
-name_tag :: fn(name: string) -> u64 {
+name_tag :: fn(name : string) -> u64 {
     hash : u64 = 0xcbf29ce484222325
     for character in name {
         hash = (hash ~ cast[u64](cast[u8](character))) * 0x100000001b3
@@ -183,7 +185,7 @@ name_tag :: fn(name: string) -> u64 {
  * @param prefix What it has to start with; "" starts every text.
  * @return True if text's first bytes are prefix's.
  */
-starts_with :: fn(text: string, prefix: string) -> bool {
+starts_with :: fn(text : string, prefix : string) -> bool {
     return text.count >= prefix.count && string_of(cast[ptr[u8]](text.data), prefix.count) == prefix
 }
 
@@ -204,7 +206,7 @@ Received :: struct {
  * @param message The message; it isn't copied.
  * @return Its size_of(T) bytes, good as long as message is.
  */
-bytes_of :: fn[T](message: ptr[T]) -> u8[] {
+bytes_of :: fn[T](message : ptr[T]) -> u8[] {
     return view_of(cast[ptr[u8]](message), size_of(T))
 }
 
@@ -215,7 +217,7 @@ bytes_of :: fn[T](message: ptr[T]) -> u8[] {
  * @param message The message; it isn't copied.
  * @return Its size_of(T) bytes, good as long as message is.
  */
-mut_bytes_of :: fn[T](message: ptr[mut T]) -> mut u8[] {
+mut_bytes_of :: fn[T](message : ptr[mut T]) -> mut u8[] {
     return view_of(cast[ptr[mut u8]](message), size_of(T))
 }
 
@@ -241,9 +243,13 @@ mut_bytes_of :: fn[T](message: ptr[mut T]) -> mut u8[] {
  *     handles are gone from the caller's table either way: closed if they couldn't be sent, and sent, if the bytes
  *     failed after them.
  */
-send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_os.Handle[], wait: bool = true)
-    -> slop_os.ChannelError? {
-
+send :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    bytes : u8[],
+    handles : slop_os.Handle[],
+    wait : bool = true
+) -> slop_os.ChannelError? {
     batch := slop_os.NO_BATCH
     if handles.count != 0 {
         batch = 0
@@ -252,7 +258,10 @@ send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_
                 case Ok => break
                 case Error(error) => {
                     if error != .BatchInUse || batch + 1 >= slop_os.HANDLE_BATCHES {
-                        // Not sent, so still the caller's: closed, as what they name would otherwise outlive the message
+                        /*
+                         * Not sent, so still the caller's: closed, as what they name would otherwise outlive the
+                         * message
+                         */
                         for handle in handles {
                             _ = slop_os.handle_close(handle)
                         }
@@ -290,11 +299,20 @@ send :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], handles: slop_
  * @error InvalidHandle The end isn't a handle of the caller's.
  * @error Corrupt The other end broke the ring.
  */
-try_receive :: fn(end: slop_os.Channel, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
+try_receive :: fn(
+    end : slop_os.Channel,
+    buffer : mut u8[],
+    handles : mut slop_os.Handle[]
+) -> Result[Received, slop_os.ChannelError] {
     info :: slop_os.channel_read(end, buffer, cast[ptr[mut u32]](0))?
     received := Received.{size = info.size}
     if info.flags_and_batch & cast[u32](slop_os.MESSAGE_HAS_HANDLES) != 0 {
-        received.handle_count = slop_os.channel_take_handles(end, info.flags_and_batch >> 16, handles, cast[ptr[mut u32]](0))?
+        received.handle_count = slop_os.channel_take_handles(
+            end,
+            info.flags_and_batch >> 16,
+            handles,
+            cast[ptr[mut u32]](0)
+        )?
     }
     return .Ok(received)
 }
@@ -313,7 +331,12 @@ try_receive :: fn(end: slop_os.Channel, buffer: mut u8[], handles: mut slop_os.H
  * @error InvalidHandle The end isn't a handle of the caller's.
  * @error Corrupt The other end broke the ring.
  */
-receive :: fn(end: slop_os.Channel, port: slop_os.Port, buffer: mut u8[], handles: mut slop_os.Handle[]) -> Result[Received, slop_os.ChannelError] {
+receive :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    buffer : mut u8[],
+    handles : mut slop_os.Handle[]
+) -> Result[Received, slop_os.ChannelError] {
     loop {
         match try_receive(end, buffer, handles) {
             case Ok(received) => return .Ok(received)
@@ -337,9 +360,11 @@ receive :: fn(end: slop_os.Channel, port: slop_os.Port, buffer: mut u8[], handle
  * @return The port, a new handle the caller owns and closes; null if it couldn't be made or bound, with nothing
  *     left behind.
  */
-port_for :: fn(budget: slop_os.MemoryBudget, end: slop_os.Channel) -> slop_os.Port? {
+port_for :: fn(budget : slop_os.MemoryBudget, end : slop_os.Channel) -> slop_os.Port? {
     port :: slop_os.port_create(budget) or_return null
-    signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_WRITABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
+    signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE)
+        | cast[u32](slop_os.SIGNAL_WRITABLE)
+        | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
     match slop_os.port_bind(port, cast[slop_os.Handle](end), signals, 0, .Persistent) {
         case Ok => return port
         case Error(error) => {
@@ -365,8 +390,13 @@ port_for :: fn(budget: slop_os.MemoryBudget, end: slop_os.Channel) -> slop_os.Po
  * @error BufferTooSmall The reply, or its handles, didn't fit.
  * @error ObjectGone Waiting on port failed.
  */
-call :: fn(end: slop_os.Channel, port: slop_os.Port, request: u8[], handles: slop_os.Handle[], reply: mut u8[])
-    -> Result[Received, slop_os.ChannelError] {
+call :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    request : u8[],
+    handles : slop_os.Handle[],
+    reply : mut u8[]
+) -> Result[Received, slop_os.ChannelError] {
     match send(end, port, request, handles) {
         case Some(error) => return .Error(error)
         case None => {}
@@ -398,7 +428,7 @@ LaunchEvents :: struct {
      * @return True if it was added; false if the Load has as many grants as it holds (MAX_GRANTS), leaving it as it was
      *     and the handle the caller's.
      */
-    add_grant :: fn(load: ptr[mut process_manager.Load], label: string, handle: slop_os.Handle) -> bool {
+    add_grant :: fn(load : ptr[mut process_manager.Load], label : string, handle : slop_os.Handle) -> bool {
         index :: cast[usize](load.grant_count)
         if index >= load.labels.count || index >= load.grants.count {
             return false
@@ -419,7 +449,7 @@ LaunchEvents :: struct {
      * @param label A grant's label.
      * @return True if label is LIBRARY_PREFIX followed by exactly one of their names.
      */
-    library_named :: fn(libraries: LaunchLibrary[], label: string) -> bool {
+    library_named :: fn(libraries : LaunchLibrary[], label : string) -> bool {
         bytes :: string_bytes(label)
         for library in libraries {
             if bytes.count != LIBRARY_PREFIX.count + library.name.count {
@@ -446,7 +476,7 @@ LaunchEvents :: struct {
      * @param text The label, as bytes; past GRANT_LABEL_SIZE bytes it's cut off.
      * @return Its bytes, then zeros to GRANT_LABEL_SIZE.
      */
-    label_from :: fn(text: string) -> u8[slop_os.GRANT_LABEL_SIZE] {
+    label_from :: fn(text : string) -> u8[slop_os.GRANT_LABEL_SIZE] {
         label : u8[slop_os.GRANT_LABEL_SIZE]
         for byte, i in text {
             if i < label.count {
@@ -465,7 +495,7 @@ LaunchEvents :: struct {
      * @param F The entry's function type.
      * @param G The grants' struct type.
      */
-    EntryGrants #constraint :: fn(F: type, G: type) {
+    EntryGrants #constraint :: fn(F : type, G : type) {
         entry :: type_info_of(F)
         grants :: type_info_of(G)
         compiler.require(entry.variant == .FUNCTION, "% isn't a function's type", F)
@@ -480,7 +510,12 @@ LaunchEvents :: struct {
             for member in members {
                 if member.name == input.name {
                     found = true
-                    compiler.require(member.member_type == input.type, "%'s field % isn't of its parameter's type", G, member.name)
+                    compiler.require(
+                        member.member_type == input.type,
+                        "%'s field % isn't of its parameter's type",
+                        G,
+                        member.name
+                    )
                 }
             }
             compiler.require(found, "% has no field for the entry's parameter %", G, input.name)
@@ -669,8 +704,16 @@ LaunchEvents :: struct {
      * @error ManagerGone The manager couldn't be asked, or didn't answer.
      * @error NotLoaded The manager couldn't load the program.
      */
-    launch :: fn[F, G](manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
-        budget: u64, entry: F, grants: G, options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
+    launch :: fn[F, G](
+        manager : Channel[process_manager.ProcessManager],
+        port : slop_os.Port,
+        name : string,
+        executable : slop_os.Memory,
+        budget : u64,
+        entry : F,
+        grants : G,
+        options : LaunchOptions = LaunchOptions.{}
+    ) -> Result[Launched, LaunchError] where EntryGrants(F, G) {
         // Gathered without the heap, so launching takes no longer than it did
         given : NamedGrant[process_manager.MAX_GRANTS]
         given_count : usize = 0
@@ -730,7 +773,7 @@ LaunchEvents :: struct {
      *     or one that ended before it got there), its size is past the memory's or MAX_ENTRY_RESULT, or it couldn't be
      *     read.
      */
-    entry_result :: fn(memory: slop_os.Memory) -> EntryResult? {
+    entry_result :: fn(memory : slop_os.Memory) -> EntryResult? {
         header := runtime.SlopOsResultHeader.{}
         header_bytes :: view_of(cast[ptr[mut u8]](&header), size_of(runtime.SlopOsResultHeader))
         if (slop_os.memory_read(memory, 0, header_bytes) is_error) || header.magic != runtime.SLOP_OS_RESULT_MAGIC {
@@ -744,7 +787,12 @@ LaunchEvents :: struct {
         for i in cast[u64](0)..<header.size {
             runtime.array_add(&made.value, cast[u8](0))
         }
-        if made.value.count > 0 && (slop_os.memory_read(memory, cast[u64](size_of(runtime.SlopOsResultHeader)), made.value[0..<made.value.count]) is_error) {
+        if made.value.count > 0
+            && (slop_os.memory_read(
+                memory,
+                cast[u64](size_of(runtime.SlopOsResultHeader)),
+                made.value[0..<made.value.count]
+            ) is_error) {
             runtime.array_free(&made.value)
             return null
         }
@@ -783,8 +831,16 @@ LaunchEvents :: struct {
      * @error ManagerGone The manager couldn't be asked, or didn't answer.
      * @error NotLoaded The manager couldn't load the program.
      */
-    launch_named :: fn(manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
-        budget: u64, grants: NamedGrant[], values: NamedValue[], options: LaunchOptions = LaunchOptions.{}) -> Result[Launched, LaunchError] {
+    launch_named :: fn(
+        manager : Channel[process_manager.ProcessManager],
+        port : slop_os.Port,
+        name : string,
+        executable : slop_os.Memory,
+        budget : u64,
+        grants : NamedGrant[],
+        values : NamedValue[],
+        options : LaunchOptions = LaunchOptions.{}
+    ) -> Result[Launched, LaunchError] {
         page :: match arguments_page(values) {
             case Ok(made) => made
             case Error(error) => return .Error(.NoBudget)
@@ -812,8 +868,16 @@ LaunchEvents :: struct {
      * @error ManagerGone The manager couldn't be sent the Load, or didn't answer it.
      * @error NotLoaded The manager answered with anything but Loaded.
      */
-    launch_given :: fn(manager: Channel[process_manager.ProcessManager], port: slop_os.Port, name: string, executable: slop_os.Memory,
-        budget: u64, grants: NamedGrant[], arguments: slop_os.Memory?, options: LaunchOptions) -> Result[Launched, LaunchError] {
+    launch_given :: fn(
+        manager : Channel[process_manager.ProcessManager],
+        port : slop_os.Port,
+        name : string,
+        executable : slop_os.Memory,
+        budget : u64,
+        grants : NamedGrant[],
+        arguments : slop_os.Memory?,
+        options : LaunchOptions
+    ) -> Result[Launched, LaunchError] {
         // The page's the Load's once it's among its grants
         page_kept := false
         defer {
@@ -830,13 +894,16 @@ LaunchEvents :: struct {
          * program has what it was given
          */
         threads :: if options.lifecycle is_some { cast[u64](2) } else { cast[u64](1) }
-        child :: slop_os.memory_budget_create(block.budget, budget + slop_os.shadow_stacks_budget(threads)) or_return .Error(.NoBudget)
+        child :: slop_os.memory_budget_create(block.budget, budget + slop_os.shadow_stacks_budget(threads))
+            or_return .Error(.NoBudget)
         load := process_manager.Load.{name = label_from(name)}
         process := cast[slop_os.Process](slop_os.NO_HANDLE)
         watch : LaunchWatch? = null
         faults : LaunchedFaults? = null
-        // Whether the Load's gone to the manager, whose its handles are then, and where its own copies of the
-        // launcher's libraries start among its grants, none until they're added (the grants before are the caller's)
+        /*
+         * Whether the Load's gone to the manager, whose its handles are then, and where its own copies of the
+         * launcher's libraries start among its grants, none until they're added (the grants before are the caller's)
+         */
         sent := false
         copies_from := load.grants.count
         started := false
@@ -857,7 +924,13 @@ LaunchEvents :: struct {
         process = slop_os.process_create(child) or_return .Error(.NoBudget)
         match options.watch {
             case Some(watching) => {
-                slop_os.port_bind(watching.port, cast[slop_os.Handle](process), slop_os.SIGNAL_TERMINATED, watching.key, .Once)
+                slop_os.port_bind(
+                    watching.port,
+                    cast[slop_os.Handle](process),
+                    slop_os.SIGNAL_TERMINATED,
+                    watching.key,
+                    .Once
+                )
                     or_return .Error(.NoBudget)
                 watch = watching
             }
@@ -874,29 +947,43 @@ LaunchEvents :: struct {
         load.space = slop_os.address_space_create(child) or_return .Error(.NoBudget)
         match options.faults {
             case Some(reported) => {
-                points :: if reported.points != 0 { reported.points } else if reported.debugging {
-                    slop_os.STOP_FAULT | slop_os.STOP_SYSCALL_ENTRY | slop_os.STOP_ALL_CALLS } else { slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED }
+                points :: if reported.points != 0 {
+                    reported.points
+                }
+                else if reported.debugging {
+                    slop_os.STOP_FAULT | slop_os.STOP_SYSCALL_ENTRY | slop_os.STOP_ALL_CALLS
+                }
+                else {
+                    slop_os.STOP_FAULT | slop_os.STOP_FAULT_LIMITED
+                }
                 calls :: if reported.debugging || reported.points != 0 { ~cast[u64](0) } else { cast[u64](0) }
                 intercept :: slop_os.intercept_attach(process, reported.port, reported.key, calls, points)
                     or_return .Error(.NoBudget)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](slop_os.NO_HANDLE)}
                 // No right but to move it on, as to a debugger attached later (process_read_memory needs none)
-                kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), slop_os.RIGHT_TRANSFER) or_return .Error(.BadGrants)
+                kept :: slop_os.handle_duplicate(cast[slop_os.Handle](load.space), slop_os.RIGHT_TRANSFER)
+                    or_return .Error(.BadGrants)
                 faults = LaunchedFaults.{intercept = intercept, space = cast[slop_os.AddressSpace](kept)}
             }
             case None => {}
         }
-        process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS) | cast[u32](slop_os.RIGHT_DUPLICATE)
+        process_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_PROCESS_THREADS)
+            | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
-        load.process = cast[slop_os.Process](slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights) or_return .Error(.BadGrants))
-        budget_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_BUDGET_CHARGE) | cast[u32](slop_os.RIGHT_DUPLICATE)
+        load.process = cast[slop_os.Process](slop_os.handle_duplicate(cast[slop_os.Handle](process), process_rights)
+            or_return .Error(.BadGrants))
+        budget_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_BUDGET_CHARGE)
+            | cast[u32](slop_os.RIGHT_DUPLICATE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
-        load.budget = cast[slop_os.MemoryBudget](slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights) or_return .Error(.BadGrants))
+        load.budget = cast[slop_os.MemoryBudget](slop_os.handle_duplicate(cast[slop_os.Handle](child), budget_rights)
+            or_return .Error(.BadGrants))
         // To execute too, where the caller may, so the manager can map its read-only segments straight from it
-        executable_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_TRANSFER))
+        executable_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ)
+            | cast[u32](slop_os.RIGHT_TRANSFER))
         executing :: cast[slop_os.Rights](cast[u32](executable_rights) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE))
         load.executable = cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](executable), executing)
-            or_else (slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights) or_return .Error(.BadGrants)))
+            or_else (slop_os.handle_duplicate(cast[slop_os.Handle](executable), executable_rights)
+                or_return .Error(.BadGrants)))
         for grant in grants {
             if !add_grant(&load, grant.label, grant.handle) {
                 return .Error(.BadGrants)
@@ -909,7 +996,9 @@ LaunchEvents :: struct {
             case None => {}
         }
         match options.events {
-            case Some(events) => if !add_grant(&load, "events", cast[slop_os.Handle](events.ring))
+            case Some(
+                events
+            ) => if !add_grant(&load, "events", cast[slop_os.Handle](events.ring))
                 || !add_grant(&load, "events", cast[slop_os.Handle](events.doorbell)) {
                 return .Error(.BadGrants)
             }
@@ -974,8 +1063,10 @@ LaunchEvents :: struct {
             }
             case None => {}
         }
-        library_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE)
-            | cast[u32](slop_os.RIGHT_DUPLICATE) | cast[u32](slop_os.RIGHT_TRANSFER))
+        library_rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ)
+            | cast[u32](slop_os.RIGHT_MEMORY_EXECUTE)
+            | cast[u32](slop_os.RIGHT_DUPLICATE)
+            | cast[u32](slop_os.RIGHT_TRANSFER))
         for &grant in slop_os.grants_of(block) {
             label :: slop_os.label_of(grant)
             if grant.kind != .Memory || !starts_with(label, LIBRARY_PREFIX) || library_named(options.libraries, label) {
@@ -1005,8 +1096,16 @@ LaunchEvents :: struct {
         match message_of[process_manager.Response](&into)^ {
             case Loaded(loaded) => {
                 started = true
-                return .Ok(Launched.{process = process, budget = child, thread = loaded.thread, image = loaded.image, faults = faults,
-                    seeds = loaded.seeds})
+                return .Ok(
+                    Launched.{
+                        process = process,
+                        budget = child,
+                        thread = loaded.thread,
+                        image = loaded.image,
+                        faults = faults,
+                        seeds = loaded.seeds,
+                    }
+                )
             }
             case _ => return .Error(.NotLoaded)
         }
@@ -1024,11 +1123,21 @@ LaunchEvents :: struct {
      * @param process The program's process, closed unless it's NO_HANDLE.
      * @param child The program's budget, which charged the caller's for all of it, closed.
      */
-    give_back :: fn(load: ptr[process_manager.Load], sent: bool, copies_from: usize, watch: LaunchWatch?, process: slop_os.Process,
-        child: slop_os.MemoryBudget) {
+    give_back :: fn(
+        load : ptr[process_manager.Load],
+        sent : bool,
+        copies_from : usize,
+        watch : LaunchWatch?,
+        process : slop_os.Process,
+        child : slop_os.MemoryBudget
+    ) {
         if !sent {
-            for handle in slop_os.Handle.[cast[slop_os.Handle](load.process), cast[slop_os.Handle](load.space), cast[slop_os.Handle](load.budget),
-                cast[slop_os.Handle](load.executable)] {
+            for handle in slop_os.Handle.[
+                cast[slop_os.Handle](load.process),
+                cast[slop_os.Handle](load.space),
+                cast[slop_os.Handle](load.budget),
+                cast[slop_os.Handle](load.executable)
+            ] {
                 if handle != slop_os.NO_HANDLE {
                     _ = slop_os.handle_close(handle)
                 }
@@ -1058,7 +1167,7 @@ LaunchEvents :: struct {
      * @return True for a 4-byte distinct alias or struct whose name, without its generic arguments, is a kind of handle
      *     base's runtime knows, or an optional (not a nullable pointer) of one; false for anything else, a value.
      */
-    is_grant :: fn(type: ptr[compiler.TypeInfo]) -> bool {
+    is_grant :: fn(type : ptr[compiler.TypeInfo]) -> bool {
         held := type
         if type.variant == .UNION {
             optional :: cast[ptr[compiler.TypeInfoUnion]](type)
@@ -1105,7 +1214,7 @@ LaunchEvents :: struct {
      * @error BudgetExceeded The caller's budget couldn't pay for the page.
      * @error InvalidSize The values are more than a memory object holds.
      */
-    arguments_of :: fn(grants: any) -> Result[slop_os.Memory?, slop_os.MemoryError] {
+    arguments_of :: fn(grants : any) -> Result[slop_os.Memory?, slop_os.MemoryError] {
         type :: type_info_of(grants.type)
         // Every value's bytes, one after another, and where each one's are, made views once they're all written
         written : u8[..]
@@ -1143,8 +1252,15 @@ LaunchEvents :: struct {
             if runtime.schema_try_write_value_at(cast[rawptr](value_at), value_type, &written) != null {
                 return .Error(.OutOfMemory)
             }
-            runtime.array_add(&found, WrittenValue.{name = member.name, hash = runtime.schema_hash(value_type), start = start,
-                end = written.count})
+            runtime.array_add(
+                &found,
+                WrittenValue.{
+                    name = member.name,
+                    hash = runtime.schema_hash(value_type),
+                    start = start,
+                    end = written.count,
+                }
+            )
         }
         values : NamedValue[..]
         defer runtime.array_free(&values)
@@ -1183,7 +1299,7 @@ LaunchEvents :: struct {
      * @error InvalidSize The values are more than a memory object holds.
      * @error OutOfMemory The kernel had no memory for it.
      */
-    arguments_page :: fn(values: NamedValue[]) -> Result[slop_os.Memory?, slop_os.MemoryError] {
+    arguments_page :: fn(values : NamedValue[]) -> Result[slop_os.Memory?, slop_os.MemoryError] {
         if values.count == 0 {
             return .Ok(null)
         }
@@ -1192,8 +1308,11 @@ LaunchEvents :: struct {
         header := runtime.SlopOsArguments.{magic = runtime.SLOP_OS_ARGUMENTS_MAGIC, count = cast[u32](values.count)}
         add_bytes(&written, view_of(cast[ptr[u8]](&header), size_of(runtime.SlopOsArguments)))
         for each in values {
-            argument := runtime.SlopOsArgument.{name_bytes = cast[u32](each.name.count), value_bytes = cast[u32](each.value.count),
-                hash = each.hash}
+            argument := runtime.SlopOsArgument.{
+                name_bytes = cast[u32](each.name.count),
+                value_bytes = cast[u32](each.value.count),
+                hash = each.hash,
+            }
             add_bytes(&written, view_of(cast[ptr[u8]](&argument), size_of(runtime.SlopOsArgument)))
             add_bytes(&written, string_bytes(each.name))
             pad(&written)
@@ -1224,7 +1343,7 @@ LaunchEvents :: struct {
      * @param grants The grants, as any.
      * @return Their address, good as long as the value grants refers to is.
      */
-    address_of :: fn(grants: any) -> u64 {
+    address_of :: fn(grants : any) -> u64 {
         return cast[u64](cast[uintptr](grants.data))
     }
 
@@ -1234,7 +1353,7 @@ LaunchEvents :: struct {
      * @param into The array, grown as needed.
      * @param bytes What's appended; only read.
      */
-    add_bytes :: fn(into: ptr[mut u8[..]], bytes: u8[]) {
+    add_bytes :: fn(into : ptr[mut u8[..]], bytes : u8[]) {
         for byte in bytes {
             runtime.array_add(into, byte)
         }
@@ -1245,7 +1364,7 @@ LaunchEvents :: struct {
      *
      * @param into The array, given up to 7 zero bytes; nothing if its count is a multiple of 8 already.
      */
-    pad :: fn(into: ptr[mut u8[..]]) {
+    pad :: fn(into : ptr[mut u8[..]]) {
         loop {
             if into.count % 8 == 0 {
                 break
@@ -1261,7 +1380,7 @@ LaunchEvents :: struct {
      * @param type The field's type: a handle, or an optional of one.
      * @return The handle, or NO_HANDLE for an optional's None.
      */
-    grant_in :: fn(address: u64, type: ptr[compiler.TypeInfo]) -> slop_os.Handle {
+    grant_in :: fn(address : u64, type : ptr[compiler.TypeInfo]) -> slop_os.Handle {
         if type.variant == .UNION {
             optional :: cast[ptr[compiler.TypeInfoUnion]](type)
             some := optional.variants.count
@@ -1270,7 +1389,9 @@ LaunchEvents :: struct {
                     some = i
                 }
             }
-            if some >= optional.variants.count || optional.variants[some].types.count == 0 || optional.variants[some].offsets.count == 0 {
+            if some >= optional.variants.count
+                || optional.variants[some].types.count == 0
+                || optional.variants[some].offsets.count == 0 {
                 return slop_os.NO_HANDLE
             }
             // Some is tagged with its index, in a tag of its own width
@@ -1278,8 +1399,10 @@ LaunchEvents :: struct {
                 case Some(tag) => tag.size
                 case None => cast[usize](4)
             }
-            tag :: if tag_size == 1 { cast[u64](cast[ptr[u8]](address)^) } else if tag_size == 2 { cast[u64](cast[ptr[u16]](address)^) }
-                else { cast[u64](cast[ptr[u32]](address)^) }
+            tag :: if tag_size == 1 {
+                cast[u64](cast[ptr[u8]](address)^)
+            }
+            else if tag_size == 2 { cast[u64](cast[ptr[u16]](address)^) } else { cast[u64](cast[ptr[u32]](address)^) }
             if tag != cast[u64](some) {
                 return slop_os.NO_HANDLE
             }

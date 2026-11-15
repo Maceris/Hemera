@@ -81,7 +81,7 @@ Response :: union {
  * @return True for every request but an OpenFile of a New file, which sent again would find the file it made
  *     (AlreadyExists).
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case List(_) => true
         case OpenFile(open) => open.creation != .New
@@ -107,7 +107,7 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  *     equality, or equality ignoring case on a file system that ignores it. It's given the pattern's byte first.
  * @return True if the whole name matches the whole pattern; false otherwise.
  */
-matches :: fn(pattern: string, name: string, same: (fn(a: u8, b: u8) -> bool)) -> bool {
+matches :: fn(pattern : string, name : string, same : (fn(a : u8, b : u8) -> bool)) -> bool {
     // The last '*' seen, and where in name it was tried from, to try again one further
     star := pattern.count
     tried : usize = 0

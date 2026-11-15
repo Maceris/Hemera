@@ -27,26 +27,26 @@ Path :: struct {
 KAPPA : f32 : 0.5522847498
 
 /** Start a subpath. */
-move_to :: fn(path: ptr[mut Path], x: f32, y: f32) {
+move_to :: fn(path : ptr[mut Path], x : f32, y : f32) {
     runtime.array_add(&path.verbs, Verb.Move)
     runtime.array_add(&path.points, Point.{x = x, y = y})
 }
 
 /** A line to a point. */
-line_to :: fn(path: ptr[mut Path], x: f32, y: f32) {
+line_to :: fn(path : ptr[mut Path], x : f32, y : f32) {
     runtime.array_add(&path.verbs, Verb.Line)
     runtime.array_add(&path.points, Point.{x = x, y = y})
 }
 
 /** A quadratic curve through a control point to a point. */
-quad_to :: fn(path: ptr[mut Path], cx: f32, cy: f32, x: f32, y: f32) {
+quad_to :: fn(path : ptr[mut Path], cx : f32, cy : f32, x : f32, y : f32) {
     runtime.array_add(&path.verbs, Verb.Quad)
     runtime.array_add(&path.points, Point.{x = cx, y = cy})
     runtime.array_add(&path.points, Point.{x = x, y = y})
 }
 
 /** A cubic curve through two control points to a point. */
-cubic_to :: fn(path: ptr[mut Path], c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
+cubic_to :: fn(path : ptr[mut Path], c1x : f32, c1y : f32, c2x : f32, c2y : f32, x : f32, y : f32) {
     runtime.array_add(&path.verbs, Verb.Cubic)
     runtime.array_add(&path.points, Point.{x = c1x, y = c1y})
     runtime.array_add(&path.points, Point.{x = c2x, y = c2y})
@@ -54,24 +54,24 @@ cubic_to :: fn(path: ptr[mut Path], c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f
 }
 
 /** Close the subpath. */
-close :: fn(path: ptr[mut Path]) {
+close :: fn(path : ptr[mut Path]) {
     runtime.array_add(&path.verbs, Verb.Close)
 }
 
 /** Empty a path, for reuse. */
-reset :: fn(path: ptr[mut Path]) {
+reset :: fn(path : ptr[mut Path]) {
     runtime.array_reset(&path.verbs)
     runtime.array_reset(&path.points)
 }
 
 /** Give back a path's arrays. */
-free_path :: fn(path: ptr[mut Path]) {
+free_path :: fn(path : ptr[mut Path]) {
     runtime.array_free(&path.verbs)
     runtime.array_free(&path.points)
 }
 
 /** A rectangle, as a closed subpath. */
-rect :: fn(path: ptr[mut Path], x: f32, y: f32, width: f32, height: f32) {
+rect :: fn(path : ptr[mut Path], x : f32, y : f32, width : f32, height : f32) {
     move_to(path, x, y)
     line_to(path, x + width, y)
     line_to(path, x + width, y + height)
@@ -80,7 +80,7 @@ rect :: fn(path: ptr[mut Path], x: f32, y: f32, width: f32, height: f32) {
 }
 
 /** An ellipse, as a closed subpath of four cubics, about its centre. */
-ellipse :: fn(path: ptr[mut Path], cx: f32, cy: f32, rx: f32, ry: f32) {
+ellipse :: fn(path : ptr[mut Path], cx : f32, cy : f32, rx : f32, ry : f32) {
     kx :: rx * KAPPA
     ky :: ry * KAPPA
     move_to(path, cx + rx, cy)
@@ -92,12 +92,12 @@ ellipse :: fn(path: ptr[mut Path], cx: f32, cy: f32, rx: f32, ry: f32) {
 }
 
 /** A circle. */
-circle :: fn(path: ptr[mut Path], cx: f32, cy: f32, radius: f32) {
+circle :: fn(path : ptr[mut Path], cx : f32, cy : f32, radius : f32) {
     ellipse(path, cx, cy, radius, radius)
 }
 
 /** A rectangle with its corners rounded by a radius, no more than half its shorter side. */
-rounded_rect :: fn(path: ptr[mut Path], x: f32, y: f32, width: f32, height: f32, radius: f32) {
+rounded_rect :: fn(path : ptr[mut Path], x : f32, y : f32, width : f32, height : f32, radius : f32) {
     half :: (if width < height { width } else { height }) / 2
     r :: if radius < half { radius } else { half }
     if r <= 0 {
@@ -126,7 +126,7 @@ rounded_rect :: fn(path: ptr[mut Path], x: f32, y: f32, width: f32, height: f32,
  * @param x The pen's x, where the glyph's origin goes.
  * @param y The baseline's y.
  */
-add_outline :: fn(path: ptr[mut Path], outline: ptr[fonts.Outline], scale: f32, x: f32, y: f32) {
+add_outline :: fn(path : ptr[mut Path], outline : ptr[fonts.Outline], scale : f32, x : f32, y : f32) {
     at := cast[usize](0)
     for verb in outline.verbs {
         if verb == .Move || verb == .Line {
@@ -152,7 +152,7 @@ add_outline :: fn(path: ptr[mut Path], outline: ptr[fonts.Outline], scale: f32, 
 }
 
 /** An outline's point, scaled and flipped to the pen. */
-point_at :: fn(outline: ptr[fonts.Outline], at: usize, scale: f32, x: f32, y: f32) -> Point {
+point_at :: fn(outline : ptr[fonts.Outline], at : usize, scale : f32, x : f32, y : f32) -> Point {
     if at >= outline.points.count {
         return Point.{x = x, y = y}
     }

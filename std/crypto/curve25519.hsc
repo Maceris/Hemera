@@ -38,7 +38,9 @@ FeWide :: distinct alias u128[5] #secret
 FE_MASK :: 0x7_ffff_ffff_ffff
 
 /** 4p, in limbs, added before subtracting so no limb goes below 0. */
-FE_FOUR_P :: u64.[0x1f_ffff_ffff_ffb4, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc]
+FE_FOUR_P :: u64.[
+    0x1f_ffff_ffff_ffb4, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc
+]
 
 /**
  * Make a field element from public limbs, like a constant.
@@ -46,7 +48,7 @@ FE_FOUR_P :: u64.[0x1f_ffff_ffff_ffb4, 0x1f_ffff_ffff_fffc, 0x1f_ffff_ffff_fffc,
  * @param limbs The five limbs, least significant first, each under 2^54 for what's done with it after.
  * @return The element, secret.
  */
-fe_of #constant_time :: fn(limbs: u64[5]) -> Fe {
+fe_of #constant_time :: fn(limbs : u64[5]) -> Fe {
     f : Fe
     for i in 0..<5 {
         f[i] = limbs[i]
@@ -61,7 +63,7 @@ fe_of #constant_time :: fn(limbs: u64[5]) -> Fe {
  * @param f An element, its limbs under 2^54, as everything here leaves them, so the carries can't overflow.
  * @return The same number mod p, its limbs carried to 51 bits but the first, which may be a little over.
  */
-fe_carry #constant_time :: fn(f: Fe) -> Fe {
+fe_carry #constant_time :: fn(f : Fe) -> Fe {
     h := f
     for i in 0..<4 {
         h[i + 1] += h[i] >> 51
@@ -81,7 +83,7 @@ fe_carry #constant_time :: fn(f: Fe) -> Fe {
  * @return The sum, f + g mod p, not carried: it goes into a multiplication, a square or fe_to_bytes, or one more
  *     addition first, but no more than that.
  */
-fe_add #constant_time :: fn(f: Fe, g: Fe) -> Fe {
+fe_add #constant_time :: fn(f : Fe, g : Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
         h[i] = f[i] + g[i]
@@ -97,7 +99,7 @@ fe_add #constant_time :: fn(f: Fe, g: Fe) -> Fe {
  *     each limb from going below 0.
  * @return The difference, f - g mod p, carried.
  */
-fe_subtract #constant_time :: fn(f: Fe, g: Fe) -> Fe {
+fe_subtract #constant_time :: fn(f : Fe, g : Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
         h[i] = f[i] + FE_FOUR_P[i] - g[i]
@@ -111,7 +113,7 @@ fe_subtract #constant_time :: fn(f: Fe, g: Fe) -> Fe {
  * @param f The element, its limbs under 2^53.
  * @return The negation, -f mod p, carried.
  */
-fe_negate #constant_time :: fn(f: Fe) -> Fe {
+fe_negate #constant_time :: fn(f : Fe) -> Fe {
     return fe_subtract(fe_of(u64.[0, 0, 0, 0, 0]), f)
 }
 
@@ -121,7 +123,7 @@ fe_negate #constant_time :: fn(f: Fe) -> Fe {
  * @param r The products, each limb under 2^128 less what its carry in can add.
  * @return The element, its limbs carried to 51 bits but the second, which may be a little over.
  */
-fe_carry_wide #constant_time :: fn(r: FeWide) -> Fe {
+fe_carry_wide #constant_time :: fn(r : FeWide) -> Fe {
     c := r
     h : Fe
     for i in 0..<4 {
@@ -144,7 +146,7 @@ fe_carry_wide #constant_time :: fn(r: FeWide) -> Fe {
  * @param g The second factor, its limbs under 2^54.
  * @return The product, f * g mod p, carried.
  */
-fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
+fe_multiply #constant_time :: fn(f : Fe, g : Fe) -> Fe {
     f0 := cast[u128](f[0])
     f1 := cast[u128](f[1])
     f2 := cast[u128](f[2])
@@ -175,7 +177,7 @@ fe_multiply #constant_time :: fn(f: Fe, g: Fe) -> Fe {
  * @param f The element, its limbs under 2^54.
  * @return The square, f * f mod p, carried.
  */
-fe_square #constant_time :: fn(f: Fe) -> Fe {
+fe_square #constant_time :: fn(f : Fe) -> Fe {
     f0 := cast[u128](f[0])
     f1 := cast[u128](f[1])
     f2 := cast[u128](f[2])
@@ -201,7 +203,7 @@ fe_square #constant_time :: fn(f: Fe) -> Fe {
  * @param count How many times to square it; 0 or less gives f back.
  * @return The power, f^(2^count) mod p.
  */
-fe_square_times #constant_time :: fn(f: Fe, count: int) -> Fe {
+fe_square_times #constant_time :: fn(f : Fe, count : int) -> Fe {
     h := f
     for i in 0..<count {
         h = fe_square(h)
@@ -216,7 +218,7 @@ fe_square_times #constant_time :: fn(f: Fe, count: int) -> Fe {
  * @param n The number, small enough that each limb's product and carry fit in 128 bits, like X25519_A24.
  * @return The product, f * n mod p, carried.
  */
-fe_multiply_small #constant_time :: fn(f: Fe, n: u64) -> Fe {
+fe_multiply_small #constant_time :: fn(f : Fe, n : u64) -> Fe {
     r : FeWide
     for i in 0..<5 {
         r[i] = cast[u128](f[i]) * cast[u128](n)
@@ -231,7 +233,7 @@ fe_multiply_small #constant_time :: fn(f: Fe, n: u64) -> Fe {
  * @param eleven Where f^11, made on the way, goes, for inverting.
  * @return The power, f^(2^250 - 1) mod p.
  */
-fe_power_250 #constant_time :: fn(f: Fe, eleven: ptr[mut Fe]) -> Fe {
+fe_power_250 #constant_time :: fn(f : Fe, eleven : ptr[mut Fe]) -> Fe {
     f2 := fe_square(f)
     f9 := fe_multiply(fe_square_times(f2, 2), f)
     f11 := fe_multiply(f9, f2)
@@ -252,7 +254,7 @@ fe_power_250 #constant_time :: fn(f: Fe, eleven: ptr[mut Fe]) -> Fe {
  * @param f Any element, its limbs under 2^54; 0 gives 0.
  * @return The inverse, 1 / f mod p, or 0 for 0.
  */
-fe_invert #constant_time :: fn(f: Fe) -> Fe {
+fe_invert #constant_time :: fn(f : Fe) -> Fe {
     f11 : Fe
     f_250 := fe_power_250(f, &f11)
     return fe_multiply(fe_square_times(f_250, 5), f11)
@@ -264,7 +266,7 @@ fe_invert #constant_time :: fn(f: Fe) -> Fe {
  * @param f Any element, its limbs under 2^54; 0 gives 0.
  * @return The power, f^((p - 5) / 8) mod p.
  */
-fe_power_p58 #constant_time :: fn(f: Fe) -> Fe {
+fe_power_p58 #constant_time :: fn(f : Fe) -> Fe {
     f11 : Fe
     f_250 := fe_power_250(f, &f11)
     return fe_multiply(fe_square_times(f_250, 2), f)
@@ -278,7 +280,7 @@ fe_power_p58 #constant_time :: fn(f: Fe) -> Fe {
  * @param otherwise The element chosen when it's false.
  * @return Either chosen or otherwise, as condition says.
  */
-fe_select #constant_time :: fn(condition: SecretBool, chosen: Fe, otherwise: Fe) -> Fe {
+fe_select #constant_time :: fn(condition : SecretBool, chosen : Fe, otherwise : Fe) -> Fe {
     h : Fe
     for i in 0..<5 {
         h[i] = intrinsics.select(cast[bool](condition), chosen[i], otherwise[i])
@@ -293,7 +295,7 @@ fe_select #constant_time :: fn(condition: SecretBool, chosen: Fe, otherwise: Fe)
  *     rejected, and is the same as it less p.
  * @return The element, carried.
  */
-fe_from_bytes #constant_time :: fn(bytes: SecretByte[32]) -> Fe {
+fe_from_bytes #constant_time :: fn(bytes : SecretByte[32]) -> Fe {
     words := compiler.secret(u64.[0, 0, 0, 0])
     for i in 0..<4 {
         for j in 0..<8 {
@@ -315,7 +317,7 @@ fe_from_bytes #constant_time :: fn(bytes: SecretByte[32]) -> Fe {
  * @param f The element, its limbs under 2^54.
  * @return Its 32 little-endian bytes, reduced below p, so each number has one encoding; the top bit is 0.
  */
-fe_to_bytes #constant_time :: fn(f: Fe) -> SecretByte[32] {
+fe_to_bytes #constant_time :: fn(f : Fe) -> SecretByte[32] {
     h := fe_carry(fe_carry(f))
     // Under 2p now: whether it's p or more is whether adding 19 carries out of 2^255
     q := (h[0] + 19) >> 51
@@ -348,7 +350,7 @@ fe_to_bytes #constant_time :: fn(f: Fe) -> SecretByte[32] {
  * @param f Any element, its limbs under 2^54; it's reduced below p first, so p reads as 0 too.
  * @return Whether it's 0 mod p, secret.
  */
-fe_is_zero #constant_time :: fn(f: Fe) -> SecretBool {
+fe_is_zero #constant_time :: fn(f : Fe) -> SecretBool {
     bytes := fe_to_bytes(f)
     bits := compiler.secret(cast[u8](0))
     for byte in bytes {
@@ -363,7 +365,7 @@ fe_is_zero #constant_time :: fn(f: Fe) -> SecretBool {
  * @param f Any element, its limbs under 2^54; it's reduced below p before its low bit is read.
  * @return Whether its reduced value is odd, secret.
  */
-fe_is_negative #constant_time :: fn(f: Fe) -> SecretBool {
+fe_is_negative #constant_time :: fn(f : Fe) -> SecretBool {
     bytes := fe_to_bytes(f)
     return cast[SecretBool]((cast[u8](bytes[0]) & 1) == 1)
 }
@@ -380,7 +382,7 @@ X25519_A24 :: 121665
  * @return The u coordinate of scalar times the point, 32 little-endian bytes, secret; all zeros when the point has
  *     low order.
  */
-x25519_ladder #constant_time :: fn(scalar: SecretByte[32], u: Fe) -> SecretByte[32] {
+x25519_ladder #constant_time :: fn(scalar : SecretByte[32], u : Fe) -> SecretByte[32] {
     x1 := u
     x2 := fe_of(u64.[1, 0, 0, 0, 0])
     z2 := fe_of(u64.[0, 0, 0, 0, 0])
@@ -423,7 +425,7 @@ x25519_ladder #constant_time :: fn(scalar: SecretByte[32], u: Fe) -> SecretByte[
  * @param secret_key Any 32 bytes, from a secure generator; read, not changed, as the clamping is done to a copy.
  * @return Its bytes as the scalar: a multiple of 8, with bit 254 set and 255 clear; secret.
  */
-x25519_clamped #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> SecretByte[32] {
+x25519_clamped #constant_time :: fn(secret_key : ptr[X25519SecretKey]) -> SecretByte[32] {
     scalar : SecretByte[32]
     for i in 0..<32 {
         scalar[i] = cast[SecretByte](secret_key[i])
@@ -439,7 +441,7 @@ x25519_clamped #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> SecretB
  * @param secret_key This side's secret key, any 32 random bytes, clamped as it's used; read, not changed.
  * @return The public key, to send to the other side.
  */
-x25519_public_key #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> X25519PublicKey {
+x25519_public_key #constant_time :: fn(secret_key : ptr[X25519SecretKey]) -> X25519PublicKey {
     base : SecretByte[32]
     base[0] = 9
     point := x25519_ladder(x25519_clamped(secret_key), fe_from_bytes(base))
@@ -463,9 +465,11 @@ x25519_public_key #constant_time :: fn(secret_key: ptr[X25519SecretKey]) -> X255
  * @return True, or false, with shared all zeros, when public_key is a low-order point, which would give the same
  *     answer whatever the secret key: the exchange should be abandoned.
  */
-x25519 #constant_time :: fn(secret_key: ptr[X25519SecretKey], public_key: ptr[X25519PublicKey],
-    shared: ptr[mut SecretByte[32]]) -> bool {
-
+x25519 #constant_time :: fn(
+    secret_key : ptr[X25519SecretKey],
+    public_key : ptr[X25519PublicKey],
+    shared : ptr[mut SecretByte[32]]
+) -> bool {
     u : SecretByte[32]
     for i in 0..<32 {
         u[i] = cast[SecretByte](public_key[i])

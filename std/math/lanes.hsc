@@ -46,7 +46,7 @@ LANE_TRIG_LIMIT :: 16777216.0
  * @param value The value.
  * @return value, n times.
  */
-lanes_of :: fn[n: usize](value: f64) -> vector[f64, n] {
+lanes_of :: fn[n : usize](value : f64) -> vector[f64, n] {
     return intrinsics.splat[vector[f64, n]](value)
 }
 
@@ -57,7 +57,7 @@ lanes_of :: fn[n: usize](value: f64) -> vector[f64, n] {
  * @param x The lanes.
  * @return Each without its sign bit.
  */
-lane_magnitude :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+lane_magnitude :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return bit_cast[vector[f64, n]](bit_cast[vector[u64, n]](x) & 0x7fff_ffff_ffff_ffff)
 }
 
@@ -68,7 +68,7 @@ lane_magnitude :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
  * @param k The powers, whole numbers in that range.
  * @return 2^k in each lane, exactly.
  */
-lane_power_of_two :: fn[n: usize](k: vector[f64, n]) -> vector[f64, n] {
+lane_power_of_two :: fn[n : usize](k : vector[f64, n]) -> vector[f64, n] {
     whole :: cast[vector[i64, n]](k) + 1023
     return bit_cast[vector[f64, n]](bit_cast[vector[u64, n]](whole) << 52)
 }
@@ -80,7 +80,7 @@ lane_power_of_two :: fn[n: usize](k: vector[f64, n]) -> vector[f64, n] {
  * @param r The reduced powers.
  * @return e^r in each lane.
  */
-lane_exp_series :: fn[n: usize](r: vector[f64, n]) -> vector[f64, n] {
+lane_exp_series :: fn[n : usize](r : vector[f64, n]) -> vector[f64, n] {
     p := r * (1.0 / 40320.0) + 1.0 / 5040.0
     p = p * r + 1.0 / 720.0
     p = p * r + 1.0 / 120.0
@@ -99,7 +99,7 @@ lane_exp_series :: fn[n: usize](r: vector[f64, n]) -> vector[f64, n] {
  * @param x The powers.
  * @return e^x in each lane.
  */
-lane_exp :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+lane_exp :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     clamped :: intrinsics.minimum(intrinsics.maximum(x, lanes_of[n](-150)), lanes_of[n](150))
     // NaN's lanes reduced as 0, and given back as NaN after
     safe :: intrinsics.select(clamped == clamped, clamped, lanes_of[n](0))
@@ -117,7 +117,7 @@ lane_exp :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
  * @param x The powers.
  * @return 2^x in each lane.
  */
-lane_exp2 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+lane_exp2 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     clamped :: intrinsics.minimum(intrinsics.maximum(x, lanes_of[n](-160)), lanes_of[n](160))
     safe :: intrinsics.select(clamped == clamped, clamped, lanes_of[n](0))
     k :: intrinsics.round_even(safe)
@@ -133,7 +133,7 @@ lane_exp2 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
  * @param x The numbers: positive and normal.
  * @return k as a float, and s.
  */
-lane_log_split :: fn[n: usize](x: vector[f64, n]) -> (vector[f64, n], vector[f64, n]) {
+lane_log_split :: fn[n : usize](x : vector[f64, n]) -> (vector[f64, n], vector[f64, n]) {
     bits :: bit_cast[vector[u64, n]](x)
     shifted :: bits - LANE_SQRT_HALF_BITS
     k :: cast[vector[f64, n]](bit_cast[vector[i64, n]](shifted) >> 52)
@@ -150,7 +150,7 @@ lane_log_split :: fn[n: usize](x: vector[f64, n]) -> (vector[f64, n], vector[f64
  * @param s The reduced arguments.
  * @return 2 atanh(s) in each lane.
  */
-lane_log_series :: fn[n: usize](s: vector[f64, n]) -> vector[f64, n] {
+lane_log_series :: fn[n : usize](s : vector[f64, n]) -> vector[f64, n] {
     z :: s * s
     p := z * (1.0 / 11.0) + 1.0 / 9.0
     p = p * z + 1.0 / 7.0
@@ -167,7 +167,7 @@ lane_log_series :: fn[n: usize](s: vector[f64, n]) -> vector[f64, n] {
  * @param s The reduced arguments.
  * @return 2 atanh(s) in each lane.
  */
-lane_log_series_long :: fn[n: usize](s: vector[f64, n]) -> vector[f64, n] {
+lane_log_series_long :: fn[n : usize](s : vector[f64, n]) -> vector[f64, n] {
     z :: s * s
     p := z * (1.0 / 17.0) + 1.0 / 15.0
     p = p * z + 1.0 / 13.0
@@ -189,7 +189,7 @@ lane_log_series_long :: fn[n: usize](s: vector[f64, n]) -> vector[f64, n] {
  * @param result What the kernel gave, right where x is positive and finite.
  * @return result, with those lanes replaced.
  */
-lane_log_special :: fn[n: usize](x: vector[f64, n], result: vector[f64, n]) -> vector[f64, n] {
+lane_log_special :: fn[n : usize](x : vector[f64, n], result : vector[f64, n]) -> vector[f64, n] {
     infinity :: lanes_of[n](infinity_64())
     with_zero :: intrinsics.select(x == 0, -infinity, result)
     with_negative :: intrinsics.select(x < 0, lanes_of[n](nan_64()), with_zero)
@@ -204,7 +204,7 @@ lane_log_special :: fn[n: usize](x: vector[f64, n], result: vector[f64, n]) -> v
  * @param x The arguments.
  * @return x where it's positive and finite, 1 elsewhere.
  */
-lane_log_input :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+lane_log_input :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return intrinsics.select((x > 0) & (x < lanes_of[n](infinity_64())), x, lanes_of[n](1))
 }
 
@@ -215,7 +215,7 @@ lane_log_input :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
  * @param r The reduced angles.
  * @return sin r, and cos r.
  */
-lane_sin_cos_kernel :: fn[n: usize](r: vector[f64, n]) -> (vector[f64, n], vector[f64, n]) {
+lane_sin_cos_kernel :: fn[n : usize](r : vector[f64, n]) -> (vector[f64, n], vector[f64, n]) {
     z :: r * r
     s := z * lanes_of[n](SIN_S6) + lanes_of[n](SIN_S5)
     s = s * z + lanes_of[n](SIN_S4)
@@ -237,7 +237,7 @@ lane_sin_cos_kernel :: fn[n: usize](r: vector[f64, n]) -> (vector[f64, n], vecto
  * @param x The angles: within LANE_TRIG_LIMIT, and finite; others reduce to nonsense, and are redone.
  * @return The reduced angle, from -π/4 to π/4, and q modulo 4.
  */
-lane_reduce :: fn[n: usize](x: vector[f64, n]) -> (vector[f64, n], vector[i64, n]) {
+lane_reduce :: fn[n : usize](x : vector[f64, n]) -> (vector[f64, n], vector[i64, n]) {
     q :: intrinsics.round_even(x * LANE_TWO_OVER_PI)
     r :: intrinsics.fused_multiply_add(q, lanes_of[n](-LANE_PI_OVER_2_HI), x)
     reduced :: intrinsics.fused_multiply_add(q, lanes_of[n](-LANE_PI_OVER_2_LO), r)
@@ -251,7 +251,7 @@ lane_reduce :: fn[n: usize](x: vector[f64, n]) -> (vector[f64, n], vector[i64, n
  * @param x The angles.
  * @return True for each lane they cover.
  */
-lane_trig_covers :: fn[n: usize](x: vector[f64, n]) -> vector[bool, n] {
+lane_trig_covers :: fn[n : usize](x : vector[f64, n]) -> vector[bool, n] {
     return lane_magnitude(x) < LANE_TRIG_LIMIT
 }
 
@@ -263,7 +263,7 @@ lane_trig_covers :: fn[n: usize](x: vector[f64, n]) -> vector[bool, n] {
  * @param x The tangents, any: ±infinity gives ±π/2, NaN NaN.
  * @return atan x in each lane.
  */
-lane_atan :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+lane_atan :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     t := lane_magnitude(x)
     inverted :: t > 1
     t = intrinsics.select(inverted, 1 / t, t)
@@ -291,9 +291,12 @@ lane_atan :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
  * @param exact The function for them.
  * @return result, with those lanes exact's.
  */
-redo_lanes :: fn[n: usize](result: vector[f32, n], x: vector[f32, n], redo: vector[bool, n], exact: (fn(x: f32) -> f32))
-    -> vector[f32, n] {
-
+redo_lanes :: fn[n : usize](
+    result : vector[f32, n],
+    x : vector[f32, n],
+    redo : vector[bool, n],
+    exact : (fn(x : f32) -> f32)
+) -> vector[f32, n] {
     if !intrinsics.any_true(redo) {
         return result
     }
@@ -319,9 +322,13 @@ redo_lanes :: fn[n: usize](result: vector[f32, n], x: vector[f32, n], redo: vect
  * @param exact The function for them.
  * @return result, with those lanes exact's.
  */
-redo_lanes_2 :: fn[n: usize](result: vector[f32, n], x: vector[f32, n], y: vector[f32, n], redo: vector[bool, n],
-    exact: (fn(x: f32, y: f32) -> f32)) -> vector[f32, n] {
-
+redo_lanes_2 :: fn[n : usize](
+    result : vector[f32, n],
+    x : vector[f32, n],
+    y : vector[f32, n],
+    redo : vector[bool, n],
+    exact : (fn(x : f32, y : f32) -> f32)
+) -> vector[f32, n] {
     if !intrinsics.any_true(redo) {
         return result
     }
@@ -338,29 +345,29 @@ redo_lanes_2 :: fn[n: usize](result: vector[f32, n], x: vector[f32, n], y: vecto
 }
 
 /** f32 lanes widened to f64. */
-widened :: fn[n: usize](x: vector[f32, n]) -> vector[f64, n] {
+widened :: fn[n : usize](x : vector[f32, n]) -> vector[f64, n] {
     return cast[vector[f64, n]](x)
 }
 
 /** f64 lanes rounded to f32, once. */
-narrowed :: fn[n: usize](x: vector[f64, n]) -> vector[f32, n] {
+narrowed :: fn[n : usize](x : vector[f64, n]) -> vector[f32, n] {
     return cast[vector[f32, n]](x)
 }
 
 /* The f32 functions on lanes, each within 1 ulp; each one's scalar is its lanes at n = 1 */
 
 /** e^x on f32 lanes. */
-exp_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+exp_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     return narrowed(lane_exp(widened(x)))
 }
 
 /** 2^x on f32 lanes. */
-exp2_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+exp2_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     return narrowed(lane_exp2(widened(x)))
 }
 
 /** e^x - 1 on f32 lanes: the series below 0.35, exp(x) - 1 above, where it loses under 2 bits of 30. */
-exp_minus_one_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+exp_minus_one_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     p := w * (1.0 / 3628800.0) + 1.0 / 362880.0
     p = p * w + 1.0 / 40320.0
@@ -376,21 +383,21 @@ exp_minus_one_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** ln x on f32 lanes. */
-log_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+log_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     k, s :: lane_log_split(lane_log_input(w))
     return narrowed(lane_log_special(w, k * LANE_LN2 + lane_log_series(s)))
 }
 
 /** log2 x on f32 lanes: exact for powers of two. */
-log2_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+log2_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     k, s :: lane_log_split(lane_log_input(w))
     return narrowed(lane_log_special(w, k + lane_log_series(s) * LANE_LOG2_E))
 }
 
 /** log10 x on f32 lanes. */
-log10_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+log10_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     k, s :: lane_log_split(lane_log_input(w))
     return narrowed(lane_log_special(w, k * LANE_LOG10_2 + lane_log_series(s) * LANE_LOG10_E))
@@ -400,7 +407,7 @@ log10_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
  * ln(1 + x) on f32 lanes: below 1/64 in magnitude, its own series, where 1 + x in f64 would round away what x is;
  * above, ln of 1 + x, which f64 holds exactly for an f32 x that large.
  */
-log_one_plus_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+log_one_plus_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     one_plus :: w + 1
     k, s :: lane_log_split(lane_log_input(one_plus))
@@ -415,7 +422,7 @@ log_one_plus_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** x^y on f32 lanes: 2^(y log2 x), log2 x to 2^-48; a lane with x not positive and finite, or y not finite, exactly. */
-power_lanes_32 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n]) -> vector[f32, n] {
+power_lanes_32 :: fn[n : usize](x : vector[f32, n], y : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     v :: widened(y)
     infinity :: lanes_of[n](infinity_64())
@@ -427,7 +434,7 @@ power_lanes_32 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n]) -> vector[f
 }
 
 /** sin x on f32 lanes; past LANE_TRIG_LIMIT, and infinite or NaN, exactly. */
-sin_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+sin_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     covers :: lane_trig_covers(w)
     r, quadrant :: lane_reduce(intrinsics.select(covers, w, lanes_of[n](0)))
@@ -438,7 +445,7 @@ sin_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** cos x on f32 lanes; past LANE_TRIG_LIMIT, and infinite or NaN, exactly. */
-cos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+cos_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     covers :: lane_trig_covers(w)
     r, quadrant :: lane_reduce(intrinsics.select(covers, w, lanes_of[n](0)))
@@ -450,7 +457,7 @@ cos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** sin x and cos x on f32 lanes, reducing x once; each lane as sin_lanes_32 and cos_lanes_32 give it. */
-sin_cos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> (vector[f32, n], vector[f32, n]) {
+sin_cos_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> (vector[f32, n], vector[f32, n]) {
     w :: widened(x)
     covers :: lane_trig_covers(w)
     r, quadrant :: lane_reduce(intrinsics.select(covers, w, lanes_of[n](0)))
@@ -464,7 +471,7 @@ sin_cos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> (vector[f32, n], vector[f
 }
 
 /** tan x on f32 lanes: sin over cos of the reduced angle, in f64; past LANE_TRIG_LIMIT, exactly. */
-tan_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+tan_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     covers :: lane_trig_covers(w)
     r, quadrant :: lane_reduce(intrinsics.select(covers, w, lanes_of[n](0)))
@@ -475,12 +482,12 @@ tan_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** atan x on f32 lanes. */
-atan_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+atan_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     return narrowed(lane_atan(widened(x)))
 }
 
 /** atan2(y, x) on f32 lanes: atan(y / x) and its quadrant; zeros, infinities and NaNs exactly. */
-atan2_lanes_32 :: fn[n: usize](y: vector[f32, n], x: vector[f32, n]) -> vector[f32, n] {
+atan2_lanes_32 :: fn[n : usize](y : vector[f32, n], x : vector[f32, n]) -> vector[f32, n] {
     v :: widened(y)
     w :: widened(x)
     infinity :: lanes_of[n](infinity_64())
@@ -493,14 +500,14 @@ atan2_lanes_32 :: fn[n: usize](y: vector[f32, n], x: vector[f32, n]) -> vector[f
 }
 
 /** asin x on f32 lanes: atan(x / √(1 - x²)), the root of (1 - x)(1 + x), exact enough in f64. */
-asin_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+asin_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     root :: intrinsics.square_root((1 - w) * (1 + w))
     return narrowed(lane_atan(w / root))
 }
 
 /** acos x on f32 lanes: 2 atan(√((1 - x) / (1 + x))). */
-acos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+acos_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     return narrowed(2 * lane_atan(intrinsics.square_root((1 - w) / (1 + w))))
 }
@@ -514,7 +521,7 @@ CUBE_ROOT_GUESS_2 :: -0.01272919718268901
  * ∛x on f32 lanes: |x| = m × 2^(3q), m from 1 to 8, and ∛m from a quadratic guess by two steps of Halley's method,
  * each tripling its bits, to 2^-45; with x's sign. Zeros, infinities and NaN as they are.
  */
-cube_root_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+cube_root_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     magnitude :: lane_magnitude(w)
     infinity :: lanes_of[n](infinity_64())
@@ -522,7 +529,8 @@ cube_root_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
     bits :: bit_cast[vector[u64, n]](intrinsics.select(covered, magnitude, lanes_of[n](1)))
     exponent :: cast[vector[f64, n]](bit_cast[vector[i64, n]]((bits >> 52) & 0x7ff)) - 1023
     q :: intrinsics.floor(exponent * (1.0 / 3.0))
-    m :: bit_cast[vector[f64, n]]((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000) * lane_power_of_two(exponent - 3 * q)
+    m :: bit_cast[vector[f64, n]]((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000)
+        * lane_power_of_two(exponent - 3 * q)
     y := (m * CUBE_ROOT_GUESS_2 + CUBE_ROOT_GUESS_1) * m + CUBE_ROOT_GUESS_0
     cube := y * y * y
     y = y * (cube + 2 * m) / (2 * cube + m)
@@ -533,7 +541,7 @@ cube_root_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** √(x² + y²) on f32 lanes: exact squares in f64, rounded once each way; infinite if either is, even with a NaN. */
-hypotenuse_lanes_32 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n]) -> vector[f32, n] {
+hypotenuse_lanes_32 :: fn[n : usize](x : vector[f32, n], y : vector[f32, n]) -> vector[f32, n] {
     w :: widened(x)
     v :: widened(y)
     infinity :: lanes_of[n](infinity_64())
@@ -544,22 +552,22 @@ hypotenuse_lanes_32 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n]) -> vec
 
 /* The exact scalar paths, through f64, for the lanes the kernels don't cover */
 
-sin_exact_32 :: fn(x: f32) -> f32 {
+sin_exact_32 :: fn(x : f32) -> f32 {
     return cast[f32](sin_64(cast[f64](x)))
 }
 
-cos_exact_32 :: fn(x: f32) -> f32 {
+cos_exact_32 :: fn(x : f32) -> f32 {
     return cast[f32](cos_64(cast[f64](x)))
 }
 
-tan_exact_32 :: fn(x: f32) -> f32 {
+tan_exact_32 :: fn(x : f32) -> f32 {
     return cast[f32](tan_64(cast[f64](x)))
 }
 
-power_exact_32 :: fn(x: f32, y: f32) -> f32 {
+power_exact_32 :: fn(x : f32, y : f32) -> f32 {
     return cast[f32](power_64(cast[f64](x), cast[f64](y)))
 }
 
-atan2_exact_32 :: fn(y: f32, x: f32) -> f32 {
+atan2_exact_32 :: fn(y : f32, x : f32) -> f32 {
     return cast[f32](atan2_64(cast[f64](y), cast[f64](x)))
 }

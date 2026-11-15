@@ -59,7 +59,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return False always: a grant is claimed once, so a Claim sent again would fail, or claim a second time.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return false
 }
 

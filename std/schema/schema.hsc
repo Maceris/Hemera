@@ -36,7 +36,7 @@ Kind :: alias runtime.SchemaKind
  * @param into The array the bytes are added to, grown with its own allocator; what it held already is left as it is.
  * @param location Where the call is, given to the assertion handler; the caller's location by default.
  */
-write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]], location := #caller_location) {
+write :: fn(type : ptr[compiler.TypeInfo], into : ptr[mut u8[..]], location := #caller_location) {
     runtime.schema_write(type, into, location)
 }
 
@@ -50,7 +50,7 @@ write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]], location := #ca
  * @return Null when the whole schema was written; otherwise the allocator's error, and into's count is as it was, so
  *     nothing of the schema is left in it.
  */
-try_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
+try_write :: fn(type : ptr[compiler.TypeInfo], into : ptr[mut u8[..]]) -> runtime.AllocatorError? {
     return runtime.schema_try_write(type, into)
 }
 
@@ -63,6 +63,6 @@ try_write :: fn(type: ptr[compiler.TypeInfo], into: ptr[mut u8[..]]) -> runtime.
  * @param type The type whose schema is hashed; a plain alias hashes as the type it names.
  * @return BLAKE3-256 of the type's schema's bytes: equal for two types exactly when their schemas are.
  */
-hash :: fn(type: ptr[compiler.TypeInfo]) -> u8[32] {
+hash :: fn(type : ptr[compiler.TypeInfo]) -> u8[32] {
     return runtime.schema_hash(type)
 }

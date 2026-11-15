@@ -43,7 +43,7 @@ package lifecycle
      * @return The channel's ends, both the caller's: a, the launcher's, to keep, and b, the program's, to give the
      *     launch; null if the channel couldn't be made.
      */
-    make :: fn(budget: slop_os.MemoryBudget) -> slop_os.ChannelPair? {
+    make :: fn(budget : slop_os.MemoryBudget) -> slop_os.ChannelPair? {
         match slop_os.channel_create(budget, 0, 0) {
             case Ok(pair) => return pair
             case Error(error) => return null
@@ -62,7 +62,7 @@ package lifecycle
      * @return True if the Ping went; false if it couldn't be written, as when the ring's full or the program's end is
      *     gone.
      */
-    ping :: fn(end: slop_os.Channel, sequence: u32) -> bool {
+    ping :: fn(end : slop_os.Channel, sequence : u32) -> bool {
         return send(end, runtime.SLOP_OS_LIFECYCLE_PING, sequence)
     }
 
@@ -76,7 +76,7 @@ package lifecycle
      * @return True if the Stop went; false if it couldn't be written, as when the ring's full or the program's end is
      *     gone.
      */
-    stop :: fn(end: slop_os.Channel) -> bool {
+    stop :: fn(end : slop_os.Channel) -> bool {
         return send(end, runtime.SLOP_OS_LIFECYCLE_STOP, 0)
     }
 
@@ -88,7 +88,7 @@ package lifecycle
      * @param sequence The message's sequence, which its answer carries back.
      * @return True if it was written; false if it couldn't be, as when the ring's full or the other end is gone.
      */
-    send :: fn(end: slop_os.Channel, kind: u32, sequence: u32) -> bool {
+    send :: fn(end : slop_os.Channel, kind : u32, sequence : u32) -> bool {
         message := runtime.SlopOsLifecycleMessage.{kind = kind, sequence = sequence}
         bytes :: view_of(cast[ptr[u8]](&message), size_of(runtime.SlopOsLifecycleMessage))
         match slop_os.channel_write(end, bytes, slop_os.NO_BATCH) {
@@ -105,7 +105,7 @@ package lifecycle
      *     yet, if the program's end is gone, or if the message isn't a Pong, a Stopping or a Progress, which is then
      *     dropped.
      */
-    read :: fn(end: slop_os.Channel) -> Reply? {
+    read :: fn(end : slop_os.Channel) -> Reply? {
         message := runtime.SlopOsLifecycleMessage.{}
         buffer :: view_of(cast[ptr[mut u8]](&message), size_of(runtime.SlopOsLifecycleMessage))
         size : u32 = 0
@@ -136,14 +136,26 @@ package lifecycle
      * @return True if it went; false for a program given no lifecycle channel, or if it couldn't be written, as when
      *     the launcher hasn't read the ones before and the ring's full.
      */
-    report_progress :: fn(done: u64, total: u64) -> bool {
-        // Below total, done times 1000 can't overflow while total's small, and over a thousandth of a large one is near 1000
-        scaled :: if total == 0 { cast[u64](0) } else if done >= total { cast[u64](1000) } else if total < 1_000_000 { done * 1000 / total }
-            else { done / (total / 1000) }
+    report_progress :: fn(done : u64, total : u64) -> bool {
+        /*
+         * Below total, done times 1000 can't overflow while total's small, and over a thousandth of a large one is near
+         * 1000
+         */
+        scaled :: if total == 0 {
+            cast[u64](0)
+        }
+        else if done >= total {
+            cast[u64](1000)
+        }
+        else if total < 1_000_000 { done * 1000 / total } else { done / (total / 1000) }
         thousandths :: if scaled > 1000 { cast[u64](1000) } else { scaled }
         for &grant in slop_os.grants_of(slop_os.startup_block()) {
             if grant.kind == .Channel && slop_os.label_of(grant) == "lifecycle" {
-                return send(cast[slop_os.Channel](grant.handle), runtime.SLOP_OS_LIFECYCLE_PROGRESS, cast[u32](thousandths))
+                return send(
+                    cast[slop_os.Channel](grant.handle),
+                    runtime.SLOP_OS_LIFECYCLE_PROGRESS,
+                    cast[u32](thousandths)
+                )
             }
         }
         return false
@@ -174,7 +186,7 @@ package lifecycle
      * @return True if the wake binding was made and the packet asked for; false if the binding couldn't be made, and
      *     then nothing was asked for.
      */
-    on_stop :: fn(port: slop_os.Port, key: u64) -> bool {
+    on_stop :: fn(port : slop_os.Port, key : u64) -> bool {
         match slop_os.port_bind_wake(port, key) {
             case Ok => {}
             case Error(error) => return false

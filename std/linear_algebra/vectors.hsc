@@ -16,7 +16,7 @@ import intrinsics from "base:intrinsics"
  * @param b The other, of the same type.
  * @return a[0] × b[0] + a[1] × b[1] + ..., summed from the first; 0 for no elements.
  */
-dot :: fn[T, n: usize](a: T[n], b: T[n]) -> T {
+dot :: fn[T, n : usize](a : T[n], b : T[n]) -> T {
     sum : T
     for i in 0..<n {
         sum += a[i] * b[i]
@@ -32,7 +32,7 @@ dot :: fn[T, n: usize](a: T[n], b: T[n]) -> T {
  * @param b The second.
  * @return a × b: its length is |a| |b| sin θ, and cross(x, y) is z.
  */
-cross :: fn[T](a: T[3], b: T[3]) -> T[3] {
+cross :: fn[T](a : T[3], b : T[3]) -> T[3] {
     return T.[a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
 
@@ -44,7 +44,7 @@ cross :: fn[T](a: T[3], b: T[3]) -> T[3] {
  * @param a The array.
  * @return dot(a, a).
  */
-length_squared :: fn[T, n: usize](a: T[n]) -> T {
+length_squared :: fn[T, n : usize](a : T[n]) -> T {
     return dot(a, a)
 }
 
@@ -56,7 +56,7 @@ length_squared :: fn[T, n: usize](a: T[n]) -> T {
  * @param a The array.
  * @return √(dot(a, a)), correctly rounded from the dot product, which overflows to infinity for huge elements.
  */
-length :: fn[T, n: usize](a: T[n]) -> T {
+length :: fn[T, n : usize](a : T[n]) -> T {
     return intrinsics.square_root(dot(a, a))
 }
 
@@ -69,7 +69,7 @@ length :: fn[T, n: usize](a: T[n]) -> T {
  * @param b The other.
  * @return length(a - b).
  */
-distance :: fn[T, n: usize](a: T[n], b: T[n]) -> T {
+distance :: fn[T, n : usize](a : T[n], b : T[n]) -> T {
     return length(a - b)
 }
 
@@ -81,7 +81,7 @@ distance :: fn[T, n: usize](a: T[n], b: T[n]) -> T {
  * @param a The array.
  * @return a / length(a); a itself, all zeros, for a zero array, which has no direction.
  */
-normalize :: fn[T, n: usize](a: T[n]) -> T[n] {
+normalize :: fn[T, n : usize](a : T[n]) -> T[n] {
     size :: length(a)
     if size == 0 {
         return a
@@ -99,7 +99,7 @@ normalize :: fn[T, n: usize](a: T[n]) -> T[n] {
  * @param t How far: 0 gives a exactly and 1 gives b exactly; beyond them it extrapolates.
  * @return a × (1 - t) + b × t.
  */
-lerp :: fn[T, n: usize](a: T[n], b: T[n], t: T) -> T[n] {
+lerp :: fn[T, n : usize](a : T[n], b : T[n], t : T) -> T[n] {
     return a * (1 - t) + b * t
 }
 
@@ -112,7 +112,7 @@ lerp :: fn[T, n: usize](a: T[n], b: T[n], t: T) -> T[n] {
  * @param b The other.
  * @return Each element the lesser of a's and b's, a's when they're equal or b's is NaN.
  */
-minimum :: fn[T, n: usize](a: T[n], b: T[n]) -> T[n] {
+minimum :: fn[T, n : usize](a : T[n], b : T[n]) -> T[n] {
     result := a
     for i in 0..<n {
         if b[i] < a[i] {
@@ -131,7 +131,7 @@ minimum :: fn[T, n: usize](a: T[n], b: T[n]) -> T[n] {
  * @param b The other.
  * @return Each element the greater of a's and b's, a's when they're equal or b's is NaN.
  */
-maximum :: fn[T, n: usize](a: T[n], b: T[n]) -> T[n] {
+maximum :: fn[T, n : usize](a : T[n], b : T[n]) -> T[n] {
     result := a
     for i in 0..<n {
         if b[i] > a[i] {
@@ -151,7 +151,7 @@ maximum :: fn[T, n: usize](a: T[n], b: T[n]) -> T[n] {
  * @param high Each element's greatest.
  * @return Each element of a, raised to low's or lowered to high's where it's beyond them.
  */
-clamp :: fn[T, n: usize](a: T[n], low: T[n], high: T[n]) -> T[n] {
+clamp :: fn[T, n : usize](a : T[n], low : T[n], high : T[n]) -> T[n] {
     return minimum(maximum(a, low), high)
 }
 
@@ -163,7 +163,7 @@ clamp :: fn[T, n: usize](a: T[n], low: T[n], high: T[n]) -> T[n] {
  * @param a The array.
  * @return Each element without its sign; for an integer's least, itself, as it has no positive.
  */
-absolute :: fn[T, n: usize](a: T[n]) -> T[n] {
+absolute :: fn[T, n : usize](a : T[n]) -> T[n] {
     result := a
     for i in 0..<n {
         result[i] = abs(a[i])
@@ -180,7 +180,7 @@ absolute :: fn[T, n: usize](a: T[n]) -> T[n] {
  * @param normal The surface's normal, of length 1.
  * @return incident - 2 dot(normal, incident) normal: the direction leaving, as off a mirror.
  */
-reflect :: fn[T, n: usize](incident: T[n], normal: T[n]) -> T[n] {
+reflect :: fn[T, n : usize](incident : T[n], normal : T[n]) -> T[n] {
     return incident - normal * (2 * dot(normal, incident))
 }
 
@@ -194,7 +194,7 @@ reflect :: fn[T, n: usize](incident: T[n], normal: T[n]) -> T[n] {
  * @param ratio The ratio of the refractive indices, the side it comes from over the side it goes to.
  * @return The direction through, of length 1; all zeros for total internal reflection, where none goes through.
  */
-refract :: fn[T, n: usize](incident: T[n], normal: T[n], ratio: T) -> T[n] {
+refract :: fn[T, n : usize](incident : T[n], normal : T[n], ratio : T) -> T[n] {
     cosine :: dot(normal, incident)
     k :: 1 - ratio * ratio * (1 - cosine * cosine)
     if k < 0 {
@@ -214,7 +214,7 @@ refract :: fn[T, n: usize](incident: T[n], normal: T[n], ratio: T) -> T[n] {
  * @param reference The normal whose side decides.
  * @return normal where dot(reference, incident) is below 0, -normal otherwise.
  */
-face_forward :: fn[T, n: usize](normal: T[n], incident: T[n], reference: T[n]) -> T[n] {
+face_forward :: fn[T, n : usize](normal : T[n], incident : T[n], reference : T[n]) -> T[n] {
     if dot(reference, incident) < 0 {
         return normal
     }
@@ -230,7 +230,7 @@ face_forward :: fn[T, n: usize](normal: T[n], incident: T[n], reference: T[n]) -
  * @param function What each element is given to, like math.sin[f32].
  * @return Each element's result, in order.
  */
-map :: fn[T, n: usize](a: T[n], function: (fn(x: T) -> T)) -> T[n] {
+map :: fn[T, n : usize](a : T[n], function : (fn(x : T) -> T)) -> T[n] {
     result : T[n]
     for i in 0..<n {
         result[i] = function(a[i])
@@ -248,7 +248,7 @@ map :: fn[T, n: usize](a: T[n], function: (fn(x: T) -> T)) -> T[n] {
  * @param function What each pair is given to.
  * @return Each pair's result, in order.
  */
-map_pairs :: fn[T, n: usize](a: T[n], b: T[n], function: (fn(x: T, y: T) -> T)) -> T[n] {
+map_pairs :: fn[T, n : usize](a : T[n], b : T[n], function : (fn(x : T, y : T) -> T)) -> T[n] {
     result : T[n]
     for i in 0..<n {
         result[i] = function(a[i], b[i])

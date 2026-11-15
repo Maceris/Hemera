@@ -3,20 +3,24 @@ package testing
 import runtime from "base:runtime"
 
 /*
- * The model checker's memory (docs/testing.md, Model Checking): what its atomics read, as the C11 memory model lets them,
+ * The model checker's memory (docs/testing.md, Model Checking): what its atomics read, as the C11 memory model lets
+ * them,
  * which a weakly ordered CPU can show, not only what the latest store left.
  *
  * Each atomic location keeps its newest MAX_LOCATION_STORES stores in modification order, each with its thread's vector
  * clock when it stored and the clock it releases. A load may read any store from the newest it has read or that
  * happens-before it to the newest of all; which, another of the schedule's choices, the newest first. An acquire load
  * takes on the release clock of what it read, a relaxed one keeps it for an acquire fence; a release store releases its
- * thread's clock, a relaxed one the clock of its thread's last release fence. A read-modify-write reads the newest store,
+ * thread's clock, a relaxed one the clock of its thread's last release fence. A read-modify-write reads the newest
+ * store,
  * and carries on what it released, as a release sequence does. Sequentially consistent operations and fences also go
- * through one clock every such operation takes on and adds to, and a sequentially consistent load reads the newest store:
+ * through one clock every such operation takes on and adds to, and a sequentially consistent load reads the newest
+ * store:
  * stricter than C11, so it may miss what C11 allows there, but never shows what it doesn't.
  *
  * A location's first store is what memory held when the model first saw it; every store is written to memory too, the
- * newest of them, so plain reads see it. Memory that no longer holds the newest store was written plainly, or reused for
+ * newest of them, so plain reads see it. Memory that no longer holds the newest store was written plainly, or reused
+ * for
  * something else, and its history starts again from what it holds (resync). A location past MAX_MODEL_LOCATIONS is done
  * sequentially consistently.
  */
@@ -86,7 +90,7 @@ ModelView :: struct {
  * @param into The clock that grows.
  * @param from The clock taken on.
  */
-join_clock #no_context :: fn(into: ptr[mut ModelClock], from: ptr[ModelClock]) {
+join_clock #no_context :: fn(into : ptr[mut ModelClock], from : ptr[ModelClock]) {
     for &time, i in into.times {
         if i < from.times.count && from.times[i] > time^ {
             time^ = from.times[i]
@@ -102,7 +106,7 @@ join_clock #no_context :: fn(into: ptr[mut ModelClock], from: ptr[ModelClock]) {
  * @param width Its width.
  * @return Its place among the model's locations; null when they're full.
  */
-location_of #no_context :: fn(model: ptr[mut Model], address: rawptr, width: u32) -> usize? {
+location_of #no_context :: fn(model : ptr[mut Model], address : rawptr, width : u32) -> usize? {
     at :: cast[u64](cast[uintptr](address))
     for &each, i in model.locations {
         if i >= model.location_count {
@@ -134,7 +138,7 @@ location_of #no_context :: fn(model: ptr[mut Model], address: rawptr, width: u32
  * @param model The model, whose locations' seen change.
  * @param thread The thread at the spin hint.
  */
-catch_up #no_context :: fn(model: ptr[mut Model], thread: usize) {
+catch_up #no_context :: fn(model : ptr[mut Model], thread : usize) {
     for i in 0..<model.location_count {
         if i < model.locations.count && thread < model.locations[i].seen.count && model.locations[i].count > 0 {
             model.locations[i].seen[thread] = model.locations[i].total - 1
@@ -150,7 +154,7 @@ catch_up #no_context :: fn(model: ptr[mut Model], thread: usize) {
  * @param location The location, whose stores and seen are reset if memory changed.
  * @param address Its address.
  */
-resync #no_context :: fn(location: ptr[mut ModelLocation], address: rawptr) {
+resync #no_context :: fn(location : ptr[mut ModelLocation], address : rawptr) {
     held, read :: runtime.native_atomic(.Load, location.width, address, 0, 0)
     newest :: if location.count > 0 { location.count - 1 } else { cast[usize](0) }
     if location.count > 0 && newest < location.stores.count && location.stores[newest].value == held {
@@ -172,7 +176,7 @@ resync #no_context :: fn(location: ptr[mut ModelLocation], address: rawptr) {
  * @param view The thread's view.
  * @return True if it happens before what the thread does next.
  */
-happened #no_context :: fn(store: ptr[ModelStore], view: ptr[ModelView]) -> bool {
+happened #no_context :: fn(store : ptr[ModelStore], view : ptr[ModelView]) -> bool {
     if store.thread >= view.clock.times.count {
         return true
     }
@@ -193,8 +197,15 @@ happened #no_context :: fn(store: ptr[ModelStore], view: ptr[ModelView]) -> bool
  * @return old What it read.
  * @return success Whether a compare-exchange stored; true for the others.
  */
-memory_atomic #no_context :: fn(model: ptr[mut Model], operation: runtime.ModelOperation, order: runtime.ModelOrder, width: u32,
-    address: rawptr, value: u64, expected: u64) -> (old: u64, success: bool) {
+memory_atomic #no_context :: fn(
+    model : ptr[mut Model],
+    operation : runtime.ModelOperation,
+    order : runtime.ModelOrder,
+    width : u32,
+    address : rawptr,
+    value : u64,
+    expected : u64
+) -> (old : u64, success : bool) {
     thread :: model.current
     found :: location_of(model, address, width)
     if (found is_none) || thread >= model.views.count {
@@ -261,8 +272,16 @@ memory_atomic #no_context :: fn(model: ptr[mut Model], operation: runtime.ModelO
     if operation != .Store {
         join_clock(&released, &carried)
     }
-    add_store(location, ModelStore.{value = stored, thread = thread, time = if thread < view.clock.times.count { view.clock.times[thread] } else { 0 },
-        released = released}, thread)
+    add_store(
+        location,
+        ModelStore.{
+            value = stored,
+            thread = thread,
+            time = if thread < view.clock.times.count { view.clock.times[thread] } else { 0 },
+            released = released,
+        },
+        thread
+    )
     if order == .SequentiallyConsistent {
         join_clock(&model.sequential, &view.clock)
     }
@@ -273,7 +292,8 @@ memory_atomic #no_context :: fn(model: ptr[mut Model], operation: runtime.ModelO
 
 /**
  * Choose which store a load reads: from the newest its thread has read or made, or that happens before it, whichever is
- * newer, to the newest of all, the newest first; a sequentially consistent load reads the newest. Its thread has seen it
+ * newer, to the newest of all, the newest first; a sequentially consistent load reads the newest. Its thread has seen
+ * it
  * after.
  *
  * @param model The model, whose choices grow by one where there's more than one store to read.
@@ -282,7 +302,12 @@ memory_atomic #no_context :: fn(model: ptr[mut Model], operation: runtime.ModelO
  * @param newest_only Whether only the newest may be read.
  * @return The store's place in the location's stores.
  */
-read_store #no_context :: fn(model: ptr[mut Model], location: ptr[mut ModelLocation], thread: usize, newest_only: bool) -> usize {
+read_store #no_context :: fn(
+    model : ptr[mut Model],
+    location : ptr[mut ModelLocation],
+    thread : usize,
+    newest_only : bool
+) -> usize {
     if location.count == 0 {
         return 0
     }
@@ -327,7 +352,7 @@ read_store #no_context :: fn(model: ptr[mut Model], location: ptr[mut ModelLocat
  * @param released What the store released.
  * @param acquires Whether the load acquires.
  */
-take_release #no_context :: fn(view: ptr[mut ModelView], released: ptr[ModelClock], acquires: bool) {
+take_release #no_context :: fn(view : ptr[mut ModelView], released : ptr[ModelClock], acquires : bool) {
     if acquires {
         join_clock(&view.clock, released)
     }
@@ -343,7 +368,7 @@ take_release #no_context :: fn(view: ptr[mut ModelView], released: ptr[ModelCloc
  * @param store The store.
  * @param thread Its thread.
  */
-add_store #no_context :: fn(location: ptr[mut ModelLocation], store: ModelStore, thread: usize) {
+add_store #no_context :: fn(location : ptr[mut ModelLocation], store : ModelStore, thread : usize) {
     if location.count >= location.stores.count {
         for i in 1..<location.stores.count {
             location.stores[i - 1] = location.stores[i]
@@ -368,7 +393,7 @@ add_store #no_context :: fn(location: ptr[mut ModelLocation], store: ModelStore,
  * @param model The model.
  * @param order The fence's order.
  */
-memory_fence #no_context :: fn(model: ptr[mut Model], order: runtime.ModelOrder) {
+memory_fence #no_context :: fn(model : ptr[mut Model], order : runtime.ModelOrder) {
     thread :: model.current
     if thread >= model.views.count {
         return void

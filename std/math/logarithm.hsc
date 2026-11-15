@@ -36,8 +36,8 @@ LOG10_2_LO : f64 : 3.69423907715893078616e-13 // 0x3d59fef3_11f12b36
  * @param f The fraction.
  * @return The remainder.
  */
-//SPEC: fdlibm k_log.h k_log1p
-log_one_plus_kernel_64 :: fn(f: f64) -> f64 {
+// SPEC: fdlibm k_log.h k_log1p
+log_one_plus_kernel_64 :: fn(f : f64) -> f64 {
     s :: f / (2.0 + f)
     z :: s * s
     w :: z * z
@@ -55,7 +55,7 @@ log_one_plus_kernel_64 :: fn(f: f64) -> f64 {
  * @param x_in The number: positive, finite and not 0.
  * @return k and f.
  */
-log_split_64 :: fn(x_in: f64) -> (i32, f64) {
+log_split_64 :: fn(x_in : f64) -> (i32, f64) {
     x := x_in
     hx := high_word(x)
     k : i32 = 0
@@ -80,7 +80,7 @@ log_split_64 :: fn(x_in: f64) -> (i32, f64) {
  * @param x The number.
  * @return The value, if x is one of those; none for a positive finite x.
  */
-log_special_64 :: fn(x: f64) -> f64? {
+log_special_64 :: fn(x : f64) -> f64? {
     hx :: high_word(x)
     if hx < 0x0010_0000 {
         if ((hx & 0x7fff_ffff) | cast[i32](low_word(x))) == 0 {
@@ -102,8 +102,8 @@ log_special_64 :: fn(x: f64) -> f64? {
  * @param x_in The number.
  * @return ln x, within 1 ulp; -infinity for ±0, NaN below 0 and for NaN, infinity for infinity.
  */
-//SPEC: fdlibm e_log.c
-log_64 :: fn(x_in: f64) -> f64 {
+// SPEC: fdlibm e_log.c
+log_64 :: fn(x_in : f64) -> f64 {
     x := x_in
     hx := high_word(x)
     k : i32 = 0
@@ -174,8 +174,8 @@ log_64 :: fn(x_in: f64) -> f64 {
  * @return log2 x, within 1 ulp, exact for powers of two; -infinity for ±0, NaN below 0 and for NaN, infinity for
  *     infinity.
  */
-//SPEC: fdlibm e_log2.c
-log2_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm e_log2.c
+log2_64 :: fn(x : f64) -> f64 {
     special :: log_special_64(x)
     if special is_some {
         return special or_else x
@@ -204,8 +204,8 @@ log2_64 :: fn(x: f64) -> f64 {
  * @param x The number.
  * @return log10 x, within 1 ulp; -infinity for ±0, NaN below 0 and for NaN, infinity for infinity.
  */
-//SPEC: fdlibm e_log10.c
-log10_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm e_log10.c
+log10_64 :: fn(x : f64) -> f64 {
     special :: log_special_64(x)
     if special is_some {
         return special or_else x
@@ -235,8 +235,8 @@ log10_64 :: fn(x: f64) -> f64 {
  * @return ln(1 + x), within 1 ulp; -infinity at -1, NaN below -1 and for NaN, infinity for infinity, x itself under
  *     2^-54.
  */
-//SPEC: fdlibm s_log1p.c
-log_one_plus_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_log1p.c
+log_one_plus_64 :: fn(x : f64) -> f64 {
     hx :: high_word(x)
     ax :: hx & 0x7fff_ffff
     k : i32 = 1

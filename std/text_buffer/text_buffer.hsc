@@ -34,7 +34,7 @@ DIGITS :: "0123456789abcdef"
  *     overwritten as text is appended. Empty gives a buffer where everything appended is truncated.
  * @return The buffer, empty and not truncated.
  */
-make :: fn(bytes: mut u8[]) -> TextBuffer {
+make :: fn(bytes : mut u8[]) -> TextBuffer {
     return TextBuffer.{bytes = bytes, count = 0, truncated = false}
 }
 
@@ -45,7 +45,7 @@ make :: fn(bytes: mut u8[]) -> TextBuffer {
  * @return The text, a view of the buffer's bytes, not a copy: what's appended or cleared after changes what it holds.
  *     It's cut wherever it ran out of room, which can be in the middle of a UTF-8 character.
  */
-as_string :: fn(text: ptr[TextBuffer]) -> string {
+as_string :: fn(text : ptr[TextBuffer]) -> string {
     if text.count == 0 || text.bytes.count == 0 {
         return ""
     }
@@ -57,7 +57,7 @@ as_string :: fn(text: ptr[TextBuffer]) -> string {
  *
  * @param text The buffer, left empty and not truncated; its bytes aren't zeroed.
  */
-clear :: fn(text: ptr[mut TextBuffer]) {
+clear :: fn(text : ptr[mut TextBuffer]) {
     text.count = 0
     text.truncated = false
 }
@@ -68,7 +68,7 @@ clear :: fn(text: ptr[mut TextBuffer]) {
  * @param text The buffer. When it's full, the byte is dropped and truncated is set.
  * @param byte Any byte, 0 to 255, zero included; it isn't checked to be valid UTF-8.
  */
-append_byte :: fn(text: ptr[mut TextBuffer], byte: u8) {
+append_byte :: fn(text : ptr[mut TextBuffer], byte : u8) {
     if text.count >= text.bytes.count {
         text.truncated = true
         return void
@@ -83,7 +83,7 @@ append_byte :: fn(text: ptr[mut TextBuffer], byte: u8) {
  * @param text The buffer. If it fills, the bytes that fit are kept, the rest dropped, and truncated set.
  * @param value The text, copied byte by byte.
  */
-append :: fn(text: ptr[mut TextBuffer], value: string) {
+append :: fn(text : ptr[mut TextBuffer], value : string) {
     for character in value {
         append_byte(text, cast[u8](character))
     }
@@ -99,7 +99,7 @@ append :: fn(text: ptr[mut TextBuffer], value: string) {
  * @param minimum_digits The fewest digits written, padded with leading zeros; at most 64 are ever written. At least
  *     one is always written, so 0 is "0" even with 0 here.
  */
-append_unsigned :: fn(text: ptr[mut TextBuffer], value: u64, base: u64 = 10, minimum_digits: usize = 1) {
+append_unsigned :: fn(text : ptr[mut TextBuffer], value : u64, base : u64 = 10, minimum_digits : usize = 1) {
     runtime.assert(base >= 2 && base <= 16, "append_unsigned takes a base from 2 to 16")
     // The digits come out lowest first, so they're collected backwards, from the end
     digits : u8[64]
@@ -126,7 +126,7 @@ append_unsigned :: fn(text: ptr[mut TextBuffer], value: u64, base: u64 = 10, min
  * @param base The base, from 2 to 16; any other calls context.assertion_handler.
  * @param minimum_digits The fewest digits written after any -, padded with leading zeros.
  */
-append_signed :: fn(text: ptr[mut TextBuffer], value: i64, base: u64 = 10, minimum_digits: usize = 1) {
+append_signed :: fn(text : ptr[mut TextBuffer], value : i64, base : u64 = 10, minimum_digits : usize = 1) {
     if value < 0 {
         append_byte(text, cast[u8]('-'))
         // Negating in unsigned arithmetic also works for the most negative value
@@ -142,7 +142,7 @@ append_signed :: fn(text: ptr[mut TextBuffer], value: i64, base: u64 = 10, minim
  * @param text The buffer. If it fills, what fits is kept, the rest dropped, and truncated set.
  * @param value The number, like an address cast to u64.
  */
-append_address :: fn(text: ptr[mut TextBuffer], value: u64) {
+append_address :: fn(text : ptr[mut TextBuffer], value : u64) {
     append(text, "0x")
     append_unsigned(text, value, 16, 16)
 }

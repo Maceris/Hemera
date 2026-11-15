@@ -17,7 +17,12 @@ import runtime from "base:runtime"
      * @param size A suggested buffer size in bytes, or 0 for the system's default.
      * @return Nonzero once both ends are made; 0 if not, with GetLastError saying why.
      */
-    CreatePipe #foreign(KERNEL32) : fn(read: ptr[mut rawptr], write: ptr[mut rawptr], attributes: rawptr, size: u32) -> i32 : ---
+    CreatePipe #foreign(KERNEL32) : fn(
+        read : ptr[mut rawptr],
+        write : ptr[mut rawptr],
+        attributes : rawptr,
+        size : u32
+    ) -> i32 : ---
     /**
      * Change a handle's flags, like whether a child process inherits it.
      *
@@ -27,7 +32,7 @@ import runtime from "base:runtime"
      * @param flags Their new values, under mask: 0 to clear them.
      * @return Nonzero once they're changed; 0 if not.
      */
-    SetHandleInformation #foreign(KERNEL32) : fn(handle: rawptr, mask: u32, flags: u32) -> i32 : ---
+    SetHandleInformation #foreign(KERNEL32) : fn(handle : rawptr, mask : u32, flags : u32) -> i32 : ---
     /**
      * Start a process, with its first thread.
      *
@@ -44,9 +49,18 @@ import runtime from "base:runtime"
      * @param information Where a ProcessInformation is stored, whose handles the caller closes.
      * @return Nonzero once the process is started; 0 if not, with GetLastError saying why.
      */
-    CreateProcessW #foreign(KERNEL32) : fn(application: rawptr, command_line: rawptr, process_attributes: rawptr,
-        thread_attributes: rawptr, inherit_handles: i32, flags: u32, environment: rawptr, directory: rawptr, startup: rawptr,
-        information: rawptr) -> i32 : ---
+    CreateProcessW #foreign(KERNEL32) : fn(
+        application : rawptr,
+        command_line : rawptr,
+        process_attributes : rawptr,
+        thread_attributes : rawptr,
+        inherit_handles : i32,
+        flags : u32,
+        environment : rawptr,
+        directory : rawptr,
+        startup : rawptr,
+        information : rawptr
+    ) -> i32 : ---
     /**
      * Look at what's waiting in a pipe without waiting for more.
      *
@@ -58,8 +72,14 @@ import runtime from "base:runtime"
      * @param left Where how many bytes are left of the message is stored, or null.
      * @return Nonzero if it worked; 0 if not, as when the pipe's writers have all closed it (ERROR_BROKEN_PIPE).
      */
-    PeekNamedPipe #foreign(KERNEL32) : fn(pipe: rawptr, buffer: rawptr, size: u32, read: rawptr, available: ptr[mut u32],
-        left: rawptr) -> i32 : ---
+    PeekNamedPipe #foreign(KERNEL32) : fn(
+        pipe : rawptr,
+        buffer : rawptr,
+        size : u32,
+        read : rawptr,
+        available : ptr[mut u32],
+        left : rawptr
+    ) -> i32 : ---
     /**
      * Wait until an object is signaled, like a process ending, or time runs out.
      *
@@ -67,7 +87,7 @@ import runtime from "base:runtime"
      * @param milliseconds How long to wait at most, or INFINITE for as long as it takes.
      * @return 0 (WAIT_OBJECT_0) if it was signaled; another value on a timeout or failure.
      */
-    WaitForSingleObject #foreign(KERNEL32) : fn(handle: rawptr, milliseconds: u32) -> u32 : ---
+    WaitForSingleObject #foreign(KERNEL32) : fn(handle : rawptr, milliseconds : u32) -> u32 : ---
     /**
      * Give a process's exit code.
      *
@@ -76,13 +96,13 @@ import runtime from "base:runtime"
      * @param code Where the code is stored: what it exited with, or STILL_ACTIVE (259) while it runs.
      * @return Nonzero if it worked; 0 if not, and code is left as it was.
      */
-    GetExitCodeProcess #foreign(KERNEL32) : fn(process: rawptr, code: ptr[mut u32]) -> i32 : ---
+    GetExitCodeProcess #foreign(KERNEL32) : fn(process : rawptr, code : ptr[mut u32]) -> i32 : ---
     /**
      * Suspend the calling thread for a while.
      *
      * @param milliseconds How long, at least; the system's timer may round it up.
      */
-    Sleep #foreign(KERNEL32) : fn(milliseconds: u32) : ---
+    Sleep #foreign(KERNEL32) : fn(milliseconds : u32) : ---
 
     /** SetHandleInformation's flag for a handle a child process inherits. */
     HANDLE_FLAG_INHERIT : u32 : 1
@@ -167,7 +187,7 @@ import runtime from "base:runtime"
      *     here; the caller adds the space.
      * @param argument The argument, as it should arrive.
      */
-    append_argument :: fn(line: ptr[mut u8[..]], argument: string) {
+    append_argument :: fn(line : ptr[mut u8[..]], argument : string) {
         plain := argument.count > 0
         for character in argument {
             if character == ' ' || character == '\t' || character == '"' {
@@ -211,7 +231,7 @@ import runtime from "base:runtime"
      * @return finished Whether the pipe is done: its writers have all closed it, or it failed. Once it is, nothing
      *     more will come.
      */
-    drain :: fn(pipe: rawptr, buffer: ptr[mut u8[..]]) -> (read_any : bool, finished : bool) {
+    drain :: fn(pipe : rawptr, buffer : ptr[mut u8[..]]) -> (read_any : bool, finished : bool) {
         available : u32 = 0
         if PeekNamedPipe(pipe, null, 0, null, &available, null) == 0 {
             return false, true
@@ -249,9 +269,12 @@ import runtime from "base:runtime"
      *     line or the pipes couldn't be made, or CreateProcessW failed otherwise, as for a working_directory that
      *     doesn't exist or a file that isn't a program; or null once the program ran, whatever its exit code.
      */
-    system_run_process :: fn(program: string, arguments: string[], working_directory: string?, allocator: runtime.Allocator)
-        -> (result #unrestricted : ProcessResult, error : ProcessError?) {
-
+    system_run_process :: fn(
+        program : string,
+        arguments : string[],
+        working_directory : string?,
+        allocator : runtime.Allocator
+    ) -> (result #unrestricted : ProcessResult, error : ProcessError?) {
         empty : ProcessResult
         // The command line: the program, then each argument
         line : u8[..]
@@ -274,7 +297,11 @@ import runtime from "base:runtime"
         defer free_wide(directory)
 
         // Pipes the child writes, which only the parent's reading ends aren't inherited by
-        attributes := SecurityAttributes.{length = cast[u32](size_of(SecurityAttributes)), descriptor = null, inherit_handle = 1}
+        attributes := SecurityAttributes.{
+            length = cast[u32](size_of(SecurityAttributes)),
+            descriptor = null,
+            inherit_handle = 1,
+        }
         output_read : rawptr = null
         output_write : rawptr = null
         error_read : rawptr = null
@@ -296,8 +323,18 @@ import runtime from "base:runtime"
         startup.standard_output = output_write
         startup.standard_error = error_write
         information : ProcessInformation
-        started :: CreateProcessW(null, cast[rawptr](&command[0]), null, null, 1, CREATE_NO_WINDOW, null,
-            if directory.count > 0 { cast[rawptr](&directory[0]) } else { null }, cast[rawptr](&startup), cast[rawptr](&information))
+        started :: CreateProcessW(
+            null,
+            cast[rawptr](&command[0]),
+            null,
+            null,
+            1,
+            CREATE_NO_WINDOW,
+            null,
+            if directory.count > 0 { cast[rawptr](&directory[0]) } else { null },
+            cast[rawptr](&startup),
+            cast[rawptr](&information)
+        )
         failure :: if started == 0 { GetLastError() } else { 0 }
         // The parent's copies of the writing ends: once the child's are closed too, the pipes end
         _ = CloseHandle(output_write)
@@ -341,7 +378,11 @@ import runtime from "base:runtime"
         _ = CloseHandle(information.thread)
         _ = CloseHandle(output_read)
         _ = CloseHandle(error_read)
-        result := ProcessResult.{exit_code = cast[int](code), output = as_text(output), error_output = as_text(error_output)}
+        result := ProcessResult.{
+            exit_code = cast[int](code),
+            output = as_text(output),
+            error_output = as_text(error_output),
+        }
         return result, null
     }
 }

@@ -50,13 +50,13 @@ DER_CONSTRUCTED :: 0xa0
 /** One DER element read: its tag and contents, and what follows it, each a view of the bytes it was read from. */
 DerElement :: struct {
     /** The tag byte: class, constructed bit and a number from 0 to 30. */
-    tag: u8,
+    tag : u8,
     /** The contents, after the tag and length; empty for a length of 0. */
-    contents: u8[],
+    contents : u8[],
     /** The whole element, tag and length included, as a signature covers it. */
-    whole: u8[],
+    whole : u8[],
     /** The bytes after it, where the next element starts; empty when it was the last. */
-    rest: u8[],
+    rest : u8[],
 }
 
 /**
@@ -67,7 +67,7 @@ DerElement :: struct {
  *     number of 31 or more, an indefinite length, a length not in its shortest form or of more than four bytes, or
  *     one past the bytes there are.
  */
-der_next :: fn(data: u8[]) -> DerElement? {
+der_next :: fn(data : u8[]) -> DerElement? {
     if data.count < 2 || (data[0] & 0x1f) == 0x1f {
         return null
     }
@@ -95,7 +95,12 @@ der_next :: fn(data: u8[]) -> DerElement? {
     if header > data.count || end > data.count || end < header {
         return null
     }
-    return DerElement.{tag = data[0], contents = data[header..<end], whole = data[0..<end], rest = data[end..<data.count]}
+    return DerElement.{
+        tag = data[0],
+        contents = data[header..<end],
+        whole = data[0..<end],
+        rest = data[end..<data.count],
+    }
 }
 
 /**
@@ -105,7 +110,7 @@ der_next :: fn(data: u8[]) -> DerElement? {
  * @param tag The tag it has to have.
  * @return The element; or null when data is empty, the element is malformed, or it has another tag.
  */
-der_expect :: fn(data: u8[], tag: u8) -> DerElement? {
+der_expect :: fn(data : u8[], tag : u8) -> DerElement? {
     if data.count == 0 || data[0] != tag {
         return null
     }
@@ -119,7 +124,7 @@ der_expect :: fn(data: u8[], tag: u8) -> DerElement? {
  * @param tag The tag the field has.
  * @return Whether data isn't empty and starts with the tag: the field is there, if it's well formed.
  */
-der_next_is :: fn(data: u8[], tag: u8) -> bool {
+der_next_is :: fn(data : u8[], tag : u8) -> bool {
     return data.count > 0 && data[0] == tag
 }
 
@@ -129,12 +134,13 @@ der_next_is :: fn(data: u8[], tag: u8) -> bool {
  * @param element The INTEGER.
  * @return Its contents, the two's complement number big-endian; or null when it's empty, padded, or not an INTEGER.
  */
-der_integer :: fn(element: DerElement) -> u8[]? {
+der_integer :: fn(element : DerElement) -> u8[]? {
     contents := element.contents
     if element.tag != DER_INTEGER || contents.count == 0 {
         return null
     }
-    if contents.count > 1 && ((contents[0] == 0x00 && contents[1] < 0x80) || (contents[0] == 0xff && contents[1] >= 0x80)) {
+    if contents.count > 1
+        && ((contents[0] == 0x00 && contents[1] < 0x80) || (contents[0] == 0xff && contents[1] >= 0x80)) {
         return null
     }
     return contents
@@ -147,7 +153,7 @@ der_integer :: fn(element: DerElement) -> u8[]? {
  * @return Its magnitude, big-endian, without the 0x00 a number with its top bit set is written with; empty for 0.
  *     Null when it's malformed or negative.
  */
-der_unsigned :: fn(element: DerElement) -> u8[]? {
+der_unsigned :: fn(element : DerElement) -> u8[]? {
     contents := der_integer(element) or_return null
     if contents.count == 0 || contents[0] >= 0x80 {
         return null
@@ -164,7 +170,7 @@ der_unsigned :: fn(element: DerElement) -> u8[]? {
  * @param element The INTEGER.
  * @return Its value; or null when it's malformed, negative, or 2^63 or more.
  */
-der_small :: fn(element: DerElement) -> i64? {
+der_small :: fn(element : DerElement) -> i64? {
     magnitude := der_unsigned(element) or_return null
     if magnitude.count > 8 || (magnitude.count == 8 && magnitude[0] >= 0x80) {
         return null
@@ -182,7 +188,7 @@ der_small :: fn(element: DerElement) -> i64? {
  * @param element The BOOLEAN.
  * @return Its value; or null when it isn't a BOOLEAN of one byte, 0x00 or 0xff.
  */
-der_boolean :: fn(element: DerElement) -> bool? {
+der_boolean :: fn(element : DerElement) -> bool? {
     if element.tag != DER_BOOLEAN || element.contents.count != 1 {
         return null
     }
@@ -199,7 +205,7 @@ der_boolean :: fn(element: DerElement) -> bool? {
  * @param element The BIT STRING.
  * @return Its bytes, after the count of unused bits; or null when it isn't a BIT STRING, or that count isn't 0.
  */
-der_bit_string :: fn(element: DerElement) -> u8[]? {
+der_bit_string :: fn(element : DerElement) -> u8[]? {
     contents := element.contents
     if element.tag != DER_BIT_STRING || contents.count == 0 || contents[0] != 0 {
         return null
@@ -214,7 +220,7 @@ der_bit_string :: fn(element: DerElement) -> u8[]? {
  * @return Its first 16 bits, bit 0 (the first named) as the value's top bit, 0x8000; or null when it's malformed:
  *     more than 7 unused bits, unused bits that aren't 0, a last bit that's 0, or bits given with no bytes.
  */
-der_named_bits :: fn(element: DerElement) -> u16? {
+der_named_bits :: fn(element : DerElement) -> u16? {
     contents := element.contents
     if element.tag != DER_BIT_STRING || contents.count == 0 || contents[0] > 7 {
         return null
@@ -247,7 +253,7 @@ der_named_bits :: fn(element: DerElement) -> u16? {
  * @param element The OBJECT IDENTIFIER.
  * @return Its contents, the encoded arcs, to compare with an OID's encoding; or null when it's malformed.
  */
-der_oid :: fn(element: DerElement) -> u8[]? {
+der_oid :: fn(element : DerElement) -> u8[]? {
     contents := element.contents
     if element.tag != DER_OID || contents.count == 0 || (contents[contents.count - 1] & 0x80) != 0 {
         return null
@@ -269,7 +275,7 @@ der_oid :: fn(element: DerElement) -> u8[]? {
  * @param b The other.
  * @return Whether they have the same count and bytes; not in constant time, as it's for public values.
  */
-der_same :: fn(a: u8[], b: u8[]) -> bool {
+der_same :: fn(a : u8[], b : u8[]) -> bool {
     if a.count != b.count {
         return false
     }
@@ -289,7 +295,7 @@ der_same :: fn(a: u8[], b: u8[]) -> bool {
  * @param day The day of the month, 1 to 31; not checked against the month's length.
  * @return The days, negative before 1970.
  */
-der_days_from_civil :: fn(year: i64, month: i64, day: i64) -> i64 {
+der_days_from_civil :: fn(year : i64, month : i64, day : i64) -> i64 {
     y := if month <= 2 { year - 1 } else { year }
     era := (if y >= 0 { y } else { y - 399 }) / 400
     year_of_era := y - era * 400
@@ -307,7 +313,7 @@ der_days_from_civil :: fn(year: i64, month: i64, day: i64) -> i64 {
  * @param count How many there are, 1 to 4.
  * @return Their value; or null when one isn't a digit or they run past text's end.
  */
-der_digits :: fn(text: u8[], start: usize, count: usize) -> i64? {
+der_digits :: fn(text : u8[], start : usize, count : usize) -> i64? {
     if start > text.count || count > text.count - start {
         return null
     }
@@ -334,7 +340,7 @@ der_digits :: fn(text: u8[], start: usize, count: usize) -> i64? {
  * @return The time in seconds since 1970-01-01T00:00:00Z, which may be negative; or null when it's neither form, or
  *     a month, day, hour, minute or second is out of range (a leap second, 60, is refused).
  */
-der_time :: fn(element: DerElement) -> i64? {
+der_time :: fn(element : DerElement) -> i64? {
     text := element.contents
     at : usize = 0
     year : i64 = 0
@@ -355,7 +361,14 @@ der_time :: fn(element: DerElement) -> i64? {
     hour := der_digits(text, at + 4, 2) or_return null
     minute := der_digits(text, at + 6, 2) or_return null
     second := der_digits(text, at + 8, 2) or_return null
-    if text[(at + 10) % text.count] != cast[u8]('Z') || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59 {
+    if text[(at + 10) % text.count] != cast[u8]('Z')
+        || month < 1
+        || month > 12
+        || day < 1
+        || day > 31
+        || hour > 23
+        || minute > 59
+        || second > 59 {
         return null
     }
     days_in := i64.[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]

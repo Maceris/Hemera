@@ -14,7 +14,7 @@ Writer :: struct {
 }
 
 /** Write a byte. */
-put_u8 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u8) {
+put_u8 :: fn(into : mut u8[], writer : ptr[mut Writer], value : u8) {
     if writer.at < into.count {
         into[writer.at] = value
     }
@@ -25,20 +25,20 @@ put_u8 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u8) {
 }
 
 /** Write a big-endian u16. */
-put_u16 :: fn(into: mut u8[], writer: ptr[mut Writer], value: u16) {
+put_u16 :: fn(into : mut u8[], writer : ptr[mut Writer], value : u16) {
     put_u8(into, writer, cast[u8](value >> 8))
     put_u8(into, writer, cast[u8](value))
 }
 
 /** Write a big-endian 24-bit number. */
-put_u24 :: fn(into: mut u8[], writer: ptr[mut Writer], value: usize) {
+put_u24 :: fn(into : mut u8[], writer : ptr[mut Writer], value : usize) {
     put_u8(into, writer, cast[u8](value >> 16))
     put_u8(into, writer, cast[u8](value >> 8))
     put_u8(into, writer, cast[u8](value))
 }
 
 /** Write bytes. */
-put_bytes :: fn(into: mut u8[], writer: ptr[mut Writer], bytes: u8[]) {
+put_bytes :: fn(into : mut u8[], writer : ptr[mut Writer], bytes : u8[]) {
     for byte in bytes {
         put_u8(into, writer, byte)
     }
@@ -49,7 +49,7 @@ put_bytes :: fn(into: mut u8[], writer: ptr[mut Writer], bytes: u8[]) {
  *
  * @return Where its length goes, for end_vector.
  */
-start_vector :: fn(into: mut u8[], writer: ptr[mut Writer], size: usize) -> usize {
+start_vector :: fn(into : mut u8[], writer : ptr[mut Writer], size : usize) -> usize {
     at :: writer.at
     for i in 0..<size {
         put_u8(into, writer, 0)
@@ -65,7 +65,7 @@ start_vector :: fn(into: mut u8[], writer: ptr[mut Writer], size: usize) -> usiz
  * @param at Where start_vector left its length's room.
  * @param size The length's size in bytes: 1, 2 or 3.
  */
-end_vector :: fn(into: mut u8[], writer: ptr[mut Writer], at: usize, size: usize) {
+end_vector :: fn(into : mut u8[], writer : ptr[mut Writer], at : usize, size : usize) {
     length :: writer.at - at - size
     for i in 0..<size {
         position :: at + i
@@ -91,12 +91,12 @@ Reader :: struct {
  * @param bytes The bytes.
  * @return A reader at their start.
  */
-reader_of :: fn(bytes: u8[]) -> Reader {
+reader_of :: fn(bytes : u8[]) -> Reader {
     return Reader.{at = 0, end = bytes.count}
 }
 
 /** Read a byte; 0, with bad set, past the end. */
-get_u8 :: fn(from: u8[], reader: ptr[mut Reader]) -> u8 {
+get_u8 :: fn(from : u8[], reader : ptr[mut Reader]) -> u8 {
     if reader.at >= reader.end || reader.at >= from.count {
         reader.bad = true
         return 0
@@ -107,13 +107,13 @@ get_u8 :: fn(from: u8[], reader: ptr[mut Reader]) -> u8 {
 }
 
 /** Read a big-endian u16. */
-get_u16 :: fn(from: u8[], reader: ptr[mut Reader]) -> u16 {
+get_u16 :: fn(from : u8[], reader : ptr[mut Reader]) -> u16 {
     high :: cast[u16](get_u8(from, reader))
     return (high << 8) | cast[u16](get_u8(from, reader))
 }
 
 /** Read a big-endian 24-bit number. */
-get_u24 :: fn(from: u8[], reader: ptr[mut Reader]) -> usize {
+get_u24 :: fn(from : u8[], reader : ptr[mut Reader]) -> usize {
     a :: cast[usize](get_u8(from, reader))
     b :: cast[usize](get_u8(from, reader))
     return (a << 16) | (b << 8) | cast[usize](get_u8(from, reader))
@@ -127,7 +127,7 @@ get_u24 :: fn(from: u8[], reader: ptr[mut Reader]) -> usize {
  * @param count How many.
  * @return A view of them; empty, with bad set, if they run past the end.
  */
-get_bytes :: fn(from: u8[], reader: ptr[mut Reader], count: usize) -> u8[] {
+get_bytes :: fn(from : u8[], reader : ptr[mut Reader], count : usize) -> u8[] {
     if count > reader.end - reader.at || reader.at + count > from.count {
         reader.bad = true
         reader.at = reader.end
@@ -147,7 +147,7 @@ get_bytes :: fn(from: u8[], reader: ptr[mut Reader], count: usize) -> u8[] {
  * @return A reader of the vector's contents; one that's at its end already, with bad set on reader, if it runs past
  *     reader's end.
  */
-get_vector :: fn(from: u8[], reader: ptr[mut Reader], size: usize) -> Reader {
+get_vector :: fn(from : u8[], reader : ptr[mut Reader], size : usize) -> Reader {
     length := cast[usize](0)
     for i in 0..<size {
         length = (length << 8) | cast[usize](get_u8(from, reader))
@@ -168,7 +168,7 @@ get_vector :: fn(from: u8[], reader: ptr[mut Reader], size: usize) -> Reader {
  * @param reader The reader.
  * @return True if it's at its end, and never read past it.
  */
-done :: fn(reader: ptr[Reader]) -> bool {
+done :: fn(reader : ptr[Reader]) -> bool {
     return !reader.bad && reader.at == reader.end
 }
 
@@ -180,7 +180,7 @@ done :: fn(reader: ptr[Reader]) -> bool {
  * @param to Where it ends, not included.
  * @return view[from..<to]; empty if that isn't within view.
  */
-range :: fn[T](view: T[], from: usize, to: usize) -> T[] {
+range :: fn[T](view : T[], from : usize, to : usize) -> T[] {
     if from > to || to > view.count {
         return view[0..<0]
     }
@@ -188,7 +188,7 @@ range :: fn[T](view: T[], from: usize, to: usize) -> T[] {
 }
 
 /** The same for a view written to. */
-range_mut :: fn[T](view: mut T[], from: usize, to: usize) -> mut T[] {
+range_mut :: fn[T](view : mut T[], from : usize, to : usize) -> mut T[] {
     if from > to || to > view.count {
         return view[0..<0]
     }

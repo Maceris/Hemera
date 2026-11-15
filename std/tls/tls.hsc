@@ -41,29 +41,29 @@ KEY_BYTES :: 1100
 
 /** Records' content types (RFC 8446 §5.1). */
 CONTENT_CHANGE_CIPHER_SPEC : u8 : 20
-CONTENT_ALERT : u8 : 21
-CONTENT_HANDSHAKE : u8 : 22
-CONTENT_APPLICATION_DATA : u8 : 23
+CONTENT_ALERT              : u8 : 21
+CONTENT_HANDSHAKE          : u8 : 22
+CONTENT_APPLICATION_DATA   : u8 : 23
 
 /** Handshake messages' types (§4). */
-CLIENT_HELLO : u8 : 1
-SERVER_HELLO : u8 : 2
-NEW_SESSION_TICKET : u8 : 4
+CLIENT_HELLO         : u8 : 1
+SERVER_HELLO         : u8 : 2
+NEW_SESSION_TICKET   : u8 : 4
 ENCRYPTED_EXTENSIONS : u8 : 8
-CERTIFICATE : u8 : 11
-CERTIFICATE_REQUEST : u8 : 13
-CERTIFICATE_VERIFY : u8 : 15
-FINISHED : u8 : 20
-KEY_UPDATE : u8 : 24
-MESSAGE_HASH : u8 : 254
+CERTIFICATE          : u8 : 11
+CERTIFICATE_REQUEST  : u8 : 13
+CERTIFICATE_VERIFY   : u8 : 15
+FINISHED             : u8 : 20
+KEY_UPDATE           : u8 : 24
+MESSAGE_HASH         : u8 : 254
 
 /** Extensions (§4.2). */
-EXTENSION_SERVER_NAME : u16 : 0
-EXTENSION_SUPPORTED_GROUPS : u16 : 10
+EXTENSION_SERVER_NAME          : u16 : 0
+EXTENSION_SUPPORTED_GROUPS     : u16 : 10
 EXTENSION_SIGNATURE_ALGORITHMS : u16 : 13
-EXTENSION_SUPPORTED_VERSIONS : u16 : 43
-EXTENSION_COOKIE : u16 : 44
-EXTENSION_KEY_SHARE : u16 : 51
+EXTENSION_SUPPORTED_VERSIONS   : u16 : 43
+EXTENSION_COOKIE               : u16 : 44
+EXTENSION_KEY_SHARE            : u16 : 51
 /** Application-Layer Protocol Negotiation (RFC 7301). */
 EXTENSION_ALPN : u16 : 16
 
@@ -78,50 +78,52 @@ GROUP_P256 : u16 : 0x0017
 /** The signature schemes (§4.2.3). */
 SCHEME_ECDSA_P256_SHA256 : u16 : 0x0403
 SCHEME_ECDSA_P384_SHA384 : u16 : 0x0503
-SCHEME_RSA_PSS_SHA256 : u16 : 0x0804
-SCHEME_RSA_PSS_SHA384 : u16 : 0x0805
-SCHEME_RSA_PSS_SHA512 : u16 : 0x0806
-SCHEME_ED25519 : u16 : 0x0807
+SCHEME_RSA_PSS_SHA256    : u16 : 0x0804
+SCHEME_RSA_PSS_SHA384    : u16 : 0x0805
+SCHEME_RSA_PSS_SHA512    : u16 : 0x0806
+SCHEME_ED25519           : u16 : 0x0807
 /** PKCS #1 v1.5's, offered for certificates' signatures only, never a CertificateVerify's. */
 SCHEME_RSA_PKCS1_SHA256 : u16 : 0x0401
 SCHEME_RSA_PKCS1_SHA384 : u16 : 0x0501
 SCHEME_RSA_PKCS1_SHA512 : u16 : 0x0601
 
 /** Alerts' descriptions (§6). */
-ALERT_CLOSE_NOTIFY : u8 : 0
-ALERT_UNEXPECTED_MESSAGE : u8 : 10
-ALERT_BAD_RECORD_MAC : u8 : 20
-ALERT_RECORD_OVERFLOW : u8 : 22
-ALERT_HANDSHAKE_FAILURE : u8 : 40
-ALERT_BAD_CERTIFICATE : u8 : 42
+ALERT_CLOSE_NOTIFY            : u8 : 0
+ALERT_UNEXPECTED_MESSAGE      : u8 : 10
+ALERT_BAD_RECORD_MAC          : u8 : 20
+ALERT_RECORD_OVERFLOW         : u8 : 22
+ALERT_HANDSHAKE_FAILURE       : u8 : 40
+ALERT_BAD_CERTIFICATE         : u8 : 42
 ALERT_UNSUPPORTED_CERTIFICATE : u8 : 43
-ALERT_CERTIFICATE_EXPIRED : u8 : 45
-ALERT_CERTIFICATE_UNKNOWN : u8 : 46
-ALERT_ILLEGAL_PARAMETER : u8 : 47
-ALERT_UNKNOWN_CA : u8 : 48
-ALERT_DECODE_ERROR : u8 : 50
-ALERT_DECRYPT_ERROR : u8 : 51
-ALERT_PROTOCOL_VERSION : u8 : 70
-ALERT_INTERNAL_ERROR : u8 : 80
-ALERT_USER_CANCELED : u8 : 90
-ALERT_MISSING_EXTENSION : u8 : 109
-ALERT_UNSUPPORTED_EXTENSION : u8 : 110
+ALERT_CERTIFICATE_EXPIRED     : u8 : 45
+ALERT_CERTIFICATE_UNKNOWN     : u8 : 46
+ALERT_ILLEGAL_PARAMETER       : u8 : 47
+ALERT_UNKNOWN_CA              : u8 : 48
+ALERT_DECODE_ERROR            : u8 : 50
+ALERT_DECRYPT_ERROR           : u8 : 51
+ALERT_PROTOCOL_VERSION        : u8 : 70
+ALERT_INTERNAL_ERROR          : u8 : 80
+ALERT_USER_CANCELED           : u8 : 90
+ALERT_MISSING_EXTENSION       : u8 : 109
+ALERT_UNSUPPORTED_EXTENSION   : u8 : 110
 ALERT_NO_APPLICATION_PROTOCOL : u8 : 120
 
 /** The longest application protocol's name ALPN offers or takes: RFC 7301 allows 255, names in use are short. */
 PROTOCOL_BYTES :: 64
 
 /** ServerHello's random when it's a HelloRetryRequest: SHA-256 of "HelloRetryRequest" (§4.1.3). */
-RETRY_RANDOM :: u8.[0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
-    0xc2, 0xa2, 0x11, 0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c]
+RETRY_RANDOM :: u8.[
+    0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91, 0xc2, 0xa2, 0x11,
+    0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c
+]
 
 // ---- What a connection is
 
 /** The cipher suites (§B.4). */
 Suite :: enum #backed_by(u16) {
-    None = 0,
-    Aes128GcmSha256 = 0x1301,
-    Aes256GcmSha384 = 0x1302,
+    None                   = 0,
+    Aes128GcmSha256        = 0x1301,
+    Aes256GcmSha384        = 0x1302,
     Chacha20Poly1305Sha256 = 0x1303,
 }
 
@@ -131,7 +133,7 @@ Suite :: enum #backed_by(u16) {
  * @param suite The suite.
  * @return SHA-384 for AES-256-GCM's, SHA-256 for the others.
  */
-suite_hash :: fn(suite: Suite) -> Hash {
+suite_hash :: fn(suite : Suite) -> Hash {
     return if suite == .Aes256GcmSha384 { Hash.Sha384 } else { Hash.Sha256 }
 }
 
@@ -141,7 +143,7 @@ suite_hash :: fn(suite: Suite) -> Hash {
  * @param suite The suite.
  * @return 16 for AES-128-GCM's, 32 for the others.
  */
-key_length :: fn(suite: Suite) -> usize {
+key_length :: fn(suite : Suite) -> usize {
     return if suite == .Aes128GcmSha256 { cast[usize](16) } else { cast[usize](32) }
 }
 
@@ -205,12 +207,13 @@ Identity :: struct {
  * Make an identity from a chain and its leaf's key.
  *
  * @param kind The leaf's kind of key: P256 or ED25519.
- * @param chain The chain, DER certificates one after another, the leaf first; the caller's, unchanged and in place for as
+ * @param chain The chain, DER certificates one after another, the leaf first; the caller's, unchanged and in place for
+ *     as
  *     long as a connection serves with the identity, as the identity points at it rather than copying it.
  * @param key The leaf's secret key, 32 bytes: P-256's scalar, big-endian, or Ed25519's seed. Fewer leave the rest zero.
  * @return The identity.
  */
-identity_of #constant_time :: fn(kind: crypto.X509KeyKind, chain: u8[], key: u8[]) -> Identity {
+identity_of #constant_time :: fn(kind : crypto.X509KeyKind, chain : u8[], key : u8[]) -> Identity {
     made := Identity.{kind = kind, chain_bytes = chain.count}
     if chain.count > 0 {
         made.chain = cast[rawptr](&chain[0])
@@ -243,7 +246,8 @@ Connection :: struct {
     /** Whether the server's chain and name are checked: false only through client_unverified. */
     verify : bool,
     /**
-     * The trust anchors, DER certificates one after another, the caller's for the connection's life: their address, kept
+     * The trust anchors, DER certificates one after another, the caller's for the connection's life: their address,
+     * kept
      * as a number, as the connection outlives the call it's given in.
      */
     anchors : u64,
@@ -308,22 +312,22 @@ Connection :: struct {
     server_secret : Secret,
 
     // Records
-    read : TrafficKeys,
-    write : TrafficKeys,
-    read_encrypted : bool,
+    read            : TrafficKeys,
+    write           : TrafficKeys,
+    read_encrypted  : bool,
     write_encrypted : bool,
     /** How many times the keys read with have changed, so a message spanning a change is found. */
     read_changes : u64,
     /** The traffic secrets read and written with, for KeyUpdate. */
-    read_secret : Secret,
-    write_secret : Secret,
-    incoming : u8[INCOMING_BYTES],
-    incoming_count : usize,
-    outgoing : u8[OUTGOING_BYTES],
-    outgoing_count : usize,
-    message : u8[MESSAGE_BYTES],
-    message_count : usize,
-    plaintext : u8[PLAINTEXT_BYTES],
+    read_secret     : Secret,
+    write_secret    : Secret,
+    incoming        : u8[INCOMING_BYTES],
+    incoming_count  : usize,
+    outgoing        : u8[OUTGOING_BYTES],
+    outgoing_count  : usize,
+    message         : u8[MESSAGE_BYTES],
+    message_count   : usize,
+    plaintext       : u8[PLAINTEXT_BYTES],
     plaintext_start : usize,
     plaintext_count : usize,
     /** Where a record's inner plaintext is built and opened. */
@@ -347,10 +351,11 @@ Connection :: struct {
  * @param anchors The trust anchors: DER certificates one after another (crypto.pem_certificates makes them from PEM),
  *     the caller's, unchanged, for the connection's life.
  * @param now The time to check certificates at, in seconds since 1970 UTC.
- * @param protocol The application protocol offered by ALPN (RFC 7301), at most PROTOCOL_BYTES, like "ntske/1"; empty for
+ * @param protocol The application protocol offered by ALPN (RFC 7301), at most PROTOCOL_BYTES, like "ntske/1"; empty
+ *     for
  *     none. A server that takes another is refused; one that answers none is talked to, and protocol_agreed says so.
  */
-client :: fn(connection: ptr[mut Connection], host: string, anchors: u8[], now: i64, protocol: string = "") {
+client :: fn(connection : ptr[mut Connection], host : string, anchors : u8[], now : i64, protocol : string = "") {
     reset(connection, .Client)
     if string_bytes(host).count > HOST_BYTES {
         connection.state = .Ended
@@ -376,7 +381,7 @@ client :: fn(connection: ptr[mut Connection], host: string, anchors: u8[], now: 
  * @param host The name sent as SNI; may be empty, when none is sent.
  * @param protocol The application protocol offered by ALPN, as client takes it; empty for none.
  */
-client_unverified :: fn(connection: ptr[mut Connection], host: string, protocol: string = "") {
+client_unverified :: fn(connection : ptr[mut Connection], host : string, protocol : string = "") {
     reset(connection, .Client)
     set_host(connection, host)
     set_protocol(connection, protocol)
@@ -396,8 +401,13 @@ client_unverified :: fn(connection: ptr[mut Connection], host: string, protocol:
  *     offers others but not it is refused with no_application_protocol; one that offers none is served, and
  *     protocol_agreed says so.
  */
-server :: fn(connection: ptr[mut Connection], identity: ptr[Identity], only_suite: Suite = .None, only_group: u16 = 0,
-    protocol: string = "") {
+server :: fn(
+    connection : ptr[mut Connection],
+    identity : ptr[Identity],
+    only_suite : Suite = .None,
+    only_group : u16 = 0,
+    protocol : string = ""
+) {
     reset(connection, .Server)
     set_protocol(connection, protocol)
     connection.identity = identity^
@@ -412,7 +422,7 @@ server :: fn(connection: ptr[mut Connection], identity: ptr[Identity], only_suit
  * @param connection The connection, connected.
  * @param ask Whether the peer's asked to move its own on too, which it then does with a KeyUpdate of its own.
  */
-update_keys :: fn(connection: ptr[mut Connection], ask: bool) {
+update_keys :: fn(connection : ptr[mut Connection], ask : bool) {
     if connection.state != .Connected || connection.closed_sent {
         return void
     }
@@ -429,7 +439,7 @@ update_keys :: fn(connection: ptr[mut Connection], ask: bool) {
  * @param bytes What arrived from the peer.
  * @return How many were taken; the rest are to be given again later, after output's sent or plaintext's read.
  */
-received :: fn(connection: ptr[mut Connection], bytes: u8[]) -> usize {
+received :: fn(connection : ptr[mut Connection], bytes : u8[]) -> usize {
     room :: connection.incoming.count - connection.incoming_count
     taken :: if bytes.count < room { bytes.count } else { room }
     for byte, i in range(bytes, 0, taken) {
@@ -449,7 +459,7 @@ received :: fn(connection: ptr[mut Connection], bytes: u8[]) -> usize {
  * @param connection The connection.
  * @return The bytes, a view of the connection's, good until it's next used; empty when there's nothing.
  */
-output :: fn(connection: ptr[Connection]) -> u8[] {
+output :: fn(connection : ptr[Connection]) -> u8[] {
     return range(connection.outgoing, 0, connection.outgoing_count)
 }
 
@@ -459,7 +469,7 @@ output :: fn(connection: ptr[Connection]) -> u8[] {
  * @param connection The connection.
  * @param count How many bytes, at most output's count.
  */
-sent :: fn(connection: ptr[mut Connection], count: usize) {
+sent :: fn(connection : ptr[mut Connection], count : usize) {
     taken :: if count < connection.outgoing_count { count } else { connection.outgoing_count }
     remove_front(&connection.outgoing, &connection.outgoing_count, taken)
 }
@@ -470,7 +480,7 @@ sent :: fn(connection: ptr[mut Connection], count: usize) {
  * @param connection The connection.
  * @return True once connected, until it ends.
  */
-connected :: fn(connection: ptr[Connection]) -> bool {
+connected :: fn(connection : ptr[Connection]) -> bool {
     return connection.state == .Connected
 }
 
@@ -480,7 +490,7 @@ connected :: fn(connection: ptr[Connection]) -> bool {
  * @param connection The connection, connected.
  * @return True if they did; false if the peer offered or answered none, or neither side gave one.
  */
-protocol_agreed :: fn(connection: ptr[Connection]) -> bool {
+protocol_agreed :: fn(connection : ptr[Connection]) -> bool {
     return connection.protocol_agreed
 }
 
@@ -491,7 +501,7 @@ protocol_agreed :: fn(connection: ptr[Connection]) -> bool {
  *
  * @param connection The connection.
  */
-forget #constant_time :: fn(connection: ptr[mut Connection]) {
+forget #constant_time :: fn(connection : ptr[mut Connection]) {
     no_x25519 : crypto.X25519SecretKey
     no_p256 : crypto.P256SecretKey
     no_secret : Secret
@@ -531,12 +541,16 @@ forget #constant_time :: fn(connection: ptr[mut Connection]) {
  * @return False, output untouched, if the handshake didn't finish, the connection failed (an alert either way), or
  *     output is too long.
  */
-export_keying_material #constant_time :: fn(connection: ptr[Connection], label: string, context: u8[], output: mut crypto.SecretByte[])
-    -> bool {
-
+export_keying_material #constant_time :: fn(
+    connection : ptr[Connection],
+    label : string,
+    context : u8[],
+    output : mut crypto.SecretByte[]
+) -> bool {
     hash :: suite_hash(connection.suite)
-    usable :: connection.handshake_done && (connection.state == .Connected
-        || (connection.state == .Ended && (connection.ending == .Closed || connection.ending == .LocalClose)))
+    usable :: connection.handshake_done
+        && (connection.state == .Connected
+            || (connection.state == .Ended && (connection.ending == .Closed || connection.ending == .LocalClose)))
     if !usable || label.count > 249 || output.count > 255 * hash_length(hash) {
         return false
     }
@@ -553,7 +567,7 @@ export_keying_material #constant_time :: fn(connection: ptr[Connection], label: 
  * @param connection The connection.
  * @return True if it's closed or failed; what was read before is still read, and output may still have its alert.
  */
-ended :: fn(connection: ptr[Connection]) -> bool {
+ended :: fn(connection : ptr[Connection]) -> bool {
     return connection.state == .Ended
 }
 
@@ -565,7 +579,7 @@ ended :: fn(connection: ptr[Connection]) -> bool {
  * @return How much was taken: all of it, or less if output hasn't room for more, until it's sent; 0 if it isn't
  *     connected.
  */
-write :: fn(connection: ptr[mut Connection], data: u8[]) -> usize {
+write :: fn(connection : ptr[mut Connection], data : u8[]) -> usize {
     if connection.state != .Connected || connection.closed_sent {
         return 0
     }
@@ -594,7 +608,7 @@ write :: fn(connection: ptr[mut Connection], data: u8[]) -> usize {
  * @param into Where it goes.
  * @return How many bytes; 0 when there's none waiting, as when the peer's closed, or nothing's arrived yet.
  */
-read :: fn(connection: ptr[mut Connection], into: mut u8[]) -> usize {
+read :: fn(connection : ptr[mut Connection], into : mut u8[]) -> usize {
     count := if into.count < connection.plaintext_count { into.count } else { connection.plaintext_count }
     for i in 0..<count {
         at :: connection.plaintext_start + i
@@ -619,7 +633,7 @@ read :: fn(connection: ptr[mut Connection], into: mut u8[]) -> usize {
  *
  * @param connection The connection.
  */
-close :: fn(connection: ptr[mut Connection]) {
+close :: fn(connection : ptr[mut Connection]) {
     if connection.closed_sent || connection.state == .Idle {
         return void
     }
@@ -633,7 +647,7 @@ close :: fn(connection: ptr[mut Connection]) {
 // ---- Within
 
 /** Leave a connection as new, of a role; its large buffers keep what they held, past their counts. */
-reset :: fn(connection: ptr[mut Connection], role: Role) {
+reset :: fn(connection : ptr[mut Connection], role : Role) {
     connection.role = role
     connection.state = .Idle
     connection.ending = .None
@@ -674,8 +688,10 @@ reset :: fn(connection: ptr[mut Connection], role: Role) {
     connection.protocol_agreed = false
 }
 
-/** Keep the application protocol offered or spoken; one longer than PROTOCOL_BYTES is none, as it can't be kept whole. */
-set_protocol :: fn(connection: ptr[mut Connection], protocol: string) {
+/**
+ * Keep the application protocol offered or spoken; one longer than PROTOCOL_BYTES is none, as it can't be kept whole.
+ */
+set_protocol :: fn(connection : ptr[mut Connection], protocol : string) {
     bytes :: string_bytes(protocol)
     if bytes.count > connection.protocol.count {
         connection.protocol_length = 0
@@ -690,12 +706,12 @@ set_protocol :: fn(connection: ptr[mut Connection], protocol: string) {
 }
 
 /** The application protocol offered or spoken, as kept. */
-protocol_of :: fn(connection: ptr[Connection]) -> u8[] {
+protocol_of :: fn(connection : ptr[Connection]) -> u8[] {
     return range(connection.protocol, 0, connection.protocol_length)
 }
 
 /** Tell whether a name is the application protocol offered or spoken. */
-is_protocol :: fn(connection: ptr[Connection], name: u8[]) -> bool {
+is_protocol :: fn(connection : ptr[Connection], name : u8[]) -> bool {
     mine :: protocol_of(connection)
     if mine.count == 0 || name.count != mine.count {
         return false
@@ -709,7 +725,7 @@ is_protocol :: fn(connection: ptr[Connection], name: u8[]) -> bool {
 }
 
 /** Keep the host's name, as much as fits. */
-set_host :: fn(connection: ptr[mut Connection], host: string) {
+set_host :: fn(connection : ptr[mut Connection], host : string) {
     bytes :: string_bytes(host)
     count :: if bytes.count < connection.host.count { bytes.count } else { connection.host.count }
     for byte, i in range(bytes, 0, count) {
@@ -721,12 +737,12 @@ set_host :: fn(connection: ptr[mut Connection], host: string) {
 }
 
 /** The host's name, as kept. */
-host_of :: fn(connection: ptr[Connection]) -> u8[] {
+host_of :: fn(connection : ptr[Connection]) -> u8[] {
     return range(connection.host, 0, connection.host_length)
 }
 
 /** Drop a buffer's first bytes, moving the rest down. */
-remove_front :: fn[N: usize](buffer: ptr[mut u8[N]], count: ptr[mut usize], taken: usize) {
+remove_front :: fn[N : usize](buffer : ptr[mut u8[N]], count : ptr[mut usize], taken : usize) {
     if taken == 0 {
         return void
     }
@@ -745,7 +761,7 @@ remove_front :: fn[N: usize](buffer: ptr[mut u8[N]], count: ptr[mut usize], take
  * @param connection The connection.
  * @param description The alert's description.
  */
-fail :: fn(connection: ptr[mut Connection], description: u8) {
+fail :: fn(connection : ptr[mut Connection], description : u8) {
     if connection.state == .Ended {
         return void
     }
@@ -756,7 +772,7 @@ fail :: fn(connection: ptr[mut Connection], description: u8) {
 }
 
 /** Queue an alert: close_notify as a warning, the rest fatal. */
-send_alert :: fn(connection: ptr[mut Connection], description: u8) {
+send_alert :: fn(connection : ptr[mut Connection], description : u8) {
     level :: if description == ALERT_CLOSE_NOTIFY { cast[u8](1) } else { cast[u8](2) }
     alert :: u8.[level, description]
     write_record(connection, CONTENT_ALERT, alert[0..<2])
@@ -773,10 +789,11 @@ send_alert :: fn(connection: ptr[mut Connection], description: u8) {
  * @param kind The content type.
  * @param content The content, at most RECORD_PLAINTEXT bytes.
  */
-write_record :: fn(connection: ptr[mut Connection], kind: u8, content: u8[]) {
+write_record :: fn(connection : ptr[mut Connection], kind : u8, content : u8[]) {
     sealed :: connection.write_encrypted
     length :: if sealed { content.count + 1 + 16 } else { content.count }
-    if content.count > RECORD_PLAINTEXT || connection.outgoing.count - connection.outgoing_count < RECORD_HEADER + length {
+    if content.count > RECORD_PLAINTEXT
+        || connection.outgoing.count - connection.outgoing_count < RECORD_HEADER + length {
         // Nothing more can go out: the connection can't go on
         connection.state = .Ended
         connection.ending = .Refused
@@ -785,10 +802,23 @@ write_record :: fn(connection: ptr[mut Connection], kind: u8, content: u8[]) {
     }
     at :: connection.outgoing_count
     // The first ClientHello says TLS 1.0, as middleboxes expect (§5.1)
-    version :: if !sealed && kind == CONTENT_HANDSHAKE && content.count > 0 && content[0] == CLIENT_HELLO && !connection.retried {
-        cast[u16](0x0301) } else { LEGACY_VERSION }
-    header :: u8.[if sealed { CONTENT_APPLICATION_DATA } else { kind }, cast[u8](version >> 8), cast[u8](version),
-        cast[u8](length >> 8), cast[u8](length)]
+    version :: if !sealed
+        && kind == CONTENT_HANDSHAKE
+        && content.count > 0
+        && content[0] == CLIENT_HELLO
+        && !connection.retried {
+        cast[u16](0x0301)
+    }
+    else {
+        LEGACY_VERSION
+    }
+    header :: u8.[
+        if sealed { CONTENT_APPLICATION_DATA } else { kind },
+        cast[u8](version >> 8),
+        cast[u8](version),
+        cast[u8](length >> 8),
+        cast[u8](length)
+    ]
     for byte, i in header {
         if at + i < connection.outgoing.count {
             connection.outgoing[at + i] = byte
@@ -836,7 +866,7 @@ write_record :: fn(connection: ptr[mut Connection], kind: u8, content: u8[]) {
  * @param keys The direction's keys.
  * @return The nonce.
  */
-nonce_of :: fn(keys: ptr[TrafficKeys]) -> crypto.Nonce96 {
+nonce_of :: fn(keys : ptr[TrafficKeys]) -> crypto.Nonce96 {
     nonce : crypto.Nonce96
     for i in 0..<12 {
         nonce[i] = keys.iv[i]
@@ -852,9 +882,14 @@ nonce_of :: fn(keys: ptr[TrafficKeys]) -> crypto.Nonce96 {
  *
  * @return False if the AEAD wouldn't.
  */
-seal #constant_time :: fn(suite: Suite, keys: ptr[TrafficKeys], plaintext: crypto.SecretByte[], associated: u8[], ciphertext: mut u8[],
-    tag: ptr[mut crypto.Tag128]) -> bool {
-
+seal #constant_time :: fn(
+    suite : Suite,
+    keys : ptr[TrafficKeys],
+    plaintext : crypto.SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut crypto.Tag128]
+) -> bool {
     nonce :: nonce_of(keys)
     if suite == .Aes128GcmSha256 {
         key : crypto.Key128
@@ -878,9 +913,14 @@ seal #constant_time :: fn(suite: Suite, keys: ptr[TrafficKeys], plaintext: crypt
  *
  * @return False if its tag doesn't match.
  */
-open #constant_time :: fn(suite: Suite, keys: ptr[TrafficKeys], ciphertext: u8[], associated: u8[], tag: ptr[crypto.Tag128],
-    plaintext: mut crypto.SecretByte[]) -> bool {
-
+open #constant_time :: fn(
+    suite : Suite,
+    keys : ptr[TrafficKeys],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[crypto.Tag128],
+    plaintext : mut crypto.SecretByte[]
+) -> bool {
     nonce :: nonce_of(keys)
     if suite == .Aes128GcmSha256 {
         key : crypto.Key128
@@ -904,7 +944,7 @@ open #constant_time :: fn(suite: Suite, keys: ptr[TrafficKeys], ciphertext: u8[]
  *
  * @param connection The connection.
  */
-take_records :: fn(connection: ptr[mut Connection]) {
+take_records :: fn(connection : ptr[mut Connection]) {
     loop {
         if connection.state == .Ended || connection.incoming_count < RECORD_HEADER {
             return void
@@ -919,7 +959,8 @@ take_records :: fn(connection: ptr[mut Connection]) {
             return void
         }
         // Application data's opened only once there's room for what it holds
-        if connection.read_encrypted && kind == CONTENT_APPLICATION_DATA
+        if connection.read_encrypted
+            && kind == CONTENT_APPLICATION_DATA
             && connection.plaintext.count - connection.plaintext_start - connection.plaintext_count < length {
             if connection.plaintext_count > 0 {
                 return void
@@ -937,7 +978,7 @@ take_records :: fn(connection: ptr[mut Connection]) {
  * @param kind Its content type.
  * @param length Its length, past its header.
  */
-take_record :: fn(connection: ptr[mut Connection], kind: u8, length: usize) {
+take_record :: fn(connection : ptr[mut Connection], kind : u8, length : usize) {
     record :: range(connection.incoming, RECORD_HEADER, RECORD_HEADER + length)
     // A ChangeCipherSpec of 1 in the clear, during the handshake, as middlebox compatibility sends (§5)
     if kind == CONTENT_CHANGE_CIPHER_SPEC {
@@ -1037,7 +1078,7 @@ take_record :: fn(connection: ptr[mut Connection], kind: u8, length: usize) {
  * @param connection The connection.
  * @param alert The alert's two bytes.
  */
-take_alert :: fn(connection: ptr[mut Connection], alert: u8[]) {
+take_alert :: fn(connection : ptr[mut Connection], alert : u8[]) {
     if alert.count != 2 {
         fail(connection, ALERT_DECODE_ERROR)
         return void
@@ -1057,7 +1098,7 @@ take_alert :: fn(connection: ptr[mut Connection], alert: u8[]) {
  * @param connection The connection.
  * @param bytes A record's handshake bytes.
  */
-take_handshake_bytes :: fn(connection: ptr[mut Connection], bytes: u8[]) {
+take_handshake_bytes :: fn(connection : ptr[mut Connection], bytes : u8[]) {
     if bytes.count == 0 {
         fail(connection, ALERT_UNEXPECTED_MESSAGE)
         return void
@@ -1074,7 +1115,9 @@ take_handshake_bytes :: fn(connection: ptr[mut Connection], bytes: u8[]) {
         if connection.state == .Ended || connection.message_count < 4 {
             return void
         }
-        length :: (cast[usize](connection.message[1]) << 16) | (cast[usize](connection.message[2]) << 8) | cast[usize](connection.message[3])
+        length :: (cast[usize](connection.message[1]) << 16)
+            | (cast[usize](connection.message[2]) << 8)
+            | cast[usize](connection.message[3])
         if 4 + length > connection.message.count {
             fail(connection, ALERT_RECORD_OVERFLOW)
             return void
@@ -1100,7 +1143,7 @@ take_handshake_bytes :: fn(connection: ptr[mut Connection], bytes: u8[]) {
  * @param kind Its type.
  * @param length Its length, with its header.
  */
-take_message :: fn(connection: ptr[mut Connection], kind: u8, length: usize) {
+take_message :: fn(connection : ptr[mut Connection], kind : u8, length : usize) {
     message :: range(connection.message, 0, length)
     if connection.role == .Client {
         client_message(connection, kind, message)
@@ -1116,7 +1159,7 @@ take_message :: fn(connection: ptr[mut Connection], kind: u8, length: usize) {
  * @param connection The connection.
  * @param message The message, from its type, as many records as it takes.
  */
-send_message :: fn(connection: ptr[mut Connection], message: u8[]) {
+send_message :: fn(connection : ptr[mut Connection], message : u8[]) {
     transcript_add(&connection.transcript, message)
     at := cast[usize](0)
     loop {
@@ -1137,7 +1180,7 @@ send_message :: fn(connection: ptr[mut Connection], message: u8[]) {
  * @param connection The connection, its suite chosen.
  * @param secret The traffic secret.
  */
-set_read_keys #constant_time :: fn(connection: ptr[mut Connection], secret: ptr[Secret]) {
+set_read_keys #constant_time :: fn(connection : ptr[mut Connection], secret : ptr[Secret]) {
     connection.read = traffic_keys(suite_hash(connection.suite), key_length(connection.suite), secret)
     connection.read_secret = secret^
     connection.read_encrypted = true
@@ -1150,7 +1193,7 @@ set_read_keys #constant_time :: fn(connection: ptr[mut Connection], secret: ptr[
  * @param connection The connection, its suite chosen.
  * @param secret The traffic secret.
  */
-set_write_keys #constant_time :: fn(connection: ptr[mut Connection], secret: ptr[Secret]) {
+set_write_keys #constant_time :: fn(connection : ptr[mut Connection], secret : ptr[Secret]) {
     connection.write = traffic_keys(suite_hash(connection.suite), key_length(connection.suite), secret)
     connection.write_secret = secret^
     connection.write_encrypted = true
@@ -1163,7 +1206,7 @@ set_write_keys #constant_time :: fn(connection: ptr[mut Connection], secret: ptr
  * @param connection The connection, connected.
  * @param message The message.
  */
-take_key_update :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_key_update :: fn(connection : ptr[mut Connection], message : u8[]) {
     if message.count != 5 || (message[4] != 0 && message[4] != 1) {
         fail(connection, ALERT_DECODE_ERROR)
         return void
@@ -1187,7 +1230,7 @@ take_key_update :: fn(connection: ptr[mut Connection], message: u8[]) {
  * @param connection The connection, its suite chosen and the ServerHello in its transcript.
  * @param shared The shared secret, 32 bytes.
  */
-handshake_secrets #constant_time :: fn(connection: ptr[mut Connection], shared: ptr[crypto.SecretByte[32]]) {
+handshake_secrets #constant_time :: fn(connection : ptr[mut Connection], shared : ptr[crypto.SecretByte[32]]) {
     hash :: suite_hash(connection.suite)
     length :: hash_length(hash)
     zeros : Secret
@@ -1209,7 +1252,7 @@ handshake_secrets #constant_time :: fn(connection: ptr[mut Connection], shared: 
  *
  * @param connection The connection, the server's Finished in its transcript.
  */
-application_secrets :: fn(connection: ptr[mut Connection]) {
+application_secrets :: fn(connection : ptr[mut Connection]) {
     hash :: suite_hash(connection.suite)
     transcript : u8[HASH_MOST]
     transcript_hash(&connection.transcript, hash, &transcript)
@@ -1226,7 +1269,7 @@ application_secrets :: fn(connection: ptr[mut Connection]) {
  * @param into Where the message goes.
  * @return Its length.
  */
-make_finished #constant_time :: fn(connection: ptr[mut Connection], secret: ptr[Secret], into: mut u8[]) -> usize {
+make_finished #constant_time :: fn(connection : ptr[mut Connection], secret : ptr[Secret], into : mut u8[]) -> usize {
     hash :: suite_hash(connection.suite)
     length :: hash_length(hash)
     transcript : u8[HASH_MOST]
@@ -1249,7 +1292,7 @@ make_finished #constant_time :: fn(connection: ptr[mut Connection], secret: ptr[
  * @param message The Finished.
  * @return True if its verify_data is right.
  */
-check_finished #constant_time :: fn(connection: ptr[mut Connection], secret: ptr[Secret], message: u8[]) -> bool {
+check_finished #constant_time :: fn(connection : ptr[mut Connection], secret : ptr[Secret], message : u8[]) -> bool {
     hash :: suite_hash(connection.suite)
     length :: hash_length(hash)
     if message.count != 4 + length {
@@ -1268,7 +1311,7 @@ check_finished #constant_time :: fn(connection: ptr[mut Connection], secret: ptr
  * @param connection The connection, its suite chosen.
  * @param first_hello_hash The first ClientHello's hash, its first hash_length bytes.
  */
-restart_transcript :: fn(connection: ptr[mut Connection], first_hello_hash: ptr[u8[HASH_MOST]]) {
+restart_transcript :: fn(connection : ptr[mut Connection], first_hello_hash : ptr[u8[HASH_MOST]]) {
     hash :: suite_hash(connection.suite)
     length :: hash_length(hash)
     connection.transcript = transcript_start()
@@ -1285,12 +1328,16 @@ restart_transcript :: fn(connection: ptr[mut Connection], first_hello_hash: ptr[
  * @param into Where it goes: at least 64 + 34 + 48 bytes.
  * @return Its length.
  */
-verify_content :: fn(connection: ptr[mut Connection], server: bool, into: mut u8[]) -> usize {
+verify_content :: fn(connection : ptr[mut Connection], server : bool, into : mut u8[]) -> usize {
     writer := Writer.{}
     for i in 0..<64 {
         put_u8(into, &writer, 0x20)
     }
-    put_bytes(into, &writer, string_bytes(if server { "TLS 1.3, server CertificateVerify" } else { "TLS 1.3, client CertificateVerify" }))
+    put_bytes(
+        into,
+        &writer,
+        string_bytes(if server { "TLS 1.3, server CertificateVerify" } else { "TLS 1.3, client CertificateVerify" })
+    )
     put_u8(into, &writer, 0)
     hash :: suite_hash(connection.suite)
     transcript : u8[HASH_MOST]

@@ -16,7 +16,7 @@ import compiler from "base:compiler"
  * @tparam capacity The most values it holds: at least 1. They're kept in the buffer itself, so it's capacity values
  *     large.
  */
-RingBuffer :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
+RingBuffer :: struct[T, capacity : usize] where compiler.AtLeastOne(capacity) {
     /** The values: count of them, from head on, wrapping around. */
     items : T[capacity],
     /** The index in items of the oldest value, below capacity. */
@@ -34,7 +34,7 @@ RingBuffer :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
  * @param value The value, copied in.
  * @return True if it was added; false if the buffer was full, leaving it unchanged.
  */
-ring_push :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]], value #escaping : T) -> bool {
+ring_push :: fn[T, capacity : usize](ring : ptr[mut RingBuffer[T, capacity]], value #escaping : T) -> bool {
     if ring.count >= capacity {
         return false
     }
@@ -52,7 +52,7 @@ ring_push :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]], valu
  *     shrinks by one.
  * @return The oldest value, removed; null if the buffer is empty.
  */
-ring_pop :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) -> T? {
+ring_pop :: fn[T, capacity : usize](ring : ptr[mut RingBuffer[T, capacity]]) -> T? {
     if ring.count == 0 {
         return null
     }
@@ -70,7 +70,7 @@ ring_pop :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) -> T?
  * @param ring A buffer to look in; it isn't changed.
  * @return A copy of the oldest value; null if the buffer is empty.
  */
-ring_peek :: fn[T, capacity: usize](ring: ptr[RingBuffer[T, capacity]]) -> T? {
+ring_peek :: fn[T, capacity : usize](ring : ptr[RingBuffer[T, capacity]]) -> T? {
     if ring.count == 0 {
         return null
     }
@@ -84,7 +84,7 @@ ring_peek :: fn[T, capacity: usize](ring: ptr[RingBuffer[T, capacity]]) -> T? {
  * @tparam capacity The most values it holds.
  * @param ring A buffer to empty; its head and count become 0.
  */
-ring_clear :: fn[T, capacity: usize](ring: ptr[mut RingBuffer[T, capacity]]) {
+ring_clear :: fn[T, capacity : usize](ring : ptr[mut RingBuffer[T, capacity]]) {
     ring.head = 0
     ring.count = 0
 }

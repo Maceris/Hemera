@@ -1,7 +1,7 @@
 package fuzzing
 
-import runtime from "base:runtime"
 import intrinsics from "base:intrinsics"
+import runtime from "base:runtime"
 import os from "std:os"
 import strings from "std:strings"
 import testing from "std:testing"
@@ -92,7 +92,7 @@ Ran :: struct {
  * @param format_string The line, without its newline.
  * @param values The values for its %s.
  */
-say :: fn(format_string: string, values: any...) {
+say :: fn(format_string : string, values : any...) {
     storage : u8[2 * PATH_BYTES]
     line := text_buffer.make(storage)
     text_buffer.append_format(&line, format_string, values)
@@ -106,7 +106,7 @@ say :: fn(format_string: string, values: any...) {
  * @param count The count, as the block's counter has it after an input; 0 for a block the input didn't reach.
  * @return The range's bit; 0 for a count of 0.
  */
-bucket_of :: fn(count: u8) -> u8 {
+bucket_of :: fn(count : u8) -> u8 {
     if count == 0 {
         return 0
     }
@@ -134,7 +134,7 @@ bucket_of :: fn(count: u8) -> u8 {
  * @param bytes The input.
  * @param into Where the name goes: 16 hexadecimal digits of its FNV-1a hash.
  */
-name_of :: fn(bytes: u8[], into: ptr[mut text_buffer.TextBuffer]) {
+name_of :: fn(bytes : u8[], into : ptr[mut text_buffer.TextBuffer]) {
     hash : u64 = 0xcbf29ce484222325
     for byte in bytes {
         hash = (hash ~ cast[u64](byte)) * 0x100000001b3
@@ -148,7 +148,7 @@ name_of :: fn(bytes: u8[], into: ptr[mut text_buffer.TextBuffer]) {
  * @param bytes The bytes.
  * @return A string of them, the same memory; "" for none.
  */
-as_text :: fn(bytes: u8[]) -> string {
+as_text :: fn(bytes : u8[]) -> string {
     if bytes.count == 0 {
         return ""
     }
@@ -163,7 +163,7 @@ as_text :: fn(bytes: u8[]) -> string {
  * @param path Where the file's path goes.
  * @return The error, if it couldn't be written; null if it was.
  */
-keep :: fn(folder: string, bytes: u8[], path: ptr[mut text_buffer.TextBuffer]) -> os.OsError? {
+keep :: fn(folder : string, bytes : u8[], path : ptr[mut text_buffer.TextBuffer]) -> os.OsError? {
     text_buffer.append(path, folder)
     text_buffer.append(path, "/")
     name_of(bytes, path)
@@ -176,7 +176,7 @@ keep :: fn(folder: string, bytes: u8[], path: ptr[mut text_buffer.TextBuffer]) -
  * @param path The folder's path, its parts separated by /.
  * @return Whether it's there now.
  */
-make_folders :: fn(path: string) -> bool {
+make_folders :: fn(path : string) -> bool {
     for character, i in path {
         if character == '/' && i > 0 && i <= path.count {
             above :: path[0..<i]
@@ -197,7 +197,7 @@ make_folders :: fn(path: string) -> bool {
  * @param text The text.
  * @return The copy, from the context's allocator, never freed: it lasts for the program, as a fuzzer does.
  */
-copied :: fn(text: string) -> string {
+copied :: fn(text : string) -> string {
     copy, error :: runtime.new_array(u8, text.count)
     if error != null || copy.count == 0 {
         return ""
@@ -217,7 +217,7 @@ copied :: fn(text: string) -> string {
  * @param location Where the assertion was.
  * @param message What failed.
  */
-on_assertion : runtime.AssertionHandler : fn(location: runtime.SourceCodeLocation, message: string) #never_returns {
+on_assertion : runtime.AssertionHandler : fn(location : runtime.SourceCodeLocation, message : string) #never_returns {
     match runtime.get_extension(Running) {
         case Some(running) => {
             storage : u8[PATH_BYTES]
@@ -244,7 +244,7 @@ on_assertion : runtime.AssertionHandler : fn(location: runtime.SourceCodeLocatio
  * @param input The input; past its end, the test reads zeros. More than testing.MAX_CASE_BYTES is cut.
  * @return What the run found.
  */
-run_input :: fn(fuzzer: ptr[mut Fuzzer], input: u8[]) -> Ran {
+run_input :: fn(fuzzer : ptr[mut Fuzzer], input : u8[]) -> Ran {
     testing.set_case(fuzzer.room, input)
     counters :: fuzzer.counters
     for index in 0..<counters.count {
@@ -277,7 +277,7 @@ run_input :: fn(fuzzer: ptr[mut Fuzzer], input: u8[]) -> Ran {
  * @param bytes The input, copied.
  * @param save Whether to write it to the corpus folder.
  */
-add_input :: fn(fuzzer: ptr[mut Fuzzer], bytes: u8[], save: bool) {
+add_input :: fn(fuzzer : ptr[mut Fuzzer], bytes : u8[], save : bool) {
     kept := Input.{}
     for byte in bytes {
         runtime.array_add(&kept.bytes, byte)
@@ -297,7 +297,7 @@ add_input :: fn(fuzzer: ptr[mut Fuzzer], bytes: u8[], save: bool) {
  * @param failing The input, on which the test failed.
  * @param how How it was found, like "the corpus" or "fuzzing, 5120 inputs in".
  */
-report_finding :: fn(fuzzer: ptr[mut Fuzzer], failing: u8[], how: string) {
+report_finding :: fn(fuzzer : ptr[mut Fuzzer], failing : u8[], how : string) {
     t := testing.T.{name = fuzzer.name}
     smallest : testing.Case
     _ = testing.report_shrunk(&t, fuzzer.property, failing, &smallest, &fuzzer.kept, "%", how)
@@ -305,7 +305,11 @@ report_finding :: fn(fuzzer: ptr[mut Fuzzer], failing: u8[], how: string) {
     storage : u8[PATH_BYTES]
     path := text_buffer.make(storage)
     if keep(fuzzer.findings_folder, testing.case_bytes(&smallest), &path) == null {
-        say("    kept as %, which hemera --fuzz=% runs first, until the test passes on it", text_buffer.as_string(&path), fuzzer.name)
+        say(
+            "    kept as %, which hemera --fuzz=% runs first, until the test passes on it",
+            text_buffer.as_string(&path),
+            fuzzer.name
+        )
     }
 }
 
@@ -317,7 +321,7 @@ report_finding :: fn(fuzzer: ptr[mut Fuzzer], failing: u8[], how: string) {
  * @param keep_new Whether to keep in the corpus those that reach new code: for the corpus folder's, not the findings'.
  * @return Whether the test passed on them all; one that fails is reported.
  */
-run_folder :: fn(fuzzer: ptr[mut Fuzzer], folder: string, keep_new: bool) -> bool {
+run_folder :: fn(fuzzer : ptr[mut Fuzzer], folder : string, keep_new : bool) -> bool {
     // A folder that isn't there has no inputs
     entries :: os.list_directory(folder) or_return true
     defer os.free_directory_listing(entries)
@@ -356,7 +360,7 @@ run_folder :: fn(fuzzer: ptr[mut Fuzzer], folder: string, keep_new: bool) -> boo
  * @param bound One more than the largest number wanted; 0 gives 0.
  * @return A number from 0 to bound - 1.
  */
-below :: fn(fuzzer: ptr[mut Fuzzer], bound: usize) -> usize {
+below :: fn(fuzzer : ptr[mut Fuzzer], bound : usize) -> usize {
     if bound == 0 {
         return 0
     }
@@ -370,7 +374,7 @@ below :: fn(fuzzer: ptr[mut Fuzzer], bound: usize) -> usize {
  * @param at Where, 0 to its count.
  * @param byte The byte.
  */
-put_in :: fn(input: ptr[mut testing.Case], at: usize, byte: u8) {
+put_in :: fn(input : ptr[mut testing.Case], at : usize, byte : u8) {
     if input.count >= input.bytes.count || at > input.count {
         return void
     }
@@ -394,7 +398,7 @@ put_in :: fn(input: ptr[mut testing.Case], at: usize, byte: u8) {
  * @param input The input.
  * @param at Which; past its count, nothing is taken out.
  */
-take_out :: fn(input: ptr[mut testing.Case], at: usize) {
+take_out :: fn(input : ptr[mut testing.Case], at : usize) {
     if at >= input.count || input.count > input.bytes.count {
         return void
     }
@@ -416,7 +420,7 @@ take_out :: fn(input: ptr[mut testing.Case], at: usize) {
  * @param other Another input, which some of may be brought in.
  * @param into Where the new input goes, at most testing.MAX_CASE_BYTES.
  */
-mutate :: fn(fuzzer: ptr[mut Fuzzer], parent: u8[], other: u8[], into: ptr[mut testing.Case]) {
+mutate :: fn(fuzzer : ptr[mut Fuzzer], parent : u8[], other : u8[], into : ptr[mut testing.Case]) {
     testing.set_case(into, parent)
     edges :: u64.[0, 1, 0x7f, 0x80, 0xff, 0x7fff, 0x8000, 0xffff, 0x7fff_ffff, 0x8000_0000, 0xffff_ffff, ~cast[u64](0)]
     changes :: 1 + below(fuzzer, MAX_CHANGES)
@@ -474,7 +478,10 @@ mutate :: fn(fuzzer: ptr[mut Fuzzer], parent: u8[], other: u8[], into: ptr[mut t
                 from :: below(fuzzer, count)
                 to :: below(fuzzer, count)
                 for index in 0..<1 + below(fuzzer, 16) {
-                    if from + index < count && to + index < count && from + index < into.bytes.count && to + index < into.bytes.count {
+                    if from + index < count
+                        && to + index < count
+                        && from + index < into.bytes.count
+                        && to + index < into.bytes.count {
                         into.bytes[to + index] = into.bytes[from + index]
                     }
                 }
@@ -482,7 +489,13 @@ mutate :: fn(fuzzer: ptr[mut Fuzzer], parent: u8[], other: u8[], into: ptr[mut t
                 // A constant the program compares with, in as few bytes as it fits, either way round, over it or put in
                 if fuzzer.constants.count > 0 {
                     value :: fuzzer.constants[below(fuzzer, fuzzer.constants.count) % fuzzer.constants.count]
-                    size :: if value <= 0xff { cast[usize](1) } else if value <= 0xffff { cast[usize](2) } else if value <= 0xffff_ffff { cast[usize](4) } else { cast[usize](8) }
+                    size :: if value <= 0xff {
+                        cast[usize](1)
+                    }
+                    else if value <= 0xffff {
+                        cast[usize](2)
+                    }
+                    else if value <= 0xffff_ffff { cast[usize](4) } else { cast[usize](8) }
                     at :: below(fuzzer, count + 1)
                     big :: below(fuzzer, 2) == 0
                     over :: below(fuzzer, 2) == 0
@@ -523,11 +536,18 @@ mutate :: fn(fuzzer: ptr[mut Fuzzer], parent: u8[], other: u8[], into: ptr[mut t
  * @param fuzzer The fuzzer.
  * @param start When it started.
  */
-report_progress :: fn(fuzzer: ptr[Fuzzer], start: runtime.MonotonicTime) {
+report_progress :: fn(fuzzer : ptr[Fuzzer], start : runtime.MonotonicTime) {
     took :: time.since(start)
     milliseconds :: cast[u64](took.seconds) * 1000 + cast[u64](took.nanos) / 1_000_000
     rate :: if milliseconds == 0 { cast[u64](0) } else { fuzzer.runs * 1000 / milliseconds }
-    say("fuzz %: % inputs, coverage %, corpus %, % a second", fuzzer.name, fuzzer.runs, fuzzer.reached, fuzzer.corpus.count, rate)
+    say(
+        "fuzz %: % inputs, coverage %, corpus %, % a second",
+        fuzzer.name,
+        fuzzer.runs,
+        fuzzer.reached,
+        fuzzer.corpus.count,
+        rate
+    )
 }
 
 /**
@@ -546,7 +566,7 @@ report_progress :: fn(fuzzer: ptr[Fuzzer], start: runtime.MonotonicTime) {
  * @return The program's exit code: 0 if the test passed on every input; 1 if it failed on one; 2 if the program
  *     wasn't built for fuzzing, or its folders can't be made.
  */
-fuzz :: fn(property: testing.Property, name: string, options: FuzzOptions) -> int {
+fuzz :: fn(property : testing.Property, name : string, options : FuzzOptions) -> int {
     counters :: intrinsics.coverage_counters()
     if counters.count == 0 {
         say("fuzz %: the program counts no coverage; build it with hemera --fuzz=%", name, name)
@@ -573,9 +593,16 @@ fuzz :: fn(property: testing.Property, name: string, options: FuzzOptions) -> in
     room :: runtime.new(testing.Case)
     findings :: copied(text_buffer.as_string(&findings_path))
     test_name :: copied(name)
-    fuzzer := Fuzzer.{property = property, name = test_name, counters = counters, constants = intrinsics.coverage_constants(), room = room,
-        random = if options.seed != 0 { options.seed } else { cast[u64](time.monotonic()) }, corpus_folder = copied(text_buffer.as_string(&corpus_path)),
-        findings_folder = findings}
+    fuzzer := Fuzzer.{
+        property = property,
+        name = test_name,
+        counters = counters,
+        constants = intrinsics.coverage_constants(),
+        room = room,
+        random = if options.seed != 0 { options.seed } else { cast[u64](time.monotonic()) },
+        corpus_folder = copied(text_buffer.as_string(&corpus_path)),
+        findings_folder = findings,
+    }
     for index in 0..<counters.count {
         runtime.array_add(&fuzzer.seen, 0)
     }
@@ -599,7 +626,7 @@ fuzz :: fn(property: testing.Property, name: string, options: FuzzOptions) -> in
  * @param options How long.
  * @return fuzz's exit code.
  */
-fuzz_with :: fn(fuzzer: ptr[mut Fuzzer], options: FuzzOptions) -> int {
+fuzz_with :: fn(fuzzer : ptr[mut Fuzzer], options : FuzzOptions) -> int {
     start :: time.monotonic()
     if !run_folder(fuzzer, fuzzer.findings_folder, false) || !run_folder(fuzzer, fuzzer.corpus_folder, true) {
         return 1

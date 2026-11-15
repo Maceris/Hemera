@@ -60,7 +60,7 @@ Color :: struct {
  *     terminal shows, its Features.colors says.
  * @return A Palette colour.
  */
-palette :: fn(index: u8) -> Color {
+palette :: fn(index : u8) -> Color {
     return Color.{kind = cast[u8](ColorKind.Palette), index = index}
 }
 
@@ -72,7 +72,7 @@ palette :: fn(index: u8) -> Color {
  * @param blue The blue component, 0 to 255.
  * @return An Rgb colour.
  */
-rgb :: fn(red: u8, green: u8, blue: u8) -> Color {
+rgb :: fn(red : u8, green : u8, blue : u8) -> Color {
     return Color.{kind = cast[u8](ColorKind.Rgb), red = red, green = green, blue = blue}
 }
 
@@ -82,7 +82,7 @@ rgb :: fn(red: u8, green: u8, blue: u8) -> Color {
  * @param color The colour, as it came, from any version of the protocol.
  * @return Its kind; Default for a kind this version doesn't know, so a newer kind is shown as the default colour.
  */
-color_kind :: fn(color: Color) -> ColorKind {
+color_kind :: fn(color : Color) -> ColorKind {
     return match color.kind {
         case 1 => ColorKind.Palette
         case 2 => ColorKind.Rgb
@@ -244,7 +244,7 @@ Event :: struct {
  * @param kind What the event is.
  * @return The event, every field but kind zero.
  */
-event_of :: fn(kind: EventKind) -> Event {
+event_of :: fn(kind : EventKind) -> Event {
     return Event.{kind = cast[u8](kind)}
 }
 
@@ -254,7 +254,7 @@ event_of :: fn(kind: EventKind) -> Event {
  * @param event The event, as it came, from any version of the protocol.
  * @return Its kind; null for a kind this version doesn't know.
  */
-kind_of :: fn(event: Event) -> EventKind? {
+kind_of :: fn(event : Event) -> EventKind? {
     return match event.kind {
         case 1 => EventKind.Key
         case 2 => EventKind.Paste
@@ -382,7 +382,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return False for Write, Scroll, Bell and Read; true for the rest, which set something to what it was set to.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case Write(_) => false
         case MoveCursor(_) => true
@@ -414,7 +414,7 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  * @return The new connection's end, which the caller owns and closes; null if the channel couldn't be made or the
  *     Connect couldn't be sent, and then nothing is left open.
  */
-connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[Terminal]? {
+connect :: fn(end : slop_os.Channel, port : slop_os.Port, budget : slop_os.MemoryBudget) -> os.Channel[Terminal]? {
     pair :: os.channel_for[Terminal](budget, RING_BYTES) or_return null
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
@@ -442,7 +442,7 @@ connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBu
  * @param style How the text looks; the default, plain.
  * @return True if every Write went; false at the first that didn't, with what's before it sent.
  */
-write :: fn(end: slop_os.Channel, port: slop_os.Port, text: string, style := Style.{}) -> bool {
+write :: fn(end : slop_os.Channel, port : slop_os.Port, text : string, style := Style.{}) -> bool {
     bytes :: string_bytes(text)
     at : usize = 0
     loop {
@@ -482,7 +482,7 @@ write :: fn(end: slop_os.Channel, port: slop_os.Port, text: string, style := Sty
  * @param style How the text looks.
  * @return True if the Write went; false if it couldn't be sent.
  */
-write_run :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], style: Style) -> bool {
+write_run :: fn(end : slop_os.Channel, port : slop_os.Port, bytes : u8[], style : Style) -> bool {
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
     run :: Run.[Run.{bytes = cast[u32](bytes.count), style = style}]
@@ -500,7 +500,7 @@ write_run :: fn(end: slop_os.Channel, port: slop_os.Port, bytes: u8[], style: St
  * @param style How the text, and the line break, look; the default, plain.
  * @return True if everything went; false at the first Write that didn't, and the line break isn't sent then.
  */
-write_line :: fn(end: slop_os.Channel, port: slop_os.Port, text: string, style := Style.{}) -> bool {
+write_line :: fn(end : slop_os.Channel, port : slop_os.Port, text : string, style := Style.{}) -> bool {
     return write(end, port, text, style) && write(end, port, "\n", style)
 }
 
@@ -514,7 +514,7 @@ write_line :: fn(end: slop_os.Channel, port: slop_os.Port, text: string, style :
  * @return True if it went; false if it couldn't be sent. A request that's answered still has to be answered:
  *     this doesn't wait for it.
  */
-send :: fn(end: slop_os.Channel, port: slop_os.Port, request: Request) -> bool {
+send :: fn(end : slop_os.Channel, port : slop_os.Port, request : Request) -> bool {
     out := os.Outgoing.{}
     os.begin[Request](&out)^ = request
     return send_request(end, port, &out) == null
@@ -531,7 +531,7 @@ send :: fn(end: slop_os.Channel, port: slop_os.Port, request: Request) -> bool {
  *     text.count. It's sent as a u32.
  * @return True if it went; false if it couldn't be sent.
  */
-input_line :: fn(end: slop_os.Channel, port: slop_os.Port, text: u8[], cursor: usize) -> bool {
+input_line :: fn(end : slop_os.Channel, port : slop_os.Port, text : u8[], cursor : usize) -> bool {
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
     request^ = .InputLine(InputLine.{text = os.append(&out, text), cursor = cast[u32](cursor)})
@@ -548,6 +548,6 @@ input_line :: fn(end: slop_os.Channel, port: slop_os.Port, text: u8[], cursor: u
  * @param most The most events the answer may have; MAX_EVENTS, the most an Events holds, by default.
  * @return True if the Read went; false if it couldn't be sent.
  */
-read :: fn(end: slop_os.Channel, port: slop_os.Port, most: u32 = MAX_EVENTS) -> bool {
+read :: fn(end : slop_os.Channel, port : slop_os.Port, most : u32 = MAX_EVENTS) -> bool {
     return send(end, port, .Read(most))
 }

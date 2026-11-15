@@ -78,7 +78,10 @@ make_arena :: fn(chunk_size := ARENA_DEFAULT_CHUNK_SIZE, backing := context.allo
     if error != null {
         return null
     }
-    made^ = Arena.{backing = backing, chunk_size = if chunk_size > ARENA_CHUNK_HEADER { chunk_size } else { ARENA_DEFAULT_CHUNK_SIZE }}
+    made^ = Arena.{
+        backing = backing,
+        chunk_size = if chunk_size > ARENA_CHUNK_HEADER { chunk_size } else { ARENA_DEFAULT_CHUNK_SIZE },
+    }
     return made
 }
 
@@ -87,7 +90,7 @@ make_arena :: fn(chunk_size := ARENA_DEFAULT_CHUNK_SIZE, backing := context.allo
  *
  * @param arena An arena from make_arena. It, and every block allocated from it, is invalid afterwards.
  */
-free_arena :: fn(arena: ptr[mut Arena]) {
+free_arena :: fn(arena : ptr[mut Arena]) {
     arena_free_chunks(arena, null)
     runtime.free_aligned(arena, align_of(Arena), arena.backing)
 }
@@ -111,7 +114,7 @@ arena_allocator :: fn(arena #escaping : ptr[mut Arena]) -> runtime.Allocator {
  *
  * @param arena The arena. Every block allocated from it is invalid afterwards, and every mark taken of it is spent.
  */
-reset_arena :: fn(arena: ptr[mut Arena]) {
+reset_arena :: fn(arena : ptr[mut Arena]) {
     arena.last = 0
     first := arena.current
     loop {
@@ -130,7 +133,7 @@ reset_arena :: fn(arena: ptr[mut Arena]) {
  * @param arena The arena, which isn't changed.
  * @return The mark: the newest chunk and how much of it is used, or the zero ArenaMark if the arena has no chunk yet.
  */
-arena_mark :: fn(arena: ptr[Arena]) -> ArenaMark {
+arena_mark :: fn(arena : ptr[Arena]) -> ArenaMark {
     chunk :: arena.current or_return ArenaMark.{}
     return ArenaMark.{chunk = chunk, used = chunk.used}
 }
@@ -144,7 +147,7 @@ arena_mark :: fn(arena: ptr[Arena]) -> ArenaMark {
  * @param arena The arena the mark was taken of. Blocks allocated from it after the mark are invalid afterwards.
  * @param mark A mark from arena_mark on this arena. A mark taken before the arena had a chunk gives back every chunk.
  */
-arena_restore :: fn(arena: ptr[mut Arena], mark: ArenaMark) {
+arena_restore :: fn(arena : ptr[mut Arena], mark : ArenaMark) {
     if !arena_after(arena, mark) {
         return void
     }
@@ -162,7 +165,7 @@ arena_restore :: fn(arena: ptr[mut Arena], mark: ArenaMark) {
  * @return True if mark's chunk is still one of the arena's chunks, with no less of it used than then, or if mark was
  *     taken before the arena had a chunk; false once a reset or an earlier restore gave back what it covers.
  */
-arena_after :: fn(arena: ptr[Arena], mark: ArenaMark) -> bool {
+arena_after :: fn(arena : ptr[Arena], mark : ArenaMark) -> bool {
     marked :: mark.chunk or_return true
     next := arena.current
     loop {
@@ -182,7 +185,7 @@ arena_after :: fn(arena: ptr[Arena], mark: ArenaMark) -> bool {
  * @return The bytes used in all its chunks, alignment padding included, so possibly more than the blocks' sizes add up
  *     to; 0 for an arena without a chunk or just reset.
  */
-arena_used :: fn(arena: ptr[Arena]) -> usize {
+arena_used :: fn(arena : ptr[Arena]) -> usize {
     total : usize = 0
     next := arena.current
     loop {
@@ -216,7 +219,7 @@ new_value :: fn[T](value #escaping : T, allocator := context.allocator, loc := #
  * @param keep The chunk to stop at, kept with everything older; null gives back all of them. A chunk that isn't the
  *     arena's gives back all of them too.
  */
-arena_free_chunks :: fn(arena: ptr[mut Arena], keep: ptr[mut ArenaChunk]?) {
+arena_free_chunks :: fn(arena : ptr[mut Arena], keep : ptr[mut ArenaChunk]?) {
     loop {
         chunk :: arena.current or_break
         if chunk == keep {
@@ -238,7 +241,7 @@ arena_free_chunks :: fn(arena: ptr[mut Arena], keep: ptr[mut ArenaChunk]?) {
  * @return The block, zeroed, or null if the arena has no chunk or its newest has no room, in which case nothing
  *     changes.
  */
-arena_take_from_newest :: fn(arena: ptr[mut Arena], size: usize, align: usize) -> rawptr {
+arena_take_from_newest :: fn(arena : ptr[mut Arena], size : usize, align : usize) -> rawptr {
     chunk :: arena.current or_return null
     start :: arena_chunk_start(chunk)
     at :: (start + chunk.used + align - 1) & ~(align - 1)
@@ -259,7 +262,7 @@ arena_take_from_newest :: fn(arena: ptr[mut Arena], size: usize, align: usize) -
  * @param block The newest block, which must be in the newest chunk. Afterwards the arena has no newest block, so a
  *     further free gives nothing back until something is allocated.
  */
-arena_give_back_newest :: fn(arena: ptr[mut Arena], block: rawptr) {
+arena_give_back_newest :: fn(arena : ptr[mut Arena], block : rawptr) {
     arena.last = 0
     chunk :: arena.current or_return void
     chunk.used = cast[usize](block) - arena_chunk_start(chunk)
@@ -275,7 +278,7 @@ arena_give_back_newest :: fn(arena: ptr[mut Arena], block: rawptr) {
  * @param size Its new size, in bytes.
  * @return True if it was resized; false if its chunk has no room, leaving it unchanged.
  */
-arena_resize_newest :: fn(arena: ptr[mut Arena], block: rawptr, old_size: usize, size: usize) -> bool {
+arena_resize_newest :: fn(arena : ptr[mut Arena], block : rawptr, old_size : usize, size : usize) -> bool {
     chunk :: arena.current or_return false
     offset :: cast[usize](block) - arena_chunk_start(chunk)
     if size > chunk.capacity - offset {
@@ -294,7 +297,7 @@ arena_resize_newest :: fn(arena: ptr[mut Arena], block: rawptr, old_size: usize,
  * @param chunk A chunk of an arena, at the start of its header; only its address is used.
  * @return The address of its first byte for blocks, ARENA_CHUNK_HEADER bytes past the chunk.
  */
-arena_chunk_start :: fn(chunk: ptr[ArenaChunk]) -> usize {
+arena_chunk_start :: fn(chunk : ptr[ArenaChunk]) -> usize {
     return cast[usize](chunk) + ARENA_CHUNK_HEADER
 }
 
@@ -310,7 +313,7 @@ arena_chunk_start :: fn(chunk: ptr[ArenaChunk]) -> usize {
  * @param alignment The block's alignment in bytes: a power of two; 0 is taken as 1.
  * @return The block, zeroed; or null if backing has no memory for a new chunk, or size is too big to fit any.
  */
-arena_take :: fn(arena: ptr[mut Arena], size: usize, alignment: usize) -> rawptr {
+arena_take :: fn(arena : ptr[mut Arena], size : usize, alignment : usize) -> rawptr {
     align :: if alignment > 1 { alignment } else { cast[usize](1) }
     fitted :: arena_take_from_newest(arena, size, align)
     if fitted != null {
@@ -352,12 +355,12 @@ arena_take :: fn(arena: ptr[mut Arena], size: usize, alignment: usize) -> rawptr
  *     was; InvalidArgument if alignment isn't a power of two.
  */
 arena_function : runtime.AllocatorFn : fn(
-    allocator_data: rawptr,
-    size: usize,
-    alignment: usize,
-    old_memory: rawptr,
-    old_size: usize,
-    location := #caller_location,
+    allocator_data : rawptr,
+    size : usize,
+    alignment : usize,
+    old_memory : rawptr,
+    old_size : usize,
+    location := #caller_location
 ) -> (mut u8[], runtime.AllocatorError?) {
     arena :: cast[ptr[mut Arena]](allocator_data)
     empty : mut u8[]

@@ -59,19 +59,22 @@ package net
     }
 
     /** A stream's TLS state. */
-    state :: fn(stream: ptr[TlsStream]) -> ptr[mut tls.Connection] {
+    state :: fn(stream : ptr[TlsStream]) -> ptr[mut tls.Connection] {
         return cast[ptr[mut tls.Connection]](cast[uintptr](stream.connection))
     }
 
     /** What's arrived on a stream that TLS hasn't taken yet. */
-    buffered_of :: fn(stream: ptr[TlsStream]) -> ptr[mut Buffered] {
+    buffered_of :: fn(stream : ptr[TlsStream]) -> ptr[mut Buffered] {
         return cast[ptr[mut Buffered]](cast[uintptr](stream.buffer))
     }
 
     /** A new stream over a TCP connection, its TLS state and buffer made, zeroed. */
-    stream_over :: fn(tcp: Tcp) -> TlsStream {
-        return TlsStream.{tcp = tcp, connection = cast[u64](cast[uintptr](runtime.new(tls.Connection))),
-            buffer = cast[u64](cast[uintptr](runtime.new(Buffered)))}
+    stream_over :: fn(tcp : Tcp) -> TlsStream {
+        return TlsStream.{
+            tcp = tcp,
+            connection = cast[u64](cast[uintptr](runtime.new(tls.Connection))),
+            buffer = cast[u64](cast[uintptr](runtime.new(Buffered))),
+        }
     }
 
     /** What arrived and TLS hasn't taken yet. */
@@ -86,10 +89,11 @@ package net
      * gathered as anchors.
      *
      * @param trust The trust store, the caller's.
-     * @return The anchors, on the heap, the caller's to free; null if the directory couldn't be listed, or nothing in it
+     * @return The anchors, on the heap, the caller's to free; null if the directory couldn't be listed, or nothing in
+     *     it
      *     was a certificate. Past ANCHOR_BYTES, the rest are left out.
      */
-    load_anchors :: fn(trust: os.Channel[read_only_dir.ReadOnlyDir]) -> ptr[mut Anchors]? {
+    load_anchors :: fn(trust : os.Channel[read_only_dir.ReadOnlyDir]) -> ptr[mut Anchors]? {
         startup :: slop_os.startup_block()
         port :: os.port_for(startup.budget, trust.end) or_return null
         defer slop_os.handle_close(cast[slop_os.Handle](port))
@@ -151,7 +155,12 @@ package net
      * @param into Where it goes.
      * @return How many bytes were read; 0 if it couldn't be opened.
      */
-    read_trust_file :: fn(trust: os.Channel[read_only_dir.ReadOnlyDir], port: slop_os.Port, name: u8[], into: ptr[mut TrustFile]) -> usize {
+    read_trust_file :: fn(
+        trust : os.Channel[read_only_dir.ReadOnlyDir],
+        port : slop_os.Port,
+        name : u8[],
+        into : ptr[mut TrustFile]
+    ) -> usize {
         out := os.Outgoing.{}
         request :: os.begin[read_only_dir.Request](&out)
         request^ = .OpenReadOnlyFile(os.append(&out, name))
@@ -193,7 +202,7 @@ package net
      * @param anchors The anchors, added to while there's room.
      * @param text The file.
      */
-    add_certificates :: fn(anchors: ptr[mut Anchors], text: u8[]) {
+    add_certificates :: fn(anchors : ptr[mut Anchors], text : u8[]) {
         room :: tls.range_mut(anchors.bytes, anchors.count, anchors.bytes.count)
         match crypto.pem_certificates(text, room) {
             case Some(count) => {
@@ -219,7 +228,7 @@ package net
      * @param anchors The anchors.
      * @return Their DER, a view of anchors'.
      */
-    anchor_bytes :: fn(anchors: ptr[Anchors]) -> u8[] {
+    anchor_bytes :: fn(anchors : ptr[Anchors]) -> u8[] {
         return tls.range(anchors.bytes, 0, anchors.count)
     }
 
@@ -237,9 +246,14 @@ package net
      *     the default, for never. A peer that stops answering then fails it as Broken (net.set_deadline).
      * @return The stream, connected; or why it isn't.
      */
-    connect_tls :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], protocol: string = "",
-        deadline: u64 = 0) -> Result[TlsStream, TlsFailure] {
-
+    connect_tls :: fn(
+        service : os.Channel[network.Network],
+        host : string,
+        port : u16,
+        anchors : u8[],
+        protocol : string = "",
+        deadline : u64 = 0
+    ) -> Result[TlsStream, TlsFailure] {
         return connect_with(service, host, port, anchors, true, protocol, deadline)
     }
 
@@ -252,16 +266,28 @@ package net
      * @param port Its port.
      * @return The stream, connected; or why it isn't.
      */
-    connect_tls_unverified :: fn(service: os.Channel[network.Network], host: string, port: u16) -> Result[TlsStream, TlsFailure] {
+    connect_tls_unverified :: fn(
+        service : os.Channel[network.Network],
+        host : string,
+        port : u16
+    ) -> Result[TlsStream, TlsFailure] {
         return connect_with(service, host, port, string_bytes(""), false, "", 0)
     }
 
     /** connect_tls's and connect_tls_unverified's work. */
-    connect_with :: fn(service: os.Channel[network.Network], host: string, port: u16, anchors: u8[], verify: bool,
-        protocol: string, deadline: u64) -> Result[TlsStream, TlsFailure] {
-
+    connect_with :: fn(
+        service : os.Channel[network.Network],
+        host : string,
+        port : u16,
+        anchors : u8[],
+        verify : bool,
+        protocol : string,
+        deadline : u64
+    ) -> Result[TlsStream, TlsFailure] {
         opened := match net_address.parse_v4(host) {
-            case Some(address) => open(service, net_address.Endpoint.{address = address, port = port}, deadline = deadline)
+            case Some(
+                address
+            ) => open(service, net_address.Endpoint.{address = address, port = port}, deadline = deadline)
             case None => open_name(service, host, port, deadline = deadline)
         }
         tcp := match opened {
@@ -286,7 +312,7 @@ package net
      * @param identity The server's chain and key; its chain's bytes the caller's while the stream's open.
      * @return The stream, connected; or why it isn't.
      */
-    accept_tls :: fn(listener: ptr[mut Listener], identity: ptr[tls.Identity]) -> Result[TlsStream, TlsFailure] {
+    accept_tls :: fn(listener : ptr[mut Listener], identity : ptr[tls.Identity]) -> Result[TlsStream, TlsFailure] {
         accepted := match accept(listener) {
             case Ok(found) => found
             case Error(failure) => return .Error(TlsFailure.{network = failure})
@@ -302,7 +328,7 @@ package net
      * @param stream The stream, its TLS set up.
      * @return A copy of it, connected; or why not, the stream closed.
      */
-    handshake :: fn(stream: ptr[mut TlsStream]) -> Result[TlsStream, TlsFailure] {
+    handshake :: fn(stream : ptr[mut TlsStream]) -> Result[TlsStream, TlsFailure] {
         loop {
             send_waiting(stream)
             if tls.connected(state(stream)) {
@@ -317,17 +343,21 @@ package net
     }
 
     /** Why a stream's TLS ended, as a TlsFailure. */
-    failure_of_tls :: fn(stream: ptr[TlsStream]) -> TlsFailure {
+    failure_of_tls :: fn(stream : ptr[TlsStream]) -> TlsFailure {
         connection :: state(stream)
         if !tls.ended(connection) {
             return TlsFailure.{network = Failure.Broken}
         }
-        return TlsFailure.{ending = connection.ending, alert = connection.alert, certificate = connection.certificate,
-            wrong_name = connection.wrong_name}
+        return TlsFailure.{
+            ending = connection.ending,
+            alert = connection.alert,
+            certificate = connection.certificate,
+            wrong_name = connection.wrong_name,
+        }
     }
 
     /** Send what TLS has for the peer. */
-    send_waiting :: fn(stream: ptr[mut TlsStream]) {
+    send_waiting :: fn(stream : ptr[mut TlsStream]) {
         loop {
             out :: tls.output(state(stream))
             if out.count == 0 {
@@ -347,7 +377,7 @@ package net
      * @param stream The stream.
      * @return False if the peer finished or the connection failed before anything more arrived.
      */
-    take_more :: fn(stream: ptr[mut TlsStream]) -> bool {
+    take_more :: fn(stream : ptr[mut TlsStream]) -> bool {
         buffered :: buffered_of(stream)
         if buffered.count == 0 {
             buffered.start = 0
@@ -374,7 +404,7 @@ package net
      * @param data What's written.
      * @return How many bytes were written: all, or fewer if the connection's ended.
      */
-    write_tls :: fn(stream: ptr[mut TlsStream], data: u8[]) -> usize {
+    write_tls :: fn(stream : ptr[mut TlsStream], data : u8[]) -> usize {
         done := cast[usize](0)
         loop {
             if done >= data.count || !tls.connected(state(stream)) {
@@ -399,7 +429,7 @@ package net
      * @return How many bytes, at least 1; 0 once the peer's closed with close_notify and everything's read; or why the
      *     connection failed.
      */
-    read_tls :: fn(stream: ptr[mut TlsStream], into: mut u8[]) -> Result[usize, TlsFailure] {
+    read_tls :: fn(stream : ptr[mut TlsStream], into : mut u8[]) -> Result[usize, TlsFailure] {
         loop {
             count :: tls.read(state(stream), into)
             // KeyUpdate's answer, or an alert, may wait to go
@@ -420,13 +450,15 @@ package net
     }
 
     /**
-     * Close a stream: close_notify sent, the TCP connection finished, waited on until the peer's acknowledged everything
-     * or it's ended, and closed; and its state freed. Closing a connection that hasn't ended resets it, which could lose
+     * Close a stream: close_notify sent, the TCP connection finished, waited on until the peer's acknowledged
+     * everything
+     * or it's ended, and closed; and its state freed. Closing a connection that hasn't ended resets it, which could
+     * lose
      * the close_notify, so it waits.
      *
      * @param stream The stream, not used after.
      */
-    close_tls :: fn(stream: ptr[mut TlsStream]) {
+    close_tls :: fn(stream : ptr[mut TlsStream]) {
         tls.close(state(stream))
         send_waiting(stream)
         finish(&stream.tcp)

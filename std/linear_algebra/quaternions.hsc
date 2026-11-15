@@ -15,7 +15,7 @@ import math from "std:math"
  * @param T f16, f32 or f64.
  * @return q64, q128 or q256; q256 for anything else.
  */
-quaternion_of :: fn(T: type) -> type {
+quaternion_of :: fn(T : type) -> type {
     if T == f16 {
         return q64
     }
@@ -31,7 +31,7 @@ quaternion_of :: fn(T: type) -> type {
  * @param Q q64, q128 or q256.
  * @return f16, f32 or f64; f64 for anything else.
  */
-part_of :: fn(Q: type) -> type {
+part_of :: fn(Q : type) -> type {
     if Q == q64 {
         return f16
     }
@@ -50,7 +50,7 @@ part_of :: fn(Q: type) -> type {
  * @param angle The angle, in radians.
  * @return The unit quaternion cos(angle/2) + sin(angle/2) (xi + yj + zk), for the normalized axis.
  */
-from_axis_angle :: fn[T, Q = quaternion_of(T)](axis: T[3], angle: T) -> Q {
+from_axis_angle :: fn[T, Q = quaternion_of(T)](axis : T[3], angle : T) -> Q {
     unit :: normalize(axis)
     s, c :: math.sin_cos(angle / 2)
     q : Q
@@ -70,7 +70,7 @@ from_axis_angle :: fn[T, Q = quaternion_of(T)](axis: T[3], angle: T) -> Q {
  * @param v The vector.
  * @return v rotated.
  */
-rotate :: fn[Q, T = part_of(Q)](q: Q, v: T[3]) -> T[3] {
+rotate :: fn[Q, T = part_of(Q)](q : Q, v : T[3]) -> T[3] {
     // v + 2w (u × v) + 2u × (u × v), for u the vector part
     u :: T.[q.x, q.y, q.z]
     t :: cross(u, v) * 2
@@ -86,7 +86,7 @@ rotate :: fn[Q, T = part_of(Q)](q: Q, v: T[3]) -> T[3] {
  * @param b The other.
  * @return a.x b.x + a.y b.y + a.z b.z + a.w b.w.
  */
-quaternion_dot :: fn[Q, T = part_of(Q)](a: Q, b: Q) -> T {
+quaternion_dot :: fn[Q, T = part_of(Q)](a : Q, b : Q) -> T {
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
 }
 
@@ -97,7 +97,7 @@ quaternion_dot :: fn[Q, T = part_of(Q)](a: Q, b: Q) -> T {
  * @param q The quaternion.
  * @return q / |q|; q itself for 0.
  */
-quaternion_normalize :: fn[Q](q: Q) -> Q {
+quaternion_normalize :: fn[Q](q : Q) -> Q {
     size :: abs(q)
     if size == 0 {
         return q
@@ -121,7 +121,7 @@ quaternion_normalize :: fn[Q](q: Q) -> Q {
  * @return The rotation between, of length 1: a at 0, b or -b (the same rotation) at 1. Nearly parallel ones are
  *     interpolated linearly and normalized, where the arc's formula would divide by nearly 0.
  */
-slerp :: fn[Q, T = part_of(Q)](a: Q, b: Q, t: T) -> Q {
+slerp :: fn[Q, T = part_of(Q)](a : Q, b : Q, t : T) -> Q {
     toward := b
     cosine := quaternion_dot(a, toward)
     // The shorter way round: q and -q are the same rotation
@@ -153,15 +153,21 @@ slerp :: fn[Q, T = part_of(Q)](a: Q, b: Q, t: T) -> Q {
  * @param q The rotation, of length 1.
  * @return The 3 × 3 matrix that rotates a column as q does: to_matrix(q) * v is rotate(q, v).
  */
-to_matrix :: fn[Q, T = part_of(Q)](q: Q) -> matrix[T, 3, 3] {
+to_matrix :: fn[Q, T = part_of(Q)](q : Q) -> matrix[T, 3, 3] {
     x :: q.x
     y :: q.y
     z :: q.z
     w :: q.w
     return matrix[T, 3, 3].{
-        1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y),
-        2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x),
-        2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y),
+        1 - 2 * (y * y + z * z),
+        2 * (x * y - w * z),
+        2 * (x * z + w * y),
+        2 * (x * y + w * z),
+        1 - 2 * (x * x + z * z),
+        2 * (y * z - w * x),
+        2 * (x * z - w * y),
+        2 * (y * z + w * x),
+        1 - 2 * (x * x + y * y)
     }
 }
 
@@ -174,7 +180,7 @@ to_matrix :: fn[Q, T = part_of(Q)](q: Q) -> matrix[T, 3, 3] {
  * @param m A rotation: orthonormal, with determinant 1.
  * @return The quaternion with w at least 0 whose to_matrix is m.
  */
-from_matrix :: fn[T, Q = quaternion_of(T)](m: matrix[T, 3, 3]) -> Q {
+from_matrix :: fn[T, Q = quaternion_of(T)](m : matrix[T, 3, 3]) -> Q {
     trace :: m[0, 0] + m[1, 1] + m[2, 2]
     q : Q
     if trace > 0 {
@@ -222,7 +228,7 @@ from_matrix :: fn[T, Q = quaternion_of(T)](m: matrix[T, 3, 3]) -> Q {
  * @param roll The angle about z, in radians: positive turns +x toward +y.
  * @return The unit quaternion of the three rotations.
  */
-from_euler :: fn[T, Q = quaternion_of(T)](pitch: T, yaw: T, roll: T) -> Q {
+from_euler :: fn[T, Q = quaternion_of(T)](pitch : T, yaw : T, roll : T) -> Q {
     about_x :: from_axis_angle(T.[1, 0, 0], pitch)
     about_y :: from_axis_angle(T.[0, 1, 0], yaw)
     about_z :: from_axis_angle(T.[0, 0, 1], roll)

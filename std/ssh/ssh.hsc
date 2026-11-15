@@ -18,7 +18,8 @@ import random from "std:random"
  *
  * The transport is RFC 4253's, with OpenSSH's strict key exchange, which every peer has to offer, as OpenSSH has since
  * 9.6, and is held to: in the first exchange only its messages are taken, and sequence numbers start again at each
- * NEWKEYS, which closes off Terrapin's prefix truncation. A peer that doesn't offer it is refused. A key exchange starts again after REKEY_BYTES either way, or when the peer starts one, or rekey
+ * NEWKEYS, which closes off Terrapin's prefix truncation. A peer that doesn't offer it is refused. A key exchange
+ * starts again after REKEY_BYTES either way, or when the peer starts one, or rekey
  * is called; messages written meanwhile are held until it's done.
  */
 
@@ -58,45 +59,45 @@ REKEY_BYTES : u64 : 1 << 30
 EVENTS :: 64
 
 // Messages (RFC 4250, 4.1)
-MSG_DISCONNECT : u8 : 1
-MSG_IGNORE : u8 : 2
-MSG_UNIMPLEMENTED : u8 : 3
-MSG_DEBUG : u8 : 4
-MSG_SERVICE_REQUEST : u8 : 5
-MSG_SERVICE_ACCEPT : u8 : 6
-MSG_EXT_INFO : u8 : 7
-MSG_KEXINIT : u8 : 20
-MSG_NEWKEYS : u8 : 21
-MSG_KEX_INIT : u8 : 30
-MSG_KEX_REPLY : u8 : 31
-MSG_USERAUTH_REQUEST : u8 : 50
-MSG_USERAUTH_FAILURE : u8 : 51
-MSG_USERAUTH_SUCCESS : u8 : 52
-MSG_USERAUTH_BANNER : u8 : 53
-MSG_USERAUTH_PK_OK : u8 : 60
-MSG_GLOBAL_REQUEST : u8 : 80
-MSG_REQUEST_SUCCESS : u8 : 81
-MSG_REQUEST_FAILURE : u8 : 82
-MSG_CHANNEL_OPEN : u8 : 90
+MSG_DISCONNECT                : u8 : 1
+MSG_IGNORE                    : u8 : 2
+MSG_UNIMPLEMENTED             : u8 : 3
+MSG_DEBUG                     : u8 : 4
+MSG_SERVICE_REQUEST           : u8 : 5
+MSG_SERVICE_ACCEPT            : u8 : 6
+MSG_EXT_INFO                  : u8 : 7
+MSG_KEXINIT                   : u8 : 20
+MSG_NEWKEYS                   : u8 : 21
+MSG_KEX_INIT                  : u8 : 30
+MSG_KEX_REPLY                 : u8 : 31
+MSG_USERAUTH_REQUEST          : u8 : 50
+MSG_USERAUTH_FAILURE          : u8 : 51
+MSG_USERAUTH_SUCCESS          : u8 : 52
+MSG_USERAUTH_BANNER           : u8 : 53
+MSG_USERAUTH_PK_OK            : u8 : 60
+MSG_GLOBAL_REQUEST            : u8 : 80
+MSG_REQUEST_SUCCESS           : u8 : 81
+MSG_REQUEST_FAILURE           : u8 : 82
+MSG_CHANNEL_OPEN              : u8 : 90
 MSG_CHANNEL_OPEN_CONFIRMATION : u8 : 91
-MSG_CHANNEL_OPEN_FAILURE : u8 : 92
-MSG_CHANNEL_WINDOW_ADJUST : u8 : 93
-MSG_CHANNEL_DATA : u8 : 94
-MSG_CHANNEL_EXTENDED_DATA : u8 : 95
-MSG_CHANNEL_EOF : u8 : 96
-MSG_CHANNEL_CLOSE : u8 : 97
-MSG_CHANNEL_REQUEST : u8 : 98
-MSG_CHANNEL_SUCCESS : u8 : 99
-MSG_CHANNEL_FAILURE : u8 : 100
+MSG_CHANNEL_OPEN_FAILURE      : u8 : 92
+MSG_CHANNEL_WINDOW_ADJUST     : u8 : 93
+MSG_CHANNEL_DATA              : u8 : 94
+MSG_CHANNEL_EXTENDED_DATA     : u8 : 95
+MSG_CHANNEL_EOF               : u8 : 96
+MSG_CHANNEL_CLOSE             : u8 : 97
+MSG_CHANNEL_REQUEST           : u8 : 98
+MSG_CHANNEL_SUCCESS           : u8 : 99
+MSG_CHANNEL_FAILURE           : u8 : 100
 
 // Disconnect reasons (RFC 4250, 4.2.2)
-DISCONNECT_PROTOCOL_ERROR : u32 : 2
-DISCONNECT_KEY_EXCHANGE_FAILED : u32 : 3
-DISCONNECT_MAC_ERROR : u32 : 5
-DISCONNECT_SERVICE_NOT_AVAILABLE : u32 : 7
+DISCONNECT_PROTOCOL_ERROR          : u32 : 2
+DISCONNECT_KEY_EXCHANGE_FAILED     : u32 : 3
+DISCONNECT_MAC_ERROR               : u32 : 5
+DISCONNECT_SERVICE_NOT_AVAILABLE   : u32 : 7
 DISCONNECT_HOST_KEY_NOT_VERIFIABLE : u32 : 9
-DISCONNECT_BY_APPLICATION : u32 : 11
-DISCONNECT_NO_MORE_AUTH_METHODS : u32 : 14
+DISCONNECT_BY_APPLICATION          : u32 : 11
+DISCONNECT_NO_MORE_AUTH_METHODS    : u32 : 14
 
 /** Which side a connection is. */
 Role :: enum {
@@ -160,11 +161,11 @@ Channel :: struct {
     first : usize,
     count : usize,
     /** Bytes read since a window adjustment last gave them back. */
-    consumed : u64,
-    eof_received : bool,
-    eof_sent : bool,
+    consumed       : u64,
+    eof_received   : bool,
+    eof_sent       : bool,
     close_received : bool,
-    close_sent : bool,
+    close_sent     : bool,
     /** Whether ChannelData's been said for what's in the buffer. */
     announced : bool,
     /** A client's requests with their answers still to come. */
@@ -259,9 +260,9 @@ Connection :: struct {
     ended_reason : u32,
     waiting : Waiting,
 
-    incoming : u8[INCOMING_BYTES],
+    incoming       : u8[INCOMING_BYTES],
     incoming_count : usize,
-    outgoing : u8[OUTGOING_BYTES],
+    outgoing       : u8[OUTGOING_BYTES],
     outgoing_count : usize,
     /** A packet's payload as read, declassified, wiped once it's taken. */
     payload : u8[PAYLOAD_BYTES],
@@ -279,63 +280,63 @@ Connection :: struct {
     peer_version_length : usize,
 
     // Key exchange
-    our_kexinit : u8[KEXINIT_BYTES],
-    our_kexinit_length : usize,
-    their_kexinit : u8[KEXINIT_BYTES],
+    our_kexinit          : u8[KEXINIT_BYTES],
+    our_kexinit_length   : usize,
+    their_kexinit        : u8[KEXINIT_BYTES],
     their_kexinit_length : usize,
-    kex_sent : bool,
-    kex_received : bool,
-    exchange_sent : bool,
-    newkeys_sent : bool,
-    newkeys_received : bool,
-    first_done : bool,
-    strict : bool,
-    peer_wants_ext_info : bool,
-    skip_guess : bool,
-    exchange : KeyExchange,
-    cipher_out : Cipher,
-    cipher_in : Cipher,
-    x25519 : crypto.X25519SecretKey,
-    ml_kem : crypto.MlKem768SecretKey,
+    kex_sent             : bool,
+    kex_received         : bool,
+    exchange_sent        : bool,
+    newkeys_sent         : bool,
+    newkeys_received     : bool,
+    first_done           : bool,
+    strict               : bool,
+    peer_wants_ext_info  : bool,
+    skip_guess           : bool,
+    exchange             : KeyExchange,
+    cipher_out           : Cipher,
+    cipher_in            : Cipher,
+    x25519               : crypto.X25519SecretKey,
+    ml_kem               : crypto.MlKem768SecretKey,
     /** The client's C_INIT or Q_C, and the server's S_REPLY or Q_S, as the exchange hash has them. */
-    client_share : u8[1216],
+    client_share        : u8[1216],
     client_share_length : usize,
-    server_share : u8[1120],
+    server_share        : u8[1120],
     server_share_length : usize,
     /** K as the exchange hash and key derivation have it: an mpint or a string. */
-    shared : crypto.SecretByte[40],
+    shared        : crypto.SecretByte[40],
     shared_length : usize,
     exchange_hash : u8[32],
-    session_id : u8[32],
-    out : Direction,
-    into : Direction,
-    next_out : Direction,
-    next_in : Direction,
+    session_id    : u8[32],
+    out           : Direction,
+    into          : Direction,
+    next_out      : Direction,
+    next_in       : Direction,
 
     // Host keys
     host_secret : crypto.Ed25519SecretKey,
     host_key : PublicKey,
 
     // Authentication
-    authenticated : bool,
-    service_accepted : bool,
-    user : u8[USER_BYTES],
-    user_length : usize,
-    client_key : crypto.Ed25519SecretKey,
-    has_client_key : bool,
-    key_tried : bool,
-    password_tried : bool,
-    auth_tries : u32,
-    offered_password : crypto.SecretByte[PASSWORD_BYTES],
+    authenticated           : bool,
+    service_accepted        : bool,
+    user                    : u8[USER_BYTES],
+    user_length             : usize,
+    client_key              : crypto.Ed25519SecretKey,
+    has_client_key          : bool,
+    key_tried               : bool,
+    password_tried          : bool,
+    auth_tries              : u32,
+    offered_password        : crypto.SecretByte[PASSWORD_BYTES],
     offered_password_length : usize,
-    offered_key : PublicKey,
-    offered_signed : bool,
+    offered_key             : PublicKey,
+    offered_signed          : bool,
     /** A server's: the algorithm name offered with the key, for PK_OK. */
-    offered_algorithm : u8[32],
+    offered_algorithm        : u8[32],
     offered_algorithm_length : usize,
-    pending_password : bool,
-    banner : u8[BANNER_BYTES],
-    banner_length : usize,
+    pending_password         : bool,
+    banner                   : u8[BANNER_BYTES],
+    banner_length            : usize,
 
     // The connection protocol
     channels : Channel[CHANNELS],
@@ -356,9 +357,12 @@ Connection :: struct {
  * @param only_kex The one key exchange to offer, for tests; None, the default, for all.
  * @param only_cipher The one cipher to offer, for tests; None, the default, for all.
  */
-server #constant_time :: fn(conn: ptr[mut Connection], host_key: ptr[crypto.Ed25519SecretKey], only_kex: KeyExchange = .None,
-    only_cipher: Cipher = .None) {
-
+server #constant_time :: fn(
+    conn : ptr[mut Connection],
+    host_key : ptr[crypto.Ed25519SecretKey],
+    only_kex : KeyExchange = .None,
+    only_cipher : Cipher = .None
+) {
     conn.role = .Server
     conn.only_kex = only_kex
     conn.only_cipher = only_cipher
@@ -376,7 +380,7 @@ server #constant_time :: fn(conn: ptr[mut Connection], host_key: ptr[crypto.Ed25
  * @param user The user to log in as, at most USER_BYTES.
  * @param key The user's Ed25519 key, tried first, or null for none; copied.
  */
-client #constant_time :: fn(conn: ptr[mut Connection], user: string, key: ptr[crypto.Ed25519SecretKey]?) {
+client #constant_time :: fn(conn : ptr[mut Connection], user : string, key : ptr[crypto.Ed25519SecretKey]?) {
     conn.role = .Client
     bytes :: string_bytes(user)
     for byte, i in bytes {
@@ -396,7 +400,7 @@ client #constant_time :: fn(conn: ptr[mut Connection], user: string, key: ptr[cr
 }
 
 /** Queue the version line and KEXINIT. */
-start :: fn(conn: ptr[mut Connection]) {
+start :: fn(conn : ptr[mut Connection]) {
     line :: string_bytes(VERSION)
     for byte in line {
         push_out(conn, byte)
@@ -407,7 +411,7 @@ start :: fn(conn: ptr[mut Connection]) {
 }
 
 /** Put a byte on the output as it is, before any packet. */
-push_out :: fn(conn: ptr[mut Connection], byte: u8) {
+push_out :: fn(conn : ptr[mut Connection], byte : u8) {
     if conn.outgoing_count < conn.outgoing.count {
         conn.outgoing[conn.outgoing_count] = byte
         conn.outgoing_count += 1
@@ -423,7 +427,7 @@ push_out :: fn(conn: ptr[mut Connection], byte: u8) {
  * @param bytes What arrived.
  * @return How many were taken: all of them, unless there's no room, which reading events and channels makes.
  */
-received :: fn(conn: ptr[mut Connection], bytes: u8[]) -> usize {
+received :: fn(conn : ptr[mut Connection], bytes : u8[]) -> usize {
     room :: conn.incoming.count - conn.incoming_count
     count :: if bytes.count < room { bytes.count } else { room }
     for i in cast[usize](0)..<count {
@@ -437,17 +441,17 @@ received :: fn(conn: ptr[mut Connection], bytes: u8[]) -> usize {
 }
 
 /** What's waiting to be sent. */
-output :: fn(conn: ptr[Connection]) -> u8[] {
+output :: fn(conn : ptr[Connection]) -> u8[] {
     return range(conn.outgoing[0..<OUTGOING_BYTES], 0, conn.outgoing_count)
 }
 
 /** Say how many of output's bytes were sent, which are dropped from it. */
-sent :: fn(conn: ptr[mut Connection], count: usize) {
+sent :: fn(conn : ptr[mut Connection], count : usize) {
     conn.outgoing_count = drop_front(conn.outgoing[0..<OUTGOING_BYTES], conn.outgoing_count, count)
 }
 
 /** Take the next event; null if there's none. Reading may go on once an answer's given. */
-take_event :: fn(conn: ptr[mut Connection]) -> Event? {
+take_event :: fn(conn : ptr[mut Connection]) -> Event? {
     if conn.events_count == 0 {
         return null
     }
@@ -458,7 +462,7 @@ take_event :: fn(conn: ptr[mut Connection]) -> Event? {
 }
 
 /** Queue an event; one past EVENTS ends the connection, as the caller's stopped taking them. */
-event :: fn(conn: ptr[mut Connection], happened: Event) {
+event :: fn(conn : ptr[mut Connection], happened : Event) {
     if conn.events_count >= EVENTS {
         conn.ended = true
         conn.ended_reason = DISCONNECT_BY_APPLICATION
@@ -472,42 +476,42 @@ event :: fn(conn: ptr[mut Connection], happened: Event) {
 }
 
 /** Whether the connection's ended. */
-is_ended :: fn(conn: ptr[Connection]) -> bool {
+is_ended :: fn(conn : ptr[Connection]) -> bool {
     return conn.ended
 }
 
 /** The user: a client's own, or, on a server, the one authenticated or being. */
-user_of :: fn(conn: ptr[Connection]) -> u8[] {
+user_of :: fn(conn : ptr[Connection]) -> u8[] {
     return range(conn.user[0..<USER_BYTES], 0, conn.user_length)
 }
 
 /** A client's: the server's host key, once HostKey's said. */
-host_key_of :: fn(conn: ptr[Connection]) -> ptr[PublicKey] {
+host_key_of :: fn(conn : ptr[Connection]) -> ptr[PublicKey] {
     return &conn.host_key
 }
 
 /** A server's: the password offered, while Password waits for its answer. */
-offered_password_of #constant_time :: fn(conn: ptr[Connection]) -> crypto.SecretByte[] {
+offered_password_of #constant_time :: fn(conn : ptr[Connection]) -> crypto.SecretByte[] {
     return range(conn.offered_password[0..<PASSWORD_BYTES], 0, conn.offered_password_length)
 }
 
 /** A server's: the key offered, while PublicKey waits for its answer. */
-offered_key_of :: fn(conn: ptr[Connection]) -> ptr[PublicKey] {
+offered_key_of :: fn(conn : ptr[Connection]) -> ptr[PublicKey] {
     return &conn.offered_key
 }
 
 /** A server's: the channel request, while ChannelRequest waits, or after WindowChanged or Signal. */
-request_of :: fn(conn: ptr[Connection]) -> ptr[ChannelRequest] {
+request_of :: fn(conn : ptr[Connection]) -> ptr[ChannelRequest] {
     return &conn.request
 }
 
 /** A client's: the server's banner, once Banner's said. */
-banner_of :: fn(conn: ptr[Connection]) -> u8[] {
+banner_of :: fn(conn : ptr[Connection]) -> u8[] {
     return range(conn.banner[0..<BANNER_BYTES], 0, conn.banner_length)
 }
 
 /** The session's identifier, the first exchange hash, once keys are exchanged. */
-session_id_of :: fn(conn: ptr[Connection]) -> u8[] {
+session_id_of :: fn(conn : ptr[Connection]) -> u8[] {
     return conn.session_id[0..<32]
 }
 
@@ -518,7 +522,7 @@ session_id_of :: fn(conn: ptr[Connection]) -> u8[] {
  * @param reason A disconnect reason, DISCONNECT_BY_APPLICATION usually.
  * @param text The description.
  */
-disconnect :: fn(conn: ptr[mut Connection], reason: u32, text: string) {
+disconnect :: fn(conn : ptr[mut Connection], reason : u32, text : string) {
     if conn.ended {
         return void
     }
@@ -534,14 +538,14 @@ disconnect :: fn(conn: ptr[mut Connection], reason: u32, text: string) {
 }
 
 /** End the connection for a protocol error: a reason, and nothing more read. */
-fail :: fn(conn: ptr[mut Connection], reason: u32, text: string) {
+fail :: fn(conn : ptr[mut Connection], reason : u32, text : string) {
     disconnect(conn, reason, text)
 }
 
 // ---- Reading
 
 /** Read what can be read: the version, then packets, until one waits on the caller or more must arrive. */
-process :: fn(conn: ptr[mut Connection]) {
+process :: fn(conn : ptr[mut Connection]) {
     loop {
         if conn.ended || conn.waiting != .Nothing {
             return void
@@ -569,7 +573,7 @@ process :: fn(conn: ptr[mut Connection]) {
  *
  * @return True once it's read; false if more must arrive, or it isn't SSH 2.0, when the connection's ended.
  */
-read_version :: fn(conn: ptr[mut Connection]) -> bool {
+read_version :: fn(conn : ptr[mut Connection]) -> bool {
     loop {
         end := conn.incoming_count
         for i in cast[usize](0)..<conn.incoming_count {
@@ -616,7 +620,7 @@ read_version :: fn(conn: ptr[mut Connection]) -> bool {
 }
 
 /** Drop bytes read from the front of what's arrived. */
-drop_incoming :: fn(conn: ptr[mut Connection], count: usize) {
+drop_incoming :: fn(conn : ptr[mut Connection], count : usize) {
     conn.incoming_count = drop_front(conn.incoming[0..<INCOMING_BYTES], conn.incoming_count, count)
 }
 
@@ -626,14 +630,18 @@ drop_incoming :: fn(conn: ptr[mut Connection], count: usize) {
  * @param conn The connection.
  * @param message The payload: its message number, then what that message has.
  */
-handle :: fn(conn: ptr[mut Connection], message: u8[]) {
+handle :: fn(conn : ptr[mut Connection], message : u8[]) {
     if message.count == 0 {
         fail(conn, DISCONNECT_PROTOCOL_ERROR, "an empty packet")
         return void
     }
     kind :: message[0]
     // In a strict first exchange, only its own messages, and KEXINIT has to be first (OpenSSH's PROTOCOL, 1.10)
-    if conn.strict && !conn.first_done && kind != MSG_KEXINIT && kind != MSG_NEWKEYS && kind != MSG_KEX_INIT
+    if conn.strict
+        && !conn.first_done
+        && kind != MSG_KEXINIT
+        && kind != MSG_NEWKEYS
+        && kind != MSG_KEX_INIT
         && kind != MSG_KEX_REPLY {
         fail(conn, DISCONNECT_PROTOCOL_ERROR, "a message during the strict key exchange")
         return void
@@ -681,7 +689,7 @@ handle :: fn(conn: ptr[mut Connection], message: u8[]) {
 }
 
 /** Answer a message this side doesn't know, by the sequence number it came with. */
-unimplemented :: fn(conn: ptr[mut Connection]) {
+unimplemented :: fn(conn : ptr[mut Connection]) {
     writer := Writer.{}
     put_u8(conn.message[0..<PAYLOAD_BYTES], &writer, MSG_UNIMPLEMENTED)
     put_u32(conn.message[0..<PAYLOAD_BYTES], &writer, conn.into.sequence - 1)
@@ -689,12 +697,12 @@ unimplemented :: fn(conn: ptr[mut Connection]) {
 }
 
 /** Random bytes, from context.random. */
-random_bytes :: fn(into: mut u8[]) {
+random_bytes :: fn(into : mut u8[]) {
     random.fill(into)
 }
 
 /** Random secret bytes. */
-random_secret #constant_time :: fn(into: mut crypto.SecretByte[]) {
+random_secret #constant_time :: fn(into : mut crypto.SecretByte[]) {
     bytes : u8[64]
     random.fill(bytes[0..<64])
     for i in cast[usize](0)..<into.count {

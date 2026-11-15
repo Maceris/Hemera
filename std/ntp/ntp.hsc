@@ -39,7 +39,7 @@ STRATUM_MOST : u8 : 15
  * @param nanoseconds Nanoseconds since 1970 UTC; any, the seconds taken modulo 2^32, as NTP's eras do.
  * @return The timestamp.
  */
-timestamp_of :: fn(nanoseconds: i64) -> u64 {
+timestamp_of :: fn(nanoseconds : i64) -> u64 {
     seconds := nanoseconds / NANOSECONDS
     rest := nanoseconds % NANOSECONDS
     if rest < 0 {
@@ -59,7 +59,7 @@ timestamp_of :: fn(nanoseconds: i64) -> u64 {
  * @param b The second.
  * @return Nanoseconds; negative if b is before a.
  */
-difference :: fn(a: u64, b: u64) -> i64 {
+difference :: fn(a : u64, b : u64) -> i64 {
     d :: cast[i64](b - a)
     // d is seconds in its high 32 bits, signed, and a fraction in its low 32, as d = high * 2^32 + low
     high :: d >> 32
@@ -94,7 +94,7 @@ Sample :: struct {
  * @param transmit The transmit timestamp, which the answer's origin has to be. Random, rather than the time, keeps the
  *     client's clock from whoever watches (RFC 9109), and makes a reply harder to forge without NTS.
  */
-put_header :: fn(into: mut u8[], transmit: u64) {
+put_header :: fn(into : mut u8[], transmit : u64) {
     if into.count < HEADER_BYTES {
         return void
     }
@@ -113,7 +113,7 @@ put_header :: fn(into: mut u8[], transmit: u64) {
  * @return What it says; null if it's shorter than a header, isn't from a server in NTPv4, or answers another request.
  *     A kiss-o'-death packet, stratum 0, is given, for its caller to read its kiss code.
  */
-read_header :: fn(packet: u8[], origin: u64) -> Reply? {
+read_header :: fn(packet : u8[], origin : u64) -> Reply? {
     if packet.count < HEADER_BYTES {
         return null
     }
@@ -123,8 +123,13 @@ read_header :: fn(packet: u8[], origin: u64) -> Reply? {
     if version != VERSION || mode != MODE_SERVER || get_u64(packet, 24) != origin {
         return null
     }
-    return Reply.{leap = first >> 6, stratum = packet[1], reference = get_u32(packet, 12), received = get_u64(packet, 32),
-        transmitted = get_u64(packet, 40)}
+    return Reply.{
+        leap = first >> 6,
+        stratum = packet[1],
+        reference = get_u32(packet, 12),
+        received = get_u64(packet, 32),
+        transmitted = get_u64(packet, 40),
+    }
 }
 
 /**
@@ -133,9 +138,12 @@ read_header :: fn(packet: u8[], origin: u64) -> Reply? {
  * @param reply The answer.
  * @return True if it can.
  */
-usable :: fn(reply: ptr[Reply]) -> bool {
-    return reply.leap != LEAP_UNSYNCHRONIZED && reply.stratum != STRATUM_KISS && reply.stratum <= STRATUM_MOST
-        && reply.transmitted != 0 && difference(reply.received, reply.transmitted) >= 0
+usable :: fn(reply : ptr[Reply]) -> bool {
+    return reply.leap != LEAP_UNSYNCHRONIZED
+        && reply.stratum != STRATUM_KISS
+        && reply.stratum <= STRATUM_MOST
+        && reply.transmitted != 0
+        && difference(reply.received, reply.transmitted) >= 0
 }
 
 /**
@@ -146,7 +154,7 @@ usable :: fn(reply: ptr[Reply]) -> bool {
  * @param arrived When the answer arrived, t4, by the client's clock, in nanoseconds since 1970 UTC.
  * @return The sample; its delay is 0 if the round trip seems to have taken less time than the server held it.
  */
-sample_of :: fn(sent: i64, reply: ptr[Reply], arrived: i64) -> Sample {
+sample_of :: fn(sent : i64, reply : ptr[Reply], arrived : i64) -> Sample {
     t1 :: timestamp_of(sent)
     t4 :: timestamp_of(arrived)
     out :: difference(t1, reply.received)
@@ -160,7 +168,7 @@ sample_of :: fn(sent: i64, reply: ptr[Reply], arrived: i64) -> Sample {
 // ---- Big-endian numbers at an offset
 
 /** Read a u32 at an offset; 0 if it runs past the bytes. */
-get_u32 :: fn(bytes: u8[], at: usize) -> u32 {
+get_u32 :: fn(bytes : u8[], at : usize) -> u32 {
     part :: tls.range(bytes, at, at + 4)
     value := cast[u32](0)
     for byte in part {
@@ -170,7 +178,7 @@ get_u32 :: fn(bytes: u8[], at: usize) -> u32 {
 }
 
 /** Read a u64 at an offset; 0 if it runs past the bytes. */
-get_u64 :: fn(bytes: u8[], at: usize) -> u64 {
+get_u64 :: fn(bytes : u8[], at : usize) -> u64 {
     part :: tls.range(bytes, at, at + 8)
     value := cast[u64](0)
     for byte in part {
@@ -180,7 +188,7 @@ get_u64 :: fn(bytes: u8[], at: usize) -> u64 {
 }
 
 /** Write a u64 at an offset; nothing if it runs past the bytes. */
-put_u64 :: fn(bytes: mut u8[], at: usize, value: u64) {
+put_u64 :: fn(bytes : mut u8[], at : usize, value : u64) {
     part :: tls.range_mut(bytes, at, at + 8)
     for &byte, i in part {
         byte^ = cast[u8](value >> cast[u64](56 - 8 * i))

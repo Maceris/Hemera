@@ -70,7 +70,7 @@ arguments :: fn() -> string[] {
  * @error OutOfMemory The value's copy couldn't be allocated.
  * @error Unsupported The target has no environment, like OS == .None.
  */
-get_environment :: fn(name: string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
+get_environment :: fn(name : string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
     value, error :: system_get_environment(name, allocator)
     return as_result(value, error)
 }
@@ -83,7 +83,7 @@ get_environment :: fn(name: string, allocator := context.allocator) -> Result[st
  * @param error The error, or null if the call worked.
  * @return Ok with value when error is null; otherwise Error with error, and value is dropped, not freed.
  */
-as_result :: fn[T](value: T, error: OsError?) -> Result[T, OsError] {
+as_result :: fn[T](value : T, error : OsError?) -> Result[T, OsError] {
     match error {
         case Some(failure) => return .Error(failure)
         case None => return .Ok(value)
@@ -133,7 +133,7 @@ OpenMode :: enum {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-open :: fn(path: string, mode: OpenMode) -> Result[File, OsError] {
+open :: fn(path : string, mode : OpenMode) -> Result[File, OsError] {
     file, error :: system_open(path, mode)
     return as_result(file, error)
 }
@@ -144,7 +144,7 @@ open :: fn(path: string, mode: OpenMode) -> Result[File, OsError] {
  * @param file The file, from open or open_in. It, and every copy of it, mustn't be used again: the system may give
  *     the same handle to the next file opened.
  */
-close :: fn(file: File) {
+close :: fn(file : File) {
     system_close(file)
 }
 
@@ -162,7 +162,7 @@ close :: fn(file: File) {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported, like a device error or a handle that isn't open.
  */
-read :: fn(file: File, buffer: mut u8[]) -> Result[usize, OsError] {
+read :: fn(file : File, buffer : mut u8[]) -> Result[usize, OsError] {
     count, error :: system_read(file, buffer)
     return as_result(count, error)
 }
@@ -178,7 +178,7 @@ read :: fn(file: File, buffer: mut u8[]) -> Result[usize, OsError] {
  * @return Null if every byte was written; otherwise why it stopped: the system's error, or Other when a write wrote
  *     nothing without one.
  */
-write :: fn(file: File, bytes: string) -> OsError? {
+write :: fn(file : File, bytes : string) -> OsError? {
     done : usize = 0
     loop {
         if done >= bytes.count {
@@ -205,7 +205,7 @@ write :: fn(file: File, bytes: string) -> OsError? {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-file_size :: fn(file: File) -> Result[u64, OsError] {
+file_size :: fn(file : File) -> Result[u64, OsError] {
     size, error :: system_file_size(file)
     return as_result(size, error)
 }
@@ -228,7 +228,7 @@ file_size :: fn(file: File) -> Result[u64, OsError] {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-read_entire_file :: fn(path: string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
+read_entire_file :: fn(path : string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
     file, open_error :: system_open(path, .READ)
     match open_error {
         case Some(failure) => return .Error(failure)
@@ -254,7 +254,7 @@ read_entire_file :: fn(path: string, allocator := context.allocator) -> Result[s
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported while reading.
  */
-read_all :: fn(file: File, allocator: runtime.Allocator) -> Result[string, OsError] #unrestricted {
+read_all :: fn(file : File, allocator : runtime.Allocator) -> Result[string, OsError] #unrestricted {
     size, size_error :: system_file_size(file)
     capacity : usize = 4096
     if size_error == null && size > 0 {
@@ -320,7 +320,7 @@ read_all :: fn(file: File, allocator: runtime.Allocator) -> Result[string, OsErr
  * @param contents What the file holds afterwards, as bytes. Empty leaves an empty file.
  * @return Null if it worked; otherwise why not, as open or write gives it (NotFound when the folder is missing).
  */
-write_entire_file :: fn(path: string, contents: string) -> OsError? {
+write_entire_file :: fn(path : string, contents : string) -> OsError? {
     file, open_error :: system_open(path, .WRITE)
     if open_error != null {
         return open_error
@@ -337,7 +337,7 @@ write_entire_file :: fn(path: string, contents: string) -> OsError? {
  * @return Null if it was deleted; otherwise why not: NotFound when nothing is there, AccessDenied when it isn't
  *     allowed, and the system's error for a folder (IsADirectory, or AccessDenied on some systems).
  */
-delete_file :: fn(path: string) -> OsError? {
+delete_file :: fn(path : string) -> OsError? {
     return system_delete_file(path)
 }
 
@@ -351,7 +351,7 @@ delete_file :: fn(path: string) -> OsError? {
  * @return Null if it was moved; otherwise why not: NotFound when nothing is at from, AccessDenied when it isn't
  *     allowed, and the system's other errors.
  */
-rename :: fn(from: string, to: string) -> OsError? {
+rename :: fn(from : string, to : string) -> OsError? {
     return system_rename(from, to)
 }
 
@@ -372,7 +372,7 @@ PathKind :: enum {
  * @return FILE or DIRECTORY for what's there, and NOTHING both when nothing is and when it can't be looked at (a
  *     too-long path, one that isn't allowed, or a target without a file system), which aren't told apart.
  */
-path_kind :: fn(path: string) -> PathKind {
+path_kind :: fn(path : string) -> PathKind {
     return system_path_kind(path)
 }
 
@@ -382,7 +382,7 @@ path_kind :: fn(path: string) -> PathKind {
  * @param path The path, as open takes it.
  * @return True if something is there; false if nothing is, or it can't be looked at (path_kind's NOTHING).
  */
-exists :: fn(path: string) -> bool {
+exists :: fn(path : string) -> bool {
     return path_kind(path) != .NOTHING
 }
 
@@ -392,7 +392,7 @@ exists :: fn(path: string) -> bool {
  * @param path The path, as open takes it.
  * @return True if a folder is there; false for a file, nothing, or what can't be looked at.
  */
-is_directory :: fn(path: string) -> bool {
+is_directory :: fn(path : string) -> bool {
     return path_kind(path) == .DIRECTORY
 }
 
@@ -405,7 +405,7 @@ is_directory :: fn(path: string) -> bool {
  * @return Null if it was made; otherwise why not: AlreadyExists when something is at path (even a folder), NotFound
  *     when its parent is missing, AccessDenied when it isn't allowed.
  */
-make_directory :: fn(path: string) -> OsError? {
+make_directory :: fn(path : string) -> OsError? {
     return system_make_directory(path)
 }
 
@@ -416,7 +416,7 @@ make_directory :: fn(path: string) -> OsError? {
  * @return Null if it was removed; otherwise why not: DirectoryNotEmpty when something is in it, NotFound when
  *     nothing is at path, NotADirectory when a file is.
  */
-remove_directory :: fn(path: string) -> OsError? {
+remove_directory :: fn(path : string) -> OsError? {
     return system_remove_directory(path)
 }
 
@@ -454,7 +454,10 @@ DirectoryEntry :: struct {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-list_directory :: fn(path: string, allocator := context.allocator) -> Result[DirectoryEntry[..], OsError] #unrestricted {
+list_directory :: fn(
+    path : string,
+    allocator := context.allocator
+) -> Result[DirectoryEntry[..], OsError] #unrestricted {
     listing : DirectoryEntry[..]
     push_context listing_context (allocator = allocator) {
         error :: system_list_directory(path, &listing, allocator)
@@ -476,7 +479,11 @@ list_directory :: fn(path: string, allocator := context.allocator) -> Result[Dir
  * @param allocator The allocator the names were allocated from; the array goes back to the one it records itself.
  * @param location Where it's called from, given to the allocator for its reports.
  */
-free_directory_listing :: fn(entries: DirectoryEntry[..], allocator := context.allocator, location := #caller_location) {
+free_directory_listing :: fn(
+    entries : DirectoryEntry[..],
+    allocator := context.allocator,
+    location := #caller_location
+) {
     for entry in entries {
         if entry.name.count > 0 {
             runtime.free_array(bit_cast[u8[]](entry.name), allocator)
@@ -485,7 +492,14 @@ free_directory_listing :: fn(entries: DirectoryEntry[..], allocator := context.a
     // The array's own block, to the allocator it took (runtime.array_free, for an array given by value)
     raw :: bit_cast[runtime.ResizableArray](entries)
     if raw.capacity > 0 {
-        raw.allocator.function(raw.allocator.data, 0, align_of(DirectoryEntry), raw.data, raw.capacity * size_of(DirectoryEntry), location)
+        raw.allocator.function(
+            raw.allocator.data,
+            0,
+            align_of(DirectoryEntry),
+            raw.data,
+            raw.capacity * size_of(DirectoryEntry),
+            location
+        )
     }
 }
 
@@ -511,7 +525,7 @@ current_directory :: fn(allocator := context.allocator) -> Result[string, OsErro
  * @param path The folder's path, as open takes it; relative to the current directory unless it's absolute.
  * @return Null if it worked; otherwise why not: NotFound when nothing is at path, NotADirectory when a file is.
  */
-set_current_directory :: fn(path: string) -> OsError? {
+set_current_directory :: fn(path : string) -> OsError? {
     return system_set_current_directory(path)
 }
 
@@ -553,7 +567,7 @@ SEPARATORS_ON_WINDOWS :: OS == .Windows
  * @return True if it isn't empty, has no 0 byte, and none of its components is empty, "." or ".." (so a leading or
  *     trailing '/', or "a//b", gives false); on Windows it mustn't hold '\\' or ':' either.
  */
-is_beneath :: fn(path: string) -> bool {
+is_beneath :: fn(path : string) -> bool {
     if path.count == 0 {
         return false
     }
@@ -590,7 +604,7 @@ is_beneath :: fn(path: string) -> bool {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-open_directory :: fn(path: string) -> Result[Directory, OsError] {
+open_directory :: fn(path : string) -> Result[Directory, OsError] {
     directory, error :: system_open_directory(path)
     return as_result(directory, error)
 }
@@ -627,7 +641,7 @@ working_directory :: fn() -> Result[Directory, OsError] {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-open_directory_in :: fn(directory: Directory, path: string) -> Result[Directory, OsError] {
+open_directory_in :: fn(directory : Directory, path : string) -> Result[Directory, OsError] {
     if !is_beneath(path) {
         return .Error(.InvalidPath)
     }
@@ -641,7 +655,7 @@ open_directory_in :: fn(directory: Directory, path: string) -> Result[Directory,
  * @param directory The directory, from open_directory, working_directory or open_directory_in. It, and every copy
  *     of it, mustn't be used again; files and directories opened in it stay open.
  */
-close_directory :: fn(directory: Directory) {
+close_directory :: fn(directory : Directory) {
     system_close_directory(directory)
 }
 
@@ -661,7 +675,7 @@ close_directory :: fn(directory: Directory) {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> Result[File, OsError] {
+open_in :: fn(directory : Directory, path : string, mode : OpenMode) -> Result[File, OsError] {
     if !is_beneath(path) {
         return .Error(.InvalidPath)
     }
@@ -685,7 +699,11 @@ open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> Result[File
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-read_entire_file_in :: fn(directory: Directory, path: string, allocator := context.allocator) -> Result[string, OsError] #unrestricted {
+read_entire_file_in :: fn(
+    directory : Directory,
+    path : string,
+    allocator := context.allocator
+) -> Result[string, OsError] #unrestricted {
     file :: open_in(directory, path, .READ)?
     defer close(file)
     return read_all(file, allocator)
@@ -702,7 +720,7 @@ read_entire_file_in :: fn(directory: Directory, path: string, allocator := conte
  * @return Null if it worked; otherwise why not: InvalidPath when path isn't beneath directory, or what open_in or
  *     write gives.
  */
-write_entire_file_in :: fn(directory: Directory, path: string, contents: string) -> OsError? {
+write_entire_file_in :: fn(directory : Directory, path : string, contents : string) -> OsError? {
     if !is_beneath(path) {
         return OsError.InvalidPath
     }
@@ -724,7 +742,7 @@ write_entire_file_in :: fn(directory: Directory, path: string, contents: string)
  * @return Null if it was deleted; otherwise why not: InvalidPath when path isn't beneath directory, NotFound when
  *     nothing is there, AccessDenied when it isn't allowed, and the system's error for a folder.
  */
-delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+delete_file_in :: fn(directory : Directory, path : string) -> OsError? {
     if !is_beneath(path) {
         return OsError.InvalidPath
     }
@@ -740,7 +758,7 @@ delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
  * @return Null if it was moved; otherwise why not: InvalidPath when either path isn't beneath directory, NotFound
  *     when nothing is at from, and the system's other errors.
  */
-rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+rename_in :: fn(directory : Directory, from : string, to : string) -> OsError? {
     if !is_beneath(from) || !is_beneath(to) {
         return OsError.InvalidPath
     }
@@ -755,7 +773,7 @@ rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
  * @return FILE or DIRECTORY for what's there; NOTHING when nothing is, when it can't be looked at, or when path
  *     isn't beneath directory.
  */
-path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+path_kind_in :: fn(directory : Directory, path : string) -> PathKind {
     if !is_beneath(path) {
         return .NOTHING
     }
@@ -772,7 +790,7 @@ path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
  * @return Null if it was made; otherwise why not: InvalidPath when path isn't beneath directory, AlreadyExists when
  *     something is at path, NotFound when its parent is missing.
  */
-make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+make_directory_in :: fn(directory : Directory, path : string) -> OsError? {
     if !is_beneath(path) {
         return OsError.InvalidPath
     }
@@ -787,7 +805,7 @@ make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
  * @return Null if it was removed; otherwise why not: InvalidPath when path isn't beneath directory,
  *     DirectoryNotEmpty when something is in it, NotFound when nothing is at path.
  */
-remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+remove_directory_in :: fn(directory : Directory, path : string) -> OsError? {
     if !is_beneath(path) {
         return OsError.InvalidPath
     }
@@ -810,7 +828,11 @@ remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
  * @error Unsupported The target has no file system.
  * @error Other Anything else the system reported.
  */
-list_directory_in :: fn(directory: Directory, path: string, allocator := context.allocator) -> Result[DirectoryEntry[..], OsError] #unrestricted {
+list_directory_in :: fn(
+    directory : Directory,
+    path : string,
+    allocator := context.allocator
+) -> Result[DirectoryEntry[..], OsError] #unrestricted {
     if path.count != 0 && !is_beneath(path) {
         return .Error(.InvalidPath)
     }
@@ -837,7 +859,7 @@ list_directory_in :: fn(directory: Directory, path: string, allocator := context
  *     bytes is empty or the allocation failed.
  * @return error OutOfMemory when the copy couldn't be allocated, or null.
  */
-copy_string :: fn(bytes: string, allocator: runtime.Allocator) -> (copy #unrestricted : string, error : OsError?) {
+copy_string :: fn(bytes : string, allocator : runtime.Allocator) -> (copy #unrestricted : string, error : OsError?) {
     if bytes.count == 0 {
         return "", null
     }

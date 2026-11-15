@@ -79,7 +79,6 @@ import runtime from "base:runtime"
 }
 
 #if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
-
     /** The directory openat and the other *at calls are given for a relative path to start from the current one. */
     AT_FDCWD : u64 : 0xffff_ffff_ffff_ff9c
     /** The unlinkat flag to remove a folder, which has to be empty, rather than a file. */
@@ -125,7 +124,7 @@ import runtime from "base:runtime"
      * @param result What the call returned, which is -errno, from -4095 to -1, when it fails.
      * @return True if it's an error, which error_of translates; false if it's a result.
      */
-    failed :: fn(result: u64) -> bool {
+    failed :: fn(result : u64) -> bool {
         return result > 0xffff_ffff_ffff_f000
     }
 
@@ -139,7 +138,7 @@ import runtime from "base:runtime"
      * @param result The call's result, one that failed says is an error.
      * @return The OsError a caller sees.
      */
-    error_of :: fn(result: u64) -> OsError {
+    error_of :: fn(result : u64) -> OsError {
         errno :: 0 - result
         if errno == 2 {
             return .NotFound
@@ -177,7 +176,7 @@ import runtime from "base:runtime"
      * @return True once the path and its 0 are at the buffer's start; false if they don't fit, or the path holds a 0
      *     byte, which would cut it short.
      */
-    terminated :: fn(path: string, buffer: mut u8[]) -> bool {
+    terminated :: fn(path : string, buffer : mut u8[]) -> bool {
         if path.count + 1 > buffer.count {
             return false
         }
@@ -206,7 +205,10 @@ import runtime from "base:runtime"
      * @return error NotFound when it isn't set, name is empty, or the process has no environment; OutOfMemory when
      *     the copy couldn't be allocated; or null.
      */
-    system_get_environment :: fn(name: string, allocator: runtime.Allocator) -> (value #unrestricted : string, error : OsError?) {
+    system_get_environment :: fn(
+        name : string,
+        allocator : runtime.Allocator
+    ) -> (value #unrestricted : string, error : OsError?) {
         state :: intrinsics.process_state()
         if state.environment_pointers == null || name.count == 0 {
             return "", OsError.NotFound
@@ -229,7 +231,10 @@ import runtime from "base:runtime"
                     }
                 }
                 if matches {
-                    return copy_string(string_of(cast[ptr[u8]](entry + name.count + 1), text.count - name.count - 1), allocator)
+                    return copy_string(
+                        string_of(cast[ptr[u8]](entry + name.count + 1), text.count - name.count - 1),
+                        allocator
+                    )
                 }
             }
         }
@@ -245,7 +250,7 @@ import runtime from "base:runtime"
      * @return file The open file, a descriptor the caller closes with system_close; the zero File on failure.
      * @return error As open_at's.
      */
-    system_open :: fn(path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open :: fn(path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         return open_at(AT_FDCWD, path, mode)
     }
 
@@ -263,7 +268,7 @@ import runtime from "base:runtime"
      * @return error InvalidPath for a path over 4096 bytes or holding a 0 byte; otherwise openat's error (error_of),
      *     like NotFound, AccessDenied or IsADirectory (a folder opened to write); or null.
      */
-    open_at :: fn(at: u64, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    open_at :: fn(at : u64, path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return File.{0}, OsError.InvalidPath
@@ -295,7 +300,7 @@ import runtime from "base:runtime"
      * @return file The open file, which the caller closes with system_close; the zero File on failure.
      * @return error As open_at's.
      */
-    system_open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open_in :: fn(directory : Directory, path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         return open_at(directory.handle, path, mode)
     }
 
@@ -309,7 +314,7 @@ import runtime from "base:runtime"
      * @return error InvalidPath for a path over 4096 bytes or holding a 0 byte; NotADirectory for a file; otherwise
      *     openat's error (error_of), like NotFound or AccessDenied; or null.
      */
-    open_directory_at :: fn(at: u64, path: string) -> (directory : Directory, error : OsError?) {
+    open_directory_at :: fn(at : u64, path : string) -> (directory : Directory, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return Directory.{0}, OsError.InvalidPath
@@ -329,7 +334,7 @@ import runtime from "base:runtime"
      * @return directory The open directory, which the caller closes; the zero Directory on failure.
      * @return error As open_directory_at's.
      */
-    system_open_directory :: fn(path: string) -> (directory : Directory, error : OsError?) {
+    system_open_directory :: fn(path : string) -> (directory : Directory, error : OsError?) {
         return open_directory_at(AT_FDCWD, path)
     }
 
@@ -351,7 +356,7 @@ import runtime from "base:runtime"
      * @return opened The open directory, which the caller closes, apart from directory; the zero Directory on failure.
      * @return error As open_directory_at's.
      */
-    system_open_directory_in :: fn(directory: Directory, path: string) -> (opened : Directory, error : OsError?) {
+    system_open_directory_in :: fn(directory : Directory, path : string) -> (opened : Directory, error : OsError?) {
         return open_directory_at(directory.handle, path)
     }
 
@@ -361,7 +366,7 @@ import runtime from "base:runtime"
      * @param directory The open directory, which isn't good afterwards. The zero Directory, a failed open's, closes
      *     nothing: its handle would be descriptor 0, standard input.
      */
-    system_close_directory :: fn(directory: Directory) {
+    system_close_directory :: fn(directory : Directory) {
         if directory.handle != 0 {
             runtime.linux_syscall(SYS_CLOSE, directory.handle)
         }
@@ -373,7 +378,7 @@ import runtime from "base:runtime"
      * @param file The open file, which isn't good afterwards. The zero File, a failed open's, closes nothing: its
      *     handle would be descriptor 0, standard input.
      */
-    system_close :: fn(file: File) {
+    system_close :: fn(file : File) {
         if file.handle != 0 {
             runtime.linux_syscall(SYS_CLOSE, file.handle)
         }
@@ -389,7 +394,7 @@ import runtime from "base:runtime"
      * @return error What read failed with (error_of): IsADirectory for a folder, Other for a descriptor not open to
      *     read (EBADF) or a device error; or null.
      */
-    system_read :: fn(file: File, buffer: mut u8[]) -> (count : usize, error : OsError?) {
+    system_read :: fn(file : File, buffer : mut u8[]) -> (count : usize, error : OsError?) {
         if buffer.count == 0 {
             return 0, null
         }
@@ -417,7 +422,7 @@ import runtime from "base:runtime"
      * @return error What write failed with (error_of): Other for a full volume, a device error or a descriptor not
      *     open to write; or null.
      */
-    system_write :: fn(file: File, bytes: rawptr, count: usize) -> (written : usize, error : OsError?) {
+    system_write :: fn(file : File, bytes : rawptr, count : usize) -> (written : usize, error : OsError?) {
         loop {
             result :: runtime.linux_syscall(SYS_WRITE, file.handle, cast[u64](bytes), cast[u64](count))
             if result == ~cast[u64](3) {
@@ -437,7 +442,7 @@ import runtime from "base:runtime"
      * @return size Its size in bytes as fstat gives st_size: for a pipe or a terminal, usually 0. 0 on failure.
      * @return error What fstat failed with (error_of), like Other for a descriptor that isn't open; or null.
      */
-    system_file_size :: fn(file: File) -> (size : u64, error : OsError?) {
+    system_file_size :: fn(file : File) -> (size : u64, error : OsError?) {
         status : Stat
         result :: runtime.linux_syscall(SYS_FSTAT, file.handle, cast[u64](&status))
         if failed(result) {
@@ -452,7 +457,7 @@ import runtime from "base:runtime"
      * @param path The file's path. A link is deleted, not what it points to.
      * @return As unlink_at's; IsADirectory for a folder.
      */
-    system_delete_file :: fn(path: string) -> OsError? {
+    system_delete_file :: fn(path : string) -> OsError? {
         return unlink_at(AT_FDCWD, path, 0)
     }
 
@@ -463,7 +468,7 @@ import runtime from "base:runtime"
      * @param path The file's path beneath it.
      * @return As unlink_at's; IsADirectory for a folder.
      */
-    system_delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_delete_file_in :: fn(directory : Directory, path : string) -> OsError? {
         return unlink_at(directory.handle, path, 0)
     }
 
@@ -474,7 +479,7 @@ import runtime from "base:runtime"
      * @param path The folder's path beneath it.
      * @return As unlink_at's; DirectoryNotEmpty for a folder with something in it, NotADirectory for a file.
      */
-    system_remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_remove_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         return unlink_at(directory.handle, path, AT_REMOVEDIR)
     }
 
@@ -487,7 +492,7 @@ import runtime from "base:runtime"
      * @return Null once it's gone; InvalidPath for a path over 4096 bytes or holding a 0 byte; otherwise unlinkat's
      *     error (error_of), like NotFound or AccessDenied.
      */
-    unlink_at :: fn(at: u64, path: string, flags: u64) -> OsError? {
+    unlink_at :: fn(at : u64, path : string, flags : u64) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
@@ -506,7 +511,7 @@ import runtime from "base:runtime"
      * @param to Its new path.
      * @return As rename_at's.
      */
-    system_rename :: fn(from: string, to: string) -> OsError? {
+    system_rename :: fn(from : string, to : string) -> OsError? {
         return rename_at(AT_FDCWD, from, to)
     }
 
@@ -518,7 +523,7 @@ import runtime from "base:runtime"
      * @param to Its new path, beneath directory.
      * @return As rename_at's.
      */
-    system_rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+    system_rename_in :: fn(directory : Directory, from : string, to : string) -> OsError? {
         return rename_at(directory.handle, from, to)
     }
 
@@ -534,7 +539,7 @@ import runtime from "base:runtime"
      *     renameat's error (error_of), like NotFound, AccessDenied, DirectoryNotEmpty for a folder at to with
      *     something in it, or Other for another volume (EXDEV).
      */
-    rename_at :: fn(at: u64, from: string, to: string) -> OsError? {
+    rename_at :: fn(at : u64, from : string, to : string) -> OsError? {
         source : u8[PATH_BUFFER_SIZE]
         target : u8[PATH_BUFFER_SIZE]
         if !terminated(from, source) || !terminated(to, target) {
@@ -554,7 +559,7 @@ import runtime from "base:runtime"
      *     for PATH_BUFFER_SIZE, or holding a 0 byte, gives NOTHING.
      * @return As path_kind_at's.
      */
-    system_path_kind :: fn(path: string) -> PathKind {
+    system_path_kind :: fn(path : string) -> PathKind {
         return path_kind_at(AT_FDCWD, path)
     }
 
@@ -565,7 +570,7 @@ import runtime from "base:runtime"
      * @param path The path beneath it.
      * @return As path_kind_at's.
      */
-    system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+    system_path_kind_in :: fn(directory : Directory, path : string) -> PathKind {
         return path_kind_at(directory.handle, path)
     }
 
@@ -577,7 +582,7 @@ import runtime from "base:runtime"
      * @return DIRECTORY for a folder, FILE for anything else that's there (a device or a pipe too), and NOTHING when
      *     nothing is, the path is too long or holds a 0 byte, it can't be looked at, or a link leads nowhere.
      */
-    path_kind_at :: fn(at: u64, path: string) -> PathKind {
+    path_kind_at :: fn(at : u64, path : string) -> PathKind {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return .NOTHING
@@ -591,7 +596,7 @@ import runtime from "base:runtime"
      * @param path The new folder's path; the folder it's in has to exist.
      * @return As make_directory_at's.
      */
-    system_make_directory :: fn(path: string) -> OsError? {
+    system_make_directory :: fn(path : string) -> OsError? {
         return make_directory_at(AT_FDCWD, path)
     }
 
@@ -602,7 +607,7 @@ import runtime from "base:runtime"
      * @param path The new folder's path beneath it; the folder it's in has to exist.
      * @return As make_directory_at's.
      */
-    system_make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_make_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         return make_directory_at(directory.handle, path)
     }
 
@@ -615,7 +620,7 @@ import runtime from "base:runtime"
      *     error (error_of): AlreadyExists if anything is there, NotFound if a folder on the way is missing,
      *     AccessDenied, and so on.
      */
-    make_directory_at :: fn(at: u64, path: string) -> OsError? {
+    make_directory_at :: fn(at : u64, path : string) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
@@ -637,7 +642,7 @@ import runtime from "base:runtime"
      *     error (error_of): DirectoryNotEmpty for a folder with something in it, NotADirectory for a file,
      *     NotFound, AccessDenied, and so on.
      */
-    system_remove_directory :: fn(path: string) -> OsError? {
+    system_remove_directory :: fn(path : string) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
@@ -664,7 +669,11 @@ import runtime from "base:runtime"
      * @param allocator Where the entries' names are allocated.
      * @return As list_at's.
      */
-    system_list_directory :: fn(path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory :: fn(
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         return list_at(AT_FDCWD, path, entries, allocator)
     }
 
@@ -678,7 +687,12 @@ import runtime from "base:runtime"
      * @param allocator Where the entries' names are allocated.
      * @return As list_at's.
      */
-    system_list_directory_in :: fn(directory: Directory, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory_in :: fn(
+        directory : Directory,
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         return list_at(directory.handle, if path.count == 0 { "." } else { path }, entries, allocator)
     }
 
@@ -697,7 +711,12 @@ import runtime from "base:runtime"
      *     OutOfMemory if a name couldn't be copied; Other for a malformed record; otherwise openat's or getdents64's
      *     error (error_of), like NotFound, NotADirectory or AccessDenied.
      */
-    list_at :: fn(at: u64, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    list_at :: fn(
+        at : u64,
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath
@@ -756,7 +775,7 @@ import runtime from "base:runtime"
      * @param name The name or path, with a 0 after it.
      * @return DIRECTORY for a folder, FILE for anything else that's there, NOTHING when newfstatat fails.
      */
-    kind_at :: fn(directory: u64, name: rawptr) -> PathKind {
+    kind_at :: fn(directory : u64, name : rawptr) -> PathKind {
         status : Stat
         result :: runtime.linux_syscall(SYS_NEWFSTATAT, directory, cast[u64](name), cast[u64](&status), 0)
         if failed(result) {
@@ -777,7 +796,7 @@ import runtime from "base:runtime"
      * @return error What getcwd failed with (error_of): NotFound if the current folder was removed, Other for a path
      *     over 4096 bytes; OutOfMemory if the copy couldn't be allocated; or null.
      */
-    system_current_directory :: fn(allocator: runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
+    system_current_directory :: fn(allocator : runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
         buffer : u8[PATH_BUFFER_SIZE]
         // The length with its terminator
         result :: runtime.linux_syscall(SYS_GETCWD, cast[u64](&buffer[0]), cast[u64](size_of(u8[PATH_BUFFER_SIZE])))
@@ -797,7 +816,7 @@ import runtime from "base:runtime"
      * @return Null once it's changed; InvalidPath for a path over 4096 bytes or holding a 0 byte; otherwise chdir's
      *     error (error_of), like NotFound, NotADirectory or AccessDenied, the current directory left as it was.
      */
-    system_set_current_directory :: fn(path: string) -> OsError? {
+    system_set_current_directory :: fn(path : string) -> OsError? {
         buffer : u8[PATH_BUFFER_SIZE]
         if !terminated(path, buffer) {
             return OsError.InvalidPath

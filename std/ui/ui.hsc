@@ -39,22 +39,22 @@ Axis :: struct {
 }
 
 /** Its content's size, at least min and at most max (0 for no most). */
-fit :: fn(min: f32 = 0, max: f32 = 0) -> Axis {
+fit :: fn(min : f32 = 0, max : f32 = 0) -> Axis {
     return Axis.{kind = .Fit, min = min, max = max}
 }
 
 /** What's left of the parent's, shared by weight with other growing siblings, at least min and at most max. */
-grow :: fn(weight: f32 = 1, min: f32 = 0, max: f32 = 0) -> Axis {
+grow :: fn(weight : f32 = 1, min : f32 = 0, max : f32 = 0) -> Axis {
     return Axis.{kind = .Grow, value = weight, min = min, max = max}
 }
 
 /** Exactly some pixels. */
-fixed :: fn(pixels: f32) -> Axis {
+fixed :: fn(pixels : f32) -> Axis {
     return Axis.{kind = .Fixed, value = pixels, min = pixels, max = pixels}
 }
 
 /** A percent of the parent's content. */
-percent :: fn(hundredths: f32) -> Axis {
+percent :: fn(hundredths : f32) -> Axis {
     return Axis.{kind = .Percent, value = hundredths}
 }
 
@@ -109,7 +109,7 @@ Colour :: struct {
 }
 
 /** An opaque colour. */
-rgb :: fn(r: u8, g: u8, b: u8) -> Colour {
+rgb :: fn(r : u8, g : u8, b : u8) -> Colour {
     return Colour.{r = r, g = g, b = b, a = 255}
 }
 
@@ -288,7 +288,7 @@ Input :: struct {
 }
 
 /** Add a key to an input, if there's room. */
-press_key :: fn(input: ptr[mut Input], key: Key, shift: bool = false) {
+press_key :: fn(input : ptr[mut Input], key : Key, shift : bool = false) {
     if input.key_count < MAX_KEYS {
         input.keys[input.key_count] = KeyPress.{key = key, shift = shift}
         input.key_count += 1
@@ -377,7 +377,22 @@ Theme :: struct {
 
 /** The theme widgets are drawn with unless a program sets its own: light, with Material's blue. */
 default_theme :: fn() -> Theme {
-    return Theme.{background = Colour.{r = 250, g = 250, b = 250, a = 255}, text = Colour.{r = 33, g = 33, b = 33, a = 255}, faint = Colour.{r = 117, g = 117, b = 117, a = 255}, button = Colour.{r = 224, g = 224, b = 224, a = 255}, button_hover = Colour.{r = 207, g = 216, b = 220, a = 255}, button_pressed = Colour.{r = 176, g = 190, b = 197, a = 255}, accent = Colour.{r = 25, g = 118, b = 210, a = 255}, selection = Colour.{r = 187, g = 222, b = 251, a = 255}, field = Colour.{r = 255, g = 255, b = 255, a = 255}, edge = Colour.{r = 158, g = 158, b = 158, a = 255}, text_size = 14, padding_x = 10, padding_y = 6, corner = 4}
+    return Theme.{
+        background = Colour.{r = 250, g = 250, b = 250, a = 255},
+        text = Colour.{r = 33, g = 33, b = 33, a = 255},
+        faint = Colour.{r = 117, g = 117, b = 117, a = 255},
+        button = Colour.{r = 224, g = 224, b = 224, a = 255},
+        button_hover = Colour.{r = 207, g = 216, b = 220, a = 255},
+        button_pressed = Colour.{r = 176, g = 190, b = 197, a = 255},
+        accent = Colour.{r = 25, g = 118, b = 210, a = 255},
+        selection = Colour.{r = 187, g = 222, b = 251, a = 255},
+        field = Colour.{r = 255, g = 255, b = 255, a = 255},
+        edge = Colour.{r = 158, g = 158, b = 158, a = 255},
+        text_size = 14,
+        padding_x = 10,
+        padding_y = 6,
+        corner = 4,
+    }
 }
 
 /** One step a text field can undo: its text and cursor before an edit. */
@@ -530,12 +545,12 @@ Ui :: struct {
  * @param mono The monospaced typeface's, as sans; the same bytes are fine.
  * @return The UI, before its first frame; give it back with free_ui.
  */
-make :: fn(sans: u8[], mono: u8[]) -> Ui {
+make :: fn(sans : u8[], mono : u8[]) -> Ui {
     return Ui.{sans = sans, mono = mono, open = NO_NODE, theme = default_theme()}
 }
 
 /** Give back a UI's arrays. */
-free_ui :: fn(ui: ptr[mut Ui]) {
+free_ui :: fn(ui : ptr[mut Ui]) {
     runtime.array_free(&ui.nodes)
     runtime.array_free(&ui.text)
     runtime.array_free(&ui.events)
@@ -554,7 +569,7 @@ free_ui :: fn(ui: ptr[mut Ui]) {
 // ---- IDs
 
 /** A 64-bit hash's finalizer (splitmix64's), so nearby inputs land far apart. */
-finalize :: fn(value: u64) -> u64 {
+finalize :: fn(value : u64) -> u64 {
     z := value
     z = (z ~ (z >> 30)) * 0xbf58476d1ce4e5b9
     z = (z ~ (z >> 27)) * 0x94d049bb133111eb
@@ -562,7 +577,7 @@ finalize :: fn(value: u64) -> u64 {
 }
 
 /** Text hashed, FNV-1a then finalized: never 0. */
-hash :: fn(text: u8[]) -> u64 {
+hash :: fn(text : u8[]) -> u64 {
     h := cast[u64](0xcbf29ce484222325)
     for byte in text {
         h = (h ~ cast[u64](byte)) * 0x100000001b3
@@ -575,12 +590,12 @@ hash :: fn(text: u8[]) -> u64 {
  * A label's hash, for a widget's ID: a constant when it's run at compile time (`SAVE :: #run ui.key("Save")`), as a
  * literal label's can be.
  */
-key :: fn(label: string) -> u64 {
+key :: fn(label : string) -> u64 {
     return hash(string_bytes(label))
 }
 
 /** Two values mixed into one, neither's order lost: a parent's ID and a child's label, or an ID and a loop's key. */
-mix :: fn(a: u64, b: u64) -> u64 {
+mix :: fn(a : u64, b : u64) -> u64 {
     made :: finalize(a ~ finalize(b + 0x9e3779b97f4a7c15))
     return if made == 0 { cast[u64](1) } else { made }
 }
@@ -588,7 +603,7 @@ mix :: fn(a: u64, b: u64) -> u64 {
 // ---- Nodes
 
 /** A node by index; a scratch node for one past them, so a bad index reads and writes nothing that matters. */
-node :: fn(ui: ptr[mut Ui], index: u32) -> ptr[mut Node] {
+node :: fn(ui : ptr[mut Ui], index : u32) -> ptr[mut Node] {
     at :: cast[usize](index)
     if at < ui.nodes.count {
         return &ui.nodes[at]
@@ -598,7 +613,7 @@ node :: fn(ui: ptr[mut Ui], index: u32) -> ptr[mut Node] {
 }
 
 /** Keep text in the frame's text, giving where it starts and how long it is. */
-keep_text :: fn(ui: ptr[mut Ui], text: u8[]) -> (u32, u32) {
+keep_text :: fn(ui : ptr[mut Ui], text : u8[]) -> (u32, u32) {
     start :: cast[u32](ui.text.count)
     for byte in text {
         runtime.array_add(&ui.text, byte)
@@ -607,7 +622,7 @@ keep_text :: fn(ui: ptr[mut Ui], text: u8[]) -> (u32, u32) {
 }
 
 /** A frame's text by where it starts and how long it is; empty past its end. */
-text_of :: fn(text: u8[], start: u32, count: u32) -> u8[] {
+text_of :: fn(text : u8[], start : u32, count : u32) -> u8[] {
     from :: cast[usize](start)
     if from <= text.count {
         rest :: text[from..<text.count]
@@ -619,7 +634,7 @@ text_of :: fn(text: u8[], start: u32, count: u32) -> u8[] {
 }
 
 /** Whether an ID was already used this frame, by a node before. */
-seen :: fn(ui: ptr[Ui], id: ID) -> bool {
+seen :: fn(ui : ptr[Ui], id : ID) -> bool {
     for each in ui.nodes {
         if each.id == id {
             return true
@@ -639,7 +654,7 @@ seen :: fn(ui: ptr[Ui], id: ID) -> bool {
  * @param box How it's laid out and drawn; its key is mixed into its ID.
  * @return Its index; NO_NODE past MAX_NODES, when it's dropped.
  */
-add_node :: fn(ui: ptr[mut Ui], label: u64, box: Box) -> u32 {
+add_node :: fn(ui : ptr[mut Ui], label : u64, box : Box) -> u32 {
     if ui.nodes.count >= MAX_NODES || ui.dropped > 0 {
         ui.overflowed = true
         return NO_NODE
@@ -652,7 +667,10 @@ add_node :: fn(ui: ptr[mut Ui], label: u64, box: Box) -> u32 {
         id = mix(id, cast[u64](ui.nodes.count))
     }
     index :: cast[u32](ui.nodes.count)
-    runtime.array_add(&ui.nodes, Node.{id = id, parent = parent, first = NO_NODE, last = NO_NODE, next = NO_NODE, box = box})
+    runtime.array_add(
+        &ui.nodes,
+        Node.{id = id, parent = parent, first = NO_NODE, last = NO_NODE, next = NO_NODE, box = box}
+    )
     if parent != NO_NODE {
         above :: node(ui, parent)
         if above.last == NO_NODE {
@@ -674,7 +692,7 @@ add_node :: fn(ui: ptr[mut Ui], label: u64, box: Box) -> u32 {
  * @param box How it's laid out and drawn.
  * @return Its ID.
  */
-open :: fn(ui: ptr[mut Ui], label: string, box: Box = Box.{}) -> ID {
+open :: fn(ui : ptr[mut Ui], label : string, box : Box = Box.{}) -> ID {
     index :: add_node(ui, key(label), box)
     if index == NO_NODE {
         // Dropped, and everything in it, until its close
@@ -686,7 +704,7 @@ open :: fn(ui: ptr[mut Ui], label: string, box: Box = Box.{}) -> ID {
 }
 
 /** Close the box open last, its parent open again. */
-close :: fn(ui: ptr[mut Ui]) {
+close :: fn(ui : ptr[mut Ui]) {
     if ui.dropped > 0 {
         ui.dropped -= 1
         return void
@@ -710,7 +728,7 @@ close :: fn(ui: ptr[mut Ui]) {
  * @param key Mixed into its ID, to tell apart texts alike under one parent.
  * @return Its ID.
  */
-label :: fn(ui: ptr[mut Ui], text: string, style: TextStyle = TextStyle.{}, key: u64 = 0) -> ID {
+label :: fn(ui : ptr[mut Ui], text : string, style : TextStyle = TextStyle.{}, key : u64 = 0) -> ID {
     index :: add_node(ui, hash(string_bytes(text)), Box.{key = key, role = .Text})
     if index == NO_NODE {
         return 0
@@ -727,7 +745,7 @@ label :: fn(ui: ptr[mut Ui], text: string, style: TextStyle = TextStyle.{}, key:
 }
 
 /** A style with the theme's size and colour where it has none. */
-resolved :: fn(ui: ptr[Ui], style: TextStyle) -> TextStyle {
+resolved :: fn(ui : ptr[Ui], style : TextStyle) -> TextStyle {
     made := style
     if made.size <= 0 {
         made.size = ui.theme.text_size
@@ -741,7 +759,7 @@ resolved :: fn(ui: ptr[Ui], style: TextStyle) -> TextStyle {
 // ---- Kept state
 
 /** Where an ID is in a kept table, or where it would go: open addressing, linear probing. */
-slot_of :: fn(table: ptr[Kept[KEPT]], id: ID) -> usize {
+slot_of :: fn(table : ptr[Kept[KEPT]], id : ID) -> usize {
     start :: cast[usize](id % KEPT)
     for probe in cast[usize](0)..<KEPT {
         at :: (start + probe) % KEPT
@@ -754,13 +772,13 @@ slot_of :: fn(table: ptr[Kept[KEPT]], id: ID) -> usize {
 }
 
 /** What's kept for an ID from the last frame; all 0 for an ID it didn't have. */
-kept_of :: fn(ui: ptr[Ui], id: ID) -> Kept {
+kept_of :: fn(ui : ptr[Ui], id : ID) -> Kept {
     at :: slot_of(&ui.kept, id)
     return if at < KEPT && ui.kept[at].id == id { ui.kept[at] } else { Kept.{} }
 }
 
 /** Keep state for an ID into the next frame. */
-keep :: fn(ui: ptr[mut Ui], made: Kept) {
+keep :: fn(ui : ptr[mut Ui], made : Kept) {
     at :: slot_of(&ui.keeping, made.id)
     if at < KEPT {
         ui.keeping[at] = made
@@ -768,7 +786,7 @@ keep :: fn(ui: ptr[mut Ui], made: Kept) {
 }
 
 /** Change a kept scroll for an ID, in both tables, so it's read this frame and kept for the next. */
-set_scroll :: fn(ui: ptr[mut Ui], id: ID, scroll: f32) {
+set_scroll :: fn(ui : ptr[mut Ui], id : ID, scroll : f32) {
     at :: slot_of(&ui.kept, id)
     if at < KEPT && ui.kept[at].id == id {
         ui.kept[at].scroll = scroll
@@ -776,7 +794,7 @@ set_scroll :: fn(ui: ptr[mut Ui], id: ID, scroll: f32) {
 }
 
 /** Whether a point's in what an ID was laid out at last frame. */
-was_under :: fn(ui: ptr[Ui], id: ID, x: f32, y: f32) -> bool {
+was_under :: fn(ui : ptr[Ui], id : ID, x : f32, y : f32) -> bool {
     place :: kept_of(ui, id)
     return place.id != 0 && x >= place.x && x < place.x + place.w && y >= place.y && y < place.y + place.h
 }
@@ -794,7 +812,7 @@ was_under :: fn(ui: ptr[Ui], id: ID, x: f32, y: f32) -> bool {
  * @param width The frame's width, in pixels.
  * @param height Its height.
  */
-begin :: fn(ui: ptr[mut Ui], input: Input, width: f32, height: f32) {
+begin :: fn(ui : ptr[mut Ui], input : Input, width : f32, height : f32) {
     ui.frame += 1
     runtime.array_reset(&ui.nodes)
     runtime.array_reset(&ui.text)
@@ -803,8 +821,16 @@ begin :: fn(ui: ptr[mut Ui], input: Input, width: f32, height: f32) {
     ui.duplicates = false
     ui.dropped = 0
     // Its text copied, as the frame's own
-    ui.input = Input.{pointer_x = input.pointer_x, pointer_y = input.pointer_y, down = input.down, pressed = input.pressed,
-        released = input.released, wheel = input.wheel, keys = input.keys, key_count = input.key_count}
+    ui.input = Input.{
+        pointer_x = input.pointer_x,
+        pointer_y = input.pointer_y,
+        down = input.down,
+        pressed = input.pressed,
+        released = input.released,
+        wheel = input.wheel,
+        keys = input.keys,
+        key_count = input.key_count,
+    }
     runtime.array_reset(&ui.typed)
     for byte in input.text {
         runtime.array_add(&ui.typed, byte)
@@ -816,13 +842,20 @@ begin :: fn(ui: ptr[mut Ui], input: Input, width: f32, height: f32) {
     ui.width = width
     ui.height = height
     ui.open = NO_NODE
-    root :: add_node(ui, key("root"), Box.{width = fixed(width), height = fixed(height), background = ui.theme.background})
+    root :: add_node(
+        ui,
+        key("root"),
+        Box.{width = fixed(width), height = fixed(height), background = ui.theme.background}
+    )
     ui.open = root
     // What the pointer's over, in what the last frame showed: the last drawn, over what's before it
     ui.hover = 0
     ui.hover_scroll = 0
     for hit in ui.hits {
-        if input.pointer_x >= hit.x0 && input.pointer_x < hit.x1 && input.pointer_y >= hit.y0 && input.pointer_y < hit.y1 {
+        if input.pointer_x >= hit.x0
+            && input.pointer_x < hit.x1
+            && input.pointer_y >= hit.y0
+            && input.pointer_y < hit.y1 {
             if hit.pressable {
                 ui.hover = hit.id
             }
@@ -850,7 +883,7 @@ begin :: fn(ui: ptr[mut Ui], input: Input, width: f32, height: f32) {
 }
 
 /** Whether an ID was focusable last frame. */
-is_focusable :: fn(ui: ptr[Ui], id: ID) -> bool {
+is_focusable :: fn(ui : ptr[Ui], id : ID) -> bool {
     for each in ui.focusables {
         if each == id {
             return true
@@ -860,7 +893,7 @@ is_focusable :: fn(ui: ptr[Ui], id: ID) -> bool {
 }
 
 /** Give a widget focus, or none with 0, a Focused event for one. */
-set_focus :: fn(ui: ptr[mut Ui], id: ID) {
+set_focus :: fn(ui : ptr[mut Ui], id : ID) {
     if ui.focus == id {
         return void
     }
@@ -871,7 +904,7 @@ set_focus :: fn(ui: ptr[mut Ui], id: ID) {
 }
 
 /** Move focus to the next focusable widget, or the one before with backwards, around the end. */
-tab :: fn(ui: ptr[mut Ui], backwards: bool) {
+tab :: fn(ui : ptr[mut Ui], backwards : bool) {
     order :: ui.focusables[0..<ui.focusables.count]
     if order.count == 0 {
         return void
@@ -882,8 +915,10 @@ tab :: fn(ui: ptr[mut Ui], backwards: bool) {
             at = i
         }
     }
-    next :: if at == order.count { (if backwards { order.count - 1 } else { cast[usize](0) }) }
-        else if backwards { (at + order.count - 1) % order.count } else { (at + 1) % order.count }
+    next :: if at == order.count {
+        (if backwards { order.count - 1 } else { cast[usize](0) })
+    }
+    else if backwards { (at + order.count - 1) % order.count } else { (at + 1) % order.count }
     if next < order.count {
         set_focus(ui, order[next])
     }
@@ -896,7 +931,7 @@ tab :: fn(ui: ptr[mut Ui], backwards: bool) {
  * @param ui The UI.
  * @return The frame's damage and whether widgets were dropped; its events are in events_of until the next begin.
  */
-end :: fn(ui: ptr[mut Ui]) -> Frame {
+end :: fn(ui : ptr[mut Ui]) -> Frame {
     if ui.input.released {
         ui.active = 0
     }
@@ -912,7 +947,18 @@ end :: fn(ui: ptr[mut Ui]) -> Frame {
             continue
         }
         before :: kept_of(ui, each.id)
-        keep(ui, Kept.{id = each.id, x = each.x, y = each.y, w = each.w, h = each.h, scroll = before.scroll, content_h = each.content_h})
+        keep(
+            ui,
+            Kept.{
+                id = each.id,
+                x = each.x,
+                y = each.y,
+                w = each.w,
+                h = each.h,
+                scroll = before.scroll,
+                content_h = each.content_h,
+            }
+        )
         if each.focusable {
             runtime.array_add(&ui.focusables, each.id)
         }
@@ -920,8 +966,18 @@ end :: fn(ui: ptr[mut Ui]) -> Frame {
         if each.clickable || each.focusable || each.scrolls {
             shown :: visible(ui, cast[u32](index))
             if shown.x1 > shown.x0 && shown.y1 > shown.y0 {
-                runtime.array_add(&ui.hits, Hit.{id = each.id, x0 = shown.x0, y0 = shown.y0, x1 = shown.x1, y1 = shown.y1,
-                    pressable = each.clickable || each.focusable, scrolls = each.scrolls})
+                runtime.array_add(
+                    &ui.hits,
+                    Hit.{
+                        id = each.id,
+                        x0 = shown.x0,
+                        y0 = shown.y0,
+                        x1 = shown.x1,
+                        y1 = shown.y1,
+                        pressable = each.clickable || each.focusable,
+                        scrolls = each.scrolls,
+                    }
+                )
             }
         }
     }
@@ -964,7 +1020,7 @@ Hit :: struct {
 }
 
 /** What of a node is shown: its rectangle inside every clipping box above it; empty when none of it is. */
-visible :: fn(ui: ptr[mut Ui], index: u32) -> Hit {
+visible :: fn(ui : ptr[mut Ui], index : u32) -> Hit {
     made :: node(ui, index)
     shown := Hit.{x0 = made.x, y0 = made.y, x1 = made.x + made.w, y1 = made.y + made.h}
     at := made.parent
@@ -985,17 +1041,17 @@ visible :: fn(ui: ptr[mut Ui], index: u32) -> Hit {
 }
 
 /** The frame's events, in order; valid until the next begin. */
-events_of :: fn(ui: ptr[Ui]) -> Event[] {
+events_of :: fn(ui : ptr[Ui]) -> Event[] {
     return ui.events[0..<ui.events.count]
 }
 
 /** An event's text, as a Copied's: valid until the next begin. */
-event_text :: fn(ui: ptr[Ui], event: Event) -> u8[] {
+event_text :: fn(ui : ptr[Ui], event : Event) -> u8[] {
     return text_of(ui.text[0..<ui.text.count], event.text_start, event.text_count)
 }
 
 /** Swap the frame's draw list and text into the last frame's, for the next comparison. */
-swap_lists :: fn(ui: ptr[mut Ui]) {
+swap_lists :: fn(ui : ptr[mut Ui]) {
     runtime.array_reset(&ui.last_commands)
     for command in ui.commands {
         runtime.array_add(&ui.last_commands, command)
@@ -1007,7 +1063,7 @@ swap_lists :: fn(ui: ptr[mut Ui]) {
 }
 
 /** The line height of a size of the proportional face. */
-line_height :: fn(ui: ptr[Ui], size: f32) -> f32 {
+line_height :: fn(ui : ptr[Ui], size : f32) -> f32 {
     font :: fonts.open(ui.sans) or_else fonts.Font.{}
     return if font.units_per_em == 0 { size * 1.4 } else { fonts.line_height(&font, size) }
 }

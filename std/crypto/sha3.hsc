@@ -16,7 +16,10 @@ import intrinsics from "base:intrinsics"
  * gives public ones, which keccak_squeeze_public declassifies, as sha3_256 and the others do.
  */
 
-/** Keccak-f[1600]'s state: 25 lanes of 64 bits, the first at x = 0, y = 0, then x first. Secret, as what's absorbed may be. */
+/**
+ * Keccak-f[1600]'s state: 25 lanes of 64 bits, the first at x = 0, y = 0, then x first. Secret, as what's absorbed may
+ * be.
+ */
 KeccakState :: distinct alias u64[25] #secret
 
 /** Five lanes: θ's column parities, or a row χ works on. Secret, as the state is. */
@@ -36,11 +39,13 @@ SHA3_DOMAIN : u8 : 0x06
 SHAKE_DOMAIN : u8 : 0x1f
 
 /** Keccak-f[1600]'s round constants, ι's. */
-KECCAK_ROUND_CONSTANTS :: u64.[0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
-    0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009, 0x000000000000008a,
-    0x0000000000000088, 0x0000000080008009, 0x000000008000000a, 0x000000008000808b, 0x800000000000008b,
-    0x8000000000008089, 0x8000000000008003, 0x8000000000008002, 0x8000000000000080, 0x000000000000800a,
-    0x800000008000000a, 0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
+KECCAK_ROUND_CONSTANTS :: u64.[
+    0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000, 0x000000000000808b,
+    0x0000000080000001, 0x8000000080008081, 0x8000000000008009, 0x000000000000008a, 0x0000000000000088,
+    0x0000000080008009, 0x000000008000000a, 0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
+    0x8000000000008003, 0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
+    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008
+]
 
 /** ρ's rotations, each in the order π visits the lanes. */
 KECCAK_ROTATIONS :: u32.[1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44]
@@ -53,10 +58,10 @@ KECCAK_PI :: usize.[10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 1
  * with, and whether it's squeezing.
  */
 Keccak :: struct {
-    state : KeccakState,
-    rate : usize,
-    at : usize,
-    domain : u8,
+    state     : KeccakState,
+    rate      : usize,
+    at        : usize,
+    domain    : u8,
     squeezing : bool,
 }
 
@@ -65,7 +70,7 @@ Keccak :: struct {
  *
  * @param a The state, permuted in place.
  */
-keccak_f1600 #constant_time :: fn(a: ptr[mut KeccakState]) {
+keccak_f1600 #constant_time :: fn(a : ptr[mut KeccakState]) {
     for round in 0..<24 {
         // θ: each column's parity into its neighbours
         c : KeccakRow
@@ -109,7 +114,7 @@ keccak_f1600 #constant_time :: fn(a: ptr[mut KeccakState]) {
  * @param domain The bits its padding starts with: SHA3_DOMAIN or SHAKE_DOMAIN.
  * @return The sponge, empty, absorbing.
  */
-keccak_start :: fn(rate: usize, domain: u8) -> Keccak {
+keccak_start :: fn(rate : usize, domain : u8) -> Keccak {
     return Keccak.{rate = rate, domain = domain}
 }
 
@@ -139,7 +144,7 @@ shake256_start :: fn() -> Keccak {
  * @param sponge The sponge; bytes after it's squeezed are ignored.
  * @param data The bytes, secret or not (as_secret makes public ones so).
  */
-keccak_absorb #constant_time :: fn(sponge: ptr[mut Keccak], data: SecretByte[]) {
+keccak_absorb #constant_time :: fn(sponge : ptr[mut Keccak], data : SecretByte[]) {
     if sponge.squeezing || sponge.rate == 0 || sponge.rate >= 200 {
         return void
     }
@@ -160,7 +165,7 @@ keccak_absorb #constant_time :: fn(sponge: ptr[mut Keccak], data: SecretByte[]) 
  * @param sponge The sponge; it absorbs nothing after.
  * @param output Where the bytes go, every byte of it.
  */
-keccak_squeeze #constant_time :: fn(sponge: ptr[mut Keccak], output: mut SecretByte[]) {
+keccak_squeeze #constant_time :: fn(sponge : ptr[mut Keccak], output : mut SecretByte[]) {
     if sponge.rate == 0 || sponge.rate >= 200 {
         return void
     }
@@ -190,7 +195,7 @@ keccak_squeeze #constant_time :: fn(sponge: ptr[mut Keccak], output: mut SecretB
  * @param sponge The sponge, whose bytes are public as everything it absorbed was.
  * @param output Where the bytes go, every byte of it.
  */
-keccak_squeeze_public #constant_time :: fn(sponge: ptr[mut Keccak], output: mut u8[]) {
+keccak_squeeze_public #constant_time :: fn(sponge : ptr[mut Keccak], output : mut u8[]) {
     for &byte in output {
         one : SecretByte[1]
         keccak_squeeze(sponge, one[0..<1])
@@ -204,7 +209,7 @@ keccak_squeeze_public #constant_time :: fn(sponge: ptr[mut Keccak], output: mut 
  * @param data The bytes.
  * @return The 32-byte digest.
  */
-sha3_256 :: fn(data: u8[]) -> u8[32] {
+sha3_256 :: fn(data : u8[]) -> u8[32] {
     sponge := sha3_256_start()
     keccak_absorb(&sponge, as_secret(data))
     digest : u8[32]
@@ -218,7 +223,7 @@ sha3_256 :: fn(data: u8[]) -> u8[32] {
  * @param data The bytes.
  * @return The 64-byte digest.
  */
-sha3_512 :: fn(data: u8[]) -> u8[64] {
+sha3_512 :: fn(data : u8[]) -> u8[64] {
     sponge := sha3_512_start()
     keccak_absorb(&sponge, as_secret(data))
     digest : u8[64]
@@ -232,7 +237,7 @@ sha3_512 :: fn(data: u8[]) -> u8[64] {
  * @param data The bytes.
  * @param output Where the output goes, as many bytes as it has.
  */
-shake128 :: fn(data: u8[], output: mut u8[]) {
+shake128 :: fn(data : u8[], output : mut u8[]) {
     sponge := shake128_start()
     keccak_absorb(&sponge, as_secret(data))
     keccak_squeeze_public(&sponge, output)
@@ -244,7 +249,7 @@ shake128 :: fn(data: u8[], output: mut u8[]) {
  * @param data The bytes.
  * @param output Where the output goes, as many bytes as it has.
  */
-shake256 :: fn(data: u8[], output: mut u8[]) {
+shake256 :: fn(data : u8[], output : mut u8[]) {
     sponge := shake256_start()
     keccak_absorb(&sponge, as_secret(data))
     keccak_squeeze_public(&sponge, output)

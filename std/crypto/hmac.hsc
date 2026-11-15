@@ -17,9 +17,9 @@ package crypto
  */
 HmacSha256 :: struct {
     /** The inner hash, started with the key XOR ipad (0x36), which the message goes into. */
-    inner: Sha256,
+    inner : Sha256,
     /** The outer hash, started with the key XOR opad (0x5c), which the inner hash's digest goes into. */
-    outer: Sha256,
+    outer : Sha256,
 }
 
 /**
@@ -28,9 +28,9 @@ HmacSha256 :: struct {
  */
 HmacSha512 :: struct {
     /** The inner hash, started with the key XOR ipad (0x36), which the message goes into. */
-    inner: Sha512,
+    inner : Sha512,
     /** The outer hash, started with the key XOR opad (0x5c), which the inner hash's digest goes into. */
-    outer: Sha512,
+    outer : Sha512,
 }
 
 /** A key padded with zeros to SHA-256's 64-byte block, hashed first if it's longer, as HMAC uses it. */
@@ -45,7 +45,7 @@ HmacSha512Block :: distinct alias u8[128] #secret
  *     with zeros, as RFC 2104 says. RFC 2104 recommends at least 32 bytes. Not kept: only what's derived from it is.
  * @return The computation, ready for the message; its state is secret.
  */
-hmac_sha256_start #constant_time :: fn(key: SecretByte[]) -> HmacSha256 {
+hmac_sha256_start #constant_time :: fn(key : SecretByte[]) -> HmacSha256 {
     padded : HmacSha256Block
     if key.count > SHA256_BLOCK {
         hashed := sha256_start()
@@ -78,7 +78,7 @@ hmac_sha256_start #constant_time :: fn(key: SecretByte[]) -> HmacSha256 {
  * @param hmac The computation, not yet finished.
  * @param message The next part of the message, of any length, empty included; it's hashed, not kept.
  */
-hmac_sha256_update :: fn(hmac: ptr[mut HmacSha256], message: u8[]) {
+hmac_sha256_update :: fn(hmac : ptr[mut HmacSha256], message : u8[]) {
     sha256_update(&hmac.inner, message)
 }
 
@@ -88,7 +88,7 @@ hmac_sha256_update :: fn(hmac: ptr[mut HmacSha256], message: u8[]) {
  * @param hmac The computation, not yet finished.
  * @param message The next part of the message, of any length; its count isn't secret, its bytes are.
  */
-hmac_sha256_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha256], message: SecretByte[]) {
+hmac_sha256_update_secret #constant_time :: fn(hmac : ptr[mut HmacSha256], message : SecretByte[]) {
     sha256_update_secret(&hmac.inner, message)
 }
 
@@ -99,7 +99,7 @@ hmac_sha256_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha256], messag
  *     wiped.
  * @return The 32-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-hmac_sha256_finish #constant_time :: fn(hmac: ptr[mut HmacSha256]) -> SecretByte[32] {
+hmac_sha256_finish #constant_time :: fn(hmac : ptr[mut HmacSha256]) -> SecretByte[32] {
     inner := sha256_finish_secret(&hmac.inner)
     sha256_update_secret(&hmac.outer, inner)
     return sha256_finish_secret(&hmac.outer)
@@ -112,7 +112,7 @@ hmac_sha256_finish #constant_time :: fn(hmac: ptr[mut HmacSha256]) -> SecretByte
  * @param message The message, of any length.
  * @return The 32-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-hmac_sha256 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte[32] {
+hmac_sha256 #constant_time :: fn(key : SecretByte[], message : u8[]) -> SecretByte[32] {
     hmac := hmac_sha256_start(key)
     hmac_sha256_update(&hmac, message)
     return hmac_sha256_finish(&hmac)
@@ -126,7 +126,7 @@ hmac_sha256 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte
  *     it is.
  * @return The computation, ready for the message; its state is secret.
  */
-hmac_sha512_start #constant_time :: fn(key: SecretByte[]) -> HmacSha512 {
+hmac_sha512_start #constant_time :: fn(key : SecretByte[]) -> HmacSha512 {
     padded : HmacSha512Block
     if key.count > SHA512_BLOCK {
         hashed := sha512_start()
@@ -159,7 +159,7 @@ hmac_sha512_start #constant_time :: fn(key: SecretByte[]) -> HmacSha512 {
  * @param hmac The computation, not yet finished.
  * @param message The next part of the message, of any length, empty included; it's hashed, not kept.
  */
-hmac_sha512_update :: fn(hmac: ptr[mut HmacSha512], message: u8[]) {
+hmac_sha512_update :: fn(hmac : ptr[mut HmacSha512], message : u8[]) {
     sha512_update(&hmac.inner, message)
 }
 
@@ -169,7 +169,7 @@ hmac_sha512_update :: fn(hmac: ptr[mut HmacSha512], message: u8[]) {
  * @param hmac The computation, not yet finished.
  * @param message The next part of the message, of any length; its count isn't secret, its bytes are.
  */
-hmac_sha512_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha512], message: SecretByte[]) {
+hmac_sha512_update_secret #constant_time :: fn(hmac : ptr[mut HmacSha512], message : SecretByte[]) {
     sha512_update_secret(&hmac.inner, message)
 }
 
@@ -180,7 +180,7 @@ hmac_sha512_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha512], messag
  *     wiped.
  * @return The 64-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-hmac_sha512_finish #constant_time :: fn(hmac: ptr[mut HmacSha512]) -> SecretByte[64] {
+hmac_sha512_finish #constant_time :: fn(hmac : ptr[mut HmacSha512]) -> SecretByte[64] {
     inner := sha512_finish_secret(&hmac.inner)
     sha512_update_secret(&hmac.outer, inner)
     return sha512_finish_secret(&hmac.outer)
@@ -194,7 +194,7 @@ hmac_sha512_finish #constant_time :: fn(hmac: ptr[mut HmacSha512]) -> SecretByte
  * @param message The message, of any length.
  * @return The 64-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-hmac_sha512 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte[64] {
+hmac_sha512 #constant_time :: fn(key : SecretByte[], message : u8[]) -> SecretByte[64] {
     hmac := hmac_sha512_start(key)
     hmac_sha512_update(&hmac, message)
     return hmac_sha512_finish(&hmac)
@@ -208,7 +208,7 @@ hmac_sha512 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte
  * @param input The input keying material, like a shared secret from a key agreement.
  * @return The 32-byte pseudorandom key, secret, for hkdf_sha256_expand.
  */
-hkdf_sha256_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[32] {
+hkdf_sha256_extract #constant_time :: fn(salt : u8[], input : SecretByte[]) -> SecretByte[32] {
     hmac := hmac_sha256_start(as_secret(salt))
     hmac_sha256_update_secret(&hmac, input)
     return hmac_sha256_finish(&hmac)
@@ -224,7 +224,7 @@ hkdf_sha256_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> Sec
  * @param output Where the keys go, filled entirely: up to 255 * 32 = 8160 bytes.
  * @return True once output is filled; false, with nothing written, when output is longer than 8160 bytes.
  */
-hkdf_sha256_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[], output: mut SecretByte[]) -> bool {
+hkdf_sha256_expand #constant_time :: fn(pseudo_random : SecretByte[], info : u8[], output : mut SecretByte[]) -> bool {
     if output.count > 255 * SHA256_SIZE {
         return false
     }
@@ -259,7 +259,7 @@ hkdf_sha256_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[],
  * @param input The input keying material, like a shared secret from a key agreement.
  * @return The 64-byte pseudorandom key, secret, for hkdf_sha512_expand.
  */
-hkdf_sha512_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[64] {
+hkdf_sha512_extract #constant_time :: fn(salt : u8[], input : SecretByte[]) -> SecretByte[64] {
     hmac := hmac_sha512_start(as_secret(salt))
     hmac_sha512_update_secret(&hmac, input)
     return hmac_sha512_finish(&hmac)
@@ -275,7 +275,7 @@ hkdf_sha512_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> Sec
  * @param output Where the keys go, filled entirely: up to 255 * 64 = 16320 bytes.
  * @return True once output is filled; false, with nothing written, when output is longer than 16320 bytes.
  */
-hkdf_sha512_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[], output: mut SecretByte[]) -> bool {
+hkdf_sha512_expand #constant_time :: fn(pseudo_random : SecretByte[], info : u8[], output : mut SecretByte[]) -> bool {
     if output.count > 255 * SHA512_SIZE {
         return false
     }
@@ -308,9 +308,9 @@ hkdf_sha512_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[],
  */
 HmacSha384 :: struct {
     /** The inner hash, started with the key XOR ipad (0x36), which the message goes into. */
-    inner: Sha384,
+    inner : Sha384,
     /** The outer hash, started with the key XOR opad (0x5c), which the inner hash's digest goes into. */
-    outer: Sha384,
+    outer : Sha384,
 }
 
 /**
@@ -321,7 +321,7 @@ HmacSha384 :: struct {
  *     it is.
  * @return The computation, ready for the message; its state is secret.
  */
-hmac_sha384_start #constant_time :: fn(key: SecretByte[]) -> HmacSha384 {
+hmac_sha384_start #constant_time :: fn(key : SecretByte[]) -> HmacSha384 {
     padded : HmacSha512Block
     if key.count > SHA384_BLOCK {
         hashed := sha384_start()
@@ -354,7 +354,7 @@ hmac_sha384_start #constant_time :: fn(key: SecretByte[]) -> HmacSha384 {
  * @param hmac The computation, not yet finished.
  * @param message The next part of the message, of any length, empty included; it's hashed, not kept.
  */
-hmac_sha384_update :: fn(hmac: ptr[mut HmacSha384], message: u8[]) {
+hmac_sha384_update :: fn(hmac : ptr[mut HmacSha384], message : u8[]) {
     sha384_update(&hmac.inner, message)
 }
 
@@ -364,7 +364,7 @@ hmac_sha384_update :: fn(hmac: ptr[mut HmacSha384], message: u8[]) {
  * @param hmac The computation, not yet finished.
  * @param message The next part of the message, of any length; its count isn't secret, its bytes are.
  */
-hmac_sha384_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha384], message: SecretByte[]) {
+hmac_sha384_update_secret #constant_time :: fn(hmac : ptr[mut HmacSha384], message : SecretByte[]) {
     sha384_update_secret(&hmac.inner, message)
 }
 
@@ -375,7 +375,7 @@ hmac_sha384_update_secret #constant_time :: fn(hmac: ptr[mut HmacSha384], messag
  *     wiped.
  * @return The 48-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-hmac_sha384_finish #constant_time :: fn(hmac: ptr[mut HmacSha384]) -> SecretByte[48] {
+hmac_sha384_finish #constant_time :: fn(hmac : ptr[mut HmacSha384]) -> SecretByte[48] {
     inner := sha384_finish_secret(&hmac.inner)
     sha384_update_secret(&hmac.outer, inner)
     return sha384_finish_secret(&hmac.outer)
@@ -389,7 +389,7 @@ hmac_sha384_finish #constant_time :: fn(hmac: ptr[mut HmacSha384]) -> SecretByte
  * @param message The message, of any length.
  * @return The 48-byte tag, a secret until it's compared with crypto.equal or sent.
  */
-hmac_sha384 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte[48] {
+hmac_sha384 #constant_time :: fn(key : SecretByte[], message : u8[]) -> SecretByte[48] {
     hmac := hmac_sha384_start(key)
     hmac_sha384_update(&hmac, message)
     return hmac_sha384_finish(&hmac)
@@ -403,7 +403,7 @@ hmac_sha384 #constant_time :: fn(key: SecretByte[], message: u8[]) -> SecretByte
  * @param input The input keying material, like a shared secret from a key agreement.
  * @return The 48-byte pseudorandom key, secret, for hkdf_sha384_expand.
  */
-hkdf_sha384_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> SecretByte[48] {
+hkdf_sha384_extract #constant_time :: fn(salt : u8[], input : SecretByte[]) -> SecretByte[48] {
     hmac := hmac_sha384_start(as_secret(salt))
     hmac_sha384_update_secret(&hmac, input)
     return hmac_sha384_finish(&hmac)
@@ -419,7 +419,7 @@ hkdf_sha384_extract #constant_time :: fn(salt: u8[], input: SecretByte[]) -> Sec
  * @param output Where the keys go, filled entirely: up to 255 * 48 = 12240 bytes.
  * @return True once output is filled; false, with nothing written, when output is longer than 12240 bytes.
  */
-hkdf_sha384_expand #constant_time :: fn(pseudo_random: SecretByte[], info: u8[], output: mut SecretByte[]) -> bool {
+hkdf_sha384_expand #constant_time :: fn(pseudo_random : SecretByte[], info : u8[], output : mut SecretByte[]) -> bool {
     if output.count > 255 * SHA384_SIZE {
         return false
     }

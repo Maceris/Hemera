@@ -44,11 +44,11 @@ P256Element :: distinct alias u64[4] #secret
 /** A point in projective coordinates, (X : Y : Z), the affine point (X / Z, Y / Z); the identity is (0 : 1 : 0). */
 P256Point :: struct {
     /** X, in Montgomery form modulo p. */
-    x: P256Element,
+    x : P256Element,
     /** Y, in Montgomery form modulo p. */
-    y: P256Element,
+    y : P256Element,
     /** Z, in Montgomery form modulo p; 0 only for the identity. */
-    z: P256Element,
+    z : P256Element,
 }
 
 /** The field's prime, p = 2^256 - 2^224 + 2^192 + 2^96 - 1, as limbs. */
@@ -72,14 +72,20 @@ P256_GX :: u64.[0x79e730d418a9143c, 0x75ba95fc5fedb601, 0x79fb732b77622510, 0x18
 /** The base point's y, in Montgomery form. */
 P256_GY :: u64.[0xddf25357ce95560a, 0x8b4ab8e4ba19e45c, 0xd2e88688dd21f325, 0x8571ff1825885d85]
 /** p - 2, big-endian: a number raised to it is its inverse modulo p. */
-P256_P_MINUS_2 :: u8.[0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd]
+P256_P_MINUS_2 :: u8.[
+    0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd
+]
 /** (p + 1) / 4, big-endian: a square raised to it is a square root, as p is 3 mod 4. */
-P256_P_SQRT :: u8.[0x3f, 0xff, 0xff, 0xff, 0xc0, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+P256_P_SQRT :: u8.[
+    0x3f, 0xff, 0xff, 0xff, 0xc0, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+]
 /** n - 2, big-endian: a number raised to it is its inverse modulo n. */
-P256_N_MINUS_2 :: u8.[0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63, 0x25, 0x4f]
+P256_N_MINUS_2 :: u8.[
+    0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xbc, 0xe6, 0xfa,
+    0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63, 0x25, 0x4f
+]
 
 /**
  * Make an element from public limbs, like a constant.
@@ -87,7 +93,7 @@ P256_N_MINUS_2 :: u8.[0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff
  * @param limbs The four limbs, least significant first.
  * @return The element, secret.
  */
-p256_of #constant_time :: fn(limbs: u64[4]) -> P256Element {
+p256_of #constant_time :: fn(limbs : u64[4]) -> P256Element {
     e : P256Element
     for i in 0..<4 {
         e[i] = limbs[i]
@@ -104,7 +110,7 @@ p256_of #constant_time :: fn(limbs: u64[4]) -> P256Element {
  * @param otherwise The number chosen when it's false.
  * @return The number chosen.
  */
-p256_select #constant_time :: fn(condition: SecretBool, chosen: P256Element, otherwise: P256Element) -> P256Element {
+p256_select #constant_time :: fn(condition : SecretBool, chosen : P256Element, otherwise : P256Element) -> P256Element {
     e : P256Element
     for i in 0..<4 {
         e[i] = intrinsics.select(cast[bool](condition), chosen[i], otherwise[i])
@@ -121,7 +127,7 @@ p256_select #constant_time :: fn(condition: SecretBool, chosen: P256Element, oth
  * @param modulus p or n.
  * @return The number reduced, below the modulus.
  */
-p256_reduce_once #constant_time :: fn(value: P256Element, carry: SecretWord, modulus: u64[4]) -> P256Element {
+p256_reduce_once #constant_time :: fn(value : P256Element, carry : SecretWord, modulus : u64[4]) -> P256Element {
     difference : P256Element
     borrow := compiler.secret(cast[u64](0))
     for i in 0..<4 {
@@ -142,7 +148,7 @@ p256_reduce_once #constant_time :: fn(value: P256Element, carry: SecretWord, mod
  * @param modulus p or n.
  * @return a + b, below the modulus.
  */
-p256_add #constant_time :: fn(a: P256Element, b: P256Element, modulus: u64[4]) -> P256Element {
+p256_add #constant_time :: fn(a : P256Element, b : P256Element, modulus : u64[4]) -> P256Element {
     sum : P256Element
     carry := compiler.secret(cast[u64](0))
     for i in 0..<4 {
@@ -161,7 +167,7 @@ p256_add #constant_time :: fn(a: P256Element, b: P256Element, modulus: u64[4]) -
  * @param modulus p or n.
  * @return a - b, below the modulus: the modulus is added back when the subtraction borrows.
  */
-p256_subtract #constant_time :: fn(a: P256Element, b: P256Element, modulus: u64[4]) -> P256Element {
+p256_subtract #constant_time :: fn(a : P256Element, b : P256Element, modulus : u64[4]) -> P256Element {
     difference : P256Element
     borrow := compiler.secret(cast[u64](0))
     for i in 0..<4 {
@@ -190,7 +196,7 @@ p256_subtract #constant_time :: fn(a: P256Element, b: P256Element, modulus: u64[
  * @return a * b / 2^256 modulo the modulus, below it: the product of the two numbers a and b stand for, in
  *     Montgomery form.
  */
-p256_multiply #constant_time :: fn(a: P256Element, b: P256Element, modulus: u64[4], inverse: u64) -> P256Element {
+p256_multiply #constant_time :: fn(a : P256Element, b : P256Element, modulus : u64[4], inverse : u64) -> P256Element {
     t := compiler.secret(u64.[0, 0, 0, 0, 0, 0])
     for i in 0..<4 {
         carry := compiler.secret(cast[u64](0))
@@ -229,7 +235,7 @@ p256_multiply #constant_time :: fn(a: P256Element, b: P256Element, modulus: u64[
  * @param b The other, below p.
  * @return Their product, in Montgomery form, below p.
  */
-p256_field_multiply #constant_time :: fn(a: P256Element, b: P256Element) -> P256Element {
+p256_field_multiply #constant_time :: fn(a : P256Element, b : P256Element) -> P256Element {
     return p256_multiply(a, b, P256_P, P256_P_INVERSE)
 }
 
@@ -246,7 +252,13 @@ p256_field_multiply #constant_time :: fn(a: P256Element, b: P256Element) -> P256
  * @param inverse -1 / modulus modulo 2^64.
  * @return a raised to the power, in Montgomery form.
  */
-p256_power #constant_time :: fn(a: P256Element, exponent: u8[32], one: P256Element, modulus: u64[4], inverse: u64) -> P256Element {
+p256_power #constant_time :: fn(
+    a : P256Element,
+    exponent : u8[32],
+    one : P256Element,
+    modulus : u64[4],
+    inverse : u64
+) -> P256Element {
     result := one
     for byte in exponent {
         for bit in 0..<8 {
@@ -265,7 +277,7 @@ p256_power #constant_time :: fn(a: P256Element, exponent: u8[32], one: P256Eleme
  * @param bytes The bytes.
  * @return The number, any from 0 to 2^256 - 1, as limbs; not in Montgomery form.
  */
-p256_limbs #constant_time :: fn(bytes: SecretByte[32]) -> P256Element {
+p256_limbs #constant_time :: fn(bytes : SecretByte[32]) -> P256Element {
     e : P256Element
     for i in 0..<4 {
         word := compiler.secret(cast[u64](0))
@@ -283,7 +295,7 @@ p256_limbs #constant_time :: fn(bytes: SecretByte[32]) -> P256Element {
  * @param e The number, not in Montgomery form.
  * @return Its 32 bytes, secret.
  */
-p256_bytes #constant_time :: fn(e: P256Element) -> SecretByte[32] {
+p256_bytes #constant_time :: fn(e : P256Element) -> SecretByte[32] {
     bytes : SecretByte[32]
     for i in 0..<4 {
         for j in 0..<8 {
@@ -300,7 +312,7 @@ p256_bytes #constant_time :: fn(e: P256Element) -> SecretByte[32] {
  * @param modulus p or n.
  * @return All ones if e is below the modulus, all zeros if not.
  */
-p256_below #constant_time :: fn(e: P256Element, modulus: u64[4]) -> SecretWord {
+p256_below #constant_time :: fn(e : P256Element, modulus : u64[4]) -> SecretWord {
     borrow := compiler.secret(cast[u64](0))
     for i in 0..<4 {
         wide := cast[u128](e[i]) - cast[u128](modulus[i]) - cast[u128](borrow)
@@ -315,7 +327,7 @@ p256_below #constant_time :: fn(e: P256Element, modulus: u64[4]) -> SecretWord {
  * @param e The number, as limbs, in Montgomery form or not.
  * @return All ones if every limb is 0, all zeros if not.
  */
-p256_zero #constant_time :: fn(e: P256Element) -> SecretWord {
+p256_zero #constant_time :: fn(e : P256Element) -> SecretWord {
     bits := e[0] | e[1] | e[2] | e[3]
     // The top bit of bits - 1 is set, without bits' own, only for 0
     nonzero := ((bits | (cast[u64](0) - bits)) >> 63) & 1
@@ -331,7 +343,7 @@ p256_zero #constant_time :: fn(e: P256Element) -> SecretWord {
  * @param inverse -1 / modulus modulo 2^64.
  * @return e * 2^256 mod the modulus.
  */
-p256_to_montgomery #constant_time :: fn(e: P256Element, r2: u64[4], modulus: u64[4], inverse: u64) -> P256Element {
+p256_to_montgomery #constant_time :: fn(e : P256Element, r2 : u64[4], modulus : u64[4], inverse : u64) -> P256Element {
     return p256_multiply(e, p256_of(r2), modulus, inverse)
 }
 
@@ -343,7 +355,7 @@ p256_to_montgomery #constant_time :: fn(e: P256Element, r2: u64[4], modulus: u64
  * @param inverse -1 / modulus modulo 2^64.
  * @return e / 2^256 mod the modulus, as limbs.
  */
-p256_from_montgomery #constant_time :: fn(e: P256Element, modulus: u64[4], inverse: u64) -> P256Element {
+p256_from_montgomery #constant_time :: fn(e : P256Element, modulus : u64[4], inverse : u64) -> P256Element {
     return p256_multiply(e, p256_of(u64.[1, 0, 0, 0]), modulus, inverse)
 }
 
@@ -373,7 +385,7 @@ p256_base #constant_time :: fn() -> P256Point {
  * @param q The other; the sum doesn't depend on which is which.
  * @return p + q.
  */
-p256_point_add #constant_time :: fn(p: P256Point, q: P256Point) -> P256Point {
+p256_point_add #constant_time :: fn(p : P256Point, q : P256Point) -> P256Point {
     b := p256_of(P256_B)
     t0 := p256_field_multiply(p.x, q.x)
     t1 := p256_field_multiply(p.y, q.y)
@@ -427,7 +439,7 @@ p256_point_add #constant_time :: fn(p: P256Point, q: P256Point) -> P256Point {
  * @param p The point, the identity included.
  * @return 2p.
  */
-p256_point_double #constant_time :: fn(p: P256Point) -> P256Point {
+p256_point_double #constant_time :: fn(p : P256Point) -> P256Point {
     b := p256_of(P256_B)
     t0 := p256_field_multiply(p.x, p.x)
     t1 := p256_field_multiply(p.y, p.y)
@@ -475,7 +487,7 @@ P256Table :: distinct alias P256Point[16]
  * @param p The point.
  * @return The table: entry i is i * p, entry 0 the identity.
  */
-p256_table :: fn(p: P256Point) -> P256Table {
+p256_table :: fn(p : P256Point) -> P256Table {
     table : P256Table
     table[0] = p256_identity()
     table[1] = p
@@ -498,7 +510,7 @@ p256_table :: fn(p: P256Point) -> P256Table {
  * @param digit Which multiple, 0 to 15; secret.
  * @return digit * the table's point.
  */
-p256_table_select #constant_time :: fn(table: ptr[P256Table], digit: SecretWord) -> P256Point {
+p256_table_select #constant_time :: fn(table : ptr[P256Table], digit : SecretWord) -> P256Point {
     d := cast[u64](digit)
     chosen := p256_identity()
     for i in cast[u64](0)..<16 {
@@ -519,7 +531,7 @@ p256_table_select #constant_time :: fn(table: ptr[P256Table], digit: SecretWord)
  * @param scalar The scalar, 32 big-endian bytes, any value; secret.
  * @return scalar * p.
  */
-p256_multiply_point #constant_time :: fn(p: P256Point, scalar: SecretByte[32]) -> P256Point {
+p256_multiply_point #constant_time :: fn(p : P256Point, scalar : SecretByte[32]) -> P256Point {
     table := p256_table(p)
     result := p256_identity()
     for i in 0..<64 {
@@ -541,7 +553,7 @@ p256_multiply_point #constant_time :: fn(p: P256Point, scalar: SecretByte[32]) -
  * @param y Where y goes, the same way; 0 for the identity.
  * @return All ones if the point is the identity, which has no affine coordinates, all zeros if not.
  */
-p256_affine #constant_time :: fn(p: P256Point, x: ptr[mut P256Element], y: ptr[mut P256Element]) -> SecretWord {
+p256_affine #constant_time :: fn(p : P256Point, x : ptr[mut P256Element], y : ptr[mut P256Element]) -> SecretWord {
     inverse := p256_power(p.z, P256_P_MINUS_2, p256_of(P256_ONE_P), P256_P, P256_P_INVERSE)
     x^ = p256_from_montgomery(p256_field_multiply(p.x, inverse), P256_P, P256_P_INVERSE)
     y^ = p256_from_montgomery(p256_field_multiply(p.y, inverse), P256_P, P256_P_INVERSE)
@@ -554,7 +566,7 @@ p256_affine #constant_time :: fn(p: P256Point, x: ptr[mut P256Element], y: ptr[m
  * @param x x, in Montgomery form, below p.
  * @return x^3 - 3x + b, in Montgomery form.
  */
-p256_curve_side #constant_time :: fn(x: P256Element) -> P256Element {
+p256_curve_side #constant_time :: fn(x : P256Element) -> P256Element {
     x3 := p256_field_multiply(p256_field_multiply(x, x), x)
     three_x := p256_add(p256_add(x, x, P256_P), x, P256_P)
     return p256_add(p256_subtract(x3, three_x, P256_P), p256_of(P256_B), P256_P)
@@ -569,8 +581,9 @@ p256_curve_side #constant_time :: fn(x: P256Element) -> P256Element {
  * @return Whether it's a point on the curve: false for another count or first byte, a coordinate not below p, a
  *     point off the curve, a compressed x with no point, or the identity's encoding, 0x00.
  */
-p256_decode_point :: fn(encoded: u8[], point: ptr[mut P256Point]) -> bool {
-    if (encoded.count != 65 || encoded[0] != 0x04) && (encoded.count != 33 || (encoded[0] != 0x02 && encoded[0] != 0x03)) {
+p256_decode_point :: fn(encoded : u8[], point : ptr[mut P256Point]) -> bool {
+    if (encoded.count != 65 || encoded[0] != 0x04)
+        && (encoded.count != 33 || (encoded[0] != 0x02 && encoded[0] != 0x03)) {
         return false
     }
     x_bytes : SecretByte[32]
@@ -601,7 +614,9 @@ p256_decode_point :: fn(encoded: u8[], point: ptr[mut P256Point]) -> bool {
     }
     else {
         y = p256_power(side, P256_P_SQRT, p256_of(P256_ONE_P), P256_P, P256_P_INVERSE)
-        if !compiler.declassify(cast[u64](p256_zero(p256_subtract(p256_field_multiply(y, y), side, P256_P))) == ~cast[u64](0)) {
+        if !compiler.declassify(
+            cast[u64](p256_zero(p256_subtract(p256_field_multiply(y, y), side, P256_P))) == ~cast[u64](0)
+        ) {
             return false
         }
         // The root whose parity the first byte says
@@ -621,7 +636,7 @@ p256_decode_point :: fn(encoded: u8[], point: ptr[mut P256Point]) -> bool {
  * @param scalar Where the scalar goes, as limbs, not in Montgomery form.
  * @return Whether the key is from 1 to n - 1; this answer is declassified, as a key outside is refused.
  */
-p256_secret_scalar #constant_time :: fn(secret_key: ptr[P256SecretKey], scalar: ptr[mut P256Element]) -> bool {
+p256_secret_scalar #constant_time :: fn(secret_key : ptr[P256SecretKey], scalar : ptr[mut P256Element]) -> bool {
     bytes : SecretByte[32]
     for i in 0..<32 {
         bytes[i] = cast[SecretByte](secret_key[i])
@@ -638,7 +653,7 @@ p256_secret_scalar #constant_time :: fn(secret_key: ptr[P256SecretKey], scalar: 
  * @param y y, the same way.
  * @return 0x04, then x and y, 32 big-endian bytes each.
  */
-p256_encode #constant_time :: fn(x: P256Element, y: P256Element) -> P256PublicKey {
+p256_encode #constant_time :: fn(x : P256Element, y : P256Element) -> P256PublicKey {
     encoded : P256PublicKey
     encoded[0] = 0x04
     x_bytes := p256_bytes(x)
@@ -660,7 +675,7 @@ p256_encode #constant_time :: fn(x: P256Element, y: P256Element) -> P256PublicKe
  * @param public_key Where the public key goes, SEC 1's uncompressed point; left alone if the key is refused.
  * @return Whether the secret key is from 1 to n - 1, and so the public key written.
  */
-p256_public_key #constant_time :: fn(secret_key: ptr[P256SecretKey], public_key: ptr[mut P256PublicKey]) -> bool {
+p256_public_key #constant_time :: fn(secret_key : ptr[P256SecretKey], public_key : ptr[mut P256PublicKey]) -> bool {
     scalar : P256Element
     if !p256_secret_scalar(secret_key, &scalar) {
         return false
@@ -685,7 +700,11 @@ p256_public_key #constant_time :: fn(secret_key: ptr[P256SecretKey], public_key:
  * @return Whether both keys were good and the secret was written: false, with nothing written, for a secret key not
  *     from 1 to n - 1, or a public key that isn't a point on the curve.
  */
-p256_ecdh #constant_time :: fn(secret_key: ptr[P256SecretKey], public_key: u8[], shared: ptr[mut SecretByte[32]]) -> bool {
+p256_ecdh #constant_time :: fn(
+    secret_key : ptr[P256SecretKey],
+    public_key : u8[],
+    shared : ptr[mut SecretByte[32]]
+) -> bool {
     point : P256Point
     if !p256_decode_point(public_key, &point) {
         return false
@@ -712,7 +731,7 @@ p256_ecdh #constant_time :: fn(secret_key: ptr[P256SecretKey], public_key: u8[],
  *     a smaller number.
  * @return z, as limbs, below n.
  */
-p256_digest_scalar #constant_time :: fn(digest: SecretByte[]) -> P256Element {
+p256_digest_scalar #constant_time :: fn(digest : SecretByte[]) -> P256Element {
     bytes : SecretByte[32]
     if digest.count >= 32 {
         for i in 0..<32 {
@@ -737,7 +756,12 @@ p256_digest_scalar #constant_time :: fn(digest: SecretByte[]) -> P256Element {
  * @param attempt Which candidate to give, from 0: each is RFC 6979's next, used when the one before was refused.
  * @return The nonce, k, as 32 big-endian bytes; the caller checks it's from 1 to n - 1.
  */
-p256_rfc6979_nonce #constant_time :: fn(key: P256Element, z: P256Element, random: SecretByte[], attempt: usize) -> SecretByte[32] {
+p256_rfc6979_nonce #constant_time :: fn(
+    key : P256Element,
+    z : P256Element,
+    random : SecretByte[],
+    attempt : usize
+) -> SecretByte[32] {
     x := p256_bytes(key)
     h := p256_bytes(z)
     v : SecretByte[32]
@@ -785,7 +809,11 @@ p256_rfc6979_nonce #constant_time :: fn(key: P256Element, z: P256Element, random
  *     RFC 6979's nonce alone, which gives the same signature each time.
  * @return The signature, (r, s), public; or null when the secret key isn't from 1 to n - 1.
  */
-p256_ecdsa_sign #constant_time :: fn(secret_key: ptr[P256SecretKey], digest: u8[], random: SecretByte[]) -> P256Signature? {
+p256_ecdsa_sign #constant_time :: fn(
+    secret_key : ptr[P256SecretKey],
+    digest : u8[],
+    random : SecretByte[]
+) -> P256Signature? {
     d : P256Element
     if !p256_secret_scalar(secret_key, &d) {
         return null
@@ -834,7 +862,7 @@ p256_ecdsa_sign #constant_time :: fn(secret_key: ptr[P256SecretKey], digest: u8[
  * @param scalar Where it goes, in Montgomery form modulo n.
  * @return Whether it's from 1 to n - 1.
  */
-p256_signature_scalar #constant_time :: fn(bytes: u8[], scalar: ptr[mut P256Element]) -> bool {
+p256_signature_scalar #constant_time :: fn(bytes : u8[], scalar : ptr[mut P256Element]) -> bool {
     secret : SecretByte[32]
     for i in cast[usize](0)..<32 {
         if i < bytes.count {
@@ -858,7 +886,7 @@ p256_signature_scalar #constant_time :: fn(bytes: u8[], scalar: ptr[mut P256Elem
  * @param result The sum so far, which the multiple is added to.
  * @param digit The digit, 0 to 15, public.
  */
-p256_add_public_digit :: fn(table: ptr[P256Table], result: ptr[mut P256Point], digit: usize) {
+p256_add_public_digit :: fn(table : ptr[P256Table], result : ptr[mut P256Point], digit : usize) {
     if digit != 0 {
         result^ = p256_point_add(result^, table[digit % 16])
     }
@@ -876,7 +904,7 @@ p256_add_public_digit :: fn(table: ptr[P256Table], result: ptr[mut P256Point], d
  * @return Whether it's a signature by that key on that digest: false too for a public key that isn't a point on the
  *     curve, or an r or s that isn't from 1 to n - 1.
  */
-p256_ecdsa_verify :: fn(public_key: u8[], digest: u8[], signature: ptr[P256Signature]) -> bool {
+p256_ecdsa_verify :: fn(public_key : u8[], digest : u8[], signature : ptr[P256Signature]) -> bool {
     q : P256Point
     if !p256_decode_point(public_key, &q) {
         return false

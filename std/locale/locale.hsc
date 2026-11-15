@@ -60,16 +60,37 @@ Locale :: struct {
 }
 
 /** No locale's own ways: ISO 8601's dates, a point and no groups, and a 24-hour clock. */
-NEUTRAL :: Locale.{name = "", decimal = ".", grouping = "", date_order = .YearMonthDay, date_separator = "-", hours_24 = true,
-    first_day = .Monday}
+NEUTRAL :: Locale.{
+    name = "",
+    decimal = ".",
+    grouping = "",
+    date_order = .YearMonthDay,
+    date_separator = "-",
+    hours_24 = true,
+    first_day = .Monday,
+}
 
 /** English as written in the United States: 1,234.5, 12/31/2026, 2:05 pm, weeks from Sunday. */
-EN_US :: Locale.{name = "en-US", decimal = ".", grouping = ",", date_order = .MonthDayYear, date_separator = "/", hours_24 = false,
-    first_day = .Sunday}
+EN_US :: Locale.{
+    name = "en-US",
+    decimal = ".",
+    grouping = ",",
+    date_order = .MonthDayYear,
+    date_separator = "/",
+    hours_24 = false,
+    first_day = .Sunday,
+}
 
 /** English as written in the United Kingdom: 1,234.5, 31/12/2026, 14:05, weeks from Monday. */
-EN_GB :: Locale.{name = "en-GB", decimal = ".", grouping = ",", date_order = .DayMonthYear, date_separator = "/", hours_24 = true,
-    first_day = .Monday}
+EN_GB :: Locale.{
+    name = "en-GB",
+    decimal = ".",
+    grouping = ",",
+    date_order = .DayMonthYear,
+    date_separator = "/",
+    hours_24 = true,
+    first_day = .Monday,
+}
 
 /** Every locale there is, which find looks names up in. NEUTRAL isn't among them. */
 LOCALES :: Locale.[EN_US, EN_GB]
@@ -80,7 +101,7 @@ LOCALES :: Locale.[EN_US, EN_GB]
  * @param name The name, like "en-GB", matched exactly: case and the hyphen matter.
  * @return A copy of the locale; null if none in LOCALES has that name, "" included.
  */
-find :: fn(name: string) -> Locale? {
+find :: fn(name : string) -> Locale? {
     for each in LOCALES {
         if each.name == name {
             return each
@@ -110,7 +131,7 @@ current :: fn() -> Locale {
  * @param value The integer: any i64, the most negative included, with a - before it when negative.
  * @param locale Whose marks to use; the locale in effect (current) unless given.
  */
-append_integer :: fn(text: ptr[mut text_buffer.TextBuffer], value: i64, locale := current()) {
+append_integer :: fn(text : ptr[mut text_buffer.TextBuffer], value : i64, locale := current()) {
     append_fixed(text, value, 0, locale)
 }
 
@@ -126,7 +147,7 @@ append_integer :: fn(text: ptr[mut text_buffer.TextBuffer], value: i64, locale :
  *     At most 19, since ten to the power of more doesn't fit a u64.
  * @param locale Whose marks to use; the locale in effect (current) unless given.
  */
-append_fixed :: fn(text: ptr[mut text_buffer.TextBuffer], value: i64, places: u32, locale := current()) {
+append_fixed :: fn(text : ptr[mut text_buffer.TextBuffer], value : i64, places : u32, locale := current()) {
     magnitude := if value < 0 { cast[u64](-(value + 1)) + 1 } else { cast[u64](value) }
     if value < 0 {
         text_buffer.append_byte(text, cast[u8]('-'))
@@ -173,7 +194,7 @@ append_fixed :: fn(text: ptr[mut text_buffer.TextBuffer], value: i64, places: u3
  * @param date The date; its time of day isn't written.
  * @param locale Whose marks to use; the locale in effect (current) unless given.
  */
-append_date :: fn(text: ptr[mut text_buffer.TextBuffer], date: time.DateTime, locale := current()) {
+append_date :: fn(text : ptr[mut text_buffer.TextBuffer], date : time.DateTime, locale := current()) {
     separator :: locale.date_separator
     match locale.date_order {
         case .YearMonthDay => {
@@ -209,7 +230,7 @@ append_date :: fn(text: ptr[mut text_buffer.TextBuffer], date: time.DateTime, lo
  * @param date The time; its date, seconds and fraction aren't written.
  * @param locale Whose marks to use; the locale in effect (current) unless given.
  */
-append_time :: fn(text: ptr[mut text_buffer.TextBuffer], date: time.DateTime, locale := current()) {
+append_time :: fn(text : ptr[mut text_buffer.TextBuffer], date : time.DateTime, locale := current()) {
     if locale.hours_24 {
         text_buffer.append_unsigned(text, cast[u64](date.hour), 10, 2)
     }

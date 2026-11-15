@@ -24,17 +24,17 @@ Faces :: struct #scoped {
 }
 
 /** Open a UI's faces; a face that doesn't open is empty, its text measured as nothing. */
-faces_of :: fn(ui: ptr[Ui]) -> Faces {
+faces_of :: fn(ui : ptr[Ui]) -> Faces {
     return Faces.{sans = fonts.open(ui.sans) or_else fonts.Font.{}, mono = fonts.open(ui.mono) or_else fonts.Font.{}}
 }
 
 /** The face a style's in. */
-face :: fn(faces: ptr[Faces], style: TextStyle) -> ptr[fonts.Font] {
+face :: fn(faces : ptr[Faces], style : TextStyle) -> ptr[fonts.Font] {
     return if style.mono { &faces.mono } else { &faces.sans }
 }
 
 /** Lay out the frame's tree: every node's place and size. */
-lay_out :: fn(ui: ptr[mut Ui]) {
+lay_out :: fn(ui : ptr[mut Ui]) {
     faces :: faces_of(ui)
     count :: cast[u32](ui.nodes.count)
     lines : fonts.Line[..]
@@ -62,13 +62,13 @@ lay_out :: fn(ui: ptr[mut Ui]) {
 }
 
 /** A size kept within an axis's least and most (0 for no most). */
-clamp_axis :: fn(size: f32, axis: Axis) -> f32 {
+clamp_axis :: fn(size : f32, axis : Axis) -> f32 {
     low :: if size < axis.min { axis.min } else { size }
     return if axis.max > 0 && low > axis.max { axis.max } else { low }
 }
 
 /** Find what a node wants across, and the least it can take: from its text, or its children's. */
-fit_width :: fn(ui: ptr[mut Ui], faces: ptr[Faces], index: u32, lines: ptr[mut fonts.Line[..]]) {
+fit_width :: fn(ui : ptr[mut Ui], faces : ptr[Faces], index : u32, lines : ptr[mut fonts.Line[..]]) {
     made :: node(ui, index)
     want := cast[f32](0)
     least := cast[f32](0)
@@ -129,7 +129,7 @@ fit_width :: fn(ui: ptr[mut Ui], faces: ptr[Faces], index: u32, lines: ptr[mut f
 }
 
 /** The widest word of text, at a size: the narrowest its wrapping can make it. */
-longest_word :: fn(font: ptr[fonts.Font], size: f32, text: u8[]) -> f32 {
+longest_word :: fn(font : ptr[fonts.Font], size : f32, text : u8[]) -> f32 {
     longest := cast[f32](0)
     start := cast[usize](0)
     for i in cast[usize](0)..<text.count + 1 {
@@ -147,7 +147,7 @@ longest_word :: fn(font: ptr[fonts.Font], size: f32, text: u8[]) -> f32 {
 }
 
 /** Give a node's children their widths, from its own. */
-give_widths :: fn(ui: ptr[mut Ui], index: u32) {
+give_widths :: fn(ui : ptr[mut Ui], index : u32) {
     parent :: node(ui, index)
     if index == 0 {
         parent.w = parent.fit_w
@@ -169,17 +169,22 @@ give_widths :: fn(ui: ptr[mut Ui], index: u32) {
 }
 
 /** A child's size across its parent: what its axis says, within what the parent has. */
-across :: fn(each: ptr[Node], axis: Axis, fit: f32, least: f32, inner: f32) -> f32 {
+across :: fn(each : ptr[Node], axis : Axis, fit : f32, least : f32, inner : f32) -> f32 {
     return match axis.kind {
         case .Fixed => axis.value
         case .Percent => clamp_axis(inner * axis.value / 100, axis)
         case .Grow => clamp_axis(inner, axis)
-        case .Fit => if fit <= inner { fit } else { max_of(least, inner) }
+        case .Fit => if fit <= inner {
+            fit
+        }
+        else {
+            max_of(least, inner)
+        }
     }
 }
 
 /** The larger of two sizes. */
-max_of :: fn(a: f32, b: f32) -> f32 {
+max_of :: fn(a : f32, b : f32) -> f32 {
     return if a > b { a } else { b }
 }
 
@@ -193,7 +198,7 @@ max_of :: fn(a: f32, b: f32) -> f32 {
  * @param inner Its room along its direction, its padding taken off.
  * @param widths Whether it's widths shared, across a row, or heights, down a column.
  */
-share :: fn(ui: ptr[mut Ui], parent: ptr[Node], inner: f32, widths: bool) {
+share :: fn(ui : ptr[mut Ui], parent : ptr[Node], inner : f32, widths : bool) {
     children := cast[f32](0)
     used := cast[f32](0)
     weight := cast[f32](0)
@@ -288,12 +293,12 @@ share :: fn(ui: ptr[mut Ui], parent: ptr[Node], inner: f32, widths: bool) {
 }
 
 /** A node's width or height. */
-size_of_node :: fn(each: ptr[Node], widths: bool) -> f32 {
+size_of_node :: fn(each : ptr[Node], widths : bool) -> f32 {
     return if widths { each.w } else { each.h }
 }
 
 /** Set a node's width or height. */
-set_size :: fn(each: ptr[mut Node], widths: bool, size: f32) {
+set_size :: fn(each : ptr[mut Node], widths : bool, size : f32) {
     if widths {
         each.w = size
     }
@@ -303,7 +308,7 @@ set_size :: fn(each: ptr[mut Node], widths: bool, size: f32) {
 }
 
 /** Find what a node wants down, its text wrapped to its width or its children's heights. */
-fit_height :: fn(ui: ptr[mut Ui], faces: ptr[Faces], index: u32, lines: ptr[mut fonts.Line[..]]) {
+fit_height :: fn(ui : ptr[mut Ui], faces : ptr[Faces], index : u32, lines : ptr[mut fonts.Line[..]]) {
     made :: node(ui, index)
     want := cast[f32](0)
     if made.is_text {
@@ -341,7 +346,10 @@ fit_height :: fn(ui: ptr[mut Ui], faces: ptr[Faces], index: u32, lines: ptr[mut 
     }
     made.content_h = want
     axis :: made.box.height
-    made.fit_h = if axis.kind == .Fixed { axis.value } else if axis.kind == .Percent { cast[f32](0) } else { clamp_axis(want, axis) }
+    made.fit_h = if axis.kind == .Fixed {
+        axis.value
+    }
+    else if axis.kind == .Percent { cast[f32](0) } else { clamp_axis(want, axis) }
     // A scroll area fits no more than it's given; its content scrolls
     if made.scrolls && axis.kind != .Fixed {
         made.fit_h = clamp_axis(0, axis)
@@ -349,7 +357,7 @@ fit_height :: fn(ui: ptr[mut Ui], faces: ptr[Faces], index: u32, lines: ptr[mut 
 }
 
 /** Give a node's children their heights, from its own. */
-give_heights :: fn(ui: ptr[mut Ui], index: u32) {
+give_heights :: fn(ui : ptr[mut Ui], index : u32) {
     parent :: node(ui, index)
     if index == 0 {
         parent.h = parent.fit_h
@@ -384,7 +392,7 @@ give_heights :: fn(ui: ptr[mut Ui], index: u32) {
 }
 
 /** Place a node's children inside it: along its direction with gaps, aligned, scrolled by its kept scroll. */
-place_children :: fn(ui: ptr[mut Ui], index: u32) {
+place_children :: fn(ui : ptr[mut Ui], index : u32) {
     parent :: node(ui, index)
     row :: parent.box.direction == .Row
     inner_w :: max_of(parent.w - 2 * parent.box.padding_x, 0)
@@ -436,7 +444,7 @@ place_children :: fn(ui: ptr[mut Ui], index: u32) {
 }
 
 /** How far into room something's put by an alignment. */
-aligned :: fn(align: Align, room: f32) -> f32 {
+aligned :: fn(align : Align, room : f32) -> f32 {
     return match align {
         case .Start => cast[f32](0)
         case .Center => max_of(room, 0) / 2

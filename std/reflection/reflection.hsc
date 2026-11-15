@@ -14,7 +14,7 @@ import runtime from "base:runtime"
  * @return valid Whether the value could be given as text: false for any other type, a cstring, or an enum value that
  *     matches no member.
  */
-as_string :: fn(value: any) -> (result: string, valid: bool) {
+as_string :: fn(value : any) -> (result : string, valid : bool) {
     info :: unaliased(type_info_of(value.type))
     if info.variant == .STRING {
         string_info :: cast[ptr[compiler.TypeInfoString]](info)
@@ -57,7 +57,7 @@ as_string :: fn(value: any) -> (result: string, valid: bool) {
  *     other than 16, 32 and 64 bits, or a number storage is too small for (in which case some of storage may have been
  *     written).
  */
-as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
+as_text :: fn(value : any, storage : mut u8[]) -> (result : string, valid : bool) {
     text, valid :: as_string(value)
     if valid {
         return text, true
@@ -71,7 +71,12 @@ as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
             // Its sign carried up from its top bit
             shift :: 64 - cast[u64](info.size) * 8
             signed :: bit_cast[i64](raw << shift) >> shift
-            runtime.format_integer(sink, runtime.FormatSpec.{}, signed < 0, if signed < 0 { 0 - bit_cast[u64](signed) } else { raw })
+            runtime.format_integer(
+                sink,
+                runtime.FormatSpec.{},
+                signed < 0,
+                if signed < 0 { 0 - bit_cast[u64](signed) } else { raw }
+            )
         }
         else {
             runtime.format_integer(sink, runtime.FormatSpec.{}, false, raw)
@@ -80,7 +85,12 @@ as_text :: fn(value: any, storage: mut u8[]) -> (result: string, valid: bool) {
     else if info.variant == .FLOAT && (info.size == 2 || info.size == 4 || info.size == 8) {
         exponent_bits : u64 = if info.size == 2 { 5 } else if info.size == 4 { 8 } else { 11 }
         fraction_bits : u64 = if info.size == 2 { 10 } else if info.size == 4 { 23 } else { 52 }
-        runtime.format_shortest_float(sink, cast[u64](read_unsigned(value.data, info.size)), exponent_bits, fraction_bits)
+        runtime.format_shortest_float(
+            sink,
+            cast[u64](read_unsigned(value.data, info.size)),
+            exponent_bits,
+            fraction_bits
+        )
     }
     else {
         return "", false
@@ -107,7 +117,7 @@ StorageSink :: struct #scoped {
  * @param target The StorageSink, as a ptr[mut StorageSink].
  * @param byte The byte, added after those written, or dropped, setting overflowed, if there's no room.
  */
-storage_sink_byte :: fn(target: rawptr, byte: u8) {
+storage_sink_byte :: fn(target : rawptr, byte : u8) {
     sink :: cast[ptr[mut StorageSink]](target)
     if sink.count < sink.bytes.count {
         sink.bytes[sink.count] = byte
@@ -128,7 +138,7 @@ storage_sink_byte :: fn(target: rawptr, byte: u8) {
  * @return The member's name, from the type information, good for the program's life; the first member's when several
  *     have the value. Null if the value isn't an enum, or matches no member, like flags combined.
  */
-enum_member_name :: fn(value: any) -> string? {
+enum_member_name :: fn(value : any) -> string? {
     info :: unaliased(type_info_of(value.type))
     if info.variant != .ENUM {
         return null
@@ -155,7 +165,7 @@ enum_member_name :: fn(value: any) -> string? {
  * @param b The value compared with a, of any type; its data only read.
  * @return True if their types are the same, not just alike, and their values are equal as above; false otherwise.
  */
-equal :: fn(a, b: any) -> bool {
+equal :: fn(a, b : any) -> bool {
     if a.type != b.type {
         return false
     }
@@ -170,7 +180,7 @@ equal :: fn(a, b: any) -> bool {
  * @param type_info Their type.
  * @return True if they're equal.
  */
-values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {
+values_equal :: fn(a, b : rawptr, type_info : ptr[compiler.TypeInfo]) -> bool {
     info :: unaliased(type_info)
     if info.variant == .VOID {
         return true
@@ -229,7 +239,7 @@ values_equal :: fn(a, b: rawptr, type_info: ptr[compiler.TypeInfo]) -> bool {
  * @param dimension Which dimension a and b are at, from 0 for the outermost; at the last, the elements are compared.
  * @return True if they have the same counts and every element is equal; false otherwise.
  */
-arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: usize) -> bool {
+arrays_equal :: fn(a, b : rawptr, info : ptr[compiler.TypeInfoArray], dimension : usize) -> bool {
     if dimension >= info.dimensions.count {
         return values_equal(a, b, info.base_type)
     }
@@ -277,7 +287,7 @@ arrays_equal :: fn(a, b: rawptr, info: ptr[compiler.TypeInfoArray], dimension: u
  * @return The element's size in bytes: the base type's at the last dimension, a view's or dynamic array's header when
  *     the next dimension is one, and otherwise a fixed array's count times its element's size.
  */
-dimension_element_size :: fn(info: ptr[compiler.TypeInfoArray], dimension: usize) -> usize {
+dimension_element_size :: fn(info : ptr[compiler.TypeInfoArray], dimension : usize) -> usize {
     inner :: dimension + 1
     if inner >= info.dimensions.count {
         return info.base_type.size
@@ -300,7 +310,7 @@ dimension_element_size :: fn(info: ptr[compiler.TypeInfoArray], dimension: usize
  * @param is_raw True for cstrings, which are compared up to their zero bytes, and must have them.
  * @return True if their bytes are the same; false otherwise.
  */
-strings_equal :: fn(a, b: rawptr, is_raw: bool) -> bool {
+strings_equal :: fn(a, b : rawptr, is_raw : bool) -> bool {
     if is_raw {
         // cstrings: pointers to bytes ending at the first 0
         pointer_a :: cast[ptr[rawptr]](a)
@@ -331,7 +341,7 @@ strings_equal :: fn(a, b: rawptr, is_raw: bool) -> bool {
  * @param size Their size in bytes: 2, 4 or 8. Other sizes compare their bytes.
  * @return True if they're equal: never for NaN, and always for 0 and -0.
  */
-floats_equal :: fn(a, b: rawptr, size: usize) -> bool {
+floats_equal :: fn(a, b : rawptr, size : usize) -> bool {
     if size == 2 {
         float_a :: cast[ptr[f16]](a)
         float_b :: cast[ptr[f16]](b)
@@ -358,7 +368,7 @@ floats_equal :: fn(a, b: rawptr, size: usize) -> bool {
  * @param count How many bytes to compare; 0 is always equal.
  * @return True if every byte is the same; false otherwise.
  */
-bytes_equal :: fn(a, b: rawptr, count: usize) -> bool {
+bytes_equal :: fn(a, b : rawptr, count : usize) -> bool {
     for index in 0..<count {
         byte_a :: cast[ptr[u8]](a + index)
         byte_b :: cast[ptr[u8]](b + index)
@@ -376,7 +386,7 @@ bytes_equal :: fn(a, b: rawptr, count: usize) -> bool {
  * @param size Its size in bytes: 1, 2, 4 or 8; anything else reads 16 bytes.
  * @return Its value, zero-extended.
  */
-read_unsigned :: fn(data: rawptr, size: usize) -> u128 {
+read_unsigned :: fn(data : rawptr, size : usize) -> u128 {
     if size == 1 {
         value :: cast[ptr[u8]](data)
         return value^
@@ -403,7 +413,7 @@ read_unsigned :: fn(data: rawptr, size: usize) -> u128 {
  * @param info A type.
  * @return The type it's based on; info itself when it isn't an alias.
  */
-unaliased :: fn(info: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
+unaliased :: fn(info : ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     result := info
     loop {
         alias_info :: cast[ptr[compiler.TypeInfoAlias]](result)

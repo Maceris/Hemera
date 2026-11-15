@@ -39,7 +39,7 @@ Endpoint :: struct {
  * @param d Its fourth.
  * @return The address.
  */
-v4 :: fn(a: u8, b: u8, c: u8, d: u8) -> Address {
+v4 :: fn(a : u8, b : u8, c : u8, d : u8) -> Address {
     address := Address.{family = .V4}
     address.bytes[0] = a
     address.bytes[1] = b
@@ -54,7 +54,7 @@ v4 :: fn(a: u8, b: u8, c: u8, d: u8) -> Address {
  * @param text Four numbers from 0 to 255 with dots between, and nothing else.
  * @return The address; null if text isn't one.
  */
-parse_v4 :: fn(text: string) -> Address? {
+parse_v4 :: fn(text : string) -> Address? {
     address := Address.{family = .V4}
     part := cast[u32](0)
     digits := 0

@@ -10,7 +10,7 @@ MAX_DEPTH :: 256
 CURSOR_WIDTH : f32 : 2
 
 /** Make the frame's draw list from its laid-out tree, from the root down, each node before its children. */
-make_commands :: fn(ui: ptr[mut Ui]) {
+make_commands :: fn(ui : ptr[mut Ui]) {
     runtime.array_reset(&ui.commands)
     if ui.nodes.count == 0 {
         return void
@@ -22,22 +22,44 @@ make_commands :: fn(ui: ptr[mut Ui]) {
 }
 
 /** Add a command to the frame's draw list. */
-add_command :: fn(ui: ptr[mut Ui], command: Command) {
+add_command :: fn(ui : ptr[mut Ui], command : Command) {
     runtime.array_add(&ui.commands, command)
 }
 
 /** Add a node's commands and its children's: its fill, its edge, its text, and a clip around its children. */
-emit :: fn(ui: ptr[mut Ui], faces: ptr[Faces], lines: ptr[mut fonts.Line[..]], index: u32, depth: usize) {
+emit :: fn(ui : ptr[mut Ui], faces : ptr[Faces], lines : ptr[mut fonts.Line[..]], index : u32, depth : usize) {
     if depth >= MAX_DEPTH {
         return void
     }
     made :: node(ui, index)
     box :: made.box
     if box.background.a > 0 {
-        add_command(ui, Command.{kind = .Fill, x = made.x, y = made.y, w = made.w, h = made.h, colour = box.background, corner = box.corner})
+        add_command(
+            ui,
+            Command.{
+                kind = .Fill,
+                x = made.x,
+                y = made.y,
+                w = made.w,
+                h = made.h,
+                colour = box.background,
+                corner = box.corner,
+            }
+        )
     }
     if box.border.a > 0 {
-        add_command(ui, Command.{kind = .Border, x = made.x, y = made.y, w = made.w, h = made.h, colour = box.border, corner = box.corner})
+        add_command(
+            ui,
+            Command.{
+                kind = .Border,
+                x = made.x,
+                y = made.y,
+                w = made.w,
+                h = made.h,
+                colour = box.border,
+                corner = box.corner,
+            }
+        )
     }
     if made.is_text {
         emit_text(ui, faces, lines, index)
@@ -62,7 +84,7 @@ emit :: fn(ui: ptr[mut Ui], faces: ptr[Faces], lines: ptr[mut fonts.Line[..]], i
  * Add a text node's lines, wrapped as it was laid out, and, for a text field's, its selection behind them and its
  * cursor after.
  */
-emit_text :: fn(ui: ptr[mut Ui], faces: ptr[Faces], lines: ptr[mut fonts.Line[..]], index: u32) {
+emit_text :: fn(ui : ptr[mut Ui], faces : ptr[Faces], lines : ptr[mut fonts.Line[..]], index : u32) {
     made :: node(ui, index)
     style :: resolved(ui, made.style)
     font :: face(faces, style)
@@ -81,26 +103,48 @@ emit_text :: fn(ui: ptr[mut Ui], faces: ptr[Faces], lines: ptr[mut fonts.Line[..
             to :: if high < line.end { high } else { line.end }
             left :: made.x + fonts.measure(font, style.size, slice(text, line.start, from))
             right :: made.x + fonts.measure(font, style.size, slice(text, line.start, to))
-            add_command(ui, Command.{kind = .Fill, x = left, y = top, w = right - left, h = height, colour = ui.theme.selection})
+            add_command(
+                ui,
+                Command.{kind = .Fill, x = left, y = top, w = right - left, h = height, colour = ui.theme.selection}
+            )
         }
-        add_command(ui, Command.{kind = .Text, x = made.x, y = top, w = line.width, h = height, colour = style.colour, size = style.size,
-            mono = style.mono, text_start = made.text_start + cast[u32](line.start), text_count = cast[u32](line.end - line.start)})
+        add_command(
+            ui,
+            Command.{
+                kind = .Text,
+                x = made.x,
+                y = top,
+                w = line.width,
+                h = height,
+                colour = style.colour,
+                size = style.size,
+                mono = style.mono,
+                text_start = made.text_start + cast[u32](line.start),
+                text_count = cast[u32](line.end - line.start),
+            }
+        )
         // The cursor on the line it's in, or at the end of the last
         last :: i + 1 == lines.count
         if editing && !cursor_drawn && ui.editing.cursor >= line.start && (ui.editing.cursor <= line.end || last) {
             at :: if ui.editing.cursor < line.end { ui.editing.cursor } else { line.end }
             x :: made.x + fonts.measure(font, style.size, slice(text, line.start, at))
-            add_command(ui, Command.{kind = .Fill, x = x, y = top, w = CURSOR_WIDTH, h = height, colour = ui.theme.accent})
+            add_command(
+                ui,
+                Command.{kind = .Fill, x = x, y = top, w = CURSOR_WIDTH, h = height, colour = ui.theme.accent}
+            )
             cursor_drawn = true
         }
     }
     if editing && !cursor_drawn {
-        add_command(ui, Command.{kind = .Fill, x = made.x, y = made.y, w = CURSOR_WIDTH, h = height, colour = ui.theme.accent})
+        add_command(
+            ui,
+            Command.{kind = .Fill, x = made.x, y = made.y, w = CURSOR_WIDTH, h = height, colour = ui.theme.accent}
+        )
     }
 }
 
 /** Bytes from start to end of text; empty where they're not within it. */
-slice :: fn(text: u8[], start: usize, end: usize) -> u8[] {
+slice :: fn(text : u8[], start : usize, end : usize) -> u8[] {
     if start <= end && end <= text.count {
         return text[start..<end]
     }
@@ -108,10 +152,19 @@ slice :: fn(text: u8[], start: usize, end: usize) -> u8[] {
 }
 
 /** Whether two commands draw the same, their text compared by its bytes. */
-same_command :: fn(ui: ptr[Ui], now: Command, before: Command) -> bool {
-    if now.kind != before.kind || now.x != before.x || now.y != before.y || now.w != before.w || now.h != before.h
-        || now.colour.r != before.colour.r || now.colour.g != before.colour.g || now.colour.b != before.colour.b
-        || now.colour.a != before.colour.a || now.corner != before.corner || now.size != before.size || now.mono != before.mono
+same_command :: fn(ui : ptr[Ui], now : Command, before : Command) -> bool {
+    if now.kind != before.kind
+        || now.x != before.x
+        || now.y != before.y
+        || now.w != before.w
+        || now.h != before.h
+        || now.colour.r != before.colour.r
+        || now.colour.g != before.colour.g
+        || now.colour.b != before.colour.b
+        || now.colour.a != before.colour.a
+        || now.corner != before.corner
+        || now.size != before.size
+        || now.mono != before.mono
         || now.text_count != before.text_count {
         return false
     }
@@ -129,19 +182,23 @@ same_command :: fn(ui: ptr[Ui], now: Command, before: Command) -> bool {
 }
 
 /** A command's rectangle, in whole pixels covering it. */
-rect_of :: fn(command: Command) -> canvas.Rect {
-    return canvas.Rect.{x0 = cast[i32](floor_of(command.x)), y0 = cast[i32](floor_of(command.y)),
-        x1 = cast[i32](ceil_of(command.x + command.w)), y1 = cast[i32](ceil_of(command.y + command.h))}
+rect_of :: fn(command : Command) -> canvas.Rect {
+    return canvas.Rect.{
+        x0 = cast[i32](floor_of(command.x)),
+        y0 = cast[i32](floor_of(command.y)),
+        x1 = cast[i32](ceil_of(command.x + command.w)),
+        y1 = cast[i32](ceil_of(command.y + command.h)),
+    }
 }
 
 /** The largest whole number at most a value. */
-floor_of :: fn(value: f32) -> f32 {
+floor_of :: fn(value : f32) -> f32 {
     whole :: cast[f32](cast[i64](value))
     return if whole > value { whole - 1 } else { whole }
 }
 
 /** The smallest whole number at least a value. */
-ceil_of :: fn(value: f32) -> f32 {
+ceil_of :: fn(value : f32) -> f32 {
     whole :: cast[f32](cast[i64](value))
     return if whole < value { whole + 1 } else { whole }
 }
@@ -152,7 +209,7 @@ ceil_of :: fn(value: f32) -> f32 {
  *
  * @return What changed on the screen, cut to the frame; empty when the lists are the same.
  */
-compare_commands :: fn(ui: ptr[mut Ui]) -> canvas.Rect {
+compare_commands :: fn(ui : ptr[mut Ui]) -> canvas.Rect {
     now :: ui.commands[0..<ui.commands.count]
     before :: ui.last_commands[0..<ui.last_commands.count]
     damage := canvas.Rect.{}
@@ -190,7 +247,7 @@ compare_commands :: fn(ui: ptr[mut Ui]) -> canvas.Rect {
 }
 
 /** A rectangle grown to take in another; a clip's end, which has none, adds nothing. */
-grown :: fn(damage: canvas.Rect, rect: canvas.Rect) -> canvas.Rect {
+grown :: fn(damage : canvas.Rect, rect : canvas.Rect) -> canvas.Rect {
     if canvas.is_empty(rect) {
         return damage
     }
@@ -198,7 +255,7 @@ grown :: fn(damage: canvas.Rect, rect: canvas.Rect) -> canvas.Rect {
 }
 
 /** A colour as the canvas's. */
-colour_of :: fn(colour: Colour) -> canvas.Color {
+colour_of :: fn(colour : Colour) -> canvas.Color {
     return canvas.rgba(colour.r, colour.g, colour.b, colour.a)
 }
 
@@ -211,13 +268,19 @@ colour_of :: fn(colour: Colour) -> canvas.Color {
  * @param painter The canvas, the frame's size; its clip and transform are restored after.
  * @param region What to paint, in pixels.
  */
-paint :: fn(ui: ptr[Ui], painter: ptr[mut canvas.Canvas], region: canvas.Rect) {
+paint :: fn(ui : ptr[Ui], painter : ptr[mut canvas.Canvas], region : canvas.Rect) {
     if canvas.is_empty(region) {
         return void
     }
     faces :: faces_of(ui)
     canvas.save(painter)
-    canvas.clip_rect(painter, cast[f32](region.x0), cast[f32](region.y0), cast[f32](region.x1 - region.x0), cast[f32](region.y1 - region.y0))
+    canvas.clip_rect(
+        painter,
+        cast[f32](region.x0),
+        cast[f32](region.y0),
+        cast[f32](region.x1 - region.x0),
+        cast[f32](region.y1 - region.y0)
+    )
     // The draw list's swapped into last_commands as a frame ends
     path := canvas.Path.{}
     defer canvas.free_path(&path)
@@ -243,15 +306,34 @@ paint :: fn(ui: ptr[Ui], painter: ptr[mut canvas.Canvas], region: canvas.Rect) {
                         canvas.fill(painter, &path, canvas.Paint.Solid(colour_of(command.colour)))
                     }
                     else {
-                        canvas.fill_rect(painter, command.x, command.y, command.w, command.h, canvas.Paint.Solid(colour_of(command.colour)))
+                        canvas.fill_rect(
+                            painter,
+                            command.x,
+                            command.y,
+                            command.w,
+                            command.h,
+                            canvas.Paint.Solid(colour_of(command.colour))
+                        )
                     }
                 }
             }
             case .Border => {
                 if !canvas.is_empty(canvas.intersect(rect_of(command), region)) {
                     canvas.reset(&path)
-                    canvas.rounded_rect(&path, command.x + 0.5, command.y + 0.5, command.w - 1, command.h - 1, command.corner)
-                    canvas.stroke(painter, &path, canvas.Paint.Solid(colour_of(command.colour)), canvas.Stroke.{width = 1})
+                    canvas.rounded_rect(
+                        &path,
+                        command.x + 0.5,
+                        command.y + 0.5,
+                        command.w - 1,
+                        command.h - 1,
+                        command.corner
+                    )
+                    canvas.stroke(
+                        painter,
+                        &path,
+                        canvas.Paint.Solid(colour_of(command.colour)),
+                        canvas.Stroke.{width = 1}
+                    )
                 }
             }
             case .Text => {
@@ -259,7 +341,15 @@ paint :: fn(ui: ptr[Ui], painter: ptr[mut canvas.Canvas], region: canvas.Rect) {
                     font :: if command.mono { &faces.mono } else { &faces.sans }
                     ascent :: cast[f32](font.ascender) * fonts.scale_of(font, command.size)
                     text :: text_of(ui.last_text[0..<ui.last_text.count], command.text_start, command.text_count)
-                    _ = canvas.draw_text(painter, font, command.size, command.x, command.y + ascent, text, canvas.Paint.Solid(colour_of(command.colour)))
+                    _ = canvas.draw_text(
+                        painter,
+                        font,
+                        command.size,
+                        command.x,
+                        command.y + ascent,
+                        text,
+                        canvas.Paint.Solid(colour_of(command.colour))
+                    )
                 }
             }
         }

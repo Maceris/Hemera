@@ -1,7 +1,7 @@
 package testing
 
-import runtime from "base:runtime"
 import compiler from "base:compiler"
+import runtime from "base:runtime"
 import reflection from "std:reflection"
 import text_buffer from "std:text_buffer"
 
@@ -24,12 +24,14 @@ import text_buffer from "std:text_buffer"
  *     empty for every file's, as a test package wants. One file's suits checks kept in one file of a bigger package.
  * @return An expression giving the Test[...] table; testing has to be imported, as testing, where it's inserted.
  */
-tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Code {
+tests_of :: fn(package : compiler.PackageInfo?, file : string = "") -> compiler.Code {
     found :: package or_return #code(testing.Test.[])
     // The tests' indices in found.functions, put in the order they're declared, as reflection gives another
     tests : usize[..]
     for &function, i in found.functions {
-        if !function.is_test || !in_file(function.location.file_path, file) || !is_test_signature(function, found.constants) {
+        if !function.is_test
+            || !in_file(function.location.file_path, file)
+            || !is_test_signature(function, found.constants) {
             continue
         }
         // After every test declared before it
@@ -69,8 +71,16 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
             runtime.array_add(&tags, tag)
         }
         if tags.count > MAX_TAGS {
-            compiler.report(.Error, #package_name, "E0001", function.location, "% has % tags; a test can have at most %",
-                function.name, tags.count, MAX_TAGS)
+            compiler.report(
+                .Error,
+                #package_name,
+                "E0001",
+                function.location,
+                "% has % tags; a test can have at most %",
+                function.name,
+                tags.count,
+                MAX_TAGS
+            )
             continue
         }
         tag_count :: tags.count
@@ -82,7 +92,7 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
             property :: compiler.name(function.name)
             wrapper :: compiler.name(function.name, "_property")
             runtime.array_add(&wrappers, #code {
-                #insert wrapper :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+                #insert wrapper :: fn(t : ptr[mut testing.T]) -> testing.Outcome {
                     return testing.check_property(t, #insert property)
                 }
             })
@@ -103,7 +113,7 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
             text_buffer.append_unsigned(&number, cast[u64](case_index))
             wrapper :: compiler.name(function.name, "_case_", text_buffer.as_string(&number))
             runtime.array_add(&wrappers, #code {
-                #insert wrapper :: fn(t: ptr[mut testing.T]) -> testing.Outcome {
+                #insert wrapper :: fn(t : ptr[mut testing.T]) -> testing.Outcome {
                     return testing.run_case_at(t, #insert test, #insert list, #insert case_index)
                 }
             })
@@ -129,11 +139,16 @@ tests_of :: fn(package: compiler.PackageInfo?, file: string = "") -> compiler.Co
  * @param count How many tags it has.
  * @return The code of a testing.Test.
  */
-entry :: fn(name: string, run: compiler.Code, tags: compiler.Code, count: usize) -> compiler.Code {
+entry :: fn(name : string, run : compiler.Code, tags : compiler.Code, count : usize) -> compiler.Code {
     if count == 0 {
         return #code(testing.Test.{name = #insert name, run = #insert run})
     }
-    return #code(testing.Test.{name = #insert name, run = #insert run, tags = testing.Tag.[#insert tags], tag_count = #insert count})
+    return #code(testing.Test.{
+        name = #insert name,
+        run = #insert run,
+        tags = testing.Tag.[#insert tags],
+        tag_count = #insert count,
+    })
 }
 
 /** A #test(CASES) function's cases, as compile-time code reads them from the constant. */
@@ -159,7 +174,7 @@ Cases :: struct {
  * @param name The constant's name, as #test gives it.
  * @return The cases; null if the package has no such constant, or it isn't a fixed array.
  */
-cases_of :: fn(constants: compiler.ConstantInfo[], name: string) -> Cases? {
+cases_of :: fn(constants : compiler.ConstantInfo[], name : string) -> Cases? {
     for &constant in constants {
         if constant.name != name {
             continue
@@ -177,8 +192,12 @@ cases_of :: fn(constants: compiler.ConstantInfo[], name: string) -> Cases? {
             return null
         }
         element :: reflection.unaliased(array.base_type)
-        made := Cases.{count = dimension.count, data = constant.value.data, size = array.base_type.size,
-            type = compiler.described_type(array.base_type)}
+        made := Cases.{
+            count = dimension.count,
+            data = constant.value.data,
+            size = array.base_type.size,
+            type = compiler.described_type(array.base_type),
+        }
         if element.variant == .STRUCT {
             for member in cast[ptr[compiler.TypeInfoStruct]](element).members {
                 if member.name == "name" && reflection.unaliased(member.member_type).variant == .STRING {
@@ -200,7 +219,7 @@ cases_of :: fn(constants: compiler.ConstantInfo[], name: string) -> Cases? {
  * @param index Which case, from 0.
  * @return The name, from the context's allocator, lasting through the compilation.
  */
-case_label :: fn(test: string, cases: ptr[Cases], index: usize) -> string {
+case_label :: fn(test : string, cases : ptr[Cases], index : usize) -> string {
     storage : u8[256]
     label := text_buffer.make(storage)
     text_buffer.append(&label, test)
@@ -234,7 +253,7 @@ case_label :: fn(test: string, cases: ptr[Cases], index: usize) -> string {
  * @param file The file asked for, by name or by a path's end with / between its parts; empty for any.
  * @return True if file is empty, is path, or is path's last parts, after a separator.
  */
-in_file :: fn(path: string, file: string) -> bool {
+in_file :: fn(path : string, file : string) -> bool {
     if file.count == 0 || path == file {
         return true
     }
@@ -271,7 +290,7 @@ in_file :: fn(path: string, file: string) -> bool {
  * @param b The place it's compared with.
  * @return True if a comes before b.
  */
-declared_before :: fn(a: runtime.SourceCodeLocation, b: runtime.SourceCodeLocation) -> bool {
+declared_before :: fn(a : runtime.SourceCodeLocation, b : runtime.SourceCodeLocation) -> bool {
     for character, i in a.file_path {
         if i >= b.file_path.count {
             return false
@@ -292,8 +311,10 @@ declared_before :: fn(a: runtime.SourceCodeLocation, b: runtime.SourceCodeLocati
  * @param function The function, marked #test.
  * @return Whether its second parameter is a ptr[mut Source], and it isn't #test(CASES).
  */
-is_property :: fn(function: ptr[compiler.FunctionInfo]) -> bool {
-    return function.test_cases.count == 0 && function.parameters.count == 2 && function.parameters[1].type == ptr[mut Source]
+is_property :: fn(function : ptr[compiler.FunctionInfo]) -> bool {
+    return function.test_cases.count == 0
+        && function.parameters.count == 2
+        && function.parameters[1].type == ptr[mut Source]
 }
 
 /**
@@ -304,16 +325,24 @@ is_property :: fn(function: ptr[compiler.FunctionInfo]) -> bool {
  * @return Whether it's fn(t: ptr[mut T]) -> Outcome, or with #test(CASES), fn(t: ptr[mut T], item: C) -> Outcome for
  *     CASES a constant fixed array of C; and not generic.
  */
-is_test_signature :: fn(function: ptr[compiler.FunctionInfo], constants: compiler.ConstantInfo[]) -> bool {
+is_test_signature :: fn(function : ptr[compiler.FunctionInfo], constants : compiler.ConstantInfo[]) -> bool {
     takes :: if function.test_cases.count == 0 && !is_property(function) { cast[usize](1) } else { cast[usize](2) }
-    right := function.generic_bindings.count == 0 && function.parameters.count == takes && function.return_values.count == 1
+    right := function.generic_bindings.count == 0
+        && function.parameters.count == takes
+        && function.return_values.count == 1
     if right && function.parameters.count >= 1 && function.return_values.count == 1 {
         right = function.parameters[0].type == ptr[mut T] && function.return_values[0].type == Outcome
     }
     if function.test_cases.count == 0 {
         if !right {
-            compiler.report(.Error, #package_name, "E0002", function.location, "% is marked #test, so it has to be fn(t: ptr[mut testing.T]) -> testing.Outcome, or for a property test, fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome",
-                function.name)
+            compiler.report(
+                .Error,
+                #package_name,
+                "E0002",
+                function.location,
+                "% is marked #test, so it has to be fn(t: ptr[mut testing.T]) -> testing.Outcome, or for a property test, fn(t: ptr[mut testing.T], source: ptr[mut testing.Source]) -> testing.Outcome",
+                function.name
+            )
         }
         return right
     }
@@ -324,16 +353,29 @@ is_test_signature :: fn(function: ptr[compiler.FunctionInfo], constants: compile
                 right = function.parameters[1].type == cases.type
             }
             if !right {
-                compiler.report(.Error, #package_name, "E0003", function.location,
-                    "% is marked #test(%), so it has to be fn(t: ptr[mut testing.T], item: %) -> testing.Outcome", function.name,
-                    function.test_cases, cases.type)
+                compiler.report(
+                    .Error,
+                    #package_name,
+                    "E0003",
+                    function.location,
+                    "% is marked #test(%), so it has to be fn(t: ptr[mut testing.T], item: %) -> testing.Outcome",
+                    function.name,
+                    function.test_cases,
+                    cases.type
+                )
             }
             return right
         }
         case None => {
-            compiler.report(.Error, #package_name, "E0004", function.location,
+            compiler.report(
+                .Error,
+                #package_name,
+                "E0004",
+                function.location,
                 "% is marked #test(%), which has to name a constant fixed array of its package's",
-                function.name, function.test_cases)
+                function.name,
+                function.test_cases
+            )
             return false
         }
     }

@@ -10,8 +10,10 @@ import intrinsics from "base:intrinsics"
  */
 
 /** 10^0 to 10^22, which f64 holds exactly. */
-EXACT_POWERS_OF_TEN :: f64.[1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
-    1e17, 1e18, 1e19, 1e20, 1e21, 1e22]
+EXACT_POWERS_OF_TEN :: f64.[
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20,
+    1e21, 1e22
+]
 
 /** What scan_decimal read: up to 19 significant digits, and the power of ten they're scaled by. */
 ScannedDecimal :: struct {
@@ -31,8 +33,8 @@ ScannedDecimal :: struct {
  * @param text The text.
  * @return What it says, or none if it isn't such a number.
  */
-//SPEC: Go src/strconv/atof.go readFloat
-scan_decimal :: fn(text: string) -> ScannedDecimal? {
+// SPEC: Go src/strconv/atof.go readFloat
+scan_decimal :: fn(text : string) -> ScannedDecimal? {
     scanned : ScannedDecimal
     at : usize = 0
     if at < text.count && (text[at] == '+' || text[at] == '-') {
@@ -124,7 +126,7 @@ scan_decimal :: fn(text: string) -> ScannedDecimal? {
  * @param text The text.
  * @return 1 for infinity, -1 for -infinity, 2 for NaN; 0 if it's neither.
  */
-special_text :: fn(text: string) -> i32 {
+special_text :: fn(text : string) -> i32 {
     at : usize = 0
     negative := false
     if at < text.count && (text[at] == '+' || text[at] == '-') {
@@ -148,7 +150,7 @@ special_text :: fn(text: string) -> i32 {
  * @param word The word, in lowercase.
  * @return True if they're the same but for case.
  */
-equal_ignoring_case :: fn(text: string, word: string) -> bool {
+equal_ignoring_case :: fn(text : string, word : string) -> bool {
     if text.count != word.count {
         return false
     }
@@ -170,8 +172,8 @@ equal_ignoring_case :: fn(text: string, word: string) -> bool {
  * @param negative Whether it's negative.
  * @return The f64's bits; none if it can't be told this way, or it's subnormal or overflows.
  */
-//SPEC: Go src/strconv/eisel_lemire.go eiselLemire64, after Lemire's "Number Parsing at a Gigabyte per Second" (2021)
-eisel_lemire_64 :: fn(mantissa: u64, exponent: i32, negative: bool) -> u64? {
+// SPEC: Go src/strconv/eisel_lemire.go eiselLemire64, after Lemire's "Number Parsing at a Gigabyte per Second" (2021)
+eisel_lemire_64 :: fn(mantissa : u64, exponent : i32, negative : bool) -> u64? {
     return eisel_lemire(mantissa, exponent, negative, 52, 1023)
 }
 
@@ -183,8 +185,8 @@ eisel_lemire_64 :: fn(mantissa: u64, exponent: i32, negative: bool) -> u64? {
  * @param negative Whether it's negative.
  * @return The f32's bits, in the low 32; none if it can't be told this way, or it's subnormal or overflows.
  */
-//SPEC: Go src/strconv/eisel_lemire.go eiselLemire32
-eisel_lemire_32 :: fn(mantissa: u64, exponent: i32, negative: bool) -> u64? {
+// SPEC: Go src/strconv/eisel_lemire.go eiselLemire32
+eisel_lemire_32 :: fn(mantissa : u64, exponent : i32, negative : bool) -> u64? {
     return eisel_lemire(mantissa, exponent, negative, 23, 127)
 }
 
@@ -198,7 +200,7 @@ eisel_lemire_32 :: fn(mantissa: u64, exponent: i32, negative: bool) -> u64? {
  * @param bias 1023 for f64, 127 for f32.
  * @return The float's bits, or none.
  */
-eisel_lemire :: fn(mantissa_in: u64, exponent: i32, negative: bool, fraction_bits: u32, bias: i64) -> u64? {
+eisel_lemire :: fn(mantissa_in : u64, exponent : i32, negative : bool, fraction_bits : u32, bias : i64) -> u64? {
     if exponent < POWERS_OF_TEN_LOWEST || exponent > POWERS_OF_TEN_HIGHEST {
         return null
     }
@@ -285,7 +287,7 @@ SlowDecimal :: struct {
  * @param index Which, from 0; past the digits, 0.
  * @return Its value, 0 to 9.
  */
-digit_of :: fn(decimal: ptr[SlowDecimal], index: i32) -> u64 {
+digit_of :: fn(decimal : ptr[SlowDecimal], index : i32) -> u64 {
     if index < 0 || index >= decimal.count || cast[usize](index) >= decimal.digits.count {
         return 0
     }
@@ -299,7 +301,7 @@ digit_of :: fn(decimal: ptr[SlowDecimal], index: i32) -> u64 {
  * @param index Which, from 0; outside the room for them, nothing's set.
  * @param value Its value, 0 to 9.
  */
-set_digit :: fn(decimal: ptr[mut SlowDecimal], index: i32, value: u64) {
+set_digit :: fn(decimal : ptr[mut SlowDecimal], index : i32, value : u64) {
     if index >= 0 && cast[usize](index) < decimal.digits.count {
         decimal.digits[cast[usize](index)] = cast[u8](value)
     }
@@ -310,7 +312,7 @@ set_digit :: fn(decimal: ptr[mut SlowDecimal], index: i32, value: u64) {
  *
  * @param decimal The decimal.
  */
-trim_decimal :: fn(decimal: ptr[mut SlowDecimal]) {
+trim_decimal :: fn(decimal : ptr[mut SlowDecimal]) {
     loop {
         if decimal.count <= 0 || digit_of(decimal, decimal.count - 1) != 0 {
             break
@@ -328,8 +330,8 @@ trim_decimal :: fn(decimal: ptr[mut SlowDecimal]) {
  * @param decimal Where it goes.
  * @param text The text.
  */
-//SPEC: Go src/strconv/atof.go decimal.set
-set_decimal :: fn(decimal: ptr[mut SlowDecimal], text: string) {
+// SPEC: Go src/strconv/atof.go decimal.set
+set_decimal :: fn(decimal : ptr[mut SlowDecimal], text : string) {
     decimal.count = 0
     decimal.point = 0
     decimal.negative = false
@@ -400,8 +402,8 @@ set_decimal :: fn(decimal: ptr[mut SlowDecimal], text: string) {
  * @param decimal The decimal.
  * @param k The power, 1 to 60.
  */
-//SPEC: Go src/strconv/decimal.go rightShift
-shift_decimal_right :: fn(decimal: ptr[mut SlowDecimal], k: u32) {
+// SPEC: Go src/strconv/decimal.go rightShift
+shift_decimal_right :: fn(decimal : ptr[mut SlowDecimal], k : u32) {
     read : i32 = 0
     written : i32 = 0
     n : u64 = 0
@@ -464,7 +466,7 @@ shift_decimal_right :: fn(decimal: ptr[mut SlowDecimal], k: u32) {
  * @param decimal The decimal.
  * @param k The power, 1 to 60.
  */
-shift_decimal_left :: fn(decimal: ptr[mut SlowDecimal], k: u32) {
+shift_decimal_left :: fn(decimal : ptr[mut SlowDecimal], k : u32) {
     // The product's digits, least significant first: at most 19 more than there were
     product : u8[DECIMAL_DIGITS + 20]
     made : i32 = 0
@@ -517,7 +519,7 @@ shift_decimal_left :: fn(decimal: ptr[mut SlowDecimal], k: u32) {
  * @param decimal The decimal.
  * @param k The power: positive multiplies, negative divides.
  */
-shift_decimal :: fn(decimal: ptr[mut SlowDecimal], k: i32) {
+shift_decimal :: fn(decimal : ptr[mut SlowDecimal], k : i32) {
     if decimal.count == 0 {
         return void
     }
@@ -550,8 +552,8 @@ shift_decimal :: fn(decimal: ptr[mut SlowDecimal], k: i32) {
  * @param decimal The decimal, below 2^64.
  * @return The whole number.
  */
-//SPEC: Go src/strconv/decimal.go RoundedInteger and shouldRoundUp
-rounded_whole :: fn(decimal: ptr[SlowDecimal]) -> u64 {
+// SPEC: Go src/strconv/decimal.go RoundedInteger and shouldRoundUp
+rounded_whole :: fn(decimal : ptr[SlowDecimal]) -> u64 {
     if decimal.point > 20 {
         return 0xffff_ffff_ffff_ffff
     }
@@ -598,8 +600,8 @@ SHIFTS_BY_DIGITS :: i32.[1, 3, 6, 9, 13, 16, 19, 23, 26]
  * @param bias -1023 for f64, -127 for f32.
  * @return The float's bits, in the low 32 for f32: infinity's where it overflows.
  */
-//SPEC: Go src/strconv/atof.go decimal.floatBits
-decimal_to_bits :: fn(decimal: ptr[mut SlowDecimal], fraction_bits: u32, exponent_bits: u32, bias: i32) -> u64 {
+// SPEC: Go src/strconv/atof.go decimal.floatBits
+decimal_to_bits :: fn(decimal : ptr[mut SlowDecimal], fraction_bits : u32, exponent_bits : u32, bias : i32) -> u64 {
     mantissa : u64 = 0
     exponent : i32 = 0
     infinite :: (cast[i32](1) << exponent_bits) - 1 + bias
@@ -674,7 +676,7 @@ decimal_to_bits :: fn(decimal: ptr[mut SlowDecimal], fraction_bits: u32, exponen
  * @return The f64 nearest the number, ties to even: ±infinity past the largest, ±0 below the least subnormal's half;
  *     none if the text isn't such a number, with nothing before or after it.
  */
-parse_64 :: fn(text: string) -> f64? {
+parse_64 :: fn(text : string) -> f64? {
     special :: special_text(text)
     if special == 1 {
         return infinity_64()
@@ -742,7 +744,7 @@ EXACT_POWERS_OF_TEN_32 :: f32.[1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
  * @return The f32 nearest the number, ties to even: ±infinity past the largest, ±0 below the least subnormal's half;
  *     none if the text isn't such a number.
  */
-parse_32 :: fn(text: string) -> f32? {
+parse_32 :: fn(text : string) -> f32? {
     special :: special_text(text)
     if special == 1 {
         return bit_cast[f32](cast[u32](0x7f80_0000))

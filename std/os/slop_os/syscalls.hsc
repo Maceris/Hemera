@@ -139,7 +139,10 @@ RIGHT_PROCESS_KILL : Rights : 1 << 12
 RIGHT_PROCESS_THREADS : Rights : 1 << 13
 /** A debug log: write lines to it. */
 RIGHT_DEBUG_LOG_WRITE : Rights : 1 << 8
-/** A debug log: may turn the kernel's trace on and read it (trace_set, trace_read), which shows every process's scheduling. */
+/**
+ * A debug log: may turn the kernel's trace on and read it (trace_set, trace_read), which shows every process's
+ * scheduling.
+ */
 RIGHT_DEBUG_LOG_TRACE : Rights : 1 << 9
 /** A CPU budget: may split child budgets off it (cpu_budget_create). */
 RIGHT_CPU_BUDGET_SPLIT : Rights : 1 << 8
@@ -177,7 +180,7 @@ Syscalls :: struct {
      * @param handle The handle, of any kind; no right is needed. It's no longer good once the call returns Ok.
      * @error InvalidHandle Not a handle of the caller's, or one already closed.
      */
-    handle_close : fn(handle: Handle) -> Result[void, HandleError],
+    handle_close : fn(handle : Handle) -> Result[void, HandleError],
     /**
      * Make another handle to the same object, never an owning one.
      *
@@ -187,7 +190,7 @@ Syscalls :: struct {
      * @error MissingRight The handle lacks RIGHT_DUPLICATE, or one of rights.
      * @error TableFull The caller's handle table has no room.
      */
-    handle_duplicate : fn(handle: Handle, rights: Rights) -> Result[Handle, HandleError],
+    handle_duplicate : fn(handle : Handle, rights : Rights) -> Result[Handle, HandleError],
     /**
      * Describe a handle.
      *
@@ -195,7 +198,7 @@ Syscalls :: struct {
      * @return The kind of object it's to, and the rights it has.
      * @error InvalidHandle Not a handle of the caller's, or one already closed.
      */
-    handle_info : fn(handle: Handle) -> Result[HandleInfo, HandleError],
+    handle_info : fn(handle : Handle) -> Result[HandleInfo, HandleError],
     /** End the calling thread, which raises its SIGNAL_TERMINATED. It never returns. */
     thread_exit : fn() #never_returns,
     /**
@@ -209,21 +212,27 @@ Syscalls :: struct {
      * @return An owning handle to the thread, which is running by the time the call returns.
      * @error ObjectGone The address space or the caller's process was destroyed.
      */
-    thread_create : fn(budget: MemoryBudget, space: AddressSpace, entry: u64, stack: u64, argument: u64) -> Result[Thread, HandleError],
+    thread_create : fn(
+        budget : MemoryBudget,
+        space : AddressSpace,
+        entry : u64,
+        stack : u64,
+        argument : u64
+    ) -> Result[Thread, HandleError],
     /**
      * Make a process, a child of the caller's, with no threads or address spaces yet.
      *
      * @param budget The memory budget that pays for the process, and becomes its own.
      * @return An owning handle to the process; closing it destroys the process and its subtree.
      */
-    process_create : fn(budget: MemoryBudget) -> Result[Process, HandleError],
+    process_create : fn(budget : MemoryBudget) -> Result[Process, HandleError],
     /**
      * Make an empty address space, owned by the caller's process.
      *
      * @param budget The memory budget that pays for it.
      * @return An owning handle to the address space.
      */
-    address_space_create : fn(budget: MemoryBudget) -> Result[AddressSpace, HandleError],
+    address_space_create : fn(budget : MemoryBudget) -> Result[AddressSpace, HandleError],
     /**
      * Read the monotonic clock (decisions/0009), which never goes back.
      *
@@ -238,7 +247,7 @@ Syscalls :: struct {
      * @param budget The memory budget that pays for it.
      * @return An owning handle to the port, with every right.
      */
-    port_create : fn(budget: MemoryBudget) -> Result[Port, HandleError],
+    port_create : fn(budget : MemoryBudget) -> Result[Port, HandleError],
     /**
      * Bind a key to a port for port_wake to raise.
      *
@@ -246,7 +255,7 @@ Syscalls :: struct {
      * @param key The binding's key, which its packets carry; any value not bound on the port already.
      * @error KeyInUse The key is bound already.
      */
-    port_bind_wake : fn(port: Port, key: u64) -> Result[void, PortError],
+    port_bind_wake : fn(port : Port, key : u64) -> Result[void, PortError],
     /**
      * Raise a wake binding: queue a User packet for key, or OR bits into the one already queued.
      *
@@ -255,7 +264,7 @@ Syscalls :: struct {
      * @param bits Bits for the packet's data[0], ORed with any raised since the packet was last taken.
      * @error NoSuchKey No wake binding has the key.
      */
-    port_wake : fn(port: Port, key: u64, bits: u64) -> Result[void, PortError],
+    port_wake : fn(port : Port, key : u64, bits : u64) -> Result[void, PortError],
     /**
      * Set a timer: a Timer packet for key when the monotonic clock reaches deadline, binding key if it isn't yet, and
      * replacing the deadline if it's a timer already.
@@ -266,7 +275,7 @@ Syscalls :: struct {
      * @param deadline When, in the monotonic clock's nanoseconds; one that has passed fires at once.
      * @error KeyInUse The key is bound already, to something other than a timer.
      */
-    port_set_timer : fn(port: Port, key: u64, deadline: u64) -> Result[void, PortError],
+    port_set_timer : fn(port : Port, key : u64, deadline : u64) -> Result[void, PortError],
     /**
      * Remove a binding, of any kind, with its packet if one is queued.
      *
@@ -275,7 +284,7 @@ Syscalls :: struct {
      *     (port_bind).
      * @error NoSuchKey No binding has the key.
      */
-    port_unbind : fn(port: Port, key: u64) -> Result[void, PortError],
+    port_unbind : fn(port : Port, key : u64) -> Result[void, PortError],
     /**
      * Wait for packets on a port, taking those queued: at once if there are any, or else blocking until one comes or
      * the deadline does.
@@ -290,7 +299,7 @@ Syscalls :: struct {
      *     waited; to pause until a deadline, wait with room for a packet on a port nothing is bound to.
      * @error BadBuffer The packets aren't memory the caller can write.
      */
-    port_wait : fn(port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, PortError],
+    port_wait : fn(port : Port, packets : mut Packet[], deadline : u64) -> Result[u32, PortError],
     /**
      * Make a channel: two ends, each with a ring it writes and the other reads, owned by the caller's process.
      *
@@ -301,7 +310,7 @@ Syscalls :: struct {
      * @return Owning handles to both ends, with every right.
      * @error InvalidSize The ring_bytes isn't 0 or a power of two in range.
      */
-    channel_create : fn(budget: MemoryBudget, ring_bytes: u32, tag: u64) -> Result[ChannelPair, ChannelError],
+    channel_create : fn(budget : MemoryBudget, ring_bytes : u32, tag : u64) -> Result[ChannelPair, ChannelError],
     /**
      * Map a channel's memory (its indices and both rings, laid out as CHANNEL_RINGS_OFFSET describes) in an address
      * space, readable and writable, for the end's holder to read and write its rings directly.
@@ -312,13 +321,13 @@ Syscalls :: struct {
      * @error Mapped The end's rings are mapped already.
      * @error BadAddress Not a page-aligned user address, or something is mapped there.
      */
-    channel_map : fn(end: Channel, space: AddressSpace, address: u64) -> Result[void, ChannelError],
+    channel_map : fn(end : Channel, space : AddressSpace, address : u64) -> Result[void, ChannelError],
     /**
      * Unmap what channel_map mapped for an end.
      *
      * @param end The end; no right is needed.
      */
-    channel_unmap : fn(end: Channel) -> Result[void, ChannelError],
+    channel_unmap : fn(end : Channel) -> Result[void, ChannelError],
     /**
      * Raise signals on the other end, after writing its ring directly (Readable) or reading from it (Writable): the
      * doorbell of the ring's wake protocol (knowledge/design/ipc.md §2).
@@ -327,7 +336,7 @@ Syscalls :: struct {
      * @param signals SIGNAL_READABLE, SIGNAL_WRITABLE, or both.
      * @error PeerClosed The other end is closed.
      */
-    channel_notify : fn(end: Channel, signals: Signals) -> Result[void, ChannelError],
+    channel_notify : fn(end : Channel, signals : Signals) -> Result[void, ChannelError],
     /**
      * Write one message into the end's ring through the kernel, for a holder that hasn't mapped it, and raise
      * Readable on the other end.
@@ -340,7 +349,7 @@ Syscalls :: struct {
      * @error TooBig The message is bigger than the ring takes.
      * @error BadBuffer The payload isn't memory the caller can read.
      */
-    channel_write : fn(end: Channel, payload: u8[], batch: u32) -> Result[void, ChannelError],
+    channel_write : fn(end : Channel, payload : u8[], batch : u32) -> Result[void, ChannelError],
     /**
      * Read the next message from the other end's ring through the kernel, for a holder that hasn't mapped it.
      *
@@ -353,7 +362,7 @@ Syscalls :: struct {
      * @error BadBuffer The buffer or size isn't memory the caller can write.
      * @error Corrupt The other end broke the ring.
      */
-    channel_read : fn(end: Channel, buffer: mut u8[], size: ptr[mut u32]) -> Result[MessageInfo, ChannelError],
+    channel_read : fn(end : Channel, buffer : mut u8[], size : ptr[mut u32]) -> Result[MessageInfo, ChannelError],
     /**
      * Move handles out of the caller's table into one of the channel's handle batches, for the message that names it
      * to carry to the other end (knowledge/design/ipc.md, Handle transfer). If the receiver never takes them, objects
@@ -369,7 +378,7 @@ Syscalls :: struct {
      * @error InFlight One of the handles is to a channel end in a batch already.
      * @error Mapped One of the handles is to a channel end whose rings are mapped.
      */
-    channel_send_handles : fn(end: Channel, handles: Handle[], batch: u32) -> Result[void, ChannelError],
+    channel_send_handles : fn(end : Channel, handles : Handle[], batch : u32) -> Result[void, ChannelError],
     /**
      * Take a batch the other end sent into the caller's table, the caller's budget taking over their objects' charges
      * (decisions/0011).
@@ -383,7 +392,12 @@ Syscalls :: struct {
      * @error BufferTooSmall The handles can't hold the batch; it stays, and how many it has is at count.
      * @error BudgetExceeded The caller's budget can't absorb the objects; the batch stays.
      */
-    channel_take_handles : fn(end: Channel, batch: u32, handles: mut Handle[], count: ptr[mut u32]) -> Result[u32, ChannelError],
+    channel_take_handles : fn(
+        end : Channel,
+        batch : u32,
+        handles : mut Handle[],
+        count : ptr[mut u32]
+    ) -> Result[u32, ChannelError],
     /**
      * Raise signals on the other end as channel_notify does, then wait on a port as port_wait does, in one call: a
      * thread the notify wakes is made ready on this CPU, to run here once the caller waits (knowledge/design/ipc.md
@@ -399,7 +413,13 @@ Syscalls :: struct {
      * @error BufferTooSmall The packets are empty, as port_wait's; nothing is raised or waited for.
      * @error BadBuffer The packets aren't memory the caller can write.
      */
-    channel_notify_and_wait : fn(end: Channel, signals: Signals, port: Port, packets: mut Packet[], deadline: u64) -> Result[u32, ChannelError],
+    channel_notify_and_wait : fn(
+        end : Channel,
+        signals : Signals,
+        port : Port,
+        packets : mut Packet[],
+        deadline : u64
+    ) -> Result[u32, ChannelError],
     /**
      * Bind an object's events to a port: a Signal packet for key when the object raises any of signals, or an Irq
      * packet for an IRQ's interrupts.
@@ -418,7 +438,13 @@ Syscalls :: struct {
      * @error KeyInUse The key is bound already.
      * @error TooManyBindings The object has as many bindings as it takes.
      */
-    port_bind : fn(port: Port, object: Handle, signals: Signals, key: u64, mode: BindMode) -> Result[void, PortError],
+    port_bind : fn(
+        port : Port,
+        object : Handle,
+        signals : Signals,
+        key : u64,
+        mode : BindMode
+    ) -> Result[void, PortError],
     /**
      * Make a child memory budget, carved out of a budget.
      *
@@ -426,14 +452,14 @@ Syscalls :: struct {
      * @param limit The most the child can charge, in bytes.
      * @return An owning handle to the child.
      */
-    memory_budget_create : fn(budget: MemoryBudget, limit: u64) -> Result[MemoryBudget, HandleError],
+    memory_budget_create : fn(budget : MemoryBudget, limit : u64) -> Result[MemoryBudget, HandleError],
     /**
      * Describe a memory budget.
      *
      * @param budget The budget; no right is needed.
      * @return Its limit, and how much of it is charged, in bytes.
      */
-    memory_budget_info : fn(budget: MemoryBudget) -> Result[BudgetInfo, HandleError],
+    memory_budget_info : fn(budget : MemoryBudget) -> Result[BudgetInfo, HandleError],
     /**
      * Make a memory object, its pages zero-filled as they're touched, paid for by a budget.
      *
@@ -442,7 +468,7 @@ Syscalls :: struct {
      * @return An owning handle to it, with every right.
      * @error InvalidSize The size isn't a whole number of pages, is 0, or is more than MAX_MEMORY_SIZE.
      */
-    memory_create : fn(budget: MemoryBudget, size: u64) -> Result[Memory, MemoryError],
+    memory_create : fn(budget : MemoryBudget, size : u64) -> Result[Memory, MemoryError],
     /**
      * Map part of a memory object in an address space.
      *
@@ -457,7 +483,14 @@ Syscalls :: struct {
      * @error InvalidSize The size or offset isn't a whole number of pages, or runs past the memory's end.
      * @error BadProtection Writable and executable at once, or no access at all.
      */
-    memory_map : fn(memory: Memory, space: AddressSpace, address: u64, offset: u64, size: u64, protection: Protection) -> Result[void, MemoryError],
+    memory_map : fn(
+        memory : Memory,
+        space : AddressSpace,
+        address : u64,
+        offset : u64,
+        size : u64,
+        protection : Protection
+    ) -> Result[void, MemoryError],
     /**
      * Unmap the mapping that starts at an address, all of it.
      *
@@ -465,7 +498,7 @@ Syscalls :: struct {
      * @param address The address a mapping starts at.
      * @error NotMapped No mapping starts at that address.
      */
-    memory_unmap : fn(space: AddressSpace, address: u64) -> Result[void, MemoryError],
+    memory_unmap : fn(space : AddressSpace, address : u64) -> Result[void, MemoryError],
     /**
      * Register an interrupt controller the firmware tables describe, for its lines' IRQs.
      *
@@ -479,7 +512,11 @@ Syscalls :: struct {
      * @error BadAddress The registers aren't page-aligned, or are in the kernel's memory.
      * @error TooManyControllers Every controller the kernel takes is registered.
      */
-    controller_register : fn(platform: Platform, kind: ControllerKind, registers: u64) -> Result[ControllerInfo, DeviceError],
+    controller_register : fn(
+        platform : Platform,
+        kind : ControllerKind,
+        registers : u64
+    ) -> Result[ControllerInfo, DeviceError],
     /**
      * Make an IRQ for a controller's line, routed and unmasked, for a driver to bind to a port.
      *
@@ -494,13 +531,19 @@ Syscalls :: struct {
      * @error NoSuchLine The controller has no such line.
      * @error LineInUse The line already has an IRQ.
      */
-    irq_create : fn(platform: Platform, budget: MemoryBudget, controller: u32, line: u32, flags: u32) -> Result[Irq, DeviceError],
+    irq_create : fn(
+        platform : Platform,
+        budget : MemoryBudget,
+        controller : u32,
+        line : u32,
+        flags : u32
+    ) -> Result[Irq, DeviceError],
     /**
      * Acknowledge an interrupt, unmasking a level-triggered line again once its device is quiet.
      *
      * @param irq The IRQ, which needs RIGHT_IRQ_ACK.
      */
-    irq_ack : fn(irq: Irq) -> Result[void, HandleError],
+    irq_ack : fn(irq : Irq) -> Result[void, HandleError],
     /**
      * Make a memory object of device memory at a physical address, to map a device's registers or memory.
      *
@@ -514,7 +557,13 @@ Syscalls :: struct {
      * @error BadAddress Not page-aligned, or memory the kernel owns.
      * @error InvalidSize Not a whole number of pages, or a cache mode that isn't one.
      */
-    memory_create_physical : fn(platform: Platform, budget: MemoryBudget, address: u64, size: u64, cache: CacheMode) -> Result[Memory, DeviceError],
+    memory_create_physical : fn(
+        platform : Platform,
+        budget : MemoryBudget,
+        address : u64,
+        size : u64,
+        cache : CacheMode
+    ) -> Result[Memory, DeviceError],
     /**
      * Make a window onto part of a memory object: a memory object of its own that maps those pages, which can be
      * mapped only as the original's handle can be.
@@ -526,7 +575,12 @@ Syscalls :: struct {
      * @return An owning handle to the window.
      * @error InvalidSize The offset or size isn't a whole number of pages, or runs past the memory's end.
      */
-    memory_create_window : fn(memory: Memory, budget: MemoryBudget, offset: u64, size: u64) -> Result[Memory, MemoryError],
+    memory_create_window : fn(
+        memory : Memory,
+        budget : MemoryBudget,
+        offset : u64,
+        size : u64
+    ) -> Result[Memory, MemoryError],
     /**
      * List the threads of a process's subtree.
      *
@@ -535,7 +589,7 @@ Syscalls :: struct {
      * @return How many threads the subtree has, which can be more than were written.
      * @error BadBuffer The IDs aren't memory the caller can write.
      */
-    process_threads : fn(process: Process, ids: mut u64[]) -> Result[u32, ControlError],
+    process_threads : fn(process : Process, ids : mut u64[]) -> Result[u32, ControlError],
     /**
      * Copy bytes from an address space in a process's subtree into the caller's buffer.
      *
@@ -545,7 +599,12 @@ Syscalls :: struct {
      * @param buffer Where the bytes go; it's filled.
      * @error BadAddress The space isn't in the subtree, or the range isn't mapped there or in the caller's memory.
      */
-    process_read_memory : fn(process: Process, space: AddressSpace, address: u64, buffer: mut u8[]) -> Result[void, ControlError],
+    process_read_memory : fn(
+        process : Process,
+        space : AddressSpace,
+        address : u64,
+        buffer : mut u8[]
+    ) -> Result[void, ControlError],
     /**
      * Copy the caller's bytes into an address space in a process's subtree.
      *
@@ -555,7 +614,12 @@ Syscalls :: struct {
      * @param buffer The bytes to write.
      * @error BadAddress The space isn't in the subtree, or the range isn't mapped there or in the caller's memory.
      */
-    process_write_memory : fn(process: Process, space: AddressSpace, address: u64, buffer: u8[]) -> Result[void, ControlError],
+    process_write_memory : fn(
+        process : Process,
+        space : AddressSpace,
+        address : u64,
+        buffer : u8[]
+    ) -> Result[void, ControlError],
     /**
      * Suspend a thread in a process's subtree until thread_resume. Suspending one already suspended changes nothing.
      *
@@ -563,7 +627,7 @@ Syscalls :: struct {
      * @param thread The thread's ID, as process_threads gives it.
      * @error NoSuchThread No thread with that ID in the subtree.
      */
-    thread_suspend : fn(process: Process, thread: u64) -> Result[void, ControlError],
+    thread_suspend : fn(process : Process, thread : u64) -> Result[void, ControlError],
     /**
      * Resume a thread thread_suspend suspended.
      *
@@ -571,7 +635,7 @@ Syscalls :: struct {
      * @param thread The thread's ID, as process_threads gives it.
      * @error NoSuchThread No thread with that ID in the subtree.
      */
-    thread_resume : fn(process: Process, thread: u64) -> Result[void, ControlError],
+    thread_resume : fn(process : Process, thread : u64) -> Result[void, ControlError],
     /**
      * Read a stopped or suspended thread's registers.
      *
@@ -582,7 +646,7 @@ Syscalls :: struct {
      * @error NotStopped The thread isn't stopped or suspended.
      * @error BadBuffer Fewer than THREAD_REGISTERS, or not memory the caller can write.
      */
-    thread_read_registers : fn(process: Process, thread: u64, registers: mut u64[]) -> Result[void, ControlError],
+    thread_read_registers : fn(process : Process, thread : u64, registers : mut u64[]) -> Result[void, ControlError],
     /**
      * Write a stopped or suspended thread's registers, for when it runs again.
      *
@@ -594,7 +658,7 @@ Syscalls :: struct {
      * @error BadBuffer Fewer than THREAD_REGISTERS, or not memory the caller can read.
      * @error BadRegisters A value user mode can't have, like a kernel address for the instruction pointer.
      */
-    thread_write_registers : fn(process: Process, thread: u64, registers: u64[]) -> Result[void, ControlError],
+    thread_write_registers : fn(process : Process, thread : u64, registers : u64[]) -> Result[void, ControlError],
     /**
      * Intercept a process's subtree, for a debugger: its threads stop where points says, and each stop raises a Stop
      * packet on a port. Paid for by the caller's process's own budget, as it has no budget argument.
@@ -607,7 +671,13 @@ Syscalls :: struct {
      * @return An owning handle to the intercept; closing it lets the subtree run on unintercepted.
      * @error AlreadyIntercepted The process is intercepted already.
      */
-    intercept_attach : fn(process: Process, port: Port, key: u64, calls: u64, points: u32) -> Result[Intercept, ControlError],
+    intercept_attach : fn(
+        process : Process,
+        port : Port,
+        key : u64,
+        calls : u64,
+        points : u32
+    ) -> Result[Intercept, ControlError],
     /**
      * Take the next stop not yet reported.
      *
@@ -616,7 +686,7 @@ Syscalls :: struct {
      * @error Empty No stop left to report.
      * @error BadBuffer The stop isn't memory the caller can write.
      */
-    intercept_next : fn(intercept: Intercept, stop: ptr[mut StopInfo]) -> Result[void, ControlError],
+    intercept_next : fn(intercept : Intercept, stop : ptr[mut StopInfo]) -> Result[void, ControlError],
     /**
      * Let a stopped thread go on.
      *
@@ -627,19 +697,19 @@ Syscalls :: struct {
      * @error NotStopped The thread isn't stopped, Skip somewhere other than a system call's entry, or an action that
      *     isn't one.
      */
-    intercept_resume : fn(intercept: Intercept, thread: u64, action: InterceptAction) -> Result[void, ControlError],
+    intercept_resume : fn(intercept : Intercept, thread : u64, action : InterceptAction) -> Result[void, ControlError],
     /**
      * Destroy a process and its subtree, which raises SIGNAL_TERMINATED with EXIT_KILLED.
      *
      * @param process The process, which needs RIGHT_PROCESS_KILL.
      */
-    process_kill : fn(process: Process) -> Result[void, ControlError],
+    process_kill : fn(process : Process) -> Result[void, ControlError],
     /**
      * End the calling process, with its subtree and the calling thread. It never returns.
      *
      * @param code The exit code, for whoever watches it end: data[1] of the SIGNAL_TERMINATED packet.
      */
-    process_exit : fn(code: u32) #never_returns,
+    process_exit : fn(code : u32) #never_returns,
     /**
      * Write a line of text in the kernel's log.
      *
@@ -647,7 +717,7 @@ Syscalls :: struct {
      * @param text The line, without its line break; only its first DEBUG_LOG_LINE bytes are written.
      * @error BadBuffer The text isn't memory the caller can read.
      */
-    debug_log : fn(log: DebugLog, text: u8[]) -> Result[void, HandleError],
+    debug_log : fn(log : DebugLog, text : u8[]) -> Result[void, HandleError],
     /**
      * Make a thread owned by another process, in an address space in its subtree, and start it, as thread_create
      * would in the caller's (decisions/0067).
@@ -661,7 +731,14 @@ Syscalls :: struct {
      * @return The thread's ID, not a handle: the caller doesn't own it.
      * @error BadAddress The address space isn't in the process's subtree.
      */
-    thread_create_in : fn(process: Process, budget: MemoryBudget, space: AddressSpace, entry: u64, stack: u64, argument: u64) -> Result[u64, ControlError],
+    thread_create_in : fn(
+        process : Process,
+        budget : MemoryBudget,
+        space : AddressSpace,
+        entry : u64,
+        stack : u64,
+        argument : u64
+    ) -> Result[u64, ControlError],
     /**
      * Move handles out of the caller's table into another process's, for building it from an executable.
      *
@@ -674,21 +751,25 @@ Syscalls :: struct {
      * @error MissingRight A handle lacks RIGHT_TRANSFER.
      * @error NotTransferable A handle that can't go to the process, such as an owning one to the process or above it.
      */
-    process_give_handles : fn(process: Process, handles: Handle[], given: mut Handle[]) -> Result[void, ControlError],
+    process_give_handles : fn(
+        process : Process,
+        handles : Handle[],
+        given : mut Handle[]
+    ) -> Result[void, ControlError],
     /**
      * Tell how big a memory object is.
      *
      * @param memory The memory; no right is needed.
      * @return Its size in bytes, a whole number of pages.
      */
-    memory_size : fn(memory: Memory) -> Result[u64, HandleError],
+    memory_size : fn(memory : Memory) -> Result[u64, HandleError],
     /**
      * Tell what protocol a channel speaks.
      *
      * @param end Either end; no right is needed.
      * @return The tag the channel was made with, 0 for none.
      */
-    channel_tag : fn(end: Channel) -> Result[u64, ChannelError],
+    channel_tag : fn(end : Channel) -> Result[u64, ChannelError],
     /**
      * Make a Device for a PCIe function, for its message-signaled interrupts and its DMA domain.
      *
@@ -704,7 +785,13 @@ Syscalls :: struct {
      * @error DeviceExists Another device has that address, or, where the interrupt controller uses sources, that MSI
      *     source.
      */
-    device_create : fn(platform: Platform, budget: MemoryBudget, address: u32, msi_source: u32, config: u64) -> Result[Device, DeviceError],
+    device_create : fn(
+        platform : Platform,
+        budget : MemoryBudget,
+        address : u32,
+        msi_source : u32,
+        config : u64
+    ) -> Result[Device, DeviceError],
     /**
      * Put a device's DMA in a domain: what an IOMMU will confine it to.
      *
@@ -715,7 +802,7 @@ Syscalls :: struct {
      * @error WrongIommu The device isn't behind the IOMMU its domain's other devices are, or behind none where
      *     they're behind one.
      */
-    device_attach : fn(platform: Platform, device: Device, domain: DmaDomain) -> Result[void, DeviceError],
+    device_attach : fn(platform : Platform, device : Device, domain : DmaDomain) -> Result[void, DeviceError],
     /**
      * Make an IRQ for one of a device's message-signaled interrupts, routed to a CPU the kernel picks.
      *
@@ -726,7 +813,7 @@ Syscalls :: struct {
      * @error TooManyVectors The device has MAX_DEVICE_MSIS of them already.
      * @error NoFreeInterrupt No CPU has a device interrupt free.
      */
-    irq_create_msi : fn(device: Device, budget: MemoryBudget) -> Result[Irq, DeviceError],
+    irq_create_msi : fn(device : Device, budget : MemoryBudget) -> Result[Irq, DeviceError],
     /**
      * Tell what a device writes, and where, to raise a message-signaled IRQ, for its driver to program.
      *
@@ -734,7 +821,7 @@ Syscalls :: struct {
      * @return The message's address and data.
      * @error NoMsi The IRQ is a wired line's, which has no message.
      */
-    irq_message : fn(irq: Irq) -> Result[MsiMessage, DeviceError],
+    irq_message : fn(irq : Irq) -> Result[MsiMessage, DeviceError],
     /**
      * Make a DMA domain. Without an IOMMU, its device addresses are physical addresses, and only a domain made
      * trusted has DMA memory.
@@ -745,7 +832,7 @@ Syscalls :: struct {
      * @param flags DMA_DOMAIN_TRUSTED, or 0.
      * @return An owning handle to the domain.
      */
-    dma_domain_create : fn(platform: Platform, budget: MemoryBudget, flags: u32) -> Result[DmaDomain, DeviceError],
+    dma_domain_create : fn(platform : Platform, budget : MemoryBudget, flags : u32) -> Result[DmaDomain, DeviceError],
     /**
      * Make memory for DMA in a domain: pinned, physically contiguous, and zeroed.
      *
@@ -757,7 +844,12 @@ Syscalls :: struct {
      * @error Untrusted No IOMMU translates the domain, and it wasn't made trusted.
      * @error InvalidSize Not a whole number of pages, or none.
      */
-    dma_memory_create : fn(domain: DmaDomain, budget: MemoryBudget, size: u64, limit: u64) -> Result[Memory, DeviceError],
+    dma_memory_create : fn(
+        domain : DmaDomain,
+        budget : MemoryBudget,
+        size : u64,
+        limit : u64
+    ) -> Result[Memory, DeviceError],
     /**
      * Tell where DMA memory is, to the devices in its domain.
      *
@@ -765,7 +857,7 @@ Syscalls :: struct {
      * @return Its device address.
      * @error NotDmaMemory Not memory dma_memory_create made, or its domain is gone.
      */
-    memory_device_address : fn(memory: Memory) -> Result[u64, DeviceError],
+    memory_device_address : fn(memory : Memory) -> Result[u64, DeviceError],
     /**
      * Register an IOMMU the firmware tables describe, covering a range of requester IDs.
      *
@@ -787,7 +879,14 @@ Syscalls :: struct {
      * @error InvalidSize The registers is bigger than the IOMMU's registers can be.
      * @error TooManyIommus Every IOMMU the kernel takes is registered, or every range of requester IDs one covers.
      */
-    iommu_register : fn(platform: Platform, kind: IommuKind, registers: Memory, first: u32, count: u32, stream: u32) -> Result[u32, DeviceError],
+    iommu_register : fn(
+        platform : Platform,
+        kind : IommuKind,
+        registers : Memory,
+        first : u32,
+        count : u32,
+        stream : u32
+    ) -> Result[u32, DeviceError],
     /**
      * Make a CPU budget (the SlopOS repository's decisions 0037, 0093): a child of parent, whose threads get time
      * nanoseconds of CPU every period nanoseconds at priority, then run in the background band until it comes back.
@@ -804,7 +903,13 @@ Syscalls :: struct {
      * @error BudgetExceeded Its share would take its parent's children past the parent's own.
      * @error InvalidArgument A period of 0, a time over period, or a priority over its parent's.
      */
-    cpu_budget_create : fn(parent: CpuBudget, budget: MemoryBudget, priority: u32, period: u64, time: u64) -> Result[CpuBudget, HandleError],
+    cpu_budget_create : fn(
+        parent : CpuBudget,
+        budget : MemoryBudget,
+        priority : u32,
+        period : u64,
+        time : u64
+    ) -> Result[CpuBudget, HandleError],
     /**
      * Change a CPU budget's priority, period and time, within its parent's as cpu_budget_create's are.
      *
@@ -816,7 +921,7 @@ Syscalls :: struct {
      *     its own children's.
      * @error InvalidArgument A period of 0, a time over period, or a priority over its parent's.
      */
-    cpu_budget_set : fn(budget: CpuBudget, priority: u32, period: u64, time: u64) -> Result[void, HandleError],
+    cpu_budget_set : fn(budget : CpuBudget, priority : u32, period : u64, time : u64) -> Result[void, HandleError],
     /**
      * Describe a CPU budget, as words; cpu_budget_describe gives it as a CpuBudgetInfo.
      *
@@ -824,7 +929,7 @@ Syscalls :: struct {
      * @param info Where its CpuBudgetInfo goes, as at least CPU_BUDGET_INFO_WORDS words in its fields' order.
      * @error BadBuffer Fewer than CPU_BUDGET_INFO_WORDS words, or not memory the caller can write.
      */
-    cpu_budget_info : fn(budget: CpuBudget, info: mut u64[]) -> Result[void, HandleError],
+    cpu_budget_info : fn(budget : CpuBudget, info : mut u64[]) -> Result[void, HandleError],
     /**
      * Put a process's threads, now and later, on a CPU budget.
      *
@@ -832,7 +937,7 @@ Syscalls :: struct {
      * @param budget The budget, which needs RIGHT_CPU_BUDGET_BIND.
      * @error ObjectGone The process or the budget was destroyed.
      */
-    process_set_cpu_budget : fn(process: Process, budget: CpuBudget) -> Result[void, HandleError],
+    process_set_cpu_budget : fn(process : Process, budget : CpuBudget) -> Result[void, HandleError],
     /**
      * Make an object of a range of I/O ports, on an architecture that has them (x86-64).
      *
@@ -845,7 +950,12 @@ Syscalls :: struct {
      * @return An owning handle to the range.
      * @error InvalidArgument Ports past the last one, none, or an architecture without ports.
      */
-    io_ports_create : fn(platform: Platform, budget: MemoryBudget, first: u32, count: u32) -> Result[IoPortRange, DeviceError],
+    io_ports_create : fn(
+        platform : Platform,
+        budget : MemoryBudget,
+        first : u32,
+        count : u32
+    ) -> Result[IoPortRange, DeviceError],
     /**
      * Read an I/O port in a range.
      *
@@ -855,7 +965,7 @@ Syscalls :: struct {
      * @return The value read, zero-extended.
      * @error InvalidArgument A port outside the range, or a width that isn't 1, 2 or 4.
      */
-    io_port_read : fn(ports: IoPortRange, offset: u32, width: u32) -> Result[u32, DeviceError],
+    io_port_read : fn(ports : IoPortRange, offset : u32, width : u32) -> Result[u32, DeviceError],
     /**
      * Write an I/O port in a range.
      *
@@ -865,7 +975,7 @@ Syscalls :: struct {
      * @param value The value, of which only width bytes are written.
      * @error InvalidArgument A port outside the range, or a width that isn't 1, 2 or 4.
      */
-    io_port_write : fn(ports: IoPortRange, offset: u32, width: u32, value: u32) -> Result[void, DeviceError],
+    io_port_write : fn(ports : IoPortRange, offset : u32, width : u32, value : u32) -> Result[void, DeviceError],
     /**
      * Make a memory object whose pages its pager supplies (the SlopOS repository's decisions/0094): a touch of one
      * that isn't there yet waits, and raises key's wake binding on port, which the pager made.
@@ -881,7 +991,7 @@ Syscalls :: struct {
      * @error NoPager The port has no wake binding with that key, or is gone.
      * @error InvalidSize Not a whole number of pages, none, or more than MAX_MEMORY_SIZE.
      */
-    memory_create_paged : fn(budget: MemoryBudget, port: Port, key: u64, size: u64) -> Result[Memory, MemoryError],
+    memory_create_paged : fn(budget : MemoryBudget, port : Port, key : u64, size : u64) -> Result[Memory, MemoryError],
     /**
      * Ask which page of paged memory a touch is waiting for, each reported once.
      *
@@ -890,7 +1000,7 @@ Syscalls :: struct {
      * @error NothingWanted No page is waited for that hasn't been reported.
      * @error NotPaged Not paged memory.
      */
-    memory_page_wanted : fn(memory: Memory) -> Result[u64, MemoryError],
+    memory_page_wanted : fn(memory : Memory) -> Result[u64, MemoryError],
     /**
      * Supply a page of paged memory, copied from a page of another memory object, and wake whoever waited for it.
      *
@@ -901,7 +1011,12 @@ Syscalls :: struct {
      * @error NotPaged The memory isn't paged memory.
      * @error InvalidSize An offset that isn't a whole number of pages, or past its memory's end.
      */
-    memory_supply : fn(memory: Memory, offset: u64, source: Memory, source_offset: u64) -> Result[void, MemoryError],
+    memory_supply : fn(
+        memory : Memory,
+        offset : u64,
+        source : Memory,
+        source_offset : u64
+    ) -> Result[void, MemoryError],
     /**
      * Copy bytes of memory into a buffer, through the kernel, with no mapping: for memory another process owns, whose
      * end is only ObjectGone, never a fault (the SlopOS repository's decisions/0098). Anonymous, DMA, contiguous, boot
@@ -915,7 +1030,7 @@ Syscalls :: struct {
      * @error WrongKind Device memory.
      * @error InvalidSize The range runs past the memory's end.
      */
-    memory_read : fn(memory: Memory, offset: u64, buffer: mut u8[]) -> Result[void, MemoryError],
+    memory_read : fn(memory : Memory, offset : u64, buffer : mut u8[]) -> Result[void, MemoryError],
     /**
      * Copy bytes into memory, through the kernel, with no mapping, as memory_read reads it: anonymous, DMA or
      * contiguous memory, or a window onto one whose parent's handle allowed writing.
@@ -927,7 +1042,7 @@ Syscalls :: struct {
      * @error WrongKind Device, paged or boot module memory, or a window that isn't writable.
      * @error InvalidSize The range runs past the memory's end.
      */
-    memory_write : fn(memory: Memory, offset: u64, bytes: u8[]) -> Result[void, MemoryError],
+    memory_write : fn(memory : Memory, offset : u64, bytes : u8[]) -> Result[void, MemoryError],
     /**
      * Set the CPUs a CPU budget's threads may run on (the SlopOS repository's decisions/0099). A child starts with
      * its parent's; the root's are every CPU. Its threads move at their next tick.
@@ -938,7 +1053,7 @@ Syscalls :: struct {
      * @error InvalidArgument None of the CPUs online.
      * @error BudgetExceeded CPUs outside its parent's, or not covering one of its children's.
      */
-    cpu_budget_set_cpus : fn(budget: CpuBudget, cpus: u64) -> Result[void, HandleError],
+    cpu_budget_set_cpus : fn(budget : CpuBudget, cpus : u64) -> Result[void, HandleError],
     /**
      * Route a message-signaled IRQ to another CPU.
      *
@@ -947,7 +1062,7 @@ Syscalls :: struct {
      * @error NoMsi The IRQ is a wired line's.
      * @error InvalidArgument A CPU that isn't online, or isn't the caller's CPU budget's.
      */
-    irq_set_cpu : fn(irq: Irq, cpu: u32) -> Result[void, DeviceError],
+    irq_set_cpu : fn(irq : Irq, cpu : u32) -> Result[void, DeviceError],
     /**
      * Set a memory budget's pressure threshold (the SlopOS repository's decisions/0111): SIGNAL_PRESSURE is raised as
      * what it has charged reaches it, and again each time it does after falling below it; at once, if it's there
@@ -956,7 +1071,7 @@ Syscalls :: struct {
      * @param budget The budget, which needs RIGHT_BUDGET_CHARGE.
      * @param threshold In bytes, or 0 for none.
      */
-    memory_budget_set_threshold : fn(budget: MemoryBudget, threshold: u64) -> Result[void, HandleError],
+    memory_budget_set_threshold : fn(budget : MemoryBudget, threshold : u64) -> Result[void, HandleError],
     /**
      * Give back a page of paged memory: unmapped everywhere, its frame freed and its charge returned, so the next
      * touch waits for its pager again.
@@ -968,7 +1083,7 @@ Syscalls :: struct {
      * @error MappedWidely More address spaces map it than one call takes it from (MAX_EVICT_SPACES), which only a
      *     less shared page avoids.
      */
-    memory_evict : fn(memory: Memory, offset: u64) -> Result[void, MemoryError],
+    memory_evict : fn(memory : Memory, offset : u64) -> Result[void, MemoryError],
     /**
      * Ask whether a page of paged memory was touched since the last time this asked, through any mapping, clearing
      * the marks that say so.
@@ -978,7 +1093,7 @@ Syscalls :: struct {
      * @return 1 if it was touched, 0 if it wasn't; always 0 where the hardware doesn't keep the marks.
      * @error NotPaged Not paged memory.
      */
-    memory_page_accessed : fn(memory: Memory, offset: u64) -> Result[u64, MemoryError],
+    memory_page_accessed : fn(memory : Memory, offset : u64) -> Result[u64, MemoryError],
     /**
      * Run the calling thread on a CPU budget from now on, or on its process's again: a server running a
      * connection's work on the budget its client lent it (the SlopOS repository's decisions 0037, 0130). Destroyed
@@ -987,7 +1102,7 @@ Syscalls :: struct {
      * @param budget The budget, which needs RIGHT_CPU_BUDGET_BIND, or NO_HANDLE for the process's own.
      * @error ObjectGone The budget was destroyed.
      */
-    thread_use_cpu_budget : fn(budget: CpuBudget) -> Result[void, HandleError],
+    thread_use_cpu_budget : fn(budget : CpuBudget) -> Result[void, HandleError],
     /**
      * Count who holds a memory object besides its owner (the SlopOS repository's decisions/0178): handles to it that
      * aren't the owning one, in any process or on their way in a channel, its mappings, and its windows. A pager that
@@ -997,7 +1112,7 @@ Syscalls :: struct {
      * @return How many hold it; 0 when only its owner does, as SIGNAL_UNHELD says when it falls to 0.
      * @error MissingRight Not the owning handle.
      */
-    memory_holders : fn(memory: Memory) -> Result[u64, MemoryError],
+    memory_holders : fn(memory : Memory) -> Result[u64, MemoryError],
     /**
      * Tell the kernel how this machine turns off (the SlopOS repository's decisions/0182), where it needs the firmware
      * to know: on x86-64, ACPI's PM1 control registers and the sleep type of S5, `\_S5`'s values. Read-modify-written
@@ -1013,7 +1128,13 @@ Syscalls :: struct {
      * @error InvalidArgument A control_a of 0, or a sleep type over 7; or an architecture that turns off without
      *     the firmware's tables, as AArch64 does through PSCI.
      */
-    power_set_off : fn(platform: Platform, control_a: u32, control_b: u32, sleep_a: u32, sleep_b: u32) -> Result[void, DeviceError],
+    power_set_off : fn(
+        platform : Platform,
+        control_a : u32,
+        control_b : u32,
+        sleep_a : u32,
+        sleep_b : u32
+    ) -> Result[void, DeviceError],
     /**
      * Tell the kernel how this machine resets (decisions/0182), where the firmware says: on x86-64, the FADT's reset
      * register when it's an I/O port. Without it, the kernel resets x86-64 through the chipset's register, 0xcf9.
@@ -1025,7 +1146,7 @@ Syscalls :: struct {
      * @error InvalidArgument A port of 0 or over 65535, or a value over 255; or an architecture without I/O ports or
      *     that resets through PSCI.
      */
-    power_set_reset : fn(platform: Platform, port: u32, value: u32) -> Result[void, DeviceError],
+    power_set_reset : fn(platform : Platform, port : u32, value : u32) -> Result[void, DeviceError],
     /**
      * Say what the kernel does once the root task ends (decisions/0182): halt, as it always has, turn the machine
      * off, or restart it. It's done after every other CPU has stopped and the objects left are logged; with test_exit
@@ -1038,7 +1159,7 @@ Syscalls :: struct {
      *     without PSCI.
      * @error InvalidArgument An action that isn't one of PowerAction's.
      */
-    power_end_with : fn(platform: Platform, action: PowerAction) -> Result[void, DeviceError],
+    power_end_with : fn(platform : Platform, action : PowerAction) -> Result[void, DeviceError],
     /**
      * Say which requester ID an interrupt controller's interrupts come from, as the IOMMU that remaps them sees it
      * (the SlopOS repository's decisions/0182): an I/O APIC's, from the DMAR's device scope for it. With it, the
@@ -1050,7 +1171,7 @@ Syscalls :: struct {
      * @param source Its requester ID with its segment, as device_address makes it.
      * @error NoSuchController No controller is registered with that number.
      */
-    controller_set_source : fn(platform: Platform, controller: u32, source: u32) -> Result[void, DeviceError],
+    controller_set_source : fn(platform : Platform, controller : u32, source : u32) -> Result[void, DeviceError],
     /**
      * Set a parked thread's debugging state (decisions/0183, 12b): whether it stops after each instruction it runs,
      * and its hardware breakpoints and watchpoints. Each is a fault stop for an intercept that takes faults:
@@ -1068,7 +1189,7 @@ Syscalls :: struct {
      * @error BadRegisters A slot the architecture can't set: an address outside user memory, a data slot's size not 1,
      *     2, 4 or 8 or its address not a multiple of it, or more slots of a kind than the CPU has.
      */
-    thread_set_debug : fn(process: Process, thread: u64, debug: ptr[ThreadDebug]) -> Result[void, ControlError],
+    thread_set_debug : fn(process : Process, thread : u64, debug : ptr[ThreadDebug]) -> Result[void, ControlError],
     /**
      * Change where an intercept stops threads, as intercept_attach's calls and points say; threads stopped already
      * stay stopped until they're let go.
@@ -1077,7 +1198,7 @@ Syscalls :: struct {
      * @param calls Which system calls stop at entry or exit from now: a bit per call number below 64 (syscall_bit).
      * @param points STOP_ bits: where threads stop from now.
      */
-    intercept_set : fn(intercept: Intercept, calls: u64, points: u32) -> Result[void, ControlError],
+    intercept_set : fn(intercept : Intercept, calls : u64, points : u32) -> Result[void, ControlError],
     /**
      * Set what a process's threads trap on (decisions/0183, 12c): TRAP_COUNTER for reading the CPU's counter in user
      * mode, for a recording. A trapped read is run by the kernel, and then is a fault stop, FAULT_COUNTER, for an
@@ -1087,7 +1208,7 @@ Syscalls :: struct {
      * @param traps TRAP_ bits: what traps, from each of its threads' next return from the kernel; 0 for nothing, as a
      *     process starts.
      */
-    process_set_traps : fn(process: Process, traps: u32) -> Result[void, ControlError],
+    process_set_traps : fn(process : Process, traps : u32) -> Result[void, ControlError],
     /**
      * Turn the kernel's trace on or off (decisions/0183, 12d): each CPU keeps the last TRACE_EVENTS of its scheduler's
      * events, a thread switched to and a thread made ready, for trace_read. It shows every process's scheduling, so it
@@ -1097,7 +1218,7 @@ Syscalls :: struct {
      * @param on Whether it traces from now.
      * @error OutOfMemory The kernel had no memory for a CPU's ring, the first time it's turned on.
      */
-    trace_set : fn(log: DebugLog, on: bool) -> Result[void, DeviceError],
+    trace_set : fn(log : DebugLog, on : bool) -> Result[void, DeviceError],
     /**
      * Take the trace's events not yet taken, each CPU's in turn, oldest first within a CPU; a CPU's older than its last
      * TRACE_EVENTS are gone.
@@ -1107,7 +1228,7 @@ Syscalls :: struct {
      * @return How many were written.
      * @error BadAddress events isn't memory the caller can write.
      */
-    trace_read : fn(log: DebugLog, events: mut TraceEvent[]) -> Result[u32, DeviceError],
+    trace_read : fn(log : DebugLog, events : mut TraceEvent[]) -> Result[u32, DeviceError],
     /**
      * Sample an intercept's subtree, or stop (decisions/0183, 12d): at each tick of a CPU running one of its threads in
      * user mode, the thread, its program counter and the return addresses its frame pointers chain, up to
@@ -1117,7 +1238,7 @@ Syscalls :: struct {
      * @param on Whether it samples from now.
      * @error OutOfMemory The kernel had no memory for its samples, the first time it's turned on.
      */
-    intercept_sample : fn(intercept: Intercept, on: bool) -> Result[void, ControlError],
+    intercept_sample : fn(intercept : Intercept, on : bool) -> Result[void, ControlError],
     /**
      * Take an intercept's samples not yet taken, oldest first.
      *
@@ -1126,7 +1247,7 @@ Syscalls :: struct {
      * @return How many were written.
      * @error BadBuffer samples isn't memory the caller can write.
      */
-    intercept_samples : fn(intercept: Intercept, samples: mut Sample[]) -> Result[u32, ControlError],
+    intercept_samples : fn(intercept : Intercept, samples : mut Sample[]) -> Result[u32, ControlError],
     /**
      * Set a process's hardware breakpoints and watchpoints, for a debugger: every thread of its, now and later, has
      * them as it returns to user mode, unless the thread single-steps (thread_set_debug), when it has its own state
@@ -1137,7 +1258,7 @@ Syscalls :: struct {
      * @error BadBuffer debug isn't memory the caller can read.
      * @error BadRegisters step is set, or a slot the architecture can't set, as for thread_set_debug.
      */
-    process_set_debug : fn(process: Process, debug: ptr[ThreadDebug]) -> Result[void, ControlError],
+    process_set_debug : fn(process : Process, debug : ptr[ThreadDebug]) -> Result[void, ControlError],
     /**
      * Say a process's CPU time, and what services ran on its CPU budget for it: the time threads of processes not on
      * that budget ran on it, as a loan, for attribution (the SlopOS repository's decisions/0185).
@@ -1146,7 +1267,7 @@ Syscalls :: struct {
      * @return Its threads' time and the time run on its budget by others, in nanoseconds since it was made; lent_ns is
      *     shared by every process on the same budget.
      */
-    process_cpu_info : fn(process: Process) -> Result[ProcessCpu, ControlError],
+    process_cpu_info : fn(process : Process) -> Result[ProcessCpu, ControlError],
     /**
      * Say what's charged to a memory budget by objects of processes not on it, as a server's made for a client and
      * charged to the client's budget are (the SlopOS repository's decisions/0185).
@@ -1154,7 +1275,7 @@ Syscalls :: struct {
      * @param budget The budget; no right is needed.
      * @return The bytes.
      */
-    memory_budget_others : fn(budget: MemoryBudget) -> Result[u64, HandleError],
+    memory_budget_others : fn(budget : MemoryBudget) -> Result[u64, HandleError],
     /**
      * Give the calling thread its per-thread page, a ThreadPage it writes and the kernel reads at its scheduling points
      * (the SlopOS repository's decisions/0041 and 0185), or take it away. Base's runtime gives a thread one the first
@@ -1167,25 +1288,36 @@ Syscalls :: struct {
      * @error WrongKind Memory that isn't anonymous: device, a boot module's, contiguous, paged, or a window.
      * @error OutOfMemory Its page had no frame yet, and there were none.
      */
-    thread_set_page : fn(memory: Memory, offset: u64) -> Result[void, MemoryError],
+    thread_set_page : fn(memory : Memory, offset : u64) -> Result[void, MemoryError],
     /**
-     * Say what hardware control-flow integrity a process's code was built for, as its ELF's property note says, and give
-     * the region of its address space its threads' shadow stacks go in (the SlopOS repository's decisions/0186). From then
-     * on, where the CPU has them, each thread made in it gets a shadow stack of its own there before it runs, in a slot of
+     * Say what hardware control-flow integrity a process's code was built for, as its ELF's property note says, and
+     * give
+     * the region of its address space its threads' shadow stacks go in (the SlopOS repository's decisions/0186). From
+     * then
+     * on, where the CPU has them, each thread made in it gets a shadow stack of its own there before it runs, in a slot
+     * of
      * a guard page and SHADOW_STACK_BYTES, which the kernel makes and maps and gives back when the thread ends; and its
      * threads have landing pads checked. Made before its first thread, normally by whoever loads its program.
      *
      * @param process The process, which needs RIGHT_PROCESS_THREADS.
      * @param features CONTROL_FLOW_ bits; others are ignored.
-     * @param region With CONTROL_FLOW_SHADOW_STACK, where the shadow stacks go: page-aligned, free user space, room for at
+     * @param region With CONTROL_FLOW_SHADOW_STACK, where the shadow stacks go: page-aligned, free user space, room for
+     *     at
      *     least one slot; at most 256 slots are used. Ignored without it.
      * @param size The region's size in bytes.
-     * @error BadAddress A region that isn't page-aligned, is too small for a slot, or wraps; or any, once a thread of the
+     * @error BadAddress A region that isn't page-aligned, is too small for a slot, or wraps; or any, once a thread of
+     *     the
      *     process has a shadow stack. One that isn't free fails each thread's creation instead.
      */
-    process_set_control_flow : fn(process: Process, features: u32, region: u64, size: u64) -> Result[void, ControlError],
+    process_set_control_flow : fn(
+        process : Process,
+        features : u32,
+        region : u64,
+        size : u64
+    ) -> Result[void, ControlError],
     /**
-     * Take the kernel's coverage counters, for the system call fuzzer (the SlopOS repository's decisions/0186): a byte for
+     * Take the kernel's coverage counters, for the system call fuzzer (the SlopOS repository's decisions/0186): a byte
+     * for
      * each basic block of its code, bumped each time the block runs, wrapping past 255, copied into counters as far as
      * it reaches, then every one zeroed, so the next take counts from here. Only in a kernel built with them, a test
      * build (the SlopOS build's coverage=on); any process may take them there.
@@ -1195,7 +1327,7 @@ Syscalls :: struct {
      * @error BadBuffer counters isn't the caller's to write.
      * @error NotCounted The kernel wasn't built with coverage counters.
      */
-    coverage_take : fn(counters: mut u8[]) -> Result[u64, CoverageError],
+    coverage_take : fn(counters : mut u8[]) -> Result[u64, CoverageError],
 }
 
 // What process_set_control_flow is told a process's code was built for (the SlopOS repository's decisions/0186)
@@ -1218,7 +1350,7 @@ SHADOW_STACK_BYTES : u64 : 64 * 1024
  * @param threads How many threads' shadow stacks: 1 or more; 0 gives 0.
  * @return The bytes; 0 where the CPU has neither CET's shadow stacks nor AArch64's Guarded Control Stack.
  */
-shadow_stacks_budget :: fn(threads: u64) -> u64 {
+shadow_stacks_budget :: fn(threads : u64) -> u64 {
     features :: &startup_block().cpu_features
     if threads == 0 || (!has_feature(features, .X86ShadowStack) && !has_feature(features, .Aarch64Gcs)) {
         return 0
@@ -1236,7 +1368,10 @@ ThreadPage :: struct {
      * other that isn't such a handle the same. Resolved when it changes, so thread_use_cpu_budget holds until it does.
      */
     budget : u64,
-    /** The fiber running on the thread, as its fiber scheduler names it (base's, its runtime.Fiber's address); 0 for none. */
+    /**
+     * The fiber running on the thread, as its fiber scheduler names it (base's, its runtime.Fiber's address); 0 for
+     * none.
+     */
     fiber : u64,
 }
 
@@ -1288,13 +1423,21 @@ CPU_BUDGET_INFO_WORDS :: 8
  * @param budget The budget; no right is needed.
  * @return What the budget is, or null if cpu_budget_info failed: the handle isn't a CPU budget's, or it's gone.
  */
-cpu_budget_describe :: fn(budget: CpuBudget) -> CpuBudgetInfo? #no_context {
+cpu_budget_describe :: fn(budget : CpuBudget) -> CpuBudgetInfo? #no_context {
     words : u64[CPU_BUDGET_INFO_WORDS]
     if cpu_budget_info(budget, words) is_error {
         return null
     }
-    return CpuBudgetInfo.{priority = words[0], period = words[1], time = words[2], share = words[3], children_share = words[4],
-        cpus = words[5], lent = words[6], ran = words[7]}
+    return CpuBudgetInfo.{
+        priority = words[0],
+        period = words[1],
+        time = words[2],
+        share = words[3],
+        children_share = words[4],
+        cpus = words[5],
+        lent = words[6],
+        ran = words[7],
+    }
 }
 
 /** The most of a line debug_log writes, in bytes; the rest is dropped. */
@@ -1315,7 +1458,7 @@ EXIT_KILLED : u64 : 1 << 32
  * @param number The call's number (SYSCALL_<NAME>), below 64 for the bit to mean anything.
  * @return The call's bit; 0 for numbers 64 and up on x86-64, whose shifts wrap.
  */
-syscall_bit :: fn(number: u32) -> u64 #no_context {
+syscall_bit :: fn(number : u32) -> u64 #no_context {
     return cast[u64](1) << cast[u64](number)
 }
 
@@ -1379,7 +1522,7 @@ MsiMessage :: struct {
  * @param function The function number, 0 to 7; higher bits are dropped.
  * @return The address: segment in the high 16 bits, then bus, device and function.
  */
-device_address :: fn(segment: u16, bus: u8, device: u8, function: u8) -> u32 #no_context {
+device_address :: fn(segment : u16, bus : u8, device : u8, function : u8) -> u32 #no_context {
     return cast[u32](segment) << 16 | cast[u32](bus) << 8 | (cast[u32](device) & 0x1f) << 3 | (cast[u32](function) & 7)
 }
 
@@ -1403,7 +1546,10 @@ TRACE_EVENTS :: 1024
 
 /** What a TraceEvent is. */
 TraceKind :: enum #backed_by(u32) {
-    /** A CPU switched to a thread: other is the fiber its per-thread page says is running (ThreadPage.fiber), 0 for none. */
+    /**
+     * A CPU switched to a thread: other is the fiber its per-thread page says is running (ThreadPage.fiber), 0 for
+     * none.
+     */
     Switch = 1,
     /** A thread was made ready, as a wake or a preemption does: other is the CPU it was queued on. */
     Wake = 2,
@@ -1440,7 +1586,9 @@ Sample :: struct {
     frames : u64[SAMPLE_FRAMES],
 }
 
-/** For process_set_traps: reading the CPU's counter in user mode (x86-64's RDTSC, AArch64's CNTVCT_EL0 and CNTPCT_EL0). */
+/**
+ * For process_set_traps: reading the CPU's counter in user mode (x86-64's RDTSC, AArch64's CNTVCT_EL0 and CNTPCT_EL0).
+ */
 TRAP_COUNTER : u32 : 1 << 0
 /**
  * With STOP_FAULT: a thread stopped at a fault that isn't let go within a second ends its process, as a fault without
@@ -1558,7 +1706,7 @@ ThreadDebug :: struct {
  * @param kind StopInfo's number at a fault: one of the FAULT_ constants.
  * @return Its name in lowercase words, as "invalid instruction"; "unknown fault" for any other number. Static.
  */
-fault_name :: fn(kind: u32) -> string #no_context {
+fault_name :: fn(kind : u32) -> string #no_context {
     match kind {
         case FAULT_READ => return "read fault"
         case FAULT_WRITE => return "write fault"
@@ -1793,7 +1941,7 @@ MAX_HANDLES_PER_BATCH : u32 : 64
  * @param ring_bytes Each ring's size in bytes, as channel_create took it (not 0).
  * @return The bytes channel_map maps: the indices and both rings, rounded up to whole 4 KiB pages.
  */
-channel_memory_size :: fn(ring_bytes: u32) -> u64 {
+channel_memory_size :: fn(ring_bytes : u32) -> u64 {
     return (cast[u64](CHANNEL_RINGS_OFFSET) + 2 * cast[u64](ring_bytes) + 4095) & ~cast[u64](4095)
 }
 
@@ -1803,7 +1951,7 @@ channel_memory_size :: fn(ring_bytes: u32) -> u64 {
  * @param ring_bytes The ring's size in bytes, from CHANNEL_MIN_RING to CHANNEL_MAX_RING.
  * @return The largest payload in bytes, without its header.
  */
-channel_max_payload :: fn(ring_bytes: u32) -> u32 {
+channel_max_payload :: fn(ring_bytes : u32) -> u32 {
     half :: ring_bytes / 2
     return (if half < 65536 { half } else { 65536 }) - cast[u32](size_of(MessageHeader))
 }
@@ -1949,7 +2097,9 @@ MemoryError :: enum #backed_by(u32) {
 /** The largest memory object, 1 GiB, in bytes. */
 MAX_MEMORY_SIZE : u64 : 1 << 30
 
-/** What coverage_take can fail with (the SlopOS repository's decisions/0186). Tags shared with the others mean the same. */
+/**
+ * What coverage_take can fail with (the SlopOS repository's decisions/0186). Tags shared with the others mean the same.
+ */
 CoverageError :: enum #backed_by(u32) {
     /** Memory the call writes isn't there, or isn't the caller's to. */
     BadBuffer = 10,

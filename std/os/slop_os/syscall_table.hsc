@@ -54,7 +54,15 @@ SyscallAnswer :: struct {
  * @param f The sixth argument word, 0 when the call takes fewer.
  * @return The three result registers as the kernel left them. For a call that doesn't return, it never comes back.
  */
-system_call :: fn(number: u64, a: u64 = 0, b: u64 = 0, c: u64 = 0, d: u64 = 0, e: u64 = 0, f: u64 = 0) -> SyscallAnswer #no_context {
+system_call :: fn(
+    number : u64,
+    a : u64 = 0,
+    b : u64 = 0,
+    c : u64 = 0,
+    d : u64 = 0,
+    e : u64 = 0,
+    f : u64 = 0
+) -> SyscallAnswer #no_context {
     #if TARGET_ARCH == .x86_64 {
         made :: x86_64.system_call(number, a, b, c, d, e, f)
         return SyscallAnswer.{tag = made.rax, first = made.rdx, second = made.r8}
@@ -168,23 +176,26 @@ table :: fn() -> ptr[compiler.TypeInfoStruct] {
  * @return Statements code declaring the stub, a function named as the member with its parameters, for syscall_stubs to
  *     gather into the list it inserts at the top level.
  */
-stub :: fn(member: compiler.StructMember, number: u64, location: runtime.SourceCodeLocation) -> compiler.Code {
+stub :: fn(member : compiler.StructMember, number : u64, location : runtime.SourceCodeLocation) -> compiler.Code {
     function :: cast[ptr[compiler.TypeInfoFunction]](member.member_type)
     signature :: compiler.described_type(member.member_type)
     words :: argument_words(function, member.name, location)
     if function.never_returns {
         return #code {
-            #insert compiler.name(member.name) :: fn(#insert compiler.parameters(signature)) #never_returns #no_context {
+            #insert compiler.name(member.name) :: fn(
+                #insert compiler.parameters(signature)
+            ) #never_returns #no_context {
                 _ = system_call(#insert number, #insert words)
-                loop {
-                }
+                loop {}
             }
         }
     }
     result :: result_of(function)
     ok, error :: result_types(result, member.name, location)
     return #code {
-        #insert compiler.name(member.name) :: fn(#insert compiler.parameters(signature)) -> #insert compiler.type_code(compiler.described_type(result)) #no_context {
+        #insert compiler.name(member.name) :: fn(
+            #insert compiler.parameters(signature)
+        ) -> #insert compiler.type_code(compiler.described_type(result)) #no_context {
             answer :: system_call(#insert number, #insert words)
             if answer.tag != 0 {
                 return .Error(#insert value_of(error, #code(answer.tag)))
@@ -206,7 +217,11 @@ stub :: fn(member: compiler.StructMember, number: u64, location: runtime.SourceC
  *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return The words, as a list of expressions to pass after the call's number.
  */
-argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string, location: runtime.SourceCodeLocation) -> compiler.Code {
+argument_words :: fn(
+    function : ptr[compiler.TypeInfoFunction],
+    call : string,
+    location : runtime.SourceCodeLocation
+) -> compiler.Code {
     made : compiler.Code[..]
     for input in function.input {
         argument :: compiler.name(input.name)
@@ -219,8 +234,15 @@ argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string, loc
         }
     }
     if #is_compile_time && made.count > SYSCALL_ARGUMENT_WORDS {
-        compiler.report(.Error, #package_name, "E0001", location, "% takes more than % registers of arguments", call,
-            SYSCALL_ARGUMENT_WORDS)
+        compiler.report(
+            .Error,
+            #package_name,
+            "E0001",
+            location,
+            "% takes more than % registers of arguments",
+            call,
+            SYSCALL_ARGUMENT_WORDS
+        )
     }
     return compiler.list(made)
 }
@@ -234,10 +256,10 @@ argument_words :: fn(function: ptr[compiler.TypeInfoFunction], call: string, loc
  * @param ok The Ok type, or None when the call's Ok carries nothing, for a bare .Ok.
  * @return Statements that return the result.
  */
-ok_result :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
+ok_result :: fn(ok : ptr[compiler.TypeInfo]?) -> compiler.Code {
     type :: ok or_return #code {
-        return .Ok
-    }
+            return .Ok
+        }
     base :: underlying(type)
     if base.variant != .STRUCT {
         return #code {
@@ -280,7 +302,7 @@ ok_result :: fn(ok: ptr[compiler.TypeInfo]?) -> compiler.Code {
  * @return Code for one if statement, inserted where the kernel dispatches, using the registers, thread and number
  *     there: when number matches, it returns the call's answer from the function it's in; otherwise it does nothing.
  */
-dispatch :: fn(member: compiler.StructMember, number: u64, location: runtime.SourceCodeLocation) -> compiler.Code {
+dispatch :: fn(member : compiler.StructMember, number : u64, location : runtime.SourceCodeLocation) -> compiler.Code {
     function :: cast[ptr[compiler.TypeInfoFunction]](member.member_type)
     arguments : compiler.Code[..]
     index := cast[u64](0)
@@ -332,10 +354,10 @@ dispatch :: fn(member: compiler.StructMember, number: u64, location: runtime.Sou
  * @return Code for one case pattern, Ok or Ok(value), to insert in a match on the handler's result; it returns from the
  *     function it's in.
  */
-ok_answer :: fn(ok: ptr[compiler.TypeInfo]?, location: runtime.SourceCodeLocation) -> compiler.Code {
+ok_answer :: fn(ok : ptr[compiler.TypeInfo]?, location : runtime.SourceCodeLocation) -> compiler.Code {
     type :: ok or_return #code patterns {
-        case Ok => return answered(0, 0, 0)
-    }
+            case Ok => return answered(0, 0, 0)
+        }
     base :: underlying(type)
     if base.variant != .STRUCT {
         return #code patterns {
@@ -364,7 +386,7 @@ ok_answer :: fn(ok: ptr[compiler.TypeInfo]?, location: runtime.SourceCodeLocatio
  * @param function The call's function type.
  * @return The result's type information, or a null pointer when the function has no outputs.
  */
-result_of :: fn(function: ptr[compiler.TypeInfoFunction]) -> ptr[compiler.TypeInfo] {
+result_of :: fn(function : ptr[compiler.TypeInfoFunction]) -> ptr[compiler.TypeInfo] {
     result := cast[ptr[compiler.TypeInfo]](0)
     for output in function.output {
         result = output.type
@@ -385,8 +407,11 @@ result_of :: fn(function: ptr[compiler.TypeInfoFunction]) -> ptr[compiler.TypeIn
  * @return ok The Ok type, or None when Ok carries nothing.
  * @return error The error type; result itself when the Result has no Error variant.
  */
-result_types :: fn(result: ptr[compiler.TypeInfo], call: string, location := #caller_location)
-    -> (ok: ptr[compiler.TypeInfo]?, error: ptr[compiler.TypeInfo]) {
+result_types :: fn(
+    result : ptr[compiler.TypeInfo],
+    call : string,
+    location := #caller_location
+) -> (ok : ptr[compiler.TypeInfo]?, error : ptr[compiler.TypeInfo]) {
     union_info :: cast[ptr[compiler.TypeInfoUnion]](underlying(result))
     ok : ptr[compiler.TypeInfo]? = null
     error := result
@@ -419,10 +444,18 @@ result_types :: fn(result: ptr[compiler.TypeInfo], call: string, location := #ca
  *     #insert, as the caller's location of syscall_stubs or syscall_dispatch.
  * @return An expression of type u64.
  */
-word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code, location: runtime.SourceCodeLocation) -> compiler.Code {
+word_of :: fn(
+    type : ptr[compiler.TypeInfo],
+    value : compiler.Code,
+    location : runtime.SourceCodeLocation
+) -> compiler.Code {
     if type.variant == .ALIAS {
         base :: cast[ptr[compiler.TypeInfoAlias]](type).base_type
-        return word_of(base, #code(cast[#insert compiler.type_code(compiler.described_type(base))](#insert value)), location)
+        return word_of(
+            base,
+            #code(cast[#insert compiler.type_code(compiler.described_type(base))](#insert value)),
+            location
+        )
     }
     if type.variant == .ENUM {
         backing :: compiler.type_code(compiler.described_type(cast[ptr[compiler.TypeInfoEnum]](type).backing_type))
@@ -450,7 +483,7 @@ word_of :: fn(type: ptr[compiler.TypeInfo], value: compiler.Code, location: runt
  * @param word The u64 expression to convert.
  * @return An expression of the given type.
  */
-value_of :: fn(type: ptr[compiler.TypeInfo], word: compiler.Code) -> compiler.Code {
+value_of :: fn(type : ptr[compiler.TypeInfo], word : compiler.Code) -> compiler.Code {
     made :: compiler.type_code(compiler.described_type(type))
     if type.variant == .ALIAS {
         return #code(cast[#insert made](#insert value_of(cast[ptr[compiler.TypeInfoAlias]](type).base_type, word)))
@@ -472,7 +505,7 @@ value_of :: fn(type: ptr[compiler.TypeInfo], word: compiler.Code) -> compiler.Co
  * @return The first type that isn't an alias, or type itself when it isn't one. It stops after 16 aliases, giving
  *     the alias it reached.
  */
-underlying :: fn(type: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
+underlying :: fn(type : ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
     current := type
     for depth in 0..<16 {
         if current.variant != .ALIAS {
@@ -489,7 +522,7 @@ underlying :: fn(type: ptr[compiler.TypeInfo]) -> ptr[compiler.TypeInfo] {
  * @param type The type, through any aliases.
  * @return True for a slice, false for anything else, fixed-size and growing arrays included.
  */
-is_slice :: fn(type: ptr[compiler.TypeInfo]) -> bool {
+is_slice :: fn(type : ptr[compiler.TypeInfo]) -> bool {
     base :: underlying(type)
     if base.variant != .ARRAY {
         return false
@@ -507,7 +540,7 @@ is_slice :: fn(type: ptr[compiler.TypeInfo]) -> bool {
  * @param upper The bytes the upper-case name is written into. Only 64 fit, so a longer name is cut to 64 bytes.
  * @return The upper-case name, a view of upper's bytes, good as long as upper is and isn't written again.
  */
-upper_name :: fn(name: string, upper: ptr[mut u8[64]]) -> string {
+upper_name :: fn(name : string, upper : ptr[mut u8[64]]) -> string {
     count := cast[usize](0)
     for character in name {
         if count < 64 {

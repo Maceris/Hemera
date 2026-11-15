@@ -26,16 +26,16 @@ COS_C5 : f64 : 2.08757232129817482790e-09 // 0x3e21ee9e_bdb4b1c4
 COS_C6 : f64 : -1.13596475577881948265e-11 // 0xbda8fae9_be8838d4
 
 /* tan's, T[0] to T[12] */
-TAN_T0 : f64 : 3.33333333333334091986e-01 // 0x3fd55555_55555563
-TAN_T1 : f64 : 1.33333333333201242699e-01 // 0x3fc11111_1110fe7a
-TAN_T2 : f64 : 5.39682539762260521377e-02 // 0x3faba1ba_1bb341fe
-TAN_T3 : f64 : 2.18694882948595424599e-02 // 0x3f9664f4_8406d637
-TAN_T4 : f64 : 8.86323982359930005737e-03 // 0x3f8226e3_e96e8493
-TAN_T5 : f64 : 3.59207910759131235356e-03 // 0x3f6d6d22_c9560328
-TAN_T6 : f64 : 1.45620945432529025516e-03 // 0x3f57dbc8_fee08315
-TAN_T7 : f64 : 5.88041240820264096874e-04 // 0x3f4344d8_f2f26501
-TAN_T8 : f64 : 2.46463134818469906812e-04 // 0x3f3026f7_1a8d1068
-TAN_T9 : f64 : 7.81794442939557092300e-05 // 0x3f147e88_a03792a6
+TAN_T0  : f64 : 3.33333333333334091986e-01 // 0x3fd55555_55555563
+TAN_T1  : f64 : 1.33333333333201242699e-01 // 0x3fc11111_1110fe7a
+TAN_T2  : f64 : 5.39682539762260521377e-02 // 0x3faba1ba_1bb341fe
+TAN_T3  : f64 : 2.18694882948595424599e-02 // 0x3f9664f4_8406d637
+TAN_T4  : f64 : 8.86323982359930005737e-03 // 0x3f8226e3_e96e8493
+TAN_T5  : f64 : 3.59207910759131235356e-03 // 0x3f6d6d22_c9560328
+TAN_T6  : f64 : 1.45620945432529025516e-03 // 0x3f57dbc8_fee08315
+TAN_T7  : f64 : 5.88041240820264096874e-04 // 0x3f4344d8_f2f26501
+TAN_T8  : f64 : 2.46463134818469906812e-04 // 0x3f3026f7_1a8d1068
+TAN_T9  : f64 : 7.81794442939557092300e-05 // 0x3f147e88_a03792a6
 TAN_T10 : f64 : 7.14072491382608190305e-05 // 0x3f12b80f_32f0a7e9
 TAN_T11 : f64 : -1.85586374855275456654e-05 // 0xbef375cb_db605373
 TAN_T12 : f64 : 2.59073051863633712884e-05 // 0x3efb2a70_74bf7ad4
@@ -49,11 +49,11 @@ TO_WHOLE : f64 : 6755399441055744.0 // 0x43380000_00000000
 /** 2 / π. */
 INVERSE_PI_OVER_2 : f64 : 6.36619772367581382433e-01 // 0x3fe45f30_6dc9c883
 /* π/2 in three pieces of 33 bits, each with the rest of π/2 after it */
-PI_OVER_2_1 : f64 : 1.57079632673412561417 // 0x3ff921fb_54400000
+PI_OVER_2_1      : f64 : 1.57079632673412561417 // 0x3ff921fb_54400000
 PI_OVER_2_1_TAIL : f64 : 6.07710050650619224932e-11 // 0x3dd0b461_1a626331
-PI_OVER_2_2 : f64 : 6.07710050630396597660e-11 // 0x3dd0b461_1a600000
+PI_OVER_2_2      : f64 : 6.07710050630396597660e-11 // 0x3dd0b461_1a600000
 PI_OVER_2_2_TAIL : f64 : 2.02226624879595063154e-21 // 0x3ba3198a_2e037073
-PI_OVER_2_3 : f64 : 2.02226624871116645580e-21 // 0x3ba3198a_2e000000
+PI_OVER_2_3      : f64 : 2.02226624871116645580e-21 // 0x3ba3198a_2e000000
 PI_OVER_2_3_TAIL : f64 : 8.47842766036889956997e-32 // 0x397b839a_252049c1
 
 /** 2/π's bits, 24 at a time, from the top: as many as reducing an f64 needs. */
@@ -63,7 +63,7 @@ TWO_OVER_PI_WORDS :: i32.[
     0x7026b4, 0x5f7e41, 0x3991d6, 0x398353, 0x39f49c, 0x845f8b, 0xbdf928, 0x3b1ff8, 0x97ffde, 0x05980f, 0xef2f11,
     0x8b5a0a, 0x6d1f6d, 0x367ecf, 0x27cb09, 0xb74f46, 0x3f669e, 0x5fea2d, 0x7527ba, 0xc7ebe5, 0xf17b3d, 0x0739f7,
     0x8a5292, 0xea6bfb, 0x5fb11f, 0x8d5d08, 0x560330, 0x46fc7b, 0x6babf0, 0xcfbc20, 0x9af436, 0x1da9e3, 0x91615e,
-    0xe61b08, 0x659985, 0x5f14a0, 0x68408d, 0xffd880, 0x4d7327, 0x310606, 0x1556ca, 0x73a8c9, 0x60e27b, 0xc08c6b,
+    0xe61b08, 0x659985, 0x5f14a0, 0x68408d, 0xffd880, 0x4d7327, 0x310606, 0x1556ca, 0x73a8c9, 0x60e27b, 0xc08c6b
 ]
 
 /** π/2 in pieces of 24 bits, each the rest of π/2 after those before it. */
@@ -75,7 +75,7 @@ PI_OVER_2_PIECES :: f64.[
     1.27065575308067607349e-29, // 0x39f01b83_80000000
     1.22933308981111328932e-36, // 0x387a2520_40000000
     2.73370053816464559624e-44, // 0x36e38222_80000000
-    2.16741683877804819444e-51, // 0x3569f31d_00000000
+    2.16741683877804819444e-51 // 0x3569f31d_00000000
 ]
 
 /**
@@ -86,8 +86,8 @@ PI_OVER_2_PIECES :: f64.[
  * @param has_tail Whether y is to be used; false when it's 0.
  * @return sin(x + y), within 1 ulp.
  */
-//SPEC: fdlibm k_sin.c
-sin_kernel_64 :: fn(x: f64, y: f64, has_tail: bool) -> f64 {
+// SPEC: fdlibm k_sin.c
+sin_kernel_64 :: fn(x : f64, y : f64, has_tail : bool) -> f64 {
     z :: x * x
     w :: z * z
     r :: SIN_S2 + z * (SIN_S3 + z * SIN_S4) + z * w * (SIN_S5 + z * SIN_S6)
@@ -105,8 +105,8 @@ sin_kernel_64 :: fn(x: f64, y: f64, has_tail: bool) -> f64 {
  * @param y Its tail.
  * @return cos(x + y), within 1 ulp.
  */
-//SPEC: fdlibm k_cos.c
-cos_kernel_64 :: fn(x: f64, y: f64) -> f64 {
+// SPEC: fdlibm k_cos.c
+cos_kernel_64 :: fn(x : f64, y : f64) -> f64 {
     z :: x * x
     w := z * z
     r :: z * (COS_C1 + z * (COS_C2 + z * COS_C3)) + w * w * (COS_C4 + z * (COS_C5 + z * COS_C6))
@@ -123,8 +123,8 @@ cos_kernel_64 :: fn(x: f64, y: f64) -> f64 {
  * @param odd Whether -1 / tan is wanted, as for an odd count of π/2 reduced by.
  * @return tan(x + y), or -1 / tan(x + y), within 1 ulp.
  */
-//SPEC: fdlibm k_tan.c, as musl's __tan
-tan_kernel_64 :: fn(x_in: f64, y_in: f64, odd: bool) -> f64 {
+// SPEC: fdlibm k_tan.c, as musl's __tan
+tan_kernel_64 :: fn(x_in : f64, y_in : f64, odd : bool) -> f64 {
     x := x_in
     y := y_in
     hx :: high_word(x)
@@ -171,8 +171,8 @@ tan_kernel_64 :: fn(x_in: f64, y_in: f64, odd: bool) -> f64 {
  * @param e0 x's exponent less 23: x[0]'s place.
  * @return n modulo 8, and x - n π/2 as y0 + y1, between -π/4 and π/4.
  */
-//SPEC: fdlibm k_rem_pio2.c, prec 1
-reduce_large_64 :: fn(x: f64[4], pieces: i32, e0: i32) -> (i32, f64, f64) {
+// SPEC: fdlibm k_rem_pio2.c, prec 1
+reduce_large_64 :: fn(x : f64[4], pieces : i32, e0 : i32) -> (i32, f64, f64) {
     jk :: 4
     jp :: jk
     jx :: pieces - 1
@@ -393,7 +393,7 @@ TWO_TO_MINUS_24 : f64 : 5.9604644775390625e-08
  * @param index Which: 0 is the first; below 0, or past the table, gives 0.
  * @return The word.
  */
-two_over_pi_word :: fn(index: i32) -> f64 {
+two_over_pi_word :: fn(index : i32) -> f64 {
     if index < 0 || index >= cast[i32](TWO_OVER_PI_WORDS.count) {
         return 0
     }
@@ -406,8 +406,8 @@ two_over_pi_word :: fn(index: i32) -> f64 {
  * @param x The argument, finite.
  * @return n, and y0 and y1. For infinity or NaN, n is 0 and y0 and y1 NaN.
  */
-//SPEC: fdlibm e_rem_pio2.c, as FreeBSD and musl have it
-reduce_64 :: fn(x: f64) -> (i32, f64, f64) {
+// SPEC: fdlibm e_rem_pio2.c, as FreeBSD and musl have it
+reduce_64 :: fn(x : f64) -> (i32, f64, f64) {
     negative :: (bit_cast[u64](x) >> 63) != 0
     ix :: high_word(x) & 0x7fff_ffff
     medium := false
@@ -430,8 +430,8 @@ reduce_64 :: fn(x: f64) -> (i32, f64, f64) {
             return -n, y0, (z - y0) + multiple * PI_OVER_2_1_TAIL
         }
     }
-    // Up to 9π/4: by 3π/2 or 2π
-    else if ix <= 0x401c_463b {
+    else // Up to 9π/4: by 3π/2 or 2π
+    if ix <= 0x401c_463b {
         if ix == 0x4012_d97c || ix == 0x4019_21fb {
             medium = true
         }
@@ -518,8 +518,8 @@ reduce_64 :: fn(x: f64) -> (i32, f64, f64) {
  * @param x The angle, in radians.
  * @return sin x, within 1 ulp; x for ±0, NaN for infinities and NaN.
  */
-//SPEC: fdlibm s_sin.c
-sin_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_sin.c
+sin_64 :: fn(x : f64) -> f64 {
     ix :: high_word(x) & 0x7fff_ffff
     if ix <= 0x3fe9_21fb {
         // Under 2^-26, sin x rounds to x
@@ -547,8 +547,8 @@ sin_64 :: fn(x: f64) -> f64 {
  * @param x The angle, in radians.
  * @return cos x, within 1 ulp; NaN for infinities and NaN.
  */
-//SPEC: fdlibm s_cos.c
-cos_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_cos.c
+cos_64 :: fn(x : f64) -> f64 {
     ix :: high_word(x) & 0x7fff_ffff
     if ix <= 0x3fe9_21fb {
         // Under 2^-27 √2, cos x rounds to 1
@@ -576,7 +576,7 @@ cos_64 :: fn(x: f64) -> f64 {
  * @param x The angle, in radians.
  * @return sin x and cos x, each as sin_64 and cos_64 give it.
  */
-sin_cos_64 :: fn(x: f64) -> (f64, f64) {
+sin_cos_64 :: fn(x : f64) -> (f64, f64) {
     ix :: high_word(x) & 0x7fff_ffff
     if ix <= 0x3fe9_21fb {
         if ix < 0x3e46_a09e {
@@ -606,8 +606,8 @@ sin_cos_64 :: fn(x: f64) -> (f64, f64) {
  * @param x The angle, in radians.
  * @return tan x, within 1 ulp; x for ±0, NaN for infinities and NaN.
  */
-//SPEC: fdlibm s_tan.c
-tan_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_tan.c
+tan_64 :: fn(x : f64) -> f64 {
     ix :: high_word(x) & 0x7fff_ffff
     if ix <= 0x3fe9_21fb {
         // Under 2^-27, tan x rounds to x

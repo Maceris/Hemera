@@ -61,7 +61,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return True.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return true
 }
 

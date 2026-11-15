@@ -47,7 +47,7 @@ monotonic :: fn() -> runtime.MonotonicTime {
  * @return The time from start to now, never negative for a start that really came earlier; its seconds are rounded
  *     down, so its nanos are 0 to 999,999,999.
  */
-since :: fn(start: runtime.MonotonicTime) -> Duration {
+since :: fn(start : runtime.MonotonicTime) -> Duration {
     return runtime.duration_between(start, monotonic())
 }
 
@@ -90,7 +90,7 @@ SECONDS_PER_DAY : i64 : 86400
  * @param b The divisor, which has to be positive; with 0 the division traps.
  * @return The largest integer no greater than a / b.
  */
-floor_divide :: fn(a: i64, b: i64) -> i64 {
+floor_divide :: fn(a : i64, b : i64) -> i64 {
     quotient :: a / b
     if a % b < 0 {
         return quotient - 1
@@ -109,7 +109,7 @@ floor_divide :: fn(a: i64, b: i64) -> i64 {
  * @return month The month, 1 to 12.
  * @return day The day of the month, 1 to 31.
  */
-civil_from_days :: fn(days: i64) -> (year: i64, month: int, day: int) {
+civil_from_days :: fn(days : i64) -> (year : i64, month : int, day : int) {
     shifted :: days + 719468
     era :: floor_divide(shifted, 146097)
     // 0 to 146096
@@ -141,7 +141,7 @@ civil_from_days :: fn(days: i64) -> (year: i64, month: int, day: int) {
  *     before, and 32 of January is February 1st.
  * @return The day, counted from 1970-01-01 as day 0, negative before it.
  */
-days_from_civil :: fn(year: i64, month: int, day: int) -> i64 {
+days_from_civil :: fn(year : i64, month : int, day : int) -> i64 {
     march_year := year
     if month <= 2 {
         march_year -= 1
@@ -163,7 +163,7 @@ days_from_civil :: fn(year: i64, month: int, day: int) -> i64 {
  * @param t The instant, before or after the epoch.
  * @return Its date and time in UTC, every field in its range; the nanosecond is t's.
  */
-utc :: fn(t: Instant) -> DateTime {
+utc :: fn(t : Instant) -> DateTime {
     days :: floor_divide(t.seconds, SECONDS_PER_DAY)
     of_day :: t.seconds - days * SECONDS_PER_DAY
     year, month, day :: civil_from_days(days)
@@ -186,9 +186,12 @@ utc :: fn(t: Instant) -> DateTime {
  *     month has to be 1 to 12, which isn't checked.
  * @return The instant, its nanos 0 to 999,999,999 after the nanosecond field carries over.
  */
-from_utc :: fn(moment: DateTime) -> Instant {
+from_utc :: fn(moment : DateTime) -> Instant {
     days :: days_from_civil(moment.year, moment.month, moment.day)
-    seconds :: days * SECONDS_PER_DAY + cast[i64](moment.hour) * 3600 + cast[i64](moment.minute) * 60 + cast[i64](moment.second)
+    seconds :: days * SECONDS_PER_DAY
+        + cast[i64](moment.hour) * 3600
+        + cast[i64](moment.minute) * 60
+        + cast[i64](moment.second)
     return add(Instant.{seconds, 0}, Duration.{0, 0}, cast[i64](moment.nanosecond))
 }
 
@@ -200,7 +203,7 @@ from_utc :: fn(moment: DateTime) -> Instant {
  * @return month The month, 1 to 12.
  * @return day The day of the month, 1 to 31.
  */
-date :: fn(t: Instant) -> (year: i64, month: int, day: int) {
+date :: fn(t : Instant) -> (year : i64, month : int, day : int) {
     moment :: utc(t)
     return moment.year, moment.month, moment.day
 }
@@ -213,7 +216,7 @@ date :: fn(t: Instant) -> (year: i64, month: int, day: int) {
  * @return minute The minute, 0 to 59.
  * @return second The second, 0 to 59: leap seconds aren't counted.
  */
-clock :: fn(t: Instant) -> (hour: int, minute: int, second: int) {
+clock :: fn(t : Instant) -> (hour : int, minute : int, second : int) {
     moment :: utc(t)
     return moment.hour, moment.minute, moment.second
 }
@@ -227,7 +230,7 @@ clock :: fn(t: Instant) -> (hour: int, minute: int, second: int) {
  * @return second The second, 0 to 59: leap seconds aren't counted.
  * @return nanosecond The fraction of the second in nanoseconds, 0 to 999,999,999.
  */
-precise_clock :: fn(t: Instant) -> (hour: int, minute: int, second: int, nanosecond: int) {
+precise_clock :: fn(t : Instant) -> (hour : int, minute : int, second : int, nanosecond : int) {
     moment :: utc(t)
     return moment.hour, moment.minute, moment.second, moment.nanosecond
 }
@@ -249,7 +252,7 @@ Weekday :: enum {
  * @param t The instant, before or after the epoch.
  * @return The day of the week its UTC date falls on.
  */
-weekday :: fn(t: Instant) -> Weekday {
+weekday :: fn(t : Instant) -> Weekday {
     // 1970-01-01 was a Thursday
     index :: floor_divide(t.seconds, SECONDS_PER_DAY) + 3
     remainder := index % 7
@@ -268,7 +271,7 @@ weekday :: fn(t: Instant) -> Weekday {
  *     0 by default.
  * @return The moved instant, its nanos 0 to 999,999,999. Overflowing its seconds isn't checked.
  */
-add :: fn(t: Instant, duration: Duration, extra_nanos: i64 = 0) -> Instant {
+add :: fn(t : Instant, duration : Duration, extra_nanos : i64 = 0) -> Instant {
     nanos :: cast[i64](t.nanos) + cast[i64](duration.nanos) + extra_nanos
     carry :: floor_divide(nanos, runtime.NANOSECONDS_PER_SECOND)
     return Instant.{t.seconds + duration.seconds + carry, cast[u32](nanos - carry * runtime.NANOSECONDS_PER_SECOND)}
@@ -282,7 +285,7 @@ add :: fn(t: Instant, duration: Duration, extra_nanos: i64 = 0) -> Instant {
  * @return The time from start to end, negative if end is earlier. Its seconds are rounded down, so its nanos are 0 to
  *     999,999,999: a quarter second back is -1 seconds and 750,000,000 nanoseconds.
  */
-between :: fn(start: Instant, end: Instant) -> Duration {
+between :: fn(start : Instant, end : Instant) -> Duration {
     nanos :: cast[i64](end.nanos) - cast[i64](start.nanos)
     carry :: floor_divide(nanos, runtime.NANOSECONDS_PER_SECOND)
     return Duration.{end.seconds - start.seconds + carry, cast[u32](nanos - carry * runtime.NANOSECONDS_PER_SECOND)}
@@ -295,6 +298,6 @@ between :: fn(start: Instant, end: Instant) -> Duration {
  * @param b The instant it's compared to.
  * @return Whether a is strictly before b, to the nanosecond: false when they're equal.
  */
-is_before :: fn(a: Instant, b: Instant) -> bool {
+is_before :: fn(a : Instant, b : Instant) -> bool {
     return a.seconds < b.seconds || (a.seconds == b.seconds && a.nanos < b.nanos)
 }

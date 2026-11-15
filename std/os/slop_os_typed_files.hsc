@@ -32,7 +32,7 @@ package os
      * @param out The value being built; its handles, if any, are ignored, as a file can't hold one.
      * @return Its used bytes, in out, good as long as out is and isn't begun again.
      */
-    value_bytes :: fn(out: ptr[Outgoing]) -> u8[] {
+    value_bytes :: fn(out : ptr[Outgoing]) -> u8[] {
         return view_of(cast[ptr[u8]](&out.words[0]), cast[usize](out.used))
     }
 
@@ -44,7 +44,7 @@ package os
      * @param relative The Relative field, from the value.
      * @return Its items, in bytes, good as long as bytes are.
      */
-    items_of :: fn[E](bytes: u8[], relative: slop_os.Relative[E]) -> E[] {
+    items_of :: fn[E](bytes : u8[], relative : slop_os.Relative[E]) -> E[] {
         return view_of(cast[ptr[E]](cast[u64](bytes.data) + cast[u64](relative.offset)), cast[usize](relative.count))
     }
 
@@ -57,7 +57,7 @@ package os
      *     are within the bytes; false otherwise, and always for a T holding a handle, a channel, a pointer, a view or a
      *     union.
      */
-    holds_value :: fn[T](bytes: u8[]) -> bool {
+    holds_value :: fn[T](bytes : u8[]) -> bool {
         return value_holds(type_info_of(T), bytes)
     }
 
@@ -68,7 +68,7 @@ package os
      * @param bytes The file's bytes, which holds_value[T] checked; anything else isn't safe to read as a T.
      * @return The value, in bytes, good as long as bytes are.
      */
-    typed_value :: fn[T](bytes: u8[]) -> ptr[T] {
+    typed_value :: fn[T](bytes : u8[]) -> ptr[T] {
         return cast[ptr[T]](bytes.data)
     }
 
@@ -81,7 +81,7 @@ package os
      * @param bytes The bytes; only read.
      * @return True if they're at least type's size and at most 4 GiB, and every part of it holds (part_holds).
      */
-    value_holds :: fn(type: ptr[compiler.TypeInfo], bytes: u8[]) -> bool {
+    value_holds :: fn(type : ptr[compiler.TypeInfo], bytes : u8[]) -> bool {
         if bytes.count < type.size || cast[u64](bytes.count) > 0xffffffff {
             return false
         }
@@ -103,7 +103,7 @@ package os
      *     static arrays and structs whose parts all hold; and Relatives of plain data within the bytes. false for
      *     anything else.
      */
-    part_holds :: fn(type: ptr[compiler.TypeInfo], offset: usize, bytes: u8[], fixed: usize) -> bool {
+    part_holds :: fn(type : ptr[compiler.TypeInfo], offset : usize, bytes : u8[], fixed : usize) -> bool {
         if type.variant == .INTEGER || type.variant == .FLOAT || type.variant == .CHAR {
             return true
         }
@@ -121,7 +121,8 @@ package os
             return false
         }
         if type.variant == .ALIAS {
-            return !is_handle(type) && part_holds(cast[ptr[compiler.TypeInfoAlias]](type).base_type, offset, bytes, fixed)
+            return !is_handle(type)
+                && part_holds(cast[ptr[compiler.TypeInfoAlias]](type).base_type, offset, bytes, fixed)
         }
         if type.variant == .ARRAY {
             array :: cast[ptr[compiler.TypeInfoArray]](type)
@@ -150,7 +151,15 @@ package os
                     if member.name == "elements" {
                         held :: cast[ptr[compiler.TypeInfoArray]](member.member_type).base_type
                         // Plain data only, as in a message: its elements aren't checked one by one
-                        return plain(held) && relative_fits(bytes, cast[u32](bytes.count), offset, fixed, held.size, alignment_of(held))
+                        return plain(held)
+                            && relative_fits(
+                                bytes,
+                                cast[u32](bytes.count),
+                                offset,
+                                fixed,
+                                held.size,
+                                alignment_of(held)
+                            )
                     }
                 }
                 return false
@@ -172,7 +181,7 @@ package os
      * @return True for integers, floats and characters, and arrays and structs of only those; false for anything else,
      *     handles, channels and Relatives among them.
      */
-    plain :: fn(type: ptr[compiler.TypeInfo]) -> bool {
+    plain :: fn(type : ptr[compiler.TypeInfo]) -> bool {
         if type.variant == .INTEGER || type.variant == .FLOAT || type.variant == .CHAR {
             return true
         }
@@ -184,7 +193,9 @@ package os
         }
         if type.variant == .STRUCT {
             structure :: cast[ptr[compiler.TypeInfoStruct]](type)
-            if starts_with(structure.name, "Channel[") || starts_with(structure.name, "Listener[") || starts_with(structure.name, "Relative[") {
+            if starts_with(structure.name, "Channel[")
+                || starts_with(structure.name, "Listener[")
+                || starts_with(structure.name, "Relative[") {
                 return false
             }
             for member in structure.members {
@@ -215,7 +226,7 @@ package os
      * @error OutOfMemory What opening it needed couldn't be allocated.
      * @error Other The directory's server didn't answer, or reported anything else.
      */
-    open_typed_in :: fn[T](directory: Directory, path: string, mode: OpenMode) -> Result[File, OsError] {
+    open_typed_in :: fn[T](directory : Directory, path : string, mode : OpenMode) -> Result[File, OsError] {
         if !is_beneath(path) {
             return .Error(.InvalidPath)
         }
@@ -241,7 +252,11 @@ package os
      * @error OutOfMemory The bytes couldn't be allocated.
      * @error Other The directory's server didn't answer, or reported anything else.
      */
-    read_typed_in :: fn[T](directory: Directory, path: string, allocator := context.allocator) -> Result[u8[], OsError] #unrestricted {
+    read_typed_in :: fn[T](
+        directory : Directory,
+        path : string,
+        allocator := context.allocator
+    ) -> Result[u8[], OsError] #unrestricted {
         file :: open_typed_in[T](directory, path, .READ)?
         defer close(file)
         read :: read_all(file, allocator)?
@@ -266,7 +281,7 @@ package os
      * @return Null if it worked; otherwise why not: WrongType when value doesn't hold a T (nothing is written) or the
      *     file is of another type, InvalidPath when path isn't beneath directory, or what open_typed_in or write gives.
      */
-    write_typed_in :: fn[T](directory: Directory, path: string, value: u8[]) -> OsError? {
+    write_typed_in :: fn[T](directory : Directory, path : string, value : u8[]) -> OsError? {
         if !holds_value[T](value) {
             return OsError.WrongType
         }

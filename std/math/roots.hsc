@@ -24,8 +24,8 @@ CUBE_ROOT_P4 : f64 : 0.145996192886612446982 // 0x3fc2b000_d4e4edd7
  * @param x The number, any sign.
  * @return The real cube root, within 1 ulp, of x's sign; x for ±0, ±infinity and NaN.
  */
-//SPEC: fdlibm s_cbrt.c, as FreeBSD has it
-cube_root_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_cbrt.c, as FreeBSD has it
+cube_root_64 :: fn(x : f64) -> f64 {
     hx := cast[u32](high_word(x))
     sign :: hx & 0x8000_0000
     hx = hx ~ sign
@@ -67,8 +67,8 @@ HYPOTENUSE_SPLIT : f64 : 134217729.0
  * @param x The number, small enough that x² doesn't overflow nor its tail underflow.
  * @return hi, x² rounded, and lo, the rest.
  */
-//SPEC: musl src/math/hypot.c sq
-square_exactly_64 :: fn(x: f64) -> (f64, f64) {
+// SPEC: musl src/math/hypot.c sq
+square_exactly_64 :: fn(x : f64) -> (f64, f64) {
     xc :: x * HYPOTENUSE_SPLIT
     xh :: x - xc + xc
     xl :: x - xh
@@ -85,8 +85,8 @@ square_exactly_64 :: fn(x: f64) -> (f64, f64) {
  * @return The hypotenuse, within 1 ulp; infinity if either is infinite, even with a NaN; NaN otherwise if either is
  *     NaN.
  */
-//SPEC: musl src/math/hypot.c
-hypotenuse_64 :: fn(x_in: f64, y_in: f64) -> f64 {
+// SPEC: musl src/math/hypot.c
+hypotenuse_64 :: fn(x_in : f64, y_in : f64) -> f64 {
     ux := bit_cast[u64](x_in) & 0x7fff_ffff_ffff_ffff
     uy := bit_cast[u64](y_in) & 0x7fff_ffff_ffff_ffff
     // |x| at least |y|

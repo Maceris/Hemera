@@ -25,7 +25,7 @@ FORMAT_PLACEHOLDER : char : '%'
  * @param values The values, in order; values left over are ignored. Pointers in them aren't followed, but a cstring's
  *     bytes are read up to its 0.
  */
-append_format :: fn(text: ptr[mut TextBuffer], format_string: string, values: any...) {
+append_format :: fn(text : ptr[mut TextBuffer], format_string : string, values : any...) {
     next : usize = 0
     index : usize = 0
     for step in 0..<format_string.count + 1 {
@@ -80,7 +80,7 @@ append_format :: fn(text: ptr[mut TextBuffer], format_string: string, values: an
  * @param target The buffer, a ptr[mut TextBuffer] given as the sink's target.
  * @param byte The byte; dropped, with truncated set, when the buffer is full.
  */
-text_sink_byte :: fn(target: rawptr, byte: u8) {
+text_sink_byte :: fn(target : rawptr, byte : u8) {
     append_byte(cast[ptr[mut TextBuffer]](target), byte)
 }
 
@@ -97,7 +97,7 @@ text_sink_byte :: fn(target: rawptr, byte: u8) {
  *     integers of 16 bytes are written as append_value writes them.
  * @param spec The options, as runtime.parse_format_spec read them; plain ones write the value as append_value does.
  */
-append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.FormatSpec) {
+append_value_with :: fn(text : ptr[mut TextBuffer], value : any, spec : runtime.FormatSpec) {
     if runtime.is_plain_format(spec) {
         append_value(text, value)
         return void
@@ -111,7 +111,12 @@ append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.For
         numeric :: spec.kind != 0 && (variant == .CHAR || variant == .BOOLEAN || variant == .ENUM)
         if variant == .INTEGER && info.size <= 8 && cast[ptr[compiler.TypeInfoInteger]](info).is_signed {
             signed :: runtime.read_signed(data, info.size)
-            runtime.format_integer(sink, spec, signed < 0, if signed < 0 { 0 - cast[u64](signed) } else { cast[u64](signed) })
+            runtime.format_integer(
+                sink,
+                spec,
+                signed < 0,
+                if signed < 0 { 0 - cast[u64](signed) } else { cast[u64](signed) }
+            )
             return void
         }
         if (variant == .INTEGER && info.size <= 8) || numeric {
@@ -172,7 +177,7 @@ append_value_with :: fn(text: ptr[mut TextBuffer], value: any, spec: runtime.For
  * @param start How many bytes to leave out.
  * @return The rest, a view of text's bytes; "" when start is the text's count or more.
  */
-strings_after :: fn(text: string, start: usize) -> string {
+strings_after :: fn(text : string, start : usize) -> string {
     if start >= text.count || text.count == 0 {
         return ""
     }
@@ -185,7 +190,7 @@ strings_after :: fn(text: string, start: usize) -> string {
  * @param character Any character; only the ten ASCII digits count, not other scripts' digits.
  * @return True for a digit.
  */
-is_digit :: fn(character: char) -> bool {
+is_digit :: fn(character : char) -> bool {
     return character >= '0' && character <= '9'
 }
 
@@ -202,7 +207,7 @@ is_digit :: fn(character: char) -> bool {
  * @param value The value; a zeroed any, with no type, is <nothing>. A cstring's bytes are read up to its 0, so it has
  *     to have one.
  */
-append_value :: fn(text: ptr[mut TextBuffer], value: any) {
+append_value :: fn(text : ptr[mut TextBuffer], value : any) {
     info :: type_info_of(value.type)
     // A zeroed any, with no value
     if cast[rawptr](info) == null {
@@ -219,7 +224,7 @@ append_value :: fn(text: ptr[mut TextBuffer], value: any) {
  * @param data Where the value is; type_info's size bytes there have to be readable.
  * @param type_info The value's type; aliases are followed.
  */
-append_data :: fn(text: ptr[mut TextBuffer], data: rawptr, type_info: ptr[compiler.TypeInfo]) {
+append_data :: fn(text : ptr[mut TextBuffer], data : rawptr, type_info : ptr[compiler.TypeInfo]) {
     info :: reflection.unaliased(type_info)
     variant :: info.variant
     if variant == .INTEGER {
@@ -303,7 +308,7 @@ append_data :: fn(text: ptr[mut TextBuffer], data: rawptr, type_info: ptr[compil
  * @param size Its size in bytes: 1, 2, 4, 8 or 16.
  * @param is_signed Whether it's signed, so negative values have a -; ignored for 16 bytes.
  */
-append_integer :: fn(text: ptr[mut TextBuffer], data: rawptr, size: usize, is_signed: bool) {
+append_integer :: fn(text : ptr[mut TextBuffer], data : rawptr, size : usize, is_signed : bool) {
     if size == 16 {
         // As two halves in hexadecimal, since there's no 128-bit division here
         low :: cast[ptr[u64]](data)
@@ -345,7 +350,7 @@ append_integer :: fn(text: ptr[mut TextBuffer], data: rawptr, size: usize, is_si
  * @param data Where the string is: a string's count and address, or a cstring's address.
  * @param is_raw Whether it's a cstring, read up to its 0, which it has to have; null is written as null.
  */
-append_string :: fn(text: ptr[mut TextBuffer], data: rawptr, is_raw: bool) {
+append_string :: fn(text : ptr[mut TextBuffer], data : rawptr, is_raw : bool) {
     if !is_raw {
         view :: cast[ptr[string]](data)
         append(text, view^)
@@ -377,7 +382,7 @@ append_string :: fn(text: ptr[mut TextBuffer], data: rawptr, is_raw: bool) {
  * @param data Where the value is.
  * @param info The enum's type; the first member with the value is the one written.
  */
-append_enum :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoEnum]) {
+append_enum :: fn(text : ptr[mut TextBuffer], data : rawptr, info : ptr[compiler.TypeInfoEnum]) {
     raw :: reflection.read_unsigned(data, info.size)
     for member_value, index in info.values {
         if member_value == raw && index < info.members.count {
@@ -398,7 +403,7 @@ append_enum :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.Ty
  * @param data Where the float is.
  * @param size Its size in bytes: 2 or 4, and anything else is read as 8.
  */
-append_float_data :: fn(text: ptr[mut TextBuffer], data: rawptr, size: usize) {
+append_float_data :: fn(text : ptr[mut TextBuffer], data : rawptr, size : usize) {
     if size == 2 {
         append_shortest_bits(text, cast[u64](cast[ptr[u16]](data)^), 5, 10)
     }
@@ -424,7 +429,7 @@ DEFAULT_DECIMALS :: 6
  *     digit, six more, and an exponent, like 1.500000e+30, cut short rather than rounded, and without decimals.
  * @param decimals How many digits after the point, at most 9: more is taken as 9. 0 writes no point.
  */
-append_float :: fn(text: ptr[mut TextBuffer], value: f64, decimals: usize = DEFAULT_DECIMALS) {
+append_float :: fn(text : ptr[mut TextBuffer], value : f64, decimals : usize = DEFAULT_DECIMALS) {
     append_float_bits(text, bit_cast[u64](value), 11, 52, decimals)
 }
 
@@ -434,7 +439,7 @@ append_float :: fn(text: ptr[mut TextBuffer], value: f64, decimals: usize = DEFA
  * @param text The buffer. If it fills, what fits is kept, the rest dropped, and truncated set.
  * @param value Any f64: NaN is written nan whatever its sign, infinity inf or -inf, and zero 0 or -0.
  */
-append_shortest :: fn(text: ptr[mut TextBuffer], value: f64) {
+append_shortest :: fn(text : ptr[mut TextBuffer], value : f64) {
     append_shortest_bits(text, bit_cast[u64](value), 11, 52)
 }
 
@@ -447,7 +452,7 @@ append_shortest :: fn(text: ptr[mut TextBuffer], value: f64) {
  * @param exponent_bits How many bits its exponent has: 5, 8 or 11 for f16, f32 and f64.
  * @param fraction_bits How many bits its fraction has: 10, 23 or 52 for f16, f32 and f64.
  */
-append_shortest_bits :: fn(text: ptr[mut TextBuffer], bits: u64, exponent_bits: u64, fraction_bits: u64) {
+append_shortest_bits :: fn(text : ptr[mut TextBuffer], bits : u64, exponent_bits : u64, fraction_bits : u64) {
     sink :: runtime.FormatSink.{target = cast[rawptr](text), emit = text_sink_byte}
     runtime.format_shortest_float(sink, bits, exponent_bits, fraction_bits)
 }
@@ -461,7 +466,13 @@ append_shortest_bits :: fn(text: ptr[mut TextBuffer], bits: u64, exponent_bits: 
  * @param fraction_bits How many bits its fraction has: 10, 23 or 52 for f16, f32 and f64.
  * @param decimals How many digits after the point, at most 9: more is taken as 9.
  */
-append_float_bits :: fn(text: ptr[mut TextBuffer], bits: u64, exponent_bits: u64, fraction_bits: u64, decimals: usize) {
+append_float_bits :: fn(
+    text : ptr[mut TextBuffer],
+    bits : u64,
+    exponent_bits : u64,
+    fraction_bits : u64,
+    decimals : usize
+) {
     one : u64 = 1
     exponent_mask :: (one << exponent_bits) - 1
     biased :: (bits >> fraction_bits) & exponent_mask
@@ -527,7 +538,7 @@ append_float_bits :: fn(text: ptr[mut TextBuffer], bits: u64, exponent_bits: u64
  * @param decimal The digits after the point as a whole number, less than 10 to the places.
  * @param places How many digits, padded with leading zeros; 0 writes nothing, not even the point.
  */
-append_decimals :: fn(text: ptr[mut TextBuffer], decimal: u64, places: usize) {
+append_decimals :: fn(text : ptr[mut TextBuffer], decimal : u64, places : usize) {
     if places > 0 {
         append_byte(text, cast[u8]('.'))
         append_unsigned(text, decimal, 10, places)
@@ -543,7 +554,7 @@ append_decimals :: fn(text: ptr[mut TextBuffer], decimal: u64, places: usize) {
  * @param shift How far to shift it left, at most 1023 - 52 for a double, so the whole fits in 36 limbs.
  * @return Whether it was more than 20 digits, and so written as d.dddddd with an exponent, like 1.500000e+30.
  */
-append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bool {
+append_shifted :: fn(text : ptr[mut TextBuffer], mantissa : u64, shift : u64) -> bool {
     if shift < 11 {
         append_unsigned(text, mantissa << shift)
         return false
@@ -640,7 +651,7 @@ append_shifted :: fn(text: ptr[mut TextBuffer], mantissa: u64, shift: u64) -> bo
  * @param value Any u64, 0 to 18,446,744,073,709,551,615.
  * @return Its digit count, 1 to 20: 1 for 0 to 9, as 0 is written "0".
  */
-digit_count :: fn(value: u64) -> usize {
+digit_count :: fn(value : u64) -> usize {
     count : usize = 1
     rest := value
     loop {
@@ -661,7 +672,7 @@ digit_count :: fn(value: u64) -> usize {
  * @param info The struct's type information, only read: its name is written first, then each member at its offset in
  *     data, in the order they're declared.
  */
-append_struct :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoStruct]) {
+append_struct :: fn(text : ptr[mut TextBuffer], data : rawptr, info : ptr[compiler.TypeInfoStruct]) {
     append(text, info.name)
     append(text, "{")
     for &member, index in info.members {
@@ -684,7 +695,7 @@ append_struct :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.
  *     each, and its base type how each element is written.
  * @param dimension Which dimension data is at, 0 for the outermost; past the last, data is an element.
  */
-append_array :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoArray], dimension: usize) {
+append_array :: fn(text : ptr[mut TextBuffer], data : rawptr, info : ptr[compiler.TypeInfoArray], dimension : usize) {
     if dimension >= info.dimensions.count {
         append_data(text, data, info.base_type)
         return void
@@ -724,7 +735,7 @@ append_array :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
  * @param data Where the union is.
  * @param info The union's type. A tag past its variants is written as Name(<bad tag>).
  */
-append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.TypeInfoUnion]) {
+append_union :: fn(text : ptr[mut TextBuffer], data : rawptr, info : ptr[compiler.TypeInfoUnion]) {
     // The variant holding a value, an optional's Some or a result's Ok, by name
     held := info.variants.count
     is_optional := false
@@ -797,7 +808,7 @@ append_union :: fn(text: ptr[mut TextBuffer], data: rawptr, info: ptr[compiler.T
  * @param type_info The type. An alias is its own name, not what it names; a function type is fn(...) whatever its
  *     parameters, and complex numbers and quaternions are complex and quaternion with their bits, like complex128.
  */
-append_type_name :: fn(text: ptr[mut TextBuffer], type_info: ptr[compiler.TypeInfo]) {
+append_type_name :: fn(text : ptr[mut TextBuffer], type_info : ptr[compiler.TypeInfo]) {
     variant :: type_info.variant
     size :: type_info.size
     if variant == .ALIAS {
@@ -918,7 +929,7 @@ append_type_name :: fn(text: ptr[mut TextBuffer], type_info: ptr[compiler.TypeIn
  * @param endianness The byte order, from the type's information: BIG gives be, LITTLE le, and SYSTEM nothing, as a type
  *     without either suffix has the target's order.
  */
-append_endianness :: fn(text: ptr[mut TextBuffer], endianness: compiler.Endianness) {
+append_endianness :: fn(text : ptr[mut TextBuffer], endianness : compiler.Endianness) {
     if endianness == .BIG {
         append(text, "be")
     }

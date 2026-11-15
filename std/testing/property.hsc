@@ -1,7 +1,7 @@
 package testing
 
-import runtime from "base:runtime"
 import compiler from "base:compiler"
+import runtime from "base:runtime"
 import reflection from "std:reflection"
 import text_buffer from "std:text_buffer"
 
@@ -29,7 +29,7 @@ SHRINK_RUNS :: 2000
  * A property test: a #test function that takes a Source as well, and draws its inputs from it, which a runner calls on
  * case after case (check_property). It can't keep the source, or what draw_bytes gives, past its return.
  */
-Property :: alias fn(t: ptr[mut T], source: ptr[mut Source]) -> Outcome
+Property :: alias fn(t : ptr[mut T], source : ptr[mut Source]) -> Outcome
 
 /** A case's bytes, in fixed space. */
 Case :: struct {
@@ -45,7 +45,7 @@ Case :: struct {
  * @param found The case, only read.
  * @return Its bytes, a view of its own, good while it's unchanged.
  */
-case_bytes :: fn(found: ptr[Case]) -> u8[] {
+case_bytes :: fn(found : ptr[Case]) -> u8[] {
     if found.count <= found.bytes.count {
         return found.bytes[0..<found.count]
     }
@@ -93,7 +93,7 @@ Kept :: struct {
     /** The fixture's release function, fixture's release, as a raw pointer; release_fixture casts it back. */
     release : rawptr?,
     /** release_fixture for the fixture's type, which release_kept calls. */
-    releasing : (fn(kept: ptr[mut Kept]))?,
+    releasing : (fn(kept : ptr[mut Kept]))?,
 }
 
 /**
@@ -106,11 +106,12 @@ Kept :: struct {
  * @tparam F The fixture's type.
  * @param source The case's source.
  * @param make Makes the fixture, once; null if it can't be made, which it's asked again by the next case.
- * @param release Gives back what the fixture holds, once, after the last case; not its own memory, which is freed after.
+ * @param release Gives back what the fixture holds, once, after the last case; not its own memory, which is freed
+ *     after.
  * @return The fixture, the runner's, lasting until the last case; null if make gave null, or the source has no runner
  *     to keep it (one made with source_in without a Kept).
  */
-fixture :: fn[F](source: ptr[mut Source], make: (fn() -> F?), release: (fn(fixture: ptr[mut F]))) -> ptr[mut F]? {
+fixture :: fn[F](source : ptr[mut Source], make : (fn() -> F?), release : (fn(fixture : ptr[mut F]))) -> ptr[mut F]? {
     kept :: source.kept or_return null
     match kept.data {
         case Some(data) => return cast[ptr[mut F]](data)
@@ -131,9 +132,9 @@ fixture :: fn[F](source: ptr[mut Source], make: (fn() -> F?), release: (fn(fixtu
  * @tparam F The fixture's type, as fixture made it.
  * @param kept What's kept, which has a fixture.
  */
-release_fixture :: fn[F](kept: ptr[mut Kept]) {
+release_fixture :: fn[F](kept : ptr[mut Kept]) {
     data :: cast[ptr[mut F]](kept.data or_return void)
-    release :: cast[fn(fixture: ptr[mut F])](kept.release or_return void)
+    release :: cast[(fn(fixture : ptr[mut F]))](kept.release or_return void)
     release(data)
     runtime.free(data)
 }
@@ -143,7 +144,7 @@ release_fixture :: fn[F](kept: ptr[mut Kept]) {
  *
  * @param kept What's kept.
  */
-release_kept :: fn(kept: ptr[mut Kept]) {
+release_kept :: fn(kept : ptr[mut Kept]) {
     match kept.releasing {
         case Some(releasing) => releasing(kept)
         case None => {}
@@ -161,8 +162,13 @@ release_kept :: fn(kept: ptr[mut Kept]) {
  * @param kept What the test keeps from one case to the next (fixture), the runner's; null to keep nothing.
  * @return The source.
  */
-source_in :: fn(room: mut u8[], given: usize, random: u64?, kept: ptr[mut Kept]? = null) -> Source {
-    return Source.{room = room, count = if given > room.count { room.count } else { given }, random = random, kept = kept}
+source_in :: fn(room : mut u8[], given : usize, random : u64?, kept : ptr[mut Kept]? = null) -> Source {
+    return Source.{
+        room = room,
+        count = if given > room.count { room.count } else { given },
+        random = random,
+        kept = kept,
+    }
 }
 
 /**
@@ -171,7 +177,7 @@ source_in :: fn(room: mut u8[], given: usize, random: u64?, kept: ptr[mut Kept]?
  * @param source The source, only read.
  * @return A view of its room, good while the room is unchanged.
  */
-read_bytes :: fn(source: ptr[Source]) -> u8[] {
+read_bytes :: fn(source : ptr[Source]) -> u8[] {
     end :: if source.at < source.count { source.at } else { source.count }
     if end <= source.room.count {
         return source.room[0..<end]
@@ -185,7 +191,7 @@ read_bytes :: fn(source: ptr[Source]) -> u8[] {
  * @param into The case, whose bytes and count are replaced.
  * @param bytes The bytes; past MAX_CASE_BYTES, they're cut.
  */
-set_case :: fn(into: ptr[mut Case], bytes: u8[]) {
+set_case :: fn(into : ptr[mut Case], bytes : u8[]) {
     into.count = 0
     for byte, i in bytes {
         if i >= into.bytes.count {
@@ -202,7 +208,7 @@ set_case :: fn(into: ptr[mut Case], bytes: u8[]) {
  * @param state The generator's state, advanced.
  * @return The next number, any u64.
  */
-next_random :: fn(state: ptr[mut u64]) -> u64 {
+next_random :: fn(state : ptr[mut u64]) -> u64 {
     state^ += 0x9e3779b97f4a7c15
     mixed := state^
     mixed = (mixed ~ (mixed >> 30)) * 0xbf58476d1ce4e5b9
@@ -216,7 +222,7 @@ next_random :: fn(state: ptr[mut u64]) -> u64 {
  * @param name The test's name.
  * @return Its FNV-1a hash.
  */
-seed_of :: fn(name: string) -> u64 {
+seed_of :: fn(name : string) -> u64 {
     hash : u64 = 0xcbf29ce484222325
     for character in name {
         hash = (hash ~ cast[u64](cast[u8](character))) * 0x100000001b3
@@ -230,7 +236,7 @@ seed_of :: fn(name: string) -> u64 {
  * @param source The source, read.
  * @return The byte; 0 once the source's room is full.
  */
-draw_byte :: fn(source: ptr[mut Source]) -> u8 {
+draw_byte :: fn(source : ptr[mut Source]) -> u8 {
     at :: source.at
     if at < source.count && at < source.room.count {
         given :: source.room[at]
@@ -265,7 +271,7 @@ draw_byte :: fn(source: ptr[mut Source]) -> u8 {
  * @param count How many bytes, 0 to 8.
  * @return The number they make; 0 for none.
  */
-draw_word :: fn(source: ptr[mut Source], count: usize) -> u64 {
+draw_word :: fn(source : ptr[mut Source], count : usize) -> u64 {
     value : u64 = 0
     for index in 0..<count {
         value = (value << 8) | cast[u64](draw_byte(source))
@@ -280,7 +286,7 @@ draw_word :: fn(source: ptr[mut Source], count: usize) -> u64 {
  * @param bound One more than the largest number wanted; 0 and 1 give 0, reading nothing.
  * @return A number from 0 to bound - 1, lower for lower bytes; 0 for zeros.
  */
-draw_below :: fn(source: ptr[mut Source], bound: u64) -> u64 {
+draw_below :: fn(source : ptr[mut Source], bound : u64) -> u64 {
     if bound <= 1 {
         return 0
     }
@@ -304,7 +310,7 @@ draw_below :: fn(source: ptr[mut Source], bound: u64) -> u64 {
  * @param source The source, read: one byte.
  * @return Whether the byte is odd; false for a zero.
  */
-draw_bool :: fn(source: ptr[mut Source]) -> bool {
+draw_bool :: fn(source : ptr[mut Source]) -> bool {
     return (draw_byte(source) & 1) == 1
 }
 
@@ -317,7 +323,7 @@ draw_bool :: fn(source: ptr[mut Source]) -> bool {
  * @param high The most it can be; below low, low is given, reading nothing.
  * @return A number from low to high, nearer low for lower bytes; low for zeros.
  */
-draw_between :: fn[V: compiler.Integer](source: ptr[mut Source], low: V, high: V) -> V {
+draw_between :: fn[V : compiler.Integer](source : ptr[mut Source], low : V, high : V) -> V {
     if high <= low {
         return low
     }
@@ -335,7 +341,7 @@ draw_between :: fn[V: compiler.Integer](source: ptr[mut Source], low: V, high: V
  * @param most The most it can be.
  * @return A count from 0 to most, lower for lower bytes; 0 for zeros.
  */
-draw_count :: fn(source: ptr[mut Source], most: usize) -> usize {
+draw_count :: fn(source : ptr[mut Source], most : usize) -> usize {
     return cast[usize](draw_below(source, cast[u64](most) + 1))
 }
 
@@ -346,7 +352,7 @@ draw_count :: fn(source: ptr[mut Source], most: usize) -> usize {
  * @param most The most bytes; their count is drawn from 0 to it.
  * @return The bytes, a view of the source's room, good until the case ends; fewer than drawn if the room filled.
  */
-draw_bytes :: fn(source: ptr[mut Source], most: usize) -> u8[] {
+draw_bytes :: fn(source : ptr[mut Source], most : usize) -> u8[] {
     count :: draw_count(source, most)
     start :: source.at
     for index in 0..<count {
@@ -372,7 +378,7 @@ draw_bytes :: fn(source: ptr[mut Source], most: usize) -> u8[] {
  * @param location Where it's drawn, where a type that can't be is reported; the caller's own.
  * @return The value; all zeros for zero bytes, and for a type that can't be drawn.
  */
-draw :: fn[V](source: ptr[mut Source], location := #caller_location) -> V {
+draw :: fn[V](source : ptr[mut Source], location := #caller_location) -> V {
     value : V
     if source.unsupported.count == 0 {
         source.unsupported_at = location
@@ -388,7 +394,7 @@ draw :: fn[V](source: ptr[mut Source], location := #caller_location) -> V {
  * @param source The source, whose shown grows, cut at TEXT_BYTES.
  * @param value The value.
  */
-show :: fn(source: ptr[mut Source], value: any) {
+show :: fn(source : ptr[mut Source], value : any) {
     storage : u8[TEXT_BYTES]
     text := text_buffer.make(storage)
     text_buffer.append(&text, text_of(&source.shown))
@@ -406,7 +412,7 @@ show :: fn(source: ptr[mut Source], value: any) {
  * @param size How many bytes: 1, 2, 4 or 8; others write nothing.
  * @param value The number, of which the low size bytes are written.
  */
-store :: fn(at: rawptr, size: usize, value: u64) {
+store :: fn(at : rawptr, size : usize, value : u64) {
     switch size {
         case 1: cast[ptr[mut u8]](at)^ = cast[u8](value & 0xff)
         case 2: cast[ptr[mut u16]](at)^ = cast[u16](value & 0xffff)
@@ -423,7 +429,7 @@ store :: fn(at: rawptr, size: usize, value: u64) {
  * @param offset How far its part is, in bytes.
  * @return Where the part is.
  */
-offset_by :: fn(at: rawptr, offset: usize) -> rawptr {
+offset_by :: fn(at : rawptr, offset : usize) -> rawptr {
     return cast[rawptr](cast[uintptr](at) + cast[uintptr](offset))
 }
 
@@ -435,7 +441,7 @@ offset_by :: fn(at: rawptr, offset: usize) -> rawptr {
  * @param signed Whether it's signed, which decides its edges.
  * @return The bits, in the low size bytes; 0 for zeros.
  */
-draw_integer_bits :: fn(source: ptr[mut Source], size: usize, signed: bool) -> u64 {
+draw_integer_bits :: fn(source : ptr[mut Source], size : usize, signed : bool) -> u64 {
     bits :: if size >= 8 { cast[u64](64) } else { cast[u64](size) * 8 }
     all :: if bits >= 64 { ~cast[u64](0) } else { (cast[u64](1) << bits) - 1 }
     kind :: draw_byte(source)
@@ -467,15 +473,19 @@ draw_integer_bits :: fn(source: ptr[mut Source], size: usize, signed: bool) -> u
  * @param size How many bytes the float has: 4 or 8, or 2, which only draws any bits.
  * @return The bits, in the low size bytes; 0, which is 0.0, for zeros.
  */
-draw_float_bits :: fn(source: ptr[mut Source], size: usize) -> u64 {
+draw_float_bits :: fn(source : ptr[mut Source], size : usize) -> u64 {
     kind :: draw_byte(source)
     if kind < 192 || (size != 4 && size != 8) {
         return draw_word(source, size)
     }
     // 0.0, -0.0, 1.0, -1.0, infinity, -infinity, NaN, the least subnormal, the most finite
-    single : u32[9] = u32.[0, 0x8000_0000, 0x3f80_0000, 0xbf80_0000, 0x7f80_0000, 0xff80_0000, 0x7fc0_0000, 1, 0x7f7f_ffff]
-    double : u64[9] = u64.[0, 0x8000_0000_0000_0000, 0x3ff0_0000_0000_0000, 0xbff0_0000_0000_0000, 0x7ff0_0000_0000_0000,
-        0xfff0_0000_0000_0000, 0x7ff8_0000_0000_0000, 1, 0x7fef_ffff_ffff_ffff]
+    single : u32[9] = u32.[
+        0, 0x8000_0000, 0x3f80_0000, 0xbf80_0000, 0x7f80_0000, 0xff80_0000, 0x7fc0_0000, 1, 0x7f7f_ffff
+    ]
+    double : u64[9] = u64.[
+        0, 0x8000_0000_0000_0000, 0x3ff0_0000_0000_0000, 0xbff0_0000_0000_0000, 0x7ff0_0000_0000_0000,
+        0xfff0_0000_0000_0000, 0x7ff8_0000_0000_0000, 1, 0x7fef_ffff_ffff_ffff
+    ]
     which :: cast[usize](kind - 192) % 9
     return if size == 4 { cast[u64](single[which]) } else { double[which] }
 }
@@ -487,20 +497,27 @@ draw_float_bits :: fn(source: ptr[mut Source], size: usize) -> u64 {
  * @param info The type.
  * @param at Where the value goes, info.size bytes, zeroed by the caller.
  */
-draw_into :: fn(source: ptr[mut Source], info: ptr[compiler.TypeInfo], at: rawptr) {
+draw_into :: fn(source : ptr[mut Source], info : ptr[compiler.TypeInfo], at : rawptr) {
     plain :: reflection.unaliased(info)
     switch plain.variant {
         case .VOID: return void
-        case .BOOLEAN: { store(at, plain.size, if draw_bool(source) { cast[u64](1) } else { cast[u64](0) }) }
+        case .BOOLEAN: {
+            store(at, plain.size, if draw_bool(source) { cast[u64](1) } else { cast[u64](0) })
+        }
         case .INTEGER: {
             integer :: cast[ptr[compiler.TypeInfoInteger]](plain)
             store(at, plain.size, draw_integer_bits(source, plain.size, integer.is_signed))
         }
-        case .FLOAT: { store(at, plain.size, draw_float_bits(source, plain.size)) }
+        case .FLOAT: {
+            store(at, plain.size, draw_float_bits(source, plain.size))
+        }
         case .CHAR: {
             // Mostly ASCII; otherwise any code point the size holds, less the surrogates
             ascii :: draw_byte(source) < 192
-            limit :: if ascii { cast[u64](128) } else if plain.size == 1 { cast[u64](256) } else { cast[u64](0x10_f800) }
+            limit :: if ascii {
+                cast[u64](128)
+            }
+            else if plain.size == 1 { cast[u64](256) } else { cast[u64](0x10_f800) }
             code := draw_below(source, limit)
             if !ascii && plain.size > 1 && code >= 0xd800 {
                 code += 0x800
@@ -561,7 +578,11 @@ draw_into :: fn(source: ptr[mut Source], info: ptr[compiler.TypeInfo], at: rawpt
             // Parts that are floats: two, or four
             parts :: if plain.variant == .COMPLEX { cast[usize](2) } else { cast[usize](4) }
             for index in 0..<parts {
-                store(offset_by(at, index * (plain.size / parts)), plain.size / parts, draw_float_bits(source, plain.size / parts))
+                store(
+                    offset_by(at, index * (plain.size / parts)),
+                    plain.size / parts,
+                    draw_float_bits(source, plain.size / parts)
+                )
             }
         }
         case .UNION: {
@@ -598,7 +619,7 @@ draw_into :: fn(source: ptr[mut Source], info: ptr[compiler.TypeInfo], at: rawpt
  * @param source The source, whose unsupported is set.
  * @param info The type.
  */
-unsupported :: fn(source: ptr[mut Source], info: ptr[compiler.TypeInfo]) {
+unsupported :: fn(source : ptr[mut Source], info : ptr[compiler.TypeInfo]) {
     if source.unsupported.count == 0 {
         storage : u8[TEXT_BYTES]
         name := text_buffer.make(storage)
@@ -616,7 +637,7 @@ unsupported :: fn(source: ptr[mut Source], info: ptr[compiler.TypeInfo]) {
  * @param why What it is, as the skip's reason.
  * @return Ok if condition holds; Error(Skipped), for the test to return with ?, if not.
  */
-assume :: fn(t: ptr[mut T], condition: bool, why: string) -> Outcome {
+assume :: fn(t : ptr[mut T], condition : bool, why : string) -> Outcome {
     if condition {
         return .Ok
     }
@@ -633,7 +654,13 @@ assume :: fn(t: ptr[mut T], condition: bool, why: string) -> Outcome {
  * @param kept What the test keeps from one case to the next, its runner's; null for nothing.
  * @return Whether it failed: an assertion failed, or it drew a type draw can't make.
  */
-replay :: fn(property: Property, test: ptr[T], bytes: u8[], into: ptr[mut Case], kept: ptr[mut Kept]? = null) -> bool {
+replay :: fn(
+    property : Property,
+    test : ptr[T],
+    bytes : u8[],
+    into : ptr[mut Case],
+    kept : ptr[mut Kept]? = null
+) -> bool {
     set_case(into, bytes)
     source := source_in(into.bytes[0..<into.bytes.count], into.count, null, kept)
     attempt := T.{name = test.name}
@@ -650,7 +677,7 @@ replay :: fn(property: Property, test: ptr[T], bytes: u8[], into: ptr[mut Case],
  * @param b Those they're compared with.
  * @return True if a is smaller.
  */
-smaller :: fn(a: u8[], b: u8[]) -> bool {
+smaller :: fn(a : u8[], b : u8[]) -> bool {
     if a.count != b.count {
         return a.count < b.count
     }
@@ -670,7 +697,7 @@ smaller :: fn(a: u8[], b: u8[]) -> bool {
  * @param size How many bytes it has, 1 to 8; those past the bytes' end count as zeros.
  * @return The number.
  */
-number_at :: fn(bytes: u8[], start: usize, size: usize) -> u64 {
+number_at :: fn(bytes : u8[], start : usize, size : usize) -> u64 {
     value : u64 = 0
     for index in start..<start + size {
         value = (value << 8) | (if index < bytes.count { cast[u64](bytes[index]) } else { cast[u64](0) })
@@ -686,7 +713,7 @@ number_at :: fn(bytes: u8[], start: usize, size: usize) -> u64 {
  * @param size How many bytes it takes, 1 to 8; those past the bytes' end aren't written.
  * @param value The number, of which the low size bytes are written.
  */
-set_number_at :: fn(bytes: mut u8[], start: usize, size: usize, value: u64) {
+set_number_at :: fn(bytes : mut u8[], start : usize, size : usize, value : u64) {
     for index in start..<start + size {
         shift :: cast[u64](start + size - 1 - index) * 8
         if index < bytes.count {
@@ -715,10 +742,11 @@ Shrinking :: struct #scoped {
  * @param candidate The bytes to try.
  * @return Whether it became the best.
  */
-try_candidate :: fn(shrinking: ptr[mut Shrinking], test: ptr[T], candidate: ptr[Case]) -> bool {
+try_candidate :: fn(shrinking : ptr[mut Shrinking], test : ptr[T], candidate : ptr[Case]) -> bool {
     shrinking.runs += 1
     tried : Case
-    if !replay(shrinking.property, test, case_bytes(candidate), &tried, shrinking.kept) || !smaller(case_bytes(&tried), case_bytes(&shrinking.best)) {
+    if !replay(shrinking.property, test, case_bytes(candidate), &tried, shrinking.kept)
+        || !smaller(case_bytes(&tried), case_bytes(&shrinking.best)) {
         return false
     }
     shrinking.best = tried
@@ -731,7 +759,7 @@ try_candidate :: fn(shrinking: ptr[mut Shrinking], test: ptr[T], candidate: ptr[
  * @param shrinking The shrinking, its best a failing case; it's left the smallest failing case found.
  * @param test The test's state, as the runner gave it, only read.
  */
-shrink :: fn(shrinking: ptr[mut Shrinking], test: ptr[T]) {
+shrink :: fn(shrinking : ptr[mut Shrinking], test : ptr[T]) {
     candidate : Case
     sizes :: usize.[8, 4, 2, 1]
     ascending :: usize.[1, 2, 4, 8]
@@ -828,7 +856,7 @@ shrink :: fn(shrinking: ptr[mut Shrinking], test: ptr[T]) {
  * @return Ok if no case failed; what the smallest failing case's run gave, or Error(Failed), if one did; skip's
  *     Error(Skipped) if every case was discarded (assume).
  */
-check_property :: fn(t: ptr[mut T], property: Property) -> Outcome {
+check_property :: fn(t : ptr[mut T], property : Property) -> Outcome {
     runs :: if t.runs == 0 { cast[usize](DEFAULT_RUNS) } else { t.runs }
     discarded : usize = 0
     room : u8[MAX_CASE_BYTES]
@@ -848,12 +876,26 @@ check_property :: fn(t: ptr[mut T], property: Property) -> Outcome {
         if source.unsupported.count > 0 {
             storage : u8[TEXT_BYTES]
             message := text_buffer.make(storage)
-            text_buffer.append_format(&message, "draw can't make %: draw what it holds, and build it", text_of(&source.unsupported))
+            text_buffer.append_format(
+                &message,
+                "draw can't make %: draw what it holds, and build it",
+                text_of(&source.unsupported)
+            )
             record(t, text_buffer.as_string(&message), "", source.unsupported_at)
             return .Error(.Failed)
         }
         smallest : Case
-        return report_shrunk(t, property, read_bytes(&source), &smallest, &kept, "case % of % (seed %)", index + 1, runs, t.seed)
+        return report_shrunk(
+            t,
+            property,
+            read_bytes(&source),
+            &smallest,
+            &kept,
+            "case % of % (seed %)",
+            index + 1,
+            runs,
+            t.seed
+        )
     }
     if runs > 0 && discarded == runs {
         return skip(t, "every case was discarded")
@@ -874,8 +916,15 @@ check_property :: fn(t: ptr[mut T], property: Property) -> Outcome {
  * @param values The values for its %s.
  * @return What the final run gave, or Error(Failed) if that was Ok.
  */
-report_shrunk :: fn(t: ptr[mut T], property: Property, failing: u8[], smallest: ptr[mut Case], kept: ptr[mut Kept]?, format_string: string,
-    values: any...) -> Outcome {
+report_shrunk :: fn(
+    t : ptr[mut T],
+    property : Property,
+    failing : u8[],
+    smallest : ptr[mut Case],
+    kept : ptr[mut Kept]?,
+    format_string : string,
+    values : any...
+) -> Outcome {
     shrinking := Shrinking.{property = property, kept = kept}
     set_case(&shrinking.best, failing)
     shrink(&shrinking, t)
@@ -892,7 +941,13 @@ report_shrunk :: fn(t: ptr[mut T], property: Property, failing: u8[], smallest: 
     storage : u8[TEXT_BYTES]
     found := text_buffer.make(storage)
     text_buffer.append_format(&found, format_string, values)
-    text_buffer.append_format(&found, ", shrunk from % bytes to % in % runs", failing.count, shrinking.best.count, shrinking.runs)
+    text_buffer.append_format(
+        &found,
+        ", shrunk from % bytes to % in % runs",
+        failing.count,
+        shrinking.best.count,
+        shrinking.runs
+    )
     t.found = text_from(text_buffer.as_string(&found))
     if outcome is_ok {
         return .Error(.Failed)
@@ -906,7 +961,7 @@ report_shrunk :: fn(t: ptr[mut T], property: Property, failing: u8[], smallest: 
  * @param t The test's state, whose failures' notes grow, cut at TEXT_BYTES.
  * @param drawn The values, as Source.shown has them; empty adds nothing.
  */
-add_drawn :: fn(t: ptr[mut T], drawn: string) {
+add_drawn :: fn(t : ptr[mut T], drawn : string) {
     if drawn.count == 0 {
         return void
     }

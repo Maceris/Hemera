@@ -43,23 +43,36 @@ Accessible :: struct {
  * @param ui The UI, after end.
  * @param into Where the nodes go, its contents replaced.
  */
-accessible :: fn(ui: ptr[mut Ui], into: ptr[mut Accessible[..]]) {
+accessible :: fn(ui : ptr[mut Ui], into : ptr[mut Accessible[..]]) {
     runtime.array_reset(into)
     for each in ui.nodes {
         parent :: if each.parent == NO_NODE { cast[u64](0) } else { node(ui, each.parent).id }
-        runtime.array_add(into, Accessible.{id = each.id, parent = parent, role = each.box.role, name_start = each.name_start,
-            name_count = each.name_count, x = each.x, y = each.y, w = each.w, h = each.h, focused = each.id == ui.focus && each.id != 0,
-            checked = each.checked})
+        runtime.array_add(
+            into,
+            Accessible.{
+                id = each.id,
+                parent = parent,
+                role = each.box.role,
+                name_start = each.name_start,
+                name_count = each.name_count,
+                x = each.x,
+                y = each.y,
+                w = each.w,
+                h = each.h,
+                focused = each.id == ui.focus && each.id != 0,
+                checked = each.checked,
+            }
+        )
     }
 }
 
 /** A node's name, as the frame's text holds it. */
-name_of :: fn(ui: ptr[Ui], start: u32, count: u32) -> u8[] {
+name_of :: fn(ui : ptr[Ui], start : u32, count : u32) -> u8[] {
     return text_of(ui.text[0..<ui.text.count], start, count)
 }
 
 /** A role's name in a selector. */
-role_name :: fn(role: Role) -> string {
+role_name :: fn(role : Role) -> string {
     return match role {
         case .Group => "group"
         case .Text => "text"
@@ -73,7 +86,7 @@ role_name :: fn(role: Role) -> string {
 }
 
 /** Whether bytes are a string's. */
-equal :: fn(bytes: u8[], text: string) -> bool {
+equal :: fn(bytes : u8[], text : string) -> bool {
     other :: string_bytes(text)
     if bytes.count != other.count {
         return false
@@ -87,7 +100,7 @@ equal :: fn(bytes: u8[], text: string) -> bool {
 }
 
 /** Whether a node matches a selector's step. */
-matches :: fn(ui: ptr[mut Ui], index: u32, step: string) -> bool {
+matches :: fn(ui : ptr[mut Ui], index : u32, step : string) -> bool {
     made :: node(ui, index)
     bytes :: string_bytes(step)
     if bytes.count > 5 && equal(bytes[0..<5], "role=") {
@@ -113,7 +126,7 @@ matches :: fn(ui: ptr[mut Ui], index: u32, step: string) -> bool {
  * @param selector Steps separated by "/" or "//", from the root, as the package's comment says.
  * @return Its ID; null when nothing matches, or the selector's empty.
  */
-find :: fn(ui: ptr[mut Ui], selector: string) -> ID? {
+find :: fn(ui : ptr[mut Ui], selector : string) -> ID? {
     bytes :: string_bytes(selector)
     if bytes.count == 0 || ui.nodes.count == 0 {
         return null
@@ -131,7 +144,7 @@ find :: fn(ui: ptr[mut Ui], selector: string) -> ID? {
  * @param at Where the rest starts in it: at a "/" or "//", or at a step for the selector's first.
  * @return The node; NO_NODE for none.
  */
-find_from :: fn(ui: ptr[mut Ui], under: u32, selector: u8[], at: usize) -> u32 {
+find_from :: fn(ui : ptr[mut Ui], under : u32, selector : u8[], at : usize) -> u32 {
     start := at
     deep := at == 0
     if start < selector.count && selector[start] == cast[u8]('/') {
@@ -157,7 +170,15 @@ find_from :: fn(ui: ptr[mut Ui], under: u32, selector: u8[], at: usize) -> u32 {
 }
 
 /** Try a step on a node's children, or descendants when deep, and the selector's rest under what matches. */
-search :: fn(ui: ptr[mut Ui], under: u32, step: string, deep: bool, selector: u8[], rest: usize, depth: usize) -> u32 {
+search :: fn(
+    ui : ptr[mut Ui],
+    under : u32,
+    step : string,
+    deep : bool,
+    selector : u8[],
+    rest : usize,
+    depth : usize
+) -> u32 {
     if depth >= MAX_DEPTH {
         return NO_NODE
     }
@@ -192,7 +213,7 @@ Spot :: struct {
 }
 
 /** Where a widget is: its middle, for a test's pointer; null for an ID the last frame didn't lay out. */
-middle_of :: fn(ui: ptr[Ui], id: ID) -> Spot? {
+middle_of :: fn(ui : ptr[Ui], id : ID) -> Spot? {
     place :: kept_of(ui, id)
     if place.id == 0 {
         return null

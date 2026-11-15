@@ -18,7 +18,7 @@ package random
  *
  * @param bytes Where they go, every byte of it; an empty view asks for nothing.
  */
-fill :: fn(bytes: mut u8[]) {
+fill :: fn(bytes : mut u8[]) {
     context.random.fill(context.random.data, bytes)
 }
 
@@ -42,7 +42,7 @@ next_u64 :: fn() -> u64 {
  * @param limit One more than the largest number wanted. 0 gives 0, drawing nothing.
  * @return A number from 0 to limit - 1; 0 for a limit of 0.
  */
-below :: fn(limit: u64) -> u64 {
+below :: fn(limit : u64) -> u64 {
     if limit == 0 {
         return 0
     }
@@ -63,7 +63,7 @@ below :: fn(limit: u64) -> u64 {
  * @param high The largest; the whole range of i64 is allowed.
  * @return A number from low to high; low, drawing nothing, if high isn't above it.
  */
-between :: fn(low: i64, high: i64) -> i64 {
+between :: fn(low : i64, high : i64) -> i64 {
     if high <= low {
         return low
     }

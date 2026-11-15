@@ -8,7 +8,7 @@ import intrinsics from "base:intrinsics"
  */
 
 /** Find GPOS's pair-adjustment subtables of its kern features, for kerning. */
-find_pair_kerning :: fn(font: ptr[mut Font]) {
+find_pair_kerning :: fn(font : ptr[mut Font]) {
     data :: font.data
     gpos :: find_table(data, "GPOS")
     if gpos.size < 10 {
@@ -39,7 +39,7 @@ find_pair_kerning :: fn(font: ptr[mut Font]) {
 }
 
 /** Add a lookup's pair-adjustment subtables, following extension subtables to theirs. */
-add_lookup :: fn(font: ptr[mut Font], lookup: usize) {
+add_lookup :: fn(font : ptr[mut Font], lookup : usize) {
     data :: font.data
     kind :: u16_at(data, lookup)
     if kind != 2 && kind != 9 {
@@ -69,7 +69,7 @@ add_lookup :: fn(font: ptr[mut Font], lookup: usize) {
  * @param right The glyph after it.
  * @return The adjustment, in design units; usually negative or 0.
  */
-kerning :: fn(font: ptr[Font], left: u32, right: u32) -> i32 {
+kerning :: fn(font : ptr[Font], left : u32, right : u32) -> i32 {
     for i in cast[usize](0)..<font.pair_count {
         if i < font.pairs.count {
             match pair_adjustment(font, cast[usize](font.pairs[i]), left, right) {
@@ -85,7 +85,7 @@ kerning :: fn(font: ptr[Font], left: u32, right: u32) -> i32 {
 }
 
 /** A pair-adjustment subtable's x advance for a pair; null if it doesn't cover the pair. */
-pair_adjustment :: fn(font: ptr[Font], subtable: usize, left: u32, right: u32) -> i32? {
+pair_adjustment :: fn(font : ptr[Font], subtable : usize, left : u32, right : u32) -> i32? {
     data :: font.data
     format :: u16_at(data, subtable)
     covered :: coverage_index(data, subtable + cast[usize](u16_at(data, subtable + 2)), left) or_return null
@@ -134,7 +134,7 @@ pair_adjustment :: fn(font: ptr[Font], subtable: usize, left: u32, right: u32) -
 }
 
 /** A glyph's index in a coverage table (format 1, a list, or 2, ranges); null if it isn't covered. */
-coverage_index :: fn(data: u8[], coverage: usize, glyph: u32) -> usize? {
+coverage_index :: fn(data : u8[], coverage : usize, glyph : u32) -> usize? {
     format :: u16_at(data, coverage)
     count :: cast[usize](u16_at(data, coverage + 2))
     low := cast[usize](0)
@@ -178,7 +178,7 @@ coverage_index :: fn(data: u8[], coverage: usize, glyph: u32) -> usize? {
 }
 
 /** A glyph's class in a class definition (format 1, a run, or 2, ranges); 0 for one it doesn't list. */
-class_of :: fn(data: u8[], definition: usize, glyph: u32) -> usize {
+class_of :: fn(data : u8[], definition : usize, glyph : u32) -> usize {
     format :: u16_at(data, definition)
     if format == 1 {
         start :: cast[u32](u16_at(data, definition + 2))
@@ -213,7 +213,7 @@ class_of :: fn(data: u8[], definition: usize, glyph: u32) -> usize {
 }
 
 /** The kern table's adjustment for a pair, from its first horizontal format 0 subtable. */
-kern_table :: fn(font: ptr[Font], left: u32, right: u32) -> i32 {
+kern_table :: fn(font : ptr[Font], left : u32, right : u32) -> i32 {
     data :: font.data
     at :: font.kern.at
     if u16_at(data, at) != 0 || u16_at(data, at + 2) == 0 {

@@ -49,7 +49,7 @@ FailingAllocator :: struct {
  * @return The FailingAllocator, its counts at 0, owned by the caller, who gives it back with free_failing; or null if
  *     inner has no memory for it.
  */
-make_failing :: fn(fail_at: u64, inner := context.allocator) -> ptr[mut FailingAllocator]? {
+make_failing :: fn(fail_at : u64, inner := context.allocator) -> ptr[mut FailingAllocator]? {
     made, error :: runtime.new_aligned(FailingAllocator, align_of(FailingAllocator), inner)
     if error != null {
         return null
@@ -64,7 +64,7 @@ make_failing :: fn(fail_at: u64, inner := context.allocator) -> ptr[mut FailingA
  * @param failing A FailingAllocator from make_failing, invalid afterwards, as is the allocator made of it. Blocks still
  *     live came from its inner allocator, and are freed with that.
  */
-free_failing :: fn(failing: ptr[mut FailingAllocator]) {
+free_failing :: fn(failing : ptr[mut FailingAllocator]) {
     runtime.free_aligned(failing, align_of(FailingAllocator), failing.inner)
 }
 
@@ -97,12 +97,12 @@ failing_allocator :: fn(failing #escaping : ptr[mut FailingAllocator]) -> runtim
  *     inner allocator returns.
  */
 failing_function : runtime.AllocatorFn : fn(
-    allocator_data: rawptr,
-    size: usize,
-    alignment: usize,
-    old_memory: rawptr,
-    old_size: usize,
-    location := #caller_location,
+    allocator_data : rawptr,
+    size : usize,
+    alignment : usize,
+    old_memory : rawptr,
+    old_size : usize,
+    location := #caller_location
 ) -> (mut u8[], runtime.AllocatorError?) {
     failing :: cast[ptr[mut FailingAllocator]](allocator_data)
     if size > 0 {

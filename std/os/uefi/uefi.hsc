@@ -33,7 +33,7 @@ import runtime from "base:runtime"
      * @param b The other, not null.
      * @return True if every field is the same.
      */
-    same_guid :: fn(a: ptr[Guid], b: ptr[Guid]) -> bool {
+    same_guid :: fn(a : ptr[Guid], b : ptr[Guid]) -> bool {
         if a.data1 != b.data1 || a.data2 != b.data2 || a.data3 != b.data3 {
             return false
         }
@@ -55,7 +55,12 @@ import runtime from "base:runtime"
          * ResetSystem: reset or turn off the machine, kind a ResetKind's value, with status and data_size bytes of
          * data for the firmware, which may be null with 0. It doesn't return.
          */
-        reset_system : fn(kind: u32, status: Status, data_size: usize, data: rawptr) #calling_convention(.c) #no_context,
+        reset_system : fn(
+            kind : u32,
+            status : Status,
+            data_size : usize,
+            data : rawptr
+        ) #calling_convention(.c) #no_context,
     }
 
     /** EFI_RESET_TYPE: how ResetSystem resets the machine. */
@@ -150,59 +155,91 @@ import runtime from "base:runtime"
          * AllocatePages: pages of 4 KiB, kind an AllocateKind's value and memory_kind a MemoryKind's; memory gives the
          * address for MaxAddress and Address, and gets the first page's address.
          */
-        allocate_pages : fn(kind: u32, memory_kind: u32, pages: usize, memory: ptr[mut u64]) -> Status #calling_convention(.c) #no_context,
+        allocate_pages : fn(
+            kind : u32,
+            memory_kind : u32,
+            pages : usize,
+            memory : ptr[mut u64]
+        ) -> Status #calling_convention(.c) #no_context,
         /** FreePages: pages AllocatePages gave, from the first's address. */
-        free_pages : fn(memory: u64, pages: usize) -> Status #calling_convention(.c) #no_context,
+        free_pages : fn(memory : u64, pages : usize) -> Status #calling_convention(.c) #no_context,
         /**
          * GetMemoryMap: the memory map, into map, size bytes of it; size gets the bytes the map needs, BUFFER_TOO_SMALL
          * if more than were given, key the map's key for ExitBootServices, and descriptor_size and descriptor_version
          * each descriptor's.
          */
-        get_memory_map : fn(size: ptr[mut usize], map: rawptr, key: ptr[mut usize], descriptor_size: ptr[mut usize],
-            descriptor_version: ptr[mut u32]) -> Status #calling_convention(.c) #no_context,
+        get_memory_map : fn(
+            size : ptr[mut usize],
+            map : rawptr,
+            key : ptr[mut usize],
+            descriptor_size : ptr[mut usize],
+            descriptor_version : ptr[mut u32]
+        ) -> Status #calling_convention(.c) #no_context,
         /**
          * AllocatePool: size bytes, 8-byte aligned, of memory kind, a MemoryKind's value; buffer gets their address.
          */
-        allocate_pool : fn(kind: u32, size: usize, buffer: ptr[mut rawptr]) -> Status #calling_convention(.c) #no_context,
+        allocate_pool : fn(
+            kind : u32,
+            size : usize,
+            buffer : ptr[mut rawptr]
+        ) -> Status #calling_convention(.c) #no_context,
         /** FreePool: memory AllocatePool gave. */
-        free_pool : fn(buffer: rawptr) -> Status #calling_convention(.c) #no_context,
+        free_pool : fn(buffer : rawptr) -> Status #calling_convention(.c) #no_context,
         /** CreateEvent to UninstallProtocolInterface, untyped. */
         events_and_installing : rawptr[9],
         /**
          * HandleProtocol: the protocol, by its GUID, on a handle; interface gets it, or the call fails if the handle
          * hasn't it.
          */
-        handle_protocol : fn(handle: rawptr, protocol: ptr[Guid], interface: ptr[mut rawptr]) -> Status #calling_convention(.c) #no_context,
+        handle_protocol : fn(
+            handle : rawptr,
+            protocol : ptr[Guid],
+            interface : ptr[mut rawptr]
+        ) -> Status #calling_convention(.c) #no_context,
         /** Reserved to StartImage, untyped. */
         before_exit : rawptr[7],
         /**
          * Exit: the image ended with status, and data_size bytes of exit data from AllocatePool, which may be null
          * with 0. It returns only if it fails.
          */
-        exit : fn(image: rawptr, status: Status, data_size: usize, data: rawptr) -> Status #calling_convention(.c) #no_context,
+        exit : fn(
+            image : rawptr,
+            status : Status,
+            data_size : usize,
+            data : rawptr
+        ) -> Status #calling_convention(.c) #no_context,
         /** UnloadImage, untyped. */
         unload_image : rawptr,
         /**
          * ExitBootServices: the boot services left for good, if map_key is the current memory map's; if the map
          * changed since, it fails, and the map has to be got again.
          */
-        exit_boot_services : fn(image: rawptr, map_key: usize) -> Status #calling_convention(.c) #no_context,
+        exit_boot_services : fn(image : rawptr, map_key : usize) -> Status #calling_convention(.c) #no_context,
         /** GetNextMonotonicCount, untyped. */
         get_next_monotonic_count : rawptr,
         /** Stall: wait at least this many microseconds, busy. */
-        stall : fn(microseconds: usize) -> Status #calling_convention(.c) #no_context,
+        stall : fn(microseconds : usize) -> Status #calling_convention(.c) #no_context,
         /**
          * SetWatchdogTimer: the watchdog set to reset the machine after timeout seconds, 0 to turn it off, with code
          * and data_size bytes of data, which may be null with 0.
          */
-        set_watchdog_timer : fn(timeout: usize, code: u64, data_size: usize, data: rawptr) -> Status #calling_convention(.c) #no_context,
+        set_watchdog_timer : fn(
+            timeout : usize,
+            code : u64,
+            data_size : usize,
+            data : rawptr
+        ) -> Status #calling_convention(.c) #no_context,
         /** ConnectController to LocateHandleBuffer, untyped. */
         before_locate : rawptr[7],
         /**
          * LocateProtocol: the first instance of the protocol with the GUID; registration null, and interface gets it,
          * or NOT_FOUND if there's none.
          */
-        locate_protocol : fn(protocol: ptr[Guid], registration: rawptr, interface: ptr[mut rawptr]) -> Status #calling_convention(.c) #no_context,
+        locate_protocol : fn(
+            protocol : ptr[Guid],
+            registration : rawptr,
+            interface : ptr[mut rawptr]
+        ) -> Status #calling_convention(.c) #no_context,
     }
 
     /** EFI_CONFIGURATION_TABLE: one of the firmware's tables, by its GUID. */
@@ -254,9 +291,12 @@ import runtime from "base:runtime"
     /** EFI_SIMPLE_TEXT_INPUT_PROTOCOL: the console's keyboard. */
     TextInput :: struct {
         /** Reset: the input device reset, with a fuller check of it if extended. */
-        reset : fn(this: ptr[TextInput], extended: bool) -> Status #calling_convention(.c) #no_context,
+        reset : fn(this : ptr[TextInput], extended : bool) -> Status #calling_convention(.c) #no_context,
         /** ReadKeyStroke: the next key, taken, into key, without waiting; NOT_READY when no key is waiting. */
-        read_key_stroke : fn(this: ptr[TextInput], key: ptr[mut InputKey]) -> Status #calling_convention(.c) #no_context,
+        read_key_stroke : fn(
+            this : ptr[TextInput],
+            key : ptr[mut InputKey]
+        ) -> Status #calling_convention(.c) #no_context,
         /** The event signalled when a key is waiting, untyped. */
         wait_for_key : rawptr,
     }
@@ -266,7 +306,10 @@ import runtime from "base:runtime"
         /** The protocol's revision. */
         revision : u64,
         /** OpenVolume: the volume's root directory, into root, a File which the caller closes. */
-        open_volume : fn(this: ptr[SimpleFileSystem], root: ptr[mut rawptr]) -> Status #calling_convention(.c) #no_context,
+        open_volume : fn(
+            this : ptr[SimpleFileSystem],
+            root : ptr[mut rawptr]
+        ) -> Status #calling_convention(.c) #no_context,
     }
 
     /** EFI_FILE_PROTOCOL: an open file or directory. */
@@ -278,32 +321,50 @@ import runtime from "base:runtime"
          * folders separated by backslashes, ending in a zero; mode FILE_READ, FILE_WRITE and FILE_CREATE ORed; and
          * attributes, for one created, like FILE_DIRECTORY.
          */
-        open : fn(this: ptr[File], opened: ptr[mut rawptr], name: ptr[u16], mode: u64, attributes: u64) -> Status
-            #calling_convention(.c) #no_context,
+        open : fn(
+            this : ptr[File],
+            opened : ptr[mut rawptr],
+            name : ptr[u16],
+            mode : u64,
+            attributes : u64
+        ) -> Status #calling_convention(.c) #no_context,
         /** Close: the file closed, and this File not used again. */
-        close : fn(this: ptr[File]) -> Status #calling_convention(.c) #no_context,
+        close : fn(this : ptr[File]) -> Status #calling_convention(.c) #no_context,
         /** Delete, untyped. */
         delete : rawptr,
         /**
          * Read: at most size bytes, from the file's position, into buffer; size gets how many were read, 0 at the end.
          * Of a directory, the next entry's FileInfo.
          */
-        read : fn(this: ptr[File], size: ptr[mut usize], buffer: rawptr) -> Status #calling_convention(.c) #no_context,
+        read : fn(
+            this : ptr[File],
+            size : ptr[mut usize],
+            buffer : rawptr
+        ) -> Status #calling_convention(.c) #no_context,
         /** Write: size bytes from buffer, at the file's position; size gets how many were written. */
-        write : fn(this: ptr[File], size: ptr[mut usize], buffer: rawptr) -> Status #calling_convention(.c) #no_context,
+        write : fn(
+            this : ptr[File],
+            size : ptr[mut usize],
+            buffer : rawptr
+        ) -> Status #calling_convention(.c) #no_context,
         /** GetPosition, untyped. */
         get_position : rawptr,
         /** SetPosition: the file's position, in bytes from its start; 0xffffffffffffffff for its end. */
-        set_position : fn(this: ptr[File], position: u64) -> Status #calling_convention(.c) #no_context,
+        set_position : fn(this : ptr[File], position : u64) -> Status #calling_convention(.c) #no_context,
         /**
          * GetInfo: the information kind names, like FILE_INFO_GUID's FileInfo, into buffer, size bytes of it; size
          * gets the bytes it needs, BUFFER_TOO_SMALL if more than were given.
          */
-        get_info : fn(this: ptr[File], kind: ptr[Guid], size: ptr[mut usize], buffer: rawptr) -> Status #calling_convention(.c) #no_context,
+        get_info : fn(
+            this : ptr[File],
+            kind : ptr[Guid],
+            size : ptr[mut usize],
+            buffer : rawptr
+        ) -> Status #calling_convention(.c) #no_context,
         /** SetInfo, untyped. */
         set_info : rawptr,
         /** Flush: what's been written, to the device. */
-        flush : fn(this: ptr[File]) -> Status #calling_convention(.c) #no_context,
+        flush : fn(this : ptr[File]) -> Status #calling_convention(.c) #no_context,
     }
 
     /** EFI_FILE_MODE_READ: File.open's mode bit to read. */
@@ -334,7 +395,12 @@ import runtime from "base:runtime"
         /** GetInfo, untyped. */
         get_info : rawptr,
         /** GetRNG: length random bytes into value, by algorithm, a GUID, or null for the firmware's default. */
-        get_rng : fn(this: ptr[Rng], algorithm: rawptr, length: usize, value: ptr[mut u8]) -> Status #calling_convention(.c) #no_context,
+        get_rng : fn(
+            this : ptr[Rng],
+            algorithm : rawptr,
+            length : usize,
+            value : ptr[mut u8]
+        ) -> Status #calling_convention(.c) #no_context,
     }
 
     /** EFI_GRAPHICS_OUTPUT_PROTOCOL, and its mode. */
@@ -392,10 +458,17 @@ import runtime from "base:runtime"
     /** EFI_MP_SERVICES_PROTOCOL, as far as listing the processors. */
     MpServices :: struct {
         /** GetNumberOfProcessors: how many processors there are, into count, and how many are enabled, into enabled. */
-        get_number_of_processors : fn(this: ptr[MpServices], count: ptr[mut usize], enabled: ptr[mut usize]) -> Status
-            #calling_convention(.c) #no_context,
+        get_number_of_processors : fn(
+            this : ptr[MpServices],
+            count : ptr[mut usize],
+            enabled : ptr[mut usize]
+        ) -> Status #calling_convention(.c) #no_context,
         /** GetProcessorInfo: what processor number is, from 0 to the count less one, into info. */
-        get_processor_info : fn(this: ptr[MpServices], number: usize, info: ptr[mut ProcessorInfo]) -> Status #calling_convention(.c) #no_context,
+        get_processor_info : fn(
+            this : ptr[MpServices],
+            number : usize,
+            info : ptr[mut ProcessorInfo]
+        ) -> Status #calling_convention(.c) #no_context,
     }
 
     /** EFI_PROCESSOR_INFORMATION, with room for the extended information newer firmware may write after it. */
@@ -508,7 +581,7 @@ import runtime from "base:runtime"
      * @param guid The GUID of the table wanted, like ACPI_20_GUID.
      * @return The first table with it, in the firmware's memory, its layout what the GUID says; null if there's none.
      */
-    configuration_table :: fn(guid: Guid) -> rawptr? {
+    configuration_table :: fn(guid : Guid) -> rawptr? {
         wanted := guid
         for &entry in configuration_tables() {
             if same_guid(&entry.vendor, &wanted) {
@@ -527,7 +600,7 @@ import runtime from "base:runtime"
      * @return The protocol, the firmware's, good while the boot services are; null if the handle hasn't it, or there
      *     are no boot services.
      */
-    protocol_of :: fn[T](handle: rawptr, guid: Guid) -> ptr[T]? {
+    protocol_of :: fn[T](handle : rawptr, guid : Guid) -> ptr[T]? {
         services :: boot_services() or_return null
         wanted := guid
         found : rawptr = null
@@ -545,7 +618,7 @@ import runtime from "base:runtime"
      * @return The protocol, the firmware's, good while the boot services are; null if there's none, or there are no
      *     boot services.
      */
-    locate :: fn[T](guid: Guid) -> ptr[T]? {
+    locate :: fn[T](guid : Guid) -> ptr[T]? {
         services :: boot_services() or_return null
         wanted := guid
         found : rawptr = null
@@ -579,7 +652,7 @@ import runtime from "base:runtime"
      * @param kind How: a cold or warm reset, or turned off. Without runtime services, or if the firmware returns, it
      *     traps instead.
      */
-    reset :: fn(kind: ResetKind) #never_returns {
+    reset :: fn(kind : ResetKind) #never_returns {
         match runtime_services() {
             case Some(services) => services.reset_system(cast[u32](kind), SUCCESS, 0, null)
             case None => {}

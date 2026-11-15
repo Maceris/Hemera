@@ -32,14 +32,14 @@ Argon2Parameters :: struct {
      * m: the memory to use, in KiB, at least 8 per lane. What's used is rounded down to a multiple of 4 per lane,
      * argon2_blocks_needed blocks, but the number given is what's hashed.
      */
-    memory_kib: u32,
+    memory_kib : u32,
     /** t: how many passes are made over the memory, at least 1. */
-    passes: u32,
+    passes : u32,
     /**
      * p: how many lanes the memory is split into, 1 to 2^24 - 1. They're filled one after another here, not at
      * once.
      */
-    lanes: u32,
+    lanes : u32,
 }
 
 /** One of the memory's 1 KiB blocks, as 128 little-endian 64-bit words; secret, as it's made from the password. */
@@ -57,7 +57,7 @@ ARGON2_ID :: 2
  * @return How many 1 KiB blocks to pass to argon2id: memory_kib rounded down to a multiple of 4 per lane, or 0 when
  *     lanes is 0.
  */
-argon2_blocks_needed :: fn(parameters: Argon2Parameters) -> usize {
+argon2_blocks_needed :: fn(parameters : Argon2Parameters) -> usize {
     lanes := cast[usize](parameters.lanes)
     if lanes == 0 {
         return 0
@@ -73,7 +73,7 @@ argon2_blocks_needed :: fn(parameters: Argon2Parameters) -> usize {
  * @param a The index, 0 to 127, of the word that's added to and holds the sum.
  * @param b The index of the word added to it.
  */
-argon2_add #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize) {
+argon2_add #constant_time :: fn(v : ptr[mut Argon2Block], a : usize, b : usize) {
     x := v[a % 128]
     y := v[b % 128]
     v[a % 128] = x + y + 2 * (x & 0xffff_ffff) * (y & 0xffff_ffff)
@@ -88,7 +88,7 @@ argon2_add #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize) {
  * @param c The index of GB's third word.
  * @param d The index of GB's fourth word.
  */
-argon2_mix #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize, c: usize, d: usize) {
+argon2_mix #constant_time :: fn(v : ptr[mut Argon2Block], a : usize, b : usize, c : usize, d : usize) {
     argon2_add(v, a, b)
     v[d % 128] = intrinsics.rotate_right(v[d % 128] ~ v[a % 128], 32)
     argon2_add(v, c, d)
@@ -105,7 +105,7 @@ argon2_mix #constant_time :: fn(v: ptr[mut Argon2Block], a: usize, b: usize, c: 
  * @param v The block, sixteen of whose words are permuted in place.
  * @param at The words' indexes in v, 0 to 127, in the order P takes them.
  */
-argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
+argon2_permute #constant_time :: fn(v : ptr[mut Argon2Block], at : usize[16]) {
     argon2_mix(v, at[0], at[4], at[8], at[12])
     argon2_mix(v, at[1], at[5], at[9], at[13])
     argon2_mix(v, at[2], at[6], at[10], at[14])
@@ -123,7 +123,7 @@ argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
      *
      * @param r Sixteen of a block's words as four rows of four, mixed in place.
      */
-    argon2_mix_rows #constant_time #target_features("avx2") :: fn(r: ptr[mut Blake2bRows]) {
+    argon2_mix_rows #constant_time #target_features("avx2") :: fn(r : ptr[mut Blake2bRows]) {
         low := intrinsics.splat[vector[u64, 4]](0xffff_ffff)
         product := (r[0] & low) * (r[1] & low)
         r[0] = r[0] + r[1] + product + product
@@ -148,13 +148,21 @@ argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
      * @param row_step How far apart the rows' first words are: 4 for a row of the block, 32 for a column.
      * @param pair_step How far apart a row's two pairs of words are: 2 for a row of the block, 16 for a column.
      */
-    argon2_permute_wide #constant_time #target_features("avx2") :: fn(v: ptr[mut Argon2Block], base: usize, row_step: usize,
-        pair_step: usize) {
-
+    argon2_permute_wide #constant_time #target_features("avx2") :: fn(
+        v : ptr[mut Argon2Block],
+        base : usize,
+        row_step : usize,
+        pair_step : usize
+    ) {
         r : Blake2bRows
         for k in cast[usize](0)..<4 {
             at := base + row_step * k
-            r[k] = vector[u64, 4].{v[at % 128], v[(at + 1) % 128], v[(at + pair_step) % 128], v[(at + pair_step + 1) % 128]}
+            r[k] = vector[u64, 4].{
+                v[at % 128],
+                v[(at + 1) % 128],
+                v[(at + pair_step) % 128],
+                v[(at + pair_step + 1) % 128]
+            }
         }
         argon2_mix_rows(&r)
         r[1] = intrinsics.rotate_lanes(r[1], 1)
@@ -183,9 +191,12 @@ argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
      * @param keep Whether the result is XORed into what out holds, as passes after the first do, rather than
      *     replacing it.
      */
-    argon2_compress_wide #constant_time #target_features("avx2") :: fn(x: ptr[Argon2Block], y: ptr[Argon2Block], out: ptr[mut Argon2Block],
-        keep: bool) {
-
+    argon2_compress_wide #constant_time #target_features("avx2") :: fn(
+        x : ptr[Argon2Block],
+        y : ptr[Argon2Block],
+        out : ptr[mut Argon2Block],
+        keep : bool
+    ) {
         r : Argon2Block
         for k in 0..<128 {
             r[k] = x[k] ~ y[k]
@@ -220,7 +231,13 @@ argon2_permute #constant_time :: fn(v: ptr[mut Argon2Block], at: usize[16]) {
  *     it.
  * @param wide Whether to use AVX2, which only an x86-64 CPU that has it may be told; on other targets it's ignored.
  */
-argon2_compress #constant_time :: fn(x: ptr[Argon2Block], y: ptr[Argon2Block], out: ptr[mut Argon2Block], keep: bool, wide: bool) {
+argon2_compress #constant_time :: fn(
+    x : ptr[Argon2Block],
+    y : ptr[Argon2Block],
+    out : ptr[mut Argon2Block],
+    keep : bool,
+    wide : bool
+) {
     #if TARGET_ARCH == .x86_64 {
         if wide {
             argon2_compress_wide(x, y, out, keep)
@@ -263,7 +280,7 @@ argon2_compress #constant_time :: fn(x: ptr[Argon2Block], y: ptr[Argon2Block], o
  * @param value Any 32-bit value: a length, a parameter or a counter, as RFC 9106 has them hashed.
  * @return Its four bytes, least significant first.
  */
-argon2_le32 :: fn(value: u32) -> u8[4] {
+argon2_le32 :: fn(value : u32) -> u8[4] {
     return u8.[cast[u8](value), cast[u8](value >> 8), cast[u8](value >> 16), cast[u8](value >> 24)]
 }
 
@@ -278,7 +295,7 @@ argon2_le32 :: fn(value: u32) -> u8[4] {
  *     byte: with none, nothing is done.
  * @param wide Whether BLAKE2b may use AVX2: it does if this and vectors_wide both say so.
  */
-argon2_hash_long #constant_time :: fn(input: SecretByte[], output: mut SecretByte[], wide: bool) {
+argon2_hash_long #constant_time :: fn(input : SecretByte[], output : mut SecretByte[], wide : bool) {
     count := output.count
     if count <= 64 {
         hasher := blake2b_start(count) or_return void
@@ -321,7 +338,7 @@ argon2_hash_long #constant_time :: fn(input: SecretByte[], output: mut SecretByt
  * @param block The block to encode, any 128 words; read, not changed.
  * @return Its 1024 bytes, secret; the caller wipes them when they're done.
  */
-argon2_block_bytes #constant_time :: fn(block: ptr[Argon2Block]) -> SecretByte[1024] {
+argon2_block_bytes #constant_time :: fn(block : ptr[Argon2Block]) -> SecretByte[1024] {
     bytes : SecretByte[1024]
     for i in 0..<128 {
         for j in 0..<8 {
@@ -337,7 +354,7 @@ argon2_block_bytes #constant_time :: fn(block: ptr[Argon2Block]) -> SecretByte[1
  * @param bytes The 1024 bytes, little-endian words.
  * @return The block, word i from bytes 8 * i to 8 * i + 7, least significant first; secret, as the bytes were.
  */
-argon2_block_of #constant_time :: fn(bytes: ptr[SecretByte[1024]]) -> Argon2Block {
+argon2_block_of #constant_time :: fn(bytes : ptr[SecretByte[1024]]) -> Argon2Block {
     block : Argon2Block
     for i in 0..<128 {
         for j in 0..<8 {
@@ -353,17 +370,17 @@ argon2_block_of #constant_time :: fn(bytes: ptr[SecretByte[1024]]) -> Argon2Bloc
  */
 Argon2Memory :: struct #scoped {
     /** The blocks used, argon2_blocks_needed of them, lane after lane: lane l's column c is at l * columns + c. */
-    blocks: mut Argon2Block[],
+    blocks : mut Argon2Block[],
     /** How many lanes there are, p. */
-    lanes: usize,
+    lanes : usize,
     /** How many blocks a lane has, q: four segments' worth. */
-    columns: usize,
+    columns : usize,
     /** How many blocks a segment has, a quarter of a lane. */
-    segment: usize,
+    segment : usize,
     /** How many passes are made over the memory, t. */
-    passes: usize,
+    passes : usize,
     /** Whether compressing uses AVX2. */
-    wide: bool,
+    wide : bool,
 }
 
 /**
@@ -378,7 +395,7 @@ Argon2Memory :: struct #scoped {
  * @param slice The slice, 0 to 3: which quarter of each lane.
  * @param lane The lane, 0 to memory.lanes - 1.
  */
-argon2_fill_segment #constant_time :: fn(memory: ptr[Argon2Memory], pass: usize, slice: usize, lane: usize) {
+argon2_fill_segment #constant_time :: fn(memory : ptr[Argon2Memory], pass : usize, slice : usize, lane : usize) {
     blocks := memory.blocks
     columns := memory.columns
     segment := memory.segment
@@ -467,9 +484,15 @@ argon2_fill_segment #constant_time :: fn(memory: ptr[Argon2Memory], pass: usize,
  * @return True with hash written, or false, with nothing written, for a hash under 4 bytes, a salt under 8, no lanes
  *     or 2^24 or more, no passes, under 8 KiB a lane, or fewer blocks than argon2_blocks_needed.
  */
-argon2id_keyed #constant_time :: fn(password: SecretByte[], salt: u8[], key: SecretByte[], associated: u8[],
-    parameters: Argon2Parameters, blocks: mut Argon2Block[], hash: mut SecretByte[]) -> bool {
-
+argon2id_keyed #constant_time :: fn(
+    password : SecretByte[],
+    salt : u8[],
+    key : SecretByte[],
+    associated : u8[],
+    parameters : Argon2Parameters,
+    blocks : mut Argon2Block[],
+    hash : mut SecretByte[]
+) -> bool {
     return argon2id_keyed_with(password, salt, key, associated, parameters, blocks, hash, vectors_wide())
 }
 
@@ -491,13 +514,25 @@ argon2id_keyed #constant_time :: fn(password: SecretByte[], salt: u8[], key: Sec
  * @return True with hash written, or false, with nothing written, for a hash under 4 bytes, a salt under 8, no lanes
  *     or 2^24 or more, no passes, under 8 KiB a lane, or fewer blocks than argon2_blocks_needed.
  */
-argon2id_keyed_with #constant_time :: fn(password: SecretByte[], salt: u8[], key: SecretByte[], associated: u8[],
-    parameters: Argon2Parameters, blocks: mut Argon2Block[], hash: mut SecretByte[], wide: bool) -> bool {
-
+argon2id_keyed_with #constant_time :: fn(
+    password : SecretByte[],
+    salt : u8[],
+    key : SecretByte[],
+    associated : u8[],
+    parameters : Argon2Parameters,
+    blocks : mut Argon2Block[],
+    hash : mut SecretByte[],
+    wide : bool
+) -> bool {
     lanes := cast[usize](parameters.lanes)
     needed := argon2_blocks_needed(parameters)
-    if hash.count < 4 || salt.count < 8 || lanes == 0 || lanes > 0xff_ffff || parameters.passes == 0
-        || cast[usize](parameters.memory_kib) < 8 * lanes || blocks.count < needed {
+    if hash.count < 4
+        || salt.count < 8
+        || lanes == 0
+        || lanes > 0xff_ffff
+        || parameters.passes == 0
+        || cast[usize](parameters.memory_kib) < 8 * lanes
+        || blocks.count < needed {
         return false
     }
 
@@ -522,8 +557,14 @@ argon2id_keyed_with #constant_time :: fn(password: SecretByte[], salt: u8[], key
     seed : SecretByte[72]
     blake2b_finish_secret(&hasher, seed[0..<64])
 
-    memory := Argon2Memory.{blocks = blocks[0..<needed], lanes = lanes, columns = needed / lanes, segment = needed / lanes / 4,
-        passes = cast[usize](parameters.passes), wide = wide}
+    memory := Argon2Memory.{
+        blocks = blocks[0..<needed],
+        lanes = lanes,
+        columns = needed / lanes,
+        segment = needed / lanes / 4,
+        passes = cast[usize](parameters.passes),
+        wide = wide,
+    }
     block_bytes : SecretByte[1024]
     for lane in 0..<lanes {
         for first in 0..<2 {
@@ -586,8 +627,12 @@ argon2id_keyed_with #constant_time :: fn(password: SecretByte[], salt: u8[], key
  * @return True with hash written, or false, with nothing written, for a hash under 4 bytes, a salt under 8, no lanes
  *     or 2^24 or more, no passes, under 8 KiB a lane, or fewer blocks than argon2_blocks_needed.
  */
-argon2id #constant_time :: fn(password: SecretByte[], salt: u8[], parameters: Argon2Parameters, blocks: mut Argon2Block[],
-    hash: mut SecretByte[]) -> bool {
-
+argon2id #constant_time :: fn(
+    password : SecretByte[],
+    salt : u8[],
+    parameters : Argon2Parameters,
+    blocks : mut Argon2Block[],
+    hash : mut SecretByte[]
+) -> bool {
     return argon2id_keyed(password, salt, as_secret(u8.[]), u8.[], parameters, blocks, hash)
 }

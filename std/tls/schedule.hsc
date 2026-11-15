@@ -24,7 +24,7 @@ Hash :: enum {
  * @param hash The hash.
  * @return 32 for SHA-256, 48 for SHA-384.
  */
-hash_length :: fn(hash: Hash) -> usize {
+hash_length :: fn(hash : Hash) -> usize {
     return if hash == .Sha384 { cast[usize](48) } else { cast[usize](32) }
 }
 
@@ -55,7 +55,7 @@ transcript_start :: fn() -> Transcript {
  * @param transcript The transcript.
  * @param message The message, from its type to its end.
  */
-transcript_add :: fn(transcript: ptr[mut Transcript], message: u8[]) {
+transcript_add :: fn(transcript : ptr[mut Transcript], message : u8[]) {
     crypto.sha256_update(&transcript.sha256, message)
     crypto.sha384_update(&transcript.sha384, message)
 }
@@ -67,7 +67,7 @@ transcript_add :: fn(transcript: ptr[mut Transcript], message: u8[]) {
  * @param hash Which hash.
  * @param into Where the hash goes: its first hash_length(hash) bytes.
  */
-transcript_hash :: fn(transcript: ptr[Transcript], hash: Hash, into: ptr[mut u8[HASH_MOST]]) {
+transcript_hash :: fn(transcript : ptr[Transcript], hash : Hash, into : ptr[mut u8[HASH_MOST]]) {
     if hash == .Sha384 {
         copy := transcript.sha384
         digest :: crypto.sha384_finish(&copy)
@@ -90,7 +90,7 @@ transcript_hash :: fn(transcript: ptr[Transcript], hash: Hash, into: ptr[mut u8[
  * @param bytes What's hashed.
  * @param into Where the hash goes.
  */
-hash_of :: fn(hash: Hash, bytes: u8[], into: ptr[mut u8[HASH_MOST]]) {
+hash_of :: fn(hash : Hash, bytes : u8[], into : ptr[mut u8[HASH_MOST]]) {
     if hash == .Sha384 {
         digest :: crypto.sha384(bytes)
         for byte, i in digest {
@@ -112,7 +112,7 @@ hash_of :: fn(hash: Hash, bytes: u8[], into: ptr[mut u8[HASH_MOST]]) {
  * @param input The input keying material, hash_length(hash) bytes or the shared secret's.
  * @return The pseudorandom key.
  */
-extract #constant_time :: fn(hash: Hash, salt: ptr[Secret], input: crypto.SecretByte[]) -> Secret {
+extract #constant_time :: fn(hash : Hash, salt : ptr[Secret], input : crypto.SecretByte[]) -> Secret {
     out : Secret
     length :: hash_length(hash)
     // HKDF's salt is HMAC's key, which a secret salt is as much as a public one
@@ -144,7 +144,13 @@ extract #constant_time :: fn(hash: Hash, salt: ptr[Secret], input: crypto.Secret
  * @param context The context: a transcript hash, or empty.
  * @param output Where the output goes, as many bytes as it has, at most 255 * hash_length(hash).
  */
-expand_label #constant_time :: fn(hash: Hash, secret: ptr[Secret], label: string, context: u8[], output: mut crypto.SecretByte[]) {
+expand_label #constant_time :: fn(
+    hash : Hash,
+    secret : ptr[Secret],
+    label : string,
+    context : u8[],
+    output : mut crypto.SecretByte[]
+) {
     info : u8[2 + 1 + 255 + 1 + 255]
     writer := Writer.{}
     prefix :: "tls13 "
@@ -177,7 +183,12 @@ expand_label #constant_time :: fn(hash: Hash, secret: ptr[Secret], label: string
  * @param transcript The transcript hash, its first hash_length(hash) bytes.
  * @return The derived secret.
  */
-derive_secret #constant_time :: fn(hash: Hash, secret: ptr[Secret], label: string, transcript: ptr[u8[HASH_MOST]]) -> Secret {
+derive_secret #constant_time :: fn(
+    hash : Hash,
+    secret : ptr[Secret],
+    label : string,
+    transcript : ptr[u8[HASH_MOST]]
+) -> Secret {
     length :: hash_length(hash)
     out : crypto.SecretByte[HASH_MOST]
     expand_label(hash, secret, label, range(transcript^, 0, length), range_mut(out, 0, length))
@@ -196,7 +207,7 @@ derive_secret #constant_time :: fn(hash: Hash, secret: ptr[Secret], label: strin
  * @param label The label.
  * @return The derived secret.
  */
-derive_empty #constant_time :: fn(hash: Hash, secret: ptr[Secret], label: string) -> Secret {
+derive_empty #constant_time :: fn(hash : Hash, secret : ptr[Secret], label : string) -> Secret {
     empty : u8[HASH_MOST]
     hash_of(hash, string_bytes(""), &empty)
     return derive_secret(hash, secret, label, &empty)
@@ -220,7 +231,7 @@ TrafficKeys :: struct {
  * @param secret The traffic secret.
  * @return The keys, their sequence number 0.
  */
-traffic_keys #constant_time :: fn(hash: Hash, key_length: usize, secret: ptr[Secret]) -> TrafficKeys {
+traffic_keys #constant_time :: fn(hash : Hash, key_length : usize, secret : ptr[Secret]) -> TrafficKeys {
     keys := TrafficKeys.{}
     key : crypto.SecretByte[32]
     expand_label(hash, secret, "key", string_bytes(""), range_mut(key, 0, key_length))
@@ -242,7 +253,7 @@ traffic_keys #constant_time :: fn(hash: Hash, key_length: usize, secret: ptr[Sec
  * @param secret The traffic secret now.
  * @return The next one.
  */
-next_traffic_secret #constant_time :: fn(hash: Hash, secret: ptr[Secret]) -> Secret {
+next_traffic_secret #constant_time :: fn(hash : Hash, secret : ptr[Secret]) -> Secret {
     length :: hash_length(hash)
     out : crypto.SecretByte[HASH_MOST]
     expand_label(hash, secret, "traffic upd", string_bytes(""), range_mut(out, 0, length))
@@ -262,7 +273,11 @@ next_traffic_secret #constant_time :: fn(hash: Hash, secret: ptr[Secret]) -> Sec
  * @param transcript The transcript hash up to the Finished.
  * @return The verify_data, its first hash_length(hash) bytes.
  */
-finished_data #constant_time :: fn(hash: Hash, secret: ptr[Secret], transcript: ptr[u8[HASH_MOST]]) -> crypto.SecretByte[HASH_MOST] {
+finished_data #constant_time :: fn(
+    hash : Hash,
+    secret : ptr[Secret],
+    transcript : ptr[u8[HASH_MOST]]
+) -> crypto.SecretByte[HASH_MOST] {
     length :: hash_length(hash)
     key : crypto.SecretByte[HASH_MOST]
     expand_label(hash, secret, "finished", string_bytes(""), range_mut(key, 0, length))

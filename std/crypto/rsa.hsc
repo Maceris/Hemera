@@ -28,19 +28,25 @@ RSA_FEWEST_BITS :: 1024
 /** An RSA public key, ready to verify with. */
 RsaPublicKey :: struct {
     /** The modulus, n, odd, from 1024 to 8192 bits, ready for arithmetic modulo it. */
-    modulus: BigModulus,
+    modulus : BigModulus,
     /** The public exponent, e, odd, from 3 to below n. */
-    exponent: BigNumber,
+    exponent : BigNumber,
     /** n's size in bytes, k: what a signature's has to be. */
-    size: usize,
+    size : usize,
 }
 
 /** DigestInfo's DER before a SHA-256 digest, as PKCS #1 v1.5 signs it (RFC 8017, section 9.2, note 1). */
-RSA_DIGEST_INFO_SHA256 :: u8.[0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20]
+RSA_DIGEST_INFO_SHA256 :: u8.[
+    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20
+]
 /** DigestInfo's DER before a SHA-384 digest. */
-RSA_DIGEST_INFO_SHA384 :: u8.[0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30]
+RSA_DIGEST_INFO_SHA384 :: u8.[
+    0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30
+]
 /** DigestInfo's DER before a SHA-512 digest. */
-RSA_DIGEST_INFO_SHA512 :: u8.[0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40]
+RSA_DIGEST_INFO_SHA512 :: u8.[
+    0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40
+]
 
 /**
  * Make an RSA public key from its numbers.
@@ -51,12 +57,17 @@ RSA_DIGEST_INFO_SHA512 :: u8.[0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x
  * @return The key; or null when n is even, below RSA_FEWEST_BITS bits or above 8192, or e is even, below 3, not
  *     below n, or above 2^32, as BoringSSL has it: a huge e would make each verification take as long as signing.
  */
-rsa_public_key :: fn(modulus: u8[], exponent: u8[]) -> RsaPublicKey? {
+rsa_public_key :: fn(modulus : u8[], exponent : u8[]) -> RsaPublicKey? {
     n := big_from_bytes(modulus) or_return null
     e := big_from_bytes(exponent) or_return null
     bits := big_bits(&n)
-    if bits < RSA_FEWEST_BITS || e.count == 0 || (e.limbs[0] & 1) == 0 || (e.count == 1 && e.limbs[0] < 3) || big_compare(&e, &n) >= 0
-        || big_limbs_used(&e, e.count) > 1 || e.limbs[0] > 0x1_0000_0000 {
+    if bits < RSA_FEWEST_BITS
+        || e.count == 0
+        || (e.limbs[0] & 1) == 0
+        || (e.count == 1 && e.limbs[0] < 3)
+        || big_compare(&e, &n) >= 0
+        || big_limbs_used(&e, e.count) > 1
+        || e.limbs[0] > 0x1_0000_0000 {
         return null
     }
     prepared := big_modulus(&n) or_return null
@@ -69,7 +80,7 @@ rsa_public_key :: fn(modulus: u8[], exponent: u8[]) -> RsaPublicKey? {
  * @param hash The hash.
  * @return 32, 48 or 64.
  */
-rsa_hash_size :: fn(hash: RsaHash) -> usize {
+rsa_hash_size :: fn(hash : RsaHash) -> usize {
     match hash {
         case .SHA256 => return SHA256_SIZE
         case .SHA384 => return SHA384_SIZE
@@ -86,7 +97,7 @@ rsa_hash_size :: fn(hash: RsaHash) -> usize {
  * @param c The third, of any length, empty included.
  * @param digest Where the digest goes, in its first rsa_hash_size(hash) bytes; the rest are left as they were.
  */
-rsa_hash_parts :: fn(hash: RsaHash, a: u8[], b: u8[], c: u8[], digest: ptr[mut u8[64]]) {
+rsa_hash_parts :: fn(hash : RsaHash, a : u8[], b : u8[], c : u8[], digest : ptr[mut u8[64]]) {
     match hash {
         case .SHA256 => {
             hasher := sha256_start()
@@ -131,7 +142,12 @@ rsa_hash_parts :: fn(hash: RsaHash, a: u8[], b: u8[], c: u8[], digest: ptr[mut u
  * @param message Where the result goes, big-endian in its first length bytes.
  * @return Whether the signature was the right size and below n, and the result fit length bytes.
  */
-rsa_open_signature :: fn(key: ptr[RsaPublicKey], signature: u8[], length: usize, message: ptr[mut u8[1024]]) -> bool {
+rsa_open_signature :: fn(
+    key : ptr[RsaPublicKey],
+    signature : u8[],
+    length : usize,
+    message : ptr[mut u8[1024]]
+) -> bool {
     if signature.count != key.size || length > BIG_NUMBER_BYTES {
         return false
     }
@@ -155,7 +171,7 @@ rsa_open_signature :: fn(key: ptr[RsaPublicKey], signature: u8[], length: usize,
  * @return Whether it's that key's signature of that digest with that hash; false too for a digest or signature of
  *     the wrong size, or a signature not below n.
  */
-rsa_pkcs1_verify :: fn(key: ptr[RsaPublicKey], hash: RsaHash, digest: u8[], signature: u8[]) -> bool {
+rsa_pkcs1_verify :: fn(key : ptr[RsaPublicKey], hash : RsaHash, digest : u8[], signature : u8[]) -> bool {
     size := rsa_hash_size(hash)
     if digest.count != size {
         return false
@@ -209,7 +225,13 @@ rsa_pkcs1_verify :: fn(key: ptr[RsaPublicKey], hash: RsaHash, digest: u8[], sign
  * @return Whether it's that key's signature of that digest, with that hash and salt length; false too for a digest
  *     or signature of the wrong size, or a signature not below n.
  */
-rsa_pss_verify :: fn(key: ptr[RsaPublicKey], hash: RsaHash, digest: u8[], signature: u8[], salt_length: usize) -> bool {
+rsa_pss_verify :: fn(
+    key : ptr[RsaPublicKey],
+    hash : RsaHash,
+    digest : u8[],
+    signature : u8[],
+    salt_length : usize
+) -> bool {
     size := rsa_hash_size(hash)
     if digest.count != size || salt_length > BIG_NUMBER_BYTES {
         return false

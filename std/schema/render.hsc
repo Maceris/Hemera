@@ -31,7 +31,7 @@ Argument :: struct {
  *     parse, is written as %!.
  * @param into The array the text is added to, grown with its own allocator; what it held already is left as it is.
  */
-render :: fn(format_string: string, arguments: Argument[], into: ptr[mut u8[..]]) {
+render :: fn(format_string : string, arguments : Argument[], into : ptr[mut u8[..]]) {
     next : usize = 0
     index : usize = 0
     loop {
@@ -85,7 +85,7 @@ render :: fn(format_string: string, arguments: Argument[], into: ptr[mut u8[..]]
  * @param argument The argument's schema and value.
  * @param spec The options, as runtime.parse_format_spec read them; with none, the argument is rendered as it is.
  */
-render_with :: fn(into: ptr[mut u8[..]], argument: Argument, spec: runtime.FormatSpec) {
+render_with :: fn(into : ptr[mut u8[..]], argument : Argument, spec : runtime.FormatSpec) {
     if spec.width == 0 && spec.kind == 0 && !spec.plus && !spec.prefix && !spec.has_precision {
         render_value(into, argument.schema, first_type(argument.schema), argument.value, 0)
         return void
@@ -100,7 +100,12 @@ render_with :: fn(into: ptr[mut u8[..]], argument: Argument, spec: runtime.Forma
             bits :: read(argument.value, 0, size)
             if byte_at(schema, type + 9) != 0 {
                 signed :: extend(bits, size)
-                runtime.format_integer(sink, spec, signed < 0, if signed < 0 { 0 - cast[u64](signed) } else { cast[u64](signed) })
+                runtime.format_integer(
+                    sink,
+                    spec,
+                    signed < 0,
+                    if signed < 0 { 0 - cast[u64](signed) } else { cast[u64](signed) }
+                )
             }
             else {
                 runtime.format_integer(sink, spec, false, bits)
@@ -138,7 +143,7 @@ ALIAS_LIMIT :: 64
  *     context.assertion_handler.
  * @param byte Any byte, 0 to 255, added as it is.
  */
-sink_byte :: fn(target: rawptr, byte: u8) {
+sink_byte :: fn(target : rawptr, byte : u8) {
     runtime.array_add(cast[ptr[mut u8[..]]](target), byte)
 }
 
@@ -148,7 +153,7 @@ sink_byte :: fn(target: rawptr, byte: u8) {
  * @param into The array, grown with its own allocator.
  * @param text The text, copied.
  */
-add_text :: fn(into: ptr[mut u8[..]], text: string) {
+add_text :: fn(into : ptr[mut u8[..]], text : string) {
     for byte in view_of(cast[ptr[u8]](text.data), text.count) {
         runtime.array_add(into, byte)
     }
@@ -165,7 +170,7 @@ add_text :: fn(into: ptr[mut u8[..]], text: string) {
  * @param value The written value's bytes, where pointers are distances from its start.
  * @param at Where the value starts in value, in bytes. A type that isn't described, or a value cut short, is <?>.
  */
-render_value :: fn(into: ptr[mut u8[..]], schema: u8[], given: usize, value: u8[], at: usize) {
+render_value :: fn(into : ptr[mut u8[..]], schema : u8[], given : usize, value : u8[], at : usize) {
     type :: unaliased(schema, given)
     if type == NOWHERE {
         add_text(into, "<?>")
@@ -268,7 +273,7 @@ render_value :: fn(into: ptr[mut u8[..]], schema: u8[], given: usize, value: u8[
  * @param at Where the string is in them, in bytes.
  * @return The text, a view of value's bytes; "" if it's empty or its bytes aren't all there.
  */
-text_of :: fn(value: u8[], at: usize) -> string {
+text_of :: fn(value : u8[], at : usize) -> string {
     count :: cast[usize](read(value, at, 8))
     distance :: cast[usize](read(value, at + 8, 8))
     if count == 0 || !fits(value, distance, count) || distance >= value.count {
@@ -285,7 +290,7 @@ text_of :: fn(value: u8[], at: usize) -> string {
  * @param at Where it starts in bytes.
  * @param count How many bytes; any past the end of bytes are added as 0.
  */
-add_bytes :: fn(into: ptr[mut u8[..]], bytes: u8[], at: usize, count: usize) {
+add_bytes :: fn(into : ptr[mut u8[..]], bytes : u8[], at : usize, count : usize) {
     for i in at..<at + count {
         runtime.array_add(into, byte_at(bytes, i))
     }
@@ -297,7 +302,7 @@ add_bytes :: fn(into: ptr[mut u8[..]], bytes: u8[], at: usize, count: usize) {
  * @param into The array, grown with its own allocator.
  * @param value The number, written without a sign or leading zeros; 0 is "0".
  */
-add_unsigned :: fn(into: ptr[mut u8[..]], value: u64) {
+add_unsigned :: fn(into : ptr[mut u8[..]], value : u64) {
     if value == 0 {
         runtime.array_add(into, cast[u8]('0'))
         return void
@@ -323,7 +328,7 @@ add_unsigned :: fn(into: ptr[mut u8[..]], value: u64) {
  * @param at The byte's index in bytes, from 0; any value, as one past the end reads as 0.
  * @return The byte; 0 when at is past the end.
  */
-byte_at :: fn(bytes: u8[], at: usize) -> u8 {
+byte_at :: fn(bytes : u8[], at : usize) -> u8 {
     if at >= bytes.count {
         return 0
     }
@@ -338,7 +343,7 @@ byte_at :: fn(bytes: u8[], at: usize) -> u8 {
  * @param count How many bytes it is; 0 fits anywhere up to the end.
  * @return True when every byte of the run is in bytes.
  */
-fits :: fn(bytes: u8[], at: usize, count: usize) -> bool {
+fits :: fn(bytes : u8[], at : usize, count : usize) -> bool {
     return at <= bytes.count && count <= bytes.count - at
 }
 
@@ -350,7 +355,7 @@ fits :: fn(bytes: u8[], at: usize, count: usize) -> bool {
  * @param count How many bytes it is; only the first 8 count toward the result.
  * @return The number; 0 if its bytes aren't all there.
  */
-read :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
+read :: fn(bytes : u8[], at : usize, count : usize) -> u64 {
     if !fits(bytes, at, count) {
         return 0
     }
@@ -370,7 +375,7 @@ read :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
  * @param size How many bytes wide it is. 8 or more, or 0, takes the bits as they are.
  * @return The number, negative when its top bit was set.
  */
-extend :: fn(bits: u64, size: usize) -> i64 {
+extend :: fn(bits : u64, size : usize) -> i64 {
     if size >= 8 || size == 0 {
         return cast[i64](bits)
     }
@@ -385,8 +390,12 @@ extend :: fn(bits: u64, size: usize) -> i64 {
  *     and only read.
  * @return 10; NOWHERE if they don't start with "HSCH" and this VERSION, or are shorter than that.
  */
-first_type :: fn(schema: u8[]) -> usize {
-    if schema.count < 10 || byte_at(schema, 0) != 0x48 || byte_at(schema, 1) != 0x53 || byte_at(schema, 2) != 0x43 || byte_at(schema, 3) != 0x48
+first_type :: fn(schema : u8[]) -> usize {
+    if schema.count < 10
+        || byte_at(schema, 0) != 0x48
+        || byte_at(schema, 1) != 0x53
+        || byte_at(schema, 2) != 0x43
+        || byte_at(schema, 3) != 0x48
         || read(schema, 4, 2) != cast[u64](VERSION) {
         return NOWHERE
     }
@@ -401,7 +410,7 @@ first_type :: fn(schema: u8[]) -> usize {
  * @return Where the first type that isn't an alias is described: at itself when it isn't one. NOWHERE for NOWHERE,
  *     a description cut short, or aliases more than ALIAS_LIMIT deep.
  */
-unaliased :: fn(schema: u8[], at: usize) -> usize {
+unaliased :: fn(schema : u8[], at : usize) -> usize {
     type := at
     for step in 0..<ALIAS_LIMIT {
         if type == NOWHERE || !fits(schema, type, 9) {
@@ -424,7 +433,7 @@ unaliased :: fn(schema: u8[], at: usize) -> usize {
  * @param place The type's place, from 0.
  * @return Where its description starts; NOWHERE for a place past the last type, or bytes that aren't a schema.
  */
-type_at :: fn(schema: u8[], place: usize) -> usize {
+type_at :: fn(schema : u8[], place : usize) -> usize {
     count :: cast[usize](read(schema, 6, 4))
     if place >= count {
         return NOWHERE
@@ -443,7 +452,7 @@ type_at :: fn(schema: u8[], place: usize) -> usize {
  * @param at Where a type's description starts, or NOWHERE.
  * @return Where the next one starts; NOWHERE for NOWHERE, or a description cut short.
  */
-after_type :: fn(schema: u8[], at: usize) -> usize {
+after_type :: fn(schema : u8[], at : usize) -> usize {
     if at == NOWHERE || !fits(schema, at, 9) {
         return NOWHERE
     }
@@ -525,6 +534,6 @@ after_type :: fn(schema: u8[], at: usize) -> usize {
  * @param at Where the name starts.
  * @return Where its bytes end, which may be past the end of schema when it's cut short.
  */
-skip_name :: fn(schema: u8[], at: usize) -> usize {
+skip_name :: fn(schema : u8[], at : usize) -> usize {
     return at + 4 + cast[usize](read(schema, at, 4))
 }

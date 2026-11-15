@@ -60,7 +60,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return False for Send, whose datagram would go twice; true for the rest.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case Send(_) => false
         case Receive => true

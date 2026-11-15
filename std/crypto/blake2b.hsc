@@ -24,9 +24,9 @@ BLAKE2B_BLOCK :: 128
 /** The chaining words and the block being filled, which hold what was hashed and the key, so they're secrets. */
 Blake2bState :: struct #secret {
     /** The eight 64-bit chaining words, h, which become the digest. */
-    words: u64[8],
+    words : u64[8],
     /** The block being filled, compressed into the words once more comes after it. */
-    block: u8[128],
+    block : u8[128],
 }
 
 /** A block's words, and the working words a compression mixes. */
@@ -42,27 +42,27 @@ Blake2bMessageLanes :: distinct alias vector[u64, 4][2] #secret
  */
 Blake2b :: struct {
     /** The chaining words and the block being filled, secret. */
-    state: Blake2bState,
+    state : Blake2bState,
     /**
      * How many bytes of the block are filled, 0 to 128: a full block stays until more comes, since the last block is
      * compressed differently.
      */
-    buffered: usize,
+    buffered : usize,
     /** How many bytes were compressed before the block, the low 64 bits of RFC 7693's counter t. */
-    total: u64,
+    total : u64,
     /** The digest's size in bytes, 1 to 64, which is part of what's hashed. */
-    size: usize,
+    size : usize,
     /**
      * Whether blocks are compressed with AVX2, as vectors_wide() says when it starts; a kernel without vector state
      * sets it to false.
      */
-    wide: bool,
+    wide : bool,
 }
 
 /** BLAKE2b's initialization vector (RFC 7693, section 2.6), the same as SHA-512's initial hash value. */
 BLAKE2B_START :: u64.[
-    0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
-    0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
+    0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1, 0x510e527fade682d1,
+    0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179
 ]
 
 /**
@@ -70,16 +70,11 @@ BLAKE2B_START :: u64.[
  * eleventh and twelfth rounds using the first two again.
  */
 BLAKE2B_SIGMA :: usize.[
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-    14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3,
-    11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4,
-    7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8,
-    9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13,
-    2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9,
-    12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11,
-    13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10,
-    6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5,
-    10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3, 11, 8,
+    12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4, 7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8, 9, 0, 5, 7, 2,
+    4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13, 2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9, 12, 5, 1, 15, 14, 13,
+    4, 10, 0, 7, 6, 3, 9, 2, 8, 11, 13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10, 6, 15, 14, 9, 11, 3, 0, 8, 12,
+    2, 13, 7, 1, 4, 10, 5, 10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0
 ]
 
 /**
@@ -89,7 +84,7 @@ BLAKE2B_SIGMA :: usize.[
  *     a longer one.
  * @return The hasher, with wide set to whether AVX2 can be used, or None if size isn't 1 to 64.
  */
-blake2b_start :: fn(size: usize) -> Blake2b? {
+blake2b_start :: fn(size : usize) -> Blake2b? {
     return blake2b_start_keyed(size, as_secret(u8.[]))
 }
 
@@ -103,7 +98,7 @@ blake2b_start :: fn(size: usize) -> Blake2b? {
  * @return The hasher, with wide set to whether AVX2 can be used, or None if size isn't 1 to 64 or the key is longer
  *     than 64 bytes.
  */
-blake2b_start_keyed #constant_time :: fn(size: usize, key: SecretByte[]) -> Blake2b? {
+blake2b_start_keyed #constant_time :: fn(size : usize, key : SecretByte[]) -> Blake2b? {
     if size == 0 || size > 64 || key.count > 64 {
         return null
     }
@@ -134,9 +129,16 @@ blake2b_start_keyed #constant_time :: fn(size: usize, key: SecretByte[]) -> Blak
  * @param xi The index in x, 0 to 15, of the first message word, added in G's first half.
  * @param yi The index in x of the second message word, added in G's second half.
  */
-blake2b_mix #constant_time :: fn(v: ptr[mut Blake2bWords], a: usize, b: usize, c: usize, d: usize, x: ptr[Blake2bWords],
-    xi: usize, yi: usize) {
-
+blake2b_mix #constant_time :: fn(
+    v : ptr[mut Blake2bWords],
+    a : usize,
+    b : usize,
+    c : usize,
+    d : usize,
+    x : ptr[Blake2bWords],
+    xi : usize,
+    yi : usize
+) {
     v[a % 16] = v[a % 16] + v[b % 16] + x[xi % 16]
     v[d % 16] = intrinsics.rotate_right(v[d % 16] ~ v[a % 16], 32)
     v[c % 16] = v[c % 16] + v[d % 16]
@@ -155,7 +157,7 @@ blake2b_mix #constant_time :: fn(v: ptr[mut Blake2bWords], a: usize, b: usize, c
  * @param last Whether it's the last block, which is compressed differently.
  * @param wide Whether to use AVX2, which only an x86-64 CPU that has it may be told; on other targets it's ignored.
  */
-blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, last: bool, wide: bool) {
+blake2b_compress #constant_time :: fn(state : ptr[mut Blake2bState], total : u64, last : bool, wide : bool) {
     m : Blake2bWords
     for i in 0..<16 {
         word := compiler.secret(cast[u64](0))
@@ -177,9 +179,13 @@ blake2b_compress #constant_time :: fn(state: ptr[mut Blake2bState], total: u64, 
  * @param last Whether it's the last block, which is compressed differently.
  * @param wide Whether to use AVX2, which only an x86-64 CPU that has it may be told; on other targets it's ignored.
  */
-blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr[Blake2bWords], total: u64, last: bool,
-    wide: bool) {
-
+blake2b_compress_words #constant_time :: fn(
+    state : ptr[mut Blake2bState],
+    m : ptr[Blake2bWords],
+    total : u64,
+    last : bool,
+    wide : bool
+) {
     #if TARGET_ARCH == .x86_64 {
         if wide {
             blake2b_compress_wide(state, m, total, last)
@@ -220,12 +226,19 @@ blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr
      * @param s Where the round's permutation starts in BLAKE2B_SIGMA: 16 times the round, modulo 10.
      * @param k Which G of the round's eight start the four, times two: 0 for the columns, 8 for the diagonals.
      */
-    blake2b_message_lanes #constant_time #target_features("avx2") :: fn(lanes: ptr[mut Blake2bMessageLanes], m: ptr[Blake2bWords],
-        s: usize, k: usize) {
-
+    blake2b_message_lanes #constant_time #target_features("avx2") :: fn(
+        lanes : ptr[mut Blake2bMessageLanes],
+        m : ptr[Blake2bWords],
+        s : usize,
+        k : usize
+    ) {
         for xy in cast[usize](0)..<2 {
-            lanes[xy] = vector[u64, 4].{m[BLAKE2B_SIGMA[(s + k + xy) % 160] % 16], m[BLAKE2B_SIGMA[(s + k + xy + 2) % 160] % 16],
-                m[BLAKE2B_SIGMA[(s + k + xy + 4) % 160] % 16], m[BLAKE2B_SIGMA[(s + k + xy + 6) % 160] % 16]}
+            lanes[xy] = vector[u64, 4].{
+                m[BLAKE2B_SIGMA[(s + k + xy) % 160] % 16],
+                m[BLAKE2B_SIGMA[(s + k + xy + 2) % 160] % 16],
+                m[BLAKE2B_SIGMA[(s + k + xy + 4) % 160] % 16],
+                m[BLAKE2B_SIGMA[(s + k + xy + 6) % 160] % 16]
+            }
         }
     }
 
@@ -237,7 +250,12 @@ blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr
      * @param s Where the round's permutation starts in BLAKE2B_SIGMA: 16 times the round, modulo 10.
      * @param k Which G of the round's eight start the four, times two: 0 for the columns, 8 for the diagonals.
      */
-    blake2b_mix_rows #constant_time #target_features("avx2") :: fn(r: ptr[mut Blake2bRows], m: ptr[Blake2bWords], s: usize, k: usize) {
+    blake2b_mix_rows #constant_time #target_features("avx2") :: fn(
+        r : ptr[mut Blake2bRows],
+        m : ptr[Blake2bWords],
+        s : usize,
+        k : usize
+    ) {
         lanes : Blake2bMessageLanes
         blake2b_message_lanes(&lanes, m, s, k)
         r[0] = r[0] + r[1] + lanes[0]
@@ -260,9 +278,12 @@ blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr
      * @param last Whether it's the last block, which is compressed differently. The CPU has to have AVX2, as
      *     vectors_wide says.
      */
-    blake2b_compress_wide #constant_time #target_features("avx2") :: fn(state: ptr[mut Blake2bState], m: ptr[Blake2bWords], total: u64,
-        last: bool) {
-
+    blake2b_compress_wide #constant_time #target_features("avx2") :: fn(
+        state : ptr[mut Blake2bState],
+        m : ptr[Blake2bWords],
+        total : u64,
+        last : bool
+    ) {
         r : Blake2bRows
         r[0] = vector[u64, 4].{state.words[0], state.words[1], state.words[2], state.words[3]}
         r[1] = vector[u64, 4].{state.words[4], state.words[5], state.words[6], state.words[7]}
@@ -298,7 +319,7 @@ blake2b_compress_words #constant_time :: fn(state: ptr[mut Blake2bState], m: ptr
  * @param hasher The hasher, not yet finished.
  * @param data The next bytes, of any number, none included; they're hashed, not kept.
  */
-blake2b_update :: fn(hasher: ptr[mut Blake2b], data: u8[]) {
+blake2b_update :: fn(hasher : ptr[mut Blake2b], data : u8[]) {
     blake2b_absorb(hasher, data)
 }
 
@@ -308,7 +329,7 @@ blake2b_update :: fn(hasher: ptr[mut Blake2b], data: u8[]) {
  * @param hasher The hasher, not yet finished.
  * @param data The next bytes, of any number; how many isn't secret, what they are is.
  */
-blake2b_update_secret #constant_time :: fn(hasher: ptr[mut Blake2b], data: SecretByte[]) {
+blake2b_update_secret #constant_time :: fn(hasher : ptr[mut Blake2b], data : SecretByte[]) {
     blake2b_absorb(hasher, data)
 }
 
@@ -320,7 +341,7 @@ blake2b_update_secret #constant_time :: fn(hasher: ptr[mut Blake2b], data: Secre
  * @param hasher The hasher, not yet finished.
  * @param data The bytes, of any number.
  */
-blake2b_absorb :: fn[T](hasher: ptr[mut Blake2b], data: T[]) {
+blake2b_absorb :: fn[T](hasher : ptr[mut Blake2b], data : T[]) {
     at : usize = 0
     loop {
         if hasher.buffered == BLAKE2B_BLOCK {
@@ -357,7 +378,7 @@ blake2b_absorb :: fn[T](hasher: ptr[mut Blake2b], data: T[]) {
  * @param output Where the digest goes: its first size bytes, or as many as it has. Bytes past the size are left as
  *     they were.
  */
-blake2b_finish_secret #constant_time :: fn(hasher: ptr[mut Blake2b], output: mut SecretByte[]) {
+blake2b_finish_secret #constant_time :: fn(hasher : ptr[mut Blake2b], output : mut SecretByte[]) {
     hasher.total += cast[u64](hasher.buffered)
     for i in hasher.buffered..<BLAKE2B_BLOCK {
         hasher.state.block[i] = 0
@@ -378,7 +399,7 @@ blake2b_finish_secret #constant_time :: fn(hasher: ptr[mut Blake2b], output: mut
  * @param output Where the digest goes, which should have the size the hasher was started with: a shorter one gets
  *     the digest's first bytes, and a longer one zeros after it, however long it is.
  */
-blake2b_finish :: fn(hasher: ptr[mut Blake2b], output: mut u8[]) {
+blake2b_finish :: fn(hasher : ptr[mut Blake2b], output : mut u8[]) {
     digest : SecretByte[64]
     blake2b_finish_secret(hasher, digest)
     for i in 0..<output.count {
@@ -393,7 +414,7 @@ blake2b_finish :: fn(hasher: ptr[mut Blake2b], output: mut u8[]) {
  * @param output Where the digest goes; its count, 1 to 64, is the digest's size, which is part of what's hashed.
  * @return True with output filled, or false, with nothing written, if output's count isn't 1 to 64.
  */
-blake2b :: fn(data: u8[], output: mut u8[]) -> bool {
+blake2b :: fn(data : u8[], output : mut u8[]) -> bool {
     hasher := blake2b_start(output.count) or_return false
     blake2b_update(&hasher, data)
     blake2b_finish(&hasher, output)

@@ -95,7 +95,7 @@ DEFAULT_IGNORABLE : u16 : 1 << 9
  * @return point The code point, or 0 where length is 0.
  * @return length How many bytes it takes, 1 to 4; 0 where the bytes at at aren't UTF-8, or at is at or past the end.
  */
-decode :: fn(bytes: u8[], at: usize) -> (point: u32, length: usize) {
+decode :: fn(bytes : u8[], at : usize) -> (point : u32, length : usize) {
     if at >= bytes.count {
         return 0, 0
     }
@@ -152,11 +152,14 @@ decode :: fn(bytes: u8[], at: usize) -> (point: u32, length: usize) {
  * @return How many bytes it took, 1 to 4, or 0 if point isn't a code point that can be encoded or into has too few
  *     bytes for it.
  */
-encode :: fn(point: u32, into: mut u8[]) -> usize {
+encode :: fn(point : u32, into : mut u8[]) -> usize {
     if point > MAX_CODE_POINT || (point >= 0xd800 && point <= 0xdfff) {
         return 0
     }
-    length :: if point < 0x80 { cast[usize](1) } else if point < 0x800 { cast[usize](2) } else if point < 0x10000 { cast[usize](3) } else { cast[usize](4) }
+    length :: if point < 0x80 {
+        cast[usize](1)
+    }
+    else if point < 0x800 { cast[usize](2) } else if point < 0x10000 { cast[usize](3) } else { cast[usize](4) }
     if into.count < length {
         return 0
     }
@@ -180,7 +183,7 @@ encode :: fn(point: u32, into: mut u8[]) -> usize {
  * @param point The code point; one past U+10FFFF gets the last run's.
  * @return Its properties, packed as RUN_PROPERTIES describes.
  */
-properties :: fn(point: u32) -> u16 {
+properties :: fn(point : u32) -> u16 {
     low : usize = 0
     high : usize = RUN_STARTS.count
     loop {
@@ -203,7 +206,7 @@ properties :: fn(point: u32) -> u16 {
  *     says.
  * @return Its property, Other for one the tables give none.
  */
-grapheme_break :: fn(point: u32) -> GraphemeBreak {
+grapheme_break :: fn(point : u32) -> GraphemeBreak {
     return cast[GraphemeBreak](cast[u8](properties(point) & 0xf))
 }
 
@@ -214,7 +217,7 @@ grapheme_break :: fn(point: u32) -> GraphemeBreak {
  *     says.
  * @return Its property, None for one that isn't part of a conjunct.
  */
-conjunct_break :: fn(point: u32) -> ConjunctBreak {
+conjunct_break :: fn(point : u32) -> ConjunctBreak {
     return cast[ConjunctBreak](cast[u8]((properties(point) >> CONJUNCT_SHIFT) & 3))
 }
 
@@ -225,7 +228,7 @@ conjunct_break :: fn(point: u32) -> ConjunctBreak {
  *     says.
  * @return Whether it has the Extended_Pictographic property.
  */
-is_extended_pictographic :: fn(point: u32) -> bool {
+is_extended_pictographic :: fn(point : u32) -> bool {
     return properties(point) & EXTENDED_PICTOGRAPHIC != 0
 }
 
@@ -237,7 +240,7 @@ is_extended_pictographic :: fn(point: u32) -> bool {
  *     says.
  * @return Whether it has the Default_Ignorable_Code_Point property.
  */
-is_default_ignorable :: fn(point: u32) -> bool {
+is_default_ignorable :: fn(point : u32) -> bool {
     return properties(point) & DEFAULT_IGNORABLE != 0
 }
 
@@ -248,8 +251,11 @@ is_default_ignorable :: fn(point: u32) -> bool {
  * @return Whether it's one of the explicit formatting characters (U+202A to U+202E, the embeddings and overrides, and
  *     U+2066 to U+2069, the isolates) or the marks (U+061C, U+200E and U+200F).
  */
-is_bidi_control :: fn(point: u32) -> bool {
-    return point == 0x061c || point == 0x200e || point == 0x200f || (point >= 0x202a && point <= 0x202e)
+is_bidi_control :: fn(point : u32) -> bool {
+    return point == 0x061c
+        || point == 0x200e
+        || point == 0x200f
+        || (point >= 0x202a && point <= 0x202e)
         || (point >= 0x2066 && point <= 0x2069)
 }
 
@@ -259,7 +265,7 @@ is_bidi_control :: fn(point: u32) -> bool {
  * @param point Any value; only the code points listed below give true, so one past U+10FFFF gives false.
  * @return Whether it's a C0 control (U+0000 to U+001F), DEL (U+007F) or a C1 control (U+0080 to U+009F).
  */
-is_control :: fn(point: u32) -> bool {
+is_control :: fn(point : u32) -> bool {
     return point < 0x20 || (point >= 0x7f && point <= 0x9f)
 }
 
@@ -274,7 +280,7 @@ is_control :: fn(point: u32) -> bool {
  *     (marks, formats, controls, default ignorables, Hangul's medial vowels and final consonants), and 1 for the rest,
  *     East Asian ambiguous ones included.
  */
-width :: fn(point: u32) -> usize {
+width :: fn(point : u32) -> usize {
     return cast[usize]((properties(point) >> WIDTH_SHIFT) & 3)
 }
 
@@ -288,7 +294,7 @@ width :: fn(point: u32) -> usize {
  * @return The index after the cluster's last byte, more than at and bytes.count at most; bytes.count when at is at or
  *     past the end.
  */
-grapheme_end :: fn(bytes: u8[], at: usize) -> usize {
+grapheme_end :: fn(bytes : u8[], at : usize) -> usize {
     if at >= bytes.count {
         return bytes.count
     }
@@ -353,8 +359,14 @@ grapheme_end :: fn(bytes: u8[], at: usize) -> usize {
  *     Linkers since (GB9c).
  * @return Whether there's no break between them.
  */
-joins :: fn(before: GraphemeBreak, after: GraphemeBreak, point: u32, indicators: usize, pictographic_joined: bool,
-    conjunct_linked: bool) -> bool {
+joins :: fn(
+    before : GraphemeBreak,
+    after : GraphemeBreak,
+    point : u32,
+    indicators : usize,
+    pictographic_joined : bool,
+    conjunct_linked : bool
+) -> bool {
     // GB3 to GB5
     if before == .CR && after == .LF {
         return true
@@ -400,7 +412,7 @@ joins :: fn(before: GraphemeBreak, after: GraphemeBreak, point: u32, indicators:
  *     (U+FE0F) and for a flag, and 1 for an emoji with text presentation asked for (U+FE0E). 1 when the cluster starts
  *     with bytes that aren't UTF-8, as U+FFFD would take, and 0 when it's empty.
  */
-grapheme_width :: fn(cluster: u8[]) -> usize {
+grapheme_width :: fn(cluster : u8[]) -> usize {
     first, first_length :: decode(cluster, 0)
     if first_length == 0 {
         return if cluster.count == 0 { cast[usize](0) } else { cast[usize](1) }
@@ -442,7 +454,7 @@ grapheme_width :: fn(cluster: u8[]) -> usize {
  * @return The sum of its clusters' widths, 0 for empty text. Control characters and line breaks take none, so it's
  *     only a line's width for text without them.
  */
-text_width :: fn(text: u8[]) -> usize {
+text_width :: fn(text : u8[]) -> usize {
     columns : usize = 0
     at : usize = 0
     loop {

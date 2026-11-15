@@ -2,10 +2,10 @@ package network
 
 import os from "std:os"
 import slop_os from "std:os/slop_os"
-import net_address from "std:os/slop_os/net_address"
-import tcp_stream from "std:os/slop_os/tcp_stream"
-import tcp_listener from "std:os/slop_os/tcp_listener"
 import datagrams from "std:os/slop_os/datagrams"
+import net_address from "std:os/slop_os/net_address"
+import tcp_listener from "std:os/slop_os/tcp_listener"
+import tcp_stream from "std:os/slop_os/tcp_stream"
 
 /*
  * A connection to the network service: what a program reaches the network through. Open makes a TCP connection, into
@@ -39,7 +39,8 @@ OpenTo :: struct {
     /** Who to. */
     to : net_address.Endpoint,
     /**
-     * The connection's memory, which moves to the service: at least two pages, a whole number of them, two rings of half
+     * The connection's memory, which moves to the service: at least two pages, a whole number of them, two rings of
+     * half
      * its size each, as the service finds it.
      */
     memory : slop_os.Memory,
@@ -92,9 +93,11 @@ ResolvedAddress :: struct {
  * @param resolved It.
  * @return The address; of no family if its family isn't 4 or 6.
  */
-address_of :: fn(resolved: ResolvedAddress) -> net_address.Address {
-    family :: if resolved.family == 4 { net_address.Family.V4 } else if resolved.family == 6 { net_address.Family.V6 }
-        else { net_address.Family.None }
+address_of :: fn(resolved : ResolvedAddress) -> net_address.Address {
+    family :: if resolved.family == 4 {
+        net_address.Family.V4
+    }
+    else if resolved.family == 6 { net_address.Family.V6 } else { net_address.Family.None }
     return net_address.Address.{family = family, bytes = resolved.bytes}
 }
 
@@ -133,7 +136,8 @@ Request :: union {
     /** Open a UDP socket on a port, or an ephemeral one for 0. Answered with Bound, or Refused. */
     Udp(u16),
     /**
-     * Make another connection, allowed only what the policy given allows, which has to be within this one's (policy.hsc).
+     * Make another connection, allowed only what the policy given allows, which has to be within this one's
+     * (policy.hsc).
      * Answered with Narrowed, or Refused NotAllowed if it isn't within, or has more than MAX_RULES of a kind.
      */
     Narrow(PolicyOf),
@@ -184,7 +188,7 @@ Response :: union {
  * @return False for Open, Listen, Udp, Narrow, Copy and OpenName, each of which makes something new; true for Resolve
  *     and Connect.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case Open(_) => false
         case Listen(_) => false
@@ -210,7 +214,7 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  * @return The caller's end of the new connection, its own to keep and close; null if the channel couldn't be made, or
  *     the Connect couldn't be sent, in which case both its ends are closed.
  */
-connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[Network]? {
+connect :: fn(end : slop_os.Channel, port : slop_os.Port, budget : slop_os.MemoryBudget) -> os.Channel[Network]? {
     pair :: os.channel_for[Network](budget, RING_BYTES) or_return null
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
@@ -234,11 +238,21 @@ connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBu
  * @return The new connection, the caller's; null if it was refused, as the policy isn't within end's, or the request
  *     couldn't be sent or answered.
  */
-narrow :: fn(end: slop_os.Channel, port: slop_os.Port, policy: ptr[Policy]) -> os.Channel[Network]? {
+narrow :: fn(end : slop_os.Channel, port : slop_os.Port, policy : ptr[Policy]) -> os.Channel[Network]? {
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)
-    connect_count :: if cast[usize](policy.connect_count) < policy.connect.count { cast[usize](policy.connect_count) } else { policy.connect.count }
-    listen_count :: if cast[usize](policy.listen_count) < policy.listen.count { cast[usize](policy.listen_count) } else { policy.listen.count }
+    connect_count :: if cast[usize](policy.connect_count) < policy.connect.count {
+        cast[usize](policy.connect_count)
+    }
+    else {
+        policy.connect.count
+    }
+    listen_count :: if cast[usize](policy.listen_count) < policy.listen.count {
+        cast[usize](policy.listen_count)
+    }
+    else {
+        policy.listen.count
+    }
     // Each count is at most its array's, as it's clamped above
     connect :: os.append(&out, view_of(&policy.connect[0], connect_count))
     listen :: os.append(&out, view_of(&policy.listen[0], listen_count))
@@ -254,7 +268,7 @@ narrow :: fn(end: slop_os.Channel, port: slop_os.Port, policy: ptr[Policy]) -> o
  * @return The new connection, the caller's; null if the request couldn't be sent or answered, or the service had no
  *     room.
  */
-copy :: fn(end: slop_os.Channel, port: slop_os.Port) -> os.Channel[Network]? {
+copy :: fn(end : slop_os.Channel, port : slop_os.Port) -> os.Channel[Network]? {
     out := os.Outgoing.{}
     os.begin[Request](&out)^ = .Copy
     return made_connection(end, port, &out)
@@ -268,7 +282,7 @@ copy :: fn(end: slop_os.Channel, port: slop_os.Port) -> os.Channel[Network]? {
  * @param out The request, built.
  * @return The new connection; null if it wasn't given.
  */
-made_connection :: fn(end: slop_os.Channel, port: slop_os.Port, out: ptr[mut os.Outgoing]) -> os.Channel[Network]? {
+made_connection :: fn(end : slop_os.Channel, port : slop_os.Port, out : ptr[mut os.Outgoing]) -> os.Channel[Network]? {
     if send_request(end, port, out) is_some {
         return null
     }

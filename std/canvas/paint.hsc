@@ -16,10 +16,10 @@ Stop :: struct {
  * the first stop_count of them; before the first and after the last, the nearest's colour.
  */
 Gradient :: struct {
-    start : Point,
-    end : Point,
-    radius : f32,
-    stops : Stop[MAX_STOPS],
+    start      : Point,
+    end        : Point,
+    radius     : f32,
+    stops      : Stop[MAX_STOPS],
     stop_count : usize,
 }
 
@@ -34,7 +34,7 @@ Paint :: union {
 }
 
 /** Add a stop to a gradient, if there's room. */
-add_stop :: fn(gradient: ptr[mut Gradient], offset: f32, color: Color) {
+add_stop :: fn(gradient : ptr[mut Gradient], offset : f32, color : Color) {
     if gradient.stop_count < MAX_STOPS {
         gradient.stops[gradient.stop_count] = Stop.{offset = offset, color = color}
         gradient.stop_count += 1
@@ -50,23 +50,23 @@ Premultiplied :: struct {
 }
 
 /** A colour premultiplied. */
-premultiply :: fn(color: Color) -> Premultiplied {
+premultiply :: fn(color : Color) -> Premultiplied {
     a :: clamp_unit(color.a)
     return Premultiplied.{b = clamp_unit(color.b) * a, g = clamp_unit(color.g) * a, r = clamp_unit(color.r) * a, a = a}
 }
 
 /** A value kept from 0 to 1; NaN is 0. */
-clamp_unit :: fn(value: f32) -> f32 {
+clamp_unit :: fn(value : f32) -> f32 {
     return if value > 0 { (if value < 1 { value } else { cast[f32](1) }) } else { cast[f32](0) }
 }
 
 /** A gradient's stop, or a transparent one past its stops. */
-stop_at :: fn(gradient: Gradient, index: usize) -> Stop {
+stop_at :: fn(gradient : Gradient, index : usize) -> Stop {
     return if index < gradient.stops.count { gradient.stops[index] } else { Stop.{} }
 }
 
 /** A gradient's colour at an offset, interpolated between its stops, premultiplied. */
-gradient_at :: fn(gradient: Gradient, offset: f32) -> Premultiplied {
+gradient_at :: fn(gradient : Gradient, offset : f32) -> Premultiplied {
     count :: if gradient.stop_count < MAX_STOPS { gradient.stop_count } else { cast[usize](MAX_STOPS) }
     if count == 0 {
         return Premultiplied.{}
@@ -83,7 +83,12 @@ gradient_at :: fn(gradient: Gradient, offset: f32) -> Premultiplied {
             // Interpolated premultiplied, so a transparent stop doesn't darken
             a :: premultiply(low.color)
             b :: premultiply(high.color)
-            return Premultiplied.{b = a.b + (b.b - a.b) * t, g = a.g + (b.g - a.g) * t, r = a.r + (b.r - a.r) * t, a = a.a + (b.a - a.a) * t}
+            return Premultiplied.{
+                b = a.b + (b.b - a.b) * t,
+                g = a.g + (b.g - a.g) * t,
+                r = a.r + (b.r - a.r) * t,
+                a = a.a + (b.a - a.a) * t,
+            }
         }
     }
     return premultiply(stop_at(gradient, count - 1).color)
@@ -96,14 +101,19 @@ gradient_at :: fn(gradient: Gradient, offset: f32) -> Premultiplied {
  * @param point Where, in the path's units: the pixel's centre, transformed back.
  * @return Its colour there.
  */
-paint_at :: fn(paint: ptr[Paint], point: Point) -> Premultiplied {
+paint_at :: fn(paint : ptr[Paint], point : Point) -> Premultiplied {
     match paint^ {
         case Solid(color) => return premultiply(color)
         case Linear(gradient) => {
             dx :: gradient.end.x - gradient.start.x
             dy :: gradient.end.y - gradient.start.y
             squared :: dx * dx + dy * dy
-            t :: if squared > 0 { ((point.x - gradient.start.x) * dx + (point.y - gradient.start.y) * dy) / squared } else { cast[f32](0) }
+            t :: if squared > 0 {
+                ((point.x - gradient.start.x) * dx + (point.y - gradient.start.y) * dy) / squared
+            }
+            else {
+                cast[f32](0)
+            }
             return gradient_at(gradient, t)
         }
         case Radial(gradient) => {
@@ -117,7 +127,7 @@ paint_at :: fn(paint: ptr[Paint], point: Point) -> Premultiplied {
 }
 
 /** Whether a paint's the same everywhere, so it's worked out once for a fill. */
-is_solid :: fn(paint: ptr[Paint]) -> bool {
+is_solid :: fn(paint : ptr[Paint]) -> bool {
     match paint^ {
         case Solid(color) => return true
         case _ => return false

@@ -29,7 +29,7 @@ AES128_GCM_MOST :: AES_GCM_MOST
  * @param key The 16-byte key.
  * @return The 11 round keys in the schedule's first 176 bytes, the rest zero; the first is the key itself. Secret.
  */
-aes128_expand #constant_time :: fn(key: ptr[Key128]) -> AesSchedule {
+aes128_expand #constant_time :: fn(key : ptr[Key128]) -> AesSchedule {
     schedule : AesSchedule
     for i in 0..<16 {
         schedule[i] = key[i]
@@ -75,9 +75,14 @@ aes128_expand #constant_time :: fn(key: ptr[Key128]) -> AesSchedule {
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than AES128_GCM_MOST.
  */
-aes128_gcm_seal #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128]) -> bool {
-
+aes128_gcm_seal #constant_time :: fn(
+    key : ptr[Key128],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128]
+) -> bool {
     return aes128_gcm_seal_with(key, nonce, plaintext, associated, ciphertext, tag, aes_hardware())
 }
 
@@ -98,9 +103,14 @@ aes128_gcm_seal #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96], plai
  *     the associated data, the nonce, the key or the tag is wrong: forged or damaged), the counts differ, or the
  *     ciphertext is longer than AES128_GCM_MOST.
  */
-aes128_gcm_open #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
-    tag: ptr[Tag128], plaintext: mut SecretByte[]) -> bool {
-
+aes128_gcm_open #constant_time :: fn(
+    key : ptr[Key128],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[]
+) -> bool {
     return aes128_gcm_open_with(key, nonce, ciphertext, associated, tag, plaintext, aes_hardware())
 }
 
@@ -119,9 +129,15 @@ aes128_gcm_open #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96], ciph
  * @return True with ciphertext and tag written, or false, with nothing written, when the counts differ or the message
  *     is longer than AES128_GCM_MOST.
  */
-aes128_gcm_seal_with #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96], plaintext: SecretByte[], associated: u8[],
-    ciphertext: mut u8[], tag: ptr[mut Tag128], hardware: bool) -> bool {
-
+aes128_gcm_seal_with #constant_time :: fn(
+    key : ptr[Key128],
+    nonce : ptr[Nonce96],
+    plaintext : SecretByte[],
+    associated : u8[],
+    ciphertext : mut u8[],
+    tag : ptr[mut Tag128],
+    hardware : bool
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](plaintext.count) > AES_GCM_MOST {
         return false
     }
@@ -145,9 +161,15 @@ aes128_gcm_seal_with #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96],
  * @return True with plaintext written, or false, with nothing written, when the tag doesn't match (forged or
  *     damaged), the counts differ, or the ciphertext is longer than AES128_GCM_MOST.
  */
-aes128_gcm_open_with #constant_time :: fn(key: ptr[Key128], nonce: ptr[Nonce96], ciphertext: u8[], associated: u8[],
-    tag: ptr[Tag128], plaintext: mut SecretByte[], hardware: bool) -> bool {
-
+aes128_gcm_open_with #constant_time :: fn(
+    key : ptr[Key128],
+    nonce : ptr[Nonce96],
+    ciphertext : u8[],
+    associated : u8[],
+    tag : ptr[Tag128],
+    plaintext : mut SecretByte[],
+    hardware : bool
+) -> bool {
     if plaintext.count != ciphertext.count || cast[u64](ciphertext.count) > AES_GCM_MOST {
         return false
     }

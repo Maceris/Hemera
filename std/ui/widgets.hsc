@@ -15,7 +15,7 @@ Range :: struct {
 }
 
 /** Open a node by its label's hash, for a widget; its index, or NO_NODE when it's dropped. */
-open_node :: fn(ui: ptr[mut Ui], label: u64, box: Box) -> u32 {
+open_node :: fn(ui : ptr[mut Ui], label : u64, box : Box) -> u32 {
     index :: add_node(ui, label, box)
     if index == NO_NODE {
         ui.dropped += 1
@@ -26,7 +26,7 @@ open_node :: fn(ui: ptr[mut Ui], label: u64, box: Box) -> u32 {
 }
 
 /** Name a node, for a reader of the tree and for selectors, with text kept in the frame. */
-name_node :: fn(ui: ptr[mut Ui], index: u32, name: u8[]) {
+name_node :: fn(ui : ptr[mut Ui], index : u32, name : u8[]) {
     start, count :: keep_text(ui, name)
     made :: node(ui, index)
     made.name_start = start
@@ -34,12 +34,12 @@ name_node :: fn(ui: ptr[mut Ui], index: u32, name: u8[]) {
 }
 
 /** Whether a press on a widget came up over it this frame: a click. */
-clicked_now :: fn(ui: ptr[Ui], id: ID) -> bool {
+clicked_now :: fn(ui : ptr[Ui], id : ID) -> bool {
     return ui.input.released && ui.active == id && ui.hover == id
 }
 
 /** Whether a key was pressed this frame. */
-key_pressed :: fn(ui: ptr[Ui], key: Key) -> bool {
+key_pressed :: fn(ui : ptr[Ui], key : Key) -> bool {
     for i in cast[usize](0)..<ui.input.key_count {
         if i < ui.input.keys.count && ui.input.keys[i].key == key {
             return true
@@ -56,10 +56,22 @@ key_pressed :: fn(ui: ptr[Ui], key: Key) -> bool {
  * @param key Mixed into its ID, to tell apart buttons of one label under one parent.
  * @return Whether it was clicked this frame, by the pointer or by Enter while it's focused; a Clicked event too.
  */
-button :: fn(ui: ptr[mut Ui], label: string, key: u64 = 0) -> bool {
+button :: fn(ui : ptr[mut Ui], label : string, key : u64 = 0) -> bool {
     theme :: ui.theme
-    index :: open_node(ui, hash(string_bytes(label)), Box.{key = key, direction = .Row, padding_x = theme.padding_x,
-        padding_y = theme.padding_y, corner = theme.corner, align_x = .Center, align_y = .Center, role = .Button})
+    index :: open_node(
+        ui,
+        hash(string_bytes(label)),
+        Box.{
+            key = key,
+            direction = .Row,
+            padding_x = theme.padding_x,
+            padding_y = theme.padding_y,
+            corner = theme.corner,
+            align_x = .Center,
+            align_y = .Center,
+            role = .Button,
+        }
+    )
     if index == NO_NODE {
         close(ui)
         return false
@@ -69,7 +81,10 @@ button :: fn(ui: ptr[mut Ui], label: string, key: u64 = 0) -> bool {
     made.clickable = true
     made.focusable = true
     pressed :: ui.active == id && ui.input.down && ui.hover == id
-    made.box.background = if pressed { theme.button_pressed } else if ui.hover == id { theme.button_hover } else { theme.button }
+    made.box.background = if pressed {
+        theme.button_pressed
+    }
+    else if ui.hover == id { theme.button_hover } else { theme.button }
     made.box.border = if ui.focus == id { theme.accent } else { Colour.{} }
     name_node(ui, index, string_bytes(label))
     _ = label_text(ui, string_bytes(label), TextStyle.{wrap = false})
@@ -82,7 +97,7 @@ button :: fn(ui: ptr[mut Ui], label: string, key: u64 = 0) -> bool {
 }
 
 /** Add text under the open node, its ID from its bytes. */
-label_text :: fn(ui: ptr[mut Ui], text: u8[], style: TextStyle) -> u32 {
+label_text :: fn(ui : ptr[mut Ui], text : u8[], style : TextStyle) -> u32 {
     index :: add_node(ui, hash(text), Box.{role = .Text})
     if index == NO_NODE {
         return NO_NODE
@@ -107,9 +122,13 @@ label_text :: fn(ui: ptr[mut Ui], text: u8[], style: TextStyle) -> u32 {
  * @param key Mixed into its ID.
  * @return Whether it was toggled this frame; a Toggled event too.
  */
-checkbox :: fn(ui: ptr[mut Ui], label: string, value: ptr[mut bool], key: u64 = 0) -> bool {
+checkbox :: fn(ui : ptr[mut Ui], label : string, value : ptr[mut bool], key : u64 = 0) -> bool {
     theme :: ui.theme
-    index :: open_node(ui, hash(string_bytes(label)), Box.{key = key, direction = .Row, gap = 8, align_y = .Center, role = .CheckBox})
+    index :: open_node(
+        ui,
+        hash(string_bytes(label)),
+        Box.{key = key, direction = .Row, gap = 8, align_y = .Center, role = .CheckBox}
+    )
     if index == NO_NODE {
         close(ui)
         return false
@@ -121,12 +140,24 @@ checkbox :: fn(ui: ptr[mut Ui], label: string, value: ptr[mut bool], key: u64 = 
     toggled :: clicked_now(ui, id) || (ui.focus == id && key_pressed(ui, .Enter))
     if toggled {
         value^ = !value^
-        runtime.array_add(&ui.events, Event.{kind = .Toggled, id = id, value = if value^ { cast[i64](1) } else { cast[i64](0) }})
+        runtime.array_add(
+            &ui.events,
+            Event.{kind = .Toggled, id = id, value = if value^ { cast[i64](1) } else { cast[i64](0) }}
+        )
     }
     made.checked = value^
     name_node(ui, index, string_bytes(label))
-    _ = open_node(ui, hash(string_bytes("mark")), Box.{width = fixed(CHECK), height = fixed(CHECK), corner = 3,
-        background = if value^ { theme.accent } else { theme.field }, border = if ui.focus == id { theme.accent } else { theme.edge }})
+    _ = open_node(
+        ui,
+        hash(string_bytes("mark")),
+        Box.{
+            width = fixed(CHECK),
+            height = fixed(CHECK),
+            corner = 3,
+            background = if value^ { theme.accent } else { theme.field },
+            border = if ui.focus == id { theme.accent } else { theme.edge },
+        }
+    )
     close(ui)
     _ = label_text(ui, string_bytes(label), TextStyle.{wrap = false})
     close(ui)
@@ -142,7 +173,7 @@ checkbox :: fn(ui: ptr[mut Ui], label: string, value: ptr[mut bool], key: u64 = 
  * @param box How it's laid out; it's clipped, and its height is what it shows, not its content's.
  * @return Its ID.
  */
-scroll_area :: fn(ui: ptr[mut Ui], label: string, box: Box) -> ID {
+scroll_area :: fn(ui : ptr[mut Ui], label : string, box : Box) -> ID {
     made := box
     made.clip = true
     made.role = if box.role == .Group { Role.ScrollArea } else { box.role }
@@ -166,7 +197,7 @@ scroll_area :: fn(ui: ptr[mut Ui], label: string, box: Box) -> ID {
  * @param box How it's laid out: its height is what it shows.
  * @return Which items to make this frame.
  */
-list :: fn(ui: ptr[mut Ui], label: string, count: usize, row_height: f32, box: Box) -> Range {
+list :: fn(ui : ptr[mut Ui], label : string, count : usize, row_height : f32, box : Box) -> Range {
     made := box
     made.role = .List
     id :: scroll_area(ui, label, made)
@@ -188,7 +219,7 @@ list :: fn(ui: ptr[mut Ui], label: string, count: usize, row_height: f32, box: B
 }
 
 /** One of a list's items, row_height tall and as wide as the list; widgets after it go in it, until close. */
-list_item :: fn(ui: ptr[mut Ui], item: usize, row_height: f32, box: Box = Box.{}) -> ID {
+list_item :: fn(ui : ptr[mut Ui], item : usize, row_height : f32, box : Box = Box.{}) -> ID {
     made := box
     made.key = cast[u64](item)
     made.height = fixed(row_height)
@@ -199,7 +230,7 @@ list_item :: fn(ui: ptr[mut Ui], item: usize, row_height: f32, box: Box = Box.{}
 }
 
 /** End a list: the space for the items after those made, and the list closed. */
-end_list :: fn(ui: ptr[mut Ui], range: Range, count: usize, row_height: f32) {
+end_list :: fn(ui : ptr[mut Ui], range : Range, count : usize, row_height : f32) {
     if range.last < count {
         _ = open_node(ui, key("below"), Box.{height = fixed(cast[f32](count - range.last) * row_height)})
         close(ui)
@@ -223,10 +254,29 @@ end_list :: fn(ui: ptr[mut Ui], range: Range, count: usize, row_height: f32) {
  *     cut from it.
  * @return Whether its text changed this frame; Changed, Submitted (Enter) and Copied (Ctrl+C or X) events too.
  */
-text_field :: fn(ui: ptr[mut Ui], name: string, text: ptr[mut u8[..]], width: Axis = grow(), key: u64 = 0, secret: bool = false) -> bool {
+text_field :: fn(
+    ui : ptr[mut Ui],
+    name : string,
+    text : ptr[mut u8[..]],
+    width : Axis = grow(),
+    key : u64 = 0,
+    secret : bool = false
+) -> bool {
     theme :: ui.theme
-    index :: open_node(ui, hash(string_bytes(name)), Box.{key = key, width = width, padding_x = theme.padding_x / 2, padding_y = theme.padding_y,
-        corner = theme.corner, clip = true, role = .TextField, background = theme.field})
+    index :: open_node(
+        ui,
+        hash(string_bytes(name)),
+        Box.{
+            key = key,
+            width = width,
+            padding_x = theme.padding_x / 2,
+            padding_y = theme.padding_y,
+            corner = theme.corner,
+            clip = true,
+            role = .TextField,
+            background = theme.field,
+        }
+    )
     if index == NO_NODE {
         close(ui)
         return false
@@ -289,7 +339,7 @@ text_field :: fn(ui: ptr[mut Ui], name: string, text: ptr[mut u8[..]], width: Ax
 }
 
 /** Where in text a point across a field falls, by the field's place last frame: the nearest gap between characters. */
-offset_at :: fn(ui: ptr[Ui], id: ID, text: u8[], x: f32) -> usize {
+offset_at :: fn(ui : ptr[Ui], id : ID, text : u8[], x : f32) -> usize {
     place :: kept_of(ui, id)
     font :: fonts.open(ui.sans) or_else fonts.Font.{}
     across :: x - place.x - ui.theme.padding_x / 2
@@ -310,12 +360,12 @@ offset_at :: fn(ui: ptr[Ui], id: ID, text: u8[], x: f32) -> usize {
 }
 
 /** Whether a byte continues a UTF-8 character, not starting one. */
-is_continuation :: fn(byte: u8) -> bool {
+is_continuation :: fn(byte : u8) -> bool {
     return byte & 0xc0 == 0x80
 }
 
 /** The start of the character before an offset in text. */
-before :: fn(text: u8[], at: usize) -> usize {
+before :: fn(text : u8[], at : usize) -> usize {
     place := if at > text.count { text.count } else { at }
     if place == 0 {
         return 0
@@ -331,7 +381,7 @@ before :: fn(text: u8[], at: usize) -> usize {
 }
 
 /** The end of the character after an offset in text. */
-after :: fn(text: u8[], at: usize) -> usize {
+after :: fn(text : u8[], at : usize) -> usize {
     if at >= text.count {
         return text.count
     }
@@ -345,8 +395,11 @@ after :: fn(text: u8[], at: usize) -> usize {
     return place
 }
 
-/** Apply the frame's input to the field being edited: its keys in order, then what's typed and pasted; a secret one's never copied. */
-edit :: fn(ui: ptr[mut Ui], id: ID, text: ptr[mut u8[..]], secret: bool) -> bool {
+/**
+ * Apply the frame's input to the field being edited: its keys in order, then what's typed and pasted; a secret one's
+ * never copied.
+ */
+edit :: fn(ui : ptr[mut Ui], id : ID, text : ptr[mut u8[..]], secret : bool) -> bool {
     changed := false
     editing :: &ui.editing
     editing.cursor = if editing.cursor > text.count { text.count } else { editing.cursor }
@@ -358,8 +411,26 @@ edit :: fn(ui: ptr[mut Ui], id: ID, text: ptr[mut u8[..]], secret: bool) -> bool
         press :: ui.input.keys[i]
         current :: contents(text)
         match press.key {
-            case .Left => move_cursor(editing, if editing.cursor != editing.anchor && !press.shift { low_end(editing) } else { before(current, editing.cursor) }, press.shift)
-            case .Right => move_cursor(editing, if editing.cursor != editing.anchor && !press.shift { high_end(editing) } else { after(current, editing.cursor) }, press.shift)
+            case .Left => move_cursor(
+                editing,
+                if editing.cursor != editing.anchor && !press.shift {
+                    low_end(editing)
+                }
+                else {
+                    before(current, editing.cursor)
+                },
+                press.shift
+            )
+            case .Right => move_cursor(
+                editing,
+                if editing.cursor != editing.anchor && !press.shift {
+                    high_end(editing)
+                }
+                else {
+                    after(current, editing.cursor)
+                },
+                press.shift
+            )
             case .Home => move_cursor(editing, 0, press.shift)
             case .End => move_cursor(editing, text.count, press.shift)
             case .Backspace => {
@@ -406,28 +477,28 @@ edit :: fn(ui: ptr[mut Ui], id: ID, text: ptr[mut u8[..]], secret: bool) -> bool
 }
 
 /** A field's text as it is, a view onto the program's array. */
-contents :: fn(text: ptr[u8[..]]) -> u8[] {
+contents :: fn(text : ptr[u8[..]]) -> u8[] {
     held :: text^
     return held[0..<held.count]
 }
 
 /** Bytes as a string, for an insertion. */
-string_of_bytes :: fn(bytes: u8[]) -> string {
+string_of_bytes :: fn(bytes : u8[]) -> string {
     return if bytes.count > 0 { string_of(&bytes[0], bytes.count) } else { "" }
 }
 
 /** The selection's start. */
-low_end :: fn(editing: ptr[Editing]) -> usize {
+low_end :: fn(editing : ptr[Editing]) -> usize {
     return if editing.cursor < editing.anchor { editing.cursor } else { editing.anchor }
 }
 
 /** The selection's end. */
-high_end :: fn(editing: ptr[Editing]) -> usize {
+high_end :: fn(editing : ptr[Editing]) -> usize {
     return if editing.cursor < editing.anchor { editing.anchor } else { editing.cursor }
 }
 
 /** Move the cursor, the selection's other end staying with Shift, or coming with it. */
-move_cursor :: fn(editing: ptr[mut Editing], to: usize, extending: bool) {
+move_cursor :: fn(editing : ptr[mut Editing], to : usize, extending : bool) {
     editing.cursor = to
     if !extending {
         editing.anchor = to
@@ -435,7 +506,7 @@ move_cursor :: fn(editing: ptr[mut Editing], to: usize, extending: bool) {
 }
 
 /** A Copied event with the selection's text, if there's a selection. */
-copied :: fn(ui: ptr[mut Ui], id: ID, text: u8[]) {
+copied :: fn(ui : ptr[mut Ui], id : ID, text : u8[]) {
     low :: low_end(&ui.editing)
     high :: high_end(&ui.editing)
     if high <= low {
@@ -451,7 +522,7 @@ copied :: fn(ui: ptr[mut Ui], id: ID, text: u8[]) {
  *
  * @return Whether the text changed.
  */
-replace :: fn(ui: ptr[mut Ui], text: ptr[mut u8[..]], replacement: string) -> bool {
+replace :: fn(ui : ptr[mut Ui], text : ptr[mut u8[..]], replacement : string) -> bool {
     low :: low_end(&ui.editing)
     high :: high_end(&ui.editing)
     inserted :: string_bytes(replacement)
@@ -481,7 +552,7 @@ replace :: fn(ui: ptr[mut Ui], text: ptr[mut u8[..]], replacement: string) -> bo
 }
 
 /** Keep text and the cursor as what an undo goes back to; past MAX_UNDO, the oldest is dropped. */
-remember :: fn(ui: ptr[mut Ui], text: u8[]) {
+remember :: fn(ui : ptr[mut Ui], text : u8[]) {
     editing :: &ui.editing
     if editing.undo_count >= MAX_UNDO {
         // The oldest dropped, the rest moved down
@@ -510,7 +581,7 @@ remember :: fn(ui: ptr[mut Ui], text: u8[]) {
  *
  * @return Whether the text changed.
  */
-undo :: fn(ui: ptr[mut Ui], text: ptr[mut u8[..]], again: bool) -> bool {
+undo :: fn(ui : ptr[mut Ui], text : ptr[mut u8[..]], again : bool) -> bool {
     editing :: &ui.editing
     if again {
         if editing.redo_count == 0 || editing.undo_count >= MAX_UNDO {
@@ -552,7 +623,7 @@ undo :: fn(ui: ptr[mut Ui], text: ptr[mut u8[..]], again: bool) -> bool {
 }
 
 /** Drop the editing state, as its field lost focus or went: its cursor, selection and undo. */
-stop_editing :: fn(ui: ptr[mut Ui]) {
+stop_editing :: fn(ui : ptr[mut Ui]) {
     ui.editing.id = 0
     ui.editing.cursor = 0
     ui.editing.anchor = 0

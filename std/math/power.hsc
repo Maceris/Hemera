@@ -45,7 +45,7 @@ POW_INVERSE_LN2_L : f64 : 1.92596299112661746887e-08 // 0x3e54ae0b_f85ddf44
  * @param overflow Whether it overflows; otherwise it underflows.
  * @return ±infinity or ±0.
  */
-pow_out_of_range_64 :: fn(negative: bool, overflow: bool) -> f64 {
+pow_out_of_range_64 :: fn(negative : bool, overflow : bool) -> f64 {
     magnitude :: if overflow { infinity_64() } else { 0.0 }
     return if negative { -magnitude } else { magnitude }
 }
@@ -59,8 +59,8 @@ pow_out_of_range_64 :: fn(negative: bool, overflow: bool) -> f64 {
  *     negative x and a y that isn't whole, infinity or 0 where it overflows or underflows, with odd whole powers of a
  *     negative x negative.
  */
-//SPEC: fdlibm e_pow.c
-power_64 :: fn(x: f64, y: f64) -> f64 {
+// SPEC: fdlibm e_pow.c
+power_64 :: fn(x : f64, y : f64) -> f64 {
     hx :: high_word(x)
     lx :: low_word(x)
     hy :: high_word(y)

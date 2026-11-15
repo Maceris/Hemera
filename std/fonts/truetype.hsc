@@ -35,9 +35,9 @@ Font :: struct #scoped {
     long_loca : bool,
     /** How many glyphs have their own advance in hmtx; the rest have the last's. */
     hmetric_count : u32,
-    hmtx : Table,
-    loca : Table,
-    glyf : Table,
+    hmtx          : Table,
+    loca          : Table,
+    glyf          : Table,
     /** The character map's subtable chosen, by its offset in the font, and its format, 4 or 12; 0 for none. */
     cmap_at : usize,
     cmap_format : u32,
@@ -89,27 +89,27 @@ Transform :: struct {
 // ---- Reading bytes, bounded
 
 /** A byte at an offset, or 0 past the end. */
-u8_at :: fn(data: u8[], at: usize) -> u8 {
+u8_at :: fn(data : u8[], at : usize) -> u8 {
     return if at < data.count { data[at] } else { cast[u8](0) }
 }
 
 /** A big-endian u16 at an offset, or 0 past the end. */
-u16_at :: fn(data: u8[], at: usize) -> u16 {
+u16_at :: fn(data : u8[], at : usize) -> u16 {
     return (cast[u16](u8_at(data, at)) << 8) | cast[u16](u8_at(data, at + 1))
 }
 
 /** A big-endian i16 at an offset, or 0 past the end. */
-i16_at :: fn(data: u8[], at: usize) -> i16 {
+i16_at :: fn(data : u8[], at : usize) -> i16 {
     return bit_cast[i16](u16_at(data, at))
 }
 
 /** A big-endian u32 at an offset, or 0 past the end. */
-u32_at :: fn(data: u8[], at: usize) -> u32 {
+u32_at :: fn(data : u8[], at : usize) -> u32 {
     return (cast[u32](u16_at(data, at)) << 16) | cast[u32](u16_at(data, at + 2))
 }
 
 /** A tag, four ASCII characters, as the u32 they're stored as. */
-tag :: fn(name: string) -> u32 {
+tag :: fn(name : string) -> u32 {
     bytes :: string_bytes(name)
     value := cast[u32](0)
     for i in cast[usize](0)..<4 {
@@ -125,7 +125,7 @@ tag :: fn(name: string) -> u32 {
  * @param name Its tag, as "glyf".
  * @return Its place; size 0 if it isn't there, or isn't all within the bytes.
  */
-find_table :: fn(data: u8[], name: string) -> Table {
+find_table :: fn(data : u8[], name : string) -> Table {
     wanted :: tag(name)
     count :: cast[usize](u16_at(data, 4))
     for i in cast[usize](0)..<count {
@@ -149,7 +149,7 @@ find_table :: fn(data: u8[], name: string) -> Table {
  * @return The font; null if it isn't one: the wrong version, or missing a table it needs (head, hhea, maxp, hmtx,
  *     cmap, loca, glyf), or one of those past its bytes.
  */
-open :: fn(data: u8[]) -> Font? {
+open :: fn(data : u8[]) -> Font? {
     version :: u32_at(data, 0)
     if version != 0x00010000 && version != tag("true") {
         return null
@@ -157,10 +157,21 @@ open :: fn(data: u8[]) -> Font? {
     head :: find_table(data, "head")
     hhea :: find_table(data, "hhea")
     maxp :: find_table(data, "maxp")
-    font := Font.{data = data, hmtx = find_table(data, "hmtx"), loca = find_table(data, "loca"), glyf = find_table(data, "glyf"),
-        kern = find_table(data, "kern")}
+    font := Font.{
+        data = data,
+        hmtx = find_table(data, "hmtx"),
+        loca = find_table(data, "loca"),
+        glyf = find_table(data, "glyf"),
+        kern = find_table(data, "kern"),
+    }
     cmap :: find_table(data, "cmap")
-    if head.size < 54 || hhea.size < 36 || maxp.size < 6 || font.hmtx.size == 0 || cmap.size == 0 || font.loca.size == 0 || font.glyf.size == 0 {
+    if head.size < 54
+        || hhea.size < 36
+        || maxp.size < 6
+        || font.hmtx.size == 0
+        || cmap.size == 0
+        || font.loca.size == 0
+        || font.glyf.size == 0 {
         return null
     }
     font.units_per_em = cast[u32](u16_at(data, head.at + 18))
@@ -182,7 +193,7 @@ open :: fn(data: u8[]) -> Font? {
 }
 
 /** Choose the character map's subtable: format 12 for all of Unicode where there's one, else format 4. */
-choose_cmap :: fn(font: ptr[mut Font], cmap: Table) {
+choose_cmap :: fn(font : ptr[mut Font], cmap : Table) {
     data :: font.data
     count :: cast[usize](u16_at(data, cmap.at + 2))
     for i in cast[usize](0)..<count {
@@ -209,7 +220,7 @@ choose_cmap :: fn(font: ptr[mut Font], cmap: Table) {
  * @param point A Unicode code point.
  * @return Its glyph's index; 0, the missing glyph, if the font hasn't one for it.
  */
-glyph_index :: fn(font: ptr[Font], point: u32) -> u32 {
+glyph_index :: fn(font : ptr[Font], point : u32) -> u32 {
     data :: font.data
     at :: font.cmap_at
     if font.cmap_format == 12 {
@@ -270,13 +281,13 @@ glyph_index :: fn(font: ptr[Font], point: u32) -> u32 {
  * @param glyph The glyph's index.
  * @return The advance, in design units.
  */
-advance :: fn(font: ptr[Font], glyph: u32) -> i32 {
+advance :: fn(font : ptr[Font], glyph : u32) -> i32 {
     index :: if glyph < font.hmetric_count { glyph } else { font.hmetric_count - 1 }
     return cast[i32](u16_at(font.data, font.hmtx.at + 4 * cast[usize](index)))
 }
 
 /** Where a glyph's data is in glyf: its offset and size; size 0 for an empty glyph, as a space. */
-glyph_place :: fn(font: ptr[Font], glyph: u32) -> Table {
+glyph_place :: fn(font : ptr[Font], glyph : u32) -> Table {
     if glyph >= font.glyph_count {
         return Table.{}
     }
@@ -298,13 +309,13 @@ glyph_place :: fn(font: ptr[Font], glyph: u32) -> Table {
 }
 
 /** Empty an outline, for the next glyph. */
-clear :: fn(outline: ptr[mut Outline]) {
+clear :: fn(outline : ptr[mut Outline]) {
     runtime.array_reset(&outline.verbs)
     runtime.array_reset(&outline.points)
 }
 
 /** Give back an outline's arrays. */
-free_outline :: fn(outline: ptr[mut Outline]) {
+free_outline :: fn(outline : ptr[mut Outline]) {
     runtime.array_free(&outline.verbs)
     runtime.array_free(&outline.points)
     runtime.array_free(&outline.flags)
@@ -320,12 +331,18 @@ free_outline :: fn(outline: ptr[mut Outline]) {
  * @param outline Where its contours are added, in design units, y up.
  * @return False if the glyph's data couldn't be read whole; what was read is kept.
  */
-glyph_outline :: fn(font: ptr[Font], glyph: u32, outline: ptr[mut Outline]) -> bool {
+glyph_outline :: fn(font : ptr[Font], glyph : u32, outline : ptr[mut Outline]) -> bool {
     return outline_of(font, glyph, outline, Transform.{}, 0)
 }
 
 /** A glyph's outline, its points transformed, followed into a composite's components to a depth. */
-outline_of :: fn(font: ptr[Font], glyph: u32, outline: ptr[mut Outline], transform: Transform, depth: usize) -> bool {
+outline_of :: fn(
+    font : ptr[Font],
+    glyph : u32,
+    outline : ptr[mut Outline],
+    transform : Transform,
+    depth : usize
+) -> bool {
     place :: glyph_place(font, glyph)
     if place.size == 0 {
         return true
@@ -395,24 +412,38 @@ outline_of :: fn(font: ptr[Font], glyph: u32, outline: ptr[mut Outline], transfo
 }
 
 /** A 2.14 fixed-point number as a float. */
-f2dot14 :: fn(value: i16) -> f32 {
+f2dot14 :: fn(value : i16) -> f32 {
     return cast[f32](value) / 16384
 }
 
 /** One transform, then another: inner applied first. */
-then :: fn(inner: Transform, outer: Transform) -> Transform {
-    return Transform.{a = outer.a * inner.a + outer.c * inner.b, b = outer.b * inner.a + outer.d * inner.b,
-        c = outer.a * inner.c + outer.c * inner.d, d = outer.b * inner.c + outer.d * inner.d,
-        e = outer.a * inner.e + outer.c * inner.f + outer.e, f = outer.b * inner.e + outer.d * inner.f + outer.f}
+then :: fn(inner : Transform, outer : Transform) -> Transform {
+    return Transform.{
+        a = outer.a * inner.a + outer.c * inner.b,
+        b = outer.b * inner.a + outer.d * inner.b,
+        c = outer.a * inner.c + outer.c * inner.d,
+        d = outer.b * inner.c + outer.d * inner.d,
+        e = outer.a * inner.e + outer.c * inner.f + outer.e,
+        f = outer.b * inner.e + outer.d * inner.f + outer.f,
+    }
 }
 
 /** A point transformed. */
-apply :: fn(transform: Transform, x: f32, y: f32) -> Point {
-    return Point.{x = transform.a * x + transform.c * y + transform.e, y = transform.b * x + transform.d * y + transform.f}
+apply :: fn(transform : Transform, x : f32, y : f32) -> Point {
+    return Point.{
+        x = transform.a * x + transform.c * y + transform.e,
+        y = transform.b * x + transform.d * y + transform.f,
+    }
 }
 
 /** A simple glyph's contours: its points read, then each contour's on- and off-curve points made lines and curves. */
-simple_outline :: fn(font: ptr[Font], place: Table, contours: usize, outline: ptr[mut Outline], transform: Transform) -> bool {
+simple_outline :: fn(
+    font : ptr[Font],
+    place : Table,
+    contours : usize,
+    outline : ptr[mut Outline],
+    transform : Transform
+) -> bool {
     data :: font.data
     end :: place.at + place.size
     ends_at :: place.at + 10
@@ -491,19 +522,19 @@ simple_outline :: fn(font: ptr[Font], place: Table, contours: usize, outline: pt
 }
 
 /** One of a simple glyph's points, transformed, and whether it's on the curve. */
-point_of :: fn(outline: ptr[Outline], index: usize, transform: Transform) -> Point {
+point_of :: fn(outline : ptr[Outline], index : usize, transform : Transform) -> Point {
     x :: if index < outline.xs.count { outline.xs[index] } else { cast[i32](0) }
     y :: if index < outline.ys.count { outline.ys[index] } else { cast[i32](0) }
     return apply(transform, cast[f32](x), cast[f32](y))
 }
 
 /** Whether one of a simple glyph's points is on the curve. */
-on_curve :: fn(outline: ptr[Outline], index: usize) -> bool {
+on_curve :: fn(outline : ptr[Outline], index : usize) -> bool {
     return index < outline.flags.count && outline.flags[index] & 0x01 != 0
 }
 
 /** The point halfway between two. */
-middle :: fn(p: Point, q: Point) -> Point {
+middle :: fn(p : Point, q : Point) -> Point {
     return Point.{x = (p.x + q.x) / 2, y = (p.y + q.y) / 2}
 }
 
@@ -511,7 +542,7 @@ middle :: fn(p: Point, q: Point) -> Point {
  * A contour's points, first to last, made a Move, Lines and Quads and a Close: two off-curve points in a row have an
  * on-curve point implied halfway between them, as TrueType's quadratic B-splines do.
  */
-emit_contour :: fn(outline: ptr[mut Outline], first: usize, last: usize, transform: Transform) {
+emit_contour :: fn(outline : ptr[mut Outline], first : usize, last : usize, transform : Transform) {
     n :: last - first + 1
     // Where to start: an on-curve point, or, if there's none, halfway between the last and the first
     start_index := n
@@ -520,8 +551,12 @@ emit_contour :: fn(outline: ptr[mut Outline], first: usize, last: usize, transfo
             start_index = i
         }
     }
-    start :: if start_index < n { point_of(outline, first + start_index, transform) }
-        else { middle(point_of(outline, last, transform), point_of(outline, first, transform)) }
+    start :: if start_index < n {
+        point_of(outline, first + start_index, transform)
+    }
+    else {
+        middle(point_of(outline, last, transform), point_of(outline, first, transform))
+    }
     runtime.array_add(&outline.verbs, Verb.Move)
     runtime.array_add(&outline.points, start)
     pending := false

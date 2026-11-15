@@ -15,7 +15,7 @@ import math from "std:math"
  * @return e^x, within 3.5 ulp; infinity past ln of the largest float, 0 below ln of the least subnormal and for
  *     -infinity, NaN for NaN.
  */
-exp :: fn[F](x: F) -> F {
+exp :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return exp_lanes_32(x)
     }
@@ -41,7 +41,7 @@ exp :: fn[F](x: F) -> F {
  * @return 2^x, within 3.5 ulp; infinity from the largest exponent up, 0 below the least subnormal's and for -infinity,
  *     NaN for NaN.
  */
-exp2 :: fn[F](x: F) -> F {
+exp2 :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return exp2_lanes_32(x)
     }
@@ -66,7 +66,7 @@ exp2 :: fn[F](x: F) -> F {
  * @param x The power.
  * @return e^x - 1 as math.exp_minus_one gives it, within 1 ulp.
  */
-exp_minus_one :: fn[F](x: F) -> F {
+exp_minus_one :: fn[F](x : F) -> F {
     return math.exp_minus_one(x)
 }
 
@@ -77,7 +77,7 @@ exp_minus_one :: fn[F](x: F) -> F {
  * @param x The number.
  * @return ln x, within 3.5 ulp; -infinity for ±0, NaN below 0 and for NaN, infinity for infinity.
  */
-log :: fn[F](x: F) -> F {
+log :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return log_lanes_32(x)
     }
@@ -102,7 +102,7 @@ log :: fn[F](x: F) -> F {
  * @param x The number.
  * @return log2 x, within 3.5 ulp; -infinity for ±0, NaN below 0 and for NaN, infinity for infinity.
  */
-log2 :: fn[F](x: F) -> F {
+log2 :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return log2_lanes_32(x)
     }
@@ -127,7 +127,7 @@ log2 :: fn[F](x: F) -> F {
  * @param x The number.
  * @return log10 x as math.log10 gives it, within 1 ulp.
  */
-log10 :: fn[F](x: F) -> F {
+log10 :: fn[F](x : F) -> F {
     return math.log10(x)
 }
 
@@ -138,7 +138,7 @@ log10 :: fn[F](x: F) -> F {
  * @param x The number.
  * @return ln(1 + x) as math.log_one_plus gives it, within 1 ulp.
  */
-log_one_plus :: fn[F](x: F) -> F {
+log_one_plus :: fn[F](x : F) -> F {
     return math.log_one_plus(x)
 }
 
@@ -149,7 +149,7 @@ log_one_plus :: fn[F](x: F) -> F {
  * @param x The angle, in radians.
  * @return sin x, within 3.5 ulp; -0 for -0, NaN for infinities and NaN.
  */
-sin :: fn[F](x: F) -> F {
+sin :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return sin_lanes_32(x)
     }
@@ -174,7 +174,7 @@ sin :: fn[F](x: F) -> F {
  * @param x The angle, in radians.
  * @return cos x, within 3.5 ulp; NaN for infinities and NaN.
  */
-cos :: fn[F](x: F) -> F {
+cos :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return cos_lanes_32(x)
     }
@@ -199,7 +199,7 @@ cos :: fn[F](x: F) -> F {
  * @param x The angle, in radians.
  * @return tan x, within 3.5 ulp for f32 and 1 ulp for f64; -0 for -0, NaN for infinities and NaN.
  */
-tan :: fn[F](x: F) -> F {
+tan :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return tan_lanes_32(x)
     }
@@ -218,7 +218,7 @@ tan :: fn[F](x: F) -> F {
  * @param x The sine, from -1 to 1.
  * @return The angle from -π/2 to π/2 whose sine x is, within 3.5 ulp; NaN beyond ±1 and for NaN.
  */
-asin :: fn[F](x: F) -> F {
+asin :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return asin_lanes_32(x)
     }
@@ -243,7 +243,7 @@ asin :: fn[F](x: F) -> F {
  * @param x The cosine, from -1 to 1.
  * @return The angle from 0 to π whose cosine x is, within 3.5 ulp; NaN beyond ±1 and for NaN.
  */
-acos :: fn[F](x: F) -> F {
+acos :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return acos_lanes_32(x)
     }
@@ -268,7 +268,7 @@ acos :: fn[F](x: F) -> F {
  * @param x The tangent.
  * @return The angle from -π/2 to π/2 whose tangent x is, within 3.5 ulp; ±π/2 for ±infinity, NaN for NaN.
  */
-atan :: fn[F](x: F) -> F {
+atan :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return atan_lanes_32(x)
     }
@@ -293,7 +293,7 @@ atan :: fn[F](x: F) -> F {
  * @param x The number.
  * @return sinh x as math.sinh gives it, within 1 ulp.
  */
-sinh :: fn[F](x: F) -> F {
+sinh :: fn[F](x : F) -> F {
     return math.sinh(x)
 }
 
@@ -304,7 +304,7 @@ sinh :: fn[F](x: F) -> F {
  * @param x The number.
  * @return cosh x as math.cosh gives it, within 1 ulp.
  */
-cosh :: fn[F](x: F) -> F {
+cosh :: fn[F](x : F) -> F {
     return math.cosh(x)
 }
 
@@ -315,7 +315,7 @@ cosh :: fn[F](x: F) -> F {
  * @param x The number.
  * @return tanh x as math.tanh gives it, within 1 ulp.
  */
-tanh :: fn[F](x: F) -> F {
+tanh :: fn[F](x : F) -> F {
     return math.tanh(x)
 }
 
@@ -326,7 +326,7 @@ tanh :: fn[F](x: F) -> F {
  * @param x The number.
  * @return asinh x as math.asinh gives it, within 1 ulp.
  */
-asinh :: fn[F](x: F) -> F {
+asinh :: fn[F](x : F) -> F {
     return math.asinh(x)
 }
 
@@ -337,7 +337,7 @@ asinh :: fn[F](x: F) -> F {
  * @param x The number, from 1 up.
  * @return acosh x as math.acosh gives it, within 1 ulp.
  */
-acosh :: fn[F](x: F) -> F {
+acosh :: fn[F](x : F) -> F {
     return math.acosh(x)
 }
 
@@ -348,7 +348,7 @@ acosh :: fn[F](x: F) -> F {
  * @param x The number, from -1 to 1.
  * @return atanh x as math.atanh gives it, within 1.5 ulp.
  */
-atanh :: fn[F](x: F) -> F {
+atanh :: fn[F](x : F) -> F {
     return math.atanh(x)
 }
 
@@ -359,7 +359,7 @@ atanh :: fn[F](x: F) -> F {
  * @param x The number, any sign.
  * @return The real cube root, of x's sign, within 3.5 ulp for f32 and 1 ulp for f64; x for ±0, ±infinity and NaN.
  */
-cube_root :: fn[F](x: F) -> F {
+cube_root :: fn[F](x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return cube_root_lanes_32(x)
     }
@@ -378,7 +378,7 @@ cube_root :: fn[F](x: F) -> F {
  * @param x The number.
  * @return erf x as math.erf gives it, within 1 ulp.
  */
-erf :: fn[F](x: F) -> F {
+erf :: fn[F](x : F) -> F {
     return math.erf(x)
 }
 
@@ -389,7 +389,7 @@ erf :: fn[F](x: F) -> F {
  * @param x The number.
  * @return 1 - erf x as math.erfc gives it, within 2 ulp.
  */
-erfc :: fn[F](x: F) -> F {
+erfc :: fn[F](x : F) -> F {
     return math.erfc(x)
 }
 
@@ -400,7 +400,7 @@ erfc :: fn[F](x: F) -> F {
  * @param y The value of erf, from -1 to 1.
  * @return The x whose erf y is, as math.erf_inverse gives it, within 2 ulp.
  */
-erf_inverse :: fn[F](y: F) -> F {
+erf_inverse :: fn[F](y : F) -> F {
     return math.erf_inverse(y)
 }
 
@@ -411,7 +411,7 @@ erf_inverse :: fn[F](y: F) -> F {
  * @param x The number.
  * @return Γ(x) as math.gamma gives it, within 6 ulp.
  */
-gamma :: fn[F](x: F) -> F {
+gamma :: fn[F](x : F) -> F {
     return math.gamma(x)
 }
 
@@ -422,7 +422,7 @@ gamma :: fn[F](x: F) -> F {
  * @param x The number.
  * @return ln |Γ(x)| as math.log_gamma gives it, within 1 ulp.
  */
-log_gamma :: fn[F](x: F) -> F {
+log_gamma :: fn[F](x : F) -> F {
     return math.log_gamma(x)
 }
 
@@ -434,7 +434,7 @@ log_gamma :: fn[F](x: F) -> F {
  * @param y The power.
  * @return x^y as math.power gives it, within 1 ulp and as C's pow says at its special cases.
  */
-power :: fn[F](x: F, y: F) -> F {
+power :: fn[F](x : F, y : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return power_lanes_32(x, y)
     }
@@ -461,7 +461,7 @@ power :: fn[F](x: F, y: F) -> F {
  * @return The angle from -π to π from the positive x axis to (x, y), within 3.5 ulp; at zeros and infinities as C's
  *     atan2 says, NaN if either is NaN.
  */
-atan2 :: fn[F](y: F, x: F) -> F {
+atan2 :: fn[F](y : F, x : F) -> F {
     #if math.float_kind(F) == math.FLOAT_LANES_32 {
         return atan2_lanes_32(y, x)
     }
@@ -488,7 +488,7 @@ atan2 :: fn[F](y: F, x: F) -> F {
  * @return The hypotenuse as math.hypotenuse gives it, within 1 ulp, without overflowing or underflowing where the
  *     result doesn't.
  */
-hypotenuse :: fn[F](x: F, y: F) -> F {
+hypotenuse :: fn[F](x : F, y : F) -> F {
     return math.hypotenuse(x, y)
 }
 
@@ -499,6 +499,6 @@ hypotenuse :: fn[F](x: F, y: F) -> F {
  * @param x The angle, in radians.
  * @return sin x and cos x, each as sin and cos give it.
  */
-sin_cos :: fn[F](x: F) -> (F, F) {
+sin_cos :: fn[F](x : F) -> (F, F) {
     return sin(x), cos(x)
 }

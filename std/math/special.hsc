@@ -78,21 +78,31 @@ ERF_SB7 : f64 : -2.24409524465858183362e01 // 0xc03670e2_42712d62
  * @param ix x's high word.
  * @return erfc x.
  */
-//SPEC: fdlibm s_erf.c
-erfc_tail_64 :: fn(x: f64, ix: i32) -> f64 {
+// SPEC: fdlibm s_erf.c
+erfc_tail_64 :: fn(x : f64, ix : i32) -> f64 {
     s :: 1 / (x * x)
     r := 0.0
     q := 0.0
     if ix < 0x4006_db6e {
-        r = ERF_RA0 + s * (ERF_RA1 + s * (ERF_RA2 + s * (ERF_RA3 + s * (ERF_RA4 + s * (ERF_RA5 + s * (ERF_RA6
-            + s * ERF_RA7))))))
-        q = 1 + s * (ERF_SA1 + s * (ERF_SA2 + s * (ERF_SA3 + s * (ERF_SA4 + s * (ERF_SA5 + s * (ERF_SA6 + s * (ERF_SA7
-            + s * ERF_SA8)))))))
+        r = ERF_RA0
+            + s
+                * (ERF_RA1
+                    + s * (ERF_RA2 + s * (ERF_RA3 + s * (ERF_RA4 + s * (ERF_RA5 + s * (ERF_RA6 + s * ERF_RA7))))))
+        q = 1
+            + s
+                * (ERF_SA1
+                    + s
+                        * (ERF_SA2
+                            + s
+                                * (ERF_SA3
+                                    + s * (ERF_SA4 + s * (ERF_SA5 + s * (ERF_SA6 + s * (ERF_SA7 + s * ERF_SA8)))))))
     }
     else {
         r = ERF_RB0 + s * (ERF_RB1 + s * (ERF_RB2 + s * (ERF_RB3 + s * (ERF_RB4 + s * (ERF_RB5 + s * ERF_RB6)))))
-        q = 1 + s * (ERF_SB1 + s * (ERF_SB2 + s * (ERF_SB3 + s * (ERF_SB4 + s * (ERF_SB5 + s * (ERF_SB6
-            + s * ERF_SB7))))))
+        q = 1
+            + s
+                * (ERF_SB1
+                    + s * (ERF_SB2 + s * (ERF_SB3 + s * (ERF_SB4 + s * (ERF_SB5 + s * (ERF_SB6 + s * ERF_SB7))))))
     }
     // x² split, so -z² is exact and e^(-x²) loses nothing
     z :: with_low_word(x, 0)
@@ -105,7 +115,7 @@ erfc_tail_64 :: fn(x: f64, ix: i32) -> f64 {
  * @param s |x| - 1.
  * @return P(s) / Q(s).
  */
-erf_near_one_64 :: fn(s: f64) -> f64 {
+erf_near_one_64 :: fn(s : f64) -> f64 {
     p :: ERF_PA0 + s * (ERF_PA1 + s * (ERF_PA2 + s * (ERF_PA3 + s * (ERF_PA4 + s * (ERF_PA5 + s * ERF_PA6)))))
     q :: 1 + s * (ERF_QA1 + s * (ERF_QA2 + s * (ERF_QA3 + s * (ERF_QA4 + s * (ERF_QA5 + s * ERF_QA6)))))
     return p / q
@@ -117,7 +127,7 @@ erf_near_one_64 :: fn(s: f64) -> f64 {
  * @param z x².
  * @return P(z) / Q(z).
  */
-erf_near_zero_64 :: fn(z: f64) -> f64 {
+erf_near_zero_64 :: fn(z : f64) -> f64 {
     r :: ERF_PP0 + z * (ERF_PP1 + z * (ERF_PP2 + z * (ERF_PP3 + z * ERF_PP4)))
     s :: 1 + z * (ERF_QQ1 + z * (ERF_QQ2 + z * (ERF_QQ3 + z * (ERF_QQ4 + z * ERF_QQ5))))
     return r / s
@@ -129,8 +139,8 @@ erf_near_zero_64 :: fn(z: f64) -> f64 {
  * @param x The number.
  * @return erf x, within 1 ulp; ±1 for ±infinity, x for ±0, NaN for NaN.
  */
-//SPEC: fdlibm s_erf.c
-erf_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_erf.c
+erf_64 :: fn(x : f64) -> f64 {
     hx :: high_word(x)
     ix :: hx & 0x7fff_ffff
     if ix >= 0x7ff0_0000 {
@@ -167,8 +177,8 @@ erf_64 :: fn(x: f64) -> f64 {
  * @param x The number.
  * @return erfc x, within 1 ulp, and 2 far in its tail; 0 for infinity, 2 for -infinity, NaN for NaN.
  */
-//SPEC: fdlibm s_erf.c
-erfc_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm s_erf.c
+erfc_64 :: fn(x : f64) -> f64 {
     hx :: high_word(x)
     ix :: hx & 0x7fff_ffff
     if ix >= 0x7ff0_0000 {
@@ -218,8 +228,8 @@ erfc_64 :: fn(x: f64) -> f64 {
  * @param y The value of erf, from -1 to 1.
  * @return x with erf x = y, within 2 ulp; ±infinity at ±1, NaN beyond ±1 and for NaN, y for ±0.
  */
-//SPEC: M. Giles, "Approximating the erfinv function", GPU Computing Gems Jade Edition (2011), single precision
-erf_inverse_64 :: fn(y: f64) -> f64 {
+// SPEC: M. Giles, "Approximating the erfinv function", GPU Computing Gems Jade Edition (2011), single precision
+erf_inverse_64 :: fn(y : f64) -> f64 {
     if y != y || y < -1 || y > 1 {
         return nan_64()
     }
@@ -324,67 +334,67 @@ erf_inverse_64 :: fn(y: f64) -> f64 {
 TWO_OVER_SQRT_PI : f64 : 1.12837916709551257390
 
 /* log Γ's constants: about the minimum tc, and in the ranges e_lgamma_r.c splits [0, 8) into */
-LGAMMA_A0 : f64 : 7.72156649015328655494e-02 // 0x3fb3c467_e37db0c8
-LGAMMA_A1 : f64 : 3.22467033424113591611e-01 // 0x3fd4a34c_c4a60fad
-LGAMMA_A2 : f64 : 6.73523010531292681824e-02 // 0x3fb13e00_1a5562a7
-LGAMMA_A3 : f64 : 2.05808084325167332806e-02 // 0x3f951322_ac92547b
-LGAMMA_A4 : f64 : 7.38555086081402883957e-03 // 0x3f7e404f_b68fefe8
-LGAMMA_A5 : f64 : 2.89051383673415629091e-03 // 0x3f67add8_ccb7926b
-LGAMMA_A6 : f64 : 1.19270763183362067845e-03 // 0x3f538a94_116f3f5d
-LGAMMA_A7 : f64 : 5.10069792153511336608e-04 // 0x3f40b6c6_89b99c00
-LGAMMA_A8 : f64 : 2.20862790713908385557e-04 // 0x3f2cf2ec_ed10e54d
-LGAMMA_A9 : f64 : 1.08011567247583939954e-04 // 0x3f1c5088_987dfb07
+LGAMMA_A0  : f64 : 7.72156649015328655494e-02 // 0x3fb3c467_e37db0c8
+LGAMMA_A1  : f64 : 3.22467033424113591611e-01 // 0x3fd4a34c_c4a60fad
+LGAMMA_A2  : f64 : 6.73523010531292681824e-02 // 0x3fb13e00_1a5562a7
+LGAMMA_A3  : f64 : 2.05808084325167332806e-02 // 0x3f951322_ac92547b
+LGAMMA_A4  : f64 : 7.38555086081402883957e-03 // 0x3f7e404f_b68fefe8
+LGAMMA_A5  : f64 : 2.89051383673415629091e-03 // 0x3f67add8_ccb7926b
+LGAMMA_A6  : f64 : 1.19270763183362067845e-03 // 0x3f538a94_116f3f5d
+LGAMMA_A7  : f64 : 5.10069792153511336608e-04 // 0x3f40b6c6_89b99c00
+LGAMMA_A8  : f64 : 2.20862790713908385557e-04 // 0x3f2cf2ec_ed10e54d
+LGAMMA_A9  : f64 : 1.08011567247583939954e-04 // 0x3f1c5088_987dfb07
 LGAMMA_A10 : f64 : 2.52144565451257326939e-05 // 0x3efa7074_428cfa52
 LGAMMA_A11 : f64 : 4.48640949618915160150e-05 // 0x3f07858e_90a45837
-LGAMMA_TC : f64 : 1.46163214496836224576 // 0x3ff762d8_6356be3f
-LGAMMA_TF : f64 : -1.21486290535849611461e-01 // 0xbfbf19b9_bcc38a42
-LGAMMA_TT : f64 : -3.63867699703950536541e-18 // 0xbc50c7ca_a48a971f
-LGAMMA_T0 : f64 : 4.83836122723810047042e-01 // 0x3fdef72b_c8ee38a2
-LGAMMA_T1 : f64 : -1.47587722994593911752e-01 // 0xbfc2e427_8dc6c509
-LGAMMA_T2 : f64 : 6.46249402391333854778e-02 // 0x3fb08b42_94d5419b
-LGAMMA_T3 : f64 : -3.27885410759859649565e-02 // 0xbfa0c9a8_df35b713
-LGAMMA_T4 : f64 : 1.79706750811820387126e-02 // 0x3f9266e7_970af9ec
-LGAMMA_T5 : f64 : -1.03142241298341437450e-02 // 0xbf851f9f_ba91ec6a
-LGAMMA_T6 : f64 : 6.10053870246291332635e-03 // 0x3f78fce0_e370e344
-LGAMMA_T7 : f64 : -3.68452016781138256760e-03 // 0xbf6e2eff_b3e914d7
-LGAMMA_T8 : f64 : 2.25964780900612472250e-03 // 0x3f6282d3_2e15c915
-LGAMMA_T9 : f64 : -1.40346469989232843813e-03 // 0xbf56fe8e_bf2d1af1
+LGAMMA_TC  : f64 : 1.46163214496836224576 // 0x3ff762d8_6356be3f
+LGAMMA_TF  : f64 : -1.21486290535849611461e-01 // 0xbfbf19b9_bcc38a42
+LGAMMA_TT  : f64 : -3.63867699703950536541e-18 // 0xbc50c7ca_a48a971f
+LGAMMA_T0  : f64 : 4.83836122723810047042e-01 // 0x3fdef72b_c8ee38a2
+LGAMMA_T1  : f64 : -1.47587722994593911752e-01 // 0xbfc2e427_8dc6c509
+LGAMMA_T2  : f64 : 6.46249402391333854778e-02 // 0x3fb08b42_94d5419b
+LGAMMA_T3  : f64 : -3.27885410759859649565e-02 // 0xbfa0c9a8_df35b713
+LGAMMA_T4  : f64 : 1.79706750811820387126e-02 // 0x3f9266e7_970af9ec
+LGAMMA_T5  : f64 : -1.03142241298341437450e-02 // 0xbf851f9f_ba91ec6a
+LGAMMA_T6  : f64 : 6.10053870246291332635e-03 // 0x3f78fce0_e370e344
+LGAMMA_T7  : f64 : -3.68452016781138256760e-03 // 0xbf6e2eff_b3e914d7
+LGAMMA_T8  : f64 : 2.25964780900612472250e-03 // 0x3f6282d3_2e15c915
+LGAMMA_T9  : f64 : -1.40346469989232843813e-03 // 0xbf56fe8e_bf2d1af1
 LGAMMA_T10 : f64 : 8.81081882437654011382e-04 // 0x3f4cdf0c_ef61a8e9
 LGAMMA_T11 : f64 : -5.38595305356740546715e-04 // 0xbf41a610_9c73e0ec
 LGAMMA_T12 : f64 : 3.15632070903625950361e-04 // 0x3f34af6d_6c0ebbf7
 LGAMMA_T13 : f64 : -3.12754168375120860518e-04 // 0xbf347f24_ecc38c38
 LGAMMA_T14 : f64 : 3.35529192635519073543e-04 // 0x3f35fd3e_e8c2d3f4
-LGAMMA_U0 : f64 : -7.72156649015328655494e-02 // 0xbfb3c467_e37db0c8
-LGAMMA_U1 : f64 : 6.32827064025093366517e-01 // 0x3fe4401e_8b005dff
-LGAMMA_U2 : f64 : 1.45492250137234768737 // 0x3ff7475c_d119bd6f
-LGAMMA_U3 : f64 : 9.77717527963372745603e-01 // 0x3fef4976_44ea8450
-LGAMMA_U4 : f64 : 2.28963728064692451092e-01 // 0x3fcd4eae_f6010924
-LGAMMA_U5 : f64 : 1.33810918536787660377e-02 // 0x3f8b678b_bf2bab09
-LGAMMA_V1 : f64 : 2.45597793713041134822 // 0x4003a5d7_c2bd619c
-LGAMMA_V2 : f64 : 2.12848976379893395361 // 0x40010725_a42b18f5
-LGAMMA_V3 : f64 : 7.69285150456672783825e-01 // 0x3fe89dfb_e45050af
-LGAMMA_V4 : f64 : 1.04222645593369134254e-01 // 0x3fbaae55_d6537c88
-LGAMMA_V5 : f64 : 3.21709242282423911810e-03 // 0x3f6a5abb_57d0cf61
-LGAMMA_S0 : f64 : -7.72156649015328655494e-02 // 0xbfb3c467_e37db0c8
-LGAMMA_S1 : f64 : 2.14982415960608852501e-01 // 0x3fcb848b_36e20878
-LGAMMA_S2 : f64 : 3.25778796408930981787e-01 // 0x3fd4d98f_4f139f59
-LGAMMA_S3 : f64 : 1.46350472652464452805e-01 // 0x3fc2bb9c_bee5f2f7
-LGAMMA_S4 : f64 : 2.66422703033638609560e-02 // 0x3f9b481c_7e939961
-LGAMMA_S5 : f64 : 1.84028451407337715652e-03 // 0x3f5e26b6_7368f239
-LGAMMA_S6 : f64 : 3.19475326584100867617e-05 // 0x3f00bfec_dd17e945
-LGAMMA_R1 : f64 : 1.39200533467621045958 // 0x3ff645a7_62c4ab74
-LGAMMA_R2 : f64 : 7.21935547567138069525e-01 // 0x3fe71a18_93d3dcdc
-LGAMMA_R3 : f64 : 1.71933865632803078993e-01 // 0x3fc601ed_ccfbdf27
-LGAMMA_R4 : f64 : 1.86459191715652901344e-02 // 0x3f9317ea_742ed475
-LGAMMA_R5 : f64 : 7.77942496381893596434e-04 // 0x3f497dda_ca41a95b
-LGAMMA_R6 : f64 : 7.32668430744625636189e-06 // 0x3edebaf7_a5b38140
-LGAMMA_W0 : f64 : 4.18938533204672725052e-01 // 0x3fdacfe3_90c97d69
-LGAMMA_W1 : f64 : 8.33333333333329678849e-02 // 0x3fb55555_5555553b
-LGAMMA_W2 : f64 : -2.77777777728775536470e-03 // 0xbf66c16c_16b02e5c
-LGAMMA_W3 : f64 : 7.93650558643019558500e-04 // 0x3f4a019f_98cf38b6
-LGAMMA_W4 : f64 : -5.95187557450339963135e-04 // 0xbf4380cb_8c0fe741
-LGAMMA_W5 : f64 : 8.36339918996282139126e-04 // 0x3f4b67ba_4cdad5d1
-LGAMMA_W6 : f64 : -1.63092934096575273989e-03 // 0xbf5ab89d_0b9e43e4
+LGAMMA_U0  : f64 : -7.72156649015328655494e-02 // 0xbfb3c467_e37db0c8
+LGAMMA_U1  : f64 : 6.32827064025093366517e-01 // 0x3fe4401e_8b005dff
+LGAMMA_U2  : f64 : 1.45492250137234768737 // 0x3ff7475c_d119bd6f
+LGAMMA_U3  : f64 : 9.77717527963372745603e-01 // 0x3fef4976_44ea8450
+LGAMMA_U4  : f64 : 2.28963728064692451092e-01 // 0x3fcd4eae_f6010924
+LGAMMA_U5  : f64 : 1.33810918536787660377e-02 // 0x3f8b678b_bf2bab09
+LGAMMA_V1  : f64 : 2.45597793713041134822 // 0x4003a5d7_c2bd619c
+LGAMMA_V2  : f64 : 2.12848976379893395361 // 0x40010725_a42b18f5
+LGAMMA_V3  : f64 : 7.69285150456672783825e-01 // 0x3fe89dfb_e45050af
+LGAMMA_V4  : f64 : 1.04222645593369134254e-01 // 0x3fbaae55_d6537c88
+LGAMMA_V5  : f64 : 3.21709242282423911810e-03 // 0x3f6a5abb_57d0cf61
+LGAMMA_S0  : f64 : -7.72156649015328655494e-02 // 0xbfb3c467_e37db0c8
+LGAMMA_S1  : f64 : 2.14982415960608852501e-01 // 0x3fcb848b_36e20878
+LGAMMA_S2  : f64 : 3.25778796408930981787e-01 // 0x3fd4d98f_4f139f59
+LGAMMA_S3  : f64 : 1.46350472652464452805e-01 // 0x3fc2bb9c_bee5f2f7
+LGAMMA_S4  : f64 : 2.66422703033638609560e-02 // 0x3f9b481c_7e939961
+LGAMMA_S5  : f64 : 1.84028451407337715652e-03 // 0x3f5e26b6_7368f239
+LGAMMA_S6  : f64 : 3.19475326584100867617e-05 // 0x3f00bfec_dd17e945
+LGAMMA_R1  : f64 : 1.39200533467621045958 // 0x3ff645a7_62c4ab74
+LGAMMA_R2  : f64 : 7.21935547567138069525e-01 // 0x3fe71a18_93d3dcdc
+LGAMMA_R3  : f64 : 1.71933865632803078993e-01 // 0x3fc601ed_ccfbdf27
+LGAMMA_R4  : f64 : 1.86459191715652901344e-02 // 0x3f9317ea_742ed475
+LGAMMA_R5  : f64 : 7.77942496381893596434e-04 // 0x3f497dda_ca41a95b
+LGAMMA_R6  : f64 : 7.32668430744625636189e-06 // 0x3edebaf7_a5b38140
+LGAMMA_W0  : f64 : 4.18938533204672725052e-01 // 0x3fdacfe3_90c97d69
+LGAMMA_W1  : f64 : 8.33333333333329678849e-02 // 0x3fb55555_5555553b
+LGAMMA_W2  : f64 : -2.77777777728775536470e-03 // 0xbf66c16c_16b02e5c
+LGAMMA_W3  : f64 : 7.93650558643019558500e-04 // 0x3f4a019f_98cf38b6
+LGAMMA_W4  : f64 : -5.95187557450339963135e-04 // 0xbf4380cb_8c0fe741
+LGAMMA_W5  : f64 : 8.36339918996282139126e-04 // 0x3f4b67ba_4cdad5d1
+LGAMMA_W6  : f64 : -1.63092934096575273989e-03 // 0xbf5ab89d_0b9e43e4
 
 /**
  * sin(π x) for x positive, exactly reduced: x modulo 2, and to within a quarter of 0 by quarters, so π x is never
@@ -393,8 +403,8 @@ LGAMMA_W6 : f64 : -1.63092934096575273989e-03 // 0xbf5ab89d_0b9e43e4
  * @param x_in The number, positive and at least 2^-100.
  * @return sin(π x), within 1 ulp; 0 for whole x.
  */
-//SPEC: fdlibm e_lgamma_r.c sin_pi, as musl has it
-sin_pi_64 :: fn(x_in: f64) -> f64 {
+// SPEC: fdlibm e_lgamma_r.c sin_pi, as musl has it
+sin_pi_64 :: fn(x_in : f64) -> f64 {
     // x modulo 2
     x := 2.0 * (x_in * 0.5 - intrinsics.floor(x_in * 0.5))
     n := cast[i32](x * 4.0)
@@ -417,8 +427,8 @@ sin_pi_64 :: fn(x_in: f64) -> f64 {
  *     infinity at 0 and the negative whole numbers, where Γ has poles, and for
  *     ±infinity; NaN for NaN. And Γ(x)'s sign, 1 or -1: -1 between -2k - 1 and -2k for whole k ≥ 0, and for -0.
  */
-//SPEC: fdlibm e_lgamma_r.c, as musl has it
-log_gamma_signed_64 :: fn(x_in: f64) -> (f64, i32) {
+// SPEC: fdlibm e_lgamma_r.c, as musl has it
+log_gamma_signed_64 :: fn(x_in : f64) -> (f64, i32) {
     x := x_in
     sign : i32 = 1
     negative :: (bit_cast[u64](x) >> 63) != 0
@@ -495,8 +505,8 @@ log_gamma_signed_64 :: fn(x_in: f64) -> (f64, i32) {
         if i == 0 {
             z :: y * y
             p1 :: LGAMMA_A0 + z * (LGAMMA_A2 + z * (LGAMMA_A4 + z * (LGAMMA_A6 + z * (LGAMMA_A8 + z * LGAMMA_A10))))
-            p2 :: z * (LGAMMA_A1 + z * (LGAMMA_A3 + z * (LGAMMA_A5 + z * (LGAMMA_A7 + z * (LGAMMA_A9
-                + z * LGAMMA_A11)))))
+            p2 :: z
+                * (LGAMMA_A1 + z * (LGAMMA_A3 + z * (LGAMMA_A5 + z * (LGAMMA_A7 + z * (LGAMMA_A9 + z * LGAMMA_A11)))))
             p :: y * p1 + p2
             r += p - 0.5 * y
         }
@@ -510,8 +520,8 @@ log_gamma_signed_64 :: fn(x_in: f64) -> (f64, i32) {
             r += LGAMMA_TF + p
         }
         else {
-            p1 :: y * (LGAMMA_U0 + y * (LGAMMA_U1 + y * (LGAMMA_U2 + y * (LGAMMA_U3 + y * (LGAMMA_U4
-                + y * LGAMMA_U5)))))
+            p1 :: y
+                * (LGAMMA_U0 + y * (LGAMMA_U1 + y * (LGAMMA_U2 + y * (LGAMMA_U3 + y * (LGAMMA_U4 + y * LGAMMA_U5)))))
             p2 :: 1.0 + y * (LGAMMA_V1 + y * (LGAMMA_V2 + y * (LGAMMA_V3 + y * (LGAMMA_V4 + y * LGAMMA_V5))))
             r += -0.5 * y + p1 / p2
         }
@@ -520,10 +530,13 @@ log_gamma_signed_64 :: fn(x_in: f64) -> (f64, i32) {
         // From 2 to 8: ln Γ(2 + y) and ln of the product up to x
         i :: cast[i32](x)
         y :: x - cast[f64](i)
-        p :: y * (LGAMMA_S0 + y * (LGAMMA_S1 + y * (LGAMMA_S2 + y * (LGAMMA_S3 + y * (LGAMMA_S4 + y * (LGAMMA_S5 + y
-            * LGAMMA_S6))))))
-        q :: 1.0 + y * (LGAMMA_R1 + y * (LGAMMA_R2 + y * (LGAMMA_R3 + y * (LGAMMA_R4 + y * (LGAMMA_R5
-            + y * LGAMMA_R6)))))
+        p :: y
+            * (LGAMMA_S0
+                + y
+                    * (LGAMMA_S1
+                        + y * (LGAMMA_S2 + y * (LGAMMA_S3 + y * (LGAMMA_S4 + y * (LGAMMA_S5 + y * LGAMMA_S6))))))
+        q :: 1.0
+            + y * (LGAMMA_R1 + y * (LGAMMA_R2 + y * (LGAMMA_R3 + y * (LGAMMA_R4 + y * (LGAMMA_R5 + y * LGAMMA_R6)))))
         r = 0.5 * y + p / q
         z := 1.0
         k := i
@@ -541,8 +554,8 @@ log_gamma_signed_64 :: fn(x_in: f64) -> (f64, i32) {
         t :: log_64(x)
         z :: 1.0 / x
         y :: z * z
-        w :: LGAMMA_W0 + z * (LGAMMA_W1 + y * (LGAMMA_W2 + y * (LGAMMA_W3 + y * (LGAMMA_W4 + y * (LGAMMA_W5 + y
-            * LGAMMA_W6)))))
+        w :: LGAMMA_W0
+            + z * (LGAMMA_W1 + y * (LGAMMA_W2 + y * (LGAMMA_W3 + y * (LGAMMA_W4 + y * (LGAMMA_W5 + y * LGAMMA_W6)))))
         r = (x - 0.5) * (t - 1.0) + w
     }
     else {
@@ -560,7 +573,7 @@ log_gamma_signed_64 :: fn(x_in: f64) -> (f64, i32) {
  * @param x The number.
  * @return As log_gamma_signed_64 gives it, without the sign.
  */
-log_gamma_64 :: fn(x: f64) -> f64 {
+log_gamma_64 :: fn(x : f64) -> f64 {
     r, _ :: log_gamma_signed_64(x)
     return r
 }
@@ -574,14 +587,17 @@ GAMMA_NUMERATOR :: f64.[
     248874557.86205415651146038641322942321632125127801, 31426415.585400194380614231628318205362874684987640,
     2876370.6289353724412254090516208496135991145378768, 186056.26539522349504029498971604569928220784236328,
     8071.6720023658162106380029022722506138218516325024, 210.82427775157934587250973392071336271166969580291,
-    2.5066282746310002701649081771338373386264310793408,
+    2.5066282746310002701649081771338373386264310793408
 ]
-GAMMA_DENOMINATOR :: f64.[0, 39916800, 120543840, 150917976, 105258076, 45995730, 13339535, 2637558, 357423, 32670,
-    1925, 66, 1]
+GAMMA_DENOMINATOR :: f64.[
+    0, 39916800, 120543840, 150917976, 105258076, 45995730, 13339535, 2637558, 357423, 32670, 1925, 66, 1
+]
 /** 0! to 22!, exact in f64, which Γ of a whole number up to 23 is. */
-FACTORIALS :: f64.[1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600, 6227020800,
-    87178291200, 1307674368000, 20922789888000, 355687428096000, 6402373705728000, 121645100408832000.0,
-    2432902008176640000.0, 51090942171709440000.0, 1124000727777607680000.0]
+FACTORIALS :: f64.[
+    1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600, 6227020800, 87178291200, 1307674368000,
+    20922789888000, 355687428096000, 6402373705728000, 121645100408832000.0, 2432902008176640000.0,
+    51090942171709440000.0, 1124000727777607680000.0
+]
 
 /**
  * Γ's Lanczos sum, S(x).
@@ -589,8 +605,8 @@ FACTORIALS :: f64.[1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916
  * @param x The number, positive.
  * @return S(x), Horner in x below 8 and in 1/x from 8, so it doesn't overflow.
  */
-//SPEC: musl src/math/tgamma.c S
-gamma_sum_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/tgamma.c S
+gamma_sum_64 :: fn(x : f64) -> f64 {
     numerator := 0.0
     denominator := 0.0
     if x < 8 {
@@ -618,8 +634,8 @@ gamma_sum_64 :: fn(x: f64) -> f64 {
  * @return Γ(x), within 6 ulp, and exact for whole numbers up to 23; NaN at the negative whole
  *     numbers and -infinity, ±infinity at ±0 and where it overflows, ±0 where it underflows, NaN for NaN.
  */
-//SPEC: musl src/math/tgamma.c
-gamma_64 :: fn(x: f64) -> f64 {
+// SPEC: musl src/math/tgamma.c
+gamma_64 :: fn(x : f64) -> f64 {
     ix :: high_word(x) & 0x7fff_ffff
     negative :: (bit_cast[u64](x) >> 63) != 0
     if ix >= 0x7ff0_0000 {

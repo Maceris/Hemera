@@ -44,7 +44,7 @@ import runtime from "base:runtime"
      *     through execve.
      * @return The descriptor to, once it's done, or -errno, which failed says is an error.
      */
-    linux_dup2 :: fn(from: u64, to: u64) -> u64 {
+    linux_dup2 :: fn(from : u64, to : u64) -> u64 {
         return runtime.linux_syscall(SYS_DUP2, from, to)
     }
 
@@ -56,7 +56,7 @@ import runtime from "base:runtime"
      * @return How many are ready, at least 1, or -errno, which failed says is an error: EINTR when a signal came
      *     first, and waiting again is worth it.
      */
-    linux_poll :: fn(descriptors: u64, count: u64) -> u64 {
+    linux_poll :: fn(descriptors : u64, count : u64) -> u64 {
         return runtime.linux_syscall(SYS_POLL, descriptors, count, 0xffff_ffff_ffff_ffff)
     }
 }
@@ -98,7 +98,7 @@ import runtime from "base:runtime"
      *     dup2 would do nothing. Whatever was open there is closed. The copy is inherited through execve.
      * @return The descriptor to, once it's done, or -errno, which failed says is an error.
      */
-    linux_dup2 :: fn(from: u64, to: u64) -> u64 {
+    linux_dup2 :: fn(from : u64, to : u64) -> u64 {
         return runtime.linux_syscall(SYS_DUP3, from, to, 0)
     }
 
@@ -111,13 +111,12 @@ import runtime from "base:runtime"
      * @return How many are ready, at least 1, or -errno, which failed says is an error: EINTR when a signal came
      *     first, and waiting again is worth it.
      */
-    linux_poll :: fn(descriptors: u64, count: u64) -> u64 {
+    linux_poll :: fn(descriptors : u64, count : u64) -> u64 {
         return runtime.linux_syscall(SYS_PPOLL, descriptors, count, 0, 0, 8)
     }
 }
 
 #if OS == .Linux && (TARGET_ARCH == .x86_64 || TARGET_ARCH == .arm64) {
-
     /** The poll event for a descriptor with something to read, or at its end. */
     POLLIN : i16 : 1
     /** The errno for nothing being at a path. */
@@ -146,7 +145,12 @@ import runtime from "base:runtime"
      * @return The copy's first byte, in memory from the context's allocator that made holds, good until that's
      *     freed. Null if it couldn't be allocated, and then nothing is added to made.
      */
-    c_copy :: fn(made: ptr[mut u8[..][]], first: string, second: string = "", third: string = "") -> rawptr #unrestricted {
+    c_copy :: fn(
+        made : ptr[mut u8[..][]],
+        first : string,
+        second : string = "",
+        third : string = ""
+    ) -> rawptr #unrestricted {
         bytes, error :: runtime.new_array(u8, first.count + second.count + third.count + 1)
         if error != null || bytes.count == 0 {
             return null
@@ -183,7 +187,7 @@ import runtime from "base:runtime"
      * @return True when the pipe is done: at its end, as when every writer has closed it, or broken, for any error
      *     but EINTR. False when more may come.
      */
-    read_some :: fn(descriptor: u64, buffer: ptr[mut u8[..]]) -> bool {
+    read_some :: fn(descriptor : u64, buffer : ptr[mut u8[..]]) -> bool {
         chunk : u8[4096]
         count :: runtime.linux_syscall(SYS_READ, descriptor, cast[u64](&chunk[0]), 4096)
         if failed(count) {
@@ -215,9 +219,12 @@ import runtime from "base:runtime"
      *     be made, or what was found couldn't be started, like a file that isn't executable; or null once the
      *     program ran, whatever its exit code.
      */
-    system_run_process :: fn(program: string, arguments: string[], working_directory: string?, allocator: runtime.Allocator)
-        -> (result #unrestricted : ProcessResult, error : ProcessError?) {
-
+    system_run_process :: fn(
+        program : string,
+        arguments : string[],
+        working_directory : string?,
+        allocator : runtime.Allocator
+    ) -> (result #unrestricted : ProcessResult, error : ProcessError?) {
         empty : ProcessResult
         made : u8[..][]
         defer {
@@ -255,7 +262,12 @@ import runtime from "base:runtime"
                     continue
                 }
                 // An empty entry is the current folder
-                folder :: if start < i && i <= search.count { string_of(cast[ptr[u8]](search.data + start), i - start) } else { "." }
+                folder :: if start < i && i <= search.count {
+                    string_of(cast[ptr[u8]](search.data + start), i - start)
+                }
+                else {
+                    "."
+                }
                 runtime.array_add(&candidates, c_copy(&made, folder, "/", program))
                 start = i + 1
             }
@@ -271,7 +283,8 @@ import runtime from "base:runtime"
         environment :: intrinsics.process_state().environment_pointers
 
         pipes : i32[6]
-        if failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[0]), O_CLOEXEC)) || failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[2]), O_CLOEXEC))
+        if failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[0]), O_CLOEXEC))
+            || failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[2]), O_CLOEXEC))
             || failed(runtime.linux_syscall(SYS_PIPE2, cast[u64](&pipes[4]), O_CLOEXEC)) {
             return empty, ProcessError.FailedToStart
         }
@@ -288,7 +301,12 @@ import runtime from "base:runtime"
             }
             reason : u64 = ENOENT
             for candidate in candidates {
-                attempt :: runtime.linux_syscall(SYS_EXECVE, cast[u64](candidate), cast[u64](argument_pointers.data), cast[u64](environment))
+                attempt :: runtime.linux_syscall(
+                    SYS_EXECVE,
+                    cast[u64](candidate),
+                    cast[u64](argument_pointers.data),
+                    cast[u64](environment)
+                )
                 if 0 - attempt != ENOENT {
                     reason = 0 - attempt
                 }
@@ -328,10 +346,14 @@ import runtime from "base:runtime"
                     }
                     break
                 }
-                if watched[0].descriptor >= 0 && watched[0].returned != 0 && read_some(cast[u64](watched[0].descriptor), &output) {
+                if watched[0].descriptor >= 0
+                    && watched[0].returned != 0
+                    && read_some(cast[u64](watched[0].descriptor), &output) {
                     watched[0].descriptor = -1
                 }
-                if watched[1].descriptor >= 0 && watched[1].returned != 0 && read_some(cast[u64](watched[1].descriptor), &error_output) {
+                if watched[1].descriptor >= 0
+                    && watched[1].returned != 0
+                    && read_some(cast[u64](watched[1].descriptor), &error_output) {
                     watched[1].descriptor = -1
                 }
             }
@@ -341,7 +363,11 @@ import runtime from "base:runtime"
         _ = runtime.linux_syscall(SYS_WAIT4, child, cast[u64](&status), 0, 0)
         // Exited: the code in the second byte; killed by a signal: 128 and the signal, as shells give
         code :: if status & 0x7f == 0 { (status >> 8) & 0xff } else { 128 + (status & 0x7f) }
-        result := ProcessResult.{exit_code = cast[int](code), output = as_text(output), error_output = as_text(error_output)}
+        result := ProcessResult.{
+            exit_code = cast[int](code),
+            output = as_text(output),
+            error_output = as_text(error_output),
+        }
         return result, null
     }
 }

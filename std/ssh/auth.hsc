@@ -12,7 +12,7 @@ import crypto from "std:crypto"
  */
 
 /** Take a message of authentication's, or the service request before it. */
-handle_auth :: fn(conn: ptr[mut Connection], message: u8[]) {
+handle_auth :: fn(conn : ptr[mut Connection], message : u8[]) {
     kind :: byte_at(message, 0)
     reader := Reader.{at = 1, end = message.count}
     if conn.role == .Server {
@@ -71,8 +71,11 @@ handle_auth :: fn(conn: ptr[mut Connection], message: u8[]) {
     fail(conn, DISCONNECT_PROTOCOL_ERROR, "an authentication message out of place")
 }
 
-/** A server's, as its first packet under the first keys: say which signature algorithms it takes for users' keys (RFC 8308). */
-send_ext_info :: fn(conn: ptr[mut Connection]) {
+/**
+ * A server's, as its first packet under the first keys: say which signature algorithms it takes for users' keys (RFC
+ * 8308).
+ */
+send_ext_info :: fn(conn : ptr[mut Connection]) {
     writer := Writer.{}
     put_u8(conn.message[0..<PAYLOAD_BYTES], &writer, MSG_EXT_INFO)
     put_u32(conn.message[0..<PAYLOAD_BYTES], &writer, 1)
@@ -82,7 +85,7 @@ send_ext_info :: fn(conn: ptr[mut Connection]) {
 }
 
 /** A server's: take a USERAUTH_REQUEST. */
-take_request :: fn(conn: ptr[mut Connection], message: u8[]) {
+take_request :: fn(conn : ptr[mut Connection], message : u8[]) {
     conn.auth_tries += 1
     if conn.auth_tries > MAX_AUTH_TRIES {
         disconnect(conn, DISCONNECT_NO_MORE_AUTH_METHODS, "too many authentication tries")
@@ -122,7 +125,10 @@ take_request :: fn(conn: ptr[mut Connection], message: u8[]) {
         algorithm :: get_string(message, &reader)
         blob :: get_string(message, &reader)
         key :: parse_public_key(blob) or_else PublicKey.{}
-        if reader.bad || key.kind == .None || !algorithm_fits(key.kind, algorithm) || algorithm.count > conn.offered_algorithm.count {
+        if reader.bad
+            || key.kind == .None
+            || !algorithm_fits(key.kind, algorithm)
+            || algorithm.count > conn.offered_algorithm.count {
             refuse_auth(conn)
             return void
         }
@@ -152,9 +158,14 @@ take_request :: fn(conn: ptr[mut Connection], message: u8[]) {
 }
 
 /** Keep a password offered, secret. */
-take_password #constant_time :: fn(conn: ptr[mut Connection], password: u8[]) {
+take_password #constant_time :: fn(conn : ptr[mut Connection], password : u8[]) {
     for i in cast[usize](0)..<PASSWORD_BYTES {
-        conn.offered_password[i] = if i < password.count { cast[crypto.SecretByte](password[i]) } else { cast[crypto.SecretByte](0) }
+        conn.offered_password[i] = if i < password.count {
+            cast[crypto.SecretByte](password[i])
+        }
+        else {
+            cast[crypto.SecretByte](0)
+        }
     }
     conn.offered_password_length = password.count
 }
@@ -168,7 +179,7 @@ take_password #constant_time :: fn(conn: ptr[mut Connection], password: u8[]) {
  * @param signature The signature's blob.
  * @return True if the key signed it.
  */
-signed_request_matches :: fn(conn: ptr[mut Connection], request: u8[], signature: u8[]) -> bool {
+signed_request_matches :: fn(conn : ptr[mut Connection], request : u8[], signature : u8[]) -> bool {
     writer := Writer.{}
     data :: conn.message[0..<PAYLOAD_BYTES]
     put_string(data, &writer, conn.session_id[0..<32])
@@ -181,7 +192,7 @@ signed_request_matches :: fn(conn: ptr[mut Connection], request: u8[], signature
 }
 
 /** A server's: send USERAUTH_FAILURE, with what it allows. */
-refuse_auth :: fn(conn: ptr[mut Connection]) {
+refuse_auth :: fn(conn : ptr[mut Connection]) {
     writer := Writer.{}
     put_u8(conn.message[0..<PAYLOAD_BYTES], &writer, MSG_USERAUTH_FAILURE)
     put_text(conn.message[0..<PAYLOAD_BYTES], &writer, "publickey,password")
@@ -197,7 +208,7 @@ refuse_auth :: fn(conn: ptr[mut Connection]) {
  * @param conn The connection, its Password or PublicKey event taken.
  * @param allowed Whether the password is the user's, or the key one of theirs.
  */
-answer_authentication :: fn(conn: ptr[mut Connection], allowed: bool) {
+answer_authentication :: fn(conn : ptr[mut Connection], allowed : bool) {
     if conn.waiting != .Authentication {
         return void
     }
@@ -211,7 +222,11 @@ answer_authentication :: fn(conn: ptr[mut Connection], allowed: bool) {
     writer := Writer.{}
     if conn.offered_key.kind != .None && !conn.offered_signed {
         put_u8(conn.message[0..<PAYLOAD_BYTES], &writer, MSG_USERAUTH_PK_OK)
-        put_string(conn.message[0..<PAYLOAD_BYTES], &writer, range(conn.offered_algorithm[0..<32], 0, conn.offered_algorithm_length))
+        put_string(
+            conn.message[0..<PAYLOAD_BYTES],
+            &writer,
+            range(conn.offered_algorithm[0..<32], 0, conn.offered_algorithm_length)
+        )
         put_string(conn.message[0..<PAYLOAD_BYTES], &writer, blob_of(&conn.offered_key))
         conn.offered_key = PublicKey.{}
     }
@@ -224,7 +239,7 @@ answer_authentication :: fn(conn: ptr[mut Connection], allowed: bool) {
 }
 
 /** Wipe the password offered. */
-wipe_password #constant_time :: fn(conn: ptr[mut Connection]) {
+wipe_password #constant_time :: fn(conn : ptr[mut Connection]) {
     for i in cast[usize](0)..<PASSWORD_BYTES {
         conn.offered_password[i] = 0
     }
@@ -237,7 +252,7 @@ wipe_password #constant_time :: fn(conn: ptr[mut Connection]) {
  * @param conn The connection.
  * @param password_allowed Whether the server said it takes passwords.
  */
-next_method :: fn(conn: ptr[mut Connection], password_allowed: bool) {
+next_method :: fn(conn : ptr[mut Connection], password_allowed : bool) {
     if conn.has_client_key && !conn.key_tried {
         conn.key_tried = true
         send_key_request(conn)
@@ -252,7 +267,7 @@ next_method :: fn(conn: ptr[mut Connection], password_allowed: bool) {
 }
 
 /** A client's: send a publickey request signed with its Ed25519 key. */
-send_key_request :: fn(conn: ptr[mut Connection]) {
+send_key_request :: fn(conn : ptr[mut Connection]) {
     public :: crypto.ed25519_public_key(&conn.client_key)
     blob :: ed25519_blob(&public)
     // The request, after its number, and what's signed: the session's identifier, then the request with its number
@@ -283,7 +298,7 @@ send_key_request :: fn(conn: ptr[mut Connection]) {
  * @param conn The connection, its PasswordWanted event taken.
  * @param password The password, wiped from the message once it's sealed.
  */
-give_password #constant_time :: fn(conn: ptr[mut Connection], password: crypto.SecretByte[]) {
+give_password #constant_time :: fn(conn : ptr[mut Connection], password : crypto.SecretByte[]) {
     if !conn.pending_password || password.count > PASSWORD_BYTES {
         return void
     }

@@ -16,7 +16,7 @@ package strings
  * @param base The base, 2 to 36; a larger one accepts no more than 36 does.
  * @return The digit's value, below base; null if it isn't a digit, or isn't one in base.
  */
-digit_value :: fn(character: char, base: u64) -> u64? {
+digit_value :: fn(character : char, base : u64) -> u64? {
     value : u64 = 36
     if character >= '0' && character <= '9' {
         value = cast[u64](character) - cast[u64]('0')
@@ -44,7 +44,7 @@ MAX_U64 : u64 : 0xffff_ffff_ffff_ffff
  * @return The value; null if text is empty, has anything but digits of base, is larger than MAX_U64, or base is
  *     outside 2 to 36.
  */
-parse_unsigned :: fn(text: string, base: u64 = 10) -> u64? {
+parse_unsigned :: fn(text : string, base : u64 = 10) -> u64? {
     if text.count == 0 || base < 2 || base > 36 {
         return null
     }
@@ -71,7 +71,7 @@ parse_unsigned :: fn(text: string, base: u64 = 10) -> u64? {
  * @return The value, from the most negative i64 to the largest; null if text has no digits, anything but digits of
  *     base after the sign, a value that doesn't fit an i64, or base is outside 2 to 36.
  */
-parse_signed :: fn(text: string, base: u64 = 10) -> i64? {
+parse_signed :: fn(text : string, base : u64 = 10) -> i64? {
     negative :: starts_with(text, "-")
     digits := text
     if negative || starts_with(text, "+") {
@@ -102,7 +102,7 @@ parse_signed :: fn(text: string, base: u64 = 10) -> i64? {
  * @param text The whole text, which must be "true" or "false" exactly: lowercase, no spaces.
  * @return true or false; null for any other text.
  */
-parse_bool :: fn(text: string) -> bool? {
+parse_bool :: fn(text : string) -> bool? {
     if equal(text, "true") {
         return true
     }

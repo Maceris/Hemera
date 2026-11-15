@@ -39,16 +39,16 @@ ATAN_LO_2 : f64 : 1.39033110312309984516e-17 // 0x3c700788_7af0cbbd
 ATAN_LO_3 : f64 : 6.12323399573676603587e-17 // 0x3c91a626_33145c07
 
 /* atan's polynomial */
-ATAN_T0 : f64 : 3.33333333333329318027e-01 // 0x3fd55555_5555550d
-ATAN_T1 : f64 : -1.99999999998764832476e-01 // 0xbfc99999_9998ebc4
-ATAN_T2 : f64 : 1.42857142725034663711e-01 // 0x3fc24924_920083ff
-ATAN_T3 : f64 : -1.11111104054623557880e-01 // 0xbfbc71c6_fe231671
-ATAN_T4 : f64 : 9.09088713343650656196e-02 // 0x3fb745cd_c54c206e
-ATAN_T5 : f64 : -7.69187620504482999495e-02 // 0xbfb3b0f2_af749a6d
-ATAN_T6 : f64 : 6.66107313738753120669e-02 // 0x3fb10d66_a0d03d51
-ATAN_T7 : f64 : -5.83357013379057348645e-02 // 0xbfadde2d_52defd9a
-ATAN_T8 : f64 : 4.97687799461593236017e-02 // 0x3fa97b4b_24760deb
-ATAN_T9 : f64 : -3.65315727442169155270e-02 // 0xbfa2b444_2c6a6c2f
+ATAN_T0  : f64 : 3.33333333333329318027e-01 // 0x3fd55555_5555550d
+ATAN_T1  : f64 : -1.99999999998764832476e-01 // 0xbfc99999_9998ebc4
+ATAN_T2  : f64 : 1.42857142725034663711e-01 // 0x3fc24924_920083ff
+ATAN_T3  : f64 : -1.11111104054623557880e-01 // 0xbfbc71c6_fe231671
+ATAN_T4  : f64 : 9.09088713343650656196e-02 // 0x3fb745cd_c54c206e
+ATAN_T5  : f64 : -7.69187620504482999495e-02 // 0xbfb3b0f2_af749a6d
+ATAN_T6  : f64 : 6.66107313738753120669e-02 // 0x3fb10d66_a0d03d51
+ATAN_T7  : f64 : -5.83357013379057348645e-02 // 0xbfadde2d_52defd9a
+ATAN_T8  : f64 : 4.97687799461593236017e-02 // 0x3fa97b4b_24760deb
+ATAN_T9  : f64 : -3.65315727442169155270e-02 // 0xbfa2b444_2c6a6c2f
 ATAN_T10 : f64 : 1.62858201153657823623e-02 // 0x3f90ad3a_e322da11
 
 /**
@@ -57,7 +57,7 @@ ATAN_T10 : f64 : 1.62858201153657823623e-02 // 0x3f90ad3a_e322da11
  * @param z The square of the reduced argument.
  * @return R(z).
  */
-asin_rational_64 :: fn(z: f64) -> f64 {
+asin_rational_64 :: fn(z : f64) -> f64 {
     p :: z * (ASIN_P0 + z * (ASIN_P1 + z * (ASIN_P2 + z * (ASIN_P3 + z * (ASIN_P4 + z * ASIN_P5)))))
     q :: 1 + z * (ASIN_Q1 + z * (ASIN_Q2 + z * (ASIN_Q3 + z * ASIN_Q4)))
     return p / q
@@ -69,8 +69,8 @@ asin_rational_64 :: fn(z: f64) -> f64 {
  * @param x The sine, from -1 to 1.
  * @return The angle from -π/2 to π/2 whose sine x is, within 1 ulp; NaN beyond ±1 and for NaN.
  */
-//SPEC: fdlibm e_asin.c
-asin_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm e_asin.c
+asin_64 :: fn(x : f64) -> f64 {
     hx :: high_word(x)
     ix :: hx & 0x7fff_ffff
     if ix >= 0x3ff0_0000 {
@@ -111,8 +111,8 @@ asin_64 :: fn(x: f64) -> f64 {
  * @param x The cosine, from -1 to 1.
  * @return The angle from 0 to π whose cosine x is, within 1 ulp; NaN beyond ±1 and for NaN.
  */
-//SPEC: fdlibm e_acos.c
-acos_64 :: fn(x: f64) -> f64 {
+// SPEC: fdlibm e_acos.c
+acos_64 :: fn(x : f64) -> f64 {
     hx :: high_word(x)
     ix :: hx & 0x7fff_ffff
     if ix >= 0x3ff0_0000 {
@@ -150,8 +150,8 @@ acos_64 :: fn(x: f64) -> f64 {
  * @param x_in The tangent.
  * @return The angle from -π/2 to π/2 whose tangent x is, within 1 ulp; ±π/2 for ±infinity, NaN for NaN.
  */
-//SPEC: fdlibm s_atan.c
-atan_64 :: fn(x_in: f64) -> f64 {
+// SPEC: fdlibm s_atan.c
+atan_64 :: fn(x_in : f64) -> f64 {
     x := x_in
     hx :: high_word(x)
     ix :: hx & 0x7fff_ffff
@@ -212,8 +212,8 @@ atan_64 :: fn(x_in: f64) -> f64 {
  * @return The angle from -π to π, within 1 ulp, with the signs of zeros and infinities as C's atan2 takes them: ±0
  *     for (+x, ±0), ±π for (-x, ±0), ±π/2 for x = 0, ±π/4 and ±3π/4 for two infinities; NaN if either is NaN.
  */
-//SPEC: fdlibm e_atan2.c
-atan2_64 :: fn(y: f64, x: f64) -> f64 {
+// SPEC: fdlibm e_atan2.c
+atan2_64 :: fn(y : f64, x : f64) -> f64 {
     if x != x || y != y {
         return x + y
     }

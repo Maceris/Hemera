@@ -25,7 +25,7 @@ Line :: struct {
  * @param size The size, in pixels per em.
  * @return The scale.
  */
-scale_of :: fn(font: ptr[Font], size: f32) -> f32 {
+scale_of :: fn(font : ptr[Font], size : f32) -> f32 {
     return size / cast[f32](font.units_per_em)
 }
 
@@ -36,7 +36,7 @@ scale_of :: fn(font: ptr[Font], size: f32) -> f32 {
  * @param size The size, in pixels per em.
  * @return The line's height, in pixels.
  */
-line_height :: fn(font: ptr[Font], size: f32) -> f32 {
+line_height :: fn(font : ptr[Font], size : f32) -> f32 {
     return cast[f32](font.ascender - font.descender + font.line_gap) * scale_of(font, size)
 }
 
@@ -48,7 +48,7 @@ line_height :: fn(font: ptr[Font], size: f32) -> f32 {
  * @param text UTF-8; line breaks are measured as any other character, with the missing glyph's advance or none.
  * @return Its width in pixels: its glyphs' advances, with the kerning between each pair.
  */
-measure :: fn(font: ptr[Font], size: f32, text: u8[]) -> f32 {
+measure :: fn(font : ptr[Font], size : f32, text : u8[]) -> f32 {
     units := cast[i32](0)
     previous := cast[u32](0)
     at := cast[usize](0)
@@ -76,7 +76,7 @@ measure :: fn(font: ptr[Font], size: f32, text: u8[]) -> f32 {
  * @param width The widest a line may be, in pixels; at most one character goes on a line narrower than it.
  * @param lines Where the lines go, added to what's there.
  */
-wrap :: fn(font: ptr[Font], size: f32, text: u8[], width: f32, lines: ptr[mut Line[..]]) {
+wrap :: fn(font : ptr[Font], size : f32, text : u8[], width : f32, lines : ptr[mut Line[..]]) {
     scale :: scale_of(font, size)
     limit :: if scale > 0 { width / scale } else { cast[f32](0) }
     start := cast[usize](0)
@@ -97,7 +97,14 @@ wrap :: fn(font: ptr[Font], size: f32, text: u8[], width: f32, lines: ptr[mut Li
         step :: if length > 0 { length } else { cast[usize](1) }
         if point == 0x0a || point == 0x0d {
             end :: at
-            runtime.array_add(lines, Line.{start = start, end = trailing_end(text, start, end), width = cast[f32](trailing_units(font, text, start, end)) * scale})
+            runtime.array_add(
+                lines,
+                Line.{
+                    start = start,
+                    end = trailing_end(text, start, end),
+                    width = cast[f32](trailing_units(font, text, start, end)) * scale,
+                }
+            )
             at += step
             if point == 0x0d && at < text.count && text[at] == 0x0a {
                 at += 1
@@ -151,17 +158,24 @@ wrap :: fn(font: ptr[Font], size: f32, text: u8[], width: f32, lines: ptr[mut Li
     }
     while true
     if start < text.count || lines.count == 0 || ends_with_break(text) {
-        runtime.array_add(lines, Line.{start = start, end = trailing_end(text, start, text.count), width = cast[f32](trailing_units(font, text, start, text.count)) * scale})
+        runtime.array_add(
+            lines,
+            Line.{
+                start = start,
+                end = trailing_end(text, start, text.count),
+                width = cast[f32](trailing_units(font, text, start, text.count)) * scale,
+            }
+        )
     }
 }
 
 /** Whether text ends with a line break, so a last, empty line follows it. */
-ends_with_break :: fn(text: u8[]) -> bool {
+ends_with_break :: fn(text : u8[]) -> bool {
     return text.count > 0 && (text[text.count - 1] == 0x0a || text[text.count - 1] == 0x0d)
 }
 
 /** Where a line ends with its trailing spaces left out. */
-trailing_end :: fn(text: u8[], start: usize, end: usize) -> usize {
+trailing_end :: fn(text : u8[], start : usize, end : usize) -> usize {
     trimmed := end
     loop {
         trimmed -= 1
@@ -171,7 +185,7 @@ trailing_end :: fn(text: u8[], start: usize, end: usize) -> usize {
 }
 
 /** A line's width in design units, its trailing spaces left out. */
-trailing_units :: fn(font: ptr[Font], text: u8[], start: usize, end: usize) -> i32 {
+trailing_units :: fn(font : ptr[Font], text : u8[], start : usize, end : usize) -> i32 {
     stop :: trailing_end(text, start, end)
     units := cast[i32](0)
     previous := cast[u32](0)

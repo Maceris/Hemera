@@ -122,59 +122,59 @@ X509Verdict :: enum {
  */
 X509Certificate :: struct #scoped {
     /** The whole certificate. */
-    der: u8[],
+    der : u8[],
     /** The TBSCertificate, tag and length included: what the signature is over. */
-    tbs: u8[],
+    tbs : u8[],
     /** The version: 1, 2 or 3. */
-    version: i64,
+    version : i64,
     /** The serial number's contents, as DER writes the INTEGER. */
-    serial: u8[],
+    serial : u8[],
     /** How it's signed. */
-    signature_algorithm: X509Signature,
+    signature_algorithm : X509Signature,
     /** For RSA-PSS, the salt length the parameters give, in bytes; 0 otherwise. */
-    pss_salt: usize,
+    pss_salt : usize,
     /** The issuer's Name, its whole DER. */
-    issuer: u8[],
+    issuer : u8[],
     /** The subject's Name, its whole DER. */
-    subject: u8[],
+    subject : u8[],
     /** The start of the validity period, in seconds since 1970-01-01T00:00:00Z. */
-    not_before: i64,
+    not_before : i64,
     /** The end of the validity period, in the same seconds, inclusive. */
-    not_after: i64,
+    not_after : i64,
     /** The SubjectPublicKeyInfo's whole DER. */
-    public_key_info: u8[],
+    public_key_info : u8[],
     /** The kind of public key. */
-    key_kind: X509KeyKind,
+    key_kind : X509KeyKind,
     /** The public key, as key_kind says to read it; empty when it's UNSUPPORTED. */
-    key: u8[],
+    key : u8[],
     /** The signature's bytes: an RSA signature, an ECDSA-Sig-Value's DER, or Ed25519's 64 bytes. */
-    signature: u8[],
+    signature : u8[],
     /** Whether there's a basic constraints extension. */
-    has_basic_constraints: bool,
+    has_basic_constraints : bool,
     /** Whether basic constraints say it's a CA. */
-    is_ca: bool,
+    is_ca : bool,
     /** Basic constraints' path length: how many CAs, not counting self-issued ones, may come below it; -1 for none. */
-    path_length: i64,
+    path_length : i64,
     /** Whether there's a key usage extension. */
-    has_key_usage: bool,
+    has_key_usage : bool,
     /** Key usage's bits, digitalSignature (bit 0) as 0x8000, keyCertSign (bit 5) as 0x0400. */
-    key_usage: u16,
+    key_usage : u16,
     /** Whether there's an extended key usage extension. */
-    has_extended_key_usage: bool,
+    has_extended_key_usage : bool,
     /** Whether extended key usage allows id-kp-serverAuth. */
-    server_auth: bool,
+    server_auth : bool,
     /** Whether extended key usage allows id-kp-clientAuth. */
-    client_auth: bool,
+    client_auth : bool,
     /** Whether extended key usage has anyExtendedKeyUsage. */
-    any_purpose: bool,
+    any_purpose : bool,
     /** The subject alternative names: GeneralNames' contents, empty when there's no extension. */
-    alternative_names: u8[],
+    alternative_names : u8[],
     /** Whether there's a subject alternative name extension. */
-    has_alternative_names: bool,
+    has_alternative_names : bool,
     /** Name constraints' permitted subtrees: GeneralSubtrees' contents; empty for none. */
-    permitted: u8[],
+    permitted : u8[],
     /** Name constraints' excluded subtrees, the same way; empty for none. */
-    excluded: u8[],
+    excluded : u8[],
 }
 
 /** keyCertSign's bit in X509Certificate.key_usage. */
@@ -228,7 +228,7 @@ OID_ANY_PURPOSE :: u8.[0x55, 0x1d, 0x25, 0x00]
  * @param element The AlgorithmIdentifier.
  * @return The hash; or null for another, or for malformed DER.
  */
-x509_hash_identifier :: fn(element: DerElement) -> RsaHash? {
+x509_hash_identifier :: fn(element : DerElement) -> RsaHash? {
     if element.tag != DER_SEQUENCE {
         return null
     }
@@ -258,7 +258,7 @@ x509_hash_identifier :: fn(element: DerElement) -> RsaHash? {
  * @param element The tagged element.
  * @return What it wraps; or null when that's malformed, or more than one element.
  */
-x509_explicit :: fn(element: DerElement) -> DerElement? {
+x509_explicit :: fn(element : DerElement) -> DerElement? {
     inside := der_next(element.contents) or_return null
     if inside.rest.count != 0 {
         return null
@@ -275,7 +275,7 @@ x509_explicit :: fn(element: DerElement) -> DerElement? {
  * @return The signature algorithm; or null for SHA-1's defaults, another hash, a different hash for MGF1, or malformed
  *     DER.
  */
-x509_pss_parameters :: fn(element: DerElement, salt: ptr[mut usize]) -> X509Signature? {
+x509_pss_parameters :: fn(element : DerElement, salt : ptr[mut usize]) -> X509Signature? {
     if element.tag != DER_SEQUENCE {
         return null
     }
@@ -320,7 +320,7 @@ x509_pss_parameters :: fn(element: DerElement, salt: ptr[mut usize]) -> X509Sign
  * @return The algorithm; or null for one this package doesn't verify, or malformed DER: RSA PKCS #1 v1.5's
  *     parameters have to be NULL or left out, ECDSA's and Ed25519's left out.
  */
-x509_signature_algorithm :: fn(element: DerElement, salt: ptr[mut usize]) -> X509Signature? {
+x509_signature_algorithm :: fn(element : DerElement, salt : ptr[mut usize]) -> X509Signature? {
     salt^ = 0
     if element.tag != DER_SEQUENCE {
         return null
@@ -374,10 +374,12 @@ x509_signature_algorithm :: fn(element: DerElement, salt: ptr[mut usize]) -> X50
 /** A public key read from a SubjectPublicKeyInfo: its kind, and its bytes, a view of what it was read from. */
 X509PublicKey :: struct {
     /** The kind of key. */
-    kind: X509KeyKind,
-    /** The key, as kind says to read it: PKCS #1's RSAPublicKey, SEC 1's point, or Ed25519's 32 bytes; empty for an
-     * UNSUPPORTED key. */
-    key: u8[],
+    kind : X509KeyKind,
+    /**
+     * The key, as kind says to read it: PKCS #1's RSAPublicKey, SEC 1's point, or Ed25519's 32 bytes; empty for an
+     * UNSUPPORTED key.
+     */
+    key : u8[],
 }
 
 /**
@@ -390,7 +392,7 @@ X509PublicKey :: struct {
  *     malformed DER, a P-256 key that isn't a point on the curve, an RSA key that isn't an RSAPublicKey, or an Ed25519
  *     key not of 32 bytes.
  */
-x509_public_key :: fn(der: u8[]) -> X509PublicKey? {
+x509_public_key :: fn(der : u8[]) -> X509PublicKey? {
     info := der_expect(der, DER_SEQUENCE) or_return null
     if info.rest.count != 0 {
         return null
@@ -449,7 +451,7 @@ x509_public_key :: fn(der: u8[]) -> X509PublicKey? {
  * @param der The RSAPublicKey's DER, and nothing after it, as an RSA SubjectPublicKeyInfo's BIT STRING holds.
  * @return The key; or null for malformed DER, a negative number, or numbers rsa_public_key refuses.
  */
-rsa_public_key_from_der :: fn(der: u8[]) -> RsaPublicKey? {
+rsa_public_key_from_der :: fn(der : u8[]) -> RsaPublicKey? {
     sequence := der_expect(der, DER_SEQUENCE) or_return null
     if sequence.rest.count != 0 {
         return null
@@ -471,7 +473,7 @@ rsa_public_key_from_der :: fn(der: u8[]) -> RsaPublicKey? {
  * @param pair Where r then s go, each right-aligned in half of it: 64 bytes for P-256, 96 for P-384, at most 132.
  * @return Whether it's well-formed DER of two numbers, 0 or more, each fitting half of pair.
  */
-ecdsa_signature_from_der :: fn(der: u8[], pair: mut u8[]) -> bool {
+ecdsa_signature_from_der :: fn(der : u8[], pair : mut u8[]) -> bool {
     sequence := der_expect(der, DER_SEQUENCE) or_return false
     if sequence.rest.count != 0 || pair.count > 132 {
         return false
@@ -509,7 +511,7 @@ ecdsa_signature_from_der :: fn(der: u8[], pair: mut u8[]) -> bool {
  * @return The signature as r then s, 32 bytes each; or null for malformed DER, a negative number, or one over 32
  *     bytes. Whether r and s are from 1 to n - 1 is p256_ecdsa_verify's to check.
  */
-p256_signature_from_der :: fn(der: u8[]) -> P256Signature? {
+p256_signature_from_der :: fn(der : u8[]) -> P256Signature? {
     signature : P256Signature
     if !ecdsa_signature_from_der(der, signature[0..<64]) {
         return null
@@ -524,7 +526,7 @@ p256_signature_from_der :: fn(der: u8[]) -> P256Signature? {
  * @return The signature as r then s, 48 bytes each; or null for malformed DER, a negative number, or one over 48
  *     bytes. Whether r and s are from 1 to n - 1 is p384_ecdsa_verify's to check.
  */
-p384_signature_from_der :: fn(der: u8[]) -> P384Signature? {
+p384_signature_from_der :: fn(der : u8[]) -> P384Signature? {
     signature : P384Signature
     if !ecdsa_signature_from_der(der, signature[0..<96]) {
         return null
@@ -538,7 +540,7 @@ p384_signature_from_der :: fn(der: u8[]) -> P384Signature? {
  * @param element The Name.
  * @return Whether it's well formed; an empty SEQUENCE is.
  */
-x509_name_well_formed :: fn(element: DerElement) -> bool {
+x509_name_well_formed :: fn(element : DerElement) -> bool {
     if element.tag != DER_SEQUENCE {
         return false
     }
@@ -573,7 +575,7 @@ x509_name_well_formed :: fn(element: DerElement) -> bool {
  * @param contents GeneralNames' contents: one or more GeneralNames one after another.
  * @return Whether they're well formed, at least one of them.
  */
-x509_general_names_well_formed :: fn(contents: u8[]) -> bool {
+x509_general_names_well_formed :: fn(contents : u8[]) -> bool {
     names := contents
     if names.count == 0 {
         return false
@@ -602,23 +604,23 @@ x509_general_names_well_formed :: fn(contents: u8[]) -> bool {
 /** The extensions of a certificate that path validation uses, read from their DER. */
 X509Extensions :: struct {
     /** Whether there's a basic constraints extension. */
-    has_basic_constraints: bool,
+    has_basic_constraints : bool,
     /** Whether basic constraints say it's a CA. */
-    is_ca: bool,
+    is_ca : bool,
     /** Basic constraints' path length, or -1 for none. */
-    path_length: i64,
+    path_length : i64,
     /** Whether there's a key usage extension. */
-    has_key_usage: bool,
+    has_key_usage : bool,
     /** Key usage's bits, as X509Certificate.key_usage holds them. */
-    key_usage: u16,
+    key_usage : u16,
     /** Whether there's an extended key usage extension. */
-    has_extended_key_usage: bool,
+    has_extended_key_usage : bool,
     /** Whether extended key usage allows id-kp-serverAuth. */
-    server_auth: bool,
+    server_auth : bool,
     /** Whether extended key usage allows id-kp-clientAuth. */
-    client_auth: bool,
+    client_auth : bool,
     /** Whether extended key usage has anyExtendedKeyUsage. */
-    any_purpose: bool,
+    any_purpose : bool,
 }
 
 /**
@@ -631,7 +633,7 @@ X509Extensions :: struct {
  * @param value The extnValue OCTET STRING's contents: the extension's own DER.
  * @return Whether it's well formed and, if critical, understood.
  */
-x509_extension :: fn(found: ptr[mut X509Extensions], oid: u8[], critical: bool, value: u8[]) -> bool {
+x509_extension :: fn(found : ptr[mut X509Extensions], oid : u8[], critical : bool, value : u8[]) -> bool {
     if oid.count != 3 || oid[0] != 0x55 || oid[1] != 0x1d {
         // Not one of id-ce's: authority information access, signed certificate timestamps and the like
         return !critical
@@ -720,8 +722,10 @@ x509_extension :: fn(found: ptr[mut X509Extensions], oid: u8[], critical: bool, 
             }
             return fields.count == 0
         }
-        // Subject and authority key identifiers, and certificate policies (not processed, as browsers don't), which
-        // may be critical
+        /*
+         * Subject and authority key identifiers, and certificate policies (not processed, as browsers don't), which
+         * may be critical
+         */
         case 0x0e => return true
         case 0x23 => return true
         case 0x20 => return true
@@ -736,7 +740,7 @@ x509_extension :: fn(found: ptr[mut X509Extensions], oid: u8[], critical: bool, 
  * @param number The id-ce extension's last arc: 0x11 for subject alternative names, 0x1e for name constraints.
  * @return Its value's SEQUENCE's contents; or null when it isn't there or is malformed.
  */
-x509_find_extension :: fn(extensions: u8[], number: u8) -> u8[]? {
+x509_find_extension :: fn(extensions : u8[], number : u8) -> u8[]? {
     list := extensions
     loop {
         extension := der_expect(list, DER_SEQUENCE) or_return null
@@ -764,7 +768,7 @@ x509_find_extension :: fn(extensions: u8[], number: u8) -> u8[]? {
  * @param tag DER_CONSTRUCTED + 0 for the permitted subtrees, DER_CONSTRUCTED + 1 for the excluded ones.
  * @return The GeneralSubtrees' contents; empty when there are none of that kind.
  */
-x509_subtrees :: fn(constraints: u8[], tag: u8) -> u8[] {
+x509_subtrees :: fn(constraints : u8[], tag : u8) -> u8[] {
     fields := constraints
     loop {
         field := der_next(fields) or_return constraints[0..<0]
@@ -787,7 +791,7 @@ x509_subtrees :: fn(constraints: u8[], tag: u8) -> u8[] {
  *     or 3, v1 not written out), a public key that's malformed, an extension given twice, or a critical one it
  *     doesn't understand.
  */
-x509_parse :: fn(der: u8[]) -> X509Certificate? {
+x509_parse :: fn(der : u8[]) -> X509Certificate? {
     certificate := X509Certificate.{der = der, version = 1, path_length = -1}
     whole := der_expect(der, DER_SEQUENCE) or_return null
     tbs := der_expect(whole.contents, DER_SEQUENCE) or_return null
@@ -855,7 +859,10 @@ x509_parse :: fn(der: u8[]) -> X509Certificate? {
     }
     extensions_field := der_expect(fields, DER_CONSTRUCTED + 3) or_return null
     extensions := x509_explicit(extensions_field) or_return null
-    if certificate.version != 3 || extensions_field.rest.count != 0 || extensions.tag != DER_SEQUENCE || extensions.contents.count == 0 {
+    if certificate.version != 3
+        || extensions_field.rest.count != 0
+        || extensions.tag != DER_SEQUENCE
+        || extensions.contents.count == 0 {
         return null
     }
     found := X509Extensions.{path_length = -1}
@@ -939,7 +946,14 @@ x509_parse :: fn(der: u8[]) -> X509Certificate? {
  *     has fewer than X509_FEWEST_RSA_BITS bits; BAD_SIGNATURE when the signature isn't the key's on the message, or
  *     is malformed.
  */
-x509_verify_signature :: fn(kind: X509KeyKind, key: u8[], algorithm: X509Signature, salt: usize, message: u8[], signature: u8[]) -> X509Verdict {
+x509_verify_signature :: fn(
+    kind : X509KeyKind,
+    key : u8[],
+    algorithm : X509Signature,
+    salt : usize,
+    message : u8[],
+    signature : u8[]
+) -> X509Verdict {
     hash := RsaHash.SHA256
     if algorithm == .RSA_PKCS1_SHA384 || algorithm == .RSA_PSS_SHA384 || algorithm == .ECDSA_SHA384 {
         hash = .SHA384
@@ -1015,7 +1029,7 @@ x509_verify_signature :: fn(kind: X509KeyKind, key: u8[], algorithm: X509Signatu
  * @param purpose The purpose.
  * @return True when it has no extended key usage, has anyExtendedKeyUsage, or names the purpose; true for ANY.
  */
-x509_allows :: fn(certificate: ptr[X509Certificate], purpose: X509Purpose) -> bool {
+x509_allows :: fn(certificate : ptr[X509Certificate], purpose : X509Purpose) -> bool {
     if !certificate.has_extended_key_usage || certificate.any_purpose || purpose == .ANY {
         return true
     }
@@ -1031,7 +1045,7 @@ x509_allows :: fn(certificate: ptr[X509Certificate], purpose: X509Purpose) -> bo
  * @param byte Any byte.
  * @return Its lowercase letter for A to Z; any other byte as it is.
  */
-x509_lower :: fn(byte: u8) -> u8 {
+x509_lower :: fn(byte : u8) -> u8 {
     if byte >= cast[u8]('A') && byte <= cast[u8]('Z') {
         return byte + 32
     }
@@ -1045,7 +1059,7 @@ x509_lower :: fn(byte: u8) -> u8 {
  * @param b The other.
  * @return Whether they have the same count and the same bytes, a letter's two cases the same.
  */
-x509_same_ignoring_case :: fn(a: u8[], b: u8[]) -> bool {
+x509_same_ignoring_case :: fn(a : u8[], b : u8[]) -> bool {
     if a.count != b.count {
         return false
     }
@@ -1065,7 +1079,7 @@ x509_same_ignoring_case :: fn(a: u8[], b: u8[]) -> bool {
  * @param constraint The constraint, like example.com or .example.com.
  * @return Whether it's within, ignoring letters' case.
  */
-x509_dns_within :: fn(name: u8[], constraint: u8[]) -> bool {
+x509_dns_within :: fn(name : u8[], constraint : u8[]) -> bool {
     if constraint.count == 0 {
         return true
     }
@@ -1095,7 +1109,7 @@ x509_dns_within :: fn(name: u8[], constraint: u8[]) -> bool {
  * @param constraint The constraint, like bad.example.com or .bad.example.com.
  * @return Whether the constraint is under the wildcard's domain, ignoring letters' case.
  */
-x509_wildcard_reaches :: fn(name: u8[], constraint: u8[]) -> bool {
+x509_wildcard_reaches :: fn(name : u8[], constraint : u8[]) -> bool {
     if name.count < 3 || name[0] != cast[u8]('*') || name[1] != cast[u8]('.') {
         return false
     }
@@ -1114,7 +1128,7 @@ x509_wildcard_reaches :: fn(name: u8[], constraint: u8[]) -> bool {
  * @param b The other.
  * @return Whether they're the same.
  */
-x509_mailbox_same :: fn(a: u8[], b: u8[]) -> bool {
+x509_mailbox_same :: fn(a : u8[], b : u8[]) -> bool {
     if a.count != b.count {
         return false
     }
@@ -1141,7 +1155,7 @@ x509_mailbox_same :: fn(a: u8[], b: u8[]) -> bool {
  * @param constraint The constraint.
  * @return Whether it's within: the local part compared exactly, the host ignoring letters' case.
  */
-x509_email_within :: fn(address: u8[], constraint: u8[]) -> bool {
+x509_email_within :: fn(address : u8[], constraint : u8[]) -> bool {
     at : usize = address.count
     for byte, i in address {
         if byte == cast[u8]('@') {
@@ -1171,7 +1185,7 @@ x509_email_within :: fn(address: u8[], constraint: u8[]) -> bool {
  * @param constraint The constraint, twice the address's bytes: the network, then the mask.
  * @return Whether the address, masked, is the network; false when the sizes don't go together.
  */
-x509_ip_within :: fn(address: u8[], constraint: u8[]) -> bool {
+x509_ip_within :: fn(address : u8[], constraint : u8[]) -> bool {
     if constraint.count != 2 * address.count || constraint.count == 0 {
         return false
     }
@@ -1192,7 +1206,7 @@ x509_ip_within :: fn(address: u8[], constraint: u8[]) -> bool {
  * @param constraint The constraint's Name's whole DER.
  * @return Whether the constraint's RDNs begin the name's.
  */
-x509_directory_within :: fn(name: u8[], constraint: u8[]) -> bool {
+x509_directory_within :: fn(name : u8[], constraint : u8[]) -> bool {
     name_sequence := der_expect(name, DER_SEQUENCE) or_return false
     constraint_sequence := der_expect(constraint, DER_SEQUENCE) or_return false
     names := name_sequence.contents
@@ -1218,7 +1232,7 @@ x509_directory_within :: fn(name: u8[], constraint: u8[]) -> bool {
  * @param base The subtree's base GeneralName.
  * @return Whether the base is of the same kind and the name is within it.
  */
-x509_within :: fn(tag: u8, name: u8[], base: DerElement) -> bool {
+x509_within :: fn(tag : u8, name : u8[], base : DerElement) -> bool {
     if base.tag != tag {
         return false
     }
@@ -1247,7 +1261,7 @@ x509_within :: fn(tag: u8, name: u8[], base: DerElement) -> bool {
  * @param name The name's contents, or a directoryName's Name's whole DER.
  * @return Whether the name is allowed.
  */
-x509_name_allowed :: fn(ca: ptr[X509Certificate], tag: u8, name: u8[]) -> bool {
+x509_name_allowed :: fn(ca : ptr[X509Certificate], tag : u8, name : u8[]) -> bool {
     excluded := ca.excluded
     loop {
         tree := der_next(excluded) or_return false
@@ -1286,7 +1300,7 @@ x509_name_allowed :: fn(ca: ptr[X509Certificate], tag: u8, name: u8[]) -> bool {
  * @param tag The kind's GeneralName tag.
  * @return Whether a subtree's base has that tag.
  */
-x509_subtrees_have :: fn(subtrees: u8[], tag: u8) -> bool {
+x509_subtrees_have :: fn(subtrees : u8[], tag : u8) -> bool {
     trees := subtrees
     loop {
         tree := der_next(trees) or_return false
@@ -1309,7 +1323,7 @@ x509_subtrees_have :: fn(subtrees: u8[], tag: u8) -> bool {
  * @param certificate The certificate below it.
  * @return Whether every name is allowed.
  */
-x509_names_allowed :: fn(ca: ptr[X509Certificate], certificate: ptr[X509Certificate]) -> bool {
+x509_names_allowed :: fn(ca : ptr[X509Certificate], certificate : ptr[X509Certificate]) -> bool {
     if ca.permitted.count == 0 && ca.excluded.count == 0 {
         return true
     }
@@ -1343,31 +1357,31 @@ x509_names_allowed :: fn(ca: ptr[X509Certificate], certificate: ptr[X509Certific
 /** The certificates of a chain, read, and how the path through them is being built. */
 X509Path :: struct #scoped {
     /** The chain's certificates, the leaf first, as they came. */
-    certificates: X509Certificate[10],
+    certificates : X509Certificate[10],
     /** How many there are, 1 to X509_MOST_CERTIFICATES. */
-    count: usize,
+    count : usize,
     /** The path so far: indices into certificates, the leaf's first, each one's issuer after it. */
-    path: usize[10],
+    path : usize[10],
     /** How many certificates the path has so far. */
-    length: usize,
+    length : usize,
     /** The trust anchors, DER certificates one after another. */
-    anchors: u8[],
+    anchors : u8[],
     /** The time to check validity at, in seconds since 1970-01-01T00:00:00Z. */
-    now: i64,
+    now : i64,
     /** What the chain is validated for. */
-    purpose: X509Purpose,
+    purpose : X509Purpose,
     /** The most telling reason a path was refused, for when none is found. */
-    reason: X509Verdict,
+    reason : X509Verdict,
     /** The steps and signature checks the search has taken, against X509_MOST_STEPS and X509_MOST_SIGNATURE_CHECKS. */
-    steps: usize,
-    checks: usize,
+    steps : usize,
+    checks : usize,
     /** Whether either ran out, which ends the search, TOO_COMPLEX its reason. */
-    exhausted: bool,
+    exhausted : bool,
     /**
      * Each pair's signature checked, by the issuer's index times X509_MOST_CERTIFICATES plus the subject's: 0 not yet,
      * 1 valid, 2 not; so a pair the search comes to again isn't checked again.
      */
-    signed: u8[100],
+    signed : u8[100],
 }
 
 /**
@@ -1377,7 +1391,7 @@ X509Path :: struct #scoped {
  * @param signature True for a signature check, false for a step.
  * @return False once the budget's run out, the search exhausted, its reason TOO_COMPLEX.
  */
-x509_spend :: fn(state: ptr[mut X509Path], signature: bool) -> bool {
+x509_spend :: fn(state : ptr[mut X509Path], signature : bool) -> bool {
     if state.exhausted {
         return false
     }
@@ -1401,7 +1415,7 @@ x509_spend :: fn(state: ptr[mut X509Path], signature: bool) -> bool {
  * @param state The validation, whose reason is updated.
  * @param verdict Why a candidate was refused.
  */
-x509_note :: fn(state: ptr[mut X509Path], verdict: X509Verdict) {
+x509_note :: fn(state : ptr[mut X509Path], verdict : X509Verdict) {
     if state.reason == .UNKNOWN_ISSUER || state.reason == .VALID {
         state.reason = verdict
     }
@@ -1413,7 +1427,7 @@ x509_note :: fn(state: ptr[mut X509Path], verdict: X509Verdict) {
  * @param certificate The certificate.
  * @return Whether they're the same DER.
  */
-x509_self_issued :: fn(certificate: ptr[X509Certificate]) -> bool {
+x509_self_issued :: fn(certificate : ptr[X509Certificate]) -> bool {
     return der_same(certificate.issuer, certificate.subject)
 }
 
@@ -1425,7 +1439,7 @@ x509_self_issued :: fn(certificate: ptr[X509Certificate]) -> bool {
  * @param anchor The trust anchor the path ends at.
  * @return VALID, or why the path is refused.
  */
-x509_check_path :: fn(state: ptr[X509Path], anchor: ptr[X509Certificate]) -> X509Verdict {
+x509_check_path :: fn(state : ptr[X509Path], anchor : ptr[X509Certificate]) -> X509Verdict {
     length := state.length % (X509_MOST_CERTIFICATES + 1)
     // Each certificate, then the anchor
     for step in 0..<length + 1 {
@@ -1440,14 +1454,18 @@ x509_check_path :: fn(state: ptr[X509Path], anchor: ptr[X509Certificate]) -> X50
             return .PURPOSE
         }
         if step == 0 {
-            if certificate.has_key_usage && (certificate.key_usage & X509_DIGITAL_SIGNATURE) == 0 && state.purpose != .ANY {
+            if certificate.has_key_usage
+                && (certificate.key_usage & X509_DIGITAL_SIGNATURE) == 0
+                && state.purpose != .ANY {
                 return .KEY_USAGE
             }
             continue
         }
         // An issuer: a CA, which a version 1 anchor is taken to be
         v1_anchor := step == length && certificate.version == 1
-        if !v1_anchor && (!certificate.is_ca || (certificate.has_key_usage && (certificate.key_usage & X509_KEY_CERT_SIGN) == 0)) {
+        if !v1_anchor
+            && (!certificate.is_ca
+                || (certificate.has_key_usage && (certificate.key_usage & X509_KEY_CERT_SIGN) == 0)) {
             return .NOT_A_CA
         }
         // CAs below it that aren't self-issued, the leaf not counted
@@ -1485,7 +1503,7 @@ x509_check_path :: fn(state: ptr[X509Path], anchor: ptr[X509Certificate]) -> X50
  * @param state The validation, its path at least the leaf; certificates are added to it and taken off again.
  * @return Whether a path to an anchor was found that holds every check.
  */
-x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
+x509_extend :: fn(state : ptr[mut X509Path]) -> bool {
     length := state.length % (X509_MOST_CERTIFICATES + 1)
     if length == 0 || !x509_spend(state, false) {
         return false
@@ -1502,8 +1520,14 @@ x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
                     if !x509_spend(state, true) {
                         return false
                     }
-                    signed := x509_verify_signature(anchor.key_kind, anchor.key, last.signature_algorithm, last.pss_salt, last.tbs,
-                        last.signature)
+                    signed := x509_verify_signature(
+                        anchor.key_kind,
+                        anchor.key,
+                        last.signature_algorithm,
+                        last.pss_salt,
+                        last.tbs,
+                        last.signature
+                    )
                     if signed != .VALID {
                         x509_note(state, signed)
                     }
@@ -1541,8 +1565,14 @@ x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
                 if !x509_spend(state, true) {
                     return false
                 }
-                signed = x509_verify_signature(candidate.key_kind, candidate.key, last.signature_algorithm, last.pss_salt, last.tbs,
-                    last.signature)
+                signed = x509_verify_signature(
+                    candidate.key_kind,
+                    candidate.key,
+                    last.signature_algorithm,
+                    last.pss_salt,
+                    last.tbs,
+                    last.signature
+                )
                 state.signed[pair] = if signed == .VALID { cast[u8](1) } else { cast[u8](2) }
             }
             if signed != .VALID {
@@ -1579,7 +1609,7 @@ x509_extend :: fn(state: ptr[mut X509Path]) -> bool {
  *     didn't, UNKNOWN_ISSUER when no issuer was found at all. The leaf's names aren't checked against a host: see
  *     x509_matches_host.
  */
-x509_verify_chain :: fn(chain: u8[], anchors: u8[], now: i64, purpose: X509Purpose) -> X509Verdict {
+x509_verify_chain :: fn(chain : u8[], anchors : u8[], now : i64, purpose : X509Purpose) -> X509Verdict {
     state := X509Path.{anchors = anchors, now = now, purpose = purpose, reason = .UNKNOWN_ISSUER}
     rest := chain
     if rest.count == 0 {
@@ -1610,7 +1640,7 @@ x509_verify_chain :: fn(chain: u8[], anchors: u8[], now: i64, purpose: X509Purpo
  * @param address Where its four bytes go.
  * @return Whether it's one.
  */
-x509_ipv4 :: fn(text: u8[], address: ptr[mut u8[16]]) -> bool {
+x509_ipv4 :: fn(text : u8[], address : ptr[mut u8[16]]) -> bool {
     part : usize = 0
     value : u32 = 0
     digits : usize = 0
@@ -1653,7 +1683,7 @@ x509_ipv4 :: fn(text: u8[], address: ptr[mut u8[16]]) -> bool {
  * @param address Where its 16 bytes go.
  * @return Whether it's one.
  */
-x509_ipv6 :: fn(text: u8[], address: ptr[mut u8[16]]) -> bool {
+x509_ipv6 :: fn(text : u8[], address : ptr[mut u8[16]]) -> bool {
     groups : u16[8]
     count : usize = 0
     gap : usize = 9
@@ -1759,7 +1789,7 @@ x509_ipv6 :: fn(text: u8[], address: ptr[mut u8[16]]) -> bool {
  * @param name The certificate's dNSName.
  * @return Whether it matches; a * anywhere but as the whole first label, or one over a single label, never does.
  */
-x509_dns_matches :: fn(host: u8[], name: u8[]) -> bool {
+x509_dns_matches :: fn(host : u8[], name : u8[]) -> bool {
     if name.count >= 2 && name[0] == cast[u8]('*') && name[1] == cast[u8]('.') {
         rest := name[1..<name.count]
         // The rest has to have a dot of its own, so *.com matches nothing
@@ -1801,7 +1831,7 @@ x509_dns_matches :: fn(host: u8[], name: u8[]) -> bool {
  *     IPv6 one, without brackets.
  * @return Whether one of its subject alternative names matches; false when it has none, or the host is empty.
  */
-x509_matches_host :: fn(certificate: ptr[X509Certificate], host: string) -> bool {
+x509_matches_host :: fn(certificate : ptr[X509Certificate], host : string) -> bool {
     text := bit_cast[u8[]](host)
     if text.count > 0 && text[text.count - 1] == cast[u8]('.') {
         text = text[0..<text.count - 1]

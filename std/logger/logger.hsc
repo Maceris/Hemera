@@ -65,7 +65,7 @@ LoggerBlock :: struct {
  *     no context uses it. Never null: if it can't be allocated, context.assertion_handler is called, as runtime.new
  *     does.
  */
-create :: fn(options: Options, allocator := context.allocator) -> ptr[mut runtime.Logger] {
+create :: fn(options : Options, allocator := context.allocator) -> ptr[mut runtime.Logger] {
     block :: runtime.new(LoggerBlock, allocator)
     block.options = options
     block.logger = runtime.Logger.{
@@ -87,7 +87,7 @@ create :: fn(options: Options, allocator := context.allocator) -> ptr[mut runtim
  * @param logger The logger, from create, which no context may still use: it's invalid afterwards.
  * @param allocator The allocator create was given.
  */
-destroy :: fn(logger: ptr[runtime.Logger], allocator := context.allocator) {
+destroy :: fn(logger : ptr[runtime.Logger], allocator := context.allocator) {
     runtime.free(cast[ptr[LoggerBlock]](cast[rawptr](logger)), allocator)
 }
 
@@ -98,7 +98,7 @@ destroy :: fn(logger: ptr[runtime.Logger], allocator := context.allocator) {
  * @param params The values for the message.
  * @param location Where the message was logged from, for the location and function options.
  */
-log_trace : runtime.LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+log_trace : runtime.LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     log_line(.TRACE, "trace", format_string, params, location)
 }
 
@@ -109,7 +109,7 @@ log_trace : runtime.LogFunction : fn(format_string: string, params: any..., loca
  * @param params The values for the message.
  * @param location Where the message was logged from, for the location and function options.
  */
-log_debug : runtime.LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+log_debug : runtime.LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     log_line(.DEBUG, "debug", format_string, params, location)
 }
 
@@ -120,7 +120,7 @@ log_debug : runtime.LogFunction : fn(format_string: string, params: any..., loca
  * @param params The values for the message.
  * @param location Where the message was logged from, for the location and function options.
  */
-log_info : runtime.LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+log_info : runtime.LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     log_line(.INFO, "info", format_string, params, location)
 }
 
@@ -131,7 +131,7 @@ log_info : runtime.LogFunction : fn(format_string: string, params: any..., locat
  * @param params The values for the message.
  * @param location Where the message was logged from, for the location and function options.
  */
-log_warn : runtime.LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+log_warn : runtime.LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     log_line(.WARN, "warn", format_string, params, location)
 }
 
@@ -142,7 +142,7 @@ log_warn : runtime.LogFunction : fn(format_string: string, params: any..., locat
  * @param params The values for the message.
  * @param location Where the message was logged from, for the location and function options.
  */
-log_error : runtime.LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+log_error : runtime.LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     log_line(.ERROR, "error", format_string, params, location)
 }
 
@@ -153,7 +153,7 @@ log_error : runtime.LogFunction : fn(format_string: string, params: any..., loca
  * @param params The values for the message.
  * @param location Where the message was logged from, for the location and function options.
  */
-log_fatal : runtime.LogFunction : fn(format_string: string, params: any..., location := #caller_location) {
+log_fatal : runtime.LogFunction : fn(format_string : string, params : any..., location := #caller_location) {
     log_line(.FATAL, "fatal", format_string, params, location)
 }
 
@@ -164,7 +164,7 @@ log_fatal : runtime.LogFunction : fn(format_string: string, params: any..., loca
  * @return A view of path's bytes, good while they are: the whole path when it has no separator; "" when it ends with
  *     one.
  */
-file_name :: fn(path: string) -> string {
+file_name :: fn(path : string) -> string {
     start : usize = 0
     for character, index in path {
         if character == '/' || character == '\\' {
@@ -186,7 +186,13 @@ file_name :: fn(path: string) -> string {
  * @param params The values for the message.
  * @param location Where the message was logged from.
  */
-log_line :: fn(level: runtime.LogLevel, label: string, format_string: string, params: any[], location: runtime.SourceCodeLocation) {
+log_line :: fn(
+    level : runtime.LogLevel,
+    label : string,
+    format_string : string,
+    params : any[],
+    location : runtime.SourceCodeLocation
+) {
     if cast[int](level) < cast[int](context.log_level) {
         return void
     }

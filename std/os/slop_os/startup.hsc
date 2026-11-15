@@ -174,7 +174,7 @@ startup_block :: fn() -> ptr[StartupBlock] #no_context {
  * @param block The block, as startup_block gives it; not null.
  * @return Its grant_count grants, in the block's memory, so good as long as it is; empty if there are none.
  */
-grants_of :: fn(block: ptr[StartupBlock]) -> Grant[] {
+grants_of :: fn(block : ptr[StartupBlock]) -> Grant[] {
     return view_of(cast[ptr[Grant]](cast[u64](block) + block.grants), cast[usize](block.grant_count))
 }
 
@@ -185,7 +185,7 @@ grants_of :: fn(block: ptr[StartupBlock]) -> Grant[] {
  * @return The label's bytes up to its first zero, or all GRANT_LABEL_SIZE of them; a view of the grant's own bytes,
  *     not a copy, good as long as the grant is.
  */
-label_of :: fn(grant: ptr[Grant]) -> string {
+label_of :: fn(grant : ptr[Grant]) -> string {
     count : usize = 0
     for byte in grant.label {
         if byte == 0 {
@@ -204,7 +204,7 @@ label_of :: fn(grant: ptr[Grant]) -> string {
  * @param kind The kind of object the grant's handle has to be to; a grant of the label but another kind isn't found.
  * @return The first such grant's handle, which is the process's, not a copy; null if there's none.
  */
-find_grant :: fn(block: ptr[StartupBlock], label: string, kind: ObjectKind) -> Handle? {
+find_grant :: fn(block : ptr[StartupBlock], label : string, kind : ObjectKind) -> Handle? {
     for &grant in grants_of(block) {
         if grant.kind == kind && label_of(grant) == label {
             return grant.handle

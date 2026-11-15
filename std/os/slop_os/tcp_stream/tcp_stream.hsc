@@ -105,7 +105,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return True: each says where things are, rather than what to do once more, but Abort, which can't be undone anyway.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return true
 }
 
@@ -118,7 +118,10 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  * @param b The other.
  * @return True if every field is.
  */
-same_progress :: fn(a: Progress, b: Progress) -> bool {
-    return a.delivered == b.delivered && a.acknowledged == b.acknowledged && a.connected == b.connected
-        && a.peer_finished == b.peer_finished && a.ending == b.ending
+same_progress :: fn(a : Progress, b : Progress) -> bool {
+    return a.delivered == b.delivered
+        && a.acknowledged == b.acknowledged
+        && a.connected == b.connected
+        && a.peer_finished == b.peer_finished
+        && a.ending == b.ending
 }

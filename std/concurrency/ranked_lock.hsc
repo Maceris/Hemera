@@ -39,7 +39,7 @@ HeldRanks :: struct {
  * @return any Whether there's one: false when nothing's held, or more is held than MAX_HELD_RANKS keeps, so the newest
  *     isn't known.
  */
-highest_held :: fn(held: ptr[HeldRanks]) -> (rank: u32, lock: u64, any: bool) {
+highest_held :: fn(held : ptr[HeldRanks]) -> (rank : u32, lock : u64, any : bool) {
     count :: cast[usize](held.count)
     if count == 0 || count > MAX_HELD_RANKS {
         return 0, 0, false
@@ -63,7 +63,12 @@ highest_held :: fn(held: ptr[HeldRanks]) -> (rank: u32, lock: u64, any: bool) {
  * @return True if it was in order: nothing was held, or the newest rank held was below rank; also true when more is
  *     held than MAX_HELD_RANKS keeps, since then it can't be checked.
  */
-lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks], waiting: Waiting? = null) -> bool {
+lock_ranked :: fn(
+    spin_lock : ptr[mut SpinLock],
+    rank : u32,
+    held : ptr[mut HeldRanks],
+    waiting : Waiting? = null
+) -> bool {
     highest, highest_lock, any :: highest_held(held)
     in_order :: !any || highest < rank
     take(spin_lock, waiting)
@@ -85,9 +90,12 @@ lock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRan
  * @return True if it was in order: nothing was held, the newest rank held was below rank, or it was rank and its lock
  *     was at a lower address; also true when more is held than MAX_HELD_RANKS keeps.
  */
-lock_ranked_after :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks], waiting: Waiting? = null)
-    -> bool {
-
+lock_ranked_after :: fn(
+    spin_lock : ptr[mut SpinLock],
+    rank : u32,
+    held : ptr[mut HeldRanks],
+    waiting : Waiting? = null
+) -> bool {
     highest, highest_lock, any :: highest_held(held)
     address :: cast[u64](cast[uintptr](spin_lock))
     in_order :: !any || highest < rank || (highest == rank && highest_lock < address)
@@ -97,7 +105,7 @@ lock_ranked_after :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut H
 }
 
 /** Take a spin lock, calling waiting while it waits if there's one, as lock_waiting does. */
-take :: fn(spin_lock: ptr[mut SpinLock], waiting: Waiting?) {
+take :: fn(spin_lock : ptr[mut SpinLock], waiting : Waiting?) {
     match waiting {
         case Some(each) => lock_waiting(spin_lock, each)
         case None => lock(spin_lock)
@@ -112,7 +120,7 @@ take :: fn(spin_lock: ptr[mut SpinLock], waiting: Waiting?) {
  * @param rank The rank the lock was taken with, which later locks are checked against while it's the newest.
  * @param address The lock's address. Past MAX_HELD_RANKS locks, it's counted but not kept.
  */
-push_held :: fn(held: ptr[mut HeldRanks], rank: u32, address: u64) {
+push_held :: fn(held : ptr[mut HeldRanks], rank : u32, address : u64) {
     count :: cast[usize](held.count)
     if count < held.ranks.count && count < held.locks.count {
         held.ranks[count] = rank
@@ -134,7 +142,7 @@ push_held :: fn(held: ptr[mut HeldRanks], rank: u32, address: u64) {
  * @return True if it was held, as the holder's records say, or more was held than MAX_HELD_RANKS keeps, so it can't be
  *     told; false if the records had no lock of that rank and address, which leaves them unchanged.
  */
-unlock_ranked :: fn(spin_lock: ptr[mut SpinLock], rank: u32, held: ptr[mut HeldRanks]) -> bool {
+unlock_ranked :: fn(spin_lock : ptr[mut SpinLock], rank : u32, held : ptr[mut HeldRanks]) -> bool {
     address :: cast[u64](cast[uintptr](spin_lock))
     unlock(spin_lock)
     count :: cast[usize](held.count)

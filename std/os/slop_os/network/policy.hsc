@@ -1,8 +1,8 @@
 package network
 
-import text_buffer from "std:text_buffer"
 import slop_os from "std:os/slop_os"
 import net_address from "std:os/slop_os/net_address"
+import text_buffer from "std:text_buffer"
 
 /*
  * A network connection's policy: what it may connect to, and what it may listen on. A rule allows a transport, TCP or
@@ -70,9 +70,22 @@ Rule :: struct {
  * @param last_port The last port.
  * @return The rule.
  */
-range_rule :: fn(address: net_address.Address, prefix_length: u8, transports: u8, first_port: u16, last_port: u16) -> Rule {
-    return Rule.{scope = SCOPE_RANGE, family = cast[u8](address.family), prefix_length = prefix_length, transports = transports,
-        first_port = first_port, last_port = last_port, address = address.bytes}
+range_rule :: fn(
+    address : net_address.Address,
+    prefix_length : u8,
+    transports : u8,
+    first_port : u16,
+    last_port : u16
+) -> Rule {
+    return Rule.{
+        scope = SCOPE_RANGE,
+        family = cast[u8](address.family),
+        prefix_length = prefix_length,
+        transports = transports,
+        first_port = first_port,
+        last_port = last_port,
+        address = address.bytes,
+    }
 }
 
 /**
@@ -85,7 +98,7 @@ range_rule :: fn(address: net_address.Address, prefix_length: u8, transports: u8
  * @param last_port The last port.
  * @return The rule; null if the name's empty or too long.
  */
-name_rule :: fn(name: string, transports: u8, first_port: u16, last_port: u16) -> Rule? {
+name_rule :: fn(name : string, transports : u8, first_port : u16, last_port : u16) -> Rule? {
     bytes :: string_bytes(name)
     length := bytes.count
     if length > 0 && bytes[length - 1] == DOT {
@@ -94,8 +107,13 @@ name_rule :: fn(name: string, transports: u8, first_port: u16, last_port: u16) -
     if length == 0 || length > RULE_NAME_BYTES {
         return null
     }
-    rule := Rule.{scope = SCOPE_NAME, transports = transports, first_port = first_port, last_port = last_port,
-        name_length = cast[u8](length)}
+    rule := Rule.{
+        scope = SCOPE_NAME,
+        transports = transports,
+        first_port = first_port,
+        last_port = last_port,
+        name_length = cast[u8](length),
+    }
     for i in 0..<length {
         if i < rule.name.count {
             rule.name[i] = lower(bytes[i])
@@ -105,13 +123,13 @@ name_rule :: fn(name: string, transports: u8, first_port: u16, last_port: u16) -
 }
 
 /** A dot, an asterisk, and the capital letters' ends, as bytes. */
-DOT : u8 : 46
+DOT      : u8 : 46
 ASTERISK : u8 : 42
-UPPER_A : u8 : 65
-UPPER_Z : u8 : 90
+UPPER_A  : u8 : 65
+UPPER_Z  : u8 : 90
 
 /** A byte in lower case, if it's a capital letter. */
-lower :: fn(byte: u8) -> u8 {
+lower :: fn(byte : u8) -> u8 {
     return if byte >= UPPER_A && byte <= UPPER_Z { byte + 32 } else { byte }
 }
 
@@ -121,8 +139,13 @@ lower :: fn(byte: u8) -> u8 {
  * @param rule The rule, of SCOPE_NAME.
  * @return Its name, a view of the rule's bytes.
  */
-rule_name :: fn(rule: ptr[Rule]) -> u8[] {
-    length :: if cast[usize](rule.name_length) < rule.name.count { cast[usize](rule.name_length) } else { rule.name.count }
+rule_name :: fn(rule : ptr[Rule]) -> u8[] {
+    length :: if cast[usize](rule.name_length) < rule.name.count {
+        cast[usize](rule.name_length)
+    }
+    else {
+        rule.name.count
+    }
     return view_of(&rule.name[0], length)
 }
 
@@ -133,7 +156,7 @@ rule_name :: fn(rule: ptr[Rule]) -> u8[] {
  * @param name The host's name, any case, a final dot or not.
  * @return True if it covers it.
  */
-name_covers :: fn(pattern: u8[], name: u8[]) -> bool {
+name_covers :: fn(pattern : u8[], name : u8[]) -> bool {
     length := name.count
     if length > 0 && name[length - 1] == DOT {
         length -= 1
@@ -169,8 +192,11 @@ name_covers :: fn(pattern: u8[], name: u8[]) -> bool {
  * @param rule The rule, of SCOPE_RANGE.
  * @return Its address; of no family if its family isn't 4 or 6.
  */
-rule_address :: fn(rule: ptr[Rule]) -> net_address.Address {
-    family :: if rule.family == 4 { net_address.Family.V4 } else if rule.family == 6 { net_address.Family.V6 } else { net_address.Family.None }
+rule_address :: fn(rule : ptr[Rule]) -> net_address.Address {
+    family :: if rule.family == 4 {
+        net_address.Family.V4
+    }
+    else if rule.family == 6 { net_address.Family.V6 } else { net_address.Family.None }
     return net_address.Address.{family = family, bytes = rule.address}
 }
 
@@ -184,14 +210,19 @@ PolicyOf :: struct {
 
 /** A policy as the service and the powerbox keep one. */
 Policy :: struct {
-    connect : Rule[MAX_RULES],
+    connect       : Rule[MAX_RULES],
     connect_count : u32,
-    listen : Rule[MAX_RULES],
-    listen_count : u32,
+    listen        : Rule[MAX_RULES],
+    listen_count  : u32,
 }
 
 /** The rule allowing everything: any address, any port, both transports. */
-EVERYTHING_RULE :: Rule.{scope = SCOPE_ANY, transports = TRANSPORT_TCP | TRANSPORT_UDP, first_port = 0, last_port = 65535}
+EVERYTHING_RULE :: Rule.{
+    scope = SCOPE_ANY,
+    transports = TRANSPORT_TCP | TRANSPORT_UDP,
+    first_port = 0,
+    last_port = 65535,
+}
 
 /**
  * Give the policy allowing everything: a root connection's.
@@ -213,7 +244,12 @@ everything :: fn() -> Policy {
  */
 public_only :: fn() -> Policy {
     policy := Policy.{connect_count = 1}
-    policy.connect[0] = Rule.{scope = SCOPE_PUBLIC, transports = TRANSPORT_TCP | TRANSPORT_UDP, first_port = 0, last_port = 65535}
+    policy.connect[0] = Rule.{
+        scope = SCOPE_PUBLIC,
+        transports = TRANSPORT_TCP | TRANSPORT_UDP,
+        first_port = 0,
+        last_port = 65535,
+    }
     return policy
 }
 
@@ -221,28 +257,38 @@ public_only :: fn() -> Policy {
  * Tell whether an address is public: not of RFC 6890's special ranges.
  *
  * @param address The address.
- * @return True if it's public; false for no address, or a private, loopback, link-local, shared, multicast, documentation
+ * @return True if it's public; false for no address, or a private, loopback, link-local, shared, multicast,
+ *     documentation
  *     or reserved one.
  */
-is_public :: fn(address: net_address.Address) -> bool {
+is_public :: fn(address : net_address.Address) -> bool {
     b :: address.bytes
     if address.family == .V4 {
         a :: b[0]
         if a == 0 || a == 10 || a == 127 || a >= 224 {
             return false
         }
-        // 100.64/10 shared, 169.254/16 link-local, 172.16/12 and 192.168/16 private, 192.0.0/24, the documentation ranges
-        if (a == 100 && b[1] >= 64 && b[1] < 128) || (a == 169 && b[1] == 254) || (a == 172 && b[1] >= 16 && b[1] < 32)
-            || (a == 192 && b[1] == 168) || (a == 192 && b[1] == 0 && (b[2] == 0 || b[2] == 2))
-            || (a == 198 && (b[1] == 18 || b[1] == 19)) || (a == 198 && b[1] == 51 && b[2] == 100)
+        /*
+         * 100.64/10 shared, 169.254/16 link-local, 172.16/12 and 192.168/16 private, 192.0.0/24, the documentation
+         * ranges
+         */
+        if (a == 100 && b[1] >= 64 && b[1] < 128)
+            || (a == 169 && b[1] == 254)
+            || (a == 172 && b[1] >= 16 && b[1] < 32)
+            || (a == 192 && b[1] == 168)
+            || (a == 192 && b[1] == 0 && (b[2] == 0 || b[2] == 2))
+            || (a == 198 && (b[1] == 18 || b[1] == 19))
+            || (a == 198 && b[1] == 51 && b[2] == 100)
             || (a == 203 && b[1] == 0 && b[2] == 113) {
             return false
         }
         return true
     }
     if address.family == .V6 {
-        // Global unicast only: 2000::/3, past its documentation range 2001:db8::/32, the IETF's protocol assignments
-        // 2001::/23 (Teredo's 2001::/32 among them) and 6to4's 2002::/16, which carry IPv4 addresses, private ones too
+        /*
+         * Global unicast only: 2000::/3, past its documentation range 2001:db8::/32, the IETF's protocol assignments
+         * 2001::/23 (Teredo's 2001::/32 among them) and 6to4's 2002::/16, which carry IPv4 addresses, private ones too
+         */
         if b[0] & 0xe0 != 0x20 {
             return false
         }
@@ -261,9 +307,11 @@ is_public :: fn(address: net_address.Address) -> bool {
  * IPv4's special ranges (RFC 6890) is_public refuses, each an address's 4 bytes then its prefix length: this network,
  * private, loopback, multicast and reserved, shared, link-local, IETF assignments, documentation and benchmarking.
  */
-SPECIAL_V4 :: u8.[0, 0, 0, 0, 8, 10, 0, 0, 0, 8, 127, 0, 0, 0, 8, 224, 0, 0, 0, 3, 100, 64, 0, 0, 10, 169, 254, 0, 0, 16,
-    172, 16, 0, 0, 12, 192, 168, 0, 0, 16, 192, 0, 0, 0, 24, 192, 0, 2, 0, 24, 198, 18, 0, 0, 15, 198, 51, 100, 0, 24,
-    203, 0, 113, 0, 24]
+SPECIAL_V4 :: u8.[
+    0, 0, 0, 0, 8, 10, 0, 0, 0, 8, 127, 0, 0, 0, 8, 224, 0, 0, 0, 3, 100, 64, 0, 0, 10, 169, 254, 0, 0, 16, 172, 16, 0,
+    0, 12, 192, 168, 0, 0, 16, 192, 0, 0, 0, 24, 192, 0, 2, 0, 24, 198, 18, 0, 0, 15, 198, 51, 100, 0, 24, 203, 0, 113,
+    0, 24
+]
 
 /**
  * IPv6's special ranges within 2000::/3 that is_public refuses, each an address's first 4 bytes then its prefix
@@ -278,14 +326,16 @@ SPECIAL_V6 :: u8.[0x20, 0x01, 0, 0, 23, 0x20, 0x01, 0x0d, 0xb8, 32, 0x20, 0x02, 
  * @param prefix_length How many of its first bits the range shares.
  * @return True if the whole range is public.
  */
-is_public_range :: fn(address: net_address.Address, prefix_length: u8) -> bool {
+is_public_range :: fn(address : net_address.Address, prefix_length : u8) -> bool {
     if address.family == .V4 {
         return !overlaps_any(address, prefix_length, SPECIAL_V4[0..<SPECIAL_V4.count])
     }
     if address.family == .V6 {
         global := net_address.Address.{family = .V6}
         global.bytes[0] = 0x20
-        return prefix_length >= 3 && prefix_matches(address, global, 3) && !overlaps_any(address, prefix_length, SPECIAL_V6[0..<SPECIAL_V6.count])
+        return prefix_length >= 3
+            && prefix_matches(address, global, 3)
+            && !overlaps_any(address, prefix_length, SPECIAL_V6[0..<SPECIAL_V6.count])
     }
     return false
 }
@@ -298,7 +348,7 @@ is_public_range :: fn(address: net_address.Address, prefix_length: u8) -> bool {
  * @param table Ranges of the address's family, each its address's first 4 bytes then its prefix length.
  * @return True if one overlaps it.
  */
-overlaps_any :: fn(address: net_address.Address, prefix_length: u8, table: u8[]) -> bool {
+overlaps_any :: fn(address : net_address.Address, prefix_length : u8, table : u8[]) -> bool {
     special := net_address.Address.{family = address.family}
     at := cast[usize](0)
     loop {
@@ -324,7 +374,7 @@ overlaps_any :: fn(address: net_address.Address, prefix_length: u8, table: u8[])
  * @param address The address.
  * @return True if the rule covers it.
  */
-covers_address :: fn(rule: ptr[Rule], address: net_address.Address) -> bool {
+covers_address :: fn(rule : ptr[Rule], address : net_address.Address) -> bool {
     if rule.scope == SCOPE_ANY {
         return address.family != .None
     }
@@ -332,7 +382,9 @@ covers_address :: fn(rule: ptr[Rule], address: net_address.Address) -> bool {
         return is_public(address)
     }
     range :: rule_address(rule)
-    return rule.scope == SCOPE_RANGE && range.family != .None && range.family == address.family
+    return rule.scope == SCOPE_RANGE
+        && range.family != .None
+        && range.family == address.family
         && prefix_matches(range, address, rule.prefix_length)
 }
 
@@ -344,7 +396,7 @@ covers_address :: fn(rule: ptr[Rule], address: net_address.Address) -> bool {
  * @param bits The prefix's length in bits.
  * @return True if their first bits bits are the same.
  */
-prefix_matches :: fn(a: net_address.Address, b: net_address.Address, bits: u8) -> bool {
+prefix_matches :: fn(a : net_address.Address, b : net_address.Address, bits : u8) -> bool {
     for i in cast[usize](0)..<16 {
         if i * 8 >= cast[usize](bits) {
             return true
@@ -366,13 +418,15 @@ prefix_matches :: fn(a: net_address.Address, b: net_address.Address, bits: u8) -
  * @param to The endpoint.
  * @return True if a connect rule covers it.
  */
-allows_connect :: fn(policy: ptr[Policy], transport: u8, to: net_address.Endpoint) -> bool {
+allows_connect :: fn(policy : ptr[Policy], transport : u8, to : net_address.Endpoint) -> bool {
     for i in cast[u32](0)..<policy.connect_count {
         if cast[usize](i) >= policy.connect.count {
             break
         }
         rule :: &policy.connect[i]
-        if rule.transports & transport != 0 && to.port >= rule.first_port && to.port <= rule.last_port
+        if rule.transports & transport != 0
+            && to.port >= rule.first_port
+            && to.port <= rule.last_port
             && covers_address(rule, to.address) {
             return true
         }
@@ -391,7 +445,7 @@ allows_connect :: fn(policy: ptr[Policy], transport: u8, to: net_address.Endpoin
  * @param to The address it resolved to, and the port.
  * @return True if a connect rule allows it.
  */
-allows_named :: fn(policy: ptr[Policy], transport: u8, name: u8[], to: net_address.Endpoint) -> bool {
+allows_named :: fn(policy : ptr[Policy], transport : u8, name : u8[], to : net_address.Endpoint) -> bool {
     public :: is_public(to.address)
     for i in cast[u32](0)..<policy.connect_count {
         if cast[usize](i) >= policy.connect.count {
@@ -424,13 +478,15 @@ allows_named :: fn(policy: ptr[Policy], transport: u8, name: u8[], to: net_addre
  * @param name The name, as asked.
  * @return True if a connect rule is SCOPE_PUBLIC or SCOPE_ANY, or SCOPE_NAME covering the name.
  */
-allows_resolve :: fn(policy: ptr[Policy], name: u8[]) -> bool {
+allows_resolve :: fn(policy : ptr[Policy], name : u8[]) -> bool {
     for i in cast[u32](0)..<policy.connect_count {
         if cast[usize](i) >= policy.connect.count {
             break
         }
         rule :: &policy.connect[i]
-        if rule.scope == SCOPE_PUBLIC || rule.scope == SCOPE_ANY || (rule.scope == SCOPE_NAME && name_covers(rule_name(rule), name)) {
+        if rule.scope == SCOPE_PUBLIC
+            || rule.scope == SCOPE_ANY
+            || (rule.scope == SCOPE_NAME && name_covers(rule_name(rule), name)) {
             return true
         }
     }
@@ -445,7 +501,7 @@ allows_resolve :: fn(policy: ptr[Policy], name: u8[]) -> bool {
  * @param port The port.
  * @return True if a listen rule covers it.
  */
-allows_listen :: fn(policy: ptr[Policy], transport: u8, port: u16) -> bool {
+allows_listen :: fn(policy : ptr[Policy], transport : u8, port : u16) -> bool {
     for i in cast[u32](0)..<policy.listen_count {
         if cast[usize](i) >= policy.listen.count {
             break
@@ -466,8 +522,10 @@ allows_listen :: fn(policy: ptr[Policy], transport: u8, port: u16) -> bool {
  * @param addresses Whether addresses count, as a connect rule's do, and a listen rule's don't.
  * @return True if outer covers all of inner.
  */
-rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
-    if inner.transports & ~outer.transports != 0 || inner.first_port < outer.first_port || inner.last_port > outer.last_port {
+rule_within :: fn(outer : ptr[Rule], inner : ptr[Rule], addresses : bool) -> bool {
+    if inner.transports & ~outer.transports != 0
+        || inner.first_port < outer.first_port
+        || inner.last_port > outer.last_port {
         return false
     }
     if !addresses || outer.scope == SCOPE_ANY {
@@ -475,7 +533,8 @@ rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
     }
     // A name reaches public addresses only, or what a range of the policy names
     if inner.scope == SCOPE_NAME {
-        return outer.scope == SCOPE_PUBLIC || (outer.scope == SCOPE_NAME && pattern_within(rule_name(outer), rule_name(inner)))
+        return outer.scope == SCOPE_PUBLIC
+            || (outer.scope == SCOPE_NAME && pattern_within(rule_name(outer), rule_name(inner)))
     }
     if outer.scope == SCOPE_NAME {
         return false
@@ -483,11 +542,15 @@ rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
     inner_range :: rule_address(inner)
     if outer.scope == SCOPE_PUBLIC {
         // A range is within public addresses only if no special range overlaps it
-        return inner.scope == SCOPE_PUBLIC || (inner.scope == SCOPE_RANGE && is_public_range(inner_range, inner.prefix_length))
+        return inner.scope == SCOPE_PUBLIC
+            || (inner.scope == SCOPE_RANGE && is_public_range(inner_range, inner.prefix_length))
     }
     outer_range :: rule_address(outer)
-    return outer.scope == SCOPE_RANGE && inner.scope == SCOPE_RANGE && outer_range.family != .None
-        && inner_range.family == outer_range.family && inner.prefix_length >= outer.prefix_length
+    return outer.scope == SCOPE_RANGE
+        && inner.scope == SCOPE_RANGE
+        && outer_range.family != .None
+        && inner_range.family == outer_range.family
+        && inner.prefix_length >= outer.prefix_length
         && prefix_matches(outer_range, inner_range, outer.prefix_length)
 }
 
@@ -499,14 +562,15 @@ rule_within :: fn(outer: ptr[Rule], inner: ptr[Rule], addresses: bool) -> bool {
  *     same domain or one above it.
  * @return True if it does.
  */
-pattern_within :: fn(outer: u8[], inner: u8[]) -> bool {
+pattern_within :: fn(outer : u8[], inner : u8[]) -> bool {
     if inner.count >= 2 && inner[0] == ASTERISK && inner[1] == DOT {
         // Every name under inner's domain: outer has to be a wildcard over the same domain, or one it's under
         if outer.count < 2 || outer[0] != ASTERISK || outer[1] != DOT {
             return false
         }
         domain :: inner[2..<inner.count]
-        return name_covers(outer, domain) || (outer.count - 2 == domain.count && name_covers(outer[2..<outer.count], domain))
+        return name_covers(outer, domain)
+            || (outer.count - 2 == domain.count && name_covers(outer[2..<outer.count], domain))
     }
     return name_covers(outer, inner)
 }
@@ -518,7 +582,7 @@ pattern_within :: fn(outer: u8[], inner: u8[]) -> bool {
  * @param inner The policy covered.
  * @return True if outer covers all of inner.
  */
-within :: fn(outer: ptr[Policy], inner: ptr[Policy]) -> bool {
+within :: fn(outer : ptr[Policy], inner : ptr[Policy]) -> bool {
     for i in cast[u32](0)..<inner.connect_count {
         if cast[usize](i) >= inner.connect.count {
             return false
@@ -559,7 +623,7 @@ within :: fn(outer: ptr[Policy], inner: ptr[Policy]) -> bool {
  * @param listen Its listen rules.
  * @return The policy; null if either has more than MAX_RULES.
  */
-policy_of :: fn(connect: Rule[], listen: Rule[]) -> Policy? {
+policy_of :: fn(connect : Rule[], listen : Rule[]) -> Policy? {
     if connect.count > MAX_RULES || listen.count > MAX_RULES {
         return null
     }
@@ -583,7 +647,7 @@ policy_of :: fn(connect: Rule[], listen: Rule[]) -> Policy? {
  * @param policy The policy.
  * @param into Where the description's appended.
  */
-describe :: fn(policy: ptr[Policy], into: ptr[mut text_buffer.TextBuffer]) {
+describe :: fn(policy : ptr[Policy], into : ptr[mut text_buffer.TextBuffer]) {
     first := true
     for i in cast[u32](0)..<policy.connect_count {
         if cast[usize](i) >= policy.connect.count {
@@ -617,8 +681,14 @@ describe :: fn(policy: ptr[Policy], into: ptr[mut text_buffer.TextBuffer]) {
  * @param into Where it's appended.
  * @param listening Whether it's a listen rule.
  */
-describe_rule :: fn(rule: ptr[Rule], into: ptr[mut text_buffer.TextBuffer], listening: bool) {
-    text_buffer.append(into, if rule.transports == TRANSPORT_TCP { "TCP" } else if rule.transports == TRANSPORT_UDP { "UDP" } else { "TCP and UDP" })
+describe_rule :: fn(rule : ptr[Rule], into : ptr[mut text_buffer.TextBuffer], listening : bool) {
+    text_buffer.append(
+        into,
+        if rule.transports == TRANSPORT_TCP {
+            "TCP"
+        }
+        else if rule.transports == TRANSPORT_UDP { "UDP" } else { "TCP and UDP" }
+    )
     if listening {
         text_buffer.append(into, " listening")
     }

@@ -70,14 +70,13 @@ ProcessError :: enum {
  * @error Unsupported The target has no processes to run, like OS == .None or SlopOS.
  */
 run_process :: fn(
-    program: string,
-    arguments: string[],
-    working_directory: string? = null,
-    location := #caller_location,
+    program : string,
+    arguments : string[],
+    working_directory : string? = null,
+    location := #caller_location
 ) -> Result[ProcessResult, ProcessError] #unrestricted {
     if #is_compile_time && !compiler.build_permissions().run_processes {
-        compiler.report_error(location,
-            "running % at compile time needs --allow-run on the command line", program)
+        compiler.report_error(location, "running % at compile time needs --allow-run on the command line", program)
         return .Error(.NotPermitted)
     }
     result, error :: system_run_process(program, arguments, working_directory, context.allocator)
@@ -94,7 +93,7 @@ run_process :: fn(
  * @param bytes Where the bytes are, which are copied; only read.
  * @param count How many bytes to add, which may be 0.
  */
-append_bytes :: fn(buffer: ptr[mut u8[..]], bytes: rawptr, count: usize) {
+append_bytes :: fn(buffer : ptr[mut u8[..]], bytes : rawptr, count : usize) {
     for i in 0..<count {
         runtime.array_add(buffer, cast[ptr[u8]](bytes + i)^)
     }

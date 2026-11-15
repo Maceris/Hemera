@@ -19,7 +19,11 @@ import random from "std:random"
  * @param server_random The random.
  * @param x25519 The X25519 secret key.
  */
-server_with_keys #constant_time :: fn(connection: ptr[mut Connection], server_random: ptr[u8[32]], x25519: ptr[crypto.X25519SecretKey]) {
+server_with_keys #constant_time :: fn(
+    connection : ptr[mut Connection],
+    server_random : ptr[u8[32]],
+    x25519 : ptr[crypto.X25519SecretKey]
+) {
     connection.fixed_keys = true
     connection.server_random = server_random^
     connection.x25519 = x25519^
@@ -32,7 +36,7 @@ server_with_keys #constant_time :: fn(connection: ptr[mut Connection], server_ra
  * @param kind The message's type.
  * @param message The message, with its header.
  */
-server_message :: fn(connection: ptr[mut Connection], kind: u8, message: u8[]) {
+server_message :: fn(connection : ptr[mut Connection], kind : u8, message : u8[]) {
     if connection.state == .WaitClientHello && kind == CLIENT_HELLO {
         take_client_hello(connection, message)
     }
@@ -56,17 +60,17 @@ server_message :: fn(connection: ptr[mut Connection], kind: u8, message: u8[]) {
 
 /** What a ClientHello offers, as take_client_hello reads it. */
 Offer :: struct {
-    tls13 : bool,
-    suite : Suite,
+    tls13        : bool,
+    suite        : Suite,
     x25519_group : bool,
-    p256_group : bool,
+    p256_group   : bool,
     /** Where its key shares are in the message, and their lengths; 0 for none. */
-    x25519_at : usize,
+    x25519_at     : usize,
     x25519_length : usize,
-    p256_at : usize,
-    p256_length : usize,
-    ecdsa_p256 : bool,
-    ed25519 : bool,
+    p256_at       : usize,
+    p256_length   : usize,
+    ecdsa_p256    : bool,
+    ed25519       : bool,
     /** Whether it offers application protocols by ALPN, and the one this server speaks among them. */
     protocols : bool,
     protocol : bool,
@@ -79,7 +83,7 @@ Offer :: struct {
  * @param message The message.
  * @return What it offers; null if it's malformed.
  */
-read_offer :: fn(connection: ptr[mut Connection], message: u8[]) -> Offer? {
+read_offer :: fn(connection : ptr[mut Connection], message : u8[]) -> Offer? {
     offer := Offer.{}
     reader := reader_of(message)
     _ = get_bytes(message, &reader, 4)
@@ -102,8 +106,13 @@ read_offer :: fn(connection: ptr[mut Connection], message: u8[]) -> Offer? {
         }
         suite :: get_u16(message, &suites)
         if offer.suite == .None {
-            known :: if suite == 0x1301 { Suite.Aes128GcmSha256 } else if suite == 0x1302 { Suite.Aes256GcmSha384 }
-                else if suite == 0x1303 { Suite.Chacha20Poly1305Sha256 } else { Suite.None }
+            known :: if suite == 0x1301 {
+                Suite.Aes128GcmSha256
+            }
+            else if suite == 0x1302 {
+                Suite.Aes256GcmSha384
+            }
+            else if suite == 0x1303 { Suite.Chacha20Poly1305Sha256 } else { Suite.None }
             if connection.only_suite == .None || known == connection.only_suite {
                 offer.suite = known
             }
@@ -181,7 +190,8 @@ read_offer :: fn(connection: ptr[mut Connection], message: u8[]) -> Offer? {
                     break
                 }
                 name := get_vector(message, &names, 1)
-                offer.protocol = offer.protocol || (!name.bad && is_protocol(connection, range(message, name.at, name.end)))
+                offer.protocol = offer.protocol
+                    || (!name.bad && is_protocol(connection, range(message, name.at, name.end)))
             }
             while true
             if names.bad {
@@ -215,7 +225,7 @@ read_offer :: fn(connection: ptr[mut Connection], message: u8[]) -> Offer? {
  * @param connection The connection.
  * @param message The message.
  */
-take_client_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_client_hello :: fn(connection : ptr[mut Connection], message : u8[]) {
     offer :: read_offer(connection, message) or_else Offer.{suite = .None}
     if offer.suite == .None && !offer.tls13 && !offer.x25519_group {
         fail(connection, ALERT_DECODE_ERROR)
@@ -236,8 +246,10 @@ take_client_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
     }
     connection.protocol_agreed = connection.protocol_length > 0 && offer.protocol
     connection.suite = offer.suite
-    connection.scheme = if connection.identity.kind == .P256 && offer.ecdsa_p256 { SCHEME_ECDSA_P256_SHA256 }
-        else if connection.identity.kind == .ED25519 && offer.ed25519 { SCHEME_ED25519 } else { cast[u16](0) }
+    connection.scheme = if connection.identity.kind == .P256 && offer.ecdsa_p256 {
+        SCHEME_ECDSA_P256_SHA256
+    }
+    else if connection.identity.kind == .ED25519 && offer.ed25519 { SCHEME_ED25519 } else { cast[u16](0) }
     if connection.scheme == 0 {
         fail(connection, ALERT_HANDSHAKE_FAILURE)
         return void
@@ -253,8 +265,10 @@ take_client_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
         group = GROUP_P256
     }
     if group == 0 {
-        named :: if offer.x25519_group && takes_x25519 { GROUP_X25519 } else if offer.p256_group && takes_p256 { GROUP_P256 }
-            else { cast[u16](0) }
+        named :: if offer.x25519_group && takes_x25519 {
+            GROUP_X25519
+        }
+        else if offer.p256_group && takes_p256 { GROUP_P256 } else { cast[u16](0) }
         if connection.retried || named == 0 {
             fail(connection, if connection.retried { ALERT_ILLEGAL_PARAMETER } else { ALERT_HANDSHAKE_FAILURE })
             return void
@@ -330,7 +344,7 @@ take_client_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
  * @param message The first ClientHello.
  * @param group The group asked for.
  */
-retry :: fn(connection: ptr[mut Connection], message: u8[], group: u16) {
+retry :: fn(connection : ptr[mut Connection], message : u8[], group : u16) {
     transcript_add(&connection.transcript, message)
     first : u8[HASH_MOST]
     transcript_hash(&connection.transcript, suite_hash(connection.suite), &first)
@@ -353,7 +367,7 @@ retry :: fn(connection: ptr[mut Connection], message: u8[], group: u16) {
  * @param group The group.
  * @param public The server's key share; empty for a HelloRetryRequest, which names the group only.
  */
-send_server_hello :: fn(connection: ptr[mut Connection], server_random: u8[], group: u16, public: u8[]) {
+send_server_hello :: fn(connection : ptr[mut Connection], server_random : u8[], group : u16, public : u8[]) {
     into :: connection.building[0..<connection.building.count]
     writer := Writer.{}
     put_u8(into, &writer, SERVER_HELLO)
@@ -390,7 +404,7 @@ send_server_hello :: fn(connection: ptr[mut Connection], server_random: u8[], gr
  * @param bytes The bytes, from the element's tag.
  * @return Its whole length; 0 if it isn't one, or runs past them.
  */
-der_length :: fn(bytes: u8[]) -> usize {
+der_length :: fn(bytes : u8[]) -> usize {
     if bytes.count < 2 {
         return 0
     }
@@ -417,7 +431,7 @@ der_length :: fn(bytes: u8[]) -> usize {
  * @param writer The writer.
  * @param pair r then s, 32 bytes each.
  */
-put_ecdsa_der :: fn(into: mut u8[], writer: ptr[mut Writer], pair: u8[]) {
+put_ecdsa_der :: fn(into : mut u8[], writer : ptr[mut Writer], pair : u8[]) {
     put_u8(into, writer, 0x30)
     sequence :: start_vector(into, writer, 1)
     for half in 0..<2 {
@@ -443,12 +457,13 @@ put_ecdsa_der :: fn(into: mut u8[], writer: ptr[mut Writer], pair: u8[]) {
 }
 
 /**
- * Queue the server's flight after its ServerHello: EncryptedExtensions, Certificate, CertificateVerify and Finished, and
+ * Queue the server's flight after its ServerHello: EncryptedExtensions, Certificate, CertificateVerify and Finished,
+ * and
  * move to the application traffic keys to write with.
  *
  * @param connection The connection, its handshake keys set.
  */
-send_flight :: fn(connection: ptr[mut Connection]) {
+send_flight :: fn(connection : ptr[mut Connection]) {
     into :: connection.building[0..<connection.building.count]
     // EncryptedExtensions: ALPN's answer, if they agreed
     writer := Writer.{}

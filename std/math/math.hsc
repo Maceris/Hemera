@@ -1,8 +1,8 @@
 package math
 
+import compiler from "base:compiler"
 import intrinsics from "base:intrinsics"
 import runtime from "base:runtime"
-import compiler from "base:compiler"
 
 /*
  * The public functions, each on an f32 or an f64 or a vector of either: F is the type, worked out from the argument.
@@ -38,7 +38,7 @@ SQRT_HALF :: 0.70710678118654752440084436210484903928483593768847
  * @param function The f64 function.
  * @return function(x) for an f64; for an f32, function of x widened, rounded to f32.
  */
-in_f64 :: fn[F](x: F, function: (fn(x: f64) -> f64)) -> F {
+in_f64 :: fn[F](x : F, function : (fn(x : f64) -> f64)) -> F {
     #if size_of(F) == 4 {
         return cast[f32](function(cast[f64](x)))
     }
@@ -56,7 +56,7 @@ in_f64 :: fn[F](x: F, function: (fn(x: f64) -> f64)) -> F {
  * @param function The f64 function.
  * @return function(x, y) for f64s; for f32s, function of them widened, rounded to f32.
  */
-in_f64_2 :: fn[F](x: F, y: F, function: (fn(x: f64, y: f64) -> f64)) -> F {
+in_f64_2 :: fn[F](x : F, y : F, function : (fn(x : f64, y : f64) -> f64)) -> F {
     #if size_of(F) == 4 {
         return cast[f32](function(cast[f64](x), cast[f64](y)))
     }
@@ -66,9 +66,9 @@ in_f64_2 :: fn[F](x: F, y: F, function: (fn(x: f64, y: f64) -> f64)) -> F {
 }
 
 /** What float_kind says a type is. */
-FLOAT_OTHER :: 0
-FLOAT_32 :: 1
-FLOAT_64 :: 2
+FLOAT_OTHER    :: 0
+FLOAT_32       :: 1
+FLOAT_64       :: 2
 FLOAT_LANES_32 :: 3
 FLOAT_LANES_64 :: 4
 
@@ -79,7 +79,7 @@ FLOAT_LANES_64 :: 4
  * @return FLOAT_32 for f32, FLOAT_64 for f64, FLOAT_LANES_32 and FLOAT_LANES_64 for vectors of them; FLOAT_OTHER
  *     otherwise.
  */
-float_kind :: fn(T: type) -> i32 {
+float_kind :: fn(T : type) -> i32 {
     if T == f32 {
         return FLOAT_32
     }
@@ -107,7 +107,7 @@ float_kind :: fn(T: type) -> i32 {
  * @param function The f64 function.
  * @return Each lane's result.
  */
-each_lane :: fn[n: usize](x: vector[f64, n], function: (fn(x: f64) -> f64)) -> vector[f64, n] {
+each_lane :: fn[n : usize](x : vector[f64, n], function : (fn(x : f64) -> f64)) -> vector[f64, n] {
     lanes := bit_cast[f64[n]](x)
     for &lane in lanes {
         lane^ = function(lane^)
@@ -116,7 +116,11 @@ each_lane :: fn[n: usize](x: vector[f64, n], function: (fn(x: f64) -> f64)) -> v
 }
 
 /** The same for a function of two. */
-each_lane_2 :: fn[n: usize](x: vector[f64, n], y: vector[f64, n], function: (fn(x: f64, y: f64) -> f64)) -> vector[f64, n] {
+each_lane_2 :: fn[n : usize](
+    x : vector[f64, n],
+    y : vector[f64, n],
+    function : (fn(x : f64, y : f64) -> f64)
+) -> vector[f64, n] {
     lanes := bit_cast[f64[n]](x)
     second :: bit_cast[f64[n]](y)
     for &lane, i in lanes {
@@ -126,7 +130,7 @@ each_lane_2 :: fn[n: usize](x: vector[f64, n], y: vector[f64, n], function: (fn(
 }
 
 /** An f64 function on each lane of an f32 vector, widened and rounded back. */
-each_lane_widened :: fn[n: usize](x: vector[f32, n], function: (fn(x: f64) -> f64)) -> vector[f32, n] {
+each_lane_widened :: fn[n : usize](x : vector[f32, n], function : (fn(x : f64) -> f64)) -> vector[f32, n] {
     lanes := bit_cast[f32[n]](x)
     for &lane in lanes {
         lane^ = cast[f32](function(cast[f64](lane^)))
@@ -135,9 +139,11 @@ each_lane_widened :: fn[n: usize](x: vector[f32, n], function: (fn(x: f64) -> f6
 }
 
 /** The same for a function of two. */
-each_lane_widened_2 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n], function: (fn(x: f64, y: f64) -> f64))
-    -> vector[f32, n] {
-
+each_lane_widened_2 :: fn[n : usize](
+    x : vector[f32, n],
+    y : vector[f32, n],
+    function : (fn(x : f64, y : f64) -> f64)
+) -> vector[f32, n] {
     lanes := bit_cast[f32[n]](x)
     second :: bit_cast[f32[n]](y)
     for &lane, i in lanes {
@@ -153,7 +159,7 @@ each_lane_widened_2 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n], functi
  * @param x The power.
  * @return e^x, within 1 ulp; infinity where it overflows, 0 where it underflows and for -infinity, NaN for NaN.
  */
-exp :: fn[F](x: F) -> F {
+exp :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return exp_lanes_32(x)
     }
@@ -176,7 +182,7 @@ exp :: fn[F](x: F) -> F {
  * @return 2^x, within 1 ulp and exact for whole x; infinity where it overflows, 0 where it underflows and for
  *     -infinity, NaN for NaN.
  */
-exp2 :: fn[F](x: F) -> F {
+exp2 :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return exp2_lanes_32(x)
     }
@@ -198,7 +204,7 @@ exp2 :: fn[F](x: F) -> F {
  * @param x The power.
  * @return e^x - 1, within 1 ulp; infinity where it overflows, -1 for -infinity and where e^x rounds to 0, NaN for NaN.
  */
-exp_minus_one :: fn[F](x: F) -> F {
+exp_minus_one :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return exp_minus_one_lanes_32(x)
     }
@@ -220,7 +226,7 @@ exp_minus_one :: fn[F](x: F) -> F {
  * @param x The number.
  * @return ln x, within 1 ulp; -infinity for ±0, NaN below 0 and for NaN, infinity for infinity.
  */
-log :: fn[F](x: F) -> F {
+log :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return log_lanes_32(x)
     }
@@ -243,7 +249,7 @@ log :: fn[F](x: F) -> F {
  * @return log2 x, within 1 ulp and exact for powers of two; -infinity for ±0, NaN below 0 and for NaN, infinity for
  *     infinity.
  */
-log2 :: fn[F](x: F) -> F {
+log2 :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return log2_lanes_32(x)
     }
@@ -265,7 +271,7 @@ log2 :: fn[F](x: F) -> F {
  * @param x The number.
  * @return log10 x, within 1 ulp; -infinity for ±0, NaN below 0 and for NaN, infinity for infinity.
  */
-log10 :: fn[F](x: F) -> F {
+log10 :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return log10_lanes_32(x)
     }
@@ -287,7 +293,7 @@ log10 :: fn[F](x: F) -> F {
  * @param x The number.
  * @return ln(1 + x), within 1 ulp; -infinity at -1, NaN below -1 and for NaN, infinity for infinity.
  */
-log_one_plus :: fn[F](x: F) -> F {
+log_one_plus :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return log_one_plus_lanes_32(x)
     }
@@ -312,7 +318,7 @@ log_one_plus :: fn[F](x: F) -> F {
  *     and for a negative x with a y that isn't whole; ±infinity or ±0 where it overflows or underflows, and for x = ±0
  *     or ±infinity, negative only for a negative x to an odd whole power.
  */
-power :: fn[F](x: F, y: F) -> F {
+power :: fn[F](x : F, y : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return power_lanes_32(x, y)
     }
@@ -334,7 +340,7 @@ power :: fn[F](x: F, y: F) -> F {
  * @param x The angle, in radians, any size: it's reduced by π/2 exactly.
  * @return sin x, within 1 ulp; x for ±0, NaN for infinities and NaN.
  */
-sin :: fn[F](x: F) -> F {
+sin :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return sin_lanes_32(x)
     }
@@ -356,7 +362,7 @@ sin :: fn[F](x: F) -> F {
  * @param x The angle, in radians, any size: it's reduced by π/2 exactly.
  * @return cos x, within 1 ulp; NaN for infinities and NaN.
  */
-cos :: fn[F](x: F) -> F {
+cos :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return cos_lanes_32(x)
     }
@@ -378,7 +384,7 @@ cos :: fn[F](x: F) -> F {
  * @param x The angle, in radians, any size: it's reduced by π/2 exactly.
  * @return tan x, within 1 ulp; x for ±0, NaN for infinities and NaN.
  */
-tan :: fn[F](x: F) -> F {
+tan :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return tan_lanes_32(x)
     }
@@ -400,7 +406,7 @@ tan :: fn[F](x: F) -> F {
  * @param x The angle, in radians.
  * @return sin x and cos x, as sin and cos give them.
  */
-sin_cos :: fn[F](x: F) -> (F, F) {
+sin_cos :: fn[F](x : F) -> (F, F) {
     #if float_kind(F) == FLOAT_LANES_32 {
         return sin_cos_lanes_32(x)
     }
@@ -423,7 +429,7 @@ sin_cos :: fn[F](x: F) -> (F, F) {
  * @param x The sine, from -1 to 1.
  * @return The angle from -π/2 to π/2 whose sine is x, within 1 ulp; NaN beyond ±1 and for NaN.
  */
-asin :: fn[F](x: F) -> F {
+asin :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return asin_lanes_32(x)
     }
@@ -445,7 +451,7 @@ asin :: fn[F](x: F) -> F {
  * @param x The cosine, from -1 to 1.
  * @return The angle from 0 to π whose cosine is x, within 1 ulp; NaN beyond ±1 and for NaN.
  */
-acos :: fn[F](x: F) -> F {
+acos :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return acos_lanes_32(x)
     }
@@ -467,7 +473,7 @@ acos :: fn[F](x: F) -> F {
  * @param x The tangent.
  * @return The angle from -π/2 to π/2 whose tangent is x, within 1 ulp; ±π/2 for ±infinity, NaN for NaN.
  */
-atan :: fn[F](x: F) -> F {
+atan :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return atan_lanes_32(x)
     }
@@ -491,7 +497,7 @@ atan :: fn[F](x: F) -> F {
  * @return The angle from -π to π, within 1 ulp: positive above the x axis, ±π on its negative side as y is ±0, ±π/2
  *     on the y axis, and multiples of π/4 for two infinities; NaN if either is NaN.
  */
-atan2 :: fn[F](y: F, x: F) -> F {
+atan2 :: fn[F](y : F, x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return atan2_lanes_32(y, x)
     }
@@ -513,7 +519,7 @@ atan2 :: fn[F](y: F, x: F) -> F {
  * @param x The number.
  * @return sinh x, within 1 ulp; ±infinity where it overflows and for ±infinity, NaN for NaN.
  */
-sinh :: fn[F](x: F) -> F {
+sinh :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(sinh_lanes_64(widened(x)))
     }
@@ -535,7 +541,7 @@ sinh :: fn[F](x: F) -> F {
  * @param x The number.
  * @return cosh x, within 1 ulp; infinity where it overflows and for ±infinity, NaN for NaN.
  */
-cosh :: fn[F](x: F) -> F {
+cosh :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(cosh_lanes_64(widened(x)))
     }
@@ -557,7 +563,7 @@ cosh :: fn[F](x: F) -> F {
  * @param x The number.
  * @return tanh x, within 1 ulp, from -1 to 1; ±1 for ±infinity, NaN for NaN.
  */
-tanh :: fn[F](x: F) -> F {
+tanh :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(tanh_lanes_64(widened(x)))
     }
@@ -579,7 +585,7 @@ tanh :: fn[F](x: F) -> F {
  * @param x The number.
  * @return asinh x, within 1 ulp; ±infinity for ±infinity, NaN for NaN.
  */
-asinh :: fn[F](x: F) -> F {
+asinh :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(asinh_lanes_64(widened(x)))
     }
@@ -601,7 +607,7 @@ asinh :: fn[F](x: F) -> F {
  * @param x The number, at least 1.
  * @return acosh x, at least 0, within 1 ulp; infinity for infinity, NaN below 1 and for NaN.
  */
-acosh :: fn[F](x: F) -> F {
+acosh :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(acosh_lanes_64(widened(x)))
     }
@@ -623,7 +629,7 @@ acosh :: fn[F](x: F) -> F {
  * @param x The number, from -1 to 1.
  * @return atanh x, within 1.5 ulp; ±infinity at ±1, NaN beyond them and for NaN.
  */
-atanh :: fn[F](x: F) -> F {
+atanh :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(atanh_lanes_64(widened(x)))
     }
@@ -645,7 +651,7 @@ atanh :: fn[F](x: F) -> F {
  * @param x The number, any sign.
  * @return ∛x, of x's sign, within 1 ulp; x for ±0, ±infinity and NaN.
  */
-cube_root :: fn[F](x: F) -> F {
+cube_root :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return cube_root_lanes_32(x)
     }
@@ -669,7 +675,7 @@ cube_root :: fn[F](x: F) -> F {
  * @return The hypotenuse, within 1 ulp; infinity if either is infinite, even if the other is NaN; NaN otherwise if
  *     either is NaN.
  */
-hypotenuse :: fn[F](x: F, y: F) -> F {
+hypotenuse :: fn[F](x : F, y : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return hypotenuse_lanes_32(x, y)
     }
@@ -693,7 +699,7 @@ hypotenuse :: fn[F](x: F, y: F) -> F {
  * @return The remainder, of x's sign and smaller than |y|; x for a finite x and infinite y; NaN if y is 0, x is
  *     infinite, or either is NaN.
  */
-truncated_remainder :: fn[F](x: F, y: F) -> F {
+truncated_remainder :: fn[F](x : F, y : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return each_lane_widened_2(x, y, truncated_remainder_64)
     }
@@ -717,7 +723,7 @@ truncated_remainder :: fn[F](x: F, y: F) -> F {
  * @return The remainder, at most |y| / 2 in magnitude, a zero of x's sign when it's 0; x for a finite x and infinite y;
  *     NaN if y is 0, x is infinite, or either is NaN.
  */
-remainder :: fn[F](x: F, y: F) -> F {
+remainder :: fn[F](x : F, y : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return each_lane_widened_2(x, y, remainder_64)
     }
@@ -739,7 +745,7 @@ remainder :: fn[F](x: F, y: F) -> F {
  * @param x The number.
  * @return erf x, from -1 to 1, within 1 ulp; ±1 for ±infinity, NaN for NaN.
  */
-erf :: fn[F](x: F) -> F {
+erf :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(erf_lanes_64(widened(x)))
     }
@@ -762,7 +768,7 @@ erf :: fn[F](x: F) -> F {
  * @return erfc x, from 0 to 2, within 1 ulp, and 2 far in its tail, from about 6; 0 for infinity, 2 for -infinity,
  *     NaN for NaN.
  */
-erfc :: fn[F](x: F) -> F {
+erfc :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return narrowed(erfc_lanes_64(widened(x)))
     }
@@ -784,7 +790,7 @@ erfc :: fn[F](x: F) -> F {
  * @param y The value of erf, from -1 to 1.
  * @return x with erf x = y, within 2 ulp; ±infinity at ±1, NaN beyond and for NaN.
  */
-erf_inverse :: fn[F](y: F) -> F {
+erf_inverse :: fn[F](y : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return each_lane_widened(y, erf_inverse_64)
     }
@@ -807,7 +813,7 @@ erf_inverse :: fn[F](y: F) -> F {
  * @return Γ(x), within 6 ulp, exact for whole numbers up to 23; ±infinity at ±0 and where it overflows, NaN at the
  *     negative whole numbers and -infinity, ±0 where it underflows, NaN for NaN.
  */
-gamma :: fn[F](x: F) -> F {
+gamma :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return each_lane_widened(x, gamma_64)
     }
@@ -831,7 +837,7 @@ gamma :: fn[F](x: F) -> F {
  *     its zeros at 1 and 2 and between the negative whole numbers; infinity at 0, the negative whole numbers and
  *     ±infinity; NaN for NaN.
  */
-log_gamma :: fn[F](x: F) -> F {
+log_gamma :: fn[F](x : F) -> F {
     #if float_kind(F) == FLOAT_LANES_32 {
         return each_lane_widened(x, log_gamma_64)
     }
@@ -854,7 +860,7 @@ log_gamma :: fn[F](x: F) -> F {
  * @return ln |Γ(x)|, as log_gamma gives it, and 1 or -1, Γ(x)'s sign: -1 from -2k - 1 to -2k for whole k ≥ 0, and for
  *     -0.
  */
-log_gamma_signed :: fn[F](x: F) -> (F, i32) {
+log_gamma_signed :: fn[F](x : F) -> (F, i32) {
     #if size_of(F) == 4 {
         r, sign :: log_gamma_signed_64(cast[f64](x))
         return cast[f32](r), sign
@@ -871,7 +877,7 @@ log_gamma_signed :: fn[F](x: F) -> (F, i32) {
  * @param x The number.
  * @return True for any NaN, quiet or signalling, of either sign.
  */
-is_nan :: fn[F](x: F) -> bool {
+is_nan :: fn[F](x : F) -> bool {
     return x != x
 }
 
@@ -882,7 +888,7 @@ is_nan :: fn[F](x: F) -> bool {
  * @param x The number.
  * @return True for ±infinity; false for NaN and every finite number.
  */
-is_infinite :: fn[F](x: F) -> bool {
+is_infinite :: fn[F](x : F) -> bool {
     return x == x && x - x != x - x
 }
 
@@ -893,7 +899,7 @@ is_infinite :: fn[F](x: F) -> bool {
  * @param x The number.
  * @return True unless it's infinite or NaN.
  */
-is_finite :: fn[F](x: F) -> bool {
+is_finite :: fn[F](x : F) -> bool {
     return x - x == x - x
 }
 
@@ -904,7 +910,7 @@ is_finite :: fn[F](x: F) -> bool {
  * @param x The number.
  * @return True for a normal number.
  */
-is_normal :: fn[F](x: F) -> bool {
+is_normal :: fn[F](x : F) -> bool {
     return is_finite(x) && abs(x) >= least_normal[F]()
 }
 
@@ -915,7 +921,7 @@ is_normal :: fn[F](x: F) -> bool {
  * @param x The number.
  * @return True for a subnormal number.
  */
-is_subnormal :: fn[F](x: F) -> bool {
+is_subnormal :: fn[F](x : F) -> bool {
     return x != 0 && abs(x) < least_normal[F]()
 }
 
@@ -926,7 +932,7 @@ is_subnormal :: fn[F](x: F) -> bool {
  * @param x The number.
  * @return True for negative numbers, -0, -infinity and NaNs with the bit set.
  */
-sign_bit :: fn[F](x: F) -> bool {
+sign_bit :: fn[F](x : F) -> bool {
     #if size_of(F) == 4 {
         return (bit_cast[u32](x) >> 31) != 0
     }
@@ -1018,7 +1024,7 @@ epsilon :: fn[F]() -> F {
  * @return The next float toward +infinity: the least subnormal for ±0, -largest for -infinity; infinity for infinity
  *     and the largest float, x for NaN.
  */
-next_up :: fn[F](x: F) -> F {
+next_up :: fn[F](x : F) -> F {
     if x != x || x == infinity[F]() {
         return x
     }
@@ -1046,7 +1052,7 @@ next_up :: fn[F](x: F) -> F {
  * @return The next float toward -infinity: minus the least subnormal for ±0, largest for infinity; -infinity for
  *     -infinity and -largest, x for NaN.
  */
-next_down :: fn[F](x: F) -> F {
+next_down :: fn[F](x : F) -> F {
     return -next_up(-x)
 }
 
@@ -1058,7 +1064,7 @@ next_down :: fn[F](x: F) -> F {
  * @param x The number.
  * @return The gap, a power of two: the least subnormal for 0 and subnormals; infinity for ±infinity, NaN for NaN.
  */
-ulp :: fn[F](x: F) -> F {
+ulp :: fn[F](x : F) -> F {
     magnitude :: abs(x)
     if x != x || magnitude == infinity[F]() {
         return magnitude
@@ -1076,7 +1082,7 @@ ulp :: fn[F](x: F) -> F {
  * @param x The number.
  * @return f and e with x = f × 2^e, |f| from 1/2 to below 1, of x's sign; for ±0, ±infinity and NaN, x itself and 0.
  */
-fraction_and_exponent :: fn[F](x: F) -> (F, i32) {
+fraction_and_exponent :: fn[F](x : F) -> (F, i32) {
     wide :: cast[f64](x)
     if wide == 0 || wide != wide || abs(wide) == infinity_64() {
         return x, 0
@@ -1102,7 +1108,7 @@ fraction_and_exponent :: fn[F](x: F) -> (F, i32) {
  * @return x × 2^power, rounded once; ±infinity where it overflows, ±0 where it underflows; x for ±0, ±infinity and
  *     NaN.
  */
-scale_by_power_of_two :: fn[F](x: F, power: i32) -> F {
+scale_by_power_of_two :: fn[F](x : F, power : i32) -> F {
     #if size_of(F) == 4 {
         // Exact in f64 for any power an f32 result needs, so it's rounded once, to f32
         clamped : i32 = if power > 400 { 400 } else if power < -400 { -400 } else { power }
@@ -1124,7 +1130,7 @@ scale_by_power_of_two :: fn[F](x: F, power: i32) -> F {
  * @return The float: ±infinity past the largest, a zero of the text's sign below half the least subnormal; none if the
  *     text isn't such a number.
  */
-parse :: fn[F](text: string) -> F? {
+parse :: fn[F](text : string) -> F? {
     #if size_of(F) == 4 {
         return parse_32(text)
     }

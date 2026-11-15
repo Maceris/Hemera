@@ -20,7 +20,7 @@ import compiler from "base:compiler"
  * @tparam capacity How many values it holds before sending waits: at least 1. They're kept in the channel itself, so
  *     it's capacity values large.
  */
-Channel :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
+Channel :: struct[T, capacity : usize] where compiler.AtLeastOne(capacity) {
     /** Guards the rest. */
     lock : Mutex,
     /** What receivers wait on for a value. */
@@ -48,7 +48,10 @@ Channel :: struct[T, capacity: usize] where compiler.AtLeastOne(capacity) {
  * @return What wasn't sent: null once the value is in the channel, or the value back if the channel is closed, before
  *     or while waiting, so a value that's #owned is still the caller's to release (docs/memory.md, Owned Types).
  */
-channel_send :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]], value #escaping #crosses_threads : T) -> T? {
+channel_send :: fn[T, capacity : usize](
+    channel : ptr[mut Channel[T, capacity]],
+    value #escaping #crosses_threads : T
+) -> T? {
     mutex_lock(&channel.lock)
     defer mutex_unlock(&channel.lock)
     loop {
@@ -76,7 +79,7 @@ channel_send :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]], v
  * @return True if a value was taken; false once the channel is closed and has nothing left. A closed channel still
  *     gives what was in it first.
  */
-channel_receive :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]]) -> (T, bool) {
+channel_receive :: fn[T, capacity : usize](channel : ptr[mut Channel[T, capacity]]) -> (T, bool) {
     mutex_lock(&channel.lock)
     defer mutex_unlock(&channel.lock)
     loop {
@@ -106,7 +109,7 @@ channel_receive :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]]
  * @tparam capacity How many values the channel holds.
  * @param channel The channel, from any fiber or thread.
  */
-channel_close :: fn[T, capacity: usize](channel: ptr[mut Channel[T, capacity]]) {
+channel_close :: fn[T, capacity : usize](channel : ptr[mut Channel[T, capacity]]) {
     mutex_lock(&channel.lock)
     defer mutex_unlock(&channel.lock)
     channel.closed = true

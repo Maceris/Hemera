@@ -45,25 +45,25 @@ MlKemPoly :: distinct alias u16[256] #secret
 
 /** ζ^BitRev7(i) for the NTT, ζ = 17 (FIPS 203, Appendix A). */
 ML_KEM_ZETAS :: u64.[
-    1, 1729, 2580, 3289, 2642, 630, 1897, 848, 1062, 1919, 193, 797, 2786, 3260, 569, 1746,
-    296, 2447, 1339, 1476, 3046, 56, 2240, 1333, 1426, 2094, 535, 2882, 2393, 2879, 1974, 821,
-    289, 331, 3253, 1756, 1197, 2304, 2277, 2055, 650, 1977, 2513, 632, 2865, 33, 1320, 1915,
-    2319, 1435, 807, 452, 1438, 2868, 1534, 2402, 2647, 2617, 1481, 648, 2474, 3110, 1227, 910,
-    17, 2761, 583, 2649, 1637, 723, 2288, 1100, 1409, 2662, 3281, 233, 756, 2156, 3015, 3050,
-    1703, 1651, 2789, 1789, 1847, 952, 1461, 2687, 939, 2308, 2437, 2388, 733, 2337, 268, 641,
-    1584, 2298, 2037, 3220, 375, 2549, 2090, 1645, 1063, 319, 2773, 757, 2099, 561, 2466, 2594,
-    2804, 1092, 403, 1026, 1143, 2150, 2775, 886, 1722, 1212, 1874, 1029, 2110, 2935, 885, 2154]
+    1, 1729, 2580, 3289, 2642, 630, 1897, 848, 1062, 1919, 193, 797, 2786, 3260, 569, 1746, 296, 2447, 1339, 1476, 3046,
+    56, 2240, 1333, 1426, 2094, 535, 2882, 2393, 2879, 1974, 821, 289, 331, 3253, 1756, 1197, 2304, 2277, 2055, 650,
+    1977, 2513, 632, 2865, 33, 1320, 1915, 2319, 1435, 807, 452, 1438, 2868, 1534, 2402, 2647, 2617, 1481, 648, 2474,
+    3110, 1227, 910, 17, 2761, 583, 2649, 1637, 723, 2288, 1100, 1409, 2662, 3281, 233, 756, 2156, 3015, 3050, 1703,
+    1651, 2789, 1789, 1847, 952, 1461, 2687, 939, 2308, 2437, 2388, 733, 2337, 268, 641, 1584, 2298, 2037, 3220, 375,
+    2549, 2090, 1645, 1063, 319, 2773, 757, 2099, 561, 2466, 2594, 2804, 1092, 403, 1026, 1143, 2150, 2775, 886, 1722,
+    1212, 1874, 1029, 2110, 2935, 885, 2154
+]
 
 /** ζ^(2 BitRev7(i) + 1) for multiplying in the NTT's domain (FIPS 203, Appendix A). */
 ML_KEM_GAMMAS :: u64.[
-    17, 3312, 2761, 568, 583, 2746, 2649, 680, 1637, 1692, 723, 2606, 2288, 1041, 1100, 2229,
-    1409, 1920, 2662, 667, 3281, 48, 233, 3096, 756, 2573, 2156, 1173, 3015, 314, 3050, 279,
-    1703, 1626, 1651, 1678, 2789, 540, 1789, 1540, 1847, 1482, 952, 2377, 1461, 1868, 2687, 642,
-    939, 2390, 2308, 1021, 2437, 892, 2388, 941, 733, 2596, 2337, 992, 268, 3061, 641, 2688,
-    1584, 1745, 2298, 1031, 2037, 1292, 3220, 109, 375, 2954, 2549, 780, 2090, 1239, 1645, 1684,
-    1063, 2266, 319, 3010, 2773, 556, 757, 2572, 2099, 1230, 561, 2768, 2466, 863, 2594, 735,
-    2804, 525, 1092, 2237, 403, 2926, 1026, 2303, 1143, 2186, 2150, 1179, 2775, 554, 886, 2443,
-    1722, 1607, 1212, 2117, 1874, 1455, 1029, 2300, 2110, 1219, 2935, 394, 885, 2444, 2154, 1175]
+    17, 3312, 2761, 568, 583, 2746, 2649, 680, 1637, 1692, 723, 2606, 2288, 1041, 1100, 2229, 1409, 1920, 2662, 667,
+    3281, 48, 233, 3096, 756, 2573, 2156, 1173, 3015, 314, 3050, 279, 1703, 1626, 1651, 1678, 2789, 540, 1789, 1540,
+    1847, 1482, 952, 2377, 1461, 1868, 2687, 642, 939, 2390, 2308, 1021, 2437, 892, 2388, 941, 733, 2596, 2337, 992,
+    268, 3061, 641, 2688, 1584, 1745, 2298, 1031, 2037, 1292, 3220, 109, 375, 2954, 2549, 780, 2090, 1239, 1645, 1684,
+    1063, 2266, 319, 3010, 2773, 556, 757, 2572, 2099, 1230, 561, 2768, 2466, 863, 2594, 735, 2804, 525, 1092, 2237,
+    403, 2926, 1026, 2303, 1143, 2186, 2150, 1179, 2775, 554, 886, 2443, 1722, 1607, 1212, 2117, 1874, 1455, 1029, 2300,
+    2110, 1219, 2935, 394, 885, 2444, 2154, 1175
+]
 
 // ---- Arithmetic modulo q
 
@@ -73,7 +73,7 @@ ML_KEM_GAMMAS :: u64.[
  * @param x A value below 2q.
  * @return x mod q.
  */
-ml_kem_fold #constant_time :: fn(x: SecretWord) -> SecretWord {
+ml_kem_fold #constant_time :: fn(x : SecretWord) -> SecretWord {
     d :: x - ML_KEM_Q
     return d + (ML_KEM_Q & (0 - (d >> 63)))
 }
@@ -84,13 +84,13 @@ ml_kem_fold #constant_time :: fn(x: SecretWord) -> SecretWord {
  * @param x A value below 2^32.
  * @return x mod q.
  */
-ml_kem_reduce #constant_time :: fn(x: SecretWord) -> SecretWord {
+ml_kem_reduce #constant_time :: fn(x : SecretWord) -> SecretWord {
     t :: (x * 1290167) >> 32
     return ml_kem_fold(x - t * ML_KEM_Q)
 }
 
 /** A coefficient as a SecretWord, to work on. */
-ml_kem_word #constant_time :: fn(f: ptr[MlKemPoly], i: usize) -> SecretWord {
+ml_kem_word #constant_time :: fn(f : ptr[MlKemPoly], i : usize) -> SecretWord {
     return cast[SecretWord](f[i % 256])
 }
 
@@ -100,7 +100,7 @@ ml_kem_word #constant_time :: fn(f: ptr[MlKemPoly], i: usize) -> SecretWord {
  * @param x A value below 2^23.
  * @return x / q.
  */
-ml_kem_divide #constant_time :: fn(x: SecretWord) -> SecretWord {
+ml_kem_divide #constant_time :: fn(x : SecretWord) -> SecretWord {
     return (x * 1290168) >> 32
 }
 
@@ -111,7 +111,7 @@ ml_kem_divide #constant_time :: fn(x: SecretWord) -> SecretWord {
  *
  * @param f The polynomial, transformed in place.
  */
-ml_kem_ntt #constant_time :: fn(f: ptr[mut MlKemPoly]) {
+ml_kem_ntt #constant_time :: fn(f : ptr[mut MlKemPoly]) {
     i := cast[usize](1)
     length := cast[usize](128)
     loop {
@@ -138,7 +138,7 @@ ml_kem_ntt #constant_time :: fn(f: ptr[mut MlKemPoly]) {
  *
  * @param f The polynomial, transformed in place.
  */
-ml_kem_inverse_ntt #constant_time :: fn(f: ptr[mut MlKemPoly]) {
+ml_kem_inverse_ntt #constant_time :: fn(f : ptr[mut MlKemPoly]) {
     i := cast[usize](127)
     length := cast[usize](2)
     loop {
@@ -171,7 +171,7 @@ ml_kem_inverse_ntt #constant_time :: fn(f: ptr[mut MlKemPoly]) {
  * @param f One polynomial.
  * @param g The other.
  */
-ml_kem_multiply_add #constant_time :: fn(sum: ptr[mut MlKemPoly], f: ptr[MlKemPoly], g: ptr[MlKemPoly]) {
+ml_kem_multiply_add #constant_time :: fn(sum : ptr[mut MlKemPoly], f : ptr[MlKemPoly], g : ptr[MlKemPoly]) {
     for i in cast[usize](0)..<128 {
         a0 :: ml_kem_word(f, 2 * i)
         a1 :: ml_kem_word(f, 2 * i + 1)
@@ -190,7 +190,7 @@ ml_kem_multiply_add #constant_time :: fn(sum: ptr[mut MlKemPoly], f: ptr[MlKemPo
  * @param sum Where it's added.
  * @param f What's added.
  */
-ml_kem_add #constant_time :: fn(sum: ptr[mut MlKemPoly], f: ptr[MlKemPoly]) {
+ml_kem_add #constant_time :: fn(sum : ptr[mut MlKemPoly], f : ptr[MlKemPoly]) {
     for i in cast[usize](0)..<256 {
         sum[i] = cast[u16](ml_kem_fold(ml_kem_word(sum, i) + ml_kem_word(f, i)))
     }
@@ -205,7 +205,7 @@ ml_kem_add #constant_time :: fn(sum: ptr[mut MlKemPoly], f: ptr[MlKemPoly]) {
  * @param d The bits each: 1, 4, 10 or 12.
  * @param output Where the 32 d bytes go.
  */
-ml_kem_encode #constant_time :: fn(f: ptr[MlKemPoly], d: u64, output: mut SecretByte[]) {
+ml_kem_encode #constant_time :: fn(f : ptr[MlKemPoly], d : u64, output : mut SecretByte[]) {
     held := cast[SecretWord](0)
     bits := cast[u64](0)
     at := cast[usize](0)
@@ -232,7 +232,7 @@ ml_kem_encode #constant_time :: fn(f: ptr[MlKemPoly], d: u64, output: mut Secret
  * @param d The bits each: 1, 4, 10 or 12.
  * @param f Where the coefficients go.
  */
-ml_kem_decode #constant_time :: fn(input: SecretByte[], d: u64, f: ptr[mut MlKemPoly]) {
+ml_kem_decode #constant_time :: fn(input : SecretByte[], d : u64, f : ptr[mut MlKemPoly]) {
     held := cast[SecretWord](0)
     bits := cast[u64](0)
     at := cast[usize](0)
@@ -257,9 +257,10 @@ ml_kem_decode #constant_time :: fn(input: SecretByte[], d: u64, f: ptr[mut MlKem
  * @param f The polynomial, compressed in place.
  * @param d The bits: 1, 4 or 10.
  */
-ml_kem_compress #constant_time :: fn(f: ptr[mut MlKemPoly], d: u64) {
+ml_kem_compress #constant_time :: fn(f : ptr[mut MlKemPoly], d : u64) {
     for i in cast[usize](0)..<256 {
-        f[i] = cast[u16](ml_kem_divide((ml_kem_word(f, i) << d) + ML_KEM_Q / 2) & cast[SecretWord]((cast[u64](1) << d) - 1))
+        f[i] = cast[u16](ml_kem_divide((ml_kem_word(f, i) << d) + ML_KEM_Q / 2)
+            & cast[SecretWord]((cast[u64](1) << d) - 1))
     }
 }
 
@@ -269,7 +270,7 @@ ml_kem_compress #constant_time :: fn(f: ptr[mut MlKemPoly], d: u64) {
  * @param f The polynomial, decompressed in place.
  * @param d The bits: 1, 4 or 10.
  */
-ml_kem_decompress #constant_time :: fn(f: ptr[mut MlKemPoly], d: u64) {
+ml_kem_decompress #constant_time :: fn(f : ptr[mut MlKemPoly], d : u64) {
     for i in cast[usize](0)..<256 {
         f[i] = cast[u16]((ml_kem_word(f, i) * ML_KEM_Q + cast[SecretWord](cast[u64](1) << (d - 1))) >> d)
     }
@@ -286,7 +287,7 @@ ml_kem_decompress #constant_time :: fn(f: ptr[mut MlKemPoly], d: u64) {
  * @param i The row.
  * @param f Where the polynomial goes.
  */
-ml_kem_sample_ntt #constant_time :: fn(rho: u8[], j: u8, i: u8, f: ptr[mut MlKemPoly]) {
+ml_kem_sample_ntt #constant_time :: fn(rho : u8[], j : u8, i : u8, f : ptr[mut MlKemPoly]) {
     seed : u8[34]
     for byte, at in rho {
         if at < 32 {
@@ -335,7 +336,7 @@ ml_kem_sample_ntt #constant_time :: fn(rho: u8[], j: u8, i: u8, f: ptr[mut MlKem
  * @param b The counter.
  * @param f Where the polynomial goes.
  */
-ml_kem_sample_cbd #constant_time :: fn(s: SecretByte[], b: u8, f: ptr[mut MlKemPoly]) {
+ml_kem_sample_cbd #constant_time :: fn(s : SecretByte[], b : u8, f : ptr[mut MlKemPoly]) {
     sponge := shake256_start()
     keccak_absorb(&sponge, s)
     counter : u8[1]
@@ -357,19 +358,19 @@ ml_kem_sample_cbd #constant_time :: fn(s: SecretByte[], b: u8, f: ptr[mut MlKemP
 // ---- Parts of keys and ciphertexts
 
 /** Bytes from an offset, as many as asked, or none if they aren't all there. */
-ml_kem_part :: fn(bytes: u8[], from: usize, count: usize) -> u8[] {
+ml_kem_part :: fn(bytes : u8[], from : usize, count : usize) -> u8[] {
     end :: from + count
     return if from <= end && end <= bytes.count { bytes[from..<end] } else { bytes[0..<0] }
 }
 
 /** The same, of secret bytes. */
-ml_kem_secret_part #constant_time :: fn(bytes: SecretByte[], from: usize, count: usize) -> SecretByte[] {
+ml_kem_secret_part #constant_time :: fn(bytes : SecretByte[], from : usize, count : usize) -> SecretByte[] {
     end :: from + count
     return if from <= end && end <= bytes.count { bytes[from..<end] } else { bytes[0..<0] }
 }
 
 /** The same, of secret bytes to write. */
-ml_kem_output_part #constant_time :: fn(bytes: mut SecretByte[], from: usize, count: usize) -> mut SecretByte[] {
+ml_kem_output_part #constant_time :: fn(bytes : mut SecretByte[], from : usize, count : usize) -> mut SecretByte[] {
     end :: from + count
     return if from <= end && end <= bytes.count { bytes[from..<end] } else { bytes[0..<0] }
 }
@@ -393,7 +394,7 @@ MlKemVector :: struct {
  * @param transposed Whether to make Âᵀ, as encryption wants.
  * @param a Where it goes.
  */
-ml_kem_matrix :: fn(rho: u8[], transposed: bool, a: ptr[mut MlKemMatrix]) {
+ml_kem_matrix :: fn(rho : u8[], transposed : bool, a : ptr[mut MlKemMatrix]) {
     for i in cast[usize](0)..<3 {
         for j in cast[usize](0)..<3 {
             row :: if transposed { j } else { i }
@@ -411,7 +412,12 @@ ml_kem_matrix :: fn(rho: u8[], transposed: bool, a: ptr[mut MlKemMatrix]) {
  * @param first The first half.
  * @param second The second.
  */
-ml_kem_g #constant_time :: fn(data: SecretByte[], more: SecretByte[], first: ptr[mut SecretByte[32]], second: ptr[mut SecretByte[32]]) {
+ml_kem_g #constant_time :: fn(
+    data : SecretByte[],
+    more : SecretByte[],
+    first : ptr[mut SecretByte[32]],
+    second : ptr[mut SecretByte[32]]
+) {
     sponge := sha3_512_start()
     keccak_absorb(&sponge, data)
     keccak_absorb(&sponge, more)
@@ -431,9 +437,12 @@ ml_kem_g #constant_time :: fn(data: SecretByte[], more: SecretByte[], first: ptr
  * @param r The 32 bytes of randomness.
  * @param ciphertext Where the ciphertext goes.
  */
-ml_kem_encrypt #constant_time :: fn(public: ptr[MlKem768PublicKey], message: ptr[SecretByte[32]], r: ptr[SecretByte[32]],
-    ciphertext: mut SecretByte[]) {
-
+ml_kem_encrypt #constant_time :: fn(
+    public : ptr[MlKem768PublicKey],
+    message : ptr[SecretByte[32]],
+    r : ptr[SecretByte[32]],
+    ciphertext : mut SecretByte[]
+) {
     t : MlKemVector
     for i in cast[usize](0)..<3 {
         ml_kem_decode(as_secret(ml_kem_part(public[0..<1184], 384 * i, 384)), 12, &t.polys[i])
@@ -482,7 +491,11 @@ ml_kem_encrypt #constant_time :: fn(public: ptr[MlKem768PublicKey], message: ptr
  * @param ciphertext The ciphertext.
  * @param message Where the 32-byte message goes.
  */
-ml_kem_decrypt #constant_time :: fn(s: SecretByte[], ciphertext: ptr[MlKem768Ciphertext], message: ptr[mut SecretByte[32]]) {
+ml_kem_decrypt #constant_time :: fn(
+    s : SecretByte[],
+    ciphertext : ptr[MlKem768Ciphertext],
+    message : ptr[mut SecretByte[32]]
+) {
     w : MlKemPoly
     for i in cast[usize](0)..<3 {
         u : MlKemPoly
@@ -515,9 +528,12 @@ ml_kem_decrypt #constant_time :: fn(s: SecretByte[], ciphertext: ptr[MlKem768Cip
  * @param public Where the public key goes.
  * @param secret Where the secret key goes.
  */
-ml_kem_768_key_pair #constant_time :: fn(d: ptr[SecretByte[32]], z: ptr[SecretByte[32]], public: ptr[mut MlKem768PublicKey],
-    secret: ptr[mut MlKem768SecretKey]) {
-
+ml_kem_768_key_pair #constant_time :: fn(
+    d : ptr[SecretByte[32]],
+    z : ptr[SecretByte[32]],
+    public : ptr[mut MlKem768PublicKey],
+    secret : ptr[mut MlKem768SecretKey]
+) {
     // (ρ, σ) = G(d ‖ k)
     k : SecretByte[1]
     k[0] = 3
@@ -568,7 +584,7 @@ ml_kem_768_key_pair #constant_time :: fn(d: ptr[SecretByte[32]], z: ptr[SecretBy
 }
 
 /** The secret key's bytes for ŝ's ith polynomial, as SecretBytes. */
-encoded_secret_part #constant_time :: fn(secret: ptr[mut MlKem768SecretKey], i: usize) -> mut SecretByte[] {
+encoded_secret_part #constant_time :: fn(secret : ptr[mut MlKem768SecretKey], i : usize) -> mut SecretByte[] {
     whole :: bit_cast[mut SecretByte[]](secret[0..<ML_KEM_768_SECRET_KEY_BYTES])
     return ml_kem_output_part(whole, 384 * (i % 3), 384)
 }
@@ -579,7 +595,7 @@ encoded_secret_part #constant_time :: fn(secret: ptr[mut MlKem768SecretKey], i: 
  * @param public The public key.
  * @return True if it is.
  */
-ml_kem_768_check_public_key :: fn(public: ptr[MlKem768PublicKey]) -> bool {
+ml_kem_768_check_public_key :: fn(public : ptr[MlKem768PublicKey]) -> bool {
     for i in cast[usize](0)..<3 {
         f : MlKemPoly
         ml_kem_decode(as_secret(ml_kem_part(public[0..<1184], 384 * i, 384)), 12, &f)
@@ -601,9 +617,12 @@ ml_kem_768_check_public_key :: fn(public: ptr[MlKem768PublicKey]) -> bool {
  * @param shared Where the 32-byte shared secret goes.
  * @return True; false, nothing written, if the public key fails the modulus check.
  */
-ml_kem_768_encapsulate #constant_time :: fn(public: ptr[MlKem768PublicKey], m: ptr[SecretByte[32]], ciphertext: ptr[mut MlKem768Ciphertext],
-    shared: ptr[mut SecretByte[32]]) -> bool {
-
+ml_kem_768_encapsulate #constant_time :: fn(
+    public : ptr[MlKem768PublicKey],
+    m : ptr[SecretByte[32]],
+    ciphertext : ptr[mut MlKem768Ciphertext],
+    shared : ptr[mut SecretByte[32]]
+) -> bool {
     if !ml_kem_768_check_public_key(public) {
         return false
     }
@@ -629,9 +648,11 @@ ml_kem_768_encapsulate #constant_time :: fn(public: ptr[MlKem768PublicKey], m: p
  * @param shared Where the 32-byte shared secret goes.
  * @return True; false, nothing written, if the secret key's hash of its public key doesn't match, so it's damaged.
  */
-ml_kem_768_decapsulate #constant_time :: fn(secret: ptr[MlKem768SecretKey], ciphertext: ptr[MlKem768Ciphertext],
-    shared: ptr[mut SecretByte[32]]) -> bool {
-
+ml_kem_768_decapsulate #constant_time :: fn(
+    secret : ptr[MlKem768SecretKey],
+    ciphertext : ptr[MlKem768Ciphertext],
+    shared : ptr[mut SecretByte[32]]
+) -> bool {
     whole :: bit_cast[SecretByte[]](secret[0..<ML_KEM_768_SECRET_KEY_BYTES])
     public : MlKem768PublicKey
     for byte, i in ml_kem_secret_part(whole, 1152, 1184) {

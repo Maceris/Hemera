@@ -29,23 +29,23 @@ Key512 :: distinct alias u8[64] #secret
 /** AES-SIV's keys, ready to use: CMAC's AES key and its two subkeys, and the counter's AES key. Secret throughout. */
 AesSiv :: struct {
     /** The first half of the key, which CMAC and so S2V use. */
-    mac: AesKey,
+    mac : AesKey,
     /** The second half, which encrypts the counter. */
-    counter: AesKey,
+    counter : AesKey,
     /** CMAC's first subkey, K1: zeros encrypted, then doubled; added to a last block that's whole. */
-    first: AesBlock,
+    first : AesBlock,
     /** CMAC's second subkey, K2: K1 doubled; added to a last block that's padded. */
-    second: AesBlock,
+    second : AesBlock,
 }
 
 /** A CMAC (RFC 4493) in progress. The bytes it holds are secret; how many isn't. */
 AesCmac :: struct {
     /** The running value: every block taken so far, chained through AES. */
-    value: AesBlock,
+    value : AesBlock,
     /** The bytes not yet taken, up to a whole block, which is held back until it's known not to be the last. */
-    buffer: AesBlock,
+    buffer : AesBlock,
     /** How many of the buffer's bytes are filled, 0 to 16. */
-    buffered: usize,
+    buffered : usize,
 }
 
 /**
@@ -55,7 +55,7 @@ AesCmac :: struct {
  * @param block Any block, read as a 128-bit big-endian number.
  * @return The block doubled.
  */
-aes_siv_double #constant_time :: fn(block: AesBlock) -> AesBlock {
+aes_siv_double #constant_time :: fn(block : AesBlock) -> AesBlock {
     doubled : AesBlock
     for i in 0..<15 {
         doubled[i] = (block[i] << 1) | (block[i + 1] >> 7)
@@ -71,7 +71,7 @@ aes_siv_double #constant_time :: fn(block: AesBlock) -> AesBlock {
  * @param into The block added to, changed in place.
  * @param other The block added.
  */
-aes_siv_add #constant_time :: fn(into: ptr[mut AesBlock], other: ptr[AesBlock]) {
+aes_siv_add #constant_time :: fn(into : ptr[mut AesBlock], other : ptr[AesBlock]) {
     for i in 0..<16 {
         into[i] = into[i] ~ other[i]
     }
@@ -84,7 +84,7 @@ aes_siv_add #constant_time :: fn(into: ptr[mut AesBlock], other: ptr[AesBlock]) 
  * @param cmac The CMAC, not yet finished: each block but the last is taken as a later byte comes after it.
  * @param data The bytes, of any number, none included; what they are is secret, how many isn't.
  */
-aes_cmac_update #constant_time :: fn(mac: ptr[AesKey], cmac: ptr[mut AesCmac], data: SecretByte[]) {
+aes_cmac_update #constant_time :: fn(mac : ptr[AesKey], cmac : ptr[mut AesCmac], data : SecretByte[]) {
     for byte in data {
         if cmac.buffered == 16 {
             aes_siv_add(&cmac.value, &cmac.buffer)
@@ -104,7 +104,7 @@ aes_cmac_update #constant_time :: fn(mac: ptr[AesKey], cmac: ptr[mut AesCmac], d
  * @param cmac The CMAC, spent afterwards.
  * @return The 16-byte tag, secret.
  */
-aes_cmac_finish #constant_time :: fn(siv: ptr[AesSiv], cmac: ptr[mut AesCmac]) -> AesBlock {
+aes_cmac_finish #constant_time :: fn(siv : ptr[AesSiv], cmac : ptr[mut AesCmac]) -> AesBlock {
     last := cmac.buffer
     if cmac.buffered == 16 {
         aes_siv_add(&last, &siv.first)
@@ -128,7 +128,7 @@ aes_cmac_finish #constant_time :: fn(siv: ptr[AesSiv], cmac: ptr[mut AesCmac]) -
  * @param data The bytes, of any number, none included.
  * @return The 16-byte tag, secret.
  */
-aes_cmac #constant_time :: fn(siv: ptr[AesSiv], data: SecretByte[]) -> AesBlock {
+aes_cmac #constant_time :: fn(siv : ptr[AesSiv], data : SecretByte[]) -> AesBlock {
     cmac := AesCmac.{}
     aes_cmac_update(&siv.mac, &cmac, data)
     return aes_cmac_finish(siv, &cmac)
@@ -141,7 +141,7 @@ aes_cmac #constant_time :: fn(siv: ptr[AesSiv], data: SecretByte[]) -> AesBlock 
  * @param counter The second half's AES key, for the counter, from aes_key.
  * @return The keys, secret throughout; nothing wipes them when they're done with.
  */
-aes_siv_start #constant_time :: fn(mac: AesKey, counter: AesKey) -> AesSiv {
+aes_siv_start #constant_time :: fn(mac : AesKey, counter : AesKey) -> AesSiv {
     siv := AesSiv.{mac = mac, counter = counter}
     zero : AesBlock
     aes_encrypt_block(&siv.mac, &zero)
@@ -161,7 +161,12 @@ aes_siv_start #constant_time :: fn(mac: AesKey, counter: AesKey) -> AesSiv {
  * @param plaintext The plaintext, of any length.
  * @return The synthetic IV, V: the tag, secret until it's compared or sent.
  */
-aes_siv_s2v #constant_time :: fn(siv: ptr[AesSiv], associated: u8[], nonce: u8[]?, plaintext: SecretByte[]) -> AesBlock {
+aes_siv_s2v #constant_time :: fn(
+    siv : ptr[AesSiv],
+    associated : u8[],
+    nonce : u8[]?,
+    plaintext : SecretByte[]
+) -> AesBlock {
     zero : AesBlock
     d := aes_cmac(siv, bit_cast[SecretByte[16]](zero))
     d = aes_siv_double(d)
@@ -201,7 +206,7 @@ aes_siv_s2v #constant_time :: fn(siv: ptr[AesSiv], associated: u8[], nonce: u8[]
  * @param iv The synthetic IV.
  * @return The counter, a 128-bit big-endian number in two halves, secret.
  */
-aes_siv_counter_of #constant_time :: fn(iv: ptr[AesBlock]) -> Ghash {
+aes_siv_counter_of #constant_time :: fn(iv : ptr[AesBlock]) -> Ghash {
     counter := Ghash.{high = 0, low = 0}
     for i in 0..<8 {
         counter.high = (counter.high << 8) | cast[u64](iv[i])
@@ -218,7 +223,7 @@ aes_siv_counter_of #constant_time :: fn(iv: ptr[AesBlock]) -> Ghash {
  * @param counter The counter, moved on by four, wrapping past 2^128 - 1.
  * @param stream Where the 64 bytes of keystream go.
  */
-aes_siv_keystream #constant_time :: fn(siv: ptr[AesSiv], counter: ptr[mut Ghash], stream: ptr[mut AesBlocks4]) {
+aes_siv_keystream #constant_time :: fn(siv : ptr[AesSiv], counter : ptr[mut Ghash], stream : ptr[mut AesBlocks4]) {
     for b in 0..<4 {
         for j in 0..<8 {
             shift := 56 - 8 * cast[u64](j)
@@ -244,9 +249,14 @@ aes_siv_keystream #constant_time :: fn(siv: ptr[AesSiv], counter: ptr[mut Ghash]
  * @param ciphertext Where the encrypted message goes, which has to have plaintext's count.
  * @return True with tag and ciphertext written, or false, with nothing written, when the counts differ.
  */
-aes_siv_seal #constant_time :: fn(siv: ptr[AesSiv], associated: u8[], nonce: u8[]?, plaintext: SecretByte[], tag: ptr[mut Tag128],
-    ciphertext: mut u8[]) -> bool {
-
+aes_siv_seal #constant_time :: fn(
+    siv : ptr[AesSiv],
+    associated : u8[],
+    nonce : u8[]?,
+    plaintext : SecretByte[],
+    tag : ptr[mut Tag128],
+    ciphertext : mut u8[]
+) -> bool {
     if plaintext.count != ciphertext.count {
         return false
     }
@@ -283,9 +293,14 @@ aes_siv_seal #constant_time :: fn(siv: ptr[AesSiv], associated: u8[], nonce: u8[
  * @return True with plaintext written; false when the tag doesn't match, with plaintext set to zeros, or when the
  *     counts differ, with nothing written.
  */
-aes_siv_open #constant_time :: fn(siv: ptr[AesSiv], associated: u8[], nonce: u8[]?, tag: ptr[Tag128], ciphertext: u8[],
-    plaintext: mut SecretByte[]) -> bool {
-
+aes_siv_open #constant_time :: fn(
+    siv : ptr[AesSiv],
+    associated : u8[],
+    nonce : u8[]?,
+    tag : ptr[Tag128],
+    ciphertext : u8[],
+    plaintext : mut SecretByte[]
+) -> bool {
     if plaintext.count != ciphertext.count {
         return false
     }
@@ -325,7 +340,7 @@ aes_siv_open #constant_time :: fn(siv: ptr[AesSiv], associated: u8[], nonce: u8[
  * @param hardware Whether AES-NI is used, which only a CPU that has it, as aes_hardware says, may be told.
  * @return The keys.
  */
-aes_siv_cmac256_keys #constant_time :: fn(key: ptr[Key256], hardware: bool) -> AesSiv {
+aes_siv_cmac256_keys #constant_time :: fn(key : ptr[Key256], hardware : bool) -> AesSiv {
     mac : Key128
     counter : Key128
     for i in 0..<16 {
@@ -342,7 +357,7 @@ aes_siv_cmac256_keys #constant_time :: fn(key: ptr[Key256], hardware: bool) -> A
  * @param hardware Whether AES-NI is used, which only a CPU that has it, as aes_hardware says, may be told.
  * @return The keys.
  */
-aes_siv_cmac512_keys #constant_time :: fn(key: ptr[Key512], hardware: bool) -> AesSiv {
+aes_siv_cmac512_keys #constant_time :: fn(key : ptr[Key512], hardware : bool) -> AesSiv {
     mac : Key256
     counter : Key256
     for i in 0..<32 {
@@ -368,9 +383,14 @@ aes_siv_cmac512_keys #constant_time :: fn(key: ptr[Key512], hardware: bool) -> A
  * @param ciphertext Where the encrypted message goes, which has to have plaintext's count. It's public.
  * @return True with tag and ciphertext written, or false, with nothing written, when the counts differ.
  */
-aes_siv_cmac256_seal #constant_time :: fn(key: ptr[Key256], associated: u8[], nonce: u8[]?, plaintext: SecretByte[], tag: ptr[mut Tag128],
-    ciphertext: mut u8[]) -> bool {
-
+aes_siv_cmac256_seal #constant_time :: fn(
+    key : ptr[Key256],
+    associated : u8[],
+    nonce : u8[]?,
+    plaintext : SecretByte[],
+    tag : ptr[mut Tag128],
+    ciphertext : mut u8[]
+) -> bool {
     return aes_siv_cmac256_seal_with(key, associated, nonce, plaintext, tag, ciphertext, aes_hardware())
 }
 
@@ -389,9 +409,14 @@ aes_siv_cmac256_seal #constant_time :: fn(key: ptr[Key256], associated: u8[], no
  * @return True with plaintext written; false when the tag doesn't match (forged or damaged, or the key or the
  *     associated data is wrong), with plaintext all zeros, or when the counts differ, with nothing written.
  */
-aes_siv_cmac256_open #constant_time :: fn(key: ptr[Key256], associated: u8[], nonce: u8[]?, tag: ptr[Tag128], ciphertext: u8[],
-    plaintext: mut SecretByte[]) -> bool {
-
+aes_siv_cmac256_open #constant_time :: fn(
+    key : ptr[Key256],
+    associated : u8[],
+    nonce : u8[]?,
+    tag : ptr[Tag128],
+    ciphertext : u8[],
+    plaintext : mut SecretByte[]
+) -> bool {
     return aes_siv_cmac256_open_with(key, associated, nonce, tag, ciphertext, plaintext, aes_hardware())
 }
 
@@ -408,9 +433,15 @@ aes_siv_cmac256_open #constant_time :: fn(key: ptr[Key256], associated: u8[], no
  *     same either way.
  * @return True with tag and ciphertext written, or false, with nothing written, when the counts differ.
  */
-aes_siv_cmac256_seal_with #constant_time :: fn(key: ptr[Key256], associated: u8[], nonce: u8[]?, plaintext: SecretByte[],
-    tag: ptr[mut Tag128], ciphertext: mut u8[], hardware: bool) -> bool {
-
+aes_siv_cmac256_seal_with #constant_time :: fn(
+    key : ptr[Key256],
+    associated : u8[],
+    nonce : u8[]?,
+    plaintext : SecretByte[],
+    tag : ptr[mut Tag128],
+    ciphertext : mut u8[],
+    hardware : bool
+) -> bool {
     siv := aes_siv_cmac256_keys(key, hardware)
     return aes_siv_seal(&siv, associated, nonce, plaintext, tag, ciphertext)
 }
@@ -428,9 +459,15 @@ aes_siv_cmac256_seal_with #constant_time :: fn(key: ptr[Key256], associated: u8[
  * @return True with plaintext written; false when the tag doesn't match, with plaintext all zeros, or when the counts
  *     differ, with nothing written.
  */
-aes_siv_cmac256_open_with #constant_time :: fn(key: ptr[Key256], associated: u8[], nonce: u8[]?, tag: ptr[Tag128], ciphertext: u8[],
-    plaintext: mut SecretByte[], hardware: bool) -> bool {
-
+aes_siv_cmac256_open_with #constant_time :: fn(
+    key : ptr[Key256],
+    associated : u8[],
+    nonce : u8[]?,
+    tag : ptr[Tag128],
+    ciphertext : u8[],
+    plaintext : mut SecretByte[],
+    hardware : bool
+) -> bool {
     siv := aes_siv_cmac256_keys(key, hardware)
     return aes_siv_open(&siv, associated, nonce, tag, ciphertext, plaintext)
 }
@@ -449,9 +486,15 @@ aes_siv_cmac256_open_with #constant_time :: fn(key: ptr[Key256], associated: u8[
  *     same either way.
  * @return True with tag and ciphertext written, or false, with nothing written, when the counts differ.
  */
-aes_siv_cmac512_seal_with #constant_time :: fn(key: ptr[Key512], associated: u8[], nonce: u8[]?, plaintext: SecretByte[],
-    tag: ptr[mut Tag128], ciphertext: mut u8[], hardware: bool) -> bool {
-
+aes_siv_cmac512_seal_with #constant_time :: fn(
+    key : ptr[Key512],
+    associated : u8[],
+    nonce : u8[]?,
+    plaintext : SecretByte[],
+    tag : ptr[mut Tag128],
+    ciphertext : mut u8[],
+    hardware : bool
+) -> bool {
     siv := aes_siv_cmac512_keys(key, hardware)
     return aes_siv_seal(&siv, associated, nonce, plaintext, tag, ciphertext)
 }
@@ -469,9 +512,15 @@ aes_siv_cmac512_seal_with #constant_time :: fn(key: ptr[Key512], associated: u8[
  * @return True with plaintext written; false when the tag doesn't match, with plaintext all zeros, or when the counts
  *     differ, with nothing written.
  */
-aes_siv_cmac512_open_with #constant_time :: fn(key: ptr[Key512], associated: u8[], nonce: u8[]?, tag: ptr[Tag128], ciphertext: u8[],
-    plaintext: mut SecretByte[], hardware: bool) -> bool {
-
+aes_siv_cmac512_open_with #constant_time :: fn(
+    key : ptr[Key512],
+    associated : u8[],
+    nonce : u8[]?,
+    tag : ptr[Tag128],
+    ciphertext : u8[],
+    plaintext : mut SecretByte[],
+    hardware : bool
+) -> bool {
     siv := aes_siv_cmac512_keys(key, hardware)
     return aes_siv_open(&siv, associated, nonce, tag, ciphertext, plaintext)
 }

@@ -3,39 +3,40 @@ package math
 import intrinsics from "base:intrinsics"
 
 /*
- * f64's functions on lanes: fdlibm's algorithms as the scalar functions have them, every branch worked out in every lane
+ * f64's functions on lanes: fdlibm's algorithms as the scalar functions have them, every branch worked out in every
+ * lane
  * and the lane's own chosen with select, so each lane gives the scalar function's bits exactly. A lane in a branch
  * that's rare and long, like a huge angle's reduction, or a special case, is worked out again by the scalar function.
  * n is how many lanes.
  */
 
 /** f64 lanes' bits. */
-lane_bits :: fn[n: usize](x: vector[f64, n]) -> vector[u64, n] {
+lane_bits :: fn[n : usize](x : vector[f64, n]) -> vector[u64, n] {
     return bit_cast[vector[u64, n]](x)
 }
 
 /** f64 lanes' high words, signed, as fdlibm reads them. */
-lane_high :: fn[n: usize](x: vector[f64, n]) -> vector[i64, n] {
+lane_high :: fn[n : usize](x : vector[f64, n]) -> vector[i64, n] {
     return bit_cast[vector[i64, n]](x) >> 32
 }
 
 /** f64 lanes' low words. */
-lane_low :: fn[n: usize](x: vector[f64, n]) -> vector[i64, n] {
+lane_low :: fn[n : usize](x : vector[f64, n]) -> vector[i64, n] {
     return bit_cast[vector[i64, n]](lane_bits(x) & 0xffff_ffff)
 }
 
 /** f64 lanes with their low words zero, fdlibm's SET_LOW_WORD(x, 0). */
-lane_cut :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+lane_cut :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return bit_cast[vector[f64, n]](lane_bits(x) & 0xffff_ffff_0000_0000)
 }
 
 /** f64 lanes with their high words replaced. */
-lane_with_high :: fn[n: usize](x: vector[f64, n], high: vector[i64, n]) -> vector[f64, n] {
+lane_with_high :: fn[n : usize](x : vector[f64, n], high : vector[i64, n]) -> vector[f64, n] {
     return bit_cast[vector[f64, n]]((bit_cast[vector[u64, n]](high) << 32) | (lane_bits(x) & 0xffff_ffff))
 }
 
 /** f64 lanes from high words, their low words zero. */
-lane_from_high :: fn[n: usize](high: vector[i64, n]) -> vector[f64, n] {
+lane_from_high :: fn[n : usize](high : vector[i64, n]) -> vector[f64, n] {
     return bit_cast[vector[f64, n]](bit_cast[vector[u64, n]](high) << 32)
 }
 
@@ -45,12 +46,12 @@ lane_from_high :: fn[n: usize](high: vector[i64, n]) -> vector[f64, n] {
  */
 
 /** Lanes of whole numbers, each within an i32's range, as f64. */
-lane_float :: fn[n: usize](k: vector[i64, n]) -> vector[f64, n] {
+lane_float :: fn[n : usize](k : vector[i64, n]) -> vector[f64, n] {
     return cast[vector[f64, n]](cast[vector[i32, n]](k))
 }
 
 /** f64 lanes, each within an i32's range, truncated toward 0 to whole numbers. */
-lane_whole :: fn[n: usize](x: vector[f64, n]) -> vector[i64, n] {
+lane_whole :: fn[n : usize](x : vector[f64, n]) -> vector[i64, n] {
     return cast[vector[i64, n]](cast[vector[i32, n]](x))
 }
 
@@ -64,9 +65,12 @@ lane_whole :: fn[n: usize](x: vector[f64, n]) -> vector[i64, n] {
  * @param exact The scalar function.
  * @return result, with those lanes exact's.
  */
-redo_lanes_64 :: fn[n: usize](result: vector[f64, n], x: vector[f64, n], redo: vector[bool, n], exact: (fn(x: f64) -> f64))
-    -> vector[f64, n] {
-
+redo_lanes_64 :: fn[n : usize](
+    result : vector[f64, n],
+    x : vector[f64, n],
+    redo : vector[bool, n],
+    exact : (fn(x : f64) -> f64)
+) -> vector[f64, n] {
     if !intrinsics.any_true(redo) {
         return result
     }
@@ -82,9 +86,13 @@ redo_lanes_64 :: fn[n: usize](result: vector[f64, n], x: vector[f64, n], redo: v
 }
 
 /** The same for a function of two. */
-redo_lanes_64_2 :: fn[n: usize](result: vector[f64, n], x: vector[f64, n], y: vector[f64, n], redo: vector[bool, n],
-    exact: (fn(x: f64, y: f64) -> f64)) -> vector[f64, n] {
-
+redo_lanes_64_2 :: fn[n : usize](
+    result : vector[f64, n],
+    x : vector[f64, n],
+    y : vector[f64, n],
+    redo : vector[bool, n],
+    exact : (fn(x : f64, y : f64) -> f64)
+) -> vector[f64, n] {
     if !intrinsics.any_true(redo) {
         return result
     }
@@ -101,8 +109,8 @@ redo_lanes_64_2 :: fn[n: usize](result: vector[f64, n], x: vector[f64, n], y: ve
 }
 
 /** exp_reduced_64 on lanes, k from -1074 to 1024. */
-//SPEC: fdlibm e_exp.c
-exp_reduced_lanes :: fn[n: usize](hi: vector[f64, n], lo: vector[f64, n], k: vector[i64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_exp.c
+exp_reduced_lanes :: fn[n : usize](hi : vector[f64, n], lo : vector[f64, n], k : vector[i64, n]) -> vector[f64, n] {
     x :: hi - lo
     t :: x * x
     c :: x - t * (t * (t * (t * (t * EXP_P5 + EXP_P4) + EXP_P3) + EXP_P2) + EXP_P1)
@@ -122,8 +130,8 @@ exp_reduced_lanes :: fn[n: usize](hi: vector[f64, n], lo: vector[f64, n], k: vec
 }
 
 /** exp_64 on lanes: past its range, infinite and NaN lanes by the scalar function. */
-//SPEC: fdlibm e_exp.c
-exp_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_exp.c
+exp_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x) & 0x7fff_ffff
     negative :: x < 0
     special :: hx >= 0x4086_2e42
@@ -132,23 +140,40 @@ exp_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
     far :: hx >= 0x3ff0_a2b2
     tiny :: hx < 0x3e30_0000
     safe :: intrinsics.select(special, intrinsics.splat[vector[f64, n]](0), x)
-    rounding :: intrinsics.select(negative, intrinsics.splat[vector[f64, n]](-0.5), intrinsics.splat[vector[f64, n]](0.5))
+    rounding :: intrinsics.select(
+        negative,
+        intrinsics.splat[vector[f64, n]](-0.5),
+        intrinsics.splat[vector[f64, n]](0.5)
+    )
     k_far :: lane_whole(safe * INVERSE_LN2 + rounding)
     t :: lane_float(k_far)
     one :: intrinsics.select(negative, intrinsics.splat[vector[i64, n]](-1), intrinsics.splat[vector[i64, n]](1))
-    hi :: intrinsics.select(far, safe - t * LN2_HI,
-        intrinsics.select(near, intrinsics.select(negative, safe + LN2_HI, safe - LN2_HI), safe))
-    lo :: intrinsics.select(far, t * LN2_LO,
-        intrinsics.select(near, intrinsics.select(negative, intrinsics.splat[vector[f64, n]](-LN2_LO),
-        intrinsics.splat[vector[f64, n]](LN2_LO)), intrinsics.splat[vector[f64, n]](0)))
+    hi :: intrinsics.select(
+        far,
+        safe - t * LN2_HI,
+        intrinsics.select(near, intrinsics.select(negative, safe + LN2_HI, safe - LN2_HI), safe)
+    )
+    lo :: intrinsics.select(
+        far,
+        t * LN2_LO,
+        intrinsics.select(
+            near,
+            intrinsics.select(
+                negative,
+                intrinsics.splat[vector[f64, n]](-LN2_LO),
+                intrinsics.splat[vector[f64, n]](LN2_LO)
+            ),
+            intrinsics.splat[vector[f64, n]](0)
+        )
+    )
     k :: intrinsics.select(far, k_far, intrinsics.select(near, one, intrinsics.splat[vector[i64, n]](0)))
     result :: intrinsics.select(tiny, 1 + safe, exp_reduced_lanes(hi, lo, k))
     return redo_lanes_64(result, x, special, exp_64)
 }
 
 /** log_64 on lanes: zeros, negatives, subnormals, infinities and NaN by the scalar function. */
-//SPEC: fdlibm e_log.c
-log_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_log.c
+log_lanes_64 :: fn[n : usize](x_in : vector[f64, n]) -> vector[f64, n] {
     high :: lane_high(x_in)
     special :: (high < 0x0010_0000) | (high >= 0x7ff0_0000)
     x0 :: intrinsics.select(special, intrinsics.splat[vector[f64, n]](2), x_in)
@@ -164,9 +189,11 @@ log_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     // |f| under 2^-20
     near :: ((2 + hx) & 0x000f_ffff) < 3
     r_near :: f * f * (0.5 - 0.33333333333333333 * f)
-    near_result :: intrinsics.select(f == 0,
+    near_result :: intrinsics.select(
+        f == 0,
         intrinsics.select(at_zero, intrinsics.splat[vector[f64, n]](0), dk * LN2_HI + dk * LN2_LO),
-        intrinsics.select(at_zero, f - r_near, dk * LN2_HI - ((r_near - dk * LN2_LO) - f)))
+        intrinsics.select(at_zero, f - r_near, dk * LN2_HI - ((r_near - dk * LN2_LO) - f))
+    )
     s :: f / (2.0 + f)
     z :: s * s
     w :: z * z
@@ -175,16 +202,19 @@ log_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     i :: (hx - 0x6_147a) | (0x6_b851 - hx)
     r :: t2 + t1
     half_f_squared :: 0.5 * f * f
-    upper :: intrinsics.select(at_zero, f - (half_f_squared - s * (half_f_squared + r)),
-        dk * LN2_HI - ((half_f_squared - (s * (half_f_squared + r) + dk * LN2_LO)) - f))
+    upper :: intrinsics.select(
+        at_zero,
+        f - (half_f_squared - s * (half_f_squared + r)),
+        dk * LN2_HI - ((half_f_squared - (s * (half_f_squared + r) + dk * LN2_LO)) - f)
+    )
     lower :: intrinsics.select(at_zero, f - s * (f - r), dk * LN2_HI - ((s * (f - r) - dk * LN2_LO) - f))
     result :: intrinsics.select(near, near_result, intrinsics.select(i > 0, upper, lower))
     return redo_lanes_64(result, x_in, special, log_64)
 }
 
 /** sin_kernel_64 on lanes. */
-//SPEC: fdlibm k_sin.c
-sin_kernel_lanes :: fn[n: usize](x: vector[f64, n], y: vector[f64, n], has_tail: bool) -> vector[f64, n] {
+// SPEC: fdlibm k_sin.c
+sin_kernel_lanes :: fn[n : usize](x : vector[f64, n], y : vector[f64, n], has_tail : bool) -> vector[f64, n] {
     z :: x * x
     w :: z * z
     r :: z * (z * SIN_S4 + SIN_S3) + SIN_S2 + z * w * (z * SIN_S6 + SIN_S5)
@@ -196,8 +226,8 @@ sin_kernel_lanes :: fn[n: usize](x: vector[f64, n], y: vector[f64, n], has_tail:
 }
 
 /** cos_kernel_64 on lanes. */
-//SPEC: fdlibm k_cos.c
-cos_kernel_lanes :: fn[n: usize](x: vector[f64, n], y: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm k_cos.c
+cos_kernel_lanes :: fn[n : usize](x : vector[f64, n], y : vector[f64, n]) -> vector[f64, n] {
     z :: x * x
     w := z * z
     r :: z * (z * (z * COS_C3 + COS_C2) + COS_C1) + w * w * (z * (z * COS_C6 + COS_C5) + COS_C4)
@@ -214,8 +244,8 @@ cos_kernel_lanes :: fn[n: usize](x: vector[f64, n], y: vector[f64, n]) -> vector
  * @param x The angles.
  * @return n modulo 4, y0 and y1 as reduce_64 gives them, and which lanes are too large.
  */
-//SPEC: fdlibm e_rem_pio2.c
-reduce_lanes :: fn[n: usize](x: vector[f64, n]) -> (vector[i64, n], vector[f64, n], vector[f64, n], vector[bool, n]) {
+// SPEC: fdlibm e_rem_pio2.c
+reduce_lanes :: fn[n : usize](x : vector[f64, n]) -> (vector[i64, n], vector[f64, n], vector[f64, n], vector[bool, n]) {
     negative :: x < 0
     ix :: lane_high(x) & 0x7fff_ffff
     large :: ix >= 0x4139_21fb
@@ -228,9 +258,19 @@ reduce_lanes :: fn[n: usize](x: vector[f64, n]) -> (vector[i64, n], vector[f64, 
     y0 := intrinsics.splat[vector[f64, n]](0)
     y1 := intrinsics.splat[vector[f64, n]](0)
     if intrinsics.any_true(direct) {
-        multiple_i :: intrinsics.select(first, intrinsics.select(ix <= 0x4002_d97c, intrinsics.splat[vector[i64, n]](1),
-            intrinsics.splat[vector[i64, n]](2)), intrinsics.select(ix <= 0x4015_fdbc, intrinsics.splat[vector[i64, n]](3),
-            intrinsics.splat[vector[i64, n]](4)))
+        multiple_i :: intrinsics.select(
+            first,
+            intrinsics.select(
+                ix <= 0x4002_d97c,
+                intrinsics.splat[vector[i64, n]](1),
+                intrinsics.splat[vector[i64, n]](2)
+            ),
+            intrinsics.select(
+                ix <= 0x4015_fdbc,
+                intrinsics.splat[vector[i64, n]](3),
+                intrinsics.splat[vector[i64, n]](4)
+            )
+        )
         multiple :: lane_float(multiple_i)
         // x - m π/2 for a positive x, x + m π/2 for a negative one
         step :: intrinsics.select(negative, -multiple, multiple)
@@ -271,12 +311,12 @@ reduce_lanes :: fn[n: usize](x: vector[f64, n]) -> (vector[i64, n], vector[f64, 
     medium_w :: intrinsics.select(third_round, w3b, intrinsics.select(second_round, w2b, w1))
     medium_y1 :: (medium_r - medium_y0) - medium_w
     medium_n :: lane_whole(count)
-    return intrinsics.select(direct, reduced_n, medium_n) & 3, intrinsics.select(direct, y0, medium_y0),
-        intrinsics.select(direct, y1, medium_y1), large
+    return intrinsics.select(direct, reduced_n, medium_n)
+        & 3, intrinsics.select(direct, y0, medium_y0), intrinsics.select(direct, y1, medium_y1), large
 }
 
 /** sin_64 or cos_64 on lanes: cos where cosine is true. */
-sin_or_cos_lanes :: fn[n: usize](x: vector[f64, n], cosine: bool) -> vector[f64, n] {
+sin_or_cos_lanes :: fn[n : usize](x : vector[f64, n], cosine : bool) -> vector[f64, n] {
     ix :: lane_high(x) & 0x7fff_ffff
     small :: ix <= 0x3fe9_21fb
     special :: ix >= 0x7ff0_0000
@@ -307,18 +347,22 @@ sin_or_cos_lanes :: fn[n: usize](x: vector[f64, n], cosine: bool) -> vector[f64,
 }
 
 /** sin_64 on lanes. */
-sin_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+sin_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return sin_or_cos_lanes(x, false)
 }
 
 /** cos_64 on lanes. */
-cos_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+cos_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return sin_or_cos_lanes(x, true)
 }
 
 /** tan_kernel_64 on lanes, odd per lane. */
-//SPEC: fdlibm k_tan.c, as musl's __tan
-tan_kernel_lanes :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n], odd: vector[bool, n]) -> vector[f64, n] {
+// SPEC: fdlibm k_tan.c, as musl's __tan
+tan_kernel_lanes :: fn[n : usize](
+    x_in : vector[f64, n],
+    y_in : vector[f64, n],
+    odd : vector[bool, n]
+) -> vector[f64, n] {
     hx :: lane_high(x_in)
     big :: (hx & 0x7fff_ffff) >= 0x3fe5_9428
     negative :: hx < 0
@@ -346,15 +390,19 @@ tan_kernel_lanes :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n], odd
 }
 
 /** tan_64 on lanes. */
-//SPEC: fdlibm s_tan.c
-tan_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_tan.c
+tan_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     ix :: lane_high(x) & 0x7fff_ffff
     small :: ix <= 0x3fe9_21fb
     special :: ix >= 0x7ff0_0000
     zero :: intrinsics.splat[vector[f64, n]](0)
     near_zero := zero
     if intrinsics.any_true(small) {
-        near_zero = intrinsics.select(ix < 0x3e40_0000, x, tan_kernel_lanes(x, zero, intrinsics.splat[vector[bool, n]](false)))
+        near_zero = intrinsics.select(
+            ix < 0x3e40_0000,
+            x,
+            tan_kernel_lanes(x, zero, intrinsics.splat[vector[bool, n]](false))
+        )
         if !intrinsics.any_true(~small) {
             return near_zero
         }
@@ -366,8 +414,8 @@ tan_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** atan_64 on lanes. */
-//SPEC: fdlibm s_atan.c
-atan_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_atan.c
+atan_lanes_64 :: fn[n : usize](x_in : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x_in)
     ix :: hx & 0x7fff_ffff
     huge :: ix >= 0x4410_0000
@@ -379,39 +427,77 @@ atan_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     id1 :: (ix >= 0x3fe6_0000) & (ix < 0x3ff3_0000)
     id2 :: (ix >= 0x3ff3_0000) & (ix < 0x4003_8000)
     // One division, its parts chosen per lane
-    numerator :: intrinsics.select(id0, 2.0 * magnitude - 1, intrinsics.select(id1, magnitude - 1,
-        intrinsics.select(id2, magnitude - 1.5, intrinsics.splat[vector[f64, n]](-1.0))))
-    denominator :: intrinsics.select(id0, 2.0 + magnitude, intrinsics.select(id1, magnitude + 1,
-        intrinsics.select(id2, 1 + 1.5 * magnitude, magnitude)))
+    numerator :: intrinsics.select(
+        id0,
+        2.0 * magnitude - 1,
+        intrinsics.select(
+            id1,
+            magnitude - 1,
+            intrinsics.select(id2, magnitude - 1.5, intrinsics.splat[vector[f64, n]](-1.0))
+        )
+    )
+    denominator :: intrinsics.select(
+        id0,
+        2.0 + magnitude,
+        intrinsics.select(id1, magnitude + 1, intrinsics.select(id2, 1 + 1.5 * magnitude, magnitude))
+    )
     x :: intrinsics.select(small, x_in, numerator / denominator)
     z :: x * x
     w :: z * z
     s1 :: z * (w * (w * (w * (w * (w * ATAN_T10 + ATAN_T8) + ATAN_T6) + ATAN_T4) + ATAN_T2) + ATAN_T0)
     s2 :: w * (w * (w * (w * (w * ATAN_T9 + ATAN_T7) + ATAN_T5) + ATAN_T3) + ATAN_T1)
     small_result :: x - x * (s1 + s2)
-    hi :: intrinsics.select(id0, intrinsics.splat[vector[f64, n]](ATAN_HI_0), intrinsics.select(id1,
-        intrinsics.splat[vector[f64, n]](ATAN_HI_1), intrinsics.select(id2, intrinsics.splat[vector[f64, n]](ATAN_HI_2),
-        intrinsics.splat[vector[f64, n]](ATAN_HI_3))))
-    lo :: intrinsics.select(id0, intrinsics.splat[vector[f64, n]](ATAN_LO_0), intrinsics.select(id1,
-        intrinsics.splat[vector[f64, n]](ATAN_LO_1), intrinsics.select(id2, intrinsics.splat[vector[f64, n]](ATAN_LO_2),
-        intrinsics.splat[vector[f64, n]](ATAN_LO_3))))
+    hi :: intrinsics.select(
+        id0,
+        intrinsics.splat[vector[f64, n]](ATAN_HI_0),
+        intrinsics.select(
+            id1,
+            intrinsics.splat[vector[f64, n]](ATAN_HI_1),
+            intrinsics.select(
+                id2,
+                intrinsics.splat[vector[f64, n]](ATAN_HI_2),
+                intrinsics.splat[vector[f64, n]](ATAN_HI_3)
+            )
+        )
+    )
+    lo :: intrinsics.select(
+        id0,
+        intrinsics.splat[vector[f64, n]](ATAN_LO_0),
+        intrinsics.select(
+            id1,
+            intrinsics.splat[vector[f64, n]](ATAN_LO_1),
+            intrinsics.select(
+                id2,
+                intrinsics.splat[vector[f64, n]](ATAN_LO_2),
+                intrinsics.splat[vector[f64, n]](ATAN_LO_3)
+            )
+        )
+    )
     referenced :: hi - ((x * (s1 + s2) - lo) - x)
     signed :: intrinsics.select(hx < 0, -referenced, referenced)
-    huge_result :: intrinsics.select(hx > 0, intrinsics.splat[vector[f64, n]](ATAN_HI_3 + ATAN_LO_3),
-        intrinsics.splat[vector[f64, n]](-ATAN_HI_3 - ATAN_LO_3))
+    huge_result :: intrinsics.select(
+        hx > 0,
+        intrinsics.splat[vector[f64, n]](ATAN_HI_3 + ATAN_LO_3),
+        intrinsics.splat[vector[f64, n]](-ATAN_HI_3 - ATAN_LO_3)
+    )
     result :: intrinsics.select(tiny, x_in, intrinsics.select(small, small_result, signed))
     return intrinsics.select(huge, intrinsics.select(x_in != x_in, x_in + x_in, huge_result), result)
 }
 
 /** atan2_64 on lanes: zeros, infinities, NaN and x = 1 by the scalar function. */
-//SPEC: fdlibm e_atan2.c
-atan2_lanes_64 :: fn[n: usize](y: vector[f64, n], x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_atan2.c
+atan2_lanes_64 :: fn[n : usize](y : vector[f64, n], x : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x)
     ix :: hx & 0x7fff_ffff
     hy :: lane_high(y)
     iy :: hy & 0x7fff_ffff
     infinity :: intrinsics.splat[vector[f64, n]](infinity_64())
-    special :: (x != x) | (y != y) | (x == 0) | (y == 0) | (lane_magnitude(x) == infinity) | (lane_magnitude(y) == infinity)
+    special :: (x != x)
+        | (y != y)
+        | (x == 0)
+        | (y == 0)
+        | (lane_magnitude(x) == infinity)
+        | (lane_magnitude(y) == infinity)
         | (x == 1)
     safe_x :: intrinsics.select(special, intrinsics.splat[vector[f64, n]](2), x)
     safe_y :: intrinsics.select(special, intrinsics.splat[vector[f64, n]](1), y)
@@ -419,17 +505,23 @@ atan2_lanes_64 :: fn[n: usize](y: vector[f64, n], x: vector[f64, n]) -> vector[f
     k :: (iy - ix) >> 20
     far :: k > 60
     behind :: (hx < 0) & (k < -60)
-    z :: intrinsics.select(far, intrinsics.splat[vector[f64, n]](PI_OVER_2_HI + 0.5 * PI_LO),
-        intrinsics.select(behind, intrinsics.splat[vector[f64, n]](0), atan_lanes_64(lane_magnitude(safe_y / safe_x))))
+    z :: intrinsics.select(
+        far,
+        intrinsics.splat[vector[f64, n]](PI_OVER_2_HI + 0.5 * PI_LO),
+        intrinsics.select(behind, intrinsics.splat[vector[f64, n]](0), atan_lanes_64(lane_magnitude(safe_y / safe_x)))
+    )
     m :: intrinsics.select(far, m0 & 1, m0)
-    result :: intrinsics.select(m == 0, z, intrinsics.select(m == 1, -z, intrinsics.select(m == 2, PI_64 - (z - PI_LO),
-        (z - PI_LO) - PI_64)))
+    result :: intrinsics.select(
+        m == 0,
+        z,
+        intrinsics.select(m == 1, -z, intrinsics.select(m == 2, PI_64 - (z - PI_LO), (z - PI_LO) - PI_64))
+    )
     return redo_lanes_64_2(result, y, x, special, atan2_64)
 }
 
 /** asin_64 on lanes: |x| from 1 by the scalar function. */
-//SPEC: fdlibm e_asin.c
-asin_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_asin.c
+asin_lanes_64 :: fn[n : usize](x_in : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x_in)
     ix :: hx & 0x7fff_ffff
     special :: ix >= 0x3ff0_0000
@@ -459,8 +551,8 @@ asin_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** acos_64 on lanes: |x| from 1 by the scalar function. */
-//SPEC: fdlibm e_acos.c
-acos_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_acos.c
+acos_lanes_64 :: fn[n : usize](x_in : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x_in)
     ix :: hx & 0x7fff_ffff
     special :: ix >= 0x3ff0_0000
@@ -468,8 +560,11 @@ acos_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     small :: ix < 0x3fe0_0000
     z0 :: x * x
     r0 :: asin_rational_lanes(z0)
-    small_result :: intrinsics.select(ix <= 0x3c60_0000, intrinsics.splat[vector[f64, n]](PI_OVER_2_HI + PI_OVER_2_LO),
-        PI_OVER_2_HI - (x - (PI_OVER_2_LO - x * r0)))
+    small_result :: intrinsics.select(
+        ix <= 0x3c60_0000,
+        intrinsics.splat[vector[f64, n]](PI_OVER_2_HI + PI_OVER_2_LO),
+        PI_OVER_2_HI - (x - (PI_OVER_2_LO - x * r0))
+    )
     zn :: (1 + x) * 0.5
     sn :: intrinsics.square_root(zn)
     wn :: asin_rational_lanes(zn) * sn - PI_OVER_2_LO
@@ -485,24 +580,24 @@ acos_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** asin_rational_64 on lanes. */
-asin_rational_lanes :: fn[n: usize](z: vector[f64, n]) -> vector[f64, n] {
+asin_rational_lanes :: fn[n : usize](z : vector[f64, n]) -> vector[f64, n] {
     p :: z * (z * (z * (z * (z * (z * ASIN_P5 + ASIN_P4) + ASIN_P3) + ASIN_P2) + ASIN_P1) + ASIN_P0)
     q :: 1 + z * (z * (z * (z * ASIN_Q4 + ASIN_Q3) + ASIN_Q2) + ASIN_Q1)
     return p / q
 }
 
 /** An f64 in every lane. */
-f64_lanes :: fn[n: usize](value: f64) -> vector[f64, n] {
+f64_lanes :: fn[n : usize](value : f64) -> vector[f64, n] {
     return intrinsics.splat[vector[f64, n]](value)
 }
 
 /** An i64 in every lane. */
-i64_lanes :: fn[n: usize](value: i64) -> vector[i64, n] {
+i64_lanes :: fn[n : usize](value : i64) -> vector[i64, n] {
     return intrinsics.splat[vector[i64, n]](value)
 }
 
 /** exp2_64 on lanes: NaN, from 1024 and below -1075 by the scalar function. */
-exp2_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+exp2_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     special :: (x != x) | (x >= 1024) | (x < -1075)
     safe :: intrinsics.select(special, f64_lanes[n](0), x)
     whole :: intrinsics.round_even(safe)
@@ -514,7 +609,7 @@ exp2_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** log_one_plus_kernel_64 on lanes. */
-log_one_plus_kernel_lanes :: fn[n: usize](f: vector[f64, n]) -> vector[f64, n] {
+log_one_plus_kernel_lanes :: fn[n : usize](f : vector[f64, n]) -> vector[f64, n] {
     s :: f / (2.0 + f)
     z :: s * s
     w :: z * z
@@ -526,7 +621,7 @@ log_one_plus_kernel_lanes :: fn[n: usize](f: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** log_split_64 on lanes, for positive normal lanes. */
-log_split_lanes :: fn[n: usize](x: vector[f64, n]) -> (vector[i64, n], vector[f64, n]) {
+log_split_lanes :: fn[n : usize](x : vector[f64, n]) -> (vector[i64, n], vector[f64, n]) {
     hx0 :: lane_high(x)
     k0 :: (hx0 >> 20) - 1023
     hx :: hx0 & 0x000f_ffff
@@ -543,7 +638,7 @@ log_split_lanes :: fn[n: usize](x: vector[f64, n]) -> (vector[i64, n], vector[f6
  * @param two True for log2, false for log10.
  * @return The logarithms.
  */
-log_base_lanes :: fn[n: usize](x: vector[f64, n], two: bool) -> vector[f64, n] {
+log_base_lanes :: fn[n : usize](x : vector[f64, n], two : bool) -> vector[f64, n] {
     high :: lane_high(x)
     special :: (high < 0x0010_0000) | (high >= 0x7ff0_0000)
     safe :: intrinsics.select(special, f64_lanes[n](2), x)
@@ -575,18 +670,18 @@ log_base_lanes :: fn[n: usize](x: vector[f64, n], two: bool) -> vector[f64, n] {
 }
 
 /** log2_64 on lanes. */
-log2_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+log2_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return log_base_lanes(x, true)
 }
 
 /** log10_64 on lanes. */
-log10_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+log10_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     return log_base_lanes(x, false)
 }
 
 /** exp_minus_one_64 on lanes: from 56 ln 2 in magnitude, infinities and NaN by the scalar function. */
-//SPEC: fdlibm s_expm1.c
-exp_minus_one_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_expm1.c
+exp_minus_one_lanes_64 :: fn[n : usize](x_in : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x_in) & 0x7fff_ffff
     negative :: x_in < 0
     special :: hx >= 0x4043_687a
@@ -598,16 +693,26 @@ exp_minus_one_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     k_far :: lane_whole(x0 * INVERSE_LN2 + rounding)
     t_far :: lane_float(k_far)
     hi :: intrinsics.select(near, intrinsics.select(negative, x0 + LN2_HI, x0 - LN2_HI), x0 - t_far * LN2_HI)
-    lo :: intrinsics.select(near, intrinsics.select(negative, f64_lanes[n](-LN2_LO), f64_lanes[n](LN2_LO)), t_far * LN2_LO)
-    k :: intrinsics.select(reduced, intrinsics.select(near, intrinsics.select(negative, i64_lanes[n](-1), i64_lanes[n](1)), k_far),
-        i64_lanes[n](0))
+    lo :: intrinsics.select(
+        near,
+        intrinsics.select(negative, f64_lanes[n](-LN2_LO), f64_lanes[n](LN2_LO)),
+        t_far * LN2_LO
+    )
+    k :: intrinsics.select(
+        reduced,
+        intrinsics.select(near, intrinsics.select(negative, i64_lanes[n](-1), i64_lanes[n](1)), k_far),
+        i64_lanes[n](0)
+    )
     xr :: hi - lo
     x :: intrinsics.select(reduced, xr, x0)
     c :: intrinsics.select(reduced, (hi - xr) - lo, f64_lanes[n](0))
     half_x :: 0.5 * x
     half_x_squared :: x * half_x
-    r1 :: 1 + half_x_squared * (half_x_squared * (half_x_squared * (half_x_squared * (half_x_squared * EXPM1_Q5 + EXPM1_Q4)
-        + EXPM1_Q3) + EXPM1_Q2) + EXPM1_Q1)
+    r1 :: 1
+        + half_x_squared
+            * (half_x_squared
+                * (half_x_squared * (half_x_squared * (half_x_squared * EXPM1_Q5 + EXPM1_Q4) + EXPM1_Q3) + EXPM1_Q2)
+                + EXPM1_Q1)
     t :: 3.0 - r1 * half_x
     e0 :: half_x_squared * ((r1 - t) / (6.0 - x * t))
     at_zero :: x - (x * e0 - half_x_squared)
@@ -624,14 +729,21 @@ exp_minus_one_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     t_high :: lane_from_high((0x3ff - from_20) << 20)
     high :: ((x - (e + t_high)) + 1) * scale
     general :: intrinsics.select((k <= -2) | (k > 56), wide, intrinsics.select(k < 20, low, high))
-    result :: intrinsics.select(tiny, x0, intrinsics.select(k == 0, at_zero, intrinsics.select(k == -1, minus_one,
-        intrinsics.select(k == 1, plus_one, general))))
+    result :: intrinsics.select(
+        tiny,
+        x0,
+        intrinsics.select(
+            k == 0,
+            at_zero,
+            intrinsics.select(k == -1, minus_one, intrinsics.select(k == 1, plus_one, general))
+        )
+    )
     return redo_lanes_64(result, x_in, special, exp_minus_one_64)
 }
 
 /** log_one_plus_64 on lanes: from -1 down, infinities and NaN by the scalar function. */
-//SPEC: fdlibm s_log1p.c
-log_one_plus_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_log1p.c
+log_one_plus_lanes_64 :: fn[n : usize](x_in : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x_in)
     ax :: hx & 0x7fff_ffff
     special :: (x_in <= -1) | (hx >= 0x7ff0_0000) | (x_in != x_in)
@@ -659,25 +771,31 @@ log_one_plus_lanes_64 :: fn[n: usize](x_in: vector[f64, n]) -> vector[f64, n] {
     dk :: lane_float(k)
     at_zero :: k == 0
     r_small :: half_f_squared * (1.0 - 0.66666666666666666 * f)
-    small_result :: intrinsics.select(f == 0, intrinsics.select(at_zero, f64_lanes[n](0), dk * LN2_HI + (c + dk * LN2_LO)),
-        intrinsics.select(at_zero, f - r_small, dk * LN2_HI - ((r_small - (dk * LN2_LO + c)) - f)))
+    small_result :: intrinsics.select(
+        f == 0,
+        intrinsics.select(at_zero, f64_lanes[n](0), dk * LN2_HI + (c + dk * LN2_LO)),
+        intrinsics.select(at_zero, f - r_small, dk * LN2_HI - ((r_small - (dk * LN2_LO + c)) - f))
+    )
     s :: f / (2.0 + f)
     z :: s * s
     r :: z * (z * (z * (z * (z * (z * (z * LOG_LG7 + LOG_LG6) + LOG_LG5) + LOG_LG4) + LOG_LG3) + LOG_LG2) + LOG_LG1)
-    general :: intrinsics.select(at_zero, f - (half_f_squared - s * (half_f_squared + r)),
-        dk * LN2_HI - ((half_f_squared - (s * (half_f_squared + r) + (dk * LN2_LO + c))) - f))
+    general :: intrinsics.select(
+        at_zero,
+        f - (half_f_squared - s * (half_f_squared + r)),
+        dk * LN2_HI - ((half_f_squared - (s * (half_f_squared + r) + (dk * LN2_LO + c))) - f)
+    )
     result :: intrinsics.select(tiny, tiny_result, intrinsics.select(hu == 0, small_result, general))
     return redo_lanes_64(result, x_in, special, log_one_plus_64)
 }
 
 /** A 32-bit word divided by 3, in u64 lanes: a multiply and a shift, exact for every word. */
-third_of_words :: fn[n: usize](word: vector[u64, n]) -> vector[u64, n] {
+third_of_words :: fn[n : usize](word : vector[u64, n]) -> vector[u64, n] {
     return (word * 0xaaaa_aaab) >> 33
 }
 
 /** cube_root_64 on lanes. */
-//SPEC: fdlibm s_cbrt.c, as FreeBSD has it
-cube_root_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_cbrt.c, as FreeBSD has it
+cube_root_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     bits :: lane_bits(x)
     sign :: (bits >> 32) & 0x8000_0000
     hx :: (bits >> 32) & 0x7fff_ffff
@@ -686,11 +804,16 @@ cube_root_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
     subnormal :: hx < 0x0010_0000
     scaled :: lane_from_high(i64_lanes[n](0x4350_0000)) * safe
     high_scaled :: (lane_bits(scaled) >> 32) & 0x7fff_ffff
-    guess_high :: intrinsics.select(subnormal, sign | (third_of_words(high_scaled) + cast[u64](CUBE_ROOT_B2)),
-        sign | (third_of_words(hx) + cast[u64](CUBE_ROOT_B1)))
+    guess_high :: intrinsics.select(
+        subnormal,
+        sign | (third_of_words(high_scaled) + cast[u64](CUBE_ROOT_B2)),
+        sign | (third_of_words(hx) + cast[u64](CUBE_ROOT_B1))
+    )
     t0 :: bit_cast[vector[f64, n]](guess_high << 32)
     r0 :: (t0 * t0) * (t0 / safe)
-    t1 :: t0 * ((r0 * (r0 * CUBE_ROOT_P2 + CUBE_ROOT_P1) + CUBE_ROOT_P0) + ((r0 * r0) * r0) * (r0 * CUBE_ROOT_P4 + CUBE_ROOT_P3))
+    t1 :: t0
+        * ((r0 * (r0 * CUBE_ROOT_P2 + CUBE_ROOT_P1) + CUBE_ROOT_P0)
+            + ((r0 * r0) * r0) * (r0 * CUBE_ROOT_P4 + CUBE_ROOT_P3))
     t :: bit_cast[vector[f64, n]]((lane_bits(t1) + 0x8000_0000) & 0xffff_ffff_c000_0000)
     s :: t * t
     r1 :: safe / s
@@ -701,8 +824,8 @@ cube_root_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** hypotenuse_64 on lanes. */
-//SPEC: musl src/math/hypot.c
-hypotenuse_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/hypot.c
+hypotenuse_lanes_64 :: fn[n : usize](x_in : vector[f64, n], y_in : vector[f64, n]) -> vector[f64, n] {
     ux0 :: lane_bits(x_in) & 0x7fff_ffff_ffff_ffff
     uy0 :: lane_bits(y_in) & 0x7fff_ffff_ffff_ffff
     swap :: ux0 < uy0
@@ -714,10 +837,16 @@ hypotenuse_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) 
     y0 :: bit_cast[vector[f64, n]](uy)
     big :: ex > 0x3ff + 510
     small :: ~big & (ey < 0x3ff - 450)
-    z :: intrinsics.select(big, f64_lanes[n](power_of_two_64(700)), intrinsics.select(small, f64_lanes[n](power_of_two_64(-700)),
-        f64_lanes[n](1.0)))
-    factor :: intrinsics.select(big, f64_lanes[n](power_of_two_64(-700)), intrinsics.select(small, f64_lanes[n](power_of_two_64(700)),
-        f64_lanes[n](1.0)))
+    z :: intrinsics.select(
+        big,
+        f64_lanes[n](power_of_two_64(700)),
+        intrinsics.select(small, f64_lanes[n](power_of_two_64(-700)), f64_lanes[n](1.0))
+    )
+    factor :: intrinsics.select(
+        big,
+        f64_lanes[n](power_of_two_64(-700)),
+        intrinsics.select(small, f64_lanes[n](power_of_two_64(700)), f64_lanes[n](1.0))
+    )
     x :: intrinsics.select(big | small, x0 * factor, x0)
     y :: intrinsics.select(big | small, y0 * factor, y0)
     xc :: x * HYPOTENUSE_SPLIT
@@ -731,12 +860,15 @@ hypotenuse_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) 
     hy :: y * y
     ly :: yh * yh - hy + 2 * yh * yl + yl * yl
     result :: z * intrinsics.square_root(ly + lx + hy + hx)
-    return intrinsics.select(ey == 0x7ff, y0, intrinsics.select((ex == 0x7ff) | (uy == 0), x0,
-        intrinsics.select(ex - ey > 64, x0 + y0, result)))
+    return intrinsics.select(
+        ey == 0x7ff,
+        y0,
+        intrinsics.select((ex == 0x7ff) | (uy == 0), x0, intrinsics.select(ex - ey > 64, x0 + y0, result))
+    )
 }
 
 /** i64 lanes clamped to from low to high. */
-clamp_lanes :: fn[n: usize](k: vector[i64, n], low: i64, high: i64) -> vector[i64, n] {
+clamp_lanes :: fn[n : usize](k : vector[i64, n], low : i64, high : i64) -> vector[i64, n] {
     above :: intrinsics.select(k < low, i64_lanes[n](low), k)
     return intrinsics.select(above > high, i64_lanes[n](high), above)
 }
@@ -751,8 +883,8 @@ clamp_lanes :: fn[n: usize](k: vector[i64, n], low: i64, high: i64) -> vector[i6
  * @param y_in The powers.
  * @return x^y in each lane, the scalar function's bits.
  */
-//SPEC: fdlibm e_pow.c
-power_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm e_pow.c
+power_lanes_64 :: fn[n : usize](x_in : vector[f64, n], y_in : vector[f64, n]) -> vector[f64, n] {
     hx_in :: lane_high(x_in)
     ix_in :: hx_in & 0x7fff_ffff
     iy :: lane_high(y_in) & 0x7fff_ffff
@@ -760,8 +892,18 @@ power_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) -> ve
     y_bounded :: (iy < 0x41d0_0000) & (y_in == y_in)
     whole_part :: lane_whole(intrinsics.select(y_bounded, y_in, f64_lanes[n](3)))
     whole :: lane_float(whole_part) == y_in
-    special :: ~y_bounded | (x_in != x_in) | (y_in == 0) | (y_in == 1) | (y_in == -1) | (y_in == 2) | (y_in == 0.5)
-        | (ix_in < 0x0010_0000) | (ix_in >= 0x7ff0_0000) | (x_in == 1) | (x_in == -1) | (negative_x & ~whole)
+    special :: ~y_bounded
+        | (x_in != x_in)
+        | (y_in == 0)
+        | (y_in == 1)
+        | (y_in == -1)
+        | (y_in == 2)
+        | (y_in == 0.5)
+        | (ix_in < 0x0010_0000)
+        | (ix_in >= 0x7ff0_0000)
+        | (x_in == 1)
+        | (x_in == -1)
+        | (negative_x & ~whole)
     negative :: negative_x & ((whole_part & 1) != 0)
     x :: intrinsics.select(special, f64_lanes[n](2), x_in)
     y :: intrinsics.select(special, f64_lanes[n](3), y_in)
@@ -838,8 +980,8 @@ power_lanes_64 :: fn[n: usize](x_in: vector[f64, n], y_in: vector[f64, n]) -> ve
 }
 
 /** sinh_64 on lanes: from ln of the largest f64, infinities and NaN by the scalar function. */
-//SPEC: musl src/math/sinh.c
-sinh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/sinh.c
+sinh_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     h :: intrinsics.select(x < 0, f64_lanes[n](-0.5), f64_lanes[n](0.5))
     a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
     w :: lane_high(a)
@@ -848,14 +990,17 @@ sinh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
     t :: exp_minus_one_lanes_64(intrinsics.select(large, f64_lanes[n](0), a))
     // One division: t²/(t + 1) below 1, t/(t + 1) from it
     quotient :: intrinsics.select(small, t * t, t) / (t + 1)
-    result :: intrinsics.select(w < 0x3ff0_0000 - (26 << 20), x,
-        intrinsics.select(small, h * (2 * t - quotient), h * (t + quotient)))
+    result :: intrinsics.select(
+        w < 0x3ff0_0000 - (26 << 20),
+        x,
+        intrinsics.select(small, h * (2 * t - quotient), h * (t + quotient))
+    )
     return redo_lanes_64(result, x, large, sinh_64)
 }
 
 /** cosh_64 on lanes: from ln of the largest f64, infinities and NaN by the scalar function. */
-//SPEC: musl src/math/cosh.c
-cosh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/cosh.c
+cosh_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
     w :: lane_high(a)
     large :: w >= 0x4086_2e42
@@ -876,8 +1021,8 @@ cosh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** tanh_64 on lanes. */
-//SPEC: musl src/math/tanh.c
-tanh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/tanh.c
+tanh_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     a :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
     w :: lane_high(a)
     one :: w > 0x4034_0000
@@ -894,8 +1039,8 @@ tanh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** asinh_64 on lanes. */
-//SPEC: musl src/math/asinh.c
-asinh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/asinh.c
+asinh_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     e :: bit_cast[vector[i64, n]]((lane_bits(x) >> 52) & 0x7ff)
     y :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
     big :: e >= 0x3ff + 26
@@ -906,19 +1051,24 @@ asinh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
     quotient :: intrinsics.select(middle, f64_lanes[n](1), y * y) / intrinsics.select(middle, root + y, root + 1)
     magnitude := y
     if intrinsics.any_true(big | middle) {
-        logarithm :: log_lanes_64(intrinsics.select(big, y, intrinsics.select(middle, 2 * y + quotient, f64_lanes[n](1))))
+        logarithm :: log_lanes_64(
+            intrinsics.select(big, y, intrinsics.select(middle, 2 * y + quotient, f64_lanes[n](1)))
+        )
         magnitude = intrinsics.select(big, logarithm + LN2, intrinsics.select(middle, logarithm, magnitude))
     }
     if intrinsics.any_true(small) {
-        magnitude = intrinsics.select(small, log_one_plus_lanes_64(intrinsics.select(small, y + quotient, f64_lanes[n](0))),
-            magnitude)
+        magnitude = intrinsics.select(
+            small,
+            log_one_plus_lanes_64(intrinsics.select(small, y + quotient, f64_lanes[n](0))),
+            magnitude
+        )
     }
     return intrinsics.select((lane_bits(x) >> 63) != 0, -magnitude, magnitude)
 }
 
 /** acosh_64 on lanes. */
-//SPEC: musl src/math/acosh.c
-acosh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/acosh.c
+acosh_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     e :: bit_cast[vector[i64, n]]((lane_bits(x) >> 52) & 0x7ff)
     below :: x < 1
     small :: e < 0x3ff + 1
@@ -934,16 +1084,17 @@ acosh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
     if intrinsics.any_true(small & ~below) {
         // Below 2: ln(1 + (x - 1) + √((x - 1)² + 2(x - 1)))
         less :: safe - 1
-        near :: log_one_plus_lanes_64(intrinsics.select(small, less + intrinsics.square_root(less * less + 2 * less),
-            f64_lanes[n](0)))
+        near :: log_one_plus_lanes_64(
+            intrinsics.select(small, less + intrinsics.square_root(less * less + 2 * less), f64_lanes[n](0))
+        )
         result = intrinsics.select(small, near, result)
     }
     return intrinsics.select(below, f64_lanes[n](nan_64()), result)
 }
 
 /** atanh_64 on lanes. */
-//SPEC: musl src/math/atanh.c
-atanh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: musl src/math/atanh.c
+atanh_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     e :: bit_cast[vector[i64, n]]((lane_bits(x) >> 52) & 0x7ff)
     y :: bit_cast[vector[f64, n]](lane_bits(x) & 0x7fff_ffff_ffff_ffff)
     small :: e < 0x3ff - 1
@@ -955,38 +1106,43 @@ atanh_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** erf_near_zero_64 on lanes. */
-erf_near_zero_lanes :: fn[n: usize](z: vector[f64, n]) -> vector[f64, n] {
+erf_near_zero_lanes :: fn[n : usize](z : vector[f64, n]) -> vector[f64, n] {
     r :: z * (z * (z * (z * ERF_PP4 + ERF_PP3) + ERF_PP2) + ERF_PP1) + ERF_PP0
     s :: 1 + z * (z * (z * (z * (z * ERF_QQ5 + ERF_QQ4) + ERF_QQ3) + ERF_QQ2) + ERF_QQ1)
     return r / s
 }
 
 /** erf_near_one_64 on lanes. */
-erf_near_one_lanes :: fn[n: usize](s: vector[f64, n]) -> vector[f64, n] {
+erf_near_one_lanes :: fn[n : usize](s : vector[f64, n]) -> vector[f64, n] {
     p :: s * (s * (s * (s * (s * (s * ERF_PA6 + ERF_PA5) + ERF_PA4) + ERF_PA3) + ERF_PA2) + ERF_PA1) + ERF_PA0
     q :: 1 + s * (s * (s * (s * (s * (s * ERF_QA6 + ERF_QA5) + ERF_QA4) + ERF_QA3) + ERF_QA2) + ERF_QA1)
     return p / q
 }
 
 /** erfc_tail_64 on lanes, x positive, the first rational where ix is below 0x4006_db6e. */
-//SPEC: fdlibm s_erf.c
-erfc_tail_lanes :: fn[n: usize](x: vector[f64, n], ix: vector[i64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_erf.c
+erfc_tail_lanes :: fn[n : usize](x : vector[f64, n], ix : vector[i64, n]) -> vector[f64, n] {
     s :: 1 / (x * x)
     near :: ix < 0x4006_db6e
     r_a :: s * (s * (s * (s * (s * (s * (s * ERF_RA7 + ERF_RA6) + ERF_RA5) + ERF_RA4) + ERF_RA3) + ERF_RA2) + ERF_RA1)
         + ERF_RA0
-    q_a :: 1 + s * (s * (s * (s * (s * (s * (s * (s * ERF_SA8 + ERF_SA7) + ERF_SA6) + ERF_SA5) + ERF_SA4) + ERF_SA3)
-        + ERF_SA2) + ERF_SA1)
+    q_a :: 1
+        + s
+            * (s
+                * (s * (s * (s * (s * (s * (s * ERF_SA8 + ERF_SA7) + ERF_SA6) + ERF_SA5) + ERF_SA4) + ERF_SA3)
+                    + ERF_SA2)
+                + ERF_SA1)
     r_b :: s * (s * (s * (s * (s * (s * ERF_RB6 + ERF_RB5) + ERF_RB4) + ERF_RB3) + ERF_RB2) + ERF_RB1) + ERF_RB0
-    q_b :: 1 + s * (s * (s * (s * (s * (s * (s * ERF_SB7 + ERF_SB6) + ERF_SB5) + ERF_SB4) + ERF_SB3) + ERF_SB2) + ERF_SB1)
+    q_b :: 1
+        + s * (s * (s * (s * (s * (s * (s * ERF_SB7 + ERF_SB6) + ERF_SB5) + ERF_SB4) + ERF_SB3) + ERF_SB2) + ERF_SB1)
     ratio :: intrinsics.select(near, r_a, r_b) / intrinsics.select(near, q_a, q_b)
     z :: lane_cut(x)
     return exp_lanes_64(-z * z - 0.5625) * exp_lanes_64((z - x) * (z + x) + ratio) / x
 }
 
 /** erf_64 on lanes. */
-//SPEC: fdlibm s_erf.c
-erf_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_erf.c
+erf_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x)
     ix :: hx & 0x7fff_ffff
     negative :: hx < 0
@@ -1014,8 +1170,8 @@ erf_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
 }
 
 /** erfc_64 on lanes. */
-//SPEC: fdlibm s_erf.c
-erfc_lanes_64 :: fn[n: usize](x: vector[f64, n]) -> vector[f64, n] {
+// SPEC: fdlibm s_erf.c
+erfc_lanes_64 :: fn[n : usize](x : vector[f64, n]) -> vector[f64, n] {
     hx :: lane_high(x)
     ix :: hx & 0x7fff_ffff
     negative :: hx < 0

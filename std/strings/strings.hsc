@@ -29,7 +29,11 @@ FORMAT_STACK_SIZE :: 256
  * @error OutOfMemory The allocator had no memory for the string, or for scratch memory to format it in; nothing is
  *     left allocated. Any other error the allocator gives is returned the same way.
  */
-format :: fn(format_string: string, values: any..., allocator := context.allocator) -> Result[string, runtime.AllocatorError] #unrestricted {
+format :: fn(
+    format_string : string,
+    values : any...,
+    allocator := context.allocator
+) -> Result[string, runtime.AllocatorError] #unrestricted {
     storage : u8[FORMAT_STACK_SIZE]
     text := text_buffer.make(storage)
     text_buffer.append_format(&text, format_string, values)
@@ -65,7 +69,7 @@ format :: fn(format_string: string, values: any..., allocator := context.allocat
  * @error OutOfMemory The allocator had no memory for the copy. Any other error the allocator gives is returned the same
  *     way.
  */
-clone :: fn(text: string, allocator := context.allocator) -> Result[string, runtime.AllocatorError] #unrestricted {
+clone :: fn(text : string, allocator := context.allocator) -> Result[string, runtime.AllocatorError] #unrestricted {
     if text.count == 0 {
         return .Ok("")
     }
@@ -91,7 +95,7 @@ clone :: fn(text: string, allocator := context.allocator) -> Result[string, runt
  * @param text The string, invalid afterwards; an empty one is ignored, since it was never allocated.
  * @param allocator The allocator it came from.
  */
-free_string :: fn(text: string, allocator := context.allocator) {
+free_string :: fn(text : string, allocator := context.allocator) {
     if text.count == 0 {
         return void
     }
@@ -105,7 +109,7 @@ free_string :: fn(text: string, allocator := context.allocator) {
  * @param b The string to compare it with, only read; which of the two is which doesn't matter.
  * @return True if they have the same count and bytes, byte for byte: no Unicode normalization or case folding.
  */
-equal :: fn(a: string, b: string) -> bool {
+equal :: fn(a : string, b : string) -> bool {
     if a.count != b.count {
         return false
     }
@@ -127,7 +131,7 @@ equal :: fn(a: string, b: string) -> bool {
  * @return A view of text's bytes, good while they are; "" for an empty or backwards range. It can split a UTF-8
  *     character: indices are bytes.
  */
-slice :: fn(text: string, start: usize, end: usize) -> string {
+slice :: fn(text : string, start : usize, end : usize) -> string {
     last :: if end < text.count { end } else { text.count }
     if start >= last {
         return ""
@@ -142,7 +146,7 @@ slice :: fn(text: string, start: usize, end: usize) -> string {
  * @param prefix The prefix; an empty one starts every text.
  * @return True if text's first bytes are prefix's.
  */
-starts_with :: fn(text: string, prefix: string) -> bool {
+starts_with :: fn(text : string, prefix : string) -> bool {
     return prefix.count <= text.count && equal(slice(text, 0, prefix.count), prefix)
 }
 
@@ -153,7 +157,7 @@ starts_with :: fn(text: string, prefix: string) -> bool {
  * @param suffix The suffix; an empty one ends every text.
  * @return True if text's last bytes are suffix's.
  */
-ends_with :: fn(text: string, suffix: string) -> bool {
+ends_with :: fn(text : string, suffix : string) -> bool {
     return suffix.count <= text.count && equal(slice(text, text.count - suffix.count, text.count), suffix)
 }
 
@@ -166,7 +170,7 @@ ends_with :: fn(text: string, suffix: string) -> bool {
  * @return The byte index where part starts, at or after start; null if it isn't there, or start is past where it
  *     could fit.
  */
-find :: fn(text: string, part: string, start: usize = 0) -> usize? {
+find :: fn(text : string, part : string, start : usize = 0) -> usize? {
     if part.count > text.count {
         return null
     }
@@ -185,7 +189,7 @@ find :: fn(text: string, part: string, start: usize = 0) -> usize? {
  * @param part What to look for; an empty part is in every text.
  * @return True if find finds it.
  */
-contains :: fn(text: string, part: string) -> bool {
+contains :: fn(text : string, part : string) -> bool {
     return find(text, part) != null
 }
 
@@ -195,7 +199,7 @@ contains :: fn(text: string, part: string) -> bool {
  * @param character One byte of text: the bytes of a UTF-8 character past ASCII are never spaces.
  * @return True for a space, tab, carriage return or newline; false for anything else, other Unicode spaces included.
  */
-is_space :: fn(character: char) -> bool {
+is_space :: fn(character : char) -> bool {
     return character == ' ' || character == '\t' || character == '\r' || character == '\n'
 }
 
@@ -205,7 +209,7 @@ is_space :: fn(character: char) -> bool {
  * @param text The string to trim; it isn't copied, so the view is good only as long as its bytes are.
  * @return A view of text's bytes, good while they are; "" if it's all spaces.
  */
-trim :: fn(text: string) -> string {
+trim :: fn(text : string) -> string {
     start : usize = 0
     end := text.count
     for character in text {
@@ -253,7 +257,7 @@ Split :: struct {
  * @param separator What to split at, which isn't in any piece; empty to give the whole text as one piece.
  * @return The pieces, given one at a time by next.
  */
-split :: fn(text: string, separator: string) -> Split {
+split :: fn(text : string, separator : string) -> Split {
     return Split.{rest = text, separator = separator, done = false}
 }
 
@@ -264,7 +268,7 @@ split :: fn(text: string, separator: string) -> Split {
  * @return The piece, a view of the text, empty between two separators in a row or at either end; null once every
  *     piece has been given. There's always at least one piece, "" for empty text.
  */
-next :: fn(pieces: ptr[mut Split]) -> string? {
+next :: fn(pieces : ptr[mut Split]) -> string? {
     if pieces.done {
         return null
     }

@@ -40,7 +40,7 @@ List :: struct {
  * @param link The link, which must not be in a list already; it stays in this one until removed, so its value has to
  *     outlive its place in it.
  */
-list_push_back :: fn(list: ptr[mut List], link #escaping : ptr[mut ListLink]) {
+list_push_back :: fn(list : ptr[mut List], link #escaping : ptr[mut ListLink]) {
     link.next = null
     link.previous = list.last
     match list.last {
@@ -58,7 +58,7 @@ list_push_back :: fn(list: ptr[mut List], link #escaping : ptr[mut ListLink]) {
  * @param link The link, which must not be in a list already; it stays in this one until removed, so its value has to
  *     outlive its place in it.
  */
-list_push_front :: fn(list: ptr[mut List], link #escaping : ptr[mut ListLink]) {
+list_push_front :: fn(list : ptr[mut List], link #escaping : ptr[mut ListLink]) {
     link.previous = null
     link.next = list.first
     match list.first {
@@ -75,7 +75,7 @@ list_push_front :: fn(list: ptr[mut List], link #escaping : ptr[mut ListLink]) {
  * @param list The list, which has to be the one the link is in: nothing checks it, and another list is left broken.
  * @param link The link, unlinked afterwards (its next and previous null), so it can go in a list again.
  */
-list_remove :: fn(list: ptr[mut List], link: ptr[mut ListLink]) {
+list_remove :: fn(list : ptr[mut List], link : ptr[mut ListLink]) {
     match link.previous {
         case Some(previous) => previous.next = link.next
         case None => list.first = link.next
@@ -98,7 +98,7 @@ list_remove :: fn(list: ptr[mut List], link: ptr[mut ListLink]) {
  *     one.
  * @return The first link, unlinked; null if the list is empty.
  */
-list_pop_front :: fn(list: ptr[mut List]) -> ptr[mut ListLink]? {
+list_pop_front :: fn(list : ptr[mut List]) -> ptr[mut ListLink]? {
     first :: list.first or_return null
     list_remove(list, first)
     return first
@@ -112,6 +112,6 @@ list_pop_front :: fn(list: ptr[mut List]) -> ptr[mut ListLink]? {
  * @param offset Where the link is in the value, in bytes: offset_of(T, the link's field).
  * @return The value, at offset bytes before the link.
  */
-entry_of :: fn[T](link: ptr[mut ListLink], offset: usize) -> ptr[mut T] {
+entry_of :: fn[T](link : ptr[mut ListLink], offset : usize) -> ptr[mut T] {
     return cast[ptr[mut T]](cast[rawptr](cast[usize](link) - offset))
 }

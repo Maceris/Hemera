@@ -11,58 +11,58 @@ import math from "std:math"
  */
 
 /** An f32 in every lane. */
-f32_lanes :: fn[n: usize](value: f32) -> vector[f32, n] {
+f32_lanes :: fn[n : usize](value : f32) -> vector[f32, n] {
     return intrinsics.splat[vector[f32, n]](value)
 }
 
 /** An i32 in every lane. */
-i32_lanes :: fn[n: usize](value: i32) -> vector[i32, n] {
+i32_lanes :: fn[n : usize](value : i32) -> vector[i32, n] {
     return intrinsics.splat[vector[i32, n]](value)
 }
 
 /** f32 lanes' bits. */
-bits_32 :: fn[n: usize](x: vector[f32, n]) -> vector[u32, n] {
+bits_32 :: fn[n : usize](x : vector[f32, n]) -> vector[u32, n] {
     return bit_cast[vector[u32, n]](x)
 }
 
 /** f32 lanes from their bits. */
-from_bits_32 :: fn[n: usize](bits: vector[u32, n]) -> vector[f32, n] {
+from_bits_32 :: fn[n : usize](bits : vector[u32, n]) -> vector[f32, n] {
     return bit_cast[vector[f32, n]](bits)
 }
 
 /** a × b + c rounded once, c in every lane: a step of a polynomial by Horner's rule. */
-step_32 :: fn[n: usize](a: vector[f32, n], b: vector[f32, n], c: f32) -> vector[f32, n] {
+step_32 :: fn[n : usize](a : vector[f32, n], b : vector[f32, n], c : f32) -> vector[f32, n] {
     return intrinsics.fused_multiply_add(a, b, f32_lanes[n](c))
 }
 
 /** r - q × part rounded once: a step of a Cody-Waite reduction, part in every lane. */
-reduce_step_32 :: fn[n: usize](q: vector[f32, n], part: f32, r: vector[f32, n]) -> vector[f32, n] {
+reduce_step_32 :: fn[n : usize](q : vector[f32, n], part : f32, r : vector[f32, n]) -> vector[f32, n] {
     return intrinsics.fused_multiply_add(q, f32_lanes[n](-part), r)
 }
 
 /** |x| in each lane. */
-magnitude_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+magnitude_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     return from_bits_32(bits_32(x) & 0x7fff_ffff)
 }
 
 /** x with its sign flipped in the lanes where y's sign bit is set. */
-times_sign_32 :: fn[n: usize](x: vector[f32, n], y: vector[f32, n]) -> vector[f32, n] {
+times_sign_32 :: fn[n : usize](x : vector[f32, n], y : vector[f32, n]) -> vector[f32, n] {
     return from_bits_32(bits_32(x) ~ (bits_32(y) & 0x8000_0000))
 }
 
 /** 2^e in each lane, for e from -126 to 127. */
-power_of_two_32 :: fn[n: usize](e: vector[i32, n]) -> vector[f32, n] {
+power_of_two_32 :: fn[n : usize](e : vector[i32, n]) -> vector[f32, n] {
     return from_bits_32(bit_cast[vector[u32, n]]((e + 127) << 23))
 }
 
 /** x × 2^e in each lane, for e from -252 to 254: in two steps, so neither factor leaves the normal range. */
-scale_32 :: fn[n: usize](x: vector[f32, n], e: vector[i32, n]) -> vector[f32, n] {
+scale_32 :: fn[n : usize](x : vector[f32, n], e : vector[i32, n]) -> vector[f32, n] {
     half :: e >> 1
     return x * power_of_two_32(half) * power_of_two_32(e - half)
 }
 
 /** The exponent of each lane, normal or infinite, unbiased: floor(log2 |x|). */
-exponent_32 :: fn[n: usize](x: vector[f32, n]) -> vector[i32, n] {
+exponent_32 :: fn[n : usize](x : vector[f32, n]) -> vector[i32, n] {
     return bit_cast[vector[i32, n]]((bits_32(x) >> 23) & 0xff) - 127
 }
 
@@ -76,9 +76,12 @@ exponent_32 :: fn[n: usize](x: vector[f32, n]) -> vector[i32, n] {
  * @param exact std/math's function.
  * @return result, with those lanes exact's.
  */
-redo_32 :: fn[n: usize](result: vector[f32, n], x: vector[f32, n], redo: vector[bool, n], exact: (fn(x: f32) -> f32))
-    -> vector[f32, n] {
-
+redo_32 :: fn[n : usize](
+    result : vector[f32, n],
+    x : vector[f32, n],
+    redo : vector[bool, n],
+    exact : (fn(x : f32) -> f32)
+) -> vector[f32, n] {
     if !intrinsics.any_true(redo) {
         return result
     }
@@ -112,7 +115,7 @@ SIN_2_32 : f32 : 0.00833307858556509017944336
 SIN_3_32 : f32 : -0.166666597127914428710938
 
 /** sin r for r from -π/2 to π/2, its sign flipped where flip is set. */
-sin_polynomial_32 :: fn[n: usize](r_in: vector[f32, n], flip: vector[bool, n]) -> vector[f32, n] {
+sin_polynomial_32 :: fn[n : usize](r_in : vector[f32, n], flip : vector[bool, n]) -> vector[f32, n] {
     s :: r_in * r_in
     r :: intrinsics.select(flip, -r_in, r_in)
     u := f32_lanes[n](SIN_0_32)
@@ -123,8 +126,8 @@ sin_polynomial_32 :: fn[n: usize](r_in: vector[f32, n], flip: vector[bool, n]) -
 }
 
 /** sin on lanes: x - qπ, then sin's polynomial, its sign by q's parity. */
-//SPEC: SLEEF sleefsimdsp.c xsinf
-sin_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xsinf
+sin_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     covered :: magnitude_32(x) < TRIG_RANGE_32
     d :: intrinsics.select(covered, x, f32_lanes[n](0))
     q :: intrinsics.round_even(d * INVERSE_PI_32)
@@ -139,8 +142,8 @@ sin_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** cos on lanes: x - qπ/2 for an odd q, then sin's polynomial. */
-//SPEC: SLEEF sleefsimdsp.c xcosf
-cos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xcosf
+cos_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     covered :: magnitude_32(x) < TRIG_RANGE_32
     d :: intrinsics.select(covered, x, f32_lanes[n](0))
     q :: 1 + 2 * intrinsics.round_even(d * INVERSE_PI_32 - 0.5)
@@ -161,8 +164,8 @@ TAN_4_32 : f32 : 0.133383005857467651367188
 TAN_5_32 : f32 : 0.333331853151321411132812
 
 /** tan on lanes: x - qπ/2, the polynomial, and its reciprocal for an odd q. */
-//SPEC: SLEEF sleefsimdsp.c xtanf
-tan_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xtanf
+tan_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     covered :: magnitude_32(x) < TRIG_RANGE_32
     d :: intrinsics.select(covered, x, f32_lanes[n](0))
     q :: intrinsics.round_even(d * TWO_OVER_PI_32)
@@ -199,11 +202,13 @@ EXP_4_32 : f32 : 0.166666671633720397949219
 EXP_5_32 : f32 : 0.5
 
 /** exp on lanes: x - q ln 2, the polynomial, scaled by 2^q. */
-//SPEC: SLEEF sleefsimdsp.c xexpf
-exp_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xexpf
+exp_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     // Past 100 it's infinite and below -104 0 anyway; NaN to 0 for the arithmetic, and back below
-    d :: intrinsics.minimum(intrinsics.maximum(intrinsics.select(x == x, x, f32_lanes[n](0)), f32_lanes[n](-104)),
-        f32_lanes[n](100))
+    d :: intrinsics.minimum(
+        intrinsics.maximum(intrinsics.select(x == x, x, f32_lanes[n](0)), f32_lanes[n](-104)),
+        f32_lanes[n](100)
+    )
     q :: intrinsics.round_even(d * INVERSE_LN2_32)
     s := reduce_step_32(q, LN2_HI_32, d)
     s = reduce_step_32(q, LN2_LO_32, s)
@@ -215,8 +220,11 @@ exp_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
     u = step_32(u, s, EXP_5_32)
     u = 1 + intrinsics.fused_multiply_add(s * s, u, s)
     scaled :: scale_32(u, cast[vector[i32, n]](q))
-    result :: intrinsics.select(x > 100, f32_lanes[n](math.infinity[f32]()), intrinsics.select(x < -104, f32_lanes[n](0),
-        scaled))
+    result :: intrinsics.select(
+        x > 100,
+        f32_lanes[n](math.infinity[f32]()),
+        intrinsics.select(x < -104, f32_lanes[n](0), scaled)
+    )
     return intrinsics.select(x == x, result, x)
 }
 
@@ -225,14 +233,16 @@ EXP2_0_32 : f32 : 0.1535920892e-3
 EXP2_1_32 : f32 : 0.1339262701e-2
 EXP2_2_32 : f32 : 0.9618384764e-2
 EXP2_3_32 : f32 : 0.5550347269e-1
-EXP2_4_32 : f32 : 0.2402264476e+0
-EXP2_5_32 : f32 : 0.6931471825e+0
+EXP2_4_32 : f32 : 0.2402264476e + 0
+EXP2_5_32 : f32 : 0.6931471825e + 0
 
 /** exp2 on lanes: x less its nearest whole number q, the polynomial, scaled by 2^q. */
-//SPEC: SLEEF sleefsimdsp.c xexp2f
-exp2_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
-    d :: intrinsics.minimum(intrinsics.maximum(intrinsics.select(x == x, x, f32_lanes[n](0)), f32_lanes[n](-151)),
-        f32_lanes[n](129))
+// SPEC: SLEEF sleefsimdsp.c xexp2f
+exp2_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
+    d :: intrinsics.minimum(
+        intrinsics.maximum(intrinsics.select(x == x, x, f32_lanes[n](0)), f32_lanes[n](-151)),
+        f32_lanes[n](129)
+    )
     q :: intrinsics.round_even(d)
     s :: d - q
     u := f32_lanes[n](EXP2_0_32)
@@ -243,8 +253,11 @@ exp2_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
     u = step_32(u, s, EXP2_5_32)
     u = step_32(u, s, 1)
     scaled :: scale_32(u, cast[vector[i32, n]](q))
-    result :: intrinsics.select(x >= 128, f32_lanes[n](math.infinity[f32]()), intrinsics.select(x < -150, f32_lanes[n](0),
-        scaled))
+    result :: intrinsics.select(
+        x >= 128,
+        f32_lanes[n](math.infinity[f32]()),
+        intrinsics.select(x < -150, f32_lanes[n](0), scaled)
+    )
     return intrinsics.select(x == x, result, x)
 }
 
@@ -260,7 +273,7 @@ TWO_TO_64_32 : f32 : 18446744073709551616.0
  * @param x The numbers: positive and finite, subnormals too.
  * @return e, and m.
  */
-split_32 :: fn[n: usize](x: vector[f32, n]) -> (vector[i32, n], vector[f32, n]) {
+split_32 :: fn[n : usize](x : vector[f32, n]) -> (vector[i32, n], vector[f32, n]) {
     subnormal :: x < LEAST_NORMAL_32
     d :: intrinsics.select(subnormal, x * TWO_TO_64_32, x)
     e :: exponent_32(d * (1.0 / 0.75))
@@ -268,8 +281,10 @@ split_32 :: fn[n: usize](x: vector[f32, n]) -> (vector[i32, n], vector[f32, n]) 
     return intrinsics.select(subnormal, e - 64, e), m
 }
 
-/** What a logarithm gives where it has no finite value: -infinity at ±0, NaN below 0 and for NaN, infinity at infinity. */
-log_special_32 :: fn[n: usize](x: vector[f32, n], result: vector[f32, n]) -> vector[f32, n] {
+/**
+ * What a logarithm gives where it has no finite value: -infinity at ±0, NaN below 0 and for NaN, infinity at infinity.
+ */
+log_special_32 :: fn[n : usize](x : vector[f32, n], result : vector[f32, n]) -> vector[f32, n] {
     infinity :: f32_lanes[n](math.infinity[f32]())
     with_ends :: intrinsics.select(x == 0, -infinity, intrinsics.select(x == infinity, infinity, result))
     return intrinsics.select((x < 0) | (x != x), f32_lanes[n](math.nan[f32]()), with_ends)
@@ -284,8 +299,8 @@ LOG_3_32 : f32 : 0.666666686534881591796875
 LN2_32 : f32 : 0.693147180559945286226764
 
 /** log on lanes: x = 2^e × m, then ln m from a series in (m - 1)/(m + 1), and e ln 2. */
-//SPEC: SLEEF sleefsimdsp.c xlogf
-log_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xlogf
+log_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     usual :: (x > 0) & (x < math.infinity[f32]())
     e, m :: split_32(intrinsics.select(usual, x, f32_lanes[n](1)))
     r :: (m - 1) / (m + 1)
@@ -307,8 +322,8 @@ LOG2_2_32 : f32 : 0.9618012905120
 TWO_OVER_LN2_32 : f32 : 2.885390081777926774
 
 /** log2 on lanes: x = 2^e × m, then e + log2 m from a series in (m - 1)/(m + 1). */
-//SPEC: SLEEF sleefsimdsp.c xlog2f_u35
-log2_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xlog2f_u35
+log2_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     usual :: (x > 0) & (x < math.infinity[f32]())
     e, m :: split_32(intrinsics.select(usual, x, f32_lanes[n](1)))
     r :: (m - 1) / (m + 1)
@@ -316,8 +331,11 @@ log2_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
     t := f32_lanes[n](LOG2_0_32)
     t = step_32(t, r2, LOG2_1_32)
     t = step_32(t, r2, LOG2_2_32)
-    result :: intrinsics.fused_multiply_add(r2 * r, t, intrinsics.fused_multiply_add(r, f32_lanes[n](TWO_OVER_LN2_32),
-        cast[vector[f32, n]](e)))
+    result :: intrinsics.fused_multiply_add(
+        r2 * r,
+        t,
+        intrinsics.fused_multiply_add(r, f32_lanes[n](TWO_OVER_LN2_32), cast[vector[f32, n]](e))
+    )
     return log_special_32(x, result)
 }
 
@@ -336,7 +354,7 @@ PI_OVER_4_32 : f32 : 0.785398163397448309615660845819875721
 PI_32 : f32 : 3.14159265358979323846264338327950288
 
 /** atan t for t from -1 to 1. */
-atan_polynomial_32 :: fn[n: usize](t: vector[f32, n]) -> vector[f32, n] {
+atan_polynomial_32 :: fn[n : usize](t : vector[f32, n]) -> vector[f32, n] {
     t2 :: t * t
     u := f32_lanes[n](ATAN_0_32)
     u = step_32(u, t2, ATAN_1_32)
@@ -350,8 +368,8 @@ atan_polynomial_32 :: fn[n: usize](t: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** atan on lanes: |x| up to 1 as it is, above it π/2 - atan(1/|x|), and the sign put back. */
-//SPEC: SLEEF sleefsimdsp.c xatanf
-atan_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xatanf
+atan_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     a :: magnitude_32(x)
     above :: a > 1
     t :: atan_polynomial_32(intrinsics.select(above, 1.0 / a, a))
@@ -360,8 +378,8 @@ atan_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** atan2 on lanes: atan of the smaller over the larger, a multiple of π/2 added, and the ends as C has them. */
-//SPEC: SLEEF sleefsimdsp.c xatan2f, atan2kf
-atan2_lanes_32 :: fn[n: usize](y: vector[f32, n], x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xatan2f, atan2kf
+atan2_lanes_32 :: fn[n : usize](y : vector[f32, n], x : vector[f32, n]) -> vector[f32, n] {
     ay :: magnitude_32(y)
     ax :: magnitude_32(x)
     // atan2(|y|, x) = q π/2 + atan(s): q -2 for a negative x, plus 1 where |y| is the larger
@@ -373,12 +391,22 @@ atan2_lanes_32 :: fn[n: usize](y: vector[f32, n], x: vector[f32, n]) -> vector[f
     infinity :: f32_lanes[n](math.infinity[f32]())
     x_infinite :: ax == infinity
     // x infinite or 0: 0 or π for x infinite, π/2 for 0; then y infinite: π/4, 3π/4 or π/2
-    r = intrinsics.select(x_infinite | (x == 0), PI_OVER_2_32 - intrinsics.select(x_infinite,
-        times_sign_32(f32_lanes[n](PI_OVER_2_32), x), f32_lanes[n](0)), r)
-    r = intrinsics.select(ay == infinity, PI_OVER_2_32 - intrinsics.select(x_infinite,
-        times_sign_32(f32_lanes[n](PI_OVER_4_32), x), f32_lanes[n](0)), r)
+    r = intrinsics.select(
+        x_infinite | (x == 0),
+        PI_OVER_2_32 - intrinsics.select(x_infinite, times_sign_32(f32_lanes[n](PI_OVER_2_32), x), f32_lanes[n](0)),
+        r
+    )
+    r = intrinsics.select(
+        ay == infinity,
+        PI_OVER_2_32 - intrinsics.select(x_infinite, times_sign_32(f32_lanes[n](PI_OVER_4_32), x), f32_lanes[n](0)),
+        r
+    )
     // y = ±0: 0, or π for a negative x, -0 included
-    r = intrinsics.select(y == 0, intrinsics.select((bits_32(x) & 0x8000_0000) != 0, f32_lanes[n](PI_32), f32_lanes[n](0)), r)
+    r = intrinsics.select(
+        y == 0,
+        intrinsics.select((bits_32(x) & 0x8000_0000) != 0, f32_lanes[n](PI_32), f32_lanes[n](0)),
+        r
+    )
     return intrinsics.select((x != x) | (y != y), f32_lanes[n](math.nan[f32]()), times_sign_32(r, y))
 }
 
@@ -387,10 +415,10 @@ ASIN_0_32 : f32 : 0.4197454825e-1
 ASIN_1_32 : f32 : 0.2424046025e-1
 ASIN_2_32 : f32 : 0.4547423869e-1
 ASIN_3_32 : f32 : 0.7495029271e-1
-ASIN_4_32 : f32 : 0.1666677296e+0
+ASIN_4_32 : f32 : 0.1666677296e + 0
 
 /** asin's polynomial less 1, over x³, in x². */
-asin_polynomial_32 :: fn[n: usize](x2: vector[f32, n]) -> vector[f32, n] {
+asin_polynomial_32 :: fn[n : usize](x2 : vector[f32, n]) -> vector[f32, n] {
     u := f32_lanes[n](ASIN_0_32)
     u = step_32(u, x2, ASIN_1_32)
     u = step_32(u, x2, ASIN_2_32)
@@ -399,14 +427,18 @@ asin_polynomial_32 :: fn[n: usize](x2: vector[f32, n]) -> vector[f32, n] {
 }
 
 /** asin on lanes: below 1/2 the polynomial, above it π/2 - 2 asin √((1 - |x|)/2). */
-//SPEC: SLEEF sleefsimdsp.c xasinf
-asin_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xasinf
+asin_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     a :: magnitude_32(x)
     small :: a < 0.5
     x2 :: intrinsics.select(small, x * x, (1 - a) * 0.5)
     z :: intrinsics.select(small, a, intrinsics.square_root(x2))
     u :: intrinsics.fused_multiply_add(asin_polynomial_32(x2), z * x2, z)
-    result :: intrinsics.select(small, u, intrinsics.fused_multiply_add(u, f32_lanes[n](-2), f32_lanes[n](PI_OVER_2_32)))
+    result :: intrinsics.select(
+        small,
+        u,
+        intrinsics.fused_multiply_add(u, f32_lanes[n](-2), f32_lanes[n](PI_OVER_2_32))
+    )
     return times_sign_32(result, x)
 }
 
@@ -415,8 +447,8 @@ PI_HI_32 : f32 : 3.1415927410125732422
 PI_LO_32 : f32 : -8.7422776573475857731e-08
 
 /** acos on lanes: below 1/2 π/2 - asin x, above it 2 asin √((1 - |x|)/2), from π for a negative x. */
-//SPEC: SLEEF sleefsimdsp.c xacosf
-acos_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xacosf
+acos_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     a :: magnitude_32(x)
     small :: a < 0.5
     x2 :: intrinsics.select(small, x * x, (1 - a) * 0.5)
@@ -443,8 +475,8 @@ CUBE_ROOT_4_ROOT_32 : f32 : 1.5874010519681994747517056
  * cube_root on lanes: x = 2^e × m, m from 0.5 to 1; ∛m from a polynomial for m^(-1/3) and a Newton step; times
  * 2^(e/3), the remainder's ∛2 or ∛4 in too. ±0, infinities and NaN are themselves; subnormals by std/math.
  */
-//SPEC: SLEEF sleefsimdsp.c xcbrtf
-cube_root_lanes_32 :: fn[n: usize](x: vector[f32, n]) -> vector[f32, n] {
+// SPEC: SLEEF sleefsimdsp.c xcbrtf
+cube_root_lanes_32 :: fn[n : usize](x : vector[f32, n]) -> vector[f32, n] {
     a :: magnitude_32(x)
     usual :: (a >= LEAST_NORMAL_32) & (a < math.infinity[f32]())
     d :: intrinsics.select(usual, a, f32_lanes[n](1))

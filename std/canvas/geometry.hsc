@@ -36,94 +36,113 @@ Color :: struct {
 }
 
 /** A colour from 8-bit red, green and blue, opaque. */
-rgb :: fn(r: u8, g: u8, b: u8) -> Color {
+rgb :: fn(r : u8, g : u8, b : u8) -> Color {
     return Color.{r = cast[f32](r) / 255, g = cast[f32](g) / 255, b = cast[f32](b) / 255}
 }
 
 /** A colour from 8-bit red, green, blue and alpha. */
-rgba :: fn(r: u8, g: u8, b: u8, a: u8) -> Color {
+rgba :: fn(r : u8, g : u8, b : u8, a : u8) -> Color {
     return Color.{r = cast[f32](r) / 255, g = cast[f32](g) / 255, b = cast[f32](b) / 255, a = cast[f32](a) / 255}
 }
 
 /** Whether a rectangle has no pixels. */
-is_empty :: fn(rect: Rect) -> bool {
+is_empty :: fn(rect : Rect) -> bool {
     return rect.x1 <= rect.x0 || rect.y1 <= rect.y0
 }
 
 /** Where two rectangles overlap; empty if they don't. */
-intersect :: fn(a: Rect, b: Rect) -> Rect {
-    return Rect.{x0 = if a.x0 > b.x0 { a.x0 } else { b.x0 }, y0 = if a.y0 > b.y0 { a.y0 } else { b.y0 },
-        x1 = if a.x1 < b.x1 { a.x1 } else { b.x1 }, y1 = if a.y1 < b.y1 { a.y1 } else { b.y1 }}
+intersect :: fn(a : Rect, b : Rect) -> Rect {
+    return Rect.{
+        x0 = if a.x0 > b.x0 { a.x0 } else { b.x0 },
+        y0 = if a.y0 > b.y0 { a.y0 } else { b.y0 },
+        x1 = if a.x1 < b.x1 { a.x1 } else { b.x1 },
+        y1 = if a.y1 < b.y1 { a.y1 } else { b.y1 },
+    }
 }
 
 /** The smallest rectangle holding both; one that's empty is left out. */
-union_of :: fn(a: Rect, b: Rect) -> Rect {
+union_of :: fn(a : Rect, b : Rect) -> Rect {
     if is_empty(a) {
         return b
     }
     if is_empty(b) {
         return a
     }
-    return Rect.{x0 = if a.x0 < b.x0 { a.x0 } else { b.x0 }, y0 = if a.y0 < b.y0 { a.y0 } else { b.y0 },
-        x1 = if a.x1 > b.x1 { a.x1 } else { b.x1 }, y1 = if a.y1 > b.y1 { a.y1 } else { b.y1 }}
+    return Rect.{
+        x0 = if a.x0 < b.x0 { a.x0 } else { b.x0 },
+        y0 = if a.y0 < b.y0 { a.y0 } else { b.y0 },
+        x1 = if a.x1 > b.x1 { a.x1 } else { b.x1 },
+        y1 = if a.y1 > b.y1 { a.y1 } else { b.y1 },
+    }
 }
 
 /** A point transformed. */
-apply :: fn(m: Affine, p: Point) -> Point {
+apply :: fn(m : Affine, p : Point) -> Point {
     return Point.{x = m.a * p.x + m.c * p.y + m.e, y = m.b * p.x + m.d * p.y + m.f}
 }
 
 /** One transform after another: first applied first. */
-then :: fn(first: Affine, second: Affine) -> Affine {
-    return Affine.{a = second.a * first.a + second.c * first.b, b = second.b * first.a + second.d * first.b,
-        c = second.a * first.c + second.c * first.d, d = second.b * first.c + second.d * first.d,
-        e = second.a * first.e + second.c * first.f + second.e, f = second.b * first.e + second.d * first.f + second.f}
+then :: fn(first : Affine, second : Affine) -> Affine {
+    return Affine.{
+        a = second.a * first.a + second.c * first.b,
+        b = second.b * first.a + second.d * first.b,
+        c = second.a * first.c + second.c * first.d,
+        d = second.b * first.c + second.d * first.d,
+        e = second.a * first.e + second.c * first.f + second.e,
+        f = second.b * first.e + second.d * first.f + second.f,
+    }
 }
 
 /** A transform's inverse; the identity for one that can't be inverted, as a scale by 0. */
-inverse :: fn(m: Affine) -> Affine {
+inverse :: fn(m : Affine) -> Affine {
     det :: m.a * m.d - m.b * m.c
     if det == 0 {
         return Affine.{}
     }
     inv :: 1 / det
-    return Affine.{a = m.d * inv, b = -m.b * inv, c = -m.c * inv, d = m.a * inv, e = (m.c * m.f - m.d * m.e) * inv,
-        f = (m.b * m.e - m.a * m.f) * inv}
+    return Affine.{
+        a = m.d * inv,
+        b = -m.b * inv,
+        c = -m.c * inv,
+        d = m.a * inv,
+        e = (m.c * m.f - m.d * m.e) * inv,
+        f = (m.b * m.e - m.a * m.f) * inv,
+    }
 }
 
 /** How much a transform scales lengths, on average: the square root of its determinant's magnitude. */
-scale_of :: fn(m: Affine) -> f32 {
+scale_of :: fn(m : Affine) -> f32 {
     det :: m.a * m.d - m.b * m.c
     return intrinsics.square_root(if det < 0 { -det } else { det })
 }
 
 /** A translation. */
-translation :: fn(x: f32, y: f32) -> Affine {
+translation :: fn(x : f32, y : f32) -> Affine {
     return Affine.{e = x, f = y}
 }
 
 /** A scale about the origin. */
-scaling :: fn(x: f32, y: f32) -> Affine {
+scaling :: fn(x : f32, y : f32) -> Affine {
     return Affine.{a = x, d = y}
 }
 
 /** A rotation about the origin, by radians, from x toward y. */
-rotation :: fn(radians: f32) -> Affine {
+rotation :: fn(radians : f32) -> Affine {
     s, c :: math.sin_cos(radians)
     return Affine.{a = c, b = s, c = -s, d = c}
 }
 
 /** Whether a transform only moves, neither scaling, rotating nor shearing. */
-is_translation :: fn(m: Affine) -> bool {
+is_translation :: fn(m : Affine) -> bool {
     return m.a == 1 && m.b == 0 && m.c == 0 && m.d == 1
 }
 
 /** A vector's length. */
-length :: fn(p: Point) -> f32 {
+length :: fn(p : Point) -> f32 {
     return intrinsics.square_root(p.x * p.x + p.y * p.y)
 }
 
 /** Two points' difference, q - p. */
-minus :: fn(q: Point, p: Point) -> Point {
+minus :: fn(q : Point, p : Point) -> Point {
     return Point.{x = q.x - p.x, y = q.y - p.y}
 }

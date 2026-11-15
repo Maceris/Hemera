@@ -31,7 +31,8 @@ Type :: struct {
     /** A struct's, union's, enum's or distinct alias's name, a view of the schema's bytes; empty for other kinds. */
     name : string,
     /**
-     * An alias's type, an array's, a vector's or a matrix's elements', a pointer's (NOWHERE for a rawptr) or an enum's backing
+     * An alias's type, an array's, a vector's or a matrix's elements', a pointer's (NOWHERE for a rawptr) or an enum's
+     * backing
      * type, as a place among the schema's types; NOWHERE for other kinds.
      */
     base : usize,
@@ -164,7 +165,7 @@ MAX_TYPES : usize : 65536
  *     than MAX_TYPES, a type of a kind there isn't or cut short, a place that isn't one of its types, or anything
  *     after its last type.
  */
-parse :: fn(bytes: u8[]) -> Schema? {
+parse :: fn(bytes : u8[]) -> Schema? {
     schema := Schema.{}
     for byte in bytes {
         runtime.array_add(&schema.bytes, byte)
@@ -181,7 +182,7 @@ parse :: fn(bytes: u8[]) -> Schema? {
  *
  * @param schema The schema, from parse; nothing read from it can be used after.
  */
-free :: fn(schema: ptr[mut Schema]) {
+free :: fn(schema : ptr[mut Schema]) {
     for &type in schema.types {
         runtime.array_free(&type.members)
         runtime.array_free(&type.inputs)
@@ -205,7 +206,7 @@ free :: fn(schema: ptr[mut Schema]) {
  * @param place The type's place, from 0, as types refer to each other.
  * @return The type, good until the schema is freed; null for NOWHERE or any place past the last type.
  */
-type_in :: fn(schema: ptr[Schema], place: usize) -> ptr[Type]? {
+type_in :: fn(schema : ptr[Schema], place : usize) -> ptr[Type]? {
     if place >= schema.types.count {
         return null
     }
@@ -220,7 +221,7 @@ type_in :: fn(schema: ptr[Schema], place: usize) -> ptr[Type]? {
  * @return The place of the first type that isn't an alias: place itself when it isn't one. NOWHERE if place, or an
  *     alias on the way, refers to no type, or the aliases go more than ALIAS_LIMIT deep, as a loop of them would.
  */
-unaliased_place :: fn(schema: ptr[Schema], place: usize) -> usize {
+unaliased_place :: fn(schema : ptr[Schema], place : usize) -> usize {
     at := place
     for step in 0..<ALIAS_LIMIT {
         type :: type_in(schema, at) or_return NOWHERE
@@ -244,7 +245,7 @@ unaliased_place :: fn(schema: ptr[Schema], place: usize) -> usize {
  * @return Null when the whole schema was written, or place isn't a type; otherwise the allocator's error, and into's
  *     count is as it was.
  */
-write_rooted :: fn(schema: ptr[Schema], place: usize, into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
+write_rooted :: fn(schema : ptr[Schema], place : usize, into : ptr[mut u8[..]]) -> runtime.AllocatorError? {
     start :: into.count
     if place >= schema.types.count {
         return null
@@ -330,7 +331,7 @@ write_rooted :: fn(schema: ptr[Schema], place: usize, into: ptr[mut u8[..]]) -> 
  * @return BLAKE3-256 of the type's schema. All zeros without the memory to write it; for a place that isn't a type,
  *     the hash of no bytes, which matches no type's.
  */
-hash_rooted :: fn(schema: ptr[Schema], place: usize) -> u8[32] {
+hash_rooted :: fn(schema : ptr[Schema], place : usize) -> u8[32] {
     bytes : u8[..]
     defer runtime.array_free(&bytes)
     if write_rooted(schema, place, &bytes) != null {
@@ -347,7 +348,7 @@ hash_rooted :: fn(schema: ptr[Schema], place: usize) -> u8[32] {
  * @param bytes The bytes, in order.
  * @return Null when every byte was added; otherwise the allocator's error, with the bytes before it left added.
  */
-add_all :: fn(into: ptr[mut u8[..]], bytes: u8[]) -> runtime.AllocatorError? {
+add_all :: fn(into : ptr[mut u8[..]], bytes : u8[]) -> runtime.AllocatorError? {
     for byte in bytes {
         error :: runtime.array_try_add(into, byte)
         if error != null {
@@ -365,7 +366,7 @@ add_all :: fn(into: ptr[mut u8[..]], bytes: u8[]) -> runtime.AllocatorError? {
  * @param count How many bytes, 1 to 8.
  * @return Null when every byte was added; otherwise the allocator's error, with the bytes before it left added.
  */
-add_number :: fn(into: ptr[mut u8[..]], value: u64, count: usize) -> runtime.AllocatorError? {
+add_number :: fn(into : ptr[mut u8[..]], value : u64, count : usize) -> runtime.AllocatorError? {
     for i in cast[usize](0)..<count {
         error :: runtime.array_try_add(into, cast[u8]((value >> (8 * cast[u64](i))) & 0xff))
         if error != null {
@@ -383,7 +384,7 @@ add_number :: fn(into: ptr[mut u8[..]], value: u64, count: usize) -> runtime.All
  * @return True when the header is right, the count is 1 to MAX_TYPES, every type is whole and nothing follows the
  *     last; false otherwise.
  */
-read_types :: fn(schema: ptr[mut Schema]) -> bool {
+read_types :: fn(schema : ptr[mut Schema]) -> bool {
     bytes :: schema.bytes
     if first_type(bytes) == NOWHERE {
         return false
@@ -416,7 +417,7 @@ read_types :: fn(schema: ptr[mut Schema]) -> bool {
  * @return Where its description ends; NOWHERE if it's cut short, of a kind there isn't, has an array dimension of a
  *     kind there isn't, or refers to a place past count.
  */
-read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, count: usize) -> usize {
+read_type :: fn(schema : ptr[mut Schema], made : ptr[mut Type], start : usize, count : usize) -> usize {
     bytes :: schema.bytes
     if !fits(bytes, start, 9) {
         return NOWHERE
@@ -445,8 +446,14 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
             if dimension_kind < 1 || dimension_kind > 3 {
                 return NOWHERE
             }
-            runtime.array_add(&made.dimensions, Dimension.{kind = cast[DimensionKind](cast[u8](dimension_kind)), count = dimension_count,
-                is_mutable = mutable})
+            runtime.array_add(
+                &made.dimensions,
+                Dimension.{
+                    kind = cast[DimensionKind](cast[u8](dimension_kind)),
+                    count = dimension_count,
+                    is_mutable = mutable,
+                }
+            )
         }
     }
     else if made.kind == .Enum {
@@ -476,7 +483,10 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
             type :: reference_at(schema, made, &at, count)
             varargs :: number_at(bytes, &at, 1) != 0
             escaping :: number_at(bytes, &at, 1) != 0
-            runtime.array_add(&made.inputs, Input.{name = name, type = type, is_varargs = varargs, is_escaping = escaping})
+            runtime.array_add(
+                &made.inputs,
+                Input.{name = name, type = type, is_varargs = varargs, is_escaping = escaping}
+            )
         }
         outputs :: number_at(bytes, &at, 4)
         for i in cast[u64](0)..<outputs {
@@ -566,7 +576,7 @@ read_type :: fn(schema: ptr[mut Schema], made: ptr[mut Type], start: usize, coun
  * @param count How many bytes, 1 to 8.
  * @return The number; 0, with NOWHERE in at, if at was NOWHERE already or the bytes aren't all there.
  */
-number_at :: fn(bytes: u8[], at: ptr[mut usize], count: usize) -> u64 {
+number_at :: fn(bytes : u8[], at : ptr[mut usize], count : usize) -> u64 {
     if at^ == NOWHERE || !fits(bytes, at^, count) {
         at^ = NOWHERE
         return 0
@@ -584,7 +594,7 @@ number_at :: fn(bytes: u8[], at: ptr[mut usize], count: usize) -> u64 {
  * @return The name, a view of the schema's bytes, good until the schema is freed; "" for an empty name, or with
  *     NOWHERE in at when it's cut short.
  */
-name_at :: fn(schema: ptr[Schema], at: ptr[mut usize]) -> string {
+name_at :: fn(schema : ptr[Schema], at : ptr[mut usize]) -> string {
     count :: cast[usize](number_at(schema.bytes, at, 4))
     if at^ == NOWHERE || !fits(schema.bytes, at^, count) {
         at^ = NOWHERE
@@ -607,7 +617,7 @@ name_at :: fn(schema: ptr[Schema], at: ptr[mut usize]) -> string {
  * @param count How many types the schema has.
  * @return The place, less than count; NOWHERE if it's cut short or isn't one of the types.
  */
-reference_at :: fn(schema: ptr[Schema], made: ptr[mut Type], at: ptr[mut usize], count: usize) -> usize {
+reference_at :: fn(schema : ptr[Schema], made : ptr[mut Type], at : ptr[mut usize], count : usize) -> usize {
     position :: at^
     place :: cast[usize](number_at(schema.bytes, at, 4))
     if at^ == NOWHERE {

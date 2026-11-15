@@ -23,7 +23,7 @@ PRINTF_BUFFER_SIZE :: 2048
  *
  * @param text The text, of any length, with nothing added: no newline, and no translation.
  */
-print :: fn(text: string) {
+print :: fn(text : string) {
     runtime.write_output(text)
 }
 
@@ -33,7 +33,7 @@ print :: fn(text: string) {
  * @param text The text, without the newline. A line of up to runtime.OUTPUT_BUFFER_SIZE bytes, newline included, is
  *     one write; a longer one is written in pieces, which another thread's output can come between.
  */
-println :: fn(text: string) {
+println :: fn(text : string) {
     write_line(.OUTPUT, text)
 }
 
@@ -44,7 +44,7 @@ println :: fn(text: string) {
  *     added.
  * @param args The values for the text. What's formatted past PRINTF_BUFFER_SIZE bytes is cut off.
  */
-printf :: fn(format_string: string, args: any...) {
+printf :: fn(format_string : string, args : any...) {
     write_formatted(.OUTPUT, format_string, args)
 }
 
@@ -53,7 +53,7 @@ printf :: fn(format_string: string, args: any...) {
  *
  * @param text The text, of any length, with nothing added: no newline, and no translation.
  */
-eprint :: fn(text: string) {
+eprint :: fn(text : string) {
     runtime.write_error(text)
 }
 
@@ -63,7 +63,7 @@ eprint :: fn(text: string) {
  * @param text The text, without the newline. A line of up to runtime.OUTPUT_BUFFER_SIZE bytes, newline included, is
  *     one write; a longer one is written in pieces.
  */
-eprintln :: fn(text: string) {
+eprintln :: fn(text : string) {
     write_line(.ERROR, text)
 }
 
@@ -74,7 +74,7 @@ eprintln :: fn(text: string) {
  *     added.
  * @param args The values for the text. What's formatted past PRINTF_BUFFER_SIZE bytes is cut off.
  */
-eprintf :: fn(format_string: string, args: any...) {
+eprintf :: fn(format_string : string, args : any...) {
     write_formatted(.ERROR, format_string, args)
 }
 
@@ -85,7 +85,7 @@ eprintf :: fn(format_string: string, args: any...) {
  * @param text The text, without the newline. Up to runtime.OUTPUT_BUFFER_SIZE bytes with the newline is one write;
  *     more is written a buffer at a time.
  */
-write_line :: fn(stream: runtime.OutputStream, text: string) {
+write_line :: fn(stream : runtime.OutputStream, text : string) {
     buffer := runtime.output_buffer(stream)
     runtime.output_text(&buffer, text)
     runtime.output_byte(&buffer, cast[u8]('\n'))
@@ -99,7 +99,7 @@ write_line :: fn(stream: runtime.OutputStream, text: string) {
  * @param format_string The text, with a % for each of args.
  * @param args The values for the text.
  */
-write_formatted :: fn(stream: runtime.OutputStream, format_string: string, args: any[]) {
+write_formatted :: fn(stream : runtime.OutputStream, format_string : string, args : any[]) {
     storage : u8[PRINTF_BUFFER_SIZE]
     text := text_buffer.make(storage)
     text_buffer.append_format(&text, format_string, args)

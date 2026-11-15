@@ -27,7 +27,7 @@ SpinLock :: struct {
  * @param spin_lock The lock, which the caller holds when this returns, until unlock. Writes made under it by earlier
  *     holders are seen.
  */
-lock :: fn(spin_lock: ptr[mut SpinLock]) {
+lock :: fn(spin_lock : ptr[mut SpinLock]) {
     ticket :: intrinsics.interlocked_exchange_add_u32_no_fence(&spin_lock.next_ticket, 1)
     loop {
         // A recording's turn, in the deterministic mode, so the holder can run
@@ -43,7 +43,7 @@ Waiting :: struct {
      * Called each time round the spin, with state. It mustn't take the lock being waited for, which would wait for
      * itself; it may return, or not.
      */
-    call : (fn(state: rawptr)),
+    call : fn(state : rawptr),
     /** What call is given, which lock_waiting only passes on: any address, null included. */
     state : rawptr,
 }
@@ -58,7 +58,7 @@ Waiting :: struct {
  * @param waiting Called while the caller waits, after its ticket is taken, never once the lock is the caller's: not at
  *     all when the lock is free at once.
  */
-lock_waiting :: fn(spin_lock: ptr[mut SpinLock], waiting: Waiting) {
+lock_waiting :: fn(spin_lock : ptr[mut SpinLock], waiting : Waiting) {
     ticket :: intrinsics.interlocked_exchange_add_u32_no_fence(&spin_lock.next_ticket, 1)
     loop {
         if intrinsics.atomic_load_u32_acquire(&spin_lock.now_serving) == ticket {
@@ -76,7 +76,7 @@ lock_waiting :: fn(spin_lock: ptr[mut SpinLock], waiting: Waiting) {
  * @param spin_lock The lock, which the caller must hold: nothing checks that it does, and unlocking one that isn't
  *     held lets a later caller in early.
  */
-unlock :: fn(spin_lock: ptr[mut SpinLock]) {
+unlock :: fn(spin_lock : ptr[mut SpinLock]) {
     // Only the holder writes now_serving
     serving :: intrinsics.atomic_load_u32_no_fence(&spin_lock.now_serving)
     intrinsics.atomic_store_u32_release(&spin_lock.now_serving, serving + 1)

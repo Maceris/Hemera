@@ -30,7 +30,7 @@ Mutex :: struct {
  *
  * @param mutex The mutex, which the caller holds when this returns, until mutex_unlock.
  */
-mutex_lock :: fn(mutex: ptr[mut Mutex]) {
+mutex_lock :: fn(mutex : ptr[mut Mutex]) {
     lock(&mutex.guard)
     if !mutex.locked {
         mutex.locked = true
@@ -55,7 +55,7 @@ mutex_lock :: fn(mutex: ptr[mut Mutex]) {
  * @param mutex The mutex, which the caller must hold. Nothing checks that it does: unlocking one that isn't held hands
  *     it to a waiter, or leaves it unlocked.
  */
-mutex_unlock :: fn(mutex: ptr[mut Mutex]) {
+mutex_unlock :: fn(mutex : ptr[mut Mutex]) {
     lock(&mutex.guard)
     next :: mutex.first
     match next {

@@ -14,15 +14,24 @@ import random from "std:random"
 /** The suites offered, in the order they're preferred. */
 CLIENT_SUITES :: u16.[0x1301, 0x1302, 0x1303]
 /** The schemes offered: those a CertificateVerify may use, then PKCS #1's for certificates. */
-CLIENT_SCHEMES :: u16.[SCHEME_ECDSA_P256_SHA256, SCHEME_ECDSA_P384_SHA384, SCHEME_RSA_PSS_SHA256, SCHEME_RSA_PSS_SHA384,
-    SCHEME_RSA_PSS_SHA512, SCHEME_ED25519, SCHEME_RSA_PKCS1_SHA256, SCHEME_RSA_PKCS1_SHA384, SCHEME_RSA_PKCS1_SHA512]
+CLIENT_SCHEMES :: u16.[
+    SCHEME_ECDSA_P256_SHA256,
+    SCHEME_ECDSA_P384_SHA384,
+    SCHEME_RSA_PSS_SHA256,
+    SCHEME_RSA_PSS_SHA384,
+    SCHEME_RSA_PSS_SHA512,
+    SCHEME_ED25519,
+    SCHEME_RSA_PKCS1_SHA256,
+    SCHEME_RSA_PKCS1_SHA384,
+    SCHEME_RSA_PKCS1_SHA512
+]
 
 /**
  * Start the client's handshake: its X25519 key made, and its ClientHello queued.
  *
  * @param connection The connection, set up as a client.
  */
-start_client :: fn(connection: ptr[mut Connection]) {
+start_client :: fn(connection : ptr[mut Connection]) {
     bytes : u8[32]
     random.fill(bytes)
     for byte, i in bytes {
@@ -43,7 +52,11 @@ start_client :: fn(connection: ptr[mut Connection]) {
  * @param hello The ClientHello sent, as a handshake message; its session ID's taken from it.
  * @param x25519 The X25519 secret key its key share was made with.
  */
-client_after_hello #constant_time :: fn(connection: ptr[mut Connection], hello: u8[], x25519: ptr[crypto.X25519SecretKey]) {
+client_after_hello #constant_time :: fn(
+    connection : ptr[mut Connection],
+    hello : u8[],
+    x25519 : ptr[crypto.X25519SecretKey]
+) {
     reset(connection, .Client)
     connection.verify = false
     connection.small_rsa = true
@@ -69,7 +82,7 @@ client_after_hello #constant_time :: fn(connection: ptr[mut Connection], hello: 
  * @param host The name.
  * @return True for an IPv4 address's text, or anything with a colon, as IPv6's has.
  */
-is_address :: fn(host: u8[]) -> bool {
+is_address :: fn(host : u8[]) -> bool {
     if host.count == 0 {
         return true
     }
@@ -91,7 +104,7 @@ is_address :: fn(host: u8[]) -> bool {
  *
  * @param connection The connection.
  */
-send_client_hello :: fn(connection: ptr[mut Connection]) {
+send_client_hello :: fn(connection : ptr[mut Connection]) {
     into :: connection.building[0..<connection.building.count]
     writer := Writer.{}
     put_u8(into, &writer, CLIENT_HELLO)
@@ -191,7 +204,7 @@ send_client_hello :: fn(connection: ptr[mut Connection]) {
  * @param kind The message's type.
  * @param message The message, with its header.
  */
-client_message :: fn(connection: ptr[mut Connection], kind: u8, message: u8[]) {
+client_message :: fn(connection : ptr[mut Connection], kind : u8, message : u8[]) {
     if connection.state == .WaitServerHello && kind == SERVER_HELLO {
         take_server_hello(connection, message)
     }
@@ -242,7 +255,7 @@ client_message :: fn(connection: ptr[mut Connection], kind: u8, message: u8[]) {
  * @param connection The connection.
  * @param message The message.
  */
-take_server_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_server_hello :: fn(connection : ptr[mut Connection], message : u8[]) {
     reader := reader_of(message)
     _ = get_bytes(message, &reader, 4)
     version :: get_u16(message, &reader)
@@ -261,13 +274,20 @@ take_server_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
         return void
     }
     for i in 0..<connection.session_id_length {
-        if i < connection.session_id.count && session.at + i < message.count && message[session.at + i] != connection.session_id[i] {
+        if i < connection.session_id.count
+            && session.at + i < message.count
+            && message[session.at + i] != connection.session_id[i] {
             fail(connection, ALERT_ILLEGAL_PARAMETER)
             return void
         }
     }
-    chosen :: if suite == 0x1301 { Suite.Aes128GcmSha256 } else if suite == 0x1302 { Suite.Aes256GcmSha384 }
-        else if suite == 0x1303 { Suite.Chacha20Poly1305Sha256 } else { Suite.None }
+    chosen :: if suite == 0x1301 {
+        Suite.Aes128GcmSha256
+    }
+    else if suite == 0x1302 {
+        Suite.Aes256GcmSha384
+    }
+    else if suite == 0x1303 { Suite.Chacha20Poly1305Sha256 } else { Suite.None }
     if chosen == .None || (connection.retried && chosen != connection.suite) {
         fail(connection, ALERT_ILLEGAL_PARAMETER)
         return void
@@ -373,7 +393,7 @@ take_server_hello :: fn(connection: ptr[mut Connection], message: u8[]) {
  * @param connection The connection, a client's waiting for it.
  * @param message The message, with its header.
  */
-take_encrypted_extensions :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_encrypted_extensions :: fn(connection : ptr[mut Connection], message : u8[]) {
     reader := reader_of(message)
     _ = get_bytes(message, &reader, 4)
     extensions := get_vector(message, &reader, 2)
@@ -395,7 +415,10 @@ take_encrypted_extensions :: fn(connection: ptr[mut Connection], message: u8[]) 
             }
             names := get_vector(message, &data, 2)
             name := get_vector(message, &names, 1)
-            if names.bad || !done(&names) || !done(&data) || !is_protocol(connection, range(message, name.at, name.end)) {
+            if names.bad
+                || !done(&names)
+                || !done(&data)
+                || !is_protocol(connection, range(message, name.at, name.end)) {
                 fail(connection, ALERT_ILLEGAL_PARAMETER)
                 return void
             }
@@ -416,7 +439,7 @@ take_encrypted_extensions :: fn(connection: ptr[mut Connection], message: u8[]) 
  *
  * @param connection The connection, whose p256 is set.
  */
-make_p256_key :: fn(connection: ptr[mut Connection]) {
+make_p256_key :: fn(connection : ptr[mut Connection]) {
     for attempt in 0..<8 {
         bytes : u8[32]
         random.fill(bytes)
@@ -436,7 +459,7 @@ make_p256_key :: fn(connection: ptr[mut Connection]) {
  * @param verdict Why it isn't valid.
  * @return The alert's description.
  */
-alert_for :: fn(verdict: crypto.X509Verdict) -> u8 {
+alert_for :: fn(verdict : crypto.X509Verdict) -> u8 {
     return match verdict {
         case .EXPIRED => ALERT_CERTIFICATE_EXPIRED
         case .UNKNOWN_ISSUER => ALERT_UNKNOWN_CA
@@ -455,7 +478,7 @@ alert_for :: fn(verdict: crypto.X509Verdict) -> u8 {
  * @param connection The connection.
  * @param message The message.
  */
-take_certificate :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_certificate :: fn(connection : ptr[mut Connection], message : u8[]) {
     reader := reader_of(message)
     _ = get_bytes(message, &reader, 4)
     context := get_vector(message, &reader, 1)
@@ -531,7 +554,7 @@ take_certificate :: fn(connection: ptr[mut Connection], message: u8[]) {
  * @param salt Where RSA-PSS's salt length goes: its hash's length.
  * @return The algorithm; null if the scheme isn't one a CertificateVerify may use with that key.
  */
-scheme_algorithm :: fn(scheme: u16, kind: crypto.X509KeyKind, salt: ptr[mut usize]) -> crypto.X509Signature? {
+scheme_algorithm :: fn(scheme : u16, kind : crypto.X509KeyKind, salt : ptr[mut usize]) -> crypto.X509Signature? {
     if scheme == SCHEME_ECDSA_P256_SHA256 && kind == .P256 {
         return crypto.X509Signature.ECDSA_SHA256
     }
@@ -564,7 +587,7 @@ scheme_algorithm :: fn(scheme: u16, kind: crypto.X509KeyKind, salt: ptr[mut usiz
  * @param connection The connection.
  * @param message The message.
  */
-take_certificate_verify :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_certificate_verify :: fn(connection : ptr[mut Connection], message : u8[]) {
     reader := reader_of(message)
     _ = get_bytes(message, &reader, 4)
     scheme :: get_u16(message, &reader)
@@ -584,7 +607,14 @@ take_certificate_verify :: fn(connection: ptr[mut Connection], message: u8[]) {
     length :: verify_content(connection, true, content[0..<content.count])
     key :: range(connection.peer_key, 0, connection.peer_key_length)
     signed :: range(message, signature.at, signature.end)
-    verdict := crypto.x509_verify_signature(connection.peer_kind, key, algorithm, salt, range(content, 0, length), signed)
+    verdict := crypto.x509_verify_signature(
+        connection.peer_kind,
+        key,
+        algorithm,
+        salt,
+        range(content, 0, length),
+        signed
+    )
     if verdict == .UNSUPPORTED && connection.small_rsa && connection.peer_kind == .RSA {
         verdict = small_rsa_verdict(key, algorithm, salt, range(content, 0, length), signed)
     }
@@ -606,15 +636,35 @@ take_certificate_verify :: fn(connection: ptr[mut Connection], message: u8[]) {
  * @param signature The signature.
  * @return VALID or BAD_SIGNATURE; UNSUPPORTED for another algorithm or a key that isn't read.
  */
-small_rsa_verdict :: fn(key: u8[], algorithm: crypto.X509Signature, salt: usize, content: u8[], signature: u8[]) -> crypto.X509Verdict {
+small_rsa_verdict :: fn(
+    key : u8[],
+    algorithm : crypto.X509Signature,
+    salt : usize,
+    content : u8[],
+    signature : u8[]
+) -> crypto.X509Verdict {
     public :: crypto.rsa_public_key_from_der(key) or_return .UNSUPPORTED
-    hash :: if algorithm == .RSA_PSS_SHA256 { crypto.RsaHash.SHA256 } else if algorithm == .RSA_PSS_SHA384 { crypto.RsaHash.SHA384 }
-        else if algorithm == .RSA_PSS_SHA512 { crypto.RsaHash.SHA512 } else { return .UNSUPPORTED }
+    hash :: if algorithm == .RSA_PSS_SHA256 {
+        crypto.RsaHash.SHA256
+    }
+    else if algorithm == .RSA_PSS_SHA384 {
+        crypto.RsaHash.SHA384
+    }
+    else if algorithm == .RSA_PSS_SHA512 {
+        crypto.RsaHash.SHA512
+    }
+    else {
+        return .UNSUPPORTED
+    }
     digest : u8[64]
     crypto.rsa_hash_parts(hash, content, content[0..<0], content[0..<0], &digest)
     size :: crypto.rsa_hash_size(hash)
-    return if crypto.rsa_pss_verify(&public, hash, range(digest, 0, size), signature, salt) { crypto.X509Verdict.VALID }
-        else { crypto.X509Verdict.BAD_SIGNATURE }
+    return if crypto.rsa_pss_verify(&public, hash, range(digest, 0, size), signature, salt) {
+        crypto.X509Verdict.VALID
+    }
+    else {
+        crypto.X509Verdict.BAD_SIGNATURE
+    }
 }
 
 /**
@@ -624,7 +674,7 @@ small_rsa_verdict :: fn(key: u8[], algorithm: crypto.X509Signature, salt: usize,
  * @param connection The connection.
  * @param message The message.
  */
-take_server_finished :: fn(connection: ptr[mut Connection], message: u8[]) {
+take_server_finished :: fn(connection : ptr[mut Connection], message : u8[]) {
     if !check_finished(connection, &connection.server_secret, message) {
         fail(connection, ALERT_DECRYPT_ERROR)
         return void

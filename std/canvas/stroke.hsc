@@ -41,9 +41,13 @@ Stroke :: struct {
     width : f32 = 1,
     join : Join = .Miter,
     cap : Cap = .Butt,
-    /** For a miter join, the most its point may be past the corner, as a multiple of half the width; past it, bevelled. */
+    /**
+     * For a miter join, the most its point may be past the corner, as a multiple of half the width; past it, bevelled.
+     */
     miter_limit : f32 = 4,
-    /** Dashes: on, off, on, off, ... lengths in the path's units, the first dash_count of them; none for a solid line. */
+    /**
+     * Dashes: on, off, on, off, ... lengths in the path's units, the first dash_count of them; none for a solid line.
+     */
     dashes : f32[MAX_DASHES],
     dash_count : usize,
     /** How far into the pattern the stroke starts. */
@@ -67,7 +71,13 @@ Polyline :: struct {
  * @param into Where the polygons go.
  * @param scratch A path for the dashes' pieces.
  */
-stroke_outline :: fn(flat: ptr[Path], stroke: ptr[Stroke], scale: f32, into: ptr[mut Path], scratch: ptr[mut Path]) {
+stroke_outline :: fn(
+    flat : ptr[Path],
+    stroke : ptr[Stroke],
+    scale : f32,
+    into : ptr[mut Path],
+    scratch : ptr[mut Path]
+) {
     half :: stroke.width * scale / 2
     if !(half > 0) {
         return void
@@ -103,7 +113,7 @@ stroke_outline :: fn(flat: ptr[Path], stroke: ptr[Stroke], scale: f32, into: ptr
 }
 
 /** Stroke one polyline: its segments, joins and caps. */
-stroke_polyline :: fn(path: ptr[Path], line: Polyline, stroke: ptr[Stroke], half: f32, into: ptr[mut Path]) {
+stroke_polyline :: fn(path : ptr[Path], line : Polyline, stroke : ptr[Stroke], half : f32, into : ptr[mut Path]) {
     // Its distinct points: one repeated adds nothing
     points : Point[..]
     defer runtime.array_free(&points)
@@ -129,8 +139,15 @@ stroke_polyline :: fn(path: ptr[Path], line: Polyline, stroke: ptr[Stroke], half
             add_circle(into, p, half)
         }
         else if stroke.cap == .Square {
-            add_polygon(into, Point.[Point.{x = p.x - half, y = p.y - half}, Point.{x = p.x + half, y = p.y - half},
-                Point.{x = p.x + half, y = p.y + half}, Point.{x = p.x - half, y = p.y + half}])
+            add_polygon(
+                into,
+                Point.[
+                    Point.{x = p.x - half, y = p.y - half},
+                    Point.{x = p.x + half, y = p.y - half},
+                    Point.{x = p.x + half, y = p.y + half},
+                    Point.{x = p.x - half, y = p.y + half}
+                ]
+            )
         }
         return void
     }
@@ -153,8 +170,15 @@ stroke_polyline :: fn(path: ptr[Path], line: Polyline, stroke: ptr[Stroke], half
         }
         nx :: -d.y * half
         ny :: d.x * half
-        add_polygon(into, Point.[Point.{x = a.x + nx, y = a.y + ny}, Point.{x = b.x + nx, y = b.y + ny},
-            Point.{x = b.x - nx, y = b.y - ny}, Point.{x = a.x - nx, y = a.y - ny}])
+        add_polygon(
+            into,
+            Point.[
+                Point.{x = a.x + nx, y = a.y + ny},
+                Point.{x = b.x + nx, y = b.y + ny},
+                Point.{x = b.x - nx, y = b.y - ny},
+                Point.{x = a.x - nx, y = a.y - ny}
+            ]
+        )
     }
     // Joins: at every corner between two segments
     corners :: if closed { n } else { n - 2 }
@@ -173,13 +197,12 @@ stroke_polyline :: fn(path: ptr[Path], line: Polyline, stroke: ptr[Stroke], half
 }
 
 /** A point of a list, or the origin past its end. */
-nth :: fn(points: Point[], index: usize) -> Point {
-
+nth :: fn(points : Point[], index : usize) -> Point {
     return if index < points.count { points[index] } else { Point.{} }
 }
 
 /** A corner's join: the wedge on its outer side, mitered, rounded or bevelled. */
-add_join :: fn(into: ptr[mut Path], before: Point, corner: Point, after: Point, stroke: ptr[Stroke], half: f32) {
+add_join :: fn(into : ptr[mut Path], before : Point, corner : Point, after : Point, stroke : ptr[Stroke], half : f32) {
     d1 :: unit(minus(corner, before))
     d2 :: unit(minus(after, corner))
     cross :: d1.x * d2.y - d1.y * d2.x
@@ -211,13 +234,15 @@ add_join :: fn(into: ptr[mut Path], before: Point, corner: Point, after: Point, 
 }
 
 /** A vector made a unit long; the zero vector stays zero. */
-unit :: fn(v: Point) -> Point {
+unit :: fn(v : Point) -> Point {
     l :: length(v)
     return if l > 0 { Point.{x = v.x / l, y = v.y / l} } else { Point.{} }
 }
 
-/** A closed polygon added, turned counter-clockwise in pixels (positive area, y down), so the non-zero rule unions them. */
-add_polygon :: fn(into: ptr[mut Path], corners: Point[]) {
+/**
+ * A closed polygon added, turned counter-clockwise in pixels (positive area, y down), so the non-zero rule unions them.
+ */
+add_polygon :: fn(into : ptr[mut Path], corners : Point[]) {
     if corners.count < 3 {
         return void
     }
@@ -252,7 +277,7 @@ add_polygon :: fn(into: ptr[mut Path], corners: Point[]) {
 }
 
 /** A circle as a polygon, enough sides that it strays from the circle by no more than the tolerance. */
-add_circle :: fn(into: ptr[mut Path], centre: Point, radius: f32) {
+add_circle :: fn(into : ptr[mut Path], centre : Point, radius : f32) {
     if !(radius > 0) {
         return void
     }
@@ -260,7 +285,10 @@ add_circle :: fn(into: ptr[mut Path], centre: Point, radius: f32) {
     ratio :: if TOLERANCE < radius { 1 - TOLERANCE / radius } else { cast[f32](0) }
     angle :: 2 * math.acos(ratio)
     sides_wanted :: if angle > 0 { intrinsics.ceil(cast[f32](math.TAU) / angle) } else { cast[f32](8) }
-    sides :: if sides_wanted < 8 { cast[usize](8) } else if sides_wanted > 256 { cast[usize](256) } else { cast[usize](sides_wanted) }
+    sides :: if sides_wanted < 8 {
+        cast[usize](8)
+    }
+    else if sides_wanted > 256 { cast[usize](256) } else { cast[usize](sides_wanted) }
     for i in cast[usize](0)..<sides {
         theta :: cast[f32](math.TAU) * cast[f32](i) / cast[f32](sides)
         s, c :: math.sin_cos(theta)
@@ -277,9 +305,10 @@ add_circle :: fn(into: ptr[mut Path], centre: Point, radius: f32) {
 /**
  * A flattened path cut into its dashes: each polyline walked along, the pattern's on lengths kept as open polylines.
  *
- * @return The dashes, in scratch; for a path that would take more than MAX_DASH_STEPS pieces of the pattern, those walked by then.
+ * @return The dashes, in scratch; for a path that would take more than MAX_DASH_STEPS pieces of the pattern, those
+ *     walked by then.
  */
-dashed :: fn(flat: ptr[Path], stroke: ptr[Stroke], scale: f32, scratch: ptr[mut Path]) -> ptr[Path] {
+dashed :: fn(flat : ptr[Path], stroke : ptr[Stroke], scale : f32, scratch : ptr[mut Path]) -> ptr[Path] {
     reset(scratch)
     pattern : f32[MAX_DASHES]
     total := cast[f32](0)
@@ -302,7 +331,15 @@ dashed :: fn(flat: ptr[Path], stroke: ptr[Stroke], scale: f32, scratch: ptr[mut 
     for verb in flat.verbs {
         if verb == .Move {
             if points > 0 {
-                dash_polyline(flat, Polyline.{first = first, count = points}, used, total, stroke.dash_offset * scale, scratch, &steps)
+                dash_polyline(
+                    flat,
+                    Polyline.{first = first, count = points},
+                    used,
+                    total,
+                    stroke.dash_offset * scale,
+                    scratch,
+                    &steps
+                )
             }
             first = at
             points = 1
@@ -314,19 +351,43 @@ dashed :: fn(flat: ptr[Path], stroke: ptr[Stroke], scale: f32, scratch: ptr[mut 
         }
         else if verb == .Close {
             if points > 0 {
-                dash_polyline(flat, Polyline.{first = first, count = points, closed = true}, used, total, stroke.dash_offset * scale, scratch, &steps)
+                dash_polyline(
+                    flat,
+                    Polyline.{first = first, count = points, closed = true},
+                    used,
+                    total,
+                    stroke.dash_offset * scale,
+                    scratch,
+                    &steps
+                )
             }
             points = 0
         }
     }
     if points > 0 {
-        dash_polyline(flat, Polyline.{first = first, count = points}, used, total, stroke.dash_offset * scale, scratch, &steps)
+        dash_polyline(
+            flat,
+            Polyline.{first = first, count = points},
+            used,
+            total,
+            stroke.dash_offset * scale,
+            scratch,
+            &steps
+        )
     }
     return scratch
 }
 
 /** One polyline's dashes, walked from its start with the pattern's phase, each step taken from what's left of steps. */
-dash_polyline :: fn(path: ptr[Path], line: Polyline, pattern: f32[], total: f32, offset: f32, into: ptr[mut Path], steps: ptr[mut usize]) {
+dash_polyline :: fn(
+    path : ptr[Path],
+    line : Polyline,
+    pattern : f32[],
+    total : f32,
+    offset : f32,
+    into : ptr[mut Path],
+    steps : ptr[mut usize]
+) {
     // Where in the pattern the walk starts
     phase := offset - total * intrinsics.floor(offset / total)
     index := cast[usize](0)

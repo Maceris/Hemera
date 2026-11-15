@@ -59,7 +59,7 @@ package os
      * @param handle An open File, not the zero one.
      * @return Its record, good until the File is closed.
      */
-    file_of :: fn(handle: File) -> ptr[mut SlopFile] {
+    file_of :: fn(handle : File) -> ptr[mut SlopFile] {
         return cast[ptr[mut SlopFile]](handle.handle)
     }
 
@@ -69,7 +69,7 @@ package os
      * @param handle An open Directory, not the zero one.
      * @return Its record, good until the Directory is closed.
      */
-    directory_of :: fn(handle: Directory) -> ptr[mut SlopDirectory] {
+    directory_of :: fn(handle : Directory) -> ptr[mut SlopDirectory] {
         return cast[ptr[mut SlopDirectory]](handle.handle)
     }
 
@@ -82,7 +82,7 @@ package os
      * @param error What the server answered.
      * @return The OsError a caller sees.
      */
-    error_of_file :: fn(error: files.FileError) -> OsError {
+    error_of_file :: fn(error : files.FileError) -> OsError {
         return match error {
             case .NotFound => OsError.NotFound
             case .NotADirectory => OsError.NotADirectory
@@ -112,7 +112,7 @@ package os
      *     context's allocator. The zero Directory on failure.
      * @return error OutOfMemory if the port couldn't be made, or null.
      */
-    directory_on :: fn(end: slop_os.Channel) -> (directory : Directory, error : OsError?) {
+    directory_on :: fn(end : slop_os.Channel) -> (directory : Directory, error : OsError?) {
         block :: slop_os.startup_block()
         port :: port_for(block.budget, end) or_else cast[slop_os.Port](slop_os.NO_HANDLE)
         if cast[slop_os.Handle](port) == slop_os.NO_HANDLE {
@@ -134,7 +134,7 @@ package os
      * @param into Where the answer goes, for message_of[dir.Response].
      * @return True once the answer is in into; false if sending or receiving failed, as when the connection's gone.
      */
-    ask_directory :: fn(state: ptr[SlopDirectory], out: ptr[mut Outgoing], into: ptr[mut Incoming]) -> bool {
+    ask_directory :: fn(state : ptr[SlopDirectory], out : ptr[mut Outgoing], into : ptr[mut Incoming]) -> bool {
         if dir.send_request(state.end, state.port, out) is_some {
             return false
         }
@@ -154,7 +154,7 @@ package os
      * @param path The path, copied as it is, not checked.
      * @return Where its bytes are, for the request's Relative field.
      */
-    relative_path :: fn(out: ptr[mut Outgoing], path: string) -> slop_os.Relative[u8] {
+    relative_path :: fn(out : ptr[mut Outgoing], path : string) -> slop_os.Relative[u8] {
         return append(out, view_of(cast[ptr[u8]](path.data), path.count))
     }
 
@@ -191,7 +191,7 @@ package os
      *     failure.
      * @return error InvalidPath for a path that isn't beneath, the working directory's error, the server's, or null.
      */
-    system_open_directory :: fn(path: string) -> (directory : Directory, error : OsError?) {
+    system_open_directory :: fn(path : string) -> (directory : Directory, error : OsError?) {
         if !is_beneath(path) {
             return Directory.{0}, OsError.InvalidPath
         }
@@ -213,7 +213,7 @@ package os
      * @return error The server's error (error_of_file), like NotFound or NotADirectory; OutOfMemory if its port
      *     couldn't be made; Other if the connection failed or answered wrongly; or null.
      */
-    system_open_directory_in :: fn(directory: Directory, path: string) -> (opened : Directory, error : OsError?) {
+    system_open_directory_in :: fn(directory : Directory, path : string) -> (opened : Directory, error : OsError?) {
         state :: directory_of(directory)
         out := Outgoing.{}
         request :: begin[dir.Request](&out)
@@ -234,7 +234,7 @@ package os
      *
      * @param directory The directory, which isn't good afterwards; the zero Directory is ignored.
      */
-    system_close_directory :: fn(directory: Directory) {
+    system_close_directory :: fn(directory : Directory) {
         if directory.handle == 0 {
             return void
         }
@@ -254,7 +254,7 @@ package os
      * @return error OutOfMemory if the port or the buffer couldn't be made, mapped or duplicated; Other if the server
      *     didn't take the buffer; or null.
      */
-    file_on :: fn(end: slop_os.Channel, writes: bool) -> (file : File, error : OsError?) {
+    file_on :: fn(end : slop_os.Channel, writes : bool) -> (file : File, error : OsError?) {
         block :: slop_os.startup_block()
         port :: port_for(block.budget, end) or_else cast[slop_os.Port](slop_os.NO_HANDLE)
         if cast[slop_os.Handle](port) == slop_os.NO_HANDLE {
@@ -266,7 +266,8 @@ package os
         state.port = port
         state.writes = writes
         made :: File.{cast[u64](state)}
-        state.memory = slop_os.memory_create(block.budget, FILE_BUFFER_BYTES) or_else cast[slop_os.Memory](slop_os.NO_HANDLE)
+        state.memory = slop_os.memory_create(block.budget, FILE_BUFFER_BYTES)
+            or_else cast[slop_os.Memory](slop_os.NO_HANDLE)
         address :: runtime.reserve_addresses(cast[usize](FILE_BUFFER_BYTES)) or_else 0
         read_write :: cast[slop_os.Protection](cast[u32](slop_os.PROTECTION_READ) | cast[u32](slop_os.PROTECTION_WRITE))
         mapped := false
@@ -282,7 +283,9 @@ package os
         }
         state.buffer = address
         // A handle of the server's own: what it maps, which it may keep as long as the connection
-        rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_WRITE) | cast[u32](slop_os.RIGHT_TRANSFER))
+        rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ)
+            | cast[u32](slop_os.RIGHT_MEMORY_WRITE)
+            | cast[u32](slop_os.RIGHT_TRANSFER))
         given :: slop_os.handle_duplicate(cast[slop_os.Handle](state.memory), rights) or_else slop_os.NO_HANDLE
         if given == slop_os.NO_HANDLE {
             system_close(made)
@@ -316,7 +319,7 @@ package os
      * @param into Where the answer goes, for message_of of the same protocol's Response.
      * @return True once the answer is in into; false if sending or receiving failed, as when the connection's gone.
      */
-    ask_file :: fn(state: ptr[SlopFile], out: ptr[mut Outgoing], into: ptr[mut Incoming]) -> bool {
+    ask_file :: fn(state : ptr[SlopFile], out : ptr[mut Outgoing], into : ptr[mut Incoming]) -> bool {
         if state.writes {
             if file.send_request(state.end, state.port, out) is_some {
                 return false
@@ -347,7 +350,7 @@ package os
      * @param into An answer received from a connection speaking file.
      * @return True for Done, false for anything else, Failed included.
      */
-    done_file :: fn(into: ptr[Incoming]) -> bool {
+    done_file :: fn(into : ptr[Incoming]) -> bool {
         return match message_of[file.Response](into)^ {
             case Done => true
             case _ => false
@@ -360,7 +363,7 @@ package os
      * @param into An answer received from a connection speaking read_only_file.
      * @return True for Done, false for anything else, Failed included.
      */
-    done_read_only :: fn(into: ptr[Incoming]) -> bool {
+    done_read_only :: fn(into : ptr[Incoming]) -> bool {
         return match message_of[read_only_file.Response](into)^ {
             case Done => true
             case _ => false
@@ -376,7 +379,7 @@ package os
      * @return error InvalidPath for a path that isn't beneath, the working directory's error, system_open_in's, or
      *     null.
      */
-    system_open :: fn(path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open :: fn(path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         if !is_beneath(path) {
             return File.{0}, OsError.InvalidPath
         }
@@ -397,7 +400,7 @@ package os
      * @return file The File, which the caller closes with system_close; the zero File on failure.
      * @return error As open_with_schema's, or null.
      */
-    system_open_in :: fn(directory: Directory, path: string, mode: OpenMode) -> (file : File, error : OsError?) {
+    system_open_in :: fn(directory : Directory, path : string, mode : OpenMode) -> (file : File, error : OsError?) {
         untyped : u8[32]
         return open_with_schema(directory, path, mode, untyped)
     }
@@ -419,7 +422,12 @@ package os
      * @return error WrongType when a typed open finds a file of another type; the server's error (error_of_file);
      *     file_on's; Other if the connection failed or answered wrongly; or null.
      */
-    open_with_schema :: fn(directory: Directory, path: string, mode: OpenMode, schema: u8[32]) -> (file : File, error : OsError?) {
+    open_with_schema :: fn(
+        directory : Directory,
+        path : string,
+        mode : OpenMode,
+        schema : u8[32]
+    ) -> (file : File, error : OsError?) {
         state :: directory_of(directory)
         out := Outgoing.{}
         request :: begin[dir.Request](&out)
@@ -479,7 +487,7 @@ package os
      *
      * @param handle The file, which isn't good afterwards; the zero File is ignored.
      */
-    system_close :: fn(handle: File) {
+    system_close :: fn(handle : File) {
         if handle.handle == 0 {
             return void
         }
@@ -488,7 +496,11 @@ package os
         if state.buffer != 0 {
             _ = slop_os.memory_unmap(block.space, state.buffer)
         }
-        for each in slop_os.Handle.[cast[slop_os.Handle](state.memory), cast[slop_os.Handle](state.end), cast[slop_os.Handle](state.port)] {
+        for each in slop_os.Handle.[
+            cast[slop_os.Handle](state.memory),
+            cast[slop_os.Handle](state.end),
+            cast[slop_os.Handle](state.port)
+        ] {
             if each != slop_os.NO_HANDLE {
                 _ = slop_os.handle_close(each)
             }
@@ -506,7 +518,7 @@ package os
      *     is left. 0 on failure.
      * @return error The server's error (error_of_file); Other if the connection failed or answered wrongly; or null.
      */
-    system_read :: fn(handle: File, buffer: mut u8[]) -> (count : usize, error : OsError?) {
+    system_read :: fn(handle : File, buffer : mut u8[]) -> (count : usize, error : OsError?) {
         state :: file_of(handle)
         if buffer.count == 0 {
             return 0, null
@@ -543,7 +555,11 @@ package os
         }
         count :: if cast[u64](got) > asked { asked } else { cast[u64](got) }
         if count > 0 {
-            intrinsics.mem_copy_non_overlapping(cast[mut rawptr](buffer.data), cast[rawptr](state.buffer), cast[usize](count))
+            intrinsics.mem_copy_non_overlapping(
+                cast[mut rawptr](buffer.data),
+                cast[rawptr](state.buffer),
+                cast[usize](count)
+            )
         }
         state.offset += count
         return cast[usize](count), null
@@ -560,7 +576,7 @@ package os
      * @return error AccessDenied for a file opened only to read; the server's error (error_of_file); Other if the
      *     connection failed or answered wrongly; or null.
      */
-    system_write :: fn(handle: File, bytes: rawptr, count: usize) -> (written : usize, error : OsError?) {
+    system_write :: fn(handle : File, bytes : rawptr, count : usize) -> (written : usize, error : OsError?) {
         state :: file_of(handle)
         if !state.writes {
             return 0, OsError.AccessDenied
@@ -591,7 +607,7 @@ package os
      * @param offset Where, in bytes from the file's start; past its end, a read reads nothing and a write leaves zeros
      *     between, as the server keeps them.
      */
-    file_seek :: fn(handle: File, offset: u64) {
+    file_seek :: fn(handle : File, offset : u64) {
         file_of(handle).offset = offset
     }
 
@@ -604,7 +620,7 @@ package os
      * @return Null once it's that size; AccessDenied for a File that only reads; the server's error (error_of_file);
      *     Other if the connection failed or answered wrongly.
      */
-    file_set_size :: fn(handle: File, size: u64) -> OsError? {
+    file_set_size :: fn(handle : File, size : u64) -> OsError? {
         state :: file_of(handle)
         if !state.writes {
             return OsError.AccessDenied
@@ -631,7 +647,7 @@ package os
      * @return size The size in bytes, or 0 on failure.
      * @return error As file_info's, or null.
      */
-    system_file_size :: fn(handle: File) -> (size : u64, error : OsError?) {
+    system_file_size :: fn(handle : File) -> (size : u64, error : OsError?) {
         size, schema, error :: file_info(handle)
         return size, error
     }
@@ -645,7 +661,7 @@ package os
      * @return schema The file's schema hash: all zeros for an untyped one, or on failure.
      * @return error The server's error (error_of_file); Other if the connection failed or answered wrongly; or null.
      */
-    file_info :: fn(handle: File) -> (size : u64, schema : u8[32], error : OsError?) {
+    file_info :: fn(handle : File) -> (size : u64, schema : u8[32], error : OsError?) {
         none : u8[32]
         state :: file_of(handle)
         out := Outgoing.{}
@@ -681,7 +697,7 @@ package os
      * @param bytes A schema hash, as a file's Info gives one; read and not kept.
      * @return True if every byte is 0.
      */
-    all_zero :: fn(bytes: u8[32]) -> bool {
+    all_zero :: fn(bytes : u8[32]) -> bool {
         for byte in bytes {
             if byte != 0 {
                 return false
@@ -699,7 +715,7 @@ package os
      * @return Null for Done; the server's error (error_of_file); or Other if the connection failed or answered
      *     wrongly.
      */
-    finished :: fn(state: ptr[SlopDirectory], out: ptr[mut Outgoing]) -> OsError? {
+    finished :: fn(state : ptr[SlopDirectory], out : ptr[mut Outgoing]) -> OsError? {
         into := Incoming.{}
         if !ask_directory(state, out, &into) {
             return OsError.Other
@@ -719,7 +735,7 @@ package os
      * @param path The path, relative to directory.
      * @return DIRECTORY or FILE, or NOTHING if neither opened, for whatever reason, a failed connection included.
      */
-    system_path_kind_in :: fn(directory: Directory, path: string) -> PathKind {
+    system_path_kind_in :: fn(directory : Directory, path : string) -> PathKind {
         opened, error :: system_open_directory_in(directory, path)
         if error == null {
             system_close_directory(opened)
@@ -754,7 +770,7 @@ package os
      * @return Null once it's removed; NotFound if nothing's there, IsADirectory or NotADirectory if it's the other
      *     kind, the server's error (like DirectoryNotEmpty), or Other if the connection failed.
      */
-    remove_in :: fn(directory: Directory, path: string, is_directory: bool) -> OsError? {
+    remove_in :: fn(directory : Directory, path : string, is_directory : bool) -> OsError? {
         kind :: system_path_kind_in(directory, path)
         if kind == .NOTHING {
             return OsError.NotFound
@@ -779,7 +795,7 @@ package os
      * @param path The file's path, relative to directory.
      * @return Null once it's deleted, or remove_in's error.
      */
-    system_delete_file_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_delete_file_in :: fn(directory : Directory, path : string) -> OsError? {
         return remove_in(directory, path, false)
     }
 
@@ -790,7 +806,7 @@ package os
      * @param path The directory's path, relative to directory.
      * @return Null once it's removed, or remove_in's error.
      */
-    system_remove_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_remove_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         return remove_in(directory, path, true)
     }
 
@@ -802,7 +818,7 @@ package os
      * @param to Where it goes, relative to directory.
      * @return Null once it's moved, the server's error (error_of_file), or Other if the connection failed.
      */
-    system_rename_in :: fn(directory: Directory, from: string, to: string) -> OsError? {
+    system_rename_in :: fn(directory : Directory, from : string, to : string) -> OsError? {
         state :: directory_of(directory)
         out := Outgoing.{}
         request :: begin[dir.Request](&out)
@@ -818,7 +834,7 @@ package os
      * @return Null once it's made; AlreadyExists if something's at path, NotFound if its parent isn't a directory
      *     that's there, the server's error (error_of_file), or Other if the connection failed.
      */
-    system_make_directory_in :: fn(directory: Directory, path: string) -> OsError? {
+    system_make_directory_in :: fn(directory : Directory, path : string) -> OsError? {
         if system_path_kind_in(directory, path) != .NOTHING {
             return OsError.AlreadyExists
         }
@@ -828,7 +844,8 @@ package os
                 last = i
             }
         }
-        if last < path.count && system_path_kind_in(directory, string_of(cast[ptr[u8]](path.data), last)) != .DIRECTORY {
+        if last < path.count
+            && system_path_kind_in(directory, string_of(cast[ptr[u8]](path.data), last)) != .DIRECTORY {
             return OsError.NotFound
         }
         state :: directory_of(directory)
@@ -858,7 +875,12 @@ package os
      * @param allocator Where the entries' names are allocated, which the caller frees.
      * @return Null once every entry is added; system_open_directory_in's error, or list_of's.
      */
-    system_list_directory_in :: fn(directory: Directory, path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory_in :: fn(
+        directory : Directory,
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         if path.count != 0 {
             opened, error :: system_open_directory_in(directory, path)
             if error != null {
@@ -879,7 +901,11 @@ package os
      * @return Null at the listing's end; OutOfMemory if a name couldn't be copied, the server's error
      *     (error_of_file), or Other if the connection failed or answered wrongly.
      */
-    list_of :: fn(listed: Directory, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    list_of :: fn(
+        listed : Directory,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         state :: directory_of(listed)
         cursor := cast[u64](0)
         loop {
@@ -893,7 +919,10 @@ package os
             match message_of[dir.Response](&into)^ {
                 case Listed(listing) => {
                     name :: items(&into, listing.name)
-                    copy, error :: copy_string(if name.count == 0 { "" } else { string_of(&name[0], name.count) }, allocator)
+                    copy, error :: copy_string(
+                        if name.count == 0 { "" } else { string_of(&name[0], name.count) },
+                        allocator
+                    )
                     if error != null {
                         return error
                     }
@@ -916,7 +945,7 @@ package os
      * @return Null once it's deleted; InvalidPath for a path that isn't beneath, the working directory's error, or
      *     system_delete_file_in's.
      */
-    system_delete_file :: fn(path: string) -> OsError? {
+    system_delete_file :: fn(path : string) -> OsError? {
         if !is_beneath(path) {
             return OsError.InvalidPath
         }
@@ -936,7 +965,7 @@ package os
      * @return Null once it's moved; InvalidPath if either isn't beneath, the working directory's error, or
      *     system_rename_in's.
      */
-    system_rename :: fn(from: string, to: string) -> OsError? {
+    system_rename :: fn(from : string, to : string) -> OsError? {
         if !is_beneath(from) || !is_beneath(to) {
             return OsError.InvalidPath
         }
@@ -954,7 +983,7 @@ package os
      * @param path The path, beneath the working directory.
      * @return As system_path_kind_in's; NOTHING too for a path that isn't beneath, or without a working directory.
      */
-    system_path_kind :: fn(path: string) -> PathKind {
+    system_path_kind :: fn(path : string) -> PathKind {
         if !is_beneath(path) {
             return .NOTHING
         }
@@ -973,7 +1002,7 @@ package os
      * @return Null once it's made; InvalidPath for a path that isn't beneath, the working directory's error, or
      *     system_make_directory_in's.
      */
-    system_make_directory :: fn(path: string) -> OsError? {
+    system_make_directory :: fn(path : string) -> OsError? {
         if !is_beneath(path) {
             return OsError.InvalidPath
         }
@@ -992,7 +1021,7 @@ package os
      * @return Null once it's removed; InvalidPath for a path that isn't beneath, the working directory's error, or
      *     system_remove_directory_in's.
      */
-    system_remove_directory :: fn(path: string) -> OsError? {
+    system_remove_directory :: fn(path : string) -> OsError? {
         if !is_beneath(path) {
             return OsError.InvalidPath
         }
@@ -1013,7 +1042,11 @@ package os
      * @return Null once every entry is added; InvalidPath for a path that isn't beneath, the working directory's
      *     error, or system_list_directory_in's.
      */
-    system_list_directory :: fn(path: string, entries: ptr[mut DirectoryEntry[..]], allocator: runtime.Allocator) -> OsError? {
+    system_list_directory :: fn(
+        path : string,
+        entries : ptr[mut DirectoryEntry[..]],
+        allocator : runtime.Allocator
+    ) -> OsError? {
         if path.count != 0 && !is_beneath(path) {
             return OsError.InvalidPath
         }
@@ -1032,7 +1065,7 @@ package os
      * @return path Always empty.
      * @return error Always Unsupported.
      */
-    system_current_directory :: fn(allocator: runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
+    system_current_directory :: fn(allocator : runtime.Allocator) -> (path #unrestricted : string, error : OsError?) {
         return "", OsError.Unsupported
     }
 
@@ -1042,7 +1075,7 @@ package os
      * @param path Unused.
      * @return Always Unsupported.
      */
-    system_set_current_directory :: fn(path: string) -> OsError? {
+    system_set_current_directory :: fn(path : string) -> OsError? {
         return OsError.Unsupported
     }
 }

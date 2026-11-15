@@ -33,12 +33,12 @@ PublicKey :: struct {
 }
 
 /** A public key's blob. */
-blob_of :: fn(key: ptr[PublicKey]) -> u8[] {
+blob_of :: fn(key : ptr[PublicKey]) -> u8[] {
     return range(key.blob[0..<KEY_BLOB_BYTES], 0, key.blob_length)
 }
 
 /** The name a kind of key's blob starts with. */
-key_type_name :: fn(kind: KeyKind) -> string {
+key_type_name :: fn(kind : KeyKind) -> string {
     return match kind {
         case .Ed25519 => "ssh-ed25519"
         case .EcdsaP256 => "ecdsa-sha2-nistp256"
@@ -54,7 +54,7 @@ key_type_name :: fn(kind: KeyKind) -> string {
  * @return The key; null if it's of another kind, malformed, or too long: an Ed25519 key not 32 bytes, a P-256 point
  *     not on the curve, an RSA key under 2048 bits.
  */
-parse_public_key :: fn(blob: u8[]) -> PublicKey? {
+parse_public_key :: fn(blob : u8[]) -> PublicKey? {
     if blob.count > KEY_BLOB_BYTES {
         return null
     }
@@ -107,7 +107,7 @@ parse_public_key :: fn(blob: u8[]) -> PublicKey? {
  * @return True if it's the key's, by an algorithm that goes with the key: ssh-ed25519 for an Ed25519 key,
  *     ecdsa-sha2-nistp256 for a P-256 key, rsa-sha2-256 or rsa-sha2-512 for an RSA key (never SHA-1's ssh-rsa).
  */
-verify_signature :: fn(key: ptr[PublicKey], data: u8[], signature: u8[]) -> bool {
+verify_signature :: fn(key : ptr[PublicKey], data : u8[], signature : u8[]) -> bool {
     reader := reader_of(signature)
     algorithm :: get_string(signature, &reader)
     value :: get_string(signature, &reader)
@@ -203,7 +203,7 @@ verify_signature :: fn(key: ptr[PublicKey], data: u8[], signature: u8[]) -> bool
  * @param algorithm The algorithm's name.
  * @return True if a signature by that algorithm can be the key's.
  */
-algorithm_fits :: fn(kind: KeyKind, algorithm: u8[]) -> bool {
+algorithm_fits :: fn(kind : KeyKind, algorithm : u8[]) -> bool {
     return match kind {
         case .Ed25519 => is(algorithm, "ssh-ed25519")
         case .EcdsaP256 => is(algorithm, "ecdsa-sha2-nistp256")
@@ -220,7 +220,7 @@ algorithm_fits :: fn(kind: KeyKind, algorithm: u8[]) -> bool {
  * @param public The public key.
  * @return The blob, ED25519_BLOB_BYTES.
  */
-ed25519_blob :: fn(public: ptr[crypto.Ed25519PublicKey]) -> u8[ED25519_BLOB_BYTES] {
+ed25519_blob :: fn(public : ptr[crypto.Ed25519PublicKey]) -> u8[ED25519_BLOB_BYTES] {
     blob : u8[ED25519_BLOB_BYTES]
     writer := Writer.{}
     put_text(blob[0..<ED25519_BLOB_BYTES], &writer, "ssh-ed25519")
@@ -235,7 +235,10 @@ ed25519_blob :: fn(public: ptr[crypto.Ed25519PublicKey]) -> u8[ED25519_BLOB_BYTE
  * @param data What's signed.
  * @return The signature's blob, ED25519_SIGNATURE_BYTES.
  */
-ed25519_signature #constant_time :: fn(secret: ptr[crypto.Ed25519SecretKey], data: u8[]) -> u8[ED25519_SIGNATURE_BYTES] {
+ed25519_signature #constant_time :: fn(
+    secret : ptr[crypto.Ed25519SecretKey],
+    data : u8[]
+) -> u8[ED25519_SIGNATURE_BYTES] {
     signed :: crypto.ed25519_sign(secret, data)
     blob : u8[ED25519_SIGNATURE_BYTES]
     writer := Writer.{}
@@ -255,7 +258,7 @@ ed25519_signature #constant_time :: fn(secret: ptr[crypto.Ed25519SecretKey], dat
  * @param into Where the line goes, without a line break.
  * @return Its length; 0 if it doesn't fit.
  */
-key_line :: fn(key: ptr[PublicKey], comment: string, into: mut u8[]) -> usize {
+key_line :: fn(key : ptr[PublicKey], comment : string, into : mut u8[]) -> usize {
     writer := Writer.{}
     put_bytes(into, &writer, string_bytes(key_type_name(key.kind)))
     put_u8(into, &writer, 0x20)
@@ -276,7 +279,7 @@ key_line :: fn(key: ptr[PublicKey], comment: string, into: mut u8[]) -> usize {
  * @param line The line, without its line break; spaces or tabs between the parts.
  * @return The key; null if the line isn't one.
  */
-parse_key_line :: fn(line: u8[]) -> PublicKey? {
+parse_key_line :: fn(line : u8[]) -> PublicKey? {
     words : Word[2]
     count := cast[usize](0)
     start := cast[usize](0)
@@ -321,7 +324,7 @@ Word :: struct {
  * @param blob The key's blob.
  * @return The fingerprint's 50 bytes: "SHA256:" and 43 of base64.
  */
-fingerprint :: fn(blob: u8[]) -> u8[50] {
+fingerprint :: fn(blob : u8[]) -> u8[50] {
     out : u8[50]
     prefix :: string_bytes("SHA256:")
     for byte, i in prefix {
@@ -356,7 +359,11 @@ PRIVATE_KEY_TEXT_BYTES :: 1024
  * @param into Where the text goes, PRIVATE_KEY_TEXT_BYTES is room enough.
  * @return Its length; 0 if it doesn't fit or the comment's too long.
  */
-private_key_text #constant_time :: fn(secret: ptr[crypto.Ed25519SecretKey], comment: string, into: mut u8[]) -> usize {
+private_key_text #constant_time :: fn(
+    secret : ptr[crypto.Ed25519SecretKey],
+    comment : string,
+    into : mut u8[]
+) -> usize {
     if comment.count > 100 {
         return 0
     }
@@ -423,7 +430,7 @@ private_key_text #constant_time :: fn(secret: ptr[crypto.Ed25519SecretKey], comm
  * @param text The text: BEGIN and END lines around base64, as private_key_text or ssh-keygen writes it.
  * @return The key's seed; null if it isn't one: encrypted, of another kind, damaged, or its public key not its own.
  */
-parse_private_key :: fn(text: u8[]) -> crypto.Ed25519SecretKey? {
+parse_private_key :: fn(text : u8[]) -> crypto.Ed25519SecretKey? {
     // The base64 between the lines, line breaks left out
     begin :: string_bytes(OPENSSH_KEY_BEGIN)
     end :: string_bytes(OPENSSH_KEY_END)
@@ -465,7 +472,7 @@ parse_private_key :: fn(text: u8[]) -> crypto.Ed25519SecretKey? {
 }
 
 /** Read openssh-key-v1's binary for an Ed25519 key. */
-read_private_key #constant_time :: fn(binary: u8[]) -> crypto.Ed25519SecretKey? {
+read_private_key #constant_time :: fn(binary : u8[]) -> crypto.Ed25519SecretKey? {
     magic :: string_bytes(OPENSSH_KEY_MAGIC)
     if !same(range(binary, 0, magic.count), magic) {
         return null

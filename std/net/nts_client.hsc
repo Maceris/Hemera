@@ -31,7 +31,9 @@ package net
         Tls,
         /** The server didn't agree on ALPN's "ntske/1". */
         NotNtsKe,
-        /** NTS-KE's response ended early, or wasn't one, or refused, or didn't agree: ke says how, error its Error code. */
+        /**
+         * NTS-KE's response ended early, or wasn't one, or refused, or didn't agree: ke says how, error its Error code.
+         */
         KeyEstablishment,
         /** The keys couldn't be exported. */
         Keys,
@@ -67,7 +69,8 @@ package net
     }
 
     /**
-     * Run NTS Key Establishment with a server: TLS to its port, 4460 unless said, by name, its certificate checked against the anchors,
+     * Run NTS Key Establishment with a server: TLS to its port, 4460 unless said, by name, its certificate checked
+     * against the anchors,
      * offering "ntske/1"; NTPv4 and AES-SIV-CMAC-256 asked for; and the session given the keys and cookies it answers.
      *
      * @param service A connection to the network service whose policy allows TCP to the server's port 4460.
@@ -77,9 +80,13 @@ package net
      * @param port The NTS-KE server's port: ntp.NTS_KE_PORT, 4460, the default.
      * @return Null on success; why not otherwise.
      */
-    nts_establish :: fn(service: os.Channel[network.Network], host: string, anchors: u8[], session: ptr[mut ntp.Session],
-        port: u16 = ntp.NTS_KE_PORT) -> NtsProblem? {
-
+    nts_establish :: fn(
+        service : os.Channel[network.Network],
+        host : string,
+        anchors : u8[],
+        session : ptr[mut ntp.Session],
+        port : u16 = ntp.NTS_KE_PORT
+    ) -> NtsProblem? {
         session.keyed = false
         session.cookie_count = 0
         // A server that stops answering ends it, rather than hold the caller, as the clock, for ever (13h)
@@ -131,9 +138,12 @@ package net
      * @param timeout How long to wait for the answer, in nanoseconds.
      * @return The offset and delay; or why there are none.
      */
-    nts_query :: fn(service: os.Channel[network.Network], host: string, session: ptr[mut ntp.Session], timeout: u64)
-        -> Result[ntp.Sample, NtsProblem] {
-
+    nts_query :: fn(
+        service : os.Channel[network.Network],
+        host : string,
+        session : ptr[mut ntp.Session],
+        timeout : u64
+    ) -> Result[ntp.Sample, NtsProblem] {
         server :: if session.server_length > 0 { string_of(&session.server[0], session.server_length) } else { host }
         to := net_address.Endpoint.{port = session.port}
         match net_address.parse_v4(server) {
@@ -164,7 +174,10 @@ package net
             return .Error(NtsProblem.{why = .Network, network = .Broken})
         }
         deadline :: (slop_os.clock_monotonic() or_else 0) + timeout
-        // A forged answer, or an unauthenticated NAK, doesn't end the wait, as anyone can send one ahead of the server's
+        /*
+         * A forged answer, or an unauthenticated NAK, doesn't end the wait, as anyone can send one ahead of the
+         * server's
+         */
         forged := false
         nak := false
         answer : u8[2048]
@@ -181,7 +194,11 @@ package net
             }
         }
         while true
-        return .Error(NtsProblem.{why = if nak { NtsFailure.Nak } else if forged { NtsFailure.Forged } else { NtsFailure.NoAnswer }})
+        return .Error(
+            NtsProblem.{
+                why = if nak { NtsFailure.Nak } else if forged { NtsFailure.Forged } else { NtsFailure.NoAnswer },
+            }
+        )
     }
 
     /** The wall clock's time, in nanoseconds since 1970 UTC; 0 if it can't be read. */

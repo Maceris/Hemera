@@ -120,7 +120,7 @@ Response :: union {
  * @param request The request, which isn't changed.
  * @return True for every request: a Load the manager didn't answer built nothing that stays.
  */
-is_idempotent :: fn(request: ptr[Request]) -> bool {
+is_idempotent :: fn(request : ptr[Request]) -> bool {
     return match request^ {
         case Load(_) => true
         case Connect(_) => true
@@ -143,7 +143,11 @@ is_idempotent :: fn(request: ptr[Request]) -> bool {
  * @return The new connection's end, which the caller owns and closes; null if the channel couldn't be made or the
  *     Connect couldn't be sent, and then nothing is left open.
  */
-connect :: fn(end: slop_os.Channel, port: slop_os.Port, budget: slop_os.MemoryBudget) -> os.Channel[ProcessManager]? {
+connect :: fn(
+    end : slop_os.Channel,
+    port : slop_os.Port,
+    budget : slop_os.MemoryBudget
+) -> os.Channel[ProcessManager]? {
     pair :: os.channel_for[ProcessManager](budget, RING_BYTES) or_return null
     out := os.Outgoing.{}
     request :: os.begin[Request](&out)

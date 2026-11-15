@@ -124,8 +124,12 @@ package net
      *     for never (set_deadline).
      * @return The connection, open; or why it couldn't be, Broken if the deadline came first.
      */
-    open :: fn(service: os.Channel[network.Network], to: net_address.Endpoint, memory_bytes: u64 = DEFAULT_MEMORY,
-        deadline: u64 = 0) -> Result[Tcp, Failure] {
+    open :: fn(
+        service : os.Channel[network.Network],
+        to : net_address.Endpoint,
+        memory_bytes : u64 = DEFAULT_MEMORY,
+        deadline : u64 = 0
+    ) -> Result[Tcp, Failure] {
         startup :: slop_os.startup_block()
         made :: match make_memory(memory_bytes) {
             case Ok(found) => found
@@ -178,7 +182,8 @@ package net
     }
 
     /**
-     * Open a TCP connection to a host by name, and wait until it's open or has failed. The service resolves the name and
+     * Open a TCP connection to a host by name, and wait until it's open or has failed. The service resolves the name
+     * and
      * tries its addresses, IPv6 first, as RFC 8305's Happy Eyeballs does, each as the connection's policy allows a name
      * to reach (network.allows_named).
      *
@@ -188,11 +193,17 @@ package net
      * @param memory_bytes The memory for its rings: at least two pages, rounded up to a whole number of them.
      * @param deadline When to give up waiting, opening and after, in the monotonic clock's nanoseconds; 0, the default,
      *     for never (set_deadline).
-     * @return The connection, open; or why it couldn't be: NotAllowed if the policy allows none of the name's addresses,
+     * @return The connection, open; or why it couldn't be: NotAllowed if the policy allows none of the name's
+     *     addresses,
      *     the resolver's failure, or the last address's; Broken if the deadline came first.
      */
-    open_name :: fn(service: os.Channel[network.Network], name: string, port: u16, memory_bytes: u64 = DEFAULT_MEMORY,
-        deadline: u64 = 0) -> Result[Tcp, Failure] {
+    open_name :: fn(
+        service : os.Channel[network.Network],
+        name : string,
+        port : u16,
+        memory_bytes : u64 = DEFAULT_MEMORY,
+        deadline : u64 = 0
+    ) -> Result[Tcp, Failure] {
         startup :: slop_os.startup_block()
         made :: match make_memory(memory_bytes) {
             case Ok(found) => found
@@ -254,7 +265,11 @@ package net
      * @return Its addresses, at least one; or why there are none: NotAllowed if the policy allows connecting nowhere,
      *     NoSuchName, NoAddress, ResolveFailed, BadName, or Broken if the service couldn't be asked.
      */
-    resolve :: fn(service: os.Channel[network.Network], name: string, kinds: network.Kinds = .Both) -> Result[Addresses, Failure] {
+    resolve :: fn(
+        service : os.Channel[network.Network],
+        name : string,
+        kinds : network.Kinds = .Both
+    ) -> Result[Addresses, Failure] {
         startup :: slop_os.startup_block()
         asking :: os.port_for(startup.budget, service.end) or_return .Error(.NoRoom)
         defer slop_os.handle_close(cast[slop_os.Handle](asking))
@@ -279,7 +294,12 @@ package net
                         got.count += 1
                     }
                 }
-                if got.count == 0 { Result[Addresses, Failure].Error(.NoAddress) } else { Result[Addresses, Failure].Ok(got) }
+                if got.count == 0 {
+                    Result[Addresses, Failure].Error(.NoAddress)
+                }
+                else {
+                    Result[Addresses, Failure].Ok(got)
+                }
             }
             case Refused(refusal) => .Error(failure_of(refusal))
             case _ => .Error(.Broken)
@@ -292,7 +312,7 @@ package net
      * @param tcp The connection, its channel had.
      * @return It, open; or why it isn't, closed.
      */
-    started :: fn(tcp: Tcp) -> Result[Tcp, Failure] {
+    started :: fn(tcp : Tcp) -> Result[Tcp, Failure] {
         made := tcp
         match os.port_for(slop_os.startup_block().budget, made.stream.end) {
             case Some(found) => made.port = found
@@ -326,7 +346,7 @@ package net
      * @param bytes What's written.
      * @return How many were written: all of them, or fewer if the connection ended first, or was finished.
      */
-    write :: fn(tcp: ptr[mut Tcp], bytes: u8[]) -> usize {
+    write :: fn(tcp : ptr[mut Tcp], bytes : u8[]) -> usize {
         if tcp.finished {
             return 0
         }
@@ -366,7 +386,7 @@ package net
      * @return How many: at least 1, unless the peer has finished and everything's read, which gives 0; Error with why
      *     the connection ended, if it did before finishing.
      */
-    read :: fn(tcp: ptr[mut Tcp], into: mut u8[]) -> Result[usize, Failure] {
+    read :: fn(tcp : ptr[mut Tcp], into : mut u8[]) -> Result[usize, Failure] {
         loop {
             waiting :: tcp.progress.delivered - tcp.read
             if waiting > 0 {
@@ -404,7 +424,7 @@ package net
      *
      * @param tcp The connection.
      */
-    finish :: fn(tcp: ptr[mut Tcp]) {
+    finish :: fn(tcp : ptr[mut Tcp]) {
         if !tcp.finished {
             tcp.finished = true
             tell(tcp, .Finish)
@@ -417,7 +437,7 @@ package net
      * @param tcp The connection.
      * @return True if they all were.
      */
-    flush :: fn(tcp: ptr[mut Tcp]) -> bool {
+    flush :: fn(tcp : ptr[mut Tcp]) -> bool {
         loop {
             if tcp.progress.acknowledged >= tcp.written {
                 return true
@@ -435,7 +455,7 @@ package net
      *
      * @param tcp The connection, not used again.
      */
-    close :: fn(tcp: ptr[mut Tcp]) {
+    close :: fn(tcp : ptr[mut Tcp]) {
         if tcp.shared {
             _ = slop_os.port_unbind(tcp.port, tcp.shared_key)
             tcp.port = cast[slop_os.Port](slop_os.NO_HANDLE)
@@ -454,7 +474,7 @@ package net
      * @param port The port, 1 to 65535.
      * @return The listener; or why not.
      */
-    listen :: fn(service: os.Channel[network.Network], port: u16) -> Result[Listener, Failure] {
+    listen :: fn(service : os.Channel[network.Network], port : u16) -> Result[Listener, Failure] {
         startup :: slop_os.startup_block()
         waiting :: os.port_for(startup.budget, service.end) or_return .Error(.NoRoom)
         defer slop_os.handle_close(cast[slop_os.Handle](waiting))
@@ -491,7 +511,7 @@ package net
      * @param memory_bytes The memory for its rings: at least two pages, rounded up to a whole number of them.
      * @return The connection, open, and who it's from; or why not.
      */
-    accept :: fn(listener: ptr[mut Listener], memory_bytes: u64 = DEFAULT_MEMORY) -> Result[Accepted, Failure] {
+    accept :: fn(listener : ptr[mut Listener], memory_bytes : u64 = DEFAULT_MEMORY) -> Result[Accepted, Failure] {
         made :: match make_memory(memory_bytes) {
             case Ok(found) => found
             case Error(failure) => return .Error(failure)
@@ -545,7 +565,7 @@ package net
      * @param key The key its packets come under.
      * @return True if it's bound.
      */
-    listener_on :: fn(listener: ptr[Listener], port: slop_os.Port, key: u64) -> bool {
+    listener_on :: fn(listener : ptr[Listener], port : slop_os.Port, key : u64) -> bool {
         signals :: cast[slop_os.Signals](cast[u32](slop_os.SIGNAL_READABLE) | cast[u32](slop_os.SIGNAL_PEER_CLOSED))
         return slop_os.port_bind(port, cast[slop_os.Handle](listener.channel.end), signals, key, .Persistent) is_ok
     }
@@ -558,7 +578,7 @@ package net
      * @param memory_bytes The memory for its rings, as accept's.
      * @return The connection to be, its memory made, its channel to come; or why it couldn't be asked.
      */
-    ask_accept :: fn(listener: ptr[mut Listener], memory_bytes: u64 = DEFAULT_MEMORY) -> Result[Tcp, Failure] {
+    ask_accept :: fn(listener : ptr[mut Listener], memory_bytes : u64 = DEFAULT_MEMORY) -> Result[Tcp, Failure] {
         tcp := match make_memory(memory_bytes) {
             case Ok(found) => found
             case Error(failure) => return .Error(failure)
@@ -597,7 +617,7 @@ package net
      * @param pending The connection ask_accept gave: given its channel once it's come, or given back if it failed.
      * @return Waiting, Came, or Failed.
      */
-    take_accepted :: fn(listener: ptr[mut Listener], pending: ptr[mut Tcp]) -> Taken {
+    take_accepted :: fn(listener : ptr[mut Listener], pending : ptr[mut Tcp]) -> Taken {
         into := os.Incoming.{}
         match tcp_listener.receive_response(listener.channel.end, listener.port, &into, false) {
             case Received => {}
@@ -629,7 +649,7 @@ package net
      * @param key The key its packets come under.
      * @return True once it's bound and watched.
      */
-    serve_on :: fn(tcp: ptr[mut Tcp], port: slop_os.Port, key: u64) -> bool {
+    serve_on :: fn(tcp : ptr[mut Tcp], port : slop_os.Port, key : u64) -> bool {
         if !tcp.shared && cast[slop_os.Handle](tcp.port) != slop_os.NO_HANDLE {
             _ = slop_os.handle_close(cast[slop_os.Handle](tcp.port))
         }
@@ -650,7 +670,7 @@ package net
      * @param tcp The connection, served on a port (serve_on).
      * @return False if its channel failed.
      */
-    poll :: fn(tcp: ptr[mut Tcp]) -> bool {
+    poll :: fn(tcp : ptr[mut Tcp]) -> bool {
         loop {
             into := os.Incoming.{}
             match tcp_stream.receive_response(tcp.stream.end, tcp.port, &into, false) {
@@ -685,7 +705,7 @@ package net
      * @param into Where it goes.
      * @return How many bytes: 0 if none's arrived since the last poll said.
      */
-    read_now :: fn(tcp: ptr[mut Tcp], into: mut u8[]) -> usize {
+    read_now :: fn(tcp : ptr[mut Tcp], into : mut u8[]) -> usize {
         waiting :: tcp.progress.delivered - tcp.read
         if waiting == 0 {
             return 0
@@ -713,7 +733,7 @@ package net
      * @param bytes What's to be written.
      * @return How many were: fewer than given while the ring's full, 0 once it's finished or ended.
      */
-    write_now :: fn(tcp: ptr[mut Tcp], bytes: u8[]) -> usize {
+    write_now :: fn(tcp : ptr[mut Tcp], bytes : u8[]) -> usize {
         if tcp.finished || tcp.progress.ending != .None {
             return 0
         }
@@ -740,7 +760,7 @@ package net
      * @param tcp The connection.
      * @return True once nothing more will come from it.
      */
-    is_done :: fn(tcp: ptr[Tcp]) -> bool {
+    is_done :: fn(tcp : ptr[Tcp]) -> bool {
         return (tcp.progress.peer_finished && tcp.read >= tcp.progress.delivered) || tcp.progress.ending != .None
     }
 
@@ -755,7 +775,7 @@ package net
      *
      * @param listener The listener, not used again.
      */
-    close_listener :: fn(listener: ptr[mut Listener]) {
+    close_listener :: fn(listener : ptr[mut Listener]) {
         _ = slop_os.handle_close(cast[slop_os.Handle](listener.channel.end))
         _ = slop_os.handle_close(cast[slop_os.Handle](listener.port))
     }
@@ -767,7 +787,7 @@ package net
      * @param port The port, or 0 for an ephemeral one.
      * @return The socket; or why not.
      */
-    udp :: fn(service: os.Channel[network.Network], port: u16 = 0) -> Result[Udp, Failure] {
+    udp :: fn(service : os.Channel[network.Network], port : u16 = 0) -> Result[Udp, Failure] {
         startup :: slop_os.startup_block()
         waiting :: os.port_for(startup.budget, service.end) or_return .Error(.NoRoom)
         defer slop_os.handle_close(cast[slop_os.Handle](waiting))
@@ -805,7 +825,7 @@ package net
      * @param bytes Its payload, at most datagrams.MAX_DATAGRAM bytes; more is cut off.
      * @return True once it's sent to the service; false if the socket's connection failed.
      */
-    send_to :: fn(socket: ptr[mut Udp], to: net_address.Endpoint, bytes: u8[]) -> bool {
+    send_to :: fn(socket : ptr[mut Udp], to : net_address.Endpoint, bytes : u8[]) -> bool {
         out := os.Outgoing.{}
         request :: os.begin[datagrams.Request](&out)
         count :: if bytes.count < datagrams.MAX_DATAGRAM { bytes.count } else { cast[usize](datagrams.MAX_DATAGRAM) }
@@ -824,12 +844,14 @@ package net
      *
      * @param socket The socket.
      * @param into Where its payload goes; what doesn't fit is dropped.
-     * @param deadline When to stop waiting, in the monotonic clock's nanoseconds; NO_DEADLINE, the default, for never. A
+     * @param deadline When to stop waiting, in the monotonic clock's nanoseconds; NO_DEADLINE, the default, for never.
+     *     A
      *     Receive given up on stays with the service, and the next datagram answers it: a socket waited on with a
      *     deadline is closed after one given up on, or its next receive may be given an earlier datagram.
-     * @return Who sent it, and how many bytes were put in into; null if the socket's connection failed, or the deadline came first.
+     * @return Who sent it, and how many bytes were put in into; null if the socket's connection failed, or the deadline
+     *     came first.
      */
-    receive_from :: fn(socket: ptr[mut Udp], into: mut u8[], deadline: u64 = slop_os.NO_DEADLINE) -> Got? {
+    receive_from :: fn(socket : ptr[mut Udp], into : mut u8[], deadline : u64 = slop_os.NO_DEADLINE) -> Got? {
         out := os.Outgoing.{}
         request :: os.begin[datagrams.Request](&out)
         request^ = .Receive
@@ -870,7 +892,7 @@ package net
      *
      * @param socket The socket, not used again.
      */
-    close_udp :: fn(socket: ptr[mut Udp]) {
+    close_udp :: fn(socket : ptr[mut Udp]) {
         _ = slop_os.handle_close(cast[slop_os.Handle](socket.channel.end))
         _ = slop_os.handle_close(cast[slop_os.Handle](socket.port))
     }
@@ -883,7 +905,7 @@ package net
      * @param bytes How much, at least two pages, rounded up to a whole number of them.
      * @return A Tcp with only its memory, mapping and rings set; Error if the memory couldn't be made or mapped.
      */
-    make_memory :: fn(bytes: u64) -> Result[Tcp, Failure] {
+    make_memory :: fn(bytes : u64) -> Result[Tcp, Failure] {
         startup :: slop_os.startup_block()
         size := (bytes + PAGE - 1) / PAGE * PAGE
         if size < 2 * PAGE {
@@ -915,8 +937,9 @@ package net
      * @param memory The memory.
      * @return The duplicate, read-write and movable; null if it couldn't be made.
      */
-    give_memory :: fn(memory: slop_os.Memory) -> slop_os.Memory? {
-        rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_MEMORY_WRITE)
+    give_memory :: fn(memory : slop_os.Memory) -> slop_os.Memory? {
+        rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ)
+            | cast[u32](slop_os.RIGHT_MEMORY_WRITE)
             | cast[u32](slop_os.RIGHT_TRANSFER))
         copy :: slop_os.handle_duplicate(cast[slop_os.Handle](memory), rights) or_return null
         return cast[slop_os.Memory](copy)
@@ -927,7 +950,7 @@ package net
      *
      * @param tcp The connection.
      */
-    unmake :: fn(tcp: ptr[mut Tcp]) {
+    unmake :: fn(tcp : ptr[mut Tcp]) {
         if tcp.at != 0 {
             _ = slop_os.memory_unmap(slop_os.startup_block().space, tcp.at)
             tcp.at = 0
@@ -944,7 +967,7 @@ package net
      * @param tcp The connection.
      * @param request Wrote, Read, Finish or Abort.
      */
-    tell :: fn(tcp: ptr[mut Tcp], request: tcp_stream.Request) {
+    tell :: fn(tcp : ptr[mut Tcp], request : tcp_stream.Request) {
         out := os.Outgoing.{}
         made :: os.begin[tcp_stream.Request](&out)
         made^ = request
@@ -958,7 +981,7 @@ package net
      * @param tcp The connection.
      * @return What the service says of it; null if the channel failed.
      */
-    describe :: fn(tcp: ptr[mut Tcp]) -> tcp_stream.StreamInfo? {
+    describe :: fn(tcp : ptr[mut Tcp]) -> tcp_stream.StreamInfo? {
         tell(tcp, .Describe)
         loop {
             into := os.Incoming.{}
@@ -984,7 +1007,7 @@ package net
      * @param tcp The connection.
      * @param deadline The time, in the monotonic clock's nanoseconds; 0 for never.
      */
-    set_deadline :: fn(tcp: ptr[mut Tcp], deadline: u64) {
+    set_deadline :: fn(tcp : ptr[mut Tcp], deadline : u64) {
         tcp.deadline = deadline
     }
 
@@ -994,7 +1017,7 @@ package net
      * @param tcp The connection, whose progress is updated.
      * @return True once it has; false if the channel failed, or the deadline came first.
      */
-    wait :: fn(tcp: ptr[mut Tcp]) -> bool {
+    wait :: fn(tcp : ptr[mut Tcp]) -> bool {
         if !tcp.watching {
             out := os.Outgoing.{}
             made :: os.begin[tcp_stream.Request](&out)
@@ -1035,7 +1058,7 @@ package net
      * @param refusal The refusal.
      * @return The failure.
      */
-    failure_of :: fn(refusal: network.Refusal) -> Failure {
+    failure_of :: fn(refusal : network.Refusal) -> Failure {
         return match refusal {
             case .NotAllowed => .NotAllowed
             case .PortTaken => .PortTaken
@@ -1056,7 +1079,7 @@ package net
      * @param ending How the connection ended, not Closed or None.
      * @return The failure.
      */
-    failure_of_ending :: fn(ending: tcp_stream.Ending) -> Failure {
+    failure_of_ending :: fn(ending : tcp_stream.Ending) -> Failure {
         return match ending {
             case .Refused => .Refused
             case .TimedOut => .TimedOut

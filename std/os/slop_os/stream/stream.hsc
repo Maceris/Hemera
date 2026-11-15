@@ -4,7 +4,8 @@ package stream
  * A stream's two ends (std/os's Sink[T] and Stream[T]) are one channel, tagged with this protocol. The writer makes a
  * ring of shared memory and sends Open with it, the ring's size and T's schema hash; the reader keeps it, answering
  * Consumed(0), or WrongType for another T. The reader copies what it reads out of the ring through memory_read rather
- * than mapping it, so a writer that ends while its ring is being read ends the stream, not the reader. The writer puts records in the ring, each its byte count, its kind and its
+ * than mapping it, so a writer that ends while its ring is being read ends the stream, not the reader. The writer puts
+ * records in the ring, each its byte count, its kind and its
  * value, written as base's schema_write_value writes one (for a Stream[u8], the bytes themselves), padded to 8 bytes; a
  * record that wouldn't fit before the ring's end is preceded by a wrap, and starts again at the ring's start. Wrote
  * says how many bytes it has written in all, once a quarter of the ring is waiting or it flushes; the reader answers
@@ -100,7 +101,7 @@ package stream
      * @param request The request, which isn't changed.
      * @return False for Open, which offers a ring once; true for Wrote and Ended, which say a total, not an amount.
      */
-    is_idempotent :: fn(request: ptr[Request]) -> bool {
+    is_idempotent :: fn(request : ptr[Request]) -> bool {
         return match request^ {
             case Open(_) => false
             case Wrote(_) => true
@@ -209,7 +210,7 @@ package stream
      * @error InvalidHandle The budget isn't a handle of the process's.
      * @error MissingRight The budget's handle can't be charged.
      */
-    pair :: fn[T](budget: slop_os.MemoryBudget) -> Result[Pair[T], slop_os.ChannelError] {
+    pair :: fn[T](budget : slop_os.MemoryBudget) -> Result[Pair[T], slop_os.ChannelError] {
         ends :: slop_os.channel_create(budget, 0, os.protocol_tag[Stream]())?
         return .Ok(Pair[T].{sink = os.Sink[T].{end = ends.a}, stream = os.Stream[T].{end = ends.b}})
     }
@@ -230,7 +231,7 @@ package stream
      * @error Gone The Open couldn't be sent, or the reader's end went, or answered something else, before it answered.
      * @error WrongType The reader reads another type.
      */
-    writer_on :: fn[T](sink: os.Sink[T], ring_bytes: u64 = 0) -> Result[Writer[T], StreamError] {
+    writer_on :: fn[T](sink : os.Sink[T], ring_bytes : u64 = 0) -> Result[Writer[T], StreamError] {
         return opened_writer[T](sink.end, runtime.schema_hash(type_info_of(T)), ring_bytes, true)
     }
 
@@ -260,7 +261,12 @@ package stream
      * @error Gone The Open couldn't be sent; or, when it waits, the reader's end went, or answered something else.
      * @error WrongType The reader reads another type; only when it waits.
      */
-    untyped_writer_on :: fn(end: slop_os.Channel, schema: u8[32], ring_bytes: u64 = 0, waits: bool = true) -> Result[Writer[Untyped], StreamError] {
+    untyped_writer_on :: fn(
+        end : slop_os.Channel,
+        schema : u8[32],
+        ring_bytes : u64 = 0,
+        waits : bool = true
+    ) -> Result[Writer[Untyped], StreamError] {
         return opened_writer[Untyped](end, schema, ring_bytes, waits)
     }
 
@@ -280,7 +286,12 @@ package stream
      * @error Gone The Open couldn't be sent; or, when it waits, the reader's end went, or answered something else.
      * @error WrongType The reader reads another type; only when it waits.
      */
-    opened_writer :: fn[T](end: slop_os.Channel, schema: u8[32], ring_bytes: u64, waits: bool) -> Result[Writer[T], StreamError] {
+    opened_writer :: fn[T](
+        end : slop_os.Channel,
+        schema : u8[32],
+        ring_bytes : u64,
+        waits : bool
+    ) -> Result[Writer[T], StreamError] {
         block :: slop_os.startup_block()
         size :: if ring_bytes == 0 { RING_BYTES } else { (ring_bytes + 4095) & ~cast[u64](4095) }
         writer := Writer[T].{end = end, ring_bytes = size}
@@ -290,7 +301,8 @@ package stream
         read_write :: cast[slop_os.Protection](cast[u32](slop_os.PROTECTION_READ) | cast[u32](slop_os.PROTECTION_WRITE))
         slop_os.memory_map(writer.ring, block.space, writer.address, 0, size, read_write) or_return .Error(.NoMemory)
         rights :: cast[slop_os.Rights](cast[u32](slop_os.RIGHT_MEMORY_READ) | cast[u32](slop_os.RIGHT_TRANSFER))
-        given :: cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](writer.ring), rights) or_return .Error(.NoMemory))
+        given :: cast[slop_os.Memory](slop_os.handle_duplicate(cast[slop_os.Handle](writer.ring), rights)
+            or_return .Error(.NoMemory))
         out := os.Outgoing.{}
         os.begin[Request](&out)^ = .Open(Opening.{ring = given, ring_bytes = size, schema = schema})
         if send_request(writer.end, writer.port, &out) != null {
@@ -324,7 +336,7 @@ package stream
      * @return Null once it's in the ring; NoMemory if its bytes couldn't be made, TooBig if they're more than half the
      *     ring, or Gone if the reader went while it waited for room.
      */
-    write :: fn[T](writer: ptr[mut Writer[T]], value: T) -> StreamError? {
+    write :: fn[T](writer : ptr[mut Writer[T]], value : T) -> StreamError? {
         runtime.array_reset(&writer.scratch)
         if runtime.schema_try_write_value(value, &writer.scratch) != null {
             return .NoMemory
@@ -341,7 +353,7 @@ package stream
      * @return Null once they're in the ring; TooBig if they're more than half the ring with their header, or Gone if
      *     the reader went while it waited for room.
      */
-    write_bytes :: fn(writer: ptr[mut Writer[u8]], bytes: u8[]) -> StreamError? {
+    write_bytes :: fn(writer : ptr[mut Writer[u8]], bytes : u8[]) -> StreamError? {
         return put(writer, bytes)
     }
 
@@ -357,7 +369,7 @@ package stream
      * @return Null once they're in the ring; TooBig if they're more than half the ring with their header, or Gone if
      *     the reader went, or broke the protocol, while it waited for room.
      */
-    put :: fn[T](writer: ptr[mut Writer[T]], value: u8[]) -> StreamError? {
+    put :: fn[T](writer : ptr[mut Writer[T]], value : u8[]) -> StreamError? {
         need :: RECORD_HEADER + padded(cast[u64](value.count))
         if need > writer.ring_bytes / 2 {
             return .TooBig
@@ -399,7 +411,7 @@ package stream
      *     up with what it has written, and it waits for one more answer.
      * @return Null if it was told, or there was nothing to tell; Gone if the Wrote couldn't be sent.
      */
-    flush :: fn[T](writer: ptr[mut Writer[T]]) -> StreamError? {
+    flush :: fn[T](writer : ptr[mut Writer[T]]) -> StreamError? {
         if writer.produced == writer.announced {
             return null
         }
@@ -423,7 +435,7 @@ package stream
      * @return Null once there's room; Gone if the reader went, broke the protocol, or has nothing left to answer while
      *     the ring is still full.
      */
-    room :: fn[T](writer: ptr[mut Writer[T]], count: u64) -> StreamError? {
+    room :: fn[T](writer : ptr[mut Writer[T]], count : u64) -> StreamError? {
         loop {
             if writer.produced + count - writer.consumed <= writer.ring_bytes {
                 return null
@@ -451,7 +463,7 @@ package stream
      * @return Null once a Consumed is taken; Gone if the reader's end went, or it answered anything else, WrongType
      *     included.
      */
-    take_answer :: fn[T](writer: ptr[mut Writer[T]]) -> StreamError? {
+    take_answer :: fn[T](writer : ptr[mut Writer[T]]) -> StreamError? {
         response :: answer(writer.end, writer.port) or_return .Gone
         match response {
             case Consumed(count) => {
@@ -474,7 +486,7 @@ package stream
      * @return Null once the reader has read everything; Gone if the reader went first, or broke the protocol, or the
      *     reader of a writer that didn't wait for Open's answer reads another type.
      */
-    finish :: fn[T](writer: ptr[mut Writer[T]], status: u32) -> StreamError? {
+    finish :: fn[T](writer : ptr[mut Writer[T]], status : u32) -> StreamError? {
         defer close_writer(writer)
         match flush(writer) {
             case Some(error) => return error
@@ -509,7 +521,7 @@ package stream
      * @param status The writer's status, for the reader: 0 for success, any other value the writer's own.
      * @return Null once the Ended is sent; Gone if it, or the Wrote before it, couldn't be.
      */
-    end_without_waiting :: fn[T](writer: ptr[mut Writer[T]], status: u32) -> StreamError? {
+    end_without_waiting :: fn[T](writer : ptr[mut Writer[T]], status : u32) -> StreamError? {
         match flush(writer) {
             case Some(error) => return error
             case None => {}
@@ -530,7 +542,7 @@ package stream
      * @tparam T The Writer's type parameter.
      * @param writer The writer, not used again after this.
      */
-    close_writer :: fn[T](writer: ptr[mut Writer[T]]) {
+    close_writer :: fn[T](writer : ptr[mut Writer[T]]) {
         _ = slop_os.memory_unmap(slop_os.startup_block().space, writer.address)
         _ = slop_os.handle_close(cast[slop_os.Handle](writer.ring))
         _ = slop_os.handle_close(cast[slop_os.Handle](writer.port))
@@ -549,7 +561,7 @@ package stream
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
      */
-    reader_on :: fn[T](source: os.Stream[T]) -> Result[Reader[T], StreamError] {
+    reader_on :: fn[T](source : os.Stream[T]) -> Result[Reader[T], StreamError] {
         return opened_reader[T](source.end, runtime.schema_hash(type_info_of(T)))
     }
 
@@ -566,7 +578,7 @@ package stream
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
      */
-    untyped_reader_on :: fn(end: slop_os.Channel, schema: u8[32]) -> Result[Reader[Untyped], StreamError] {
+    untyped_reader_on :: fn(end : slop_os.Channel, schema : u8[32]) -> Result[Reader[Untyped], StreamError] {
         return opened_reader[Untyped](end, schema)
     }
 
@@ -584,7 +596,7 @@ package stream
      * @error Gone The writer's end went, or it sent something other than Open first.
      * @error WrongType The writer writes another type; it's told so, and its ring is let go of.
      */
-    opened_reader :: fn[T](end: slop_os.Channel, schema: u8[32]) -> Result[Reader[T], StreamError] {
+    opened_reader :: fn[T](end : slop_os.Channel, schema : u8[32]) -> Result[Reader[T], StreamError] {
         block :: slop_os.startup_block()
         reader := Reader[T].{end = end}
         reader.port = os.port_for(block.budget, end) or_return .Error(.NoMemory)
@@ -624,7 +636,7 @@ package stream
      *     once the writer has ended, or its end has gone, and everything's read; null too for a record whose header
      *     says it runs past the ring's end, or once the ring can't be read, its writer gone.
      */
-    next_bytes :: fn[T](reader: ptr[mut Reader[T]]) -> u8[]? {
+    next_bytes :: fn[T](reader : ptr[mut Reader[T]]) -> u8[]? {
         loop {
             match buffered_bytes(reader) {
                 case Record(bytes) => return bytes
@@ -662,7 +674,7 @@ package stream
      *     without waiting.
      * @return The record, End, or Waiting if none came by the deadline.
      */
-    next_bytes_before :: fn[T](reader: ptr[mut Reader[T]], deadline: u64) -> NextBytes {
+    next_bytes_before :: fn[T](reader : ptr[mut Reader[T]], deadline : u64) -> NextBytes {
         loop {
             match buffered_bytes(reader) {
                 case Record(bytes) => return .Record(bytes)
@@ -696,13 +708,17 @@ package stream
      *     for a record running past the ring's end, or once the ring can't be read (its writer gone, or no memory to
      *     copy it), the reader then ended with 0xffffffff; Waiting when it's to wait for the writer.
      */
-    buffered_bytes :: fn[T](reader: ptr[mut Reader[T]]) -> NextBytes {
+    buffered_bytes :: fn[T](reader : ptr[mut Reader[T]]) -> NextBytes {
         loop {
             answer_marks(reader)
             if reader.read < reader.produced {
                 at :: reader.read % reader.ring_bytes
                 words : u32[2]
-                if slop_os.memory_read(reader.ring, at, view_of(cast[ptr[mut u8]](&words[0]), cast[usize](RECORD_HEADER))) is_error {
+                if slop_os.memory_read(
+                    reader.ring,
+                    at,
+                    view_of(cast[ptr[mut u8]](&words[0]), cast[usize](RECORD_HEADER))
+                ) is_error {
                     return gone(reader)
                 }
                 count :: cast[u64](words[0])
@@ -738,7 +754,7 @@ package stream
      * @param reader The reader, ended with 0xffffffff, as when its writer's end goes without an Ended.
      * @return End, for buffered_bytes to give.
      */
-    gone :: fn[T](reader: ptr[mut Reader[T]]) -> NextBytes {
+    gone :: fn[T](reader : ptr[mut Reader[T]]) -> NextBytes {
         reader.ended = true
         reader.status = 0xffffffff
         reader.read = reader.produced
@@ -749,11 +765,12 @@ package stream
      * Take what a writer's request says: how far it has written, or that it's ended.
      *
      * @tparam T The Reader's type parameter.
-     * @param reader A reader that hasn't been closed, whose produced, ended and status change, and whose marks to answer
+     * @param reader A reader that hasn't been closed, whose produced, ended and status change, and whose marks to
+     *     answer
      *     grow.
      * @param request The writer's request; any other than Wrote and Ended is ignored.
      */
-    take_writes :: fn[T](reader: ptr[mut Reader[T]], request: Request) {
+    take_writes :: fn[T](reader : ptr[mut Reader[T]], request : Request) {
         match request {
             case Wrote(count) => {
                 reader.produced = count
@@ -776,7 +793,7 @@ package stream
      * @return The record, its value's memory, if it has any, from context's allocator and the caller's to free; null
      *     once the writer has ended and everything's read, or if the record's bytes aren't a value of T.
      */
-    next :: fn[T](reader: ptr[mut Reader[T]]) -> T? {
+    next :: fn[T](reader : ptr[mut Reader[T]]) -> T? {
         bytes :: next_bytes(reader) or_return null
         value : T
         if !runtime.schema_read_value(bytes, type_info_of(T), cast[rawptr](&value)) {
@@ -793,7 +810,7 @@ package stream
      * @tparam T The Reader's type parameter.
      * @param reader A reader that hasn't been closed; the marks it has read past are answered and taken off its list.
      */
-    answer_marks :: fn[T](reader: ptr[mut Reader[T]]) {
+    answer_marks :: fn[T](reader : ptr[mut Reader[T]]) {
         done : usize = 0
         for mark, i in reader.marks {
             if i >= reader.mark_count || mark > reader.read {
@@ -823,7 +840,7 @@ package stream
      * @param mark How many bytes the writer had written in all when it sent it. Past MAX_MARKS waiting, it's dropped,
      *     and never answered.
      */
-    add_mark :: fn[T](reader: ptr[mut Reader[T]], mark: u64) {
+    add_mark :: fn[T](reader : ptr[mut Reader[T]], mark : u64) {
         at :: reader.mark_count
         if at < reader.marks.count {
             reader.marks[at] = mark
@@ -838,7 +855,7 @@ package stream
      * @param b The hash compared with a, byte by byte, also not kept; which side is which doesn't matter.
      * @return True if every byte is the same.
      */
-    same_hash :: fn(a: u8[32], b: u8[32]) -> bool {
+    same_hash :: fn(a : u8[32], b : u8[32]) -> bool {
         for byte, i in a {
             if byte != b[i] {
                 return false
@@ -855,7 +872,7 @@ package stream
      * @tparam T The Reader's type parameter.
      * @param reader The reader, not used again after this; a view next_bytes gave is no good after it.
      */
-    close_reader :: fn[T](reader: ptr[mut Reader[T]]) {
+    close_reader :: fn[T](reader : ptr[mut Reader[T]]) {
         answer_marks(reader)
         runtime.array_free(&reader.scratch)
         _ = slop_os.handle_close(cast[slop_os.Handle](reader.ring))
@@ -871,7 +888,7 @@ package stream
      * @return The response; null if the end's gone, reading it failed, or what came isn't the protocol: unknown,
      *     invalid, or of another protocol, which ends the stream (the SlopOS repository's decisions 0177).
      */
-    answer :: fn(end: slop_os.Channel, port: slop_os.Port) -> Response? {
+    answer :: fn(end : slop_os.Channel, port : slop_os.Port) -> Response? {
         into := os.Incoming.{}
         return match receive_response(end, port, &into, true) {
             case Received => os.message_of[Response](&into)^
@@ -888,7 +905,7 @@ package stream
      * @return The request, copied out of into; null if the end's gone, reading it failed, or what came isn't the
      *     protocol, which ends the stream (the SlopOS repository's decisions 0177).
      */
-    take_request :: fn(end: slop_os.Channel, port: slop_os.Port, into: ptr[mut os.Incoming]) -> Request? {
+    take_request :: fn(end : slop_os.Channel, port : slop_os.Port, into : ptr[mut os.Incoming]) -> Request? {
         return match receive_request(end, port, into, true) {
             case Received => os.message_of[Request](into)^
             case _ => null
@@ -902,7 +919,7 @@ package stream
      * @param port A port bound to end, waited on while end's ring is full.
      * @param response The response, which has no variable-size data.
      */
-    reply :: fn(end: slop_os.Channel, port: slop_os.Port, response: Response) {
+    reply :: fn(end : slop_os.Channel, port : slop_os.Port, response : Response) {
         out := os.Outgoing.{}
         os.begin[Response](&out)^ = response
         _ = send_response(end, port, &out)
@@ -915,7 +932,7 @@ package stream
      * @param count The record's value's byte count, without padding; 0 for a wrap.
      * @param kind KIND_RECORD or KIND_WRAP.
      */
-    header :: fn(address: u64, count: u32, kind: u32) {
+    header :: fn(address : u64, count : u32, kind : u32) {
         words :: cast[ptr[mut u32[2]]](cast[uintptr](address))
         words^[0] = count
         words^[1] = kind
@@ -927,7 +944,7 @@ package stream
      * @param count A byte count, at most 2^64 - 8; past that, rounding wraps around to a small result.
      * @return The least multiple of 8 at least count; 0 for 0.
      */
-    padded :: fn(count: u64) -> u64 {
+    padded :: fn(count : u64) -> u64 {
         return (count + 7) & ~cast[u64](7)
     }
 }

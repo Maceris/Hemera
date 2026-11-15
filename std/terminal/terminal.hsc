@@ -27,7 +27,8 @@ import unicode from "std:unicode"
     STOP_KEY : u64 : 1
 
     /**
-     * A terminal's client: its connection, the port it waits on, and the events Inputs brought that are still to be read,
+     * A terminal's client: its connection, the port it waits on, and the events Inputs brought that are still to be
+     * read,
      * from next.
      *
      * One thread or fiber uses it at a time; nothing in it is locked. Its events and text grow with context.allocator.
@@ -91,7 +92,7 @@ import unicode from "std:unicode"
      * @return The client, holding no Read yet; null if no port could be made for it. Failing to ask for a stop to wake
      *     it isn't an error: next_event still sees a stop the next time it wakes.
      */
-    open :: fn(connection: os.Channel[protocol.Terminal]) -> Terminal? {
+    open :: fn(connection : os.Channel[protocol.Terminal]) -> Terminal? {
         made := Terminal.{end = connection.end}
         made.port = os.port_for(slop_os.startup_block().budget, connection.end) or_return null
         _ = lifecycle.on_stop(made.port, STOP_KEY)
@@ -110,7 +111,7 @@ import unicode from "std:unicode"
      * @return True if every Write went; false if one failed, the terminal most likely gone, with what came before it
      *     already written.
      */
-    write :: fn(terminal: ptr[mut Terminal], text: string, style := protocol.Style.{}) -> bool {
+    write :: fn(terminal : ptr[mut Terminal], text : string, style := protocol.Style.{}) -> bool {
         return protocol.write(terminal.end, terminal.port, text, style)
     }
 
@@ -125,7 +126,7 @@ import unicode from "std:unicode"
      * @return True if all of it went; false if a Write failed, or there wasn't the memory to join the text and its
      *     break, when nothing's written.
      */
-    write_line :: fn(terminal: ptr[mut Terminal], text: string, style := protocol.Style.{}) -> bool {
+    write_line :: fn(terminal : ptr[mut Terminal], text : string, style := protocol.Style.{}) -> bool {
         joined, error :: runtime.new_array(u8, text.count + 1)
         if error != null || joined.count == 0 {
             return false
@@ -150,7 +151,7 @@ import unicode from "std:unicode"
      * @param cursor Where the cursor is, as a byte offset in text, from 0 to text.count.
      * @return True if it was handed to the terminal; false if the request failed.
      */
-    show_input :: fn(terminal: ptr[mut Terminal], text: u8[], cursor: usize) -> bool {
+    show_input :: fn(terminal : ptr[mut Terminal], text : u8[], cursor : usize) -> bool {
         return protocol.input_line(terminal.end, terminal.port, text, cursor)
     }
 
@@ -163,11 +164,12 @@ import unicode from "std:unicode"
      *
      * @param terminal A client open made, used by one thread or fiber at a time. It moves on to its next event, holds a
      *     Read when its events are used up, and is marked hung up, for good, once a request or its connection fails.
-     * @return The next Event, its text the client's until the next call, or interrupted; HangUp once the terminal's gone,
+     * @return The next Event, its text the client's until the next call, or interrupted; HangUp once the terminal's
+     *     gone,
      *     or answers with what isn't the protocol, and every time after; Stop once the program's been asked to stop, and
      *     every time after, unless it's hung up first; Other for a packet under another key, the oldest kept first.
      */
-    next_event :: fn(terminal: ptr[mut Terminal]) -> Input {
+    next_event :: fn(terminal : ptr[mut Terminal]) -> Input {
         loop {
             if terminal.hung_up {
                 return .HangUp
@@ -190,7 +192,12 @@ import unicode from "std:unicode"
                 terminal.next += 1
                 start :: cast[usize](event.text_start)
                 end :: start + cast[usize](event.text_bytes)
-                text :: if start <= end && end <= terminal.text.count { terminal.text[start..<end] } else { terminal.text[0..<0] }
+                text :: if start <= end && end <= terminal.text.count {
+                    terminal.text[start..<end]
+                }
+                else {
+                    terminal.text[0..<0]
+                }
                 return .Event(event, text)
             }
             if !terminal.reading {
@@ -225,7 +232,7 @@ import unicode from "std:unicode"
      * @param packets What a wait on the client's port brought.
      * @param taken How many of packets the wait filled in, from the first.
      */
-    keep_others :: fn(terminal: ptr[mut Terminal], packets: slop_os.Packet[], taken: usize) {
+    keep_others :: fn(terminal : ptr[mut Terminal], packets : slop_os.Packet[], taken : usize) {
         for packet, i in packets {
             if i < taken && packet.key != 0 && packet.key != STOP_KEY && terminal.other_count < terminal.others.count {
                 terminal.others[terminal.other_count] = packet
@@ -243,7 +250,7 @@ import unicode from "std:unicode"
      *     Read it holds is answered with no events, which next_event takes when it's next called.
      * @return True if it went; false if it couldn't be sent, the terminal most likely gone.
      */
-    release_input :: fn(terminal: ptr[mut Terminal]) -> bool {
+    release_input :: fn(terminal : ptr[mut Terminal]) -> bool {
         return protocol.send(terminal.end, terminal.port, .ReleaseInput)
     }
 
@@ -256,7 +263,7 @@ import unicode from "std:unicode"
      *     them. It holds no Read after.
      * @param into The response received, only read.
      */
-    take_input :: fn(terminal: ptr[mut Terminal], into: ptr[os.Incoming]) {
+    take_input :: fn(terminal : ptr[mut Terminal], into : ptr[os.Incoming]) {
         match os.message_of[protocol.Response](into)^ {
             case Input(given) => {
                 terminal.reading = false
@@ -287,11 +294,12 @@ import unicode from "std:unicode"
      * them is seen too. An Interrupt among them is taken with the events before it, as a terminal drops what's typed
      * ahead of Ctrl-C; the events after it, and events without one, stay for next_event.
      *
-     * @param terminal A client open made, used by one thread or fiber at a time; it's marked hung up if a request or its
+     * @param terminal A client open made, used by one thread or fiber at a time; it's marked hung up if a request or
+     *     its
      *     connection fails.
      * @return True if an Interrupt was taken; false if none has come, or the terminal's gone.
      */
-    interrupted :: fn(terminal: ptr[mut Terminal]) -> bool {
+    interrupted :: fn(terminal : ptr[mut Terminal]) -> bool {
         loop {
             if terminal.hung_up {
                 return false
@@ -396,7 +404,7 @@ import unicode from "std:unicode"
      * @param cursor The cursor, as a byte offset in line.
      * @param into The completions, empty to start with, to fill in; a start past the cursor is ignored.
      */
-    Completer :: fn(data: rawptr, line: u8[], cursor: usize, into: ptr[mut Completions])
+    Completer :: fn(data : rawptr, line : u8[], cursor : usize, into : ptr[mut Completions])
 
     /**
      * A line editor: the line being typed and its cursor, history, and a completer, if there's one.
@@ -438,8 +446,11 @@ import unicode from "std:unicode"
      *     completions to fill in, as Completer is.
      * @param data What completer is given, kept by the editor, so it has to live as long as the editor's used.
      */
-    set_completer :: fn[D](editor: ptr[mut LineEditor], completer: (fn(data: ptr[mut D], line: u8[], cursor: usize, into: ptr[mut Completions])),
-        data #escaping : ptr[mut D]) {
+    set_completer :: fn[D](
+        editor : ptr[mut LineEditor],
+        completer : (fn(data : ptr[mut D], line : u8[], cursor : usize, into : ptr[mut Completions])),
+        data #escaping : ptr[mut D]
+    ) {
         editor.completer = bit_cast[Completer](completer)
         editor.completer_data = cast[rawptr](data)
     }
@@ -477,7 +488,7 @@ import unicode from "std:unicode"
      *     or Other for a packet of the program's on the client's port, the line still shown, to go on with. A line that
      *     couldn't be copied for lack of memory comes back empty.
      */
-    read_line :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], prompt: string) -> LineResult {
+    read_line :: fn(editor : ptr[mut LineEditor], terminal : ptr[mut Terminal], prompt : string) -> LineResult {
         if !editor.pending {
             runtime.array_reset(&editor.line)
             editor.cursor = 0
@@ -508,7 +519,10 @@ import unicode from "std:unicode"
                     if kind == .Paste {
                         for byte in text {
                             // A pasted line break is a space: a paste never runs a command
-                            insert(editor, if byte == 0x0a || byte == 0x0d || byte == 0x09 { u8.[0x20] } else { u8.[byte] })
+                            insert(
+                                editor,
+                                if byte == 0x0a || byte == 0x0d || byte == 0x09 { u8.[0x20] } else { u8.[byte] }
+                            )
                         }
                     }
                     else if kind == .Key {
@@ -536,7 +550,7 @@ import unicode from "std:unicode"
      * @param text The bytes the key types; control characters among them are dropped.
      * @return True if it was Enter, ending the line; false otherwise.
      */
-    key :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], event: protocol.Event, text: u8[]) -> bool {
+    key :: fn(editor : ptr[mut LineEditor], terminal : ptr[mut Terminal], event : protocol.Event, text : u8[]) -> bool {
         control :: event.modifiers & protocol.CONTROL != 0
         code :: event.code
         if code == USAGE_ENTER {
@@ -613,7 +627,7 @@ import unicode from "std:unicode"
      *     context.allocator, and the cursor moves past it.
      * @param bytes The bytes; those that would take the line past MAX_LINE_BYTES are dropped.
      */
-    insert :: fn(editor: ptr[mut LineEditor], bytes: u8[]) {
+    insert :: fn(editor : ptr[mut LineEditor], bytes : u8[]) {
         for byte in bytes {
             if editor.line.count >= MAX_LINE_BYTES {
                 return void
@@ -643,7 +657,7 @@ import unicode from "std:unicode"
      * @param start The byte offset of the first to take out.
      * @param end The byte offset past the last. Nothing happens when it isn't past start, or is past the line's end.
      */
-    remove :: fn(editor: ptr[mut LineEditor], start: usize, end: usize) {
+    remove :: fn(editor : ptr[mut LineEditor], start : usize, end : usize) {
         if start >= end || end > editor.line.count {
             return void
         }
@@ -669,7 +683,7 @@ import unicode from "std:unicode"
      *     typed is kept in typed when Up first leaves it.
      * @param back True for the previous (older) line, false for the next, ending at the line typed.
      */
-    through_history :: fn(editor: ptr[mut LineEditor], back: bool) {
+    through_history :: fn(editor : ptr[mut LineEditor], back : bool) {
         if back {
             if editor.browsing == 0 {
                 return void
@@ -689,7 +703,12 @@ import unicode from "std:unicode"
             editor.browsing += 1
         }
         runtime.array_reset(&editor.line)
-        source :: if editor.browsing < editor.history.count { string_bytes(editor.history[editor.browsing]) } else { editor.typed[0..<editor.typed.count] }
+        source :: if editor.browsing < editor.history.count {
+            string_bytes(editor.history[editor.browsing])
+        }
+        else {
+            editor.typed[0..<editor.typed.count]
+        }
         for byte in source {
             runtime.array_add(&editor.line, byte)
         }
@@ -709,7 +728,7 @@ import unicode from "std:unicode"
      *     completion's start to the cursor may be replaced, the cursor moving past what's put in.
      * @param terminal The client, where the candidates are written.
      */
-    complete :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal]) {
+    complete :: fn(editor : ptr[mut LineEditor], terminal : ptr[mut Terminal]) {
         completer :: editor.completer or_return void
         found := Completions.{}
         defer free_completions(&found)
@@ -773,7 +792,7 @@ import unicode from "std:unicode"
      * @param found The completions, filled in by a completer with context.allocator; its candidates and descriptions
      *     are empty afterwards.
      */
-    free_completions :: fn(found: ptr[mut Completions]) {
+    free_completions :: fn(found : ptr[mut Completions]) {
         for candidate in found.candidates {
             runtime.free_array(bit_cast[u8[]](candidate))
         }
@@ -793,7 +812,7 @@ import unicode from "std:unicode"
      * @param editor An editor whose line was just ended; the line isn't changed, and a copy of it may be added to its
      *     history, which may drop its oldest.
      */
-    remember :: fn(editor: ptr[mut LineEditor]) {
+    remember :: fn(editor : ptr[mut LineEditor]) {
         if editor.line.count == 0 {
             return void
         }
@@ -818,7 +837,7 @@ import unicode from "std:unicode"
      * @param terminal A client open made, whose input line is replaced with this one.
      * @param prompt What's shown before the line, UTF-8.
      */
-    show :: fn(editor: ptr[mut LineEditor], terminal: ptr[mut Terminal], prompt: string) {
+    show :: fn(editor : ptr[mut LineEditor], terminal : ptr[mut Terminal], prompt : string) {
         shown : u8[..]
         defer runtime.array_free(&shown)
         for byte in string_bytes(prompt) {
@@ -835,7 +854,7 @@ import unicode from "std:unicode"
      *
      * @param editor The editor, empty afterwards and ready to use again. Its completer isn't touched.
      */
-    free_editor :: fn(editor: ptr[mut LineEditor]) {
+    free_editor :: fn(editor : ptr[mut LineEditor]) {
         runtime.array_free(&editor.line)
         runtime.array_free(&editor.typed)
         for line in editor.history {
@@ -851,7 +870,7 @@ import unicode from "std:unicode"
      * @return The copy, allocated with context.allocator and the caller's to free; empty, allocating nothing, for no
      *     bytes or when there's no memory.
      */
-    copy_text :: fn(bytes: u8[..]) -> string {
+    copy_text :: fn(bytes : u8[..]) -> string {
         made, error :: runtime.new_array(u8, bytes.count)
         if error != null {
             return ""
@@ -870,7 +889,7 @@ import unicode from "std:unicode"
      * @param bytes The bytes to view, UTF-8 or not, which the string shares.
      * @return A string over the same bytes, good while they are and the array isn't resized; empty for no bytes.
      */
-    as_text :: fn(bytes: u8[..]) -> string {
+    as_text :: fn(bytes : u8[..]) -> string {
         return if bytes.count > 0 { string_of(&bytes[0], bytes.count) } else { "" }
     }
 }
@@ -882,7 +901,7 @@ import unicode from "std:unicode"
  * @param at A byte offset in line at a cluster's start, or line.count.
  * @return The byte offset where the cluster ending at at starts; 0 when at is 0 or past the line's end.
  */
-previous_cluster :: fn(line: u8[], at: usize) -> usize {
+previous_cluster :: fn(line : u8[], at : usize) -> usize {
     if at == 0 || at > line.count {
         return 0
     }
@@ -906,7 +925,7 @@ previous_cluster :: fn(line: u8[], at: usize) -> usize {
  * @param at A byte offset in line at a cluster's start.
  * @return The byte offset just past the cluster; line.count when at is at or past the line's end.
  */
-next_cluster :: fn(line: u8[], at: usize) -> usize {
+next_cluster :: fn(line : u8[], at : usize) -> usize {
     if at >= line.count {
         return line.count
     }

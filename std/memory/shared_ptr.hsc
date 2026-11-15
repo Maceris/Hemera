@@ -65,7 +65,7 @@ WeakPtr :: struct[T, atomic = true] #owned(release_weak) #unrestricted #thread_b
  *
  * @param value The value, by its address. It's not to be freed: the block is freed after this returns.
  */
-Destroy :: alias fn(value: rawptr)
+Destroy :: alias fn(value : rawptr)
 
 /**
  * A destroy function for one type's values, as make_shared takes it.
@@ -73,7 +73,7 @@ Destroy :: alias fn(value: rawptr)
  * @tparam T The value's type.
  * @param value The value, which it destroys in place but doesn't free.
  */
-DestroyValue :: alias[T] fn(value: ptr[mut T])
+DestroyValue :: alias[T] fn(value : ptr[mut T])
 
 /**
  * The counts and bookkeeping before a shared value, in the same allocation, at an offset that keeps the value aligned.
@@ -105,7 +105,7 @@ SharedHeader :: struct {
  * @param value A value in a block from make_shared; anything else gives a pointer to memory that isn't a header.
  * @return Its header, directly before it.
  */
-header_of :: fn[T](value: ptr[T]) -> ptr[mut SharedHeader] {
+header_of :: fn[T](value : ptr[T]) -> ptr[mut SharedHeader] {
     return cast[ptr[mut SharedHeader]](cast[rawptr](value) - size_of(SharedHeader))
 }
 
@@ -115,7 +115,7 @@ header_of :: fn[T](value: ptr[T]) -> ptr[mut SharedHeader] {
  * @tparam T The value's type, which is #owned.
  * @param value The value, by its address, taken out of the block and released; the block isn't freed.
  */
-release_in_place :: fn[T](value: rawptr) {
+release_in_place :: fn[T](value : rawptr) {
     compiler.release(compiler.take(cast[ptr[mut T]](value)))
 }
 
@@ -132,9 +132,12 @@ release_in_place :: fn[T](value: rawptr) {
  * @return The first owner, never null: if the block can't be allocated, the assertion fails ("make_shared couldn't
  *     allocate: out of memory").
  */
-make_shared :: fn[T, atomic = true](value #escaping : T, destroy : DestroyValue[T]? = null, allocator := context.allocator,
-    location := #caller_location) -> SharedPtr[mut T, atomic] {
-
+make_shared :: fn[T, atomic = true](
+    value #escaping : T,
+    destroy : DestroyValue[T]? = null,
+    allocator := context.allocator,
+    location := #caller_location
+) -> SharedPtr[mut T, atomic] {
     // The header right before the value, at an offset that keeps the value aligned
     alignment :: if align_of(T) > align_of(SharedHeader) { align_of(T) } else { align_of(SharedHeader) }
     offset :: (size_of(SharedHeader) + alignment - 1) / alignment * alignment
@@ -171,7 +174,7 @@ make_shared :: fn[T, atomic = true](value #escaping : T, destroy : DestroyValue[
  * @param shared An owner of the value.
  * @return The value's address, good while some owner holds it; it doesn't keep the value itself.
  */
-pointer_of :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> ptr[T] {
+pointer_of :: fn[T, atomic : bool](shared : ptr[SharedPtr[T, atomic]]) -> ptr[T] {
     return shared.shared_value
 }
 
@@ -183,7 +186,7 @@ pointer_of :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> ptr[T] {
  * @param shared An owner of the value, which stays one; it must own something, not be zeroed.
  * @return The new owner, which the caller releases or moves on.
  */
-share :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> SharedPtr[T, atomic] {
+share :: fn[T, atomic : bool](shared : ptr[SharedPtr[T, atomic]]) -> SharedPtr[T, atomic] {
     header :: header_of(shared.shared_value)
     #if atomic {
         // The caller already holds a reference, so there's nothing to order
@@ -201,7 +204,7 @@ share :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> SharedPtr[T, 
  * @tparam atomic Whether the count is changed atomically.
  * @param header The block's header; invalid afterwards if this was the last count.
  */
-release_block :: fn[atomic: bool](header: ptr[mut SharedHeader]) {
+release_block :: fn[atomic : bool](header : ptr[mut SharedHeader]) {
     last := false
     #if atomic {
         last = intrinsics.interlocked_decrement_u32_release(&header.weak) == 1
@@ -229,7 +232,7 @@ release_block :: fn[atomic: bool](header: ptr[mut SharedHeader]) {
  * @tparam atomic Whether the count is changed atomically.
  * @param shared The owner, consumed. A zeroed SharedPtr owns nothing, and releasing it does nothing.
  */
-release :: fn[T, atomic: bool](shared: SharedPtr[T, atomic]) {
+release :: fn[T, atomic : bool](shared : SharedPtr[T, atomic]) {
     if cast[rawptr](shared.shared_value) == null {
         compiler.forget(shared)
         return void
@@ -265,7 +268,7 @@ release :: fn[T, atomic: bool](shared: SharedPtr[T, atomic]) {
  * @param shared An owner of the value; it must own something, not be zeroed.
  * @return The weak reference, which the caller releases with release_weak.
  */
-weaken :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> WeakPtr[T, atomic] {
+weaken :: fn[T, atomic : bool](shared : ptr[SharedPtr[T, atomic]]) -> WeakPtr[T, atomic] {
     header :: header_of(shared.shared_value)
     #if atomic {
         _ = intrinsics.interlocked_increment_u32_no_fence(&header.weak)
@@ -288,7 +291,7 @@ weaken :: fn[T, atomic: bool](shared: ptr[SharedPtr[T, atomic]]) -> WeakPtr[T, a
  *     counts it's null too if the count kept changing under it for a million attempts, which contention that heavy
  *     shouldn't reach.
  */
-upgrade :: fn[T, atomic: bool](weak: ptr[WeakPtr[T, atomic]]) -> SharedPtr[T, atomic]? {
+upgrade :: fn[T, atomic : bool](weak : ptr[WeakPtr[T, atomic]]) -> SharedPtr[T, atomic]? {
     header :: header_of(weak.shared_value)
     #if atomic {
         // Count up only while it's still above zero
@@ -321,7 +324,7 @@ upgrade :: fn[T, atomic: bool](weak: ptr[WeakPtr[T, atomic]]) -> SharedPtr[T, at
  * @tparam atomic Whether the count is changed atomically.
  * @param weak The weak reference, consumed. A zeroed one refers to nothing, and releasing it does nothing.
  */
-release_weak :: fn[T, atomic: bool](weak: WeakPtr[T, atomic]) {
+release_weak :: fn[T, atomic : bool](weak : WeakPtr[T, atomic]) {
     if cast[rawptr](weak.shared_value) != null {
         release_block[atomic](header_of(weak.shared_value))
     }

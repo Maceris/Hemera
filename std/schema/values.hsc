@@ -34,7 +34,7 @@ CSTRING_LIMIT : usize : runtime.SCHEMA_CSTRING_LIMIT
  *     and distances in what's written are from where the value starts in it.
  * @param location Where the call is, given to the assertion handler; the caller's location by default.
  */
-write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_location) {
+write_value :: fn(value : any, into : ptr[mut u8[..]], location := #caller_location) {
     runtime.schema_write_value(value, into, location)
 }
 
@@ -47,7 +47,7 @@ write_value :: fn(value: any, into: ptr[mut u8[..]], location := #caller_locatio
  *     and distances in what's written are from where the value starts in it.
  * @return Null when the whole value was written; otherwise the allocator's error, and into's count is as it was.
  */
-try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> runtime.AllocatorError? {
+try_write_value :: fn(value : any, into : ptr[mut u8[..]]) -> runtime.AllocatorError? {
     return runtime.schema_try_write_value(value, into)
 }
 
@@ -62,7 +62,7 @@ try_write_value :: fn(value: any, into: ptr[mut u8[..]]) -> runtime.AllocatorErr
  *     they're used; null when the bytes don't read as one (runtime.schema_read_value says when), or there isn't the
  *     memory for the copy.
  */
-read_value :: fn[T](bytes: u8[]) -> T? {
+read_value :: fn[T](bytes : u8[]) -> T? {
     value : T
     if !runtime.schema_read_value(bytes, type_info_of(T), cast[rawptr](&value)) {
         return null

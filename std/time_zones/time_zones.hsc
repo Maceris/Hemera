@@ -153,8 +153,12 @@ LocalTime :: struct {
  * @error Invalid A transition starts a type that isn't there, a type's abbreviation starts outside the abbreviations,
  *     or there are no types. Nothing is left allocated.
  */
-parse_zone :: fn(bytes: u8[]) -> Result[Zone, ZoneError] {
-    if bytes.count < 44 || bytes[0] != cast[u8]('T') || bytes[1] != cast[u8]('Z') || bytes[2] != cast[u8]('i') || bytes[3] != cast[u8]('f') {
+parse_zone :: fn(bytes : u8[]) -> Result[Zone, ZoneError] {
+    if bytes.count < 44
+        || bytes[0] != cast[u8]('T')
+        || bytes[1] != cast[u8]('Z')
+        || bytes[2] != cast[u8]('i')
+        || bytes[3] != cast[u8]('f') {
         return .Error(.NotTZif)
     }
     version :: bytes[4]
@@ -177,7 +181,12 @@ parse_zone :: fn(bytes: u8[]) -> Result[Zone, ZoneError] {
     zone := Zone.{}
     at := start
     for i in 0..<counts.times {
-        moment :: if wide { cast[i64](big_endian(bytes, at, 8)) } else { cast[i64](cast[i32](cast[u32](big_endian(bytes, at, 4)))) }
+        moment :: if wide {
+            cast[i64](big_endian(bytes, at, 8))
+        }
+        else {
+            cast[i64](cast[i32](cast[u32](big_endian(bytes, at, 4))))
+        }
         runtime.array_add(&zone.transitions, moment)
         at += time_bytes
     }
@@ -237,7 +246,7 @@ parse_zone :: fn(bytes: u8[]) -> Result[Zone, ZoneError] {
  * @param zone The zone, from parse_zone. Its arrays are freed and left empty, so abbreviations given out from it are
  *     no longer good; its rule, held in the zone itself, still is.
  */
-free_zone :: fn(zone: ptr[mut Zone]) {
+free_zone :: fn(zone : ptr[mut Zone]) {
     runtime.array_free(&zone.transitions)
     runtime.array_free(&zone.starts)
     runtime.array_free(&zone.types)
@@ -258,7 +267,7 @@ free_zone :: fn(zone: ptr[mut Zone]) {
  * @return abbreviation The local time's abbreviation, or empty if the zone gives none: a view of the zone's memory,
  *     good until the zone is freed or moved.
  */
-offset_of :: fn(zone: ptr[Zone], t: time.Instant) -> (offset : i32, dst : bool, abbreviation : string) {
+offset_of :: fn(zone : ptr[Zone], t : time.Instant) -> (offset : i32, dst : bool, abbreviation : string) {
     seconds :: t.seconds
     count :: zone.transitions.count
     newest := cast[i64](0)
@@ -304,7 +313,7 @@ offset_of :: fn(zone: ptr[Zone], t: time.Instant) -> (offset : i32, dst : bool, 
  * @return The local date and time, its offset, whether it's daylight saving time, and its abbreviation, which is a
  *     view of the zone's memory, good until the zone is freed or moved.
  */
-local :: fn(zone: ptr[Zone], t: time.Instant) -> LocalTime {
+local :: fn(zone : ptr[Zone], t : time.Instant) -> LocalTime {
     offset, dst, abbreviation :: offset_of(zone, t)
     shifted :: time.Instant.{seconds = t.seconds + cast[i64](offset), nanos = t.nanos}
     return LocalTime.{date_time = time.utc(shifted), offset = offset, dst = dst, abbreviation = abbreviation}
@@ -318,7 +327,7 @@ local :: fn(zone: ptr[Zone], t: time.Instant) -> LocalTime {
  * @return The bytes from start to the next zero byte or the abbreviations' end, a view of the zone's array, good
  *     until the zone is freed; empty when start is past the end or at a zero byte.
  */
-abbreviation_at :: fn(zone: ptr[Zone], start: usize) -> string {
+abbreviation_at :: fn(zone : ptr[Zone], start : usize) -> string {
     end := start
     loop {
         if end >= zone.abbreviations.count || zone.abbreviations[end] == 0 {
@@ -346,7 +355,7 @@ abbreviation_at :: fn(zone: ptr[Zone], start: usize) -> string {
  * @return abbreviation Standard or daylight saving time's name: a view of the rule's own arrays, good while the rule
  *     stays where it is.
  */
-rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, abbreviation : string) {
+rule_offset :: fn(rule : ptr[Rule], seconds : i64) -> (offset : i32, dst : bool, abbreviation : string) {
     standard :: string_of(&rule.standard[0], rule.standard_bytes)
     if !rule.has_dst {
         return rule.standard_offset, false, standard
@@ -358,7 +367,12 @@ rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, a
     starts :: rule_moment(&rule.start, year) - cast[i64](rule.standard_offset)
     ends :: rule_moment(&rule.end, year) - cast[i64](rule.daylight_offset)
     in_dst :: if starts < ends { seconds >= starts && seconds < ends } else { !(seconds >= ends && seconds < starts) }
-    return if in_dst { rule.daylight_offset } else { rule.standard_offset }, in_dst, if in_dst { daylight } else { standard }
+    return if in_dst {
+        rule.daylight_offset
+    }
+    else {
+        rule.standard_offset
+    }, in_dst, if in_dst { daylight } else { standard }
 }
 
 /**
@@ -369,7 +383,7 @@ rule_offset :: fn(rule: ptr[Rule], seconds: i64) -> (offset : i32, dst : bool, a
  * @return The moment in local seconds since the epoch: seconds since 1970-01-01T00:00 of the local time in effect
  *     before it, which the caller turns into UTC by subtracting that time's offset.
  */
-rule_moment :: fn(date: ptr[RuleDate], year: i64) -> i64 {
+rule_moment :: fn(date : ptr[RuleDate], year : i64) -> i64 {
     leap :: (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
     january_first :: time.days_from_civil(year, 1, 1)
     days := january_first
@@ -403,9 +417,22 @@ rule_moment :: fn(date: ptr[RuleDate], year: i64) -> i64 {
  * @param month The month, 1 to 12; any other gives 31.
  * @return The number of days, 28 to 31.
  */
-month_days :: fn(year: i64, month: int) -> int {
+month_days :: fn(year : i64, month : int) -> int {
     leap :: (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-    return if month == 2 { if leap { 29 } else { 28 } } else if month == 4 || month == 6 || month == 9 || month == 11 { 30 } else { 31 }
+    return if month == 2 {
+        if leap {
+            29
+        }
+        else {
+            28
+        }
+    }
+    else if month == 4 || month == 6 || month == 9 || month == 11 {
+        30
+    }
+    else {
+        31
+    }
 }
 
 /**
@@ -419,7 +446,7 @@ month_days :: fn(year: i64, month: int) -> int {
  * @return The rule, its offsets east positive, or None if it's malformed: a name shorter than 3 bytes, a missing
  *     offset, or a date that doesn't parse.
  */
-parse_rule :: fn(text: u8[]) -> Rule? {
+parse_rule :: fn(text : u8[]) -> Rule? {
     rule := Rule.{}
     at := cast[usize](0)
     rule.standard_bytes = name_at(text, &at, &rule.standard) or_return null
@@ -460,7 +487,7 @@ parse_rule :: fn(text: u8[]) -> Rule? {
  * @return How many bytes were copied into name, 3 to NAME_BYTES, or None if fewer than 3 were, or a quoted name has
  *     no closing bracket.
  */
-name_at :: fn(text: u8[], at: ptr[mut usize], name: ptr[mut u8[NAME_BYTES]]) -> usize? {
+name_at :: fn(text : u8[], at : ptr[mut usize], name : ptr[mut u8[NAME_BYTES]]) -> usize? {
     count : usize = 0
     if at^ < text.count && byte_at(text, at^) == cast[u8]('<') {
         at^ += 1
@@ -505,7 +532,7 @@ name_at :: fn(text: u8[], at: ptr[mut usize], name: ptr[mut u8[NAME_BYTES]]) -> 
  * @param at Where in text the offset starts, in bytes; moved past it.
  * @return The offset in seconds, west of UTC positive, as POSIX writes them, or None if there are no hours.
  */
-offset_at :: fn(text: u8[], at: ptr[mut usize]) -> i32? {
+offset_at :: fn(text : u8[], at : ptr[mut usize]) -> i32? {
     sign := cast[i32](1)
     if at^ < text.count && (byte_at(text, at^) == cast[u8]('+') || byte_at(text, at^) == cast[u8]('-')) {
         sign = if byte_at(text, at^) == cast[u8]('-') { -1 } else { 1 }
@@ -523,7 +550,7 @@ offset_at :: fn(text: u8[], at: ptr[mut usize]) -> i32? {
  * @return The time in seconds, or None if there are no hours, or a colon has no number after it. No part's range is
  *     checked, so hours may go past 24, up to the 167 a rule's times can have.
  */
-time_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
+time_at :: fn(text : u8[], at : ptr[mut usize]) -> i64? {
     total := cast[i64](0)
     for unit in i64.[3600, 60, 1] {
         if unit != 3600 {
@@ -546,7 +573,7 @@ time_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
  * @return The date, at 2:00 when no time is given, or None if it's malformed, or a Mm.w.d date's month isn't 1 to 12,
  *     its week 1 to 5, or its weekday 0 to 6. A Jn or n date's day isn't range-checked.
  */
-date_at :: fn(text: u8[], at: ptr[mut usize]) -> RuleDate? {
+date_at :: fn(text : u8[], at : ptr[mut usize]) -> RuleDate? {
     date := RuleDate.{time = 7200}
     if at^ < text.count && byte_at(text, at^) == cast[u8]('J') {
         at^ += 1
@@ -594,11 +621,14 @@ date_at :: fn(text: u8[], at: ptr[mut usize]) -> RuleDate? {
  * @param at Where in text the number starts, in bytes; moved past its digits, at most 9 of them.
  * @return The number, 0 to 999,999,999, or None if there's no digit at at. Digits past the ninth are left unread.
  */
-number_at :: fn(text: u8[], at: ptr[mut usize]) -> i64? {
+number_at :: fn(text : u8[], at : ptr[mut usize]) -> i64? {
     value := cast[i64](0)
     digits := 0
     loop {
-        if at^ >= text.count || byte_at(text, at^) < cast[u8]('0') || byte_at(text, at^) > cast[u8]('9') || digits >= 9 {
+        if at^ >= text.count
+            || byte_at(text, at^) < cast[u8]('0')
+            || byte_at(text, at^) > cast[u8]('9')
+            || digits >= 9 {
             break
         }
         value = value * 10 + cast[i64](byte_at(text, at^) - cast[u8]('0'))
@@ -632,12 +662,18 @@ ZoneCounts :: struct {
  * @return The header's counts, or None if the header doesn't fit in bytes or doesn't start with a T. The rest of its
  *     magic isn't checked.
  */
-counts_at :: fn(bytes: u8[], start: usize) -> ZoneCounts? {
+counts_at :: fn(bytes : u8[], start : usize) -> ZoneCounts? {
     if start + 44 > bytes.count || byte_at(bytes, start) != cast[u8]('T') {
         return null
     }
-    return ZoneCounts.{utc_flags = field(bytes, start + 20), standard_flags = field(bytes, start + 24), leaps = field(bytes, start + 28),
-        times = field(bytes, start + 32), types = field(bytes, start + 36), characters = field(bytes, start + 40)}
+    return ZoneCounts.{
+        utc_flags = field(bytes, start + 20),
+        standard_flags = field(bytes, start + 24),
+        leaps = field(bytes, start + 28),
+        times = field(bytes, start + 32),
+        types = field(bytes, start + 36),
+        characters = field(bytes, start + 40),
+    }
 }
 
 /**
@@ -647,7 +683,7 @@ counts_at :: fn(bytes: u8[], start: usize) -> ZoneCounts? {
  * @param at Where in bytes the count starts; bytes past the end read as 0.
  * @return The count, 0 to 4,294,967,295, as stored; bytes past the end count as zeros.
  */
-field :: fn(bytes: u8[], at: usize) -> usize {
+field :: fn(bytes : u8[], at : usize) -> usize {
     return cast[usize](big_endian(bytes, at, 4))
 }
 
@@ -658,9 +694,14 @@ field :: fn(bytes: u8[], at: usize) -> usize {
  * @param time_bytes How many bytes a time takes in the block: 4 in version 1's, 8 in version 2's and later.
  * @return How many bytes the block has, not counting its header or a footer.
  */
-data_bytes :: fn(counts: ZoneCounts, time_bytes: usize) -> usize {
-    return counts.times * time_bytes + counts.times + counts.types * 6 + counts.characters + counts.leaps * (time_bytes + 4)
-        + counts.standard_flags + counts.utc_flags
+data_bytes :: fn(counts : ZoneCounts, time_bytes : usize) -> usize {
+    return counts.times * time_bytes
+        + counts.times
+        + counts.types * 6
+        + counts.characters
+        + counts.leaps * (time_bytes + 4)
+        + counts.standard_flags
+        + counts.utc_flags
 }
 
 /**
@@ -671,7 +712,7 @@ data_bytes :: fn(counts: ZoneCounts, time_bytes: usize) -> usize {
  * @param count How many bytes it has, 1 to 8.
  * @return The integer, zero-extended; a signed one is cast by the caller.
  */
-big_endian :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
+big_endian :: fn(bytes : u8[], at : usize, count : usize) -> u64 {
     value := cast[u64](0)
     for i in 0..<count {
         value = (value << 8) | cast[u64](byte_at(bytes, at + i))
@@ -686,6 +727,6 @@ big_endian :: fn(bytes: u8[], at: usize, count: usize) -> u64 {
  * @param at The byte's index in bytes, from 0; any value, as one at or past their end isn't read.
  * @return The byte, or 0 if at is past the end.
  */
-byte_at :: fn(bytes: u8[], at: usize) -> u8 {
+byte_at :: fn(bytes : u8[], at : usize) -> u8 {
     return if at < bytes.count { bytes[at] } else { 0 }
 }

@@ -17,7 +17,7 @@ import math from "std:math"
  * @param m The matrix.
  * @return det(m): 0 for a singular matrix, up to rounding.
  */
-determinant :: fn[T, n: usize](m: matrix[T, n, n]) -> T {
+determinant :: fn[T, n : usize](m : matrix[T, n, n]) -> T {
     a := m
     result : T = 1
     for column in 0..<n {
@@ -56,7 +56,7 @@ determinant :: fn[T, n: usize](m: matrix[T, n, n]) -> T {
  * @param m The matrix.
  * @return m⁻¹, with m × m⁻¹ the identity up to rounding; none if m is singular, a pivot exactly 0.
  */
-inverse :: fn[T, n: usize](m: matrix[T, n, n]) -> matrix[T, n, n]? {
+inverse :: fn[T, n : usize](m : matrix[T, n, n]) -> matrix[T, n, n]? {
     a := m
     result := identity(matrix[T, n, n])
     for column in 0..<n {
@@ -105,7 +105,7 @@ inverse :: fn[T, n: usize](m: matrix[T, n, n]) -> matrix[T, n, n]? {
  * @param b The row.
  * @return The rows × columns matrix whose (r, c) element is a[r] × b[c].
  */
-outer_product :: fn[T, rows: usize, columns: usize](a: T[rows], b: T[columns]) -> matrix[T, rows, columns] {
+outer_product :: fn[T, rows : usize, columns : usize](a : T[rows], b : T[columns]) -> matrix[T, rows, columns] {
     result : matrix[T, rows, columns]
     for r in 0..<rows {
         for c in 0..<columns {
@@ -122,13 +122,8 @@ outer_product :: fn[T, rows: usize, columns: usize](a: T[rows], b: T[columns]) -
  * @param offset How far along x, y and z.
  * @return The 4 × 4 matrix with offset in its last column.
  */
-translation :: fn[T](offset: T[3]) -> matrix[T, 4, 4] {
-    return matrix[T, 4, 4].{
-        1, 0, 0, offset[0],
-        0, 1, 0, offset[1],
-        0, 0, 1, offset[2],
-        0, 0, 0, 1,
-    }
+translation :: fn[T](offset : T[3]) -> matrix[T, 4, 4] {
+    return matrix[T, 4, 4].{1, 0, 0, offset[0], 0, 1, 0, offset[1], 0, 0, 1, offset[2], 0, 0, 0, 1}
 }
 
 /**
@@ -138,13 +133,8 @@ translation :: fn[T](offset: T[3]) -> matrix[T, 4, 4] {
  * @param factors The scale along x, y and z.
  * @return The 4 × 4 matrix with factors on its diagonal.
  */
-scaling :: fn[T](factors: T[3]) -> matrix[T, 4, 4] {
-    return matrix[T, 4, 4].{
-        factors[0], 0, 0, 0,
-        0, factors[1], 0, 0,
-        0, 0, factors[2], 0,
-        0, 0, 0, 1,
-    }
+scaling :: fn[T](factors : T[3]) -> matrix[T, 4, 4] {
+    return matrix[T, 4, 4].{factors[0], 0, 0, 0, 0, factors[1], 0, 0, 0, 0, factors[2], 0, 0, 0, 0, 1}
 }
 
 /**
@@ -155,7 +145,7 @@ scaling :: fn[T](factors: T[3]) -> matrix[T, 4, 4] {
  * @param angle The angle, in radians.
  * @return The 4 × 4 matrix of the rotation, by Rodrigues' formula.
  */
-rotation :: fn[T](axis: T[3], angle: T) -> matrix[T, 4, 4] {
+rotation :: fn[T](axis : T[3], angle : T) -> matrix[T, 4, 4] {
     u :: normalize(axis)
     s, c :: math.sin_cos(angle)
     t :: 1 - c
@@ -163,10 +153,22 @@ rotation :: fn[T](axis: T[3], angle: T) -> matrix[T, 4, 4] {
     y :: u[1]
     z :: u[2]
     return matrix[T, 4, 4].{
-        t * x * x + c, t * x * y - s * z, t * x * z + s * y, 0,
-        t * x * y + s * z, t * y * y + c, t * y * z - s * x, 0,
-        t * x * z - s * y, t * y * z + s * x, t * z * z + c, 0,
-        0, 0, 0, 1,
+        t * x * x + c,
+        t * x * y - s * z,
+        t * x * z + s * y,
+        0,
+        t * x * y + s * z,
+        t * y * y + c,
+        t * y * z - s * x,
+        0,
+        t * x * z - s * y,
+        t * y * z + s * x,
+        t * z * z + c,
+        0,
+        0,
+        0,
+        0,
+        1
     }
 }
 
@@ -179,15 +181,27 @@ rotation :: fn[T](axis: T[3], angle: T) -> matrix[T, 4, 4] {
  * @param up Which way is up in the world, not along the line of sight.
  * @return The 4 × 4 matrix moving eye to the origin and target onto -z, as GLM's lookAtRH.
  */
-look_at :: fn[T](eye: T[3], target: T[3], up: T[3]) -> matrix[T, 4, 4] {
+look_at :: fn[T](eye : T[3], target : T[3], up : T[3]) -> matrix[T, 4, 4] {
     forward :: normalize(target - eye)
     right :: normalize(cross(forward, up))
     camera_up :: cross(right, forward)
     return matrix[T, 4, 4].{
-        right[0], right[1], right[2], -dot(right, eye),
-        camera_up[0], camera_up[1], camera_up[2], -dot(camera_up, eye),
-        -forward[0], -forward[1], -forward[2], dot(forward, eye),
-        0, 0, 0, 1,
+        right[0],
+        right[1],
+        right[2],
+        -dot(right, eye),
+        camera_up[0],
+        camera_up[1],
+        camera_up[2],
+        -dot(camera_up, eye),
+        -forward[0],
+        -forward[1],
+        -forward[2],
+        dot(forward, eye),
+        0,
+        0,
+        0,
+        1
     }
 }
 
@@ -202,13 +216,25 @@ look_at :: fn[T](eye: T[3], target: T[3], up: T[3]) -> matrix[T, 4, 4] {
  * @param far The far plane's distance, beyond near.
  * @return The 4 × 4 matrix; a point's depth is its clip z over its clip w.
  */
-perspective :: fn[T](vertical_fov: T, aspect: T, near: T, far: T) -> matrix[T, 4, 4] {
+perspective :: fn[T](vertical_fov : T, aspect : T, near : T, far : T) -> matrix[T, 4, 4] {
     f :: 1 / math.tan(vertical_fov / 2)
     return matrix[T, 4, 4].{
-        f / aspect, 0, 0, 0,
-        0, -f, 0, 0,
-        0, 0, far / (near - far), near * far / (near - far),
-        0, 0, -1, 0,
+        f / aspect,
+        0,
+        0,
+        0,
+        0,
+        -f,
+        0,
+        0,
+        0,
+        0,
+        far / (near - far),
+        near * far / (near - far),
+        0,
+        0,
+        -1,
+        0
     }
 }
 
@@ -225,12 +251,24 @@ perspective :: fn[T](vertical_fov: T, aspect: T, near: T, far: T) -> matrix[T, 4
  * @param far The far plane's, not near.
  * @return The 4 × 4 matrix.
  */
-orthographic :: fn[T](left: T, right: T, bottom: T, top: T, near: T, far: T) -> matrix[T, 4, 4] {
+orthographic :: fn[T](left : T, right : T, bottom : T, top : T, near : T, far : T) -> matrix[T, 4, 4] {
     return matrix[T, 4, 4].{
-        2 / (right - left), 0, 0, -(right + left) / (right - left),
-        0, -2 / (top - bottom), 0, (top + bottom) / (top - bottom),
-        0, 0, -1 / (far - near), -near / (far - near),
-        0, 0, 0, 1,
+        2 / (right - left),
+        0,
+        0,
+        -(right + left) / (right - left),
+        0,
+        -2 / (top - bottom),
+        0,
+        (top + bottom) / (top - bottom),
+        0,
+        0,
+        -1 / (far - near),
+        -near / (far - near),
+        0,
+        0,
+        0,
+        1
     }
 }
 
@@ -244,13 +282,25 @@ orthographic :: fn[T](left: T, right: T, bottom: T, top: T, near: T, far: T) -> 
  * @param far The far plane's distance, beyond near.
  * @return The 4 × 4 matrix, as gluPerspective's.
  */
-perspective_opengl :: fn[T](vertical_fov: T, aspect: T, near: T, far: T) -> matrix[T, 4, 4] {
+perspective_opengl :: fn[T](vertical_fov : T, aspect : T, near : T, far : T) -> matrix[T, 4, 4] {
     f :: 1 / math.tan(vertical_fov / 2)
     return matrix[T, 4, 4].{
-        f / aspect, 0, 0, 0,
-        0, f, 0, 0,
-        0, 0, (far + near) / (near - far), 2 * far * near / (near - far),
-        0, 0, -1, 0,
+        f / aspect,
+        0,
+        0,
+        0,
+        0,
+        f,
+        0,
+        0,
+        0,
+        0,
+        (far + near) / (near - far),
+        2 * far * near / (near - far),
+        0,
+        0,
+        -1,
+        0
     }
 }
 
@@ -266,11 +316,23 @@ perspective_opengl :: fn[T](vertical_fov: T, aspect: T, near: T, far: T) -> matr
  * @param far The far plane's, not near.
  * @return The 4 × 4 matrix, as glOrtho's.
  */
-orthographic_opengl :: fn[T](left: T, right: T, bottom: T, top: T, near: T, far: T) -> matrix[T, 4, 4] {
+orthographic_opengl :: fn[T](left : T, right : T, bottom : T, top : T, near : T, far : T) -> matrix[T, 4, 4] {
     return matrix[T, 4, 4].{
-        2 / (right - left), 0, 0, -(right + left) / (right - left),
-        0, 2 / (top - bottom), 0, -(top + bottom) / (top - bottom),
-        0, 0, -2 / (far - near), -(far + near) / (far - near),
-        0, 0, 0, 1,
+        2 / (right - left),
+        0,
+        0,
+        -(right + left) / (right - left),
+        0,
+        2 / (top - bottom),
+        0,
+        -(top + bottom) / (top - bottom),
+        0,
+        0,
+        -2 / (far - near),
+        -(far + near) / (far - near),
+        0,
+        0,
+        0,
+        1
     }
 }

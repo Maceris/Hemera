@@ -17,9 +17,9 @@ BIG_NUMBER_BYTES :: 1024
 /** A non-negative integer below 2^8192, public. */
 BigNumber :: struct {
     /** The limbs, least significant first; those from count on are 0. */
-    limbs: u64[128],
+    limbs : u64[128],
     /** How many limbs are in use, 0 to 128: the number is below 2^(64 * count). 0 only for the number 0. */
-    count: usize,
+    count : usize,
 }
 
 /**
@@ -28,13 +28,13 @@ BigNumber :: struct {
  */
 BigModulus :: struct {
     /** The modulus, n. */
-    n: BigNumber,
+    n : BigNumber,
     /** -1 / n modulo 2^64. */
-    inverse: u64,
+    inverse : u64,
     /** R^2 mod n, which a number multiplied by goes into Montgomery form. */
-    r2: BigNumber,
+    r2 : BigNumber,
     /** n's size in bits, from 2 to 8192. */
-    bits: usize,
+    bits : usize,
 }
 
 /**
@@ -43,7 +43,7 @@ BigModulus :: struct {
  * @param bytes The number's bytes, most significant first, of any length: leading zeros are skipped. Empty is 0.
  * @return The number; or null when it doesn't fit 8192 bits.
  */
-big_from_bytes :: fn(bytes: u8[]) -> BigNumber? {
+big_from_bytes :: fn(bytes : u8[]) -> BigNumber? {
     start : usize = 0
     loop {
         start += 1
@@ -71,7 +71,7 @@ big_from_bytes :: fn(bytes: u8[]) -> BigNumber? {
  * @param most How many of its limbs to look at, from the bottom, up to 128.
  * @return The count, 0 for 0.
  */
-big_limbs_used :: fn(number: ptr[BigNumber], most: usize) -> usize {
+big_limbs_used :: fn(number : ptr[BigNumber], most : usize) -> usize {
     count := most % (BIG_NUMBER_LIMBS + 1)
     loop {
         count -= 1
@@ -87,7 +87,7 @@ big_limbs_used :: fn(number: ptr[BigNumber], most: usize) -> usize {
  * @param bytes Where it goes, all of it written: the number's bytes right-aligned, zeros before them.
  * @return Whether it fit; false, with bytes zeroed, when the number needs more bytes than there are.
  */
-big_to_bytes :: fn(number: ptr[BigNumber], bytes: mut u8[]) -> bool {
+big_to_bytes :: fn(number : ptr[BigNumber], bytes : mut u8[]) -> bool {
     for i in 0..<bytes.count {
         bytes[i] = 0
     }
@@ -117,7 +117,7 @@ big_to_bytes :: fn(number: ptr[BigNumber], bytes: mut u8[]) -> bool {
  * @param b The other.
  * @return -1 if a is less than b, 0 if they're equal, 1 if a is greater.
  */
-big_compare :: fn(a: ptr[BigNumber], b: ptr[BigNumber]) -> int {
+big_compare :: fn(a : ptr[BigNumber], b : ptr[BigNumber]) -> int {
     for i in 0..<BIG_NUMBER_LIMBS #reverse {
         if a.limbs[i] != b.limbs[i] {
             return if a.limbs[i] < b.limbs[i] { -1 } else { 1 }
@@ -132,7 +132,7 @@ big_compare :: fn(a: ptr[BigNumber], b: ptr[BigNumber]) -> int {
  * @param number The number.
  * @return The count, 0 for 0, at most 8192.
  */
-big_bits :: fn(number: ptr[BigNumber]) -> usize {
+big_bits :: fn(number : ptr[BigNumber]) -> usize {
     if number.count == 0 {
         return 0
     }
@@ -153,7 +153,7 @@ big_bits :: fn(number: ptr[BigNumber]) -> usize {
  * @param bit Which bit, from 0 for the least significant; past 8191 is 0.
  * @return Whether it's 1.
  */
-big_bit :: fn(number: ptr[BigNumber], bit: usize) -> bool {
+big_bit :: fn(number : ptr[BigNumber], bit : usize) -> bool {
     if bit >= 64 * BIG_NUMBER_LIMBS {
         return false
     }
@@ -167,7 +167,7 @@ big_bit :: fn(number: ptr[BigNumber], bit: usize) -> bool {
  * @param carry The limb above value's, 0 or 1.
  * @param modulus The modulus.
  */
-big_reduce_once :: fn(value: ptr[mut BigNumber], carry: u64, modulus: ptr[BigModulus]) {
+big_reduce_once :: fn(value : ptr[mut BigNumber], carry : u64, modulus : ptr[BigModulus]) {
     k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
     if carry == 0 {
         for i in 0..<k #reverse {
@@ -195,7 +195,7 @@ big_reduce_once :: fn(value: ptr[mut BigNumber], carry: u64, modulus: ptr[BigMod
  * @param modulus The modulus.
  * @return a * b / R mod n, below n.
  */
-big_multiply :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+big_multiply :: fn(a : ptr[BigNumber], b : ptr[BigNumber], modulus : ptr[BigModulus]) -> BigNumber {
     k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
     t : u64[130]
     for i in 0..<k {
@@ -240,7 +240,7 @@ big_multiply :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus
  * @return The modulus with what Montgomery multiplication needs: -1 / n mod 2^64 and R^2 mod n; or null when n is even
  *     or below 3.
  */
-big_modulus :: fn(n: ptr[BigNumber]) -> BigModulus? {
+big_modulus :: fn(n : ptr[BigNumber]) -> BigModulus? {
     if n.count == 0 || (n.limbs[0] & 1) == 0 || (n.count == 1 && n.limbs[0] < 3) {
         return null
     }
@@ -276,7 +276,7 @@ big_modulus :: fn(n: ptr[BigNumber]) -> BigModulus? {
  * @param modulus The modulus.
  * @return base^exponent mod n, not in Montgomery form, below n.
  */
-big_power :: fn(base: ptr[BigNumber], exponent: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+big_power :: fn(base : ptr[BigNumber], exponent : ptr[BigNumber], modulus : ptr[BigModulus]) -> BigNumber {
     k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
     one := BigNumber.{count = k}
     one.limbs[0] = 1
@@ -301,7 +301,7 @@ big_power :: fn(base: ptr[BigNumber], exponent: ptr[BigNumber], modulus: ptr[Big
  * @param modulus The modulus.
  * @return a + b mod n, below n, with the modulus's limbs.
  */
-big_add :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+big_add :: fn(a : ptr[BigNumber], b : ptr[BigNumber], modulus : ptr[BigModulus]) -> BigNumber {
     k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
     sum := BigNumber.{count = k}
     carry : u64 = 0
@@ -322,7 +322,7 @@ big_add :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) ->
  * @param modulus The modulus.
  * @return a - b mod n, below n, with the modulus's limbs.
  */
-big_subtract :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+big_subtract :: fn(a : ptr[BigNumber], b : ptr[BigNumber], modulus : ptr[BigModulus]) -> BigNumber {
     k := modulus.n.count % (BIG_NUMBER_LIMBS + 1)
     difference := BigNumber.{count = k}
     borrow : u64 = 0
@@ -350,7 +350,7 @@ big_subtract :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus
  * @param modulus The modulus.
  * @return a * b mod n, below n.
  */
-big_multiply_plain :: fn(a: ptr[BigNumber], b: ptr[BigNumber], modulus: ptr[BigModulus]) -> BigNumber {
+big_multiply_plain :: fn(a : ptr[BigNumber], b : ptr[BigNumber], modulus : ptr[BigModulus]) -> BigNumber {
     product := big_multiply(a, b, modulus)
     return big_multiply(&product, &modulus.r2, modulus)
 }

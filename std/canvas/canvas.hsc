@@ -13,7 +13,7 @@ MAX_SAVED :: 32
  */
 Image :: struct {
     pixels : mut u8[],
-    width : usize,
+    width  : usize,
     height : usize,
     stride : usize,
 }
@@ -45,11 +45,11 @@ Canvas :: struct {
     damage : Rect,
     raster : Raster,
     /** Scratch: a path flattened, a stroke's outline, dashes, and a row's coverage. */
-    flat : Path,
+    flat    : Path,
     outline : Path,
-    dashes : Path,
-    row : f32[..],
-    glyphs : GlyphCache,
+    dashes  : Path,
+    row     : f32[..],
+    glyphs  : GlyphCache,
 }
 
 /**
@@ -58,12 +58,12 @@ Canvas :: struct {
  * @param target The image drawn into, its pixels the caller's, kept for as long as the canvas is used.
  * @return The canvas, its transform the identity and its clip the whole image; free_canvas gives its scratch back.
  */
-make :: fn(target: Image) -> Canvas {
+make :: fn(target : Image) -> Canvas {
     return Canvas.{target = target, clip = Rect.{x1 = cast[i32](target.width), y1 = cast[i32](target.height)}}
 }
 
 /** Give back a canvas's scratch. */
-free_canvas :: fn(canvas: ptr[mut Canvas]) {
+free_canvas :: fn(canvas : ptr[mut Canvas]) {
     free_raster(&canvas.raster)
     free_path(&canvas.flat)
     free_path(&canvas.outline)
@@ -73,7 +73,7 @@ free_canvas :: fn(canvas: ptr[mut Canvas]) {
 }
 
 /** Save the transform and the clip, for restore. */
-save :: fn(canvas: ptr[mut Canvas]) {
+save :: fn(canvas : ptr[mut Canvas]) {
     if canvas.saved_count < MAX_SAVED {
         canvas.saved[canvas.saved_count] = State.{transform = canvas.transform, clip = canvas.clip}
     }
@@ -81,7 +81,7 @@ save :: fn(canvas: ptr[mut Canvas]) {
 }
 
 /** Put back the transform and the clip as they were at the last save; nothing without one. */
-restore :: fn(canvas: ptr[mut Canvas]) {
+restore :: fn(canvas : ptr[mut Canvas]) {
     if canvas.saved_count == 0 {
         return void
     }
@@ -94,22 +94,22 @@ restore :: fn(canvas: ptr[mut Canvas]) {
 }
 
 /** Move what's drawn next. */
-translate :: fn(canvas: ptr[mut Canvas], x: f32, y: f32) {
+translate :: fn(canvas : ptr[mut Canvas], x : f32, y : f32) {
     canvas.transform = then(translation(x, y), canvas.transform)
 }
 
 /** Scale what's drawn next. */
-scale :: fn(canvas: ptr[mut Canvas], x: f32, y: f32) {
+scale :: fn(canvas : ptr[mut Canvas], x : f32, y : f32) {
     canvas.transform = then(scaling(x, y), canvas.transform)
 }
 
 /** Rotate what's drawn next, by radians. */
-rotate :: fn(canvas: ptr[mut Canvas], radians: f32) {
+rotate :: fn(canvas : ptr[mut Canvas], radians : f32) {
     canvas.transform = then(rotation(radians), canvas.transform)
 }
 
 /** Set the transform outright. */
-set_transform :: fn(canvas: ptr[mut Canvas], transform: Affine) {
+set_transform :: fn(canvas : ptr[mut Canvas], transform : Affine) {
     canvas.transform = transform
 }
 
@@ -117,9 +117,13 @@ set_transform :: fn(canvas: ptr[mut Canvas], transform: Affine) {
  * Narrow the clip to a rectangle, in the path's units: what the transform makes of it, as whole pixels holding it.
  * Under a rotation, the rectangle's bounds.
  */
-clip_rect :: fn(canvas: ptr[mut Canvas], x: f32, y: f32, width: f32, height: f32) {
-    corners :: Point.[apply(canvas.transform, Point.{x = x, y = y}), apply(canvas.transform, Point.{x = x + width, y = y}),
-        apply(canvas.transform, Point.{x = x, y = y + height}), apply(canvas.transform, Point.{x = x + width, y = y + height})]
+clip_rect :: fn(canvas : ptr[mut Canvas], x : f32, y : f32, width : f32, height : f32) {
+    corners :: Point.[
+        apply(canvas.transform, Point.{x = x, y = y}),
+        apply(canvas.transform, Point.{x = x + width, y = y}),
+        apply(canvas.transform, Point.{x = x, y = y + height}),
+        apply(canvas.transform, Point.{x = x + width, y = y + height})
+    ]
     x0 := corners[0].x
     y0 := corners[0].y
     x1 := corners[0].x
@@ -131,8 +135,12 @@ clip_rect :: fn(canvas: ptr[mut Canvas], x: f32, y: f32, width: f32, height: f32
         y1 = intrinsics.maximum(y1, p.y)
     }
     limit :: cast[f32](1 << 24)
-    rect :: Rect.{x0 = cast[i32](intrinsics.round_even(intrinsics.maximum(x0, -limit))), y0 = cast[i32](intrinsics.round_even(intrinsics.maximum(y0, -limit))),
-        x1 = cast[i32](intrinsics.round_even(intrinsics.minimum(x1, limit))), y1 = cast[i32](intrinsics.round_even(intrinsics.minimum(y1, limit)))}
+    rect :: Rect.{
+        x0 = cast[i32](intrinsics.round_even(intrinsics.maximum(x0, -limit))),
+        y0 = cast[i32](intrinsics.round_even(intrinsics.maximum(y0, -limit))),
+        x1 = cast[i32](intrinsics.round_even(intrinsics.minimum(x1, limit))),
+        y1 = cast[i32](intrinsics.round_even(intrinsics.minimum(y1, limit))),
+    }
     canvas.clip = intersect(canvas.clip, rect)
 }
 
@@ -141,7 +149,7 @@ clip_rect :: fn(canvas: ptr[mut Canvas], x: f32, y: f32, width: f32, height: f32
  *
  * @return The damage; empty if nothing's been drawn.
  */
-take_damage :: fn(canvas: ptr[mut Canvas]) -> Rect {
+take_damage :: fn(canvas : ptr[mut Canvas]) -> Rect {
     taken :: canvas.damage
     canvas.damage = Rect.{}
     return taken
@@ -155,7 +163,7 @@ take_damage :: fn(canvas: ptr[mut Canvas]) -> Rect {
  * @param paint What it's filled with.
  * @param rule How its inside is found.
  */
-fill :: fn(canvas: ptr[mut Canvas], path: ptr[Path], paint: Paint, rule: FillRule = .NonZero) {
+fill :: fn(canvas : ptr[mut Canvas], path : ptr[Path], paint : Paint, rule : FillRule = .NonZero) {
     reset(&canvas.flat)
     flatten(path, canvas.transform, &canvas.flat)
     fill_flat(canvas, paint, rule)
@@ -169,7 +177,7 @@ fill :: fn(canvas: ptr[mut Canvas], path: ptr[Path], paint: Paint, rule: FillRul
  * @param paint What it's stroked with.
  * @param stroke Its width, joins, caps and dashes, in the path's units.
  */
-stroke :: fn(canvas: ptr[mut Canvas], path: ptr[Path], paint: Paint, stroke: Stroke) {
+stroke :: fn(canvas : ptr[mut Canvas], path : ptr[Path], paint : Paint, stroke : Stroke) {
     reset(&canvas.flat)
     flatten(path, canvas.transform, &canvas.flat, false)
     reset(&canvas.outline)
@@ -181,7 +189,7 @@ stroke :: fn(canvas: ptr[mut Canvas], path: ptr[Path], paint: Paint, stroke: Str
 }
 
 /** Fill a rectangle, in the path's units. */
-fill_rect :: fn(canvas: ptr[mut Canvas], x: f32, y: f32, width: f32, height: f32, paint: Paint) {
+fill_rect :: fn(canvas : ptr[mut Canvas], x : f32, y : f32, width : f32, height : f32, paint : Paint) {
     reset(&canvas.outline)
     rect(&canvas.outline, x, y, width, height)
     // Through flat directly, so the outline path's free for the fill
@@ -191,7 +199,7 @@ fill_rect :: fn(canvas: ptr[mut Canvas], x: f32, y: f32, width: f32, height: f32
 }
 
 /** Fill the clip with a colour, replacing what's there, not blending. */
-clear :: fn(canvas: ptr[mut Canvas], color: Color) {
+clear :: fn(canvas : ptr[mut Canvas], color : Color) {
     region :: intersect(canvas.clip, image_rect(canvas))
     if is_empty(region) {
         return void
@@ -212,17 +220,17 @@ clear :: fn(canvas: ptr[mut Canvas], color: Color) {
 }
 
 /** The whole image, as a rectangle. */
-image_rect :: fn(canvas: ptr[Canvas]) -> Rect {
+image_rect :: fn(canvas : ptr[Canvas]) -> Rect {
     return Rect.{x1 = cast[i32](canvas.target.width), y1 = cast[i32](canvas.target.height)}
 }
 
 /** A channel from 0 to 1 as a byte, rounded. */
-to_byte :: fn(value: f32) -> u8 {
+to_byte :: fn(value : f32) -> u8 {
     return cast[u8](intrinsics.round_even(clamp_unit(value) * 255))
 }
 
 /** Fill the polylines in flat, in pixels, with a paint. */
-fill_flat :: fn(canvas: ptr[mut Canvas], paint: Paint, rule: FillRule) {
+fill_flat :: fn(canvas : ptr[mut Canvas], paint : Paint, rule : FillRule) {
     region :: intersect(intersect(bounds_of(&canvas.flat), canvas.clip), image_rect(canvas))
     if is_empty(region) {
         return void
@@ -261,21 +269,34 @@ fill_flat :: fn(canvas: ptr[mut Canvas], paint: Paint, rule: FillRule) {
             last = column
         }
         if first < width {
-            touched = union_of(touched, Rect.{x0 = region.x0 + cast[i32](first), y0 = cast[i32](y), x1 = region.x0 + cast[i32](last) + 1, y1 = cast[i32](y) + 1})
+            touched = union_of(
+                touched,
+                Rect.{
+                    x0 = region.x0 + cast[i32](first),
+                    y0 = cast[i32](y),
+                    x1 = region.x0 + cast[i32](last) + 1,
+                    y1 = cast[i32](y) + 1,
+                }
+            )
         }
     }
     canvas.damage = union_of(canvas.damage, touched)
 }
 
 /** Blend a premultiplied colour over a pixel, by a coverage, source over. */
-blend :: fn(canvas: ptr[mut Canvas], x: usize, y: usize, colour: Premultiplied, covered: f32) {
+blend :: fn(canvas : ptr[mut Canvas], x : usize, y : usize, colour : Premultiplied, covered : f32) {
     pixels :: four(canvas.target.pixels, y * canvas.target.stride + 4 * x)
     if pixels.count < 4 {
         return void
     }
     at :: cast[usize](0)
     source :: vector[f32, 4].{colour.b, colour.g, colour.r, colour.a} * intrinsics.splat[vector[f32, 4]](covered)
-    under :: vector[f32, 4].{cast[f32](pixels[at]), cast[f32](pixels[at + 1]), cast[f32](pixels[at + 2]), cast[f32](pixels[at + 3])}
+    under :: vector[f32, 4].{
+        cast[f32](pixels[at]),
+        cast[f32](pixels[at + 1]),
+        cast[f32](pixels[at + 2]),
+        cast[f32](pixels[at + 3])
+    }
     keep :: 1 - colour.a * covered
     result :: source * intrinsics.splat[vector[f32, 4]](255) + under * intrinsics.splat[vector[f32, 4]](keep)
     rounded :: intrinsics.round_even(result)
@@ -286,7 +307,7 @@ blend :: fn(canvas: ptr[mut Canvas], x: usize, y: usize, colour: Premultiplied, 
 }
 
 /** A channel's value, from 0 to 255 after rounding, as a byte. */
-channel :: fn(value: f32) -> u8 {
+channel :: fn(value : f32) -> u8 {
     return if value >= 255 { cast[u8](255) } else if value > 0 { cast[u8](value) } else { cast[u8](0) }
 }
 
@@ -301,7 +322,15 @@ channel :: fn(value: f32) -> u8 {
  * @param height Its height.
  * @param filter How the image is sampled.
  */
-draw_image :: fn(canvas: ptr[mut Canvas], image: Image, x: f32, y: f32, width: f32, height: f32, filter: Filter = .Bilinear) {
+draw_image :: fn(
+    canvas : ptr[mut Canvas],
+    image : Image,
+    x : f32,
+    y : f32,
+    width : f32,
+    height : f32,
+    filter : Filter = .Bilinear
+) {
     if image.width == 0 || image.height == 0 || !(width > 0) || !(height > 0) {
         return void
     }
@@ -348,12 +377,16 @@ draw_image :: fn(canvas: ptr[mut Canvas], image: Image, x: f32, y: f32, width: f
 }
 
 /** An image's pixel nearest a point, clamped to its edges, as premultiplied channels from 0 to 1. */
-texel :: fn(image: Image, u: f32, v: f32) -> Premultiplied {
-    return pixel_at(image, clamp_index(intrinsics.floor(u), image.width), clamp_index(intrinsics.floor(v), image.height))
+texel :: fn(image : Image, u : f32, v : f32) -> Premultiplied {
+    return pixel_at(
+        image,
+        clamp_index(intrinsics.floor(u), image.width),
+        clamp_index(intrinsics.floor(v), image.height)
+    )
 }
 
 /** An image sampled between its four nearest pixels, clamped to its edges. */
-bilinear :: fn(image: Image, u: f32, v: f32) -> Premultiplied {
+bilinear :: fn(image : Image, u : f32, v : f32) -> Premultiplied {
     fu :: intrinsics.floor(u)
     fv :: intrinsics.floor(v)
     tu :: u - fu
@@ -370,12 +403,16 @@ bilinear :: fn(image: Image, u: f32, v: f32) -> Premultiplied {
     w10 :: tu * (1 - tv)
     w01 :: (1 - tu) * tv
     w11 :: tu * tv
-    return Premultiplied.{b = a.b * w00 + b.b * w10 + c.b * w01 + d.b * w11, g = a.g * w00 + b.g * w10 + c.g * w01 + d.g * w11,
-        r = a.r * w00 + b.r * w10 + c.r * w01 + d.r * w11, a = a.a * w00 + b.a * w10 + c.a * w01 + d.a * w11}
+    return Premultiplied.{
+        b = a.b * w00 + b.b * w10 + c.b * w01 + d.b * w11,
+        g = a.g * w00 + b.g * w10 + c.g * w01 + d.g * w11,
+        r = a.r * w00 + b.r * w10 + c.r * w01 + d.r * w11,
+        a = a.a * w00 + b.a * w10 + c.a * w01 + d.a * w11,
+    }
 }
 
 /** A coordinate as an index within a size, clamped to its edges. */
-clamp_index :: fn(value: f32, size: usize) -> usize {
+clamp_index :: fn(value : f32, size : usize) -> usize {
     if !(value > 0) {
         return 0
     }
@@ -384,17 +421,21 @@ clamp_index :: fn(value: f32, size: usize) -> usize {
 }
 
 /** An image's pixel, as premultiplied channels from 0 to 1; transparent past its bytes. */
-pixel_at :: fn(image: Image, x: usize, y: usize) -> Premultiplied {
+pixel_at :: fn(image : Image, x : usize, y : usize) -> Premultiplied {
     pixels :: four(image.pixels, y * image.stride + 4 * x)
     if pixels.count < 4 {
         return Premultiplied.{}
     }
-    return Premultiplied.{b = cast[f32](pixels[0]) / 255, g = cast[f32](pixels[1]) / 255,
-        r = cast[f32](pixels[2]) / 255, a = cast[f32](pixels[3]) / 255}
+    return Premultiplied.{
+        b = cast[f32](pixels[0]) / 255,
+        g = cast[f32](pixels[1]) / 255,
+        r = cast[f32](pixels[2]) / 255,
+        a = cast[f32](pixels[3]) / 255,
+    }
 }
 
 /** A pixel's four bytes, at an offset; none past the end. */
-four :: fn(pixels: mut u8[], at: usize) -> mut u8[] {
+four :: fn(pixels : mut u8[], at : usize) -> mut u8[] {
     if at > pixels.count || pixels.count - at < 4 {
         return pixels[0..<0]
     }
