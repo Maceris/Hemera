@@ -93,6 +93,7 @@ SET(HEADER_FILES
   ${INCLUDE_DIR}/middle_end/build.h
   ${INCLUDE_DIR}/middle_end/code_values.h
   ${INCLUDE_DIR}/parser/ast_types.h
+  ${INCLUDE_DIR}/parser/layout.h
   ${INCLUDE_DIR}/parser/parser.h
   ${INCLUDE_DIR}/parser/printing.h
   ${INCLUDE_DIR}/types/primitives.h
@@ -139,6 +140,7 @@ SET(SOURCE_FILES
   ${SOURCE_DIR}/middle_end/build.cpp
   ${SOURCE_DIR}/middle_end/code_values.cpp
   ${SOURCE_DIR}/parser/ast_types.cpp
+  ${SOURCE_DIR}/parser/layout.cpp
   ${SOURCE_DIR}/parser/parser.cpp
   ${SOURCE_DIR}/parser/printing.cpp
   ${SOURCE_DIR}/util/console.cpp
@@ -155,6 +157,7 @@ SET(TEST_FILES
   ${TEST_DIR}/cmd_line/arg_parsing_test.cpp
   ${TEST_DIR}/front_end/front_end_test.cpp
   ${TEST_DIR}/lexer/lexer_test.cpp
+  ${TEST_DIR}/parser/layout_test.cpp
   ${TEST_DIR}/parser/parser_test.cpp
 )
 
