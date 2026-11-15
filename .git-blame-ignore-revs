@@ -1,0 +1,5 @@
+# Commits that only change layout, for git blame to look past:
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# vendor/vulkan formatted with hemera-format
+958b8ab581d9abb64349cf05e5845ae1bf3959d4
