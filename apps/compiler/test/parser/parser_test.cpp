@@ -426,6 +426,52 @@ TEST(ParserSmoke, DISABLED_PrintSource)
 	std::cout << hemera::ast::source_of(ast, &quotes);
 }
 
+/*
+ * Writes what the printer makes of every file PrintingRoundTrips reads into the folder HEMERA_PRINT_ALL_TO
+ * names, each at its path under the repository root, for comparing one printer's output with another's.
+ * Run with --gtest_also_run_disabled_tests.
+ */
+TEST(ParserSmoke, DISABLED_PrintAll)
+{
+	const char* to = std::getenv("HEMERA_PRINT_ALL_TO");
+	ASSERT_NE(to, nullptr) << "Set HEMERA_PRINT_ALL_TO to a folder";
+	hemera::disable_reporting_printing();
+	StringCacheGuard string_cache;
+
+	std::filesystem::path test_root = std::filesystem::path(__FILE__).remove_filename().append("..");
+	std::filesystem::path root = std::filesystem::canonical(std::filesystem::path(test_root).append("..").append("..").append(".."));
+	std::vector<std::filesystem::path> folders = {
+		std::filesystem::path(root).append("base"),
+		std::filesystem::path(root).append("std"),
+		std::filesystem::path(test_root).append("parser").append("valid_scenarios"),
+		std::filesystem::path(test_root).append("front_end").append("scenarios"),
+		std::filesystem::path(test_root).append("back_end").append("scenarios"),
+	};
+	for (const std::filesystem::path& folder : folders) {
+		for (const auto& file : std::filesystem::recursive_directory_iterator(folder)) {
+			if (!file.is_regular_file() || file.path().extension() != ".hsc") {
+				continue;
+			}
+			const std::filesystem::path file_path = std::filesystem::canonical(file.path());
+			hemera::reset_reporting_storage();
+			Allocator<> alloc;
+			MyVector<Token> tokens;
+			std::ifstream file_stream(file_path, std::ios::binary);
+			hemera::lexer::lex(file_stream, tokens, alloc, file_path.generic_string());
+			Allocator<> node_alloc;
+			hemera::ast::QuoteTable quotes;
+			hemera::ast::Node* ast = hemera::parser::file(file_path.generic_string(), tokens, node_alloc, &quotes);
+			if (ast == nullptr || hemera::error_count() != 0) {
+				continue;
+			}
+			std::filesystem::path out_path = std::filesystem::path(to) / std::filesystem::relative(file_path, root);
+			std::filesystem::create_directories(out_path.parent_path());
+			std::ofstream out(out_path, std::ios::binary);
+			out << hemera::ast::source_of(ast, &quotes);
+		}
+	}
+}
+
 TEST(ParserSmoke, DISABLED_DumpAst)
 {
 	const char* path = std::getenv("HEMERA_DUMP_AST");

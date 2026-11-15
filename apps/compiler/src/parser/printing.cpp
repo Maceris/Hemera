@@ -1,11 +1,14 @@
 #include "parser/printing.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <format>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "parser/layout.h"
 
 namespace hemera::ast {
 
@@ -333,119 +336,180 @@ namespace hemera::ast {
 			}
 		}
 
+		using layout::Doc;
+		using layout::EMPTY;
+
+		// Parts of a layout gathered in order, to concat once
+		struct Parts {
+			layout::Document& d;
+			std::vector<Doc> items;
+
+			explicit Parts(layout::Document& d)
+				: d{ d }
+			{}
+
+			Parts& operator<<(Doc doc) {
+				if (doc != EMPTY) {
+					items.push_back(doc);
+				}
+				return *this;
+			}
+
+			Parts& operator<<(std::string_view text) {
+				return *this << d.text(text);
+			}
+
+			bool empty() const {
+				return items.empty();
+			}
+
+			Doc doc() const {
+				return d.concat(items);
+			}
+		};
+
 		struct Printer {
+			layout::Document& d;
 			const QuoteTable* quote_table = nullptr;
-			size_t depth = 0;
 			/*
 			 * The #code quotes being printed, innermost last, each with what each of its placeholders splices:
 			 * by placeholder, so it doesn't matter in which order the printer reaches them.
 			 */
 			std::vector<std::unordered_map<const Node*, const Node*>> quotes;
 
-			std::string indent() const {
-				return std::string(depth * 4, ' ');
+			explicit Printer(layout::Document& d)
+				: d{ d }
+			{}
+
+			Parts parts() {
+				return Parts(d);
+			}
+
+			Doc text(std::string_view text) {
+				return d.text(text);
+			}
+
+			Doc nl() {
+				return d.hard_line();
+			}
+
+			// Each of docs on a line of its own, one indent deeper: what goes between a { and its }.
+			Doc indented_lines(const std::vector<Doc>& docs) {
+				Parts out = parts();
+				for (const Doc doc : docs) {
+					out << nl() << doc;
+				}
+				return d.indent(out.doc());
 			}
 
 			// ---------------------------------------------------------------------------------
 			// Files and declarations
 
-			std::string file(const Node* node) {
-				std::string out;
+			Doc file(const Node* node) {
+				Parts out = parts();
 				for (const Node* child : node->children) {
 					if (NodeType::PACKAGE == child->node_type) {
-						out += std::format("package {}\n\n", child->children.empty() ? "" : text_of(child->children[0]));
+						out << "package " << (child->children.empty() ? std::string_view() : text_of(child->children[0])) << nl() << nl();
 					}
 					else {
-						out += top_level(child) + "\n";
+						out << top_level(child) << nl();
 					}
 				}
-				return out;
+				return out.doc();
 			}
 
-			std::string top_level(const Node* node) {
+			Doc top_level(const Node* node) {
 				if (NodeType::IMPORT == node->node_type) {
 					return import(node);
 				}
 				if (NodeType::DIRECTIVE == node->node_type) {
 					return top_level_directive(node);
 				}
-				return indent() + statement(node);
+				return statement(node);
 			}
 
-			std::string import(const Node* node) {
-				std::string out = indent() + "import";
+			Doc import(const Node* node) {
+				Parts out = parts();
+				out << "import";
 				for (const Node* child : node->children) {
 					if (NodeType::KEYWORD_AS == child->node_type) {
-						out += " as";
+						out << " as";
 					}
 					else if (NodeType::KEYWORD_FROM == child->node_type) {
-						out += " from";
+						out << " from";
 					}
 					else {
-						out += std::format(" {}", text_of(child));
+						out << " " << text_of(child);
 					}
 				}
-				return out;
+				return out.doc();
 			}
 
 			// #if, #else_if and #else at the top level hold imports and declarations; #run and #assert an expression.
-			std::string top_level_directive(const Node* node) {
+			Doc top_level_directive(const Node* node) {
 				const std::string_view name = text_of(node);
 				if (name == "#if" || name == "#else_if" || name == "#else") {
-					std::string out = indent() + std::string(name);
+					Parts out = parts();
+					out << name;
 					size_t first = 0;
 					if (name != "#else" && !node->children.empty()) {
-						out += " " + expression(node->children[0], ANY);
+						out << " " << expression(node->children[0], ANY);
 						first = 1;
 					}
-					out += " {\n";
-					++depth;
+					std::vector<Doc> lines;
 					for (size_t i = first; i < node->children.size(); ++i) {
-						out += top_level(node->children[i]) + "\n";
+						lines.push_back(top_level(node->children[i]));
 					}
-					--depth;
-					return out + indent() + "}";
+					out << " {" << indented_lines(lines) << nl() << "}";
+					return out.doc();
 				}
-				return indent() + directive(node);
+				return directive(node);
 			}
 
-			std::string names(const Node* node) {
+			Doc names(const Node* node) {
 				if (NodeType::DIRECTIVE == node->node_type) {
 					return directive(node);
 				}
 				if (NodeType::LIST == node->node_type) {
-					std::string out;
+					Parts out = parts();
 					for (size_t i = 0; i < node->children.size(); ++i) {
-						out += (i > 0 ? ", " : "") + names(node->children[i]);
+						if (i > 0) {
+							out << ", ";
+						}
+						out << names(node->children[i]);
 					}
-					return out;
+					return out.doc();
 				}
 				if (NodeType::UNDERSCORE == node->node_type) {
-					return "_";
+					return text("_");
 				}
-				std::string out(text_of(node));
+				Parts out = parts();
+				out << text_of(node);
 				for (const Node* child : node->children) {
 					if (NodeType::DIRECTIVE == child->node_type) {
-						out += " " + directive(child);
+						out << " " << directive(child);
 					}
 				}
-				return out;
+				return out.doc();
 			}
 
 			/*
 			 * A definition: names, the type if one is written, then :: or : for a constant, := or = for a
-			 * variable, and the value. Annotations, which follow everything, go before it.
+			 * variable, and the value. Annotations, which follow everything, go before it, a line each.
 			 */
-			std::string definition(const Node* node) {
-				std::string prefix;
-				std::string out = node->children.empty() ? "" : names(node->children[0]);
+			Doc definition(const Node* node) {
+				Parts prefix = parts();
+				Parts out = parts();
+				if (!node->children.empty()) {
+					out << names(node->children[0]);
+				}
 				bool is_using = false;
 				size_t i = 1;
 				const Node* written_type = nullptr;
 				while (i < node->children.size() && !is_separator(node->children[i])) {
 					const Node* child = node->children[i];
 					if (NodeType::ANNOTATION == child->node_type) {
-						prefix += std::string(text_of(child)) + "\n" + indent();
+						prefix << text_of(child) << nl();
 					}
 					else if (NodeType::USING == child->node_type) {
 						is_using = true;
@@ -456,33 +520,33 @@ namespace hemera::ast {
 					++i;
 				}
 				if (written_type != nullptr) {
-					out += " : " + type(written_type, false);
+					out << " : " << type(written_type, false);
 				}
 				if (i < node->children.size()) {
 					const bool constant = NodeType::COLON == node->children[i]->node_type;
 					if (written_type != nullptr) {
-						out += constant ? " : " : " = ";
+						out << (constant ? " : " : " = ");
 					}
 					else {
-						out += constant ? " :: " : " := ";
+						out << (constant ? " :: " : " := ");
 					}
 					++i;
-					out += value(node, i, prefix, is_using);
+					out << value(node, i, prefix, is_using);
 				}
 				else if (written_type == nullptr) {
-					out += " :";
+					out << " :";
 				}
-				return prefix + (is_using ? "using " : "") + out;
+				return d.concat({ prefix.doc(), is_using ? text("using ") : EMPTY, out.doc() });
 			}
 
 			// What a definition's separator is followed by, from children[i] on.
-			std::string value(const Node* node, size_t i, std::string& prefix, bool& is_using) {
-				std::string out;
+			Doc value(const Node* node, size_t i, Parts& prefix, bool& is_using) {
+				Parts out = parts();
 				bool first = true;
 				for (; i < node->children.size(); ++i) {
 					const Node* child = node->children[i];
 					if (child->node_type == NodeType::ANNOTATION) {
-						prefix += std::string(text_of(child)) + "\n" + indent();
+						prefix << text_of(child) << nl();
 						continue;
 					}
 					else if (child->node_type == NodeType::USING) {
@@ -490,156 +554,163 @@ namespace hemera::ast {
 						continue;
 					}
 					else if (child->node_type == NodeType::FUNCTION) {
-						out += signature(child);
+						out << signature(child);
 					}
 					else if (child->node_type == NodeType::BLOCK) {
-						out += " " + block(child);
+						out << " " << block(child);
 					}
 					else if (child->node_type == NodeType::STRUCT) {
-						out += struct_declaration(child);
+						out << struct_declaration(child);
 					}
 					else if (child->node_type == NodeType::UNION) {
-						out += union_declaration(child);
+						out << union_declaration(child);
 					}
 					else if (child->node_type == NodeType::ENUM) {
-						out += enum_declaration(child);
+						out << enum_declaration(child);
 					}
 					else if (child->node_type == NodeType::UNINITIALIZED) {
-						out += "---";
+						out << "---";
 					}
 					else if (child->node_type == NodeType::KEYWORD_DISTINCT || child->node_type == NodeType::KEYWORD_ALIAS) {
-						out += alias(node, i);
+						out << alias(node, i);
 					}
 					else {
-						out += (first ? "" : " ") + expression(child, ANY);
+						out << (first ? "" : " ") << expression(child, ANY);
 					}
 					first = false;
 				}
-				return out;
+				return out.doc();
 			}
 
 			/*
 			 * distinct alias[V] T #directives where C: the generic list and where clause are on the first
 			 * word, the directives on alias, and the type after. i moves past what it prints.
 			 */
-			std::string alias(const Node* node, size_t& i) {
+			Doc alias(const Node* node, size_t& i) {
 				const Node* first = node->children[i];
 				const Node* alias_word = first;
-				std::string out;
+				Parts out = parts();
 				if (NodeType::KEYWORD_DISTINCT == first->node_type) {
-					out += "distinct ";
+					out << "distinct ";
 					if (i + 1 < node->children.size()) {
 						alias_word = node->children[++i];
 					}
 				}
-				out += "alias";
+				out << "alias";
 				for (const Node* child : first->children) {
 					if (NodeType::GENERIC_TAG == child->node_type) {
-						out += generic_list(child);
+						out << generic_list(child);
 					}
 				}
 				if (i + 1 < node->children.size()) {
-					out += " " + type(node->children[++i], false);
+					out << " " << type(node->children[++i], false);
 				}
 				for (const Node* child : alias_word->children) {
 					if (NodeType::DIRECTIVE == child->node_type) {
-						out += " " + directive(child);
+						out << " " << directive(child);
 					}
 				}
 				for (const Node* child : first->children) {
 					if (NodeType::WHERE_CLAUSE == child->node_type) {
-						out += where_clause(child);
+						out << where_clause(child);
 					}
 				}
-				return out;
+				return out.doc();
 			}
 
-			std::string where_clause(const Node* node) {
-				return node->children.empty() ? std::string(" where") : " where " + expression(node->children[0], ANY);
+			Doc where_clause(const Node* node) {
+				if (node->children.empty()) {
+					return text(" where");
+				}
+				return d.concat({ text(" where "), expression(node->children[0], ANY) });
 			}
 
 			// keyword is struct, or fields for a quote of a struct's fields
-			std::string struct_declaration(const Node* node, std::string_view keyword = "struct") {
-				std::string out(keyword);
-				std::string members;
-				++depth;
+			Doc struct_declaration(const Node* node, std::string_view keyword = "struct") {
+				Parts out = parts();
+				out << keyword;
+				std::vector<Doc> members;
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::GENERIC_TAG) {
-						out += generic_list(child);
+						out << generic_list(child);
 					}
 					else if (is_insert(child)) {
-						members += indent() + directive(child) + ",\n";
+						members.push_back(d.concat({ directive(child), text(",") }));
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
-						out += " " + directive(child);
+						out << " " << directive(child);
 					}
 					else if (child->node_type == NodeType::WHERE_CLAUSE) {
-						out += where_clause(child);
+						out << where_clause(child);
 					}
 					else if (child->node_type == NodeType::USING) {
-						members += indent() + "using " + qualified(child, 0) + ",\n";
+						members.push_back(d.concat({ text("using "), qualified(child, 0), text(",") }));
 					}
 					else {
-						members += indent() + definition(child) + ",\n";
+						members.push_back(d.concat({ definition(child), text(",") }));
 					}
 				}
-				--depth;
-				return out + " {\n" + members + indent() + "}";
+				out << " {" << indented_lines(members) << nl() << "}";
+				return out.doc();
 			}
 
 			// keyword is union, or variants for a quote of a union's variants
-			std::string union_declaration(const Node* node, std::string_view keyword = "union") {
-				std::string out(keyword);
-				std::string variants;
-				++depth;
+			Doc union_declaration(const Node* node, std::string_view keyword = "union") {
+				Parts out = parts();
+				out << keyword;
+				std::vector<Doc> variants;
 				for (size_t i = 0; i < node->children.size(); ++i) {
 					const Node* child = node->children[i];
 					if (NodeType::GENERIC_TAG == child->node_type) {
-						out += generic_list(child);
+						out << generic_list(child);
 					}
 					else if (is_insert(child)) {
-						variants += indent() + directive(child) + ",\n";
+						variants.push_back(d.concat({ directive(child), text(",") }));
 					}
 					else if (NodeType::WHERE_CLAUSE == child->node_type) {
-						out += where_clause(child);
+						out << where_clause(child);
 					}
 					else if (NodeType::IDENTIFIER == child->node_type) {
-						variants += indent() + std::string(text_of(child));
+						Parts variant = parts();
+						variant << text_of(child);
 						if (i + 1 < node->children.size() && NodeType::PAREN_GROUP == node->children[i + 1]->node_type) {
 							// A payload's function types are written without parentheses, which a union's payload doesn't take
-							variants += "(" + list(node->children[++i]->children, [&](const Node* t) { return type(t, false); }) + ")";
+							variant << "(" << list(node->children[++i]->children, [&](const Node* t) { return type(t, false); }) << ")";
 						}
-						variants += ",\n";
+						variant << ",";
+						variants.push_back(variant.doc());
 					}
 				}
-				--depth;
-				return out + " {\n" + variants + indent() + "}";
+				out << " {" << indented_lines(variants) << nl() << "}";
+				return out.doc();
 			}
 
 			// keyword is enum, or members for a quote of an enum's members
-			std::string enum_declaration(const Node* node, std::string_view keyword = "enum") {
-				std::string out(keyword);
-				std::string members;
-				++depth;
+			Doc enum_declaration(const Node* node, std::string_view keyword = "enum") {
+				Parts out = parts();
+				out << keyword;
+				std::vector<Doc> members;
 				for (const Node* child : node->children) {
 					if (is_insert(child)) {
-						members += indent() + directive(child) + ",\n";
+						members.push_back(d.concat({ directive(child), text(",") }));
 						continue;
 					}
 					if (NodeType::DIRECTIVE == child->node_type) {
-						out += " " + directive(child);
+						out << " " << directive(child);
 						continue;
 					}
-					members += indent() + std::string(text_of(child));
+					Parts member = parts();
+					member << text_of(child);
 					for (const Node* assign : child->children) {
 						if (!assign->children.empty()) {
-							members += " = " + expression(assign->children[0], ANY);
+							member << " = " << expression(assign->children[0], ANY);
 						}
 					}
-					members += ",\n";
+					member << ",";
+					members.push_back(member.doc());
 				}
-				--depth;
-				return out + " {\n" + members + indent() + "}";
+				out << " {" << indented_lines(members) << nl() << "}";
+				return out.doc();
 			}
 
 			// ---------------------------------------------------------------------------------
@@ -649,9 +720,9 @@ namespace hemera::ast {
 			 * A type where one goes. Function types are written in parentheses where they're a part of
 			 * something else, which needs them in parameter and result lists, and lets a ? follow.
 			 */
-			std::string type(const Node* node, bool part) {
+			Doc type(const Node* node, bool part) {
 				if (node->node_type == NodeType::VOID) {
-					return "void";
+					return text("void");
 				}
 				else if (node->node_type == NodeType::FUNCTION) {
 					bool optional = false;
@@ -659,7 +730,7 @@ namespace hemera::ast {
 						optional = optional || is_question(child);
 					}
 					if (part || optional) {
-						return "(" + signature(node) + ")" + (optional ? "?" : "");
+						return d.concat({ text("("), signature(node), text(")"), optional ? text("?") : EMPTY });
 					}
 					return signature(node);
 				}
@@ -668,17 +739,18 @@ namespace hemera::ast {
 				}
 				// (T), with mut before it if it's the pointer's, and ? after it
 				else if (node->node_type == NodeType::PAREN_GROUP && !node->children.empty()) {
-					std::string before;
-					std::string after;
+					bool is_mutable = false;
+					bool optional = false;
 					for (size_t i = 1; i < node->children.size(); ++i) {
 						if (node->children[i]->node_type == NodeType::MUTABLE) {
-							before = "mut ";
+							is_mutable = true;
 						}
 						else if (is_question(node->children[i])) {
-							after = "?";
+							optional = true;
 						}
 					}
-					return before + "(" + type(node->children[0], false) + ")" + after;
+					return d.concat({ is_mutable ? text("mut ") : EMPTY, text("("), type(node->children[0], false), text(")"),
+						optional ? text("?") : EMPTY });
 				}
 				// An anonymous struct member's, like _ : struct #packed { ... }
 				else if (node->node_type == NodeType::STRUCT) {
@@ -690,229 +762,232 @@ namespace hemera::ast {
 			}
 
 			// mut, a name maybe qualified by package, generic arguments, dimensions, ?, and a result's directives.
-			std::string simple_type(const Node* node) {
-				std::string out;
-				std::string after;
+			Doc simple_type(const Node* node) {
+				Parts out = parts();
+				Parts after = parts();
 				bool mutable_type = false;
-				out += text_of(node);
+				out << text_of(node);
 				for (size_t i = 0; i < node->children.size(); ++i) {
 					const Node* child = node->children[i];
 					if (child->node_type == NodeType::MUTABLE) {
 						mutable_type = true;
 					}
 					else if (child->node_type == NodeType::DOT_ACCESS) {
-						out += ".";
+						out << ".";
 					}
 					else if (child->node_type == NodeType::IDENTIFIER) {
-						out += text_of(child);
+						out << text_of(child);
 					}
 					else if (child->node_type == NodeType::GENERIC_TAG) {
-						out += generic_list(child);
+						out << generic_list(child);
 					}
 					else if (child->node_type == NodeType::ARRAY_DIMENSION) {
-						out += dimension(child);
+						out << dimension(child);
 					}
 					else if (child->node_type == NodeType::UNARY_OPERATOR) {
-						out += "?";
+						out << "?";
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
-						after += " " + directive(child);
+						after << " " << directive(child);
 					}
 				}
-				return (mutable_type ? "mut " : "") + out + after;
+				return d.concat({ mutable_type ? text("mut ") : EMPTY, out.doc(), after.doc() });
 			}
 
-			std::string dimension(const Node* node) {
+			Doc dimension(const Node* node) {
 				if (node->children.empty()) {
-					return "[]";
+					return text("[]");
 				}
 				if (node->children.size() == 1) {
 					const Node* child = node->children[0];
 					if (NodeType::RANGE_ARRAY == child->node_type) {
-						return "[..]";
+						return text("[..]");
 					}
-					return "[" + expression(child, ANY) + "]";
+					return d.concat({ text("["), expression(child, ANY), text("]") });
 				}
-				return "[" + qualified(node, 0) + "]";
+				return d.concat({ text("["), qualified(node, 0), text("]") });
 			}
 
 			// A name and its package qualifiers, from children[first] on: net.MTU, compiler.TypeInfo.
-			std::string qualified(const Node* node, size_t first) {
-				std::string out;
+			Doc qualified(const Node* node, size_t first) {
+				Parts out = parts();
 				for (size_t i = first; i < node->children.size(); ++i) {
 					const Node* child = node->children[i];
-					out += NodeType::DOT_ACCESS == child->node_type ? std::string(".") : std::string(text_of(child));
+					out << (NodeType::DOT_ACCESS == child->node_type ? std::string_view(".") : text_of(child));
 				}
-				return out;
+				return out.doc();
 			}
 
-			std::string generic_list(const Node* node) {
-				return "[" + list(node->children, [&](const Node* item) { return generic_item(item); }) + "]";
+			Doc generic_list(const Node* node) {
+				return d.concat({ text("["), list(node->children, [&](const Node* item) { return generic_item(item); }), text("]") });
 			}
 
-			std::string generic_item(const Node* node) {
+			Doc generic_item(const Node* node) {
 				if (NodeType::COLON == node->node_type && node->children.size() == 2) {
-					return std::format("{}: {}", text_of(node->children[0]), type(node->children[1], true));
+					return d.concat({ text(text_of(node->children[0])), text(": "), type(node->children[1], true) });
 				}
 				if (NodeType::DERIVED_PARAMETER == node->node_type) {
-					return std::format("{} = {}", text_of(node), node->children.empty() ? "" : expression(node->children[0], ANY));
+					return d.concat({ text(text_of(node)), text(" = "),
+						node->children.empty() ? EMPTY : expression(node->children[0], ANY) });
 				}
 				return is_type_node(node) ? type(node, true) : expression(node, ANY);
 			}
 
 			// fn[generics](parameters) -> results #directives where constraints
-			std::string signature(const Node* node) {
-				std::string out = "fn";
+			Doc signature(const Node* node) {
+				Parts generics = parts();
+				Parts out = parts();
 				bool seen_parameters = false;
-				std::string after;
+				Parts after = parts();
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::GENERIC_TAG) {
-						out += generic_list(child);
+						(seen_parameters ? out : generics) << generic_list(child);
 					}
 					else if (child->node_type == NodeType::LIST) {
 						if (!seen_parameters) {
 							seen_parameters = true;
-							out += "(" + list(child->children, [&](const Node* p) { return parameter(p); }) + ")";
+							out << "(" << list(child->children, [&](const Node* p) { return parameter(p); }) << ")";
 						}
 						else {
-							out += " -> (" + results(child) + ")";
+							out << " -> (" << results(child) << ")";
 						}
 					}
 					else if (child->node_type == NodeType::VOID) {
-						out += " -> void";
+						out << " -> void";
 					}
 					else if (child->node_type == NodeType::TYPE) {
-						out += " -> " + simple_type(child);
+						out << " -> " << simple_type(child);
 					}
 					else if (child->node_type == NodeType::FUNCTION) {
-						out += " -> " + type(child, true);
+						out << " -> " << type(child, true);
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
 						// A result type an #insert puts there, or the function's directives
-						out += (text_of(child) == "#insert" ? " -> " : " ") + directive(child);
+						out << (text_of(child) == "#insert" ? " -> " : " ") << directive(child);
 					}
 					else if (child->node_type == NodeType::WHERE_CLAUSE) {
-						after += where_clause(child);
+						after << where_clause(child);
 					}
 				}
-				if (!seen_parameters) {
-					out.insert(out.find("fn") + 2, "()");
-				}
-				return out + after;
+				// No parameter list is written as (), right after fn
+				return d.concat({ text("fn"), seen_parameters ? EMPTY : text("()"), generics.doc(), out.doc(), after.doc() });
 			}
 
 			/*
 			 * A parameter: names and a type (name, name2 #escaping : T...), or a type alone in a function
 			 * type, with = default.
 			 */
-			std::string parameter(const Node* node) {
+			Doc parameter(const Node* node) {
 				if (NodeType::BINARY_OPERATOR == node->node_type && is_token(node, TokenType::OPERATOR_ASSIGN)
 					&& !node->children.empty()) {
 					const Node* names_and_type = node->children[0];
-					const std::string value = node->children.size() > 1 ? expression(node->children[1], ANY) : "";
+					const Doc value = node->children.size() > 1 ? expression(node->children[1], ANY) : EMPTY;
 					const bool deduced = NodeType::COLON == names_and_type->node_type && names_and_type->children.size() == 1;
 					if (deduced) {
-						return names(names_and_type->children[0]) + " := " + value;
+						return d.concat({ names(names_and_type->children[0]), text(" := "), value });
 					}
-					return parameter(names_and_type) + " = " + value;
+					return d.concat({ parameter(names_and_type), text(" = "), value });
 				}
 				if (NodeType::COLON != node->node_type) {
-					return type(node, true) + varargs(node);
+					return d.concat({ type(node, true), varargs(node) });
 				}
-				std::string out;
-				std::string type_text;
+				Doc out = EMPTY;
+				bool named = false;
+				Doc type_text = EMPTY;
 				bool is_varargs = false;
 				for (const Node* part : node->children) {
 					if (NodeType::ELLIIPSIS == part->node_type) {
 						is_varargs = true;
 					}
-					else if (out.empty() && (NodeType::IDENTIFIER == part->node_type || NodeType::LIST == part->node_type)) {
+					else if (!named && (NodeType::IDENTIFIER == part->node_type || NodeType::LIST == part->node_type)) {
 						out = names(part);
+						named = true;
 					}
 					else {
-						type_text = type(part, true) + varargs(part);
+						type_text = d.concat({ type(part, true), varargs(part) });
 					}
 				}
-				return out + ": " + type_text + (is_varargs ? "..." : "");
+				return d.concat({ out, text(": "), type_text, is_varargs ? text("...") : EMPTY });
 			}
 
-			std::string varargs(const Node* node) {
+			Doc varargs(const Node* node) {
 				for (const Node* child : node->children) {
 					if (NodeType::ELLIIPSIS == child->node_type) {
-						return "...";
+						return text("...");
 					}
 				}
-				return "";
+				return EMPTY;
 			}
 
 			// Several results: types, or names sharing the type after a COLON, like a: u16, b, c: f32.
-			std::string results(const Node* node) {
-				std::string out;
+			Doc results(const Node* node) {
+				Parts out = parts();
 				for (size_t i = 0; i < node->children.size(); ++i) {
 					const Node* part = node->children[i];
 					if (NodeType::COLON == part->node_type) {
-						out += ": ";
+						out << ": ";
 						continue;
 					}
 					if (i > 0 && NodeType::COLON != node->children[i - 1]->node_type) {
-						out += ", ";
+						out << ", ";
 					}
-					out += type(part, true);
+					out << type(part, true);
 				}
-				return out;
+				return out.doc();
 			}
 
 			// ---------------------------------------------------------------------------------
 			// Statements
 
-			std::string block(const Node* node) {
+			Doc block(const Node* node) {
 				if (node->children.empty()) {
-					return "{}";
+					return text("{}");
 				}
-				++depth;
-				std::string out = "{\n";
+				std::vector<Doc> lines;
 				for (const Node* child : node->children) {
-					out += indent() + statement(child) + "\n";
+					lines.push_back(statement(child));
 				}
-				--depth;
-				return out + indent() + "}";
+				return d.concat({ text("{"), indented_lines(lines), nl(), text("}") });
 			}
 
-			std::string statements(const Node* node) {
-				std::string out;
+			// A block's statements without its braces, each on a line of its own after a line break.
+			Doc statement_lines(const Node* node) {
+				std::vector<Doc> lines;
 				for (const Node* child : node->children) {
-					out += indent() + statement(child) + "\n";
+					lines.push_back(statement(child));
 				}
-				return out;
+				return indented_lines(lines);
 			}
 
-			std::string statement(const Node* node) {
+			Doc statement(const Node* node) {
 				if (node->node_type == NodeType::DEFINITION) {
 					return definition(node);
 				}
 				else if (node->node_type == NodeType::RETURN) {
-					std::string out = "return";
+					Parts out = parts();
+					out << "return";
 					for (size_t i = 0; i < node->children.size(); ++i) {
 						const Node* child = node->children[i];
-						out += (i > 0 ? ", " : " ") + (NodeType::VOID == child->node_type ? std::string("void") : expression(child, ANY));
+						out << (i > 0 ? ", " : " ") << (NodeType::VOID == child->node_type ? text("void") : expression(child, ANY));
 					}
-					return out;
+					return out.doc();
 				}
 				else if (node->node_type == NodeType::DEFER) {
-					return "defer " + (node->children.empty() ? std::string() : statement(node->children[0]));
+					return d.concat({ text("defer "), node->children.empty() ? EMPTY : statement(node->children[0]) });
 				}
 				else if (node->node_type == NodeType::GIVE) {
-					return "give " + (node->children.empty() ? std::string() : expression(node->children[0], ANY));
+					return d.concat({ text("give "), node->children.empty() ? EMPTY : expression(node->children[0], ANY) });
 				}
 				else if (node->node_type == NodeType::BREAK) {
-					std::string out = "break";
+					Parts out = parts();
+					out << "break";
 					for (const Node* child : node->children) {
-						out += NodeType::KEYWORD_ALL == child->node_type ? std::string(" all") : " " + std::string(text_of(child));
+						out << " " << (NodeType::KEYWORD_ALL == child->node_type ? std::string_view("all") : text_of(child));
 					}
-					return out;
+					return out.doc();
 				}
 				else if (node->node_type == NodeType::CONTINUE) {
-					return "continue";
+					return text("continue");
 				}
 				else if (node->node_type == NodeType::DIRECTIVE) {
 					return statement_directive(node);
@@ -930,7 +1005,7 @@ namespace hemera::ast {
 					return switch_statement(node);
 				}
 				else if (node->node_type == NodeType::USING) {
-					return "using " + qualified(node, 0);
+					return d.concat({ text("using "), qualified(node, 0) });
 				}
 				else {
 					return expression(node, ANY);
@@ -938,234 +1013,250 @@ namespace hemera::ast {
 			}
 
 			// #if, #else_if and #else in a body hold a block; the rest are directives in an expression.
-			std::string statement_directive(const Node* node) {
+			Doc statement_directive(const Node* node) {
 				const std::string_view name = text_of(node);
 				if (name == "#if" || name == "#else_if" || name == "#else") {
-					std::string out(name);
+					Parts out = parts();
+					out << name;
 					for (const Node* child : node->children) {
-						out += " " + (NodeType::BLOCK == child->node_type ? block(child) : expression(child, ANY));
+						out << " " << (NodeType::BLOCK == child->node_type ? block(child) : expression(child, ANY));
 					}
-					return out;
+					return out.doc();
 				}
 				return directive(node);
 			}
 
 			// for &value, index in iterable #directives { body }: the names, IN, the iterable, directives, the block.
-			std::string for_loop(const Node* node) {
-				std::string out = "for ";
+			Doc for_loop(const Node* node) {
+				Parts out = parts();
+				out << "for ";
 				size_t i = 0;
 				bool first_name = true;
 				for (; i < node->children.size() && NodeType::IN != node->children[i]->node_type; ++i) {
 					const Node* name = node->children[i];
-					out += first_name ? "" : ", ";
+					out << (first_name ? "" : ", ");
 					first_name = false;
 					if (NodeType::UNARY_OPERATOR == name->node_type) {
-						out += "&" + std::string(name->children.empty() ? "" : text_of(name->children[0]));
+						out << "&" << (name->children.empty() ? std::string_view() : text_of(name->children[0]));
 					}
 					else {
-						out += text_of(name);
+						out << text_of(name);
 					}
 				}
-				out += " in ";
+				out << " in ";
 				++i;
 				if (i < node->children.size()) {
-					out += expression(node->children[i], ANY);
+					out << expression(node->children[i], ANY);
 					++i;
 				}
 				for (; i < node->children.size(); ++i) {
 					const Node* child = node->children[i];
-					out += " " + (NodeType::BLOCK == child->node_type ? block(child) : directive(child));
+					out << " " << (NodeType::BLOCK == child->node_type ? block(child) : directive(child));
 				}
-				return out;
+				return out.doc();
 			}
 
 			// with { definitions } loop #directive { body } while condition
-			std::string loop(const Node* node) {
-				std::string out;
-				std::string after;
-				std::string loop_directive;
-				std::string body;
+			Doc loop(const Node* node) {
+				Parts out = parts();
+				Doc after = EMPTY;
+				Doc loop_directive = EMPTY;
+				Doc body = EMPTY;
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::WITH_CLAUSE) {
-						out += "with {\n";
-						++depth;
+						std::vector<Doc> lines;
 						for (const Node* definitions : child->children) {
 							for (const Node* definition_node : definitions->children) {
-								out += indent() + definition(definition_node) + "\n";
+								lines.push_back(definition(definition_node));
 							}
 						}
-						--depth;
-						out += indent() + "}\n" + indent();
+						out << "with {" << indented_lines(lines) << nl() << "}" << nl();
 					}
 					else if (child->node_type == NodeType::DIRECTIVE) {
-						loop_directive = " " + directive(child);
+						loop_directive = d.concat({ text(" "), directive(child) });
 					}
 					else if (child->node_type == NodeType::BLOCK) {
-						body = " " + block(child);
+						body = d.concat({ text(" "), block(child) });
 					}
 					else if (child->node_type == NodeType::WHILE_CLAUSE) {
-						after = "\n" + indent() + "while " + (child->children.empty() ? std::string() : expression(child->children[0], ANY));
+						after = d.concat({ nl(), text("while "), child->children.empty() ? EMPTY : expression(child->children[0], ANY) });
 					}
 				}
-				return out + "loop" + loop_directive + body + after;
+				out << "loop" << loop_directive << body << after;
+				return out.doc();
 			}
 
-			std::string push_context(const Node* node) {
-				std::string out = "push_context";
+			Doc push_context(const Node* node) {
+				Parts out = parts();
+				out << "push_context";
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::IDENTIFIER) {
-						out += " " + std::string(text_of(child));
+						out << " " << text_of(child);
 					}
 					else if (child->node_type == NodeType::KEYWORD_FROM) {
-						out += " from " + (child->children.empty() ? std::string() : expression(child->children[0], ANY));
+						out << " from " << (child->children.empty() ? EMPTY : expression(child->children[0], ANY));
 					}
 					else if (child->node_type == NodeType::LIST) {
-						out += " (" + list(child->children, [&](const Node* assign) { return field_value(assign); }) + ")";
+						out << " (" << list(child->children, [&](const Node* assign) { return field_value(assign); }) << ")";
 					}
 					else if (child->node_type == NodeType::BLOCK) {
-						out += " " + block(child);
+						out << " " << block(child);
 					}
 				}
-				return out;
+				return out.doc();
 			}
 
-			std::string field_value(const Node* assign) {
+			Doc field_value(const Node* assign) {
 				if (NodeType::BINARY_OPERATOR == assign->node_type && is_token(assign, TokenType::OPERATOR_ASSIGN)
 					&& assign->children.size() == 2) {
-					return std::format("{} = {}", text_of(assign->children[0]), argument(assign->children[1]));
+					return d.concat({ text(text_of(assign->children[0])), text(" = "), argument(assign->children[1]) });
 				}
 				return expression(assign, ANY);
 			}
 
-			std::string switch_statement(const Node* node) {
-				return "switch " + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + " "
-					+ (node->children.size() > 1 ? switch_cases(node->children[1]) : std::string("{\n") + indent() + "}");
+			Doc switch_statement(const Node* node) {
+				return d.concat({
+					text("switch "),
+					node->children.empty() ? EMPTY : expression(node->children[0], ANY),
+					text(" "),
+					node->children.size() > 1 ? switch_cases(node->children[1]) : d.concat({ text("{"), nl(), text("}") }),
+				});
 			}
 
-			// A switch's cases, in braces.
-			std::string switch_cases(const Node* cases) {
-				std::string out = "{\n";
-				{
-					for (const Node* item : cases->children) {
-						if (NodeType::DIRECTIVE == item->node_type) {
-							++depth;
-							out += indent() + directive(item) + "\n";
-							--depth;
-							continue;
+			// A switch's cases, in braces, each at the switch's indent and its statements one deeper.
+			Doc switch_cases(const Node* cases) {
+				Parts out = parts();
+				out << "{";
+				for (const Node* item : cases->children) {
+					if (NodeType::DIRECTIVE == item->node_type) {
+						out << indented_lines({ directive(item) });
+						continue;
+					}
+					Parts entries = parts();
+					const Node* body = nullptr;
+					for (const Node* part : item->children) {
+						if (NodeType::BLOCK == part->node_type) {
+							body = part;
 						}
-						std::string entries;
-						const Node* body = nullptr;
-						for (const Node* part : item->children) {
-							if (NodeType::BLOCK == part->node_type) {
-								body = part;
-							}
-							else {
-								entries += (entries.empty() ? "" : ", ") + case_entry(part);
-							}
-						}
-						out += indent() + "case " + entries + ":\n";
-						if (body != nullptr) {
-							++depth;
-							out += statements(body);
-							--depth;
+						else {
+							entries << (entries.empty() ? "" : ", ") << case_entry(part);
 						}
 					}
+					out << nl() << "case " << entries.doc() << ":";
+					if (body != nullptr) {
+						out << statement_lines(body);
+					}
 				}
-				return out + indent() + "}";
+				out << nl() << "}";
+				return out.doc();
 			}
 
 			// A case's or arm's entry: a literal, a range, Enum.Member, .Member, _, or a pattern like Some(x).
-			std::string case_entry(const Node* node) {
+			Doc case_entry(const Node* node) {
 				if (node->node_type == NodeType::BINARY_OPERATOR) {
-					return node->children.size() == 2
-						? std::format("{}{}{}", text_of(node->children[0]), operator_text(node->value.type), text_of(node->children[1]))
-						: std::string();
+					if (node->children.size() != 2) {
+						return EMPTY;
+					}
+					return d.concat({ text(text_of(node->children[0])), text(operator_text(node->value.type)), text(text_of(node->children[1])) });
 				}
 				else if (node->node_type == NodeType::DOT_ACCESS) {
-					return node->children.size() == 2 ? std::format("{}.{}", text_of(node->children[0]), text_of(node->children[1])) : std::string();
+					if (node->children.size() != 2) {
+						return EMPTY;
+					}
+					return d.concat({ text(text_of(node->children[0])), text("."), text(text_of(node->children[1])) });
 				}
 				else if (node->node_type == NodeType::UNDERSCORE) {
-					return "_";
+					return text("_");
 				}
 				else if (node->node_type == NodeType::IDENTIFIER) {
-					std::string out(text_of(node));
+					Parts out = parts();
+					out << text_of(node);
 					for (const Node* child : node->children) {
 						if (NodeType::PAREN_GROUP == child->node_type) {
-							out += "(" + list(child->children, [&](const Node* p) { return case_entry(p); }) + ")";
+							out << "(" << list(child->children, [&](const Node* p) { return case_entry(p); }) << ")";
 						}
 					}
-					return out;
+					return out.doc();
 				}
 				else {
 					return expression(node, ANY);
 				}
 			}
 
-			std::string match(const Node* node) {
-				return "match " + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + " "
-					+ (node->children.size() > 1 ? match_arms(node->children[1]) : std::string("{\n") + indent() + "}");
+			Doc match(const Node* node) {
+				return d.concat({
+					text("match "),
+					node->children.empty() ? EMPTY : expression(node->children[0], ANY),
+					text(" "),
+					node->children.size() > 1 ? match_arms(node->children[1]) : d.concat({ text("{"), nl(), text("}") }),
+				});
 			}
 
 			// A match's patterns, each with what it runs, in braces.
-			std::string match_arms(const Node* arms) {
-				std::string out = "{\n";
-				++depth;
-				{
-					for (const Node* arm : arms->children) {
-						if (is_insert(arm)) {
-							out += indent() + directive(arm) + "\n";
-							continue;
-						}
-						std::string entries;
-						for (size_t i = 0; i + 1 < arm->children.size(); ++i) {
-							entries += (i > 0 ? ", " : "") + case_entry(arm->children[i]);
-						}
-						out += indent() + "case " + entries + " => " + (arm->children.empty() ? std::string() : statement(arm->children.back())) + "\n";
+			Doc match_arms(const Node* arms) {
+				std::vector<Doc> lines;
+				for (const Node* arm : arms->children) {
+					if (is_insert(arm)) {
+						lines.push_back(directive(arm));
+						continue;
 					}
+					Parts line = parts();
+					line << "case ";
+					for (size_t i = 0; i + 1 < arm->children.size(); ++i) {
+						line << (i > 0 ? ", " : "") << case_entry(arm->children[i]);
+					}
+					line << " => " << (arm->children.empty() ? EMPTY : statement(arm->children.back()));
+					lines.push_back(line.doc());
 				}
-				--depth;
-				return out + indent() + "}";
+				return d.concat({ text("{"), indented_lines(lines), nl(), text("}") });
 			}
 
 			// ---------------------------------------------------------------------------------
 			// Expressions
 
 			template <typename F>
-			std::string list(const MyVector<Node*>& items, F each) {
-				std::string out;
+			Doc list(const MyVector<Node*>& items, F each) {
+				Parts out = parts();
 				for (size_t i = 0; i < items.size(); ++i) {
-					out += (i > 0 ? ", " : "") + each(items[i]);
+					if (i > 0) {
+						out << ", ";
+					}
+					out << each(items[i]);
 				}
-				return out;
+				return out.doc();
 			}
 
-			std::string expression(const Node* node, int needed) {
+			Doc parenthesized(Doc inside) {
+				return d.concat({ text("("), inside, text(")") });
+			}
+
+			Doc expression(const Node* node, int needed) {
 				if (level_of(node) < needed) {
-					return "(" + expression(node, ANY) + ")";
+					return parenthesized(expression(node, ANY));
 				}
 				if (node->node_type == NodeType::LITERAL) {
 					return literal(node);
 				}
 				else if (node->node_type == NodeType::IDENTIFIER || node->node_type == NodeType::PIPE_REORDER_IDENTIFIER) {
-					return std::string(text_of(node)) + chain(node, 0);
+					return d.concat({ text(text_of(node)), chain(node, 0) });
 				}
 				else if (node->node_type == NodeType::UNDERSCORE) {
-					return "_";
+					return text("_");
 				}
 				else if (node->node_type == NodeType::VOID) {
-					return "void";
+					return text("void");
 				}
 				else if (node->node_type == NodeType::RANGE_ARRAY) {
-					return "..";
+					return text("..");
 				}
 				else if (node->node_type == NodeType::UNINITIALIZED) {
-					return "---";
+					return text("---");
 				}
 				else if (node->node_type == NodeType::TYPE || node->node_type == NodeType::FUNCTION) {
 					return type(node, true);
 				}
 				else if (node->node_type == NodeType::PAREN_GROUP) {
-					return "(" + (node->children.empty() ? std::string() : expression(node->children[0], ANY)) + ")";
+					return parenthesized(node->children.empty() ? EMPTY : expression(node->children[0], ANY));
 				}
 				else if (node->node_type == NodeType::BINARY_OPERATOR) {
 					return binary(node);
@@ -1177,7 +1268,7 @@ namespace hemera::ast {
 					return cast(node);
 				}
 				else if (node->node_type == NodeType::COMPUTE && node->children.size() == 2) {
-					return "compute[" + type(node->children[0], false) + "] " + block(node->children[1]);
+					return d.concat({ text("compute["), type(node->children[0], false), text("] "), block(node->children[1]) });
 				}
 				else if (node->node_type == NodeType::STRUCT_LITERAL) {
 					return typed_literal(node, ".{", "}");
@@ -1188,9 +1279,9 @@ namespace hemera::ast {
 				else if (node->node_type == NodeType::ENUM_SHORTHAND) {
 					// .#insert name in a quote
 					if (!node->children.empty() && is_insert(node->children[0])) {
-						return "." + directive(node->children[0]) + chain(node, 1);
+						return d.concat({ text("."), directive(node->children[0]), chain(node, 1) });
 					}
-					return "." + std::string(text_of(node)) + chain(node, 0);
+					return d.concat({ text("."), text(text_of(node)), chain(node, 0) });
 				}
 				else if (node->node_type == NodeType::IF) {
 					return if_expression(node);
@@ -1228,25 +1319,26 @@ namespace hemera::ast {
 					return statement(node);
 				}
 				else {
-					return std::string(text_of(node));
+					return text(text_of(node));
 				}
 			}
 
-			std::string literal(const Node* node) {
-				std::string out(text_of(node));
+			Doc literal(const Node* node) {
+				Parts out = parts();
+				out << text_of(node);
 				// A multiline string: a line per token, each starting with \\.
 				for (const Node* line : node->children) {
-					out += "\n" + indent() + std::string(text_of(line));
+					out << nl() << text_of(line);
 				}
-				return out;
+				return out.doc();
 			}
 
 			/*
 			 * What follows a chain's head, from children[first] on: .name, [index], (arguments) and ^, each
 			 * a marker followed by what belongs to it.
 			 */
-			std::string chain(const Node* node, size_t first) {
-				std::string out;
+			Doc chain(const Node* node, size_t first) {
+				Parts out = parts();
 				const auto& children = node->children;
 				size_t i = first;
 				while (i < children.size()) {
@@ -1254,41 +1346,42 @@ namespace hemera::ast {
 					++i;
 					if (!is_marker(marker)) {
 						// Not a chain, like a match arm's pattern: written as it is
-						out += expression(marker, ANY);
+						out << expression(marker, ANY);
 						continue;
 					}
 					// ^, or a macro call's !
 					if (NodeType::UNARY_OPERATOR == marker->node_type) {
-						out += operator_text(marker->value.type);
+						out << operator_text(marker->value.type);
 						continue;
 					}
 					if (NodeType::DOT_ACCESS == marker->node_type) {
-						out += ".";
+						out << ".";
 						if (i < children.size()) {
 							// value.#insert name in a quote
-							out += is_insert(children[i]) ? directive(children[i]) : std::string(text_of(children[i]));
+							out << (is_insert(children[i]) ? directive(children[i]) : text(text_of(children[i])));
 							++i;
 						}
 						continue;
 					}
-					std::string inside;
+					const bool call = NodeType::PAREN_GROUP == marker->node_type;
+					Parts inside = parts();
 					bool first_item = true;
 					while (i < children.size() && !is_marker(children[i])) {
 						const Node* item = children[i];
-						inside += (first_item ? "" : ", ") + (NodeType::PAREN_GROUP == marker->node_type ? argument(item) : index(item));
+						inside << (first_item ? "" : ", ") << (call ? argument(item) : index(item));
 						first_item = false;
 						++i;
 					}
-					out += NodeType::PAREN_GROUP == marker->node_type ? "(" + inside + ")" : "[" + inside + "]";
+					out << (call ? "(" : "[") << inside.doc() << (call ? ")" : "]");
 				}
-				return out;
+				return out.doc();
 			}
 
-			std::string argument(const Node* node) {
+			Doc argument(const Node* node) {
 				if (NodeType::BINARY_OPERATOR == node->node_type && is_token(node, TokenType::OPERATOR_ASSIGN)
 					&& node->children.size() == 2 && NodeType::IDENTIFIER == node->children[0]->node_type
 					&& node->children[0]->children.empty()) {
-					return std::format("{} = {}", text_of(node->children[0]), argument(node->children[1]));
+					return d.concat({ text(text_of(node->children[0])), text(" = "), argument(node->children[1]) });
 				}
 				if (NodeType::TYPE == node->node_type) {
 					return simple_type(node);
@@ -1297,13 +1390,13 @@ namespace hemera::ast {
 			}
 
 			// What's between a chain's brackets: an index, an open range like ..<5 or 5.., or a type argument.
-			std::string index(const Node* node) {
+			Doc index(const Node* node) {
 				if (NodeType::BINARY_OPERATOR == node->node_type && node->children.size() == 2) {
 					if (NodeType::RANGE_ARRAY == node->children[0]->node_type) {
-						return std::string(operator_text(node->value.type)) + expression(node->children[1], ANY);
+						return d.concat({ text(operator_text(node->value.type)), expression(node->children[1], ANY) });
 					}
 					if (NodeType::RANGE_ARRAY == node->children[1]->node_type) {
-						return expression(node->children[0], ANY) + "..";
+						return d.concat({ expression(node->children[0], ANY), text("..") });
 					}
 				}
 				// A function type as a value, like Callbacks[fn(int) -> bool], is written without parentheses there
@@ -1313,25 +1406,26 @@ namespace hemera::ast {
 				return expression(node, ANY);
 			}
 
-			std::string binary(const Node* node) {
+			Doc binary(const Node* node) {
 				const TokenType op = node->value.type;
 				if (node->children.empty()) {
-					return std::string(operator_text(op));
+					return text(operator_text(op));
 				}
 				const Node* lhs = node->children[0];
 				// a |> f(b): the function's name and its arguments, in a PAREN_GROUP
 				if (TokenType::OPERATOR_PIPE == op) {
-					std::string out = expression(lhs, ATOM);
+					Parts out = parts();
+					out << expression(lhs, ATOM);
 					for (size_t i = 1; i < node->children.size(); ++i) {
 						const Node* part = node->children[i];
 						if (NodeType::PAREN_GROUP == part->node_type) {
-							out += "(" + list(part->children, [&](const Node* a) { return argument(a); }) + ")";
+							out << "(" << list(part->children, [&](const Node* a) { return argument(a); }) << ")";
 						}
 						else {
-							out += " |> " + std::string(text_of(part));
+							out << " |> " << text_of(part);
 						}
 					}
-					return out;
+					return out.doc();
 				}
 				const Node* rhs = node->children.size() > 1 ? node->children[1] : nullptr;
 				/*
@@ -1370,172 +1464,187 @@ namespace hemera::ast {
 					right = PRODUCT;
 				}
 				// An assignment's targets can be a list, and a range has no spaces
-				std::string left_text = NodeType::LIST == lhs->node_type && ASSIGNMENT == binary_level(op)
+				const Doc left_doc = NodeType::LIST == lhs->node_type && ASSIGNMENT == binary_level(op)
 					? expression(lhs, ANY) : expression(lhs, left);
 				if (rhs == nullptr) {
-					return left_text + " " + std::string(operator_text(op));
+					return d.concat({ left_doc, text(" "), text(operator_text(op)) });
 				}
-				std::string right_text = NodeType::VOID == rhs->node_type ? std::string("void") : expression(rhs, right);
+				const Doc right_doc = NodeType::VOID == rhs->node_type ? text("void") : expression(rhs, right);
 				if (RANGE == binary_level(op)) {
-					return left_text + std::string(operator_text(op)) + right_text;
+					return d.concat({ left_doc, text(operator_text(op)), right_doc });
 				}
-				return std::format("{} {} {}", left_text, operator_text(op), right_text);
+				return d.concat({ left_doc, text(" "), text(operator_text(op)), text(" "), right_doc });
 			}
 
-			std::string unary(const Node* node) {
+			Doc unary(const Node* node) {
 				if (node->children.empty()) {
-					return std::string(operator_text(node->value.type));
+					return text(operator_text(node->value.type));
 				}
 				const Node* operand = node->children[0];
 				const TokenType op = node->value.type;
 				if (TokenType::SYM_AMPERSAND == op) {
-					return "&" + expression(operand, ATOM);
+					return d.concat({ text("&"), expression(operand, ATOM) });
 				}
 				if (is_prefix(node)) {
-					return std::string(operator_text(op)) + expression(operand, PREFIX);
+					return d.concat({ text(operator_text(op)), expression(operand, PREFIX) });
 				}
 				if (TokenType::SYM_QUESTION == op) {
 					// x?: its operand is a prefix operation or an atom, but not another ?
 					const bool needs_parentheses = level_of(operand) < PREFIX || is_token(operand, TokenType::SYM_QUESTION);
-					return (needs_parentheses ? "(" + expression(operand, ANY) + ")" : expression(operand, PREFIX)) + "?";
+					return d.concat({ needs_parentheses ? parenthesized(expression(operand, ANY)) : expression(operand, PREFIX), text("?") });
 				}
-				return expression(operand, RANGE) + " " + std::string(operator_text(op));
+				return d.concat({ expression(operand, RANGE), text(" "), text(operator_text(op)) });
 			}
 
 			// cast[T](x), bit_cast[T](x) or auto_cast(x), and a chain after it.
-			std::string cast(const Node* node) {
+			Doc cast(const Node* node) {
 				// (x).member and the like
 				if (is_token(node, TokenType::SYM_LPAREN)) {
 					// A string literal's chain, like "abc".count, has no parentheses: the node is where the literal is
 					const Node* first = node->children.empty() ? nullptr : node->children[0];
 					if (first != nullptr && ast::NodeType::LITERAL == first->node_type && first->value.line_number == node->value.line_number
 						&& first->value.column_number == node->value.column_number) {
-						return expression(first, ANY) + chain(node, 1);
+						return d.concat({ expression(first, ANY), chain(node, 1) });
 					}
-					return node->children.empty() ? std::string("()") : "(" + expression(node->children[0], ANY) + ")" + chain(node, 1);
+					if (node->children.empty()) {
+						return text("()");
+					}
+					return d.concat({ parenthesized(expression(node->children[0], ANY)), chain(node, 1) });
 				}
-				std::string out(operator_text(node->value.type));
+				Parts out = parts();
+				out << operator_text(node->value.type);
 				size_t i = 0;
 				if (!is_token(node, TokenType::KEYWORD_AUTO_CAST) && i < node->children.size()) {
-					out += "[" + type(node->children[i], true) + "]";
+					out << "[" << type(node->children[i], true) << "]";
 					++i;
 				}
 				if (i < node->children.size()) {
-					out += "(" + expression(node->children[i], ANY) + ")";
+					out << parenthesized(expression(node->children[i], ANY));
 					++i;
 				}
-				return out + chain(node, i);
+				out << chain(node, i);
+				return out.doc();
 			}
 
 			// Type.{...} or Type.[...], or .{...} for the type expected there.
-			std::string typed_literal(const Node* node, std::string_view open, std::string_view close) {
-				std::string out = is_token(node, TokenType::SYM_DOT) ? std::string() : std::string(text_of(node));
+			Doc typed_literal(const Node* node, std::string_view open, std::string_view close) {
+				Parts out = parts();
+				if (!is_token(node, TokenType::SYM_DOT)) {
+					out << text_of(node);
+				}
 				const Node* items = nullptr;
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::DOT_ACCESS) {
-						out += ".";
+						out << ".";
 					}
 					else if (child->node_type == NodeType::IDENTIFIER) {
-						out += text_of(child);
+						out << text_of(child);
 					}
 					else if (child->node_type == NodeType::GENERIC_TAG) {
-						out += generic_list(child);
+						out << generic_list(child);
 					}
 					else if (child->node_type == NodeType::LIST) {
 						items = child;
 					}
 				}
-				out += open;
+				out << open;
 				if (items == nullptr || items->children.empty()) {
-					return out + std::string(close);
+					out << close;
+					return out.doc();
 				}
-				const std::string inline_items = list(items->children, [&](const Node* item) { return field_value(item); });
-				if (inline_items.size() <= 100 && inline_items.find('\n') == std::string::npos) {
-					return out + inline_items + std::string(close);
+				const Doc inline_items = list(items->children, [&](const Node* item) { return field_value(item); });
+				const std::string inline_text = d.render(inline_items, SIZE_MAX);
+				if (inline_text.size() <= 100 && inline_text.find('\n') == std::string::npos) {
+					out << inline_items << close;
+					return out.doc();
 				}
 				// Long ones, like a table, an item to a line
-				++depth;
-				std::string lines = "\n";
+				std::vector<Doc> lines;
 				for (const Node* item : items->children) {
-					lines += indent() + field_value(item) + ",\n";
+					lines.push_back(d.concat({ field_value(item), text(",") }));
 				}
-				--depth;
-				return out + lines + indent() + std::string(close);
+				out << indented_lines(lines) << nl() << close;
+				return out.doc();
 			}
 
-			std::string if_expression(const Node* node) {
-				std::string out = "if";
+			Doc if_expression(const Node* node) {
+				Parts out = parts();
+				out << "if";
 				for (const Node* child : node->children) {
 					if (child->node_type == NodeType::BLOCK) {
-						out += " " + block(child);
+						out << " " << block(child);
 					}
 					else if (child->node_type == NodeType::ELSE) {
-						out += " else";
+						out << " else";
 						for (const Node* branch : child->children) {
-							out += " " + (NodeType::IF == branch->node_type ? if_expression(branch) : block(branch));
+							out << " " << (NodeType::IF == branch->node_type ? if_expression(branch) : block(branch));
 						}
 					}
 					else {
-						out += " " + expression(child, ANY);
+						out << " " << expression(child, ANY);
 					}
 				}
-				return out;
+				return out.doc();
 			}
 
 			// A directive in an expression: alone, with an expression (#run x), or with arguments (#align(16)).
-			std::string directive(const Node* node) {
-				std::string out(text_of(node));
-				if (out == "#code") {
+			Doc directive(const Node* node) {
+				const std::string_view name = text_of(node);
+				if (name == "#code") {
 					return quote(node);
 				}
+				Parts out = parts();
 				// An #insert in a quote's tree: what its #code splices next, after mut if it's given with mut
 				const bool marked_only = std::all_of(node->children.begin(), node->children.end(),
 					[](const Node* child) { return NodeType::MUTABLE == child->node_type; });
-				if (out == "#insert" && marked_only && !node->children.empty()) {
-					out = "mut " + out;
+				if (name == "#insert" && marked_only && !node->children.empty()) {
+					out << "mut ";
 				}
-				if (text_of(node) == "#insert" && !quotes.empty() && quotes.back().contains(node)) {
+				out << name;
+				if (name == "#insert" && !quotes.empty() && quotes.back().contains(node)) {
 					const Node* spliced = quotes.back().find(node)->second;
 					// It's printed in the quote around this one
 					auto inner = std::move(quotes.back());
 					quotes.pop_back();
-					out += " " + expression(spliced, PREFIX);
+					out << " " << expression(spliced, PREFIX);
 					quotes.push_back(std::move(inner));
 					// A member's value, as in #insert name = 3
 					for (const Node* child : node->children) {
 						if (is_token(child, TokenType::OPERATOR_ASSIGN) && !child->children.empty()) {
-							out += " = " + expression(child->children[0], ANY);
+							out << " = " << expression(child->children[0], ANY);
 						}
 					}
-					return out;
+					return out.doc();
 				}
 				if (node->children.empty()) {
-					return out;
+					return out.doc();
 				}
 				if (is_marker(node->children[0]) && NodeType::PAREN_GROUP == node->children[0]->node_type) {
-					std::string inside;
+					out << "(";
 					for (size_t i = 1; i < node->children.size(); ++i) {
-						inside += (i > 1 ? ", " : "") + argument(node->children[i]);
+						out << (i > 1 ? ", " : "") << argument(node->children[i]);
 					}
-					return out + "(" + inside + ")";
+					out << ")";
+					return out.doc();
 				}
 				// #insert's operand binds like a prefix operator's; #run's and #assert's is an expression
-				const int needed = out == "#insert" ? PREFIX : ANY;
+				const int needed = name == "#insert" ? PREFIX : ANY;
 				bool given_mut = false;
 				for (const Node* child : node->children) {
 					if (NodeType::MUTABLE == child->node_type) {
 						given_mut = true;
 						continue;
 					}
-					out += " " + expression(child, needed);
+					out << " " << expression(child, needed);
 				}
-				return (given_mut ? "mut " : "") + out;
+				return d.concat({ given_mut ? text("mut ") : EMPTY, out.doc() });
 			}
+
 			// #code(expression) or #code { statements }, with what it splices where its #inserts are.
-			std::string quote(const Node* node) {
+			Doc quote(const Node* node) {
 				const Node* tree = quote_table != nullptr ? quote_table->get(node) : nullptr;
 				if (tree == nullptr) {
-					return "#code";
+					return text("#code");
 				}
 				std::vector<const Node*> placeholders;
 				if (NodeType::DIRECTIVE == tree->node_type && text_of(tree) == "#insert") {
@@ -1549,12 +1658,15 @@ namespace hemera::ast {
 					operands[placeholders[i]] = node->children[i];
 				}
 				quotes.push_back(std::move(operands));
-				std::string out = named_contents(tree);
-				if (!out.empty()) {
-					out = "#code " + out;
+				Doc out = named_contents(tree);
+				if (out != EMPTY) {
+					out = d.concat({ text("#code "), out });
+				}
+				else if (NodeType::BLOCK == tree->node_type) {
+					out = d.concat({ text("#code "), block(tree) });
 				}
 				else {
-					out = NodeType::BLOCK == tree->node_type ? "#code " + block(tree) : "#code(" + expression(tree, ANY) + ")";
+					out = d.concat({ text("#code"), parenthesized(expression(tree, ANY)) });
 				}
 				quotes.pop_back();
 				return out;
@@ -1562,9 +1674,9 @@ namespace hemera::ast {
 
 			/*
 			 * What goes in something else, named by a word: fields, variants, members, patterns or cases, as
-			 * #code quotes them and code made from them is. Empty for anything else.
+			 * #code quotes them and code made from them is. EMPTY for anything else.
 			 */
-			std::string named_contents(const Node* tree) {
+			Doc named_contents(const Node* tree) {
 				const std::string_view word = text_of(tree);
 				if (NodeType::STRUCT == tree->node_type && word == "fields") {
 					return struct_declaration(tree, "fields");
@@ -1576,12 +1688,12 @@ namespace hemera::ast {
 					return enum_declaration(tree, "members");
 				}
 				if (NodeType::LIST == tree->node_type && word == "patterns") {
-					return "patterns " + match_arms(tree);
+					return d.concat({ text("patterns "), match_arms(tree) });
 				}
 				if (NodeType::LIST == tree->node_type && word == "cases") {
-					return "cases " + switch_cases(tree);
+					return d.concat({ text("cases "), switch_cases(tree) });
 				}
-				return "";
+				return EMPTY;
 			}
 		};
 	}
@@ -1590,22 +1702,28 @@ namespace hemera::ast {
 		if (node == nullptr) {
 			return "";
 		}
-		Printer printer;
+		layout::Document d;
+		Printer printer(d);
 		printer.quote_table = quotes;
 		if (NodeType::FILE == node->node_type) {
-			return printer.file(node);
+			return d.render(printer.file(node), SIZE_MAX);
 		}
-		std::string contents = printer.named_contents(node);
-		return contents.empty() ? printer.statement(node) : contents;
+		Doc contents = printer.named_contents(node);
+		return d.render(contents != EMPTY ? contents : printer.statement(node), SIZE_MAX);
 	}
 
 	std::string source_of_statements(const Node* block, const QuoteTable* quotes) {
 		if (block == nullptr) {
 			return "";
 		}
-		Printer printer;
+		layout::Document d;
+		Printer printer(d);
 		printer.quote_table = quotes;
-		return printer.statements(block);
+		Parts out(d);
+		for (const Node* child : block->children) {
+			out << printer.statement(child) << d.hard_line();
+		}
+		return d.render(out.doc(), SIZE_MAX);
 	}
 
 }
